@@ -1,3 +1,9 @@
+import {
+  encodeCbor,
+  encodeMidgardNativeTxCanonical,
+  encodeMidgardSpendInputItem,
+  materializeMidgardNativeTxFromCanonical,
+} from "@al-ft/midgard-core";
 /**
  * Ledger-rule fraud-proof journeys: invalid validity range, zero inputs, and
  * non-existent input.
@@ -19,6 +25,11 @@ import { describe, expect, it } from "vitest";
 
 import { submitRemoveFraudulentBlock } from "../src/index.js";
 import {
+  inputExistenceExecutionContext,
+  publishInputExistenceSelectionCarriage,
+  requireInputExistenceTerminalResult,
+} from "./support/input-existence-execution-context.js";
+import {
   neSubmitStep01,
   neSubmitStep02,
   neSubmitStep03,
@@ -30,7 +41,6 @@ import {
   submitZeroInputStep01,
   submitZeroInputStep02V1,
 } from "./support/legacy-submit-emulator.js";
-import { createMeasuredFitRecorder } from "./support/measured-fit-ledger.js";
 import {
   buildInvalidRangeTransactionInclusionFixture,
   buildNonExistentInputFixture,
@@ -55,12 +65,6 @@ import {
   publishRemovalReferenceScripts,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
-
-const measuredFit = createMeasuredFitRecorder(
-  "invalid-range-wrongful-rejection",
-  "accepted",
-  "accepted-invalid complete measured stage sequence using real scripts",
-);
 
 describe("fault-proof emulator integration", () => {
   it("proves and removes a tail invalid-range block end to end", async () => {
@@ -353,11 +357,6 @@ describe("fault-proof emulator integration", () => {
       "remove",
     ]);
     for (const [stage, measurement] of Object.entries(proofFit)) {
-      measuredFit.record(
-        stage,
-        measurement,
-        measurement.executionMemory === 0n ? "publication" : "lifecycle",
-      );
       expectProofFit({
         stage: `invalid-range ${stage}`,
         measurement,
@@ -810,47 +809,24 @@ describe("fault-proof emulator integration", () => {
       funderLucid,
       proverLucid,
       proverSigner,
-      nonceUtxo,
       contracts,
       catalogue,
     } = harness;
     const fixture = await buildNonExistentInputFixture();
-    // See `publishRemovalReferenceScripts`: removal must source these seven
-    // validators from reference inputs to stay inside the 16,384-byte L1
-    // envelope. Published before the header clock is sampled so the whole
-    // timeline shifts uniformly.
-    const removalReferenceScriptPublications =
-      await publishRemovalReferenceScripts({
-        lucid: proverLucid,
-        contracts,
-      });
-    const headerStartTime =
-      alignUnixTimeToEmulatorSlotBoundary(
-        funderLucid,
-        emulator.now() + 120_000,
-      ) - 1;
-    const funderKeyHash = await funderPaymentKeyHash(funderLucid);
-    const fraudulentHeader = makeHeader(
-      funderKeyHash,
-      headerStartTime,
-      await countedTransactionsRoot(
-        fixture.transactionsRoot,
-        fixture.l2TransactionCount,
-      ),
-      fixture.l2TransactionCount,
-    );
-    const setup = await submitSetupTx({
-      lucid: funderLucid,
-      contracts,
-      nonceUtxo,
-      catalogue,
-      header: fraudulentHeader,
+    const context = await inputExistenceExecutionContext({
+      harness,
+      nativeTx: fixture.nativeTx,
+      field: 0,
+      inputIndex: fixture.badInputIndex,
     });
+    const { setup } = context;
     const { headerHash } = setup;
-
+    const removalReferenceScriptPublications =
+      await publishRemovalReferenceScripts({ lucid: proverLucid, contracts });
     const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
       removalReferenceScripts: removalReferenceScriptPublications.published,
     });
+    const stageArguments = { ...context.arguments, deploymentInfo };
     const proofFit: Record<string, CompleteSignedTransactionMeasurement> = {};
     const { maxTxExMem, maxTxExSteps } = emulator.protocolParameters;
     const initResultCapture = await captureEmulatorSubmission(
@@ -884,144 +860,116 @@ describe("fault-proof emulator integration", () => {
       emulator,
       async () =>
         neSubmitStep01({
-          lucid: proverLucid,
-          referenceScriptUtxo:
-            harness.faultProofReferenceScripts.fraudProofNonExistentInput!.utxo,
-          witnessReferenceScripts: harness.witnessReferenceScripts,
-          blueprint: realBlueprint,
-          deploymentInfo,
-          network,
-          signer: proverSigner,
+          ...stageArguments,
           threadOutRef: outRefLabel(firstStepUtxo),
-          stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-          txInclusion: fixture.inclusion,
-          awaitConfirmation: true,
         }),
     );
     const step01Result = step01ResultCapture.result;
     proofFit["step-01"] = step01ResultCapture.measurement;
-    expect(step01Result.nativeTxId).toBe(fixture.nativeTxId);
+    expect(step01Result.sourceEventKey).toEqual(
+      context.prepared.source.eventKey,
+    );
 
     const secondStepUtxo = await expectSingleUtxoWithUnit(
       proverLucid,
-      step01Result.secondStepAddress,
+      contracts.fraudProofContracts.nonExistentInput.steps[1]!
+        .spendingScriptAddress,
       initResult.computationThreadUnit,
     );
-    // #604 mutation negative: the §5.1 preimage the redeemer carries must open
-    // the disputed transaction's field 0 and no other bytes. An input list with
-    // one item's `output_index` changed commits to a different §4 hash, which is
-    // exactly what the door re-derives, so it is refused before submission.
-    const tamperedInputsPreimage = fixture.inputsPreimage.map((entry, index) =>
-      index === Number(fixture.badInputIndex)
-        ? { ...entry, index: BigInt(entry.index) + 1n }
-        : entry,
-    );
-    // The mutation landed: the list genuinely differs.
-    expect(tamperedInputsPreimage).not.toStrictEqual([
-      ...fixture.inputsPreimage,
-    ]);
+    // A changed full source cannot reopen under the committed compact/root.
+    const tamperedSource = {
+      ...context.prepared.source,
+      fullTransactionCbor: encodeMidgardNativeTxCanonical(
+        materializeMidgardNativeTxFromCanonical({
+          ...fixture.nativeTx,
+          body: {
+            ...fixture.nativeTx.body,
+            spendInputsPreimageCbor: encodeCbor(
+              fixture.inputsPreimage.map((entry) =>
+                encodeMidgardSpendInputItem({
+                  txId: Buffer.from(entry.txId, "hex"),
+                  outputIndex: Number(entry.index) + 1,
+                }),
+              ),
+            ),
+          },
+        }),
+      ).toString("hex"),
+    };
     await expect(
       neSubmitStep02({
-        lucid: proverLucid,
-        referenceScriptUtxo:
-          harness.faultProofReferenceScripts.fraudProofNonExistentInputStep02!
-            .utxo,
-        blueprint: realBlueprint,
-        deploymentInfo,
-        network,
-        signer: proverSigner,
+        ...stageArguments,
+        prepared: { ...context.prepared, source: tamperedSource },
         threadOutRef: outRefLabel(secondStepUtxo),
-        inputsPreimage: tamperedInputsPreimage,
-        nativeTxCompactCbor: fixture.inclusion.nativeTxCompactCbor,
-        badInputIndex: fixture.badInputIndex,
-        awaitConfirmation: true,
       }),
-    ).rejects.toThrow(/the disputed transaction commits at §2\.5 field 0/u);
+    ).rejects.toThrow(/normal source changed/);
     // The refusal cost the thread nothing: it is still at step 02, unspent.
     await expect(
       proverLucid.utxosAtWithUnit(
-        step01Result.secondStepAddress,
+        contracts.fraudProofContracts.nonExistentInput.steps[1]!
+          .spendingScriptAddress,
         initResult.computationThreadUnit,
       ),
     ).resolves.toHaveLength(1);
 
+    const selectionCarriage = await publishInputExistenceSelectionCarriage(
+      harness,
+      context.prepared,
+    );
     const step02ResultCapture = await captureEmulatorSubmission(
       emulator,
       async () =>
         neSubmitStep02({
-          lucid: proverLucid,
-          referenceScriptUtxo:
-            harness.faultProofReferenceScripts.fraudProofNonExistentInputStep02!
-              .utxo,
-          blueprint: realBlueprint,
-          deploymentInfo,
-          network,
-          signer: proverSigner,
+          ...stageArguments,
+          ...selectionCarriage,
           threadOutRef: outRefLabel(secondStepUtxo),
-          inputsPreimage: fixture.inputsPreimage,
-          nativeTxCompactCbor: fixture.inclusion.nativeTxCompactCbor,
-          badInputIndex: fixture.badInputIndex,
-          awaitConfirmation: true,
         }),
     );
     const step02Result = step02ResultCapture.result;
     proofFit["step-02"] = step02ResultCapture.measurement;
-    expect(step02Result.missingInput.tx_id).toBe(fixture.missingInputTxId);
+    expect(step02Result.selectedInput?.tx_id).toBe(fixture.missingInputTxId);
 
     const thirdStepUtxo = await expectSingleUtxoWithUnit(
       proverLucid,
-      step02Result.thirdStepAddress,
+      contracts.fraudProofContracts.nonExistentInput.steps[2]!
+        .spendingScriptAddress,
       initResult.computationThreadUnit,
     );
     const step03ResultCapture = await captureEmulatorSubmission(
       emulator,
       async () =>
         neSubmitStep03({
-          lucid: proverLucid,
-          referenceScriptUtxo:
-            harness.faultProofReferenceScripts.fraudProofNonExistentInputStep03!
-              .utxo,
-          witnessReferenceScripts: harness.witnessReferenceScripts,
-          blueprint: realBlueprint,
-          deploymentInfo,
-          network,
-          signer: proverSigner,
+          ...stageArguments,
           threadOutRef: outRefLabel(thirdStepUtxo),
-          ledgerNonMembershipProofCbor: fixture.ledgerNonMembershipProofCbor,
-          awaitConfirmation: true,
         }),
     );
     const step03Result = step03ResultCapture.result;
     proofFit["step-03"] = step03ResultCapture.measurement;
-    expect(step03Result.missingInputTxId).toBe(fixture.missingInputTxId);
+    expect(step03Result.selectedInput?.tx_id).toBe(fixture.missingInputTxId);
 
     const fourthStepUtxo = await expectSingleUtxoWithUnit(
       proverLucid,
-      step03Result.fourthStepAddress,
+      contracts.fraudProofContracts.nonExistentInput.steps[3]!
+        .spendingScriptAddress,
       initResult.computationThreadUnit,
     );
     const step04ResultCapture = await captureEmulatorSubmission(
       emulator,
       async () =>
         neSubmitStep04({
-          lucid: proverLucid,
-          referenceScriptUtxo:
-            harness.faultProofReferenceScripts.fraudProofNonExistentInputStep04!
-              .utxo,
-          witnessReferenceScripts: harness.witnessReferenceScripts,
-          blueprint: realBlueprint,
-          deploymentInfo,
-          network,
-          signer: proverSigner,
+          ...stageArguments,
           threadOutRef: outRefLabel(fourthStepUtxo),
-          txsNonMembershipProofCbor: fixture.txsNonMembershipProofCbor,
-          awaitConfirmation: true,
         }),
     );
-    const step04Result = step04ResultCapture.result;
+    const step04Result = requireInputExistenceTerminalResult(
+      step04ResultCapture.result,
+    );
     proofFit["step-04"] = step04ResultCapture.measurement;
-    expect(step04Result.fraudProofAssetName).toBe(
-      initResult.computationThreadAssetName,
+    expect(step04Result.fraudProofUnit).toBe(
+      toUnit(
+        contracts.fraudProof.policyId,
+        initResult.computationThreadAssetName,
+      ),
     );
 
     const proverPaymentKeyHash = getAddressDetails(
@@ -1029,7 +977,7 @@ describe("fault-proof emulator integration", () => {
     ).paymentCredential!.hash;
     const fraudProofUtxo = await expectSingleUtxoWithUnit(
       proverLucid,
-      step04Result.fraudProofAddress,
+      contracts.fraudProof.spendingScriptAddress,
       step04Result.fraudProofUnit,
     );
     expect(Data.from(fraudProofUtxo.datum!, FraudProofTokenDatum)).toEqual({
@@ -1067,7 +1015,7 @@ describe("fault-proof emulator integration", () => {
     });
     const retainedFraudProof = await expectSingleUtxoWithUnit(
       proverLucid,
-      step04Result.fraudProofAddress,
+      contracts.fraudProof.spendingScriptAddress,
       step04Result.fraudProofUnit,
     );
     expect(retainedFraudProof.assets[step04Result.fraudProofUnit]).toBe(1n);

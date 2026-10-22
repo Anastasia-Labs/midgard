@@ -5,9 +5,7 @@ use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{
   cancel, continue, pass_native_tx_to_next_step_carried,
 }
-use midgard/fraud_proofs/native_tx/compact.{
-  decode_forced_tx_compact_v1, decode_native_tx_compact_v1,
-}
+use midgard/fraud_proofs/native_tx/compact.{decode_native_tx_compact_v1}
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/fraud_proofs/spend_input_signer_missing/rule.{bind_spend_input_v1}
 use midgard/fraud_proofs/spend_input_signer_missing/step_01.{
@@ -45,7 +43,7 @@ validator main(
           tx,
         )
         let state = bind_spend_input_v1(
-          substrate.bind_accepted_subject_v1(verified),
+          substrate.open_accepted_subject_v1(verified),
           input_index,
           header.prev_utxos_root,
           verified.tx_compact.witness_set_hash,
@@ -62,7 +60,6 @@ validator main(
           output_index,
           header,
           membership,
-          direction,
         },
         input_index,
       }) -> {
@@ -77,19 +74,16 @@ validator main(
           inputs,
           outputs,
         )
-        let subject = substrate.bind_forced_subject_to_thread_v1(
+        let Pair(subject, verified) = substrate.open_forced_subject_v1(
           thread_name,
           header,
           membership,
-          direction,
         )
         let state = bind_spend_input_v1(
           subject,
           input_index,
           header.prev_utxos_root,
-          decode_forced_tx_compact_v1(
-            membership.value.submitted_source.compact_cbor,
-          ).witness_set_hash,
+          verified.tx_compact.witness_set_hash,
         )
         let expected: Data = state
         and {

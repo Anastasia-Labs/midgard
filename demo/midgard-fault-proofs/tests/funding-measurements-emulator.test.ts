@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 
 import { canonicalJson } from "@al-ft/midgard-core/canonical-json";
+import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -23,6 +24,18 @@ describe("genuine workflow funding measurement producer", () => {
     const { proverLucid, emulator } = fixture;
     const record = contextInput.buildRecord;
     const context = createWorkflowFundingMeasurementContext(contextInput);
+    const { identity } = readWorkflowFundingMeasurementContext(context);
+    expect(identity).toMatchObject({
+      blueprintSha256: createHash("sha256")
+        .update(contextInput.blueprintBytes)
+        .digest("hex"),
+      aikenSourceSha256: record.sourceHash,
+      sourceSnapshotSha256: contextInput.sourceSnapshotSha256,
+      deploymentProfileDigest: contextInput.manifest.deploymentProfileDigest,
+      deploymentParameterRegistryDigest: computeDeploymentManifestJsonDigest(
+        contextInput.deploymentParameterRegistry,
+      ),
+    });
     expect(() =>
       createWorkflowFundingMeasurementContext({
         ...contextInput,
@@ -32,9 +45,18 @@ describe("genuine workflow funding measurement producer", () => {
     expect(() =>
       createWorkflowFundingMeasurementContext({
         ...contextInput,
-        expectedCompilerVersion: "aiken v1.1.23+bad",
+        buildRecord: { ...record, sourceHash: "not-a-sha256" },
       }),
-    ).toThrow("compiler differs");
+    ).toThrow("funding measurement Aiken sources");
+    expect(() =>
+      createWorkflowFundingMeasurementContext({
+        ...contextInput,
+        deploymentParameterRegistry: {
+          ...contextInput.deploymentParameterRegistry,
+          blueprintHash: "00".repeat(32),
+        },
+      }),
+    ).toThrow("parameter registry belongs to another deployment");
     expect(() =>
       createWorkflowFundingMeasurementContext({
         ...contextInput,
@@ -87,6 +109,7 @@ describe("genuine workflow funding measurement producer", () => {
       "local slot mapping differs",
     );
     const measured = await measure();
+    expect(measured.artifact.identity).toEqual(identity);
     expect(measured.artifact.evidence.evaluatorSlotConfig).toEqual(
       proverLucid.config().slotConfig,
     );

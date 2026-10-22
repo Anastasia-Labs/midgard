@@ -31,9 +31,7 @@ const DEMO_SCRIPT_TEST_INPUTS = [
   "demo/midgard-fault-proofs/scripts/traced-blueprint.mjs",
   "demo/midgard-core/src/generated-deployment-profiles.ts",
   "onchain/aiken/env/*.ak",
-  "onchain/aiken/scripts/pinned-compiler.mjs",
-  ".github/workflows/aiken-ci.yml",
-  ".github/workflows/midgard-node-ci.yml",
+  "demo/flake.lock",
 ];
 
 export const goldenChecks = (root, packages, ciText) =>
@@ -87,6 +85,50 @@ export const goldenChecks = (root, packages, ciText) =>
       plan: () => [command],
     };
   });
+
+// --- the transaction differential's reference leg --------------------------
+
+// The tx-fuzz rows again with the reference leg on: every generated spend is
+// also evaluated by the pinned aiken's `uplc eval`, which the step oracle
+// resolves through scripts/lib/aiken.mjs. With the leg on, each row's pins
+// include the leg's own classes per seed, so its verdicts are pinned too.
+const VALIDATION = "@al-ft/midgard-validation";
+const TX_FUZZ_TEST = "tests/fuzz/tx-fuzz.test.ts";
+
+export const txFuzzReferenceCheck = (packages) => {
+  const dependencies = workspaceDependencyClosure(packages, [VALIDATION]);
+  const validation = packages.find((pkg) => pkg.name === VALIDATION);
+  const command = step(
+    [
+      "pnpm",
+      "--dir",
+      validation.directory,
+      "exec",
+      "vitest",
+      "run",
+      TX_FUZZ_TEST,
+    ],
+    { env: { MIDGARD_TX_FUZZ_UPLC_BIN: "pinned" } },
+  );
+  return {
+    id: "tx-fuzz-reference",
+    title: "Transaction differential with the pinned aiken reference leg",
+    triggers: [
+      ...packages
+        .filter((candidate) => dependencies.has(candidate.name))
+        .map((candidate) => `${candidate.directory}/src/**`),
+      `${validation.directory}/tests/fuzz/**`,
+      `${validation.directory}/vitest.config.ts`,
+      `${AIKEN_PROJECT}/lib/**`,
+      `${AIKEN_PROJECT}/aiken.toml`,
+      "scripts/lib/aiken.mjs",
+      "demo/flake.lock",
+    ],
+    capabilities: ["node-modules", "aiken", "blueprint"],
+    display: formatCommand(command),
+    plan: () => [command],
+  };
+};
 
 // --- independent documentation and devnet validation ----------------------
 
@@ -263,6 +305,27 @@ export const toolingChecks = (root) => [
     prePush: true,
     display: "node scripts/ci/check-registry-paths.mjs",
     plan: () => [step(node("scripts/ci/check-registry-paths.mjs"))],
+  },
+  {
+    id: "toolchain-pins",
+    title: "Docker, compose and CI version pins match demo/toolchain.json",
+    // A superset of the files toolchain.mjs enrolls, kept out of the runner's
+    // import closure.
+    triggers: [
+      "demo/toolchain.json",
+      "demo/.nvmrc",
+      "demo/*/Dockerfile",
+      "demo/**/docker-compose*.yaml",
+      "demo/midgard-node/.env.example",
+      "demo/l1-node-transport/native/go.mod",
+      "demo/midgard-node-tools/src/full-stack/prerequisites.ts",
+      "demo/midgard-node-tools/devnet/phase4-process/**",
+      ".github/workflows/**",
+      "scripts/release/toolchain.mjs",
+    ],
+    prePush: true,
+    display: "node scripts/release/toolchain.mjs",
+    plan: () => [step(node("scripts/release/toolchain.mjs"))],
   },
   {
     id: "repo-tooling-tests",

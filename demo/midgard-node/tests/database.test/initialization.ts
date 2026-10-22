@@ -3,7 +3,6 @@ import { it } from "@effect/vitest";
 import { Effect } from "effect";
 import { describe, expect } from "vitest";
 
-import { CekProgramMaterialDB } from "../../src/database/index.js";
 import { AdmissionSql, BatchSql } from "../../src/services/database.js";
 import { isolatedDb } from "./fixtures.js";
 
@@ -35,45 +34,6 @@ export const registerInitializationTests = () => {
               AND column_name = 'tx'`;
             expect(columns).toHaveLength(1);
             expect(columns[0]?.is_nullable).toBe("NO");
-          }),
-        ),
-    );
-
-    it.effect(
-      "creates CEK durable pins and admission ownership with composite membership integrity",
-      () =>
-        isolatedDb(
-          Effect.gen(function* () {
-            const sql = yield* SqlClient.SqlClient;
-            const durablePin = yield* sql<{
-              readonly is_nullable: "YES" | "NO";
-              readonly column_default: string | null;
-            }>`SELECT is_nullable, column_default
-            FROM information_schema.columns
-            WHERE table_schema = 'public'
-              AND table_name =
-                ${CekProgramMaterialDB.membershipTableName}
-              AND column_name = 'durable_pin'`;
-            expect(durablePin).toEqual([
-              {
-                is_nullable: "NO",
-                column_default: "true",
-              },
-            ]);
-            const ownerForeignKeys = yield* sql<{
-              readonly definition: string;
-            }>`SELECT pg_get_constraintdef(oid) AS definition
-            FROM pg_constraint
-            WHERE conrelid =
-                ${CekProgramMaterialDB.admissionOwnerTableName}::regclass
-              AND contype = 'f'`;
-            expect(ownerForeignKeys).toHaveLength(1);
-            expect(ownerForeignKeys[0]?.definition).toContain(
-              "FOREIGN KEY (program_envelope_hash, material_root)",
-            );
-            expect(ownerForeignKeys[0]?.definition).toContain(
-              "REFERENCES cek_program_material_memberships(program_envelope_hash, material_root) ON DELETE CASCADE",
-            );
           }),
         ),
     );

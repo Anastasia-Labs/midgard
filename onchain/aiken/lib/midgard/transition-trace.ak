@@ -93,7 +93,7 @@ fn phas_root_count_is_consistent(root: ByteArray, count: Int) -> Bool {
   }
 }
 
-fn counted_root_is_consistent(
+pub fn counted_root_is_consistent(
   domain: RootDomain,
   root: ByteArray,
   phas_root: ByteArray,

@@ -1,13 +1,13 @@
-import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 
-import { midgardFieldCarriageBounds } from "@al-ft/midgard-core";
+import {
+  ledgerEd25519SignatureReady,
+  midgardFieldCarriageBounds,
+} from "@al-ft/midgard-core";
 import { forcedVerdictSubject } from "@al-ft/midgard-sdk";
-import { afterAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import {
   admitMissingSignatureForcedArtifact,
@@ -16,12 +16,8 @@ import {
 import * as family from "../src/missing-signature/index.js";
 import { submitMissingSignatureForcedCancel } from "../src/missing-signature/submit-forced.js";
 import { missingSignatureWrongfulRejectionCloses } from "../src/missing-signature/wrongful-rejection.js";
-import {
-  buildVanRossemFitLedger,
-  type VanRossemFitMeasurement,
-  writeVanRossemFitLedger,
-} from "../src/proof-fit/van-rossem-fit-ledger.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
+import { workflowFieldCarriageOwnOutputs } from "../src/workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import {
   computeFraudProofWorkflowId,
   DirectoryFraudProofWorkflowJournalStore,
@@ -29,43 +25,26 @@ import {
   journalJsonDigest,
 } from "../src/workflow/journal.js";
 import {
-  createMissingSignatureForcedFieldPrerequisite,
+  createMissingSignatureFieldPrerequisite,
   unsafeCreateMissingSignatureTransactionPortForTest,
 } from "../src/workflow/missing-signature.js";
 import { missingSignatureObservation } from "../src/workflow/missing-signature-state.js";
 import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../src/workflow/raw-l1-publication-observation.js";
+import { createConfirmedActionJournal } from "./support/confirmed-action-journal.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import {
   network,
   setupMissingSignatureForcedScenario,
 } from "./support/missing-signature-forced-scenario.js";
 import { buildMissingSignatureForcedTransaction as transactionFor } from "./support/missing-signature-forced-shapes.js";
-import { realBlueprintPath } from "./support/submit-init-emulator-shared.js";
-const fitMeasurements: VanRossemFitMeasurement[] = [];
-afterAll(async () => {
-  if (process.env.MIDGARD_WRITE_FIT_LEDGER !== "1") return;
-  const ledger = buildVanRossemFitLedger({
-    category: "missingSignature:0000000e:wrongful-rejection:testnet",
-    blueprintSha256: createHash("sha256")
-      .update(await readFile(realBlueprintPath))
-      .digest("hex"),
-    compilerVersion: "aiken v1.1.23+5adf783",
-    measurements: fitMeasurements,
-  });
-  await writeVanRossemFitLedger(
-    fileURLToPath(
-      new URL(
-        "../../../docs/fault-proofs/size-plans/missing-signature-wrongful-rejection-v1-fit-ledger.json",
-        import.meta.url,
-      ),
-    ),
-    ledger,
-  );
-});
+
+// The ledger's Ed25519 check is libsodium's, which initialises
+// asynchronously; production entry points await it, and so does this file.
+beforeAll(() => ledgerEd25519SignatureReady());
 const setupScenario = (
   shape?: Parameters<typeof transactionFor>[0],
   signerIndex?: bigint,
-) => setupMissingSignatureForcedScenario(fitMeasurements, shape, signerIndex);
+) => setupMissingSignatureForcedScenario(shape, signerIndex);
 
 describe("missingSignature wrongful rejection real lifecycle", () => {
   it("reloads the forced journal and captures each installed runner stage, refusing mutated source and witness evidence", async () => {
@@ -206,6 +185,7 @@ describe("missingSignature wrongful rejection real lifecycle", () => {
         const captured = await port.capture({
           action: observation.action,
           artifact: prepared.artifact,
+          entries: recovered,
         });
         await s.record(`journal-step-${ordinal}`, () =>
           captured.transaction.signed.submit(),
@@ -292,13 +272,12 @@ describe("missingSignature wrongful rejection real lifecycle", () => {
         }),
       );
       const makePort = () =>
-        createMissingSignatureForcedFieldPrerequisite({
+        createMissingSignatureFieldPrerequisite({
           lucid: s.harness.proverLucid,
           network,
           signer: s.harness.proverSigner,
           certificate: s.harness.contracts.fieldPreimageCertificate,
           certificateReference: reference.utxo,
-          transactionConfirmed: async () => true,
           publications: {
             observerVersion: FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER,
             observeExact: async (input) => {
@@ -320,6 +299,10 @@ describe("missingSignature wrongful rejection real lifecycle", () => {
       let thread = await s.init();
       thread = await s.advance(thread, 0);
       thread = await s.advance(thread, 1);
+      const journal = createConfirmedActionJournal({
+        category: "missingSignature",
+        headerHash: s.prepared.headerHash,
+      });
       for (const ordinal of [6, 7] as const) {
         const observation = missingSignatureObservation({
           headerHash: s.prepared.headerHash,
@@ -342,7 +325,7 @@ describe("missingSignature wrongful rejection real lifecycle", () => {
             headerHash: s.prepared.headerHash,
             baseAction: observation.action,
             artifact,
-            entries: [],
+            entries: journal.entries(),
           });
           if (next.kind === "satisfied" || next.kind === "not_required") break;
           if (next.kind !== "required")
@@ -351,11 +334,15 @@ describe("missingSignature wrongful rejection real lifecycle", () => {
             headerHash: s.prepared.headerHash,
             action: next.action,
             artifact,
+            entries: journal.entries(),
           });
           const txHash = await s.record("installed-field-prerequisite", () =>
             captured.transaction.signed.submit(),
           );
           s.harness.emulator.awaitBlock(1);
+          const durableRecovery = JSON.parse(
+            JSON.stringify(captured.durableRecovery),
+          );
           expect(
             (
               await makePort().reconcile({
@@ -363,22 +350,31 @@ describe("missingSignature wrongful rejection real lifecycle", () => {
                 action: next.action,
                 artifact,
                 txHash,
-                durableRecovery: JSON.parse(
-                  JSON.stringify(captured.durableRecovery),
-                ),
+                durableRecovery,
               })
             ).kind,
           ).toBe("confirmed");
+          journal.confirm({ action: next.action, txHash, durableRecovery });
         }
         const resolved = await makePort().resolveAuthenticated({
           headerHash: s.prepared.headerHash,
           action: observation.action,
           artifact,
+          entries: journal.entries(),
         });
         if (resolved.requirement?.planned.plan.tier === "Certified")
           expect(resolved.certificate).toBeDefined();
-        if (ordinal === 6) thread = await s.advance(thread, 2);
-        else expect((await s.action(thread, 3)).kind).toBe("proven");
+        // The step reads the carriage the prerequisite journaled.
+        const carriage = workflowFieldCarriageOwnOutputs({
+          category: "missingSignature",
+          entries: journal.entries(),
+        });
+        if (ordinal === 6)
+          thread = await s.advance(thread, 2, undefined, carriage);
+        else
+          expect((await s.action(thread, 3, undefined, carriage)).kind).toBe(
+            "proven",
+          );
       }
       await s.remove();
     },

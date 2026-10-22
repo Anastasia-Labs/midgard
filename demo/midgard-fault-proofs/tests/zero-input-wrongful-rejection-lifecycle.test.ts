@@ -30,6 +30,7 @@ import {
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { nativeTxFromCoreCompact } from "../src/step-support.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
+import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import {
   applyZeroInputScripts,
   type ZeroInputContracts,
@@ -55,18 +56,11 @@ import {
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
-import { createMeasuredFitRecorder } from "./support/measured-fit-ledger.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
 import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
 import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
 
 const network = "Custom" as const;
-
-const measuredFit = createMeasuredFitRecorder(
-  "zero-input-wrongful-rejection",
-  "lifecycle",
-  "accepted empty input and forced nonempty contradiction; cancellation, restart, mint and removal",
-);
 
 describe("zeroInput wrongful-rejection real lifecycle", () => {
   it("preserves the accepted-invalid Init to permanent-mint lifecycle", async () => {
@@ -216,9 +210,6 @@ describe("zeroInput wrongful-rejection real lifecycle", () => {
       }),
     );
     expect(final.result.fraudProofUnit).toBeTruthy();
-    [initialized, bound, final].forEach(({ measurement }, index) =>
-      measuredFit.record(`accepted-${index}`, measurement),
-    );
     for (const captured of [initialized, bound, final]) {
       expect(captured.measurement.l1ByteMargin).toBeGreaterThan(0);
       expect(captured.measurement.executionMemory).toBeLessThanOrEqual(
@@ -234,6 +225,7 @@ describe("zeroInput wrongful-rejection real lifecycle", () => {
   }, 600_000);
 
   it("runs Init, both cancel boundaries, out-ref restart, forced contradiction, and permanent mint", async () => {
+    const ownOutputs = createOwnOutputJournal();
     const harness = await makeFaultProofEmulatorHarness({
       contractOptions: {
         realZeroInput: true,
@@ -366,6 +358,7 @@ describe("zeroInput wrongful-rejection real lifecycle", () => {
       label: "zero input forced field",
     });
     await publishFaultProofFieldCarriage({
+      ownOutputs,
       lucid: harness.proverLucid,
       signer: harness.proverSigner,
       planned,
@@ -417,7 +410,10 @@ describe("zeroInput wrongful-rejection real lifecycle", () => {
           signer: harness.proverSigner,
           threadOutRef,
           finding: evidence,
-          forcedSource: { header, membership, direction: 1n },
+          forcedSource: {
+            header,
+            membership,
+          },
           referenceScriptUtxo: references[0]!,
         }),
       );
@@ -458,6 +454,7 @@ describe("zeroInput wrongful-rejection real lifecycle", () => {
     const resumedStep02OutRef = await bind(await initialize());
     const final = await captureEmulatorSubmission(harness.emulator, () =>
       submitZeroInputStep02V1({
+        ownOutputs,
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -524,9 +521,6 @@ describe("zeroInput wrongful-rejection real lifecycle", () => {
           validTo: now + 300_000n,
         }),
       ),
-    );
-    captures.forEach(({ measurement }, index) =>
-      measuredFit.record(`forced-${index}`, measurement),
     );
     for (const captured of captures) {
       expect(captured.measurement.l1ByteMargin).toBeGreaterThan(0);

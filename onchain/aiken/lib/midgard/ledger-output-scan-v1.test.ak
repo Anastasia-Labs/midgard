@@ -389,6 +389,42 @@ test written_control_reads_back_unchanged() {
   ) == control
 }
 
+/// A 57-byte base address, the widest `decode_canonical_address_bytes` admits.
+const widest_address =
+  #"002222222222222222222222222222222222222222222222222222222233333333333333333333333333333333333333333333333333333333"
+
+/// Every byte-string field of a control at the widest width a well-formed
+/// control allows: the 57-byte address, two 28-byte policies and a 32-byte
+/// asset name. No field of a well-formed control is wider, so this is the
+/// widest control a thread writes; it reads back through both readers.
+test written_control_at_its_widest_fields_reads_back_unchanged() {
+  let control = ledger_output_scan_v1.LedgerOutputScanControlV1 {
+    ..terminal_control(),
+    address: widest_address,
+    previous_policy: builtin.replicate_byte(28, 4),
+    current_policy: builtin.replicate_byte(28, 5),
+    previous_asset_name: builtin.replicate_byte(32, 6),
+  }
+  let cbor = ledger_output_scan_v1.encode_control_v1(control)
+  and {
+    bytearray.length(widest_address) == 57,
+    ledger_output_scan_v1.decode_written_control_v1(cbor) == control,
+    ledger_output_scan_v1.decode_control_v1(cbor) == control,
+  }
+}
+
+test written_control_refuses_truncated_bytes() fail {
+  let cbor = ledger_output_scan_v1.encode_control_v1(terminal_control())
+  ledger_output_scan_v1.decode_written_control_v1(
+    bytearray.take(cbor, bytearray.length(cbor) - 1),
+  ) == terminal_control()
+}
+
+test written_control_refuses_trailing_bytes() fail {
+  let cbor = ledger_output_scan_v1.encode_control_v1(terminal_control())
+  ledger_output_scan_v1.decode_written_control_v1(bytearray.concat(cbor, #"00")) == terminal_control()
+}
+
 /// A step that would leave a control malformed is refused even when the
 /// control it starts from is well formed: a run of steps checks each control
 /// only as a step's result. This control is well formed but records no output

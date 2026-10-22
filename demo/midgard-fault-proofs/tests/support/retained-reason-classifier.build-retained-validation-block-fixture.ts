@@ -91,7 +91,6 @@ export const buildRetainedValidationBlockFixture = async ({
   minFeeB = 0n,
   operatorVkey = "b1".repeat(28),
   prevHeaderHash,
-  programMaterialEntries,
   postLedgerEntries,
 }: {
   readonly subject: Parameters<typeof buildDecodingBlockFixture>[0]["subject"];
@@ -104,7 +103,6 @@ export const buildRetainedValidationBlockFixture = async ({
   readonly minFeeB?: bigint;
   readonly operatorVkey?: string;
   readonly prevHeaderHash?: string;
-  readonly programMaterialEntries?: readonly DaPayloadEntry[];
   readonly postLedgerEntries?: readonly { outRef: Buffer; output: Buffer }[];
 }) => {
   const base = await buildDecodingBlockFixture({
@@ -166,8 +164,9 @@ export const buildRetainedValidationBlockFixture = async ({
     minFeeB,
     prevUtxosRoot: priorLedgerRoot,
     ...(prevHeaderHash === undefined ? {} : { prevHeaderHash }),
-    validationTracesRoot: root.root,
-    validationTraceCount: root.count,
+    // The header pins the validation-trace pair; the body keeps its traces.
+    validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    validationTraceCount: 0n,
     transitionTraceRoot: transitionRoot.root,
     ...(postLedger === undefined ? {} : { utxosRoot: postLedger.root }),
   };
@@ -195,13 +194,6 @@ export const buildRetainedValidationBlockFixture = async ({
       validation_traces: entries(descriptors),
       validation_trace_witnesses: [],
       transition_trace: entries(transitionEntries),
-      ...(programMaterialEntries === undefined
-        ? {}
-        : {
-            cek_program_material: [...programMaterialEntries].sort(
-              ([left], [right]) => left.localeCompare(right),
-            ),
-          }),
       counts: {
         ...base.reconstruction.payload.block_body.counts,
         validationTraceCount: root.count,
@@ -232,6 +224,10 @@ export type RetainedPlutusFixtureOptions = Readonly<{
   blockSlot?: bigint;
   /** The disputed transaction's native validity interval, in slots. */
   validityInterval?: Readonly<{ start: bigint; end: bigint }>;
+  /** Carry the program as the created output's reference script. */
+  outputReferenceScript?: boolean;
+  /** Further field-6 items after the program's own witness. */
+  extraScriptWitnesses?: readonly Buffer[];
   /**
    * The default predecessor's header operator and times, so it can be
    * committed as an ordinary first block on an emulator state queue.

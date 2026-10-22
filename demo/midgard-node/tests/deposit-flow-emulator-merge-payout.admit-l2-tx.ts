@@ -12,16 +12,12 @@ import {
   stateReconciliationProgram,
 } from "../src/commands/state-reconciliation.js";
 import { submitWithdrawalCommandProgram } from "../src/commands/submit-withdrawal.js";
-import {
-  collectAcceptedProgramEnvelopes,
-  decideAdmissionBatch,
-} from "../src/fibers/tx-queue-processor.js";
+import { decideAdmissionBatch } from "../src/fibers/tx-queue-processor.js";
 import { HttpReadSql } from "../src/services/database.js";
 import { FollowerWriteFixture } from "../src/services/follower-write-gate.js";
 import {
   Database,
   Effect,
-  encodeMidgardCekProgramMaterialSidecar,
   makeFixture,
   MempoolDB,
   MempoolLedgerDB,
@@ -158,12 +154,10 @@ export const admitL2Tx = async (
   fixture: Awaited<ReturnType<typeof makeFixture>>,
   built: { readonly txId: Buffer; readonly txCbor: Buffer },
 ) => {
-  const programMaterialSidecarCbor = encodeMidgardCekProgramMaterialSidecar([]);
   const admittedL2Transfer = await runNodeDatabaseEffect(
     TxAdmissionsDB.admit({
       txId: built.txId,
       txCanonicalCbor: built.txCbor,
-      programMaterialSidecarCbor,
       submitSource: "native",
       currentBacklog: 0n,
       maxBacklog: 1,
@@ -237,10 +231,6 @@ export const admitL2Tx = async (
   const queuedL2Transfer: QueuedTx = {
     txId: loadedL2Transfers[0]![TxAdmissionsDB.Columns.TX_ID],
     txCbor: loadedL2Transfers[0]![TxAdmissionsDB.Columns.TX_CANONICAL_CBOR],
-    programMaterialSidecarCbor:
-      loadedL2Transfers[0]![
-        TxAdmissionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR
-      ],
     arrivalSeq: loadedL2Transfers[0]![TxAdmissionsDB.Columns.ARRIVAL_SEQ],
     createdAt: loadedL2Transfers[0]![TxAdmissionsDB.Columns.FIRST_SEEN_AT],
   };
@@ -293,10 +283,6 @@ export const admitL2Tx = async (
             rows: claimedL2Transfers,
             leaseOwner: l2TransferLeaseOwner,
             processedTxs: phaseB.accepted.map(processedTxFromValidatedTx),
-            programEnvelopesByTxId: collectAcceptedProgramEnvelopes(
-              phaseB.accepted,
-              ledgerState,
-            ),
           });
         }
       }).pipe(

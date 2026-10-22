@@ -1,8 +1,15 @@
 import { decodeMidgardNativeTxCompact } from "@al-ft/midgard-core";
 import { decodeMidgardForcedTxCompact } from "@al-ft/midgard-core/codec/forced";
-import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
+import type { FieldOpening } from "@al-ft/midgard-sdk";
+import {
+  Data,
+  type LucidEvolution,
+  type RedeemerContext,
+  type UTxO,
+} from "@lucid-evolution/lucid";
 
 import {
+  faultProofFieldOpening,
   type FaultProofFieldOpeningPlan,
   resolveFaultProofFieldCarriagePublications,
   resolveFaultProofFieldPreimageCertificate,
@@ -11,6 +18,7 @@ import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-bl
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import type { FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
+import type { OwnOutputJournal } from "../workflow/own-outputs.js";
 import {
   captureLocallyEvaluatedTransaction,
   type FraudProofPreSubmitBoundary,
@@ -49,8 +57,10 @@ export const txWitnessSetHash = (
 export const resolveField = async (
   config: BoundScriptIntegrityHashMissingActuatorConfig,
   planned: FaultProofFieldOpeningPlan,
+  ownOutputs: OwnOutputJournal,
 ) => {
   const publications = await resolveFaultProofFieldCarriagePublications({
+    ownOutputs,
     lucid: config.lucid,
     publisherAddress: config.signer.address,
     planned,
@@ -60,6 +70,7 @@ export const resolveField = async (
       "scriptIntegrityHashMissing field publications disappeared",
     );
   const certificate = await resolveFaultProofFieldPreimageCertificate({
+    ownOutputs,
     lucid: config.lucid,
     network: config.binding.network,
     planned,
@@ -72,6 +83,14 @@ export const resolveField = async (
       ...publications,
       ...(certificate === undefined ? [] : [certificate]),
     ]),
+    /** The opening, resolved against the builder's final reference inputs. */
+    opening: (ctx: RedeemerContext): FieldOpening =>
+      faultProofFieldOpening({
+        planned,
+        referenceInputs: ctx.referenceInputs,
+        certificatePolicyId: config.contracts.fieldPreimageCertificatePolicyId,
+        label: `scriptIntegrityHashMissing field ${planned.fieldIndex.toString()} opening`,
+      }),
   });
 };
 

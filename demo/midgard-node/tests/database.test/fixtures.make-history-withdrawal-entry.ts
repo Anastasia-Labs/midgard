@@ -30,7 +30,7 @@ import {
   databaseFixtureBytes,
   databaseTestDirectory,
   databaseTxHash,
-} from "./fixtures.make-material-proof-submit-tx.js";
+} from "./fixtures.submit-tx.js";
 
 export const databaseOutputReferenceId = (
   label: string,

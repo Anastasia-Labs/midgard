@@ -27,6 +27,7 @@ import {
   cursorStringField,
 } from "../workflow/cursor-family-runtime.js";
 import { type FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
+import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import {
@@ -118,7 +119,11 @@ export const createNativeScriptDecodingTransactionPort = (
       ...args,
       replayContext: config.replayContext,
     }),
-  capture: async ({ action, artifact }) => {
+  capture: async ({ action, artifact, entries }) => {
+    const ownOutputs = workflowFieldCarriageOwnOutputs({
+      category: "nativeScriptDecoding",
+      entries,
+    });
     const a = await admitNativeScriptDecodingWorkflowArtifact(artifact);
     if (a.current.headerHash !== config.binding.definition.headerHash)
       throw new Error("nativeScriptDecoding bound header changed");
@@ -179,7 +184,6 @@ export const createNativeScriptDecodingTransactionPort = (
               if (a.coordinate.sourceKind === 1)
                 await submitNativeScriptDecodingStep01RecordForced({
                   ...common,
-                  direction: a.direction,
                   referenceScriptUtxo: config.references.steps[0],
                 });
               else {
@@ -229,6 +233,7 @@ export const createNativeScriptDecodingTransactionPort = (
                 planned === null
                   ? []
                   : await resolveFaultProofFieldCarriagePublications({
+                      ownOutputs,
                       lucid: config.lucid,
                       planned,
                       publisherAddress: config.signer.address,
@@ -237,6 +242,7 @@ export const createNativeScriptDecodingTransactionPort = (
                 planned === null
                   ? undefined
                   : await resolveFaultProofFieldPreimageCertificate({
+                      ownOutputs,
                       lucid: config.lucid,
                       planned,
                       certificatePolicyId:
@@ -244,6 +250,7 @@ export const createNativeScriptDecodingTransactionPort = (
                       network: config.binding.network,
                     });
               await submitNativeScriptDecodingStep03OpenSubject({
+                ownOutputs,
                 ...common,
                 nativeTxCompactCbor:
                   a.material.proofSource.compactCbor.toString("hex"),

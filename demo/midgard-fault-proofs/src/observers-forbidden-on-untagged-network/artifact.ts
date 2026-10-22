@@ -257,7 +257,6 @@ export const ObserversForbiddenForcedSourcePayloadSchema = Data.Object({
     OutputReferenceSchema,
     ForcedInclusionTxV1Schema,
   ),
-  direction: Data.Integer(),
 });
 
 export const observersForbiddenArtifactDigest = (

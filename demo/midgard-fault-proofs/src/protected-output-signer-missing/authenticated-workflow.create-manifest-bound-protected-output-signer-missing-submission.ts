@@ -7,6 +7,10 @@ import { submitCommittedFieldShapeInit } from "../committed-field-shape/submit-c
 import { requireLinearFaultThreadUtxo } from "../linear-fault-family.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { submitRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
+import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   type ManifestBoundProtectedOutputSignerMissingConfig,
@@ -35,6 +39,7 @@ export const createManifestBoundProtectedOutputSignerMissingSubmission = ({
   centralJournal,
   preSubmitBoundary,
   stateQueueMutationLeaseCoordinator,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly config: ManifestBoundProtectedOutputSignerMissingConfig;
   readonly observe: (identity: string) => Promise<ProtectedOutputSignerStage>;
@@ -44,6 +49,8 @@ export const createManifestBoundProtectedOutputSignerMissingSubmission = ({
     typeof createProtectedOutputSignerMissingCentralJournalAdapter
   >;
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }) => ({
   observe,
   submit: async (
@@ -188,7 +195,6 @@ export const createManifestBoundProtectedOutputSignerMissingSubmission = ({
         forcedSource: {
           header: required(stage.forcedHeader, "forced header"),
           membership: required(stage.forcedMembership, "forced membership"),
-          direction: required(stage.forcedDirection, "forced direction"),
         },
         referenceScriptUtxo: config.referenceScripts.step01,
         preSubmitBoundary:
@@ -209,6 +215,7 @@ export const createManifestBoundProtectedOutputSignerMissingSubmission = ({
     if (action === "submitStep02") {
       const auxiliaryHashes: string[] = [];
       const result = await submitProtectedOutputSignerMissingStep02({
+        ownOutputs,
         lucid: config.lucid,
         contracts: config.contracts,
         categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -267,6 +274,7 @@ export const createManifestBoundProtectedOutputSignerMissingSubmission = ({
     if (action === "submitStep03") {
       const auxiliaryHashes: string[] = [];
       const result = await submitProtectedOutputSignerMissingStep03({
+        ownOutputs,
         lucid: config.lucid,
         contracts: config.contracts,
         categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -325,6 +333,7 @@ export const createManifestBoundProtectedOutputSignerMissingSubmission = ({
     if (action === "submitScan") {
       const auxiliaryHashes: string[] = [];
       const result = await submitProtectedOutputSignerMissingStep04({
+        ownOutputs,
         lucid: config.lucid,
         contracts: config.contracts,
         categoryId: config.binding.resolvedContracts.category.categoryId,

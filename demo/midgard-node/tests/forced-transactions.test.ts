@@ -19,13 +19,6 @@ import "./forced-transactions.make-signed-effectful-transaction.js";
 
 import { createHash } from "node:crypto";
 
-import {
-  decodeMidgardCekProgramMaterialSidecar,
-  encodeMidgardCekProgramEnvelope,
-  encodeMidgardCekProgramMaterialSidecar,
-  encodeMidgardCekTermNode,
-  hashMidgardCekTermNode,
-} from "@al-ft/midgard-core/cek-proof";
 import { encodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
 import { decodeSingleCbor, encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
@@ -102,18 +95,16 @@ describe("V1 forced transaction material", () => {
       ForcedTransactionsDB.encodeForcedTransactionJournalMember({
         sourceValueCbor: accepted.value,
         canonicalTransactionCbor: nativeTxCbor,
-        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([]),
       });
     expect(
       ForcedTransactionsDB.decodeForcedTransactionJournalMember(journalMember),
     ).toEqual({
       sourceValueCbor: accepted.value,
       canonicalTransactionCbor: nativeTxCbor,
-      programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([]),
     });
   });
 
-  it("encodes the sole canonical ForcedTransactionJournalMemberV1 four-field CBOR form", () => {
+  it("encodes the sole canonical ForcedTransactionJournalMemberV1 three-field CBOR form", () => {
     expect(ForcedTransactionsDB.FORCED_TRANSACTION_JOURNAL_MEMBER_VERSION).toBe(
       1n,
     );
@@ -121,12 +112,11 @@ describe("V1 forced transaction material", () => {
     const value = {
       sourceValueCbor: Buffer.from("aa", "hex"),
       canonicalTransactionCbor: Buffer.from("bbcc", "hex"),
-      programMaterialSidecarCbor: Buffer.from("ddeeff", "hex"),
     };
     const encoded =
       ForcedTransactionsDB.encodeForcedTransactionJournalMember(value);
 
-    expect(encoded.toString("hex")).toBe("840141aa42bbcc43ddeeff");
+    expect(encoded.toString("hex")).toBe("830141aa42bbcc");
     expect(
       ForcedTransactionsDB.decodeForcedTransactionJournalMember(encoded),
     ).toEqual(value);
@@ -140,15 +130,15 @@ describe("V1 forced transaction material", () => {
       {
         sourceValueCbor: source,
         canonicalTransactionCbor: transaction,
-        programMaterialSidecarCbor: sidecar,
       },
     );
     const invalidEncodings: readonly (readonly [string, Buffer])[] = [
-      ["legacy version zero", encodeCbor([0n, source, transaction, sidecar])],
-      ["successor version two", encodeCbor([2n, source, transaction, sidecar])],
-      ["source version five", encodeCbor([5n, source, transaction, sidecar])],
-      ["defaulted version", encodeCbor([source, transaction, sidecar])],
-      ["missing sidecar", encodeCbor([1n, source, transaction])],
+      ["legacy version zero", encodeCbor([0n, source, transaction])],
+      ["successor version two", encodeCbor([2n, source, transaction])],
+      ["source version five", encodeCbor([5n, source, transaction])],
+      ["defaulted version", encodeCbor([source, transaction])],
+      ["missing transaction", encodeCbor([1n, source])],
+      ["retired sidecar field", encodeCbor([1n, source, transaction, sidecar])],
       [
         "extra field",
         encodeCbor([1n, source, transaction, sidecar, Buffer.from([0])]),
@@ -160,22 +150,16 @@ describe("V1 forced transaction material", () => {
             ["version", 1n],
             ["source_value_cbor", source],
             ["canonical_transaction_cbor", transaction],
-            ["program_material_sidecar_cbor", sidecar],
           ]),
         ),
       ],
-      ["wrong source type", encodeCbor([1n, 1n, transaction, sidecar])],
-      ["wrong transaction type", encodeCbor([1n, source, 1n, sidecar])],
-      ["wrong sidecar type", encodeCbor([1n, source, transaction, 1n])],
-      ["empty source", encodeCbor([1n, Buffer.alloc(0), transaction, sidecar])],
-      ["empty transaction", encodeCbor([1n, source, Buffer.alloc(0), sidecar])],
-      ["empty sidecar", encodeCbor([1n, source, transaction, Buffer.alloc(0)])],
+      ["wrong source type", encodeCbor([1n, 1n, transaction])],
+      ["wrong transaction type", encodeCbor([1n, source, 1n])],
+      ["empty source", encodeCbor([1n, Buffer.alloc(0), transaction])],
+      ["empty transaction", encodeCbor([1n, source, Buffer.alloc(0)])],
       ["trailing CBOR", Buffer.concat([canonical, Buffer.from([0])])],
-      ["non-minimal version", Buffer.from("84180141aa42bbcc43ddeeff", "hex")],
-      [
-        "indefinite outer array",
-        Buffer.from("9f0141aa42bbcc43ddeeffff", "hex"),
-      ],
+      ["non-minimal version", Buffer.from("83180141aa42bbcc", "hex")],
+      ["indefinite outer array", Buffer.from("9f0141aa42bbccff", "hex")],
     ];
 
     for (const [name, encoded] of invalidEncodings) {
@@ -190,34 +174,31 @@ describe("V1 forced transaction material", () => {
   it("refuses encoder-side defaults, aliases, extra properties, and empty fields", () => {
     const sourceValueCbor = Buffer.from("aa", "hex");
     const canonicalTransactionCbor = Buffer.from("bb", "hex");
-    const programMaterialSidecarCbor = Buffer.from("cc", "hex");
     const encode =
       ForcedTransactionsDB.encodeForcedTransactionJournalMember as (
         value: unknown,
       ) => Buffer;
     const symbolExtra = Object.assign(
-      {
-        sourceValueCbor,
-        canonicalTransactionCbor,
-        programMaterialSidecarCbor,
-      },
+      { sourceValueCbor, canonicalTransactionCbor },
       { [Symbol("legacy")]: true },
     );
     const inheritedAlias = Object.assign(Object.create({ version: 5 }), {
       sourceValueCbor,
       canonicalTransactionCbor,
-      programMaterialSidecarCbor,
     });
     const invalidInputs: readonly (readonly [string, unknown])[] = [
       ["non-record", null],
-      ["missing field", { sourceValueCbor, canonicalTransactionCbor }],
+      ["missing field", { sourceValueCbor }],
       [
         "explicit version property",
+        { version: 1, sourceValueCbor, canonicalTransactionCbor },
+      ],
+      [
+        "retired sidecar property",
         {
-          version: 1,
           sourceValueCbor,
           canonicalTransactionCbor,
-          programMaterialSidecarCbor,
+          programMaterialSidecarCbor: Buffer.from([0]),
         },
       ],
       [
@@ -225,34 +206,17 @@ describe("V1 forced transaction material", () => {
         {
           source_value_cbor: sourceValueCbor,
           canonical_transaction_cbor: canonicalTransactionCbor,
-          program_material_sidecar_cbor: programMaterialSidecarCbor,
         },
       ],
       ["symbol extra", symbolExtra],
       ["inherited legacy alias", inheritedAlias],
       [
         "empty source",
-        {
-          sourceValueCbor: Buffer.alloc(0),
-          canonicalTransactionCbor,
-          programMaterialSidecarCbor,
-        },
+        { sourceValueCbor: Buffer.alloc(0), canonicalTransactionCbor },
       ],
       [
         "empty transaction",
-        {
-          sourceValueCbor,
-          canonicalTransactionCbor: Buffer.alloc(0),
-          programMaterialSidecarCbor,
-        },
-      ],
-      [
-        "empty sidecar",
-        {
-          sourceValueCbor,
-          canonicalTransactionCbor,
-          programMaterialSidecarCbor: Buffer.alloc(0),
-        },
+        { sourceValueCbor, canonicalTransactionCbor: Buffer.alloc(0) },
       ],
     ];
 
@@ -268,7 +232,6 @@ describe("V1 forced transaction material", () => {
       ForcedTransactionsDB.encodeForcedTransactionJournalMember({
         sourceValueCbor: Buffer.from("aa", "hex"),
         canonicalTransactionCbor: Buffer.from("bb", "hex"),
-        programMaterialSidecarCbor: Buffer.from("cc", "hex"),
       });
     const member = (
       payload: Buffer,
@@ -523,29 +486,14 @@ describe("V1 forced transaction material", () => {
   });
 });
 
-/**
- * Every input of a forced transaction resolves against the ledger state
- * immediately before it, as on Cardano. A forced transaction runs no
- * program, so it carries no program material whatever its verdict, even when
- * it references an output that holds a script, and the DA committee derives
- * the same empty set from the same pre-state.
- */
-describe("forced transaction program material at its position", () => {
-  const terminal = { kind: "error" } as const;
-  const termPreimage = encodeMidgardCekTermNode(terminal);
-  const termRoot = hashMidgardCekTermNode(terminal);
-  const envelope = {
-    uplcVersion: [1n, 1n, 0n] as const,
-    termRoot,
-    nodeCount: 1n,
-    materialByteLength: BigInt(termPreimage.length),
-  };
+/** Every forced input resolves against its own pre-state, including script refs. */
+describe("forced transaction references at their ledger position", () => {
   const scriptRefOutput = encodeMidgardTxOutput({
     address: TEST_ADDRESS,
     value: { lovelace: FUNDED_OUTPUT_LOVELACE, assets: new Map() },
     script_ref: {
       language: "MidgardV1",
-      scriptBytes: encodeMidgardCekProgramEnvelope(envelope),
+      scriptBytes: encodeCbor(Buffer.from("01010061", "hex")),
     },
   });
   const validation = {
@@ -574,7 +522,7 @@ describe("forced transaction program material at its position", () => {
     return { classified: classified! };
   };
 
-  it("judges an absent reference input InputNotFound and commits no material", async () => {
+  it("judges an absent reference input InputNotFound", async () => {
     const spent = outputReferenceFromHash(Buffer.alloc(32, 0x61));
     const absentReference = outputReferenceFromHash(Buffer.alloc(32, 0x62));
     const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE);
@@ -604,14 +552,9 @@ describe("forced transaction program material at its position", () => {
     expect(classified.ledgerWitnessEntries).toEqual([
       { outRef: spent, output: spentOutput },
     ]);
-    expect(
-      decodeMidgardCekProgramMaterialSidecar(
-        classified.programMaterialSidecarCbor,
-      ),
-    ).toEqual([]);
   });
 
-  it("commits no material for a live script reference of a transaction Phase A rejects", async () => {
+  it("preserves the Phase A rejection when a live script reference exists", async () => {
     const spent = outputReferenceFromHash(Buffer.alloc(32, 0x63));
     const reference = outputReferenceFromHash(Buffer.alloc(32, 0x64));
     const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE);
@@ -630,14 +573,9 @@ describe("forced transaction program material at its position", () => {
       "TxIsInvalid",
     );
     expect(classified.rejectionCode).toBe(RejectCodes.NetworkIdMismatch);
-    expect(
-      decodeMidgardCekProgramMaterialSidecar(
-        classified.programMaterialSidecarCbor,
-      ),
-    ).toEqual([]);
   });
 
-  it("accepts a transaction referencing a live script reference with no material retained", async () => {
+  it("accepts a transaction referencing the carried bytes of a live script reference", async () => {
     const spent = outputReferenceFromHash(Buffer.alloc(32, 0x65));
     const reference = outputReferenceFromHash(Buffer.alloc(32, 0x66));
     const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE);
@@ -661,10 +599,5 @@ describe("forced transaction program material at its position", () => {
         { outRef: reference, output: scriptRefOutput },
       ]),
     );
-    expect(
-      decodeMidgardCekProgramMaterialSidecar(
-        classified.programMaterialSidecarCbor,
-      ),
-    ).toEqual([]);
   });
 });

@@ -28,7 +28,7 @@ export const ScriptIntegrityBindStateSchema = Data.Enum([
       witness_set_hash: Data.Bytes(),
     }),
   }),
-  Data.Object({ PendingForced: Data.Object({ direction: Data.Integer() }) }),
+  Data.Literal("PendingForced"),
 ]);
 export const ScriptIntegritySubjectStateSchema = Data.Object({
   subject: ScriptIntegrityVerdictSubjectSchema,
@@ -86,7 +86,6 @@ export const ScriptIntegrityStep01ArgsSchema = Data.Enum([
   }),
   Data.Object({
     RecordForced: Data.Object({
-      direction: Data.Integer(),
       input_index: Data.Integer(),
       output_index: Data.Integer(),
     }),

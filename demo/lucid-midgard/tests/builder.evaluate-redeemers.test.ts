@@ -1,4 +1,3 @@
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import {
   decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeMidgardRedeemerWitnessFieldPreimage,
@@ -12,7 +11,6 @@ import {
 } from "@al-ft/midgard-core/consensus-profile";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { evaluateMidgardTxRedeemers } from "@al-ft/midgard-validation";
-import { buildMidgardCanonicalCekProgram } from "@al-ft/midgard-validation/cek-program";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -35,12 +33,10 @@ import {
 const pubkeyAddress =
   "addr_test1qq4jrrcfzylccwgqu3su865es52jkf7yzrdu9cw3z84nycnn3zz9lvqj7vs95tej896xkekzkufhpuk64ja7pga2g8ksdf8km4";
 // (program 1.1.0 (lam context (con unit ()))): accepts any context.
-const rawPlutusV3Script = Buffer.from("0101002499", "hex");
+const storedPlutusV3Script = Buffer.from("450101002499", "hex");
 const plutusV3Hash = hashMidgardVersionedScript({
   language: "PlutusV3",
-  scriptBytes: Buffer.from(
-    buildMidgardCanonicalCekProgram(rawPlutusV3Script).envelopeCbor,
-  ),
+  scriptBytes: storedPlutusV3Script,
 });
 
 const makeProvider = (
@@ -127,7 +123,7 @@ const build = async (provider: MidgardProvider) =>
     .attach.Script({
       kind: "plutus-v3",
       language: "PlutusV3",
-      script: rawPlutusV3Script,
+      script: storedPlutusV3Script,
     })
     .collectFrom([scriptUtxo(0x22, 2_000_000n)], {
       data: redeemer,
@@ -207,12 +203,10 @@ describe("redeemer evaluation", () => {
       ]),
     );
     const l1SlotConfig = NAMED_NETWORK_L1_SLOT_CONFIGS.Preview;
-    const provider = makeProvider(async (txHex, programMaterial = []) => {
+    const provider = makeProvider(async (txHex) => {
       const evaluation = await Effect.runPromise(
         evaluateMidgardTxRedeemers({
           txCbor: Buffer.from(txHex, "hex"),
-          programMaterialSidecarCbor:
-            encodeMidgardCekProgramMaterialSidecar(programMaterial),
           readState: () => Effect.succeed(preState),
           expectedNetworkId: 0n,
           limits: MIDGARD_CONSENSUS_LIMITS,
@@ -229,7 +223,7 @@ describe("redeemer evaluation", () => {
       .attach.Script({
         kind: "plutus-v3",
         language: "PlutusV3",
-        script: rawPlutusV3Script,
+        script: storedPlutusV3Script,
       })
       .collectFrom(inputs, { data: redeemer })
       .pay.ToAddress(pubkeyAddress, { lovelace: 3_000_000n })

@@ -6,6 +6,10 @@ import {
 import { submitCommittedFieldShapeInit } from "../committed-field-shape/submit-committed-field-shape-init.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { submitRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
+import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   type ManifestBoundSpendInputSignerMissingConfig,
@@ -33,6 +37,7 @@ export const createManifestBoundSpendInputSignerMissingSubmission = ({
   centralJournal,
   preSubmitBoundary,
   stateQueueMutationLeaseCoordinator,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly config: ManifestBoundSpendInputSignerMissingConfig;
   readonly observe: (identity: string) => Promise<SpendInputSignerStage>;
@@ -42,6 +47,8 @@ export const createManifestBoundSpendInputSignerMissingSubmission = ({
     typeof createSpendInputSignerMissingCentralJournalAdapter
   >;
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }) => ({
   observe,
   submit: async (
@@ -159,7 +166,6 @@ export const createManifestBoundSpendInputSignerMissingSubmission = ({
         forcedSource: {
           header: required(stage.forcedHeader, "forced header"),
           membership: required(stage.forcedMembership, "forced membership"),
-          direction: required(stage.forcedDirection, "forced direction"),
         },
         referenceScriptUtxo: config.referenceScripts.step01,
         preSubmitBoundary:
@@ -180,6 +186,7 @@ export const createManifestBoundSpendInputSignerMissingSubmission = ({
     if (action === "submitStep02") {
       const auxiliaryHashes: string[] = [];
       const result = await submitSpendInputSignerMissingStep02({
+        ownOutputs,
         lucid: config.lucid,
         network: config.binding.network,
         contracts: config.contracts,
@@ -241,6 +248,7 @@ export const createManifestBoundSpendInputSignerMissingSubmission = ({
     if (action === "submitStep03") {
       const auxiliaryHashes: string[] = [];
       const result = await submitSpendInputSignerMissingStep03({
+        ownOutputs,
         lucid: config.lucid,
         network: config.binding.network,
         contracts: config.contracts,
@@ -300,6 +308,7 @@ export const createManifestBoundSpendInputSignerMissingSubmission = ({
     if (action === "submitScan") {
       const auxiliaryHashes: string[] = [];
       const result = await submitSpendInputSignerMissingStep04({
+        ownOutputs,
         lucid: config.lucid,
         network: config.binding.network,
         contracts: config.contracts,

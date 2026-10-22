@@ -16,6 +16,7 @@ use midgard/rejection_reason_v1.{
   UnusedScriptWitness,
 }
 use midgard/script_proof_v1
+use midgard/script_source_order_v1.{script_source_physical_index}
 use midgard/script_sources_descriptor as descriptor_claim
 use midgard/validation_machine/machine_types.{
   NoAuxiliaryWitness, ObserverPurposeScanControlV1, ReceivePurposeScanControlV1,
@@ -331,7 +332,7 @@ fn script_sources_stage_seven_exact_control(
       control.output_peaks,
       control.output_total_count,
       control.receive_scan,
-      control.source_total_count,
+      control.inline_source_count,
       control.redeemer_total_count,
       control.observer_scan,
       control.mint_fold,
@@ -407,7 +408,6 @@ fn script_sources_stage_seven_control_is_bound(
       control.field_preimage_lengths_cbor,
     ) == pre.transaction_commitment,
     validation_trace_v1.hash_validation_context(control.context_cbor) == pre.validation_context_hash,
-    control.source_total_count == control.source_count,
     validation_merkle_v1.frontier_is_well_formed(
       control.source_count,
       control.source_peaks,
@@ -995,7 +995,6 @@ fn script_sources_stage_eight_control_is_bound(
       control.field_preimage_lengths_cbor,
     ) == pre.transaction_commitment,
     validation_trace_v1.hash_validation_context(control.context_cbor) == pre.validation_context_hash,
-    control.source_total_count == control.source_count,
     validation_merkle_v1.frontier_is_well_formed(
       control.source_count,
       control.source_peaks,
@@ -1151,7 +1150,7 @@ pub fn script_sources_stage_nine(
       script_item_commitment,
     )
     if and {
-      source_index == discovery.source_cursor,
+      source_index == script_sources_stage_nine_physical_index(control),
       validation_merkle_v1.verify_membership(
         control.source_count,
         control.source_peaks,
@@ -1201,7 +1200,7 @@ pub fn script_sources_stage_nine(
             10,
             ScriptDiscoveryControlV1 {
               ..discovery,
-              source_cursor: source_index + 1,
+              source_cursor: discovery.source_cursor + 1,
               redeemer_cursor: 0,
               matched_source_index: source_index,
               matched_language_tag: script_language_tag,
@@ -1218,7 +1217,7 @@ pub fn script_sources_stage_nine(
           9,
           ScriptDiscoveryControlV1 {
             ..discovery,
-            source_cursor: source_index + 1,
+            source_cursor: discovery.source_cursor + 1,
           },
         )
       }
@@ -1251,7 +1250,6 @@ fn script_sources_stage_nine_control_is_bound(
       control.field_preimage_lengths_cbor,
     ) == pre.transaction_commitment,
     validation_trace_v1.hash_validation_context(control.context_cbor) == pre.validation_context_hash,
-    control.source_total_count == control.source_count,
     validation_merkle_v1.frontier_is_well_formed(
       control.source_count,
       control.source_peaks,
@@ -1294,8 +1292,21 @@ fn script_sources_stage_nine_control_is_bound(
   }
 }
 
+/// Stage nine visits sources reference-first; stage eleven audits them in
+/// physical order. Each caller names the physical index its cursor addresses.
+fn script_sources_stage_nine_physical_index(
+  control: ScriptSourcesControlV1,
+) -> Int {
+  script_source_physical_index(
+    control.inline_source_count,
+    control.source_count,
+    control.discovery.source_cursor,
+  )
+}
+
 fn script_sources_stage_nine_source_is_authenticated(
   control: ScriptSourcesControlV1,
+  expected_source_index: Int,
   source_index: Int,
   origin_kind: Int,
   source_key: ByteArray,
@@ -1314,7 +1325,7 @@ fn script_sources_stage_nine_source_is_authenticated(
     script_item_commitment,
   )
   and {
-    source_index == control.discovery.source_cursor,
+    source_index == expected_source_index,
     validation_merkle_v1.verify_membership(
       control.source_count,
       control.source_peaks,
@@ -1346,6 +1357,7 @@ pub fn verify_script_sources_stage_nine_mismatch_semantics_v1(
     discovery.source_cursor < control.source_count,
     script_sources_stage_nine_source_is_authenticated(
       control,
+      script_sources_stage_nine_physical_index(control),
       source_index,
       origin_kind,
       source_key,
@@ -1361,7 +1373,10 @@ pub fn verify_script_sources_stage_nine_mismatch_semantics_v1(
       witness,
       control,
       9,
-      ScriptDiscoveryControlV1 { ..discovery, source_cursor: source_index + 1 },
+      ScriptDiscoveryControlV1 {
+        ..discovery,
+        source_cursor: discovery.source_cursor + 1,
+      },
     ),
   }
 }
@@ -1415,6 +1430,7 @@ pub fn verify_script_sources_stage_nine_native_match_semantics_v1(
     discovery.source_cursor < control.source_count,
     script_sources_stage_nine_source_is_authenticated(
       control,
+      script_sources_stage_nine_physical_index(control),
       source_index,
       origin_kind,
       source_key,
@@ -1454,6 +1470,7 @@ pub fn verify_script_sources_stage_nine_effectful_match_semantics_v1(
     discovery.source_cursor < control.source_count,
     script_sources_stage_nine_source_is_authenticated(
       control,
+      script_sources_stage_nine_physical_index(control),
       source_index,
       origin_kind,
       source_key,
@@ -1471,7 +1488,7 @@ pub fn verify_script_sources_stage_nine_effectful_match_semantics_v1(
       10,
       ScriptDiscoveryControlV1 {
         ..discovery,
-        source_cursor: source_index + 1,
+        source_cursor: discovery.source_cursor + 1,
         redeemer_cursor: 0,
         matched_source_index: source_index,
         matched_language_tag: script_language_tag,
@@ -1709,7 +1726,6 @@ fn script_sources_stage_ten_control_is_bound(
       control.field_preimage_lengths_cbor,
     ) == pre.transaction_commitment,
     validation_trace_v1.hash_validation_context(control.context_cbor) == pre.validation_context_hash,
-    control.source_total_count == control.source_count,
     validation_merkle_v1.frontier_is_well_formed(
       control.source_count,
       control.source_peaks,
@@ -1867,7 +1883,6 @@ fn script_sources_stage_eleven_control_is_bound(
       control.field_preimage_lengths_cbor,
     ) == pre.transaction_commitment,
     validation_trace_v1.hash_validation_context(control.context_cbor) == pre.validation_context_hash,
-    control.source_total_count == control.source_count,
     validation_merkle_v1.frontier_is_well_formed(
       control.source_count,
       control.source_peaks,
@@ -1949,6 +1964,7 @@ pub fn verify_script_sources_stage_eleven_source_semantics_v1(
     discovery.source_cursor < control.source_count,
     script_sources_stage_nine_source_is_authenticated(
       control,
+      discovery.source_cursor,
       source_index,
       origin_kind,
       source_key,
@@ -2131,7 +2147,6 @@ fn script_sources_stage_twelve_control_is_bound(
       control.field_preimage_lengths_cbor,
     ) == pre.transaction_commitment,
     validation_trace_v1.hash_validation_context(control.context_cbor) == pre.validation_context_hash,
-    control.source_total_count == control.source_count,
     validation_merkle_v1.frontier_is_well_formed(
       control.source_count,
       control.source_peaks,

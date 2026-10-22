@@ -46,12 +46,12 @@ validator main(
       }) -> {
         let
             _own_script_hash,
-            _thread_asset_name,
+            _,
             _fraud_prover,
             _input_state,
             next_script_hash,
             next_state,
-            _header,
+            _,
             _tx_id,
             verified
           <- pass_native_tx_to_next_step_carried(
@@ -62,21 +62,20 @@ validator main(
           own_out_ref,
           tx,
         )
-        let subject = substrate.bind_accepted_subject_v1(verified)
-        let bound = bind_coordinate_v1(subject, field_index, item_index)
+        let subject = substrate.open_accepted_subject_v1(verified)
+        let bound = bind_coordinate_v1(
+          subject,
+          field_index,
+          item_index,
+          verified.tx_compact,
+        )
         and {
           next_script_hash == step_02_validator_script_hash,
           next_state == output_state(bound),
         }
       }
       ct.Continue(Args {
-        source: ForcedSource {
-          input_index,
-          output_index,
-          header,
-          membership,
-          direction,
-        },
+        source: ForcedSource { input_index, output_index, header, membership },
         field_index,
         item_index,
       }) -> {
@@ -98,13 +97,17 @@ validator main(
           inputs,
           outputs,
         )
-        let subject = substrate.bind_forced_subject_to_thread_v1(
+        let Pair(subject, verified) = substrate.open_forced_subject_v1(
           thread_asset_name,
           header,
           membership,
-          direction,
         )
-        let bound = bind_coordinate_v1(subject, field_index, item_index)
+        let bound = bind_coordinate_v1(
+          subject,
+          field_index,
+          item_index,
+          verified.tx_compact,
+        )
         and {
           next_script_hash == step_02_validator_script_hash,
           next_state == output_state(bound),

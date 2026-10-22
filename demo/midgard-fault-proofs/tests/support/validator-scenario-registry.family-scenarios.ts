@@ -57,7 +57,7 @@ export const FAMILY_SCENARIOS: Readonly<
     failing: [
       {
         file: "demo/midgard-fault-proofs/tests/submit-init-emulator-no-reference-input-lifecycle.test.ts",
-        test: "refuses to convict an honest commitment whose reference input was produced in-block",
+        test: "refuses to convict a retained commitment whose selected reference input exists at its event",
       },
     ],
   },

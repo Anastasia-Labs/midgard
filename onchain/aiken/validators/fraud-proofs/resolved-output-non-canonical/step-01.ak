@@ -46,7 +46,7 @@ validator main(
           tx,
         )
         let state = bind_input_v1(
-          substrate.bind_accepted_subject_v1(verified),
+          substrate.open_accepted_subject_v1(verified),
           source_kind,
           input_index,
           header.prev_utxos_root,
@@ -63,7 +63,6 @@ validator main(
           output_index,
           header,
           membership,
-          direction,
         },
         source_kind,
         input_index,
@@ -79,11 +78,10 @@ validator main(
           inputs,
           outputs,
         )
-        let subject = substrate.bind_forced_subject_to_thread_v1(
+        let Pair(subject, _) = substrate.open_forced_subject_v1(
           thread_name,
           header,
           membership,
-          direction,
         )
         let state = bind_input_v1(
           subject,

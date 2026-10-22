@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -9,9 +10,10 @@ import {
   blueprintSourceHash,
   buildRecordPath,
 } from "../../scripts/lib/blueprint-stamp.mjs";
-import { blueprintStampDecision } from "../blueprint-stamp-setup.js";
-
-const pin = "aiken v1.1.23+5adf783";
+import {
+  blueprintStampDecision,
+  rebuildBlueprint,
+} from "../blueprint-stamp-setup.js";
 
 // A tree with everything the stamp reads, plus a second blueprint outside
 // onchain/aiken standing in for an explicitly named artifact.
@@ -23,11 +25,6 @@ const withTree = (t) => {
     writeFileSync(join(root, path), contents);
     return join(root, path);
   };
-  for (const workflow of ["aiken-ci.yml", "midgard-node-ci.yml"])
-    write(
-      `.github/workflows/${workflow}`,
-      `env:\n  AIKEN_FORK_VERSION: ${pin}\n`,
-    );
   write("onchain/aiken/aiken.toml", 'name = "midgard/selftest"\n');
   write("onchain/aiken/aiken.lock", "# lock\n");
   write("onchain/aiken/validators/probe.ak", "validator probe { }\n");
@@ -40,7 +37,6 @@ const withTree = (t) => {
         profile: { name: "preprod-emulator-testing" },
         blueprintHash: blueprintHash(blueprintPath),
         sourceHash: blueprintSourceHash(root),
-        compiler: pin,
         ...overrides,
       }),
     );
@@ -48,20 +44,26 @@ const withTree = (t) => {
   return { root, write, record, named };
 };
 
-test("a fresh default blueprint, or none at all, lets the run start", (t) => {
+test("a fresh default blueprint lets the run start", (t) => {
   const { root, write, record } = withTree(t);
-  assert.equal(blueprintStampDecision({ root, env: {} }).action, "run");
   record(write("onchain/aiken/plutus.json", "{}\n"));
-  assert.equal(blueprintStampDecision({ root, env: {} }).action, "run");
+  assert.deepEqual(blueprintStampDecision({ root, env: {} }), {
+    action: "run",
+  });
 });
 
-test("a stale default blueprint refuses the run", (t) => {
+test("a missing, unrecorded or stale default blueprint is rebuilt, saying why", (t) => {
   const { root, write, record } = withTree(t);
-  record(write("onchain/aiken/plutus.json", "{}\n"));
+  const decide = () => blueprintStampDecision({ root, env: {} });
+  assert.equal(decide().action, "rebuild");
+  assert.match(decide().reason, /no blueprint at/u);
+  write("onchain/aiken/plutus.json", "{}\n");
+  assert.equal(decide().action, "rebuild");
+  assert.match(decide().reason, /no build record/u);
+  record(join(root, "onchain/aiken/plutus.json"));
   write("onchain/aiken/validators/probe.ak", "changed\n");
-  const decision = blueprintStampDecision({ root, env: {} });
-  assert.equal(decision.action, "refuse");
-  assert.match(decision.message, /sources .* changed/u);
+  assert.equal(decide().action, "rebuild");
+  assert.match(decide().reason, /sources .* changed/u);
 });
 
 test("a named blueprint with a matching record runs, as the interactive emulator's does", (t) => {
@@ -77,10 +79,6 @@ test("a named blueprint that is mismatched refuses instead of warning", (t) => {
     [
       "was built from other sources",
       ({ record, named }) => record(named, { sourceHash: "0".repeat(64) }),
-    ],
-    [
-      "was built by another compiler",
-      ({ record, named }) => record(named, { compiler: "aiken v1.1.22" }),
     ],
     [
       "was edited after its record",
@@ -105,13 +103,142 @@ test("a named blueprint that does not exist refuses", (t) => {
   assert.equal(blueprintStampDecision({ root, env }).action, "refuse");
 });
 
-test("MIDGARD_BLUEPRINT_STAMP=warn is the one downgrade, for either blueprint", (t) => {
-  const { root, write, record, named } = withTree(t);
-  record(write("onchain/aiken/plutus.json", "{}\n"));
-  write("onchain/aiken/validators/probe.ak", "changed\n");
-  for (const env of [
-    { MIDGARD_BLUEPRINT_STAMP: "warn" },
-    { MIDGARD_BLUEPRINT_STAMP: "warn", MIDGARD_REAL_BLUEPRINT_PATH: named },
-  ])
-    assert.equal(blueprintStampDecision({ root, env }).action, "warn");
+/** A stand-in for `deployment:build`: writes a fresh blueprint and record. */
+const builder = ({ write, record }, { leaveStale = false } = {}) => {
+  const calls = [];
+  const deploymentBuild = async (root, profile) => {
+    calls.push(profile);
+    const blueprint = write("onchain/aiken/plutus.json", '{"built":true}\n');
+    record(blueprint);
+    if (leaveStale) write("onchain/aiken/plutus.json", '{"edited":true}\n');
+    return { exitCode: 0, logPath: join(root, "build.log") };
+  };
+  return { calls, deploymentBuild };
+};
+
+/** An `ensure` that always builds, after `gate` (if any) resolves. */
+const buildingEnsure =
+  (deploymentBuild, gate = Promise.resolve()) =>
+  async (root, { build }) => {
+    await gate;
+    const built = await build(deploymentBuild, root, "probe-profile", {});
+    return { action: "built", profile: "probe-profile", ...built };
+  };
+
+const quiet = () => {};
+const staleTree = (t) => {
+  const tree = withTree(t);
+  tree.record(tree.write("onchain/aiken/plutus.json", "{}\n"));
+  tree.write("onchain/aiken/validators/probe.ak", "changed\n");
+  return tree;
+};
+
+test("concurrent runs against a stale blueprint build it once; the others wait and read it", async (t) => {
+  const tree = staleTree(t);
+  const { calls, deploymentBuild } = builder(tree);
+  let release;
+  const gate = new Promise((resolve) => (release = resolve));
+  const ensure = buildingEnsure(deploymentBuild, gate);
+  const options = {
+    root: tree.root,
+    reason: "stale",
+    ensure,
+    compiler: () => "aiken",
+    log: quiet,
+  };
+  const runs = [rebuildBlueprint(options), rebuildBlueprint(options)];
+  release();
+  await Promise.all(runs);
+  assert.deepEqual(calls, ["probe-profile"]);
+  assert.equal(
+    blueprintStampDecision({ root: tree.root, env: {} }).action,
+    "run",
+  );
+});
+
+test("a build without the pinned compiler is refused with the reason, and the next run can still build", async (t) => {
+  const tree = staleTree(t);
+  const { calls, deploymentBuild } = builder(tree);
+  const options = {
+    root: tree.root,
+    reason: "the sources changed",
+    ensure: buildingEnsure(deploymentBuild),
+    log: quiet,
+  };
+  await assert.rejects(
+    rebuildBlueprint({
+      ...options,
+      compiler: () => {
+        throw new Error("nix: command not found");
+      },
+    }),
+    /the sources changed\nIt cannot be rebuilt: the pinned compiler is unavailable \(nix: command not found\)/u,
+  );
+  assert.deepEqual(calls, []);
+  await rebuildBlueprint({ ...options, compiler: () => "aiken" });
+  assert.deepEqual(calls, ["probe-profile"]);
+});
+
+test("a blueprint copied from another checkout needs no compiler", async (t) => {
+  const tree = staleTree(t);
+  const { deploymentBuild } = builder(tree);
+  await rebuildBlueprint({
+    root: tree.root,
+    reason: "stale",
+    ensure: async (root) => {
+      await deploymentBuild(root, "copied");
+      return { action: "copied", from: "/other/checkout" };
+    },
+    compiler: () => {
+      throw new Error("no compiler");
+    },
+    log: quiet,
+  });
+  assert.equal(
+    blueprintStampDecision({ root: tree.root, env: {} }).action,
+    "run",
+  );
+});
+
+test("a rebuild that leaves the blueprint stale fails the run", async (t) => {
+  const tree = staleTree(t);
+  const { deploymentBuild } = builder(tree, { leaveStale: true });
+  await assert.rejects(
+    rebuildBlueprint({
+      root: tree.root,
+      reason: "stale",
+      ensure: buildingEnsure(deploymentBuild),
+      compiler: () => "aiken",
+      log: quiet,
+    }),
+    /the rebuild left a stale blueprint/u,
+  );
+});
+
+test("a lock left by a run that exited is broken, and a live holder is waited on until its deadline", async (t) => {
+  const tree = staleTree(t);
+  const lock = join(tree.root, "onchain/aiken/build/default-blueprint.lock");
+  const holdLock = (pid) => {
+    rmSync(lock, { recursive: true, force: true });
+    mkdirSync(lock, { recursive: true });
+    writeFileSync(join(lock, "pid"), `${String(pid)}\n`);
+  };
+  const { calls, deploymentBuild } = builder(tree);
+  const options = {
+    root: tree.root,
+    reason: "stale",
+    ensure: buildingEnsure(deploymentBuild),
+    compiler: () => "aiken",
+    log: quiet,
+    timeoutMs: 600,
+  };
+  holdLock(process.pid);
+  await assert.rejects(
+    rebuildBlueprint(options),
+    new RegExp(`build lock .* held by PID ${String(process.pid)}`, "u"),
+  );
+  assert.deepEqual(calls, []);
+  holdLock(spawnSync(process.execPath, ["-e", ""]).pid);
+  await rebuildBlueprint(options);
+  assert.deepEqual(calls, ["probe-profile"]);
 });

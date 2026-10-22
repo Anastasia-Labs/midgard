@@ -23,6 +23,7 @@ import { hubOracleNonceRunStateHooks } from "../src/commands/prepare-hub-oracle-
 import { loadDeploymentRunState } from "../src/e2e/run-state.js";
 import { Lucid as LucidService } from "../src/services/lucid.js";
 import { BeforeSignedTransactionSubmission } from "../src/transactions/utils.js";
+import { settledOriginSource } from "./helpers/hub-oracle-nonce-origin.js";
 import { runWithoutFollower } from "./helpers/intent-journal.js";
 
 const signSubmitTransactionMock = vi.hoisted(() => vi.fn());
@@ -145,6 +146,7 @@ describe("hub-oracle nonce signed before submission", () => {
     const run = (beforeSubmission: () => Effect.Effect<void, unknown>) =>
       runWithoutFollower(
         prepareHubOracleOneShotNonceProgram(5_000_000n, {
+          l1Origin: settledOriginSource(),
           outputLookupTimeoutMs: 0,
           beforeSubmission: (attempt) => {
             order.push(`record ${attempt.txHash} ${attempt.signedTxCbor}`);
@@ -203,6 +205,7 @@ describe("hub-oracle nonce signed before submission", () => {
             { runStatePath, freshRedeploy: false },
             "Preprod",
           ),
+          l1Origin: settledOriginSource(),
           outputLookupTimeoutMs: 0,
         }).pipe(Effect.provideService(LucidService, service as never)),
       ),

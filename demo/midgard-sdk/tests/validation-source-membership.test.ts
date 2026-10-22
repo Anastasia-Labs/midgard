@@ -1,6 +1,3 @@
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-
 import { h32 } from "@al-ft/midgard-test-support/hex";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
@@ -134,19 +131,5 @@ describe("ValidationSourceMembershipV1 ABI", () => {
       decodeExact(Data.to(new Constr(0, [new Constr(0, [])]))),
     ).toThrow();
     expect(() => decodeExact(`${encodeExact(forced)}00`)).toThrow();
-  });
-
-  it("contains no retired V2/V3 source-membership production identity", () => {
-    const sources = [
-      "../src/fraud-proof/validation-dispute.ts",
-      "../../../onchain/aiken/lib/midgard/validation-claim-v1.ak",
-    ].map((path) =>
-      readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8"),
-    );
-    expect(
-      sources.flatMap(
-        (source) => source.match(/\bValidationSourceMembershipV[23]\b/gu) ?? [],
-      ),
-    ).toEqual([]);
   });
 });

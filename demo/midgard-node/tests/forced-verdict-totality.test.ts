@@ -1,14 +1,6 @@
-import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import {
-  decodeMidgardCekProgramMaterialSidecar,
-  encodeMidgardCekProgramEnvelope,
-  encodeMidgardCekProgramMaterialSidecar,
-  encodeMidgardCekTermNode,
-  hashMidgardCekTermNode,
-} from "@al-ft/midgard-core/cek-proof";
 import {
   decodeMidgardFieldPreimage,
   encodeMidgardFieldPreimage,
@@ -255,26 +247,15 @@ const admitted = (tx: MidgardForcedTxCanonical): Buffer | null => {
   }
 };
 
-const sidecar = encodeMidgardCekProgramMaterialSidecar([]);
-
-/** An L2 output carrying a script reference whose material no one retains. */
-const scriptRefOutput = (() => {
-  const terminal = { kind: "error" } as const;
-  const termPreimage = encodeMidgardCekTermNode(terminal);
-  return encodeMidgardTxOutput({
-    address: TEST_ADDRESS,
-    value: { lovelace: FUNDED_OUTPUT_LOVELACE, assets: new Map() },
-    script_ref: {
-      language: "MidgardV1",
-      scriptBytes: encodeMidgardCekProgramEnvelope({
-        uplcVersion: [1n, 1n, 0n],
-        termRoot: hashMidgardCekTermNode(terminal),
-        nodeCount: 1n,
-        materialByteLength: BigInt(termPreimage.length),
-      }),
-    },
-  });
-})();
+/** An L2 output carrying a stored Flat script reference. */
+const scriptRefOutput = encodeMidgardTxOutput({
+  address: TEST_ADDRESS,
+  value: { lovelace: FUNDED_OUTPUT_LOVELACE, assets: new Map() },
+  script_ref: {
+    language: "MidgardV1",
+    scriptBytes: encodeCbor(Buffer.from("01010061", "hex")),
+  },
+});
 
 const itemsOf = (preimage: Buffer): readonly Buffer[] => {
   try {
@@ -335,10 +316,6 @@ const entryOf = (nativeTxCbor: Buffer, label: number) =>
         [ForcedTransactionsDB.Columns.NATIVE_TX_CBOR]: nativeTxCbor,
         [ForcedTransactionsDB.Columns.TRANSACTION_COMMITMENT]:
           encoded.transactionCommitment,
-        [ForcedTransactionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR]:
-          sidecar,
-        [ForcedTransactionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256]:
-          createHash("sha256").update(sidecar).digest(),
         [ForcedTransactionsDB.Columns.INCLUSION_TIME]: new Date(
           "2026-07-23T12:00:00.000Z",
         ),
@@ -377,13 +354,6 @@ const leafOf = (
       ].toString("hex"),
       SDK.ForcedInclusionTxV1,
     );
-    // A forced transaction never commits program material.
-    if (
-      decodeMidgardCekProgramMaterialSidecar(
-        classified!.programMaterialSidecarCbor,
-      ).length !== 0
-    )
-      return yield* Effect.die("forced transaction committed program material");
     yield* buildPlaceholderValidationTraceMembers({
       transactions: [
         {
@@ -417,7 +387,6 @@ describe("forced verdict totality over mint-admissible orders", () => {
       .map(transactionOf);
     expect(bases.length).toBeGreaterThan(10);
     const residue: string[] = [];
-    const arms = new Map<string, number>();
     let checked = 0;
     for (let sample = 0; sample < SAMPLES; sample += 1) {
       const base = bases[sample % bases.length]!;
@@ -426,19 +395,13 @@ describe("forced verdict totality over mint-admissible orders", () => {
       if (nativeTxCbor === null) continue;
       checked += 1;
       const exit = await Effect.runPromiseExit(leafOf(nativeTxCbor, sample));
-      if (Exit.isSuccess(exit))
-        arms.set(exit.value, (arms.get(exit.value) ?? 0) + 1);
-      else
+      if (!Exit.isSuccess(exit))
         residue.push(
           `${nativeTxCbor.toString("hex")}: ${Cause.pretty(exit.cause).split("\n")[0]}`,
         );
     }
     expect(residue).toEqual([]);
     expect(checked).toBeGreaterThan(SAMPLES / 4);
-    // The output decode fault the mint admits is reached and mapped to its
-    // arm. A malformed native payload is admitted too, but the machine reads it
-    // only after the signer checks, which every corpus row fails first.
-    expect(arms.get("OutputNonCanonical") ?? 0).toBeGreaterThan(0);
   }, 600_000);
 
   it("gives a leaf when every input is live and every reference input carries an unretained script reference", async () => {

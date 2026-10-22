@@ -25,7 +25,6 @@ import { l1ContentSourcesConfig } from "./config.l1-content-sources.js";
 import { nodeBehindConfig } from "./config.node-behind.js";
 import {
   boundedValidationInteger,
-  CEK_PROGRAM_MATERIAL_MIN_STORE_BYTES,
   type NodeConfigDep,
   positiveFiniteNumberConfig,
   positiveSafeIntegerConfig,
@@ -33,8 +32,8 @@ import {
   resolveValidationWorkerPoolSize,
   seedPhraseAddress,
   validateDaKeySetEncoding,
-  validateSeedPhrase,
 } from "./config.node-config-dep.js";
+import { refuseSharedOperationalWallets } from "./config.operational-wallets.js";
 import {
   NATIVE_LEDGER_SETTING_NAMES,
   parseNativeLedgerSettings,
@@ -123,13 +122,8 @@ const makeConfig = Effect.gen(function* () {
       return value;
     }),
   );
-  const referenceScriptSeedPhrase = yield* Config.string(
+  const referenceScriptSeedPhrase = yield* requiredSeedPhrase(
     "L1_REFERENCE_SCRIPT_SEED_PHRASE",
-  ).pipe(
-    Config.withDefault(operatorSeedPhrase),
-    Config.mapAttempt((value) =>
-      validateSeedPhrase("L1_REFERENCE_SCRIPT_SEED_PHRASE", value),
-    ),
   );
   const configuredReferenceScriptAddress = yield* Config.string(
     "L1_REFERENCE_SCRIPT_ADDRESS",
@@ -174,6 +168,14 @@ const makeConfig = Effect.gen(function* () {
   const referenceScriptDeployAddress = yield* Config.string(
     "L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS",
   ).pipe(Config.withDefault(referenceScriptAddress));
+  yield* refuseSharedOperationalWallets({
+    L1_OPERATOR_SEED_PHRASE: operatorSeedPhrase,
+    L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: operatorSeedPhraseForMergeTx,
+    L1_SETTLEMENT_SEED_PHRASE: settlementSeedPhrase,
+    L1_REFERENCE_SCRIPT_SEED_PHRASE: referenceScriptSeedPhrase,
+    L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS: referenceScriptDeployAddress,
+    NETWORK: network,
+  });
   const port = yield* Config.integer("PORT").pipe(Config.withDefault(3000));
   const waitBetweenBlockCommitment = yield* Config.integer(
     "WAIT_BETWEEN_BLOCK_COMMITMENT",
@@ -260,9 +262,6 @@ const makeConfig = Effect.gen(function* () {
     "VALIDATION_WORKER_JOB_TIMEOUT_MS",
     30_000,
   );
-  const validationWorkerNodeEd25519 = yield* Config.boolean(
-    "VALIDATION_WORKER_NODE_ED25519",
-  ).pipe(Config.withDefault(true));
   const validationDrainLoops = yield* boundedValidationInteger(
     "VALIDATION_DRAIN_LOOPS",
     4,
@@ -331,22 +330,6 @@ const makeConfig = Effect.gen(function* () {
       ) {
         throw new Error(
           `SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES must be a safe integer at least ${MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes.toString()}`,
-        );
-      }
-      return value;
-    }),
-  );
-  const cekProgramMaterialStoreMaxBytes = yield* Config.integer(
-    "CEK_PROGRAM_MATERIAL_STORE_MAX_BYTES",
-  ).pipe(
-    Config.withDefault(CEK_PROGRAM_MATERIAL_MIN_STORE_BYTES * 4),
-    Config.mapAttempt((value) => {
-      if (
-        !Number.isSafeInteger(value) ||
-        value < CEK_PROGRAM_MATERIAL_MIN_STORE_BYTES
-      ) {
-        throw new Error(
-          `CEK_PROGRAM_MATERIAL_STORE_MAX_BYTES must be a safe integer at least ${CEK_PROGRAM_MATERIAL_MIN_STORE_BYTES.toString()}`,
         );
       }
       return value;
@@ -919,7 +902,6 @@ const makeConfig = Effect.gen(function* () {
     VALIDATION_WORKER_CHUNK_SIZE: validationWorkerChunkSize,
     VALIDATION_WORKER_INLINE_THRESHOLD: validationWorkerInlineThreshold,
     VALIDATION_WORKER_JOB_TIMEOUT_MS: validationWorkerJobTimeoutMs,
-    VALIDATION_WORKER_NODE_ED25519: validationWorkerNodeEd25519,
     VALIDATION_DRAIN_LOOPS: validationDrainLoops,
     VALIDATION_LEDGER_DELTA_LOG_MAX: validationLedgerDeltaLogMax,
     TX_QUEUE_POLL_INTERVAL_MS: txQueuePollIntervalMs,
@@ -931,7 +913,6 @@ const makeConfig = Effect.gen(function* () {
     MAX_DURABLE_ADMISSION_BACKLOG_BYTES: maxDurableAdmissionBacklogBytes,
     SUBMIT_INGRESS_MAX_CONCURRENCY: submitIngressMaxConcurrency,
     SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES: submitIngressMaxInFlightBytes,
-    CEK_PROGRAM_MATERIAL_STORE_MAX_BYTES: cekProgramMaterialStoreMaxBytes,
     MAX_SUBMIT_TX_CBOR_BYTES: maxSubmitTxCborBytes,
     READINESS_MAX_HEARTBEAT_AGE_MS: readinessMaxHeartbeatAgeMs,
     READINESS_L1_PROVIDER_EVIDENCE_MAX_AGE_MS:

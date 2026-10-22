@@ -1,8 +1,4 @@
 import {
-  encodeMidgardCekProgramMaterialSidecar,
-  type MidgardCekProgramMaterialEntry,
-} from "@al-ft/midgard-core/cek-proof";
-import {
   computeMidgardNativeTxId,
   decodeMidgardNativeTxFullFromCanonicalCbor,
   encodeMidgardNativeTxCanonical,
@@ -58,7 +54,7 @@ import {
   type CompleteTxMetadata,
 } from "./builder/metadata.js";
 import { normalizeNonNegativeBigInt } from "./builder/normalizers.js";
-import { assertCompleteTxProgramMaterial } from "./builder/script-materialization.js";
+import { assertResolvedReferenceInputs } from "./builder/script-witnesses.js";
 import { cloneUtxo } from "./builder/state.js";
 import {
   assertSubmitAdmissionMatches,
@@ -292,14 +288,6 @@ export class CompleteTx {
     return cloneCompleteTxMetadata(this.#metadata);
   }
 
-  get programMaterial(): readonly MidgardCekProgramMaterialEntry[] {
-    return (this.#context?.programMaterial ?? []).map((entry) => ({
-      ...entry,
-      root: Buffer.from(entry.root) as MidgardCekProgramMaterialEntry["root"],
-      preimage: Buffer.from(entry.preimage),
-    }));
-  }
-
   get resolvedReferenceOutputsByOutRef():
     | ReadonlyMap<string, Uint8Array>
     | undefined {
@@ -523,7 +511,7 @@ export class CompleteTx {
     });
     const admission = assertSubmitAdmissionMatches(
       this.txIdHex,
-      await provider.submitTx(this.txHex, this.programMaterial),
+      await provider.submitTx(this.txHex),
     );
     return makeSubmittedTx(this, admission, provider);
   }
@@ -588,11 +576,7 @@ export const makeCompleteTx = (
   metadata: CompleteTxMetadata,
   context?: CompleteTxContext,
 ): CompleteTx => {
-  assertCompleteTxProgramMaterial(
-    tx,
-    context?.resolvedReferenceOutputsByOutRef,
-    context?.programMaterial ?? [],
-  );
+  assertResolvedReferenceInputs(tx, context?.resolvedReferenceOutputsByOutRef);
   const completed = new CompleteTx(tx, metadata, context);
   trustedCompleteTxs.add(completed);
   return completed;
@@ -863,9 +847,6 @@ const makeSubmittedTx = (
 const queuedTxFromComplete = (tx: CompleteTx): QueuedTx => ({
   txId: tx.txId,
   txCbor: tx.txCbor,
-  programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar(
-    tx.programMaterial,
-  ),
   arrivalSeq: 0n,
   createdAt: new Date(0),
 });

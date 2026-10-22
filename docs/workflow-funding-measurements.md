@@ -10,8 +10,9 @@ The measurement callback never submits or creates a wallet transaction.
 
 Create `createWorkflowFundingMeasurementContext` with the actual finalized
 manifest, raw blueprint bytes, the declared blueprint build record, the
-complete R3 parameter registry, the pinned compiler version, the exact source
-snapshot digest and the funding payment key hash. The context verifies raw
+complete R3 parameter registry, the exact source snapshot digest and the
+funding payment key hash. The context binds the blueprint bytes, Aiken source
+digest and selected deployment profile to the build record, verifies raw
 parameter reapplication against every deployed program and snapshots those
 inputs. This records build identity; it does not replace the persistent
 release authority, independent compiler rebuild or image correspondence.

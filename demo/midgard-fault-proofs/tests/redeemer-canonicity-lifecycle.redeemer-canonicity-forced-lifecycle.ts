@@ -97,7 +97,10 @@ describe("redeemer-canonicity forced lifecycle", () => {
         signer: harness.proverSigner,
         threadOutRef: `${init.txHash}#${init.firstStepOutputIndex.toString()}`,
         finding: evidence,
-        forcedSource: { header: forced.header, membership, direction: 1n },
+        forcedSource: {
+          header: forced.header,
+          membership,
+        },
         witnessSetHash: Buffer.from(
           decodeMidgardForcedTxCompact(
             Buffer.from(

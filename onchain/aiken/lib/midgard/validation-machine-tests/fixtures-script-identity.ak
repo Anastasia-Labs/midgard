@@ -19,7 +19,7 @@ use midgard/validation_machine_tests/constants.{h_b, validation_context_cbor}
 use midgard/validation_machine_tests/fixtures_phase_a.{
   empty_v1_transaction, forced_pending_state, inline_field_door,
   signer_frontier_for_tx, singleton_field_item_chunk_proof, submitted_source,
-  v1_program_envelope,
+  v1_plutus_script,
 }
 use midgard/validation_merkle_v1
 use midgard/validation_trace_v1
@@ -27,7 +27,7 @@ use midgard/validation_trace_v1
 pub fn stage_zero_script_sources_control(
   tx: MidgardTransaction,
   source_frontier: validation_merkle_v1.BuiltFrontier,
-  source_total_count: Int,
+  inline_source_count: Int,
   pending_source_cbor: ByteArray,
 ) -> vm_machine_types.ScriptSourcesControlV1 {
   let proof_source = submitted_source(tx)
@@ -61,7 +61,7 @@ pub fn stage_zero_script_sources_control(
     output_peaks: validation_merkle_v1.empty_frontier(),
     output_total_count: 0,
     receive_scan: vm_witness.empty_receive_purpose_scan_control(),
-    source_total_count,
+    inline_source_count,
     redeemer_total_count: 0,
     observer_scan: vm_witness.empty_observer_purpose_scan_control(),
     discovery: vm_witness.empty_script_discovery_control(),
@@ -105,7 +105,7 @@ pub fn stage_zero_script_sources_work_witness(
       control.output_peaks,
       control.output_total_count,
       control.receive_scan,
-      control.source_total_count,
+      control.inline_source_count,
       control.redeemer_total_count,
       control.observer_scan,
       control.mint_fold,
@@ -137,13 +137,12 @@ pub fn stage_zero_script_sources_state(
     validation_trace_v1.ScriptSources,
     program_counter,
     work_witness_cbor,
-    validation_trace_v1.hash_ledger_delta(#"80"),
   )
 }
 
 pub fn stage_zero_hash_block_checks_binding(wrong_commitment: Bool) -> Bool {
   let base = empty_v1_transaction()
-  let payload = v1_program_envelope()
+  let payload = v1_plutus_script()
   let script = MidgardVersionedScript {
     language: PlutusV3Script,
     script_bytes: payload,
@@ -163,7 +162,7 @@ pub fn stage_zero_hash_block_checks_binding(wrong_commitment: Bool) -> Bool {
   let pending = vm_machine_types.InlineSourceHashControlV1 {
     version: 1,
     source_index: 0,
-    source_total_count: 1,
+    inline_source_count: 1,
     language_tag: 3,
     payload_offset: bytearray.length(item_cbor) - bytearray.length(payload),
     payload_length: bytearray.length(payload),
@@ -261,7 +260,7 @@ pub fn crossing_inline_source_hash_fixture() -> Pair<
   let pending = vm_machine_types.InlineSourceHashControlV1 {
     version: 1,
     source_index: 0,
-    source_total_count: 1,
+    inline_source_count: 1,
     language_tag: 3,
     payload_offset: bytearray.length(item_cbor) - bytearray.length(payload),
     payload_length: bytearray.length(payload),

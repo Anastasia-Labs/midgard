@@ -27,10 +27,10 @@ import {
   submitWitnessScriptDecodingStep03,
   submitWitnessScriptDecodingStep04,
   WITNESS_SCRIPT_DECODING_BLUEPRINT_TITLES,
-  witnessScriptDecodingCheckpoint,
   type WitnessScriptDecodingContracts,
   type WitnessScriptDecodingEvidence,
 } from "../src/witness-script-decoding/index.js";
+import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
   captureEmulatorSubmission,
@@ -41,6 +41,7 @@ import {
   familyStepsFromRegisteredChain,
 } from "./support/emulator/registered-chain.js";
 import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
+import { recordPlutusItem } from "./support/script-decode-emulator.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   buildRemovalDeploymentInfo,
@@ -64,6 +65,7 @@ import {
   CANCELLABLE_STEPS,
   CATEGORY_ID,
   coverage,
+  exactWitnessScanState,
   record,
   type Shape,
 } from "./witness-script-decoding-lifecycle.authentication-seams.js";
@@ -74,8 +76,12 @@ export let publicationsRecorded = false;
 // Harness
 // ---------------------------------------------------------------------------
 
-export const makeHarness = async () => {
+export const makeHarness = async ({
+  referenceScriptAuthTimelockMs,
+}: { readonly referenceScriptAuthTimelockMs?: number } = {}) => {
+  const ownOutputs = createOwnOutputJournal();
   const harness = await makeFaultProofEmulatorHarness({
+    referenceScriptAuthTimelockMs,
     contractOptions: {
       realWitnessScriptDecoding: true,
       alwaysFraudProofCatalogue: true,
@@ -141,12 +147,7 @@ export const makeHarness = async () => {
         }),
       );
       if (!publicationsRecorded) {
-        record(
-          `publish-step0${(index + 1).toString()}`,
-          "fully applied testnet validator",
-          published.measurement,
-          "publication",
-        );
+        record(`publish-step0${(index + 1).toString()}`, published.measurement);
       }
       references.push(published.result.utxo);
     }
@@ -178,7 +179,6 @@ export const makeHarness = async () => {
 
   const measured = async <T>(
     name: string | null,
-    shape: string,
     operation: () => Promise<T>,
   ): Promise<{
     result: T;
@@ -188,7 +188,7 @@ export const makeHarness = async () => {
       harness.emulator,
       operation,
     );
-    if (name !== null) record(name, shape, captured.measurement);
+    if (name !== null) record(name, captured.measurement);
     return { result: captured.result, measurement: captured.measurement };
   };
 
@@ -265,13 +265,9 @@ export const makeHarness = async () => {
     return { block, setup, orderKey, membership };
   };
 
-  const init = async (
-    fraudulentBlockOutRef: string,
-    name: string | null,
-    shape: string,
-  ) =>
+  const init = async (fraudulentBlockOutRef: string, name: string | null) =>
     (
-      await measured(name, shape, () =>
+      await measured(name, () =>
         submitWitnessScriptDecodingInit({
           lucid,
           blueprint: harness.realBlueprint,
@@ -295,9 +291,8 @@ export const makeHarness = async () => {
     threadOutRef: string,
     stepIndex: 0 | 1 | 2 | 3,
     name: string | null = null,
-    shape = "cancel",
   ) => {
-    await measured(name, shape, () =>
+    await measured(name, () =>
       submitWitnessScriptDecodingCancel({
         lucid,
         contracts,
@@ -317,10 +312,9 @@ export const makeHarness = async () => {
     stateQueueBlockOutRef: string,
     scriptIndex: bigint,
     name: string | null = null,
-    shape = "",
   ) =>
     (
-      await measured(name, shape, () =>
+      await measured(name, () =>
         submitWitnessScriptDecodingStep01Accepted({
           lucid,
           blueprint: harness.realBlueprint,
@@ -344,10 +338,9 @@ export const makeHarness = async () => {
     witnessSetHash: string,
     scriptIndex: bigint,
     name: string | null = null,
-    shape = "",
   ) =>
     (
-      await measured(name, shape, () =>
+      await measured(name, () =>
         submitWitnessScriptDecodingStep01Forced({
           lucid,
           contracts,
@@ -356,7 +349,6 @@ export const makeHarness = async () => {
           threadOutRef,
           header: forced.block.header,
           membership: forced.membership,
-          direction: 1n,
           witnessSetHash,
           scriptIndex,
           referenceScriptUtxo: ref(0),
@@ -380,7 +372,6 @@ export const makeHarness = async () => {
       threadOutRef,
       header: forced.block.header,
       membership: forced.membership,
-      direction: 1n,
       subject: evidence.finding.subject,
       witnessSetHash: evidence.finding.witnessSetHash,
       scriptIndex: BigInt(evidence.finding.scriptIndex),
@@ -396,10 +387,14 @@ export const makeHarness = async () => {
     name: string | null = null,
     publishedCarriageUtxos?: readonly UTxO[],
     certificateUtxo?: UTxO,
-  ) =>
-    (
-      await measured(name, shape.label, () =>
+  ) => {
+    const item = shape.items[evidence.finding.scriptIndex];
+    const recordUtxo =
+      item && (await recordPlutusItem(harness.emulator, lucid, item));
+    return (
+      await measured(name, () =>
         submitWitnessScriptDecodingStep02({
+          ownOutputs,
           lucid,
           network,
           contracts,
@@ -423,10 +418,12 @@ export const makeHarness = async () => {
           certificateReferenceScriptUtxo: shape.certified
             ? requireCertificateReference()
             : undefined,
+          scriptDecodeRecordUtxo: recordUtxo,
           referenceScriptUtxo: ref(1),
         }),
       )
     ).result;
+  };
 
   /**
    * Publish (and certify when the tier requires it) a shape's field-6
@@ -448,6 +445,7 @@ export const makeHarness = async () => {
     });
     const carriage = await captureEmulatorSubmission(harness.emulator, () =>
       publishFaultProofFieldCarriage({
+        ownOutputs,
         lucid,
         signer,
         planned,
@@ -459,7 +457,6 @@ export const makeHarness = async () => {
       carriage.measurements.forEach((measurement, index) =>
         record(
           `${prefix}-carriage-chunk${(index + 1).toString().padStart(2, "0")}`,
-          shape.label,
           measurement,
         ),
       );
@@ -469,6 +466,7 @@ export const makeHarness = async () => {
     }
     const certificate = await captureEmulatorSubmission(harness.emulator, () =>
       certifyFaultProofFieldCarriage({
+        ownOutputs,
         lucid,
         network,
         signer,
@@ -483,11 +481,7 @@ export const makeHarness = async () => {
       }),
     );
     if (prefix !== null)
-      record(
-        `${prefix}-carriage-certificate`,
-        shape.label,
-        certificate.measurement,
-      );
+      record(`${prefix}-carriage-certificate`, certificate.measurement);
     return {
       carriageUtxos: carriage.result,
       certificateUtxo: certificate.result.certificateUtxo,
@@ -523,6 +517,7 @@ export const makeHarness = async () => {
       witnessSetHash: shape.carriage.witnessSetHash,
     };
     const chunkUtxos = await publishFaultProofFieldCarriage({
+      ownOutputs,
       lucid,
       signer,
       planned,
@@ -532,6 +527,7 @@ export const makeHarness = async () => {
     expect(chunkUtxos).toHaveLength(3);
     await expectOnchainRefusal(() =>
       certifyFaultProofFieldCarriage({
+        ownOutputs,
         lucid,
         network,
         signer,
@@ -574,27 +570,8 @@ export const makeHarness = async () => {
       ...patch,
     });
 
-  /** The exact step-02 successor state for an evidence value. */
-  const exactScanState = (
-    evidence: WitnessScriptDecodingEvidence,
-  ): SDK.WitnessScriptDecodingScanState => ({
-    bound: {
-      subject: evidence.finding.subject,
-      witness_set_hash: evidence.finding.witnessSetHash,
-      script_index: BigInt(evidence.finding.scriptIndex),
-      accused_class: BigInt(evidence.finding.accusedClass),
-    },
-    total_length: BigInt(evidence.itemLength),
-    item_commitment: evidence.itemCommitmentHex,
-    control_cbor: evidence.initialControlCbor,
-    next_expected_script_hash: contracts.steps[2].spendingScriptHash,
-    checkpoint_hash: witnessScriptDecodingCheckpoint({
-      evidence,
-      controlCbor: evidence.initialControlCbor,
-      nextExpectedScriptHash: contracts.steps[2].spendingScriptHash,
-    }),
-    result_class: BigInt(evidence.initialResultClass),
-  });
+  const exactScanState = (evidence: WitnessScriptDecodingEvidence) =>
+    exactWitnessScanState(contracts.steps[2].spendingScriptHash, evidence);
 
   const step03Raw = (
     threadOutRef: string,
@@ -639,7 +616,6 @@ export const makeHarness = async () => {
     threadOutRef: string,
     evidence: WitnessScriptDecodingEvidence,
     prefix: string | null,
-    shape: string,
   ) => {
     let outRef = threadOutRef;
     let resumes = 0;
@@ -648,7 +624,7 @@ export const makeHarness = async () => {
     let first: CompleteSignedTransactionMeasurement | undefined;
     let close: CompleteSignedTransactionMeasurement | undefined;
     while (!closed) {
-      const { result, measurement } = await measured(null, shape, () =>
+      const { result, measurement } = await measured(null, () =>
         submitWitnessScriptDecodingStep03({
           lucid,
           contracts,
@@ -674,11 +650,10 @@ export const makeHarness = async () => {
       }
     }
     if (prefix !== null) {
-      if (first !== undefined)
-        record(`${prefix}-step03-resume-first`, shape, first);
+      if (first !== undefined) record(`${prefix}-step03-resume-first`, first);
       if (maximum !== undefined && maximum !== first)
-        record(`${prefix}-step03-resume-max`, shape, maximum);
-      if (close !== undefined) record(`${prefix}-step03-close`, shape, close);
+        record(`${prefix}-step03-resume-max`, maximum);
+      if (close !== undefined) record(`${prefix}-step03-close`, close);
     }
     if (resumes > 0) coverage.resumed();
     return { threadOutRef: outRef, resumes };
@@ -688,9 +663,8 @@ export const makeHarness = async () => {
     threadOutRef: string,
     evidence: WitnessScriptDecodingEvidence,
     name: string | null,
-    shape: string,
   ) => {
-    const { result } = await measured(name, shape, () =>
+    const { result } = await measured(name, () =>
       submitWitnessScriptDecodingStep04({
         lucid,
         contracts,
@@ -734,16 +708,12 @@ export const makeHarness = async () => {
     }
   };
 
-  const remove = async (
-    headerHash: string,
-    name: string | null,
-    shape: string,
-  ) => {
+  const remove = async (headerHash: string, name: string | null) => {
     if (removalReferenceScripts === undefined)
       throw new Error("removal references not published");
     const publishedRemovalReferences = removalReferenceScripts.published;
     const removeNow = BigInt(harness.emulator.now());
-    const { result } = await measured(name, shape, () =>
+    const { result } = await measured(name, () =>
       submitRemoveFraudulentBlock({
         lucid,
         blueprint: harness.realBlueprint,

@@ -1,9 +1,11 @@
-import { fileURLToPath } from "node:url";
-
 import { type MidgardNativeTxFull } from "@al-ft/midgard-core/codec";
+import type * as SDK from "@al-ft/midgard-sdk";
 import { expect } from "vitest";
 
-import { type VanRossemFitMeasurement } from "../src/proof-fit/van-rossem-fit-ledger.js";
+import {
+  witnessScriptDecodingCheckpoint,
+  type WitnessScriptDecodingEvidence,
+} from "../src/witness-script-decoding/index.js";
 import { type CompleteSignedTransactionMeasurement } from "./support/emulator/measurement.js";
 import { createLifecycleCoverageRecorder } from "./support/lifecycle-coverage.js";
 import {
@@ -59,31 +61,20 @@ export const CANCELLABLE_STEPS = [
 
 /**
  * The deep shape is 1,369 sixteen-step scan transactions at the field
- * bound; a shallower depth can be requested for a quick local pass, but the
- * ledger is written only at the maximum.
+ * bound; a shallower depth can be requested for a quick local pass.
  */
 export const DEEP_DEPTH = Number(
   process.env.MIDGARD_WSD_DEEP_DEPTH ?? DEEP_MAXIMUM_DEPTH,
 );
 
-export const WRITE_LEDGER = process.env.MIDGARD_WRITE_FIT_LEDGER === "1";
-
-export const ledgerPath = fileURLToPath(
-  new URL(
-    "../../../docs/fault-proofs/size-plans/witness-script-decoding-v1-fit-ledger.json",
-    import.meta.url,
-  ),
-);
-
 export const coverage = createLifecycleCoverageRecorder();
 
-export const measurements: VanRossemFitMeasurement[] = [];
+/** The name of every transaction {@link record} has checked, in order. */
+export const recordedNames: string[] = [];
 
 export const record = (
   name: string,
-  maximumShape: string,
   measurement: CompleteSignedTransactionMeasurement,
-  kind: VanRossemFitMeasurement["kind"] = "lifecycle",
 ): void => {
   expect(measurement.l1ByteMargin, name).toBeGreaterThan(0);
   if (measurement.redeemerCount > 0) {
@@ -92,14 +83,7 @@ export const record = (
   }
   expect(measurement.executionMemory, name).toBeLessThanOrEqual(16_500_000n);
   expect(measurement.executionSteps, name).toBeLessThanOrEqual(10_000_000_000n);
-  measurements.push({
-    name,
-    kind,
-    maximumShape,
-    signedBytes: measurement.completeSignedBytes,
-    memoryUnits: measurement.executionMemory,
-    cpuUnits: measurement.executionSteps,
-  });
+  recordedNames.push(name);
 };
 
 // ---------------------------------------------------------------------------
@@ -116,3 +100,29 @@ export type Shape = Readonly<{
   fieldBytes: number;
   certified: boolean;
 }>;
+
+/**
+ * The exact step-02 successor state for an evidence value, handing over to
+ * the step-03 script `nextExpectedScriptHash`.
+ */
+export const exactWitnessScanState = (
+  nextExpectedScriptHash: string,
+  evidence: WitnessScriptDecodingEvidence,
+): SDK.WitnessScriptDecodingScanState => ({
+  bound: {
+    subject: evidence.finding.subject,
+    witness_set_hash: evidence.finding.witnessSetHash,
+    script_index: BigInt(evidence.finding.scriptIndex),
+    accused_class: BigInt(evidence.finding.accusedClass),
+  },
+  total_length: BigInt(evidence.itemLength),
+  item_commitment: evidence.itemCommitmentHex,
+  control_cbor: evidence.initialControlCbor,
+  next_expected_script_hash: nextExpectedScriptHash,
+  checkpoint_hash: witnessScriptDecodingCheckpoint({
+    evidence,
+    controlCbor: evidence.initialControlCbor,
+    nextExpectedScriptHash,
+  }),
+  result_class: BigInt(evidence.initialResultClass),
+});

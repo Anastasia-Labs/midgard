@@ -40,10 +40,13 @@ export const deployedContracts = {
     spendingScriptAddress: SCRIPT_ADDRESS,
   },
   txOrder: { policyId: "f4".repeat(28), spendingScriptAddress: SCRIPT_ADDRESS },
-  cekProgramMaterial: { spendingScriptHash: "a5".repeat(28) },
 } as unknown as PlanInput["contracts"];
 
-/** The node's follower plan for `env`, as the node would read it. */
+/**
+ * The node's follower plan for `env`, as the node would read it, under a
+ * deployment manifest that records no `l1Origin`: the env's `L1_ORIGIN` is
+ * then the only origin.
+ */
 export const nodeFollowerPlan = (
   env: Readonly<Record<string, string | undefined>>,
 ) => {
@@ -70,6 +73,7 @@ export const nodeFollowerPlan = (
       POSTGRES_DB: env.POSTGRES_DB ?? "",
     },
     contracts: deployedContracts,
+    manifest: undefined,
     securityParameter: 2160,
   });
 };

@@ -1,18 +1,20 @@
+use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use aiken_design_patterns/singular_utxo_indexer
 use cardano/assets.{PolicyId, add}
-use cardano/transaction.{Input, Mint, Output, OutputReference, Transaction}
+use cardano/transaction.{
+  InlineDatum, Input, Mint, Output, OutputReference, Transaction,
+}
 use env
 use midgard/common/utils
 use midgard/hub_oracle as hub
-use midgard/ledger_state
 use midgard/settlement
 use midgard/transition_trace
 use midgard/user_events
 use midgard/user_events/tx_order_v1.{
-  Datum, MintRedeemer, SpendRedeemer, forced_inclusion_key_value,
-  forced_tx_is_admissible_v1, material_carriage_matches_event,
-  verify_order_material,
+  Datum, MintRedeemer, SpendRedeemer, admitted_order_datum,
+  forced_inclusion_key_value, forced_tx_is_admissible_v1,
+  material_carriage_matches_event, verify_order_material,
 }
 
 validator spend(hub_oracle: ScriptHash) {
@@ -145,7 +147,7 @@ validator mint(
     // refuting negative — this module has no test harness.
     expect material_carriage_matches_event(event, material_carriage)
 
-    let l1_id, output_tx_order_value, tx_order_payload_data <- user_events.validate_mint(
+    let l1_id, output_tx_order_value, _tx_order_payload_data <- user_events.validate_mint(
       hub_oracle,
       fn(hub_datum) {
         let hub.Datum { tx_order_addr, .. } = hub_datum
@@ -169,10 +171,18 @@ validator mint(
     )
     expect output_tx_order_nft_triplet == (own_policy, l1_id, 1)
 
-    expect tx_order_payload: ledger_state.TxOrderPayloadV1 = tx_order_payload_data
+    // `validate_mint` read only the first three fields of this output's datum.
+    // The whole datum is held here to the type the spend handler and the
+    // omission proof cast it to, with a refund address and datum the ledger can
+    // pay. The payload checked below is read from that typed datum: it is the
+    // field `validate_mint` passed on, so it needs no second cast.
+    expect user_events.AuthenticateEvent { event_output_index, .. } = event
+    expect Some(Output { datum: InlineDatum(order_data), .. }) = tx.outputs
+      |> list.at(event_output_index)
+    let order = admitted_order_datum(order_data)
     forced_tx_is_admissible_v1(
       verify_order_material(
-        tx_order_payload,
+        order.event.tx,
         material_carriage,
         tx.reference_inputs,
         field_preimage_certificate_policy_id,

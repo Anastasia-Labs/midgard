@@ -90,49 +90,6 @@ export const resolveInputsCursor = (
   return cursor;
 };
 
-export const ledgerDeltaControlStatus = (
-  witness: ValidationMachineWorkWitness,
-): {
-  readonly stage: number;
-  readonly pendingStage: number | null;
-} => {
-  const control = asArray(
-    decodeSingleCbor(witness.cbor),
-    "ledger_delta_control",
-  );
-  if (control.length !== 14) {
-    throw new Error("ledger_delta_control has an invalid field count");
-  }
-  const stage = Number(asBigInt(control[4], "ledger_delta_control.stage"));
-  if (!Number.isSafeInteger(stage) || stage < 0 || stage > 2) {
-    throw new Error("ledger_delta_control stage is invalid");
-  }
-  const pendingCbor = asBytes(
-    control[12],
-    "ledger_delta_control.pending_mutation",
-  );
-  if (pendingCbor.length === 0) {
-    return { stage, pendingStage: null };
-  }
-  const pending = asArray(
-    decodeSingleCbor(pendingCbor),
-    "ledger_delta_pending_mutation",
-  );
-  if (
-    pending.length !== 10 ||
-    asBigInt(pending[0], "ledger_delta_pending_mutation.version") !== 1n
-  ) {
-    throw new Error("ledger_delta pending mutation is invalid");
-  }
-  const pendingStage = Number(
-    asBigInt(pending[1], "ledger_delta_pending_mutation.stage"),
-  );
-  if (pendingStage !== 0 && pendingStage !== 1) {
-    throw new Error("ledger_delta pending mutation stage is invalid");
-  }
-  return { stage, pendingStage };
-};
-
 /**
  * The four cek semantic resolvers, in their `semantic_resolver_script_hashes`
  * order under the `cek_v1` prepare validator (lib `verify_cek`): the
@@ -146,7 +103,7 @@ export type CekStepKind = "finish" | "selection" | "context" | "core";
 /**
  * The cek work witness is the eleven-field list
  * `[native_control, context_control, execution_cursor, completed_cpu,
- * completed_memory, active_state_hash, program_envelope_hash,
+ * completed_memory, active_state_hash, program_script_hash,
  * execution_cpu_limit, execution_memory_limit, purpose_kind,
  * purpose_index]` that
  * `encodeMidgardCekValidationWitnessV1` writes and the on-chain

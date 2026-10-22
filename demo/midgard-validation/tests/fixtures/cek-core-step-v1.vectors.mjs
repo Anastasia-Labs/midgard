@@ -44,6 +44,8 @@ import {
   UPLCVar,
 } from "@harmoniclabs/uplc";
 
+import { caseConstantPrograms } from "./cek-core-step-v1.case-constant.mjs";
+
 /** `(program 1.1.0 term)` as canonical Flat bytes, the V1 script payload. */
 export const compileMidgardCekGoldenProgram = (term, encodeProgram) =>
   Buffer.from(encodeProgram(new UPLCProgram([1, 1, 0], term)));
@@ -102,13 +104,36 @@ const g2Compressed = () =>
     ).bytes,
   );
 
+// Cardano's flat tags (Plutus `Builtins.hs`): 59 is G1 uncompress and 66 is
+// G2 uncompress. The library's enum numbers these two differently.
+const g1Uncompress = () => new Builtin(59);
+const g2Uncompress = () => new Builtin(66);
+
 const millerLoop = () =>
   new Application(
     new Application(
       Builtin.bls12_381_millerLoop,
-      new Application(Builtin.bls12_381_G1_uncompress, g1Compressed()),
+      new Application(g1Uncompress(), g1Compressed()),
     ),
-    new Application(Builtin.bls12_381_G2_uncompress, g2Compressed()),
+    new Application(g2Uncompress(), g2Compressed()),
+  );
+
+/**
+ * BIP-340 test vector 17 (bitcoin/bips bip-0340/test-vectors.csv): a valid
+ * signature over a 17-byte message. BIP-340 signs a message of any length.
+ */
+const schnorrVerify17ByteMessage = () =>
+  [
+    "778caa53b4393ac467774d09497a87224bf9fab6f6e68b23086497324d6fd117",
+    "0102030405060708090a0b0c0d0e0f1011",
+    "5130f39a4059b43bc7cac09a19ece52b5d8699d1a71e3c52da9afdb6b50ac370c4a482b77bf960f8681540e25b6771ece1e5a37fd80e5a51897c5566a97ea5a5",
+  ].reduce(
+    (term, argument) =>
+      new Application(
+        term,
+        UPLCConst.byteString(new DataB(Buffer.from(argument, "hex")).bytes),
+      ),
+    Builtin.verifySchnorrSecp256k1Signature,
   );
 
 const selfApplication = () =>
@@ -207,10 +232,12 @@ export const CEK_CORE_STEP_PROGRAMS = [
   {
     label: "case_scrutinee_invalid",
     note: "returnCaseInvalid: error_invalid_case_scrutinee",
-    term: () => new Lambda(new Case(UPLCConst.int(1), [UPLCConst.int(7)])),
+    term: () =>
+      new Lambda(new Case(new Delay(UPLCConst.int(1)), [UPLCConst.int(7)])),
     context: EMPTY_CONTEXT,
     maxSteps: 32,
   },
+  ...caseConstantPrograms(EMPTY_CONTEXT),
   {
     label: "add_integer",
     note: "computeBuiltin, returnApplyBuiltin, executeBuiltinDirect",
@@ -266,6 +293,13 @@ export const CEK_CORE_STEP_PROGRAMS = [
           UPLCConst.int(0),
         ),
       ),
+    context: EMPTY_CONTEXT,
+    maxSteps: 64,
+  },
+  {
+    label: "schnorr_message_17_bytes",
+    note: "executeBuiltinDirect on verifySchnorrSecp256k1Signature over a 17-byte message",
+    term: () => new Lambda(schnorrVerify17ByteMessage()),
     context: EMPTY_CONTEXT,
     maxSteps: 64,
   },
@@ -449,6 +483,7 @@ export const CEK_CORE_STEP_WITNESS_KINDS = [
   "executeBuiltinFailure",
   "executeBuiltinTypeFailure",
   "computeContextConstant",
+  "returnCaseConstant",
 ];
 
 /**

@@ -276,13 +276,7 @@ fn run_forced_step_01(
     ct.Continue(
       Step01Args {
         forced_source: Some(
-          ForcedSource {
-            input_index: 0,
-            output_index: 0,
-            header,
-            membership,
-            direction,
-          },
+          ForcedSource { input_index: 0, output_index: 0, header, membership },
         ),
         tx_inclusion: None,
         fault,

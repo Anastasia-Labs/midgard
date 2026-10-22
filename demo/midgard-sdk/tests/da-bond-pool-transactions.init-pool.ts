@@ -24,6 +24,7 @@ export const initPool = async (
       parameters,
       initUtxo: initUtxo!,
       lovelace,
+      referenceScripts: { daBondPoolMinting: scene.poolReference },
     }),
   );
   const signed = await (await built.complete()).sign.withWallet().complete();

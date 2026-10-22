@@ -1,6 +1,6 @@
 import {
   hashMidgardCekBlsExpressionNode,
-  MIDGARD_CEK_MAX_BUILTIN_TAG,
+  MIDGARD_CEK_MAX_RESOLVED_BUILTIN_TAG,
 } from "@al-ft/midgard-core";
 import { DataB } from "@harmoniclabs/plutus-data";
 import {
@@ -10,7 +10,7 @@ import {
   ExBudget,
   PartialBuiltin,
 } from "@harmoniclabs/plutus-machine";
-import { ConstTyTag, type UPLCBuiltinTag, UPLCConst } from "@harmoniclabs/uplc";
+import { ConstTyTag, UPLCConst } from "@harmoniclabs/uplc";
 
 import {
   directWitnessPayloadBytes,
@@ -22,7 +22,12 @@ import {
   MIDGARD_CEK_CARDANO_EXACT_BUILTIN_TAGS,
 } from "./cek-builtin.cardano-exact.js";
 import {
+  harmonicBuiltinTag,
+  MIDGARD_CEK_CARDANO_BLS_TAGS,
+} from "./cek-builtin.cardano-tags.js";
+import {
   directByteLength,
+  directInteger,
   hashMidgardCekDirectValueWitness,
   midgardCekDirectBuiltinBudget,
   type MidgardCekDirectBuiltinEvaluation,
@@ -42,11 +47,12 @@ import { MIDGARD_CEK_PINNED_PLUTUS_V3_BUILTIN_COSTS } from "./cek-cost.js";
 import { commitMidgardCekDataTree } from "./cek-data-tree.js";
 import { plutusDataFromCborIterative } from "./plutus-data-iterative.decode.js";
 
+/** Runs Cardano's builtin `tag` (flat numbering) in the reference evaluator. */
 export const runPinnedReferenceBuiltin = (
   tag: number,
   arguments_: readonly CEKConst[],
 ): CEKConst | CEKError => {
-  const builtinTag = tag as UPLCBuiltinTag;
+  const builtinTag = harmonicBuiltinTag(tag);
   if (PartialBuiltin.getNRequiredArgsFor(builtinTag) !== arguments_.length) {
     throw new Error("V1 builtin argument count is incomplete");
   }
@@ -86,7 +92,9 @@ export const directConstantToReferenceValue = (
   const detachedBytes = Uint8Array.from(decoded.payload.bytes);
   const compressed = CEKConst.fromUplc(UPLCConst.byteString(detachedBytes));
   const uncompressed = runPinnedReferenceBuiltin(
-    decoded.type.kind === "blsG1" ? 60 : 67,
+    decoded.type.kind === "blsG1"
+      ? MIDGARD_CEK_CARDANO_BLS_TAGS.g1Uncompress
+      : MIDGARD_CEK_CARDANO_BLS_TAGS.g2Uncompress,
     [compressed],
   );
   if (uncompressed instanceof CEKError) {
@@ -148,7 +156,7 @@ const semanticConstantFromCanonical = (
   });
 };
 
-const semanticizeDirectConstant = (
+export const semanticizeMidgardCekDirectConstant = (
   value: MidgardCekDirectValueWitness,
 ): MidgardCekDirectValueWitness => {
   if (value.kind !== "constant") return value;
@@ -196,7 +204,9 @@ export const referenceConstantToDirectWitness = (
     return { kind: "constant", witness };
   }
   const compressed = runPinnedReferenceBuiltin(
-    tag === ConstTyTag.bls12_381_G1_element ? 59 : 66,
+    tag === ConstTyTag.bls12_381_G1_element
+      ? MIDGARD_CEK_CARDANO_BLS_TAGS.g1Compress
+      : MIDGARD_CEK_CARDANO_BLS_TAGS.g2Compress,
     [result],
   );
   if (compressed instanceof CEKError) {
@@ -321,9 +331,32 @@ const directFailureIsCharged = (
   tag: bigint,
   arguments_: readonly MidgardCekDirectValueWitness[],
 ): boolean =>
-  [4n, 5n, 6n, 21n, 52n, 53n, 58n, 65n, 73n].includes(tag) ||
-  (tag === 60n && directByteLength(arguments_[0]!) === 48) ||
-  (tag === 67n && directByteLength(arguments_[0]!) === 96);
+  [4n, 5n, 6n, 21n, 52n, 53n, 60n, 67n].includes(tag) ||
+  // The reference CEK refuses an out-of-range width before charging.
+  (tag === 73n &&
+    directInteger(arguments_[1]!) >= 0n &&
+    directInteger(arguments_[1]!) <= 8192n) ||
+  (tag === 59n && directByteLength(arguments_[0]!) === 48) ||
+  (tag === 66n && directByteLength(arguments_[0]!) === 96);
+
+/**
+ * Whether the direct witness of builtin `tag` over these arguments fits the
+ * aggregate direct payload bound with its result. A builtin that fails has no
+ * result, so its witness fits when its arguments do. The answer depends only
+ * on the tag and the arguments.
+ */
+export const midgardCekDirectBuiltinFits = (
+  tag: bigint,
+  arguments_: readonly MidgardCekDirectValueWitness[],
+): boolean => {
+  const bound = BigInt(MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES);
+  if (directWitnessPayloadBytes(arguments_) > bound) return false;
+  const result = evaluateReferenceBuiltin(tag, arguments_);
+  return (
+    result === "failure" ||
+    directWitnessPayloadBytes([...arguments_, result]) <= bound
+  );
+};
 
 export const evaluateMidgardCekDirectBuiltin = (
   tag: bigint,
@@ -331,14 +364,14 @@ export const evaluateMidgardCekDirectBuiltin = (
 ): MidgardCekDirectBuiltinEvaluation => {
   if (
     tag < 0n ||
-    tag > MIDGARD_CEK_MAX_BUILTIN_TAG ||
+    tag > MIDGARD_CEK_MAX_RESOLVED_BUILTIN_TAG ||
     BigInt(arguments_.length) !==
       (tag > BigInt(Number.MAX_SAFE_INTEGER)
         ? -1n
         : BigInt(
             // The CEK machine owns the consensus arity table. This local
             // evaluator deliberately relies on the pinned reference type.
-            PartialBuiltin.getNRequiredArgsFor(Number(tag) as UPLCBuiltinTag),
+            PartialBuiltin.getNRequiredArgsFor(harmonicBuiltinTag(Number(tag))),
           ))
   ) {
     throw new Error("V1 builtin has an invalid tag or arity");
@@ -372,7 +405,7 @@ export const evaluateMidgardCekDirectBuiltin = (
     }
     return Object.freeze({
       kind: "success",
-      result: semanticizeDirectConstant(result),
+      result: semanticizeMidgardCekDirectConstant(result),
       budget,
     });
   }

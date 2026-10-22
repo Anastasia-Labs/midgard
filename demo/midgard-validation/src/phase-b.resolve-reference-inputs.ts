@@ -1,15 +1,11 @@
 import type { MidgardValidationPhaseName } from "@al-ft/midgard-core";
 import {
-  decodeMidgardCekProgramMaterialSidecar,
-  verifyMidgardCekProgramMaterialBundle,
-} from "@al-ft/midgard-core/cek-proof";
-import {
-  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardAddressBytes,
   decodeMidgardTxOutput,
   type MidgardTxOutput,
+  type MidgardValue,
   type ScriptLanguageName,
 } from "@al-ft/midgard-core/codec";
-import { collectMidgardEventProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
 
 import { LedgerColumns, type LedgerEntry } from "./ledger.js";
 import type {
@@ -23,6 +19,7 @@ import {
 import {
   inputOrdinalOf,
   REJECT_SOURCE_KIND_REFERENCE,
+  REJECT_SOURCE_KIND_SPEND,
   type RejectSubject,
 } from "./reject-subject.js";
 import {
@@ -37,6 +34,7 @@ import {
   RejectCodes,
   RejectedTx,
 } from "./types.js";
+import { orderMidgardInputResolutionSchedule } from "./validation-machine/input-resolution.js";
 
 type UTxOState = Map<string, Buffer>;
 
@@ -151,97 +149,124 @@ export const reject = (
   ...(subject === undefined ? {} : { subject }),
 });
 
-const referenceInputSubject = (
-  node: CandidateNode,
-  arm: "InputNotFound" | "InputSpentOutputNonCanonical",
-  outRefHex: string,
-): RejectSubject => ({
-  arm,
-  sourceKind: REJECT_SOURCE_KIND_REFERENCE,
-  index: inputOrdinalOf(
-    node.candidate.ledgerTx,
-    REJECT_SOURCE_KIND_REFERENCE,
-    outRefHex,
-  ),
-});
+export type ResolvedCandidateInputs = ResolvedReferenceInputs & {
+  /** The value of every spent output, keyed by out-ref. */
+  readonly spentValues: ReadonlyMap<string, MidgardValue>;
+  /** Whether some spent output is locked by a script. */
+  readonly spendsScriptOutput: boolean;
+};
 
-export const resolveReferenceInputs = (
+/**
+ * Resolves a candidate's spend and reference inputs in the machine's
+ * ResolveInputs order: one schedule of both kinds, ascending by canonical
+ * out-ref (`orderMidgardInputResolutionSchedule`, the order the trace builder
+ * replays). Each node is refused at its own position: a spend already spent
+ * by an accepted transaction, an absent or undecodable output, then a key
+ * spend whose key did not sign. The program-material bundle is checked once
+ * every input has resolved. Without `witnessKeyHashes`, spend signers are not
+ * checked.
+ */
+export const resolveCandidateInputs = (
   node: CandidateNode,
   stateValue: (outRefHex: string) => Buffer | undefined,
-): ResolvedReferenceInputs | RejectedTx => {
+  checks: {
+    readonly spentByAccepted?: ReadonlySet<string>;
+    readonly witnessKeyHashes?: ReadonlySet<string>;
+  } = {},
+): ResolvedCandidateInputs | RejectedTx => {
+  const { ledgerTx } = node.candidate;
   const inputs: ResolvedReferenceInput[] = [];
   const scriptSources: ScriptSource[] = [];
   const scriptHashes = new Set<string>();
+  const spentValues = new Map<string, MidgardValue>();
+  let spendsScriptOutput = false;
+  const fail = (
+    code: RejectedTx["code"],
+    detail: string,
+    subject: RejectSubject,
+  ): RejectedTx =>
+    reject(ledgerTx.txId, code, detail, "resolveInputs", subject);
 
-  for (const referenceOutRefHex of sortTxOutRefHexes(node.referenceOutRefs)) {
-    const referenceOutput = stateValue(referenceOutRefHex);
-    if (referenceOutput === undefined) {
-      return reject(
-        node.candidate.ledgerTx.txId,
+  const schedule = orderMidgardInputResolutionSchedule({
+    spend: [...node.spentOutRefs],
+    reference: [...node.referenceOutRefs],
+    keyOf: (outRefHex) => Buffer.from(outRefHex, "hex"),
+  });
+  for (const { sourceKind, item: outRefHex } of schedule) {
+    const spend = sourceKind === "spend";
+    const kind = spend
+      ? REJECT_SOURCE_KIND_SPEND
+      : REJECT_SOURCE_KIND_REFERENCE;
+    const index = () => inputOrdinalOf(ledgerTx, kind, outRefHex);
+    if (spend && checks.spentByAccepted?.has(outRefHex) === true) {
+      return reject(ledgerTx.txId, RejectCodes.DoubleSpend, outRefHex);
+    }
+    const outputBytes = stateValue(outRefHex);
+    if (outputBytes === undefined) {
+      return fail(
         RejectCodes.InputNotFound,
-        `reference input not found: ${referenceOutRefHex}`,
-        "resolveInputs",
-        referenceInputSubject(node, "InputNotFound", referenceOutRefHex),
+        spend ? outRefHex : `reference input not found: ${outRefHex}`,
+        { arm: "InputNotFound", sourceKind: kind, index: index() },
       );
     }
-
     let output: MidgardTxOutput;
+    let signer: string | undefined;
     try {
-      output = decodeMidgardTxOutput(referenceOutput);
+      output = decodeMidgardTxOutput(outputBytes);
+      if (spend) {
+        const paymentCred = decodeMidgardAddressBytes(
+          output.address,
+        ).paymentCredential;
+        if (paymentCred.kind === "Script") spendsScriptOutput = true;
+        else signer = paymentCred.hash.toString("hex");
+      }
     } catch (e) {
-      return reject(
-        node.candidate.ledgerTx.txId,
+      return fail(
         RejectCodes.InvalidOutput,
-        `failed to decode reference input output ${referenceOutRefHex}: ${String(e)}`,
-        "resolveInputs",
-        referenceInputSubject(
-          node,
-          "InputSpentOutputNonCanonical",
-          referenceOutRefHex,
-        ),
+        spend
+          ? `failed to decode input output: ${String(e)}`
+          : `failed to decode reference input output ${outRefHex}: ${String(e)}`,
+        {
+          arm: "InputSpentOutputNonCanonical",
+          sourceKind: kind,
+          index: index(),
+        },
       );
     }
-    inputs.push({ outRefHex: referenceOutRefHex, output });
-
-    const scriptRef = output.script_ref;
-    if (scriptRef === undefined) {
+    if (spend) {
+      if (
+        signer !== undefined &&
+        checks.witnessKeyHashes !== undefined &&
+        !checks.witnessKeyHashes.has(signer)
+      ) {
+        return fail(
+          RejectCodes.MissingRequiredWitness,
+          `missing witness for input signer ${signer} (outref ${outRefHex})`,
+          { arm: "SpendInputSignerMissing", index: index() },
+        );
+      }
+      spentValues.set(outRefHex, output.value);
       continue;
     }
-
-    const source = scriptSourceFromVersionedScript(
-      scriptRef,
-      "reference",
-      referenceOutRefHex,
-    );
-    scriptSources.push(source);
-    scriptHashes.add(source.scriptHash);
-  }
-
-  // A forced transaction runs no program and carries no program material.
-  const sidecar = node.candidate.submission.programMaterialSidecarCbor;
-  if (sidecar !== null && node.candidate.submission.sourceKind !== "forced") {
-    try {
-      const material = decodeMidgardCekProgramMaterialSidecar(sidecar);
-      const canonicalTx = decodeMidgardNativeTxFullFromCanonicalCbor(
-        node.candidate.submission.txCbor,
+    inputs.push({ outRefHex, output });
+    if (output.script_ref !== undefined) {
+      const source = scriptSourceFromVersionedScript(
+        output.script_ref,
+        "reference",
+        outRefHex,
       );
-      // Every reference input is present here, so this is the event's whole
-      // program set, the one block builders and DA committee members derive.
-      verifyMidgardCekProgramMaterialBundle(
-        collectMidgardEventProgramEnvelopes(canonicalTx, stateValue),
-        material,
-      );
-    } catch (cause) {
-      return reject(
-        node.candidate.ledgerTx.txId,
-        RejectCodes.CekProgramMaterial,
-        `invalid exact attached/reference-script CEK material: ${String(cause)}`,
-        "scriptSources",
-      );
+      scriptSources.push(source);
+      scriptHashes.add(source.scriptHash);
     }
   }
 
-  return { inputs, scriptSources, scriptHashes };
+  return {
+    inputs,
+    scriptSources,
+    scriptHashes,
+    spentValues,
+    spendsScriptOutput,
+  };
 };
 
 export type RequiredScriptExecution = {
@@ -269,7 +294,7 @@ export const ledgerOutputToTxOutput = (
   ...(output.scriptRef === undefined ? {} : { script_ref: output.scriptRef }),
 });
 
-export const collectInlineScriptSources = (
+const collectInlineScriptSources = (
   ledgerTx: MidgardLedgerTx,
 ): readonly ScriptSource[] =>
   ledgerTx.scriptWitnesses.map((witness) =>
@@ -279,6 +304,64 @@ export const collectInlineScriptSources = (
       `script_wit:${witness.index}`,
     ),
   );
+
+/**
+ * Script sources carried by spent outputs, in canonical out-ref order. A spent
+ * output that is absent or does not decode contributes nothing here: input
+ * resolution refuses the transaction before any source is looked up.
+ */
+const spentOutputScriptSources = (
+  node: CandidateNode,
+  stateValue: (outRefHex: string) => Buffer | undefined,
+): readonly ScriptSource[] =>
+  sortTxOutRefHexes(node.spentOutRefs).flatMap((outRefHex) => {
+    const outputBytes = stateValue(outRefHex);
+    if (outputBytes === undefined) return [];
+    let output: MidgardTxOutput;
+    try {
+      output = decodeMidgardTxOutput(outputBytes);
+    } catch {
+      return [];
+    }
+    return output.script_ref === undefined
+      ? []
+      : [
+          scriptSourceFromVersionedScript(
+            output.script_ref,
+            "reference",
+            outRefHex,
+          ),
+        ];
+  });
+
+/**
+ * The transaction's script-source universe in lookup order: the reference
+ * scripts of every resolved output (spent and reference inputs, in canonical
+ * out-ref order) before the inline script witnesses. A purpose resolves to the
+ * first source with its hash, so an inline witness whose script a resolved
+ * output already carries is never used.
+ */
+export const collectScriptSources = (
+  node: CandidateNode,
+  stateValue: (outRefHex: string) => Buffer | undefined,
+  references: ResolvedReferenceInputs,
+): readonly ScriptSource[] => {
+  const resolved = [
+    ...spentOutputScriptSources(node, stateValue),
+    ...references.scriptSources,
+  ];
+  const order = new Map(
+    sortTxOutRefHexes(new Set(resolved.map((source) => source.sourceId))).map(
+      (outRefHex, position) => [outRefHex, position],
+    ),
+  );
+  return [
+    ...resolved.sort(
+      (left, right) => order.get(left.sourceId)! - order.get(right.sourceId)!,
+    ),
+    ...collectInlineScriptSources(node.candidate.ledgerTx),
+  ];
+};
 
 const scriptLanguageForExecution = (
   execution: RequiredScriptExecution,

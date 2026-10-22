@@ -6,7 +6,6 @@ import { Effect, Option } from "effect";
 import {
   PendingBlockFinalizationsDB,
   ProcessedMempoolDB,
-  TxAdmissionsDB,
 } from "../../database/index.js";
 import { DatabaseError } from "../../database/utils/common.js";
 import { Columns as TxColumns } from "../../database/utils/tx.js";
@@ -40,8 +39,6 @@ import { stateQueueOutRef } from "./state-queue.js";
 import {
   assertCommitInputsWithinBlockEndTime,
   assertPreSubmitDaPayloadSize,
-  daProgramMaterialFromSidecars,
-  forcedProgramMaterialSidecars,
 } from "./submission.assert-pre-submit-da-payload-size.js";
 import {
   assertCommitUserEventSourceCompleteness,
@@ -164,10 +161,6 @@ export const submitTxBackedCommit = ({
         depositCount: BigInt(includedDepositEventIds.length),
         transitionStepCount: BigInt(transitionStepCount),
       },
-      {
-        validationTracesRoot,
-        validationTraceCount: BigInt(validationTraceCount),
-      },
     );
     const submittedAwaitingConfirmationOutput = (
       submittedTxHash: string,
@@ -285,41 +278,6 @@ export const submitTxBackedCommit = ({
               } = buildResult;
               return Effect.gen(function* () {
                 const headerHashBuffer = Buffer.from(fromHex(newHeaderHash));
-                const mempoolTxProgramMaterialSidecars =
-                  yield* TxAdmissionsDB.retrieveProgramMaterialSidecars(
-                    processedMempoolTxs.map((entry) => entry[TxColumns.TX_ID]),
-                  );
-                if (
-                  mempoolTxProgramMaterialSidecars.length !==
-                  processedMempoolTxs.length
-                ) {
-                  return yield* Effect.fail(
-                    new DatabaseError({
-                      table: TxAdmissionsDB.payloadTableName,
-                      message:
-                        "Cannot build V1 block without one durable program-material sidecar per normal transaction",
-                      cause: `transactions=${processedMempoolTxs.length.toString()},sidecars=${mempoolTxProgramMaterialSidecars.length.toString()}`,
-                    }),
-                  );
-                }
-                const cekProgramMaterial = yield* Effect.try({
-                  try: () =>
-                    daProgramMaterialFromSidecars([
-                      ...mempoolTxProgramMaterialSidecars.map(
-                        (entry) => entry.sidecarCbor,
-                      ),
-                      ...forcedProgramMaterialSidecars(
-                        includedForcedTransactionEntries,
-                      ),
-                    ]),
-                  catch: (cause) =>
-                    new DatabaseError({
-                      table: TxAdmissionsDB.payloadTableName,
-                      message:
-                        "Cannot build V1 block from conflicting program-material sidecars",
-                      cause,
-                    }),
-                });
                 yield* assertPreSubmitDaPayloadSize({
                   headerHash: newHeaderHash,
                   header: newHeader,
@@ -330,7 +288,6 @@ export const submitTxBackedCommit = ({
                   transitionTraceMembers,
                   eventToStepMembers,
                   validationTraceMembers,
-                  cekProgramMaterial,
                 }).pipe(
                   Effect.catchTag("DatabaseError", (error) =>
                     attributeDaFrameRefusal(error, {
@@ -417,7 +374,6 @@ export const submitTxBackedCommit = ({
                         (entry) => entry[TxColumns.TX_ID],
                       ),
                       mempoolTxs: processedMempoolTxs,
-                      mempoolTxProgramMaterialSidecars,
                       mempoolTxSourceTable,
                       transitionTraceMembers,
                       eventToStepMembers,

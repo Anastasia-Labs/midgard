@@ -155,7 +155,10 @@ const validateFrameStructure = (frame: MidgardMpfProofFrame): void => {
     if (
       !Number.isSafeInteger(frame.step.neighbor.nibble) ||
       frame.step.neighbor.nibble < 0 ||
-      frame.step.neighbor.nibble > 15
+      frame.step.neighbor.nibble > 15 ||
+      frame.nextCursor + frame.step.neighbor.prefix.length >=
+        PATH_NIBBLE_COUNT ||
+      !frame.step.neighbor.prefix.every((digit) => digit < 16)
     ) {
       throw new Error("MPF fork neighbor is outside its canonical envelope");
     }

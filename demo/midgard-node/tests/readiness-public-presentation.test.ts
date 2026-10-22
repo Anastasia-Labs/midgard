@@ -217,13 +217,7 @@ describe("public readiness database diagnostics", () => {
 });
 
 it("preserves source-defined commit alarms while withholding arbitrary worker stage text", () => {
-  const stages = [
-    "phase_a",
-    "phase_b",
-    "transaction_root_derivation",
-    "program_material_sidecar",
-    "program_material_coverage",
-  ];
+  const stages = ["phase_a", "phase_b", "transaction_root_derivation"];
   for (const code of ["commit_build_held", "commit_stage_breaker"]) {
     const known = stages.map((stage) => `${code}:${stage}`);
     const source = {
@@ -322,3 +316,66 @@ it("preserves only the exact pending block hash field and canonical hash shape",
     ),
   ).toEqual({ diagnostic: { unconfirmedSubmittedBlockTxHash: "[redacted]" } });
 });
+
+it("shows the landed-block holds that stop the follower as their typed reasons", () => {
+  const source = {
+    ready: false,
+    reasons: ["landed_block_local_fault", "landed_block_origin_after_frontier"],
+  };
+  expect(publicReadinessPresentation(source, "preprod-public", {})).toEqual(
+    source,
+  );
+});
+
+it.each(["mainnet", "preprod-public"])(
+  "shows a census reason code by name in %s while its details stay redacted",
+  (profile) => {
+    const arbitrary = "upstream provider text c2VjcmV0LXJlYWRpbmVzcw==";
+    const result = publicReadinessPresentation(
+      {
+        ready: false,
+        reasons: ["state_queue_unavailable"],
+        livenessReasons: [
+          {
+            source: "commit",
+            reason: "state_queue_unavailable",
+            detail: arbitrary,
+            error: arbitrary,
+          },
+        ],
+      },
+      profile,
+      {},
+    );
+    expect(result).toEqual({
+      ready: false,
+      reasons: ["state_queue_unavailable"],
+      livenessReasons: [
+        {
+          source: "commit",
+          reason: "state_queue_unavailable",
+          detail: "E_READINESS_DIAGNOSTIC_REDACTED",
+          error: "E_READINESS_DIAGNOSTIC_REDACTED",
+        },
+      ],
+    });
+  },
+);
+
+it.each(["mainnet", "preprod-public"])(
+  "redacts a reason code outside the census in %s",
+  (profile) => {
+    const code = "reason_outside_the_census";
+    expect(
+      publicReadinessPresentation(
+        { reasons: [code], details: [code], l1Follower: { reason: code } },
+        profile,
+        {},
+      ),
+    ).toEqual({
+      reasons: ["E_READINESS_DIAGNOSTIC_REDACTED"],
+      details: ["E_READINESS_DIAGNOSTIC_REDACTED"],
+      l1Follower: { reason: "E_READINESS_DIAGNOSTIC_REDACTED" },
+    });
+  },
+);

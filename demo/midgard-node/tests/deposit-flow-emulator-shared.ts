@@ -86,7 +86,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { inspect } from "node:util";
 
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
@@ -367,9 +366,6 @@ export const publicRetainedDaBlock = () =>
       request_timeout_ms: DA_TRANSPORT_LIMITS.requestTimeoutMs,
     },
   }) as const;
-
-export const EMPTY_PROGRAM_MATERIAL_SIDECAR =
-  encodeMidgardCekProgramMaterialSidecar([]);
 
 // This harness exercises the real initialization, deposit submission, deposit
 // ingestion, and live commit-worker path against the bundled real blueprint.
@@ -1752,7 +1748,6 @@ export {
   DepositsDB,
   Effect,
   emulatorStateQueueSnapshot,
-  encodeMidgardCekProgramMaterialSidecar,
   ForcedTransactionsDB,
   Globals,
   ImmutableDB,

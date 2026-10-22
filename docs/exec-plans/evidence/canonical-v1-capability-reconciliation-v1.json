@@ -272,7 +272,7 @@
     "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/cardano-capability-retained-da.test.ts",
     "pnpm --dir demo/midgard-validation exec vitest run tests/retained-da-boundary.test.ts",
     "pnpm --dir demo/midgard-validation exec vitest run tests/redeemer-collateral-schema-feasibility.test.ts",
-    "cd onchain/aiken && aiken check -e -m inline_carriage_authenticates_a_witness_set_field"
+    "cd onchain/aiken && ../../scripts/aiken check -e -m inline_carriage_authenticates_a_witness_set_field"
   ],
   "p2Summary": {
     "tasks": 22,

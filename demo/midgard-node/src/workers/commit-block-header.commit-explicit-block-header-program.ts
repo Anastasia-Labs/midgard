@@ -134,8 +134,6 @@ export type ExplicitBlockHeaderCommitParams = {
   readonly withdrawalCount?: bigint;
   readonly transitionTraceRoot?: string;
   readonly eventToStepRoot?: string;
-  readonly validationTracesRoot?: string;
-  readonly validationTraceCount?: bigint;
   readonly endTimeMs?: number;
   readonly awaitConfirmation?: boolean;
 };
@@ -247,11 +245,6 @@ export const commitExplicitBlockHeaderProgram = (
         forcedTransactionCount: 0n,
         l2TransactionCount: params.l2TransactionCount ?? 0n,
         depositCount: params.depositCount ?? 0n,
-      },
-      {
-        validationTracesRoot:
-          params.validationTracesRoot ?? SDK.EMPTY_MERKLE_TREE_ROOT,
-        validationTraceCount: params.validationTraceCount ?? 0n,
       },
     );
     const explicitBuildResult = yield* buildUnsignedCommitTx(

@@ -40,17 +40,7 @@ validator main(
           tx,
         )
       ct.Continue(Args { source: AcceptedSource { inclusion }, output_index }) -> {
-        let
-            _own,
-            _name,
-            _prover,
-            _state,
-            next_hash,
-            next_state,
-            _header,
-            _id,
-            verified
-          <- pass_native_tx_to_next_step_carried(
+        let _own, _, _prover, _state, next_hash, next_state, _, _id, verified <- pass_native_tx_to_next_step_carried(
           computation_thread_policy,
           hub_oracle,
           datum,
@@ -59,7 +49,7 @@ validator main(
           tx,
         )
         let bound = bind_output_v1(
-          substrate.bind_accepted_subject_v1(verified),
+          substrate.open_accepted_subject_v1(verified),
           output_index,
         )
         and {
@@ -73,7 +63,6 @@ validator main(
           output_index: next_output_index,
           header,
           membership,
-          direction,
         },
         output_index,
       }) -> {
@@ -88,11 +77,10 @@ validator main(
           inputs,
           outputs,
         )
-        let subject = substrate.bind_forced_subject_to_thread_v1(
+        let Pair(subject, _) = substrate.open_forced_subject_v1(
           name,
           header,
           membership,
-          direction,
         )
         let bound = bind_output_v1(subject, output_index)
         and {

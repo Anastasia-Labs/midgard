@@ -144,6 +144,7 @@ export const withFieldCarriagePrerequisite = <
         headerHash: context.identity.target.headerHash,
         action: context.action,
         artifact: context.artifact,
+        entries: context.entries,
       });
       if (
         !TX_HASH.test(captured.transaction.txHash) ||

@@ -10,8 +10,7 @@ import "vitest";
 import "./sdk-abi-fixtures.header-fixture.js";
 import "./sdk-abi-fixtures.build-transition-trace-abi-fixtures.js";
 
-import { readFileSync, writeFileSync } from "node:fs";
-import path from "node:path";
+import { writeFileSync } from "node:fs";
 
 import * as SDK from "@al-ft/midgard-sdk";
 import { Constr, Data, validatorToScriptHash } from "@lucid-evolution/lucid";
@@ -22,6 +21,7 @@ import { describe, expect, it } from "vitest";
 import { buildTransitionTraceAbiFixtures } from "./sdk-abi-fixtures.build-transition-trace-abi-fixtures.js";
 import {
   address,
+  aikenEnvConst,
   constructor,
   encodedFixture,
   eventKeys,
@@ -34,45 +34,37 @@ import {
   h32,
   h64,
   headerFixture,
-  ledgerStateSource,
   outputReference,
   proof,
-  repoRoot,
   roundTrip,
-  testnetIntegerConst,
   transitionPhases,
   transitionTraceAbiGolden,
   value,
 } from "./sdk-abi-fixtures.header-fixture.js";
 
 describe("SDK canonical ABI fixtures", () => {
-  it("keeps SDK protocol timing constants aligned with canonical Aiken values", () => {
-    expect(SDK.SHIFT_DURATION_MS).toBe(testnetIntegerConst("shift_duration"));
+  it("reads each SDK timing constant from the profile field rendered into its Aiken constant", () => {
+    expect(SDK.SHIFT_DURATION_MS).toBe(aikenEnvConst("shift_duration"));
     expect(SDK.REGISTRATION_DURATION_MS).toBe(
-      testnetIntegerConst("registration_duration"),
-    );
-    // ledger-state.ak re-exports the profile's env value, so the literal is
-    // read from the env module the same way as its siblings.
-    expect(ledgerStateSource).toMatch(
-      /^pub const block_maturity_duration_v1: Int = env\.block_maturity_duration_v1$/m,
+      aikenEnvConst("registration_duration"),
     );
     expect(SDK.MATURITY_DURATION_MS).toBe(
-      testnetIntegerConst("block_maturity_duration_v1"),
+      aikenEnvConst("block_maturity_duration_v1"),
     );
     expect(SDK.USER_EVENTS_NEGLIGENCE_TIMEOUT_MS).toBe(
-      testnetIntegerConst("user_events_negligence_timeout"),
+      aikenEnvConst("user_events_negligence_timeout"),
     );
     expect(SDK.NEW_SHIFT_INACTIVITY_GRACE_PERIOD_MS).toBe(
-      testnetIntegerConst("new_shift_inactivity_grace_period"),
+      aikenEnvConst("new_shift_inactivity_grace_period"),
     );
     expect(SDK.MAX_VALIDITY_RANGE_LENGTH_MS).toBe(
-      testnetIntegerConst("max_validity_range_length"),
+      aikenEnvConst("max_validity_range_length"),
     );
     expect(SDK.MAX_INACTIVITY_STRIKES).toBe(
-      testnetIntegerConst("max_inactivity_strikes"),
+      aikenEnvConst("max_inactivity_strikes"),
     );
     expect(BigInt(SDK.EVENT_WAIT_DURATION_MS)).toBe(
-      testnetIntegerConst("event_wait_duration"),
+      aikenEnvConst("event_wait_duration"),
     );
   });
 
@@ -131,11 +123,6 @@ describe("SDK canonical ABI fixtures", () => {
     ]);
     expect(
       fields(
-        constructor("midgard/user_events/deposit/DepositDatum", "DepositDatum"),
-      ),
-    ).toEqual(["event", "inclusion_time", "witness"]);
-    expect(
-      fields(
         constructor(
           "midgard/fraud_proofs/transition_trace/proof/TransitionFaultProof",
           "TransitionFaultProof",
@@ -171,6 +158,14 @@ describe("SDK canonical ABI fixtures", () => {
       "source_membership",
       "projected_utxo",
     ]);
+    expect(
+      fields(
+        constructor(
+          "midgard/fraud_proofs/transition_trace/proof/InvalidOneStepTransitionWitness",
+          "ValidForcedTransactionTransition",
+        ),
+      ),
+    ).toEqual(["trace_proof", "event_to_step", "source_membership"]);
     for (const [definition, variant, sourceField] of [
       [
         "OmittedDueL1EventWitness",
@@ -220,14 +215,6 @@ describe("SDK canonical ABI fixtures", () => {
       "hub_ref_input_index",
       "fraud_proof_mint_redeemer_index",
     ]);
-    expect(
-      fields(
-        constructor(
-          "midgard/user_events/withdrawal/SpendRedeemer",
-          "SpendRedeemer",
-        ),
-      ),
-    ).toContain("purpose");
     expect(
       constructor(
         "midgard/ledger_state/WithdrawalValidity",
@@ -496,14 +483,6 @@ describe("SDK canonical ABI fixtures", () => {
   });
 
   it("encodes user-event witness, user-event spend, settlement, and fraud-proof fixtures", () => {
-    const aikenWitnessPrefix = readFileSync(
-      path.join(repoRoot, "onchain/aiken/env/testnet.ak"),
-      "utf8",
-    ).match(
-      /pub const user_events_witness_script_prefix: ByteArray =\n {2}#"([^"]+)"/,
-    )?.[1];
-    expect(SDK.USER_EVENT_WITNESS_SCRIPT_PREFIX).toBe(aikenWitnessPrefix);
-
     const witnessValidator = SDK.buildUserEventWitnessCertificateValidator(h32);
     expect(SDK.userEventWitnessScriptHash(h32)).toBe(
       validatorToScriptHash(witnessValidator),

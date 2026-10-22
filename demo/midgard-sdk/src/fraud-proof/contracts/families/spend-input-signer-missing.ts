@@ -1,3 +1,4 @@
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Effect } from "effect";
 
 import {
@@ -16,11 +17,11 @@ import {
 } from "../types.js";
 
 export const SPEND_INPUT_SIGNER_MISSING_FAULT_PROOF_TITLES = {
-  step01: "fraud_proofs/spend_input_signer_missing/step_01.main.spend",
-  step02: "fraud_proofs/spend_input_signer_missing/step_02.main.spend",
-  step03: "fraud_proofs/spend_input_signer_missing/step_03.main.spend",
-  step04: "fraud_proofs/spend_input_signer_missing/step_04.main.spend",
-  step05: "fraud_proofs/spend_input_signer_missing/step_05.main.spend",
+  step01: deployedTitle("fraudProofSpendInputSignerMissing"),
+  step02: deployedTitle("fraudProofSpendInputSignerMissingStep02"),
+  step03: deployedTitle("fraudProofSpendInputSignerMissingStep03"),
+  step04: deployedTitle("fraudProofSpendInputSignerMissingStep04"),
+  step05: deployedTitle("fraudProofSpendInputSignerMissingStep05"),
 } as const;
 
 export type SpendInputSignerMissingFaultProofContracts = {

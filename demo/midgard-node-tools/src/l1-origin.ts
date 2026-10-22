@@ -2,17 +2,19 @@
  * The node's L1 follower inputs, as the devnet and full-stack builders write
  * them. The follower runs only with a local node, `L1_ORIGIN` and the
  * hub-oracle one-shot (`midgard-node` `services/l1-follower.plan.ts`), so a
- * builder derives the origin from the deployment's own record, the
- * `prepare-hub-oracle-one-shot-nonce` tx, and refuses to write a node
+ * builder takes the origin from the deployment's own record, the point the
+ * `prepare-hub-oracle-one-shot-nonce` command recorded in run state before it
+ * signed the nonce, proves it on the node's chain, and refuses to write a node
  * environment that would leave the follower unconfigured.
  */
-import { L1NodeTransport, ORIGIN } from "@al-ft/l1-node-transport";
+import { L1NodeTransport } from "@al-ft/l1-node-transport";
 import {
   formatL1Origin,
   type L1Origin,
   parseL1Origin,
 } from "@al-ft/midgard-core/l1-origin";
 import { findOrigin, type FindOriginResult } from "@al-ft/midgard-l1-follower";
+import { loadDeploymentRunState } from "midgard-node/e2e/run-state";
 import {
   NATIVE_LEDGER_SETTING_NAMES,
   parseNativeLedgerSettings,
@@ -36,7 +38,7 @@ export type L1NodeConnection = Readonly<{
   networkMagic: number;
 }>;
 
-/** What the builders record: the origin and the nonce tx it was derived from. */
+/** What the builders record: the origin and the nonce tx it was proven for. */
 export type DerivedL1Origin = Readonly<{
   origin: L1Origin;
   nonceTxHash: string;
@@ -56,36 +58,38 @@ const withTransport = async <T>(
 };
 
 const describeFailure = (
+  recorded: L1Origin,
   result: Exclude<FindOriginResult, { kind: "found" }>,
 ): string => {
   switch (result.kind) {
     case "not_found":
-      return `the node's chain holds no such tx after the scan start (scanned to ${
+      return `the node's chain after the recorded origin ${formatL1Origin(recorded)} holds no such tx (scanned to ${
         result.scannedTo === "genesis"
           ? "genesis"
           : formatL1Origin(result.scannedTo)
-      })`;
+      }), so the recorded origin does not precede the tx's block, or the node is not synced`;
     case "from_not_on_chain":
-      return "the scan start is not on the node's chain";
+      return `the recorded origin ${formatL1Origin(recorded)} is not on the node's chain`;
     case "no_preceding_point":
-      return "the tx is in the chain's first block, which has no preceding point";
+      return "the tx is in the chain's first block, which no recorded origin can precede";
   }
 };
 
 /**
- * The deployment origin O from the node's chain: the point immediately
- * before the block holding the `prepare-hub-oracle-one-shot-nonce` tx
- * (`find-origin`, plan §5.3). `from` is a point known to precede that block;
- * without it the scan starts at genesis.
+ * Proves the deployment's recorded origin T on the node's chain: the scan
+ * from T must find the `prepare-hub-oracle-one-shot-nonce` tx, so T is on
+ * the chain and precedes the block holding it (`find-origin --recorded`,
+ * plan §5.3). Returns T with that block; refuses otherwise.
  */
 export const deriveL1Origin = async (input: {
   readonly node: L1NodeConnection;
   readonly nonceTxHash: string;
-  readonly from?: L1Origin;
+  /** T, as the run state's `identity.l1Origin` records it. */
+  readonly recorded: L1Origin;
   /** The scan; the builders' tests replace it. Default: `findOrigin` on the node. */
   readonly find?: (options: {
     readonly txHash: string;
-    readonly from?: L1Origin;
+    readonly from: L1Origin;
   }) => Promise<FindOriginResult>;
 }): Promise<DerivedL1Origin> => {
   const txHash = input.nonceTxHash.toLowerCase();
@@ -95,16 +99,13 @@ export const deriveL1Origin = async (input: {
       withTransport(input.node, (transport) =>
         findOrigin({ transport, ...options }),
       ));
-  const result = await find({
-    txHash,
-    ...(input.from === undefined ? {} : { from: input.from }),
-  });
+  const result = await find({ txHash, from: input.recorded });
   if (result.kind !== "found")
     throw new L1OriginUndeterminedError(
-      `cannot derive L1_ORIGIN from the hub-oracle nonce tx ${txHash}: ${describeFailure(result)}`,
+      `cannot prove L1_ORIGIN for the hub-oracle nonce tx ${txHash}: ${describeFailure(input.recorded, result)}`,
     );
   return {
-    origin: result.origin,
+    origin: input.recorded,
     nonceTxHash: txHash,
     nonceBlock: {
       slot: result.nonceBlock.slot,
@@ -114,23 +115,31 @@ export const deriveL1Origin = async (input: {
 };
 
 /**
- * The node's current tip, or undefined at genesis. Read before the nonce tx
- * is first signed, it precedes the nonce block, so it bounds the origin scan.
+ * T for `nonceTxHash`: the origin the deployment run state at `statePath`
+ * recorded before the nonce was first signed. Refuses when the run state
+ * records another nonce or no origin, as a run state written before origins
+ * were recorded does; such a deployment is redeployed.
  */
-export const readL1NodeTip = (
-  node: L1NodeConnection,
-): Promise<L1Origin | undefined> =>
-  withTransport(node, async (transport) => {
-    const stream = transport.openChainSync({ points: [ORIGIN], credit: 1 });
-    try {
-      const { tip } = await stream.opened;
-      return tip.point.kind === "origin"
-        ? undefined
-        : { slot: Number(tip.point.slot), blockHash: tip.point.hash };
-    } finally {
-      await stream.close();
-    }
-  });
+export const runStateL1Origin = async (
+  statePath: string,
+  nonceTxHash: string,
+): Promise<L1Origin> => {
+  const identity = (await loadDeploymentRunState(statePath))?.identity;
+  const txHash = nonceTxHash.toLowerCase();
+  if (identity?.hubOracleOneShot?.txHash.toLowerCase() !== txHash)
+    throw new L1OriginUndeterminedError(
+      `the deployment run state ${statePath} does not record the hub-oracle nonce ${txHash}`,
+    );
+  if (identity.l1Origin === undefined)
+    throw new L1OriginUndeterminedError(
+      `the deployment run state ${statePath} records no L1 origin for the hub-oracle nonce ${txHash}; the nonce command records one before it signs, and a deployment without one is redeployed`,
+    );
+  return identity.l1Origin;
+};
+
+/** Whether `a` and `b` are the same point. */
+export const sameL1Origin = (a: L1Origin, b: L1Origin): boolean =>
+  a.slot === b.slot && a.blockHash === b.blockHash;
 
 const HEX_32 = /^[0-9a-f]{64}$/u;
 

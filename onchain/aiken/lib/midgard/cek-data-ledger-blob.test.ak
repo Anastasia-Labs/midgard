@@ -14,41 +14,41 @@ fn ledger_bytes(length: Int) -> ByteArray {
 
 test ledger_data_blob_9215_matches_host() {
   cek_data_v1.semantic_data_summary_v1(builtin.b_data(ledger_bytes(9215))) == cek_data_v1.DataSummaryV1 {
-    root: #"c2efac0c7d78bca123484c80799200772859a97f54965d59881f06c434892988",
+    root: #"03edb835e579c1d0cd6bbfa5e0b69a49c83b5044c5ed827f392863cb35fda711",
     cbor_length: 9505,
-    memory: 9219,
+    memory: 1156,
   }
 }
 
 test ledger_data_blob_9216_matches_host() {
   cek_data_v1.semantic_data_summary_v1(builtin.b_data(ledger_bytes(9216))) == cek_data_v1.DataSummaryV1 {
-    root: #"61705d68831234591650ebd3281d2eaf55819dfc489938644dfeaade1b4658d2",
+    root: #"c8e3d77aa2c9b72948710bd206a0b4638f2b17128655e823081ed030ec1bbbe2",
     cbor_length: 9506,
-    memory: 9220,
+    memory: 1156,
   }
 }
 
 test ledger_data_blob_12000_matches_host() {
   cek_data_v1.semantic_data_summary_v1(builtin.b_data(ledger_bytes(12000))) == cek_data_v1.DataSummaryV1 {
-    root: #"ff21a0015d198c6ca7497145d7091c3c1f82c6189d8ac36a659338b713ae5ffd",
+    root: #"be341a43932b98d87e088cf8c5e8e6da703812f385d5f1486eaba3a53c978f71",
     cbor_length: 12378,
-    memory: 12004,
+    memory: 1504,
   }
 }
 
 test ledger_data_blob_15841_matches_host() {
   cek_data_v1.semantic_data_summary_v1(builtin.b_data(ledger_bytes(15841))) == cek_data_v1.DataSummaryV1 {
-    root: #"d120efaa40f0772065121c25fb7039ce03943bb1ea0c59e4e22b1b3f6b7c7c8c",
+    root: #"1986a67ca1725f8b725146734d47e861815d5bf4a387277c01bfe7001edd1f6b",
     cbor_length: 16339,
-    memory: 15845,
+    memory: 1985,
   }
 }
 
 test ledger_data_blob_16384_matches_host() {
   cek_data_v1.semantic_data_summary_v1(builtin.b_data(ledger_bytes(16384))) == cek_data_v1.DataSummaryV1 {
-    root: #"31a6e4176316af58f404da1d2e282e07190cd552fb6ac7f309b8ddd8b48b1f40",
+    root: #"15c362915ea9b73ac9bdc88fc056cbdc60034f221edd9e6cf9875d0c13e7f6d5",
     cbor_length: 16898,
-    memory: 16388,
+    memory: 2052,
   }
 }
 

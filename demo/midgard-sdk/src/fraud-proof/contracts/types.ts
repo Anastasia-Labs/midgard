@@ -62,6 +62,7 @@ import { type WithdrawnInputFaultProofContracts } from "./families/withdrawn-inp
 import { type WithdrawnReferenceInputFaultProofContracts } from "./families/withdrawn-reference-input.js";
 import { type WitnessScriptDecodingFaultProofContracts } from "./families/witness-script-decoding.js";
 import { type ZeroInputFaultProofContracts } from "./families/zero-input.js";
+import { type ScriptDecodeValidator } from "./script-decode.js";
 
 export type FraudProofChain = {
   readonly firstStep: SpendingValidator;
@@ -71,6 +72,8 @@ export type FraudProofChain = {
 export type FaultProofContracts = {
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
+  /** The script-decode family whose records the decoding steps read. */
+  readonly scriptDecode: ScriptDecodeValidator;
   readonly doubleSpend: DoubleSpendFaultProofContracts["doubleSpend"];
   readonly nonExistentInput: NonExistentInputFaultProofContracts["nonExistentInput"];
   readonly noReferenceInput: NoReferenceInputFaultProofContracts["noReferenceInput"];
@@ -132,7 +135,7 @@ export type FaultProofContracts = {
  */
 export type FaultProofContractChains = Omit<
   FaultProofContracts,
-  "computationThread" | "fraudProof"
+  "computationThread" | "fraudProof" | "scriptDecode"
 >;
 
 export type BuildFaultProofContractsParams = {

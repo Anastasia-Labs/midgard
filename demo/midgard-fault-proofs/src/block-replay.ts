@@ -2,10 +2,13 @@
  * The block replay: a block's DA payload replayed over its parent's ledger.
  * Every event is re-run (L2 and forced transactions through the validation
  * machine, user events through the caller's L1 material), and every committed
- * transition, event-to-step mapping and validation descriptor must equal the
- * replay's canonical bytes. The node's foreign-block import and the watcher's
- * ledger both run this one function; each supplies its own ledger-root
- * computation and L1 event material.
+ * transition and event-to-step mapping must equal the replay's canonical bytes.
+ * Validation descriptors are derived data the header does not commit: each
+ * replayed transaction needs one, canonical and bounded, carrying the replayed
+ * verdict, and nothing more is asked of it (the DA committee's rule). The
+ * node's foreign-block import and the watcher's ledger both run this one
+ * function; each supplies its own ledger-root computation and L1 event
+ * material.
  *
  * Faults of the payload are thrown as `BlockReplayFault` defects; the
  * callbacks' and the root computation's failures pass through, and a
@@ -17,11 +20,9 @@ import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   type MidgardCommittedScriptRun,
-  placeholderValidationTraceDescriptorV1,
   type RejectedTx,
   replayValidationVerdictEvent,
   type ValidationMachineLedgerEntry,
-  validationTransactionCommitmentV1,
 } from "@al-ft/midgard-validation";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -35,11 +36,6 @@ import {
   transitionPhaseRank,
 } from "./block-replay.encoding.js";
 import { blockFault } from "./block-replay.faults.js";
-import {
-  importedEventProgramSidecar,
-  importedProgramMaterial,
-} from "./block-replay.program-material.js";
-import { forcedRejectionReason } from "./workflow/forced-rejection-reason.js";
 
 export {
   encodeEventToStepValueCbor,
@@ -59,9 +55,16 @@ export {
 } from "./block-replay.faults.js";
 export {
   attributeWithdrawalClassificationFault,
-  WITHDRAWAL_INFO_NODE_BOUND,
-  withdrawalClassificationInputBounded,
+  withdrawalClassificationInputReadable,
 } from "./withdrawal-classification-fault.js";
+
+/**
+ * The verdict of a validation descriptor, which must be canonical for its
+ * schema and a bounded V1 descriptor, as the DA committee requires (the SDK
+ * decoder both run).
+ */
+const descriptorVerdict = (valueHex: string) =>
+  SDK.decodeCanonicalValidationTraceDescriptorData(valueHex).verdict;
 
 /** One ledger entry: the out-ref key bytes and the full output CBOR. */
 export type BlockReplayLedgerEntry = {
@@ -73,7 +76,6 @@ export type BlockReplayLedgerEntry = {
 export type CommittedTransaction = Readonly<{
   transactionId: Buffer;
   canonicalTransactionCbor: Buffer;
-  programMaterialSidecarCbor: Buffer;
   /** The ledger the transaction was replayed on, keyed by out-ref CBOR hex;
    * it changes as the replay goes on. */
   ledger: ReadonlyMap<string, Buffer>;
@@ -213,8 +215,6 @@ export const replayBlockEvents = (
       forcedPreimages.size !== body.forced_transactions.length
     )
       throw blockFault("foreign transaction preimage coverage mismatch");
-    const material = importedProgramMaterial(body.cek_program_material);
-    const reached = new Set<string>();
     let root = yield* input.ledgerRoot(input.parentEntries);
     for (const [index, { step, value }] of steps.entries()) {
       if (step.step_index !== BigInt(index) || step.schema_version !== 1n)
@@ -259,17 +259,13 @@ export const replayBlockEvents = (
         const sourceKind = step.phase === "L2Transaction" ? "normal" : "forced";
         const committed =
           step.phase === "L2Transaction" ? input.committedVerdicts : undefined;
-        const programMaterialSidecarCbor = importedEventProgramSidecar({
-          cbor,
-          sourceKind,
-          ledger,
-          material,
-          reached,
-        });
+        // Replay runs Phase A over every carried Flat script, then resolves
+        // execution sources against this event's pre-state in Phase B.
+        // Script bytes are authenticated by the canonical preimage and ledger;
+        // no separately published material participates in the verdict.
         const replay = yield* replayValidationVerdictEvent({
           consensusProfile: MIDGARD_CONSENSUS_PROFILE,
           canonicalTransactionCbor: cbor,
-          programMaterialSidecarCbor,
           ledgerWitnessEntries: witnessEntries,
           blockTimeMs: input.blockTimeMs,
           expectedNetworkId: input.expectedNetworkId,
@@ -294,7 +290,6 @@ export const replayBlockEvents = (
         committed?.onTransaction({
           transactionId: replay.transactionId,
           canonicalTransactionCbor: cbor,
-          programMaterialSidecarCbor,
           ledger,
         });
         if (step.phase === "ForcedTransaction")
@@ -306,27 +301,12 @@ export const replayBlockEvents = (
         for (const key of replay.statePatch.deletedOutRefs) ledger.delete(key);
         for (const [key, output] of replay.statePatch.upsertedOutRefs)
           ledger.set(key, output);
-        const expected = SDK.validationTraceDescriptorDataFromCore(
-          placeholderValidationTraceDescriptorV1(
-            {
-              eventKeyCbor: Buffer.from(key, "hex"),
-              transactionCommitment: validationTransactionCommitmentV1({
-                canonicalTransactionCbor: cbor,
-                sourceKind,
-              }),
-            },
-            replay.verdict,
-            replay.rejection === undefined
-              ? null
-              : forcedRejectionReason(replay.rejection),
-          ),
-        );
-        if (
-          descriptors.get(key) !==
-          LucidData.to(expected, SDK.ValidationTraceDescriptor)
-        )
+        const descriptor = descriptors.get(key);
+        if (descriptor === undefined)
+          throw blockFault("foreign event lacks its validation descriptor");
+        if (descriptorVerdict(descriptor) !== replay.verdict)
           throw blockFault(
-            "foreign validation descriptor differs from the placeholder for the replayed verdict",
+            "foreign validation descriptor verdict differs from the replayed verdict",
           );
         descriptors.delete(key);
       } else {
@@ -383,8 +363,6 @@ export const replayBlockEvents = (
       mappings.delete(key);
       if (input.committedVerdicts !== undefined) yield* yieldToEventLoop;
     }
-    if (reached.size !== material.length)
-      throw blockFault("foreign block CEK material contains unreachable nodes");
     if (
       expectedSources.size !== 0 ||
       mappings.size !== 0 ||

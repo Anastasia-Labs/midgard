@@ -362,16 +362,12 @@ describe("SQLite prover funding reservation store V1", () => {
     const currentPlan = plan("aa", "66");
     await opened.runtime.store.reserve(currentPlan);
     const handoff = completionHandoff(currentPlan);
-    await expect(
-      (async () => {
-        await opened.runtime.store.release({
-          plan: currentPlan,
-          expectedRevision: "0",
-          handoff,
-        });
-        throw new Error("interrupted after release commit");
-      })(),
-    ).rejects.toThrow("interrupted after release commit");
+    // The process stops right after the release commits.
+    await opened.runtime.store.release({
+      plan: currentPlan,
+      expectedRevision: "0",
+      handoff,
+    });
     opened.runtime.close();
     const reopened =
       await unsafeOpenWatcherSqliteProverFundingReservationStoreForTest(
@@ -409,7 +405,10 @@ describe("SQLite prover funding reservation store V1", () => {
         reopened.store.release({
           plan: currentPlan,
           expectedRevision: "1",
-          handoff: { ...handoff, expectedJournalSequence: 3 },
+          handoff: {
+            ...handoff,
+            completion: { ...handoff.completion, kind: "terminal_included" },
+          },
         }),
       ).rejects.toThrow("handoff mismatch");
       await expect(

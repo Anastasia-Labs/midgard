@@ -170,6 +170,9 @@ export const admitNetworkIdAcceptedForcedArtifact = (
       sourceKey: membership.key,
       rejectionReason: null,
     }),
-    forcedSource: Object.freeze({ header, membership, direction: 0n as const }),
+    forcedSource: Object.freeze({
+      header,
+      membership,
+    }),
   });
 };

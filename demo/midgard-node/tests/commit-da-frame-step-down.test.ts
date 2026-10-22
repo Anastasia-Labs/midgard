@@ -1,4 +1,3 @@
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import { maxDaPayloadInnerBytes } from "@al-ft/midgard-core/da-payload-sizing";
 import { Effect, Either } from "effect";
 import { describe, expect, it, vi } from "vitest";
@@ -29,7 +28,7 @@ import {
   REFUSAL,
 } from "./helpers/commit-da-frame-fixtures.js";
 
-// Every normal transaction has its durable program-material sidecar.
+// Every normal transaction has its durable canonical bytes.
 vi.mock("../src/database/index.js", async () => {
   const actual = await vi.importActual<
     typeof import("../src/database/index.js")
@@ -38,14 +37,6 @@ vi.mock("../src/database/index.js", async () => {
     ...actual,
     TxAdmissionsDB: {
       ...actual.TxAdmissionsDB,
-      retrieveProgramMaterialSidecars: vi.fn((txIds: readonly Buffer[]) =>
-        Effect.succeed(
-          txIds.map((txId) => ({
-            txId,
-            sidecarCbor: encodeMidgardCekProgramMaterialSidecar([]),
-          })),
-        ),
-      ),
     },
   };
 });

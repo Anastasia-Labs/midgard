@@ -8,17 +8,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   commitMidgardCekBlob,
-  decodeMidgardCekProgramEnvelope,
-  decodeMidgardCekProgramMaterialDaEntry,
   decodeMidgardCekProgramMaterialEntry,
-  decodeMidgardCekProgramMaterialSidecar,
   decodeMidgardProofSubmission,
   encodeMidgardCekBlobBranch,
   encodeMidgardCekBlobChunk,
-  encodeMidgardCekProgramEnvelope,
-  encodeMidgardCekProgramMaterialDaValue,
   encodeMidgardCekProgramMaterialEntry,
-  encodeMidgardCekProgramMaterialSidecar,
   encodeMidgardCekSequenceNode,
   encodeMidgardCekTermNode,
   encodeMidgardCekValueNode,
@@ -28,30 +22,20 @@ import {
   hashMidgardCekContinuationFrame,
   hashMidgardCekEnvironmentNode,
   hashMidgardCekMachineState,
-  hashMidgardCekProgramEnvelope,
   hashMidgardCekSequenceNode,
   hashMidgardCekTermNode,
   hashMidgardCekValueNode,
-  mergeMidgardCekProgramMaterialSidecars,
   MIDGARD_CEK_BLOB_CHUNK_BYTES,
   MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
   MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
   MIDGARD_CEK_EMPTY_SEQUENCE_ROOT,
   MIDGARD_CEK_MAX_CONSTANT_TYPE_CBOR_BYTES,
-  MIDGARD_CEK_MAX_PROGRAM_BUNDLE_BYTE_WORK,
-  MIDGARD_CEK_MAX_PROGRAM_BUNDLE_NODE_VISITS,
-  MIDGARD_CEK_MAX_PROGRAM_ENVELOPE_BYTES,
-  MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES,
-  MIDGARD_CEK_MAX_PROGRAM_MATERIAL_DA_VALUE_BYTES,
   MIDGARD_CEK_MAX_PROGRAM_MATERIAL_ENTRY_BYTES,
   MIDGARD_CEK_MAX_PROGRAM_MATERIAL_PREIMAGE_BYTES,
-  MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT,
-  type MidgardCekProgramEnvelope,
   midgardCekProgramMaterialDependencies,
   type MidgardCekProgramMaterialEntry,
   MidgardCekProgramMaterialMissingRootError,
   verifyMidgardCekProgramMaterial,
-  verifyMidgardCekProgramMaterialBundle,
 } from "../src/cek-proof.js";
 import {
   encodeMidgardCekDataListNode,
@@ -70,7 +54,6 @@ import {
   hex,
   makeBytesConstantProgramMaterial,
   makeNestedListConstantProgramMaterial,
-  makeUnaryProgramMaterial,
   programMaterialEntry,
 } from "./cek-proof.make-nested-list-constant-program-material.js";
 import { makeSemanticConstantProgramMaterial } from "./cek-proof.make-semantic-constant-program-material.js";
@@ -112,12 +95,6 @@ describe("V1 CEK commitments", () => {
       auxiliary: 0n,
       cpu: 16_000n,
       memory: 100n,
-    });
-    const program = hashMidgardCekProgramEnvelope({
-      uplcVersion: [1n, 1n, 0n],
-      termRoot: term,
-      nodeCount: 3n,
-      materialByteLength: 144n,
     });
     const applyValue = hashMidgardCekContinuationFrame({
       kind: "applyValue",
@@ -197,9 +174,6 @@ describe("V1 CEK commitments", () => {
     expect(hex(state)).toBe(
       "8a475241923d49a38fa1d6376dd1c40ebb8d16adc87f51bc4a6dea7d954f88d1",
     );
-    expect(hex(program)).toBe(
-      "e9d2696eff22d8078ae7bd71c83f6058e0db4d938a016314a2cd35feaccfdefa",
-    );
     expect(hex(applyValue)).toBe(
       "facc375c9390b9503ccb80c0500bb3b88dc62c5da62c05599e6035938535fe61",
     );
@@ -240,9 +214,9 @@ describe("V1 CEK commitments", () => {
     expect(() =>
       hashMidgardCekBlobChunk(Buffer.alloc(MIDGARD_CEK_BLOB_CHUNK_BYTES + 1)),
     ).toThrow(/at most 4095 bytes/u);
-    expect(() => hashMidgardCekTermNode({ kind: "builtin", tag: 87n })).toThrow(
-      /between 0 and 86/u,
-    );
+    expect(() =>
+      hashMidgardCekTermNode({ kind: "builtin", tag: 101n }),
+    ).toThrow(/between 0 and 100/u);
     expect(() =>
       hashMidgardCekSequenceNode({
         head: hash(1),
@@ -250,69 +224,6 @@ describe("V1 CEK commitments", () => {
         length: 0n,
       }),
     ).toThrow(/must be positive/u);
-  });
-
-  it("decodes only the canonical bounded V1 program envelope", () => {
-    const envelope = encodeMidgardCekProgramEnvelope({
-      uplcVersion: [1n, 1n, 0n],
-      termRoot: hash(1),
-      nodeCount: MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT,
-      materialByteLength: MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES,
-    });
-    expect(envelope).toHaveLength(MIDGARD_CEK_MAX_PROGRAM_ENVELOPE_BYTES);
-    expect(decodeMidgardCekProgramEnvelope(envelope)).toEqual({
-      uplcVersion: [1n, 1n, 0n],
-      termRoot: hash(1),
-      nodeCount: MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT,
-      materialByteLength: MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES,
-    });
-
-    const noncanonical = Buffer.concat([
-      Buffer.from("8501830101005820", "hex"),
-      hash(1),
-      Buffer.from("18031890", "hex"),
-    ]);
-    expect(() => decodeMidgardCekProgramEnvelope(noncanonical)).toThrow(
-      /Non-minimal CBOR/u,
-    );
-    const unsupportedEnvelope = Buffer.concat([
-      Buffer.from("8517830101005820", "hex"),
-      hash(1),
-      Buffer.from("031890", "hex"),
-    ]);
-    expect(() => decodeMidgardCekProgramEnvelope(unsupportedEnvelope)).toThrow(
-      /unsupported CEK program envelope version 23/u,
-    );
-    expect(() =>
-      decodeMidgardCekProgramEnvelope(
-        encodeMidgardCekProgramEnvelope({
-          uplcVersion: [1n, 0n, 0n],
-          termRoot: hash(1),
-          nodeCount: 3n,
-          materialByteLength: 144n,
-        }),
-      ),
-    ).toThrow(/only UPLC 1.1.0/u);
-    expect(() =>
-      decodeMidgardCekProgramEnvelope(
-        encodeMidgardCekProgramEnvelope({
-          uplcVersion: [1n, 1n, 0n],
-          termRoot: hash(1),
-          nodeCount: MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT + 1n,
-          materialByteLength: 144n,
-        }),
-      ),
-    ).toThrow(/node count/u);
-    expect(() =>
-      decodeMidgardCekProgramEnvelope(
-        encodeMidgardCekProgramEnvelope({
-          uplcVersion: [1n, 1n, 0n],
-          termRoot: hash(1),
-          nodeCount: 3n,
-          materialByteLength: MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES + 1n,
-        }),
-      ),
-    ).toThrow(/material length/u);
   });
 
   it("extracts the exact ordered direct dependency set for every V1 material kind", () => {
@@ -1047,12 +958,12 @@ describe("V1 CEK commitments", () => {
       readonly memory: bigint;
     }[] = [
       { name: "integer", typeTags: [0], payload: 0n, memory: 1n },
-      { name: "bytes", typeTags: [1], payload: "00ff", memory: 2n },
+      { name: "bytes", typeTags: [1], payload: "00ff", memory: 1n },
       {
         name: "UTF-8 string",
         typeTags: [2],
         payload: "c3a9",
-        memory: 2n,
+        memory: 0n,
       },
       {
         name: "Unit",
@@ -1101,13 +1012,13 @@ describe("V1 CEK commitments", () => {
         name: "G1",
         typeTags: [9],
         payload: "00".repeat(48),
-        memory: 48n,
+        memory: 18n,
       },
       {
         name: "G2",
         typeTags: [10],
         payload: "00".repeat(96),
-        memory: 96n,
+        memory: 36n,
       },
     ];
     for (const testCase of validCases) {
@@ -1117,7 +1028,7 @@ describe("V1 CEK commitments", () => {
         testCase.memory,
       );
       const verified = verifyMidgardCekProgramMaterial(
-        fixture.envelope,
+        fixture.summary.termRoot,
         fixture.material,
       );
       expect(verified.constants, testCase.name).toHaveLength(1);
@@ -1185,19 +1096,19 @@ describe("V1 CEK commitments", () => {
         name: "G1 rejects the wrong payload length",
         typeTags: [9],
         payload: "00".repeat(47),
-        memory: 48n,
+        memory: 18n,
       },
       {
         name: "G2 rejects the wrong payload length",
         typeTags: [10],
         payload: "00".repeat(95),
-        memory: 96n,
+        memory: 36n,
       },
       {
         name: "Miller-loop type rejects Data",
         typeTags: [11],
         payload: { kind: "constr", constructor: 0n, fields: [] },
-        memory: 192n,
+        memory: 72n,
       },
     ];
     for (const testCase of invalidCases) {
@@ -1208,7 +1119,10 @@ describe("V1 CEK commitments", () => {
       );
       expect(
         () =>
-          verifyMidgardCekProgramMaterial(fixture.envelope, fixture.material),
+          verifyMidgardCekProgramMaterial(
+            fixture.summary.termRoot,
+            fixture.material,
+          ),
         testCase.name,
       ).toThrow(/payload does not match its semantic type/u);
     }
@@ -1231,7 +1145,7 @@ describe("V1 CEK commitments", () => {
       bytesRoot: rawBlob.root,
       bytesLength: BigInt(rawValue.length),
       cborLength: midgardCekDataBytesCborLength(BigInt(rawValue.length)),
-      memory: 4n + BigInt(rawValue.length),
+      memory: 4n + BigInt(Math.ceil(rawValue.length / 8)),
     } as const;
     const semanticRoot = hashMidgardCekDataNode(semanticNode);
     const valueNode = {
@@ -1240,7 +1154,7 @@ describe("V1 CEK commitments", () => {
       payloadRoot: semanticRoot,
       payloadLength: BigInt(payloadBytes.length),
       semanticRoot,
-      memory: BigInt(rawValue.length),
+      memory: BigInt(Math.ceil(rawValue.length / 8)),
     } as const;
     const valuePreimage = encodeMidgardCekValueNode(valueNode);
     const valueRoot = hashMidgardCekValueNode(valueNode);
@@ -1272,26 +1186,14 @@ describe("V1 CEK commitments", () => {
         }),
       ),
     ];
-    const envelope = {
-      uplcVersion: [1n, 1n, 0n] as const,
-      termRoot,
-      nodeCount: BigInt(material.length),
-      materialByteLength: material.reduce(
-        (total, entry) => total + BigInt(entry.preimage.length),
-        0n,
-      ),
-    };
 
-    const verified = verifyMidgardCekProgramMaterial(envelope, material);
+    const verified = verifyMidgardCekProgramMaterial(termRoot, material);
     expect(verified.nodeCount).toBe(BigInt(material.length));
     expect(verified.constants).toHaveLength(1);
     expect(verified.constants[0]!.typeCbor).toEqual(
       Buffer.from("9f01ff", "hex"),
     );
     expect(verified.constants[0]!.payloadCbor).toEqual(payloadBytes);
-    expect(
-      verifyMidgardCekProgramMaterialBundle([envelope], material),
-    ).toHaveLength(1);
 
     const unrelated = programMaterialEntry(
       "term",
@@ -1337,21 +1239,6 @@ describe("V1 CEK commitments", () => {
     expect(decodeMidgardCekProgramMaterialEntry(encodedEntry)).toEqual(
       maximumChunkEntry,
     );
-    const daValue = encodeMidgardCekProgramMaterialDaValue(maximumChunkEntry);
-    expect(daValue).toHaveLength(
-      MIDGARD_CEK_MAX_PROGRAM_MATERIAL_DA_VALUE_BYTES,
-    );
-    expect(
-      decodeMidgardCekProgramMaterialDaEntry(maximumChunkEntry.root, daValue),
-    ).toEqual(maximumChunkEntry);
-    const unsupportedDaValue = Buffer.from(daValue);
-    unsupportedDaValue[1] = 23;
-    expect(() =>
-      decodeMidgardCekProgramMaterialDaEntry(
-        maximumChunkEntry.root,
-        unsupportedDaValue,
-      ),
-    ).toThrow(/unsupported CEK program material DA value version 23/u);
   });
 
   it("authenticates constructor indices beyond JavaScript's safe-integer range", () => {
@@ -1368,7 +1255,7 @@ describe("V1 CEK commitments", () => {
       kind: "constrLarge",
       constructorCborRoot: constructorBlob.root,
       constructorCborLength: BigInt(constructorCbor.length),
-      constructorMemory: 15n,
+      constructorMemory: 6n,
       fieldsCount: 0n,
       fieldsRoot: MIDGARD_CEK_EMPTY_DATA_LIST_ROOT,
       cborLength: midgardCekDataConstrCborLength(constructor, 0n, 0n),
@@ -1410,17 +1297,8 @@ describe("V1 CEK commitments", () => {
         }),
       ),
     ];
-    const envelope = {
-      uplcVersion: [1n, 1n, 0n] as const,
-      termRoot,
-      nodeCount: BigInt(material.length),
-      materialByteLength: material.reduce(
-        (total, entry) => total + BigInt(entry.preimage.length),
-        0n,
-      ),
-    };
 
-    const verified = verifyMidgardCekProgramMaterial(envelope, material);
+    const verified = verifyMidgardCekProgramMaterial(termRoot, material);
     expect(verified.constants[0]!.payloadCbor).toEqual(payloadCbor);
     expect(verified.constants[0]!.memory).toBe(4n);
   });
@@ -1488,33 +1366,18 @@ describe("V1 CEK commitments", () => {
         }),
       ),
     ];
-    const envelope = {
-      uplcVersion: [1n, 1n, 0n] as const,
-      termRoot,
-      nodeCount: BigInt(material.length),
-      materialByteLength: material.reduce(
-        (total, entry) => total + BigInt(entry.preimage.length),
-        0n,
-      ),
-    };
 
-    expect(() => verifyMidgardCekProgramMaterial(envelope, material)).toThrow(
+    expect(() => verifyMidgardCekProgramMaterial(termRoot, material)).toThrow(
       /payload root must equal its canonical semantic root/u,
     );
   });
 
-  it("classifies only an absent root and does not mask later bundle mismatches", () => {
+  it("classifies an absent local material root", () => {
     const missingNode = { kind: "error" } as const;
     const missingRoot = hashMidgardCekTermNode(missingNode);
-    const missingEnvelope = {
-      uplcVersion: [1n, 1n, 0n] as const,
-      termRoot: missingRoot,
-      nodeCount: 1n,
-      materialByteLength: BigInt(encodeMidgardCekTermNode(missingNode).length),
-    };
     let missingError: unknown;
     try {
-      verifyMidgardCekProgramMaterial(missingEnvelope, []);
+      verifyMidgardCekProgramMaterial(missingRoot, []);
     } catch (cause) {
       missingError = cause;
     }
@@ -1524,25 +1387,6 @@ describe("V1 CEK commitments", () => {
     expect(
       (missingError as MidgardCekProgramMaterialMissingRootError).rootHex,
     ).toBe(Buffer.from(missingRoot).toString("hex"));
-
-    const presentNode = { kind: "builtin", tag: 0n } as const;
-    const present = {
-      kind: "term" as const,
-      root: hashMidgardCekTermNode(presentNode),
-      preimage: encodeMidgardCekTermNode(presentNode),
-    };
-    const laterMismatchEnvelope = {
-      uplcVersion: [1n, 1n, 0n] as const,
-      termRoot: present.root,
-      nodeCount: 2n,
-      materialByteLength: BigInt(present.preimage.length),
-    };
-    expect(() =>
-      verifyMidgardCekProgramMaterialBundle(
-        [missingEnvelope, laterMismatchEnvelope],
-        [present],
-      ),
-    ).toThrow(/envelope declares 2/u);
   });
 
   it("fails closed on incomplete, duplicate, unreachable, and malformed material", () => {
@@ -1552,52 +1396,22 @@ describe("V1 CEK commitments", () => {
       root: hashMidgardCekTermNode(termNode),
       preimage: encodeMidgardCekTermNode(termNode),
     } as const;
-    const envelope = {
-      uplcVersion: [1n, 1n, 0n] as const,
-      termRoot: term.root,
-      nodeCount: 1n,
-      materialByteLength: BigInt(term.preimage.length),
-    };
     const submission = encodeMidgardProofSubmission({
       transactionCbor: Buffer.from("820102", "hex"),
-      programMaterial: [term],
     });
     expect(decodeMidgardProofSubmission(submission)).toEqual({
       transactionCbor: Buffer.from("820102", "hex"),
-      programMaterial: [term],
     });
     const unsupportedSubmission = Buffer.from(submission);
     unsupportedSubmission[1] = 23;
     expect(() => decodeMidgardProofSubmission(unsupportedSubmission)).toThrow(
       /unsupported V1 submission version 23/u,
     );
-    const sidecar = encodeMidgardCekProgramMaterialSidecar([term]);
-    expect(decodeMidgardCekProgramMaterialSidecar(sidecar)).toEqual([term]);
-    expect(encodeMidgardCekProgramMaterialSidecar([]).toString("hex")).toBe(
-      "820180",
-    );
-    expect(() =>
-      decodeMidgardCekProgramMaterialSidecar(Buffer.from("821780", "hex")),
-    ).toThrow(/unsupported V1 program material sidecar version 23/u);
-    expect(() =>
-      decodeMidgardCekProgramMaterialSidecar(
-        Buffer.concat([sidecar, Buffer.from([0])]),
-      ),
-    ).toThrow(/trailing bytes/u);
-    expect(mergeMidgardCekProgramMaterialSidecars([sidecar, sidecar])).toEqual([
-      term,
-    ]);
-    expect(() => verifyMidgardCekProgramMaterial(envelope, [])).toThrow(
+    expect(() => verifyMidgardCekProgramMaterial(term.root, [])).toThrow(
       /missing root/u,
     );
     expect(() =>
-      verifyMidgardCekProgramMaterial(envelope, [term, term]),
-    ).toThrow(/duplicate/u);
-    expect(() =>
-      encodeMidgardProofSubmission({
-        transactionCbor: Buffer.from("820102", "hex"),
-        programMaterial: [term, term],
-      }),
+      verifyMidgardCekProgramMaterial(term.root, [term, term]),
     ).toThrow(/duplicate/u);
 
     const extraNode = { kind: "builtin", tag: 0n } as const;
@@ -1607,14 +1421,8 @@ describe("V1 CEK commitments", () => {
       preimage: encodeMidgardCekTermNode(extraNode),
     } as const;
     expect(() =>
-      verifyMidgardCekProgramMaterial(envelope, [term, extra]),
+      verifyMidgardCekProgramMaterial(term.root, [term, extra]),
     ).toThrow(/unreachable/u);
-    expect(() => verifyMidgardCekProgramMaterialBundle([], [term])).toThrow(
-      /without a program envelope/u,
-    );
-    expect(() =>
-      verifyMidgardCekProgramMaterial({ ...envelope, nodeCount: 2n }, [term]),
-    ).toThrow(/envelope declares 2/u);
 
     const encoded = encodeMidgardCekProgramMaterialEntry(term);
     const tampered = Buffer.from(encoded);
@@ -1649,37 +1457,27 @@ describe("V1 CEK commitments", () => {
       value: hash(1),
     });
     expect(() =>
-      verifyMidgardCekProgramMaterial(
-        {
-          uplcVersion: [1n, 1n, 0n],
-          termRoot: root,
-          nodeCount: 1n,
-          materialByteLength: BigInt(preimage.length),
-        },
-        [{ kind: "term", root, preimage }],
-      ),
+      verifyMidgardCekProgramMaterial(root, [{ kind: "term", root, preimage }]),
     ).toThrow(/runtime-only context constant/u);
   });
 
-  it("rejects an authenticated oversized semantic payload before materialization", () => {
-    const oversized = makeBytesConstantProgramMaterial(9_000);
-    expect(oversized.payloadCbor.length).toBeGreaterThan(9_215);
-    let materializedRoots = 0;
+  it("authenticates a semantic payload beyond the retired proof-envelope limit", () => {
+    const large = makeBytesConstantProgramMaterial(9_000);
+    expect(large.payloadCbor.length).toBeGreaterThan(9_215);
 
-    expect(() =>
-      verifyMidgardCekProgramMaterial(oversized.envelope, oversized.material, {
-        onBlobMaterialized: () => {
-          materializedRoots += 1;
-        },
-      }),
-    ).toThrow(/source constant payload exceeds the 9215-byte/u);
-    expect(materializedRoots).toBe(0);
+    const verified = verifyMidgardCekProgramMaterial(
+      large.summary.termRoot,
+      large.material,
+    );
+    expect(verified.constants).toHaveLength(1);
+    expect(verified.constants[0]?.valueRoot).toEqual(large.valueRoot);
+    expect(verified.constants[0]?.payloadCbor).toEqual(large.payloadCbor);
   });
 
   it("requires canonical indefinite semantic constant type lists", () => {
     const canonical = makeNestedListConstantProgramMaterial(0);
     const verified = verifyMidgardCekProgramMaterial(
-      canonical.envelope,
+      canonical.summary.termRoot,
       canonical.material,
     );
     expect(verified.constants[0]?.typeCbor).toEqual(
@@ -1692,7 +1490,7 @@ describe("V1 CEK commitments", () => {
     );
     expect(() =>
       verifyMidgardCekProgramMaterial(
-        nonCanonical.envelope,
+        nonCanonical.summary.termRoot,
         nonCanonical.material,
       ),
     ).toThrow(/CEK constant type.*canonical/u);
@@ -1702,7 +1500,7 @@ describe("V1 CEK commitments", () => {
     const boundaryDepth = MIDGARD_CEK_MAX_CONSTANT_TYPE_CBOR_BYTES - 3;
     const boundary = makeNestedListConstantProgramMaterial(boundaryDepth);
     const verified = verifyMidgardCekProgramMaterial(
-      boundary.envelope,
+      boundary.summary.termRoot,
       boundary.material,
     );
     expect(verified.constants[0]?.typeCbor).toHaveLength(
@@ -1713,7 +1511,7 @@ describe("V1 CEK commitments", () => {
     const over = makeNestedListConstantProgramMaterial(boundaryDepth + 1);
     let rejection: unknown;
     try {
-      verifyMidgardCekProgramMaterial(over.envelope, over.material);
+      verifyMidgardCekProgramMaterial(over.summary.termRoot, over.material);
     } catch (cause) {
       rejection = cause;
     }
@@ -1722,133 +1520,5 @@ describe("V1 CEK commitments", () => {
     expect((rejection as Error).message).toMatch(
       /declares 65 bytes, exceeding 64/u,
     );
-  });
-
-  it("bounds distinct-envelope byte work before traversal and materializes shared final roots once", () => {
-    const shared = makeBytesConstantProgramMaterial(8_900);
-    expect(shared.payloadCbor.length).toBeLessThanOrEqual(9_215);
-    const wrappers: MidgardCekProgramMaterialEntry[] = [];
-    const underCapEnvelopes: MidgardCekProgramEnvelope[] = [];
-    let root = shared.termRoot;
-    let reachableBytes = shared.envelope.materialByteLength;
-    for (let depth = 1; depth <= 3; depth += 1) {
-      const wrapper = {
-        kind: "application",
-        function: root,
-        argument: shared.termRoot,
-      } as const;
-      const preimage = encodeMidgardCekTermNode(wrapper);
-      root = hashMidgardCekTermNode(wrapper);
-      wrappers.push({ kind: "term", root, preimage });
-      reachableBytes += BigInt(preimage.length);
-      underCapEnvelopes.push({
-        uplcVersion: [1n, 1n, 0n] as const,
-        termRoot: root,
-        nodeCount: shared.envelope.nodeCount + BigInt(depth),
-        materialByteLength: reachableBytes,
-      });
-    }
-
-    const materializedRoots: string[] = [];
-    const materializedConstants: string[] = [];
-    const verified = verifyMidgardCekProgramMaterialBundle(
-      underCapEnvelopes,
-      [...shared.material, ...wrappers],
-      {
-        onBlobMaterialized: (rootHex) => {
-          materializedRoots.push(rootHex);
-        },
-        onConstantMaterialized: (valueRootHex) => {
-          materializedConstants.push(valueRootHex);
-        },
-      },
-    );
-    expect(verified).toHaveLength(underCapEnvelopes.length);
-    expect(new Set(materializedRoots).size).toBe(materializedRoots.length);
-    expect(materializedRoots).toHaveLength(2);
-    expect(materializedConstants).toEqual([
-      Buffer.from(shared.valueRoot).toString("hex"),
-    ]);
-    expect(
-      verified.every((result) =>
-        result.constants[0]?.payloadCbor.equals(shared.payloadCbor),
-      ),
-    ).toBe(true);
-    expect(verified[0]!.constants[0]!.payloadCbor).not.toBe(
-      verified[1]!.constants[0]!.payloadCbor,
-    );
-
-    const overCapEnvelopes: MidgardCekProgramEnvelope[] = [];
-    let aggregateNodeVisits = 0n;
-    let aggregateByteWork = 0n;
-    while (aggregateByteWork <= MIDGARD_CEK_MAX_PROGRAM_BUNDLE_BYTE_WORK) {
-      const wrapper = {
-        kind: "application",
-        function: root,
-        argument: shared.termRoot,
-      } as const;
-      const preimage = encodeMidgardCekTermNode(wrapper);
-      root = hashMidgardCekTermNode(wrapper);
-      reachableBytes += BigInt(preimage.length);
-      const envelope: MidgardCekProgramEnvelope = {
-        uplcVersion: [1n, 1n, 0n] as const,
-        termRoot: root,
-        nodeCount:
-          shared.envelope.nodeCount +
-          BigInt(wrappers.length + overCapEnvelopes.length + 1),
-        materialByteLength: reachableBytes,
-      };
-      aggregateNodeVisits += envelope.nodeCount;
-      aggregateByteWork += envelope.materialByteLength;
-      overCapEnvelopes.push(envelope);
-    }
-    expect(aggregateNodeVisits).toBeLessThanOrEqual(
-      MIDGARD_CEK_MAX_PROGRAM_BUNDLE_NODE_VISITS,
-    );
-    const traversalTrap = {
-      *[Symbol.iterator](): IterableIterator<MidgardCekProgramMaterialEntry> {
-        throw new Error("material traversal must not start");
-      },
-    };
-    expect(() =>
-      verifyMidgardCekProgramMaterialBundle(overCapEnvelopes, traversalTrap),
-    ).toThrow(/aggregate unique-envelope byte work\/result/u);
-  }, 10_000);
-
-  it("verifies canonical duplicate envelopes once while preserving positional results", () => {
-    const { envelope, material } = makeUnaryProgramMaterial(20_000);
-    const envelopes = Array.from({ length: 100 }, () => ({
-      ...envelope,
-      termRoot: Buffer.from(envelope.termRoot),
-    }));
-    const verified = verifyMidgardCekProgramMaterialBundle(envelopes, material);
-
-    expect(verified).toHaveLength(envelopes.length);
-    for (const result of verified.slice(1)) {
-      expect(result).toBe(verified[0]);
-    }
-    expect(verified[0]?.nodeCount).toBe(20_000n);
-  }, 10_000);
-
-  it("rejects aggregate unique-envelope work before material traversal", () => {
-    const envelope = {
-      uplcVersion: [1n, 1n, 0n] as const,
-      termRoot: hash(0xa1),
-      nodeCount: MIDGARD_CEK_MAX_PROGRAM_BUNDLE_NODE_VISITS,
-      materialByteLength: 1n,
-    };
-    expect(() =>
-      verifyMidgardCekProgramMaterialBundle(
-        [
-          envelope,
-          {
-            ...envelope,
-            termRoot: hash(0xa2),
-            nodeCount: 1n,
-          },
-        ],
-        [],
-      ),
-    ).toThrow(/aggregate unique-envelope node visits/u);
   });
 });

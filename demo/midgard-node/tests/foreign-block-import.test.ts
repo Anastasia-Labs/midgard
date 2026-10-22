@@ -54,20 +54,6 @@ describe("complete foreign block import", () => {
       });
     },
   );
-  it("refuses CEK material in a block whose forced events reach none", async () => {
-    const payload = await fixture();
-    payload.block_body.cek_program_material = (
-      await fixture({ withProgram: true })
-    ).block_body.cek_program_material;
-    expect(payload.block_body.cek_program_material.length).toBeGreaterThan(0);
-    const result = await verdict(await rebind(payload));
-    expect(result._tag).toBe("Left");
-    if (result._tag === "Left")
-      expect(result.left).toMatchObject({
-        reason: "invalid",
-        detail: expect.stringContaining("unreachable"),
-      });
-  });
   it("imports two forced orders, one whose items do not decode, each at its own step", async () => {
     const first = await fixture();
     const [, reason, bytes] = MINT_ADMITTED_UNDECODABLE[0]!;
@@ -106,7 +92,6 @@ describe("complete foreign block import", () => {
           ...first.block_body.forced_transaction_preimages,
           ...body.forced_transaction_preimages,
         ],
-        cek_program_material: [],
         transition_trace: [
           ...first.block_body.transition_trace,
           [
@@ -137,7 +122,9 @@ describe("complete foreign block import", () => {
     expect(result._tag).toBe("Right");
     if (result._tag === "Left") throw result.left;
   });
-  it.each(["transition", "mapping", "validation"] as const)(
+  // A validation descriptor is derived data: see
+  // foreign-block-import.derived-descriptor.test.ts.
+  it.each(["transition", "mapping"] as const)(
     "refuses a self-consistent %s forgery with the same ledger root",
     async (field) => {
       const payload = await fixture();
@@ -154,7 +141,7 @@ describe("complete foreign block import", () => {
             pre_utxos_root: "ab".repeat(32),
           }).toString("hex"),
         ];
-      } else if (field === "mapping")
+      } else
         body.event_to_step[0] = [
           body.event_to_step[0]![0],
           encodeEventToStepValueCbor({
@@ -162,19 +149,6 @@ describe("complete foreign block import", () => {
             phase: "ForcedTransaction",
           }).toString("hex"),
         ];
-      else {
-        const descriptor = Data.from(
-          body.validation_traces[0]![1],
-          SDK.ValidationTraceDescriptor,
-        );
-        body.validation_traces[0] = [
-          body.validation_traces[0]![0],
-          Data.to(
-            { ...descriptor, terminal_state_hash: "ab".repeat(32) },
-            SDK.ValidationTraceDescriptor,
-          ),
-        ];
-      }
       const forged = await rebind(payload);
       expect(forged.block_body.header.utxosRoot).toBe(
         payload.block_body.header.utxosRoot,
@@ -184,9 +158,7 @@ describe("complete foreign block import", () => {
       if (result._tag === "Left")
         expect(result.left).toMatchObject({
           reason: "invalid",
-          detail: expect.stringMatching(
-            /foreign (transition|event-to-step|validation descriptor)/,
-          ),
+          detail: expect.stringMatching(/foreign (transition|event-to-step)/),
         });
     },
   );

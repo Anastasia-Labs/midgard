@@ -1,5 +1,6 @@
 import {
   encodeCbor,
+  hashMidgardCekBlobChunk,
   hashMidgardCekEnvironmentNode,
   hashMidgardCekTermNode,
   hashMidgardCekValueNode,
@@ -8,11 +9,11 @@ import {
   MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT,
   MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
   MIDGARD_CEK_EMPTY_SEQUENCE_ROOT,
-  MIDGARD_CEK_MAX_BUILTIN_TAG,
+  MIDGARD_CEK_MAX_RESOLVED_BUILTIN_TAG,
+  midgardBlake2b,
   type MidgardCekMachineState,
   type MidgardCekValueNode,
 } from "@al-ft/midgard-core";
-import { blake2b } from "@noble/hashes/blake2.js";
 
 import {
   type Bytes,
@@ -20,6 +21,7 @@ import {
   MACHINE_STEP_MEMORY,
   MAP_CONVERSION_CONTROL_DOMAIN,
   type MidgardCekEnvironmentSummary,
+  MidgardCekErrorCodes,
   type MidgardCekMapConversionControl,
   sameBytes,
   UINT32_MAX,
@@ -96,7 +98,7 @@ export const hashMidgardCekMapConversionControl = (
     throw new Error("invalid V1 CEK map-conversion control");
   }
   return Buffer.from(
-    blake2b(
+    midgardBlake2b(
       Buffer.concat([
         MAP_CONVERSION_CONTROL_DOMAIN,
         encodeMidgardCekMapConversionControl(control),
@@ -171,8 +173,34 @@ export const linkedSequenceTailIsWellFormed = (
 export const valueHash = (value: MidgardCekValueNode): Bytes =>
   hashMidgardCekValueNode(value);
 
-export const isConstant = (value: MidgardCekValueNode): boolean =>
-  value.kind === "constant";
+/** Root of the canonical unit type CBOR `9f03ff`. */
+const MIDGARD_CEK_UNIT_TYPE_ROOT = hashMidgardCekBlobChunk(
+  Uint8Array.of(0x9f, 0x03, 0xff),
+);
+
+/**
+ * The state after returning `value` to an empty continuation. A PlutusV3 or
+ * MidgardV1 script succeeds only by returning the unit constant; any other
+ * constant fails the script, and a non-constant value cannot halt.
+ */
+export const returnEmptySuccessor = (
+  pre: MidgardCekMachineState,
+  value: MidgardCekValueNode,
+): MidgardCekMachineState => {
+  if (value.kind !== "constant") {
+    return errorSuccessor(pre, MidgardCekErrorCodes.NonconstantHalt);
+  }
+  if (!sameBytes(value.typeRoot, MIDGARD_CEK_UNIT_TYPE_ROOT)) {
+    return errorSuccessor(pre, MidgardCekErrorCodes.NonUnitHalt);
+  }
+  return exactState(pre, {
+    mode: "haltSuccess",
+    focusRoot: pre.focusRoot,
+    environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
+    continuationRoot: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
+    auxiliary: 0n,
+  });
+};
 
 export const isLambdaOrBuiltin = (value: MidgardCekValueNode): boolean =>
   value.kind === "lambda" || value.kind === "builtin";
@@ -211,7 +239,7 @@ export const environmentSummaryMatches = (
 };
 
 export const midgardCekBuiltinForceCount = (tag: bigint): bigint => {
-  if (tag < 0n || tag > MIDGARD_CEK_MAX_BUILTIN_TAG) {
+  if (tag < 0n || tag > MIDGARD_CEK_MAX_RESOLVED_BUILTIN_TAG) {
     throw new RangeError("CEK builtin tag is outside the V1 table");
   }
   if (tag === 29n || tag === 30n || tag === 31n) return 2n;
@@ -222,7 +250,7 @@ export const midgardCekBuiltinForceCount = (tag: bigint): bigint => {
 };
 
 export const midgardCekBuiltinArgumentCount = (tag: bigint): bigint => {
-  if (tag < 0n || tag > MIDGARD_CEK_MAX_BUILTIN_TAG) {
+  if (tag < 0n || tag > MIDGARD_CEK_MAX_RESOLVED_BUILTIN_TAG) {
     throw new RangeError("CEK builtin tag is outside the V1 table");
   }
   if (tag === 36n) return 6n;
@@ -247,11 +275,11 @@ export const midgardCekBuiltinArgumentCount = (tag: bigint): bigint => {
       54n,
       56n,
       57n,
-      58n,
+      60n,
       61n,
       63n,
       64n,
-      65n,
+      67n,
       68n,
       69n,
       70n,

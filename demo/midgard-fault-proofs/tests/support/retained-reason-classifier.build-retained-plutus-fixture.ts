@@ -1,8 +1,7 @@
 import {
   computeScriptIntegrityHashForLanguages,
   decodeMidgardNativeTxFullFromCanonicalCbor,
-  encodeMidgardCekProgramMaterialDaValue,
-  encodeMidgardCekProgramMaterialSidecar,
+  encodeCbor,
   encodeMidgardFieldPreimage,
   encodeMidgardRedeemerWitnessItem,
   encodeMidgardTxOutput,
@@ -26,7 +25,6 @@ import {
   GENESIS_HEADER_HASH,
   hashBlockHeader,
 } from "@al-ft/midgard-sdk";
-import { buildMidgardCanonicalCekProgram } from "@al-ft/midgard-validation";
 import { replayValidationMachineEvent } from "@al-ft/midgard-validation/tests/validation-machine-event-replay.trace";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -78,12 +76,9 @@ const buildRetainedPlutusFixture = async (
   flatProgramHex: string,
   options: RetainedPlutusFixtureOptions = {},
 ) => {
-  const program = buildMidgardCanonicalCekProgram(
-    Buffer.from(flatProgramHex, "hex"),
-  );
   const script = {
     language: "PlutusV3" as const,
-    scriptBytes: program.envelopeCbor,
+    scriptBytes: encodeCbor(Buffer.from(flatProgramHex, "hex")),
   };
   const spent = options.ledgerInput?.outRef ?? outRefCbor(0x1d, 0n);
   const value = {
@@ -104,6 +99,7 @@ const buildRetainedPlutusFixture = async (
   const output = encodeMidgardTxOutput({
     address: Buffer.concat([Buffer.from([0x60]), Buffer.alloc(28, 0x11)]),
     value,
+    ...(options.outputReferenceScript === true ? { script_ref: script } : {}),
   });
   const redeemer = encodeMidgardRedeemerWitnessItem({
     purpose: "Spend",
@@ -122,7 +118,10 @@ const buildRetainedPlutusFixture = async (
           validityIntervalStart: options.validityInterval.start,
           validityIntervalEnd: options.validityInterval.end,
         }),
-    scriptWitnesses: [encodeMidgardVersionedScript(script)],
+    scriptWitnesses: [
+      encodeMidgardVersionedScript(script),
+      ...(options.extraScriptWitnesses ?? []),
+    ],
     redeemerWitnesses: [redeemer],
     scriptIntegrityHash: computeScriptIntegrityHashForLanguages(
       midgardFieldCommitment(encodeMidgardFieldPreimage([redeemer])),
@@ -154,7 +153,6 @@ const buildRetainedPlutusFixture = async (
       : { ForcedTransactionEventKey: { tx_order_id: orderKey } };
   const blockEndTimeMs = options.blockEndTimeMs ?? 1_750_000_000_000;
   const blockSlot = options.blockSlot ?? 100n;
-  const material = [...program.material.values()];
   const canonicalTransactionCbor =
     sourceKind === "forced"
       ? forcedTraceBytes(
@@ -174,8 +172,6 @@ const buildRetainedPlutusFixture = async (
         "hex",
       ),
       canonicalTransactionCbor,
-      programMaterialSidecarCbor:
-        encodeMidgardCekProgramMaterialSidecar(material),
       ...(sourceKind === "normal"
         ? { sourceKind: "normal" as const }
         : {
@@ -226,10 +222,6 @@ const buildRetainedPlutusFixture = async (
       sourceKind,
       claim,
     }),
-    programMaterialEntries: material.map((entry) => [
-      Buffer.from(entry.root).toString("hex"),
-      encodeMidgardCekProgramMaterialDaValue(entry).toString("hex"),
-    ]),
     postLedgerEntries:
       (sourceKind === "forced" && claim.verdict === "rejected") ||
       replay.trace.verdict === "rejected"
@@ -242,11 +234,15 @@ const buildRetainedPlutusFixture = async (
   return { block, predecessor, replay, orderKey, transaction };
 };
 
-/** Existing UPLC 1.1.0 lambda(var0) from validation-machine-event-replay.test.ts. */
+/**
+ * The accepting UPLC 1.1.0 program `(lam ctx [(lam _ ()) ctx])` from
+ * validation-machine-event-replay.test.ts. A Plutus V3 script must return
+ * Unit, so the bare identity `(lam ctx ctx)` is not accepted.
+ */
 export const buildRetainedPlutusIdentityFixture = (
   claim: Parameters<typeof placeholderValidationTraceEntries>[0]["claim"],
   options: RetainedPlutusFixtureOptions = {},
-) => buildRetainedPlutusFixture(claim, "010100200101", options);
+) => buildRetainedPlutusFixture(claim, "0101002324980041", options);
 
 /** Exact existing bounded CEK unbound-variable refusal from cek-executor.test.ts. */
 export const buildRetainedPlutusUnboundVariableFixture = (

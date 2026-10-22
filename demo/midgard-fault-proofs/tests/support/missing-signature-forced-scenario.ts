@@ -9,7 +9,6 @@ import {
   ROOT_DOMAINS,
 } from "@al-ft/midgard-sdk";
 import { Data, getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
-import { expect } from "vitest";
 
 import {
   certifyFaultProofFieldCarriage,
@@ -24,11 +23,14 @@ import {
 import { submitMissingSignatureForcedAction } from "../../src/missing-signature/submit-forced.js";
 import { submitMissingSignatureInit } from "../../src/missing-signature/submit-missing-signature-init.js";
 import type { PreparedMissingSignatureWrongfulRejection } from "../../src/missing-signature/wrongful-rejection.js";
-import type { VanRossemFitMeasurement } from "../../src/proof-fit/van-rossem-fit-ledger.js";
 import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.js";
 import { requireComputationThreadToken } from "../../src/step-support.js";
 import { buildCountedRoot } from "../../src/transition-trace/phas.js";
 import { forcedTransactionSubject } from "../../src/workflow/detection-subject.js";
+import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../../src/workflow/own-outputs.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./emulator/emulator-context.js";
 import { captureEmulatorSubmission } from "./emulator/measurement.js";
 import { expectProofFit } from "./emulator/proof-fit.js";
@@ -119,13 +121,13 @@ const commitForcedBlock = async (
  * One block whose single forced leaf rejects `transactionFor(shape)` with
  * `RequiredSignerUnsigned { signerIndex }`, the published step scripts, and
  * the stage runners every missing-signature forced lifecycle drives. Each
- * submission's measurement is appended to `fitMeasurements`.
+ * submission is held to the proof-fit bounds.
  */
 export const setupMissingSignatureForcedScenario = async (
-  fitMeasurements: VanRossemFitMeasurement[],
   shape: Parameters<typeof transactionFor>[0] = {},
   signerIndex = 0n,
 ) => {
+  const ownOutputs = createOwnOutputJournal();
   const harness = await makeMissingSignatureEmulatorHarness();
   const transaction = transactionFor(shape);
   const reason = { RequiredSignerUnsigned: { signer_index: signerIndex } };
@@ -157,7 +159,10 @@ export const setupMissingSignatureForcedScenario = async (
     witnessSetCompact: transaction.witnessSetCompact,
     verifiedWitnessSetHash:
       transaction.transaction.compact.transactionWitnessSetHash.toString("hex"),
-    forcedSource: { header: block.header, membership, direction: 1n },
+    forcedSource: {
+      header: block.header,
+      membership,
+    },
     evidence: {
       subject,
       signerIndex,
@@ -182,14 +187,6 @@ export const setupMissingSignatureForcedScenario = async (
       submit,
     );
     for (const measurement of measurements) {
-      fitMeasurements.push({
-        name: `${expect.getState().currentTestName}:${stage}:${fitMeasurements.length}`,
-        kind: measurement.executionMemory === 0n ? "publication" : "lifecycle",
-        maximumShape: expect.getState().currentTestName!,
-        signedBytes: measurement.completeSignedBytes,
-        memoryUnits: measurement.executionMemory,
-        cpuUnits: measurement.executionSteps,
-      });
       expectProofFit({
         stage,
         measurement,
@@ -236,9 +233,15 @@ export const setupMissingSignatureForcedScenario = async (
       )
     ).nextThreadOutRef;
   const certificates = new Map<number, UTxO>();
-  const action = (threadOutRef: string, index: number, evidence = prepared) =>
+  const action = (
+    threadOutRef: string,
+    index: number,
+    evidence = prepared,
+    carriage: OwnOutputJournal = ownOutputs,
+  ) =>
     record(`step-${index}`, () =>
       submitMissingSignatureForcedAction({
+        ownOutputs: carriage,
         lucid: harness.proverLucid,
         contracts: harness.missingSignature,
         categoryId: harness.category.categoryId,
@@ -254,8 +257,9 @@ export const setupMissingSignatureForcedScenario = async (
     thread: string,
     index: number,
     evidence = prepared,
+    carriage: OwnOutputJournal = ownOutputs,
   ) => {
-    const result = await action(thread, index, evidence);
+    const result = await action(thread, index, evidence, carriage);
     if (result.kind !== "advanced") throw new Error("expected advance");
     return result.nextThreadOutRef;
   };
@@ -306,6 +310,7 @@ export const setupMissingSignatureForcedScenario = async (
           });
     const chunks = await record("field-publication", () =>
       publishFaultProofFieldCarriage({
+        ownOutputs,
         lucid: harness.proverLucid,
         signer: harness.proverSigner,
         planned,
@@ -323,6 +328,7 @@ export const setupMissingSignatureForcedScenario = async (
     );
     const certificate = await record("certify", () =>
       certifyFaultProofFieldCarriage({
+        ownOutputs,
         lucid: harness.proverLucid,
         network,
         signer: harness.proverSigner,

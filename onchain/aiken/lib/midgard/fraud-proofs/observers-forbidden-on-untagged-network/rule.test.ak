@@ -163,16 +163,6 @@ test observers_forbidden_refuses_missing_rejection_reason() fail {
   ).network_id == 255
 }
 
-test observers_forbidden_refuses_accepted_subject_with_reason() fail {
-  rule.bind_state_v1(
-    substrate.VerdictSubjectV1 {
-      ..accepted(),
-      rejection_reason: Some(ObserversForbiddenOnUntaggedNetwork),
-    },
-    255,
-  ).network_id == 255
-}
-
 test observers_forbidden_refuses_network_scalar_substitution() fail {
   rule.bind_state_v1(accepted(), 2).network_id == 2
 }

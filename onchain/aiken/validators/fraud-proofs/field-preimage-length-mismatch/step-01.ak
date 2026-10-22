@@ -61,16 +61,12 @@ validator main(
         )
         expect None = input_state
         expect output_script_hash == accepted_step_02_validator_script_hash
-        let subject = substrate.bind_accepted_subject_v1(verified)
+        let subject = substrate.open_accepted_subject_v1(verified)
         let expected: Data = BoundSource { subject, source_cbor }
         expect output_state_data == expected
         True
       }
-      ct.Continue(RecordForced { direction, input_index, output_index }) -> {
-        expect or {
-            direction == substrate.direction_wrongful_acceptance,
-            direction == substrate.direction_wrongful_rejection,
-          }
+      ct.Continue(RecordForced { input_index, output_index }) -> {
         expect Some(step_datum) = datum
         let Transaction { inputs, outputs, .. } = tx
         let _, _, _, input_state, output_script_hash, output_state_data <- continue(
@@ -84,7 +80,7 @@ validator main(
         )
         expect None = input_state
         expect output_script_hash == forced_step_02_validator_script_hash
-        let expected: Data = PendingForced { direction }
+        let expected: Data = PendingForced
         expect output_state_data == expected
         True
       }

@@ -36,108 +36,21 @@ use midgard/validation_machine_tests/fixtures_phase_a.{
   contains_non_native_script, duplicate_observer_field_carriage,
   empty_v1_transaction, exact_rejection_post, initial_signatures_witness,
   inline_field_carriage, inline_field_door, input_sets_pre,
-  input_sets_scan_witness, next_phase_a_native_state,
-  non_empty_claimed_delta_root, one_step_evidence, phase_a_native_scan_witness,
-  phase_a_native_step_fixture, phase_a_script_preconditions_fixture,
-  resolve_inputs_step_fixture, signatures_scan_witness, signatures_step_fixture,
-  signer_frontier_for_tx, singleton_field_item_chunk_proof,
-  static_rules_delta_root_fixture, submitted_source, v1_program_envelope,
+  input_sets_scan_witness, next_phase_a_native_state, one_step_evidence,
+  phase_a_native_scan_witness, phase_a_native_step_fixture,
+  phase_a_script_preconditions_fixture, resolve_inputs_step_fixture,
+  signatures_scan_witness, signatures_step_fixture, signer_frontier_for_tx,
+  singleton_field_item_chunk_proof, static_rules_step_fixture, submitted_source,
+  v1_plutus_script,
 }
 use midgard/validation_merkle_v1
 use midgard/validation_trace_v1
 
-// POSITIVE CONTROL for the restored capability (GOAL_SPEC §3 invariant 9).
-// This is the governing adversarial case: an operator commits an `Accepted`
-// descriptor -- mandatory for every normal L2 source -- over a transaction that
-// truly rejects, and therefore carries a real, NON-EMPTY claimed delta root.
-// Before the fix no challenger could construct any winning rejection successor
-// from such a pre-state, so a dishonest operator won every dispute by default.
-// The test also pins that the claim is carried forward, not cleared.
-test rejection_is_provable_from_a_non_empty_claimed_delta_root() {
-  let claimed = non_empty_claimed_delta_root()
-  let Pair(pre, work_witness_cbor) = static_rules_delta_root_fixture(
-    False,
-    claimed,
-  )
-  let terminal = exact_rejection_post(
-    pre,
-    rejection_reason_v1.NetworkIdMismatch,
-  )
-  and {
-    claimed != validation_merkle_v1.frontier_commitment(0, []),
-    terminal.ledger_delta_root == claimed,
-    vm_one_step.verify_one_step(
-      pre,
-      vm_machine_types.ValidationOneStepWitnessV1 {
-        work_witness_cbor,
-        claimed_successor: terminal,
-      },
-      inline_field_door(),
-      test_l1_slot_config,
-    ),
-  }
-}
-
-// NEGATIVE CONTROL -- mutation (clearing). The old, deleted production clause
-// demanded exactly this successor shape. It must now be REJECTED, because the
-// claimed delta root is immutable context. This is the control that stops
-// anyone "restoring" the clearing clause, or exempting the field from
-// `immutable_context_matches`, without turning a test red.
-test rejection_successor_that_clears_the_claimed_delta_is_rejected() {
-  let Pair(pre, work_witness_cbor) = static_rules_delta_root_fixture(
-    False,
-    non_empty_claimed_delta_root(),
-  )
-  let cleared_terminal = validation_trace_v1.ValidationMachineStateV1 {
-    ..exact_rejection_post(pre, rejection_reason_v1.NetworkIdMismatch),
-    ledger_delta_root: validation_merkle_v1.frontier_commitment(0, []),
-  }
-  !vm_one_step.verify_one_step(
-    pre,
-    vm_machine_types.ValidationOneStepWitnessV1 {
-      work_witness_cbor,
-      claimed_successor: cleared_terminal,
-    },
-    inline_field_door(),
-    test_l1_slot_config,
-  )
-}
-
-// NEGATIVE CONTROL -- mutation (rewriting). Immutability holds in both
-// directions: the successor may not substitute any other delta root either.
-test rejection_successor_that_rewrites_the_claimed_delta_is_rejected() {
-  let Pair(pre, work_witness_cbor) = static_rules_delta_root_fixture(
-    False,
-    non_empty_claimed_delta_root(),
-  )
-  let rewritten_terminal = validation_trace_v1.ValidationMachineStateV1 {
-    ..exact_rejection_post(pre, rejection_reason_v1.NetworkIdMismatch),
-    ledger_delta_root: h_b,
-  }
-  !vm_one_step.verify_one_step(
-    pre,
-    vm_machine_types.ValidationOneStepWitnessV1 {
-      work_witness_cbor,
-      claimed_successor: rewritten_terminal,
-    },
-    inline_field_door(),
-    test_l1_slot_config,
-  )
-}
-
-// NEGATIVE CONTROL -- valid-block rejection (GOAL_SPEC §3 invariant 9). THE
-// critical control for the delta-root fix: deleting the clearing clause must
-// not have made honest blocks challengeable. Here the transaction satisfies the
-// static ledger rules, so its true one-step is an advance to `InputSets`; a
-// claimed rejection terminal -- otherwise perfectly well-formed, and carrying
-// the claimed delta forward exactly as the now-passing rejection tests do --
-// must still be unprovable.
-test a_valid_static_rules_transition_cannot_be_proven_rejected() {
-  let Pair(pre, work_witness_cbor) = static_rules_delta_root_fixture(
-    True,
-    non_empty_claimed_delta_root(),
-  )
-  !vm_one_step.verify_one_step(
+// POSITIVE CONTROL: a static-rules rejection is provable with the exact
+// rejecting terminal as the successor.
+test a_static_rules_rejection_is_provable() {
+  let Pair(pre, work_witness_cbor) = static_rules_step_fixture(False)
+  vm_one_step.verify_one_step(
     pre,
     vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor,
@@ -151,36 +64,45 @@ test a_valid_static_rules_transition_cannot_be_proven_rejected() {
   )
 }
 
-// The ONE deliberately-empty claimed-delta case. An honest, self-consistent
-// forced-invalid trace built by the TypeScript reference carries
-// `hashMidgardValidationLedgerDeltaV1([]) == frontier_commitment(0, [])` on
-// every state, so an empty claim is spec-legal in exactly this scenario. It is
-// kept as a single labelled case rather than as the framing for the whole
-// rejection surface: as the only framing it hid the defect, because it is the
-// one pre-state in which the deleted clause was satisfiable.
-test an_honest_forced_invalid_trace_may_carry_an_empty_claimed_delta() {
-  let empty_claim = validation_merkle_v1.frontier_commitment(0, [])
-  let Pair(pre, work_witness_cbor) = static_rules_delta_root_fixture(
-    False,
-    empty_claim,
-  )
-  let terminal = exact_rejection_post(
-    pre,
-    rejection_reason_v1.NetworkIdMismatch,
-  )
+// NEGATIVE CONTROL -- mutation. The rejecting terminal may not rewrite the
+// prior ledger root, which is immutable context.
+test rejection_successor_that_rewrites_the_prior_ledger_root_is_rejected() {
+  let Pair(pre, work_witness_cbor) = static_rules_step_fixture(False)
+  let rewritten_terminal = validation_trace_v1.ValidationMachineStateV1 {
+    ..exact_rejection_post(pre, rejection_reason_v1.NetworkIdMismatch),
+    prior_ledger_root: validation_merkle_v1.frontier_commitment(0, []),
+  }
   and {
-    pre.source_kind == validation_trace_v1.Forced,
-    terminal.ledger_delta_root == empty_claim,
-    vm_one_step.verify_one_step(
+    pre.prior_ledger_root != validation_merkle_v1.frontier_commitment(0, []),
+    !vm_one_step.verify_one_step(
       pre,
       vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
-        claimed_successor: terminal,
+        claimed_successor: rewritten_terminal,
       },
       inline_field_door(),
       test_l1_slot_config,
     ),
   }
+}
+
+// NEGATIVE CONTROL -- valid-block rejection. Here the transaction satisfies
+// the static ledger rules, so its true one-step is an advance to `InputSets`;
+// an otherwise well-formed rejecting terminal must be unprovable.
+test a_valid_static_rules_transition_cannot_be_proven_rejected() {
+  let Pair(pre, work_witness_cbor) = static_rules_step_fixture(True)
+  !vm_one_step.verify_one_step(
+    pre,
+    vm_machine_types.ValidationOneStepWitnessV1 {
+      work_witness_cbor,
+      claimed_successor: exact_rejection_post(
+        pre,
+        rejection_reason_v1.NetworkIdMismatch,
+      ),
+    },
+    inline_field_door(),
+    test_l1_slot_config,
+  )
 }
 
 test input_sets_rejects_a_successor_in_the_wrong_phase() {
@@ -470,7 +392,7 @@ test signatures_accepts_an_empty_required_signer_and_witness_set() {
       inputs: [MidgardTxInput { tx_id: h_a, output_index: 0 }],
     },
   }
-  let Pair(pre, work_witness_cbor) = signatures_step_fixture(tx, h_a)
+  let Pair(pre, work_witness_cbor) = signatures_step_fixture(tx)
   let proof_source = submitted_source(tx)
   let signer_frontier = validation_merkle_v1.build_frontier([])
   let required_witness_cbor = signatures_scan_witness(
@@ -616,10 +538,7 @@ test signatures_proves_a_missing_required_signer_is_an_exact_no_op() {
       required_signers: [h_28_a],
     },
   }
-  let Pair(pre, work_witness_cbor) = signatures_step_fixture(
-    tx,
-    validation_trace_v1.hash_ledger_delta(#"80"),
-  )
+  let Pair(pre, work_witness_cbor) = signatures_step_fixture(tx)
   let signer_frontier = validation_merkle_v1.build_frontier([])
   let required_witness_cbor = signatures_scan_witness(
     tx,
@@ -666,6 +585,251 @@ test signatures_proves_a_missing_required_signer_is_an_exact_no_op() {
   }
 }
 
+/// `tx`'s signatures scan at its required-signer stage: `address_count`
+/// address witnesses scanned into `signer_frontier`, `required_seen` of the
+/// `required_count` required signers read. Returns the state and its work
+/// witness.
+fn required_signer_step(
+  tx: MidgardTransaction,
+  address_count: Int,
+  required_count: Int,
+  required_seen: Int,
+  signer_frontier: validation_merkle_v1.BuiltFrontier,
+  first_invalid_witness_index: Int,
+) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
+  let Pair(pre, _) = signatures_step_fixture(tx)
+  let witness_cbor = signatures_scan_witness(
+    tx,
+    1,
+    address_count,
+    required_count,
+    address_count,
+    required_seen,
+    #"",
+    #"",
+    signer_frontier,
+    first_invalid_witness_index,
+  )
+  Pair(
+    validation_trace_v1.ValidationMachineStateV1 {
+      ..pre,
+      program_counter: 5,
+      work_root: validation_trace_v1.hash_work_witness(
+        validation_trace_v1.Signatures,
+        5,
+        witness_cbor,
+      ),
+    },
+    witness_cbor,
+  )
+}
+
+/// The signatures-phase successor of `pre` whose work witness is
+/// `witness_cbor`.
+fn signatures_successor(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness_cbor: ByteArray,
+) -> validation_trace_v1.ValidationMachineStateV1 {
+  validation_trace_v1.ValidationMachineStateV1 {
+    ..pre,
+    program_counter: pre.program_counter + 1,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.Signatures,
+      pre.program_counter + 1,
+      witness_cbor,
+    ),
+  }
+}
+
+/// The required-signer item semantic at `step`, the field `required_signers`
+/// carried inline, claiming `post`.
+fn required_signer_item_holds(
+  step: Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray>,
+  required_signers: List<ByteArray>,
+  proof: vm_machine_types.SignerSetProofV1,
+  post: validation_trace_v1.ValidationMachineStateV1,
+) -> Bool {
+  let Pair(pre, work_witness_cbor) = step
+  vm_signatures.verify_required_signer_item_semantics_v1(
+    pre,
+    vm_machine_types.ValidationOneStepWitnessV1 {
+      work_witness_cbor,
+      claimed_successor: post,
+    },
+    inline_field_door(),
+    inline_field_carriage(required_signers),
+    proof,
+  )
+}
+
+/// A transaction one zero-key address witness signs, requiring
+/// `required_signers`.
+fn zero_key_signed_tx(required_signers: List<ByteArray>) -> MidgardTransaction {
+  let base = empty_v1_transaction()
+  MidgardTransaction {
+    ..base,
+    body: MidgardTransactionBody {
+      ..base.body,
+      inputs: [MidgardTxInput { tx_id: h_a, output_index: 0 }],
+      required_signers,
+    },
+    witness_set: MidgardTransactionWitnessSet {
+      ..base.witness_set,
+      addr_tx_wits: [
+        MidgardAddressWitness {
+          verification_key: zero,
+          signature: zero |> bytearray.concat(zero),
+        },
+      ],
+    },
+  }
+}
+
+test signatures_completes_the_scan_on_a_present_last_required_signer() {
+  let signer_hash = blake2b_224(zero)
+  let tx = zero_key_signed_tx([signer_hash])
+  let frontier = signer_frontier_for_tx(tx)
+  let step = required_signer_step(tx, 1, -1, 0, frontier, -1)
+  let Pair(pre, _) = step
+  let proof = vm_machine_types.SignerMembershipProof {
+    peaks: frontier.peaks,
+    signer_index: 0,
+    siblings: [],
+  }
+  and {
+    required_signer_item_holds(
+      step,
+      [signer_hash],
+      proof,
+      signatures_successor(
+        pre,
+        signatures_scan_witness(tx, 2, 1, 1, 1, 1, #"", #"", frontier, -1),
+      ),
+    ),
+    !required_signer_item_holds(
+      step,
+      [signer_hash],
+      proof,
+      signatures_successor(
+        pre,
+        signatures_scan_witness(tx, 1, 1, 1, 1, 1, #"", #"", frontier, -1),
+      ),
+    ),
+  }
+}
+
+test signatures_rejects_an_invalid_address_signature_after_the_last_required_signer() {
+  let signer_hash = blake2b_224(zero)
+  let tx = zero_key_signed_tx([signer_hash])
+  let frontier = signer_frontier_for_tx(tx)
+  let step = required_signer_step(tx, 1, -1, 0, frontier, 0)
+  let Pair(pre, _) = step
+  let proof = vm_machine_types.SignerMembershipProof {
+    peaks: frontier.peaks,
+    signer_index: 0,
+    siblings: [],
+  }
+  and {
+    required_signer_item_holds(
+      step,
+      [signer_hash],
+      proof,
+      exact_rejection_post(
+        pre,
+        rejection_reason_v1.AddressWitnessSignatureInvalid { witness_index: 0 },
+      ),
+    ),
+    !required_signer_item_holds(
+      step,
+      [signer_hash],
+      proof,
+      signatures_successor(
+        pre,
+        signatures_scan_witness(tx, 2, 1, 1, 1, 1, #"", #"", frontier, 0),
+      ),
+    ),
+  }
+}
+
+test signatures_refuses_a_required_signer_membership_under_other_peaks() {
+  // The required signer is not the one signer, so its membership under a
+  // frontier holding only itself proves nothing about this transaction.
+  let tx = zero_key_signed_tx([h_28_a])
+  let frontier = signer_frontier_for_tx(tx)
+  let forged = validation_merkle_v1.build_frontier(
+    [script_proof_v1.signer_leaf_hash(h_28_a)],
+  )
+  let step = required_signer_step(tx, 1, -1, 0, frontier, -1)
+  let Pair(pre, _) = step
+  !required_signer_item_holds(
+    step,
+    [h_28_a],
+    vm_machine_types.SignerMembershipProof {
+      peaks: forged.peaks,
+      signer_index: 0,
+      siblings: [],
+    },
+    signatures_successor(
+      pre,
+      signatures_scan_witness(tx, 2, 1, 1, 1, 1, #"", #"", frontier, -1),
+    ),
+  )
+}
+
+/// The required-signer item semantic proving `required_signers[required_seen]`
+/// of an unsigned transaction requiring `required_signers` unsigned, with the
+/// control claiming `required_count` required signers.
+fn proves_required_signer_unsigned(
+  required_signers: List<ByteArray>,
+  required_count: Int,
+  required_seen: Int,
+) -> Bool {
+  let base = empty_v1_transaction()
+  let tx = MidgardTransaction {
+    ..base,
+    body: MidgardTransactionBody {
+      ..base.body,
+      inputs: [MidgardTxInput { tx_id: h_a, output_index: 0 }],
+      required_signers,
+    },
+  }
+  let step = required_signer_step(
+    tx,
+    0,
+    required_count,
+    required_seen,
+    validation_merkle_v1.build_frontier([]),
+    -1,
+  )
+  let Pair(pre, _) = step
+  required_signer_item_holds(
+    step,
+    required_signers,
+    vm_machine_types.EmptySignerSetProof { peaks: [] },
+    exact_rejection_post(
+      pre,
+      rejection_reason_v1.RequiredSignerUnsigned { signer_index: required_seen },
+    ),
+  )
+}
+
+test signatures_refuses_a_required_signer_count_other_than_the_field_count() {
+  and {
+    proves_required_signer_unsigned([h_28_a], 1, 0),
+    !proves_required_signer_unsigned([h_28_a], 2, 0),
+  }
+}
+
+// Each twin of the first conjunct above, reading an item the field does not
+// hold.
+test signatures_refuses_a_required_signer_index_past_its_field() fail {
+  proves_required_signer_unsigned([h_28_a], 1, 1)
+}
+
+test signatures_refuses_a_required_signer_item_of_an_empty_field() fail {
+  proves_required_signer_unsigned([], 0, 0)
+}
+
 test signatures_proves_an_invalid_address_signature_is_an_exact_no_op() {
   let base = empty_v1_transaction()
   let tx = MidgardTransaction {
@@ -684,10 +848,7 @@ test signatures_proves_an_invalid_address_signature_is_an_exact_no_op() {
       ],
     },
   }
-  let Pair(pre, work_witness_cbor) = signatures_step_fixture(
-    tx,
-    validation_trace_v1.hash_ledger_delta(#"80"),
-  )
+  let Pair(pre, work_witness_cbor) = signatures_step_fixture(tx)
   let address_witness = MidgardAddressWitness {
     verification_key: zero,
     signature: zero |> bytearray.concat(zero),
@@ -763,7 +924,7 @@ test phase_a_native_scripts_evaluates_a_valid_timelock_on_l1() {
       ],
     },
   }
-  let Pair(pre, work_witness_cbor) = phase_a_native_step_fixture(tx, h_a)
+  let Pair(pre, work_witness_cbor) = phase_a_native_step_fixture(tx)
   let item_cbor = encode_midgard_versioned_script(
     MidgardVersionedScript {
       language: NativeCardanoScript,
@@ -919,10 +1080,7 @@ test phase_a_native_scripts_resolves_a_nested_signature_one_step_at_a_time() {
       script_tx_wits: [script],
     },
   }
-  let Pair(pre, _initial_work_witness_cbor) = phase_a_native_step_fixture(
-    tx,
-    h_a,
-  )
+  let Pair(pre, _initial_work_witness_cbor) = phase_a_native_step_fixture(tx)
   let item_cbor = encode_midgard_versioned_script(script)
   let chunk_proof = singleton_field_item_chunk_proof(6, item_cbor)
   let payload_offset = bytearray.length(item_cbor) - bytearray.length(
@@ -1119,10 +1277,7 @@ test phase_a_native_scripts_proves_an_unsatisfied_script_is_an_exact_no_op() {
       ],
     },
   }
-  let Pair(pre, work_witness_cbor) = phase_a_native_step_fixture(
-    tx,
-    validation_trace_v1.hash_ledger_delta(#"80"),
-  )
+  let Pair(pre, work_witness_cbor) = phase_a_native_step_fixture(tx)
   let item_cbor = encode_midgard_versioned_script(
     MidgardVersionedScript {
       language: NativeCardanoScript,
@@ -1186,8 +1341,8 @@ test phase_a_native_scripts_proves_an_unsatisfied_script_is_an_exact_no_op() {
   let rejection_code = rejection_reason_v1.WitnessNativeScriptFalse {
     script_index: 0,
   }
-  // An exact rejection also clears the ledger delta to the empty frontier
-  // commitment; `exact_rejection_post` is the canonical successor shape.
+  // An exact rejection ends the machine with the rejected verdict and its
+  // reason's code; `exact_rejection_post` is the canonical successor shape.
   let terminal = exact_rejection_post(finalize_pre, rejection_code)
   and {
     vm_phase_a_native_scripts.verify_phase_a_native_item_semantics_v1(
@@ -1239,10 +1394,7 @@ test phase_a_script_preconditions_advances_an_empty_bundle_to_resolution() {
       inputs: [MidgardTxInput { tx_id: h_a, output_index: 0 }],
     },
   }
-  let Pair(pre, work_witness_cbor) = phase_a_script_preconditions_fixture(
-    tx,
-    h_a,
-  )
+  let Pair(pre, work_witness_cbor) = phase_a_script_preconditions_fixture(tx)
   let proof_source = submitted_source(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
   let post = validation_trace_v1.ValidationMachineStateV1 {
@@ -1307,10 +1459,7 @@ test phase_a_script_preconditions_proves_duplicate_observers_are_a_no_op() {
       required_observers: [h_28_a, h_28_a],
     },
   }
-  let Pair(pre, work_witness_cbor) = phase_a_script_preconditions_fixture(
-    tx,
-    validation_trace_v1.hash_ledger_delta(#"80"),
-  )
+  let Pair(pre, work_witness_cbor) = phase_a_script_preconditions_fixture(tx)
   let proof_source = submitted_source(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
   let next_work_witness_cbor = vm_witness.encode_phase_a_script_preconditions_witness(
@@ -1417,19 +1566,14 @@ test phase_a_script_preconditions_require_integrity_for_plutus_bytes() {
       script_tx_wits: [
         MidgardVersionedScript {
           language: PlutusV3Script,
-          script_bytes: v1_program_envelope(),
+          script_bytes: v1_plutus_script(),
         },
       ],
     },
   }
-  let Pair(pre, work_witness_cbor) = phase_a_script_preconditions_fixture(
-    tx,
-    non_empty_claimed_delta_root(),
-  )
+  let Pair(pre, work_witness_cbor) = phase_a_script_preconditions_fixture(tx)
   let rejection_code = rejection_reason_v1.ScriptIntegrityHashMissing
-  // Canonical exact-rejection successor: it carries the non-empty claimed delta
-  // forward. See the note on
-  // `static_rules_prove_a_network_mismatch_is_an_exact_no_op`.
+  // Canonical exact-rejection successor.
   let terminal = exact_rejection_post(pre, rejection_code)
   vm_one_step.verify_one_step_evidence(
     pre,
@@ -1583,9 +1727,7 @@ test resolve_inputs_proves_non_membership_as_an_exact_no_op() {
     source_kind: 0,
     input_index: -1,
   }
-  // Canonical exact-rejection successor: it carries the non-empty claimed delta
-  // (supplied by `resolve_inputs_step_fixture`) forward. See the note on
-  // `static_rules_prove_a_network_mismatch_is_an_exact_no_op`.
+  // Canonical exact-rejection successor.
   let terminal = exact_rejection_post(pre, rejection_code)
   vm_one_step.verify_one_step_evidence(
     pre,
@@ -1752,7 +1894,7 @@ test signatures_refuses_an_alternative_authentic_first_choice() {
       addr_tx_wits: [first, second],
     },
   }
-  let Pair(pre, work_witness_cbor) = signatures_step_fixture(tx, h_a)
+  let Pair(pre, work_witness_cbor) = signatures_step_fixture(tx)
   let bytes = encode_midgard_address_witness(second)
   let signer_hash = blake2b_224(second.verification_key)
   let frontier = validation_merkle_v1.build_frontier(
@@ -1811,7 +1953,7 @@ test signatures_accepts_the_authentic_minimum_at_reordered_physical_index() {
       addr_tx_wits: [first, second],
     },
   }
-  let Pair(pre, work_witness_cbor) = signatures_step_fixture(tx, h_a)
+  let Pair(pre, work_witness_cbor) = signatures_step_fixture(tx)
   let bytes = encode_midgard_address_witness(second)
   let signer_hash = blake2b_224(second.verification_key)
   let frontier = validation_merkle_v1.build_frontier(
@@ -1867,7 +2009,7 @@ fn signatures_accepts_duplicate_index_boundary(count: Int, index: Int) -> Bool {
       addr_tx_wits: addresses,
     },
   }
-  let Pair(initial, _) = signatures_step_fixture(tx, h_a)
+  let Pair(initial, _) = signatures_step_fixture(tx)
   let bytes = encode_midgard_address_witness(address)
   let signer_hash = blake2b_224(address.verification_key)
   let prefix = signer_hash |> bytearray.concat(bytes)
@@ -1934,4 +2076,143 @@ test signatures_preserves_duplicate_index_cbor_boundary_24() {
 
 test signatures_preserves_duplicate_index_cbor_boundary_256() {
   signatures_accepts_duplicate_index_boundary(318, 256)
+}
+
+fn signer_scan_step(
+  tx: MidgardTransaction,
+  stage: Int,
+  address_count: Int,
+  required_count: Int,
+  address_seen: Int,
+  required_seen: Int,
+  signer_frontier: validation_merkle_v1.BuiltFrontier,
+  first_invalid_witness_index: Int,
+) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
+  let Pair(pre, _) = signatures_step_fixture(tx)
+  let witness_cbor = signatures_scan_witness(
+    tx,
+    stage,
+    address_count,
+    required_count,
+    address_seen,
+    required_seen,
+    #"",
+    #"",
+    signer_frontier,
+    first_invalid_witness_index,
+  )
+  Pair(
+    validation_trace_v1.ValidationMachineStateV1 {
+      ..pre,
+      program_counter: 5,
+      work_root: validation_trace_v1.hash_work_witness(
+        validation_trace_v1.Signatures,
+        5,
+        witness_cbor,
+      ),
+    },
+    witness_cbor,
+  )
+}
+
+test signatures_required_first_of_two_present_continues_at_stage_one() {
+  let signer_hash = blake2b_224(zero)
+  let tx = zero_key_signed_tx([signer_hash, signer_hash])
+  let frontier = signer_frontier_for_tx(tx)
+  let step = required_signer_step(tx, 1, -1, 0, frontier, -1)
+  let Pair(pre, _) = step
+  let proof = vm_machine_types.SignerMembershipProof {
+    peaks: frontier.peaks,
+    signer_index: 0,
+    siblings: [],
+  }
+  and {
+    required_signer_item_holds(
+      step,
+      [signer_hash, signer_hash],
+      proof,
+      signatures_successor(
+        pre,
+        signatures_scan_witness(tx, 1, 1, 2, 1, 1, #"", #"", frontier, -1),
+      ),
+    ),
+    !required_signer_item_holds(
+      step,
+      [signer_hash, signer_hash],
+      proof,
+      signatures_successor(
+        pre,
+        signatures_scan_witness(tx, 2, 1, 2, 1, 1, #"", #"", frontier, -1),
+      ),
+    ),
+  }
+}
+
+test signatures_required_invalid_address_signature_waits_for_the_last_required_signer() {
+  let signer_hash = blake2b_224(zero)
+  let tx = zero_key_signed_tx([signer_hash, signer_hash])
+  let frontier = signer_frontier_for_tx(tx)
+  let step = required_signer_step(tx, 1, -1, 0, frontier, 0)
+  let Pair(pre, _) = step
+  let proof = vm_machine_types.SignerMembershipProof {
+    peaks: frontier.peaks,
+    signer_index: 0,
+    siblings: [],
+  }
+  and {
+    required_signer_item_holds(
+      step,
+      [signer_hash, signer_hash],
+      proof,
+      signatures_successor(
+        pre,
+        signatures_scan_witness(tx, 1, 1, 2, 1, 1, #"", #"", frontier, 0),
+      ),
+    ),
+    !required_signer_item_holds(
+      step,
+      [signer_hash, signer_hash],
+      proof,
+      exact_rejection_post(
+        pre,
+        rejection_reason_v1.AddressWitnessSignatureInvalid { witness_index: 0 },
+      ),
+    ),
+  }
+}
+
+test signatures_required_unsigned_second_required_signer_names_its_index() {
+  proves_required_signer_unsigned([h_28_a, h_28_a], 2, 1)
+}
+
+test signatures_required_item_refused_before_the_address_scan() {
+  let tx = zero_key_signed_tx([h_28_a])
+  let empty = validation_merkle_v1.build_frontier([])
+  let step = signer_scan_step(tx, 0, -1, -1, 0, 0, empty, -1)
+  let Pair(pre, _) = step
+  !required_signer_item_holds(
+    step,
+    [h_28_a],
+    vm_machine_types.EmptySignerSetProof { peaks: [] },
+    exact_rejection_post(
+      pre,
+      rejection_reason_v1.RequiredSignerUnsigned { signer_index: 0 },
+    ),
+  )
+}
+
+test signatures_required_item_refused_on_an_unbound_control() {
+  let tx = zero_key_signed_tx([h_28_a])
+  let empty = validation_merkle_v1.build_frontier([])
+  let step = signer_scan_step(tx, 1, 1, -1, 0, 0, empty, -1)
+  let Pair(pre, _) = step
+  !required_signer_item_holds(
+    step,
+    [h_28_a],
+    vm_machine_types.EmptySignerSetProof { peaks: [] },
+    exact_rejection_post(
+      pre,
+      rejection_reason_v1.RequiredSignerUnsigned { signer_index: 0 },
+    ),
+  )
 }

@@ -11,7 +11,7 @@ import { detectMintDeclaredAssetLimitForcedReplay } from "../mint-declared-asset
 import { detectNativeScriptDecodingReplay } from "../native-script-decoding/replay.js";
 import { detectNativeScriptInvalidForcedReplay } from "../native-script-invalid/forced.js";
 import { detectObserversForbiddenForcedReplay } from "../observers-forbidden-on-untagged-network/replay.js";
-import { detectOutputReferenceScriptDecodingCanonicalViolations } from "../output-reference-script-decoding/output-reference-script-decoding.js";
+import { detectOutputReferenceScriptDecodingCanonicalViolations } from "../output-reference-script-decoding/output-reference-script-decoding.canonical-findings.js";
 import { detectProtectedOutputSignerMissingCompleteReplay } from "../protected-output-signer-missing/protected-output-signer-missing.js";
 import { protectedOutputSignerEvidenceIdentity } from "../protected-output-signer-missing/workflow.js";
 import {
@@ -184,7 +184,10 @@ export const FIELD_ITEM_WIDTH_ILLEGAL_COMPLETE_CANONICAL_REPLAY =
     detectFieldItemWidthIllegalCompleteReplay(evidence),
   );
 
-/** Complete accepted and forced scan for malformed field-6 native scripts. */
+/**
+ * Complete accepted and forced scan for malformed field-6 native scripts and
+ * undecodable field-6 Plutus scripts.
+ */
 export const WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY =
   completeReplayer(["witnessScriptDecoding"], async (evidence) =>
     detectWitnessScriptDecodingCompleteReplay(evidence),
@@ -303,7 +306,10 @@ export const OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_COMPLETE_CANONICAL_REPLAY =
     detectObserversForbiddenForcedReplay(evidence),
   );
 
-/** Complete accepted and forced scan for malformed output reference scripts. */
+/**
+ * Complete accepted and forced scan for malformed native and undecodable
+ * Plutus output reference scripts.
+ */
 export const OUTPUT_REFERENCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY =
   completeReplayer(["outputReferenceScriptDecoding"], async (evidence) =>
     detectOutputReferenceScriptDecodingCanonicalViolations(evidence),

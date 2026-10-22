@@ -2,6 +2,7 @@ import "./complete-replay.resolved-output-non-canonical-complete-canonical-repla
 
 import { createHash } from "node:crypto";
 
+import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   type FraudProofCatalogueCategoryName,
@@ -16,6 +17,12 @@ import { detectRedeemerCanonicityCompleteReplay } from "../redeemer-canonicity/a
 import { type TransitionTraceL1Events } from "../transition-trace/l1-events.js";
 import { transitionTraceCanonicalDetections } from "../transition-trace/replay-authority.canonical-detections.js";
 import { replayTransitionTraceFromRetainedHistory } from "../transition-trace/replay-authority.js";
+import {
+  createValidationTraceReplayHolds,
+  isValidationTraceReplayHeldError,
+  type ValidationTraceReplayHeldError,
+  type ValidationTraceReplayHolds,
+} from "../validation-trace-dispute/replay-hold.js";
 import { detectValueConservationFaults } from "../value-not-preserved/replay.js";
 import { detectWithdrawalMistagReplay } from "../withdrawal-mistag/replay.js";
 import { type CanonicalViolationDetection } from "./classification.js";
@@ -26,6 +33,7 @@ import {
   detectNetworkIds,
   replayDecisionJson,
 } from "./complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { detectPlutusExecutionFailures } from "./complete-replay.detect-accepted-transaction-faults.js";
 import {
   completeReplayer,
   detectWithdrawnReferenceInputs,
@@ -40,7 +48,7 @@ import {
   type CompleteCanonicalReplayDecision,
   replayContextIdentity,
 } from "./complete-replay.replay-context-identity.js";
-import { subjectOf } from "./detection-subject.js";
+import { detectionEventOrder, subjectOf } from "./detection-subject.js";
 import {
   assertReplayPrerequisiteCovered,
   CanonicalReplayPrerequisiteError,
@@ -121,6 +129,7 @@ export const createCompleteCanonicalReplayUnion = (
     async (evidence, context) => {
       const detections: CanonicalViolationDetection[] = [];
       const prerequisites: CanonicalReplayPrerequisiteError[] = [];
+      const held: ValidationTraceReplayHeldError[] = [];
       for (const member of members) {
         try {
           const decision = await member.replay(evidence, context);
@@ -133,6 +142,11 @@ export const createCompleteCanonicalReplayUnion = (
             }),
           );
         } catch (error) {
+          if (isValidationTraceReplayHeldError(error)) {
+            held.push(error);
+            detections.push(...error.detections);
+            continue;
+          }
           if (!(error instanceof CanonicalReplayPrerequisiteError)) throw error;
           prerequisites.push(error);
           detections.push(...error.detections);
@@ -141,6 +155,19 @@ export const createCompleteCanonicalReplayUnion = (
       for (const prerequisite of prerequisites)
         for (const failure of prerequisite.failures)
           assertReplayPrerequisiteCovered(evidence, failure, detections);
+      if (held.length === 0) return detections;
+      // Held events can only add findings at or after their own order, so
+      // the block is decided without them only by a finding strictly before
+      // every held event.
+      const earliest = Math.min(
+        ...detections.map((detection) =>
+          detectionEventOrder(evidence.reconstruction, detection),
+        ),
+      );
+      const blocking = held.find(
+        ({ heldFromOrder }) => earliest >= heldFromOrder,
+      );
+      if (blocking !== undefined) throw blocking;
       return detections;
     },
   );
@@ -283,3 +310,23 @@ export const MINT_ITEM_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY =
   completeReplayer(["mintItemNonCanonical"], async (evidence) =>
     detectMintItemNonCanonicalCompleteReplay(evidence),
   );
+
+/** Complete script re-execution scan for the validation-trace dispute. The
+ * deployment's slot mapping places each transaction's validity range in the
+ * script context. The replayer keeps its held events across replays, so a
+ * held event is retried only after its backoff; each replay is one pass of
+ * its holds. `onStuck` alerts once when an event becomes stuck. Replayers
+ * given the same `holds` share them, so one built per run keeps the backoff
+ * of the runs before it. */
+export const createValidationTraceDisputeCompleteCanonicalReplay = (
+  l1SlotConfig: L1SlotConfig,
+  options: Parameters<typeof createValidationTraceReplayHolds>[0] &
+    Readonly<{ holds?: ValidationTraceReplayHolds }> = {},
+): CompleteCanonicalReplay => {
+  const holds = options.holds ?? createValidationTraceReplayHolds(options);
+  return completeReplayer(
+    ["validationTraceDispute"],
+    async (evidence, context) =>
+      detectPlutusExecutionFailures({ evidence, context, l1SlotConfig, holds }),
+  );
+};

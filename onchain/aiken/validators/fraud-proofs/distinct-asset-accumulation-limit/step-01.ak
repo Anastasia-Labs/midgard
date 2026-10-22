@@ -44,7 +44,7 @@ validator main(
           tx,
         )
         let expected: Data = bind_coordinate_v1(
-          substrate.bind_accepted_subject_v1(verified),
+          substrate.open_accepted_subject_v1(verified),
           header.validation_traces_root,
           header.validation_trace_count,
           coordinate,
@@ -55,13 +55,7 @@ validator main(
         }
       }
       ct.Continue(Args {
-        source: ForcedSource {
-          input_index,
-          output_index,
-          header,
-          membership,
-          direction,
-        },
+        source: ForcedSource { input_index, output_index, header, membership },
         coordinate,
       }) -> {
         let Transaction { inputs, outputs, .. } = tx
@@ -75,11 +69,10 @@ validator main(
           inputs,
           outputs,
         )
-        let subject = substrate.bind_forced_subject_to_thread_v1(
+        let Pair(subject, _) = substrate.open_forced_subject_v1(
           thread_name,
           header,
           membership,
-          direction,
         )
         // The substrate already verified the immutable source and its body ID.
         let expected: Data = bind_coordinate_v1(

@@ -7,7 +7,9 @@ use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/native_script_scan_v1
 use midgard/rejection_reason_v1.{
   OutputReferenceScriptMalformed, OutputReferenceScriptNodeLimit,
+  PlutusScriptUndecodable,
 }
+use midgard/script_decode_v1.{Decoded, ScriptDecodeRecordV1}
 
 const tx_id =
   #"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
@@ -272,7 +274,7 @@ test empty_native_payload_closes_malformed_at_bind() {
   let output = canonical_output_with_script(fixture.empty_payload_item_v1())
   let state = descriptor_state_for(output)
   expect state.outcome == rule.output_canonical
-  let scan = rule.bind_reference_script_v1(state, output, scan_hash)
+  let scan = rule.bind_reference_script_v1(state, output, scan_hash, None)
   and {
     scan.result_class == rule.result_malformed,
     scan.control_cbor == #"",
@@ -286,7 +288,7 @@ test signature_native_payload_binds_pending() {
   let output = canonical_output_with_script(item)
   let state = descriptor_state_for(output)
   expect state.outcome == rule.output_canonical
-  let scan = rule.bind_reference_script_v1(state, output, scan_hash)
+  let scan = rule.bind_reference_script_v1(state, output, scan_hash, None)
   let expected = native_script_scan_v1.encode_structure_control_v1(
     native_script_scan_v1.initial_structure_control_v1(4, 32),
   )
@@ -308,6 +310,7 @@ test plutus_payload_closes_no_fault_at_bind() {
     descriptor_state_for(output),
     output,
     scan_hash,
+    Some(fixture.plutus_script_record_v1(0)),
   )
   scan.result_class == rule.result_no_fault && scan.control_cbor == #""
 }
@@ -319,6 +322,7 @@ test window_refuses_substituted_chunk_coordinate() fail {
     descriptor_state_for(output),
     output,
     scan_hash,
+    None,
   )
   let proof = fixture.single_chunk_proof_v1(0, item)
   let substituted = bounded_item_v1.ChunkProofV1 { ..proof, item_index: 1 }
@@ -338,6 +342,7 @@ test window_admits_the_exact_chunk() {
     descriptor_state_for(output),
     output,
     scan_hash,
+    None,
   )
   let window = rule.authenticated_window_v1(
     scan,
@@ -366,4 +371,120 @@ test tampered_checkpoint_is_not_authentic() {
       rule.ReferenceScriptScanStateV1 { ..state, control_cbor: #"00" },
     ),
   }
+}
+
+// ## Plutus reference scripts: the decode record
+
+/// The closed state of a Plutus reference script at output 0 under `subject`
+/// and `record`.
+fn plutus_closed(
+  subject: substrate.VerdictSubjectV1,
+  record: Option<ScriptDecodeRecordV1>,
+) -> rule.ReferenceScriptScanStateV1 {
+  let output = canonical_output_with_script(fixture.plutus_script_item_v1())
+  let state = descriptor_state_for(output)
+  let scan = rule.bind_reference_script_v1(
+    rule.OutputDescriptorStateV1 {
+      ..state,
+      bound: rule.bind_output_v1(subject, 0),
+    },
+    output,
+    scan_hash,
+    record,
+  )
+  rule.closed_scan_state_v1(scan, scan.result_class, final_hash)
+}
+
+fn undecodable(class: Int) -> substrate.VerdictSubjectV1 {
+  substrate.VerdictSubjectV1 {
+    ..forced_subject(0),
+    rejection_reason: Some(
+      PlutusScriptUndecodable { item_kind: 1, item_index: 0, class },
+    ),
+  }
+}
+
+test plutus_reference_script_closes_with_its_decode_record_class() {
+  and {
+    plutus_closed(accepted_subject(), Some(fixture.plutus_script_record_v1(0))).result_class == rule.result_no_fault,
+    plutus_closed(accepted_subject(), Some(fixture.plutus_script_record_v1(9))).result_class == rule.result_plutus_refused_base + 9,
+  }
+}
+
+test plutus_refusal_convicts_an_accepted_output() {
+  and {
+    rule.terminal_contradiction_v1(
+      plutus_closed(
+        accepted_subject(),
+        Some(fixture.plutus_script_record_v1(16)),
+      ),
+    ),
+    !rule.terminal_contradiction_v1(
+      plutus_closed(
+        accepted_subject(),
+        Some(fixture.plutus_script_record_v1(0)),
+      ),
+    ),
+  }
+}
+
+test plutus_undecodable_rejection_convicts_only_a_different_result() {
+  and {
+    rule.bind_output_v1(undecodable(16), 0).accused_class == rule.result_plutus_refused_base + 16,
+    !rule.terminal_contradiction_v1(
+      plutus_closed(undecodable(16), Some(fixture.plutus_script_record_v1(16))),
+    ),
+    rule.terminal_contradiction_v1(
+      plutus_closed(undecodable(16), Some(fixture.plutus_script_record_v1(1))),
+    ),
+    rule.terminal_contradiction_v1(
+      plutus_closed(undecodable(16), Some(fixture.plutus_script_record_v1(0))),
+    ),
+  }
+}
+
+test refuses_a_plutus_reference_script_without_its_record() fail {
+  expect _ = plutus_closed(accepted_subject(), None)
+  True
+}
+
+test refuses_another_scripts_reference_record() fail {
+  let other = Decoded {
+    script_hash: final_hash,
+    language: 3,
+    program_version: 1,
+    term_root: #"",
+    phase2_class: 0,
+  }
+  expect _ = plutus_closed(accepted_subject(), Some(other))
+  True
+}
+
+test refuses_a_record_for_a_native_reference_script() fail {
+  let output = canonical_output_with_script(fixture.signature_script_item_v1())
+  expect _ = rule.bind_reference_script_v1(
+    descriptor_state_for(output),
+    output,
+    scan_hash,
+    Some(fixture.plutus_script_record_v1(0)),
+  )
+  True
+}
+
+test refuses_a_witness_item_kind() fail {
+  expect _ = rule.bind_output_v1(
+    substrate.VerdictSubjectV1 {
+      ..forced_subject(0),
+      rejection_reason: Some(
+        PlutusScriptUndecodable { item_kind: 0, item_index: 0, class: 1 },
+      ),
+    },
+    0,
+  )
+  True
+}
+
+test refuses_an_undecodable_output_coordinate_substitution() fail {
+  expect _ = rule.bind_output_v1(undecodable(1), 1)
+  True
 }

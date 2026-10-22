@@ -6,7 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { beginWorkflowFundingReservationAction } from "@al-ft/midgard-fault-proofs";
-import { expect, it, vi } from "vitest";
+import { expect, it } from "vitest";
 
 import { unsafeOpenWatcherSqliteProverFundingReservationStoreForTest } from "../../src/funding/sqlite-prover-funding-reservation-store.js";
 import { watcherCanonicalJson } from "../../src/storage/durable-store.js";
@@ -16,9 +16,7 @@ import { expiredNotFound } from "./prover-funding-recovery.retirement-fixture.js
 it("opens the existing production funding permit read-only under a legacy overlap and restores authority only after retirement", async () => {
   const test = await setup();
   test.useUnspentPendingInputs();
-  vi.mocked(test.adapter.reconcile).mockResolvedValue(
-    expiredNotFound(test.transactionHash),
-  );
+  test.chain.mockResolvedValue(expiredNotFound(test.transactionHash));
   await test.run(await test.recover());
   const later = {
     ...test.plan,
@@ -90,7 +88,7 @@ it("opens the existing production funding permit read-only under a legacy overla
   admitted.controller.restrictToReconciliation(
     "recover old funding promise first",
   );
-  vi.mocked(test.adapter.reconcile).mockResolvedValue({
+  test.chain.mockResolvedValue({
     kind: "unknown",
     reason: "canonical evidence unavailable",
   });
@@ -101,9 +99,7 @@ it("opens the existing production funding permit read-only under a legacy overla
       ({ reservationId }) => reservationId === later.reservationId,
     ),
   ).toEqual(laterBefore);
-  vi.mocked(test.adapter.reconcile).mockResolvedValue(
-    expiredNotFound(test.transactionHash),
-  );
+  test.chain.mockResolvedValue(expiredNotFound(test.transactionHash));
   // An unresolved read backs the attempt off; it is read again once due.
   await test.run(journal, () => new Date(Date.now() + 60_000));
   expect(await held()).toEqual([false, false]);

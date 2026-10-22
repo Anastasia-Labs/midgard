@@ -5,15 +5,14 @@ import { expect } from "vitest";
 
 import {
   inline,
-  type Layout,
   type Measurement,
   nodeOf,
-  refIndex,
 } from "./availability-challenge-pool-slash-lifecycle.submit-built.js";
 import { TEST_AVAILABILITY_PARAMETERS as parameters } from "./helpers/availability-challenge.js";
 import {
   AVAILABILITY_PROFILE,
   type AvailabilityFixture,
+  referenceAt,
 } from "./helpers/availability-challenge-emulator.js";
 
 /**
@@ -52,17 +51,13 @@ export const buildEmptyBlockMerge = async (
     ) as SDK.LinkedListNodeView["data"],
   });
   const mergeYield = f.reference("state-queue merge withdrawal");
-  const layout: Layout = {
-    inputs: [root, queue],
-    policies: [f.contracts.stateQueue.policyId],
-    references: [
-      f.hubOracleRefInput,
-      f.correctionLockUtxo,
-      mergeYield,
-      f.reference("state-queue spending"),
-      f.reference("state-queue minting"),
-    ],
-  };
+  const references = [
+    f.hubOracleRefInput,
+    f.correctionLockUtxo,
+    mergeYield,
+    f.reference("state-queue spending"),
+    f.reference("state-queue minting"),
+  ];
   const tx = f.lucid
     .newTx()
     .validFrom(f.emulator.now())
@@ -70,14 +65,13 @@ export const buildEmptyBlockMerge = async (
       [root, queue],
       Data.to("LinkedListMutation", SDK.StateQueueSpendRedeemer),
     )
-    .readFrom([...layout.references])
+    .readFrom(references)
     .pay.ToContract(root.address, inline(continuedDatum), root.assets)
-    .mintAssets(
-      { [f.queueUnit]: -1n },
+    .mintAssets({ [f.queueUnit]: -1n }, (ctx) =>
       Data.to(
         {
           MergeToConfirmedStateV1: {
-            yield_to_ref_input_index: refIndex(layout, mergeYield),
+            yield_to_ref_input_index: referenceAt(ctx, mergeYield),
             header_node_key: f.target.headerHash,
             confirmed_state_input_outref: SDK.outputReferenceFromUTxO(root),
             confirmed_state_output_index: 0n,

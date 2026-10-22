@@ -147,11 +147,11 @@ describe("fieldPreimageLengthMismatch V1", () => {
     const dispatch = {
       Continue: [
         {
-          RecordForced: { direction: 1n, input_index: 0n, output_index: 1n },
+          RecordForced: { input_index: 0n, output_index: 1n },
         },
       ],
     };
-    const pending = { PendingForced: { direction: 1n } };
+    const pending = "PendingForced";
     const authenticate = {
       Continue: [
         {
@@ -179,10 +179,10 @@ describe("fieldPreimageLengthMismatch V1", () => {
     };
     expect(
       Data.to(dispatch as never, FieldPreimageLengthStep01RedeemerSchema),
-    ).toBe("d87a9fd87a9f010001ffff");
+    ).toBe("d87a9fd87a9f0001ffff");
     expect(
       Data.to(pending as never, FieldPreimageLengthStep02StateSchema),
-    ).toBe("d87a9f01ff");
+    ).toBe("d87a80");
     expect(
       Data.to(authenticate as never, FieldPreimageLengthStep02RedeemerSchema),
     ).toBe("d87a9fd8799f0001d8799f02d8799f4180ffffffff");

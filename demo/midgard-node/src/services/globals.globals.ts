@@ -3,6 +3,10 @@ import { Deferred, Effect, Ref, SubscriptionRef } from "effect";
 
 import type { OperatorMembershipState } from "../l1-operator-set/membership.js";
 import type { PublishedOperatorSet } from "../l1-operator-set/snapshot.js";
+import {
+  initialValidationTraceDefenseHealth,
+  type ValidationTraceDefenseHealth,
+} from "../validation-trace-defense/health.js";
 import type { CommitPlanningSnapshot } from "../workers/commit-planning-notice.js";
 import { SerializedStateQueueUTxO } from "../workers/utils/commit-block-header.js";
 import type { CommitDaFramePressureSnapshot } from "../workers/utils/commit-block-planner.commit-da-frame-notice.js";
@@ -220,6 +224,16 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       never,
       TransientBudgetExhaustedError
     >();
+    // Commit-worker attempts since the last successful commit that failed on
+    // a local fault (this process's Ed25519 verifier fault, or a withdrawal
+    // row it cannot classify), whichever row each named; only a successful
+    // commit resets it. `row` is the latest such row, kept for the exit's
+    // detail. Bounded by `LOCAL_FAULT_RUN_LIMIT`
+    // (`block-commitment.worker-readiness.ts`).
+    const COMMIT_WORKER_LOCAL_FAULT_RUNS = yield* Ref.make<{
+      readonly runs: number;
+      readonly row: string | undefined;
+    }>({ runs: 0, row: undefined });
     // Set by the commitment fiber each tick: true while it found no pending
     // tx or user-event work, so the confirmation fiber may back off.
     const COMMIT_PIPELINE_IDLE = yield* Ref.make<boolean>(false);
@@ -247,6 +261,10 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
         consecutiveFailures: 0,
         oldestUnattestedHeader: null,
       });
+    const VALIDATION_TRACE_DEFENSE_HEALTH =
+      yield* Ref.make<ValidationTraceDefenseHealth>(
+        initialValidationTraceDefenseHealth(now),
+      );
 
     return {
       BLOCKS_IN_QUEUE,
@@ -283,9 +301,11 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       HEARTBEAT_MERGE,
       HEARTBEAT_TX_QUEUE_PROCESSOR,
       ATTESTATION_TIMEOUT_CORRECTION_HEALTH,
+      VALIDATION_TRACE_DEFENSE_HEALTH,
       L1_CONTROL_PLANE_ACTIVITY,
       LIVENESS_REASONS,
       TRANSIENT_EXHAUSTION,
+      COMMIT_WORKER_LOCAL_FAULT_RUNS,
       COMMIT_PIPELINE_IDLE,
       COMMIT_PIPELINE_BACKLOG,
       IDLE_BACKOFF,

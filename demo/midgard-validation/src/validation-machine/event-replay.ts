@@ -1,8 +1,10 @@
 import {
   computeMidgardNativeTxId,
   decodeMidgardNativeTxFullFromCanonicalCbor,
-  encodeMidgardCekProgramMaterialSidecar,
+  findLedgerSignatureVerifierUnavailable,
   isMidgardConsensusProfile,
+  ledgerEd25519SignatureReady,
+  ledgerSignatureVerifierUnavailable,
   MIDGARD_CONSENSUS_PROFILE,
   type MidgardConsensusProfile,
 } from "@al-ft/midgard-core";
@@ -11,7 +13,7 @@ import {
   type L1SlotConfig,
   parseL1SlotConfig,
 } from "@al-ft/midgard-core/l1-slot-config";
-import { Effect } from "effect";
+import { Cause, Effect } from "effect";
 
 import { validatePhaseASingle } from "../phase-a.js";
 import {
@@ -30,14 +32,13 @@ import { type ValidationMachineLedgerEntry } from "./ledger-mutation.js";
 export type ValidationVerdictEventInput = Readonly<{
   consensusProfile: MidgardConsensusProfile;
   canonicalTransactionCbor: Buffer;
-  programMaterialSidecarCbor?: Buffer;
   /** Every ledger entry the transaction may resolve, keyed by out-ref. */
   ledgerWitnessEntries: readonly ValidationMachineLedgerEntry[];
   /**
    * The block's clock for validity: its state-queue node's authenticated
    * `block_time`. The trace context's third element also carries this value,
-   * but the on-chain validation claim (`validation_context_is_exact`) requires
-   * that element to equal `header.end_time`. The validation-trace family
+   * but the on-chain validation claim derives that element from `header.end_time`
+   * (`validation_claim_v1.derive_validation_context_cbor`). The validation-trace family
    * (00000006) is excluded in P1; P2 reconciles the context element.
    */
   blockTimeMs: number;
@@ -79,11 +80,19 @@ export type ValidationVerdictEvent = Readonly<{
 /**
  * Derives one event's canonical verdict and ledger patch with the shared
  * Phase A/B pipeline, without building a validation-machine trace.
+ *
+ * It waits for the ledger's Ed25519 verifier first. A fault of the verifier
+ * fails with `LedgerSignatureVerifierUnavailableError` (the original error
+ * its cause), a fault of this process and never a verdict on the event.
  */
 export const replayValidationVerdictEvent = (
   input: ValidationVerdictEventInput,
 ): Effect.Effect<ValidationVerdictEvent, Error> =>
   Effect.gen(function* () {
+    yield* Effect.tryPromise({
+      try: () => ledgerEd25519SignatureReady(),
+      catch: ledgerSignatureVerifierUnavailable,
+    });
     const snapshot = yield* Effect.try(() => {
       if (!isMidgardConsensusProfile(input.consensusProfile)) {
         throw new Error("event replay requires the compiled consensus profile");
@@ -108,10 +117,6 @@ export const replayValidationVerdictEvent = (
                 ).compact,
               ),
         ),
-        programMaterialSidecarCbor: Buffer.from(
-          input.programMaterialSidecarCbor ??
-            encodeMidgardCekProgramMaterialSidecar([]),
-        ),
         l1SlotConfig: parseL1SlotConfig(input.l1SlotConfig),
       };
     });
@@ -119,20 +124,23 @@ export const replayValidationVerdictEvent = (
       sourceKind: input.sourceKind,
       txId: snapshot.transactionId,
       txCbor: snapshot.canonicalTransactionCbor,
-      programMaterialSidecarCbor: snapshot.programMaterialSidecarCbor,
       arrivalSeq: 0n,
       createdAt: new Date(input.blockTimeMs),
     };
-    const phaseA = yield* Effect.try(() =>
-      validatePhaseASingle(queued, {
-        consensusProfile: snapshot.consensusProfile,
-        expectedNetworkId: input.expectedNetworkId,
-        minFeeA: input.minFeeA,
-        minFeeB: input.minFeeB,
-        concurrency: 1,
-        strictnessProfile: "phase1_midgard",
-      }),
-    );
+    const phaseA = yield* Effect.try({
+      try: () =>
+        validatePhaseASingle(queued, {
+          consensusProfile: snapshot.consensusProfile,
+          expectedNetworkId: input.expectedNetworkId,
+          minFeeA: input.minFeeA,
+          minFeeB: input.minFeeB,
+          concurrency: 1,
+          strictnessProfile: "phase1_midgard",
+        }),
+      catch: (cause) =>
+        findLedgerSignatureVerifierUnavailable(cause) ??
+        new Cause.UnknownException(cause),
+    });
     const scriptEvaluations: LocalScriptEvaluation[] = [];
     const committedScriptRun = input.committedScriptRun;
     const evaluateScriptRun = input.evaluateScriptRun;

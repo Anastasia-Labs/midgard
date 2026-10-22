@@ -31,6 +31,7 @@ pub type AuthenticatedWitnessV1 {
   script_total_length: Int,
   item_commitment: ByteArray,
   source_count: Int,
+  inline_source_count: Int,
   source_peaks: List<validation_merkle_v1.FrontierPeak>,
   purpose_count: Int,
   purpose_peaks: List<validation_merkle_v1.FrontierPeak>,
@@ -51,8 +52,12 @@ pub type DecisionV1 {
   unused: Bool,
 }
 
+/// One source in lookup order: `source_index` is the lookup cursor, and
+/// `source_key` is the resolved out-ref of a reference source (unused for an
+/// inline witness).
 pub type SourceOpeningV1 {
   source_index: Int,
+  source_key: ByteArray,
   language_tag: Int,
   script_hash: ByteArray,
   total_length: Int,
@@ -85,7 +90,7 @@ type TerminalScriptSourcesControlV1 {
   redeemer_peaks: List<validation_merkle_v1.FrontierPeak>,
   purpose_count: Int,
   purpose_peaks: List<validation_merkle_v1.FrontierPeak>,
-  source_total_count: Int,
+  inline_source_count: Int,
   redeemer_total_count: Int,
   purpose_cursor: Int,
   source_cursor: Int,
@@ -113,17 +118,17 @@ fn decode_frontier(items: List<Data>) -> List<validation_merkle_v1.FrontierPeak>
 fn decode_terminal_control(
   witness: TerminalScriptSourcesWitnessV1,
 ) -> TerminalScriptSourcesControlV1 {
-  let data <- cbor_deserialise.expect_deserialise(witness.witness_cbor)
+  let data <- cbor_deserialise.expect_deserialise_envelope(witness.witness_cbor)
   expect
       [
         compact_cbor, witness_set_compact_cbor, field_preimage_lengths_cbor,
         context_cbor, _, _, _, _, _, stage, source_count, source_peaks,
         redeemer_count, redeemer_peaks, _, _, _, _, purpose_count, purpose_peaks,
-        _, _, _, _, _, source_total_count, redeemer_total_count, _, _, _,
+        _, _, _, _, _, inline_source_count, redeemer_total_count, _, _, _,
         discovery_cbor,
       ]
     = builtin.un_list_data(data)
-  let discovery_data <- cbor_deserialise.expect_deserialise(
+  let discovery_data <- cbor_deserialise.expect_deserialise_envelope(
     builtin.un_b_data(discovery_cbor),
   )
   expect
@@ -155,7 +160,7 @@ fn decode_terminal_control(
     redeemer_peaks: redeemer_peaks |> builtin.un_list_data |> decode_frontier,
     purpose_count: builtin.un_i_data(purpose_count),
     purpose_peaks: purpose_peaks |> builtin.un_list_data |> decode_frontier,
-    source_total_count: builtin.un_i_data(source_total_count),
+    inline_source_count: builtin.un_i_data(inline_source_count),
     redeemer_total_count: builtin.un_i_data(redeemer_total_count),
     purpose_cursor: builtin.un_i_data(purpose_cursor),
     source_cursor: builtin.un_i_data(source_cursor),
@@ -165,6 +170,8 @@ fn decode_terminal_control(
   }
 }
 
+/// `subject` is the value `open_subject_v1` returned in this Step 01 run, so it
+/// is canonical by construction (see `substrate.opened_rejection_reason_v1`).
 pub fn bind_witness_v1(
   subject: substrate.VerdictSubjectV1,
   validation_traces_root: ByteArray,
@@ -172,13 +179,12 @@ pub fn bind_witness_v1(
   script_index: Int,
 ) -> BoundWitnessV1 {
   expect and {
-      substrate.subject_is_canonical_v1(subject),
       bytearray.length(validation_traces_root) == 32,
       validation_trace_count > 0,
       script_index >= 0,
     }
   expect _reason = if subject.direction == substrate.direction_wrongful_rejection {
-    expect UnusedScriptWitness { script_index: actual } = substrate.rejection_reason_of_v1(
+    expect UnusedScriptWitness { script_index: actual } = substrate.opened_rejection_reason_v1(
       subject,
     )
     expect actual == script_index
@@ -297,7 +303,7 @@ pub fn authenticate_witness_v1(
           control.source_cursor == control.source_count,
         }
       },
-      control.source_total_count == control.source_count,
+      control.inline_source_count >= 0 && control.inline_source_count <= control.source_count,
       control.redeemer_total_count == control.redeemer_count,
       validation_merkle_v1.frontier_is_well_formed(
         control.source_count,
@@ -319,7 +325,9 @@ pub fn authenticate_witness_v1(
         control.execution_count,
         control.execution_peaks,
       ),
-      bound.script_index < control.source_count,
+      // An inline-domain leaf at `script_index` places it below
+      // `inline_source_count`: the frontier holds the inline witnesses first
+      // and reference-domain leaves after them.
       validation_merkle_v1.verify_membership(
         control.source_count,
         control.source_peaks,
@@ -339,6 +347,7 @@ pub fn authenticate_witness_v1(
     script_total_length: total_length,
     item_commitment,
     source_count: control.source_count,
+    inline_source_count: control.inline_source_count,
     source_peaks: control.source_peaks,
     purpose_count: control.purpose_count,
     purpose_peaks: control.purpose_peaks,
@@ -363,26 +372,52 @@ pub fn initial_reverse_scan_v1(witness: AuthenticatedWitnessV1) -> ReverseScanV1
   }
 }
 
+/// Lookup visits every resolved-output reference script before the inline
+/// witnesses, so the sources looked up ahead of inline witness `i` are all
+/// reference sources followed by inline witnesses `[0, i)`. The frontier holds
+/// the inline witnesses first, so lookup cursor `c` opens physical leaf
+/// `inline + c` for a reference source and `c - references` for an inline one.
 pub fn authenticate_earlier_source_v1(
   state: ReverseScanV1,
   opening: SourceOpeningV1,
 ) -> ReverseScanV1 {
+  let witness = state.witness
+  let inline_count = witness.inline_source_count
+  let reference_count = witness.source_count - inline_count
+  let cursor = state.alternate_cursor
   expect and {
-      state.alternate_cursor < state.witness.bound.script_index,
-      opening.source_index == state.alternate_cursor,
-      validation_merkle_v1.verify_membership(
-        state.witness.source_count,
-        state.witness.source_peaks,
-        opening.source_index,
-        script_proof_v1.inline_source_leaf_hash(
-          opening.source_index,
-          opening.language_tag,
-          opening.script_hash,
-          opening.total_length,
-          opening.item_commitment,
-        ),
-        opening.siblings,
-      ),
+      cursor < reference_count + witness.bound.script_index,
+      opening.source_index == cursor,
+      if cursor < reference_count {
+        validation_merkle_v1.verify_membership(
+          witness.source_count,
+          witness.source_peaks,
+          inline_count + cursor,
+          script_proof_v1.reference_source_leaf_hash(
+            opening.source_key,
+            opening.language_tag,
+            opening.script_hash,
+            opening.total_length,
+            opening.item_commitment,
+          ),
+          opening.siblings,
+        )
+      } else {
+        let physical = cursor - reference_count
+        validation_merkle_v1.verify_membership(
+          witness.source_count,
+          witness.source_peaks,
+          physical,
+          script_proof_v1.inline_source_leaf_hash(
+            physical,
+            opening.language_tag,
+            opening.script_hash,
+            opening.total_length,
+            opening.item_commitment,
+          ),
+          opening.siblings,
+        )
+      },
     }
   let next_cursor = state.alternate_cursor + 1
   let next_shadowed = or {
@@ -402,7 +437,8 @@ pub fn authenticate_earlier_source_v1(
 }
 
 pub fn alternate_sources_complete_v1(state: ReverseScanV1) -> Bool {
-  state.alternate_cursor == state.witness.bound.script_index
+  let witness = state.witness
+  state.alternate_cursor == witness.source_count - witness.inline_source_count + witness.bound.script_index
 }
 
 pub fn scan_purpose_v1(

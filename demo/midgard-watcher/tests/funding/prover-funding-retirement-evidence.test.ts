@@ -1,7 +1,7 @@
 import "./prover-funding-recovery.registration.js";
 
 import { computeFraudProofRawL1PointId } from "@al-ft/midgard-fault-proofs";
-import { expect, it, vi } from "vitest";
+import { expect, it } from "vitest";
 
 import { setupFundingRecoveryFixture as setup } from "../support/fault-proof-funding-fixture.js";
 import { expiredNotFound } from "./prover-funding-recovery.retirement-fixture.js";
@@ -13,7 +13,7 @@ it.each(["status_only", "shallow"] as const)(
     test.useUnspentPendingInputs();
     const deep = expiredNotFound(test.transactionHash);
     const point = { ...deep.retirement.canonicalPoint, blockNo: "2210" };
-    vi.mocked(test.adapter.reconcile).mockResolvedValue(
+    test.chain.mockResolvedValue(
       mode === "status_only"
         ? { kind: "not_found" }
         : {
@@ -49,7 +49,7 @@ it.each(["status_only", "shallow"] as const)(
     const beforeRestart = await test.records();
     await test.restartStore();
     expect(await test.records()).toEqual(beforeRestart);
-    vi.mocked(test.adapter.reconcile).mockResolvedValue(deep);
+    test.chain.mockResolvedValue(deep);
     await test.run(await test.recover());
     expect((await test.records())[0]).toMatchObject({
       pendingTransition: null,

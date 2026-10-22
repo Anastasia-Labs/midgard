@@ -4,14 +4,11 @@ import {
 } from "@al-ft/midgard-sdk";
 
 /**
- * Catalogue categories with no off-chain workflow. Their evidence is read from
- * per-transaction validation trace states, which the DA payload does not
- * carry (its `validation_trace_witnesses` section is always empty), so there
- * is nothing for a replayer, classifier or prover to admit. Their on-chain
+ * Catalogue categories with no installed off-chain workflow. Each category's
+ * workflow registration row records why it is missing. Their on-chain
  * validators are unchanged.
  */
 export const UNINSTALLED_FRAUD_PROOF_CATEGORIES = Object.freeze([
-  "validationTraceDispute",
   "unusedRedeemer",
   "missingRedeemer",
   "missingScriptSource",

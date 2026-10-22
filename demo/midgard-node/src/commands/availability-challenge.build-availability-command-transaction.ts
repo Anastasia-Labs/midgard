@@ -1,17 +1,14 @@
 import { readFile, stat } from "node:fs/promises";
 
 import * as SDK from "@al-ft/midgard-sdk";
-import {
-  calculateMinLovelaceFromUTxO,
-  Data,
-  type LucidEvolution,
-} from "@lucid-evolution/lucid";
+import { Data, type LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
   assertAvailabilityCommandRemovalCapital,
   assertAvailabilityTimeoutCollateral,
   type AvailabilityCommandBuildContext,
+  availabilityCommandMinimumChangeLovelace,
   type AvailabilityCommandOptions,
   availabilityTimeoutRentRefundAddress,
   liveOutRef,
@@ -100,14 +97,9 @@ export const buildAvailabilityCommandTransaction = async (
       action,
       parameters: p,
       remainingRemovalSteps: liveQueue.length - targetIndex,
-      minimumChangeLovelace: calculateMinLovelaceFromUTxO(
+      minimumChangeLovelace: availabilityCommandMinimumChangeLovelace(
         protocol.coinsPerUtxoByte,
-        {
-          address: walletAddress,
-          assets: { lovelace: 2_000_000n },
-          txHash: "00".repeat(32),
-          outputIndex: 0,
-        },
+        walletAddress,
       ),
       walletAddress,
       walletUtxos: await lucid.wallet().getUtxos(),

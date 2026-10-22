@@ -38,6 +38,11 @@ export const SlashingReasonSchema = Data.Enum([
       bounty_claimant: Data.Bytes({ minLength: 28, maxLength: 28 }),
     }),
   }),
+  Data.Object({
+    SlashOperatorForLostDefense: Data.Object({
+      receipt_index: Data.Integer(),
+    }),
+  }),
 ]);
 export type SlashingReason = Data.Static<typeof SlashingReasonSchema>;
 export const SlashingReason = asDataType<SlashingReason>(SlashingReasonSchema);
@@ -106,6 +111,13 @@ export const ActiveOperatorSpendRedeemerSchema = Data.Enum([
       scheduler_input_index: Data.Integer(),
       scheduler_redeemer_index: Data.Integer(),
       hub_oracle_ref_input_index: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    UpdateBondHoldNewDefense: Data.Object({
+      active_operator: Data.Bytes({ minLength: 28, maxLength: 28 }),
+      active_node_input_index: Data.Integer(),
+      active_node_output_index: Data.Integer(),
     }),
   }),
 ]);

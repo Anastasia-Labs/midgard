@@ -3,6 +3,7 @@ import {
   computeHash32,
   encodeCbor,
   MidgardRedeemerItemProofModes,
+  nextMidgardRedeemerItemProofSpan,
 } from "@al-ft/midgard-core";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
@@ -54,6 +55,7 @@ it("executes every shared item executor through the exact CEK Pending to Verifie
     computationThreadPolicyId: policy,
     deploymentId,
     returnScriptHash: returnHash,
+    threadExpiryScriptHash: "74".repeat(28),
   });
   const traces = [
     "00",
@@ -80,11 +82,27 @@ it("executes every shared item executor through the exact CEK Pending to Verifie
   expect([...selected.keys()].sort((a, b) => a - b)).toEqual(
     Array.from({ length: 17 }, (_, i) => i),
   );
+  // The empty content step of B"", whose source window is empty.
+  const emptyContent = buildMidgardRedeemerItemProofTrace({
+    itemIndex: 0,
+    itemCount: 1,
+    itemBytes: encodeCbor([0n, 0n, Buffer.from("40", "hex"), [10n, 20n]]),
+    mode: MidgardRedeemerItemProofModes.Data,
+  }).steps.find(
+    (step) => nextMidgardRedeemerItemProofSpan(step.control)?.length === 0,
+  )!;
+  const steps = [
+    ...selected,
+    [
+      redeemerItemExecutor(emptyContent.control, emptyContent.witness).index,
+      emptyContent,
+    ] as const,
+  ];
   const account = generateEmulatorAccount({ lovelace: 40_000_000_000n });
   const prover = getAddressDetails(account.address).paymentCredential!.hash;
   const datum = (state: Data) =>
     Data.to(new Constr(0, [prover, new Constr(0, [state])]));
-  const cases = [...selected].map(([index, step]) => {
+  const cases = steps.map(([index, step], position) => {
     const witness = Data.from(
       Data.to<unknown>(redeemerItemProofWitnessData(step.witness)),
     );
@@ -96,7 +114,7 @@ it("executes every shared item executor through the exact CEK Pending to Verifie
     ]);
     return {
       index,
-      unit: policy + index.toString(16).padStart(64, "0"),
+      unit: policy + position.toString(16).padStart(64, "0"),
       plan: deriveCekRedeemerItemPlan({
         pending,
         witness,
@@ -204,11 +222,16 @@ it("builds registered ScriptSources and CEK carriers with one identical shared e
   const contracts = await Effect.runPromise(
     buildValidationTraceDisputeFaultProofContracts({
       l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+      disputeBondLovelace: 10_000_000_000n,
       blueprint,
       network,
       hubOraclePolicyId: "82".repeat(28),
       fraudProofCataloguePolicyId: catalogue,
       referenceScriptAuthPolicyId: "83".repeat(28),
+      caseConfigInitializationNonce: {
+        txHash: "84".repeat(32),
+        outputIndex: 0,
+      },
     }),
   );
   const registered =
@@ -216,9 +239,11 @@ it("builds registered ScriptSources and CEK carriers with one identical shared e
   const cek = buildCekRedeemerItemStages({
     blueprint,
     network,
-    computationThreadPolicyId: contracts.computationThread.policyId,
+    computationThreadPolicyId: contracts.validationTraceDispute.case.policyId,
     deploymentId: deriveValidationTraceDeploymentId(catalogue),
     returnScriptHash: contracts.validationTraceDispute.award.spendingScriptHash,
+    threadExpiryScriptHash:
+      contracts.validationTraceDispute.threadExpiry.withdrawalScriptHash,
   });
   expect(registered.executors).toHaveLength(21);
   expect(
@@ -234,7 +259,7 @@ it("builds registered ScriptSources and CEK carriers with one identical shared e
   expect(registered.settlement.spendingScriptHash).not.toBe(
     cek.settlement.spendingScriptHash,
   );
-  expect(contracts.validationTraceDispute.semanticResolvers[90]).toEqual(
+  expect(contracts.validationTraceDispute.semanticResolvers[82]).toEqual(
     registered.envelope,
   );
   for (const role of [registered.sourceAuthenticator, ...registered.executors])

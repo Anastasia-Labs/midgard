@@ -79,6 +79,10 @@ import {
   landedBlockHook,
   nodeLandedBlockPorts,
 } from "../landed-blocks/index.js";
+import {
+  canonicalSlotConfigForLucid,
+  unixTimeToSlotForConfig,
+} from "../lucid-time.js";
 import { NodeConfig } from "./config.js";
 import type { Database } from "./database.js";
 import { withDriverView } from "./follower-write-gate.driver.js";
@@ -88,7 +92,10 @@ import {
   nodeSeededAddresses,
   protocolPaymentCredentials,
 } from "./intent-journal.tracked-set.js";
-import { coalescedRunner } from "./l1-follower.coalesced-runner.js";
+import {
+  coalescedRunner,
+  localFaultProgress,
+} from "./l1-follower.coalesced-runner.js";
 import { driverSink } from "./l1-follower.driver-sink.js";
 import { failureHold } from "./l1-follower.failure-hold.js";
 import { nodeFamilyPredicate } from "./l1-follower.intent-predicates.js";
@@ -102,9 +109,9 @@ import { followerOperatorSet } from "./l1-follower.operator-set.js";
 import { type L1FollowerPlan, l1FollowerPlan } from "./l1-follower.plan.js";
 import { nodeFollowerProjections } from "./l1-follower.projections.js";
 import {
-  cursorKey,
   followerCaughtUp,
   type L1FollowerHandle,
+  landedBlockTrigger,
   planCurrentView,
   startingStatus,
 } from "./l1-follower.readiness.js";
@@ -114,6 +121,8 @@ import { followerTick } from "./l1-follower.tick.js";
 import { publishL1HeadChange } from "./l1-head-trigger.js";
 import { Lucid } from "./lucid.js";
 import {
+  availabilityParametersFromExplicitEnvironment,
+  availabilityParametersFromManifest,
   ContractDeploymentIdentity,
   MidgardContracts,
 } from "./midgard-contracts.js";
@@ -145,9 +154,11 @@ const followL1 = <R>(
     const dbRuntime = yield* Effect.runtime<
       Database | NodeConfig | Globals | Lucid | ContractDeploymentIdentity
     >();
+    const lucid = (yield* Lucid).api;
     const projections = nodeFollowerProjections(
       plan,
       Runtime.runPromise(dbRuntime),
+      (ms) => unixTimeToSlotForConfig(ms, canonicalSlotConfigForLucid(lucid)),
     );
     const opened = yield* Effect.acquireRelease(
       Effect.try(() => {
@@ -221,8 +232,21 @@ const followL1 = <R>(
       store,
       plan,
       recompute.rebaseIfDue,
+      // The commitment a foreign block's payload is checked against is the
+      // committee's: over the hub oracle policy and the response geometry.
+      () => ({
+        deploymentIdentity: plan.hubOraclePolicyId,
+        responseGeometry: (identity.manifest === undefined
+          ? availabilityParametersFromExplicitEnvironment()
+          : availabilityParametersFromManifest(
+              identity.manifest.availabilityChallenge,
+            )
+        ).response_geometry,
+      }),
     );
     const admissionDivergences = forcedAdmissionDivergences();
+    // The blocks processing commits: progress past a local fault (R1).
+    const progress = localFaultProgress();
     const driver = createFollowerDriver({
       failureHold,
       store,
@@ -257,6 +281,7 @@ const followL1 = <R>(
             store,
             config: plan.stateQueue,
             ports: landedPorts,
+            committed: progress.committed,
             run: (effect) =>
               Runtime.runPromise(dbRuntime)(
                 withDriverView(change.view)(effect),
@@ -312,11 +337,13 @@ const followL1 = <R>(
       recompute,
       refreshJournal: () => journal.refresh(),
     });
-    // A database transient that outlives its bound exits the node (R2).
+    // A database transient that outlives its bound exits the node (R2), as
+    // does a local fault on landed blocks processing makes no progress past.
     const trigger = coalescedRunner(
       () => Runtime.runPromise(runtime)(tick).then((ran) => ran.holds),
       abort.signal,
       {
+        progress,
         onExhausted: (holds) =>
           signalTransientExhausted(globals.TRANSIENT_EXHAUSTION, {
             source: "driver",
@@ -327,7 +354,7 @@ const followL1 = <R>(
           }),
       },
     );
-    let lastCursor: string | null = null;
+    const onLanded = landedBlockTrigger(trigger);
     const handle: L1FollowerHandle = {
       kind: "running",
       status: () => status,
@@ -350,13 +377,7 @@ const followL1 = <R>(
       },
       onStatus: (next) => {
         status = next;
-        // The driver applies only views at the node's tip: until then a key
-        // the follower lacks may be one it has not reached, not an orphan.
-        const key = cursorKey(next);
-        if (key !== null && key !== lastCursor && followerCaughtUp(next)) {
-          lastCursor = key;
-          trigger();
-        }
+        onLanded(next);
       },
     });
     // A follower whose transient store failures outlived their bound stops
@@ -415,6 +436,7 @@ export const startL1Follower = <R = never>(
     const plan = l1FollowerPlan({
       config,
       contracts,
+      manifest: identity.manifest,
       securityParameter: finality.automaticRecoveryMaxDepth,
     });
     if (plan.kind === "unconfigured")

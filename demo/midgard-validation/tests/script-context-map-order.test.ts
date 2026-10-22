@@ -1,8 +1,4 @@
-import {
-  encodeCbor,
-  encodeMidgardCekProgramMaterialSidecar,
-  MIDGARD_CONSENSUS_PROFILE,
-} from "@al-ft/midgard-core";
+import { encodeCbor, MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core";
 import {
   decodeMidgardDatum,
   decodeMidgardTxOutput,
@@ -30,8 +26,6 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  buildDeterministicValidationMachineTrace,
-  buildMidgardCanonicalCekProgram,
   buildMidgardScriptContext,
   buildPlutusV3ScriptContext,
   buildValidationMachineLedgerInsertOp,
@@ -42,10 +36,12 @@ import {
   runPhaseBValidationWithPatch,
   scriptContextTxOutData,
 } from "../src/index.js";
+import { buildDeterministicValidationMachineTrace } from "./helpers/trace-commit-golden.js";
 import {
   orderingView,
   redeemerMapEntries,
 } from "./script-context-map-order.ordering-view.js";
+import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 import {
   FUNDED_OUTPUT_LOVELACE,
   hashScriptWitness,
@@ -183,7 +179,10 @@ const firstRedeemerPurposeIs = (tag: number): Buffer =>
 const firstRedeemerIsMint = firstRedeemerPurposeIs(0);
 const firstRedeemerIsSpend = firstRedeemerPurposeIs(1);
 
-const identity = flat(new Lambda(new UPLCVar(0)));
+/** A PlutusV3 script that ignores its context and halts with Unit. */
+const alwaysUnit = flat(
+  new Lambda(new Application(new Lambda(UPLCConst.unit), new UPLCVar(0))),
+);
 
 const scriptOutput = (scriptHash: string, datumHex?: string): Buffer =>
   encodeMidgardTxOutput({
@@ -220,8 +219,8 @@ type Scenario = {
 };
 
 const buildScenario = (scenario: Scenario) => {
-  const program = buildMidgardCanonicalCekProgram(scenario.program);
-  const script = plutusV3ScriptWitness(program.envelopeCbor);
+  const program = buildCekProgramFromRawFlat(scenario.program);
+  const script = plutusV3ScriptWitness(program.scriptBytes);
   const scriptHash = hashScriptWitness(script);
   const spent = outRefFromByte(0x5b);
   const spentOutput = scriptOutput(scriptHash, scenario.spentDatum);
@@ -267,14 +266,10 @@ const buildScenario = (scenario: Scenario) => {
         }),
     scriptLanguages: ["PlutusV3" as const],
   };
-  const sidecar = encodeMidgardCekProgramMaterialSidecar([
-    ...program.material.values(),
-  ]);
   return {
     spent,
     spentOutput,
     output,
-    sidecar,
     transaction: makeNativeTx({
       version: 1n,
       spendInputs: [spent],
@@ -284,7 +279,6 @@ const buildScenario = (scenario: Scenario) => {
     candidate: makePhaseBCandidate({
       spent: [spent],
       outputs: [output],
-      programMaterialSidecarCbor: sidecar,
       ...txOptions,
     }),
   };
@@ -313,8 +307,7 @@ const proofVerdict = async (
   scenario: Scenario,
   verdict: "accepted" | "rejected",
 ) => {
-  const { transaction, spent, spentOutput, output, sidecar } =
-    buildScenario(scenario);
+  const { transaction, spent, spentOutput, output } = buildScenario(scenario);
   const ledgerOps = [
     { type: "delete" as const, key: spent },
     buildValidationMachineLedgerInsertOp({
@@ -340,7 +333,6 @@ const proofVerdict = async (
       blockSlot: 100n,
       transactionId: transaction.txId,
       canonicalTransactionCbor: transaction.txCbor,
-      programMaterialSidecarCbor: sidecar,
       priorUtxosRoot: preRoot,
       postUtxosRoot:
         verdict === "accepted"
@@ -422,19 +414,19 @@ describe("script context map order", () => {
   it.each([
     {
       name: "an unsorted spent datum",
-      scenario: { program: identity, spentDatum: UNSORTED_MAP },
+      scenario: { program: alwaysUnit, spentDatum: UNSORTED_MAP },
     },
     {
       name: "duplicate keys in a spent datum",
-      scenario: { program: identity, spentDatum: DUPLICATE_KEY_MAP },
+      scenario: { program: alwaysUnit, spentDatum: DUPLICATE_KEY_MAP },
     },
     {
       name: "an unsorted spend redeemer",
-      scenario: { program: identity, spendRedeemer: UNSORTED_MAP },
+      scenario: { program: alwaysUnit, spendRedeemer: UNSORTED_MAP },
     },
     {
       name: "duplicate keys in a spend redeemer",
-      scenario: { program: identity, spendRedeemer: DUPLICATE_KEY_MAP },
+      scenario: { program: alwaysUnit, spendRedeemer: DUPLICATE_KEY_MAP },
     },
   ])(
     "proves the verdict over $name as the node evaluated it",
@@ -485,7 +477,7 @@ describe("script context map order", () => {
         await expect(proofVerdict(scenario, expected)).resolves.toBe(expected);
       }
       await expect(
-        proofVerdict({ program: identity, mint }, "accepted"),
+        proofVerdict({ program: alwaysUnit, mint }, "accepted"),
       ).resolves.toBe("accepted");
     }
   }, 60_000);

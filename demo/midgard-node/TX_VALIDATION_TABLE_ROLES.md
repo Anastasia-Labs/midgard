@@ -830,13 +830,31 @@ Columns:
 - `submit_source TEXT NOT NULL`
 - `request_count BIGINT NOT NULL DEFAULT 1`
 
+After applying the [Flat-script migration](src/database/migrations/sql/0029_drop_cek_program_material.sql),
+`tx_admission_payloads` stores canonical transaction bytes and their full hash.
+Script witnesses remain inside those transaction bytes. The migration also
+removes the separate CEK material tables and sidecar columns.
+
+This migration is limited to an unbound database with no retained protocol
+state. It refuses a deployment binding, canonical payloads, receipts, ledgers,
+block or DA state, recovery journals, pending finalization, or previously used
+follower state. Refusal preserves those bytes and rolls back any schema work
+performed by migration 28. Earlier successful migrations and the failure audit
+event can still be committed.
+
+Stop every process using the database before running the migration. The runner
+also acquires the node and follower writer locks before starting its migration
+transaction. Table locks and fresh reads guard against a write committed while
+the migration was waiting; they do not establish that an old process whose
+lock session was lost has stopped. An initialized deployment requires an
+explicit coordinated protocol transition. No state reset, commitment rewrite,
+or old-format compatibility conversion is performed by this migration.
+
 `tx_admission_payloads` columns:
 
 - `tx_id BYTEA PRIMARY KEY REFERENCES tx_admissions(tx_id) ON DELETE CASCADE`
 - `tx_canonical_cbor BYTEA NOT NULL`
 - `tx_full_hash_v1 BYTEA NOT NULL`
-- `cek_program_material_sidecar_cbor BYTEA NOT NULL`
-- `cek_program_material_sidecar_sha256 BYTEA NOT NULL`
 
 Statuses:
 

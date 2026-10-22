@@ -39,7 +39,7 @@ const fixture = async () => {
   const journal = openAvailabilityOperationJournal(path);
   const build = vi.fn(async () =>
     buildDaAvailabilityFundingPreparationTx(lucid, {
-      fundingInput: (await lucid.wallet().getUtxos())[0]!,
+      walletInputs: [(await lucid.wallet().getUtxos())[0]!],
       outputLovelace: 50_000_000n,
       feeLovelace: 1_000_000n,
       validFrom: BigInt(emulator.now() - 60_000),
@@ -257,7 +257,7 @@ describe("availability operation signed recovery", () => {
         ...f.operation,
         build: async () =>
           buildDaAvailabilityFundingPreparationTx(f.lucid, {
-            fundingInput,
+            walletInputs: [fundingInput],
             outputLovelace: 25_000_000n,
             feeLovelace: 1_000_000n,
             validFrom: BigInt(f.emulator.now() - 60_000),
@@ -483,7 +483,7 @@ describe("availability operation signed recovery", () => {
       // The wallet is free again: the next header's work builds.
       const next = vi.fn(async () =>
         buildDaAvailabilityFundingPreparationTx(f.lucid, {
-          fundingInput: spent!,
+          walletInputs: [spent!],
           outputLovelace: 5_000_000n,
           feeLovelace: 1_000_000n,
           validFrom: BigInt(f.emulator.now() - 60_000),
@@ -560,7 +560,7 @@ describe("availability operation signed recovery", () => {
         ...f.operation,
         build: async () =>
           buildDaAvailabilityFundingPreparationTx(f.lucid, {
-            fundingInput,
+            walletInputs: [fundingInput],
             outputLovelace: 25_000_000n,
             feeLovelace: 1_000_000n,
             validFrom: BigInt(f.emulator.now() - 60_000),

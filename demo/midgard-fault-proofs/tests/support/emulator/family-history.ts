@@ -11,7 +11,7 @@ import {
 import { expect } from "vitest";
 
 import { type makeFaultProofEmulatorHarness } from "./harness.js";
-import { index, same } from "./history-pair.js";
+import { inputAt, same } from "./history-pair.js";
 import { measureCompleteSignedTransaction } from "./measurement.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./protocol-parameters.js";
 import { headerCommitValidFrom } from "./setup-tx.js";
@@ -203,13 +203,11 @@ export const prepareFamilyHistory = async (
       payload: "RootContent",
     };
     init = init
-      .withdraw(
-        a.rewardAddress,
-        0n,
+      .withdraw(a.rewardAddress, 0n, (ctx) =>
         Data.to(
           {
             Initialize: {
-              nonce_input_index: index(inputs, reserved[i]!),
+              nonce_input_index: inputAt(ctx, reserved[i]!),
               root_output_index: BigInt(i),
             },
           },

@@ -103,14 +103,11 @@ Every `expect` over `Data` is a decoder, and its domain is the set of values
 it accepts. Stock Aiken v1.1.22 named generated decoders by the local type
 name only, so two same-named types in different modules shared one decoder,
 and the shipped blueprint had under-strict decoders on the adjudication path
-(#521; `MintRedeemer` alone is declared in 12 modules). The fork pinned in CI
-fixes it
-`[ci: aiken-ci.yml/Assert the pinned compiler identity and put it on PATH]`,
-and local entry points assert the same pin
-`[script: onchain/aiken/scripts/pinned-compiler.mjs]` `[hook: pre-commit]`.
-Blind spot: the hook skips the check when no `aiken` binary is found, and a
-hand-typed `aiken check` asserts nothing; `aikup` can repoint the local
-`aiken` at stock.
+(#521; `MintRedeemer` alone is declared in 12 modules). The fork that
+`demo/flake.lock` pins fixes it, and every script, the pre-commit hook and CI
+run only that compiler, through `scripts/aiken`
+`[script: scripts/lib/aiken.mjs]` `[hook: pre-commit]`. Blind spot: a
+hand-typed bare `aiken` runs whatever is on `PATH`.
 
 Ask:
 
@@ -205,11 +202,9 @@ transaction executes, and a missing entry fails closed
 `demo/midgard-fault-proofs/src/linear-fault-family.ts:69`). Older families
 that still attach inline are not a precedent for new work.
 
-Blind spot: the runtime check covers only the builders that call it. No
-scan refuses a new `attach.*` in a fault-proof builder, and
-`inline_emulator_only` certificate witnesses
-(`demo/midgard-sdk/src/fraud-proof/field-preimage-carriage.ts:859`, `:920`)
-attach inline by design `[review]`.
+Blind spot: the runtime check covers only the builders that call it, and
+the lint `midgard/fault-proof-reference-scripts-only` refuses a new
+`attach.*` only inside the fault-proof source trees it lists `[review]`.
 
 Ask:
 
@@ -273,14 +268,14 @@ Ask:
 
 Every flat-reversion measurement is judged against 13,200,000 memory units:
 the 20% reserve off Cardano's 16,500,000 `maxTxExUnits` memory cap
-([GOAL_SPEC §3.3](../../../../docs/exec-plans/GOAL_SPEC.md)). Execution
-ledgers pin measured units for several lanes
-`[ci: aiken-ci.yml/Pin the Q1x family execution ledger]` and its sibling
-`Pin the ... execution ledger` steps, judged by
-`[script: onchain/aiken/scripts/exec-ledger-within-basis-v1.mjs]`. The Aiken
-guards print each run's largest unit-test units as a share of this basis, but
-only a ledger gates them. Blind spot: a validator without a ledger can grow
-past the budget with every suite green.
+([GOAL_SPEC §3.3](../../../../docs/exec-plans/GOAL_SPEC.md)). The script
+budgets in `demo/midgard-core/src/script-budgets.json` hold measured units for
+the budgeted tests to ceilings at or under this basis
+`[ci: aiken-ci.yml/Hold every script budget to its ceiling]`, judged by
+`[script: onchain/aiken/scripts/script-budgets.mjs]`. The Aiken guards print
+each run's largest unit-test units as a share of this basis, but only a budget
+gates them. Blind spot: a validator without a budgeted test can grow past the
+basis with every suite green.
 
 Ask:
 

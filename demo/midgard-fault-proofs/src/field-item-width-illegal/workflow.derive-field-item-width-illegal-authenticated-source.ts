@@ -1,13 +1,7 @@
-import {
-  decodeMidgardFieldPreimage,
-  deriveMidgardNativeTxFaultEvidenceMaterial,
-  midgardFieldCommitment,
-} from "@al-ft/midgard-core";
+import { deriveMidgardNativeTxFaultEvidenceMaterial } from "@al-ft/midgard-core";
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import {
-  acceptedVerdictSubject,
   encodeProofThreadForcedSourceKey,
-  forcedVerdictSubject,
   PROOF_THREAD_SOURCE_KIND_ACCEPTED,
   RejectionReasonSchema,
 } from "@al-ft/midgard-sdk";
@@ -16,22 +10,26 @@ import { Data } from "@lucid-evolution/lucid";
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import {
   buildTrieView,
-  decodeTransactionMaterial,
+  encodeL2TransactionSourceValue,
   requireProof,
-  transactionSourceTrieItem,
 } from "../prepare-double-spend.js";
-import { parseSubmitStep01TxInclusion } from "../step-support.js";
+import {
+  nativeTxFromCoreCompact,
+  parseSubmitStep01TxInclusion,
+} from "../step-support.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
 import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import { createCanonicalFamilyArtifactPort } from "../workflow/manifest-bound-family-recovery.js";
+import { CanonicalReplayPrerequisiteError } from "../workflow/replay-prerequisite.js";
 import {
+  fieldItemWidthDetectionId,
   type FieldItemWidthEvidence,
-  fieldItemWidthEvidenceCloses,
-  fieldItemWidthIsIllegal,
+  fieldItemWidthFindingsFromCanonicalBlock,
   type FieldItemWidthStage,
   prepareFieldItemWidthEvidence,
 } from "./field-item-width-illegal.js";
 import {
+  FIELD_ITEM_WIDTH_ILLEGAL_VIOLATION_ID,
   type FieldItemWidthIllegalAuthenticatedSource,
   type ManifestBoundFieldItemWidthIllegalConfig,
 } from "./workflow.create-field-item-width-illegal-raw-l1-stage-resolver.js";
@@ -39,103 +37,40 @@ import {
 /** Derives the only admissible family evidence from L1-bound public retained DA. */
 export const deriveFieldItemWidthIllegalEvidenceFromCanonicalBlock = (
   block: CanonicalBlockEvidence,
+  detectionId?: string,
 ): FieldItemWidthEvidence => {
-  const findings: FieldItemWidthEvidence[] = [];
-  const inspect = ({
-    canonicalCbor,
-    subject,
-    forcedCoordinate,
-  }: {
-    readonly canonicalCbor: Uint8Array;
-    readonly subject: ReturnType<typeof acceptedVerdictSubject>;
-    readonly forcedCoordinate?: {
-      readonly fieldIndex: number;
-      readonly itemIndex: number;
-    };
-  }) => {
-    const material = (
-      subject.source_kind === 1n
-        ? deriveMidgardForcedTxFaultEvidenceMaterial
-        : deriveMidgardNativeTxFaultEvidenceMaterial
-    )(canonicalCbor);
-    if (material.transactionId.toString("hex") !== subject.transaction_id) {
-      throw new Error(
-        "fieldItemWidthIllegal retained-DA transaction identity changed",
-      );
-    }
-    const coordinates =
-      forcedCoordinate === undefined
-        ? ([2, 5] as const).flatMap((fieldIndex) =>
-            decodeMidgardFieldPreimage(
-              material.fieldPreimages[fieldIndex]!,
-            ).map((_, itemIndex) => ({ fieldIndex, itemIndex })),
-          )
-        : [forcedCoordinate];
-    for (const coordinate of coordinates) {
-      const fieldPreimage = material.fieldPreimages[coordinate.fieldIndex]!;
-      const item =
-        decodeMidgardFieldPreimage(fieldPreimage)[coordinate.itemIndex];
-      if (item === undefined) {
-        throw new Error(
-          "fieldItemWidthIllegal retained-DA reason coordinate is absent",
-        );
-      }
-      const illegal = fieldItemWidthIsIllegal(
-        coordinate.fieldIndex,
-        item.length,
-      );
-      if (forcedCoordinate === undefined && !illegal) continue;
-      const prepared = prepareFieldItemWidthEvidence({
-        finding: { subject, ...coordinate },
-        fieldPreimage,
-        committedFieldHashHex:
-          midgardFieldCommitment(fieldPreimage).toString("hex"),
-      });
-      if (fieldItemWidthEvidenceCloses(prepared)) findings.push(prepared);
-    }
-  };
-  for (const transaction of block.transactions) {
-    const material = deriveMidgardNativeTxFaultEvidenceMaterial(
-      Buffer.from(transaction.txCbor, "hex"),
-    );
-    inspect({
-      canonicalCbor: Buffer.from(transaction.txCbor, "hex"),
-      subject: acceptedVerdictSubject(material.transactionId.toString("hex")),
-    });
-  }
-  for (const forced of block.reconstruction.forcedTransactions) {
-    if (forced.value.verdict === "ForcedTxValid") continue;
-    const reason = forced.value.verdict.ForcedTxInvalid.reason;
-    if (typeof reason === "string" || !("FieldItemWidthIllegal" in reason))
-      continue;
-    const coordinate = reason.FieldItemWidthIllegal;
-    const material = deriveMidgardForcedTxFaultEvidenceMaterial(
-      forced.fullTransactionCbor,
-    );
-    if (material.transactionId.toString("hex") !== forced.value.tx_id) {
-      throw new Error(
-        "fieldItemWidthIllegal forced retained-DA identity changed",
-      );
-    }
-    inspect({
-      canonicalCbor: forced.fullTransactionCbor,
-      subject: forcedVerdictSubject({
-        transactionId: forced.value.tx_id,
-        sourceKey: forced.key,
-        rejectionReason: reason,
-      }),
-      forcedCoordinate: {
-        fieldIndex: Number(coordinate.field_index),
-        itemIndex: Number(coordinate.item_index),
-      },
-    });
-  }
+  const scan = fieldItemWidthFindingsFromCanonicalBlock(
+    block,
+    detectionId === undefined
+      ? undefined
+      : {
+          detectionId,
+          violationId: FIELD_ITEM_WIDTH_ILLEGAL_VIOLATION_ID,
+        },
+  );
+  if (scan.failures.length > 0)
+    throw new CanonicalReplayPrerequisiteError(scan.failures);
+  const findings = scan.findings.filter(
+    (finding) =>
+      detectionId === undefined ||
+      fieldItemWidthDetectionId(
+        finding,
+        FIELD_ITEM_WIDTH_ILLEGAL_VIOLATION_ID,
+      ) === detectionId,
+  );
   if (findings.length !== 1) {
     throw new Error(
       `fieldItemWidthIllegal public retained DA yielded ${findings.length.toString()} exact findings`,
     );
   }
-  return findings[0]!;
+  const { evidence } = findings[0]!;
+  return evidence.kind === "StaticDomain"
+    ? evidence
+    : prepareFieldItemWidthEvidence({
+        finding: evidence,
+        fieldPreimage: Buffer.from(evidence.fieldPreimageHex, "hex"),
+        committedFieldHashHex: evidence.fieldCommitmentHex,
+      });
 };
 
 /** Rebuilds all accepted/forced submitter material from the authenticated block. */
@@ -147,9 +82,27 @@ export const deriveFieldItemWidthIllegalAuthenticatedSource = async ({
   readonly evidence: FieldItemWidthEvidence;
 }): Promise<FieldItemWidthIllegalAuthenticatedSource> => {
   if (evidence.subject.source_kind === PROOF_THREAD_SOURCE_KIND_ACCEPTED) {
-    const decoded = await Promise.all(
-      block.transactions.map(decodeTransactionMaterial),
-    );
+    const decoded = block.transactions.map((transaction) => {
+      const material = deriveMidgardNativeTxFaultEvidenceMaterial(
+        Buffer.from(transaction.txCbor, "hex"),
+      );
+      if (material.transactionId.toString("hex") !== transaction.nodeTxId)
+        throw new Error(
+          "fieldItemWidthIllegal retained-DA transaction identity changed",
+        );
+      const l2TransactionSourceCbor = encodeL2TransactionSourceValue({
+        txId: transaction.nodeTxId,
+        proofSource: material.proofSource,
+      });
+      if (
+        transaction.l2TransactionSourceCbor !== undefined &&
+        transaction.l2TransactionSourceCbor !== l2TransactionSourceCbor
+      )
+        throw new Error(
+          "fieldItemWidthIllegal retained-DA transaction source changed",
+        );
+      return { ...transaction, material, l2TransactionSourceCbor };
+    });
     const selected = decoded.find(
       ({ nodeTxId }) => nodeTxId === evidence.subject.transaction_id,
     );
@@ -158,7 +111,12 @@ export const deriveFieldItemWidthIllegalAuthenticatedSource = async ({
         "fieldItemWidthIllegal accepted subject disappeared from retained DA",
       );
     }
-    const trie = await buildTrieView(decoded.map(transactionSourceTrieItem));
+    const trie = await buildTrieView(
+      decoded.map((transaction) => ({
+        key: Buffer.from(transaction.nodeTxId, "hex"),
+        value: Buffer.from(transaction.l2TransactionSourceCbor, "hex"),
+      })),
+    );
     if (
       trie.root !== block.reconstruction.rootData.transactions.phasRoot ||
       trie.root !== block.inclusionRootAuthentication.sourceValuePhasRoot
@@ -167,17 +125,15 @@ export const deriveFieldItemWidthIllegalAuthenticatedSource = async ({
         "fieldItemWidthIllegal accepted source trie differs from authenticated reconstruction",
       );
     }
-    const material = deriveMidgardNativeTxFaultEvidenceMaterial(
-      Buffer.from(selected.txCbor, "hex"),
-    );
+    const { material } = selected;
     return Object.freeze({
       nativeTxCompactCbor: material.proofSource.compactCbor.toString("hex"),
       witnessSetCompactCbor:
         material.proofSource.witnessSetCompactCbor.toString("hex"),
       acceptedInclusion: parseSubmitStep01TxInclusion({
         nativeTxId: selected.nodeTxId,
-        nativeTx: selected.nativeTxCompact,
-        nativeTxCompactCbor: selected.nativeCompactCbor,
+        nativeTx: nativeTxFromCoreCompact(material.compact),
+        nativeTxCompactCbor: material.proofSource.compactCbor.toString("hex"),
         l2TransactionSourceCbor: selected.l2TransactionSourceCbor,
         transactionsPhasRoot: trie.root,
         txMembershipProofCbor: requireProof(
@@ -194,19 +150,24 @@ export const deriveFieldItemWidthIllegalAuthenticatedSource = async ({
       encodeProofThreadForcedSourceKey(key).toString("hex") ===
         evidence.subject.source_key,
   );
-  if (forced === undefined || forced.value.verdict === "ForcedTxValid") {
+  if (forced === undefined) {
     throw new Error(
       "fieldItemWidthIllegal forced subject disappeared from retained DA",
     );
   }
-  const reason = forced.value.verdict.ForcedTxInvalid.reason;
+  const reason =
+    forced.value.verdict === "ForcedTxValid"
+      ? null
+      : forced.value.verdict.ForcedTxInvalid.reason;
   if (
-    evidence.subject.rejection_reason === null ||
-    Data.to(reason as never, RejectionReasonSchema as never) !==
-      Data.to(
-        evidence.subject.rejection_reason as never,
-        RejectionReasonSchema as never,
-      )
+    (reason === null) !== (evidence.subject.rejection_reason === null) ||
+    (reason !== null &&
+      evidence.subject.rejection_reason !== null &&
+      Data.to(reason as never, RejectionReasonSchema as never) !==
+        Data.to(
+          evidence.subject.rejection_reason as never,
+          RejectionReasonSchema as never,
+        ))
   ) {
     throw new Error(
       "fieldItemWidthIllegal forced reason differs from authenticated source",
@@ -216,6 +177,7 @@ export const deriveFieldItemWidthIllegalAuthenticatedSource = async ({
     forced.fullTransactionCbor,
   );
   if (
+    material.transactionId.toString("hex") !== forced.value.tx_id ||
     material.proofSource.compactCbor.toString("hex") !==
       forced.value.submitted_source.compact_cbor ||
     material.proofSource.witnessSetCompactCbor.toString("hex") !==
@@ -239,7 +201,7 @@ export const deriveFieldItemWidthIllegalAuthenticatedSource = async ({
       reconstruction: block.reconstruction,
       eventKey,
     }),
-    forcedDirection: 1n,
+    forcedDirection: evidence.subject.direction,
   });
 };
 
@@ -272,8 +234,10 @@ export const prepareFieldItemWidthIllegalRecoveryMaterial = async (
   canonical: CanonicalBlockEvidence,
   detectionId: string,
 ) => {
-  const evidence =
-    deriveFieldItemWidthIllegalEvidenceFromCanonicalBlock(canonical);
+  const evidence = deriveFieldItemWidthIllegalEvidenceFromCanonicalBlock(
+    canonical,
+    detectionId,
+  );
   const source = await deriveFieldItemWidthIllegalAuthenticatedSource({
     block: canonical,
     evidence,

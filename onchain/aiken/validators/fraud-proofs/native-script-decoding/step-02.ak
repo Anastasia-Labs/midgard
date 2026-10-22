@@ -30,6 +30,7 @@ use midgard/fraud_proofs/native_script_decoding/step_02.{
 use midgard/fraud_proofs/native_script_decoding/thread_fixture_v1 as tf
 use midgard/fraud_proofs/native_tx/transaction as native_transaction
 use midgard/fraud_proofs/native_tx/types as native_types
+use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/ledger_state
 use midgard/rejection_reason_v1.{ForcedTxInvalid, ForcedTxValid}
 use midgard/transition_trace
@@ -86,71 +87,26 @@ validator main(
           outputs,
         )
 
-        expect Some(BindStateV1 { direction, source_kind, verified_tx_id }) = m_input_state_data
+        expect Some(bound) = m_input_state_data
 
-        // 2. The header is the thread's: the NFT asset name is
+        // 2. Open the committed claim and build the scan-thread state. The
+        //    header is the thread's: the NFT asset name is
         //    `category_id ‖ header_hash`, so nothing but the disputed block's
         //    header can pass. Every root opened below is this header's.
-        let header_data: Data = header
-        expect
-          utils.serialise_and_hash_28(header_data) == bytearray.drop(
-            computation_thread_token_asset_name,
-            fraud_proof_catalogue.id_byte_count,
-          )
-
-        // 3. Open the committed claim and build the scan-thread state.
-        let scan_state = if source_kind == engine.source_kind_normal {
-          // A normal-source thread is structurally direction A: the leaf
-          // bound at step-01 was an acceptance verdict.
-          expect direction == engine.direction_wrongful_acceptance
-          expect None = forced_membership
-          expect and {
-              or {
-                chosen_outpoint_source_kind == engine.outpoint_source_spend,
-                chosen_outpoint_source_kind == engine.outpoint_source_reference,
-              },
-              chosen_outpoint_cursor >= 0,
-            }
-          let event_key = ledger_state.L2TransactionEventKey {
-            tx_id: verified_tx_id,
-          }
-          let prior_ledger_root = engine.verify_committed_pre_state_v1(
-            header,
-            event_key,
-            event_to_step_membership,
-            transition_step_membership,
-          )
-          engine.pre_bind_scan_state_v1(
-            direction,
-            source_kind,
-            verified_tx_id,
-            #"",
-            engine.class_pending,
-            prior_ledger_root,
-            chosen_outpoint_source_kind,
-            chosen_outpoint_cursor,
-          )
-        } else {
-          expect source_kind == engine.source_kind_forced
-          // Step-01's forced arm forwarded the sentinel; the leaf is the
-          // subject's sole authority.
-          expect verified_tx_id == #""
-          expect Some(forced) = forced_membership
-          let event_key = ledger_state.ForcedTransactionEventKey {
-            tx_order_id: forced.key,
-          }
-          let prior_ledger_root = engine.verify_committed_pre_state_v1(
-            header,
-            event_key,
-            event_to_step_membership,
-            transition_step_membership,
-          )
-          let leaf = engine.verify_forced_leaf_v1(header, forced)
-          let order_key_bytes = cbor.serialise(forced.key)
-          if direction == engine.direction_wrongful_acceptance {
-            // Direction A disputes an explicit acceptance; the accused
-            // pair is prover-chosen (2026-08-25 ruling).
-            expect ForcedTxValid = leaf.verdict
+        let scan_state = when bound is {
+          engine.BoundAccepted { subject } -> {
+            let header_data: Data = header
+            expect
+              utils.serialise_and_hash_28(header_data) == bytearray.drop(
+                computation_thread_token_asset_name,
+                fraud_proof_catalogue.id_byte_count,
+              )
+            // A canonical accepted-root subject is direction A with no source
+            // key or reason: the leaf bound at step-01 was an acceptance.
+            expect substrate.subject_is_canonical_v1(subject)
+            expect subject.source_kind == substrate.source_kind_accepted
+            let verified_tx_id = subject.transaction_id
+            expect None = forced_membership
             expect and {
                 or {
                   chosen_outpoint_source_kind == engine.outpoint_source_spend,
@@ -158,41 +114,95 @@ validator main(
                 },
                 chosen_outpoint_cursor >= 0,
               }
+            let event_key = ledger_state.L2TransactionEventKey {
+              tx_id: verified_tx_id,
+            }
+            let prior_ledger_root = substrate.event_pre_state_v1(
+              header,
+              event_key,
+              event_to_step_membership,
+              transition_step_membership,
+            ).pre_root
             engine.pre_bind_scan_state_v1(
-              direction,
-              source_kind,
-              leaf.tx_id,
-              order_key_bytes,
+              engine.direction_wrongful_acceptance,
+              engine.source_kind_normal,
+              verified_tx_id,
+              #"",
               engine.class_pending,
               prior_ledger_root,
               chosen_outpoint_source_kind,
               chosen_outpoint_cursor,
             )
-          } else {
-            expect direction == engine.direction_wrongful_rejection
-            // Direction B disputes an explicit rejection by one of this
-            // family's three arms; the accused pair and class are copied
-            // verbatim from the leaf (2026-08-25 ruling) — the chosen_*
-            // redeemer fields are ignored. Deliberately unguarded: a pair
-            // naming a subject outside the transaction's domain is
-            // step-03's `BindOutOfDomain` close (#633 §7.2), so nothing
-            // may filter it here.
-            expect ForcedTxInvalid { reason } = leaf.verdict
-            let accusation = engine.scan_accusation_of_v1(reason)
-            engine.pre_bind_scan_state_v1(
-              direction,
-              source_kind,
-              leaf.tx_id,
-              order_key_bytes,
-              accusation.scan_reason_class,
-              prior_ledger_root,
-              accusation.outpoint_source_kind,
-              accusation.outpoint_cursor,
+          }
+          engine.PendingForced -> {
+            // Step-01's forced arm forwarded the sentinel; the leaf is the
+            // subject's sole authority.
+            expect Some(forced) = forced_membership
+            let event_key = ledger_state.ForcedTransactionEventKey {
+              tx_order_id: forced.key,
+            }
+            let prior_ledger_root = substrate.event_pre_state_v1(
+              header,
+              event_key,
+              event_to_step_membership,
+              transition_step_membership,
+            ).pre_root
+            // The opener checks that the header hashes to the thread NFT's
+            // name tail, then authenticates the leaf under that header. Its
+            // direction is the leaf's verdict, so the verdict selects it here.
+            let Pair(subject, _) = substrate.open_forced_subject_v1(
+              computation_thread_token_asset_name,
+              header,
+              forced,
             )
+            let leaf = forced.value
+            when leaf.verdict is {
+              ForcedTxValid -> {
+                // Direction A disputes an explicit acceptance; the accused
+                // pair is prover-chosen (2026-08-25 ruling).
+                expect and {
+                    or {
+                      chosen_outpoint_source_kind == engine.outpoint_source_spend,
+                      chosen_outpoint_source_kind == engine.outpoint_source_reference,
+                    },
+                    chosen_outpoint_cursor >= 0,
+                  }
+                engine.pre_bind_scan_state_v1(
+                  engine.direction_wrongful_acceptance,
+                  engine.source_kind_forced,
+                  leaf.tx_id,
+                  subject.source_key,
+                  engine.class_pending,
+                  prior_ledger_root,
+                  chosen_outpoint_source_kind,
+                  chosen_outpoint_cursor,
+                )
+              }
+              ForcedTxInvalid { reason } -> {
+                // Direction B disputes an explicit rejection by one of this
+                // family's three arms; the accused pair and class are copied
+                // verbatim from the leaf (2026-08-25 ruling) — the chosen_*
+                // redeemer fields are ignored. Deliberately unguarded: a pair
+                // naming a subject outside the transaction's domain is
+                // step-03's `BindOutOfDomain` close (#633 §7.2), so nothing
+                // may filter it here.
+                let accusation = engine.scan_accusation_of_v1(reason)
+                engine.pre_bind_scan_state_v1(
+                  engine.direction_wrongful_rejection,
+                  engine.source_kind_forced,
+                  leaf.tx_id,
+                  subject.source_key,
+                  accusation.scan_reason_class,
+                  prior_ledger_root,
+                  accusation.outpoint_source_kind,
+                  accusation.outpoint_cursor,
+                )
+              }
+            }
           }
         }
 
-        // 4. The thread advances to OpenSubject with the pre-bind scan state.
+        // 3. The thread advances to OpenSubject with the pre-bind scan state.
         expect output_script_hash == step_03_open_subject_validator_script_hash
         let expected_output_state: Data = scan_state
         expect output_state_data == expected_output_state
@@ -310,10 +320,15 @@ test decoding_step_02_opens_a_normal_claim() {
     0,
   )
   run_step_02(
-    BindStateV1 {
-      direction: engine.direction_wrongful_acceptance,
-      source_kind: engine.source_kind_normal,
-      verified_tx_id: tx_id,
+    engine.BoundAccepted {
+      subject: substrate.VerdictSubjectV1 {
+        version: substrate.version,
+        direction: substrate.direction_wrongful_acceptance,
+        source_kind: substrate.source_kind_accepted,
+        transaction_id: tx_id,
+        source_key: #"",
+        rejection_reason: None,
+      },
     },
     claim,
     tf.header_asset_name_v1(claim.header),
@@ -344,11 +359,7 @@ test decoding_step_02_opens_a_forced_acceptance() {
     0,
   )
   run_step_02(
-    BindStateV1 {
-      direction: engine.direction_wrongful_acceptance,
-      source_kind: engine.source_kind_forced,
-      verified_tx_id: #"",
-    },
+    engine.PendingForced,
     claim,
     tf.header_asset_name_v1(claim.header),
     Some(membership),
@@ -380,11 +391,7 @@ fn run_step_02_rejection(
     expected_cursor,
   )
   run_step_02(
-    BindStateV1 {
-      direction: engine.direction_wrongful_rejection,
-      source_kind: engine.source_kind_forced,
-      verified_tx_id: #"",
-    },
+    engine.PendingForced,
     claim,
     tf.header_asset_name_v1(claim.header),
     Some(membership),
@@ -454,11 +461,7 @@ test decoding_step_02_rejects_direction_b_on_an_accepting_leaf() fail {
     0,
   )
   run_step_02(
-    BindStateV1 {
-      direction: engine.direction_wrongful_rejection,
-      source_kind: engine.source_kind_forced,
-      verified_tx_id: #"",
-    },
+    engine.PendingForced,
     claim,
     tf.header_asset_name_v1(claim.header),
     Some(membership),
@@ -492,11 +495,7 @@ test decoding_step_02_rejects_direction_a_on_a_rejecting_leaf() fail {
     0,
   )
   run_step_02(
-    BindStateV1 {
-      direction: engine.direction_wrongful_acceptance,
-      source_kind: engine.source_kind_forced,
-      verified_tx_id: #"",
-    },
+    engine.PendingForced,
     claim,
     tf.header_asset_name_v1(claim.header),
     Some(membership),
@@ -535,11 +534,7 @@ test decoding_step_02_rejects_an_obsolete_four_element_source() fail {
     0,
   )
   run_step_02(
-    BindStateV1 {
-      direction: engine.direction_wrongful_acceptance,
-      source_kind: engine.source_kind_forced,
-      verified_tx_id: #"",
-    },
+    engine.PendingForced,
     claim,
     tf.header_asset_name_v1(claim.header),
     Some(membership),
@@ -570,10 +565,15 @@ test decoding_step_02_rejects_a_header_that_is_not_the_threads() fail {
     0,
   )
   run_step_02(
-    BindStateV1 {
-      direction: engine.direction_wrongful_acceptance,
-      source_kind: engine.source_kind_normal,
-      verified_tx_id: tx_id,
+    engine.BoundAccepted {
+      subject: substrate.VerdictSubjectV1 {
+        version: substrate.version,
+        direction: substrate.direction_wrongful_acceptance,
+        source_kind: substrate.source_kind_accepted,
+        transaction_id: tx_id,
+        source_key: #"",
+        rejection_reason: None,
+      },
     },
     claim,
     tf.header_asset_name_v1(other_claim.header),
@@ -605,10 +605,15 @@ test decoding_step_02_rejects_a_phase_mismatch() fail {
     0,
   )
   run_step_02(
-    BindStateV1 {
-      direction: engine.direction_wrongful_acceptance,
-      source_kind: engine.source_kind_normal,
-      verified_tx_id: tx_id,
+    engine.BoundAccepted {
+      subject: substrate.VerdictSubjectV1 {
+        version: substrate.version,
+        direction: substrate.direction_wrongful_acceptance,
+        source_kind: substrate.source_kind_accepted,
+        transaction_id: tx_id,
+        source_key: #"",
+        rejection_reason: None,
+      },
     },
     claim,
     tf.header_asset_name_v1(claim.header),
@@ -633,10 +638,15 @@ test decoding_step_02_rejects_direction_b_on_a_normal_source() fail {
     0,
   )
   run_step_02(
-    BindStateV1 {
-      direction: engine.direction_wrongful_rejection,
-      source_kind: engine.source_kind_normal,
-      verified_tx_id: tx_id,
+    engine.BoundAccepted {
+      subject: substrate.VerdictSubjectV1 {
+        version: substrate.version,
+        direction: substrate.direction_wrongful_acceptance,
+        source_kind: substrate.source_kind_accepted,
+        transaction_id: tx_id,
+        source_key: #"",
+        rejection_reason: None,
+      },
     },
     claim,
     tf.header_asset_name_v1(claim.header),
@@ -657,10 +667,15 @@ fn run_cancel(signed_by_prover: Bool) -> Bool {
     fixture.computation_thread_policy_id,
     Some(
       step_datum_with(
-        BindStateV1 {
-          direction: engine.direction_wrongful_acceptance,
-          source_kind: engine.source_kind_normal,
-          verified_tx_id: tx_id,
+        engine.BoundAccepted {
+          subject: substrate.VerdictSubjectV1 {
+            version: substrate.version,
+            direction: substrate.direction_wrongful_acceptance,
+            source_kind: substrate.source_kind_accepted,
+            transaction_id: tx_id,
+            source_key: #"",
+            rejection_reason: None,
+          },
         },
       ),
     ),

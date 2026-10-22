@@ -27,14 +27,13 @@
  *
  * 2. PUBLISHED REJECTION VOCABULARY. The canonical 50-member `RejectCodes`
  *    vocabulary (`@al-ft/midgard-validation/types`) is partitioned below into
- *    `WATCHER_PHASE_A_REACHABLE_REJECT_CODES` (32) and
- *    `WATCHER_PHASE_A_EXCLUDED_REJECT_CODES` (18), each excluded code
+ *    `WATCHER_PHASE_A_REACHABLE_REJECT_CODES` (31) and
+ *    `WATCHER_PHASE_A_EXCLUDED_REJECT_CODES` (19), each excluded code
  *    carrying a one-line justification in
  *    `WATCHER_PHASE_A_EXCLUDED_REJECT_CODE_JUSTIFICATIONS`. The partition is
  *    derived from the canonical source, not invented: the reachable set is
  *    exactly the union of the codes `validatePhaseASingle` can return directly
- *    (13, phase-a.ts:412-545) and the codes `consensusProfileRejectCode`
- *    (phase-a.ts:73-116) maps the 19 `MidgardConsensusV1ViolationCode` values
+ *    and the codes `consensusProfileRejectCode` maps the consensus violations
  *    onto. The partition is enforced as a fail-closed guard, never as a filter:
  *    a canonical code outside the vocabulary is an error result, and a
  *    canonical code inside the vocabulary but outside the declared reachable
@@ -76,15 +75,8 @@ import "../storage/durable-store.js";
 import "./header-root-reconstruction.js";
 import "./rule-bundle.js";
 import "./phase-a-verifier.watcher-phase-a-excluded-reject-code-justifications.js";
-import "./phase-a-verifier.project-program-material-sidecar.js";
+import "./phase-a-verifier.canonical-verdict.js";
 import "./phase-a-verifier.evaluate-watcher-phase-aqueued-txs.js";
-export {
-  evaluateWatcherPhaseABlock,
-  type EvaluateWatcherPhaseABlockInput,
-  evaluateWatcherPhaseAQueuedTxs,
-  type WatcherPhaseABlockContext,
-  watcherPhaseAQueuedTxs,
-} from "./phase-a-verifier.evaluate-watcher-phase-aqueued-txs.js";
 export {
   makeWatcherPhaseAConfig,
   WATCHER_PHASE_A_CONCURRENCY,
@@ -92,7 +84,14 @@ export {
   type WatcherPhaseABlockTransaction,
   watcherPhaseARejectionProjection,
   type WatcherPhaseAVerificationResult,
-} from "./phase-a-verifier.project-program-material-sidecar.js";
+} from "./phase-a-verifier.canonical-verdict.js";
+export {
+  evaluateWatcherPhaseABlock,
+  type EvaluateWatcherPhaseABlockInput,
+  evaluateWatcherPhaseAQueuedTxs,
+  type WatcherPhaseABlockContext,
+  watcherPhaseAQueuedTxs,
+} from "./phase-a-verifier.evaluate-watcher-phase-aqueued-txs.js";
 export {
   WATCHER_PHASE_A_CANONICAL_REJECT_CODES,
   WATCHER_PHASE_A_CONSENSUS_REJECT_CODES,

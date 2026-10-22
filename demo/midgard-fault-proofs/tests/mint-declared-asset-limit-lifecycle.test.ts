@@ -33,7 +33,6 @@ import "./support/emulator/registered-chain.js";
 import "./support/emulator/removal-deployment.js";
 import "./support/emulator/setup-tx.js";
 import "./support/lifecycle-coverage.js";
-import "./support/measured-fit-ledger.js";
 import "./support/submit-init-emulator-fixtures.js";
 import "./support/submit-init-emulator-shared.js";
 import "./mint-declared-asset-limit-lifecycle.registered-contracts.js";
@@ -65,7 +64,6 @@ import { describe, expect, it, vi } from "vitest";
 
 import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
 import { faultProofFieldCarriage } from "../src/field-opening.js";
-import { requireLinearFaultReferenceScript } from "../src/linear-fault-family.js";
 import { createMintDeclaredAssetLimitActuator } from "../src/mint-declared-asset-limit/actuator.js";
 import { buildMintDeclaredAssetLimitArtifact } from "../src/mint-declared-asset-limit/artifact.js";
 import {
@@ -109,6 +107,7 @@ import {
 } from "../src/mint-declared-asset-limit/submit-step-04.js";
 import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
+import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { submitCapturedTransaction } from "../src/workflow/transaction-boundary.js";
 import { expectPositiveMargins } from "./mint-declared-asset-limit-lifecycle.expect-positive-margins.js";
 import {
@@ -143,6 +142,23 @@ import {
 } from "./support/submit-init-emulator-fixtures.js";
 import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
 
+const measureSubmissions =
+  (
+    emulator: Parameters<typeof captureEmulatorSubmission>[0],
+    rows: (readonly [string, Measurement])[],
+  ) =>
+  async <Result>(label: string, action: () => Promise<Result>) => {
+    progress(label);
+    const captured = await captureEmulatorSubmission(emulator, action);
+    rows.push([label, captured.measurement]);
+    return captured.result;
+  };
+
+const refused = async (label: string, action: () => Promise<unknown>) => {
+  progress(`refusal: ${label}`);
+  await expectOnchainRefusal(action);
+};
+
 describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
   it("proves the maximum accepted crossing, refuses every honest and substituted accepted shape, and removes the block", async () => {
     const harness = await makeFaultProofEmulatorHarness({
@@ -152,24 +168,11 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
       },
     });
     const registered = await registeredContracts(harness);
+    // The carriage this run publishes, read back by its steps.
+    const ownOutputs = createOwnOutputJournal();
     const { applied, contracts, catalogue, category } = registered;
     const rows: (readonly [string, Measurement])[] = [];
-    const measured = async <Result>(
-      label: string,
-      action: () => Promise<Result>,
-    ): Promise<Result> => {
-      progress(label);
-      const captured = await captureEmulatorSubmission(
-        harness.emulator,
-        action,
-      );
-      rows.push([label, captured.measurement]);
-      return captured.result;
-    };
-    const refused = async (label: string, action: () => Promise<unknown>) => {
-      progress(`refusal: ${label}`);
-      await expectOnchainRefusal(action);
-    };
+    const measured = measureSubmissions(harness.emulator, rows);
 
     // --- The three accepted transactions of one fraudulent block ---------
     // X: the maximum frontier. A 1,000-asset first policy (consumed across
@@ -275,6 +278,7 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
       xStaged.items,
       "mint declared maximum",
       0n,
+      ownOutputs,
     );
     expect(xCarriage.carriage.measurements).toHaveLength(3);
     for (const [
@@ -293,6 +297,7 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
       yStaged.items,
       "mint declared honest",
       0n,
+      ownOutputs,
     );
     rows.push(["raw-carriage-honest", yCarriage.carriage.measurement]);
     const zCarriage = await publishCarriage(
@@ -302,6 +307,7 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
       zItems,
       "mint declared boundary",
       0n,
+      ownOutputs,
     );
     rows.push(["raw-carriage-boundary", zCarriage.carriage.measurement]);
 
@@ -363,6 +369,7 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
       contracts,
       categoryId: category.categoryId,
       signer: harness.proverSigner,
+      ownOutputs,
     };
     const step02Raw = async (
       threadOutRef: string,
@@ -389,34 +396,22 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
         ...common,
         planned,
       });
-      const stepReference = requireLinearFaultReferenceScript({
-        utxo: references[1],
-        expectedScriptHash: contracts.steps[1].spendingScriptHash,
-        family: "mint-declared-asset-limit",
-        stepIndex: 1,
-      });
-      const opening = fieldOpeningForField({
-        fieldIndex: 5,
-        nativeTxCompactCbor: input.openingCompactCbor ?? compactCbor,
-        carriage: faultProofFieldCarriage({
-          planned,
-          referenceInputs: [
-            ...carriage.carriageUtxos,
-            stepReference,
-            ...(carriage.certificateUtxo === undefined
-              ? []
-              : [carriage.certificateUtxo]),
-          ],
-          certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-          label: "mint declared step-02",
-        }),
-      });
       const { openingCompactCbor: _substituted, ...wire } = input;
       return await submitMintDeclaredAssetLimitStep02Raw({
         ...common,
         threadOutRef,
         evidence,
-        opening,
+        openingFor: (ctx) =>
+          fieldOpeningForField({
+            fieldIndex: 5,
+            nativeTxCompactCbor: input.openingCompactCbor ?? compactCbor,
+            carriage: faultProofFieldCarriage({
+              planned,
+              referenceInputs: ctx.referenceInputs,
+              certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+              label: "mint declared step-02",
+            }),
+          }),
         ...carriage,
         referenceScriptUtxo: references[1],
         ...wire,
@@ -498,7 +493,11 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
       nextAddress: string,
     ) =>
       await measured(label, async () => {
-        const captured = await actuator.capture({ action, artifact });
+        const captured = await actuator.capture({
+          action,
+          artifact,
+          ownOutputs,
+        });
         const txHash = await submitCapturedTransaction(captured.transaction);
         expect(txHash).toBe(captured.transaction.txHash);
         await harness.proverLucid.awaitTx(txHash);
@@ -656,6 +655,7 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
     }
     const xProof = await measured("permanent-proof-mint", async () => {
       const captured = await actuator.capture({
+        ownOutputs,
         action: { stage: "step_04", threadOutRef: xOutRef },
         artifact,
       });
@@ -696,25 +696,20 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
           ...common,
           planned: zPlanned,
         });
-        const stepReference = requireLinearFaultReferenceScript({
-          utxo: references[1],
-          expectedScriptHash: contracts.steps[1].spendingScriptHash,
-          family: "mint-declared-asset-limit",
-          stepIndex: 1,
-        });
         return await submitMintDeclaredAssetLimitStep02Raw({
           ...common,
           threadOutRef: yStep01.nextThreadOutRef,
           evidence: yEvidence,
-          opening: fieldOpeningForField({
-            fieldIndex: 5,
-            nativeTxCompactCbor: y.compactCbor,
-            carriage: faultProofFieldCarriage({
-              planned: zPlanned,
-              referenceInputs: [...zResolved.carriageUtxos, stepReference],
-              label: "mint declared substituted carriage",
+          openingFor: (ctx) =>
+            fieldOpeningForField({
+              fieldIndex: 5,
+              nativeTxCompactCbor: y.compactCbor,
+              carriage: faultProofFieldCarriage({
+                planned: zPlanned,
+                referenceInputs: ctx.referenceInputs,
+                label: "mint declared substituted carriage",
+              }),
             }),
-          }),
           ...zResolved,
           ...yWire,
           referenceScriptUtxo: references[1],
@@ -945,6 +940,7 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
     vi.setSystemTime(harness.emulator.now());
     await measured("mutation-leased-removal", async () => {
       const captured = await removalActuator.capture({
+        ownOutputs,
         action: {
           stage: "remove",
           stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
@@ -978,24 +974,11 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
       },
     });
     const registered = await registeredContracts(harness);
+    // The carriage this run publishes, read back by its steps.
+    const ownOutputs = createOwnOutputJournal();
     const { contracts, catalogue, category } = registered;
     const rows: (readonly [string, Measurement])[] = [];
-    const measured = async <Result>(
-      label: string,
-      action: () => Promise<Result>,
-    ): Promise<Result> => {
-      progress(label);
-      const captured = await captureEmulatorSubmission(
-        harness.emulator,
-        action,
-      );
-      rows.push([label, captured.measurement]);
-      return captured.result;
-    };
-    const refused = async (label: string, action: () => Promise<unknown>) => {
-      progress(`refusal: ${label}`);
-      await expectOnchainRefusal(action);
-    };
+    const measured = measureSubmissions(harness.emulator, rows);
     const credential = getAddressDetails(
       await harness.funderLucid.wallet().address(),
     ).paymentCredential;
@@ -1146,6 +1129,7 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
       aStaged.items,
       "mint declared forced",
       1n,
+      ownOutputs,
     );
     rows.push(["raw-carriage-publication", aCarriage.carriage.measurement]);
     const bCarriage = await publishCarriage(
@@ -1155,6 +1139,7 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
       bStaged.items,
       "mint declared honest rejection",
       1n,
+      ownOutputs,
     );
     rows.push([
       "raw-carriage-honest-rejection",
@@ -1166,6 +1151,7 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
       contracts,
       categoryId: category.categoryId,
       signer: harness.proverSigner,
+      ownOutputs,
     };
     const initialize = async () => {
       const initialized = await submitCommittedFieldShapeInit({
@@ -1196,7 +1182,10 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
         ...common,
         threadOutRef,
         finding: evidence,
-        forcedSource: { header, membership, direction: 1n },
+        forcedSource: {
+          header,
+          membership,
+        },
         referenceScriptUtxo: references[0],
       });
     const decode = (
@@ -1298,7 +1287,10 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
         subject: aEvidence.subject,
         datumPolicyIndex: 0,
         redeemerPolicyIndex: 0,
-        forcedSource: { header, membership: membershipA, direction: 1n },
+        forcedSource: {
+          header,
+          membership: membershipA,
+        },
         referenceScriptUtxo: references[0],
         ...input,
       });
@@ -1323,12 +1315,20 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
       "subject coordinate: datum policy 1 against redeemer policy 0",
       () => rawBind({ datumPolicyIndex: 1 }),
     );
-    await refused(
-      "direction: a rejection leaf bound as wrongful acceptance",
+    progress("refusal: a rejection leaf bound as wrongful acceptance");
+    await expectOnchainRefusal(
       () =>
         rawBind({
-          forcedSource: { header, membership: membershipA, direction: 0n },
+          subject: forcedVerdictSubject({
+            transactionId: a.id,
+            sourceKey: keyA,
+            rejectionReason: null,
+          }),
         }),
+      {
+        refusedBy: "fraud_proofs/mint_declared_asset_limit/step_01",
+        check: /^Validator returned false$/u,
+      },
     );
     coverage.scenario("reason_or_subject_coordinate_mutation");
     await refused(
@@ -1351,7 +1351,6 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
                 },
               },
             },
-            direction: 1n,
           },
         }),
     );
@@ -1360,7 +1359,6 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
         forcedSource: {
           header,
           membership: { ...membershipA, proof: membershipB.proof },
-          direction: 1n,
         },
       }),
     );

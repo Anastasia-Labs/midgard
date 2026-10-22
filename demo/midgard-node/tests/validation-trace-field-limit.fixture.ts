@@ -1,5 +1,4 @@
 import {
-  encodeMidgardCekProgramMaterialSidecar,
   MIDGARD_CONSENSUS_LIMITS,
   MIDGARD_CONSENSUS_PROFILE,
 } from "@al-ft/midgard-core";
@@ -25,7 +24,11 @@ import {
   outRefFromTxId,
 } from "@al-ft/midgard-validation/tests/validation-fixtures";
 import { CML, Data } from "@lucid-evolution/lucid";
-import { computeDaPayloadRoots } from "da-committee-node/da/payload";
+import {
+  computeDaPayloadRoots,
+  headerCommittedCounts,
+  headerCommittedRoots,
+} from "da-committee-node/da/payload";
 import { Effect } from "effect";
 import { expect } from "vitest";
 
@@ -33,7 +36,6 @@ import { makePayloadFixture } from "../../da-committee-node/tests/helpers.js";
 import * as ForcedTransactionsDB from "../src/database/forcedTransactions.js";
 import { classifyForcedTransactions } from "../src/mpf/event-window.classify-forced-transactions.js";
 import { buildPlaceholderValidationTraceMembers } from "../src/mpf/validation-trace.js";
-import { sha256 } from "../src/sha256.js";
 // Capacity fixtures require funded, signed transactions with real ledger proofs;
 // the neighbouring admission suite exercises small rejected EmptyInputs events.
 export const fixture = async (
@@ -141,7 +143,6 @@ export const fixture = async (
         consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       }),
     );
-    const sidecar = encodeMidgardCekProgramMaterialSidecar([]);
     const entry: ForcedTransactionsDB.Entry = {
       tx_order_id: Buffer.from(
         Data.to(
@@ -160,8 +161,6 @@ export const fixture = async (
       consensus_profile_id: MIDGARD_CONSENSUS_PROFILE.profileId,
       native_tx_cbor: forcedBytes,
       transaction_commitment: encoded.transactionCommitment,
-      cek_program_material_sidecar_cbor: sidecar,
-      cek_program_material_sidecar_sha256: sha256(sidecar),
       inclusion_time: new Date(0),
       projected_header_hash: null,
       status: ForcedTransactionsDB.Status.Awaiting,
@@ -281,7 +280,11 @@ export const fixture = async (
     },
   };
   const roots = await computeDaPayloadRoots(unhashed);
-  const header = { ...unhashed.block_body.header, ...counts, ...roots };
+  const header = {
+    ...unhashed.block_body.header,
+    ...headerCommittedCounts(counts),
+    ...headerCommittedRoots(roots),
+  };
   const headerHash = Effect.runSync(SDK.hashBlockHeader(header));
   const payload: SDK.DaPayload = {
     ...unhashed,

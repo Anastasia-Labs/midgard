@@ -25,7 +25,6 @@ import "./support/emulator/reference-scripts.js";
 import "./support/emulator/registered-chain.js";
 import "./support/emulator/removal-deployment.js";
 import "./support/lifecycle-coverage.js";
-import "./support/measured-fit-ledger.js";
 import "./support/native-script-decoding-emulator.js";
 import "./support/submit-init-emulator-fixtures.js";
 import "./support/submit-init-emulator-shared.js";
@@ -55,7 +54,7 @@ import {
   forcedVerdictSubject,
   Proof,
 } from "@al-ft/midgard-sdk";
-import { Data, type UTxO } from "@lucid-evolution/lucid";
+import { Data, type RedeemerContext, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
@@ -89,6 +88,7 @@ import { submitProtectedOutputSignerOpeningTransition } from "../src/protected-o
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { nativeTxFromCoreCompact } from "../src/step-support.js";
 import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
+import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { makeProtectedOutputSignerIsolatedEvaluator } from "./protected-output-signer-missing-isolated-evaluator.js";
 import { makeScenario } from "./protected-output-signer-missing-lifecycle.make-scenario.js";
 import {
@@ -111,7 +111,6 @@ import {
   witnessSetOf,
 } from "./protected-output-signer-missing-lifecycle.registered-contracts.js";
 import {
-  measuredFit,
   scanToTerminal,
   withSwappedCertificateSlot,
 } from "./protected-output-signer-missing-lifecycle.with-swapped-certificate-slot.js";
@@ -395,13 +394,17 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
       references[3]!,
       step03Result.result.certificateUtxo!,
     ];
-    const honestOpening = faultProofFieldOpening({
-      planned: witnessPlan,
-      referenceInputs: honestReferenceInputs,
-      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-      label: "protected-output max scan opening",
-    });
-    const rawScan = (opening: SDK.FieldOpening, checkpointCbor: string) =>
+    const honestOpening = (ctx: RedeemerContext) =>
+      faultProofFieldOpening({
+        planned: witnessPlan,
+        referenceInputs: ctx.referenceInputs,
+        certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+        label: "protected-output max scan opening",
+      });
+    const rawScan = (
+      openingFor: (ctx: RedeemerContext) => SDK.FieldOpening,
+      checkpointCbor: string,
+    ) =>
       submitProtectedOutputSignerOpeningTransition({
         lucid: harness.proverLucid,
         contracts,
@@ -417,7 +420,7 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
           } as never,
           ProtectedOutputSignerStep04DatumSchema as never,
         ),
-        opening,
+        openingFor,
         checkpointCbor,
         referenceScriptUtxo: references[3]!,
         carriageReferenceInputs: honestReferenceInputs,
@@ -425,7 +428,7 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
       });
     await expectOnchainRefusal(() =>
       rawScan(
-        withSwappedCertificateSlot(honestOpening),
+        (ctx) => withSwappedCertificateSlot(honestOpening(ctx)),
         checkpointAt(0).checkpointCbor,
       ),
     );
@@ -502,22 +505,6 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
       expect(capture.measurement.executionMemory).toBeGreaterThan(0n);
       expect(capture.measurement.executionSteps).toBeGreaterThan(0n);
     }
-    measuredFit.record("accepted-init", init.measurement);
-    measuredFit.record("accepted-step01", step01Result.measurement);
-    measuredFit.record("accepted-step02", step02Result.measurement);
-    step03Result.measurements.forEach((measurement, index) =>
-      measuredFit.record(
-        `accepted-carriage-${index}`,
-        measurement,
-        measurement.executionMemory === 0n ? "publication" : "lifecycle",
-      ),
-    );
-    scanResults.forEach((capture, index) =>
-      measuredFit.record(`accepted-scan-${index}`, capture.measurement),
-    );
-    measuredFit.record("accepted-step05", step05Result.measurement);
-    measuredFit.record("accepted-cancel-init", cancelInit.measurement);
-    measuredFit.record("accepted-cancel", cancellation.measurement);
     if (process.env.MIDGARD_PRINT_FIT === "1")
       console.info(
         JSON.stringify(
@@ -580,7 +567,6 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
     );
     expect(removal.result.fraudCategoryId).toBe("0000002b");
     expect(removal.measurement.l1ByteMargin).toBeGreaterThan(0);
-    measuredFit.record("accepted-removal", removal.measurement);
     coverage.scenario("permanent_proof_token_and_descendant_removal");
     if (process.env.MIDGARD_PRINT_FIT === "1")
       console.info(
@@ -645,7 +631,14 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
     coverage.scenario("reason_or_subject_coordinate_mutation");
     // Direction: a rejecting leaf cannot open a wrongful-acceptance thread.
     await expectOnchainRefusal(() =>
-      s.forced01(thread, evidence, { direction: 0n }),
+      s.forced01(thread, {
+        ...evidence,
+        subject: forcedVerdictSubject({
+          transactionId: evidence.subject.transaction_id,
+          sourceKey: FORCED_ORDER_KEY,
+          rejectionReason: null,
+        }),
+      }),
     );
     // Forced leaf: a leaf carrying another verdict is not in the forced root.
     await expectOnchainRefusal(() =>
@@ -670,46 +663,36 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
       s.forced01(thread, evidence),
     );
     expect(bound.measurement.l1ByteMargin).toBeGreaterThan(0);
-    measuredFit.record("forced-bind", bound.measurement);
     console.info(
       `[protected-output-signer-missing-forced-step01] ${JSON.stringify({ bytes: bound.measurement.completeSignedBytes, memory: bound.measurement.executionMemory.toString(), cpu: bound.measurement.executionSteps.toString() })}`,
     );
-    const completed = await captureEmulatorSubmission(
-      s.harness.emulator,
-      async () => {
-        const credential = await s.step02(
-          bound.result.nextThreadOutRef,
-          evidence,
-          adjudicated,
-        );
-        const carriage = await s.step03(
-          credential.nextThreadOutRef,
-          evidence,
-          adjudicated,
-        );
-        const terminal = await scanToTerminal(
-          s,
-          carriage.nextThreadOutRef,
-          evidence,
-          adjudicated,
-          carriage,
-        );
-        const minted = await s.step05(terminal, evidence);
-        expect(minted.fraudProofUnit).toContain(s.category.categoryId);
-      },
-    );
-    completed.measurements.forEach((measurement, index) =>
-      measuredFit.record(
-        `forced-completion-${index}`,
-        measurement,
-        measurement.executionMemory === 0n ? "publication" : "lifecycle",
-      ),
-    );
+    await captureEmulatorSubmission(s.harness.emulator, async () => {
+      const credential = await s.step02(
+        bound.result.nextThreadOutRef,
+        evidence,
+        adjudicated,
+      );
+      const carriage = await s.step03(
+        credential.nextThreadOutRef,
+        evidence,
+        adjudicated,
+      );
+      const terminal = await scanToTerminal(
+        s,
+        carriage.nextThreadOutRef,
+        evidence,
+        adjudicated,
+        carriage,
+      );
+      const minted = await s.step05(terminal, evidence);
+      expect(minted.fraudProofUnit).toContain(s.category.categoryId);
+    });
     coverage.reason(REASON, "forced_rejection_wrong");
     coverage.scenario("wrongful_forced_rejection_success");
   }, 900_000);
 
   it("refuses an honest accepted block, every substituted accepted seam, the adjacent over-bound field, and cancels every step", async () => {
+    const ownOutputs = createOwnOutputJournal();
     // Honest: the protected output's signer is present behind one decoy, so
     // the accepted block is correct and no acceptance thread may close.
     const honestTx = nativeTxWith({
@@ -1051,6 +1034,7 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
       witnessSetHash: overBoundEvidence.witnessSetHashHex,
     };
     const overBoundChunks = await publishFaultProofFieldCarriage({
+      ownOutputs,
       lucid: s.harness.proverLucid,
       signer: s.harness.proverSigner,
       planned: overBoundPlanned,
@@ -1060,6 +1044,7 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
     expect(overBoundChunks).toHaveLength(3);
     await expectOnchainRefusal(() =>
       certifyFaultProofFieldCarriage({
+        ownOutputs,
         lucid: s.harness.proverLucid,
         network,
         signer: s.harness.proverSigner,
@@ -1180,7 +1165,6 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
       );
       expect(direct.result.stage).toBe("step05");
       expect(direct.measurement.l1ByteMargin).toBeGreaterThan(0);
-      measuredFit.record(`forced-direct-${label}`, direct.measurement);
       console.info(
         `[protected-output-signer-missing-forced-direct-${label}] ${JSON.stringify({ bytes: direct.measurement.completeSignedBytes, memory: direct.measurement.executionMemory.toString(), cpu: direct.measurement.executionSteps.toString() })}`,
       );

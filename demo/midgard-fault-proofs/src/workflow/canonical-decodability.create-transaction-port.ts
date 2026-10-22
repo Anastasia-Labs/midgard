@@ -98,7 +98,7 @@ export const createTransactionPort = (
       "canonical-decodability requires the authenticated raw committed-field evidence route",
     );
   },
-  capture: async ({ action, artifact }) => {
+  capture: async ({ action, artifact, entries }) => {
     const admitted = await admitCanonicalDecodabilityArtifact(artifact);
     if (admitted.artifact.headerHash !== config.headerHash) {
       throw new Error(
@@ -142,6 +142,7 @@ export const createTransactionPort = (
           headerHash: config.headerHash,
           action,
           artifact,
+          entries,
         }),
       ]);
       if (proofChunks === undefined || field.requirement === null) {

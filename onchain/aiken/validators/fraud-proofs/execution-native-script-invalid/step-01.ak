@@ -57,7 +57,7 @@ validator main(
         let source_data <- cbor_deserialise.expect_deserialise(source_cbor)
         expect source: L2TransactionSourceV1 = source_data
         let expected: Data = bind_execution_v1(
-          substrate.bind_accepted_subject_v1(verified),
+          substrate.open_accepted_subject_v1(verified),
           header.validation_traces_root,
           header.validation_trace_count,
           execution_index,
@@ -70,13 +70,7 @@ validator main(
         }
       }
       ct.Continue(Args {
-        source: ForcedSource {
-          input_index,
-          output_index,
-          header,
-          membership,
-          direction,
-        },
+        source: ForcedSource { input_index, output_index, header, membership },
         execution_index,
       }) -> {
         let Transaction { inputs, outputs, .. } = tx
@@ -90,14 +84,13 @@ validator main(
           inputs,
           outputs,
         )
-        let subject = substrate.bind_forced_subject_to_thread_v1(
+        let Pair(subject, _) = substrate.open_forced_subject_v1(
           thread_asset_name,
           header,
           membership,
-          direction,
         )
         let leaf = membership.value
-        // bind_forced_subject_to_thread_v1 already verified this exact source.
+        // open_forced_subject_v1 already verified this exact source.
         let expected: Data = bind_execution_v1(
           subject,
           header.validation_traces_root,

@@ -1,13 +1,12 @@
 /**
- * The node row a projected event decodes into, with its follower admission
- * identity. Decoding throws for an event the node cannot represent; the
- * ingestion refuses that event by name (`l1_event_undecodable`).
+ * The node row of a projected event the node reads as a user event
+ * (`readUserEvent`), with its follower admission identity. The ingestion
+ * refuses an event it cannot read by name (`l1_event_undecodable`).
  */
 import type { ProjectedEvent } from "@al-ft/midgard-l1-follower/events";
 import type { Statement } from "@effect/sql";
-import type { Network } from "@lucid-evolution/lucid";
 
-import { userEventEntry } from "../l1-events/entries.js";
+import type { UserEventEntry } from "../l1-events/entries.js";
 import * as Deposits from "./deposits.js";
 import { withdrawalLedgerOutRefColumns } from "./withdrawal-ledger-outref.decode.js";
 import * as Withdrawals from "./withdrawals.js";
@@ -30,9 +29,8 @@ export const identityOf = (event: ProjectedEvent) => ({
 /** The node row of a projected event (ruling 2: a deposit's L1 tx hash is its admission tx). */
 export const rowOf = (
   event: ProjectedEvent,
-  network: Network,
+  decoded: UserEventEntry,
 ): Readonly<Record<string, Statement.Argument>> => {
-  const decoded = userEventEntry(event, network);
   const identity = identityOf(event);
   if (decoded.kind === "deposit") {
     const entry = decoded.entry;

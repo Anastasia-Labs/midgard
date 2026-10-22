@@ -18,8 +18,10 @@ type ReasonVector = {
   readonly hash: string;
 };
 
-// Generated independently of this codec (a stand-alone Plutus Data encoder)
-// and pinned by the on-chain `rejection_reason_v1` vector tests.
+// Generated independently of this codec by
+// `scripts/generate-rejection-reason-v1-vectors.mjs` (a stand-alone Plutus Data
+// encoder; `pnpm run fixtures:rejection-reason-v1:check`) and pinned by the
+// on-chain `rejection_reason_v1` vector tests.
 const vectors = JSON.parse(
   readFileSync(
     new URL("./fixtures/rejection-reason-v1.vectors.json", import.meta.url),
@@ -116,7 +118,7 @@ describe("RejectionReasonV1 codec", () => {
   );
 
   it.each([
-    ["a constructor past the last arm", "d905299f00ff"],
+    ["a constructor past the last arm", "d9052a9f00ff"],
     ["a constructor between the two tag ranges", "d8809f00ff"],
     ["a missing coordinate", "d905229f00ff"],
     ["an extra coordinate", "d905229f000000ff"],

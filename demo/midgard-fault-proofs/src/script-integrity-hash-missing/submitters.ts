@@ -7,6 +7,7 @@ import {
   type BuildTxWithRedeemer,
   Data,
   type LucidEvolution,
+  type RedeemerContext,
   type UTxO,
 } from "@lucid-evolution/lucid";
 
@@ -38,10 +39,14 @@ export type ScriptIntegrityHashMissingContinueArgs = {
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly nextDatum: string;
-  readonly buildArgs: (layout: {
-    readonly input_index: bigint;
-    readonly output_index: bigint;
-  }) => unknown;
+  /** The family arguments, given the resolved layout and the builder context. */
+  readonly buildArgs: (
+    layout: {
+      readonly input_index: bigint;
+      readonly output_index: bigint;
+    },
+    ctx: RedeemerContext,
+  ) => unknown;
   readonly referenceScriptUtxo: UTxO;
   /** Raw chunks and field certificates are reference inputs, never wallet inputs. */
   readonly authenticatedCarriageUtxos?: readonly UTxO[];
@@ -140,7 +145,7 @@ const submitContinue = async (
       ),
     };
     return Data.to(
-      { Continue: [buildArgs(layout)] } as never,
+      { Continue: [buildArgs(layout, ctx)] } as never,
       ScriptIntegritySpendRedeemers[physicalStep] as never,
     );
   }) satisfies BuildTxWithRedeemer;

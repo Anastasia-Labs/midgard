@@ -1,4 +1,15 @@
 export {
+  canonicalCborArgumentHeaderSize,
+  canonicalFieldItemEncodedLength,
+} from "./canonical-field-item.js";
+export {
+  buildTraceAtStepCountV1,
+  decideValidationChallengeV1,
+  type ValidationChallengeDecisionV1,
+  type ValidationTraceAtStepCountV1,
+  validationTraceLevelsAtStepCountV1,
+} from "./challenger-descriptor.js";
+export {
   decodeScriptDiscoveryBitmap,
   encodeScriptDiscoveryBitmap,
   encodeScriptDiscoveryControlCbor,
@@ -23,9 +34,11 @@ export {
   prependMidgardInputResolutionSchedule,
 } from "./input-resolution.js";
 export {
+  applyValidationLedgerMutations,
   applyValidationMachineLedgerMutationStep,
   buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
+  transitionEffectToLedgerOps,
   type ValidationMachineLedgerEntry,
   type ValidationMachineLedgerMutationStep,
   type ValidationMachineLedgerOp,
@@ -60,3 +73,11 @@ export {
   type ValidationMachineSignerSetProof,
   type ValidationMachineWorkWitness,
 } from "./types.js";
+export {
+  commitValidationTraceV1,
+  openValidationTraceV1,
+  requiresRealValidationDescriptorV1,
+  type ValidationTraceCommitmentV1,
+  type ValidationTraceLeavesV1,
+  validationTraceStateHashV1,
+} from "./validation-trace-v1.js";

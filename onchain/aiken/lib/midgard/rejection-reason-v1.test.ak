@@ -2,7 +2,7 @@
 ////
 //// The rejection code of a reason is
 //// `blake2b_256("MidgardValidationRejectCodeV1" || cbor.serialise(reason))`.
-//// Every one of the 48 arms is pinned here twice: its Plutus Data CBOR (the
+//// Every one of the 49 arms is pinned here twice: its Plutus Data CBOR (the
 //// constructor tag is 121 + i for i <= 6 and 1280 + (i - 7) above, so a
 //// reordered or inserted arm moves a tag) and its domain-separated hash. Each
 //// arm carries distinct coordinates, so a dropped or swapped field also moves
@@ -20,7 +20,7 @@ use midgard/rejection_reason_v1.{
   NetworkIdMismatch, ObserverOrderInvalid, ObserversForbiddenOnUntaggedNetwork,
   OutputAssetAccumulationLimit, OutputBelowMinAda, OutputNonCanonical,
   OutputReferenceScriptDepthLimit, OutputReferenceScriptMalformed,
-  OutputReferenceScriptNodeLimit, PlutusExecutionFailed,
+  OutputReferenceScriptNodeLimit, PlutusExecutionFailed, PlutusScriptUndecodable,
   ProtectedOutputSignerMissing, ReceivePurposePlutusV3Forbidden,
   RedeemerMalformed, RedeemerMissing, RejectionReasonV1, RequiredSignerUnsigned,
   ResolvedReferenceScriptDepthLimit, ResolvedReferenceScriptMalformed,
@@ -303,6 +303,11 @@ test reason_vectors_arms_36_to_47() {
       #"d905289f182fff",
       #"ea475757f825e41acf1cd6d3de55252c715db6cbcbac0a5e8286baa38bc6f191",
     ),
+    pinned(
+      PlutusScriptUndecodable { item_kind: 1, item_index: 48, class: 16 },
+      #"d905299f01183010ff",
+      #"9a1ec10d8aed3696fb21c0485a1c116c171b30d9e3ca275442eb94da12b418cb",
+    ),
   }
 }
 
@@ -334,6 +339,11 @@ test reason_vectors_sentinel_and_width() {
       MintItemMalformed { policy_index: 0 },
       #"d905289f00ff",
       #"f280ed3127a64fb8cb31fecb28c993f21ec05b890003c993d96570e723c255ba",
+    ),
+    pinned(
+      PlutusScriptUndecodable { item_kind: 0, item_index: 0, class: 1 },
+      #"d905299f000001ff",
+      #"a2bf7b702c379749f6176e0efbdbd1ffbc8bb04566b8f77b43607e2da39be89a",
     ),
   }
 }

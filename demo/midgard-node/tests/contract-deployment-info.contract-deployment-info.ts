@@ -27,10 +27,6 @@ import {
   verifyDeploymentManifestAgainstConfig,
 } from "../src/commands/contract-deployment-info.js";
 import {
-  isRecordedValidationTraceSemantic,
-  VALIDATION_TRACE_SEMANTIC_KEYS,
-} from "../src/deployable-scripts.js";
-import {
   computeDeploymentManifestId,
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
 } from "../src/deployment-manifest.js";
@@ -49,6 +45,7 @@ import {
   testReferenceScriptAuthPolicy,
   validatorHashesByPath,
 } from "./contract-deployment-info.validator-hashes-by-path.js";
+import { unrecordedValidationTraceSlots } from "./helpers/deployment-member-baseline.js";
 import { withRealEventHistoryForTest } from "./helpers/event-history.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
@@ -852,16 +849,7 @@ describe("contract deployment info", () => {
       // The validation-trace members the manifest records no bytes for fail
       // closed on read rather than borrowing a locally built script.
       const vtd = "$.fraudProofContracts.validationTraceDispute";
-      const unrecorded = [
-        ...VALIDATION_TRACE_SEMANTIC_KEYS.flatMap((key, index) =>
-          isRecordedValidationTraceSemantic(key)
-            ? []
-            : [`${vtd}.semanticResolvers.${index.toString()}`],
-        ),
-        `${vtd}.steps`,
-        `${vtd}.prepareResolvers`,
-        `${vtd}.resolvers`,
-      ];
+      const unrecorded = unrecordedValidationTraceSlots(vtd);
       expect([...restored.failClosed].sort()).toEqual([...unrecorded].sort());
 
       // The SDK builder spreads untyped copies of the top-level shared

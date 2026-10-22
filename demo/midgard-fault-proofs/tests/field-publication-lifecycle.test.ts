@@ -15,6 +15,8 @@ import {
   type FaultProofFieldOpeningPlan,
   publishFaultProofFieldCarriage,
 } from "../src/field-opening.js";
+import { fieldPublicationClaimKey } from "../src/field-opening.own-field-carriage.js";
+import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 
 const address = credentialToAddress("Custom", {
   type: "Key",
@@ -61,15 +63,16 @@ const wallet: Wallet = {
 };
 afterEach(() => vi.restoreAllMocks());
 
-it.each([false, true])(
-  "confirms each publication before the next build, including a retained first chunk (%s)",
-  async (retained) => {
+it.each(["none", "ours", "unrelated"] as const)(
+  "confirms each publication before the next build, with a first-chunk output already at the address: %s",
+  async (present) => {
     const events: string[] = [];
     const outputs: UTxO[] = [];
+    const ownOutputs = createOwnOutputJournal();
     const firstDatum = sdk.fieldPreimagePublicationDatumCbor(
       publications[0]!.bytes,
     );
-    if (retained)
+    if (present !== "none")
       outputs.push({
         txHash: "34".repeat(32),
         outputIndex: 0,
@@ -77,6 +80,13 @@ it.each([false, true])(
         assets: { lovelace: 2_000_000n },
         datum: firstDatum,
       });
+    // Only an output of our own earlier publication is ours to reuse.
+    const retained = present === "ours";
+    if (retained)
+      ownOutputs.claim(
+        fieldPublicationClaimKey(0, firstDatum),
+        `${"34".repeat(32)}#0`,
+      );
     const build = vi
       .spyOn(sdk, "buildUnsignedFieldPreimagePublicationProgram")
       .mockImplementation((_lucid, { publication }) =>
@@ -143,6 +153,7 @@ it.each([false, true])(
       return true;
     });
     const result = await publishFaultProofFieldCarriage({
+      ownOutputs,
       lucid,
       signer: {
         source: "test",
@@ -168,23 +179,30 @@ it.each([false, true])(
     });
     expect(build).toHaveBeenCalledTimes(retained ? 1 : 2);
     expect(result).toHaveLength(2);
+    // The unrelated output is neither reused nor referenced: ours land after it.
+    const at = (position: number) =>
+      (present === "unrelated" ? position + 1 : position).toString();
+    expect(result.map((utxo) => utxo.txHash === "34".repeat(32))).toEqual([
+      retained,
+      false,
+    ]);
     expect(events).toEqual([
       ...(retained
         ? ["confirm:0"]
         : [
             "begin",
             "build:0",
-            "persist:0",
+            `persist:${at(0)}`,
             "submit:0",
-            "included:0",
-            "confirm:0",
+            `included:${at(0)}`,
+            `confirm:${at(0)}`,
           ]),
       "begin",
       "build:1",
-      "persist:1",
+      `persist:${at(1)}`,
       "submit:1",
-      "included:1",
-      "confirm:1",
+      `included:${at(1)}`,
+      `confirm:${at(1)}`,
     ]);
   },
 );

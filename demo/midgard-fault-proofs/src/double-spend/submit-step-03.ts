@@ -60,6 +60,10 @@ import {
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { witnessSpendingValidatorCarriage } from "../witness-reference-scripts.js";
 import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
+import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScript,
@@ -157,6 +161,7 @@ export const submitStep03 = async ({
   referenceScriptUtxo,
   preSubmitBoundary,
   awaitConfirmation = true,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -188,6 +193,8 @@ export const submitStep03 = async ({
   /** Production workflow seam for carriage and proof-step submissions. */
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }): Promise<SubmitStep03Result> => {
   const { doubleSpendCategory, contracts } =
     await resolveDoubleSpendDeploymentContracts({
@@ -255,6 +262,7 @@ export const submitStep03 = async ({
   const carriageUtxos =
     publishedCarriageUtxos ??
     (await publishFaultProofFieldCarriage({
+      ownOutputs,
       lucid,
       signer,
       planned,
@@ -279,12 +287,6 @@ export const submitStep03 = async ({
       walletUtxos,
     ),
   );
-  const tx1SpendInputsOpening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs,
-    ...(certificatePolicyId === undefined ? {} : { certificatePolicyId }),
-    label: "Double-spend step 03 tx1 spend-inputs",
-  });
   const step04Datum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
@@ -302,6 +304,12 @@ export const submitStep03 = async ({
   });
   let resolvedLayout: Step03Layout | undefined;
   const redeemer = ((ctx) => {
+    const tx1SpendInputsOpening: FieldOpening = faultProofFieldOpening({
+      planned,
+      referenceInputs: ctx.referenceInputs,
+      ...(certificatePolicyId === undefined ? {} : { certificatePolicyId }),
+      label: "Double-spend step 03 tx1 spend-inputs",
+    });
     requireOwnSpendPurpose(ctx, threadUtxo, "double-spend step 03");
     const layout: Step03Layout = {
       inputIndex: requireInputIndex(ctx, threadUtxo, "double-spend step 03"),

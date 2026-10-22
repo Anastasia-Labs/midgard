@@ -1,4 +1,4 @@
-import { type MidgardCekProgramMaterialEntry } from "@al-ft/midgard-core/cek-proof";
+import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
 import { type Network } from "@lucid-evolution/lucid";
 
 import {
@@ -60,7 +60,6 @@ import {
   attachProviderMetadata,
   type CompleteTxContext,
 } from "./builder/metadata.js";
-import { mergeCanonicalProofProgramMaterial } from "./builder/script-materialization.js";
 import { cloneUtxo, emptyState } from "./builder/state.js";
 import { assertTxStatusMatches, pollTxStatus } from "./builder/status.js";
 import { assetQuantity, type AssetUnit } from "./core/assets.js";
@@ -173,6 +172,7 @@ export class LucidMidgard {
     networkOrConfig?: Network | LucidMidgardConfig,
   ): Promise<LucidMidgard> {
     const baseConfig = normalizeLucidMidgardConfig(networkOrConfig);
+    await ledgerEd25519SignatureReady();
     const { snapshot, config } = await readProviderSnapshot({
       provider,
       generation: 0,
@@ -392,7 +392,6 @@ export class LucidMidgard {
   }
 
   private completeTxContext(
-    programMaterial: readonly MidgardCekProgramMaterialEntry[] = [],
     resolvedReferenceOutputsByOutRef: ReadonlyMap<
       string,
       Uint8Array
@@ -404,7 +403,6 @@ export class LucidMidgard {
       networkId: configNetworkId(this.#config),
       maxSubmitTxCborBytes: this.#config.submissionLimits.maxSubmitTxCborBytes,
       consensusProfile: this.#config.consensusProfile,
-      programMaterial,
       resolvedReferenceOutputsByOutRef,
     };
   }
@@ -473,10 +471,6 @@ export class LucidMidgard {
         normalizeUtxo,
         this.#config.networkId,
       ).outputsByOutRef;
-    const programMaterial = mergeCanonicalProofProgramMaterial(
-      input instanceof CompleteTx ? input.programMaterial : [],
-      options.programMaterial ?? [],
-    );
     assertTxNetworkMatchesExpected(
       tx,
       expectedBodyNetworkId,
@@ -490,18 +484,12 @@ export class LucidMidgard {
       ? makePartiallySignedTx(
           tx,
           metadata,
-          this.completeTxContext(
-            programMaterial,
-            resolvedReferenceOutputsByOutRef,
-          ),
+          this.completeTxContext(resolvedReferenceOutputsByOutRef),
         )
       : makeCompleteTx(
           tx,
           metadata,
-          this.completeTxContext(
-            programMaterial,
-            resolvedReferenceOutputsByOutRef,
-          ),
+          this.completeTxContext(resolvedReferenceOutputsByOutRef),
         );
   }
 

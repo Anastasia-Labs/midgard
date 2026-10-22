@@ -12,17 +12,29 @@ import "./cek-builtin.verify-midgard-cek-bls-final.js";
 export {
   hashMidgardCekRuntimeArguments,
   hashMidgardCekRuntimeValueWitness,
+  type MidgardCekConstantTypeReader,
   type MidgardCekConstantValueWitness,
   type MidgardCekDirectValueWitness,
   type MidgardCekRuntimeValueWitness,
+  presentMidgardCekDirectArgument,
 } from "./cek-builtin.argument-kinds.js";
-export { evaluateMidgardCekDirectBuiltin } from "./cek-builtin.evaluate-reference-builtin.js";
+export {
+  harmonicBuiltinTag,
+  MIDGARD_CEK_CARDANO_BLS_TAGS,
+} from "./cek-builtin.cardano-tags.js";
+export {
+  evaluateMidgardCekDirectBuiltin,
+  semanticizeMidgardCekDirectConstant,
+} from "./cek-builtin.evaluate-reference-builtin.js";
 export {
   hashMidgardCekDirectArguments,
   hashMidgardCekDirectValueWitness,
+  midgardCekBuiltinArgumentsAreIllTyped,
+  midgardCekBuiltinArgumentsFailKinds,
   midgardCekDirectBuiltinBudget,
   midgardCekDirectBuiltinCostSizes,
   type MidgardCekDirectBuiltinEvaluation,
+  type MidgardCekRevealedConstantMemory,
   verifyMidgardCekBuiltinTypeFailure,
 } from "./cek-builtin.selected-control-result.js";
 export {

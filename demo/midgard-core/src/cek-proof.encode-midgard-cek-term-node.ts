@@ -33,11 +33,6 @@ export const MACHINE_STATE_DOMAIN = Buffer.from(
   "ascii",
 );
 
-export const PROGRAM_ENVELOPE_DOMAIN = Buffer.from(
-  "MidgardCekProgramEnvelopeV1",
-  "ascii",
-);
-
 export const BLS_EXPRESSION_NODE_DOMAIN = Buffer.from(
   "MidgardCekBlsExpressionV1",
   "ascii",
@@ -47,78 +42,35 @@ const UINT32_MAX = 0xffff_ffffn;
 
 const UINT64_MAX = 0xffff_ffff_ffff_ffffn;
 
-/**
- * V1 makes the semantic payload root canonical for every constant, admits
- * semantic builtin/control witnesses, and uses the bounded graph-material
- * interpretation.
- */
-export const MIDGARD_CEK_PROGRAM_ENVELOPE_VERSION = 1n;
-
 export const MIDGARD_CEK_MACHINE_STATE_VERSION = 1n;
 
 export const MIDGARD_CEK_BLOB_CHUNK_BYTES = 4_095;
 
-export const MIDGARD_CEK_MAX_BUILTIN_TAG = 86n;
-
-export const MIDGARD_CEK_PROGRAM_UPLC_VERSION = [1n, 1n, 0n] as const;
+/** Cardano's PV 11 builtin indices: 0-100. */
+export const MIDGARD_CEK_MAX_BUILTIN_TAG = 100n;
 
 /**
- * The canonical V1 DA envelope is the only aggregate program-size budget. The
- * constants below mirror its exact canonical Plutus-Data encoding:
- *
- * - an otherwise-empty, structurally valid V1 payload is 445 bytes;
- * - replacing its one-byte empty material list with the two-byte non-empty
- *   list framing leaves 446 fixed bytes outside material tuples. The constant
- *   is 447, measured when the body also carried a one-byte empty UTxO list;
- *   it is kept so the consensus limits do not move, and is one byte
- *   conservative;
- * - the smallest tuple is 42 bytes: tuple framing (2), a bytes32 key (34),
- *   and a five-byte `[v1, kind, one-byte-preimage]` value wrapped as Plutus
- *   bytes (6).
- *
- * The canonical DA encoder has regression tests for all three measurements.
- * The material-byte bound is deliberately the tight structural upper bound
- * after fixed framing. Exact tuple overhead makes the realizable total
- * smaller, and the canonical 64 MiB DA-size check remains authoritative.
+ * The builtins the CEK machine can step through. Tags 87-100 are admitted in
+ * program material, but every step that reaches one has no proof yet.
  */
+export const MIDGARD_CEK_MAX_RESOLVED_BUILTIN_TAG = 86n;
+
+/** Cardano's PV 11 bound on a constr's field count (`mbConstr`). */
+export const MIDGARD_CEK_MAX_CONSTR_FIELDS = 1_024n;
+
+/** The admitted program versions: 1.0.0 (no constr or case) and 1.1.0. */
+export const MIDGARD_CEK_PROGRAM_UPLC_VERSIONS = Object.freeze([
+  Object.freeze([1n, 0n, 0n] as const),
+  Object.freeze([1n, 1n, 0n] as const),
+]);
+
+export const isMidgardCekProgramUplcVersion = (
+  major: bigint,
+  minor: bigint,
+  patch: bigint,
+): boolean => major === 1n && (minor === 0n || minor === 1n) && patch === 0n;
+
 export const MIDGARD_MAX_DA_PAYLOAD_BYTES = 64 * 1024 * 1024;
-
-export const MIDGARD_CEK_PROGRAM_MATERIAL_DA_FIXED_BYTES = 447;
-
-export const MIDGARD_CEK_MIN_PROGRAM_MATERIAL_DA_TUPLE_BYTES = 42;
-
-export const MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT = BigInt(
-  Math.floor(
-    (MIDGARD_MAX_DA_PAYLOAD_BYTES -
-      MIDGARD_CEK_PROGRAM_MATERIAL_DA_FIXED_BYTES) /
-      MIDGARD_CEK_MIN_PROGRAM_MATERIAL_DA_TUPLE_BYTES,
-  ),
-);
-
-/**
- * A bundle may contain many transactions that use the same program, but
- * distinct program identities must not multiply verification work beyond one
- * maximum-size V1 program. Identical envelopes are verified once and reuse the
- * same positional result.
- */
-export const MIDGARD_CEK_MAX_PROGRAM_BUNDLE_NODE_VISITS =
-  MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT;
-
-export const MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES = BigInt(
-  MIDGARD_MAX_DA_PAYLOAD_BYTES - MIDGARD_CEK_PROGRAM_MATERIAL_DA_FIXED_BYTES,
-);
-
-/**
- * Each unique envelope declares the exact bytes reachable from its root. The
- * sum is therefore a conservative upper bound on both byte verification work
- * and retained type/payload result bytes, including when envelopes share
- * material. V1 permits at most one maximum-size program's work per bundle.
- */
-export const MIDGARD_CEK_MAX_PROGRAM_BUNDLE_BYTE_WORK =
-  MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES;
-
-// [v1, [1,1,0], h32, uint32(node_count), uint32(material_bytes)].
-export const MIDGARD_CEK_MAX_PROGRAM_ENVELOPE_BYTES = 50;
 
 export const MIDGARD_CEK_MAX_SOURCE_CONSTANT_PAYLOAD_BYTES = 9_215;
 
@@ -216,10 +168,13 @@ export const uint64 = (value: bigint, fieldName: string): bigint => {
   return value;
 };
 
-export const boundedBuiltinTag = (value: bigint): bigint => {
-  if (value < 0n || value > MIDGARD_CEK_MAX_BUILTIN_TAG) {
+export const boundedBuiltinTag = (
+  value: bigint,
+  max: bigint = MIDGARD_CEK_MAX_BUILTIN_TAG,
+): bigint => {
+  if (value < 0n || value > max) {
     throw new RangeError(
-      `CEK builtin tag must be between 0 and ${MIDGARD_CEK_MAX_BUILTIN_TAG.toString(10)}`,
+      `CEK builtin tag must be between 0 and ${max.toString(10)}`,
     );
   }
   return value;
@@ -257,7 +212,7 @@ export const encodeMidgardCekTermNode = (node: MidgardCekTermNode): Buffer => {
     case "variable":
       return encodeCbor([
         MidgardCekTermTags.Variable,
-        uint32(node.index, "cek_term.variable.index"),
+        uint64(node.index, "cek_term.variable.index"),
       ]);
     case "delay":
       return encodeCbor([
@@ -316,3 +271,14 @@ export const encodeMidgardCekTermNode = (node: MidgardCekTermNode): Buffer => {
 
 export const hashMidgardCekTermNode = (node: MidgardCekTermNode): Hash32 =>
   hash32(TERM_NODE_DOMAIN, encodeMidgardCekTermNode(node));
+
+/** True when a term is a constr with more fields than Cardano admits. */
+export const midgardCekTermExceedsConstrFields = (
+  term: MidgardCekTermNode,
+): boolean =>
+  term.kind === "constr" && term.termsCount > MIDGARD_CEK_MAX_CONSTR_FIELDS;
+
+/** The program minor version a term needs: constr and case need 1.1.0. */
+export const midgardCekTermMinimumVersionMinor = (
+  term: MidgardCekTermNode,
+): bigint => (term.kind === "constr" || term.kind === "case" ? 1n : 0n);

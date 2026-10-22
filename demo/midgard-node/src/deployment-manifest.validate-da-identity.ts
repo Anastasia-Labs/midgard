@@ -5,8 +5,8 @@ import {
   DA_TRANSPORT_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/da-transport";
 import {
-  isNonInteractiveTestingProfile,
   SELECTED_DEPLOYMENT_PROFILE,
+  validationTraceDisputeInstalled,
 } from "@al-ft/midgard-core/deployment-profile";
 
 import {
@@ -139,25 +139,18 @@ export const validateDaIdentity = (
 };
 
 /**
- * Whether a profile's block maturity fits its dispute model. A non-interactive
- * testing profile must make interactive opening impossible on chain (maturity
- * shorter than the whole bisection schedule); every other profile must leave
- * room for the full interactive dispute (the canonical floor).
+ * Whether a profile's block maturity fits its execution dispute. A profile
+ * that excludes validationTraceDispute has no case to fit and passes (the
+ * 900 s testing profiles); one that installs it needs maturity of at least
+ * 2 D_case + 1 (`minValidationDisputeMaturityMs`).
  */
 export const validationDisputeMaturityFitsProfile = (
-  profileName: string,
+  profile: Readonly<{ excluded_fraud_proof_categories: readonly string[] }>,
   maturityMs: number,
-  limits: Readonly<{
-    maxValidationBisectionRounds: number;
-    validationDisputeResponseWindowMs: number;
-    minValidationDisputeMaturityMs: number;
-  }>,
+  limits: Readonly<{ minValidationDisputeMaturityMs: number }>,
 ): boolean =>
-  isNonInteractiveTestingProfile(profileName)
-    ? maturityMs <
-      (2 * limits.maxValidationBisectionRounds + 2) *
-        limits.validationDisputeResponseWindowMs
-    : maturityMs >= limits.minValidationDisputeMaturityMs;
+  !validationTraceDisputeInstalled(profile) ||
+  maturityMs >= limits.minValidationDisputeMaturityMs;
 
 export const validateValidationDispute = (
   candidate: Record<string, unknown>,
@@ -182,7 +175,7 @@ export const validateValidationDispute = (
   if (
     candidate.maturityMs !== MIDGARD_CONSENSUS_PROFILE.limits.blockMaturityMs ||
     !validationDisputeMaturityFitsProfile(
-      SELECTED_DEPLOYMENT_PROFILE.name,
+      SELECTED_DEPLOYMENT_PROFILE,
       candidate.maturityMs as number,
       MIDGARD_CONSENSUS_PROFILE.limits,
     )

@@ -3,6 +3,7 @@ import {
   type MidgardConsensusProfile,
 } from "@al-ft/midgard-core/consensus-profile";
 import {
+  type BuildTxWithRedeemer,
   calculateMinLovelaceFromUTxO,
   credentialToAddress,
   Data,
@@ -41,6 +42,7 @@ import {
   FraudProofCatalogueDatum,
   FraudProofCatalogueMintRedeemer,
 } from "./fraud-proof/catalogue.js";
+import { appendValidationCaseConfigInitialization } from "./fraud-proof/validation-case.config-initialization.js";
 import {
   HUB_ORACLE_ASSET_NAME,
   HubOracleDatum,
@@ -70,6 +72,7 @@ import {
   STATE_QUEUE_ROOT_ASSET_NAME,
   StateQueueRedeemer,
 } from "./state-queue.js";
+import { requireUniqueOutputIndex } from "./tx-context-redeemer.js";
 import { appendEventHistoryInitialization } from "./user-events/history-initialization.js";
 
 export type AtomicProtocolInitReferenceScripts = {
@@ -83,8 +86,8 @@ export type AtomicProtocolInitReferenceScripts = {
   readonly activeOperatorsMinting: UTxO;
   readonly retiredOperatorsMinting: UTxO;
   readonly fraudProofCatalogueMinting: UTxO;
-  /** Without it the pool minting script is attached inline. */
-  readonly daBondPoolMinting?: UTxO;
+  readonly daBondPoolMinting: UTxO;
+  readonly validationCaseConfigMinting: UTxO;
 };
 
 export type InitializationParams = {
@@ -97,7 +100,11 @@ export type InitializationParams = {
     readonly validFrom: bigint;
     readonly validTo: bigint;
   };
-  referenceScripts?: AtomicProtocolInitReferenceScripts;
+  /**
+   * The published minting scripts init reads. Fault-proof and protocol scripts
+   * deploy as reference scripts and are never attached inline.
+   */
+  referenceScripts: AtomicProtocolInitReferenceScripts;
   /**
    * The DA bond pool's initial lovelace, at least the pool floor. Defaults to
    * the floor plus one bond (`da_bond_pool_floor_lovelace +
@@ -284,10 +291,22 @@ export const incompleteInitializationTxProgram = (
         },
         schedulerAssets,
       )
-      .mintAssets(
-        stateQueueAssets,
-        Data.to({ InitV1: { output_index: 3n } }, StateQueueRedeemer),
-      )
+      .mintAssets(stateQueueAssets, ((ctx) =>
+        Data.to(
+          {
+            InitV1: {
+              output_index: requireUniqueOutputIndex(
+                ctx.outputs,
+                (output) =>
+                  output.address ===
+                    midgardValidators.stateQueue.spendingScriptAddress &&
+                  (output.assets[stateQueueUnit] ?? 0n) === 1n,
+                "state-queue root",
+              ),
+            },
+          },
+          StateQueueRedeemer,
+        )) satisfies BuildTxWithRedeemer)
       .pay.ToContract(
         midgardValidators.stateQueue.spendingScriptAddress,
         {
@@ -415,14 +434,10 @@ export const incompleteInitializationTxProgram = (
       nonce: params.oneShotNonceUTxO,
       validFrom: Number(params.validityRange.validFrom),
       validTo: Number(params.validityRange.validTo),
-      ...(params.referenceScripts === undefined
-        ? {}
-        : {
-            referenceScripts: {
-              deposit: params.referenceScripts.depositHistory,
-              withdrawal: params.referenceScripts.withdrawalHistory,
-            },
-          }),
+      referenceScripts: {
+        deposit: params.referenceScripts.depositHistory,
+        withdrawal: params.referenceScripts.withdrawalHistory,
+      },
     });
 
     // The pool's init_ref is the hub one-shot this transaction already spends.
@@ -435,31 +450,26 @@ export const incompleteInitializationTxProgram = (
       floorLovelace: daBondPoolFloorLovelace,
       lovelace:
         params.daBondPoolLovelace ?? daBondPoolFloorLovelace + daBondLovelace,
-      referenceScript: params.referenceScripts?.daBondPoolMinting,
+      referenceScript: params.referenceScripts.daBondPoolMinting,
     });
 
-    if (params.referenceScripts !== undefined) {
-      return tx.readFrom([
-        params.referenceScripts.daParamsGovernorMinting,
-        params.referenceScripts.hubOracleMinting,
-        params.referenceScripts.schedulerMinting,
-        params.referenceScripts.stateQueueMinting,
-        params.referenceScripts.registeredOperatorsMinting,
-        params.referenceScripts.activeOperatorsMinting,
-        params.referenceScripts.retiredOperatorsMinting,
-        params.referenceScripts.fraudProofCatalogueMinting,
-      ]);
-    }
+    // The case configuration's one-shot nonce is the same hub one-shot.
+    appendValidationCaseConfigInitialization(tx, {
+      network,
+      contracts: midgardValidators.fraudProofContracts.validationTraceDispute,
+      referenceScript: params.referenceScripts.validationCaseConfigMinting,
+    });
 
-    return tx.attach
-      .Script(midgardValidators.daParamsGovernor.mintingScript)
-      .attach.Script(midgardValidators.hubOracle.mintingScript)
-      .attach.Script(midgardValidators.scheduler.mintingScript)
-      .attach.Script(midgardValidators.stateQueue.mintingScript)
-      .attach.Script(midgardValidators.registeredOperators.mintingScript)
-      .attach.Script(midgardValidators.activeOperators.mintingScript)
-      .attach.Script(midgardValidators.retiredOperators.mintingScript)
-      .attach.Script(midgardValidators.fraudProofCatalogue.mintingScript);
+    return tx.readFrom([
+      params.referenceScripts.daParamsGovernorMinting,
+      params.referenceScripts.hubOracleMinting,
+      params.referenceScripts.schedulerMinting,
+      params.referenceScripts.stateQueueMinting,
+      params.referenceScripts.registeredOperatorsMinting,
+      params.referenceScripts.activeOperatorsMinting,
+      params.referenceScripts.retiredOperatorsMinting,
+      params.referenceScripts.fraudProofCatalogueMinting,
+    ]);
   });
 
 export const unsignedInitializationTx = (

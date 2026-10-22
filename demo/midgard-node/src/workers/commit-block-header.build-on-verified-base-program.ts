@@ -551,7 +551,6 @@ export const buildOnVerifiedCommitBaseProgram = (
     yield* DaPrefix.logDaPrefixPreselection(daFramePlan);
     const additivePlan = yield* planAdditiveCommitDa({
       window: eventPlan.window,
-      base: initialLedgerEntries,
       candidates: daFramePlan.candidateSelection.candidateTxs,
       profile: deploymentIdentity.consensusProfile,
       maxInnerBytes: daFrameInnerLimit,

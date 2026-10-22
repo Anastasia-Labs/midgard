@@ -124,67 +124,6 @@ describe("midgard contracts registry", () => {
         },
       );
 
-      // Applied recipes include the completed-fraud queue marker, explicit
-      // history bounds/retention metadata, both authenticated timing yields and
-      // the paired list/retention/retirement recipes; bigint parameters are
-      // decimal strings. Re-pinned by #689 (pooled DA bond added, per-block
-      // availability bond yield removed, availability-challenge and
-      // DA-attestation parameters changed), by MPF fixes (leaf fold, terminal
-      // neighbour, deletion Branch, emptied ledger root, disjoint node
-      // preimages), by removing missingNativeScriptTx/Utxo (superseded by
-      // missingScriptSource), by deleting the cross-block family, by the
-      // neglected-event strike rule (scheduler, so active operators and the
-      // state queue built on it), the forced due-window fix (transition trace),
-      // the new-shift inactivity grace raised to the maximum validity range
-      // (scheduler spend only), the txInfo L1 slot mapping (POSIX-ms ranges),
-      // the exclusive upper bound, bounds below -1, admission, the lock top-up,
-      // the output proof's datum step and the split Data refusal executor, and
-      // the composed P1 tree (allow-lists, the datum canonicity step, the
-      // non-empty block rule, one event NFT per user-event mint), the retired
-      // post-UTxO minimum-Ada mode, streamed redeemer/datum Data verdicts, the
-      // one-pass node count, the exact rejection reason, script optimisations,
-      // bounty claimants, the queue's proof reference and exemption, slashing a
-      // node above the bond, the timeout's directory split, output-scan size.
-      expect
-        .soft(
-          createHash("sha256")
-            .update(
-              JSON.stringify(normalizeDeploymentManifestJsonValue(resolved)),
-            )
-            .digest("hex"),
-        )
-        .toBe(
-          "99518fc10988a1c9aba0c2032d0b3208d920939ec26a5f40a60526fe3a797515",
-        );
-      // Includes current streamed Data/W1 metadata plus escape-hatch field
-      // retirement and the hub witness's paired script bytes. The independently
-      // pinned queue fingerprint stays unchanged by that metadata correction.
-      // The queue/correction subset is pinned independently of the full registry.
-      // Includes every applied CBOR, hash, policy id, address, and queue yield.
-      // Re-pinned by #689: the state queue and correction lock are applied over
-      // the availability-challenge policy, whose parameters now include the
-      // pooled DA bond policy, and again for disjoint MPF node preimages and
-      // for the neglected-event strike rule (the state queue is applied over
-      // the scheduler and active-operator scripts), the lock ADA top-up, and
-      // the composed P1 tree (allow-lists, the non-empty block rule, T302), and
-      // the fault-proof scripts the state queue is applied over (the retired
-      // post-UTxO minimum-Ada mode, streamed Data verdicts, exact rejection
-      // reason, optimisations), shared bounty routing, proof ref, exemption,
-      // slashing above the bond, and the timeout's operator-directory split.
-      expect
-        .soft(
-          createHash("sha256")
-            .update(
-              JSON.stringify({
-                stateQueue: resolved.stateQueue,
-                correctionLock: resolved.correctionLock,
-              }),
-            )
-            .digest("hex"),
-        )
-        .toBe(
-          "d20a073a4842c3101835f2b160775ec41e8205a03780c559c75cf054866549eb",
-        );
       // The always-succeeds stand-in is a real hazard here: it satisfies every
       // spend, so a role that silently kept it would pass any behavioural test
       // built on this registry. Rather than name a handful of roles and assert
@@ -263,9 +202,9 @@ describe("midgard contracts registry", () => {
       expect(
         txOrderContracts.fieldPreimageCertificate.spendingScriptHash,
       ).toHaveLength(56);
-      expect(
-        txOrderContracts.cekProgramMaterial.spendingScriptHash,
-      ).toHaveLength(56);
+      // One script holds the script-decode mint and spend handlers.
+      const { policyId, spendingScriptHash } = resolved.scriptDecode;
+      expect(policyId).toEqual(spendingScriptHash);
     }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
   );
 

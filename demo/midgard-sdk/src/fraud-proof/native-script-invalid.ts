@@ -4,14 +4,14 @@ import { blake2b } from "@noble/hashes/blake2.js";
 
 import { H32Schema, OutputReferenceSchema } from "../common.js";
 import { ForcedInclusionTxV1Schema, HeaderSchema } from "../ledger-state.js";
-import { RejectionReasonSchema } from "../rejection-reason.js";
 import { rootMembershipProofSchema } from "../transition-trace.js";
 import { FieldOpeningSchema } from "./field-opening.js";
 import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
-  NativeTxInclusionCarriageSchema,
 } from "./native.js";
+import { ProofThreadSubjectSourceSchema } from "./proof-thread-source.js";
+import { VerdictSubjectSchema } from "./proof-thread-substrate.js";
 import {
   FrontierPeakSchema,
   NativeScriptPushdownFrameSchema,
@@ -28,38 +28,15 @@ export const nativeScriptItemCommitment = (item: Uint8Array): string =>
 export const NativeScriptInvalidStep01DatumSchema = faultProofStepDatumSchema(
   Data.Any(),
 );
-export const NativeScriptInvalidVerdictSubjectSchema = Data.Object({
-  version: Data.Integer(),
-  direction: Data.Integer(),
-  source_kind: Data.Integer(),
-  transaction_id: Data.Bytes(),
-  source_key: Data.Bytes(),
-  rejection_reason: Data.Nullable(RejectionReasonSchema),
-});
-export const NativeScriptInvalidStep01SourceSchema = Data.Enum([
-  Data.Object({
-    AcceptedSource: Data.Object({ inclusion: NativeTxInclusionCarriageSchema }),
-  }),
-  Data.Object({
-    ForcedSource: Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      header: HeaderSchema,
-      membership: rootMembershipProofSchema(
-        OutputReferenceSchema,
-        ForcedInclusionTxV1Schema,
-      ),
-      direction: Data.Integer(),
-    }),
-  }),
-]);
+export const NativeScriptInvalidVerdictSubjectSchema = VerdictSubjectSchema;
+export const NativeScriptInvalidStep01SourceSchema =
+  ProofThreadSubjectSourceSchema;
 export const NativeScriptInvalidForcedSourcePayloadSchema = Data.Object({
   header: HeaderSchema,
   membership: rootMembershipProofSchema(
     OutputReferenceSchema,
     ForcedInclusionTxV1Schema,
   ),
-  direction: Data.Integer(),
 });
 export const NativeScriptInvalidStep01ArgsSchema = Data.Object({
   source: NativeScriptInvalidStep01SourceSchema,

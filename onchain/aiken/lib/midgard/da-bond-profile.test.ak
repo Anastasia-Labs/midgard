@@ -51,8 +51,8 @@ test env_pool_amounts_are_positive() {
 
 test challenge_window_bounds_are_exact() {
   and {
-    // Public figures: 1 h timeout, 3 d window, 7 d maturity.
-    profile.challenge_window_is_ordered_v1(3_600_000, 259_200_000, 604_800_000),
+    // Public figures: 1 h timeout, 24 h window, 7 d maturity.
+    profile.challenge_window_is_ordered_v1(3_600_000, 86_400_000, 604_800_000),
     profile.challenge_window_is_ordered_v1(3_600_000, 3_600_001, 604_800_000),
     profile.challenge_window_is_ordered_v1(3_600_000, 604_800_000, 604_800_000),
   }
@@ -80,11 +80,11 @@ test withdraw_delay_spec_form_bound_is_exact() {
       880_000,
       300_000,
     ),
-    // 480,000 + 259,200,000 + 172,800,000 + 172,800,000 = 605,280,000.
+    // 480,000 + 86,400,000 + 172,800,000 + 172,800,000 = 432,480,000.
     profile.withdraw_delay_covers_challenge_v1(
-      605_280_000,
+      432_480_000,
       480_000,
-      259_200_000,
+      86_400_000,
       172_800_000,
       172_800_000,
     ),
@@ -103,11 +103,11 @@ test withdraw_delay_below_spec_form_is_refused() {
 
 test withdraw_delay_head_removal_bound_is_exact() {
   and {
-    // 480,000 + max(432,000,000, 604,800,000) + 172,800,000 = 778,080,000.
+    // 480,000 + max(259,200,000, 604,800,000) + 172,800,000 = 778,080,000.
     profile.withdraw_delay_covers_head_removal_v1(
       778_080_000,
       480_000,
-      259_200_000,
+      86_400_000,
       172_800_000,
       604_800_000,
       172_800_000,
@@ -128,7 +128,7 @@ test withdraw_delay_below_head_removal_form_is_refused() {
   !profile.withdraw_delay_covers_head_removal_v1(
     778_079_999,
     480_000,
-    259_200_000,
+    86_400_000,
     172_800_000,
     604_800_000,
     172_800_000,
@@ -141,16 +141,16 @@ test withdraw_delay_below_head_removal_form_is_refused() {
 test spec_public_withdraw_delay_is_refused_by_head_removal_form() {
   and {
     profile.withdraw_delay_covers_challenge_v1(
-      605_280_000,
+      432_480_000,
       480_000,
-      259_200_000,
+      86_400_000,
       172_800_000,
       172_800_000,
     ),
     !profile.withdraw_delay_covers_head_removal_v1(
-      605_280_000,
+      432_480_000,
       480_000,
-      259_200_000,
+      86_400_000,
       172_800_000,
       604_800_000,
       172_800_000,

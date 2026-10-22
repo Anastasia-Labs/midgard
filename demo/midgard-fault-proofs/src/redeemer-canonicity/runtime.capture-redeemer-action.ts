@@ -30,7 +30,9 @@ import {
   STATE_QUEUE_REMOVAL_REFERENCE_SCRIPTS,
 } from "../workflow/cursor-family-runtime.js";
 import { defineFamily } from "../workflow/family-definition.js";
+import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import {
+  type FraudProofWorkflowJournalEntry,
   journalJsonDigest,
   type JournalJsonObject,
 } from "../workflow/journal.js";
@@ -194,7 +196,6 @@ export const prepareRedeemerCanonicityWorkflowArtifact = async (
                 output_index: 0n,
                 header: block.header,
                 membership,
-                direction: detection.evidence.subject.direction,
               },
             } as never,
             RedeemerCanonicityStep01SourceSchema as never,
@@ -206,7 +207,12 @@ const captureRedeemerAction = async (
   workflow: RedeemerWorkflowCore,
   action: FraudProofWorkflowAction,
   artifact: JournalJsonObject,
+  entries: readonly FraudProofWorkflowJournalEntry[],
 ): Promise<CursorFamilyCapturedAction> => {
+  const ownOutputs = workflowFieldCarriageOwnOutputs({
+    category: "redeemerCanonicity",
+    entries,
+  });
   const admitted = admitRedeemerWorkflowArtifact(artifact);
   const input = action.input;
   const categoryId = workflow.binding.resolvedContracts.category.categoryId;
@@ -293,6 +299,7 @@ const captureRedeemerAction = async (
         const { planned } = redeemerField(workflow, artifact);
         const publishedCarriageUtxos =
           await resolveFaultProofFieldCarriagePublications({
+            ownOutputs,
             lucid: workflow.lucid,
             publisherAddress: workflow.signer.address,
             planned,
@@ -301,6 +308,7 @@ const captureRedeemerAction = async (
           throw new Error("redeemerCanonicity field publications disappeared");
         const certificateUtxo = await resolveFaultProofFieldPreimageCertificate(
           {
+            ownOutputs,
             lucid: workflow.lucid,
             network: workflow.binding.network,
             planned,
@@ -312,6 +320,7 @@ const captureRedeemerAction = async (
           throw new Error("redeemerCanonicity certificate disappeared");
         await submitRedeemerCanonicityStep02({
           ...common,
+          ownOutputs,
           threadOutRef: cursorStringField(input, "threadOutRef"),
           evidence: admitted.evidence,
           nativeTxCompactCbor: admitted.nativeTxCompactCbor,
@@ -360,6 +369,6 @@ const createRedeemerCanonicityTransactionPort = (
   },
   prepare: async ({ evidence }) =>
     await prepareRedeemerCanonicityWorkflowArtifact(evidence),
-  capture: async ({ action, artifact }) =>
-    await captureRedeemerAction(workflow, action, artifact),
+  capture: async ({ action, artifact, entries }) =>
+    await captureRedeemerAction(workflow, action, artifact, entries),
 });

@@ -121,3 +121,146 @@ export const withRetiredBondRole = <T extends string | null>(
     ...names.slice(mint + 1),
   ];
 };
+
+// The validation case, its one-shot configuration mint (which protocol
+// initialization runs), its thread expiry, the award's mint (the lost-defense
+// receipt policy) and the dispute bond spend.
+const CASE_CATALOGUE_ADDITIONS = [
+  {
+    contract: "validationTraceDisputeAwardMint",
+    role: "V1 validation-trace award minting",
+  },
+  { contract: "validationTraceDisputeCase", role: "V1 validation-trace case" },
+  {
+    contract: "validationTraceDisputeCaseMint",
+    role: "V1 validation-trace case minting",
+  },
+  {
+    contract: "validationTraceDisputeCaseConfigMint",
+    role: "V1 validation-trace case configuration minting",
+  },
+  {
+    contract: "validationTraceDisputeThreadExpiryWithdraw",
+    role: "V1 validation-trace thread expiry",
+  },
+  {
+    contract: "validationTraceDisputeBond",
+    role: "V1 validation-trace dispute bond",
+  },
+] as const;
+
+export const caseContracts = new Set<string>(
+  CASE_CATALOGUE_ADDITIONS.map(({ contract }) => contract),
+);
+export const caseRoles = new Set<string>(
+  CASE_CATALOGUE_ADDITIONS.map(({ role }) => role),
+);
+
+// The CEK phase's one-step resolver and its four semantic resolvers, which a
+// validation-trace thread visits between the boundary and the CEK stages.
+const CEK_RESOLVER_CATALOGUE_ADDITIONS = [
+  {
+    contract: "validationTraceDisputeCekPrepare",
+    role: "V1 validation-trace CEK prepare",
+  },
+  {
+    contract: "validationTraceDisputeCekFinishSemantic",
+    role: "V1 validation-trace CEK finish semantic",
+  },
+  {
+    contract: "validationTraceDisputeCekExecutionSelectionSemantic",
+    role: "V1 validation-trace CEK execution selection semantic",
+  },
+  {
+    contract: "validationTraceDisputeCekContextStepSemantic",
+    role: "V1 validation-trace CEK context step semantic",
+  },
+  {
+    contract: "validationTraceDisputeCekCoreStepSemantic",
+    role: "V1 validation-trace CEK core step semantic",
+  },
+] as const;
+
+export const cekResolverContracts = new Set<string>(
+  CEK_RESOLVER_CATALOGUE_ADDITIONS.map(({ contract }) => contract),
+);
+export const cekResolverRoles = new Set<string>(
+  CEK_RESOLVER_CATALOGUE_ADDITIONS.map(({ role }) => role),
+);
+
+// The validation phases' one-step resolvers and their semantic resolvers,
+// added phase by phase: a validation-trace thread visits them between the
+// boundary and the award.
+const PHASE_RESOLVER_CATALOGUE_ADDITIONS = [
+  {
+    contract: "validationTraceDisputeCompactBindingPrepare",
+    role: "V1 validation-trace compact-binding prepare",
+  },
+  {
+    contract: "validationTraceDisputeCompactBindingSemantic",
+    role: "V1 validation-trace compact-binding semantic",
+  },
+  {
+    contract: "validationTraceDisputeStaticLedgerRulesPrepare",
+    role: "V1 validation-trace static-ledger-rules prepare",
+  },
+  {
+    contract: "validationTraceDisputeStaticLedgerRulesSemantic",
+    role: "V1 validation-trace static-ledger-rules semantic",
+  },
+  {
+    contract: "validationTraceDisputeInputSetsPrepare",
+    role: "V1 validation-trace input-sets prepare",
+  },
+  {
+    contract: "validationTraceDisputeInputSetsEmptySemantic",
+    role: "V1 validation-trace input-sets empty semantic",
+  },
+  {
+    contract: "validationTraceDisputeInputSetsItemSemantic",
+    role: "V1 validation-trace input-sets item semantic",
+  },
+  {
+    contract: "validationTraceDisputeSignaturesPrepare",
+    role: "V1 validation-trace signatures prepare",
+  },
+  {
+    contract: "validationTraceDisputeSignaturesAdvanceSemantic",
+    role: "V1 validation-trace signatures advance semantic",
+  },
+  {
+    contract: "validationTraceDisputeSignaturesAddressItemSemantic",
+    role: "V1 validation-trace signatures address item semantic",
+  },
+  {
+    contract: "validationTraceDisputeSignaturesRequiredItemSemantic",
+    role: "V1 validation-trace signatures required item semantic",
+  },
+  {
+    contract: "validationTraceDisputeSignaturesHandoffSemantic",
+    role: "V1 validation-trace signatures handoff semantic",
+  },
+  {
+    contract: "validationTraceDisputePhaseANativeScriptsPrepare",
+    role: "V1 validation-trace phase-A native scripts prepare",
+  },
+  {
+    contract: "validationTraceDisputePhaseAScriptPreconditionsPrepare",
+    role: "V1 validation-trace phase-A script preconditions prepare",
+  },
+  {
+    contract: "validationTraceDisputeResolveInputsPrepare",
+    role: "V1 validation-trace resolve-inputs prepare",
+  },
+  {
+    contract: "validationTraceDisputeScriptSourcesPrepare",
+    role: "V1 validation-trace script-sources prepare",
+  },
+] as const;
+
+export const phaseResolverContracts = new Set<string>(
+  PHASE_RESOLVER_CATALOGUE_ADDITIONS.map(({ contract }) => contract),
+);
+export const phaseResolverRoles = new Set<string>(
+  PHASE_RESOLVER_CATALOGUE_ADDITIONS.map(({ role }) => role),
+);

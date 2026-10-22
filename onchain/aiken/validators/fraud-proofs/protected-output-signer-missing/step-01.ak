@@ -19,7 +19,9 @@ use midgard/fraud_proofs/native_tx/types.{
   PubKeyCredential, TxIsInvalid,
 }
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
-use midgard/fraud_proofs/protected_output_signer_missing/rule.{bind_output_v1}
+use midgard/fraud_proofs/protected_output_signer_missing/rule.{
+  BoundOutputV1, bind_output_v1,
+}
 use midgard/fraud_proofs/protected_output_signer_missing/step_01.{
   AcceptedSource, Args, Datum, ForcedSource, SpendRedeemer,
 }
@@ -53,17 +55,7 @@ validator main(
           tx,
         )
       ct.Continue(Args { source: AcceptedSource { inclusion }, output_index }) -> {
-        let
-            _own,
-            _name,
-            _prover,
-            _prior,
-            next_hash,
-            next_data,
-            _header,
-            _id,
-            verified
-          <- pass_native_tx_to_next_step_carried(
+        let _own, _, _prover, _prior, next_hash, next_data, _, _id, verified <- pass_native_tx_to_next_step_carried(
           computation_thread_policy,
           hub_oracle,
           datum,
@@ -72,7 +64,7 @@ validator main(
           tx,
         )
         let bound = bind_output_v1(
-          substrate.bind_accepted_subject_v1(verified),
+          substrate.open_accepted_subject_v1(verified),
           output_index,
         )
         let expected: Data = step_02.State {
@@ -90,7 +82,6 @@ validator main(
           output_index: next_index,
           header,
           membership,
-          direction,
         },
         output_index,
       }) -> {
@@ -105,17 +96,10 @@ validator main(
           inputs,
           outputs,
         )
-        let subject = substrate.bind_forced_subject_to_thread_v1(
+        let Pair(subject, verified) = substrate.open_forced_subject_v1(
           name,
           header,
           membership,
-          direction,
-        )
-        let Pair(verified, _witness_set) = verify_forced_tx_proof_source_v1(
-          membership.value.tx_id,
-          membership.value.submitted_source.compact_cbor,
-          membership.value.submitted_source.witness_set_compact_cbor,
-          membership.value.submitted_source.field_preimage_lengths_cbor,
         )
         let expected: Data = step_02.State {
           bound: bind_output_v1(subject, output_index),
@@ -166,8 +150,8 @@ fn accepted_tx() -> MidgardTransaction {
   }
 }
 
-/// The forced leaf the operator rejected: its compact `validity_code` is 1,
-/// the polarity the forced door demands for a wrongful rejection.
+/// Native transaction material for a rejecting forced leaf. The explicit leaf
+/// verdict authenticates its rejection direction and reason.
 fn rejected_tx() -> MidgardTransaction {
   MidgardTransaction { ..accepted_tx(), validity: TxIsInvalid }
 }
@@ -179,7 +163,13 @@ fn expected_accepted_state(block: fixture.NativeBlockFixtureV1) -> Data {
   )
   let state: Data = step_02.State {
     bound: bind_output_v1(
-      substrate.bind_accepted_subject_v1(verified),
+      substrate.open_subject_v1(
+        fixture.ct_token_asset_name(block),
+        substrate.AcceptedSource {
+          header: block.header,
+          tx_inclusion: verified,
+        },
+      ),
       protected_output_index,
     ),
     witness_set_hash: verified.tx_compact.witness_set_hash,
@@ -299,7 +289,6 @@ fn expected_forced_state(
     ledger_state.TxOrderId,
     ledger_state.ForcedInclusionTxV1,
   >,
-  direction: Int,
   output_index: Int,
 ) -> Data {
   let leaf = membership.value
@@ -311,7 +300,10 @@ fn expected_forced_state(
   )
   let state: Data = step_02.State {
     bound: bind_output_v1(
-      substrate.bind_forced_subject_v1(header, membership, direction),
+      substrate.open_subject_v1(
+        tf.header_asset_name_v1(header),
+        substrate.ForcedSource { header, membership },
+      ),
       output_index,
     ),
     witness_set_hash: verified.tx_compact.witness_set_hash,
@@ -326,7 +318,6 @@ fn run_forced(
     ledger_state.TxOrderId,
     ledger_state.ForcedInclusionTxV1,
   >,
-  direction: Int,
   output_index: Int,
   output_state: Data,
 ) -> Bool {
@@ -342,7 +333,6 @@ fn run_forced(
           output_index: 0,
           header,
           membership,
-          direction,
         },
         output_index,
       },
@@ -359,8 +349,8 @@ fn rejected_leaf(output_index: Int) -> ledger_state.ForcedInclusionTxV1 {
   )
 }
 
-/// The canonical wrongful-rejection binding: the leaf rejects for exactly
-/// this family's reason at the coordinate the redeemer names.
+/// Bind the successor derived from the authenticated forced leaf at the
+/// coordinate the redeemer names.
 fn run_canonical_forced(
   leaf: ledger_state.ForcedInclusionTxV1,
   redeemer_output_index: Int,
@@ -371,14 +361,8 @@ fn run_canonical_forced(
     header,
     thread_name(header),
     membership,
-    substrate.direction_wrongful_rejection,
     redeemer_output_index,
-    expected_forced_state(
-      header,
-      membership,
-      substrate.direction_wrongful_rejection,
-      redeemer_output_index,
-    ),
+    expected_forced_state(header, membership, redeemer_output_index),
   )
 }
 
@@ -408,44 +392,96 @@ test protected_output_step_01_refuses_a_foreign_rejection_reason() fail {
   )
 }
 
-/// Direction polarity: a rejecting leaf cannot open a wrongful-acceptance
-/// thread.
-test protected_output_step_01_refuses_direction_zero_on_a_rejecting_leaf() fail {
-  let membership = forced_membership(rejected_leaf(protected_output_index))
-  let header = forced_header(membership.root, 1)
-  run_forced(
-    header,
-    thread_name(header),
-    membership,
-    substrate.direction_wrongful_acceptance,
+/// A valid accepting forced leaf derives an acceptance subject without a reason.
+test protected_output_step_01_binds_an_accepted_forced_leaf() {
+  run_canonical_forced(
+    tf.forced_leaf_v1(accepted_tx(), ForcedTxValid),
     protected_output_index,
-    expected_forced_state(
-      header,
-      membership,
-      substrate.direction_wrongful_rejection,
-      protected_output_index,
-    ),
   )
 }
 
-/// An accepting leaf carries no reason to contradict.
-test protected_output_step_01_refuses_a_wrongful_rejection_on_an_accepting_leaf() fail {
-  let leaf = tf.forced_leaf_v1(accepted_tx(), ForcedTxValid)
-  let membership = forced_membership(leaf)
+/// Substitute a canonical acceptance subject in the successor of a rejecting
+/// leaf. The authenticated leaf and redeemer stay unchanged.
+test protected_output_step_01_refuses_direction_zero_on_a_rejecting_leaf() {
+  let membership = forced_membership(rejected_leaf(protected_output_index))
   let header = forced_header(membership.root, 1)
-  run_forced(
+  let correct = expected_forced_state(
     header,
-    thread_name(header),
     membership,
-    substrate.direction_wrongful_rejection,
     protected_output_index,
-    expected_forced_state(
-      header,
-      membership,
-      substrate.direction_wrongful_acceptance,
-      protected_output_index,
-    ),
   )
+  expect state: step_02.State = correct
+  let forged: Data = step_02.State {
+    ..state,
+    bound: BoundOutputV1 {
+      ..state.bound,
+      subject: substrate.VerdictSubjectV1 {
+        ..state.bound.subject,
+        direction: substrate.direction_wrongful_acceptance,
+        rejection_reason: None,
+      },
+    },
+  }
+  and {
+    run_forced(
+      header,
+      thread_name(header),
+      membership,
+      protected_output_index,
+      correct,
+    ),
+    !run_forced(
+      header,
+      thread_name(header),
+      membership,
+      protected_output_index,
+      forged,
+    ),
+  }
+}
+
+/// Substitute a canonical rejection subject in the successor of an accepting
+/// leaf, which authenticated no rejection reason.
+test protected_output_step_01_refuses_a_wrongful_rejection_on_an_accepting_leaf() {
+  let membership = forced_membership(
+    tf.forced_leaf_v1(accepted_tx(), ForcedTxValid),
+  )
+  let header = forced_header(membership.root, 1)
+  let correct = expected_forced_state(
+    header,
+    membership,
+    protected_output_index,
+  )
+  expect state: step_02.State = correct
+  let forged: Data = step_02.State {
+    ..state,
+    bound: BoundOutputV1 {
+      ..state.bound,
+      subject: substrate.VerdictSubjectV1 {
+        ..state.bound.subject,
+        direction: substrate.direction_wrongful_rejection,
+        rejection_reason: Some(
+          ProtectedOutputSignerMissing { output_index: protected_output_index },
+        ),
+      },
+    },
+  }
+  and {
+    run_forced(
+      header,
+      thread_name(header),
+      membership,
+      protected_output_index,
+      correct,
+    ),
+    !run_forced(
+      header,
+      thread_name(header),
+      membership,
+      protected_output_index,
+      forged,
+    ),
+  }
 }
 
 /// Forced leaf: a header committing another forced root does not hold this
@@ -460,12 +496,10 @@ test protected_output_step_01_refuses_a_substituted_forced_root() fail {
     header,
     thread_name(header),
     membership,
-    substrate.direction_wrongful_rejection,
     protected_output_index,
     expected_forced_state(
       forced_header(membership.root, 1),
       membership,
-      substrate.direction_wrongful_rejection,
       protected_output_index,
     ),
   )
@@ -479,12 +513,10 @@ test protected_output_step_01_refuses_a_substituted_forced_count() fail {
     header,
     thread_name(header),
     membership,
-    substrate.direction_wrongful_rejection,
     protected_output_index,
     expected_forced_state(
       forced_header(membership.root, 1),
       membership,
-      substrate.direction_wrongful_rejection,
       protected_output_index,
     ),
   )
@@ -498,14 +530,8 @@ test protected_output_step_01_refuses_a_header_the_thread_did_not_name() fail {
     header,
     thread_name(forced_header(membership.root, 2)),
     membership,
-    substrate.direction_wrongful_rejection,
     protected_output_index,
-    expected_forced_state(
-      header,
-      membership,
-      substrate.direction_wrongful_rejection,
-      protected_output_index,
-    ),
+    expected_forced_state(header, membership, protected_output_index),
   )
 }
 
@@ -534,12 +560,10 @@ test protected_output_step_01_refuses_a_substituted_leaf_source() fail {
     header,
     thread_name(header),
     membership,
-    substrate.direction_wrongful_rejection,
     protected_output_index,
     expected_forced_state(
       forced_header(forced_membership(honest).root, 1),
       forced_membership(honest),
-      substrate.direction_wrongful_rejection,
       protected_output_index,
     ),
   )
@@ -550,12 +574,7 @@ test protected_output_step_01_refuses_a_forced_wrong_successor() fail {
   let membership = forced_membership(rejected_leaf(protected_output_index))
   let header = forced_header(membership.root, 1)
   let name = thread_name(header)
-  let state = expected_forced_state(
-    header,
-    membership,
-    substrate.direction_wrongful_rejection,
-    protected_output_index,
-  )
+  let state = expected_forced_state(header, membership, protected_output_index)
   main.spend(
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
@@ -568,7 +587,6 @@ test protected_output_step_01_refuses_a_forced_wrong_successor() fail {
           output_index: 0,
           header,
           membership,
-          direction: substrate.direction_wrongful_rejection,
         },
         output_index: protected_output_index,
       },

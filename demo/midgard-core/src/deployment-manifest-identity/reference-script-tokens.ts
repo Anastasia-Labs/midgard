@@ -218,6 +218,8 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
   "da-bond-pool minting": "DaBondPoolMint",
   "da-attestation spending": "DaAttestationSpend",
   "da-attestation minting": "DaAttestationMint",
+  "scheduler spending": "SchedulerSpend",
+  "scheduler minting": "SchedulerMint",
   "state-queue spending": "StateQueueSpend",
   "state-queue minting": "StateQueueMint",
   "state-queue commit withdrawal": "StateQueueCommitYield",
@@ -225,8 +227,6 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
   "state-queue unavailable-timeout withdrawal": "StateQueueUnavailableYield",
   "state-queue fraud-removal withdrawal": "StateQueueFraudRemovalYield",
   "state-queue merge withdrawal": "StateQueueMergeYield",
-  "scheduler spending": "SchedulerSpend",
-  "scheduler minting": "SchedulerMint",
   "registered-operators spending": "RegisteredOperatorsSpend",
   "registered-operators minting": "RegisteredOperatorsMint",
   "active-operators spending": "ActiveOperatorsSpend",
@@ -234,32 +234,42 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
   "retired-operators spending": "RetiredOperatorsSpend",
   "retired-operators minting": "RetiredOperatorsMint",
   "fraud-proof-catalogue minting": "FraudProofCatalogueMint",
+  "deposit minting": "DepositMint",
   "deposit history retention": "DepositHistoryRetention",
   "deposit history retirement": "DepositHistoryRetirement",
   "withdrawal history retention": "WithdrawalHistoryRetention",
   "withdrawal history retirement": "WithdrawalHistoryRetirement",
   "deposit spending": "DepositSpend",
-  "deposit minting": "DepositMint",
-  "withdrawal spending": "WithdrawalSpend",
   "withdrawal minting": "WithdrawalMint",
+  "withdrawal spending": "WithdrawalSpend",
   "settlement minting": "SettlementMint",
-  "payout spending": "PayoutSpend",
-  "payout minting": "PayoutMint",
+  "membership proof withdrawal": "MembershipProofWithdraw",
   "reserve spending": "ReserveSpend",
   "reserve observer": "ReserveObserver",
-  "membership proof withdrawal": "MembershipProofWithdraw",
-  // #579: `V1TxFieldPreimageSpend`, `V1TxFieldReceiptSpend` and
-  // `V1TxFieldReceiptMint` retired with their roles. Token names are minted
-  // per deployed reference script; a name with no script mints nothing.
+  "payout spending": "PayoutSpend",
+  "payout minting": "PayoutMint",
   "V1 field-preimage certificate": "V1FieldPreimageCertSpend",
   "V1 field-preimage certificate minting": "V1FieldPreimageCertMint",
-  "V1 immutable CEK program-material publication": "V1CekProgramMaterialSpend",
+  "V1 script decode": "V1ScriptDecodeSpend",
+  "V1 script decode minting": "V1ScriptDecodeMint",
+  "V1 script decode term staker": "V1ScriptDecodeTermStake",
+  "V1 script decode value staker": "V1ScriptDecodeValueStake",
+  "V1 script decode list staker": "V1ScriptDecodeListStake",
+  "V1 script decode fold staker": "V1ScriptDecodeFoldStake",
+  "V1 script decode bytes staker": "V1ScriptDecodeBytesStake",
+  "V1 script decode data staker": "V1ScriptDecodeDataStake",
   "V1 validation-trace dispute": "V1ValidationTraceDispute",
   "V1 validation-trace source": "V1ValidationTraceSource",
   "V1 validation-trace game": "V1ValidationTraceGame",
   "V1 validation-trace boundary": "V1ValidationTraceBoundary",
   "V1 validation-trace timeout": "V1ValidationTraceTimeout",
   "V1 validation-trace award": "V1ValidationTraceAward",
+  "V1 validation-trace award minting": "V1ValidationTraceAwardMint",
+  "V1 validation-trace case": "V1ValidationTraceCase",
+  "V1 validation-trace case minting": "V1ValidationTraceCaseMint",
+  "V1 validation-trace case configuration minting": "V1VtdCaseConfigMint",
+  "V1 validation-trace thread expiry": "V1VtdThreadExpiry",
+  "V1 validation-trace dispute bond": "V1VtdDisputeBond",
   "V1 validation-trace canonical-decode prepare": "V1VtdCanonicalPrepare",
   "V1 validation-trace canonical-decode empty semantic": "V1VtdCanonicalEmpty",
   "V1 validation-trace canonical-decode item semantic": "V1VtdCanonicalItem",
@@ -270,6 +280,15 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
     "V1VtdCanonicalSettle",
   "V1 validation-trace proof-item publication": "V1VtdProofItem",
   "V1 validation-trace CEK direct resolver": "V1ValidationTraceCekResolver0",
+  "V1 fraud-proof transition-trace route": "V1FpTransitionTraceRoute",
+  "V1 fraud-proof transition-trace final-0": "V1FpTransitionTraceFinal0",
+  "V1 fraud-proof transition-trace final-1": "V1FpTransitionTraceFinal1",
+  "V1 fraud-proof transition-trace final-2": "V1FpTransitionTraceFinal2",
+  "V1 fraud-proof transition-trace final-3": "V1FpTransitionTraceFinal3",
+  "V1 fraud-proof transition-trace final-4": "V1FpTransitionTraceFinal4",
+  "V1 fraud-proof transition-trace final-5": "V1FpTransitionTraceFinal5",
+  "V1 fraud-proof transition-trace final-6": "V1FpTransitionTraceFinal6",
+  "V1 fraud-proof transition-trace final-7": "V1FpTransitionTraceFinal7",
   "V1 fraud-proof fabricated-deposit step-01": "V1FpFabricatedDepositS01",
   "V1 fraud-proof fabricated-deposit step-02": "V1FpFabricatedDepositS02",
   "V1 fraud-proof fabricated-deposit step-03": "V1FpFabricatedDepositS03",
@@ -291,11 +310,6 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
   "V1 fraud-proof native-script-decoding step-04":
     "V1FpNativeScriptDecodingS04",
   "V1 fraud-proof missing-signature step-01": "V1FpMissingSignatureS01",
-  "V1 fraud-proof missing-signature forced step": "V1FpMissingSigForcedStep",
-  "V1 fraud-proof missing-signature forced signer":
-    "V1FpMissingSigForcedSigner",
-  "V1 fraud-proof missing-signature forced witness":
-    "V1FpMissingSigForcedWitness",
   "V1 fraud-proof missing-signature step-02": "V1FpMissingSignatureS02",
   "V1 fraud-proof missing-signature step-03": "V1FpMissingSignatureS03",
   "V1 fraud-proof missing-signature step-04": "V1FpMissingSignatureS04",
@@ -354,17 +368,13 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
   "V1 fraud-proof mint-authorization step-05": "V1FpMintAuthorizationS05",
   "V1 fraud-proof mint-authorization step-06": "V1FpMintAuthorizationS06",
   "V1 fraud-proof mint-authorization step-07": "V1FpMintAuthorizationS07",
-  "V1 fraud-proof transition-trace route": "V1FpTransitionTraceRoute",
-  "V1 fraud-proof transition-trace final-0": "V1FpTransitionTraceFinal0",
-  "V1 fraud-proof transition-trace final-1": "V1FpTransitionTraceFinal1",
-  "V1 fraud-proof transition-trace final-2": "V1FpTransitionTraceFinal2",
-  "V1 fraud-proof transition-trace final-3": "V1FpTransitionTraceFinal3",
-  "V1 fraud-proof transition-trace final-4": "V1FpTransitionTraceFinal4",
-  "V1 fraud-proof transition-trace final-5": "V1FpTransitionTraceFinal5",
-  "V1 fraud-proof transition-trace final-6": "V1FpTransitionTraceFinal6",
-  "V1 fraud-proof transition-trace final-7": "V1FpTransitionTraceFinal7",
   "V1 fraud-proof network-id step-01": "V1FpNetworkIdS01",
   "V1 fraud-proof network-id step-02": "V1FpNetworkIdS02",
+  "V1 fraud-proof missing-signature forced step": "V1FpMissingSigForcedStep",
+  "V1 fraud-proof missing-signature forced signer":
+    "V1FpMissingSigForcedSigner",
+  "V1 fraud-proof missing-signature forced witness":
+    "V1FpMissingSigForcedWitness",
   "V1 fraud-proof network-id forced step": "V1FpNetworkIdForced",
   "V1 fraud-proof network-id forced scan": "V1FpNetworkIdForcedScan",
   "V1 fraud-proof computation-thread minting": "V1FpComputationThreadMint",
@@ -416,7 +426,6 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
     "V1VtPhaseANativeItemNativeYield",
   "V1 validation-trace phase-A native item foreign yield":
     "V1VtPhaseANativeItemForeignYield",
-  "V1 validation-trace CEK material traversal": "V1VtCekMatTraversal",
   "V1 validation-trace CEK context settle": "V1VtCekCtxSet",
   "V1 validation-trace CEK context control": "V1VtCekCtxCon",
   "V1 validation-trace CEK context reference": "V1VtCekCtxRef",
@@ -463,6 +472,7 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
   "V1 validation-trace CEK core settle": "V1VtCekCoreSet",
   "V1 validation-trace CEK core compute": "V1VtCekCoreCom",
   "V1 validation-trace CEK core machine": "V1VtCekCoreMac",
+  "V1 validation-trace CEK core case constant": "V1VtCekCoreCasCon",
   "V1 validation-trace CEK core map conversion": "V1VtCekCoreMapCon",
   "V1 validation-trace CEK core direct scalar": "V1VtCekCoreDirSca",
   "V1 validation-trace CEK core direct structured": "V1VtCekCoreDirStr",
@@ -498,15 +508,8 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
   "V1 validation-trace CEK core type failure kinds": "V1VtCekCoreTypFaiKin",
   "V1 validation-trace CEK core type failure roots": "V1VtCekCoreTypFaiRoo",
 
-  "V1 validation-trace CEK material program task yield":
-    "V1VtCekMatProgramTask",
-  "V1 validation-trace CEK material Data task yield": "V1VtCekMatDataTask",
   "V1 validation-trace CEK selection authenticate yield": "V1VtCekSelAuthYield",
   "V1 validation-trace CEK selection successor yield": "V1VtCekSelSuccYield",
-  "V1 validation-trace CEK selection material program yield":
-    "V1VtCekSelMatProgYield",
-  "V1 validation-trace CEK selection material data yield":
-    "V1VtCekSelMatDataYield",
 
   "V1 fraud-proof transition-trace final-5 replay yield": "V1FpTtF5ReplayYield",
   "V1 fraud-proof min-ada step-02 tx yield": "V1FpMinAdaS02TxYield",
@@ -522,16 +525,20 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
 
   "V1 fraud-proof transition-trace final-4 L2 open yield":
     "V1FpTtF4L2OpenYield",
+  "V1 fraud-proof transition-trace final-4 L2 delete yield":
+    "V1FpTtF4L2DeleteYield",
+  "V1 fraud-proof transition-trace final-4 L2 outputs yield":
+    "V1FpTtF4L2OutputsYield",
+  "V1 fraud-proof transition-trace final-4 L2 output step yield":
+    "V1FpTtF4L2OutputStepYield",
+  "V1 fraud-proof transition-trace final-4 L2 output descriptor yield":
+    "V1FpTtF4OutputDescriptorYield",
+  "V1 fraud-proof transition-trace final-4 L2 output summary yield":
+    "V1FpTtF4OutputSummaryYield",
   "V1 fraud-proof transition-trace final-4 L2 summaries yield":
     "V1FpTtF4L2SummariesYield",
   "V1 fraud-proof transition-trace final-4 L2 replay yield":
     "V1FpTtF4L2ReplayYield",
-  "V1 fraud-proof transition-trace final-4 claim structure yield":
-    "V1FpTtF4ClaimStructYield",
-  "V1 fraud-proof transition-trace final-4 claim source yield":
-    "V1FpTtF4ClaimSourceYield",
-  "V1 fraud-proof transition-trace final-4 claim endpoints yield":
-    "V1FpTtF4ClaimEndsYield",
   "V1 fraud-proof transition-trace final-5 projection yield":
     "V1FpTtF5ProjectionYield",
   "V1 fraud-proof transition-trace final-6 L1 event yield":
@@ -741,4 +748,29 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
   "availability-challenge close withdrawal": "AvailabilityChallengeCloseYield",
   "availability-challenge timeout withdrawal":
     "AvailabilityChallengeExpiryYield",
+  "V1 validation-trace CEK prepare": "V1VtCekPrepare",
+  "V1 validation-trace CEK finish semantic": "V1VtCekFinishSem",
+  "V1 validation-trace CEK execution selection semantic": "V1VtCekSelectionSem",
+  "V1 validation-trace CEK context step semantic": "V1VtCekContextStepSem",
+  "V1 validation-trace CEK core step semantic": "V1VtCekCoreStepSem",
+  "V1 validation-trace compact-binding prepare": "V1VtCompactBindingPrepare",
+  "V1 validation-trace compact-binding semantic": "V1VtCompactBindingSem",
+  "V1 validation-trace static-ledger-rules prepare": "V1VtStaticLedgerPrepare",
+  "V1 validation-trace static-ledger-rules semantic": "V1VtStaticLedgerSem",
+  "V1 validation-trace input-sets prepare": "V1VtInputSetsPrepare",
+  "V1 validation-trace input-sets empty semantic": "V1VtInputSetsEmptySem",
+  "V1 validation-trace input-sets item semantic": "V1VtInputSetsItemSem",
+  "V1 validation-trace signatures prepare": "V1VtSignaturesPrepare",
+  "V1 validation-trace signatures advance semantic": "V1VtSigAdvanceSem",
+  "V1 validation-trace signatures address item semantic":
+    "V1VtSigAddressItemSem",
+  "V1 validation-trace signatures required item semantic":
+    "V1VtSigRequiredItemSem",
+  "V1 validation-trace signatures handoff semantic": "V1VtSigHandoffSem",
+  "V1 validation-trace phase-A native scripts prepare":
+    "V1VtPhaseANativePrepare",
+  "V1 validation-trace phase-A script preconditions prepare":
+    "V1VtPhaseAPrecondPrepare",
+  "V1 validation-trace resolve-inputs prepare": "V1VtResolveInputsPrepare",
+  "V1 validation-trace script-sources prepare": "V1VtScriptSourcesPrepare",
 } as const);

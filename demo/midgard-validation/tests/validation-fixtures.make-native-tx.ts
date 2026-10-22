@@ -1,4 +1,3 @@
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import {
   computeMidgardNativeTxId,
   computeScriptIntegrityHashForLanguages,
@@ -106,14 +105,24 @@ export const makeNativeTx = (opts: NativeTxOptions = {}): NativeTxFixture => {
   const addrTxWitsPreimageCbor =
     opts.omitVkeyWitness === true
       ? EMPTY_CBOR_LIST
-      : encodeByteList([
-          Buffer.from(
-            CML.make_vkey_witness(
-              CML.TransactionHash.from_raw_bytes(signedBodyHash),
-              opts.privateKey ?? TEST_PRIVATE_KEY,
-            ).to_cbor_bytes(),
-          ),
-        ]);
+      : opts.vkeyWitnesses !== undefined
+        ? encodeByteList(opts.vkeyWitnesses(bodyHash))
+        : encodeByteList([
+            Buffer.from(
+              CML.make_vkey_witness(
+                CML.TransactionHash.from_raw_bytes(signedBodyHash),
+                opts.privateKey ?? TEST_PRIVATE_KEY,
+              ).to_cbor_bytes(),
+            ),
+            ...(opts.extraVkeyWitnessKeys ?? []).map((key) =>
+              Buffer.from(
+                CML.make_vkey_witness(
+                  CML.TransactionHash.from_raw_bytes(bodyHash),
+                  key,
+                ).to_cbor_bytes(),
+              ),
+            ),
+          ]);
 
   const witnessSet: MidgardNativeTxWitnessSetCanonical = {
     addrTxWitsPreimageCbor,
@@ -163,7 +172,6 @@ export const makeQueued = (
   txCbor,
   arrivalSeq,
   createdAt: new Date(0),
-  programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([]),
 });
 
 export const ledgerEntry = (outRef: Buffer, output: Buffer): LedgerEntry => ({
@@ -182,7 +190,6 @@ type PhaseBCandidateOptions = Omit<
   readonly referenceInputs?: readonly Buffer[];
   readonly outputLovelace?: bigint;
   readonly outputs?: readonly Buffer[];
-  readonly programMaterialSidecarCbor?: Buffer | null;
 };
 
 export const makePhaseBCandidate = (
@@ -204,7 +211,6 @@ export const makePhaseBCandidate = (
     ledgerTx: submittedTx.ledgerTx,
     expectedNetworkId: 0n,
     txCbor: submittedTx.txCbor,
-    programMaterialSidecarCbor: opts.programMaterialSidecarCbor ?? null,
     arrivalSeq: opts.arrivalSeq ?? 0n,
     createdAt: new Date(0),
     redeemerWitnessHash: submittedTx.commitments.redeemerWitnessHash,

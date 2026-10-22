@@ -1,6 +1,6 @@
 //// Execution-cost drivers for the decoding-fault engine's budgeted fold
-//// (#635, #633) — the tests
-//// `scripts/native-script-decoding-engine-exec-ledger-v1.json` pins.
+//// (#635, #633) — the tests whose ceilings
+//// `demo/midgard-core/src/script-budgets.json` holds.
 ////
 //// Each measured row folds a programmatically built worst-shape payload
 //// (`midgard/native_script_payload_vectors_v1`, the same builders the scan

@@ -1,9 +1,62 @@
+import { VALIDATION_TRACE_SCENARIOS } from "./validator-scenario-registry.validation-trace-scenarios.js";
+
 export type ValidatorScenario = Readonly<{ file: string; test: string }>;
 
 export type ValidatorScenarioPair = Readonly<{
   passing: readonly ValidatorScenario[];
   failing: readonly ValidatorScenario[];
 }>;
+
+/** One emulator test both executes the honest transition and refuses an
+ * altered one at the same validator. */
+const directScriptDerivationScenario = (
+  test: string,
+): ValidatorScenarioPair => {
+  const scenario = [
+    {
+      file: "demo/midgard-fault-proofs/tests/direct-script-derivation-emulator.test.ts",
+      test,
+    },
+  ];
+  return { passing: scenario, failing: scenario };
+};
+const DIRECT_BINDING =
+  "executes separate direct event and pre-state custody steps for %s";
+const DIRECT_SOURCE =
+  "executes source field-authentication-map custody in ordinary eight-item batches";
+const DIRECT_RECEIVE =
+  "executes bounded receive batches and sorted ordinal custody without trace states";
+const streamedReplayStep = (failing: string): ValidatorScenarioPair => ({
+  passing: [
+    {
+      file: STREAMED_REPLAY_FILE,
+      test: "convicts a wrong transition root with every streamed step honest",
+    },
+  ],
+  failing: [{ file: STREAMED_REPLAY_FILE, test: failing }],
+});
+
+const CLASS_STAKERS_FILE =
+  "demo/midgard-fault-proofs/tests/script-decode-class-stakers.test.ts";
+
+/** Each class staker's rows step its class honestly and refuse a forged segment. */
+const classStaker: ValidatorScenarioPair = {
+  passing: [
+    {
+      file: CLASS_STAKERS_FILE,
+      test: "the %s staker steps its class honestly and refuses a segment claiming a machine it does not reach",
+    },
+  ],
+  failing: [
+    {
+      file: CLASS_STAKERS_FILE,
+      test: "the %s staker steps its class honestly and refuses a segment claiming a machine it does not reach",
+    },
+  ],
+};
+
+const STREAMED_REPLAY_FILE =
+  "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-final-forged-steps.test.ts";
 
 export const VALIDATOR_SCENARIOS: Readonly<
   Record<string, ValidatorScenarioPair>
@@ -277,30 +330,14 @@ export const VALIDATOR_SCENARIOS: Readonly<
   "fraud_proofs/transition_trace/source_v1.main": {
     passing: [
       {
-        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-validation-runs.test.ts",
-        test: "proves missing validation run and removes the block",
-      },
-      {
-        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-validation-runs.test.ts",
-        test: "proves foreign validation run and removes the block",
-      },
-      {
-        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-validation-runs.test.ts",
-        test: "proves malformed validation run and removes the block",
+        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-source-phase.test.ts",
+        test: "proves an L2 transaction stepped under the forced phase and removes the block",
       },
     ],
     failing: [
       {
-        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-validation-runs.test.ts",
-        test: "refuses missing validation-run claim against the honest block",
-      },
-      {
-        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-validation-runs.test.ts",
-        test: "refuses foreign validation-run claim against the honest block",
-      },
-      {
-        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-validation-runs.test.ts",
-        test: "refuses malformed validation-run claim against the honest block",
+        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-source-phase.test.ts",
+        test: "refuses the same source-phase witness against an honest step",
       },
     ],
   },
@@ -330,4 +367,85 @@ export const VALIDATOR_SCENARIOS: Readonly<
       },
     ],
   },
+  "fraud_proofs/direct_script_derivation/bind_event.main":
+    directScriptDerivationScenario(DIRECT_BINDING),
+  "fraud_proofs/direct_script_derivation/bind_pre_state.main":
+    directScriptDerivationScenario(DIRECT_BINDING),
+  "fraud_proofs/direct_script_derivation/source_start.main":
+    directScriptDerivationScenario(DIRECT_SOURCE),
+  "fraud_proofs/direct_script_derivation/source_resolved.main":
+    directScriptDerivationScenario(DIRECT_SOURCE),
+  "fraud_proofs/direct_script_derivation/source_authenticate.main":
+    directScriptDerivationScenario(DIRECT_SOURCE),
+  "fraud_proofs/direct_script_derivation/source_map.main":
+    directScriptDerivationScenario(DIRECT_SOURCE),
+  "fraud_proofs/direct_script_derivation/source_input_finish.main":
+    directScriptDerivationScenario(DIRECT_SOURCE),
+  "fraud_proofs/direct_script_derivation/source_grammar.main":
+    directScriptDerivationScenario(DIRECT_SOURCE),
+  "fraud_proofs/direct_script_derivation/source_witnesses.main":
+    directScriptDerivationScenario(DIRECT_SOURCE),
+  "fraud_proofs/direct_script_derivation/source_finish.main":
+    directScriptDerivationScenario(DIRECT_SOURCE),
+  "fraud_proofs/direct_script_derivation/receive_start.main":
+    directScriptDerivationScenario(DIRECT_RECEIVE),
+  "fraud_proofs/direct_script_derivation/receive_grammar.main":
+    directScriptDerivationScenario(DIRECT_RECEIVE),
+  "fraud_proofs/direct_script_derivation/receive_outputs.main":
+    directScriptDerivationScenario(DIRECT_RECEIVE),
+  "fraud_proofs/direct_script_derivation/receive_finish.main":
+    directScriptDerivationScenario(DIRECT_RECEIVE),
+  "fraud_proofs/direct_script_derivation/receive_declaration.main":
+    directScriptDerivationScenario(DIRECT_RECEIVE),
+  "script_decode_v1.script_decode_v1": {
+    passing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/script-decode-record.test.ts",
+        test: "records a decodable script once and finds it afterwards",
+      },
+      {
+        file: "demo/midgard-fault-proofs/tests/script-decode-record.test.ts",
+        test: "refuses a forged run, Walk, or record and accepts the honest one",
+      },
+      {
+        file: "demo/midgard-fault-proofs/tests/output-reference-script-decoding-plutus-max-shape.test.ts",
+        test: "records the densest Plutus reference script of a 16,384-byte output after Init and convicts its acceptance, the producer's phase-8 first fault, through removal",
+      },
+    ],
+    failing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/script-decode-record.test.ts",
+        test: "records a decodable script once and finds it afterwards",
+      },
+      {
+        file: "demo/midgard-fault-proofs/tests/script-decode-record.test.ts",
+        test: "refuses a forged run, Walk, or record and accepts the honest one",
+      },
+    ],
+  },
+  "script_decode_v1.script_decode_bytes_v1": classStaker,
+  "script_decode_v1.script_decode_data_v1": classStaker,
+  "script_decode_v1.script_decode_fold_v1": classStaker,
+  "script_decode_v1.script_decode_list_v1": classStaker,
+  "script_decode_v1.script_decode_term_v1": classStaker,
+  "script_decode_v1.script_decode_value_v1": classStaker,
+  ...VALIDATION_TRACE_SCENARIOS,
+  "fraud_proofs/transition_trace/accepted_transaction_yields.l2_delete":
+    streamedReplayStep(
+      "refuses an input delete step claiming a post-root its witness does not give",
+    ),
+  "fraud_proofs/transition_trace/accepted_transaction_yields.l2_outputs":
+    streamedReplayStep(
+      "refuses an outputs certification step claiming one output more than the field holds",
+    ),
+  "fraud_proofs/transition_trace/accepted_transaction_yields.l2_output_step":
+    streamedReplayStep(
+      "refuses an output step claiming a post-root its insert does not give",
+    ),
+  "fraud_proofs/transition_trace/output_step.descriptor": streamedReplayStep(
+    "refuses an output step inserting a descriptor its output does not derive",
+  ),
+  "fraud_proofs/transition_trace/output_step.summary": streamedReplayStep(
+    "refuses an output step whose summaries and descriptor are forged together",
+  ),
 };

@@ -47,9 +47,9 @@ describe("authenticated CEK Data traversal V1", () => {
     const trace = harness(source);
     transition(trace, { kind: "headScalar" });
     const summary = finishScalar(trace, null);
-    expect(summary).toMatchObject({ cborLength: 71n, memory: 69n });
+    expect(summary).toMatchObject({ cborLength: 71n, memory: 13n });
     expect(Buffer.from(summary.root).toString("hex")).toBe(
-      "2245ce3c839885a8e667481cec15cbe0e91df8a04f816859ae3bb38a8217b6aa",
+      "cab3184095fef7e4d8b95617d827cbda628b6d97fe3d6c22a1bc0df010769667",
     );
     expect(trace.control.offset).toBe(71);
   });
@@ -211,11 +211,11 @@ describe("authenticated CEK Data traversal V1", () => {
     expect(
       encodeMidgardCekDataTraverseControl(trace.control).toString("hex"),
     ).toBe(
-      "890107110f0f40d87a80d87a80d8799f835820b5822d21df1af70ea902b57f6bebc7693e64cf2be6cb34804b6cb346e8baacfb0f09ff",
+      "890107110f0f40d87a80d87a80d8799f835820ce1eaec75e8bab1cd95372432d54684932757241ca27b0c31884904240283ee30f09ff",
     );
     expect(
       hashMidgardCekDataTraverseControl(trace.control).toString("hex"),
-    ).toBe("1aa3d17b686f73b0d9f7d57f9c3b3966095ae68334b56431069a7bfebda13ef1");
+    ).toBe("dec4665e78b789dc842563b4841d44487f0f6af8238b71a6fb2cb9b31c10fb88");
   });
 
   it("pins active nested integer and byte controls for Aiken decoding", () => {

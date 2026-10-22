@@ -10,7 +10,6 @@ import {
   PendingBlockFinalizationsDB,
   WithdrawalsDB,
 } from "../../database/index.js";
-import { DatabaseError } from "../../database/utils/common.js";
 import type * as Ledger from "../../database/utils/ledger.js";
 import { reachCommitCrashCheckpoint } from "../../e2e/commit-crash-checkpoint.js";
 import {
@@ -50,8 +49,6 @@ import { stateQueueOutRef } from "./state-queue.js";
 import {
   assertCommitInputsWithinBlockEndTime,
   assertPreSubmitDaPayloadSize,
-  daProgramMaterialFromSidecars,
-  forcedProgramMaterialSidecars,
 } from "./submission.assert-pre-submit-da-payload-size.js";
 import {
   assertCommitUserEventSourceCompleteness,
@@ -229,10 +226,6 @@ export const submitDepositOnlyCommit = ({
         depositCount: BigInt(includedDepositEventIds.length),
         transitionStepCount: BigInt(transitionStepCount),
       },
-      {
-        validationTracesRoot,
-        validationTraceCount: BigInt(validationTraceCount),
-      },
     );
 
     const submitCommitAttempt = () =>
@@ -277,21 +270,6 @@ export const submitDepositOnlyCommit = ({
               } = buildResult;
               return Effect.gen(function* () {
                 const headerHashBuffer = Buffer.from(fromHex(newHeaderHash));
-                const cekProgramMaterial = yield* Effect.try({
-                  try: () =>
-                    daProgramMaterialFromSidecars(
-                      forcedProgramMaterialSidecars(
-                        includedForcedTransactionEntries,
-                      ),
-                    ),
-                  catch: (cause) =>
-                    new DatabaseError({
-                      table: ForcedTransactionsDB.tableName,
-                      message:
-                        "Cannot build V1 DA from missing or conflicting forced-transaction program material",
-                      cause,
-                    }),
-                });
                 yield* assertPreSubmitDaPayloadSize({
                   headerHash: newHeaderHash,
                   header: newHeader,
@@ -302,7 +280,6 @@ export const submitDepositOnlyCommit = ({
                   transitionTraceMembers,
                   eventToStepMembers,
                   validationTraceMembers,
-                  cekProgramMaterial,
                 });
                 yield* afterDaFrameAccepted ?? Effect.void;
                 yield* assertCommitInputsWithinBlockEndTime({
@@ -377,7 +354,6 @@ export const submitDepositOnlyCommit = ({
                       withdrawalEntries: includedWithdrawalEntries,
                       mempoolTxIds: [],
                       mempoolTxs: [],
-                      mempoolTxProgramMaterialSidecars: [],
                       mempoolTxSourceTable: "none",
                       transitionTraceMembers,
                       eventToStepMembers,

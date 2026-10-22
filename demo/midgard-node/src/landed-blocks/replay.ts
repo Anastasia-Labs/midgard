@@ -2,9 +2,9 @@
  * What processing a foreign landed block needs from a replayer: the
  * block's post-state on its parent's ledger, or why it cannot be had yet
  * (`missing`, `da_refetch_pending`, `event_unknown`, `forced_order_pending`,
- * `local_fault`, `incomplete`) or
- * ever (`invalid`:
- * the block does not replay to its header). A replayer throws
+ * `local_fault`, `incomplete`, `verifier_unavailable`), ever (`invalid`:
+ * the block does not replay to its header), or on this node's follower
+ * store (`origin_after_frontier`). A replayer throws
  * only for faults it cannot classify; the hook holds on those too.
  */
 import type { View } from "@al-ft/midgard-l1-follower";
@@ -19,6 +19,18 @@ export type ReplayInput = Readonly<{
   header: SDK.Header;
   /** The block's commit time (its node's `block_time`). */
   blockTime: bigint;
+  /**
+   * Its node's availability status. While it is Unattested no commitment
+   * binds the payload, so a replay that refuses the payload is `missing`
+   * (another peer's copy may replay), never `invalid`.
+   */
+  daAvailability: SDK.DaAvailabilityStateQueueStatus;
+  /**
+   * The slot its node output entered the follower facts at; null for a
+   * seeded one. It anchors the range the facts must cover before an event
+   * the block names and the view lacks is the block's fault.
+   */
+  enteredSlot: number | null;
   parentHeaderHash: string;
   parentUtxosRoot: string;
   parentEntries: readonly Ledger.MinimalEntry[];
@@ -45,14 +57,23 @@ export type Replayed = Readonly<{
  * - `da_refetch_pending`: the retained payload no longer verified, was
  *   deleted, and its refetch has not been served yet;
  * - `event_unknown`: the block names an event the follower does not know at
- *   the view at all (a known one outside the window is `invalid`);
+ *   the view at all, and the facts do not cover the range its admission
+ *   could fall in (a known one outside the window, or an unknown one where
+ *   they do, is `invalid`);
  * - `forced_order_pending`: a forced order admitted in the block's window
- *   cannot be read back from the facts at the view yet;
+ *   cannot be read back from the facts at the view (a gap in this node's
+ *   facts, bounded as a local fault; see `holds.ts`);
  * - `local_fault`: this node's own computation failed where the block's
  *   input cannot make it fail;
  * - `incomplete`: the import failed for a reason it cannot pin on the
  *   block (a local computation, or a replay failure it cannot classify);
- * - `invalid`: the block does not replay to its header.
+ * - `verifier_unavailable`: this node's Ed25519 verifier could not answer
+ *   during the replay, a local fault and never the block's;
+ * - `invalid`: the block does not replay to its header, and its node carries
+ *   the availability commitment of the payload replayed;
+ * - `origin_after_frontier`: the block names an event the view does not
+ *   know, and the follower store's origin is too late to judge it (see
+ *   `holds.ts`): a configuration error of this node, never the block's.
  */
 export type ReplayOutcome =
   | Replayed
@@ -64,6 +85,8 @@ export type ReplayOutcome =
         | "forced_order_pending"
         | "local_fault"
         | "incomplete"
-        | "invalid";
+        | "verifier_unavailable"
+        | "invalid"
+        | "origin_after_frontier";
       detail: string;
     }>;

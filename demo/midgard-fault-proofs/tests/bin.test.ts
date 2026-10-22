@@ -59,7 +59,6 @@ const makeEmptyTransitionTraceEnvelope = async () => {
       transactions: [],
       transaction_preimages: [],
       forced_transaction_preimages: [],
-      cek_program_material: [],
       deposits: [],
       transition_trace: [],
       event_to_step: [],

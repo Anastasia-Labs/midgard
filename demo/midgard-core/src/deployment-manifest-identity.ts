@@ -40,6 +40,7 @@ export {
   makeDeploymentMarker,
   parseDeploymentMarker,
 } from "./deployment-manifest-identity/marker.js";
+export * from "./deployment-manifest-identity/members.js";
 export { parseDeploymentManifestCardanoProtocolParameters } from "./deployment-manifest-identity/protocol-parameters.js";
 export {
   CONWAY_MAXIMUM_REFERENCE_SCRIPTS_SIZE_BYTES,
@@ -51,6 +52,7 @@ export { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE } from "./deploym
 export { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES } from "./deployment-manifest-identity/reference-script-tokens.js";
 export {
   DEPLOYMENT_MANIFEST_L1_FINALITY,
+  DEPLOYMENT_MANIFEST_OPTIONAL_ROOT_KEYS,
   DEPLOYMENT_MANIFEST_ROOT_KEYS,
   DEPLOYMENT_MANIFEST_STEP_NAMES,
   type DeploymentManifest,

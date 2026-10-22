@@ -1,19 +1,15 @@
-import { createHash } from "node:crypto";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import { getAddressDetails, toUnit } from "@lucid-evolution/lucid";
-import { afterAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { createNativeScriptDecodingTransactionPort } from "../src/native-script-decoding/workflow.js";
 import {
-  buildVanRossemFitLedger,
-  type VanRossemFitMeasurement,
-  writeVanRossemFitLedger,
-} from "../src/proof-fit/van-rossem-fit-ledger.js";
+  createNativeScriptDecodingTransactionPort,
+  NATIVE_SCRIPT_DECODING_FAMILY_DEFINITION,
+} from "../src/native-script-decoding/workflow.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { classifyCanonicalBlockViolations } from "../src/workflow/classification.js";
 import { NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
@@ -24,13 +20,16 @@ import {
   type FraudProofFamilyL1ObservationPort,
 } from "../src/workflow/family-l1-observation.js";
 import {
+  createAuthenticatedFieldCarriagePrerequisitePort,
+  withFieldCarriagePrerequisite,
+} from "../src/workflow/field-carriage-prerequisite.js";
+import {
   computeFraudProofWorkflowId,
   DirectoryFraudProofWorkflowJournalStore,
   type FraudProofWorkflowIdentity,
   type FraudProofWorkflowJournalEvent,
   journalJsonDigest,
 } from "../src/workflow/journal.js";
-import { realBlueprintPath } from "./support/emulator/blueprints.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
@@ -38,6 +37,7 @@ import {
   submitSecondHeaderTx,
   submitSetupTx,
 } from "./support/emulator/setup-tx.js";
+import { emulatorPublicationObserver } from "./support/install-field-carriage.js";
 import {
   makeDecodingEmulatorHarness,
   publishDecodingReferenceScripts,
@@ -48,29 +48,6 @@ import {
   publishRemovalReferenceScripts,
 } from "./support/submit-init-emulator-shared.js";
 
-const measurements: VanRossemFitMeasurement[] = [];
-afterAll(async () => {
-  if (process.env.MIDGARD_WRITE_FIT_LEDGER !== "1") return;
-  expect(
-    measurements.some((row) => row.name.startsWith("maximum/step_05")),
-  ).toBe(true);
-  await writeVanRossemFitLedger(
-    fileURLToPath(
-      new URL(
-        "../../../docs/fault-proofs/size-plans/native-script-decoding-workflow-fit-ledger.json",
-        import.meta.url,
-      ),
-    ),
-    buildVanRossemFitLedger({
-      category: "nativeScriptDecoding",
-      blueprintSha256: createHash("sha256")
-        .update(await readFile(realBlueprintPath))
-        .digest("hex"),
-      compilerVersion: "aiken v1.1.23+5adf783",
-      measurements,
-    }),
-  );
-});
 const maximumItem = encodeCbor([
   0n,
   Buffer.concat([Buffer.from("8109", "hex"), Buffer.alloc(16_377)]),
@@ -138,16 +115,6 @@ describe("nativeScriptDecoding installed cursor actuator", () => {
         }),
       );
       const { steps, certificate } = publications.result;
-      publications.measurements.forEach((m, index) =>
-        measurements.push({
-          name: `${scenario.name}/publish/${index}`,
-          kind: "publication",
-          maximumShape: "six physical validators and field certificate",
-          signedBytes: m.completeSignedBytes,
-          memoryUnits: m.executionMemory,
-          cpuUnits: m.executionSteps,
-        }),
-      );
       const leaseCoordinator = {
         acquire: async () => ({
           token: "decoding-lease",
@@ -290,12 +257,38 @@ describe("nativeScriptDecoding installed cursor actuator", () => {
           };
         },
       };
+      // The subject field's carriage lands as the workflow's own journaled
+      // actions, under the family's declared requirement, before the step
+      // that reads it.
+      const [subjectField] =
+        NATIVE_SCRIPT_DECODING_FAMILY_DEFINITION.fieldCarriage!;
+      const fieldPrerequisite =
+        createAuthenticatedFieldCarriagePrerequisitePort({
+          category: "nativeScriptDecoding",
+          lucid: h.proverLucid,
+          network: "Custom",
+          signer: h.proverSigner,
+          publications: emulatorPublicationObserver(h.proverLucid),
+          requirementForAction: (input) =>
+            subjectField!.requirementForAction(
+              {
+                certificate: h.contracts.fieldPreimageCertificate,
+                references: { fieldPreimageCertificateMint: certificate },
+                signer: h.proverSigner,
+              } as never,
+              input,
+            ),
+        });
       const adapter = () =>
-        createCursorFamilyWorkflowAdapter({
-          spec: NATIVE_SCRIPT_DECODING_CURSOR_SPEC,
-          l1,
-          transactions: port,
-          stateQueueMutationLeaseCoordinator: leaseCoordinator,
+        withFieldCarriagePrerequisite({
+          category: "nativeScriptDecoding",
+          prerequisite: fieldPrerequisite,
+          base: createCursorFamilyWorkflowAdapter({
+            spec: NATIVE_SCRIPT_DECODING_CURSOR_SPEC,
+            l1,
+            transactions: port,
+            stateQueueMutationLeaseCoordinator: leaseCoordinator,
+          }),
         });
       for (let n = 0; n < 30; n++) {
         const store = new DirectoryFraudProofWorkflowJournalStore(directory);
@@ -329,22 +322,13 @@ describe("nativeScriptDecoding installed cursor actuator", () => {
           kind: "submission_intent",
           actionId: action.actionId,
           actionInput: action.input,
+          ...(preflight.durableRecovery === undefined
+            ? {}
+            : { durableRecovery: preflight.durableRecovery }),
           attempt: 1,
           txHash: preflight.txHash,
         });
-        const result = await captureEmulatorSubmission(h.emulator, () =>
-          current.submit({ ...context, action, preflight }),
-        );
-        result.measurements.forEach((m, index) =>
-          measurements.push({
-            name: `${scenario.name}/${String(action.input.stage)}/${n}/${index}`,
-            kind: "lifecycle",
-            maximumShape: `${scenario.item.length} raw script bytes`,
-            signedBytes: m.completeSignedBytes,
-            memoryUnits: m.executionMemory,
-            cpuUnits: m.executionSteps,
-          }),
-        );
+        await current.submit({ ...context, action, preflight });
         h.emulator.awaitBlock();
         confirmed.add(preflight.txHash);
         await append({
@@ -358,6 +342,7 @@ describe("nativeScriptDecoding installed cursor actuator", () => {
           ...context,
           action,
           txHash: preflight.txHash,
+          durableRecovery: preflight.durableRecovery,
         });
         expect(recovered).toEqual({
           kind: "confirmed",
@@ -386,33 +371,21 @@ describe("nativeScriptDecoding installed cursor actuator", () => {
         contracts: h.contracts,
       });
       const now = BigInt(h.emulator.now());
-      const removed = await captureEmulatorSubmission(h.emulator, () =>
-        submitRemoveFraudulentBlock({
-          lucid: h.proverLucid,
-          blueprint: h.realBlueprint,
-          deploymentInfo: buildRemovalDeploymentInfo(h.contracts, h.catalogue, {
-            removalReferenceScripts: removal.published,
-          }),
-          network: "Custom",
-          signer: h.proverSigner,
-          fraudCategory: "nativeScriptDecoding",
-          fraudulentHeaderHash: setup.headerHash,
-          requireReferenceScripts: true,
-          stateQueueMutationLeaseCoordinator: leaseCoordinator,
-          validFrom: now > 120000n ? now - 120000n : 0n,
-          validTo: now + 300000n,
+      await submitRemoveFraudulentBlock({
+        lucid: h.proverLucid,
+        blueprint: h.realBlueprint,
+        deploymentInfo: buildRemovalDeploymentInfo(h.contracts, h.catalogue, {
+          removalReferenceScripts: removal.published,
         }),
-      );
-      removed.measurements.forEach((m, index) =>
-        measurements.push({
-          name: `${scenario.name}/remove/${index}`,
-          kind: "lifecycle",
-          maximumShape: `${scenario.item.length} raw script bytes`,
-          signedBytes: m.completeSignedBytes,
-          memoryUnits: m.executionMemory,
-          cpuUnits: m.executionSteps,
-        }),
-      );
+        network: "Custom",
+        signer: h.proverSigner,
+        fraudCategory: "nativeScriptDecoding",
+        fraudulentHeaderHash: setup.headerHash,
+        requireReferenceScripts: true,
+        stateQueueMutationLeaseCoordinator: leaseCoordinator,
+        validFrom: now > 120000n ? now - 120000n : 0n,
+        validTo: now + 300000n,
+      });
     },
     180000,
   );

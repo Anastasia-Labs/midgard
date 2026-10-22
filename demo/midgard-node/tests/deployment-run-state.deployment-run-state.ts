@@ -390,10 +390,12 @@ describe("deployment run state", () => {
       lovelace: "5000000",
       inlineDatum: "d8799f00",
     };
+    const l1Origin = { slot: 4_200, blockHash: "0f".repeat(32) };
     const signed = await recordHubOracleNonceSigned({
       options,
       network: "Preprod",
       signedTxCbor: "84a0",
+      l1Origin,
       ...attempt,
     });
 
@@ -404,7 +406,7 @@ describe("deployment run state", () => {
       txHashes: [txHash],
       message: "signed_before_submission",
     });
-    const pending = { ...attempt, signedTxCbor: "84a0" };
+    const pending = { ...attempt, signedTxCbor: "84a0", l1Origin };
     await expect(
       loadPendingHubOracleNonceAttempt({ options }),
     ).resolves.toEqual(pending);

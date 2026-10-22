@@ -12,14 +12,14 @@ import {
   encodeCbor,
   encodeMidgardNativeTxWitnessSetCompact,
   midgardFieldCommitmentFromItems,
+  verifyLedgerEd25519Signature,
 } from "@al-ft/midgard-core";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
-import { CML, Data } from "@lucid-evolution/lucid";
+import { Data } from "@lucid-evolution/lucid";
 
 import { OutputReferenceSchema } from "../common.js";
 import { H32Schema } from "../common.js";
 import { ForcedInclusionTxV1Schema, HeaderSchema } from "../ledger-state.js";
-import { RejectionReasonSchema } from "../rejection-reason.js";
 import { rootMembershipProofSchema } from "../transition-trace.js";
 import { FieldOpeningSchema } from "./field-opening.js";
 import {
@@ -32,6 +32,8 @@ import {
   NativeTxInclusionCarriageSchema,
   type NativeTxWitnessSetCompact as NativeTxWitnessSetCompactData,
 } from "./native.js";
+import { ProofThreadSubjectSourceSchema } from "./proof-thread-source.js";
+import { VerdictSubjectSchema } from "./proof-thread-substrate.js";
 import {
   acceptedVerdictSubject,
   type VerdictSubject,
@@ -168,11 +170,12 @@ export const invalidSignatureWitnessSetCommitment = (
  *
  * The signed message is the native transaction id, which is the blake2b-256 of
  * the compact body CBOR — the same value step 01 carries forward and step 02
- * passes to `verify_ed25519_signature`.
+ * passes to `verify_ed25519_signature`, and the check is the ledger's own.
  *
- * Malformed keys or signatures are reported as *not verifying* rather than
- * thrown, because a block committing a structurally broken witness is itself
- * the violation this proof targets.
+ * A key or signature of the wrong length is reported as *not verifying*
+ * rather than thrown, because a block committing a structurally broken
+ * witness is itself the violation this proof targets. A failure of the check
+ * itself is raised, never reported as a witness that does not verify.
  */
 export const verifyAddressWitness = ({
   txId,
@@ -181,18 +184,20 @@ export const verifyAddressWitness = ({
   readonly txId: string;
   readonly witness: MidgardAddressWitnessData;
 }): boolean => {
-  try {
-    const publicKey = CML.PublicKey.from_bytes(
-      Buffer.from(witness.verification_key, "hex"),
-    );
-    const signature = CML.Ed25519Signature.from_raw_bytes(
-      Buffer.from(witness.signature, "hex"),
-    );
-    return publicKey.verify(Buffer.from(txId, "hex"), signature);
-  } catch {
-    return false;
-  }
+  const publicKey = hexBytes(witness.verification_key);
+  const signature = hexBytes(witness.signature);
+  return (
+    publicKey !== null &&
+    signature !== null &&
+    verifyLedgerEd25519Signature(publicKey, Buffer.from(txId, "hex"), signature)
+  );
 };
+
+/** The bytes a hex string spells, or null when it is not whole hex. */
+const hexBytes = (hex: string): Buffer | null =>
+  hex.length % 2 === 0 && /^[0-9a-fA-F]*$/.test(hex)
+    ? Buffer.from(hex, "hex")
+    : null;
 
 /**
  * Index of the first address witness whose signature does not verify against the
@@ -266,38 +271,15 @@ export const InvalidSignatureStep01Datum =
  * Any additional wrapper fields change the positional PlutusData shape and are
  * therefore outside this ABI.
  */
-export const InvalidSignatureVerdictSubjectSchema = Data.Object({
-  version: Data.Integer(),
-  direction: Data.Integer(),
-  source_kind: Data.Integer(),
-  transaction_id: Data.Bytes(),
-  source_key: Data.Bytes(),
-  rejection_reason: Data.Nullable(RejectionReasonSchema),
-});
-export const InvalidSignatureStep01SourceSchema = Data.Enum([
-  Data.Object({
-    AcceptedSource: Data.Object({ inclusion: NativeTxInclusionCarriageSchema }),
-  }),
-  Data.Object({
-    ForcedSource: Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      header: HeaderSchema,
-      membership: rootMembershipProofSchema(
-        OutputReferenceSchema,
-        ForcedInclusionTxV1Schema,
-      ),
-      direction: Data.Integer(),
-    }),
-  }),
-]);
+export const InvalidSignatureVerdictSubjectSchema = VerdictSubjectSchema;
+export const InvalidSignatureStep01SourceSchema =
+  ProofThreadSubjectSourceSchema;
 export const InvalidSignatureForcedSourcePayloadSchema = Data.Object({
   header: HeaderSchema,
   membership: rootMembershipProofSchema(
     OutputReferenceSchema,
     ForcedInclusionTxV1Schema,
   ),
-  direction: Data.Integer(),
 });
 
 export const InvalidSignatureStep01ArgsSchema = Data.Object({

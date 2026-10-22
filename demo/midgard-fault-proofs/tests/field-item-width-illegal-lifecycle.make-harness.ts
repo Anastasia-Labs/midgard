@@ -22,6 +22,8 @@ import {
 } from "../src/field-item-width-illegal/index.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import type { SubmitStep01TxInclusion } from "../src/step-support.js";
+import type { OwnOutputJournal } from "../src/workflow/own-outputs.js";
+import type { FraudProofPreSubmitBoundary } from "../src/workflow/transaction-boundary.js";
 import {
   CANCELLABLE_STEPS,
   CATEGORY_ID,
@@ -118,12 +120,7 @@ export const makeHarness = async () => {
         }),
       );
       if (!publicationsRecorded) {
-        record(
-          `publish-step0${(index + 1).toString()}`,
-          "fully applied testnet validator",
-          published.measurement,
-          "publication",
-        );
+        record(`publish-step0${(index + 1).toString()}`, published.measurement);
       }
       references.push(published.result.utxo);
     }
@@ -200,7 +197,9 @@ export const makeHarness = async () => {
   const step01Forced = (
     threadOutRef: string,
     finding: FieldItemWidthFinding,
-    forcedSource: Readonly<Record<string, unknown>>,
+    forcedSource: Parameters<
+      typeof submitFieldItemWidthIllegalStep01Forced
+    >[0]["forcedSource"],
   ) =>
     captureEmulatorSubmission(harness.emulator, () =>
       submitFieldItemWidthIllegalStep01Forced({
@@ -217,7 +216,12 @@ export const makeHarness = async () => {
   const step02 = (
     threadOutRef: string,
     evidence: FieldItemWidthEvidence,
-    shape: WidthShape,
+    shape:
+      | WidthShape
+      | {
+          readonly nativeTxCompactCbor: string;
+          readonly witnessSetCompactCbor: string;
+        },
   ) =>
     captureEmulatorSubmission(harness.emulator, () =>
       submitFieldItemWidthIllegalStep02({
@@ -227,19 +231,55 @@ export const makeHarness = async () => {
         signer: harness.proverSigner,
         threadOutRef,
         evidence,
-        nativeTxCompactCbor: compactCborHex(
-          shape.nativeTx,
-          evidence.subject.source_kind,
-        ),
-        witnessSetCompactCbor: witnessSetCompactCborHex(shape.nativeTx),
+        nativeTxCompactCbor:
+          "nativeTxCompactCbor" in shape
+            ? shape.nativeTxCompactCbor
+            : compactCborHex(shape.nativeTx, evidence.subject.source_kind),
+        witnessSetCompactCbor:
+          "witnessSetCompactCbor" in shape
+            ? shape.witnessSetCompactCbor
+            : witnessSetCompactCborHex(shape.nativeTx),
         referenceScriptUtxo: references[1]!,
         certificateReferenceScriptUtxo: requireCertificateReference(),
       }),
     );
-  const step02Raw = (
+  /** One step-02 turn with every pre-submit boundary set to `boundary`. */
+  const step02Turn = (
     threadOutRef: string,
     evidence: FieldItemWidthEvidence,
     shape: WidthShape,
+    boundary: FraudProofPreSubmitBoundary,
+    ownOutputs: OwnOutputJournal,
+  ) =>
+    submitFieldItemWidthIllegalStep02({
+      ownOutputs,
+      lucid: harness.proverLucid,
+      contracts,
+      categoryId: category.categoryId,
+      signer: harness.proverSigner,
+      threadOutRef,
+      evidence,
+      nativeTxCompactCbor: compactCborHex(
+        shape.nativeTx,
+        evidence.subject.source_kind,
+      ),
+      witnessSetCompactCbor: witnessSetCompactCborHex(shape.nativeTx),
+      publishCarriage: evidence.carriage === "RawUtxo",
+      referenceScriptUtxo: references[1]!,
+      certificateReferenceScriptUtxo: requireCertificateReference(),
+      publicationPreSubmitBoundary: boundary,
+      certificatePreSubmitBoundary: boundary,
+      preSubmitBoundary: boundary,
+    });
+  const step02Raw = (
+    threadOutRef: string,
+    evidence: FieldItemWidthEvidence,
+    shape:
+      | WidthShape
+      | {
+          readonly nativeTxCompactCbor: string;
+          readonly witnessSetCompactCbor: string;
+        },
     options: {
       readonly mutateOpening?: (
         opening: FieldOpening,
@@ -255,11 +295,14 @@ export const makeHarness = async () => {
       signer: harness.proverSigner,
       threadOutRef,
       evidence,
-      nativeTxCompactCbor: compactCborHex(
-        shape.nativeTx,
-        evidence.subject.source_kind,
-      ),
-      witnessSetCompactCbor: witnessSetCompactCborHex(shape.nativeTx),
+      nativeTxCompactCbor:
+        "nativeTxCompactCbor" in shape
+          ? shape.nativeTxCompactCbor
+          : compactCborHex(shape.nativeTx, evidence.subject.source_kind),
+      witnessSetCompactCbor:
+        "witnessSetCompactCbor" in shape
+          ? shape.witnessSetCompactCbor
+          : witnessSetCompactCborHex(shape.nativeTx),
       referenceScriptUtxo: references[1]!,
       certificateReferenceScriptUtxo: requireCertificateReference(),
       ...options,
@@ -348,6 +391,7 @@ export const makeHarness = async () => {
     step01Forced,
     step02,
     step02Raw,
+    step02Turn,
     step03,
     step03Raw,
     cancel,

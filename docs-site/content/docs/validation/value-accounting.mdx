@@ -140,7 +140,8 @@ turn a purpose into Plutus data:
 
 Phase B resolves inputs, converts signed mint into the context mint value,
 matches purposes to redeemers, and builds the appropriate context. Canonical V1
-execution uses the structural CEK executor with exact program material. It then
+verdict execution evaluates the exact carried Flat script with the resolved
+context and declared budget. It then
 checks minimum Ada and value preservation before accepting the candidate.
 
 Each output must satisfy

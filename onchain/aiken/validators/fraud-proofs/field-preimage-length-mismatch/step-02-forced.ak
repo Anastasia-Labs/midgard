@@ -10,9 +10,7 @@ use midgard/fraud_proofs/field_preimage_length_mismatch/step_02.{
   AuthenticateForced, Datum, PendingForced, SpendRedeemer,
 }
 use midgard/fraud_proofs/field_preimage_length_mismatch/step_03
-use midgard/fraud_proofs/native_tx/compact.{
-  verify_forced_tx_proof_source_v1, verify_native_tx_proof_source_v1,
-}
+use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_proof_source_v1}
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/rejection_reason_v1.{FieldPreimageLengthMismatch}
 
@@ -63,20 +61,13 @@ validator main(
           outputs,
         )
         expect output_script_hash == step_03_validator_script_hash
-        expect Some(PendingForced { direction }) = input_state
-        let subject = substrate.bind_forced_subject_to_thread_v1(
+        expect Some(PendingForced) = input_state
+        let Pair(subject, verified) = substrate.open_forced_subject_v1(
           thread_asset_name,
           header,
           membership,
-          direction,
         )
         let leaf = membership.value
-        let Pair(verified, _) = verify_forced_tx_proof_source_v1(
-          leaf.tx_id,
-          leaf.submitted_source.compact_cbor,
-          leaf.submitted_source.witness_set_compact_cbor,
-          leaf.submitted_source.field_preimage_lengths_cbor,
-        )
         let evidence = authenticated_length_evidence_v1(
           verified,
           leaf.submitted_source.field_preimage_lengths_cbor,
@@ -84,13 +75,13 @@ validator main(
           reference_inputs,
           field_preimage_certificate_policy_id,
         )
-        if direction == substrate.direction_wrongful_rejection {
+        if subject.direction == substrate.direction_wrongful_rejection {
           expect FieldPreimageLengthMismatch { field_index } = substrate.rejection_reason_of_v1(
             subject,
           )
           expect field_index == evidence.field_index
         } else {
-          expect direction == substrate.direction_wrongful_acceptance
+          expect subject.direction == substrate.direction_wrongful_acceptance
         }
         let expected: Data = step_03.State {
           subject,

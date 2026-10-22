@@ -29,7 +29,6 @@ export const ObserverOrderInvalidStep01SourceSchema = Data.Enum([
         OutputReferenceSchema,
         ForcedInclusionTxV1Schema,
       ),
-      direction: Data.Integer(),
     }),
   }),
 ]);

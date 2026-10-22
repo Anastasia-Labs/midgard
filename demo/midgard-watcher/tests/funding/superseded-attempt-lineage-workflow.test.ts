@@ -71,7 +71,7 @@ it("re-signs a rolled-back proof at once after a rollback also drops the next st
   );
   // Neither the step nor the proof can land at the tip. The step is
   // reconciled first; then the chain asks for the proof again.
-  vi.mocked(fixture.adapter.reconcile).mockResolvedValue({ kind: "not_found" });
+  fixture.chain.mockResolvedValue({ kind: "not_found" });
   await expect(fixture.run(journal)).resolves.toMatchObject({
     kind: "pending",
   });

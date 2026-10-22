@@ -166,7 +166,6 @@ export const admitNetworkIdForcedArtifact = (
     forcedSource: Object.freeze({
       header: forcedSource.header,
       membership: forcedSource.membership,
-      direction: 1n as const,
     }),
     evidence,
   });

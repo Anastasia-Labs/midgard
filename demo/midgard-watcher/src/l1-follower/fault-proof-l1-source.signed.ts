@@ -35,12 +35,18 @@ import {
  * An input is classified from the follower's facts, never assumed:
  * - its exact creation comes from the stored creating body; without one
  *   (an output created before the origin, or by a body not stored) it is
- *   `unknown`, which holds the intent without rebroadcasting it;
+ *   `unknown`, which holds the intent without rebroadcasting or retiring
+ *   it, unless the follower recorded another transaction spending it;
  * - a tracked row says live or spent at its slot; a stored valid spender
  *   shows the spend of an untracked output; a tracked row the pruning
  *   removed was spent at or below the pruned-through slot;
  * - an untracked output with no stored spender cannot be shown unspent:
  *   `unknown`, never `rebroadcast`.
+ *
+ * A spend of any input by another transaction makes the intent impossible,
+ * whatever the other inputs: it is `invalidated_at_tip` even beside an input
+ * without history, and `invalidated` once stable only when every input is
+ * known.
  */
 
 type Observation = Awaited<
@@ -120,8 +126,9 @@ const REASONS = {
 type InputState =
   | Readonly<{ kind: "unknown"; reason: string }>
   | Readonly<{ kind: "live"; outputCbor: string }>
-  /** Spent at `atOrBelowSlot` (or, when the pruning removed its row, at or below it). */
-  | Readonly<{ kind: "spent"; outputCbor: string; atOrBelowSlot: number }>;
+  /** Spent at `atOrBelowSlot` (or, when the pruning removed its row, at or
+   * below it). Without a stored creating body the output is not known. */
+  | Readonly<{ kind: "spent"; outputCbor?: string; atOrBelowSlot: number }>;
 
 type Reader = Readonly<{
   store: FactStore;
@@ -137,13 +144,28 @@ const atView = (view: View, slot: number): number => {
   return slot;
 };
 
+/** An input without a stored creating body is still shown spent, by the
+ * same facts as any other input: its tracked row (a seed row) or a stored
+ * valid spender. A valid stored intent never gets here: it is included. */
+const spentWithoutCreation = async (
+  { store, view }: Reader,
+  outRef: OutRef,
+): Promise<InputState> => {
+  const row = await store.output(outRef);
+  const spend = row?.spent ?? (await store.txSpending(outRef));
+  return spend === null
+    ? { kind: "unknown", reason: REASONS.unknown }
+    : { kind: "spent", atOrBelowSlot: atView(view, spend.slot) };
+};
+
 const inputState = async (
-  { store, rawReads, view, canonicalPoint }: Reader,
+  reader: Reader,
   label: string,
 ): Promise<InputState> => {
+  const { store, rawReads, view, canonicalPoint } = reader;
   const outRef: OutRef = parseOutRefLabel(label);
   const creating = await store.txByHash(outRef.txHash);
-  if (creating === null) return { kind: "unknown", reason: REASONS.unknown };
+  if (creating === null) return await spentWithoutCreation(reader, outRef);
   atView(view, creating.blockSlot);
   const body = CML.TransactionBody.from_cbor_bytes(creating.bodyCbor);
   let outputCbor: string;
@@ -256,18 +278,17 @@ const observeOnce = async (
       : finish("expired_at_tip", REASONS.expiredAtTip);
   let status: Status = "rebroadcast";
   let reason: string = REASONS.rebroadcast;
+  let unknown: string | undefined;
   for (const label of signed.outRefs) {
     const state = await inputState(reader, label);
     if (state.kind === "unknown") {
-      status = "unknown";
-      reason = state.reason;
-      break;
+      unknown ??= state.reason;
+      continue;
     }
-    inputs.push({ outRef: label, outputCbor: state.outputCbor });
+    if (state.outputCbor !== undefined)
+      inputs.push({ outRef: label, outputCbor: state.outputCbor });
     if (state.kind !== "spent") continue;
     const stable = state.atOrBelowSlot <= Number((await releaseFinal()).slot);
-    // A stable spend invalidates whatever else holds; keep scanning so a
-    // later input without history still prevents retirement.
     if (stable) {
       status = "invalidated";
       reason = REASONS.invalidated;
@@ -276,6 +297,12 @@ const observeOnce = async (
       reason = REASONS.invalidatedAtTip;
     }
   }
+  // A spend makes the intent impossible whatever else holds; an input
+  // without history still prevents its retirement and its rebroadcast.
+  if (unknown !== undefined)
+    return status === "rebroadcast"
+      ? finish("unknown", unknown)
+      : finish("invalidated_at_tip", REASONS.invalidatedAtTip);
   if (status !== "rebroadcast") return finish(status, reason);
   if (signed.validFromSlot !== undefined && tipSlot < signed.validFromSlot)
     return finish("pending", REASONS.validFrom);

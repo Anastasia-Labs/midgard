@@ -1,4 +1,3 @@
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import {
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxFullFromCanonicalCbor,
@@ -33,7 +32,7 @@ import {
 } from "./submit-l2-transfer.submit-l2-transfer-config-helpers.js";
 
 describe("submit-l2-transfer tx building", () => {
-  it("attaches the canonical empty program-material sidecar for local validation", () => {
+  it("queues the exact canonical transaction for local validation", () => {
     const txId = Buffer.from("ab".repeat(32), "hex");
     const txCbor = Buffer.from("80", "hex");
     const queued = toQueuedTx({
@@ -51,9 +50,7 @@ describe("submit-l2-transfer tx building", () => {
 
     expect(queued.txId).toBe(txId);
     expect(queued.txCbor).toBe(txCbor);
-    expect(queued.programMaterialSidecarCbor).toEqual(
-      encodeMidgardCekProgramMaterialSidecar([]),
-    );
+    expect(Object.keys(queued)).not.toContain("programMaterialSidecarCbor");
   });
 
   it("selects sufficient inputs and builds a valid native transfer with change", async () => {

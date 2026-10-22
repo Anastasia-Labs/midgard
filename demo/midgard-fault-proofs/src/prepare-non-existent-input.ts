@@ -47,7 +47,10 @@ import {
   computeTrieRoot,
   type TrieEntry,
 } from "./ne-proofs.js";
-import { type NeInputPreimageEntry } from "./non-existent-input/submit-step-02.js";
+export type NeInputPreimageEntry = {
+  readonly txId: string;
+  readonly index: bigint;
+};
 import {
   deriveL2TransactionSourceCbor,
   type FetchLike,

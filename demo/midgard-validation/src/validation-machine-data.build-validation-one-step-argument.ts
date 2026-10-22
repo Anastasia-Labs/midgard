@@ -7,16 +7,17 @@ import {
   type DeterministicValidationMachineTrace,
   type ValidationMachineWorkWitness,
 } from "./validation-machine/index.js";
-import { resolverPhaseIndex } from "./validation-machine-data.redeemer-item-control-data.js";
 import {
-  buildCekRouteMaterial,
-  validationOneStepWitnessData,
-} from "./validation-machine-data.validate-cek-route-material.js";
+  type CekSelectionDecodeRecordResolver,
+  validateCekSelectionDecodeRecord,
+} from "./validation-machine-data.cek-selection-decode-record.js";
+import { resolverPhaseIndex } from "./validation-machine-data.redeemer-item-control-data.js";
 import { validationAuxiliaryWitnessData } from "./validation-machine-data.validation-auxiliary-witness-data.js";
 import {
   record,
   type ValidationMachineFieldCarriageResolver,
 } from "./validation-machine-data.validation-machine-carriage-tier-mismatch-error.js";
+import { validationOneStepWitnessData } from "./validation-machine-data.validation-machine-state-data.js";
 import {
   type ValidationOneStepArgument,
   validationSemanticResolverIndex,
@@ -48,10 +49,12 @@ export const buildValidationOneStepArgument = ({
   trace,
   stateIndex,
   resolveFieldCarriage,
+  resolveCekDecodeRecord,
 }: {
   readonly trace: DeterministicValidationMachineTrace;
   readonly stateIndex: number;
   readonly resolveFieldCarriage?: ValidationMachineFieldCarriageResolver;
+  readonly resolveCekDecodeRecord?: CekSelectionDecodeRecordResolver;
 }): ValidationOneStepArgument => {
   if (!Number.isSafeInteger(stateIndex) || stateIndex < 0) {
     throw new Error(
@@ -102,7 +105,12 @@ export const buildValidationOneStepArgument = ({
       `validation transition ${stateIndex.toString()} exceeds the strict L1 preimage envelope`,
     );
   }
-  const cekRouteMaterial = buildCekRouteMaterial({ trace, witness });
+  validateCekSelectionDecodeRecord({
+    pre,
+    claimedSuccessor,
+    witness,
+    resolveCekDecodeRecord,
+  });
   const resolverIndex = resolverPhaseIndex(pre.phase);
   const semanticResolverIndex = validationSemanticResolverIndex(witness);
   let cekContextSuccessorWorkWitnessCbor: Buffer | undefined;
@@ -153,7 +161,6 @@ export const buildValidationOneStepArgument = ({
     transitionCbor,
     auxiliaryCbor,
     evidenceCbor,
-    ...(cekRouteMaterial === undefined ? {} : { cekRouteMaterial }),
     ...(cekContextSuccessorWorkWitnessCbor === undefined
       ? {}
       : { cekContextSuccessorWorkWitnessCbor }),

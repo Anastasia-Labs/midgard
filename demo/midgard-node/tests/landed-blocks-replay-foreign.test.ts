@@ -3,7 +3,8 @@
  * a real Postgres follower store and the node's DA table: a block's event
  * sets must equal the in-window events and forced orders the follower
  * facts hold at the view, in both polarities (honest blocks replay; a known
- * event outside the window is invalid, an unknown one a wait); a
+ * event outside the window is invalid, an unknown one invalid where the
+ * facts cover the block's range and a bounded hold where they do not); a
  * block past what the view can know waits; the retained payload's identity
  * is checked; a fetched payload is kept only after the block replayed.
  */
@@ -38,6 +39,7 @@ import {
 } from "./helpers/l1-events-chain.js";
 import type { ChainDriver } from "./helpers/l1-events-store.js";
 import { SIM_QUEUE_CONFIG } from "./helpers/state-queue-sim.fixtures.js";
+import { AVAILABILITY } from "./landed-blocks-replay-foreign.availability.js";
 import {
   clock,
   depositBlock,
@@ -181,7 +183,7 @@ describe("foreign replay: deposits", () => {
     });
   });
 
-  it("waits on a deposit the view does not know (event_unknown, not awaiting DA)", async () => {
+  it("holds a deposit the view does not know as a late-origin store, not awaiting DA, the block starting before the origin", async () => {
     const { store, chain } = await follow();
     await admitDeposit(chain);
     const [{ entry }] = (await depositsAt(store)) as [
@@ -190,8 +192,10 @@ describe("foreign replay: deposits", () => {
     // The same block replayed at a view that has not seen the admission.
     await chain.backward(1);
     expect(await replayed(store, await depositBlock(entry))).toMatchObject({
-      kind: "event_unknown",
-      detail: expect.stringContaining(`deposit ${entry.idCbor}`),
+      kind: "origin_after_frontier",
+      detail: expect.stringMatching(
+        new RegExp(`^deposit ${entry.idCbor} .*the follower's origin at slot`),
+      ),
     });
   });
 });
@@ -206,7 +210,7 @@ describe("foreign replay: withdrawals", () => {
     });
   });
 
-  it("refuses a duplicated withdrawal and waits on an unknown one", async () => {
+  it("refuses a duplicated withdrawal, and holds an unknown one as a late-origin store", async () => {
     const { store, chain } = await follow();
     const order = await admitWithdrawal(chain);
     const named = idKey(order.nonce);
@@ -226,8 +230,10 @@ describe("foreign replay: withdrawals", () => {
       ],
     });
     expect(await replayed(store, stranger)).toMatchObject({
-      kind: "event_unknown",
-      detail: `withdrawal ${unknown} is not known at the view`,
+      kind: "origin_after_frontier",
+      detail: expect.stringContaining(
+        `withdrawal ${unknown} is not known at the view`,
+      ),
     });
   });
 });
@@ -272,12 +278,14 @@ describe("foreign replay: forced orders read from the follower facts", () => {
     });
   });
 
-  it("refuses a duplicated order and waits on an unknown one", async () => {
+  it("refuses a duplicated order, and holds an unknown one as a late-origin store", async () => {
     const { store, chain } = await follow();
     const block = await forcedBlock();
     expect(await replayed(store, block)).toMatchObject({
-      kind: "event_unknown",
-      detail: `forced order ${idKey(FIXTURE_ORDER_ID)} is not known at the view`,
+      kind: "origin_after_frontier",
+      detail: expect.stringContaining(
+        `forced order ${idKey(FIXTURE_ORDER_ID)} is not known at the view`,
+      ),
     });
     await chain.forward([await fixtureOrderTx(chain, FIXTURE_ORDER_ID)]);
     await forget(block);
@@ -289,7 +297,7 @@ describe("foreign replay: forced orders read from the follower facts", () => {
     });
   });
 
-  it("an admitted in-window order whose output cannot be read back is a wait", async () => {
+  it("an admitted in-window order whose output cannot be read back is pending, not invalid", async () => {
     const { store, chain } = await follow();
     const order = await fixtureOrderTx(chain, FIXTURE_ORDER_ID);
     const [hash] = await chain.forward([order]);
@@ -427,8 +435,11 @@ describe("foreign replay: retired events under the landed prune floor", () => {
     expect(await replayed(store, block)).toMatchObject({ kind: "replayed" });
     floor.slot = null;
     await store.prune();
+    // The block starts before the follower's origin: once the floor lets
+    // the deposit go, the store cannot judge it.
     expect(await replay(store, block)).toMatchObject({
-      kind: "event_unknown",
+      kind: "origin_after_frontier",
+      detail: expect.stringContaining("the follower's origin at slot"),
     });
   });
 });
@@ -465,6 +476,7 @@ describe("the node's landed ports at a follower view", () => {
       },
       // Not reached: no landed row asks for a rebase here.
       () => Effect.succeed(undefined),
+      () => AVAILABILITY,
     );
     await admitDeposit(chain);
     const before = (await store.currentView())!;

@@ -35,6 +35,7 @@ use midgard/fraud_proofs/native_script_decoding/engine as decoding_engine
 use midgard/fraud_proofs/native_script_decoding/thread_fixture_v1 as tf
 use midgard/fraud_proofs/native_tx/preimages
 use midgard/fraud_proofs/native_tx/types as native_types
+use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/fraud_proofs/structured_data_carriage
 use midgard/ledger_state
 use midgard/native_tx_field_access_v1.{encode_field_preimage, field_commitment}
@@ -164,12 +165,12 @@ validator main(
               )
             expect
               claim.direction == engine.direction_script_absent || claim.direction == engine.direction_script_unsatisfied
-            let prior_ledger_root = decoding_engine.verify_committed_pre_state_v1(
+            let prior_ledger_root = substrate.event_pre_state_v1(
               claim.header,
               ledger_state.L2TransactionEventKey { tx_id: bad_tx_id },
               claim.event_to_step_membership,
               claim.transition_step_membership,
-            )
+            ).pre_root
             Scan {
               bad_tx_id,
               bad_tx_witness_set_hash,

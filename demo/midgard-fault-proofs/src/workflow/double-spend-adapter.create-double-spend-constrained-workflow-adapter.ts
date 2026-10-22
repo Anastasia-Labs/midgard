@@ -12,7 +12,6 @@ import { prepareDoubleSpendFromCanonicalEvidence } from "../evidence/prepare-fro
 import {
   certifyFaultProofFieldCarriage,
   fieldPreimageCertificateAddress,
-  findMissingFaultProofFieldPublication,
   resolveFaultProofFieldCarriagePublications,
   resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening.js";
@@ -27,6 +26,11 @@ import {
 } from "../remove-fraudulent-block.js";
 import { parseSubmitStep01TxInclusion } from "../step-support.js";
 import { submitInit } from "../submit-init.js";
+import { WorkflowActionChangedError } from "./action-changed.js";
+import {
+  addressFieldCarriageOwnOutputs,
+  firstUnclaimedFieldPublication,
+} from "./bespoke-adapter-field-carriage.js";
 import { admitSnapshot } from "./double-spend-adapter.create-double-spend-raw-l1-observation-port.js";
 import { createDoubleSpendFieldOpeningPlan } from "./double-spend-adapter.field-opening-plan.js";
 import {
@@ -95,6 +99,14 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
     });
 
   const fieldPlan = createDoubleSpendFieldOpeningPlan(config);
+  const fieldCarriage = async (planned: ReturnType<typeof fieldPlan>) =>
+    await addressFieldCarriageOwnOutputs({
+      lucid: config.lucid,
+      network: config.network,
+      publisherAddress: config.signer.address,
+      planned,
+      certificatePolicyId: config.fieldPreimageCertificate.policyId,
+    });
 
   const authenticatePublications = async ({
     headerHash,
@@ -211,10 +223,11 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
     }
     if (stage.kind === "step_03" || stage.kind === "step_04") {
       const plan = fieldPlan(stage.kind, artifact);
-      const missing = await findMissingFaultProofFieldPublication({
-        lucid: config.lucid,
+      const ownOutputs = await fieldCarriage(plan);
+      const missing = firstUnclaimedFieldPublication({
         publisherAddress: config.signer.address,
         planned: plan,
+        ownOutputs,
       });
       if (missing !== undefined) {
         const base = `${stage.kind}:publish-field:${missing.digest}`;
@@ -230,6 +243,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
       }
       if (plan.plan.tier === "Certified") {
         const certificate = await resolveFaultProofFieldPreimageCertificate({
+          ownOutputs,
           lucid: config.lucid,
           network: config.network,
           planned: plan,
@@ -238,6 +252,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
         if (certificate === undefined) {
           const publications = await resolveFaultProofFieldCarriagePublications(
             {
+              ownOutputs,
               lucid: config.lucid,
               publisherAddress: config.signer.address,
               planned: plan,
@@ -345,7 +360,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
         ),
       );
       if (chunks === undefined) {
-        throw new Error(`${stage} proof chunks are not observable on L1`);
+        throw new WorkflowActionChangedError(`${stage} chunks gone from L1`);
       }
       await authenticatePublications({
         headerHash: artifact.headerHash,
@@ -403,13 +418,19 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
           "field certification action does not match the tier-3 plan",
         );
       }
+      const ownOutputs = await fieldCarriage(plan);
       const publications = await resolveFaultProofFieldCarriagePublications({
         lucid: config.lucid,
         publisherAddress: config.signer.address,
         planned: plan,
+        ownOutputs,
       });
       if (publications === undefined) {
-        throw new Error("tier-3 field publications are not observable on L1");
+        // Observation scheduled this action only once every chunk was on L1,
+        // so a chunk gone now (a rollback or a spend) changes the next action.
+        throw new WorkflowActionChangedError(
+          "tier-3 field publications are no longer observable on L1",
+        );
       }
       await authenticatePublications({
         headerHash: artifact.headerHash,
@@ -422,12 +443,13 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
         JSON.stringify(requested.input.chunkOutRefs) !==
         JSON.stringify(observedOutRefs)
       ) {
-        throw new Error(
+        throw new WorkflowActionChangedError(
           "field certification action does not match the observed chunk UTxOs",
         );
       }
       return await captureLocallyEvaluatedTransaction(async (boundary) => {
         await certifyFaultProofFieldCarriage({
+          ownOutputs,
           lucid: config.lucid,
           network: config.network,
           signer: config.signer,
@@ -458,17 +480,18 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
       }
       const tx = proofStage === "step_03" ? artifact.tx1 : artifact.tx2;
       const plan = fieldPlan(proofStage, artifact);
+      const ownOutputs = await fieldCarriage(plan);
       if (stage === "publish-field") {
-        const expectedMissing = await findMissingFaultProofFieldPublication({
-          lucid: config.lucid,
+        const expectedMissing = firstUnclaimedFieldPublication({
           publisherAddress: config.signer.address,
           planned: plan,
+          ownOutputs,
         });
         if (
           expectedMissing === undefined ||
           requested.input.publicationDatumCbor !== expectedMissing.datumCbor
         ) {
-          throw new Error(
+          throw new WorkflowActionChangedError(
             "field publication action does not match the next missing plan chunk",
           );
         }
@@ -477,16 +500,18 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
         stage === "publish-field"
           ? undefined
           : await resolveFaultProofFieldCarriagePublications({
+              ownOutputs,
               lucid: config.lucid,
               publisherAddress: config.signer.address,
               planned: plan,
             });
       if (stage !== "publish-field" && publications === undefined) {
-        throw new Error("field carriage publications are not observable on L1");
+        throw new WorkflowActionChangedError("field chunks gone from L1");
       }
       const certificate =
         stage !== "publish-field" && plan.plan.tier === "Certified"
           ? await resolveFaultProofFieldPreimageCertificate({
+              ownOutputs,
               lucid: config.lucid,
               network: config.network,
               planned: plan,
@@ -500,7 +525,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
           requested.input.certificateOutRef !==
             `${certificate.txHash}#${certificate.outputIndex.toString()}`)
       ) {
-        throw new Error(
+        throw new WorkflowActionChangedError(
           "tier-3 proof step does not bind the observed field certificate",
         );
       }
@@ -514,6 +539,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
       return await captureLocallyEvaluatedTransaction(async (boundary) => {
         if (proofStage === "step_03") {
           await submitStep03({
+            ownOutputs,
             lucid: config.lucid,
             blueprint: config.blueprint,
             deploymentInfo: config.deploymentInfo,
@@ -542,6 +568,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
           });
         } else {
           await submitStep04({
+            ownOutputs,
             lucid: config.lucid,
             blueprint: config.blueprint,
             deploymentInfo: config.deploymentInfo,
@@ -747,16 +774,8 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
       txHash,
       durableRecovery,
       signedTransactionCborHex,
-      retirementOnly,
       authorizeResubmission,
     }) => {
-      if (retirementOnly && txHash !== undefined)
-        return await reconcileSignedWorkflowTransaction({
-          transactionHash: txHash,
-          signedTransactionCborHex,
-          observe: config.l1?.observeSignedTransaction,
-          reportInclusion: true,
-        });
       if (txHash === undefined) {
         return { kind: "conflict", reason: "durable intent omitted tx hash" };
       }
@@ -849,15 +868,16 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
           };
         }
         if (actionStage === "publish-proof") {
-          const chunks = await proofChunks(
-            requireJournalString(requested.input.proofCbor, "action.proofCbor"),
-          );
-          if (
-            chunks === undefined ||
-            chunks.some((chunk) => chunk.utxo.txHash !== txHash)
-          ) {
-            return await unconfirmed();
-          }
+          const chunks = await resolvePublishedProofChunks({
+            lucid: config.lucid,
+            address: config.signer.address,
+            proofCbor: requireJournalString(
+              requested.input.proofCbor,
+              "action.proofCbor",
+            ),
+            fromTransaction: txHash,
+          });
+          if (chunks === undefined) return await unconfirmed();
           for (const chunk of chunks) {
             const observed = await publicationObserver.observeExact({
               headerHash: preparedArtifact.headerHash,
@@ -900,17 +920,10 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
             });
             if (observed.kind !== "confirmed") return await unconfirmed();
           } else {
-            const certificate = await resolveFaultProofFieldPreimageCertificate(
-              {
-                lucid: config.lucid,
-                network: config.network,
-                planned: plan,
-                certificatePolicyId: config.fieldPreimageCertificate.policyId,
-              },
-            );
-            if (certificate === undefined || certificate.txHash !== txHash) {
-              return await unconfirmed();
-            }
+            // The certification transaction pays its certificate at output 0.
+            // Confirm that exact output: another valid certificate for the same
+            // opening may sort first at the address, and selecting by order
+            // would never settle this transaction.
             const certification = deriveFieldPreimageCertification(plan.plan);
             const observed = await publicationObserver.observeExact({
               headerHash: preparedArtifact.headerHash,
@@ -919,7 +932,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
                 network: config.network,
                 certificatePolicyId: config.fieldPreimageCertificate.policyId,
               }),
-              expectedOutRef: `${certificate.txHash}#${certificate.outputIndex.toString()}`,
+              expectedOutRef: `${txHash}#0`,
               expectedDatumCbor: certification.datumCbor,
               expectedUnit: `${config.fieldPreimageCertificate.policyId}${FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX}`,
             });

@@ -1,4 +1,3 @@
-import { decodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import {
   MIDGARD_CONSENSUS_LIMITS,
   type MidgardConsensusProfile,
@@ -9,8 +8,8 @@ import { decodeMidgardSubmittedTxFromCanonicalCbor } from "./ledger-tx/codec.js"
 import { findRedeemerByPointer } from "./midgard-redeemers.js";
 import { discoverLocalScriptExecutions } from "./phase-b.discover-local-script-executions.js";
 import {
-  collectInlineScriptSources,
-  resolveReferenceInputs,
+  collectScriptSources,
+  resolveCandidateInputs,
 } from "./phase-b.resolve-reference-inputs.js";
 import {
   runScriptExecution,
@@ -45,7 +44,6 @@ export type MidgardTxRedeemerEvaluation =
  */
 export const evaluateMidgardTxRedeemers = (input: {
   readonly txCbor: Uint8Array;
-  readonly programMaterialSidecarCbor: Uint8Array;
   /**
    * Reads the outputs at the given out-refs from one consistent ledger
    * state; a missing out-ref is left out of the map.
@@ -66,22 +64,15 @@ export const evaluateMidgardTxRedeemers = (input: {
       detail,
     });
     let candidate;
-    let material;
     try {
       const submitted = decodeMidgardSubmittedTxFromCanonicalCbor(
         Buffer.from(input.txCbor),
-      );
-      material = decodeMidgardCekProgramMaterialSidecar(
-        input.programMaterialSidecarCbor,
       );
       candidate = buildPhaseAValidatedTx({
         sourceKind: "normal",
         ledgerTx: submitted.ledgerTx,
         expectedNetworkId: input.expectedNetworkId,
         txCbor: submitted.txCbor,
-        programMaterialSidecarCbor: Buffer.from(
-          input.programMaterialSidecarCbor,
-        ),
         arrivalSeq: 0n,
         createdAt: new Date(0),
         redeemerWitnessHash: submitted.commitments.redeemerWitnessHash,
@@ -96,23 +87,25 @@ export const evaluateMidgardTxRedeemers = (input: {
     ]);
     const stateValue = (outRefHex: string): Buffer | undefined =>
       state.get(outRefHex);
-    const references = resolveReferenceInputs(node, stateValue);
-    if ("code" in references) {
-      return failed(`${references.code}: ${references.detail ?? ""}`);
+    // Redeemer evaluation does not check spend signers.
+    const resolved = resolveCandidateInputs(node, stateValue);
+    if ("code" in resolved) {
+      return failed(`${resolved.code}: ${resolved.detail ?? ""}`);
     }
     const discovered = discoverLocalScriptExecutions(
       node,
       stateValue,
-      [
-        ...collectInlineScriptSources(candidate.ledgerTx),
-        ...references.scriptSources,
-      ],
-      references.inputs,
+      collectScriptSources(node, stateValue, resolved),
+      resolved.inputs,
       new Set(candidate.derived.witnessKeyHashHexes),
       input.config.l1SlotConfig,
     );
     if (discovered.kind === "rejected") {
       return failed(`${discovered.code}: ${discovered.detail}`);
+    }
+    if (discovered.unusedRedeemer !== undefined) {
+      const { code, detail } = discovered.unusedRedeemer;
+      return failed(`${code}: ${detail}`);
     }
     const cap = {
       memory: BigInt(input.limits.minSupportedTransactionExecutionMemoryUnits),
@@ -134,6 +127,9 @@ export const evaluateMidgardTxRedeemers = (input: {
       const { result } = yield* runScriptExecution(
         {
           scriptBytes: execution.resolved.source.scriptBytes,
+          scriptLanguage: execution.resolved.version as
+            | "PlutusV3"
+            | "MidgardV1",
           contextCbor: scriptExecutionContextCbor(
             discovered.contextView,
             execution,
@@ -145,12 +141,10 @@ export const evaluateMidgardTxRedeemers = (input: {
             input.config.maxScriptExecutionSteps ??
             MIDGARD_CONSENSUS_LIMITS.maxValidationMachineStepCount,
         },
-        input.programMaterialSidecarCbor,
-        material,
         input.config,
       );
       const pointer = `${execution.purpose.kind} redeemer ${redeemer.tag}:${redeemer.index}`;
-      if (result.kind === "script_invalid") {
+      if (result.kind !== "accepted") {
         return failed(`${pointer}: ${result.detail}`);
       }
       if (result.budget.memory > cap.memory || result.budget.cpu > cap.cpu) {

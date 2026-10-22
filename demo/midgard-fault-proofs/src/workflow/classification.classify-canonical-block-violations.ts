@@ -153,6 +153,27 @@ const compareDetections = (
 };
 
 /**
+ * The detection `classifyCanonicalBlockViolations` orders first among
+ * `detections` from one block, or undefined when there are none.
+ */
+export const firstCanonicalViolationDetection = <
+  Detection extends CanonicalViolationDetection,
+>(
+  evidence: CanonicalBlockEvidence,
+  detections: readonly Detection[],
+): Detection | undefined => {
+  const orderOf = (detection: CanonicalViolationDetection): EventOrder =>
+    detectionEventOrder(evidence.reconstruction, detection);
+  return detections.reduce<Detection | undefined>(
+    (first, detection) =>
+      first === undefined || compareDetections(orderOf, detection, first) < 0
+        ? detection
+        : first,
+    undefined,
+  );
+};
+
+/**
  * Classifies detections from one authenticated committed block.
  *
  * An empty detection set yields only `no_fault_detected`; it is not sufficient

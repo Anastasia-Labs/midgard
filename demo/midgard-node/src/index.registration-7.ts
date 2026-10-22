@@ -33,10 +33,17 @@ program
     "--out <path>",
     "Destination filepath for the contract deployment info JSON",
   )
+  .option(
+    "--run-state <path>",
+    "Deployment run-state path the deployment's prepare-hub-oracle-one-shot-nonce wrote (default: MIDGARD_RUN_STATE_PATH or deploymentInfo/midgard-run-state.json)",
+  )
   .action(async (_args, options) => {
-    const { out } = options.opts();
+    const { out, runState } = options.opts();
     const mainEffect = provideTxServices(
-      ContractDeploymentInfo.writeLiveContractDeploymentInfoProgram(out).pipe(
+      ContractDeploymentInfo.writeLiveContractDeploymentInfoProgram(
+        out,
+        typeof runState === "string" ? { runStatePath: runState } : {},
+      ).pipe(
         Effect.tap((outputPath) =>
           Effect.logInfo(
             `export-contract-deployment-info completed: ${outputPath}`,
@@ -174,9 +181,6 @@ for (const commandName of RegisterActiveOperator.REFERENCE_SCRIPT_COMMAND_NAMES)
               lucidService.api,
               lucidService.referenceScriptsAddress,
               nodeConfig.REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS,
-              new Set([
-                `${nodeConfig.HUB_ORACLE_ONE_SHOT_TX_HASH}#${nodeConfig.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX.toString()}`,
-              ]),
             );
           return { mode: "publish" as const, published };
         }).pipe(

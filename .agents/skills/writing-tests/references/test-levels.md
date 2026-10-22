@@ -12,11 +12,8 @@ tabulated in
 
 - **Where:** a `test` block in the module that owns the predicate, under
   `onchain/aiken/lib` or `onchain/aiken/validators`.
-- **Prerequisite:** the pinned fork compiler.
-  `node onchain/aiken/scripts/pinned-compiler.mjs` exits 0 only when `aiken`
-  (or `MIDGARD_AIKEN_BIN`) reports the `AIKEN_FORK_VERSION` pinned in the
-  workflows. Stock v1.1.22 has an unsound decoder
-  (`onchain/aiken/scripts/pinned-compiler.mjs:3-10`).
+- **Prerequisite:** nix. The repository scripts run the aiken
+  `demo/flake.lock` pins (`scripts/aiken`); never a bare `aiken` from `PATH`.
 - **Focused run:**
 
   ```bash
@@ -102,9 +99,9 @@ shared plumbing in `demo/midgard-core/scripts/golden-channel.mjs`).
   read `onchain/aiken/plutus.json`, which is build output and untracked.
   `contrib test` makes it ready first: it copies one from a checkout with
   identical inputs, else runs `pnpm --dir demo deployment:build <profile>`,
-  which refuses any `aiken` but the pinned fork. The suites' global setup
-  refuses a blueprint whose build record names other sources or another
-  compiler.
+  which refuses any `aiken` but the pinned fork. A raw run gets the same from
+  the suites' global setup, which rebuilds a blueprint whose build record
+  names other sources or another compiler before any file starts.
 
 - **Focused run:**
 

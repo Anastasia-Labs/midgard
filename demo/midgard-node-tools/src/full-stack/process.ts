@@ -5,7 +5,7 @@ import { join } from "node:path";
 import type { L1Origin } from "@al-ft/midgard-core/l1-origin";
 
 import { runCommandStep } from "../e2e/runner.js";
-import { deriveL1Origin, readL1NodeTip } from "../l1-origin.js";
+import { deriveL1Origin } from "../l1-origin.js";
 import type { StackConfig } from "./config.js";
 import { writeDurableJson } from "./journal.js";
 import { hostL1Node } from "./native-ledger.js";
@@ -23,7 +23,6 @@ const HOST_KEYS = [
   "PATH",
   "HOME",
   "XDG_RUNTIME_DIR",
-  "MIDGARD_AIKEN_BIN",
   "GOPATH",
   "GOMODCACHE",
   "CARGO_HOME",
@@ -111,17 +110,9 @@ export class StackProcesses {
       ...overrides,
     });
   }
-  /** The local node's tip; undefined at genesis. */
-  l1NodeTip(): Promise<L1Origin | undefined> {
-    return readL1NodeTip(hostL1Node(this));
-  }
-  /** The deployment origin of the hub-oracle nonce tx, scanned from `from`. */
-  deriveL1Origin(nonceTxHash: string, from: L1Origin | undefined) {
-    return deriveL1Origin({
-      node: hostL1Node(this),
-      nonceTxHash,
-      ...(from === undefined ? {} : { from }),
-    });
+  /** The recorded origin T, proven to precede the hub-oracle nonce tx's block. */
+  deriveL1Origin(nonceTxHash: string, recorded: L1Origin) {
+    return deriveL1Origin({ node: hostL1Node(this), nonceTxHash, recorded });
   }
   /** The cluster that host commands reach at 127.0.0.1 on the stack's Postgres host port. */
   async hostDatabaseIdentity(): Promise<string> {

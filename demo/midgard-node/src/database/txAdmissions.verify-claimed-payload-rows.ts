@@ -1,7 +1,6 @@
 import { computeMidgardNativeTxFullHashFromCanonicalCbor } from "@al-ft/midgard-core/codec";
 import { Data, Effect, Metric } from "effect";
 
-import { sha256 } from "../sha256.js";
 import { DatabaseError } from "./utils/common.js";
 import type { Entry as LedgerEntry } from "./utils/ledger.js";
 
@@ -83,8 +82,6 @@ export enum Columns {
   TX_ID = "tx_id",
   TX_CANONICAL_CBOR = "tx_canonical_cbor",
   TX_FULL_HASH_V1 = "tx_full_hash_v1",
-  CEK_PROGRAM_MATERIAL_SIDECAR_CBOR = "cek_program_material_sidecar_cbor",
-  CEK_PROGRAM_MATERIAL_SIDECAR_SHA256 = "cek_program_material_sidecar_sha256",
   ARRIVAL_SEQ = "arrival_seq",
   STATUS = "status",
   FIRST_SEEN_AT = "first_seen_at",
@@ -106,8 +103,6 @@ export type RawEntry = {
   readonly [Columns.TX_ID]: Buffer;
   readonly [Columns.TX_CANONICAL_CBOR]: Buffer;
   readonly [Columns.TX_FULL_HASH_V1]: Buffer;
-  readonly [Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR]: Buffer;
-  readonly [Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256]: Buffer;
   readonly [Columns.ARRIVAL_SEQ]: bigint | number | string;
   readonly [Columns.STATUS]: Status;
   readonly [Columns.FIRST_SEEN_AT]: Date;
@@ -137,7 +132,6 @@ type RawClaimedEntry = Pick<
   RawEntry,
   | Columns.TX_ID
   | Columns.TX_CANONICAL_CBOR
-  | Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR
   | Columns.ARRIVAL_SEQ
   | Columns.FIRST_SEEN_AT
   | Columns.VALIDATION_STARTED_AT
@@ -148,10 +142,7 @@ export type ClaimedEntry = Omit<RawClaimedEntry, Columns.ARRIVAL_SEQ> & {
 };
 
 export type RawClaimedPayloadEntry = RawClaimedEntry &
-  Pick<
-    RawEntry,
-    Columns.TX_FULL_HASH_V1 | Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256
-  >;
+  Pick<RawEntry, Columns.TX_FULL_HASH_V1>;
 
 /**
  * The ordered, durable half of a claim.  It intentionally omits the payload:
@@ -161,7 +152,7 @@ export type RawClaimedPayloadEntry = RawClaimedEntry &
  */
 export type RawClaimedLeaseEntry = Omit<
   RawClaimedEntry,
-  Columns.TX_CANONICAL_CBOR | Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR
+  Columns.TX_CANONICAL_CBOR
 >;
 
 export type ClaimedLeaseEntry = Omit<
@@ -179,7 +170,6 @@ export type AdmitResult = {
 export type ReservedAdmissionRequest = {
   readonly txId: Buffer;
   readonly txCanonicalCbor: Buffer;
-  readonly programMaterialSidecarCbor: Buffer;
   readonly submitSource: Exclude<SubmitSource, "backfill">;
   readonly maxBacklogBytes?: number;
 };
@@ -219,8 +209,6 @@ export const normalizeRow = (row: RawEntry): Entry => ({
 const normalizeClaimedEntry = (row: RawClaimedEntry): ClaimedEntry => ({
   [Columns.TX_ID]: row[Columns.TX_ID],
   [Columns.TX_CANONICAL_CBOR]: row[Columns.TX_CANONICAL_CBOR],
-  [Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR]:
-    row[Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR],
   [Columns.ARRIVAL_SEQ]: toBigInt(row[Columns.ARRIVAL_SEQ]),
   [Columns.FIRST_SEEN_AT]: row[Columns.FIRST_SEEN_AT],
   [Columns.VALIDATION_STARTED_AT]: row[Columns.VALIDATION_STARTED_AT],
@@ -248,23 +236,6 @@ export const verifyClaimedPayloadRows = (
             table: payloadTableName,
             message:
               "Admission payload canonical V1 full-transaction commitment does not match its persisted bytes",
-            cause: `tx_id=${txIdHex}`,
-          }),
-        );
-      }
-      const expectedSidecarHash = sha256(
-        row[Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR],
-      );
-      if (
-        !expectedSidecarHash.equals(
-          row[Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256],
-        )
-      ) {
-        return yield* Effect.fail(
-          new DatabaseError({
-            table: payloadTableName,
-            message:
-              "Admission payload CEK program-material sidecar commitment does not match its persisted bytes",
             cause: `tx_id=${txIdHex}`,
           }),
         );

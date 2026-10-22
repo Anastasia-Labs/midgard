@@ -1,5 +1,8 @@
 import {
+  asArray,
+  asBigInt,
   decodeMidgardNativeByteListPreimage,
+  decodeSingleCbor,
   MIDGARD_CONSENSUS_LIMITS,
 } from "@al-ft/midgard-core";
 import { CML, Constr } from "@lucid-evolution/lucid";
@@ -35,7 +38,6 @@ const initialControl = (languageTag: 3 | 128) =>
   initialMidgardCekContextControl({
     languageTag,
     programTermRoot: Buffer.alloc(32, 0xaa),
-    programEnvelopeHash: Buffer.alloc(32, 0xdd),
     purposeKind: 0,
     purposeIndex: 0n,
     scriptHash: Buffer.alloc(28, 0xbb),
@@ -93,7 +95,7 @@ const exactObserverBoundary = () => {
 };
 
 describe("bounded CEK observer context", () => {
-  it("encodes the required canonical envelope identity in the exact V1 tuple positions", () => {
+  it("encodes the decoded-record script identity in the exact V1 tuple positions", () => {
     const control = initialControl(3);
     const contextCbor = encodeMidgardCekContextControl(control);
     const activeWitness = encodeMidgardCekValidationWitness({
@@ -105,7 +107,7 @@ describe("bounded CEK observer context", () => {
       activeStateHash: Buffer.alloc(32, 0xee),
       executionCpuLimit: 17n,
       executionMemoryLimit: 19n,
-      programEnvelopeHash: control.programEnvelopeHash,
+      programScriptHash: control.scriptHash,
       purposeKind: 2n,
       purposeIndex: 5n,
     });
@@ -118,30 +120,57 @@ describe("bounded CEK observer context", () => {
       activeStateHash: null,
       executionCpuLimit: 0n,
       executionMemoryLimit: 0n,
-      programEnvelopeHash: null,
+      programScriptHash: null,
       purposeKind: -1n,
       purposeIndex: -1n,
     });
 
-    expect(contextCbor.subarray(0, 2)).toEqual(Buffer.from([0x98, 0x19]));
-    expect(contextCbor.subarray(38, 72)).toEqual(
-      Buffer.concat([Buffer.from([0x58, 0x20]), Buffer.alloc(32, 0xdd)]),
+    const contextFields = asArray(
+      decodeSingleCbor(contextCbor),
+      "context control",
     );
-    expect(activeWitness[0]).toBe(0x8b);
-    // The possibly-empty program envelope hash sits before the integer
-    // limits and purpose key so the witness never ends with a zero-length
-    // bytestring, which the Aiken `cbor.deserialise` consumer rejects at an
-    // exhausted cursor.
-    expect(activeWitness.subarray(-38, -4)).toEqual(
-      Buffer.concat([Buffer.from([0x58, 0x20]), Buffer.alloc(32, 0xdd)]),
+    const witnessFields = asArray(
+      decodeSingleCbor(activeWitness),
+      "CEK witness",
     );
-    expect(activeWitness.subarray(-4)).toEqual(
-      Buffer.from([0x11, 0x13, 0x02, 0x05]),
-    );
+    expect(contextCbor.subarray(0, 2)).toEqual(Buffer.from([0x98, 0x18]));
+    expect(contextFields).toHaveLength(24);
+    expect(contextFields[2]).toEqual(new Uint8Array(32).fill(0xaa));
+    expect(asBigInt(contextFields[3], "purpose kind")).toBe(0n);
+    expect(asBigInt(contextFields[4], "purpose index")).toBe(0n);
+    expect(contextFields[5]).toEqual(new Uint8Array(28).fill(0xbb));
+    expect(witnessFields).toHaveLength(11);
+    // The script hash stays before the limits and purpose key, including
+    // before selection when the identity is the empty byte string.
+    expect(witnessFields[6]).toEqual(new Uint8Array(28).fill(0xbb));
+    expect(
+      witnessFields.slice(7).map((value) => asBigInt(value, "CEK suffix")),
+    ).toEqual([17n, 19n, 2n, 5n]);
     expect(inactiveWitness[0]).toBe(0x8b);
     expect(inactiveWitness.subarray(-5)).toEqual(
       Buffer.from([0x40, 0x00, 0x00, 0x20, 0x20]),
     );
+  });
+
+  it("refuses a context identity that is not a 28-byte script hash", () => {
+    const control = initialControl(3);
+    for (const length of [0, 27, 29, 32]) {
+      const scriptHash = Buffer.alloc(length);
+      expect(() =>
+        initialMidgardCekContextControl({
+          languageTag: 3,
+          programTermRoot: control.programTermRoot,
+          purposeKind: 0,
+          purposeIndex: 0n,
+          scriptHash,
+          subject: control.subject,
+          redeemerLeaf: control.redeemerLeaf,
+        }),
+      ).toThrow("CEK program script hash must be exactly 28 bytes");
+      expect(() =>
+        encodeMidgardCekContextControl({ ...control, scriptHash }),
+      ).toThrow("CEK program script hash must be exactly 28 bytes");
+    }
   });
 
   it("folds the exact accepted 224-observer Cardano fixture for both encodings", async () => {
@@ -215,7 +244,7 @@ describe("bounded CEK observer context", () => {
           ...control,
           stage: 5,
         }).subarray(0, 2),
-      ).toEqual(Buffer.from([0x98, 0x19]));
+      ).toEqual(Buffer.from([0x98, 0x18]));
 
       if (languageTag === 3 && process.env.MIDGARD_PRINT_PROOF_FIT === "1") {
         console.info(

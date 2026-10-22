@@ -2,7 +2,6 @@ import {
   MIDGARD_CONSENSUS_PROFILE,
   type MidgardConsensusProfile,
 } from "@al-ft/midgard-core";
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core";
 import {
   type L1SlotConfig,
   parseL1SlotConfig,
@@ -10,7 +9,6 @@ import {
 import { Effect } from "effect";
 
 import {
-  buildDeterministicValidationMachineTrace,
   buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
   type DeterministicValidationMachineTrace,
@@ -23,12 +21,12 @@ import {
   validationMachineLedgerRoot,
   type ValidationMachineReplayInput,
 } from "../src/index.js";
+import { buildDeterministicValidationMachineTrace } from "./helpers/trace-commit-golden.js";
 
 export type ValidationMachineEventReplayInput = Readonly<{
   consensusProfile: MidgardConsensusProfile;
   eventKeyCbor: Buffer;
   canonicalTransactionCbor: Buffer;
-  programMaterialSidecarCbor?: Buffer;
   /** The complete prior ledger, whose descriptor root must equal priorUtxosRoot. */
   ledgerWitnessEntries: readonly ValidationMachineLedgerEntry[];
   priorUtxosRoot: string;
@@ -117,10 +115,6 @@ export const replayValidationMachineEvent = (
       eventKeyCbor: Buffer.from(input.eventKeyCbor),
       canonicalTransactionCbor: Buffer.from(input.canonicalTransactionCbor),
       transactionId: verdictEvent.transactionId,
-      programMaterialSidecarCbor: Buffer.from(
-        input.programMaterialSidecarCbor ??
-          encodeMidgardCekProgramMaterialSidecar([]),
-      ),
       ledgerWitnessEntries,
       priorUtxosRoot: input.priorUtxosRoot,
       blockTimeMs: input.blockTimeMs,

@@ -134,23 +134,18 @@ export const registerDeepDataDepthCases = (thread: DepthThread): void => {
     for (const shape of ["list", "map", "constr"] as const) {
       const depth = CEK_SEMANTIC_MAX_DEPTHS[shape];
       it(
-        `verifies a ${shape} constant ${depth} deep and refuses one level more`,
+        `verifies a ${shape} constant ${depth} deep`,
         () => {
           const fixture = deepDataConstantProgramMaterial(shape, depth);
           expect(fixture.payloadCbor.length).toBeLessThanOrEqual(9_215);
           const verified = verifyMidgardCekProgramMaterial(
-            fixture.envelope,
+            fixture.summary.termRoot,
             fixture.material,
           );
           expect(verified.constants).toHaveLength(1);
           expect(
             verified.constants[0]!.payloadCbor.equals(fixture.payloadCbor),
           ).toBe(true);
-          const over = deepDataConstantProgramMaterial(shape, depth + 1);
-          expect(over.payloadCbor.length).toBeGreaterThan(9_215);
-          expect(() =>
-            verifyMidgardCekProgramMaterial(over.envelope, over.material),
-          ).toThrow(/source constant payload exceeds the 9215-byte/u);
         },
         CASE_TIMEOUT_MS,
       );

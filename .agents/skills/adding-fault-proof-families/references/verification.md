@@ -19,11 +19,8 @@ Exit 0 before anything else. Exit 2 means the script could not read a source
 
 ## 2. Aiken
 
-```bash
-node onchain/aiken/scripts/pinned-compiler.mjs
-```
-
-It must exit 0 before any `aiken` command. Focused module checks and the
+Run the compiler only as `scripts/aiken` (the commit `demo/flake.lock` pins),
+never a bare `aiken` from `PATH`. Focused module checks and the
 zero-tests trap are in
 [aiken-contract-build](../../aiken-contract-build/SKILL.md); use its guarded
 selector (`onchain/aiken/scripts/guard-focused-selector.mjs`) rather than a
@@ -62,23 +59,22 @@ changed (the typechecks enforce most tables in
 [touch-points.md](touch-points.md)), and runs lint, format, the goldens and
 the tests the change reaches in each package, each as CI runs it.
 
-## 5. Node tests and the DA fixture
+## 5. Node and DA committee tests
 
 `demo/midgard-node` tests need the test Postgres on 127.0.0.1:5433 even for a
 single file; without it Vitest reports "No test files found"
 (`scripts/start-test-postgres.sh`, header). That script is a no-op when
 something already listens on the port.
 
-Regenerate the DA deployment fixture after the contract set changes, then
-rerun without the variable to confirm it matches:
+The DA committee tests derive their deployment input from the blueprint once
+per run (`demo/midgard-node/tests/helpers/derived-da-deployment-info.ts`), so
+a changed contract set needs no regeneration step. Check that the input still
+names every contract and that the manifest restores:
 
 ```bash
-node scripts/contrib.mjs artifacts sync --channel da-deployment-fixture
-node scripts/contrib.mjs test --package midgard-node --file tests/da-deployment-fixture-generation.test.ts --file tests/deployment-manifest.test.ts
+node scripts/contrib.mjs test --package midgard-node --file tests/deployment-manifest.test.ts
+node scripts/contrib.mjs test --package da-committee-node --file tests/deployment-fixture.test.ts
 ```
-
-The fixture lands in
-`demo/da-committee-node/tests/fixtures/da-contract-deployment-info.json`.
 
 ## 6. Devnet journey counts
 

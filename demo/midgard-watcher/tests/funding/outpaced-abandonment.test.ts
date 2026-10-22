@@ -74,7 +74,7 @@ const acknowledgedRevisions = (fixture: Fixture) => {
 /** The fixture's attempt expires at the tip and is superseded. */
 const supersedeAtTip = async (fixture: Fixture) => {
   fixture.useUnspentPendingInputs();
-  vi.mocked(fixture.adapter.reconcile).mockResolvedValue({ kind: "not_found" });
+  fixture.chain.mockResolvedValue({ kind: "not_found" });
   const journal = await fixture.recover();
   await fixture.run(journal);
   return journal;
@@ -98,7 +98,7 @@ it("treats an unacknowledged superseded row that a later confirmed submission ou
   );
   await recordReplacement(fixture, journal, replacement, 2);
   journal = await fixture.recover();
-  vi.mocked(fixture.adapter.reconcile).mockImplementation(async ({ txHash }) =>
+  fixture.chain.mockImplementation(async (txHash) =>
     txHash === replacement.transactionHash
       ? { kind: "confirmed", txHash }
       : { kind: "not_found" },

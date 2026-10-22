@@ -7,11 +7,11 @@
  */
 import { outRefToCbor } from "@al-ft/lucid-midgard";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
-import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import type {
   FactStore,
   FactStoreOptions,
+  FollowerProjection,
   OutRef,
   TrackedSet,
 } from "@al-ft/midgard-l1-follower";
@@ -31,7 +31,7 @@ import {
   forcedOrderProjection,
   forcedOrderTrackedSet,
 } from "../src/forced-orders/index.js";
-import { userEventEntry } from "../src/l1-events/entries.js";
+import { readUserEvent } from "../src/l1-events/entries.js";
 import type { ReplayInput } from "../src/landed-blocks/replay.js";
 import { replayForeignBlock } from "../src/landed-blocks/replay-foreign.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../src/mpf/ledger-hydration.js";
@@ -47,8 +47,13 @@ import { withFollowerWrite } from "../src/services/follower-write-gate.js";
 import { Globals } from "../src/services/globals.js";
 import { Lucid } from "../src/services/lucid.js";
 import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.js";
-import { countsFromLengths, headerFor } from "./da-payload.record.js";
+import {
+  countsFromLengths,
+  headerFor,
+  sourceRoot,
+} from "./da-payload.record.js";
 import { fixture, rebind } from "./foreign-block-import.fixture.js";
+import { normalFixture } from "./foreign-block-import.normal-fixture.js";
 import {
   FORCED_CONFIG,
   inlineOrderMaterial,
@@ -57,6 +62,13 @@ import {
 import { openNodeFollowerStore } from "./helpers/forced-orders-node-store.js";
 import { EVENTS_CONFIG, listOf } from "./helpers/l1-events-chain.js";
 import { ChainDriver } from "./helpers/l1-events-store.js";
+import {
+  attested,
+  AVAILABILITY,
+  type DaCopy,
+  envelope,
+  payloadOf,
+} from "./landed-blocks-replay-foreign.availability.js";
 import { provideDatabaseLayers } from "./utils.js";
 
 export const K = 2;
@@ -70,16 +82,27 @@ const union = (...sets: TrackedSet[]): TrackedSet => ({
   policies: new Set(sets.flatMap((set) => [...set.policies])),
 });
 
-/** A follower store in the node database with both projections, and its chain. */
-export const followChain = async (extra: Partial<FactStoreOptions> = {}) => {
+/** A follower store in the node database with both projections (and `more`), and its chain. */
+export const followChain = async (
+  extra: Partial<FactStoreOptions> = {},
+  more: readonly FollowerProjection[] = [],
+) => {
   const store = await openNodeFollowerStore(
-    [eventProjection(EVENTS_CONFIG), forcedOrderProjection(FORCED_CONFIG)],
+    [
+      eventProjection(EVENTS_CONFIG),
+      forcedOrderProjection(FORCED_CONFIG),
+      ...more,
+    ],
     K,
     extra,
   );
   const chain = new ChainDriver(
     store,
-    union(eventTrackedSet(EVENTS_CONFIG), forcedOrderTrackedSet(FORCED_CONFIG)),
+    union(
+      eventTrackedSet(EVENTS_CONFIG),
+      forcedOrderTrackedSet(FORCED_CONFIG),
+      ...more.flatMap((projection) => projection.trackedSet ?? []),
+    ),
   );
   await chain.init();
   return { store, chain };
@@ -102,6 +125,77 @@ export const FIXTURE_ORDER_ID: OutRef = {
 
 /** The honest forced-transaction block (`foreign-block-import.fixture.ts`). */
 export const forcedBlock = () => fixture();
+
+/** A block carrying the forced fixture's transaction and the normal
+ * fixture's L2 transfer after it, its header pinning the validation-trace
+ * pair to the empty tree while the body carries both members. */
+export const forcedAndL2Block = async () => {
+  const forced = (await forcedBlock()).block_body;
+  const l2 = await normalFixture();
+  const normal = l2.payload.block_body;
+  const prior = normal.header.prevUtxosRoot;
+  const step = (
+    index: bigint,
+    event_key: SDK.EventKey,
+    phase: "ForcedTransaction" | "L2Transaction",
+    post_utxos_root: string,
+  ): SDK.DaPayloadEntry => [
+    encodeTransitionIntegerCbor(index).toString("hex"),
+    encodeTransitionStepCbor({
+      schema_version: 1n,
+      step_index: index,
+      event_key,
+      phase,
+      pre_utxos_root: prior,
+      post_utxos_root,
+    }).toString("hex"),
+  ];
+  const forcedEvent: SDK.EventKey = {
+    ForcedTransactionEventKey: {
+      tx_order_id: {
+        transactionId: FIXTURE_ORDER_ID.txHash.toString("hex"),
+        outputIndex: BigInt(FIXTURE_ORDER_ID.index),
+      },
+    },
+  };
+  const l2Event: SDK.EventKey = {
+    L2TransactionEventKey: { tx_id: l2.sourceKey },
+  };
+  const counts = {
+    ...countsFromLengths({ forcedTransactions: 1, transactions: 1 }),
+    validationTraceCount: 2n,
+  };
+  return rebind({
+    version: SDK.DA_PAYLOAD_VERSION,
+    block_body: {
+      ...normal,
+      header: { ...normal.header, ...counts },
+      forced_transactions: forced.forced_transactions,
+      forced_transaction_preimages: forced.forced_transaction_preimages,
+      transition_trace: [
+        step(0n, forcedEvent, "ForcedTransaction", prior),
+        step(1n, l2Event, "L2Transaction", normal.header.utxosRoot),
+      ],
+      event_to_step: [
+        ...forced.event_to_step,
+        ...normal.event_to_step.map(
+          ([key]): SDK.DaPayloadEntry => [
+            key,
+            encodeEventToStepValueCbor({
+              step_index: 1n,
+              phase: "L2Transaction",
+            }).toString("hex"),
+          ],
+        ),
+      ],
+      validation_traces: [
+        ...forced.validation_traces,
+        ...normal.validation_traces,
+      ],
+      counts,
+    },
+  });
+};
 
 /** An order tx admitting the fixture's forced transaction under `id`. */
 export const fixtureOrderTx = async (
@@ -156,7 +250,6 @@ const emptyBody = (): SDK.DaPayload["block_body"] => ({
   withdrawals: [],
   transactions: [],
   transaction_preimages: [],
-  cek_program_material: [],
   forced_transactions: [],
   forced_transaction_preimages: [],
   transition_trace: [],
@@ -195,15 +288,16 @@ export const repeating = (
   },
 });
 
-/** The deposits the view knows, decoded the way the replayer decodes them. */
+/** The deposits the view knows that the replayer reads, as it reads them. */
 export const depositsAt = async (store: FactStore) => {
   const view = (await store.currentView())!;
   const read = await eventsAt(store, listOf("deposit"), view.point);
   if (read.kind !== "ok") throw new Error(`eventsAt: ${read.kind}`);
-  return read.value.map((event) => {
-    const decoded = userEventEntry(event, NETWORK);
-    if (decoded.kind !== "deposit") throw new Error("not a deposit");
-    return { event, entry: decoded.entry };
+  return read.value.flatMap((event) => {
+    const reading = readUserEvent(event, NETWORK);
+    if (reading.kind === "undecodable") return [];
+    if (reading.entry.kind !== "deposit") throw new Error("not a deposit");
+    return [{ event, entry: reading.entry.entry }];
   });
 };
 
@@ -261,23 +355,38 @@ export const depositBlock = async (entry: {
   });
 };
 
-export const envelope = (payload: SDK.DaPayload) =>
-  wrapDaPayload(SDK.encodeDaPayload(payload), { mode: "identity" });
+export { envelope };
 
-/** The DA row the node retains for `payload`, optionally altered. */
+/** The DA row the node retains for `copy`, optionally altered. */
 export const retainedRow = async (
-  payload: SDK.DaPayload,
+  copy: DaCopy,
   alter: (row: DaPayloadsDB.InsertInput) => DaPayloadsDB.InsertInput = (row) =>
     row,
-) =>
-  alter(
+) => {
+  const payload = payloadOf(copy);
+  return alter(
     foreignRetainedDaInsert(
       payload.block_body.header_hash,
       payload.block_body.header,
       payload.block_body.header.endTime,
-      await envelope(payload),
+      await envelope(copy),
+      // The body's validation-trace pair, as the fetch path verifies it; a
+      // body that repeats an event list still has one.
+      {
+        validationTracesRoot: await Effect.runPromise(
+          sourceRoot(
+            SDK.ROOT_DOMAINS.validationTraces,
+            payload.block_body.validation_traces.map(([key, value]) => [
+              Buffer.from(key, "hex"),
+              Buffer.from(value, "hex"),
+            ]),
+          ),
+        ),
+      },
+      payload.block_body.counts,
     ),
   );
+};
 
 export const MANIFEST_ID = "de".repeat(32);
 
@@ -327,20 +436,28 @@ export const inNode = <A, E>(
     ),
   );
 
-/** The replay input for `payload` on an empty parent at the store's view. */
+/**
+ * The replay input for `payload` on an empty parent at the store's view, its
+ * node output entered at the view's slot; its node attested `payload`'s
+ * envelope unless `daAvailability` says otherwise.
+ */
 export const inputFor = async (
   store: FactStore,
   payload: SDK.DaPayload,
+  daAvailability?: SDK.DaAvailabilityStateQueueStatus,
 ): Promise<ReplayInput> => {
   const header = payload.block_body.header;
+  const view = (await store.currentView())!;
   return {
     headerHash: payload.block_body.header_hash,
     header,
     blockTime: header.endTime,
+    daAvailability: daAvailability ?? (await attested(payload)),
+    enteredSlot: view.point.slot,
     parentHeaderHash: header.prevHeaderHash,
     parentUtxosRoot: header.prevUtxosRoot,
     parentEntries: [],
-    view: (await store.currentView())!,
+    view,
   };
 };
 
@@ -350,6 +467,7 @@ export const replayerFor = (store: FactStore) =>
     store,
     events: EVENTS_CONFIG,
     forcedOrders: FORCED_CONFIG,
+    availability: () => AVAILABILITY,
   });
 
 /** Replays `payload` with a fresh production replayer at the store's view. */

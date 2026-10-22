@@ -9,10 +9,10 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { delimiter, dirname, join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
-import { assertPinnedAiken, pinnedAikenFork } from "./pinned-compiler.mjs";
+import { aikenBinary } from "../../../scripts/lib/aiken.mjs";
 
 const digest = (value) => createHash("sha256").update(value).digest("hex");
 const integer = (value, maximum) =>
@@ -29,7 +29,7 @@ const refuse = (message) => {
   throw new Error(`Aiken shards: ${message}`);
 };
 
-// Match the pinned compiler's source roots and path normalization, not test
+// Match the compiler's source roots and path normalization, not test
 // declarations. Every definition in every matching module is selected.
 export const readShardSources = (projectDirectory) => {
   const sources = [];
@@ -164,11 +164,9 @@ export const createShardPlan = (
     }
     shard.selectors = selectors;
   }
-  const compiler = pinnedAikenFork();
   const plan = {
     schema: "midgard-aiken-shards-v1",
-    sourceHash: digest(JSON.stringify({ sources, compiler })),
-    compiler,
+    sourceHash: digest(JSON.stringify({ sources })),
     environment,
     seed,
     maxSuccess: 100,
@@ -233,12 +231,9 @@ export const validateShardArtifact = (artifact, plan) => {
     metadata?.seed !== plan.seed ||
     metadata?.maxSuccess !== 100 ||
     metadata?.count !== plan.count ||
-    !isDeepStrictEqual(metadata?.compiler?.pin, plan.compiler) ||
-    metadata?.compiler?.version !== plan.compiler.version ||
-    !/^[0-9a-f]{64}$/u.test(metadata?.compiler?.sha256 ?? "") ||
     !isDeepStrictEqual(metadata?.args, shardArguments(plan, metadata?.index))
   )
-    refuse("artifact source/compiler/environment/seed/shard metadata differs");
+    refuse("artifact source/environment/seed/shard metadata differs");
   if (
     metadata.exitStatus !== 0 ||
     metadata.signal !== null ||
@@ -339,38 +334,14 @@ const writeExclusive = (path, value) => {
   mkdirSync(dirname(resolve(path)), { recursive: true });
   writeFileSync(path, JSON.stringify(value, null, 2) + "\n", { flag: "wx" });
 };
-const binaryPath = (binary) => {
-  const paths = binary.includes("/")
-    ? [resolve(binary)]
-    : (process.env.PATH ?? "")
-        .split(delimiter)
-        .map((directory) => join(directory, binary));
-  const found = paths.find(
-    (path) => existsSync(path) && statSync(path).isFile(),
-  );
-  if (found === undefined) refuse("compiler binary cannot be resolved");
-  return realpathSync(found);
-};
 
-export const runShardCheck = ({
-  plan,
-  index,
-  output,
-  binary,
-  projectDirectory,
-}) => {
+export const runShardCheck = ({ plan, index, output, projectDirectory }) => {
   validateShardPlan(plan, projectDirectory);
   if ((process.env.MIDGARD_AIKEN_ENV ?? null) !== plan.environment)
     refuse("current environment differs from plan");
   if (existsSync(output)) refuse("report destination already exists");
   const args = shardArguments(plan, index);
-  const version = assertPinnedAiken(binary);
-  const compiler = {
-    pin: plan.compiler,
-    version,
-    sha256: digest(readFileSync(binaryPath(binary))),
-  };
-  const result = spawnSync(binary, args, {
+  const result = spawnSync(aikenBinary(), args, {
     cwd: projectDirectory,
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
@@ -381,7 +352,6 @@ export const runShardCheck = ({
     metadata: {
       planHash: plan.planHash,
       sourceHash: plan.sourceHash,
-      compiler,
       environment: plan.environment,
       seed: plan.seed,
       maxSuccess: 100,
@@ -404,11 +374,12 @@ export const runShardCheck = ({
   return { index, ...summary };
 };
 
-export const collectShardReports = ({
+// Every test record of a complete census, keyed by JSON.stringify([module,
+// title]), after the same validation the collector applies.
+export const readShardUnion = ({
   plan,
   projectDirectory,
   reportsDirectory,
-  baseline,
 }) => {
   validateShardPlan(plan, projectDirectory);
   const files = readdirSync(reportsDirectory)
@@ -442,6 +413,20 @@ export const collectShardReports = ({
     summary.total += validated.summary.total;
     summary.passed += validated.summary.passed;
   }
+  return { ids, summary };
+};
+
+export const collectShardReports = ({
+  plan,
+  projectDirectory,
+  reportsDirectory,
+  baseline,
+}) => {
+  const { ids, summary } = readShardUnion({
+    plan,
+    projectDirectory,
+    reportsDirectory,
+  });
   if (baseline !== undefined) {
     const report = JSON.parse(readFileSync(baseline, "utf8"));
     const original = new Map();

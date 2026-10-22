@@ -65,9 +65,6 @@ class DaPayloadReader {
     const forced_transaction_preimages = this.#entryList(
       "payload.block_body.forced_transaction_preimages",
     );
-    const cek_program_material = this.#entryList(
-      "payload.block_body.cek_program_material",
-    );
     const deposits = this.#entryList("payload.block_body.deposits");
     const transition_trace = this.#entryList(
       "payload.block_body.transition_trace",
@@ -107,7 +104,6 @@ class DaPayloadReader {
         transactions,
         transaction_preimages,
         forced_transaction_preimages,
-        cek_program_material,
         deposits,
         transition_trace,
         event_to_step,

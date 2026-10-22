@@ -21,8 +21,6 @@ import {
   CONSTR_INDEXES,
   G1_POOL,
   G2_POOL,
-  INT64_MAX,
-  INT64_MIN,
   SIMPLE,
   UTF8_CASES,
   any,
@@ -50,7 +48,8 @@ import { EDGES } from "./cek-builtin-cardano-v1.edges.mjs";
 
 /* ---------- per-tag random arguments ---------- */
 
-const randomArguments = (tag, rng) => {
+/** One seeded random argument list for `tag`, drawing from `rng`. */
+export const randomArguments = (tag, rng) => {
   const g1 = () => ({ ty: "g1", v: rng.pick(G1_POOL) });
   const g2 = () => ({ ty: "g2", v: rng.pick(G2_POOL) });
   const bytes = () => bs(randomBytes(rng));
@@ -175,25 +174,27 @@ const randomArguments = (tag, rng) => {
     case 54:
     case 57:
       return [g1(), g1()];
+    // BLS tags are Cardano's flat numbers (Plutus `Builtins.hs`): 58/65
+    // compress, 59/66 uncompress, 60/67 hashToGroup.
     case 55:
-    case 59:
+    case 58:
       return [g1()];
     case 56:
       return [integer(), g1()];
-    case 58:
-    case 65:
-      return [bytes(), bs(dst(rng))];
     case 60:
+    case 67:
+      return [bytes(), bs(dst(rng))];
+    case 59:
       return [bs(compressedCase(rng, G1_POOL, 48))];
     case 61:
     case 64:
       return [g2(), g2()];
     case 62:
-    case 66:
+    case 65:
       return [g2()];
     case 63:
       return [integer(), g2()];
-    case 67:
+    case 66:
       return [bs(compressedCase(rng, G2_POOL, 96))];
     case 68:
     case 69:
@@ -234,34 +235,15 @@ const randomArguments = (tag, rng) => {
   }
 };
 
+/** The fixed edge vectors of `tag`, as `{ note, args, ... }`. */
+export const edgeCases = (tag) => EDGES[tag]?.() ?? [];
+
 const RANDOM_CASES = (tag) => {
   if (tag === 68 || tag === 69) return 0;
   if (tag >= 54 && tag <= 67) return 6;
   if (tag === 70) return 8;
   return 16;
 };
-
-// Cardano reads sliceByteString's two integers as Int64 machine Ints and fails
-// outside that range; the pinned evaluator reads them as unsigned 64-bit
-// values, clamping negatives, and aborts beyond that.
-const withSliceIntegerBound = (definition) =>
-  definition.tag === 12 &&
-  definition.args.some(
-    (argument) =>
-      argument.ty === "int" &&
-      (BigInt(argument.v) < INT64_MIN || BigInt(argument.v) > INT64_MAX),
-  )
-    ? {
-        ...definition,
-        // Plutus: the SliceByteString denotation takes `Int` arguments
-        // (plutus-core PlutusCore/Default/Builtins.hs), `Int` unlifts through
-        // `Int64`, and readKnownAsInteger fails an Integer outside its bounds
-        // (PlutusCore/Default/Universe.hs).
-        cardano: { kind: "error" },
-        reason:
-          "Cardano fails sliceByteString when an integer argument is outside Int64",
-      }
-    : definition;
 
 /**
  * Every case of the channel, in tag order: `{ tag, note, args }`, plus
@@ -279,7 +261,7 @@ export const buildCekBuiltinCardanoCases = () => {
         args: randomArguments(tag, rng),
       });
     }
-    for (const edge of EDGES[tag]?.() ?? []) cases.push({ tag, ...edge });
+    for (const edge of edgeCases(tag)) cases.push({ tag, ...edge });
   }
-  return cases.map(withSliceIntegerBound);
+  return cases;
 };

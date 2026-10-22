@@ -28,6 +28,12 @@ export type WorkflowAdapterRunnerInput = WorkflowAdapterReadinessInput & {
   readonly actuationPermit: WorkflowActuationPermit;
   /** Durable, exact-input funding authority for this decision/generation. */
   readonly fundingReservationPermit: WorkflowFundingReservationPermit;
+  /**
+   * Called when a continuing session journals progress past its first poll,
+   * so a caller can clear an alarm before the session ends. Never authority.
+   * A throw is ignored and does not end the session.
+   */
+  readonly onProgress?: () => void;
 };
 
 export type WorkflowAdapterRunner = {

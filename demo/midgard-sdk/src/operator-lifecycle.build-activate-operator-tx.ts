@@ -196,10 +196,11 @@ export const buildActivateOperatorTx = (
     config.onLayout?.(config.layout);
   }
 
-  let tx = config.lucid
-    .newTx()
-    .validFrom(Number(config.validFrom))
-    .collectFrom([...config.activationFundingInputs])
+  let tx = config.lucid.newTx().validFrom(Number(config.validFrom));
+  // Empty funding inputs leave funding to coin selection.
+  if (config.activationFundingInputs.length > 0)
+    tx = tx.collectFrom([...config.activationFundingInputs]);
+  tx = tx
     .collectFrom(
       [config.registeredNode.utxo, config.registeredAnchor.utxo],
       LucidData.void(),

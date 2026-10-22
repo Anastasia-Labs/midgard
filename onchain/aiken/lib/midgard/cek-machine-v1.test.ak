@@ -36,7 +36,8 @@ test canonical_machine_mode_and_error_tags_match_typescript() {
       cek_machine_v1.error_invalid_case_scrutinee,
       cek_machine_v1.error_case_branch_missing,
       cek_machine_v1.error_builtin_failure,
-    ] == [0, 1, 2, 3, 4, 5, 6, 7],
+      cek_machine_v1.error_non_unit_halt,
+    ] == [0, 1, 2, 3, 4, 5, 6, 7, 8],
   }
 }
 
@@ -393,7 +394,7 @@ test debruijn_lookup_walks_an_authenticated_environment() {
   let environment = cek_proof_v1.hash_environment_node_v1(h_02, tail, 2)
   let pre = state(
     cek_machine_v1.mode_compute,
-    cek_proof_v1.hash_variable_term_v1(1),
+    cek_proof_v1.hash_variable_term_v1(2),
     environment,
     cek_proof_v1.empty_continuation_root_v1,
     0,
@@ -431,7 +432,7 @@ test debruijn_lookup_walks_an_authenticated_environment() {
     cek_machine_v1.verify_core_step_v1(
       pre,
       lookup,
-      cek_machine_v1.ComputeVariable { index: 1 },
+      cek_machine_v1.ComputeVariable { index: 2 },
     ),
     cek_machine_v1.verify_core_step_v1(
       lookup,
@@ -448,6 +449,213 @@ test debruijn_lookup_walks_an_authenticated_environment() {
       },
     ),
   }
+}
+
+fn two_node_environment() -> ByteArray {
+  cek_proof_v1.hash_environment_node_v1(
+    h_02,
+    cek_proof_v1.hash_environment_node_v1(
+      h_01,
+      cek_proof_v1.empty_environment_root_v1,
+      1,
+    ),
+    2,
+  )
+}
+
+fn compute_variable_pre(index: Int) -> cek_machine_v1.MachineStateV1 {
+  state(
+    cek_machine_v1.mode_compute,
+    cek_proof_v1.hash_variable_term_v1(index),
+    two_node_environment(),
+    cek_proof_v1.empty_continuation_root_v1,
+    0,
+    100,
+    100,
+  )
+}
+
+fn unbound_variable_error() -> cek_machine_v1.MachineStateV1 {
+  state(
+    cek_machine_v1.mode_halt_error,
+    cek_proof_v1.hash_error_term_v1(),
+    cek_proof_v1.empty_environment_root_v1,
+    cek_proof_v1.empty_continuation_root_v1,
+    cek_machine_v1.error_unbound_variable,
+    100,
+    100,
+  )
+}
+
+test variable_index_one_returns_the_innermost_binding() {
+  let pre = compute_variable_pre(1)
+  let lookup = state(
+    cek_machine_v1.mode_lookup,
+    two_node_environment(),
+    two_node_environment(),
+    cek_proof_v1.empty_continuation_root_v1,
+    0,
+    16100,
+    200,
+  )
+  let found = state(
+    cek_machine_v1.mode_return,
+    h_02,
+    cek_proof_v1.empty_environment_root_v1,
+    cek_proof_v1.empty_continuation_root_v1,
+    0,
+    16100,
+    200,
+  )
+  and {
+    cek_machine_v1.verify_core_step_v1(
+      pre,
+      lookup,
+      cek_machine_v1.ComputeVariable { index: 1 },
+    ),
+    cek_machine_v1.verify_core_step_v1(
+      lookup,
+      found,
+      cek_machine_v1.LookupEnvironment {
+        value: h_02,
+        tail: cek_proof_v1.hash_environment_node_v1(
+          h_01,
+          cek_proof_v1.empty_environment_root_v1,
+          1,
+        ),
+        length: 2,
+      },
+    ),
+  }
+}
+
+test variable_index_zero_fails_in_one_compute_step() {
+  let pre = compute_variable_pre(0)
+  and {
+    cek_machine_v1.verify_core_step_v1(
+      pre,
+      unbound_variable_error(),
+      cek_machine_v1.ComputeVariable { index: 0 },
+    ),
+    !cek_machine_v1.verify_core_step_v1(
+      pre,
+      state(
+        cek_machine_v1.mode_lookup,
+        two_node_environment(),
+        two_node_environment(),
+        cek_proof_v1.empty_continuation_root_v1,
+        -1,
+        16100,
+        200,
+      ),
+      cek_machine_v1.ComputeVariable { index: 0 },
+    ),
+    !cek_machine_v1.verify_core_step_v1(
+      pre,
+      state(
+        cek_machine_v1.mode_lookup,
+        two_node_environment(),
+        two_node_environment(),
+        cek_proof_v1.empty_continuation_root_v1,
+        0,
+        16100,
+        200,
+      ),
+      cek_machine_v1.ComputeVariable { index: 0 },
+    ),
+  }
+}
+
+test variable_index_above_the_environment_fails_at_the_empty_environment() {
+  let tail = cek_proof_v1.hash_environment_node_v1(
+    h_01,
+    cek_proof_v1.empty_environment_root_v1,
+    1,
+  )
+  let pre = compute_variable_pre(3)
+  let lookup = state(
+    cek_machine_v1.mode_lookup,
+    two_node_environment(),
+    two_node_environment(),
+    cek_proof_v1.empty_continuation_root_v1,
+    2,
+    16100,
+    200,
+  )
+  let lookup_tail = state(
+    cek_machine_v1.mode_lookup,
+    tail,
+    tail,
+    cek_proof_v1.empty_continuation_root_v1,
+    1,
+    16100,
+    200,
+  )
+  let lookup_empty = state(
+    cek_machine_v1.mode_lookup,
+    cek_proof_v1.empty_environment_root_v1,
+    cek_proof_v1.empty_environment_root_v1,
+    cek_proof_v1.empty_continuation_root_v1,
+    0,
+    16100,
+    200,
+  )
+  and {
+    cek_machine_v1.verify_core_step_v1(
+      pre,
+      lookup,
+      cek_machine_v1.ComputeVariable { index: 3 },
+    ),
+    cek_machine_v1.verify_core_step_v1(
+      lookup,
+      lookup_tail,
+      cek_machine_v1.LookupEnvironment { value: h_02, tail, length: 2 },
+    ),
+    cek_machine_v1.verify_core_step_v1(
+      lookup_tail,
+      lookup_empty,
+      cek_machine_v1.LookupEnvironment {
+        value: h_01,
+        tail: cek_proof_v1.empty_environment_root_v1,
+        length: 1,
+      },
+    ),
+    cek_machine_v1.verify_core_step_v1(
+      lookup_empty,
+      state(
+        cek_machine_v1.mode_halt_error,
+        cek_proof_v1.hash_error_term_v1(),
+        cek_proof_v1.empty_environment_root_v1,
+        cek_proof_v1.empty_continuation_root_v1,
+        cek_machine_v1.error_unbound_variable,
+        16100,
+        200,
+      ),
+      cek_machine_v1.LookupEmptyEnvironment,
+    ),
+  }
+}
+
+test variable_index_takes_the_full_word64_range() {
+  let largest = 18446744073709551615
+  let pre = compute_variable_pre(largest)
+  cek_machine_v1.verify_core_step_v1(
+    pre,
+    state(
+      cek_machine_v1.mode_lookup,
+      two_node_environment(),
+      two_node_environment(),
+      cek_proof_v1.empty_continuation_root_v1,
+      largest - 1,
+      16100,
+      200,
+    ),
+    cek_machine_v1.ComputeVariable { index: largest },
+  )
+}
+
+test variable_index_above_word64_does_not_hash() fail {
+  cek_proof_v1.hash_variable_term_v1(18446744073709551616) == #""
 }
 
 test builtin_force_and_application_enter_builtin_micro_machine() {
@@ -569,8 +777,8 @@ test direct_builtin_executes_with_exact_semantics_and_budget() {
     cek_proof_v1.empty_environment_root_v1,
     cek_proof_v1.empty_continuation_root_v1,
     0,
-    101728,
-    103,
+    101308,
+    102,
   )
   and {
     cek_machine_v1.verify_core_step_v1(
@@ -886,6 +1094,108 @@ test nonconstant_empty_stack_halts_as_error() {
         body: h_01,
         environment: cek_proof_v1.empty_environment_root_v1,
       },
+    },
+  )
+}
+
+fn halting_constant(
+  type_cbor: ByteArray,
+) -> cek_machine_v1.MachineValueWitnessV1 {
+  cek_machine_v1.ConstantValue {
+    type_root: cek_proof_v1.hash_blob_chunk_v1(type_cbor),
+    payload_root: h_02,
+    payload_length: 1,
+    semantic_root: h_03,
+    memory: 1,
+  }
+}
+
+fn halting_constant_root(type_cbor: ByteArray) -> ByteArray {
+  cek_proof_v1.hash_constant_value_v1(
+    cek_proof_v1.hash_blob_chunk_v1(type_cbor),
+    h_02,
+    1,
+    h_03,
+    1,
+  )
+}
+
+fn empty_stack(focus_root: ByteArray) -> cek_machine_v1.MachineStateV1 {
+  state(
+    cek_machine_v1.mode_return,
+    focus_root,
+    cek_proof_v1.empty_environment_root_v1,
+    cek_proof_v1.empty_continuation_root_v1,
+    0,
+    16100,
+    200,
+  )
+}
+
+fn halted(
+  mode: Int,
+  focus_root: ByteArray,
+  auxiliary: Int,
+) -> cek_machine_v1.MachineStateV1 {
+  state(
+    mode,
+    focus_root,
+    cek_proof_v1.empty_environment_root_v1,
+    cek_proof_v1.empty_continuation_root_v1,
+    auxiliary,
+    16100,
+    200,
+  )
+}
+
+test unit_constant_on_empty_stack_halts_successfully() {
+  let root = halting_constant_root(#"9f03ff")
+  cek_machine_v1.verify_core_step_v1(
+    empty_stack(root),
+    halted(cek_machine_v1.mode_halt_success, root, 0),
+    cek_machine_v1.ReturnEmptyContinuation {
+      value: halting_constant(#"9f03ff"),
+    },
+  )
+}
+
+test non_unit_constant_on_empty_stack_halts_as_error() {
+  let root = halting_constant_root(#"9f00ff")
+  cek_machine_v1.verify_core_step_v1(
+    empty_stack(root),
+    halted(
+      cek_machine_v1.mode_halt_error,
+      cek_proof_v1.hash_error_term_v1(),
+      cek_machine_v1.error_non_unit_halt,
+    ),
+    cek_machine_v1.ReturnEmptyContinuation {
+      value: halting_constant(#"9f00ff"),
+    },
+  )
+}
+
+test non_unit_constant_cannot_claim_success() fail {
+  let root = halting_constant_root(#"9f04ff")
+  cek_machine_v1.verify_core_step_v1(
+    empty_stack(root),
+    halted(cek_machine_v1.mode_halt_success, root, 0),
+    cek_machine_v1.ReturnEmptyContinuation {
+      value: halting_constant(#"9f04ff"),
+    },
+  )
+}
+
+test unit_constant_cannot_claim_failure() fail {
+  let root = halting_constant_root(#"9f03ff")
+  cek_machine_v1.verify_core_step_v1(
+    empty_stack(root),
+    halted(
+      cek_machine_v1.mode_halt_error,
+      cek_proof_v1.hash_error_term_v1(),
+      cek_machine_v1.error_non_unit_halt,
+    ),
+    cek_machine_v1.ReturnEmptyContinuation {
+      value: halting_constant(#"9f03ff"),
     },
   )
 }
@@ -1324,16 +1634,16 @@ const empty_map_step_pre =
   #"18ce67eb56a8d08bd9ebf5ead6c90b938a0f129ac35d67cf234a3da6c25106ff"
 
 const narrow_unmap_step_cbor =
-  #"d8799fd8799f03005820ad578ff37b0e0997b877836bce3bb95a585307f584ee4283515e74bfa1c11ec158200b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a758206ea68031c2800dfd45b3732e9fd615f19c97b062659999d3ad6ba181af284ddb001a0001f400190320ffd8799f0800582016bcaac883d2e351622eaf95064d6225d2ba65ec2c9244c8216eae6123a3327658200b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a758206ea68031c2800dfd45b3732e9fd615f19c97b062659999d3ad6ba181af284ddb001a0001f400190320ffd905199f182b9fd8799fd8799f439f08ff4fa2014a2a2a2a2a2a2a2a2a2a2a0203ffffffd8799fd8799f469f05060808ff58189fd8799f014a2a2a2a2a2a2a2a2a2a2affd8799f0203ffffffffd8799fd87b9f0258207f0b53a382ba4d740072bd848b43ba84da5a9378251525b023c19ffd2fc034ec0f1821ffd87a80d8799fd8799f58206102804ee42d85218a31c7dda323bccc1ad4b31a9f3f3880449bdfca06a307dc010558206a157bf5ce93d07c5a59dce62821eba629fb8e3575c5d8ad9a4ee13342b9af250b0e58205770570155d35aedd507d7c4daa9303465bbbf69b8e9a0b604a9c0ee6dcdab61020e181dffffd87c9f025820bd51d81d895064134d8646595d0d2fed86beec8533146d3bc0c74c7211c6f1e218181829ffd8799fd8799f582027b5c54b5b7982aa9796d5b64906da1b91aa41077e3f976625245f9dda2f1635101758208d0163902197d2399d06cd3a2ec5b0a22f6b5b3c67cff731eaa39663f9cc487802161825ffffd87a80ffffff"
+  #"d8799fd8799f0300582016504e44a288afd8002a5b8b44b9191097d237e03b10de09b14ebe8e9d228e8058200b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a758206ea68031c2800dfd45b3732e9fd615f19c97b062659999d3ad6ba181af284ddb001a0001f400190320ffd8799f080058204a8ab8ae31836f4239f5d018d81125cfb214e857b1e6ee0326b99460105acabf58200b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a758206ea68031c2800dfd45b3732e9fd615f19c97b062659999d3ad6ba181af284ddb001a0001f400190320ffd905199f182b9fd8799fd8799f439f08ff4fa2014a2a2a2a2a2a2a2a2a2a2a0203ffffffd8799fd8799f469f05060808ff58189fd8799f014a2a2a2a2a2a2a2a2a2a2affd8799f0203ffffffffd8799fd87b9f025820ac1cd89458558012f90892d3d43b92fbd3f610974a3108e081934f831f4c425a0f1819ffd87a80d8799fd8799f58206102804ee42d85218a31c7dda323bccc1ad4b31a9f3f3880449bdfca06a307dc01055820e0bba82d0b2ad96a5efad29ab9763fbf0a3276fcb73c8b288c5270dd2fa96af10b0658205770570155d35aedd507d7c4daa9303465bbbf69b8e9a0b604a9c0ee6dcdab61020e15ffffd87c9f025820f47d771f1eb7ab91761289df5560ab8bb7ebefe249f5c15c5d27e1aaf919a13d18181821ffd8799fd8799f5820e7cb0281b7ad475f49d3ee60f57e4abca072907fd0a93158d085e8c5bd59f130100f58208d0163902197d2399d06cd3a2ec5b0a22f6b5b3c67cff731eaa39663f9cc48780216181dffffd87a80ffffff"
 
 const narrow_unmap_step_pre =
-  #"9a07040d5c1117e72eb7205713aed14e80a2b2c041f15ccbf9fe6da620f4a6c4"
+  #"f2310335249c4f7af4acd3e6b51c3b224f7c01560e0ea5b1b1909fc95de4bdc8"
 
 const narrow_map_step_cbor =
-  #"d8799fd8799f0300582093bdef27562393576c7d08a738ea3f21bbb37a5e2541bdb304451c456c22b0d458200b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a7582053163c160dcec15695dabe0bccf6afc7f0e12db206392865db2feb0497ac838b001a0002542f190340ffd8799f080058204df8c150dca87799f4c14e096b03eaf1d409287b51d3e04ea1fb11d6fa53fe1f58200b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a7582053163c160dcec15695dabe0bccf6afc7f0e12db206392865db2feb0497ac838b001a0002542f190340ffd905199f18269fd8799fd8799f469f05060808ff58189fd8799f014a2a2a2a2a2a2a2a2a2a2affd8799f0203ffffffffffd8799fd8799f439f08ff4fa2014a2a2a2a2a2a2a2a2a2a2a0203ffffd8799fd87c9f025820bd51d81d895064134d8646595d0d2fed86beec8533146d3bc0c74c7211c6f1e218181829ffd8799fd8799f582027b5c54b5b7982aa9796d5b64906da1b91aa41077e3f976625245f9dda2f1635101758208d0163902197d2399d06cd3a2ec5b0a22f6b5b3c67cff731eaa39663f9cc487802161825ffffd87a80d87b9f0258207f0b53a382ba4d740072bd848b43ba84da5a9378251525b023c19ffd2fc034ec0f1821ffd87a80d8799fd8799f58206102804ee42d85218a31c7dda323bccc1ad4b31a9f3f3880449bdfca06a307dc010558206a157bf5ce93d07c5a59dce62821eba629fb8e3575c5d8ad9a4ee13342b9af250b0e58205770570155d35aedd507d7c4daa9303465bbbf69b8e9a0b604a9c0ee6dcdab61020e181dffffffffff"
+  #"d8799fd8799f03005820fcd7490abda56e39d50d02d8250e8da7af469a6eef1d847733bd1278a17e67a058200b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a7582053163c160dcec15695dabe0bccf6afc7f0e12db206392865db2feb0497ac838b001a0002542f190340ffd8799f08005820ead2bc9eba8700b988b17be81d4e26443fcf2a95b5ec5d3f75af3449e95fb74b58200b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a7582053163c160dcec15695dabe0bccf6afc7f0e12db206392865db2feb0497ac838b001a0002542f190340ffd905199f18269fd8799fd8799f469f05060808ff58189fd8799f014a2a2a2a2a2a2a2a2a2a2affd8799f0203ffffffffffd8799fd8799f439f08ff4fa2014a2a2a2a2a2a2a2a2a2a2a0203ffffd8799fd87c9f025820f47d771f1eb7ab91761289df5560ab8bb7ebefe249f5c15c5d27e1aaf919a13d18181821ffd8799fd8799f5820e7cb0281b7ad475f49d3ee60f57e4abca072907fd0a93158d085e8c5bd59f130100f58208d0163902197d2399d06cd3a2ec5b0a22f6b5b3c67cff731eaa39663f9cc48780216181dffffd87a80d87b9f025820ac1cd89458558012f90892d3d43b92fbd3f610974a3108e081934f831f4c425a0f1819ffd87a80d8799fd8799f58206102804ee42d85218a31c7dda323bccc1ad4b31a9f3f3880449bdfca06a307dc01055820e0bba82d0b2ad96a5efad29ab9763fbf0a3276fcb73c8b288c5270dd2fa96af10b0658205770570155d35aedd507d7c4daa9303465bbbf69b8e9a0b604a9c0ee6dcdab61020e15ffffffffff"
 
 const narrow_map_step_pre =
-  #"eb3fc40544dd958605634539161030268cfcbce4cf7ad5fd24df6a2a1e5eff95"
+  #"0540191233e968cc14f6c079b436508bc513737d52de2241ed5dff8e0fa3f70c"
 
 fn decode_core_step(
   evidence_cbor: ByteArray,
@@ -1558,8 +1868,8 @@ test ill_typed_division_by_zero_is_a_type_failure_step() {
     type_failure_step(4, bytes_dividend_by_zero()),
     type_failure_step(5, bytes_dividend_by_zero()),
     type_failure_step(6, bytes_dividend_by_zero()),
-    type_failure_step(58, integer_message_hash_to_group()),
-    type_failure_step(65, integer_message_hash_to_group()),
+    type_failure_step(60, integer_message_hash_to_group()),
+    type_failure_step(67, integer_message_hash_to_group()),
   }
 }
 
@@ -1576,11 +1886,11 @@ test ill_typed_mod_by_zero_is_not_a_known_failure_step() fail {
 }
 
 test ill_typed_g1_hash_to_group_is_not_a_known_failure_step() fail {
-  charged_known_failure_step(58, integer_message_hash_to_group())
+  charged_known_failure_step(60, integer_message_hash_to_group())
 }
 
 test ill_typed_g2_hash_to_group_is_not_a_known_failure_step() fail {
-  charged_known_failure_step(65, integer_message_hash_to_group())
+  charged_known_failure_step(67, integer_message_hash_to_group())
 }
 
 fn wide_message_hash_to_group() -> List<cek_constant_v1.ConstantWitnessV1> {
@@ -1593,8 +1903,8 @@ fn one_word_message_budget() -> cek_cost_v1.BuiltinBudgetV1 {
     wide_message_hash_to_group(),
     cek_builtin_v1.ConstantValue,
   )
-  expect [_, dst_size] = cek_builtin_v1.builtin_cost_sizes_v1(58, direct)
-  cek_cost_v1.builtin_budget_v1(58, [1, dst_size])
+  expect [_, dst_size] = cek_builtin_v1.builtin_cost_sizes_v1(60, direct)
+  cek_cost_v1.builtin_budget_v1(60, [1, dst_size])
 }
 
 // The revealed message is wider than one word; that is the size the failure
@@ -1604,12 +1914,12 @@ test revealed_hash_to_group_failure_pays_the_revealed_size() {
     wide_message_hash_to_group(),
     cek_builtin_v1.ConstantValue,
   )
-  let charged = cek_builtin_v1.direct_builtin_budget_v1(58, direct)
-  expect [message_size, _] = cek_builtin_v1.builtin_cost_sizes_v1(58, direct)
+  let charged = cek_builtin_v1.direct_builtin_budget_v1(60, direct)
+  expect [message_size, _] = cek_builtin_v1.builtin_cost_sizes_v1(60, direct)
   and {
     message_size > 1,
     charged != one_word_message_budget(),
-    known_failure_step(58, wide_message_hash_to_group(), direct, charged),
+    known_failure_step(60, wide_message_hash_to_group(), direct, charged),
   }
 }
 
@@ -1617,7 +1927,7 @@ test revealed_hash_to_group_failure_pays_the_revealed_size() {
 test opaque_hash_to_group_failure_is_not_a_known_failure_step() fail {
   expect [message, dst] = wide_message_hash_to_group()
   known_failure_step(
-    58,
+    60,
     wide_message_hash_to_group(),
     [
       cek_builtin_v1.OpaqueValue(cek_constant_v1.constant_root_v1(message)),
@@ -1909,4 +2219,258 @@ test malformed_ed25519_lengths_have_one_paid_failure_successor() {
       cek_cost_v1.BuiltinBudgetV1 { cpu: 0, memory: 0 },
     ),
   }
+}
+
+fn compute_builtin_pre(tag: Int) -> cek_machine_v1.MachineStateV1 {
+  state(
+    cek_machine_v1.mode_compute,
+    cek_proof_v1.hash_builtin_term_v1(tag),
+    cek_proof_v1.empty_environment_root_v1,
+    cek_proof_v1.empty_continuation_root_v1,
+    0,
+    100,
+    100,
+  )
+}
+
+fn explicit_error() -> cek_machine_v1.MachineStateV1 {
+  state(
+    cek_machine_v1.mode_halt_error,
+    cek_proof_v1.hash_error_term_v1(),
+    cek_proof_v1.empty_environment_root_v1,
+    cek_proof_v1.empty_continuation_root_v1,
+    cek_machine_v1.error_explicit,
+    100,
+    100,
+  )
+}
+
+test compute_builtin_steps_a_resolved_tag() {
+  cek_machine_v1.verify_core_step_v1(
+    compute_builtin_pre(86),
+    state(
+      cek_machine_v1.mode_return,
+      cek_proof_v1.hash_builtin_value_v1(
+        86,
+        0,
+        0,
+        cek_proof_v1.empty_sequence_root_v1,
+      ),
+      cek_proof_v1.empty_environment_root_v1,
+      cek_proof_v1.empty_continuation_root_v1,
+      0,
+      16100,
+      200,
+    ),
+    cek_machine_v1.ComputeBuiltin { tag: 86 },
+  )
+}
+
+test compute_builtin_aborts_on_tag_87() fail {
+  cek_machine_v1.verify_core_step_v1(
+    compute_builtin_pre(87),
+    explicit_error(),
+    cek_machine_v1.ComputeBuiltin { tag: 87 },
+  )
+}
+
+test compute_builtin_aborts_on_tag_100() fail {
+  cek_machine_v1.verify_core_step_v1(
+    compute_builtin_pre(100),
+    explicit_error(),
+    cek_machine_v1.ComputeBuiltin { tag: 100 },
+  )
+}
+
+test builtin_force_count_aborts_on_an_unresolved_tag() fail {
+  cek_machine_v1.builtin_force_count(88) >= 0
+}
+
+test builtin_argument_count_aborts_on_an_unresolved_tag() fail {
+  cek_machine_v1.builtin_argument_count(94) >= 0
+}
+
+// ComputeConstant at the 64-bit and constructor-128 boundaries. The post root
+// is the TypeScript builder's root (cek-data.cardano-integer-layout.test.ts),
+// which commits Cardano's memory for the value; the step charges one
+// 16000/100 machine step after the 100/100 start-up.
+fn compute_constant_commits(
+  type_cbor: ByteArray,
+  payload_cbor: ByteArray,
+  root: ByteArray,
+) -> Bool {
+  cek_machine_v1.verify_core_step_v1(
+    state(
+      cek_machine_v1.mode_compute,
+      cek_proof_v1.hash_constant_term_v1(root),
+      cek_proof_v1.empty_environment_root_v1,
+      cek_proof_v1.empty_continuation_root_v1,
+      0,
+      100,
+      100,
+    ),
+    state(
+      cek_machine_v1.mode_return,
+      root,
+      cek_proof_v1.empty_environment_root_v1,
+      cek_proof_v1.empty_continuation_root_v1,
+      0,
+      16100,
+      200,
+    ),
+    cek_machine_v1.ComputeConstant {
+      value: cek_constant_v1.ConstantWitnessV1 { type_cbor, payload_cbor },
+    },
+  )
+}
+
+test integer_constants_at_the_64_bit_boundary_compute_to_their_roots() {
+  and {
+    compute_constant_commits(
+      #"9f00ff",
+      #"1bffffffffffffffff",
+      #"ed8b58dfd83208feb6e15919daba8a5de3a148417c81d493ae44c1e59826c7df",
+    ),
+    compute_constant_commits(
+      #"9f00ff",
+      #"c249010000000000000000",
+      #"724fb53b24c2cf2e428cbae76031acc1767339d955adad595b4d93b03e7997e5",
+    ),
+    compute_constant_commits(
+      #"9f00ff",
+      #"3bffffffffffffffff",
+      #"42b4cefc147377431ccf19107b8f37b9c4840bba6537711070a939a54db0b569",
+    ),
+    compute_constant_commits(
+      #"9f00ff",
+      #"c349010000000000000000",
+      #"9c1a0767bf83f43d66a797f0fbc5bcf92ab3da6fa2c15d2930b2794b9556f6cc",
+    ),
+  }
+}
+
+test constructor_127_and_128_constants_compute_to_their_roots() {
+  and {
+    compute_constant_commits(
+      #"9f08ff",
+      #"d9057880",
+      #"6b2b905a952b034a8d8c7fc30281f0dc48885a85582fae52c6776b2034be0717",
+    ),
+    compute_constant_commits(
+      #"9f08ff",
+      #"d86682188080",
+      #"58ac7ef819e383417fc460b0ee8bba1acbfdad9a162c30adcfcc8a9f28ba2ea5",
+    ),
+    compute_constant_commits(
+      #"9f08ff",
+      #"d8668218809fc249010000000000000000ff",
+      #"db2030ae4a99c18f795583ab02da742c8295078cbd6628d676bc09ffbe18126d",
+    ),
+  }
+}
+
+// Payloads Cardano's Data decoder refuses, each against the root of the value
+// it would otherwise spell.
+fn compute_data_constant_against(value: Data, payload_cbor: ByteArray) -> Bool {
+  compute_constant_commits(
+    #"9f08ff",
+    payload_cbor,
+    cek_constant_v1.constant_root_v1(
+      cek_constant_v1.ConstantWitnessV1 {
+        type_cbor: #"9f08ff",
+        payload_cbor: cbor.serialise(value),
+      },
+    ),
+  )
+}
+
+test data_constants_compute_against_the_roots_of_their_canonical_values() {
+  and {
+    compute_data_constant_against(
+      builtin.i_data(18446744073709551616),
+      #"c249010000000000000000",
+    ),
+    compute_data_constant_against(
+      builtin.i_data(-18446744073709551617),
+      #"c349010000000000000000",
+    ),
+    compute_data_constant_against(builtin.constr_data(0, []), #"d87980"),
+    compute_data_constant_against(builtin.constr_data(1, []), #"d87a80"),
+  }
+}
+
+test compute_constant_refuses_a_long_tag_2_head() fail {
+  compute_data_constant_against(
+    builtin.i_data(18446744073709551616),
+    #"d80249010000000000000000",
+  )
+}
+
+test compute_constant_refuses_a_long_tag_3_head() fail {
+  compute_data_constant_against(
+    builtin.i_data(-18446744073709551617),
+    #"d80349010000000000000000",
+  )
+}
+
+test compute_constant_refuses_constructor_102_with_a_negative_index() fail {
+  compute_data_constant_against(builtin.constr_data(0, []), #"d866822080")
+}
+
+test compute_constant_refuses_constructor_102_with_a_bignum_index() fail {
+  compute_data_constant_against(builtin.constr_data(1, []), #"d86682c2410180")
+}
+
+// ComputeConstant over Data payloads that end in an empty byte string, or
+// hold one before their last item: Cardano runs `(con data _)` over each for
+// 16100/200, and the post root is the TypeScript builder's.
+test data_constants_ending_in_an_empty_byte_string_compute_to_their_roots() {
+  and {
+    compute_constant_commits(
+      #"9f08ff",
+      #"40",
+      #"7d8fc47fe0106bf4067f0f776f6dbbf0c13c95e8c7e0ecf0c51390e25a313a1b",
+    ),
+    compute_constant_commits(
+      #"9f08ff",
+      #"9f40ff",
+      #"4101754cf6a5ddecd24a6c34fa07ffbe84831bdcfe7f32450357b407732bad99",
+    ),
+    compute_constant_commits(
+      #"9f08ff",
+      #"d87a9f40ff",
+      #"52b6dbd7388a7127eaf8d8642346903ed308a293bbad5995b2b390bb02a0737d",
+    ),
+    compute_constant_commits(
+      #"9f08ff",
+      #"a10040",
+      #"acc70e559a6bd37b416cacee1edc031d20ec3afeb086293f521c02d809f28037",
+    ),
+    compute_constant_commits(
+      #"9f08ff",
+      #"a14040",
+      #"3bf83bc59fcdec011df7bbc526461f1e9cbfe216311f500f74570aef9232f932",
+    ),
+    compute_constant_commits(
+      #"9f08ff",
+      #"a2448d3ed5d702448d3ed5d740",
+      #"a37677e60441f8a71e7c3f976ebda7a9b26c6cee8132167754e538b918e0c403",
+    ),
+    compute_constant_commits(
+      #"9f08ff",
+      #"9f4000ff",
+      #"5e36a939ee38e0f8b480a371c386bbd6649c318ec34c461ba2204825e90d8d6d",
+    ),
+  }
+}
+
+test compute_constant_refuses_a_byte_string_claiming_one_byte_past_the_end() fail {
+  compute_data_constant_against(builtin.b_data(#""), #"41")
+}
+
+test compute_constant_refuses_a_list_ending_in_a_byte_string_claiming_one_byte() fail {
+  compute_data_constant_against(
+    builtin.list_data([builtin.b_data(#"")]),
+    #"8141",
+  )
 }

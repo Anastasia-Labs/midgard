@@ -1,5 +1,6 @@
 import {
   ActiveOperatorMintRedeemer,
+  appendValidationCaseConfigInitialization,
   ConfirmedState,
   CorrectionLockDatum,
   EMPTY_MERKLE_TREE_ROOT,
@@ -223,6 +224,12 @@ export const submitInitialMintTx = async ({
     for (const rewardAddress of rewardAddresses) {
       builder = builder.register.Stake(rewardAddress);
     }
+  }
+  if (contracts.validationCaseConfig !== undefined) {
+    builder = appendValidationCaseConfigInitialization(builder, {
+      network,
+      ...contracts.validationCaseConfig,
+    });
   }
   if (contracts.minAda !== undefined) {
     for (const { withdrawalScript } of Object.values(contracts.minAda.yields)) {

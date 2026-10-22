@@ -7,10 +7,7 @@ import {
   databaseOutputReferenceId,
   depositFixtureBaseTimeMs,
 } from "./fixtures.make-history-withdrawal-entry.js";
-import {
-  databaseFixtureBytes,
-  databaseTxHash,
-} from "./fixtures.make-material-proof-submit-tx.js";
+import { databaseFixtureBytes, databaseTxHash } from "./fixtures.submit-tx.js";
 
 let depositFixtureSequence = 0;
 

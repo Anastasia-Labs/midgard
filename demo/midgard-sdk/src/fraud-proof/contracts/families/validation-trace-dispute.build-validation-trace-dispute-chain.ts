@@ -1,15 +1,13 @@
 import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
+import { type OutRefLike } from "@al-ft/midgard-core/out-ref";
 import { Data, Network } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import {
-  AuthenticatedValidator,
-  MintingValidator,
-  SpendingValidator,
-} from "../../../common.js";
+import { MintingValidator, SpendingValidator } from "../../../common.js";
 import {
   applyBlueprintParams,
+  applyThreadHolderParams,
   declaredParameters,
   deriveValidationTraceDeploymentId,
   type FaultProofBlueprint,
@@ -25,7 +23,6 @@ import {
 } from "../cek-context.js";
 import { buildCekCoreStages, cekCoreEntryHashes } from "../cek-core.js";
 import {
-  CEK_PROGRAM_MATERIAL_SPEND_TITLE,
   VALIDATION_TRACE_DISPUTE_STEP_COUNT,
   VALIDATION_TRACE_RESOLVER_COUNT,
 } from "../titles.js";
@@ -33,9 +30,13 @@ import {
   buildCekRedeemerItemStages,
   buildScriptSourcesRedeemerItemStages,
 } from "./shared-redeemer-item.js";
+import { buildValidationCaseContracts } from "./validation-trace-dispute.case-contracts.js";
 import { type ValidationTraceDisputeFaultProofContracts } from "./validation-trace-dispute.types.js";
-import { VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES } from "./validation-trace-dispute.validation-trace-dispute-fault-proof-titles.js";
-import { VALIDATION_TRACE_SEMANTIC_RESOLVER_GROUP_SIZES } from "./validation-trace-dispute.validation-trace-semantic-resolver-group-sizes.js";
+import { VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES as validationTraceTitles } from "./validation-trace-dispute.validation-trace-dispute-fault-proof-titles.js";
+import {
+  VALIDATION_TRACE_SEMANTIC_RESOLVER_GROUP_SIZES,
+  VALIDATION_TRACE_SEMANTIC_RESOLVER_GROUPS,
+} from "./validation-trace-dispute.validation-trace-semantic-resolver-group-sizes.js";
 
 export const buildValidationTraceDisputeChain = ({
   blueprint,
@@ -43,49 +44,66 @@ export const buildValidationTraceDisputeChain = ({
   hubOraclePolicyId,
   fraudProofCataloguePolicyId,
   computationThread,
-  fraudProof,
-  fraudProofTokenAddressData,
   fieldPreimageCertificatePolicyId,
+  scriptDecodePolicyId,
   referenceScriptAuthPolicyId,
   l1SlotConfig,
+  disputeBondLovelace,
+  caseConfigInitializationNonce,
 }: {
   readonly blueprint: FaultProofBlueprint;
   readonly network: Network;
   readonly hubOraclePolicyId: string;
   readonly fraudProofCataloguePolicyId: string;
   readonly computationThread: MintingValidator;
-  readonly fraudProof: AuthenticatedValidator;
-  readonly fraudProofTokenAddressData: Data;
   readonly fieldPreimageCertificatePolicyId: string;
+  readonly scriptDecodePolicyId: string;
   readonly referenceScriptAuthPolicyId: string;
   readonly l1SlotConfig: L1SlotConfig;
+  readonly disputeBondLovelace: bigint;
+  readonly caseConfigInitializationNonce: OutRefLike;
 }): Effect.Effect<
   ValidationTraceDisputeFaultProofContracts["validationTraceDispute"],
   Error
 > =>
   Effect.gen(function* () {
-    const cekProgramMaterial = yield* tryBuild(
-      "Failed to build immutable CEK program-material validator",
+    // The case and its hand-off scripts. From Defend on, a thread carries a
+    // token of the case policy, so every validator a thread passes through
+    // takes the case policy as its thread policy. Only the opener and the
+    // source still hold computation-thread tokens.
+    const caseContracts = yield* tryBuild(
+      "Failed to build validation-case contracts",
       () =>
-        makeSpendingValidator(
+        buildValidationCaseContracts({
+          blueprint,
           network,
-          getUnappliedScript(blueprint, CEK_PROGRAM_MATERIAL_SPEND_TITLE),
-        ),
+          hubOraclePolicyId,
+          computationThreadPolicyId: computationThread.policyId,
+          disputeBondLovelace,
+          caseConfigInitializationNonce,
+        }),
     );
-    const award = yield* tryBuild(
-      "Failed to build validation-trace award validator",
+    const { caseConfig, threadExpiry, award } = caseContracts;
+    const caseValidator = caseContracts.case;
+    const threadPolicyId = caseValidator.policyId;
+    // Every thread holder of the resolution chain releases its thread
+    // through the expiry script, which it takes as its last parameter.
+    const applyHolder = (title: string, params: readonly Data[]): string =>
+      applyThreadHolderParams(
+        blueprint,
+        title,
+        params,
+        threadExpiry.withdrawalScriptHash,
+      );
+
+    const disputeBond = yield* tryBuild(
+      "Failed to build validation-dispute bond validator",
       () =>
         makeSpendingValidator(
           network,
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.award,
-            [
-              computationThread.policyId,
-              fraudProof.policyId,
-              fraudProofTokenAddressData,
-            ],
-          ),
+          applyBlueprintParams(blueprint, validationTraceTitles.disputeBond, [
+            threadPolicyId,
+          ]),
         ),
     );
 
@@ -96,45 +114,8 @@ export const buildValidationTraceDisputeChain = ({
           blueprint,
           network,
           award.spendingScriptHash,
-          computationThread.policyId,
-        ),
-    );
-    const cekMaterialTraversal = yield* tryBuild(
-      "Failed to build CEK material traversal",
-      () =>
-        makeSpendingValidator(
-          network,
-          applyBlueprintParams(
-            blueprint,
-            "fraud_proofs/validation_trace/cek_material_traversal_v1.main.spend",
-            [
-              award.spendingScriptHash,
-              computationThread.policyId,
-              referenceScriptAuthPolicyId,
-            ],
-          ),
-        ),
-    );
-    const cekMaterialProgramTask = yield* tryBuild(
-      "Failed to build CEK program task yield",
-      () =>
-        makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            "fraud_proofs/validation_trace/cek_material_traversal_yields.program.withdraw",
-            [cekMaterialTraversal.spendingScriptHash],
-          ),
-        ),
-    );
-    const cekMaterialDataTask = yield* tryBuild(
-      "Failed to build CEK Data task yield",
-      () =>
-        makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            "fraud_proofs/validation_trace/cek_material_traversal_yields.data.withdraw",
-            [cekMaterialTraversal.spendingScriptHash],
-          ),
+          threadPolicyId,
+          threadExpiry.withdrawalScriptHash,
         ),
     );
     const deploymentId = deriveValidationTraceDeploymentId(
@@ -147,9 +128,10 @@ export const buildValidationTraceDisputeChain = ({
           blueprint,
           network,
           award.spendingScriptHash,
-          computationThread.policyId,
+          threadPolicyId,
           fieldPreimageCertificatePolicyId,
           l1SlotConfig,
+          threadExpiry.withdrawalScriptHash,
         ),
     );
     const cekContextItemStages = yield* tryBuild(
@@ -158,7 +140,8 @@ export const buildValidationTraceDisputeChain = ({
         buildCekRedeemerItemStages({
           blueprint,
           network,
-          computationThreadPolicyId: computationThread.policyId,
+          computationThreadPolicyId: threadPolicyId,
+          threadExpiryScriptHash: threadExpiry.withdrawalScriptHash,
           deploymentId,
           returnScriptHash: cekContextTail.itemReturn.spendingScriptHash,
         }),
@@ -171,7 +154,8 @@ export const buildValidationTraceDisputeChain = ({
           network,
           cekContextTail,
           cekContextItemStages.entry.spendingScriptHash,
-          computationThread.policyId,
+          threadPolicyId,
+          threadExpiry.withdrawalScriptHash,
         ),
     );
     const sharedItem = yield* tryBuild(
@@ -180,7 +164,8 @@ export const buildValidationTraceDisputeChain = ({
         buildScriptSourcesRedeemerItemStages({
           blueprint,
           network,
-          computationThreadPolicyId: computationThread.policyId,
+          computationThreadPolicyId: threadPolicyId,
+          threadExpiryScriptHash: threadExpiry.withdrawalScriptHash,
           deploymentId,
           awardScriptHash: award.spendingScriptHash,
         }),
@@ -196,18 +181,13 @@ export const buildValidationTraceDisputeChain = ({
       settlement: sharedItem.settlement,
     } as const;
 
-    const semanticTitles = Object.values(
-      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics,
-    );
+    const semanticTitles = Object.values(validationTraceTitles.semantics);
     const proofItem = yield* tryBuild(
       "Failed to build validation-trace proof-item validator",
       () =>
         makeSpendingValidator(
           network,
-          getUnappliedScript(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.proofItem,
-          ),
+          getUnappliedScript(blueprint, validationTraceTitles.proofItem),
         ),
     );
     const canonicalDecodeItemSettlement = yield* tryBuild(
@@ -215,11 +195,9 @@ export const buildValidationTraceDisputeChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
-              .canonicalDecodeItemStages.settlement,
-            [award.spendingScriptHash, computationThread.policyId],
+          applyHolder(
+            validationTraceTitles.canonicalDecodeItemStages.settlement,
+            [award.spendingScriptHash, threadPolicyId],
           ),
         ),
     );
@@ -228,15 +206,10 @@ export const buildValidationTraceDisputeChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
-              .canonicalDecodeItemStages.proof,
-            [
-              canonicalDecodeItemSettlement.spendingScriptHash,
-              computationThread.policyId,
-            ],
-          ),
+          applyHolder(validationTraceTitles.canonicalDecodeItemStages.proof, [
+            canonicalDecodeItemSettlement.spendingScriptHash,
+            threadPolicyId,
+          ]),
         ),
     );
     const canonicalDecodeItemObserve = yield* tryBuild(
@@ -244,17 +217,12 @@ export const buildValidationTraceDisputeChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
-              .canonicalDecodeItemStages.observe,
-            [
-              canonicalDecodeItemProof.spendingScriptHash,
-              computationThread.policyId,
-              proofItem.spendingScriptHash,
-              fieldPreimageCertificatePolicyId,
-            ],
-          ),
+          applyHolder(validationTraceTitles.canonicalDecodeItemStages.observe, [
+            canonicalDecodeItemProof.spendingScriptHash,
+            threadPolicyId,
+            proofItem.spendingScriptHash,
+            fieldPreimageCertificatePolicyId,
+          ]),
         ),
     );
     const canonicalDecodeItemSource = yield* tryBuild(
@@ -262,15 +230,10 @@ export const buildValidationTraceDisputeChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
-              .canonicalDecodeItemStages.source,
-            [
-              canonicalDecodeItemObserve.spendingScriptHash,
-              computationThread.policyId,
-            ],
-          ),
+          applyHolder(validationTraceTitles.canonicalDecodeItemStages.source, [
+            canonicalDecodeItemObserve.spendingScriptHash,
+            threadPolicyId,
+          ]),
         ),
     );
     const canonicalDecodeItemStages = {
@@ -304,12 +267,9 @@ export const buildValidationTraceDisputeChain = ({
         "cek_context_control_script_hash",
         cekContextStages.control.spendingScriptHash,
       ],
-      [
-        "cek_material_traversal_script_hash",
-        cekMaterialTraversal.spendingScriptHash,
-      ],
       ["reference_script_auth_policy_id", referenceScriptAuthPolicyId],
-      ["computation_thread_policy_id", computationThread.policyId],
+      ["computation_thread_policy_id", threadPolicyId],
+      ["thread_expiry_script_hash", threadExpiry.withdrawalScriptHash],
       [
         "field_preimage_certificate_policy_id",
         fieldPreimageCertificatePolicyId,
@@ -319,10 +279,6 @@ export const buildValidationTraceDisputeChain = ({
         canonicalDecodeItemSource.spendingScriptHash,
       ],
       ["proof_item_script_hash", proofItem.spendingScriptHash],
-      [
-        "cek_program_material_script_hash",
-        cekProgramMaterial.spendingScriptHash,
-      ],
     ]);
     const semanticResolverParams = (title: string): readonly Data[] =>
       declaredParameters(getBlueprintValidator(blueprint, title)).map(
@@ -356,7 +312,7 @@ export const buildValidationTraceDisputeChain = ({
         ),
       );
     }
-    if (builtSemanticResolvers.length !== 90) {
+    if (builtSemanticResolvers.length !== 82) {
       return yield* Effect.fail(
         new Error("Validation-trace semantic resolver set is incomplete"),
       );
@@ -444,14 +400,6 @@ export const buildValidationTraceDisputeChain = ({
       builtSemanticResolvers[79]!,
       builtSemanticResolvers[80]!,
       builtSemanticResolvers[81]!,
-      builtSemanticResolvers[82]!,
-      builtSemanticResolvers[83]!,
-      builtSemanticResolvers[84]!,
-      builtSemanticResolvers[85]!,
-      builtSemanticResolvers[86]!,
-      builtSemanticResolvers[87]!,
-      builtSemanticResolvers[88]!,
-      builtSemanticResolvers[89]!,
     ] as const;
     const semanticResolvers = [
       ...baseSemanticResolvers,
@@ -461,16 +409,13 @@ export const buildValidationTraceDisputeChain = ({
       "Failed to build ScriptSources stage_two_advance yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .scriptSourcesStageTwoAdvance,
+          applyHolder(
+            validationTraceTitles.yields.scriptSourcesStageTwoAdvance,
             [
               [
                 builtSemanticResolvers[
                   semanticTitles.indexOf(
-                    VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
-                      .scriptSourcesNonOutput,
+                    validationTraceTitles.semantics.scriptSourcesNonOutput,
                   )
                 ]!.spendingScriptHash,
               ],
@@ -482,16 +427,13 @@ export const buildValidationTraceDisputeChain = ({
       "Failed to build ScriptSources stage_three_replay yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .scriptSourcesStageThreeReplay,
+          applyHolder(
+            validationTraceTitles.yields.scriptSourcesStageThreeReplay,
             [
               [
                 builtSemanticResolvers[
                   semanticTitles.indexOf(
-                    VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
-                      .scriptSourcesNonOutput,
+                    validationTraceTitles.semantics.scriptSourcesNonOutput,
                   )
                 ]!.spendingScriptHash,
               ],
@@ -503,16 +445,13 @@ export const buildValidationTraceDisputeChain = ({
       "Failed to build ScriptSources stage_three_finish yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .scriptSourcesStageThreeFinish,
+          applyHolder(
+            validationTraceTitles.yields.scriptSourcesStageThreeFinish,
             [
               [
                 builtSemanticResolvers[
                   semanticTitles.indexOf(
-                    VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
-                      .scriptSourcesNonOutput,
+                    validationTraceTitles.semantics.scriptSourcesNonOutput,
                   )
                 ]!.spendingScriptHash,
               ],
@@ -524,16 +463,13 @@ export const buildValidationTraceDisputeChain = ({
       "Failed to build ScriptSources stage_four_begin yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .scriptSourcesStageFourBegin,
+          applyHolder(
+            validationTraceTitles.yields.scriptSourcesStageFourBegin,
             [
               [
                 builtSemanticResolvers[
                   semanticTitles.indexOf(
-                    VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
-                      .scriptSourcesNonOutput,
+                    validationTraceTitles.semantics.scriptSourcesNonOutput,
                   )
                 ]!.spendingScriptHash,
               ],
@@ -546,16 +482,13 @@ export const buildValidationTraceDisputeChain = ({
       "Failed to build ScriptSources stage_four_finish yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .scriptSourcesStageFourFinish,
+          applyHolder(
+            validationTraceTitles.yields.scriptSourcesStageFourFinish,
             [
               [
                 builtSemanticResolvers[
                   semanticTitles.indexOf(
-                    VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
-                      .scriptSourcesNonOutput,
+                    validationTraceTitles.semantics.scriptSourcesNonOutput,
                   )
                 ]!.spendingScriptHash,
               ],
@@ -567,16 +500,13 @@ export const buildValidationTraceDisputeChain = ({
       "Failed to build ScriptSources stage_six_begin_policy yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .scriptSourcesStageSixBeginPolicy,
+          applyHolder(
+            validationTraceTitles.yields.scriptSourcesStageSixBeginPolicy,
             [
               [
                 builtSemanticResolvers[
                   semanticTitles.indexOf(
-                    VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
-                      .scriptSourcesNonOutput,
+                    validationTraceTitles.semantics.scriptSourcesNonOutput,
                   )
                 ]!.spendingScriptHash,
               ],
@@ -589,16 +519,13 @@ export const buildValidationTraceDisputeChain = ({
       "Failed to build ScriptSources stage_six_fold_asset yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .scriptSourcesStageSixFoldAsset,
+          applyHolder(
+            validationTraceTitles.yields.scriptSourcesStageSixFoldAsset,
             [
               [
                 builtSemanticResolvers[
                   semanticTitles.indexOf(
-                    VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
-                      .scriptSourcesNonOutput,
+                    validationTraceTitles.semantics.scriptSourcesNonOutput,
                   )
                 ]!.spendingScriptHash,
               ],
@@ -610,16 +537,13 @@ export const buildValidationTraceDisputeChain = ({
       "Failed to build ScriptSources stage_six_finish yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .scriptSourcesStageSixFinish,
+          applyHolder(
+            validationTraceTitles.yields.scriptSourcesStageSixFinish,
             [
               [
                 builtSemanticResolvers[
                   semanticTitles.indexOf(
-                    VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
-                      .scriptSourcesNonOutput,
+                    validationTraceTitles.semantics.scriptSourcesNonOutput,
                   )
                 ]!.spendingScriptHash,
               ],
@@ -631,66 +555,51 @@ export const buildValidationTraceDisputeChain = ({
       "Failed to build observer yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .scriptSourcesObserverItem,
-            [
-              builtSemanticResolvers[
-                semanticTitles.indexOf(
-                  VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
-                    .scriptSourcesStageSevenObserver,
-                )
-              ]!.spendingScriptHash,
-              fieldPreimageCertificatePolicyId,
-            ],
-          ),
+          applyHolder(validationTraceTitles.yields.scriptSourcesObserverItem, [
+            builtSemanticResolvers[
+              semanticTitles.indexOf(
+                validationTraceTitles.semantics.scriptSourcesStageSevenObserver,
+              )
+            ]!.spendingScriptHash,
+            fieldPreimageCertificatePolicyId,
+          ]),
         ),
     );
     const scriptSourcesObserverBound = yield* tryBuild(
       "Failed to build observer yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .scriptSourcesObserverBound,
-            [
-              builtSemanticResolvers[
-                semanticTitles.indexOf(
-                  VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
-                    .scriptSourcesStageSevenObserver,
-                )
-              ]!.spendingScriptHash,
-            ],
-          ),
+          applyHolder(validationTraceTitles.yields.scriptSourcesObserverBound, [
+            builtSemanticResolvers[
+              semanticTitles.indexOf(
+                validationTraceTitles.semantics.scriptSourcesStageSevenObserver,
+              )
+            ]!.spendingScriptHash,
+          ]),
         ),
     );
     const scriptSourcesRedeemerDescriptor = yield* tryBuild(
       "Failed to build redeemer descriptor yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .scriptSourcesRedeemerDescriptor,
+          applyHolder(
+            validationTraceTitles.yields.scriptSourcesRedeemerDescriptor,
             [
               [
                 builtSemanticResolvers[
                   semanticTitles.indexOf(
-                    VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
-                      .scriptSourcesStageTenMatch,
+                    validationTraceTitles.semantics.scriptSourcesStageTenMatch,
                   )
                 ]!.spendingScriptHash,
                 builtSemanticResolvers[
                   semanticTitles.indexOf(
-                    VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
+                    validationTraceTitles.semantics
                       .scriptSourcesStageTenMismatch,
                   )
                 ]!.spendingScriptHash,
                 builtSemanticResolvers[
                   semanticTitles.indexOf(
-                    VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
+                    validationTraceTitles.semantics
                       .scriptSourcesStageTwelveRedeemer,
                   )
                 ]!.spendingScriptHash,
@@ -702,28 +611,24 @@ export const buildValidationTraceDisputeChain = ({
     const stepDispatcherHashes = [
       builtSemanticResolvers[
         semanticTitles.indexOf(
-          VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
-            .scriptSourcesOutputProofStep,
+          validationTraceTitles.semantics.scriptSourcesOutputProofStep,
         )
       ]!.spendingScriptHash,
       builtSemanticResolvers[
         semanticTitles.indexOf(
-          VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
-            .resolveInputsMembershipStep,
+          validationTraceTitles.semantics.resolveInputsMembershipStep,
         )
       ]!.spendingScriptHash,
     ];
     const finalizeDispatcherHashes = [
       builtSemanticResolvers[
         semanticTitles.indexOf(
-          VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
-            .scriptSourcesOutputProofFinalize,
+          validationTraceTitles.semantics.scriptSourcesOutputProofFinalize,
         )
       ]!.spendingScriptHash,
       builtSemanticResolvers[
         semanticTitles.indexOf(
-          VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
-            .resolveInputsMembershipFinalize,
+          validationTraceTitles.semantics.resolveInputsMembershipFinalize,
         )
       ]!.spendingScriptHash,
     ];
@@ -731,34 +636,26 @@ export const buildValidationTraceDisputeChain = ({
       "Failed to build ledger-output-proof structure yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofStructure,
-            [stepDispatcherHashes],
-          ),
+          applyHolder(validationTraceTitles.yields.ledgerOutputProofStructure, [
+            stepDispatcherHashes,
+          ]),
         ),
     );
     const ledgerOutputProofValue = yield* tryBuild(
       "Failed to build ledger-output-proof value yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofValue,
-            [stepDispatcherHashes],
-          ),
+          applyHolder(validationTraceTitles.yields.ledgerOutputProofValue, [
+            stepDispatcherHashes,
+          ]),
         ),
     );
     const ledgerOutputProofDatumFoldMap = yield* tryBuild(
       "Failed to build ledger-output-proof datum fold-map yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofDatumFoldMap,
+          applyHolder(
+            validationTraceTitles.yields.ledgerOutputProofDatumFoldMap,
             [stepDispatcherHashes],
           ),
         ),
@@ -767,10 +664,8 @@ export const buildValidationTraceDisputeChain = ({
       "Failed to build ledger-output-proof datum finalize-frame yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofDatumFinalizeFrame,
+          applyHolder(
+            validationTraceTitles.yields.ledgerOutputProofDatumFinalizeFrame,
             [stepDispatcherHashes],
           ),
         ),
@@ -779,10 +674,8 @@ export const buildValidationTraceDisputeChain = ({
       "Failed to build ledger-output-proof datum head-scalar yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofDatumHeadScalar,
+          applyHolder(
+            validationTraceTitles.yields.ledgerOutputProofDatumHeadScalar,
             [stepDispatcherHashes],
           ),
         ),
@@ -791,10 +684,8 @@ export const buildValidationTraceDisputeChain = ({
       "Failed to build ledger-output-proof datum attach-integer yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofDatumAttachInteger,
+          applyHolder(
+            validationTraceTitles.yields.ledgerOutputProofDatumAttachInteger,
             [stepDispatcherHashes],
           ),
         ),
@@ -803,10 +694,8 @@ export const buildValidationTraceDisputeChain = ({
       "Failed to build ledger-output-proof datum fold-list yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofDatumFoldList,
+          applyHolder(
+            validationTraceTitles.yields.ledgerOutputProofDatumFoldList,
             [stepDispatcherHashes],
           ),
         ),
@@ -815,10 +704,8 @@ export const buildValidationTraceDisputeChain = ({
       "Failed to build ledger-output-proof datum advance-integer yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofDatumAdvanceInteger,
+          applyHolder(
+            validationTraceTitles.yields.ledgerOutputProofDatumAdvanceInteger,
             [stepDispatcherHashes],
           ),
         ),
@@ -827,10 +714,8 @@ export const buildValidationTraceDisputeChain = ({
       "Failed to build ledger-output-proof reference-script yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofReferenceScript,
+          applyHolder(
+            validationTraceTitles.yields.ledgerOutputProofReferenceScript,
             [stepDispatcherHashes],
           ),
         ),
@@ -839,10 +724,8 @@ export const buildValidationTraceDisputeChain = ({
       "Failed to build ledger-output-proof script-hash yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofScriptHash,
+          applyHolder(
+            validationTraceTitles.yields.ledgerOutputProofScriptHash,
             [stepDispatcherHashes],
           ),
         ),
@@ -851,10 +734,8 @@ export const buildValidationTraceDisputeChain = ({
       "Failed to build ledger-output-proof native-script yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofNativeScript,
+          applyHolder(
+            validationTraceTitles.yields.ledgerOutputProofNativeScript,
             [stepDispatcherHashes],
           ),
         ),
@@ -863,10 +744,8 @@ export const buildValidationTraceDisputeChain = ({
       "Failed to build ledger-output-proof structure assets yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofStructureAssets,
+          applyHolder(
+            validationTraceTitles.yields.ledgerOutputProofStructureAssets,
             [stepDispatcherHashes],
           ),
         ),
@@ -875,10 +754,8 @@ export const buildValidationTraceDisputeChain = ({
       "Failed to build ledger-output-proof structure optional yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofStructureOptional,
+          applyHolder(
+            validationTraceTitles.yields.ledgerOutputProofStructureOptional,
             [stepDispatcherHashes],
           ),
         ),
@@ -887,10 +764,8 @@ export const buildValidationTraceDisputeChain = ({
       "Failed to build ledger-output-proof structure finish yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofStructureFinish,
+          applyHolder(
+            validationTraceTitles.yields.ledgerOutputProofStructureFinish,
             [stepDispatcherHashes],
           ),
         ),
@@ -899,10 +774,8 @@ export const buildValidationTraceDisputeChain = ({
       "Failed to build ledger-output-proof datum head-sequence yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofDatumHeadSequence,
+          applyHolder(
+            validationTraceTitles.yields.ledgerOutputProofDatumHeadSequence,
             [stepDispatcherHashes],
           ),
         ),
@@ -911,10 +784,8 @@ export const buildValidationTraceDisputeChain = ({
       "Failed to build ledger-output-proof datum head-map yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofDatumHeadMap,
+          applyHolder(
+            validationTraceTitles.yields.ledgerOutputProofDatumHeadMap,
             [stepDispatcherHashes],
           ),
         ),
@@ -923,9 +794,8 @@ export const buildValidationTraceDisputeChain = ({
       "Failed to build ledger-output-proof datum head-large-constructor yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+          applyHolder(
+            validationTraceTitles.yields
               .ledgerOutputProofDatumHeadLargeConstructor,
             [stepDispatcherHashes],
           ),
@@ -935,10 +805,8 @@ export const buildValidationTraceDisputeChain = ({
       "Failed to build ledger-output-proof datum attach-bytes yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofDatumAttachBytes,
+          applyHolder(
+            validationTraceTitles.yields.ledgerOutputProofDatumAttachBytes,
             [stepDispatcherHashes],
           ),
         ),
@@ -947,10 +815,8 @@ export const buildValidationTraceDisputeChain = ({
       "Failed to build ledger-output-proof datum advance-bytes yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofDatumAdvanceBytes,
+          applyHolder(
+            validationTraceTitles.yields.ledgerOutputProofDatumAdvanceBytes,
             [stepDispatcherHashes],
           ),
         ),
@@ -959,10 +825,8 @@ export const buildValidationTraceDisputeChain = ({
       "Failed to build ledger-output-proof datum finish yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofDatumFinish,
+          applyHolder(
+            validationTraceTitles.yields.ledgerOutputProofDatumFinish,
             [stepDispatcherHashes],
           ),
         ),
@@ -971,10 +835,8 @@ export const buildValidationTraceDisputeChain = ({
       "Failed to build ledger-output-proof datum large-constructor yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofDatumLargeConstructor,
+          applyHolder(
+            validationTraceTitles.yields.ledgerOutputProofDatumLargeConstructor,
             [stepDispatcherHashes],
           ),
         ),
@@ -983,10 +845,8 @@ export const buildValidationTraceDisputeChain = ({
       "Failed to build ledger-output-proof datum large-fields yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofDatumLargeFields,
+          applyHolder(
+            validationTraceTitles.yields.ledgerOutputProofDatumLargeFields,
             [stepDispatcherHashes],
           ),
         ),
@@ -995,10 +855,8 @@ export const buildValidationTraceDisputeChain = ({
       "Failed to build ledger-output-proof datum close yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofDatumClose,
+          applyHolder(
+            validationTraceTitles.yields.ledgerOutputProofDatumClose,
             [stepDispatcherHashes],
           ),
         ),
@@ -1007,22 +865,17 @@ export const buildValidationTraceDisputeChain = ({
       "Failed to build ledger-output-proof span yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofSpan,
-            [stepDispatcherHashes],
-          ),
+          applyHolder(validationTraceTitles.yields.ledgerOutputProofSpan, [
+            stepDispatcherHashes,
+          ]),
         ),
     );
     const ledgerOutputProofScalarInteger = yield* tryBuild(
       "Failed to build ledger-output-proof scalar-integer yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofScalarInteger,
+          applyHolder(
+            validationTraceTitles.yields.ledgerOutputProofScalarInteger,
             [stepDispatcherHashes],
           ),
         ),
@@ -1031,10 +884,8 @@ export const buildValidationTraceDisputeChain = ({
       "Failed to build ledger-output-proof scalar-bytes yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofScalarBytes,
+          applyHolder(
+            validationTraceTitles.yields.ledgerOutputProofScalarBytes,
             [stepDispatcherHashes],
           ),
         ),
@@ -1043,10 +894,8 @@ export const buildValidationTraceDisputeChain = ({
       "Failed to build ledger-output-descriptor scan-facts yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputDescriptorScanFacts,
+          applyHolder(
+            validationTraceTitles.yields.ledgerOutputDescriptorScanFacts,
             [finalizeDispatcherHashes],
           ),
         ),
@@ -1055,10 +904,8 @@ export const buildValidationTraceDisputeChain = ({
       "Failed to build ledger-output-descriptor reference-script yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputDescriptorReferenceScript,
+          applyHolder(
+            validationTraceTitles.yields.ledgerOutputDescriptorReferenceScript,
             [finalizeDispatcherHashes],
           ),
         ),
@@ -1067,10 +914,8 @@ export const buildValidationTraceDisputeChain = ({
       "Failed to build ledger-output-descriptor datum-summary yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputDescriptorDatumSummary,
+          applyHolder(
+            validationTraceTitles.yields.ledgerOutputDescriptorDatumSummary,
             [finalizeDispatcherHashes],
           ),
         ),
@@ -1079,10 +924,8 @@ export const buildValidationTraceDisputeChain = ({
       "Failed to build ledger-output-descriptor value-summary yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputDescriptorValueSummary,
+          applyHolder(
+            validationTraceTitles.yields.ledgerOutputDescriptorValueSummary,
             [finalizeDispatcherHashes],
           ),
         ),
@@ -1091,234 +934,83 @@ export const buildValidationTraceDisputeChain = ({
       "Failed to build phase-A item native yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .phaseANativeItemNative,
-            [
-              builtSemanticResolvers[
-                semanticTitles.indexOf(
-                  VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
-                    .phaseANativeScriptsItem,
-                )
-              ]!.spendingScriptHash,
-              award.spendingScriptHash,
-              fieldPreimageCertificatePolicyId,
-            ],
-          ),
+          applyHolder(validationTraceTitles.yields.phaseANativeItemNative, [
+            builtSemanticResolvers[
+              semanticTitles.indexOf(
+                validationTraceTitles.semantics.phaseANativeScriptsItem,
+              )
+            ]!.spendingScriptHash,
+            award.spendingScriptHash,
+            fieldPreimageCertificatePolicyId,
+          ]),
         ),
     );
     const phaseANativeItemForeign = yield* tryBuild(
       "Failed to build phase-A item foreign yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .phaseANativeItemForeign,
-            [
-              builtSemanticResolvers[
-                semanticTitles.indexOf(
-                  VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
-                    .phaseANativeScriptsItem,
-                )
-              ]!.spendingScriptHash,
-              award.spendingScriptHash,
-              fieldPreimageCertificatePolicyId,
-            ],
-          ),
+          applyHolder(validationTraceTitles.yields.phaseANativeItemForeign, [
+            builtSemanticResolvers[
+              semanticTitles.indexOf(
+                validationTraceTitles.semantics.phaseANativeScriptsItem,
+              )
+            ]!.spendingScriptHash,
+            award.spendingScriptHash,
+            fieldPreimageCertificatePolicyId,
+          ]),
         ),
     );
     const selectionDispatcherHash =
       builtSemanticResolvers[
         semanticTitles.indexOf(
-          VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
-            .cekExecutionSelection,
+          validationTraceTitles.semantics.cekExecutionSelection,
         )
       ]!.spendingScriptHash;
     const cekSelectionAuthenticate = yield* tryBuild(
       "Failed to build CEK selection authenticate yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .cekSelectionAuthenticate,
-            [selectionDispatcherHash],
-          ),
+          applyHolder(validationTraceTitles.yields.cekSelectionAuthenticate, [
+            selectionDispatcherHash,
+          ]),
         ),
     );
     const cekSelectionSuccessor = yield* tryBuild(
       "Failed to build CEK selection successor yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .cekSelectionSuccessor,
-            [selectionDispatcherHash],
-          ),
-        ),
-    );
-    const cekSelectionMaterialProgram = yield* tryBuild(
-      "Failed to build CEK selection material_program yield",
-      () =>
-        makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .cekSelectionMaterialProgram,
-            [selectionDispatcherHash, cekProgramMaterial.spendingScriptHash],
-          ),
-        ),
-    );
-    const cekSelectionMaterialData = yield* tryBuild(
-      "Failed to build CEK selection material_data yield",
-      () =>
-        makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .cekSelectionMaterialData,
-            [selectionDispatcherHash, cekProgramMaterial.spendingScriptHash],
-          ),
+          applyHolder(validationTraceTitles.yields.cekSelectionSuccessor, [
+            selectionDispatcherHash,
+            scriptDecodePolicyId,
+          ]),
         ),
     );
     const valueAndMintAssetFold = yield* tryBuild(
       "Failed to build validation-trace asset-fold yield",
       () =>
         makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .valueAndMintAssetFold,
-            [
-              builtSemanticResolvers[
-                semanticTitles.indexOf(
-                  VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
-                    .valueAndMintReplayAsset,
-                )
-              ]!.spendingScriptHash,
-              builtSemanticResolvers[
-                semanticTitles.indexOf(
-                  VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
-                    .valueAndMintOutputAsset,
-                )
-              ]!.spendingScriptHash,
-              builtSemanticResolvers[
-                semanticTitles.indexOf(
-                  VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
-                    .valueAndMintMintAsset,
-                )
-              ]!.spendingScriptHash,
-            ],
-          ),
+          applyHolder(validationTraceTitles.yields.valueAndMintAssetFold, [
+            builtSemanticResolvers[
+              semanticTitles.indexOf(
+                validationTraceTitles.semantics.valueAndMintReplayAsset,
+              )
+            ]!.spendingScriptHash,
+            builtSemanticResolvers[
+              semanticTitles.indexOf(
+                validationTraceTitles.semantics.valueAndMintOutputAsset,
+              )
+            ]!.spendingScriptHash,
+            builtSemanticResolvers[
+              semanticTitles.indexOf(
+                validationTraceTitles.semantics.valueAndMintMintAsset,
+              )
+            ]!.spendingScriptHash,
+          ]),
         ),
     );
-    const semanticResolverGroups = [
-      [semanticResolvers[0], semanticResolvers[1]],
-      [semanticResolvers[2]],
-      [semanticResolvers[3]],
-      [semanticResolvers[4], semanticResolvers[5]],
-      [
-        semanticResolvers[6],
-        semanticResolvers[7],
-        semanticResolvers[8],
-        semanticResolvers[9],
-      ],
-      [
-        semanticResolvers[10],
-        semanticResolvers[11],
-        semanticResolvers[12],
-        semanticResolvers[13],
-        semanticResolvers[14],
-        semanticResolvers[15],
-        semanticResolvers[16],
-        semanticResolvers[17],
-        semanticResolvers[18],
-        semanticResolvers[19],
-        semanticResolvers[20],
-        semanticResolvers[21],
-        semanticResolvers[22],
-        semanticResolvers[23],
-      ],
-      [semanticResolvers[24], semanticResolvers[25]],
-      [
-        semanticResolvers[26],
-        semanticResolvers[27],
-        semanticResolvers[28],
-        semanticResolvers[29],
-        semanticResolvers[30],
-        semanticResolvers[31],
-      ],
-      [
-        semanticResolvers[32],
-        semanticResolvers[33],
-        semanticResolvers[34],
-        semanticResolvers[35],
-        semanticResolvers[36],
-        semanticResolvers[37],
-        semanticResolvers[38],
-        semanticResolvers[39],
-        semanticResolvers[40],
-        semanticResolvers[41],
-        semanticResolvers[42],
-        semanticResolvers[43],
-        semanticResolvers[44],
-        semanticResolvers[45],
-        semanticResolvers[46],
-        semanticResolvers[47],
-        semanticResolvers[48],
-        semanticResolvers[49],
-        semanticResolvers[50],
-        semanticResolvers[51],
-        semanticResolvers[52],
-        semanticResolvers[53],
-        semanticResolvers[54],
-        semanticResolvers[55],
-        semanticResolvers[56],
-        semanticResolvers[57],
-        semanticResolvers[58],
-        semanticResolvers[59],
-        semanticResolvers[90],
-      ],
-      [semanticResolvers[60], semanticResolvers[61], semanticResolvers[62]],
-      [
-        semanticResolvers[63],
-        semanticResolvers[64],
-        semanticResolvers[65],
-        semanticResolvers[66],
-      ],
-      [
-        semanticResolvers[67],
-        semanticResolvers[68],
-        semanticResolvers[69],
-        semanticResolvers[70],
-      ],
-      [
-        semanticResolvers[71],
-        semanticResolvers[72],
-        semanticResolvers[73],
-        semanticResolvers[74],
-        semanticResolvers[75],
-        semanticResolvers[76],
-        semanticResolvers[77],
-        semanticResolvers[78],
-        semanticResolvers[79],
-        semanticResolvers[80],
-        semanticResolvers[81],
-      ],
-      [
-        semanticResolvers[82],
-        semanticResolvers[83],
-        semanticResolvers[84],
-        semanticResolvers[85],
-        semanticResolvers[86],
-        semanticResolvers[87],
-        semanticResolvers[88],
-        semanticResolvers[89],
-      ],
-    ] as const;
+    const semanticResolverGroups = Object.values(
+      VALIDATION_TRACE_SEMANTIC_RESOLVER_GROUPS,
+    ).map((group) => group.map((index) => semanticResolvers[index]!));
     const semanticResolverHashesSchema = Data.Array(Data.Bytes());
     type SemanticResolverHashes = Data.Static<
       typeof semanticResolverHashesSchema
@@ -1328,7 +1020,7 @@ export const buildValidationTraceDisputeChain = ({
     );
 
     const prepareTitles = Object.entries(
-      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.prepares,
+      validationTraceTitles.prepares,
     ) as readonly (readonly [
       keyof typeof VALIDATION_TRACE_SEMANTIC_RESOLVER_GROUP_SIZES,
       string,
@@ -1361,10 +1053,7 @@ export const buildValidationTraceDisputeChain = ({
           () =>
             makeSpendingValidator(
               network,
-              applyBlueprintParams(blueprint, title, [
-                semanticResolverHashesData,
-                computationThread.policyId,
-              ]),
+              applyHolder(title, [semanticResolverHashesData, threadPolicyId]),
             ),
         ),
       );
@@ -1388,7 +1077,6 @@ export const buildValidationTraceDisputeChain = ({
       builtPrepareResolvers[10]!,
       builtPrepareResolvers[11]!,
       builtPrepareResolvers[12]!,
-      builtPrepareResolvers[13]!,
     ] as const;
 
     const resolvers = [
@@ -1405,7 +1093,6 @@ export const buildValidationTraceDisputeChain = ({
       prepareResolvers[10],
       prepareResolvers[11],
       prepareResolvers[12],
-      prepareResolvers[13],
     ] as const;
     if (
       new Set(resolvers.map(({ spendingScriptHash }) => spendingScriptHash))
@@ -1442,15 +1129,12 @@ export const buildValidationTraceDisputeChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.boundary,
-            [
-              resolverHashesData,
-              award.spendingScriptHash,
-              computationThread.policyId,
-            ],
-          ),
+          applyBlueprintParams(blueprint, validationTraceTitles.boundary, [
+            resolverHashesData,
+            award.spendingScriptHash,
+            threadPolicyId,
+            threadExpiry.withdrawalScriptHash,
+          ]),
         ),
     );
     const timeout = yield* tryBuild(
@@ -1458,15 +1142,10 @@ export const buildValidationTraceDisputeChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.timeout,
-            [
-              computationThread.policyId,
-              fraudProof.policyId,
-              fraudProofTokenAddressData,
-            ],
-          ),
+          applyBlueprintParams(blueprint, validationTraceTitles.timeout, [
+            threadPolicyId,
+            threadExpiry.withdrawalScriptHash,
+          ]),
         ),
     );
     const game = yield* tryBuild(
@@ -1474,16 +1153,12 @@ export const buildValidationTraceDisputeChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.game,
-            [
-              boundary.spendingScriptHash,
-              timeout.spendingScriptHash,
-              resolverHashesData,
-              computationThread.policyId,
-            ],
-          ),
+          applyBlueprintParams(blueprint, validationTraceTitles.game, [
+            boundary.spendingScriptHash,
+            timeout.spendingScriptHash,
+            threadPolicyId,
+            threadExpiry.withdrawalScriptHash,
+          ]),
         ),
     );
     const source = yield* tryBuild(
@@ -1491,15 +1166,12 @@ export const buildValidationTraceDisputeChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.source,
-            [
-              game.spendingScriptHash,
-              award.spendingScriptHash,
-              computationThread.policyId,
-            ],
-          ),
+          applyBlueprintParams(blueprint, validationTraceTitles.source, [
+            caseValidator.spendingScriptHash,
+            disputeBond.spendingScriptHash,
+            disputeBondLovelace,
+            computationThread.policyId,
+          ]),
         ),
     );
     const dispute = yield* tryBuild(
@@ -1507,15 +1179,11 @@ export const buildValidationTraceDisputeChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.dispute,
-            [
-              source.spendingScriptHash,
-              computationThread.policyId,
-              hubOraclePolicyId,
-            ],
-          ),
+          applyBlueprintParams(blueprint, validationTraceTitles.dispute, [
+            source.spendingScriptHash,
+            computationThread.policyId,
+            hubOraclePolicyId,
+          ]),
         ),
     );
 
@@ -1556,9 +1224,11 @@ export const buildValidationTraceDisputeChain = ({
       boundary,
       timeout,
       award,
+      disputeBond,
+      case: caseValidator,
+      caseConfig,
+      threadExpiry,
       proofItem,
-      cekProgramMaterial,
-      cekMaterialTraversal,
       cekCoreStages,
       cekContextStages,
       cekContextItemStages,
@@ -1611,13 +1281,9 @@ export const buildValidationTraceDisputeChain = ({
         ledgerOutputDescriptorValueSummary,
         phaseANativeItemNative,
         phaseANativeItemForeign,
-        cekMaterialProgramTask,
-        cekMaterialDataTask,
         valueAndMintAssetFold,
         cekSelectionAuthenticate,
         cekSelectionSuccessor,
-        cekSelectionMaterialProgram,
-        cekSelectionMaterialData,
       },
       resolvers,
     };

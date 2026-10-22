@@ -5,10 +5,8 @@ import {
   FraudProofL1RefusedError,
   FraudProofL1UnavailableError,
 } from "../src/workflow/l1-source.js";
-import {
-  FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
-  type FraudProofFamilyWorkflowAdapter,
-} from "../src/workflow/orchestrator.js";
+import { type FraudProofFamilyWorkflowAdapter } from "../src/workflow/orchestrator.js";
+import { terminalVerifierOf } from "./support/terminal-verifier.js";
 import {
   canonicalEvidence,
   makeAdapter,
@@ -47,12 +45,9 @@ const steps = {
   }),
   "terminal verification": (error: Error) => ({
     adapter: makeAdapter(),
-    verifier: {
-      verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
-      verify: async () => {
-        throw error;
-      },
-    },
+    verifier: terminalVerifierOf(async () => {
+      throw error;
+    }),
   }),
 } as const;
 

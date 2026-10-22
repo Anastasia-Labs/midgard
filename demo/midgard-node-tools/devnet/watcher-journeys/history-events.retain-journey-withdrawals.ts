@@ -268,15 +268,17 @@ export const retainJourneyWithdrawals = async (
     root(SDK.ROOT_DOMAINS.eventToStep, mappings),
     root(SDK.ROOT_DOMAINS.transitionTrace, transitions),
   ]);
-  const counts = {
-    ...base.payload.block_body.counts,
+  const eventCounts = {
     withdrawalCount: BigInt(claims.length),
     totalEventCount: BigInt(claims.length),
     transitionStepCount: BigInt(claims.length),
   };
+  const counts = { ...base.payload.block_body.counts, ...eventCounts };
+  // The header keeps the base header's pinned validation-trace pair; only the
+  // body declares its validation-trace members.
   const header: SDK.Header = {
     ...base.header,
-    ...counts,
+    ...eventCounts,
     operatorVkey: input.operatorVkey,
     blockSlot: input.blockSlot,
     expectedNetworkId: input.predecessor.header.expectedNetworkId,

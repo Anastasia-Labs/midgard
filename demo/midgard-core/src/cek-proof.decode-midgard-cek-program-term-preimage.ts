@@ -4,7 +4,7 @@ import {
   type MidgardCekDecodedProgramTerm,
   type MidgardCekDecodedProgramValue,
   readExactHashAt,
-} from "./cek-proof.decode-midgard-cek-program-material-da-entry.js";
+} from "./cek-proof.decode-program-material-entry.js";
 import {
   boundedBuiltinTag,
   MidgardCekTermTags,
@@ -33,7 +33,7 @@ export const decodeMidgardCekProgramTermPreimage = (
         tag.nextOffset,
         "cek_program_term.variable.index",
       );
-      uint32(index.value, "cek_program_term.variable.index");
+      uint64(index.value, "cek_program_term.variable.index");
       assertPreimageConsumed(preimage, index.nextOffset, "CEK variable term");
       return { kind: "variable", index: index.value };
     }

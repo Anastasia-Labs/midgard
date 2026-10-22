@@ -12,19 +12,17 @@ export const EXIT_CANNOT_READ = 2;
 export const EXIT_USAGE = 64;
 
 export const SOURCES = Object.freeze({
-  sdkCatalogue: "demo/midgard-sdk/src/fraud-proof/catalogue.ts",
   sdkBuild: "demo/midgard-sdk/src/fraud-proof/contracts/build.ts",
   coreCatalogue:
     "demo/midgard-core/src/deployment-manifest-identity/catalogue-roles.ts",
-  coreReferenceContracts:
-    "demo/midgard-core/src/deployment-manifest-identity/reference-script-contracts.ts",
+  coreMembers:
+    "demo/midgard-core/src/deployment-manifest-identity/members.data.ts",
   coreReferenceTokens:
     "demo/midgard-core/src/deployment-manifest-identity/reference-script-tokens.ts",
   registry:
     "demo/midgard-fault-proofs/src/workflow/family-application-registry.ts",
   linearSpec: "demo/midgard-fault-proofs/src/workflow/linear-family-spec.ts",
   definitions: "demo/midgard-fault-proofs/src/workflow/family-definitions.ts",
-  reasons: "demo/midgard-fault-proofs/src/workflow/reason-disposition.ts",
   classification: "demo/midgard-fault-proofs/src/workflow/classification.ts",
   adapters: "demo/midgard-fault-proofs/src/workflow/adapters.ts",
   catalogueStatus: "docs/fault-proofs/catalogue-status.md",

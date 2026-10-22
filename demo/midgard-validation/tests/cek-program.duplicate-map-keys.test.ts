@@ -1,7 +1,5 @@
-import {
-  decodeMidgardCekProgramMaterialSidecar,
-  verifyMidgardCekProgramMaterial,
-} from "@al-ft/midgard-core";
+import { verifyMidgardCekProgramMaterial } from "@al-ft/midgard-core";
+import { encodeCbor } from "@al-ft/midgard-core";
 import { dataFromCbor } from "@harmoniclabs/plutus-data";
 import { UPLCConst, UPLCEncoder, UPLCProgram } from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
@@ -9,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import { encodeMidgardCekPlutusData } from "../src/cek-constant.js";
 import { commitMidgardCekDataTree } from "../src/cek-data-tree.js";
 import { buildMidgardCanonicalScriptArtifact } from "../src/cek-program.js";
+import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 
 /**
  * A script whose constant holds a Data map with a duplicate key, built the
@@ -41,15 +40,10 @@ describe("a CEK Data constant with a duplicate map key", () => {
 
   it("builds program material the verifier accepts with the same root", () => {
     const source = Buffer.from(DUPLICATE_KEY_MAP_FLAT, "hex");
-    const artifact = buildMidgardCanonicalScriptArtifact({
-      language: "PlutusV3",
-      sourceRawFlatProgramBytes: source,
-    });
+    const program = buildCekProgramFromRawFlat(source);
     const verified = verifyMidgardCekProgramMaterial(
-      artifact.canonicalProgram.envelope,
-      decodeMidgardCekProgramMaterialSidecar(
-        artifact.canonicalMaterialSidecarCbor,
-      ),
+      program.termRoot,
+      program.material.values(),
     );
     expect(verified.constants).toHaveLength(1);
     const [constant] = verified.constants;
@@ -61,7 +55,7 @@ describe("a CEK Data constant with a duplicate map key", () => {
     );
   });
 
-  it("refuses the generic encoder's indefinite map without normalizing it", () => {
+  it("preserves distinct stored spellings with the same local material root", () => {
     const source = Buffer.from(
       UPLCEncoder.compile(
         new UPLCProgram(
@@ -71,11 +65,26 @@ describe("a CEK Data constant with a duplicate map key", () => {
       ),
     );
     expect(source.toString("hex")).toBe("0101004c0106bf01020103ff0001");
-    expect(() =>
+    const build = (flat: Buffer) =>
       buildMidgardCanonicalScriptArtifact({
         language: "PlutusV3",
-        sourceRawFlatProgramBytes: source,
-      }),
-    ).toThrow("V1 requires canonical Flat bytes");
+        sourceRawFlatProgramBytes: flat,
+      });
+    const indefinite = build(source);
+    const definite = build(Buffer.from(DUPLICATE_KEY_MAP_FLAT, "hex"));
+    expect(indefinite.canonicalMidgardCredentialScript.scriptBytes).toEqual(
+      encodeCbor(source),
+    );
+    expect(indefinite.canonicalMidgardCredentialScriptHash).not.toEqual(
+      definite.canonicalMidgardCredentialScriptHash,
+    );
+    const indefiniteProgram = buildCekProgramFromRawFlat(source);
+    const definiteProgram = buildCekProgramFromRawFlat(
+      Buffer.from(DUPLICATE_KEY_MAP_FLAT, "hex"),
+    );
+    expect(indefiniteProgram.termRoot).toEqual(definiteProgram.termRoot);
+    expect([...indefiniteProgram.material.values()]).toEqual([
+      ...definiteProgram.material.values(),
+    ]);
   });
 });

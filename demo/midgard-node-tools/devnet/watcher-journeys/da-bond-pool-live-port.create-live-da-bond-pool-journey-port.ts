@@ -534,7 +534,7 @@ export const createLiveDaBondPoolJourneyPort = async (
     await daBondPoolCommitteeL1({
       runDirectory,
       networkMagic: customNetwork.networkMagic,
-      nonceTxHash: manifest.hubOracleOneShot.txHash,
+      manifest,
     });
   const postgres = {
     database: context.runEnv.MIDGARD_PHASE4_POSTGRES_DATABASE,

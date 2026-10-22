@@ -146,8 +146,8 @@ directory, which the funding sweep reads. Queue rows a previous process left
 queued or active do not defer the cleanup, and a row a crash left with no
 execution is forgotten once its header leaves the queue. A removal that fails
 keeps the rows, is retried by every admission, and is listed in
-`supervisor.objectiveCleanupFailures` in `/v1/status`; it is not a readiness
-reason. Only open objectives count toward the cap of 2,048; at the cap the
+`supervisor.objectiveCleanupFailures` in `/v1/status`, and `/readyz` reports
+`fault_proof_objective_cleanup_failed` until the removal succeeds. Only open objectives count toward the cap of 2,048; at the cap the
 watcher stays up and `/readyz` reports `journal_capacity` until objectives
 complete.
 
@@ -283,7 +283,9 @@ availability journal keeps one workflow per header, so a live challenge never
 holds back another header's Open in the same deployment; it refuses every step
 for a different deployment while any challenge is live. An Open the wallet cannot
 fund is skipped and reported under `openRefused` (header, required and available
-lovelace), and the watcher takes the next step in the same reconciliation, so a
+lovelace, the `shortfall` - `collateral`, `working-capital` or
+`preparation-input` - and a `detail` naming the exact ADA-only input needed),
+and the watcher takes the next step in the same reconciliation, so a
 live challenge's settle, close or Timeout is never starved. A Timeout reads the
 pool at the source tip; when no authentic pool is found there it is skipped for
 that reconciliation and reported under `timeoutsDeferred`, and the next step
@@ -411,14 +413,20 @@ k leaves the watcher up and unready with the `/readyz` reason
 network the automatic watcher journeys run against; it is not a relaxation of
 finality.
 
-`$.l1.origin` is the deployment's L1 origin,
-`{"slot": <n>, "blockHash": "<64 lowercase hex>"}`: the point immediately
-before the block holding the `prepareHubOracleNonce` tx, where the L1 follower
-starts. `midgard-l1-follower find-origin` prints it (see
-[the follower README](../midgard-l1-follower/README.md#origin)). Without it the
-follower holds the watcher unready (`l1_origin_not_configured`). It is operator
-configuration only: it is not part of any profile or manifest and changes no
-deployment identity.
+The L1 follower starts at the verified deployment manifest's recorded
+`l1Origin`, the local node tip the deployer read before it signed the
+hub-oracle nonce. `$.l1.origin`,
+`{"slot": <n>, "blockHash": "<64 lowercase hex>"}`, overrides it. An override
+after the recorded `l1Origin` holds the watcher unready
+(`origin_after_protocol_init`), since its store may lack outputs created
+between the two points; an earlier one is accepted. For a manifest without
+`l1Origin`, `$.l1.origin` is the origin: the point immediately before the
+block holding the `prepareHubOracleNonce` tx, as
+`midgard-l1-follower find-origin` prints it (see
+[the follower README](../midgard-l1-follower/README.md#origin)); with neither,
+the follower holds the watcher unready (`l1_origin_not_configured`).
+`$.l1.origin` is operator configuration only: it is not part of any profile or
+manifest and changes no deployment identity.
 
 `$.l1.finality.depth` stays the manifest's release depth and governs anchoring:
 finalized audit anchors, incident records and evidence stamps. Fault-proof
@@ -552,8 +560,9 @@ measurement does not establish a public-network deadline guarantee. See the
   subsequent inclusion-policy passes require their own recorded provenance.
   The other non-interactive families are verified
   locally, in progress on that harness, or still blocked, not live-accepted.
-  The interactive `validationTraceDispute` family and the trace-relative
-  families have no off-chain workflow in this release.
+  The interactive `validationTraceDispute` family is installed and covered by
+  emulator tests, not by a live journey; the trace-relative families have no
+  off-chain workflow in this release.
 - `pnpm run typecheck`, `pnpm run lint`, and `pnpm test` check this package.
   The tests drive a scripted fake node transport; the sidecar itself is tested
   in `demo/l1-node-transport`.

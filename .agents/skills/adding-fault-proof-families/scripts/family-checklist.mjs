@@ -3,8 +3,8 @@
 // complete family needs are present in the tree.
 //
 // It reads source text, not built output, so it runs without an install or a
-// build. It parses the registries by locating each exported table and reading
-// its keys and string values; it does not evaluate TypeScript.
+// build. It inspects literal registries and the member declarations reached from
+// DEPLOYMENT_MEMBERS; it does not evaluate TypeScript.
 //
 // Exit codes:
 //   0  every gated artifact is present
@@ -15,13 +15,13 @@
 //   64 usage error
 //
 // Gated checks (a missing one is a GAP): catalogue order and a unique 8-hex ID;
-// the core deployment-manifest mirror; a reference-script role and token name
-// for every contract named after the family's first-step contract; the SDK
-// build<Name>Chain with a validator file per blueprint title; a family
+// core protocol identity and complete member coverage of the independent ABI;
+// a reference-script role and token name for every member owned by the family;
+// the SDK build<Name>Chain with a validator file per member title; a family
 // application record; the classification and adapter-registration rows at
 // the catalogue position; a catalogue-status.md row; a devnet journey owner;
 // and at least one fault-proofs test file named after the family.
-// Informational: family definition kind, typed reasons routed here, and which
+// Informational: family definition kind, and which
 // matched tests are lifecycles, assert validator refusal, or record coverage.
 //
 // What it cannot see: whether the validator is correct, whether the emulator

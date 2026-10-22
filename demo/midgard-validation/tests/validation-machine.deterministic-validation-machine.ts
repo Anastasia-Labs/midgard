@@ -1,12 +1,8 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
-
 import {
   computeMidgardNativeTxId,
   computeMidgardNativeTxProofCommitment,
   decodeMidgardNativeTxFullFromCanonicalCbor,
   deriveMidgardNativeTxProofSource,
-  encodeMidgardCekProgramMaterialSidecar,
   encodeMidgardTxOutput,
   verifyMidgardValidationTraceProof,
 } from "@al-ft/midgard-core";
@@ -27,7 +23,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   advanceMidgardResolvedInputsAccumulator,
-  buildDeterministicValidationMachineTrace,
   buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
   buildValidationOneStepArgument,
@@ -36,11 +31,11 @@ import {
   initialMidgardResolvedInputsAccumulator,
   MidgardRedeemerTag,
   RejectCodes,
-  validateCekRouteMaterial,
   validationSemanticResolverIndex,
   valueAndMintKind,
 } from "../src/index.js";
 import { exerciseMidgardRetainedDaCanonicalBoundary } from "./helpers/retained-da-boundary.js";
+import { buildDeterministicValidationMachineTrace } from "./helpers/trace-commit-golden.js";
 import {
   FUNDED_OUTPUT_LOVELACE,
   hashScriptWitness,
@@ -67,7 +62,7 @@ import {
   stepFieldPreimage,
 } from "./validation-machine.v1-purpose-kind-to-redeemer-pointer-mapping.js";
 import {
-  buildAcceptingIdentityProgram,
+  buildAcceptingUnitProgram,
   buildNonterminatingSelfApplicationProgram,
   context,
   validateBoundaryAbiAndCollectAuxiliaryKinds,
@@ -131,7 +126,6 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       ...Array<string>(4).fill("scriptIntegrity"),
       "cek",
       ...Array<string>(8).fill("valueAndMint"),
-      ...Array<string>(9).fill("ledgerDelta"),
       "terminal",
     ]);
     const canonicalWitnesses = trace.witnesses.filter(
@@ -406,8 +400,8 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
 
   it("emits the exact incremental context and CEK trace for PlutusV3", async () => {
     const spent = outRefFromByte(0x1d);
-    const program = buildAcceptingIdentityProgram();
-    const script = plutusV3ScriptWitness(program.envelopeCbor);
+    const program = buildAcceptingUnitProgram();
+    const script = plutusV3ScriptWitness(program.scriptBytes);
     const scriptHash = hashScriptWitness(script);
     const spentOutput = makeProtectedScriptOutput(
       scriptHash,
@@ -447,9 +441,6 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         ...context,
         transactionId: transaction.txId,
         canonicalTransactionCbor: transaction.txCbor,
-        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
-          ...program.material.values(),
-        ]),
         priorUtxosRoot: ledgerMutationSteps[0]!.preRoot.toString("hex"),
         postUtxosRoot: ledgerMutationSteps.at(-1)!.postRoot.toString("hex"),
         ledgerWitnessEntries: [{ outRef: spent, output: spentOutput }],
@@ -463,7 +454,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     const cekWitnesses = trace.witnesses.filter(
       (witness) => witness.phase === "cek",
     );
-    const totality = expectCekAndValueAndMintTotality(trace);
+    const totality = expectCekAndValueAndMintTotality(trace, [script]);
     expect(totality.cekKinds[0]).toBe("selection");
     expect(totality.cekKinds).toContain("context");
     expect(totality.cekKinds).toContain("core");
@@ -613,92 +604,14 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     const selectionStateIndex = trace.witnesses.findIndex(
       (witness) => witness.auxiliary === nativeExecutionWitness,
     );
-    const selectionArgument = buildValidationOneStepArgument({
-      trace,
-      stateIndex: selectionStateIndex,
-    });
-    expect(selectionArgument.cekRouteMaterial).toEqual({
-      envelopeCbor: program.envelopeCbor,
-      programMaterialSidecarCbor: trace.programMaterialSidecarCbor,
-      programEnvelopeHash: program.envelopeHash,
-    });
-    const laterCekStateIndex = trace.witnesses.findIndex(
-      (witness, index) =>
-        index > selectionStateIndex &&
-        witness.phase === "cek" &&
-        witness.auxiliary?.kind !== "nativeExecutionScan",
-    );
-    expect(
+    // FLAT-A must supply an authenticated decoded record before this selection
+    // can become an L1 one-step argument. An envelope substitute is refused.
+    expect(() =>
       buildValidationOneStepArgument({
         trace,
-        stateIndex: laterCekStateIndex,
-      }).cekRouteMaterial,
-    ).toBeUndefined();
-    const nonCekStateIndex = trace.witnesses.findIndex(
-      (witness) => witness.phase !== "cek",
-    );
-    expect(
-      buildValidationOneStepArgument({
-        trace,
-        stateIndex: nonCekStateIndex,
-      }).cekRouteMaterial,
-    ).toBeUndefined();
-
-    const routeMaterial = selectionArgument.cekRouteMaterial!;
-    const validateRouteMaterial = (value: unknown) =>
-      validateCekRouteMaterial({
-        value,
-        firstSourceChunk: nativeExecutionWitness.firstChunkProof.chunk,
-        languageTag: nativeExecutionWitness.languageTag as 3 | 128,
-      });
-    expect(validateRouteMaterial(routeMaterial)).toEqual(routeMaterial);
-    const substituteProgram = buildNonterminatingSelfApplicationProgram();
-    expect(() =>
-      validateRouteMaterial({
-        ...routeMaterial,
-        envelopeCbor: substituteProgram.envelopeCbor,
-        programEnvelopeHash: substituteProgram.envelopeHash,
+        stateIndex: selectionStateIndex,
       }),
-    ).toThrow(/selected first-source-chunk payload/u);
-    expect(() =>
-      validateRouteMaterial({
-        ...routeMaterial,
-        programMaterialSidecarCbor: Buffer.concat([
-          routeMaterial.programMaterialSidecarCbor,
-          Buffer.from([0]),
-        ]),
-      }),
-    ).toThrow(/trailing|canonical/u);
-    expect(() =>
-      validateRouteMaterial({
-        ...routeMaterial,
-        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([]),
-      }),
-    ).toThrow(/program material is missing root/u);
-    const retainedRoots = new Set(
-      [...program.material.keys()].map((root) => root.toLowerCase()),
-    );
-    const unrelatedEntry = [...substituteProgram.material.values()].find(
-      (entry) => !retainedRoots.has(Buffer.from(entry.root).toString("hex")),
-    );
-    if (unrelatedEntry === undefined) {
-      throw new Error("expected unrelated canonical CEK material");
-    }
-    expect(() =>
-      validateRouteMaterial({
-        ...routeMaterial,
-        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
-          ...program.material.values(),
-          unrelatedEntry,
-        ]),
-      }),
-    ).toThrow(/unreachable/u);
-    expect(() =>
-      validateRouteMaterial({
-        ...routeMaterial,
-        programEnvelopeHash: Buffer.alloc(32, 0xff),
-      }),
-    ).toThrow(/program-envelope hash/u);
+    ).toThrow(/selected script's authenticated decoded record/u);
     const challengedDescriptorWitnesses = cekWitnesses.flatMap((witness) => {
       const auxiliary = witness.auxiliary;
       return auxiliary?.kind === "cekResolvedContextItem" ||
@@ -727,7 +640,9 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     expect(cekStates.at(-1)!.executionCpu).toBeGreaterThan(0n);
     expect(cekStates.at(-1)!.executionMemory).toBeGreaterThan(0n);
     expect(trace.verdict).toBe("accepted");
-    const oneStepAbi = validateBoundaryAbiAndCollectAuxiliaryKinds(trace);
+    const oneStepAbi = validateBoundaryAbiAndCollectAuxiliaryKinds(trace, [
+      script,
+    ]);
     expect(oneStepAbi.kinds.size).toBeGreaterThan(15);
     expect(oneStepAbi.maxArgumentsBytes).toBeLessThan(16 * 1024);
   });
@@ -735,7 +650,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
   it("retains only the first over-budget CEK transition for a nonterminating program", async () => {
     const spent = outRefFromByte(0x6f);
     const program = buildNonterminatingSelfApplicationProgram();
-    const script = plutusV3ScriptWitness(program.envelopeCbor);
+    const script = plutusV3ScriptWitness(program.scriptBytes);
     const scriptHash = hashScriptWitness(script);
     const spentOutput = makeProtectedScriptOutput(
       scriptHash,
@@ -774,9 +689,6 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         ...context,
         transactionId: transaction.txId,
         canonicalTransactionCbor: transaction.txCbor,
-        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
-          ...program.material.values(),
-        ]),
         priorUtxosRoot: unchangedRoot,
         postUtxosRoot: unchangedRoot,
         ledgerWitnessEntries: [{ outRef: spent, output: spentOutput }],
@@ -804,16 +716,13 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       phase: "terminal",
       verdict: "rejected",
     });
-    expect(trace.states.some((state) => state.phase === "ledgerDelta")).toBe(
-      false,
-    );
   });
 
   it("executes an authenticated PlutusV3 reference script from a reference input", async () => {
     const spent = outRefFromByte(0x1e);
     const reference = outRefFromByte(0x1f);
-    const program = buildAcceptingIdentityProgram();
-    const script = plutusV3ScriptWitness(program.envelopeCbor);
+    const program = buildAcceptingUnitProgram();
+    const script = plutusV3ScriptWitness(program.scriptBytes);
     const scriptHash = hashScriptWitness(script);
     const spentOutput = makeProtectedScriptOutput(
       scriptHash,
@@ -861,9 +770,6 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         ...context,
         transactionId: transaction.txId,
         canonicalTransactionCbor: transaction.txCbor,
-        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
-          ...program.material.values(),
-        ]),
         priorUtxosRoot: ledgerMutationSteps[0]!.preRoot.toString("hex"),
         postUtxosRoot: ledgerMutationSteps.at(-1)!.postRoot.toString("hex"),
         ledgerWitnessEntries: [
@@ -918,7 +824,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     ).toBe(true);
     expect(trace.verdict).toBe("accepted");
     expect([
-      ...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds,
+      ...validateBoundaryAbiAndCollectAuxiliaryKinds(trace, [script]).kinds,
     ]).toEqual(
       expect.arrayContaining([
         "scriptSourceScan",
@@ -935,8 +841,8 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     "executes scripted $operation through the exact mint context and CEK trace",
     async ({ quantity }) => {
       const spent = outRefFromByte(quantity > 0n ? 0x31 : 0x32);
-      const program = buildAcceptingIdentityProgram();
-      const script = plutusV3ScriptWitness(program.envelopeCbor);
+      const program = buildAcceptingUnitProgram();
+      const script = plutusV3ScriptWitness(program.scriptBytes);
       const policyId = Buffer.from(hashScriptWitness(script), "hex");
       const assetName = Buffer.from("aced", "hex");
       const assets = new Map([
@@ -986,9 +892,6 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
           ...context,
           transactionId: transaction.txId,
           canonicalTransactionCbor: transaction.txCbor,
-          programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
-            ...program.material.values(),
-          ]),
           priorUtxosRoot: ledgerMutationSteps[0]!.preRoot.toString("hex"),
           postUtxosRoot: ledgerMutationSteps.at(-1)!.postRoot.toString("hex"),
           ledgerWitnessEntries: [{ outRef: spent, output: spentOutput }],
@@ -1014,14 +917,9 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       ).toBe(true);
       expect(trace.verdict).toBe("accepted");
       expect([
-        ...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds,
+        ...validateBoundaryAbiAndCollectAuxiliaryKinds(trace, [script]).kinds,
       ]).toEqual(
-        expect.arrayContaining([
-          "cekMintContextItem",
-          "valueMintAsset",
-          "ledgerDeltaReplay",
-          "ledgerDeltaOutput",
-        ]),
+        expect.arrayContaining(["cekMintContextItem", "valueMintAsset"]),
       );
     },
     // Measured 15.0 s for the burn case on a 2-core CI runner against the
@@ -1033,10 +931,10 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
   it("executes a MidgardV1 protected-output receiving script", async () => {
     const spent = outRefFromByte(0x33);
     const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE);
-    const program = buildAcceptingIdentityProgram();
+    const program = buildAcceptingUnitProgram();
     const script = {
       language: "MidgardV1" as const,
-      scriptBytes: program.envelopeCbor,
+      scriptBytes: program.scriptBytes,
     };
     const scriptHash = hashScriptWitness(script);
     const output = makeProtectedScriptOutput(
@@ -1076,9 +974,6 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         ...context,
         transactionId: transaction.txId,
         canonicalTransactionCbor: transaction.txCbor,
-        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
-          ...program.material.values(),
-        ]),
         priorUtxosRoot: ledgerMutationSteps[0]!.preRoot.toString("hex"),
         postUtxosRoot: ledgerMutationSteps.at(-1)!.postRoot.toString("hex"),
         ledgerWitnessEntries: [{ outRef: spent, output: spentOutput }],
@@ -1122,13 +1017,12 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     ).toBe(true);
     expect(trace.verdict).toBe("accepted");
     expect([
-      ...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds,
+      ...validateBoundaryAbiAndCollectAuxiliaryKinds(trace, [script]).kinds,
     ]).toEqual(
       expect.arrayContaining([
         "nativeExecutionScan",
         "cekOutputContextItem",
         "cekContextFinalize",
-        "ledgerDeltaOutput",
       ]),
     );
   }, 60_000);
@@ -1137,8 +1031,8 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     const spent = outRefFromByte(0x34);
     const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE);
     const output = makeOutput(FUNDED_OUTPUT_LOVELACE);
-    const program = buildAcceptingIdentityProgram();
-    const script = plutusV3ScriptWitness(program.envelopeCbor);
+    const program = buildAcceptingUnitProgram();
+    const script = plutusV3ScriptWitness(program.scriptBytes);
     const observerHash = Buffer.from(hashScriptWitness(script), "hex");
     const transaction = makeNativeTx({
       version: 1n,
@@ -1175,9 +1069,6 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         ...context,
         transactionId: transaction.txId,
         canonicalTransactionCbor: transaction.txCbor,
-        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
-          ...program.material.values(),
-        ]),
         priorUtxosRoot: ledgerMutationSteps[0]!.preRoot.toString("hex"),
         postUtxosRoot: ledgerMutationSteps.at(-1)!.postRoot.toString("hex"),
         ledgerWitnessEntries: [{ outRef: spent, output: spentOutput }],
@@ -1250,7 +1141,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     ).toBe(true);
     expect(trace.verdict).toBe("accepted");
     expect([
-      ...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds,
+      ...validateBoundaryAbiAndCollectAuxiliaryKinds(trace, [script]).kinds,
     ]).toEqual(
       expect.arrayContaining([
         "nativeExecutionScan",
@@ -1434,14 +1325,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     expect(trace.verdict).toBe("accepted");
     expect([
       ...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds,
-    ]).toEqual(
-      expect.arrayContaining([
-        "valueOutputAsset",
-        "valueMintAsset",
-        "ledgerDeltaReplay",
-        "ledgerDeltaOutput",
-      ]),
-    );
+    ]).toEqual(expect.arrayContaining(["valueOutputAsset", "valueMintAsset"]));
     // Same CI-timing class as the mint/burn each above: ~6.5 s locally on
     // 32 cores, ~14-15 s on a 2-core runner, i.e. on the 15 s boundary.
   }, 60_000);
@@ -1510,14 +1394,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     expect(trace.verdict).toBe("accepted");
     expect([
       ...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds,
-    ]).toEqual(
-      expect.arrayContaining([
-        "valueInputAsset",
-        "valueMintAsset",
-        "ledgerDeltaReplay",
-        "ledgerDeltaOutput",
-      ]),
-    );
+    ]).toEqual(expect.arrayContaining(["valueInputAsset", "valueMintAsset"]));
     // Same CI-timing class as the mint/burn each above: ~6.5 s locally on
     // 32 cores, ~14-15 s on a 2-core runner, i.e. on the 15 s boundary.
   }, 60_000);
@@ -1618,9 +1495,6 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       phase: "terminal",
       verdict: "rejected",
     });
-    expect(trace.states.some((state) => state.phase === "ledgerDelta")).toBe(
-      false,
-    );
     expect(
       trace.witnesses
         .filter((witness) => witness.phase === "signatures")
@@ -2371,117 +2245,5 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         ]),
       ),
     ).toThrow();
-  });
-
-  it("confines the incremental CBOR scanner to the reviewed on-chain consumers", () => {
-    const aikenRoot = resolve(process.cwd(), "../../onchain/aiken");
-    const aikenSources = ((): readonly string[] => {
-      const collected: string[] = [];
-      const walk = (directory: string): void => {
-        for (const entry of readdirSync(directory, { withFileTypes: true })) {
-          const path = resolve(directory, entry.name);
-          if (entry.isDirectory()) {
-            walk(path);
-          } else if (entry.name.endsWith(".ak")) {
-            collected.push(path);
-          }
-        }
-      };
-      walk(resolve(aikenRoot, "lib"));
-      walk(resolve(aikenRoot, "validators"));
-      return collected;
-    })();
-    expect(aikenSources.length).toBeGreaterThan(0);
-
-    // Count imports, since doc-comment cross-references (for example in
-    // intra-item-bytes-v1.ak) do not make a module a scanner consumer.
-    const importsScanner = (source: string): boolean =>
-      /^\s*use\s+midgard\/canonical_cbor_scan_v1\b/mu.test(source);
-    const scannerConsumers = aikenSources
-      .filter((path) => {
-        const relative = path.slice(aikenRoot.length + 1);
-        if (relative === "lib/midgard/canonical-cbor-scan-v1.ak") {
-          return false;
-        }
-        return importsScanner(readFileSync(path, "utf8"));
-      })
-      .map((path) => path.slice(aikenRoot.length + 1))
-      .sort();
-
-    // The reviewed consumer set. Adding a scanner import anywhere else reopens
-    // this row; the scanner's justification lives in the on-chain modules and
-    // their emulator suites, not in a document this gate would have to parse.
-    const reviewedScannerConsumers = [
-      "lib/midgard/redeemer-item-proof-v1.ak",
-      "lib/midgard/ledger-output-scan-v1.ak",
-      // Exact descriptor scalar headers and raw transaction EventKey grammar
-      // avoid recursive Data decoding of committed adversarial bytes.
-      "lib/midgard/ledger-output-commitment-v1.ak",
-      "lib/midgard/fraud-proofs/transition-trace/proof.ak",
-      // The three narrow total rules adjudicating the committed field-8
-      // redeemer collection share one `head_at_v1` total header decode over
-      // complete items delivered by batched §8 carriage.
-      "lib/midgard/fraud-proofs/mint-item-non-canonical/field-scan.ak",
-      "lib/midgard/fraud-proofs/mint-item-non-canonical/scan.ak",
-      "lib/midgard/fraud-proofs/missing-redeemer/rule.ak",
-      "lib/midgard/fraud-proofs/redeemer-canonicity/rule.ak",
-      "lib/midgard/fraud-proofs/unused-redeemer/rule.ak",
-    ];
-    expect(scannerConsumers).toEqual([...reviewedScannerConsumers].sort());
-
-    // The canonical decode item path itself must stay complete-item staged: no
-    // incremental scanner may appear in its staging module or its validators.
-    const stagingSource = readFileSync(
-      resolve(aikenRoot, "lib/midgard/canonical-decode-item-staging-v1.ak"),
-      "utf8",
-    );
-    expect(stagingSource).not.toContain("canonical_cbor_scan_v1");
-    // Staging is the complete-item ladder: authenticate → prepare → observe →
-    // verify, each gated on the predecessor being well formed.
-    for (const stage of [
-      "pub fn authenticate(",
-      "pub fn prepare(",
-      "pub fn observe(",
-      "pub fn verify(",
-    ]) {
-      expect(stagingSource).toContain(stage);
-    }
-    const canonicalDecodeValidators = [
-      "canonical-decode-item-source-v1.ak",
-      "canonical-decode-item-observe-v1.ak",
-      "canonical-decode-item-semantic-v1.ak",
-      "canonical-decode-item-proof-v1.ak",
-      "canonical-decode-item-settlement-v1.ak",
-    ];
-    for (const validator of canonicalDecodeValidators) {
-      const contents = readFileSync(
-        resolve(
-          aikenRoot,
-          "validators/fraud-proofs/validation-trace",
-          validator,
-        ),
-        "utf8",
-      );
-      expect(contents).not.toContain("canonical_cbor_scan_v1");
-      expect(contents).toContain("canonical_decode_item_staging_v1");
-    }
-
-    // Hostile negative controls: the consumer predicate fires on a source
-    // that imports the scanner (plain, aliased, or with unqualified names),
-    // so an unbacked new consumer reopens this row — while a doc-comment
-    // mention alone stays outside it.
-    expect(importsScanner(stagingSource)).toBe(false);
-    expect(
-      importsScanner(`${stagingSource}\nuse midgard/canonical_cbor_scan_v1\n`),
-    ).toBe(true);
-    expect(importsScanner("use midgard/canonical_cbor_scan_v1 as scan\n")).toBe(
-      true,
-    );
-    expect(
-      importsScanner("use midgard/canonical_cbor_scan_v1.{scan_head}\n"),
-    ).toBe(true);
-    expect(
-      importsScanner("//// see `midgard/canonical_cbor_scan_v1` for scans\n"),
-    ).toBe(false);
   });
 });

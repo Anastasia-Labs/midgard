@@ -24,11 +24,11 @@ import {
   submitMintAuthorizationStep04ResolveNext,
   submitMintAuthorizationStep05,
 } from "../../src/mint-authorization/index.js";
-import type { VanRossemFitMeasurement } from "../../src/proof-fit/van-rossem-fit-ledger.js";
 import { publishProofChunks } from "../../src/publish-proof-chunks.js";
 import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.js";
 import { submitResolvedInit } from "../../src/submit-init.js";
 import { commitCountedRoot } from "../../src/transition-trace/phas.js";
+import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import { createStructuredDataPreimageRequirement } from "../../src/workflow/raw-datum-preimage.js";
 import { captureEmulatorSubmission } from "./emulator/measurement.js";
 import { publishFaultProofWitnessReferenceScripts } from "./emulator/reference-scripts.js";
@@ -55,13 +55,11 @@ export const runMintAuthorizationProofMaximum = async (
     ReturnType<typeof mintAuthorizationMaximumMintField>,
     "mintItemCbors" | "targetPolicyIndex"
   >,
-  scenario = "maximum-proofs",
-): Promise<VanRossemFitMeasurement[]> => {
+): Promise<void> => {
+  const ownOutputs = createOwnOutputJournal();
   const h = await makeMintAuthorizationEmulatorHarness();
-  const measurements: VanRossemFitMeasurement[] = [];
   const capture = async <T>(
     stage: string,
-    kind: "publication" | "lifecycle",
     operation: () => Promise<T>,
   ): Promise<T> => {
     const result = await captureEmulatorSubmission(h.emulator, operation).catch(
@@ -69,19 +67,11 @@ export const runMintAuthorizationProofMaximum = async (
         throw new Error(`${stage}: ${inspect(cause, { depth: 20 })}`);
       },
     );
-    result.measurements.forEach((m, index) =>
-      measurements.push({
-        name: `${scenario}/${stage}/${index}`,
-        kind,
-        maximumShape: `64-branch source/event/transition/ledger openings; ${selectedMint === undefined ? "maximum mint-field tail" : "32768-byte selected asset map"}`,
-        signedBytes: m.completeSignedBytes,
-        memoryUnits: m.executionMemory,
-        cpuUnits: m.executionSteps,
-      }),
-    );
     return result.result;
   };
-  const reference = referenceInputItemCbor({
+  // The deep ledger opening is a spent input: step-04 closes the empty
+  // reference-input field and then resolves it in field 0.
+  const spent = referenceInputItemCbor({
     txIdHex: "cd".repeat(32),
     outputIndex: 2,
   });
@@ -90,14 +80,14 @@ export const runMintAuthorizationProofMaximum = async (
     outputIndex: 2,
   });
   const ledgerProof = syntheticDeepMembershipProof({
-    key: Buffer.from(reference, "hex"),
+    key: Buffer.from(spent, "hex"),
     value: Buffer.from(ledger.descriptorCbor, "hex"),
     branchLevels: 64,
   });
   const mint = selectedMint ?? mintAuthorizationMaximumMintField();
   const subject = buildMintAuthorizationSubject({
     mintItemCbors: mint.mintItemCbors,
-    referenceInputItemCbors: [reference],
+    spendInputItemCbors: [spent],
   });
   let claimEvidence:
     | Awaited<ReturnType<typeof buildMintAuthorizationStep02Evidence>>
@@ -191,7 +181,7 @@ export const runMintAuthorizationProofMaximum = async (
   });
   if (claimEvidence === undefined || block.txInclusion === null)
     throw new Error("missing maximum openings");
-  const refs = await capture("publish", "publication", async () => {
+  const refs = await capture("publish", async () => {
     const witnesses = await publishFaultProofWitnessReferenceScripts({
       lucid: h.proverLucid,
       realBlueprint: h.realBlueprint,
@@ -213,7 +203,7 @@ export const runMintAuthorizationProofMaximum = async (
     ).utxo;
     return { witnesses, steps, certificate };
   });
-  const chunks = await capture("source-publications", "publication", () =>
+  const chunks = await capture("source-publications", () =>
     publishProofChunks({
       lucid: h.proverLucid,
       network,
@@ -229,7 +219,7 @@ export const runMintAuthorizationProofMaximum = async (
     nativeTxCompactCbor: block.nativeTxCompactCbor,
     witnessSet: subject.witnessSetCompact,
   };
-  const init = await capture("init", "lifecycle", () =>
+  const init = await capture("init", () =>
     submitResolvedInit({
       label: MINT_AUTHORIZATION_CATEGORY_LABEL,
       ...common,
@@ -246,7 +236,7 @@ export const runMintAuthorizationProofMaximum = async (
       witnessReferenceScripts: refs.witnesses,
     }),
   );
-  const one = await capture("step_01", "lifecycle", () =>
+  const one = await capture("step_01", () =>
     submitMintAuthorizationStep01({
       ...common,
       blueprint: h.realBlueprint,
@@ -268,8 +258,9 @@ export const runMintAuthorizationProofMaximum = async (
     owner: h.proverSigner.paymentKeyHash,
     label: "maximum mint field with maximum proofs",
   });
-  const field = await capture("field-publications", "publication", () =>
+  const field = await capture("field-publications", () =>
     publishFaultProofFieldCarriage({
+      ownOutputs,
       lucid: h.proverLucid,
       signer: h.proverSigner,
       planned,
@@ -277,8 +268,9 @@ export const runMintAuthorizationProofMaximum = async (
       label: "maximum mint field",
     }),
   );
-  const certified = await capture("field-certificate", "lifecycle", () =>
+  const certified = await capture("field-certificate", () =>
     certifyFaultProofFieldCarriage({
+      ownOutputs,
       lucid: h.proverLucid,
       network,
       signer: h.proverSigner,
@@ -309,7 +301,7 @@ export const runMintAuthorizationProofMaximum = async (
   );
   const requirement = createStructuredDataPreimageRequirement({ preimageHex });
   const evidenceReferences: UTxO[] = [];
-  await capture("claim-publications", "publication", async () => {
+  await capture("claim-publications", async () => {
     for (const datum of requirement.publicationDatums) {
       const signed = await (
         await h.proverLucid
@@ -333,8 +325,9 @@ export const runMintAuthorizationProofMaximum = async (
       evidenceReferences.push(found);
     }
   });
-  const two = await capture("step_02", "lifecycle", () =>
+  const two = await capture("step_02", () =>
     submitMintAuthorizationStep02({
+      ownOutputs,
       ...common,
       threadOutRef: one.nextThreadOutRef,
       reconstruction: block.reconstruction,
@@ -348,7 +341,7 @@ export const runMintAuthorizationProofMaximum = async (
       referenceScriptUtxo: refs.steps[1],
     }),
   );
-  const three = await capture("step_03", "lifecycle", () =>
+  const three = await capture("step_03", () =>
     submitMintAuthorizationStep03WitnessAbsence({
       ...common,
       threadOutRef: two.nextThreadOutRef,
@@ -356,11 +349,23 @@ export const runMintAuthorizationProofMaximum = async (
       referenceScriptUtxo: refs.steps[2],
     }),
   );
-  const four = await capture("step_04", "lifecycle", () =>
+  const inputFields = {
+    referenceInputsItemCbors: subject.referenceInputItemCbors,
+    spendInputsItemCbors: subject.spendInputItemCbors,
+  };
+  const references = await capture("step_04-complete-references", () =>
+    submitMintAuthorizationStep04AdvanceComplete({
+      ...common,
+      ...inputFields,
+      threadOutRef: three.nextThreadOutRef,
+      referenceScriptUtxo: refs.steps[3],
+    }),
+  );
+  const four = await capture("step_04", () =>
     submitMintAuthorizationStep04ResolveNext({
       ...common,
-      threadOutRef: three.nextThreadOutRef,
-      referenceInputsItemCbors: subject.referenceInputItemCbors,
+      ...inputFields,
+      threadOutRef: references.nextThreadOutRef,
       trie: {
         rootHex: ledgerProof.transactionsPhasRoot,
         prove: async () => Buffer.from(ledgerProof.proofCbor, "hex"),
@@ -369,15 +374,15 @@ export const runMintAuthorizationProofMaximum = async (
       referenceScriptUtxo: refs.steps[3],
     }),
   );
-  const final = await capture("step_04-complete", "lifecycle", () =>
+  const final = await capture("step_04-complete", () =>
     submitMintAuthorizationStep04AdvanceComplete({
       ...common,
+      ...inputFields,
       threadOutRef: four.nextThreadOutRef,
-      referenceInputsItemCbors: subject.referenceInputItemCbors,
       referenceScriptUtxo: refs.steps[3],
     }),
   );
-  const proof = await capture("step_05", "lifecycle", () =>
+  const proof = await capture("step_05", () =>
     submitMintAuthorizationStep05({
       ...common,
       threadOutRef: final.nextThreadOutRef,
@@ -391,14 +396,14 @@ export const runMintAuthorizationProofMaximum = async (
       proof.fraudProofUnit,
     ),
   ).toHaveLength(1);
-  const removal = await capture("publish-removal", "publication", () =>
+  const removal = await capture("publish-removal", () =>
     publishRemovalReferenceScripts({
       lucid: h.proverLucid,
       contracts: h.contracts,
     }),
   );
   const now = BigInt(h.emulator.now());
-  await capture("remove", "lifecycle", () =>
+  await capture("remove", () =>
     submitRemoveFraudulentBlock({
       lucid: h.proverLucid,
       blueprint: h.realBlueprint,
@@ -421,5 +426,4 @@ export const runMintAuthorizationProofMaximum = async (
       setup.stateQueueBlockUnit,
     ),
   ).toHaveLength(0);
-  return measurements;
 };

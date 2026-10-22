@@ -33,6 +33,7 @@ export {
   parseMidgardCekDataLargeConstructorSyntax,
 } from "./cek-data-integer.js";
 export * from "./cek-data-traverse.js";
+export * from "./cek-memory-size.js";
 export * from "./cek-proof.js";
 export * from "./cek-semantic.js";
 export {
@@ -58,6 +59,7 @@ export * from "./da-payload-sizing.js";
 export * from "./da-request-deadline.js";
 export * from "./da-transport.js";
 export * from "./deployment-manifest-identity.js";
+export * from "./ed25519-ledger-signature.js";
 export * from "./error-format.js";
 export * from "./hex.js";
 export * from "./l1-origin.js";
@@ -72,6 +74,7 @@ export * from "./out-ref.js";
 export * from "./plutus-data-cbor.js";
 export * from "./redeemer-item-proof.js";
 export * from "./retention-window.js";
+export * from "./script-budgets.js";
 export * from "./script-proof.js";
 export * from "./validation-dispute.js";
 export * from "./validation-merkle.js";

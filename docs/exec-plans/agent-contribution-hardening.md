@@ -51,7 +51,7 @@ Stock Aiken `v1.1.22+39d6b04` compiles unsound expect-decoders. CI builds the
 patched fork, but locally every script ran whatever `aiken` was on PATH, and on
 2026-09-25 that was stock.
 
-- [x] **W0.1 One source for the compiler pin.** `onchain/aiken/scripts/pinned-compiler.mjs`
+- [x] **W0.1 One source for the compiler pin.** `onchain/aiken/scripts/pinned-compiler.mjs` <!-- doc-links:historical -->
       reads `AIKEN_FORK_VERSION` from both workflows and fails if they disagree. (S)
 - [x] **W0.2 Check the compiler identity before any local compile, format or
       test.** This covers `run-focused-check.mjs`, `guard-focused-selector.mjs` and
@@ -165,7 +165,9 @@ patched fork, but locally every script ran whatever `aiken` was on PATH, and on
     either deleted or derived from the files.
   - **Done:** all 10 run, each even after another goes red, and
     `scripts/ci/exec-ledgers-wired.test.mjs` derives the claim from the files.
-    Only native-script-scan and tx-order-mint pass at `71e605e46`.
+    Only native-script-scan and tx-order-mint pass at `71e605e46`. The ledgers,
+    their verifiers and that test were deleted on 2026-10-16, when execution
+    costs became script-budget ceilings. <!-- doc-links:historical -->
 - [x] **W1.6 Run the repository's own tool tests in CI.** (S)
   - **Today:** `run-focused-check.test.mjs`, `guard-focused-selector.test.mjs`,
     `pinned-compiler.test.mjs` and

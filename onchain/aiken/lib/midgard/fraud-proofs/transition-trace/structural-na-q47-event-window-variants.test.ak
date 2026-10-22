@@ -24,6 +24,7 @@
 //// This module declares no validator, no catalogue category and no builder —
 //// that absence is itself part of the structural claim.
 
+use aiken/builtin
 use aiken/cbor
 use aiken/merkle_patricia_forestry as mpf
 use aiken/primitive/bytearray
@@ -193,8 +194,8 @@ fn withdrawal_info(
 }
 
 /// The L1 withdrawal order always carries `WithdrawalIsValid` at mint
-/// (validators/user-events/withdrawal.ak), so the authenticated reference
-/// datum is pinned to that tag here.
+/// (`user_events/history.history` admits it through `order_facts.admit`), so
+/// the authenticated reference datum is pinned to that tag here.
 fn withdrawal_reference_input(inclusion_time: Int) -> Input {
   history.order_reference(
     h28_a,
@@ -239,7 +240,7 @@ fn withdrawal_source_membership(
 // ### Forced-transaction fixtures
 
 fn empty_native_transaction() -> native_types.MidgardTransaction {
-  let empty_mint: Data = []
+  let empty_mint: Data = builtin.list_data([])
   native_types.MidgardTransaction {
     version: native_types.native_tx_version_v1,
     validity: native_types.TxIsValid,

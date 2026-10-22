@@ -91,9 +91,11 @@ const tx = await midgard
   .complete();
 ```
 
-Raw canonical UPLC 1.1.0 authoring bytes are converted to the V1 committed CEK
-program envelope. The builder retains the authenticated program-material
-sidecar needed by admission, validation, DA, and fault-proof construction.
+Non-native script byte arguments contain the stored script: one CBOR byte
+string wrapping the Flat program. The builder preserves those bytes for script
+identity and carries them in the transaction witness or reference output.
+Admission and replay use those carried bytes; dispute tooling derives CEK
+material locally when it needs a trace.
 
 ## Partial Signing
 

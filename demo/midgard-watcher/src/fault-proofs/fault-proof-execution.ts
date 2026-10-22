@@ -3,7 +3,6 @@ import { mkdir, realpath } from "node:fs/promises";
 import {
   assertWorkflowActuationPermitIdentity,
   FraudProofL1CheckpointChangedError,
-  FraudProofL1RefusedError,
   FraudProofL1UnavailableError,
   type FraudProofWorkflowJournalEntry,
   type FraudProofWorkflowTerminal,
@@ -30,11 +29,22 @@ import type {
   WatcherFaultProofApplication,
   WatcherInstalledWorkflowCategory,
 } from "./fault-proof-application.js";
+import * as stall from "./fault-proof-continuation-stall.js";
+import {
+  holdWatcherFaultProofOnReplay,
+  l1RefusalOf,
+} from "./fault-proof-execution-holds.js";
+import { holdWatcherFaultProofOnFunding } from "./fault-proof-funding-hold.js";
 import {
   type WatcherProofObjective,
   watcherProofObjectiveDirectory,
 } from "./fault-proof-objective-journal.js";
-import { holdWatcherFaultProofForResubmission } from "./fault-proof-resubmission-hold.js";
+import {
+  isWatcherFaultProofQuarantined,
+  quarantineCause,
+  quarantineWatcherFaultProof,
+  settleWatcherFaultProofQuarantine,
+} from "./fault-proof-quarantine.js";
 import type { WatcherFaultProofJob } from "./fault-proof-supervisor.js";
 import { isWatcherPreflightStalledResult } from "./preflight-stall-retry.js";
 import { isWatcherProofDecisionMissingError } from "./watcher-decision-hold.js";
@@ -77,10 +87,14 @@ export type WatcherFaultProofExecution = Readonly<{
     readonly admission: WatcherFaultProofExecutionAdmission;
   }): Promise<WatcherFaultProofExecutionOutcome>;
   /**
-   * Objectives held on an L1 read the source refused
-   * (`fault_proof_l1_refused:<reason>`) or need a new submission after their
-   * latest safe start (`fault_proof_resubmission_required`), until the next run
-   * or completion check meets something else, or the objective is settled.
+   * Objectives held on a refused L1 read, a resubmission due after the latest
+   * safe start, a stalled session, unfunded prover wallet, quarantined run or
+   * held script re-execution (`fault_proof_l1_refused:<reason>`,
+   * `fault_proof_resubmission_required`, `fault_proof_continuation_stalled`,
+   * `prover_funding_unavailable`, `fault_proof_objective_quarantined`,
+   * `validation_trace_replay_held`), until a run or completion check
+   * meets something else, a stalled one's later run journals progress, or it
+   * is settled.
    */
   readiness(): readonly Readonly<{ reason: string; detail: string }>[];
   /**
@@ -91,23 +105,11 @@ export type WatcherFaultProofExecution = Readonly<{
   objectiveSettled(objective: WatcherProofObjective): void;
 }>;
 
-// Only failures from this adapter's read-only provider calls receive transport
-// retry semantics. Arbitrary runner exceptions and authentication errors do not.
-// It is an L1 unavailability, so the workflow hands it back from any step
-// instead of stalling on it.
+// Only this adapter's read-only provider failures get transport retry; runner
+// exceptions and authentication errors do not. As an L1 unavailability, the
+// workflow hands it back from any step instead of stalling on it.
 class FundingProviderTransportUnavailable extends FraudProofL1UnavailableError {}
 
-/** How far down a `cause` chain a wrapped refusal is still recognised. */
-const MAXIMUM_CAUSE_DEPTH = 8;
-const l1RefusalOf = (error: unknown): FraudProofL1RefusedError | undefined => {
-  let current = error;
-  for (let depth = 0; depth <= MAXIMUM_CAUSE_DEPTH; depth++) {
-    if (current instanceof FraudProofL1RefusedError) return current;
-    if (!(current instanceof Error)) return undefined;
-    current = current.cause;
-  }
-  return undefined;
-};
 const readFundingProvider = async <T>(read: () => Promise<T>): Promise<T> => {
   try {
     return await read();
@@ -337,8 +339,23 @@ export const createWatcherFaultProofExecution = (dependencies: {
           updatedAtMs: Date.now().toString(),
         });
       record("preflight", "prepare");
-      // Any outcome but a refusal or resubmission ends the objective's hold.
+      // Any outcome but a refusal, resubmission or quarantine ends the hold.
       let held: ReturnType<typeof holdOnRefusal>;
+      const wasQuarantined = isWatcherFaultProofQuarantined(holds, job);
+      // Set while the objective's own funding and run are in hand: a failure
+      // there quarantines this objective alone (fault-proof-quarantine.ts).
+      let objectiveWork = false;
+      const quarantine = (cause: string) => {
+        held = { kind: "pending", reason: cause };
+        record("failed");
+        return quarantineWatcherFaultProof({
+          holds,
+          job,
+          decisionDigest,
+          sink,
+          cause,
+        });
+      };
       try {
         const authority = assertWorkflowActuationPermitIdentity({
           permit: actuationPermit,
@@ -382,6 +399,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
           throw new Error(
             `fault-proof execution has no installed ${category} runner`,
           );
+        objectiveWork = true;
         const fundingReservationPermit =
           await mintWatcherProverFundingReservationPermit({
             category,
@@ -404,6 +422,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
           fundingReservationPermit,
           journalDirectory,
           runtimeConfigPath: dependencies.runtimeConfigPath,
+          onProgress: stall.releaseWatcherFaultProofStallOnProgress(holds, job),
         });
         if (typeof result === "object" && result !== null && "kind" in result) {
           if (
@@ -413,10 +432,9 @@ export const createWatcherFaultProofExecution = (dependencies: {
             record(result.kind === "completed" ? "completed" : "confirmed");
             return { kind: result.kind, result };
           }
-          // A dispute that has made its move and now waits for the other
-          // party's response (`awaiting_counterparty`) is healthy: it is
-          // re-driven on each new observation until the response lands or the
-          // response deadline lets this side move again.
+          // A dispute that made its move and awaits the other party's response
+          // (`awaiting_counterparty`) is healthy: each observation re-drives it
+          // until the response lands or its deadline lets this side move again.
           if (
             "reason" in result &&
             typeof result.reason === "string" &&
@@ -424,7 +442,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
               result.kind === "awaiting_counterparty" ||
               isWatcherPreflightStalledResult(result))
           ) {
-            held = holdWatcherFaultProofForResubmission(holds, job, result);
+            held = stall.holdWatcherFaultProofPending(holds, job, result);
             record("reconciling");
             return {
               kind: "pending",
@@ -432,11 +450,17 @@ export const createWatcherFaultProofExecution = (dependencies: {
               reason: result.reason,
             };
           }
+          if (
+            result.kind === "stalled" &&
+            "reason" in result &&
+            typeof result.reason === "string"
+          )
+            return quarantine(`workflow stalled: ${result.reason}`);
         }
-        // Everything else stays fail-closed: a stall outside preflight is an
-        // integrity failure, and a family that re-classifies the watcher's
-        // admitted fault as `no_fault_detected` or `unprovable_gap` disagrees
-        // with the decision that dispatched it.
+        // Everything else contradicts this objective's own decision: a family
+        // that re-classifies the watcher's admitted fault as
+        // `no_fault_detected` or `unprovable_gap`, or an outcome of no known
+        // kind. That holds this objective alone; the process keeps running.
         const reason =
           typeof result === "object" &&
           result !== null &&
@@ -450,9 +474,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
                   result.kind === "unprovable_gap")
               ? `the family's own classification returned ${result.kind} for an admitted fault`
               : "invalid execution outcome";
-        throw new Error(
-          `Watcher ${category} workflow did not progress: ${reason}`,
-        );
+        return quarantine(`workflow did not progress: ${reason}`);
       } catch (error) {
         if (isWorkflowActuationRevokedError(error)) {
           record("cancelled");
@@ -476,12 +498,19 @@ export const createWatcherFaultProofExecution = (dependencies: {
           error instanceof FraudProofL1CheckpointChangedError ||
           error instanceof WatcherProverFundingUnavailableError
         ) {
+          held = holdWatcherFaultProofOnFunding(holds, job, error);
           record("reconciling");
           return {
             kind: "pending",
             resume: "await_observation",
             reason: error.message,
           };
+        }
+        const replay = holdWatcherFaultProofOnReplay(holds, job, error);
+        if (replay !== undefined) {
+          held = { kind: "pending", reason: replay.reason };
+          record("reconciling");
+          return replay;
         }
         // Any read that only failed to reach the follower, the node or a
         // provider, or found this watcher's own DA node not up yet, waits and
@@ -499,6 +528,8 @@ export const createWatcherFaultProofExecution = (dependencies: {
             retryAfterMs: 1_000,
           };
         }
+        const cause = objectiveWork ? quarantineCause(error) : undefined;
+        if (cause !== undefined) return quarantine(cause);
         record("failed");
         sink.setAlert({
           code: "proof_submission_failure",
@@ -509,6 +540,13 @@ export const createWatcherFaultProofExecution = (dependencies: {
         throw error;
       } finally {
         if (held === undefined) holds.delete(objectiveOf(job));
+        settleWatcherFaultProofQuarantine({
+          holds,
+          job,
+          decisionDigest,
+          sink,
+          wasQuarantined,
+        });
         await dependencies.fundingFactory.releaseUnused({ actuationPermit });
       }
     },

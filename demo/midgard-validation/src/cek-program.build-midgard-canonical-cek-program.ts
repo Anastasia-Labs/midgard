@@ -1,17 +1,14 @@
 import {
   commitMidgardCekBlob,
-  encodeMidgardCekProgramEnvelope,
   encodeMidgardCekSequenceNode,
   encodeMidgardCekTermNode,
   encodeMidgardCekValueNode,
   type Hash32,
-  hashMidgardCekProgramEnvelope,
   hashMidgardCekSequenceNode,
   hashMidgardCekTermNode,
   hashMidgardCekValueNode,
+  isMidgardCekProgramUplcVersion,
   MIDGARD_CEK_EMPTY_SEQUENCE_ROOT,
-  type MidgardCekProgramEnvelope,
-  type MidgardCekProgramMaterialEntry,
   type MidgardCekTermNode,
   verifyMidgardCekProgramMaterial,
 } from "@al-ft/midgard-core";
@@ -23,9 +20,7 @@ import {
   Delay,
   ErrorUPLC,
   Force,
-  getNRequiredForces,
   Lambda,
-  parseUPLC,
   UPLCConst,
   type UPLCTerm,
   UPLCVar,
@@ -38,63 +33,18 @@ import {
   midgardCekConstantMemorySize,
 } from "./cek-constant.js";
 import { commitMidgardCekDataTree } from "./cek-data-tree.js";
-import { encodeMidgardCekCardanoFlatProgram } from "./cek-program.cardano-flat.js";
+import { decodeMidgardCekCardanoFlatProgram } from "./cek-program.cardano-flat.js";
 import {
-  canonicalFlatProgramBytes,
-  MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES,
-  MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT,
   type MidgardCanonicalCekProgram,
   type MidgardCekProgramMaterialKind,
   type MidgardCekProgramMaterialNode,
   rootHex,
   sameBytes,
+  storedFlatProgramBytes,
 } from "./cek-program.unwrap-canonical-cbor-byte-string.js";
 import { plutusDataFromCborIterative } from "./plutus-data-iterative.decode.js";
 
-/**
- * Whether every builtin sits under exactly the type-instantiation forces its
- * signature implies — no more, no fewer — as the only forces directly around
- * it. The canonical CEK graph commits those forces as ordinary force nodes, so
- * a builtin is only ever reached through its full instantiation.
- */
-const hasExactBuiltinForces = (body: UPLCTerm): boolean => {
-  const pending: { readonly term: UPLCTerm; readonly forces: number }[] = [
-    { term: body, forces: 0 },
-  ];
-  for (let next = pending.pop(); next !== undefined; next = pending.pop()) {
-    const { term, forces } = next;
-    if (term instanceof Force) {
-      pending.push({ term: term.forced, forces: forces + 1 });
-      continue;
-    }
-    if (term instanceof Builtin) {
-      if (forces !== getNRequiredForces(term.builtinTag)) return false;
-      continue;
-    }
-    if (term instanceof Delay) {
-      pending.push({ term: term.delayedTerm, forces: 0 });
-    } else if (term instanceof Lambda) {
-      pending.push({ term: term.body, forces: 0 });
-    } else if (term instanceof Application) {
-      pending.push({ term: term.func, forces: 0 });
-      pending.push({ term: term.arg, forces: 0 });
-    } else if (term instanceof Constr) {
-      for (const item of term.terms) pending.push({ term: item, forces: 0 });
-    } else if (term instanceof Case) {
-      pending.push({ term: term.constrTerm, forces: 0 });
-      for (const item of term.continuations) {
-        pending.push({ term: item, forces: 0 });
-      }
-    }
-  }
-  return true;
-};
-
-/**
- * Decodes a PlutusV3/MidgardV1 Flat/CBOR program into the canonical,
- * hash-addressed CEK graph used by the canonical V1 proof profile. Raw UPLC is an SDK input;
- * the returned envelope is the consensus script payload.
- */
+/** Derives local dispute material from the exact carried CBOR-wrapped Flat. */
 export const buildMidgardCanonicalCekProgram = (
   scriptBytes: Uint8Array,
 ): MidgardCanonicalCekProgram => {
@@ -103,27 +53,25 @@ export const buildMidgardCanonicalCekProgram = (
     throw new Error("CEK program input must not be empty");
   }
 
-  const flat = canonicalFlatProgramBytes(raw);
-  const program = parseUPLC(flat, "flat");
-  const reencoded = encodeMidgardCekCardanoFlatProgram(program);
-  if (!flat.equals(reencoded) || !hasExactBuiltinForces(program.body)) {
-    throw new Error(
-      "V1 requires canonical Flat bytes with exactly the builtin forces implied by UPLC 1.1.0",
-    );
-  }
+  const flat = storedFlatProgramBytes(raw);
+  // Data constants may be spelled in any form the Cardano ledger's Data
+  // decoder accepts; the local graph is built from their values.
+  const program = decodeMidgardCekCardanoFlatProgram(flat);
   if (
-    program.version.major !== 1 ||
-    program.version.minor !== 1 ||
-    program.version.patch !== 0
+    !isMidgardCekProgramUplcVersion(
+      BigInt(program.version.major),
+      BigInt(program.version.minor),
+      BigInt(program.version.patch),
+    )
   ) {
     throw new Error(
-      `V1 supports only UPLC 1.1.0, received ${program.version.toString()}`,
+      `V1 supports only UPLC 1.0.0 and 1.1.0, received ${program.version.toString()}`,
     );
   }
+  const constrAndCaseAdmitted = program.version.minor !== 0;
 
   const material = new Map<string, MidgardCekProgramMaterialNode>();
   const constantWitnesses = new Map<string, MidgardCekConstantValueWitness>();
-  let materialByteLength = 0;
   const addMaterial = (
     kind: MidgardCekProgramMaterialKind,
     root: Hash32,
@@ -146,7 +94,6 @@ export const buildMidgardCanonicalCekProgram = (
         preimage: exactPreimage,
       }),
     );
-    materialByteLength += exactPreimage.length;
   };
 
   const addBlob = (bytes: Uint8Array): Hash32 => {
@@ -165,18 +112,6 @@ export const buildMidgardCanonicalCekProgram = (
   const addTermNode = (node: MidgardCekTermNode): Hash32 => {
     const root = hashMidgardCekTermNode(node);
     addMaterial("term", root, encodeMidgardCekTermNode(node));
-    return root;
-  };
-
-  const addTermSequence = (terms: readonly UPLCTerm[]): Hash32 => {
-    let root = MIDGARD_CEK_EMPTY_SEQUENCE_ROOT;
-    for (let index = terms.length - 1; index >= 0; index -= 1) {
-      const head = addTerm(terms[index]!);
-      const length = BigInt(terms.length - index);
-      const node = { head, tail: root, length };
-      root = hashMidgardCekSequenceNode(node);
-      addMaterial("sequence", root, encodeMidgardCekSequenceNode(node));
-    }
     return root;
   };
 
@@ -244,130 +179,162 @@ export const buildMidgardCanonicalCekProgram = (
     return root;
   };
 
-  const addTerm = (term: UPLCTerm): Hash32 => {
-    if (term instanceof UPLCVar) {
-      return addTermNode({ kind: "variable", index: BigInt(term.deBruijn) });
+  const addTerm = (body: UPLCTerm): Hash32 => {
+    type ParentTerm = Delay | Lambda | Application | Force | Constr | Case;
+    type SequenceTask = {
+      readonly terms: readonly UPLCTerm[];
+      readonly index: number;
+      readonly tail: Hash32;
+    };
+    type Task =
+      | { readonly kind: "term"; readonly term: UPLCTerm }
+      | { readonly kind: "parent"; readonly term: ParentTerm }
+      | ({ readonly kind: "sequence" } & SequenceTask)
+      | ({ readonly kind: "sequenceNode" } & SequenceTask);
+    const pending: Task[] = [{ kind: "term", term: body }];
+    const roots: Hash32[] = [];
+    const sequence = (terms: readonly UPLCTerm[]): Task => ({
+      kind: "sequence",
+      terms,
+      index: terms.length - 1,
+      tail: MIDGARD_CEK_EMPTY_SEQUENCE_ROOT,
+    });
+
+    // Parent tasks consume their children's roots in postorder. Sequences
+    // visit the last child first and commit each cons immediately, preserving
+    // material insertion order without growing the JavaScript call stack.
+    for (let task = pending.pop(); task !== undefined; task = pending.pop()) {
+      if (task.kind === "sequence") {
+        if (task.index < 0) roots.push(task.tail);
+        else {
+          pending.push(
+            { ...task, kind: "sequenceNode" },
+            { kind: "term", term: task.terms[task.index]! },
+          );
+        }
+        continue;
+      }
+      if (task.kind === "sequenceNode") {
+        const node = {
+          head: roots.pop()!,
+          tail: task.tail,
+          length: BigInt(task.terms.length - task.index),
+        };
+        const tail = hashMidgardCekSequenceNode(node);
+        addMaterial("sequence", tail, encodeMidgardCekSequenceNode(node));
+        pending.push({
+          ...task,
+          kind: "sequence",
+          index: task.index - 1,
+          tail,
+        });
+        continue;
+      }
+      if (task.kind === "parent") {
+        const { term } = task;
+        if (
+          !constrAndCaseAdmitted &&
+          (term instanceof Constr || term instanceof Case)
+        ) {
+          throw new Error("UPLC 1.0.0 does not admit constr or case terms");
+        }
+        let node: MidgardCekTermNode;
+        if (term instanceof Delay) {
+          node = { kind: "delay", body: roots.pop()! };
+        } else if (term instanceof Lambda) {
+          node = { kind: "lambda", body: roots.pop()! };
+        } else if (term instanceof Application) {
+          const argument = roots.pop()!;
+          node = { kind: "application", function: roots.pop()!, argument };
+        } else if (term instanceof Force) {
+          node = { kind: "force", term: roots.pop()! };
+        } else if (term instanceof Constr) {
+          node = {
+            kind: "constr",
+            tag: term.index,
+            termsCount: BigInt(term.terms.length),
+            termsRoot: roots.pop()!,
+          };
+        } else {
+          const branchesRoot = roots.pop()!;
+          node = {
+            kind: "case",
+            scrutinee: roots.pop()!,
+            branchesCount: BigInt(term.continuations.length),
+            branchesRoot,
+          };
+        }
+        roots.push(addTermNode(node));
+        continue;
+      }
+
+      const { term } = task;
+      if (
+        !constrAndCaseAdmitted &&
+        (term instanceof Constr || term instanceof Case)
+      ) {
+        throw new Error("UPLC 1.0.0 does not admit constr or case terms");
+      }
+      if (term instanceof UPLCVar) {
+        roots.push(
+          addTermNode({ kind: "variable", index: BigInt(term.deBruijn) + 1n }),
+        );
+      } else if (term instanceof UPLCConst) {
+        roots.push(
+          addTermNode({ kind: "constant", value: addConstantValue(term) }),
+        );
+      } else if (term instanceof ErrorUPLC) {
+        roots.push(addTermNode({ kind: "error" }));
+      } else if (term instanceof Builtin) {
+        // Type-instantiation forces are ordinary Force nodes around the builtin.
+        roots.push(
+          addTermNode({ kind: "builtin", tag: BigInt(term.builtinTag) }),
+        );
+      } else if (term instanceof Delay) {
+        pending.push(
+          { kind: "parent", term },
+          { kind: "term", term: term.delayedTerm },
+        );
+      } else if (term instanceof Lambda) {
+        pending.push(
+          { kind: "parent", term },
+          { kind: "term", term: term.body },
+        );
+      } else if (term instanceof Application) {
+        pending.push(
+          { kind: "parent", term },
+          { kind: "term", term: term.arg },
+          { kind: "term", term: term.func },
+        );
+      } else if (term instanceof Force) {
+        pending.push(
+          { kind: "parent", term },
+          { kind: "term", term: term.forced },
+        );
+      } else if (term instanceof Constr) {
+        pending.push({ kind: "parent", term }, sequence(term.terms));
+      } else if (term instanceof Case) {
+        pending.push({ kind: "parent", term }, sequence(term.continuations), {
+          kind: "term",
+          term: term.constrTerm,
+        });
+      } else {
+        throw new Error("unsupported UPLC term in V1 canonicalizer");
+      }
     }
-    if (term instanceof Delay) {
-      return addTermNode({
-        kind: "delay",
-        body: addTerm(term.delayedTerm),
-      });
-    }
-    if (term instanceof Lambda) {
-      return addTermNode({ kind: "lambda", body: addTerm(term.body) });
-    }
-    if (term instanceof Application) {
-      return addTermNode({
-        kind: "application",
-        function: addTerm(term.func),
-        argument: addTerm(term.arg),
-      });
-    }
-    if (term instanceof UPLCConst) {
-      return addTermNode({
-        kind: "constant",
-        value: addConstantValue(term),
-      });
-    }
-    if (term instanceof Force) {
-      return addTermNode({
-        kind: "force",
-        term: addTerm(term.forced),
-      });
-    }
-    if (term instanceof ErrorUPLC) {
-      return addTermNode({ kind: "error" });
-    }
-    if (term instanceof Builtin) {
-      // The type-instantiation forces around a polymorphic builtin are
-      // ordinary Force terms in the AST, committed by the Force arm above.
-      return addTermNode({
-        kind: "builtin",
-        tag: BigInt(term.builtinTag),
-      });
-    }
-    if (term instanceof Constr) {
-      return addTermNode({
-        kind: "constr",
-        tag: term.index,
-        termsCount: BigInt(term.terms.length),
-        termsRoot: addTermSequence(term.terms),
-      });
-    }
-    if (term instanceof Case) {
-      return addTermNode({
-        kind: "case",
-        scrutinee: addTerm(term.constrTerm),
-        branchesCount: BigInt(term.continuations.length),
-        branchesRoot: addTermSequence(term.continuations),
-      });
-    }
-    throw new Error("unsupported UPLC term in V1 canonicalizer");
+    return roots.pop()!;
   };
 
   const termRoot = addTerm(program.body);
-  if (material.size > MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT) {
-    throw new Error(
-      `canonical CEK graph exceeds the derived ${MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT.toString(10)} node bound`,
-    );
-  }
-  if (materialByteLength > MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES) {
-    throw new Error(
-      `canonical CEK graph exceeds the derived ${MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES.toString(10)} byte DA bound`,
-    );
-  }
-
-  const envelope = Object.freeze({
+  verifyMidgardCekProgramMaterial(termRoot, material.values());
+  return Object.freeze({
     uplcVersion: [
       BigInt(program.version.major),
       BigInt(program.version.minor),
       BigInt(program.version.patch),
     ] as const,
     termRoot,
-    nodeCount: BigInt(material.size),
-    materialByteLength: BigInt(materialByteLength),
-  });
-  verifyMidgardCekProgramMaterial(envelope, material.values());
-  return Object.freeze({
-    envelope,
-    envelopeCbor: encodeMidgardCekProgramEnvelope(envelope),
-    envelopeHash: hashMidgardCekProgramEnvelope(envelope),
     material,
     constantWitnesses,
-  });
-};
-
-export const copyProgramEnvelope = (
-  envelope: MidgardCekProgramEnvelope,
-): MidgardCekProgramEnvelope => {
-  const termRoot = Buffer.from(envelope.termRoot);
-  return Object.freeze({
-    uplcVersion: Object.freeze([...envelope.uplcVersion]) as readonly [
-      bigint,
-      bigint,
-      bigint,
-    ],
-    get termRoot(): Buffer {
-      return Buffer.from(termRoot);
-    },
-    nodeCount: envelope.nodeCount,
-    materialByteLength: envelope.materialByteLength,
-  });
-};
-
-export const copyProgramMaterialEntry = (
-  entry: MidgardCekProgramMaterialEntry,
-): MidgardCekProgramMaterialEntry => {
-  const root = Buffer.from(entry.root);
-  const preimage = Buffer.from(entry.preimage);
-  return Object.freeze({
-    kind: entry.kind,
-    get root(): Hash32 {
-      return Buffer.from(root) as Hash32;
-    },
-    get preimage(): Buffer {
-      return Buffer.from(preimage);
-    },
   });
 };

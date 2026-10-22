@@ -117,7 +117,7 @@ runs of watcher CI (2026-08-31 to 09-22), as of 2026-09-26.
 | Log signal in the failing step                                                                 | Class                        | Seen                         | First action                                                                                                                                                     |
 | ---------------------------------------------------------------------------------------------- | ---------------------------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | No run on the head                                                                             | Not a CI result              | PR #471 since 2026-09-22     | Step 1. Report "not run", never "green".                                                                                                                         |
-| `execution ledger: N drift(s)`, `structural failure(s)`, `is recorded 'within' but measured`   | Exec-ledger drift            | aiken 33/60                  | Decide whether the change was meant to move that validator's cost, then follow [regenerating-goldens-and-ledgers](../regenerating-goldens-and-ledgers/SKILL.md). |
+| `A script budget failed`, with `over`, `missing`, `now-fits` or `out-of-band` rows             | Script budget over ceiling   | aiken 33/60 (exact pins)     | Decide whether the change was meant to move that validator's cost, then follow [regenerating-goldens-and-ledgers](../regenerating-goldens-and-ledgers/SKILL.md). |
 | Formatter step fails; log is a bare list of `.ak` paths                                        | Aiken formatter drift        | aiken 17/60 (08-12 to 08-16) | Run the step's three commands (`aiken-ci.yml:177-188`) with the pinned fork on your tree.                                                                        |
 | `"status": "fail"` in the `aiken check` JSON                                                   | Aiken test failure           | aiken 7/60                   | `grep -B8 '"status": "fail"'` for the titles; reproduce with a focused check.                                                                                    |
 | `Compiling …` lines, then exit 1, no diagnostic                                                | Silent compile exit          | aiken 3/60, node 2/60        | Reproduce with the pinned fork at that commit. Until then: could not determine.                                                                                  |
@@ -191,13 +191,10 @@ testnet Aiken blueprint` (`midgard-node-ci.yml:187`) before any suite.
   Rebuild before comparing. Nothing detects a stale local blueprint
   `[review]`; the pre-commit hook only refuses to commit it `[hook:
 pre-commit]`.
-- **Stock Aiken.** `aikup` can repoint `aiken` on PATH to stock v1.1.22, which
-  is unsound (`onchain/aiken/scripts/pinned-compiler.mjs:3-10`). Check the pin
-  with `node onchain/aiken/scripts/pinned-compiler.mjs` before reproducing any
-  Aiken step `[script: onchain/aiken/scripts/pinned-compiler.mjs]`. CI asserts
-  it in `Assert the pinned compiler identity and put it on PATH` and `Assert
-no stock compiler is reachable` `[ci: aiken-ci/Assert no stock compiler is
-reachable]`; neither failed in the sampled runs.
+- **A different Aiken.** CI and every repository script run the aiken
+  `demo/flake.lock` pins, through `scripts/aiken`
+  `[script: scripts/lib/aiken.mjs]`. A bare `aiken` from your `PATH` is not
+  that compiler; reproduce Aiken steps with `scripts/aiken` only.
 - **No local Postgres.** Without a server on 5433 the node suites report "No
   test files found" and about 150 files never run
   (`scripts/start-test-postgres.sh:4-6`). That is a setup gap, not a pass.

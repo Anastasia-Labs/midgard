@@ -1,4 +1,7 @@
-import { classifyMidgardWitnessScriptItem } from "@al-ft/midgard-core";
+import {
+  classifyMidgardWitnessScriptItem,
+  midgardBlake2b,
+} from "@al-ft/midgard-core";
 import {
   decodeMidgardFieldPreimage,
   decodeMidgardVersionedScript,
@@ -14,7 +17,6 @@ import {
   readCborUnsigned,
 } from "@al-ft/midgard-core/codec/cbor";
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
-import { blake2b } from "@noble/hashes/blake2.js";
 
 import {
   copyBuffer,
@@ -48,52 +50,56 @@ import type {
 
 const projectRawScriptWitnesses = (
   preimageCbor: Uint8Array,
+  scriptCount: number | undefined,
 ): readonly MidgardProjectedRawScriptWitness[] =>
-  decodeMidgardFieldPreimage(preimageCbor).map((item, index) => {
-    const outer = readCborArrayHeader(item, 0, "raw_script_witness");
-    if (outer.length !== 2)
-      failDecode("raw script witness must contain two fields");
-    const language = readCborUnsigned(
-      item,
-      outer.nextOffset,
-      "raw_script_witness.language",
-    );
-    if (
-      language.value !== 0n &&
-      language.value !== 3n &&
-      language.value !== 128n
-    )
-      failDecode("raw script witness language is unsupported");
-    const payload = readCborBytes(
-      item,
-      language.nextOffset,
-      "raw_script_witness.payload",
-    );
-    if (payload.nextOffset !== item.length)
-      failDecode("raw script witness has trailing bytes");
-    const languageTag = Number(language.value) as 0 | 3 | 128;
-    const prefix =
-      languageTag === 0
-        ? MidgardScriptHashPrefixes.NativeCardano
-        : languageTag === 3
-          ? MidgardScriptHashPrefixes.PlutusV3
-          : MidgardScriptHashPrefixes.MidgardV1;
-    return Object.freeze({
-      index,
-      languageTag,
-      scriptBytes: Buffer.from(payload.value),
-      versionedItemBytes: Buffer.from(item),
-      hash: Buffer.from(
-        blake2b(
-          Buffer.concat([Buffer.from([prefix]), Buffer.from(payload.value)]),
-          { dkLen: 28 },
-        ),
-      ) as MidgardScriptHash,
+  decodeMidgardFieldPreimage(preimageCbor)
+    .slice(0, scriptCount)
+    .map((item, index) => {
+      const outer = readCborArrayHeader(item, 0, "raw_script_witness");
+      if (outer.length !== 2)
+        failDecode("raw script witness must contain two fields");
+      const language = readCborUnsigned(
+        item,
+        outer.nextOffset,
+        "raw_script_witness.language",
+      );
+      if (
+        language.value !== 0n &&
+        language.value !== 3n &&
+        language.value !== 128n
+      )
+        failDecode("raw script witness language is unsupported");
+      const payload = readCborBytes(
+        item,
+        language.nextOffset,
+        "raw_script_witness.payload",
+      );
+      if (payload.nextOffset !== item.length)
+        failDecode("raw script witness has trailing bytes");
+      const languageTag = Number(language.value) as 0 | 3 | 128;
+      const prefix =
+        languageTag === 0
+          ? MidgardScriptHashPrefixes.NativeCardano
+          : languageTag === 3
+            ? MidgardScriptHashPrefixes.PlutusV3
+            : MidgardScriptHashPrefixes.MidgardV1;
+      return Object.freeze({
+        index,
+        languageTag,
+        scriptBytes: Buffer.from(payload.value),
+        versionedItemBytes: Buffer.from(item),
+        hash: Buffer.from(
+          midgardBlake2b(
+            Buffer.concat([Buffer.from([prefix]), Buffer.from(payload.value)]),
+            { dkLen: 28 },
+          ),
+        ) as MidgardScriptHash,
+      });
     });
-  });
 
 const validateRawProjectionNonScriptFields = (
   canonical: MidgardRawEnvelopePhaseAProjection["canonical"],
+  outputCount: number | undefined,
 ): void => {
   decodeOutRefList(
     canonical.body.spendInputsPreimageCbor,
@@ -103,7 +109,7 @@ const validateRawProjectionNonScriptFields = (
     canonical.body.referenceInputsPreimageCbor,
     "native.reference_inputs",
   );
-  decodeOutputs(canonical.body.outputsPreimageCbor);
+  decodeOutputs(canonical.body.outputsPreimageCbor, outputCount);
   decodeObserverHashes(canonical.body.requiredObserversPreimageCbor);
   decodeHashList(
     canonical.body.requiredSignersPreimageCbor,
@@ -115,13 +121,26 @@ const validateRawProjectionNonScriptFields = (
 };
 
 /**
+ * Leading items a projection keeps: the outputs, and the field-6 items, before
+ * a forced transaction's first faulty one of each. Phase A reaches the faulty
+ * item's phase on what precedes it.
+ */
+export type MidgardRawEnvelopePrefix = Readonly<{
+  outputCount?: number;
+  scriptCount?: number;
+}>;
+
+/**
  * Total Phase-A projection for the sole case where an authenticated field-6
  * native payload is structurally malformed. Every non-field-6 grammar remains
  * strict, while the exact native payload bytes and their script hash survive.
+ * A `prefix` keeps only the leading items it names; a projection that drops
+ * field-6 items has no canonical decode.
  */
 export const projectMidgardRawEnvelopeForPhaseAV1 = (
   txCbor: Uint8Array,
   sourceKind: "normal" | "forced" = "normal",
+  prefix: MidgardRawEnvelopePrefix = {},
 ): MidgardRawEnvelopePhaseAProjection => {
   const material = (
     sourceKind === "forced"
@@ -129,16 +148,22 @@ export const projectMidgardRawEnvelopeForPhaseAV1 = (
       : deriveMidgardNativeTxFaultEvidenceMaterial
   )(txCbor);
   try {
-    validateRawProjectionNonScriptFields(material.canonical);
+    validateRawProjectionNonScriptFields(
+      material.canonical,
+      prefix.outputCount,
+    );
     const scriptWitnesses = projectRawScriptWitnesses(
       material.canonical.witnessSet.scriptTxWitsPreimageCbor,
+      prefix.scriptCount,
     );
     let canonicalSubmittedTx: MidgardSubmittedTx | null = null;
     try {
-      canonicalSubmittedTx = decodeMidgardSubmittedTxFromCanonicalCbor(
-        txCbor,
-        sourceKind,
-      );
+      if (prefix.scriptCount === undefined)
+        canonicalSubmittedTx = decodeMidgardSubmittedTxFromCanonicalCbor(
+          txCbor,
+          sourceKind,
+          prefix.outputCount,
+        );
     } catch (error) {
       const cause =
         error instanceof MidgardLedgerTxDecodeError
@@ -205,7 +230,10 @@ export const projectMidgardRawEnvelopeForPhaseAV1 = (
         material.canonical.body.referenceInputsPreimageCbor,
         "native.reference_inputs",
       ),
-      outputs: decodeOutputs(material.canonical.body.outputsPreimageCbor),
+      outputs: decodeOutputs(
+        material.canonical.body.outputsPreimageCbor,
+        prefix.outputCount,
+      ),
       requiredSignerHashes: decodeHashList(
         material.canonical.body.requiredSignersPreimageCbor,
         "native.required_signers",
@@ -255,13 +283,16 @@ export const projectMidgardRawEnvelopeForPhaseAV1 = (
 export const projectMidgardMalformedNativeWitnessEnvelopeV1 = (
   txCbor: Uint8Array,
   sourceKind: "normal" | "forced" = "normal",
+  outputCount?: number,
 ): {
   readonly projection: MidgardRawEnvelopePhaseAProjection;
   readonly malformedScriptIndex: number | null;
 } | null => {
   let projection: MidgardRawEnvelopePhaseAProjection;
   try {
-    projection = projectMidgardRawEnvelopeForPhaseAV1(txCbor, sourceKind);
+    projection = projectMidgardRawEnvelopeForPhaseAV1(txCbor, sourceKind, {
+      outputCount,
+    });
   } catch {
     // Non-field-6 malformed material stays a fail-closed canonical rejection.
     return null;

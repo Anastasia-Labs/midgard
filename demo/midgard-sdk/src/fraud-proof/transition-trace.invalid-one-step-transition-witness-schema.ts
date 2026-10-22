@@ -7,7 +7,6 @@ import {
   type Proof,
   ProofSchema,
 } from "../common.js";
-import { type EventKey, EventKeySchema } from "../ledger-state.js";
 import {
   DepositSourceLeafMembershipProofSchema,
   type EventToStepMembershipProof,
@@ -224,31 +223,6 @@ export const SourceMembershipMismatchWitnessSchema = Data.Enum([
       source_membership: SourceKeyOpeningSchema,
     }),
   }),
-  Data.Object({
-    SourceEventMissingValidationRun: Data.Object({
-      source: SourceKeyOpeningSchema,
-      run_phas_root: Data.Bytes(),
-      run_absence_proof: ProofSchema,
-    }),
-  }),
-  Data.Object({
-    ForeignValidationRun: Data.Object({
-      event_key: Data.Bytes(),
-      value_hash: Data.Bytes(),
-      run_phas_root: Data.Bytes(),
-      run_proof: ProofSchema,
-      source_phas_root: Data.Bytes(),
-      source_absence_proof: ProofSchema,
-    }),
-  }),
-  Data.Object({
-    MalformedValidationRun: Data.Object({
-      event_key: EventKeySchema,
-      value: Data.Bytes(),
-      run_phas_root: Data.Bytes(),
-      run_proof: ProofSchema,
-    }),
-  }),
 ]);
 
 export type SourceMembershipMismatchWitness =
@@ -269,31 +243,6 @@ export type SourceMembershipMismatchWitness =
       readonly SourcePhaseMismatch: {
         readonly trace_proof: IndexedTraceProof;
         readonly source_membership: SourceKeyOpening;
-      };
-    }
-  | {
-      readonly SourceEventMissingValidationRun: {
-        readonly source: SourceKeyOpening;
-        readonly run_phas_root: string;
-        readonly run_absence_proof: Proof;
-      };
-    }
-  | {
-      readonly ForeignValidationRun: {
-        readonly event_key: string;
-        readonly value_hash: string;
-        readonly run_phas_root: string;
-        readonly run_proof: Proof;
-        readonly source_phas_root: string;
-        readonly source_absence_proof: Proof;
-      };
-    }
-  | {
-      readonly MalformedValidationRun: {
-        readonly event_key: EventKey;
-        readonly value: string;
-        readonly run_phas_root: string;
-        readonly run_proof: Proof;
       };
     };
 
@@ -321,17 +270,19 @@ export const LedgerDeleteWitness = asDataType<LedgerDeleteWitness>(
   LedgerDeleteWitnessSchema,
 );
 
+/**
+ * One ledger insert. The single proof's paired fold authenticates the key's
+ * absence from the predecessor root and derives the successor root.
+ */
 export const LedgerInsertWitnessSchema = Data.Object({
   key: Data.Bytes(),
   value: Data.Bytes(),
-  non_membership_proof: ProofSchema,
   insert_proof: ProofSchema,
 });
 
 export type LedgerInsertWitness = {
   readonly key: string;
   readonly value: string;
-  readonly non_membership_proof: Proof;
   readonly insert_proof: Proof;
 };
 
@@ -375,10 +326,15 @@ export const InvalidOneStepTransitionWitnessSchema = Data.Enum([
       trace_proof: TransitionTraceMembershipProofSchema,
       event_to_step: EventToStepMembershipProofSchema,
       source_membership: L2TransactionSourceMembershipProofSchema,
-      spend_inputs_preimage: Data.Bytes(),
-      outputs_preimage: Data.Bytes(),
-      spent_utxos: Data.Array(LedgerDeleteWitnessSchema),
-      produced_utxos: Data.Array(LedgerInsertWitnessSchema),
+    }),
+  }),
+  // The forced leaf is opened over its raw key (`TxOrderId` CBOR) and value
+  // (`ForcedInclusionTxV1` CBOR) bytes.
+  Data.Object({
+    ValidForcedTransactionTransition: Data.Object({
+      trace_proof: TransitionTraceMembershipProofSchema,
+      event_to_step: EventToStepMembershipProofSchema,
+      source_membership: RawRootMembershipProofSchema,
     }),
   }),
 ]);

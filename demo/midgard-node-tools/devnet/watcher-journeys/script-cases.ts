@@ -18,21 +18,23 @@ import {
 } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
 import { retainedTransactionFixture } from "@al-ft/midgard-fault-proofs/test-support/retained-transaction";
 import type * as SDK from "@al-ft/midgard-sdk";
-import { buildMidgardCanonicalCekProgram } from "@al-ft/midgard-validation";
 import { CML, walletFromSeed } from "@lucid-evolution/lucid";
 
 import type { JourneyLedgerPredecessor } from "./journey-ledger.js";
 
-const identityProgram = buildMidgardCanonicalCekProgram(
-  Buffer.from("010100200101", "hex"),
-);
+/** `(lam ctx [(lam _ ()) ctx])`: a Plutus V3 script must return Unit. */
+const unitScriptBytes = encodeCbor(Buffer.from("0101002324980041", "hex"));
+/** `(lam ctx (error))`: a Plutus V3 script that fails whatever it is given. */
+const failingScriptBytes = encodeCbor(Buffer.from("0101002601", "hex"));
 
 /** An executable, signed transaction for real forced-order verdict disputes. */
 export const buildJourneyScriptTransaction = (input: {
   predecessor: JourneyLedgerPredecessor;
   ledgerOwnerSeedPhrase: string;
-  variant?: "plutusMint" | "nativeMint";
+  variant?: "plutusMint" | "failingPlutusMint" | "nativeMint";
   outputReferenceScript?: boolean;
+  /** Paid from the spent output; zero unless the caller prices it. */
+  fee?: bigint;
 }) => {
   const wallet = walletFromSeed(input.ledgerOwnerSeedPhrase, {
     network: "Custom",
@@ -51,13 +53,17 @@ export const buildJourneyScriptTransaction = (input: {
     throw new Error("Script journey needs a retained ledger input");
   const output = decodeMidgardTxOutput(spent.output);
   const variant = input.variant ?? "plutusMint";
-  const script =
-    variant === "plutusMint"
-      ? {
-          language: "PlutusV3" as const,
-          scriptBytes: identityProgram.envelopeCbor,
-        }
-      : decodeMidgardVersionedScript(Buffer.from("820043820180", "hex"));
+  const plutus = variant !== "nativeMint";
+  const fee = input.fee ?? 0n;
+  const script = plutus
+    ? {
+        language: "PlutusV3" as const,
+        scriptBytes:
+          variant === "failingPlutusMint"
+            ? failingScriptBytes
+            : unitScriptBytes,
+      }
+    : decodeMidgardVersionedScript(Buffer.from("820043820180", "hex"));
   const policy = hashMidgardVersionedScript(script);
   const assets = new Map(
     [...output.value.assets].map(([hash, tokens]) => [hash, new Map(tokens)]),
@@ -74,7 +80,7 @@ export const buildJourneyScriptTransaction = (input: {
   const scriptOutput = {
     ...output,
     address: protectMidgardAddress(output.address),
-    value: { ...output.value, assets },
+    value: { ...output.value, lovelace: output.value.lovelace - fee, assets },
     script_ref:
       input.outputReferenceScript === false
         ? undefined
@@ -84,7 +90,7 @@ export const buildJourneyScriptTransaction = (input: {
   const transactionInput: FixtureTransactionInput = {
     spendInputs: [spent.outRef],
     outputs,
-    fee: 0n,
+    fee,
     networkId: input.predecessor.header.expectedNetworkId,
     requiredSigners: [Buffer.from(key.to_public().hash().to_raw_bytes())],
     mintPolicyItems: [
@@ -94,14 +100,13 @@ export const buildJourneyScriptTransaction = (input: {
       ]),
     ],
     scriptWitnesses: [encodeMidgardVersionedScript(script)],
-    redeemerWitnesses: variant === "plutusMint" ? [mintRedeemer] : [],
-    scriptIntegrityHash:
-      variant === "plutusMint"
-        ? computeScriptIntegrityHashForLanguages(
-            midgardFieldCommitment(encodeMidgardFieldPreimage([mintRedeemer])),
-            ["PlutusV3"],
-          )
-        : undefined,
+    redeemerWitnesses: plutus ? [mintRedeemer] : [],
+    scriptIntegrityHash: plutus
+      ? computeScriptIntegrityHashForLanguages(
+          midgardFieldCommitment(encodeMidgardFieldPreimage([mintRedeemer])),
+          ["PlutusV3"],
+        )
+      : undefined,
   };
   const unsigned = buildFixtureTransaction(transactionInput);
   const transaction = buildFixtureTransaction({
@@ -117,8 +122,6 @@ export const buildJourneyScriptTransaction = (input: {
   });
   return {
     transaction,
-    programMaterial:
-      variant === "plutusMint" ? [...identityProgram.material.values()] : [],
   };
 };
 
@@ -175,7 +178,6 @@ export const buildJourneyScriptForcedFault = async (
   const material = prepareJourneyScriptForcedTransaction(input);
   const replayInput = {
     canonicalTransactionCbor: material.transaction.canonicalCbor,
-    programMaterial: material.programMaterial,
     predecessor: input.predecessor,
     ledgerEntries: input.predecessor.ledger.entries,
     operatorVkey: input.operatorVkey,
@@ -209,7 +211,6 @@ export const buildJourneyScriptForcedSuccessor = async (
   const material = prepareJourneyScriptForcedTransaction(input);
   const block = await retainedTransactionFixture({
     canonicalTransactionCbor: material.transaction.canonicalCbor,
-    programMaterial: material.programMaterial,
     predecessor: input.predecessor,
     ledgerEntries: input.predecessor.ledger.entries,
     operatorVkey: input.operatorVkey,

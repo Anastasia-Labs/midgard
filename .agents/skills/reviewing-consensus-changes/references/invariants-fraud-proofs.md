@@ -68,10 +68,9 @@ Provenance: the file header records the owner ruling of 2026-08-26
 (`witness-reference-scripts.ts:7-8`); `d3df3323e` (2026-08-29) removed the
 inline fallback.
 
-Blind spot: `inline_emulator_only` certificate witnesses
-(`demo/midgard-sdk/src/fraud-proof/field-preimage-carriage.ts:859`, `:920`)
-still attach inline, by design for the emulator. Nothing scans for a new
-inline attach.
+Blind spot: the lint (`midgard/fault-proof-reference-scripts-only`) bans
+inline attach only in the fault-proof source trees it lists; a fault-proof
+script attached from another tree is not caught.
 
 ## FP4. Only the pinned compiler builds consensus code
 
@@ -80,17 +79,18 @@ Status: VERIFIED.
 Rule: blueprints and gate results come from the pinned Aiken fork, never
 stock Aiken.
 
-Enforced: `[ci: aiken-ci.yml/Assert the pinned compiler identity and put it on PATH]`
-(`.github/workflows/aiken-ci.yml:56-60`),
-`[script: onchain/aiken/scripts/pinned-compiler.mjs]`, `[hook: pre-commit]`.
+Enforced: every script, the pre-commit hook and CI run the compiler only
+through `scripts/aiken`, which builds the commit `demo/flake.lock` pins
+`[script: scripts/lib/aiken.mjs]`, `[hook: pre-commit]`.
 
 Provenance: #521 — stock v1.1.22 generated under-strict decoders when two
 modules declared the same type name (`ValueWitnessV1` in `cek_builtin_v1` and
 `cek_machine_v1`); `a954669fc` (2026-08-04) renamed the collision, and the
 fork carries the compiler fix.
 
-Recurrence: 2. Blind spot: the pre-commit hook skips when no compiler is
-found, and `aikup` can silently repoint the local `aiken` to stock.
+Recurrence: 2. Blind spot: the pre-commit hook skips formatting when nix
+cannot build the pinned compiler, and a hand-typed bare `aiken` runs whatever
+is on `PATH`.
 
 ## FP5. Witness-field openings check the anchored witness-set hash
 

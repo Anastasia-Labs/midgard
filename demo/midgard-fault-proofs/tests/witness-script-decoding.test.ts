@@ -21,18 +21,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   classifyWitnessScriptDecodingFinding,
-  nextWitnessScriptDecodingAction,
   prepareWitnessScriptDecodingEvidence,
-  reconcileWitnessScriptDecodingJournal,
-  runOrResumeManifestBoundWitnessScriptDecodingWorkflow,
-  runWitnessScriptDecodingProof,
   witnessScriptDecodingCheckpoint,
   witnessScriptDecodingEvidenceCloses,
-  witnessScriptDecodingEvidenceIdentity,
-  type WitnessScriptDecodingJournalEntry,
   WitnessScriptDecodingResultClasses,
-  type WitnessScriptDecodingStage,
-  type WitnessScriptDecodingSubmission,
   witnessScriptDecodingViolationId,
 } from "../src/witness-script-decoding/index.js";
 
@@ -54,7 +46,9 @@ const signatureItem = Buffer.concat([
 ]);
 const malformedHeaderItem = Buffer.from("8201410a", "hex");
 const malformedNativeItem = Buffer.from("820043820700", "hex");
-const plutusItem = Buffer.from("82034401020304", "hex");
+// A PlutusV3 `[3, bytes(script)]` item whose script, the flat program 1.1.0
+// `(con unit ())`, decodes.
+const plutusItem = Buffer.from("820346450101004981", "hex");
 
 const evidence = ({
   subject = accepted,
@@ -81,12 +75,14 @@ describe("witnessScriptDecoding V1 evidence", () => {
         WitnessScriptDecodingResultClasses.NativeMalformed,
         WitnessScriptDecodingResultClasses.NodeLimit,
         WitnessScriptDecodingResultClasses.DepthLimit,
+        101,
       ].map(witnessScriptDecodingViolationId),
     ).toEqual([
       "witness-script-header-malformed",
       "witness-native-script-malformed",
       "witness-native-script-node-limit",
       "witness-native-script-depth-limit",
+      "witness-plutus-script-undecodable",
     ]);
   });
 
@@ -201,13 +197,14 @@ describe("witnessScriptDecoding V1 evidence", () => {
 
   it("selects certified maximum carriage and materializes its chunk frontier", () => {
     // One non-native item can occupy the complete 32,768-byte field while the
-    // decoder still reaches a deterministic no-fault result.
+    // exact Plutus decoder still reaches a deterministic refusal.
     const payload = Buffer.alloc(32_758, 7);
     const item = Buffer.concat([Buffer.from("821880597ff6", "hex"), payload]);
     const maximum = evidence({ item });
     expect(maximum.fieldPreimageHex.length / 2).toBe(32_768);
     expect(maximum.carriage).toBe("Certified");
     expect(maximum.chunkProofCount).toBe(9);
+    expect(maximum.resultClass).toBe(101);
   });
 
   it("matches the frozen engine at the exact and adjacent node/depth boundaries", () => {
@@ -331,152 +328,5 @@ describe("witnessScriptDecoding V1 evidence", () => {
         nextExpectedScriptHash: "44".repeat(28),
       }),
     ).not.toBe(checkpoint);
-  });
-});
-
-describe("witnessScriptDecoding V1 durable workflow", () => {
-  it("refuses caller-authored evidence at the manifest-bound production boundary", async () => {
-    await expect(
-      runOrResumeManifestBoundWitnessScriptDecodingWorkflow({
-        workflow: {},
-        sources: [],
-        journal: {},
-        evidence: {},
-      } as never),
-    ).rejects.toThrow(/rejects caller-authored evidence/u);
-  });
-
-  it("selects Init, every physical step, resume, final mint, and removal", () => {
-    expect(
-      (
-        [
-          "none",
-          "step01",
-          "step02",
-          "scan",
-          "step04",
-          "proven",
-          "removed",
-        ] as const
-      ).map(nextWitnessScriptDecodingAction),
-    ).toEqual([
-      "submitInit",
-      "submitStep01",
-      "submitStep02",
-      "submitScanOrResume",
-      "submitStep04",
-      "removeDescendants",
-      "done",
-    ]);
-  });
-
-  it("reconstructs from journal and authenticated chain identity", async () => {
-    const prepared = evidence();
-    const identity = witnessScriptDecodingEvidenceIdentity(prepared);
-    const entries: WitnessScriptDecodingJournalEntry[] = [];
-    let stage: WitnessScriptDecodingStage = "none";
-    const next: Record<string, WitnessScriptDecodingStage> = {
-      submitInit: "step01",
-      submitStep01: "step02",
-      submitStep02: "scan",
-      submitScanOrResume: "step04",
-      submitStep04: "proven",
-      removeDescendants: "removed",
-    };
-    let nonce = 0;
-    let observed: Awaited<
-      ReturnType<WitnessScriptDecodingSubmission["observe"]>
-    > = {
-      stage,
-      transactionId: "00".repeat(32),
-      outputReference: null as string | null,
-      checkpointHash: null as string | null,
-    };
-    const submission: WitnessScriptDecodingSubmission = {
-      observe: async (seen) => {
-        expect(seen).toBe(identity);
-        return observed;
-      },
-      submit: async (action) => {
-        stage = next[action] ?? "removed";
-        nonce += 1;
-        observed = {
-          stage,
-          transactionId: nonce.toString(16).padStart(64, "0"),
-          outputReference: stage === "removed" ? null : `${nonce.toString()}#0`,
-          checkpointHash: stage === "scan" ? "55".repeat(32) : null,
-        };
-        return observed;
-      },
-      cancel: async (
-        _stage: "step01" | "step02" | "scan" | "step04",
-        _prepared: typeof prepared,
-      ) => ({
-        stage: "cancelled",
-        transactionId: "66".repeat(32),
-        outputReference: null,
-        checkpointHash: null,
-      }),
-    };
-    expect(
-      await runWitnessScriptDecodingProof({
-        evidence: prepared,
-        load: async () => entries,
-        append: async (entry) => {
-          entries.push(entry);
-        },
-        submission,
-      }),
-    ).toBe("removed");
-    expect(entries.map((entry) => entry.stage)).toEqual([
-      "step01",
-      "step02",
-      "scan",
-      "step04",
-      "proven",
-      "removed",
-    ]);
-  });
-
-  it("supports cancellation from every nonterminal physical step", async () => {
-    const prepared = evidence();
-    const submission: Pick<WitnessScriptDecodingSubmission, "cancel"> = {
-      cancel: async () => ({
-        stage: "cancelled" as const,
-        transactionId: "77".repeat(32),
-        outputReference: null,
-        checkpointHash: null,
-      }),
-    };
-    for (const stage of ["step01", "step02", "scan", "step04"] as const) {
-      await expect(submission.cancel(stage, prepared)).resolves.toMatchObject({
-        stage: "cancelled",
-      });
-    }
-  });
-
-  it("refuses journal identity and transaction replacement mutations", () => {
-    const entry: WitnessScriptDecodingJournalEntry = {
-      sequence: 0,
-      identity: "expected",
-      stage: "scan",
-      transactionId: "88".repeat(32),
-      outputReference: "0#0",
-      checkpointHash: "99".repeat(32),
-    };
-    expect(() =>
-      reconcileWitnessScriptDecodingJournal({
-        identity: "different",
-        entries: [entry],
-        observed: entry,
-      }),
-    ).toThrow(/identity/u);
-    expect(() =>
-      reconcileWitnessScriptDecodingJournal({
-        identity: "expected",
-        entries: [entry],
-        observed: { ...entry, transactionId: "aa".repeat(32) },
-      }),
-    ).toThrow(/changed/u);
   });
 });

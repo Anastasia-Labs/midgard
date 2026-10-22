@@ -26,6 +26,7 @@ import {
   TransactionOutputStep04RedeemerSchema,
 } from "../../src/transaction-output-non-canonical/schemas.js";
 import type { FaultProofWitnessReferenceScripts } from "../../src/witness-reference-scripts.js";
+import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import {
   type Common,
   continueRaw,
@@ -213,6 +214,7 @@ export const publishOutputFieldCarriage = async ({
   readonly items: readonly Buffer[];
   readonly certificateReferenceScriptUtxo: UTxO;
 }): Promise<PublishedOutputFieldCarriage> => {
+  const ownOutputs = createOwnOutputJournal();
   const planned = planFaultProofFieldOpening({
     anchorSourceKind: 0n,
     fieldIndex: 2,
@@ -225,6 +227,7 @@ export const publishOutputFieldCarriage = async ({
   });
   signer.selectWallet(lucid);
   const carriageUtxos = await publishFaultProofFieldCarriage({
+    ownOutputs,
     lucid,
     signer,
     planned,
@@ -235,6 +238,7 @@ export const publishOutputFieldCarriage = async ({
     planned.plan.tier === "Certified"
       ? (
           await certifyFaultProofFieldCarriage({
+            ownOutputs,
             lucid,
             network,
             signer,

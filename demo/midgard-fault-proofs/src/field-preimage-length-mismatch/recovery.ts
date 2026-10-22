@@ -14,6 +14,7 @@ import {
 } from "../workflow/cursor-family-runtime.js";
 import type { LinearFamilyPrerequisiteInput } from "../workflow/family-definition.js";
 import type { FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.js";
+import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import {
   journalJsonDigest,
   type JournalJsonObject,
@@ -117,7 +118,7 @@ export const createFieldPreimageLengthRecoveryPorts = (
         throw new Error(`${CATEGORY} raw evidence changed family`);
       admit(routed.evidence, artifact);
     },
-    capture: async ({ action, artifact }) => {
+    capture: async ({ action, artifact, entries }) => {
       const input = cursorFamilyActionInput({ category: CATEGORY, action });
       if (input.stage === "remove")
         return await captureCursorRemoval({
@@ -189,6 +190,10 @@ export const createFieldPreimageLengthRecoveryPorts = (
                 ? await resolveFieldPreimageLengthCarriage({
                     workflow,
                     evidence,
+                    ownOutputs: workflowFieldCarriageOwnOutputs({
+                      category: CATEGORY,
+                      entries,
+                    }),
                   })
                 : undefined;
               return {

@@ -19,10 +19,14 @@ export {
 } from "./codec.copy-native-tx-compact.js";
 export { decodeMidgardSubmittedTxFromCanonicalCbor } from "./codec.encode-mint.js";
 export {
+  classifyMidgardForcedTxOutputItem,
+  forcedTxOutputFaultRejection,
   locateMidgardForcedTxOutputFault,
   locateMidgardForcedTxWitnessScriptFault,
-  type MidgardForcedTxItemFault,
+  type MidgardForcedTxOutputFault,
+  type MidgardForcedTxOutputFaultClass,
   type MidgardForcedTxWitnessScriptFault,
+  outputProofRefusalClass,
 } from "./codec.locate-forced-tx-item-fault.js";
 export {
   computeMidgardTxIdFromCanonicalCbor,

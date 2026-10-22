@@ -15,6 +15,7 @@ export {
   requireManifestBoundReferenceScriptUtxo,
 } from "./deployment-manifest-binding.assert-deployment-info-matches-manifest.js";
 export {
+  bindFraudProofDisputeDeployment,
   bindFraudProofTerminalDeployment,
   bindFraudProofWorkflowDeployment,
   type FraudProofTerminalDeploymentBinding,

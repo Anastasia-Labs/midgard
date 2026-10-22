@@ -5,9 +5,7 @@ use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{
   cancel, continue, pass_native_tx_to_next_step_carried,
 }
-use midgard/fraud_proofs/native_tx/compact.{
-  verify_forced_tx_proof_source_v1, verify_native_tx_proof_source_v1,
-}
+use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_proof_source_v1}
 use midgard/fraud_proofs/observers_forbidden_on_untagged_network/rule.{
   bind_state_v1,
 }
@@ -47,7 +45,7 @@ validator main(
           tx,
         )
         let expected: Data = bind_state_v1(
-          substrate.bind_accepted_subject_v1(verified),
+          substrate.open_accepted_subject_v1(verified),
           verified.tx_compact.body.network_id,
         )
         and {
@@ -60,7 +58,6 @@ validator main(
         output_index,
         header,
         membership,
-        direction,
       }}) -> {
         let Transaction { inputs, outputs, .. } = tx
         expect Some(step_datum) = datum
@@ -73,18 +70,10 @@ validator main(
           inputs,
           outputs,
         )
-        let subject = substrate.bind_forced_subject_to_thread_v1(
+        let Pair(subject, verified) = substrate.open_forced_subject_v1(
           thread_name,
           header,
           membership,
-          direction,
-        )
-        let leaf = membership.value
-        let Pair(verified, _) = verify_forced_tx_proof_source_v1(
-          leaf.tx_id,
-          leaf.submitted_source.compact_cbor,
-          leaf.submitted_source.witness_set_compact_cbor,
-          leaf.submitted_source.field_preimage_lengths_cbor,
         )
         let expected: Data = bind_state_v1(
           subject,

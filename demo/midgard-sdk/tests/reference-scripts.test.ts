@@ -1,7 +1,4 @@
-import {
-  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES,
-} from "@al-ft/midgard-core/deployment-manifest-identity";
+import { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   type Assets,
   credentialToAddress,
@@ -23,7 +20,6 @@ import {
   referenceScriptRoleAssets,
   SCRIPT_REF_OUTPUT_LOVELACE,
   SCRIPT_REF_PUBLICATION_FUNDING_BUFFER_LOVELACE,
-  selectReferenceScriptFundingUtxos,
 } from "../src/reference-scripts.js";
 
 const address = "addr_test1reference";
@@ -96,9 +92,6 @@ describe("reference-script SDK boundary", () => {
       const role = `availability-challenge ${arm} withdrawal` as const;
       const tokenName = `AvailabilityChallenge${token}Yield`;
       expect(REFERENCE_SCRIPT_AUTH_TOKEN_NAMES[role]).toBe(tokenName);
-      expect(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES[role]).toBe(
-        tokenName,
-      );
       expect(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[role]).toBe(
         `availabilityChallenge${contract}Withdraw`,
       );
@@ -119,7 +112,6 @@ describe("reference-script SDK boundary", () => {
     ];
     for (const roles of [
       Object.keys(REFERENCE_SCRIPT_AUTH_TOKEN_NAMES),
-      Object.keys(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES),
       Object.keys(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE),
     ]) {
       expect(
@@ -148,9 +140,6 @@ describe("reference-script SDK boundary", () => {
     const allTokenNames = Object.values(REFERENCE_SCRIPT_AUTH_TOKEN_NAMES);
     for (const [role, tokenName, contractName] of poolRoles) {
       expect(REFERENCE_SCRIPT_AUTH_TOKEN_NAMES[role]).toBe(tokenName);
-      expect(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES[role]).toBe(
-        tokenName,
-      );
       expect(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[role]).toBe(
         contractName,
       );
@@ -170,17 +159,6 @@ describe("reference-script SDK boundary", () => {
         role.startsWith("value conservation "),
     );
     const tokenNames = fraudProofEntries.map(([, tokenName]) => tokenName);
-
-    const canonicalFraudProofEntries = Object.entries(
-      DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES,
-    ).filter(
-      ([role]) =>
-        role.startsWith("V1 fraud-proof ") ||
-        role.startsWith("value conservation "),
-    );
-    expect(Object.fromEntries(fraudProofEntries)).toEqual(
-      Object.fromEntries(canonicalFraudProofEntries),
-    );
     expect(new Set(tokenNames).size).toBe(tokenNames.length);
     expect(tokenNames.every((name) => Buffer.byteLength(name) <= 32)).toBe(
       true,
@@ -258,23 +236,6 @@ describe("reference-script SDK boundary", () => {
         policyId: "aa".repeat(28),
       }),
     ).toBe(true);
-  });
-
-  it("selects only plain ADA funding inputs in deterministic largest-first order", () => {
-    const selected = selectReferenceScriptFundingUtxos(
-      [
-        utxo({
-          txHash: "1",
-          assets: { lovelace: 20_000_000n, ["bb".repeat(28)]: 1n },
-        }),
-        utxo({ txHash: "2", assets: { lovelace: 4_000_000n }, datum: "00" }),
-        utxo({ txHash: "3", assets: { lovelace: 5_000_000n } }),
-        utxo({ txHash: "4", assets: { lovelace: 15_000_000n } }),
-      ],
-      16_000_000n,
-    );
-
-    expect(selected.map(({ txHash }) => txHash.slice(-1))).toEqual(["4", "3"]);
   });
 
   it("computes publication funding target from output count and buffer", () => {

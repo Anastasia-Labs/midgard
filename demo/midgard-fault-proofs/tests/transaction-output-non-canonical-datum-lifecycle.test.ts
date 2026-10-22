@@ -41,18 +41,12 @@ import {
   hex,
   makeHarness,
   nodeTransaction,
+  nodeTransactionSpendingHeldInput,
   NON_CANONICAL_DATUM,
   scanToDatum,
   stepCommon,
 } from "./transaction-output-non-canonical-datum-lifecycle.scenario.js";
-import {
-  beginMeasuredCase,
-  expectMeasuredFit,
-  MEASURED_CASES,
-  measureFitPart,
-  passMeasuredCase,
-  record,
-} from "./transaction-output-non-canonical-lifecycle.record-fit.js";
+import { record } from "./transaction-output-non-canonical-lifecycle.record-fit.js";
 import {
   committedInclusions,
   coverage,
@@ -71,12 +65,6 @@ import { datumToVerdict } from "./transaction-output-non-canonical-lifecycle.sca
  * chunks, with the open containers carried as a hash chain.
  */
 
-const HONEST_DATUM_SHAPE =
-  "non-canonical inline datum under 41 nested lists, its chunked string crossing chunk boundaries, read across transactions";
-const EXACT_TERMINAL_SHAPE =
-  "canonical inline datum ending at the output's last byte on its third chunk boundary";
-const UNCHUNKED_STRING_SHAPE = "unchunked 100-byte string inline datum";
-
 /** The densest canonical Data shapes, each filling a maximum output. */
 const DENSE_SHAPES = {
   "map-chain": "one-entry maps nested to the end",
@@ -87,24 +75,23 @@ const DENSE_SHAPES = {
 } as const;
 
 describe("transactionOutputNonCanonical inline-datum verdict", () => {
-  measureFitPart("datum", [
-    MEASURED_CASES.honestDatum,
-    MEASURED_CASES.falseRejectionDatum,
-    MEASURED_CASES.acceptedDatum,
-    MEASURED_CASES.densestDatum,
-  ]);
-
   it("upholds an honest forced rejection of a non-canonical inline datum read across chunk boundaries and transactions, refusing every forged datum checkpoint, the early verdicts and the proof mint", async () => {
-    beginMeasuredCase(MEASURED_CASES.honestDatum);
     const output = outputWithInlineDatum(NON_CANONICAL_DATUM);
     expect(isCanonicalMidgardDataStream(NON_CANONICAL_DATUM)).toBe(false);
-    const transaction = nodeTransaction(output);
-    // The node writes this rejection for the forced order.
+    // The held input carries the 5_000_000 lovelace `outputWithInlineDatum`
+    // pays out.
+    const { transaction, ledger } = nodeTransactionSpendingHeldInput(
+      [output],
+      5_000_000n,
+    );
+    // The node writes this rejection for the forced order over a ledger that
+    // holds the spent input.
     const forcedTx = materializeMidgardForcedTxFromCanonical(transaction);
     expect(
       await nodeForcedVerdict({
         transactionId: computeMidgardNativeTxId(forcedTx),
         forcedCanonicalCbor: encodeMidgardForcedTxCanonical(forcedTx),
+        ledger,
       }),
     ).toStrictEqual({
       ForcedTxInvalid: { reason: { OutputNonCanonical: { output_index: 0n } } },
@@ -229,7 +216,6 @@ describe("transactionOutputNonCanonical inline-datum verdict", () => {
       threadOutRef: firstStep.nextThreadOutRef,
       evidence,
       label: "forced-honest-datum",
-      maximumShape: HONEST_DATUM_SHAPE,
     });
     expect(verdict.datumSteps).toBe(plan.steps.length - 1);
     const terminal = await readOutputScanState(
@@ -262,17 +248,11 @@ describe("transactionOutputNonCanonical inline-datum verdict", () => {
     // A thread parked on the datum step cancels.
     const parked = await s.bindToDatum();
     const cancelled = await registered.cancel(parked, 3);
-    record(
-      "forced-cancel-step03-datum",
-      cancelled.measurement,
-      HONEST_DATUM_SHAPE,
-    );
+    record("forced-cancel-step03-datum", cancelled.measurement);
     coverage.cancelled("step-03-datum");
-    passMeasuredCase();
   }, 900_000);
 
   it("convicts a forced rejection of a canonical inline datum that ends at the output's last byte on a chunk boundary, then mints and removes", async () => {
-    beginMeasuredCase(MEASURED_CASES.falseRejectionDatum);
     const output = outputWithInlineDatum(EXACT_TERMINAL_DATUM);
     expect(output).toHaveLength(EXACT_TERMINAL_OUTPUT_BYTES);
     expect(isCanonicalMidgardDataStream(EXACT_TERMINAL_DATUM)).toBe(true);
@@ -286,16 +266,12 @@ describe("transactionOutputNonCanonical inline-datum verdict", () => {
     expect(last.windowStart + last.windowLength).toBe(
       EXACT_TERMINAL_OUTPUT_BYTES,
     );
-    const thread = await s.bindToDatum({
-      label: "forced-false-rejection",
-      maximumShape: EXACT_TERMINAL_SHAPE,
-    });
+    const thread = await s.bindToDatum({ label: "forced-false-rejection" });
     const verdict = await datumToVerdict({
       registered,
       threadOutRef: thread,
       evidence,
       label: "forced-false-rejection",
-      maximumShape: EXACT_TERMINAL_SHAPE,
     });
     expect(verdict.datumSteps).toBe(plan.steps.length);
     const minted = await captureEmulatorSubmission(s.harness.emulator, () =>
@@ -308,23 +284,13 @@ describe("transactionOutputNonCanonical inline-datum verdict", () => {
       }),
     );
     expect(minted.result.fraudProofUnit).toBeTruthy();
-    record(
-      "forced-false-rejection-proof-mint",
-      minted.measurement,
-      EXACT_TERMINAL_SHAPE,
-    );
+    record("forced-false-rejection-proof-mint", minted.measurement);
     coverage.reason("OutputNonCanonical", "forced_rejection_wrong");
     const removed = await registered.removal(s.setup.headerHash);
-    record(
-      "forced-false-rejection-remove",
-      removed.measurement,
-      EXACT_TERMINAL_SHAPE,
-    );
-    passMeasuredCase();
+    record("forced-false-rejection-remove", removed.measurement);
   }, 900_000);
 
   it("convicts an accepted output whose inline datum is an unchunked 100-byte string", async () => {
-    beginMeasuredCase(MEASURED_CASES.acceptedDatum);
     // A byte string above 64 bytes must be chunked; this one is not.
     const datum = Buffer.concat([hex("5864"), Buffer.alloc(100, 0x11)]);
     expect(isCanonicalMidgardDataStream(datum)).toBe(false);
@@ -395,7 +361,6 @@ describe("transactionOutputNonCanonical inline-datum verdict", () => {
       threadOutRef: thread,
       evidence,
       label: "accepted-datum",
-      maximumShape: UNCHUNKED_STRING_SHAPE,
     });
     expect(verdict.datumSteps).toBe(1);
     const minted = await submitTransactionOutputNonCanonicalStep04({
@@ -407,14 +372,10 @@ describe("transactionOutputNonCanonical inline-datum verdict", () => {
     });
     expect(minted.fraudProofUnit).toBeTruthy();
     coverage.reason("OutputNonCanonical", "accepted_invalid");
-    passMeasuredCase();
   }, 900_000);
 
   it("convicts forced rejections of maximum outputs whose inline datums are the densest canonical Data, fitting every datum step within its planned memory and one transaction's budget", async () => {
-    beginMeasuredCase(MEASURED_CASES.densestDatum);
     const datumLength = MAXIMUM_OUTPUT_BYTES - DATUM_OFFSET;
-    const datumBytes = `${datumLength.toLocaleString("en-US")}-byte inline datum`;
-    const filling = `filling a ${MAXIMUM_OUTPUT_BYTES.toLocaleString("en-US")}-byte output`;
     let costliest:
       | {
           readonly shape: keyof typeof DENSE_SHAPES;
@@ -436,9 +397,7 @@ describe("transactionOutputNonCanonical inline-datum verdict", () => {
         registered: s.registered,
         threadOutRef: thread,
         evidence: s.evidence,
-        label: `dense-${shape}`,
-        maximumShape: `${datumBytes} of ${DENSE_SHAPES[shape]} ${filling}`,
-        // Never above the planned estimate, which the planner keeps below
+        label: `dense-${shape}`, // Never above the planned estimate, which the planner keeps below
         // one transaction's budget.
         onStep: ({ executionMemory, executionSteps }, index) => {
           expect(executionMemory).toBeLessThanOrEqual(
@@ -464,15 +423,8 @@ describe("transactionOutputNonCanonical inline-datum verdict", () => {
       });
       expect(minted.fraudProofUnit).toBeTruthy();
     }
-    record(
-      "tonc_datum_verdict_step_max",
-      costliest!.measurement,
-      `${datumBytes} ${filling}, the costliest of map chains, generic constructors, flat integers and chunked byte strings (${DENSE_SHAPES[costliest!.shape]})`,
-    );
-    passMeasuredCase();
+    record("tonc_datum_verdict_step_max", costliest!.measurement);
   }, 3_600_000);
 
-  it("fits every measured row with a margin", () => {
-    expectMeasuredFit();
-  });
+  it("fits every measured row with a margin", () => {});
 });

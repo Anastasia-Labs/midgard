@@ -1,16 +1,8 @@
-import {
-  decodeMidgardFieldPreimage,
-  decodeMidgardNativeTxCompact,
-  deriveMidgardNativeTxFaultEvidenceMaterial,
-  midgardFieldCommitment,
-} from "@al-ft/midgard-core";
-import { decodeMidgardForcedTxCompact } from "@al-ft/midgard-core/codec/forced";
+import { deriveMidgardNativeTxFaultEvidenceMaterial } from "@al-ft/midgard-core";
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import {
-  acceptedVerdictSubject,
   encodeProofThreadForcedSourceKey,
   type ForcedInclusionTxV1,
-  forcedVerdictSubject,
   type Header,
   type OutputReference,
   PROOF_THREAD_SOURCE_KIND_ACCEPTED,
@@ -31,102 +23,27 @@ import {
   type SubmitStep01TxInclusion,
 } from "../step-support.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
-import {
-  prepareWitnessScriptDecodingEvidence,
-  type WitnessScriptDecodingEvidence,
-  witnessScriptDecodingEvidenceCloses,
-} from "./witness-script-decoding.js";
+import { firstCanonicalViolationDetection } from "../workflow/classification.js";
+import { type WitnessScriptDecodingEvidence } from "./witness-script-decoding.js";
+import { witnessScriptDecodingCompleteReplayFindings } from "./workflow.detect-witness-script-decoding-complete-replay.js";
 
-/** Derives the only admissible family evidence from L1-bound public retained DA. */
+/**
+ * Derives the family evidence to prove from L1-bound public retained DA: the
+ * first finding in the order `classifyCanonicalBlockViolations`
+ * selects, so the workflow proves the detection the classifier chose.
+ */
 export const deriveWitnessScriptDecodingEvidenceFromCanonicalBlock = (
   block: CanonicalBlockEvidence,
 ): WitnessScriptDecodingEvidence => {
-  const findings: WitnessScriptDecodingEvidence[] = [];
-  const inspect = ({
-    canonicalCbor,
-    subject,
-    forcedScriptIndex,
-  }: {
-    readonly canonicalCbor: Uint8Array;
-    readonly subject: ReturnType<typeof acceptedVerdictSubject>;
-    readonly forcedScriptIndex?: number;
-  }) => {
-    const material = (
-      subject.source_kind === 1n
-        ? deriveMidgardForcedTxFaultEvidenceMaterial
-        : deriveMidgardNativeTxFaultEvidenceMaterial
-    )(canonicalCbor);
-    if (material.transactionId.toString("hex") !== subject.transaction_id)
-      throw new Error(
-        "witnessScriptDecoding retained-DA transaction identity changed",
-      );
-    const fieldPreimage = material.fieldPreimages[6]!;
-    const items = decodeMidgardFieldPreimage(fieldPreimage);
-    const coordinates =
-      forcedScriptIndex === undefined
-        ? items.map((_, scriptIndex) => scriptIndex)
-        : [forcedScriptIndex];
-    for (const scriptIndex of coordinates) {
-      if (items[scriptIndex] === undefined)
-        throw new Error(
-          "witnessScriptDecoding retained-DA reason coordinate is absent",
-        );
-      const prepared = prepareWitnessScriptDecodingEvidence({
-        finding: {
-          subject,
-          witnessSetHash: (subject.source_kind === 1n
-            ? decodeMidgardForcedTxCompact
-            : decodeMidgardNativeTxCompact)(
-            material.proofSource.compactCbor,
-          ).transactionWitnessSetHash.toString("hex"),
-          scriptIndex,
-        },
-        fieldPreimage,
-        committedFieldHashHex:
-          midgardFieldCommitment(fieldPreimage).toString("hex"),
-      });
-      if (witnessScriptDecodingEvidenceCloses(prepared))
-        findings.push(prepared);
-    }
-  };
-  for (const transaction of block.transactions) {
-    const cbor = Buffer.from(transaction.txCbor, "hex");
-    const material = deriveMidgardNativeTxFaultEvidenceMaterial(cbor);
-    inspect({
-      canonicalCbor: cbor,
-      subject: acceptedVerdictSubject(material.transactionId.toString("hex")),
-    });
-  }
-  for (const forced of block.reconstruction.forcedTransactions) {
-    if (forced.value.verdict === "ForcedTxValid") continue;
-    const reason = forced.value.verdict.ForcedTxInvalid.reason;
-    if (typeof reason === "string") continue;
-    const payload =
-      "WitnessScriptHeaderMalformed" in reason
-        ? reason.WitnessScriptHeaderMalformed
-        : "WitnessNativeScriptMalformed" in reason
-          ? reason.WitnessNativeScriptMalformed
-          : "WitnessNativeScriptNodeLimit" in reason
-            ? reason.WitnessNativeScriptNodeLimit
-            : "WitnessNativeScriptDepthLimit" in reason
-              ? reason.WitnessNativeScriptDepthLimit
-              : undefined;
-    if (payload === undefined) continue;
-    inspect({
-      canonicalCbor: forced.fullTransactionCbor,
-      subject: forcedVerdictSubject({
-        transactionId: forced.value.tx_id,
-        sourceKey: forced.key,
-        rejectionReason: reason,
-      }) as ReturnType<typeof acceptedVerdictSubject>,
-      forcedScriptIndex: Number(payload.script_index),
-    });
-  }
-  if (findings.length !== 1)
+  const first = firstCanonicalViolationDetection(
+    block,
+    witnessScriptDecodingCompleteReplayFindings(block),
+  );
+  if (first === undefined)
     throw new Error(
-      `witnessScriptDecoding public retained DA yielded ${findings.length.toString()} exact findings`,
+      "witnessScriptDecoding public retained DA yielded no exact finding",
     );
-  return findings[0]!;
+  return first.evidence;
 };
 
 export type WitnessScriptDecodingAuthenticatedSource = Readonly<{

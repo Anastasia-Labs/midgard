@@ -1,4 +1,3 @@
-import { fileURLToPath } from "node:url";
 import { inspect } from "node:util";
 
 import {
@@ -55,12 +54,10 @@ import {
   ConservationTerminalArgs,
   ConservationUpdateArgs,
 } from "../../src/value-not-preserved/union-schemas.js";
+import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../../src/workflow/raw-l1-publication-observation.js";
+import { createConfirmedActionJournal } from "./confirmed-action-journal.js";
 import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.js";
-import {
-  createSplitFitLedgerPart,
-  type SplitFitLedger,
-} from "./split-fit-ledger.js";
 import { registerChunkedVerifyRewardAccount } from "./submit-init-emulator-shared.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
@@ -207,35 +204,14 @@ const partOf = ({
 }: (typeof VALUE_CONSERVATION_CASES)[number]): ValueConservationPart =>
   !assetMaximum ? "rest" : forced ? "forced-assets" : "non-forced-assets";
 
-const VALUE_CONSERVATION_FIT_LEDGER: SplitFitLedger = {
-  path: fileURLToPath(
-    new URL(
-      "../../../../docs/fault-proofs/size-plans/value-not-preserved-fit-ledger.json",
-      import.meta.url,
-    ),
-  ),
-  category: "valueNotPreserved:00000019:testnet",
-  compilerVersion: "aiken v1.1.23+5adf783",
-  caseCount: VALUE_CONSERVATION_CASES.length,
-  parts: ["forced-assets", "non-forced-assets", "rest"],
-  source: fileURLToPath(import.meta.url),
-};
-
 /** Registers one part of the suite; the three part files together run every case. */
 export const registerValueConservationCases = (
   part: ValueConservationPart,
 ): void => {
-  const cases = VALUE_CONSERVATION_CASES.map((testCase, ordinal) => ({
-    ...testCase,
-    ordinal,
-  })).filter((testCase) => partOf(testCase) === part);
-  const fit = createSplitFitLedgerPart(
-    VALUE_CONSERVATION_FIT_LEDGER,
-    part,
-    cases.map(({ ordinal }) => ordinal),
+  const cases = VALUE_CONSERVATION_CASES.filter(
+    (testCase) => partOf(testCase) === part,
   );
   const proveValueConservation = async ({
-    ordinal,
     forced,
     maximum,
     cancellation,
@@ -267,15 +243,6 @@ export const registerValueConservationCases = (
           measurement,
           maxTxExMem: harness.emulator.protocolParameters.maxTxExMem,
           maxTxExSteps: harness.emulator.protocolParameters.maxTxExSteps,
-        });
-        fit.record(ordinal, {
-          stem: `${expect.getState().currentTestName}:${label}`,
-          kind:
-            measurement.executionMemory === 0n ? "publication" : "lifecycle",
-          maximumShape: expect.getState().currentTestName!,
-          signedBytes: measurement.completeSignedBytes,
-          memoryUnits: measurement.executionMemory,
-          cpuUnits: measurement.executionSteps,
         });
       }
       return capture.result;
@@ -880,6 +847,12 @@ export const registerValueConservationCases = (
           )
         ).utxo
       : undefined;
+    const journal = createConfirmedActionJournal({
+      category: "valueNotPreserved",
+      headerHash: setup.headerHash,
+    });
+    // The direct path's own carriage, read back by its later steps.
+    const ownOutputs = createOwnOutputJournal();
     for (const fieldIndex of [0, 2, 5] as const) {
       if (maximum) {
         if (certificateReference === undefined)
@@ -896,7 +869,6 @@ export const registerValueConservationCases = (
             lucid: harness.proverLucid,
             network,
             signer: harness.proverSigner,
-            transactionConfirmed: async () => true,
             publications: {
               observerVersion: FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER,
               observeExact: async (input) => {
@@ -928,7 +900,7 @@ export const registerValueConservationCases = (
             headerHash: setup.headerHash,
             baseAction,
             artifact,
-            entries: [],
+            entries: journal.entries(),
           });
           if (next.kind === "satisfied" || next.kind === "not_required") break;
           if (next.kind !== "required")
@@ -937,12 +909,16 @@ export const registerValueConservationCases = (
             headerHash: setup.headerHash,
             action: next.action,
             artifact,
+            entries: journal.entries(),
           });
           const txHash = await record(
             `installed:field:${fieldIndex}:${attempt}`,
             () => captured.transaction.signed.submit(),
           );
           harness.emulator.awaitBlock(1);
+          const durableRecovery = JSON.parse(
+            JSON.stringify(captured.durableRecovery),
+          );
           expect(
             (
               await makePort().reconcile({
@@ -950,17 +926,17 @@ export const registerValueConservationCases = (
                 action: next.action,
                 artifact,
                 txHash,
-                durableRecovery: JSON.parse(
-                  JSON.stringify(captured.durableRecovery),
-                ),
+                durableRecovery,
               })
             ).kind,
           ).toBe("confirmed");
+          journal.confirm({ action: next.action, txHash, durableRecovery });
         }
         const resolved = await makePort().resolveAuthenticated({
           headerHash: setup.headerHash,
           action: baseAction,
           artifact,
+          entries: journal.entries(),
         });
         const planned = planFaultProofFieldOpening({
           anchorSourceKind: forced ? 1n : 0n,
@@ -1002,6 +978,7 @@ export const registerValueConservationCases = (
           ? []
           : await record(`field:${fieldIndex}:publish`, async () =>
               publishFaultProofFieldCarriage({
+                ownOutputs,
                 lucid: harness.proverLucid,
                 signer: harness.proverSigner,
                 planned,
@@ -1014,6 +991,7 @@ export const registerValueConservationCases = (
           ? (
               await record(`field:${fieldIndex}:certify`, async () =>
                 certifyFaultProofFieldCarriage({
+                  ownOutputs,
                   lucid: harness.proverLucid,
                   network,
                   signer: harness.proverSigner,
@@ -1288,9 +1266,7 @@ export const registerValueConservationCases = (
     it.each(cases)(
       "proves value conservation $forced, maximum=$maximum, cancellation=$cancellation, assets=$assetMaximum, proofs=$proofMaximum, domain=$assetMode, honest=$honest across mint and burn",
       async (testCase) => {
-        fit.begin(testCase.ordinal);
         await proveValueConservation(testCase);
-        fit.pass(testCase.ordinal);
       },
       1_800_000,
     );

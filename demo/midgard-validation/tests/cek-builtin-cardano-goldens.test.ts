@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 
 import {
   hashMidgardCekBlsExpressionNode,
-  MIDGARD_CEK_MAX_BUILTIN_TAG,
+  MIDGARD_CEK_MAX_RESOLVED_BUILTIN_TAG,
 } from "@al-ft/midgard-core";
 import {
   type Data,
@@ -221,6 +221,9 @@ const fixtureType = (type: MidgardCekConstantType): FixtureType => {
       return { pair: [fixtureType(type.first), fixtureType(type.second)] };
     case "blsMillerLoopResult":
       throw new Error("a Miller loop result is never a builtin's value");
+    case "array":
+    case "value":
+      throw new Error("this golden set has no Value or array results");
   }
 };
 
@@ -257,6 +260,9 @@ const fixtureValue = (type: MidgardCekConstantType, payload: Data): unknown => {
     }
     case "blsMillerLoopResult":
       throw new Error("a Miller loop result is never a builtin's value");
+    case "array":
+    case "value":
+      throw new Error("this golden set has no Value or array results");
   }
 };
 
@@ -307,7 +313,7 @@ describe("V1 CEK builtin golden channel", () => {
     if (reachedThroughFinalVerify.includes('"mul"')) covered.add(69);
     expect([...covered].sort((a, b) => a - b)).toEqual(
       Array.from(
-        { length: Number(MIDGARD_CEK_MAX_BUILTIN_TAG) + 1 },
+        { length: Number(MIDGARD_CEK_MAX_RESOLVED_BUILTIN_TAG) + 1 },
         (_, tag) => tag,
       ),
     );

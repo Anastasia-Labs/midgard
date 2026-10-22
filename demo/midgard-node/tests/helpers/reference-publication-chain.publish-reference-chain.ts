@@ -1,4 +1,5 @@
 import * as SDK from "@al-ft/midgard-sdk";
+import { selectPlainFundingUtxos } from "@al-ft/midgard-test-support/reference-script-funding";
 import {
   type LucidEvolution,
   type UTxO,
@@ -205,7 +206,7 @@ export const publishReferenceChain = async (
     if (tail !== undefined && usableTail)
       funding = [tail.outputs[tail.fundingOutputIndex]!.utxo];
     else {
-      funding = SDK.selectReferenceScriptFundingUtxos(
+      funding = selectPlainFundingUtxos(
         confirmedWallet,
         SDK.referenceScriptPublicationFundingTarget(targets.length) +
           BigInt(targets.length) * 10_000_000n,

@@ -47,9 +47,8 @@ const wrapInSpendRedeemers = (data: CML.PlutusData): CML.Redeemers => {
 
 describe("redeemer Data validation without a CML probe", () => {
   it("normalizes a depth-4,043 Cardano redeemer into the exact Midgard preimage", () => {
-    // The deep CML value is constructed iteratively — building never
-    // recurses in wasm, only parsing does, and the admission direction
-    // serializes rather than parses.
+    // The deep CML value is constructed level by level, and the admission
+    // direction serializes it rather than parses it.
     const redeemers = wrapInSpendRedeemers(buildDeepCmlUnaryData(4_043));
     const preimage = cardanoRedeemersToMidgardPreimageCbor(redeemers);
     expect(preimage.toString("hex")).toBe(
@@ -60,14 +59,11 @@ describe("redeemer Data validation without a CML probe", () => {
   }, 60_000);
 
   it("validates deep Midgard redeemer entries without parsing them through CML", () => {
-    // Depth 1,024 exercises the recursion-free entry validation and stays
-    // inside CML's own ceiling (~1,522) for the unavoidable materialization
-    // step of the reverse bridge, so the round-trip must be exact. Depths
-    // beyond that ceiling still trap inside the reverse bridge's required
-    // `CML.PlutusData.from_cbor_bytes` materialization (and a wasm trap
-    // poisons the shared instance), so the reverse direction is exercised at
-    // the maximum only in wasm-patched environments, never in this suite.
-    const preimage = spendRedeemerPreimage(unaryConstructorDataCborHex(1_024));
+    // Depth 4,043, the depth the admission row above uses, exercises the
+    // recursion-free entry validation and the reverse bridge's required
+    // `CML.PlutusData.from_cbor_bytes` materialization, so the round-trip
+    // must be exact.
+    const preimage = spendRedeemerPreimage(unaryConstructorDataCborHex(4_043));
     const redeemers = midgardRedeemersToCardano(preimage);
     expect(redeemers).toBeDefined();
     const roundTripped = cardanoRedeemersToMidgardPreimageCbor(redeemers);

@@ -1,8 +1,11 @@
-import { encodeCbor, MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core";
+import {
+  encodeCbor,
+  MIDGARD_CONSENSUS_LIMITS,
+  midgardBlake2b,
+} from "@al-ft/midgard-core";
 import { lucidDataToCborIterative } from "@al-ft/midgard-core/plutus-data-lucid-iterative";
 import { type Data as PlutusData } from "@harmoniclabs/plutus-data";
 import { Constr, type Data as LucidDataValue } from "@lucid-evolution/lucid";
-import { blake2b } from "@noble/hashes/blake2.js";
 
 import { commitMidgardCekDataTree } from "./cek-data-tree.js";
 import { plutusDataFromCborIterative } from "./plutus-data-iterative.decode.js";
@@ -39,7 +42,7 @@ export const TX_INFO_ASSEMBLY_DOMAIN = Buffer.from(
 );
 
 const hash32 = (bytes: Uint8Array): Buffer =>
-  Buffer.from(blake2b(bytes, { dkLen: 32 }));
+  Buffer.from(midgardBlake2b(bytes, { dkLen: 32 }));
 
 export const bytes = (value: Uint8Array): Buffer => Buffer.from(value);
 
@@ -47,6 +50,14 @@ export const requiredHash32 = (field: string, value: Uint8Array): Buffer => {
   const exact = bytes(value);
   if (exact.length !== 32) {
     throw new Error(`${field} must be exactly 32 bytes`);
+  }
+  return exact;
+};
+
+export const requiredScriptHash = (value: Uint8Array): Buffer => {
+  const exact = bytes(value);
+  if (exact.length !== 28) {
+    throw new Error("CEK program script hash must be exactly 28 bytes");
   }
   return exact;
 };
@@ -184,7 +195,7 @@ export const finalizeMidgardCekObserverItems = (input: {
  * frontier; that membership (`[execution-leaf]` / `[native-execution]`) is the
  * pin, so the frontier index is derived and never named by the witness. The
  * step is a select (auxiliary constructor 17) when the leaf carries a redeemer
- * item leaf (language 3 or 128), and a skip (constructor 40) when it is a
+ * item leaf (language 3 or 128), and a skip (constructor 36) when it is a
  * native execution (language 0, empty redeemer leaf); only one can apply at a
  * given bound. Each select or skip lowers the bound by exactly one. The item
  * steps between a select and its finish walk the selected item under
@@ -325,7 +336,6 @@ export type MidgardCekContextControl = {
   readonly stage: number;
   readonly languageTag: 3 | 128;
   readonly programTermRoot: Buffer;
-  readonly programEnvelopeHash: Buffer;
   readonly purposeKind: 0 | 1 | 2 | 3;
   readonly purposeIndex: bigint;
   readonly scriptHash: Buffer;

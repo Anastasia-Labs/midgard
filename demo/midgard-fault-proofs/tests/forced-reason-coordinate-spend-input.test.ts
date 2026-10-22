@@ -150,6 +150,7 @@ const setupScenario = async (inputIndex: bigint) => {
     },
   });
   const contracts = {
+    hubOraclePolicyId: harness.contracts.hubOracle.policyId,
     steps: harness.contracts.fraudProofContracts.nonExistentInput.steps,
     computationThread: harness.contracts.computationThread,
     fraudProof: harness.contracts.fraudProof,
@@ -248,7 +249,10 @@ const setupScenario = async (inputIndex: bigint) => {
     transitionTraceRoot: transitionMembership.root,
     utxosRoot: ledger.root,
   });
-  const forcedSource = { header, membership: forcedMembership, direction: 1n };
+  const forcedSource = {
+    header,
+    membership: forcedMembership,
+  };
   const fullTransactionCbor =
     encodeMidgardForcedTxCanonical(native).toString("hex");
   const prepared: PreparedNonExistentInputWrongfulRejection = {
@@ -294,15 +298,21 @@ const setupScenario = async (inputIndex: bigint) => {
   };
   const step = (threadOutRef: string, stepIndex: 0 | 1 | 2 | 3) =>
     submitNonExistentInputForcedStep({
+      blueprint: harness.realBlueprint,
+      network: "Custom",
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       ...common,
       threadOutRef,
       stepIndex,
       referenceScripts,
-      carriageUtxos: [],
+      fieldCarriageUtxos: [],
       certificatePolicyId: harness.contracts.fieldPreimageCertificate.policyId,
     });
   const rawStep = (threadOutRef: string, stepIndex: 0 | 1 | 2 | 3) =>
     submitRawNonExistentInputForcedStep({
+      blueprint: harness.realBlueprint,
+      network: "Custom",
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       ...common,
       threadOutRef,
       stepIndex,
@@ -357,12 +367,12 @@ describe("forced spend InputNotFound coordinate the node writes", () => {
     const s = await setupScenario((await writtenReason()).input_index);
     let thread = await s.init();
     for (const stepIndex of [0, 1, 2] as const)
-      thread = await s.rawStep(thread, stepIndex);
-    // The only membership the ledger can prove is input 0's. The step
-    // authenticates its inputs and the membership rule returns false.
+      thread = (await s.rawStep(thread, stepIndex)).nextThreadOutRef;
+    // The only membership the ledger can prove is input 0's, offered for
+    // input 1: the step's membership check cannot prove input 1 held.
     await expectOnchainRefusal(() => s.rawStep(thread, 3), {
       refusedBy: "fraud_proofs/no_input/step_04",
-      check: /^Validator returned false$/u,
+      check: /^expect mpf_proof_v1\.has_value_hash\(/u,
     });
   }, 600_000);
 });

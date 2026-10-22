@@ -1,4 +1,7 @@
+import { decodeMidgardForcedTxCompact } from "@al-ft/midgard-core/codec/forced";
 import {
+  type ForcedTransactionSourceMembershipProof,
+  type Header,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
@@ -16,12 +19,16 @@ import {
 } from "../linear-fault-family.js";
 import { submitLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import { requireInitialStepDatum } from "../step-support.js";
+import {
+  forcedTxFromCoreCompact,
+  requireInitialStepDatum,
+} from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { FieldItemWidthIllegalContracts } from "./contracts.js";
 import {
   classifyFieldItemWidthFinding,
+  fieldItemWidthBoundCoordinate,
   type FieldItemWidthFinding,
 } from "./field-item-width-illegal.js";
 import {
@@ -47,12 +54,26 @@ export const submitFieldItemWidthIllegalStep01Forced = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly finding: FieldItemWidthFinding;
-  readonly forcedSource: Readonly<Record<string, unknown>>;
+  readonly forcedSource: Readonly<{
+    header: Header;
+    membership: ForcedTransactionSourceMembershipProof;
+  }>;
   readonly referenceScriptUtxo: UTxO;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
   const exact = classifyFieldItemWidthFinding(finding);
+  const compact = {
+    ...forcedTxFromCoreCompact(
+      decodeMidgardForcedTxCompact(
+        Buffer.from(
+          forcedSource.membership.value.submitted_source.compact_cbor,
+          "hex",
+        ),
+      ),
+    ),
+    validity_code: null,
+  };
   const stepIndex = 0;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
@@ -73,11 +94,7 @@ export const submitFieldItemWidthIllegalStep01Forced = async ({
   const nextDatum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
-      data: {
-        subject: exact.subject,
-        field_index: BigInt(exact.fieldIndex),
-        item_index: BigInt(exact.itemIndex),
-      },
+      data: fieldItemWidthBoundCoordinate(exact, compact),
     } as never,
     FieldItemWidthStep02DatumSchema as never,
   );

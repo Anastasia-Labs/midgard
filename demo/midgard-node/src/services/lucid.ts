@@ -182,32 +182,6 @@ const makeLucid: Effect.Effect<
     );
   }
   const referenceScriptsAddress = nodeConfig.L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS;
-  const distinctOperationalWallets = new Map<string, string[]>();
-  for (const [role, address] of [
-    ["operator-main", operatorMainAddress],
-    ["operator-merge", operatorMergeAddress],
-    ["reference-scripts", referenceScriptsWalletAddress],
-  ] as const) {
-    const existingRoles = distinctOperationalWallets.get(address) ?? [];
-    distinctOperationalWallets.set(address, [...existingRoles, role]);
-  }
-  const overlappingOperationalWalletRoles = [...distinctOperationalWallets]
-    .filter(([, roles]) => roles.length > 1)
-    .map(([address, roles]) => `${roles.join("+")}=${address}`);
-  if (overlappingOperationalWalletRoles.length > 0) {
-    return yield* Effect.fail(
-      new ConfigError({
-        message:
-          "Operational wallet roles must use distinct L1 addresses for production-safe local wallet views",
-        cause: overlappingOperationalWalletRoles.join(","),
-        fieldsAndValues: [
-          ["L1_OPERATOR_ADDRESS", operatorMainAddress],
-          ["L1_OPERATOR_MERGE_ADDRESS", operatorMergeAddress],
-          ["L1_REFERENCE_SCRIPT_ADDRESS", referenceScriptsWalletAddress],
-        ],
-      }),
-    );
-  }
   configureReferencePublication(referenceScriptsApi, {
     mode: "chained",
     synchronize: async () => (await access.synchronizedViewPoint()).slot,
@@ -230,7 +204,9 @@ const makeLucid: Effect.Effect<
     l1Endpoint: access.endpoint,
     l1ProtocolParametersCbor: access.protocolParametersCbor,
     switchToOperatorsMainWallet: Effect.sync(() =>
-      selectNodeWallet(lucid, nodeConfig.L1_OPERATOR_SEED_PHRASE),
+      selectNodeWallet(lucid, nodeConfig.L1_OPERATOR_SEED_PHRASE, {
+        defensePocket: true,
+      }),
     ),
     switchToOperatorsMergingWallet: Effect.sync(() =>
       selectNodeWallet(lucid, nodeConfig.L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX),

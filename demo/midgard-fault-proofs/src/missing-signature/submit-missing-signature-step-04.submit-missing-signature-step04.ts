@@ -28,6 +28,7 @@ import {
 import {
   faultProofFieldOpening,
   publishFaultProofFieldCarriage,
+  resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -43,6 +44,10 @@ import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
 } from "../witness-reference-scripts.js";
+import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
@@ -77,6 +82,7 @@ export const submitMissingSignatureStep04 = async ({
   witnessReferenceScripts,
   preSubmitBoundary,
   awaitConfirmation = true,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: MissingSignatureContracts;
@@ -91,7 +97,10 @@ export const submitMissingSignatureStep04 = async ({
   readonly witnessSetCompact: NativeTxWitnessSetCompact;
   /** Force §8 tier-2 carriage publication (testing knob). */
   readonly publishCarriage?: boolean;
-  /** Pre-minted §8.6 certificate when the planner selects tier 3. */
+  /**
+   * Pre-minted §8.6 certificate when the planner selects tier 3; otherwise
+   * the one `ownOutputs` claims.
+   */
   readonly certificateUtxo?: UTxO;
   /** §2.3: the published step-04 reference script (required; never inline). */
   readonly referenceScriptUtxo: UTxO;
@@ -99,6 +108,8 @@ export const submitMissingSignatureStep04 = async ({
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }): Promise<SubmitMissingSignatureStep04Result> => {
   const { threadUtxo, threadToken } = await requireMissingSignatureThreadUtxo({
     lucid,
@@ -159,14 +170,25 @@ export const submitMissingSignatureStep04 = async ({
       });
   signer.selectWallet(lucid);
   const carriageUtxos = await publishFaultProofFieldCarriage({
+    ownOutputs,
     lucid,
     signer,
     planned,
     publisherAddress: signer.address,
     label: `${STEP_LABEL} address-witnesses`,
   });
+  // A configured certificate, or the one this workflow's own journal claims.
+  const certificate =
+    certificateUtxo ??
+    (await resolveFaultProofFieldPreimageCertificate({
+      ownOutputs,
+      lucid,
+      network: lucid.config().network!,
+      planned,
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+    }));
   const fieldReferenceInputs = [
-    ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
+    ...(certificate === undefined ? [] : [certificate]),
     ...carriageUtxos,
   ];
   const computationThreadBurnCarriage = witnessMintingPolicyCarriage({
@@ -193,14 +215,6 @@ export const submitMissingSignatureStep04 = async ({
         ]
       : []),
   ];
-  const addrTxWitsOpening = faultProofFieldOpening({
-    planned,
-    // §8.7 indices are into the complete reference-input set, including the
-    // step's own reference script.
-    referenceInputs,
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: `${STEP_LABEL} address-witnesses`,
-  });
 
   const walletUtxos = await lucid.wallet().getUtxos();
   const walletUtxosSansCarriage = [...carriageUtxos].reduce<readonly UTxO[]>(
@@ -252,6 +266,14 @@ export const submitMissingSignatureStep04 = async ({
         });
 
   const spendRedeemer = ((ctx) => {
+    const addrTxWitsOpening = faultProofFieldOpening({
+      planned,
+      // §8.7 indices are into the complete reference-input set, including the
+      // step's own reference script.
+      referenceInputs: ctx.referenceInputs,
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+      label: `${STEP_LABEL} address-witnesses`,
+    });
     requireOwnSpendPurpose(ctx, threadUtxo, STEP_LABEL);
     const inputIndex = requireInputIndex(ctx, threadUtxo, STEP_LABEL);
     const layout: Step04SpendLayout = willFinalize

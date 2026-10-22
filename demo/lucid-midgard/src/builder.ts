@@ -12,7 +12,7 @@ import "./builder/context.js";
 import "./builder/imported-tx.js";
 import "./builder/metadata.js";
 import "./builder/normalizers.js";
-import "./builder/script-materialization.js";
+import "./builder/script-witnesses.js";
 import "./builder/state.js";
 import "./builder/status.js";
 import "./builder/unsigned-tx.js";

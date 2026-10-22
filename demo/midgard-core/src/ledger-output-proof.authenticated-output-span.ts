@@ -170,9 +170,12 @@ export const demandedMidgardLedgerOutputProofSpan = (
   control: MidgardLedgerOutputProofControl,
 ): OutputSpan | null => {
   if (control.stage === MidgardLedgerOutputProofStages.DatumTraversal) {
-    return control.datum === null
-      ? null
-      : nextMidgardCekDataTraverseSpan(control.datum);
+    const span =
+      control.datum === null
+        ? null
+        : nextMidgardCekDataTraverseSpan(control.datum);
+    // An empty span reads no output bytes, so it demands no window.
+    return span !== null && span.length > 0 ? span : null;
   }
   if (
     control.stage === MidgardLedgerOutputProofStages.ReferenceScriptCommitment
@@ -235,7 +238,6 @@ export const boundMidgardLedgerOutputWindowBytes = ({
   if (
     spanWindow === null ||
     !midgardLedgerOutputWindowCovers({ spanWindow, absoluteStart, length }) ||
-    bytes.length !== spanWindow.length ||
     !Buffer.from(midgardBlake2b(bytes, { dkLen: 32 })).equals(spanWindow.digest)
   ) {
     return null;
@@ -257,6 +259,10 @@ export const authenticatedDatumSource = ({
   const span = nextMidgardCekDataTraverseSpan(control.datum!);
   if (span === null) {
     return witness.window === null ? { sourceBytes: null } : null;
+  }
+  // An empty span reads no output bytes: it takes no window.
+  if (span.length === 0) {
+    return witness.window === null ? { sourceBytes: Buffer.alloc(0) } : null;
   }
   if (witness.window === null) return null;
   const sourceBytes = boundMidgardLedgerOutputWindowBytes({

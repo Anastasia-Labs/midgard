@@ -1,4 +1,5 @@
 import {
+  type BuildTxWithRedeemer,
   credentialToAddress,
   Data,
   fromText,
@@ -24,6 +25,7 @@ import {
   HUB_ORACLE_ASSET_NAME,
   HubOracleDatum,
   REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
+  requireUniqueOutputIndex,
   RETIRED_OPERATORS_ROOT_ASSET_NAME,
   SCHEDULER_ASSET_NAME,
   SchedulerDatum,
@@ -234,10 +236,23 @@ export const submitSetupTx = async ({
     .register.Stake(
       scriptRewardAddress(network, contracts.fraudRemovalYield.spendingScript),
     )
-    .mintAssets(
-      stateQueueAssets,
-      Data.to({ InitV1: { output_index: 5n } }, StateQueueRedeemer),
-    )
+    .mintAssets(stateQueueAssets, ((ctx) =>
+      Data.to(
+        {
+          InitV1: {
+            output_index: requireUniqueOutputIndex(
+              ctx.outputs,
+              (output) =>
+                output.address === contracts.stateQueue.spendingScriptAddress &&
+                Object.keys(stateQueueAssets).every(
+                  (unit) => output.assets[unit] === 1n,
+                ),
+              "state-queue root",
+            ),
+          },
+        },
+        StateQueueRedeemer,
+      )) satisfies BuildTxWithRedeemer)
     .pay.ToContract(
       contracts.stateQueue.spendingScriptAddress,
       {

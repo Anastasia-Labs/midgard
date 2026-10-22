@@ -13,6 +13,7 @@ import {
   decodeMidgardSpendInputItem,
   midgardRedeemerPurposeFromTag,
 } from "../src/codec/native-tx-field-item-decoders.js";
+import { midgardFixedFieldItemIsLegal } from "../src/codec/native-tx-field-item-legality.js";
 import {
   encodeMidgardFieldItems,
   encodeMidgardFieldPreimageForField,
@@ -124,6 +125,50 @@ const itemEncoderFor = (
   items: MidgardFieldItems["items"],
 ): readonly Buffer[] =>
   encodeMidgardFieldItems({ fieldIndex, items } as MidgardFieldItems);
+
+describe("fixed-item legality preserves authored input and signer order", () => {
+  const item = (field: number, index: number): Buffer =>
+    field === 4
+      ? Buffer.concat([Buffer.from("581c", "hex"), Buffer.alloc(28, index)])
+      : Buffer.concat([
+          Buffer.from("5826825820", "hex"),
+          Buffer.alloc(32),
+          Buffer.of(0x19, 0x00, index),
+        ]);
+
+  it.each([0, 1, 4])(
+    "accepts descending distinct items in field %i",
+    (field) => {
+      expect(
+        midgardFixedFieldItemIsLegal(field, item(field, 9), item(field, 8)),
+      ).toBe(true);
+    },
+  );
+
+  it.each([0, 1, 4])(
+    "leaves repeated items to their semantic phase in field %i",
+    (field) => {
+      expect(
+        midgardFixedFieldItemIsLegal(field, item(field, 8), item(field, 8)),
+      ).toBe(true);
+    },
+  );
+
+  it.each([0, 1, 4])(
+    "still refuses malformed current and previous shapes in field %i",
+    (field) => {
+      const valid = item(field, 8);
+      const short = valid.subarray(0, valid.length - 1);
+      const wrongWrapper = Buffer.from(valid);
+      wrongWrapper[1] = wrongWrapper[1]! + 1;
+      expect(midgardFixedFieldItemIsLegal(field, valid, short)).toBe(false);
+      expect(midgardFixedFieldItemIsLegal(field, short, valid)).toBe(false);
+      expect(midgardFixedFieldItemIsLegal(field, null, wrongWrapper)).toBe(
+        false,
+      );
+    },
+  );
+});
 
 describe("§5.3 field item decoders are the inverse of the #569 producers", () => {
   it("covers all nine fields, in the fixture's positional order", () => {
@@ -277,4 +322,56 @@ describe("§5.3 item readers fail closed", () => {
       ),
     ).toThrow();
   });
+});
+
+// Independently encoded and Ed25519-signed source vectors shared with the
+// actual FIWI validator-chain regression; physical signer hashes descend.
+describe("field-7 legality preserves authenticated witness order", () => {
+  const first = Buffer.from(
+    "58658258208a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c584094da6e57c26fd188c52a4b23b2801f9c2fad870b15b2d289a5189141d8e18ada511c79dc9f7b32351c2a90aaafccb85bc9785189433ebc38c5ad8482d7b79e01",
+    "hex",
+  );
+  const second = Buffer.from(
+    "58658258208139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b3945840aa08f5f3164fbe3da499efa9bc02d9ccb302c34e05b0089e82f2ffb30cbbb4732e9beaf9ce196bb62959de0f05e7c73de24f8d5d266758a74956d011b88e1a0f",
+    "hex",
+  );
+
+  it("accepts descending distinct signer hashes", () => {
+    expect(midgardFixedFieldItemIsLegal(7, first, second)).toBe(true);
+  });
+
+  it("accepts exact duplicate witnesses", () => {
+    expect(midgardFixedFieldItemIsLegal(7, first, first)).toBe(true);
+  });
+
+  it("does not impose a signature-byte order within one signer", () => {
+    const changed = Buffer.from(first);
+    changed.fill(0xff, 39);
+    expect(midgardFixedFieldItemIsLegal(7, changed, first)).toBe(true);
+  });
+
+  it.each(["current", "previous"] as const)(
+    "still refuses malformed %s wrapper, key header, signature header and width",
+    (position) => {
+      for (const offset of [1, 4, 38]) {
+        const malformed = Buffer.from(first);
+        malformed[offset] = malformed[offset]! + 1;
+        expect(
+          midgardFixedFieldItemIsLegal(
+            7,
+            position === "previous" ? malformed : first,
+            position === "current" ? malformed : first,
+          ),
+        ).toBe(false);
+      }
+      const short = first.subarray(0, first.length - 1);
+      expect(
+        midgardFixedFieldItemIsLegal(
+          7,
+          position === "previous" ? short : first,
+          position === "current" ? short : first,
+        ),
+      ).toBe(false);
+    },
+  );
 });

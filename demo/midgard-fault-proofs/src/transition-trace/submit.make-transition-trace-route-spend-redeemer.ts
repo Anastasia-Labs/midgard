@@ -20,6 +20,7 @@ import {
 } from "../runtime.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import { type FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
+import { type OwnOutputJournal } from "../workflow/own-outputs.js";
 import { type TransitionDepositOpening } from "./history-opening.js";
 import {
   readTransitionProof,
@@ -40,7 +41,15 @@ export type SubmitTransitionTraceProofConfig = {
   readonly depositOpening?: TransitionDepositOpening;
   /** Required published shared minting witnesses for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  /**
+   * The published field-preimage certificate minting script, for an accepted
+   * transaction whose field openings need tier-3 certificates. Defaults to the
+   * deployment's `fieldPreimageCertificateMint` reference script.
+   */
+  readonly fieldCertificateReferenceScript?: UTxO;
   readonly awaitConfirmation?: boolean;
+  /** Our field-carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 };
 
 export type SubmitTransitionTraceProofFromFilesConfig = SubmitProviderConfig & {

@@ -31,6 +31,7 @@ jobs:
       # linter and its tests load.
       - uses: ./.github/actions/demo-setup
         with:
+          aiken: "true"
           install-filter: midgard-demo
       # `node --test` given a glob that matches nothing runs zero tests and
       # exits 0, so a moved or renamed directory would turn this job into a
@@ -67,6 +68,9 @@ jobs:
       - name: Check registries name only existing files
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run registry-paths
+      - name: Check toolchain version pins
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run toolchain-pins
       - name: Check deterministic contributor build guards
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run contributor-build-guards

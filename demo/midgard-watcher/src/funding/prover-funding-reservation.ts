@@ -11,6 +11,7 @@ export {
   parseWatcherProverFundingReservationRecord,
 } from "./prover-funding-reservation.parse-watcher-prover-funding-reservation-record.js";
 export {
+  planFirstWatcherProverFundingReservation,
   planWatcherProverFundingReservation,
   restoreWatcherProverFundingReservationPlan,
 } from "./prover-funding-reservation.plan-watcher-prover-funding-reservation.js";

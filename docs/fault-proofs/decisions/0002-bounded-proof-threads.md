@@ -53,7 +53,6 @@ scenarios together. A source installation is not release acceptance.
 
 ## Authorities and verification
 
-- [Typed reason disposition](../../../demo/midgard-fault-proofs/src/workflow/reason-disposition.ts)
 - [Catalogue](../../../demo/midgard-sdk/src/fraud-proof/catalogue.ts)
 - [Family reference](../family-reference.md)
 - [Rejection reasons](../rejection-reason-catalogue-v1.md)
@@ -61,4 +60,5 @@ scenarios together. A source installation is not release acceptance.
 
 Maximum-shape registered lifecycles must reach permanent proof mint and removal,
 refuse honest/substituted evidence, and cover applicable cancellation and recovery.
-Keep blueprint-bound fit ledgers alongside those executable checks.
+The fault-proof suite's submit guard holds every transaction those lifecycles
+submit to the Van Rossem limits, so they are also the family's fit proof.

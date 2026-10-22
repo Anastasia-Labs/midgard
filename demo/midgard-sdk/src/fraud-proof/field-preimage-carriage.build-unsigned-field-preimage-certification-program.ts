@@ -1,12 +1,13 @@
 import { type MidgardFieldCarriagePlan } from "@al-ft/midgard-core/codec/native-tx-carriage";
 import {
+  type BuildTxWithRedeemer,
   type LucidEvolution,
-  type MintingPolicy,
   type TxSignBuilder,
   type UTxO,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { requireUniqueOutputIndex } from "../tx-context-redeemer.js";
 import { resolveFieldPreimageCertificationReferenceLayout } from "./field-preimage-carriage.assert-midgard-field-carriage-resolves-at-door.js";
 import { resolveProtocolParameters } from "./field-preimage-carriage.build-unsigned-field-preimage-publication-program.js";
 import {
@@ -43,7 +44,7 @@ export const buildUnsignedFieldPreimageCertificationProgram = (
     plan,
     certificatePolicyId,
     certificateAddress,
-    certificateWitness,
+    certificatePolicyReferenceUtxo,
     chunkUtxos,
     compactCbor,
     sourceKind,
@@ -52,16 +53,8 @@ export const buildUnsignedFieldPreimageCertificationProgram = (
     readonly plan: MidgardFieldCarriagePlan;
     readonly certificatePolicyId: string;
     readonly certificateAddress: string;
-    readonly certificateWitness:
-      | {
-          /** Explicitly limited to emulator fixtures; production must use a published script. */
-          readonly kind: "inline_emulator_only";
-          readonly certificateScript: MintingPolicy;
-        }
-      | {
-          readonly kind: "reference_script";
-          readonly referenceUtxo: UTxO;
-        };
+    /** The published UTxO carrying the certificate policy as a reference script. */
+    readonly certificatePolicyReferenceUtxo: UTxO;
     readonly chunkUtxos: readonly UTxO[];
     readonly compactCbor: string;
     readonly sourceKind: 0n | 1n;
@@ -76,19 +69,13 @@ export const buildUnsignedFieldPreimageCertificationProgram = (
           "certification must reference exactly the plan's chunks",
         );
       }
-      const strictLayout =
-        certificateWitness.kind === "reference_script"
-          ? resolveFieldPreimageCertificationReferenceLayout({
-              plan,
-              certificatePolicyId,
-              certificatePolicyReferenceUtxo: certificateWitness.referenceUtxo,
-              chunkUtxos,
-            })
-          : undefined;
-      const referenceInputs = strictLayout?.referenceInputs ?? chunkUtxos;
-      const chunkRefInputIndices =
-        strictLayout?.chunkRefInputIndices ??
-        resolveChunkReferenceIndices({ plan, referenceInputs });
+      const { referenceInputs } =
+        resolveFieldPreimageCertificationReferenceLayout({
+          plan,
+          certificatePolicyId,
+          certificatePolicyReferenceUtxo,
+          chunkUtxos,
+        });
       const protocolParameters = await resolveProtocolParameters(lucid);
       const lovelace = minimumLovelaceForFieldPreimageCertificate({
         certificateAddress,
@@ -97,31 +84,34 @@ export const buildUnsignedFieldPreimageCertificationProgram = (
         coinsPerUtxoByte: protocolParameters.coinsPerUtxoByte,
       });
       const unit = `${certificatePolicyId}${certification.assetNameHex}`;
-      const transaction = lucid
+      return await lucid
         .newTx()
         .readFrom([...referenceInputs])
-        .mintAssets(
-          { [unit]: 1n },
+        .mintAssets({ [unit]: 1n }, ((ctx) =>
           certifyFieldPreimageRedeemer({
             compactCbor,
             sourceKind,
             witnessSetCompactCbor,
-            chunkRefInputIndices,
-            outputIndex: 0,
-          }),
-        )
+            chunkRefInputIndices: resolveChunkReferenceIndices({
+              plan,
+              referenceInputs: ctx.referenceInputs,
+            }),
+            outputIndex: Number(
+              requireUniqueOutputIndex(
+                ctx.outputs,
+                (output) =>
+                  output.address === certificateAddress &&
+                  output.assets[unit] === 1n,
+                "field-preimage certificate",
+              ),
+            ),
+          })) satisfies BuildTxWithRedeemer)
         .pay.ToAddressWithData(
           certificateAddress,
           { kind: "inline", value: certification.datumCbor },
           { lovelace, [unit]: 1n },
-        );
-      return await (
-        certificateWitness.kind === "inline_emulator_only"
-          ? transaction.attach.MintingPolicy(
-              certificateWitness.certificateScript,
-            )
-          : transaction
-      ).complete({ localUPLCEval: true });
+        )
+        .complete({ localUPLCEval: true });
     },
     catch: (cause) =>
       new Error(

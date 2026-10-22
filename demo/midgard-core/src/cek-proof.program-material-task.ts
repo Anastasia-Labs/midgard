@@ -1,17 +1,8 @@
+import { decodeMidgardCekProgramMaterialEntry } from "./cek-proof.decode-program-material-entry.js";
 import {
-  decodeMidgardCekProgramEnvelope,
   encodeMidgardCekProgramMaterialEntry,
   type MidgardCekProgramMaterialEntry,
-} from "./cek-proof.decode-midgard-cek-program-envelope.js";
-import { decodeMidgardCekProgramMaterialEntry } from "./cek-proof.decode-midgard-cek-program-material-da-entry.js";
-import {
-  encodeMidgardCekProgramEnvelope,
-  type MidgardCekProgramEnvelope,
-} from "./cek-proof.encode-midgard-cek-continuation-frame.js";
-import {
-  MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES,
-  MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT,
-} from "./cek-proof.encode-midgard-cek-term-node.js";
+} from "./cek-proof.program-material.js";
 import { type Hash32 } from "./codec/hash.js";
 
 export type ProgramMaterialTask =
@@ -51,9 +42,8 @@ export type ProgramMaterialTask =
 
 /**
  * A content-addressed CEK node was not present in the supplied material
- * snapshot. Callers may classify this as publication lag only when the source
- * snapshot itself was authenticated and clean; all other verifier failures
- * remain ordinary errors.
+ * snapshot used to build a local dispute. It does not classify transaction
+ * admission or retained DA availability.
  */
 export class MidgardCekProgramMaterialMissingRootError extends Error {
   readonly rootHex: string;
@@ -88,13 +78,13 @@ export type MidgardCekProgramMaterialVerificationOptions = {
   /**
    * Allocation observability for resource-bound tests and metrics. It fires
    * only when a final content root is assembled, never for branch validation
-   * or a bundle-cache hit. Callback failures are ignored so observability
+   * or a local cache hit. Callback failures are ignored so observability
    * cannot change verifier acceptance.
    */
   readonly onBlobMaterialized?: (rootHex: string, byteLength: bigint) => void;
   /**
    * Fires on the first validated constant-result materialization for a value
-   * content root in a bundle. Callback failures are ignored.
+   * content root in a local derivation. Callback failures are ignored.
    */
   readonly onConstantMaterialized?: (
     valueRootHex: string,
@@ -107,7 +97,7 @@ export type NormalizedProgramMaterial = ReadonlyMap<
   MidgardCekProgramMaterialEntry
 >;
 
-export type ProgramMaterialBundleCache = {
+export type ProgramMaterialCache = {
   /**
    * Internal-only buffers keyed by authenticated content root. Callers receive
    * copies, so cached bytes are immutable for the lifetime of verification.
@@ -126,7 +116,6 @@ export const normalizeProgramMaterial = (
   entries: Iterable<MidgardCekProgramMaterialEntry>,
 ): NormalizedProgramMaterial => {
   const normalized = new Map<string, MidgardCekProgramMaterialEntry>();
-  let materialByteLength = 0n;
   for (const entry of entries) {
     const exact = decodeMidgardCekProgramMaterialEntry(
       encodeMidgardCekProgramMaterialEntry(entry),
@@ -136,32 +125,8 @@ export const normalizeProgramMaterial = (
       throw new Error(`duplicate CEK program material root ${key}`);
     }
     normalized.set(key, exact);
-    if (BigInt(normalized.size) > MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT) {
-      throw new Error(
-        `CEK program material contains more than ${MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT.toString()} nodes`,
-      );
-    }
-    materialByteLength += BigInt(exact.preimage.length);
-    if (materialByteLength > MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES) {
-      throw new Error(
-        `CEK program material exceeds ${MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES.toString()} bytes`,
-      );
-    }
   }
   return normalized;
-};
-
-export const canonicalProgramEnvelope = (
-  envelope: MidgardCekProgramEnvelope,
-): {
-  readonly envelope: MidgardCekProgramEnvelope;
-  readonly identity: string;
-} => {
-  const encoded = encodeMidgardCekProgramEnvelope(envelope);
-  return {
-    envelope: decodeMidgardCekProgramEnvelope(encoded),
-    identity: encoded.toString("hex"),
-  };
 };
 
 export const greatestPowerOfTwoBelow = (value: bigint): bigint => {

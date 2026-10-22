@@ -3,6 +3,7 @@ import {
   Data,
   LucidEvolution,
   TxSignBuilder,
+  type UTxO,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -12,6 +13,7 @@ import {
   LucidError,
   makeReturn,
   MidgardValidators,
+  type OutputReference,
   outputReferenceFromUTxO,
 } from "../common.js";
 import { HubOracleError } from "../hub-oracle.js";
@@ -24,12 +26,6 @@ import {
   UserEventBuildError,
 } from "./internals.js";
 import {
-  buildUnsignedCekProgramMaterialProgram,
-  buildUnsignedCekSinglePublicationProgram,
-  DEFAULT_TX_ORDER_LOVELACE,
-  type TxOrderBuildMetadata,
-} from "./tx-order.build-unsigned-cek-single-publication-program.js";
-import {
   deriveTxOrderMaterial,
   planTxOrderMaterialCarriage,
   requireTxOrderCreatorKeyHashProgram,
@@ -41,10 +37,20 @@ import {
 } from "./tx-order.submit-tx-order-config.js";
 import {
   carriageIsResolvable,
-  type PublishCekProgramMaterialConfig,
-  type PublishCekSinglePublicationConfig,
   txOrderMaterialCarriageVector,
 } from "./tx-order.tx-order-material-carriage-vector.js";
+
+export type TxOrderBuildMetadata = {
+  readonly txOrderAddress: string;
+  readonly txOrderId: OutputReference;
+  readonly authNonceCbor: string;
+  readonly txOrderAuthUnit: string;
+  readonly nonceInput: Pick<UTxO, "txHash" | "outputIndex">;
+  readonly validTo: number;
+  readonly inclusionTime: number;
+};
+
+export const DEFAULT_TX_ORDER_LOVELACE = 3_000_000n;
 
 export const buildUnsignedTxOrderTxWithMetadataProgram = (
   lucid: LucidEvolution,
@@ -282,22 +288,4 @@ export const unsignedTxOrderTx = (
 ): Promise<TxSignBuilder> =>
   makeReturn(
     unsignedTxOrderTxProgram(lucid, contracts, txOrderParams),
-  ).unsafeRun();
-
-export const unsignedCekProgramMaterial = (
-  lucid: LucidEvolution,
-  contracts: MidgardValidators,
-  config: PublishCekProgramMaterialConfig,
-): Promise<TxSignBuilder> =>
-  makeReturn(
-    buildUnsignedCekProgramMaterialProgram(lucid, contracts, config),
-  ).unsafeRun();
-
-export const unsignedCekSinglePublication = (
-  lucid: LucidEvolution,
-  contracts: MidgardValidators,
-  config: PublishCekSinglePublicationConfig,
-): Promise<TxSignBuilder> =>
-  makeReturn(
-    buildUnsignedCekSinglePublicationProgram(lucid, contracts, config),
   ).unsafeRun();

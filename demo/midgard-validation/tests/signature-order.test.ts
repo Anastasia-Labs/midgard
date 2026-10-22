@@ -1,7 +1,10 @@
 import {
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  deriveMidgardNativeTxFaultEvidenceMaterial,
   encodeCbor,
   encodeMidgardForcedTxCanonical,
   encodeMidgardValidationMachineState,
+  locateMidgardTransactionFieldItemFault,
   MIDGARD_CONSENSUS_LIMITS,
   MIDGARD_CONSENSUS_PROFILE,
 } from "@al-ft/midgard-core";
@@ -18,10 +21,10 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  buildDeterministicValidationMachineTrace,
   buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
 } from "../src/index.js";
+import { buildDeterministicValidationMachineTrace } from "./helpers/trace-commit-golden.js";
 import {
   encodeByteList,
   encodeRecomputedNativeTx,
@@ -191,6 +194,74 @@ describe("deterministic signature consume order", { timeout: 60_000 }, () => {
           }),
         );
       }
+    },
+  );
+});
+
+// Fixed public seed vectors encoded independently with definite CBOR and
+// signed over MidgardNativeTxBodyV1 || 01 || bodyCompact using OpenSSL.
+// The same full transaction bytes feed FIWI's real accepted-source chain.
+describe("source-bound FIWI witness-order oracle", () => {
+  it.each([
+    [
+      "descending",
+      "84018c582981582682582011111111111111111111111111111111111111111111111111111111111111111900004180582c815829a200581d600d6a577e9441ad8ed9663931906e4d43ece8f82c712b1d0235affb0601821a004c4b40a0002020418041804180582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53008358cf8258658258208a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c584094da6e57c26fd188c52a4b23b2801f9c2fad870b15b2d289a5189141d8e18ada511c79dc9f7b32351c2a90aaafccb85bc9785189433ebc38c5ad8482d7b79e0158658258208139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b3945840aa08f5f3164fbe3da499efa9bc02d9ccb302c34e05b0089e82f2ffb30cbbb4732e9beaf9ce196bb62959de0f05e7c73de24f8d5d266758a74956d011b88e1a0f4180418000",
+    ],
+    [
+      "duplicate",
+      "84018c582981582682582011111111111111111111111111111111111111111111111111111111111111111900004180582c815829a200581d600d6a577e9441ad8ed9663931906e4d43ece8f82c712b1d0235affb0601821a004c4b40a0002020418041804180582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53008358cf8258658258208a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c584094da6e57c26fd188c52a4b23b2801f9c2fad870b15b2d289a5189141d8e18ada511c79dc9f7b32351c2a90aaafccb85bc9785189433ebc38c5ad8482d7b79e0158658258208a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c584094da6e57c26fd188c52a4b23b2801f9c2fad870b15b2d289a5189141d8e18ada511c79dc9f7b32351c2a90aaafccb85bc9785189433ebc38c5ad8482d7b79e014180418000",
+    ],
+  ])(
+    "accepts independently signed %s physical witnesses",
+    async (_shape, hex) => {
+      const bytes = Buffer.from(hex, "hex");
+      const transaction = decodeMidgardNativeTxFullFromCanonicalCbor(bytes);
+      const { transactionId } =
+        deriveMidgardNativeTxFaultEvidenceMaterial(bytes);
+      const spent = Buffer.from(
+        "8258201111111111111111111111111111111111111111111111111111111111111111190000",
+        "hex",
+      );
+      const output = Buffer.from(
+        "a200581d600d6a577e9441ad8ed9663931906e4d43ece8f82c712b1d0235affb0601821a004c4b40a0",
+        "hex",
+      );
+      expect(validateMidgardConsensusTxCbor(bytes)).toBeNull();
+      expect(screenMidgardForcedTxAdmission(transaction)).toBeNull();
+      const expectedLedgerOps = [
+        { type: "delete" as const, key: spent },
+        buildValidationMachineLedgerInsertOp({
+          key: outRefFromTxId(transactionId),
+          outputCbor: output,
+        }),
+      ];
+      const ledgerMutationSteps =
+        await buildValidationMachineLedgerMutationSteps({
+          initialEntries: [{ outRef: spent, output }],
+          operations: expectedLedgerOps,
+        });
+      const trace = await Effect.runPromise(
+        buildDeterministicValidationMachineTrace({
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+          ...context,
+          transactionId,
+          canonicalTransactionCbor: bytes,
+          priorUtxosRoot: ledgerMutationSteps[0]!.preRoot.toString("hex"),
+          postUtxosRoot: ledgerMutationSteps.at(-1)!.postRoot.toString("hex"),
+          ledgerWitnessEntries: [{ outRef: spent, output }],
+          expectedLedgerOps,
+          ledgerMutationSteps,
+          expectedVerdict: "accepted",
+          expectedRejectionCode: null,
+        }),
+      );
+      expect(trace.verdict).toBe("accepted");
+      const scans = trace.witnesses.filter(
+        (witness) => witness.phase === "signatures",
+      );
+      expect(scans).toHaveLength(4);
+      // This assertion is deliberately after actual admission and signature replay.
+      expect(locateMidgardTransactionFieldItemFault(transaction)).toBeNull();
     },
   );
 });

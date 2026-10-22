@@ -23,8 +23,7 @@ use midgard/fraud_proofs/invalid_range/step_01.{
 use midgard/fraud_proofs/invalid_range/step_02
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/compact.{
-  verify_forced_tx_proof_source_v1, verify_native_tx_compact_cbor_v1,
-  verify_native_tx_proof_source_v1,
+  verify_native_tx_compact_cbor_v1, verify_native_tx_proof_source_v1,
 }
 use midgard/fraud_proofs/native_tx/types.{
   MidgardTransaction, MidgardTransactionBody, NativeTxBodyCompact,
@@ -91,7 +90,7 @@ validator main(
         //    step must pass.
         let
             _own_script_hash,
-            _computation_thread_token_asset_name,
+            _,
             _fraud_prover,
             m_input_state_data,
             output_script_hash,
@@ -122,7 +121,7 @@ validator main(
         //    challenged header.
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data = step_02.State {
-          subject: substrate.bind_accepted_subject_v1(bad_tx_view),
+          subject: substrate.open_accepted_subject_v1(bad_tx_view),
           block_slot,
           bad_tx_normalized_validity_range,
         }
@@ -136,7 +135,6 @@ validator main(
         output_index,
         header,
         membership,
-        direction,
       }}) -> {
         let Transaction { inputs, outputs, .. } = tx
         expect Some(step_datum) = datum
@@ -150,18 +148,10 @@ validator main(
           outputs,
         )
         expect None = input_state
-        let subject = substrate.bind_forced_subject_to_thread_v1(
+        let Pair(subject, verified) = substrate.open_forced_subject_v1(
           thread_name,
           header,
           membership,
-          direction,
-        )
-        let leaf = membership.value
-        let Pair(verified, _) = verify_forced_tx_proof_source_v1(
-          leaf.tx_id,
-          leaf.submitted_source.compact_cbor,
-          leaf.submitted_source.witness_set_compact_cbor,
-          leaf.submitted_source.field_preimage_lengths_cbor,
         )
         let expected: Data = step_02.State {
           subject,
@@ -263,8 +253,15 @@ fn run_step_01(
   expected_range: vrn.NormalizedTimeRange,
 ) -> Bool {
   let expected_output_state: Data = step_02.State {
-    subject: substrate.bind_accepted_subject_v1(
-      verify_native_tx_compact_cbor_v1(claimed.tx_id, claimed.compact_cbor),
+    subject: substrate.open_subject_v1(
+      fixture.ct_token_asset_name(claimed),
+      substrate.AcceptedSource {
+        header: claimed.header,
+        tx_inclusion: verify_native_tx_compact_cbor_v1(
+          claimed.tx_id,
+          claimed.compact_cbor,
+        ),
+      },
     ),
     block_slot: header.block_slot,
     bad_tx_normalized_validity_range: expected_range,
@@ -337,8 +334,15 @@ fn run_step_01_published(
   steps: mpf.Proof,
 ) -> Bool {
   let expected_output_state: Data = step_02.State {
-    subject: substrate.bind_accepted_subject_v1(
-      verify_native_tx_compact_cbor_v1(block.tx_id, block.compact_cbor),
+    subject: substrate.open_subject_v1(
+      fixture.ct_token_asset_name(block),
+      substrate.AcceptedSource {
+        header: block.header,
+        tx_inclusion: verify_native_tx_compact_cbor_v1(
+          block.tx_id,
+          block.compact_cbor,
+        ),
+      },
     ),
     block_slot: block.header.block_slot,
     bad_tx_normalized_validity_range: vrn.ClosedRange { lower: 5, upper: 8 },

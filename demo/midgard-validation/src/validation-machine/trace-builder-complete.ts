@@ -3,40 +3,27 @@
  * validation-machine trace for one transaction.
  */
 import {
-  appendMidgardValidationMerkleLeaf,
   buildMidgardBoundedItemChunkProof,
   buildMidgardLedgerOutputAssetFrontier,
   buildMidgardRedeemerItemProofTrace,
   buildMidgardValidationMerkleFrontier,
   buildMidgardValidationMerkleMembership,
-  buildMidgardValidationTraceTree,
   commitMidgardValidationMerkleFrontier,
-  decodeMidgardCekProgramEnvelope,
   decodeMidgardLedgerOutputCommitment,
   encodeCbor,
-  encodeMidgardMpfProofDescriptor,
   finalizeMidgardRedeemerItemProof,
   hashMidgardCekMachineState,
-  hashMidgardCekProgramEnvelope,
   hashMidgardMintAssetLeaf,
   hashMidgardRedeemerItemProofControl,
   hashMidgardResolvedContextItemLeaf,
-  hashMidgardValidationLedgerDeltaOperation,
-  hashMidgardValidationMachineState,
-  hashMidgardValidationWorkWitness,
   MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
-  MIDGARD_VALIDATION_MACHINE_VERSION,
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
   midgardBoundedItemChunkCount,
-  type MidgardMpfProofFoldTrace,
+  type MidgardCekMachineState,
   MidgardRedeemerItemProofModes,
   MidgardRedeemerItemProofStages,
-  type MidgardValidationMachineState,
 } from "@al-ft/midgard-core";
-import {
-  decodeMidgardTxOutput,
-  encodeMidgardSpendInputItem,
-} from "@al-ft/midgard-core/codec";
+import { decodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
 import {
   encodeMidgardRejectionReasonV1Cbor,
   hashMidgardValidationRejectionReasonV1,
@@ -66,6 +53,11 @@ import {
   validateMidgardCekObserverCollection,
 } from "../cek-context.js";
 import {
+  buildMidgardCekExecutionGraph,
+  startMidgardCekObservedRun,
+} from "../cek-executor.js";
+import { buildMidgardCanonicalCekProgram } from "../cek-program.js";
+import {
   cardanoScriptPurposeData,
   type DecodedMidgardRedeemer,
   type MidgardScriptPurpose,
@@ -84,7 +76,6 @@ import {
   summarizeMidgardCekMapData,
   summarizeMidgardCekSmallConstrData,
 } from "../script-context-proof.js";
-import { txOutRefData } from "../tx-out-ref.js";
 import type { RejectCode } from "../types.js";
 import { RejectCodes } from "../types.js";
 import { outputCborMeetsMinAda } from "../value-accounting.js";
@@ -93,9 +84,7 @@ import {
   emptyMidgardInputResolutionSchedule,
   hash32,
   initialMidgardResolvedInputsAccumulator,
-  ZERO_32,
 } from "./input-resolution.js";
-import { ledgerDeltaProofFrameAuxiliary } from "./ledger-mutation.js";
 import {
   hashValidationMachineNativeScriptFrame,
   MAX_NATIVE_SCRIPT_SCAN_DEPTH,
@@ -118,6 +107,12 @@ import type {
   ScriptPurposeProofEntry,
 } from "./trace-builder-types.js";
 import {
+  exactDescriptorSummary,
+  outRefSummary,
+  sameSequence,
+  sameSummary,
+} from "./trace-descriptor-summary.js";
+import {
   type DeterministicValidationMachineTrace,
   type ValidationMachineWorkWitness,
 } from "./types.js";
@@ -130,9 +125,22 @@ import {
   midgardValueContributions,
   type ValidationValueContribution,
 } from "./value-mutation.js";
+/**
+ * What a completed replay leaves besides the states it pushed to its sink:
+ * the trace's verdict and the bytes a full trace carries.
+ */
+export type CompletedValidationTrace = Pick<
+  DeterministicValidationMachineTrace,
+  | "validationContextCbor"
+  | "verdict"
+  | "rejectionCode"
+  | "rejectionReason"
+  | "ledgerOps"
+> & { readonly rejectionCodeHash: Buffer };
+
 export const completeValidationTrace = (
   context: Effect.Effect.Success<ReturnType<typeof prepareValidationTrace>>,
-): Effect.Effect<DeterministicValidationMachineTrace, Error> =>
+): Effect.Effect<CompletedValidationTrace, Error> =>
   Effect.gen(function* () {
     let { stoppedAtRejection } = context;
     let stopReason: MidgardRejectionReasonV1 | null = context.stopReason;
@@ -173,20 +181,10 @@ export const completeValidationTrace = (
       ledgerState,
       outputCbors,
       priorLedgerRoot,
-      resolutionItems,
-      encodeFrontierPeaks,
-      ledgerDeltaOperationMembership,
-      authenticatedLedgerOps,
-      postLedgerRoot,
-      ledgerDeltaRoot,
-      witnesses,
-      ledgerDeltaFrontier,
-      witnessExecutionBudgets,
-      transactionCommitment,
-      validationContextHash,
+      traceSink,
+      recording,
       verdict,
       contextCbor,
-      canonicalProgramMaterialSidecarCbor,
       ledgerOps,
     } = context;
 
@@ -639,52 +637,6 @@ export const completeValidationTrace = (
               });
             },
           );
-          const sameSummary = (
-            left: {
-              readonly root: Uint8Array;
-              readonly cborLength: bigint;
-              readonly memory: bigint;
-            },
-            right: {
-              readonly root: Uint8Array;
-              readonly cborLength: bigint;
-              readonly memory: bigint;
-            },
-          ): boolean =>
-            Buffer.from(left.root).equals(Buffer.from(right.root)) &&
-            left.cborLength === right.cborLength &&
-            left.memory === right.memory;
-          const sameSequence = (
-            left: {
-              readonly root: Uint8Array;
-              readonly length: bigint;
-              readonly payloadCborLength: bigint;
-              readonly memory: bigint;
-            },
-            right: {
-              readonly root: Uint8Array;
-              readonly length: bigint;
-              readonly payloadCborLength: bigint;
-              readonly memory: bigint;
-            },
-          ): boolean =>
-            Buffer.from(left.root).equals(Buffer.from(right.root)) &&
-            left.length === right.length &&
-            left.payloadCborLength === right.payloadCborLength &&
-            left.memory === right.memory;
-          const exactDescriptorSummary = (summary: {
-            readonly root: Uint8Array;
-            readonly cborLength: bigint;
-            readonly memory: bigint;
-          }) => ({
-            root: Buffer.from(summary.root),
-            cborLength: summary.cborLength,
-            memory: summary.memory,
-          });
-          const outRefSummary = (key: Buffer) =>
-            summarizeMidgardCekLucidData(
-              txOutRefData(key.toString("hex")) as never,
-            );
           const resolvedTxInInfoSummary = (
             key: Buffer,
             output: {
@@ -729,7 +681,7 @@ export const completeValidationTrace = (
             readonly activeStateHash: Uint8Array | null;
             readonly executionCpuLimit: bigint;
             readonly executionMemoryLimit: bigint;
-            readonly programEnvelopeHash: Uint8Array | null;
+            readonly programScriptHash: Uint8Array | null;
             /** The running execution's context control on a core step. */
             readonly purposeOf?: MidgardCekContextControl;
           }): Buffer => {
@@ -754,12 +706,15 @@ export const completeValidationTrace = (
               activeStateHash: null,
               executionCpuLimit: 0n,
               executionMemoryLimit: 0n,
-              programEnvelopeHash: input.contextControl.programEnvelopeHash,
+              programScriptHash: input.contextControl.scriptHash,
             });
           const executionAuxiliary = (
             execution: ScriptExecutionProofEntry,
             executionIndex: number,
-          ): NonNullable<ValidationMachineWorkWitness["auxiliary"]> => {
+          ): Extract<
+            NonNullable<ValidationMachineWorkWitness["auxiliary"]>,
+            { readonly kind: "nativeExecutionScan" }
+          > => {
             const sourceItem = boundedItemForScriptSource(execution.source);
             return {
               kind: "nativeExecutionScan",
@@ -850,6 +805,12 @@ export const completeValidationTrace = (
             executionIndex += 1
           ) {
             const executionEntry = scriptExecutionEntries[executionIndex]!;
+            const evaluation =
+              executionEntry.languageTag === 0 ||
+              (executionEntry.languageTag === 3 &&
+                executionEntry.purpose.purposeKind === 3)
+                ? undefined
+                : scriptEvaluations[evaluationIndex++];
             const completedCpu = executionBudget.cpu;
             const completedMemory = executionBudget.memory;
             pushWitness(
@@ -862,9 +823,14 @@ export const completeValidationTrace = (
                 activeStateHash: null,
                 executionCpuLimit: 0n,
                 executionMemoryLimit: 0n,
-                programEnvelopeHash: null,
+                programScriptHash: null,
               }),
-              executionAuxiliary(executionEntry, executionIndex),
+              {
+                ...executionAuxiliary(executionEntry, executionIndex),
+                ...(evaluation?.phase2Class === undefined
+                  ? {}
+                  : { phase2Class: evaluation.phase2Class }),
+              },
             );
 
             if (
@@ -893,33 +859,80 @@ export const completeValidationTrace = (
               continue;
             }
 
-            const evaluation = scriptEvaluations[evaluationIndex++];
             if (
               evaluation === undefined ||
               !evaluation.scriptBytes.equals(
                 executionEntry.source.script.scriptBytes,
               ) ||
-              evaluation.graph === null
+              evaluation.phase2Class === undefined
             ) {
+              throw new Error(
+                "CEK execution is missing its exact script decode classification",
+              );
+            }
+            if (evaluation.phase2Class !== 0) {
+              if (
+                evaluation.result.kind !== "script_invalid" ||
+                evaluation.graph !== null ||
+                evaluation.execution !== null ||
+                rejection === null ||
+                terminalPhase !== "cek" ||
+                rejection.code !== RejectCodes.PlutusScriptInvalid
+              )
+                throw new Error(
+                  "Phase-two selection refusal disagrees with validation",
+                );
+              stopReason = {
+                PlutusExecutionFailed: {
+                  purpose_kind: BigInt(executionEntry.purpose.purposeKind),
+                  purpose_index: executionEntry.purpose.purposeIndex,
+                },
+              };
+              stoppedAtRejection = true;
+              break;
+            }
+            if (evaluation.graph === null && recording.mode === "proof")
               throw new Error(
                 "CEK execution is missing its authenticated program graph",
               );
-            }
             const selected = selectedRedeemer(executionEntry);
             const exactExecution = evaluation.execution;
-            if (exactExecution === null) {
+            if (exactExecution === null && recording.mode === "proof") {
               throw new Error(
                 "CEK trace is missing the evaluator's captured execution",
               );
             }
-            const programEnvelope = decodeMidgardCekProgramEnvelope(
+            const program = buildMidgardCanonicalCekProgram(
               executionEntry.source.script.scriptBytes,
             );
+            // A proof build carries the evaluator's graph and captured run; a
+            // commit build derives the graph from the carried Flat program and
+            // re-executes it, streaming its steps (nothing verified or kept).
+            const graph =
+              evaluation.graph ??
+              buildMidgardCekExecutionGraph(
+                program.termRoot,
+                program.material.values(),
+                evaluation.contextCbor,
+              );
+            const observedRun =
+              exactExecution === null
+                ? startMidgardCekObservedRun({
+                    root: graph.root,
+                    material: graph.material.values(),
+                    constantWitnesses: graph.constantWitnesses,
+                    executionIndex: evaluation.executionIndex,
+                    maxSteps:
+                      input.consensusProfile.limits
+                        .maxValidationMachineStepCount,
+                    executionBudget: evaluation.executionBudget,
+                  })
+                : null;
+            const initialCekState =
+              exactExecution?.initialState ?? observedRun!.initialState;
             let contextControl = initialMidgardCekContextControl({
               languageTag: executionEntry.languageTag,
-              programTermRoot: programEnvelope.termRoot,
-              programEnvelopeHash:
-                hashMidgardCekProgramEnvelope(programEnvelope),
+              programTermRoot: program.termRoot,
               purposeKind: executionEntry.purpose.purposeKind,
               purposeIndex: executionEntry.purpose.purposeIndex,
               scriptHash: executionEntry.purpose.scriptHash,
@@ -1873,16 +1886,14 @@ export const completeValidationTrace = (
               }),
               { kind: "cekContextSeed", control: finalControl },
             );
-            const contextWitness = evaluation.graph.constantWitnesses.get(
-              Buffer.from(evaluation.graph.contextValueRoot).toString("hex"),
-            );
+            executionBudget.cpu = completedCpu + initialCekState.cpu; // spends startup cost
+            executionBudget.memory = completedMemory + initialCekState.memory;
+            const contextWitness = graph.contextWitness;
             if (
-              !Buffer.from(exactExecution.initialState.focusRoot).equals(
-                Buffer.from(evaluation.graph.root),
+              !Buffer.from(initialCekState.focusRoot).equals(
+                Buffer.from(graph.root),
               ) ||
-              exactExecution.initialState.executionIndex !==
-                BigInt(executionIndex) ||
-              contextWitness?.kind !== "semanticConstant" ||
+              initialCekState.executionIndex !== BigInt(executionIndex) ||
               !sameSummary(
                 contextWitness.witness.payload,
                 contextParts.context,
@@ -1894,7 +1905,11 @@ export const completeValidationTrace = (
               );
             }
 
-            for (const step of exactExecution.steps) {
+            const coreStep = (
+              pre: MidgardCekMachineState,
+              post: MidgardCekMachineState,
+              auxiliary: ValidationMachineWorkWitness["auxiliary"],
+            ): boolean => {
               pushWitness(
                 "cek",
                 cekWitness({
@@ -1902,20 +1917,20 @@ export const completeValidationTrace = (
                   executionCursor: executionIndex,
                   completedCpu,
                   completedMemory,
-                  activeStateHash: hashMidgardCekMachineState(step.pre),
+                  activeStateHash: hashMidgardCekMachineState(pre),
                   executionCpuLimit: selected.value.exUnits.steps,
                   executionMemoryLimit: selected.value.exUnits.memory,
-                  programEnvelopeHash: contextControl.programEnvelopeHash,
+                  programScriptHash: contextControl.scriptHash,
                   purposeOf: contextControl,
                 }),
-                { kind: "cekCoreStep", step },
+                auxiliary,
               );
-              executionBudget.cpu = completedCpu + step.post.cpu;
-              executionBudget.memory = completedMemory + step.post.memory;
+              executionBudget.cpu = completedCpu + post.cpu;
+              executionBudget.memory = completedMemory + post.memory;
               const budgetExceeded =
-                step.post.cpu > selected.value.exUnits.steps ||
-                step.post.memory > selected.value.exUnits.memory;
-              if (budgetExceeded || step.post.mode === "haltError") {
+                post.cpu > selected.value.exUnits.steps ||
+                post.memory > selected.value.exUnits.memory;
+              if (budgetExceeded || post.mode === "haltError") {
                 if (
                   rejection === null ||
                   terminalPhase !== "cek" ||
@@ -1934,12 +1949,28 @@ export const completeValidationTrace = (
                   },
                 };
                 stoppedAtRejection = true;
-                break;
+                return false;
               }
+              return true;
+            };
+            let terminalCekState: MidgardCekMachineState | null;
+            if (exactExecution !== null) {
+              for (const step of exactExecution.steps) {
+                if (
+                  !coreStep(step.pre, step.post, { kind: "cekCoreStep", step })
+                ) {
+                  break;
+                }
+              }
+              terminalCekState = exactExecution.terminalState;
+            } else {
+              terminalCekState =
+                observedRun!.run((pre, post) => coreStep(pre, post, null))
+                  ?.terminalState ?? null;
             }
             if (stoppedAtRejection) break;
             if (
-              exactExecution.terminalState.mode !== "haltSuccess" ||
+              terminalCekState?.mode !== "haltSuccess" ||
               evaluation.result.kind !== "accepted"
             ) {
               throw new ValidationTraceStopped(
@@ -1968,7 +1999,7 @@ export const completeValidationTrace = (
                 activeStateHash: null,
                 executionCpuLimit: 0n,
                 executionMemoryLimit: 0n,
-                programEnvelopeHash: null,
+                programScriptHash: null,
               }),
             );
           }
@@ -2455,410 +2486,6 @@ export const completeValidationTrace = (
                   ),
                 );
               }
-              let ledgerReplayCursor = 0;
-              let ledgerReplayAccumulator =
-                initialMidgardResolvedInputsAccumulator();
-              let ledgerReplayRemainingScheduleHash =
-                emptyMidgardInputResolutionSchedule();
-              let currentLedgerRoot = Buffer.from(priorLedgerRoot);
-              let ledgerOutputCursor = 0;
-              let operationFrontier = emptyValidationFrontier;
-              let mutationIndex = 0;
-              let pendingMutation:
-                | {
-                    readonly status: "authorized";
-                    readonly kind: "delete" | "insert";
-                    readonly key: Buffer;
-                    readonly value: Buffer;
-                    readonly proofFoldTrace: MidgardMpfProofFoldTrace;
-                    readonly foldControl: null;
-                  }
-                | {
-                    readonly status: "folding";
-                    readonly kind: "delete" | "insert";
-                    readonly key: Buffer;
-                    readonly value: Buffer;
-                    readonly proofFoldTrace: MidgardMpfProofFoldTrace;
-                    readonly foldControl: MidgardMpfProofFoldTrace["initial"];
-                  }
-                | null = null;
-              let ledgerResolvedInputsAccumulator =
-                initialMidgardResolvedInputsAccumulator();
-              for (const node of resolutionScheduleNodes) {
-                const value = ledgerDescriptorState.get(
-                  node.key.toString("hex"),
-                );
-                if (value === undefined) {
-                  return yield* Effect.fail(
-                    new Error(
-                      "ledger-delta context lost a previously authenticated ledger descriptor",
-                    ),
-                  );
-                }
-                ledgerResolvedInputsAccumulator =
-                  advanceMidgardResolvedInputsAccumulator({
-                    accumulator: ledgerResolvedInputsAccumulator,
-                    sourceKind: node.sourceKind,
-                    key: node.key,
-                    value,
-                  });
-              }
-              const ledgerOutputDescriptorFrontier =
-                buildMidgardValidationMerkleFrontier(
-                  admittedOutputDescriptorLeafHashes,
-                );
-              const pendingMutationCbor = (): Buffer =>
-                pendingMutation === null
-                  ? Buffer.alloc(0)
-                  : encodeCbor([
-                      1n,
-                      pendingMutation.status === "authorized" ? 0n : 1n,
-                      pendingMutation.kind === "delete" ? 0n : 1n,
-                      pendingMutation.key,
-                      pendingMutation.value,
-                      encodeMidgardMpfProofDescriptor(
-                        pendingMutation.proofFoldTrace.descriptor,
-                      ),
-                      BigInt(pendingMutation.foldControl?.nextFrameIndex ?? -1),
-                      pendingMutation.foldControl?.includingRoot ??
-                        Buffer.alloc(0),
-                      pendingMutation.foldControl?.excludingRoot ??
-                        Buffer.alloc(0),
-                      BigInt(
-                        pendingMutation.foldControl?.expectedNextCursor ?? 0,
-                      ),
-                    ]);
-              const ledgerDeltaControlCbor = (input: {
-                readonly stage: number;
-                readonly replayScheduleHash: Buffer;
-              }): Buffer =>
-                encodeCbor([
-                  BigInt(resolutionItems.length),
-                  ledgerResolvedInputsAccumulator,
-                  BigInt(outputCbors.length),
-                  encodeFrontierPeaks(ledgerOutputDescriptorFrontier),
-                  BigInt(input.stage),
-                  input.replayScheduleHash,
-                  BigInt(ledgerReplayCursor),
-                  ledgerReplayAccumulator,
-                  ledgerReplayRemainingScheduleHash,
-                  currentLedgerRoot,
-                  BigInt(ledgerOutputCursor),
-                  BigInt(operationFrontier.count),
-                  pendingMutationCbor(),
-                  encodeFrontierPeaks(operationFrontier),
-                ]);
-              ledgerReplayRemainingScheduleHash = resolutionScheduleHash;
-              for (const node of resolutionScheduleNodes) {
-                const value = ledgerDescriptorState.get(
-                  node.key.toString("hex"),
-                );
-                if (value === undefined) {
-                  return yield* Effect.fail(
-                    new Error(
-                      "ledger-delta replay lost a previously authenticated ledger descriptor",
-                    ),
-                  );
-                }
-                const mutationStep =
-                  node.sourceKind === "spend"
-                    ? (input.ledgerMutationSteps[mutationIndex] ?? null)
-                    : null;
-                if (node.sourceKind === "spend") {
-                  if (
-                    mutationStep === null ||
-                    mutationStep.operation.type !== "delete" ||
-                    !mutationStep.operation.key.equals(node.key) ||
-                    !mutationStep.preRoot.equals(currentLedgerRoot)
-                  ) {
-                    return yield* Effect.fail(
-                      new Error(
-                        "ledger-delta deletion mutation does not match the authenticated spend schedule",
-                      ),
-                    );
-                  }
-                  pushWitness(
-                    "ledgerDelta",
-                    ledgerDeltaControlCbor({
-                      stage: 0,
-                      replayScheduleHash: resolutionScheduleHash,
-                    }),
-                    {
-                      kind: "ledgerDeltaOperation",
-                      operationKind: "delete",
-                      key: node.key,
-                      value: Buffer.alloc(0),
-                      mutationStep,
-                      operationMembership:
-                        ledgerDeltaOperationMembership(mutationIndex),
-                    },
-                  );
-                  pendingMutation = {
-                    status: "authorized",
-                    kind: "delete",
-                    key: Buffer.from(node.key),
-                    value: Buffer.alloc(0),
-                    proofFoldTrace: mutationStep.proofFoldTrace,
-                    foldControl: null,
-                  };
-                }
-                pushWitness(
-                  "ledgerDelta",
-                  ledgerDeltaControlCbor({
-                    stage: 0,
-                    replayScheduleHash: resolutionScheduleHash,
-                  }),
-                  {
-                    kind: "ledgerDeltaReplay",
-                    sourceKind: node.sourceKind,
-                    key: node.key,
-                    nextScheduleHash: node.nextScheduleHash,
-                    value,
-                  },
-                );
-                ledgerReplayAccumulator =
-                  advanceMidgardResolvedInputsAccumulator({
-                    accumulator: ledgerReplayAccumulator,
-                    sourceKind: node.sourceKind,
-                    key: node.key,
-                    value,
-                  });
-                ledgerReplayRemainingScheduleHash = node.nextScheduleHash;
-                ledgerReplayCursor += 1;
-                if (node.sourceKind === "spend") {
-                  if (mutationStep === null || pendingMutation === null) {
-                    return yield* Effect.fail(
-                      new Error(
-                        "ledger-delta deletion lost its authenticated operation",
-                      ),
-                    );
-                  }
-                  pendingMutation = {
-                    ...pendingMutation,
-                    status: "folding",
-                    kind: "delete",
-                    key: Buffer.from(node.key),
-                    value: Buffer.from(value),
-                    foldControl: mutationStep.proofFoldTrace.initial,
-                  };
-                  for (const foldStep of mutationStep.proofFoldTrace.steps) {
-                    if (
-                      pendingMutation.foldControl !== foldStep.pre &&
-                      (pendingMutation.foldControl.nextFrameIndex !==
-                        foldStep.pre.nextFrameIndex ||
-                        pendingMutation.foldControl.expectedNextCursor !==
-                          foldStep.pre.expectedNextCursor ||
-                        !pendingMutation.foldControl.includingRoot.equals(
-                          foldStep.pre.includingRoot,
-                        ) ||
-                        !pendingMutation.foldControl.excludingRoot.equals(
-                          foldStep.pre.excludingRoot,
-                        ))
-                    ) {
-                      return yield* Effect.fail(
-                        new Error(
-                          "ledger-delta deletion proof fold is not contiguous",
-                        ),
-                      );
-                    }
-                    pushWitness(
-                      "ledgerDelta",
-                      ledgerDeltaControlCbor({
-                        stage: 0,
-                        replayScheduleHash: resolutionScheduleHash,
-                      }),
-                      ledgerDeltaProofFrameAuxiliary(mutationStep, foldStep),
-                    );
-                    pendingMutation = {
-                      ...pendingMutation,
-                      foldControl: foldStep.post,
-                    };
-                  }
-                  pushWitness(
-                    "ledgerDelta",
-                    ledgerDeltaControlCbor({
-                      stage: 0,
-                      replayScheduleHash: resolutionScheduleHash,
-                    }),
-                  );
-                  currentLedgerRoot = Buffer.from(mutationStep.postRoot);
-                  operationFrontier = appendMidgardValidationMerkleLeaf(
-                    operationFrontier,
-                    hashMidgardValidationLedgerDeltaOperation(
-                      authenticatedLedgerOps[mutationIndex]!,
-                    ),
-                  );
-                  mutationIndex += 1;
-                  pendingMutation = null;
-                }
-              }
-              pushWitness(
-                "ledgerDelta",
-                ledgerDeltaControlCbor({
-                  stage: 0,
-                  replayScheduleHash: resolutionScheduleHash,
-                }),
-              );
-              for (
-                let outputIndex = 0;
-                outputIndex < outputCbors.length;
-                outputIndex += 1
-              ) {
-                const descriptorCbor =
-                  admittedOutputDescriptorCbors[outputIndex];
-                if (descriptorCbor === undefined) {
-                  return yield* Effect.fail(
-                    new Error(
-                      "ledger-delta insertion lost an admitted output descriptor",
-                    ),
-                  );
-                }
-                const mutationStep = input.ledgerMutationSteps[mutationIndex];
-                // The ledger trie key is §5.3's fixed-index input item
-                // (`82 ‖ 58 20 tx_id ‖ 19 index_be16`, 38 bytes) — the same
-                // bytes on-chain `ledger_outref_key` derives. `encodeCbor([txId,
-                // index])` would spell indices 0–23 minimally and miss every key
-                // the trie actually holds.
-                const outputKey = encodeMidgardSpendInputItem({
-                  txId: input.transactionId,
-                  outputIndex,
-                });
-                if (
-                  mutationStep === undefined ||
-                  mutationStep.operation.type !== "insert" ||
-                  !mutationStep.operation.key.equals(outputKey) ||
-                  !mutationStep.operation.value.equals(descriptorCbor) ||
-                  !mutationStep.preRoot.equals(currentLedgerRoot)
-                ) {
-                  return yield* Effect.fail(
-                    new Error(
-                      "ledger-delta insertion mutation does not match the authenticated output frontier",
-                    ),
-                  );
-                }
-                pushWitness(
-                  "ledgerDelta",
-                  ledgerDeltaControlCbor({
-                    stage: 1,
-                    replayScheduleHash: resolutionScheduleHash,
-                  }),
-                  {
-                    kind: "ledgerDeltaOperation",
-                    operationKind: "insert",
-                    key: outputKey,
-                    value: descriptorCbor,
-                    mutationStep,
-                    operationMembership:
-                      ledgerDeltaOperationMembership(mutationIndex),
-                  },
-                );
-                pendingMutation = {
-                  status: "authorized",
-                  kind: "insert",
-                  key: Buffer.from(outputKey),
-                  value: Buffer.from(descriptorCbor),
-                  proofFoldTrace: mutationStep.proofFoldTrace,
-                  foldControl: null,
-                };
-                pushWitness(
-                  "ledgerDelta",
-                  ledgerDeltaControlCbor({
-                    stage: 1,
-                    replayScheduleHash: resolutionScheduleHash,
-                  }),
-                  {
-                    kind: "ledgerDeltaOutput",
-                    outputIndex,
-                    descriptorCbor,
-                    siblings: buildMidgardValidationMerkleMembership(
-                      admittedOutputDescriptorLeafHashes,
-                      outputIndex,
-                    ).siblings,
-                  },
-                );
-                ledgerOutputCursor += 1;
-                pendingMutation = {
-                  ...pendingMutation,
-                  status: "folding",
-                  foldControl: mutationStep.proofFoldTrace.initial,
-                };
-                for (const foldStep of mutationStep.proofFoldTrace.steps) {
-                  if (
-                    pendingMutation.foldControl !== foldStep.pre &&
-                    (pendingMutation.foldControl.nextFrameIndex !==
-                      foldStep.pre.nextFrameIndex ||
-                      pendingMutation.foldControl.expectedNextCursor !==
-                        foldStep.pre.expectedNextCursor ||
-                      !pendingMutation.foldControl.includingRoot.equals(
-                        foldStep.pre.includingRoot,
-                      ) ||
-                      !pendingMutation.foldControl.excludingRoot.equals(
-                        foldStep.pre.excludingRoot,
-                      ))
-                  ) {
-                    return yield* Effect.fail(
-                      new Error(
-                        "ledger-delta insertion proof fold is not contiguous",
-                      ),
-                    );
-                  }
-                  pushWitness(
-                    "ledgerDelta",
-                    ledgerDeltaControlCbor({
-                      stage: 1,
-                      replayScheduleHash: resolutionScheduleHash,
-                    }),
-                    ledgerDeltaProofFrameAuxiliary(mutationStep, foldStep),
-                  );
-                  pendingMutation = {
-                    ...pendingMutation,
-                    foldControl: foldStep.post,
-                  };
-                }
-                pushWitness(
-                  "ledgerDelta",
-                  ledgerDeltaControlCbor({
-                    stage: 1,
-                    replayScheduleHash: resolutionScheduleHash,
-                  }),
-                );
-                currentLedgerRoot = Buffer.from(mutationStep.postRoot);
-                operationFrontier = appendMidgardValidationMerkleLeaf(
-                  operationFrontier,
-                  hashMidgardValidationLedgerDeltaOperation(
-                    authenticatedLedgerOps[mutationIndex]!,
-                  ),
-                );
-                mutationIndex += 1;
-                pendingMutation = null;
-              }
-              pushWitness(
-                "ledgerDelta",
-                ledgerDeltaControlCbor({
-                  stage: 1,
-                  replayScheduleHash: resolutionScheduleHash,
-                }),
-              );
-              if (
-                mutationIndex !== input.ledgerMutationSteps.length ||
-                !currentLedgerRoot.equals(postLedgerRoot) ||
-                commitMidgardValidationMerkleFrontier(operationFrontier).equals(
-                  ledgerDeltaRoot,
-                ) === false
-              ) {
-                return yield* Effect.fail(
-                  new Error(
-                    "ledger-delta replay did not reach its committed roots",
-                  ),
-                );
-              }
-              pushWitness(
-                "ledgerDelta",
-                ledgerDeltaControlCbor({
-                  stage: 2,
-                  replayScheduleHash: resolutionScheduleHash,
-                }),
-              );
             }
           }
         }
@@ -2904,85 +2531,34 @@ export const completeValidationTrace = (
       }
     }
 
-    const terminalWitness: ValidationMachineWorkWitness = {
-      phase: "terminal",
-      programCounter: witnesses.length,
-      cbor: encodeValidationTerminalWitnessCbor(
-        rejectionCode === null
-          ? { verdict: "accepted", postLedgerRoot, ledgerDeltaFrontier }
-          : {
-              verdict: "rejected",
-              reason: rejectionReason!,
-              priorLedgerRoot,
-            },
-      ),
-      auxiliary: null,
-    };
-    witnesses.push(terminalWitness);
-    witnessExecutionBudgets.push({
-      cpu: executionBudget.cpu,
-      memory: executionBudget.memory,
-    });
-
-    const eventKeyHash = hash32(input.eventKeyCbor);
     const rejectionCodeHash =
       rejectionReason === null
         ? MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH
         : hashMidgardValidationRejectionReasonV1(rejectionReason);
-    const states = witnesses.map((witness, index) => {
-      const terminal = index === witnesses.length - 1;
-      const budget = witnessExecutionBudgets[index]!;
-      return {
-        machineVersion: MIDGARD_VALIDATION_MACHINE_VERSION,
-        eventKeyHash,
-        transactionId: Buffer.from(input.transactionId),
-        transactionCommitment,
-        validationContextHash,
-        sourceKind: input.sourceKind,
-        priorLedgerRoot,
-        phase: witness.phase,
-        programCounter: witness.programCounter,
-        workRoot: hashMidgardValidationWorkWitness({
-          phase: witness.phase,
-          programCounter: witness.programCounter,
-          witnessCbor: witness.cbor,
-        }),
-        executionCpu: budget.cpu,
-        executionMemory: budget.memory,
-        verdict: terminal ? verdict : ("pending" as const),
-        rejectionCodeHash: terminal
-          ? rejectionCodeHash
-          : MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
-        ledgerDeltaRoot,
-      } satisfies MidgardValidationMachineState;
-    });
-    if (states.length === 0) {
-      return yield* Effect.fail(new Error("validation trace has no states"));
-    }
-    const tree = buildMidgardValidationTraceTree(
-      states.map(hashMidgardValidationMachineState),
-      verdict,
-      rejectionCodeHash,
+    traceSink.push(
+      {
+        phase: "terminal",
+        programCounter: traceSink.length,
+        cbor: encodeValidationTerminalWitnessCbor(
+          rejectionCode === null
+            ? { verdict: "accepted" }
+            : {
+                verdict: "rejected",
+                reason: rejectionReason!,
+                priorLedgerRoot,
+              },
+        ),
+        auxiliary: null,
+      },
+      executionBudget,
+      { verdict, rejectionCodeHash },
     );
-    if (
-      tree.descriptor.initialStateHash.equals(ZERO_32) ||
-      tree.descriptor.terminalStateHash.equals(ZERO_32)
-    ) {
-      return yield* Effect.fail(
-        new Error("validation trace endpoint hash must not be zero"),
-      );
-    }
     return {
       validationContextCbor: contextCbor,
-      programMaterialSidecarCbor: Buffer.from(
-        canonicalProgramMaterialSidecarCbor,
-      ),
-      states,
-      witnesses,
-      tree,
       verdict,
       rejectionCode,
+      rejectionCodeHash,
       rejectionReason,
       ledgerOps,
-    };
+    } satisfies CompletedValidationTrace;
   });

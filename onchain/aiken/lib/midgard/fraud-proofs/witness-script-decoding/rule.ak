@@ -11,9 +11,11 @@ use midgard/fraud_proofs/native_tx/codec.{
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/native_script_scan_v1
 use midgard/rejection_reason_v1.{
-  WitnessNativeScriptDepthLimit, WitnessNativeScriptMalformed,
-  WitnessNativeScriptNodeLimit, WitnessScriptHeaderMalformed,
+  PlutusScriptUndecodable, WitnessNativeScriptDepthLimit,
+  WitnessNativeScriptMalformed, WitnessNativeScriptNodeLimit,
+  WitnessScriptHeaderMalformed,
 }
+use midgard/script_decode_v1.{ScriptDecodeRecordV1, item_record_class_v1}
 
 pub const field_index: Int = 6
 
@@ -28,6 +30,13 @@ pub const result_native_malformed: Int = 1
 pub const result_node_limit: Int = 2
 
 pub const result_depth_limit: Int = 3
+
+/// A Plutus item whose decode record refuses it with class `c` closes as
+/// `result_plutus_refused_base + c` (c is 1–17).
+pub const result_plutus_refused_base: Int = 100
+
+/// The `item_kind` of `PlutusScriptUndecodable` this family proves.
+pub const item_kind: Int = 0
 
 const checkpoint_domain: ByteArray =
   "midgard/fraud-proofs/witness-script-decoding/checkpoint-v1"
@@ -50,22 +59,26 @@ pub type WitnessScriptScanStateV1 {
 }
 
 fn class_is_fault(value: Int) -> Bool {
-  and {
-    value >= result_header_malformed,
-    value <= result_depth_limit,
+  or {
+    and {
+      value >= result_header_malformed,
+      value <= result_depth_limit,
+    },
+    value > result_plutus_refused_base,
   }
 }
 
+/// `subject` is the value `open_subject_v1` returned in this Step 01 run, so it
+/// is canonical by construction (see `substrate.opened_rejection_reason_v1`).
 pub fn bind_subject_v1(
   subject: substrate.VerdictSubjectV1,
   witness_set_hash: ByteArray,
   script_index: Int,
 ) -> BoundWitnessScriptV1 {
-  expect substrate.subject_is_canonical_v1(subject)
   expect bytearray.length(witness_set_hash) == 32
   expect script_index >= 0
   let accused_class = if subject.direction == substrate.direction_wrongful_rejection {
-    when substrate.rejection_reason_of_v1(subject) is {
+    when substrate.opened_rejection_reason_v1(subject) is {
       WitnessScriptHeaderMalformed { script_index: actual } -> {
         expect actual == script_index
         result_header_malformed
@@ -81,6 +94,12 @@ pub fn bind_subject_v1(
       WitnessNativeScriptDepthLimit { script_index: actual } -> {
         expect actual == script_index
         result_depth_limit
+      }
+      PlutusScriptUndecodable { item_kind: kind, item_index: actual, class } -> {
+        expect kind == item_kind
+        expect actual == script_index
+        expect class >= 1
+        result_plutus_refused_base + class
       }
       _ -> fail @"reason outside witness-script-decoding"
     }
@@ -137,10 +156,13 @@ fn state_with(
   }
 }
 
+/// `record` is the item's decode record when the item is a Plutus script, and
+/// None otherwise.
 pub fn authenticate_item_v1(
   bound: BoundWitnessScriptV1,
   item: ByteArray,
   scan_script_hash: ByteArray,
+  record: Option<ScriptDecodeRecordV1>,
 ) -> WitnessScriptScanStateV1 {
   let total_length = bytearray.length(item)
   let item_commitment = bounded_item_v1.from_bytes(
@@ -155,7 +177,8 @@ pub fn authenticate_item_v1(
   // would initialise the control over a zero-length region and abort, so
   // every class is fixed by the engine rather than parsed here.
   when scan_engine.bind_machine_v1(item, total_length) is {
-    scan_engine.MachineBindMalformedV1 ->
+    scan_engine.MachineBindMalformedV1 -> {
+      expect None = record
       if native_script_scan_v1.versioned_script_header_v1(item, total_length) == None {
         state_with(
           bound,
@@ -175,16 +198,33 @@ pub fn authenticate_item_v1(
           result_native_malformed,
         )
       }
-    scan_engine.MachineBindNonNativeV1 { .. } ->
+    }
+    scan_engine.MachineBindNonNativeV1 { language_tag } -> {
+      expect Some(header) = native_script_scan_v1.versioned_script_header_v1(
+        item,
+        total_length,
+      )
+      let class = item_record_class_v1(
+        item,
+        header.payload_offset,
+        language_tag,
+        record,
+      )
       state_with(
         bound,
         total_length,
         item_commitment,
         #"",
         scan_script_hash,
-        result_no_fault,
+        if class == 0 {
+          result_no_fault
+        } else {
+          result_plutus_refused_base + class
+        },
       )
-    scan_engine.MachineBoundV1 { control } ->
+    }
+    scan_engine.MachineBoundV1 { control } -> {
+      expect None = record
       state_with(
         bound,
         total_length,
@@ -193,6 +233,7 @@ pub fn authenticate_item_v1(
         scan_script_hash,
         result_pending,
       )
+    }
   }
 }
 

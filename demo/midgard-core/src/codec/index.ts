@@ -10,6 +10,14 @@ export * from "./native-script.js";
 export * from "./native-tx-carriage.js";
 export * from "./native-tx-field-access.js";
 export * from "./native-tx-field-item-decoders.js";
+export {
+  locateMidgardFieldItemFault,
+  locateMidgardTransactionFieldItemFault,
+  MidgardFieldItemError,
+  type MidgardFieldItemFault,
+  midgardFieldItemWidthIsLegal,
+  midgardFixedFieldItemIsLegal,
+} from "./native-tx-field-item-legality.js";
 export * from "./native-tx-field-items.js";
 export * from "./output.js";
 export * from "./script-language-views.js";

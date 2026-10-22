@@ -148,6 +148,24 @@ const LOCATED: readonly (readonly [
     { OutputBelowMinAda: { output_index: 2n } },
   ],
   [
+    "malformed output reference script",
+    RejectCodes.InvalidFieldType,
+    { arm: "OutputReferenceScriptMalformed", index: 1n },
+    { OutputReferenceScriptMalformed: { output_index: 1n } },
+  ],
+  [
+    "output reference script over the node limit",
+    RejectCodes.NativeScriptNodeCount,
+    { arm: "OutputReferenceScriptNodeLimit", index: 3n },
+    { OutputReferenceScriptNodeLimit: { output_index: 3n } },
+  ],
+  [
+    "output reference script over the depth limit",
+    RejectCodes.NativeScriptDepth,
+    { arm: "OutputReferenceScriptDepthLimit", index: 4n },
+    { OutputReferenceScriptDepthLimit: { output_index: 4n } },
+  ],
+  [
     "input asset accumulation",
     RejectCodes.AssetCount,
     { arm: "InputAssetAccumulationLimit", index: 3n, assetIndex: 9n },
@@ -170,6 +188,28 @@ const LOCATED: readonly (readonly [
     RejectCodes.InvalidFieldType,
     { arm: "ScriptIntegrityHashMismatch" },
     "ScriptIntegrityHashMismatch",
+  ],
+  [
+    "witness script the decoder refuses",
+    RejectCodes.ScriptProgramEncoding,
+    {
+      arm: "PlutusScriptUndecodable",
+      itemKind: 0n,
+      index: 2n,
+      refusalClass: 5n,
+    },
+    { PlutusScriptUndecodable: { item_kind: 0n, item_index: 2n, class: 5n } },
+  ],
+  [
+    "output reference script the decoder refuses",
+    RejectCodes.ScriptProgramEncoding,
+    {
+      arm: "PlutusScriptUndecodable",
+      itemKind: 1n,
+      index: 7n,
+      refusalClass: 17n,
+    },
+    { PlutusScriptUndecodable: { item_kind: 1n, item_index: 7n, class: 17n } },
   ],
 ];
 
@@ -265,13 +305,27 @@ describe("resolveRejectionReason", () => {
     },
   );
 
-  it("needs a subject for a code whose arms carry coordinates", () => {
+  it.each([RejectCodes.PlutusScriptInvalid, RejectCodes.ScriptProgramEncoding])(
+    "needs a subject for %s, whose arms carry coordinates",
+    (code) => {
+      expect(resolveRejectionReason({ code }, "machine")).toStrictEqual({
+        kind: "subjectMissing",
+      });
+    },
+  );
+
+  it("requires the carried-script coordinates for the script-decode code", () => {
     expect(
       resolveRejectionReason(
-        { code: RejectCodes.PlutusScriptInvalid },
-        "machine",
+        { code: RejectCodes.ScriptProgramEncoding },
+        "subject",
       ),
     ).toStrictEqual({ kind: "subjectMissing" });
+    expect(
+      rejectionReasonFitsCode(RejectCodes.ScriptProgramEncoding, {
+        PlutusScriptUndecodable: { item_kind: 0n, item_index: 2n, class: 4n },
+      }),
+    ).toBe(true);
   });
 
   it("never writes a subject whose arm the code cannot end in", () => {
@@ -282,6 +336,20 @@ describe("resolveRejectionReason", () => {
           subject: { arm: "RequiredSignerUnsigned", index: 0n },
         },
         "subject",
+      ),
+    ).toStrictEqual({ kind: "subjectMissing" });
+    expect(
+      resolveRejectionReason(
+        {
+          code: RejectCodes.PlutusScriptInvalid,
+          subject: {
+            arm: "PlutusScriptUndecodable",
+            itemKind: 0n,
+            index: 0n,
+            refusalClass: 1n,
+          },
+        },
+        "machine",
       ),
     ).toStrictEqual({ kind: "subjectMissing" });
   });

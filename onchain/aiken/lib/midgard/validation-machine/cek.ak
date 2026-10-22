@@ -18,6 +18,7 @@ use midgard/rejection_reason_v1.{
   PlutusExecutionFailed, ReceivePurposePlutusV3Forbidden,
 }
 use midgard/script_context_v1
+use midgard/script_decode_v1.{Decoded, ScriptDecodeRecordV1}
 use midgard/script_proof_v1
 use midgard/validation_machine/machine_types.{
   CekContextAssembleWitness, CekContextControlV1, CekContextFinalizeSpendWitness,
@@ -62,7 +63,7 @@ pub fn verify_cek_core_frame(
 ) -> Bool {
   and {
     bytearray.length(cek.active_state_hash) == 32,
-    bytearray.length(cek.program_envelope_hash) == 32,
+    bytearray.length(cek.program_script_hash) == 28,
     cek.execution_cursor >= 0,
     cek.execution_cursor < cek.control.execution_count,
     cek.execution_cpu_limit > 0,
@@ -89,7 +90,7 @@ pub fn verify_cek_core_successor(
   let completed_memory = cek.completed_memory
   let execution_cpu_limit = cek.execution_cpu_limit
   let execution_memory_limit = cek.execution_memory_limit
-  let program_envelope_hash = cek.program_envelope_hash
+  let program_script_hash = cek.program_script_hash
   let next_cpu = completed_cpu + post.cpu
   let next_memory = completed_memory + post.memory
   let budget_exceeded = or {
@@ -168,7 +169,7 @@ pub fn verify_cek_core_successor(
           cek_machine_state_hash(post),
           execution_cpu_limit,
           execution_memory_limit,
-          program_envelope_hash,
+          program_script_hash,
           cek.purpose_kind,
           cek.purpose_index,
         ),
@@ -188,7 +189,7 @@ fn verify_cek_core_step(
   active_state_hash: ByteArray,
   execution_cpu_limit: Int,
   execution_memory_limit: Int,
-  program_envelope_hash: ByteArray,
+  program_script_hash: ByteArray,
   purpose_kind: Int,
   purpose_index: Int,
 ) -> Bool {
@@ -202,7 +203,7 @@ fn verify_cek_core_step(
       }
       and {
         bytearray.length(active_state_hash) == 32,
-        bytearray.length(program_envelope_hash) == 32,
+        bytearray.length(program_script_hash) == 28,
         execution_cursor >= 0,
         execution_cursor < control.execution_count,
         execution_cpu_limit > 0,
@@ -281,7 +282,7 @@ fn verify_cek_core_step(
                 cek_machine_state_hash(step.post),
                 execution_cpu_limit,
                 execution_memory_limit,
-                program_envelope_hash,
+                program_script_hash,
                 purpose_kind,
                 purpose_index,
               ),
@@ -319,7 +320,7 @@ fn cek_context_successor_is_exact(
         #"",
         0,
         0,
-        context_control.program_envelope_hash,
+        context_control.script_hash,
         -1,
         -1,
       ),
@@ -327,7 +328,58 @@ fn cek_context_successor_is_exact(
   }
 }
 
-fn cek_selection_successor_is_exact(
+/// A native selection completes the execution at once.
+fn cek_native_selection_successor_is_exact(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: NativeScriptsControlV1,
+  execution_cursor: Int,
+  completed_cpu: Int,
+  completed_memory: Int,
+) -> Bool {
+  let next_cursor = execution_cursor + 1
+  if next_cursor == control.execution_count {
+    and {
+      witness.claimed_successor.phase == validation_trace_v1.ValueAndMint,
+      witness.claimed_successor.execution_cpu == pre.execution_cpu,
+      witness.claimed_successor.execution_memory == pre.execution_memory,
+      witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
+        validation_trace_v1.ValueAndMint,
+        pre.program_counter + 1,
+        encode_value_and_mint_witness_v1(control),
+      ),
+    }
+  } else {
+    and {
+      witness.claimed_successor.phase == validation_trace_v1.Cek,
+      witness.claimed_successor.execution_cpu == pre.execution_cpu,
+      witness.claimed_successor.execution_memory == pre.execution_memory,
+      witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
+        validation_trace_v1.Cek,
+        pre.program_counter + 1,
+        encode_cek_witness_v1(
+          control,
+          #"",
+          next_cursor,
+          completed_cpu,
+          completed_memory,
+          #"",
+          0,
+          0,
+          #"",
+          -1,
+          -1,
+        ),
+      ),
+    }
+  }
+}
+
+/// A Plutus selection of a decoded program: a phase-2 class fails the run
+/// before the machine starts, with no budget spent (Cardano raises an
+/// unavailable program version or a free variable when evaluation starts);
+/// otherwise the context build starts over the record's term root.
+fn cek_plutus_selection_successor_is_exact(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   control: NativeScriptsControlV1,
@@ -341,53 +393,17 @@ fn cek_selection_successor_is_exact(
   subject: ByteArray,
   redeemer_leaf: ByteArray,
   program_term_root: ByteArray,
-  program_envelope_hash: ByteArray,
+  phase2_class: Int,
 ) -> Bool {
-  if and {
-    language_tag == 3,
-    purpose_kind == 3,
-  } {
-    rejected_successor_is_exact(
-      pre,
-      witness.claimed_successor,
-      ReceivePurposePlutusV3Forbidden { purpose_kind, purpose_index },
-    )
-  } else if language_tag == 0 {
-    let next_cursor = execution_cursor + 1
-    if next_cursor == control.execution_count {
-      and {
-        witness.claimed_successor.phase == validation_trace_v1.ValueAndMint,
-        witness.claimed_successor.execution_cpu == pre.execution_cpu,
-        witness.claimed_successor.execution_memory == pre.execution_memory,
-        witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
-          validation_trace_v1.ValueAndMint,
-          pre.program_counter + 1,
-          encode_value_and_mint_witness_v1(control),
-        ),
-      }
-    } else {
-      and {
-        witness.claimed_successor.phase == validation_trace_v1.Cek,
-        witness.claimed_successor.execution_cpu == pre.execution_cpu,
-        witness.claimed_successor.execution_memory == pre.execution_memory,
-        witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
-          validation_trace_v1.Cek,
-          pre.program_counter + 1,
-          encode_cek_witness_v1(
-            control,
-            #"",
-            next_cursor,
-            completed_cpu,
-            completed_memory,
-            #"",
-            0,
-            0,
-            #"",
-            -1,
-            -1,
-          ),
-        ),
-      }
+  if phase2_class != script_decode_v1.phase2_none {
+    and {
+      witness.claimed_successor.execution_cpu == pre.execution_cpu,
+      witness.claimed_successor.execution_memory == pre.execution_memory,
+      rejected_successor_is_exact(
+        pre,
+        witness.claimed_successor,
+        PlutusExecutionFailed { purpose_kind, purpose_index },
+      ),
     }
   } else {
     cek_context_successor_is_exact(
@@ -398,7 +414,6 @@ fn cek_selection_successor_is_exact(
         stage: 0,
         language_tag,
         program_term_root,
-        program_envelope_hash,
         purpose_kind,
         purpose_index,
         script_hash,
@@ -465,6 +480,7 @@ pub fn verify_cek_execution_selection(
   execution_cursor: Int,
   completed_cpu: Int,
   completed_memory: Int,
+  record: Option<ScriptDecodeRecordV1>,
 ) -> Bool {
   and {
     authenticate_cek_execution_selection(auxiliary, control, execution_cursor),
@@ -476,6 +492,7 @@ pub fn verify_cek_execution_selection(
       execution_cursor,
       completed_cpu,
       completed_memory,
+      record,
     ),
   }
 }
@@ -569,6 +586,10 @@ pub fn authenticate_cek_execution_selection(
   }
 }
 
+/// The selection successor. A Plutus selection reads the program from the
+/// script's decode record; `record` is that record, which the caller
+/// authenticates (the decode family's record token, named by the record's own
+/// script hash). A PlutusV3 receive purpose is refused without one.
 pub fn verify_cek_execution_selection_successor(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
@@ -577,6 +598,7 @@ pub fn verify_cek_execution_selection_successor(
   execution_cursor: Int,
   completed_cpu: Int,
   completed_memory: Int,
+  record: Option<ScriptDecodeRecordV1>,
 ) -> Bool {
   expect
       NativeExecutionScanWitness {
@@ -585,20 +607,45 @@ pub fn verify_cek_execution_selection_successor(
         purpose_index,
         script_hash,
         subject,
-        script_total_length,
         redeemer_leaf,
-        first_chunk_proof,
         ..
       }
     = auxiliary
-  expect Some(header) = native_script_scan_v1.versioned_script_header_v1(
-    first_chunk_proof.chunk,
-    script_total_length,
-  )
   if language_tag == 0 {
     and {
       redeemer_leaf == #"",
-      cek_selection_successor_is_exact(
+      cek_native_selection_successor_is_exact(
+        pre,
+        witness,
+        control,
+        execution_cursor,
+        completed_cpu,
+        completed_memory,
+      ),
+    }
+  } else if and {
+    language_tag == 3,
+    purpose_kind == 3,
+  } {
+    and {
+      bytearray.length(redeemer_leaf) == 32,
+      rejected_successor_is_exact(
+        pre,
+        witness.claimed_successor,
+        ReceivePurposePlutusV3Forbidden { purpose_kind, purpose_index },
+      ),
+    }
+  } else {
+    // The language is 3 or 128: `authenticate_cek_execution_selection` binds
+    // it to the item header, which admits no other Plutus tag. A `Refused`
+    // record has no selection.
+    expect
+        Some(Decoded { script_hash: record_hash, term_root, phase2_class, .. })
+      = record
+    and {
+      bytearray.length(redeemer_leaf) == 32,
+      record_hash == script_hash,
+      cek_plutus_selection_successor_is_exact(
         pre,
         witness,
         control,
@@ -611,55 +658,10 @@ pub fn verify_cek_execution_selection_successor(
         script_hash,
         subject,
         redeemer_leaf,
-        #"",
-        #"",
+        term_root,
+        phase2_class,
       ),
     }
-  } else if and {
-    or {
-      language_tag == 3,
-      language_tag == 128,
-    },
-    bytearray.length(redeemer_leaf) == 32,
-    header.payload_length <= cek_proof_v1.max_program_envelope_cbor_bytes,
-    header.payload_offset + header.payload_length <= bytearray.length(
-      first_chunk_proof.chunk,
-    ),
-  } {
-    let envelope_cbor = builtin.slice_bytearray(
-      header.payload_offset,
-      header.payload_length,
-      first_chunk_proof.chunk,
-    )
-    when cek_proof_v1.inspect_program_envelope_v1(envelope_cbor) is {
-      None -> False
-      Some(envelope) ->
-        cek_selection_successor_is_exact(
-          pre,
-          witness,
-          control,
-          execution_cursor,
-          completed_cpu,
-          completed_memory,
-          language_tag,
-          purpose_kind,
-          purpose_index,
-          script_hash,
-          subject,
-          redeemer_leaf,
-          envelope.term_root,
-          cek_proof_v1.hash_program_envelope_v1(
-            1,
-            1,
-            0,
-            envelope.term_root,
-            envelope.node_count,
-            envelope.material_byte_length,
-          ),
-        )
-    }
-  } else {
-    False
   }
 }
 
@@ -1649,23 +1651,17 @@ fn cek_context_execution_successor_is_exact(
     context_summary,
   )
   let context_term = cek_proof_v1.hash_context_constant_term_v1(context_value)
-  let initial_state = cek_machine_v1.MachineStateV1 {
-    mode: cek_machine_v1.mode_compute,
-    execution_index: execution_cursor,
-    focus_root: cek_proof_v1.hash_application_term_v1(
+  let initial_state = cek_machine_v1.initial_state_v1(
+    execution_cursor,
+    cek_proof_v1.hash_application_term_v1(
       context_control.program_term_root,
       context_term,
     ),
-    environment_root: cek_proof_v1.empty_environment_root_v1,
-    continuation_root: cek_proof_v1.empty_continuation_root_v1,
-    auxiliary: 0,
-    cpu: 0,
-    memory: 0,
-  }
+  )
   and {
     witness.claimed_successor.phase == validation_trace_v1.Cek,
-    witness.claimed_successor.execution_cpu == pre.execution_cpu,
-    witness.claimed_successor.execution_memory == pre.execution_memory,
+    witness.claimed_successor.execution_cpu == pre.execution_cpu + cek_machine_v1.startup_cpu,
+    witness.claimed_successor.execution_memory == pre.execution_memory + cek_machine_v1.startup_memory,
     witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
       validation_trace_v1.Cek,
       pre.program_counter + 1,
@@ -1678,7 +1674,7 @@ fn cek_context_execution_successor_is_exact(
         cek_machine_v1.hash_state_v1(initial_state),
         context_control.execution_cpu_limit,
         context_control.execution_memory_limit,
-        context_control.program_envelope_hash,
+        context_control.script_hash,
         context_control.purpose_kind,
         context_control.purpose_index,
       ),
@@ -2098,7 +2094,7 @@ fn cek_finish_v1(
     cek_control_is_finish_v1(cek),
     cek.execution_cpu_limit == 0,
     cek.execution_memory_limit == 0,
-    cek.program_envelope_hash == #"",
+    cek.program_script_hash == #"",
     auxiliary == NoAuxiliaryWitness,
     witness.claimed_successor.phase == validation_trace_v1.ValueAndMint,
     witness.claimed_successor.execution_cpu == pre.execution_cpu,
@@ -2116,12 +2112,13 @@ fn cek_execution_selection_v1(
   witness: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
   cek: CekWitnessControlV1,
+  record: Option<ScriptDecodeRecordV1>,
 ) -> Bool {
   and {
     cek_control_is_execution_selection_v1(cek),
     cek.execution_cpu_limit == 0,
     cek.execution_memory_limit == 0,
-    cek.program_envelope_hash == #"",
+    cek.program_script_hash == #"",
     verify_cek_execution_selection(
       pre,
       witness,
@@ -2130,6 +2127,7 @@ fn cek_execution_selection_v1(
       cek.execution_cursor,
       cek.completed_cpu,
       cek.completed_memory,
+      record,
     ),
   }
 }
@@ -2149,7 +2147,7 @@ fn cek_context_v1(
     cek.execution_cursor < control.execution_count,
     cek.execution_cpu_limit == 0,
     cek.execution_memory_limit == 0,
-    cek.program_envelope_hash == context_control.program_envelope_hash,
+    cek.program_script_hash == context_control.script_hash,
     cek.context_control_cbor == encode_cek_context_control_v1(context_control),
     cek_context_control_is_well_formed(control, context_control),
     verify_cek_context_step(
@@ -2187,7 +2185,7 @@ fn cek_core_v1(
       cek.active_state_hash,
       cek.execution_cpu_limit,
       cek.execution_memory_limit,
-      cek.program_envelope_hash,
+      cek.program_script_hash,
       cek.purpose_kind,
       cek.purpose_index,
     ),
@@ -2200,6 +2198,7 @@ pub fn verify_cek(
   auxiliary: ValidationAuxiliaryWitnessV1,
   door: field_door.MachineFieldDoorV1,
   slot_config: script_context_v1.L1SlotConfigV1,
+  record: Option<ScriptDecodeRecordV1>,
 ) -> Bool {
   let cek = cek_witness_control_v1(witness)
   and {
@@ -2211,7 +2210,7 @@ pub fn verify_cek(
     } else if cek_control_is_finish_v1(cek) {
       cek_finish_v1(pre, witness, auxiliary, cek)
     } else {
-      cek_execution_selection_v1(pre, witness, auxiliary, cek)
+      cek_execution_selection_v1(pre, witness, auxiliary, cek, record)
     },
   }
 }
@@ -2235,11 +2234,12 @@ pub fn verify_cek_execution_selection_semantics_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
+  record: Option<ScriptDecodeRecordV1>,
 ) -> Bool {
   let cek = cek_witness_control_v1(witness)
   and {
     cek_witness_is_well_formed_v1(pre, witness, cek),
-    cek_execution_selection_v1(pre, witness, auxiliary, cek),
+    cek_execution_selection_v1(pre, witness, auxiliary, cek, record),
   }
 }
 

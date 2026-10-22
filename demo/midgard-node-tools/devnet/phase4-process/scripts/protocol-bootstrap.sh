@@ -5,7 +5,7 @@ script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 require_command jq
 require_command node
 require_command pnpm
-require_command aiken
+require_command nix
 require_command sha256sum
 require_run_dir
 upsert_private_env() {
@@ -63,7 +63,7 @@ upsert_private_env MIN_FEE_A 0 "$node_env"
 upsert_private_env MIN_FEE_B 0 "$node_env"
 export POSTGRES_HOST=127.0.0.1 POSTGRES_PORT="$MIDGARD_PHASE4_POSTGRES_PORT" POSTGRES_USER="$MIDGARD_PHASE4_POSTGRES_USER" POSTGRES_PASSWORD="$MIDGARD_PHASE4_POSTGRES_PASSWORD" POSTGRES_DB="$MIDGARD_PHASE4_POSTGRES_DATABASE"
 cd "$contract_root"
-aiken build --env testnet
+"$repo_root/scripts/aiken" build --env testnet
 [ -s "$blueprint" ] || die "Aiken testnet build did not create plutus.json"
 sha256sum "$blueprint" >"$MIDGARD_PHASE4_RUN_DIR/work/plutus.json.sha256"
 export MIDGARD_REAL_BLUEPRINT_PATH="$blueprint"
@@ -87,7 +87,11 @@ MIDGARD_PHASE4_GENESIS_BOOTSTRAP=phase4-local-devnet-l2-genesis-v1 \
 MIDGARD_PHASE4_PROCESS_TARGET=local-devnet \
   node "$tools_root/dist/index.js" phase4-genesis-ledger --seed
 nonce_output="$MIDGARD_PHASE4_RUN_DIR/work/hub-oracle-nonce.json"
-node dist/index.js prepare-hub-oracle-one-shot-nonce --run-state "$run_state" --fresh-redeploy --fresh-redeploy-reason "isolated Phase 4 process devnet $MIDGARD_PHASE4_RUN_ID" --json >"$nonce_output"
+# The nonce command reads the deployment's L1 origin from the run's own node
+# before it signs, so it gets the local node settings; node.env gets them only
+# once the origin is derived below.
+L1_NODE_SOCKET_PATH="$cardano_socket" L1_NODE_CONFIG_PATH="$host_config" L1_NODE_TRANSPORT_BINARY_PATH="$transport_binary" \
+  node dist/index.js prepare-hub-oracle-one-shot-nonce --run-state "$run_state" --fresh-redeploy --fresh-redeploy-reason "isolated Phase 4 process devnet $MIDGARD_PHASE4_RUN_ID" --json >"$nonce_output"
 # The CLI keeps human-readable progress logs on stdout even with --json. Keep
 # the complete transcript for evidence, but parse only the final JSON object.
 nonce_json="$MIDGARD_PHASE4_RUN_DIR/work/hub-oracle-nonce.parsed.json"
@@ -97,10 +101,14 @@ output_index=$(jq -er '(.outputIndex // (.outRef | split("#")[1] | tonumber))' "
 export HUB_ORACLE_ONE_SHOT_TX_HASH="$tx_hash" HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX="$output_index"
 upsert_private_env HUB_ORACLE_ONE_SHOT_TX_HASH "$tx_hash" "$node_env"
 upsert_private_env HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX "$output_index" "$node_env"
-# L1_ORIGIN is the point immediately before the nonce tx's block, scanned from
-# this run's genesis; find-origin exits non-zero unless it found the tx.
+# L1_ORIGIN is the origin the nonce command recorded before it signed;
+# find-origin --recorded scans from it and exits non-zero unless it is on this
+# run's chain and precedes the nonce tx's block.
+recorded_origin=$(jq -er 'select(.l1Origin != null) | .l1Origin | "\(.slot).\(.blockHash)"' "$nonce_json") \
+  || die "the nonce command recorded no L1 origin for the hub-oracle nonce tx $tx_hash"
 origin_output="$MIDGARD_PHASE4_RUN_DIR/work/l1-origin.find-origin.json"
 node "$follower_cli" find-origin --tx "$(printf '%s' "$tx_hash" | tr 'A-F' 'a-f')" \
+  --recorded "$recorded_origin" \
   --network-magic "$MIDGARD_PHASE4_NETWORK_MAGIC" \
   --socket "$cardano_socket" --sidecar "$transport_binary" >"$origin_output" \
   || die "cannot derive L1_ORIGIN from the hub-oracle nonce tx $tx_hash"
@@ -167,6 +175,9 @@ upsert_private_env MIDGARD_PHASE4_PHAS_REWARD_ADDRESS "$phas_reward_address" "$n
 upsert_private_env MIDGARD_PHASE4_PHAS_SCRIPT_HASH "$phas_script_hash" "$node_env"
 upsert_private_env MIDGARD_PHASE4_PHAS_REGISTRATION_TX_HASH "$phas_registration_tx_hash" "$node_env"
 node dist/index.js reconcile reference-scripts-complete --scope node-runtime --json
-node dist/index.js init --contract-deployment-info-output "$manifest"
+# Finalizing the manifest proves the L1 origin the nonce command recorded in
+# this run's state on the run's own node.
+MIDGARD_RUN_STATE_PATH="$run_state" L1_NODE_SOCKET_PATH="$cardano_socket" L1_NODE_CONFIG_PATH="$host_config" L1_NODE_TRANSPORT_BINARY_PATH="$transport_binary" \
+  node dist/index.js init --contract-deployment-info-output "$manifest"
 node dist/index.js register-active-operator
 [ -s "$manifest" ] || die "protocol bootstrap did not create deployment manifest"

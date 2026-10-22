@@ -67,6 +67,7 @@ import {
 import {
   decodeHistory,
   type LandedNode,
+  landedNodeOf,
   lineageBack,
   type QueueHistory,
 } from "./history.js";
@@ -110,10 +111,10 @@ const decodeQueue = (queue: LandedStateQueue) =>
       root.element.datum,
     )).data;
     const nodes: LandedNode[] = [];
-    for (const { headerHash, element } of queue.nodes) {
-      const { header, block_time: blockTime } =
-        yield* SDK.getStateQueueNodeFromStateQueueDatum(element.datum);
-      nodes.push({ headerHash, header, blockTime });
+    for (const { headerHash, element, created } of queue.nodes) {
+      nodes.push(
+        yield* landedNodeOf(headerHash, element.datum, created?.slot ?? null),
+      );
     }
     return {
       root: {
@@ -230,9 +231,7 @@ const newRow = <R>(
     }
     const outcome = yield* Effect.either(
       ports.replay({
-        headerHash: node.headerHash,
-        header: node.header,
-        blockTime: node.blockTime,
+        ...node,
         parentHeaderHash: parent.headerHash,
         parentUtxosRoot: parent.utxosRoot,
         parentEntries: ledgerEntries(ledger),
@@ -260,6 +259,7 @@ const newRow = <R>(
         hold: replayOutcomeHold(
           replayed.kind,
           `block ${node.headerHash}: ${replayed.detail}`,
+          node.headerHash,
         ),
       } satisfies Step;
     }
@@ -432,6 +432,7 @@ const run = <R>(
           break;
         }
         yield* viewChecked(ports, queue.view, processRow(step.row, step.due));
+        options.committed?.(step.row.headerHash);
         applyDelta(ledger, step.row);
         parent = {
           headerHash: step.row.headerHash,

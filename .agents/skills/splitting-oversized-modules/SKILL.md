@@ -129,9 +129,9 @@ them.
    Moving code between files under `validators/` changes titles and is a
    contract change, not a split.
    [script: .agents/skills/splitting-oversized-modules/scripts/compare-blueprint-hashes.mjs]
-5. **Aiken builds use the pinned fork**, checked with
-   `node onchain/aiken/scripts/pinned-compiler.mjs` from the checkout.
-   [script: onchain/aiken/scripts/pinned-compiler.mjs]
+5. **Aiken builds use the pinned fork**: run `"$REPO/scripts/aiken"`, which
+   builds the commit `demo/flake.lock` pins, never a bare `aiken` from `PATH`.
+   [script: scripts/lib/aiken.mjs]
 6. **Build Aiken in fresh copies outside the checkout, niced, with the same
    `--env` and trace level on both sides.** The checkout's `plutus.json` is
    shared. [review]

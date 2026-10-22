@@ -204,16 +204,22 @@ fn source(
       expect window_data == none
       None
     }
-    Some(span) -> {
-      expect Pair(0, [window_bytes]) = builtin.un_constr_data(window_data)
-      expect Some(bytes) = proof.bound_window_bytes_v1(
-        stages.window_from_frame(control),
-        span.absolute_start,
-        span.length,
-        builtin.un_b_data(window_bytes),
-      )
-      Some(bytes)
-    }
+    // An empty span reads no output bytes: it takes no window, and its read
+    // is `#""` at any start.
+    Some(span) ->
+      if span.length == 0 {
+        expect window_data == none
+        Some(#"")
+      } else {
+        expect Pair(0, [window_bytes]) = builtin.un_constr_data(window_data)
+        expect Some(bytes) = proof.bound_window_bytes_v1(
+          stages.window_from_frame(control),
+          span.absolute_start,
+          span.length,
+          builtin.un_b_data(window_bytes),
+        )
+        Some(bytes)
+      }
   }
   (action, bytes)
 }
@@ -542,14 +548,23 @@ pub fn bytes_scalar_claim_is_exact(control: raw.Frame, claimed: Data) -> Bool {
   claimed == scalar_claim_data(current, scalar_data)
 }
 
-/// Unchecked from-data readers for the attested scalar claim. The scalar
-/// attestation yield of the same transaction proves the claim equals the
-/// exact, fully validated decode of the pinned control's active scalar
-/// sub-control (`integer_scalar_claim_is_exact` / `bytes_scalar_claim_is_exact`
-/// upcast the checked record verbatim), so the consuming stage yield rebuilds
-/// the typed record with direct builtins instead of linking the generated
-/// checked decoder.
-fn unchecked_blake256(data: Data) -> blake256.Blake2b256TraceControlV1 {
+// Two forms of the same scalar sub-controls are read below, each by its own
+// readers:
+//
+// - the claimed form (`claimed_*`): the attested scalar claim, the typed
+//   record upcast to Data, so every record is a constructor. The scalar
+//   attestation yield of the same transaction proves the claim equals the
+//   exact, fully validated decode of the pinned control's active scalar
+//   sub-control (`integer_scalar_claim_is_exact` /
+//   `bytes_scalar_claim_is_exact` upcast the checked record verbatim), so the
+//   consuming stage yield rebuilds the typed record with direct builtins
+//   instead of linking the generated checked decoder;
+// - the frame form (`frame_*`): the pinned control's own datum sub-control
+//   (frame item 7), as its wire encoding parses, so every record is a list.
+//   These readers match their writer's arity and field order exactly.
+
+/// Reads a claimed-form blake2b-256 trace control (the record's upcast).
+fn claimed_blake256(data: Data) -> blake256.Blake2b256TraceControlV1 {
   let Pair(_, fields) = builtin.un_constr_data(data)
   expect
       [
@@ -570,9 +585,8 @@ fn unchecked_blake256(data: Data) -> blake256.Blake2b256TraceControlV1 {
   }
 }
 
-fn unchecked_peaks(
-  items: List<Data>,
-) -> List<blob_frontier.CekBlobFrontierPeakV1> {
+/// Reads claimed-form blob frontier peaks (the records' upcast).
+fn claimed_peaks(items: List<Data>) -> List<blob_frontier.CekBlobFrontierPeakV1> {
   when items is {
     [] -> []
     [head, ..rest] -> {
@@ -584,13 +598,14 @@ fn unchecked_peaks(
           root: builtin.un_b_data(root),
           byte_length: builtin.un_i_data(byte_length),
         },
-        ..unchecked_peaks(rest)
+        ..claimed_peaks(rest)
       ]
     }
   }
 }
 
-fn unchecked_blob(data: Data) -> Option<blob.CekSourceBlobControlV1> {
+/// Reads a claimed-form optional source-blob control (the record's upcast).
+fn claimed_blob(data: Data) -> Option<blob.CekSourceBlobControlV1> {
   let Pair(tag, fields) = builtin.un_constr_data(data)
   if tag == 1 {
     None
@@ -618,22 +633,21 @@ fn unchecked_blob(data: Data) -> Option<blob.CekSourceBlobControlV1> {
         frontier: blob_frontier.CekBlobFrontierV1 {
           count: builtin.un_i_data(count),
           byte_length: builtin.un_i_data(byte_length),
-          peaks: unchecked_peaks(builtin.un_list_data(peaks)),
+          peaks: claimed_peaks(builtin.un_list_data(peaks)),
         },
         active_hash: if hash_tag == 1 {
           None
         } else {
           expect [hash_inner] = hash_fields
-          Some(unchecked_blake256(hash_inner))
+          Some(claimed_blake256(hash_inner))
         },
       },
     )
   }
 }
 
-fn unchecked_integer_scalar(
-  data: Data,
-) -> integer_control.CekDataIntegerControlV1 {
+/// Reads a claimed-form integer scalar control (the record's upcast).
+fn claimed_integer_scalar(data: Data) -> integer_control.CekDataIntegerControlV1 {
   let Pair(_, fields) = builtin.un_constr_data(data)
   expect [version,
         stage, source_start, source_length, memory, blob_data] = fields
@@ -643,11 +657,12 @@ fn unchecked_integer_scalar(
     source_start: builtin.un_i_data(source_start),
     source_length: builtin.un_i_data(source_length),
     memory: builtin.un_i_data(memory),
-    blob: unchecked_blob(blob_data),
+    blob: claimed_blob(blob_data),
   }
 }
 
-fn unchecked_bytes_scalar(data: Data) -> bytes_control.CekDataBytesControlV1 {
+/// Reads a claimed-form bytes scalar control (the record's upcast).
+fn claimed_bytes_scalar(data: Data) -> bytes_control.CekDataBytesControlV1 {
   let Pair(_, fields) = builtin.un_constr_data(data)
   expect [version, stage, source_start, source_length, bytes_length, blob_data]
     = fields
@@ -657,27 +672,134 @@ fn unchecked_bytes_scalar(data: Data) -> bytes_control.CekDataBytesControlV1 {
     source_start: builtin.un_i_data(source_start),
     source_length: builtin.un_i_data(source_length),
     bytes_length: builtin.un_i_data(bytes_length),
-    blob: unchecked_blob(blob_data),
+    blob: claimed_blob(blob_data),
   }
 }
 
-fn unchecked_optional(data: Data, decode: fn(Data) -> scalar) -> Option<scalar> {
+/// Reads a frame-form option: `constr 0 [value]` or `constr 1 []`, as every
+/// wire writer of an optional sub-control writes it.
+fn frame_optional(data: Data, decode: fn(Data) -> value) -> Option<value> {
   let Pair(tag, fields) = builtin.un_constr_data(data)
-  if tag == 1 {
-    None
-  } else {
-    expect [inner] = fields
-    Some(decode(inner))
+  when fields is {
+    [] -> {
+      expect tag == 1
+      None
+    }
+    [inner] -> {
+      expect tag == 0
+      Some(decode(inner))
+    }
+    _ -> fail
   }
 }
 
-/// The `(absolute_start, length)` the next datum traversal step reads from
-/// the output, or `None` when it reads nothing: the traverse machine's own
-/// span selection over the frame's datum sub-control (item 7). The frame is
-/// the dispatcher-pinned pre control, so its sub-controls are read with
-/// direct builtins; only the fields the span selection reads are rebuilt.
-pub fn next_source_span(control: raw.Frame) -> Option<(Int, Int)> {
-  expect raw.integer(control, 1) == proof.stage_datum_traversal
+/// Reads a frame-form blake2b-256 trace control; mirrors
+/// `blake2b_256_trace_v1.control_data_v1`.
+fn frame_blake256(data: Data) -> blake256.Blake2b256TraceControlV1 {
+  expect
+      [
+        version, stage, cursor, total_length, chaining_value, active_block,
+        active_block_length, working_value, round,
+      ]
+    = builtin.un_list_data(data)
+  blake256.Blake2b256TraceControlV1 {
+    version: builtin.un_i_data(version),
+    stage: builtin.un_i_data(stage),
+    cursor: builtin.un_i_data(cursor),
+    total_length: builtin.un_i_data(total_length),
+    chaining_value: builtin.un_b_data(chaining_value),
+    active_block: builtin.un_b_data(active_block),
+    active_block_length: builtin.un_i_data(active_block_length),
+    working_value: builtin.un_b_data(working_value),
+    round: builtin.un_i_data(round),
+  }
+}
+
+/// Reads frame-form blob frontier peaks; mirrors the peak items of
+/// `cek_blob_frontier_v1.frontier_data_v1`.
+fn frame_peaks(items: List<Data>) -> List<blob_frontier.CekBlobFrontierPeakV1> {
+  when items is {
+    [] -> []
+    [head, ..rest] -> {
+      expect [height, root, byte_length] = builtin.un_list_data(head)
+      [
+        blob_frontier.CekBlobFrontierPeakV1 {
+          height: builtin.un_i_data(height),
+          root: builtin.un_b_data(root),
+          byte_length: builtin.un_i_data(byte_length),
+        },
+        ..frame_peaks(rest)
+      ]
+    }
+  }
+}
+
+/// Reads a frame-form blob frontier; mirrors
+/// `cek_blob_frontier_v1.frontier_data_v1`.
+fn frame_frontier(data: Data) -> blob_frontier.CekBlobFrontierV1 {
+  expect [version, count, byte_length, peaks] = builtin.un_list_data(data)
+  expect builtin.un_i_data(version) == blob_frontier.version
+  blob_frontier.CekBlobFrontierV1 {
+    count: builtin.un_i_data(count),
+    byte_length: builtin.un_i_data(byte_length),
+    peaks: frame_peaks(builtin.un_list_data(peaks)),
+  }
+}
+
+/// Reads a frame-form source-blob control; mirrors
+/// `cek_source_blob_v1.control_data_v1`.
+fn frame_blob(data: Data) -> blob.CekSourceBlobControlV1 {
+  expect
+      [version, stage, source_start, source_length, frontier_data, active_hash]
+    = builtin.un_list_data(data)
+  blob.CekSourceBlobControlV1 {
+    version: builtin.un_i_data(version),
+    stage: builtin.un_i_data(stage),
+    source_start: builtin.un_i_data(source_start),
+    source_length: builtin.un_i_data(source_length),
+    frontier: frame_frontier(frontier_data),
+    active_hash: frame_optional(active_hash, frame_blake256),
+  }
+}
+
+/// Reads a frame-form integer scalar control; mirrors
+/// `cek_data_integer_v1.control_data_v1`.
+fn frame_integer_scalar(data: Data) -> integer_control.CekDataIntegerControlV1 {
+  expect [version,
+        stage,
+        source_start,
+        source_length, memory, blob_data] = builtin.un_list_data(data)
+  integer_control.CekDataIntegerControlV1 {
+    version: builtin.un_i_data(version),
+    stage: builtin.un_i_data(stage),
+    source_start: builtin.un_i_data(source_start),
+    source_length: builtin.un_i_data(source_length),
+    memory: builtin.un_i_data(memory),
+    blob: frame_optional(blob_data, frame_blob),
+  }
+}
+
+/// Reads a frame-form bytes scalar control; mirrors
+/// `cek_data_bytes_v1.control_data_v1`.
+fn frame_bytes_scalar(data: Data) -> bytes_control.CekDataBytesControlV1 {
+  expect [version, stage, source_start, source_length, bytes_length, blob_data]
+    = builtin.un_list_data(data)
+  bytes_control.CekDataBytesControlV1 {
+    version: builtin.un_i_data(version),
+    stage: builtin.un_i_data(stage),
+    source_start: builtin.un_i_data(source_start),
+    source_length: builtin.un_i_data(source_length),
+    bytes_length: builtin.un_i_data(bytes_length),
+    blob: frame_optional(blob_data, frame_blob),
+  }
+}
+
+/// Reads the frame's datum sub-control (item 7) in its frame form, with the
+/// unread result slot as `None`; mirrors the traverse control's wire
+/// encoding (`cek_data_traverse_v1.encode_control_v1`). The frame is the
+/// dispatcher-pinned pre control, so its sub-controls are read with direct
+/// builtins.
+pub fn frame_datum_control(control: raw.Frame) -> traverse.DataTraverseControlV1 {
   expect Pair(0, [data]) = builtin.un_constr_data(raw.item(control, 7))
   expect
       [
@@ -685,18 +807,26 @@ pub fn next_source_span(control: raw.Frame) -> Option<(Int, Int)> {
         _result,
       ]
     = builtin.un_list_data(data)
-  let current = traverse.DataTraverseControlV1 {
+  traverse.DataTraverseControlV1 {
     version: builtin.un_i_data(version),
     stage: builtin.un_i_data(stage),
     source_start: builtin.un_i_data(start),
     source_length: builtin.un_i_data(length),
     offset: builtin.un_i_data(offset),
     frame_root: builtin.un_b_data(root),
-    integer: unchecked_optional(int_data, unchecked_integer_scalar),
-    bytes: unchecked_optional(byte_data, unchecked_bytes_scalar),
+    integer: frame_optional(int_data, frame_integer_scalar),
+    bytes: frame_optional(byte_data, frame_bytes_scalar),
     result: None,
   }
-  when traverse.prevalidated_next_source_span(current) is {
+}
+
+/// The `(absolute_start, length)` the next datum traversal step reads from
+/// the output, or `None` when it reads nothing: the traverse machine's own
+/// span selection over the frame's datum sub-control (item 7), read in its
+/// frame form. The caller has checked the frame is at the datum-traversal
+/// stage.
+pub fn next_source_span(control: raw.Frame) -> Option<(Int, Int)> {
+  when traverse.prevalidated_next_source_span(frame_datum_control(control)) is {
     None -> None
     Some(span) -> Some((span.absolute_start, span.length))
   }
@@ -708,7 +838,7 @@ fn claimed_integer_traverse(
   let (source_start, source_length, offset, frame_root, scalar_data) = claimed_scalar_fields(
     claimed,
   )
-  let scalar = unchecked_integer_scalar(scalar_data)
+  let scalar = claimed_integer_scalar(scalar_data)
   (
     traverse.DataTraverseControlV1 {
       version: 1,
@@ -731,7 +861,7 @@ fn claimed_bytes_traverse(
   let (source_start, source_length, offset, frame_root, scalar_data) = claimed_scalar_fields(
     claimed,
   )
-  let scalar = unchecked_bytes_scalar(scalar_data)
+  let scalar = claimed_bytes_scalar(scalar_data)
   (
     traverse.DataTraverseControlV1 {
       version: 1,
@@ -814,7 +944,7 @@ pub fn advance_integer(
   let (source_start, source_length, _offset, _root, scalar_data) = claimed_scalar_fields(
     claimed_scalar,
   )
-  let integer = unchecked_integer_scalar(scalar_data)
+  let integer = claimed_integer_scalar(scalar_data)
   let source_end = source_start + source_length
   expect integer.stage != integer_control.stage_terminal
   let (action, bytes) = source(
@@ -842,7 +972,7 @@ pub fn advance_bytes(
   let (source_start, source_length, _offset, _root, scalar_data) = claimed_scalar_fields(
     claimed_scalar,
   )
-  let scalar = unchecked_bytes_scalar(scalar_data)
+  let scalar = claimed_bytes_scalar(scalar_data)
   expect scalar.stage != bytes_control.stage_terminal
   // The enclosing traverse end bounds a measuring step's chunk window; the
   // measured extent stays inside it (`step_measure`), and every other stage
@@ -1003,13 +1133,7 @@ pub fn advance_large_constructor(
     if !syntax_is_valid {
       None
     } else {
-      when
-        integer_control.prevalidated_step_v1(
-          integer,
-          current.source_start + current.source_length,
-          bytes,
-        )
-      is {
+      when integer_control.prevalidated_definite_step_v1(integer, bytes) is {
         None -> None
         Some(next) -> {
           expect next.source_start == integer.source_start

@@ -10,12 +10,11 @@ import type {
   MidgardCekStructuralExecution,
 } from "./cek-executor.js";
 import type { LedgerEntry } from "./ledger.js";
-import type {
-  MidgardLedgerTx,
-  MidgardLedgerVKeyWitness,
-} from "./ledger-tx/types.js";
+import type { MidgardForcedTxOutputFault } from "./ledger-tx/codec.locate-forced-tx-item-fault.js";
+import type { MidgardLedgerTx } from "./ledger-tx/types.js";
 import type { MidgardCekVerdictRequest } from "./phase-b.evaluate-cek-script.js";
 import type { RejectSubject } from "./reject-subject.js";
+import type { ScriptDecodePhase2Class } from "./script-decode.step-types.js";
 
 /**
  * Stable rejection codes used by Midgard phase-A and phase-B validation.
@@ -73,7 +72,6 @@ export const RejectCodes = {
   MintForbidden: "E_MINT_FORBIDDEN",
   ReferenceInputForbidden: "E_REFERENCE_INPUT_FORBIDDEN",
   ScriptFeatureForbidden: "E_SCRIPT_FEATURE_FORBIDDEN",
-  CekProgramMaterial: "E_CEK_PROGRAM_MATERIAL",
   TxExUnits: "E_TX_EX_UNITS",
 } as const;
 
@@ -87,7 +85,6 @@ export type QueuedTx = {
   readonly sourceKind?: "normal" | "forced";
   readonly txId: Buffer;
   readonly txCbor: Buffer;
-  readonly programMaterialSidecarCbor?: Buffer | null;
   readonly arrivalSeq: bigint;
   readonly createdAt: Date;
 };
@@ -124,7 +121,6 @@ export type PhaseAValidatedTx = {
   readonly submission: {
     readonly sourceKind: "normal" | "forced";
     readonly txCbor: Buffer;
-    readonly programMaterialSidecarCbor: Buffer | null;
     readonly arrivalSeq: bigint;
     readonly createdAt: Date;
   };
@@ -150,6 +146,13 @@ export type PhaseAValidatedTx = {
     readonly redeemerWitnessHash: Buffer;
     readonly requiresLocalScriptDiscovery: boolean;
   };
+
+  /**
+   * A forced transaction's first faulty output, with its class.
+   * `ledgerTx.outputs` stops before it, and Phase B refuses the transaction
+   * at the ScriptSources output scan, where the machine reads it.
+   */
+  readonly heldOutputFault?: MidgardForcedTxOutputFault;
 };
 
 /**
@@ -202,20 +205,6 @@ export type PhaseAConfig = {
   readonly consensusProfile?: MidgardConsensusProfile;
 };
 
-/**
- * Process-local Phase-A extension points.
- *
- * This context is deliberately separate from {@link PhaseAConfig}: functions
- * must never enter the serializable worker configuration or wire protocol.
- * Browser and inline callers omit it and retain the CML reference verifier.
- */
-export type PhaseALocalContext = {
-  readonly verifyVKeyWitnessSignature?: (
-    txBodyHash: Buffer,
-    witness: MidgardLedgerVKeyWitness,
-  ) => boolean;
-};
-
 /** Process-local evidence from the single script evaluation used for its verdict. */
 export type LocalScriptEvaluation = {
   readonly scriptBytes: Buffer;
@@ -225,6 +214,8 @@ export type LocalScriptEvaluation = {
     | { readonly cpu: bigint; readonly memory: bigint }
     | undefined;
   readonly result: LocalScriptEvalResult;
+  /** Present on proof-mode evaluation, before any CEK graph is constructed. */
+  readonly phase2Class?: ScriptDecodePhase2Class;
   readonly graph: MidgardCekExecutionGraph | null;
   readonly execution: MidgardCekStructuralExecution | null;
 };
@@ -238,7 +229,17 @@ export type LocalScriptEvalResult =
         readonly memory: bigint;
       };
     }
-  | { readonly kind: "script_invalid"; readonly detail: string };
+  | { readonly kind: "script_invalid"; readonly detail: string }
+  /**
+   * The evaluator itself failed: a throw, one of its own bounds, or a
+   * self-check. Not a verdict: Phase B fails with
+   * `ScriptEvaluationIndeterminateError` carrying `cause`.
+   */
+  | {
+      readonly kind: "indeterminate";
+      readonly detail: string;
+      readonly cause?: unknown;
+    };
 
 /**
  * Configuration knobs for phase-B validation.
@@ -266,7 +267,7 @@ export type PhaseBConfig = {
     evaluation: LocalScriptEvaluation,
   ) => void;
   readonly evaluateProofScript?: (
-    programEnvelopeCbor: Uint8Array,
+    scriptBytes: Uint8Array,
     contextCbor: Uint8Array,
     executionBudget?: {
       readonly cpu: bigint;
@@ -305,6 +306,5 @@ export type MidgardCommittedScriptRun = Omit<
 export type QueuedTxPayload = {
   readonly txId: Buffer;
   readonly txCbor: Buffer;
-  readonly programMaterialSidecarCbor?: Buffer | null;
   readonly createdAtMillis: number;
 };

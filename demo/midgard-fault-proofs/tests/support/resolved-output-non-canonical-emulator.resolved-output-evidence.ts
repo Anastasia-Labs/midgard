@@ -95,7 +95,6 @@ export const forcedSourceOf = (
   return {
     header: block.header,
     membership: block.forced.membership,
-    direction: 1n,
   };
 };
 

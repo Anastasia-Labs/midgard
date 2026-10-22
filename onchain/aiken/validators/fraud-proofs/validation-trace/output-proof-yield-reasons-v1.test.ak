@@ -83,7 +83,6 @@ fn pre_state() -> vt.ValidationMachineStateV1 {
     execution_memory: 0,
     verdict: vt.Pending,
     rejection_code_hash: #"0000000000000000000000000000000000000000000000000000000000000000",
-    ledger_delta_root: h32,
   }
 }
 

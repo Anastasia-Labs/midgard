@@ -6,7 +6,6 @@ import { missingSignatureVkeyHash } from "@al-ft/midgard-sdk";
 import { CML } from "@lucid-evolution/lucid";
 import { afterAll, describe, expect, it } from "vitest";
 
-import type { VanRossemFitMeasurement } from "../src/proof-fit/van-rossem-fit-ledger.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { nodeForcedVerdict } from "./support/emulator/node-forced-verdict.js";
 import { setupMissingSignatureForcedScenario } from "./support/missing-signature-forced-scenario.js";
@@ -56,16 +55,10 @@ const writtenSignerIndex = async (): Promise<bigint> => {
   return 1n;
 };
 
-const fitMeasurements: VanRossemFitMeasurement[] = [];
-
 describe("forced RequiredSignerUnsigned coordinate the node writes", () => {
   it("convicts a coordinate one position early, where the signer signed", async () => {
     const written = await writtenSignerIndex();
-    const s = await setupMissingSignatureForcedScenario(
-      fitMeasurements,
-      shape,
-      written - 1n,
-    );
+    const s = await setupMissingSignatureForcedScenario(shape, written - 1n);
     let thread = await s.init();
     for (let i = 0; i < 3; i++) thread = await s.advance(thread, i);
     expect((await s.action(thread, 3)).kind).toBe("proven");
@@ -74,7 +67,6 @@ describe("forced RequiredSignerUnsigned coordinate the node writes", () => {
 
   it("refuses the written coordinate on chain", async () => {
     const s = await setupMissingSignatureForcedScenario(
-      fitMeasurements,
       shape,
       await writtenSignerIndex(),
     );

@@ -19,6 +19,9 @@ on:
       - "docs/spec/**"
       - "scripts/ci/**"
       - "scripts/lib/worktree-identity.mjs"
+      - "demo/flake.lock"
+      - "scripts/aiken"
+      - "scripts/lib/aiken.mjs"
       - "scripts/preflight.mjs"
       - "scripts/preflight/ci-evidence.mjs"
       - "scripts/preflight/derive.mjs"
@@ -46,6 +49,9 @@ on:
       - "docs/spec/**"
       - "scripts/ci/**"
       - "scripts/lib/worktree-identity.mjs"
+      - "demo/flake.lock"
+      - "scripts/aiken"
+      - "scripts/lib/aiken.mjs"
       - "scripts/preflight.mjs"
       - "scripts/preflight/ci-evidence.mjs"
       - "scripts/preflight/derive.mjs"
@@ -91,44 +97,26 @@ permissions:
 # on this tree — `user_events/tx_order_v1.mint` diverges (stock 81fa79f4…,
 # 9,851 bytes; fork b5541807…, 10,071 bytes).
 #
-# All four arms of rider 1's pin, so a reviewer on other hardware can reproduce
-# the toolchain rather than take it on trust:
-#   repo    https://github.com/Anastasia-Labs/aiken   (org-controlled)
-#   tag     midgard-5adf7837                          (annotated, immutable)
-#   commit  5adf7837cbddb5d329fd51d9c0cd73f561eaf95c
-#   md5     ea9b39054f166e94771f838a662712f7          (published in the tag
-#                                                      message, so it is fixed
-#                                                      once for everyone)
-# The version string `v1.1.23+5adf783` is derived from the commit at build
-# time, so it is the arm that reproduces from source anywhere; the md5 is the
-# tagging build's own artifact hash and is pinned as provenance, not as a
-# build-time equality check (two honest builds of one tag on two machines need
-# not agree byte for byte).
-#
-# The 2026-08-27 advance from midgard-2a78108c to midgard-5adf7837, and the
-# measured blueprint/exunit invariance that makes it a pin bump rather than a
-# re-derivation, are recorded once in `.github/workflows/aiken-ci.yml`.
-# `onchain/aiken/scripts/pinned-compiler.mjs` fails if the two workflows ever
-# disagree on any of these values.
+# The pin is the `aiken` input of `demo/flake.nix`, locked in
+# `demo/flake.lock`. Every script reaches the compiler through `scripts/aiken`,
+# which builds exactly that commit with nix, so nothing can run another aiken;
+# `aiken-ci.yml`'s header records the 2026-10-15 move to midgard-28e42883 and
+# its measured blueprint invariance.
 #
 # JOB LAYOUT. Every independent gate is its own job, so the first red no longer
-# hides the rest: the fork is built once and shared as an artifact, the
-# blueprint is built once from it and shared together with its build record,
+# hides the rest: the fork is built once into the nix cache the other jobs
+# restore (`.github/actions/aiken`), the blueprint is built once from it and shared together with its build record,
 # and each package job starts from the workspace state its checks had in the
 # old serial job (`prebuild` rebuilds the packages that were built before them
 # there). The `gate` job at the bottom is the one check branch protection
 # should require; `scripts/ci/lint-workflows.mjs` holds it to the fail-closed
 # shape.
 env:
-  AIKEN_FORK_REPO: https://github.com/Anastasia-Labs/aiken
-  AIKEN_FORK_TAG: midgard-5adf7837
-  AIKEN_FORK_REV: 5adf7837cbddb5d329fd51d9c0cd73f561eaf95c
-  AIKEN_FORK_VERSION: aiken v1.1.23+5adf783
-  AIKEN_FORK_BINARY_MD5: ea9b39054f166e94771f838a662712f7
   L1_BLOCKFROST_API_URL: https://blockfrost.invalid
   L1_BLOCKFROST_KEY: test-key
   L1_OPERATOR_SEED_PHRASE: "panther fly crawl express smile lend company blue slogan dawn wall tip angle tomorrow battle myth category vanish misery ocean include salon wood rail"
   L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: "second salad helmet humble left noise inform person swamp surround twice animal fitness sing laundry saddle stove guess cabin rural kidney reject oil fee"
+  L1_REFERENCE_SCRIPT_SEED_PHRASE: "cactus chalk grit reopen true slight whale sand law sibling silver fringe cement twist process bracket history leopard churn federal coral three hockey fossil"
   NETWORK: Preprod
   RUN_GENESIS_ON_STARTUP: "false"
   POSTGRES_HOST: 127.0.0.1
@@ -147,32 +135,9 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      # No `setup-aiken` step: the fork is the compiler here for the reason
-      # given at the top of this file, and it is built by the same script and
-      # cached under the same path and key shape as in `aiken-ci`, so the
-      # blueprint this run builds cannot come from a different compiler than
-      # the one that workflow judges.
-      - name: Cache the pinned Aiken fork
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: ~/.aiken-fork
-          key: aiken-fork-${{ env.AIKEN_FORK_REV }}-${{ runner.os }}
-      # A restored cache that already reports the pin is left alone; anything
-      # else is rebuilt with `cargo install --locked` from the pinned rev.
-      - name: Build the pinned Aiken fork
-        run: scripts/ci/build-aiken-fork.sh --prefix ~/.aiken-fork
-      # Assert, don't just print: a cache poisoned by an earlier rev must fail
-      # here rather than silently changing which compiler produced the testnet
-      # blueprint the suites assert hashes against.
-      - name: Assert the pinned compiler identity
-        run: node onchain/aiken/scripts/pinned-compiler.mjs ~/.aiken-fork/bin/aiken
-      - name: Share the pinned Aiken fork with later jobs
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: aiken-fork
-          path: ~/.aiken-fork/bin/aiken
-          if-no-files-found: error
-          retention-days: 3
+      # Builds the locked commit once and saves it to the cache every later
+      # job of the run restores, so they do not each compile it.
+      - uses: ./.github/actions/aiken
 
   blueprint:
     name: Testnet blueprint
@@ -201,8 +166,8 @@ jobs:
           retention-days: 3
 
   # The blueprints only test runs read, built here once rather than in every
-  # shard that reads them: the interactive-emulator one that the fault-proof
-  # and watcher suites' interactive project stamps for itself, the
+  # shard that reads them: the interactive-emulator one that the fault-proof,
+  # watcher and node suites' interactive project stamps for itself, the
   # curated-emulator one the fault-proof suite's curated project stamps, and
   # the two verbose-traced ones the traced-refusal step swaps modules out of.
   # Each is built by the same code the suites would otherwise run, with its
@@ -320,10 +285,14 @@ jobs:
         run: docker compose -f compose.yaml config --quiet
 
   node-image:
-    name: Node image
+    name: Runtime image (${{ matrix.package }})
     needs: [aiken-fork, blueprint]
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [midgard-node, da-committee-node]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Download the testnet blueprint and its build record
@@ -331,14 +300,16 @@ jobs:
         with:
           name: testnet-blueprint
           path: onchain/aiken
-      - name: Build the node image
+      - name: Build and start the runtime image
         working-directory: demo
+        env:
+          IMAGE_PACKAGE: ${{ matrix.package }}
         run: |
           set -euo pipefail
-          docker build --file midgard-node/Dockerfile \
+          docker build --file "$IMAGE_PACKAGE/Dockerfile" \
             --build-context onchain=../onchain/aiken \
-            --tag midgard-node:ci .
-          docker run --rm midgard-node:ci node ./dist/index.js --help >/dev/null
+            --tag "$IMAGE_PACKAGE:ci" .
+          docker run --rm --entrypoint node "$IMAGE_PACKAGE:ci" ./dist/index.js --help >/dev/null
 
   # Every cross-language golden channel, one step each. Each generator
   # regenerates its artifacts from the TypeScript twins in `--check` mode and
@@ -406,9 +377,22 @@ jobs:
       - name: Check MPF node-encoding golden vectors
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run golden:mpf-node-encoding-v1
+      # State 0 of a validation trace: the TypeScript twin's derivation, which
+      # the generated Aiken module asserts against
+      # validation_claim_v1.derive_initial_state.
+      - name: Check validation initial-state golden vectors
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run golden:validation-initial-state-v1
       - name: Check forced-tx admission golden vectors
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run golden:forced-tx-admission-v1
+      # The withdrawal-mistag node-agreement verdicts: one JSON vector file the
+      # fault-proofs twins load and the generator renders into the step-03 and
+      # step-04 Aiken tests. Without this step an edited Aiken vector passes
+      # both suites while the node and the chain no longer judge the same case.
+      - name: Check withdrawal-mistag node-agreement vectors
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run golden:withdrawal-mistag-agreement
       # The canonical Data corpus: every accepted span bound to the summary the
       # TypeScript traverse twin computes, every other span to the traverse
       # stage that refuses it; the generated Aiken module runs the honest
@@ -493,6 +477,26 @@ jobs:
       - name: Check V1 CEK core-step golden vectors
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run golden:cek-core-step-v1
+      # The Plutus Data CBOR decoding channel: both entries of the on-chain
+      # decoder are held to the TypeScript decoder's outcome on every row.
+      - name: Check Plutus Data CBOR decoding golden vectors
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run golden:plutus-data-cbor-decoding-v1
+      # The script-decode step channel: the on-chain step machine replays every
+      # walk of the TypeScript port and must write the same run datums.
+      - name: Check script-decode step golden vectors
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run golden:script-decode-step-v1
+      # The ledger output proof replay channel: outputs holding an empty field
+      # or a large chunked datum scalar, the witness list the TypeScript trace
+      # builder emits for each and the hash of its terminal control. The
+      # generator writes the JSON fixture and rebinds the witness lists and
+      # hashes by name into `ledger-output-proof-datum.test.ak`, where the
+      # on-chain steps replay them; without this step a drifting builder plus a
+      # `:sync` re-greens both language suites unnoticed.
+      - name: Check ledger output proof replay golden vectors
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run golden:ledger-output-proof-replay
       # The V1 CEK builtin channel: every builtin tag evaluated by the pinned
       # Aiken evaluator, values and failures, with the cases where the ledger
       # and that evaluator differ recorded as overrides beside both outcomes.
@@ -500,6 +504,20 @@ jobs:
       - name: Check V1 CEK builtin golden vectors
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run golden:cek-builtin-cardano-v1
+      # The pinned CEK builtin step evidence: one JSON vector file the
+      # validation executor twins load and the generator renders into the
+      # constant modules the mkCons and semantic-presentation Aiken tests
+      # import. Without this step an edited vector passes the TypeScript twins
+      # while the Aiken tests still prove the old bytes.
+      - name: Check CEK builtin step evidence vectors
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run golden:cek-builtin-step-evidence
+      # The V1 CEK builtin cost channel: every builtin's budget at a spread of
+      # argument sizes, from the pinned 350-entry cost vector, run against the
+      # on-chain cost table as a generated Aiken module.
+      - name: Check V1 CEK builtin cost golden vectors
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run golden:cek-cost-v1-aiken
       # The V1 validation-auxiliary-witness ABI channel. Its generator emits
       # both `tests/fixtures/validation-auxiliary-witness-v1.generated.json` —
       # which `demo/midgard-sdk/tests/validation-auxiliary-witness.test.ts`
@@ -647,11 +665,39 @@ jobs:
           prebuild: lucid-midgard midgard-core midgard-sdk
       - name: Build, typecheck, and test Midgard validation
         run: pnpm --dir demo/midgard-validation run build && pnpm --dir demo/midgard-validation run typecheck && pnpm --dir demo/midgard-validation test
+      # The transaction differential again with its reference leg on: each
+      # generated spend is also evaluated by the pinned aiken (`uplc eval`).
+      - name: Check the transaction differential against the pinned aiken
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run tx-fuzz-reference
 
-  # The fault-proof package's build, typecheck and plain-node script tests,
-  # once per run. The test shards below resolve every workspace package from
-  # source through the `midgard-source` condition and read no dist, so they
-  # neither prebuild nor repeat this work.
+  # Wall-clock benchmarks of the CEK executor and the trace commitment at the
+  # execution budget cap. The validation job gates the same runs on
+  # deterministic work counts; milliseconds depend on the runner and its load,
+  # so these only report.
+  midgard-validation-bench:
+    name: midgard-validation benchmarks
+    needs: [aiken-fork, blueprint]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/demo-setup
+        with:
+          blueprint: "true"
+          prebuild: lucid-midgard midgard-core midgard-sdk
+      # workflow-lint: allow continue-on-error — wall-clock benchmark; its bounds depend on the runner. The validation job gates the same runs on bytes hashed and semantic-store reads per step; this bench is the only check on work neither counts
+      # The step's own limit, well inside the job's, so a slow or hung bench
+      # fails only this step: a job that hits its timeout fails the gate.
+      - name: Benchmark the CEK executor and trace commitment at the budget cap
+        continue-on-error: true
+        timeout-minutes: 20
+        run: pnpm --dir demo/midgard-validation run bench
+
+  # The fault-proof package's build and typecheck, once per run. The test
+  # shards below resolve every workspace package from source through the
+  # `midgard-source` condition and read no dist, so they neither prebuild nor
+  # repeat this work.
   midgard-fault-proofs-build:
     name: midgard-fault-proofs build and typecheck
     needs: [aiken-fork, blueprint]
@@ -668,17 +714,15 @@ jobs:
       - name: Typecheck fault-proof tooling
         if: ${{ !cancelled() }}
         run: pnpm --dir demo/midgard-fault-proofs run typecheck
-      - name: Test the fit-ledger regeneration script
-        if: ${{ !cancelled() }}
-        run: node --test demo/midgard-fault-proofs/scripts/regenerate-fit-ledger.test.mjs
 
-  # Six shards keep each job under 20 minutes. The suite is ~7,500 fork-seconds
-  # on two forks (the five-run median per file in the package's
+  # Six shards keep each job near 30 minutes. The suite is ~19,900
+  # fork-seconds on two forks (the three-run median per file in the package's
   # tests/support/ci-file-durations.json), each job adds a few minutes of setup
   # and Vitest overhead, and shard 1 also runs the ~300 s traced-refusal step,
-  # which that table reserves. At the median each shard projects ~675 s (~17.3
-  # min jobs, measured with a build and typecheck on every shard); three
-  # shards projected ~28.5 min, five ~19.5. The matrix is the one count this
+  # which that table reserves. At the median each shard projects ~1,690 s; the
+  # longest single file (a script-decode walk-cost gate group) is ~1,690 s,
+  # so a group that walks longer is split into its own file rather than
+  # holding one shard past the job's time limit. The matrix is the one count this
   # workflow reads (the jobs and test-durations take it from the matrix);
   # change it together with tests/duration-shards.test.ts, which
   # scripts/ci/shard-counts.test.mjs pins to it, and rekey the table's reserve. On
@@ -914,6 +958,19 @@ jobs:
           pnpm --dir demo/midgard-node run test:mpf:architecture-g-closure
           node --test demo/midgard-node/scripts/throughput-load-watchdog.test.mjs
 
+  installed-boundaries:
+    name: Installed package boundaries
+    needs: [aiken-fork, blueprint]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/demo-setup
+        with:
+          blueprint: "true"
+      - name: Check every built package from an isolated production installation
+        run: node scripts/preflight.mjs --run demo-boundary
+
   # Workspace-wide eslint (type-aware) and prettier, once for every package.
   # The pre-commit hook applies the same two tools to staged files; this job is
   # the enforcement the hook cannot provide for contributors who never
@@ -1061,7 +1118,7 @@ jobs:
   # pins (tests/test-env.ts) never span two shards.
   midgard-node:
     name: midgard-node (${{ matrix.shard }}/${{ strategy.job-total }})
-    needs: [aiken-fork, blueprint]
+    needs: [aiken-fork, blueprint, test-blueprints]
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
@@ -1087,6 +1144,7 @@ jobs:
       - uses: ./.github/actions/demo-setup
         with:
           blueprint: "true"
+          interactive-blueprint: "true"
           prebuild: lucid-midgard midgard-core midgard-sdk midgard-validation midgard-fault-proofs midgard-watcher
       # The suite's global setup builds the native MPF owner binary.
       - name: Cache the native MPF cargo build
@@ -1166,6 +1224,7 @@ jobs:
             watcher-journeys/forced-submission.test.ts \
             watcher-journeys/history-event-cases.test.ts \
             watcher-journeys/history-events.test.ts \
+            watcher-journeys/journey-ledger.test.ts \
             watcher-journeys/journey-lucid.test.ts \
             watcher-journeys/journey-replay-lifetime.test.ts \
             watcher-journeys/journey-session.test.ts \
@@ -1182,6 +1241,7 @@ jobs:
             watcher-journeys/readiness-evidence.test.ts \
             watcher-journeys/readiness.test.ts \
             watcher-journeys/replayed-ledger.test.ts \
+            watcher-journeys/script-validation-trace-case.test.ts \
             watcher-journeys/signed-commit-reconciliation.test.ts \
             watcher-journeys/signed-transaction-recovery.test.ts \
             watcher-journeys/stage-timing.test.ts \
@@ -1241,6 +1301,7 @@ jobs:
       - midgard-core
       - midgard-sdk
       - midgard-validation
+      - midgard-validation-bench
       - midgard-fault-proofs-build
       - midgard-fault-proofs
       - midgard-watcher-typecheck
@@ -1248,6 +1309,7 @@ jobs:
       - test-durations
       - native-mpf
       - lint
+      - installed-boundaries
       - da-committee-node
       - midgard-l1-follower
       - l1-fork-simulator

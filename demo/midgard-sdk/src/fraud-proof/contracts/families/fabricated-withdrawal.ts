@@ -1,3 +1,4 @@
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Data, Network } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -23,10 +24,10 @@ import {
 } from "../types.js";
 
 export const FABRICATED_WITHDRAWAL_FAULT_PROOF_TITLES = {
-  step01: "fraud_proofs/fabricated_withdrawal/step_01.main.spend",
-  step02: "fraud_proofs/fabricated_withdrawal/step_02.main.spend",
-  step03: "fraud_proofs/fabricated_withdrawal/step_03.main.spend",
-  step04: "fraud_proofs/fabricated_withdrawal/step_04.main.spend",
+  step01: deployedTitle("fraudProofFabricatedWithdrawal"),
+  step02: deployedTitle("fraudProofFabricatedWithdrawalStep02"),
+  step03: deployedTitle("fraudProofFabricatedWithdrawalStep03"),
+  step04: deployedTitle("fraudProofFabricatedWithdrawalStep04"),
 } as const;
 
 /**

@@ -6,8 +6,14 @@ import { PROOF_THREAD_SOURCE_KIND_ACCEPTED } from "@al-ft/midgard-sdk";
 
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { submitRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
+import { requireScriptDecodeRecordForItem } from "../script-decode/record.js";
+import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import { createWitnessScriptDecodingCentralJournalAdapter } from "./central-journal.js";
+import { WITNESS_SCRIPT_DECODING_CATEGORY_LABEL } from "./contracts.js";
 import { submitWitnessScriptDecodingCancel } from "./submit-cancel.js";
 import { submitWitnessScriptDecodingInit } from "./submit-init.js";
 import { submitWitnessScriptDecodingStep01Accepted } from "./submit-step-01.js";
@@ -34,6 +40,7 @@ export const createManifestBoundWitnessScriptDecodingSubmission = ({
   centralJournal,
   preSubmitBoundary,
   stateQueueMutationLeaseCoordinator,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly config: ManifestBoundWitnessScriptDecodingConfig;
   readonly observe: (
@@ -50,6 +57,8 @@ export const createManifestBoundWitnessScriptDecodingSubmission = ({
     typeof createWitnessScriptDecodingCentralJournalAdapter
   >;
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }) => ({
   observe,
   submit: async (
@@ -142,7 +151,6 @@ export const createManifestBoundWitnessScriptDecodingSubmission = ({
         threadOutRef: required(stage.threadOutRef, "step01 thread out-ref"),
         header: required(stage.forcedHeader, "forced header"),
         membership: required(stage.forcedMembership, "forced membership"),
-        direction: required(stage.forcedDirection, "forced direction"),
         witnessSetHash: evidence.finding.witnessSetHash,
         scriptIndex: BigInt(evidence.finding.scriptIndex),
         referenceScriptUtxo: config.referenceScripts.step01,
@@ -163,7 +171,14 @@ export const createManifestBoundWitnessScriptDecodingSubmission = ({
           "hex",
         ),
       );
+      const scriptDecodeRecordUtxo = await requireScriptDecodeRecordForItem({
+        lucid: config.lucid,
+        deployment: config.scriptDecode,
+        item: Buffer.from(evidence.itemHex, "hex"),
+        label: WITNESS_SCRIPT_DECODING_CATEGORY_LABEL,
+      });
       const result = await submitWitnessScriptDecodingStep02({
+        ownOutputs,
         lucid: config.lucid,
         network: config.binding.network,
         contracts: config.contracts,
@@ -171,6 +186,9 @@ export const createManifestBoundWitnessScriptDecodingSubmission = ({
         signer: config.signer,
         threadOutRef: required(stage.threadOutRef, "step02 thread out-ref"),
         evidence,
+        ...(scriptDecodeRecordUtxo === undefined
+          ? {}
+          : { scriptDecodeRecordUtxo }),
         nativeTxCompactCbor: required(
           stage.nativeTxCompactCbor,
           "native transaction compact CBOR",

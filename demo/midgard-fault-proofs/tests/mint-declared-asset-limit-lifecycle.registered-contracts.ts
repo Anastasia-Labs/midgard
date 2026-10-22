@@ -31,6 +31,7 @@ import {
 } from "../src/mint-declared-asset-limit/contracts.js";
 import { prepareMintDeclaredAssetLimitEvidence } from "../src/mint-declared-asset-limit/family.js";
 import { nativeTxFromCoreCompact } from "../src/step-support.js";
+import type { OwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import {
@@ -43,7 +44,6 @@ import {
   familyStepsFromRegisteredChain,
 } from "./support/emulator/registered-chain.js";
 import { createLifecycleCoverageRecorder } from "./support/lifecycle-coverage.js";
-import { createMeasuredFitRecorder } from "./support/measured-fit-ledger.js";
 
 export const network = "Custom" as const;
 
@@ -268,6 +268,7 @@ export const publishCarriage = async (
   items: readonly Buffer[],
   label: string,
   sourceKind: 0n | 1n,
+  ownOutputs: OwnOutputJournal,
 ) => {
   const planned = planFaultProofFieldOpening({
     anchorSourceKind: sourceKind,
@@ -281,6 +282,7 @@ export const publishCarriage = async (
   });
   const carriage = await captureEmulatorSubmission(harness.emulator, () =>
     publishFaultProofFieldCarriage({
+      ownOutputs,
       lucid: harness.proverLucid,
       signer: harness.proverSigner,
       planned,
@@ -292,6 +294,7 @@ export const publishCarriage = async (
     planned.plan.tier === "Certified"
       ? await captureEmulatorSubmission(harness.emulator, () =>
           certifyFaultProofFieldCarriage({
+            ownOutputs,
             lucid: harness.proverLucid,
             network,
             signer: harness.proverSigner,
@@ -315,23 +318,10 @@ export const progress = (message: string) => {
     console.info(`[mint-declared-lifecycle] ${message}`);
 };
 
-export const measuredFit = createMeasuredFitRecorder(
-  "mint-declared-asset-limit",
-  "lifecycle",
-  "62 policies with 1000-asset first policy, exact 32768-byte certified field and 192-unit fold; both directions",
-);
-
 export const printLedger = (
   label: string,
   rows: readonly (readonly [string, Measurement])[],
 ) => {
-  rows.forEach(([name, measurement], index) =>
-    measuredFit.record(
-      `${label}/${index}-${name}`,
-      measurement,
-      measurement.executionMemory === 0n ? "publication" : "lifecycle",
-    ),
-  );
   if (process.env.MIDGARD_PRINT_FIT === "1")
     console.info(
       `[${label}] ${JSON.stringify(rows, (_key, value: unknown) =>

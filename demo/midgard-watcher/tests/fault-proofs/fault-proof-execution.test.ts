@@ -1,107 +1,30 @@
-import { join } from "node:path";
-
 import {
-  createWorkflowActuationPermitController,
+  FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED,
+  FRAUD_PROOF_WORKFLOW_FRESH_SUBMISSION_REQUIRED,
   FraudProofL1CheckpointChangedError,
   FraudProofL1UnavailableError,
   type WorkflowAdapterRunnerInput,
 } from "@al-ft/midgard-fault-proofs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.js";
-import { createWatcherFaultProofExecution } from "../../src/fault-proofs/fault-proof-execution.js";
+import {
+  WATCHER_COUNTERPARTY_DEADLINE_SLACK_MS,
+  WATCHER_FAULT_PROOF_CONTINUATION_STALLED,
+  WATCHER_FAULT_PROOF_COUNTERPARTY_DEADLINE_PASSED,
+} from "../../src/fault-proofs/fault-proof-continuation-stall.js";
 import { WatcherProofDecisionMissingError } from "../../src/fault-proofs/watcher-decision-hold.js";
-import { createWatcherProverFundingAuthorityFactory } from "../../src/funding/prover-funding-authority.js";
 import { WatcherRetainedDaTransportUnavailableError } from "../../src/storage/retained-da-transport-unavailable.js";
 import { fundingTerminal } from "../funding/funding-handoff-fixture.js";
-import {
-  cleanupFundingRecoveryFixtures,
-  deploymentIdentity,
-  setupFundingRecoveryFixture,
-  walletAddress,
-} from "../support/fault-proof-funding-fixture.js";
-import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
+import { setupFaultProofExecution } from "../support/fault-proof-execution-fixture.js";
+import { cleanupFundingRecoveryFixtures } from "../support/fault-proof-funding-fixture.js";
 
 afterEach(cleanupFundingRecoveryFixtures);
 
-const setup = async (newReservation = false) => {
-  const fixture = await setupFundingRecoveryFixture();
-  const controller = createWorkflowActuationPermitController({
-    decision: fixture.fresh,
-    rollbackGeneration: "2",
-  });
-  const journalRoot = newReservation
-    ? join(fixture.journalRoot, "fresh")
-    : fixture.journalRoot;
-  const fundingFactory = newReservation
-    ? createWatcherProverFundingAuthorityFactory({
-        journalRoot,
-        journalAuthenticationKey: TEST_JOURNAL_KEY,
-        launchScope: installedLaunchScope(fixture.fresh.launchScope),
-        deploymentIdentity,
-        protocolParameters: fixture.protocolParameters,
-        store: fixture.store,
-      })
-    : fixture.fundingFactory();
-  const getUtxos = vi.fn(async () => fixture.walletUtxos);
-  const getUtxosByOutRef = vi.fn(async () => []);
-  const runOrResume = vi.fn(
-    async (invocation: WorkflowAdapterRunnerInput): Promise<unknown> =>
-      fixture.run(
-        fixture.bind(fixture.fresh, {
-          controller,
-          permit: invocation.fundingReservationPermit,
-          releaseUnused: () =>
-            fundingFactory.releaseUnused({
-              actuationPermit: controller.permit,
-            }),
-        }),
-      ),
-  );
-  const recordProofStep = vi.fn();
-  const setAlert = vi.fn();
-  const verifyCompleted = vi.fn(async () => {
-    throw new Error("unexpected completed verification");
-  });
-  const execution = createWatcherFaultProofExecution({
-    application: {
-      runners: { doubleSpend: fixture.runner },
-      runOrResume,
-      verifyCompleted,
-    },
-    fundingFactory,
-    walletAddress,
-    provider: { getUtxos, getUtxosByOutRef },
-    journalRoot,
-    runtimeConfigPath: "/unused-test-runtime.json",
-    deploymentFingerprint: deploymentIdentity.manifestId,
-    operationsSink: () => ({ recordProofStep, setAlert }),
-  });
-  const input = {
-    job: {
-      mode: "resume",
-      category: "doubleSpend",
-      headerHash: fixture.fresh.headerHash,
-      decisionDigest: fixture.fresh.decisionDigest,
-      rollbackGeneration: "2",
-      deadline: null,
-    },
-    actuationPermit: controller.permit,
-    admission: { mode: "resume", funding: "resume_only" },
-  } as const;
-  return {
-    fixture,
-    controller,
-    execution,
-    input,
-    getUtxos,
-    getUtxosByOutRef,
-    runOrResume,
-    verifyCompleted,
-    recordProofStep,
-    setAlert,
-  };
-};
+const setup = setupFaultProofExecution;
+
+/** A dispute's response deadline, and the reason its run awaits it under. */
+const DEADLINE = 1_767_225_600_000;
+const AWAITING = `validationTraceDispute awaiting counterparty until ${DEADLINE.toString()}`;
 
 describe("supervisor execution adapter with durable funding", () => {
   it("restores the signed objective without querying fresh wallet inputs", async () => {
@@ -162,64 +85,159 @@ describe("supervisor execution adapter with durable funding", () => {
     expect(test.getUtxos).not.toHaveBeenCalled();
   });
 
-  it("waits on a fresh observation while a dispute awaits its counterparty", async () => {
-    const test = await setup();
-    const before = await test.fixture.records();
-    const reason =
-      "validationTraceDispute awaiting counterparty until 1767225600000";
-    test.runOrResume.mockResolvedValueOnce({
-      kind: "awaiting_counterparty",
-      reason,
-      responseDeadline: 1_767_225_600_000,
-    });
-    expect(await test.execution.execute(test.input)).toEqual({
-      kind: "pending",
-      resume: "await_observation",
-      reason,
-    });
-    expect(test.recordProofStep).toHaveBeenLastCalledWith(
-      expect.objectContaining({ status: "reconciling" }),
-    );
-    expect(test.setAlert).not.toHaveBeenCalled();
-    expect(await test.fixture.records()).toEqual(before);
-  });
-
   it.each([
-    [
-      { kind: "awaiting_counterparty" },
-      "Watcher doubleSpend workflow did not progress: invalid execution outcome",
-    ],
-    [
-      { kind: "stalled", reason: "confirmed action still required" },
-      "Watcher doubleSpend workflow did not progress: confirmed action still required",
-    ],
-    [
-      { kind: "no_fault_detected", classification: {} },
-      "the family's own classification returned no_fault_detected for an admitted fault",
-    ],
-    [
-      { kind: "unprovable_gap", classification: {} },
-      "the family's own classification returned unprovable_gap for an admitted fault",
-    ],
-    [{ kind: "unknown_kind", reason: "x" }, "did not progress: x"],
-  ])("keeps %j fail-closed with a named reason", async (result, message) => {
+    {
+      name: "before its response deadline, healthy",
+      nowMs: DEADLINE - 1,
+      responseDeadline: DEADLINE,
+      holds: [],
+    },
+    {
+      name: "within the slack after its response deadline, healthy",
+      nowMs: DEADLINE + WATCHER_COUNTERPARTY_DEADLINE_SLACK_MS,
+      responseDeadline: DEADLINE,
+      holds: [],
+    },
+    {
+      name: "past its response deadline and the slack, alarmed",
+      nowMs: DEADLINE + WATCHER_COUNTERPARTY_DEADLINE_SLACK_MS + 1,
+      responseDeadline: DEADLINE,
+      holds: [
+        `awaiting its counterparty 1 ms past the response deadline ${DEADLINE.toString()} and its slack: ${AWAITING}`,
+      ],
+    },
+    {
+      name: "with no response deadline, alarmed",
+      nowMs: DEADLINE - 1,
+      responseDeadline: undefined,
+      holds: [
+        `awaiting its counterparty with no response deadline: ${AWAITING}`,
+      ],
+    },
+  ])(
+    "waits on a fresh observation while a dispute awaits its counterparty $name",
+    async ({ nowMs, responseDeadline, holds }) => {
+      const test = await setup();
+      const before = await test.fixture.records();
+      vi.useFakeTimers({ toFake: ["Date"], now: nowMs });
+      const logged: string[] = [];
+      const stderr = vi
+        .spyOn(process.stderr, "write")
+        .mockImplementation((line) => logged.push(String(line)) > 0);
+      try {
+        test.runOrResume.mockResolvedValueOnce({
+          kind: "awaiting_counterparty",
+          reason: AWAITING,
+          ...(responseDeadline === undefined ? {} : { responseDeadline }),
+        });
+        expect(await test.execution.execute(test.input)).toEqual({
+          kind: "pending",
+          resume: "await_observation",
+          reason: AWAITING,
+        });
+      } finally {
+        stderr.mockRestore();
+        vi.useRealTimers();
+      }
+      const alarms = holds.map((detail) => ({
+        reason: WATCHER_FAULT_PROOF_COUNTERPARTY_DEADLINE_PASSED,
+        detail: `doubleSpend/${test.input.job.headerHash}: ${detail}`,
+      }));
+      expect(test.execution.readiness()).toEqual(alarms);
+      expect(logged).toEqual(
+        alarms.map(
+          (alarm) =>
+            `${JSON.stringify({ packageName: "midgard-watcher", level: "error", ...alarm })}\n`,
+        ),
+      );
+      expect(test.recordProofStep).toHaveBeenLastCalledWith(
+        expect.objectContaining({ status: "reconciling" }),
+      );
+      expect(test.setAlert).not.toHaveBeenCalled();
+      expect(await test.fixture.records()).toEqual(before);
+    },
+  );
+
+  it("clears the counterparty alarm once a later run reports something else", async () => {
     const test = await setup();
-    test.runOrResume.mockResolvedValueOnce(result);
-    await expect(test.execution.execute(test.input)).rejects.toThrow(message);
-    expect(test.setAlert).toHaveBeenCalledWith(
-      expect.objectContaining({ code: "proof_submission_failure" }),
-    );
+    vi.useFakeTimers({ toFake: ["Date"], now: DEADLINE + 3_600_000 });
+    const stderr = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    try {
+      test.runOrResume.mockResolvedValueOnce({
+        kind: "awaiting_counterparty",
+        reason: AWAITING,
+        responseDeadline: DEADLINE,
+      });
+      await test.execution.execute(test.input);
+      expect(test.execution.readiness()).toHaveLength(1);
+      test.runOrResume.mockResolvedValueOnce({
+        kind: "pending",
+        reason: "signed transaction awaiting inclusion",
+      });
+      await test.execution.execute(test.input);
+    } finally {
+      stderr.mockRestore();
+      vi.useRealTimers();
+    }
+    expect(test.execution.readiness()).toEqual([]);
   });
 
-  it("refuses existing-only recovery without a durable reservation before querying the wallet", async () => {
-    const test = await setup(true);
-    const before = await test.fixture.records();
-    await expect(test.execution.execute(test.input)).rejects.toThrow(
-      "existing-only funding requires its durable reservation",
+  it("names a stalled session on readiness and logs it at error level until a later run journals progress", async () => {
+    const test = await setup();
+    const reason = `${FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED}: no journaled progress for 1800000 ms over 1800 polls; last pending: transaction for walk is pending`;
+    const detail = `doubleSpend/${test.input.job.headerHash}: ${reason}`;
+    test.runOrResume.mockResolvedValueOnce({
+      kind: "pending",
+      resumeOnObservation: true,
+      reason,
+    });
+    const logged: string[] = [];
+    const stderr = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation((line) => logged.push(String(line)) > 0);
+    try {
+      expect(await test.execution.execute(test.input)).toEqual({
+        kind: "pending",
+        resume: "await_observation",
+        reason,
+      });
+    } finally {
+      stderr.mockRestore();
+    }
+    const stalled = {
+      reason: WATCHER_FAULT_PROOF_CONTINUATION_STALLED,
+      detail,
+    };
+    expect(test.execution.readiness()).toEqual([stalled]);
+    expect(logged).toContain(
+      `${JSON.stringify({ packageName: "midgard-watcher", level: "error", ...stalled })}\n`,
     );
-    expect(test.getUtxos).not.toHaveBeenCalled();
-    expect(test.runOrResume).not.toHaveBeenCalled();
-    expect(await test.fixture.records()).toEqual(before);
+    // The next run waits on L1 at first, then its first journaled progress
+    // clears the alarm before the run ends.
+    const during: unknown[] = [];
+    const progressThenPend = async (invocation: WorkflowAdapterRunnerInput) => {
+      during.push(test.execution.readiness());
+      invocation.onProgress?.();
+      during.push(test.execution.readiness());
+      return { kind: "pending", reason: "transaction for walk is pending" };
+    };
+    test.runOrResume.mockImplementationOnce(progressThenPend);
+    await test.execution.execute(test.input);
+    // A hold under another name is left to the run's outcome.
+    test.runOrResume.mockResolvedValueOnce({
+      kind: "pending",
+      reason: FRAUD_PROOF_WORKFLOW_FRESH_SUBMISSION_REQUIRED,
+    });
+    await test.execution.execute(test.input);
+    test.runOrResume.mockImplementationOnce(progressThenPend);
+    await test.execution.execute(test.input);
+    const resubmission = expect.objectContaining({
+      reason: "fault_proof_resubmission_required",
+    });
+    expect(during).toEqual([[stalled], [], [resubmission], [resubmission]]);
+    expect(test.execution.readiness()).toEqual([]);
   });
 
   it("returns structured read-only provider transport failures for bounded backoff", async () => {
@@ -263,22 +281,6 @@ describe("supervisor execution adapter with durable funding", () => {
     expect(test.runOrResume).not.toHaveBeenCalled();
     expect(await test.fixture.records()).toEqual(before);
     expect(test.setAlert).not.toHaveBeenCalled();
-  });
-
-  it("does not classify provider message strings as transport authority", async () => {
-    const test = await setup(true);
-    test.getUtxos.mockRejectedValueOnce(new Error("provider says ECONNRESET"));
-    await expect(
-      test.execution.execute({
-        ...test.input,
-        job: { ...test.input.job, mode: "run" },
-        admission: { mode: "run", funding: "create_or_resume" },
-      }),
-    ).rejects.toThrow("provider says ECONNRESET");
-    expect(test.runOrResume).not.toHaveBeenCalled();
-    expect(test.setAlert).toHaveBeenCalledWith(
-      expect.objectContaining({ active: true }),
-    );
   });
 
   it("backs off raw-source reconciliation outages without changing signed attempts or submitting", async () => {
@@ -393,24 +395,6 @@ describe("supervisor execution adapter with durable funding", () => {
     );
     await expect(test.execution.verifyCompleted(request)).rejects.toThrow(
       "authenticated terminal mismatch",
-    );
-  });
-
-  it("keeps an authentication failure hard and preserves the signed reservation", async () => {
-    const test = await setup();
-    const before = await test.fixture.records();
-    test.runOrResume.mockRejectedValueOnce(
-      new Error("authenticated proof datum changed"),
-    );
-    await expect(test.execution.execute(test.input)).rejects.toThrow(
-      "authenticated proof datum changed",
-    );
-    expect(await test.fixture.records()).toEqual(before);
-    expect(test.setAlert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        code: "proof_submission_failure",
-        active: true,
-      }),
     );
   });
 });

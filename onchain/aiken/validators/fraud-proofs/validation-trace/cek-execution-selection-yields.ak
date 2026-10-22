@@ -1,15 +1,14 @@
 use aiken/crypto.{ScriptHash}
 use cardano/address.{Credential}
+use cardano/assets.{PolicyId}
 use cardano/transaction.{Transaction}
-use midgard/cek_proof_v1 as proof
 use midgard/cek_selection_witness.{decode_selection_auxiliary}
 use midgard/cek_selection_yield as selection
+use midgard/script_decode_v1
 use midgard/validation_machine/cek.{
   authenticate_cek_execution_selection, verify_cek_execution_selection_successor,
 }
-use midgard/validation_machine/machine_types.{ValidationOneStepEvidenceV1}
 use midgard/validation_machine/witness.{cek_witness_control_v1}
-use midgard/validation_resolver_v1 as resolver
 
 validator authenticate(dispatcher_script_hash: ScriptHash) {
   withdraw(_redeemer: Data, _credential: Credential, tx: Transaction) {
@@ -18,25 +17,12 @@ validator authenticate(dispatcher_script_hash: ScriptHash) {
       tx.inputs,
       tx.redeemers,
     )
-    let auxiliary = decode_selection_auxiliary(action.auxiliary)
     let cek = cek_witness_control_v1(action.transition)
-    and {
-      authenticate_cek_execution_selection(
-        auxiliary,
-        cek.control,
-        cek.execution_cursor,
-      ),
-      if selection.selection_language(action.auxiliary) == 0 {
-        action.material_route == resolver.NoCekMaterial
-      } else {
-        resolver.cek_selection_envelope_cbor_v1(
-          ValidationOneStepEvidenceV1 {
-            transition: action.transition,
-            auxiliary,
-          },
-        ) == Some(selection.route_envelope(action.material_route))
-      },
-    }
+    authenticate_cek_execution_selection(
+      decode_selection_auxiliary(action.auxiliary),
+      cek.control,
+      cek.execution_cursor,
+    )
   }
 
   else(_) {
@@ -44,7 +30,12 @@ validator authenticate(dispatcher_script_hash: ScriptHash) {
   }
 }
 
-validator successor(dispatcher_script_hash: ScriptHash) {
+/// `script_decode_policy_id` is the policy of the `script-decode-v1` family,
+/// whose record token authenticates the program a Plutus selection runs.
+validator successor(
+  dispatcher_script_hash: ScriptHash,
+  script_decode_policy_id: PolicyId,
+) {
   withdraw(_redeemer: Data, _credential: Credential, tx: Transaction) {
     let (datum, action, _) = selection.unique_dispatch(
       dispatcher_script_hash,
@@ -54,86 +45,23 @@ validator successor(dispatcher_script_hash: ScriptHash) {
     expect Some(state) = datum.data
     let auxiliary = decode_selection_auxiliary(action.auxiliary)
     let cek = cek_witness_control_v1(action.transition)
-    and {
-      if selection.selection_language(action.auxiliary) == 0 {
-        True
-      } else {
-        expect Some(envelope) = proof.inspect_program_envelope_v1(
-          selection.route_envelope(action.material_route),
-        )
-        and {
-          action.envelope_facts.term_root == envelope.term_root,
-          action.envelope_facts.node_count == envelope.node_count,
-          action.envelope_facts.material_byte_length == envelope.material_byte_length,
-        }
-      },
-      verify_cek_execution_selection_successor(
-        state.resolution.pre_state,
-        action.transition,
-        auxiliary,
-        cek.control,
-        cek.execution_cursor,
-        cek.completed_cpu,
-        cek.completed_memory,
-      ),
-    }
-  }
-
-  else(_) {
-    fail
-  }
-}
-
-validator material_program(
-  dispatcher_script_hash: ScriptHash,
-  cek_program_material_script_hash: ScriptHash,
-) {
-  withdraw(_redeemer: Data, _credential: Credential, tx: Transaction) {
-    let (_, action, _) = selection.unique_dispatch(
-      dispatcher_script_hash,
-      tx.inputs,
-      tx.redeemers,
-    )
-    expect Some(entries) = resolver.material_entries_for_route(
-      action.material_route,
+    // A native selection, and a PlutusV3 receive purpose (refused before
+    // any program is read), name no record: index -1.
+    let record = script_decode_v1.record_at_v1(
       tx.reference_inputs,
-      cek_program_material_script_hash,
+      action.record_reference_input_index,
+      script_decode_policy_id,
     )
-    let result = proof.verify_program_material_partition(
-      action.envelope_facts.term_root,
-      entries,
-      action.material_facts,
+    verify_cek_execution_selection_successor(
+      state.resolution.pre_state,
+      action.transition,
+      auxiliary,
+      cek.control,
+      cek.execution_cursor,
+      cek.completed_cpu,
+      cek.completed_memory,
+      record,
     )
-    result
-  }
-
-  else(_) {
-    fail
-  }
-}
-
-validator material_data(
-  dispatcher_script_hash: ScriptHash,
-  cek_program_material_script_hash: ScriptHash,
-) {
-  withdraw(_redeemer: Data, _credential: Credential, tx: Transaction) {
-    let (_, action, _) = selection.unique_dispatch(
-      dispatcher_script_hash,
-      tx.inputs,
-      tx.redeemers,
-    )
-    expect Some(entries) = resolver.material_entries_for_route(
-      action.material_route,
-      tx.reference_inputs,
-      cek_program_material_script_hash,
-    )
-    let result = proof.verify_data_material_partition(
-      entries,
-      action.material_facts,
-      action.envelope_facts.node_count,
-      action.envelope_facts.material_byte_length,
-    )
-    result
   }
 
   else(_) {

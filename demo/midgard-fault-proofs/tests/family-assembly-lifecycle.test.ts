@@ -251,6 +251,7 @@ it("uses the identical field-carriage handle for capture and adapter decoration"
       headerHash,
       action: { actionId: "fixture", input: {} },
       artifact: {},
+      entries: [],
     }),
   ).toEqual({ publications: [], requirement: null });
   expect(f.requirements).toEqual(["shared"]);

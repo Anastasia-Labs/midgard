@@ -3,6 +3,7 @@ import {
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
+  type VerdictSubject,
 } from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
@@ -23,6 +24,7 @@ import {
   mintItemScanControlData,
 } from "../../src/mint-item-non-canonical/mint-item-non-canonical.js";
 import {
+  MintItemStep01RedeemerSchema,
   MintItemStep02DatumSchema,
   MintItemStep02RedeemerSchema,
   MintItemStep03DatumSchema,
@@ -126,6 +128,33 @@ const datumOf = (common: Common, data: unknown, schema: unknown) =>
     { fraud_prover: common.signer.paymentKeyHash, data } as never,
     schema as never,
   );
+
+/** Pass the claimed successor subject verbatim to the authenticated forced door. */
+export const submitMintStep01ForcedRaw = async ({
+  subject,
+  itemIndex,
+  forcedSource,
+  ...common
+}: Common & {
+  readonly subject: VerdictSubject;
+  readonly itemIndex: number;
+  readonly forcedSource: Readonly<Record<string, unknown>>;
+}) =>
+  await continueRaw({
+    common,
+    stepIndex: 0,
+    nextAddress: common.contracts.steps[1].spendingScriptAddress,
+    nextDatum: datumOf(
+      common,
+      { subject, item_index: BigInt(itemIndex), field_cursor: null },
+      MintItemStep02DatumSchema,
+    ),
+    redeemerSchema: MintItemStep01RedeemerSchema,
+    args: (input_index, output_index) => ({
+      source: { ForcedSource: { ...forcedSource, input_index, output_index } },
+      item_index: BigInt(itemIndex),
+    }),
+  });
 
 export type MintScanStateData = ReturnType<typeof scanStateOf>;
 

@@ -1,6 +1,5 @@
 import {
   encodeMidgardTxOutputCanonical,
-  type FieldOpening,
   FraudProofComputationThreadRedeemer,
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
@@ -37,6 +36,7 @@ import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
 } from "../../src/witness-reference-scripts.js";
+import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import { type RawStepConfig } from "./reference-input-no-idx-emulator.submit-raw-reference-input-no-idx-step02.js";
 import { network } from "./submit-init-emulator-shared.js";
 
@@ -62,6 +62,7 @@ export const submitRawReferenceInputNoIdxStep04 = async ({
   readonly nativeTxCompactCbor: string;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
 }): Promise<string> => {
+  const ownOutputs = createOwnOutputJournal();
   const { referenceInputNoIdxCategory, contracts } =
     await resolveReferenceInputNoIdxDeploymentContracts({
       blueprint,
@@ -104,6 +105,7 @@ export const submitRawReferenceInputNoIdxStep04 = async ({
   });
   signer.selectWallet(lucid);
   const published = await publishFaultProofFieldCarriage({
+    ownOutputs,
     lucid,
     signer,
     planned,
@@ -116,11 +118,6 @@ export const submitRawReferenceInputNoIdxStep04 = async ({
     label: "raw reference-input-no-idx step 04",
   });
   const referenceInputs = [...published, stepReference];
-  const outputsOpening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs,
-    label: "Raw reference-input-no-idx step 04 outputs",
-  });
   const feeInput = selectFeeInput(
     (await lucid.wallet().getUtxos()).filter(
       (utxo) => utxo.datum == null && utxo.datumHash == null,
@@ -164,7 +161,11 @@ export const submitRawReferenceInputNoIdxStep04 = async ({
               contracts.fraudProof.policyId,
               "raw reference-input-no-idx step 04 fraud-proof",
             ),
-            outputs_opening: outputsOpening,
+            outputs_opening: faultProofFieldOpening({
+              planned,
+              referenceInputs: ctx.referenceInputs,
+              label: "Raw reference-input-no-idx step 04 outputs",
+            }),
           },
         ],
       },

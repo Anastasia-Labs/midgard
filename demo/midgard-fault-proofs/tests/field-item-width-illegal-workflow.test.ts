@@ -100,8 +100,8 @@ const evidence = (() => {
   return prepareFieldItemWidthEvidence({
     finding: {
       subject: acceptedVerdictSubject("8".repeat(64)),
-      fieldIndex: 2,
-      itemIndex: 0,
+      fieldIndex: 2n,
+      itemIndex: 0n,
     },
     fieldPreimage: preimage,
     committedFieldHashHex: midgardFieldCommitment(preimage).toString("hex"),
@@ -159,6 +159,7 @@ describe("fieldItemWidthIllegal manifest-bound production workflow", () => {
     const derived = deriveFieldItemWidthIllegalEvidenceFromCanonicalBlock({
       transactions: [
         {
+          nodeTxId: computeMidgardNativeTxId(material.fullTx).toString("hex"),
           txCbor: encodeMidgardNativeTxCanonical(material.fullTx).toString(
             "hex",
           ),
@@ -167,7 +168,7 @@ describe("fieldItemWidthIllegal manifest-bound production workflow", () => {
       reconstruction: { forcedTransactions: [] },
     } as never);
     expect(derived.subject.source_kind).toBe(0n);
-    expect(derived.fieldIndex).toBe(2);
+    expect(derived.fieldIndex).toBe(2n);
     expect(derived.decisiveFaultHolds).toBe(true);
   });
 
@@ -185,8 +186,8 @@ describe("fieldItemWidthIllegal manifest-bound production workflow", () => {
     const exactEvidence = prepareFieldItemWidthEvidence({
       finding: {
         subject: acceptedVerdictSubject(nodeTxId),
-        fieldIndex: 2,
-        itemIndex: 0,
+        fieldIndex: 2n,
+        itemIndex: 0n,
       },
       fieldPreimage: fixture.fullTx.body.outputsPreimageCbor,
       committedFieldHashHex: midgardFieldCommitment(
@@ -257,7 +258,7 @@ describe("fieldItemWidthIllegal manifest-bound production workflow", () => {
     ).rejects.toThrow(/differs from authenticated raw-L1 stage/u);
   });
 
-  it("complete replay scans every output and mint coordinate", () => {
+  it("complete replay selects the first illegal item in canonical order", () => {
     const material = committedFieldShapeScenarioMaterial(
       "field-item-width-illegal",
     );
@@ -283,8 +284,6 @@ describe("fieldItemWidthIllegal manifest-bound production workflow", () => {
     } as never);
     expect(detections.map(({ detectionId }) => detectionId)).toEqual([
       expect.stringContaining(":2:0:"),
-      expect.stringContaining(":2:1:"),
-      expect.stringContaining(":5:0:0"),
     ]);
   });
 

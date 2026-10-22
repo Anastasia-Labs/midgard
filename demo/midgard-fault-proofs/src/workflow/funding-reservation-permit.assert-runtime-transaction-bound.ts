@@ -16,6 +16,7 @@ import {
   assertAuthenticatedFraudSlashReward,
   isExactFraudSlashRewardOutput,
 } from "./funding-reservation-permit.assert-authenticated-fraud-slash-reward.js";
+import { validationDisputeFunding } from "./funding-reservation-permit.assert-validation-dispute-funding.js";
 import {
   addAssets,
   isProtocolFundingContract,
@@ -27,12 +28,14 @@ import {
   parseProtocolInputAuthority,
   resolveExactOutRefs,
 } from "./funding-reservation-permit.create-workflow-funding-reservation-permit.js";
+import {
+  addMintedAssets,
+  assertNoUnrelatedLedgerAccounting,
+} from "./funding-reservation-permit.ledger-accounting.js";
 import { type PermitState } from "./funding-reservation-permit.workflow-funding-reservation-port.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
-import {
-  readWorkflowRuntimeFundingPolicy,
-  workflowRuntimeFundingMinimumFee,
-} from "./runtime-funding-policy.js";
+import { workflowRuntimeFundingMinimumFee } from "./runtime-funding-fee.js";
+import { readWorkflowRuntimeFundingPolicy } from "./runtime-funding-policy.js";
 import { workflowTransactionReferenceInputOutRefs } from "./transaction-boundary.js";
 export const assertRuntimeTransactionBound = async ({
   state,
@@ -132,6 +135,14 @@ export const assertRuntimeTransactionBound = async ({
         `fraud slash funding authority differs from its exact removal action or economics (${differing.join(", ")})`,
       );
   }
+  // VerifySource's bond and case floor, or a thread move; else refused as before.
+  const dispute = await validationDisputeFunding({
+    signed,
+    slash: slash !== null,
+    policy,
+    state,
+    action,
+  });
   if (signedBytes > BigInt(parameters.maxTxSize))
     throw new Error("signed transaction exceeds protocol maxTxSize");
   if (!transaction.is_valid())
@@ -309,6 +320,7 @@ export const assertRuntimeTransactionBound = async ({
   const walletAssets = new Map<string, bigint>();
   let releasedCustody = 0n;
   let protocolInputLovelace = 0n;
+  dispute?.admitOpener(allInputs);
   for (const [outRef, input] of allInputs) {
     addAssets(inputAssets, input.assets);
     if (input.address === state.snapshot.walletAddress) {
@@ -344,10 +356,11 @@ export const assertRuntimeTransactionBound = async ({
         "fraud slash operator bond differs from its authenticated bond",
       );
     }
-    // Slashes reacquire live authority even for confirmed workflow lineage.
+    // Slashes reacquire live authority; a thread move's thread is its lineage.
     const lineage =
       slash === null
-        ? await state.port.resolveConfirmedInput({ outRef })
+        ? (dispute?.admitContractInput(outRef, input) ??
+          (await state.port.resolveConfirmedInput({ outRef })))
         : null;
     if (lineage !== null) {
       const confirmed = parseConfirmedActionOutput(lineage);
@@ -406,6 +419,12 @@ export const assertRuntimeTransactionBound = async ({
     )
       throw new Error("funding output violates exact min-Ada or maxValueSize");
     addAssets(outputAssets, output.assets);
+    const disputed = dispute?.output(raw) ?? null;
+    if (disputed !== null) {
+      custody += disputed.custody;
+      custodyAllocation += disputed.allocation;
+      continue;
+    }
     if (slash !== null && isExactFraudSlashRewardOutput(raw, slash)) {
       rewardOutputs += 1;
       if (output.address === state.snapshot.walletAddress)
@@ -425,11 +444,13 @@ export const assertRuntimeTransactionBound = async ({
       protocolOutputs += raw.amount().coin();
       protocolMinimum += minimum;
     } else {
+      dispute?.refuseOtherCustody();
       custody += raw.amount().coin();
       // Stake and rewards cannot top up funding; confirmed lineage binds custody.
       custodyAllocation += minimum;
     }
   }
+  dispute?.assertComplete();
   if (custody > releasedCustody + custodyAllocation)
     throw new Error(
       `funding transaction exceeds its governed custody allocation: actual=${custody.toString()} allowed=${(releasedCustody + custodyAllocation).toString()}`,
@@ -438,6 +459,7 @@ export const assertRuntimeTransactionBound = async ({
     protocolOutputs > protocolInputLovelace
       ? protocolOutputs - protocolInputLovelace
       : 0n;
+  dispute?.refuseProtocolTopup(protocolTopup);
   if (
     slash !== null &&
     (rewardOutputs !== 1 ||
@@ -463,37 +485,13 @@ export const assertRuntimeTransactionBound = async ({
     throw new Error(
       "signed transaction loses reserved wallet value outside fees and governed custody",
     );
+  dispute?.keepWalletMoveReserve(walletSpent);
   for (const [unit, quantity] of walletAssets) {
     if (unit !== "lovelace" && (walletOutputAssets.get(unit) ?? 0n) < quantity)
       throw new Error("signed transaction loses reserved wallet native assets");
   }
-  const mint = body.mint();
-  if (mint !== undefined) {
-    const policies = mint.keys();
-    for (let i = 0; i < policies.len(); i += 1) {
-      const policyHash = policies.get(i);
-      const assets = mint.get_assets(policyHash)!;
-      const names = assets.keys();
-      for (let j = 0; j < names.len(); j += 1) {
-        const name = names.get(j),
-          unit = policyHash.to_hex() + name.to_hex();
-        inputAssets.set(
-          unit,
-          (inputAssets.get(unit) ?? 0n) + assets.get(name)!,
-        );
-      }
-    }
-  }
-  // Withdraw-zero yielding never authorizes stake withdrawals or deposits.
-  const withdrawals = body.withdrawals();
-  if (withdrawals !== undefined) {
-    const keys = withdrawals.keys();
-    for (let index = 0; index < keys.len(); index += 1)
-      if (withdrawals.get(keys.get(index)) !== 0n)
-        throw new Error("funding transaction includes a nonzero withdrawal");
-  }
-  if ((body.certs()?.len() ?? 0) !== 0 || body.donation() !== undefined)
-    throw new Error("funding transaction changes unrelated ledger accounting");
+  addMintedAssets(inputAssets, body.mint());
+  assertNoUnrelatedLedgerAccounting(body);
   outputAssets.set(
     "lovelace",
     (outputAssets.get("lovelace") ?? 0n) + body.fee(),

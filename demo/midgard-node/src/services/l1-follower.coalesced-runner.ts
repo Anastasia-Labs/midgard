@@ -1,8 +1,10 @@
 import {
   type DriverHold,
   EVENTS_INGESTION_FAILED,
+  isFatalHold,
   isRetriedHold,
   isTransientFailureHold,
+  localFaultSubject,
 } from "../l1-events/driver.js";
 import { failureHold } from "./l1-follower.failure-hold.js";
 import { NODE_TRANSIENT_BUDGET_MS } from "./transient-exhaustion.js";
@@ -11,13 +13,65 @@ import { NODE_TRANSIENT_BUDGET_MS } from "./transient-exhaustion.js";
 const RETRY_INITIAL_MS = 500;
 const RETRY_MAX_MS = 30_000;
 
+/**
+ * How many runs may end on a local fault (a block whose import failed
+ * locally: in this node's own computation, its Ed25519 verifier's included,
+ * or in a replay failure it cannot classify) with no progress past the
+ * faulted blocks before the runner stops: on the backoff above, about a
+ * minute of retries.
+ */
+export const LOCAL_FAULT_RUN_LIMIT = 8;
+
+/**
+ * Where processing stands for the local-fault bound: processing reports each
+ * block it commits (`committed`), and the runner watches the blocks its runs
+ * faulted on. Committing a watched block is progress past the fault.
+ */
+export type LocalFaultProgress = Readonly<{
+  /** Processing committed block `headerHash`. */
+  committed: (headerHash: string) => void;
+  /** Watches `subjects`, the blocks a run faulted on. */
+  watch: (subjects: Iterable<string>) => void;
+  /** Whether a watched block was committed since the last call that said
+   * so; if one was, watches none from then on. */
+  passed: () => boolean;
+}>;
+
+/** A fresh `LocalFaultProgress`: no block watched, none committed. */
+export const localFaultProgress = (): LocalFaultProgress => {
+  const watched = new Set<string>();
+  let passed = false;
+  return {
+    committed: (headerHash) => {
+      if (watched.has(headerHash)) passed = true;
+    },
+    watch: (subjects) => {
+      for (const subject of subjects) watched.add(subject);
+    },
+    passed: () => {
+      if (!passed) return false;
+      passed = false;
+      watched.clear();
+      return true;
+    },
+  };
+};
+
 export type CoalescedRunnerBound = Readonly<{
   /** How long runs may end on a transient failure in a row (default
    * `NODE_TRANSIENT_BUDGET_MS`). */
   budgetMs?: number;
   /** Wall-clock ms (default `Date.now`). */
   now?: () => number;
-  /** Called once, with the transient failures, when the budget ran out. */
+  /** How many runs may end on a local fault with no progress past the
+   * blocks they faulted on (default `LOCAL_FAULT_RUN_LIMIT`). */
+  localFaultRuns?: number;
+  /** Processing's progress past the faulted blocks. Without it, nothing
+   * starts the local-fault count over in this process. */
+  progress?: LocalFaultProgress;
+  /** Called once, with the transient failures, the local faults or the
+   * fatal holds, when the budget or the local-fault bound ran out or a run
+   * ended on a fatal hold. */
   onExhausted: (holds: readonly DriverHold[]) => void;
 }>;
 
@@ -35,6 +89,22 @@ export type CoalescedRunnerBound = Readonly<{
  * have ended on one for `budgetMs` in a row, with no run between them free
  * of one, the runner stops (no further run) and calls `onExhausted`, and the
  * node exits non-zero (`transient-exhaustion.ts`).
+ *
+ * A local fault (`localFault`: a block's import failed locally, its
+ * verifier's and an unclassified replay failure included) is bounded by
+ * runs: once `localFaultRuns` runs ended on one with no progress past the
+ * blocks they faulted on (`progress`: processing committed one of them),
+ * the runner stops and calls `onExhausted` the same way. A run
+ * free of local faults (a wait, a transient failure), or one faulting on
+ * another block the follower reached without that progress, keeps the
+ * count; a run ending on a local fault keeps the transient budget's start.
+ * The count is this process's, so a restarted node meeting the same fault
+ * on the same block retries within the same bound and exits again; it never
+ * waits on the fault unbounded, and never takes it for a verdict.
+ *
+ * A fatal hold (`fatal`: a configuration error no retry clears) stops the
+ * runner on the first run that ends on one, without a retry, and calls
+ * `onExhausted` with it.
  */
 export const coalescedRunner = (
   run: () => Promise<readonly DriverHold[]>,
@@ -42,18 +112,22 @@ export const coalescedRunner = (
   bound: CoalescedRunnerBound,
 ): (() => void) => {
   const budgetMs = bound.budgetMs ?? NODE_TRANSIENT_BUDGET_MS;
+  const localFaultRuns = bound.localFaultRuns ?? LOCAL_FAULT_RUN_LIMIT;
   const now = bound.now ?? Date.now;
   let running = false;
   let queued = false;
   let exhausted = false;
   let transientSince: number | undefined;
+  let faultRuns = 0;
   let retryMs = RETRY_INITIAL_MS;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  /** Whether `holds` ran the budget out; records their transient failures. */
-  const spent = (holds: readonly DriverHold[]): boolean => {
+  /** Whether `holds` ran the budget out; records their transient failures.
+   * A run that ends on a local fault keeps the budget's start. */
+  const transientSpent = (holds: readonly DriverHold[]): boolean => {
     const failing = holds.filter(isTransientFailureHold);
     if (failing.length === 0) {
-      transientSince = undefined;
+      if (!holds.some((hold) => localFaultSubject(hold) !== undefined))
+        transientSince = undefined;
       return false;
     }
     const at = now();
@@ -63,6 +137,34 @@ export const coalescedRunner = (
     bound.onExhausted(failing);
     return true;
   };
+  /**
+   * Whether `holds` ran the local-fault bound out; counts a run that ends on
+   * a local fault. Only progress past the blocks the counted runs faulted on
+   * starts the count over; a run free of local faults keeps it.
+   */
+  const localFaultSpent = (holds: readonly DriverHold[]): boolean => {
+    if (bound.progress?.passed() === true) faultRuns = 0;
+    const faults = holds.filter(
+      (hold) => localFaultSubject(hold) !== undefined,
+    );
+    if (faults.length === 0) return false;
+    bound.progress?.watch(faults.map((hold) => localFaultSubject(hold)!));
+    faultRuns += 1;
+    if (faultRuns < localFaultRuns) return false;
+    exhausted = true;
+    bound.onExhausted(faults);
+    return true;
+  };
+  /** Whether a run ended on a fatal hold: the runner stops at once. */
+  const fatalSpent = (holds: readonly DriverHold[]): boolean => {
+    const fatal = holds.filter(isFatalHold);
+    if (fatal.length === 0) return false;
+    exhausted = true;
+    bound.onExhausted(fatal);
+    return true;
+  };
+  const spent = (holds: readonly DriverHold[]): boolean =>
+    fatalSpent(holds) || transientSpent(holds) || localFaultSpent(holds);
   const trigger = (): void => {
     if (signal.aborted || exhausted) return;
     if (timer !== undefined) {

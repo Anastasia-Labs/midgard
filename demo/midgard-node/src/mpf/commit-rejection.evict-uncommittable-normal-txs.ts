@@ -10,8 +10,12 @@
  * breaker alarm is raised.
  */
 
+import { findLedgerSignatureVerifierUnavailable } from "@al-ft/midgard-core";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import type { PhaseAValidatedTx } from "@al-ft/midgard-validation";
+import {
+  MidgardUplcCapabilityError,
+  type PhaseAValidatedTx,
+} from "@al-ft/midgard-validation";
 import { Cause, Effect, Exit, Option } from "effect";
 
 import * as MempoolDB from "../database/mempool.js";
@@ -98,6 +102,8 @@ const isNodeFaultError = (error: unknown, depth: number): boolean => {
   if (typeof error === "string") return RESOURCE_EXHAUSTION.test(error);
   if (typeof error !== "object") return false;
   if (
+    findLedgerSignatureVerifierUnavailable(error) !== undefined ||
+    error instanceof MidgardUplcCapabilityError ||
     (error instanceof RangeError && !STACK_OVERFLOW.test(error.message)) ||
     (WASM_RUNTIME_ERROR !== undefined && error instanceof WASM_RUNTIME_ERROR)
   )
@@ -118,8 +124,9 @@ const isNodeFaultError = (error: unknown, depth: number): boolean => {
 
 /**
  * Whether a failure is the node's rather than any transaction's: a store or
- * MPF failure, a `RangeError` other than a stack overflow, a wasm runtime
- * error or memory exhaustion, anywhere in the cause or the errors it wraps.
+ * MPF failure, the Ed25519 verifier being unavailable, a `RangeError` other
+ * than a stack overflow, a wasm runtime error or memory exhaustion, anywhere
+ * in the cause or the errors it wraps.
  */
 export const isNodeFault = (cause: Cause.Cause<unknown>): boolean =>
   [...Cause.failures(cause), ...Cause.defects(cause)].some((error) =>

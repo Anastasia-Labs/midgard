@@ -1,6 +1,6 @@
 //// Datum and redeemer wire shapes for the mint-authorization thread's third
 //// step — the direction dispatch. Direction A proves the inline half of the
-//// source-absence claim (field-6 walk) and routes into the reference-input
+//// source-absence claim (field-6 walk) and routes into the resolved-input
 //// scan; direction B pins the policy's native script by hash and refutes it
 //// against the committed signer set and validity interval.
 
@@ -16,7 +16,7 @@ pub type State {
   validity_interval_start: Int,
   validity_interval_end: Int,
   /// The transition step's `pre_utxos_root` — the ledger the machine
-  /// resolved this transaction's reference inputs against.
+  /// resolved this transaction's spent and reference inputs against.
   prior_ledger_root: ByteArray,
 }
 
@@ -26,7 +26,7 @@ pub type Datum =
 pub type Args {
   /// Direction A: walk the whole committed field 6 and prove no inline
   /// script witness (of any language) hashes to the claimed policy id, then
-  /// route into step-04's reference-input scan at cursor 0.
+  /// route into step-04's resolved-input scan at field 1, cursor 0.
   WitnessAbsence {
     input_index: Int,
     output_index: Int,

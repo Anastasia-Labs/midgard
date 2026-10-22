@@ -20,6 +20,7 @@ import {
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
 } from "../field-opening.js";
+import { createOwnOutputJournal } from "../workflow/own-outputs.js";
 import { createRawDatumPreimageRequirement } from "../workflow/raw-datum-preimage-prerequisite.js";
 import { mintAuthorizationSubmitError } from "./submit-common.js";
 import {
@@ -82,6 +83,7 @@ export const submitMintAuthorizationStep03WitnessAbsence = async ({
   const carriageUtxos =
     shared.publishedCarriageUtxos ??
     (await publishFaultProofFieldCarriage({
+      ownOutputs: shared.ownOutputs ?? createOwnOutputJournal(),
       lucid: shared.lucid,
       signer: shared.signer,
       planned,
@@ -145,7 +147,8 @@ export const submitMintAuthorizationStep03WitnessAbsence = async ({
     policy_id: state.policy_id,
     bad_tx_id: state.bad_tx_id,
     prior_ledger_root: state.prior_ledger_root,
-    ref_cursor: 0n,
+    field_index: BigInt(MIDGARD_FIELD_INDEX.referenceInputs),
+    cursor: 0n,
   };
   const step04Datum = Data.to(
     { fraud_prover: shared.signer.paymentKeyHash, data: step04State },

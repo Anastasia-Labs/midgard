@@ -1,4 +1,5 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
+import { deploymentFraudProofCatalogueCategories } from "@al-ft/midgard-core/deployment-profile";
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
@@ -79,7 +80,9 @@ describe("fault-proof emulator catalogue registration", () => {
     const store = new Store(undefined);
     await store.ready();
     const reference = new Trie(store);
-    for (const name of FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
+    // The deployment's catalogue is the selected profile's set.
+    const catalogueCategories = deploymentFraudProofCatalogueCategories();
+    for (const name of catalogueCategories) {
       const category = harness.catalogue.categories[name];
       await reference.insert(
         encodeCatalogueKey(category.categoryId),
@@ -88,7 +91,7 @@ describe("fault-proof emulator catalogue registration", () => {
     }
 
     expect(trieRootHex(reference)).toBe(harness.catalogue.root);
-    for (const name of FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
+    for (const name of catalogueCategories) {
       const category = harness.catalogue.categories[name];
       const proof = await reference.prove(
         encodeCatalogueKey(category.categoryId),

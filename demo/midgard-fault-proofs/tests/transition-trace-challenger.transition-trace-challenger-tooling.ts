@@ -467,7 +467,6 @@ describe("transition-trace challenger tooling", () => {
     const witness = await buildL2TransactionTransitionWitness({
       reconstruction,
       stepIndex: 0n,
-      evidence: { spentUtxos: [], producedUtxos: [] },
     });
 
     expect(reconstruction.transactions[0]).toMatchObject({
@@ -476,14 +475,7 @@ describe("transition-trace challenger tooling", () => {
       spendInputsPreimage: Buffer.from(EMPTY_CBOR_LIST),
       outputsPreimage: Buffer.from(EMPTY_CBOR_LIST),
     });
-    expect(witness).toMatchObject({
-      L2TransactionTransition: {
-        spend_inputs_preimage: EMPTY_CBOR_LIST.toString("hex"),
-        outputs_preimage: EMPTY_CBOR_LIST.toString("hex"),
-        spent_utxos: [],
-        produced_utxos: [],
-      },
-    });
+    expect(witness).toHaveProperty("L2TransactionTransition.source_membership");
     expect(
       Data.to(
         witness as never,
@@ -499,6 +491,18 @@ describe("transition-trace challenger tooling", () => {
     expectBuildableDetection(detections, {
       kind: "invalidOneStepTransition",
       invariant: "l2_transaction_transition_matches_authenticated_replay",
+    });
+    expect(
+      detections.find(
+        (detection) => detection.kind === "invalidOneStepTransition",
+      ),
+    ).toMatchObject({
+      l2Replay: {
+        spendInputCbors: [],
+        outputCbors: [],
+        spentUtxos: [],
+        producedUtxos: [],
+      },
     });
   });
 
@@ -636,7 +640,7 @@ describe("transition-trace challenger tooling", () => {
       key: txOrderId,
       value: forced,
     });
-    expect(production.stageEvidence.forcedDirection).toBe(1n);
+    expect(production.prepared.direction).toBe("wrongfulRejection");
   });
 
   it("does not classify an honest forced field-length rejection", async () => {
@@ -797,11 +801,7 @@ describe("transition-trace challenger tooling", () => {
     });
     const spent = fixture.evidence.spentUtxos[0]!;
     const produced = fixture.evidence.producedUtxos[0]!;
-    const proofSteps = [
-      ...spent.delete_proof,
-      ...produced.non_membership_proof,
-      ...produced.insert_proof,
-    ];
+    const proofSteps = [...spent.delete_proof, ...produced.insert_proof];
     expect(
       proofSteps.some(
         (step) =>

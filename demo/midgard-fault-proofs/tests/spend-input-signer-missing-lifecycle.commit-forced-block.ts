@@ -44,7 +44,7 @@ import {
 } from "./support/submit-init-emulator-shared.js";
 
 /** Publishes the five applied steps and the certificate mint as plain
- * reference scripts; measured only for the maximum run's ledger. */
+ * reference scripts; checked only for the maximum run. */
 export const publishReferences = async (
   harness: Harness,
   family: Family,
@@ -63,8 +63,6 @@ export const publishReferences = async (
     if (measure)
       recordMeasurements(
         `step0${(index + 1).toString()}-reference-publication`,
-        "publication",
-        "fully applied testnet validator",
         captured,
       );
     references.push(captured.result.utxo);
@@ -81,8 +79,6 @@ export const publishReferences = async (
   if (measure)
     recordMeasurements(
       "certificate-reference-publication",
-      "publication",
-      "field-preimage certificate mint",
       certificateCaptured,
     );
   return {
@@ -247,7 +243,10 @@ export const commitForcedBlock = async (
     }),
     compactCbor: proofSource.compactCbor.toString("hex"),
     witnessSetCompactCbor: proofSource.witnessSetCompactCbor.toString("hex"),
-    forcedSource: { header: setup.header, membership, direction: 1n },
+    forcedSource: {
+      header: setup.header,
+      membership,
+    },
     membership,
     blockOutRef: setup.successorOutRef,
     headerHash: setup.successorHeaderHash,

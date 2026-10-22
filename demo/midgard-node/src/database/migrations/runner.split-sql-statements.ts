@@ -202,6 +202,46 @@ export const splitSqlStatements = (sqlText: string): readonly string[] => {
   return statements;
 };
 
+/**
+ * The SQLSTATE a migration raises to refuse a database it cannot upgrade in
+ * place; the operator must start from a fresh, empty database instead.
+ */
+export const FRESH_DATABASE_REQUIRED_SQLSTATE = "MGF29";
+
+/** The PostgreSQL error inside `error` when it carries `sqlState`. */
+const postgresErrorWithState = (
+  error: SqlError.SqlError,
+  sqlState: string,
+): { readonly message?: unknown; readonly hint?: unknown } | undefined => {
+  const cause: unknown = error.cause;
+  return typeof cause === "object" &&
+    cause !== null &&
+    (cause as { readonly code?: unknown }).code === sqlState
+    ? (cause as { readonly message?: unknown; readonly hint?: unknown })
+    : undefined;
+};
+
+const sqlFailure = (migration: Migration, error: SqlError.SqlError) => {
+  const refusal = postgresErrorWithState(
+    error,
+    FRESH_DATABASE_REQUIRED_SQLSTATE,
+  );
+  if (refusal === undefined)
+    return migrationError(
+      "schema_migration_sql_failed",
+      `Failed to execute migration ${migration.version}_${migration.name}`,
+      error,
+    );
+  const detail = [refusal.message, refusal.hint]
+    .filter((part): part is string => typeof part === "string")
+    .join(". ");
+  return migrationError(
+    "schema_migration_requires_fresh_database",
+    `Migration ${migration.version}_${migration.name} refused this database: ${detail}`,
+    error,
+  );
+};
+
 const executeMigrationSql = (
   migration: Migration,
 ): Effect.Effect<void, MigrationError, Database> =>
@@ -223,13 +263,7 @@ const executeMigrationSql = (
     }
   }).pipe(
     Effect.mapError((error) =>
-      error instanceof SqlError.SqlError
-        ? migrationError(
-            "schema_migration_sql_failed",
-            `Failed to execute migration ${migration.version}_${migration.name}`,
-            error,
-          )
-        : error,
+      error instanceof SqlError.SqlError ? sqlFailure(migration, error) : error,
     ),
   );
 

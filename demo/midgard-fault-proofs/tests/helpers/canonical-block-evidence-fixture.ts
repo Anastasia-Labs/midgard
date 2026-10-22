@@ -115,11 +115,24 @@ export const buildFixtureTransaction = ({
     },
   };
   const full = materializeMidgardNativeTxFromCanonical(canonical);
-  const canonicalCbor = encodeMidgardNativeTxCanonical(full);
+  return fixtureTransactionFromCanonicalCbor({
+    txId: computeMidgardNativeTxId(full).toString("hex"),
+    canonicalCbor: encodeMidgardNativeTxCanonical(full),
+  });
+};
+
+/** Carry an already-encoded canonical transaction into the DA fixture. */
+export const fixtureTransactionFromCanonicalCbor = ({
+  txId,
+  canonicalCbor,
+}: {
+  readonly txId: string;
+  readonly canonicalCbor: Buffer;
+}): FixtureTransaction => {
   const proofSource =
     deriveMidgardNativeTxProofSourceFromCanonicalCbor(canonicalCbor);
   const source: SDK.L2TransactionSource = {
-    tx_id: computeMidgardNativeTxId(full).toString("hex"),
+    tx_id: txId,
     source: {
       compact_cbor: proofSource.compactCbor.toString("hex"),
       witness_set_compact_cbor:
@@ -271,10 +284,6 @@ export const buildCanonicalBlockFixture = async ({
     SDK.ROOT_DOMAINS.eventToStep,
     bufferEntries(eventToStepEntries),
   );
-  const validationTracesRoot = await buildCountedRoot(
-    SDK.ROOT_DOMAINS.validationTraces,
-    bufferEntries(validationTraceEntries),
-  );
   const utxosRoot = await keyValuePhasRootWithCount(
     utxos.map(({ key, value }) => ({
       key: Buffer.from(key),
@@ -306,8 +315,10 @@ export const buildCanonicalBlockFixture = async ({
     depositsRoot: depositsRoot.root,
     transitionTraceRoot: transitionTraceRoot.root,
     eventToStepRoot: eventToStepRoot.root,
-    validationTracesRoot: validationTracesRoot.root,
     ...counts,
+    // The header pins the validation-trace pair; the body keeps its traces.
+    validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    validationTraceCount: 0n,
     startTime,
     endTime,
     blockSlot: fixtureBlockSlot(endTime),
@@ -332,7 +343,6 @@ export const buildCanonicalBlockFixture = async ({
       event_to_step: sortEntries(eventToStepEntries),
       transaction_preimages: sortEntries(preimageEntries),
       forced_transaction_preimages: [],
-      cek_program_material: [],
       validation_traces: sortEntries(validationTraceEntries),
       validation_trace_witnesses: [],
       counts,

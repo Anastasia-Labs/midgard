@@ -7,6 +7,10 @@ import {
 import { submitCommittedFieldShapeInit } from "../committed-field-shape/submit-committed-field-shape-init.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { submitRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
+import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
 import { createMintItemNonCanonicalCentralJournalAdapter } from "./central-journal.js";
 import {
   type MintItemEvidence,
@@ -34,6 +38,7 @@ export const createManifestBoundMintItemNonCanonicalSubmission = ({
   resolveStage,
   centralJournal,
   stateQueueMutationLeaseCoordinator,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly config: ManifestBoundMintItemNonCanonicalConfig;
   readonly observe: (identity: string) => Promise<MintItemStage>;
@@ -42,6 +47,8 @@ export const createManifestBoundMintItemNonCanonicalSubmission = ({
     typeof createMintItemNonCanonicalCentralJournalAdapter
   >;
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }) => ({
   observe,
   submit: async (
@@ -151,7 +158,6 @@ export const createManifestBoundMintItemNonCanonicalSubmission = ({
         forcedSource: {
           header: required(stage.forcedHeader, "forced header"),
           membership: required(stage.forcedMembership, "forced membership"),
-          direction: required(stage.forcedDirection, "forced direction"),
         },
         referenceScriptUtxo: config.referenceScripts.step01,
         preSubmitBoundary: centralJournal?.boundary(
@@ -170,6 +176,7 @@ export const createManifestBoundMintItemNonCanonicalSubmission = ({
     if (action === "submitStep02") {
       const auxiliaryHashes: string[] = [];
       const result = await submitMintItemNonCanonicalStep02({
+        ownOutputs,
         lucid: config.lucid,
         contracts: config.contracts,
         categoryId: config.binding.resolvedContracts.category.categoryId,

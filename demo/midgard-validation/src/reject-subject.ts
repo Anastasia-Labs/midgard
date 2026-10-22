@@ -77,7 +77,12 @@ export type RejectSubject =
       readonly purposeIndex: bigint;
     }
   | {
-      readonly arm: "OutputNonCanonical" | "OutputBelowMinAda";
+      readonly arm:
+        | "OutputNonCanonical"
+        | "OutputBelowMinAda"
+        | "OutputReferenceScriptMalformed"
+        | "OutputReferenceScriptNodeLimit"
+        | "OutputReferenceScriptDepthLimit";
       readonly index: bigint;
     }
   /**
@@ -96,7 +101,18 @@ export type RejectSubject =
       readonly assetIndex: bigint;
     }
   /** As above, for the asset at mint-field position `index`. */
-  | { readonly arm: "MintAssetAccumulationLimit"; readonly index: bigint };
+  | { readonly arm: "MintAssetAccumulationLimit"; readonly index: bigint }
+  /**
+   * A Plutus script whose decode record refuses it: `itemKind` 0 for the
+   * script witness at ordinal `index`, 1 for the reference script of the
+   * output at ordinal `index`, and `refusalClass` the record's class (1-17).
+   */
+  | {
+      readonly arm: "PlutusScriptUndecodable";
+      readonly itemKind: bigint;
+      readonly index: bigint;
+      readonly refusalClass: bigint;
+    };
 
 /** The arm tags a {@link RejectSubject} can carry. */
 export type RejectSubjectArm = RejectSubject["arm"];

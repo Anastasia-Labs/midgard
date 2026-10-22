@@ -1,20 +1,13 @@
-import { createHash } from "node:crypto";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { inspect } from "node:util";
 
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 import { getAddressDetails, toUnit } from "@lucid-evolution/lucid";
-import { afterAll, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import {
-  buildVanRossemFitLedger,
-  type VanRossemFitMeasurement,
-  writeVanRossemFitLedger,
-} from "../src/proof-fit/van-rossem-fit-ledger.js";
 import {
   createWithdrawalMistagTransactionPort,
   withdrawalMistagEvidenceRequirement,
@@ -44,7 +37,6 @@ import {
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
 } from "../src/workflow/release-finality-policy.js";
 import { recordCrossBlockRawEmulator } from "./support/cross-block-raw-emulator.js";
-import { realBlueprintPath } from "./support/emulator/blueprints.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
@@ -69,39 +61,6 @@ const economicsPolicy = {
   inactivitySlashingPenaltyLovelace: "100000000",
   proverCollateralFloorLovelace: "5000000",
 } as const;
-const measurements: VanRossemFitMeasurement[] = [];
-const completedCases = new Set<string>();
-afterAll(async () => {
-  if (process.env.MIDGARD_WRITE_FIT_LEDGER !== "1") return;
-  expect([...completedCases].sort()).toEqual(
-    [
-      "valid-marked-invalid",
-      "invalid-marked-valid",
-      "maximum-payout",
-      "maximum-value",
-      "asset-boundary",
-      "maximum-output",
-      "maximum-proof",
-      "maximum-asset-names",
-    ].sort(),
-  );
-  await writeVanRossemFitLedger(
-    fileURLToPath(
-      new URL(
-        "../../../docs/fault-proofs/size-plans/withdrawal-mistag-workflow-fit-ledger.json",
-        import.meta.url,
-      ),
-    ),
-    buildVanRossemFitLedger({
-      category: "withdrawalMistag",
-      blueprintSha256: createHash("sha256")
-        .update(await readFile(realBlueprintPath))
-        .digest("hex"),
-      compilerVersion: "aiken v1.1.23+5adf783",
-      measurements,
-    }),
-  );
-});
 describe("withdrawalMistag installed cursor actuator", () => {
   it.each([
     {
@@ -174,16 +133,6 @@ describe("withdrawalMistag installed cursor actuator", () => {
           async () => await publishWithdrawalMistagScripts({ harness: h }),
         );
         const steps = publications.result.refs;
-        publications.measurements.forEach((m, index) =>
-          measurements.push({
-            name: `${scenario.name}/publish/${index}`,
-            kind: "publication",
-            maximumShape: "five physical validators",
-            signedBytes: m.completeSignedBytes,
-            memoryUnits: m.executionMemory,
-            cpuUnits: m.executionSteps,
-          }),
-        );
         const leaseCoordinator = {
           acquire: async () => ({
             token: "decoding-lease",
@@ -197,16 +146,6 @@ describe("withdrawalMistag installed cursor actuator", () => {
           publishRemovalReferenceScripts({
             lucid: h.proverLucid,
             contracts: h.contracts,
-          }),
-        );
-        removalCapture.measurements.forEach((m, index) =>
-          measurements.push({
-            name: `${scenario.name}/publish-removal/${index}`,
-            kind: "publication",
-            maximumShape: scenario.name,
-            signedBytes: m.completeSignedBytes,
-            memoryUnits: m.executionMemory,
-            cpuUnits: m.executionSteps,
           }),
         );
         const removal = removalCapture.result;
@@ -302,7 +241,6 @@ describe("withdrawalMistag installed cursor actuator", () => {
             signer: h.proverSigner,
             publications: l1.publications,
             requirementForAction: withdrawalMistagEvidenceRequirement,
-            transactionConfirmed: (args) => l1.transactionConfirmed(args),
           });
         const port = createWithdrawalMistagTransactionPort({
           evidencePrerequisite: prerequisite(),
@@ -425,22 +363,7 @@ describe("withdrawalMistag installed cursor actuator", () => {
             attempt: 1,
             txHash: preflight.txHash,
           });
-          const result = await captureEmulatorSubmission(h.emulator, () =>
-            current.submit({ ...context, action, preflight }),
-          );
-          result.measurements.forEach((m, index) =>
-            measurements.push({
-              name: `${scenario.name}/${String(action.input.stage)}/${n}/${index}`,
-              kind:
-                action.input.stage === "publish_field_carriage"
-                  ? "publication"
-                  : "lifecycle",
-              maximumShape: scenario.name,
-              signedBytes: m.completeSignedBytes,
-              memoryUnits: m.executionMemory,
-              cpuUnits: m.executionSteps,
-            }),
-          );
+          await current.submit({ ...context, action, preflight });
           h.emulator.awaitBlock();
           await append({
             kind: "submission_ambiguous",
@@ -491,7 +414,6 @@ describe("withdrawalMistag installed cursor actuator", () => {
         expect(
           (await l1.observe({ headerHash: setup.headerHash })).stage.kind,
         ).toBe("removed");
-        completedCases.add(scenario.name);
       } finally {
         clock?.mockRestore();
         recorder.restore();
@@ -506,25 +428,8 @@ it.each([
   { name: "maximum-asset-names", maximumAssetNames: true },
 ])(
   "fits $name with 64-branch openings, maximum output and large payout datum through removal",
-  async ({ name, maximumAssetNames }) => {
-    await runWithdrawalMistagMaximumProof(
-      (label, measurement) =>
-        measurements.push({
-          name: `${name}/${label}`,
-          kind:
-            label.startsWith("script-") ||
-            label.startsWith("evidence-") ||
-            label.startsWith("removal-script-")
-              ? "publication"
-              : "lifecycle",
-          maximumShape: name,
-          signedBytes: measurement.completeSignedBytes,
-          memoryUnits: measurement.executionMemory,
-          cpuUnits: measurement.executionSteps,
-        }),
-      maximumAssetNames,
-    );
-    completedCases.add(name);
+  async ({ maximumAssetNames }) => {
+    await runWithdrawalMistagMaximumProof(maximumAssetNames);
   },
   600_000,
 );

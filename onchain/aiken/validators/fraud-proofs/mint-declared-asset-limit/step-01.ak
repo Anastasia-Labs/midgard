@@ -44,7 +44,7 @@ validator main(
         )
         let expected: Data = Bound {
           bound: bind_policy_v1(
-            substrate.bind_accepted_subject_v1(verified),
+            substrate.open_accepted_subject_v1(verified),
             policy_index,
           ),
         }
@@ -54,13 +54,7 @@ validator main(
         }
       }
       ct.Continue(Args {
-        source: ForcedSource {
-          input_index,
-          output_index,
-          header,
-          membership,
-          direction,
-        },
+        source: ForcedSource { input_index, output_index, header, membership },
         policy_index,
       }) -> {
         let Transaction { inputs, outputs, .. } = tx
@@ -74,11 +68,10 @@ validator main(
           inputs,
           outputs,
         )
-        let subject = substrate.bind_forced_subject_to_thread_v1(
+        let Pair(subject, _) = substrate.open_forced_subject_v1(
           thread_name,
           header,
           membership,
-          direction,
         )
         let expected: Data = Bound {
           bound: bind_policy_v1(subject, policy_index),

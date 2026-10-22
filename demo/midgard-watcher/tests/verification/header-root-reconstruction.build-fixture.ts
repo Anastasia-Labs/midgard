@@ -143,11 +143,10 @@ export const buildFixture = async ({
       SDK.ROOT_DOMAINS.eventToStep,
       eventToStepEntries,
     ),
-    validationTracesRoot: await countedRoot(
-      SDK.ROOT_DOMAINS.validationTraces,
-      validationTraceEntries,
-    ),
     ...counts,
+    // The header pins the validation-trace pair; the body keeps its traces.
+    validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    validationTraceCount: 0n,
     startTime: 10n,
     endTime: 20n,
     blockSlot: 0n,
@@ -172,7 +171,6 @@ export const buildFixture = async ({
       event_to_step: sortEntries(eventToStepEntries),
       transaction_preimages: sortEntries(preimageEntries),
       forced_transaction_preimages: [],
-      cek_program_material: [],
       validation_traces: sortEntries(validationTraceEntries),
       validation_trace_witnesses: [],
       counts,
@@ -210,7 +208,6 @@ export const clonePayload = (payload: SDK.DaPayload): SDK.DaPayload => ({
     forced_transaction_preimages: [
       ...payload.block_body.forced_transaction_preimages,
     ],
-    cek_program_material: [...payload.block_body.cek_program_material],
     validation_traces: [...payload.block_body.validation_traces],
   },
 });

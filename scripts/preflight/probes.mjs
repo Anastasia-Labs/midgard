@@ -16,7 +16,7 @@ import { connect } from "node:net";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { assertPinnedAiken } from "../../onchain/aiken/scripts/pinned-compiler.mjs";
+import { aikenBinary } from "../lib/aiken.mjs";
 import { checkBuild } from "../contrib/build.mjs";
 
 // The local test server. The live end-to-end stack runs its own Postgres on
@@ -107,23 +107,27 @@ export const probePostgres = ({
   });
 };
 
-export const probePinnedCompiler = ({ binary } = {}) => {
+// Whether the aiken pinned by demo/flake.lock can be built and run.
+export const probeAiken = () => {
+  let binary;
   try {
-    const version = assertPinnedAiken(binary);
-    return result("aiken", "available", version);
+    binary = aikenBinary();
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
     return result(
       "aiken",
-      // An unreadable pin means nothing could be compared; any other refusal
-      // means the compiler this run would use is not the pinned one.
-      /must declare|pin different/u.test(message) ? "unknown" : "missing",
-      message.split("\n")[0],
-      existsSync(resolve(import.meta.dirname, "../ci/build-aiken-fork.sh"))
-        ? "bash scripts/ci/build-aiken-fork.sh, then export MIDGARD_AIKEN_BIN=<the fork binary it reports>"
-        : "export MIDGARD_AIKEN_BIN=<path to the pinned fork>, or build it as .github/workflows/aiken-ci.yml does",
+      "missing",
+      error.message,
+      "install nix (https://nixos.org/download)",
     );
   }
+  const run = spawnSync(binary, ["--version"], { encoding: "utf8" });
+  return run.error === undefined && run.status === 0
+    ? result("aiken", "available", run.stdout.trim())
+    : result(
+        "aiken",
+        "missing",
+        `${binary} did not run (${run.error?.message ?? `exit ${String(run.status)}`})`,
+      );
 };
 
 export const probeBlueprintStamp = async ({ root }) => {
@@ -334,7 +338,7 @@ export const probeMergeTree = ({ root }) => {
 // that looked at the old build.
 export const createProbeSet = ({ root, env = process.env, overrides = {} }) => {
   const probes = {
-    aiken: () => probePinnedCompiler({}),
+    aiken: () => probeAiken(),
     postgres: () => probePostgres({ env }),
     blueprint: () => probeBlueprintStamp({ root }),
     "core-dist": () => probeCoreDist({ root }),

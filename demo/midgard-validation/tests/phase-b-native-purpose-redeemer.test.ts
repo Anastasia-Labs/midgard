@@ -1,21 +1,18 @@
 import { encodeCbor, MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core";
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { Lambda, UPLCEncoder, UPLCProgram, UPLCVar } from "@harmoniclabs/uplc";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { buildMidgardCanonicalCekProgram } from "../src/cek-program.js";
-import {
-  buildDeterministicValidationMachineTrace,
-  RejectCodes,
-} from "../src/index.js";
+import { RejectCodes } from "../src/index.js";
 import { MidgardRedeemerTag } from "../src/midgard-redeemers.js";
+import { buildDeterministicValidationMachineTrace } from "./helpers/trace-commit-golden.js";
 import {
   expectSinglePhaseBRejection,
   preState,
   runPhaseB,
 } from "./phase-b.harness.js";
+import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 import {
   FUNDED_OUTPUT_LOVELACE,
   hashScriptWitness,
@@ -36,17 +33,14 @@ describe("phase B validation", () => {
     // is extraneous: Cardano refuses it as ExtraRedeemers, and the fault
     // proof's redeemer audit finds it unused. A Plutus spend carries the
     // script integrity hash, so the transaction reaches that audit.
-    const program = buildMidgardCanonicalCekProgram(
+    const program = buildCekProgramFromRawFlat(
       Buffer.from(
         UPLCEncoder.compile(
           new UPLCProgram([1, 1, 0], new Lambda(new UPLCVar(0))),
         ),
       ),
     );
-    const plutusScript = plutusV3ScriptWitness(program.envelopeCbor);
-    const sidecar = encodeMidgardCekProgramMaterialSidecar([
-      ...program.material.values(),
-    ]);
+    const plutusScript = plutusV3ScriptWitness(program.scriptBytes);
     const nativeScript = nativeScriptWitness({ type: "all", scripts: [] });
     const policyId = hashScriptWitness(nativeScript);
     const spent = outRefFromByte(0x2e);
@@ -82,7 +76,6 @@ describe("phase B validation", () => {
       [
         makePhaseBCandidate({
           spent: [spent],
-          programMaterialSidecarCbor: sidecar,
           ...txOptions,
         }),
       ],
@@ -113,7 +106,6 @@ describe("phase B validation", () => {
         blockSlot: 100n,
         transactionId: transaction.txId,
         canonicalTransactionCbor: transaction.txCbor,
-        programMaterialSidecarCbor: sidecar,
         priorUtxosRoot: unchangedRoot,
         postUtxosRoot: unchangedRoot,
         ledgerWitnessEntries: [{ outRef: spent, output: spentOutput }],

@@ -228,36 +228,12 @@ describe("availability-challenge timeout beside an operator directory change", (
     const retirement = await forcedRetirementConfig(f, validFrom, validTo);
 
     f.lucid.selectWallet.fromPrivateKey(f.challenger.privateKey);
-    const bundle = buildTimeoutMirror(
-      f,
-      s,
-      terminal,
-      {
-        pool,
-        poolOutputLovelace: slash.poolOutputLovelace,
-        challengerOutputLovelace:
-          remaining + f.parameters.challenge_record_lovelace + slash.payout,
-      },
-      {
-        inputs: [
-          retirement.activeAnchor.utxo,
-          retirement.activeNode.utxo,
-          retirement.retiredInsertionAnchor.utxo,
-        ],
-        references: [
-          ...retirement.activeOperatorScriptRefs.map(({ utxo }) => utxo),
-          ...retirement.retiredOperatorScriptRefs.map(({ utxo }) => utxo),
-          retirement.hubOracleRefInput,
-          ...(retirement.schedulerSync.kind === "OperatorIsInactive"
-            ? [retirement.schedulerSync.schedulerRefInput]
-            : []),
-        ],
-        policies: [
-          f.contracts.activeOperators.policyId,
-          f.contracts.retiredOperators.policyId,
-        ],
-      },
-    )
+    const bundle = buildTimeoutMirror(f, s, terminal, {
+      pool,
+      poolOutputLovelace: slash.poolOutputLovelace,
+      challengerOutputLovelace:
+        remaining + f.parameters.challenge_record_lovelace + slash.payout,
+    })
       .compose(SDK.buildRetireOperatorTx(retirement))
       .pay.ToAddress(f.responder.address, {
         lovelace: INACTIVITY_SLASHING_PENALTY_LOVELACE,

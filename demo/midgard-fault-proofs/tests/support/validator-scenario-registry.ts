@@ -21,11 +21,18 @@
  */
 
 import "./validator-scenario-registry.validator-scenarios.js";
+import "./validator-scenario-registry.validation-trace-scenarios.js";
 import "./validator-scenario-registry.family-scenarios.js";
 import "./validator-scenario-registry.unmapped-validators.js";
 import "./validator-scenario-registry.unmapped-families.js";
 
-export { FAMILY_SCENARIOS } from "./validator-scenario-registry.family-scenarios.js";
+import { FAMILY_SCENARIOS as SHARED_FAMILY_SCENARIOS } from "./validator-scenario-registry.family-scenarios.js";
+import { VALIDATION_TRACE_DISPUTE_FAMILY_SCENARIOS } from "./validator-scenario-registry.validation-trace-scenarios.js";
+
+export const FAMILY_SCENARIOS: typeof SHARED_FAMILY_SCENARIOS = {
+  ...SHARED_FAMILY_SCENARIOS,
+  validationTraceDispute: VALIDATION_TRACE_DISPUTE_FAMILY_SCENARIOS,
+};
 export {
   UNMAPPED_FAMILIES,
   UNMAPPED_FAMILY_COUNT,

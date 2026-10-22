@@ -1,6 +1,10 @@
 import { encodeMidgardFieldPreimage } from "@al-ft/midgard-core";
 import { MintAuthorizationStep04Datum } from "@al-ft/midgard-sdk";
-import { type MintAuthorizationStep04State, Proof } from "@al-ft/midgard-sdk";
+import {
+  MIDGARD_FIELD_INDEX,
+  type MintAuthorizationStep04State,
+  Proof,
+} from "@al-ft/midgard-sdk";
 import { type LucidEvolution } from "@lucid-evolution/lucid";
 import { Data } from "@lucid-evolution/lucid";
 
@@ -22,6 +26,7 @@ import {
 import { type FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
 import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import { type FieldCarriagePrerequisitePort } from "../workflow/field-carriage-prerequisite.js";
+import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import {
   type FraudProofFamilyWorkflowAdapter,
@@ -52,6 +57,7 @@ import { submitMintAuthorizationStep05 } from "./submit-mint-authorization-step-
 import { submitMintAuthorizationWitnessScan } from "./submit-mint-authorization-witness-scan.js";
 import {
   type BoundConfig,
+  mintAuthorizationStep04ScanField,
   mintAuthorizationWorkflowRawRequirement,
   type MintAuthorizationWorkflowReferenceScripts,
   planMintAuthorizationWorkflowField,
@@ -71,7 +77,11 @@ export const createMintAuthorizationTransactionPort = (
       classification,
       replayContext: config.replayContext,
     }),
-  capture: async ({ action, artifact }) => {
+  capture: async ({ action, artifact, entries }) => {
+    const ownOutputs = workflowFieldCarriageOwnOutputs({
+      category: "mintAuthorization",
+      entries,
+    });
     const admitted = await admitMintAuthorizationWorkflowArtifact(artifact);
     if (admitted.current.headerHash !== config.binding.definition.headerHash)
       throw new Error("mint authorization: bound header changed");
@@ -100,10 +110,12 @@ export const createMintAuthorizationTransactionPort = (
     const planned = planMintAuthorizationWorkflowField(
       admitted,
       config.signer.paymentKeyHash,
-      stage,
+      input,
     );
     const carriage =
-      planned === null ? null : await resolveField({ config, plan: planned });
+      planned === null
+        ? null
+        : await resolveField({ ownOutputs, config, plan: planned });
     const rawPreimageUtxos =
       (await mintAuthorizationWorkflowRawRequirement(admitted, stage)) !== null
         ? (
@@ -111,10 +123,12 @@ export const createMintAuthorizationTransactionPort = (
               headerHash: admitted.current.headerHash,
               action,
               artifact,
+              entries,
             })
           ).publications
         : undefined;
     const common = {
+      ownOutputs,
       lucid: config.lucid,
       contracts: config.contracts,
       categoryId,
@@ -211,11 +225,21 @@ export const createMintAuthorizationTransactionPort = (
                 schema: MintAuthorizationStep04Datum,
                 stepIndex: 3,
               });
-            const reference = admitted.references[Number(state.ref_cursor)];
+            if (
+              mintAuthorizationStep04ScanField(input) !==
+              Number(state.field_index)
+            )
+              throw new Error("mint authorization: step-04 field changed");
+            const reference = (
+              state.field_index === BigInt(MIDGARD_FIELD_INDEX.referenceInputs)
+                ? admitted.references
+                : admitted.spends
+            )[Number(state.cursor)];
             const args = {
               ...common,
               threadOutRef,
               referenceInputsItemCbors: admitted.referenceInputItemCbors,
+              spendInputsItemCbors: admitted.spendInputItemCbors,
               referenceScriptUtxo: config.references.steps[3],
               preSubmitBoundary,
             };
@@ -230,7 +254,7 @@ export const createMintAuthorizationTransactionPort = (
                   prove: async (key) => {
                     if (key.toString("hex") !== reference.keyHex)
                       throw new Error(
-                        "mint authorization: reference coordinate changed",
+                        "mint authorization: resolved input coordinate changed",
                       );
                     return Buffer.from(
                       Data.to(

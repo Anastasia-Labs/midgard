@@ -1,10 +1,15 @@
+import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 import { vi } from "vitest";
 
 import {
   FIELD_CARRIAGE_PREREQUISITE,
   type FieldCarriagePrerequisitePort,
 } from "../src/workflow/field-carriage-prerequisite.js";
-import type { FraudProofWorkflowIdentity } from "../src/workflow/journal.js";
+import type {
+  FraudProofWorkflowIdentity,
+  FraudProofWorkflowJournalEntry,
+  JournalJsonObject,
+} from "../src/workflow/journal.js";
 import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,
@@ -165,3 +170,58 @@ export const prerequisite = ({
   })),
   reconcile,
 });
+
+const journalBase = {
+  schemaVersion: "midgard-fraud-proof-workflow-journal-entry-v1",
+  workflowId: context.workflowId,
+  identity,
+  recordedAt: "2026-09-14T00:00:00.000Z",
+} as const;
+
+/** `entries` once `action` confirmed, its intent holding `durableRecovery`. */
+export const confirmedCarriage = (
+  entries: readonly FraudProofWorkflowJournalEntry[],
+  {
+    action,
+    txHash: hash,
+    durableRecovery,
+  }: {
+    readonly action: FraudProofWorkflowAction;
+    readonly txHash: string;
+    readonly durableRecovery: JournalJsonObject;
+  },
+): readonly FraudProofWorkflowJournalEntry[] => [
+  ...entries,
+  {
+    ...journalBase,
+    sequence: entries.length,
+    event: {
+      kind: "submission_intent",
+      actionId: action.actionId,
+      actionInput: action.input,
+      txHash: hash,
+      attempt: 1,
+      durableRecovery,
+    },
+  },
+  {
+    ...journalBase,
+    sequence: entries.length + 1,
+    event: { kind: "confirmed", actionId: action.actionId, txHash: hash },
+  },
+];
+
+/** Reads `candidates()` by out-ref, as the provider serves them. */
+export const outRefReader = (candidates: () => readonly UTxO[]) =>
+  ({
+    utxosByOutRef: async (
+      refs: readonly { txHash: string; outputIndex: number }[],
+    ) =>
+      candidates().filter((candidate) =>
+        refs.some(
+          (ref) =>
+            ref.txHash === candidate.txHash &&
+            ref.outputIndex === candidate.outputIndex,
+        ),
+      ),
+  }) as unknown as LucidEvolution;

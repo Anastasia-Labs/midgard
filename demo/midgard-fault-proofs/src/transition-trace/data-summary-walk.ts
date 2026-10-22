@@ -14,8 +14,10 @@ import {
   emptyMidgardCekDataListSummary,
   emptyMidgardCekDataPairSummary,
   hashMidgardCekDataNode,
+  midgardCekBytesMemoryWords,
   type MidgardCekDataSequenceSummary,
   type MidgardCekDataSummary,
+  midgardCekIntegerMemoryWords,
   prependMidgardCekDataListSummary,
   prependMidgardCekDataPairSummary,
   summarizeMidgardCekLargeConstrData,
@@ -60,11 +62,20 @@ type Progress =
 
 // ## Reading
 
-const unsignedByteSize = (value: bigint): bigint =>
-  value < 256n ? 1n : 1n + unsignedByteSize(value / 256n);
+/** `4 +` the word size of a major 0/1 integer: `|n|` is the CBOR argument
+ * for major 0 and one more for major 1. */
+const integerMemory = (major: number, argument: bigint) =>
+  4n + midgardCekIntegerMemoryWords(argument + BigInt(major));
 
-const integerMemory = (argument: bigint) =>
-  4n + unsignedByteSize(argument * 2n);
+/** `4 +` the word size of a tag 2/3 integer from its magnitude bytes (no
+ * leading zero): tag 2 holds `|n|` and tag 3 holds `|n| - 1`. */
+const magnitudeMemory = (tag: bigint, magnitude: Uint8Array) =>
+  4n +
+  (tag === 2n
+    ? midgardCekBytesMemoryWords(magnitude.length)
+    : midgardCekIntegerMemoryWords(
+        BigInt(`0x${Buffer.from(magnitude).toString("hex")}`) + 1n,
+      ));
 
 const integerLeaf = (
   cbor: Uint8Array,
@@ -88,7 +99,7 @@ const bytesLeaf = (
   cborLength: number,
 ): MidgardCekDataSummary => {
   const bytesLength = BigInt(content.length);
-  const memory = 4n + (bytesLength === 0n ? 1n : bytesLength);
+  const memory = 4n + midgardCekBytesMemoryWords(bytesLength);
   return {
     root: hashMidgardCekDataNode({
       kind: "bytes",
@@ -305,7 +316,7 @@ const tagged = (
         kind: "largeConstr",
         indexRoot: commitMidgardCekBlob(indexCbor).root,
         indexCborLength: BigInt(after - next - 1),
-        indexMemory: integerMemory(index[1]),
+        indexMemory: integerMemory(0, index[1]),
       },
       frame,
       stack,
@@ -320,10 +331,7 @@ const tagged = (
     if (magnitude.length < 9 || magnitude[0] === 0) return refused;
     return {
       progress: complete(
-        integerLeaf(
-          bytes.subarray(at, after),
-          4n + BigInt(magnitude.length) + (magnitude[0]! >= 128 ? 1n : 0n),
-        ),
+        integerLeaf(bytes.subarray(at, after), magnitudeMemory(tag, magnitude)),
         after,
         frame,
         stack,
@@ -350,7 +358,7 @@ const read = (
     if (value < 0n) return refused;
     return {
       progress: complete(
-        integerLeaf(bytes.subarray(at, next), integerMemory(value)),
+        integerLeaf(bytes.subarray(at, next), integerMemory(major, value)),
         next,
         frame,
         stack,

@@ -129,10 +129,6 @@ export type PrepareInput = {
   readonly withdrawalEntries: readonly WithdrawalsDB.Entry[];
   readonly mempoolTxIds: readonly Buffer[];
   readonly mempoolTxs: readonly TxTable.EntryWithTimeStamp[];
-  readonly mempoolTxProgramMaterialSidecars?: readonly {
-    readonly txId: Buffer;
-    readonly sidecarCbor: Buffer;
-  }[];
   readonly mempoolTxSourceTable: string;
   readonly transitionTraceMembers: readonly RetainedRootMemberInput[];
   readonly eventToStepMembers: readonly RetainedRootMemberInput[];

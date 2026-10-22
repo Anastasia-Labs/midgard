@@ -244,7 +244,6 @@ export const verifyStageBReport = (
     "disableTxDeltaWriteBehindDiagnostic",
   );
   equal(report.poolSize, 6, "poolSize");
-  equal(report.signatureVerifier, "node", "signatureVerifier");
   equal(report.drainLoops, 4, "drainLoops");
   equal(report.batchSize, 2_048, "batchSize");
   if (shortAssert !== undefined)

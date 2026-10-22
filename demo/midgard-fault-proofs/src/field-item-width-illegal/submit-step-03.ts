@@ -1,4 +1,4 @@
-import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
+import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import {
   requireLinearFaultStepState,
@@ -10,6 +10,8 @@ import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scr
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { FieldItemWidthIllegalContracts } from "./contracts.js";
 import {
+  encodeFieldItemWidthAuthenticatedItem,
+  FieldItemWidthAuthenticatedItem,
   type FieldItemWidthEvidence,
   fieldItemWidthEvidenceCloses,
 } from "./field-item-width-illegal.js";
@@ -55,12 +57,7 @@ export const submitFieldItemWidthIllegalStep03 = async ({
     stepIndex,
     threadOutRef,
   });
-  const state = requireLinearFaultStepState<{
-    subject: unknown;
-    field_index: bigint;
-    item_index: bigint;
-    item_width: bigint;
-  }>({
+  const state = requireLinearFaultStepState<FieldItemWidthAuthenticatedItem>({
     threadUtxo,
     signer,
     schema: FieldItemWidthStep03DatumSchema as never,
@@ -68,9 +65,8 @@ export const submitFieldItemWidthIllegalStep03 = async ({
     stepIndex,
   });
   if (
-    state.field_index !== BigInt(evidence.fieldIndex) ||
-    state.item_index !== BigInt(evidence.itemIndex) ||
-    state.item_width !== BigInt(evidence.itemWidth)
+    Data.to(state, FieldItemWidthAuthenticatedItem) !==
+    encodeFieldItemWidthAuthenticatedItem(evidence)
   ) {
     throw new Error(
       "field-item-width-illegal: terminal state differs from prepared evidence",

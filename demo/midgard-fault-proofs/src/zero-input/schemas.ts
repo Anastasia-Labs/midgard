@@ -25,7 +25,6 @@ export const ZeroInputStep01SourceSchema = Data.Enum([
         OutputReferenceSchema,
         ForcedInclusionTxV1Schema,
       ),
-      direction: Data.Integer(),
     }),
   }),
 ]);
@@ -35,7 +34,6 @@ export const ZeroInputForcedSourcePayloadSchema = Data.Object({
     OutputReferenceSchema,
     ForcedInclusionTxV1Schema,
   ),
-  direction: Data.Integer(),
 });
 export const ZeroInputStep01ArgsSchema = Data.Object({
   source: ZeroInputStep01SourceSchema,

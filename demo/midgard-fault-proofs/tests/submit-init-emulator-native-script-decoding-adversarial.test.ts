@@ -199,7 +199,6 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
       harness,
       scenario,
       refs,
-      direction: 1n,
     });
     const step02 = await submitNativeScriptDecodingStep02({
       lucid: harness.proverLucid,
@@ -528,10 +527,10 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
       harness,
       scenario,
       refs,
-      direction: 1n,
     });
 
-    // Offchain plane: the honest tooling reads the real leaf and stops.
+    // The pending thread carries no direction. An accepted leaf requires the
+    // caller to select a real outpoint; it cannot manufacture a rejection claim.
     await expect(
       submitNativeScriptDecodingStep02({
         lucid: harness.proverLucid,
@@ -543,9 +542,7 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
         forcedOrderKey: scenario.block.forcedOrderKey!,
         referenceScriptUtxo: refs[1],
       }),
-    ).rejects.toThrow(
-      /direction B disputes an explicit rejection, but the forced leaf's verdict is an acceptance/,
-    );
+    ).rejects.toThrow(/chosen outpoint|chosen-outpoint/);
 
     // On-chain plane: keep the block's honest membership PROOF, swap the
     // leaf VALUE for the rejection the adversary wishes had been committed.
@@ -628,17 +625,10 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
       ),
     ).resolves.toHaveLength(0);
 
-    // Control: the same block and the same three membership proofs, with the
-    // leaf value left alone, land. Note that this control varies TWO things
-    // at once — the leaf value and the thread's recorded direction — so it
-    // establishes only that the evidence assembly is sound. The on-chain
-    // refusal above is attributable to step-02's committed-claim opening, but
-    // to EITHER of two guards there: the substituted leaf failing to open
-    // under the committed forced-transactions root, or the §2.4.3(e)
-    // direction↔verdict guard refusing a direction-B thread over an
-    // acceptance. Pinning which one rides the follow-up trace work; the
-    // security property — an adversary cannot manufacture a rejection leaf
-    // the block never committed — holds under either.
+    // Control: honest membership and an in-domain outpoint land from the
+    // same pending state, deriving direction A from the accepted forced leaf.
+    // The raw refusal above supplies both a forged leaf and a forged successor;
+    // it establishes source custody without attributing failure to one guard.
     await submitLinearFaultCancel({
       lucid: harness.proverLucid,
       witnessReferenceScripts: harness.witnessReferenceScripts,
@@ -654,7 +644,6 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
       harness,
       scenario,
       refs,
-      direction: 0n,
     });
     const honest = await submitNativeScriptDecodingStep02({
       lucid: harness.proverLucid,
@@ -868,7 +857,6 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
       harness,
       scenario,
       refs,
-      direction: 1n,
     });
     const step02 = await submitNativeScriptDecodingStep02({
       lucid: harness.proverLucid,

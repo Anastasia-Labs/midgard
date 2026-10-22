@@ -443,9 +443,7 @@ describe("canonical V1 spend-redeemer Cardano boundary", () => {
       await exerciseMidgardRetainedDaCanonicalBoundary({
         canonicalTransactionCbor: retainedProjection.canonicalTransactionCbor,
         corpusLabel: "maximum-redeemers",
-        canonicalMaterialSidecarCbor:
-          retainedProjection.canonicalMaterialSidecarCbor,
-        sourceRawScriptAuditHash: retainedProjection.sourceRawScriptAuditHash,
+        sourceScriptHash: retainedProjection.sourceScriptHash,
       });
     expect(productionRetainedDa.normal.reconstructedCanonicalBytes).toBe(
       retainedProjection.canonicalTransactionCbor.length,

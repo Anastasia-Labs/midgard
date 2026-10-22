@@ -95,14 +95,13 @@ describe("foreign import and import checks keep the event loop turning", () => {
     expect(check!.runs).toBe(UNITS);
     const material = {
       transactionCbor: check!.transactionCbor,
-      programMaterialSidecarCbor: check!.programMaterialSidecarCbor,
       context,
       outputs: importCheckOutRefs(check!.transactionCbor).map((outRef) => ({
         outRef,
         output: outputs.get(outRef.toString("hex"))!,
       })),
     };
-    const run = await timed(() =>
+    const rebuilt = () =>
       Effect.runPromise(
         rebuildAndEvaluate(check!.transactionId, material, (request) =>
           Effect.sync(() => ({
@@ -110,8 +109,11 @@ describe("foreign import and import checks keep the event loop turning", () => {
             result: evaluateMidgardCekVerdict(request),
           })),
         ),
-      ),
-    );
+      );
+    // The process's first evaluation pays a one-time warm-up longer than
+    // several runs' work: rebuild the check once before timing it.
+    expect(await rebuilt()).toEqual({ kind: "accepted" });
+    const run = await timed(rebuilt);
     expect(run.value).toEqual({ kind: "accepted" });
     const perRun = run.total / UNITS;
     expect(run.longest).toBeLessThan(STRETCH_UNITS * perRun);

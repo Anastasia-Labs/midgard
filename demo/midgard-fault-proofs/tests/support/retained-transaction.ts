@@ -2,8 +2,6 @@ import {
   computeMidgardNativeTxId,
   decodeMidgardFieldPreimage,
   decodeMidgardNativeTxFullFromCanonicalCbor,
-  encodeMidgardCekProgramMaterialDaValue,
-  encodeMidgardCekProgramMaterialSidecar,
   encodeMidgardForcedTxCanonical,
   encodeMidgardSpendInputItem,
   MIDGARD_CONSENSUS_PROFILE,
@@ -35,9 +33,6 @@ export const retainedTransactionFixture = async (input: {
   operatorVkey: string;
   endTime: bigint;
   blockSlot: bigint;
-  programMaterial?: Parameters<
-    typeof encodeMidgardCekProgramMaterialSidecar
-  >[0];
   minFeeA?: bigint;
   minFeeB?: bigint;
   source?: {
@@ -75,9 +70,6 @@ export const retainedTransactionFixture = async (input: {
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       eventKeyCbor: Buffer.from(Data.to(eventKey, SDK.EventKey), "hex"),
       canonicalTransactionCbor,
-      programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar(
-        input.programMaterial ?? [],
-      ),
       ...(input.source === undefined
         ? { sourceKind: "normal" as const }
         : {
@@ -141,10 +133,6 @@ export const retainedTransactionFixture = async (input: {
       sourceKind: input.source === undefined ? "normal" : "forced",
       claim,
     }),
-    programMaterialEntries: (input.programMaterial ?? []).map((entry) => [
-      Buffer.from(entry.root).toString("hex"),
-      encodeMidgardCekProgramMaterialDaValue(entry).toString("hex"),
-    ]),
     postLedgerEntries: [...postLedger].map(([outRef, output]) => ({
       outRef: Buffer.from(outRef, "hex"),
       output,

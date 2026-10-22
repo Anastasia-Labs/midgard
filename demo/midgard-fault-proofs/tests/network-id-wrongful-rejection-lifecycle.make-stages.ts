@@ -18,6 +18,7 @@ import {
   submitNetworkIdStep02,
 } from "../src/network-id/index.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
+import type { OwnOutputJournal } from "../src/workflow/own-outputs.js";
 import {
   commitForcedBlock,
   type Harness,
@@ -29,7 +30,6 @@ import {
 } from "./support/emulator/measurement.js";
 import { expectProofFit } from "./support/emulator/proof-fit.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
-import { createMeasuredFitRecorder } from "./support/measured-fit-ledger.js";
 import {
   makeNetworkIdEmulatorHarness,
   publishNetworkIdReferenceScriptsMeasured,
@@ -37,14 +37,11 @@ import {
 import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
 
 /** Stage builders over one harness; every submission is measured. */
-let measuredScenario = 0;
-
 export const makeStages = (
   harness: Harness,
   refs: readonly [UTxO, UTxO, UTxO, UTxO],
   setup: Awaited<ReturnType<typeof commitForcedBlock>>["setup"],
 ) => {
-  const measuredCase = measuredScenario++;
   const [step01Ref, step02Ref, forcedRef, scanRef] = refs;
   const measurements: {
     stage: string;
@@ -55,13 +52,6 @@ export const makeStages = (
     captured: Awaited<ReturnType<typeof captureEmulatorSubmission<T>>>,
   ) => {
     measurements.push({ stage, measurement: captured.measurement });
-    captured.measurements.forEach((measurement, index) =>
-      measuredFit.record(
-        `case-${measuredCase}/${measurements.length - 1}-${stage}-${index}`,
-        measurement,
-        measurement.executionMemory === 0n ? "publication" : "lifecycle",
-      ),
-    );
     return captured.result;
   };
   const initialize = async () => {
@@ -170,6 +160,8 @@ export const makeStages = (
       readonly publish?: boolean;
       readonly certificateUtxos?: readonly UTxO[];
       readonly referenceScriptUtxo?: UTxO;
+      /** The carriage claims the published field is read back by. */
+      readonly ownOutputs?: OwnOutputJournal;
     } = {},
   ) => {
     const label = `scan-${step.kind}${
@@ -198,6 +190,9 @@ export const makeStages = (
           ...(options.certificateUtxos === undefined
             ? {}
             : { certificateUtxos: options.certificateUtxos }),
+          ...(options.ownOutputs === undefined
+            ? {}
+            : { ownOutputs: options.ownOutputs }),
         }),
       ),
     );
@@ -210,6 +205,7 @@ export const makeStages = (
     options: {
       readonly publish?: boolean;
       readonly certificateUtxos?: readonly UTxO[];
+      readonly ownOutputs?: OwnOutputJournal;
     } = {},
   ) => {
     let cursor = threadOutRef;
@@ -379,21 +375,13 @@ export const makeStages = (
   };
 };
 
-let measuredPublicationScenario = 0;
-
 export const makeHarness = async () => {
-  const publicationCase = measuredPublicationScenario++;
   const harness = await makeNetworkIdEmulatorHarness();
   const published = await publishNetworkIdReferenceScriptsMeasured({
     lucid: harness.proverLucid,
     contracts: harness.networkId,
   });
   for (const { name, scriptHash, measurement } of published.measurements) {
-    measuredFit.record(
-      `publication-${publicationCase}/${name}`,
-      measurement,
-      "publication",
-    );
     expectProofFit({
       stage: `publication:${name}`,
       measurement,
@@ -411,9 +399,3 @@ export const makeHarness = async () => {
   }
   return { harness, refs: published.utxos };
 };
-
-export const measuredFit = createMeasuredFitRecorder(
-  "network-id-wrongful-rejection",
-  "lifecycle",
-  "forced universal output scan, maximum inline/certified fields, cancellation and correction",
-);

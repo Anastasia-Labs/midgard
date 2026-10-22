@@ -8,7 +8,6 @@ import {
   encodeMidgardCekValueNode,
   hashMidgardCekTermNode,
   hashMidgardCekValueNode,
-  type MidgardCekProgramEnvelope,
   type MidgardCekProgramMaterialEntry,
 } from "../src/cek-proof.js";
 import {
@@ -89,7 +88,12 @@ export const deepDataConstantProgramMaterial = (
   shape: SemanticChainShape,
   depth: number,
 ): {
-  readonly envelope: MidgardCekProgramEnvelope;
+  readonly summary: {
+    readonly termRoot: Uint8Array;
+    readonly nodeCount: bigint;
+    readonly materialByteLength: bigint;
+    readonly uplcVersion: readonly [bigint, bigint, bigint];
+  };
   readonly material: readonly MidgardCekProgramMaterialEntry[];
   readonly payloadCbor: Buffer;
 } => {
@@ -213,7 +217,7 @@ export const deepDataConstantProgramMaterial = (
     preimage: encodeMidgardCekTermNode(termNode),
   });
   return {
-    envelope: {
+    summary: {
       uplcVersion: [1n, 1n, 0n],
       termRoot,
       nodeCount: BigInt(material.length),

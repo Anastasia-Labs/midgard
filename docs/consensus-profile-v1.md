@@ -155,8 +155,7 @@ and are part of the counted-root preimage.
 The canonical input and generated TypeScript/Aiken golden are maintained at
 `demo/midgard-node/tests/fixtures/transaction-root-v1.canonical.json`; run
 `pnpm --dir demo run fixtures:transaction-root-v1:check` to verify that the
-derived JSON and Aiken projection are fresh. Set `MIDGARD_AIKEN_BIN` when a
-specific Aiken formatter executable must be used.
+derived JSON and Aiken projection are fresh.
 
 Normal DA carries every canonical field preimage. Forced-order material follows
 [MidgardTx §8.11](spec/midgard-tx.md#811-forced-order-material-carriage-normative):
@@ -223,8 +222,7 @@ inputs. It has these ordered phases:
 12. PlutusV3/MidgardV1 context construction and CEK execution for spend, mint,
     receive/protected-output, and observe purposes;
 13. multi-asset input/output/mint/fee accounting;
-14. ledger-delta verification (`LedgerDelta`);
-15. absorbing acceptance or rejection (`Terminal`).
+14. absorbing acceptance or rejection (`Terminal`).
 
 The phase code order above is consensus data. The sole pre-launch machine
 version is `1`; it includes authenticated source constants, a distinct
@@ -234,16 +232,13 @@ accepted deployment versions. See
 [`consensus-profile.ts`](../demo/midgard-core/src/consensus-profile.ts).
 
 Every state commits the phase, program counter, immutable transaction/source
-commitment, prior ledger root, the operator's claimed ledger delta root,
-work-stack roots, accumulated execution units, and current verdict. A terminal
-state is absorbing, which makes Merkle padding unambiguous.
+commitment, prior ledger root, work-stack roots, accumulated execution units,
+and current verdict. A terminal state is absorbing, which makes Merkle padding
+unambiguous.
 
-The claimed ledger delta root is part of the state's immutable context: it is
-supplied once with the initial state and is carried unchanged by every
-transition (`validation-machine/` `immutable_context_matches`) and across
-the committed claim endpoints (`validation-claim-v1.ak`). No instruction writes
-it; the accepting terminal reconstructs the operation frontier independently and
-compares it against the claim.
+The machine state carries no ledger delta commitment. An accepting execution
+moves from multi-asset accounting directly to `Terminal`, whose acceptance work
+witness is the fixed `[1, h'']`.
 
 The same initial-state constructor and machine apply to normal and forced
 transactions. Source authentication differs; transaction semantics do not.
@@ -256,8 +251,12 @@ bytes are an SDK input format, not the consensus identity: the SDK decodes
 them and emits the canonical term DAG. This removes an otherwise separate
 untrusted bytes-to-term interpretation from L1 consensus.
 
-The authoring decoder must round-trip to the exact canonical Flat bytes before
-the graph is accepted. UPLC 1.1.0 type-instantiation forces that the authoring
+The authoring decoder reads the raw Flat exactly as the Cardano ledger reads a
+Plutus V3 script at protocol version 11: it refuses every program Cardano
+refuses and accepts every spelling Cardano accepts, such as padded Flat words
+and non-minimal Data constant encodings. The graph commits each constant's
+value in canonical form, so every spelling of a program builds the same graph.
+UPLC 1.1.0 type-instantiation forces that the authoring
 library represents implicitly around polymorphic builtins are restored as
 explicit authenticated term nodes. Missing, duplicated, or otherwise
 non-canonical builtin forces therefore reject instead of being normalized into
@@ -300,13 +299,16 @@ result only when the L1 one-step verifier selects the challenger. If the
 operator owes a move and withholds it, the timeout transition selects the
 challenger.
 
-Dispute version 1 uses a five-minute (`300,000` ms) response window and at most
-32 bisection rounds. The exact V1 block maturity is seven days
-(`604,800,000` ms). The derived minimum for opening, two full windows per
-round, settlement, and a two-times reserve is `39,600,000` ms. The opening
-validator also rejects a challenge begun too late to finish before maturity.
-A differently versioned response schedule or non-exact maturity fails
-manifest admission.
+Dispute version 1 allows at most 32 bisection rounds. A case opens by the
+challenged block's end time plus half maturity (`case_can_open`), and lasts at
+most D_case = 2 C + 2 (2 rounds + 3) L_d + R, from the profile's side clock C,
+dispute validity range L_d and resolution allowance R
+(`validation-dispute-v1.ak`): `210,480,000` ms on public timing. The exact V1
+block maturity is seven days (`604,800,000` ms). A profile that installs the
+execution dispute needs maturity of at least 2 D_case + 1
+(`minValidationDisputeMaturityMs`, `420,960,001` ms on public timing); one that
+excludes it is not held to this floor. A differently versioned response
+schedule or non-exact maturity fails manifest admission.
 
 For a forced order, a terminal verdict different from the operator verdict is
 a fault. Therefore a valid transaction classified invalid/no-op and an invalid
@@ -329,9 +331,7 @@ itself commits `post root = prior root` with an empty operation list
 `pre_utxos_root == post_utxos_root` for a `Rejected` descriptor
 (`validation-claim-v1.ak`); and any actual ledger movement on an invalid
 forced transaction is a unilateral fault
-(`fraud-proofs/transition-trace/proof.ak`). The machine state's claimed ledger
-delta root is immutable context (§5) and is carried forward unchanged by a
-rejecting terminal.
+(`fraud-proofs/transition-trace/proof.ak`).
 
 V1 requires the same accepted-transaction transition witness for valid forced
 transactions as for normal L2 transactions, with forced-source membership and
@@ -453,13 +453,10 @@ families, and the profile digest cannot drift from source.
 
 <!-- BEGIN MIDGARD_CONSENSUS_PROFILE_V1_GENERATED: do not edit -->
 
-Profile digest: `1cef7f991e87ff6220159def5be8deb3ba5be512ad5944586b65f0ed180b196c`
+Profile digest: `31a8ef883056b85276d8c7b88c77ee50162c5ae7aa8e0a6635a9526c145199ca`
 
 ```json
 {
-  "cekProgramEnvelopeVersion": 1,
-  "cekProgramMaterialSidecarVersion": 1,
-  "cekProgramMaterialVersion": 1,
   "cekValueSchemaVersion": 1,
   "daEnvelopeVersion": 1,
   "daPayloadVersion": 1,
@@ -475,7 +472,6 @@ Profile digest: `1cef7f991e87ff6220159def5be8deb3ba5be512ad5944586b65f0ed180b196
     "script_witnesses",
     "redeemers",
     "reference_scripts",
-    "l1_program_material_publication",
     "script_payment_credentials",
     "protected_outputs",
     "required_observers",
@@ -493,12 +489,9 @@ Profile digest: `1cef7f991e87ff6220159def5be8deb3ba5be512ad5944586b65f0ed180b196
     "maxAddressWitnessesPreimageBytes": 32768,
     "maxCanonicalTransactionBytesPerBlock": 16777216,
     "maxCekBlobChunkBytes": 4095,
-    "maxCekBuiltinTag": 86,
+    "maxCekBuiltinTag": 100,
     "maxCekDirectBlsExpressionDepth": 10,
     "maxCekDirectBlsMillerLoopLeaves": 10,
-    "maxCekProgramEnvelopeBytes": 50,
-    "maxCekProgramMaterialBytes": 67108417,
-    "maxCekProgramNodeCount": 1597819,
     "maxDaPayloadBytes": 67108864,
     "maxDepositCount": 10000,
     "maxDistinctAssetCount": 16384,
@@ -540,7 +533,7 @@ Profile digest: `1cef7f991e87ff6220159def5be8deb3ba5be512ad5944586b65f0ed180b196
     "minSupportedL1MaxTxMemoryUnits": 16500000,
     "minSupportedTransactionExecutionCpuUnits": 10000000000,
     "minSupportedTransactionExecutionMemoryUnits": 16500000,
-    "minValidationDisputeMaturityMs": 7920000,
+    "minValidationDisputeMaturityMs": 21560001,
     "validationDisputeResponseWindowMs": 60000
   },
   "mpfProofSchemaVersion": 2,

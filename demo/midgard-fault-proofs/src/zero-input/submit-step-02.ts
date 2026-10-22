@@ -8,13 +8,16 @@ import {
   resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening.js";
 import {
-  requireLinearFaultReferenceScript,
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
 import { submitLinearFaultFinalize } from "../linear-fault-finalize.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
+import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { ZeroInputContracts } from "./contracts.js";
 import { type ZeroInputEvidence, zeroInputEvidenceCloses } from "./family.js";
@@ -35,6 +38,7 @@ export const submitZeroInputStep02V1 = async ({
   witnessReferenceScripts,
   preSubmitBoundary,
   awaitConfirmation = true,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: ZeroInputContracts;
@@ -47,6 +51,8 @@ export const submitZeroInputStep02V1 = async ({
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }) => {
   if (!zeroInputEvidenceCloses(evidence))
     throw new Error("zeroInput: terminal evidence is honest");
@@ -85,6 +91,7 @@ export const submitZeroInputStep02V1 = async ({
     label: "zero input field 0",
   });
   const carriageUtxos = await resolveFaultProofFieldCarriagePublications({
+    ownOutputs,
     lucid,
     publisherAddress: signer.address,
     planned,
@@ -96,6 +103,7 @@ export const submitZeroInputStep02V1 = async ({
   const certificateUtxo =
     planned.plan.tier === "Certified"
       ? await resolveFaultProofFieldPreimageCertificate({
+          ownOutputs,
           lucid,
           network: lucid.config().network!,
           planned,
@@ -104,28 +112,6 @@ export const submitZeroInputStep02V1 = async ({
       : undefined;
   if (planned.plan.tier === "Certified" && certificateUtxo === undefined)
     throw new Error("zeroInput: field certificate disappeared");
-  const stepReference = requireLinearFaultReferenceScript({
-    utxo: referenceScriptUtxo,
-    expectedScriptHash: contracts.steps[1].spendingScriptHash,
-    family: "zero-input",
-    stepIndex,
-  });
-  const opening = faultProofFieldOpening({
-    planned,
-    referenceInputs: [
-      ...carriageUtxos,
-      stepReference,
-      ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
-      ...(witnessReferenceScripts.computationThreadMint === undefined
-        ? []
-        : [witnessReferenceScripts.computationThreadMint]),
-      ...(witnessReferenceScripts.fraudProofMint === undefined
-        ? []
-        : [witnessReferenceScripts.fraudProofMint]),
-    ],
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: "zero input field 0",
-  });
   return await submitLinearFaultFinalize({
     lucid,
     family: "zero-input",
@@ -137,15 +123,19 @@ export const submitZeroInputStep02V1 = async ({
     threadUtxo,
     threadToken,
     spendRedeemerSchema: ZeroInputStep02RedeemerSchema,
-    buildFamilyArgs: ({
-      inputIndex,
-      outputIndex,
-      fraudProofMintRedeemerIndex,
-    }) => ({
+    buildFamilyArgs: (
+      { inputIndex, outputIndex, fraudProofMintRedeemerIndex },
+      ctx,
+    ) => ({
       input_index: inputIndex,
       output_index: outputIndex,
       fraud_proof_mint_redeemer_index: fraudProofMintRedeemerIndex,
-      spend_inputs_opening: opening,
+      spend_inputs_opening: faultProofFieldOpening({
+        planned,
+        referenceInputs: ctx.referenceInputs,
+        certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+        label: "zero input field 0",
+      }),
     }),
     referenceScriptUtxo,
     carriageUtxos,

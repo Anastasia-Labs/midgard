@@ -294,14 +294,11 @@ export type WatcherBlockReplayEventAuthority = Readonly<
         phase: "Withdrawal" | "Deposit";
         transitionEffect: CanonicalTransitionEffect;
         canonicalNativeTxCbor?: never;
-        programMaterialSidecarCbor?: never;
       }
     | {
         phase: "ForcedTransaction";
         /** Exact bytes compact/commitment-bound to the originating user-event order. */
         canonicalNativeTxCbor: Uint8Array;
-        /** Canonical Phase-A program material for the forced native transaction. */
-        programMaterialSidecarCbor?: Uint8Array | null;
         /** W25 derives the effect against its current canonical ledger. */
         transitionEffect?: never;
       }

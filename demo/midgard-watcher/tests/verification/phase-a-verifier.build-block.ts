@@ -57,7 +57,6 @@ import {
  */
 export const buildBlock = async (input: {
   readonly txCbors: readonly Buffer[];
-  readonly programMaterial?: readonly SDK.DaPayloadEntry[];
   readonly headerOverrides?: Partial<SDK.Header>;
 }): Promise<BlockFixture> => {
   const transactions = input.txCbors.map((canonicalCbor) => {
@@ -157,11 +156,10 @@ export const buildBlock = async (input: {
       SDK.ROOT_DOMAINS.eventToStep,
       eventToStepEntries,
     ),
-    validationTracesRoot: await countedRoot(
-      SDK.ROOT_DOMAINS.validationTraces,
-      validationTraceEntries,
-    ),
     ...counts,
+    // The header pins the validation-trace pair; the body keeps its traces.
+    validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    validationTraceCount: 0n,
     ...input.headerOverrides,
   });
   const headerHash = headerHashOf(header);
@@ -178,7 +176,6 @@ export const buildBlock = async (input: {
       event_to_step: sortEntries(eventToStepEntries),
       transaction_preimages: sortEntries(preimageEntries),
       forced_transaction_preimages: [],
-      cek_program_material: sortEntries(input.programMaterial ?? []),
       validation_traces: sortEntries(validationTraceEntries),
       validation_trace_witnesses: [],
       counts,
@@ -229,13 +226,13 @@ export const evaluateBlock = async (
 // ---------------------------------------------------------------------------
 
 describe("published rejection vocabulary", () => {
-  it("mirrors the canonical 50-member RejectCodes vocabulary", () => {
+  it("mirrors the canonical RejectCodes vocabulary", () => {
     expect(WATCHER_PHASE_A_CANONICAL_REJECT_CODES).toStrictEqual(
       Object.values(RejectCodes),
     );
   });
 
-  it("partitions the vocabulary into 32 reachable and 18 excluded codes", () => {
+  it("partitions the vocabulary into reachable and excluded codes", () => {
     expect(
       [
         ...WATCHER_PHASE_A_REACHABLE_REJECT_CODES,
@@ -305,7 +302,7 @@ describe("published rejection vocabulary", () => {
     );
   });
 
-  it("splits the reachable set into 20 evidenced and 12 dominated codes", () => {
+  it("splits the reachable set into evidenced and dominated codes", () => {
     expect(
       [
         ...WATCHER_PHASE_A_EVIDENCED_REJECT_CODES,

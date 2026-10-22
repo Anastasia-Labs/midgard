@@ -10,9 +10,7 @@ use midgard/fraud_proofs/invalid_signature/step_01.{
 }
 use midgard/fraud_proofs/invalid_signature/step_02
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
-use midgard/fraud_proofs/native_tx/compact.{
-  verify_forced_tx_proof_source_v1, verify_native_tx_proof_source_v1,
-}
+use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_proof_source_v1}
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 
 validator main(
@@ -41,12 +39,12 @@ validator main(
         //    step must pass.
         let
             _own_script_hash,
-            _computation_thread_token_asset_name,
+            _,
             _fraud_prover,
             m_input_state_data,
             output_script_hash,
             output_state_data,
-            _header,
+            _,
             _bad_tx_id,
             bad_tx_view
           <- pass_native_tx_to_next_step_carried(
@@ -72,7 +70,7 @@ validator main(
         //    authenticated rather than asserted.
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data = step_02.State {
-          subject: substrate.bind_accepted_subject_v1(bad_tx_view),
+          subject: substrate.open_accepted_subject_v1(bad_tx_view),
           bad_tx_witness_set_hash: bad_tx_view.tx_compact.witness_set_hash,
         }
         expect output_state_data == expected_output_state
@@ -85,7 +83,6 @@ validator main(
         output_index,
         header,
         membership,
-        direction,
       }}) -> {
         let Transaction { inputs, outputs, .. } = tx
         expect Some(step_datum) = datum
@@ -99,18 +96,10 @@ validator main(
           outputs,
         )
         expect None = input_state
-        let subject = substrate.bind_forced_subject_to_thread_v1(
+        let Pair(subject, verified) = substrate.open_forced_subject_v1(
           thread_name,
           header,
           membership,
-          direction,
-        )
-        let leaf = membership.value
-        let Pair(verified, _) = verify_forced_tx_proof_source_v1(
-          leaf.tx_id,
-          leaf.submitted_source.compact_cbor,
-          leaf.submitted_source.witness_set_compact_cbor,
-          leaf.submitted_source.field_preimage_lengths_cbor,
         )
         let expected: Data = step_02.State {
           subject,

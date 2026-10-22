@@ -6,10 +6,6 @@ import { parseDocument } from "yaml";
 import { format } from "prettier";
 
 import {
-  assertPinnedAiken,
-  defaultAikenBinary,
-} from "../../onchain/aiken/scripts/pinned-compiler.mjs";
-import {
   blueprintHash,
   blueprintSourceHash,
   buildRecordPath,
@@ -21,10 +17,9 @@ import {
   economicsConstants,
   limitConstants,
   renderAiken,
+  renderTemplateExports,
   timingConstants,
 } from "./deployment-profile-aiken.mjs";
-
-export { renderAiken } from "./deployment-profile-aiken.mjs";
 import {
   canonicalJson,
   profileDigest,
@@ -41,11 +36,16 @@ import {
   largestFeasibleCommitEventDepth,
   largestNoStrikeCommitEventDepth,
   largestProductionCommitEventDepth,
+  maximumTransitionTraceThreadBudgetMs,
+  maximumTransitionTraceThreadSteps,
   minimumDaResponseBudgetMs,
   minimumPublicEventWaitMs,
   minimumPublicOpenAfterApplyMarginMs,
+  minimumValidationDisputeMaturityMs,
   specDaBondWithdrawDelayFloorMs,
+  validationTraceDisputeInstalled,
 } from "./deployment-profile-budgets.mjs";
+import { aikenBinary } from "../../scripts/lib/aiken.mjs";
 export {
   COMMIT_TTL_FUTURE_BUFFER_MS,
   DA_RESPONSE_CHUNK_BYTES,
@@ -61,6 +61,8 @@ export {
   largestFeasibleCommitEventDepth,
   largestNoStrikeCommitEventDepth,
   largestProductionCommitEventDepth,
+  maximumTransitionTraceThreadBudgetMs,
+  maximumTransitionTraceThreadSteps,
   minimumDaResponseBudgetMs,
   minimumPublicEventWaitMs,
   minimumPublicOpenAfterApplyMarginMs,
@@ -125,7 +127,7 @@ const validateAllowLists = (allowLists, name) => {
 };
 
 // Fraud-proof catalogue categories the deployment leaves out (P1: the
-// families that read validation-trace states). The atomic init builds the
+// families the deployment does not install). The atomic init builds the
 // catalogue MPF without them, so Computation-Thread Init has no membership
 // proof for them. midgard-core checks each name against the catalogue.
 const catalogueCategoryName = /^[a-z][A-Za-z0-9]*$/u;
@@ -192,6 +194,7 @@ export const validateProfile = (profile, name) => {
       "da_bond",
       "limits",
       "economics",
+      "protocol_treasury_native_script",
       "allow_lists",
       "excluded_fraud_proof_categories",
     ],
@@ -251,18 +254,9 @@ export const validateProfile = (profile, name) => {
   validateAllowLists(profile.allow_lists, name);
   validateExcludedFraudProofCategories(profile.excluded_fraud_proof_categories);
   const timing = profile.timing;
-  const maturity = BigInt(timing.block_maturity_ms);
-  const disputeDuration =
-    (2n * BigInt(profile.limits.max_bisection_rounds) + 2n) *
-    BigInt(timing.dispute_response_window_ms);
+  // The 900 s live testing profiles: not fault-proof security configurations.
   const nonInteractiveTesting =
     name === "preprod-testing" || name === "local-devnet-testing";
-  if (nonInteractiveTesting && disputeDuration <= maturity)
-    throw new Error(
-      `Non-interactive ${name} must exclude interactive dispute opening`,
-    );
-  if (!nonInteractiveTesting && 2n * disputeDuration > maturity)
-    throw new Error("Dispute schedule must fit in half of block maturity");
   if (
     timing.da_attestation_timeout_ms >= timing.block_maturity_ms ||
     timing.da_full_response_window_ms >= timing.block_maturity_ms ||
@@ -302,28 +296,40 @@ export const validateProfile = (profile, name) => {
       `DA response windows must each cover the minimum response budget of ${responseBudget} ms`,
     );
   }
-  // Fraud must stay provable after the latest DA response: the latest open,
-  // landing at the end of the challenge window with the widest validity range
-  // (its response window starts at the upper bound), then the whole full
-  // window, then the whole validation-dispute schedule, all before maturity.
-  // The last term is what can_open_before_maturity (validation-dispute-v1.ak)
-  // requires of a dispute opened when the response lands: opening upper +
-  // max dispute duration <= end_time + maturity. The comparison is strict
-  // because the dispute opening lands after the response it depends on.
-  // Fifteen-minute maturity cannot hold this, so the non-interactive testing
-  // profiles are exempt: they are not fault-proof security configurations.
-  if (
-    !nonInteractiveTesting &&
-    BigInt(timing.da_challenge_window_ms) +
-      BigInt(timing.max_validity_range_ms) +
-      BigInt(timing.da_full_response_window_ms) +
-      disputeDuration >=
-      maturity
-  ) {
+  // The latest DA answer: an open landing at the end of the challenge window
+  // with the widest validity range (its response window starts at the upper
+  // bound), then the whole full window. Fraud must stay provable after it, so
+  // it lands strictly before maturity. Fifteen-minute maturity cannot hold
+  // this, so the 900 s testing profiles are exempt.
+  const latestDaAnswer =
+    timing.da_challenge_window_ms +
+    timing.max_validity_range_ms +
+    timing.da_full_response_window_ms;
+  if (!nonInteractiveTesting && latestDaAnswer >= timing.block_maturity_ms)
     throw new Error(
-      "DA challenge window, maximum validity range, full response window and dispute schedule must end before block maturity",
+      "DA challenge window, maximum validity range and full response window must end before block maturity",
     );
+  // With the execution dispute installed, a case against a block opens by
+  // block_end + M / 2 (case_can_open, validation-dispute-v1.ak) and may need
+  // the DA answer first, which must land strictly before that deadline.
+  // Maturity must also leave the case its post-game allowance (2 D_case + 1).
+  // A profile that cannot hold either excludes validationTraceDispute.
+  if (validationTraceDisputeInstalled(profile)) {
+    if (latestDaAnswer >= Math.floor(timing.block_maturity_ms / 2))
+      throw new Error(
+        "DA challenge window, maximum validity range and full response window must end before the execution-dispute case open deadline (half of block maturity)",
+      );
+    const minimumMaturity = minimumValidationDisputeMaturityMs(profile);
+    if (timing.block_maturity_ms < minimumMaturity)
+      throw new Error(
+        `Block maturity must cover the execution dispute, at least ${minimumMaturity} ms (2 D_case + 1), or the profile must exclude validationTraceDispute`,
+      );
   }
+  const threadBudget = maximumTransitionTraceThreadBudgetMs();
+  if (!nonInteractiveTesting && threadBudget > timing.block_maturity_ms)
+    throw new Error(
+      `Block maturity must cover the longest transition-trace thread, ${maximumTransitionTraceThreadSteps()} steps (${threadBudget} ms)`,
+    );
   // An Apply may land as late as end time plus the attestation timeout, and an
   // open must land before end time plus the challenge window. On a public
   // profile a challenger must see that latest Apply at confirmation depth and
@@ -519,10 +525,12 @@ export const generateProfiles = async (selected, check = false) => {
     `export const DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE = ${JSON.stringify(economics, null, 2)} as const;\n\n` +
     `/** The least span from planning a commit to its TTL (\`deployment-profiles.mjs\`). */\n` +
     `export const COMMIT_TTL_FUTURE_BUFFER_MS = ${COMMIT_TTL_FUTURE_BUFFER_MS};\n\n` +
+    renderTemplateExports(template) +
     `export const SELECTED_DEPLOYMENT_PROFILE = DEPLOYMENT_PROFILES[${JSON.stringify(selected)}];\n` +
     `export const SELECTED_DEPLOYMENT_PROFILE_DIGEST = DEPLOYMENT_PROFILE_DIGESTS[${JSON.stringify(selected)}];\n` +
+    `const freezeNativeScript = (script: object): void => {\n  for (const child of Object.values(script) as unknown[]) if (typeof child === "object" && child !== null) freezeNativeScript(child);\n  Object.freeze(script);\n};\n` +
     `for (const profile of Object.values(DEPLOYMENT_PROFILES)) {\n` +
-    `  Object.freeze(profile.l1_finality);\n  Object.freeze(profile.timing);\n  Object.freeze(profile.da_bond);\n  Object.freeze(profile.limits);\n  Object.freeze(profile.economics);\n  for (const keys of Object.values(profile.allow_lists)) if (keys !== null) Object.freeze(keys);\n  Object.freeze(profile.allow_lists);\n  Object.freeze(profile.excluded_fraud_proof_categories);\n  Object.freeze(profile);\n}\n` +
+    `  Object.freeze(profile.l1_finality);\n  Object.freeze(profile.timing);\n  Object.freeze(profile.da_bond);\n  Object.freeze(profile.limits);\n  Object.freeze(profile.economics);\n  freezeNativeScript(profile.protocol_treasury_native_script);\n  for (const keys of Object.values(profile.allow_lists)) if (keys !== null) Object.freeze(keys);\n  Object.freeze(profile.allow_lists);\n  Object.freeze(profile.excluded_fraud_proof_categories);\n  Object.freeze(profile);\n}\n` +
     `Object.freeze(DEPLOYMENT_PROFILES);\nObject.freeze(DEPLOYMENT_PROFILE_DIGESTS);\n` +
     `for (const economics of Object.values(DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE)) Object.freeze(economics);\n` +
     `Object.freeze(DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE);\n`;
@@ -562,8 +570,6 @@ if (
     );
   const profile = await generateProfiles(selected, command === "check");
   if (command === "build") {
-    const aikenBinary = defaultAikenBinary();
-    const compiler = assertPinnedAiken(aikenBinary);
     const blueprintPath = resolve(root, "onchain/aiken/plutus.json");
     if (existsSync(buildRecordPath(blueprintPath)))
       unlinkSync(buildRecordPath(blueprintPath));
@@ -571,7 +577,7 @@ if (
     // must describe the inputs the compiler actually saw.
     const sourceHash = blueprintSourceHash(root);
     const result = spawnSync(
-      aikenBinary,
+      aikenBinary(),
       ["build", "--env", selected.replaceAll("-", "_")],
       { cwd: resolve(root, "onchain/aiken"), stdio: "inherit" },
     );
@@ -585,7 +591,6 @@ if (
           profileDigest: profileDigest(profile),
           blueprintHash: blueprintHash(blueprintPath),
           sourceHash,
-          compiler,
         },
         null,
         2,

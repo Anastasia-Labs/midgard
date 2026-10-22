@@ -24,9 +24,10 @@
 //// difference is the step; the difference between the two differences is
 //// whatever cost still scales with cardinality.
 ////
-//// The readings are pinned in `scripts/native-tx-q1x-exec-ledger-v1.json` and
-//// asserted by `scripts/verify-q1x-exec-ledger-v1.mjs` at the GOAL_SPEC §3.3
-//// declared basis of 13,200,000 memory units. Aiken cannot assert its own
+//// The readings are held to ceilings in
+//// `demo/midgard-core/src/script-budgets.json` and judged by
+//// `scripts/script-budgets.mjs` at the GOAL_SPEC §3.3 declared basis of
+//// 13,200,000 memory units. Aiken cannot assert its own
 //// execution units, so the pin has to live one level up; this module's job is
 //// to be a *stable and honest subject* for it.
 ////
@@ -46,7 +47,7 @@
 //// 7, Q16 step-04), because that is a walk the rebind made linear and
 //// measuring only the flat ones would not be a measurement of the rebind. The
 //// name is therefore narrower than the contents. Renaming it would move the
-//// `module` key of every row in `scripts/native-tx-q1x-exec-ledger-v1.json`
+//// test name of every entry for it in `demo/midgard-core/src/script-budgets.json`
 //// and add a second entry to the drift the F05 manifest already carries for
 //// this wave's deleted `input-witness.ak`, so it is noted here and left to
 //// [#579](https://github.com/Anastasia-Labs/midgard/issues/579)'s identity
@@ -54,8 +55,10 @@
 //// module measures is *cardinality of whatever field a rebound step reads*;
 //// read the section headers, not the file name.
 
+use aiken/cbor
 use aiken/collection/list
 use aiken/primitive/bytearray
+use cardano/transaction.{Transaction}
 use fraud_proofs/double_spend/step_04 as double_spend_step_04_validator
 use fraud_proofs/missing_signature/step_04 as missing_signature_step_04_validator
 use fraud_proofs/no_input/step_02 as no_input_step_02_validator
@@ -65,8 +68,11 @@ use midgard/fraud_proofs/field_opening_v1.{
   BodyFieldOpening, FieldOpeningV1, WitnessAnchor, WitnessFieldOpening,
   address_witnesses_field_index, opened_field_walk,
 }
+use midgard/fraud_proofs/input_existence_fixture_v1 as carriage_fixture
+use midgard/fraud_proofs/input_existence_v1/types as input_existence_types
 use midgard/fraud_proofs/missing_signature/step_04 as missing_signature_step_04
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
+use midgard/fraud_proofs/native_script_decoding/thread_fixture_v1 as tf
 use midgard/fraud_proofs/native_tx/components.{
   encode_midgard_address_witness, encode_midgard_tx_input,
 }
@@ -76,6 +82,8 @@ use midgard/fraud_proofs/native_tx/types.{
 }
 use midgard/fraud_proofs/no_input/step_02 as no_input_step_02
 use midgard/fraud_proofs/no_input/step_03 as no_input_step_03
+use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
+use midgard/ledger_state
 use midgard/native_tx_field_access_v1.{
   Inline, encode_field_preimage, maximum_cardano_spend_redeemer_count,
   spend_input_stride,
@@ -179,18 +187,42 @@ fn built_witness_preimage_bytes(opening: FieldOpeningV1) -> Int {
 /// transaction. Subtracting this from the measured row leaves the validator.
 fn no_input_step_02_control(count: Int) -> Bool {
   let block = cardinality_block(count)
+  let claim = tf.thread_claim_v1(
+    ledger_state.L2TransactionEventKey { tx_id: block.tx_id },
+    ledger_state.L2Transaction,
+    block.header.prev_utxos_root,
+    None,
+  )
   let opening = spend_inputs_opening(block)
   expect Some(missing_input) = list.at(block.tx.body.inputs, count - 1)
-  let expected_output_state: Data = no_input_step_03.State {
-    missing_input,
-    blocks_prev_utxos_root: block.header.prev_utxos_root,
-    blocks_transactions_root: block.transactions_phas_root,
+  let expected_output_state: Data = input_existence_types.SelectedInputStateV1 {
+    compact: carriage_fixture.compact_view_v1(block.compact),
+    source_kind: 0,
+    input_index: count - 1,
+    claimed_input: None,
+    subject: substrate.VerdictSubjectV1 {
+      version: 1,
+      direction: 0,
+      source_kind: 0,
+      transaction_id: block.tx_id,
+      source_key: #"",
+      rejection_reason: None,
+    },
+    header: claim.header,
+    selected_input: Some(missing_input),
+    step_index: claim.event_to_step_membership.value.step_index,
   }
   let asset_name = fixture.ct_token_asset_name(block)
-  let l1_tx = fixture.continue_mid_step_l1_tx_v1(
-    asset_name,
-    expected_output_state,
-  )
+  let l1_tx = Transaction {
+    ..fixture.continue_mid_step_l1_tx_v1(asset_name, expected_output_state),
+    redeemers: [
+      fixture.phas_withdraw_redeemer_entry(
+        claim.event_to_step_membership.phas_root,
+        cbor.serialise(claim.event_to_step_membership.key),
+        cbor.serialise(claim.event_to_step_membership.value),
+      ),
+    ],
+  }
   and {
     // The fixture really is the size §5.1 says it is at this cardinality.
     built_preimage_bytes(opening) == field_header_bytes(count) + count * spend_input_stride,
@@ -200,21 +232,45 @@ fn no_input_step_02_control(count: Int) -> Bool {
 
 fn no_input_step_02_at(count: Int) -> Bool {
   let block = cardinality_block(count)
+  let claim = tf.thread_claim_v1(
+    ledger_state.L2TransactionEventKey { tx_id: block.tx_id },
+    ledger_state.L2Transaction,
+    block.header.prev_utxos_root,
+    None,
+  )
   let opening = spend_inputs_opening(block)
   // The *last* input, so a walk-shaped regression would have to traverse the
   // whole collection to answer. Under §10.5's arithmetic access the position is
   // irrelevant, which is the property being measured.
   expect Some(missing_input) = list.at(block.tx.body.inputs, count - 1)
-  let expected_output_state: Data = no_input_step_03.State {
-    missing_input,
-    blocks_prev_utxos_root: block.header.prev_utxos_root,
-    blocks_transactions_root: block.transactions_phas_root,
+  let expected_output_state: Data = input_existence_types.SelectedInputStateV1 {
+    compact: carriage_fixture.compact_view_v1(block.compact),
+    source_kind: 0,
+    input_index: count - 1,
+    claimed_input: None,
+    subject: substrate.VerdictSubjectV1 {
+      version: 1,
+      direction: 0,
+      source_kind: 0,
+      transaction_id: block.tx_id,
+      source_key: #"",
+      rejection_reason: None,
+    },
+    header: claim.header,
+    selected_input: Some(missing_input),
+    step_index: claim.event_to_step_membership.value.step_index,
   }
   let asset_name = fixture.ct_token_asset_name(block)
-  let l1_tx = fixture.continue_mid_step_l1_tx_v1(
-    asset_name,
-    expected_output_state,
-  )
+  let l1_tx = Transaction {
+    ..fixture.continue_mid_step_l1_tx_v1(asset_name, expected_output_state),
+    redeemers: [
+      fixture.phas_withdraw_redeemer_entry(
+        claim.event_to_step_membership.phas_root,
+        cbor.serialise(claim.event_to_step_membership.key),
+        cbor.serialise(claim.event_to_step_membership.value),
+      ),
+    ],
+  }
   no_input_step_02_validator.main.spend(
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
@@ -223,20 +279,32 @@ fn no_input_step_02_at(count: Int) -> Bool {
       ct.StepDatum {
         fraud_prover: fixture.fraud_prover_key_hash,
         data: Some(
-          no_input_step_02.State {
-            bad_tx_id: block.tx_id,
-            blocks_prev_utxos_root: block.header.prev_utxos_root,
-            blocks_transactions_root: block.transactions_phas_root,
+          input_existence_types.SourceStateV1 {
+            compact: carriage_fixture.compact_view_v1(block.compact),
+            subject: substrate.VerdictSubjectV1 {
+              version: 1,
+              direction: 0,
+              source_kind: 0,
+              transaction_id: block.tx_id,
+              source_key: #"",
+              rejection_reason: None,
+            },
+            header: claim.header,
           },
         ),
       },
     ),
     ct.Continue(
-      no_input_step_02.Args {
+      input_existence_types.SelectArgsV1 {
         input_index: 0,
         output_index: 0,
-        spend_inputs_opening: opening,
-        bad_input_index: count - 1,
+        inputs_opening: opening,
+        selected_input_index: count - 1,
+        claimed_inputs_opening: None,
+        event_membership: carriage_fixture.direct_carried_membership_v1(
+          claim.event_to_step_membership,
+          0,
+        ),
       },
     ),
     fixture.own_out_ref(),

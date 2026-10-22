@@ -1,8 +1,4 @@
-import {
-  computeHash28,
-  encodeMidgardCekProgramMaterialSidecar,
-  MIDGARD_CONSENSUS_PROFILE,
-} from "@al-ft/midgard-core";
+import { computeHash28, MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core";
 import { encodeCbor, encodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
 import {
   encodeMidgardForcedTxCanonical,
@@ -96,7 +92,6 @@ export async function nativeFaultFixture(
     },
   });
   const canonicalTransactionCbor = encodeMidgardForcedTxCanonical(tx);
-  const programMaterialSidecarCbor = encodeMidgardCekProgramMaterialSidecar([]);
   const output = encodeMidgardTxOutput({
     address: Buffer.concat([
       Buffer.from([0x70]),
@@ -111,7 +106,6 @@ export async function nativeFaultFixture(
       txId: native.txId,
       txCbor: canonicalTransactionCbor,
       sourceKind: "forced",
-      programMaterialSidecarCbor,
       arrivalSeq: 0n,
       createdAt: new Date(0),
     },
@@ -143,7 +137,6 @@ export async function nativeFaultFixture(
         "hex",
       ),
       canonicalTransactionCbor,
-      programMaterialSidecarCbor,
       ledgerWitnessEntries: entries,
       priorUtxosRoot: (await validationMachineLedgerRoot(entries)).toString(
         "hex",
@@ -155,7 +148,6 @@ export async function nativeFaultFixture(
     native,
     phaseA,
     canonicalTransactionCbor,
-    programMaterialSidecarCbor,
     entries,
   };
 }

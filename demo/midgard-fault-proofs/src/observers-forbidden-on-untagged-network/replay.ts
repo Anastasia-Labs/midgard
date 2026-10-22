@@ -291,7 +291,10 @@ export const prepareObserversForbiddenForcedArtifact = async (
     committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),
   });
   const forcedSourceCbor = Data.to(
-    { header: block.header, membership, direction: 1n } as never,
+    {
+      header: block.header,
+      membership,
+    } as never,
     ObserversForbiddenForcedSourcePayloadSchema as never,
   );
   return buildObserversForbiddenArtifact({

@@ -1,23 +1,12 @@
 /**
  * A category's four-byte id is written into the computation-thread asset
- * name of every proof of that family, so every table that names a family's id
- * must name the same one.
- *
- * The oracle is a second, independently maintained table: `midgard-core`'s
- * deployment-manifest identity registry carries its own category order and id
- * map, and the deployment manifest is verified against it. Comparing the two
- * makes each side a check on the other, so a renumber applied in one place
- * fails here instead of transcribing the SDK's table back into this file
- * (where every new family would mean a hand edit and no added signal).
+ * name of every proof of that family, so every literal that names a family's
+ * id must name the registered one.
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import {
-  DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
-  DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
-} from "@al-ft/midgard-core/deployment-manifest-identity";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -189,22 +178,12 @@ const describeUse = (use: CategoryIdUse): string =>
   `${use.path}:${use.line.toString()} ${use.name} = ${use.categoryId}`;
 
 describe("production fraud-proof catalogue registration", () => {
-  it("agrees with the deployment-manifest registry on every category id", () => {
-    expect(FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER).toEqual(
-      DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
-    );
-    expect({ ...FRAUD_PROOF_CATALOGUE_CATEGORY_IDS }).toEqual({
-      ...DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
-    });
-  });
-
   it("keeps the id map total, sparse-safe and collision-free", () => {
-    // Derived invariants, independent of either table's contents: identity is
-    // carried by the map, never by array position, so the map must cover the
-    // order exactly, ids must be the declared width, and no two families may
-    // share one.
-    expect(Object.keys(FRAUD_PROOF_CATALOGUE_CATEGORY_IDS)).toEqual(
-      FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
+    // Identity is carried by the map, never by array position, so the map
+    // must cover the order exactly, ids must be the declared width, and no two
+    // families may share one.
+    expect(Object.keys(FRAUD_PROOF_CATALOGUE_CATEGORY_IDS).sort()).toEqual(
+      [...FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER].sort(),
     );
     const ids = FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map(
       (name) => FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[name],

@@ -26,6 +26,7 @@ import {
 import { submitObserversForbiddenStep02 } from "../src/observers-forbidden-on-untagged-network/submit-step-02.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import type { SubmitStep01TxInclusion } from "../src/step-support.js";
+import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import {
   CANCELLABLE_STEPS,
   CATEGORY_ID,
@@ -72,6 +73,8 @@ export const makeHarness = async () => {
       alwaysStateQueue: true,
     },
   });
+  // The carriage this harness publishes, read back by its steps.
+  const ownOutputs = createOwnOutputJournal();
   const addressData = await Effect.runPromise(
     addressDataFromBech32(
       harness.contracts.fraudProof.spendingScriptAddress,
@@ -131,12 +134,7 @@ export const makeHarness = async () => {
         }),
       );
       if (!publicationsRecorded) {
-        record(
-          `publish-step0${(index + 1).toString()}`,
-          "fully applied testnet validator",
-          published.measurement,
-          "publication",
-        );
+        record(`publish-step0${(index + 1).toString()}`, published.measurement);
       }
       references.push(published.result.utxo);
     }
@@ -177,6 +175,7 @@ export const makeHarness = async () => {
     });
     if (planned.plan.tier !== "Certified") {
       await publishFaultProofFieldCarriage({
+        ownOutputs,
         lucid: harness.proverLucid,
         signer: harness.proverSigner,
         planned,
@@ -187,6 +186,7 @@ export const makeHarness = async () => {
     }
     const carriage = await captureEmulatorSubmission(harness.emulator, () =>
       publishFaultProofFieldCarriage({
+        ownOutputs,
         lucid: harness.proverLucid,
         signer: harness.proverSigner,
         planned,
@@ -196,6 +196,7 @@ export const makeHarness = async () => {
     );
     const certificate = await captureEmulatorSubmission(harness.emulator, () =>
       certifyFaultProofFieldCarriage({
+        ownOutputs,
         lucid: harness.proverLucid,
         network,
         signer: harness.proverSigner,
@@ -218,23 +219,14 @@ export const makeHarness = async () => {
   };
   const recordCarriage = (
     prefix: string,
-    shape: ObserverShape,
     published: Awaited<ReturnType<typeof publishField>>,
   ) => {
     expect(published.tier).toBe("Certified");
     expect(published.chunks).toHaveLength(MAXIMUM_CHUNKS);
     published.chunks.forEach((measurement, index) =>
-      record(
-        `${prefix}-carriage-chunk0${(index + 1).toString()}`,
-        shape.label,
-        measurement,
-      ),
+      record(`${prefix}-carriage-chunk0${(index + 1).toString()}`, measurement),
     );
-    record(
-      `${prefix}-carriage-certificate`,
-      shape.label,
-      published.certificate!,
-    );
+    record(`${prefix}-carriage-certificate`, published.certificate!);
   };
 
   const init = (fraudulentBlockOutRef: string, fraudulentHeaderHash: string) =>
@@ -336,6 +328,7 @@ export const makeHarness = async () => {
   ) =>
     captureEmulatorSubmission(harness.emulator, () =>
       submitObserversForbiddenStep02({
+        ownOutputs,
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -359,6 +352,7 @@ export const makeHarness = async () => {
     >[0]["mutateOpening"],
   ) =>
     submitObserversForbiddenStep02Raw({
+      ownOutputs,
       lucid: harness.proverLucid,
       contracts,
       categoryId: category.categoryId,
@@ -433,6 +427,7 @@ export const makeHarness = async () => {
     publishReferences,
     requireCertificateReference,
     stepReferences,
+    ownOutputs,
     publishField,
     recordCarriage,
     init,

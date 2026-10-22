@@ -1,7 +1,3 @@
-import { createHash } from "node:crypto";
-import { appendFileSync, readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-
 import {
   cekContextReferenceScripts,
   type ValidationTraceDisputeFaultProofContracts,
@@ -14,11 +10,6 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import {
-  buildVanRossemFitLedger,
-  type VanRossemFitMeasurement,
-  writeVanRossemFitLedger,
-} from "../src/proof-fit/van-rossem-fit-ledger.js";
 import {
   alwaysSucceedsBlueprintPath,
   buildMinimalFaultProofContracts,
@@ -52,11 +43,6 @@ describe("CEK context tail publication", () => {
       family.cekContextStages,
       family.cekContextItemStages,
     );
-    const rows: VanRossemFitMeasurement[] = [];
-    const blueprintBytes = readFileSync(realBlueprintPath);
-    const blueprintSha256 = createHash("sha256")
-      .update(blueprintBytes)
-      .digest("hex");
     for (const { deploymentEntry: key, validator: contract } of publications) {
       const result = await publishPlainReferenceScriptUtxo({
         lucid,
@@ -64,40 +50,7 @@ describe("CEK context tail publication", () => {
         label: `CEK context ${key}`,
       });
       const measurement = result.publicationMeasurement;
-      if (process.env.MIDGARD_WRITE_FIT_LEDGER === "1")
-        appendFileSync(
-          `/tmp/midgard-cek-context-publication-raw-${blueprintSha256}.jsonl`,
-          JSON.stringify(
-            { blueprintSha256, key, ...measurement },
-            (_key, value) =>
-              typeof value === "bigint" ? value.toString() : value,
-          ) + "\n",
-        );
-      rows.push({
-        name: key,
-        maximumShape: "parameterized context publication",
-        kind: "publication",
-        signedBytes: measurement.completeSignedBytes,
-        memoryUnits: measurement.executionMemory,
-        cpuUnits: measurement.executionSteps,
-      });
       expect(measurement.l1ByteMargin, key).toBeGreaterThanOrEqual(512);
     }
-    if (process.env.MIDGARD_WRITE_FIT_LEDGER === "1")
-      await writeVanRossemFitLedger(
-        fileURLToPath(
-          new URL(
-            "../../../docs/fault-proofs/size-plans/validation-trace-cek-context-publication-fit-ledger.json",
-            import.meta.url,
-          ),
-        ),
-        buildVanRossemFitLedger({
-          category: "validationTraceDispute/CEK context publication",
-          blueprintSha256,
-          compilerVersion: JSON.parse(blueprintBytes.toString()).preamble
-            .compiler.version,
-          measurements: rows,
-        }),
-      );
   }, 900_000);
 });

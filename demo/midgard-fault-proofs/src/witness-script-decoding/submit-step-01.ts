@@ -30,6 +30,10 @@ import {
   submitNativeTxBinding,
 } from "../native-tx-binding.js";
 import type { ResolvedProverSigner } from "../runtime.js";
+import {
+  PLUTUS_SCRIPT_ITEM_KIND_WITNESS,
+  plutusUndecodableAccusedClass,
+} from "../script-decode/item-record.js";
 import type { SubmitStep01TxInclusion } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
@@ -160,6 +164,19 @@ const accusedClassOf = (
       return result;
     }
   }
+  if ("PlutusScriptUndecodable" in (value as object)) {
+    try {
+      return BigInt(
+        plutusUndecodableAccusedClass(
+          value,
+          PLUTUS_SCRIPT_ITEM_KIND_WITNESS,
+          Number(scriptIndex),
+        )!,
+      );
+    } catch {
+      throw new Error(`${FAMILY}: rejection coordinate differs`);
+    }
+  }
   throw new Error(`${FAMILY}: forced reason is outside family`);
 };
 
@@ -171,7 +188,6 @@ export const submitWitnessScriptDecodingStep01Forced = async ({
   threadOutRef,
   header,
   membership,
-  direction,
   witnessSetHash,
   scriptIndex,
   referenceScriptUtxo,
@@ -188,7 +204,6 @@ export const submitWitnessScriptDecodingStep01Forced = async ({
     OutputReference,
     ForcedInclusionTxV1
   >;
-  readonly direction: bigint;
   readonly witnessSetHash: string;
   readonly scriptIndex: bigint;
   readonly referenceScriptUtxo: UTxO;
@@ -213,9 +228,6 @@ export const submitWitnessScriptDecodingStep01Forced = async ({
     sourceKey: membership.key,
     rejectionReason,
   });
-  if (subject.direction !== direction) {
-    throw new Error(`${FAMILY}: direction differs from forced verdict`);
-  }
   const nextDatum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
@@ -262,7 +274,6 @@ export const submitWitnessScriptDecodingStep01Forced = async ({
                 output_index: outputIndex,
                 header,
                 membership,
-                direction,
               },
             },
             script_index: scriptIndex,

@@ -34,6 +34,7 @@ import {
   buildCountedRoot,
   commitCountedRoot,
 } from "../../src/transition-trace/phas.js";
+import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import { submitZeroInputCancel } from "../../src/zero-input/submit-cancel.js";
 import { buildCatalogueDeploymentInfo } from "./emulator/catalogue.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./emulator/emulator-context.js";
@@ -46,7 +47,6 @@ import {
   submitRawInvalidSignatureStep02,
 } from "./invalid-signature-emulator.js";
 import { network } from "./invalid-signature-wrongful-emulator.network.js";
-import { createMeasuredFitRecorder } from "./measured-fit-ledger.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./submit-init-emulator-fixtures.js";
 import { publishPlainReferenceScriptUtxo } from "./submit-init-emulator-shared.js";
 import { publishRemovalReferenceScripts } from "./submit-init-emulator-shared.js";
@@ -54,15 +54,13 @@ import { syntheticDeepMembershipProof } from "./synthetic-deep-proof.js";
 
 /** Complete registered invalid-signature lifecycle, including raw on-chain
  * mutations of the exact rejected witness coordinate when deepMembership is set. */
-export const runInvalidSignatureWrongfulRejectionScenario = async (
-  scenario: {
-    decoyWitnessCount: number;
-    accused: "honest" | "invalid";
-    rejectedIndex: bigint | null;
-    deepMembership?: boolean;
-  },
-  measuredFit?: ReturnType<typeof createMeasuredFitRecorder>,
-) => {
+export const runInvalidSignatureWrongfulRejectionScenario = async (scenario: {
+  decoyWitnessCount: number;
+  accused: "honest" | "invalid";
+  rejectedIndex: bigint | null;
+  deepMembership?: boolean;
+}) => {
+  const ownOutputs = createOwnOutputJournal();
   const { decoyWitnessCount, accused, rejectedIndex } = scenario;
   const deepMembership = scenario.deepMembership === true;
   const harness = await makeFaultProofEmulatorHarness({
@@ -220,7 +218,10 @@ export const runInvalidSignatureWrongfulRejectionScenario = async (
     schemaVersion: INVALID_SIGNATURE_FORCED_ARTIFACT,
     headerHash: setup.headerHash,
     forcedSourceCbor: Data.to(
-      { header, membership, direction: 1n } as never,
+      {
+        header,
+        membership,
+      } as never,
       SDK.InvalidSignatureForcedSourcePayloadSchema as never,
     ),
     fullTransactionCbor: encodeMidgardForcedTxCanonical(
@@ -296,7 +297,10 @@ export const runInvalidSignatureWrongfulRejectionScenario = async (
       admitInvalidSignatureForcedArtifact({
         ...artifact,
         forcedSourceCbor: Data.to(
-          { header, membership: changedMembership, direction: 1n } as never,
+          {
+            header,
+            membership: changedMembership,
+          } as never,
           SDK.InvalidSignatureForcedSourcePayloadSchema as never,
         ),
       }),
@@ -332,7 +336,10 @@ export const runInvalidSignatureWrongfulRejectionScenario = async (
         signer: harness.proverSigner,
         threadOutRef,
         evidence,
-        forcedSource: { header, membership, direction: 1n },
+        forcedSource: {
+          header,
+          membership,
+        },
         referenceScriptUtxo: references[0],
       }),
     );
@@ -402,7 +409,6 @@ export const runInvalidSignatureWrongfulRejectionScenario = async (
           forcedSource: {
             header,
             membership: changedMembership,
-            direction: 1n,
           },
           referenceScriptUtxo: references[0],
         }),
@@ -464,6 +470,7 @@ export const runInvalidSignatureWrongfulRejectionScenario = async (
       ? null
       : await captureEmulatorSubmission(harness.emulator, () =>
           publishFaultProofFieldCarriage({
+            ownOutputs,
             lucid: harness.proverLucid,
             signer: harness.proverSigner,
             planned: opening,
@@ -482,6 +489,7 @@ export const runInvalidSignatureWrongfulRejectionScenario = async (
     });
     const certified = await captureEmulatorSubmission(harness.emulator, () =>
       certifyFaultProofFieldCarriage({
+        ownOutputs,
         lucid: harness.proverLucid,
         network,
         signer: harness.proverSigner,
@@ -501,6 +509,7 @@ export const runInvalidSignatureWrongfulRejectionScenario = async (
   }
   const final = await captureEmulatorSubmission(harness.emulator, () =>
     submitInvalidSignatureStep02({
+      ownOutputs,
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       deploymentInfo: buildRemovalDeploymentInfo(harness.contracts, catalogue),
@@ -556,15 +565,6 @@ export const runInvalidSignatureWrongfulRejectionScenario = async (
       }),
     ),
   );
-  captures
-    .flatMap((capture) => capture.measurements)
-    .forEach((measurement, index) =>
-      measuredFit?.record(
-        `${decoyWitnessCount}-${rejectedIndex ?? "selected"}-${deepMembership ? "deep64" : "single"}/${index}`,
-        measurement,
-        measurement.executionMemory === 0n ? "publication" : "lifecycle",
-      ),
-    );
   for (const measurement of captures.flatMap(
     (capture) => capture.measurements,
   )) {
@@ -572,7 +572,4 @@ export const runInvalidSignatureWrongfulRejectionScenario = async (
     expect(measurement.executionMemory).toBeLessThanOrEqual(16_500_000n);
     expect(measurement.executionSteps).toBeLessThanOrEqual(10_000_000_000n);
   }
-  console.info(
-    `[invalid-signature-forced-lifecycle-${decoyWitnessCount}-${rejectedIndex ?? "selected"}-${deepMembership ? "deep64" : "single"}] ${JSON.stringify(captures.flatMap((capture) => capture.measurements).map((measurement) => ({ bytes: measurement.completeSignedBytes, memory: measurement.executionMemory.toString(), cpu: measurement.executionSteps.toString() })))}`,
-  );
 };

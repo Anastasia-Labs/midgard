@@ -1,10 +1,11 @@
 import {
   hashMidgardCekSequenceNode,
   hashMidgardCekValueNode,
+  MIDGARD_CEK_BLS_ML_RESULT_MEMORY,
   MIDGARD_CEK_EMPTY_SEQUENCE_ROOT,
-  MIDGARD_CEK_MAX_BUILTIN_TAG,
+  MIDGARD_CEK_MAX_RESOLVED_BUILTIN_TAG,
 } from "@al-ft/midgard-core";
-import { DataB, DataConstr, DataList } from "@harmoniclabs/plutus-data";
+import { DataB, DataConstr, DataI, DataList } from "@harmoniclabs/plutus-data";
 
 import {
   argumentKinds,
@@ -12,6 +13,7 @@ import {
   directWitnessPayloadBytes,
   hashMidgardCekRuntimeArguments,
   matchesKind,
+  type MidgardCekConstantTypeReader,
   type MidgardCekDirectValueWitness,
   type MidgardCekRuntimeValueWitness,
   mkConsIsWellTyped,
@@ -27,18 +29,21 @@ import {
 import {
   computeMidgardCekBuiltinBudget,
   type MidgardCekBuiltinBudget,
-  normalizeMidgardCekBitwiseCostSizes,
 } from "./cek-cost.js";
 
-export const verifyMidgardCekBuiltinTypeFailure = (
+/**
+ * Whether a saturated builtin's arguments fail its argument kinds, so that
+ * applying it is a builtin type failure on L1, whatever their size.
+ */
+export const midgardCekBuiltinArgumentsFailKinds = (
   tag: bigint,
-  builtinValueRoot: Bytes,
   arguments_: readonly MidgardCekRuntimeValueWitness[],
+  typeOf?: MidgardCekConstantTypeReader,
 ): boolean => {
   try {
     if (
       tag < 0n ||
-      tag > MIDGARD_CEK_MAX_BUILTIN_TAG ||
+      tag > MIDGARD_CEK_MAX_RESOLVED_BUILTIN_TAG ||
       tag > BigInt(Number.MAX_SAFE_INTEGER)
     ) {
       return false;
@@ -46,34 +51,50 @@ export const verifyMidgardCekBuiltinTypeFailure = (
     const numericTag = Number(tag);
     const kinds = argumentKinds(numericTag);
     if (arguments_.length !== kinds.length) return false;
-    if (
-      directWitnessPayloadBytes(arguments_) >
-      BigInt(MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES)
-    ) {
-      return false;
-    }
-    const { root, count } = hashMidgardCekRuntimeArguments(arguments_);
-    if (
-      !sameBytes(
-        builtinValueRoot,
-        hashMidgardCekValueNode({
-          kind: "builtin",
-          tag,
-          forcesRemaining: 0n,
-          argumentsCount: count,
-          argumentsRoot: root,
-        }),
-      )
-    ) {
-      return false;
-    }
     const wellTyped =
       numericTag === 32
-        ? mkConsIsWellTyped(arguments_)
+        ? mkConsIsWellTyped(arguments_, typeOf)
         : arguments_.every((argument, index) =>
-            matchesKind(argument, kinds[index]),
+            matchesKind(argument, kinds[index], typeOf),
           );
     return !wellTyped;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Whether the verifier proves a builtin type failure on these arguments:
+ * they fail the builtin's argument kinds and their revealed payloads
+ * together fit one direct payload.
+ */
+export const midgardCekBuiltinArgumentsAreIllTyped = (
+  tag: bigint,
+  arguments_: readonly MidgardCekRuntimeValueWitness[],
+  typeOf?: MidgardCekConstantTypeReader,
+): boolean =>
+  directWitnessPayloadBytes(arguments_) <=
+    BigInt(MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES) &&
+  midgardCekBuiltinArgumentsFailKinds(tag, arguments_, typeOf);
+
+export const verifyMidgardCekBuiltinTypeFailure = (
+  tag: bigint,
+  builtinValueRoot: Bytes,
+  arguments_: readonly MidgardCekRuntimeValueWitness[],
+): boolean => {
+  if (!midgardCekBuiltinArgumentsAreIllTyped(tag, arguments_)) return false;
+  try {
+    const { root, count } = hashMidgardCekRuntimeArguments(arguments_);
+    return sameBytes(
+      builtinValueRoot,
+      hashMidgardCekValueNode({
+        kind: "builtin",
+        tag,
+        forcesRemaining: 0n,
+        argumentsCount: count,
+        argumentsRoot: root,
+      }),
+    );
   } catch {
     return false;
   }
@@ -134,7 +155,27 @@ const decodedDirectConstant = (value: MidgardCekDirectValueWitness) => {
   return decodeMidgardCekConstantWitness(value.witness);
 };
 
-const directValueMemorySize = (value: MidgardCekDirectValueWitness): bigint => {
+/**
+ * The memory size of a revealed constant. The default decodes its witness;
+ * a caller that already holds the constant's committed value node may pass
+ * a reader of the size that node records.
+ */
+export type MidgardCekRevealedConstantMemory = (
+  witness: Extract<
+    MidgardCekDirectValueWitness,
+    { readonly kind: "constant" }
+  >["witness"],
+) => bigint;
+
+const decodedConstantMemory: MidgardCekRevealedConstantMemory = (witness) => {
+  const decoded = decodeMidgardCekConstantWitness(witness);
+  return midgardCekConstantMemorySize(decoded.type, decoded.payload);
+};
+
+const directValueMemorySize = (
+  value: MidgardCekDirectValueWitness,
+  memoryOf: MidgardCekRevealedConstantMemory = decodedConstantMemory,
+): bigint => {
   // An opaque value has no committed size. The only builtin positions that
   // admit one are the polymorphic branches of tags 26, 27, 28, 31 and 36,
   // which midgardCekDirectBuiltinCostSizes sizes without reading them.
@@ -145,13 +186,12 @@ const directValueMemorySize = (value: MidgardCekDirectValueWitness): bigint => {
     if (value.expressionRoot.length !== 32) {
       throw new Error("V1 BLS expression root must be bytes32");
     }
-    return 192n;
+    return MIDGARD_CEK_BLS_ML_RESULT_MEMORY;
   }
   if (value.kind === "semanticConstant") {
     return value.witness.memory;
   }
-  const decoded = decodeMidgardCekConstantWitness(value.witness);
-  return midgardCekConstantMemorySize(decoded.type, decoded.payload);
+  return memoryOf(value.witness);
 };
 
 const directBoolean = (value: MidgardCekDirectValueWitness): boolean => {
@@ -175,19 +215,46 @@ export const directByteLength = (
   return decoded.payload.bytes.length;
 };
 
+export const directInteger = (value: MidgardCekDirectValueWitness): bigint => {
+  const decoded = decodedDirectConstant(value);
+  if (decoded.type.kind !== "integer" || !(decoded.payload instanceof DataI)) {
+    throw new Error("V1 builtin requires an integer");
+  }
+  return decoded.payload.int;
+};
+
+const directListLength = (value: MidgardCekDirectValueWitness): number => {
+  const decoded = decodedDirectConstant(value);
+  if (decoded.type.kind !== "list" || !(decoded.payload instanceof DataList)) {
+    throw new Error("V1 builtin requires a list");
+  }
+  return decoded.payload.list.length;
+};
+
+/**
+ * Cardano costs an output width (integerToByteString) or a replication count
+ * (replicateByte) as the words it occupies. Out-of-range widths fail before
+ * costing; this stays total so the failure arm never throws.
+ */
+const widthCostSize = (width: bigint): bigint =>
+  width <= 0n ? 0n : (width - 1n) / 8n + 1n;
+
+const MAX_SIGNED_64 = 9_223_372_036_854_775_807n;
+
+/**
+ * Cardano costs a shift or rotation amount by its absolute value, saturated
+ * to the largest signed 64-bit integer.
+ */
+const literalCostSize = (literal: bigint): bigint => {
+  const magnitude = literal < 0n ? -literal : literal;
+  return magnitude > MAX_SIGNED_64 ? MAX_SIGNED_64 : magnitude;
+};
+
 export const midgardCekDirectBuiltinCostSizes = (
   tag: bigint,
   arguments_: readonly MidgardCekDirectValueWitness[],
+  memoryOf?: MidgardCekRevealedConstantMemory,
 ): readonly bigint[] => {
-  if (tag === 21n) {
-    // Match Cardano ByteString ExMemoryUsage without changing rooted constants.
-    return Object.freeze(
-      arguments_.map((argument) => {
-        const length = BigInt(directByteLength(argument));
-        return length === 0n ? 1n : (length + 7n) / 8n;
-      }),
-    );
-  }
   if (tag === 26n) {
     if (arguments_.length !== 3) {
       throw new Error("ifThenElse requires three arguments");
@@ -219,14 +286,18 @@ export const midgardCekDirectBuiltinCostSizes = (
     if (arguments_.length !== 3) {
       throw new Error("chooseList requires three arguments");
     }
-    return Object.freeze([directValueMemorySize(arguments_[0]!), 1n, 1n]);
+    return Object.freeze([
+      directValueMemorySize(arguments_[0]!, memoryOf),
+      1n,
+      1n,
+    ]);
   }
   if (tag === 36n) {
     if (arguments_.length !== 6) {
       throw new Error("chooseData requires six arguments");
     }
     return Object.freeze([
-      directValueMemorySize(arguments_[0]!),
+      directValueMemorySize(arguments_[0]!, memoryOf),
       1n,
       1n,
       1n,
@@ -234,33 +305,64 @@ export const midgardCekDirectBuiltinCostSizes = (
       1n,
     ]);
   }
-  if (tag >= 75n && tag <= 77n) {
+  if (tag === 73n) {
     if (arguments_.length !== 3) {
-      throw new Error("bitwise builtin requires three arguments");
+      throw new Error("integerToByteString requires three arguments");
     }
-    return normalizeMidgardCekBitwiseCostSizes(
-      directBoolean(arguments_[0]!),
-      directValueMemorySize(arguments_[1]!),
-      directValueMemorySize(arguments_[2]!),
-    );
+    return Object.freeze([
+      directValueMemorySize(arguments_[0]!, memoryOf),
+      widthCostSize(directInteger(arguments_[1]!)),
+      directValueMemorySize(arguments_[2]!, memoryOf),
+    ]);
   }
-  return Object.freeze(arguments_.map(directValueMemorySize));
+  if (tag === 80n) {
+    if (arguments_.length !== 3) {
+      throw new Error("writeBits requires three arguments");
+    }
+    return Object.freeze([
+      directValueMemorySize(arguments_[0]!, memoryOf),
+      BigInt(directListLength(arguments_[1]!)),
+      directValueMemorySize(arguments_[2]!, memoryOf),
+    ]);
+  }
+  if (tag === 81n) {
+    if (arguments_.length !== 2) {
+      throw new Error("replicateByte requires two arguments");
+    }
+    return Object.freeze([
+      widthCostSize(directInteger(arguments_[0]!)),
+      directValueMemorySize(arguments_[1]!, memoryOf),
+    ]);
+  }
+  if (tag === 82n || tag === 83n) {
+    if (arguments_.length !== 2) {
+      throw new Error("shift or rotate requires two arguments");
+    }
+    return Object.freeze([
+      directValueMemorySize(arguments_[0]!, memoryOf),
+      literalCostSize(directInteger(arguments_[1]!)),
+    ]);
+  }
+  return Object.freeze(
+    arguments_.map((argument) => directValueMemorySize(argument, memoryOf)),
+  );
 };
 
 export const midgardCekDirectBuiltinBudget = (
   tag: bigint,
   arguments_: readonly MidgardCekDirectValueWitness[],
+  memoryOf?: MidgardCekRevealedConstantMemory,
 ): MidgardCekBuiltinBudget => {
   if (
     tag < 0n ||
-    tag > MIDGARD_CEK_MAX_BUILTIN_TAG ||
+    tag > MIDGARD_CEK_MAX_RESOLVED_BUILTIN_TAG ||
     tag > BigInt(Number.MAX_SAFE_INTEGER)
   ) {
     throw new Error("V1 builtin tag is outside Plutus V3");
   }
   return computeMidgardCekBuiltinBudget(
     Number(tag),
-    midgardCekDirectBuiltinCostSizes(tag, arguments_),
+    midgardCekDirectBuiltinCostSizes(tag, arguments_, memoryOf),
   );
 };
 

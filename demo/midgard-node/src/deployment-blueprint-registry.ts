@@ -9,7 +9,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { applyDoubleCborEncoding } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { type DeployableScript } from "./deployable-scripts.fault-proof-step-contract-names.js";
+import { type DeployableScript } from "./deployable-scripts.js";
 import {
   cachedRealBlueprint,
   loadRealBlueprint,
@@ -71,6 +71,7 @@ export const publicDeploymentBlueprintRegistry = (
           : [];
     if (bare.length === 1) SDK.getUnappliedScript(blueprint, bare[0]!.title);
   }
+  SDK.verifyDeploymentScriptBindings(blueprint, scripts);
   const deployed = scripts.map((entry) => {
     if (entry.script.type !== "PlutusV3" && entry.script.type !== "Native")
       throw new Error(

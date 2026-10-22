@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import type { MidgardVersionedScript } from "@al-ft/midgard-core";
 import { canonicalPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
@@ -12,6 +13,7 @@ import {
   validationSemanticResolverIndex,
   valueAndMintKind,
 } from "../src/index.js";
+import { decodeRecordResolverOf } from "./helpers/cek-decode-record-resolver.js";
 
 export const root = (byte: number): string =>
   Buffer.alloc(32, byte).toString("hex");
@@ -28,7 +30,7 @@ export const validationDisputeBlueprint = JSON.parse(
 // every consumer reads it as `Data` through the yield dispatchers'
 // builtin decodes, so Aiken emits no definition for
 // `midgard/validation_machine/machine_types/ValidationAuxiliaryWitnessV1`.
-// The wire pin therefore lives in the generated 41-arm tag/arity corpus
+// The wire pin therefore lives in the generated 37-arm tag/arity corpus
 // (`validation-controls-abi.test.ts` freezes its bytes and blake2b digest)
 // plus the cross-language producer vectors in
 // `onchain/aiken/lib/midgard/validation-one-step-cross-language.test.ak`;
@@ -191,18 +193,10 @@ export const semanticResolverDefinitions = [
   "value_and_mint_mint_asset_semantic_v1",
   "value_and_mint_mint_finish_semantic_v1",
   "value_and_mint_finalize_semantic_v1",
-  "ledger_delta_operation_semantic_v1",
-  "ledger_delta_replay_semantic_v1",
-  "ledger_delta_replay_finish_semantic_v1",
-  "ledger_delta_output_semantic_v1",
-  "ledger_delta_output_finish_semantic_v1",
-  "ledger_delta_proof_frame_semantic_v1",
-  "ledger_delta_finalize_semantic_v1",
-  "ledger_delta_terminal_semantic_v1",
 ] as const;
 
 export const semanticResolverOffsets = [
-  0, 2, 3, 4, 6, 10, 24, 26, 32, 60, 63, 67, 71, 82,
+  0, 2, 3, 4, 6, 10, 24, 26, 32, 60, 63, 67, 71,
 ] as const;
 
 // R5 item 1: the cek and ValueAndMint indices decompose into semantic kinds
@@ -231,8 +225,10 @@ export const valueAndMintSemanticIndexByKind = {
   finalize: 10,
 } as const;
 
+/** `scripts` are the transaction's carried scripts, for CEK selections. */
 export const expectCekAndValueAndMintTotality = (
   trace: DeterministicValidationMachineTrace,
+  scripts: readonly MidgardVersionedScript[] = [],
 ) => {
   const cekWitnesses = trace.witnesses.filter(
     (witness) => witness.phase === "cek",
@@ -290,12 +286,14 @@ export const expectCekAndValueAndMintTotality = (
   }
   // Every witness in the trace names a semantic resolver inside its index's
   // count (the totality property the verifier reads live).
-  const counts = [2, 1, 1, 2, 4, 14, 2, 6, 29, 3, 4, 4, 11, 8] as const;
-  for (const oneStep of trace.states
-    .slice(0, -1)
-    .map((_state, stateIndex) =>
-      buildValidationOneStepArgument({ trace, stateIndex }),
-    )) {
+  const counts = [2, 1, 1, 2, 4, 14, 2, 6, 29, 3, 4, 4, 11] as const;
+  for (const oneStep of trace.states.slice(0, -1).map((_state, stateIndex) =>
+    buildValidationOneStepArgument({
+      trace,
+      stateIndex,
+      resolveCekDecodeRecord: decodeRecordResolverOf(scripts),
+    }),
+  )) {
     expect(oneStep.semanticResolverIndex).toBeGreaterThanOrEqual(0);
     expect(oneStep.semanticResolverIndex).toBeLessThan(
       counts[oneStep.resolverIndex]!,

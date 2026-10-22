@@ -1,6 +1,5 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  aikenSerialisedPlutusDataCbor,
   appendMidgardValidationMerkleLeaf,
   attachMidgardLedgerOutputProofFacts,
   buildMidgardBlake2b224Trace,
@@ -9,17 +8,15 @@ import {
   buildMidgardLedgerOutputProofTrace,
   buildMidgardRedeemerDataUnreadableTrace,
   buildMidgardRedeemerItemProofTrace,
-  buildMidgardValidationLedgerDeltaFrontier,
   buildMidgardValidationMerkleFrontier,
   buildMidgardValidationMerkleMembership,
   commitMidgardValidationMerkleFrontier,
-  computeMidgardNativeTxProofCommitment,
-  decodeMidgardCekProgramMaterialSidecar,
   deriveMidgardNativeTxProofSourceFromCanonicalCbor,
   deriveMidgardTxFieldPreimages,
+  deriveMidgardValidationContextCborV1,
+  deriveMidgardValidationInitialStateV1,
   encodeCbor,
   encodeMidgardBlake2b224TraceControl,
-  encodeMidgardCekProgramMaterialSidecar,
   encodeMidgardLedgerOutputProofControl,
   hashMidgardInlineScriptSourceLeaf,
   hashMidgardMintAssetLeaf,
@@ -35,12 +32,11 @@ import {
   hashMidgardScriptPurposeLeaf,
   hashMidgardScriptSourceLeaf,
   hashMidgardSignerLeaf,
-  hashMidgardValidationContext,
-  hashMidgardValidationLedgerDelta,
-  hashMidgardValidationLedgerDeltaOperation,
+  hashMidgardValidationMachineState,
   inspectMidgardRedeemerData,
   MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
   MIDGARD_CONSENSUS_LIMITS,
+  midgardBlake2b,
   type MidgardBlake2b224TraceControl,
   MidgardBlake2b224TraceStages,
   type MidgardBoundedCollection,
@@ -50,9 +46,11 @@ import {
   midgardLedgerOutputProofFactsComplete,
   MidgardRedeemerItemProofModes,
   MidgardRedeemerItemProofStages,
+  midgardScriptSourcePhysicalIndex,
   type MidgardValidationMerkleFrontier,
-  type MidgardValidationMerkleMembership,
   type MidgardValidationPhaseName,
+  traceMidgardLedgerOutputProof,
+  verifyLedgerEd25519Signature,
 } from "@al-ft/midgard-core";
 import {
   decodeMidgardAddressBytes,
@@ -71,15 +69,13 @@ import {
   readCborMapHeader,
 } from "@al-ft/midgard-core/codec/cbor";
 import {
-  computeMidgardForcedTxProofCommitment,
   decodeMidgardForcedTxCompact,
   deriveMidgardForcedTxProofSourceFromCanonicalCbor,
 } from "@al-ft/midgard-core/codec/forced";
 import { type MidgardRejectionReasonV1 } from "@al-ft/midgard-core/validation-trace";
-import { CML } from "@lucid-evolution/lucid";
-import { blake2b } from "@noble/hashes/blake2.js";
 import { Effect } from "effect";
 
+import { awaitLedgerEd25519SignatureReady } from "../ledger-ed25519-ready.js";
 import {
   buildCanonicalMidgardLedgerEntryOutputMaterial,
   buildCanonicalMidgardLedgerOutputMaterial,
@@ -141,6 +137,7 @@ import {
   safeBlockTime,
   sameLedgerOps,
 } from "./trace-builder-prepare.ordered-phases.js";
+import { refusedOutputStopReason } from "./trace-builder-prepare.refused-output-stop-reason.js";
 import { ValidationTraceStopped } from "./trace-builder-stop.js";
 import type {
   MintFoldTraceControl,
@@ -152,28 +149,31 @@ import type {
   SignatureScanControl,
 } from "./trace-builder-types.js";
 import {
+  validationMachineStateV1,
+  type ValidationTraceRecording,
+} from "./trace-sink.js";
+import {
   type ValidationMachineReplayInput,
   type ValidationMachineSignerSetProof,
   type ValidationMachineWorkWitness,
 } from "./types.js";
 
-export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
+export const prepareValidationTrace = (
+  input: ValidationMachineReplayInput,
+  recording: ValidationTraceRecording,
+) =>
   Effect.gen(function* () {
-    const contextCbor = Buffer.from(
-      aikenSerialisedPlutusDataCbor(
-        encodeCbor([
-          1n,
-          Buffer.from(input.consensusProfile.profileId, "ascii"),
-          safeBlockTime(input.blockTimeMs),
-          input.expectedNetworkId,
-          input.minFeeA,
-          input.minFeeB,
-          input.blockSlot,
-        ]).toString("hex"),
-      ),
-      "hex",
-    );
-    const validationContextHash = hashMidgardValidationContext(contextCbor);
+    yield* awaitLedgerEd25519SignatureReady;
+    // The claim derives this context from the header; its time element is
+    // `header.end_time` (see `ValidationMachineReplayInput.blockTimeMs`).
+    const contextHeader = {
+      endTimeMs: safeBlockTime(input.blockTimeMs),
+      blockSlot: input.blockSlot,
+      expectedNetworkId: input.expectedNetworkId,
+      minFeeA: input.minFeeA,
+      minFeeB: input.minFeeB,
+    };
+    const contextCbor = deriveMidgardValidationContextCborV1(contextHeader);
     const priorLedgerRoot = exactHash32(input.priorUtxosRoot, "priorUtxosRoot");
     const postLedgerRoot = exactHash32(input.postUtxosRoot, "postUtxosRoot");
     if (input.transactionId.length !== 32) {
@@ -186,10 +186,6 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
       sourceKind: input.sourceKind,
       txId: Buffer.from(input.transactionId),
       txCbor: Buffer.from(input.canonicalTransactionCbor),
-      programMaterialSidecarCbor:
-        input.programMaterialSidecarCbor === undefined
-          ? encodeMidgardCekProgramMaterialSidecar([])
-          : Buffer.from(input.programMaterialSidecarCbor),
       arrivalSeq: 0n,
       createdAt: new Date(input.blockTimeMs),
     };
@@ -239,23 +235,6 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
         : (rawExecutionProjection?.ledgerTx ?? null);
     const scriptEvaluations: LocalScriptEvaluation[] = [];
     let reusedEvaluationIndex = 0;
-    const programMaterial = decodeMidgardCekProgramMaterialSidecar(
-      queued.programMaterialSidecarCbor ??
-        encodeMidgardCekProgramMaterialSidecar([]),
-    );
-    const canonicalProgramMaterialSidecarCbor = Buffer.from(
-      encodeMidgardCekProgramMaterialSidecar(programMaterial),
-    );
-    if (
-      !canonicalProgramMaterialSidecarCbor.equals(
-        queued.programMaterialSidecarCbor ?? Buffer.alloc(0),
-      )
-    ) {
-      return yield* Effect.fail(
-        new Error("program material sidecar must use canonical V1 CBOR"),
-      );
-    }
-
     let rejection: RejectedTx | null = null;
     let ledgerOps: readonly ValidationMachineLedgerOp[] = [];
     if (!("ledgerTx" in phaseA)) {
@@ -276,7 +255,12 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
               scriptEvaluations.push(evaluation);
           },
           ...(input.scriptEvaluations === undefined
-            ? { cekExecutionMode: "proof" as const }
+            ? {
+                cekExecutionMode:
+                  recording.mode === "proof"
+                    ? ("proof" as const)
+                    : ("verdict" as const),
+              }
             : {
                 evaluateProofScript: (
                   scriptBytes: Uint8Array,
@@ -432,29 +416,14 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
         ),
       );
     }
-
-    const authenticatedLedgerOps = input.ledgerMutationSteps.map(
-      ({ operation, proofFoldTrace }) => ({
-        ...operation,
-        proofDescriptor: proofFoldTrace.descriptor,
-      }),
-    );
-    const ledgerDeltaFrontier = buildMidgardValidationLedgerDeltaFrontier(
-      authenticatedLedgerOps,
-    );
-    const ledgerDeltaRoot = hashMidgardValidationLedgerDelta(
-      authenticatedLedgerOps,
-    );
-    const ledgerDeltaOperationLeafHashes = authenticatedLedgerOps.map(
-      hashMidgardValidationLedgerDeltaOperation,
-    );
-    const ledgerDeltaOperationMembership = (
-      operationIndex: number,
-    ): MidgardValidationMerkleMembership =>
-      buildMidgardValidationMerkleMembership(
-        ledgerDeltaOperationLeafHashes,
-        operationIndex,
+    // The machine has no successor for an undecodable Plutus item, of either
+    // item kind: the rejection is not provable by trace, and no step of it is
+    // recorded. The script-decode family proves it.
+    if (rejection?.subject?.arm === "PlutusScriptUndecodable")
+      return yield* Effect.fail(
+        new DirectValidationTraceUnavailable(RejectCodes.ScriptProgramEncoding),
       );
+
     // Exact submitted bytes bind the source independently of the operator's verdict.
     const proofSource = (
       input.sourceKind === "forced"
@@ -469,11 +438,22 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
     const compactProofWitnessSet = decodeMidgardNativeTxWitnessSetCompact(
       proofSource.witnessSetCompactCbor,
     );
-    const transactionCommitment = (
-      input.sourceKind === "forced"
-        ? computeMidgardForcedTxProofCommitment
-        : computeMidgardNativeTxProofCommitment
-    )(proofSource);
+    // State 0 is the claim's derivation, not a builder construction.
+    const { canonicalTransactionCbor } = input;
+    const initialState = deriveMidgardValidationInitialStateV1({
+      ...contextHeader,
+      eventKeyCbor: input.eventKeyCbor,
+      source:
+        input.sourceKind === "forced"
+          ? { forced: { canonicalTransactionCbor } }
+          : { normal: { canonicalTransactionCbor } },
+      preUtxosRoot: priorLedgerRoot,
+    });
+    if (!initialState.transactionId.equals(input.transactionId)) {
+      return yield* Effect.fail(
+        new Error("transactionId is not the canonical transaction's id"),
+      );
+    }
     const fieldPreimages = deriveMidgardTxFieldPreimages(
       input.canonicalTransactionCbor,
       input.sourceKind,
@@ -555,18 +535,16 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
           }
           await trie.insert(entry.outRef, descriptorCbor);
         }
-        return await Promise.all(
-          resolutionScheduleNodes.map(async (node) =>
-            Buffer.from(
-              (
-                await trie.prove(
-                  node.key,
-                  !ledgerDescriptorState.has(node.key.toString("hex")),
-                )
-              ).toCBOR(),
-            ),
-          ),
-        );
+        // One proof at a time: the trie allows a single proof in flight.
+        const proofs: Buffer[] = [];
+        for (const node of resolutionScheduleNodes) {
+          const proof = await trie.prove(
+            node.key,
+            !ledgerDescriptorState.has(node.key.toString("hex")),
+          );
+          proofs.push(Buffer.from(proof.toCBOR()));
+        }
+        return proofs;
       },
       catch: (cause) =>
         cause instanceof Error
@@ -637,7 +615,9 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
       return {
         verificationKey: verificationKey.value,
         signature: signature.value,
-        signerHash: Buffer.from(blake2b(verificationKey.value, { dkLen: 28 })),
+        signerHash: Buffer.from(
+          midgardBlake2b(verificationKey.value, { dkLen: 28 }),
+        ),
       };
     };
     // Later semantic items remain unread after a canonical terminal; exact source bytes stay committed.
@@ -821,7 +801,10 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
         proofSource.witnessSetCompactCbor,
         proofSource.fieldPreimageLengthsCbor,
         contextCbor,
-        resolutionScheduleHash,
+        // A late execution scan binds its NativeScripts continuation here.
+        continuationCbor.length === 0
+          ? resolutionScheduleHash
+          : Buffer.from(midgardBlake2b(continuationCbor, { dkLen: 32 })),
         BigInt(control.stage),
         BigInt(control.scriptCount),
         BigInt(control.scriptSeen),
@@ -932,7 +915,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
         readonly candidateHash: Buffer;
         readonly descriptorFrontier: MidgardValidationMerkleFrontier;
       };
-      readonly sourceTotalCount?: number;
+      readonly inlineSourceCount?: number;
       readonly redeemerTotalCount?: number;
       readonly observerScan?: {
         readonly totalCount: number;
@@ -943,7 +926,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
       readonly discovery?: ScriptDiscoveryTraceControl;
       readonly pendingSource?: {
         readonly sourceIndex: number;
-        readonly sourceTotalCount: number;
+        readonly inlineSourceCount: number;
         readonly languageTag: 0 | 3 | 128;
         readonly payloadOffset: number;
         readonly payloadLength: number;
@@ -999,7 +982,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
           receiveScan.candidateHash,
           encodeFrontierPeaks(receiveScan.descriptorFrontier),
         ],
-        BigInt(input.sourceTotalCount ?? input.sourceFrontier.count),
+        BigInt(input.inlineSourceCount ?? inlineScriptSourceFrontier.count),
         BigInt(input.redeemerTotalCount ?? input.redeemerFrontier.count),
         [
           BigInt(observerScan.totalCount),
@@ -1018,7 +1001,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
           encodeCbor([
             1n,
             BigInt(input.pendingSource.sourceIndex),
-            BigInt(input.pendingSource.sourceTotalCount),
+            BigInt(input.pendingSource.inlineSourceCount),
             BigInt(input.pendingSource.languageTag),
             BigInt(input.pendingSource.payloadOffset),
             BigInt(input.pendingSource.payloadLength),
@@ -1153,7 +1136,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
         "compactBinding",
         encodeCbor([
           input.transactionId,
-          transactionCommitment,
+          initialState.transactionCommitment,
           proofSource.compactCbor,
           proofSource.witnessSetCompactCbor,
           proofSource.fieldPreimageLengthsCbor,
@@ -1165,7 +1148,6 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
       ["nativeScripts", transactionContextWitnessCbor],
       ["scriptIntegrity", transactionContextWitnessCbor],
       ["cek", transactionContextWitnessCbor],
-      ["ledgerDelta", transactionContextWitnessCbor],
     ]);
     const macroAuxiliaryByPhase = new Map<
       MidgardValidationPhaseName,
@@ -1173,18 +1155,38 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
     >([]);
 
     const terminalPhase =
-      rejection === null ? "ledgerDelta" : rejectionPhase(rejection);
+      rejection === null ? "valueAndMint" : rejectionPhase(rejection);
     const stopIndex = orderedPhases.indexOf(terminalPhase);
     if (stopIndex < 0) {
       return yield* Effect.fail(
         new Error(`unknown validation terminal phase ${terminalPhase}`),
       );
     }
-    const witnesses: ValidationMachineWorkWitness[] = [];
-    const witnessExecutionBudgets: {
-      readonly cpu: bigint;
-      readonly memory: bigint;
-    }[] = [];
+    // The machine stops at `fault`, so replay must have rejected there too.
+    const requireRejection = (
+      fault: string,
+      phase: MidgardValidationPhaseName,
+      code: RejectCode,
+    ): Effect.Effect<void, Error> =>
+      terminalPhase === phase && rejectionCode === code
+        ? Effect.void
+        : Effect.fail(
+            new Error(
+              `${fault} but replay rejected at ${terminalPhase}/${rejectionCode ?? "none"}`,
+            ),
+          );
+    // Every state shares state 0's frame, and state 0 is the claim's
+    // derivation: the first push must reproduce it exactly.
+    const traceFrame = {
+      eventKeyHash: initialState.eventKeyHash,
+      transactionId: initialState.transactionId,
+      transactionCommitment: initialState.transactionCommitment,
+      validationContextHash: initialState.validationContextHash,
+      sourceKind: initialState.sourceKind,
+      priorLedgerRoot: initialState.priorLedgerRoot,
+    };
+    const initialStateHash = hashMidgardValidationMachineState(initialState);
+    const traceSink = recording.open(traceFrame);
     const executionBudget = { cpu: 0n, memory: 0n };
 
     const pushWitness = (
@@ -1192,16 +1194,23 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
       cbor: Buffer,
       auxiliary: ValidationMachineWorkWitness["auxiliary"] = null,
     ): void => {
-      witnesses.push({
+      const witness = {
         phase,
-        programCounter: witnesses.length,
+        programCounter: traceSink.length,
         cbor,
         auxiliary,
-      });
-      witnessExecutionBudgets.push({
-        cpu: executionBudget.cpu,
-        memory: executionBudget.memory,
-      });
+      };
+      if (
+        witness.programCounter === 0 &&
+        !hashMidgardValidationMachineState(
+          validationMachineStateV1(traceFrame, witness, executionBudget, null),
+        ).equals(initialStateHash)
+      ) {
+        throw new Error(
+          "validation trace does not start from the derived initial state",
+        );
+      }
+      traceSink.push(witness, executionBudget, null);
     };
     const macroWitness = (phase: MidgardValidationPhaseName): Buffer => {
       const witness = macroWitnessByPhase.get(phase);
@@ -1375,16 +1384,11 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
 
       if (spendCount === 0) {
         pushWitness("inputSets", currentInputSetsWitness());
-        if (
-          terminalPhase !== "inputSets" ||
-          rejectionCode !== RejectCodes.EmptyInputs
-        ) {
-          return yield* Effect.fail(
-            new Error(
-              `bounded input scan found no spend inputs but replay rejected at ${terminalPhase}/${rejectionCode ?? "none"}`,
-            ),
-          );
-        }
+        yield* requireRejection(
+          "bounded input scan found no spend inputs",
+          "inputSets",
+          RejectCodes.EmptyInputs,
+        );
         stopReason = "EmptyInputs";
         stoppedAtRejection = true;
       } else {
@@ -1401,16 +1405,11 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
             fieldPreimage: fieldPreimage(scan.collection.fieldIndex),
           });
           if (previousKey.length > 0 && key.equals(previousKey)) {
-            if (
-              terminalPhase !== "inputSets" ||
-              rejectionCode !== RejectCodes.DuplicateInputInTx
-            ) {
-              return yield* Effect.fail(
-                new Error(
-                  `bounded input scan found a duplicate but replay rejected at ${terminalPhase}/${rejectionCode ?? "none"}`,
-                ),
-              );
-            }
+            yield* requireRejection(
+              "bounded input scan found a duplicate",
+              "inputSets",
+              RejectCodes.DuplicateInputInTx,
+            );
             stopReason = {
               DuplicateInput: {
                 first_field_index: UNSET_REASON_COORDINATE,
@@ -1523,26 +1522,13 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                 hashMidgardSignerLeaf(scan.decoded.signerHash),
               )
             : signatureControl.signerFrontier;
-          let signatureIsValid = false;
-          try {
-            const publicKey = CML.PublicKey.from_bytes(
-              scan.decoded.verificationKey,
-            );
-            const signature = CML.Ed25519Signature.from_raw_bytes(
-              scan.decoded.signature,
-            );
-            try {
-              signatureIsValid = publicKey.verify(
-                input.transactionId,
-                signature,
-              );
-            } finally {
-              publicKey.free();
-              signature.free();
-            }
-          } catch {
-            signatureIsValid = false;
-          }
+          // The ledger's own check, as Phase A runs it. A failure of the
+          // check itself is raised and stops the build.
+          const signatureIsValid = verifyLedgerEd25519Signature(
+            scan.decoded.verificationKey,
+            input.transactionId,
+            scan.decoded.signature,
+          );
           const addressSeen = signatureControl.addressSeen + 1;
           const addressCount =
             signatureControl.addressCount === -1
@@ -1587,16 +1573,11 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
       if (signatureControl.requiredCount === 0) {
         pushSignatureWitness();
         if (signatureControl.firstInvalidWitnessIndex >= 0) {
-          if (
-            terminalPhase !== "signatures" ||
-            rejectionCode !== RejectCodes.InvalidSignature
-          ) {
-            return yield* Effect.fail(
-              new Error(
-                `signature scan found an invalid signature but replay rejected at ${terminalPhase}/${rejectionCode ?? "none"}`,
-              ),
-            );
-          }
+          yield* requireRejection(
+            "signature scan found an invalid signature",
+            "signatures",
+            RejectCodes.InvalidSignature,
+          );
           stopReason = {
             AddressWitnessSignatureInvalid: {
               witness_index: BigInt(signatureControl.firstInvalidWitnessIndex),
@@ -1623,16 +1604,11 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
             signerProof,
           });
           if (signerProof.kind !== "membership") {
-            if (
-              terminalPhase !== "signatures" ||
-              rejectionCode !== RejectCodes.MissingRequiredWitness
-            ) {
-              return yield* Effect.fail(
-                new Error(
-                  `required signer is absent but replay rejected at ${terminalPhase}/${rejectionCode ?? "none"}`,
-                ),
-              );
-            }
+            yield* requireRejection(
+              "required signer is absent",
+              "signatures",
+              RejectCodes.MissingRequiredWitness,
+            );
             stopReason = {
               RequiredSignerUnsigned: {
                 signer_index: BigInt(signatureControl.requiredSeen),
@@ -1655,16 +1631,11 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
             requiredSeen === requiredCount &&
             signatureControl.firstInvalidWitnessIndex >= 0
           ) {
-            if (
-              terminalPhase !== "signatures" ||
-              rejectionCode !== RejectCodes.InvalidSignature
-            ) {
-              return yield* Effect.fail(
-                new Error(
-                  `signature scan found an invalid signature but replay rejected at ${terminalPhase}/${rejectionCode ?? "none"}`,
-                ),
-              );
-            }
+            yield* requireRejection(
+              "signature scan found an invalid signature",
+              "signatures",
+              RejectCodes.InvalidSignature,
+            );
             stopReason = {
               AddressWitnessSignatureInvalid: {
                 witness_index: BigInt(
@@ -2217,16 +2188,11 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
               proofCbor: item.proofCbor,
               signerProof: { kind: "none" },
             });
-            if (
-              terminalPhase !== "resolveInputs" ||
-              rejectionCode !== RejectCodes.InputNotFound
-            ) {
-              return yield* Effect.fail(
-                new Error(
-                  `input resolution found no ledger member but replay rejected at ${terminalPhase}/${rejectionCode ?? "none"}`,
-                ),
-              );
-            }
+            yield* requireRejection(
+              "input resolution found no ledger member",
+              "resolveInputs",
+              RejectCodes.InputNotFound,
+            );
             stopReason = {
               InputNotFound: {
                 source_kind: item.sourceKind === "spend" ? 0n : 1n,
@@ -2307,12 +2273,17 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
               signerProof,
             },
           );
+          // A key-locked spend whose signer is absent stops the machine here,
+          // so validation must have refused this spend for the same fault.
           if (
-            terminalPhase === "resolveInputs" &&
-            rejectionCode === RejectCodes.MissingRequiredWitness &&
-            item.sourceKind === "spend" &&
-            signerProof.kind !== "membership"
+            signerProof.kind !== "membership" &&
+            signerProof.kind !== "none"
           ) {
+            yield* requireRejection(
+              "spend signer is missing",
+              "resolveInputs",
+              RejectCodes.MissingRequiredWitness,
+            );
             stopReason = {
               SpendInputSignerMissing: { input_index: UNSET_REASON_COORDINATE },
             };
@@ -2348,7 +2319,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
           const currentInlineSourceWitness = (
             pendingSource?: {
               readonly sourceIndex: number;
-              readonly sourceTotalCount: number;
+              readonly inlineSourceCount: number;
               readonly languageTag: 0 | 3 | 128;
               readonly payloadOffset: number;
               readonly payloadLength: number;
@@ -2362,7 +2333,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
               stage: 0,
               sourceFrontier: authenticatedInlineSourceFrontier,
               redeemerFrontier: emptyValidationFrontier,
-              sourceTotalCount: inlineSourceTotalCount,
+              inlineSourceCount: inlineSourceTotalCount,
               redeemerTotalCount: 0,
               pendingSource,
             });
@@ -2435,7 +2406,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
             const hashTrace = buildMidgardBlake2b224Trace(hashMessage);
             let pendingSource = {
               sourceIndex: item.itemIndex,
-              sourceTotalCount: inlineSourceTotalCount,
+              inlineSourceCount: inlineSourceTotalCount,
               languageTag: exactLanguageTag,
               payloadOffset,
               payloadLength: scriptPayload.value.length,
@@ -2539,7 +2510,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
               stage: 1,
               sourceFrontier: inlineScriptSourceFrontier,
               redeemerFrontier: authenticatedRedeemerFrontier,
-              sourceTotalCount: inlineSourceTotalCount,
+              inlineSourceCount: inlineSourceTotalCount,
               redeemerTotalCount,
               redeemerItemControlHash,
             });
@@ -2750,15 +2721,12 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                     ),
                   );
                 }
-                if (
-                  node.sourceKind === "reference" &&
-                  descriptor.referenceScriptLanguage !== -1
-                ) {
+                if (descriptor.referenceScriptLanguage !== -1) {
                   const output = decodeMidgardTxOutput(outputCbor);
                   if (output.script_ref === undefined) {
                     return yield* Effect.fail(
                       new Error(
-                        "reference-input descriptor commits a missing retained reference script",
+                        "resolved-output descriptor commits a missing retained reference script",
                       ),
                     );
                   }
@@ -2966,6 +2934,26 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                 rejection !== null &&
                 terminalPhase === "scriptSources" &&
                 rejection.code === RejectCodes.NetworkIdMismatch;
+              const stageFiveWitness = (
+                outputProof?: Parameters<
+                  typeof scriptSourcesWitnessCbor
+                >[0]["outputProof"],
+              ) =>
+                scriptSourcesWitnessCbor({
+                  ...scriptSourceControl,
+                  stage: 5,
+                  sourceFrontier: replaySourceFrontier,
+                  redeemerFrontier,
+                  replayCursor,
+                  replayAccumulator,
+                  replayRemainingScheduleHash,
+                  spendIndex: replaySpendIndex,
+                  purposeFrontier: replayPurposeFrontier,
+                  outputCursor,
+                  outputFrontier,
+                  receiveScan: receiveSourceScan(),
+                  ...(outputProof === undefined ? {} : { outputProof }),
+                });
               for (const outputCbor of outputCbors) {
                 const outputItem = outputsCollection.items[outputCursor];
                 if (
@@ -2978,64 +2966,51 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                     ),
                   );
                 }
-                const outputProof = buildMidgardLedgerOutputProofTrace({
+                const proofOutcome = traceMidgardLedgerOutputProof({
                   outputIndex: outputCursor,
                   outputCbor,
                 });
-                const outputMaterial =
-                  buildCanonicalMidgardLedgerOutputMaterial({
-                    outputIndex: outputCursor,
-                    outputCbor,
-                  });
-                const signerProof = protectedOutputSignerProof(outputCbor);
-                pushWitness(
-                  "scriptSources",
-                  scriptSourcesWitnessCbor({
-                    ...scriptSourceControl,
-                    stage: 5,
-                    sourceFrontier: replaySourceFrontier,
-                    redeemerFrontier,
-                    replayCursor,
-                    replayAccumulator,
-                    replayRemainingScheduleHash,
-                    spendIndex: replaySpendIndex,
-                    purposeFrontier: replayPurposeFrontier,
-                    outputCursor,
-                    outputFrontier,
-                    receiveScan: receiveSourceScan(),
-                  }),
-                  {
-                    kind: "ledgerOutputProofBegin",
-                    outputIndex: outputCursor,
-                    totalLength: outputItem.bytes.length,
-                    itemCommitment: outputItem.commitment,
-                    siblings: outputMembership(outputCursor).siblings,
-                  },
-                );
-                for (const proofStep of outputProof.steps) {
+                pushWitness("scriptSources", stageFiveWitness(), {
+                  kind: "ledgerOutputProofBegin",
+                  outputIndex: outputCursor,
+                  totalLength: outputItem.bytes.length,
+                  itemCommitment: outputItem.commitment,
+                  siblings: outputMembership(outputCursor).siblings,
+                });
+                for (const proofStep of proofOutcome.kind === "accepted"
+                  ? proofOutcome.trace.steps
+                  : [...proofOutcome.steps, proofOutcome.refusingStep]) {
                   pushWitness(
                     "scriptSources",
-                    scriptSourcesWitnessCbor({
-                      ...scriptSourceControl,
-                      stage: 5,
-                      sourceFrontier: replaySourceFrontier,
-                      redeemerFrontier,
-                      replayCursor,
-                      replayAccumulator,
-                      replayRemainingScheduleHash,
-                      spendIndex: replaySpendIndex,
-                      purposeFrontier: replayPurposeFrontier,
-                      outputCursor,
-                      outputFrontier,
-                      receiveScan: receiveSourceScan(),
-                      outputProof: proofStep.control,
-                    }),
+                    stageFiveWitness(proofStep.control),
                     {
                       kind: "ledgerOutputProofStep",
                       witness: proofStep.witness,
                     },
                   );
                 }
+                // The machine refuses the output at the refusing step.
+                if (proofOutcome.kind === "refused") {
+                  const reason = refusedOutputStopReason({
+                    outputIndex: outputCursor,
+                    refusal: proofOutcome.refusal,
+                    rejection,
+                    terminalPhase,
+                  });
+                  if (reason instanceof Error) {
+                    return yield* Effect.fail(reason);
+                  }
+                  stopReason = reason;
+                  stoppedAtRejection = true;
+                  break;
+                }
+                const outputProof = proofOutcome.trace;
+                const outputMaterial =
+                  buildCanonicalMidgardLedgerOutputMaterial({
+                    outputIndex: outputCursor,
+                    outputCbor,
+                  });
+                const signerProof = protectedOutputSignerProof(outputCbor);
                 // Chained descriptor-fact attachment: each canonical group is
                 // one checkpointed machine step over the same finalize witness
                 // shape, its commitments derived from the terminal control
@@ -3043,28 +3018,10 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                 // fact to commit exactly the output's descriptor.
                 let factsProof = outputProof.terminal;
                 while (!midgardLedgerOutputProofFactsComplete(factsProof)) {
-                  pushWitness(
-                    "scriptSources",
-                    scriptSourcesWitnessCbor({
-                      ...scriptSourceControl,
-                      stage: 5,
-                      sourceFrontier: replaySourceFrontier,
-                      redeemerFrontier,
-                      replayCursor,
-                      replayAccumulator,
-                      replayRemainingScheduleHash,
-                      spendIndex: replaySpendIndex,
-                      purposeFrontier: replayPurposeFrontier,
-                      outputCursor,
-                      outputFrontier,
-                      receiveScan: receiveSourceScan(),
-                      outputProof: factsProof,
-                    }),
-                    {
-                      kind: "ledgerOutputProofFinalize",
-                      signerProof: { kind: "none" },
-                    },
-                  );
+                  pushWitness("scriptSources", stageFiveWitness(factsProof), {
+                    kind: "ledgerOutputProofFinalize",
+                    signerProof: { kind: "none" },
+                  });
                   const attached =
                     attachMidgardLedgerOutputProofFacts(factsProof);
                   if (attached === null) {
@@ -3076,49 +3033,40 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                   }
                   factsProof = attached;
                 }
-                pushWitness(
-                  "scriptSources",
-                  scriptSourcesWitnessCbor({
-                    ...scriptSourceControl,
-                    stage: 5,
-                    sourceFrontier: replaySourceFrontier,
-                    redeemerFrontier,
-                    replayCursor,
-                    replayAccumulator,
-                    replayRemainingScheduleHash,
-                    spendIndex: replaySpendIndex,
-                    purposeFrontier: replayPurposeFrontier,
-                    outputCursor,
-                    outputFrontier,
-                    receiveScan: receiveSourceScan(),
-                    outputProof: factsProof,
-                  }),
-                  {
-                    kind: "ledgerOutputProofFinalize",
-                    signerProof,
-                  },
-                );
+                pushWitness("scriptSources", stageFiveWitness(factsProof), {
+                  kind: "ledgerOutputProofFinalize",
+                  signerProof,
+                });
                 const output = decodeMidgardTxOutput(outputCbor);
                 const address = decodeMidgardAddressBytes(output.address);
+                // Stage 5 is where the machine refuses both output faults, so
+                // validation must have refused this output for the same one.
+                const networkFault =
+                  BigInt(address.networkId) !== input.expectedNetworkId;
                 if (
-                  outputNetworkRejection &&
-                  BigInt(address.networkId) !== input.expectedNetworkId
+                  networkFault ||
+                  (address.protected &&
+                    address.paymentCredential.kind === "PubKey" &&
+                    signerProof.kind !== "membership")
                 ) {
-                  stopReason = "NetworkIdMismatch";
-                  stoppedAtRejection = true;
-                  break;
-                }
-                if (
-                  protectedSignerRejection &&
-                  address.protected &&
-                  address.paymentCredential.kind === "PubKey" &&
-                  signerProof.kind !== "membership"
-                ) {
-                  stopReason = {
-                    ProtectedOutputSignerMissing: {
-                      output_index: BigInt(outputCursor),
-                    },
-                  };
+                  if (
+                    !(networkFault
+                      ? outputNetworkRejection
+                      : protectedSignerRejection)
+                  ) {
+                    return yield* Effect.fail(
+                      new Error(
+                        `output ${outputCursor} fails at stage 5 but replay rejected at ${terminalPhase}/${rejectionCode ?? "none"}`,
+                      ),
+                    );
+                  }
+                  stopReason = networkFault
+                    ? "NetworkIdMismatch"
+                    : {
+                        ProtectedOutputSignerMissing: {
+                          output_index: BigInt(outputCursor),
+                        },
+                      };
                   stoppedAtRejection = true;
                   break;
                 }
@@ -3166,23 +3114,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                 outputCursor += 1;
               }
               if (!stoppedAtRejection) {
-                pushWitness(
-                  "scriptSources",
-                  scriptSourcesWitnessCbor({
-                    ...scriptSourceControl,
-                    stage: 5,
-                    sourceFrontier: replaySourceFrontier,
-                    redeemerFrontier,
-                    replayCursor,
-                    replayAccumulator,
-                    replayRemainingScheduleHash,
-                    spendIndex: replaySpendIndex,
-                    purposeFrontier: replayPurposeFrontier,
-                    outputCursor,
-                    outputFrontier,
-                    receiveScan: receiveSourceScan(),
-                  }),
-                );
+                pushWitness("scriptSources", stageFiveWitness());
                 let mintPurposeFrontier = replayPurposeFrontier;
                 for (const policyItem of mintCollection.items) {
                   pushWitness(
@@ -3631,10 +3563,15 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                         }
                       | undefined;
                     for (
-                      let sourceIndex = 0;
-                      sourceIndex < scriptSourceEntries.length;
-                      sourceIndex += 1
+                      let sourceCursor = 0;
+                      sourceCursor < scriptSourceEntries.length;
+                      sourceCursor += 1
                     ) {
+                      const sourceIndex = midgardScriptSourcePhysicalIndex(
+                        inlineScriptSourceFrontier.count,
+                        scriptSourceEntries.length,
+                        sourceCursor,
+                      );
                       const source = scriptSourceEntries[sourceIndex]!;
                       pushWitness(
                         "scriptSources",
@@ -3654,7 +3591,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                       const sourceHash = source.scriptHash;
                       discovery = {
                         ...discovery,
-                        sourceCursor: sourceIndex + 1,
+                        sourceCursor: sourceCursor + 1,
                       };
                       if (sourceHash.equals(purpose.scriptHash)) {
                         const exactLanguageTag = source.scriptLanguageTag;
@@ -4119,20 +4056,10 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
       ledgerState,
       outputCbors,
       priorLedgerRoot,
-      resolutionItems,
-      encodeFrontierPeaks,
-      ledgerDeltaOperationMembership,
-      authenticatedLedgerOps,
-      postLedgerRoot,
-      ledgerDeltaRoot,
-      witnesses,
-      ledgerDeltaFrontier,
-      witnessExecutionBudgets,
-      transactionCommitment,
-      validationContextHash,
+      traceSink,
+      recording,
       verdict,
       contextCbor,
-      canonicalProgramMaterialSidecarCbor,
       ledgerOps,
     } as const;
   });

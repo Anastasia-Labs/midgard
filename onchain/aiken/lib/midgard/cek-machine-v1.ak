@@ -44,6 +44,21 @@ pub const error_case_branch_missing = 6
 
 pub const error_builtin_failure = 7
 
+/// A PlutusV3 or MidgardV1 script must return the unit constant; any other
+/// constant fails the script.
+pub const error_non_unit_halt = 8
+
+/// `hash_blob_chunk_v1(#"9f03ff")`: the root of the canonical unit type CBOR.
+const unit_type_root =
+  #"c07fe5713d1b85f663401f9f907b3e1d21126b9a78c5a6474839f7dc9841f3d6"
+
+/// Cardano charges an evaluation 100 cpu and 100 memory when it starts, before
+/// its first step, so a program's state starts with that cost already spent.
+/// A program refused before evaluation starts never reaches this state.
+pub const startup_cpu = 100
+
+pub const startup_memory = 100
+
 const machine_step_cpu = 16000
 
 const machine_step_memory = 100
@@ -57,6 +72,24 @@ pub type MachineStateV1 {
   auxiliary: Int,
   cpu: Int,
   memory: Int,
+}
+
+/// The state an evaluation of `focus_root` starts in: computing, with empty
+/// environment and continuation, and the startup cost spent.
+pub fn initial_state_v1(
+  execution_index: Int,
+  focus_root: ByteArray,
+) -> MachineStateV1 {
+  MachineStateV1 {
+    mode: mode_compute,
+    execution_index,
+    focus_root,
+    environment_root: cek_proof_v1.empty_environment_root_v1,
+    continuation_root: cek_proof_v1.empty_continuation_root_v1,
+    auxiliary: 0,
+    cpu: startup_cpu,
+    memory: startup_memory,
+  }
 }
 
 pub type EnvironmentSummaryV1 {
@@ -291,6 +324,14 @@ pub type CoreStepWitnessV1 {
     arguments: List<cek_builtin_v1.RuntimeValueWitnessV1>,
   }
   ComputeContextConstant { value_root: ByteArray }
+  ReturnCaseConstant {
+    scrutinee: cek_builtin_v1.ValueWitnessV1,
+    material: cek_builtin_v1.SemanticBuiltinWitnessV1,
+    branches_count: Int,
+    branches_root: ByteArray,
+    captured_environment: ByteArray,
+    tail: ByteArray,
+  }
 }
 
 pub type CoreStepEvidenceV1 {
@@ -337,7 +378,7 @@ pub fn hash_state_v1(state: MachineStateV1) -> ByteArray {
 
 pub fn builtin_force_count(tag: Int) -> Int {
   expect tag >= 0
-  expect tag <= cek_proof_v1.max_builtin_tag
+  expect tag <= cek_proof_v1.max_resolved_builtin_tag
   if or {
     tag == 29,
     tag == 30,
@@ -362,7 +403,7 @@ pub fn builtin_force_count(tag: Int) -> Int {
 
 pub fn builtin_argument_count(tag: Int) -> Int {
   expect tag >= 0
-  expect tag <= cek_proof_v1.max_builtin_tag
+  expect tag <= cek_proof_v1.max_resolved_builtin_tag
   if tag == 36 {
     6
   } else if or {
@@ -396,11 +437,11 @@ pub fn builtin_argument_count(tag: Int) -> Int {
     tag == 54,
     tag == 56,
     tag == 57,
-    tag == 58,
+    tag == 60,
     tag == 61,
     tag == 63,
     tag == 64,
-    tag == 65,
+    tag == 67,
     tag == 68,
     tag == 69,
     tag == 70,
@@ -450,13 +491,6 @@ fn value_witness_hash(value: MachineValueWitnessV1) -> ByteArray {
   }
 }
 
-fn value_is_constant(value: MachineValueWitnessV1) -> Bool {
-  when value is {
-    ConstantValue { .. } -> True
-    _ -> False
-  }
-}
-
 fn value_is_lambda_or_builtin(value: MachineValueWitnessV1) -> Bool {
   when value is {
     LambdaValue { .. } -> True
@@ -473,9 +507,10 @@ fn value_is_delay_or_forceable_builtin(value: MachineValueWitnessV1) -> Bool {
   }
 }
 
-fn value_is_constr(value: MachineValueWitnessV1) -> Bool {
+fn value_is_case_scrutinee(value: MachineValueWitnessV1) -> Bool {
   when value is {
     ConstrValue { .. } -> True
+    ConstantValue { .. } -> True
     _ -> False
   }
 }
@@ -704,16 +739,21 @@ pub fn verify_compute_step(
   witness: CoreStepWitnessV1,
 ) -> Bool {
   when witness is {
+    // The lookup walks `index - 1` environment nodes; index 0 is never bound.
     ComputeVariable { index } -> and {
         pre.focus_root == cek_proof_v1.hash_variable_term_v1(index),
-        post == exact_compute_successor(
-          pre,
-          mode_lookup,
-          pre.environment_root,
-          pre.environment_root,
-          pre.continuation_root,
-          index,
-        ),
+        post == if index == 0 {
+          error_successor(pre, error_unbound_variable)
+        } else {
+          exact_compute_successor(
+            pre,
+            mode_lookup,
+            pre.environment_root,
+            pre.environment_root,
+            pre.continuation_root,
+            index - 1,
+          )
+        },
       }
     ComputeConstant { value } -> {
       let value_root = cek_constant_v1.constant_root_v1(value)
@@ -982,19 +1022,23 @@ fn verify_return_empty(
   and {
     pre.continuation_root == cek_proof_v1.empty_continuation_root_v1,
     pre.focus_root == value_witness_hash(value),
-    post == if value_is_constant(value) {
-      exact_state(
-        pre,
-        mode_halt_success,
-        pre.focus_root,
-        cek_proof_v1.empty_environment_root_v1,
-        cek_proof_v1.empty_continuation_root_v1,
-        0,
-        0,
-        0,
-      )
-    } else {
-      error_successor(pre, error_nonconstant_halt)
+    post == when value is {
+      ConstantValue { type_root, .. } ->
+        if type_root == unit_type_root {
+          exact_state(
+            pre,
+            mode_halt_success,
+            pre.focus_root,
+            cek_proof_v1.empty_environment_root_v1,
+            cek_proof_v1.empty_continuation_root_v1,
+            0,
+            0,
+            0,
+          )
+        } else {
+          error_successor(pre, error_non_unit_halt)
+        }
+      _ -> error_successor(pre, error_nonconstant_halt)
     },
   }
 }
@@ -1488,7 +1532,7 @@ fn verify_return_case_invalid(
   tail: ByteArray,
 ) -> Bool {
   and {
-    !value_is_constr(value),
+    !value_is_case_scrutinee(value),
     branches_count >= 0,
     linked_sequence_root_is_well_formed(branches_root, branches_count),
     pre.focus_root == value_witness_hash(value),
@@ -1499,6 +1543,58 @@ fn verify_return_case_invalid(
       tail,
     ),
     post == error_successor(pre, error_invalid_case_scrutinee),
+  }
+}
+
+// The case frame is bound by `pre.continuation_root`, and `ComputeCase`, its
+// only producer, already checked its branch count and branch root, so they are
+// not checked again here. `verify_return_step` does not dispatch this step:
+// `case` on a constant has its own core group and arm validator, so the
+// machine arm does not carry its code.
+pub fn verify_return_case_constant(
+  pre: MachineStateV1,
+  post: MachineStateV1,
+  scrutinee: cek_builtin_v1.ValueWitnessV1,
+  material: cek_builtin_v1.SemanticBuiltinWitnessV1,
+  branches_count: Int,
+  branches_root: ByteArray,
+  captured_environment: ByteArray,
+  tail: ByteArray,
+) -> Bool {
+  let Pair(root, selection) = cek_builtin_v1.case_constant_selection_v1(
+    scrutinee,
+    material,
+    branches_count,
+  )
+  and {
+    pre.focus_root == root,
+    pre.continuation_root == cek_proof_v1.hash_case_continuation_v1(
+      branches_count,
+      branches_root,
+      captured_environment,
+      tail,
+    ),
+    post == when selection is {
+      cek_builtin_v1.CaseConstantBranch { tag, values_count, values_root } ->
+        exact_state(
+          pre,
+          mode_case_select,
+          branches_root,
+          values_root,
+          cek_proof_v1.hash_case_select_continuation_v1(
+            captured_environment,
+            tail,
+            values_count,
+          ),
+          tag,
+          0,
+          0,
+        )
+      cek_builtin_v1.CaseConstantMissing ->
+        error_successor(pre, error_case_branch_missing)
+      cek_builtin_v1.CaseConstantUnsupported ->
+        error_successor(pre, error_invalid_case_scrutinee)
+    },
   }
 }
 
@@ -1835,12 +1931,7 @@ fn verify_builtin_direct_step(
   and {
     arguments_count == builtin_argument_count(tag),
     pre.focus_root == builtin_root,
-    cek_builtin_v1.verify_direct_builtin_v1(
-      tag,
-      builtin_root,
-      arguments,
-      result,
-    ),
+    cek_builtin_v1.verify_direct_builtin_v1(tag, arguments, result),
     post == exact_state(
       pre,
       mode_return,
@@ -2018,13 +2109,7 @@ fn verify_builtin_semantic_step(
   and {
     arguments_count == builtin_argument_count(tag),
     pre.focus_root == builtin_root,
-    cek_builtin_v1.verify_semantic_builtin_v1(
-      tag,
-      builtin_root,
-      arguments,
-      result,
-      material,
-    ),
+    cek_builtin_v1.verify_semantic_builtin_v1(tag, arguments, result, material),
     post == exact_state(
       pre,
       mode_return,
@@ -2044,20 +2129,12 @@ fn verify_builtin_failure_step(
   tag: Int,
   arguments: List<cek_builtin_v1.ValueWitnessV1>,
 ) -> Bool {
-  let Pair(arguments_root, arguments_count) = cek_builtin_v1.arguments_root_v1(
-    arguments,
-  )
-  let builtin_root = cek_proof_v1.hash_builtin_value_v1(
-    tag,
-    0,
-    arguments_count,
-    arguments_root,
-  )
+  // The library derives the builtin value root from `arguments` and checks it
+  // against the pre-state focus (cek-builtin-v1.ak:3878-3886).
   and {
-    pre.focus_root == builtin_root,
     cek_builtin_v1.verify_direct_builtin_failure_v1(
       tag,
-      builtin_root,
+      pre.focus_root,
       arguments,
     ),
     builtin_failure_post_is_exact(pre, post, tag, arguments),
@@ -2107,12 +2184,7 @@ fn verify_builtin_semantic_failure_step(
   and {
     arguments_count == builtin_argument_count(tag),
     pre.focus_root == builtin_root,
-    cek_builtin_v1.verify_semantic_builtin_failure_v1(
-      tag,
-      builtin_root,
-      arguments,
-      material,
-    ),
+    cek_builtin_v1.verify_semantic_builtin_failure_v1(tag, arguments, material),
     post == exact_state(
       pre,
       mode_halt_error,
@@ -2132,18 +2204,14 @@ fn verify_builtin_type_failure_step(
   tag: Int,
   arguments: List<cek_builtin_v1.RuntimeValueWitnessV1>,
 ) -> Bool {
-  let Pair(arguments_root, arguments_count) = cek_builtin_v1.runtime_arguments_root_v1(
-    arguments,
-  )
-  let builtin_root = cek_proof_v1.hash_builtin_value_v1(
-    tag,
-    0,
-    arguments_count,
-    arguments_root,
-  )
+  // The library derives the builtin value root from `arguments` and checks it
+  // against the pre-state focus (cek-builtin-v1.ak:3326-3336).
   and {
-    pre.focus_root == builtin_root,
-    cek_builtin_v1.verify_builtin_type_failure_v1(tag, builtin_root, arguments),
+    cek_builtin_v1.verify_builtin_type_failure_v1(
+      tag,
+      pre.focus_root,
+      arguments,
+    ),
     post == exact_state(
       pre,
       mode_halt_error,
@@ -2431,7 +2499,27 @@ pub fn verify_core_step_v1(
     } else if pre.mode == mode_lookup {
       verify_lookup_step(pre, post, witness)
     } else if pre.mode == mode_return {
-      verify_return_step(pre, post, witness)
+      when witness is {
+        ReturnCaseConstant {
+          scrutinee,
+          material,
+          branches_count,
+          branches_root,
+          captured_environment,
+          tail,
+        } ->
+          verify_return_case_constant(
+            pre,
+            post,
+            scrutinee,
+            material,
+            branches_count,
+            branches_root,
+            captured_environment,
+            tail,
+          )
+        _ -> verify_return_step(pre, post, witness)
+      }
     } else if pre.mode == mode_case_select {
       verify_case_select_step(pre, post, witness)
     } else if pre.mode == mode_case_apply {

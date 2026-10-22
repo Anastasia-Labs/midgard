@@ -186,6 +186,16 @@ const SUBJECT_CASES: readonly (readonly [
     { arm: "MintAssetAccumulationLimit", index: 22n },
     { MintAssetAccumulationLimit: { mint_index: 22n } },
   ],
+  [
+    RejectCodes.ScriptProgramEncoding,
+    {
+      arm: "PlutusScriptUndecodable",
+      itemKind: 1n,
+      index: 23n,
+      refusalClass: 16n,
+    },
+    { PlutusScriptUndecodable: { item_kind: 1n, item_index: 23n, class: 16n } },
+  ],
 ];
 
 /** Codes whose single arm carries no coordinate, with the arm the leaf must name. */
@@ -205,7 +215,7 @@ const LOCATED_CODES = ARM_CODES.filter(
 
 describe("forced rejection reason", () => {
   it("writes an arm of the rejection's own code for every code an arm covers", () => {
-    expect(ARM_CODES).toHaveLength(19);
+    expect(ARM_CODES).toHaveLength(20);
     for (const [code] of SIMPLE_FAULTS) {
       expect(armOfCode(code, forcedRejectionReason({ code })), code).toBe(true);
     }
@@ -240,7 +250,7 @@ describe("forced rejection reason", () => {
   });
 
   it("refuses a located code without the subject of the failing rule", () => {
-    expect(LOCATED_CODES).toHaveLength(13);
+    expect(LOCATED_CODES).toHaveLength(14);
     for (const code of LOCATED_CODES) {
       for (const consensusPhase of [
         undefined,
@@ -283,7 +293,7 @@ describe("rejection codes without an arm", () => {
     expect([...FORCED_REJECTION_NO_ARM_CODES].sort()).toStrictEqual(
       [...derived].sort(),
     );
-    expect(FORCED_REJECTION_NO_ARM_CODES).toHaveLength(32);
+    expect(FORCED_REJECTION_NO_ARM_CODES).toHaveLength(30);
   });
 
   it("stops every unsupported code without writing a guessed verdict", () => {

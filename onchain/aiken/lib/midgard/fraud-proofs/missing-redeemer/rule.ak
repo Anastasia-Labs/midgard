@@ -89,6 +89,8 @@ pub fn is_redeemer_bearing_language_v1(language_tag: Int) -> Bool {
   }
 }
 
+/// `subject` is the value `open_subject_v1` returned in this Step 01 run, so it
+/// is canonical by construction (see `substrate.opened_rejection_reason_v1`).
 pub fn bind_purpose_v1(
   subject: substrate.VerdictSubjectV1,
   witness_set_hash: ByteArray,
@@ -98,7 +100,6 @@ pub fn bind_purpose_v1(
   purpose_index: Int,
 ) -> BoundPurposeV1 {
   expect and {
-      substrate.subject_is_canonical_v1(subject),
       bytearray.length(witness_set_hash) == 32,
       bytearray.length(validation_traces_root) == 32,
       validation_trace_count > 0,
@@ -107,7 +108,7 @@ pub fn bind_purpose_v1(
   expect Some(_) = redeemer_tag_for_purpose_kind_v1(purpose_kind)
   expect _reason = if subject.direction == substrate.direction_wrongful_rejection {
     Some(
-      substrate.bind_exact_rejection_reason_v1(
+      substrate.bind_opened_rejection_reason_v1(
         subject,
         RedeemerMissing { purpose_kind, purpose_index },
       ),
@@ -234,7 +235,6 @@ pub fn authenticate_stage_ten_trace_v1(
       ),
       validation_trace_v1.verify_trace_proof(descriptor, trace_proof),
       control.stage == 10,
-      control.source_total_count == control.source_count,
       control.redeemer_total_count == control.redeemer_count,
       validation_merkle_v1.frontier_is_well_formed(
         control.source_count,

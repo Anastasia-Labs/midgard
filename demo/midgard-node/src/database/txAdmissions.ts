@@ -6,7 +6,6 @@ import "effect";
 import "../e2e/phase1-accept-crash-checkpoint.js";
 import "../services/follower-write-gate.js";
 import "../sha256.js";
-import "./cekProgramMaterial.js";
 import "./deposits.js";
 import "./mempool.js";
 import "./mempoolLedger.js";
@@ -24,9 +23,7 @@ export {
   admitReservedBatch,
   claimBatch,
   getByTxId,
-  type ProgramMaterialSidecarRecord,
   requeueExpiredLeases,
-  retrieveProgramMaterialSidecars,
 } from "./txAdmissions.admit-reserved-batch.js";
 export {
   admit,

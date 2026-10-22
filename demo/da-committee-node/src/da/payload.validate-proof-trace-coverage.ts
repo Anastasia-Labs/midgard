@@ -83,7 +83,6 @@ export const decodeDaPayloadStrict = (
       "forced_transaction_preimages",
       body.forced_transaction_preimages,
     );
-    validateEntries("cek_program_material", body.cek_program_material);
     validateEntries("deposits", body.deposits);
     validateEntries("transition_trace", body.transition_trace);
     validateEntries("event_to_step", body.event_to_step);

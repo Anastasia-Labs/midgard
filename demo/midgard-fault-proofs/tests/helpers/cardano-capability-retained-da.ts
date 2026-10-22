@@ -1,8 +1,4 @@
 import {
-  decodeMidgardCekProgramMaterialSidecar,
-  encodeMidgardCekProgramMaterialDaValue,
-} from "@al-ft/midgard-core/cek-proof";
-import {
   computeMidgardNativeTxId,
   computeMidgardNativeTxProofCommitment,
   decodeMidgardNativeTxFullFromCanonicalCbor,
@@ -76,12 +72,10 @@ export type StrictRetainedDaPairFixture = {
 
 export const buildStrictRetainedDaPairFixture = async ({
   canonicalTransactionCbor,
-  canonicalMaterialSidecarCbor,
   resolvedReferenceUtxos,
   withForcedTwin = true,
 }: {
   readonly canonicalTransactionCbor: Uint8Array;
-  readonly canonicalMaterialSidecarCbor?: Uint8Array;
   readonly resolvedReferenceUtxos?: readonly SDK.DaPayloadEntry[];
   /**
    * Also commit the transaction as a valid forced transaction ahead of the
@@ -220,17 +214,6 @@ export const buildStrictRetainedDaPairFixture = async ({
     fixtureValidationTrace(normalEventKey, transactionIdHex),
   ];
   const validationTraces = validationTraceMembers.map(({ entry }) => entry);
-  const cekProgramMaterial = sorted(
-    (canonicalMaterialSidecarCbor === undefined
-      ? []
-      : decodeMidgardCekProgramMaterialSidecar(canonicalMaterialSidecarCbor)
-    ).map(
-      (entry): SDK.DaPayloadEntry => [
-        Buffer.from(entry.root).toString("hex"),
-        encodeMidgardCekProgramMaterialDaValue(entry).toString("hex"),
-      ],
-    ),
-  );
   const roots = {
     withdrawals: await countedRoot(SDK.ROOT_DOMAINS.withdrawals, []),
     forcedTransactions: await countedRoot(
@@ -247,10 +230,6 @@ export const buildStrictRetainedDaPairFixture = async ({
       transitionTrace,
     ),
     eventToStep: await countedRoot(SDK.ROOT_DOMAINS.eventToStep, eventToStep),
-    validationTraces: await countedRoot(
-      SDK.ROOT_DOMAINS.validationTraces,
-      validationTraces,
-    ),
   };
   const counts: SDK.DaPayloadCounts = {
     withdrawalCount: 0n,
@@ -270,8 +249,11 @@ export const buildStrictRetainedDaPairFixture = async ({
     depositsRoot: roots.deposits.root,
     transitionTraceRoot: roots.transitionTrace.root,
     eventToStepRoot: roots.eventToStep.root,
-    validationTracesRoot: roots.validationTraces.root,
     ...counts,
+    // The header pins the validation-trace pair to the empty tree; the body
+    // keeps the built members and their count.
+    validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    validationTraceCount: 0n,
     startTime: 0n,
     endTime: 1n,
     blockSlot: 0n,
@@ -302,7 +284,6 @@ export const buildStrictRetainedDaPairFixture = async ({
             ],
           ]
         : [],
-      cek_program_material: cekProgramMaterial,
       deposits: [],
       transition_trace: sorted(transitionTrace),
       event_to_step: sorted(eventToStep),

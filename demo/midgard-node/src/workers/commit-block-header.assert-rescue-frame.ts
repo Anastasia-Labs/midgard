@@ -3,9 +3,6 @@ import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Option } from "effect";
 
-import { TxAdmissionsDB } from "../database/index.js";
-import { DatabaseError } from "../database/utils/common.js";
-import { Columns as TxColumns } from "../database/utils/tx.js";
 import { unixTimeToSlotForConfig } from "../lucid-time.js";
 import { emptyRootHexProgram, type processMpfs } from "../mpf/index.js";
 import type { Lucid } from "../services/index.js";
@@ -20,11 +17,7 @@ import {
   localizeSdkEffect,
   updateLatestBlocksDatumAndGetTheNewHeaderLocal,
 } from "./commit-block-header/state-queue.js";
-import {
-  assertPreSubmitDaPayloadSize,
-  daProgramMaterialFromSidecars,
-  forcedProgramMaterialSidecars,
-} from "./commit-block-header/submission.assert-pre-submit-da-payload-size.js";
+import { assertPreSubmitDaPayloadSize } from "./commit-block-header/submission.assert-pre-submit-da-payload-size.js";
 import { makeEventCommitments } from "./commit-block-header/transition-commitments.js";
 import { selectCommitRoots } from "./utils/commit-block-planner.js";
 
@@ -94,10 +87,6 @@ export const assertExactCommitRescueDaFrame = (input: {
           depositCount: BigInt(built.includedDepositEntries.length),
           transitionStepCount: BigInt(built.transitionStepCount),
         },
-        {
-          validationTracesRoot: built.validationTracesRoot,
-          validationTraceCount: BigInt(built.validationTraceCount),
-        },
       ),
     );
     yield* input.lucid.switchToOperatorsMainWallet;
@@ -120,32 +109,6 @@ export const assertExactCommitRescueDaFrame = (input: {
       },
     );
     const headerHash = yield* hashBlockHeaderLocal(header);
-    const sidecars = yield* TxAdmissionsDB.retrieveProgramMaterialSidecars(
-      built.processedMempoolTxs.map((row) => row[TxColumns.TX_ID]),
-    );
-    if (sidecars.length !== built.processedMempoolTxs.length)
-      return yield* Effect.fail(
-        new DatabaseError({
-          table: TxAdmissionsDB.payloadTableName,
-          message: "Exact rescue lacks canonical ordinary program material",
-          cause: "missing-sidecar",
-        }),
-      );
-    const cekProgramMaterial = yield* Effect.try({
-      try: () =>
-        daProgramMaterialFromSidecars([
-          ...sidecars.map((row) => row.sidecarCbor),
-          ...forcedProgramMaterialSidecars(
-            built.includedForcedTransactionEntries,
-          ),
-        ]),
-      catch: (cause) =>
-        new DatabaseError({
-          table: TxAdmissionsDB.payloadTableName,
-          message: "Exact rescue has conflicting program material",
-          cause,
-        }),
-    });
     return yield* assertPreSubmitDaPayloadSize({
       headerHash,
       header,
@@ -156,6 +119,5 @@ export const assertExactCommitRescueDaFrame = (input: {
       transitionTraceMembers: built.transitionTraceMembers,
       eventToStepMembers: built.eventToStepMembers,
       validationTraceMembers: built.validationTraceMembers,
-      cekProgramMaterial,
     });
   });

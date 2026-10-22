@@ -1,6 +1,7 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   type Assets,
+  type BuildTxWithRedeemer,
   Data,
   type TxBuilder,
   type UTxO,
@@ -10,12 +11,11 @@ import { Effect } from "effect";
 import { type AvailabilityFixtureOptions } from "./availability-challenge-emulator.availability-redeemer-script.js";
 import { createFixture } from "./availability-challenge-emulator.create-fixture.js";
 import {
-  type AvailabilityLayout,
-  index,
   inline,
-  mintIndex,
+  inputAt,
+  mintAt,
   outRef,
-  refIndex,
+  referenceAt,
 } from "./availability-challenge-emulator.measure-availability-transaction.js";
 
 // ---------------------------------------------------------------------------
@@ -65,22 +65,19 @@ export const createAvailabilityFixture = async (
   return { ...fixture, target };
 };
 
-export const queueUpdate = (
-  ctx: AvailabilityLayout,
-  policy: string,
-  queue: UTxO,
-  outputIndex: bigint,
-) =>
-  Data.to(
-    {
-      AvailabilityStatusUpdate: {
-        state_queue_input_index: index(ctx, queue),
-        state_queue_output_index: outputIndex,
-        availability_mint_redeemer_index: mintIndex(ctx, policy),
+export const queueUpdate =
+  (policy: string, queue: UTxO, outputIndex: bigint): BuildTxWithRedeemer =>
+  (ctx) =>
+    Data.to(
+      {
+        AvailabilityStatusUpdate: {
+          state_queue_input_index: inputAt(ctx, queue),
+          state_queue_output_index: outputIndex,
+          availability_mint_redeemer_index: mintAt(ctx, policy),
+        },
       },
-    },
-    SDK.StateQueueSpendRedeemer,
-  );
+      SDK.StateQueueSpendRedeemer,
+    );
 
 export const yieldTx = (
   f: AvailabilityFixture,
@@ -101,7 +98,8 @@ export const yieldTx = (
  * Inputs: the challenger's exact funding coin and the Attested queue node.
  * Outputs: the record (0), the node now `Challenged` (1), the tranche
  * threads (2..), the terminal accumulator (last). The commitment is explicit:
- * it must be the preimage of the node's `Attested{commitment_hash}`.
+ * it must be the preimage of the node's `Attested{commitment_hash}`. The
+ * funding coin is self-paid unless `funds.funding` names a prepared one.
  */
 export const openAvailability = async (
   f: AvailabilityFixture,
@@ -110,6 +108,7 @@ export const openAvailability = async (
     readonly commitment: SDK.DaAvailabilityCommitment;
   },
   validity: { validFrom?: bigint; validTo?: bigint } = {},
+  funds: { readonly funding?: UTxO } = {},
 ) => {
   const { lucid, contracts } = f;
   const parameters = f.parameters;
@@ -119,16 +118,17 @@ export const openAvailability = async (
     parameters.challenger_bond_lovelace +
     parameters.challenge_record_lovelace +
     fee;
-  const fundingOutputs = await f.submit(
-    "prepare isolated challenger funding",
-    lucid.newTx().pay.ToAddress(f.challenger.address, {
-      lovelace: fundingLovelace,
-    }),
-    true,
-  );
-  const funding = fundingOutputs.find(
-    (utxo) => utxo.assets.lovelace === fundingLovelace,
-  );
+  const funding =
+    funds.funding ??
+    (
+      await f.submit(
+        "prepare isolated challenger funding",
+        lucid.newTx().pay.ToAddress(f.challenger.address, {
+          lovelace: fundingLovelace,
+        }),
+        true,
+      )
+    ).find((utxo) => utxo.assets.lovelace === fundingLovelace);
   if (!funding) throw new Error("Missing isolated challenger funding");
   const validFrom = validity.validFrom ?? BigInt(f.emulator.now());
   const validTo = validity.validTo ?? validFrom + 60_000n;
@@ -168,6 +168,8 @@ export const openAvailability = async (
        * of the preimage of the node's `Attested{commitment_hash}`.
        */
       commitment?: SDK.DaAvailabilityCommitment;
+      /** A further wallet coin spent beside the funding, returned whole last. */
+      extraInput?: UTxO;
     } = {},
   ) => {
     const outputs = planAt(
@@ -193,16 +195,12 @@ export const openAvailability = async (
         ? "availability-challenge close withdrawal"
         : "availability-challenge open withdrawal",
     );
-    const ctx: AvailabilityLayout = {
-      inputs: [funding, queue],
-      policies: [policy],
-      references: [
-        f.hubOracleRefInput,
-        f.reference("availability-challenge minting"),
-        yieldReference,
-        f.reference("state-queue spending"),
-      ],
-    };
+    const references = [
+      f.hubOracleRefInput,
+      f.reference("availability-challenge minting"),
+      yieldReference,
+      f.reference("state-queue spending"),
+    ];
     const mint: Assets = {
       [policy + plan.challengeAssetName]: 1n,
       [terminalUnit]: 1n,
@@ -221,18 +219,17 @@ export const openAvailability = async (
       .validFrom(Number(validFrom))
       .validTo(Number(validTo))
       .collectFrom([funding])
-      .collectFrom([queue], queueUpdate(ctx, policy, queue, 1n))
-      .readFrom([...ctx.references])
-      .mintAssets(
-        mint,
+      .collectFrom([queue], queueUpdate(policy, queue, 1n))
+      .readFrom(references)
+      .mintAssets(mint, (ctx) =>
         Data.to(
           {
             OpenChallenge: {
-              yield_to_ref_input_index: refIndex(ctx, yieldReference),
-              hub_oracle_ref_input_index: refIndex(ctx, f.hubOracleRefInput),
+              yield_to_ref_input_index: referenceAt(ctx, yieldReference),
+              hub_oracle_ref_input_index: referenceAt(ctx, f.hubOracleRefInput),
               record_output_index: 0n,
-              challenger_input_index: index(ctx, funding),
-              state_queue_input_index: index(ctx, queue),
+              challenger_input_index: inputAt(ctx, funding),
+              state_queue_input_index: inputAt(ctx, queue),
               state_queue_output_index: 1n,
               first_tranche_output_index: 2n,
               terminal_accumulator_output_index: BigInt(
@@ -279,6 +276,10 @@ export const openAvailability = async (
       ),
       { lovelace: plan.terminalAccumulatorFundingLovelace, [terminalUnit]: 1n },
     );
+    if (options.extraInput)
+      tx = tx
+        .collectFrom([options.extraInput])
+        .pay.ToAddress(options.extraInput.address, options.extraInput.assets);
     if (!options.omitSigner) tx = tx.addSignerKey(f.challengerKey);
     if (!options.omitYield)
       tx = yieldTx(f, tx, options.wrongYield ? "close" : "open");

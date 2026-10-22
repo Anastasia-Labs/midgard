@@ -8,7 +8,6 @@ import "./support/emulator/harness.js";
 import "./support/emulator/registered-chain.js";
 import "./support/emulator/setup-tx.js";
 import "./support/lifecycle-coverage.js";
-import "./support/measured-fit-ledger.js";
 import "./support/submit-init-emulator-shared.js";
 
 import {
@@ -45,6 +44,7 @@ import {
 import { parseSubmitStep01TxInclusion } from "../src/step-support.js";
 import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
+import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import {
   forcedPrepared,
   forcedSetup,
@@ -129,6 +129,7 @@ describe("field-preimage-length-mismatch registered-chain lifecycle", () => {
   );
 
   it("executes certified maximum evidence, refuses a substituted chunk order, and refuses the adjacent actual length", async () => {
+    const ownOutputs = createOwnOutputJournal();
     const fixture = await setup({ acceptedPreimageBytes: 32_768 });
     const plan = planMidgardFieldCarriage({
       owner: Buffer.from(fixture.harness.proverSigner.paymentKeyHash, "hex"),
@@ -160,6 +161,7 @@ describe("field-preimage-length-mismatch registered-chain lifecycle", () => {
       fixture.harness.emulator,
       () =>
         publishFaultProofFieldCarriage({
+          ownOutputs,
           lucid: fixture.harness.proverLucid,
           signer: fixture.harness.proverSigner,
           planned: {
@@ -178,6 +180,7 @@ describe("field-preimage-length-mismatch registered-chain lifecycle", () => {
       fixture.harness.emulator,
       () =>
         publishFaultProofFieldCarriage({
+          ownOutputs,
           lucid: fixture.harness.proverLucid,
           signer: fixture.harness.proverSigner,
           planned,
@@ -203,6 +206,7 @@ describe("field-preimage-length-mismatch registered-chain lifecycle", () => {
       fixture.harness.emulator,
       () =>
         certifyFaultProofFieldCarriage({
+          ownOutputs,
           lucid: fixture.harness.proverLucid,
           network,
           signer: fixture.harness.proverSigner,
@@ -591,7 +595,6 @@ describe("field-preimage-length-mismatch registered-chain lifecycle", () => {
         submitFieldPreimageLengthForcedDispatch({
           config: fixture.config,
           threadOutRef: init.result.nextThreadOutRef,
-          direction: 1n,
         }),
     );
     emitFit("forced-dispatch", dispatch.measurement);
@@ -704,7 +707,7 @@ describe("field-preimage-length-mismatch registered-chain lifecycle", () => {
     coverage.scenario("permanent_proof_token_and_descendant_removal");
   }, 180_000);
 
-  it("refuses direction 0 against a rejected leaf before construction and cancels the forced authenticator", async () => {
+  it("refuses an acceptance finding against a rejected leaf before construction and cancels the forced authenticator", async () => {
     const fixture = await setup({ forced: true });
     if (fixture.forcedFixture === undefined)
       throw new Error("missing forced fixture");
@@ -715,7 +718,6 @@ describe("field-preimage-length-mismatch registered-chain lifecycle", () => {
     const dispatch = await submitFieldPreimageLengthForcedDispatch({
       config: fixture.config,
       threadOutRef: init.nextThreadOutRef,
-      direction: 0n,
     });
     const honestMembership = await buildForcedTransactionLeafMembershipProof({
       reconstruction: fixture.forcedFixture.reconstruction,
@@ -770,7 +772,6 @@ describe("field-preimage-length-mismatch registered-chain lifecycle", () => {
     const dispatch = await submitFieldPreimageLengthForcedDispatch({
       config: fixture.config,
       threadOutRef: init.nextThreadOutRef,
-      direction: 1n,
     });
     const authentication = await submitFieldPreimageLengthForcedAuthentication({
       config: fixture.config,
@@ -826,7 +827,6 @@ describe("field-preimage-length-mismatch registered-chain lifecycle", () => {
         submitFieldPreimageLengthForcedDispatch({
           config: fixture.config,
           threadOutRef: init.result.nextThreadOutRef,
-          direction: 0n,
         }),
     );
     emitFit("forced-accepted-dispatch", dispatch.measurement);

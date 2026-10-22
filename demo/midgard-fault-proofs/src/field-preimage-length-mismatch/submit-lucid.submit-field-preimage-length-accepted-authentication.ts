@@ -33,17 +33,15 @@ import {
 } from "./submit-lucid.submit-field-preimage-length-cancel.js";
 import type { PreparedFieldPreimageLengthWorkflow } from "./workflow.js";
 
-/** Real Lucid step-01 forced dispatch; the direction comes from admitted evidence. */
+/** Real Lucid step-01 dispatch; step 02 derives direction from the authenticated leaf. */
 export const submitFieldPreimageLengthForcedDispatch = async ({
   config,
   threadOutRef,
-  direction,
   preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly config: ManifestBoundFieldPreimageLengthConfig;
   readonly threadOutRef: string;
-  readonly direction: 0n | 1n;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitFieldPreimageLengthForcedDispatchResult> => {
@@ -59,7 +57,7 @@ export const submitFieldPreimageLengthForcedDispatch = async ({
   const datum = Data.to(
     {
       fraud_prover: config.signer.paymentKeyHash,
-      data: { PendingForced: { direction } },
+      data: "PendingForced",
     } as never,
     FieldPreimageLengthStep02DatumSchema as never,
   );
@@ -86,7 +84,6 @@ export const submitFieldPreimageLengthForcedDispatch = async ({
         Continue: [
           {
             RecordForced: {
-              direction,
               input_index: layout.inputIndex,
               output_index: layout.outputIndex,
             },
@@ -201,6 +198,9 @@ export const submitFieldPreimageLengthAcceptedAuthentication = async ({
     | { readonly inputIndex: bigint; readonly outputIndex: bigint }
     | undefined;
   const redeemer = ((ctx) => {
+    // §8.7 carriage indices count into the built reference-input set.
+    const resolvedClaim =
+      claimResolver === undefined ? claim! : claimResolver(ctx.referenceInputs);
     requireOwnSpendPurpose(ctx, threadUtxo, `${LABEL} accepted auth`);
     layout = {
       inputIndex: requireInputIndex(ctx, threadUtxo, LABEL),
@@ -230,13 +230,8 @@ export const submitFieldPreimageLengthAcceptedAuthentication = async ({
     expectedHash: step.spendingScriptHash,
     role: "accepted step-02",
   });
-  const completeReferences = [reference, ...carriageReferenceInputs];
-  const resolvedClaim =
-    claimResolver?.(completeReferences) ??
-    claim ??
-    (() => {
-      throw new Error(`${LABEL}: accepted authentication omitted field claim`);
-    })();
+  if (claimResolver === undefined && claim === undefined)
+    throw new Error(`${LABEL}: accepted authentication omitted field claim`);
   config.signer.selectWallet(config.lucid);
   const feeInput = selectFeeInput(await config.lucid.wallet().getUtxos());
   const unsigned = await config.lucid

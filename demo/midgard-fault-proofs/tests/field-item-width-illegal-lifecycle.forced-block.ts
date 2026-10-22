@@ -12,6 +12,7 @@ import { getAddressDetails } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
 import {
+  fieldItemWidthCoordinateIsSupported,
   type FieldItemWidthEvidence,
   prepareFieldItemWidthEvidence,
 } from "../src/field-item-width-illegal/index.js";
@@ -49,8 +50,8 @@ export const acceptedEvidence = (shape: WidthShape): FieldItemWidthEvidence =>
       subject: acceptedVerdictSubject(
         computeMidgardNativeTxId(shape.nativeTx).toString("hex"),
       ),
-      fieldIndex: shape.fieldIndex,
-      itemIndex: shape.itemIndex,
+      fieldIndex: BigInt(shape.fieldIndex),
+      itemIndex: BigInt(shape.itemIndex),
     },
     fieldPreimage: shape.fieldPreimage,
     committedFieldHashHex: midgardFieldCommitment(shape.fieldPreimage).toString(
@@ -92,7 +93,6 @@ type Harness = Awaited<ReturnType<typeof makeHarness>>;
 /** The chunk publications, the certificate, then the step: recorded apart. */
 export const recordCarriage = (
   prefix: string,
-  shape: string,
   captured: Awaited<ReturnType<Harness["step02"]>>,
   expectedChunks: number,
 ): void => {
@@ -102,14 +102,10 @@ export const recordCarriage = (
   } else {
     expect(all).toHaveLength(expectedChunks + 2);
     for (let index = 0; index < expectedChunks; index += 1)
-      record(
-        `${prefix}-carriage-chunk0${(index + 1).toString()}`,
-        shape,
-        all[index]!,
-      );
-    record(`${prefix}-carriage-certificate`, shape, all[expectedChunks]!);
+      record(`${prefix}-carriage-chunk0${(index + 1).toString()}`, all[index]!);
+    record(`${prefix}-carriage-certificate`, all[expectedChunks]!);
   }
-  record(`${prefix}-step02`, shape, captured.measurement);
+  record(`${prefix}-step02`, captured.measurement);
 };
 
 export const acceptedBlock = async (h: Harness, transactions: WidthShape[]) => {
@@ -130,7 +126,14 @@ export const acceptedBlock = async (h: Harness, transactions: WidthShape[]) => {
   return { setup, inclusions: block.inclusions };
 };
 
-const forcedBlock = async (h: Harness, shape: WidthShape) => {
+export const forcedBlock = async (
+  h: Harness,
+  shape: WidthShape,
+  coordinate = {
+    fieldIndex: BigInt(shape.fieldIndex),
+    itemIndex: BigInt(shape.itemIndex),
+  },
+) => {
   const credential = getAddressDetails(
     await h.harness.funderLucid.wallet().address(),
   ).paymentCredential;
@@ -143,7 +146,12 @@ const forcedBlock = async (h: Harness, shape: WidthShape) => {
         h.harness.emulator.now() + 120_000,
       ) - 1,
     nativeTx: shape.nativeTx,
-    rejectionReason: widthReason(shape.fieldIndex, shape.itemIndex),
+    rejectionReason: {
+      FieldItemWidthIllegal: {
+        field_index: coordinate.fieldIndex,
+        item_index: coordinate.itemIndex,
+      },
+    },
   });
   const setup = await submitSetupTx({
     lucid: h.harness.funderLucid,
@@ -157,23 +165,31 @@ const forcedBlock = async (h: Harness, shape: WidthShape) => {
     reconstruction: forced.reconstruction,
     eventKey: forced.eventKey,
   });
-  const evidence = prepareFieldItemWidthEvidence({
-    finding: {
-      subject: forcedVerdictSubject({
-        transactionId: forced.transaction.tx_id,
-        sourceKey: membership.key,
-        rejectionReason: forced.rejectionReason,
-      }),
-      fieldIndex: shape.fieldIndex,
-      itemIndex: shape.itemIndex,
-    },
-    fieldPreimage: shape.fieldPreimage,
-    committedFieldHashHex: midgardFieldCommitment(shape.fieldPreimage).toString(
-      "hex",
-    ),
-  });
+  const finding = {
+    subject: forcedVerdictSubject({
+      transactionId: forced.transaction.tx_id,
+      sourceKey: membership.key,
+      rejectionReason: forced.rejectionReason,
+    }),
+    ...coordinate,
+  };
+  const evidence = fieldItemWidthCoordinateIsSupported(
+    coordinate.fieldIndex,
+    coordinate.itemIndex,
+  )
+    ? prepareFieldItemWidthEvidence({
+        finding,
+        fieldPreimage: shape.fieldPreimage,
+        committedFieldHashHex: midgardFieldCommitment(
+          shape.fieldPreimage,
+        ).toString("hex"),
+      })
+    : prepareFieldItemWidthEvidence({ finding });
   expect(evidence.decisiveFaultHolds).toBe(shape.illegal);
-  const source = { header: forced.header, membership, direction: 1n };
+  const source = {
+    header: forced.header,
+    membership,
+  };
   return { forced, setup, membership, evidence, source };
 };
 
@@ -190,33 +206,29 @@ export const forcedSuccess = async (
   const block = await forcedBlock(h, shape);
   const { setup, evidence, source } = block;
   const initialized = await h.init(setup.fraudulentBlockOutRef);
-  record(`${prefix}-init`, shape.label, initialized.measurement);
+  record(`${prefix}-init`, initialized.measurement);
   const bound = await h.step01Forced(
     h.threadOf(initialized.result),
     evidence,
     source,
   );
-  record(`${prefix}-step01`, shape.label, bound.measurement);
+  record(`${prefix}-step01`, bound.measurement);
   const authenticated = await h.step02(
     bound.result.nextThreadOutRef,
     evidence,
     shape,
   );
-  recordCarriage(prefix, shape.label, authenticated, expectedChunks);
+  recordCarriage(prefix, authenticated, expectedChunks);
   const proven = await h.step03(
     authenticated.result.nextThreadOutRef,
     evidence,
   );
   expect(proven.result.fraudProofUnit).toBeTruthy();
-  record(`${prefix}-step03-proof-mint`, shape.label, proven.measurement);
+  record(`${prefix}-step03-proof-mint`, proven.measurement);
   coverage.reason(REASON_ARM, "forced_rejection_wrong");
   coverage.scenario("wrongful_forced_rejection_success");
   await beforeRemoval({ ...h, ...block });
-  record(
-    `${prefix}-remove`,
-    shape.label,
-    (await h.removal(setup.headerHash)).measurement,
-  );
+  record(`${prefix}-remove`, (await h.removal(setup.headerHash)).measurement);
 };
 
 /** Init → forced step 01 → step 02, then the terminal step must refuse. */

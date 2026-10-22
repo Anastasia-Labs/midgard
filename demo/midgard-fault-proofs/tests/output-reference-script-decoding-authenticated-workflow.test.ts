@@ -28,7 +28,6 @@ import {
   outputReferenceScriptDecodingStageFromL1,
   OutputReferenceScriptResultClasses,
   prepareOutputReferenceScriptDecodingEvidence,
-  runOrResumeManifestBoundOutputReferenceScriptDecodingWorkflow,
 } from "../src/output-reference-script-decoding/index.js";
 import { makeNativeTx } from "./support/submit-init-emulator-shared.js";
 
@@ -220,16 +219,5 @@ describe("outputReferenceScriptDecoding production workflow", () => {
         resultClass: BigInt(OutputReferenceScriptResultClasses.Pending),
       }),
     ).toBe("step06");
-  });
-
-  it("rejects a caller-authored evidence surface before any transport access", async () => {
-    await expect(
-      runOrResumeManifestBoundOutputReferenceScriptDecodingWorkflow({
-        workflow: {},
-        sources: [],
-        journal: {},
-        evidence: {},
-      } as never),
-    ).rejects.toThrow(/rejects caller-authored evidence inputs/u);
   });
 });

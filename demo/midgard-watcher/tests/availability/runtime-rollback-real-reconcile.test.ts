@@ -138,7 +138,7 @@ const confirmedIntent = async (journalPath: string) => {
   io.actor = lucidModule.paymentCredentialOf(account.address).hash;
   const [fundingInput] = await lucid.wallet().getUtxos();
   const built = await buildDaAvailabilityFundingPreparationTx(lucid, {
-    fundingInput: fundingInput!,
+    walletInputs: [fundingInput!],
     outputLovelace: 50_000_000n,
     feeLovelace: 1_000_000n,
     validFrom: BigInt(emulator.now() - 60_000),

@@ -1,4 +1,3 @@
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import type { QueuedTx } from "@al-ft/midgard-validation";
 import { Effect } from "effect";
 
@@ -35,7 +34,6 @@ export const fetchLocalUtxos = (
 export const toQueuedTx = (built: BuiltTransferTx): QueuedTx => ({
   txId: built.txId,
   txCbor: built.txCbor,
-  programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([]),
   arrivalSeq: 0n,
   createdAt: new Date(),
 });

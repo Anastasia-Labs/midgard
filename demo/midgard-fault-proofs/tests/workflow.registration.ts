@@ -3,7 +3,10 @@ import "./workflow.canonical-reobservation-with-pending-descendants.js";
 import { expect, it, vi } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
-import { reconcileWorkflowFundingSubmissionHandoff } from "../src/workflow/funding-reservation-permit.js";
+import {
+  reconcileWorkflowFundingSubmissionHandoff,
+  workflowFundingHandoffJournalLost,
+} from "../src/workflow/funding-reservation-permit.js";
 import {
   FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
   type FraudProofWorkflowJournalEvent,
@@ -115,6 +118,75 @@ it.each(["prove", "remove", "superseded"])(
     ).not.toThrow();
   },
 );
+
+it("re-anchors a recorded handoff in a lost and recreated journal, and only there", async () => {
+  const evidence = await canonicalEvidence();
+  const adapter = makeAdapter({
+    reconcile: async ({ txHash }) => ({ kind: "pending", txHash: txHash! }),
+  });
+  const first = await run({
+    evidence,
+    adapter,
+    journal: new MemoryFraudProofWorkflowJournalStore(),
+  });
+  if (first.kind !== "pending")
+    throw new Error("fixture did not leave its action pending");
+  const entries = first.entries;
+  const index = entries.findIndex(
+    ({ event }) => event.kind === "preflight_passed",
+  );
+  const prepared = entries[1]!.event;
+  const preflight = entries[index]!.event;
+  const submissionIntent = entries[index + 1]!.event;
+  if (
+    prepared.kind !== "prepared" ||
+    preflight.kind !== "preflight_passed" ||
+    submissionIntent.kind !== "submission_intent"
+  )
+    throw new Error("fixture lacks its exact prepared submission");
+  const handoff = {
+    workflowId: first.workflowId,
+    identity: first.identity,
+    preparedArtifactDigest: prepared.artifactDigest,
+    expectedJournalSequence: index + 3,
+    preflight,
+    submissionIntent: { ...submissionIntent, attempt: 2 },
+  };
+  // The journal kept by the store's handoff is gone; the runner recreated
+  // its started and prepared records and nothing else.
+  const recreated = entries.slice(0, 2);
+  expect(() =>
+    reconcileWorkflowFundingSubmissionHandoff({ handoff, entries: recreated }),
+  ).toThrow("funding handoff differs from its existing prepared workflow");
+  expect(workflowFundingHandoffJournalLost(handoff, recreated)).toBe(true);
+  // A journal that holds an action, or anchors the handoff, was not lost.
+  expect(workflowFundingHandoffJournalLost(handoff, entries)).toBe(false);
+  const anchored = {
+    ...handoff,
+    expectedJournalSequence: recreated.length,
+    submissionIntent,
+  };
+  expect(workflowFundingHandoffJournalLost(anchored, recreated)).toBe(false);
+  const restored = [...recreated];
+  for (const event of reconcileWorkflowFundingSubmissionHandoff({
+    handoff: anchored,
+    entries: recreated,
+  }))
+    restored.push({ ...entries[0]!, sequence: restored.length, event });
+  expect(restored.map(({ event }) => event)).toEqual([
+    entries[0]!.event,
+    prepared,
+    preflight,
+    submissionIntent,
+  ]);
+  expect(() =>
+    validateFraudProofWorkflowJournal({
+      workflowId: first.workflowId,
+      entries: restored,
+      expectedIdentity: first.identity,
+    }),
+  ).not.toThrow();
+});
 
 it("reuses proof material after the same authenticated commitment is re-included at a new L1 point", async () => {
   const fixture = await buildCanonicalBlockFixture({ transactions: [] });

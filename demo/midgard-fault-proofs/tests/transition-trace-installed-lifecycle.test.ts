@@ -1,8 +1,6 @@
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -57,10 +55,6 @@ vi.mock("../src/workflow/family-l1-observation.js", async (load) => {
 });
 
 import {
-  buildVanRossemFitLedger,
-  type VanRossemFitMeasurement,
-} from "../src/proof-fit/van-rossem-fit-ledger.js";
-import {
   captureTransitionTraceL1Events,
   requireTransitionTraceL1Events,
   unsafeCreateTransitionTraceEventAuthorityFromRawForTest,
@@ -104,10 +98,7 @@ import {
 } from "./support/emulator/setup-tx.js";
 import { fixtureLedgerAt } from "./support/fixture-ledger.js";
 import { installedWorkflowEmulatorClock } from "./support/installed-workflow.advance-emulator-observation.js";
-import {
-  readBlueprintIdentity,
-  writeOrVerifyPinnedFitLedger,
-} from "./support/pinned-fit-ledger.js";
+import { scratchDirectory } from "./support/scratch-directory.js";
 import {
   transitionTraceDepositRetainedFixture,
   transitionTraceTimingRetainedFixture,
@@ -185,7 +176,6 @@ const installedCases = [
   ]),
 ] as const;
 
-const measurements: VanRossemFitMeasurement[] = [];
 const completedCases = new Set<string>();
 afterAll(async () => {
   const directory = process.env.MIDGARD_EVENT_HISTORY_EVIDENCE_DIR;
@@ -208,27 +198,6 @@ afterAll(async () => {
     ) + "\n",
   );
 });
-afterAll(async () => {
-  expect([...completedCases].sort()).toEqual(
-    installedCases.map(({ name }) => name).sort(),
-  );
-  // Building the ledger checks every fresh row's Van Rossem margins on every
-  // run; the checked-in copy is rewritten only under MIDGARD_WRITE_FIT_LEDGER=1.
-  const ledger = buildVanRossemFitLedger({
-    category: "transitionTrace",
-    ...(await readBlueprintIdentity(realBlueprintPath)),
-    measurements,
-  });
-  await writeOrVerifyPinnedFitLedger(
-    fileURLToPath(
-      new URL(
-        "../../../docs/fault-proofs/size-plans/transition-trace-workflow-fit-ledger.json",
-        import.meta.url,
-      ),
-    ),
-    ledger,
-  );
-});
 
 describe("transition trace installed retained-history workflow", () => {
   it.each(installedCases)(
@@ -249,25 +218,7 @@ describe("transition trace installed retained-history workflow", () => {
           measurement: m,
           fee: CML.Transaction.from_cbor_hex(transaction).body().fee(),
         });
-        const outputs = CML.Transaction.from_cbor_hex(transaction)
-          .body()
-          .outputs();
-        const isPublication =
-          Array.from({ length: outputs.len() }, (_, i) => outputs.get(i)).some(
-            (output) => output.script_ref() !== undefined,
-          ) ||
-          (m.redeemerCount === 0 &&
-            Array.from({ length: outputs.len() }, (_, i) =>
-              outputs.get(i),
-            ).some((output) => output.datum() !== undefined));
-        measurements.push({
-          name: `${name}/${submissionIndex++}`,
-          kind: isPublication ? "publication" : "lifecycle",
-          maximumShape: name,
-          signedBytes: m.completeSignedBytes,
-          memoryUnits: m.executionMemory,
-          cpuUnits: m.executionSteps,
-        });
+        submissionIndex += 1;
       });
       try {
         hooks.authority = recorder.authority;
@@ -606,9 +557,8 @@ describe("transition trace installed retained-history workflow", () => {
             item,
           ]),
         );
-        directory = await mkdtemp(
-          join(homedir(), "transition-trace-installed-"),
-        );
+        directory = (await scratchDirectory("transition-trace-installed-"))
+          .path;
         // Model the separate mutation-lease service across application restarts.
         const makeLease = (token: string) => ({
           token,

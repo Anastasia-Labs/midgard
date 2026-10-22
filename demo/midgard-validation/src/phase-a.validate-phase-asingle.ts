@@ -1,10 +1,5 @@
+import { type LedgerSignatureVerifierUnavailableError } from "@al-ft/midgard-core";
 import {
-  decodeMidgardCekProgramMaterialSidecar,
-  verifyMidgardCekProgramMaterial,
-  verifyMidgardCekProgramMaterialBundle,
-} from "@al-ft/midgard-core/cek-proof";
-import {
-  decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeMidgardVersionedScript,
   EMPTY_NULL_ROOT,
   verifyMidgardNativeScript,
@@ -15,16 +10,19 @@ import {
   type MidgardConsensusProfile,
 } from "@al-ft/midgard-core/consensus-profile";
 import { validateMidgardConsensusTxCbor } from "@al-ft/midgard-core/consensus-validation";
-import { collectMidgardAttachedProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
 import { Effect } from "effect";
 
+import { carriedPlutusWitnessScriptFault } from "./carried-plutus-script-decoding.js";
+import { awaitLedgerEd25519SignatureReady } from "./ledger-ed25519-ready.js";
 import {
   decodeMidgardSubmittedTxFromCanonicalCbor,
   locateMidgardForcedTxOutputFault,
   locateMidgardForcedTxWitnessScriptFault,
+  type MidgardForcedTxWitnessScriptFault,
   MidgardLedgerTxDecodeError,
   type MidgardRawEnvelopePhaseAProjection,
   projectMidgardMalformedNativeWitnessEnvelopeV1,
+  projectMidgardRawEnvelopeForPhaseAV1,
 } from "./ledger-tx/codec.js";
 import type { MidgardLedgerTx, MidgardSubmittedTx } from "./ledger-tx/types.js";
 import {
@@ -39,7 +37,6 @@ import {
 } from "./phase-a.validate-input-sets.js";
 import {
   PhaseAConfig,
-  PhaseALocalContext,
   PhaseAResult,
   PhaseAValidatedTx,
   QueuedTx,
@@ -49,7 +46,11 @@ import {
 import { buildPhaseAValidatedTx } from "./validation-candidate.js";
 import { oversizedCanonicalOutputIndex } from "./validation-machine/canonical-output-bound.js";
 
-const validateNativeScriptWitnesses = (
+/**
+ * The witness-script phase, in witness item order: a native witness must parse
+ * and hold, and a Plutus witness's stored program must decode.
+ */
+const validateWitnessScripts = (
   tx: MidgardLedgerTx | MidgardRawEnvelopePhaseAProjection["ledgerTx"],
 ): RejectedTx | null => {
   let witnessSigners: ReadonlySet<string> | undefined;
@@ -70,6 +71,12 @@ const validateNativeScriptWitnesses = (
       );
     }
     if (script.language !== "NativeCardano") {
+      const plutusFault = carriedPlutusWitnessScriptFault(
+        tx.txId,
+        script,
+        witness.index,
+      );
+      if (plutusFault !== null) return plutusFault;
       continue;
     }
     witnessSigners ??= new Set(hashHexes(tx.witnessKeyHashes));
@@ -181,32 +188,96 @@ const validateDeclaredExUnits = (
     : null;
 };
 
+/** The first output past the canonical width bound, if the fields derive. */
+const oversizedOutputIndex = (
+  txCbor: Buffer,
+  sourceKind: "normal" | "forced",
+): number | undefined => {
+  try {
+    return oversizedCanonicalOutputIndex(txCbor, sourceKind);
+  } catch {
+    // The canonical decode below refuses bytes whose fields do not derive.
+    return undefined;
+  }
+};
+
+/**
+ * A forced transaction's projection up to its first faulty script item, or
+ * null when a field outside field 6 does not decode either.
+ */
+const projectScriptPrefix = (
+  txCbor: Buffer,
+  outputCount: number | undefined,
+  scriptCount: number,
+): MidgardRawEnvelopePhaseAProjection | null => {
+  try {
+    return projectMidgardRawEnvelopeForPhaseAV1(txCbor, "forced", {
+      outputCount,
+      scriptCount,
+    });
+  } catch {
+    return null;
+  }
+};
+
+/** A field-6 item's fault at its turn in the Phase A native-script scan. */
+const scriptItemRejection = (
+  txId: Buffer,
+  fault: MidgardForcedTxWitnessScriptFault,
+): RejectedTx =>
+  reject(
+    txId,
+    RejectCodes.InvalidFieldType,
+    `script witness ${fault.itemIndex} is not a canonical versioned script`,
+    "phaseANativeScripts",
+    {
+      arm:
+        fault.itemClass === "headerMalformed"
+          ? "WitnessScriptHeaderMalformed"
+          : "WitnessNativeScriptMalformed",
+      index: BigInt(fault.itemIndex),
+    },
+  );
+
 export const validatePhaseASingle = (
   queuedTx: QueuedTx,
   config: PhaseAConfig,
-  localContext: PhaseALocalContext = {},
 ): PhaseAValidatedTx | RejectedTx => {
-  const forced = queuedTx.sourceKind === "forced";
-  // The tx-order mint admits a forced transaction whose outputs or native
-  // script bodies may not decode. Each such item is a machine verdict: the
-  // rejection names the lowest faulty output first.
-  if (forced) {
-    const outputFault = locateMidgardForcedTxOutputFault(queuedTx.txCbor);
-    if (outputFault !== null)
-      return reject(
-        queuedTx.txId,
-        RejectCodes.InvalidOutput,
-        `output[${outputFault.itemIndex}] is not a canonical ledger output`,
-        "canonicalDecode",
-        { arm: "OutputNonCanonical", index: BigInt(outputFault.itemIndex) },
-      );
-  }
+  const sourceKind = queuedTx.sourceKind ?? "normal";
+  const forced = sourceKind === "forced";
+  // The canonical scan bounds every item's width before any later phase.
+  const oversizedOutput = oversizedOutputIndex(queuedTx.txCbor, sourceKind);
+  if (oversizedOutput !== undefined)
+    return reject(
+      queuedTx.txId,
+      RejectCodes.InvalidFieldType,
+      `output[${oversizedOutput}] exceeds the declared canonical output preimage bound`,
+      "canonicalDecode",
+      {
+        arm: "FieldItemWidthIllegal",
+        fieldIndex: 2n,
+        itemIndex: BigInt(oversizedOutput),
+      },
+    );
+  // The tx-order mint admits a forced transaction whose outputs or script
+  // items may not decode. The machine reads an output at the ScriptSources
+  // output scan and a script item at its turn in the Phase A native-script
+  // scan, so each such fault waits for its phase: the decode stops before the
+  // first faulty output, which Phase B refuses after input resolution, and
+  // the projection before the first faulty script item, refused below after
+  // the signatures and the native scripts before it.
+  const heldOutputFault = forced
+    ? (locateMidgardForcedTxOutputFault(queuedTx.txCbor) ?? undefined)
+    : undefined;
+  const heldOutputFaultIndex = heldOutputFault?.itemIndex;
   let submittedTx: MidgardSubmittedTx | null = null;
   let rawProjection: MidgardRawEnvelopePhaseAProjection | null = null;
+  let heldScriptFault: MidgardForcedTxWitnessScriptFault | null = null;
   try {
     submittedTx = decodeMidgardSubmittedTxFromCanonicalCbor(
       queuedTx.txCbor,
-      queuedTx.sourceKind,
+      sourceKind,
+      heldOutputFaultIndex,
     );
   } catch (e) {
     const code =
@@ -225,7 +296,8 @@ export const validatePhaseASingle = (
       code === RejectCodes.InvalidFieldType
         ? projectMidgardMalformedNativeWitnessEnvelopeV1(
             queuedTx.txCbor,
-            queuedTx.sourceKind,
+            sourceKind,
+            heldOutputFaultIndex,
           )
         : null;
     const scriptFault =
@@ -235,51 +307,30 @@ export const validatePhaseASingle = (
     if (malformedNative?.malformedScriptIndex != null) {
       rawProjection = malformedNative.projection;
     } else if (scriptFault !== null) {
-      return reject(
-        queuedTx.txId,
-        RejectCodes.InvalidFieldType,
-        codecErrorDetail(e),
-        "canonicalDecode",
-        {
-          arm:
-            scriptFault.itemClass === "headerMalformed"
-              ? "WitnessScriptHeaderMalformed"
-              : "WitnessNativeScriptMalformed",
-          index: BigInt(scriptFault.itemIndex),
-        },
+      rawProjection = projectScriptPrefix(
+        queuedTx.txCbor,
+        heldOutputFaultIndex,
+        scriptFault.itemIndex,
       );
-    } else {
+      heldScriptFault = scriptFault;
+    }
+    if (rawProjection === null) {
       return reject(
         queuedTx.txId,
-        code,
+        scriptFault !== null ? RejectCodes.InvalidFieldType : code,
         codecErrorDetail(e),
         "canonicalDecode",
-        outputIndex !== undefined
-          ? { arm: "OutputNonCanonical", index: BigInt(outputIndex) }
-          : undefined,
+        scriptFault !== null
+          ? scriptItemRejection(queuedTx.txId, scriptFault).subject
+          : outputIndex !== undefined
+            ? { arm: "OutputNonCanonical", index: BigInt(outputIndex) }
+            : undefined,
       );
     }
   }
 
   const ledgerTx =
     submittedTx !== null ? submittedTx.ledgerTx : rawProjection!.ledgerTx;
-
-  const oversizedOutput = oversizedCanonicalOutputIndex(
-    queuedTx.txCbor,
-    queuedTx.sourceKind ?? "normal",
-  );
-  if (oversizedOutput !== undefined)
-    return reject(
-      ledgerTx.txId,
-      RejectCodes.InvalidFieldType,
-      `output[${oversizedOutput}] exceeds the declared canonical output preimage bound`,
-      "canonicalDecode",
-      {
-        arm: "FieldItemWidthIllegal",
-        fieldIndex: 2n,
-        itemIndex: BigInt(oversizedOutput),
-      },
-    );
 
   if (!ledgerTx.txId.equals(queuedTx.txId)) {
     return reject(
@@ -301,20 +352,7 @@ export const validatePhaseASingle = (
       "unsupported consensus profile",
     );
   }
-  // A forced transaction passed the tx-order mint's admission rules and runs
-  // no program, so it has no normal-admission screen and no program material.
-  if (!forced && queuedTx.programMaterialSidecarCbor == null) {
-    return reject(
-      ledgerTx.txId,
-      RejectCodes.CekProgramMaterial,
-      "V1 admission is missing its canonical program-material sidecar",
-    );
-  }
-  // Normal-admission proof-fit bounds. The raw projection is reject-only: its
-  // native payload cannot decode and must reach the ordered native scan after
-  // the earlier Phase A checks. Normal structured admission/material decoders
-  // would throw on that payload before the machine can name the first faulty
-  // witness. Every admissible candidate also passes the material screen below.
+  // Normal admission retains the proof-fit bounds; Flat decoding is separate.
   const consensusViolation =
     !forced && rawProjection === null
       ? validateMidgardConsensusTxCbor(queuedTx.txCbor)
@@ -326,35 +364,6 @@ export const validatePhaseASingle = (
       `${consensusViolation.featureId}: ${consensusViolation.detail}`,
     );
   }
-  if (!forced && rawProjection === null) {
-    try {
-      const material = decodeMidgardCekProgramMaterialSidecar(
-        queuedTx.programMaterialSidecarCbor!,
-      );
-      const envelopes = collectMidgardAttachedProgramEnvelopes(
-        decodeMidgardNativeTxFullFromCanonicalCbor(queuedTx.txCbor),
-      );
-      if (ledgerTx.referenceInputs.length > 0) {
-        // Phase A has not resolved reference-input outputs yet. Require complete
-        // attached programs now; Phase B checks the exact combined bundle once
-        // the referenced program envelopes are authoritative.
-        for (const envelope of envelopes) {
-          verifyMidgardCekProgramMaterial(envelope, material, {
-            allowUnreachable: true,
-          });
-        }
-      } else {
-        verifyMidgardCekProgramMaterialBundle(envelopes, material);
-      }
-    } catch (cause) {
-      return reject(
-        ledgerTx.txId,
-        RejectCodes.CekProgramMaterial,
-        `invalid V1 program material: ${String(cause)}`,
-      );
-    }
-  }
-
   if (
     ledgerTx.networkId !== undefined &&
     ledgerTx.networkId !== config.expectedNetworkId
@@ -385,13 +394,10 @@ export const validatePhaseASingle = (
   let rejection = validateInputSets(ledgerTx);
   if (rejection === null) rejection = validateValidityInterval(ledgerTx);
   if (rejection === null) rejection = validateRequiredSigners(ledgerTx);
-  if (rejection === null) {
-    rejection = verifyVKeyWitnessSignatures(
-      ledgerTx,
-      localContext.verifyVKeyWitnessSignature,
-    );
-  }
-  if (rejection === null) rejection = validateNativeScriptWitnesses(ledgerTx);
+  if (rejection === null) rejection = verifyVKeyWitnessSignatures(ledgerTx);
+  if (rejection === null) rejection = validateWitnessScripts(ledgerTx);
+  if (rejection === null && heldScriptFault !== null)
+    rejection = scriptItemRejection(ledgerTx.txId, heldScriptFault);
   if (rejection === null) rejection = validateRequiredObservers(ledgerTx);
   if (rejection === null) {
     rejection = validateScriptEvaluationPreconditions(ledgerTx);
@@ -409,30 +415,29 @@ export const validatePhaseASingle = (
     );
   }
 
-  // Every output decoded above, so building the candidate cannot fail on
-  // transaction content; a throw here is a defect, not a verdict.
+  // Every output the candidate keeps decoded above, so building it cannot
+  // fail on transaction content; a throw here is a defect, not a verdict.
   return buildPhaseAValidatedTx({
     sourceKind: queuedTx.sourceKind ?? "normal",
     ledgerTx: submittedTx.ledgerTx,
     expectedNetworkId: config.expectedNetworkId,
     txCbor: submittedTx.txCbor,
-    programMaterialSidecarCbor: queuedTx.programMaterialSidecarCbor ?? null,
     arrivalSeq: queuedTx.arrivalSeq,
     createdAt: queuedTx.createdAt,
     redeemerWitnessHash: submittedTx.commitments.redeemerWitnessHash,
+    heldOutputFault,
   });
 };
 
 export const runPhaseAValidation = (
   queuedTxs: readonly QueuedTx[],
   config: PhaseAConfig,
-  localContext: PhaseALocalContext = {},
-): Effect.Effect<PhaseAResult> =>
+): Effect.Effect<PhaseAResult, LedgerSignatureVerifierUnavailableError> =>
   Effect.gen(function* () {
+    yield* awaitLedgerEd25519SignatureReady;
     const orderedResults = yield* Effect.forEach(
       queuedTxs,
-      (queuedTx) =>
-        Effect.sync(() => validatePhaseASingle(queuedTx, config, localContext)),
+      (queuedTx) => Effect.sync(() => validatePhaseASingle(queuedTx, config)),
       {
         concurrency: config.concurrency <= 0 ? "unbounded" : config.concurrency,
       },

@@ -277,8 +277,15 @@ fn state_for(
   min_fee_b: Int,
 ) -> State {
   State {
-    subject: substrate.bind_accepted_subject_v1(
-      verify_native_tx_compact_cbor_v1(block.tx_id, block.compact_cbor),
+    subject: substrate.open_subject_v1(
+      fixture.ct_token_asset_name(block),
+      substrate.AcceptedSource {
+        header: block.header,
+        tx_inclusion: verify_native_tx_compact_cbor_v1(
+          block.tx_id,
+          block.compact_cbor,
+        ),
+      },
     ),
     bad_tx: ForcedTxCompact {
       body: block.compact.body,

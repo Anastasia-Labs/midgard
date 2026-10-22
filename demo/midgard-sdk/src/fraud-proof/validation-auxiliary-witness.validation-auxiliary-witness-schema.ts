@@ -17,10 +17,8 @@ import {
   FrontierSchema,
 } from "./validation-auxiliary-witness.data-node-schema.js";
 import {
-  LedgerDeltaOperationProofSchema,
   LedgerOutputProofWitnessSchema,
   NativeScriptFrameSchema,
-  ProofFrameSchema,
   RedeemerItemProofControlSchema,
   RedeemerItemProofWitnessSchema,
   SignerSetProofSchema,
@@ -284,21 +282,6 @@ export const buildValidationAuxiliaryWitnessSchema = <
       }),
     }),
     Data.Object({
-      LedgerDeltaReplayWitness: Data.Object({
-        source_kind: Data.Integer(),
-        key: Data.Bytes(),
-        next_schedule_hash: Data.Bytes(),
-        value: Data.Bytes(),
-      }),
-    }),
-    Data.Object({
-      LedgerDeltaOutputWitness: Data.Object({
-        output_index: Data.Integer(),
-        descriptor_cbor: Data.Bytes(),
-        siblings: ByteArrayListSchema,
-      }),
-    }),
-    Data.Object({
       /**
        * `ScriptSources` stage 1 (field 8, one redeemer item) and stage 4 (field 2,
        * one output item). Both stages need the item's length and its
@@ -337,21 +320,6 @@ export const buildValidationAuxiliaryWitnessSchema = <
     Data.Object({
       LedgerOutputProofFinalizeWitness: Data.Object({
         signer_proof: SignerSetProofSchema,
-      }),
-    }),
-    Data.Object({
-      LedgerDeltaProofFrameWitness: Data.Object({
-        frame: ProofFrameSchema,
-        siblings: ByteArrayListSchema,
-        opening: Data.Bytes(),
-      }),
-    }),
-    Data.Object({
-      LedgerDeltaOperationWitness: Data.Object({
-        operation_kind: Data.Integer(),
-        key: Data.Bytes(),
-        value: Data.Bytes(),
-        operation_proof: LedgerDeltaOperationProofSchema,
       }),
     }),
     Data.Object({

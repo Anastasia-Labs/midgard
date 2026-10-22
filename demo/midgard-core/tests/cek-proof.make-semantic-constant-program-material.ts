@@ -4,7 +4,6 @@ import {
   encodeMidgardCekValueNode,
   hashMidgardCekTermNode,
   hashMidgardCekValueNode,
-  type MidgardCekProgramEnvelope,
   type MidgardCekProgramMaterialEntry,
 } from "../src/cek-proof.js";
 import {
@@ -19,6 +18,7 @@ import {
   type MidgardCekDataNode,
 } from "../src/cek-semantic.js";
 import type { Hash32 } from "../src/codec/hash.js";
+import { byteStringWords } from "./cek-proof.make-nested-list-constant-program-material.js";
 import {
   encodeCanonicalSemanticBytes,
   encodeFixtureHeader,
@@ -62,7 +62,12 @@ export const makeSemanticConstantProgramMaterial = (
   payload: FixtureData,
   memory: bigint,
 ): {
-  readonly envelope: MidgardCekProgramEnvelope;
+  readonly summary: {
+    readonly termRoot: Uint8Array;
+    readonly nodeCount: bigint;
+    readonly materialByteLength: bigint;
+    readonly uplcVersion: readonly [bigint, bigint, bigint];
+  };
   readonly material: readonly MidgardCekProgramMaterialEntry[];
   readonly typeCbor: Buffer;
   readonly payloadCbor: Buffer;
@@ -132,7 +137,7 @@ export const makeSemanticConstantProgramMaterial = (
         bytesRoot: addBlob(bytes),
         bytesLength: BigInt(bytes.length),
         cborLength: midgardCekDataBytesCborLength(BigInt(bytes.length)),
-        memory: 4n + BigInt(Math.max(1, bytes.length)),
+        memory: 4n + byteStringWords(bytes.length),
       };
     } else if (Array.isArray(value)) {
       const items = commitList(value);
@@ -199,7 +204,7 @@ export const makeSemanticConstantProgramMaterial = (
   });
   const material = [...byRoot.values()];
   return {
-    envelope: {
+    summary: {
       uplcVersion: [1n, 1n, 0n],
       termRoot,
       nodeCount: BigInt(material.length),

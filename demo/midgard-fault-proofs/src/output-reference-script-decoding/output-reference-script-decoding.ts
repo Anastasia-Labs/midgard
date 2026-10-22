@@ -16,7 +16,6 @@ import {
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import {
   acceptedVerdictSubject,
-  encodeProofThreadForcedSourceKey,
   encodeVerdictSubject,
   forcedVerdictSubject,
   hashHexWithBlake2b,
@@ -29,8 +28,14 @@ import {
 import { Effect } from "effect";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import type { CanonicalViolationDetection } from "../workflow/classification.js";
-import { verdictDetectionSubject } from "../workflow/detection-subject.js";
+import {
+  PLUTUS_SCRIPT_ITEM_KIND_REFERENCE_SCRIPT,
+  PLUTUS_SCRIPT_REFUSED_RESULT_BASE,
+  plutusItemScriptDecode,
+  plutusRecordResultClass,
+  type PlutusScriptRefusedResultClass,
+  plutusUndecodableAccusedClass,
+} from "../script-decode/item-record.js";
 
 export const OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY =
   "outputReferenceScriptDecoding" as const;
@@ -43,10 +48,13 @@ export const OUTPUT_REFERENCE_SCRIPT_NODE_LIMIT_VIOLATION_ID =
   "output-reference-script-node-limit" as const;
 export const OUTPUT_REFERENCE_SCRIPT_DEPTH_LIMIT_VIOLATION_ID =
   "output-reference-script-depth-limit" as const;
+export const OUTPUT_REFERENCE_PLUTUS_SCRIPT_UNDECODABLE_VIOLATION_ID =
+  "output-reference-plutus-script-undecodable" as const;
 export type OutputReferenceScriptDecodingViolationId =
   | typeof OUTPUT_REFERENCE_SCRIPT_MALFORMED_VIOLATION_ID
   | typeof OUTPUT_REFERENCE_SCRIPT_NODE_LIMIT_VIOLATION_ID
-  | typeof OUTPUT_REFERENCE_SCRIPT_DEPTH_LIMIT_VIOLATION_ID;
+  | typeof OUTPUT_REFERENCE_SCRIPT_DEPTH_LIMIT_VIOLATION_ID
+  | typeof OUTPUT_REFERENCE_PLUTUS_SCRIPT_UNDECODABLE_VIOLATION_ID;
 
 export const OutputReferenceScriptResultClasses = Object.freeze({
   Pending: -1,
@@ -56,7 +64,8 @@ export const OutputReferenceScriptResultClasses = Object.freeze({
   DepthLimit: 2,
 } as const);
 export type OutputReferenceScriptResultClass =
-  (typeof OutputReferenceScriptResultClasses)[keyof typeof OutputReferenceScriptResultClasses];
+  | (typeof OutputReferenceScriptResultClasses)[keyof typeof OutputReferenceScriptResultClasses]
+  | PlutusScriptRefusedResultClass;
 
 const fail = (message: string): never => {
   throw new Error(`${OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY}: ${message}`);
@@ -66,6 +75,16 @@ const exactOutputIndex = (subject: VerdictSubject): number => {
   const reason = subject.rejection_reason;
   if (reason === null || typeof reason === "string")
     return fail("forced subject has the wrong typed reason");
+  if (
+    "PlutusScriptUndecodable" in reason &&
+    reason.PlutusScriptUndecodable.item_kind ===
+      PLUTUS_SCRIPT_ITEM_KIND_REFERENCE_SCRIPT
+  ) {
+    const outputIndex = Number(reason.PlutusScriptUndecodable.item_index);
+    if (!Number.isSafeInteger(outputIndex) || outputIndex < 0)
+      return fail("typed output coordinate is invalid");
+    return outputIndex;
+  }
   const entries = [
     [
       "OutputReferenceScriptMalformed",
@@ -106,6 +125,14 @@ const accusedClass = (
     return OutputReferenceScriptResultClasses.NodeLimit;
   if ("OutputReferenceScriptDepthLimit" in reason)
     return OutputReferenceScriptResultClasses.DepthLimit;
+  if ("PlutusScriptUndecodable" in reason)
+    return (
+      plutusUndecodableAccusedClass(
+        reason,
+        PLUTUS_SCRIPT_ITEM_KIND_REFERENCE_SCRIPT,
+        Number(reason.PlutusScriptUndecodable.item_index),
+      ) ?? fail("typed reason is outside family")
+    );
   return fail("typed reason is outside family");
 };
 
@@ -135,8 +162,14 @@ const resultClassOf = (item: Uint8Array): OutputReferenceScriptResultClass => {
   const trace = buildMidgardNativeScriptDecodingTrace(item);
   if (trace.bind.kind === MidgardNativeScriptDecodingBindKinds.Malformed)
     return OutputReferenceScriptResultClasses.Malformed;
-  if (trace.bind.kind === MidgardNativeScriptDecodingBindKinds.NonNative)
-    return OutputReferenceScriptResultClasses.NoFault;
+  if (trace.bind.kind === MidgardNativeScriptDecodingBindKinds.NonNative) {
+    const decoded = plutusItemScriptDecode(item);
+    if (decoded === undefined) return fail("non-native item has no script");
+    return (
+      plutusRecordResultClass(decoded.record) ??
+      OutputReferenceScriptResultClasses.NoFault
+    );
+  }
   if (trace.outcome === null)
     return fail("native scan has no terminal outcome");
   if (
@@ -393,7 +426,10 @@ export const detectOutputReferenceScriptDecodingCompleteReplay = (
       !(
         "OutputReferenceScriptMalformed" in reason ||
         "OutputReferenceScriptNodeLimit" in reason ||
-        "OutputReferenceScriptDepthLimit" in reason
+        "OutputReferenceScriptDepthLimit" in reason ||
+        ("PlutusScriptUndecodable" in reason &&
+          reason.PlutusScriptUndecodable.item_kind ===
+            PLUTUS_SCRIPT_ITEM_KIND_REFERENCE_SCRIPT)
       )
     )
       return;
@@ -417,42 +453,9 @@ export const outputReferenceScriptDecodingViolationId = (
       return OUTPUT_REFERENCE_SCRIPT_NODE_LIMIT_VIOLATION_ID;
     case OutputReferenceScriptResultClasses.DepthLimit:
       return OUTPUT_REFERENCE_SCRIPT_DEPTH_LIMIT_VIOLATION_ID;
-    case OutputReferenceScriptResultClasses.Pending:
-    case OutputReferenceScriptResultClasses.NoFault:
-      return fail("terminal result has no output-reference violation id");
+    default:
+      return resultClass > PLUTUS_SCRIPT_REFUSED_RESULT_BASE
+        ? OUTPUT_REFERENCE_PLUTUS_SCRIPT_UNDECODABLE_VIOLATION_ID
+        : fail("terminal result has no output-reference violation id");
   }
 };
-
-/** Central replay route with one exact stable violation id per rejection arm. */
-export const detectOutputReferenceScriptDecodingCanonicalViolations = (
-  block: CanonicalBlockEvidence,
-): readonly CanonicalViolationDetection[] =>
-  detectOutputReferenceScriptDecodingCompleteReplay(block).map((evidence) => {
-    const forced =
-      evidence.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION;
-    const violationId = outputReferenceScriptDecodingViolationId(
-      forced ? evidence.accusedClass : evidence.resultClass,
-    );
-    const position = forced
-      ? block.reconstruction.forcedTransactions.findIndex(
-          ({ key, value }) =>
-            value.tx_id === evidence.subject.transaction_id &&
-            encodeProofThreadForcedSourceKey(key).toString("hex") ===
-              evidence.subject.source_key,
-        )
-      : block.transactions.findIndex(
-          ({ nodeTxId }) => nodeTxId === evidence.subject.transaction_id,
-        );
-    if (position < 0)
-      return fail("detected subject is absent from authenticated block");
-    return Object.freeze({
-      ...verdictDetectionSubject(evidence.subject),
-      detectionId: `${violationId}:${forced ? "forced" : "accepted"}:${position.toString()}:${evidence.subject.transaction_id}:${evidence.outputIndex.toString()}:${evidence.resultClass.toString()}`,
-      headerHash: block.headerHash,
-      violationId,
-      position: BigInt(position),
-      diagnostic: forced
-        ? `forced transaction ${evidence.subject.transaction_id} was rejected for a decodable output reference script at ${evidence.outputIndex.toString()}`
-        : `accepted transaction ${evidence.subject.transaction_id} has an undecodable output reference script at ${evidence.outputIndex.toString()}`,
-    });
-  });

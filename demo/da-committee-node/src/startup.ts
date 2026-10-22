@@ -1,6 +1,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 
+import { findLedgerSignatureVerifierUnavailable } from "@al-ft/midgard-core";
 import { classifyFailure } from "@al-ft/midgard-l1-follower";
 
 import { isInstanceLockHeldElsewhere } from "./store/postgres.instance-lock.js";
@@ -60,14 +61,16 @@ export const startupReason = (error: unknown): string =>
     : `starting:${error instanceof Error ? error.message : String(error)}`;
 
 /**
- * The committee startup failed: a failure that is not transient, or
- * transient failures that outlasted the budget. `cause` is the last
- * attempt's error. `startupFailureOutcome` says what the process does on it.
+ * The committee startup failed: a failure that is not transient, transient
+ * failures that outlasted the budget, or the ledger's Ed25519 verifier
+ * unavailable in this process. `cause` is the last attempt's error.
+ * `startupFailureOutcome` says what the process does on it.
  */
 export class CommitteeStartupFailedError extends Error {
   constructor(
     readonly reason:
       | "committee_startup_dependency_unavailable"
+      | "committee_startup_verifier_unavailable"
       | "committee_startup_failed",
     readonly attempts: number,
     override readonly cause: unknown,
@@ -76,7 +79,9 @@ export class CommitteeStartupFailedError extends Error {
     super(
       reason === "committee_startup_dependency_unavailable"
         ? `${reason}: a dependency stayed unavailable past the startup budget after ${attempts.toString()} attempts: ${detail}`
-        : `${reason}: a failure no retry is known to repair: ${detail}`,
+        : reason === "committee_startup_verifier_unavailable"
+          ? `${reason}: the ledger's Ed25519 verifier is unavailable in this process: ${detail}`
+          : `${reason}: a failure no retry is known to repair: ${detail}`,
     );
   }
 }
@@ -88,9 +93,12 @@ export class CommitteeStartupFailedError extends Error {
  * a wait on another live process is retried without a deadline; a transient
  * failure is retried while consecutive transient failures last less than
  * `budgetMs`; anything else, or the budget running out, fails the startup
- * with `CommitteeStartupFailedError`. A one-shot run classifies every failure
- * as fatal. A failed attempt must release whatever it opened before it
- * throws.
+ * with `CommitteeStartupFailedError`. The ledger's Ed25519 verifier
+ * unavailable (the attempt's first wait, bounded where it is defined) fails
+ * it at once as `committee_startup_verifier_unavailable`: its outcome is
+ * settled for the life of the process, so no retry in it can repair it. A
+ * one-shot run classifies every failure as fatal. A failed attempt must
+ * release whatever it opened before it throws.
  */
 export const retryStartup = async <T>(args: {
   readonly attempt: () => Promise<T>;
@@ -116,6 +124,12 @@ export const retryStartup = async <T>(args: {
     try {
       return await args.attempt();
     } catch (error) {
+      if (findLedgerSignatureVerifierUnavailable(error) !== undefined)
+        throw new CommitteeStartupFailedError(
+          "committee_startup_verifier_unavailable",
+          attempt,
+          error,
+        );
       const failure = classify(error);
       if (failure === "fatal")
         throw new CommitteeStartupFailedError(
@@ -151,7 +165,9 @@ export const COMMITTEE_STARTUP_FAILED = "committee_startup_failed";
 /**
  * What the process does on a failed startup (owner ruling 2026-10-09):
  * - `exit`: transient failures outlasted the startup budget
- *   (`committee_startup_dependency_unavailable`). The process exits non-zero
+ *   (`committee_startup_dependency_unavailable`), or the ledger's Ed25519
+ *   verifier did not become ready within its bound in this process
+ *   (`committee_startup_verifier_unavailable`). The process exits non-zero
  *   and its supervisor's restart is the backoff.
  * - `hold`: any other failure, deterministic or unknown (a configuration,
  *   key material or stored-state refusal). No restart is known to repair it,
@@ -160,7 +176,7 @@ export const COMMITTEE_STARTUP_FAILED = "committee_startup_failed";
  */
 export const startupFailureOutcome = (error: unknown): "exit" | "hold" =>
   error instanceof CommitteeStartupFailedError &&
-  error.reason === "committee_startup_dependency_unavailable"
+  error.reason !== "committee_startup_failed"
     ? "exit"
     : "hold";
 

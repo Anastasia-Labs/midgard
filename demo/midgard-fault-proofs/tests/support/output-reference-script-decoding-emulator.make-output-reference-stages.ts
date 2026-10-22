@@ -25,6 +25,7 @@ import {
 } from "../../src/output-reference-script-decoding/index.js";
 import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.js";
 import { type SubmitStep01TxInclusion } from "../../src/step-support.js";
+import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import { captureEmulatorSubmission } from "./emulator/measurement.js";
 import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.js";
 import {
@@ -34,6 +35,7 @@ import {
   type OutputReferenceContext,
 } from "./output-reference-script-decoding-emulator.commit-accepted-block.js";
 import { type ForcedLeaf } from "./output-reference-script-decoding-emulator.commit-forced-block.js";
+import { recordPlutusItem } from "./script-decode-emulator.js";
 import {
   publishRemovalReferenceScripts,
   submitSetupTx,
@@ -50,6 +52,7 @@ export const makeOutputReferenceStages = ({
   readonly references: readonly UTxO[];
   readonly certificateReference: UTxO;
 }) => {
+  const ownOutputs = createOwnOutputJournal();
   const { harness, contracts, catalogue, category } = context;
   const lucid = harness.proverLucid;
   const signer = harness.proverSigner;
@@ -130,7 +133,10 @@ export const makeOutputReferenceStages = ({
         signer,
         threadOutRef,
         evidence,
-        forcedSource: { header, membership: leaf.membership, direction: 1n },
+        forcedSource: {
+          header,
+          membership: leaf.membership,
+        },
         referenceScriptUtxo: references[0]!,
       }),
     );
@@ -162,6 +168,7 @@ export const makeOutputReferenceStages = ({
   ) =>
     await captured(() =>
       submitOutputReferenceScriptDecodingStep02({
+        ownOutputs,
         lucid,
         contracts,
         categoryId,
@@ -212,6 +219,10 @@ export const makeOutputReferenceStages = ({
     }
     return { threadOutRef: current, windows };
   };
+  /**
+   * `record` is the decode record step 04 reads: by default the item's own
+   * (recorded on first use, none for a native item); `null` reads none.
+   */
   const step04 = async (
     threadOutRef: string,
     evidence: OutputReferenceScriptDecodingEvidence,
@@ -220,9 +231,19 @@ export const makeOutputReferenceStages = ({
       readonly carriageUtxos: readonly UTxO[];
       readonly certificateUtxo?: UTxO;
     },
-  ) =>
-    await captured(() =>
+    record?: UTxO | null,
+  ) => {
+    const scriptDecodeRecordUtxo =
+      record === undefined
+        ? await recordPlutusItem(
+            harness.emulator,
+            lucid,
+            Buffer.from(evidence.referenceScriptItemHex, "hex"),
+          )
+        : (record ?? undefined);
+    return await captured(() =>
       submitOutputReferenceScriptDecodingStep04({
+        ownOutputs,
         lucid,
         contracts,
         categoryId,
@@ -233,8 +254,10 @@ export const makeOutputReferenceStages = ({
         publishedCarriageUtxos: opened.carriageUtxos,
         certificateUtxo: opened.certificateUtxo,
         referenceScriptUtxo: references[3]!,
+        scriptDecodeRecordUtxo,
       }),
     );
+  };
   const step05 = async (
     threadOutRef: string,
     evidence: OutputReferenceScriptDecodingEvidence,
@@ -384,6 +407,7 @@ export const makeOutputReferenceStages = ({
     });
     signer.selectWallet(lucid);
     const carriageUtxos = await publishFaultProofFieldCarriage({
+      ownOutputs,
       lucid,
       signer,
       planned,
@@ -393,6 +417,7 @@ export const makeOutputReferenceStages = ({
     if (planned.plan.tier !== "Certified")
       throw new Error("foreign field is not certified");
     const { certificateUtxo } = await certifyFaultProofFieldCarriage({
+      ownOutputs,
       lucid,
       network,
       signer,

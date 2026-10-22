@@ -25,7 +25,7 @@ import {
 import { Effect } from "effect";
 import { expect } from "vitest";
 
-import { index, same } from "./history-pair.index.js";
+import { inputAt, referenceAt, same } from "./history-pair.index.js";
 import { measureCompleteSignedTransaction } from "./measurement.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./protocol-parameters.js";
 
@@ -230,13 +230,11 @@ export const setupHistoryPair = async ({
       payload: "RootContent",
     };
     init = init
-      .withdraw(
-        a.rewardAddress,
-        0n,
+      .withdraw(a.rewardAddress, 0n, (ctx) =>
         Data.to(
           {
             Initialize: {
-              nonce_input_index: index(inputs, nonces[i]!),
+              nonce_input_index: inputAt(ctx, nonces[i]!),
               root_output_index: BigInt(i),
             },
           },
@@ -266,7 +264,6 @@ export const setupHistoryPair = async ({
         )!,
     ),
   );
-  const insertInputs = [...(await funding()), ...roots];
   const refs = [hub, ...scripts];
   let insert = lucid
     .newTx()
@@ -286,17 +283,15 @@ export const setupHistoryPair = async ({
       payload: { Filler: { refund_key: owner } },
     };
     insert = insert
-      .collectFrom([root], Data.to(index(insertInputs, root)))
-      .withdraw(
-        a.rewardAddress,
-        0n,
+      .collectFrom([root], (ctx) => Data.to(inputAt(ctx, root)))
+      .withdraw(a.rewardAddress, 0n, (ctx) =>
         Data.to(
           {
             Apply: {
-              hub_reference_index: index(refs, hub),
+              hub_reference_index: referenceAt(ctx, hub),
               operation: {
                 InsertFiller: {
-                  predecessor_input_index: index(insertInputs, root),
+                  predecessor_input_index: inputAt(ctx, root),
                   predecessor_output_index: BigInt(2 * i),
                   filler_output_index: BigInt(2 * i + 1),
                 },

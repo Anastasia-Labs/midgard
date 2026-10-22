@@ -26,7 +26,7 @@ import {
   canonicalTransaction,
   hasFundingPaymentCredential,
 } from "./funding-requirements.canonical-transaction.js";
-import { workflowRuntimeFundingMinimumFee } from "./runtime-funding-policy.js";
+import { workflowRuntimeFundingMinimumFee } from "./runtime-funding-fee.js";
 import {
   type LocallyEvaluatedTransaction,
   requireReferenceOnlyScriptWitnesses,
@@ -368,7 +368,7 @@ export const evaluateWorkflowFundingTransaction = async (input: {
     references,
     collateral,
     evidence: {
-      evaluator: "lucid-evolution-0.8.0:aiken-local-phase-two" as const,
+      evaluator: "lucid-evolution:aiken-local-phase-two" as const,
       evaluatorNetwork: config.network,
       evaluatorSlotConfig: { ...config.slotConfig },
       protocolParameters: protocolSnapshot(parameters),

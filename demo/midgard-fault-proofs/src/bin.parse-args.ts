@@ -28,6 +28,8 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
   let fraudulentHeaderHash: string | undefined;
   let threadOutRef: string | undefined;
   let stateQueueBlockOutRef: string | undefined;
+  let inputExistenceArtifactPath: string | undefined;
+  let inputExistenceReferencesPath: string | undefined;
   let txInclusionPath: string | undefined;
   let tx1InputsPath: string | undefined;
   let tx2InputsPath: string | undefined;
@@ -42,6 +44,7 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
   let outputDir: string | undefined;
   let daPayloadEnvelopePath: string | undefined;
   let transitionFaultProofPath: string | undefined;
+  let transitionL2ReplayPath: string | undefined;
   const referenceInputOutRefs: string[] = [];
   let awaitConfirmation = true;
   let fraudCategory: SubmitInitFraudCategory | undefined;
@@ -129,6 +132,12 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
       case "--state-queue-block-out-ref":
         stateQueueBlockOutRef = rest[++index];
         break;
+      case "--input-existence-artifact":
+        inputExistenceArtifactPath = rest[++index];
+        break;
+      case "--input-existence-references":
+        inputExistenceReferencesPath = rest[++index];
+        break;
       case "--tx-inclusion":
         txInclusionPath = rest[++index];
         break;
@@ -170,6 +179,9 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
         break;
       case "--transition-fault-proof":
         transitionFaultProofPath = rest[++index];
+        break;
+      case "--transition-l2-replay":
+        transitionL2ReplayPath = rest[++index];
         break;
       case "--reference-input": {
         const outRef = rest[++index];
@@ -292,6 +304,8 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
     fraudulentHeaderHash,
     threadOutRef,
     stateQueueBlockOutRef,
+    inputExistenceArtifactPath,
+    inputExistenceReferencesPath,
     txInclusionPath,
     tx1InputsPath,
     tx2InputsPath,
@@ -306,6 +320,7 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
     outputDir,
     daPayloadEnvelopePath,
     transitionFaultProofPath,
+    transitionL2ReplayPath,
     referenceInputOutRefs,
     awaitConfirmation,
     fraudCategory,

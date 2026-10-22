@@ -5,7 +5,6 @@ use aiken/primitive/bytearray
 use midgard/cbor_deserialise
 use midgard/cek_constant_v1
 use midgard/cek_cost_v1
-use midgard/cek_data_scan_v1
 use midgard/cek_data_v1
 use midgard/cek_proof_v1
 
@@ -212,7 +211,7 @@ pub fn value_memory_size_v1(value: ValueWitnessV1) -> Int {
     OpaqueValue(_) -> fail @"opaque value has no memory size"
     BlsMillerLoopValue(expression_root) -> {
       expect bytearray.length(expression_root) == 32
-      192
+      72
     }
   }
 }
@@ -221,43 +220,37 @@ fn standard_cost_sizes_v1(arguments: List<ValueWitnessV1>) -> List<Int> {
   list.map(arguments, value_memory_size_v1)
 }
 
-fn bitwise_cost_sizes_v1(arguments: List<ValueWitnessV1>) -> List<Int> {
-  expect [extend, left, right] = arguments
-  let left_size = value_memory_size_v1(left)
-  let right_size = value_memory_size_v1(right)
-  let normalized = if boolean_v1(extend) {
-    if left_size > right_size {
-      left_size
-    } else {
-      right_size
-    }
-  } else if left_size < right_size {
-    left_size
+/// Cardano costs an output width (integerToByteString) or a replication count
+/// (replicateByte) as the words it occupies. Out-of-range widths fail before
+/// costing; this stays total so the failure arm never aborts.
+fn width_cost_size_v1(width: Int) -> Int {
+  if width <= 0 {
+    0
   } else {
-    right_size
+    ( width - 1 ) / 8 + 1
   }
-  [1, normalized, normalized]
+}
+
+/// Cardano costs a shift or rotation amount by its absolute value, saturated
+/// to the largest signed 64-bit integer.
+fn literal_cost_size_v1(literal: Int) -> Int {
+  let magnitude = if literal < 0 {
+    -literal
+  } else {
+    literal
+  }
+  if magnitude > 9223372036854775807 {
+    9223372036854775807
+  } else {
+    magnitude
+  }
 }
 
 pub fn builtin_cost_sizes_v1(
   tag: Int,
   arguments: List<ValueWitnessV1>,
 ) -> List<Int> {
-  if tag == 21 {
-    // Cardano costs Ed25519 byte strings in eight-byte words; the generic
-    // constant memory remains part of its existing commitment ABI.
-    list.map(
-      arguments,
-      fn(argument) {
-        let length = bytearray.length(bytes_v1(argument))
-        if length == 0 {
-          1
-        } else {
-          ( length + 7 ) / 8
-        }
-      },
-    )
-  } else if tag == 26 {
+  if tag == 26 {
     expect [condition, _, _] = arguments
     let condition_value = boolean_v1(condition)
     expect or {
@@ -280,11 +273,27 @@ pub fn builtin_cost_sizes_v1(
   } else if tag == 36 {
     expect [source, _, _, _, _, _] = arguments
     [value_memory_size_v1(source), 1, 1, 1, 1, 1]
-  } else if and {
-    tag >= 75,
-    tag <= 77,
-  } {
-    bitwise_cost_sizes_v1(arguments)
+  } else if tag == 73 {
+    expect [endianness, width, input] = arguments
+    [
+      value_memory_size_v1(endianness),
+      width_cost_size_v1(integer_v1(width)),
+      value_memory_size_v1(input),
+    ]
+  } else if tag == 80 {
+    expect [source, indices, value] = arguments
+    let Pair(_, items) = list_payload_v1(indices)
+    [
+      value_memory_size_v1(source),
+      list.length(items),
+      value_memory_size_v1(value),
+    ]
+  } else if tag == 81 {
+    expect [count, byte] = arguments
+    [width_cost_size_v1(integer_v1(count)), value_memory_size_v1(byte)]
+  } else if tag == 82 || tag == 83 {
+    expect [source, amount] = arguments
+    [value_memory_size_v1(source), literal_cost_size_v1(integer_v1(amount))]
   } else {
     standard_cost_sizes_v1(arguments)
   }
@@ -326,10 +335,15 @@ fn result_is_constant_v1(
   expected_payload: Data,
 ) -> Bool {
   when result is {
-    ConstantValue(witness) -> and {
-        cek_constant_v1.constant_type_v1(witness) == expected_type,
-        cek_constant_v1.constant_payload_v1(witness) == expected_payload,
+    ConstantValue(witness) -> {
+      let Pair(constant_type, payload) = cek_constant_v1.decode_constant_witness_v1(
+        witness,
+      )
+      and {
+        constant_type == expected_type,
+        payload == expected_payload,
       }
+    }
     SemanticConstantValue { type_cbor, payload, memory } -> {
       let expected_summary = cek_data_v1.semantic_data_summary_v1(
         expected_payload,
@@ -348,11 +362,17 @@ fn result_is_constant_v1(
   }
 }
 
+/// A result presented as the selected witness itself has the selected root;
+/// any other presentation is compared by root. The selected value is an
+/// argument, whose root the caller has already derived.
 fn result_is_selected_v1(
   result: ValueWitnessV1,
   selected: ValueWitnessV1,
 ) -> Bool {
-  value_root_v1(result) == value_root_v1(selected)
+  or {
+    result == selected,
+    value_root_v1(result) == value_root_v1(selected),
+  }
 }
 
 type SemanticConstantPartsV1 {
@@ -364,11 +384,13 @@ type SemanticConstantPartsV1 {
 fn semantic_constant_parts_v1(value: ValueWitnessV1) -> SemanticConstantPartsV1 {
   when value is {
     ConstantValue(witness) -> {
-      let payload = cek_constant_v1.constant_payload_v1(witness)
+      let Pair(constant_type, payload) = cek_constant_v1.decode_constant_witness_v1(
+        witness,
+      )
       SemanticConstantPartsV1 {
-        constant_type: cek_constant_v1.constant_type_v1(witness),
+        constant_type,
         payload: cek_data_v1.semantic_data_summary_v1(payload),
-        memory: cek_constant_v1.constant_memory_size_v1(witness),
+        memory: cek_constant_v1.semantic_memory_size_v1(constant_type, payload),
       }
     }
     SemanticConstantValue { type_cbor, payload, memory } -> {
@@ -488,9 +510,8 @@ fn canonical_integer_leaf_v1(
 ) -> Int {
   expect cek_data_v1.IntegerData { cbor_root, cbor_length, memory: _ } = node
   expect bytearray.length(raw_cbor) > 0
-  expect
-    bytearray.length(raw_cbor) <= cek_data_scan_v1.max_revealed_data_leaf_bytes
-  expect cbor_root == cek_data_scan_v1.bounded_blob_root_v1(raw_cbor)
+  expect bytearray.length(raw_cbor) <= cek_proof_v1.max_bounded_blob_bytes
+  expect cbor_root == cek_proof_v1.bounded_blob_root_v1(raw_cbor)
   expect cbor_length == bytearray.length(raw_cbor)
   let data <- cbor_deserialise.expect_deserialise(raw_cbor)
   expect cbor.serialise(data) == raw_cbor
@@ -512,9 +533,8 @@ fn canonical_bytes_leaf_v1(
         memory: _,
       }
     = node
-  expect
-    bytearray.length(bytes) <= cek_data_scan_v1.max_revealed_data_leaf_bytes
-  expect bytes_root == cek_data_scan_v1.bounded_blob_root_v1(bytes)
+  expect bytearray.length(bytes) <= cek_proof_v1.max_bounded_blob_bytes
+  expect bytes_root == cek_proof_v1.bounded_blob_root_v1(bytes)
   expect bytes_length == bytearray.length(bytes)
   expect top_node_matches_v1(summary, node, None, None)
   bytes
@@ -980,9 +1000,9 @@ fn verify_signature_v1(
     builtin.verify_ecdsa_secp256k1_signature(key, message, signature)
   } else {
     expect tag == 53
+    // BIP-340 signs a message of any length.
     expect and {
         bytearray.length(key) == 32,
-        bytearray.length(message) == 32,
         bytearray.length(signature) == 64,
       }
     builtin.verify_schnorr_secp256k1_signature(key, message, signature)
@@ -1286,9 +1306,9 @@ fn verify_semantic_unconstr_data_v1(
     } -> {
       expect [raw_constructor] = witness.scalar_preimages
       expect
-        bytearray.length(raw_constructor) <= cek_data_scan_v1.max_revealed_data_leaf_bytes
+        bytearray.length(raw_constructor) <= cek_proof_v1.max_bounded_blob_bytes
       expect
-        constructor_cbor_root == cek_data_scan_v1.bounded_blob_root_v1(
+        constructor_cbor_root == cek_proof_v1.bounded_blob_root_v1(
           raw_constructor,
         )
       expect constructor_cbor_length == bytearray.length(raw_constructor)
@@ -1322,7 +1342,7 @@ fn verify_semantic_unconstr_data_v1(
   let constructor_cbor = cbor.serialise(builtin.i_data(constructor))
   let constructor_summary = cek_data_v1.integer_data_summary_v1(
     constructor,
-    cek_data_scan_v1.bounded_blob_root_v1(constructor_cbor),
+    cek_proof_v1.bounded_blob_root_v1(constructor_cbor),
   )
   let fields_summary = cek_data_v1.list_data_summary_v1(fields)
   let pair_payload = cek_data_v1.small_constr_data_summary_v1(
@@ -1509,7 +1529,7 @@ fn verify_semantic_mkconstr_data_v1(
     }
     _ -> fail @"constrData index must be an integer constant"
   }
-  expect constructor >= 0
+  expect !outside_constr_index_v1(constructor)
   let first = exact_list_summary_for_node_v1(fields_node, witness.list_nodes)
   let fields = list_constant_sequence_v1(
     fields_value,
@@ -1523,7 +1543,7 @@ fn verify_semantic_mkconstr_data_v1(
     let raw_constructor = cbor.serialise(builtin.i_data(constructor))
     cek_data_v1.large_constr_data_summary_v1(
       constructor,
-      cek_data_scan_v1.bounded_blob_root_v1(raw_constructor),
+      cek_proof_v1.bounded_blob_root_v1(raw_constructor),
       fields,
     )
   }
@@ -1635,8 +1655,7 @@ fn verify_semantic_data_v1(
     expect witness.pair_nodes == []
     expect [raw_data] = witness.scalar_preimages
     expect bytearray.length(raw_data) > 0
-    expect
-      bytearray.length(raw_data) <= cek_data_scan_v1.max_revealed_data_leaf_bytes
+    expect bytearray.length(raw_data) <= cek_proof_v1.max_bounded_blob_bytes
     let data <- cbor_deserialise.expect_deserialise(raw_data)
     expect cbor.serialise(data) == raw_data
     expect
@@ -1663,21 +1682,33 @@ fn constant_memory_from_payload_node_v1(
     cek_constant_v1.IntegerConstant -> cek_data_v1.data_node_memory_v1(node) - 4
     cek_constant_v1.ByteStringConstant ->
       cek_data_v1.data_node_memory_v1(node) - 4
-    cek_constant_v1.StringConstant -> cek_data_v1.data_node_memory_v1(node) - 4
+    cek_constant_v1.StringConstant -> {
+      expect cek_data_v1.BytesData { bytes_length, .. } = node
+      bytes_length / 4
+    }
     cek_constant_v1.UnitConstant -> 1
     cek_constant_v1.BooleanConstant -> 1
     cek_constant_v1.DataConstant -> cek_data_v1.data_node_memory_v1(node)
     cek_constant_v1.ListConstant { element } -> {
       expect cek_data_v1.ListData { items_count, memory, .. } = node
+      // An integer, bytestring or data-pair item costs its data node less
+      // the node's four words; a unit or boolean item costs one word.
       if element == cek_constant_v1.DataConstant {
         memory - 4
-      } else if element == cek_constant_v1.IntegerConstant {
-        memory - 4 - items_count * 4
-      } else if element == cek_constant_v1.PairConstant {
-        first: cek_constant_v1.DataConstant,
-        second: cek_constant_v1.DataConstant,
+      } else if or {
+        element == cek_constant_v1.IntegerConstant,
+        element == cek_constant_v1.ByteStringConstant,
+        element == cek_constant_v1.PairConstant {
+          first: cek_constant_v1.DataConstant,
+          second: cek_constant_v1.DataConstant,
+        },
       } {
         memory - 4 - items_count * 4
+      } else if or {
+        element == cek_constant_v1.UnitConstant,
+        element == cek_constant_v1.BooleanConstant,
+      } {
+        items_count
       } else {
         fail @"semantic list element memory requires a recursive proof"
       }
@@ -1698,9 +1729,49 @@ fn constant_memory_from_payload_node_v1(
       } else {
         fail @"semantic pair memory requires a recursive proof"
       }
-    cek_constant_v1.BlsG1Constant -> 48
-    cek_constant_v1.BlsG2Constant -> 96
-    cek_constant_v1.BlsMillerLoopResultConstant -> 192
+    cek_constant_v1.BlsG1Constant -> 18
+    cek_constant_v1.BlsG2Constant -> 36
+    cek_constant_v1.BlsMillerLoopResultConstant -> 72
+    cek_constant_v1.ArrayConstant { .. } -> {
+      expect cek_data_v1.ListData { items_count, .. } = node
+      items_count
+    }
+    cek_constant_v1.ValueConstant ->
+      fail @"semantic value memory requires a recursive proof"
+  }
+}
+
+/// Whether a list item's summary memory is bound to its constant memory. A
+/// revealed item's summary is computed from its payload. A semantic item's
+/// summary memory is not in its value root, so it is bound to the root-bound
+/// constant memory by its element type, as `constant_semantic_projection`
+/// commits it: a Data item's payload is the value itself; an integer,
+/// byte-string or data-pair item's payload is one Data node of four words
+/// above the constant; a unit or boolean item's payload is an empty
+/// constructor of four words for a constant of one word. Any other element
+/// type has no such relation, so its item must be revealed.
+fn list_item_summary_memory_is_bound_v1(
+  item: ValueWitnessV1,
+  element: cek_constant_v1.ConstantTypeV1,
+  parts: SemanticConstantPartsV1,
+) -> Bool {
+  when item is {
+    ConstantValue(_) -> True
+    _ -> {
+      let summary_memory = parts.payload.memory
+      when element is {
+        cek_constant_v1.DataConstant -> summary_memory == parts.memory
+        cek_constant_v1.IntegerConstant | cek_constant_v1.ByteStringConstant ->
+          summary_memory == parts.memory + 4
+        cek_constant_v1.PairConstant {
+          first: cek_constant_v1.DataConstant,
+          second: cek_constant_v1.DataConstant,
+        } -> summary_memory == parts.memory + 4
+        cek_constant_v1.UnitConstant | cek_constant_v1.BooleanConstant ->
+          summary_memory == parts.memory + 3
+        _ -> False
+      }
+    }
   }
 }
 
@@ -1760,6 +1831,404 @@ fn semantic_pair_components_v1(
     Pair(first, second),
     Pair(Pair(first_summary, first_memory), Pair(second_summary, second_memory)),
   )
+}
+
+/// Where `case` sends a constant scrutinee under the protocol version 11
+/// rules: a branch and the values it is applied to, a missing branch, or a
+/// type that `case` does not accept.
+pub type CaseConstantSelectionV1 {
+  CaseConstantBranch { tag: Int, values_count: Int, values_root: ByteArray }
+  CaseConstantMissing
+  CaseConstantUnsupported
+}
+
+fn case_constant_root_v1(
+  type_cbor: ByteArray,
+  summary: cek_data_v1.DataSummaryV1,
+  memory: Int,
+) -> ByteArray {
+  cek_proof_v1.hash_constant_value_v1(
+    cek_proof_v1.hash_blob_chunk_v1(type_cbor),
+    summary.root,
+    summary.cbor_length,
+    summary.root,
+    memory,
+  )
+}
+
+fn case_constant_tag_v1(tag: Int) -> CaseConstantSelectionV1 {
+  CaseConstantBranch {
+    tag,
+    values_count: 0,
+    values_root: cek_proof_v1.empty_sequence_root_v1,
+  }
+}
+
+// The case-apply step applies the deepest value first, so `first` is pushed
+// below `second`, exactly as a constructor's fields are.
+fn case_constant_values_v1(
+  first: ByteArray,
+  second: ByteArray,
+) -> CaseConstantSelectionV1 {
+  CaseConstantBranch {
+    tag: 0,
+    values_count: 2,
+    values_root: cek_proof_v1.hash_sequence_node_v1(
+      second,
+      cek_proof_v1.hash_sequence_node_v1(
+        first,
+        cek_proof_v1.empty_sequence_root_v1,
+        1,
+      ),
+      2,
+    ),
+  }
+}
+
+fn direct_case_constant_v1(
+  witness: cek_constant_v1.ConstantWitnessV1,
+  branches_count: Int,
+) -> Pair<ByteArray, CaseConstantSelectionV1> {
+  let type_cbor = witness.type_cbor
+  let Pair(constant_type, payload) = cek_constant_v1.decode_constant_witness_v1(
+    witness,
+  )
+  let memory = cek_constant_v1.semantic_memory_size_v1(constant_type, payload)
+  let root = fn(summary) { case_constant_root_v1(type_cbor, summary, memory) }
+  let whole = fn(selection) {
+    Pair(root(cek_data_v1.semantic_data_summary_v1(payload)), selection)
+  }
+  when constant_type is {
+    cek_constant_v1.UnitConstant ->
+      whole(
+        if branches_count == 1 {
+          case_constant_tag_v1(0)
+        } else {
+          CaseConstantMissing
+        },
+      )
+    cek_constant_v1.BooleanConstant ->
+      whole(
+        if builtin.un_constr_data(payload).1st == 1 {
+          if branches_count == 2 {
+            case_constant_tag_v1(1)
+          } else {
+            CaseConstantMissing
+          }
+        } else if branches_count == 1 || branches_count == 2 {
+          case_constant_tag_v1(0)
+        } else {
+          CaseConstantMissing
+        },
+      )
+    cek_constant_v1.IntegerConstant -> {
+      let value = builtin.un_i_data(payload)
+      whole(
+        if value >= 0 && value < branches_count {
+          case_constant_tag_v1(value)
+        } else {
+          CaseConstantMissing
+        },
+      )
+    }
+    cek_constant_v1.ListConstant { element } ->
+      when builtin.un_list_data(payload) is {
+        [] ->
+          whole(
+            if branches_count == 2 {
+              case_constant_tag_v1(1)
+            } else {
+              CaseConstantMissing
+            },
+          )
+        [head, ..tail] ->
+          if branches_count == 1 || branches_count == 2 {
+            // The list is committed from its head and tail, so neither is
+            // walked twice.
+            let head_summary = cek_data_v1.semantic_data_summary_v1(head)
+            let tail_items = cek_data_v1.commit_data_list(tail)
+            let head_memory = cek_constant_v1.semantic_memory_size_v1(
+              element,
+              head,
+            )
+            Pair(
+              root(
+                cek_data_v1.list_data_summary_v1(
+                  cek_data_v1.prepend_data_list_summary_v1(
+                    head_summary,
+                    tail_items,
+                  ),
+                ),
+              ),
+              case_constant_values_v1(
+                case_constant_root_v1(
+                  cek_constant_v1.encode_constant_type_v1(element),
+                  head_summary,
+                  head_memory,
+                ),
+                case_constant_root_v1(
+                  type_cbor,
+                  cek_data_v1.list_data_summary_v1(tail_items),
+                  memory - head_memory,
+                ),
+              ),
+            )
+          } else {
+            whole(CaseConstantMissing)
+          }
+      }
+    cek_constant_v1.PairConstant { first, second } ->
+      if branches_count == 1 {
+        expect [first_payload,
+              second_payload] = builtin.un_constr_data(payload).2nd
+        let first_summary = cek_data_v1.semantic_data_summary_v1(first_payload)
+        let second_summary = cek_data_v1.semantic_data_summary_v1(
+          second_payload,
+        )
+        let first_memory = cek_constant_v1.semantic_memory_size_v1(
+          first,
+          first_payload,
+        )
+        Pair(
+          root(
+            cek_data_v1.small_constr_data_summary_v1(
+              0,
+              cek_data_v1.prepend_data_list_summary_v1(
+                first_summary,
+                cek_data_v1.prepend_data_list_summary_v1(
+                  second_summary,
+                  cek_data_v1.empty_data_list_summary_v1(),
+                ),
+              ),
+            ),
+          ),
+          case_constant_values_v1(
+            case_constant_root_v1(
+              cek_constant_v1.encode_constant_type_v1(first),
+              first_summary,
+              first_memory,
+            ),
+            case_constant_root_v1(
+              cek_constant_v1.encode_constant_type_v1(second),
+              second_summary,
+              memory - first_memory,
+            ),
+          ),
+        )
+      } else {
+        whole(CaseConstantMissing)
+      }
+    _ -> whole(CaseConstantUnsupported)
+  }
+}
+
+// A `case` scrutinee read through material is always a semantic constant, so
+// the two readers below are `semantic_list_head_and_tail_v1` and
+// `semantic_pair_components_v1` without their inline-constant branches. Each
+// source's top node must be the one node kind its reader then matches, so
+// only that kind's `verify_data_node_v1` checks are made.
+fn semantic_case_list_head_and_tail_v1(
+  source: ValueWitnessV1,
+  witness: SemanticBuiltinWitnessV1,
+) -> Pair<
+  cek_constant_v1.ConstantTypeV1,
+  Pair<
+    Pair<cek_data_v1.DataSummaryV1, Int>,
+    Pair<cek_data_v1.DataSequenceSummaryV1, Int>,
+  >,
+> {
+  expect [source_node, head_node] = witness.data_nodes
+  expect [first_link, ..remaining_links] = witness.list_nodes
+  expect witness.pair_nodes == []
+  expect witness.scalar_preimages == []
+  let tail_link = if first_link.length == 1 {
+    expect remaining_links == []
+    None
+  } else {
+    expect [link] = remaining_links
+    Some(link)
+  }
+  let parts = semantic_constant_parts_v1(source)
+  expect cek_constant_v1.ListConstant { element } = parts.constant_type
+  expect parts.payload == summary_from_node_v1(source_node)
+  expect cek_data_v1.ListData { items_count, items_root, cbor_length, memory } = source_node
+  expect
+    cek_data_v1.verify_list_data_node_v1(
+      items_count,
+      items_root,
+      cbor_length,
+      memory,
+      Some(first_link),
+      None,
+    )
+  expect
+    parts.memory == constant_memory_from_payload_node_v1(
+      parts.constant_type,
+      source_node,
+    )
+  // The node check has bound `first_link.length` to `items_count`.
+  expect cek_data_v1.verify_data_list_link_v1(first_link, head_node, tail_link)
+  let head_summary = summary_from_node_v1(head_node)
+  let head_memory = constant_memory_from_payload_node_v1(element, head_node)
+  expect parts.memory >= head_memory
+  let tail = cek_data_v1.DataSequenceSummaryV1 {
+    root: first_link.tail,
+    length: first_link.length - 1,
+    payload_cbor_length: first_link.payload_cbor_length - first_link.head_cbor_length,
+    memory: first_link.memory - first_link.head_memory,
+  }
+  Pair(
+    element,
+    Pair(
+      Pair(head_summary, head_memory),
+      Pair(tail, parts.memory - head_memory),
+    ),
+  )
+}
+
+fn semantic_case_pair_components_v1(
+  source: ValueWitnessV1,
+  witness: SemanticBuiltinWitnessV1,
+) -> Pair<
+  Pair<cek_constant_v1.ConstantTypeV1, cek_constant_v1.ConstantTypeV1>,
+  Pair<
+    Pair<cek_data_v1.DataSummaryV1, Int>,
+    Pair<cek_data_v1.DataSummaryV1, Int>,
+  >,
+> {
+  expect [payload_node, first_node, second_node] = witness.data_nodes
+  expect [first_link, second_link] = witness.list_nodes
+  expect witness.pair_nodes == []
+  expect witness.scalar_preimages == []
+  let parts = semantic_constant_parts_v1(source)
+  expect cek_constant_v1.PairConstant { first, second } = parts.constant_type
+  expect parts.payload == summary_from_node_v1(payload_node)
+  expect
+      cek_data_v1.ConstrSmallData {
+        constructor,
+        fields_count,
+        fields_root,
+        cbor_length,
+        memory,
+      }
+    = payload_node
+  expect
+    cek_data_v1.verify_constr_small_data_node_v1(
+      constructor,
+      fields_count,
+      fields_root,
+      cbor_length,
+      memory,
+      Some(first_link),
+      None,
+    )
+  expect constructor == 0
+  // The node check binds `fields_count` to `first_link.length`, and the two
+  // link checks bind that length to 2.
+  expect
+    cek_data_v1.verify_data_list_link_v1(
+      first_link,
+      first_node,
+      Some(second_link),
+    )
+  expect cek_data_v1.verify_data_list_link_v1(second_link, second_node, None)
+  let first_summary = summary_from_node_v1(first_node)
+  let second_summary = summary_from_node_v1(second_node)
+  let first_memory = constant_memory_from_payload_node_v1(first, first_node)
+  let second_memory = constant_memory_from_payload_node_v1(second, second_node)
+  expect parts.memory == first_memory + second_memory
+  Pair(
+    Pair(first, second),
+    Pair(Pair(first_summary, first_memory), Pair(second_summary, second_memory)),
+  )
+}
+
+fn semantic_case_constant_v1(
+  scrutinee: ValueWitnessV1,
+  type_cbor: ByteArray,
+  memory: Int,
+  material: SemanticBuiltinWitnessV1,
+  branches_count: Int,
+) -> CaseConstantSelectionV1 {
+  when cek_constant_v1.decode_constant_type_v1(type_cbor) is {
+    cek_constant_v1.UnitConstant -> fail @"semantic unit scrutinee"
+    cek_constant_v1.BooleanConstant -> fail @"semantic boolean scrutinee"
+    // A committed integer of two or more words has magnitude at least 2^64,
+    // past every branch index a term can hold.
+    cek_constant_v1.IntegerConstant -> {
+      expect memory >= 2
+      CaseConstantMissing
+    }
+    cek_constant_v1.ListConstant { .. } ->
+      if branches_count == 1 || branches_count == 2 {
+        let Pair(element, Pair(head, tail)) = semantic_case_list_head_and_tail_v1(
+          scrutinee,
+          material,
+        )
+        case_constant_values_v1(
+          case_constant_root_v1(
+            cek_constant_v1.encode_constant_type_v1(element),
+            head.1st,
+            head.2nd,
+          ),
+          case_constant_root_v1(
+            type_cbor,
+            cek_data_v1.list_data_summary_v1(tail.1st),
+            tail.2nd,
+          ),
+        )
+      } else {
+        CaseConstantMissing
+      }
+    cek_constant_v1.PairConstant { .. } ->
+      if branches_count == 1 {
+        let Pair(types, values) = semantic_case_pair_components_v1(
+          scrutinee,
+          material,
+        )
+        case_constant_values_v1(
+          case_constant_root_v1(
+            cek_constant_v1.encode_constant_type_v1(types.1st),
+            values.1st.1st,
+            values.1st.2nd,
+          ),
+          case_constant_root_v1(
+            cek_constant_v1.encode_constant_type_v1(types.2nd),
+            values.2nd.1st,
+            values.2nd.2nd,
+          ),
+        )
+      } else {
+        CaseConstantMissing
+      }
+    _ -> CaseConstantUnsupported
+  }
+}
+
+/// The committed root of a constant scrutinee and where `case` sends it. An
+/// inline constant is read whole; a semantic one through its list or pair
+/// material.
+pub fn case_constant_selection_v1(
+  scrutinee: ValueWitnessV1,
+  material: SemanticBuiltinWitnessV1,
+  branches_count: Int,
+) -> Pair<ByteArray, CaseConstantSelectionV1> {
+  when scrutinee is {
+    ConstantValue(witness) -> direct_case_constant_v1(witness, branches_count)
+    SemanticConstantValue { type_cbor, payload, memory } ->
+      Pair(
+        case_constant_root_v1(type_cbor, payload, memory),
+        semantic_case_constant_v1(
+          scrutinee,
+          type_cbor,
+          memory,
+          material,
+          branches_count,
+        ),
+      )
+    OpaqueValue(_) -> fail @"opaque case scrutinee"
+    BlsMillerLoopValue(_) -> fail @"Miller-loop case scrutinee"
+  }
 }
 
 pub fn verify_semantic_pair_v1(
@@ -1913,12 +2382,15 @@ fn verify_semantic_list_v1(
       item_parts.payload,
       parts.1st,
     )
-    result_is_semantic_constant_v1(
-      result,
-      cek_constant_v1.ListConstant { element },
-      cek_data_v1.list_data_summary_v1(sequence),
-      item_parts.memory + parts.2nd,
-    )
+    and {
+      list_item_summary_memory_is_bound_v1(item, element, item_parts),
+      result_is_semantic_constant_v1(
+        result,
+        cek_constant_v1.ListConstant { element },
+        cek_data_v1.list_data_summary_v1(sequence),
+        item_parts.memory + parts.2nd,
+      ),
+    }
   } else if tag == 33 || tag == 34 {
     expect [source] = arguments
     let Pair(element, values) = semantic_list_head_and_tail_v1(source, witness)
@@ -2049,6 +2521,8 @@ fn verify_v3_bytes_v1(
   } else if tag == 80 {
     expect [source_value, indices_value, bit_value] = arguments
     let source = bytes_v1(source_value)
+    // Variant E fails writeBits on an input over 4,096 bytes.
+    expect bytearray.length(source) <= 4096
     let Pair(element_type, index_payloads) = list_payload_v1(indices_value)
     expect element_type == cek_constant_v1.IntegerConstant
     let indices = semantic_integers_v1(index_payloads)
@@ -2074,6 +2548,8 @@ fn verify_v3_bytes_v1(
     )
   } else if tag == 82 {
     expect [source, offset] = arguments
+    // An amount outside Int64 fails, as the failure arm proves.
+    expect !outside_int64_v1(integer_v1(offset))
     result_is_constant_v1(
       result,
       cek_constant_v1.ByteStringConstant,
@@ -2084,6 +2560,7 @@ fn verify_v3_bytes_v1(
   } else {
     expect tag == 83
     expect [source, offset] = arguments
+    expect !outside_int64_v1(integer_v1(offset))
     result_is_constant_v1(
       result,
       cek_constant_v1.ByteStringConstant,
@@ -2127,6 +2604,7 @@ fn verify_bls_g1_v1(
     )
   } else if tag == 56 {
     expect [scalar, source] = arguments
+    expect bls_scalar_in_bound_v1(integer_v1(scalar))
     result_is_constant_v1(
       result,
       cek_constant_v1.BlsG1Constant,
@@ -2150,7 +2628,7 @@ fn verify_bls_g1_v1(
         ),
       ),
     )
-  } else if tag == 58 {
+  } else if tag == 60 {
     expect [message, domain] = arguments
     result_is_constant_v1(
       result,
@@ -2160,7 +2638,7 @@ fn verify_bls_g1_v1(
           |> builtin.bls12_381_g1_compress,
       ),
     )
-  } else if tag == 59 {
+  } else if tag == 58 {
     expect [source] = arguments
     result_is_constant_v1(
       result,
@@ -2172,7 +2650,7 @@ fn verify_bls_g1_v1(
       ),
     )
   } else {
-    expect tag == 60
+    expect tag == 59
     expect [source] = arguments
     let uncompressed = bytes_v1(source)
       |> builtin.bls12_381_g1_uncompress
@@ -2218,6 +2696,7 @@ fn verify_bls_g2_v1(
     )
   } else if tag == 63 {
     expect [scalar, source] = arguments
+    expect bls_scalar_in_bound_v1(integer_v1(scalar))
     result_is_constant_v1(
       result,
       cek_constant_v1.BlsG2Constant,
@@ -2241,7 +2720,7 @@ fn verify_bls_g2_v1(
         ),
       ),
     )
-  } else if tag == 65 {
+  } else if tag == 67 {
     expect [message, domain] = arguments
     result_is_constant_v1(
       result,
@@ -2251,7 +2730,7 @@ fn verify_bls_g2_v1(
           |> builtin.bls12_381_g2_compress,
       ),
     )
-  } else if tag == 66 {
+  } else if tag == 65 {
     expect [source] = arguments
     result_is_constant_v1(
       result,
@@ -2263,7 +2742,7 @@ fn verify_bls_g2_v1(
       ),
     )
   } else {
-    expect tag == 67
+    expect tag == 66
     expect [source] = arguments
     let uncompressed = bytes_v1(source)
       |> builtin.bls12_381_g2_uncompress
@@ -2485,6 +2964,10 @@ pub fn verify_direct_bls_final_roots_v1(
   )
 }
 
+/// A proof limit, not a Cardano rule: over it a success or failure arm aborts.
+/// It also keeps every variant E out-of-bound argument (an integer outside
+/// [-2^262143, 2^262143 - 1], a byte string over 65,536 B) out of the success
+/// arms, so an arm that admits operands past it must check those bounds itself.
 pub const max_direct_builtin_revealed_payload_bytes = 9215
 
 fn revealed_constant_payload_bytes_v1(value: ValueWitnessV1) -> Int {
@@ -2509,9 +2992,11 @@ fn revealed_argument_payload_bytes_v1(arguments: List<ValueWitnessV1>) -> Int {
 /// Verifies the semantic result of one successful, direct-payload builtin
 /// execution. Tags requiring partial cryptographic failure proofs, BLS opaque
 /// values, or streaming large-value witnesses remain deliberately closed.
+/// The caller binds `arguments` to the focus value: the machine step derives
+/// the builtin value root from them and checks it against the pre-state focus
+/// (`verify_builtin_direct_step`, cek-machine-v1.ak:1916-1928).
 pub fn verify_direct_builtin_v1(
   tag: Int,
-  builtin_value_root: ByteArray,
   arguments: List<ValueWitnessV1>,
   result: ValueWitnessV1,
 ) -> Bool {
@@ -2519,14 +3004,6 @@ pub fn verify_direct_builtin_v1(
     revealed_argument_payload_bytes_v1(arguments) + revealed_constant_payload_bytes_v1(
       result,
     ) <= max_direct_builtin_revealed_payload_bytes
-  let Pair(arguments_root, arguments_count) = arguments_root_v1(arguments)
-  expect
-    builtin_value_root == cek_proof_v1.hash_builtin_value_v1(
-      tag,
-      0,
-      arguments_count,
-      arguments_root,
-    )
   if tag >= 0 && tag <= 9 {
     verify_integer_binary_v1(tag, arguments, result)
   } else if tag >= 10 && tag <= 20 {
@@ -2559,21 +3036,14 @@ pub fn verify_direct_builtin_v1(
 /// Verifies a successful builtin against content-addressed semantic constant
 /// nodes. Unsupported semantic operations remain closed until they have a
 /// bounded multi-step proof; callers must never fall back to the direct path.
+/// The caller binds `arguments` to the focus value
+/// (`verify_builtin_semantic_step`, cek-machine-v1.ak:2094-2106).
 pub fn verify_semantic_builtin_v1(
   tag: Int,
-  builtin_value_root: ByteArray,
   arguments: List<ValueWitnessV1>,
   result: ValueWitnessV1,
   witness: SemanticBuiltinWitnessV1,
 ) -> Bool {
-  let Pair(arguments_root, arguments_count) = arguments_root_v1(arguments)
-  expect
-    builtin_value_root == cek_proof_v1.hash_builtin_value_v1(
-      tag,
-      0,
-      arguments_count,
-      arguments_root,
-    )
   if tag == 29 || tag == 30 {
     verify_semantic_pair_v1(tag, arguments, result, witness)
   } else if tag >= 31 && tag <= 35 {
@@ -2590,21 +3060,61 @@ pub fn verify_semantic_builtin_v1(
 /// Verifies the zero-budget semantic failures whose result is determined by
 /// one authenticated top-level node. The witness must contain exactly the
 /// local topology needed to distinguish the failing variant; no whole Data
-/// value is revealed.
+/// value is revealed. The caller binds `arguments` to the focus value
+/// (`verify_builtin_semantic_failure_step`, cek-machine-v1.ak:2170-2181).
 pub fn verify_semantic_builtin_failure_v1(
   tag: Int,
-  builtin_value_root: ByteArray,
   arguments: List<ValueWitnessV1>,
   witness: SemanticBuiltinWitnessV1,
 ) -> Bool {
-  let Pair(arguments_root, arguments_count) = arguments_root_v1(arguments)
-  expect
-    builtin_value_root == cek_proof_v1.hash_builtin_value_v1(
-      tag,
-      0,
-      arguments_count,
-      arguments_root,
-    )
+  if tag == 37 {
+    constr_data_index_fails_v1(arguments, witness)
+  } else {
+    verify_single_source_semantic_failure_v1(tag, arguments, witness)
+  }
+}
+
+/// A constrData index outside the unsigned 64-bit range fails the builtin.
+fn outside_constr_index_v1(index: Int) -> Bool {
+  or {
+    index < 0,
+    index > 18446744073709551615,
+  }
+}
+
+/// The index is read from its revealed leaf or, with no leaf, from its node
+/// memory: an integer of two or more words has magnitude at least 2^64.
+fn constr_data_index_fails_v1(
+  arguments: List<ValueWitnessV1>,
+  witness: SemanticBuiltinWitnessV1,
+) -> Bool {
+  expect [index, _] = arguments
+  expect [node] = witness.data_nodes
+  expect witness.list_nodes == []
+  expect witness.pair_nodes == []
+  let parts = semantic_constant_parts_v1(index)
+  expect parts.constant_type == cek_constant_v1.IntegerConstant
+  when witness.scalar_preimages is {
+    [] -> {
+      expect cek_data_v1.IntegerData { .. } = node
+      and {
+        top_node_matches_v1(parts.payload, node, None, None),
+        parts.payload.memory >= 6,
+      }
+    }
+    [raw] ->
+      outside_constr_index_v1(
+        canonical_integer_leaf_v1(parts.payload, node, raw),
+      )
+    _ -> False
+  }
+}
+
+fn verify_single_source_semantic_failure_v1(
+  tag: Int,
+  arguments: List<ValueWitnessV1>,
+  witness: SemanticBuiltinWitnessV1,
+) -> Bool {
   expect [source] = arguments
   expect [node] = witness.data_nodes
   expect witness.scalar_preimages == []
@@ -2837,7 +3347,7 @@ fn mk_cons_arguments_are_well_typed_v1(
 fn builtin_argument_kinds_v1(tag: Int) -> List<RuntimeValueKindV1> {
   expect and {
       tag >= 0,
-      tag <= cek_proof_v1.max_builtin_tag,
+      tag <= cek_proof_v1.max_resolved_builtin_tag,
     }
   if tag >= 0 && tag <= 9 {
     [IntegerRuntimeValue, IntegerRuntimeValue]
@@ -2904,23 +3414,23 @@ fn builtin_argument_kinds_v1(tag: Int) -> List<RuntimeValueKindV1> {
     [ByteStringRuntimeValue, ByteStringRuntimeValue, ByteStringRuntimeValue]
   } else if tag == 54 || tag == 57 {
     [BlsG1RuntimeValue, BlsG1RuntimeValue]
-  } else if tag == 55 || tag == 59 {
+  } else if tag == 55 || tag == 58 {
     [BlsG1RuntimeValue]
   } else if tag == 56 {
     [IntegerRuntimeValue, BlsG1RuntimeValue]
-  } else if tag == 58 {
-    [ByteStringRuntimeValue, ByteStringRuntimeValue]
   } else if tag == 60 {
+    [ByteStringRuntimeValue, ByteStringRuntimeValue]
+  } else if tag == 59 {
     [ByteStringRuntimeValue]
   } else if tag == 61 || tag == 64 {
     [BlsG2RuntimeValue, BlsG2RuntimeValue]
-  } else if tag == 62 || tag == 66 {
+  } else if tag == 62 || tag == 65 {
     [BlsG2RuntimeValue]
   } else if tag == 63 {
     [IntegerRuntimeValue, BlsG2RuntimeValue]
-  } else if tag == 65 {
-    [ByteStringRuntimeValue, ByteStringRuntimeValue]
   } else if tag == 67 {
+    [ByteStringRuntimeValue, ByteStringRuntimeValue]
+  } else if tag == 66 {
     [ByteStringRuntimeValue]
   } else if tag == 68 {
     [BlsG1RuntimeValue, BlsG2RuntimeValue]
@@ -3225,10 +3735,10 @@ fn bls_compressed_coordinate_v1(encoded: ByteArray, offset: Int) -> Int {
 }
 
 fn bls_uncompress_header_is_invalid_v1(tag: Int, encoded: ByteArray) -> Bool {
-  let expected_length = if tag == 60 {
+  let expected_length = if tag == 59 {
     48
   } else {
-    expect tag == 67
+    expect tag == 66
     96
   }
   expect bytearray.length(encoded) == expected_length
@@ -3237,7 +3747,7 @@ fn bls_uncompress_header_is_invalid_v1(tag: Int, encoded: ByteArray) -> Bool {
   let infinity = first % 128 >= 64
   let sort = first % 64 >= 32
   let first_coordinate = bls_compressed_coordinate_v1(encoded, 0)
-  let second_coordinate = if tag == 67 {
+  let second_coordinate = if tag == 66 {
     builtin.bytearray_to_integer(True, builtin.slice_bytearray(48, 48, encoded))
   } else {
     0
@@ -3293,10 +3803,35 @@ fn ecdsa_signature_scalar_overflows_v1(signature: ByteArray) -> Bool {
   }
 }
 
+/// Variant E fails a BLS12-381 scalarMul whose scalar is outside
+/// [-2^4095, 2^4095 - 1]. The bound is built at run time, not stored as a
+/// 512-byte literal: 0x80 then 511 zero bytes, read big-endian, is 2^4095.
+pub fn bls_scalar_in_bound_v1(scalar: Int) -> Bool {
+  let bound = builtin.bytearray_to_integer(
+    True,
+    builtin.cons_bytearray(128, builtin.replicate_byte(511, 0)),
+  )
+  and {
+    scalar >= -bound,
+    scalar < bound,
+  }
+}
+
 fn outside_int64_v1(value: Int) -> Bool {
   or {
     value < -9223372036854775808,
     value > 9223372036854775807,
+  }
+}
+
+/// The form `bytes_v1` reads: an inline byte-string constant.
+fn is_inline_bytes_v1(value: ValueWitnessV1) -> Bool {
+  when value is {
+    ConstantValue(witness) -> and {
+        cek_constant_v1.constant_type_v1(witness) == cek_constant_v1.ByteStringConstant,
+        data_is_bytes(cek_constant_v1.constant_payload_v1(witness)),
+      }
+    _ -> False
   }
 }
 
@@ -3306,37 +3841,40 @@ fn malformed_signature_lengths_v1(
 ) -> Bool {
   expect [key_value, message_value, signature_value] = arguments
   let key_length = bytearray.length(bytes_v1(key_value))
-  let message_length = bytearray.length(bytes_v1(message_value))
   let signature_length = bytearray.length(bytes_v1(signature_value))
-  if tag == 21 {
-    or {
-      key_length != 32,
-      signature_length != 64,
-    }
-  } else if tag == 52 {
-    if or {
-      key_length != 33,
-      message_length != 32,
-      signature_length != 64,
-    } {
-      True
-    } else {
+  // Every message is a byte string; only ECDSA fixes its length (BIP-340
+  // and Ed25519 sign messages of any length).
+  and {
+    is_inline_bytes_v1(message_value),
+    if tag == 21 {
       or {
-        !secp256k1_public_key_is_valid_v1(tag, bytes_v1(key_value)),
-        ecdsa_signature_scalar_overflows_v1(bytes_v1(signature_value)),
+        key_length != 32,
+        signature_length != 64,
       }
-    }
-  } else {
-    expect tag == 53
-    if or {
-      key_length != 32,
-      message_length != 32,
-      signature_length != 64,
-    } {
-      True
+    } else if tag == 52 {
+      if or {
+        key_length != 33,
+        bytearray.length(bytes_v1(message_value)) != 32,
+        signature_length != 64,
+      } {
+        True
+      } else {
+        or {
+          !secp256k1_public_key_is_valid_v1(tag, bytes_v1(key_value)),
+          ecdsa_signature_scalar_overflows_v1(bytes_v1(signature_value)),
+        }
+      }
     } else {
-      !secp256k1_public_key_is_valid_v1(tag, bytes_v1(key_value))
-    }
+      expect tag == 53
+      if or {
+        key_length != 32,
+        signature_length != 64,
+      } {
+        True
+      } else {
+        !secp256k1_public_key_is_valid_v1(tag, bytes_v1(key_value))
+      }
+    },
   }
 }
 
@@ -3408,15 +3946,15 @@ fn known_builtin_failure_v1(tag: Int, arguments: List<ValueWitnessV1>) -> Bool {
   } {
     malformed_signature_lengths_v1(tag, arguments)
   } else if or {
-    tag == 58,
-    tag == 65,
+    tag == 60,
+    tag == 67,
   } {
     expect [message, domain] = arguments
     and {
       constant_type_v1(message) == cek_constant_v1.ByteStringConstant,
       bytearray.length(bytes_v1(domain)) > 255,
     }
-  } else if tag == 60 {
+  } else if tag == 59 {
     expect [source] = arguments
     let encoded = bytes_v1(source)
     or {
@@ -3435,7 +3973,7 @@ fn known_builtin_failure_v1(tag: Int, arguments: List<ValueWitnessV1>) -> Bool {
         False
       },
     }
-  } else if tag == 67 {
+  } else if tag == 66 {
     expect [source] = arguments
     let encoded = bytes_v1(source)
     or {
@@ -3686,8 +4224,7 @@ pub fn verify_semantic_data_misc(
     expect witness.pair_nodes == []
     expect [raw_data] = witness.scalar_preimages
     expect bytearray.length(raw_data) > 0
-    expect
-      bytearray.length(raw_data) <= cek_data_scan_v1.max_revealed_data_leaf_bytes
+    expect bytearray.length(raw_data) <= cek_proof_v1.max_bounded_blob_bytes
     let data <- cbor_deserialise.expect_deserialise(raw_data)
     expect cbor.serialise(data) == raw_data
     expect
@@ -3751,12 +4288,15 @@ pub fn verify_semantic_list_construct(
       item_parts.payload,
       parts.1st,
     )
-    result_is_semantic_constant_v1(
-      result,
-      cek_constant_v1.ListConstant { element },
-      cek_data_v1.list_data_summary_v1(sequence),
-      item_parts.memory + parts.2nd,
-    )
+    and {
+      list_item_summary_memory_is_bound_v1(item, element, item_parts),
+      result_is_semantic_constant_v1(
+        result,
+        cek_constant_v1.ListConstant { element },
+        cek_data_v1.list_data_summary_v1(sequence),
+        item_parts.memory + parts.2nd,
+      ),
+    }
   } else {
     False
   }
@@ -3795,12 +4335,19 @@ pub fn authenticated_builtin_failure_budget(
   tag: Int,
   arguments: List<ValueWitnessV1>,
 ) -> cek_cost_v1.BuiltinBudgetV1 {
-  let bls_uncompress_is_paid = if tag == 60 {
+  let failure_is_paid = if tag == 59 {
     expect [source] = arguments
     bytearray.length(bytes_v1(source)) == 48
-  } else if tag == 67 {
+  } else if tag == 66 {
     expect [source] = arguments
     bytearray.length(bytes_v1(source)) == 96
+  } else if tag == 73 {
+    // Cardano charges integerToByteString before its width check fails. A
+    // width outside 0..8,192 is charged nothing here: a failure's cost is
+    // never verdict-relevant, and the TypeScript twin charges the same.
+    expect [_, width, _] = arguments
+    let width_value = integer_v1(width)
+    width_value >= 0 && width_value <= 8192
   } else {
     False
   }
@@ -3811,10 +4358,9 @@ pub fn authenticated_builtin_failure_budget(
     tag == 21,
     tag == 52,
     tag == 53,
-    tag == 58,
-    tag == 65,
-    tag == 73,
-    bls_uncompress_is_paid,
+    tag == 60,
+    tag == 67,
+    failure_is_paid,
   } {
     direct_builtin_budget_v1(tag, arguments)
   } else {

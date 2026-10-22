@@ -24,7 +24,7 @@ import {
 } from "../src/input-set-uniqueness/index.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
-import { measuredFit } from "./input-set-uniqueness-wrongful-rejection-lifecycle.measured-fit.js";
+import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import {
   captureEmulatorSubmission,
@@ -52,6 +52,7 @@ export const exerciseForcedLifecycle = async ({
   readonly referenceCount: 400 | 819;
   readonly complete: boolean;
 }) => {
+  const ownOutputs = createOwnOutputJournal();
   const harness = await makeInputSetUniquenessEmulatorHarness();
   // Field 1 reaches the 32,768-byte aggregate-field bound at 819 items
   // (32,763 bytes, all three certified chunk positions). The one spend item
@@ -155,6 +156,7 @@ export const exerciseForcedLifecycle = async ({
     harness.emulator,
     () =>
       publishFaultProofFieldCarriage({
+        ownOutputs,
         lucid: harness.proverLucid,
         signer: harness.proverSigner,
         planned: referencePlan,
@@ -183,6 +185,7 @@ export const exerciseForcedLifecycle = async ({
   ) =>
     await captureEmulatorSubmission(harness.emulator, () =>
       certifyFaultProofFieldCarriage({
+        ownOutputs,
         lucid: harness.proverLucid,
         network,
         signer: harness.proverSigner,
@@ -224,10 +227,6 @@ export const exerciseForcedLifecycle = async ({
       }),
     );
     measurements.push(captured.measurement);
-    measuredFit.record(
-      `forced-${referenceCount}-${complete}/${measurements.length - 1}`,
-      captured.measurement,
-    );
     return captured.result.nextThreadOutRef;
   };
   const bind = async (threadOutRef: string) => {
@@ -244,15 +243,12 @@ export const exerciseForcedLifecycle = async ({
       }),
     );
     measurements.push(captured.measurement);
-    measuredFit.record(
-      `forced-${referenceCount}-${complete}/${measurements.length - 1}`,
-      captured.measurement,
-    );
     return captured.result.nextThreadOutRef;
   };
   const seed = async (threadOutRef: string) => {
     const captured = await captureEmulatorSubmission(harness.emulator, () =>
       submitInputSetUniquenessStep03({
+        ownOutputs,
         lucid: harness.proverLucid,
         contracts: harness.family,
         categoryId: harness.category.categoryId,
@@ -268,16 +264,13 @@ export const exerciseForcedLifecycle = async ({
       }),
     );
     measurements.push(captured.measurement);
-    measuredFit.record(
-      `forced-${referenceCount}-${complete}/${measurements.length - 1}`,
-      captured.measurement,
-    );
     return captured.result.nextThreadOutRef;
   };
   const advance = async (threadOutRef: string, cursor: number) => {
     const readingSpend = cursor < fixture.spendInputItemCbors.length;
     const captured = await captureEmulatorSubmission(harness.emulator, () =>
       submitInputSetUniquenessStep04Advance({
+        ownOutputs,
         lucid: harness.proverLucid,
         contracts: harness.family,
         categoryId: harness.category.categoryId,
@@ -296,10 +289,6 @@ export const exerciseForcedLifecycle = async ({
       }),
     );
     measurements.push(captured.measurement);
-    measuredFit.record(
-      `forced-${referenceCount}-${complete}/${measurements.length - 1}`,
-      captured.measurement,
-    );
     observedCursors.push(captured.result.state.cursor);
     return captured.result.nextThreadOutRef;
   };
@@ -316,10 +305,6 @@ export const exerciseForcedLifecycle = async ({
       }),
     );
     measurements.push(captured.measurement);
-    measuredFit.record(
-      `forced-${referenceCount}-${complete}/${measurements.length - 1}`,
-      captured.measurement,
-    );
   };
 
   if (!complete) {
@@ -328,6 +313,7 @@ export const exerciseForcedLifecycle = async ({
     const substitutionThread = await bind(await initialize());
     await expect(
       submitInputSetUniquenessStep03({
+        ownOutputs,
         lucid: harness.proverLucid,
         contracts: harness.family,
         categoryId: harness.category.categoryId,
@@ -395,10 +381,6 @@ export const exerciseForcedLifecycle = async ({
     }),
   );
   measurements.push(finalized.measurement);
-  measuredFit.record(
-    `forced-${referenceCount}-${complete}/${measurements.length - 1}`,
-    finalized.measurement,
-  );
   expect(finalized.result.fraudProofUnit).toBeTruthy();
 
   const removalReferences = await publishRemovalReferenceScripts({
@@ -435,10 +417,6 @@ export const exerciseForcedLifecycle = async ({
     }),
   );
   measurements.push(removal.measurement);
-  measuredFit.record(
-    `forced-${referenceCount}-${complete}/${measurements.length - 1}`,
-    removal.measurement,
-  );
   for (const [index, measurement] of measurements.entries()) {
     expectProofFit({
       stage: `input-set-uniqueness-${index.toString()}`,
@@ -454,11 +432,6 @@ export const exerciseForcedLifecycle = async ({
     certificateReferencePublication.measurement,
   ];
   for (const [index, measurement] of supportMeasurements.entries()) {
-    measuredFit.record(
-      `forced-${referenceCount}-${complete}/support-${index}`,
-      measurement,
-      measurement.executionMemory === 0n ? "publication" : "lifecycle",
-    );
     expectProofFit({
       stage: `input-set-uniqueness-carriage-${index.toString()}`,
       measurement,

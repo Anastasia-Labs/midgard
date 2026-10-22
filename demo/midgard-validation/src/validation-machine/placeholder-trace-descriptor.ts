@@ -7,6 +7,7 @@
  * the same bytes without replaying the machine and without retaining any
  * machine state. `machine_version` stays at the compiled version.
  */
+import { midgardBlake2b } from "@al-ft/midgard-core";
 import {
   computeMidgardForcedTxProofCommitment,
   computeMidgardNativeTxProofCommitment,
@@ -22,7 +23,6 @@ import {
   type MidgardValidationTraceDescriptor,
   MidgardValidationVerdict,
 } from "@al-ft/midgard-core/validation-trace";
-import { blake2b } from "@noble/hashes/blake2.js";
 
 const PLACEHOLDER_INITIAL_STATE_DOMAIN = Buffer.from(
   "MidgardValidationPlaceholderInitialV1",
@@ -44,7 +44,7 @@ export type PlaceholderValidationTraceEventV1 = Readonly<{
 
 const hash32 = (domain: Buffer, ...parts: readonly Uint8Array[]): Buffer =>
   Buffer.from(
-    blake2b(
+    midgardBlake2b(
       Buffer.concat([domain, ...parts.map((part) => Buffer.from(part))]),
       {
         dkLen: 32,

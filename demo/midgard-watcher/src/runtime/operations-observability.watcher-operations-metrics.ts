@@ -6,6 +6,7 @@ import {
 } from "../indexers/authenticated-state-queue-observation.parse-persisted-header.js";
 import type { WatcherRetainedDaTransportStatus } from "../storage/retained-da-runtime.js";
 import type { WatcherSubmissionModes } from "./observe-and-prepare.js";
+import type { WatcherOperationsReadinessReason } from "./operations-observability.watcher-operations-readiness-reasons.js";
 
 export const WATCHER_OPERATIONS_OBSERVABILITY =
   "midgard-watcher-production-operations-observability-v1" as const;
@@ -31,6 +32,7 @@ export const WATCHER_ALERT_CODES = Object.freeze([
   "da_bond_pool_under_backed",
   "da_bond_pool_withdrawing",
   "prepared_proof_awaiting_submission",
+  "validation_trace_replay_stuck",
 ] as const);
 
 export type WatcherAlertCode = (typeof WATCHER_ALERT_CODES)[number];
@@ -41,7 +43,10 @@ export type WatcherAlertCode = (typeof WATCHER_ALERT_CODES)[number];
  * watcher `not_ready` (spec #685 E5): a short or withdrawing DA bond pool
  * pauses attestations, while the watcher keeps verifying and challenging. An
  * L1 rollback is routine before finality and the watcher replays through it.
- * A prepared proof waits on an allow-listed key, not on this watcher.
+ * A prepared proof waits on an allow-listed key, not on this watcher. A
+ * stuck script re-execution already holds its objective by name, and keeps
+ * retrying, so the alert only tells the operator; the header's outcome
+ * clears it.
  */
 export const WATCHER_INFORMATIONAL_ALERT_CODES: ReadonlySet<WatcherAlertCode> =
   new Set<WatcherAlertCode>([
@@ -49,6 +54,7 @@ export const WATCHER_INFORMATIONAL_ALERT_CODES: ReadonlySet<WatcherAlertCode> =
     "da_bond_pool_withdrawing",
     "chain_rollback",
     "prepared_proof_awaiting_submission",
+    "validation_trace_replay_stuck",
   ]);
 
 /** The last pooled DA bond readout, as `/v1/status` serves it. */
@@ -188,52 +194,6 @@ export type WatcherOperationsDiagnostic =
   | WatcherL1SourceDiagnostic
   | WatcherAlertDiagnostic;
 
-export type WatcherOperationsReadinessReason =
-  | "supervisor_not_accepting"
-  | "recovery_incomplete"
-  | "launch_scope_incomplete"
-  | "deadline_at_risk"
-  | "deadline_unsafe"
-  | "l1_source_unavailable"
-  | "l1_source_stale"
-  | "retained_da_transport_failed"
-  | "active_alert"
-  | "journal_capacity"
-  /** A fault-proof journal failed integrity; `supervisor.journalIntegrity`
-   * names the failure. Held until an operator repairs the journals. */
-  | "journal_integrity"
-  /** The journals could not be opened; `supervisor.journalUnavailable` names
-   * the failure. Held while the open is retried; clears once it succeeds. */
-  | "journal_unavailable"
-  /** Proof work or a funding reservation names a decision the journal does
-   * not hold; `supervisor.journalDecisionMissing` lists each. Held, never
-   * run again; each clears once L1 facts resolve it. */
-  | "journal_decision_missing"
-  /** A fault-proof objective's latest safe start, fixed by its header, passed
-   * before it signed any attempt; it is listed in
-   * `supervisor.journalDecisionMissing` with this `readiness` and the detail
-   * `<category>/<headerHash>`. Held, never run again, the process up; clears
-   * once its header leaves the finalized queue. */
-  | "fault_proof_start_deadline_passed"
-  /** Startup could not read a fault-proof objective's workflow directory (a
-   * symlinked path, a sequence gap a partial delete left, a foreign
-   * execution, an I/O error); it is listed in
-   * `supervisor.journalDecisionMissing` with this `readiness` and the detail
-   * `<category>/<headerHash>: <failure>`. Held, never run again, the process
-   * up; clears once its header leaves the finalized queue, which forgets its
-   * rows. */
-  | "fault_proof_objective_unreadable"
-  /** A released or final objective's workflow directory could not be
-   * removed (its rows stay and keep their slot under the objective cap), or
-   * a removed directory's tombstone could not be deleted;
-   * `supervisor.objectiveCleanupFailures` lists each with its failure. Every
-   * admission retries; clears once the removal succeeds. */
-  | "fault_proof_objective_cleanup_failed"
-  /** A journal database was busy or locked past its timeout;
-   * `supervisor.journalBusy` names the failure. The work is requeued in
-   * process from durable state after a 1-30 s backoff; clears then. */
-  | "journal_busy";
-
 export type WatcherOperationsL1Degradation = Readonly<{
   reason: string;
   count: string;
@@ -248,9 +208,10 @@ export type WatcherOperationsStatus = Readonly<{
   readiness: "ready" | "not_ready";
   /**
    * The watcher's own reasons, then each named L1 reason of `l1Readiness`
-   * (the follower's, the decision driver's and the proof execution's, for
-   * example `l1_follower_catching_up`, `fault_proof_l1_refused:<reason>` or
-   * `fault_proof_resubmission_required` for manual proof submission).
+   * (follower, decision driver, proof execution), e.g. `l1_follower_catching_up`,
+   * `fault_proof_resubmission_required` (manual submission),
+   * `fault_proof_continuation_stalled` (cleared by the objective's progress)
+   * or `fault_proof_objective_quarantined` (one objective held and re-checked).
    */
   readinessReasons: readonly (WatcherOperationsReadinessReason | string)[];
   /** The named L1 reasons with their detail; empty when L1 holds nothing. */

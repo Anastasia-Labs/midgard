@@ -216,8 +216,8 @@ export const buildAtomicProtocolInitTxProgram = (
     DA_OWNERS_HEX?: string;
   },
   fraudProofCatalogueMerkleRoot: string,
-  validTo?: bigint,
-  referenceScripts?: AtomicProtocolInitReferenceScripts,
+  validTo: bigint | undefined,
+  referenceScripts: AtomicProtocolInitReferenceScripts,
   consensusProfile: ContractDeploymentIdentityValue["consensusProfile"] = MIDGARD_CONSENSUS_PROFILE,
 ): Effect.Effect<
   TxBuilder,

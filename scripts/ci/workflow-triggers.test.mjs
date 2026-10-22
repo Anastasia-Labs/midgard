@@ -83,6 +83,7 @@ const scenarios = {
         "midgard-core",
         "midgard-sdk",
         "midgard-validation",
+        "midgard-validation-bench",
         "midgard-fault-proofs-build",
         "midgard-fault-proofs",
         "midgard-watcher-typecheck",
@@ -90,6 +91,7 @@ const scenarios = {
         "test-durations",
         "native-mpf",
         "lint",
+        "installed-boundaries",
         "da-committee-node",
         "midgard-l1-follower",
         "l1-fork-simulator",
@@ -99,6 +101,7 @@ const scenarios = {
         "da-e2e",
         "gate",
       ].map((job) => `midgard-node-ci:${job}`),
+      "onchain-review-surface:review-surface",
       "repo-tools-ci:repo-tools",
       "agent-skills-ci:skills",
     ],
@@ -122,6 +125,7 @@ const scenarios = {
     runs: [
       "midgard-node-ci:*",
       "midgard-watcher-ci:watcher",
+      "nix-ci:nix",
       "repo-tools-ci:repo-tools",
       "agent-skills-ci:skills",
     ],
@@ -150,16 +154,15 @@ const scenarios = {
       "agent-skills-ci:skills",
     ],
   },
-  // Node CI and Aiken CI run checks by id, so a change to any module of the
-  // by-id runner re-runs them (preflight-runner-filters.test.mjs derives the
-  // list). runtime-owner.mjs schedules hosted work, but the runner imports
-  // it and runs it while building the registry, so it counts.
+  // Node CI runs checks by id, so a change to any module of the by-id runner
+  // re-runs it (preflight-runner-filters.test.mjs derives the list).
+  // runtime-owner.mjs schedules hosted work, but the runner imports it and
+  // runs it while building the registry, so it counts.
   "by-id runner pull request": {
     event: "pull_request",
     branch: workingBranch,
     files: ["scripts/preflight/runtime-owner.mjs"],
     runs: [
-      "aiken-ci:*",
       "midgard-node-ci:*",
       "repo-tools-ci:repo-tools",
       "agent-skills-ci:skills",
@@ -175,6 +178,78 @@ const scenarios = {
       "scripts/preflight/run.test.mjs",
     ],
     runs: ["repo-tools-ci:repo-tools", "agent-skills-ci:skills"],
+  },
+  // Aiken CI holds every script budget to its ceiling, so an edit to the
+  // table or its accessor re-runs it.
+  "script budget table pull request": {
+    event: "pull_request",
+    branch: workingBranch,
+    files: [
+      "demo/midgard-core/src/script-budgets.json",
+      "demo/midgard-core/src/script-budgets.ts",
+    ],
+    runs: [
+      "aiken-ci:*",
+      "midgard-node-ci:*",
+      "midgard-watcher-ci:watcher",
+      "docs-site-ci:build",
+      "repo-tools-ci:repo-tools",
+      "agent-skills-ci:skills",
+    ],
+  },
+  "shared package task helper pull request": {
+    event: "pull_request",
+    branch: workingBranch,
+    files: ["demo/scripts/package-tasks.mjs"],
+    runs: [
+      "aiken-ci:*",
+      "midgard-node-ci:*",
+      "midgard-watcher-ci:watcher",
+      "nix-ci:nix",
+      "docs-site-ci:build",
+      "repo-tools-ci:repo-tools",
+      "agent-skills-ci:skills",
+    ],
+  },
+  "shared package task helper push to main": {
+    event: "push",
+    branch: "main",
+    files: ["demo/scripts/package-tasks.mjs"],
+    runs: [
+      "aiken-ci:*",
+      "midgard-node-ci:*",
+      "midgard-watcher-ci:watcher",
+      "nix-ci:nix",
+      "docs-site-ci:build",
+      "repo-tools-ci:repo-tools",
+      "agent-skills-ci:skills",
+    ],
+  },
+  "workspace settings pull request": {
+    event: "pull_request",
+    branch: "main",
+    files: ["demo/pnpm-workspace.yaml"],
+    runs: [
+      "midgard-node-ci:*",
+      "midgard-watcher-ci:watcher",
+      "nix-ci:nix",
+      "docs-site-ci:build",
+      "repo-tools-ci:repo-tools",
+      "agent-skills-ci:skills",
+    ],
+  },
+  "workspace settings push to main": {
+    event: "push",
+    branch: "main",
+    files: ["demo/pnpm-workspace.yaml"],
+    runs: [
+      "midgard-node-ci:*",
+      "midgard-watcher-ci:watcher",
+      "nix-ci:nix",
+      "docs-site-ci:build",
+      "repo-tools-ci:repo-tools",
+      "agent-skills-ci:skills",
+    ],
   },
   "watcher pull request": {
     event: "pull_request",
@@ -197,7 +272,6 @@ const scenarios = {
     ],
     runs: [
       // process.mjs is also a module of the by-id runner.
-      "aiken-ci:*",
       "midgard-node-ci:*",
       "midgard-watcher-ci:watcher",
       "docs-site-ci:build",
@@ -215,6 +289,8 @@ const scenarios = {
       "latex-ci:generate_pdf",
       "midgard-node-ci:*",
       "midgard-watcher-ci:watcher",
+      "nix-ci:nix",
+      "onchain-review-surface:review-surface",
       "repo-tools-ci:repo-tools",
       "agent-skills-ci:skills",
     ],

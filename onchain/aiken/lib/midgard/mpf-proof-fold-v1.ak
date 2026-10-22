@@ -105,16 +105,6 @@ pub fn encode_proof_descriptor_v1(descriptor: ProofDescriptorV1) -> ByteArray {
     |> bytearray.concat(validation_merkle_v1.encode_frontier(descriptor.peaks))
 }
 
-// As in `mpf_proof_v1`, the prefix length is fixed by the neighbour's hash, and
-// a terminal Fork bounds where the prefix ends.
-fn neighbor_is_well_formed(neighbor: mpf.Neighbor) -> Bool {
-  and {
-    neighbor.nibble >= 0,
-    neighbor.nibble < 16,
-    bytearray.length(neighbor.root) == digest_byte_count,
-  }
-}
-
 // The terminal frame is the deepest one, and the only one whose neighbour the
 // including and excluding roots read differently (see
 // `mpf_proof_v1.terminal_leaf_neighbor_is_canonical` and
@@ -157,7 +147,7 @@ fn frame_is_well_formed(
           },
         }
       mpf.Fork { neighbor, .. } -> and {
-          neighbor_is_well_formed(neighbor),
+          mpf_proof_v1.fork_neighbor_is_well_formed(frame.next_cursor, neighbor),
           nibble(path, frame.next_cursor - 1) != neighbor.nibble,
           !is_terminal_frame || when deletion_opening is {
             Some(_) ->

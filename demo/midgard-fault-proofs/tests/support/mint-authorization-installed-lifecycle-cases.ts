@@ -2,7 +2,6 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setImmediate } from "node:timers/promises";
-import { fileURLToPath } from "node:url";
 import { inspect } from "node:util";
 
 import {
@@ -21,10 +20,10 @@ import { admitMintAuthorizationWorkflowArtifact } from "../../src/mint-authoriza
 import { MINT_AUTHORIZATION_CATEGORY_LABEL } from "../../src/mint-authorization/contracts.js";
 import {
   createMintAuthorizationTransactionPort,
+  mintAuthorizationRefineAction,
   mintAuthorizationWorkflowFieldRequirement,
   mintAuthorizationWorkflowRawRequirement,
 } from "../../src/mint-authorization/workflow.js";
-import type { VanRossemFitMeasurement } from "../../src/proof-fit/van-rossem-fit-ledger.js";
 import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.js";
 import { classifyCanonicalBlockViolations } from "../../src/workflow/classification.js";
 import { MINT_AUTHORIZATION_COMPLETE_CANONICAL_REPLAY } from "../../src/workflow/complete-replay.js";
@@ -76,10 +75,6 @@ import {
 import { runMintAuthorizationProofMaximum } from "./mint-authorization-proof-maximum.js";
 import { mintAuthorizationRetainedReferenceFixture } from "./mint-authorization-retained-reference.js";
 import {
-  createSplitFitLedgerPart,
-  type SplitFitLedger,
-} from "./split-fit-ledger.js";
-import {
   publishPlainReferenceScriptUtxo,
   publishRemovalReferenceScripts,
 } from "./submit-init-emulator-shared.js";
@@ -105,16 +100,12 @@ const MINT_AUTHORIZATION_INSTALLED_CASES = [
   "maximum-selected-assets",
 ] as const;
 
-const MINT_AUTHORIZATION_INSTALLED_PARTS = [
-  "native-wide",
-  "native-deep",
-  "reference",
-  "field-maxima",
-  "rest",
-] as const;
-
 export type MintAuthorizationInstalledPart =
-  (typeof MINT_AUTHORIZATION_INSTALLED_PARTS)[number];
+  | "native-wide"
+  | "native-deep"
+  | "reference"
+  | "field-maxima"
+  | "rest";
 
 /**
  * The wide and the deep native-script maxima each run about as long as any
@@ -137,41 +128,19 @@ const partOf = (name: string): MintAuthorizationInstalledPart =>
           ? "field-maxima"
           : "rest";
 
-const MINT_AUTHORIZATION_FIT_LEDGER: SplitFitLedger = {
-  path: fileURLToPath(
-    new URL(
-      "../../../../docs/fault-proofs/size-plans/mint-authorization-workflow-fit-ledger.json",
-      import.meta.url,
-    ),
-  ),
-  category: "mintAuthorization",
-  compilerVersion: "aiken v1.1.23+5adf783",
-  caseCount: MINT_AUTHORIZATION_INSTALLED_CASES.length,
-  parts: MINT_AUTHORIZATION_INSTALLED_PARTS,
-  source: fileURLToPath(import.meta.url),
-  // Each scenario's rows are named `<scenario>/<stage>/...`, unique already.
-  rowNames: "stem",
-};
-
 /**
  * Runs one scenario through mint and removal, restarting the workflow from its
- * journal at every boundary, and pushes the rows it measures.
+ * journal at every boundary.
  */
-const captureAndRestart = async (
-  name: string,
-  measurements: VanRossemFitMeasurement[],
-): Promise<void> => {
+const captureAndRestart = async (name: string): Promise<void> => {
   if (name === "maximum-selected-assets") {
-    measurements.push(
-      ...(await runMintAuthorizationProofMaximum(
-        mintAuthorizationMaximumSelectedAssets(),
-        name,
-      )),
+    await runMintAuthorizationProofMaximum(
+      mintAuthorizationMaximumSelectedAssets(),
     );
     return;
   }
   if (name === "maximum-proofs") {
-    measurements.push(...(await runMintAuthorizationProofMaximum()));
+    await runMintAuthorizationProofMaximum();
     return;
   }
   const present = !name.startsWith("absent") && name !== "cancel-witness-scan";
@@ -328,32 +297,11 @@ const captureAndRestart = async (
     }),
   );
   const { steps, certificate, witnesses } = publications.result;
-  publications.measurements.forEach((m, index) =>
-    measurements.push({
-      name: `${scenario.name}/publish/${index}`,
-      kind: "publication",
-      maximumShape:
-        "seven physical validators, five witnesses and field certificate",
-      signedBytes: m.completeSignedBytes,
-      memoryUnits: m.executionMemory,
-      cpuUnits: m.executionSteps,
-    }),
-  );
   // Publish the complete deployment before its native auth timelock expires.
   const removalPublication = await captureEmulatorSubmission(h.emulator, () =>
     publishRemovalReferenceScripts({
       lucid: h.proverLucid,
       contracts: h.contracts,
-    }),
-  );
-  removalPublication.measurements.forEach((m, index) =>
-    measurements.push({
-      name: `${scenario.name}/publish-removal/${index}`,
-      kind: "publication",
-      maximumShape: "state queue removal reference scripts",
-      signedBytes: m.completeSignedBytes,
-      memoryUnits: m.executionMemory,
-      cpuUnits: m.executionSteps,
     }),
   );
   const removal = removalPublication.result;
@@ -411,7 +359,6 @@ const captureAndRestart = async (
         action.input.stage,
       );
     },
-    transactionConfirmed: async () => false,
   });
   const fieldPrerequisite = createAuthenticatedFieldCarriagePrerequisitePort({
     category: "mintAuthorization",
@@ -427,7 +374,7 @@ const captureAndRestart = async (
       return mintAuthorizationWorkflowFieldRequirement(
         await admitMintAuthorizationWorkflowArtifact(artifact),
         h.proverSigner.paymentKeyHash,
-        action.input.stage,
+        action.input,
         {
           policyId: h.contracts.fieldPreimageCertificate.policyId,
           mintingScript: h.contracts.fieldPreimageCertificate.mintingScript,
@@ -435,7 +382,6 @@ const captureAndRestart = async (
         },
       );
     },
-    transactionConfirmed: async () => false,
   });
   const port = createMintAuthorizationTransactionPort(
     {
@@ -590,6 +536,10 @@ const captureAndRestart = async (
           l1,
           transactions: port,
           stateQueueMutationLeaseCoordinator: leaseCoordinator,
+          refineAction: mintAuthorizationRefineAction({
+            lucid: h.proverLucid,
+            signer: h.proverSigner,
+          }),
         }),
       }),
     });
@@ -683,18 +633,6 @@ const captureAndRestart = async (
           proofUnit,
         ),
       ).toHaveLength(0);
-      cancelled.measurements.forEach((m, index) =>
-        measurements.push({
-          name: `${name}/cancel/${index}`,
-          kind: "lifecycle",
-          maximumShape: cancelMintScan
-            ? "authenticated bounded mint scan cancellation"
-            : "authenticated staged witness scan cancellation",
-          signedBytes: m.completeSignedBytes,
-          memoryUnits: m.executionMemory,
-          cpuUnits: m.executionSteps,
-        }),
-      );
       return;
     }
     const preflight = await current
@@ -715,24 +653,13 @@ const captureAndRestart = async (
       kind: "submission_intent",
       actionId: action.actionId,
       actionInput: action.input,
+      ...(preflight.durableRecovery === undefined
+        ? {}
+        : { durableRecovery: preflight.durableRecovery }),
       attempt: 1,
       txHash: preflight.txHash,
     });
-    const result = await captureEmulatorSubmission(h.emulator, () =>
-      current.submit({ ...context, action, preflight }),
-    );
-    result.measurements.forEach((m, index) =>
-      measurements.push({
-        name: `${scenario.name}/${String(action.input.stage)}/${n}/${index}`,
-        kind: String(action.input.stage).startsWith("publish_")
-          ? "publication"
-          : "lifecycle",
-        maximumShape: `${scenario.item.length} raw script bytes`,
-        signedBytes: m.completeSignedBytes,
-        memoryUnits: m.executionMemory,
-        cpuUnits: m.executionSteps,
-      }),
-    );
+    await current.submit({ ...context, action, preflight });
     h.emulator.awaitBlock();
     confirmed.add(preflight.txHash);
     await append({
@@ -771,59 +698,35 @@ const captureAndRestart = async (
     ),
   ).toHaveLength(1);
   const now = BigInt(h.emulator.now());
-  const removed = await captureEmulatorSubmission(h.emulator, () =>
-    submitRemoveFraudulentBlock({
-      lucid: h.proverLucid,
-      blueprint: h.realBlueprint,
-      deploymentInfo: buildRemovalDeploymentInfo(h.contracts, h.catalogue, {
-        removalReferenceScripts: removal.published,
-      }),
-      network: "Custom",
-      signer: h.proverSigner,
-      fraudCategory: "mintAuthorization",
-      fraudulentHeaderHash: setup.headerHash,
-      requireReferenceScripts: true,
-      stateQueueMutationLeaseCoordinator: leaseCoordinator,
-      validFrom: now > 120000n ? now - 120000n : 0n,
-      validTo: now + 300000n,
+  await submitRemoveFraudulentBlock({
+    lucid: h.proverLucid,
+    blueprint: h.realBlueprint,
+    deploymentInfo: buildRemovalDeploymentInfo(h.contracts, h.catalogue, {
+      removalReferenceScripts: removal.published,
     }),
-  );
-  removed.measurements.forEach((m, index) =>
-    measurements.push({
-      name: `${scenario.name}/remove/${index}`,
-      kind: "lifecycle",
-      maximumShape: `${scenario.item.length} raw script bytes`,
-      signedBytes: m.completeSignedBytes,
-      memoryUnits: m.executionMemory,
-      cpuUnits: m.executionSteps,
-    }),
-  );
+    network: "Custom",
+    signer: h.proverSigner,
+    fraudCategory: "mintAuthorization",
+    fraudulentHeaderHash: setup.headerHash,
+    requireReferenceScripts: true,
+    stateQueueMutationLeaseCoordinator: leaseCoordinator,
+    validFrom: now > 120000n ? now - 120000n : 0n,
+    validTo: now + 300000n,
+  });
 };
 
 /** Registers one part of the suite; the part files together run every case. */
 export const registerMintAuthorizationInstalledCases = (
   part: MintAuthorizationInstalledPart,
 ): void => {
-  const cases = MINT_AUTHORIZATION_INSTALLED_CASES.map((name, ordinal) => ({
-    name,
-    ordinal,
-  })).filter(({ name }) => partOf(name) === part);
-  const fit = createSplitFitLedgerPart(
-    MINT_AUTHORIZATION_FIT_LEDGER,
-    part,
-    cases.map(({ ordinal }) => ordinal),
+  const cases = MINT_AUTHORIZATION_INSTALLED_CASES.filter(
+    (name) => partOf(name) === part,
   );
   describe("mintAuthorization installed cursor actuator", () => {
-    it.each(cases.map(({ name }) => name))(
+    it.each(cases)(
       "captures and restarts %s through mint and removal",
       async (name) => {
-        const ordinal = MINT_AUTHORIZATION_INSTALLED_CASES.indexOf(name);
-        fit.begin(ordinal);
-        const measurements: VanRossemFitMeasurement[] = [];
-        await captureAndRestart(name, measurements);
-        for (const { name: stem, ...row } of measurements)
-          fit.record(ordinal, { stem, ...row });
-        fit.pass(ordinal);
+        await captureAndRestart(name);
       },
       1_800_000,
     );

@@ -18,7 +18,10 @@ import type {
   JournalJsonObject,
   JournalJsonValue,
 } from "./journal.js";
-import type { FraudProofL1Source } from "./l1-source.js";
+import type {
+  FraudProofL1Source,
+  FraudProofSignedTransactionRecovery,
+} from "./l1-source.js";
 import type {
   FraudProofFamilyWorkflowAdapter,
   FraudProofWorkflowAction,
@@ -61,6 +64,13 @@ export type DoubleSpendConstrainedWorkflowAdapterConfig = {
   readonly fraudProverRewardLovelace?: bigint;
 };
 
+/** Adapter configuration whose L1 port can read a signed transaction. */
+export type ObservedDoubleSpendWorkflowAdapterConfig =
+  DoubleSpendConstrainedWorkflowAdapterConfig & {
+    readonly l1: DoubleSpendL1ObservationPort &
+      Pick<FraudProofSignedTransactionRecovery, "observeSignedTransaction">;
+  };
+
 export type ManifestBoundDoubleSpendWorkflowConfig = Omit<
   DoubleSpendConstrainedWorkflowAdapterConfig,
   | "blueprint"
@@ -80,7 +90,7 @@ export type ManifestBoundDoubleSpendWorkflowConfig = Omit<
 
 export type ManifestBoundDoubleSpendWorkflow = {
   readonly binding: FraudProofWorkflowDeploymentBinding<"doubleSpend">;
-  readonly adapterConfig: DoubleSpendConstrainedWorkflowAdapterConfig;
+  readonly adapterConfig: ObservedDoubleSpendWorkflowAdapterConfig;
   readonly adapter: FraudProofFamilyWorkflowAdapter;
   readonly terminalVerifier: FraudProofWorkflowTerminalVerifier;
   readonly releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;

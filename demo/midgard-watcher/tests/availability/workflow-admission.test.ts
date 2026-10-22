@@ -157,7 +157,12 @@ describe("watcher availability steps under the journal's per-header workflows", 
         admits,
         async (entry) => {
           if (entry.action.action === "open")
-            throw new WatcherAvailabilityCapitalShortfall("short", 10n, 3n);
+            throw new WatcherAvailabilityCapitalShortfall(
+              "short",
+              10n,
+              3n,
+              "collateral",
+            );
           return { action: entry.action.action };
         },
       );
@@ -166,6 +171,7 @@ describe("watcher availability steps under the journal's per-header workflows", 
       {
         headerHash: WITHHELD,
         reason: "insufficient-availability-capital",
+        shortfall: "collateral",
         requiredLovelace: "10",
         availableLovelace: "3",
         detail: "short",
@@ -184,7 +190,12 @@ describe("watcher availability steps under the journal's per-header workflows", 
         [ordered[1]!],
         admits,
         async () => {
-          throw new WatcherAvailabilityCapitalShortfall("short", 10n, 3n);
+          throw new WatcherAvailabilityCapitalShortfall(
+            "short",
+            10n,
+            3n,
+            "working-capital",
+          );
         },
       ),
     ).rejects.toThrow("short");

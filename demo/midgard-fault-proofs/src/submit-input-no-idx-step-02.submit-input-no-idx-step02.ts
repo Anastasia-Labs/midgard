@@ -49,6 +49,10 @@ import {
 import { computationThreadOutputPredicate } from "./tx-layout.js";
 import { witnessSpendingValidatorCarriage } from "./witness-reference-scripts.js";
 import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "./workflow/own-outputs.js";
+import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
@@ -70,6 +74,7 @@ export const submitInputNoIdxStep02 = async ({
   publicationPreSubmitBoundary,
   preSubmitBoundary,
   awaitConfirmation = true,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -89,6 +94,8 @@ export const submitInputNoIdxStep02 = async ({
   readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }): Promise<SubmitInputNoIdxStep02Result> => {
   const { nonExistentInputNoIndexCategory, contracts } =
     await resolveInputNoIdxDeploymentContracts({
@@ -145,6 +152,7 @@ export const submitInputNoIdxStep02 = async ({
   const carriageUtxos =
     publishedCarriageUtxos ??
     (await publishFaultProofFieldCarriage({
+      ownOutputs,
       lucid,
       signer,
       planned,
@@ -169,12 +177,6 @@ export const submitInputNoIdxStep02 = async ({
     ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
     ...stepScriptCarriage.referenceInputs,
   ];
-  const spendInputsOpening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs,
-    certificatePolicyId: contracts.fieldPreimageCertificate.policyId,
-    label: "Input-no-idx step 02 spend-inputs",
-  });
 
   const step03Datum = Data.to(
     {
@@ -193,6 +195,12 @@ export const submitInputNoIdxStep02 = async ({
   });
   let resolvedLayout: InputNoIdxStep02Layout | undefined;
   const redeemer = ((ctx) => {
+    const spendInputsOpening: FieldOpening = faultProofFieldOpening({
+      planned,
+      referenceInputs: ctx.referenceInputs,
+      certificatePolicyId: contracts.fieldPreimageCertificate.policyId,
+      label: "Input-no-idx step 02 spend-inputs",
+    });
     requireOwnSpendPurpose(ctx, threadUtxo, "input-no-idx step 02");
     const layout: InputNoIdxStep02Layout = {
       inputIndex: requireInputIndex(ctx, threadUtxo, "input-no-idx step 02"),

@@ -18,11 +18,9 @@ import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
   FRAUD_PROOF_WORKFLOW_SAFETY,
-  FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
   type FraudProofFamilyWorkflowAdapter,
   type FraudProofWorkflowJournalEvent,
   type FraudProofWorkflowJournalStore,
-  type FraudProofWorkflowTerminalVerifier,
   type HeaderFaultDecision,
   runFraudProofWorkflow,
   WORKFLOW_RUNNER_FACTORIES,
@@ -61,6 +59,7 @@ import {
 } from "../../src/runtime/deployment-identity.js";
 import { runtimeAuthority } from "../funding/prover-funding-calculation.runtime-authority.js";
 import { signFundingRecoveryFixtureBody } from "./fault-proof-funding-fixture.sign-body.js";
+import { createFixtureChain } from "./fault-proof-funding-fixture.signed-read.js";
 import {
   closers,
   deploymentIdentity,
@@ -233,7 +232,7 @@ export const setupFundingRecoveryFixture = async (
                     "fraudProofSpend",
                     "fraudProofCatalogueSpend",
                     "fieldPreimageCertificateSpend",
-                    "cekProgramMaterialSpend",
+                    "scriptDecodeSpend",
                     "validationTraceDisputeProofItem",
                   ].includes(name)
                 ? ("field_carrier" as const)
@@ -343,6 +342,7 @@ export const setupFundingRecoveryFixture = async (
       }),
       permit: admitted.permit,
     });
+  const chain = createFixtureChain();
   const adapter: FraudProofFamilyWorkflowAdapter = {
     adapterVersion: FRAUD_PROOF_WORKFLOW_ADAPTER,
     category: "doubleSpend",
@@ -359,12 +359,9 @@ export const setupFundingRecoveryFixture = async (
       throw new Error("unexpected new submission");
     }),
     reconcile: vi.fn<FraudProofFamilyWorkflowAdapter["reconcile"]>(
-      async ({ txHash }) => ({ kind: "confirmed", txHash: txHash! }),
+      async ({ txHash }) => await chain.chain(txHash!),
     ),
   };
-  const terminalVerify = vi.fn<FraudProofWorkflowTerminalVerifier["verify"]>(
-    async ({ candidate }) => candidate,
-  );
   const run = (
     journal: FraudProofWorkflowJournalStore,
     now = () => new Date(),
@@ -392,10 +389,7 @@ export const setupFundingRecoveryFixture = async (
       }),
       journal,
       releaseFinalityAuthority: finality,
-      terminalVerifier: {
-        verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
-        verify: terminalVerify,
-      },
+      terminalVerifier: chain.terminalVerifier,
     });
   const journal = bind(old, original);
   const initial = await run(journal);
@@ -640,7 +634,7 @@ export const setupFundingRecoveryFixture = async (
     adapter,
     run,
     append,
-    terminalVerify,
+    ...chain,
     records,
     restartStore: async () => {
       database.close();

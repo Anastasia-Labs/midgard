@@ -4,7 +4,7 @@ import {
   CML,
   Emulator,
   Lucid,
-  paymentCredentialOf,
+  type RedeemerContext,
   type UTxO,
   utxoToTransactionInput,
   utxoToTransactionOutput,
@@ -154,45 +154,21 @@ export const measureAvailabilityTransaction = (
   return result;
 };
 
-export type AvailabilityLayout = {
-  inputs: readonly UTxO[];
-  references: readonly UTxO[];
-  policies: readonly string[];
-};
+// Every index below resolves against the builder's final transaction inside a
+// redeemer callback, so a fixture's redeemers cannot drift from ledger order.
+const LABEL = "availability fixture";
 
-const compare = (a: UTxO, b: UTxO) =>
-  a.txHash < b.txHash
-    ? -1
-    : a.txHash > b.txHash
-      ? 1
-      : a.outputIndex - b.outputIndex;
+export const inputAt = (ctx: RedeemerContext, utxo: UTxO) =>
+  SDK.requireInputIndex(ctx, utxo, LABEL);
 
-export const position = (inputs: readonly UTxO[], utxo: UTxO) => {
-  const found = [...inputs]
-    .sort(compare)
-    .findIndex(
-      (input) =>
-        input.txHash === utxo.txHash && input.outputIndex === utxo.outputIndex,
-    );
-  if (found < 0) throw new Error("Missing authored availability input");
-  return BigInt(found);
-};
+export const referenceAt = (ctx: RedeemerContext, utxo: UTxO) =>
+  SDK.requireReferenceInputIndex(ctx, utxo, LABEL);
 
-export const index = (layout: AvailabilityLayout, utxo: UTxO) =>
-  position(layout.inputs, utxo);
+export const mintAt = (ctx: RedeemerContext, policy: string) =>
+  SDK.requireMintRedeemerIndex(ctx, policy, LABEL);
 
-export const refIndex = (layout: AvailabilityLayout, utxo: UTxO) =>
-  position(layout.references, utxo);
-
-export const spendingInputs = (layout: AvailabilityLayout) =>
-  layout.inputs.filter(
-    (input) => paymentCredentialOf(input.address).type === "Script",
-  );
-
-export const mintIndex = (layout: AvailabilityLayout, policy: string) =>
-  BigInt(
-    spendingInputs(layout).length + [...layout.policies].sort().indexOf(policy),
-  );
+export const spendAt = (ctx: RedeemerContext, utxo: UTxO) =>
+  SDK.requireSpendRedeemerIndex(ctx, utxo, LABEL);
 
 export const inline = (value: string) => ({ kind: "inline" as const, value });
 

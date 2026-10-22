@@ -153,6 +153,18 @@ export const rejectionReasonOfSubject = (
       return { OutputNonCanonical: { output_index: subject.index } };
     case "OutputBelowMinAda":
       return { OutputBelowMinAda: { output_index: subject.index } };
+    case "OutputReferenceScriptMalformed":
+      return {
+        OutputReferenceScriptMalformed: { output_index: subject.index },
+      };
+    case "OutputReferenceScriptNodeLimit":
+      return {
+        OutputReferenceScriptNodeLimit: { output_index: subject.index },
+      };
+    case "OutputReferenceScriptDepthLimit":
+      return {
+        OutputReferenceScriptDepthLimit: { output_index: subject.index },
+      };
     case "InputAssetAccumulationLimit":
       return {
         InputAssetAccumulationLimit: {
@@ -169,6 +181,14 @@ export const rejectionReasonOfSubject = (
       };
     case "MintAssetAccumulationLimit":
       return { MintAssetAccumulationLimit: { mint_index: subject.index } };
+    case "PlutusScriptUndecodable":
+      return {
+        PlutusScriptUndecodable: {
+          item_kind: subject.itemKind,
+          item_index: subject.index,
+          class: subject.refusalClass,
+        },
+      };
     default: {
       const unreachable: never = subject;
       throw new Error(
@@ -251,6 +271,7 @@ export const REJECTION_REASON_ARMS_BY_CODE: ReadonlyMap<
     RejectCodes.PlutusScriptInvalid,
     ["ReceivePurposePlutusV3Forbidden", "PlutusExecutionFailed"],
   ],
+  [RejectCodes.ScriptProgramEncoding, ["PlutusScriptUndecodable"]],
   [RejectCodes.InputNotFound, ["InputNotFound"]],
   [
     RejectCodes.InvalidOutput,

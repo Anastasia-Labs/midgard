@@ -484,13 +484,18 @@ fn parse_output_data(data: Data) -> Option<MidgardTxOutput> {
 
 /// Total, canonical V1 decoder for ledger values supplied by an MPF
 /// witness. Every malformed or unsupported representation returns `None`.
+///
+/// The output bytes are Midgard's own wire, not a Plutus Data value: the
+/// datum and reference-script bytes are each one definite byte string of any
+/// length, so the envelope entry of `cbor_deserialise` reads them. The inline
+/// datum itself is held to the Plutus Data rules by `datum_is_canonical`.
 pub fn decode_canonical_output(
   output_cbor: ByteArray,
 ) -> Option<MidgardTxOutput> {
   if bytearray.length(output_cbor) > max_output_canonical_cbor_bytes {
     None
   } else {
-    when cbor_deserialise.deserialise(output_cbor) is {
+    when cbor_deserialise.deserialise_envelope(output_cbor) is {
       None -> None
       Some(data) ->
         when parse_output_data(data) is {

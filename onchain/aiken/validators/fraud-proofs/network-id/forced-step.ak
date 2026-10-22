@@ -28,7 +28,6 @@ use midgard/forced_submission_fixture as forced_fixture
 use midgard/fraud_proof_catalogue
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
-use midgard/fraud_proofs/native_tx/compact.{verify_forced_tx_proof_source_v1}
 use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_proof_source_v1} as native_compact
 use midgard/fraud_proofs/native_tx/transaction as native_transaction
 use midgard/fraud_proofs/native_tx/types as native_types
@@ -41,6 +40,7 @@ use midgard/fraud_proofs/network_id/step_01.{
   ForcedNetworkIdMismatch, NetworkIdFaultV1, OutputNetwork, TransactionNetwork,
 }
 use midgard/fraud_proofs/network_id/step_02
+use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/ledger_state
 use midgard/rejection_reason_v1.{
   FeeBelowMinimum, ForcedTxInvalid, ForcedTxValid, NetworkIdMismatch,
@@ -69,13 +69,7 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(Args {
-        input_index,
-        output_index,
-        header,
-        membership,
-        direction,
-      }) -> {
+      ct.Continue(Args { input_index, output_index, header, membership }) -> {
         let Transaction { inputs, outputs, .. } = tx
         expect Some(step_datum) = datum
         let _, thread_name, _, input_state, output_hash, output_state <- continue(
@@ -88,35 +82,19 @@ validator main(
           outputs,
         )
         expect Some(handoff) = input_state
-        let leaf = membership.value
-        let header_data: Data = header
-        expect and {
-            utils.serialise_and_hash_28(header_data) == bytearray.drop(
-              thread_name,
-              fraud_proof_catalogue.id_byte_count,
-            ),
-            transition_trace.verify_root_membership_with_bytes(
-              membership,
-              transition_trace.ForcedTransactionsV1RootDomain,
-              header.forced_transactions_root,
-              header.forced_transaction_count,
-              cbor.serialise(membership.key),
-              cbor.serialise(leaf),
-            ),
-          }
-        let Pair(verified, _) = verify_forced_tx_proof_source_v1(
-          leaf.tx_id,
-          leaf.submitted_source.compact_cbor,
-          leaf.submitted_source.witness_set_compact_cbor,
-          leaf.submitted_source.field_preimage_lengths_cbor,
+        let Pair(subject, verified) = substrate.open_forced_subject_v1(
+          thread_name,
+          header,
+          membership,
         )
+        let leaf = membership.value
         // The source authenticates immutable submission content; the verdict
         // matched below authenticates the operator's decision.
         let committed_tx_network_id = verified.tx_compact.body.network_id
         let forced_source_key = cbor.serialise(membership.key)
         when handoff is {
           ForcedNetworkIdMismatch -> {
-            expect direction == 1
+            expect subject.direction == substrate.direction_wrongful_rejection
             expect ForcedTxInvalid { reason: NetworkIdMismatch } = leaf.verdict
             // The body half of the negated predicate, decided here. A
             // committed body network that really is foreign makes the
@@ -145,7 +123,7 @@ validator main(
           // leaf goes to step 02's ordinary adjudication of that claim, with
           // the forced root key naming the source its outputs open under.
           _ -> {
-            expect direction == 0
+            expect subject.direction == substrate.direction_wrongful_acceptance
             expect ForcedTxValid = leaf.verdict
             let expected: Data = step_02.State {
               bad_tx_id: leaf.tx_id,
@@ -304,7 +282,7 @@ fn run_forced_step_v1(
     ledger_state.TxOrderId,
     ledger_state.ForcedInclusionTxV1,
   >,
-  direction: Int,
+  _direction: Int,
   input_index: Int,
   output_index: Int,
   output_state: Data,
@@ -320,9 +298,7 @@ fn run_forced_step_v1(
         data: input_state,
       },
     ),
-    ct.Continue(
-      Args { input_index, output_index, header, membership, direction },
-    ),
+    ct.Continue(Args { input_index, output_index, header, membership }),
     fixture.own_out_ref(),
     fixture.continue_mid_step_l1_tx_v1(thread_name, output_state),
   )
@@ -367,7 +343,7 @@ test network_id_forced_step_refuses_an_honest_body_network_mismatch() fail {
   run_canonical_forced_bind_v1(1)
 }
 
-test network_id_forced_step_rejects_direction_zero() fail {
+test network_id_forced_step_derives_direction_without_the_obsolete_zero_input() {
   let tx = rejected_forced_tx_v1(0)
   let key = forced_order_key_v1()
   let leaf = forced_leaf_v1(tx, ForcedTxInvalid { reason: NetworkIdMismatch })
@@ -387,7 +363,7 @@ test network_id_forced_step_rejects_direction_zero() fail {
   )
 }
 
-test network_id_forced_step_rejects_direction_two() fail {
+test network_id_forced_step_derives_direction_without_the_obsolete_two_input() {
   let tx = rejected_forced_tx_v1(0)
   let key = forced_order_key_v1()
   let leaf = forced_leaf_v1(tx, ForcedTxInvalid { reason: NetworkIdMismatch })
@@ -940,7 +916,7 @@ fn run_accepted_forced_step_v1(
   step_02_script_hash: ScriptHash,
   handoff: NetworkIdFaultV1,
   leaf: ledger_state.ForcedInclusionTxV1,
-  direction: Int,
+  _direction: Int,
   output_state: Data,
 ) -> Bool {
   let key = forced_order_key_v1()
@@ -957,9 +933,7 @@ fn run_accepted_forced_step_v1(
         data: Some(handoff),
       },
     ),
-    ct.Continue(
-      Args { input_index: 0, output_index: 0, header, membership, direction },
-    ),
+    ct.Continue(Args { input_index: 0, output_index: 0, header, membership }),
     fixture.own_out_ref(),
     fixture.continue_mid_step_l1_tx_v1(thread_name_v1(header), output_state),
   )
@@ -1017,7 +991,7 @@ test network_id_forced_step_rejects_an_accepted_claim_on_a_rejected_leaf() fail 
   )
 }
 
-test network_id_forced_step_rejects_an_accepted_claim_with_direction_one() fail {
+test network_id_forced_step_derives_acceptance_without_the_obsolete_direction_input() {
   let leaf = forced_leaf_v1(accepted_forced_tx_v1(1), ForcedTxValid)
   run_accepted_forced_step_v1(
     fixture.next_step_script_hash,

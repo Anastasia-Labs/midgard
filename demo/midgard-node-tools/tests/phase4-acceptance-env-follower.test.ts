@@ -104,7 +104,8 @@ describe("Phase 4 acceptance env and the node's L1 follower", () => {
       const { L1_ORIGIN: _origin, ...withoutOrigin } = values;
       expect(nodeFollowerPlan(withoutOrigin)).toEqual({
         kind: "unconfigured",
-        detail: "L1_ORIGIN is not set",
+        detail:
+          "L1_ORIGIN is not set and the deployment manifest records no l1Origin",
       });
       expect(() => validatePhase4ProcessIsolationValues(withoutOrigin)).toThrow(
         expect.objectContaining({

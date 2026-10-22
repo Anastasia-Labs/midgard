@@ -168,25 +168,33 @@ export const setupScene = async (): Promise<Scene> => {
     emulator.awaitBlock(1);
     return hash;
   };
+  const parking = validatorToAddress(
+    NETWORK,
+    alwaysSucceedsScript("midgard.always_fail.else"),
+  );
   const paramsHash = await submit(
     await (
       await lucid
         .newTx()
         .pay.ToContract(
-          validatorToAddress(
-            NETWORK,
-            alwaysSucceedsScript("midgard.always_fail.else"),
-          ),
+          parking,
           { kind: "inline", value: Data.to(paramsDatum, DaParamsDatum) },
           { lovelace: 5n * ADA },
+        )
+        .pay.ToContract(
+          parking,
+          { kind: "inline", value: Data.void() },
+          { lovelace: 30n * ADA },
+          pool.mintingScript,
         )
         .complete()
     ).sign
       .withWallet()
       .complete(),
   );
-  const [daParamsUtxo] = await lucid.utxosByOutRef([
+  const [daParamsUtxo, poolReference] = await lucid.utxosByOutRef([
     { txHash: paramsHash, outputIndex: 0 },
+    { txHash: paramsHash, outputIndex: 1 },
   ]);
   const [initUtxo] = await lucid.wallet().getUtxos();
   const init = await Effect.runPromise(
@@ -195,6 +203,7 @@ export const setupScene = async (): Promise<Scene> => {
       parameters,
       initUtxo: initUtxo!,
       lovelace: parameters.da_bond_pool_floor_lovelace + 600n * ADA,
+      referenceScripts: { daBondPoolMinting: poolReference! },
     }),
   );
   await submit(await (await init.complete()).sign.withWallet().complete());

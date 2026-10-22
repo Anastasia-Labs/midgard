@@ -1,7 +1,4 @@
-import {
-  encodeMidgardCekProgramMaterialSidecar,
-  MidgardRedeemerItemProofModes,
-} from "@al-ft/midgard-core";
+import { MidgardRedeemerItemProofModes } from "@al-ft/midgard-core";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   hashMidgardRedeemerItemLeaf,
@@ -12,13 +9,13 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  buildDeterministicValidationMachineTrace,
   buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
   type DeterministicValidationMachineTrace,
   MidgardRedeemerTag,
   type ValidationMachineWorkWitness,
 } from "../src/index.js";
+import { buildDeterministicValidationMachineTrace } from "./helpers/trace-commit-golden.js";
 import {
   FUNDED_OUTPUT_LOVELACE,
   hashScriptWitness,
@@ -33,7 +30,7 @@ import {
   plutusV3ScriptWitness,
 } from "./validation-fixtures.js";
 import {
-  buildAcceptingIdentityProgram,
+  buildAcceptingUnitProgram,
   context,
   validateBoundaryAbiAndCollectAuxiliaryKinds,
 } from "./validation-machine.validate-boundary-abi-and-collect-auxiliary-kinds.js";
@@ -54,13 +51,11 @@ const acceptedTrace = async ({
   spentOutput,
   output,
   transaction,
-  sidecar,
 }: {
   readonly spent: Buffer;
   readonly spentOutput: Buffer;
   readonly output: Buffer;
   readonly transaction: ReturnType<typeof makeNativeTx>;
-  readonly sidecar: Buffer;
 }): Promise<DeterministicValidationMachineTrace> => {
   const expectedLedgerOps = [
     { type: "delete" as const, key: spent },
@@ -79,7 +74,6 @@ const acceptedTrace = async ({
       ...context,
       transactionId: transaction.txId,
       canonicalTransactionCbor: transaction.txCbor,
-      programMaterialSidecarCbor: sidecar,
       priorUtxosRoot: ledgerMutationSteps[0]!.preRoot.toString("hex"),
       postUtxosRoot: ledgerMutationSteps.at(-1)!.postRoot.toString("hex"),
       ledgerWitnessEntries: [{ outRef: spent, output: spentOutput }],
@@ -134,8 +128,8 @@ const firstItemStepAfter = (
 describe("redeemer fold over the execution frontier", () => {
   it("skips a native execution and selects the Plutus one below it", async () => {
     const spent = outRefFromByte(0x6a);
-    const program = buildAcceptingIdentityProgram();
-    const plutus = plutusV3ScriptWitness(program.envelopeCbor);
+    const program = buildAcceptingUnitProgram();
+    const plutus = plutusV3ScriptWitness(program.scriptBytes);
     const native = nativeScriptWitness({ type: "all", scripts: [] });
     const nativePolicy = Buffer.from(hashScriptWitness(native), "hex");
     const assetName = Buffer.from("aced", "hex");
@@ -171,9 +165,6 @@ describe("redeemer fold over the execution frontier", () => {
       spentOutput,
       output,
       transaction,
-      sidecar: encodeMidgardCekProgramMaterialSidecar([
-        ...program.material.values(),
-      ]),
     });
     expect(trace.verdict).toBe("accepted");
 
@@ -192,7 +183,7 @@ describe("redeemer fold over the execution frontier", () => {
     expect(skip.executionSiblings[0]).toEqual(selectExecutionLeaf(select));
     expect(select.executionSiblings[0]).toEqual(skipExecutionLeaf(skip));
     expect([
-      ...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds,
+      ...validateBoundaryAbiAndCollectAuxiliaryKinds(trace, [plutus]).kinds,
     ]).toEqual(
       expect.arrayContaining([
         "cekRedeemerContextSkip",
@@ -203,11 +194,11 @@ describe("redeemer fold over the execution frontier", () => {
 
   it("shows a MidgardV1 receive redeemer to MidgardV1 contexts only", async () => {
     const spent = outRefFromByte(0x6b);
-    const program = buildAcceptingIdentityProgram();
-    const plutus = plutusV3ScriptWitness(program.envelopeCbor);
+    const program = buildAcceptingUnitProgram();
+    const plutus = plutusV3ScriptWitness(program.scriptBytes);
     const receiving = {
       language: "MidgardV1" as const,
-      scriptBytes: program.envelopeCbor,
+      scriptBytes: program.scriptBytes,
     };
     const spentOutput = makeProtectedScriptOutput(
       hashScriptWitness(plutus),
@@ -233,9 +224,6 @@ describe("redeemer fold over the execution frontier", () => {
       spentOutput,
       output,
       transaction,
-      sidecar: encodeMidgardCekProgramMaterialSidecar([
-        ...program.material.values(),
-      ]),
     });
     expect(trace.verdict).toBe("accepted");
 
@@ -296,7 +284,8 @@ describe("redeemer fold over the execution frontier", () => {
       },
     ]);
     expect([
-      ...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds,
+      ...validateBoundaryAbiAndCollectAuxiliaryKinds(trace, [plutus, receiving])
+        .kinds,
     ]).toEqual(expect.arrayContaining(["cekRedeemerContextSelect"]));
   }, 120_000);
 });

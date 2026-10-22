@@ -1,7 +1,3 @@
-import {
-  encodeMidgardCekProgramMaterialSidecar,
-  type MidgardCekProgramEnvelope,
-} from "@al-ft/midgard-core/cek-proof";
 import { SqlClient } from "@effect/sql";
 import type { PgClient } from "@effect/sql-pg/PgClient";
 import { Duration, Effect } from "effect";
@@ -12,7 +8,6 @@ import { Database } from "../services/database.js";
 import { withFollowerWrite } from "../services/follower-write-gate.js";
 import { WriteBehind } from "../services/write-behind.js";
 import { ProcessedTx } from "../utils.js";
-import * as CekProgramMaterialDB from "./cekProgramMaterial.js";
 import * as DepositsDB from "./deposits.js";
 import * as MempoolDB from "./mempool.js";
 import * as MempoolLedgerDB from "./mempoolLedger.js";
@@ -35,15 +30,10 @@ export const markAccepted = ({
   rows,
   leaseOwner,
   processedTxs,
-  programEnvelopesByTxId,
 }: {
   readonly rows: readonly Pick<Entry, Columns.TX_ID>[];
   readonly leaseOwner: string;
   readonly processedTxs: readonly ProcessedTx[];
-  readonly programEnvelopesByTxId?: ReadonlyMap<
-    string,
-    readonly MidgardCekProgramEnvelope[]
-  >;
 }): Effect.Effect<void, DatabaseError, Database | NodeConfig | WriteBehind> =>
   Effect.gen(function* () {
     if (processedTxs.length === 0) {
@@ -52,66 +42,11 @@ export const markAccepted = ({
     const totalStartedAt = Date.now();
     const acceptedTxIds = processedTxs.map((tx) => tx.txId);
     const acceptedTxIdArray = postgresByteaArray(acceptedTxIds);
-    const terminalSidecar = encodeMidgardCekProgramMaterialSidecar([]);
     const sql = yield* SqlClient.SqlClient;
     const pg = sql as PgClient;
     yield* withFollowerWrite(
       sql.withTransaction(
         Effect.gen(function* () {
-          const acceptedPayloads = yield* sql<{
-            readonly tx_id: Buffer;
-            readonly tx_canonical_cbor: Buffer;
-            readonly cek_program_material_sidecar_cbor: Buffer;
-          }>`SELECT
-            admission.${sql(Columns.TX_ID)},
-            payload.${sql(Columns.TX_CANONICAL_CBOR)},
-            payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)}
-          FROM ${sql(tableName)} admission
-          INNER JOIN ${sql(payloadTableName)} payload
-            ON payload.${sql(Columns.TX_ID)} = admission.${sql(Columns.TX_ID)}
-          WHERE admission.${sql(Columns.STATUS)} = 'validating'
-            AND admission.${sql(Columns.LEASE_OWNER)} = ${leaseOwner}
-            AND admission.${sql(Columns.TX_ID)} =
-              ANY(${pg.array(acceptedTxIdArray)}::bytea[])
-          ORDER BY admission.${sql(Columns.TX_ID)} ASC`;
-          if (acceptedPayloads.length !== processedTxs.length) {
-            return yield* Effect.fail(
-              new DatabaseError({
-                table: payloadTableName,
-                message:
-                  "Failed to load every accepted CEK sidecar under the active validation lease",
-                cause: `expected=${processedTxs.length},loaded=${acceptedPayloads.length}`,
-              }),
-            );
-          }
-          yield* Effect.forEach(
-            acceptedPayloads,
-            (payload) => {
-              const txIdHex = payload.tx_id.toString("hex");
-              const programEnvelopes = programEnvelopesByTxId?.get(txIdHex);
-              if (
-                programEnvelopesByTxId !== undefined &&
-                programEnvelopes === undefined
-              ) {
-                return Effect.fail(
-                  new DatabaseError({
-                    table: payloadTableName,
-                    message:
-                      "Accepted admission is missing its Phase B program resolution",
-                    cause: txIdHex,
-                  }),
-                );
-              }
-              return CekProgramMaterialDB.persistVerifiedAdmissionBundle({
-                txId: payload.tx_id,
-                txCanonicalCbor: payload.tx_canonical_cbor,
-                sidecarCbor: payload.cek_program_material_sidecar_cbor,
-                ...(programEnvelopes === undefined ? {} : { programEnvelopes }),
-              });
-            },
-            { discard: true },
-          );
-
           const mempoolStartedAt = Date.now();
           const { produced, spent } =
             MempoolDB.compactLedgerEffects(processedTxs);
@@ -349,27 +284,6 @@ export const markAccepted = ({
                 message:
                   "Failed to mark accepted admissions exactly once under the active validation lease",
                 cause: `expected=${JSON.stringify(expected)},actual=${JSON.stringify(result)},claimed=${rows.length}`,
-              }),
-            );
-          }
-          // Accepted rows retain the original sidecar digest for exact duplicate
-          // identity but no longer retain attacker-sized sidecar bytes. Global
-          // material promotion above and this tombstone update share the terminal
-          // acceptance transaction.
-          const scrubbedPayloads = yield* sql<{ readonly tx_id: Buffer }>`UPDATE
-            ${sql(payloadTableName)}
-          SET ${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)} =
-            ${terminalSidecar}
-          WHERE ${sql(Columns.TX_ID)} =
-            ANY(${pg.array(acceptedTxIdArray)}::bytea[])
-          RETURNING ${sql(Columns.TX_ID)}`;
-          if (scrubbedPayloads.length !== acceptedTxIds.length) {
-            return yield* Effect.fail(
-              new DatabaseError({
-                table: payloadTableName,
-                message:
-                  "Failed to scrub every accepted CEK sidecar in the terminal transaction",
-                cause: `expected=${acceptedTxIds.length},scrubbed=${scrubbedPayloads.length}`,
               }),
             );
           }

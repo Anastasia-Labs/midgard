@@ -21,21 +21,10 @@ import {
   MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
   MIDGARD_CEK_EMPTY_SEQUENCE_ROOT,
   type MidgardCekContinuationFrame,
-  type MidgardCekDataListNode,
-  type MidgardCekDataNode,
-  type MidgardCekDataPairNode,
   type MidgardCekMachineState,
   type MidgardCekProgramMaterialEntry,
   type MidgardCekValueNode,
 } from "@al-ft/midgard-core";
-import {
-  type Data,
-  DataB,
-  DataConstr,
-  DataI,
-  DataList,
-  DataMap,
-} from "@harmoniclabs/plutus-data";
 
 import {
   evaluateMidgardCekBlsFinal,
@@ -43,42 +32,60 @@ import {
   hashMidgardCekDirectValueWitness,
   hashMidgardCekRuntimeValueWitness,
   type MidgardCekBlsExpressionWitness,
+  midgardCekBuiltinArgumentsFailKinds,
   type MidgardCekConstantValueWitness,
   midgardCekDirectBuiltinBudget,
   type MidgardCekDirectValueWitness,
   type MidgardCekRuntimeValueWitness,
-  verifyMidgardCekBuiltinTypeFailure,
+  presentMidgardCekDirectArgument,
 } from "./cek-builtin.js";
 import {
-  decodeMidgardCekConstantTypeCbor,
   decodeMidgardCekConstantWitness,
-  encodeMidgardCekConstantTypeCbor,
-  encodeMidgardCekPlutusData,
   hashMidgardCekConstantWitness,
-  MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES,
   midgardCekConstantMemorySize,
   type MidgardCekConstantType,
 } from "./cek-constant.js";
-import {
-  commitMidgardCekDataTree,
-  encodeMidgardCekDataTreeInteger,
-} from "./cek-data-tree.js";
+import { commitMidgardCekDataTree } from "./cek-data-tree.js";
 import {
   type Bytes,
   type EnvironmentNode,
   errorSuccessor,
   exactComputeSuccessor,
   exactState,
+  MACHINE_STARTUP_CPU,
+  MACHINE_STARTUP_MEMORY,
+  type MidgardCekConstantWitnessEntry,
+  type MidgardCekSourceConstantWitness,
   type MidgardCekStructuralExecution,
   rootHex,
   sameBytes,
   type SequenceNode,
 } from "./cek-executor.build-midgard-cek-execution-graph.js";
 import {
+  type CaseConstantHost,
+  returnCaseConstant,
+} from "./cek-executor.case-constant.js";
+import {
+  advanceMidgardCekMapConversionControl,
+  buildMidgardCekMapConversionResult,
+  midgardCekMapConversionControl,
+  midgardCekMapPairMaterial,
+} from "./cek-executor.map-conversion.js";
+import {
+  executeMidgardCekSemanticBuiltin,
+  type MidgardCekSemanticStepMaterial,
+  midgardCekSemanticTopMaterial,
+} from "./cek-executor.semantic-builtins.js";
+import {
+  isMidgardCekSemanticStep,
+  presentMidgardCekSemanticArguments,
+  presentMidgardCekSemanticResult,
+} from "./cek-executor.semantic-presentation.js";
+import { MidgardCekSemanticStore } from "./cek-executor.semantic-store.js";
+import {
   type MidgardCekStepRecorder,
   type MidgardCekStructuralVerdict,
 } from "./cek-executor.step-recorder.js";
-import { readMidgardCekSemanticData } from "./cek-executor.structural-executor-data.js";
 import {
   hashMidgardCekMapConversionControl,
   midgardCekBuiltinArgumentCount,
@@ -87,29 +94,32 @@ import {
   type MidgardCekEnvironmentSummary,
   MidgardCekErrorCodes,
   type MidgardCekMapConversionControl,
+  returnEmptySuccessor,
 } from "./cek-machine.js";
-import { isPlutusDataMap } from "./plutus-data-narrowing.js";
 
 export class StructuralExecutor {
   private state: MidgardCekMachineState;
   private readonly material = new Map<string, MidgardCekProgramMaterialEntry>();
   private readonly values = new Map<string, MidgardCekValueNode>();
+  /** The witness last recorded per value root: what a value read returns. */
   private readonly constants = new Map<
     string,
     MidgardCekConstantValueWitness
+  >();
+  /** The direct witness per value root, kept beside a semantic one. */
+  private readonly directConstants = new Map<
+    string,
+    MidgardCekSourceConstantWitness
   >();
   private readonly blsExpressions = new Map<
     string,
     MidgardCekBlsExpressionWitness
   >();
   private readonly sequences = new Map<string, SequenceNode>();
-  private readonly dataNodes = new Map<string, MidgardCekDataNode>();
-  private readonly dataLists = new Map<string, MidgardCekDataListNode>();
-  private readonly dataPairs = new Map<string, MidgardCekDataPairNode>();
-  private readonly blobs = new Map<
-    string,
-    ReturnType<typeof decodeMidgardCekProgramBlobPreimage>
-  >();
+  private readonly store = new MidgardCekSemanticStore(
+    (node) => this.addValue(node),
+    (key, witness) => this.setConstant(key, witness),
+  );
   private readonly mapControls = new Map<
     string,
     MidgardCekMapConversionControl
@@ -120,11 +130,19 @@ export class StructuralExecutor {
     MidgardCekContinuationFrame
   >();
 
+  private readonly caseConstantHost: CaseConstantHost = {
+    store: this.store,
+    constant: (root) => this.constants.get(rootHex(root)),
+    addSequence: (node) => this.addSequence(node),
+    addContinuation: (frame) => this.addContinuation(frame),
+    record: (witness, post) => this.record(witness, post),
+  };
+
   constructor(
     root: Bytes,
     material: Iterable<MidgardCekProgramMaterialEntry>,
     executionIndex: bigint,
-    constantWitnesses: ReadonlyMap<string, MidgardCekConstantValueWitness>,
+    constantWitnesses: Iterable<MidgardCekConstantWitnessEntry>,
     private readonly recorder: MidgardCekStepRecorder,
   ) {
     for (const entry of material) {
@@ -159,13 +177,19 @@ export class StructuralExecutor {
           decodeMidgardCekProgramSequencePreimage(exact.preimage),
         );
       } else if (exact.kind === "dataNode") {
-        this.dataNodes.set(key, decodeMidgardCekDataNode(exact.preimage));
+        this.store.dataNodes.set(key, decodeMidgardCekDataNode(exact.preimage));
       } else if (exact.kind === "dataList") {
-        this.dataLists.set(key, decodeMidgardCekDataListNode(exact.preimage));
+        this.store.dataLists.set(
+          key,
+          decodeMidgardCekDataListNode(exact.preimage),
+        );
       } else if (exact.kind === "dataPair") {
-        this.dataPairs.set(key, decodeMidgardCekDataPairNode(exact.preimage));
+        this.store.dataPairs.set(
+          key,
+          decodeMidgardCekDataPairNode(exact.preimage),
+        );
       } else if (exact.kind === "blobChunk" || exact.kind === "blobBranch") {
-        this.blobs.set(
+        this.store.blobs.set(
           key,
           decodeMidgardCekProgramBlobPreimage(exact.kind, exact.preimage),
         );
@@ -181,7 +205,14 @@ export class StructuralExecutor {
           `CEK constant witness does not match authenticated value ${key}`,
         );
       }
-      this.constants.set(key, witness);
+      this.setConstant(key, witness);
+      // A costly source constant reaches builtins through its semantic tree;
+      // `computeConstant` still reveals its direct witness.
+      const presented =
+        witness.kind === "constant"
+          ? this.store.costlySourcePresentation(root, witness)
+          : null;
+      if (presented !== null) this.constants.set(key, presented);
     }
     this.state = Object.freeze({
       mode: "compute",
@@ -190,9 +221,14 @@ export class StructuralExecutor {
       environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
       continuationRoot: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
       auxiliary: 0n,
-      cpu: 0n,
-      memory: 0n,
+      cpu: MACHINE_STARTUP_CPU,
+      memory: MACHINE_STARTUP_MEMORY,
     });
+  }
+
+  /** The machine state the next transition starts from. */
+  public get machineState(): MidgardCekMachineState {
+    return this.state;
   }
 
   public run(executionBudget?: {
@@ -277,28 +313,76 @@ export class StructuralExecutor {
     return root;
   }
 
+  /**
+   * Records the witness of the constant at `key`. Every witness recorded
+   * here commits to its key, so the witness object itself identifies the
+   * value root it was read from.
+   */
+  private setConstant(
+    key: string,
+    witness: MidgardCekConstantValueWitness,
+  ): void {
+    this.constants.set(key, witness);
+    if (witness.kind === "constant") this.directConstants.set(key, witness);
+    this.store.registerWitness(witness.witness, Buffer.from(key, "hex"));
+  }
+
+  private readonly typeOf = (
+    value: MidgardCekRuntimeValueWitness,
+  ): MidgardCekConstantType | null =>
+    value.kind === "constant" || value.kind === "semanticConstant"
+      ? this.store.typeOf(value.witness.typeCbor)
+      : null;
+
+  private readonly memoryOf = (
+    witness: Extract<
+      MidgardCekDirectValueWitness,
+      { readonly kind: "constant" }
+    >["witness"],
+  ): bigint => {
+    const root = this.store.witnessRoot(witness);
+    if (root === undefined) {
+      const decoded = decodeMidgardCekConstantWitness(witness);
+      return midgardCekConstantMemorySize(decoded.type, decoded.payload);
+    }
+    const value = this.value(root);
+    if (value.kind !== "constant") {
+      throw new Error("CEK constant witness names a non-constant value");
+    }
+    return value.memory;
+  };
+
+  private budget(
+    tag: bigint,
+    arguments_: readonly MidgardCekDirectValueWitness[],
+  ) {
+    return midgardCekDirectBuiltinBudget(tag, arguments_, this.memoryOf);
+  }
+
   private addDirectResult(result: MidgardCekDirectValueWitness): Bytes {
-    const resultRoot = hashMidgardCekDirectValueWitness(result);
+    if (result.kind === "constant" || result.kind === "semanticConstant") {
+      // A builtin that selects one of its arguments returns that argument's
+      // own authenticated witness.
+      const known = this.store.witnessRoot(result.witness);
+      if (known !== undefined) return known;
+    }
     if (result.kind === "constant") {
       const witness = result.witness;
       const decoded = decodeMidgardCekConstantWitness(witness);
       const semantic = commitMidgardCekDataTree(decoded.payload);
-      const node = {
+      const resultRoot = this.addValue({
         kind: "constant",
         typeRoot: hashMidgardCekBlobChunk(witness.typeCbor),
         payloadRoot: semantic.root,
         payloadLength: semantic.cborLength,
         semanticRoot: semantic.root,
         memory: midgardCekConstantMemorySize(decoded.type, decoded.payload),
-      } as const;
-      if (!sameBytes(this.addValue(node), resultRoot)) {
-        throw new Error("CEK builtin result constant root mismatch");
-      }
-      this.constants.set(rootHex(resultRoot), {
-        kind: "constant",
-        witness,
       });
-    } else if (result.kind === "semanticConstant") {
+      this.setConstant(rootHex(resultRoot), { kind: "constant", witness });
+      return resultRoot;
+    }
+    const resultRoot = hashMidgardCekDirectValueWitness(result);
+    if (result.kind === "semanticConstant") {
       const witness = result.witness;
       const node = {
         kind: "constant",
@@ -311,7 +395,7 @@ export class StructuralExecutor {
       if (!sameBytes(this.addValue(node), resultRoot)) {
         throw new Error("CEK semantic builtin result constant root mismatch");
       }
-      this.constants.set(rootHex(resultRoot), result);
+      this.setConstant(rootHex(resultRoot), result);
     } else if (result.kind === "blsMillerLoop") {
       if (
         !sameBytes(
@@ -328,81 +412,6 @@ export class StructuralExecutor {
       this.value(resultRoot);
     }
     return resultRoot;
-  }
-
-  private dataValue(root: Bytes): Data {
-    return readMidgardCekSemanticData(
-      {
-        dataNodes: this.dataNodes,
-        dataLists: this.dataLists,
-        dataPairs: this.dataPairs,
-        blobs: this.blobs,
-      },
-      root,
-    );
-  }
-
-  private installSemanticTree(
-    tree: ReturnType<typeof commitMidgardCekDataTree>,
-  ): void {
-    for (const [key, entry] of tree.dataNodes) {
-      this.dataNodes.set(key, entry.node);
-    }
-    for (const [key, entry] of tree.listNodes) {
-      this.dataLists.set(key, entry.node);
-    }
-    for (const [key, entry] of tree.pairNodes) {
-      this.dataPairs.set(key, entry.node);
-    }
-    for (const [key, entry] of tree.blobNodes) {
-      this.blobs.set(
-        key,
-        decodeMidgardCekProgramBlobPreimage(
-          entry.kind === "chunk" ? "blobChunk" : "blobBranch",
-          entry.preimage,
-        ),
-      );
-    }
-  }
-
-  private addSemanticResult(
-    type: MidgardCekConstantType,
-    payload: Data,
-  ): {
-    readonly result: MidgardCekDirectValueWitness;
-    readonly root: Bytes;
-    readonly tree: ReturnType<typeof commitMidgardCekDataTree>;
-  } {
-    const tree = commitMidgardCekDataTree(payload);
-    this.installSemanticTree(tree);
-    const typeCbor = encodeMidgardCekConstantTypeCbor(type);
-    const payloadCbor = encodeMidgardCekPlutusData(payload);
-    const result: MidgardCekDirectValueWitness =
-      payloadCbor.length <= MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES
-        ? {
-            kind: "constant",
-            witness: {
-              typeCbor,
-              payloadCbor,
-            },
-          }
-        : {
-            kind: "semanticConstant",
-            witness: {
-              typeCbor,
-              payload: {
-                root: tree.root,
-                cborLength: tree.cborLength,
-                memory: tree.memory,
-              },
-              memory: midgardCekConstantMemorySize(type, payload),
-            },
-          };
-    return Object.freeze({
-      result,
-      root: this.addDirectResult(result),
-      tree,
-    });
   }
 
   private addSequence(node: SequenceNode): Hash32 {
@@ -498,20 +507,22 @@ export class StructuralExecutor {
       case "variable":
         this.record(
           { kind: "computeVariable", index: term.index },
-          exactComputeSuccessor(pre, {
-            mode: "lookup",
-            focusRoot: pre.environmentRoot,
-            environmentRoot: pre.environmentRoot,
-            continuationRoot: pre.continuationRoot,
-            auxiliary: term.index,
-          }),
+          term.index === 0n // Cardano index 0 is never bound
+            ? errorSuccessor(pre, MidgardCekErrorCodes.UnboundVariable)
+            : exactComputeSuccessor(pre, {
+                mode: "lookup",
+                focusRoot: pre.environmentRoot,
+                environmentRoot: pre.environmentRoot,
+                continuationRoot: pre.continuationRoot,
+                auxiliary: term.index - 1n,
+              }),
         );
         return;
       case "constant":
         this.value(term.value);
         {
-          const value = this.constants.get(rootHex(term.value));
-          if (value?.kind !== "constant") {
+          const value = this.directConstants.get(rootHex(term.value));
+          if (value === undefined) {
             throw new Error(
               "source CEK constant is missing its exact bounded direct witness",
             );
@@ -836,171 +847,67 @@ export class StructuralExecutor {
   private builtinArguments(
     root: Bytes,
     count: bigint,
-  ): readonly MidgardCekRuntimeValueWitness[] {
-    const reversed: MidgardCekRuntimeValueWitness[] = [];
+  ): {
+    readonly witnesses: readonly MidgardCekRuntimeValueWitness[];
+    readonly roots: readonly Bytes[];
+  } {
+    const witnesses: MidgardCekRuntimeValueWitness[] = [];
+    const roots: Bytes[] = [];
     let cursor = Buffer.from(root);
     let remaining = count;
     while (remaining > 0n) {
       const node = this.sequence(cursor, remaining);
       const witness = this.runtimeValueWitness(node.head);
-      if (!sameBytes(hashMidgardCekRuntimeValueWitness(witness), node.head)) {
+      // A constant's witness is recorded only under the root it commits to;
+      // every other witness is rebuilt from its value node here.
+      if (
+        witness.kind !== "constant" &&
+        witness.kind !== "semanticConstant" &&
+        !sameBytes(hashMidgardCekRuntimeValueWitness(witness), node.head)
+      ) {
         throw new Error("CEK runtime argument witness root mismatch");
       }
-      reversed.push(witness);
+      witnesses.push(witness);
+      roots.push(node.head);
       cursor = Buffer.from(node.tail);
       remaining -= 1n;
     }
     if (!sameBytes(cursor, MIDGARD_CEK_EMPTY_SEQUENCE_ROOT)) {
       throw new Error("CEK builtin argument sequence has a non-empty tail");
     }
-    return Object.freeze(reversed.reverse());
-  }
-
-  private mapControl(
-    tag: 38n | 43n,
-    resultRoot: Bytes,
-    sourceNode: MidgardCekDataNode,
-    resultNode: MidgardCekDataNode,
-    arguments_: readonly MidgardCekDirectValueWitness[],
-  ): MidgardCekMapConversionControl {
-    const source =
-      tag === 38n && sourceNode.kind === "list"
-        ? {
-            root: sourceNode.itemsRoot,
-            length: sourceNode.itemsCount,
-            payload:
-              sourceNode.cborLength - (sourceNode.itemsCount === 0n ? 1n : 2n),
-            memory: sourceNode.memory - 4n,
-          }
-        : tag === 43n && sourceNode.kind === "map"
-          ? {
-              root: sourceNode.entriesRoot,
-              length: sourceNode.entriesCount,
-              payload:
-                sourceNode.cborLength -
-                (sourceNode.entriesCount < 24n
-                  ? 1n
-                  : sourceNode.entriesCount <= 0xffn
-                    ? 2n
-                    : sourceNode.entriesCount <= 0xffffn
-                      ? 3n
-                      : 5n),
-              memory: sourceNode.memory - 4n,
-            }
-          : null;
-    const destination =
-      tag === 38n && resultNode.kind === "map"
-        ? {
-            root: resultNode.entriesRoot,
-            length: resultNode.entriesCount,
-            payload:
-              resultNode.cborLength -
-              (resultNode.entriesCount < 24n
-                ? 1n
-                : resultNode.entriesCount <= 0xffn
-                  ? 2n
-                  : resultNode.entriesCount <= 0xffffn
-                    ? 3n
-                    : 5n),
-            memory: resultNode.memory - 4n,
-          }
-        : tag === 43n && resultNode.kind === "list"
-          ? {
-              root: resultNode.itemsRoot,
-              length: resultNode.itemsCount,
-              payload:
-                resultNode.cborLength -
-                (resultNode.itemsCount === 0n ? 1n : 2n),
-              memory: resultNode.memory - 4n,
-            }
-          : null;
-    if (
-      source === null ||
-      destination === null ||
-      source.length !== destination.length
-    ) {
-      throw new Error("CEK map conversion has incompatible semantic roots");
-    }
-    const budget = midgardCekDirectBuiltinBudget(tag, arguments_);
-    return Object.freeze({
-      tag,
-      resultRoot: Buffer.from(resultRoot),
-      sourceRoot: Buffer.from(source.root),
-      sourceRemaining: source.length,
-      sourcePayloadCborLength: source.payload,
-      sourceMemory: source.memory,
-      destinationRoot: Buffer.from(destination.root),
-      destinationRemaining: destination.length,
-      destinationPayloadCborLength: destination.payload,
-      destinationMemory: destination.memory,
-      budgetCpu: budget.cpu,
-      budgetMemory: budget.memory,
-    });
+    return {
+      witnesses: Object.freeze(witnesses.reverse()),
+      roots: Object.freeze(roots.reverse()),
+    };
   }
 
   private startMapConversion(
     pre: MidgardCekMachineState,
     tag: 38n | 43n,
     arguments_: readonly MidgardCekDirectValueWitness[],
+    roots: readonly Bytes[],
   ): void {
     const source = arguments_[0];
     if (source?.kind !== "constant" && source?.kind !== "semanticConstant") {
       throw new Error("CEK map conversion requires a constant source");
     }
-    const resolvedSource = this.resolvedConstant(source);
-    const sourcePayload = resolvedSource.payload;
-    let resultPayload: Data;
-    let resultType: MidgardCekConstantType;
-    if (tag === 38n) {
-      if (!(sourcePayload instanceof DataList)) {
-        throw new Error("mapData requires a list payload");
-      }
-      resultPayload = new DataMap(
-        sourcePayload.list.map((item) => {
-          if (
-            !(item instanceof DataConstr) ||
-            item.constr !== 0n ||
-            item.fields.length !== 2
-          ) {
-            throw new Error("mapData requires canonical Data pairs");
-          }
-          return { fst: item.fields[0]!, snd: item.fields[1]! };
-        }),
-      );
-      resultType = { kind: "data" };
-    } else {
-      if (!isPlutusDataMap(sourcePayload)) {
-        throw new Error("unMapData requires a map Data payload");
-      }
-      resultPayload = new DataList(
-        sourcePayload.map.map(
-          (entry) => new DataConstr(0n, [entry.fst, entry.snd]),
-        ),
-      );
-      resultType = {
-        kind: "list",
-        element: {
-          kind: "pair",
-          first: { kind: "data" },
-          second: { kind: "data" },
-        },
-      };
-    }
-    const added = this.addSemanticResult(resultType, resultPayload);
-    const sourceNode = this.dataNodes.get(rootHex(resolvedSource.tree.root));
-    const resultNode = this.dataNodes.get(rootHex(added.tree.root));
-    if (sourceNode === undefined || resultNode === undefined) {
-      throw new Error("CEK map conversion is missing its top Data nodes");
-    }
-    const control = this.mapControl(
+    const sourceRoot = this.store.constant(roots[0]!, source).dataRoot;
+    const added = buildMidgardCekMapConversionResult(
+      this.store,
+      tag,
+      sourceRoot,
+    );
+    const { sourceNode, resultNode } = added;
+    const control = midgardCekMapConversionControl(
       tag,
       added.root,
       sourceNode,
       resultNode,
-      arguments_,
+      this.budget(tag, arguments_),
     );
     const controlRoot = hashMidgardCekMapConversionControl(control);
     this.mapControls.set(rootHex(controlRoot), control);
+    const { dataLists, dataPairs } = this.store;
     this.record(
       {
         kind: "startBuiltinMapConversion",
@@ -1011,20 +918,20 @@ export class StructuralExecutor {
           sourceNode,
           sourceList:
             sourceNode.kind === "list" && sourceNode.itemsCount > 0n
-              ? (this.dataLists.get(rootHex(sourceNode.itemsRoot)) ?? null)
+              ? (dataLists.get(rootHex(sourceNode.itemsRoot)) ?? null)
               : null,
           sourcePairs:
             sourceNode.kind === "map" && sourceNode.entriesCount > 0n
-              ? (this.dataPairs.get(rootHex(sourceNode.entriesRoot)) ?? null)
+              ? (dataPairs.get(rootHex(sourceNode.entriesRoot)) ?? null)
               : null,
           resultNode,
           resultList:
             resultNode.kind === "list" && resultNode.itemsCount > 0n
-              ? (this.dataLists.get(rootHex(resultNode.itemsRoot)) ?? null)
+              ? (dataLists.get(rootHex(resultNode.itemsRoot)) ?? null)
               : null,
           resultPairs:
             resultNode.kind === "map" && resultNode.entriesCount > 0n
-              ? (this.dataPairs.get(rootHex(resultNode.entriesRoot)) ?? null)
+              ? (dataPairs.get(rootHex(resultNode.entriesRoot)) ?? null)
               : null,
         },
       },
@@ -1036,64 +943,6 @@ export class StructuralExecutor {
         auxiliary: 0n,
       }),
     );
-  }
-
-  private advancedMapControl(
-    control: MidgardCekMapConversionControl,
-    sourcePayload: bigint,
-    sourceMemory: bigint,
-    sourceTail: Bytes,
-    destinationPayload: bigint,
-    destinationMemory: bigint,
-    destinationTail: Bytes,
-  ): MidgardCekMapConversionControl {
-    return Object.freeze({
-      ...control,
-      sourceRoot: Buffer.from(sourceTail),
-      sourceRemaining: control.sourceRemaining - 1n,
-      sourcePayloadCborLength: control.sourcePayloadCborLength - sourcePayload,
-      sourceMemory: control.sourceMemory - sourceMemory,
-      destinationRoot: Buffer.from(destinationTail),
-      destinationRemaining: control.destinationRemaining - 1n,
-      destinationPayloadCborLength:
-        control.destinationPayloadCborLength - destinationPayload,
-      destinationMemory: control.destinationMemory - destinationMemory,
-    });
-  }
-
-  private mapPairMaterial(pairRoot: Bytes): {
-    readonly pair: MidgardCekDataNode;
-    readonly first: MidgardCekDataListNode;
-    readonly second: MidgardCekDataListNode;
-    readonly key: MidgardCekDataNode;
-    readonly value: MidgardCekDataNode;
-  } {
-    const pair = this.dataNodes.get(rootHex(pairRoot));
-    if (
-      pair?.kind !== "constrSmall" ||
-      pair.constructor !== 0n ||
-      pair.fieldsCount !== 2n
-    ) {
-      throw new Error("CEK map conversion pair wrapper is malformed");
-    }
-    const first = this.dataLists.get(rootHex(pair.fieldsRoot));
-    const second =
-      first === undefined ? undefined : this.dataLists.get(rootHex(first.tail));
-    const key =
-      first === undefined ? undefined : this.dataNodes.get(rootHex(first.head));
-    const value =
-      second === undefined
-        ? undefined
-        : this.dataNodes.get(rootHex(second.head));
-    if (
-      first === undefined ||
-      second === undefined ||
-      key === undefined ||
-      value === undefined
-    ) {
-      throw new Error("CEK map conversion pair material is incomplete");
-    }
-    return { pair, first, second, key, value };
   }
 
   private executeSemanticBuiltinControl(): void {
@@ -1118,13 +967,15 @@ export class StructuralExecutor {
       return;
     }
     if (control.tag === 38n) {
-      const source = this.dataLists.get(rootHex(control.sourceRoot));
-      const destination = this.dataPairs.get(rootHex(control.destinationRoot));
+      const source = this.store.dataLists.get(rootHex(control.sourceRoot));
+      const destination = this.store.dataPairs.get(
+        rootHex(control.destinationRoot),
+      );
       if (source === undefined || destination === undefined) {
         throw new Error("CEK list-to-map control material is missing");
       }
-      const material = this.mapPairMaterial(source.head);
-      const next = this.advancedMapControl(
+      const material = midgardCekMapPairMaterial(this.store, source.head);
+      const next = advanceMidgardCekMapConversionControl(
         control,
         source.headCborLength,
         source.headMemory,
@@ -1153,13 +1004,15 @@ export class StructuralExecutor {
       );
       return;
     }
-    const source = this.dataPairs.get(rootHex(control.sourceRoot));
-    const destination = this.dataLists.get(rootHex(control.destinationRoot));
+    const source = this.store.dataPairs.get(rootHex(control.sourceRoot));
+    const destination = this.store.dataLists.get(
+      rootHex(control.destinationRoot),
+    );
     if (source === undefined || destination === undefined) {
       throw new Error("CEK map-to-list control material is missing");
     }
-    const material = this.mapPairMaterial(destination.head);
-    const next = this.advancedMapControl(
+    const material = midgardCekMapPairMaterial(this.store, destination.head);
+    const next = advanceMidgardCekMapConversionControl(
       control,
       source.keyCborLength + source.valueCborLength,
       source.keyMemory + source.valueMemory,
@@ -1188,88 +1041,21 @@ export class StructuralExecutor {
     );
   }
 
-  private resolvedConstant(value: MidgardCekDirectValueWitness): {
-    readonly type: MidgardCekConstantType;
-    readonly payload: Data;
-    readonly tree: ReturnType<typeof commitMidgardCekDataTree>;
-  } {
-    if (value.kind === "constant") {
-      const decoded = decodeMidgardCekConstantWitness(value.witness);
-      const tree = commitMidgardCekDataTree(decoded.payload);
-      this.installSemanticTree(tree);
-      return { ...decoded, tree };
-    }
-    if (value.kind === "semanticConstant") {
-      const payload = this.dataValue(value.witness.payload.root);
-      const tree = commitMidgardCekDataTree(payload);
-      this.installSemanticTree(tree);
-      return {
-        type: decodeMidgardCekConstantTypeCbor(value.witness.typeCbor),
-        payload,
-        tree,
-      };
-    }
-    throw new Error("CEK semantic builtin requires a constant");
-  }
-
-  private topSemanticMaterial(
-    tree: ReturnType<typeof commitMidgardCekDataTree>,
-  ): {
-    readonly node: MidgardCekDataNode;
-    readonly lists: readonly MidgardCekDataListNode[];
-    readonly pairs: readonly MidgardCekDataPairNode[];
-  } {
-    const node = this.dataNodes.get(rootHex(tree.root));
-    if (node === undefined) {
-      throw new Error("CEK semantic constant is missing its top node");
-    }
-    const listRoot =
-      node.kind === "constrSmall" || node.kind === "constrLarge"
-        ? node.fieldsCount > 0n
-          ? node.fieldsRoot
-          : null
-        : node.kind === "list" && node.itemsCount > 0n
-          ? node.itemsRoot
-          : null;
-    const pairRoot =
-      node.kind === "map" && node.entriesCount > 0n ? node.entriesRoot : null;
-    const list =
-      listRoot === null ? null : this.dataLists.get(rootHex(listRoot));
-    const pair =
-      pairRoot === null ? null : this.dataPairs.get(rootHex(pairRoot));
-    if (
-      (listRoot !== null && list === undefined) ||
-      (pairRoot !== null && pair === undefined)
-    ) {
-      throw new Error("CEK semantic constant has incomplete top material");
-    }
-    return {
-      node,
-      lists: list === undefined || list === null ? [] : [list],
-      pairs: pair === undefined || pair === null ? [] : [pair],
-    };
-  }
-
   private recordSemanticResult(
     pre: MidgardCekMachineState,
     tag: bigint,
     arguments_: readonly MidgardCekDirectValueWitness[],
     result: MidgardCekDirectValueWitness,
-    material: {
-      readonly dataNodes: readonly MidgardCekDataNode[];
-      readonly listNodes: readonly MidgardCekDataListNode[];
-      readonly pairNodes: readonly MidgardCekDataPairNode[];
-      readonly scalarPreimages: readonly Bytes[];
-    },
+    resultRoot: Bytes,
+    material: MidgardCekSemanticStepMaterial,
   ): void {
-    const resultRoot = this.addDirectResult(result);
-    const budget = midgardCekDirectBuiltinBudget(tag, arguments_);
+    const budget = this.budget(tag, arguments_);
     this.record(
       {
         kind: "executeBuiltinSemantic",
         tag,
-        arguments: arguments_,
-        result,
+        arguments: presentMidgardCekSemanticArguments(tag, arguments_),
+        result: presentMidgardCekSemanticResult(tag, result),
         material,
       },
       exactState(pre, {
@@ -1288,28 +1074,16 @@ export class StructuralExecutor {
     pre: MidgardCekMachineState,
     tag: bigint,
     arguments_: readonly MidgardCekDirectValueWitness[],
-    source: ReturnType<StructuralExecutor["resolvedConstant"]>,
+    material: MidgardCekSemanticStepMaterial,
   ): void {
-    const top = this.topSemanticMaterial(source.tree);
     this.record(
       {
         kind: "executeBuiltinSemanticFailure",
         tag,
-        arguments: arguments_,
-        material: {
-          dataNodes: [top.node],
-          listNodes: top.lists,
-          pairNodes: top.pairs,
-          scalarPreimages: [],
-        },
+        arguments: presentMidgardCekSemanticArguments(tag, arguments_),
+        material,
       },
-      exactState(pre, {
-        mode: "haltError",
-        focusRoot: hashMidgardCekTermNode({ kind: "error" }),
-        environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
-        continuationRoot: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
-        auxiliary: MidgardCekErrorCodes.BuiltinFailure,
-      }),
+      errorSuccessor(pre, MidgardCekErrorCodes.BuiltinFailure),
     );
   }
 
@@ -1317,437 +1091,31 @@ export class StructuralExecutor {
     pre: MidgardCekMachineState,
     tag: bigint,
     arguments_: readonly MidgardCekDirectValueWitness[],
+    roots: readonly Bytes[],
   ): void {
-    const emptyMaterial = {
-      dataNodes: [],
-      listNodes: [],
-      pairNodes: [],
-      scalarPreimages: [],
-    } as const;
-    if (tag === 33n || tag === 34n) {
-      const source = this.resolvedConstant(arguments_[0]!);
-      if (
-        source.type.kind === "list" &&
-        source.payload instanceof DataList &&
-        source.payload.list.length === 0
-      ) {
-        this.recordSemanticFailure(pre, tag, arguments_, source);
-        return;
-      }
-    }
-    if (tag >= 42n && tag <= 46n) {
-      const source = this.resolvedConstant(arguments_[0]!);
-      if (source.type.kind !== "data") {
-        throw new Error("semantic Data failure has a non-Data source");
-      }
-      const wrongVariant =
-        tag === 42n
-          ? !(source.payload instanceof DataConstr)
-          : tag === 43n
-            ? !(source.payload instanceof DataMap)
-            : tag === 44n
-              ? !(source.payload instanceof DataList)
-              : tag === 45n
-                ? !(source.payload instanceof DataI)
-                : !(source.payload instanceof DataB);
-      if (wrongVariant) {
-        this.recordSemanticFailure(pre, tag, arguments_, source);
-        return;
-      }
-    }
-    if (tag === 29n || tag === 30n) {
-      const source = this.resolvedConstant(arguments_[0]!);
-      if (
-        source.type.kind !== "pair" ||
-        !(source.payload instanceof DataConstr) ||
-        source.payload.constr !== 0n ||
-        source.payload.fields.length !== 2
-      ) {
-        throw new Error("fstPair/sndPair requires a canonical pair");
-      }
-      const top = this.topSemanticMaterial(source.tree);
-      const firstLink = top.lists[0];
-      const secondLink =
-        firstLink === undefined
-          ? undefined
-          : this.dataLists.get(rootHex(firstLink.tail));
-      const firstNode =
-        firstLink === undefined
-          ? undefined
-          : this.dataNodes.get(rootHex(firstLink.head));
-      const secondNode =
-        secondLink === undefined
-          ? undefined
-          : this.dataNodes.get(rootHex(secondLink.head));
-      if (
-        firstLink === undefined ||
-        secondLink === undefined ||
-        firstNode === undefined ||
-        secondNode === undefined
-      ) {
-        throw new Error("CEK semantic pair material is incomplete");
-      }
-      const selectedType = tag === 29n ? source.type.first : source.type.second;
-      const selectedPayload =
-        tag === 29n ? source.payload.fields[0]! : source.payload.fields[1]!;
-      const added = this.addSemanticResult(selectedType, selectedPayload);
-      this.recordSemanticResult(pre, tag, arguments_, added.result, {
-        dataNodes: [top.node, firstNode, secondNode],
-        listNodes: [firstLink, secondLink],
-        pairNodes: [],
-        scalarPreimages: [],
-      });
-      return;
-    }
-    if (tag >= 31n && tag <= 35n) {
-      const sourceIndex = tag === 32n ? 1 : 0;
-      const source = this.resolvedConstant(arguments_[sourceIndex]!);
-      if (
-        source.type.kind !== "list" ||
-        !(source.payload instanceof DataList)
-      ) {
-        throw new Error("CEK semantic list builtin requires a list");
-      }
-      const top = this.topSemanticMaterial(source.tree);
-      if (tag === 31n) {
-        const result =
-          source.payload.list.length === 0 ? arguments_[1]! : arguments_[2]!;
-        this.recordSemanticResult(pre, tag, arguments_, result, {
-          dataNodes: [top.node],
-          listNodes: top.lists,
-          pairNodes: [],
-          scalarPreimages: [],
-        });
-        return;
-      }
-      if (tag === 32n) {
-        const item = this.resolvedConstant(arguments_[0]!);
-        const added = this.addSemanticResult(
-          source.type,
-          new DataList([item.payload, ...source.payload.list]),
-        );
-        this.recordSemanticResult(pre, tag, arguments_, added.result, {
-          dataNodes: [top.node],
-          listNodes: top.lists,
-          pairNodes: [],
-          scalarPreimages: [],
-        });
-        return;
-      }
-      if (tag === 35n) {
-        const added = this.addSemanticResult(
-          { kind: "boolean" },
-          new DataConstr(source.payload.list.length === 0 ? 1n : 0n, []),
-        );
-        this.recordSemanticResult(pre, tag, arguments_, added.result, {
-          dataNodes: [top.node],
-          listNodes: top.lists,
-          pairNodes: [],
-          scalarPreimages: [],
-        });
-        return;
-      }
-      if (source.payload.list.length === 0) {
-        throw new Error("headList/tailList failed on an empty list");
-      }
-      const firstLink = top.lists[0];
-      const headNode =
-        firstLink === undefined
-          ? undefined
-          : this.dataNodes.get(rootHex(firstLink.head));
-      const tailLink =
-        firstLink === undefined || firstLink.length === 1n
-          ? undefined
-          : this.dataLists.get(rootHex(firstLink.tail));
-      if (firstLink === undefined || headNode === undefined) {
-        throw new Error("CEK semantic list head material is incomplete");
-      }
-      const added =
-        tag === 33n
-          ? this.addSemanticResult(source.type.element, source.payload.list[0]!)
-          : this.addSemanticResult(
-              source.type,
-              new DataList(source.payload.list.slice(1)),
-            );
-      this.recordSemanticResult(pre, tag, arguments_, added.result, {
-        dataNodes: [top.node, headNode],
-        listNodes: tailLink === undefined ? [firstLink] : [firstLink, tailLink],
-        pairNodes: [],
-        scalarPreimages: [],
-      });
-      return;
-    }
-    if (tag === 36n) {
-      const source = this.resolvedConstant(arguments_[0]!);
-      if (source.type.kind !== "data") {
-        throw new Error("chooseData requires Data");
-      }
-      const top = this.topSemanticMaterial(source.tree);
-      const result =
-        source.payload instanceof DataConstr
-          ? arguments_[1]!
-          : source.payload instanceof DataMap
-            ? arguments_[2]!
-            : source.payload instanceof DataList
-              ? arguments_[3]!
-              : source.payload instanceof DataI
-                ? arguments_[4]!
-                : arguments_[5]!;
-      this.recordSemanticResult(pre, tag, arguments_, result, {
-        dataNodes: [top.node],
-        listNodes: top.lists,
-        pairNodes: top.pairs,
-        scalarPreimages: [],
-      });
-      return;
-    }
-    if (tag === 37n) {
-      const index = this.resolvedConstant(arguments_[0]!);
-      const fields = this.resolvedConstant(arguments_[1]!);
-      if (
-        index.type.kind !== "integer" ||
-        !(index.payload instanceof DataI) ||
-        fields.type.kind !== "list" ||
-        fields.type.element.kind !== "data" ||
-        !(fields.payload instanceof DataList) ||
-        index.payload.int < 0n
-      ) {
-        throw new Error("constrData requires non-negative index and Data list");
-      }
-      const fieldsTop = this.topSemanticMaterial(fields.tree);
-      const indexIsSemantic = arguments_[0]?.kind === "semanticConstant";
-      const indexTop = indexIsSemantic
-        ? this.topSemanticMaterial(index.tree)
-        : null;
-      const added = this.addSemanticResult(
-        { kind: "data" },
-        new DataConstr(index.payload.int, fields.payload.list),
-      );
-      this.recordSemanticResult(pre, tag, arguments_, added.result, {
-        dataNodes:
-          indexTop === null
-            ? [fieldsTop.node]
-            : [indexTop.node, fieldsTop.node],
-        listNodes: fieldsTop.lists,
-        pairNodes: [],
-        scalarPreimages:
-          indexTop === null
-            ? []
-            : [encodeMidgardCekDataTreeInteger(index.payload.int)],
-      });
-      return;
-    }
-    if (tag === 39n) {
-      const items = this.resolvedConstant(arguments_[0]!);
-      if (
-        items.type.kind !== "list" ||
-        items.type.element.kind !== "data" ||
-        !(items.payload instanceof DataList)
-      ) {
-        throw new Error("listData requires a Data list");
-      }
-      const top = this.topSemanticMaterial(items.tree);
-      const added = this.addSemanticResult({ kind: "data" }, items.payload);
-      this.recordSemanticResult(pre, tag, arguments_, added.result, {
-        dataNodes: [top.node],
-        listNodes: top.lists,
-        pairNodes: [],
-        scalarPreimages: [],
-      });
-      return;
-    }
-    if (tag === 40n || tag === 45n) {
-      const source = this.resolvedConstant(arguments_[0]!);
-      if (
-        !(source.payload instanceof DataI) ||
-        source.type.kind !== (tag === 40n ? "integer" : "data")
-      ) {
-        throw new Error("iData/unIData requires an integer payload");
-      }
-      const top = this.topSemanticMaterial(source.tree);
-      const added = this.addSemanticResult(
-        { kind: tag === 40n ? "data" : "integer" },
-        source.payload,
-      );
-      this.recordSemanticResult(pre, tag, arguments_, added.result, {
-        dataNodes: [top.node],
-        listNodes: [],
-        pairNodes: [],
-        scalarPreimages: [encodeMidgardCekDataTreeInteger(source.payload.int)],
-      });
-      return;
-    }
-    if (tag === 41n || tag === 46n) {
-      const source = this.resolvedConstant(arguments_[0]!);
-      if (
-        !(source.payload instanceof DataB) ||
-        source.type.kind !== (tag === 41n ? "bytes" : "data")
-      ) {
-        throw new Error("bData/unBData requires a bytes payload");
-      }
-      const top = this.topSemanticMaterial(source.tree);
-      const added = this.addSemanticResult(
-        { kind: tag === 41n ? "data" : "bytes" },
-        source.payload,
-      );
-      this.recordSemanticResult(pre, tag, arguments_, added.result, {
-        dataNodes: [top.node],
-        listNodes: [],
-        pairNodes: [],
-        scalarPreimages: [source.payload.bytes],
-      });
-      return;
-    }
-    if (tag === 42n) {
-      const source = this.resolvedConstant(arguments_[0]!);
-      if (
-        source.type.kind !== "data" ||
-        !(source.payload instanceof DataConstr)
-      ) {
-        throw new Error("unConstrData requires constructor Data");
-      }
-      const top = this.topSemanticMaterial(source.tree);
-      const added = this.addSemanticResult(
-        {
-          kind: "pair",
-          first: { kind: "integer" },
-          second: {
-            kind: "list",
-            element: { kind: "data" },
-          },
-        },
-        new DataConstr(0n, [
-          new DataI(source.payload.constr),
-          new DataList(source.payload.fields),
-        ]),
-      );
-      this.recordSemanticResult(pre, tag, arguments_, added.result, {
-        dataNodes: [top.node],
-        listNodes: top.lists,
-        pairNodes: [],
-        scalarPreimages:
-          source.payload.constr <= 127n
-            ? []
-            : [encodeMidgardCekDataTreeInteger(source.payload.constr)],
-      });
-      return;
-    }
-    if (tag === 44n) {
-      const source = this.resolvedConstant(arguments_[0]!);
-      if (
-        source.type.kind !== "data" ||
-        !(source.payload instanceof DataList)
-      ) {
-        throw new Error("unListData requires list Data");
-      }
-      const top = this.topSemanticMaterial(source.tree);
-      const added = this.addSemanticResult(
-        {
-          kind: "list",
-          element: { kind: "data" },
-        },
-        source.payload,
-      );
-      this.recordSemanticResult(pre, tag, arguments_, added.result, {
-        dataNodes: [top.node],
-        listNodes: top.lists,
-        pairNodes: [],
-        scalarPreimages: [],
-      });
-      return;
-    }
-    if (tag === 47n) {
-      const left = this.resolvedConstant(arguments_[0]!);
-      const right = this.resolvedConstant(arguments_[1]!);
-      if (left.type.kind !== "data" || right.type.kind !== "data") {
-        throw new Error("equalsData requires Data arguments");
-      }
-      const added = this.addSemanticResult(
-        { kind: "boolean" },
-        new DataConstr(
-          sameBytes(left.tree.root, right.tree.root) ? 1n : 0n,
-          [],
-        ),
-      );
-      this.recordSemanticResult(
+    const outcome = executeMidgardCekSemanticBuiltin(
+      this.store,
+      tag,
+      arguments_,
+      roots,
+    );
+    if (outcome.kind === "failure") {
+      this.recordSemanticFailure(
         pre,
         tag,
-        arguments_,
-        added.result,
-        emptyMaterial,
+        outcome.arguments ?? arguments_,
+        outcome.material,
       );
       return;
     }
-    if (tag === 48n) {
-      const first = this.resolvedConstant(arguments_[0]!);
-      const second = this.resolvedConstant(arguments_[1]!);
-      if (first.type.kind !== "data" || second.type.kind !== "data") {
-        throw new Error("mkPairData requires Data arguments");
-      }
-      const added = this.addSemanticResult(
-        {
-          kind: "pair",
-          first: { kind: "data" },
-          second: { kind: "data" },
-        },
-        new DataConstr(0n, [first.payload, second.payload]),
-      );
-      this.recordSemanticResult(
-        pre,
-        tag,
-        arguments_,
-        added.result,
-        emptyMaterial,
-      );
-      return;
-    }
-    if (tag === 49n || tag === 50n) {
-      const unit = this.resolvedConstant(arguments_[0]!);
-      if (unit.type.kind !== "unit") {
-        throw new Error("mkNilData requires unit");
-      }
-      const element: MidgardCekConstantType =
-        tag === 49n
-          ? { kind: "data" }
-          : {
-              kind: "pair",
-              first: { kind: "data" },
-              second: { kind: "data" },
-            };
-      const added = this.addSemanticResult(
-        { kind: "list", element },
-        new DataList([]),
-      );
-      this.recordSemanticResult(
-        pre,
-        tag,
-        arguments_,
-        added.result,
-        emptyMaterial,
-      );
-      return;
-    }
-    if (tag === 51n) {
-      const source = this.resolvedConstant(arguments_[0]!);
-      if (source.type.kind !== "data") {
-        throw new Error("serialiseData requires Data");
-      }
-      const raw = encodeMidgardCekPlutusData(source.payload);
-      if (raw.length > 9_215) {
-        throw new Error(
-          "serialiseData source exceeds the exact L1 revealed-preimage envelope",
-        );
-      }
-      const added = this.addSemanticResult({ kind: "bytes" }, new DataB(raw));
-      this.recordSemanticResult(pre, tag, arguments_, added.result, {
-        dataNodes: [],
-        listNodes: [],
-        pairNodes: [],
-        scalarPreimages: [raw],
-      });
-      return;
-    }
-    throw new Error(`unsupported CEK semantic builtin ${tag.toString()}`);
+    this.recordSemanticResult(
+      pre,
+      tag,
+      arguments_,
+      outcome.result,
+      outcome.root ?? this.addDirectResult(outcome.result),
+      outcome.material,
+    );
   }
 
   private executeBuiltin(): void {
@@ -1760,12 +1128,15 @@ export class StructuralExecutor {
     ) {
       throw new Error("CEK builtin mode has an incomplete builtin value");
     }
-    const arguments_ = this.builtinArguments(
+    const { witnesses: arguments_, roots } = this.builtinArguments(
       builtin.argumentsRoot,
       builtin.argumentsCount,
     );
+    // The builtin value commits to exactly these argument roots, so only the
+    // argument kinds decide a type failure here, at any argument size, as on
+    // L1.
     if (
-      verifyMidgardCekBuiltinTypeFailure(builtin.tag, pre.focusRoot, arguments_)
+      midgardCekBuiltinArgumentsFailKinds(builtin.tag, arguments_, this.typeOf)
     ) {
       this.record(
         {
@@ -1777,28 +1148,13 @@ export class StructuralExecutor {
       );
       return;
     }
-    const directArguments = arguments_.map(
-      (argument): MidgardCekDirectValueWitness => {
-        if (argument.kind === "constant") {
-          return { kind: "constant", witness: argument.witness };
-        }
-        if (argument.kind === "semanticConstant") {
-          return {
-            kind: "semanticConstant",
-            witness: argument.witness,
-          };
-        }
-        if (argument.kind === "blsMillerLoop") {
-          return {
-            kind: "blsMillerLoop",
-            expressionRoot: argument.expressionRoot,
-          };
-        }
-        return {
-          kind: "opaque",
-          root: hashMidgardCekRuntimeValueWitness(argument),
-        };
-      },
+    const directArguments = arguments_.map((argument, index) =>
+      presentMidgardCekDirectArgument(
+        builtin.tag,
+        index,
+        argument,
+        roots[index]!,
+      ),
     );
     if (
       (builtin.tag === 38n || builtin.tag === 43n) &&
@@ -1811,29 +1167,29 @@ export class StructuralExecutor {
       // pair-list width including empty, and only `unMapData` on a non-map
       // fails (the "Expected the Map constructor" failure).
       if (builtin.tag === 43n) {
-        const source = this.resolvedConstant(directArguments[0]);
-        if (!isPlutusDataMap(source.payload)) {
-          this.recordSemanticFailure(pre, builtin.tag, directArguments, source);
+        const source = this.store.constant(roots[0]!, directArguments[0]);
+        if (this.store.node(source.dataRoot).kind !== "map") {
+          this.recordSemanticFailure(
+            pre,
+            builtin.tag,
+            directArguments,
+            midgardCekSemanticTopMaterial(this.store, source.dataRoot),
+          );
           return;
         }
       }
-      this.startMapConversion(pre, builtin.tag, directArguments);
+      this.startMapConversion(pre, builtin.tag, directArguments, roots);
       return;
     }
     if (
       builtin.tag === 51n &&
       directArguments[0]?.kind === "semanticConstant"
     ) {
-      this.executeSemanticBuiltin(pre, builtin.tag, directArguments);
+      this.executeSemanticBuiltin(pre, builtin.tag, directArguments, roots);
       return;
     }
-    if (
-      builtin.tag >= 29n &&
-      builtin.tag <= 50n &&
-      builtin.tag !== 38n &&
-      builtin.tag !== 43n
-    ) {
-      this.executeSemanticBuiltin(pre, builtin.tag, directArguments);
+    if (isMidgardCekSemanticStep(builtin.tag, directArguments)) {
+      this.executeSemanticBuiltin(pre, builtin.tag, directArguments, roots);
       return;
     }
     if (builtin.tag === 70n) {
@@ -1907,7 +1263,7 @@ export class StructuralExecutor {
       return;
     }
     if (builtin.tag === 51n && evaluated.result.kind === "semanticConstant") {
-      this.executeSemanticBuiltin(pre, builtin.tag, directArguments);
+      this.executeSemanticBuiltin(pre, builtin.tag, directArguments, roots);
       return;
     }
     const resultRoot = this.addDirectResult(evaluated.result);
@@ -1985,15 +1341,7 @@ export class StructuralExecutor {
     if (frame === null) {
       this.record(
         { kind: "returnEmptyContinuation", value },
-        value.kind === "constant"
-          ? exactState(pre, {
-              mode: "haltSuccess",
-              focusRoot: pre.focusRoot,
-              environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
-              continuationRoot: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
-              auxiliary: 0n,
-            })
-          : errorSuccessor(pre, MidgardCekErrorCodes.NonconstantHalt),
+        returnEmptySuccessor(pre, value),
       );
       return;
     }
@@ -2250,6 +1598,10 @@ export class StructuralExecutor {
         return;
       }
       case "case": {
+        if (value.kind === "constant") {
+          returnCaseConstant(this.caseConstantHost, pre, frame);
+          return;
+        }
         if (value.kind !== "constr") {
           this.record(
             {
@@ -2319,7 +1671,12 @@ export class StructuralExecutor {
     if (frame?.kind !== "caseSelect") {
       throw new Error("CEK case-select state has the wrong continuation");
     }
-    const branch = this.sequence(pre.focusRoot, pre.auxiliary + 1n);
+    // The branch walk starts at the head of all the branches, so the node
+    // only has to be longer than the steps still to take.
+    const branch = this.sequences.get(rootHex(pre.focusRoot));
+    if (branch === undefined || branch.length <= pre.auxiliary) {
+      throw new Error(`missing CEK case branch ${rootHex(pre.focusRoot)}`);
+    }
     const witness: MidgardCekCoreStepWitness = {
       kind: "selectCaseBranch",
       branch: branch.head,

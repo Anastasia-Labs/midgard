@@ -154,9 +154,16 @@ const sameConstantType = (
   return true;
 };
 
-const constantType = (
+/**
+ * The constant type a witness presents. The default reads a revealed
+ * constant through its full exact decoding; a caller that holds only
+ * authenticated witnesses may pass a reader of the type CBOR alone.
+ */
+export type MidgardCekConstantTypeReader = (
   value: MidgardCekRuntimeValueWitness,
-): MidgardCekConstantType | null =>
+) => MidgardCekConstantType | null;
+
+const constantType: MidgardCekConstantTypeReader = (value) =>
   value.kind === "constant"
     ? decodeMidgardCekConstantWitness(value.witness).type
     : value.kind === "semanticConstant"
@@ -166,12 +173,13 @@ const constantType = (
 export const matchesKind = (
   value: MidgardCekRuntimeValueWitness,
   kind: RuntimeValueKind,
+  typeOf: MidgardCekConstantTypeReader = constantType,
 ): boolean => {
   if (kind === "any") return true;
   if (kind === "blsMillerLoop") {
     return value.kind === "blsMillerLoop";
   }
-  const type = constantType(value);
+  const type = typeOf(value);
   if (type === null) return false;
   switch (kind) {
     case "integer":
@@ -236,15 +244,15 @@ export const argumentKinds = (tag: number): readonly RuntimeValueKind[] => {
   if (tag === 51) return ["data"];
   if (tag <= 53) return ["bytes", "bytes", "bytes"];
   if (tag === 54 || tag === 57) return ["blsG1", "blsG1"];
-  if (tag === 55 || tag === 59) return ["blsG1"];
+  if (tag === 55 || tag === 58) return ["blsG1"];
   if (tag === 56) return ["integer", "blsG1"];
-  if (tag === 58) return ["bytes", "bytes"];
-  if (tag === 60) return ["bytes"];
+  if (tag === 59) return ["bytes"];
+  if (tag === 60) return ["bytes", "bytes"];
   if (tag === 61 || tag === 64) return ["blsG2", "blsG2"];
-  if (tag === 62 || tag === 66) return ["blsG2"];
+  if (tag === 62 || tag === 65) return ["blsG2"];
   if (tag === 63) return ["integer", "blsG2"];
-  if (tag === 65) return ["bytes", "bytes"];
-  if (tag === 67) return ["bytes"];
+  if (tag === 66) return ["bytes"];
+  if (tag === 67) return ["bytes", "bytes"];
   if (tag === 68) return ["blsG1", "blsG2"];
   if (tag === 69 || tag === 70) {
     return ["blsMillerLoop", "blsMillerLoop"];
@@ -263,10 +271,11 @@ export const argumentKinds = (tag: number): readonly RuntimeValueKind[] => {
 
 export const mkConsIsWellTyped = (
   arguments_: readonly MidgardCekRuntimeValueWitness[],
+  typeOf: MidgardCekConstantTypeReader = constantType,
 ): boolean => {
   if (arguments_.length !== 2) return false;
-  const elementType = constantType(arguments_[0]);
-  const listType = constantType(arguments_[1]);
+  const elementType = typeOf(arguments_[0]);
+  const listType = typeOf(arguments_[1]);
   return (
     elementType !== null &&
     listType?.kind === "list" &&
@@ -321,3 +330,35 @@ export const directWitnessPayloadBytes = (
         : 0n),
     0n,
   );
+
+// ifThenElse, chooseUnit, trace, chooseList and chooseData pass a branch
+// through without reading it, and each costs a constant under the Plutus V3
+// cost model. Every argument after the first is therefore presented by its
+// value root alone, whatever value it holds.
+const PASS_THROUGH_TAGS = new Set([26n, 27n, 28n, 31n, 36n]);
+
+/**
+ * The direct presentation of a builtin argument whose value root is `root`:
+ * a revealed or semantic constant and a Miller-loop value as themselves, a
+ * pass-through branch and any other value by its value root.
+ */
+export const presentMidgardCekDirectArgument = (
+  tag: bigint,
+  index: number,
+  argument: MidgardCekRuntimeValueWitness,
+  root: Bytes,
+): MidgardCekDirectValueWitness => {
+  if (index > 0 && PASS_THROUGH_TAGS.has(tag)) {
+    return { kind: "opaque", root };
+  }
+  if (argument.kind === "constant") {
+    return { kind: "constant", witness: argument.witness };
+  }
+  if (argument.kind === "semanticConstant") {
+    return { kind: "semanticConstant", witness: argument.witness };
+  }
+  if (argument.kind === "blsMillerLoop") {
+    return { kind: "blsMillerLoop", expressionRoot: argument.expressionRoot };
+  }
+  return { kind: "opaque", root };
+};

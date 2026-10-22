@@ -20,6 +20,10 @@ import type { Hash32 } from "../src/codec/hash.js";
 
 export const hash = (fill: number): Buffer => Buffer.alloc(32, fill);
 
+// Cardano sizes a byte string in 8-byte words, with one word when it is empty.
+export const byteStringWords = (length: number): bigint =>
+  length === 0 ? 1n : BigInt(Math.floor((length - 1) / 8) + 1);
+
 export const hex = (bytes: Uint8Array): string =>
   Buffer.from(bytes).toString("hex");
 
@@ -35,7 +39,7 @@ export const programMaterialEntry = (
 export const makeUnaryProgramMaterial = (
   nodeCount: number,
 ): {
-  readonly envelope: {
+  readonly summary: {
     readonly uplcVersion: readonly [1n, 1n, 0n];
     readonly termRoot: Hash32;
     readonly nodeCount: bigint;
@@ -55,7 +59,7 @@ export const makeUnaryProgramMaterial = (
     material.push({ kind: "term", root, preimage });
   }
   return {
-    envelope: {
+    summary: {
       uplcVersion: [1n, 1n, 0n],
       termRoot: root,
       nodeCount: BigInt(material.length),
@@ -92,7 +96,7 @@ export const encodeCanonicalSemanticBytes = (bytes: Buffer): Buffer => {
 export const makeBytesConstantProgramMaterial = (
   rawByteLength: number,
 ): {
-  readonly envelope: {
+  readonly summary: {
     readonly uplcVersion: readonly [1n, 1n, 0n];
     readonly termRoot: Hash32;
     readonly nodeCount: bigint;
@@ -112,7 +116,7 @@ export const makeBytesConstantProgramMaterial = (
     bytesRoot: rawBlob.root,
     bytesLength: BigInt(rawBytes.length),
     cborLength: BigInt(payloadCbor.length),
-    memory: 4n + BigInt(rawBytes.length),
+    memory: 4n + byteStringWords(rawBytes.length),
   } as const;
   const semanticRoot = hashMidgardCekDataNode(semanticNode);
   const valueNode = {
@@ -121,7 +125,7 @@ export const makeBytesConstantProgramMaterial = (
     payloadRoot: semanticRoot,
     payloadLength: BigInt(payloadCbor.length),
     semanticRoot,
-    memory: BigInt(Math.max(1, rawBytes.length)),
+    memory: byteStringWords(rawBytes.length),
   } as const;
   const valueRoot = hashMidgardCekValueNode(valueNode);
   const termNode = { kind: "constant", value: valueRoot } as const;
@@ -151,7 +155,7 @@ export const makeBytesConstantProgramMaterial = (
     ),
   ];
   return {
-    envelope: {
+    summary: {
       uplcVersion: [1n, 1n, 0n],
       termRoot,
       nodeCount: BigInt(material.length),
@@ -262,7 +266,7 @@ export const makeNestedListConstantProgramMaterial = (
     ),
   ];
   return {
-    envelope: {
+    summary: {
       uplcVersion: [1n, 1n, 0n],
       termRoot,
       nodeCount: BigInt(material.length),

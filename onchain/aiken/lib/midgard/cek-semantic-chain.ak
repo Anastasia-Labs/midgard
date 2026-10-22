@@ -6,7 +6,7 @@ use cardano/transaction.{OutputReference, Transaction}
 use midgard/cek_builtin_v1 as builtin_witness
 use midgard/cek_machine_v1 as machine
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{continue}
+use midgard/fraud_proofs/common.{ProverOnly, continue_validation_trace}
 
 // Prepared evidence is opaque between the binder and settle. Its typed opening
 // is required only by those two endpoints, so arm hops do not decode the VM.
@@ -31,11 +31,13 @@ pub type ArmAction {
 pub type ArmRedeemer =
   ct.StepRedeemer<ArmAction>
 
+/// The witness is the one the core step bound. The binder in
+/// `cek-core-step-semantic-v1` is the only writer of a `CoreBound` (every arm
+/// carries it on with `..bound`), and it sets `witness_hash` and `arm` from
+/// the same witness, so a witness that hashes to `witness_hash` also carries
+/// constructor `arm`; that is not checked again.
 pub fn witness_is_bound(bound: CoreBound, witness: Data) -> Bool {
-  and {
-    blake2b_256(cbor.serialise(witness)) == bound.witness_hash,
-    builtin.un_constr_data(witness).1st == bound.arm,
-  }
+  blake2b_256(cbor.serialise(witness)) == bound.witness_hash
 }
 
 pub fn continue_core(
@@ -56,14 +58,14 @@ pub fn continue_core(
     progress: bound.progress + 1,
     facts: next_facts,
   }
-  continue(
+  continue_validation_trace(
     computation_thread_policy_id,
     step,
     action.input_index,
     action.output_index,
     own_out_ref,
-    tx.inputs,
-    tx.outputs,
+    tx,
+    ProverOnly,
     fn(_, _, _, _, output_hash, output_state) {
       output_hash == next_script_hash && output_state == next
     },
@@ -79,8 +81,12 @@ pub fn core_group(mode: Int, witness: Data) -> Int {
     expect arm == 11 || arm == 12
     1
   } else if mode == machine.mode_return {
-    expect arm >= 13 && arm <= 27
-    1
+    if arm == 41 {
+      11
+    } else {
+      expect arm >= 13 && arm <= 27
+      1
+    }
   } else if mode == machine.mode_case_select {
     expect arm == 28
     1

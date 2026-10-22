@@ -14,11 +14,13 @@
  * All three were hand-mirrored families: each suite printed its terminal vector
  * under `MIDGARD_PRINT_AIKEN_VECTOR=1` and a human retyped the controls, frame,
  * root, lengths and frontier hashes into
- * `onchain/aiken/lib/midgard/cek-data-traverse.max-cardano.test.ak` and
- * `onchain/aiken/lib/midgard/ledger-output-value-v1.test.ak`. Worse, the print
- * mode *also* switched the suites' own terminal comparison off, so the one
- * environment variable that regenerated the Aiken side simultaneously removed
- * the oracle that made the regenerated values trustworthy.
+ * `onchain/aiken/lib/midgard/cek-data-traverse.max-cardano.test.ak`,
+ * `onchain/aiken/lib/midgard/ledger-output-value-v1.test.ak` and
+ * `onchain/aiken/lib/midgard/ledger-output-value.max-cardano.test.ak`.
+ * Worse, the print mode *also* switched the suites' own terminal comparison
+ * off, so the one environment variable that regenerated the Aiken side
+ * simultaneously removed the oracle that made the regenerated values
+ * trustworthy.
  *
  * This generator closes both halves. The suites now assert unconditionally and
  * publish their vector on the `MIDGARD_WRITE_AIKEN_VECTOR` machine channel
@@ -212,6 +214,19 @@ const AIKEN_FAMILIES = [
         "maximum value lovelace",
       ),
       ...valueFrontierConstants(nestedValue),
+    },
+  },
+  {
+    aiken: "onchain/aiken/lib/midgard/ledger-output-value.max-cardano.test.ak",
+    constants: {
+      terminal_pre_control: bytes(nestedValue.preTerminalControlCborHex),
+      terminal_post_control: bytes(nestedValue.terminalControlCborHex),
+      policy_transition_pre_control: bytes(
+        nestedValue.policyTransition.controlCborHex,
+      ),
+      policy_transition_post_control: bytes(
+        nestedValue.policyTransition.nextControlCborHex,
+      ),
     },
   },
 ];

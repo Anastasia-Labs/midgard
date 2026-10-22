@@ -37,9 +37,9 @@ import {
   type Creating,
   type CreatingOutput,
   GENESIS_BYTES,
-  INITIALIZATION,
   makeConfig,
   makeOriginDeployment,
+  originInitialization,
   pointAt,
   type SyntheticUserEventBlock,
   withFixtureCml,
@@ -113,7 +113,7 @@ export const createSyntheticUserEventOriginFixture = async (
   await writeFile(queryLogPath, "");
   const deployment =
     options.published?.deployment ??
-    makeOriginDeployment(options.ruleBundleCommitment);
+    (await makeOriginDeployment(options.ruleBundleCommitment));
   const deploymentIdentity = deployment.result;
   const scriptBinding: WatcherUserEventScriptBinding =
     verifyWatcherUserEventScriptBinding({
@@ -140,7 +140,7 @@ export const createSyntheticUserEventOriginFixture = async (
     blocks: {} as Record<string, { spent: string[]; created: LedgerOutput[] }>,
   };
   let initializing = true;
-  const initialization = options.published ?? INITIALIZATION;
+  const initialization = options.published ?? (await originInitialization());
   const initializationTransaction = CML.Transaction.from_cbor_hex(
     initialization.transactionCbor,
   );

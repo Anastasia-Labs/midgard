@@ -24,7 +24,6 @@ import {
   OUTPUT_REFERENCE_SCRIPT_DECODING_BLUEPRINT_TITLES,
   type OutputReferenceScriptDecodingContracts,
 } from "../../src/output-reference-script-decoding/index.js";
-import type { VanRossemFitMeasurement } from "../../src/proof-fit/van-rossem-fit-ledger.js";
 import {
   nativeTxFromCoreCompact,
   type SubmitStep01TxInclusion,
@@ -94,6 +93,16 @@ export const outputWithNativeScript = (script: MidgardNativeScript): Buffer =>
         scriptBytes: Buffer.alloc(0),
         nativeScript: script,
       },
+    }),
+  );
+
+/** A canonical output carrying `scriptBytes` as a PlutusV3 reference script. */
+export const outputWithPlutusScript = (scriptBytes: Buffer): Buffer =>
+  Buffer.from(
+    encodeMidgardTxOutput({
+      address: subjectAddress,
+      value: subjectValue,
+      script_ref: { language: "PlutusV3", scriptBytes },
     }),
   );
 
@@ -187,8 +196,11 @@ export const registeredContracts = async (harness: Harness) => {
   return { validators, contracts, catalogue: harness.catalogue, category };
 };
 
-export const makeOutputReferenceHarness = async () => {
+export const makeOutputReferenceHarness = async ({
+  referenceScriptAuthTimelockMs,
+}: { readonly referenceScriptAuthTimelockMs?: number } = {}) => {
   const harness = await makeFaultProofEmulatorHarness({
+    referenceScriptAuthTimelockMs,
     contractOptions: {
       realOutputReferenceScriptDecoding: true,
       alwaysFraudProofCatalogue: true,
@@ -201,48 +213,23 @@ export type OutputReferenceContext = Awaited<
   ReturnType<typeof makeOutputReferenceHarness>
 >;
 
-// ## Fit-ledger recorder
-
-export const MAXIMUM_SHAPE =
-  "16,384-byte accepted output (zero native payload) with Certified field-2 carriage and eight resumable descriptor windows; widest all-of native script that fits the bound (16-step resumable scans, adjacent chunk windows); nested containers; cancellation from every step; mint and leased removal";
+// ## Measurement recorder
 
 export const createMeasurementRecorder = () => {
-  const measurements: VanRossemFitMeasurement[] = [];
-  const names = new Set<string>();
   const record = (
     name: string,
     measurement: Measurement,
-    { runsScripts = true, maximumShape = MAXIMUM_SHAPE } = {},
+    { runsScripts = true } = {},
   ) => {
     expect(measurement.l1ByteMargin, name).toBeGreaterThan(0);
     if (runsScripts) {
       expect(measurement.executionMemory, name).toBeGreaterThan(0n);
       expect(measurement.executionSteps, name).toBeGreaterThan(0n);
     }
-    if (names.has(name)) return;
-    names.add(name);
-    measurements.push({
-      name,
-      kind: "lifecycle",
-      maximumShape,
-      signedBytes: measurement.completeSignedBytes,
-      memoryUnits: measurement.executionMemory,
-      cpuUnits: measurement.executionSteps,
-    });
   };
   const recordPublication = (stepIndex: number, measurement: Measurement) => {
     const name = `publish-step0${(stepIndex + 1).toString()}`;
     expect(measurement.completeSignedBytes, name).toBeLessThanOrEqual(15_872);
-    if (names.has(name)) return;
-    names.add(name);
-    measurements.push({
-      name,
-      kind: "publication",
-      maximumShape: "fully applied testnet validator",
-      signedBytes: measurement.completeSignedBytes,
-      memoryUnits: measurement.executionMemory,
-      cpuUnits: measurement.executionSteps,
-    });
   };
   /** Step 02/04 carriage publications and the certificate mint. */
   const recordCarriage = (
@@ -261,7 +248,7 @@ export const createMeasurementRecorder = () => {
       );
     });
   };
-  return { measurements, record, recordPublication, recordCarriage };
+  return { record, recordPublication, recordCarriage };
 };
 
 export type MeasurementRecorder = ReturnType<typeof createMeasurementRecorder>;

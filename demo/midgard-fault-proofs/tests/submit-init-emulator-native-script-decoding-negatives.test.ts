@@ -531,7 +531,6 @@ describe("native-script-decoding aborts, refusals and resume", () => {
     const step01 = await submitNativeScriptDecodingStep01RecordForced({
       ...shared,
       threadOutRef: init.nextThreadOutRef,
-      direction: 1n,
       referenceScriptUtxo: step01Ref,
     });
     const step02 = await submitNativeScriptDecodingStep02({

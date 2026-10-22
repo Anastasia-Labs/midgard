@@ -3,7 +3,6 @@ import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 import { assertWorkflowJournalActuation } from "../workflow/actuation-permit.js";
 import {
   assertWorkflowFundingCompletionHandoffJournal,
-  assertWorkflowFundingReservationReadyToSubmit,
   beginWorkflowFundingReservationAction,
   confirmWorkflowFundingReservationTransaction,
   createWorkflowFundingSubmissionHandoff,
@@ -40,6 +39,7 @@ import {
   workflowTransactionInputOutRefs,
   workflowTransactionReferenceInputOutRefs,
 } from "../workflow/transaction-boundary.js";
+import { assertMintItemReadyToSubmitAfterIntent } from "./central-journal.assert-ready-to-submit-after-intent.js";
 import { createMintItemCanonicalReconciliation } from "./central-journal.reconcile-canonical-receipt.js";
 import {
   actionId,
@@ -304,7 +304,7 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
         txHash: transaction.txHash,
       });
       assertActuation("before_submit");
-      await assertWorkflowFundingReservationReadyToSubmit({
+      await assertMintItemReadyToSubmitAfterIntent({
         journal: store,
         transactionHash: transaction.txHash,
       });
@@ -401,7 +401,7 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
       });
       captured.push(transaction.txHash);
       assertActuation("before_submit");
-      await assertWorkflowFundingReservationReadyToSubmit({
+      await assertMintItemReadyToSubmitAfterIntent({
         journal: store,
         transactionHash: transaction.txHash,
       });

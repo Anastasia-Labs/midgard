@@ -28,7 +28,7 @@ const max_blob_chunk_bytes = 4095
 // Ledger Data can occupy a full bounded ledger output.
 const max_ledger_data_blob_bytes = 16384
 
-fn hash_blob_chunk_v1(chunk: ByteArray) -> ByteArray {
+pub fn hash_blob_chunk_v1(chunk: ByteArray) -> ByteArray {
   expect bytearray.length(chunk) <= max_blob_chunk_bytes
   blob_chunk_domain
     |> bytearray.concat(encode_definite_bytes(chunk))
@@ -831,6 +831,65 @@ fn pair_memory(summary: Option<DataPairNodeV1>) -> Int {
   }
 }
 
+/// The checks `verify_data_node_v1` makes of a `ConstrSmallData` node, for a
+/// reader that has already matched the node's kind.
+pub fn verify_constr_small_data_node_v1(
+  constructor: Int,
+  fields_count: Int,
+  fields_root: ByteArray,
+  cbor_length: Int,
+  memory: Int,
+  list_summary: Option<DataListNodeV1>,
+  pair_summary: Option<DataPairNodeV1>,
+) -> Bool {
+  expect constructor >= 0 && constructor <= 127
+  let summary_matches = empty_or_list_summary_matches(
+    fields_root,
+    fields_count,
+    list_summary,
+  )
+  let fields_cbor_length = list_cbor_length(
+    fields_count,
+    list_payload_length(list_summary),
+  )
+  and {
+    summary_matches,
+    pair_summary == None,
+    cbor_length == if constructor <= 6 {
+      2 + fields_cbor_length
+    } else {
+      3 + fields_cbor_length
+    },
+    memory == 4 + list_memory(list_summary),
+  }
+}
+
+/// The checks `verify_data_node_v1` makes of a `ListData` node, for a reader
+/// that has already matched the node's kind.
+pub fn verify_list_data_node_v1(
+  items_count: Int,
+  items_root: ByteArray,
+  cbor_length: Int,
+  memory: Int,
+  list_summary: Option<DataListNodeV1>,
+  pair_summary: Option<DataPairNodeV1>,
+) -> Bool {
+  let summary_matches = empty_or_list_summary_matches(
+    items_root,
+    items_count,
+    list_summary,
+  )
+  and {
+    summary_matches,
+    pair_summary == None,
+    cbor_length == list_cbor_length(
+      items_count,
+      list_payload_length(list_summary),
+    ),
+    memory == 4 + list_memory(list_summary),
+  }
+}
+
 /// Verifies the local summaries of one semantic Data node. Integer canonical
 /// CBOR and large-constructor blob parsing are separate streaming steps.
 pub fn verify_data_node_v1(
@@ -845,28 +904,16 @@ pub fn verify_data_node_v1(
       fields_root,
       cbor_length,
       memory,
-    } -> {
-      expect constructor >= 0 && constructor <= 127
-      let summary_matches = empty_or_list_summary_matches(
+    } ->
+      verify_constr_small_data_node_v1(
+        constructor,
+        fields_count,
         fields_root,
-        fields_count,
+        cbor_length,
+        memory,
         list_summary,
+        pair_summary,
       )
-      let fields_cbor_length = list_cbor_length(
-        fields_count,
-        list_payload_length(list_summary),
-      )
-      and {
-        summary_matches,
-        pair_summary == None,
-        cbor_length == if constructor <= 6 {
-          2 + fields_cbor_length
-        } else {
-          3 + fields_cbor_length
-        },
-        memory == 4 + list_memory(list_summary),
-      }
-    }
     ConstrLargeData {
       constructor_cbor_root,
       constructor_cbor_length,
@@ -910,22 +957,15 @@ pub fn verify_data_node_v1(
         memory == 4 + pair_memory(pair_summary),
       }
     }
-    ListData { items_count, items_root, cbor_length, memory } -> {
-      let summary_matches = empty_or_list_summary_matches(
-        items_root,
+    ListData { items_count, items_root, cbor_length, memory } ->
+      verify_list_data_node_v1(
         items_count,
+        items_root,
+        cbor_length,
+        memory,
         list_summary,
+        pair_summary,
       )
-      and {
-        summary_matches,
-        pair_summary == None,
-        cbor_length == list_cbor_length(
-          items_count,
-          list_payload_length(list_summary),
-        ),
-        memory == 4 + list_memory(list_summary),
-      }
-    }
     IntegerData { cbor_root, cbor_length, memory } -> and {
         list_summary == None,
         pair_summary == None,
@@ -939,11 +979,7 @@ pub fn verify_data_node_v1(
         bytearray.length(bytes_root) == 32,
         bytes_length >= 0,
         cbor_length == bytes_data_cbor_length_v1(bytes_length),
-        memory == 4 + if bytes_length == 0 {
-          1
-        } else {
-          bytes_length
-        },
+        memory == 4 + bytes_memory_size_v1(bytes_length),
       }
   }
 }
@@ -1016,21 +1052,36 @@ pub fn verify_data_pair_link_v1(
   }
 }
 
-fn unsigned_byte_size(value: Int) -> Int {
-  if value < 256 {
+const word_modulus = 18446744073709551616
+
+fn magnitude_words(magnitude: Int) -> Int {
+  if magnitude < word_modulus {
     1
   } else {
-    1 + unsigned_byte_size(value / 256)
+    1 + magnitude_words(magnitude / word_modulus)
   }
 }
 
-fn integer_memory_size(value: Int) -> Int {
-  let doubled_magnitude = if value < 0 {
-    ( -value - 1 ) * 2
+/// Cardano's memory size of an integer: the 64-bit words of its absolute
+/// value, and one for zero.
+pub fn integer_memory_size_v1(value: Int) -> Int {
+  magnitude_words(
+    if value < 0 {
+      -value
+    } else {
+      value
+    },
+  )
+}
+
+/// Cardano's memory size of a byte string of `length` bytes: its 8-byte
+/// words, and one for the empty string.
+pub fn bytes_memory_size_v1(length: Int) -> Int {
+  if length == 0 {
+    1
   } else {
-    value * 2
+    ( length - 1 ) / 8 + 1
   }
-  unsigned_byte_size(doubled_magnitude)
 }
 
 pub fn empty_data_list_summary_v1() -> DataSequenceSummaryV1 {
@@ -1136,7 +1187,7 @@ pub fn large_constr_data_summary_v1(
   large_constr_data_summary_from_cbor_v1(
     constructor_cbor_root,
     constructor_cbor_length,
-    4 + integer_memory_size(constructor),
+    4 + integer_memory_size_v1(constructor),
     fields,
   )
 }
@@ -1211,7 +1262,7 @@ pub fn integer_data_summary_v1(
   let node = IntegerData {
     cbor_root,
     cbor_length,
-    memory: 4 + integer_memory_size(integer),
+    memory: 4 + integer_memory_size_v1(integer),
   }
   DataSummaryV1 {
     root: hash_data_node_v1(node),
@@ -1230,11 +1281,7 @@ pub fn bytes_data_summary_v1(
     bytes_root,
     bytes_length,
     cbor_length: bytes_data_cbor_length_v1(bytes_length),
-    memory: 4 + if bytes_length == 0 {
-      1
-    } else {
-      bytes_length
-    },
+    memory: 4 + bytes_memory_size_v1(bytes_length),
   }
   DataSummaryV1 {
     root: hash_data_node_v1(node),
@@ -1243,7 +1290,7 @@ pub fn bytes_data_summary_v1(
   }
 }
 
-fn commit_data_list(items: List<Data>) -> DataSequenceSummaryV1 {
+pub fn commit_data_list(items: List<Data>) -> DataSequenceSummaryV1 {
   when items is {
     [] -> empty_data_list_summary_v1()
     [head, ..tail] -> {
@@ -1291,7 +1338,7 @@ pub fn semantic_data_summary_v1(data: Data) -> DataSummaryV1 {
         ConstrLargeData {
           constructor_cbor_root: bounded_blob_root_v1(constructor_cbor),
           constructor_cbor_length: bytearray.length(constructor_cbor),
-          constructor_memory: 4 + integer_memory_size(constructor),
+          constructor_memory: 4 + integer_memory_size_v1(constructor),
           fields_count: summary.length,
           fields_root: summary.root,
           cbor_length,
@@ -1322,7 +1369,7 @@ pub fn semantic_data_summary_v1(data: Data) -> DataSummaryV1 {
       IntegerData {
         cbor_root: bounded_blob_root_v1(cbor.serialise(data)),
         cbor_length,
-        memory: 4 + integer_memory_size(integer),
+        memory: 4 + integer_memory_size_v1(integer),
       }
     },
     {
@@ -1331,11 +1378,7 @@ pub fn semantic_data_summary_v1(data: Data) -> DataSummaryV1 {
         bytes_root: bounded_blob_root_v1(bytes),
         bytes_length: bytearray.length(bytes),
         cbor_length,
-        memory: 4 + if bytearray.length(bytes) == 0 {
-          1
-        } else {
-          bytearray.length(bytes)
-        },
+        memory: 4 + bytes_memory_size_v1(bytearray.length(bytes)),
       }
     },
   )

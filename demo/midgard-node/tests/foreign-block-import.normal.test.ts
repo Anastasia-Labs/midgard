@@ -1,5 +1,7 @@
+import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
+import { withBuiltValidationTracePair } from "./foreign-block-import.fixture.js";
 import { normalFixture } from "./foreign-block-import.normal-fixture.js";
 
 describe("normal foreign event identity", () => {
@@ -10,22 +12,39 @@ describe("normal foreign event identity", () => {
     if (result._tag === "Left") throw result.left;
     expect(result._tag).toBe("Right");
   });
-  it("imports a PlutusV3 spend under its placeholder descriptor with no retained witnesses", async () => {
-    const f = await normalFixture(false, "plutus");
-    expect(f.payload.block_body.cek_program_material.length).toBeGreaterThan(0);
-    expect(f.payload.block_body.validation_trace_witnesses).toEqual([]);
-    expect((await f.imported())._tag).toBe("Right");
-  });
-  it("waits for missing reachable CEK material", async () => {
-    const f = await normalFixture(false, "plutus");
-    f.payload.block_body.cek_program_material = [];
+  it("imports an honest block with a transaction whose header pins the validation-trace pair to the empty tree", async () => {
+    const f = await normalFixture();
+    const { header, counts, validation_traces } = f.payload.block_body;
+    expect(header.validationTracesRoot).toBe(SDK.EMPTY_MERKLE_TREE_ROOT);
+    expect(header.validationTraceCount).toBe(0n);
+    expect(header.l2TransactionCount).toBe(1n);
+    expect(counts.validationTraceCount).toBe(1n);
+    expect(validation_traces).toHaveLength(1);
     const result = await f.imported();
+    if (result._tag === "Left") throw result.left;
+    expect(result._tag).toBe("Right");
+  });
+  it("refuses a block whose header commits its built validation-trace pair", async () => {
+    const f = await normalFixture();
+    const result = await f.imported(
+      await withBuiltValidationTracePair(f.payload),
+    );
     expect(result._tag).toBe("Left");
     if (result._tag === "Left")
       expect(result.left).toMatchObject({
-        reason: "missing",
-        detail: expect.stringContaining("material"),
+        reason: "invalid",
+        detail: expect.stringMatching(
+          /^foreign DA commitment mismatch: validation_traces_root,validationTraceCount$/,
+        ),
       });
+  });
+  it("imports a PlutusV3 spend under its placeholder descriptor with no retained witnesses", async () => {
+    const f = await normalFixture(false, "plutus");
+    expect(Object.keys(f.payload.block_body)).not.toContain(
+      "cek_program_material",
+    );
+    expect(f.payload.block_body.validation_trace_witnesses).toEqual([]);
+    expect((await f.imported())._tag).toBe("Right");
   });
   it("refuses a wrong normal source key even when every DA and semantic commitment is regenerated", async () => {
     const f = await normalFixture(true);

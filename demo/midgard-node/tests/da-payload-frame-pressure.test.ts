@@ -6,6 +6,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Either, Logger, LogLevel } from "effect";
 import { describe, expect, it } from "vitest";
 
+import * as DepositsDB from "../src/database/deposits.js";
 import { DatabaseError } from "../src/database/utils/common.js";
 import { assertPreSubmitDaPayloadSize } from "../src/workers/commit-block-header/submission.assert-pre-submit-da-payload-size.js";
 
@@ -39,9 +40,9 @@ const header: SDK.Header = {
 
 type Logged = { readonly level: LogLevel.LogLevel; readonly text: string };
 
-// The block's size is set through its program material alone.
+// Synthetic deposit payload bytes isolate frame sizing from event validation.
 const assertSize = (
-  cekProgramMaterial: readonly SDK.DaPayloadEntry[],
+  deposits: readonly SDK.DaPayloadEntry[],
   envelopeMode: DaPayloadEmissionMode,
 ) =>
   Effect.gen(function* () {
@@ -49,15 +50,30 @@ const assertSize = (
     const result = yield* Effect.either(
       assertPreSubmitDaPayloadSize({
         headerHash: "33".repeat(28),
-        header,
-        includedDepositEntries: [],
+        header: {
+          ...header,
+          depositCount: BigInt(deposits.length),
+          totalEventCount: BigInt(deposits.length),
+        },
+        includedDepositEntries: deposits.map(
+          ([key, value]): DepositsDB.Entry => ({
+            event_id: Buffer.from(key, "hex"),
+            event_info: Buffer.from(value, "hex"),
+            inclusion_time: new Date(1),
+            deposit_l1_tx_hash: Buffer.alloc(32),
+            ledger_tx_id: Buffer.alloc(32),
+            ledger_output: Buffer.alloc(0),
+            ledger_address: "",
+            projected_header_hash: null,
+            status: DepositsDB.Status.Awaiting,
+          }),
+        ),
         includedForcedTransactionEntries: [],
         includedWithdrawalEntries: [],
         processedMempoolTxs: [],
         transitionTraceMembers: [],
         eventToStepMembers: [],
         validationTraceMembers: [],
-        cekProgramMaterial,
         envelopeMode,
       }).pipe(
         Effect.provide(
@@ -79,11 +95,11 @@ const assertSize = (
   });
 
 const innerBytesOf = async (
-  material: readonly SDK.DaPayloadEntry[],
+  deposits: readonly SDK.DaPayloadEntry[],
   envelopeMode: DaPayloadEmissionMode,
 ): Promise<number> => {
   const { result } = await Effect.runPromise(
-    assertSize(material, envelopeMode),
+    assertSize(deposits, envelopeMode),
   );
   if (Either.isRight(result)) return result.right;
   const inner = /inner_bytes=(\d+)/.exec(String(result.left.cause))?.[1];
@@ -91,7 +107,7 @@ const innerBytesOf = async (
   return Number(inner);
 };
 
-const materialOf = (
+const depositsOf = (
   coarseBytes: number,
   fineBytes: number,
 ): SDK.DaPayloadEntry[] => [
@@ -100,11 +116,11 @@ const materialOf = (
 ];
 
 /**
- * Program material whose block projects to exactly `innerBytes`: a coarse
+ * Deposit bytes whose block projects to exactly `innerBytes`: a coarse
  * entry found by bisection, then a short entry (24 to 64 bytes, one encoded
  * byte per value byte) that closes the remaining gap.
  */
-const materialForInnerBytes = async (
+const depositsForInnerBytes = async (
   innerBytes: number,
   envelopeMode: DaPayloadEmissionMode,
 ): Promise<SDK.DaPayloadEntry[]> => {
@@ -112,17 +128,17 @@ const materialForInnerBytes = async (
   let high = innerBytes;
   while (low < high) {
     const mid = Math.ceil((low + high) / 2);
-    if ((await innerBytesOf(materialOf(mid, 24), envelopeMode)) <= innerBytes)
+    if ((await innerBytesOf(depositsOf(mid, 24), envelopeMode)) <= innerBytes)
       low = mid;
     else high = mid - 1;
   }
   const gap =
-    innerBytes - (await innerBytesOf(materialOf(low, 24), envelopeMode));
+    innerBytes - (await innerBytesOf(depositsOf(low, 24), envelopeMode));
   if (gap < 0 || gap > 40) throw new Error(`unreachable size gap ${gap}`);
-  const material = materialOf(low, 24 + gap);
-  if ((await innerBytesOf(material, envelopeMode)) !== innerBytes)
-    throw new Error("material does not reach the target size");
-  return material;
+  const deposits = depositsOf(low, 24 + gap);
+  if ((await innerBytesOf(deposits, envelopeMode)) !== innerBytes)
+    throw new Error("deposits does not reach the target size");
+  return deposits;
 };
 
 const pressureWarnings = (logs: readonly Logged[]) =>
@@ -142,9 +158,9 @@ describe("pre-submit DA payload frame pressure", () => {
       const limit = maxDaPayloadInnerBytes(mode);
       const boundary = Math.ceil((limit * stage) / 100);
       for (const target of [boundary - 1, boundary]) {
-        const material = await materialForInnerBytes(target, mode);
+        const deposits = await depositsForInnerBytes(target, mode);
         const { result, logs } = await Effect.runPromise(
-          assertSize(material, mode),
+          assertSize(deposits, mode),
         );
         expect(Either.getOrUndefined(result)).toBe(target);
         const expected =
@@ -168,9 +184,9 @@ describe("pre-submit DA payload frame pressure", () => {
   it.each(MODES)("stays quiet well below the frame (%s)", async (mode) => {
     const limit = maxDaPayloadInnerBytes(mode);
     const target = Math.floor(limit * 0.2);
-    const material = await materialForInnerBytes(target, mode);
+    const deposits = await depositsForInnerBytes(target, mode);
     const { result, logs } = await Effect.runPromise(
-      assertSize(material, mode),
+      assertSize(deposits, mode),
     );
     expect(Either.getOrUndefined(result)).toBe(target);
     expect(pressureWarnings(logs)).toEqual([]);
@@ -186,9 +202,9 @@ describe("pre-submit DA payload frame pressure", () => {
         [atRatio - 1, 0],
         [atRatio, 1],
       ] as const) {
-        const material = await materialForInnerBytes(target, mode);
+        const deposits = await depositsForInnerBytes(target, mode);
         const { result, logs } = await Effect.runPromise(
-          assertSize(material, mode),
+          assertSize(deposits, mode),
         );
         expect(Either.getOrUndefined(result)).toBe(target);
         expect(pressureWarnings(logs)).toHaveLength(warnings);
@@ -201,9 +217,9 @@ describe("pre-submit DA payload frame pressure", () => {
     async (mode) => {
       const limit = maxDaPayloadInnerBytes(mode);
       const target = Math.ceil(limit * 0.6);
-      const material = await materialForInnerBytes(target, mode);
+      const deposits = await depositsForInnerBytes(target, mode);
       const { result, logs } = await Effect.runPromise(
-        assertSize(material, mode),
+        assertSize(deposits, mode),
       );
       expect(Either.getOrUndefined(result)).toBe(target);
       const warnings = pressureWarnings(logs);
@@ -224,9 +240,9 @@ describe("pre-submit DA payload frame pressure", () => {
     "admits a block that exactly fills the frame (%s)",
     async (mode) => {
       const limit = maxDaPayloadInnerBytes(mode);
-      const material = await materialForInnerBytes(limit, mode);
+      const deposits = await depositsForInnerBytes(limit, mode);
       const { result, logs } = await Effect.runPromise(
-        assertSize(material, mode),
+        assertSize(deposits, mode),
       );
       expect(Either.getOrUndefined(result)).toBe(limit);
       expect(pressureWarnings(logs)).toHaveLength(1);
@@ -243,9 +259,9 @@ describe("pre-submit DA payload frame pressure", () => {
     "still refuses one byte past the frame at the same check (%s)",
     async (mode) => {
       const limit = maxDaPayloadInnerBytes(mode);
-      const material = await materialForInnerBytes(limit + 1, mode);
+      const deposits = await depositsForInnerBytes(limit + 1, mode);
       const { result, logs } = await Effect.runPromise(
-        assertSize(material, mode),
+        assertSize(deposits, mode),
       );
       expect(result._tag).toBe("Left");
       if (result._tag !== "Left") return;

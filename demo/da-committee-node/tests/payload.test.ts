@@ -7,12 +7,9 @@ import "@lucid-evolution/lucid";
 import "vitest";
 import "../src/da/payload.js";
 import "./helpers.js";
-import "./payload.payload-with-program-material.js";
+import "./payload.payload-with-script-witnesses.js";
 
-import {
-  encodeMidgardCekTermNode,
-  hashMidgardCekTermNode,
-} from "@al-ft/midgard-core/cek-proof";
+import { encodeCbor } from "@al-ft/midgard-core/codec";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
@@ -23,29 +20,29 @@ import {
   verifyDaPayloadAgainstHeader,
 } from "../src/da/payload.js";
 import { headerHashOf } from "../src/l1/follower/queue-derivation.js";
-import { makePayloadFixture } from "./helpers.js";
-import { payloadWithProgramMaterial } from "./payload.payload-with-program-material.js";
+import {
+  makePayloadFixture,
+  withBuiltValidationTracePair,
+  withHeaderFields,
+} from "./helpers.js";
+import { payloadWithScriptWitnesses } from "./payload.payload-with-script-witnesses.js";
 
 describe("canonical V1 DA payload verification", () => {
   it("attests a block of script transactions whose retained-witness section is empty", async () => {
-    const terminal = { kind: "error" } as const;
-    const preimage = encodeMidgardCekTermNode(terminal);
-    const root = hashMidgardCekTermNode(terminal);
-    const unhashed = await payloadWithProgramMaterial(
-      [
-        {
-          uplcVersion: [1n, 1n, 0n] as const,
-          termRoot: root,
-          nodeCount: 1n,
-          materialByteLength: BigInt(preimage.length),
-        },
-      ],
-      [{ kind: "term", root, preimage }],
-    );
-    expect(unhashed.block_body.cek_program_material).toHaveLength(1);
+    const unhashed = await payloadWithScriptWitnesses([
+      {
+        language: "PlutusV3",
+        scriptBytes: encodeCbor(Buffer.from("010100200101", "hex")),
+      },
+    ]);
     expect(unhashed.block_body.validation_trace_witnesses).toEqual([]);
     const roots = await computeDaPayloadRoots(unhashed);
-    const header = { ...unhashed.block_body.header, ...roots };
+    const header = {
+      ...unhashed.block_body.header,
+      ...roots,
+      validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      validationTraceCount: 0n,
+    };
     const headerHash = headerHashOf(header);
     const payload: SDK.DaPayload = {
       ...unhashed,
@@ -103,7 +100,6 @@ describe("canonical V1 DA payload verification", () => {
         transactionsRoot: fixture.header.transactionsRoot,
         transitionTraceRoot: fixture.header.transitionTraceRoot,
         eventToStepRoot: fixture.header.eventToStepRoot,
-        validationTracesRoot: fixture.header.validationTracesRoot,
       },
     );
   });
@@ -143,7 +139,8 @@ describe("canonical V1 DA payload verification", () => {
         depositsRoot: fixture.header.depositsRoot,
         transitionTraceRoot: fixture.header.transitionTraceRoot,
         eventToStepRoot: fixture.header.eventToStepRoot,
-        validationTracesRoot: fixture.header.validationTracesRoot,
+        validationTracesRoot: (await computeDaPayloadRoots(fixture.payload))
+          .validationTracesRoot,
       },
       counts: {
         withdrawalCount: 0n,
@@ -164,6 +161,92 @@ describe("canonical V1 DA payload verification", () => {
       SDK.daPayloadHashHex(fixture.payloadCbor),
     );
   });
+
+  it("attests an honest payload with transactions under a header that pins the validation-trace pair to the empty tree", async () => {
+    const fixture = await makePayloadFixture();
+    expect(fixture.header.l2TransactionCount).toBe(3n);
+    expect(fixture.header.validationTracesRoot).toBe(
+      SDK.EMPTY_MERKLE_TREE_ROOT,
+    );
+    expect(fixture.header.validationTraceCount).toBe(0n);
+    const verified = await verifyDaPayloadAgainstHeader(
+      fixture.payloadCbor,
+      fixture.headerHash,
+      fixture.header,
+      { payloadSchemaVersion: 1, stateQueueOutRef: "state-queue#0" },
+    );
+    expect(verified.validation.rootsMatch).toBe(true);
+    // The verified roots and counts are the body's: the built pair.
+    expect(verified.roots.validationTracesRoot).not.toBe(
+      SDK.EMPTY_MERKLE_TREE_ROOT,
+    );
+    expect(verified.counts.validationTraceCount).toBe(3n);
+  });
+
+  it.each([
+    [
+      "root",
+      { validationTracesRoot: true, validationTraceCount: false },
+      "root_mismatch",
+      /: validation_traces_root$/u,
+    ],
+    [
+      "count",
+      { validationTracesRoot: false, validationTraceCount: true },
+      "count_mismatch",
+      /: validation_trace_count$/u,
+    ],
+    [
+      "pair",
+      { validationTracesRoot: true, validationTraceCount: true },
+      "root_mismatch",
+      /: validation_traces_root$/u,
+    ],
+  ] as const)(
+    "refuses a header that commits the built validation-trace %s",
+    async (_, carried, code, message) => {
+      const fixture = await withBuiltValidationTracePair(
+        await makePayloadFixture(),
+        carried,
+      );
+      await expect(
+        verifyDaPayloadAgainstHeader(
+          fixture.payloadCbor,
+          fixture.headerHash,
+          fixture.header,
+          { payloadSchemaVersion: 1, stateQueueOutRef: "state-queue#0" },
+        ),
+      ).rejects.toMatchObject({
+        code,
+        message: expect.stringMatching(message),
+      });
+    },
+  );
+
+  it.each([
+    ["l2_transaction_count", "l2TransactionCount"],
+    ["transition_step_count", "transitionStepCount"],
+  ] as const)(
+    "still refuses a pinned header whose %s differs from the payload",
+    async (field, key) => {
+      const honest = await makePayloadFixture();
+      expect(honest.header.validationTraceCount).toBe(0n);
+      const fixture = await withHeaderFields(honest, {
+        [key]: honest.header[key] + 1n,
+      });
+      await expect(
+        verifyDaPayloadAgainstHeader(
+          fixture.payloadCbor,
+          fixture.headerHash,
+          fixture.header,
+          { payloadSchemaVersion: 1, stateQueueOutRef: "state-queue#0" },
+        ),
+      ).rejects.toMatchObject({
+        code: "count_mismatch",
+        message: expect.stringMatching(new RegExp(`: ${field}$`, "u")),
+      });
+    },
+  );
 
   it("fails closed when the mandatory DA envelope is unavailable", async () => {
     const fixture = await makePayloadFixture();

@@ -21,6 +21,8 @@ import { excludeUtxo } from "../../src/spend-input-witness.js";
 import { selectFeeInput } from "../../src/step-support.js";
 import { outputWithDatumAndUnitPredicate } from "../../src/tx-layout.js";
 import { witnessMintingPolicyCarriage } from "../../src/witness-reference-scripts.js";
+import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
+import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.js";
 import {
   makeMissingSignatureEmulatorHarness,
   type MissingSignatureScenario,
@@ -36,6 +38,7 @@ export const publishMissingSignatureField07Certificate = async ({
   >;
   readonly scenario: MissingSignatureScenario;
 }): Promise<UTxO> => {
+  const ownOutputs = createOwnOutputJournal();
   const planned = planMissingSignatureAddressWitnessesOpening({
     anchorSourceKind: 0n,
     anchorTxId: scenario.block.nativeTxId,
@@ -55,6 +58,7 @@ export const publishMissingSignatureField07Certificate = async ({
   }
   harness.proverSigner.selectWallet(harness.proverLucid);
   const chunkUtxos = await publishFaultProofFieldCarriage({
+    ownOutputs,
     lucid: harness.proverLucid,
     signer: harness.proverSigner,
     planned,
@@ -82,10 +86,13 @@ export const publishMissingSignatureField07Certificate = async ({
       plan: planned.plan,
       certificatePolicyId: certificate.policyId,
       certificateAddress: certificate.spendingScriptAddress,
-      certificateWitness: {
-        kind: "inline_emulator_only",
-        certificateScript: certificate.mintingScript,
-      },
+      certificatePolicyReferenceUtxo: (
+        await publishPlainReferenceScriptUtxo({
+          lucid: harness.funderLucid,
+          script: certificate.mintingScript,
+          label: "missing-signature field certificate",
+        })
+      ).utxo,
       chunkUtxos,
       compactCbor: scenario.block.nativeTxCompactCbor,
       witnessSetCompactCbor,
@@ -121,6 +128,7 @@ export const submitRawMissingSignatureStep04 = async ({
   readonly scenario: MissingSignatureScenario;
   readonly referenceScriptUtxo: UTxO;
 }): Promise<string> => {
+  const ownOutputs = createOwnOutputJournal();
   const { threadUtxo, threadToken } = await requireMissingSignatureThreadUtxo({
     lucid: harness.proverLucid,
     contracts: harness.missingSignature,
@@ -144,6 +152,7 @@ export const submitRawMissingSignatureStep04 = async ({
     owner: harness.proverSigner.paymentKeyHash,
   });
   const carriageUtxos = await publishFaultProofFieldCarriage({
+    ownOutputs,
     lucid: harness.proverLucid,
     signer: harness.proverSigner,
     planned,
@@ -166,13 +175,6 @@ export const submitRawMissingSignatureStep04 = async ({
     ...fraudProofCarriage.referenceInputs,
     ...carriageUtxos,
   ];
-  const opening = faultProofFieldOpening({
-    planned,
-    referenceInputs,
-    certificatePolicyId:
-      harness.missingSignature.fieldPreimageCertificatePolicyId,
-    label: "raw missing-signature step-04",
-  });
   harness.proverSigner.selectWallet(harness.proverLucid);
   const walletUtxos = await harness.proverLucid.wallet().getUtxos();
   const candidates = [...carriageUtxos].reduce<readonly UTxO[]>(
@@ -214,7 +216,13 @@ export const submitRawMissingSignatureStep04 = async ({
                 harness.missingSignature.fraudProof.policyId,
                 "raw missing-signature fraud-proof mint",
               ),
-              addr_tx_wits_opening: opening,
+              addr_tx_wits_opening: faultProofFieldOpening({
+                planned,
+                referenceInputs: ctx.referenceInputs,
+                certificatePolicyId:
+                  harness.missingSignature.fieldPreimageCertificatePolicyId,
+                label: "raw missing-signature step-04",
+              }),
               checkpoint_cbor: null,
             },
           },

@@ -15,6 +15,7 @@ import "./tx-completion.js";
 import "./tx-context-redeemer.js";
 import "./tx-output-utils.js";
 import "./availability-challenge-transactions.at.js";
+import "./availability-challenge-transactions.da-availability-opening-input.js";
 import "./availability-challenge-transactions.plan-da-availability-timeout.js";
 import "./availability-challenge-transactions.complete.js";
 import "./availability-challenge-transactions.build-open-da-availability-challenge-tx-program.js";
@@ -30,9 +31,11 @@ export {
   type DaAvailabilityChallengeSnapshot,
   type DaAvailabilityDeployment,
   type DaAvailabilityExpectedOutput,
+  type DaAvailabilityOpeningInputRequirement,
   type DaAvailabilityRemovalParams,
   type DaAvailabilityTransactionAction,
   DaAvailabilityTransactionError,
+  type DaAvailabilityTransactionErrorDetail,
   type DaAvailabilityTransactionErrorReason,
   type DaAvailabilityTransactionResources,
   type OpenDaAvailabilityChallengeParams,
@@ -66,6 +69,13 @@ export {
   fetchDaAvailabilityChallengeSnapshot,
   fetchDaAvailabilityChallengeSnapshotProgram,
 } from "./availability-challenge-transactions.da-availability-challenge-snapshot-from-utxos.js";
+export {
+  daAvailabilityLargestWorkflowFeeLovelace,
+  daAvailabilityOpeningInputRequirement,
+  daAvailabilityPlainCoinMinAda,
+  daAvailabilityWorkflowCollateralLovelace,
+  describeDaAvailabilityOpeningInput,
+} from "./availability-challenge-transactions.da-availability-opening-input.js";
 export {
   assertDaAvailabilityChallengeRecordMinAda,
   assertDaAvailabilityOpenCommitment,

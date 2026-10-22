@@ -1,12 +1,14 @@
 import {
   commitMidgardCekBlob,
   midgardCekDataBytesCborLength,
+  midgardCekDataBytesMemory,
   midgardCekDataConstrCborLength,
   midgardCekDataListCborLength,
   type MidgardCekDataListNode,
   midgardCekDataMapCborLength,
   type MidgardCekDataNode,
   type MidgardCekDataPairNode,
+  midgardCekStringMemoryWords,
 } from "@al-ft/midgard-core";
 import { DataConstr, DataI } from "@harmoniclabs/plutus-data";
 
@@ -117,7 +119,7 @@ const dataNodeTopologyMatches = (
       node.bytesRoot.length === 32 &&
       node.bytesLength >= 0n &&
       node.cborLength === midgardCekDataBytesCborLength(node.bytesLength) &&
-      node.memory === 4n + (node.bytesLength === 0n ? 1n : node.bytesLength)
+      node.memory === midgardCekDataBytesMemory(node.bytesLength)
     );
   }
   return (
@@ -153,6 +155,24 @@ export const exactTopMaterial = (
   );
 };
 
+/**
+ * Whether the memory of a list constant of this element type is read from its
+ * list node by `constantMemoryFromPayloadNode` (on chain,
+ * `constant_memory_from_payload_node_v1`): a Data, integer, bytestring, unit,
+ * boolean or `pair<data, data>` element.
+ */
+export const listMemoryIsReadFromNode = (
+  element: MidgardCekConstantType,
+): boolean =>
+  element.kind === "data" ||
+  element.kind === "integer" ||
+  element.kind === "bytes" ||
+  element.kind === "unit" ||
+  element.kind === "boolean" ||
+  (element.kind === "pair" &&
+    element.first.kind === "data" &&
+    element.second.kind === "data");
+
 export const constantMemoryFromPayloadNode = (
   type: MidgardCekConstantType,
   node: MidgardCekDataNode,
@@ -160,19 +180,21 @@ export const constantMemoryFromPayloadNode = (
   if (type.kind === "integer" || type.kind === "bytes") {
     return node.memory - 4n;
   }
+  if (type.kind === "unit" || type.kind === "boolean") return 1n;
+  if (type.kind === "string") {
+    return node.kind === "bytes"
+      ? midgardCekStringMemoryWords(node.bytesLength)
+      : null;
+  }
   if (type.kind === "list" && node.kind === "list") {
+    if (!listMemoryIsReadFromNode(type.element)) return null;
+    // An integer, bytestring or data-pair item costs its data node less the
+    // node's four words; a unit or boolean item costs one word.
     if (type.element.kind === "data") return node.memory - 4n;
-    if (type.element.kind === "integer") {
-      return node.memory - 4n - node.itemsCount * 4n;
+    if (type.element.kind === "unit" || type.element.kind === "boolean") {
+      return node.itemsCount;
     }
-    if (
-      type.element.kind === "pair" &&
-      type.element.first.kind === "data" &&
-      type.element.second.kind === "data"
-    ) {
-      return node.memory - 4n - node.itemsCount * 4n;
-    }
-    return null;
+    return node.memory - 4n - node.itemsCount * 4n;
   }
   if (type.kind === "pair") {
     if (type.first.kind === "data" && type.second.kind === "data") {
@@ -234,22 +256,32 @@ export const directUnit = (value: MidgardCekDirectValueWitness): boolean => {
   );
 };
 
-export const verifySemanticPair = (
-  tag: bigint,
-  arguments_: readonly MidgardCekDirectValueWitness[],
-  result: MidgardCekDirectValueWitness,
+export type SemanticComponent = {
+  readonly type: MidgardCekConstantType;
+  readonly summary: DataSummary;
+  readonly memory: bigint;
+};
+
+/**
+ * Opens a pair constant into its two components from the pair material, as
+ * `fstPair`/`sndPair` and `case` on a pair read it.
+ */
+export const semanticPairComponents = (
+  source: MidgardCekDirectValueWitness,
   material: MidgardCekSemanticBuiltinWitness,
-): boolean => {
+): {
+  readonly first: SemanticComponent;
+  readonly second: SemanticComponent;
+} | null => {
   if (
-    arguments_.length !== 1 ||
     material.dataNodes.length !== 3 ||
     material.listNodes.length !== 2 ||
     material.pairNodes.length !== 0 ||
     material.scalarPreimages.length !== 0
   ) {
-    return false;
+    return null;
   }
-  const parts = constantParts(arguments_[0]!);
+  const parts = constantParts(source);
   const [payload, firstNode, secondNode] = material.dataNodes;
   const [firstLink, secondLink] = material.listNodes;
   if (
@@ -266,12 +298,12 @@ export const verifySemanticPair = (
     !dataListLinkMatches(firstLink, firstNode, secondLink) ||
     !dataListLinkMatches(secondLink, secondNode, null)
   ) {
-    return false;
+    return null;
   }
   let firstMemory: bigint | null;
   let secondMemory: bigint | null;
-  if (arguments_[0]?.kind === "constant") {
-    const decoded = decodeMidgardCekConstantWitness(arguments_[0].witness);
+  if (source.kind === "constant") {
+    const decoded = decodeMidgardCekConstantWitness(source.witness);
     if (
       !(decoded.payload instanceof DataConstr) ||
       decoded.payload.constr !== 0n ||
@@ -285,7 +317,7 @@ export const verifySemanticPair = (
         dataNodeSummary(secondNode),
       )
     ) {
-      return false;
+      return null;
     }
     firstMemory = midgardCekConstantMemorySize(
       parts.type.first,
@@ -304,20 +336,36 @@ export const verifySemanticPair = (
     secondMemory === null ||
     parts.memory !== firstMemory + secondMemory
   ) {
-    return false;
+    return null;
   }
-  return tag === 29n
-    ? resultMatchesParts(
-        result,
-        parts.type.first,
-        dataNodeSummary(firstNode),
-        firstMemory,
-      )
-    : tag === 30n &&
-        resultMatchesParts(
-          result,
-          parts.type.second,
-          dataNodeSummary(secondNode),
-          secondMemory,
-        );
+  return {
+    first: {
+      type: parts.type.first,
+      summary: dataNodeSummary(firstNode),
+      memory: firstMemory,
+    },
+    second: {
+      type: parts.type.second,
+      summary: dataNodeSummary(secondNode),
+      memory: secondMemory,
+    },
+  };
+};
+
+export const verifySemanticPair = (
+  tag: bigint,
+  arguments_: readonly MidgardCekDirectValueWitness[],
+  result: MidgardCekDirectValueWitness,
+  material: MidgardCekSemanticBuiltinWitness,
+): boolean => {
+  if (arguments_.length !== 1) return false;
+  const components = semanticPairComponents(arguments_[0]!, material);
+  if (components === null || (tag !== 29n && tag !== 30n)) return false;
+  const selected = tag === 29n ? components.first : components.second;
+  return resultMatchesParts(
+    result,
+    selected.type,
+    selected.summary,
+    selected.memory,
+  );
 };

@@ -2,9 +2,9 @@ import {
   decodeMidgardTxOutput,
   encodeMidgardForcedTxCanonical,
   encodeMidgardTxOutput,
+  ledgerEd25519SignatureReady,
   MIDGARD_CONSENSUS_PROFILE,
 } from "@al-ft/midgard-core";
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import { RejectCodes, validatePhaseASingle } from "@al-ft/midgard-validation";
 import {
   makeMinAdaFundedExactSizeOutputItem,
@@ -12,9 +12,13 @@ import {
   outRefFromByte,
 } from "@al-ft/midgard-validation/tests/validation-fixtures";
 import { CML } from "@lucid-evolution/lucid";
-import { expect, it } from "vitest";
+import { beforeAll, expect, it } from "vitest";
 
 import { forcedVerdictForRejection } from "../src/workflow/forced-rejection-reason.js";
+
+// The ledger's Ed25519 check is libsodium's, which initialises
+// asynchronously; production entry points await it, and so does this file.
+beforeAll(() => ledgerEd25519SignatureReady());
 
 it("keeps the late oversized output ordinal ahead of an invalid signature", () => {
   const key = CML.PrivateKey.from_normal_bytes(
@@ -47,7 +51,6 @@ it("keeps the late oversized output ordinal ahead of an invalid signature", () =
       txId: transaction.txId,
       txCbor: encodeMidgardForcedTxCanonical(transaction.tx),
       sourceKind: "forced",
-      programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([]),
       arrivalSeq: 0n,
       createdAt: new Date(0),
     },

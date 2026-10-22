@@ -51,6 +51,9 @@ const maxForks = parseMaxForks(process.env.MIDGARD_FAULT_PROOF_FORKS);
 export default defineConfig({
   plugins: [rawSqlLoaderPlugin()],
   test: {
+    // Every project extends this config, so every emulator submission in the
+    // suite is held to the Van Rossem limits and the publication target.
+    setupFiles: ["./tests/support/emulator/van-rossem-submit-guard.ts"],
     // Refuses the run when onchain/aiken/plutus.json is stale.
     projects: [
       // Workspace packages load from a per-run source bundle; files that need

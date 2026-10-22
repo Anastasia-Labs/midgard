@@ -84,28 +84,6 @@ export const orderReferenceScriptFundingUtxos = (
     return leftLovelace > rightLovelace ? -1 : 1;
   });
 
-export const selectReferenceScriptFundingUtxos = (
-  utxos: readonly UTxO[],
-  targetLovelace: bigint,
-): readonly UTxO[] => {
-  if (targetLovelace <= 0n) {
-    return [];
-  }
-  const selected: UTxO[] = [];
-  let covered = 0n;
-  for (const utxo of orderReferenceScriptFundingUtxos(utxos)) {
-    if (!isPlainAdaOnlyUtxo(utxo)) {
-      continue;
-    }
-    selected.push(utxo);
-    covered += lovelaceOf(utxo);
-    if (covered >= targetLovelace) {
-      return selected;
-    }
-  }
-  return [];
-};
-
 const completeWithSelectedFundingInputs = (
   selectedFundingInputs: readonly UTxO[],
 ): TxCompleteOptions => ({
@@ -116,7 +94,6 @@ const completeWithSelectedFundingInputs = (
 
 export const incompleteReferenceScriptWalletReplenishmentTxProgram = ({
   lucid,
-  selectedFundingInputs,
   referenceScriptAddress,
   topUpAmount,
 }: ReferenceScriptWalletReplenishmentTxParams): Effect.Effect<
@@ -127,7 +104,6 @@ export const incompleteReferenceScriptWalletReplenishmentTxProgram = ({
     try: () =>
       lucid
         .newTx()
-        .collectFrom([...selectedFundingInputs])
         .pay.ToAddress(referenceScriptAddress, { lovelace: topUpAmount }),
     catch: (cause) =>
       new LucidError({
@@ -142,11 +118,16 @@ export const completeReferenceScriptWalletReplenishmentTxProgram = (
   Effect.gen(function* () {
     const tx =
       yield* incompleteReferenceScriptWalletReplenishmentTxProgram(params);
+    // Coin selection picks from the funding wallet's whole view, tokens and
+    // script-reference outputs included; change returns them to the funding
+    // wallet, and the top-up itself is a plain ADA output.
     return yield* Effect.tryPromise({
       try: () =>
-        tx.complete(
-          completeWithSelectedFundingInputs(params.selectedFundingInputs),
-        ),
+        tx.complete({
+          coinSelection: true,
+          localUPLCEval: true,
+          presetWalletInputs: [...params.fundingWalletInputs],
+        }),
       catch: (cause) =>
         new LucidError({
           message: `Failed to complete reference-script wallet replenishment transaction: ${String(cause)}`,

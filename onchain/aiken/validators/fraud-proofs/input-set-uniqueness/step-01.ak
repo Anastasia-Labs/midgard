@@ -114,11 +114,10 @@ validator main(
           outputs,
         )
         expect None = input_state
-        let subject = substrate.bind_forced_subject_to_thread_v1(
+        let Pair(subject, _) = substrate.open_forced_subject_v1(
           thread_name,
           header,
           membership,
-          substrate.direction_wrongful_rejection,
         )
         let bound = rule.bind_forced_duplicate_reason_v1(subject)
         let expected: Data = step_03.State { bound }

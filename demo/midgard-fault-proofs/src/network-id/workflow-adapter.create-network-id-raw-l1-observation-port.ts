@@ -18,6 +18,7 @@ import type {
 } from "../workflow/journal.js";
 import {
   type FraudProofL1Source,
+  type FraudProofSignedTransactionRecovery,
   fraudProofSignedTransactionRecovery,
   withFraudProofL1Recovery,
 } from "../workflow/l1-source.js";
@@ -184,7 +185,7 @@ export const createNetworkIdL1ObservationPort = ({
   readonly definition: FraudProofRawL1FamilyDefinition & {
     readonly category: "networkId";
   };
-}): NetworkIdRawL1ObservationPort =>
+}): NetworkIdRawL1ObservationPort & FraudProofSignedTransactionRecovery =>
   withFraudProofL1Recovery(
     createNetworkIdRawL1ObservationPort({
       authority: l1.snapshotAuthority({
@@ -200,7 +201,8 @@ export const createNetworkIdL1ObservationPort = ({
 
 /** Independent second raw-L1 observation for terminal admission. */
 export const createNetworkIdAuthenticatedL1TerminalVerifier = (
-  l1: NetworkIdRawL1ObservationPort,
+  l1: NetworkIdRawL1ObservationPort &
+    Pick<FraudProofSignedTransactionRecovery, "observeSignedTransaction">,
 ): FraudProofWorkflowTerminalVerifier => {
   const verify = async (
     {
@@ -251,6 +253,8 @@ export const createNetworkIdAuthenticatedL1TerminalVerifier = (
   };
   return {
     verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
+    observeSignedTransaction: async (input) =>
+      await l1.observeSignedTransaction(input),
     verify: (input) => verify(input, false),
     verifyIncluded: (input) => verify(input, true),
   };

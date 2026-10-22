@@ -25,7 +25,6 @@ import {
   createFraudProofWorkflowRegistry,
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,
-  FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
   type FraudProofFamilyWorkflowAdapter,
   runFraudProofWorkflowFromRetainedDa,
   type WorkflowRawFamilyEvidence,
@@ -41,6 +40,7 @@ import {
   buildFixtureTransaction,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
+import { terminalVerifierOf } from "./support/terminal-verifier.js";
 
 const category = "fieldPreimageLengthMismatch";
 const deploymentFingerprint = "22".repeat(32);
@@ -162,10 +162,7 @@ const fixtureFor = async (directory: string) => {
       launchScope: [category],
     }),
     journal: new DirectoryFraudProofWorkflowJournalStore(directory),
-    terminalVerifier: {
-      verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
-      verify: forbidden,
-    },
+    terminalVerifier: terminalVerifierOf(forbidden),
     releaseFinalityAuthority,
   };
   return {

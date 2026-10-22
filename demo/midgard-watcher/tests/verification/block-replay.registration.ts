@@ -210,9 +210,9 @@ export const FIXED_TWO_TX_ROOTS = [
     operation: "delete",
     outRef:
       "8258201111111111111111111111111111111111111111111111111111111111111111190000",
-    preRoot: "93aa873a2fd64d035256c5525f1e67734c39bb09b610b817d46277c5f68c801f",
+    preRoot: "e894f65c4f19221498b8d1594c79b74e493e0c8308f5c1c8f5a715e47507be19",
     postRoot:
-      "82fc6f18dd68ee99bc196356f2464631186bac1391508525f5e6267bd860bfce",
+      "66d75825a4d9439ce62d6095a70a9d1f371f855fad09c2d572f1cfc7040979bb",
   },
   {
     sequence: 1,
@@ -223,9 +223,9 @@ export const FIXED_TWO_TX_ROOTS = [
     operation: "insert",
     outRef:
       "8258205aa36d0b6f5cc700f18f54386542bd937ba7b96625eff82e81c1f451686e94dd190000",
-    preRoot: "82fc6f18dd68ee99bc196356f2464631186bac1391508525f5e6267bd860bfce",
+    preRoot: "66d75825a4d9439ce62d6095a70a9d1f371f855fad09c2d572f1cfc7040979bb",
     postRoot:
-      "7f1e6e9609d587e66a1846736464fe6050339404a74bd5996fd1dbf862a5816c",
+      "f7763af2eece86c39d982a2340d0af5eafab4f94de0e4d56b9f06ce9c37301f4",
   },
   {
     sequence: 2,
@@ -236,9 +236,9 @@ export const FIXED_TWO_TX_ROOTS = [
     operation: "delete",
     outRef:
       "8258201212121212121212121212121212121212121212121212121212121212121212190000",
-    preRoot: "7f1e6e9609d587e66a1846736464fe6050339404a74bd5996fd1dbf862a5816c",
+    preRoot: "f7763af2eece86c39d982a2340d0af5eafab4f94de0e4d56b9f06ce9c37301f4",
     postRoot:
-      "52b9c88cd96dfa08f6f35d7c484b3a89059f2ee485ca8a58efeaa2c52171ebbd",
+      "61eaa866c6b7ec21aa7e206ec6fb384e9579cc77f2a4260e83b2d6557ff30ae9",
   },
   {
     sequence: 3,
@@ -249,9 +249,9 @@ export const FIXED_TWO_TX_ROOTS = [
     operation: "insert",
     outRef:
       "82582072e8307b8f82e2e380eed82386cf0d480304166cedb40011147e65fb110ab9ff190000",
-    preRoot: "52b9c88cd96dfa08f6f35d7c484b3a89059f2ee485ca8a58efeaa2c52171ebbd",
+    preRoot: "61eaa866c6b7ec21aa7e206ec6fb384e9579cc77f2a4260e83b2d6557ff30ae9",
     postRoot:
-      "d7c918403e67154cdbd5065dd58eb9f911ae13dffb2e0861e2d8b98bd634437e",
+      "8866142b56713cfe3de64c97f4b2ea17b20ecd166c776c302b0596d3d3cc2dd7",
   },
 ] as const;
 

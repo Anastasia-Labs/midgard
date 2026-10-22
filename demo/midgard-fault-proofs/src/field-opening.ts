@@ -6,11 +6,12 @@
  * `@al-ft/midgard-sdk`'s `fraud-proof/field-opening.ts` owns the *wire*
  * shapes (`NativeTxAnchorV1`, `FieldOpening`, the §2.5 field table). This
  * module owns the *transaction* half: deriving the §5.1 preimage from canonical
- * item bytes, planning its §8 carriage, publishing that carriage when the tier
+ * item bytes or preserving its exact committed bytes, planning its §8 carriage, publishing that carriage when the tier
  * calls for it, and resolving the positional reference-input indices against the
  * transaction that will actually run the door.
  *
- * **Everything here refuses early what the door would abort on.** Each of the
+ * **Source and envelope guards match the door.** Fixed-item legality observers
+ * retain malformed same-stride wrappers for the rule to judge. Each of the
  * checks below is one the on-chain door applies unconditionally (§7.3
  * abort-never-clamp), and a builder that discovers it from a
  * `Spend[0] the validator crashed` trace has already paid for a transaction and
@@ -47,12 +48,18 @@ import "./workflow/transaction-boundary.js";
 import "./field-opening.plan-fault-proof-field-opening.js";
 import "./field-opening.publish-fault-proof-field-carriage.js";
 import "./field-opening.certify-fault-proof-field-carriage.js";
+import "./field-opening.own-field-carriage.js";
 export {
   type CertifiedFaultProofFieldCarriage,
   certifyFaultProofFieldCarriage,
   fieldPreimageCertificateAddress,
   resolveFaultProofFieldPreimageCertificate,
+  reuseOrCertifyFaultProofFieldCarriage,
 } from "./field-opening.certify-fault-proof-field-carriage.js";
+export {
+  fieldCertificateClaimKey,
+  fieldPublicationClaimKey,
+} from "./field-opening.own-field-carriage.js";
 export {
   type FaultProofFieldOpeningPlan,
   parseNativeTxCompactCbor,
@@ -62,8 +69,6 @@ export {
   faultProofFieldCarriage,
   faultProofFieldOpening,
   faultProofRawFieldCarriage,
-  findMissingFaultProofFieldPublication,
-  type MissingFaultProofFieldPublication,
   publishFaultProofFieldCarriage,
   resolveFaultProofFieldCarriagePublications,
 } from "./field-opening.publish-fault-proof-field-carriage.js";

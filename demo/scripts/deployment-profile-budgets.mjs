@@ -145,3 +145,73 @@ export const daBondWithdrawDelayFloorMs = (timing) =>
     timing.block_maturity_ms,
   ) +
   timing.da_slash_grace_ms;
+
+// The Plutus execution dispute (validationTraceDispute, 00000006), as
+// onchain/aiken/lib/midgard/validation-dispute-v1.ak derives it. A thread
+// charges at most 2 * max_bisection_rounds + 3 moves (max_thread_charged_moves,
+// :22). D_case = 2 C + 2 * moves * L_d + R bounds every thread from its case's
+// started_at to its last move (max_dispute_duration_milliseconds, :27-28). A
+// case opens by block_end + M / 2 (case_can_open, :38-47), which leaves
+// P = M - M / 2 - D_case for the closes and the removal before the block can
+// merge (validation-case-v1.ak). Maturity of at least 2 D_case + 1 keeps P
+// positive. midgard-core deployment-profile.ts holds the same formula.
+export const validationDisputeCaseDurationMs = ({ timing, limits }) =>
+  2 * timing.dispute_side_clock_ms +
+  2 *
+    (2 * limits.max_bisection_rounds + 3) *
+    timing.dispute_max_validity_range_ms +
+  timing.dispute_resolution_allowance_ms;
+
+export const minimumValidationDisputeMaturityMs = (profile) =>
+  2 * validationDisputeCaseDurationMs(profile) + 1;
+
+export const validationTraceDisputeInstalled = (profile) =>
+  !profile.excluded_fraud_proof_categories.includes("validationTraceDispute");
+
+// The longest fault-proof thread: a transition-trace proof against the
+// accepted L2 transaction (kind 0) whose replay takes the most steps. Each step
+// spends the thread output the previous one made, so the steps land one per L1
+// block. The thread is a route, a binding, an open, one delete per spend
+// input, one certification per 32 outputs, each output's own steps and a
+// terminal comparison.
+//
+// Both replayed fields fill to the per-field bound
+// (MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES) after a 3-byte list header;
+// a spend input's item is 40 bytes. The output that leaves the most steps per
+// field byte is a 40-byte output: an enterprise address, lovelace alone with
+// its coin in a one-byte head, and a one-byte inline datum. Its 42-byte item
+// takes 7 steps: the phase-11 step, two scan steps, a value step, a datum
+// step, the assembly and the insert. A whole output takes one step for an
+// item of at least 39 bytes, a lovelace-only output to a protected address is
+// staged in 6 steps for an item of at least 39 bytes, and every other staged
+// output (assets, a reference script, a longer datum) takes fewer steps per
+// byte, so filling the outputs field with that output gives the longest
+// thread. The coin's one-byte head is the conservative case; the step count
+// assumes no minimum lovelace.
+//
+// The copies are pinned by midgard-fault-proofs
+// tests/submit-init-emulator-transition-trace-final-maximum-lifecycle.test.ts,
+// which counts the staged output's steps with the off-chain stepper and runs
+// this thread on the emulator.
+const MAXIMUM_TRANSACTION_FIELD_BYTES = 32_768;
+export const MAXIMUM_TRANSITION_TRACE_SHAPE = Object.freeze({
+  spendInputs: Math.floor((MAXIMUM_TRANSACTION_FIELD_BYTES - 3) / 40),
+  outputs: Math.floor((MAXIMUM_TRANSACTION_FIELD_BYTES - 3) / 42),
+  outputsCertifiedPerStep: 32,
+  stepsPerOutput: 7,
+});
+
+export const maximumTransitionTraceThreadSteps = () => {
+  const { spendInputs, outputs, outputsCertifiedPerStep, stepsPerOutput } =
+    MAXIMUM_TRANSITION_TRACE_SHAPE;
+  return (
+    3 +
+    spendInputs +
+    Math.ceil(outputs / outputsCertifiedPerStep) +
+    outputs * stepsPerOutput +
+    1
+  );
+};
+
+export const maximumTransitionTraceThreadBudgetMs = () =>
+  l1BlocksBudgetMs(maximumTransitionTraceThreadSteps());

@@ -463,9 +463,7 @@ describe("canonical V1 nested Cardano redeemer Data boundary", () => {
       {
         canonicalTransactionCbor: retainedProjection.canonicalTransactionCbor,
         corpusLabel: "balanced-nested-redeemer",
-        canonicalMaterialSidecarCbor:
-          retainedProjection.canonicalMaterialSidecarCbor,
-        sourceRawScriptAuditHash: retainedProjection.sourceRawScriptAuditHash,
+        sourceScriptHash: retainedProjection.sourceScriptHash,
       },
     );
     expect(productionRetained.normal.reconstructedCanonicalBytes).toBe(

@@ -156,7 +156,6 @@ export const validateEventAuthority = async (
   }
   let effect: CanonicalTransitionEffect | null = null;
   let canonicalNativeTxCbor: Buffer | null = null;
-  let programMaterialSidecarCbor: Buffer | null = null;
   const committedForcedValidity =
     bound.phase === "ForcedTransaction" ? bound.operatorValidity : null;
   if (authority.phase === "Withdrawal") {
@@ -256,11 +255,6 @@ export const validateEventAuthority = async (
       );
     }
     canonicalNativeTxCbor = Buffer.from(authority.canonicalNativeTxCbor);
-    programMaterialSidecarCbor =
-      authority.programMaterialSidecarCbor === undefined ||
-      authority.programMaterialSidecarCbor === null
-        ? null
-        : Buffer.from(authority.programMaterialSidecarCbor);
     if (
       canonicalNativeTxCbor.toString("hex") !== claim.canonicalNativeTxCborHex
     ) {
@@ -278,8 +272,6 @@ export const validateEventAuthority = async (
     origin,
     committedClaim: claim,
     canonicalNativeTxCborHex: canonicalNativeTxCbor?.toString("hex") ?? null,
-    programMaterialSidecarCborHex:
-      programMaterialSidecarCbor?.toString("hex") ?? null,
   });
   const authorityManifest =
     watcherBlockReplayEventAuthorityManifest(recordSource);
@@ -296,7 +288,6 @@ export const validateEventAuthority = async (
     eventKeyFingerprint: eventKeyFingerprint(authority.eventKey),
     effect,
     canonicalNativeTxCbor,
-    programMaterialSidecarCbor,
     committedForcedValidity,
     userEvent: event,
     authorityManifest,

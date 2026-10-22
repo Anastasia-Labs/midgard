@@ -9,9 +9,7 @@ use midgard/fraud_proofs/missing_script_source/rule.{bind_purpose_v1}
 use midgard/fraud_proofs/missing_script_source/step_01.{
   AcceptedSource, Args, Datum, ForcedSource, SpendRedeemer,
 }
-use midgard/fraud_proofs/native_tx/compact.{
-  verify_forced_tx_proof_source_v1, verify_native_tx_proof_source_v1,
-}
+use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_proof_source_v1}
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 
 validator main(
@@ -49,7 +47,7 @@ validator main(
           tx,
         )
         let expected: Data = bind_purpose_v1(
-          substrate.bind_accepted_subject_v1(verified),
+          substrate.open_accepted_subject_v1(verified),
           header.validation_traces_root,
           header.validation_trace_count,
           verified.tx_compact.witness_set_hash,
@@ -62,13 +60,7 @@ validator main(
         }
       }
       ct.Continue(Args {
-        source: ForcedSource {
-          input_index,
-          output_index,
-          header,
-          membership,
-          direction,
-        },
+        source: ForcedSource { input_index, output_index, header, membership },
         purpose_kind,
         purpose_index,
       }) -> {
@@ -83,18 +75,10 @@ validator main(
           inputs,
           outputs,
         )
-        let subject = substrate.bind_forced_subject_to_thread_v1(
+        let Pair(subject, verified) = substrate.open_forced_subject_v1(
           thread_asset_name,
           header,
           membership,
-          direction,
-        )
-        let leaf = membership.value
-        let Pair(verified, _) = verify_forced_tx_proof_source_v1(
-          leaf.tx_id,
-          leaf.submitted_source.compact_cbor,
-          leaf.submitted_source.witness_set_compact_cbor,
-          leaf.submitted_source.field_preimage_lengths_cbor,
         )
         expect verified.tx_id == subject.transaction_id
         let expected: Data = bind_purpose_v1(

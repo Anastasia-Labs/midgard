@@ -1,14 +1,15 @@
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core";
+import { encodeCborBytes } from "@al-ft/midgard-core/codec/cbor";
 import {
-  buildMidgardCanonicalCekProgram,
   evaluateMidgardCekVerdict,
   type MidgardCekVerdictRequest,
 } from "@al-ft/midgard-validation";
 import { encodeMidgardCekPlutusData } from "@al-ft/midgard-validation/cek-constant";
 import { DataI } from "@harmoniclabs/plutus-data";
 import {
+  Application,
   ErrorUPLC,
   Lambda,
+  UPLCConst,
   UPLCEncoder,
   UPLCProgram,
   type UPLCTerm,
@@ -33,14 +34,12 @@ const request = (
   body: UPLCTerm,
   executionBudget?: { readonly cpu: bigint; readonly memory: bigint },
 ): MidgardCekVerdictRequest => {
-  const program = buildMidgardCanonicalCekProgram(
-    Buffer.from(UPLCEncoder.compile(new UPLCProgram([1, 1, 0], body))),
+  const scriptBytes = encodeCborBytes(
+    UPLCEncoder.compile(new UPLCProgram([1, 1, 0], body)),
   );
   return {
-    scriptBytes: program.envelopeCbor,
-    programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
-      ...program.material.values(),
-    ]),
+    scriptBytes,
+    scriptLanguage: "PlutusV3",
     contextCbor: encodeMidgardCekPlutusData(new DataI(42n)),
     executionBudget,
     executionIndex: 0n,
@@ -48,12 +47,25 @@ const request = (
   };
 };
 
+const withCause = (
+  result: ReturnType<typeof evaluateMidgardCekVerdict>,
+): ReturnType<typeof evaluateMidgardCekVerdict> & {
+  readonly cause?: unknown;
+} => result;
+
+const causeMessage = (cause: unknown): string | undefined =>
+  cause instanceof Error ? cause.message : undefined;
+
+/** `(lam ctx [(lam _ ()) ctx])`: a Plutus V3 script must return Unit. */
+const unitProgram = () =>
+  new Lambda(new Application(new Lambda(UPLCConst.unit), new UPLCVar(0)));
+
 const REQUESTS = {
-  success: request(new Lambda(new UPLCVar(0))),
+  success: request(unitProgram()),
   halt_error: request(new Lambda(new ErrorUPLC())),
-  budget_stop: request(new Lambda(new UPLCVar(0)), { cpu: 1n, memory: 1n }),
+  budget_stop: request(new Lambda(UPLCConst.unit), { cpu: 1n, memory: 1n }),
   malformed: {
-    ...request(new Lambda(new UPLCVar(0))),
+    ...request(new Lambda(UPLCConst.unit)),
     scriptBytes: new Uint8Array([0xde, 0xad]),
   },
 };
@@ -130,16 +142,23 @@ describe("validation pool CEK verdicts", () => {
         });
         expect(response.kind, label).toBe("cek_verdict");
         if (response.kind !== "cek_verdict") continue;
-        expect(response.result, label).toEqual(
+        // A cause crosses the worker boundary by structured clone: its message
+        // and built-in error class survive, its own fields do not.
+        const { cause: workerCause, ...workerVerdict } = withCause(
+          response.result,
+        );
+        const { cause: localCause, ...localVerdict } = withCause(
           evaluateMidgardCekVerdict(cekRequest),
         );
+        expect(workerVerdict, label).toEqual(localVerdict);
+        expect(causeMessage(workerCause), label).toBe(causeMessage(localCause));
         kinds.push(response.result.kind);
       }
       expect(kinds).toEqual([
         "accepted",
         "script_invalid",
-        "accepted",
         "script_invalid",
+        "indeterminate",
       ]);
     } finally {
       await pool.close();

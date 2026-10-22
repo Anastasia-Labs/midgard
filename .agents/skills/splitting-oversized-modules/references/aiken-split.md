@@ -15,9 +15,9 @@ REPO=$(git rev-parse --show-toplevel)
 SKILL="$REPO/.agents/skills/splitting-oversized-modules/scripts"
 WORK=<a scratch directory of your own, outside the repository>
 
-# 1. The compiler must be the pinned fork. Run the check from the checkout:
-#    it reads the pin from .github/workflows/, which the copies do not have.
-node "$REPO/onchain/aiken/scripts/pinned-compiler.mjs"
+# 1. The compiler is the pinned fork: the checkout's scripts/aiken, which
+#    builds the commit demo/flake.lock pins. Never a bare `aiken` from PATH.
+AIKEN="$REPO/scripts/aiken"
 
 # 2. Both sides from git: the parent of the split commit and the split commit.
 mkdir -p "$WORK/before" "$WORK/after"
@@ -27,7 +27,7 @@ git archive <split-commit>  onchain/aiken | tar -x -C "$WORK/after"
 # 3. Same --env and the same (default, silent) trace level on both sides.
 for side in before after; do
   (cd "$WORK/$side/onchain/aiken" && test ! -e build && test ! -e plutus.json &&
-   timeout 900 nice -n 19 aiken build --env testnet --out "$side.json")
+   timeout 900 nice -n 19 "$AIKEN" build --env testnet --out "$side.json")
 done
 
 # 4. Compare.
@@ -113,10 +113,11 @@ nothing about them. Instead:
 - Compare the collected test total of `aiken check` before and after; nothing
   compares it for you. CI runs the whole suite in
   `[ci: aiken-ci.yml/Compile and run the Aiken test suite with the pinned fork]`.
-- Test selectors are module-qualified. The execution ledgers in
-  `onchain/aiken/scripts/*-exec-ledger-v1.json` pin module names (for example
-  `"module": "midgard/native-tx-carriage-v1.test"`) and CI's
-  `Pin the … execution ledger` steps in `aiken-ci.yml` verify them.
+- Test selectors are module-qualified. The script budgets in
+  `demo/midgard-core/src/script-budgets.json` name tests by Aiken module (for
+  example `"test": "midgard/native_tx_carriage_v1.test/<test>"`), and CI's
+  `Hold every script budget to its ceiling` step in `aiken-ci.yml` fails on a
+  budget whose test no longer exists. Rename the entries in the same change.
 - `demo/midgard-validation/scripts/generate-ordered-collection-boundary-aiken-goldens.mjs`
   rebinds named constants inside `onchain/aiken/lib/midgard/validation-machine-tests/constants.ak` by path.
   Keep those constants in that fixture module, or re-point the generator in the same

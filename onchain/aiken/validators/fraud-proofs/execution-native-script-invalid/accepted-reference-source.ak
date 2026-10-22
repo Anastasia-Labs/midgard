@@ -5,10 +5,11 @@ use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue, verify_membership_carried}
 use midgard/fraud_proofs/execution_native_script_invalid/accepted_reconstruction as reconstruction
 use midgard/fraud_proofs/execution_native_script_invalid/accepted_reference_source.{
-  Args, Datum, SpendRedeemer,
+  Action, Datum, FinishResolvedOutputs, ScanResolvedOutput, SpendRedeemer,
 }
 use midgard/fraud_proofs/field_opening_v1.{
-  BodyAnchor, opened_field_view, reference_inputs_field_index,
+  BodyAnchor, BodyFieldOpening, anchored_body_tx, anchored_field_view,
+  reference_inputs_field_index, spend_inputs_field_index,
 }
 use midgard/fraud_proofs/transition_trace/proof.{ledger_outref_key}
 use midgard/ledger_output_commitment_v1
@@ -36,14 +37,14 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(args) -> {
+      ct.Continue(action) -> {
         let Transaction { inputs, outputs, reference_inputs, redeemers, .. } = tx
         expect Some(step_datum) = datum
         let own_hash, _, _, input_state, output_hash, output_state <- continue(
           computation_thread_token_policy_id,
           step_datum,
-          args.input_index,
-          args.output_index,
+          action_input_index(action),
+          action_output_index(action),
           own_out_ref,
           inputs,
           outputs,
@@ -54,66 +55,109 @@ validator main(
             state.phase == reconstruction.phase_reference_source,
             state.next_expected_script_hash == own_hash,
           }
-        let view = opened_field_view(
-          args.reference_inputs_opening,
-          BodyAnchor {
-            tx_id: state.bound.subject.transaction_id,
-            source_kind: state.bound.subject.source_kind,
-          },
-          reference_inputs_field_index,
-          reference_inputs,
-          field_preimage_certificate_policy_id,
-        )
-        expect state.field_cursor < field_item_count(view)
-        let selected = spend_input_at(view, state.field_cursor)
-        let out_ref = OutputReference {
-          transaction_id: selected.tx_id,
-          output_index: selected.output_index,
+        let anchor = BodyAnchor {
+          tx_id: state.bound.subject.transaction_id,
+          source_kind: state.bound.subject.source_kind,
         }
-        expect
-          verify_membership_carried(
-            args.membership,
-            state.bound.prior_ledger_root,
-            ledger_outref_key(out_ref),
-            args.descriptor_cbor,
-            reference_inputs,
-            redeemers,
-          )
-        let descriptor = ledger_output_commitment_v1.decode(
-          args.descriptor_cbor,
-        )
-        expect descriptor.output_index == out_ref.output_index
-        let advanced = if descriptor.reference_script_language == -1 {
-          reconstruction.advance_reference_without_source_v1(state, own_hash)
-        } else {
-          reconstruction.append_source_v1(
-            state,
-            reconstruction.SelectedSourceV1 {
-              source_index: state.source_cursor,
-              origin_kind: 1,
-              source_key: field_item_at(view, state.field_cursor),
-              language_tag: descriptor.reference_script_language,
-              script_hash: descriptor.reference_script_hash,
-              total_length: descriptor.reference_script_total_length,
-              item_commitment: descriptor.reference_script_item_commitment,
-            },
-            if descriptor.reference_script_hash == expect_selected_hash(state) {
-              evaluator_step_03_script_hash
-            } else {
-              own_hash
-            },
-          )
-        }
-        let expected: Data = if advanced.selected_source == None {
-          let encoded: Data = advanced
-          encoded
-        } else {
-          let encoded: Data = reconstruction.authenticated_source_v1(advanced)
-          encoded
-        }
-        and {
-          output_hash == advanced.next_expected_script_hash,
-          output_state == expected,
+        when action is {
+          ScanResolvedOutput {
+            field_index,
+            item_index,
+            inputs_opening,
+            descriptor_cbor,
+            membership,
+            ..
+          } -> {
+            expect or {
+                field_index == spend_inputs_field_index,
+                field_index == reference_inputs_field_index,
+              }
+            // The anchor is a body anchor, so a witness-set opening could
+            // only be refused; open the body half directly.
+            expect BodyFieldOpening { native_tx_compact_cbor, carriage } = inputs_opening
+            let view = anchored_field_view(
+              anchored_body_tx(native_tx_compact_cbor, anchor),
+              field_index,
+              carriage,
+              reference_inputs,
+              field_preimage_certificate_policy_id,
+            )
+            let selected = spend_input_at(view, item_index)
+            let out_ref = OutputReference {
+              transaction_id: selected.tx_id,
+              output_index: selected.output_index,
+            }
+            expect
+              verify_membership_carried(
+                membership,
+                state.bound.prior_ledger_root,
+                ledger_outref_key(out_ref),
+                descriptor_cbor,
+                reference_inputs,
+                redeemers,
+              )
+            let descriptor = ledger_output_commitment_v1.decode(descriptor_cbor)
+            expect descriptor.output_index == out_ref.output_index
+            let key = field_item_at(view, item_index)
+            let advanced = reconstruction.scan_resolved_output_v1(
+              state,
+              key,
+              if descriptor.reference_script_language == -1 {
+                None
+              } else {
+                Some(
+                  reconstruction.SelectedSourceV1 {
+                    source_index: state.source_cursor,
+                    origin_kind: 1,
+                    source_key: key,
+                    language_tag: descriptor.reference_script_language,
+                    script_hash: descriptor.reference_script_hash,
+                    total_length: descriptor.reference_script_total_length,
+                    item_commitment: descriptor.reference_script_item_commitment,
+                  },
+                )
+              },
+              own_hash,
+            )
+            let expected: Data = advanced
+            and {
+              output_hash == own_hash,
+              output_state == expected,
+            }
+          }
+          FinishResolvedOutputs {
+            native_tx_compact_cbor,
+            spend_inputs_carriage,
+            reference_inputs_carriage,
+            ..
+          } -> {
+            let anchored = anchored_body_tx(native_tx_compact_cbor, anchor)
+            let resolved_output_count = field_item_count(
+              anchored_field_view(
+                anchored,
+                spend_inputs_field_index,
+                spend_inputs_carriage,
+                reference_inputs,
+                field_preimage_certificate_policy_id,
+              ),
+            ) + field_item_count(
+              anchored_field_view(
+                anchored,
+                reference_inputs_field_index,
+                reference_inputs_carriage,
+                reference_inputs,
+                field_preimage_certificate_policy_id,
+              ),
+            )
+            let expected: Data = reconstruction.finish_resolved_outputs_v1(
+              state,
+              resolved_output_count,
+            )
+            and {
+              output_hash == evaluator_step_03_script_hash,
+              output_state == expected,
+            }
+          }
         }
       }
     }
@@ -124,7 +168,16 @@ validator main(
   }
 }
 
-fn expect_selected_hash(state: reconstruction.StateV1) -> ByteArray {
-  expect Some(purpose) = state.selected_purpose
-  purpose.script_hash
+fn action_input_index(action: Action) -> Int {
+  when action is {
+    ScanResolvedOutput { input_index, .. } -> input_index
+    FinishResolvedOutputs { input_index, .. } -> input_index
+  }
+}
+
+fn action_output_index(action: Action) -> Int {
+  when action is {
+    ScanResolvedOutput { output_index, .. } -> output_index
+    FinishResolvedOutputs { output_index, .. } -> output_index
+  }
 }

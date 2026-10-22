@@ -1,8 +1,9 @@
 /**
  * The public DA transport the foreign replayer fetches a payload it does not
  * retain from, stubbed at the node's publication manifest and transport
- * seams (as `foreign-retained-da.test.ts` does): one committee peer serving
- * the envelope of whatever `serve` returns, or nothing.
+ * seams (as `foreign-retained-da.test.ts` does): committee peers (one by
+ * default), each serving the envelope of whatever `serve` returns for its
+ * index, or nothing.
  */
 import {
   DaRequestResponseProtocol,
@@ -11,13 +12,13 @@ import {
   encodeDaMetadataByHeaderResponseCbor,
   encodeDaPayloadByHeaderResponseCbor,
 } from "@al-ft/midgard-core/da-transport";
-import type * as SDK from "@al-ft/midgard-sdk";
 import { vi } from "vitest";
 
 import type { DaProducerPublicationManifest } from "../src/da/libp2p-producer.parse-committee-peers.js";
 import * as Manifest from "../src/da/libp2p-producer.parse-da-producer-publication-manifest.js";
 import * as Publication from "../src/da/libp2p-producer.publish-da-payload-insert-from-env.js";
 import { sha256 } from "../src/sha256.js";
+import { type DaCopy } from "./landed-blocks-replay-foreign.availability.js";
 import {
   envelope,
   MANIFEST_ID,
@@ -37,28 +38,37 @@ const manifest: DaProducerPublicationManifest = {
   listenMultiaddrs: [],
   announceMultiaddrs: [],
   bootstrapMultiaddrs: [],
-  committeePeers: [
-    {
-      signerIndex: 0,
-      daVkey: "ab".repeat(32),
-      peerId: "fabricated-committee-0",
-      multiaddrs: [],
-      roles: ["committee"],
-    },
-  ],
+  committeePeers: [],
 };
 
-/** Serves `serve()`'s payload (or nothing) to the replayer's DA fetch. */
-export const serveDa = (serve: () => SDK.DaPayload | undefined) => {
+/**
+ * Serves `serve(peerIndex)`'s copy (or nothing) from each of `peers`
+ * committee peers to the replayer's DA fetch; returns the indices of the
+ * peers asked, in order.
+ */
+export const serveDa = (
+  serve: (peerIndex: number) => DaCopy | undefined,
+  peers = 1,
+) => {
+  const requests: number[] = [];
   vi.spyOn(
     Manifest,
     "loadDaProducerPublicationManifestFromEnv",
-  ).mockResolvedValue(manifest);
+  ).mockResolvedValue({
+    ...manifest,
+    committeePeers: Array.from({ length: peers }, (_, index) => ({
+      signerIndex: index,
+      daVkey: (0xab + index).toString(16).repeat(32),
+      peerId: `fabricated-committee-${index.toString()}`,
+      multiaddrs: [],
+      roles: ["committee"],
+    })),
+  });
   vi.spyOn(Publication, "getPublicationTransport").mockResolvedValue({
     localPeerId: () => "fabricated-outbound-client",
     sign: () => Buffer.alloc(64),
     publish: async () => ({ recipients: [] }),
-    request: async (_peer, protocol, bytes) => {
+    request: async (peer, protocol, bytes) => {
       const request = decodeDaPayloadByHeaderRequestCbor(bytes);
       if (
         protocol ===
@@ -67,7 +77,8 @@ export const serveDa = (serve: () => SDK.DaPayload | undefined) => {
           DaRequestResponseProtocol.payloadByHeader,
         )
       ) {
-        const payload = serve();
+        requests.push(peer.signerIndex);
+        const payload = serve(peer.signerIndex);
         const payloadBytes =
           payload === undefined ? undefined : await envelope(payload);
         return encodeDaPayloadByHeaderResponseCbor({
@@ -85,4 +96,5 @@ export const serveDa = (serve: () => SDK.DaPayload | undefined) => {
       });
     },
   });
+  return requests;
 };

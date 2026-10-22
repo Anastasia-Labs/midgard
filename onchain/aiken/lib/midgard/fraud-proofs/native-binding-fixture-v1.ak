@@ -96,7 +96,7 @@ pub fn fraud_proof_token_address() -> Address {
 /// one required signer, and one address witness whose key hashes to the
 /// required signer.
 pub fn valid_native_tx_v1() -> native_types.MidgardTransaction {
-  let empty_mint: Data = []
+  let empty_mint: Data = builtin.list_data([])
   native_types.MidgardTransaction {
     version: native_types.native_tx_version_v1,
     validity: native_types.TxIsValid,
@@ -258,7 +258,7 @@ pub fn native_block_fixture_with_withdrawals_v1(
     deposit_count: 0,
     total_event_count: withdrawal_count + 1,
     transition_step_count: withdrawal_count + 1,
-    validation_trace_count: 1,
+    validation_trace_count: 0,
     start_time: 10,
     end_time: 20,
     block_slot: 0,

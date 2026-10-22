@@ -4,7 +4,8 @@ import { readFileSync } from "node:fs";
 
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
-import { Data, validatorToAddress } from "@lucid-evolution/lucid";
+import { MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS } from "@al-ft/midgard-core/validation-dispute";
+import { Constr, Data, validatorToAddress } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -21,7 +22,6 @@ import {
   buildZeroInputFaultProofContracts,
   CEK_CONTEXT_STAGE_TITLES,
   CEK_CORE_STAGE_TITLES,
-  CEK_PROGRAM_MATERIAL_SPEND_TITLE,
   deriveValidationTraceDeploymentId,
   FAULT_PROOF_SHARED_TITLES,
   fraudProofContractsToFirstSteps,
@@ -36,7 +36,6 @@ import { applyExpectedScriptParams } from "./fault-proof.expected-parameter-appl
 import { registerInvalidRangeBlueprintIsolationTest } from "./fault-proof.invalid-range-blueprint-isolation.js";
 import {
   blueprintPath,
-  CEK_MATERIAL_TRAVERSAL_TITLES,
   CEK_REDEEMER_ITEM_TITLES,
   certificatePolicyId,
   collectTitles,
@@ -51,6 +50,8 @@ import {
   spendingScriptHash,
 } from "./fault-proof.publication-tx-overhead-bytes.js";
 
+const caseConfigNonce = { txHash: "ab".repeat(32), outputIndex: 0 };
+
 describe("fault-proof contract builder", () => {
   it("builds every implemented fault-proof chain from the Aiken blueprint", async () => {
     const blueprint = loadBlueprint();
@@ -58,6 +59,7 @@ describe("fault-proof contract builder", () => {
     const contracts = await Effect.runPromise(
       buildFaultProofContracts({
         l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+        disputeBondLovelace: 10_000_000_000n,
         eventHistoryBounds: {
           inlineLimitBytes: 512n,
           maxPayloadBytes: 5000n,
@@ -68,6 +70,7 @@ describe("fault-proof contract builder", () => {
         hubOraclePolicyId: h28b,
         fraudProofCataloguePolicyId: h28c,
         referenceScriptAuthPolicyId: h28,
+        caseConfigInitializationNonce: caseConfigNonce,
       }),
     );
 
@@ -739,38 +742,71 @@ describe("fault-proof contract builder", () => {
       ...collectTitles(CEK_CORE_STAGE_TITLES),
       ...collectTitles(CEK_CONTEXT_STAGE_TITLES),
       ...CEK_REDEEMER_ITEM_TITLES,
-      ...CEK_MATERIAL_TRAVERSAL_TITLES,
-      CEK_PROGRAM_MATERIAL_SPEND_TITLE,
     ]);
 
     const contracts = await Effect.runPromise(
       buildValidationTraceDisputeFaultProofContracts({
         l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+        disputeBondLovelace: 10_000_000_000n,
         blueprint,
         network: "Preprod",
         hubOraclePolicyId: h28b,
         fraudProofCataloguePolicyId: h28c,
         referenceScriptAuthPolicyId: h28,
+        caseConfigInitializationNonce: caseConfigNonce,
       }),
     );
-    const fraudProofTokenAddressData = Data.from(
-      Data.to(
-        await Effect.runPromise(
-          addressDataFromBech32(contracts.fraudProof.spendingScriptAddress),
-        ),
-        AddressData,
+    const expectedCaseConfig = applyExpectedScriptParams(
+      compiledScript(
+        blueprint,
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.caseConfig,
       ),
+      [new Constr(0, [caseConfigNonce.txHash, 0n])],
     );
+    const caseParams = [
+      h28b,
+      spendingScriptHash(expectedCaseConfig),
+      contracts.computationThread.policyId,
+      10_000_000_000n,
+    ];
+    const expectedCaseSpend = applyExpectedScriptParams(
+      compiledScript(
+        blueprint,
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.caseSpend,
+      ),
+      caseParams,
+    );
+    const expectedCaseMint = applyExpectedScriptParams(
+      compiledScript(
+        blueprint,
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.caseMint,
+      ),
+      caseParams,
+    );
+    // From Defend on, a thread carries a token of the case policy.
+    const threadPolicyId = spendingScriptHash(expectedCaseMint);
+    const expectedThreadExpiry = applyExpectedScriptParams(
+      compiledScript(
+        blueprint,
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.threadExpiry,
+      ),
+      [threadPolicyId, BigInt(MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS)],
+    );
+    const threadExpiryHash = spendingScriptHash(expectedThreadExpiry);
+    const awardParams = [threadPolicyId, h28b, threadExpiryHash];
     const expectedAward = applyExpectedScriptParams(
       compiledScript(
         blueprint,
         VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.award,
       ),
-      [
-        contracts.computationThread.policyId,
-        contracts.fraudProof.policyId,
-        fraudProofTokenAddressData,
-      ],
+      awardParams,
+    );
+    const expectedAwardMint = applyExpectedScriptParams(
+      compiledScript(
+        blueprint,
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.awardMint,
+      ),
+      awardParams,
     );
     const deploymentId = deriveValidationTraceDeploymentId(h28c);
     const expectedStageOneRedeemerFoldMapExecutor = applyExpectedScriptParams(
@@ -779,7 +815,7 @@ describe("fault-proof contract builder", () => {
         VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
           .scriptSourcesStageOneRedeemerStages.foldMapExecutor,
       ),
-      [deploymentId, contracts.computationThread.policyId],
+      [deploymentId, threadPolicyId],
     );
     const expectedStageOneRedeemerFinalizeFrameExecutor =
       applyExpectedScriptParams(
@@ -788,14 +824,14 @@ describe("fault-proof contract builder", () => {
           VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
             .scriptSourcesStageOneRedeemerStages.finalizeFrameExecutor,
         ),
-        [deploymentId, contracts.computationThread.policyId],
+        [deploymentId, threadPolicyId],
       );
     const sharedTitles =
       VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.scriptSourcesStageOneRedeemerStages;
     const expectedStageOneRedeemerSourceAuthenticator =
       applyExpectedScriptParams(
         compiledScript(blueprint, sharedTitles.sourceAuthenticator),
-        [deploymentId, contracts.computationThread.policyId],
+        [deploymentId, threadPolicyId],
       );
     const expectedExecutorTitles = [
       sharedTitles.foldMapExecutor,
@@ -823,7 +859,7 @@ describe("fault-proof contract builder", () => {
     const expectedExecutors = expectedExecutorTitles.map((title) =>
       applyExpectedScriptParams(compiledScript(blueprint, title), [
         deploymentId,
-        contracts.computationThread.policyId,
+        threadPolicyId,
       ]),
     );
     const expectedExecutorHashes = expectedExecutors.map(spendingScriptHash);
@@ -835,7 +871,7 @@ describe("fault-proof contract builder", () => {
       ),
       [
         deploymentId,
-        contracts.computationThread.policyId,
+        threadPolicyId,
         spendingScriptHash(expectedStageOneRedeemerSourceAuthenticator),
       ],
     );
@@ -846,7 +882,7 @@ describe("fault-proof contract builder", () => {
           VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
             .scriptSourcesStageOneRedeemerStages.traversalNormalizer,
         ),
-        [deploymentId, contracts.computationThread.policyId],
+        [deploymentId, threadPolicyId],
       );
     const expectedStageOneRedeemerSettlement = applyExpectedScriptParams(
       compiledScript(
@@ -860,7 +896,7 @@ describe("fault-proof contract builder", () => {
         spendingScriptHash(expectedStageOneRedeemerOuterNormalizer),
         expectedExecutorHashes,
         spendingScriptHash(expectedAward),
-        contracts.computationThread.policyId,
+        threadPolicyId,
       ],
     );
     const expectedStageOneRedeemerEnvelope = applyExpectedScriptParams(
@@ -875,7 +911,7 @@ describe("fault-proof contract builder", () => {
         spendingScriptHash(expectedStageOneRedeemerOuterNormalizer),
         expectedExecutorHashes,
         spendingScriptHash(expectedStageOneRedeemerSettlement),
-        contracts.computationThread.policyId,
+        threadPolicyId,
       ],
     );
     // The blueprint's own declared parameter list is the oracle for *which*
@@ -888,15 +924,12 @@ describe("fault-proof contract builder", () => {
     const dispute = contracts.validationTraceDispute;
     const semanticParameterBindings: Readonly<Record<string, Data>> = {
       award_script_hash: spendingScriptHash(expectedAward),
-      computation_thread_policy_id: contracts.computationThread.policyId,
+      computation_thread_policy_id: threadPolicyId,
+      thread_expiry_script_hash: threadExpiryHash,
       field_preimage_certificate_policy_id: certificatePolicyId(blueprint),
       reference_script_auth_policy_id: h28,
       source_binder_script_hash:
         dispute.canonicalDecodeItemStages.source.spendingScriptHash,
-      cek_program_material_script_hash:
-        dispute.cekProgramMaterial.spendingScriptHash,
-      cek_material_traversal_script_hash:
-        dispute.cekMaterialTraversal.spendingScriptHash,
       cek_context_control_script_hash:
         dispute.cekContextStages.control.spendingScriptHash,
       arm_script_hashes: cekCoreEntryHashes(dispute.cekCoreStages),
@@ -992,7 +1025,7 @@ describe("fault-proof contract builder", () => {
         expectedSemanticResolvers[57]!,
         expectedSemanticResolvers[58]!,
         expectedSemanticResolvers[59]!,
-        expectedSemanticResolvers[90]!,
+        expectedSemanticResolvers[82]!,
       ],
       [
         expectedSemanticResolvers[60]!,
@@ -1024,16 +1057,6 @@ describe("fault-proof contract builder", () => {
         expectedSemanticResolvers[80]!,
         expectedSemanticResolvers[81]!,
       ],
-      [
-        expectedSemanticResolvers[82]!,
-        expectedSemanticResolvers[83]!,
-        expectedSemanticResolvers[84]!,
-        expectedSemanticResolvers[85]!,
-        expectedSemanticResolvers[86]!,
-        expectedSemanticResolvers[87]!,
-        expectedSemanticResolvers[88]!,
-        expectedSemanticResolvers[89]!,
-      ],
     ] as const;
     const resolverHashesSchema = Data.Array(Data.Bytes());
     type ResolverHashes = Data.Static<typeof resolverHashesSchema>;
@@ -1050,12 +1073,8 @@ describe("fault-proof contract builder", () => {
     ).map((title, index) =>
       applyExpectedScriptParams(compiledScript(blueprint, title), [
         expectedSemanticResolverHashParams[index]!,
-        contracts.computationThread.policyId,
+        threadPolicyId,
       ]),
-    );
-    const expectedCekProgramMaterial = compiledScript(
-      blueprint,
-      CEK_PROGRAM_MATERIAL_SPEND_TITLE,
     );
     const expectedResolvers = [
       expectedPrepareResolvers[0]!,
@@ -1071,7 +1090,6 @@ describe("fault-proof contract builder", () => {
       expectedPrepareResolvers[10]!,
       expectedPrepareResolvers[11]!,
       expectedPrepareResolvers[12]!,
-      expectedPrepareResolvers[13]!,
     ];
     expect(expectedResolvers).toHaveLength(VALIDATION_TRACE_RESOLVER_COUNT);
     const resolverHashesData = Data.from(
@@ -1088,7 +1106,8 @@ describe("fault-proof contract builder", () => {
       [
         resolverHashesData,
         spendingScriptHash(expectedAward),
-        contracts.computationThread.policyId,
+        threadPolicyId,
+        threadExpiryHash,
       ],
     );
     const expectedTimeoutCbor = applyExpectedScriptParams(
@@ -1096,11 +1115,7 @@ describe("fault-proof contract builder", () => {
         blueprint,
         VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.timeout,
       ),
-      [
-        contracts.computationThread.policyId,
-        contracts.fraudProof.policyId,
-        fraudProofTokenAddressData,
-      ],
+      [threadPolicyId, threadExpiryHash],
     );
     const expectedGameCbor = applyExpectedScriptParams(
       compiledScript(
@@ -1110,9 +1125,16 @@ describe("fault-proof contract builder", () => {
       [
         spendingScriptHash(expectedBoundaryCbor),
         spendingScriptHash(expectedTimeoutCbor),
-        resolverHashesData,
-        contracts.computationThread.policyId,
+        threadPolicyId,
+        threadExpiryHash,
       ],
+    );
+    const expectedDisputeBondCbor = applyExpectedScriptParams(
+      compiledScript(
+        blueprint,
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.disputeBond,
+      ),
+      [threadPolicyId],
     );
     const expectedSourceCbor = applyExpectedScriptParams(
       compiledScript(
@@ -1120,8 +1142,9 @@ describe("fault-proof contract builder", () => {
         VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.source,
       ),
       [
-        spendingScriptHash(expectedGameCbor),
-        spendingScriptHash(expectedAward),
+        spendingScriptHash(expectedCaseSpend),
+        spendingScriptHash(expectedDisputeBondCbor),
+        10_000_000_000n,
         contracts.computationThread.policyId,
       ],
     );
@@ -1139,10 +1162,14 @@ describe("fault-proof contract builder", () => {
     for (const [label, cbor] of [
       ["opener", expectedCbor],
       ["source", expectedSourceCbor],
+      ["dispute bond", expectedDisputeBondCbor],
       ["game", expectedGameCbor],
       ["boundary", expectedBoundaryCbor],
       ["timeout", expectedTimeoutCbor],
       ["award", expectedAward],
+      ["case", expectedCaseSpend],
+      ["case configuration", expectedCaseConfig],
+      ["thread expiry", expectedThreadExpiry],
       ...expectedPrepareResolvers.map(
         (cbor, prepareIndex) =>
           [`prepare-${prepareIndex.toString()}`, cbor] as const,
@@ -1160,6 +1187,21 @@ describe("fault-proof contract builder", () => {
     expect(contracts.validationTraceDispute.award.spendingScriptCBOR).toBe(
       expectedAward,
     );
+    expect(contracts.validationTraceDispute.award.mintingScriptCBOR).toBe(
+      expectedAwardMint,
+    );
+    expect(contracts.validationTraceDispute.case.spendingScriptCBOR).toBe(
+      expectedCaseSpend,
+    );
+    expect(contracts.validationTraceDispute.case.mintingScriptCBOR).toBe(
+      expectedCaseMint,
+    );
+    expect(contracts.validationTraceDispute.caseConfig.mintingScriptCBOR).toBe(
+      expectedCaseConfig,
+    );
+    expect(
+      contracts.validationTraceDispute.threadExpiry.withdrawalScriptCBOR,
+    ).toBe(expectedThreadExpiry);
     expect(
       contracts.validationTraceDispute.semanticResolvers.map(
         ({ spendingScriptCBOR }) => spendingScriptCBOR,
@@ -1197,9 +1239,6 @@ describe("fault-proof contract builder", () => {
       ),
     ).toEqual(expectedPrepareResolvers);
     expect(
-      contracts.validationTraceDispute.cekProgramMaterial.spendingScriptCBOR,
-    ).toBe(expectedCekProgramMaterial);
-    expect(
       contracts.validationTraceDispute.resolvers.map(
         ({ spendingScriptCBOR }) => spendingScriptCBOR,
       ),
@@ -1213,6 +1252,9 @@ describe("fault-proof contract builder", () => {
     expect(contracts.validationTraceDispute.game.spendingScriptCBOR).toBe(
       expectedGameCbor,
     );
+    expect(
+      contracts.validationTraceDispute.disputeBond.spendingScriptCBOR,
+    ).toBe(expectedDisputeBondCbor);
     expect(contracts.validationTraceDispute.source.spendingScriptCBOR).toBe(
       expectedSourceCbor,
     );

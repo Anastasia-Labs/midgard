@@ -38,6 +38,10 @@ import {
 } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
+import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { MissingSignatureContracts } from "./contracts.js";
 import {
@@ -67,6 +71,8 @@ export type SubmitMissingSignatureForcedParams = Readonly<{
   witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
   preSubmitBoundary?: FraudProofPreSubmitBoundary;
   awaitConfirmation?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  ownOutputs?: OwnOutputJournal;
 }>;
 
 export const submitMissingSignatureForcedAction = async (
@@ -83,6 +89,7 @@ export const submitMissingSignatureForcedAction = async (
     preSubmitBoundary,
   } = params;
   const awaitConfirmation = params.awaitConfirmation ?? true;
+  const ownOutputs = params.ownOutputs ?? createOwnOutputJournal();
   const threadUtxo = await fetchUtxoByOutRef({
     lucid,
     outRef: parseOutRef(threadOutRef, "thread"),
@@ -189,6 +196,7 @@ export const submitMissingSignatureForcedAction = async (
     planned === undefined
       ? []
       : await publishFaultProofFieldCarriage({
+          ownOutputs,
           lucid,
           signer,
           planned,
@@ -200,6 +208,7 @@ export const submitMissingSignatureForcedAction = async (
     (planned === undefined
       ? undefined
       : await resolveFaultProofFieldPreimageCertificate({
+          ownOutputs,
           lucid,
           network: lucid.config().network!,
           planned,
@@ -217,17 +226,6 @@ export const submitMissingSignatureForcedAction = async (
           label: "missing-signature forced field",
         });
   if (stage === "forcedWitness") {
-    // Finalize's builder has no reference-layout callback. Its stable layout is
-    // carriage, step, certificate, followed by the two mint references.
-    const opening = fieldOpening([
-      ...carriageUtxos,
-      referenceScriptUtxo,
-      ...extraReferenceInputs,
-      ...[
-        params.witnessReferenceScripts?.computationThreadMint,
-        params.witnessReferenceScripts?.fraudProofMint,
-      ].filter((utxo): utxo is UTxO => utxo !== undefined),
-    ]);
     const result = await submitLinearFaultFinalize({
       lucid,
       family: "missing-signature forced",
@@ -239,15 +237,14 @@ export const submitMissingSignatureForcedAction = async (
       threadUtxo,
       threadToken,
       spendRedeemerSchema: MissingSignatureForcedWitnessSpendRedeemer,
-      buildFamilyArgs: ({
-        inputIndex,
-        outputIndex,
-        fraudProofMintRedeemerIndex,
-      }) => ({
+      buildFamilyArgs: (
+        { inputIndex, outputIndex, fraudProofMintRedeemerIndex },
+        ctx,
+      ) => ({
         input_index: inputIndex,
         output_index: outputIndex,
         fraud_proof_mint_redeemer_index: fraudProofMintRedeemerIndex,
-        addr_tx_wits_opening: opening,
+        addr_tx_wits_opening: fieldOpening(ctx.referenceInputs),
         witness_index: witnessIndex === -1n ? 0n : witnessIndex,
       }),
       referenceScriptUtxo,

@@ -2,9 +2,11 @@ export * from "./aiken-blueprint-data.js";
 export * from "./block-replay.faults.js";
 export * from "./canonical-decodability/index.js";
 export * from "./committed-field-shape/index.js";
+export * from "./direct-script-derivation/index.js";
 export * from "./evidence/index.js";
 export * from "./field-item-width-illegal/index.js";
 export * from "./field-preimage-length-mismatch/index.js";
+export * from "./funding/plain-funding-output.js";
 export * from "./input-set-uniqueness/index.js";
 export * from "./inspect-contracts.js";
 export * from "./invalid-range/index.js";
@@ -55,7 +57,7 @@ export * from "./prepare-reference-input-no-idx.js";
 export * from "./prepare-transition-trace.js";
 export * from "./prepare-withdrawn-input.js";
 export * from "./prepare-zero-input.js";
-export * from "./proof-fit/van-rossem-fit-ledger.js";
+export * from "./proof-fit/van-rossem.js";
 export * from "./protected-output-signer-missing/index.js";
 export * from "./publish-proof-chunks.js";
 export * from "./redeemer-canonicity/index.js";
@@ -68,6 +70,7 @@ export * from "./replayed-ledger.js";
 export * from "./resolved-output-non-canonical/index.js";
 export * from "./retained-payload-replay-source.js";
 export * from "./runtime.js";
+export * from "./script-decode/index.js";
 export * from "./script-integrity-hash-missing/artifact.js";
 export * from "./script-integrity-hash-missing/contracts.js";
 export * from "./script-integrity-hash-missing/family.js";
@@ -100,6 +103,21 @@ export * from "./submit-transition-trace-proof.js";
 export * from "./testing/complete-lifecycle.js";
 export * from "./transaction-output-non-canonical/index.js";
 export * from "./transition-trace/index.js";
+export * from "./validation-cek-selection.js";
+export * from "./validation-trace-dispute/defender.js";
+export { VALIDATION_TRACE_ONE_STEP_CONTRACT_NAMES } from "./validation-trace-dispute/one-step-holders.js";
+export {
+  isValidationTraceReplayHeldError,
+  VALIDATION_TRACE_REPLAY_HELD,
+  VALIDATION_TRACE_REPLAY_STUCK,
+  ValidationTraceReplayHeldError,
+  type ValidationTraceReplayHold,
+} from "./validation-trace-dispute/replay-hold.js";
+export {
+  validationTraceCaseOpenAtRisk,
+  validationTraceCaseOpenWindowEndMs,
+} from "./validation-trace-dispute/stage-unbuilt.js";
+export { VALIDATION_TRACE_DISPUTE_REFERENCE_SCRIPTS } from "./validation-trace-dispute/workflow.js";
 export * from "./value-not-preserved/index.js";
 export * from "./withdrawal-classification-fault.js";
 export * from "./withdrawal-mistag/index.js";

@@ -67,6 +67,7 @@ describe("startup retires state-queue leases of a killed node process", () => {
         "block_commitment",
         "node-mpf-payload-audit",
         "state_queue_merge",
+        "validation_trace_defense",
       ].sort(),
     );
     expect(NODE_PROCESS_STATE_QUEUE_LEASE_HOLDERS).toContain(

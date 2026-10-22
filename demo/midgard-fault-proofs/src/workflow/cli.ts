@@ -61,6 +61,7 @@ export const runFraudProofWorkflowCli = async ({
   decisionDigest,
   actuationPermit,
   fundingReservationPermit,
+  onProgress,
   applicationRegistry,
 }: {
   readonly mode: "run" | "resume";
@@ -73,6 +74,7 @@ export const runFraudProofWorkflowCli = async ({
   readonly decisionDigest?: string;
   readonly actuationPermit?: WorkflowActuationPermit;
   readonly fundingReservationPermit?: WorkflowFundingReservationPermit;
+  readonly onProgress?: () => void;
   /** Application-installed only after signed deployment identity admission. */
   readonly applicationRegistry?: WorkflowApplicationRegistry;
 }): Promise<unknown> => {
@@ -118,6 +120,7 @@ export const runFraudProofWorkflowCli = async ({
       fundingReservationPermit,
       journalDirectory,
       runtimeConfigPath,
+      ...(onProgress === undefined ? {} : { onProgress }),
     },
   );
 };

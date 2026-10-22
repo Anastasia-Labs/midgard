@@ -53,6 +53,7 @@ export const buildDecodingBlockFixture = async ({
   additionalTransactions = [],
   commitEventToStep = (entries) => entries,
   orderEvents = (events) => events,
+  committedPhase = (event) => event.phase,
 }: {
   readonly operatorVkey: string;
   readonly startTime: bigint;
@@ -78,6 +79,14 @@ export const buildDecodingBlockFixture = async ({
    * transactions). The event_to_step entries follow the same order.
    */
   readonly orderEvents?: <T>(events: readonly T[]) => readonly T[];
+  /**
+   * The phase the trace step and its event_to_step entry commit for an event.
+   * The honest block commits the event's own source phase.
+   */
+  readonly committedPhase?: (event: {
+    readonly eventKey: SDK.EventKey;
+    readonly phase: SDK.TransitionPhase;
+  }) => SDK.TransitionPhase;
 }): Promise<DecodingBlockFixture> => {
   const submitted = materializeMidgardForcedTxFromCanonical(subject.nativeTx);
   const canonicalCbor =
@@ -213,11 +222,12 @@ export const buildDecodingBlockFixture = async ({
   const eventToStep: SDK.DaPayloadEntry[] = [];
   const validationTraces: SDK.DaPayloadEntry[] = [];
   for (const [stepIndex, event] of orderEvents(events).entries()) {
+    const stepPhase = committedPhase(event);
     const step: SDK.TransitionStep = {
       schema_version: SDK.TRANSITION_STEP_SCHEMA_VERSION,
       step_index: BigInt(stepIndex),
       event_key: event.eventKey,
-      phase: event.phase,
+      phase: stepPhase,
       pre_utxos_root: priorLedgerRoot,
       post_utxos_root: priorLedgerRoot,
     };
@@ -233,7 +243,7 @@ export const buildDecodingBlockFixture = async ({
         encodeData(
           {
             step_index: BigInt(stepIndex),
-            phase: event.phase,
+            phase: stepPhase,
           } satisfies SDK.EventToStepValue,
           SDK.EventToStepValueSchema as never,
         ),
@@ -281,10 +291,6 @@ export const buildDecodingBlockFixture = async ({
       SDK.ROOT_DOMAINS.eventToStep,
       bufferEntries(committedEventToStep),
     ),
-    validationTraces: await buildCountedRoot(
-      SDK.ROOT_DOMAINS.validationTraces,
-      bufferEntries(validationTraces),
-    ),
   };
   const counts = {
     withdrawalCount: 0n,
@@ -304,8 +310,11 @@ export const buildDecodingBlockFixture = async ({
     depositsRoot: roots.deposits.root,
     transitionTraceRoot: roots.transitionTrace.root,
     eventToStepRoot: roots.eventToStep.root,
-    validationTracesRoot: roots.validationTraces.root,
     ...counts,
+    // The header pins the validation-trace pair to the empty tree; the body
+    // keeps the built members and their count.
+    validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    validationTraceCount: 0n,
     startTime,
     endTime: startTime + 1_000n,
     blockSlot: fixtureBlockSlot(startTime + 1_000n),
@@ -330,7 +339,6 @@ export const buildDecodingBlockFixture = async ({
       event_to_step: sorted(committedEventToStep),
       transaction_preimages: sorted(transactionPreimages),
       forced_transaction_preimages: sorted(forcedTransactionPreimages),
-      cek_program_material: [],
       validation_traces: sorted(validationTraces),
       validation_trace_witnesses: [],
       counts,

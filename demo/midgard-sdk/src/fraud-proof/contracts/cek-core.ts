@@ -1,70 +1,78 @@
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { type Data, type Network } from "@lucid-evolution/lucid";
 
 import {
-  applyBlueprintParams,
+  applyThreadHolderParams,
   type FaultProofBlueprint,
   makeSpendingValidator,
 } from "./blueprint.js";
 
 export const CEK_CORE_STAGE_TITLES = {
-  settle: "fraud_proofs/validation_trace/cek_core_settle.main.spend",
-  compute: "fraud_proofs/validation_trace/cek_core_arm_compute.main.spend",
-  machine: "fraud_proofs/validation_trace/cek_core_arm_machine.main.spend",
-  mapConversion:
-    "fraud_proofs/validation_trace/cek_core_arm_map_conversion.main.spend",
-  directScalar:
-    "fraud_proofs/validation_trace/cek_core_direct_scalar.main.spend",
-  directStructured:
-    "fraud_proofs/validation_trace/cek_core_direct_structured.main.spend",
-  directScalarBudget:
-    "fraud_proofs/validation_trace/cek_core_builtin_budget.main.spend",
-  directStructuredBudget:
-    "fraud_proofs/validation_trace/cek_core_builtin_budget.main.spend",
-  directScalarRoots:
-    "fraud_proofs/validation_trace/cek_core_builtin_roots.main.spend",
-  directStructuredRoots:
-    "fraud_proofs/validation_trace/cek_core_builtin_roots.main.spend",
-  semanticPair:
-    "fraud_proofs/validation_trace/cek_core_semantic_pair.main.spend",
-  semanticListConstruct:
-    "fraud_proofs/validation_trace/cek_core_semantic_list_construct.main.spend",
-  semanticListSelect:
-    "fraud_proofs/validation_trace/cek_core_semantic_list_select.main.spend",
-  semanticChoose:
-    "fraud_proofs/validation_trace/cek_core_semantic_choose.main.spend",
-  semanticDataConstruct:
-    "fraud_proofs/validation_trace/cek_core_semantic_data_construct.main.spend",
-  semanticDataScalar:
-    "fraud_proofs/validation_trace/cek_core_semantic_data_scalar.main.spend",
-  semanticDataMisc:
-    "fraud_proofs/validation_trace/cek_core_semantic_data_misc.main.spend",
-  semanticBudget:
-    "fraud_proofs/validation_trace/cek_core_builtin_budget.main.spend",
-  semanticResult:
-    "fraud_proofs/validation_trace/cek_core_semantic_result.main.spend",
-  semanticRoots:
-    "fraud_proofs/validation_trace/cek_core_builtin_roots.main.spend",
-  mapStartNodes:
-    "fraud_proofs/validation_trace/cek_core_map_start_nodes.main.spend",
-  mapStartBudget:
-    "fraud_proofs/validation_trace/cek_core_map_start_budget.main.spend",
-  mapStartRoots:
-    "fraud_proofs/validation_trace/cek_core_map_start_roots.main.spend",
-  semanticFailureMaterial:
-    "fraud_proofs/validation_trace/cek_core_semantic_failure_material.main.spend",
-  semanticFailureRoots:
-    "fraud_proofs/validation_trace/cek_core_semantic_failure_roots.main.spend",
-  blsFinal: "fraud_proofs/validation_trace/cek_core_bls_final.main.spend",
-  blsRoots: "fraud_proofs/validation_trace/cek_core_bls_roots.main.spend",
-  blsBudget: "fraud_proofs/validation_trace/cek_core_bls_budget.main.spend",
-  failureBudget:
-    "fraud_proofs/validation_trace/cek_core_failure_budget.main.spend",
-  failureKnown:
-    "fraud_proofs/validation_trace/cek_core_failure_known.main.spend",
-  typeFailureKinds:
-    "fraud_proofs/validation_trace/cek_core_type_failure_kinds.main.spend",
-  typeFailureRoots:
-    "fraud_proofs/validation_trace/cek_core_type_failure_roots.main.spend",
+  settle: deployedTitle("validationTraceDisputeCekCoreSettle"),
+  compute: deployedTitle("validationTraceDisputeCekCoreCompute"),
+  machine: deployedTitle("validationTraceDisputeCekCoreMachine"),
+  caseConstant: deployedTitle("validationTraceDisputeCekCoreCaseConstant"),
+  mapConversion: deployedTitle("validationTraceDisputeCekCoreMapConversion"),
+  directScalar: deployedTitle("validationTraceDisputeCekCoreDirectScalar"),
+  directStructured: deployedTitle(
+    "validationTraceDisputeCekCoreDirectStructured",
+  ),
+  directScalarBudget: deployedTitle(
+    "validationTraceDisputeCekCoreDirectScalarBudget",
+  ),
+  directStructuredBudget: deployedTitle(
+    "validationTraceDisputeCekCoreDirectScalarBudget",
+  ),
+  directScalarRoots: deployedTitle(
+    "validationTraceDisputeCekCoreDirectScalarRoots",
+  ),
+  directStructuredRoots: deployedTitle(
+    "validationTraceDisputeCekCoreDirectScalarRoots",
+  ),
+  semanticPair: deployedTitle("validationTraceDisputeCekCoreSemanticPair"),
+  semanticListConstruct: deployedTitle(
+    "validationTraceDisputeCekCoreSemanticListConstruct",
+  ),
+  semanticListSelect: deployedTitle(
+    "validationTraceDisputeCekCoreSemanticListSelect",
+  ),
+  semanticChoose: deployedTitle("validationTraceDisputeCekCoreSemanticChoose"),
+  semanticDataConstruct: deployedTitle(
+    "validationTraceDisputeCekCoreSemanticDataConstruct",
+  ),
+  semanticDataScalar: deployedTitle(
+    "validationTraceDisputeCekCoreSemanticDataScalar",
+  ),
+  semanticDataMisc: deployedTitle(
+    "validationTraceDisputeCekCoreSemanticDataMisc",
+  ),
+  semanticBudget: deployedTitle(
+    "validationTraceDisputeCekCoreDirectScalarBudget",
+  ),
+  semanticResult: deployedTitle("validationTraceDisputeCekCoreSemanticResult"),
+  semanticRoots: deployedTitle(
+    "validationTraceDisputeCekCoreDirectScalarRoots",
+  ),
+  mapStartNodes: deployedTitle("validationTraceDisputeCekCoreMapStartNodes"),
+  mapStartBudget: deployedTitle("validationTraceDisputeCekCoreMapStartBudget"),
+  mapStartRoots: deployedTitle("validationTraceDisputeCekCoreMapStartRoots"),
+  semanticFailureMaterial: deployedTitle(
+    "validationTraceDisputeCekCoreSemanticFailureMaterial",
+  ),
+  semanticFailureRoots: deployedTitle(
+    "validationTraceDisputeCekCoreSemanticFailureRoots",
+  ),
+  blsFinal: deployedTitle("validationTraceDisputeCekCoreBlsFinal"),
+  blsRoots: deployedTitle("validationTraceDisputeCekCoreBlsRoots"),
+  blsBudget: deployedTitle("validationTraceDisputeCekCoreBlsBudget"),
+  failureBudget: deployedTitle("validationTraceDisputeCekCoreFailureBudget"),
+  failureKnown: deployedTitle("validationTraceDisputeCekCoreFailureKnown"),
+  typeFailureKinds: deployedTitle(
+    "validationTraceDisputeCekCoreTypeFailureKinds",
+  ),
+  typeFailureRoots: deployedTitle(
+    "validationTraceDisputeCekCoreTypeFailureRoots",
+  ),
 } as const;
 export const CEK_CORE_ARM_HOP_COUNTS = [
   1n,
@@ -78,17 +86,24 @@ export const CEK_CORE_ARM_HOP_COUNTS = [
   3n,
   2n,
   2n,
+  1n,
 ] as const;
 export const buildCekCoreStages = (
   blueprint: FaultProofBlueprint,
   network: Network,
   awardHash: string,
   ctPolicy: string,
+  threadExpiryHash: string,
 ) => {
   const build = (key: keyof typeof CEK_CORE_STAGE_TITLES, params: Data[]) =>
     makeSpendingValidator(
       network,
-      applyBlueprintParams(blueprint, CEK_CORE_STAGE_TITLES[key], params),
+      applyThreadHolderParams(
+        blueprint,
+        CEK_CORE_STAGE_TITLES[key],
+        params,
+        threadExpiryHash,
+      ),
     );
   const settle = build("settle", [
     awardHash,
@@ -99,6 +114,7 @@ export const buildCekCoreStages = (
     build(key, [settle.spendingScriptHash, ctPolicy]);
   const compute = terminal("compute");
   const machine = terminal("machine");
+  const caseConstant = terminal("caseConstant");
   const mapConversion = terminal("mapConversion");
   const directScalar = terminal("directScalar");
   const directStructured = terminal("directStructured");
@@ -176,6 +192,7 @@ export const buildCekCoreStages = (
     settle,
     compute,
     machine,
+    caseConstant,
     mapConversion,
     directScalar,
     directStructured,
@@ -221,6 +238,7 @@ export const cekCoreEntryHashes = (stages: CekCoreStages) =>
     stages.blsBudget,
     stages.failureKnown,
     stages.typeFailureRoots,
+    stages.caseConstant,
   ].map((stage) => stage.spendingScriptHash);
 
 export const CEK_CORE_STAGE_REFERENCES = {
@@ -235,6 +253,10 @@ export const CEK_CORE_STAGE_REFERENCES = {
   machine: {
     deployment: "validationTraceDisputeCekCoreMachine",
     role: "V1 validation-trace CEK core machine",
+  },
+  caseConstant: {
+    deployment: "validationTraceDisputeCekCoreCaseConstant",
+    role: "V1 validation-trace CEK core case constant",
   },
   mapConversion: {
     deployment: "validationTraceDisputeCekCoreMapConversion",

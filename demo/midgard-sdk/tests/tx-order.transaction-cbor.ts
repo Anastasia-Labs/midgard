@@ -3,24 +3,14 @@ import {
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
-  encodeMidgardCekBlobChunk,
-  encodeMidgardCekProgramEnvelope,
-  encodeMidgardCekProgramMaterialSidecar,
-  encodeMidgardCekTermNode,
   encodeMidgardForcedTxCanonical,
   encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
-  hashMidgardCekProgramMaterialPreimage,
-  hashMidgardCekTermNode,
   materializeMidgardForcedTxFromCanonical,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
 } from "@al-ft/midgard-core";
-import { CML, type LucidEvolution } from "@lucid-evolution/lucid";
-
-import * as SDK from "../src/index.js";
-
 export const transactionCbor = (): Buffer =>
   encodeMidgardForcedTxCanonical(
     materializeMidgardForcedTxFromCanonical({
@@ -71,75 +61,3 @@ export const transactionCbor = (): Buffer =>
       },
     }),
   );
-
-export const cekProgramMaterialAddress = CML.Address.from_raw_bytes(
-  Buffer.concat([Buffer.from([0x70]), Buffer.alloc(28, 0x42)]),
-).to_bech32();
-
-export const cekProgramMaterialContracts = {
-  cekProgramMaterial: {
-    spendingScriptAddress: cekProgramMaterialAddress,
-  },
-} as Pick<SDK.MidgardValidators, "cekProgramMaterial">;
-
-export const cekProgramMaterialPublication = (bytes: number) => {
-  const preimage = encodeMidgardCekBlobChunk(Buffer.alloc(bytes, 0x5a));
-  return SDK.deriveCekProgramMaterialPublications([
-    {
-      kind: "blobChunk",
-      root: hashMidgardCekProgramMaterialPreimage("blobChunk", preimage),
-      preimage,
-    },
-  ])[0]!;
-};
-
-export const completeCekPublicationInput = () => {
-  const term = { kind: "error" } as const;
-  const preimage = encodeMidgardCekTermNode(term);
-  const root = hashMidgardCekTermNode(term);
-  const entry = { kind: "term" as const, root, preimage };
-  const envelopeCbor = encodeMidgardCekProgramEnvelope({
-    uplcVersion: [1n, 1n, 0n],
-    termRoot: root,
-    nodeCount: 1n,
-    materialByteLength: BigInt(preimage.length),
-  });
-  return {
-    envelopeCbor,
-    entry,
-    sidecarCbor: encodeMidgardCekProgramMaterialSidecar([entry]),
-  };
-};
-
-export const materialPublicationLucid = ({
-  coinsPerUtxoByte,
-  fundedLovelace,
-  outputs,
-}: {
-  readonly coinsPerUtxoByte: bigint;
-  readonly fundedLovelace: bigint[];
-  readonly outputs?: {
-    address: string;
-    datum: unknown;
-    lovelace: bigint;
-  }[];
-}): LucidEvolution => {
-  const tx = {
-    pay: {
-      ToAddressWithData: (
-        address: string,
-        datum: unknown,
-        assets: { readonly lovelace: bigint },
-      ) => {
-        fundedLovelace.push(assets.lovelace);
-        outputs?.push({ address, datum, lovelace: assets.lovelace });
-        return tx;
-      },
-    },
-    complete: async () => ({}),
-  };
-  return {
-    config: () => ({ protocolParameters: { coinsPerUtxoByte } }),
-    newTx: () => tx,
-  } as unknown as LucidEvolution;
-};

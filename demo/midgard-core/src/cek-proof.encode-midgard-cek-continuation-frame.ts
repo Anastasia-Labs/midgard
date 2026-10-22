@@ -8,7 +8,6 @@ import {
   MACHINE_STATE_DOMAIN,
   MIDGARD_CEK_BLOB_CHUNK_BYTES,
   MIDGARD_CEK_MACHINE_STATE_VERSION,
-  MIDGARD_CEK_PROGRAM_ENVELOPE_VERSION,
   MidgardCekContinuationTags,
   MidgardCekMachineModes,
   uint32,
@@ -293,25 +292,3 @@ export const encodeMidgardCekMachineState = (
 export const hashMidgardCekMachineState = (
   state: MidgardCekMachineState,
 ): Hash32 => hash32(MACHINE_STATE_DOMAIN, encodeMidgardCekMachineState(state));
-
-export type MidgardCekProgramEnvelope = {
-  readonly uplcVersion: readonly [bigint, bigint, bigint];
-  readonly termRoot: Bytes;
-  readonly nodeCount: bigint;
-  readonly materialByteLength: bigint;
-};
-
-export const encodeMidgardCekProgramEnvelope = (
-  envelope: MidgardCekProgramEnvelope,
-): Buffer =>
-  encodeCbor([
-    MIDGARD_CEK_PROGRAM_ENVELOPE_VERSION,
-    [
-      uint32(envelope.uplcVersion[0], "cek_program.version.major"),
-      uint32(envelope.uplcVersion[1], "cek_program.version.minor"),
-      uint32(envelope.uplcVersion[2], "cek_program.version.patch"),
-    ],
-    exactHash(envelope.termRoot, "cek_program.term_root"),
-    uint32(envelope.nodeCount, "cek_program.node_count"),
-    uint64(envelope.materialByteLength, "cek_program.material_byte_length"),
-  ]);

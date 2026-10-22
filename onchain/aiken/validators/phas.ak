@@ -2,6 +2,7 @@ use aiken/builtin
 use aiken/merkle_patricia_forestry as mpf
 use cardano/address.{Credential}
 use cardano/transaction.{Transaction}
+use midgard/mpf_proof_v1 as canonical_mpf
 
 validator membership {
   withdraw(redeemer: Data, _own_credential: Credential, _tx: Transaction) {
@@ -12,7 +13,7 @@ validator membership {
     expect value: ByteArray = value_data
     expect proof: mpf.Proof = proof_data
 
-    mpf.has(mpf.from_root(root), key, value, proof)
+    canonical_mpf.has(root, key, value, proof)
   }
 
   else(_) {

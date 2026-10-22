@@ -29,6 +29,7 @@ import {
 } from "../workflow/family-definition.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
 import { type FieldCarriagePrerequisitePort } from "../workflow/field-carriage-prerequisite.js";
+import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import {
   type FraudProofWorkflowJournalStore,
   journalJsonDigest,
@@ -236,10 +237,14 @@ const createTransactionPort = (
     },
     prepare: async ({ evidence }) =>
       await prepareObserverOrderWorkflowArtifact(evidence),
-    capture: async ({ action, artifact }) =>
+    capture: async ({ action, artifact, entries }) =>
       await actuator.capture({
         action: action.input as unknown as ObserverOrderInvalidActuatorAction,
         artifact,
+        ownOutputs: workflowFieldCarriageOwnOutputs({
+          category: CATEGORY,
+          entries,
+        }),
       }),
   };
 };

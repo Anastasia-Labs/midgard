@@ -1,6 +1,7 @@
-import type {
-  WorkflowFundingAbandonmentHandoff,
-  WorkflowFundingPreparedTransition,
+import {
+  type WorkflowFundingAbandonmentHandoff,
+  workflowFundingExclusiveProtocolInput,
+  type WorkflowFundingPreparedTransition,
 } from "@al-ft/midgard-fault-proofs";
 import { CML } from "@lucid-evolution/lucid";
 
@@ -123,22 +124,100 @@ export const supersededAttemptFundingOutRefs = (
  * shares an input with that attempt's exclusion set, or nothing in that set
  * is still a reserved funding input. In the second case no shared input is
  * possible: whatever lands first wins, and protocol state makes a duplicate
- * proof fail on-chain. Nothing waits for retirement past k.
+ * proof fail on-chain. Nothing waits for retirement past k. An action whose
+ * attempts all spend one protocol input (a validation-trace thread move) is
+ * admitted without one when it spends that input and no reserved funding
+ * input: that input already makes it exclusive, and it needs none of the
+ * wallet's.
  */
 export const excludesEveryUncoveredAttempt = ({
   uncovered,
   signedTransactionCborHex,
   reservedFundingOutRefs,
+  handoff,
 }: {
   readonly uncovered: readonly UncoveredSupersededAttempt[];
   readonly signedTransactionCborHex: string;
   readonly reservedFundingOutRefs: readonly string[];
+  /** The fresh attempt's handoff, which names its workflow and action. */
+  readonly handoff?: Readonly<{
+    identity: Readonly<{ category: string }>;
+    submissionIntent: Readonly<{ actionInput: unknown }>;
+  }>;
 }): boolean => {
   if (uncovered.length === 0) return true;
   const inputs = signedOrdinaryInputs(signedTransactionCborHex);
+  const exclusive = workflowFundingExclusiveProtocolInput({
+    category: handoff?.identity.category,
+    actionInput: handoff?.submissionIntent.actionInput,
+  });
+  if (
+    exclusive !== null &&
+    inputs.includes(exclusive) &&
+    !shareAnInput(inputs, reservedFundingOutRefs)
+  )
+    return true;
   return uncovered.every(
     ({ exclusion }) =>
       shareAnInput(inputs, exclusion) ||
       !shareAnInput(exclusion, reservedFundingOutRefs),
   );
+};
+
+/**
+ * Owner ruling (whichever lands wins): a superseded attempt that landed is
+ * its action's result. A fresh attempt of the same action that spends one of
+ * its outputs, directly or through recorded attempts, or whose reservation
+ * holds such an output, can only exist because that attempt landed: its
+ * inputs were consumed by the attempt itself, not by something else. Returns
+ * that attempt, which is adopted instead, or null. An attempt whose inputs
+ * something else consumed has no outputs, so it is never returned.
+ */
+export const landedSupersededAttemptOfAction = ({
+  abandoned,
+  submissions,
+  actionId,
+  signedTransactionCborHex,
+  reservedOutRefs,
+}: {
+  readonly abandoned: readonly Abandoned[];
+  readonly submissions: readonly WorkflowFundingPreparedTransition[];
+  readonly actionId: string;
+  readonly signedTransactionCborHex: string;
+  readonly reservedOutRefs: readonly string[];
+}): string | null => {
+  const sameAction = new Set(
+    abandoned
+      .filter(
+        ({ handoff }) =>
+          handoff.reconciliation.retirement === undefined &&
+          handoff.submissionIntent.actionId === actionId,
+      )
+      .map(({ transition }) => transition.transactionHash),
+  );
+  if (sameAction.size === 0) return null;
+  const recorded = new Map(
+    [...submissions, ...abandoned.map(({ transition }) => transition)].map(
+      (transition) => [transition.transactionHash, transition] as const,
+    ),
+  );
+  const visited = new Set<string>();
+  const pending = [
+    ...signedOrdinaryInputs(signedTransactionCborHex),
+    ...reservedOutRefs,
+  ];
+  while (pending.length !== 0) {
+    const outRef = pending.pop()!;
+    const parentHash = outRef.slice(0, outRef.indexOf("#"));
+    if (visited.has(parentHash)) continue;
+    visited.add(parentHash);
+    if (sameAction.has(parentHash)) return parentHash;
+    const parent = recorded.get(parentHash);
+    if (parent !== undefined)
+      pending.push(
+        ...signedOrdinaryInputs(parent.signedTransactionCborHex),
+        ...parent.consumedOutRefs,
+      );
+  }
+  return null;
 };

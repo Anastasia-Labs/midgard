@@ -240,7 +240,10 @@ export const preparedFor = ({
     faultClaim: { kind: "forced-network-mismatch" },
     fault: "ForcedNetworkIdMismatch",
     subject,
-    forcedSource: { header, membership, direction: 1n },
+    forcedSource: {
+      header,
+      membership,
+    },
     evidence: {
       subject,
       expectedNetworkId: EXPECTED_NETWORK_ID,

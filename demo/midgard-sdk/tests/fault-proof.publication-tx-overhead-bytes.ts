@@ -107,9 +107,7 @@ export const collectTitles = (node: unknown): readonly string[] =>
  * reference script through the Lucid emulator at the default protocol
  * parameters and requires at least a 512-byte L1 margin
  * (`VAN_ROSSEM_PUBLICATION_RESERVE_BYTES`) on the complete signed transaction.
- * Every row of the recorded ledger
- * (`docs/fault-proofs/size-plans/validation-trace-resolver-publication-fit-ledger.json`)
- * shows that publication transaction costing a constant 276 bytes over the
+ * Each such publication transaction measured a constant 276 bytes over the
  * applied script it carries, so the equivalent bound on applied script bytes
  * -- which is all this suite can see without an emulator -- is
  * `maxTxSize - reserve - overhead`.
@@ -140,12 +138,6 @@ export const CEK_REDEEMER_ITEM_TITLES = [
   "cek_settlement",
   "cek_envelope",
 ].map((key) => `${REDEEMER_ITEM_PREFIX}${key}.main.spend`);
-
-export const CEK_MATERIAL_TRAVERSAL_TITLES = [
-  "fraud_proofs/validation_trace/cek_material_traversal_v1.main.spend",
-  "fraud_proofs/validation_trace/cek_material_traversal_yields.program.withdraw",
-  "fraud_proofs/validation_trace/cek_material_traversal_yields.data.withdraw",
-] as const;
 
 export const filterBlueprint = (
   blueprint: FaultProofBlueprint,
