@@ -128,18 +128,12 @@ export const createSupervisor = (input: {
       deploymentFingerprint: input.deploymentFingerprint,
       categories,
       authenticationKey: input.queueAuthenticationKey,
-      ...(input.proofRetention === undefined
-        ? {}
-        : { retention: input.proofRetention }),
-      ...(input.dependencies.objectiveSettled === undefined
-        ? {}
-        : { onObjectiveSettled: input.dependencies.objectiveSettled }),
-      jobInProcess: (objective) => {
-        const key = objectiveKey(objective);
-        return (
-          jobs.has(key) || registering.has(key) || transportRetries.has(key)
-        );
-      },
+      retention: input.proofRetention,
+      onObjectiveSettled: input.dependencies.objectiveSettled,
+      jobInProcess: (objective) =>
+        [jobs, registering, transportRetries].some((held) =>
+          held.has(objectiveKey(objective)),
+        ),
       // A returning header starts a fresh execution.
       onObjectiveRemoved: (objective) =>
         void selectedExecutions.delete(objectiveKey(objective)),

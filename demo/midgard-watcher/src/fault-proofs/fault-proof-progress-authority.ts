@@ -138,8 +138,7 @@ export const createWatcherFaultProofProgressAuthority = (input: {
   readonly jobInProcess?: (objective: WatcherProofObjective) => boolean;
   /** Told when the objective's workflow rows are deleted. */
   readonly onObjectiveRemoved?: (objective: WatcherProofObjective) => void;
-  /** Told when the objective is forgotten while its workflow holds a signed
-   * attempt, whose funding no run settles now. */
+  /** Told when the objective is forgotten holding a signed attempt. */
   readonly onObjectiveUnattended?: (objective: WatcherProofObjective) => void;
 }): WatcherFaultProofProgressAuthority => {
   const database = () =>
@@ -154,12 +153,8 @@ export const createWatcherFaultProofProgressAuthority = (input: {
     ...(input.jobInProcess === undefined
       ? {}
       : { jobInProcess: input.jobInProcess }),
-    ...(input.onObjectiveRemoved === undefined
-      ? {}
-      : { onRemoved: input.onObjectiveRemoved }),
-    ...(input.onObjectiveUnattended === undefined
-      ? {}
-      : { onUnattended: input.onObjectiveUnattended }),
+    onRemoved: input.onObjectiveRemoved,
+    onUnattended: input.onObjectiveUnattended,
   });
   // A journal failure is retried by the next use.
   const openDecisions: () => Promise<WatcherFaultDecisionJournal> =

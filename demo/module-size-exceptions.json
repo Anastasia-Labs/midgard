@@ -1176,12 +1176,12 @@
   },
   {
     "file": "midgard-watcher/src/fault-proofs/fault-proof-progress-authority.ts",
-    "max": 684,
+    "max": 678,
     "reason": "createWatcherFaultProofProgressAuthority is one state owner: admission, execution updates, reconciliation and completion close over one objective index, decision cache and authority epoch, and share their revision checks; splitting it would redesign that ownership rather than separate independent declarations."
   },
   {
     "file": "midgard-watcher/src/fault-proofs/fault-proof-supervisor.create-supervisor.ts",
-    "max": 1120,
+    "max": 1115,
     "reason": "createSupervisor is the dominant indivisible declaration (828 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
