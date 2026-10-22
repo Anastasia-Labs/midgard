@@ -11,16 +11,17 @@
 
 ## 1. Fixed protocol constants (recorded, not chosen)
 
-| Constant                                                     | Value                                                             | Source                                                  |
-| ------------------------------------------------------------ | ----------------------------------------------------------------- | ------------------------------------------------------- |
-| Canonical V1 block maturity                                  | 604,800,000 ms (7 days)                                           | `docs/consensus-profile-v1.md` (exact V1 maturity)      |
-| Compiled 32-round dispute schedule, derived minimum maturity | 39,600,000 ms (11 h)                                              | `docs/consensus-profile-v1.md`                          |
-| Execution reserve                                            | ≥ 20% below measured protocol limits                              | `docs/consensus-profile-v1.md` §10; `GOAL_SPEC.md` §3.3 |
-| Maturity fit                                                 | complete worst-case correction path ≤ ½ maturity (302,400,000 ms) | `GOAL_SPEC.md` §3.3                                     |
+| Constant                                              | Value                                                             | Source                                                  |
+| ----------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------- |
+| Canonical V1 block maturity                           | 604,800,000 ms (7 days)                                           | `docs/consensus-profile-v1.md` (exact V1 maturity)      |
+| Execution-dispute case duration D_case, public timing | 210,480,000 ms (58.5 h); minimum maturity 2 D_case + 1            | `onchain/aiken/lib/midgard/validation-dispute-v1.ak`    |
+| Execution reserve                                     | ≥ 20% below measured protocol limits                              | `docs/consensus-profile-v1.md` §10; `GOAL_SPEC.md` §3.3 |
+| Maturity fit                                          | complete worst-case correction path ≤ ½ maturity (302,400,000 ms) | `GOAL_SPEC.md` §3.3                                     |
 
-The compiled dispute schedule (11 h) fits half maturity (84 h) with a 7.6×
-margin before DA fetch/construction/confirmation overhead; W04/C74 must prove
-the complete measured path still fits.
+An execution-dispute case opens by half maturity (84 h) and its game lasts at
+most D_case (58.5 h), so a profile that installs the dispute needs maturity of
+at least 2 D_case + 1 = 420,960,001 ms (116.9 h); 7 days holds it with a 1.44×
+margin.
 
 ## 2. Accepted economics
 
@@ -253,10 +254,14 @@ confirmation_depth × 20 s × 2`, which is 2 × 480,000 + 1,200,000 = 2,160,000
   range may be a full maximum range wide; the second range covers clock skew
   and the poll-and-submit block. The testing profiles keep 120 s of slack
   (720,000 − 600,000) and are exempt (owner flag);
-- public profiles only: the latest DA response deadline, the maximum validity
-  range and the dispute schedule end before block maturity (86,400,000 +
-  480,000 + 172,800,000 + 19,800,000 = 279,480,000 < 604,800,000); this rule
-  now counts from the challenge window instead of the attestation timeout.
+- every profile but the two 900 s testing profiles: the challenge window, the
+  maximum validity range and the full response window end before block maturity
+  (86,400,000 + 480,000 + 172,800,000 = 259,680,000 < 604,800,000); this rule
+  counts from the challenge window instead of the attestation timeout;
+- where `validationTraceDispute` is installed: the same sum ends before half
+  maturity, the case open deadline (259,680,000 < 302,400,000), and maturity is
+  at least 2 D_case + 1 (420,960,001 ms on public timing). preprod-public
+  installs the dispute; mainnet and the 900 s testing profiles exclude it.
 
 **Withdrawal-delay amendment.** An unavailable block can be timed out only once
 it is the state-queue head, and its predecessors merge no earlier than their end

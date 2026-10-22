@@ -15,22 +15,6 @@ export type DeploymentProfileName = keyof typeof DEPLOYMENT_PROFILES;
 export type DeploymentProfile =
   (typeof DEPLOYMENT_PROFILES)[DeploymentProfileName];
 
-/**
- * The closed set of profiles whose fraud-provability rests on non-interactive
- * proofs alone: their maturity is shorter than one interactive dispute, so the
- * on-chain `can_open_before_maturity` guard refuses every interactive opening.
- * Twin: `nonInteractiveTesting` in demo/scripts/deployment-profiles.mjs, which
- * holds the same two names. Keep both lists closed and identical; never derive
- * membership from a name suffix, the network or the economics profile.
- */
-const NON_INTERACTIVE_TESTING_PROFILE_NAMES: ReadonlySet<string> = new Set([
-  "preprod-testing",
-  "local-devnet-testing",
-]);
-
-export const isNonInteractiveTestingProfile = (name: string): boolean =>
-  NON_INTERACTIVE_TESTING_PROFILE_NAMES.has(name);
-
 export const requireSelectedDeploymentProfile = (name: string | undefined) => {
   if (name !== SELECTED_DEPLOYMENT_PROFILE.name) {
     throw new Error(
@@ -93,6 +77,87 @@ for (const profile of Object.values(DEPLOYMENT_PROFILES)) {
       );
     }
   }
+}
+
+type DisputeTimingProfile = Readonly<{
+  timing: Readonly<{
+    block_maturity_ms: number;
+    max_validity_range_ms: number;
+    da_challenge_window_ms: number;
+    da_full_response_window_ms: number;
+    dispute_side_clock_ms: number;
+    dispute_max_validity_range_ms: number;
+    dispute_resolution_allowance_ms: number;
+  }>;
+  limits: Readonly<{ max_bisection_rounds: number }>;
+  excluded_fraud_proof_categories: readonly string[];
+}>;
+
+/**
+ * D_case of the Plutus execution dispute (validationTraceDispute, 00000006),
+ * as onchain/aiken/lib/midgard/validation-dispute-v1.ak derives it: a thread
+ * charges at most 2 * max_bisection_rounds + 3 moves
+ * (`max_thread_charged_moves`), and D_case = 2 C + 2 * moves * L_d + R
+ * (`max_dispute_duration_milliseconds`). Twin of
+ * `validationDisputeCaseDurationMs` in demo/scripts/deployment-profile-budgets.mjs.
+ */
+export const validationDisputeCaseDurationMs = ({
+  timing,
+  limits,
+}: DisputeTimingProfile): number =>
+  2 * timing.dispute_side_clock_ms +
+  2 *
+    (2 * limits.max_bisection_rounds + 3) *
+    timing.dispute_max_validity_range_ms +
+  timing.dispute_resolution_allowance_ms;
+
+/**
+ * The least block maturity that leaves a case its post-game allowance
+ * P = M - M / 2 - D_case > 0 (validation-case-v1.ak): 2 D_case + 1.
+ */
+export const minValidationDisputeMaturityMs = (
+  profile: DisputeTimingProfile,
+): number => 2 * validationDisputeCaseDurationMs(profile) + 1;
+
+/** Whether the profile's catalogue carries the execution dispute. */
+export const validationTraceDisputeInstalled = (
+  profile: Pick<DisputeTimingProfile, "excluded_fraud_proof_categories">,
+): boolean =>
+  !profile.excluded_fraud_proof_categories.includes("validationTraceDispute");
+
+/**
+ * Fail-closed load-time check of a profile that installs the execution
+ * dispute (twin of the profile generator's rule). A case opens by
+ * block_end + M / 2 (`case_can_open`) and may need the latest DA answer
+ * first (challenge window + maximum validity range + full response window,
+ * strictly before that deadline), and maturity must be at least
+ * 2 D_case + 1. A profile that excludes the dispute is not checked here.
+ */
+export const assertValidationDisputeFitsProfile = (
+  name: string,
+  profile: DisputeTimingProfile,
+): void => {
+  if (!validationTraceDisputeInstalled(profile)) return;
+  const { timing } = profile;
+  const latestDaAnswerMs =
+    timing.da_challenge_window_ms +
+    timing.max_validity_range_ms +
+    timing.da_full_response_window_ms;
+  if (latestDaAnswerMs >= Math.floor(timing.block_maturity_ms / 2)) {
+    throw new Error(
+      `Deployment profile ${name} installs validationTraceDispute, but its latest DA answer (${String(latestDaAnswerMs)} ms) does not land before the case open deadline (half of block_maturity_ms=${String(timing.block_maturity_ms)})`,
+    );
+  }
+  const minimumMs = minValidationDisputeMaturityMs(profile);
+  if (timing.block_maturity_ms < minimumMs) {
+    throw new Error(
+      `Deployment profile ${name} installs validationTraceDispute, but block_maturity_ms=${String(timing.block_maturity_ms)} is below 2 D_case + 1 = ${String(minimumMs)}`,
+    );
+  }
+};
+
+for (const profile of Object.values(DEPLOYMENT_PROFILES)) {
+  assertValidationDisputeFitsProfile(profile.name, profile);
 }
 
 /**

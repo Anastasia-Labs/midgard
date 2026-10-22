@@ -39,8 +39,9 @@ export type RetentionWindow = {
   /** Operational headroom: deployed minus required. */
   readonly marginMs: number;
   /**
-   * Measured worst-case validation dispute schedule (opening, every bisection
-   * move, settlement). Recorded for alerting/observability only.
+   * The selected profile's execution-dispute maturity floor, 2 D_case + 1
+   * (`minValidationDisputeMaturityMs`). Recorded for alerting/observability
+   * only.
    */
   readonly measuredValidationDisputeScheduleMs: number;
 };

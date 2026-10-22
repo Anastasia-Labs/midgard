@@ -41,7 +41,9 @@ import {
   minimumDaResponseBudgetMs,
   minimumPublicEventWaitMs,
   minimumPublicOpenAfterApplyMarginMs,
+  minimumValidationDisputeMaturityMs,
   specDaBondWithdrawDelayFloorMs,
+  validationTraceDisputeInstalled,
 } from "./deployment-profile-budgets.mjs";
 import { aikenBinary } from "../../scripts/lib/aiken.mjs";
 export {
@@ -252,18 +254,9 @@ export const validateProfile = (profile, name) => {
   validateAllowLists(profile.allow_lists, name);
   validateExcludedFraudProofCategories(profile.excluded_fraud_proof_categories);
   const timing = profile.timing;
-  const maturity = BigInt(timing.block_maturity_ms);
-  const disputeDuration =
-    (2n * BigInt(profile.limits.max_bisection_rounds) + 2n) *
-    BigInt(timing.dispute_response_window_ms);
+  // The 900 s live testing profiles: not fault-proof security configurations.
   const nonInteractiveTesting =
     name === "preprod-testing" || name === "local-devnet-testing";
-  if (nonInteractiveTesting && disputeDuration <= maturity)
-    throw new Error(
-      `Non-interactive ${name} must exclude interactive dispute opening`,
-    );
-  if (!nonInteractiveTesting && 2n * disputeDuration > maturity)
-    throw new Error("Dispute schedule must fit in half of block maturity");
   if (
     timing.da_attestation_timeout_ms >= timing.block_maturity_ms ||
     timing.da_full_response_window_ms >= timing.block_maturity_ms ||
@@ -303,27 +296,34 @@ export const validateProfile = (profile, name) => {
       `DA response windows must each cover the minimum response budget of ${responseBudget} ms`,
     );
   }
-  // Fraud must stay provable after the latest DA response: the latest open,
-  // landing at the end of the challenge window with the widest validity range
-  // (its response window starts at the upper bound), then the whole full
-  // window, then the whole validation-dispute schedule, all before maturity.
-  // The last term is what can_open_before_maturity (validation-dispute-v1.ak)
-  // requires of a dispute opened when the response lands: opening upper +
-  // max dispute duration <= end_time + maturity. The comparison is strict
-  // because the dispute opening lands after the response it depends on.
-  // Fifteen-minute maturity cannot hold this, so the non-interactive testing
-  // profiles are exempt: they are not fault-proof security configurations.
-  if (
-    !nonInteractiveTesting &&
-    BigInt(timing.da_challenge_window_ms) +
-      BigInt(timing.max_validity_range_ms) +
-      BigInt(timing.da_full_response_window_ms) +
-      disputeDuration >=
-      maturity
-  ) {
+  // The latest DA answer: an open landing at the end of the challenge window
+  // with the widest validity range (its response window starts at the upper
+  // bound), then the whole full window. Fraud must stay provable after it, so
+  // it lands strictly before maturity. Fifteen-minute maturity cannot hold
+  // this, so the 900 s testing profiles are exempt.
+  const latestDaAnswer =
+    timing.da_challenge_window_ms +
+    timing.max_validity_range_ms +
+    timing.da_full_response_window_ms;
+  if (!nonInteractiveTesting && latestDaAnswer >= timing.block_maturity_ms)
     throw new Error(
-      "DA challenge window, maximum validity range, full response window and dispute schedule must end before block maturity",
+      "DA challenge window, maximum validity range and full response window must end before block maturity",
     );
+  // With the execution dispute installed, a case against a block opens by
+  // block_end + M / 2 (case_can_open, validation-dispute-v1.ak) and may need
+  // the DA answer first, which must land strictly before that deadline.
+  // Maturity must also leave the case its post-game allowance (2 D_case + 1).
+  // A profile that cannot hold either excludes validationTraceDispute.
+  if (validationTraceDisputeInstalled(profile)) {
+    if (latestDaAnswer >= Math.floor(timing.block_maturity_ms / 2))
+      throw new Error(
+        "DA challenge window, maximum validity range and full response window must end before the execution-dispute case open deadline (half of block maturity)",
+      );
+    const minimumMaturity = minimumValidationDisputeMaturityMs(profile);
+    if (timing.block_maturity_ms < minimumMaturity)
+      throw new Error(
+        `Block maturity must cover the execution dispute, at least ${minimumMaturity} ms (2 D_case + 1), or the profile must exclude validationTraceDispute`,
+      );
   }
   const threadBudget = maximumTransitionTraceThreadBudgetMs();
   if (!nonInteractiveTesting && threadBudget > timing.block_maturity_ms)

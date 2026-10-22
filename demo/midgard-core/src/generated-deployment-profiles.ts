@@ -260,7 +260,7 @@ export const DEPLOYMENT_PROFILES = {
       fraud_provers: null,
       da_challengers: null,
     },
-    excluded_fraud_proof_categories: [],
+    excluded_fraud_proof_categories: ["validationTraceDispute"],
   },
   "local-devnet-testing": {
     name: "local-devnet-testing",
@@ -337,7 +337,7 @@ export const DEPLOYMENT_PROFILES = {
       fraud_provers: null,
       da_challengers: null,
     },
-    excluded_fraud_proof_categories: [],
+    excluded_fraud_proof_categories: ["validationTraceDispute"],
   },
   "preprod-emulator-testing": {
     name: "preprod-emulator-testing",
@@ -514,9 +514,9 @@ export const DEPLOYMENT_PROFILE_DIGESTS = {
   "preprod-public":
     "34509247c46e8b0701a68e2c5d15836e914dc6acb9a02b83470e8062f5db28c4",
   "preprod-testing":
-    "cb943304680811f0445059d901cd967f011abfdb36623511900c7bea779176d3",
+    "03d291eb9b001aa7c569f9694f6434621f107e916fbf8f91fb8bb3bce2d460ed",
   "local-devnet-testing":
-    "800570446eff7e5194fa6d1cce5602afda21ba1f7563f567ad68ea8a0e3e6ce3",
+    "54c9f7d9c0b7f23ba0001b567997415c4d23e51790c164ff648fe700aa61619f",
   "preprod-emulator-testing":
     "8512bdcd872dff0b54ac7703b61a839ccc4bce69f72f8200ea570063b042b273",
   "preprod-emulator-curated":

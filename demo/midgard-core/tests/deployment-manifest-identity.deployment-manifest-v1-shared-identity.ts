@@ -341,8 +341,9 @@ describe("DeploymentManifestV1 shared identity", () => {
     );
   });
 
-  it("authenticates the exact 52-entry fraud-proof catalogue root and proofs", () => {
+  it("authenticates the selected profile's fraud-proof catalogue root and proofs", () => {
     const catalogue = catalogueFixture();
+    expect(catalogue.categories).not.toHaveProperty("validationTraceDispute");
     expect(
       verifyDeploymentManifestFraudProofCatalogueIdentity(catalogue),
     ).toEqual(catalogue);
@@ -398,15 +399,14 @@ describe("DeploymentManifestV1 shared identity", () => {
       }),
     ).toThrow(/invalidRange\.membershipProofCbor does not prove membership/u);
 
-    const { validationTraceDispute: _missing, ...missingCategory } =
-      catalogue.categories;
+    const { doubleSpend: _missing, ...missingCategory } = catalogue.categories;
     expect(() =>
       verifyDeploymentManifestFraudProofCatalogueIdentity({
         ...catalogue,
         categories:
           missingCategory as DeploymentManifestFraudProofCatalogueIdentity["categories"],
       }),
-    ).toThrow(/validationTraceDispute is required/u);
+    ).toThrow(/doubleSpend is required/u);
 
     expect(() =>
       verifyDeploymentManifestFraudProofCatalogueIdentity({

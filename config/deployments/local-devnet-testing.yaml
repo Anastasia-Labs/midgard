@@ -80,5 +80,10 @@ allow_lists:
   operators: null
   fraud_provers: null
   da_challengers: null
-# Testing deployments carry the whole fraud-proof catalogue.
-excluded_fraud_proof_categories: []
+# Testing deployments carry the whole fraud-proof catalogue except the Plutus
+# execution dispute (validationTraceDispute, 00000006). Its case needs block
+# maturity of at least 2 D_case + 1 = 21,560,001 ms here (D_case = 2 * 3,600,000
+# + 2 * 67 * 20,000 + 900,000 = 10,780,000), far above fifteen minutes, so the
+# 900 s profiles leave it out (ruled 2026-10-13). The emulator profiles carry it.
+excluded_fraud_proof_categories:
+  - validationTraceDispute

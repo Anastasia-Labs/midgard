@@ -146,6 +146,28 @@ export const daBondWithdrawDelayFloorMs = (timing) =>
   ) +
   timing.da_slash_grace_ms;
 
+// The Plutus execution dispute (validationTraceDispute, 00000006), as
+// onchain/aiken/lib/midgard/validation-dispute-v1.ak derives it. A thread
+// charges at most 2 * max_bisection_rounds + 3 moves (max_thread_charged_moves,
+// :22). D_case = 2 C + 2 * moves * L_d + R bounds every thread from its case's
+// started_at to its last move (max_dispute_duration_milliseconds, :27-28). A
+// case opens by block_end + M / 2 (case_can_open, :38-47), which leaves
+// P = M - M / 2 - D_case for the closes and the removal before the block can
+// merge (validation-case-v1.ak). Maturity of at least 2 D_case + 1 keeps P
+// positive. midgard-core deployment-profile.ts holds the same formula.
+export const validationDisputeCaseDurationMs = ({ timing, limits }) =>
+  2 * timing.dispute_side_clock_ms +
+  2 *
+    (2 * limits.max_bisection_rounds + 3) *
+    timing.dispute_max_validity_range_ms +
+  timing.dispute_resolution_allowance_ms;
+
+export const minimumValidationDisputeMaturityMs = (profile) =>
+  2 * validationDisputeCaseDurationMs(profile) + 1;
+
+export const validationTraceDisputeInstalled = (profile) =>
+  !profile.excluded_fraud_proof_categories.includes("validationTraceDispute");
+
 // The longest fault-proof thread: a transition-trace proof against the
 // accepted L2 transaction (kind 0) whose replay takes the most steps. Each step
 // spends the thread output the previous one made, so the steps land one per L1

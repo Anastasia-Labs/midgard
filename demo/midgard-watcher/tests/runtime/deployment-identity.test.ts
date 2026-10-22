@@ -417,10 +417,8 @@ describe("watcher deployment identity", () => {
       categoryId: "00000005",
       scriptHash: fixture.policy.appliedScriptHashes.fraudProofZeroInput,
     });
-    expect(categories.validationTraceDispute).toEqual({
-      categoryId: "00000006",
-      scriptHash: fixture.policy.appliedScriptHashes.validationTraceDispute,
-    });
+    // The 900 s profile excludes the execution dispute (00000006).
+    expect(categories).not.toHaveProperty("validationTraceDispute");
     expect(categories.missingSignature).toEqual({
       categoryId: "0000000e",
       scriptHash: fixture.policy.appliedScriptHashes.fraudProofMissingSignature,
@@ -499,7 +497,7 @@ describe("watcher deployment identity", () => {
       scriptHash:
         fixture.policy.appliedScriptHashes.fraudProofMintItemNonCanonical,
     });
-    expect(Object.keys(categories)).toHaveLength(52);
+    expect(Object.keys(categories)).toHaveLength(51);
 
     fixture.policy = {
       ...fixture.policy,

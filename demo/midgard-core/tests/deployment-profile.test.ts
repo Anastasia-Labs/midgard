@@ -6,14 +6,19 @@ import { canonicalJson } from "../src/canonical-json.js";
 import { DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "../src/deployment-manifest-identity.js";
 import {
   AllowListRefusal,
+  assertValidationDisputeFitsProfile,
   daBondManifestAmounts,
   DEPLOYMENT_PROFILES,
   deploymentAllowList,
   deploymentFraudProofCatalogueCategories,
+  type DeploymentProfile,
+  minValidationDisputeMaturityMs,
   requireAllowListed,
   requireSelectedDeploymentProfile,
   SELECTED_DEPLOYMENT_PROFILE,
   SELECTED_DEPLOYMENT_PROFILE_DIGEST,
+  validationDisputeCaseDurationMs,
+  validationTraceDisputeInstalled,
   verifyDeploymentProfileBinding,
 } from "../src/deployment-profile.js";
 
@@ -82,7 +87,9 @@ describe("deployment profile binding", () => {
 
   it("derives each deployment's fraud-proof catalogue from its exclusions", () => {
     expect(deploymentFraudProofCatalogueCategories()).toEqual(
-      DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
+      DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.filter(
+        (category) => category !== "validationTraceDispute",
+      ),
     );
     const curated = deploymentFraudProofCatalogueCategories(
       DEPLOYMENT_PROFILES["preprod-public"],
@@ -112,18 +119,90 @@ describe("deployment profile binding", () => {
         (category) => !excluded.includes(category),
       ),
     );
-    for (const name of [
-      "preprod-testing",
-      "local-devnet-testing",
-      "preprod-emulator-testing",
-    ] as const)
+    for (const name of ["preprod-testing", "local-devnet-testing"] as const)
       expect(DEPLOYMENT_PROFILES[name].excluded_fraud_proof_categories).toEqual(
-        [],
+        ["validationTraceDispute"],
       );
+    expect(
+      DEPLOYMENT_PROFILES["preprod-emulator-testing"]
+        .excluded_fraud_proof_categories,
+    ).toEqual([]);
     expect(
       DEPLOYMENT_PROFILES["preprod-emulator-curated"]
         .excluded_fraud_proof_categories,
     ).toEqual(excluded);
+  });
+});
+
+describe("execution dispute fit", () => {
+  const withTiming = (
+    timing: Partial<Record<keyof DeploymentProfile["timing"], number>>,
+    excluded: readonly string[] = [],
+  ) => ({
+    ...DEPLOYMENT_PROFILES["preprod-public"],
+    timing: { ...DEPLOYMENT_PROFILES["preprod-public"].timing, ...timing },
+    excluded_fraud_proof_categories: excluded,
+  });
+
+  it("derives 2 D_case + 1 as validation-dispute-v1.ak does", () => {
+    // 2 * 86,400,000 + 2 * (2 * 32 + 3) * 120,000 + 21,600,000
+    expect(
+      validationDisputeCaseDurationMs(DEPLOYMENT_PROFILES["preprod-public"]),
+    ).toBe(210_480_000);
+    expect(
+      minValidationDisputeMaturityMs(DEPLOYMENT_PROFILES["preprod-public"]),
+    ).toBe(420_960_001);
+    // 2 * 3,600,000 + 2 * 67 * 20,000 + 900,000
+    expect(
+      minValidationDisputeMaturityMs(DEPLOYMENT_PROFILES["preprod-testing"]),
+    ).toBe(21_560_001);
+  });
+
+  it("requires the latest DA answer strictly before half maturity, exactly", () => {
+    // 86,400,000 + 480,000 + full < 302,400,000.
+    expect(() =>
+      assertValidationDisputeFitsProfile(
+        "p",
+        withTiming({ da_full_response_window_ms: 215_519_999 }),
+      ),
+    ).not.toThrow();
+    expect(() =>
+      assertValidationDisputeFitsProfile(
+        "p",
+        withTiming({ da_full_response_window_ms: 215_520_000 }),
+      ),
+    ).toThrow(/case open deadline/u);
+  });
+
+  it("requires maturity of at least 2 D_case + 1, exactly", () => {
+    // R = 113,519,999 puts D_case at 302,399,999: the last M = 604,800,000 admits.
+    expect(() =>
+      assertValidationDisputeFitsProfile(
+        "p",
+        withTiming({ dispute_resolution_allowance_ms: 113_519_999 }),
+      ),
+    ).not.toThrow();
+    expect(() =>
+      assertValidationDisputeFitsProfile(
+        "p",
+        withTiming({ dispute_resolution_allowance_ms: 113_520_000 }),
+      ),
+    ).toThrow(/below 2 D_case \+ 1 = 604800001/u);
+  });
+
+  it("loads a 900 s profile that excludes the execution dispute, and refuses it installed", () => {
+    const testing = DEPLOYMENT_PROFILES["preprod-testing"];
+    expect(testing.timing.block_maturity_ms).toBe(900_000);
+    expect(validationTraceDisputeInstalled(testing)).toBe(false);
+    expect(() =>
+      assertValidationDisputeFitsProfile(testing.name, testing),
+    ).not.toThrow();
+    expect(() =>
+      assertValidationDisputeFitsProfile(testing.name, {
+        ...testing,
+        excluded_fraud_proof_categories: [],
+      }),
+    ).toThrow(/installs validationTraceDispute/u);
   });
 });
 

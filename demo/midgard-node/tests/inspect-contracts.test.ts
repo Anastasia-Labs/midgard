@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
+import { deploymentFraudProofCatalogueCategories } from "@al-ft/midgard-core/deployment-profile";
 import { inspectContracts } from "@al-ft/midgard-fault-proofs";
 import {
   createReferenceScriptAuthPolicy,
@@ -98,6 +99,8 @@ describe("inspect-contracts", { timeout: 30_000 }, () => {
     expect(Object.keys(output.registeredCategories)).toEqual([
       ...FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
     ]);
+    const catalogueCategories: readonly string[] =
+      deploymentFraudProofCatalogueCategories();
     for (const category of FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
       expect(
         output.registeredCategories[category].steps.map(
@@ -106,6 +109,20 @@ describe("inspect-contracts", { timeout: 30_000 }, () => {
       ).toEqual(
         contracts[category].steps.map((step) => step.spendingScriptHash),
       );
+      // The catalogue holds only the selected profile's categories; an
+      // excluded one is reported with no catalogue entry.
+      if (!catalogueCategories.includes(category)) {
+        expect(output.fraudProofCatalogue.categories[category]).toEqual({
+          categoryId: null,
+          expectedCategoryId: null,
+          categoryIdMatchesExpected: null,
+          scriptHash: null,
+          scriptHashMatchesFirstStep: null,
+          membershipProofCbor: null,
+          membershipProofMatchesDerived: null,
+        });
+        continue;
+      }
       expect(output.fraudProofCatalogue.categories[category]).toEqual({
         categoryId: FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[category],
         expectedCategoryId: FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[category],

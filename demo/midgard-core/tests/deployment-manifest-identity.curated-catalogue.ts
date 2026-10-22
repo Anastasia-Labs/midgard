@@ -41,9 +41,10 @@ describe("curated deployment fraud-proof catalogue", () => {
         curated,
       ),
     ).toThrow(excludedFamily("unexpected"));
-    // The selected testing profile carries the whole catalogue.
+    // The selected 900 s testing profile excludes the execution dispute,
+    // which the public catalogue carries.
     expect(() =>
       verifyDeploymentManifestFraudProofCatalogueIdentity(curatedCatalogue),
-    ).toThrow(excludedFamily("required"));
+    ).toThrow(/\.validationTraceDispute is unexpected/u);
   });
 });
