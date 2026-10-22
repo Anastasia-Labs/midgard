@@ -30,9 +30,8 @@ export const WATCHER_OPERATIONS_READINESS_REASONS = Object.freeze([
    * `<category>/<headerHash>`. Held, never run again, the process up; clears
    * once its header leaves the finalized queue. */
   "fault_proof_start_deadline_passed",
-  /** Startup could not read a fault-proof objective's workflow directory (a
-   * symlinked path, a sequence gap a partial delete left, a foreign
-   * execution, an I/O error); it is listed in
+  /** Startup could not read a fault-proof objective's workflow rows (a
+   * corrupt row, a foreign execution, a storage error); it is listed in
    * `supervisor.journalDecisionMissing` with this `readiness` and the detail
    * `<category>/<headerHash>: <failure>`. Held, never run again, the process
    * up; clears once its header leaves the finalized queue, which forgets its
@@ -45,9 +44,8 @@ export const WATCHER_OPERATIONS_READINESS_REASONS = Object.freeze([
    * active meanwhile. Clears once its attempts' own signed bytes show each
    * one retired past release finality and the reservation is released. */
   "prover_funding_orphaned_reservation",
-  /** A released or final objective's workflow directory could not be
-   * removed (its rows stay and keep their slot under the objective cap), or
-   * a removed directory's tombstone could not be deleted;
+  /** A released or final objective's workflow rows could not be deleted
+   * (its rows stay and keep their slot under the objective cap);
    * `supervisor.objectiveCleanupFailures` lists each with its failure. Every
    * admission retries; clears once the removal succeeds. */
   "fault_proof_objective_cleanup_failed",

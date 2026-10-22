@@ -26,8 +26,9 @@ export type WatcherProofObjectiveCleanup = Readonly<{
   /**
    * Forgets an objective no longer driven, with its workflow rows once no
    * job of it is queued or active: a final completion's always, decisions
-   * included; a released one's unless it holds a signed attempt, which the
-   * funding sweep reads, or cannot be read for a refusal. A departed objective's header has left the
+   * included; a released one's unless it holds a signed attempt, whose rows
+   * the funding settle deletes once the attempt is retired, or cannot be
+   * read for a refusal. A departed objective's header has left the
    * finalized queue; any other waits for an observation that drops it.
    */
   forget(
@@ -47,11 +48,12 @@ export type WatcherProofObjectiveCleanup = Readonly<{
  * forgets its rows in watcher-journals.sqlite. A crash before the delete
  * leaves both whole, so the next start settles them again; one after it
  * leaves rows whose execution is gone, which the next start forgets. An
- * objective whose execution a refusal keeps from being read (a sequence gap,
- * a foreign execution) is forgotten with its workflow rows left in place, as
- * a released one with a signed attempt is: what they hold is never trusted
- * or deleted. A removal that fails on a storage error is named and retried;
- * it never fails the caller.
+ * objective whose execution a refusal keeps from being read (a corrupt row,
+ * a foreign execution) is forgotten with its workflow rows left in place:
+ * what they hold is never trusted or deleted. A released one with a signed
+ * attempt is forgotten with its rows kept too; the funding settle deletes
+ * them with the attempt's funding. A removal that fails on a storage error
+ * is named and retried; it never fails the caller.
  */
 export const createWatcherProofObjectiveCleanup = (input: {
   readonly workflowJournal: WatcherWorkflowJournal;
@@ -63,7 +65,7 @@ export const createWatcherProofObjectiveCleanup = (input: {
   /** Told after the objective's workflow rows are deleted. */
   readonly onRemoved?: (objective: WatcherProofObjective) => void;
   /** Told after the objective is forgotten with its workflow rows kept: its
-   * signed attempt's funding is the settle sweep's. */
+   * signed attempt's funding and those rows are the settle sweep's. */
   readonly onUnattended?: (objective: WatcherProofObjective) => void;
 }): WatcherProofObjectiveCleanup => {
   type Entry = {

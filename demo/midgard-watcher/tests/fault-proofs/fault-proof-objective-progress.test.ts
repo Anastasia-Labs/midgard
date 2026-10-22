@@ -620,7 +620,7 @@ describe("proof objective progress with durable funding and journals", () => {
     await test.idle(supervisor);
     expectOpen(supervisor);
     // Its header left the finalized queue: nothing drives it again, so its
-    // row, its workflow directory, its L1 history pin and its unfinished
+    // row, its workflow rows, its L1 history pin and its unfinished
     // count go.
     await test.request(supervisor, 4, test.fixture.fresh, false).accepted;
     await test.idle(supervisor);

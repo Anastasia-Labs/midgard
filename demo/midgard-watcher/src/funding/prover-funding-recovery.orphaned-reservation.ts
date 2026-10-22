@@ -233,11 +233,12 @@ export const createWatcherOrphanedReservations = (input: {
   return Object.freeze({
     /**
      * Settles orphans the sweep found once every attempt is retired past
-     * release finality, within the pass's L1 reads. Returns a hold
-     * for each one left.
+     * release finality, within the pass's L1 reads, each with the workflow
+     * rows `workflows` names for it. Returns a hold for each one left.
      */
     sweep: async (
       orphans: readonly WatcherProverFundingReservationRecord[],
+      workflows: ReadonlyMap<string, string> = new Map(),
     ): Promise<readonly WatcherDecisionHold[]> => {
       const at = now();
       const dueIds = new Set(
@@ -268,6 +269,9 @@ export const createWatcherOrphanedReservations = (input: {
             (await input.store.settleOrphanedReservation?.({
               orphan: record,
               retirements: reading.retirements,
+              ...(workflows.has(record.reservationId)
+                ? { workflowId: workflows.get(record.reservationId)! }
+                : {}),
             })) === true
           ) {
             schedule.forget(record.reservationId);

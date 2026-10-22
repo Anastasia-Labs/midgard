@@ -14,10 +14,10 @@ import {
   WATCHER_JOURNAL_TABLES,
 } from "../../src/fault-proofs/watcher-journal-schema.js";
 
-/** The journal modules and every module they import: every commit's rows,
- * MACs and digests come from these alone, so a restart recomputes exactly
- * what was written. The host reads allowed open the journal's directory; no
- * row reads the host. Workflow directories are removed outside these modules
+/** The journal modules and every module they import: every commit's rows
+ * and MACs come from these alone, so a restart recomputes exactly what was
+ * written. The host reads allowed open the journal's directory; no row reads
+ * the host. Workflow rows are deleted outside these modules
  * (fault-proof-objective-cleanup.ts). */
 const LINTED = lintDeterminismModules({
   root: fileURLToPath(new URL("../..", import.meta.url)),

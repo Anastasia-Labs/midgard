@@ -45,12 +45,11 @@ export type WatcherDecisionHold =
  *   fixed by its header, passed before it signed any attempt, so it can
  *   never start. Its detail is `<category>/<headerHash>`.
  * - `fault_proof_objective_unreadable`: startup could not read the
- *   objective's workflow directory (a symlinked path, a sequence gap a
- *   partial delete left, a foreign execution, an I/O error). Its detail is
- *   `<category>/<headerHash>: <failure>`. Once its header leaves the
- *   finalized queue its rows are forgotten: with the directory when the row
- *   was marked final; otherwise the directory is read again and left in
- *   place if a refusal still keeps it from being read.
+ *   objective's workflow rows (a corrupt row, a foreign execution, a storage
+ *   error). Its detail is `<category>/<headerHash>: <failure>`. Once its
+ *   header leaves the finalized queue its journal rows are forgotten: with
+ *   its workflow rows when the row was marked final; otherwise those are read
+ *   again and left in place if a refusal still keeps them from being read.
  */
 export type WatcherObjectiveHoldReadiness =
   | "fault_proof_start_deadline_passed"

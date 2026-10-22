@@ -662,15 +662,14 @@ fault-proof execution holds and the L1 follower's reasons are listed by hand
   read). The watcher stays up and unready under it; the detail names the
   stage and the error. Fix the cause, then restart the watcher.
 - `fault_proof_objective_unreadable`: at startup an objective's workflow
-  journal could not be read (a removal interrupted part way, a symlink, a
-  corrupt journal). The objective is held, never run; clears once its header
+  journal rows in `watcher.sqlite` could not be read (a corrupt row, a
+  storage error). The objective is held, never run; clears once its header
   leaves the finalized queue, which forgets its rows. Report it with the
   detail.
 - `fault_proof_objective_cleanup_failed`: a released or final objective's
-  workflow directory, or a removal's tombstone under
-  `<journal root>/fault-proofs/.removing`, could not be removed;
-  `supervisor.objectiveCleanupFailures` names each. Every admission retries;
-  fix the permissions or disk and wait.
+  workflow rows could not be deleted (a storage error or a lock held past
+  the busy timeout); `supervisor.objectiveCleanupFailures` names each. Every
+  admission retries; fix the disk or the other writer and wait.
 - `fault_proof_l1_refused:store_inconsistent`: the follower's stored facts
   contradict one another (two unit histories place one transaction at
   different points). The objective is held; report it with the detail.

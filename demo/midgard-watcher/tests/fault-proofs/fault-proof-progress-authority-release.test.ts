@@ -243,19 +243,21 @@ describe("proof progress authority removal failure", () => {
   }, 30_000);
 });
 
-// A restart over workflow rows an earlier process left unreadable starts,
-// names what it holds, and settles it once the header leaves the finalized
-// queue: no exit, no operator action.
+// A restart over workflow rows the disk left unreadable starts, names what
+// it holds, and settles it once the header leaves the finalized queue: no
+// exit, no operator action.
 describe("proof progress authority restart over unreadable workflow rows", () => {
-  /** Deletes the first workflow row of the objective's execution, then
-   * reopens the store and restarts the authority over it. */
-  const removeFirstRow = async (harness: Awaited<ReturnType<typeof setup>>) => {
+  /** Truncates the body of the objective's first workflow row, as disk
+   * corruption could, then reopens the store and restarts the authority. */
+  const corruptFirstRow = async (
+    harness: Awaited<ReturnType<typeof setup>>,
+  ) => {
     expect(harness.workflowRows()).toBeGreaterThan(1);
     const raw = harness.store();
     try {
       raw
         .prepare(
-          "DELETE FROM watcher_workflow_journal_v1 WHERE header_hash = ? AND sequence = 0",
+          "UPDATE watcher_workflow_journal_v1 SET body = substr(body, 1, 16) WHERE header_hash = ? AND sequence = 0",
         )
         .run(harness.objective.headerHash);
     } finally {
@@ -265,11 +267,11 @@ describe("proof progress authority restart over unreadable workflow rows", () =>
     harness.restart();
   };
 
-  it("holds an open objective over a partly removed execution by name, then forgets its rows once its header leaves", async () => {
+  it("holds an open objective over a corrupt execution by name, then forgets its rows once its header leaves", async () => {
     const harness = await setup(true);
     const { objective, rows, workflowRows, pinned, admit } = harness;
     await admit(1, true);
-    await removeFirstRow(harness);
+    await corruptFirstRow(harness);
     // Startup does not fail: the objective is held by name and pinned.
     await expect(admit(2, true)).resolves.toEqual([]);
     const [hold] = harness.authority.decisionHolds();
@@ -298,7 +300,7 @@ describe("proof progress authority restart over unreadable workflow rows", () =>
     expect(harness.authority.decisionHolds()).toEqual([]);
   });
 
-  it("holds a completion marked final over a partly removed execution by name, then deletes its workflow rows once its header leaves", async () => {
+  it("holds a completion marked final over a corrupt execution by name, then deletes its workflow rows once its header leaves", async () => {
     const harness = await setup(true);
     const { objective, database, rows, workflowRows, pinned, admit } = harness;
     // The row an earlier process marked final before the rows broke.
@@ -323,7 +325,7 @@ describe("proof progress authority restart over unreadable workflow rows", () =>
         },
       }),
     );
-    await removeFirstRow(harness);
+    await corruptFirstRow(harness);
     await expect(admit(1, true)).resolves.toEqual([]);
     expect(harness.authority.decisionHolds()).toMatchObject([
       { ...objective, readiness: "fault_proof_objective_unreadable" },

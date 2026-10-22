@@ -17,7 +17,8 @@ import type {
  * Store operations that reclaim a reservation's funding. An unused one
  * returns its inputs to the wallet. One whose workflow will never drive it
  * again is settled, in one revision-checked transaction that
- * leaves it released, with nothing leased and no signed attempt of its own.
+ * leaves it released, with nothing leased and no signed attempt of its own,
+ * and deletes the workflow rows of its forgotten objective's execution.
  */
 export const createProverFundingReclaimOperations = (deps: {
   readonly database: DatabaseSync;
@@ -37,6 +38,7 @@ export const createProverFundingReclaimOperations = (deps: {
     reservationId: string,
   ) => readonly SupersededAttempt[];
   readonly hasSignedHistory: (reservationId: string) => boolean;
+  readonly forgetWorkflow: (workflowId: string) => void;
 }): Pick<
   Required<WatcherProverFundingReservationStore>,
   "releaseUnused" | "settleOrphanedReservation"
@@ -101,7 +103,11 @@ export const createProverFundingReclaimOperations = (deps: {
   };
   return Object.freeze({
     releaseUnused: clearUnused,
-    settleOrphanedReservation: async ({ orphan: snapshot, retirements }) =>
+    settleOrphanedReservation: async ({
+      orphan: snapshot,
+      retirements,
+      workflowId,
+    }) =>
       deps.transaction(() => {
         const orphan = currentOrphan(snapshot);
         if (orphan === null) return false;
@@ -135,6 +141,7 @@ export const createProverFundingReclaimOperations = (deps: {
         )
           return false;
         settle(orphan);
+        if (workflowId !== undefined) deps.forgetWorkflow(workflowId);
         deps.rebuildLeases();
         return true;
       }),

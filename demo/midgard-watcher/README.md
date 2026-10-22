@@ -137,13 +137,14 @@ lets the next decision pass dispatch it again; the reason clears then. A journal
 that cannot be used, or a rollback key the journals were not written under, is
 a configuration error: the watcher exits before the operations server binds.
 An objective that is released (its header left the finalized state queue)
-or whose completion is final is cleaned up in process: the watcher removes its
-workflow directory (`fault-proofs/<category>/<header>` in the workflow journal
-directory, refusing one that resolves through a symlink) and then forgets its
-rows, once no job of the objective is queued, running or awaiting a retry in
-this process. A final completion is cleaned up once an observation no longer
-queues its header. A released objective that holds a signed attempt keeps its
-directory, which the funding sweep reads. Queue rows a previous process left
+or whose completion is final is cleaned up in process: the watcher deletes its
+workflow rows in `watcher.sqlite` and then forgets its journal rows, once no
+job of the objective is queued, running or awaiting a retry in this process. A
+final completion is cleaned up once an observation no longer queues its
+header. A released objective that holds a signed attempt keeps its workflow
+rows: the funding sweep holds that attempt's reservation until the attempt is
+retired on L1, then releases it and deletes those rows in the same
+transaction. Queue rows a previous process left
 queued or active do not defer the cleanup, and a row a crash left with no
 execution is forgotten once its header leaves the queue. A removal that fails
 keeps the rows, is retried by every admission, and is listed in
@@ -167,7 +168,7 @@ reports `journal_decision_missing`, and `supervisor.journalDecisionMissing` in
 - A funding reservation whose decision the new journals do not hold stays
   reserved: it is never run or reclaimed, and its inputs stay leased.
 
-Retention handles the rest. Workflow directories, follower pins of objectives
+Retention handles the rest. Workflow rows, follower pins of objectives
 that are never admitted again, and the leases of those reservations stay in
 place. The moved-aside file is never read again.
 

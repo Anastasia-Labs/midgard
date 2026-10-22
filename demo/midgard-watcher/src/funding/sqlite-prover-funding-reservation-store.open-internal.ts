@@ -906,6 +906,7 @@ export const openInternal = async (
       recordedSubmissions,
       abandonmentsOf,
       hasSignedHistory,
+      forgetWorkflow: journal.forgetWorkflow,
     }),
     reserve: async (plan, expectedIdleRevision) => {
       assertPlan(plan);

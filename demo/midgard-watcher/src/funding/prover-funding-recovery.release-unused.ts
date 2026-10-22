@@ -30,9 +30,14 @@ const signedReservation = async (
  * is. With `orphans`, signed funding nothing drives (no workflow journal
  * names it, or its objective was forgotten when its header left the queue)
  * is released once each of its attempts is retired past release finality,
- * read from its own bytes, and held until then
- * (prover_funding_orphaned_reservation); the holds are returned. With `decisionMissingOnly`, unsigned reservations
- * are left alone: that re-check runs beside live dispatch, which owns them.
+ * read from its own bytes, with a forgotten objective's workflow rows, and
+ * held until then (prover_funding_orphaned_reservation); the holds are
+ * returned. A header that returns between this check and the settle has its
+ * old execution's rows deleted under it: that run's next append is refused
+ * as a concurrent write, and its job is retried from a fresh execution, with
+ * every attempt of the old one already retired. With `decisionMissingOnly`,
+ * unsigned reservations are left alone: that re-check runs beside live
+ * dispatch, which owns them.
  */
 export const releaseUnusedWatcherProverFundingReservations = async (input: {
   readonly journalRoot: string;
@@ -76,6 +81,9 @@ export const releaseUnusedWatcherProverFundingReservations = async (input: {
   });
   const holds: ReservationHold[] = [];
   const orphaned: WatcherProverFundingReservationRecord[] = [];
+  // The execution of each orphan whose objective was forgotten: its rows go
+  // when the orphan settles.
+  const workflows = new Map<string, string>();
   for (const record of records) {
     const matches = saved.filter(
       ({ decision }) => decision.decisionDigest === record.decisionDigest,
@@ -105,13 +113,19 @@ export const releaseUnusedWatcherProverFundingReservations = async (input: {
     // A signed reservation is its run's to settle while its objective is
     // recorded; with no run or no objective left, it is orphaned.
     if (signed) {
-      if (!submitted || !watcherProofObjectiveRecorded(journals, decision))
+      if (!submitted) orphaned.push(record);
+      else if (!watcherProofObjectiveRecorded(journals, decision)) {
         orphaned.push(record);
+        workflows.set(record.reservationId, entries[0]!.workflowId);
+      }
     } else if (!submitted) await input.store.releaseUnused(record);
   }
   if (orphaned.length !== 0 && input.orphans !== undefined)
     holds.push(
-      ...((await input.orphans.sweep(orphaned)) as readonly ReservationHold[]),
+      ...((await input.orphans.sweep(
+        orphaned,
+        workflows,
+      )) as readonly ReservationHold[]),
     );
   return Object.freeze(holds);
 };

@@ -158,6 +158,9 @@ export type WatcherProverFundingReservationStore = Readonly<{
       transactionHash: string;
       retirement: unknown;
     }>[];
+    /** The execution of a forgotten objective that signed the orphan's
+     * attempts: its workflow rows are deleted in the same transaction. */
+    readonly workflowId?: string;
   }): Promise<boolean>;
   reserve(
     plan: WatcherProverFundingReservationPlan,

@@ -2,7 +2,9 @@ import { supersededAttemptReadSchedule } from "@al-ft/midgard-fault-proofs";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.js";
+import { openWatcherProofObjective } from "../../src/fault-proofs/fault-proof-objective-table.js";
 import { createWatcherFaultProofProgressAuthority } from "../../src/fault-proofs/fault-proof-progress-authority.js";
+import { openWatcherJournalDatabase } from "../../src/fault-proofs/watcher-journal-database.js";
 import { WATCHER_PROVER_FUNDING_ORPHANED_RESERVATION } from "../../src/funding/prover-funding-recovery.orphaned-reservation.js";
 import {
   cleanupFundingRecoveryFixtures,
@@ -82,6 +84,7 @@ const departed = async (swept: boolean) => {
     factory,
     sweeps,
     funding,
+    admit,
     retire: () => {
       clock += 60_000;
       fixture.chain.mockImplementation(async (txHash) =>
@@ -111,6 +114,10 @@ it("holds the funding of an objective whose header left the queue with a signed 
   });
   expect(await fixture.store.readReservedOutRefs({})).toEqual([]);
   expect(factory.decisionHolds()).toEqual([]);
+  // The forgotten objective's workflow rows went with the settle.
+  expect(fixture.workflowJournal.readExecution(fixture.objective)).toBe(
+    undefined,
+  );
 });
 
 it("settles that funding at the next start once the attempt is retired, when the process stopped before the departure's sweep", async () => {
@@ -123,4 +130,27 @@ it("settles that funding at the next start once the attempt is retired, when the
     activeInputs: [],
   });
   expect(await fixture.store.readReservedOutRefs({})).toEqual([]);
+  expect(fixture.workflowJournal.readExecution(fixture.objective)).toBe(
+    undefined,
+  );
+});
+
+it("leaves the funding and the workflow rows to the objective's run when its header returned before the sweep", async () => {
+  const { fixture, funding, admit, retire } = await departed(false);
+  // The header is queued again and its job registered, which records the
+  // objective's row before any sweep runs.
+  await admit(3, true);
+  openWatcherJournalDatabase({
+    journalRoot: fixture.journalRoot,
+    authenticationKey: TEST_JOURNAL_KEY,
+  }).transaction((tx) => openWatcherProofObjective(tx, fixture.objective));
+  retire();
+  const { factory } = orphanReadingFactory(fixture);
+  await factory.releaseUnused();
+  expect(await funding()).toMatchObject({ state: "active" });
+  expect(
+    fixture.workflowJournal
+      .readExecution(fixture.objective)
+      ?.entries.some(({ event }) => event.kind === "submission_intent"),
+  ).toBe(true);
 });

@@ -78,6 +78,9 @@ export type WatcherWorkflowJournal = Readonly<{
   readWorkflowIds: (limit: number) => readonly string[];
   /** Deletes the objective's rows. Idempotent. */
   forgetObjective: (objective: WatcherProofObjective) => void;
+  /** Deletes one execution's rows; inside the caller's transaction, so they
+   * go with the funding change that settles them. Idempotent. */
+  forgetWorkflow: (workflowId: string) => void;
 }>;
 
 export const createWatcherWorkflowJournal = (
@@ -109,6 +112,9 @@ export const createWatcherWorkflowJournal = (
     SELECT DISTINCT workflow_id FROM watcher_workflow_journal_v1
     ORDER BY workflow_id ASC
     LIMIT ?
+  `);
+  const deleteWorkflow = database.prepare(`
+    DELETE FROM watcher_workflow_journal_v1 WHERE workflow_id = ?
   `);
   const deleteObjective = database.prepare(`
     DELETE FROM watcher_workflow_journal_v1
@@ -266,6 +272,10 @@ export const createWatcherWorkflowJournal = (
     forgetObjective: (objective) => {
       deleteObjective.run(objective.category, objective.headerHash);
       cache.clear();
+    },
+    forgetWorkflow: (workflowId) => {
+      deleteWorkflow.run(workflowId);
+      cache.delete(workflowId);
     },
   });
 };

@@ -110,4 +110,5 @@ export const currentWorkflowJournal = (
     readExecution: (objective) => journal().readExecution(objective),
     readWorkflowIds: (limit) => journal().readWorkflowIds(limit),
     forgetObjective: (objective) => journal().forgetObjective(objective),
+    forgetWorkflow: (workflowId) => journal().forgetWorkflow(workflowId),
   });
