@@ -47,8 +47,6 @@ describe("an observe-and-prepare watcher with an unfunded prover wallet", () => 
   it("prepares the fault, pages, and stays ready without reading the wallet", async () => {
     // A fresh objective (no signed attempt) inside its safe-start window.
     const fixture = await setupFundingRecoveryFixture(
-      false,
-      false,
       true,
       false,
       false,

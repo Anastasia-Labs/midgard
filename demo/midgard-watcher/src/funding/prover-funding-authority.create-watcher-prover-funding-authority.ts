@@ -1,8 +1,6 @@
-import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   assertWorkflowActuationPermitIdentity,
   createWorkflowFundingReservationPermit,
-  parseWorkflowFundingPreparedTransition,
   type WorkflowActuationPermit,
   type WorkflowAdapterRunner,
   type WorkflowFundingReservationPort,
@@ -110,8 +108,7 @@ export const createWatcherProverFundingAuthority = async (input: {
       plan.reservationId,
       existing !== undefined,
     );
-  // Released reservations cannot spend; authenticated reobservation can reopen
-  // provisional completion before its terminal anchor.
+  // Released reservations cannot spend.
   if (existing?.state !== "released" && !reconciliationOnly)
     await input.store.reserve(plan);
 
@@ -119,12 +116,15 @@ export const createWatcherProverFundingAuthority = async (input: {
   const load = async () =>
     await readRecord({ store: input.store, ...reserved });
   input.onReserved?.(await load());
+  const commitsJournal = input.store.commitsJournal?.bind(input.store);
   const port: WorkflowFundingReservationPort = Object.freeze({
+    ...(commitsJournal === undefined ? {} : { commitsJournal }),
     assertSubmissionAuthority,
     reobserve: async ({
       expectedRevision,
       transactionHash,
       adoption,
+      journal,
     }: Parameters<
       NonNullable<WorkflowFundingReservationPort["reobserve"]>
     >[0]) => {
@@ -193,6 +193,7 @@ export const createWatcherProverFundingAuthority = async (input: {
             transactionHash,
             inputs,
             ...(adoption === undefined ? {} : { adoption }),
+            journal,
           }),
           rollbackGeneration: input.rollbackGeneration,
         });
@@ -224,6 +225,7 @@ export const createWatcherProverFundingAuthority = async (input: {
       expectedRevision,
       transactionHash,
       retirement,
+      journal,
     }: Parameters<
       NonNullable<WorkflowFundingReservationPort["retireLegacyAbandonment"]>
     >[0]) => {
@@ -241,16 +243,13 @@ export const createWatcherProverFundingAuthority = async (input: {
           expectedRevision,
           transactionHash,
           retirement,
+          journal,
         }),
         rollbackGeneration: input.rollbackGeneration,
       });
     },
-    readRecordedSubmissions: async () =>
-      (await input.store.readRecordedSubmissions?.(reserved)) ?? [],
     readLegacyAbandonedTransactions: async () =>
       (await input.store.readLegacyAbandonedTransactions?.(reserved)) ?? [],
-    readAbandonmentHandoff: async () =>
-      await input.store.readAbandonmentHandoff(reserved),
     releaseIdle: async ({ expectedRevision }: { expectedRevision: string }) => {
       assertWorkflowActuationPermitIdentity({
         permit: input.actuationPermit,
@@ -265,27 +264,8 @@ export const createWatcherProverFundingAuthority = async (input: {
         rollbackGeneration: input.rollbackGeneration,
       });
     },
-    acknowledgeAbandonment: async ({
-      expectedRevision,
-      handoff,
-    }: Parameters<
-      WorkflowFundingReservationPort["acknowledgeAbandonment"]
-    >[0]) =>
-      snapshot({
-        plan,
-        record: await input.store.acknowledgeAbandonment({
-          plan,
-          expectedRevision,
-          handoff,
-        }),
-        rollbackGeneration: input.rollbackGeneration,
-      }),
-    readPendingHandoff: async () =>
-      await input.store.readPendingHandoff(reserved),
     readPendingTransition: async () =>
       await input.store.readPendingTransition(reserved),
-    readCompletionHandoff: async () =>
-      await input.store.readCompletionHandoff(reserved),
     load: async () =>
       snapshot({
         plan,
@@ -312,11 +292,7 @@ export const createWatcherProverFundingAuthority = async (input: {
       let current = await load();
       if (current.revision !== expectedRevision)
         throw new Error("prover funding refresh revision changed");
-      if (
-        current.state !== "active" ||
-        current.pendingTransition !== null ||
-        (await input.store.readAbandonmentHandoff(reserved)) !== null
-      )
+      if (current.state !== "active" || current.pendingTransition !== null)
         throw new Error(
           "prover funding cannot refresh an unresolved reservation",
         );
@@ -407,11 +383,13 @@ export const createWatcherProverFundingAuthority = async (input: {
     prepare: async ({
       expectedRevision,
       transition,
-      handoff,
+      attempt,
+      journal,
     }: Parameters<WorkflowFundingReservationPort["prepare"]>[0]) => {
       const record = await input.store.prepareTransition({
         plan,
-        handoff,
+        attempt,
+        journal,
         expectedRevision,
         actionKind: transition.actionKind,
         signedTransactionCborHex: transition.signedTransactionCborHex,
@@ -429,16 +407,14 @@ export const createWatcherProverFundingAuthority = async (input: {
     confirm: async ({
       expectedRevision,
       transactionHash,
+      journal,
     }: Parameters<WorkflowFundingReservationPort["confirm"]>[0]) => {
-      const current = await load();
-      const transitionDigest =
-        current.pendingTransition?.transitionDigest ??
-        current.lastConfirmedTransitionDigest;
-      if (transitionDigest === null) {
+      const transitionDigest = (await load()).pendingTransition
+        ?.transitionDigest;
+      if (transitionDigest === undefined)
         throw new Error(
-          "prover funding confirmation has no recorded transition",
+          "prover funding confirmation has no pending transition",
         );
-      }
       return snapshot({
         plan,
         record: await input.store.confirmTransition({
@@ -446,6 +422,7 @@ export const createWatcherProverFundingAuthority = async (input: {
           expectedRevision,
           transactionHash,
           transitionDigest,
+          journal,
         }),
         rollbackGeneration: input.rollbackGeneration,
       });
@@ -453,43 +430,20 @@ export const createWatcherProverFundingAuthority = async (input: {
     abandon: async ({
       expectedRevision,
       transactionHash,
-      handoff,
+      retirement,
+      journal,
     }: Parameters<WorkflowFundingReservationPort["abandon"]>[0]) => {
-      const current = await load();
-      let transitionDigest: string;
-      if (current.pendingTransition !== null) {
-        if (current.pendingTransition.transactionHash !== transactionHash)
-          throw new Error(
-            "prover funding abandonment changed transaction hash",
-          );
-        transitionDigest = current.pendingTransition.transitionDigest;
-      } else {
-        const saved = await input.store.readAbandonmentHandoff(reserved);
-        if (
-          saved === null ||
-          typeof saved !== "object" ||
-          Array.isArray(saved) ||
-          !("transition" in saved)
-        )
-          throw new Error(
-            "prover funding abandonment lacks its durable signed transaction",
-          );
-        const transition = parseWorkflowFundingPreparedTransition(
-          saved.transition,
-        );
-        if (transition.transactionHash !== transactionHash)
-          throw new Error(
-            "prover funding abandonment changed transaction hash",
-          );
-        transitionDigest = computeDeploymentManifestJsonDigest(transition);
-      }
+      const pending = (await load()).pendingTransition;
+      if (pending === null || pending.transactionHash !== transactionHash)
+        throw new Error("prover funding abandonment changed transaction hash");
       return snapshot({
         plan,
         record: await input.store.abandonPendingTransition({
           plan,
           expectedRevision,
-          transitionDigest,
-          handoff,
+          transitionDigest: pending.transitionDigest,
+          ...(retirement === undefined ? {} : { retirement }),
+          journal,
         }),
         rollbackGeneration: input.rollbackGeneration,
       });
@@ -497,6 +451,7 @@ export const createWatcherProverFundingAuthority = async (input: {
     markConflict: async ({
       expectedRevision,
       code,
+      journal,
     }: Parameters<WorkflowFundingReservationPort["markConflict"]>[0]) =>
       snapshot({
         plan,
@@ -504,16 +459,17 @@ export const createWatcherProverFundingAuthority = async (input: {
           plan,
           expectedRevision,
           code,
+          journal,
         }),
         rollbackGeneration: input.rollbackGeneration,
       }),
     release: async ({
       expectedRevision,
-      handoff,
+      journal,
     }: Parameters<WorkflowFundingReservationPort["release"]>[0]) =>
       snapshot({
         plan,
-        record: await input.store.release({ plan, expectedRevision, handoff }),
+        record: await input.store.release({ plan, expectedRevision, journal }),
         rollbackGeneration: input.rollbackGeneration,
       }),
   });

@@ -60,7 +60,7 @@ const observationAt = (
 
 /** A watcher restarting over one recorded, unfinished objective. */
 const restartWith = async (retention: WatcherProofRetention) => {
-  const fixture = await setupFundingRecoveryFixture(false, false, false);
+  const fixture = await setupFundingRecoveryFixture(false);
   const authority = createWatcherFaultProofProgressAuthority({
     journalRoot: fixture.journalRoot,
     workflowJournal: fixture.workflowJournal,

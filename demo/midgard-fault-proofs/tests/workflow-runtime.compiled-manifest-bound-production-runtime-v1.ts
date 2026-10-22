@@ -452,7 +452,8 @@ describe("compiled manifest-bound production runtime V1", () => {
       ].sort((left, right) => left.outRef.localeCompare(right.outRef)),
     });
     await confirmWorkflowFundingReservationTransaction({
-      journal: runtime.journal,
+      writer: runtime.writer,
+      events: [],
       transactionHash: published.toHash(),
     });
     await expect(wallet.getUtxos()).rejects.toThrow(
@@ -1145,7 +1146,8 @@ describe("compiled manifest-bound production runtime V1", () => {
     );
     await expect(
       reobserveWorkflowFundingReservationTransaction({
-        journal: funding.journal,
+        writer: funding.writer,
+        events: [],
         transactionHash: "aa".repeat(32),
       }),
     ).resolves.toBe(false);
@@ -1155,7 +1157,8 @@ describe("compiled manifest-bound production runtime V1", () => {
     reobserve.mockResolvedValue(undefined);
     await expect(
       reobserveWorkflowFundingReservationTransaction({
-        journal: funding.journal,
+        writer: funding.writer,
+        events: [],
         transactionHash: "aa".repeat(32),
       }),
     ).rejects.toThrow();
@@ -1163,7 +1166,8 @@ describe("compiled manifest-bound production runtime V1", () => {
     reobserve.mockRejectedValue(failure);
     await expect(
       reobserveWorkflowFundingReservationTransaction({
-        journal: funding.journal,
+        writer: funding.writer,
+        events: [],
         transactionHash: "aa".repeat(32),
       }),
     ).rejects.toBe(failure);

@@ -34,7 +34,7 @@ afterEach(async () => {
   await cleanupFundingRecoveryFixtures();
 });
 const setup = async (unsigned = false) => {
-  const fixture = await setupFundingRecoveryFixture(false, false, unsigned);
+  const fixture = await setupFundingRecoveryFixture(unsigned);
   // Every read of the workflow journal, counted.
   const readExecution = vi.fn(fixture.workflowJournal.readExecution);
   const authority = createWatcherFaultProofProgressAuthority({
@@ -336,8 +336,8 @@ describe("supervisor historical progress authority", () => {
         }),
       }),
     ).toEqual([]);
-    await test.fixture.append(test.fixture.handoff.preflight);
-    await test.fixture.append(test.fixture.handoff.submissionIntent);
+    await test.fixture.append(test.fixture.events.preflight);
+    await test.fixture.append(test.fixture.events.submissionIntent);
     const entries = await test.fixture.journal.load(
       test.fixture.initial.workflowId,
     );

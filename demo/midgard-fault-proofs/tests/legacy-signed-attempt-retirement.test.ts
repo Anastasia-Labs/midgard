@@ -67,21 +67,11 @@ it("never holds on a superseded legacy attempt, then certifies the exact old byt
       consumedOutRefs: [],
       producedInputs: [],
     },
-    handoff: {
-      workflowId: "44".repeat(32),
-      identity,
-      preparedArtifactDigest: "66".repeat(32),
-      expectedJournalSequence: 1,
-      submissionIntent: oldIntent,
-      reconciliation: {
-        kind: "reconciled" as const,
-        actionId: oldIntent.actionId,
-        txHash,
-        outcome: "not_found" as const,
-      },
-    },
+    workflowId: "44".repeat(32),
+    intentSequence: 0,
+    actionId: oldIntent.actionId,
   };
-  const retire = vi.fn(async () => {});
+  const retire = vi.fn(async (_hash: string, _retirement: unknown) => {});
   const append = vi.fn(async (_event: FraudProofWorkflowJournalEvent) => {});
   const unknown = vi.fn(async () => ({
     kind: "unknown" as const,
@@ -132,38 +122,30 @@ it("never holds on a superseded legacy attempt, then certifies the exact old byt
       },
     }),
   ).resolves.toBeNull();
-  expect(retire).toHaveBeenCalledOnce();
-  expect(append).toHaveBeenCalledWith(
-    expect.objectContaining({ kind: "signed_attempt_retired", txHash }),
-  );
-  expect(entries.at(-1)?.event).toEqual(replacement);
   if (proof.kind !== "not_found" || proof.retirement === undefined)
     throw new Error("missing proven receipt");
-  // Crash after financial certificate persistence: replay the receipt without re-querying or re-signing.
+  // The retirement and its journal record commit together, in `retire`.
+  expect(retire).toHaveBeenCalledExactlyOnceWith(
+    txHash,
+    expect.objectContaining({ transactionHash: txHash, reason: "expired" }),
+  );
+  expect(append).not.toHaveBeenCalled();
+  expect(entries.at(-1)?.event).toEqual(replacement);
+  // A retired attempt's retirement committed with its journal record: it is
+  // never read, retired or recorded again.
   append.mockClear();
   retire.mockClear();
   unknown.mockClear();
   await expect(
     reconcileLegacyFundingAbandonmentRecords({
-      savedAttempts: [
-        {
-          ...saved,
-          handoff: {
-            ...saved.handoff,
-            reconciliation: {
-              ...saved.handoff.reconciliation,
-              retirement: proof.retirement,
-            },
-          },
-        },
-      ],
+      savedAttempts: [{ ...saved, retirement: proof.retirement }],
       entries,
       append,
       retire,
       reconcile: unknown,
     }),
   ).resolves.toBeNull();
-  expect(append).toHaveBeenCalledOnce();
+  expect(append).not.toHaveBeenCalled();
   expect(retire).not.toHaveBeenCalled();
   expect(unknown).not.toHaveBeenCalled();
 });
@@ -220,19 +202,9 @@ it("returns a superseded attempt that landed within k for adoption, and nothing 
       consumedOutRefs: [],
       producedInputs: [],
     },
-    handoff: {
-      workflowId: "44".repeat(32),
-      identity,
-      preparedArtifactDigest: "66".repeat(32),
-      expectedJournalSequence: 1,
-      submissionIntent: oldIntent,
-      reconciliation: {
-        kind: "reconciled" as const,
-        actionId: oldIntent.actionId,
-        txHash,
-        outcome: "not_found" as const,
-      },
-    },
+    workflowId: "44".repeat(32),
+    intentSequence: 0,
+    actionId: oldIntent.actionId,
   };
   const retire = vi.fn(async () => {});
   const append = vi.fn(async (_event: FraudProofWorkflowJournalEvent) => {});
@@ -304,14 +276,9 @@ const twoLandedAttempts = async (
           consumedOutRefs: [],
           producedInputs: [],
         },
-        handoff: {
-          workflowId: "44".repeat(32),
-          identity,
-          preparedArtifactDigest: "66".repeat(32),
-          expectedJournalSequence: 2 * (number - 1) + 1,
-          submissionIntent: intent,
-          reconciliation,
-        },
+        workflowId: "44".repeat(32),
+        intentSequence: 2 * (number - 1),
+        actionId: intent.actionId,
       },
     };
   };

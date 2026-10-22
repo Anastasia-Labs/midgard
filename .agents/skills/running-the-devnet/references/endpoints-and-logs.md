@@ -686,8 +686,8 @@ fault-proof execution holds and the L1 follower's reasons are listed by hand
   than maturity, so there it is an alarm only.
 - `fault_proof_objective_quarantined`: one objective's run stalled outside
   preflight, or its funding or run met an integrity failure of its own (for
-  example a reconcile that refused its durable transaction, or a stored
-  funding handoff its workflow journal no longer anchors), or its family
+  example a reconcile that refused its durable transaction, or a funding
+  reservation and workflow journal that name different attempts), or its family
   re-classified the admitted fault (`no_fault_detected`, `unprovable_gap`) or
   returned an outcome of no known kind; the detail is
   `<category>/<headerHash>: <cause>`. Only that objective is held: the

@@ -1,4 +1,3 @@
-import "./prover-funding-recovery.interrupted-abandonment.js";
 import "./prover-funding-recovery.registration.js";
 
 import { createHash } from "node:crypto";
@@ -14,7 +13,6 @@ import {
   normalizeJournalJson,
   workflowActuationDecisionDigest,
   WorkflowFundingReservationUnavailableError,
-  type WorkflowFundingSubmissionHandoff,
 } from "@al-ft/midgard-fault-proofs";
 import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
@@ -22,6 +20,7 @@ import { describe, expect, it, vi } from "vitest";
 import { authorizeWatcherProverFundingRecovery } from "../../src/funding/prover-funding-recovery.js";
 import {
   deploymentIdentity,
+  FixtureProcessStop,
   key,
   setupFundingRecoveryFixture as setup,
   walletAddress,
@@ -101,7 +100,7 @@ describe("funding recovery across authenticated observation refresh", () => {
   it.each(["funding", "collateral"] as const)(
     "selects fresh wallet inputs in the same execution after retiring a spent %s input",
     async (role) => {
-      const test = await setup(false, false, false, role === "collateral");
+      const test = await setup(false, role === "collateral");
       test.useUnspentPendingInputs();
       const spent = test.plan.inputs.find((input) => input.role === role)!;
       const admitted = await test.createPermit(test.fresh, "2");
@@ -151,7 +150,7 @@ describe("funding recovery across authenticated observation refresh", () => {
   );
 
   it("releases a cancelled unused reservation after runner exit, preserving its identity for refresh", async () => {
-    const test = await setup(false, false, true);
+    const test = await setup(true);
     test.useUnspentPendingInputs();
     test.original.controller.revoke(
       "target rolled back before first submission",
@@ -182,8 +181,8 @@ describe("funding recovery across authenticated observation refresh", () => {
     expect(await test.records()).toEqual([resumed]);
   });
 
-  it("reclaims crash-before-journal reservations at startup and never steals a signed DB-before-journal handoff", async () => {
-    const unused = await setup(false, false, true);
+  it("reclaims a never-signed reservation at startup and keeps a signed one", async () => {
+    const unused = await setup(true);
     unused.workflowJournal.forgetObjective(unused.objective);
     await unused.restartStore();
     await unused.releaseUnusedAtStartup();
@@ -192,25 +191,15 @@ describe("funding recovery across authenticated observation refresh", () => {
       activeInputs: [],
       revision: "1",
     });
-    const signed = await setup(true);
-    expect(
-      (await signed.journal.load(signed.initial.workflowId)).some(
-        ({ event }) => event.kind === "submission_intent",
-      ),
-    ).toBe(false);
+    const signed = await setup();
     await signed.original.releaseUnused();
     await signed.restartStore();
     await signed.releaseUnusedAtStartup();
     expect(await signed.records()).toEqual([signed.pending]);
-    expect(
-      await signed.store.readPendingHandoff({
-        reservationId: signed.plan.reservationId,
-      }),
-    ).not.toBeNull();
   });
 
   it("scopes runner cleanup to its captured reservation and retains journal-only submission uncertainty", async () => {
-    const test = await setup(false, false, true);
+    const test = await setup(true);
     test.workflowJournal.forgetObjective(test.objective);
     test.walletUtxos.push(
       ...[0, 1, 2, 3].map((outputIndex) => ({
@@ -234,9 +223,9 @@ describe("funding recovery across authenticated observation refresh", () => {
       )!.activeInputs,
     ).toEqual([]);
     await next.releaseUnused();
-    const uncertain = await setup(false, false, true);
-    await uncertain.append(uncertain.handoff.preflight);
-    await uncertain.append(uncertain.handoff.submissionIntent);
+    const uncertain = await setup(true);
+    await uncertain.append(uncertain.events.preflight);
+    await uncertain.append(uncertain.events.submissionIntent);
     await uncertain.original.releaseUnused();
     await uncertain.releaseUnusedAtStartup();
     expect(await uncertain.records()).toEqual([uncertain.pending]);
@@ -336,11 +325,6 @@ describe("funding recovery across authenticated observation refresh", () => {
       activeInputs: [],
       pendingTransition: null,
     });
-    expect(
-      await test.store.readAbandonmentHandoff({
-        reservationId: test.plan.reservationId,
-      }),
-    ).toBeNull();
 
     // The running watcher restricts this same controller after target removal;
     // it does not mint a new funding authority merely to finish reconciliation.
@@ -383,53 +367,6 @@ describe("funding recovery across authenticated observation refresh", () => {
     ).toBe(test.signedTransactionCborHex);
     expect(test.adapter.preflight).not.toHaveBeenCalled();
     expect(test.adapter.submit).not.toHaveBeenCalled();
-  });
-
-  it("yields an interrupted abandonment whose expiry is no longer authenticated during read-only recovery", async () => {
-    const test = await setup();
-    test.useUnspentPendingInputs();
-    test.chain.mockResolvedValue(expiredNotFound(test.transactionHash));
-    const journal = await test.recover();
-    const append = journal.append.bind(journal);
-    vi.spyOn(journal, "append").mockImplementation(async (entry, sequence) => {
-      if (
-        entry.event.kind === "reconciled" &&
-        entry.event.outcome === "not_found"
-      )
-        throw new Error("crash before durable abandonment acknowledgement");
-      await append(entry, sequence);
-    });
-    await expect(test.run(journal)).rejects.toThrow("crash before durable");
-    const retained = await test.records();
-    await test.restartStore();
-    test.chain.mockResolvedValue({
-      kind: "pending",
-      txHash: test.transactionHash,
-    });
-    const controller = createWorkflowActuationPermitController({
-      decision: test.fresh,
-      rollbackGeneration: "2",
-    });
-    controller.restrictToReconciliation("parent recovery owns execution slot");
-    expect(
-      await test.run(
-        test.bind(
-          test.fresh,
-          await test.createPermit(test.fresh, "2", controller),
-        ),
-      ),
-    ).toMatchObject({
-      kind: "pending",
-      reason: expect.stringContaining(
-        "no longer has authenticated replacement evidence: pending",
-      ),
-    });
-    expect(await test.records()).toEqual(retained);
-    expect(
-      await test.store.readAbandonmentHandoff({
-        reservationId: test.plan.reservationId,
-      }),
-    ).not.toBeNull();
   });
 
   it("retains leases for an unknown signed attempt under reconciliation authority", async () => {
@@ -495,215 +432,140 @@ describe("funding recovery across authenticated observation refresh", () => {
       (await test.journal.load(test.initial.workflowId))
         .filter(({ event }) => event.kind === "submission_intent")
         .map(({ event }) => event),
-    ).toEqual([test.handoff.submissionIntent]);
+    ).toEqual([test.events.submissionIntent]);
     expect(await test.records()).toEqual([test.pending]);
     expect(test.adapter.submit).not.toHaveBeenCalled();
     expect(test.adapter.preflight).not.toHaveBeenCalled();
   });
 
-  it.each([true, "after_preflight"] as const)(
-    "restores the exact signed action after interruption at the preparation commit (%s)",
+  it.each(["before", "after"] as const)(
+    "completes once when the process stops %s the release transaction",
     async (boundary) => {
-      const test = await setup(boundary);
-      expect(test.originalEntries.map(({ event }) => event.kind)).toEqual([
-        "started",
-        "prepared",
-        ...(boundary === "after_preflight" ? ["preflight_passed"] : []),
-      ]);
-      const result = await test.run(await test.recover());
-      expect(result).toMatchObject({
-        kind: "pending",
-        workflowId: test.initial.workflowId,
-      });
-      const entries = await test.journal.load(test.initial.workflowId);
-      expect(
-        entries
-          .filter(({ event }) => event.kind === "preflight_passed")
-          .map(({ event }) => event),
-      ).toEqual([test.handoff.preflight]);
-      expect(
-        entries
-          .filter(({ event }) => event.kind === "submission_intent")
-          .map(({ event }) => event),
-      ).toEqual([test.handoff.submissionIntent]);
-      expect(test.adapter.preflight).not.toHaveBeenCalled();
-      expect(test.adapter.submit).not.toHaveBeenCalled();
-      expect(test.adapter.reconcile).toHaveBeenCalledWith(
-        expect.objectContaining({ txHash: test.transactionHash }),
-      );
-      const [record] = await test.records();
-      expect(record).toMatchObject({
-        reservationId: test.plan.reservationId,
-        revision: "2",
-        pendingTransition: null,
-      });
-      await test.restartStore();
+      const test = await setup();
       await test.run(await test.recover());
-      expect(await test.records()).toEqual([record]);
-      expect(test.adapter.reconcile).toHaveBeenCalledTimes(1);
-    },
-  );
-
-  it("finishes the exact terminal after release commits but completion append is interrupted", async () => {
-    const test = await setup();
-    await test.run(await test.recover());
-    // Confirm a second actual signed funding transaction and record the normal
-    // removal lifecycle, so terminal normalization sees both confirmed actions.
-    const funding = (await test.records())[0]!.activeInputs.find(
-      ({ outRef }) => outRef === `${test.transactionHash}#0`,
-    )!;
-    const inputs = CML.TransactionInputList.new();
-    inputs.add(
-      CML.TransactionInput.new(
-        CML.TransactionHash.from_hex(test.transactionHash),
-        0n,
-      ),
-    );
-    const outputs = CML.TransactionOutputList.new();
-    const remaining = BigInt(funding.lovelace) - 1_000_000n;
-    outputs.add(
-      CML.TransactionOutput.new(
-        CML.Address.from_bech32(walletAddress),
-        CML.Value.from_coin(remaining),
-      ),
-    );
-    const body = CML.TransactionBody.new(inputs, outputs, 1_000_000n);
-    const witnesses = CML.TransactionWitnessSet.new();
-    const vkeys = CML.VkeywitnessList.new();
-    vkeys.add(
-      CML.Vkeywitness.new(
-        key.to_public(),
-        key.sign(CML.hash_transaction(body).to_raw_bytes()),
-      ),
-    );
-    witnesses.set_vkeywitnesses(vkeys);
-    const transactionHash = CML.hash_transaction(body).to_hex();
-    const handoff: WorkflowFundingSubmissionHandoff = {
-      ...test.handoff,
-      expectedJournalSequence: (
-        await test.journal.load(test.initial.workflowId)
-      ).length,
-      preflight: {
-        ...test.handoff.preflight,
+      // Confirm a second actual signed funding transaction and record the normal
+      // removal lifecycle, so terminal normalization sees both confirmed actions.
+      const funding = (await test.records())[0]!.activeInputs.find(
+        ({ outRef }) => outRef === `${test.transactionHash}#0`,
+      )!;
+      const inputs = CML.TransactionInputList.new();
+      inputs.add(
+        CML.TransactionInput.new(
+          CML.TransactionHash.from_hex(test.transactionHash),
+          0n,
+        ),
+      );
+      const outputs = CML.TransactionOutputList.new();
+      const remaining = BigInt(funding.lovelace) - 1_000_000n;
+      outputs.add(
+        CML.TransactionOutput.new(
+          CML.Address.from_bech32(walletAddress),
+          CML.Value.from_coin(remaining),
+        ),
+      );
+      const body = CML.TransactionBody.new(inputs, outputs, 1_000_000n);
+      const witnesses = CML.TransactionWitnessSet.new();
+      const vkeys = CML.VkeywitnessList.new();
+      vkeys.add(
+        CML.Vkeywitness.new(
+          key.to_public(),
+          key.sign(CML.hash_transaction(body).to_raw_bytes()),
+        ),
+      );
+      witnesses.set_vkeywitnesses(vkeys);
+      const transactionHash = CML.hash_transaction(body).to_hex();
+      const events = {
+        preflight: {
+          ...test.events.preflight,
+          actionId: "remove",
+          txHash: transactionHash,
+        },
+        submissionIntent: {
+          kind: "submission_intent",
+          actionId: "remove",
+          actionInput: { actionKind: "proof.remove" },
+          attempt: 1,
+          txHash: transactionHash,
+        },
+      } as const;
+      await test.prepareAttempt(
+        {
+          plan: test.plan,
+          expectedRevision: (await test.records())[0]!.revision,
+          actionKind: "proof.remove",
+          transactionHash,
+          signedTransactionCborHex: CML.Transaction.new(
+            body,
+            witnesses,
+            true,
+            undefined,
+          ).to_cbor_hex(),
+          transactionBodySha256: createHash("sha256")
+            .update(body.to_cbor_bytes())
+            .digest("hex"),
+          consumedOutRefs: [funding.outRef],
+          producedInputs: [
+            {
+              outRef: `${transactionHash}#0`,
+              role: "funding",
+              lovelace: remaining.toString(),
+              assets: [],
+            },
+          ],
+        },
+        events,
+      );
+      await test.append({
+        kind: "submitted",
         actionId: "remove",
-        txHash: transactionHash,
-      },
-      submissionIntent: {
-        kind: "submission_intent",
-        actionId: "remove",
-        actionInput: { actionKind: "proof.remove" },
         attempt: 1,
         txHash: transactionHash,
-      },
-    };
-    await test.store.prepareTransition({
-      plan: test.plan,
-      expectedRevision: (await test.records())[0]!.revision,
-      handoff,
-      actionKind: "proof.remove",
-      transactionHash,
-      signedTransactionCborHex: CML.Transaction.new(
-        body,
-        witnesses,
-        true,
-        undefined,
-      ).to_cbor_hex(),
-      transactionBodySha256: createHash("sha256")
-        .update(body.to_cbor_bytes())
-        .digest("hex"),
-      consumedOutRefs: [funding.outRef],
-      producedInputs: [
-        {
-          outRef: `${transactionHash}#0`,
-          role: "funding",
-          lovelace: remaining.toString(),
-          assets: [],
-        },
-      ],
-    });
-    await test.append(handoff.preflight);
-    await test.append(handoff.submissionIntent);
-    await test.append({
-      kind: "submitted",
-      actionId: "remove",
-      attempt: 1,
-      txHash: transactionHash,
-    });
-    await test.run(await test.recover());
-    const terminal = fundingTerminal(
-      test.old.headerHash,
-      test.transactionHash,
-      transactionHash,
-    );
-    vi.mocked(test.adapter.observe).mockResolvedValue({
-      kind: "completed",
-      terminal,
-    });
-    const journal = await test.recover();
-    const append = journal.append.bind(journal);
-    const interrupted = new Error(
-      "interrupted after release before completion append",
-    );
-    vi.spyOn(journal, "append").mockImplementation(async (entry, sequence) => {
-      if (entry.event.kind !== "completed") return append(entry, sequence);
-      expect((await test.records())[0]).toMatchObject({
-        state: "released",
-        activeInputs: [],
       });
-      expect(
-        await test.store.readCompletionHandoff({
-          reservationId: test.plan.reservationId,
-        }),
-      ).toMatchObject({ completion: entry.event });
-      throw interrupted;
-    });
-    await expect(test.run(journal)).rejects.toBe(interrupted);
-    const [released] = await test.records();
-    expect(
-      (await test.journal.load(test.initial.workflowId)).some(
-        ({ event }) => event.kind === "completed",
-      ),
-    ).toBe(false);
-    await test.restartStore();
-    test.terminalVerify.mockClear();
-    vi.mocked(test.adapter.observe)
-      .mockClear()
-      .mockImplementation(async () => {
-        throw new Error("released recovery must use its recorded terminal");
+      await test.run(await test.recover());
+      const terminal = fundingTerminal(
+        test.old.headerHash,
+        test.transactionHash,
+        transactionHash,
+      );
+      vi.mocked(test.adapter.observe).mockResolvedValue({
+        kind: "completed",
+        terminal,
       });
-    test.terminalVerify.mockRejectedValueOnce(
-      new Error("canonical terminal is no longer authenticated"),
-    );
-    expect(await test.run(await test.recover())).toMatchObject({
-      kind: "stalled",
-      reason: expect.stringContaining(
-        "canonical terminal is no longer authenticated",
-      ),
-    });
-    expect(await test.records()).toEqual([released]);
-    expect(
-      (await test.journal.load(test.initial.workflowId)).some(
-        ({ event }) => event.kind === "completed",
-      ),
-    ).toBe(false);
-    test.terminalVerify.mockClear();
-    const result = await test.run(await test.recover());
-    expect(result).toMatchObject({
-      kind: "completed",
-      workflowId: test.initial.workflowId,
-      terminal,
-    });
-    expect(test.terminalVerify).toHaveBeenCalledTimes(1);
-    expect(test.adapter.observe).not.toHaveBeenCalled();
-    expect(test.adapter.preflight).not.toHaveBeenCalled();
-    expect(test.adapter.submit).not.toHaveBeenCalled();
-    expect(await test.records()).toEqual([released]);
-    expect(
-      (await test.journal.load(test.initial.workflowId)).filter(
-        ({ event }) => event.kind === "completed",
-      ),
-    ).toHaveLength(1);
-  });
+      test.stopAt("release", boundary);
+      await expect(test.run(await test.recover())).rejects.toBeInstanceOf(
+        FixtureProcessStop,
+      );
+      const completedEntries = async () =>
+        (await test.journal.load(test.initial.workflowId)).filter(
+          ({ event }) => event.kind === "completed",
+        );
+      // The release and its completion commit together, or neither does.
+      const [stopped] = await test.records();
+      expect(stopped!.state).toBe(boundary === "after" ? "released" : "active");
+      expect(await completedEntries()).toHaveLength(
+        boundary === "after" ? 1 : 0,
+      );
+      await test.restartStore();
+      if (boundary === "after")
+        // The workflow is complete: it is never executed again.
+        await expect(test.recover()).rejects.toThrow(
+          "refuses a new execution over a completed workflow",
+        );
+      else
+        expect(await test.run(await test.recover())).toMatchObject({
+          kind: "completed",
+          workflowId: test.initial.workflowId,
+          terminal,
+        });
+      expect(test.adapter.preflight).not.toHaveBeenCalled();
+      expect(test.adapter.submit).not.toHaveBeenCalled();
+      expect(await test.records()).toMatchObject([
+        { state: "released", activeInputs: [] },
+      ]);
+      expect(await test.store.readReservedOutRefs({})).toEqual([]);
+      expect(await completedEntries()).toHaveLength(1);
+    },
+  );
 
   it("reconciles the original signed init and rotates its durable leases exactly once", async () => {
     const test = await setup();
@@ -753,54 +615,55 @@ describe("funding recovery across authenticated observation refresh", () => {
     ).toHaveLength(1);
   });
 
-  it("survives a crash after SQLite confirmation commits but before the workflow records it", async () => {
-    const test = await setup();
-    const journal = await test.recover();
-    const crash = new Error(
-      "process interrupted before reconciliation journal append",
-    );
-    vi.spyOn(journal, "append").mockImplementationOnce(async (entry) => {
-      expect(entry.event).toEqual({
-        kind: "reconciled",
-        actionId: "init",
-        outcome: "confirmed",
-        txHash: test.transactionHash,
+  it.each(["before", "after"] as const)(
+    "confirms once when the process stops %s the confirmation transaction",
+    async (boundary) => {
+      const test = await setup();
+      test.stopAt("confirmTransition", boundary);
+      await expect(test.run(await test.recover())).rejects.toBeInstanceOf(
+        FixtureProcessStop,
+      );
+      // The confirmation and its journal entries commit together, or
+      // neither does.
+      const confirmations = async () =>
+        (await test.journal.load(test.initial.workflowId)).filter(
+          ({ event }) =>
+            event.kind === "confirmed" ||
+            (event.kind === "reconciled" && event.outcome === "confirmed"),
+        );
+      expect(await confirmations()).toHaveLength(boundary === "after" ? 2 : 0);
+      expect((await test.records())[0]!.pendingTransition === null).toBe(
+        boundary === "after",
+      );
+      await test.restartStore();
+      expect(await test.run(await test.recover())).toMatchObject({
+        kind: "pending",
+        workflowId: test.initial.workflowId,
       });
-      expect((await test.records())[0]).toMatchObject({
-        revision: "2",
+      const [committed] = await test.records();
+      expect(committed).toMatchObject({
+        state: "active",
         pendingTransition: null,
       });
-      throw crash;
-    });
-    await expect(test.run(journal)).rejects.toBe(crash);
-    const [committed] = await test.records();
-    expect(await test.journal.load(test.initial.workflowId)).toEqual(
-      test.originalEntries,
-    );
-    expect(test.adapter.observe).not.toHaveBeenCalled();
-    await test.restartStore();
-    expect(await test.run(await test.recover())).toMatchObject({
-      kind: "pending",
-      workflowId: test.initial.workflowId,
-    });
-    expect(await test.records()).toEqual([committed]);
-    expect(test.adapter.reconcile).toHaveBeenCalledTimes(2);
-    expect(test.adapter.observe).toHaveBeenCalledTimes(1);
-    expect(test.adapter.submit).not.toHaveBeenCalled();
-    const entries = await test.journal.load(test.initial.workflowId);
-    expect(entries.slice(0, test.originalEntries.length)).toEqual(
-      test.originalEntries,
-    );
-    expect(
-      entries.filter(({ event }) => event.kind === "confirmed"),
-    ).toHaveLength(1);
-    expect(
-      entries.filter(({ event }) => event.kind === "submission_intent"),
-    ).toHaveLength(1);
-    expect(test.workflowJournal.readWorkflowIds(10)).toEqual([
-      test.initial.workflowId,
-    ]);
-  });
+      expect(
+        committed!.activeInputs.some(
+          ({ outRef }) => outRef === `${test.transactionHash}#0`,
+        ),
+      ).toBe(true);
+      expect(test.adapter.reconcile).toHaveBeenCalledTimes(
+        boundary === "after" ? 1 : 2,
+      );
+      expect(test.adapter.submit).not.toHaveBeenCalled();
+      expect(await confirmations()).toHaveLength(2);
+      const entries = await test.journal.load(test.initial.workflowId);
+      expect(entries.slice(0, test.originalEntries.length)).toEqual(
+        test.originalEntries,
+      );
+      expect(
+        entries.filter(({ event }) => event.kind === "submission_intent"),
+      ).toHaveLength(1);
+    },
+  );
 
   it("retains unknown submissions and their original signed bytes without another action", async () => {
     const test = await setup();
@@ -935,21 +798,6 @@ describe("funding recovery across authenticated observation refresh", () => {
       },
     ]);
     await expect(test.recover()).rejects.toThrow("prepared artifact differs");
-    expect(await test.records()).toEqual([test.pending]);
-  });
-
-  it("refuses a journal intent inconsistent with the reservation's exact signed transaction", async () => {
-    const test = await setup();
-    await test.rewriteJournalEntries(
-      test.originalEntries.flatMap((entry) =>
-        "txHash" in entry.event
-          ? [{ ...entry, event: { ...entry.event, txHash: "fe".repeat(32) } }]
-          : [],
-      ),
-    );
-    await expect(test.recover()).rejects.toThrow(
-      "funding handoff conflicts with an existing journal action",
-    );
     expect(await test.records()).toEqual([test.pending]);
   });
 

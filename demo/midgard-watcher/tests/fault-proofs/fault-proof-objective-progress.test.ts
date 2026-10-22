@@ -58,6 +58,7 @@ import { waitForFaultProofSupervisorIdle } from "../support/fault-proof-supervis
 import { storelessProofRetention } from "../support/proof-retention.js";
 import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
 import { registerFaultProofResubmissionVisibilityTest } from "./fault-proof-objective-progress.hold-visibility.js";
+import { registerPrepareStopTests } from "./fault-proof-objective-progress.prepare-stop.js";
 const finishControl = vi.hoisted(() => ({
   beforeFinish: async (): Promise<void> => undefined,
   beforeRegister: async (): Promise<void> => undefined,
@@ -146,8 +147,6 @@ export const setup = async (
   withoutSubmissionIntent = false,
 ) => {
   const fixture = await setupFundingRecoveryFixture(
-    false,
-    false,
     withoutSubmissionIntent,
     false,
     false,
@@ -1169,6 +1168,7 @@ describe("proof objective progress with durable funding and journals", () => {
     expect(await test.fixture.records()).toHaveLength(1);
     expect(supervisor.status().journalDecisionMissing).toEqual([]);
   });
+  registerPrepareStopTests(setup);
   registerFaultProofResubmissionVisibilityTest(setup);
   it("does not spin or repeat funding admission for identical pending observations", async () => {
     const test = await setup();

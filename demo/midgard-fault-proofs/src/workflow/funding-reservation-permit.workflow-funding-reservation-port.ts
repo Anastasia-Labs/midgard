@@ -2,11 +2,9 @@ import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 import { type TxSigned, type UTxO } from "@lucid-evolution/lucid";
 
 import { type WorkflowActuationPermit } from "./actuation-permit.js";
-import {
-  type FraudProofWorkflowIdentity,
-  type FraudProofWorkflowJournalEvent,
-} from "./journal.js";
+import { type FraudProofWorkflowJournalEntry } from "./journal.js";
 import { type WorkflowRuntimeFundingPolicy } from "./runtime-funding-policy.js";
+import type { SignedWorkflowTransactionRetirement } from "./signed-transaction-retirement.js";
 
 export const WORKFLOW_FUNDING_RESERVATION_PERMIT =
   "midgard-production-workflow-funding-reservation-permit-v1" as const;
@@ -49,71 +47,66 @@ export type WorkflowFundingPreparedTransition = Readonly<{
   producedInputs: readonly WorkflowFundingReservedInput[];
 }>;
 
-export type WorkflowFundingJournalHandoff = Readonly<{
+/** A signed attempt as the reservation records it: its exact transaction
+ * and where its workflow journal records its intent. */
+export type WorkflowFundingRecordedAttempt = Readonly<{
+  transition: WorkflowFundingPreparedTransition;
   workflowId: string;
-  identity: FraudProofWorkflowIdentity;
-  preparedArtifactDigest: string;
-  expectedJournalSequence: number;
+  intentSequence: number;
+  actionId: string;
 }>;
 
-export type WorkflowFundingSubmissionHandoff = WorkflowFundingJournalHandoff &
-  Readonly<{
-    preflight: Extract<
-      FraudProofWorkflowJournalEvent,
-      { kind: "preflight_passed" }
-    >;
-    submissionIntent: Extract<
-      FraudProofWorkflowJournalEvent,
-      { kind: "submission_intent" }
-    >;
-  }>;
+/** A superseded attempt: still able to land until it is retired. */
+export type WorkflowFundingSupersededAttempt = WorkflowFundingRecordedAttempt &
+  Readonly<{ retirement?: SignedWorkflowTransactionRetirement }>;
 
-export type WorkflowFundingCompletionHandoff = WorkflowFundingJournalHandoff &
-  Readonly<{
-    completion: Extract<
-      FraudProofWorkflowJournalEvent,
-      { kind: "completed" | "terminal_included" }
-    >;
-  }>;
-
-export type WorkflowFundingAbandonmentHandoff = WorkflowFundingJournalHandoff &
-  Readonly<{
-    submissionIntent: WorkflowFundingSubmissionHandoff["submissionIntent"];
-    reconciliation: Extract<
-      FraudProofWorkflowJournalEvent,
-      { kind: "reconciled" }
-    > &
-      Readonly<{ outcome: "not_found"; txHash: string }>;
-  }>;
+/** What the reservation records of a fresh attempt besides its bytes. The
+ * category and action input decide its exclusion from superseded attempts. */
+export type WorkflowFundingAttemptIntent = Readonly<{
+  workflowId: string;
+  intentSequence: number;
+  category: string;
+  actionId: string;
+  actionInput: unknown;
+}>;
 
 /**
  * Durable watcher-owned authority. The production application supplies this
  * port from its authenticated SQLite reservation store and local-node UTxO
  * source; workflow constructors never accept reservation data from config.
+ *
+ * Each change carries the workflow journal entries it implies (`journal`).
+ * A durable port (`commitsJournal`) writes them in the same transaction as
+ * the change, and refuses a change for a workflow journal it does not keep.
+ * A port without `commitsJournal` (an in-memory port) receives none, and
+ * the permit appends them once the change returns.
  */
 export interface WorkflowFundingReservationPort {
   load(): Promise<unknown>;
+  /** Whether this port keeps `journal`, committing its entries with each
+   * change. */
+  commitsJournal?(journal: object): boolean;
   /** Recheck durable resource holds before building, signing or submitting. */
   assertSubmissionAuthority?(): Promise<void>;
   readPendingTransition(): Promise<unknown>;
-  readPendingHandoff(): Promise<unknown>;
-  readCompletionHandoff(): Promise<unknown>;
-  readAbandonmentHandoff(): Promise<unknown>;
+  /** Every superseded attempt, retired or not. */
   readLegacyAbandonedTransactions?(): Promise<readonly unknown[]>;
-  /** Every signed attempt with its submission handoff, as recorded. */
-  readRecordedSubmissions?(): Promise<readonly unknown[]>;
   retireLegacyAbandonment?(input: {
     readonly expectedRevision: string;
     readonly transactionHash: string;
-    readonly retirement: import("./signed-transaction-retirement.js").SignedWorkflowTransactionRetirement;
+    readonly retirement: SignedWorkflowTransactionRetirement;
+    readonly journal: readonly FraudProofWorkflowJournalEntry[];
   }): Promise<unknown>;
-  /** Re-select a recorded attempt for reconciliation after canonical re-observation. */
-  /** Null means another unresolved attempt currently owns the required inputs. */
+  /** Re-select a recorded attempt for reconciliation after canonical
+   * re-observation. Null means another unresolved attempt currently owns the
+   * required inputs, and nothing changed. */
   reobserve?(input: {
     readonly expectedRevision: string;
     readonly transactionHash: string;
-    /** Adopts a superseded attempt that landed: this handoff replaces its own. */
-    readonly adoption?: WorkflowFundingSubmissionHandoff;
+    /** Adopts a superseded attempt that landed: its intent is recorded again
+     * at this journal sequence. */
+    readonly adoption?: Readonly<{ intentSequence: number }>;
+    readonly journal: readonly FraudProofWorkflowJournalEntry[];
   }): Promise<unknown>;
   /** Per superseded, unretired attempt that no recorded attempt outside its
    * lineage shares an input with, its exclusion set: the inputs of the
@@ -145,16 +138,20 @@ export interface WorkflowFundingReservationPort {
   prepare(input: {
     readonly expectedRevision: string;
     readonly transition: WorkflowFundingPreparedTransition;
-    readonly handoff: WorkflowFundingSubmissionHandoff;
+    readonly attempt: WorkflowFundingAttemptIntent;
+    readonly journal: readonly FraudProofWorkflowJournalEntry[];
   }): Promise<unknown>;
   confirm(input: {
     readonly expectedRevision: string;
     readonly transactionHash: string;
+    readonly journal: readonly FraudProofWorkflowJournalEntry[];
   }): Promise<unknown>;
+  /** Supersedes the pending attempt (retires it, with `retirement`). */
   abandon(input: {
     readonly expectedRevision: string;
     readonly transactionHash: string;
-    readonly handoff: WorkflowFundingAbandonmentHandoff;
+    readonly retirement?: SignedWorkflowTransactionRetirement;
+    readonly journal: readonly FraudProofWorkflowJournalEntry[];
   }): Promise<unknown>;
   releaseIdle?(input: { readonly expectedRevision: string }): Promise<unknown>;
   /** Refill an idle reservation under fresh submission authority; null means unavailable. */
@@ -162,17 +159,15 @@ export interface WorkflowFundingReservationPort {
     readonly expectedRevision: string;
     readonly releaseStaleInputs: boolean;
   }): Promise<unknown>;
-  acknowledgeAbandonment(input: {
-    readonly expectedRevision: string;
-    readonly handoff: WorkflowFundingAbandonmentHandoff;
-  }): Promise<unknown>;
   markConflict(input: {
     readonly expectedRevision: string;
     readonly code: "unexpected_spend" | "reservation_collision";
+    readonly journal: readonly FraudProofWorkflowJournalEntry[];
   }): Promise<unknown>;
+  /** Releases the reservation at its workflow's final completion. */
   release(input: {
     readonly expectedRevision: string;
-    readonly handoff: WorkflowFundingCompletionHandoff;
+    readonly journal: readonly FraudProofWorkflowJournalEntry[];
   }): Promise<unknown>;
 }
 

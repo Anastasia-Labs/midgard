@@ -1,5 +1,6 @@
 import { assertWorkflowJournalActuation } from "./actuation-permit.js";
 import { reconcileLegacyWorkflowFundingAbandonment } from "./funding-reservation-permit.reopen-legacy-abandonment.js";
+import type { WorkflowJournalWriter } from "./funding-reservation-permit.workflow-journal-writer.js";
 import type { FraudProofWorkflowJournalEvent } from "./journal.js";
 import type {
   FraudProofWorkflowAdapterContext,
@@ -10,7 +11,7 @@ import { readSignedAttempt } from "./orchestrator.read-signed-attempt.js";
 /** Reads each superseded attempt by its own signed bytes alone. */
 export const reconcileLegacyFraudProofAbandonments = async (
   context: FraudProofWorkflowAdapterContext,
-  journal: object,
+  writer: WorkflowJournalWriter,
   verifier: Pick<
     FraudProofWorkflowTerminalVerifier,
     "observeSignedTransaction"
@@ -19,7 +20,7 @@ export const reconcileLegacyFraudProofAbandonments = async (
   nowMs: number,
 ) =>
   await reconcileLegacyWorkflowFundingAbandonment({
-    journal,
+    writer,
     entries: context.entries,
     append,
     nowMs,

@@ -72,6 +72,7 @@ const advance = async (chain: Chain) => {
     consumedOutRefs: [`${chain.inputHash}#0`],
   });
   chain.record = await chain.store.confirmTransition({
+    journal: [],
     plan: currentPlan,
     expectedRevision: prepared.revision,
     transactionHash: signed.transactionHash,
@@ -92,9 +93,7 @@ const cheapestAction = async (chain: Chain, samples: number) => {
 const readRound = async ({ store, inputHash }: Chain) => {
   await store.readAll();
   await store.readPendingTransition({ reservationId });
-  await store.readPendingHandoff({ reservationId });
-  await store.readCompletionHandoff({ reservationId });
-  await store.readAbandonmentHandoff({ reservationId });
+  await store.readLegacyAbandonedTransactions!({ reservationId });
   await store.isReconciliationOnly!({ reservationId });
   await store.assertSubmissionAuthority!({ reservationId });
   await store.readReservedOutRefs({ excludingReservationId: reservationId });

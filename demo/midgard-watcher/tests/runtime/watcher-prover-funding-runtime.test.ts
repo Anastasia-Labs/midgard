@@ -26,7 +26,7 @@ afterEach(cleanupFundingRecoveryFixtures);
  * where readiness names the reason; they must never fail startup.
  */
 const startOver = async (damage: (databasePath: string) => void) => {
-  const test = await setupFundingRecoveryFixture(false, false, true);
+  const test = await setupFundingRecoveryFixture(true);
   const before = await test.records();
   expect(
     before.some(

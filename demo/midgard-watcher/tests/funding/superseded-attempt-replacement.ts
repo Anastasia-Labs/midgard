@@ -2,7 +2,9 @@ import { createHash } from "node:crypto";
 
 import {
   beginWorkflowFundingReservationAction,
-  type FraudProofWorkflowJournalStore,
+  bindWorkflowPreflightTransaction,
+  createStoredWorkflowJournalWriter,
+  prepareWorkflowFundingReservationTransaction,
 } from "@al-ft/midgard-fault-proofs";
 import { CML } from "@lucid-evolution/lucid";
 
@@ -79,41 +81,38 @@ export const signReplacement = (
 };
 
 /** Records a replacement for the init action exactly as a submission does:
- * the store handoff, then preflight, intent, submitted and pending. */
+ * the store change with its preflight and intent, then submitted and
+ * pending. */
 export const recordReplacement = async (
   fixture: Fixture,
-  journal: FraudProofWorkflowJournalStore,
   replacement: ReturnType<typeof signReplacement>,
   attempt: number,
   { actionId, actionKind } = { actionId: "init", actionKind: "proof.init" },
 ) => {
-  const entries = await journal.load(fixture.initial.workflowId);
   const [record] = await fixture.records();
-  const handoff = {
-    ...fixture.handoff,
-    expectedJournalSequence: entries.length,
+  const events = {
     preflight: {
-      ...fixture.handoff.preflight,
+      ...fixture.events.preflight,
       actionId,
       txHash: replacement.transactionHash,
     },
     submissionIntent: {
-      ...fixture.handoff.submissionIntent,
+      ...fixture.events.submissionIntent,
       actionId,
       actionInput: { actionKind },
       attempt,
       txHash: replacement.transactionHash,
     },
   };
-  await fixture.store.prepareTransition({
-    handoff,
-    plan: fixture.plan,
-    expectedRevision: record!.revision,
-    actionKind,
-    ...replacement,
-  });
-  await fixture.append(handoff.preflight);
-  await fixture.append(handoff.submissionIntent);
+  await fixture.prepareAttempt(
+    {
+      plan: fixture.plan,
+      expectedRevision: record!.revision,
+      actionKind,
+      ...replacement,
+    },
+    events,
+  );
   await fixture.append({
     kind: "submitted",
     actionId,
@@ -154,7 +153,44 @@ export const replaceAfterExpiry = async (fixture: Fixture) => {
     300n,
     collateral,
   );
-  await recordReplacement(fixture, journal, replacement, 2);
+  await recordReplacement(fixture, replacement, 2);
   // The process restarts with the replacement in flight.
   return { journal: await fixture.recover(), replacement };
+};
+
+/** Prepares the init attempt through the permit, as a submission does: its
+ * preflight and intent commit with the funding change. */
+export const prepareThroughPermit = async (fixture: Fixture) => {
+  const journal = await fixture.recover();
+  const action = { actionId: "init", input: { actionKind: "proof.init" } };
+  await beginWorkflowFundingReservationAction({ journal, action });
+  const funding = fundingOf(fixture);
+  const attempt = signReplacement(
+    funding.outRef,
+    BigInt(funding.lovelace),
+    300n,
+  );
+  const preflight = bindWorkflowPreflightTransaction(
+    { txHash: attempt.transactionHash },
+    {
+      toHash: () => attempt.transactionHash,
+      toTransaction: () =>
+        CML.Transaction.from_cbor_hex(attempt.signedTransactionCborHex),
+    } as Parameters<typeof bindWorkflowPreflightTransaction>[1],
+  );
+  await prepareWorkflowFundingReservationTransaction({
+    writer: createStoredWorkflowJournalWriter({
+      store: journal,
+      workflowId: fixture.initial.workflowId,
+      identity: fixture.initial.identity,
+      now: () => new Date().toISOString(),
+    }),
+    action,
+    preflight,
+    events: [
+      { ...fixture.events.preflight, txHash: attempt.transactionHash },
+      { ...fixture.events.submissionIntent, txHash: attempt.transactionHash },
+    ],
+  });
+  return attempt;
 };

@@ -93,7 +93,6 @@ const orphanWithSeedCollateral = async () => {
           : transitionOf(held.pending, consumed),
       readRecordedSubmissions: async () =>
         held.recorded.map((tx) => ({ transition: transitionOf(tx, consumed) })),
-      readCompletionHandoff: async () => null,
       settleOrphanedReservation: async ({
         retirements,
       }: {

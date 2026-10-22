@@ -18,7 +18,7 @@ afterEach(async () => {
 });
 
 it("re-signs a rolled-back proof at once after a rollback also drops the next step that spent its output", async () => {
-  const fixture = await setupFundingRecoveryFixture(false, false, false, true);
+  const fixture = await setupFundingRecoveryFixture(false, true);
   const funding = fundingOf(fixture);
   const change = `${fixture.transactionHash}#0`;
   let journal = await fixture.recover();
@@ -47,7 +47,7 @@ it("re-signs a rolled-back proof at once after a rollback also drops the next st
       .map(({ outRef }) => outRef),
     [thread],
   );
-  await recordReplacement(fixture, journal, step, 1, next);
+  await recordReplacement(fixture, step, 1, next);
   // The process restarts with the step in flight.
   journal = await fixture.recover();
 
@@ -122,7 +122,8 @@ it("re-signs a rolled-back proof at once after a rollback also drops the next st
   // Negative: a proof that spends neither attempt's lineage is refused.
   await expect(
     fixture.store.prepareTransition({
-      handoff: fixture.handoff,
+      attempt: fixture.attempt,
+      journal: [],
       plan: fixture.plan,
       expectedRevision: record!.revision,
       actionKind: "proof.init",
@@ -140,7 +141,7 @@ it("re-signs a rolled-back proof at once after a rollback also drops the next st
     400n,
     collateral,
   );
-  await recordReplacement(fixture, journal, resigned, 2);
+  await recordReplacement(fixture, resigned, 2);
   expect((await fixture.records())[0]!.pendingTransition?.transactionHash).toBe(
     resigned.transactionHash,
   );

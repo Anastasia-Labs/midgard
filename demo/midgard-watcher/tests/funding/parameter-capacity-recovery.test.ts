@@ -29,8 +29,6 @@ it("recovers exact signed leases through cap one to three to one, then refreshes
     false,
     false,
     false,
-    false,
-    false,
     20n,
     44,
     1,
@@ -108,27 +106,22 @@ it("recovers exact signed leases through cap one to three to one, then refreshes
   });
   expect(await journal.load(fixture.initial.workflowId)).toEqual(signedPrefix);
   const transition = capacityTransition(after);
-  const handoff = {
-    ...fixture.handoff,
-    expectedJournalSequence: signedPrefix.length,
-    preflight: {
-      ...fixture.handoff.preflight,
-      actionId: "next",
-      txHash: transition.transactionHash,
+  await fixture.prepareAttempt(
+    { plan: fixture.plan, expectedRevision: after.revision, ...transition },
+    {
+      preflight: {
+        ...fixture.events.preflight,
+        actionId: "next",
+        txHash: transition.transactionHash,
+      },
+      submissionIntent: {
+        ...fixture.events.submissionIntent,
+        actionId: "next",
+        actionInput: { actionKind: "step-one" },
+        txHash: transition.transactionHash,
+      },
     },
-    submissionIntent: {
-      ...fixture.handoff.submissionIntent,
-      actionId: "next",
-      actionInput: { actionKind: "step-one" },
-      txHash: transition.transactionHash,
-    },
-  };
-  await fixture.store.prepareTransition({
-    plan: fixture.plan,
-    expectedRevision: after.revision,
-    handoff,
-    ...transition,
-  });
+  );
   await fixture.restartStore();
   // Return to the exact original digest. Historical two-input leases still
   // require authenticated capacity, while the next action can use only one.

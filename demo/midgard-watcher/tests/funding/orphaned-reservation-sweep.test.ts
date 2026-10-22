@@ -18,7 +18,7 @@ afterEach(async () => {
 /** A sweep over signed funding whose workflow is gone, and the factory
  * raises its alerts into `alerts`. */
 const sweeping = async () => {
-  const fixture = await setupFundingRecoveryFixture(false, false, false, true);
+  const fixture = await setupFundingRecoveryFixture(false, true);
   fixture.workflowJournal.forgetObjective(fixture.objective);
   supersededAttemptReadSchedule.forget(fixture.transactionHash);
   const alerts: { subjectDigest: string; active: boolean }[] = [];

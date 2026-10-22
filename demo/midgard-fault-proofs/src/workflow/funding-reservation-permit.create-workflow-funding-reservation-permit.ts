@@ -7,13 +7,12 @@ import {
   type WorkflowActuationPermit,
 } from "./actuation-permit.js";
 import type { WorkflowAdapterRunner } from "./adapters.js";
-import { parseWorkflowFundingCompletionHandoff } from "./funding-reservation-permit.parse-workflow-funding-abandonment-handoff.js";
 import {
   assertSnapshotInputBounds,
   exactUtxos,
   parseSnapshot,
   parseStateSnapshot,
-} from "./funding-reservation-permit.reconcile-workflow-funding-submission-handoff.js";
+} from "./funding-reservation-permit.parse-workflow-funding-snapshot.js";
 import {
   ACTION_KIND,
   admittedPermits,
@@ -289,22 +288,6 @@ export const createWorkflowFundingReservationPermit = async ({
     throw new Error(
       "production funding reservation does not match its runner authority",
     );
-  if (snapshot.state === "released") {
-    const handoff = parseWorkflowFundingCompletionHandoff(
-      await port.readCompletionHandoff(),
-    );
-    if (
-      handoff.identity.deploymentFingerprint !==
-        snapshot.deploymentFingerprint ||
-      handoff.identity.decisionDigest !== snapshot.decisionDigest ||
-      handoff.identity.category !== category ||
-      handoff.identity.target.kind !== "state_queue_header" ||
-      handoff.identity.target.headerHash !== actuation.headerHash
-    )
-      throw new Error(
-        "released funding reservation has no exact terminal recovery identity",
-      );
-  }
   const address = CML.Address.from_bech32(
     snapshot.walletAddress,
   ).to_raw_bytes();

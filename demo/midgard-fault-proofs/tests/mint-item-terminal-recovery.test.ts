@@ -153,7 +153,6 @@ const fixture = (depth = 1, removalConfirmed = true) => {
       transactionConfirmed,
     },
   } as unknown as ManifestBoundMintItemNonCanonicalWorkflow;
-  const writes = { failTerminalOnce: false };
   const journal: FraudProofWorkflowJournalStore = {
     load: async (id) => {
       expect(id).toBe(workflowId);
@@ -161,14 +160,6 @@ const fixture = (depth = 1, removalConfirmed = true) => {
     },
     append: async (entry, sequence) => {
       expect(sequence).toBe(entries.length);
-      if (
-        writes.failTerminalOnce &&
-        (entry.event.kind === "terminal_included" ||
-          entry.event.kind === "completed")
-      ) {
-        writes.failTerminalOnce = false;
-        throw new Error("journal write interrupted after funding release");
-      }
       validateFraudProofWorkflowJournal({
         workflowId,
         entries: [...entries, entry],
@@ -198,7 +189,6 @@ const fixture = (depth = 1, removalConfirmed = true) => {
     release,
     execute,
     removalHash,
-    writes,
   };
 };
 
@@ -278,39 +268,6 @@ it.each(["economics", "proofToken", "headerHash", "anchor"])(
       .mockResolvedValue({ stage: { kind: "removed", terminal: changed } });
     await expect(f.execute()).rejects.toThrow("terminal candidate differs");
     expect(f.release).not.toHaveBeenCalled();
-  },
-);
-
-it.each([1, 30, 2162])(
-  "restores a depth-%s terminal from its durable funding handoff after a journal-write crash",
-  async (depth) => {
-    const f = fixture(depth);
-    let saved: funding.WorkflowFundingCompletionHandoff | null = null;
-    vi.spyOn(funding, "readWorkflowFundingRecovery").mockImplementation(
-      async () => ({
-        transition: null,
-        submissionHandoff: null,
-        abandonmentHandoff: null,
-        completionHandoff: saved,
-      }),
-    );
-    f.release.mockImplementation(async ({ handoff }) => {
-      saved = structuredClone(handoff);
-    });
-    f.writes.failTerminalOnce = true;
-    await expect(f.execute()).rejects.toThrow(
-      "journal write interrupted after funding release",
-    );
-    const afterCrash = structuredClone(f.entries);
-    await expect(f.execute()).resolves.toMatchObject({
-      kind: depth === 2162 ? "completed" : "pending",
-    });
-    expect(f.release).toHaveBeenCalledOnce();
-    expect(f.entries.slice(0, afterCrash.length)).toEqual(afterCrash);
-    expect(f.entries.at(-1)?.event.kind).toBe(
-      depth === 2162 ? "completed" : "terminal_included",
-    );
-    expect(f.observeHeader).not.toHaveBeenCalled();
   },
 );
 

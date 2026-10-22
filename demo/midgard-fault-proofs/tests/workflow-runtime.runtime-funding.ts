@@ -27,8 +27,10 @@ import { runtimeFundingPolicyFixture } from "./helpers/runtime-funding-policy-fi
 import {
   admittedActuation,
   DEPLOYMENT,
+  discardingWorkflowJournal,
+  fixtureJournalWriter,
   fundingAddress,
-  fundingHandoff,
+  fundingAttemptEvents,
   fundingKey,
   fundingReferenceOutRef,
 } from "./workflow-runtime.admitted-actuation.js";
@@ -202,18 +204,8 @@ export const runtimeFunding = async (
         };
       },
       readPendingTransition: async () => options.recovery?.transition ?? null,
-      readPendingHandoff: async () =>
-        options.recovery === undefined
-          ? null
-          : {
-              transition: options.recovery.transition,
-              handoff: options.recovery.handoff,
-            },
-      readCompletionHandoff: async () => null,
-      readAbandonmentHandoff: async () => null,
       readLandedSupersededAttempt: async () => null,
       readRecordedSignedTransaction: async () => null,
-      acknowledgeAbandonment: async () => snapshot,
       resolveProtocolInputAuthority: async () => {
         throw new Error("test action has no protocol input");
       },
@@ -224,8 +216,9 @@ export const runtimeFunding = async (
       release: async () => snapshot,
     },
   });
-  const journal = options.journal ?? Object.freeze({ actionKind });
+  const journal = options.journal ?? discardingWorkflowJournal();
   bindWorkflowFundingReservationJournal({ journal, permit });
+  const writer = fixtureJournalWriter(journal, actuation.headerHash);
   const begin = () =>
     beginWorkflowFundingReservationAction({
       journal,
@@ -242,6 +235,7 @@ export const runtimeFunding = async (
     begin,
     resolveInputs,
     journal,
+    writer,
     permit,
     prepare,
     confirm,
@@ -250,9 +244,9 @@ export const runtimeFunding = async (
       preflight: object;
     }) =>
       prepareWorkflowFundingReservationTransaction({
-        journal,
+        writer,
         ...input,
-        handoff: fundingHandoff(actuation, input.action, input.preflight),
+        events: fundingAttemptEvents(input.action, input.preflight),
       }),
     selected: unsafeWorkflowFundingReservationSelectedOutRefsForTest(permit),
     setSnapshot: (value: WorkflowFundingReservationSnapshot) => {

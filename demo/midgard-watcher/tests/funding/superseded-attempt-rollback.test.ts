@@ -74,7 +74,7 @@ const correctionOn = async (
 };
 
 it("takes the expired attempt as the result when a rollback drops its confirmed replacement and lands it instead, and reopens the replacement", async () => {
-  const fixture = await setupFundingRecoveryFixture(false, false, false, true);
+  const fixture = await setupFundingRecoveryFixture(false, true);
   const { journal, replacement } = await confirmReplacement(fixture);
   const before = (await journal.load(fixture.initial.workflowId)).length;
   walletAfter(fixture, fixture.transactionHash);
@@ -110,7 +110,7 @@ it("takes the expired attempt as the result when a rollback drops its confirmed 
 });
 
 it("keeps the confirmed replacement as the result when the expired attempt is on chain beside it, and records the pair once", async () => {
-  const fixture = await setupFundingRecoveryFixture(false, false, false, true);
+  const fixture = await setupFundingRecoveryFixture(false, true);
   const { journal, replacement } = await confirmReplacement(fixture);
   const before = (await journal.load(fixture.initial.workflowId)).length;
   chainHolds(fixture, [fixture.transactionHash, replacement.transactionHash]);
@@ -126,7 +126,7 @@ it("keeps the confirmed replacement as the result when the expired attempt is on
 });
 
 it("keeps the confirmed replacement as the result when it is on chain deeper than the recovery window and the expired attempt lands beside it, and records the pair once", async () => {
-  const fixture = await setupFundingRecoveryFixture(false, false, false, true);
+  const fixture = await setupFundingRecoveryFixture(false, true);
   const { journal, replacement } = await confirmReplacement(fixture);
   const before = (await journal.load(fixture.initial.workflowId)).length;
   // The replacement's inclusion is past the recovery window; the expired
@@ -152,7 +152,7 @@ it("keeps the confirmed replacement as the result when it is on chain deeper tha
 });
 
 it("takes the expired attempt as the result when a rollback past the correction's inclusion drops the confirmed replacement and lands it instead", async () => {
-  const fixture = await setupFundingRecoveryFixture(false, false, false, true);
+  const fixture = await setupFundingRecoveryFixture(false, true);
   const { journal, replacement } = await confirmReplacement(fixture);
   // The correction is included on the replacement's proof, within the
   // recovery window.
@@ -195,15 +195,10 @@ it("takes the expired attempt as the result when a rollback past the correction'
   expect(events.some(({ kind }) => kind === "stalled")).toBe(false);
   const [record] = await fixture.records();
   expect(record!.pendingTransition).toBeNull();
-  expect(
-    await fixture.store.readCompletionHandoff({
-      reservationId: fixture.plan.reservationId,
-    }),
-  ).toBeNull();
 });
 
 it("refuses a fresh attempt that spends an output of its action's landed superseded attempt, though the reservation holds none of that attempt's outputs", async () => {
-  const fixture = await setupFundingRecoveryFixture(false, false, false, true);
+  const fixture = await setupFundingRecoveryFixture(false, true);
   const funding = fundingOf(fixture);
   const journal = await supersedeAtTip(fixture);
   await beginWorkflowFundingReservationAction({
@@ -239,7 +234,8 @@ it("refuses a fresh attempt that spends an output of its action's landed superse
   ).toBe(fixture.transactionHash);
   await expect(
     fixture.store.prepareTransition({
-      handoff: fixture.handoff,
+      attempt: fixture.attempt,
+      journal: [],
       plan: fixture.plan,
       expectedRevision: record!.revision,
       actionKind: "proof.init",
@@ -255,14 +251,14 @@ it("refuses a fresh attempt that spends an output of its action's landed superse
       signedTransactionCborHex: plain.signedTransactionCborHex,
     }),
   ).toBeNull();
-  await recordReplacement(fixture, journal, plain, 2);
+  await recordReplacement(fixture, plain, 2);
   expect((await fixture.records())[0]!.pendingTransition?.transactionHash).toBe(
     plain.transactionHash,
   );
 });
 
 it("takes the expired attempt as the result in a family that reads its computation thread, when a rollback drops the confirmed replacement and lands it instead", async () => {
-  const fixture = await setupFundingRecoveryFixture(false, false, false, true);
+  const fixture = await setupFundingRecoveryFixture(false, true);
   const { journal, replacement } = await confirmReplacement(fixture);
   const before = (await journal.load(fixture.initial.workflowId)).length;
   walletAfter(fixture, fixture.transactionHash);
@@ -291,7 +287,7 @@ it("takes the expired attempt as the result in a family that reads its computati
 });
 
 it("holds the confirmed replacement as the result while it cannot be read, then takes the expired attempt once the replacement reads as gone", async () => {
-  const fixture = await setupFundingRecoveryFixture(false, false, false, true);
+  const fixture = await setupFundingRecoveryFixture(false, true);
   const { journal, replacement } = await confirmReplacement(fixture);
   const before = await journal.load(fixture.initial.workflowId);
   const [held] = await fixture.records();
@@ -329,7 +325,7 @@ it("holds the confirmed replacement as the result while it cannot be read, then 
 });
 
 it("leaves a workflow past its final completion as it is when a superseded attempt of it lands", async () => {
-  const fixture = await setupFundingRecoveryFixture(false, false, false, true);
+  const fixture = await setupFundingRecoveryFixture(false, true);
   const { journal, replacement } = await confirmReplacement(fixture);
   const { policy, terminal } = await correctionOn(
     fixture,
@@ -350,10 +346,6 @@ it("leaves a workflow past its final completion as it is when a superseded attem
   await runMinutesApart(fixture, journal, 2);
   const completed = await journal.load(fixture.initial.workflowId);
   expect(completed.at(-1)!.event.kind).toBe("completed");
-  const handoff = await fixture.store.readCompletionHandoff({
-    reservationId: fixture.plan.reservationId,
-  });
-  expect(handoff).not.toBeNull();
   const [record] = await fixture.records();
 
   // The expired attempt lands after a rollback the completion is past.
@@ -362,10 +354,5 @@ it("leaves a workflow past its final completion as it is when a superseded attem
   for (const minutes of [10, 20, 30])
     await fixture.run(journal, () => new Date(Date.now() + minutes * 60_000));
   expect(await journal.load(fixture.initial.workflowId)).toEqual(completed);
-  expect(
-    await fixture.store.readCompletionHandoff({
-      reservationId: fixture.plan.reservationId,
-    }),
-  ).toEqual(handoff);
   expect((await fixture.records())[0]).toEqual(record);
 });

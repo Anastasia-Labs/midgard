@@ -16,7 +16,7 @@ afterEach(async () => {
 
 /** The original attempt expired at the tip with its workflow gone. */
 const expiredWithJournalsLost = async () => {
-  const fixture = await setupFundingRecoveryFixture(false, false, false, true);
+  const fixture = await setupFundingRecoveryFixture(false, true);
   fixture.workflowJournal.forgetObjective(fixture.objective);
   supersededAttemptReadSchedule.forget(fixture.transactionHash);
   fixture.useUnspentPendingInputs();
@@ -34,19 +34,7 @@ const orphanOf = async (fixture: Fixture) =>
 const abandonPending = async (fixture: Fixture) => {
   const orphan = await orphanOf(fixture);
   await fixture.store.abandonPendingTransition({
-    handoff: {
-      workflowId: fixture.handoff.workflowId,
-      identity: fixture.handoff.identity,
-      preparedArtifactDigest: fixture.handoff.preparedArtifactDigest,
-      expectedJournalSequence: fixture.handoff.expectedJournalSequence,
-      submissionIntent: fixture.handoff.submissionIntent,
-      reconciliation: {
-        kind: "reconciled",
-        actionId: "init",
-        outcome: "not_found",
-        txHash: fixture.transactionHash,
-      },
-    },
+    journal: [],
     plan: fixture.plan,
     expectedRevision: orphan.revision,
     transitionDigest: orphan.pendingTransition!.transitionDigest,

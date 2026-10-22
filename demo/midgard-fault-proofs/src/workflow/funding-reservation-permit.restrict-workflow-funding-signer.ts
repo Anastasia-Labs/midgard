@@ -220,12 +220,8 @@ export const unsafeCreateWorkflowFundingReservationPermitForTest = ({
   const port: WorkflowFundingReservationPort = Object.freeze({
     load: async () => snapshot,
     readPendingTransition: async () => null,
-    readPendingHandoff: async () => null,
-    readCompletionHandoff: async () => null,
-    readAbandonmentHandoff: async () => null,
     readLandedSupersededAttempt: async () => null,
     readRecordedSignedTransaction: async () => null,
-    acknowledgeAbandonment: async () => snapshot,
     resolveInputs: async () => [],
     resolveConfirmedInput: async () => {
       throw new Error("unsafe test permit has no confirmed action lineage");

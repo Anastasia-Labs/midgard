@@ -6,11 +6,6 @@ import {
   computeFraudProofRawL1PointId,
   computeFraudProofWorkflowId,
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-  journalJsonDigest,
-  normalizeJournalJson,
-  type WorkflowFundingAbandonmentHandoff,
-  type WorkflowFundingCompletionHandoff,
-  type WorkflowFundingSubmissionHandoff,
 } from "@al-ft/midgard-fault-proofs";
 import { CML } from "@lucid-evolution/lucid";
 
@@ -19,7 +14,6 @@ import {
   type WatcherProverFundingReservationStore,
 } from "../../src/funding/prover-funding-reservation.js";
 import { unsafeOpenWatcherSqliteProverFundingReservationStoreForTest } from "../../src/funding/sqlite-prover-funding-reservation-store.js";
-import { fundingTerminal } from "./funding-handoff-fixture.js";
 
 export const temporaryDirectories: string[] = [];
 
@@ -162,8 +156,8 @@ export const plan = (
     reservationId: reservationByte.repeat(32),
   });
 
-const handoffIdentity = (plan: WatcherProverFundingReservationPlan) => {
-  const identity = {
+const workflowIdOf = (plan: WatcherProverFundingReservationPlan) =>
+  computeFraudProofWorkflowId({
     schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
     deploymentFingerprint: plan.deploymentFingerprint,
     decisionDigest: plan.decisionDigest,
@@ -172,51 +166,28 @@ const handoffIdentity = (plan: WatcherProverFundingReservationPlan) => {
       kind: "state_queue_header" as const,
       headerHash: "55".repeat(28),
     },
-  };
-  return {
-    identity,
-    workflowId: computeFraudProofWorkflowId(identity),
-    preparedArtifactDigest: "66".repeat(32),
-    expectedJournalSequence: 2,
-  };
-};
+  });
 
-export const submissionHandoff = (
-  input: Omit<
-    Parameters<WatcherProverFundingReservationStore["prepareTransition"]>[0],
-    "handoff"
-  >,
-): WorkflowFundingSubmissionHandoff => ({
-  ...handoffIdentity(input.plan),
-  preflight: {
-    kind: "preflight_passed",
-    actionId: input.actionKind,
-    txHash: input.transactionHash,
-    localEvaluator: "test-uplc",
-    referenceScripts: [
-      {
-        role: "init",
-        outRef: `${"77".repeat(32)}#0`,
-        scriptHash: "88".repeat(28),
-      },
-    ],
-  },
-  submissionIntent: {
-    kind: "submission_intent",
-    actionId: input.actionKind,
-    actionInput: { actionKind: input.actionKind },
-    txHash: input.transactionHash,
-    attempt: 1,
-  },
+type PrepareInput = Omit<
+  Parameters<WatcherProverFundingReservationStore["prepareTransition"]>[0],
+  "attempt" | "journal"
+>;
+
+/** The workflow attempt a store-level prepare records; these cases drive
+ * the store alone, so no journal entries commit with it. */
+export const attemptOf = (input: PrepareInput) => ({
+  workflowId: workflowIdOf(input.plan),
+  intentSequence: 3,
+  category: "doubleSpend",
+  actionId: input.actionKind,
+  actionInput: { actionKind: input.actionKind },
 });
 
 export const prepareTransition = (
   store: WatcherProverFundingReservationStore,
-  input: Omit<
-    Parameters<WatcherProverFundingReservationStore["prepareTransition"]>[0],
-    "handoff"
-  >,
-) => store.prepareTransition({ ...input, handoff: submissionHandoff(input) });
+  input: PrepareInput,
+) =>
+  store.prepareTransition({ ...input, attempt: attemptOf(input), journal: [] });
 
 export const retirementFixture = (transactionHash: string) => {
   const boundary = { slot: "1000", blockNo: "50", blockHash: "ab".repeat(32) };
@@ -231,63 +202,3 @@ export const retirementFixture = (transactionHash: string) => {
     canonicalPoint: { ...tip, pointId: computeFraudProofRawL1PointId(tip) },
   };
 };
-
-export const abandonmentHandoff = (
-  plan: WatcherProverFundingReservationPlan,
-  transactionHash: string,
-  actionKind: string,
-): WorkflowFundingAbandonmentHandoff => ({
-  ...handoffIdentity(plan),
-  submissionIntent: {
-    kind: "submission_intent",
-    actionId: actionKind,
-    actionInput: { actionKind },
-    attempt: 1,
-    txHash: transactionHash,
-  },
-  reconciliation: {
-    kind: "reconciled",
-    actionId: actionKind,
-    outcome: "not_found",
-    txHash: transactionHash,
-    retirement: retirementFixture(transactionHash),
-  },
-});
-
-export const completionHandoff = (
-  plan: WatcherProverFundingReservationPlan,
-): WorkflowFundingCompletionHandoff => {
-  const terminal = fundingTerminal(
-    "55".repeat(28),
-    "aa".repeat(32),
-    "bb".repeat(32),
-  );
-  return {
-    ...handoffIdentity(plan),
-    completion: {
-      kind: "completed",
-      terminal,
-      terminalDigest: journalJsonDigest(normalizeJournalJson(terminal)),
-    },
-  };
-};
-
-export const substituteAbandonmentTransactionHash = (
-  handoff: WorkflowFundingAbandonmentHandoff,
-  txHash: string,
-): WorkflowFundingAbandonmentHandoff => ({
-  ...handoff,
-  submissionIntent: { ...handoff.submissionIntent, txHash },
-  reconciliation: {
-    ...handoff.reconciliation,
-    txHash,
-    ...(handoff.reconciliation.retirement === undefined
-      ? {}
-      : {
-          retirement: {
-            ...handoff.reconciliation.retirement,
-            transactionHash: txHash,
-          },
-        }),
-  },
-});

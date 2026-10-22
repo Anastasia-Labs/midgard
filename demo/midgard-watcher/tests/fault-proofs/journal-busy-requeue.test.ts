@@ -133,8 +133,6 @@ const setup = async () => {
     false,
     false,
     false,
-    false,
-    false,
     BigInt(Date.now()),
   );
   // Open with neither a queue row nor a workflow journal: the progress

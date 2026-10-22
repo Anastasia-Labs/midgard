@@ -168,10 +168,7 @@ const setup = async (substitute?: (entries: readonly Entry[]) => Entry) => {
   const store: WatcherProverFundingReservationStore = {
     readAll,
     readReservedOutRefs: async () => [],
-    readAbandonmentHandoff: async () => null,
-    readPendingHandoff: async () => null,
     readPendingTransition: async () => null,
-    readCompletionHandoff: async () => null,
     readConfirmedInput: async () => null,
     readLandedSupersededAttempt: async () => null,
     readRecordedSignedTransaction: async () => null,
@@ -179,7 +176,6 @@ const setup = async (substitute?: (entries: readonly Entry[]) => Entry) => {
     prepareTransition: forbidden,
     confirmTransition: forbidden,
     abandonPendingTransition: forbidden,
-    acknowledgeAbandonment: forbidden,
     markConflict: forbidden,
     release: forbidden,
   };

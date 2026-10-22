@@ -2,17 +2,17 @@ import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 
 import { assertWorkflowJournalActuation } from "../workflow/actuation-permit.js";
 import {
+  appendWorkflowJournalEvents,
   assertWorkflowFundingReservationReadyToSubmit,
   beginWorkflowFundingReservationAction,
   confirmWorkflowFundingReservationTransaction,
   conflictWorkflowFundingReservationTransaction,
-  createWorkflowFundingSubmissionHandoff,
+  createStoredWorkflowJournalWriter,
   prepareWorkflowFundingReservationTransaction,
 } from "../workflow/funding-reservation-permit.js";
 import {
   computeFraudProofWorkflowId,
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
   type FraudProofWorkflowIdentity,
   type FraudProofWorkflowJournalEntry,
   type FraudProofWorkflowJournalStore,
@@ -76,36 +76,15 @@ export const createOutputReferenceScriptDecodingCentralJournalAdapter = ({
   };
   const workflowId = computeFraudProofWorkflowId(identity);
   const entries = async () => await store.load(workflowId);
+  const writer = createStoredWorkflowJournalWriter({
+    store,
+    workflowId,
+    identity,
+    now,
+  });
   const appendEvent = async (
     event: FraudProofWorkflowJournalEntry["event"],
-  ): Promise<void> => {
-    let current = await entries();
-    if (current.length === 0) {
-      await store.append(
-        {
-          schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-          workflowId,
-          identity,
-          sequence: 0,
-          recordedAt: now(),
-          event: { kind: "started" },
-        },
-        0,
-      );
-      current = await entries();
-    }
-    await store.append(
-      {
-        schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-        workflowId,
-        identity,
-        sequence: current.length,
-        recordedAt: now(),
-        event,
-      },
-      current.length,
-    );
-  };
+  ): Promise<void> => await appendWorkflowJournalEvents(writer, [event]);
   const workflowAction = (
     kind: SubmitAction,
     recovery: DurableRecovery,
@@ -219,30 +198,26 @@ export const createOutputReferenceScriptDecodingCentralJournalAdapter = ({
         action,
       });
       await prepareWorkflowFundingReservationTransaction({
-        journal: store,
+        writer,
         action,
         preflight,
-        handoff: createWorkflowFundingSubmissionHandoff({
-          entries: await entries(),
-          action,
-          preflight,
-          attempt: attempt,
-        }),
-      });
-      await appendEvent({
-        kind: "preflight_passed",
-        actionId: action.actionId,
-        txHash: transaction.txHash,
-        localEvaluator: LOCAL_UPLC_EVALUATOR,
-        referenceScripts: transaction.referenceScripts,
-      });
-      await appendEvent({
-        kind: "submission_intent",
-        actionId: action.actionId,
-        actionInput: action.input,
-        durableRecovery: recovery,
-        attempt,
-        txHash: transaction.txHash,
+        events: [
+          {
+            kind: "preflight_passed",
+            actionId: action.actionId,
+            txHash: transaction.txHash,
+            localEvaluator: LOCAL_UPLC_EVALUATOR,
+            referenceScripts: transaction.referenceScripts,
+          },
+          {
+            kind: "submission_intent",
+            actionId: action.actionId,
+            actionInput: action.input,
+            durableRecovery: recovery,
+            attempt,
+            txHash: transaction.txHash,
+          },
+        ],
       });
       assertActuation("before_submit");
       await assertWorkflowFundingReservationReadyToSubmit({
@@ -261,19 +236,21 @@ export const createOutputReferenceScriptDecodingCentralJournalAdapter = ({
     const confirmed = await transactionConfirmed(intent.event.txHash);
     if (confirmed && observedStage === recovery.targetStage) {
       await confirmWorkflowFundingReservationTransaction({
-        journal: store,
+        writer,
         transactionHash: intent.event.txHash,
-      });
-      await appendEvent({
-        kind: "reconciled",
-        actionId: intent.event.actionId,
-        outcome: "confirmed",
-        txHash: intent.event.txHash,
-      });
-      await appendEvent({
-        kind: "confirmed",
-        actionId: intent.event.actionId,
-        txHash: intent.event.txHash,
+        events: [
+          {
+            kind: "reconciled",
+            actionId: intent.event.actionId,
+            outcome: "confirmed",
+            txHash: intent.event.txHash,
+          },
+          {
+            kind: "confirmed",
+            actionId: intent.event.actionId,
+            txHash: intent.event.txHash,
+          },
+        ],
       });
       return;
     }
@@ -291,8 +268,9 @@ export const createOutputReferenceScriptDecodingCentralJournalAdapter = ({
       );
     }
     await conflictWorkflowFundingReservationTransaction({
-      journal: store,
+      writer,
       transactionHash: intent.event.txHash,
+      events: [],
     });
     throw new Error(
       "outputReferenceScriptDecoding authenticated stage/transaction identity substitution",
@@ -353,30 +331,26 @@ export const createOutputReferenceScriptDecodingCentralJournalAdapter = ({
         action,
       });
       await prepareWorkflowFundingReservationTransaction({
-        journal: store,
+        writer,
         action,
         preflight,
-        handoff: createWorkflowFundingSubmissionHandoff({
-          entries: await entries(),
-          action,
-          preflight,
-          attempt: 1,
-        }),
-      });
-      await appendEvent({
-        kind: "preflight_passed",
-        actionId: id,
-        txHash: transaction.txHash,
-        localEvaluator: LOCAL_UPLC_EVALUATOR,
-        referenceScripts: transaction.referenceScripts,
-      });
-      await appendEvent({
-        kind: "submission_intent",
-        actionId: id,
-        actionInput: action.input,
-        durableRecovery: recovery,
-        attempt: 1,
-        txHash: transaction.txHash,
+        events: [
+          {
+            kind: "preflight_passed",
+            actionId: id,
+            txHash: transaction.txHash,
+            localEvaluator: LOCAL_UPLC_EVALUATOR,
+            referenceScripts: transaction.referenceScripts,
+          },
+          {
+            kind: "submission_intent",
+            actionId: id,
+            actionInput: action.input,
+            durableRecovery: recovery,
+            attempt: 1,
+            txHash: transaction.txHash,
+          },
+        ],
       });
       captured.push(transaction.txHash);
       assertActuation("before_submit");
@@ -411,25 +385,27 @@ export const createOutputReferenceScriptDecodingCentralJournalAdapter = ({
       );
     }
     await confirmWorkflowFundingReservationTransaction({
-      journal: store,
+      writer,
       transactionHash: txHash,
-    });
-    await appendEvent({
-      kind: "submitted",
-      actionId: intent.event.actionId,
-      attempt: intent.event.attempt,
-      txHash,
-    });
-    await appendEvent({
-      kind: "reconciled",
-      actionId: intent.event.actionId,
-      outcome: "confirmed",
-      txHash,
-    });
-    await appendEvent({
-      kind: "confirmed",
-      actionId: intent.event.actionId,
-      txHash,
+      events: [
+        {
+          kind: "submitted",
+          actionId: intent.event.actionId,
+          attempt: intent.event.attempt,
+          txHash,
+        },
+        {
+          kind: "reconciled",
+          actionId: intent.event.actionId,
+          outcome: "confirmed",
+          txHash,
+        },
+        {
+          kind: "confirmed",
+          actionId: intent.event.actionId,
+          txHash,
+        },
+      ],
     });
   };
 

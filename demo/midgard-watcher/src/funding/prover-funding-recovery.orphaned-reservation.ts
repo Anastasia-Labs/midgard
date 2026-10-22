@@ -1,8 +1,8 @@
 import {
   createSupersededAttemptReadSchedule,
   type FraudProofWorkflowTerminalVerifier,
-  parseWorkflowFundingAbandonmentHandoff,
   parseWorkflowFundingPreparedTransition,
+  parseWorkflowFundingSupersededAttempt,
   readSignedAttempt,
   type SignedWorkflowTransactionRetirement,
 } from "@al-ft/midgard-fault-proofs";
@@ -42,14 +42,10 @@ const unretiredAttempts = async (
   for (const saved of (await store.readLegacyAbandonedTransactions?.(
     reserved,
   )) ?? []) {
-    const { transition, handoff } = saved as {
-      transition: unknown;
-      handoff: unknown;
-    };
+    const { transition, retirement } =
+      parseWorkflowFundingSupersededAttempt(saved);
     add(transition);
-    const abandoned = parseWorkflowFundingAbandonmentHandoff(handoff);
-    if (abandoned.reconciliation.retirement !== undefined)
-      retired.add(abandoned.submissionIntent.txHash);
+    if (retirement !== undefined) retired.add(transition.transactionHash);
   }
   for (const saved of (await store.readRecordedSubmissions?.(reserved)) ?? [])
     add((saved as { transition: unknown }).transition);

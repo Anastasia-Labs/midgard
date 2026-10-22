@@ -37,8 +37,10 @@ import {
 import {
   admittedActuation,
   DEPLOYMENT,
+  discardingWorkflowJournal,
+  fixtureJournalWriter,
   fundingAddress,
-  fundingHandoff,
+  fundingAttemptEvents,
   fundingKey,
 } from "./workflow-runtime.admitted-actuation.js";
 import {
@@ -231,12 +233,8 @@ export const slashFundingFixture = async (
         throw new Error("slash inputs must reacquire protocol authority");
       },
       readPendingTransition: async () => null,
-      readPendingHandoff: async () => null,
-      readCompletionHandoff: async () => null,
-      readAbandonmentHandoff: async () => null,
       readLandedSupersededAttempt: async () => null,
       readRecordedSignedTransaction: async () => null,
-      acknowledgeAbandonment: async () => snapshot,
       resolveProtocolInputAuthority: protocolAuthority,
       prepare,
       confirm: async () => snapshot,
@@ -245,7 +243,7 @@ export const slashFundingFixture = async (
       release: async () => snapshot,
     },
   });
-  const journal = {};
+  const journal = discardingWorkflowJournal();
   bindWorkflowFundingReservationJournal({ journal, permit });
   const action = {
     actionId: "remove-current-target",
@@ -343,10 +341,10 @@ export const slashFundingFixture = async (
         signed,
       );
       return prepareWorkflowFundingReservationTransaction({
-        journal,
+        writer: fixtureJournalWriter(journal, actuation.headerHash),
         action,
         preflight,
-        handoff: fundingHandoff(actuation, action, preflight),
+        events: fundingAttemptEvents(action, preflight),
       });
     },
     close: () => reader.mockRestore(),

@@ -1,7 +1,7 @@
 import type {
-  WorkflowFundingAbandonmentHandoff,
-  WorkflowFundingCompletionHandoff,
-  WorkflowFundingSubmissionHandoff,
+  FraudProofWorkflowJournalEntry,
+  SignedWorkflowTransactionRetirement,
+  WorkflowFundingAttemptIntent,
 } from "@al-ft/midgard-fault-proofs";
 
 export const WATCHER_PROVER_FUNDING_RESERVATION_PLAN =
@@ -69,8 +69,17 @@ export type WatcherProverFundingReservationRecord = Readonly<{
   recordDigest: string;
 }>;
 
+/** The workflow journal entries a change implies, committed in its
+ * transaction. Empty when the caller's journal is not this store's. */
+type Journaled = Readonly<{
+  journal: readonly FraudProofWorkflowJournalEntry[];
+}>;
+
 export type WatcherProverFundingReservationStore = Readonly<{
   readAll(): Promise<readonly unknown[]>;
+  /** Whether a change commits entries of this workflow journal store in its
+   * own transaction. */
+  commitsJournal?(journal: object): boolean;
   /** A reservation whose claims overlap a legacy signed attempt permits reads
    * and exact retirement, never fresh actuation; other reservations proceed. */
   isReconciliationOnly?(input: {
@@ -82,7 +91,8 @@ export type WatcherProverFundingReservationStore = Readonly<{
   readReservedOutRefs(input: {
     readonly excludingReservationId?: string;
   }): Promise<readonly string[]>;
-  /** Includes resolved handoffs and lineage, not just the current pending attempt. */
+  /** Includes recorded and superseded attempts and lineage, not just the
+   * current pending attempt. */
   hasSignedHistory?(input: {
     readonly reservationId: string;
   }): Promise<boolean>;
@@ -92,14 +102,17 @@ export type WatcherProverFundingReservationStore = Readonly<{
   }): Promise<
     readonly Pick<WatcherProverFundingReservationInput, "outRef" | "role">[]
   >;
-  reobserveTransition?(input: {
-    readonly plan: WatcherProverFundingReservationPlan;
-    readonly expectedRevision: string;
-    readonly transactionHash: string;
-    readonly inputs: readonly WatcherProverFundingReservationInput[];
-    /** Adopts a superseded attempt that landed, under this submission handoff. */
-    readonly adoption?: unknown;
-  }): Promise<WatcherProverFundingReservationRecord>;
+  reobserveTransition?(
+    input: Journaled & {
+      readonly plan: WatcherProverFundingReservationPlan;
+      readonly expectedRevision: string;
+      readonly transactionHash: string;
+      readonly inputs: readonly WatcherProverFundingReservationInput[];
+      /** Adopts a superseded attempt that landed: its intent is recorded
+       * again at this journal sequence. */
+      readonly adoption?: Readonly<{ intentSequence: number }>;
+    },
+  ): Promise<WatcherProverFundingReservationRecord>;
   /** Per superseded, unretired attempt that no recorded attempt shares an
    * input with, the funding inputs it spent; empty when there is none. */
   readSupersededAttemptFundingOutRefs?(input: {
@@ -118,31 +131,23 @@ export type WatcherProverFundingReservationStore = Readonly<{
     readonly reservationId: string;
     readonly transactionHash: string;
   }): Promise<string | null>;
+  /** Every superseded attempt, retired or not. */
   readLegacyAbandonedTransactions?(input: {
     readonly reservationId: string;
   }): Promise<readonly unknown[]>;
-  /** Every signed attempt with its submission handoff, as recorded. */
+  /** Every signed attempt, as recorded. */
   readRecordedSubmissions?(input: {
     readonly reservationId: string;
   }): Promise<readonly unknown[]>;
-  retireLegacyAbandonment?(input: {
-    readonly plan: WatcherProverFundingReservationPlan;
-    readonly expectedRevision: string;
-    readonly transactionHash: string;
-    readonly retirement: NonNullable<
-      WorkflowFundingAbandonmentHandoff["reconciliation"]["retirement"]
-    >;
-  }): Promise<WatcherProverFundingReservationRecord>;
-  readAbandonmentHandoff(input: {
-    readonly reservationId: string;
-  }): Promise<unknown | null>;
-  readPendingHandoff(input: {
-    readonly reservationId: string;
-  }): Promise<unknown | null>;
+  retireLegacyAbandonment?(
+    input: Journaled & {
+      readonly plan: WatcherProverFundingReservationPlan;
+      readonly expectedRevision: string;
+      readonly transactionHash: string;
+      readonly retirement: SignedWorkflowTransactionRetirement;
+    },
+  ): Promise<WatcherProverFundingReservationRecord>;
   readPendingTransition(input: {
-    readonly reservationId: string;
-  }): Promise<unknown | null>;
-  readCompletionHandoff(input: {
     readonly reservationId: string;
   }): Promise<unknown | null>;
   readConfirmedInput(input: {
@@ -166,48 +171,54 @@ export type WatcherProverFundingReservationStore = Readonly<{
     plan: WatcherProverFundingReservationPlan,
     expectedIdleRevision?: string,
   ): Promise<"reserved" | "unchanged">;
-  prepareTransition(input: {
-    readonly handoff: WorkflowFundingSubmissionHandoff;
-    readonly plan: WatcherProverFundingReservationPlan;
-    readonly expectedRevision: string;
-    readonly actionKind: string;
-    readonly signedTransactionCborHex: string;
-    readonly transactionHash: string;
-    readonly transactionBodySha256: string;
-    readonly consumedOutRefs: readonly string[];
-    readonly producedInputs: readonly WatcherProverFundingReservationInput[];
-  }): Promise<WatcherProverFundingReservationRecord>;
-  confirmTransition(input: {
-    readonly plan: WatcherProverFundingReservationPlan;
-    readonly expectedRevision: string;
-    readonly transactionHash: string;
-    readonly transitionDigest: string;
-  }): Promise<WatcherProverFundingReservationRecord>;
-  abandonPendingTransition(input: {
-    readonly handoff: WorkflowFundingAbandonmentHandoff;
-    readonly plan: WatcherProverFundingReservationPlan;
-    readonly expectedRevision: string;
-    readonly transitionDigest: string;
-  }): Promise<WatcherProverFundingReservationRecord>;
+  prepareTransition(
+    input: Journaled & {
+      readonly attempt: WorkflowFundingAttemptIntent;
+      readonly plan: WatcherProverFundingReservationPlan;
+      readonly expectedRevision: string;
+      readonly actionKind: string;
+      readonly signedTransactionCborHex: string;
+      readonly transactionHash: string;
+      readonly transactionBodySha256: string;
+      readonly consumedOutRefs: readonly string[];
+      readonly producedInputs: readonly WatcherProverFundingReservationInput[];
+    },
+  ): Promise<WatcherProverFundingReservationRecord>;
+  confirmTransition(
+    input: Journaled & {
+      readonly plan: WatcherProverFundingReservationPlan;
+      readonly expectedRevision: string;
+      readonly transactionHash: string;
+      readonly transitionDigest: string;
+    },
+  ): Promise<WatcherProverFundingReservationRecord>;
+  /** Supersedes the pending attempt; with `retirement`, it is retired. */
+  abandonPendingTransition(
+    input: Journaled & {
+      readonly plan: WatcherProverFundingReservationPlan;
+      readonly expectedRevision: string;
+      readonly transitionDigest: string;
+      readonly retirement?: SignedWorkflowTransactionRetirement;
+    },
+  ): Promise<WatcherProverFundingReservationRecord>;
   releaseIdle?(input: {
     readonly plan: WatcherProverFundingReservationPlan;
     readonly expectedRevision: string;
   }): Promise<WatcherProverFundingReservationRecord>;
-  acknowledgeAbandonment(input: {
-    readonly plan: WatcherProverFundingReservationPlan;
-    readonly expectedRevision: string;
-    readonly handoff: WorkflowFundingAbandonmentHandoff;
-  }): Promise<WatcherProverFundingReservationRecord>;
-  markConflict(input: {
-    readonly plan: WatcherProverFundingReservationPlan;
-    readonly expectedRevision: string;
-    readonly code: "unexpected_spend" | "reservation_collision";
-  }): Promise<WatcherProverFundingReservationRecord>;
-  release(input: {
-    readonly handoff: WorkflowFundingCompletionHandoff;
-    readonly plan: WatcherProverFundingReservationPlan;
-    readonly expectedRevision: string;
-  }): Promise<WatcherProverFundingReservationRecord>;
+  markConflict(
+    input: Journaled & {
+      readonly plan: WatcherProverFundingReservationPlan;
+      readonly expectedRevision: string;
+      readonly code: "unexpected_spend" | "reservation_collision";
+    },
+  ): Promise<WatcherProverFundingReservationRecord>;
+  /** Releases the reservation at its workflow's final completion. */
+  release(
+    input: Journaled & {
+      readonly plan: WatcherProverFundingReservationPlan;
+      readonly expectedRevision: string;
+    },
+  ): Promise<WatcherProverFundingReservationRecord>;
 }>;
 
 export const admittedPlans = new WeakSet<object>();

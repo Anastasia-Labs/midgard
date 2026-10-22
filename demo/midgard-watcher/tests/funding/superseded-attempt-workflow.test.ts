@@ -20,7 +20,7 @@ afterEach(async () => {
 });
 
 it("admits a replacement for an attempt that expired at the tip at once, drawing on that attempt's funding input", async () => {
-  const fixture = await setupFundingRecoveryFixture(false, false, false, true);
+  const fixture = await setupFundingRecoveryFixture(false, true);
   const funding = fundingOf(fixture);
   const journal = await supersedeAtTip(fixture);
   const [record] = await fixture.records();
@@ -55,7 +55,8 @@ it("admits a replacement for an attempt that expired at the tip at once, drawing
   expect(other).toBeDefined();
   await expect(
     fixture.store.prepareTransition({
-      handoff: fixture.handoff,
+      attempt: fixture.attempt,
+      journal: [],
       plan: fixture.plan,
       expectedRevision: refreshed!.revision,
       actionKind: "proof.init",
@@ -68,7 +69,7 @@ it("admits a replacement for an attempt that expired at the tip at once, drawing
     300n,
     collateral,
   );
-  await recordReplacement(fixture, journal, replacement, 2);
+  await recordReplacement(fixture, replacement, 2);
   expect((await fixture.records())[0]!.pendingTransition?.transactionHash).toBe(
     replacement.transactionHash,
   );
@@ -76,7 +77,7 @@ it("admits a replacement for an attempt that expired at the tip at once, drawing
 });
 
 it("keeps a superseded attempt's input that holds a token as its replacement's funding", async () => {
-  const fixture = await setupFundingRecoveryFixture(false, false, false, true);
+  const fixture = await setupFundingRecoveryFixture(false, true);
   const funding = fundingOf(fixture);
   const journal = await supersedeAtTip(fixture);
   // The expired attempt's input holds a token: the funding plan reserves only
@@ -102,14 +103,14 @@ it("keeps a superseded attempt's input that holds a token as its replacement's f
     300n,
     collateral,
   );
-  await recordReplacement(fixture, journal, replacement, 2);
+  await recordReplacement(fixture, replacement, 2);
   expect((await fixture.records())[0]!.pendingTransition?.transactionHash).toBe(
     replacement.transactionHash,
   );
 });
 
 it("adopts the expired attempt as the result when it lands late, and retires the replacement's reservation", async () => {
-  const fixture = await setupFundingRecoveryFixture(false, false, false, true);
+  const fixture = await setupFundingRecoveryFixture(false, true);
   const { journal, replacement } = await replaceAfterExpiry(fixture);
   // A rollback lands the original attempt; the replacement, which spends one
   // of its inputs, can no longer land.
@@ -166,7 +167,7 @@ it("adopts the expired attempt as the result when it lands late, and retires the
 });
 
 it("does not adopt a late landing while the replacement is unresolved or once the action has a result", async () => {
-  const fixture = await setupFundingRecoveryFixture(false, false, false, true);
+  const fixture = await setupFundingRecoveryFixture(false, true);
   const { journal, replacement } = await replaceAfterExpiry(fixture);
   const before = await journal.load(fixture.initial.workflowId);
   // Unresolved replacement: the late landing is reported, the replacement is
@@ -218,7 +219,7 @@ it("does not adopt a late landing while the replacement is unresolved or once th
 });
 
 it("admits a replacement that spends the superseded attempt's input as before, and takes it as the result once it confirms", async () => {
-  const fixture = await setupFundingRecoveryFixture(false, false, false, true);
+  const fixture = await setupFundingRecoveryFixture(false, true);
   const { journal, replacement } = await replaceAfterExpiry(fixture);
   // The superseded attempt never landed, so nothing descends from it.
   expect(
@@ -255,7 +256,7 @@ it("admits a replacement that spends the superseded attempt's input as before, a
 });
 
 it("refuses a fresh attempt of an action whose superseded attempt landed, and admits another action's attempt that spends its output", async () => {
-  const fixture = await setupFundingRecoveryFixture(false, false, false, true);
+  const fixture = await setupFundingRecoveryFixture(false, true);
   const funding = fundingOf(fixture);
   const journal = await supersedeAtTip(fixture);
   // The superseded attempt lands: its input is spent, its output is the
@@ -303,7 +304,8 @@ it("refuses a fresh attempt of an action whose superseded attempt landed, and ad
   ).toBe(fixture.transactionHash);
   await expect(
     fixture.store.prepareTransition({
-      handoff: fixture.handoff,
+      attempt: fixture.attempt,
+      journal: [],
       plan: fixture.plan,
       expectedRevision: record!.revision,
       actionKind: "proof.init",
@@ -318,7 +320,7 @@ it("refuses a fresh attempt of an action whose superseded attempt landed, and ad
       signedTransactionCborHex: fresh.signedTransactionCborHex,
     }),
   ).toBeNull();
-  await recordReplacement(fixture, journal, fresh, 1, {
+  await recordReplacement(fixture, fresh, 1, {
     actionId: "next",
     actionKind: "proof.init",
   });
@@ -328,7 +330,7 @@ it("refuses a fresh attempt of an action whose superseded attempt landed, and ad
 });
 
 it("re-signs a mutually exclusive proof with fresh collateral when a rollback drops a confirmed proof whose collateral was spent meanwhile", async () => {
-  const fixture = await setupFundingRecoveryFixture(false, false, false, true);
+  const fixture = await setupFundingRecoveryFixture(false, true);
   const funding = fundingOf(fixture);
   const collateral = fixture.plan.inputs.find(
     ({ role }) => role === "collateral",
@@ -415,7 +417,8 @@ it("re-signs a mutually exclusive proof with fresh collateral when a rollback dr
   expect(other).toBeDefined();
   await expect(
     fixture.store.prepareTransition({
-      handoff: fixture.handoff,
+      attempt: fixture.attempt,
+      journal: [],
       plan: fixture.plan,
       expectedRevision: record!.revision,
       actionKind: "proof.init",
@@ -428,7 +431,7 @@ it("re-signs a mutually exclusive proof with fresh collateral when a rollback dr
     300n,
     fresh,
   );
-  await recordReplacement(fixture, journal, resigned, 2);
+  await recordReplacement(fixture, resigned, 2);
   expect(resigned.transactionHash).not.toBe(fixture.transactionHash);
   expect((await fixture.records())[0]!.pendingTransition?.transactionHash).toBe(
     resigned.transactionHash,

@@ -110,8 +110,6 @@ const setup = async (cause: () => unknown) => {
     false,
     false,
     false,
-    false,
-    false,
     BigInt(Date.now()),
   );
   const second = await secondObjective(fixture);

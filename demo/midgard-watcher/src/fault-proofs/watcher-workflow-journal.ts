@@ -60,6 +60,9 @@ export type WatcherWorkflowJournal = Readonly<{
   forObjective: (
     objective: WatcherProofObjective,
   ) => FraudProofWorkflowJournalStore;
+  /** Whether `store` is a journal store of this journal, whose entries a
+   * funding change of the same connection commits with it. */
+  owns: (store: object) => boolean;
   /** Validates `entries` as the next entries of their workflow and inserts
    * them. Call only inside an open transaction on this connection; `commit`
    * must run once that transaction has committed, so the cached fold never
@@ -225,26 +228,35 @@ export const createWatcherWorkflowJournal = (
     return { workflowId, entries: [...entries] };
   };
 
+  const stores = new WeakSet<object>();
+  const forObjective = (
+    objective: WatcherProofObjective,
+  ): FraudProofWorkflowJournalStore => {
+    const store: FraudProofWorkflowJournalStore = Object.freeze({
+      load: async (workflowId: string) => {
+        const { entries } = loadFolded(workflowId);
+        assertObjective(objective, entries[0]);
+        return [...entries];
+      },
+      append: async (
+        entry: FraudProofWorkflowJournalEntry,
+        expectedSequence: number,
+      ) => {
+        assertObjective(objective, entry);
+        if (entry.sequence !== expectedSequence)
+          throw new ConcurrentFraudProofWorkflowWriteError(
+            `entry sequence ${entry.sequence.toString()} does not equal expected ${expectedSequence.toString()}`,
+          );
+        append(entry);
+      },
+    });
+    stores.add(store);
+    return store;
+  };
+
   return Object.freeze({
-    forObjective: (objective) =>
-      Object.freeze({
-        load: async (workflowId: string) => {
-          const { entries } = loadFolded(workflowId);
-          assertObjective(objective, entries[0]);
-          return [...entries];
-        },
-        append: async (
-          entry: FraudProofWorkflowJournalEntry,
-          expectedSequence: number,
-        ) => {
-          assertObjective(objective, entry);
-          if (entry.sequence !== expectedSequence)
-            throw new ConcurrentFraudProofWorkflowWriteError(
-              `entry sequence ${entry.sequence.toString()} does not equal expected ${expectedSequence.toString()}`,
-            );
-          append(entry);
-        },
-      }),
+    forObjective,
+    owns: (store) => stores.has(store),
     appendWithin,
     readExecution,
     readWorkflowIds: (limit) =>

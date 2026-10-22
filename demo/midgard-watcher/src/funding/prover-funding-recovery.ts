@@ -1,16 +1,9 @@
 import {
   assertMintWorkflowPreparedEvidence,
   assertWorkflowActuationPermitIdentity,
-  assertWorkflowFundingAbandonmentHandoffJournal,
-  assertWorkflowFundingCompletionHandoffJournal,
   bindWorkflowActuationRecoveryIdentity,
   journalJsonDigest,
   normalizeJournalJson,
-  parseWorkflowFundingAbandonmentHandoff,
-  parseWorkflowFundingCompletionHandoff,
-  parseWorkflowFundingPreparedTransition,
-  parseWorkflowFundingSubmissionHandoff,
-  reconcileWorkflowFundingSubmissionHandoff,
   type WorkflowActuationPermit,
 } from "@al-ft/midgard-fault-proofs";
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
@@ -156,86 +149,6 @@ export const authorizeWatcherProverFundingRecovery = async (input: {
     throw new Error(
       "workflow recovery has no unique non-conflicted original funding reservation",
     );
-  const record = reservations[0]!;
-  const reserved = { reservationId: record.reservationId };
-  const stored = await input.store.readCompletionHandoff(reserved);
-  if (record.state === "released") {
-    const handoff = parseWorkflowFundingCompletionHandoff(stored);
-    assertWorkflowFundingCompletionHandoffJournal({ handoff, entries });
-    // The runner may only reverify and persist this exact completion; its
-    // released funding permit cannot select inputs or prepare another action.
-  }
-  const abandoned = await input.store.readAbandonmentHandoff(reserved);
-  if (abandoned !== null) {
-    if (
-      typeof abandoned !== "object" ||
-      Array.isArray(abandoned) ||
-      Object.keys(abandoned).sort().join(",") !== "handoff,transition" ||
-      !("handoff" in abandoned) ||
-      !("transition" in abandoned)
-    )
-      throw new Error("workflow recovery abandonment handoff is malformed");
-    const handoff = parseWorkflowFundingAbandonmentHandoff(abandoned.handoff);
-    const transition = parseWorkflowFundingPreparedTransition(
-      abandoned.transition,
-    );
-    if (
-      transition.transactionHash !== handoff.reconciliation.txHash ||
-      record.pendingTransition !== null
-    )
-      throw new Error(
-        "workflow recovery abandonment differs from its exact signed transaction",
-      );
-    assertWorkflowFundingAbandonmentHandoffJournal({ handoff, entries });
-  }
-  const pending = record.pendingTransition;
-  if (pending !== null) {
-    const intent = [...entries]
-      .reverse()
-      .find(({ event }) => event.kind === "submission_intent");
-    const recovered: unknown = await input.store.readPendingHandoff(reserved);
-    if (recovered !== null) {
-      if (
-        typeof recovered !== "object" ||
-        Array.isArray(recovered) ||
-        Object.keys(recovered).sort().join(",") !== "handoff,transition" ||
-        !("handoff" in recovered) ||
-        !("transition" in recovered)
-      )
-        throw new Error("workflow recovery submission handoff is malformed");
-      const handoff = parseWorkflowFundingSubmissionHandoff(recovered.handoff);
-      const transition = parseWorkflowFundingPreparedTransition(
-        recovered.transition,
-      );
-      reconcileWorkflowFundingSubmissionHandoff({ handoff, entries });
-      if (
-        journalJsonDigest(normalizeJournalJson(transition)) !==
-        pending.transitionDigest
-      )
-        throw new Error(
-          "workflow recovery handoff changed its exact signed transaction",
-        );
-      if (
-        intent?.event.kind === "submission_intent" &&
-        intent.event.txHash === pending.transactionHash &&
-        journalJsonDigest(normalizeJournalJson(intent.event)) !==
-          journalJsonDigest(normalizeJournalJson(handoff.submissionIntent))
-      )
-        throw new Error(
-          "workflow recovery pending funding lineage differs from its recorded transaction intent",
-        );
-    } else if (
-      prepared === undefined ||
-      intent?.event.kind !== "submission_intent" ||
-      intent.event.txHash !== pending.transactionHash
-    ) {
-      // Existing signed intents already contain their action identity. A
-      // missing intent requires the transactionally persisted handoff above.
-      throw new Error(
-        "workflow recovery pending funding lineage differs from its recorded transaction intent",
-      );
-    }
-  }
   bindWorkflowActuationRecoveryIdentity({
     permit: input.actuationPermit,
     category: input.category,

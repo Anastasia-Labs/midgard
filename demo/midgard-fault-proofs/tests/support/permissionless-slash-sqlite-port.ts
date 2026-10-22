@@ -68,9 +68,6 @@ export const createPermissionlessSlashSqlitePort = async ({
   const port: WorkflowFundingReservationPort = {
     load: async () => snapshot(await record()),
     readPendingTransition: () => readStore().readPendingTransition(plan),
-    readPendingHandoff: () => readStore().readPendingHandoff(plan),
-    readCompletionHandoff: () => readStore().readCompletionHandoff(plan),
-    readAbandonmentHandoff: () => readStore().readAbandonmentHandoff(plan),
     readLandedSupersededAttempt: (candidate) =>
       readStore().readLandedSupersededAttempt({
         ...candidate,
@@ -119,13 +116,14 @@ export const createPermissionlessSlashSqlitePort = async ({
           .to_canonical_cbor_hex(),
       };
     },
-    prepare: async ({ expectedRevision, transition, handoff }) =>
+    prepare: async ({ expectedRevision, transition, attempt, journal }) =>
       snapshot(
         await readStore().prepareTransition({
           plan,
           expectedRevision,
           ...transition,
-          handoff,
+          attempt,
+          journal,
         }),
       ),
     confirm: async (input) =>
@@ -136,17 +134,16 @@ export const createPermissionlessSlashSqlitePort = async ({
           transitionDigest: await transitionDigest(),
         }),
       ),
-    abandon: async ({ expectedRevision, handoff }) =>
+    abandon: async ({ expectedRevision, retirement, journal }) =>
       snapshot(
         await readStore().abandonPendingTransition({
           plan,
           expectedRevision,
-          handoff,
+          ...(retirement === undefined ? {} : { retirement }),
+          journal,
           transitionDigest: await transitionDigest(),
         }),
       ),
-    acknowledgeAbandonment: async (input) =>
-      snapshot(await readStore().acknowledgeAbandonment({ plan, ...input })),
     markConflict: async (input) =>
       snapshot(await readStore().markConflict({ plan, ...input })),
     release: async (input) =>

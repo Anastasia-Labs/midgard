@@ -7,12 +7,9 @@ import {
   workflowActuationDecisionDigest,
   workflowJournalIsReconciliationOnly,
 } from "./actuation-permit.js";
+import { isFinalWorkflowCompletion } from "./completion-finality.js";
 import {
-  assertFinalWorkflowTerminalReceipt,
-  isFinalWorkflowCompletion,
-} from "./completion-finality.js";
-import {
-  assertWorkflowFundingAbandonmentHandoffJournal,
+  appendWorkflowJournalEvents,
   assertWorkflowFundingReservationReadyToSubmit,
   asWorkflowFundingShortfall,
   beginWorkflowFundingReservationAction,
@@ -20,15 +17,13 @@ import {
   conflictWorkflowFundingReservationTransaction,
   prepareWorkflowFundingReservationTransaction,
   readWorkflowFundingRecovery,
-  recoverWorkflowFundingJournal,
   releaseIdleWorkflowFundingReservation,
   releaseUnfundedWorkflowFundingInputs,
   releaseWorkflowFundingReservation,
-  type WorkflowFundingCompletionHandoff,
   WorkflowFundingReservationUnavailableError,
   WorkflowFundingShortfallError,
-  type WorkflowFundingSubmissionHandoff,
   workflowJournalHasFundingReservation,
+  type WorkflowJournalWriter,
 } from "./funding-reservation-permit.js";
 import {
   computeFraudProofWorkflowId,
@@ -64,6 +59,7 @@ import {
   attemptCount,
   FRAUD_PROOF_WORKFLOW_FRESH_SUBMISSION_REQUIRED,
   type FraudProofWorkflowRunResult,
+  journalRepeatsStall,
   latestSubmissionIntent,
   repeatsPendingReconciliation,
 } from "./orchestrator.fraud-proof-workflow-run-result.js";
@@ -182,18 +178,25 @@ export const runAdmittedFraudProofWorkflow = async ({
     expectedIdentity: identity,
   });
 
-  const append = async (event: FraudProofWorkflowJournalEvent) => {
-    const entry: FraudProofWorkflowJournalEntry = {
-      schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-      workflowId,
-      identity,
-      sequence: entries.length,
-      recordedAt: now().toISOString(),
-      event,
-    };
-    await journal.append(entry, entries.length);
-    entries = [...entries, entry];
-  };
+  const writer: WorkflowJournalWriter = Object.freeze({
+    journal,
+    entriesFor: async (events: readonly FraudProofWorkflowJournalEvent[]) =>
+      events.map(
+        (event, index): FraudProofWorkflowJournalEntry => ({
+          schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
+          workflowId,
+          identity,
+          sequence: entries.length + index,
+          recordedAt: now().toISOString(),
+          event,
+        }),
+      ),
+    recorded: (recorded: readonly FraudProofWorkflowJournalEntry[]) => {
+      entries = [...entries, ...recorded];
+    },
+  });
+  const append = async (event: FraudProofWorkflowJournalEvent) =>
+    await appendWorkflowJournalEvents(writer, [event]);
   const assertReconcile = () =>
     assertWorkflowJournalReconciliation(journal, identity);
   // An action that does not build is skipped for the rest of the run, so a
@@ -261,24 +264,11 @@ export const runAdmittedFraudProofWorkflow = async ({
     });
   }
 
-  let fundingRecovery = await recoverWorkflowFundingJournal({
-    journal,
-    workflowId,
-    identity,
-    entries: () => entries,
-    append,
-  });
-
   // Limits bound work in this invocation, not the lifetime of the objective.
   // Journal attempt numbers remain monotonic across automatic continuations.
   const attemptsAtStart = entries;
   for (let actionNumber = 0; actionNumber < maxActions; actionNumber += 1) {
-    fundingRecovery = await readWorkflowFundingRecovery(journal);
-    if (fundingRecovery.abandonmentHandoff !== null)
-      assertWorkflowFundingAbandonmentHandoffJournal({
-        handoff: fundingRecovery.abandonmentHandoff,
-        entries,
-      });
+    let fundingRecovery = await readWorkflowFundingRecovery(journal);
     let context: FraudProofWorkflowAdapterContext = {
       reconciliationOnly: workflowJournalIsReconciliationOnly(journal),
       identity,
@@ -293,7 +283,7 @@ export const runAdmittedFraudProofWorkflow = async ({
       verifier: terminalVerifier,
       context,
       headerHash,
-      journal,
+      writer,
       entries: () => entries,
       append,
       assertReconcile,
@@ -309,8 +299,7 @@ export const runAdmittedFraudProofWorkflow = async ({
       .reverse()
       .find(({ event }) => event.kind !== "stalled")?.event;
     const unresolvedEvent =
-      fundingRecovery.abandonmentHandoff?.submissionIntent ??
-      (latestJournalEvent?.kind === "submission_intent" ||
+      latestJournalEvent?.kind === "submission_intent" ||
       latestJournalEvent?.kind === "reobserved" ||
       latestJournalEvent?.kind === "submission_ambiguous" ||
       latestJournalEvent?.kind === "submitted" ||
@@ -318,13 +307,10 @@ export const runAdmittedFraudProofWorkflow = async ({
       (latestJournalEvent?.kind === "reconciled" &&
         latestJournalEvent.outcome === "pending")
         ? latestJournalEvent
-        : undefined);
+        : undefined;
     let currentObservation: FraudProofWorkflowObservation | undefined;
     if (
       !isFinalWorkflowCompletion(latestJournalEvent) &&
-      !isFinalWorkflowCompletion(
-        fundingRecovery.completionHandoff?.completion,
-      ) &&
       entries.some(({ event }) => event.kind === "confirmed")
     ) {
       assertWorkflowJournalActuation({
@@ -356,18 +342,16 @@ export const runAdmittedFraudProofWorkflow = async ({
             adapter,
             context,
             headerHash,
-            journal,
+            writer,
             intent,
             hasUnresolvedDescendant: unresolvedEvent !== undefined,
             supersedeDisplacedAttempt: async () =>
               await supersedeDisplacedFundingAttempt({
-                journal,
+                writer,
                 assertReconcile,
                 entries: () => entries,
-                append,
                 kept: intent.txHash,
               }),
-            append,
             stalled,
             resumeOnObservation,
           });
@@ -400,9 +384,7 @@ export const runAdmittedFraudProofWorkflow = async ({
       continue;
     }
     if (unresolvedEvent !== undefined && "actionId" in unresolvedEvent) {
-      const intent =
-        fundingRecovery.abandonmentHandoff?.submissionIntent ??
-        latestSubmissionIntent(entries, unresolvedEvent.actionId);
+      const intent = latestSubmissionIntent(entries, unresolvedEvent.actionId);
       if (intent === undefined) {
         return await stalled(
           `unresolved submission ${unresolvedEvent.actionId} has no durable intent`,
@@ -417,16 +399,7 @@ export const runAdmittedFraudProofWorkflow = async ({
       let rebroadcastAttempted = false;
       try {
         assertWorkflowJournalReconciliation(journal, identity);
-        // A committed supersession is final for this attempt: completing its
-        // acknowledgement never waits on a fresh read, and a late landing is
-        // adopted separately.
-        const reconcile: typeof adapter.reconcile =
-          fundingRecovery.abandonmentHandoff !== null &&
-          fundingRecovery.abandonmentHandoff.reconciliation.retirement ===
-            undefined
-            ? async () => ({ kind: "not_found" })
-            : (input) => adapter.reconcile(input);
-        reconciled = await reconcile({
+        reconciled = await adapter.reconcile({
           ...context,
           action,
           ...(priorTxHash === undefined ? {} : { txHash: priorTxHash }),
@@ -438,8 +411,7 @@ export const runAdmittedFraudProofWorkflow = async ({
             : {
                 signedTransactionCborHex:
                   fundingRecovery.transition.signedTransactionCborHex,
-                ...(fundingRecovery.abandonmentHandoff !== null ||
-                workflowJournalIsReconciliationOnly(journal)
+                ...(workflowJournalIsReconciliationOnly(journal)
                   ? {}
                   : {
                       authorizeResubmission: async (transaction: {
@@ -530,27 +502,20 @@ export const runAdmittedFraudProofWorkflow = async ({
           `reconciliation failed for ${action.actionId}: ${formatUnknownError(cause)}`,
         );
       }
-      if (
-        fundingRecovery.abandonmentHandoff !== null &&
-        reconciled.kind !== "not_found"
-      ) {
-        const reason = `abandoned transaction ${intent.txHash} no longer has authenticated replacement evidence: ${reconciled.kind}; exact outcome remains unresolved`;
-        if (workflowJournalIsReconciliationOnly(journal))
-          return pending(reason);
-        return await stalled(reason);
-      }
       if (reconciled.kind === "unknown") {
         const reason = `reconciliation remains unknown for ${action.actionId}: ${reconciled.reason}`;
         return resumeOnObservation(reason);
       }
       if (reconciled.kind === "conflict") {
+        const reason = `reconciliation conflict for ${action.actionId}: ${reconciled.reason}`;
         await conflictWorkflowFundingReservationTransaction({
-          journal,
+          writer,
           transactionHash: priorTxHash ?? intent.txHash,
+          events: journalRepeatsStall(entries, reason)
+            ? []
+            : [{ kind: "stalled", reason }],
         });
-        return await stalled(
-          `reconciliation conflict for ${action.actionId}: ${reconciled.reason}`,
-        );
+        return await stalled(reason);
       }
       if (reconciled.kind === "confirmed") {
         const txHash = normalizeTxHash(
@@ -563,16 +528,18 @@ export const runAdmittedFraudProofWorkflow = async ({
           );
         }
         await confirmWorkflowFundingReservationTransaction({
-          journal,
+          writer,
           transactionHash: txHash,
+          events: [
+            {
+              kind: "reconciled",
+              actionId: action.actionId,
+              outcome: "confirmed",
+              txHash,
+            },
+            { kind: "confirmed", actionId: action.actionId, txHash },
+          ],
         });
-        await append({
-          kind: "reconciled",
-          actionId: action.actionId,
-          outcome: "confirmed",
-          txHash,
-        });
-        await append({ kind: "confirmed", actionId: action.actionId, txHash });
         continue;
       }
       if (reconciled.kind === "pending") {
@@ -617,13 +584,11 @@ export const runAdmittedFraudProofWorkflow = async ({
           `reconciliation remains unknown for ${action.actionId}: absent without retirement, and no funding reservation keeps a replacement exclusive`,
         );
       await supersedeWorkflowFundingAttempt({
-        journal,
+        writer,
         assertReconcile,
         entries: () => entries,
-        append,
         transactionHash: intent.txHash,
         retirement: reconciled.retirement,
-        savedHandoff: fundingRecovery.abandonmentHandoff,
       });
       fundingRecovery = await readWorkflowFundingRecovery(journal);
       context = { ...context, entries };
@@ -640,16 +605,11 @@ export const runAdmittedFraudProofWorkflow = async ({
       checkpoint: "before_observe",
     });
     const observation: FraudProofWorkflowObservation =
-      !isFinalWorkflowCompletion(fundingRecovery.completionHandoff?.completion)
-        ? (currentObservation ??
-          (await adapter.observe({
-            ...context,
-            reconciliationOnly: workflowJournalIsReconciliationOnly(journal),
-          })))
-        : {
-            kind: "completed",
-            terminal: fundingRecovery.completionHandoff.completion.terminal,
-          };
+      currentObservation ??
+      (await adapter.observe({
+        ...context,
+        reconciliationOnly: workflowJournalIsReconciliationOnly(journal),
+      }));
     const held = unbuilt.held(observation);
     if (held !== undefined) return resumeOnObservation(held);
     if (observation.kind === "pending") return pending(observation.reason);
@@ -684,20 +644,6 @@ export const runAdmittedFraudProofWorkflow = async ({
           releaseFinality,
           inclusionOnly,
         });
-        if (
-          isFinalWorkflowCompletion(
-            fundingRecovery.completionHandoff?.completion,
-          )
-        ) {
-          const saved = fundingRecovery.completionHandoff.completion.terminal;
-          assertFinalWorkflowTerminalReceipt(saved, terminal);
-          terminal = normalizeWorkflowTerminal({
-            identity,
-            terminal: saved,
-            entries,
-            releaseFinality,
-          });
-        }
         assertWorkflowJournalActuation({
           journal,
           deploymentFingerprint,
@@ -715,28 +661,18 @@ export const runAdmittedFraudProofWorkflow = async ({
         normalizeJournalJson(terminal, "workflow terminal"),
       );
       const kind = inclusionOnly ? "terminal_included" : "completed";
-      const savedInclusion = fundingRecovery.completionHandoff;
+      const latestOutcome = [...entries]
+        .reverse()
+        .find(
+          ({ event }) =>
+            event.kind !== "stalled" && event.kind !== "signed_attempt_retired",
+        )?.event;
+      // An inclusion already recorded is observed again next time rather than
+      // recorded at every depth tick, and a final completion only once.
       if (
-        inclusionOnly &&
-        savedInclusion?.completion.kind === "terminal_included" &&
-        entries.length > savedInclusion.expectedJournalSequence
+        !(inclusionOnly && latestOutcome?.kind === "terminal_included") &&
+        !isFinalWorkflowCompletion(latestJournalEvent)
       ) {
-        // Its signed actions and original inclusion handoff already survive a
-        // restart. Re-observe next time rather than persisting every depth tick.
-        return { kind, workflowId, identity, terminal, entries };
-      }
-      if (!isFinalWorkflowCompletion(latestJournalEvent)) {
-        const handoff: WorkflowFundingCompletionHandoff = (fundingRecovery
-          .completionHandoff?.completion.kind === kind
-          ? fundingRecovery.completionHandoff
-          : null) ?? {
-          workflowId,
-          identity,
-          preparedArtifactDigest: journalJsonDigest(envelope),
-          expectedJournalSequence: entries.length,
-          completion: { kind, terminal, terminalDigest },
-        };
-        await releaseWorkflowFundingReservation({ journal, handoff });
         assertWorkflowJournalActuation({
           journal,
           deploymentFingerprint,
@@ -744,7 +680,10 @@ export const runAdmittedFraudProofWorkflow = async ({
           headerHash,
           checkpoint: "before_terminal_verify",
         });
-        await append({ kind, terminal, terminalDigest });
+        await releaseWorkflowFundingReservation({
+          writer,
+          event: { kind, terminal, terminalDigest },
+        });
       }
       return {
         kind,
@@ -817,7 +756,7 @@ export const runAdmittedFraudProofWorkflow = async ({
         adapterPreflightFailed ? "preflight" : undefined,
       );
     }
-    const preflightEvent: WorkflowFundingSubmissionHandoff["preflight"] = {
+    const preflightEvent: FraudProofWorkflowJournalEvent = {
       kind: "preflight_passed",
       actionId: action.actionId,
       txHash: preflight.txHash,
@@ -825,30 +764,22 @@ export const runAdmittedFraudProofWorkflow = async ({
       referenceScripts: preflight.referenceScripts,
     };
     const attempt = priorAttempts + 1;
-    const submissionIntent: WorkflowFundingSubmissionHandoff["submissionIntent"] =
-      {
-        kind: "submission_intent",
-        actionId: action.actionId,
-        actionInput: action.input,
-        ...(preflight.durableRecovery === undefined
-          ? {}
-          : { durableRecovery: preflight.durableRecovery }),
-        attempt,
-        txHash: preflight.txHash,
-      };
+    const submissionIntent: FraudProofWorkflowJournalEvent = {
+      kind: "submission_intent",
+      actionId: action.actionId,
+      actionInput: action.input,
+      ...(preflight.durableRecovery === undefined
+        ? {}
+        : { durableRecovery: preflight.durableRecovery }),
+      attempt,
+      txHash: preflight.txHash,
+    };
     try {
       await prepareWorkflowFundingReservationTransaction({
-        journal,
+        writer,
         action,
         preflight,
-        handoff: {
-          workflowId,
-          identity,
-          preparedArtifactDigest: journalJsonDigest(envelope),
-          expectedJournalSequence: entries.length,
-          preflight: preflightEvent,
-          submissionIntent,
-        },
+        events: [preflightEvent, submissionIntent],
       });
     } catch (cause) {
       // A transaction the reservation cannot fund, as its preflight would:
@@ -862,8 +793,6 @@ export const runAdmittedFraudProofWorkflow = async ({
         `funding reservation failed for ${action.actionId}: ${formatUnknownError(cause)}`,
       );
     }
-    await append(preflightEvent);
-    await append(submissionIntent);
     let submitted: FraudProofWorkflowSubmitResult;
     assertWorkflowJournalActuation({
       journal,

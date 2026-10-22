@@ -19,7 +19,6 @@ import { workflowPreflightTransaction } from "../src/workflow/transaction-bounda
 import { bindFamilyRecoveryFixture } from "./support/bound-family-recovery-fixture.js";
 import {
   customWorkflowRecoveryFixture as fixture,
-  verifyCompletionHandoffRestart,
   verifyTerminalRecoveryFinality,
 } from "./support/custom-workflow-recovery.js";
 const cases = [
@@ -102,9 +101,6 @@ for (const [spec, execute] of cases) {
   });
   it(`${spec.category}: retains shallow inclusion and completes beyond the recovery horizon`, async () => {
     await verifyTerminalRecoveryFinality(await fixture(spec, true), run);
-  });
-  it(`${spec.category}: resumes the exact terminal handoff after funding release precedes journal completion`, async () => {
-    await verifyCompletionHandoffRestart(await fixture(spec, true), run);
   });
   it(`${spec.category}: rollback revokes readonly recovery before observation`, async () => {
     const f = await fixture(spec);

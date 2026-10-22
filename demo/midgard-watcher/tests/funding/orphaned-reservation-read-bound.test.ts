@@ -50,7 +50,6 @@ const orphanedMany = (
       readRecordedSubmissions: async ({ reservationId }) =>
         attempts.get(reservationId)!.map((transition) => ({ transition })),
       readPendingTransition: async () => null,
-      readCompletionHandoff: async () => null,
       settleOrphanedReservation: async ({ orphan }) => {
         settled.add(orphan.reservationId);
         return true;

@@ -1,22 +1,20 @@
 import "node:crypto";
 import "node:fs/promises";
 import "node:path";
-import "node:sqlite";
 import "@al-ft/midgard-fault-proofs";
 import "@lucid-evolution/lucid";
 import "vitest";
 import "../../src/funding/prover-funding-reservation.js";
 import "../../src/funding/sqlite-prover-funding-reservation-store.js";
-import "./funding-handoff-fixture.js";
 import "./sqlite-prover-funding-reservation-store.signed-transition.js";
 
 import { createHash } from "node:crypto";
 import { rm } from "node:fs/promises";
-import { DatabaseSync } from "node:sqlite";
 
 import {
-  journalJsonDigest,
-  type WorkflowFundingCompletionHandoff,
+  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
+  type FraudProofWorkflowJournalEntry,
 } from "@al-ft/midgard-fault-proofs";
 import { CML } from "@lucid-evolution/lucid";
 import { afterEach, describe, expect, it } from "vitest";
@@ -27,14 +25,12 @@ import {
   unsafeOpenWatcherSqliteProverFundingReservationStoreForTest,
 } from "../../src/funding/sqlite-prover-funding-reservation-store.js";
 import {
-  abandonmentHandoff,
-  completionHandoff,
+  attemptOf,
   openStore,
   plan,
   prepareTransition,
+  retirementFixture,
   signedTransition,
-  submissionHandoff,
-  substituteAbandonmentTransactionHash,
   temporaryDirectories,
 } from "./sqlite-prover-funding-reservation-store.signed-transition.js";
 
@@ -92,8 +88,8 @@ describe("SQLite prover funding reservation store V1", () => {
         ...signedTransition(),
         consumedOutRefs: [currentPlan.inputs[0]!.outRef],
       });
-      // The second process won preparation: its signed DB handoff protects all
-      // leases even though no workflow journal submission intent exists yet.
+      // The second process won preparation: its signed attempt protects all
+      // leases.
       await expect(
         opened.runtime.store.releaseUnused!(beforePrepare),
       ).resolves.toBe(false);
@@ -120,6 +116,7 @@ describe("SQLite prover funding reservation store V1", () => {
       consumedOutRefs: [currentPlan.inputs[0]!.outRef],
     });
     const confirmed = await opened.runtime.store.confirmTransition({
+      journal: [],
       plan: currentPlan,
       expectedRevision: prepared.revision,
       transactionHash: signed.transactionHash,
@@ -133,6 +130,7 @@ describe("SQLite prover funding reservation store V1", () => {
       );
     try {
       const restored = await runtime.store.reobserveTransition!({
+        journal: [],
         plan: currentPlan,
         expectedRevision: confirmed.revision,
         transactionHash: signed.transactionHash,
@@ -144,6 +142,7 @@ describe("SQLite prover funding reservation store V1", () => {
       );
       await expect(runtime.store.readAll()).resolves.toHaveLength(1);
       const included = await runtime.store.confirmTransition({
+        journal: [],
         plan: currentPlan,
         expectedRevision: restored.revision,
         transactionHash: signed.transactionHash,
@@ -159,135 +158,98 @@ describe("SQLite prover funding reservation store V1", () => {
     }
   });
 
-  it.each([
-    ["terminal_included", 30],
-    ["completed", 30],
-    ["terminal_included", 2161],
-  ] as const)(
-    "retains depth-%s:%s capital and exact signed receipts through rollback and restart",
-    async (kind, depth) => {
-      const opened = await openStore();
-      let runtime = opened.runtime;
-      const first = plan("aa", "66");
-      const signed = signedTransition({
-        collateralHash: "12".repeat(32),
-        validityUpperBound: 1000n,
+  it("keeps an included attempt's capital leased for a re-land across restart until final release", async () => {
+    const opened = await openStore();
+    let runtime = opened.runtime;
+    const first = plan("aa", "66");
+    const signed = signedTransition({
+      collateralHash: "12".repeat(32),
+      validityUpperBound: 1000n,
+    });
+    try {
+      await runtime.store.reserve(first);
+      const prepared = await prepareTransition(runtime.store, {
+        plan: first,
+        expectedRevision: "0",
+        actionKind: "proof.remove",
+        ...signed,
+        consumedOutRefs: [first.inputs[0]!.outRef],
       });
-      try {
-        await runtime.store.reserve(first);
-        const prepared = await prepareTransition(runtime.store, {
+      const confirmed = await runtime.store.confirmTransition({
+        journal: [],
+        plan: first,
+        expectedRevision: prepared.revision,
+        transactionHash: signed.transactionHash,
+        transitionDigest: prepared.pendingTransition!.transitionDigest,
+      });
+      // Consumed and produced capital stays leased for a re-land; the
+      // confirmed transaction's collateral lease ended at confirmation.
+      const reserved = await runtime.store.readReservedOutRefs({});
+      expect(reserved).toEqual(
+        expect.arrayContaining([
+          first.inputs[0]!.outRef,
+          signed.producedInputs[0]!.outRef,
+        ]),
+      );
+      expect(reserved).not.toContain(`${"12".repeat(32)}#0`);
+      const competitorBase = plan("bb", "77");
+      const competitor = {
+        ...competitorBase,
+        inputs: competitorBase.inputs.map((i) =>
+          i.role === "collateral"
+            ? { ...i, outRef: `${"13".repeat(32)}#0` }
+            : i,
+        ),
+      };
+      await expect(runtime.store.reserve(competitor)).rejects.toThrow(
+        "already reserved",
+      );
+      runtime.close();
+      runtime =
+        await unsafeOpenWatcherSqliteProverFundingReservationStoreForTest(
+          { path: opened.path },
+          () => undefined,
+        );
+      const reopened = await runtime.store.reobserveTransition!({
+        journal: [],
+        plan: first,
+        expectedRevision: confirmed.revision,
+        transactionHash: signed.transactionHash,
+        inputs: first.inputs,
+      });
+      expect(reopened.pendingTransition?.signedTransactionCborHex).toBe(
+        signed.signedTransactionCborHex,
+      );
+      const reincluded = await runtime.store.confirmTransition({
+        journal: [],
+        plan: first,
+        expectedRevision: reopened.revision,
+        transactionHash: signed.transactionHash,
+        transitionDigest: reopened.pendingTransition!.transitionDigest,
+      });
+      const released = await runtime.store.release({
+        journal: [],
+        plan: first,
+        expectedRevision: reincluded.revision,
+      });
+      expect(released.state).toBe("released");
+      expect(await runtime.store.readReservedOutRefs({})).toEqual([]);
+      await runtime.store.reserve(competitor);
+      await expect(
+        runtime.store.reobserveTransition!({
+          journal: [],
           plan: first,
-          expectedRevision: "0",
-          actionKind: "proof.remove",
-          ...signed,
-          consumedOutRefs: [first.inputs[0]!.outRef],
-        });
-        const confirmed = await runtime.store.confirmTransition({
-          plan: first,
-          expectedRevision: prepared.revision,
+          expectedRevision: released.revision,
           transactionHash: signed.transactionHash,
-          transitionDigest: prepared.pendingTransition!.transitionDigest,
-        });
-        const final = completionHandoff(first);
-        const terminal = {
-          ...final.completion.terminal,
-          observedAt: {
-            ...final.completion.terminal.observedAt,
-            confirmationDepth: depth,
-          },
-        };
-        const provisional: WorkflowFundingCompletionHandoff = {
-          ...final,
-          completion: {
-            kind,
-            terminal,
-            terminalDigest: journalJsonDigest(terminal),
-          },
-        };
-        const held = await runtime.store.release({
-          plan: first,
-          expectedRevision: confirmed.revision,
-          handoff: provisional,
-        });
-        expect(held.state).toBe("active");
-        expect(held.activeInputs).toEqual(confirmed.activeInputs);
-        // Consumed and produced capital stays leased for a re-land; the
-        // confirmed transaction's collateral lease ended at confirmation.
-        const reserved = await runtime.store.readReservedOutRefs({});
-        expect(reserved).toEqual(
-          expect.arrayContaining([
-            first.inputs[0]!.outRef,
-            signed.producedInputs[0]!.outRef,
-          ]),
-        );
-        expect(reserved).not.toContain(`${"12".repeat(32)}#0`);
-        const competitorBase = plan("bb", "77");
-        const competitor = {
-          ...competitorBase,
-          inputs: competitorBase.inputs.map((i) =>
-            i.role === "collateral"
-              ? { ...i, outRef: `${"13".repeat(32)}#0` }
-              : i,
-          ),
-        };
-        await expect(runtime.store.reserve(competitor)).rejects.toThrow(
-          "already reserved",
-        );
-        runtime.close();
-        runtime =
-          await unsafeOpenWatcherSqliteProverFundingReservationStoreForTest(
-            { path: opened.path },
-            () => undefined,
-          );
-        const reopened = await runtime.store.reobserveTransition!({
-          plan: first,
-          expectedRevision: held.revision,
-          transactionHash: signed.transactionHash,
-          inputs: first.inputs,
-        });
-        expect(reopened.pendingTransition?.signedTransactionCborHex).toBe(
-          signed.signedTransactionCborHex,
-        );
-        expect(reopened.pendingTransition?.transactionHash).toBe(
-          signed.transactionHash,
-        );
-        const reincluded = await runtime.store.confirmTransition({
-          plan: first,
-          expectedRevision: reopened.revision,
-          transactionHash: signed.transactionHash,
-          transitionDigest: reopened.pendingTransition!.transitionDigest,
-        });
-        await runtime.store.release({
-          plan: first,
-          expectedRevision: reincluded.revision,
-          handoff: provisional,
-        });
-        const current = parseWatcherProverFundingReservationRecord(
-          (await runtime.store.readAll())[0],
-        );
-        const anchored = await runtime.store.release({
-          plan: first,
-          expectedRevision: current.revision,
-          handoff: final,
-        });
-        expect(anchored.state).toBe("released");
-        expect(await runtime.store.readReservedOutRefs({})).toEqual([]);
-        await runtime.store.reserve(competitor);
-        await expect(
-          runtime.store.reobserveTransition!({
-            plan: first,
-            expectedRevision: anchored.revision,
-            transactionHash: signed.transactionHash,
-            inputs: [],
-          }),
-        ).rejects.toThrow("anchored");
-      } finally {
-        runtime.close();
-      }
-    },
-  );
+          inputs: [],
+        }),
+      ).rejects.toThrow();
+    } finally {
+      runtime.close();
+    }
+  });
 
-  it("atomically rejects a handoff for another decision or signed transaction", async () => {
+  it("refuses a prepare whose journal intent is another decision's or another transaction's", async () => {
     const opened = await openStore();
     const currentPlan = plan("aa", "66");
     await opened.runtime.store.reserve(currentPlan);
@@ -299,19 +261,43 @@ describe("SQLite prover funding reservation store V1", () => {
       ...signedTransition(),
       consumedOutRefs: [`${"11".repeat(32)}#0`],
     };
-    for (const handoff of [
-      submissionHandoff({ ...input, plan: plan("aa", "77") }),
-      submissionHandoff({ ...input, transactionHash: "99".repeat(32) }),
+    const attempt = attemptOf(input);
+    const intent = (
+      decisionDigest: string,
+      txHash: string,
+    ): FraudProofWorkflowJournalEntry => ({
+      schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
+      workflowId: attempt.workflowId,
+      identity: {
+        schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+        deploymentFingerprint: currentPlan.deploymentFingerprint,
+        decisionDigest,
+        category: "doubleSpend",
+        target: { kind: "state_queue_header", headerHash: "55".repeat(28) },
+      },
+      sequence: attempt.intentSequence,
+      recordedAt: new Date().toISOString(),
+      event: {
+        kind: "submission_intent",
+        actionId: input.actionKind,
+        actionInput: attempt.actionInput,
+        attempt: 1,
+        txHash,
+      },
+    });
+    for (const journal of [
+      [intent("77".repeat(32), input.transactionHash)],
+      [intent(currentPlan.decisionDigest, "99".repeat(32))],
     ]) {
       await expect(
-        opened.runtime.store.prepareTransition({ ...input, handoff }),
+        opened.runtime.store.prepareTransition({ ...input, attempt, journal }),
       ).rejects.toThrow();
       expect(await opened.runtime.store.readAll()).toEqual([reserved]);
       expect(
-        await opened.runtime.store.readPendingHandoff({
+        await opened.runtime.store.readRecordedSubmissions!({
           reservationId: currentPlan.reservationId,
         }),
-      ).toBeNull();
+      ).toEqual([]);
     }
     opened.runtime.close();
   });
@@ -346,27 +332,20 @@ describe("SQLite prover funding reservation store V1", () => {
           reservationId: currentPlan.reservationId,
         }),
       ).toEqual(transition);
-      expect(
-        await reopened.store.readPendingHandoff({
-          reservationId: currentPlan.reservationId,
-        }),
-      ).toEqual({ transition, handoff: submissionHandoff(input) });
       expect(await reopened.store.readAll()).toHaveLength(1);
     } finally {
       reopened.close();
     }
   });
 
-  it("retains the exact terminal across release interruption without reopening leases", async () => {
+  it("keeps a released reservation released across restart, with no leases and no further change", async () => {
     const opened = await openStore();
     const currentPlan = plan("aa", "66");
     await opened.runtime.store.reserve(currentPlan);
-    const handoff = completionHandoff(currentPlan);
-    // The process stops right after the release commits.
     await opened.runtime.store.release({
+      journal: [],
       plan: currentPlan,
       expectedRevision: "0",
-      handoff,
     });
     opened.runtime.close();
     const reopened =
@@ -382,35 +361,15 @@ describe("SQLite prover funding reservation store V1", () => {
         activeInputs: [],
         pendingTransition: null,
       });
-      expect(
-        await reopened.store.readCompletionHandoff({
-          reservationId: currentPlan.reservationId,
-        }),
-      ).toEqual(handoff);
-      await expect(
-        reopened.store.release({
-          plan: currentPlan,
-          expectedRevision: "1",
-          handoff,
-        }),
-      ).resolves.toEqual(released);
-      await expect(
-        reopened.store.release({
-          plan: currentPlan,
-          expectedRevision: "0",
-          handoff,
-        }),
-      ).rejects.toThrow("release mismatch");
-      await expect(
-        reopened.store.release({
-          plan: currentPlan,
-          expectedRevision: "1",
-          handoff: {
-            ...handoff,
-            completion: { ...handoff.completion, kind: "terminal_included" },
-          },
-        }),
-      ).rejects.toThrow("handoff mismatch");
+      expect(await reopened.store.readReservedOutRefs({})).toEqual([]);
+      for (const expectedRevision of ["0", "1"])
+        await expect(
+          reopened.store.release({
+            journal: [],
+            plan: currentPlan,
+            expectedRevision,
+          }),
+        ).rejects.toThrow("release mismatch");
       await expect(
         prepareTransition(reopened.store, {
           plan: currentPlan,
@@ -426,7 +385,7 @@ describe("SQLite prover funding reservation store V1", () => {
     }
   });
 
-  it("blocks replacement until exact abandonment acknowledgement and archives signed bytes", async () => {
+  it("supersedes a pending attempt once, keeps its signed bytes, and admits a replacement that spends its input", async () => {
     const opened = await openStore();
     const currentPlan = plan("aa", "66");
     await opened.runtime.store.reserve(currentPlan);
@@ -438,25 +397,29 @@ describe("SQLite prover funding reservation store V1", () => {
       ...signed,
       consumedOutRefs: [`${"11".repeat(32)}#0`],
     });
-    const handoff = abandonmentHandoff(
-      currentPlan,
-      signed.transactionHash,
-      "proof.init",
-    );
     const input = {
+      journal: [],
       plan: currentPlan,
       expectedRevision: pending.revision,
       transitionDigest: pending.pendingTransition!.transitionDigest,
-      handoff,
+      retirement: retirementFixture(signed.transactionHash),
     };
     const abandoned =
       await opened.runtime.store.abandonPendingTransition(input);
-    expect(
-      await opened.runtime.store.abandonPendingTransition({
+    expect(abandoned.pendingTransition).toBeNull();
+    await expect(
+      opened.runtime.store.abandonPendingTransition({
         ...input,
         expectedRevision: abandoned.revision,
       }),
-    ).toEqual(abandoned);
+    ).rejects.toThrow();
+    await expect(
+      opened.runtime.store.release({
+        journal: [],
+        plan: currentPlan,
+        expectedRevision: pending.revision,
+      }),
+    ).rejects.toThrow("release mismatch");
     const replacement = {
       plan: currentPlan,
       actionKind: "proof.init",
@@ -466,102 +429,53 @@ describe("SQLite prover funding reservation store V1", () => {
       }),
       consumedOutRefs: [`${"11".repeat(32)}#0`],
     };
-    await expect(
-      prepareTransition(opened.runtime.store, {
-        ...replacement,
-        expectedRevision: abandoned.revision,
-      }),
-    ).rejects.toThrow("cannot prepare transition");
-    await expect(
-      opened.runtime.store.release({
-        plan: currentPlan,
-        expectedRevision: abandoned.revision,
-        handoff: completionHandoff(currentPlan),
-      }),
-    ).rejects.toThrow("release mismatch");
-    for (const changed of [
-      { ...handoff, expectedJournalSequence: 3 },
-      substituteAbandonmentTransactionHash(handoff, "99".repeat(32)),
-    ])
-      await expect(
-        opened.runtime.store.acknowledgeAbandonment({
-          plan: currentPlan,
-          expectedRevision: abandoned.revision,
-          handoff: changed,
-        }),
-      ).rejects.toThrow("acknowledgement mismatch");
-    await expect(
-      opened.runtime.store.acknowledgeAbandonment({
-        plan: currentPlan,
-        expectedRevision: pending.revision,
-        handoff,
-      }),
-    ).rejects.toThrow("acknowledgement mismatch");
-    const acknowledged = await opened.runtime.store.acknowledgeAbandonment({
-      plan: currentPlan,
-      expectedRevision: abandoned.revision,
-      handoff,
-    });
-    expect(
-      await opened.runtime.store.acknowledgeAbandonment({
-        plan: currentPlan,
-        expectedRevision: acknowledged.revision,
-        handoff,
-      }),
-    ).toEqual(acknowledged);
-    expect(
-      await opened.runtime.store.readAbandonmentHandoff({
-        reservationId: currentPlan.reservationId,
-      }),
-    ).toBeNull();
     const prepared = await prepareTransition(opened.runtime.store, {
       ...replacement,
-      expectedRevision: acknowledged.revision,
+      expectedRevision: abandoned.revision,
     });
     await expect(
       prepareTransition(opened.runtime.store, {
         ...replacement,
-        expectedRevision: acknowledged.revision,
+        expectedRevision: abandoned.revision,
       }),
     ).rejects.toThrow("cannot prepare transition");
     expect(prepared.pendingTransition?.transactionHash).toBe(
       replacement.transactionHash,
     );
     opened.runtime.close();
-    const database = new DatabaseSync(opened.path, { readOnly: true });
+    const reopened =
+      await unsafeOpenWatcherSqliteProverFundingReservationStoreForTest(
+        { path: opened.path },
+        () => undefined,
+      );
     try {
-      const rows = database
-        .prepare(
-          "SELECT canonical_json, acknowledged_revision FROM watcher_prover_funding_abandonment_v1",
-        )
-        .all();
-      expect(rows).toHaveLength(1);
-      expect(rows[0]!.acknowledged_revision).toBe(acknowledged.revision);
-      expect(JSON.parse(String(rows[0]!.canonical_json))).toMatchObject({
-        transition: {
-          signedTransactionCborHex: signed.signedTransactionCborHex,
-        },
-        handoff,
-      });
-      const submissions = database
-        .prepare(
-          "SELECT canonical_json FROM watcher_prover_funding_handoff_v1 WHERE kind = 'submission'",
-        )
-        .all();
       expect(
-        submissions
-          .map(
-            (row) =>
-              JSON.parse(String(row.canonical_json)).transition.transactionHash,
-          )
+        await reopened.store.readLegacyAbandonedTransactions!({
+          reservationId: currentPlan.reservationId,
+        }),
+      ).toMatchObject([
+        {
+          transition: {
+            signedTransactionCborHex: signed.signedTransactionCborHex,
+          },
+          retirement: input.retirement,
+        },
+      ]);
+      expect(
+        (
+          (await reopened.store.readRecordedSubmissions!({
+            reservationId: currentPlan.reservationId,
+          })) as readonly { transition: { transactionHash: string } }[]
+        )
+          .map(({ transition }) => transition.transactionHash)
           .sort(),
       ).toEqual([signed.transactionHash, replacement.transactionHash].sort());
     } finally {
-      database.close();
+      reopened.close();
     }
   });
 
-  it("acknowledges only the exact last confirmed hash, digest and current revision after restart", async () => {
+  it("confirms only the exact pending hash and digest, once, across restart", async () => {
     const opened = await openStore();
     const currentPlan = plan("aa", "66");
     const signed = signedTransition();
@@ -574,6 +488,7 @@ describe("SQLite prover funding reservation store V1", () => {
       consumedOutRefs: [`${"11".repeat(32)}#0`],
     });
     const confirmation = {
+      journal: [],
       plan: currentPlan,
       expectedRevision: pending.revision,
       transactionHash: signed.transactionHash,
@@ -594,31 +509,30 @@ describe("SQLite prover funding reservation store V1", () => {
         () => undefined,
       );
     try {
-      const acknowledged = {
+      const again = {
         ...confirmation,
         expectedRevision: confirmed.revision,
       };
-      expect(await restarted.store.confirmTransition(acknowledged)).toEqual(
-        confirmed,
-      );
       for (const changed of [
+        {},
         { transactionHash: "ff".repeat(32) },
         { transitionDigest: "ff".repeat(32) },
         { expectedRevision: pending.revision },
       ]) {
         await expect(
-          restarted.store.confirmTransition({ ...acknowledged, ...changed }),
+          restarted.store.confirmTransition({ ...again, ...changed }),
         ).rejects.toThrow("confirmation mismatch");
         expect(await restarted.store.readAll()).toEqual([confirmed]);
       }
       const conflict = await restarted.store.markConflict({
+        journal: [],
         plan: currentPlan,
         expectedRevision: confirmed.revision,
         code: "unexpected_spend",
       });
       await expect(
         restarted.store.confirmTransition({
-          ...acknowledged,
+          ...again,
           expectedRevision: conflict.revision,
         }),
       ).rejects.toThrow("confirmation mismatch");
@@ -664,6 +578,7 @@ describe("SQLite prover funding reservation store V1", () => {
       expect(await reopened.store.readAll()).toEqual([pending]);
       await expect(
         reopened.store.confirmTransition({
+          journal: [],
           plan: currentPlan,
           expectedRevision: pending.revision,
           transactionHash: pending.pendingTransition!.transactionHash,
@@ -671,6 +586,7 @@ describe("SQLite prover funding reservation store V1", () => {
         }),
       ).rejects.toThrow("confirmation mismatch");
       const confirmed = await reopened.store.confirmTransition({
+        journal: [],
         plan: currentPlan,
         expectedRevision: pending.revision,
         transactionHash: pending.pendingTransition!.transactionHash,
@@ -784,7 +700,7 @@ describe("SQLite prover funding reservation store V1", () => {
     ).resolves.toBeNull();
     await expect(
       opened.runtime.store.release({
-        handoff: completionHandoff(currentPlan),
+        journal: [],
         plan: currentPlan,
         expectedRevision: "1",
       }),
@@ -800,6 +716,7 @@ describe("SQLite prover funding reservation store V1", () => {
 
     await expect(
       restarted.store.confirmTransition({
+        journal: [],
         plan: currentPlan,
         expectedRevision: "0",
         transactionHash: prepared.pendingTransition!.transactionHash,
@@ -807,6 +724,7 @@ describe("SQLite prover funding reservation store V1", () => {
       }),
     ).rejects.toThrow("confirmation mismatch");
     const confirmed = await restarted.store.confirmTransition({
+      journal: [],
       plan: currentPlan,
       expectedRevision: "1",
       transactionHash: prepared.pendingTransition!.transactionHash,
@@ -861,6 +779,7 @@ describe("SQLite prover funding reservation store V1", () => {
       consumedOutRefs: [`${signed.transactionHash}#0`],
     });
     const secondConfirmed = await restarted.store.confirmTransition({
+      journal: [],
       plan: currentPlan,
       expectedRevision: "3",
       transactionHash: secondPrepared.pendingTransition!.transactionHash,
@@ -899,6 +818,7 @@ describe("SQLite prover funding reservation store V1", () => {
     ).toBe(false);
 
     const conflicted = await restarted.store.markConflict({
+      journal: [],
       plan: currentPlan,
       expectedRevision: "4",
       code: "unexpected_spend",
@@ -942,6 +862,7 @@ describe("SQLite prover funding reservation store V1", () => {
           consumedOutRefs: [`${"11".repeat(32)}#0`],
         });
         const firstConfirmed = await runtime.store.confirmTransition({
+          journal: [],
           plan: currentPlan,
           expectedRevision: firstPrepared.revision,
           transactionHash: firstPrepared.pendingTransition!.transactionHash,
@@ -984,6 +905,7 @@ describe("SQLite prover funding reservation store V1", () => {
         );
         await expect(
           runtime.store.confirmTransition({
+            journal: [],
             plan: currentPlan,
             expectedRevision: secondPrepared.revision,
             transactionHash: secondPrepared.pendingTransition!.transactionHash,
@@ -991,6 +913,7 @@ describe("SQLite prover funding reservation store V1", () => {
           }),
         ).rejects.toThrow("confirmation mismatch");
         const secondConfirmed = await runtime.store.confirmTransition({
+          journal: [],
           plan: currentPlan,
           expectedRevision: secondPrepared.revision,
           transactionHash: secondPrepared.pendingTransition!.transactionHash,
@@ -1033,11 +956,8 @@ describe("SQLite prover funding reservation store V1", () => {
           consumedOutRefs: [`${secondSigned.transactionHash}#0`],
         });
         const abandoned = await runtime.store.abandonPendingTransition({
-          handoff: abandonmentHandoff(
-            currentPlan,
-            thirdSigned.transactionHash,
-            actionKind,
-          ),
+          journal: [],
+          retirement: retirementFixture(thirdSigned.transactionHash),
           plan: currentPlan,
           expectedRevision: thirdPrepared.revision,
           transitionDigest: thirdPrepared.pendingTransition!.transitionDigest,

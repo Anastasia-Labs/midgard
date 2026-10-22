@@ -1,15 +1,10 @@
 import { rm } from "node:fs/promises";
-import { DatabaseSync } from "node:sqlite";
 
-import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { computeFraudProofRawL1PointId } from "@al-ft/midgard-fault-proofs";
 import { afterEach, expect, it } from "vitest";
 
 import { unsafeOpenWatcherSqliteProverFundingReservationStoreForTest } from "../../src/funding/sqlite-prover-funding-reservation-store.js";
-import { watcherCanonicalJson } from "../../src/storage/durable-store.js";
 import {
-  abandonmentHandoff,
-  completionHandoff,
   openStore,
   plan,
   prepareTransition,
@@ -27,7 +22,7 @@ afterEach(async () => {
 });
 
 it.each([false, true])(
-  "reconstructs legacy abandonment leases (completed: %s) and holds them only until final completion or fresh deep canonical proof",
+  "holds an unretired superseded attempt's leases across restart (completed: %s) only until final completion or a deep retirement",
   async (completed) => {
     const opened = await openStore();
     const owner = plan("aa", "66");
@@ -40,51 +35,23 @@ it.each([false, true])(
       ...signed,
       consumedOutRefs: [`${"11".repeat(32)}#0`],
     });
-    const handoff = abandonmentHandoff(
-      owner,
-      signed.transactionHash,
-      "proof.init",
-    );
     const abandoned = await opened.runtime.store.abandonPendingTransition({
+      journal: [],
       plan: owner,
       expectedRevision: pending.revision,
       transitionDigest: pending.pendingTransition!.transitionDigest,
-      handoff,
-    });
-    const acknowledged = await opened.runtime.store.acknowledgeAbandonment({
-      plan: owner,
-      expectedRevision: abandoned.revision,
-      handoff,
     });
     const idle = await opened.runtime.store.releaseIdle!({
       plan: owner,
-      expectedRevision: acknowledged.revision,
+      expectedRevision: abandoned.revision,
     });
     if (completed)
       await opened.runtime.store.release({
+        journal: [],
         plan: owner,
         expectedRevision: idle.revision,
-        handoff: completionHandoff(owner),
       });
     opened.runtime.close();
-    // Simulate the exact pre-fix persisted format; this fixture is not a deployment reset.
-    const database = new DatabaseSync(opened.path);
-    const row = database
-      .prepare(
-        "SELECT canonical_json FROM watcher_prover_funding_abandonment_v1",
-      )
-      .get() as { canonical_json: string };
-    const legacy = JSON.parse(row.canonical_json);
-    delete legacy.handoff.reconciliation.retirement;
-    database
-      .prepare(
-        "UPDATE watcher_prover_funding_abandonment_v1 SET canonical_json=?, record_digest=?",
-      )
-      .run(
-        watcherCanonicalJson(legacy),
-        computeDeploymentManifestJsonDigest(legacy),
-      );
-    database.close();
     const reopened =
       await unsafeOpenWatcherSqliteProverFundingReservationStoreForTest(
         { path: opened.path },
@@ -95,7 +62,7 @@ it.each([false, true])(
         revision: string;
       };
       if (completed) {
-        // Final completion ends the legacy attempt's leases; retirement past
+        // Final completion ends the superseded attempt's leases; retirement past
         // k is bookkeeping only and never holds funding.
         expect(await reopened.store.readReservedOutRefs({})).not.toContain(
           `${"11".repeat(32)}#0`,
@@ -134,6 +101,7 @@ it.each([false, true])(
       };
       await expect(
         reopened.store.retireLegacyAbandonment!({
+          journal: [],
           plan: owner,
           expectedRevision: before.revision,
           transactionHash: signed.transactionHash,
@@ -144,6 +112,7 @@ it.each([false, true])(
         `${"11".repeat(32)}#0`,
       );
       const after = await reopened.store.retireLegacyAbandonment!({
+        journal: [],
         plan: owner,
         expectedRevision: before.revision,
         transactionHash: signed.transactionHash,

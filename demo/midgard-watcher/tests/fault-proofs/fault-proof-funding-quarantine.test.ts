@@ -34,7 +34,7 @@ describe("an objective whose own funding is refused is quarantined alone", () =>
     expect(await test.fixture.records()).toEqual(before);
   });
 
-  it("holds only its objective when its journal no longer anchors the reservation's stored handoff, before querying the wallet", async () => {
+  it("holds only its objective when its journal and its funding name different attempts, before querying the wallet", async () => {
     const test = await setup();
     // The journal moved on to an attempt the reservation never signed.
     const journal = test.fixture.objectiveJournal();
@@ -77,7 +77,7 @@ describe("an objective whose own funding is refused is quarantined alone", () =>
       {
         reason: WATCHER_FAULT_PROOF_QUARANTINED,
         detail: expect.stringContaining(
-          ": funding handoff was superseded by a later submission intent",
+          ": funding reservation reconciliation changed transaction hash",
         ),
       },
     ]);
@@ -87,8 +87,8 @@ describe("an objective whose own funding is refused is quarantined alone", () =>
           (alert as { code: string }).code === "proof_submission_failure",
       ),
     ).toHaveLength(1);
+    // The run's recovery refuses the mismatch before any wallet query.
     expect(test.getUtxos).not.toHaveBeenCalled();
-    expect(test.runOrResume).not.toHaveBeenCalled();
     expect(await test.fixture.records()).toEqual(before);
   });
 

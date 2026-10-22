@@ -7,6 +7,7 @@ import type {
 
 import type { WatcherProofObjective } from "../../src/fault-proofs/fault-proof-objective-journal.js";
 import type { WatcherWorkflowJournal } from "../../src/fault-proofs/watcher-workflow-journal.js";
+import type { WatcherProverFundingReservationStore } from "../../src/funding/prover-funding-reservation.js";
 import { openWatcherSqliteProverFundingReservationStore } from "../../src/funding/sqlite-prover-funding-reservation-store.js";
 import { deploymentIdentity } from "./fault-proof-funding-fixture.sources-for.js";
 
@@ -45,15 +46,36 @@ export const rewriteWorkflowRows = (
     update.run(JSON.stringify(entry), entry.workflowId, entry.sequence);
 };
 
+const objectiveJournals = new WeakSet<object>();
+
 /** A fresh objective store per call, as each watcher invocation gets; it
  * reads whichever store `journal()` has open now, across restarts. */
 export const objectiveWorkflowJournal =
   (journal: () => WatcherWorkflowJournal, objective: WatcherProofObjective) =>
-  (): FraudProofWorkflowJournalStore => ({
-    load: async (workflowId) =>
-      await journal().forObjective(objective).load(workflowId),
-    append: async (entry, expectedSequence) =>
-      await journal().forObjective(objective).append(entry, expectedSequence),
+  (): FraudProofWorkflowJournalStore => {
+    const store: FraudProofWorkflowJournalStore = Object.freeze({
+      load: async (workflowId: string) =>
+        await journal().forObjective(objective).load(workflowId),
+      append: async (
+        entry: FraudProofWorkflowJournalEntry,
+        expectedSequence: number,
+      ) =>
+        await journal().forObjective(objective).append(entry, expectedSequence),
+    });
+    objectiveJournals.add(store);
+    return store;
+  };
+
+/** `store`, keeping the objective journals above too: their rows are those
+ * of the store's own journal, so its changes commit their entries. */
+export const fixtureFundingStore = (
+  store: WatcherProverFundingReservationStore,
+): WatcherProverFundingReservationStore =>
+  Object.freeze({
+    ...store,
+    commitsJournal: (journal: object) =>
+      objectiveJournals.has(journal) ||
+      store.commitsJournal?.(journal) === true,
   });
 
 /** Moves every workflow row aside, out of the watcher's sight; the returned
@@ -83,6 +105,7 @@ export const currentWorkflowJournal = (
 ): WatcherWorkflowJournal =>
   Object.freeze({
     forObjective: (objective) => journal().forObjective(objective),
+    owns: (store) => journal().owns(store),
     appendWithin: (entries) => journal().appendWithin(entries),
     readExecution: (objective) => journal().readExecution(objective),
     readWorkflowIds: (limit) => journal().readWorkflowIds(limit),

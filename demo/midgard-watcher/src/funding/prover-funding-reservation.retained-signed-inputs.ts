@@ -1,19 +1,8 @@
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core";
-import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
-import type {
-  WorkflowFundingCompletionHandoff,
-  WorkflowFundingPreparedTransition,
-} from "@al-ft/midgard-fault-proofs";
+import type { WorkflowFundingPreparedTransition } from "@al-ft/midgard-fault-proofs";
 import { CML } from "@lucid-evolution/lucid";
 
 import type { WatcherProverFundingReservationRecord } from "./prover-funding-reservation.js";
-
-export const finalProverFundingCompletion = (
-  handoff: WorkflowFundingCompletionHandoff,
-): boolean =>
-  handoff.completion.kind === "completed" &&
-  handoff.completion.terminal.observedAt.confirmationDepth >
-    DEPLOYMENT_MANIFEST_L1_FINALITY.automaticRecoveryMaxDepth + 1;
 
 /** Consumed inputs and change of a signed attempt stay leased until final
  * completion: re-landing its exact bytes, or a replacement that must spend one

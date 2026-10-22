@@ -53,7 +53,7 @@ export const ref = (byte: string) => `${hash(byte)}#0`;
 export const abandoned = (transition: Transition, retired = false) =>
   ({
     transition,
-    handoff: { reconciliation: retired ? { retirement: {} } : {} },
+    ...(retired ? { retirement: {} } : {}),
   }) as unknown as Parameters<
     typeof uncoveredSupersededAttempts
   >[0]["abandoned"][number];

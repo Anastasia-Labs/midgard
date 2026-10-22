@@ -376,7 +376,7 @@ export const customWorkflowRecoveryFixture = async (
   };
 };
 
-/** Scripted canonical observations check handoff kind; no physical funding store is bound here. */
+/** Scripted canonical observations check the completion kind; no physical funding store is bound here. */
 export const verifyTerminalRecoveryFinality = async (
   fixture: Awaited<ReturnType<typeof customWorkflowRecoveryFixture>>,
   run: (
@@ -404,15 +404,13 @@ export const verifyTerminalRecoveryFinality = async (
       ).toEqual(originalIntents);
       expect(
         release.mock.calls.every(
-          ([input]) => input.handoff.completion.kind === "terminal_included",
+          ([input]) => input.event.kind === "terminal_included",
         ),
       ).toBe(true);
     }
     fixture.advance(2232n);
     expect((await run(fixture)).kind).toBe("completed");
-    expect(release.mock.calls.at(-1)?.[0].handoff.completion.kind).toBe(
-      "completed",
-    );
+    expect(release.mock.calls.at(-1)?.[0].event.kind).toBe("completed");
     expect(
       (await fixture.journal.load(fixture.workflowId)).at(-1)?.event.kind,
     ).toBe("completed");
@@ -420,56 +418,6 @@ export const verifyTerminalRecoveryFinality = async (
     expect(fixture.capture).not.toHaveBeenCalled();
     expect(fixture.built.submit).not.toHaveBeenCalled();
   } finally {
-    release.mockRestore();
-  }
-};
-
-/** Model a crash at the real terminal handoff boundary; atomic-store persistence has separate tests. */
-export const verifyCompletionHandoffRestart = async (
-  fixture: Awaited<ReturnType<typeof customWorkflowRecoveryFixture>>,
-  run: (
-    input: Awaited<ReturnType<typeof customWorkflowRecoveryFixture>>,
-  ) => Promise<FraudProofWorkflowRunResult>,
-) => {
-  fixture.advance(2232n);
-  let durable: funding.WorkflowFundingCompletionHandoff | undefined;
-  const release = vi
-    .spyOn(funding, "releaseWorkflowFundingReservation")
-    .mockImplementation(async ({ handoff }) => {
-      if (durable !== undefined) expect(handoff).toEqual(durable);
-      durable = handoff;
-    });
-  const append = fixture.journal.append.bind(fixture.journal);
-  const interrupted = vi
-    .spyOn(fixture.journal, "append")
-    .mockImplementation(async (entry, sequence) => {
-      if (entry.event.kind === "completed")
-        throw new Error("interrupted after durable funding release");
-      await append(entry, sequence);
-    });
-  const read = vi.spyOn(funding, "readWorkflowFundingRecovery");
-  try {
-    await expect(run(fixture)).rejects.toThrow("after durable funding release");
-    expect(durable).toBeDefined();
-    interrupted.mockRestore();
-    read.mockResolvedValue({
-      transition: null,
-      submissionHandoff: null,
-      completionHandoff: durable!,
-      abandonmentHandoff: null,
-    });
-    expect((await run(fixture)).kind).toBe("completed");
-    expect(release).toHaveBeenCalledTimes(2);
-    expect(fixture.observeHeader).not.toHaveBeenCalled();
-    expect(fixture.built.submit).not.toHaveBeenCalled();
-    expect(
-      (await fixture.journal.load(fixture.workflowId)).filter(
-        ({ event }) => event.kind === "completed",
-      ),
-    ).toHaveLength(1);
-  } finally {
-    interrupted.mockRestore();
-    read.mockRestore();
     release.mockRestore();
   }
 };

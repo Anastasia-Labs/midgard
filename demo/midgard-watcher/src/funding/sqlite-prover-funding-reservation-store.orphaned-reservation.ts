@@ -1,10 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 
-import {
-  parseSignedWorkflowTransactionRetirement,
-  type WorkflowFundingAbandonmentHandoff,
-  type WorkflowFundingPreparedTransition,
-} from "@al-ft/midgard-fault-proofs";
+import { parseSignedWorkflowTransactionRetirement } from "@al-ft/midgard-fault-proofs";
 
 import {
   parseWatcherProverFundingReservationRecord,
@@ -12,13 +8,10 @@ import {
   type WatcherProverFundingReservationStore,
 } from "./prover-funding-reservation.js";
 import { nextRecord } from "./sqlite-prover-funding-reservation-store.derive-signed-transition.js";
-import type { SubmissionHandoff } from "./sqlite-prover-funding-reservation-store.row-parsers.js";
-
-type Abandoned = Readonly<{
-  transitionDigest: string;
-  transition: WorkflowFundingPreparedTransition;
-  handoff: WorkflowFundingAbandonmentHandoff;
-}>;
+import type {
+  RecordedAttempt,
+  SupersededAttempt,
+} from "./sqlite-prover-funding-reservation-store.row-parsers.js";
 
 /**
  * Store operations that reclaim a reservation's funding. An unused one
@@ -40,8 +33,12 @@ export const createProverFundingReclaimOperations = (deps: {
     next: WatcherProverFundingReservationRecord,
   ) => void;
   readonly rebuildLeases: () => void;
-  readonly recordedSubmissions: (reservationId: string) => SubmissionHandoff[];
-  readonly abandonmentsOf: (reservationId: string) => readonly Abandoned[];
+  readonly recordedSubmissions: (
+    reservationId: string,
+  ) => readonly RecordedAttempt[];
+  readonly abandonmentsOf: (
+    reservationId: string,
+  ) => readonly SupersededAttempt[];
   readonly hasSignedHistory: (reservationId: string) => boolean;
 }): Pick<
   Required<WatcherProverFundingReservationStore>,
@@ -49,7 +46,7 @@ export const createProverFundingReclaimOperations = (deps: {
 > => {
   const { database } = deps;
   const deleteRows = (reservationId: string) => {
-    for (const table of ["handoff", "abandonment", "lineage"])
+    for (const table of ["attempt", "superseded_attempt", "lineage"])
       database
         .prepare(
           `DELETE FROM watcher_prover_funding_${table}_v1 WHERE reservation_id = ?`,
@@ -97,8 +94,7 @@ export const createProverFundingReclaimOperations = (deps: {
         current.lastConfirmedTransitionDigest !== null
       )
         return false;
-      // Preparation persists signed bytes before the journal intent. Absence
-      // from the journal alone never authorizes reclaiming those inputs.
+      // A reservation that ever signed an attempt is settled, never unused.
       if (deps.hasSignedHistory(current.reservationId)) return false;
       const next = nextRecord({ current, activeInputs: [] });
       deps.writeRecord(current.recordDigest, next);
@@ -115,7 +111,7 @@ export const createProverFundingReclaimOperations = (deps: {
         const retired = new Set(
           deps
             .abandonmentsOf(orphan.reservationId)
-            .filter(({ handoff }) => handoff.reconciliation.retirement)
+            .filter(({ retirement }) => retirement !== undefined)
             .map(({ transition }) => transition.transactionHash),
         );
         // Each retirement must be of the attempt it names.

@@ -1,4 +1,3 @@
-import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { CML, coreToUtxo, type TxSigned } from "@lucid-evolution/lucid";
 
 import { readFraudSlashFundingAuthority } from "../remove-fraudulent-block.js";
@@ -15,26 +14,25 @@ import {
   refresh,
   stateForJournal,
 } from "./funding-reservation-permit.create-workflow-funding-reservation-permit.js";
-import {
-  parseWorkflowFundingAbandonmentHandoff,
-  parseWorkflowFundingCompletionHandoff,
-} from "./funding-reservation-permit.parse-workflow-funding-abandonment-handoff.js";
-import {
-  parseWorkflowFundingPreparedTransition,
-  parseWorkflowFundingSubmissionHandoff,
-} from "./funding-reservation-permit.parse-workflow-funding-prepared-transition.js";
-import { parseStateSnapshot } from "./funding-reservation-permit.reconcile-workflow-funding-submission-handoff.js";
+import { parseWorkflowFundingSupersededAttempt } from "./funding-reservation-permit.parse-workflow-funding-attempt.js";
+import { parseWorkflowFundingPreparedTransition } from "./funding-reservation-permit.parse-workflow-funding-prepared-transition.js";
+import { parseStateSnapshot } from "./funding-reservation-permit.parse-workflow-funding-snapshot.js";
 import {
   canonicalOutRefs,
-  exact,
-  type WorkflowFundingAbandonmentHandoff,
-  type WorkflowFundingCompletionHandoff,
   type WorkflowFundingPreparedTransition,
   type WorkflowFundingReservedInput,
-  type WorkflowFundingSubmissionHandoff,
+  type WorkflowFundingSupersededAttempt,
   WorkflowFundingSupersededAttemptLandedError,
 } from "./funding-reservation-permit.workflow-funding-reservation-port.js";
-import { journalJsonDigest } from "./journal.js";
+import {
+  appendWorkflowJournalEvents,
+  commitWithJournal,
+  type WorkflowJournalWriter,
+} from "./funding-reservation-permit.workflow-journal-writer.js";
+import {
+  type FraudProofWorkflowJournalEvent,
+  journalJsonDigest,
+} from "./journal.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
 import { supersededAttemptReadSchedule } from "./superseded-attempt-read-schedule.js";
 import {
@@ -88,19 +86,37 @@ const producedFundingInputs = ({
   return Object.freeze(produced);
 };
 
+/** Records a signed attempt of `action` with its preflight and intent
+ * (`events`), together when the port keeps the workflow journal. */
 export const prepareWorkflowFundingReservationTransaction = async ({
-  journal,
+  writer,
   action,
   preflight,
-  handoff,
+  events,
 }: {
-  readonly journal: object;
+  readonly writer: WorkflowJournalWriter;
   readonly action: FraudProofWorkflowAction;
   readonly preflight: object;
-  readonly handoff: WorkflowFundingSubmissionHandoff;
+  readonly events: readonly [
+    FraudProofWorkflowJournalEvent,
+    FraudProofWorkflowJournalEvent,
+  ];
 }): Promise<void> => {
-  const state = stateForJournal(journal);
-  if (state === undefined) return;
+  const [passed, intent] = events;
+  if (
+    passed.kind !== "preflight_passed" ||
+    intent.kind !== "submission_intent" ||
+    passed.actionId !== action.actionId ||
+    intent.actionId !== action.actionId ||
+    intent.txHash !== passed.txHash ||
+    journalJsonDigest(intent.actionInput) !== journalJsonDigest(action.input)
+  )
+    throw new Error("funding attempt changed the evaluated workflow action");
+  const state = stateForJournal(writer.journal);
+  if (state === undefined) {
+    await appendWorkflowJournalEvents(writer, events);
+    return;
+  }
   const signed = workflowPreflightTransaction(preflight);
   if (signed === undefined) {
     throw new Error(
@@ -144,17 +160,8 @@ export const prepareWorkflowFundingReservationTransaction = async ({
     collateralOutRefs,
   });
   const transactionHash = signed.toHash().toLowerCase();
-  const admittedHandoff = parseWorkflowFundingSubmissionHandoff(handoff);
-  if (
-    admittedHandoff.identity.deploymentFingerprint !==
-      state.snapshot.deploymentFingerprint ||
-    admittedHandoff.identity.decisionDigest !== state.snapshot.decisionDigest ||
-    admittedHandoff.submissionIntent.txHash !== transactionHash ||
-    admittedHandoff.submissionIntent.actionId !== action.actionId ||
-    journalJsonDigest(admittedHandoff.submissionIntent.actionInput) !==
-      journalJsonDigest(action.input)
-  )
-    throw new Error("funding handoff changed the evaluated workflow action");
+  if (intent.txHash !== transactionHash)
+    throw new Error("funding attempt changed its signed transaction");
   const transition = Object.freeze({
     actionKind: kind,
     signedTransactionCborHex: signed.toTransaction().to_cbor_hex(),
@@ -185,10 +192,23 @@ export const prepareWorkflowFundingReservationTransaction = async ({
   }
   state.snapshot = parseStateSnapshot(
     state,
-    await state.port.prepare({
-      expectedRevision: state.snapshot.revision,
-      transition,
-      handoff: admittedHandoff,
+    await commitWithJournal({
+      port: state.port,
+      writer,
+      events,
+      change: async ({ journal, entries }) =>
+        await state.port.prepare({
+          expectedRevision: state.snapshot.revision,
+          transition,
+          attempt: {
+            workflowId: entries.at(-1)!.workflowId,
+            intentSequence: entries.at(-1)!.sequence,
+            category: state.category,
+            actionId: action.actionId,
+            actionInput: action.input,
+          },
+          journal,
+        }),
     }),
   );
   state.pendingTransactionHash = transactionHash;
@@ -210,10 +230,6 @@ export const assertWorkflowFundingReservationReadyToSubmit = async ({
   if (state === undefined) return;
   assertFundingSubmissionAuthority(state);
   await state.port.assertSubmissionAuthority?.();
-  if ((await state.port.readAbandonmentHandoff()) !== null)
-    throw new Error(
-      "funding abandonment outcome awaits journal acknowledgment",
-    );
   const expectedRevision = state.snapshot.revision;
   const expectedPending = state.pendingTransactionHash;
   await refresh(state);
@@ -248,129 +264,29 @@ export const assertWorkflowFundingReservationReadyToSubmit = async ({
 export const workflowJournalHasFundingReservation = (journal: object) =>
   stateForJournal(journal) !== undefined;
 
-/** Read durable signed material without requiring its already-spent inputs to remain live. */
+/** The reservation's pending signed attempt, read without requiring its
+ * already-spent inputs to remain live. */
 export const readWorkflowFundingRecovery = async (
   journal: object,
 ): Promise<
-  Readonly<{
-    transition: WorkflowFundingPreparedTransition | null;
-    submissionHandoff: WorkflowFundingSubmissionHandoff | null;
-    completionHandoff: WorkflowFundingCompletionHandoff | null;
-    abandonmentHandoff: WorkflowFundingAbandonmentHandoff | null;
-  }>
+  Readonly<{ transition: WorkflowFundingPreparedTransition | null }>
 > => {
   const state = stateForJournal(journal);
-  if (state === undefined)
-    return {
-      transition: null,
-      submissionHandoff: null,
-      completionHandoff: null,
-      abandonmentHandoff: null,
-    };
-  const rawTransition = await state.port.readPendingTransition();
-  let transition =
-    rawTransition === null
-      ? null
-      : parseWorkflowFundingPreparedTransition(rawTransition);
-  const rawSubmission = await state.port.readPendingHandoff();
-  let submissionHandoff: WorkflowFundingSubmissionHandoff | null = null;
-  if (rawSubmission !== null) {
-    const record = exact(
-      rawSubmission,
-      ["transition", "handoff"],
-      "funding pending handoff record",
-    );
-    const savedTransition = parseWorkflowFundingPreparedTransition(
-      record.transition,
-    );
-    if (
-      transition === null ||
-      computeDeploymentManifestJsonDigest(savedTransition) !==
-        computeDeploymentManifestJsonDigest(transition)
-    )
-      throw new Error(
-        "funding handoff differs from its pending signed transaction",
-      );
-    submissionHandoff = parseWorkflowFundingSubmissionHandoff(record.handoff);
-    if (
-      submissionHandoff.submissionIntent.txHash !== transition.transactionHash
-    )
-      throw new Error("funding handoff changed its transaction hash");
-  }
-  const rawAbandonment = await state.port.readAbandonmentHandoff();
-  let abandonmentHandoff: WorkflowFundingAbandonmentHandoff | null = null;
-  if (rawAbandonment !== null) {
-    if (transition !== null || submissionHandoff !== null)
-      throw new Error(
-        "funding recovery has both pending and abandoned transactions",
-      );
-    const record = exact(
-      rawAbandonment,
-      ["transition", "handoff"],
-      "funding abandonment record",
-    );
-    transition = parseWorkflowFundingPreparedTransition(record.transition);
-    abandonmentHandoff = parseWorkflowFundingAbandonmentHandoff(record.handoff);
-    if (
-      abandonmentHandoff.submissionIntent.txHash !== transition.transactionHash
-    )
-      throw new Error(
-        "funding abandonment changed its signed transaction hash",
-      );
-  }
-  const rawCompletion = await state.port.readCompletionHandoff();
-  const completionHandoff =
-    rawCompletion === null
-      ? null
-      : parseWorkflowFundingCompletionHandoff(rawCompletion);
-  for (const handoff of [
-    submissionHandoff,
-    completionHandoff,
-    abandonmentHandoff,
-  ]) {
-    if (
-      handoff !== null &&
-      (handoff.identity.deploymentFingerprint !==
-        state.snapshot.deploymentFingerprint ||
-        handoff.identity.decisionDigest !== state.snapshot.decisionDigest ||
-        handoff.identity.category !== state.category)
-    )
-      throw new Error(
-        "funding recovery handoff has a foreign workflow identity",
-      );
-  }
-  if (transition !== null && completionHandoff !== null)
-    throw new Error(
-      "released funding recovery retains an unresolved transaction",
-    );
+  if (state === undefined) return { transition: null };
+  const raw = await state.port.readPendingTransition();
+  const transition =
+    raw === null ? null : parseWorkflowFundingPreparedTransition(raw);
   state.pendingTransactionHash = transition?.transactionHash;
-  return Object.freeze({
-    transition,
-    submissionHandoff,
-    completionHandoff,
-    abandonmentHandoff,
-  });
+  return Object.freeze({ transition });
 };
 
+/** Every superseded attempt of the bound reservation, retired or not. */
 export const readLegacyWorkflowFundingAbandonedTransactions = async (
   journal: object,
-) => {
+): Promise<readonly WorkflowFundingSupersededAttempt[]> => {
   const state = stateForJournal(journal);
   const saved = (await state?.port.readLegacyAbandonedTransactions?.()) ?? [];
-  return saved.map((value) => {
-    const record = exact(
-      value,
-      ["transition", "handoff"],
-      "legacy funding abandonment",
-    );
-    const transition = parseWorkflowFundingPreparedTransition(
-      record.transition,
-    );
-    const handoff = parseWorkflowFundingAbandonmentHandoff(record.handoff);
-    if (transition.transactionHash !== handoff.submissionIntent.txHash)
-      throw new Error("Legacy funding abandonment changed its exact attempt");
-    return { transition, handoff };
-  });
+  return saved.map(parseWorkflowFundingSupersededAttempt);
 };
 
 /** The exact signed bytes of `transactionHash` as the bound reservation

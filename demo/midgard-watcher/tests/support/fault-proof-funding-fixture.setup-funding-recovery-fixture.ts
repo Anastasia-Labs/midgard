@@ -23,7 +23,6 @@ import {
   type HeaderFaultDecision,
   runFraudProofWorkflow,
   WORKFLOW_RUNNER_FACTORIES,
-  type WorkflowFundingSubmissionHandoff,
 } from "@al-ft/midgard-fault-proofs";
 import {
   authenticatedHeaderObservation,
@@ -56,6 +55,8 @@ import {
   watcherDeploymentReleaseEconomicsAuthority,
 } from "../../src/runtime/deployment-identity.js";
 import { runtimeAuthority } from "../funding/prover-funding-calculation.runtime-authority.js";
+import { fixtureAttemptJournal } from "./fault-proof-funding-fixture.attempt-journal.js";
+import { createFixtureProcessStops } from "./fault-proof-funding-fixture.process-stop.js";
 import { signFundingRecoveryFixtureBody } from "./fault-proof-funding-fixture.sign-body.js";
 import { createFixtureChain } from "./fault-proof-funding-fixture.signed-read.js";
 import {
@@ -70,6 +71,7 @@ import {
 import {
   currentWorkflowJournal,
   editFixtureStore,
+  fixtureFundingStore,
   objectiveWorkflowJournal,
   openFixtureFundingStore,
   rewriteWorkflowRows,
@@ -81,8 +83,6 @@ import {
 } from "./watcher-journal-fixture.js";
 
 export const setupFundingRecoveryFixture = async (
-  interruptAfterPreparation: boolean | "after_preflight" = false,
-  legacyPending = false,
   unused = false,
   withCollateral = false,
   priorRoster: boolean | "changed-role" = false,
@@ -175,6 +175,7 @@ export const setupFundingRecoveryFixture = async (
     ),
   );
   let capturedPlan: WatcherProverFundingReservationPlan | undefined;
+  const stops = createFixtureProcessStops();
   const factory = () =>
     createWatcherProverFundingAuthorityFactory({
       launchScope: installedLaunchScope(old.launchScope),
@@ -185,7 +186,7 @@ export const setupFundingRecoveryFixture = async (
       protocolParameterHistory: database.protocolParameterHistory,
       workflowJournal: currentWorkflowJournal(() => database.journal),
       store: {
-        ...database.store,
+        ...stops.wrap(fixtureFundingStore(database.store)),
         releaseUnused: (record) => database.store.releaseUnused!(record),
         reserve: async (plan, expectedIdleRevision) => {
           capturedPlan = plan;
@@ -306,7 +307,7 @@ export const setupFundingRecoveryFixture = async (
           policy,
         }),
         policy,
-        store: database.store,
+        store: stops.wrap(fixtureFundingStore(database.store)),
       });
       capturedPlan = authority.plan;
       permit = authority.permit;
@@ -434,16 +435,7 @@ export const setupFundingRecoveryFixture = async (
   }
   const { signedTransactionCborHex, transactionHash } =
     signFundingRecoveryFixtureBody(body);
-  const prepared = (await journal.load(initial.workflowId)).find(
-    ({ event }) => event.kind === "prepared",
-  )!;
-  if (prepared.event.kind !== "prepared")
-    throw new Error("missing prepared fixture");
-  const handoff: WorkflowFundingSubmissionHandoff = {
-    workflowId: initial.workflowId,
-    identity: initial.identity,
-    preparedArtifactDigest: prepared.event.artifactDigest,
-    expectedJournalSequence: (await journal.load(initial.workflowId)).length,
+  const events = Object.freeze({
     preflight: {
       kind: "preflight_passed",
       actionId: "init",
@@ -464,31 +456,41 @@ export const setupFundingRecoveryFixture = async (
       attempt: 1,
       txHash: transactionHash,
     },
-  };
+  } as const satisfies Readonly<
+    Record<string, FraudProofWorkflowJournalEvent>
+  >);
+  const { entriesFor, prepareAttempt } = fixtureAttemptJournal({
+    journal,
+    workflowId: initial.workflowId,
+    identity: initial.identity,
+  });
   const pending = unused
     ? parseWatcherProverFundingReservationRecord(
         (await database.store.readAll())[0],
       )
-    : await database.store.prepareTransition({
-        handoff,
-        plan,
-        expectedRevision: "0",
-        actionKind: "proof.init",
-        signedTransactionCborHex,
-        transactionHash,
-        transactionBodySha256: createHash("sha256")
-          .update(Buffer.from(body.to_cbor_hex(), "hex"))
-          .digest("hex"),
-        consumedOutRefs: [funding.outRef],
-        producedInputs: [
-          {
-            outRef: `${transactionHash}#0`,
-            role: "funding",
-            lovelace: remaining.toString(),
-            assets: [],
-          },
-        ],
-      });
+    : await prepareAttempt(
+        database.store,
+        {
+          plan,
+          expectedRevision: "0",
+          actionKind: "proof.init",
+          signedTransactionCborHex,
+          transactionHash,
+          transactionBodySha256: createHash("sha256")
+            .update(Buffer.from(body.to_cbor_hex(), "hex"))
+            .digest("hex"),
+          consumedOutRefs: [funding.outRef],
+          producedInputs: [
+            {
+              outRef: `${transactionHash}#0`,
+              role: "funding",
+              lovelace: remaining.toString(),
+              assets: [],
+            },
+          ],
+        },
+        events,
+      );
   const append = async (event: FraudProofWorkflowJournalEvent) => {
     const entries = await journal.load(initial.workflowId);
     await journal.append(
@@ -503,9 +505,7 @@ export const setupFundingRecoveryFixture = async (
       entries.length,
     );
   };
-  const finishSubmissionJournal = async () => {
-    await append(handoff.preflight);
-    await append(handoff.submissionIntent);
+  if (!unused) {
     await append({
       kind: "submitted",
       actionId: "init",
@@ -518,42 +518,8 @@ export const setupFundingRecoveryFixture = async (
       outcome: "pending",
       txHash: transactionHash,
     });
-  };
-  if (interruptAfterPreparation) {
-    if (interruptAfterPreparation === "after_preflight")
-      await append(handoff.preflight);
-    // Inject the actual crash after the store's transaction committed, before
-    // the first action journal append. Reopening below discards process state.
-    await expect(
-      (async () => {
-        expect(
-          await database.store.readPendingHandoff({
-            reservationId: plan.reservationId,
-          }),
-        ).toEqual({
-          transition: Object.fromEntries(
-            Object.entries(pending.pendingTransition!).filter(
-              ([key]) => key !== "transitionDigest",
-            ),
-          ),
-          handoff,
-        });
-        throw new Error("interrupted after funding preparation commit");
-      })(),
-    ).rejects.toThrow("interrupted after funding preparation commit");
-  } else if (!unused) await finishSubmissionJournal();
-  database.close();
-  if (legacyPending) {
-    // Retained workflows written before action handoffs still have their exact
-    // signed pending transition and complete intent in the directory journal.
-    editFixtureStore(path, (legacy) =>
-      legacy
-        .prepare(
-          "DELETE FROM watcher_prover_funding_handoff_v1 WHERE reservation_id = ?",
-        )
-        .run(plan.reservationId),
-    );
   }
+  database.close();
   database = await openFixtureFundingStore(path);
   vi.mocked(adapter.observe).mockClear();
   vi.mocked(adapter.prepare).mockClear();
@@ -622,7 +588,22 @@ export const setupFundingRecoveryFixture = async (
     transactionHash,
     signedTransactionCborHex,
     originalEntries,
-    handoff,
+    events,
+    entriesFor,
+    /** The init attempt as the store records it, for a prepare the store
+     * refuses before any journal entry matters. */
+    attempt: {
+      workflowId: initial.workflowId,
+      intentSequence: 3,
+      category: "doubleSpend",
+      actionId: "init",
+      actionInput: { actionKind: "proof.init" },
+    },
+    /** Prepares an attempt on the store open now. */
+    prepareAttempt: (
+      input: Parameters<typeof prepareAttempt>[1],
+      attemptEvents: Parameters<typeof prepareAttempt>[2],
+    ) => prepareAttempt(database.store, input, attemptEvents),
     createPermit,
     bind,
     recover,
@@ -640,6 +621,7 @@ export const setupFundingRecoveryFixture = async (
       editFixtureStore(path, (raw) => rewriteWorkflowRows(raw, entries));
       database = await openFixtureFundingStore(path);
     },
+    stopAt: stops.stopAt,
     restartStore: async () => {
       database.close();
       database = await openFixtureFundingStore(path);
@@ -648,7 +630,7 @@ export const setupFundingRecoveryFixture = async (
       return database.protocolParameterHistory!;
     },
     get store() {
-      return database.store;
+      return fixtureFundingStore(database.store);
     },
     /** The per-proof workflow journal of the store open now. */
     get workflowJournal() {

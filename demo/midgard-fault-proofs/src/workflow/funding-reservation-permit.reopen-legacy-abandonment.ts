@@ -1,9 +1,7 @@
 import { isFinalWorkflowCompletion } from "./completion-finality.js";
 import { retireLegacyWorkflowFundingAbandonment } from "./funding-reservation-permit.apply-transition.js";
-import {
-  readLegacyWorkflowFundingAbandonedTransactions,
-  readWorkflowFundingRecovery,
-} from "./funding-reservation-permit.read-workflow-funding-recovery.js";
+import { readLegacyWorkflowFundingAbandonedTransactions } from "./funding-reservation-permit.read-workflow-funding-recovery.js";
+import type { WorkflowJournalWriter } from "./funding-reservation-permit.workflow-journal-writer.js";
 import type {
   FraudProofWorkflowJournalEntry,
   FraudProofWorkflowJournalEvent,
@@ -53,14 +51,14 @@ export const recordBothAttemptsLanded = async ({
  * workflow. Its retirement past k is bookkeeping, and its late landing after a
  * rollback is returned so the caller adopts it as the result. */
 export const reconcileLegacyWorkflowFundingAbandonment = async ({
-  journal,
+  writer,
   entries,
   append,
   reconcile,
   nowMs = Date.now(),
   schedule = supersededAttemptReadSchedule,
 }: {
-  readonly journal: object;
+  readonly writer: WorkflowJournalWriter;
   readonly entries: readonly FraudProofWorkflowJournalEntry[];
   readonly append: (event: FraudProofWorkflowJournalEvent) => Promise<unknown>;
   readonly reconcile: (
@@ -68,16 +66,10 @@ export const reconcileLegacyWorkflowFundingAbandonment = async ({
   ) => Promise<FraudProofWorkflowReconcileResult>;
   readonly nowMs?: number;
   readonly schedule?: SupersededAttemptReadSchedule;
-}): Promise<SupersededAttempt | null> => {
-  const current = await readWorkflowFundingRecovery(journal);
-  return await reconcileLegacyFundingAbandonmentRecords({
-    // The current certified handoff has its own journal acknowledgement path.
-    savedAttempts: (
-      await readLegacyWorkflowFundingAbandonedTransactions(journal)
-    ).filter(
-      ({ transition }) =>
-        current.abandonmentHandoff === null ||
-        transition.transactionHash !== current.transition?.transactionHash,
+}): Promise<SupersededAttempt | null> =>
+  await reconcileLegacyFundingAbandonmentRecords({
+    savedAttempts: await readLegacyWorkflowFundingAbandonedTransactions(
+      writer.journal,
     ),
     entries,
     append,
@@ -85,12 +77,18 @@ export const reconcileLegacyWorkflowFundingAbandonment = async ({
     reads: { schedule, nowMs },
     retire: async (transactionHash, retirement) =>
       await retireLegacyWorkflowFundingAbandonment({
-        journal,
+        writer,
         transactionHash,
         retirement,
+        events: [
+          {
+            kind: "signed_attempt_retired",
+            txHash: transactionHash,
+            retirement,
+          },
+        ],
       }),
   });
-};
 
 export const reconcileLegacyFundingAbandonmentRecords = async ({
   savedAttempts,
@@ -106,6 +104,7 @@ export const reconcileLegacyFundingAbandonmentRecords = async ({
   readonly reconcile: (
     saved: SupersededAttempt,
   ) => Promise<FraudProofWorkflowReconcileResult>;
+  /** Retires the attempt and records its retirement in the journal. */
   readonly retire: (
     hash: string,
     retirement: import("./signed-transaction-retirement.js").SignedWorkflowTransactionRetirement,
@@ -141,14 +140,8 @@ export const reconcileLegacyFundingAbandonmentRecords = async ({
       )
     )
       continue;
-    if (saved.handoff.reconciliation.retirement !== undefined) {
-      await append({
-        kind: "signed_attempt_retired",
-        txHash: hash,
-        retirement: saved.handoff.reconciliation.retirement,
-      });
-      continue;
-    }
+    // A retired attempt's retirement commits with its journal record.
+    if (saved.retirement !== undefined) continue;
     unread.push(saved);
   }
   const due =
@@ -174,11 +167,11 @@ export const reconcileLegacyFundingAbandonmentRecords = async ({
       if (result.kind !== "confirmed") continue;
       // Should an earlier attempt of the same action have landed too, the
       // earliest is the result, whether or not it was due for a read.
-      const { actionId } = saved.handoff.submissionIntent;
+      const { actionId } = saved;
       const earlier = unread
         .filter(
           (other) =>
-            other.handoff.submissionIntent.actionId === actionId &&
+            other.actionId === actionId &&
             intentIndex(other.transition.transactionHash) < intentIndex(hash),
         )
         .sort(
@@ -205,11 +198,6 @@ export const reconcileLegacyFundingAbandonmentRecords = async ({
       hash,
     );
     await retire(hash, retirement);
-    await append({
-      kind: "signed_attempt_retired",
-      txHash: hash,
-      retirement,
-    });
   }
   return null;
 };

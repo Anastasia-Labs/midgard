@@ -5,7 +5,7 @@
  * minted from that decision, and every turn mints the funding permit from
  * the real watcher prover-funding authority over a durable SQLite
  * reservation store, restricts the prover signer to it and runs the shared
- * orchestrator over a durable directory journal bound to both permits.
+ * orchestrator over the store's own workflow journal bound to both permits.
  *
  * The calling test stands in for the family's install (the category is not
  * installed until its defender exists); the deployment is the fixture
@@ -17,7 +17,7 @@
  * emulator's script-decode deployment, whose records the watcher writes
  * through the shared script-decode prerequisite under the same permits.
  */
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -50,7 +50,6 @@ import {
   classifyHeader,
   createHeaderClassifier,
 } from "../../src/workflow/header-classifier.js";
-import { DirectoryFraudProofWorkflowJournalStore } from "../../src/workflow/journal.js";
 import type { FraudProofSignedTransactionRecovery } from "../../src/workflow/l1-source.js";
 import type { FraudProofWorkflowRunResult } from "../../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import {
@@ -219,8 +218,6 @@ export const openFundedDispute = async (
   });
 
   const directory = await mkdtemp(join(homedir(), "validation-dispute-"));
-  const journalDirectory = join(directory, "journal");
-  await mkdir(journalDirectory, { recursive: true, mode: 0o700 });
   const deployment =
     options.oneStep === undefined
       ? runnerDeployment(scene, fingerprint)
@@ -284,7 +281,10 @@ export const openFundedDispute = async (
     const journal = bindWorkflowFundingReservationJournal({
       permit: fundingReservationPermit,
       journal: bindWorkflowActuationJournal({
-        journal: new DirectoryFraudProofWorkflowJournalStore(journalDirectory),
+        journal: funding.workflowJournal.forObjective({
+          category: CATEGORY,
+          headerHash,
+        }),
         permit: actuationPermit,
         decisionDigest: decision.decisionDigest,
         deploymentFingerprint: fingerprint,

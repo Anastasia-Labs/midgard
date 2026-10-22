@@ -40,11 +40,7 @@ const name = (target: WatcherProofRetentionTarget) =>
 
 /** An authority over a funding fixture, with a retention that records pins. */
 const setup = async (withoutSubmissionIntent: boolean) => {
-  const fixture = await setupFundingRecoveryFixture(
-    false,
-    false,
-    withoutSubmissionIntent,
-  );
+  const fixture = await setupFundingRecoveryFixture(withoutSubmissionIntent);
   const deploymentFingerprint = deploymentIdentity.manifestId;
   const pinned = new Set<string>();
   const retention: WatcherProofRetention = {

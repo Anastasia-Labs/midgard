@@ -29,13 +29,7 @@ afterEach(async () => {
 });
 
 const setup = async (priorRoster = false) => {
-  const fixture = await setupFundingRecoveryFixture(
-    false,
-    false,
-    false,
-    false,
-    priorRoster,
-  );
+  const fixture = await setupFundingRecoveryFixture(false, false, priorRoster);
   let changedBasis = false;
   const readAll = vi.fn(async () => {
     const records = await fixture.records();
@@ -233,8 +227,6 @@ it("uses updated live parameters for new decisions instead of its cached startup
 
 it("authenticates and resumes a nondeployment parameter basis after restart", async () => {
   const fixture = await setupFundingRecoveryFixture(
-    false,
-    false,
     false,
     false,
     false,

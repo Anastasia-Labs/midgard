@@ -17,7 +17,7 @@ afterEach(async () => {
 });
 
 const setup = async () => {
-  const fixture = await setupFundingRecoveryFixture(false, false, false, true);
+  const fixture = await setupFundingRecoveryFixture(false, true);
   const collateral = fixture.plan.inputs.find(
     ({ role }) => role === "collateral",
   )!.outRef;
@@ -139,6 +139,7 @@ it("rebroadcasts the identical bytes after a rollback while another reservation 
     const [before] = await fixture.records();
     await expect(
       fixture.store.reobserveTransition!({
+        journal: [],
         plan: fixture.plan,
         expectedRevision: before!.revision,
         transactionHash: fixture.transactionHash,

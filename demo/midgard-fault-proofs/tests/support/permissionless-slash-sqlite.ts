@@ -22,18 +22,12 @@ import {
   createWorkflowFundingReservationPermit,
   prepareWorkflowFundingReservationTransaction,
   readWorkflowFundingRecovery,
-  type WorkflowFundingSubmissionHandoff,
 } from "../../src/workflow/funding-reservation-permit.js";
 import {
   authenticatedStateQueueObservationDigest,
   classifyHeader,
   createHeaderClassifier,
 } from "../../src/workflow/header-classifier.js";
-import {
-  computeFraudProofWorkflowId,
-  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-  type FraudProofWorkflowIdentity,
-} from "../../src/workflow/journal.js";
 import {
   computeFraudProofReleaseEconomicsPolicyDigest,
   FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
@@ -50,11 +44,15 @@ import {
 } from "../../src/workflow/runtime-funding-policy.js";
 import {
   bindWorkflowPreflightTransaction,
-  LOCAL_UPLC_EVALUATOR,
   type LocallyEvaluatedTransaction,
   workflowTransactionCollateralInputOutRefs,
 } from "../../src/workflow/transaction-boundary.js";
 import { authenticatedHeaderObservation } from "../helpers/canonical-block-evidence-fixture.js";
+import {
+  discardingWorkflowJournal,
+  fixtureJournalWriter,
+  fundingAttemptEvents,
+} from "../workflow-runtime.admitted-actuation.js";
 import {
   assertPermissionlessSlashRemovedHeader,
   createPermissionlessSlashSqlitePort,
@@ -300,7 +298,7 @@ export const preparePermissionlessSlashSqlite = async ({
       });
     const bind = async () =>
       bindWorkflowFundingReservationJournal({
-        journal: {},
+        journal: discardingWorkflowJournal(),
         permit: await createWorkflowFundingReservationPermit({
           category: "doubleSpend",
           runner,
@@ -324,41 +322,12 @@ export const preparePermissionlessSlashSqlite = async ({
       boundary,
       boundary.signed,
     );
-    const identity: FraudProofWorkflowIdentity = {
-      schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-      deploymentFingerprint: manifest.manifestId,
-      category: "doubleSpend",
-      target: { kind: "state_queue_header", headerHash: evidence.headerHash },
-      decisionDigest: decision.decisionDigest,
-    };
-    const handoff: WorkflowFundingSubmissionHandoff = {
-      workflowId: computeFraudProofWorkflowId(identity),
-      identity,
-      preparedArtifactDigest: createHash("sha256")
-        .update(evidence.payloadEnvelopeCbor)
-        .digest("hex"),
-      expectedJournalSequence: 2,
-      preflight: {
-        kind: "preflight_passed",
-        actionId: action.actionId,
-        txHash: boundary.signed.toHash(),
-        localEvaluator: LOCAL_UPLC_EVALUATOR,
-        referenceScripts: boundary.referenceScripts,
-      },
-      submissionIntent: {
-        kind: "submission_intent",
-        actionId: action.actionId,
-        actionInput: action.input,
-        txHash: boundary.signed.toHash(),
-        attempt: 1,
-      },
-    };
     await beginWorkflowFundingReservationAction({ journal, action });
     await prepareWorkflowFundingReservationTransaction({
-      journal,
+      writer: fixtureJournalWriter(journal, evidence.headerHash),
       action,
       preflight,
-      handoff,
+      events: fundingAttemptEvents(action, preflight),
     });
     const pending = await record();
     expect(pending.activeInputs).toEqual(inputs);
@@ -398,7 +367,6 @@ export const preparePermissionlessSlashSqlite = async ({
     expect(recovered.transition?.transactionBodySha256).toBe(
       pending.pendingTransition?.transactionBodySha256,
     );
-    expect(recovered.submissionHandoff).toEqual(handoff);
     await assertWorkflowFundingReservationReadyToSubmit({
       journal,
       transactionHash: boundary.signed.toHash(),
@@ -406,7 +374,8 @@ export const preparePermissionlessSlashSqlite = async ({
     return {
       confirm: async () => {
         await confirmWorkflowFundingReservationTransaction({
-          journal,
+          writer: fixtureJournalWriter(journal, evidence.headerHash),
+          events: [],
           transactionHash: boundary.signed.toHash(),
         });
         const confirmed = await record();
@@ -444,11 +413,6 @@ export const preparePermissionlessSlashSqlite = async ({
             .to_canonical_cbor_hex(),
         });
         await reopen();
-        expect(await record()).toEqual(confirmed);
-        await confirmWorkflowFundingReservationTransaction({
-          journal,
-          transactionHash: boundary.signed.toHash(),
-        });
         expect(await record()).toEqual(confirmed);
         expect(
           (await readWorkflowFundingRecovery(journal)).transition,

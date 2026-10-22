@@ -1,16 +1,16 @@
 import {
-  type WorkflowFundingAbandonmentHandoff,
   workflowFundingExclusiveProtocolInput,
   type WorkflowFundingPreparedTransition,
+  type WorkflowFundingSupersededAttempt,
 } from "@al-ft/midgard-fault-proofs";
 import { CML } from "@lucid-evolution/lucid";
 
 import { transactionInputOutRefs } from "./sqlite-prover-funding-reservation-store.derive-signed-transition.js";
 
-type Abandoned = Readonly<{
-  transition: WorkflowFundingPreparedTransition;
-  handoff: WorkflowFundingAbandonmentHandoff;
-}>;
+type Abandoned = Pick<
+  WorkflowFundingSupersededAttempt,
+  "transition" | "actionId" | "retirement"
+>;
 
 /** Every ordinary input the signed body spends: funding and protocol inputs
  * alike. Collateral does not count, because a valid transaction leaves it. */
@@ -96,7 +96,7 @@ export const uncoveredSupersededAttempts = ({
       inputs: signedOrdinaryInputs(signedTransactionCborHex),
     }));
   return abandoned
-    .filter(({ handoff }) => handoff.reconciliation.retirement === undefined)
+    .filter(({ retirement }) => retirement === undefined)
     .map(({ transition }) => {
       const { exclusion, ancestors } = lineage(transition, recorded);
       return { transition, exclusion, ancestors };
@@ -134,22 +134,19 @@ export const excludesEveryUncoveredAttempt = ({
   uncovered,
   signedTransactionCborHex,
   reservedFundingOutRefs,
-  handoff,
+  attempt,
 }: {
   readonly uncovered: readonly UncoveredSupersededAttempt[];
   readonly signedTransactionCborHex: string;
   readonly reservedFundingOutRefs: readonly string[];
-  /** The fresh attempt's handoff, which names its workflow and action. */
-  readonly handoff?: Readonly<{
-    identity: Readonly<{ category: string }>;
-    submissionIntent: Readonly<{ actionInput: unknown }>;
-  }>;
+  /** The fresh attempt's workflow category and action input. */
+  readonly attempt?: Readonly<{ category: string; actionInput: unknown }>;
 }): boolean => {
   if (uncovered.length === 0) return true;
   const inputs = signedOrdinaryInputs(signedTransactionCborHex);
   const exclusive = workflowFundingExclusiveProtocolInput({
-    category: handoff?.identity.category,
-    actionInput: handoff?.submissionIntent.actionInput,
+    category: attempt?.category,
+    actionInput: attempt?.actionInput,
   });
   if (
     exclusive !== null &&
@@ -189,9 +186,8 @@ export const landedSupersededAttemptOfAction = ({
   const sameAction = new Set(
     abandoned
       .filter(
-        ({ handoff }) =>
-          handoff.reconciliation.retirement === undefined &&
-          handoff.submissionIntent.actionId === actionId,
+        (saved) =>
+          saved.retirement === undefined && saved.actionId === actionId,
       )
       .map(({ transition }) => transition.transactionHash),
   );

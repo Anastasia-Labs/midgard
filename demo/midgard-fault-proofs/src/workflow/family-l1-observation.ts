@@ -255,7 +255,7 @@ const sameTerminal = (
   right: FraudProofWorkflowTerminal,
 ): boolean => {
   // Slot/hash identify the removal's original inclusion and remain immutable.
-  // Only its depth may grow while a durable completion handoff is resumed.
+  // Only its depth may grow while a completion is reconciled again.
   const facts = (terminal: FraudProofWorkflowTerminal) => ({
     ...terminal,
     observedAt: { ...terminal.observedAt, confirmationDepth: 0 },
