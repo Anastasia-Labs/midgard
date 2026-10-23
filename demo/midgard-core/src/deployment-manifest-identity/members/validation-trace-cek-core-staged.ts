@@ -53,7 +53,31 @@ const validationTraceCekCoreStagedProductMembers = defineDeploymentFamily(
   },
 );
 
+const stagedProduct =
+  validationTraceCekCoreStagedProductMembers.validationTraceDisputeCekCoreStagedProduct;
+
+/** The serialise loop, which proves serialiseData over its staged result
+ * (semantic budget index 10), placed directly after the staged product
+ * member. */
+const validationTraceCekCoreSerialiseLoopMembers = defineDeploymentFamily(
+  "validationTraceDispute",
+  {
+    validationTraceDisputeCekCoreSemanticSerialiseLoop: {
+      purpose: "spend",
+      referenceRole: "V1 validation-trace CEK core semantic serialise loop",
+      manifestPosition: stagedProduct.manifestPosition + 1,
+      publicationPosition: stagedProduct.publicationPosition + 1,
+      referenceRolePosition: stagedProduct.referenceRolePosition + 1,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/validation_trace/cek_core_semantic_serialise_loop.main.spend",
+      familyPaths: [["cekCoreStages", "semanticSerialiseLoop"]],
+    },
+  },
+);
+
 export const validationTraceCekCoreStagedMembers = Object.freeze({
   ...validationTraceCekCoreStagedOperandMembers,
   ...validationTraceCekCoreStagedProductMembers,
+  ...validationTraceCekCoreSerialiseLoopMembers,
 });

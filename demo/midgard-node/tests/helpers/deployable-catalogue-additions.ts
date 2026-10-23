@@ -266,8 +266,8 @@ export const phaseResolverRoles = new Set<string>(
 );
 
 // The CEK core's semantics steps over staged operands: the byte-string and
-// string builtins, the linear integer builtins, and multiplyInteger and the
-// division builtins.
+// string builtins, the linear integer builtins, multiplyInteger and the
+// division builtins, and the serialise loop for serialiseData.
 const CEK_STAGED_CATALOGUE_ADDITIONS = [
   {
     contract: "validationTraceDisputeCekCoreStagedBytes",
@@ -280,6 +280,10 @@ const CEK_STAGED_CATALOGUE_ADDITIONS = [
   {
     contract: "validationTraceDisputeCekCoreStagedProduct",
     role: "V1 validation-trace CEK core staged product",
+  },
+  {
+    contract: "validationTraceDisputeCekCoreSemanticSerialiseLoop",
+    role: "V1 validation-trace CEK core semantic serialise loop",
   },
 ] as const;
 

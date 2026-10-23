@@ -217,6 +217,7 @@ export const makeAlwaysSucceedsFaultProofContracts = (
         stagedBytes: alwaysValidationTraceDispute,
         stagedInteger: alwaysValidationTraceDispute,
         stagedProduct: alwaysValidationTraceDispute,
+        semanticSerialiseLoop: alwaysValidationTraceDispute,
         semanticBudget: alwaysValidationTraceDispute,
         semanticRoots: alwaysValidationTraceDispute,
         semanticResult: alwaysValidationTraceDispute,
