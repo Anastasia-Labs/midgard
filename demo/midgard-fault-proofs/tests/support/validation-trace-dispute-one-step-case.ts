@@ -39,6 +39,7 @@ import {
 import type { AdapterWrap } from "./validation-trace-dispute-funded-runner.js";
 import {
   oneStepDeployment,
+  publishBuiltinArmReferences,
   publishCanonicalDecodeReferences,
   publishContextReferences,
   publishOneStepReferences,
@@ -114,6 +115,7 @@ export const defendTwoThreads = async ({
   successorFrom = MACHINE_STEP_FROM,
   selections = false,
   contexts = false,
+  builtins = false,
   canonicalDecode = false,
   phases = false,
   scriptSourcesRedeemers = false,
@@ -140,6 +142,8 @@ export const defendTwoThreads = async ({
   readonly selections?: boolean;
   /** Whether the deployment drives CEK context steps. */
   readonly contexts?: boolean;
+  /** Whether the deployment drives CEK builtin steps. */
+  readonly builtins?: boolean;
   /** Whether the deployment drives canonical-decode steps. */
   readonly canonicalDecode?: boolean;
   /** Whether the deployment drives the steps of the phases one-step-phase.ts
@@ -184,6 +188,9 @@ export const defendTwoThreads = async ({
           : {}),
         ...(contexts
           ? { cekContext: await publishContextReferences(contracts) }
+          : {}),
+        ...(builtins
+          ? { cekBuiltins: await publishBuiltinArmReferences(contracts) }
           : {}),
         ...(canonicalDecode
           ? {

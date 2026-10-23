@@ -10,6 +10,8 @@ export * from "./cek-data-tree.js";
 export * from "./cek-executor.js";
 export * from "./cek-machine.js";
 export * from "./cek-program.js";
+export * from "./cek-semantic-group.js";
+export * from "./cek-staged-builtin.js";
 export * from "./ledger.js";
 export * from "./ledger-ed25519-ready.js";
 export * from "./ledger-output-descriptor.js";

@@ -10,6 +10,7 @@ import {
   type MidgardCekDirectValueWitness,
   type MidgardCekRuntimeValueWitness,
 } from "./cek-builtin.js";
+import { type MidgardCekStagedBuiltinMaterial } from "./cek-staged-builtin.material.js";
 
 export const MACHINE_STEP_CPU = 16_000n;
 
@@ -253,6 +254,17 @@ export type MidgardCekCoreStepWitness =
       readonly arguments: readonly MidgardCekDirectValueWitness[];
       readonly result: MidgardCekDirectValueWitness;
       readonly material: MidgardCekSemanticBuiltinWitness;
+    }
+  | {
+      // A byte-string, string or linear integer builtin whose operands are
+      // bound through the staged arms. `stagedOperands` holds the bytes of
+      // each staged operand the sources name; it is staged, not encoded.
+      readonly kind: "executeBuiltinStaged";
+      readonly tag: bigint;
+      readonly arguments: readonly MidgardCekDirectValueWitness[];
+      readonly result: MidgardCekDirectValueWitness;
+      readonly material: MidgardCekStagedBuiltinMaterial;
+      readonly stagedOperands: readonly Bytes[];
     }
   | {
       readonly kind: "startBuiltinMapConversion";

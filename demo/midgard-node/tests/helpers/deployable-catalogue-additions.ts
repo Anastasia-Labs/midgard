@@ -264,3 +264,23 @@ export const phaseResolverContracts = new Set<string>(
 export const phaseResolverRoles = new Set<string>(
   PHASE_RESOLVER_CATALOGUE_ADDITIONS.map(({ role }) => role),
 );
+
+// The CEK core's semantics steps over staged operands: the byte-string and
+// string builtins, and the linear integer builtins.
+const CEK_STAGED_CATALOGUE_ADDITIONS = [
+  {
+    contract: "validationTraceDisputeCekCoreStagedBytes",
+    role: "V1 validation-trace CEK core staged bytes",
+  },
+  {
+    contract: "validationTraceDisputeCekCoreStagedInteger",
+    role: "V1 validation-trace CEK core staged integer",
+  },
+] as const;
+
+export const cekStagedContracts = new Set<string>(
+  CEK_STAGED_CATALOGUE_ADDITIONS.map(({ contract }) => contract),
+);
+export const cekStagedRoles = new Set<string>(
+  CEK_STAGED_CATALOGUE_ADDITIONS.map(({ role }) => role),
+);

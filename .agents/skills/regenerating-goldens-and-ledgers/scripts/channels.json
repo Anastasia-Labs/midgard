@@ -164,6 +164,33 @@
       }
     },
     {
+      "id": "cek-staged-v1",
+      "kind": "golden",
+      "summary": "Staged-operand and staged-integer libraries: flat blob roots, staged operand roots, Integer CBOR roots, memory words and leaves, and limbwise sums and differences from the TypeScript twins, rendered as a whole generated Aiken module.",
+      "generators": [
+        "demo/midgard-core/scripts/generate-cek-staged-v1-goldens.mjs",
+        "demo/midgard-core/scripts/generate-cek-staged-v1-goldens.render-aiken.mjs"
+      ],
+      "packageScripts": [
+        "demo/midgard-core:fixtures:cek-staged-v1:sync",
+        "demo/midgard-core:fixtures:cek-staged-v1:check"
+      ],
+      "producers": ["demo/midgard-core"],
+      "inputs": ["@golden-channel"],
+      "outputs": ["onchain/aiken/lib/midgard/cek-staged-v1-golden.test.ak"],
+      "aikenImportsOfOutputs": true,
+      "sync": {
+        "run": "pnpm --dir demo/midgard-core run fixtures:cek-staged-v1:sync"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-core run fixtures:cek-staged-v1:check"
+      },
+      "ci": {
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Check staged-operand golden vectors"
+      }
+    },
+    {
       "id": "mpf-node-encoding-v1",
       "kind": "golden",
       "summary": "MPF node encoding (leaf suffix markers, leaf hashes, proofs and roots) from the MPF library's Trie alone: JSON fixture plus a whole generated Aiken module.",
@@ -550,6 +577,41 @@
       "ci": {
         "workflow": ".github/workflows/midgard-node-ci.yml",
         "step": "Check V1 CEK core-step golden vectors"
+      }
+    },
+    {
+      "id": "cek-staged-arm-v1",
+      "kind": "golden",
+      "summary": "Staged builtin steps (arm 31, semantics groups 7 and 8) built by the TypeScript twin: JSON fixture of witness hashes and verdicts plus a whole generated Aiken module spending each step through the staged bytes or integer semantics validator.",
+      "generators": [
+        "demo/midgard-validation/scripts/generate-cek-staged-arm-v1-goldens.mjs"
+      ],
+      "packageScripts": [
+        "demo/midgard-validation:fixtures:cek-staged-arm-v1:sync",
+        "demo/midgard-validation:fixtures:cek-staged-arm-v1:check"
+      ],
+      "producers": ["demo/midgard-validation"],
+      "inputs": [
+        "@golden-channel",
+        "demo/midgard-validation/tests/fixtures/cek-staged-arm-v1.vectors.mjs",
+        "demo/midgard-validation/tests/fixtures/cek-staged-arm-v1.kit.mjs",
+        "demo/midgard-validation/tests/fixtures/cek-staged-arm-v1.bytes-rows.mjs",
+        "demo/midgard-validation/tests/fixtures/cek-staged-arm-v1.integer-rows.mjs"
+      ],
+      "outputs": [
+        "demo/midgard-validation/tests/fixtures/cek-staged-arm-v1.generated.json",
+        "onchain/aiken/validators/fraud-proofs/validation-trace/cek-core-staged-golden.test.ak"
+      ],
+      "aikenImportsOfOutputs": true,
+      "sync": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:cek-staged-arm-v1:sync"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:cek-staged-arm-v1:check"
+      },
+      "ci": {
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Check staged builtin arm golden vectors"
       }
     },
     {

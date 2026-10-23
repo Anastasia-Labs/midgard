@@ -1,6 +1,6 @@
-import "./catalogue-roles.deployment-manifest-contract-names.js";
+import "./catalogue-roles.deployment-manifest-contract-names.additions.js";
 import "./catalogue-roles.deployment-manifest-fraud-proof-contract-by-category.js";
-export { DEPLOYMENT_MANIFEST_CONTRACT_NAMES } from "./catalogue-roles.deployment-manifest-contract-names.js";
+export { DEPLOYMENT_MANIFEST_CONTRACT_NAMES } from "./catalogue-roles.deployment-manifest-contract-names.additions.js";
 export {
   DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,

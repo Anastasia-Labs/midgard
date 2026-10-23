@@ -19,7 +19,7 @@ import {
   type DeploymentManifestEventHistoryRecipe,
   type DeploymentManifestEventHistoryRetentionAddresses,
 } from "./event-history.js";
-import { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES } from "./reference-script-tokens.js";
+import { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES } from "./reference-script-tokens.additions.js";
 
 export const DEPLOYMENT_MANIFEST_STEP_NAMES = Object.freeze([
   "prepareHubOracleNonce",

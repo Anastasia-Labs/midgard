@@ -40,6 +40,7 @@ export const referenceUtxos = (
           oneStep.cekPrepare,
           oneStep.cekCore,
           ...Object.values(oneStep.arms),
+          ...Object.values(oneStep.cekBuiltins ?? {}),
           oneStep.settle,
           ...Object.values(oneStep.cekSelection ?? {}),
           ...(oneStep.cekContext === undefined

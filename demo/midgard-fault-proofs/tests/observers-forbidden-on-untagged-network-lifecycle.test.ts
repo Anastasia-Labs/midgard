@@ -408,7 +408,7 @@ describe("observersForbiddenOnUntaggedNetwork registered-chain lifecycle", () =>
         header: { ...header, validationTracesRoot: "ff".repeat(32) },
       });
       await door("forced_leaf_membership", finding, {
-        membership: { ...leaf.membership, root: "ee".repeat(32) },
+        membership: { ...leaf.membership, phas_root: "ee".repeat(32) },
       });
       // The subject is bound from the authenticated leaf, never the finding.
       await door(

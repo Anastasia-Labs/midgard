@@ -24,7 +24,7 @@ import {
   requireString,
 } from "./primitives.js";
 import { parseDeploymentManifestCardanoProtocolParameters } from "./protocol-parameters.js";
-import { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES } from "./reference-script-tokens.js";
+import { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES } from "./reference-script-tokens.additions.js";
 import {
   DEPLOYMENT_MANIFEST_L1_FINALITY,
   DEPLOYMENT_MANIFEST_STEP_NAMES,

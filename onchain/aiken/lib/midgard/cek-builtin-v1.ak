@@ -7,6 +7,7 @@ use midgard/cek_constant_v1
 use midgard/cek_cost_v1
 use midgard/cek_data_v1
 use midgard/cek_proof_v1
+use midgard/cek_staged_blob_v1.{concat_balanced_v1}
 
 /// A direct builtin witness reveals only canonical CEK constants. Opaque
 /// roots are admitted solely for polymorphic branch values which the builtin
@@ -754,6 +755,172 @@ fn all_bit_indices_valid_v1(indices: List<Int>, bit_length: Int) -> Bool {
   }
 }
 
+/// The value a byte-string, string or integer builtin returns. A byte-string
+/// or string result is given as pieces whose concatenation is the result, so
+/// an arm can root a result longer than one byte string can be on L1 under
+/// protocol version 11 (every byte-string builtin argument is at most 65,536
+/// bytes) without joining it.
+pub type ScalarResultV1 {
+  BytesResult(List<ByteArray>)
+  StringResult(List<ByteArray>)
+  IntegerResult(Int)
+  BoolResult(Bool)
+}
+
+/// Splits the arguments of a byte-string or string builtin into its byte-string
+/// or string operands and its integer operands, each in argument order.
+pub fn scalar_operands_v1(
+  tag: Int,
+  arguments: List<a>,
+) -> Pair<List<a>, List<a>> {
+  if tag == 11 {
+    expect [byte, bytes] = arguments
+    Pair([bytes], [byte])
+  } else if tag == 12 {
+    expect [start, length, bytes] = arguments
+    Pair([bytes], [start, length])
+  } else if tag == 14 {
+    expect [bytes, index] = arguments
+    Pair([bytes], [index])
+  } else {
+    Pair(arguments, [])
+  }
+}
+
+/// True when the byte operands of `tag` are strings (UTF-8 bytes).
+pub fn string_operands_v1(tag: Int) -> Bool {
+  tag >= 22 && tag <= 24
+}
+
+/// The byte-string and string builtins (tags 10 to 20, 22 to 25, 71, 72 and
+/// 86) on values: `operands` holds each byte-string or string operand as
+/// pieces in order, `integers` each integer operand. The direct arm and the
+/// staged arm both compute these builtins through this one function. Tags that
+/// read an operand whole need it to be at most 65,536 bytes, which the
+/// direct carriage bound and the staged arm's bound both give.
+pub fn bytes_relation_v1(
+  tag: Int,
+  operands: List<List<ByteArray>>,
+  integers: List<Int>,
+) -> ScalarResultV1 {
+  if tag == 10 || tag == 22 {
+    // String operands are valid UTF-8, and so is their join.
+    expect [left, right] = operands
+    let joined = list.concat(left, right)
+    if tag == 10 {
+      BytesResult(joined)
+    } else {
+      StringResult(joined)
+    }
+  } else if tag == 11 {
+    expect [[first, ..rest]] = operands
+    expect [byte] = integers
+    expect and {
+        byte >= 0,
+        byte <= 255,
+      }
+    BytesResult([builtin.cons_bytearray(byte, first), ..rest])
+  } else {
+    expect [bytes, ..others] = list.map(operands, concat_balanced_v1)
+    if tag == 15 || tag == 16 || tag == 17 || tag == 23 {
+      expect [other] = others
+      BoolResult(
+        if tag == 16 {
+          builtin.less_than_bytearray(bytes, other)
+        } else if tag == 17 {
+          builtin.less_than_equals_bytearray(bytes, other)
+        } else {
+          // Two strings are equal exactly when their UTF-8 bytes are.
+          builtin.equals_bytearray(bytes, other)
+        },
+      )
+    } else {
+      expect [] = others
+      if tag == 12 {
+        expect [start, length] = integers
+        // Cardano decodes both operands as machine Int even when the slice is
+        // empty.
+        expect and {
+            !outside_int64_v1(start),
+            !outside_int64_v1(length),
+          }
+        BytesResult([builtin.slice_bytearray(start, length, bytes)])
+      } else if tag == 13 {
+        IntegerResult(builtin.length_of_bytearray(bytes))
+      } else if tag == 14 {
+        expect [position] = integers
+        expect and {
+            position >= 0,
+            position < builtin.length_of_bytearray(bytes),
+          }
+        IntegerResult(builtin.index_bytearray(bytes, position))
+      } else if tag == 24 {
+        BytesResult([bytes])
+      } else if tag == 25 {
+        // decodeUtf8 fails on bytes that are not valid UTF-8.
+        expect builtin.encode_utf8(builtin.decode_utf8(bytes)) == bytes
+        StringResult([bytes])
+      } else {
+        BytesResult(
+          [
+            if tag == 18 {
+              builtin.sha2_256(bytes)
+            } else if tag == 19 {
+              builtin.sha3_256(bytes)
+            } else if tag == 20 {
+              builtin.blake2b_256(bytes)
+            } else if tag == 71 {
+              builtin.keccak_256(bytes)
+            } else if tag == 72 {
+              builtin.blake2b_224(bytes)
+            } else {
+              expect tag == 86
+              builtin.ripemd_160(bytes)
+            },
+          ],
+        )
+      }
+    }
+  }
+}
+
+/// The comparison builtins (tags 7 to 9) on the order of their two operands.
+/// The direct arm orders native integers and the staged arm canonical CBOR;
+/// both decide through this one function.
+pub fn integer_order_relation_v1(tag: Int, order: Ordering) -> Bool {
+  if tag == 7 {
+    order == Equal
+  } else if tag == 8 {
+    order == Less
+  } else {
+    expect tag == 9
+    order != Greater
+  }
+}
+
+/// True when `result` is the value `expected`.
+pub fn result_is_scalar_v1(
+  result: ValueWitnessV1,
+  expected: ScalarResultV1,
+) -> Bool {
+  let Pair(expected_type, expected_payload) = when expected is {
+    BytesResult(pieces) ->
+      Pair(
+        cek_constant_v1.ByteStringConstant,
+        builtin.b_data(concat_balanced_v1(pieces)),
+      )
+    StringResult(pieces) ->
+      Pair(
+        cek_constant_v1.StringConstant,
+        builtin.b_data(concat_balanced_v1(pieces)),
+      )
+    IntegerResult(value) ->
+      Pair(cek_constant_v1.IntegerConstant, builtin.i_data(value))
+    BoolResult(value) -> Pair(cek_constant_v1.BooleanConstant, bool_data(value))
+  }
+  result_is_constant_v1(result, expected_type, expected_payload)
+}
+
 fn verify_integer_binary_v1(
   tag: Int,
   arguments: List<ValueWitnessV1>,
@@ -762,218 +929,70 @@ fn verify_integer_binary_v1(
   expect [left_value, right_value] = arguments
   let left = integer_v1(left_value)
   let right = integer_v1(right_value)
-  if tag == 0 {
-    result_is_constant_v1(
-      result,
-      cek_constant_v1.IntegerConstant,
-      builtin.i_data(builtin.add_integer(left, right)),
-    )
-  } else if tag == 1 {
-    result_is_constant_v1(
-      result,
-      cek_constant_v1.IntegerConstant,
-      builtin.i_data(builtin.subtract_integer(left, right)),
-    )
-  } else if tag == 2 {
-    result_is_constant_v1(
-      result,
-      cek_constant_v1.IntegerConstant,
-      builtin.i_data(builtin.multiply_integer(left, right)),
-    )
-  } else if tag == 3 {
-    result_is_constant_v1(
-      result,
-      cek_constant_v1.IntegerConstant,
-      builtin.i_data(builtin.divide_integer(left, right)),
-    )
-  } else if tag == 4 {
-    result_is_constant_v1(
-      result,
-      cek_constant_v1.IntegerConstant,
-      builtin.i_data(builtin.quotient_integer(left, right)),
-    )
-  } else if tag == 5 {
-    result_is_constant_v1(
-      result,
-      cek_constant_v1.IntegerConstant,
-      builtin.i_data(builtin.remainder_integer(left, right)),
-    )
-  } else if tag == 6 {
-    result_is_constant_v1(
-      result,
-      cek_constant_v1.IntegerConstant,
-      builtin.i_data(builtin.mod_integer(left, right)),
-    )
-  } else if tag == 7 {
+  if tag >= 7 {
     result_is_constant_v1(
       result,
       cek_constant_v1.BooleanConstant,
-      bool_data(builtin.equals_integer(left, right)),
-    )
-  } else if tag == 8 {
-    result_is_constant_v1(
-      result,
-      cek_constant_v1.BooleanConstant,
-      bool_data(builtin.less_than_integer(left, right)),
+      bool_data(
+        integer_order_relation_v1(
+          tag,
+          if left == right {
+            Equal
+          } else if left < right {
+            Less
+          } else {
+            Greater
+          },
+        ),
+      ),
     )
   } else {
-    expect tag == 9
     result_is_constant_v1(
       result,
-      cek_constant_v1.BooleanConstant,
-      bool_data(builtin.less_than_equals_integer(left, right)),
+      cek_constant_v1.IntegerConstant,
+      builtin.i_data(
+        if tag == 0 {
+          builtin.add_integer(left, right)
+        } else if tag == 1 {
+          builtin.subtract_integer(left, right)
+        } else if tag == 2 {
+          builtin.multiply_integer(left, right)
+        } else if tag == 3 {
+          builtin.divide_integer(left, right)
+        } else if tag == 4 {
+          builtin.quotient_integer(left, right)
+        } else if tag == 5 {
+          builtin.remainder_integer(left, right)
+        } else {
+          expect tag == 6
+          builtin.mod_integer(left, right)
+        },
+      ),
     )
   }
 }
 
+/// The byte-string and string builtins over inline constants, through
+/// `bytes_relation_v1`.
 fn verify_bytes_v1(
   tag: Int,
   arguments: List<ValueWitnessV1>,
   result: ValueWitnessV1,
 ) -> Bool {
-  if tag == 10 {
-    expect [left, right] = arguments
-    result_is_constant_v1(
-      result,
-      cek_constant_v1.ByteStringConstant,
-      builtin.b_data(builtin.append_bytearray(bytes_v1(left), bytes_v1(right))),
-    )
-  } else if tag == 11 {
-    expect [byte, bytes] = arguments
-    let byte_value = integer_v1(byte)
-    expect and {
-        byte_value >= 0,
-        byte_value <= 255,
-      }
-    result_is_constant_v1(
-      result,
-      cek_constant_v1.ByteStringConstant,
-      builtin.b_data(builtin.cons_bytearray(byte_value, bytes_v1(bytes))),
-    )
-  } else if tag == 12 {
-    expect [start, length, bytes] = arguments
-    let start_value = integer_v1(start)
-    let length_value = integer_v1(length)
-    // Cardano decodes both operands as machine Int even when the slice is empty.
-    expect and {
-        !outside_int64_v1(start_value),
-        !outside_int64_v1(length_value),
-      }
-    result_is_constant_v1(
-      result,
-      cek_constant_v1.ByteStringConstant,
-      builtin.b_data(
-        builtin.slice_bytearray(start_value, length_value, bytes_v1(bytes)),
-      ),
-    )
-  } else if tag == 13 {
-    expect [bytes] = arguments
-    result_is_constant_v1(
-      result,
-      cek_constant_v1.IntegerConstant,
-      builtin.i_data(builtin.length_of_bytearray(bytes_v1(bytes))),
-    )
-  } else if tag == 14 {
-    expect [bytes, index] = arguments
-    let source = bytes_v1(bytes)
-    let position = integer_v1(index)
-    expect and {
-        position >= 0,
-        position < bytearray.length(source),
-      }
-    result_is_constant_v1(
-      result,
-      cek_constant_v1.IntegerConstant,
-      builtin.i_data(builtin.index_bytearray(source, position)),
-    )
-  } else if tag == 15 {
-    expect [left, right] = arguments
-    result_is_constant_v1(
-      result,
-      cek_constant_v1.BooleanConstant,
-      bool_data(builtin.equals_bytearray(bytes_v1(left), bytes_v1(right))),
-    )
-  } else if tag == 16 {
-    expect [left, right] = arguments
-    result_is_constant_v1(
-      result,
-      cek_constant_v1.BooleanConstant,
-      bool_data(builtin.less_than_bytearray(bytes_v1(left), bytes_v1(right))),
-    )
-  } else if tag == 17 {
-    expect [left, right] = arguments
-    result_is_constant_v1(
-      result,
-      cek_constant_v1.BooleanConstant,
-      bool_data(
-        builtin.less_than_equals_bytearray(bytes_v1(left), bytes_v1(right)),
-      ),
-    )
+  let Pair(operands, integers) = scalar_operands_v1(tag, arguments)
+  let read = if string_operands_v1(tag) {
+    string_bytes_v1
   } else {
-    expect [bytes] = arguments
-    let source = bytes_v1(bytes)
-    let digest = if tag == 18 {
-      builtin.sha2_256(source)
-    } else if tag == 19 {
-      builtin.sha3_256(source)
-    } else {
-      expect tag == 20
-      builtin.blake2b_256(source)
-    }
-    result_is_constant_v1(
-      result,
-      cek_constant_v1.ByteStringConstant,
-      builtin.b_data(digest),
-    )
+    bytes_v1
   }
-}
-
-fn verify_strings_v1(
-  tag: Int,
-  arguments: List<ValueWitnessV1>,
-  result: ValueWitnessV1,
-) -> Bool {
-  if tag == 22 {
-    expect [left, right] = arguments
-    let appended = builtin.append_string(
-      builtin.decode_utf8(string_bytes_v1(left)),
-      builtin.decode_utf8(string_bytes_v1(right)),
-    )
-      |> builtin.encode_utf8
-    result_is_constant_v1(
-      result,
-      cek_constant_v1.StringConstant,
-      builtin.b_data(appended),
-    )
-  } else if tag == 23 {
-    expect [left, right] = arguments
-    result_is_constant_v1(
-      result,
-      cek_constant_v1.BooleanConstant,
-      bool_data(
-        builtin.equals_string(
-          builtin.decode_utf8(string_bytes_v1(left)),
-          builtin.decode_utf8(string_bytes_v1(right)),
-        ),
-      ),
-    )
-  } else if tag == 24 {
-    expect [value] = arguments
-    result_is_constant_v1(
-      result,
-      cek_constant_v1.ByteStringConstant,
-      builtin.b_data(string_bytes_v1(value)),
-    )
-  } else {
-    expect tag == 25
-    expect [value] = arguments
-    // A canonical String result proves both UTF-8 validity and exact decoding.
-    result_is_constant_v1(
-      result,
-      cek_constant_v1.StringConstant,
-      builtin.b_data(bytes_v1(value)),
-    )
-  }
+  result_is_scalar_v1(
+    result,
+    bytes_relation_v1(
+      tag,
+      list.map(operands, fn(operand) { [read(operand)] }),
+      list.map(integers, integer_v1),
+    ),
+  )
 }
 
 fn verify_signature_v1(
@@ -2419,22 +2438,12 @@ fn verify_v3_bytes_v1(
   arguments: List<ValueWitnessV1>,
   result: ValueWitnessV1,
 ) -> Bool {
-  if tag == 71 || tag == 72 || tag == 78 || tag == 84 || tag == 85 || tag == 86 {
+  if tag == 71 || tag == 72 || tag == 86 {
+    verify_bytes_v1(tag, arguments, result)
+  } else if tag == 78 || tag == 84 || tag == 85 {
     expect [source_value] = arguments
     let source = bytes_v1(source_value)
-    if tag == 71 {
-      result_is_constant_v1(
-        result,
-        cek_constant_v1.ByteStringConstant,
-        builtin.b_data(builtin.keccak_256(source)),
-      )
-    } else if tag == 72 {
-      result_is_constant_v1(
-        result,
-        cek_constant_v1.ByteStringConstant,
-        builtin.b_data(builtin.blake2b_224(source)),
-      )
-    } else if tag == 78 {
+    if tag == 78 {
       result_is_constant_v1(
         result,
         cek_constant_v1.ByteStringConstant,
@@ -2446,18 +2455,12 @@ fn verify_v3_bytes_v1(
         cek_constant_v1.IntegerConstant,
         builtin.i_data(builtin.count_set_bits(source)),
       )
-    } else if tag == 85 {
+    } else {
+      expect tag == 85
       result_is_constant_v1(
         result,
         cek_constant_v1.IntegerConstant,
         builtin.i_data(builtin.find_first_set_bit(source)),
-      )
-    } else {
-      expect tag == 86
-      result_is_constant_v1(
-        result,
-        cek_constant_v1.ByteStringConstant,
-        builtin.b_data(builtin.ripemd_160(source)),
       )
     }
   } else if tag == 73 {
@@ -3011,7 +3014,7 @@ pub fn verify_direct_builtin_v1(
   } else if tag == 21 || tag == 52 || tag == 53 {
     verify_signature_v1(tag, arguments, result)
   } else if tag >= 22 && tag <= 25 {
-    verify_strings_v1(tag, arguments, result)
+    verify_bytes_v1(tag, arguments, result)
   } else if tag >= 26 && tag <= 28 {
     verify_control_v1(tag, arguments, result)
   } else if tag >= 29 && tag <= 35 {
@@ -4066,7 +4069,7 @@ pub fn verify_direct_scalar_semantics(
   } else if tag == 21 || tag == 52 || tag == 53 {
     verify_signature_v1(tag, arguments, result)
   } else if tag >= 22 && tag <= 25 {
-    verify_strings_v1(tag, arguments, result)
+    verify_bytes_v1(tag, arguments, result)
   } else if tag >= 26 && tag <= 28 {
     verify_control_v1(tag, arguments, result)
   } else if tag >= 71 && tag <= 86 {

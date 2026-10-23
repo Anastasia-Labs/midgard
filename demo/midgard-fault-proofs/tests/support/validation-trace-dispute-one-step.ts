@@ -26,6 +26,12 @@ import {
   type ValidationTraceContextItemHolder,
 } from "../../src/validation-trace-dispute/one-step-context-item-holders.js";
 import {
+  CEK_CORE_ARM_HOLDERS,
+  CEK_CORE_BUILTIN_ARM_HOLDERS,
+  type ValidationTraceArmHolder,
+  type ValidationTraceBuiltinArmHolder,
+} from "../../src/validation-trace-dispute/one-step-core-chains.js";
+import {
   CEK_CONTEXT_STAGE_HOLDERS,
   cekContextSemanticResolver,
   cekCoreSemanticResolver,
@@ -79,6 +85,8 @@ export const oneStepScripts = (
   const stages = {} as Record<ValidationTraceContextStageHolder, OneStepScript>;
   for (const stage of DRIVEN_CEK_CONTEXT_STAGES)
     stages[CEK_CONTEXT_STAGE_HOLDERS[stage]] = context[stage];
+  const armScripts = {} as Record<ValidationTraceArmHolder, OneStepScript>;
+  for (const holder of CEK_CORE_ARM_HOLDERS) armScripts[holder] = arms[holder];
   const resolver = ({ spendingScriptHash }: { spendingScriptHash: string }) =>
     chain.semanticResolvers.find(
       (found) => found.spendingScriptHash === spendingScriptHash,
@@ -88,10 +96,7 @@ export const oneStepScripts = (
     prepare: chain.prepareResolvers[CEK_RESOLVER_INDEX],
     core: resolver(cekCoreSemanticResolver(scene)),
     selection: resolver(cekSelectionSemanticResolver(scene)),
-    compute: arms.compute,
-    machine: arms.machine,
-    mapConversion: arms.mapConversion,
-    caseConstant: arms.caseConstant,
+    ...armScripts,
     settle: arms.settle,
     context: resolver(cekContextSemanticResolver(scene)),
     contextControl: context.control,
@@ -277,6 +282,25 @@ export const publishPhaseReferences = async (
       })
     ).utxo;
   return Object.freeze(references as Record<ValidationTracePhaseHolder, UTxO>);
+};
+
+/** Publishes the reference scripts of the builtin chains' arms. */
+export const publishBuiltinArmReferences = async (
+  scene: SceneContracts,
+): Promise<NonNullable<ValidationTraceOneStepReferences["cekBuiltins"]>> => {
+  const scripts = oneStepScripts(scene);
+  const references: Partial<Record<ValidationTraceBuiltinArmHolder, UTxO>> = {};
+  for (const holder of CEK_CORE_BUILTIN_ARM_HOLDERS)
+    references[holder] = (
+      await publishPlainReferenceScriptUtxo({
+        lucid: scene.h.proverLucid,
+        script: scripts[holder].spendingScript,
+        label: `CEK ${holder} arm`,
+      })
+    ).utxo;
+  return Object.freeze(
+    references as Record<ValidationTraceBuiltinArmHolder, UTxO>,
+  );
 };
 
 /** Publishes the reference scripts of the script-sources redeemer item

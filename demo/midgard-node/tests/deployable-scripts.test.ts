@@ -16,6 +16,8 @@ import {
   caseRoles,
   cekResolverContracts,
   cekResolverRoles,
+  cekStagedContracts,
+  cekStagedRoles,
   dataCanonicityContracts,
   dataCanonicityRoles,
   HISTORY_CATALOGUE_ADDITIONS,
@@ -33,48 +35,7 @@ import {
   nodeRuntimeReferenceScriptTargets,
   referenceScriptTargetsByCommand,
 } from "./helpers/deployable-catalogue-before-canonical.js";
-import {
-  MANIFEST_CONTRACT_ORDER_DIGEST,
-  MANIFEST_ROLE_ORDER_DIGEST,
-  PLACEHOLDER_COMMAND_ORDER_DIGEST,
-  PLACEHOLDER_PUBLICATION_ORDER_DIGEST,
-  PRE_CASE_MANIFEST_CONTRACT_ORDER_DIGEST,
-  PRE_CASE_MANIFEST_ROLE_ORDER_DIGEST,
-  PRE_CASE_PLACEHOLDER_COMMAND_ORDER_DIGEST,
-  PRE_CASE_PLACEHOLDER_PUBLICATION_ORDER_DIGEST,
-  PRE_CASE_REAL_COMMAND_ORDER_DIGEST,
-  PRE_CASE_REAL_PUBLICATION_ORDER_DIGEST,
-  PRE_CEK_RESOLVER_MANIFEST_CONTRACT_ORDER_DIGEST,
-  PRE_CEK_RESOLVER_MANIFEST_ROLE_ORDER_DIGEST,
-  PRE_CEK_RESOLVER_PLACEHOLDER_COMMAND_ORDER_DIGEST,
-  PRE_CEK_RESOLVER_PLACEHOLDER_PUBLICATION_ORDER_DIGEST,
-  PRE_CEK_RESOLVER_REAL_COMMAND_ORDER_DIGEST,
-  PRE_CEK_RESOLVER_REAL_PUBLICATION_ORDER_DIGEST,
-  PRE_DATA_CANONICITY_MANIFEST_CONTRACT_ORDER_DIGEST,
-  PRE_DATA_CANONICITY_MANIFEST_ROLE_ORDER_DIGEST,
-  PRE_DATA_CANONICITY_PLACEHOLDER_COMMAND_ORDER_DIGEST,
-  PRE_DATA_CANONICITY_PLACEHOLDER_PUBLICATION_ORDER_DIGEST,
-  PRE_DATA_CANONICITY_REAL_COMMAND_ORDER_DIGEST,
-  PRE_DATA_CANONICITY_REAL_PUBLICATION_ORDER_DIGEST,
-  PRE_HISTORY_MANIFEST_ROLE_ORDER_DIGEST,
-  PRE_HISTORY_PLACEHOLDER_COMMAND_ORDER_DIGEST,
-  PRE_HISTORY_PLACEHOLDER_PUBLICATION_ORDER_DIGEST,
-  PRE_HISTORY_REAL_COMMAND_ORDER_DIGEST,
-  PRE_HISTORY_REAL_PUBLICATION_ORDER_DIGEST,
-  PRE_PHASE_RESOLVER_MANIFEST_CONTRACT_ORDER_DIGEST,
-  PRE_PHASE_RESOLVER_MANIFEST_ROLE_ORDER_DIGEST,
-  PRE_PHASE_RESOLVER_PLACEHOLDER_COMMAND_ORDER_DIGEST,
-  PRE_PHASE_RESOLVER_PLACEHOLDER_PUBLICATION_ORDER_DIGEST,
-  PRE_PHASE_RESOLVER_REAL_COMMAND_ORDER_DIGEST,
-  PRE_PHASE_RESOLVER_REAL_PUBLICATION_ORDER_DIGEST,
-  PRE_POOL_MANIFEST_ROLE_ORDER_DIGEST,
-  PRE_POOL_PLACEHOLDER_COMMAND_ORDER_DIGEST,
-  PRE_POOL_PLACEHOLDER_PUBLICATION_ORDER_DIGEST,
-  PRE_POOL_REAL_COMMAND_ORDER_DIGEST,
-  PRE_POOL_REAL_PUBLICATION_ORDER_DIGEST,
-  REAL_COMMAND_ORDER_DIGEST,
-  REAL_PUBLICATION_ORDER_DIGEST,
-} from "./helpers/deployable-catalogue-order-pins.js";
+import * as orderPins from "./helpers/deployable-catalogue-order-pins.js";
 import { withRealEventHistoryForTest } from "./helpers/event-history.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
@@ -97,16 +58,17 @@ const commandOrder = (contracts: SDK.MidgardValidators) => {
 };
 
 /**
- * Every order of `sets` (the real contract set first) with exactly the given
- * contracts and roles excluded: the manifest and publication lengths, and
+ * Every order of `sets` (the real contract set first) with the staged-operand
+ * additions and exactly the given contracts and roles excluded: the manifest
+ * and publication lengths, and
  * the manifest, publication and per-command order digests an older
  * generation pinned.
  */
 const expectOrdersWithout = (
   [real, ...others]: readonly SDK.MidgardValidators[],
   {
-    contracts: excludedContracts,
-    roles: excludedRoles,
+    contracts,
+    roles,
     lengths: [manifestLength, targetLength],
     pins,
     restoreRetiredBond,
@@ -119,6 +81,8 @@ const expectOrdersWithout = (
     readonly restoreRetiredBond?: boolean;
   },
 ) => {
+  const excludedContracts = [cekStagedContracts, ...contracts];
+  const excludedRoles = [cekStagedRoles, ...roles];
   const restore = <T extends string | null>(names: readonly T[]) =>
     restoreRetiredBond === true ? withRetiredBondRole(names) : names;
   const without = (names: readonly string[]) =>
@@ -177,23 +141,25 @@ describe("deployable-script catalogue", () => {
   it("pins the manifest order of contracts and roles", () => {
     for (const contracts of [real, placeholder]) {
       const manifest = manifestDeployableScripts(contracts);
-      expect(manifest).toHaveLength(576);
+      expect(manifest).toHaveLength(578);
       expect(orderDigest(manifest.map(({ contract }) => contract))).toEqual(
-        MANIFEST_CONTRACT_ORDER_DIGEST,
+        orderPins.MANIFEST_CONTRACT_ORDER_DIGEST,
       );
       expect(orderDigest(manifest.map(({ role }) => role ?? null))).toEqual(
-        MANIFEST_ROLE_ORDER_DIGEST,
+        orderPins.MANIFEST_ROLE_ORDER_DIGEST,
       );
     }
   });
 
   it("pins the publication and per-command orders", () => {
     const realTargets = nodeRuntimeReferenceScriptTargets(real);
-    expect(realTargets).toHaveLength(571);
+    expect(realTargets).toHaveLength(573);
     expect(orderDigest(realTargets.map(({ name }) => name))).toEqual(
-      REAL_PUBLICATION_ORDER_DIGEST,
+      orderPins.REAL_PUBLICATION_ORDER_DIGEST,
     );
-    expect(orderDigest(commandOrder(real))).toEqual(REAL_COMMAND_ORDER_DIGEST);
+    expect(orderDigest(commandOrder(real))).toEqual(
+      orderPins.REAL_COMMAND_ORDER_DIGEST,
+    );
 
     // Both contract sets publish the same roles in the same order.
     const placeholderTargets = nodeRuntimeReferenceScriptTargets(placeholder);
@@ -201,11 +167,30 @@ describe("deployable-script catalogue", () => {
       realTargets.map(({ name }) => name),
     );
     expect(orderDigest(placeholderTargets.map(({ name }) => name))).toEqual(
-      PLACEHOLDER_PUBLICATION_ORDER_DIGEST,
+      orderPins.PLACEHOLDER_PUBLICATION_ORDER_DIGEST,
     );
     expect(orderDigest(commandOrder(placeholder))).toEqual(
-      PLACEHOLDER_COMMAND_ORDER_DIGEST,
+      orderPins.PLACEHOLDER_COMMAND_ORDER_DIGEST,
     );
+  });
+
+  it("preserves every pre-staged-operand order after excluding exactly its two additions", () => {
+    expectOrdersWithout([real, placeholder], {
+      contracts: [],
+      roles: [],
+      lengths: [576, 571],
+      pins: {
+        manifestContract:
+          orderPins.PRE_CEK_STAGED_MANIFEST_CONTRACT_ORDER_DIGEST,
+        manifestRole: orderPins.PRE_CEK_STAGED_MANIFEST_ROLE_ORDER_DIGEST,
+        realPublication: orderPins.PRE_CEK_STAGED_REAL_PUBLICATION_ORDER_DIGEST,
+        placeholderPublication:
+          orderPins.PRE_CEK_STAGED_PLACEHOLDER_PUBLICATION_ORDER_DIGEST,
+        realCommand: orderPins.PRE_CEK_STAGED_REAL_COMMAND_ORDER_DIGEST,
+        placeholderCommand:
+          orderPins.PRE_CEK_STAGED_PLACEHOLDER_COMMAND_ORDER_DIGEST,
+      },
+    });
   });
 
   it("preserves every pre-phase-resolver order after excluding exactly the phase resolver additions", () => {
@@ -214,13 +199,16 @@ describe("deployable-script catalogue", () => {
       roles: [phaseResolverRoles],
       lengths: [560, 555],
       pins: {
-        manifestContract: PRE_PHASE_RESOLVER_MANIFEST_CONTRACT_ORDER_DIGEST,
-        manifestRole: PRE_PHASE_RESOLVER_MANIFEST_ROLE_ORDER_DIGEST,
-        realPublication: PRE_PHASE_RESOLVER_REAL_PUBLICATION_ORDER_DIGEST,
+        manifestContract:
+          orderPins.PRE_PHASE_RESOLVER_MANIFEST_CONTRACT_ORDER_DIGEST,
+        manifestRole: orderPins.PRE_PHASE_RESOLVER_MANIFEST_ROLE_ORDER_DIGEST,
+        realPublication:
+          orderPins.PRE_PHASE_RESOLVER_REAL_PUBLICATION_ORDER_DIGEST,
         placeholderPublication:
-          PRE_PHASE_RESOLVER_PLACEHOLDER_PUBLICATION_ORDER_DIGEST,
-        realCommand: PRE_PHASE_RESOLVER_REAL_COMMAND_ORDER_DIGEST,
-        placeholderCommand: PRE_PHASE_RESOLVER_PLACEHOLDER_COMMAND_ORDER_DIGEST,
+          orderPins.PRE_PHASE_RESOLVER_PLACEHOLDER_PUBLICATION_ORDER_DIGEST,
+        realCommand: orderPins.PRE_PHASE_RESOLVER_REAL_COMMAND_ORDER_DIGEST,
+        placeholderCommand:
+          orderPins.PRE_PHASE_RESOLVER_PLACEHOLDER_COMMAND_ORDER_DIGEST,
       },
     });
   });
@@ -231,13 +219,16 @@ describe("deployable-script catalogue", () => {
       roles: [phaseResolverRoles, cekResolverRoles],
       lengths: [555, 550],
       pins: {
-        manifestContract: PRE_CEK_RESOLVER_MANIFEST_CONTRACT_ORDER_DIGEST,
-        manifestRole: PRE_CEK_RESOLVER_MANIFEST_ROLE_ORDER_DIGEST,
-        realPublication: PRE_CEK_RESOLVER_REAL_PUBLICATION_ORDER_DIGEST,
+        manifestContract:
+          orderPins.PRE_CEK_RESOLVER_MANIFEST_CONTRACT_ORDER_DIGEST,
+        manifestRole: orderPins.PRE_CEK_RESOLVER_MANIFEST_ROLE_ORDER_DIGEST,
+        realPublication:
+          orderPins.PRE_CEK_RESOLVER_REAL_PUBLICATION_ORDER_DIGEST,
         placeholderPublication:
-          PRE_CEK_RESOLVER_PLACEHOLDER_PUBLICATION_ORDER_DIGEST,
-        realCommand: PRE_CEK_RESOLVER_REAL_COMMAND_ORDER_DIGEST,
-        placeholderCommand: PRE_CEK_RESOLVER_PLACEHOLDER_COMMAND_ORDER_DIGEST,
+          orderPins.PRE_CEK_RESOLVER_PLACEHOLDER_PUBLICATION_ORDER_DIGEST,
+        realCommand: orderPins.PRE_CEK_RESOLVER_REAL_COMMAND_ORDER_DIGEST,
+        placeholderCommand:
+          orderPins.PRE_CEK_RESOLVER_PLACEHOLDER_COMMAND_ORDER_DIGEST,
       },
     });
   });
@@ -248,12 +239,13 @@ describe("deployable-script catalogue", () => {
       roles: [phaseResolverRoles, cekResolverRoles, caseRoles],
       lengths: [549, 544],
       pins: {
-        manifestContract: PRE_CASE_MANIFEST_CONTRACT_ORDER_DIGEST,
-        manifestRole: PRE_CASE_MANIFEST_ROLE_ORDER_DIGEST,
-        realPublication: PRE_CASE_REAL_PUBLICATION_ORDER_DIGEST,
-        placeholderPublication: PRE_CASE_PLACEHOLDER_PUBLICATION_ORDER_DIGEST,
-        realCommand: PRE_CASE_REAL_COMMAND_ORDER_DIGEST,
-        placeholderCommand: PRE_CASE_PLACEHOLDER_COMMAND_ORDER_DIGEST,
+        manifestContract: orderPins.PRE_CASE_MANIFEST_CONTRACT_ORDER_DIGEST,
+        manifestRole: orderPins.PRE_CASE_MANIFEST_ROLE_ORDER_DIGEST,
+        realPublication: orderPins.PRE_CASE_REAL_PUBLICATION_ORDER_DIGEST,
+        placeholderPublication:
+          orderPins.PRE_CASE_PLACEHOLDER_PUBLICATION_ORDER_DIGEST,
+        realCommand: orderPins.PRE_CASE_REAL_COMMAND_ORDER_DIGEST,
+        placeholderCommand: orderPins.PRE_CASE_PLACEHOLDER_COMMAND_ORDER_DIGEST,
       },
     });
   });
@@ -274,14 +266,16 @@ describe("deployable-script catalogue", () => {
       ],
       lengths: [545, 540],
       pins: {
-        manifestContract: PRE_DATA_CANONICITY_MANIFEST_CONTRACT_ORDER_DIGEST,
-        manifestRole: PRE_DATA_CANONICITY_MANIFEST_ROLE_ORDER_DIGEST,
-        realPublication: PRE_DATA_CANONICITY_REAL_PUBLICATION_ORDER_DIGEST,
+        manifestContract:
+          orderPins.PRE_DATA_CANONICITY_MANIFEST_CONTRACT_ORDER_DIGEST,
+        manifestRole: orderPins.PRE_DATA_CANONICITY_MANIFEST_ROLE_ORDER_DIGEST,
+        realPublication:
+          orderPins.PRE_DATA_CANONICITY_REAL_PUBLICATION_ORDER_DIGEST,
         placeholderPublication:
-          PRE_DATA_CANONICITY_PLACEHOLDER_PUBLICATION_ORDER_DIGEST,
-        realCommand: PRE_DATA_CANONICITY_REAL_COMMAND_ORDER_DIGEST,
+          orderPins.PRE_DATA_CANONICITY_PLACEHOLDER_PUBLICATION_ORDER_DIGEST,
+        realCommand: orderPins.PRE_DATA_CANONICITY_REAL_COMMAND_ORDER_DIGEST,
         placeholderCommand:
-          PRE_DATA_CANONICITY_PLACEHOLDER_COMMAND_ORDER_DIGEST,
+          orderPins.PRE_DATA_CANONICITY_PLACEHOLDER_COMMAND_ORDER_DIGEST,
       },
     });
   });
@@ -307,12 +301,13 @@ describe("deployable-script catalogue", () => {
       lengths: [538, 533],
       restoreRetiredBond: true,
       pins: {
-        manifestRole: PRE_HISTORY_MANIFEST_ROLE_ORDER_DIGEST,
-        realPublication: PRE_HISTORY_REAL_PUBLICATION_ORDER_DIGEST,
+        manifestRole: orderPins.PRE_HISTORY_MANIFEST_ROLE_ORDER_DIGEST,
+        realPublication: orderPins.PRE_HISTORY_REAL_PUBLICATION_ORDER_DIGEST,
         placeholderPublication:
-          PRE_HISTORY_PLACEHOLDER_PUBLICATION_ORDER_DIGEST,
-        realCommand: PRE_HISTORY_REAL_COMMAND_ORDER_DIGEST,
-        placeholderCommand: PRE_HISTORY_PLACEHOLDER_COMMAND_ORDER_DIGEST,
+          orderPins.PRE_HISTORY_PLACEHOLDER_PUBLICATION_ORDER_DIGEST,
+        realCommand: orderPins.PRE_HISTORY_REAL_COMMAND_ORDER_DIGEST,
+        placeholderCommand:
+          orderPins.PRE_HISTORY_PLACEHOLDER_COMMAND_ORDER_DIGEST,
       },
     });
   });
@@ -336,11 +331,12 @@ describe("deployable-script catalogue", () => {
       lengths: [544, 539],
       restoreRetiredBond: true,
       pins: {
-        manifestRole: PRE_POOL_MANIFEST_ROLE_ORDER_DIGEST,
-        realPublication: PRE_POOL_REAL_PUBLICATION_ORDER_DIGEST,
-        placeholderPublication: PRE_POOL_PLACEHOLDER_PUBLICATION_ORDER_DIGEST,
-        realCommand: PRE_POOL_REAL_COMMAND_ORDER_DIGEST,
-        placeholderCommand: PRE_POOL_PLACEHOLDER_COMMAND_ORDER_DIGEST,
+        manifestRole: orderPins.PRE_POOL_MANIFEST_ROLE_ORDER_DIGEST,
+        realPublication: orderPins.PRE_POOL_REAL_PUBLICATION_ORDER_DIGEST,
+        placeholderPublication:
+          orderPins.PRE_POOL_PLACEHOLDER_PUBLICATION_ORDER_DIGEST,
+        realCommand: orderPins.PRE_POOL_REAL_COMMAND_ORDER_DIGEST,
+        placeholderCommand: orderPins.PRE_POOL_PLACEHOLDER_COMMAND_ORDER_DIGEST,
       },
     });
   });

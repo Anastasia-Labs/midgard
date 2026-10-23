@@ -20,6 +20,7 @@ import {
   unreachable,
 } from "./cek-data.data-node-data.js";
 import type { MidgardCekCoreStepWitness } from "./cek-machine.js";
+import { midgardCekStagedBuiltinMaterialData } from "./cek-staged-builtin.material.js";
 
 export const midgardCekCoreStepWitnessData = (
   witness: MidgardCekCoreStepWitness,
@@ -203,6 +204,13 @@ export const midgardCekCoreStepWitnessData = (
         witness.arguments.map(directValueData),
         directValueData(witness.result),
         semanticBuiltinWitnessData(witness.material),
+      ]);
+    case "executeBuiltinStaged":
+      return new Constr(31, [
+        witness.tag,
+        witness.arguments.map(directValueData),
+        directValueData(witness.result),
+        midgardCekStagedBuiltinMaterialData(witness.material),
       ]);
     case "startBuiltinMapConversion":
       return new Constr(32, [

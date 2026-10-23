@@ -15,10 +15,11 @@ import { payloadBoundRows } from "./phase-b.payload-bound.fixture.js";
  * Builtin steps past the proof evaluator's 9,215-byte bounds. Cardano
  * accepts each script past a bound, and so does verdict mode, which runs the
  * PV11 evaluator and has no such bound: such a script is accepted, and one
- * that then fails on its own is rejected. Proof mode cannot prove the step,
- * so it has no verdict for the transaction
- * (`ScriptEvaluationIndeterminateError`). One byte under each bound, both
- * modes return the script's own verdict.
+ * that then fails on its own is rejected. Proof mode proves a byte-string or
+ * string builtin past the bound on the staged route, with the same verdicts.
+ * A step no route proves leaves proof mode with no verdict for the
+ * transaction (`ScriptEvaluationIndeterminateError`). One byte under each
+ * bound, both modes return the script's own verdict.
  */
 
 const config: PhaseBConfig = {
@@ -72,6 +73,8 @@ const expectNoVerdict = async (spend: ProgramSpend, mode: Mode) => {
 };
 
 const ROWS = payloadBoundRows(0x41);
+const STAGED = ROWS.filter((row) => row.staged);
+const UNPROVED = ROWS.filter((row) => !row.staged);
 
 describe("Phase B: a builtin step past the proof evaluator's payload bounds", () => {
   describe("verdict mode", () => {
@@ -86,11 +89,20 @@ describe("Phase B: a builtin step past the proof evaluator's payload bounds", ()
   });
 
   describe("proof mode", () => {
-    it.each(ROWS)("$label has no verdict", ({ over }) =>
+    it.each(STAGED)("$label is accepted, as Cardano accepts it", ({ over }) =>
+      expectAccepted(over, "proof"),
+    );
+
+    it.each(STAGED)(
+      "$label, failing on its own, is rejected",
+      ({ overFailing }) => expectRejected(overFailing, "proof"),
+    );
+
+    it.each(UNPROVED)("$label has no verdict", ({ over }) =>
       expectNoVerdict(over, "proof"),
     );
 
-    it.each(ROWS)(
+    it.each(UNPROVED)(
       "$label, failing on its own, has no verdict",
       ({ overFailing }) => expectNoVerdict(overFailing, "proof"),
     );

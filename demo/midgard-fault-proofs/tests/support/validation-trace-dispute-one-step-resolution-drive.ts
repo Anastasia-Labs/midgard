@@ -43,12 +43,14 @@ import {
   type TwoThreadCase,
 } from "./validation-trace-dispute-one-step-case.js";
 import {
+  capturePrepared,
   isPendingFor,
   playThreads,
   type PreparedMove,
   threadPlace,
   withLedgerParameters,
 } from "./validation-trace-dispute-one-step-play.js";
+import { makeRunner } from "./validation-trace-dispute-runner.js";
 import { reportFit } from "./validation-trace-dispute-scripted-defender.js";
 
 const outRefOf = (utxo: UTxO) =>
@@ -73,7 +75,9 @@ export const resolutionDrive = <
   minFeeA,
   planAt,
 }: {
-  readonly from: number;
+  readonly from: NonNullable<
+    Parameters<typeof defendTwoThreads>[0]["successorFrom"]
+  >;
   readonly at: Holder;
   readonly path: readonly ValidationTraceOneStepHolder[];
   readonly labels: readonly string[];
@@ -81,12 +85,14 @@ export const resolutionDrive = <
     Parameters<typeof defendTwoThreads>[0],
     | "canonicalDecode"
     | "contexts"
+    | "builtins"
     | "phases"
     | "scriptSourcesRedeemers"
     | "failingRedeemerData"
     | "failingReferenceInputs"
     | "failingSigners"
     | "failingScript"
+    | "operatorFrom"
     | "failingNativeSpend"
     | "failingNativeMint"
     | "releaseDepth"
@@ -136,14 +142,16 @@ export const resolutionDrive = <
 
   /**
    * The hop of the successor's thread at `at` with its successor datum,
-   * its redeemer or what it reads rewritten by `rewrite`, and a check that
-   * the thread has not moved.
+   * the holder it pays the successor to, its redeemer or what it reads
+   * rewritten by `rewrite`, and a check that the thread has not moved.
    */
   const rewrittenHop = async (
     rewrite: (
       honest: ValidationTraceHop,
       plan: Plan,
-    ) => Partial<Pick<ValidationTraceHop, "datum" | "redeemer" | "reads">>,
+    ) => Partial<
+      Pick<ValidationTraceHop, "datum" | "next" | "redeemer" | "reads">
+    >,
   ) => {
     const { scene, deployment, b } = dispute;
     const before = await placeOfB();
@@ -182,7 +190,7 @@ export const resolutionDrive = <
               unit: b.unit,
               reference,
               hop: rewritten,
-              address: validationTraceOneStepHolder(deployment, honest.next)
+              address: validationTraceOneStepHolder(deployment, rewritten.next)
                 .address,
               prover,
               fee,
@@ -214,6 +222,20 @@ export const resolutionDrive = <
         sides: [a, b],
         until: async () => (await placeOfB()).holder === at,
         limit: 80,
+      });
+    },
+
+    /** Stops the runner's process and starts another over its journal,
+     * holding nothing the first held in memory. */
+    restart: () => {
+      const { scene, deployment, prepared, runner } = dispute;
+      dispute = Object.freeze({
+        ...dispute,
+        runner: makeRunner(scene, {
+          deployment,
+          journal: runner.journal,
+          wrap: capturePrepared(prepared),
+        }),
       });
     },
 
@@ -320,6 +342,10 @@ export const resolutionDrive = <
 
     /** The size in bytes of the move reported under `label`. */
     bytesOf: (label: string) => reported.get(label)!.length / 2,
+
+    /** The fee of the move reported under `label`. */
+    feeOf: (label: string) =>
+      CML.Transaction.from_cbor_hex(reported.get(label)!).body().fee(),
 
     /** Each move's fee is paid by its thread when it fits under the cap, and
      * by our wallet when it does not; every move the runner landed fits the
