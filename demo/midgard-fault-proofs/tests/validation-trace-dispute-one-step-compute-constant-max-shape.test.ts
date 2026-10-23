@@ -90,45 +90,6 @@ const CUT_OF: Partial<Record<ValidationTraceOneStepHolder, string>> = {
   award: "Settle",
 };
 
-/** Carries a thread of the second case on the step `computed`, with the
- * step's witness naming `named`, to the compute arm, has the arm refuse the
- * step, and checks the thread still stands at the arm. */
-const resolveToTheArm = async (
-  twoThreads: TwoThreadCase,
-  computed: ComputeConstantStep,
-  { unit, thread }: { readonly unit: string; readonly thread: SDK.CaseThread },
-  named: Buffer,
-) => {
-  const material = twoThreads.material;
-  const planning = await planValidationTraceThread(
-    {
-      ...material,
-      steps: async (stateIndex) =>
-        stateIndex === computed.agreedUpTo
-          ? otherWindow(computed, named)
-          : await material.steps(stateIndex),
-    },
-    thread,
-  );
-  if (planning.kind !== "plan") throw new Error(planning.reason);
-  const { plan } = planning;
-  expect(plan.kind).toBe("core");
-  const lucid = twoThreads.scene.h.proverLucid;
-  for (const holder of ["boundary", "prepare", "core"] as const) {
-    expect((await place(twoThreads, unit)).holder).toBe(holder);
-    await landWith(lucid, await hopFrom(twoThreads, unit, plan, holder)());
-  }
-  const before = await place(twoThreads, unit);
-  expect(before.holder).toBe("compute");
-  await expectOnchainRefusal(hopFrom(twoThreads, unit, plan, "compute"), {
-    refusedBy: "fraud_proofs/validation_trace/cek_core_arm_compute",
-    check: /verify_compute_step/u,
-  });
-  const after = await place(twoThreads, unit);
-  expect(after.holder).toBe("compute");
-  expect(outRefOf(after.utxo)).toBe(outRefOf(before.utxo));
-};
-
 let dispute: TwoThreadCase;
 /** The step that computes P, with P's root and the other root of P. */
 let step: ComputeConstantStep;
@@ -139,6 +100,41 @@ let ready: { unit: string; thread: SDK.CaseThread }[] = [];
 /** The round each thread of our case stood at once it was ReadyForOneStep. */
 const rounds = new Map<string, bigint>();
 
+/** Carries the second case's thread `index`, with the step's witness naming
+ * `named`, to the compute arm, has the arm refuse the step, and checks the
+ * thread still stands at the arm. */
+const resolveToTheArm = async (index: number, named: Buffer) => {
+  const { unit, thread } = ready[index]!;
+  const material = dispute.material;
+  const planning = await planValidationTraceThread(
+    {
+      ...material,
+      steps: async (stateIndex) =>
+        stateIndex === step.agreedUpTo
+          ? otherWindow(step, named)
+          : await material.steps(stateIndex),
+    },
+    thread,
+  );
+  if (planning.kind !== "plan") throw new Error(planning.reason);
+  const { plan } = planning;
+  expect(plan.kind).toBe("core");
+  const lucid = dispute.scene.h.proverLucid;
+  for (const holder of ["boundary", "prepare", "core"] as const) {
+    expect((await place(dispute, unit)).holder).toBe(holder);
+    await landWith(lucid, await hopFrom(dispute, unit, plan, holder)());
+  }
+  const before = await place(dispute, unit);
+  expect(before.holder).toBe("compute");
+  await expectOnchainRefusal(hopFrom(dispute, unit, plan, "compute"), {
+    refusedBy: "fraud_proofs/validation_trace/cek_core_arm_compute",
+    check: /verify_compute_step/u,
+  });
+  const after = await place(dispute, unit);
+  expect(after.holder).toBe("compute");
+  expect(outRefOf(after.utxo)).toBe(outRefOf(before.utxo));
+};
+
 describe("validation-trace dispute: one-step resolution of a CEK step computing a constant past the direct payload bound, at the field bound", () => {
   beforeAll(async () => {
     dispute = await defendTwoThreads({
@@ -148,11 +144,6 @@ describe("validation-trace dispute: one-step resolution of a CEK step computing 
       successorFrom: computeConstantStep,
     });
     step = await computeConstantStepOf(dispute.material, SCRIPT);
-    // The L1 view of the block's removal stops here, with our case its only
-    // case: the second case below is no part of it.
-    const { headerHash } = dispute.scene.failing.evidence;
-    dispute.removal!.holdView();
-    await dispute.removal!.l1For(headerHash).observe({ headerHash });
     ({ committedSuccessorHash, ready } = await secondCaseAtTheStep(
       dispute,
       step,
@@ -185,7 +176,7 @@ describe("validation-trace dispute: one-step resolution of a CEK step computing 
   it(
     "a correct post state is not convicted: the compute arm refuses a step that names P's root and returns another root of P",
     async () => {
-      await resolveToTheArm(dispute, step, ready[0]!, step.valueRoot);
+      await resolveToTheArm(0, step.valueRoot);
     },
     TIMEOUT,
   );
@@ -193,7 +184,7 @@ describe("validation-trace dispute: one-step resolution of a CEK step computing 
   it(
     "a correct post state is not convicted: the compute arm refuses a step that names another root of P and returns it",
     async () => {
-      await resolveToTheArm(dispute, step, ready[1]!, step.otherRoot);
+      await resolveToTheArm(1, step.otherRoot);
     },
     TIMEOUT,
   );
@@ -201,8 +192,11 @@ describe("validation-trace dispute: one-step resolution of a CEK step computing 
   it(
     "bisects both threads of our case, resolves each through the compute arm and closes the case Convicted with our bond back",
     async () => {
-      const { scene, runner, a, b, deployment } = dispute;
+      const { scene, runner, a, b, deployment, removal } = dispute;
       let pastDeadline = false;
+      const { headerHash } = scene.failing.evidence;
+      removal!.holdView();
+      await removal!.l1For(headerHash).observe({ headerHash });
       const { result, history } = await playThreads({
         scene,
         runner,
