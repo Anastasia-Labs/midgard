@@ -231,12 +231,13 @@ describe("independent validation event replay", () => {
       // when the CEK witness and context control began naming the program
       // by its script hash, and when the ledger-delta phase and the state's
       // ledger-delta root were removed, so acceptance follows multi-asset
-      // accounting directly, and when a carried Plutus script became its
-      // Cardano bytes.
+      // accounting directly, when a carried Plutus script became its
+      // Cardano bytes, and when a constant's compute step began naming its
+      // value by root.
       const expectedTraceHash =
         executionCount === 1
-          ? "64a48985b4d3db4407e14e1e49f47a62a82caec224cfe003f446f767708e7150"
-          : "e207749481fd55fcacb04410ffa2df4b8d73bc4084379832862531d9a2225aa1";
+          ? "ae91a81e7342eb2824d6be0a51eddf929bfd95b02dec9fc2de2770e10bfdfd2b"
+          : "58d7f7f9bb7afd55d74c2baccee66aa01d1d44bdbf3b691e36cf6a85c86efd7d";
       expect(createHash("sha256").update(traceBytes).digest("hex")).toBe(
         expectedTraceHash,
       );

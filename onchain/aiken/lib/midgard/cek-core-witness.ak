@@ -1,5 +1,4 @@
 use aiken/builtin
-use midgard/cek_constant_v1
 use midgard/cek_machine_v1 as machine
 
 pub fn decode_compute(raw: Data) -> machine.CoreStepWitnessV1 {
@@ -11,9 +10,9 @@ pub fn decode_compute(raw: Data) -> machine.CoreStepWitnessV1 {
       machine.ComputeVariable { index }
     }
     1 -> {
-      expect [value_data] = fields
-      expect value: cek_constant_v1.ConstantWitnessV1 = value_data
-      machine.ComputeConstant { value }
+      expect [value_root_data] = fields
+      expect value_root: ByteArray = value_root_data
+      machine.ComputeConstant { value_root }
     }
     2 -> {
       expect [body_data] = fields

@@ -117,14 +117,6 @@ export const buildMidgardCanonicalCekProgram = (
 
   const addConstantValue = (constant: UPLCConst): Hash32 => {
     const canonical = encodeMidgardCekCanonicalConstant(constant);
-    if (
-      canonical.payloadCbor.length >
-      MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES
-    ) {
-      throw new Error(
-        "V1 source constant payload exceeds the 9,215-byte L1 proof envelope",
-      );
-    }
     const typeRoot = addBlob(canonical.typeCbor);
     const payload = plutusDataFromCborIterative(canonical.payloadCbor);
     const semantic = commitMidgardCekDataTree(payload);
@@ -166,15 +158,31 @@ export const buildMidgardCanonicalCekProgram = (
     } as const;
     const root = hashMidgardCekValueNode(node);
     addMaterial("value", root, encodeMidgardCekValueNode(node));
+    // A constant past the direct payload bound is witnessed by its semantic
+    // tree; `computeConstant` names only its value root either way.
     constantWitnesses.set(
       rootHex(root),
-      Object.freeze({
-        kind: "constant",
-        witness: Object.freeze({
-          typeCbor: canonical.typeCbor,
-          payloadCbor: canonical.payloadCbor,
-        }),
-      }),
+      canonical.payloadCbor.length <=
+        MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES
+        ? Object.freeze({
+            kind: "constant",
+            witness: Object.freeze({
+              typeCbor: canonical.typeCbor,
+              payloadCbor: canonical.payloadCbor,
+            }),
+          })
+        : Object.freeze({
+            kind: "semanticConstant",
+            witness: Object.freeze({
+              typeCbor: canonical.typeCbor,
+              payload: Object.freeze({
+                root: semantic.root,
+                cborLength: semantic.cborLength,
+                memory: semantic.memory,
+              }),
+              memory: node.memory,
+            }),
+          }),
     );
     return root;
   };

@@ -8,7 +8,6 @@ import {
   type MidgardCekMachineState,
 } from "@al-ft/midgard-core";
 
-import { hashMidgardCekDirectValueWitness } from "./cek-builtin.js";
 import {
   errorSuccessor,
   exactComputeSuccessor,
@@ -55,34 +54,25 @@ export const verifyCompute = (
         )
       );
     case "computeConstant":
-      try {
-        const direct = {
-          kind: "constant" as const,
-          witness: witness.value,
-        };
-        const valueRoot = hashMidgardCekDirectValueWitness(direct);
-        return (
-          sameBytes(
-            pre.focusRoot,
-            hashMidgardCekTermNode({
-              kind: "constant",
-              value: valueRoot,
-            }),
-          ) &&
-          sameState(
-            post,
-            exactComputeSuccessor(pre, {
-              mode: "return",
-              focusRoot: valueRoot,
-              environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
-              continuationRoot: pre.continuationRoot,
-              auxiliary: 0n,
-            }),
-          )
-        );
-      } catch {
-        return false;
-      }
+      return (
+        sameBytes(
+          pre.focusRoot,
+          hashMidgardCekTermNode({
+            kind: "constant",
+            value: witness.valueRoot,
+          }),
+        ) &&
+        sameState(
+          post,
+          exactComputeSuccessor(pre, {
+            mode: "return",
+            focusRoot: witness.valueRoot,
+            environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
+            continuationRoot: pre.continuationRoot,
+            auxiliary: 0n,
+          }),
+        )
+      );
     case "computeContextConstant":
       return (
         sameBytes(

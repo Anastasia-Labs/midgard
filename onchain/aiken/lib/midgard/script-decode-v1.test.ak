@@ -85,9 +85,23 @@ fn flat_bytes(w: W, bytes: ByteArray) -> W {
   chunks(filler(w), bytes)
 }
 
+/// The `length` big-endian bytes of `acc`, converted at most 8,192 bytes at a
+/// time.
+fn int_to_bytes(length: Int, acc: Int) -> ByteArray {
+  if length <= 8192 {
+    builtin.integer_to_bytearray(True, length, acc)
+  } else {
+    let low = math.pow2(8 * 8192)
+    bytearray.concat(
+      int_to_bytes(length - 8192, acc / low),
+      builtin.integer_to_bytearray(True, 8192, acc % low),
+    )
+  }
+}
+
 fn to_bytes(w: W) -> ByteArray {
   let (acc, n) = w
-  builtin.integer_to_bytearray(True, n / 8, acc)
+  int_to_bytes(n / 8, acc)
 }
 
 fn finish(w: W) -> ByteArray {
@@ -966,6 +980,24 @@ test script_decode_data_refusals() {
   }
 }
 
+/// The Data payloads `constant_root_v1` refuses
+/// (cek-machine-v1.test.ak, `constant_root_refuses_*`): the decoder refuses
+/// the same programs, so no decoded constant term holds one.
+test script_decode_data_refuses_what_the_constant_root_refuses() {
+  let invalid = fn(cbor_bytes) {
+    let flat = data_flat(cbor_bytes)
+    refusal(flat) == (16, 8 * ( bytearray.length(wrap(flat)) - 1 ))
+  }
+  and {
+    invalid(#"d80249010000000000000000"),
+    invalid(#"d80349010000000000000000"),
+    invalid(#"d866822080"),
+    invalid(#"d86682c2410180"),
+    invalid(#"41"),
+    invalid(#"8141"),
+  }
+}
+
 /// A Data constant is the value of its first CBOR item; the bytes after it
 /// are not decoded, valid CBOR or not. Cardano evaluates both programs below
 /// to `(con data (I 0))`.
@@ -1815,9 +1847,10 @@ test script_decode_step_rejects_a_wrong_reveal() fail {
 // ## Agreement with the CEK constant root
 //
 // A decoded program is evaluated by the CEK machine, whose ComputeConstant
-// step recomputes a constant's value root with `constant_root_v1` and needs
-// the term the decoder committed to be the constant term over that root. The
-// rows below cover every constant type a program may hold.
+// step returns the value root of the constant term the decoder committed. The
+// rows below show that root is the one `constant_root_v1` gives, for every
+// constant type a program may hold, and, past `constant_root_v1`'s payload
+// bound, the one the same rule gives with no bound.
 
 /// The witness ComputeConstant opens for a constant of CBOR type `type_tags`.
 fn constant_witness(type_tags: List<Int>, payload: Data) -> ConstantWitnessV1 {
@@ -1827,14 +1860,29 @@ fn constant_witness(type_tags: List<Int>, payload: Data) -> ConstantWitnessV1 {
   }
 }
 
-/// True when the CEK machine accepts ComputeConstant with `witness` from the
-/// evaluation start of `term_root`.
-fn computes(term_root: ByteArray, witness: ConstantWitnessV1) -> Bool {
+/// The value root `constant_root_v1` gives for a constant of CBOR type
+/// `type_tags`, computed by the same rule with no payload bound: the type's
+/// hash, the payload's semantic summary and its Cardano memory.
+fn unbounded_value_root(type_tags: List<Int>, payload: Data) -> ByteArray {
+  let type_cbor = cbor.serialise(type_tags)
+  cek_constant_v1.semantic_constant_root_v1(
+    type_cbor,
+    cek_data_v1.semantic_data_summary_v1(payload),
+    cek_constant_v1.semantic_memory_size_v1(
+      cek_constant_v1.decode_constant_type_v1(type_cbor),
+      payload,
+    ),
+  )
+}
+
+/// True when the CEK machine accepts ComputeConstant over `value_root` from
+/// the evaluation start of `term_root`.
+fn computes(term_root: ByteArray, value_root: ByteArray) -> Bool {
   let pre = cek_machine_v1.initial_state_v1(0, term_root)
   let post = cek_machine_v1.exact_state(
     pre,
     cek_machine_v1.mode_return,
-    cek_constant_v1.constant_root_v1(witness),
+    value_root,
     cek_proof_v1.empty_environment_root_v1,
     cek_proof_v1.empty_continuation_root_v1,
     0,
@@ -1844,27 +1892,52 @@ fn computes(term_root: ByteArray, witness: ConstantWitnessV1) -> Bool {
   cek_machine_v1.verify_core_step_v1(
     pre,
     post,
-    cek_machine_v1.ComputeConstant { value: witness },
+    cek_machine_v1.ComputeConstant { value_root },
   )
 }
 
 /// The constant `(con tags value)`, decoded as a whole program by `decoded`,
-/// commits the CEK constant term over `constant_root_v1` of `payload`, and an
-/// honest ComputeConstant step over the decoded term is accepted.
+/// commits the CEK constant term over `constant_root_v1` of `payload`, which
+/// is the unbounded rule's root, and ComputeConstant over the decoded term is
+/// accepted.
 fn agrees_with(
   decoded: fn(ByteArray) -> ByteArray,
   tags: List<Int>,
   value: Val,
   payload: Data,
 ) -> Bool {
-  let witness = constant_witness(without_applications(tags), payload)
+  let type_tags = without_applications(tags)
+  let value_root = cek_constant_v1.constant_root_v1(
+    constant_witness(type_tags, payload),
+  )
   let term_root = decoded(program(1, con(tags, value)))
   and {
-    term_root == cek_proof_v1.hash_constant_term_v1(
-      cek_constant_v1.constant_root_v1(witness),
-    ),
-    computes(term_root, witness),
+    term_root == cek_proof_v1.hash_constant_term_v1(value_root),
+    unbounded_value_root(type_tags, payload) == value_root,
+    computes(term_root, value_root),
   }
+}
+
+/// `agrees_with` for a payload past `constant_root_v1`'s bound: the decoded
+/// term is the constant term over the unbounded rule's root, and
+/// ComputeConstant over it is accepted.
+fn agrees_past_the_bound_with(
+  decoded: fn(ByteArray) -> ByteArray,
+  tags: List<Int>,
+  value: Val,
+  payload: Data,
+) -> Bool {
+  let value_root = unbounded_value_root(without_applications(tags), payload)
+  let term_root = decoded(program(1, con(tags, value)))
+  and {
+    bytearray.length(cbor.serialise(payload)) > cek_constant_v1.max_direct_payload_bytes,
+    term_root == cek_proof_v1.hash_constant_term_v1(value_root),
+    computes(term_root, value_root),
+  }
+}
+
+fn agrees_past_the_bound(tags: List<Int>, value: Val, payload: Data) -> Bool {
+  agrees_past_the_bound_with(root_of, tags, value, payload)
 }
 
 fn agrees(tags: List<Int>, value: Val, payload: Data) -> Bool {
@@ -1874,6 +1947,18 @@ fn agrees(tags: List<Int>, value: Val, payload: Data) -> Bool {
 /// `agrees`, also checked over walks of a few fuels (the bulk list path).
 fn agrees_walked(tags: List<Int>, value: Val, payload: Data) -> Bool {
   agrees_with(bulk_root, tags, value, payload)
+}
+
+/// `length` copies of `byte`, replicated at most 8,192 at a time.
+fn long_bytes(length: Int, byte: Int) -> ByteArray {
+  if length <= 8192 {
+    builtin.replicate_byte(length, byte)
+  } else {
+    bytearray.concat(
+      builtin.replicate_byte(8192, byte),
+      long_bytes(length - 8192, byte),
+    )
+  }
 }
 
 fn utf8_repeat(piece: ByteArray, count: Int) -> ByteArray {
@@ -2253,21 +2338,159 @@ test script_decode_constant_root_agreement_inside_a_term() {
   )
 }
 
-/// ComputeConstant over a decoded constant refuses a witness of another
-/// value or another type with the same payload.
+/// ComputeConstant over a decoded constant refuses the root of another value,
+/// or of another type with the same payload.
 test script_decode_compute_constant_refuses_another_constant() {
   let ints = root_of(program(1, con([7, 5, 0], v_list([v_int(1), v_int(2)]))))
   let text = root_of(program(1, con([2], v_bytes(#"616263"))))
   let payload = builtin.list_data([builtin.i_data(1), builtin.i_data(2)])
+  let root = fn(tags, payload) {
+    cek_constant_v1.constant_root_v1(constant_witness(tags, payload))
+  }
   and {
-    computes(ints, constant_witness([5, 0], payload)),
-    !computes(ints, constant_witness([12, 0], payload)),
-    !computes(
-      ints,
-      constant_witness([5, 0], builtin.list_data([builtin.i_data(1)])),
+    computes(ints, root([5, 0], payload)),
+    !computes(ints, root([12, 0], payload)),
+    !computes(ints, root([5, 0], builtin.list_data([builtin.i_data(1)]))),
+    computes(text, root([2], builtin.b_data(#"616263"))),
+    !computes(text, root([1], builtin.b_data(#"616263"))),
+  }
+}
+
+/// Each admissible type whose payload can pass `constant_root_v1`'s
+/// 9,215-byte bound: integers, byte strings and strings past it.
+test script_decode_constant_root_agreement_past_the_bound_scalars() {
+  let big = math.pow2(8 * 9300) + 12345
+  let bytes = long_bytes(9300, 90)
+  let longer = long_bytes(15000, 7)
+  let text = utf8_repeat(#"e282ac", 3200)
+  and {
+    agrees_past_the_bound([0], v_int(big), builtin.i_data(big)),
+    agrees_past_the_bound([0], v_int(-big), builtin.i_data(-big)),
+    agrees_past_the_bound([1], v_bytes(bytes), builtin.b_data(bytes)),
+    agrees_past_the_bound([1], v_bytes(longer), builtin.b_data(longer)),
+    agrees_past_the_bound([2], v_bytes(text), builtin.b_data(text)),
+  }
+}
+
+/// Data constants past the bound: a wide constructor, a long map, a long
+/// byte string and a long list of integers.
+test script_decode_constant_root_agreement_past_the_bound_data() {
+  let ints = list.map(list.range(1, 1200), fn(i) { i * 1000003 })
+  let entries = list.map(
+    list.range(1, 400),
+    fn(i) {
+      Pair(
+        builtin.i_data(i),
+        builtin.b_data(builtin.replicate_byte(20, i % 256)),
+      )
+    },
+  )
+  let items = [
+    builtin.constr_data(
+      3,
+      [
+        builtin.b_data(builtin.replicate_byte(5000, 1)),
+        builtin.list_data(list.map(ints, builtin.i_data)),
+      ],
     ),
-    computes(text, constant_witness([2], builtin.b_data(#"616263"))),
-    !computes(text, constant_witness([1], builtin.b_data(#"616263"))),
+    builtin.map_data(entries),
+    builtin.b_data(long_bytes(12000, 255)),
+    builtin.list_data(
+      list.map(list.range(1, 2000), fn(i) { builtin.i_data(i * 1000003) }),
+    ),
+  ]
+  list.all(items, fn(d) { agrees_past_the_bound([8], data_of(d), d) })
+}
+
+/// Lists past the bound, element types fixed and variable in width, also
+/// over walks of a few fuels (the bulk list path).
+test script_decode_constant_root_agreement_past_the_bound_lists() {
+  let ints = list.map(list.range(1, 1100), fn(i) { math.pow2(60) + i })
+  let byte_strings = list.map(
+    list.range(1, 150),
+    fn(i) { builtin.replicate_byte(64, i) },
+  )
+  let flags = list.map(list.range(1, 3200), fn(i) { i % 3 == 0 })
+  let datum = builtin.constr_data(
+    1,
+    [builtin.b_data(builtin.replicate_byte(40, 3))],
+  )
+  and {
+    agrees_past_the_bound_with(
+      bulk_root,
+      [7, 5, 0],
+      v_list(list.map(ints, v_int)),
+      builtin.list_data(list.map(ints, builtin.i_data)),
+    ),
+    agrees_past_the_bound(
+      [7, 5, 1],
+      v_list(list.map(byte_strings, v_bytes)),
+      builtin.list_data(list.map(byte_strings, builtin.b_data)),
+    ),
+    agrees_past_the_bound(
+      [7, 5, 3],
+      v_list(list.repeat(v_unit(), 3200)),
+      builtin.list_data(list.repeat(unit_data(), 3200)),
+    ),
+    agrees_past_the_bound(
+      [7, 5, 4],
+      v_list(list.map(flags, v_bool)),
+      builtin.list_data(list.map(flags, bool_data)),
+    ),
+    agrees_past_the_bound(
+      [7, 5, 8],
+      v_list(list.repeat(data_of(datum), 220)),
+      builtin.list_data(list.repeat(datum, 220)),
+    ),
+    agrees_past_the_bound(
+      [7, 5, 7, 7, 6, 0, 1],
+      v_list(list.map(ints, fn(n) { v_pair(v_int(n), v_bytes(#"cafe")) })),
+      builtin.list_data(
+        list.map(
+          ints,
+          fn(n) { pair_data(builtin.i_data(n), builtin.b_data(#"cafe")) },
+        ),
+      ),
+    ),
+    agrees_past_the_bound(
+      [7, 5, 7, 5, 0],
+      v_list(list.repeat(v_list(list.map(list.take(ints, 100), v_int)), 11)),
+      builtin.list_data(
+        list.repeat(
+          builtin.list_data(list.map(list.take(ints, 100), builtin.i_data)),
+          11,
+        ),
+      ),
+    ),
+  }
+}
+
+/// Arrays, pairs and Values past the bound.
+test script_decode_constant_root_agreement_past_the_bound_arrays_pairs_and_values() {
+  let ints = list.map(list.range(1, 1100), fn(i) { math.pow2(60) + i })
+  let first = builtin.replicate_byte(5000, 17)
+  let second = builtin.replicate_byte(5000, 34)
+  let value = list.map(
+    list.range(1, 150),
+    fn(i) {
+      (
+        builtin.integer_to_bytearray(True, 28, i),
+        [(builtin.integer_to_bytearray(True, 32, i), i * 1000)],
+      )
+    },
+  )
+  and {
+    agrees_past_the_bound(
+      [7, 12, 0],
+      v_list(list.map(ints, v_int)),
+      builtin.list_data(list.map(ints, builtin.i_data)),
+    ),
+    agrees_past_the_bound(
+      [7, 7, 6, 1, 1],
+      v_pair(v_bytes(first), v_bytes(second)),
+      pair_data(builtin.b_data(first), builtin.b_data(second)),
+    ),
+    agrees_past_the_bound([13], v_value(value), value_data(value)),
   }
 }
 

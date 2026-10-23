@@ -207,7 +207,7 @@ describe("CEK program material with a duplicate-key Data constant", () => {
     expect(verified.constants).toHaveLength(1);
     const [constant] = verified.constants;
     expect(hexRoot(constant!.semanticRoot)).toBe(DUPLICATE_KEY_MAP_ROOT);
-    expect(constant!.payloadCbor.toString("hex")).toBe(DUPLICATE_KEY_MAP_CBOR);
+    expect(constant!.payloadCbor!.toString("hex")).toBe(DUPLICATE_KEY_MAP_CBOR);
   });
 
   it("refuses deduplicated material under the honest roots at the preimage hash", () => {
