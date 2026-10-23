@@ -50,7 +50,7 @@ describe("a CEK Data constant with a duplicate map key", () => {
     expect(Buffer.from(constant!.semanticRoot).toString("hex")).toBe(
       DUPLICATE_KEY_MAP_ROOT,
     );
-    expect(Buffer.from(constant!.payloadCbor).toString("hex")).toBe(
+    expect(Buffer.from(constant!.payloadCbor!).toString("hex")).toBe(
       DUPLICATE_KEY_MAP_CBOR,
     );
   });

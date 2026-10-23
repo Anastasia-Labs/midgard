@@ -201,10 +201,7 @@ const grownLargeCases = (): MidgardCekDifferentialCase[] => [
   ),
 ];
 
-/**
- * Source constants are bounded by the direct-witness envelope at program
- * build time, so large Data reaches a script only through its context.
- */
+/** Large Data reaching a script through its context. */
 const largeContextCases = (): MidgardCekDifferentialCase[] => {
   const largeConstr = C(3, [LARGE_LIST, I(5n)]);
   const largeMap = M(

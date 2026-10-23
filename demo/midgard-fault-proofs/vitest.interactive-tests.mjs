@@ -98,6 +98,7 @@ export const interactiveTests = [
   "./tests/validation-trace-dispute-one-step-phase-a-native-item-inline-cap.test.ts",
   "./tests/validation-trace-dispute-one-step-script-sources-witness-script-inline-cap.test.ts",
   "./tests/validation-trace-dispute-one-step-script-sources-redeemer-inline-cap.test.ts",
+  "./tests/validation-trace-dispute-one-step-compute-constant-max-shape.test.ts",
   "./tests/validation-trace-dispute-one-step-context-assemble.test.ts",
   "./tests/validation-trace-dispute-one-step-context-finalize.test.ts",
   "./tests/validation-trace-dispute-one-step-context-item-107.test.ts",

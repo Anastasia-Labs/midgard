@@ -195,6 +195,45 @@ describe("family-checklist", () => {
     assert.match(result.out, /foo-bar-lifecycle\.test\.ts/u);
   });
 
+  it("reads name and token tables kept as a base plus an additions list", () => {
+    const names = edit(
+      completeTree(),
+      SOURCES.coreCatalogue,
+      'export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([\n  "fraudProofFooBar",\n  "fraudProofFooBarStep02",\n',
+      'export const DEPLOYMENT_MANIFEST_BASE_CONTRACT_NAMES = Object.freeze([\n  "fraudProofFooBar",\n',
+    );
+    const tree = edit(
+      names,
+      SOURCES.coreReferenceTokens,
+      'export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({\n  "V1 fraud-proof foo-bar step-01": "V1FpFooBarS01",\n  "V1 fraud-proof foo-bar step-02": "V1FpFooBarS02",\n',
+      'export const DEPLOYMENT_MANIFEST_BASE_REFERENCE_TOKEN_NAMES = Object.freeze({\n  "V1 fraud-proof foo-bar step-01": "V1FpFooBarS01",\n',
+    );
+    tree[SOURCES.coreCatalogue.replace(/\.ts$/u, ".names.additions.ts")] = `
+const DEPLOYMENT_MANIFEST_CONTRACT_NAME_ADDITIONS = [
+  "fraudProofFooBarStep02",
+] as const;
+export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
+  ...DEPLOYMENT_MANIFEST_BASE_CONTRACT_NAMES,
+  ...DEPLOYMENT_MANIFEST_CONTRACT_NAME_ADDITIONS,
+] as const);
+`;
+    tree[SOURCES.coreReferenceTokens.replace(/\.ts$/u, ".additions.ts")] = `
+const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAME_ADDITIONS = {
+  "V1 fraud-proof foo-bar step-02": "V1FpFooBarS02",
+} as const;
+export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
+  ...DEPLOYMENT_MANIFEST_BASE_REFERENCE_TOKEN_NAMES,
+  ...DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAME_ADDITIONS,
+} as const);
+`;
+    const result = run(writeTree(tree), "fooBar");
+    assert.equal(result.code, EXIT_COMPLETE, result.out + result.err);
+    assert.match(
+      result.out,
+      /OK\s+reference-scripts\s+2 member\(s\) in family fooBar/u,
+    );
+  });
+
   it("does not credit a family with tests named after a longer stem", () => {
     const tree = completeTree();
     delete tree[`${SOURCES.faultProofTests}/foo-bar-lifecycle.test.ts`];
