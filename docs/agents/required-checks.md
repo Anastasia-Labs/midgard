@@ -591,6 +591,25 @@ Golden channel cek-data-canonical-corpus-v1 (@al-ft/midgard-core).
   - `demo/l1-node-transport/src/**`
 - Needs: `node-modules`, `aiken`
 
+### `golden:cek-staged-v1`
+
+Golden channel cek-staged-v1 (@al-ft/midgard-core).
+
+- Command: `pnpm --dir demo/midgard-core run fixtures:cek-staged-v1:check`
+- Fix: `pnpm --dir demo/midgard-core run fixtures:cek-staged-v1:sync`
+- Runs on:
+  - `demo/midgard-core/scripts/generate-cek-staged-v1-goldens.mjs`
+  - `demo/flake.lock`
+  - `demo/midgard-core/scripts/generate-cek-staged-v1-goldens.render-aiken.mjs`
+  - `demo/midgard-core/scripts/golden-channel.mjs`
+  - `onchain/aiken/lib/midgard/cek-staged-v1-golden.test.ak`
+  - `scripts/lib/aiken.mjs`
+  - `demo/midgard-core/src/**`
+  - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
+- Needs: `node-modules`, `aiken`
+- Mode: warns only (no workflow runs this channel, so a red check does not block)
+
 ### `golden:mpf-node-encoding-v1`
 
 Golden channel mpf-node-encoding-v1 (@al-ft/midgard-core).
