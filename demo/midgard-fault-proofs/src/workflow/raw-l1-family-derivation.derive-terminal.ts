@@ -21,6 +21,7 @@ import {
   transactionOutputs,
 } from "./raw-l1-family-derivation.derive-retained-state-queue-header-observation-from-raw-l1.js";
 import {
+  foreignReceiptSlash,
   type FraudProofRawL1HistoryReader,
   lostDefenseReceiptSlash,
 } from "./raw-l1-family-derivation.lost-defense-slash.js";
@@ -45,6 +46,21 @@ import {
 } from "./release-economics-policy.js";
 import type { VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy.js";
 
+/**
+ * The header is gone but no terminal of ours stands: another prover's
+ * record removed it, or the operator's bond ended in a slash that pays
+ * another prover. Read-only verification waits on it; a run cannot complete.
+ */
+export type FraudProofRawL1TerminalNotOurs = Readonly<{
+  kind: "terminal_not_ours";
+  reason: string;
+}>;
+
+const notOurs = (reason: string): FraudProofRawL1TerminalNotOurs => ({
+  kind: "terminal_not_ours",
+  reason,
+});
+
 export const deriveTerminal = async ({
   snapshot,
   definition,
@@ -62,7 +78,10 @@ export const deriveTerminal = async ({
   readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy;
   /** Further token histories, for a bond a lost-defense receipt slashed. */
   readonly history?: FraudProofRawL1HistoryReader | undefined;
-}): Promise<FraudProofWorkflowTerminal> => {
+}): Promise<
+  | Readonly<{ kind: "ours"; terminal: FraudProofWorkflowTerminal }>
+  | FraudProofRawL1TerminalNotOurs
+> => {
   const verifiedEconomics =
     validateVerifiedFraudProofReleaseEconomicsPolicy(releaseEconomics);
   if (
@@ -83,6 +102,8 @@ export const deriveTerminal = async ({
     stateUnit,
     proofOutRef: proof.outRef,
   });
+  if (removal === undefined)
+    return notOurs("another prover's record removed the header");
   const operatorCredential = await operatorFromRemovedState({
     removed: removal.removed,
     definition,
@@ -116,24 +137,31 @@ export const deriveTerminal = async ({
     return inputs.length === 1 ? [{ transaction, bondInput: inputs[0]! }] : [];
   });
   // With no proof-referenced slash, the operator's bond can only have ended
-  // in its slash by the receipt of this case's thread it lost.
+  // in its slash by the receipt of this case's thread it lost; a slash by
+  // another prover's receipt paid that prover, not us.
+  const receiptSlash = {
+    snapshot,
+    definition,
+    proofUnit,
+    proofOutRef: proof.outRef,
+    removal: removal.transaction,
+    operatorCredential,
+    activeUnit,
+    retiredUnit,
+    history,
+  };
   const slash =
     slashCandidates.length === 1
       ? slashCandidates[0]
       : slashCandidates.length === 0
-        ? await lostDefenseReceiptSlash({
-            snapshot,
-            definition,
-            proofUnit,
-            proofOutRef: proof.outRef,
-            removal: removal.transaction,
-            operatorCredential,
-            activeUnit,
-            retiredUnit,
-            history,
-          })
+        ? await lostDefenseReceiptSlash(receiptSlash)
         : undefined;
   if (slash === undefined) {
+    if (
+      slashCandidates.length === 0 &&
+      (await foreignReceiptSlash(receiptSlash))
+    )
+      return notOurs("another prover's receipt slashed the operator's bond");
     throw new Error(
       "raw L1 history does not prove exactly one bond-consuming proof-referenced slash",
     );
@@ -202,7 +230,7 @@ export const deriveTerminal = async ({
   // Reward uniqueness is scoped to this operator's authenticated bond slash.
   // Earlier child splices can pay the same prover for other operator bonds.
   const proofTxHash = proof.outRef.split("#")[0]!;
-  return {
+  const terminal: FraudProofWorkflowTerminal = {
     schemaVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,
     category: definition.category,
     headerHash: definition.headerHash,
@@ -235,6 +263,7 @@ export const deriveTerminal = async ({
       confirmationDepth: removal.transaction.confirmationDepth,
     },
   };
+  return { kind: "ours", terminal };
 };
 
 export const fraudProofRawL1SnapshotRequestForFamily = ({

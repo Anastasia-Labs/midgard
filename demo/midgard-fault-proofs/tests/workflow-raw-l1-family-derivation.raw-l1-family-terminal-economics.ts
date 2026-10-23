@@ -495,7 +495,7 @@ describe("raw L1 family terminal economics", () => {
         definition,
         releaseEconomics,
       }),
-    ).resolves.toBeNull();
+    ).resolves.toEqual({ kind: "target_live" });
     await expect(observe(rolledBack)).resolves.toMatchObject({
       kind: "proof_token",
       stateQueueBlockOutRef: target!.outRef,

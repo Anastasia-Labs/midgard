@@ -1,11 +1,13 @@
 import { CML } from "@lucid-evolution/lucid";
 
+import { selectOwnFraudProofRecord } from "../fraud-proof-record-selection.js";
 import type { ComputationThreadStep } from "./computation-thread-steps.js";
 import { type FraudProofWorkflowTerminal } from "./journal.js";
 import { historicalTransactions } from "./raw-l1-family-derivation.derive-retained-state-queue-header-observation-from-raw-l1.js";
 import {
   authenticateFamilySnapshot,
   deriveTerminal,
+  type FraudProofRawL1TerminalNotOurs,
 } from "./raw-l1-family-derivation.derive-terminal.js";
 import type { FraudProofRawL1HistoryReader } from "./raw-l1-family-derivation.lost-defense-slash.js";
 import {
@@ -15,7 +17,6 @@ import {
   type FraudProofRawL1TerminalDefinition,
   mintQuantity,
   outRef,
-  ownsProof,
   ownsThread,
   scope,
   stateQueueTopology,
@@ -27,12 +28,9 @@ import type {
 } from "./raw-l1-snapshot.js";
 import { type VerifiedFraudProofReleaseEconomicsPolicy } from "./release-economics-policy.js";
 
-/**
- * Our permanent proof tokens on the header. Any prover may hold a proof of
- * the same name, one per conviction; another prover's is no part of our
- * workflow. Once the header is gone, the proof its removal referenced comes
- * first; otherwise the lowest out-ref, which stays first while it lives.
- */
+/** Our permanent proof token on the header, by the one rule of
+ * `selectOwnFraudProofRecord`: once the header is gone, the record its
+ * removal referenced comes first. */
 const ownProof = ({
   snapshot,
   definition,
@@ -43,32 +41,33 @@ const ownProof = ({
   readonly definition: FraudProofRawL1TerminalDefinition;
   readonly stateUnit: string;
   readonly proofUnit: string;
-}): FraudProofRawL1Utxo | undefined => {
-  const proofs = unitHolders({
-    snapshot,
-    role: "permanent_proof_token",
-    unit: proofUnit,
-  }).filter((raw) =>
-    ownsProof({ raw, proverCredential: definition.proverCredential }),
-  );
-  if (proofs.length < 2) return proofs[0];
-  const referenced = new Set(
-    historicalTransactions({ snapshot, unit: stateUnit })
-      .filter(
-        (transaction) =>
-          mintQuantity(
-            CML.TransactionBody.from_cbor_hex(transaction.bodyCbor),
-            stateUnit,
-          ) === -1n,
-      )
-      .flatMap((transaction) =>
-        transaction.resolvedReferenceInputs.map(
-          (candidate) => candidate.outRef,
-        ),
+}): FraudProofRawL1Utxo | undefined =>
+  selectOwnFraudProofRecord({
+    records: unitHolders({
+      snapshot,
+      role: "permanent_proof_token",
+      unit: proofUnit,
+    }),
+    outRefOf: (raw) => raw.outRef,
+    datumOf: (raw) => raw.datumCbor,
+    prover: definition.proverCredential,
+    referenced: () =>
+      new Set(
+        historicalTransactions({ snapshot, unit: stateUnit })
+          .filter(
+            (transaction) =>
+              mintQuantity(
+                CML.TransactionBody.from_cbor_hex(transaction.bodyCbor),
+                stateUnit,
+              ) === -1n,
+          )
+          .flatMap((transaction) =>
+            transaction.resolvedReferenceInputs.map(
+              (candidate) => candidate.outRef,
+            ),
+          ),
       ),
-  );
-  return proofs.find((proof) => referenced.has(proof.outRef)) ?? proofs[0];
-};
+  });
 
 /**
  * Our live computation thread on the header. Init, Open and a case's
@@ -134,6 +133,14 @@ const assertStepAddresses = (
   });
 };
 
+/** What read-only completion finds on raw L1: the header still live; gone
+ * with no terminal of ours (`deriveTerminal`'s not-ours cases, or no record of
+ * ours at all); or removed against our record, with our terminal. */
+export type FraudProofRawL1CompletedTerminal =
+  | Readonly<{ kind: "target_live" }>
+  | FraudProofRawL1TerminalNotOurs
+  | Readonly<{ kind: "removed"; terminal: FraudProofWorkflowTerminal }>;
+
 /** Read-only completion applicability: a live authenticated target invalidates
  * completion. No computation datum is decoded or used to authorize execution;
  * live threads, ours or another case's, do not bear on a removed header. */
@@ -147,20 +154,21 @@ export const deriveFraudProofRawL1CompletedTerminal = async ({
   readonly definition: FraudProofRawL1TerminalDefinition;
   readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy;
   readonly history?: FraudProofRawL1HistoryReader | undefined;
-}): Promise<FraudProofWorkflowTerminal | null> => {
+}): Promise<FraudProofRawL1CompletedTerminal> => {
   const { stateUnit, proofUnit } = authenticateFamilySnapshot({
     snapshot,
     definition,
   });
   assertStepAddresses(snapshot, definition);
   const topology = await stateQueueTopology({ snapshot, definition });
-  if (topology.target !== undefined) return null;
+  if (topology.target !== undefined) return { kind: "target_live" };
   const proof = ownProof({ snapshot, definition, stateUnit, proofUnit });
   if (proof === undefined)
-    throw new Error(
-      "fraudulent header disappeared without a retained proof token",
-    );
-  return deriveTerminal({
+    return {
+      kind: "terminal_not_ours",
+      reason: "the header is gone and no record of ours stands",
+    };
+  const derived = await deriveTerminal({
     snapshot,
     definition,
     stateUnit,
@@ -169,6 +177,9 @@ export const deriveFraudProofRawL1CompletedTerminal = async ({
     releaseEconomics,
     history,
   });
+  return derived.kind === "ours"
+    ? { kind: "removed", terminal: derived.terminal }
+    : derived;
 };
 
 const deriveStage = async ({
@@ -197,18 +208,20 @@ const deriveStage = async ({
         "fraudulent header disappeared without a retained proof token",
       );
     }
-    return {
-      kind: "removed",
-      terminal: await deriveTerminal({
-        snapshot,
-        definition,
-        stateUnit,
-        proofUnit,
-        proof,
-        releaseEconomics,
-        history,
-      }),
-    };
+    const derived = await deriveTerminal({
+      snapshot,
+      definition,
+      stateUnit,
+      proofUnit,
+      proof,
+      releaseEconomics,
+      history,
+    });
+    // A run cannot complete on another prover's terminal: the stage is a
+    // derivation failure, which the orchestrator records as a stall.
+    if (derived.kind !== "ours")
+      throw new Error(`no terminal of ours stands: ${derived.reason}`);
+    return { kind: "removed", terminal: derived.terminal };
   }
   const stateQueueBlockOutRef = outRef(topology.target.utxo);
   if (proof !== undefined) {

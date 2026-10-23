@@ -111,6 +111,7 @@ export const captureCursorRemoval = async <
   const transaction = await captureLocallyEvaluatedTransaction(
     async (boundary) => {
       await submitRemoveFraudulentBlock({
+        fraudProofOutRef,
         lucid,
         blueprint,
         deploymentInfo,

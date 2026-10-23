@@ -18,8 +18,10 @@ import {
   encodeHeaderCbor,
   FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX,
   ForcedInclusionTxV1Schema,
+  FraudProofTokenDatumSchema,
   type NetworkIdFault,
   NetworkIdForcedScanDatumSchema,
+  NetworkIdForcedStepDatumSchema,
   OutputReference,
   Proof,
   ROOT_DOMAINS,
@@ -28,6 +30,7 @@ import {
   Data,
   type LucidEvolution,
   type MintingPolicy,
+  toUnit,
   type UTxO,
 } from "@lucid-evolution/lucid";
 import { vi } from "vitest";
@@ -70,10 +73,12 @@ export const SIGNER: ResolvedProverSigner = {
   selectWallet: () => undefined,
 };
 const STEP_01_ADDRESS = "network-step-01";
-const FORCED_STEP_ADDRESS = "network-forced-step";
+export const FORCED_STEP_ADDRESS = "network-forced-step";
 const FORCED_SCAN_ADDRESS = "network-forced-scan";
 const STEP_02_ADDRESS = "network-step-02";
-const STATE_QUEUE_ADDRESS = "state-queue";
+export const STATE_QUEUE_ADDRESS = "state-queue";
+const PROOF_ADDRESS = "proof";
+const PROOF_POLICY_ID = h28(0x14);
 export const CERTIFICATE_ADDRESS = fieldPreimageCertificateAddress({
   network: "Preview",
   certificatePolicyId: POLICY_ID,
@@ -86,18 +91,55 @@ export const utxo = ({
   outputIndex = 0,
   address = SIGNER.address,
   datum,
+  unit,
 }: {
   readonly txHash: string;
   readonly outputIndex?: number;
   readonly address?: string;
   readonly datum?: string;
+  /** One of this token rides beside the ADA. */
+  readonly unit?: string;
 }): UTxO => ({
   txHash,
   outputIndex,
   address,
-  assets: { lovelace: 5_000_000n },
+  assets: {
+    lovelace: 5_000_000n,
+    ...(unit === undefined ? {} : { [unit]: 1n }),
+  },
   ...(datum === undefined ? {} : { datum }),
 });
+
+/** The computation-thread unit every thread of `headerHash` carries. */
+export const threadUnit = (headerHash: string): string =>
+  toUnit(THREAD_POLICY_ID, `${CATEGORY_ID}${headerHash}`);
+
+/** The fraud-proof record unit of `headerHash`, and a record naming `prover`. */
+export const proofUnit = (headerHash: string): string =>
+  toUnit(PROOF_POLICY_ID, `${CATEGORY_ID}${headerHash}`);
+export const proofRecord = (
+  headerHash: string,
+  txHash: string,
+  prover: string = SIGNER.paymentKeyHash,
+): UTxO =>
+  utxo({
+    txHash,
+    address: PROOF_ADDRESS,
+    datum: Data.to(
+      { fraud_prover: prover } as never,
+      FraudProofTokenDatumSchema as never,
+    ),
+    unit: proofUnit(headerHash),
+  });
+
+/** The handoff datum step 01 locks at the forced door, naming `prover`. */
+export const forcedStepDatum = (
+  prover: string = SIGNER.paymentKeyHash,
+): string =>
+  Data.to(
+    { fraud_prover: prover, data: "ForcedNetworkIdMismatch" } as never,
+    NetworkIdForcedStepDatumSchema as never,
+  );
 
 const output = (networkId: number) =>
   encodeMidgardTxOutput({
@@ -218,6 +260,7 @@ export const workflowIdentity = (
 export const scanDatum = (
   prepared: PreparedNetworkIdWrongfulRejection,
   state: "ready" | { readonly scanningAt: string },
+  prover: string = SIGNER.paymentKeyHash,
 ): string => {
   const bound = {
     bad_tx_id: prepared.badTxId,
@@ -227,7 +270,7 @@ export const scanDatum = (
   };
   return Data.to(
     {
-      fraud_prover: SIGNER.paymentKeyHash,
+      fraud_prover: prover,
       data:
         state === "ready"
           ? { Ready: { bound } }
@@ -242,6 +285,8 @@ export const forcedHarness = ({
   stage,
   forcedDoorOccupied,
   forcedScanDatum,
+  holders = {},
+  withoutRawL1 = false,
   walletUtxos = [],
   certificateUtxos,
   observeSignedTransaction,
@@ -254,6 +299,18 @@ export const forcedHarness = ({
   readonly forcedDoorOccupied: boolean;
   /** Inline datum of the live scan thread, absent when the scan is empty. */
   readonly forcedScanDatum?: string;
+  /**
+   * The holders served at the forced door (in place of the one
+   * `forcedDoorOccupied` puts there), the state queue (in place of the one
+   * live node), step 01 and the fraud-proof address.
+   */
+  readonly holders?: Readonly<
+    Partial<
+      Record<"forcedDoor" | "stateQueue" | "step01" | "proof", readonly UTxO[]>
+    >
+  >;
+  /** No raw-L1 port: the adapter reads the live chain itself. */
+  readonly withoutRawL1?: boolean;
   readonly walletUtxos?: readonly UTxO[];
   /**
    * Live view of the field-certificate address. When present, the exact
@@ -267,25 +324,41 @@ export const forcedHarness = ({
     readonly signedTransactionCborHex: string;
   }) => Promise<SignedTransactionRecoveryObservation>;
 }) => {
-  const forcedUtxo = utxo({
-    txHash: h32(0x77),
-    address: FORCED_STEP_ADDRESS,
-  });
+  const unit = threadUnit(prepared.headerHash);
+  const forcedUtxos =
+    holders.forcedDoor ??
+    (forcedDoorOccupied
+      ? [
+          utxo({
+            txHash: h32(0x77),
+            address: FORCED_STEP_ADDRESS,
+            datum: forcedStepDatum(),
+            unit,
+          }),
+        ]
+      : []);
   const scanUtxo = utxo({
     txHash: h32(0x78),
     address: FORCED_SCAN_ADDRESS,
     ...(forcedScanDatum === undefined ? {} : { datum: forcedScanDatum }),
+    unit,
   });
   const scanUtxos = forcedScanDatum === undefined ? [] : [scanUtxo];
   const lucid = {
     utxosAtWithUnit: async (address: string) =>
-      address === FORCED_STEP_ADDRESS && forcedDoorOccupied
-        ? [forcedUtxo]
+      address === FORCED_STEP_ADDRESS
+        ? forcedUtxos
         : address === FORCED_SCAN_ADDRESS
           ? scanUtxos
           : address === STATE_QUEUE_ADDRESS
-            ? [utxo({ txHash: h32(0x73), address: STATE_QUEUE_ADDRESS })]
-            : [],
+            ? (holders.stateQueue ?? [
+                utxo({ txHash: h32(0x73), address: STATE_QUEUE_ADDRESS }),
+              ])
+            : address === STEP_01_ADDRESS
+              ? (holders.step01 ?? [])
+              : address === PROOF_ADDRESS
+                ? (holders.proof ?? [])
+                : [],
     utxosAt: async (address: string) =>
       address === SIGNER.address
         ? walletUtxos
@@ -307,6 +380,37 @@ export const forcedHarness = ({
     spendingScriptHash: h28(0x11),
     spendingScriptAddress: STEP_01_ADDRESS,
   };
+  const rawL1 = {
+    publications: {
+      observerVersion:
+        "midgard-fraud-proof-authenticated-publication-observer-v1",
+      observeExact: vi.fn(
+        async (input: {
+          readonly address: string;
+          readonly expectedOutRef: string;
+          readonly expectedDatumCbor: string;
+          readonly expectedUnit?: string;
+        }) =>
+          certificateUtxos === undefined ||
+          input.address !== CERTIFICATE_ADDRESS ||
+          certificateUtxos.some(
+            (candidate) =>
+              `${candidate.txHash}#${candidate.outputIndex}` ===
+                input.expectedOutRef &&
+              candidate.datum === input.expectedDatumCbor &&
+              (input.expectedUnit === undefined ||
+                candidate.assets[input.expectedUnit] === 1n),
+          )
+            ? { kind: "confirmed" as const, outRef: input.expectedOutRef }
+            : { kind: "not_found" as const },
+      ),
+    },
+    transactionConfirmed: async () => true,
+    observe: async () => stage,
+    ...(observeSignedTransaction === undefined
+      ? {}
+      : { observeSignedTransaction }),
+  };
   const config = {
     lucid,
     blueprint: {},
@@ -318,9 +422,9 @@ export const forcedHarness = ({
       expectedNetworkId: 0n,
       computationThread: { policyId: THREAD_POLICY_ID, mintingScript: SCRIPT },
       fraudProof: {
-        policyId: h28(0x14),
+        policyId: PROOF_POLICY_ID,
         mintingScript: SCRIPT,
-        spendingScriptAddress: "proof",
+        spendingScriptAddress: PROOF_ADDRESS,
       },
       hubOraclePolicyId: h28(0x15),
       stateQueuePolicyId: h28(0x16),
@@ -348,37 +452,7 @@ export const forcedHarness = ({
       category: "networkId",
       isCurrentHead: async () => true,
     },
-    rawL1: {
-      publications: {
-        observerVersion:
-          "midgard-fraud-proof-authenticated-publication-observer-v1",
-        observeExact: vi.fn(
-          async (input: {
-            readonly address: string;
-            readonly expectedOutRef: string;
-            readonly expectedDatumCbor: string;
-            readonly expectedUnit?: string;
-          }) =>
-            certificateUtxos === undefined ||
-            input.address !== CERTIFICATE_ADDRESS ||
-            certificateUtxos.some(
-              (candidate) =>
-                `${candidate.txHash}#${candidate.outputIndex}` ===
-                  input.expectedOutRef &&
-                candidate.datum === input.expectedDatumCbor &&
-                (input.expectedUnit === undefined ||
-                  candidate.assets[input.expectedUnit] === 1n),
-            )
-              ? { kind: "confirmed" as const, outRef: input.expectedOutRef }
-              : { kind: "not_found" as const },
-        ),
-      },
-      transactionConfirmed: async () => true,
-      observe: async () => stage,
-      ...(observeSignedTransaction === undefined
-        ? {}
-        : { observeSignedTransaction }),
-    },
+    rawL1: withoutRawL1 ? undefined : rawL1,
     terminalFacts: async () => {
       throw new Error("terminal state is outside this test");
     },
@@ -392,7 +466,7 @@ export const forcedHarness = ({
   return {
     artifact,
     scanUtxos,
-    publicationObserver: config.rawL1!.publications!,
+    publicationObserver: rawL1.publications,
     adapter: createNetworkIdWorkflowAdapter(config),
     observe: async () =>
       await createNetworkIdWorkflowAdapter(config).observe({

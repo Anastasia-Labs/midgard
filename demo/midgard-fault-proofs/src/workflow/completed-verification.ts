@@ -22,7 +22,11 @@ export type FraudProofCompletedVerification =
   | Readonly<{ kind: "applicable"; terminal: FraudProofWorkflowTerminal }>
   | Readonly<{
       kind: "pending";
-      reason: "target_live" | "release_finality" | "checkpoint_changed";
+      reason:
+        | "target_live"
+        | "terminal_not_ours"
+        | "release_finality"
+        | "checkpoint_changed";
     }>;
 
 /** Recheck durable completion against canonical raw L1 without opening a signer,
@@ -88,7 +92,7 @@ export const verifyCompletedFraudProofWorkflow = async ({
     releaseFinality: binding.releaseFinality,
     observationDepth: "inclusion",
   });
-  const observed = await deriveFraudProofRawL1CompletedTerminal({
+  const derived = await deriveFraudProofRawL1CompletedTerminal({
     snapshot,
     definition: binding.definition,
     releaseEconomics: binding.releaseEconomics,
@@ -98,7 +102,11 @@ export const verifyCompletedFraudProofWorkflow = async ({
       headerHash: binding.definition.headerHash,
     }),
   });
-  if (observed === null) return { kind: "pending", reason: "target_live" };
+  // Another prover's record or receipt ended the header: our completion
+  // does not stand on this view, which is a wait, never a failure.
+  if (derived.kind !== "removed")
+    return { kind: "pending", reason: derived.kind };
+  const observed = derived.terminal;
   const facts = (value: FraudProofWorkflowTerminal) =>
     normalizeJournalJson({
       ...value,

@@ -11,6 +11,7 @@ import {
 import { CML, coreToTxOutput, Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { datumProver } from "../fraud-proof-record-selection.js";
 import {
   COMPUTATION_THREAD_STEP_ROLES,
   type ComputationThreadStep,
@@ -174,20 +175,6 @@ export const unitHolders = ({
       left.outRef < right.outRef ? -1 : left.outRef > right.outRef ? 1 : 0,
     );
 
-const fraudProverOf = (
-  raw: FraudProofRawL1Utxo,
-  schema: LucidDataSchema,
-): unknown => {
-  if (raw.datumCbor === null) return undefined;
-  try {
-    return (
-      Data.from(raw.datumCbor, schema) as { readonly fraud_prover?: unknown }
-    ).fraud_prover;
-  } catch {
-    return undefined;
-  }
-};
-
 /** Whether `raw`'s inline datum decodes under `schema` and names us. */
 export const ownsThread = ({
   raw,
@@ -197,16 +184,7 @@ export const ownsThread = ({
   readonly raw: FraudProofRawL1Utxo;
   readonly schema: LucidDataSchema;
   readonly proverCredential: string;
-}): boolean => fraudProverOf(raw, schema) === proverCredential;
-
-/** Whether `raw` is a permanent proof token whose datum names us. */
-export const ownsProof = ({
-  raw,
-  proverCredential,
-}: {
-  readonly raw: FraudProofRawL1Utxo;
-  readonly proverCredential: string;
-}): boolean => fraudProverOf(raw, FraudProofTokenDatum) === proverCredential;
+}): boolean => datumProver(raw.datumCbor, schema) === proverCredential;
 
 export const requireProofDatum = ({
   raw,
@@ -312,22 +290,15 @@ export class FraudProofRawL1DerivationError extends Error {
   }
 }
 
-/** Whether `error`, or an error it was caused by, is a derivation failure. */
+/** Whether `error` is a derivation failure. The orchestrator catches it as
+ * thrown, unwrapped. */
 export const isFraudProofRawL1DerivationError = (
   error: unknown,
-): error is FraudProofRawL1DerivationError => {
-  let current: unknown = error;
-  for (let depth = 0; depth < 8; depth += 1) {
-    if (typeof current !== "object" || current === null) return false;
-    if (
-      (current as { readonly _tag?: unknown })._tag ===
-      "FraudProofRawL1DerivationError"
-    )
-      return true;
-    current = (current as { readonly cause?: unknown }).cause;
-  }
-  return false;
-};
+): error is FraudProofRawL1DerivationError =>
+  typeof error === "object" &&
+  error !== null &&
+  (error as { readonly _tag?: unknown })._tag ===
+    "FraudProofRawL1DerivationError";
 
 /** The selected header is no longer in the state queue. */
 export class StateQueueHeaderNotLiveError extends Error {

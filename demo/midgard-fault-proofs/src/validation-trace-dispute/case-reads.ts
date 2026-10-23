@@ -5,7 +5,8 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, type LucidEvolution } from "@lucid-evolution/lucid";
 
-import type { ResolvedProverSigner } from "../runtime.js";
+import { selectOwnFraudProofRecord } from "../fraud-proof-record-selection.js";
+import { outRefLabel, type ResolvedProverSigner } from "../runtime.js";
 import { parseOwnOutRef } from "../workflow/own-outputs.js";
 import type { confirmedValidationTraceStages } from "./actions.js";
 import type { ValidationTraceDisputeArtifact } from "./artifact.js";
@@ -27,25 +28,26 @@ export const validationTraceCaseReads = ({
   readonly signer: ResolvedProverSigner;
   readonly deployment: ValidationTraceDisputeDeployment;
 }) => {
-  // The record a close of our case minted, whoever closed it: the policy
-  // mints it once per block, and it names its prover.
+  // Our record on the block, whoever closed the case that minted it: every
+  // conviction on the block mints a record of the same name, each naming its
+  // prover. One rule picks ours, as the raw L1 derivation does; this read
+  // has no removal history, so it agrees with it while the block is live.
   const recordAt = async (headerHash: string) => {
     const unit = validationTraceFraudProofUnit(deployment, headerHash);
-    const [found] = (
-      await lucid.utxosAtWithUnit(
-        deployment.fraudProof.spendingScriptAddress,
-        unit,
-      )
-    ).filter(
-      (utxo) =>
-        utxo.assets[unit] === 1n &&
-        typeof utxo.datum === "string" &&
-        Data.from(utxo.datum, SDK.FraudProofTokenDatum).fraud_prover ===
-          signer.paymentKeyHash,
-    );
+    const found = selectOwnFraudProofRecord({
+      records: (
+        await lucid.utxosAtWithUnit(
+          deployment.fraudProof.spendingScriptAddress,
+          unit,
+        )
+      ).filter((utxo) => utxo.assets[unit] === 1n),
+      outRefOf: outRefLabel,
+      datumOf: (utxo) => utxo.datum,
+      prover: signer.paymentKeyHash,
+    });
     return found === undefined
       ? undefined
-      : { unit, outRef: `${found.txHash}#${found.outputIndex.toString()}` };
+      : { unit, outRef: outRefLabel(found) };
   };
   const caseAt = async (caseUnit: string) => {
     const [found] = (

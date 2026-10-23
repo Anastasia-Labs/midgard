@@ -177,3 +177,66 @@ export const lostDefenseReceiptSlash = async ({
   });
   return slashes.length === 1 ? slashes[0] : undefined;
 };
+
+/**
+ * Whether another prover's lost-defense receipt ended the operator's bond
+ * before the block's removal: the last transaction before the removal that
+ * consumed the bond burned a receipt, none of it ours. That slash paid its
+ * own prover, so no terminal of ours stands. False when the view cannot
+ * show it.
+ */
+export const foreignReceiptSlash = async ({
+  snapshot,
+  definition,
+  proofUnit,
+  proofOutRef,
+  removal,
+  operatorCredential,
+  activeUnit,
+  retiredUnit,
+  history,
+}: Parameters<typeof lostDefenseReceiptSlash>[0]): Promise<boolean> => {
+  const lostDefense = definition.lostDefense;
+  if (lostDefense === undefined || history === undefined) return false;
+  const caseId = caseIdOf({
+    snapshot,
+    proofUnit,
+    proofOutRef,
+    casePolicyId: lostDefense.casePolicyId,
+  });
+  if (caseId === undefined) return false;
+  const ownReceipt = Effect.runSync(
+    SDK.hashHexWithBlake2b(caseId + operatorCredential, 32),
+  );
+  const ends = new Map(
+    [...(await history(activeUnit)), ...(await history(retiredUnit))]
+      .filter(
+        (transaction) =>
+          includedBefore(transaction, removal) &&
+          operatorBondInputs({
+            transaction,
+            definition,
+            activeUnit,
+            retiredUnit,
+          }).length === 1,
+      )
+      .map((transaction) => [transaction.txHash, transaction] as const),
+  );
+  const last = [...ends.values()].filter(
+    (candidate) =>
+      ![...ends.values()].some(
+        (later) => later !== candidate && includedBefore(candidate, later),
+      ),
+  );
+  if (last.length !== 1) return false;
+  const burned = CML.TransactionBody.from_cbor_hex(last[0]!.bodyCbor)
+    .mint()
+    ?.get_assets(CML.ScriptHash.from_hex(lostDefense.receiptPolicyId));
+  const names = burned?.keys();
+  const receipts: string[] = [];
+  for (let index = 0; index < (names?.len() ?? 0); index += 1) {
+    const name = names!.get(index);
+    if (burned!.get(name) === -1n) receipts.push(name.to_hex());
+  }
+  return receipts.length > 0 && !receipts.includes(ownReceipt);
+};

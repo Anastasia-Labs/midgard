@@ -143,6 +143,7 @@ const createBoundDaHashPreimageTransactionPort = ({
       const transaction = await captureLocallyEvaluatedTransaction(
         async (boundary) => {
           await builders.remove({
+            fraudProofOutRef,
             lucid: config.lucid,
             blueprint: config.blueprint,
             deploymentInfo: config.deploymentInfo,

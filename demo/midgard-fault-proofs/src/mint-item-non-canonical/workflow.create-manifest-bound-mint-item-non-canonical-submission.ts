@@ -366,6 +366,7 @@ export const createManifestBoundMintItemNonCanonicalSubmission = ({
       signer: config.signer,
       fraudCategory: "mintItemNonCanonical" as FraudProofCatalogueCategoryName,
       fraudulentHeaderHash: config.binding.definition.headerHash,
+      fraudProofOutRef: removalIdentity(stage).fraudProofOutRef,
       requireReferenceScripts: true,
       stateQueueMutationLeaseCoordinator:
         stateQueueMutationLeaseCoordinator ??

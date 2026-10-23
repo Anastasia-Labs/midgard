@@ -10,7 +10,11 @@
  * live thread while both stand, and our record, once it exists, as the
  * block's stage; a prover named by neither case reads the block as not
  * started. Once the block is gone, the completed-workflow check reads the
- * same terminal from L1 while the other case still stands. */
+ * same terminal from L1 while the other case still stands. When both cases
+ * convict on our key, two records of the block stand, and the runner
+ * removes the block against one of them, the lowest; the runner whose
+ * journal created that record completes on the removal, and a prover named
+ * by neither reads no terminal of its own. */
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -26,12 +30,6 @@ import {
 import { validationTraceDefenseDeadlineMs } from "../src/validation-trace-dispute/waiting.js";
 import { CURSOR_FAMILY_ACTION } from "../src/workflow/cursor-family-state.js";
 import { createFraudProofFamilyRawL1ObservationPort } from "../src/workflow/family-l1-observation.js";
-import {
-  admitFraudProofRawL1Snapshot,
-  deriveFraudProofRawL1CompletedTerminal,
-  fraudProofRawL1HistoryReader,
-  fraudProofRawL1SnapshotRequestForFamily,
-} from "../src/workflow/index.js";
 import type {
   FraudProofWorkflowJournalEntry,
   FraudProofWorkflowTerminal,
@@ -40,6 +38,7 @@ import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.f
 import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import { recordCrossBlockRawEmulator } from "./support/cross-block-raw-emulator.js";
 import { expectStateQueueHeaderOrder } from "./support/submit-init-emulator-fixtures.js";
+import { completedTerminal } from "./support/validation-trace-dispute-completed-terminal.js";
 import {
   type Scene,
   setUpScene,
@@ -71,6 +70,16 @@ const peeled = (entries: readonly FraudProofWorkflowJournalEntry[]) =>
       event.kind === "confirmed" && event.actionId.startsWith("remove:"),
   );
 
+/** Whether `entries` confirm every one of the block's three removal peels. */
+const removedAll = (entries: readonly FraudProofWorkflowJournalEntry[]) =>
+  new Set(
+    entries.flatMap(({ event }) =>
+      event.kind === "confirmed" && event.actionId.startsWith("remove:")
+        ? [event.actionId]
+        : [],
+    ),
+  ).size === 3;
+
 const entriesOf = (result: FraudProofWorkflowRunResult) => {
   if (!("entries" in result)) throw new Error("no workflow journal");
   return result.entries;
@@ -87,6 +96,8 @@ type Run = Readonly<{
   scene: Scene;
   removal: RecordedRemoval;
   ours: Runner;
+  /** The second runner, on our key with its own journal. */
+  other: Runner;
   /** A fresh runner of ours on the same journal: a restart. */
   restarted: () => Runner;
   ourCase: ConfirmedValidationTraceStage;
@@ -107,8 +118,9 @@ const openTwoCases = async (oursFirst: boolean): Promise<Run> => {
     ),
   };
   const ours = makeRunner(scene, options);
-  // Its own journal; it never reaches a conviction.
-  const other = makeRunner(scene);
+  // Its own journal; it never removes, at most it convicts and completes
+  // on a removal of ours that cites its record.
+  const other = makeRunner(scene, options);
   const open = async (runner: Runner) =>
     caseOf(
       (await runUntil(runner, scene.failing, VALIDATION_TRACE_CASE_OPEN))
@@ -121,6 +133,7 @@ const openTwoCases = async (oursFirst: boolean): Promise<Run> => {
     scene,
     removal,
     ours,
+    other,
     restarted: () => makeRunner(scene, { ...options, journal: ours.journal }),
     ourCase: oursFirst ? first : second,
     otherCase: oursFirst ? second : first,
@@ -261,40 +274,13 @@ const convictAndRemove = async (
   }
 };
 
-/** Our record, the block's removal against it, and the other case still
- * standing. */
-/** The terminal the completed-workflow check reads from the block's
- * authenticated L1 view. */
-const completedTerminal = async ({ scene, removal }: Run) => {
-  const { authority, releaseFinality, releaseEconomics } = removal.raw;
-  const headerHash = scene.failing.evidence.headerHash;
-  const definition = removal.raw.definition(headerHash);
-  const request = fraudProofRawL1SnapshotRequestForFamily({
-    definition,
-    releaseFinality,
-  });
-  return await deriveFraudProofRawL1CompletedTerminal({
-    snapshot: admitFraudProofRawL1Snapshot({
-      value: await authority.capture(request),
-      request,
-      releaseFinality,
-      observationDepth: "inclusion",
-    }),
-    definition,
-    releaseEconomics,
-    history: fraudProofRawL1HistoryReader({
-      authority,
-      releaseFinality,
-      headerHash,
-    }),
-  });
-};
-
 const facts = (value: FraudProofWorkflowTerminal) => ({
   ...value,
   observedAt: { ...value.observedAt, confirmationDepth: 0 },
 });
 
+/** Our record, the block's removal against it, and the other case still
+ * standing. */
 const expectRemovedAgainstOurRecord = async (
   run: Run,
   result: FraudProofWorkflowRunResult,
@@ -332,8 +318,10 @@ const expectRemovedAgainstOurRecord = async (
   // reads our terminal beside it.
   expect(await liveAt(scene, otherCase.outputs[0]!.outRef)).toBeDefined();
   const completed = await completedTerminal(run);
-  expect(completed).not.toBeNull();
-  expect(facts(completed!)).toStrictEqual(facts(result.terminal));
+  expect(completed.kind).toBe("removed");
+  expect(
+    facts((completed as { terminal: FraudProofWorkflowTerminal }).terminal),
+  ).toStrictEqual(facts(result.terminal));
 };
 
 describe("validation-trace dispute runner: a second case on the block, opened after ours", () => {
@@ -372,5 +360,131 @@ describe("validation-trace dispute runner: a second case on the block, opened be
     });
     expect(restartedAfterPeel).toBe(true);
     await expectRemovedAgainstOurRecord(run, result);
+  }, 900_000);
+});
+
+/** The defense deadline of the case at `outRef`. */
+const defenseDeadline = async (run: Run, outRef: string) =>
+  validationTraceDefenseDeadlineMs(
+    Data.from((await liveAt(run.scene, outRef))!.datum!, SDK.Case),
+  );
+
+describe("validation-trace dispute runner: both cases on the block convicted on our key", () => {
+  let run: Run;
+
+  beforeAll(async () => {
+    run = await openTwoCases(true);
+  }, 1_800_000);
+
+  afterAll(() => run?.recorder.restore());
+
+  it("removes the block against one of the two records, the lowest, though each convicted case left one", async () => {
+    const { scene, ours, other, ourCase, otherCase } = run;
+    const { h } = scene;
+    const lucid = h.proverLucid;
+    const deadline = Math.max(
+      ...(await Promise.all(
+        [ourCase, otherCase].map(
+          async ({ outputs }) => await defenseDeadline(run, outputs[0]!.outRef),
+        ),
+      )),
+    );
+    h.emulator.awaitSlot(
+      lucid.unixTimeToSlot(deadline) - lucid.currentSlot() + 1,
+    );
+    const clock = vi
+      .spyOn(Date, "now")
+      .mockImplementation(() => h.emulator.now());
+    try {
+      // Each runner convicts its own case, the removal's view held until
+      // both have: two records of the block, both naming our key, and
+      // records are never spent.
+      const { headerHash } = scene.failing.evidence;
+      run.removal.holdView();
+      await run.removal.l1For(headerHash).observe({ headerHash });
+      const records: string[] = [];
+      for (const [runner, opened] of [
+        [ours, ourCase],
+        [other, otherCase],
+      ] as const) {
+        const { result } = await runUntil(
+          runner,
+          scene.failing,
+          VALIDATION_TRACE_CASE_CONVICTED,
+        );
+        const close = confirmedValidationTraceStages(entriesOf(result)).find(
+          ({ action }) => action.stage === "close",
+        )!;
+        expect(close.action.consumes).toBe(opened.outputs[0]!.outRef);
+        records.push(close.outputs[0]!.outRef);
+      }
+      expect(new Set(records).size).toBe(2);
+      run.removal.releaseView();
+      for (const record of records) {
+        const live = await liveAt(scene, record);
+        expect(
+          Data.from(live!.datum!, SDK.FraudProofTokenDatum).fraud_prover,
+        ).toBe(h.proverSigner.paymentKeyHash);
+      }
+      const cited = [...records].sort()[0]!;
+      // Ours removes the block against the cited record. The workflow
+      // whose journal created that record completes on the removal: ours,
+      // or the other runner when the cited record is its own.
+      const completer = cited === records[0] ? ours : other;
+      const history: string[] = [];
+      let ourEntries: readonly FraudProofWorkflowJournalEntry[] = [];
+      let result: FraudProofWorkflowRunResult | undefined;
+      for (
+        let attempt = 0;
+        attempt < 16 && result === undefined;
+        attempt += 1
+      ) {
+        const runner = removedAll(ourEntries) ? completer : ours;
+        const outcome = await runner.runOnce(scene.failing);
+        history.push(
+          "reason" in outcome
+            ? `${outcome.kind}: ${outcome.reason}`
+            : outcome.kind,
+        );
+        if (runner === ours && "entries" in outcome)
+          ourEntries = outcome.entries;
+        if (
+          outcome.kind === "terminal_included" ||
+          outcome.kind === "completed"
+        )
+          result = outcome;
+      }
+      if (result === undefined || !("terminal" in result))
+        throw new Error(`the removal did not complete: ${history.join("\n")}`);
+      const intents = removalIntents(ourEntries);
+      expect(intents).toHaveLength(3);
+      for (const intent of intents)
+        expect(intent.actionInput).toMatchObject({
+          stage: "remove",
+          fraudProofOutRef: cited,
+        });
+      expect(result.terminal.correction.referencedProofTokenOutRef).toBe(cited);
+      expect(result.terminal.proofToken.outRef).toBe(cited);
+      await expectStateQueueHeaderOrder({
+        lucid,
+        contracts: h.contracts,
+        expectedHeaderHashes: [scene.failing.evidence.header.prevHeaderHash],
+      });
+      // Both records stand; the completed-workflow check reads our terminal,
+      // and a prover named by neither record reads no terminal of its own.
+      for (const record of records)
+        expect(await liveAt(scene, record)).toBeDefined();
+      const completed = await completedTerminal(run);
+      expect(completed.kind).toBe("removed");
+      expect(
+        facts((completed as { terminal: FraudProofWorkflowTerminal }).terminal),
+      ).toStrictEqual(facts(result.terminal));
+      await expect(completedTerminal(run, ANOTHER_PROVER)).resolves.toEqual({
+        kind: "terminal_not_ours",
+        reason: "the header is gone and no record of ours stands",
+      });
+    } finally {
+      clock.mockRestore();
+    }
   }, 900_000);
 });
