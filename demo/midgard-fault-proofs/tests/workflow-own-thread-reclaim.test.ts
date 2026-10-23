@@ -90,6 +90,22 @@ describe("workflow: our thread on a header another record removed", () => {
     expect(after.submit).not.toHaveBeenCalled();
   });
 
+  it("reads our threads once in an observation pass, for its own check and the orchestrator's guard alike", async () => {
+    const evidence = await canonicalEvidence();
+    const journal = new MemoryFraudProofWorkflowJournalStore();
+    const ledger = chain();
+    // No thread of ours stands: the pass resolves, and the guard confirms it
+    // from the read the resolution's check made.
+    ledger.land(FINAL_DEPTH);
+    const port = reclaimPort(ledger);
+    const adapter = decorate(removedByAnotherProver(ledger), port);
+    expect(await run({ evidence, adapter, journal })).toMatchObject({
+      kind: "resolved_by_another_record",
+      resolution,
+    });
+    expect(port.observe).toHaveBeenCalledTimes(1);
+  });
+
   it("holds a family with no cancel under a named alarm, and never resolves while our thread stands", async () => {
     const evidence = await canonicalEvidence();
     const journal = new MemoryFraudProofWorkflowJournalStore();

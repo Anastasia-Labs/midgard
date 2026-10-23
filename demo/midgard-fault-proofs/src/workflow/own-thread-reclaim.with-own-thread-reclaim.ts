@@ -21,7 +21,10 @@ import {
   threadReclaimIntents,
   threadReclaimUnavailableReason,
 } from "./own-thread-reclaim.js";
-import type { FraudProofOwnThreads } from "./raw-l1-family-derivation.own-thread.js";
+import type {
+  FraudProofOwnThreads,
+  FraudProofStandingThread,
+} from "./raw-l1-family-derivation.own-thread.js";
 import type { VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy.js";
 import {
   isFraudProofResolvedByAnotherRecordError,
@@ -44,6 +47,9 @@ export type OwnThreadReclaimPort = Readonly<{
     readonly headerHash: string;
   }): Promise<FraudProofOwnThreads>;
   unavailable?(): string | undefined;
+  /** Why a standing thread of ours is not the cancel's to reclaim, when the
+   * family's own route settles it instead. */
+  unreclaimable?(thread: FraudProofStandingThread): string | undefined;
   preflight(input: {
     readonly actionId: string;
     readonly headerHash: string;
@@ -113,20 +119,49 @@ export const withOwnThreadReclaim = <
     throw new Error(`${category} thread reclaim changed adapter identity`);
   }
   const finalDepth = releaseFinality.policy.automaticRecoveryMaxDepth + 2;
+  // One read of our threads per observation pass: the check before a
+  // resolution and the orchestrator's guard after it read the same view. A
+  // pass ends when the adapter is next asked to observe or act, or once the
+  // guard has read it.
+  const passes = new Map<string, Promise<FraudProofOwnThreads>>();
+  const passThreads = (headerHash: string) => {
+    const open = passes.get(headerHash);
+    if (open !== undefined) return open;
+    const threads = reclaim.observe({ headerHash });
+    passes.set(headerHash, threads);
+    return threads;
+  };
+  const endPass = (context: FraudProofWorkflowAdapterContext) => {
+    if (context.identity.target.kind === "state_queue_header")
+      passes.delete(context.identity.target.headerHash);
+  };
   const observeOwnThreads = async ({
     headerHash,
   }: {
     readonly headerHash: string;
-  }): Promise<FraudProofOwnThreads> => await reclaim.observe({ headerHash });
+  }): Promise<FraudProofOwnThreads> => {
+    try {
+      return await passThreads(headerHash);
+    } finally {
+      passes.delete(headerHash);
+    }
+  };
   const beforeResolution = async (
     context: FraudProofWorkflowAdapterContext,
     removal: { readonly confirmationDepth: number },
     resolved: () => FraudProofWorkflowObservation,
   ): Promise<FraudProofWorkflowObservation> => {
-    const threads = await observeOwnThreads({
-      headerHash: headerOf(category, context),
-    });
+    const threads = await passThreads(headerOf(category, context));
     if (threads.standing !== undefined) {
+      const unreclaimable = reclaim.unreclaimable?.(threads.standing);
+      if (unreclaimable !== undefined)
+        return {
+          kind: "pending",
+          reason: threadReclaimUnavailableReason(
+            threads.standing.threadOutRef,
+            unreclaimable,
+          ),
+        };
       // A removal still within rollback recovery may yet be dropped, and
       // the header with it come back live: our thread stays where it is.
       if (removal.confirmationDepth < finalDepth)
@@ -208,6 +243,7 @@ export const withOwnThreadReclaim = <
       : { validatePreparedRawArtifact: base.validatePreparedRawArtifact }),
     observeOwnThreads,
     observe: async (context) => {
+      endPass(context);
       let observed: FraudProofWorkflowObservation;
       try {
         observed = await base.observe(context);
@@ -232,6 +268,7 @@ export const withOwnThreadReclaim = <
       return observed;
     },
     preflight: async (context) => {
+      endPass(context);
       const { action } = context;
       if (!isThreadReclaimInput(action.input))
         return await base.preflight(context);
@@ -273,6 +310,7 @@ export const withOwnThreadReclaim = <
       }
     },
     submit: async (context) => {
+      endPass(context);
       if (!isReclaim(context.action)) return await base.submit(context);
       return {
         kind: "submitted",
@@ -280,6 +318,7 @@ export const withOwnThreadReclaim = <
       };
     },
     reconcile: async (context) => {
+      endPass(context);
       if (!isReclaim(context.action))
         try {
           return await base.reconcile(context);
