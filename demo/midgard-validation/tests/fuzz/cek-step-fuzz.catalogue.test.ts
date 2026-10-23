@@ -119,15 +119,21 @@ describe("catalogued classes of a step in no budget class", () => {
   };
   const step = () => stepExecuting(program, I_DATA);
 
-  it("iData of 2^64: the step's Data preimage holds an integer beyond one CBOR head", () => {
+  it("iData of 2^64: the step returns Data holding an integer beyond one CBOR head, over its leaf node alone", () => {
     const { witness } = step();
     expect(witness.kind).toBe("executeBuiltinSemantic");
     if (witness.kind !== "executeBuiltinSemantic") return;
-    expect(
-      witness.material.scalarPreimages.map((preimage) =>
-        Buffer.from(preimage).toString("hex"),
-      ),
-    ).toContain("c249010000000000000000");
+    expect(witness.material.dataNodes).toHaveLength(1);
+    expect(witness.material.scalarPreimages).toEqual([]);
+    expect(witness.result).toEqual(
+      semanticizeMidgardCekDirectConstant({
+        kind: "constant",
+        witness: {
+          typeCbor: encodeMidgardCekConstantTypeCbor({ kind: "data" }),
+          payloadCbor: Buffer.from("c249010000000000000000", "hex"),
+        },
+      }),
+    );
   });
 
   it("iData of 2^64: a budget stop is in no class", () => {
