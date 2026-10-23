@@ -5,13 +5,17 @@
  * is detected under any reason the purpose phase does not admit before it,
  * and never under one it admits. A rejection whose purpose fields the replay
  * cannot open yields no detection and does not stop the replay; an output's
- * reference script is not on the purpose walk.
+ * reference script is not on the purpose walk. An unresolved replay
+ * prerequisite behind such a rejection still stops the replay.
  */
 import {
   materializeMidgardNativeTxFromCanonical,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
-import { encodeMidgardValue } from "@al-ft/midgard-core/codec";
+import {
+  computeMidgardNativeTxId,
+  encodeMidgardValue,
+} from "@al-ft/midgard-core/codec";
 import {
   encodeCbor,
   encodeCborArrayRaw,
@@ -30,6 +34,7 @@ import {
   admitCompleteCanonicalReplayPredecessor,
   MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY,
 } from "../src/workflow/complete-replay.js";
+import { CanonicalReplayPrerequisiteError } from "../src/workflow/replay-prerequisite.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
 import {
   protectedScriptAddress,
@@ -43,7 +48,10 @@ import {
   plutusScript,
   redeemerMissingVerdict,
 } from "./support/missing-redeemer-emulator.subject.js";
-import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
+import {
+  buildDecodingBlockFixture,
+  decodingSubjectTransaction,
+} from "./support/native-script-decoding-emulator.js";
 
 const daProvenance = {
   trustClass: "public_or_permissionless_da",
@@ -61,11 +69,16 @@ const plutusExecutionFailed = rejected({
 });
 const unusedRedeemer = rejected({ UnusedRedeemer: { redeemer_index: 0n } });
 
-/** Installed replay of a block committing `nativeTx` as the forced leaf. */
+/** Installed replay of a block committing `nativeTx` as the forced leaf,
+ * with any further events `layout` commits beside it. */
 const replayOf = async (
   subjectShape: MissingRedeemerSubjectShape,
   nativeTx: MidgardNativeTxFull,
   verdict: SDK.OperatorVerdict,
+  layout: Pick<
+    Parameters<typeof buildDecodingBlockFixture>[0],
+    "additionalTransactions" | "orderEvents"
+  > = {},
 ) => {
   const entries = [
     ...(subjectShape.spend ?? []),
@@ -83,6 +96,7 @@ const replayOf = async (
       orderKey: FORCED_ORDER_KEY,
       verdict,
     },
+    ...layout,
   });
   const evidence = await canonicalBlockEvidenceFromVerifiedPayload({
     observation: authenticatedHeaderObservation({
@@ -267,6 +281,75 @@ describe("missingRedeemer under a later recorded reason", () => {
       await expect(
         replayOf(shape, malformedOutputReferenceScript(), verdict),
       ).resolves.toEqual(["redeemer-missing:1:0:2:0"]);
+    });
+  });
+
+  describe("an unresolved replay prerequisite", () => {
+    /** An accepted transaction paying one key-address output. */
+    const payment = (() => {
+      const base = decodingSubjectTransaction({ fee: 5_000n });
+      return materializeMidgardNativeTxFromCanonical({
+        version: base.version,
+        validity: base.validity,
+        body: {
+          ...base.body,
+          outputsPreimageCbor: encodeCbor([
+            encodeCborMapRaw([
+              [
+                encodeCborUnsigned(0n),
+                encodeCborBytes(Buffer.from(`60${"11".repeat(28)}`, "hex")),
+              ],
+              [encodeCborUnsigned(1n), value],
+            ]),
+          ]),
+        },
+        witnessSet: base.witnessSet,
+      });
+    })();
+
+    it("detects the missing redeemer when the payment is committed after it", async () => {
+      await expect(
+        replayOf(
+          shape,
+          buildMissingRedeemerSubject(shape).nativeTx,
+          plutusExecutionFailed,
+          {
+            additionalTransactions: [payment],
+          },
+        ),
+      ).resolves.toEqual(["redeemer-missing:1:0:2:0"]);
+    });
+
+    // The payment is committed first, with its post-ledger equal to its
+    // pre-ledger, so the ledger before the rejection cannot be replayed.
+    it("surfaces the prerequisite when the payment's committed effect differs", async () => {
+      const replay = replayOf(
+        shape,
+        buildMissingRedeemerSubject(shape).nativeTx,
+        plutusExecutionFailed,
+        {
+          additionalTransactions: [payment],
+          orderEvents: (events) => [...events].reverse(),
+        },
+      );
+      await expect(replay).rejects.toBeInstanceOf(
+        CanonicalReplayPrerequisiteError,
+      );
+      await expect(replay).rejects.toMatchObject({
+        failures: [
+          {
+            eventKeyCbor: Data.to(
+              {
+                L2TransactionEventKey: {
+                  tx_id: computeMidgardNativeTxId(payment).toString("hex"),
+                },
+              },
+              SDK.EventKey,
+            ),
+            prerequisite: "prior_transition_effect",
+          },
+        ],
+      });
     });
   });
 });
