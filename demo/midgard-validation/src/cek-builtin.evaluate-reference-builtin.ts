@@ -105,13 +105,7 @@ export const directConstantToReferenceValue = (
   return uncompressed;
 };
 
-const cardanoExactArgument = (
-  argument: MidgardCekDirectValueWitness,
-): CardanoExactValue => {
-  if (argument.kind !== "constant") {
-    throw new Error("non-control V1 builtin arguments must be constants");
-  }
-  const reference = directConstantToReferenceValue(argument.witness);
+const cardanoExactArgument = (reference: CEKConst): CardanoExactValue => {
   const type = reference.type[0];
   if (type === ConstTyTag.int) {
     return { kind: "integer", value: reference.value as bigint };
@@ -224,6 +218,31 @@ export const referenceConstantToDirectWitness = (
   return { kind: "constant", witness };
 };
 
+/**
+ * Cardano's builtin `tag` (flat numbering) on constant values, or "failure"
+ * where Cardano's builtin fails. It is the one value-level relation of the
+ * constant builtins: the direct route computes through it on revealed
+ * constants and the staged route on operands bound from their leaves.
+ */
+export const evaluateMidgardCekBuiltinOnValues = (
+  tag: number,
+  arguments_: readonly CEKConst[],
+): CEKConst | "failure" => {
+  if (MIDGARD_CEK_CARDANO_EXACT_BUILTIN_TAGS.has(tag)) {
+    const result = evaluateCardanoExactBuiltin(
+      tag,
+      arguments_.map(cardanoExactArgument),
+    );
+    return result === "failure" ? "failure" : cardanoExactResult(result);
+  }
+  const result = runPinnedReferenceBuiltin(tag, arguments_);
+  if (result instanceof CEKError) return "failure";
+  if (!(result instanceof CEKConst)) {
+    throw new Error("reference builtin returned a non-constant value");
+  }
+  return result;
+};
+
 const evaluateReferenceBuiltin = (
   tag: bigint,
   arguments_: readonly MidgardCekDirectValueWitness[],
@@ -303,15 +322,6 @@ const evaluateReferenceBuiltin = (
       true,
     );
   }
-  if (MIDGARD_CEK_CARDANO_EXACT_BUILTIN_TAGS.has(Number(tag))) {
-    const result = evaluateCardanoExactBuiltin(
-      Number(tag),
-      arguments_.map(cardanoExactArgument),
-    );
-    return result === "failure"
-      ? "failure"
-      : referenceConstantToDirectWitness(cardanoExactResult(result));
-  }
   const referenceArguments: CEKConst[] = [];
   for (const argument of arguments_) {
     if (argument.kind !== "constant") {
@@ -319,12 +329,13 @@ const evaluateReferenceBuiltin = (
     }
     referenceArguments.push(directConstantToReferenceValue(argument.witness));
   }
-  const result = runPinnedReferenceBuiltin(Number(tag), referenceArguments);
-  if (result instanceof CEKError) return "failure";
-  if (!(result instanceof CEKConst)) {
-    throw new Error("reference builtin returned a non-constant value");
-  }
-  return referenceConstantToDirectWitness(result);
+  const result = evaluateMidgardCekBuiltinOnValues(
+    Number(tag),
+    referenceArguments,
+  );
+  return result === "failure"
+    ? "failure"
+    : referenceConstantToDirectWitness(result);
 };
 
 const directFailureIsCharged = (

@@ -52,6 +52,8 @@ export {
   type MidgardCekSourceBlobTraceStep,
   nextMidgardCekSourceBlobSpan,
 } from "./cek-source-blob.js";
+export * from "./cek-staged-integer.js";
+export * from "./cek-staged-runs.js";
 export * from "./codec/index.js";
 export * from "./consensus-profile.js";
 export * from "./consensus-validation.js";

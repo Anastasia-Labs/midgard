@@ -1,0 +1,558 @@
+{
+  "generator": "demo/midgard-validation/scripts/generate-cek-staged-arm-v1-goldens.mjs",
+  "aikenModule": "onchain/aiken/validators/fraud-proofs/validation-trace/cek-core-staged-golden.test.ak",
+  "rows": [
+    {
+      "name": "appends_a_small_inline_operand_to_a_staged_operand",
+      "tag": 10,
+      "accepts": true,
+      "witnessHash": "bf94ea07f81f63b1e54a7b99bcd014e3dbb427c23e64a2d070669b22f523b5c1"
+    },
+    {
+      "name": "appends_two_staged_operands_at_the_argument_bound",
+      "tag": 10,
+      "accepts": true,
+      "witnessHash": "f13c31df5502cd7fbe9c14f880554601a262e713881f624247376a2966f9491c"
+    },
+    {
+      "name": "hashes_with_sha2_at_the_argument_bound",
+      "tag": 18,
+      "accepts": true,
+      "witnessHash": "708b03d6bb27645e36e3168fd8f004e06ea3dd6dd666c2f420257eff2e1a0dbf"
+    },
+    {
+      "name": "hashes_with_sha3",
+      "tag": 19,
+      "accepts": true,
+      "witnessHash": "33e104091116d53c8d9182f469af55dd5bc56107dcd5daf163b36b466cd0ad36"
+    },
+    {
+      "name": "hashes_with_sha3_at_the_argument_bound",
+      "tag": 19,
+      "accepts": true,
+      "witnessHash": "b8ec3edffb4523f50ba669e94d0a76fccf517ddec79761e83785e08bbe6927b5"
+    },
+    {
+      "name": "hashes_with_blake2b_256",
+      "tag": 20,
+      "accepts": true,
+      "witnessHash": "be23633f89af581938d7cbff1a8d9fa746fddb944b5f27177cc88908b1b813f4"
+    },
+    {
+      "name": "hashes_with_blake2b_256_at_the_argument_bound",
+      "tag": 20,
+      "accepts": true,
+      "witnessHash": "1ef84abad066c968ff2b2690dfd250de97547f952f0e43c4ebbd30f31d2f69b8"
+    },
+    {
+      "name": "hashes_with_keccak_256",
+      "tag": 71,
+      "accepts": true,
+      "witnessHash": "884455021bb375cfe4983b4c676cdd4f45f4480bb493832ff1d3006677437ae3"
+    },
+    {
+      "name": "hashes_with_keccak_256_at_the_argument_bound",
+      "tag": 71,
+      "accepts": true,
+      "witnessHash": "8ff95a7de34c2a1307558b3a04c10ad6c5433405c239492ef7c48d85e665e33d"
+    },
+    {
+      "name": "hashes_with_blake2b_224",
+      "tag": 72,
+      "accepts": true,
+      "witnessHash": "e67e6165b0689ded7e9230eb1eb6b960362c3a454f3d67b104b9f616dfa4d749"
+    },
+    {
+      "name": "hashes_with_blake2b_224_at_the_argument_bound",
+      "tag": 72,
+      "accepts": true,
+      "witnessHash": "f19e6755dff69c8a179530d32d047b1242345af13644a29ba7ad4e550612c349"
+    },
+    {
+      "name": "hashes_with_ripemd_160",
+      "tag": 86,
+      "accepts": true,
+      "witnessHash": "b535408e281f44e86624ff159d0eeed57a3a7aeb1398eec174c0c31d4850c345"
+    },
+    {
+      "name": "hashes_with_ripemd_160_at_the_argument_bound",
+      "tag": 86,
+      "accepts": true,
+      "witnessHash": "a36837e2ce59b35af309f76d50e757761a67ef0e81d2987a89ca14db7254f747"
+    },
+    {
+      "name": "conses_a_byte_onto_a_staged_operand",
+      "tag": 11,
+      "accepts": true,
+      "witnessHash": "02993e30110e3f37a445a862beeee69e97bb4d4aeb14348bda71b4dca12615d3"
+    },
+    {
+      "name": "conses_a_byte_onto_an_operand_at_the_argument_bound",
+      "tag": 11,
+      "accepts": true,
+      "witnessHash": "b56df483bfbe7fad5b372224f65022191a8909a61337623b47f0681ca629f99f"
+    },
+    {
+      "name": "slices_an_operand_at_the_argument_bound",
+      "tag": 12,
+      "accepts": true,
+      "witnessHash": "6caaf76d87f9fe42e18843845aedbee6c4fb64dac50b29dcb46ee5cb37584622"
+    },
+    {
+      "name": "measures_an_operand_past_the_argument_bound_from_its_leaf",
+      "tag": 13,
+      "accepts": true,
+      "witnessHash": "481e6c0eb2ddcb44cf9a4ba677dc69a2a84950eee443d26ccf05b6ae047ed23e"
+    },
+    {
+      "name": "indexes_the_last_byte_of_a_staged_operand",
+      "tag": 14,
+      "accepts": true,
+      "witnessHash": "ae613d99383f8b5da76986c9d213e7d366b71ad98801417917d865d610506a2b"
+    },
+    {
+      "name": "indexes_the_last_byte_at_the_argument_bound",
+      "tag": 14,
+      "accepts": true,
+      "witnessHash": "413007c38a26a10e2b4e53fc2cd5fbe016755550a17c454eb685fc52d198fac6"
+    },
+    {
+      "name": "compares_equal_operands_at_the_argument_bound_by_leaf",
+      "tag": 15,
+      "accepts": true,
+      "witnessHash": "2232eb70a665975b8d2377ccb149f49c007a8fcee5303f97caf9775a16c243b8"
+    },
+    {
+      "name": "compares_unequal_operands_by_leaf",
+      "tag": 15,
+      "accepts": true,
+      "witnessHash": "778414efdd8d6591ef59a051e75cb0298eebd787d67ff0d83f1f6ab6868f0afa"
+    },
+    {
+      "name": "orders_two_staged_operands_strictly",
+      "tag": 16,
+      "accepts": true,
+      "witnessHash": "de556cc49ac0b1a8b90ba5ac35ef44d9ff0fa8c0848651a0369d648614073d61"
+    },
+    {
+      "name": "orders_two_staged_operands_at_the_argument_bound",
+      "tag": 17,
+      "accepts": true,
+      "witnessHash": "b5de009fb2bfbe21feb959c1202a7f702f9425197799a2f60fe52bcbbf3e1974"
+    },
+    {
+      "name": "appends_two_staged_strings_past_the_argument_bound",
+      "tag": 22,
+      "accepts": true,
+      "witnessHash": "2bac31fc9a76697a1fe7161760ef37e2a22a2d0fabb45725efa28be379987904"
+    },
+    {
+      "name": "compares_strings_past_the_argument_bound_by_leaf",
+      "tag": 23,
+      "accepts": true,
+      "witnessHash": "d1bb7cd0cd9ee4fd9e39857d0893eda676465bbea5d6f5cc72df9be97494d87c"
+    },
+    {
+      "name": "encodes_a_string_past_the_argument_bound",
+      "tag": 24,
+      "accepts": true,
+      "witnessHash": "f8ff5f4cd58302843cc0525ca61dc89e310d4a33096d7cbc5f95cb2d99de656e"
+    },
+    {
+      "name": "decodes_a_staged_operand_to_a_string",
+      "tag": 25,
+      "accepts": true,
+      "witnessHash": "4e95dd3a25e535f772793e8dbb2e90b7bd53d29f0f6b3db7e026df1b21acec3c"
+    },
+    {
+      "name": "decodes_an_operand_at_the_argument_bound",
+      "tag": 25,
+      "accepts": true,
+      "witnessHash": "eaa1172bc8c9946ad29e26e5a5d716cc0b1f0e1d4684a556dedfe4ddf58f8ddd"
+    },
+    {
+      "name": "operands_with_equal_bytes_share_staging_outputs",
+      "tag": 17,
+      "accepts": true,
+      "witnessHash": "a0885ee094f2662b81c904526f2ba4bd16fcfdcab3f8ea6edd846042af62cce8"
+    },
+    {
+      "name": "appends_inline_operands_as_the_direct_route_does",
+      "tag": 10,
+      "accepts": true,
+      "witnessHash": "dc4eb9ec9bd4b2029be32c53688585b74b8ad2a01d72dcf884b4ba64fe64bc35"
+    },
+    {
+      "name": "hashes_an_inline_operand_as_the_direct_route_does",
+      "tag": 18,
+      "accepts": true,
+      "witnessHash": "befb4752ebdd2b5152e2f2f635b0f7a1438551f10796f5431ad5f50077103380"
+    },
+    {
+      "name": "measures_an_inline_operand_as_the_direct_route_does",
+      "tag": 13,
+      "accepts": true,
+      "witnessHash": "b7caec75a13e510232b73a5b478f276d1b6d4a1c19f2a60d25f8b455ab19be39"
+    },
+    {
+      "name": "refuses_a_wrong_digest",
+      "tag": 18,
+      "accepts": false,
+      "witnessHash": "f04556d7fbf524d2e5994b43ee74416e5c0b677701bd001697dc19792c62c280"
+    },
+    {
+      "name": "refuses_a_concatenation_with_its_last_byte_changed",
+      "tag": 10,
+      "accepts": false,
+      "witnessHash": "13361c742900e459e651c87390b8381db4113d21ee6e418ad2cf011f9a756d32"
+    },
+    {
+      "name": "refuses_a_wrong_byte_string_comparison",
+      "tag": 16,
+      "accepts": false,
+      "witnessHash": "79cabc0e7863b159144f446fe5619f6b00f581e762466ce25fd81c00c2f8f732"
+    },
+    {
+      "name": "refuses_a_wrong_length",
+      "tag": 13,
+      "accepts": false,
+      "witnessHash": "fe6bd2ddc316b6b0405e2fa1f4071dc6bd63c3906d4bf45bbe5f97ab37b4edf3"
+    },
+    {
+      "name": "refuses_a_byte_string_result_typed_as_a_string",
+      "tag": 10,
+      "accepts": false,
+      "witnessHash": "10edb336a3308741c10dacc45b990c0caaeb804103dfb08aa3e2a801221f7041"
+    },
+    {
+      "name": "refuses_a_cons_of_a_value_past_a_byte",
+      "tag": 11,
+      "accepts": false,
+      "witnessHash": "ff66914fd32a4b09fbcc928e9750b9b0b99a50e3b69d6a0bfc1179f12f668433"
+    },
+    {
+      "name": "refuses_an_append_with_an_operand_past_the_argument_bound",
+      "tag": 10,
+      "accepts": false,
+      "witnessHash": "827ea57b20d049adc728a0d900fa7ec75186c0f5e3be3fcb978c6dc05ac0f16b"
+    },
+    {
+      "name": "refuses_a_sha2_256_past_the_argument_bound",
+      "tag": 18,
+      "accepts": false,
+      "witnessHash": "98638eb69e3f72772fc13256d9322351a1776a8211686be9288375c2c2677810"
+    },
+    {
+      "name": "refuses_a_sha3_256_past_the_argument_bound",
+      "tag": 19,
+      "accepts": false,
+      "witnessHash": "071b0f52f4b03552f8dcb64aa8417f79309b864459ceaf2f168e37e957c47ba6"
+    },
+    {
+      "name": "refuses_a_blake2b_256_past_the_argument_bound",
+      "tag": 20,
+      "accepts": false,
+      "witnessHash": "ec41fce7b234ca3b1a4b47802be3a82852f1a2e058ce1d1e3bcf19dc794519aa"
+    },
+    {
+      "name": "refuses_a_keccak_256_past_the_argument_bound",
+      "tag": 71,
+      "accepts": false,
+      "witnessHash": "1b8da56178a02f87ab2a88369f616dbd5bfc1e8a72a277e4ffb063506868fc62"
+    },
+    {
+      "name": "refuses_a_blake2b_224_past_the_argument_bound",
+      "tag": 72,
+      "accepts": false,
+      "witnessHash": "d3f30ff020f1a5e3a2a9739723437bb9be2a600b92bffb96c410bb0d85d953e2"
+    },
+    {
+      "name": "refuses_a_ripemd_160_past_the_argument_bound",
+      "tag": 86,
+      "accepts": false,
+      "witnessHash": "38464b3eb858ee05f599bc2492829a8fd516ca167bca56be3b94606f0426911b"
+    },
+    {
+      "name": "refuses_a_decoding_past_the_argument_bound",
+      "tag": 25,
+      "accepts": false,
+      "witnessHash": "04ef21528b017b6c58144b6b0dc88da0ca63f0899afdbcfe23d102564eebfd31"
+    },
+    {
+      "name": "refuses_an_equality_of_operands_past_the_argument_bound",
+      "tag": 15,
+      "accepts": false,
+      "witnessHash": "a773bcfb09ba5b967cb0ea31a3815c863ddfbaf5a9e6f0ace5c8ac792271ba36"
+    },
+    {
+      "name": "refuses_a_slice_of_an_operand_past_the_argument_bound",
+      "tag": 12,
+      "accepts": false,
+      "witnessHash": "5a5813a7213dba88a5b04d30f52ac18c395cdc99645f472efca06f8b93c668f1"
+    },
+    {
+      "name": "refuses_a_cons_onto_an_operand_past_the_argument_bound",
+      "tag": 11,
+      "accepts": false,
+      "witnessHash": "631a94f224a88a80c62015f92e8824cd0944ddaebae72401052fcff89aea32e6"
+    },
+    {
+      "name": "refuses_an_index_into_an_operand_past_the_argument_bound",
+      "tag": 14,
+      "accepts": false,
+      "witnessHash": "8c8959c68ef3e4127755023c2e46be60176c8b27f4940387b091b86bd5cef5cf"
+    },
+    {
+      "name": "refuses_an_order_of_operands_past_the_argument_bound",
+      "tag": 17,
+      "accepts": false,
+      "witnessHash": "cb1fdc11300c4ca32a864e90490fe8bc4b5e3bff2ae74fb2bb2892f2defc5ca0"
+    },
+    {
+      "name": "refuses_a_strict_order_with_one_operand_past_the_argument_bound",
+      "tag": 16,
+      "accepts": false,
+      "witnessHash": "31fea66b3d62be7888084ed7d313c0875e9ff15fa6d7c0985ea7c313b9182fb3"
+    },
+    {
+      "name": "adds_staged_operands_of_9216_bytes",
+      "tag": 0,
+      "accepts": true,
+      "witnessHash": "03a7771df913a409e6556ae6463823fbeb4c4f69ef9ddbf75d66b4657360e845"
+    },
+    {
+      "name": "subtracts_16_kilobyte_operands_to_a_negative_result",
+      "tag": 1,
+      "accepts": true,
+      "witnessHash": "3c3b4af28b618c816007d129959fb54976f128b858984dcc6d73b1e30ad3415b"
+    },
+    {
+      "name": "adds_32_kilobyte_operands_with_mixed_signs",
+      "tag": 0,
+      "accepts": true,
+      "witnessHash": "a86674c869b5f90f18e390af4cd5b20f20aa5e35bfa5829c77f622456369c428"
+    },
+    {
+      "name": "adds_with_a_carry_through_every_limb_at_the_argument_bound",
+      "tag": 0,
+      "accepts": true,
+      "witnessHash": "c112728ac9416e40e2087dab9d9042cdcc3394b3c4aae709737ba3c60d28ec90"
+    },
+    {
+      "name": "adds_negative_operands_at_the_argument_bound",
+      "tag": 0,
+      "accepts": true,
+      "witnessHash": "d984741952798968c77e117239343b10ce69d31afee5d978356a6d0880829f53"
+    },
+    {
+      "name": "subtracts_to_zero",
+      "tag": 1,
+      "accepts": true,
+      "witnessHash": "28cd64f07d7c3ffd48e0c98e05b70d4c85d25fa6964f1df6a31a27984cfdbd6f"
+    },
+    {
+      "name": "adds_a_small_inline_operand_to_a_staged_operand",
+      "tag": 0,
+      "accepts": true,
+      "witnessHash": "48e4ed7f3b1933d5e611dff56646ea9c588992033f46f6712fe6ef4051ec1634"
+    },
+    {
+      "name": "subtracts_a_staged_operand_from_a_small_inline_operand",
+      "tag": 1,
+      "accepts": true,
+      "witnessHash": "340786e75551ebfa851f3094ca85a255640e6dddf097eed431ab495417f90f5c"
+    },
+    {
+      "name": "admits_the_largest_argument_and_result",
+      "tag": 0,
+      "accepts": true,
+      "witnessHash": "c9ec2d7b9c6381e632fc042341140eb05708920d256cd99ba25854f0c8d7eb2c"
+    },
+    {
+      "name": "admits_the_smallest_argument_and_result",
+      "tag": 1,
+      "accepts": true,
+      "witnessHash": "7a3ea6542b81dc1e09f1edf89e23ebfefe94de67985626305d83ea2746f898fc"
+    },
+    {
+      "name": "reaches_the_largest_result_from_operands_in_range",
+      "tag": 0,
+      "accepts": true,
+      "witnessHash": "569cdb5aa3263a5a8e61b5a2a03e1da6c037eaec2184dca3cfb0a982847c8b20"
+    },
+    {
+      "name": "reaches_the_smallest_result_from_operands_in_range",
+      "tag": 1,
+      "accepts": true,
+      "witnessHash": "23abbb5b787f10ada639364cce425f57dbc5a8ac3e25c09f34a37194419fcc11"
+    },
+    {
+      "name": "orders_staged_operands_at_the_argument_bound",
+      "tag": 8,
+      "accepts": true,
+      "witnessHash": "9bee84db586aeac96e29848dca4b36eba509ad24cb41fdb98d088e99840da353"
+    },
+    {
+      "name": "orders_reversed_operands_at_the_argument_bound",
+      "tag": 8,
+      "accepts": true,
+      "witnessHash": "3afb87f47fad5f2ef868968ad235f203286f73e1290a5f90208ed9239027b190"
+    },
+    {
+      "name": "orders_equal_operands_strictly",
+      "tag": 8,
+      "accepts": true,
+      "witnessHash": "83e0f1dc2c263be4f262230405a48847c5958c216eb89ac727dcba6e539ff7a5"
+    },
+    {
+      "name": "orders_equal_operands_weakly",
+      "tag": 9,
+      "accepts": true,
+      "witnessHash": "75312ce893dd7426dc615af984f05ddc5fedbe9f4021f7328479b9c6af6e34f4"
+    },
+    {
+      "name": "orders_negative_below_positive",
+      "tag": 8,
+      "accepts": true,
+      "witnessHash": "253859013da4c967729ee9e5d5cbd68714fd0c4f610ae6f27817404b9822bbbb"
+    },
+    {
+      "name": "orders_positive_above_negative",
+      "tag": 9,
+      "accepts": true,
+      "witnessHash": "dbe84dfbde8fbeb40d2371c9c6ab3beda6b275951f17f727da66b8f42e147d17"
+    },
+    {
+      "name": "orders_two_negative_operands",
+      "tag": 8,
+      "accepts": true,
+      "witnessHash": "cc1fa0480146b26adbb1b926d53ea770d7be60c3ff3e19dae3d17e95b3f82d21"
+    },
+    {
+      "name": "equates_integers_past_the_argument_range_by_leaf",
+      "tag": 7,
+      "accepts": true,
+      "witnessHash": "a01a0735b48c42793e9db26b0ce75e100b0ef9ca19be2ec7f5e2f7e98c4e40a4"
+    },
+    {
+      "name": "tells_apart_integers_past_the_argument_range_by_leaf",
+      "tag": 7,
+      "accepts": true,
+      "witnessHash": "a62e408f0283ebcfbc77190f3d2f0f5ef965835453b4a73c81e548de6dd7ea47"
+    },
+    {
+      "name": "equates_staged_integers",
+      "tag": 7,
+      "accepts": true,
+      "witnessHash": "3fce96fab00424c47934994c9c251adb15063f2e33f98bdf2f519ab031fd8865"
+    },
+    {
+      "name": "tells_apart_staged_integers_of_opposite_signs",
+      "tag": 7,
+      "accepts": true,
+      "witnessHash": "59d53624931f5a3e5344ec11130a29cc4274b1fbc295d99195b23c99ecf9123b"
+    },
+    {
+      "name": "computes_tag_0_on_inline_operands_as_the_direct_route_does",
+      "tag": 0,
+      "accepts": true,
+      "witnessHash": "3724385e09101bc0f9868551b67cb3b92fee655d89871e2262ab404fecc286eb"
+    },
+    {
+      "name": "computes_tag_1_on_inline_operands_as_the_direct_route_does",
+      "tag": 1,
+      "accepts": true,
+      "witnessHash": "bac89bb4cb320bd1901953bc83625cc7bcef45e9d88ff0e2963b407e8e519195"
+    },
+    {
+      "name": "computes_tag_7_on_inline_operands_as_the_direct_route_does",
+      "tag": 7,
+      "accepts": true,
+      "witnessHash": "d25aa7959541bfe207150ca9a3f3eabd2e889092c46566fbe0fca6949cc10eba"
+    },
+    {
+      "name": "computes_tag_8_on_inline_operands_as_the_direct_route_does",
+      "tag": 8,
+      "accepts": true,
+      "witnessHash": "68d5fcc066f2eaa7e9a7244e1077b0547c3a4647facb88af0da5817a341fd220"
+    },
+    {
+      "name": "computes_tag_9_on_inline_operands_as_the_direct_route_does",
+      "tag": 9,
+      "accepts": true,
+      "witnessHash": "6b24fcd518237c779b027d9dbd94432648efcc6f0da764d74ff04cf7663add39"
+    },
+    {
+      "name": "refuses_a_sum_missing_its_top_carry",
+      "tag": 0,
+      "accepts": false,
+      "witnessHash": "9b3f91b2db32dce8d817762a09586a4e8275f917c65b082d10251d9451109a71"
+    },
+    {
+      "name": "refuses_a_sum_off_by_one",
+      "tag": 0,
+      "accepts": false,
+      "witnessHash": "2780f6b3215acb5e6cd5015b3e73ff226ec4994e7dfb2fb96c87ce0e063d5a10"
+    },
+    {
+      "name": "refuses_a_difference_of_the_wrong_sign",
+      "tag": 1,
+      "accepts": false,
+      "witnessHash": "adb39dde068d56bf9ef3e2ec16d048e0ecc29c449bf00c4aab5320936838cbd1"
+    },
+    {
+      "name": "refuses_a_wrong_integer_comparison",
+      "tag": 8,
+      "accepts": false,
+      "witnessHash": "eb576eb80c46492a87775eadf86761eedc804b547adb0da208f36e83918e5888"
+    },
+    {
+      "name": "refuses_a_wrong_equality",
+      "tag": 7,
+      "accepts": false,
+      "witnessHash": "c3f9fc735807f9846c06d952b5dbb6d98d5a57e2c04326e32836f6c347bf341b"
+    },
+    {
+      "name": "refuses_a_sum_typed_as_a_byte_string",
+      "tag": 0,
+      "accepts": false,
+      "witnessHash": "2f4817b3e7ad7a7e1c51ff858ef7935bec23ed63990ef4ea38b2fd8f0d0c7417"
+    },
+    {
+      "name": "refuses_an_argument_one_past_the_largest",
+      "tag": 0,
+      "accepts": false,
+      "witnessHash": "78fd7c9fefd2ee6f68cce5bd96dc60d123552d9986d480418b2d917488d41944"
+    },
+    {
+      "name": "refuses_an_argument_one_past_the_smallest",
+      "tag": 0,
+      "accepts": false,
+      "witnessHash": "72835484d23b5352c1b95deb3505626cb6b710468480b19f1f046690df517792"
+    },
+    {
+      "name": "refuses_an_argument_of_32769_magnitude_bytes",
+      "tag": 1,
+      "accepts": false,
+      "witnessHash": "884c117eb3455d692b465599f748834ea4814fc384f29606ae41419b583119a4"
+    },
+    {
+      "name": "refuses_an_order_of_an_argument_past_the_range",
+      "tag": 8,
+      "accepts": false,
+      "witnessHash": "0810b1aaf8b477e703b8ec8a99c7578b65c6ed39bee7e4c0bff95734c06b16c9"
+    },
+    {
+      "name": "refuses_a_sum_one_past_the_largest",
+      "tag": 0,
+      "accepts": false,
+      "witnessHash": "2367ceb0655428b30a4cd61cdf34591cdad338e15cf00bd96eed502bc0ebed03"
+    },
+    {
+      "name": "refuses_a_difference_one_past_the_smallest",
+      "tag": 1,
+      "accepts": false,
+      "witnessHash": "e13e14a216e931432eee6a3a6a84cb1b0b2b346c234dd0f313572dbbfca664ed"
+    }
+  ]
+}
