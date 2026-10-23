@@ -2,6 +2,7 @@
  * shared orchestrator, one emulator block per run. */
 import { createValidationTraceDisputeWorkflowAdapter } from "../../src/validation-trace-dispute/adapter.js";
 import type { ValidationTraceCaseHistory } from "../../src/validation-trace-dispute/case-history.js";
+import { withValidationTraceOwnThreadReclaim } from "../../src/validation-trace-dispute/own-thread-reclaim.js";
 import type { ValidationTraceRemovalConfig } from "../../src/validation-trace-dispute/removal.js";
 import type { ValidationTraceDisputeDeployment } from "../../src/validation-trace-dispute/transactions.js";
 import {
@@ -18,6 +19,7 @@ import {
 } from "../../src/workflow/orchestrator.js";
 import {
   DEPLOYMENT_FINGERPRINT,
+  RELEASE_FINALITY_POLICY,
   releaseFinalityAuthority,
   terminalVerifier,
 } from "../workflow.make-adapter.js";
@@ -135,10 +137,11 @@ export const makeRunner = (
   const journal = options.journal ?? new MemoryFraudProofWorkflowJournalStore();
   const signedRecovery =
     options.signedRecovery ?? emulatorSignedTransactionRecovery(h.emulator);
-  const adapter = createValidationTraceDisputeWorkflowAdapter({
+  const deployment = options.deployment ?? runnerDeployment(scene);
+  const base = createValidationTraceDisputeWorkflowAdapter({
     lucid: prover.lucid,
     signer: prover.signer,
-    deployment: options.deployment ?? runnerDeployment(scene),
+    deployment,
     l1SlotConfig,
     removal: options.removal ?? unobservedRemoval,
     signedRecovery,
@@ -151,6 +154,20 @@ export const makeRunner = (
     },
     now: options.now ?? (() => h.emulator.now()),
   });
+  // With the block's L1 view observed, the adapter is composed as the
+  // deployment composes it: the reclaim of our thread in front of it.
+  const adapter =
+    options.removal === undefined
+      ? base
+      : withValidationTraceOwnThreadReclaim({
+          base,
+          lucid: prover.lucid,
+          signer: prover.signer,
+          deployment,
+          l1For: options.removal.l1For,
+          signedRecovery,
+          releaseFinality: { policy: RELEASE_FINALITY_POLICY },
+        });
   const registry = createFraudProofWorkflowRegistry({
     adapters: [options.wrap?.(adapter) ?? adapter],
     launchScope: ["validationTraceDispute"],
