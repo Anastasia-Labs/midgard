@@ -16,6 +16,7 @@ import {
   type FraudProofWorkflowRunResult,
   journalRepeatsStall,
 } from "./orchestrator.fraud-proof-workflow-run-result.js";
+import { threadReclaimNamedState } from "./own-thread-reclaim.js";
 
 /** An action of the run that does not build; `message` is the alarm. */
 export class WorkflowActionUnbuiltError extends WorkflowActionChangedError {
@@ -106,6 +107,18 @@ export const workflowRunOutcomes = ({
     entries: entries(),
     ...unbuilt.field(),
   });
+  // A thread of ours left standing on a removed header that the run cannot
+  // reclaim yet: held under the operator's alarm, resumed on observation.
+  const named = (reason: string): FraudProofWorkflowRunResult | undefined => {
+    const namedState = threadReclaimNamedState(reason);
+    return namedState === undefined
+      ? undefined
+      : {
+          ...result("pending", reason),
+          resumeOnObservation: true,
+          namedState,
+        };
+  };
   return Object.freeze({
     stalled: async (
       reason: string,
@@ -119,10 +132,11 @@ export const workflowRunOutcomes = ({
       };
     },
     pending: (reason: string): FraudProofWorkflowRunResult =>
-      result("pending", reason),
-    resumeOnObservation: (reason: string): FraudProofWorkflowRunResult => ({
-      ...result("pending", reason),
-      resumeOnObservation: true,
-    }),
+      named(reason) ?? result("pending", reason),
+    resumeOnObservation: (reason: string): FraudProofWorkflowRunResult =>
+      named(reason) ?? {
+        ...result("pending", reason),
+        resumeOnObservation: true,
+      },
   });
 };

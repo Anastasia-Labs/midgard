@@ -61,6 +61,9 @@ export type RecordedRemoval = Readonly<{
 export const recordedRemoval = async (
   scene: Scene,
   recorder: ReturnType<typeof recordCrossBlockRawEmulator>,
+  /** The prover whose records the ports read as ours; by default the
+   * scene's. */
+  proverCredential: string = scene.h.proverSigner.paymentKeyHash,
 ): Promise<RecordedRemoval> => {
   const { h, chain } = scene;
   const fixture = makeWatcherDeploymentAuthorityFixture();
@@ -96,7 +99,7 @@ export const recordedRemoval = async (
     category: "validationTraceDispute",
     categoryId: category.categoryId,
     headerHash,
-    proverCredential: h.proverSigner.paymentKeyHash,
+    proverCredential,
     stateQueue: {
       policyId: h.contracts.stateQueue.policyId,
       address: h.contracts.stateQueue.spendingScriptAddress,

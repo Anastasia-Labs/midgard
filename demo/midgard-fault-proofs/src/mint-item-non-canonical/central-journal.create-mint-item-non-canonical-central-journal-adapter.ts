@@ -19,18 +19,25 @@ import {
   normalizeJournalJson,
   validateFraudProofWorkflowJournal,
 } from "../workflow/journal.js";
+import type { FraudProofWorkflowPreflight } from "../workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
 import {
   type FraudProofWorkflowAction,
   type FraudProofWorkflowTerminalVerifier,
   normalizeWorkflowTerminal,
 } from "../workflow/orchestrator.js";
+import { isThreadReclaimInput } from "../workflow/own-thread-reclaim.js";
 import {
   validateVerifiedFraudProofReleaseFinalityPolicy,
   type VerifiedFraudProofReleaseFinalityPolicy,
 } from "../workflow/release-finality-policy.js";
+import {
+  type FraudProofResolvedByAnotherRecord,
+  journalCreatedRecord,
+} from "../workflow/resolved-by-another-record.js";
 import { reconcileSignedWorkflowTransaction } from "../workflow/signed-transaction-reconciliation.js";
 import {
   bindWorkflowPreflightTransaction,
+  copyWorkflowPreflightTransaction,
   type FraudProofPreSubmitBoundary,
   LOCAL_UPLC_EVALUATOR,
   workflowTransactionInputOutRefs,
@@ -160,12 +167,9 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
     await appendEvent({ kind: "prepared", artifact, artifactDigest });
   };
 
-  const begin = async (
-    kind: SubmitAction,
+  const beginAction = async (
     familyIdentity: string,
-    sourceStage: MintItemStage,
-    targetStage: MintItemStage,
-    removal?: MintItemRemovalAction,
+    action: FraudProofWorkflowAction,
   ): Promise<void> => {
     await ensurePrepared(familyIdentity);
     if (unresolvedIntent(await entries(), store) !== undefined) {
@@ -174,19 +178,23 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
       );
     }
     assertActuation("before_preflight");
-    await beginWorkflowFundingReservationAction({
-      journal: store,
-      action: workflowAction(
+    await beginWorkflowFundingReservationAction({ journal: store, action });
+  };
+  const begin = async (
+    kind: SubmitAction,
+    familyIdentity: string,
+    sourceStage: MintItemStage,
+    targetStage: MintItemStage,
+    removal?: MintItemRemovalAction,
+  ): Promise<void> =>
+    await beginAction(
+      familyIdentity,
+      workflowAction(
         kind,
-        {
-          familyIdentity,
-          sourceStage,
-          targetStage,
-        },
+        { familyIdentity, sourceStage, targetStage },
         removal,
       ),
-    });
-  };
+    );
 
   const boundary =
     (
@@ -216,71 +224,83 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
         throw new Error(
           "mintItemNonCanonical removal changed its authenticated inputs",
         );
-      const current = await entries();
-      const prior = unresolvedIntent(current, store);
-      if (prior?.event.kind === "submission_intent") {
-        if (
-          prior.event.actionId !== action.actionId ||
-          prior.event.txHash !== transaction.txHash
-        ) {
-          throw new Error(
-            "mintItemNonCanonical transaction identity changed across restart",
-          );
-        }
-        return;
-      }
-      const attempt =
-        current.filter(
-          ({ event }) =>
-            event.kind === "submission_intent" &&
-            event.actionId === action.actionId,
-        ).length + 1;
-      const preflight = bindWorkflowPreflightTransaction(
-        {
-          actionId: action.actionId,
-          txHash: transaction.txHash,
-          scriptExecution: "reference_scripts" as const,
-          localUplcEvaluation: {
-            status: "passed" as const,
-            evaluator: LOCAL_UPLC_EVALUATOR,
-          },
-          referenceScripts: transaction.referenceScripts,
-          durableRecovery: recovery,
-        },
-        transaction.signed,
-      );
-      await beginWorkflowFundingReservationAction({
-        journal: store,
+      await recordIntent(
         action,
-      });
-      await prepareWorkflowFundingReservationTransaction({
-        writer,
-        action,
-        preflight,
-        events: [
+        recovery,
+        bindWorkflowPreflightTransaction(
           {
-            kind: "preflight_passed",
             actionId: action.actionId,
             txHash: transaction.txHash,
-            localEvaluator: LOCAL_UPLC_EVALUATOR,
+            scriptExecution: "reference_scripts" as const,
+            localUplcEvaluation: {
+              status: "passed" as const,
+              evaluator: LOCAL_UPLC_EVALUATOR,
+            },
             referenceScripts: transaction.referenceScripts,
-          },
-          {
-            kind: "submission_intent",
-            actionId: action.actionId,
-            actionInput: action.input,
             durableRecovery: recovery,
-            attempt,
-            txHash: transaction.txHash,
           },
-        ],
-      });
-      assertActuation("before_submit");
-      await assertMintItemReadyToSubmitAfterIntent({
-        journal: store,
-        transactionHash: transaction.txHash,
-      });
+          transaction.signed,
+        ),
+      );
     };
+
+  /** Journals `action`'s exact signed transaction ahead of its submission. */
+  const recordIntent = async (
+    action: FraudProofWorkflowAction,
+    recovery: DurableRecovery,
+    preflight: FraudProofWorkflowPreflight,
+  ): Promise<void> => {
+    const current = await entries();
+    const prior = unresolvedIntent(current, store);
+    if (prior?.event.kind === "submission_intent") {
+      if (
+        prior.event.actionId !== action.actionId ||
+        prior.event.txHash !== preflight.txHash
+      ) {
+        throw new Error(
+          "mintItemNonCanonical transaction identity changed across restart",
+        );
+      }
+      return;
+    }
+    const attempt =
+      current.filter(
+        ({ event }) =>
+          event.kind === "submission_intent" &&
+          event.actionId === action.actionId,
+      ).length + 1;
+    await beginWorkflowFundingReservationAction({
+      journal: store,
+      action,
+    });
+    await prepareWorkflowFundingReservationTransaction({
+      writer,
+      action,
+      preflight,
+      events: [
+        {
+          kind: "preflight_passed",
+          actionId: action.actionId,
+          txHash: preflight.txHash,
+          localEvaluator: LOCAL_UPLC_EVALUATOR,
+          referenceScripts: preflight.referenceScripts,
+        },
+        {
+          kind: "submission_intent",
+          actionId: action.actionId,
+          actionInput: action.input,
+          durableRecovery: recovery,
+          attempt,
+          txHash: preflight.txHash,
+        },
+      ],
+    });
+    assertActuation("before_submit");
+    await assertMintItemReadyToSubmitAfterIntent({
+      journal: store,
+      transactionHash: preflight.txHash,
+    });
+  };
 
   const reconcile = createMintItemCanonicalReconciliation({
     writer,
@@ -291,6 +311,21 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
     observeSignedTransaction,
     rebroadcastSignedTransaction,
   });
+
+  /** Journals the reclaim of one of our threads like any other move. */
+  const recordReclaimIntent = async (
+    action: FraudProofWorkflowAction,
+    recovery: DurableRecovery,
+    preflight: FraudProofWorkflowPreflight,
+  ): Promise<void> =>
+    await recordIntent(
+      action,
+      recovery,
+      copyWorkflowPreflightTransaction({
+        from: preflight,
+        to: { ...preflight, durableRecovery: recovery },
+      }),
+    );
 
   const auxiliaryBoundary =
     (
@@ -425,14 +460,18 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
   };
 
   /** Preserve the legacy prepared record while using the standard terminal and funding checks. */
-  const finish = async ({
+  const finish = async <Other>({
     candidate,
     releaseFinality: policy,
     verifier,
+    otherRecord,
   }: {
     candidate: FraudProofWorkflowTerminal;
     releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
     verifier: FraudProofWorkflowTerminalVerifier;
+    otherRecord: (
+      resolution: FraudProofResolvedByAnotherRecord,
+    ) => Promise<Other>;
   }) => {
     const releaseFinality =
       validateVerifiedFraudProofReleaseFinalityPolicy(policy);
@@ -446,6 +485,14 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
       entries: current,
       expectedIdentity: identity,
     });
+    // A record this run never confirmed is a sibling's: never our conviction.
+    if (!journalCreatedRecord(current, candidate.proofToken.createdByTxHash))
+      return await otherRecord({
+        removalTxHash: candidate.correction.removalTxHash,
+        referencedProofTokenOutRef:
+          candidate.correction.referencedProofTokenOutRef,
+        confirmationDepth: candidate.observedAt.confirmationDepth,
+      });
     const prepared = current[1]?.event;
     if (prepared?.kind !== "prepared")
       throw new Error(
@@ -581,7 +628,11 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
           );
         }
         const recovery = recoveryFrom(intent);
-        if (recovery.auxiliary === true) continue;
+        if (
+          recovery.auxiliary === true ||
+          isThreadReclaimInput(intent.event.actionInput)
+        )
+          continue;
         if (recovery.familyIdentity !== familyIdentity) {
           throw new Error(
             "mintItemNonCanonical family evidence identity changed",
@@ -628,7 +679,9 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
     workflowId,
     identity,
     begin,
+    beginAction,
     boundary,
+    recordReclaimIntent,
     reconcile,
     auxiliaryBoundary,
     confirmAuxiliary,

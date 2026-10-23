@@ -6,7 +6,6 @@ import {
   ACTIVE_OPERATORS_ROOT_ASSET_NAME,
   fetchCorrectionLockUTxOProgram,
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
-  FraudProofTokenDatum,
   getHeaderFromStateQueueDatum,
   HUB_ORACLE_ASSET_NAME,
   incompleteRemoveFraudulentBlocksLinkTxProgram,
@@ -17,7 +16,6 @@ import {
 } from "@al-ft/midgard-sdk";
 import {
   credentialToAddress,
-  Data,
   type LucidEvolution,
   type Network,
   scriptHashToCredential,
@@ -26,6 +24,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { requireFraudProofRecord } from "./fraud-proof-record-selection.js";
 import { parseContractDeploymentInfo } from "./inspect-contracts.js";
 import { parseHex } from "./json-file.js";
 import {
@@ -97,6 +96,7 @@ export const submitRemoveFraudulentBlock = async ({
   stateQueueMutationLeaseCoordinator = createLocalStateQueueMutationLeaseCoordinator(),
   fraudProverRewardLovelace,
   preSubmitBoundary,
+  fraudProofOutRef,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -133,6 +133,8 @@ export const submitRemoveFraudulentBlock = async ({
   readonly fraudProverRewardLovelace?: bigint;
   /** Production workflow seam for each descendant/target removal tx. */
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
+  /** The record to cite, as derived; else {@link requireFraudProofRecord}'s. */
+  readonly fraudProofOutRef?: string;
 }): Promise<SubmitRemoveFraudulentBlockResult> => {
   const headerHash = parseHex(
     fraudulentHeaderHash,
@@ -210,16 +212,17 @@ export const submitRemoveFraudulentBlock = async ({
   } as const;
 
   const [
-    fraudProofUtxo,
+    { utxo: fraudProofUtxo, prover: fraudProver },
     activeOperatorsRootUtxo,
     schedulerUtxo,
     hubOracleUtxo,
   ] = await Promise.all([
-    requireSingletonUtxo({
+    requireFraudProofRecord({
       lucid,
       address: contracts.fraudProofAddress,
       unit: fraudProofUnit,
-      label: "fraud-proof token",
+      outRef: fraudProofOutRef,
+      prover: signer.paymentKeyHash,
     }),
     requireSingletonUtxo({
       lucid,
@@ -244,13 +247,6 @@ export const submitRemoveFraudulentBlock = async ({
     }),
   ]);
 
-  if (fraudProofUtxo.datum == null) {
-    throw new Error(
-      `Fraud-proof token UTxO ${outRefLabel(fraudProofUtxo)} is missing datum.`,
-    );
-  }
-  const fraudProofDatum = Data.from(fraudProofUtxo.datum, FraudProofTokenDatum);
-
   if (
     fraudProverRewardLovelace !== undefined &&
     fraudProverRewardLovelace !== deploymentEconomics.fraudProverRewardLovelace
@@ -262,7 +258,7 @@ export const submitRemoveFraudulentBlock = async ({
   const fraudProverRewardPlan = {
     proverEnterpriseAddress: credentialToAddress(network, {
       type: "Key" as const,
-      hash: fraudProofDatum.fraud_prover,
+      hash: fraudProver,
     }),
     lovelace: deploymentEconomics.fraudProverRewardLovelace,
   };
@@ -714,7 +710,7 @@ export const submitRemoveFraudulentBlock = async ({
       txHash: finalTransaction.txHash,
       walletSource: signer.source,
       proverAddress: fraudProverRewardPlan.proverEnterpriseAddress,
-      fraudProver: fraudProofDatum.fraud_prover,
+      fraudProver,
       fraudCategory: contracts.fraudCategory,
       fraudCategoryId: contracts.fraudCategoryId,
       fraudulentHeaderHash: headerHash,

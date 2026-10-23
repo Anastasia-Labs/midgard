@@ -14,6 +14,7 @@ import type {
   JournalJsonObject,
 } from "../workflow/journal.js";
 import { type FraudProofRawL1FamilyStage } from "../workflow/raw-l1-family-derivation.js";
+import type { FraudProofOwnThreads } from "../workflow/raw-l1-family-derivation.own-thread.js";
 import { type FraudProofAuthenticatedPublicationObserver } from "../workflow/raw-l1-publication-observation.js";
 import {
   type SignedTransactionRecoveryObservation,
@@ -307,4 +308,9 @@ export interface NetworkIdRawL1ObservationPort {
   observe(input: {
     readonly headerHash: string;
   }): Promise<FraudProofRawL1FamilyStage>;
+  /** Our threads on the header at every physical position of the family,
+   * forced door and forced outputs scan included. */
+  observeOwnThreads?(input: {
+    readonly headerHash: string;
+  }): Promise<FraudProofOwnThreads>;
 }

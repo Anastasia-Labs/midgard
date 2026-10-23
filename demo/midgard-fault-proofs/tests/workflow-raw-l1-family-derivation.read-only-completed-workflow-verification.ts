@@ -30,11 +30,13 @@ describe("read-only completed workflow verification", () => {
       proofCreation: true,
       confirmationDepth: 2162,
     });
-    const terminal = await deriveFraudProofRawL1CompletedTerminal({
+    const derived = await deriveFraudProofRawL1CompletedTerminal({
       ...value,
       releaseEconomics,
     });
-    if (terminal === null) throw new Error("fixture must be completed");
+    if (derived.kind !== "removed")
+      throw new Error("fixture must be completed");
+    const terminal = derived.terminal;
     const identity = {
       schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
       deploymentFingerprint: DEPLOYMENT,

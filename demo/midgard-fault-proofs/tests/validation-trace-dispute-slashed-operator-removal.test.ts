@@ -10,12 +10,13 @@
  * does not build, the run is held under its alarm, naming the successor's
  * bond unlock, and records no terminal until it lands. The terminal's
  * derivation takes the operator's bond end only from the one burn of this
- * case's receipt for that operator. */
+ * case's receipt for that operator: a slash by any other receipt is no
+ * terminal of ours, and a failed history read reaches the caller
+ * unchanged. */
 import {
   CML,
   credentialToAddress,
   getAddressDetails,
-  toUnit,
   type UTxO,
 } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -31,6 +32,8 @@ import { validationTraceRunState } from "../src/validation-trace-dispute/waiting
 import {
   admitFraudProofRawL1Snapshot,
   deriveFraudProofRawL1CompletedTerminal,
+  deriveFraudProofRawL1FamilyStage,
+  type FraudProofRawL1CompletedTerminal,
   type FraudProofRawL1FamilyDefinition,
   type FraudProofRawL1HistoryReader,
   fraudProofRawL1HistoryReader,
@@ -41,7 +44,6 @@ import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.f
 import { expectStateQueueHeaderOrder } from "./support/submit-init-emulator-fixtures.js";
 import { network } from "./support/submit-init-emulator-shared.js";
 import { anotherParty } from "./support/validation-trace-dispute-foreign-verify.js";
-import { rebodied } from "./support/validation-trace-dispute-funded-move-walk.js";
 import {
   awaitLastSlotAtOrBefore,
   defendTwoThreads,
@@ -53,6 +55,10 @@ import {
   playThreads,
 } from "./support/validation-trace-dispute-one-step-play.js";
 import { threadOf } from "./support/validation-trace-dispute-scripted-defender.js";
+import {
+  type Snapshot,
+  withSecondCase,
+} from "./support/validation-trace-dispute-second-case-snapshot.js";
 
 let dispute: TwoThreadCase;
 /** The other party's slash of the block's operator, and what it spent. */
@@ -78,8 +84,8 @@ const nodeOf = async (nodeUnit: string) =>
     nodeUnit,
   );
 
-/** The block's terminal as the raw L1 derives it, read by `history`. */
-const derive = async ({
+/** The raw L1 derivation's inputs for the block, read by `history`. */
+const inputs = async ({
   definition,
   history,
   snapshot,
@@ -115,65 +121,22 @@ const derive = async ({
     releaseFinality,
     observationDepth: "inclusion",
   });
-  return await deriveFraudProofRawL1CompletedTerminal({
+  return {
     snapshot: snapshot?.(admitted, bound) ?? admitted,
     definition: bound,
     releaseEconomics,
     history: history?.(reader) ?? reader,
-  });
+  };
 };
 
-type Snapshot = ReturnType<typeof admitFraudProofRawL1Snapshot>;
+/** The block's terminal as the raw L1 derives it. */
+const derive = async (options: Parameters<typeof inputs>[0] = {}) =>
+  await deriveFraudProofRawL1CompletedTerminal(await inputs(options));
 
-/** `admitted` with a second case on the block: the outputs of the header's
- * computation thread also carry another case's token. */
-const withSecondCase = (
-  admitted: Snapshot,
-  definition: FraudProofRawL1FamilyDefinition,
-): Snapshot => {
-  const threadUnit = toUnit(
-    definition.computationThread.policyId,
-    `${definition.categoryId}${definition.headerHash}`,
-  );
-  const hashes = new Set(
-    admitted.history.find(({ unit }) => unit === threadUnit)!.transactionHashes,
-  );
-  let carried = 0;
-  const other = CML.MultiAsset.new();
-  other.set(
-    CML.ScriptHash.from_hex(definition.lostDefense!.casePolicyId),
-    CML.AssetName.from_hex("ab".repeat(28)),
-    1n,
-  );
-  const transactions = admitted.transactions.map((transaction) => {
-    if (!hashes.has(transaction.txHash)) return transaction;
-    const body = CML.TransactionBody.from_cbor_hex(transaction.bodyCbor);
-    const outputs = CML.TransactionOutputList.new();
-    for (let index = 0; index < body.outputs().len(); index += 1) {
-      const output = body.outputs().get(index);
-      const held = output.amount().multi_asset();
-      const policy = CML.ScriptHash.from_hex(threadUnit.slice(0, 56));
-      const name = CML.AssetName.from_hex(threadUnit.slice(56));
-      const threadHeld = held?.get(policy, name) === 1n;
-      if (threadHeld) carried += 1;
-      outputs.add(
-        threadHeld
-          ? CML.TransactionOutput.new(
-              output.address(),
-              output.amount().checked_add(CML.Value.new(0n, other)),
-              output.datum(),
-              output.script_ref(),
-            )
-          : output,
-      );
-    }
-    return {
-      ...transaction,
-      bodyCbor: rebodied(body, { outputs }).to_canonical_cbor_hex(),
-    };
-  });
-  expect(carried).toBeGreaterThan(0);
-  return { ...admitted, transactions };
+const removedTerminal = (derived: FraudProofRawL1CompletedTerminal) => {
+  if (derived.kind !== "removed")
+    throw new Error(`expected our terminal, found ${derived.kind}`);
+  return derived.terminal;
 };
 
 const facts = (value: FraudProofWorkflowTerminal) => ({
@@ -381,8 +344,8 @@ describe("validation-trace dispute runner: removal of a block whose operator was
   it("derives the same terminal from the raw L1, taking the bond's end only from the burn of this case's receipt for the operator", async () => {
     const { scene, a, b } = dispute;
     const derived = await derive();
-    expect(derived).not.toBeNull();
-    expect(facts(derived!)).toStrictEqual(facts(terminal));
+    expect(derived.kind).toBe("removed");
+    expect(facts(removedTerminal(derived))).toStrictEqual(facts(terminal));
     // Without the family's receipts, nothing proves the bond's end.
     await expect(
       derive({
@@ -453,8 +416,7 @@ describe("validation-trace dispute runner: removal of a block whose operator was
 
   it("derives the terminal from the case its record closed when the block has a second case", async () => {
     const derived = await derive({ snapshot: withSecondCase });
-    expect(derived).not.toBeNull();
-    expect(facts(derived!)).toStrictEqual(facts(terminal));
+    expect(facts(removedTerminal(derived))).toStrictEqual(facts(terminal));
   });
 
   it("takes no slash included after the removal as the end of this block's bond", async () => {
@@ -477,5 +439,51 @@ describe("validation-trace dispute runner: removal of a block whose operator was
           ),
       }),
     ).rejects.toThrow(REFUSED);
+  });
+
+  it("reports no terminal of ours when another receipt's burn slashed the operator's bond", async () => {
+    const { scene, a } = dispute;
+    // The slash that ended the bond burned another case's receipt, not ours.
+    const otherReceipt: FraudProofRawL1HistoryReader = async (unit) =>
+      (
+        await fraudProofRawL1HistoryReader({
+          ...dispute.removal!.raw,
+          headerHash: scene.failing.evidence.headerHash,
+        })(unit)
+      ).map((transaction) => {
+        if (transaction.txHash !== foreign.txHash) return transaction;
+        const body = CML.TransactionBody.from_cbor_hex(transaction.bodyCbor);
+        const mint = CML.Mint.new();
+        const bondUnit = a.defender.nodeUnit;
+        mint.set(
+          CML.ScriptHash.from_hex(bondUnit.slice(0, 56)),
+          CML.AssetName.from_hex(bondUnit.slice(56)),
+          -1n,
+        );
+        mint.set(
+          CML.ScriptHash.from_hex(scene.chain.award.policyId),
+          CML.AssetName.from_hex("ab".repeat(28)),
+          -1n,
+        );
+        body.set_mint(mint);
+        return { ...transaction, bodyCbor: body.to_canonical_cbor_hex() };
+      });
+    await expect(derive({ history: () => otherReceipt })).resolves.toEqual({
+      kind: "terminal_not_ours",
+      reason: "another prover's receipt slashed the operator's bond",
+    });
+  });
+
+  it("passes a failed history read through the stage derivation unchanged", async () => {
+    const unavailable = new Error("the L1 history is not yet available");
+    await expect(
+      deriveFraudProofRawL1FamilyStage(
+        await inputs({
+          history: () => async () => {
+            throw unavailable;
+          },
+        }),
+      ),
+    ).rejects.toBe(unavailable);
   });
 });

@@ -3,7 +3,6 @@ import {
   deriveFieldPreimageCertification,
   FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX,
   NetworkIdForcedScanDatum,
-  STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
 } from "@al-ft/midgard-sdk";
 import { Data, toUnit, type UTxO } from "@lucid-evolution/lucid";
 
@@ -80,6 +79,7 @@ import {
   recoverMutationLease,
 } from "./workflow-adapter.create-network-id-raw-l1-observation-port.js";
 import { createNetworkIdForcedStepContract } from "./workflow-adapter.forced-step-contract.js";
+import { createNetworkIdOwnThreadReads } from "./workflow-adapter.own-thread-reads.js";
 import { prepareNetworkIdWorkflowArtifact } from "./workflow-adapter.prepare-artifact.js";
 import {
   action,
@@ -115,15 +115,8 @@ export const createNetworkIdWorkflowAdapter = (
   const { requireForcedStep, requireForcedStepReferenceScript } =
     createNetworkIdForcedStepContract(config);
 
-  const requireForcedScan = () => {
-    const forcedScan = config.contracts.forcedScan;
-    if (forcedScan === undefined) {
-      throw new Error(
-        "network-id forced direction requires the deployed forced outputs scan",
-      );
-    }
-    return forcedScan;
-  };
+  const { requireForcedScan, forcedScanThread, forcedThreadOutRef, live } =
+    createNetworkIdOwnThreadReads(config);
 
   const requireForcedScanReferenceScript = (): UTxO => {
     const referenceScript = config.forcedScanReferenceScript;
@@ -133,28 +126,6 @@ export const createNetworkIdWorkflowAdapter = (
       );
     }
     return referenceScript;
-  };
-
-  /**
-   * The single scan thread, read directly for the same reason the forced door
-   * is: the §10 loop self-loops at one address, so it is not a link the linear
-   * raw-L1 family definition can walk.
-   */
-  const forcedScanThread = async (
-    headerHash: string,
-  ): Promise<UTxO | undefined> => {
-    const forcedScan = requireForcedScan();
-    const utxos = await config.lucid.utxosAtWithUnit(
-      forcedScan.spendingScriptAddress,
-      toUnit(
-        config.contracts.computationThread.policyId,
-        `${config.category.categoryId}${headerHash}`,
-      ),
-    );
-    if (utxos.length > 1) {
-      throw new Error("network-id workflow found duplicate forced-scan UTxOs");
-    }
-    return utxos[0];
   };
 
   /**
@@ -183,29 +154,6 @@ export const createNetworkIdWorkflowAdapter = (
   };
 
   /**
-   * The forced door is deliberately not a link in the linear chain the raw-L1
-   * family definition walks, so its occupancy is read directly. Nothing here is
-   * trusted: `submitNetworkIdForcedBind` re-authenticates the thread token, the
-   * handoff datum, the prover and the header before it spends this UTxO.
-   */
-  const forcedThreadOutRef = async (
-    headerHash: string,
-  ): Promise<string | undefined> => {
-    const forcedStep = requireForcedStep();
-    const utxos = await config.lucid.utxosAtWithUnit(
-      forcedStep.spendingScriptAddress,
-      toUnit(
-        config.contracts.computationThread.policyId,
-        `${config.category.categoryId}${headerHash}`,
-      ),
-    );
-    if (utxos.length > 1) {
-      throw new Error("network-id workflow found duplicate forced-step UTxOs");
-    }
-    return utxos[0] === undefined ? undefined : outRefLabel(utxos[0]);
-  };
-
-  /**
    * Forced-door occupancy, read only for the stages whose progress it decides.
    * An accepted artifact never touches the door, so it never pays the query.
    */
@@ -223,54 +171,6 @@ export const createNetworkIdWorkflowAdapter = (
     return (
       (await forcedThreadOutRef(admitted.prepared.headerHash)) !== undefined
     );
-  };
-
-  const live = async (headerHash: string) => {
-    const threadUnit = toUnit(
-      config.contracts.computationThread.policyId,
-      `${config.category.categoryId}${headerHash}`,
-    );
-    const proofUnit = toUnit(
-      config.contracts.fraudProof.policyId,
-      `${config.category.categoryId}${headerHash}`,
-    );
-    const stateQueueUnit = toUnit(
-      config.contracts.stateQueuePolicyId,
-      `${STATE_QUEUE_NODE_ASSET_NAME_PREFIX}${headerHash}`,
-    );
-    const [step01, step02, proofs, stateQueue] = await Promise.all([
-      config.lucid.utxosAtWithUnit(
-        config.contracts.steps[0].spendingScriptAddress,
-        threadUnit,
-      ),
-      config.lucid.utxosAtWithUnit(
-        config.contracts.steps[1].spendingScriptAddress,
-        threadUnit,
-      ),
-      config.lucid.utxosAtWithUnit(
-        config.contracts.fraudProof.spendingScriptAddress,
-        proofUnit,
-      ),
-      config.lucid.utxosAtWithUnit(config.stateQueueAddress, stateQueueUnit),
-    ]);
-    for (const [label, utxos] of [
-      ["step-01", step01],
-      ["step-02", step02],
-      ["proof", proofs],
-      ["state-queue", stateQueue],
-    ] as const) {
-      if (utxos.length > 1) {
-        throw new Error(`network-id workflow found duplicate ${label} UTxOs`);
-      }
-    }
-    return {
-      threadUnit,
-      proofUnit,
-      step01: step01[0],
-      step02: step02[0],
-      proof: proofs[0],
-      stateQueue: stateQueue[0],
-    };
   };
 
   /**
@@ -1155,6 +1055,10 @@ export const createNetworkIdWorkflowAdapter = (
           signer: config.signer,
           fraudCategory: config.removal.category,
           fraudulentHeaderHash: prepared.headerHash,
+          fraudProofOutRef: requireString(
+            context.action.input.fraudProofOutRef,
+            "permanent proof-token out-ref",
+          ),
           requireReferenceScripts:
             config.removal.requireReferenceScripts ?? true,
           ...(retainingCoordinator === undefined

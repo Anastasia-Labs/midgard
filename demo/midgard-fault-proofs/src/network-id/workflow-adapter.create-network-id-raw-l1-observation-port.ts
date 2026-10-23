@@ -34,6 +34,10 @@ import {
   fraudProofRawL1SnapshotRequestForFamily,
 } from "../workflow/raw-l1-family-derivation.js";
 import {
+  deriveFraudProofRawL1OwnThreadsAtPositions,
+  type FraudProofThreadPosition,
+} from "../workflow/raw-l1-family-derivation.own-thread-positions.js";
+import {
   createFraudProofAuthenticatedPublicationObserver,
   type FraudProofAuthenticatedPublicationObserver,
 } from "../workflow/raw-l1-publication-observation.js";
@@ -111,6 +115,7 @@ export const createNetworkIdRawL1ObservationPort = ({
   releaseFinality,
   releaseEconomics,
   definition,
+  positions,
 }: {
   readonly authority: FraudProofRawL1SnapshotAuthority;
   readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
@@ -118,6 +123,9 @@ export const createNetworkIdRawL1ObservationPort = ({
   readonly definition: FraudProofRawL1FamilyDefinition & {
     readonly category: "networkId";
   };
+  /** Every physical thread position, in chain order; with them the port
+   * also reports our threads. */
+  readonly positions?: readonly FraudProofThreadPosition[];
 }): NetworkIdRawL1ObservationPort & {
   readonly publications: FraudProofAuthenticatedPublicationObserver;
 } => {
@@ -169,6 +177,16 @@ export const createNetworkIdRawL1ObservationPort = ({
         releaseEconomics,
       });
     },
+    ...(positions === undefined
+      ? {}
+      : {
+          observeOwnThreads: async ({ headerHash }) =>
+            deriveFraudProofRawL1OwnThreadsAtPositions({
+              snapshot: await capture(headerHash),
+              definition,
+              positions,
+            }),
+        }),
   };
 };
 
@@ -178,6 +196,7 @@ export const createNetworkIdL1ObservationPort = ({
   releaseFinality,
   releaseEconomics,
   definition,
+  positions,
 }: {
   readonly l1: FraudProofL1Source;
   readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
@@ -185,6 +204,7 @@ export const createNetworkIdL1ObservationPort = ({
   readonly definition: FraudProofRawL1FamilyDefinition & {
     readonly category: "networkId";
   };
+  readonly positions?: readonly FraudProofThreadPosition[];
 }): NetworkIdRawL1ObservationPort & FraudProofSignedTransactionRecovery =>
   withFraudProofL1Recovery(
     createNetworkIdRawL1ObservationPort({
@@ -195,6 +215,7 @@ export const createNetworkIdL1ObservationPort = ({
       releaseFinality,
       releaseEconomics,
       definition,
+      ...(positions === undefined ? {} : { positions }),
     }),
     fraudProofSignedTransactionRecovery(l1, releaseFinality),
   );

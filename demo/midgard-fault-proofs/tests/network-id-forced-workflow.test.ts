@@ -30,7 +30,10 @@ import {
 } from "../src/workflow/classification.js";
 import { BLOCK_SUBJECT } from "../src/workflow/detection-subject.js";
 import { type JournalJsonObject } from "../src/workflow/journal.js";
-import type { FraudProofRawL1FamilyStage } from "../src/workflow/raw-l1-family-derivation.js";
+import {
+  FraudProofRawL1DerivationError,
+  type FraudProofRawL1FamilyStage,
+} from "../src/workflow/raw-l1-family-derivation.js";
 import {
   type LocallyEvaluatedTransaction,
   workflowPreflightTransaction,
@@ -43,14 +46,21 @@ import {
 } from "./helpers/canonical-block-evidence-fixture.js";
 import { signedRecoveryObservationFixture } from "./helpers/signed-recovery-observation-fixture.js";
 import {
+  FORCED_STEP_ADDRESS,
   forcedHarness,
   forcedPrepared,
+  forcedStepDatum,
+  proofRecord,
   scanDatum,
   SIGNER,
+  STATE_QUEUE_ADDRESS,
   STATE_QUEUE_OUT_REF,
+  threadUnit,
   utxo,
   workflowIdentity,
 } from "./support/network-id-forced-harness.js";
+
+const FOREIGN_PROVER = "99".repeat(28);
 
 // The forced preflight must reach a real builder's pre-submit boundary; only
 // the init builder itself is replaced, so everything the adapter does with the
@@ -304,7 +314,7 @@ describe("network-id forced (§5.2) production workflow", () => {
     ).rejects.toThrow(/on no batch of the planned walk/u);
   });
 
-  it("yields stale forced scan selections while rejecting duplicate or malformed fresh state", async () => {
+  it("yields stale forced scan selections and picks one of our duplicate scans deterministically", async () => {
     const prepared = await forcedPrepared();
     const opening = planNetworkIdOutputsOpening({
       prepared,
@@ -360,15 +370,148 @@ describe("network-id forced (§5.2) production workflow", () => {
     await expect(preflight()).rejects.toBeInstanceOf(
       WorkflowActionChangedError,
     );
+    // A scan thread whose datum does not decode, or names another prover, is
+    // no part of our workflow: our scan is gone, so the selection is stale.
     harness.scanUtxos[0] = { ...original, datum: "00" };
-    await expect(preflight()).rejects.not.toBeInstanceOf(
+    await expect(preflight()).rejects.toBeInstanceOf(
       WorkflowActionChangedError,
     );
-    harness.scanUtxos.splice(0, 1, original, { ...original, outputIndex: 1 });
-    await expect(preflight()).rejects.toThrow("duplicate forced-scan UTxOs");
-    await expect(preflight()).rejects.not.toBeInstanceOf(
+    harness.scanUtxos[0] = {
+      ...original,
+      datum: scanDatum(prepared, "ready", FOREIGN_PROVER),
+    };
+    await expect(preflight()).rejects.toBeInstanceOf(
       WorkflowActionChangedError,
     );
+    // Two scans of ours (a same-key twin's beside our own): the lowest
+    // out-ref decides, whatever order the read serves them in.
+    const twin = { ...original, outputIndex: 1 };
+    for (const order of [
+      [original, twin],
+      [twin, original],
+    ]) {
+      harness.scanUtxos.splice(0, harness.scanUtxos.length, ...order);
+      await expect(harness.observe()).resolves.toMatchObject({
+        kind: "action_required",
+        action: { input: { threadOutRef: `${h32(0x78)}#0` } },
+      });
+    }
+    const lower = { ...original, txHash: h32(0x01) };
+    harness.scanUtxos.splice(0, harness.scanUtxos.length, original, lower);
+    await expect(harness.observe()).resolves.toMatchObject({
+      kind: "action_required",
+      action: { input: { threadOutRef: `${h32(0x01)}#0` } },
+    });
+    await expect(preflight()).rejects.toBeInstanceOf(
+      WorkflowActionChangedError,
+    );
+  });
+
+  it("reads only its own threads and record, and fails a duplicate state-queue node as a typed derivation error", async () => {
+    const prepared = await forcedPrepared();
+    const notStarted = {
+      kind: "not_started",
+      stateQueueBlockOutRef: STATE_QUEUE_OUT_REF,
+    } as const;
+    const unit = threadUnit(prepared.headerHash);
+    const door = (txHash: string, prover: string) =>
+      utxo({
+        txHash,
+        address: FORCED_STEP_ADDRESS,
+        datum: forcedStepDatum(prover),
+        unit,
+      });
+    // Another prover's thread alone at the forced door is not ours: we init.
+    await expect(
+      forcedHarness({
+        prepared,
+        stage: notStarted,
+        forcedDoorOccupied: false,
+        holders: { forcedDoor: [door(h32(0x01), FOREIGN_PROVER)] },
+      }).observe(),
+    ).resolves.toMatchObject({
+      kind: "action_required",
+      action: { input: { kind: "init" } },
+    });
+    // Beside ours, the foreign one is ignored even at the lower out-ref.
+    await expect(
+      forcedHarness({
+        prepared,
+        stage: notStarted,
+        forcedDoorOccupied: false,
+        holders: {
+          forcedDoor: [
+            door(h32(0x01), FOREIGN_PROVER),
+            door(h32(0x77), SIGNER.paymentKeyHash),
+            door(h32(0x79), SIGNER.paymentKeyHash),
+          ],
+        },
+      }).observe(),
+    ).resolves.toMatchObject({
+      kind: "action_required",
+      action: {
+        input: { kind: "forced_bind", threadOutRef: `${h32(0x77)}#0` },
+      },
+    });
+    // Read from the live chain: another prover's record is not ours, so we
+    // init; our own record, beside it, is the one the removal cites.
+    const foreignRecord = proofRecord(
+      prepared.headerHash,
+      h32(0x01),
+      FOREIGN_PROVER,
+    );
+    await expect(
+      forcedHarness({
+        prepared,
+        stage: notStarted,
+        forcedDoorOccupied: false,
+        withoutRawL1: true,
+        holders: { proof: [foreignRecord] },
+      }).observe(),
+    ).resolves.toMatchObject({
+      kind: "action_required",
+      action: { input: { kind: "init" } },
+    });
+    await expect(
+      forcedHarness({
+        prepared,
+        stage: notStarted,
+        forcedDoorOccupied: false,
+        withoutRawL1: true,
+        holders: {
+          proof: [
+            proofRecord(prepared.headerHash, h32(0x7a)),
+            foreignRecord,
+            proofRecord(prepared.headerHash, h32(0x7b)),
+          ],
+        },
+      }).observe(),
+    ).resolves.toMatchObject({
+      kind: "action_required",
+      action: { input: { fraudProofOutRef: `${h32(0x7a)}#0` } },
+    });
+    // Two state-queue nodes of one header is a chain the derivation cannot
+    // read: a typed failure the orchestrator records against this workflow.
+    const duplicate = forcedHarness({
+      prepared,
+      stage: notStarted,
+      forcedDoorOccupied: false,
+      withoutRawL1: true,
+      holders: {
+        stateQueue: [
+          utxo({ txHash: h32(0x73), address: STATE_QUEUE_ADDRESS }),
+          utxo({
+            txHash: h32(0x73),
+            outputIndex: 1,
+            address: STATE_QUEUE_ADDRESS,
+          }),
+        ],
+      },
+    }).observe();
+    await expect(duplicate).rejects.toBeInstanceOf(
+      FraudProofRawL1DerivationError,
+    );
+    await expect(duplicate).rejects.toThrow(/duplicate state-queue UTxOs/u);
   });
 
   it("yields changed authenticated certification chunks but preserves publication authentication failures", async () => {

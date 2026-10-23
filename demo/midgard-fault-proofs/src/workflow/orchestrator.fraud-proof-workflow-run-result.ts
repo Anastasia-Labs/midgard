@@ -5,6 +5,8 @@ import {
   type FraudProofWorkflowJournalEvent,
   type FraudProofWorkflowTerminal,
 } from "./journal.js";
+import type { FraudProofThreadReclaim } from "./own-thread-reclaim.js";
+import type { FraudProofResolvedByAnotherRecord } from "./resolved-by-another-record.js";
 
 export const attemptCount = (
   entries: readonly FraudProofWorkflowJournalEntry[],
@@ -105,6 +107,25 @@ export type FraudProofWorkflowRunResult =
       readonly identity: FraudProofWorkflowIdentity;
       readonly terminal: FraudProofWorkflowTerminal;
       readonly entries: readonly FraudProofWorkflowJournalEntry[];
+    }
+  | {
+      /**
+       * The header was removed against a fraud-proof record this run did not
+       * create, and every signed attempt of this run is settled. The
+       * objective is done, but it is not our conviction: there is no
+       * terminal and no reward is claimed.
+       */
+      readonly kind: "resolved_by_another_record";
+      readonly workflowId: string;
+      readonly identity: FraudProofWorkflowIdentity;
+      readonly resolution: FraudProofResolvedByAnotherRecord;
+      readonly entries: readonly FraudProofWorkflowJournalEntry[];
+      /**
+       * Our threads on the header that this run cancelled before resolving,
+       * their value returned to our wallet: our own deposit back, never a
+       * reward. Absent when there were none.
+       */
+      readonly reclaimed?: readonly FraudProofThreadReclaim[];
     }
   | {
       readonly kind: "pending" | "stalled";

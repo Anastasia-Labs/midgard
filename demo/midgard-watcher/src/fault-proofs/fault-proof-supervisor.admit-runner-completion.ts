@@ -9,6 +9,12 @@ import type {
   WatcherFaultProofJob,
 } from "./fault-proof-supervisor.validate-job.js";
 
+/** The `kind` a runner outcome names, if it names one. */
+export const runnerOutcomeKind = (outcome: unknown): unknown =>
+  typeof outcome === "object" && outcome !== null && "kind" in outcome
+    ? outcome.kind
+    : undefined;
+
 /** A fresh runner result uses the same canonical terminal door as recovery. */
 export const admitWatcherProofRunnerCompletion = async (input: {
   readonly job: WatcherFaultProofJob;

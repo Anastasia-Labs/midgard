@@ -54,6 +54,10 @@ export type WatcherFaultProofExecutionAdmission = Readonly<{
 
 export type WatcherFaultProofExecutionOutcome =
   | Readonly<{ kind: "completed" | "terminal_included"; result: unknown }>
+  /** The header was removed against a record this objective's run did not
+   * create, with every signed attempt of the run settled: the objective is
+   * done, but not as our conviction. */
+  | Readonly<{ kind: "resolved_by_another_record"; result: unknown }>
   | Readonly<{ kind: "pending"; resume: "await_observation"; reason: string }>
   | Readonly<{
       kind: "authority_revoked";
@@ -422,6 +426,11 @@ export const createWatcherFaultProofExecution = (dependencies: {
             result.kind === "terminal_included"
           ) {
             record(result.kind === "completed" ? "completed" : "confirmed");
+            return { kind: result.kind, result };
+          }
+          // Not our conviction: the proof step ends cancelled, not completed.
+          if (result.kind === "resolved_by_another_record") {
+            record("cancelled");
             return { kind: result.kind, result };
           }
           // A dispute that made its move and awaits the other party's response

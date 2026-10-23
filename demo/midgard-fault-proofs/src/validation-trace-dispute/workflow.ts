@@ -47,6 +47,7 @@ import {
   validationTraceOneStepReferences,
   validationTraceScriptDecodeReferences,
 } from "./one-step-references.js";
+import { withValidationTraceOwnThreadReclaim } from "./own-thread-reclaim.js";
 import { validationTraceComputationSteps } from "./removal.js";
 import { createValidationTraceReplayHolds } from "./replay-hold.js";
 import type { ValidationTraceDisputeDeployment } from "./transactions.js";
@@ -218,17 +219,18 @@ export const createManifestBoundValidationTraceDisputeWorkflow = async (
   const l1SlotConfig = parseContractDeploymentL1SlotConfig(
     binding.deploymentInfo,
   );
-  const adapter = createValidationTraceDisputeWorkflowAdapter({
+  const l1For = (headerHash: string) => {
+    if (headerHash !== binding.definition.headerHash)
+      throw new Error("validation-trace removal names another block");
+    return l1;
+  };
+  const base = createValidationTraceDisputeWorkflowAdapter({
     lucid: config.lucid,
     signer: config.signer,
     deployment,
     l1SlotConfig,
     removal: {
-      l1For: (headerHash) => {
-        if (headerHash !== binding.definition.headerHash)
-          throw new Error("validation-trace removal names another block");
-        return l1;
-      },
+      l1For,
       stateQueueMutationLeaseCoordinator:
         config.stateQueueMutationLeaseCoordinator,
       deploymentInfo: binding.deploymentInfo,
@@ -246,6 +248,15 @@ export const createManifestBoundValidationTraceDisputeWorkflow = async (
     }),
     publications: l1.publications,
     ...(config.now === undefined ? {} : { now: config.now }),
+  });
+  const adapter = withValidationTraceOwnThreadReclaim({
+    base,
+    lucid: config.lucid,
+    signer: config.signer,
+    deployment,
+    l1For,
+    signedRecovery: l1,
+    releaseFinality: binding.releaseFinality,
   });
   return Object.freeze({
     binding,

@@ -58,12 +58,14 @@ const correctionOn = async (
     proverCredential: key.to_public().hash().to_hex(),
     ...(confirmationDepth === undefined ? {} : { confirmationDepth }),
   });
-  const terminal = await deriveFraudProofRawL1CompletedTerminal({
+  const derived = await deriveFraudProofRawL1CompletedTerminal({
     snapshot: raw.snapshot,
     definition: raw.definition,
     releaseEconomics: verifiedEconomics,
   });
-  if (terminal === null) throw new Error("raw fixture omitted its correction");
+  if (derived.kind !== "removed")
+    throw new Error("raw fixture omitted its correction");
+  const terminal = derived.terminal;
   return {
     policy: verifiedFinality.policy,
     terminal: {

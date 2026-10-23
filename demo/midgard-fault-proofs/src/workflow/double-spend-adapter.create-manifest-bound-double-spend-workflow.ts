@@ -30,6 +30,7 @@ import { observeFraudProofWorkflowHeader } from "./family-l1-observation.js";
 import type { FraudProofWorkflowJournalStore } from "./journal.js";
 import {
   createFraudProofWorkflowRegistry,
+  type FraudProofFamilyWorkflowAdapter,
   type FraudProofWorkflowRunResult,
   runFraudProofWorkflowFromRetainedDa,
 } from "./orchestrator.js";
@@ -158,6 +159,7 @@ export const runOrResumeConstrainedDoubleSpendWorkflow = async ({
   journal,
   adapterConfig,
   releaseFinalityAuthority,
+  adapter: bound,
   maxSubmissionAttempts,
   maxActions,
 }: {
@@ -167,10 +169,13 @@ export const runOrResumeConstrainedDoubleSpendWorkflow = async ({
   readonly journal: FraudProofWorkflowJournalStore;
   readonly adapterConfig: ObservedDoubleSpendWorkflowAdapterConfig;
   readonly releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
+  /** The adapter to run, in place of the bare one over `adapterConfig`. */
+  readonly adapter?: FraudProofFamilyWorkflowAdapter;
   readonly maxSubmissionAttempts?: number;
   readonly maxActions?: number;
 }): Promise<FraudProofWorkflowRunResult> => {
-  const adapter = createDoubleSpendConstrainedWorkflowAdapter(adapterConfig);
+  const adapter =
+    bound ?? createDoubleSpendConstrainedWorkflowAdapter(adapterConfig);
   return await runFraudProofWorkflowFromRetainedDa({
     deploymentFingerprint,
     observation,
@@ -224,6 +229,8 @@ export const runOrResumeManifestBoundDoubleSpendWorkflow = async ({
     journal,
     adapterConfig: workflow.adapterConfig,
     releaseFinalityAuthority: workflow.releaseFinalityAuthority,
+    // The workflow's own adapter, with any reclaim of our threads in front.
+    adapter: workflow.adapter,
     ...(maxSubmissionAttempts === undefined ? {} : { maxSubmissionAttempts }),
     ...(maxActions === undefined ? {} : { maxActions }),
   });

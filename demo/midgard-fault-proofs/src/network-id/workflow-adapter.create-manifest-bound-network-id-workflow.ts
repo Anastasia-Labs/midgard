@@ -23,6 +23,10 @@ import {
 } from "./workflow-adapter.create-network-id-raw-l1-observation-port.js";
 import { createNetworkIdWorkflowAdapter } from "./workflow-adapter.create-network-id-workflow-adapter.js";
 import {
+  networkIdOwnThreadPositions,
+  withNetworkIdOwnThreadReclaim,
+} from "./workflow-adapter.own-thread-reclaim.js";
+import {
   type ManifestBoundNetworkIdWorkflow,
   type ManifestBoundNetworkIdWorkflowConfig,
   sealManifestBoundNetworkIdRuntime,
@@ -75,6 +79,7 @@ export const createManifestBoundNetworkIdWorkflow = async (
     releaseFinality: binding.releaseFinality,
     releaseEconomics: binding.releaseEconomics,
     definition: binding.definition,
+    positions: networkIdOwnThreadPositions(networkIdContracts),
   });
   const adapterConfig: NetworkIdWorkflowAdapterConfig = {
     lucid: config.lucid,
@@ -128,7 +133,15 @@ export const createManifestBoundNetworkIdWorkflow = async (
   return {
     binding,
     adapterConfig,
-    adapter: createNetworkIdWorkflowAdapter(adapterConfig),
+    adapter: withNetworkIdOwnThreadReclaim({
+      base: createNetworkIdWorkflowAdapter(adapterConfig),
+      config: adapterConfig,
+      contracts: {
+        ...adapterConfig.contracts,
+        forcedScan: networkIdContracts.forcedScan,
+      },
+      releaseFinality: binding.releaseFinality,
+    }),
     terminalVerifier: createNetworkIdAuthenticatedL1TerminalVerifier(rawL1),
     releaseFinalityAuthority:
       releaseFinalityAuthorityFromDeploymentBinding(binding),

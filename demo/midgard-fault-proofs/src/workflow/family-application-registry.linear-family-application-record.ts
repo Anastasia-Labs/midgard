@@ -48,6 +48,7 @@ import {
   assembleManifestBoundFamilyWorkflow,
   runOrResumeManifestBoundFamilyWorkflow,
 } from "./manifest-bound-family-assembly.js";
+import { withDoubleSpendOwnThreadReclaim } from "./own-thread-reclaim.special-families.js";
 
 /**
  * Q44 is the one linear family that does not launch through the generic
@@ -228,7 +229,10 @@ export const DOUBLE_SPEND_FAMILY_APPLICATION_RECORD = defineFamilyApplication<
         "fieldPreimageCertificateMint",
       ),
     }),
-  constructWorkflow: createManifestBoundDoubleSpendWorkflow,
+  constructWorkflow: async (config) =>
+    withDoubleSpendOwnThreadReclaim(
+      await createManifestBoundDoubleSpendWorkflow(config),
+    ),
   execute: async ({ workflow, sources, journal }) =>
     await runOrResumeManifestBoundDoubleSpendWorkflow({
       workflow,

@@ -53,13 +53,14 @@ export const completedTerminalWriter = async (
     proverCredential: key.to_public().hash().to_hex(),
     confirmationDepth: verifiedFinality.policy.automaticRecoveryMaxDepth + 2,
   });
-  const terminal = await deriveFraudProofRawL1CompletedTerminal({
+  const derived = await deriveFraudProofRawL1CompletedTerminal({
     snapshot: raw.snapshot,
     definition: raw.definition,
     releaseEconomics: verifiedEconomics,
   });
-  if (terminal === null)
+  if (derived.kind !== "removed")
     throw new Error("raw fixture omitted completed correction");
+  const terminal = derived.terminal;
   const writeTerminal = async () => {
     for (const txHash of [
       terminal.proofToken.createdByTxHash,

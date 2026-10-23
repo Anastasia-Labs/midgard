@@ -11,17 +11,22 @@ import "./raw-l1-family-derivation.derive-fraud-proof-raw-l1-family-stage.js";
 export {
   deriveFraudProofRawL1CompletedTerminal,
   deriveFraudProofRawL1FamilyStage,
+  type FraudProofRawL1CompletedTerminal,
 } from "./raw-l1-family-derivation.derive-fraud-proof-raw-l1-family-stage.js";
 export {
   deriveAuthenticatedStateQueueHeaderObservationFromRawL1,
   deriveRetainedStateQueueHeaderObservationFromRawL1,
 } from "./raw-l1-family-derivation.derive-retained-state-queue-header-observation-from-raw-l1.js";
-export { fraudProofRawL1SnapshotRequestForFamily } from "./raw-l1-family-derivation.derive-terminal.js";
+export {
+  fraudProofRawL1SnapshotRequestForFamily,
+  type FraudProofRawL1TerminalNotOurs,
+} from "./raw-l1-family-derivation.derive-terminal.js";
 export {
   type FraudProofRawL1HistoryReader,
   fraudProofRawL1HistoryReader,
 } from "./raw-l1-family-derivation.lost-defense-slash.js";
 export {
+  FraudProofRawL1DerivationError,
   type FraudProofRawL1FamilyDefinition,
   type FraudProofRawL1FamilyStage,
   type FraudProofRawL1TerminalDefinition,

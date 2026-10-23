@@ -192,6 +192,11 @@ export const historicalTransactions = ({
   });
 };
 
+/**
+ * The header's removal that referenced `proofOutRef`. `undefined` when the
+ * header's one removal referenced another record: another prover's
+ * conviction removed it.
+ */
 export const exactRemoval = ({
   snapshot,
   stateUnit,
@@ -200,26 +205,32 @@ export const exactRemoval = ({
   readonly snapshot: FraudProofRawL1Snapshot;
   readonly stateUnit: string;
   readonly proofOutRef: string;
-}): {
-  readonly transaction: FraudProofRawL1Transaction;
-  readonly removed: FraudProofRawL1Utxo;
-} => {
-  const matches = historicalTransactions({ snapshot, unit: stateUnit }).flatMap(
-    (transaction) => {
-      const body = CML.TransactionBody.from_cbor_hex(transaction.bodyCbor);
-      const removed = transaction.resolvedInputs.filter(
-        (candidate) => outputQuantity(candidate, stateUnit) === 1n,
-      );
-      return removed.length === 1 &&
-        !bodyOutputsContainUnit(body, stateUnit) &&
-        mintQuantity(body, stateUnit) === -1n &&
-        transaction.resolvedReferenceInputs.some(
-          (candidate) => candidate.outRef === proofOutRef,
-        )
-        ? [{ transaction, removed: removed[0]! }]
-        : [];
-    },
+}):
+  | {
+      readonly transaction: FraudProofRawL1Transaction;
+      readonly removed: FraudProofRawL1Utxo;
+    }
+  | undefined => {
+  const removals = historicalTransactions({
+    snapshot,
+    unit: stateUnit,
+  }).flatMap((transaction) => {
+    const body = CML.TransactionBody.from_cbor_hex(transaction.bodyCbor);
+    const removed = transaction.resolvedInputs.filter(
+      (candidate) => outputQuantity(candidate, stateUnit) === 1n,
+    );
+    return removed.length === 1 &&
+      !bodyOutputsContainUnit(body, stateUnit) &&
+      mintQuantity(body, stateUnit) === -1n
+      ? [{ transaction, removed: removed[0]! }]
+      : [];
+  });
+  const matches = removals.filter(({ transaction }) =>
+    transaction.resolvedReferenceInputs.some(
+      (candidate) => candidate.outRef === proofOutRef,
+    ),
   );
+  if (matches.length === 0 && removals.length === 1) return undefined;
   if (matches.length !== 1) {
     throw new Error(
       "raw L1 history does not prove exactly one proof-referenced state removal",

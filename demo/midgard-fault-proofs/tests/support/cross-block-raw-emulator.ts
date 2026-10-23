@@ -159,6 +159,44 @@ export const recordCrossBlockRawEmulator = (
             return Emulator.prototype.submitTx.call(this, cbor);
           }),
         );
+  // A recorded row's bytes never change, so each is decoded once, by its
+  // hash: the units its inputs and outputs carry, and its outputs as raw
+  // UTxOs. Decoding them again at every capture left cardano-multiplatform-lib
+  // garbage that only a later GC frees, enough over a long file to exhaust
+  // the worker's reserved wasm memory (see
+  // midgard-test-support/cml-memory-reserve.js), after which every capture
+  // paid for full GCs.
+  const decoded = new Map<
+    string,
+    Readonly<{ units: ReadonlySet<string>; outputs: FraudProofRawL1Utxo[] }>
+  >();
+  const decodedOf = (
+    row: Pick<
+      FraudProofRawL1Transaction,
+      "txHash" | "bodyCbor" | "resolvedInputs"
+    >,
+  ) => {
+    const known = decoded.get(row.txHash);
+    if (known !== undefined) return known;
+    const units = new Set<string>();
+    const carry = (output: CML.TransactionOutput) => {
+      for (const [unit, quantity] of Object.entries(
+        coreToTxOutput(output).assets,
+      ))
+        if (quantity !== 0n) units.add(unit);
+    };
+    for (const input of row.resolvedInputs)
+      carry(CML.TransactionOutput.from_cbor_hex(input.outputCbor));
+    const body = CML.TransactionBody.from_cbor_hex(row.bodyCbor).outputs();
+    const outputs = Array.from({ length: body.len() }, (_, index) => {
+      const output = body.get(index);
+      carry(output);
+      return raw(`${row.txHash}#${index}`, output);
+    });
+    const entry = { units, outputs };
+    decoded.set(row.txHash, entry);
+    return entry;
+  };
   const authority: FraudProofRawL1SnapshotAuthority = {
     authorityVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
     capture: async (request) => {
@@ -202,22 +240,8 @@ export const recordCrossBlockRawEmulator = (
       if (latest === undefined)
         throw new Error("no confirmed emulator transactions captured");
       const boundary = latest.inclusionPoint;
-      const touches = (row: FraudProofRawL1Transaction, unit: string) => {
-        const outputs = CML.TransactionBody.from_cbor_hex(
-          row.bodyCbor,
-        ).outputs();
-        return (
-          row.resolvedInputs.some(
-            (output) =>
-              (coreToTxOutput(
-                CML.TransactionOutput.from_cbor_hex(output.outputCbor),
-              ).assets[unit] ?? 0n) !== 0n,
-          ) ||
-          Array.from({ length: outputs.len() }, (_, i) => outputs.get(i)).some(
-            (output) => (coreToTxOutput(output).assets[unit] ?? 0n) !== 0n,
-          )
-        );
-      };
+      const touches = (row: FraudProofRawL1Transaction, unit: string) =>
+        decodedOf(row).units.has(unit);
       const transactions = all.filter((row) =>
         request.historyUnits.some((unit) => touches(row, unit)),
       );
@@ -227,14 +251,17 @@ export const recordCrossBlockRawEmulator = (
       const utxos = Object.values(emulator.ledger).map((row) => row.utxo);
       const output = (utxo: UTxO) => {
         const created = rows.find((row) => row.txHash === utxo.txHash);
-        return raw(
-          `${utxo.txHash}#${utxo.outputIndex}`,
-          created === undefined
-            ? utxoToCore(utxo).output()
-            : CML.TransactionBody.from_cbor_hex(created.bodyCbor)
-                .outputs()
-                .get(utxo.outputIndex),
-        );
+        if (created === undefined)
+          return raw(
+            `${utxo.txHash}#${utxo.outputIndex}`,
+            utxoToCore(utxo).output(),
+          );
+        const recorded = decodedOf(created).outputs[utxo.outputIndex];
+        if (recorded === undefined)
+          throw new Error(
+            `recorded transaction ${utxo.txHash} has no output ${utxo.outputIndex}`,
+          );
+        return { ...recorded };
       };
       return {
         schemaVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_SCHEMA_VERSION,
