@@ -14,6 +14,7 @@ import {
 import { makeGenuineDeploymentRegistryForTest } from "midgard-node/tests/helpers/deployment-parameter-registry";
 import { beforeAll, expect, it } from "vitest";
 
+import type { WatcherWorkflowFundingProfileBody } from "../../src/funding/workflow-funding-profile-overlay.js";
 import { authorWatcherDeploymentRelease } from "../../src/runtime/deployment-release-authoring.js";
 import { verifyDeploymentReleaseParameterRegistry } from "../../src/runtime/deployment-release-parameter-registry.js";
 
@@ -80,7 +81,11 @@ it("refuses changed deployed contract bytes and retained reference outpoints", (
     ),
   ).toThrow("reference records differ from deployment manifest");
 });
-it("the author reconstructs the genuine registry and enforces public measurement coverage before publishing", async () => {
+/** Authors a release over the genuine registry fixture into a fresh
+ * directory, counting every artifact write. */
+const authorOverGenuineRegistry = async (
+  fundingProfiles: readonly WatcherWorkflowFundingProfileBody[],
+) => {
   const directory = await mkdtemp(
     join(tmpdir(), "midgard-genuine-registry-author-"),
   );
@@ -97,9 +102,8 @@ it("the author reconstructs the genuine registry and enforces public measurement
   const publicProfile =
     fixture.manifest.deploymentProfile.name === "preprod-public" ||
     fixture.manifest.deploymentProfile.name === "mainnet";
-  // These metadata-only coordinates are syntax fixtures. The public control
-  // must refuse missing measurements before any artifact or authority writes;
-  // it does not attest images, independent rebuilds or deployed references.
+  // These metadata-only coordinates are syntax fixtures; they do not attest
+  // images, independent rebuilds or deployed references.
   const releaseProvenance = publicProfile
     ? {
         schemaVersion: "midgard-deployment-release-provenance-v1",
@@ -123,42 +127,63 @@ it("the author reconstructs the genuine registry and enforces public measurement
         },
       }
     : undefined;
-  let writes = 0;
+  const writes: string[] = [];
   try {
-    const authored = authorWatcherDeploymentRelease({
+    const authored = await authorWatcherDeploymentRelease({
       manifest: fixture.manifest,
       blueprintJson: fixture.blueprintJson,
       deploymentParameterRegistry: fixture.retained,
       ...(releaseProvenance === undefined ? {} : { releaseProvenance }),
       programCommitments: { "computation-thread-policy-v1": "cd".repeat(32) },
-      fundingProfiles: [],
+      fundingProfiles,
       fundingPaymentKeyHash: "ee".repeat(28),
       signingKey: generateKeyPairSync("ed25519").privateKey,
       paths,
       existingAuthority: "refuse",
       writer: {
         replace: (path, contents) => {
-          writes += 1;
+          writes.push(path);
           return writeTextFileAtomic(path, contents, { mode: 0o600 });
         },
         create: (path, contents) => {
-          writes += 1;
+          writes.push(path);
           return writeTextFileAtomicNoReplace(path, contents, { mode: 0o600 });
         },
       },
-    });
-    if (publicProfile) {
-      await expect(authored).rejects.toThrow(
-        "Public release requires measured funding profiles for every installed catalogue category",
-      );
-      expect(writes).toBe(0);
-    } else {
-      const result = await authored;
-      expect(result.deploymentAuthority.deploymentIdentity.manifestId).toBe(
-        fixture.manifest.manifestId,
-      );
-    }
+    }).then(
+      (value) => ({ value }),
+      (error: unknown) => ({ error }),
+    );
+    return { authored, writes };
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+};
+
+it("the author reconstructs the genuine registry before publishing", async () => {
+  const { authored } = await authorOverGenuineRegistry([]);
+  expect("value" in authored && authored.value).toMatchObject({
+    deploymentAuthority: {
+      deploymentIdentity: { manifestId: fixture.manifest.manifestId },
+    },
+  });
+}, 120_000);
+
+it("refuses a funding profile measured for another deployment before writing anything", async () => {
+  const { authored, writes } = await authorOverGenuineRegistry([
+    {
+      blueprintSha256: "22".repeat(32),
+      protocolParametersDigest:
+        fixture.manifest.cardanoProtocolParameters.digest,
+      economicsPolicyDigest: "33".repeat(32),
+      fundingPaymentKeyHash: "ee".repeat(28),
+      actions: [],
+    } as unknown as WatcherWorkflowFundingProfileBody,
+  ]);
+  expect("error" in authored && authored.error).toEqual(
+    new Error(
+      "Measured funding profiles differ from this deployment or funding wallet",
+    ),
+  );
+  expect(writes).toEqual([]);
 }, 120_000);

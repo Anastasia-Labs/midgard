@@ -130,7 +130,7 @@ export async function prepareStackPrerequisites(processes: StackProcesses) {
   const paths = await releasePaths(processes);
   if ((await readJsonIfPresent(paths.authority)) === undefined) {
     if (!processes.config.watcher.releaseInput)
-      throw new Error("Fresh setup needs measured watcher release inputs");
+      throw new Error("Fresh setup needs watcher release inputs");
     await readReleaseInput(processes.config.watcher.releaseInput);
   }
   return { profile: "preprod-testing", inputsChecked: true };
