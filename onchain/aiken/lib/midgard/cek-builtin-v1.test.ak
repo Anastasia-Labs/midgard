@@ -166,6 +166,51 @@ test quotient_by_zero_failure_charges_before_the_operation_fails() {
   }
 }
 
+/// A byte string of 12,000 bytes, past the direct carriage bound, presented
+/// by its leaf alone.
+fn source_by_its_leaf() -> cek_builtin_v1.ValueWitnessV1 {
+  let source = bytearray.concat(
+    builtin.replicate_byte(8000, 7),
+    builtin.replicate_byte(4000, 7),
+  )
+  cek_builtin_v1.SemanticConstantValue {
+    type_cbor: #"9f01ff",
+    payload: cek_data_v1.semantic_data_summary_v1(builtin.b_data(source)),
+    memory: 1500,
+  }
+}
+
+test cons_past_255_onto_a_source_by_its_leaf_is_a_known_failure() {
+  let arguments = [integer(#"190100"), source_by_its_leaf()]
+  cek_builtin_v1.verify_direct_builtin_failure_v1(
+    11,
+    builtin_root(11, arguments),
+    arguments,
+  )
+}
+
+test cons_of_255_onto_a_source_by_its_leaf_is_not_a_known_failure() {
+  let arguments = [integer(#"18ff"), source_by_its_leaf()]
+  !cek_builtin_v1.verify_direct_builtin_failure_v1(
+    11,
+    builtin_root(11, arguments),
+    arguments,
+  )
+}
+
+test slice_from_past_int64_of_a_source_by_its_leaf_is_a_known_failure() {
+  let arguments = [
+    integer(#"1b8000000000000000"),
+    integer(#"0a"),
+    source_by_its_leaf(),
+  ]
+  cek_builtin_v1.verify_direct_builtin_failure_v1(
+    12,
+    builtin_root(12, arguments),
+    arguments,
+  )
+}
+
 test invalid_utf8_failure_is_authenticated_without_decoding() {
   let arguments = [bytes(#"42c0af")]
   and {
