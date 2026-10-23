@@ -521,26 +521,6 @@ fn canonical_integer_leaf_v1(
   builtin.un_i_data(data)
 }
 
-fn canonical_bytes_leaf_v1(
-  summary: cek_data_v1.DataSummaryV1,
-  node: cek_data_v1.DataNodeV1,
-  bytes: ByteArray,
-) -> ByteArray {
-  expect
-      cek_data_v1.BytesData {
-        bytes_root,
-        bytes_length,
-        cbor_length: _,
-        memory: _,
-      }
-    = node
-  expect bytearray.length(bytes) <= cek_proof_v1.max_bounded_blob_bytes
-  expect bytes_root == cek_proof_v1.bounded_blob_root_v1(bytes)
-  expect bytes_length == bytearray.length(bytes)
-  expect top_node_matches_v1(summary, node, None, None)
-  bytes
-}
-
 fn exact_list_summary_for_node_v1(
   node: cek_data_v1.DataNodeV1,
   candidates: List<cek_data_v1.DataListNodeV1>,
@@ -1407,94 +1387,55 @@ fn verify_semantic_unlist_data_v1(
   )
 }
 
-fn verify_semantic_uninteger_data_v1(
-  source: ValueWitnessV1,
+/// iData, bData, unIData and unBData. A Data leaf and the integer or byte
+/// string it holds share one payload summary: the leaf node. The material is
+/// that node alone, and the result is the same payload under the other type,
+/// with the Data value's memory four more than the scalar's.
+fn verify_semantic_data_leaf_v1(
+  value: ValueWitnessV1,
+  scalar_type: cek_constant_v1.ConstantTypeV1,
+  into_data: Bool,
   result: ValueWitnessV1,
   witness: SemanticBuiltinWitnessV1,
 ) -> Bool {
   expect [node] = witness.data_nodes
-  expect [raw_cbor] = witness.scalar_preimages
   expect witness.list_nodes == []
   expect witness.pair_nodes == []
-  let source_summary = data_constant_summary_v1(source)
-  let integer = canonical_integer_leaf_v1(source_summary, node, raw_cbor)
+  expect witness.scalar_preimages == []
+  let parts = semantic_constant_parts_v1(value)
+  let payload = parts.payload
+  expect top_node_matches_v1(payload, node, None, None)
   expect
-    bytearray.length(cbor.serialise(builtin.i_data(integer))) == bytearray.length(
-      raw_cbor,
-    )
-  result_is_semantic_constant_v1(
-    result,
-    cek_constant_v1.IntegerConstant,
-    source_summary,
-    source_summary.memory - 4,
-  )
-}
-
-fn verify_semantic_unbytes_data_v1(
-  source: ValueWitnessV1,
-  result: ValueWitnessV1,
-  witness: SemanticBuiltinWitnessV1,
-) -> Bool {
-  expect [node] = witness.data_nodes
-  expect [bytes] = witness.scalar_preimages
-  expect witness.list_nodes == []
-  expect witness.pair_nodes == []
-  let source_summary = data_constant_summary_v1(source)
-  let revealed_bytes = canonical_bytes_leaf_v1(source_summary, node, bytes)
-  expect bytearray.length(revealed_bytes) == bytearray.length(bytes)
-  result_is_semantic_constant_v1(
-    result,
-    cek_constant_v1.ByteStringConstant,
-    source_summary,
-    source_summary.memory - 4,
-  )
-}
-
-fn verify_semantic_idata_v1(
-  integer: ValueWitnessV1,
-  result: ValueWitnessV1,
-  witness: SemanticBuiltinWitnessV1,
-) -> Bool {
-  expect [node] = witness.data_nodes
-  expect [raw_cbor] = witness.scalar_preimages
-  expect witness.list_nodes == []
-  expect witness.pair_nodes == []
-  let parts = semantic_constant_parts_v1(integer)
-  expect parts.constant_type == cek_constant_v1.IntegerConstant
-  let integer_value = canonical_integer_leaf_v1(parts.payload, node, raw_cbor)
-  expect
-    bytearray.length(cbor.serialise(builtin.i_data(integer_value))) == bytearray.length(
-      raw_cbor,
-    )
-  expect parts.memory == parts.payload.memory - 4
-  result_is_semantic_constant_v1(
-    result,
-    cek_constant_v1.DataConstant,
-    parts.payload,
-    parts.payload.memory,
-  )
-}
-
-fn verify_semantic_bdata_v1(
-  bytes_value: ValueWitnessV1,
-  result: ValueWitnessV1,
-  witness: SemanticBuiltinWitnessV1,
-) -> Bool {
-  expect [node] = witness.data_nodes
-  expect [bytes] = witness.scalar_preimages
-  expect witness.list_nodes == []
-  expect witness.pair_nodes == []
-  let parts = semantic_constant_parts_v1(bytes_value)
-  expect parts.constant_type == cek_constant_v1.ByteStringConstant
-  let revealed_bytes = canonical_bytes_leaf_v1(parts.payload, node, bytes)
-  expect bytearray.length(revealed_bytes) == bytearray.length(bytes)
-  expect parts.memory == parts.payload.memory - 4
-  result_is_semantic_constant_v1(
-    result,
-    cek_constant_v1.DataConstant,
-    parts.payload,
-    parts.payload.memory,
-  )
+    when node is {
+      cek_data_v1.IntegerData { .. } ->
+        scalar_type == cek_constant_v1.IntegerConstant
+      cek_data_v1.BytesData { .. } ->
+        scalar_type == cek_constant_v1.ByteStringConstant
+      _ -> False
+    }
+  if into_data {
+    and {
+      parts.constant_type == scalar_type,
+      parts.memory == payload.memory - 4,
+      result_is_semantic_constant_v1(
+        result,
+        cek_constant_v1.DataConstant,
+        payload,
+        payload.memory,
+      ),
+    }
+  } else {
+    and {
+      parts.constant_type == cek_constant_v1.DataConstant,
+      parts.memory == payload.memory,
+      result_is_semantic_constant_v1(
+        result,
+        scalar_type,
+        payload,
+        payload.memory - 4,
+      ),
+    }
+  }
 }
 
 fn verify_semantic_mklist_data_v1(
@@ -1588,10 +1529,22 @@ fn verify_semantic_data_v1(
     verify_semantic_mklist_data_v1(items, result, witness)
   } else if tag == 40 {
     expect [integer] = arguments
-    verify_semantic_idata_v1(integer, result, witness)
+    verify_semantic_data_leaf_v1(
+      integer,
+      cek_constant_v1.IntegerConstant,
+      True,
+      result,
+      witness,
+    )
   } else if tag == 41 {
     expect [bytes] = arguments
-    verify_semantic_bdata_v1(bytes, result, witness)
+    verify_semantic_data_leaf_v1(
+      bytes,
+      cek_constant_v1.ByteStringConstant,
+      True,
+      result,
+      witness,
+    )
   } else if tag == 42 {
     expect [source] = arguments
     verify_semantic_unconstr_data_v1(source, result, witness)
@@ -1600,10 +1553,22 @@ fn verify_semantic_data_v1(
     verify_semantic_unlist_data_v1(source, result, witness)
   } else if tag == 45 {
     expect [source] = arguments
-    verify_semantic_uninteger_data_v1(source, result, witness)
+    verify_semantic_data_leaf_v1(
+      source,
+      cek_constant_v1.IntegerConstant,
+      False,
+      result,
+      witness,
+    )
   } else if tag == 46 {
     expect [source] = arguments
-    verify_semantic_unbytes_data_v1(source, result, witness)
+    verify_semantic_data_leaf_v1(
+      source,
+      cek_constant_v1.ByteStringConstant,
+      False,
+      result,
+      witness,
+    )
   } else if tag == 47 {
     expect [left, right] = arguments
     expect empty_semantic_material_v1(witness)
@@ -4133,19 +4098,43 @@ pub fn verify_semantic_data_scalar(
     verify_semantic_mklist_data_v1(items, result, witness)
   } else if tag == 40 {
     expect [integer] = arguments
-    verify_semantic_idata_v1(integer, result, witness)
+    verify_semantic_data_leaf_v1(
+      integer,
+      cek_constant_v1.IntegerConstant,
+      True,
+      result,
+      witness,
+    )
   } else if tag == 41 {
     expect [bytes] = arguments
-    verify_semantic_bdata_v1(bytes, result, witness)
+    verify_semantic_data_leaf_v1(
+      bytes,
+      cek_constant_v1.ByteStringConstant,
+      True,
+      result,
+      witness,
+    )
   } else if tag == 44 {
     expect [source] = arguments
     verify_semantic_unlist_data_v1(source, result, witness)
   } else if tag == 45 {
     expect [source] = arguments
-    verify_semantic_uninteger_data_v1(source, result, witness)
+    verify_semantic_data_leaf_v1(
+      source,
+      cek_constant_v1.IntegerConstant,
+      False,
+      result,
+      witness,
+    )
   } else if tag == 46 {
     expect [source] = arguments
-    verify_semantic_unbytes_data_v1(source, result, witness)
+    verify_semantic_data_leaf_v1(
+      source,
+      cek_constant_v1.ByteStringConstant,
+      False,
+      result,
+      witness,
+    )
   } else {
     False
   }

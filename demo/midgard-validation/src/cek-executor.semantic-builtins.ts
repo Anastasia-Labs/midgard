@@ -5,7 +5,6 @@ import {
   buildMidgardCekDataBytesNode,
   buildMidgardCekDataConstrNode,
   buildMidgardCekDataListNode,
-  encodeMidgardCekDataTreeInteger,
 } from "./cek-data-tree.js";
 import {
   type Bytes,
@@ -243,9 +242,7 @@ export const executeMidgardCekSemanticBuiltin = (
         dataNodes: [source.node],
         listNodes: [],
         pairNodes: [],
-        scalarPreimages: [
-          encodeMidgardCekDataTreeInteger(store.integer(source.root)),
-        ],
+        scalarPreimages: [],
       },
     );
   }
@@ -261,7 +258,7 @@ export const executeMidgardCekSemanticBuiltin = (
       dataNodes: [source.node],
       listNodes: [],
       pairNodes: [],
-      scalarPreimages: [store.blob(source.node.bytesRoot)],
+      scalarPreimages: [],
     });
   }
   if (tag === 42n) return midgardCekSemanticUnConstrData(step);
