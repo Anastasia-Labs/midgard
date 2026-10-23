@@ -4,6 +4,7 @@ import type {
 } from "./journal.js";
 import type { FraudProofWorkflowRunResult } from "./orchestrator.fraud-proof-workflow-run-result.js";
 import {
+  ownThreadsUnobservableReason,
   reclaimedThreads,
   threadReclaimUnavailableReason,
 } from "./own-thread-reclaim.js";
@@ -20,12 +21,14 @@ import {
  * the header, as the stage derivation or the adapter's own view of our
  * threads reports it, holds the objective under the operator's alarm: a
  * family with a cancel wired in front of it reclaims the thread before its
- * resolution gets here, so none is wired for this one. The threads the run
- * did reclaim are reported as reclaims.
+ * resolution gets here, so none is wired for this one. A run that cannot
+ * list our threads on the header at all holds under its own alarm too:
+ * nothing shows that none of ours stands, so it never resolves blind. The
+ * threads the run did reclaim are reported as reclaims.
  */
 export const resolvedByAnotherRecordResult = ({
   resolution,
-  standing,
+  threads,
   workflowId,
   identity,
   entries,
@@ -33,8 +36,13 @@ export const resolvedByAnotherRecordResult = ({
   resumeOnObservation,
 }: {
   readonly resolution: FraudProofResolvedByAnotherRecord;
-  /** Our thread the adapter still sees on the header, if any. */
-  readonly standing: FraudProofResolvedByAnotherRecord["standingThread"];
+  /** Our threads as the run sees them on the header: the one still
+   * standing, if any. Undefined when the run cannot list them. */
+  readonly threads:
+    | Readonly<{
+        standing?: FraudProofResolvedByAnotherRecord["standingThread"];
+      }>
+    | undefined;
   readonly workflowId: string;
   readonly identity: FraudProofWorkflowIdentity;
   readonly entries: readonly FraudProofWorkflowJournalEntry[];
@@ -42,12 +50,18 @@ export const resolvedByAnotherRecordResult = ({
   readonly resumeOnObservation: (reason: string) => FraudProofWorkflowRunResult;
 }): FraudProofWorkflowRunResult => {
   const { standingThread, ...removal } = resolution;
-  const thread = standingThread ?? standing;
+  const thread = standingThread ?? threads?.standing;
   if (thread !== undefined)
     return resumeOnObservation(
       threadReclaimUnavailableReason(
         thread.threadOutRef,
         "no reclaim is wired in front of this family's workflow",
+      ),
+    );
+  if (threads === undefined)
+    return resumeOnObservation(
+      ownThreadsUnobservableReason(
+        "this family's workflow has no view of our threads",
       ),
     );
   if (

@@ -213,6 +213,8 @@ export const makeAdapter = (
   adapterVersion: FRAUD_PROOF_WORKFLOW_ADAPTER,
   category: "doubleSpend",
   safety: FRAUD_PROOF_WORKFLOW_SAFETY,
+  // The family's L1 view of our threads: none of ours on the header.
+  observeOwnThreads: vi.fn(async () => ({ spends: [] })),
   prepare: vi.fn(
     async ({
       evidence,

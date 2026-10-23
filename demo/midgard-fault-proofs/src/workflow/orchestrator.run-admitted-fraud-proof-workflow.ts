@@ -241,15 +241,16 @@ export const runAdmittedFraudProofWorkflow = async ({
     }
   };
   // The orchestrator is the guard: no run resolves while the adapter still
-  // sees a thread of ours on the header.
+  // sees a thread of ours on the header, or cannot list them at all.
   const resolvedByAnotherRecord = async (
     resolution: FraudProofResolvedByAnotherRecord,
   ): Promise<FraudProofWorkflowRunResult> =>
     resolvedByAnotherRecordResult({
       resolution,
-      standing:
-        resolution.standingThread ??
-        (await adapter.observeOwnThreads?.({ headerHash }))?.standing,
+      threads:
+        resolution.standingThread === undefined
+          ? await adapter.observeOwnThreads?.({ headerHash })
+          : { standing: resolution.standingThread },
       workflowId,
       identity,
       entries,

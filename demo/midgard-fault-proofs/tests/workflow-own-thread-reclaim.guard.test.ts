@@ -195,6 +195,43 @@ describe("workflow: reclaim edges on a header another record removed", () => {
     },
   );
 
+  it.each([
+    {
+      path: "another prover's record",
+      base: (): FraudProofFamilyWorkflowAdapter => ({
+        ...makeAdapter(),
+        observe: async () => {
+          throw new FraudProofResolvedByAnotherRecordError(resolution);
+        },
+      }),
+    },
+    {
+      path: "a sibling run's record",
+      base: () => siblingConvicted(() => true),
+    },
+  ])(
+    "holds under the operator's alarm, never resolving, while the adapter cannot list our threads ($path)",
+    async ({ base }) => {
+      const evidence = await canonicalEvidence();
+      const journal = new MemoryFraudProofWorkflowJournalStore();
+      // No view of our threads at all: nothing says none of ours stands.
+      const { observeOwnThreads, ...blind } = base();
+      void observeOwnThreads;
+      for (let pass = 0; pass < 3; pass += 1)
+        expect(await run({ evidence, adapter: blind, journal })).toMatchObject({
+          kind: "pending",
+          resumeOnObservation: true,
+          namedState: {
+            name: "fraud-proof-own-threads-unobservable",
+            alarm: true,
+          },
+          reason: expect.stringContaining(
+            "cannot list our threads on the removed header, so none of them can be shown to be spent: this family's workflow has no view of our threads",
+          ),
+        });
+    },
+  );
+
   it("two runs on our key open threads on one header: one convicts, the other cancels its thread before resolving", async () => {
     const evidence = await canonicalEvidence();
     const first = new MemoryFraudProofWorkflowJournalStore();

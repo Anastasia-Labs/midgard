@@ -58,6 +58,7 @@ export * from "./no-reference-input.js";
 export * from "./non-existent-input.js";
 export * from "./orchestrator.js";
 export {
+  FRAUD_PROOF_OWN_THREADS_UNOBSERVABLE,
   FRAUD_PROOF_THREAD_RECLAIM_REFUSED,
   FRAUD_PROOF_THREAD_RECLAIM_UNAVAILABLE,
   FRAUD_PROOF_THREAD_RECLAIM_UNFUNDED,

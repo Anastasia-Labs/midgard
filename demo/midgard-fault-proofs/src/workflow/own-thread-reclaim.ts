@@ -27,10 +27,16 @@ export const FRAUD_PROOF_THREAD_RECLAIM_UNAVAILABLE =
 export const FRAUD_PROOF_THREAD_RECLAIM_REFUSED =
   "fraud-proof-thread-reclaim-refused" as const;
 
+/** The reason prefix of a removed header on which this run cannot list our
+ * threads, so nothing shows that none of ours still holds funds there. */
+export const FRAUD_PROOF_OWN_THREADS_UNOBSERVABLE =
+  "fraud-proof-own-threads-unobservable" as const;
+
 const NAMED_STATES = [
   FRAUD_PROOF_THREAD_RECLAIM_UNFUNDED,
   FRAUD_PROOF_THREAD_RECLAIM_UNAVAILABLE,
   FRAUD_PROOF_THREAD_RECLAIM_REFUSED,
+  FRAUD_PROOF_OWN_THREADS_UNOBSERVABLE,
 ] as const;
 
 /** The operator's alarm a pending reason names, if it is a reclaim hold. */
@@ -49,6 +55,12 @@ export const threadReclaimUnavailableReason = (
   detail: string,
 ): string =>
   `${FRAUD_PROOF_THREAD_RECLAIM_UNAVAILABLE}: our thread ${threadOutRef} still holds funds on the removed header and cannot be reclaimed: ${detail}`;
+
+/** The pending reason of a removed header on which this run cannot list our
+ * threads: it never resolves blind, and it is looked at again at the next
+ * observation, so the alarm clears by itself once the threads can be read. */
+export const ownThreadsUnobservableReason = (detail: string): string =>
+  `${FRAUD_PROOF_OWN_THREADS_UNOBSERVABLE}: this run cannot list our threads on the removed header, so none of them can be shown to be spent: ${detail}`;
 
 /** The pending reason of a cancel of our thread the funding permit refused:
  * nothing was signed, and the cancel is built and bound again at the next

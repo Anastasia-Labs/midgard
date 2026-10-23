@@ -9,6 +9,7 @@ import type { FraudProofWorkflowRunResult } from "../workflow/orchestrator.fraud
 import { resolvedByAnotherRecordResult } from "../workflow/orchestrator.resolved-by-another-record.js";
 import {
   FraudProofThreadReclaimUnfundedError,
+  ownThreadsUnobservableReason,
   threadReclaimAction,
   threadReclaimIntents,
   threadReclaimNamedState,
@@ -77,25 +78,28 @@ export const resolveMintItemByAnotherRecord = async ({
     };
   };
   const { standingThread, ...removal } = resolution;
+  // Without a list of our threads, only the derivation's own thread is
+  // known: none reported is not none standing, so the run holds, named,
+  // and looks again at the next observation.
+  if (reclaim === undefined && standingThread === undefined)
+    return await pending(
+      ownThreadsUnobservableReason(
+        "this deployment's L1 view has no list of our threads",
+      ),
+    );
   let threads: FraudProofOwnThreads;
   try {
     threads =
       reclaim === undefined
         ? {
-            ...(standingThread === undefined
-              ? {}
-              : {
-                  standing: standingThread as NonNullable<
-                    FraudProofOwnThreads["standing"]
-                  >,
-                }),
+            standing: standingThread as NonNullable<
+              FraudProofOwnThreads["standing"]
+            >,
             spends: [],
           }
         : await reclaim.observe({ headerHash });
   } catch (cause) {
-    return await pending(
-      `mintItemNonCanonical could not list our threads on the removed header: ${describe(cause)}`,
-    );
+    return await pending(ownThreadsUnobservableReason(describe(cause)));
   }
   const standing = threads.standing;
   try {
@@ -213,18 +217,22 @@ export const resolveMintItemByAnotherRecord = async ({
     );
   return resolvedByAnotherRecordResult({
     resolution: removal,
-    standing,
+    threads,
     workflowId,
     identity,
     entries,
     releaseFinality,
-    resumeOnObservation: (reason) => ({
-      kind: "pending",
-      resumeOnObservation: true,
-      workflowId,
-      identity,
-      reason,
-      entries,
-    }),
+    resumeOnObservation: (reason) => {
+      const namedState = threadReclaimNamedState(reason);
+      return {
+        kind: "pending",
+        resumeOnObservation: true,
+        workflowId,
+        identity,
+        reason,
+        entries,
+        ...(namedState === undefined ? {} : { namedState }),
+      };
+    },
   });
 };
