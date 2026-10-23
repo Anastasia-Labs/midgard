@@ -113,17 +113,30 @@ const lockedOutput = (scriptHash: string, datum?: Buffer): Buffer => {
       });
 };
 
+/** The hash of the script `program` deploys as. */
+export const programScriptHash = (program: Program): string =>
+  hashScriptWitness(plutusV3ScriptWitness(program.scriptBytes));
+
 /**
  * A spend of one output locked by `program`, with `redeemer` as its Spend
- * redeemer and `datum` as the spent output's inline datum.
+ * redeemer and `datum` as the spent output's inline datum; or a spend of the
+ * ledger entry `spent`, already locked by `program`.
  */
 export const deepSpend = (
   seed: number,
   program: Program,
-  { redeemer = emptyConstr, datum }: { redeemer?: Buffer; datum?: Buffer },
+  {
+    redeemer = emptyConstr,
+    datum,
+    spent,
+  }: {
+    redeemer?: Buffer;
+    datum?: Buffer;
+    spent?: Readonly<{ outRef: Buffer; output: Buffer }>;
+  },
 ): ProgramSpend => {
   const script = plutusV3ScriptWitness(program.scriptBytes);
-  const locked = outRefFromByte(seed);
+  const locked = spent?.outRef ?? outRefFromByte(seed);
   return {
     candidate: makePhaseBCandidate({
       spent: [locked],
@@ -133,16 +146,17 @@ export const deepSpend = (
       scriptLanguages: ["PlutusV3"],
     }),
     preState: new Map([
-      [locked.toString("hex"), lockedOutput(hashScriptWitness(script), datum)],
+      [
+        locked.toString("hex"),
+        spent?.output ?? lockedOutput(hashScriptWitness(script), datum),
+      ],
     ]),
   };
 };
 
 /** The deepest list datum a spent ledger output can carry. */
 export const deepestSpentDatumDepth = (): number => {
-  const scriptHash = hashScriptWitness(
-    plutusV3ScriptWitness(walkingProgram().scriptBytes),
-  );
+  const scriptHash = programScriptHash(walkingProgram());
   const fits = (depth: number) =>
     lockedOutput(scriptHash, deepCanonicalData("list", depth)).length <=
     MIDGARD_CONSENSUS_LIMITS.maxLedgerOutputPreimageBytes;
