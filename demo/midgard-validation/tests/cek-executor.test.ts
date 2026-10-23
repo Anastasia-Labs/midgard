@@ -148,13 +148,13 @@ describe("V1 CEK trace generator", () => {
     ).toBe(true);
   });
 
-  it("rejects source constants above the independently revealed L1 preimage bound", () => {
+  it("witnesses a source constant past the direct payload bound by its semantic tree", () => {
     const payload = Buffer.alloc(9_216, 0x5a);
-    expect(() =>
-      buildCekProgramFromRawFlat(
-        compile(UPLCConst.byteString(new DataB(payload).bytes)),
-      ),
-    ).toThrow(/9,215-byte L1 proof envelope/u);
+    const { constantWitnesses } = buildCekProgramFromRawFlat(
+      compile(UPLCConst.byteString(new DataB(payload).bytes)),
+    );
+    const kinds = [...constantWitnesses.values()].map(({ kind }) => kind);
+    expect(kinds).toContain("semanticConstant");
   });
 
   it("streams constructor fields through case selection and application", () => {
@@ -304,7 +304,7 @@ describe("V1 CEK trace generator", () => {
           kind: "constant" as const,
           witness: {
             typeCbor: constant.typeCbor,
-            payloadCbor: constant.payloadCbor,
+            payloadCbor: constant.payloadCbor!,
           },
         },
       ]),

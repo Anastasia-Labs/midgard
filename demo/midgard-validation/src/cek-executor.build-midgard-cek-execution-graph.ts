@@ -19,6 +19,7 @@ import {
 import { type MidgardCekConstantValueWitness } from "./cek-builtin.js";
 import {
   encodeMidgardCekCanonicalDataConstant,
+  MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES,
   midgardCekConstantMemorySize,
 } from "./cek-constant.js";
 import { commitMidgardCekDataTree } from "./cek-data-tree.js";
@@ -160,7 +161,11 @@ export const buildMidgardCekExecutionGraph = (
   const material = new Map<string, MidgardCekProgramMaterialEntry>();
   const constantWitnesses: MidgardCekConstantWitnessEntry[] =
     verifiedSource.constants.map((constant) => {
-      if (constant.payloadCbor.length <= 9_215) {
+      if (
+        constant.payloadCbor !== undefined &&
+        constant.payloadCbor.length <=
+          MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES
+      ) {
         return [
           rootHex(constant.valueRoot),
           Object.freeze({
@@ -172,13 +177,8 @@ export const buildMidgardCekExecutionGraph = (
           }),
         ];
       }
-      const payload = plutusDataFromCborIterative(constant.payloadCbor);
-      const semantic = commitMidgardCekDataTree(payload);
-      if (!sameBytes(semantic.root, constant.semanticRoot)) {
-        throw new Error(
-          "CEK source constant semantic material does not match its authenticated value root",
-        );
-      }
+      // Past the direct bound the payload is witnessed by its semantic tree,
+      // whose summary the material check has bound to the value node.
       return [
         rootHex(constant.valueRoot),
         Object.freeze({
@@ -186,9 +186,9 @@ export const buildMidgardCekExecutionGraph = (
           witness: Object.freeze({
             typeCbor: constant.typeCbor,
             payload: Object.freeze({
-              root: semantic.root,
-              cborLength: semantic.cborLength,
-              memory: semantic.memory,
+              root: constant.semanticRoot,
+              cborLength: constant.payloadLength,
+              memory: constant.payloadMemory,
             }),
             memory: constant.memory,
           }),

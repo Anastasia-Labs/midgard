@@ -10,19 +10,40 @@ import {
   semanticIntegerMemory,
 } from "./cek-proof.commit-semantic-data.js";
 import {
+  isSemanticCommittedLeaf,
   isSemanticConstr,
   isSemanticList,
   type SemanticConstantType,
   type SemanticDataValue,
 } from "./cek-proof.program-material-task.js";
 
+/** The node of a committed bytes leaf, past the direct payload bound. */
+const committedBytesLeaf = (value: SemanticDataValue) =>
+  isSemanticCommittedLeaf(value) && value.node.kind === "bytes"
+    ? value.node
+    : undefined;
+
+/** The node of a committed integer leaf, past the direct payload bound. */
+const committedIntegerLeaf = (value: SemanticDataValue) =>
+  isSemanticCommittedLeaf(value) && value.node.kind === "integer"
+    ? value.node
+    : undefined;
+
 export const semanticConstantPayloadMatchesType = (
   type: SemanticConstantType,
   value: SemanticDataValue,
 ): boolean => {
-  if (type.kind === "integer") return typeof value === "bigint";
-  if (type.kind === "bytes") return typeof value === "string";
+  if (type.kind === "integer") {
+    return (
+      typeof value === "bigint" || committedIntegerLeaf(value) !== undefined
+    );
+  }
+  if (type.kind === "bytes") {
+    return typeof value === "string" || committedBytesLeaf(value) !== undefined;
+  }
   if (type.kind === "string") {
+    // A committed leaf's text is the decoded script's, which is UTF-8.
+    if (committedBytesLeaf(value) !== undefined) return true;
     if (typeof value !== "string") return false;
     try {
       const bytes = Buffer.from(value, "hex");
@@ -78,16 +99,21 @@ export const semanticConstantMemory = (
   value: SemanticDataValue,
 ): bigint => {
   if (type.kind === "integer") {
+    const leaf = committedIntegerLeaf(value);
+    // An integer leaf's memory is four words over the integer's own.
+    if (leaf !== undefined) return leaf.memory - 4n;
     if (typeof value !== "bigint") {
       throw new Error("CEK integer payload is not an integer");
     }
     return semanticIntegerMemory(value);
   }
   if (type.kind === "bytes" || type.kind === "string") {
-    if (typeof value !== "string") {
-      throw new Error("CEK bytes payload is not bytes");
-    }
-    const length = Buffer.from(value, "hex").length;
+    const leaf = committedBytesLeaf(value);
+    let length: number;
+    if (leaf !== undefined) length = Number(leaf.bytesLength);
+    else if (typeof value === "string") {
+      length = Buffer.from(value, "hex").length;
+    } else throw new Error("CEK bytes payload is not bytes");
     return type.kind === "string"
       ? midgardCekStringMemoryWords(length)
       : midgardCekBytesMemoryWords(length);

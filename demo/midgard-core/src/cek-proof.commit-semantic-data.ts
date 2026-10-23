@@ -14,6 +14,7 @@ import {
 } from "./cek-proof.encode-semantic-data.js";
 import {
   encodeSemanticBytes,
+  isSemanticCommittedLeaf,
   isSemanticConstr,
   isSemanticList,
   isSemanticMap,
@@ -373,6 +374,10 @@ export const commitSemanticData = (
     let done: CommittedNode | undefined;
     if (typeof pending === "bigint" || typeof pending === "string") {
       done = commitLeaf(pending);
+    } else if (isSemanticCommittedLeaf(pending)) {
+      // Committed already: its node is its commitment, and its CBOR length
+      // the length it adds to its parent.
+      done = sealNode(pending.node, pending.node.cborLength);
     } else {
       done = committed.get(pending);
       if (done === undefined) {
