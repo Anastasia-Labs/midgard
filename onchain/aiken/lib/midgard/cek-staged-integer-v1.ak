@@ -241,16 +241,23 @@ pub fn encode_canonical_integer_cbor_v1(
 }
 
 fn all_ff(bytes: ByteArray, size: Int) -> Bool {
-  if size <= 8192 {
-    bytes == builtin.replicate_byte(size, 0xff)
+  // The first piece's width is read from `size` rather than written as a
+  // literal, so that the comparison string is built at run time and not
+  // carried in the script.
+  let width = if size <= 8192 {
+    size
   } else {
-    and {
-      builtin.slice_bytearray(0, 8192, bytes) == builtin.replicate_byte(
-        8192,
-        0xff,
-      ),
+    8192
+  }
+  and {
+    builtin.slice_bytearray(0, width, bytes) == builtin.replicate_byte(
+      width,
+      0xff,
+    ),
+    or {
+      size <= 8192,
       all_ff(builtin.slice_bytearray(8192, size - 8192, bytes), size - 8192),
-    }
+    },
   }
 }
 
@@ -334,7 +341,12 @@ pub fn from_limbs_v1(limbs: List<Int>) -> ByteArray {
   bytes_from_top(list.reverse(limbs))
 }
 
-fn add_with_carry(left: List<Int>, right: List<Int>, carry: Int) -> List<Int> {
+fn add_with_carry(
+  base: Int,
+  left: List<Int>,
+  right: List<Int>,
+  carry: Int,
+) -> List<Int> {
   when left is {
     [] ->
       when right is {
@@ -348,7 +360,7 @@ fn add_with_carry(left: List<Int>, right: List<Int>, carry: Int) -> List<Int> {
           if carry == 0 {
             right
           } else {
-            add_with_carry(right, [], carry)
+            add_with_carry(base, right, [], carry)
           }
       }
     [x, ..xs] ->
@@ -358,18 +370,18 @@ fn add_with_carry(left: List<Int>, right: List<Int>, carry: Int) -> List<Int> {
             left
           } else {
             let sum = x + carry
-            if sum < limb_base {
+            if sum < base {
               [sum, ..xs]
             } else {
-              [sum - limb_base, ..add_with_carry(xs, [], 1)]
+              [sum - base, ..add_with_carry(base, xs, [], 1)]
             }
           }
         [y, ..ys] -> {
           let sum = x + y + carry
-          if sum < limb_base {
-            [sum, ..add_with_carry(xs, ys, 0)]
+          if sum < base {
+            [sum, ..add_with_carry(base, xs, ys, 0)]
           } else {
-            [sum - limb_base, ..add_with_carry(xs, ys, 1)]
+            [sum - base, ..add_with_carry(base, xs, ys, 1)]
           }
         }
       }
@@ -378,7 +390,7 @@ fn add_with_carry(left: List<Int>, right: List<Int>, carry: Int) -> List<Int> {
 
 /// The sum of two magnitudes.
 pub fn add_limbs_v1(left: List<Int>, right: List<Int>) -> List<Int> {
-  add_with_carry(left, right, 0)
+  add_with_carry(limb_base, left, right, 0)
 }
 
 /// A limb under `rest`, dropping it when it would be a zero most significant
@@ -392,6 +404,7 @@ fn push_limb(limb: Int, rest: List<Int>) -> List<Int> {
 }
 
 fn subtract_with_borrow(
+  base: Int,
   left: List<Int>,
   right: List<Int>,
   borrow: Int,
@@ -405,16 +418,16 @@ fn subtract_with_borrow(
         if x > 0 {
           push_limb(x - 1, xs)
         } else {
-          push_limb(limb_base - 1, subtract_with_borrow(xs, [], 1))
+          push_limb(base - 1, subtract_with_borrow(base, xs, [], 1))
         }
       }
     [y, ..ys] -> {
       expect [x, ..xs] = left
       let difference = x - y - borrow
       if difference >= 0 {
-        push_limb(difference, subtract_with_borrow(xs, ys, 0))
+        push_limb(difference, subtract_with_borrow(base, xs, ys, 0))
       } else {
-        push_limb(difference + limb_base, subtract_with_borrow(xs, ys, 1))
+        push_limb(difference + base, subtract_with_borrow(base, xs, ys, 1))
       }
     }
   }
@@ -422,7 +435,7 @@ fn subtract_with_borrow(
 
 /// The difference of two magnitudes; `left` must be at least `right`.
 pub fn sub_limbs_v1(left: List<Int>, right: List<Int>) -> List<Int> {
-  subtract_with_borrow(left, right, 0)
+  subtract_with_borrow(limb_base, left, right, 0)
 }
 
 /// Compares two magnitudes.
@@ -457,7 +470,7 @@ pub fn cmp_magnitude_v1(left: List<Int>, right: List<Int>) -> Ordering {
 pub fn signed_limbs_v1(integer: CanonicalIntegerV1) -> SignedLimbsV1 {
   let limbs = to_limbs_v1(integer.argument)
   if integer.negative {
-    SignedLimbsV1 { negative: True, magnitude: add_with_carry(limbs, [], 1) }
+    SignedLimbsV1 { negative: True, magnitude: add_limbs_v1(limbs, [1]) }
   } else {
     SignedLimbsV1 { negative: False, magnitude: limbs }
   }
