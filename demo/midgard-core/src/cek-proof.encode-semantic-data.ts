@@ -2,6 +2,7 @@ import { Data as LucidData } from "@lucid-evolution/lucid";
 
 import {
   encodeSemanticBytes,
+  isSemanticCommittedLeaf,
   isSemanticConstr,
   isSemanticList,
   isSemanticMap,
@@ -47,11 +48,14 @@ const EMPTY_LIST = Buffer.from([0x80]);
 const NO_BYTES = Buffer.alloc(0);
 
 const UNKNOWN_DATA_MESSAGE = "CEK constant contains unknown semantic Data";
+const COMMITTED_LEAF_MESSAGE =
+  "CEK semantic Data holds a leaf by its committed node, without its bytes";
 
 /**
  * One walk for both the encoder and the encodability check. With `chunks` it
- * appends the canonical CBOR; without, it only runs the checks, and a subtree
- * reached twice (a shared value) is checked once.
+ * appends the canonical CBOR, and stops with `false` at a committed leaf,
+ * whose bytes it does not have; without, it only runs the checks, and a
+ * subtree reached twice (a shared value) is checked once.
  *
  * The walk uses an explicit stack and checks the tree in the recursive
  * encoder's order: items and map entries left to right, and a constructor's
@@ -60,7 +64,7 @@ const UNKNOWN_DATA_MESSAGE = "CEK constant contains unknown semantic Data";
 const walkSemanticData = (
   value: SemanticDataValue,
   chunks: Buffer[] | undefined,
-): void => {
+): boolean => {
   const checked = new Set<object>();
   const open = new Set<object>();
   const stack: EncodeFrame[] = [];
@@ -112,6 +116,9 @@ const walkSemanticData = (
         if (chunks !== undefined) {
           chunks.push(encodeSemanticBytes(Buffer.from(current, "hex")));
         }
+      } else if (isSemanticCommittedLeaf(current)) {
+        // Its bytes are not at hand: it is checked, but never encoded.
+        if (chunks !== undefined) return false;
       } else if (chunks === undefined && checked.has(current)) {
         // Already checked through another parent.
       } else if (isSemanticList(current)) {
@@ -130,7 +137,7 @@ const walkSemanticData = (
     }
     const top = stack[stack.length - 1];
     if (top === undefined) {
-      return;
+      return true;
     }
     if (top.index < top.children.length) {
       pending = top.children[top.index]!;
@@ -157,12 +164,26 @@ const walkSemanticData = (
  * The canonical CBOR of a semantic Data value: integers as Lucid writes them,
  * bytes chunked at 64, lists indefinite (empty as `80`), maps definite with
  * every entry in order (duplicate keys included), and constructors in compact
- * or tag-102 form.
+ * or tag-102 form. A value holding a committed leaf has no bytes to encode
+ * and is refused.
  */
 export const encodeSemanticData = (value: SemanticDataValue): Buffer => {
+  const encoded = encodeSemanticDataWithBytes(value);
+  if (encoded === undefined) {
+    throw new Error(COMMITTED_LEAF_MESSAGE);
+  }
+  return encoded;
+};
+
+/**
+ * The canonical CBOR of `value`, as {@link encodeSemanticData} writes it, or
+ * `undefined` when `value` holds a committed leaf.
+ */
+export const encodeSemanticDataWithBytes = (
+  value: SemanticDataValue,
+): Buffer | undefined => {
   const chunks: Buffer[] = [];
-  walkSemanticData(value, chunks);
-  return Buffer.concat(chunks);
+  return walkSemanticData(value, chunks) ? Buffer.concat(chunks) : undefined;
 };
 
 /**

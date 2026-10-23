@@ -7,7 +7,6 @@ import {
 import { Builtin, type UPLCTerm } from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
-import { decodeMidgardCekConstantWitness } from "../src/cek-constant.js";
 import { verifyMidgardCekCoreStep } from "../src/cek-machine.js";
 import {
   app,
@@ -21,8 +20,8 @@ import {
 
 /**
  * A source constant and the script context share a value root when their
- * values are equal. The constant's step still records its own direct witness,
- * and the context keeps its semantic one.
+ * values are equal. Each step names that one root: the constant's
+ * `computeConstant` and the context's `computeContextConstant`.
  */
 
 const RECORD: Data = new DataConstr(0n, [
@@ -47,12 +46,17 @@ describe("CEK constant witnesses of equal values", () => {
     expect(proof.terminalState.mode).toBe("haltSuccess");
     expect(verdict.terminalState.mode).toBe("haltSuccess");
     expect(verdict.stepCount).toBe(proof.steps.length);
+    const contextRoots = proof.steps.flatMap((step) =>
+      step.witness.kind === "computeContextConstant"
+        ? [Buffer.from(step.witness.valueRoot)]
+        : [],
+    );
+    expect(contextRoots).toHaveLength(1);
     // The script's own Unit result is the other source constant.
     const constantSteps = proof.steps.filter(
       (step) =>
         step.witness.kind === "computeConstant" &&
-        decodeMidgardCekConstantWitness(step.witness.value).type.kind ===
-          "data",
+        contextRoots[0]!.equals(step.witness.valueRoot),
     );
     expect(constantSteps).toHaveLength(1);
     expect(

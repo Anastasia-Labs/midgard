@@ -257,7 +257,7 @@ const TWO_64 = 1n << 64n;
 // root. Cardano sizes an integer in 64-bit words, so the memory is 2 exactly
 // from |x| = 2^64, and a Data value four words per node plus its integers'
 // words. The root is checked against the Aiken machine below: its
-// ComputeConstant rule derives the root from the same witness.
+// ComputeConstant rule accepts the step that returns exactly that root.
 const BOUNDARY_CONSTANTS = [
   ["integer 2^64-1", UPLCConst.int(TWO_64 - 1n), 1n],
   ["integer 2^64", UPLCConst.int(TWO_64), 2n],
@@ -409,7 +409,7 @@ describe("Boundary constant roots against the Aiken machine", () => {
             root.equals(step.post.focusRoot),
         );
         expect(computed.map((step) => step.witness)).toEqual([
-          { kind: "computeConstant", value: witness },
+          { kind: "computeConstant", valueRoot: root },
         ]);
         return { label, steps: execution.steps };
       });

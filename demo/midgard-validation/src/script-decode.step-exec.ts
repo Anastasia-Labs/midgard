@@ -44,14 +44,30 @@ const STACK_DOMAIN = Buffer.from("MidgardScriptDecodeStackV1", "ascii");
 
 export const EMPTY_STACK_ROOT = blake2b256(STACK_DOMAIN);
 
-export const pushStackRoot = (frame: Frame, below: Uint8Array): Buffer =>
-  blake2b256(
+/**
+ * Each live frame's root over the stack below it. A frame keeps its place
+ * while it is on the stack, and planning a Walk rehashes the whole stack
+ * for every segment it tries, so without this each Walk costs time in
+ * proportion to the stack's depth, which grows over a long decode.
+ */
+const pushedRoots = new WeakMap<
+  Frame,
+  { readonly below: Buffer; readonly root: Buffer }
+>();
+
+export const pushStackRoot = (frame: Frame, below: Uint8Array): Buffer => {
+  const known = pushedRoots.get(frame);
+  if (known !== undefined && known.below.equals(below)) return known.root;
+  const root = blake2b256(
     Buffer.concat([
       STACK_DOMAIN,
       serialiseScriptDecodeData(frameData(frame)),
       below,
     ]),
   );
+  pushedRoots.set(frame, { below: Buffer.from(below), root });
+  return root;
+};
 
 /** The root of a stack whose top frames are `frames` (top first) over `base`. */
 export const stackRootOf = (

@@ -56,7 +56,6 @@ import {
   MACHINE_STARTUP_CPU,
   MACHINE_STARTUP_MEMORY,
   type MidgardCekConstantWitnessEntry,
-  type MidgardCekSourceConstantWitness,
   type MidgardCekStructuralExecution,
   rootHex,
   sameBytes,
@@ -110,11 +109,6 @@ export class StructuralExecutor {
   private readonly constants = new Map<
     string,
     MidgardCekConstantValueWitness
-  >();
-  /** The direct witness per value root, kept beside a semantic one. */
-  private readonly directConstants = new Map<
-    string,
-    MidgardCekSourceConstantWitness
   >();
   private readonly blsExpressions = new Map<
     string,
@@ -212,7 +206,7 @@ export class StructuralExecutor {
       }
       this.setConstant(key, witness);
       // A costly source constant reaches builtins through its semantic tree;
-      // `computeConstant` still reveals its direct witness.
+      // `computeConstant` names only its value root.
       const presented =
         witness.kind === "constant"
           ? this.store.costlySourcePresentation(root, witness)
@@ -328,7 +322,6 @@ export class StructuralExecutor {
     witness: MidgardCekConstantValueWitness,
   ): void {
     this.constants.set(key, witness);
-    if (witness.kind === "constant") this.directConstants.set(key, witness);
     this.store.registerWitness(witness.witness, Buffer.from(key, "hex"));
   }
 
@@ -525,24 +518,16 @@ export class StructuralExecutor {
         return;
       case "constant":
         this.value(term.value);
-        {
-          const value = this.directConstants.get(rootHex(term.value));
-          if (value === undefined) {
-            throw new Error(
-              "source CEK constant is missing its exact bounded direct witness",
-            );
-          }
-          this.record(
-            { kind: "computeConstant", value: value.witness },
-            exactComputeSuccessor(pre, {
-              mode: "return",
-              focusRoot: term.value,
-              environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
-              continuationRoot: pre.continuationRoot,
-              auxiliary: 0n,
-            }),
-          );
-        }
+        this.record(
+          { kind: "computeConstant", valueRoot: term.value },
+          exactComputeSuccessor(pre, {
+            mode: "return",
+            focusRoot: term.value,
+            environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
+            continuationRoot: pre.continuationRoot,
+            auxiliary: 0n,
+          }),
+        );
         return;
       case "contextConstant":
         this.value(term.value);

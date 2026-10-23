@@ -6,7 +6,6 @@ import {
   blsExpressionData,
   bytesData,
   type CekData,
-  constantWitnessData,
   dataListNodeData,
   dataNodeData,
   dataPairNodeData,
@@ -30,7 +29,7 @@ export const midgardCekCoreStepWitnessData = (
     case "computeVariable":
       return new Constr(0, [witness.index]);
     case "computeConstant":
-      return new Constr(1, [constantWitnessData(witness.value)]);
+      return new Constr(1, [bytesData(witness.valueRoot)]);
     case "computeLambda":
       return new Constr(2, [bytesData(witness.body)]);
     case "computeDelay":

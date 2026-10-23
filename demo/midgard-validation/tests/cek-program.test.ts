@@ -155,12 +155,13 @@ describe("local Flat dispute material", () => {
       expect(program.constantWitnesses.size).toBe(0);
     });
 
-    it("enforces the direct constant payload bound at the deepest leaf", () => {
-      expect(() =>
-        buildCekProgramFromRawFlat(deepFlatProgram(shape, depth, true)),
-      ).toThrow(
-        "V1 source constant payload exceeds the 9,215-byte L1 proof envelope",
+    it("builds a constant past the direct payload bound at the deepest leaf as its decode record names it", () => {
+      const program = buildCekProgramFromRawFlat(
+        deepFlatProgram(shape, depth, true),
       );
+      const record = scriptDecodeRecordOfScript(3, program.scriptBytes);
+      if (record.k !== "decoded") throw new Error("expected decoded record");
+      expect(program.termRoot).toEqual(record.termRoot);
     });
   });
 

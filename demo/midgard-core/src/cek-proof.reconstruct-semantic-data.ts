@@ -80,7 +80,9 @@ type ChainFrame = {
 
 /**
  * Rebuilds semantic Data values from committed Data nodes, list links and
- * pair links, caching each rebuilt value by its root.
+ * pair links, caching each rebuilt value by its root. A bytes or integer leaf
+ * past the direct payload bound is not materialised: it is rebuilt as its
+ * committed node.
  *
  * The walk uses an explicit stack. It visits nodes and links in the order of
  * the recursive walk it replaced (each link checked, then its head, or its key
@@ -130,6 +132,16 @@ export const makeSemanticDataReconstructor = (
     }
     if (inProgress.has(key)) {
       throw new Error("CEK semantic Data node contains itself");
+    }
+    if (
+      (node.kind === "integer" && node.cborLength > MAX_LEAF_BYTES) ||
+      (node.kind === "bytes" && node.bytesLength > MAX_LEAF_BYTES)
+    ) {
+      // A leaf past the direct payload bound is kept by its committed node;
+      // the blob walk has already bound its length to the node's.
+      const value: SemanticDataValue = { kind: "committedLeaf", node };
+      reconstructed.set(key, value);
+      return value;
     }
     if (node.kind === "integer") {
       const bytes = source.materializeBlob(
