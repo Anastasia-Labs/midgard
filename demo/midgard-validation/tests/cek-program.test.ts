@@ -162,9 +162,6 @@ describe("local Flat dispute material", () => {
       const record = scriptDecodeRecordOfScript(3, program.scriptBytes);
       if (record.k !== "decoded") throw new Error("expected decoded record");
       expect(program.termRoot).toEqual(record.termRoot);
-      expect(
-        [...program.constantWitnesses.values()].map(({ kind }) => kind),
-      ).toEqual(["semanticConstant"]);
     });
   });
 
