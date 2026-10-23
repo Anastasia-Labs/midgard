@@ -142,14 +142,16 @@ export const resolutionDrive = <
 
   /**
    * The hop of the successor's thread at `at` with its successor datum,
-   * its redeemer or what it reads rewritten by `rewrite`, and a check that
-   * the thread has not moved.
+   * the holder it pays the successor to, its redeemer or what it reads
+   * rewritten by `rewrite`, and a check that the thread has not moved.
    */
   const rewrittenHop = async (
     rewrite: (
       honest: ValidationTraceHop,
       plan: Plan,
-    ) => Partial<Pick<ValidationTraceHop, "datum" | "redeemer" | "reads">>,
+    ) => Partial<
+      Pick<ValidationTraceHop, "datum" | "next" | "redeemer" | "reads">
+    >,
   ) => {
     const { scene, deployment, b } = dispute;
     const before = await placeOfB();
@@ -188,7 +190,7 @@ export const resolutionDrive = <
               unit: b.unit,
               reference,
               hop: rewritten,
-              address: validationTraceOneStepHolder(deployment, honest.next)
+              address: validationTraceOneStepHolder(deployment, rewritten.next)
                 .address,
               prover,
               fee,
@@ -340,6 +342,10 @@ export const resolutionDrive = <
 
     /** The size in bytes of the move reported under `label`. */
     bytesOf: (label: string) => reported.get(label)!.length / 2,
+
+    /** The fee of the move reported under `label`. */
+    feeOf: (label: string) =>
+      CML.Transaction.from_cbor_hex(reported.get(label)!).body().fee(),
 
     /** Each move's fee is paid by its thread when it fits under the cap, and
      * by our wallet when it does not; every move the runner landed fits the

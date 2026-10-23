@@ -7,6 +7,7 @@
  * the award (validation-trace-dispute-one-step-resolution-drive.ts). */
 import { hashMidgardValidationMachineState } from "@al-ft/midgard-core";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
+import type { MidgardVersionedScript } from "@al-ft/midgard-core/codec/versioned-script";
 import {
   plutusConstrFieldCbor,
   replacePlutusConstrFieldCbor,
@@ -30,7 +31,7 @@ import { threadPlace } from "./validation-trace-dispute-one-step-play.js";
 import { resolutionDrive } from "./validation-trace-dispute-one-step-resolution-drive.js";
 
 /** A PlutusV3 script in Flat, wrapped in one CBOR byte string. */
-const flatScript = (hex: string) =>
+export const flatScript = (hex: string) =>
   plutusV3ScriptWitness(encodeCbor(Buffer.from(hex, "hex")));
 
 /**
@@ -94,18 +95,21 @@ export const lastCoreStepOf =
 
 /**
  * The drive of the successor's thread through the CEK builtin step of
- * `group` in the failing script's trace, whose arm chain is `arms`, set up
- * with the thread standing at the chain's second hop.
+ * `group` in the trace of `script` (by default the group's own), whose arm
+ * chain is `arms`, set up with the thread standing at the chain's second
+ * hop.
  */
 export const cekBuiltinDrive = ({
   group,
   arm,
   arms,
+  script = CEK_BUILTIN_STEP_SCRIPTS[group],
 }: {
   readonly group: CekBuiltinGroup;
   /** The CEK arm of the step's witness. */
   readonly arm: number;
   readonly arms: readonly ValidationTraceArmHolder[];
+  readonly script?: MidgardVersionedScript;
 }) => {
   const at = arms[1]!;
   const step = lastCoreStepOf(group);
@@ -121,7 +125,7 @@ export const cekBuiltinDrive = ({
     ],
     installs: {
       builtins: true,
-      failingScript: CEK_BUILTIN_STEP_SCRIPTS[group],
+      failingScript: script,
       // The operator's thread disputes the same step, so no other
       // resolution is needed for it.
       operatorFrom: step,
@@ -150,6 +154,8 @@ export const cekBuiltinDrive = ({
     awards: drive.awards,
     pays: drive.pays,
     restart: drive.restart,
+    bytesOf: drive.bytesOf,
+    feeOf: drive.feeOf,
 
     /** Our plan sends the thread's step through the binder to the group's
      * arm chain, and no hop is built for an arm outside it; a deployment
@@ -197,5 +203,24 @@ export const cekBuiltinDrive = ({
           integer(1),
         ),
       })),
+
+    /** The hop at the chain's second holder with a successor whose bound
+     * carries the facts the chain's first hop wrote rather than its own. */
+    otherFacts: async () =>
+      await drive.rewrittenHop((honest, plan) => {
+        const [first, second] = plan.core.hops.facts;
+        expect(first).not.toBe(second);
+        return {
+          datum: replacePlutusConstrFieldCbor(honest.datum, [1, 0, 7], first!),
+        };
+      }),
+
+    /** The hop at the chain's second holder paying its successor to the
+     * settle rather than to the chain's next holder. */
+    otherNext: async () =>
+      await drive.rewrittenHop((honest) => {
+        expect(honest.next).not.toBe("settle");
+        return { next: "settle" };
+      }),
   };
 };
