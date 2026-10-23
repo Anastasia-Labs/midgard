@@ -3,7 +3,7 @@ import {
   EventToStepMembershipProofSchema,
   faultProofStepRedeemerSchema,
   FieldOpeningSchema,
-  ForcedTransactionSourceMembershipProofSchema,
+  ForcedLeafMembershipV1Schema,
   HeaderSchema,
   NativeTxInclusionCarriageSchema,
   ProofSchema,
@@ -39,7 +39,7 @@ export const ConservationForcedSourceArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   header: HeaderSchema,
-  membership: ForcedTransactionSourceMembershipProofSchema,
+  membership: ForcedLeafMembershipV1Schema,
 });
 
 export type ConservationForcedSourceArgs = Data.Static<

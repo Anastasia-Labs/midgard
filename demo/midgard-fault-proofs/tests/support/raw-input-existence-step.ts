@@ -311,7 +311,9 @@ export const submitRawInputExistenceStep = async ({
                 ForcedSource: {
                   header: prepared.source.header,
                   compact: prepared.compact,
-                  membership: prepared.source.membership,
+                  membership: SDK.forcedLeafMembershipV1(
+                    prepared.source.membership,
+                  ),
                   input_index,
                   output_index: outputIndex,
                 },

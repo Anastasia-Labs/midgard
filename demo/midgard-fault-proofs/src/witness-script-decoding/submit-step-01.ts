@@ -1,6 +1,7 @@
 import {
   acceptedVerdictSubject,
   type ForcedInclusionTxV1,
+  forcedLeafMembershipV1,
   forcedVerdictSubject,
   type Header,
   type OutputReference,
@@ -273,7 +274,7 @@ export const submitWitnessScriptDecodingStep01Forced = async ({
                 input_index: inputIndex,
                 output_index: outputIndex,
                 header,
-                membership,
+                membership: forcedLeafMembershipV1(membership),
               },
             },
             script_index: scriptIndex,

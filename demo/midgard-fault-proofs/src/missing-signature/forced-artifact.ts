@@ -5,11 +5,13 @@ import {
   decodeMidgardForcedTxFullFromCanonicalCbor,
   deriveMidgardNativeTxWitnessSetCompact,
 } from "@al-ft/midgard-core";
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk";
 import {
   encodeHeaderCbor,
   ForcedInclusionTxV1,
-  MissingSignatureForcedStepArgs,
+  ForcedTransactionSourceMembershipProofSchema,
+  HeaderSchema,
   OutputReference,
   ROOT_DOMAINS,
 } from "@al-ft/midgard-sdk";
@@ -21,6 +23,24 @@ import {
   detectMissingSignatureForcedTransaction,
   type PreparedMissingSignatureWrongfulRejection,
 } from "./wrongful-rejection.js";
+
+/**
+ * The forced step arguments as retained in the artifact, which keeps the full
+ * forced-transaction membership.
+ */
+const MissingSignatureForcedArtifactSourceSchema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  header: HeaderSchema,
+  membership: ForcedTransactionSourceMembershipProofSchema,
+});
+type MissingSignatureForcedArtifactSource = Data.Static<
+  typeof MissingSignatureForcedArtifactSourceSchema
+>;
+const MissingSignatureForcedArtifactSource =
+  asDataType<MissingSignatureForcedArtifactSource>(
+    MissingSignatureForcedArtifactSourceSchema,
+  );
 
 export const MISSING_SIGNATURE_FORCED_ARTIFACT =
   "midgard-missing-signature-forced-artifact-v1";
@@ -40,7 +60,7 @@ export const missingSignatureForcedArtifact = (
   transactionCbor,
   forcedSourceCbor: Data.to(
     { input_index: 0n, output_index: 0n, ...prepared.forcedSource },
-    MissingSignatureForcedStepArgs,
+    MissingSignatureForcedArtifactSource,
   ),
 });
 export const admitMissingSignatureForcedArtifact = async (
@@ -63,10 +83,14 @@ export const admitMissingSignatureForcedArtifact = async (
     !/^(?:[0-9a-f]{2})+$/u.test(transactionCbor)
   )
     throw new Error("missingSignature: malformed forced artifact bytes");
-  const source = Data.from(forcedSourceCbor, MissingSignatureForcedStepArgs);
+  const source = Data.from(
+    forcedSourceCbor,
+    MissingSignatureForcedArtifactSource,
+  );
   const { header, membership } = source;
   if (
-    Data.to(source, MissingSignatureForcedStepArgs) !== forcedSourceCbor ||
+    Data.to(source, MissingSignatureForcedArtifactSource) !==
+      forcedSourceCbor ||
     proofThreadDirectionOfForcedLeaf(source.membership.value) !== 1n ||
     source.input_index !== 0n ||
     source.output_index !== 0n ||

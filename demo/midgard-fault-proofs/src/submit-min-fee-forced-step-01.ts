@@ -1,4 +1,6 @@
 import {
+  forcedLeafMembershipV1,
+  type ForcedTransactionSourceMembershipProof,
   MinFeeStep01SpendRedeemer,
   MinFeeStep02Datum,
   type MinFeeStep02State,
@@ -31,8 +33,10 @@ type ForcedSource = Extract<
 >["Continue"][0]["source"];
 type ForcedPayload = Omit<
   Extract<ForcedSource, { ForcedSource: unknown }>["ForcedSource"],
-  "input_index" | "output_index"
->;
+  "input_index" | "output_index" | "membership"
+> & {
+  readonly membership: ForcedTransactionSourceMembershipProof;
+};
 
 export const submitMinFeeStep01Forced = async ({
   lucid,
@@ -100,6 +104,7 @@ export const submitMinFeeStep01Forced = async ({
             source: {
               ForcedSource: {
                 ...forcedSource,
+                membership: forcedLeafMembershipV1(forcedSource.membership),
                 input_index: requireInputIndex(ctx, threadUtxo, "min-fee"),
                 output_index: outputIndex,
               },

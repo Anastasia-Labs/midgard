@@ -2,12 +2,11 @@ import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
   FieldOpeningSchema,
-  ForcedInclusionTxV1Schema,
+  ForcedLeafMembershipV1Schema,
+  ForcedTransactionSourceMembershipProofSchema,
   HeaderSchema,
   NativeTxInclusionCarriageSchema,
-  OutputReferenceSchema,
   RejectionReasonSchema,
-  rootMembershipProofSchema,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
@@ -43,10 +42,24 @@ export const RedeemerCanonicityStep01SourceSchema = Data.Enum([
       input_index: Data.Integer(),
       output_index: Data.Integer(),
       header: HeaderSchema,
-      membership: rootMembershipProofSchema(
-        OutputReferenceSchema,
-        ForcedInclusionTxV1Schema,
-      ),
+      membership: ForcedLeafMembershipV1Schema,
+    }),
+  }),
+]);
+/**
+ * The step-01 source as retained in the workflow artifact, which keeps the
+ * full forced-transaction membership.
+ */
+export const RedeemerCanonicityStep01SourceArtifactSchema = Data.Enum([
+  Data.Object({
+    AcceptedSource: Data.Object({ inclusion: NativeTxInclusionCarriageSchema }),
+  }),
+  Data.Object({
+    ForcedSource: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      header: HeaderSchema,
+      membership: ForcedTransactionSourceMembershipProofSchema,
     }),
   }),
 ]);

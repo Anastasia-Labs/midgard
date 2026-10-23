@@ -2,10 +2,9 @@ import { decodeMidgardNativeTxProofFieldLengths } from "@al-ft/midgard-core";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
-import { OutputReferenceSchema } from "../common.js";
-import { ForcedInclusionTxV1Schema, HeaderSchema } from "../ledger-state.js";
+import { HeaderSchema } from "../ledger-state.js";
 import type { RejectionReason as RejectionReasonType } from "../rejection-reason.js";
-import { rootMembershipProofSchema } from "../transition-trace.js";
+import { ForcedLeafMembershipV1Schema } from "../transition-trace.js";
 import { CommittedFieldClaimSchema } from "./canonical-decodability.js";
 import {
   faultProofStepDatumSchema,
@@ -193,7 +192,7 @@ export const FieldPreimageLengthStep02DatumSchema = faultProofStepDatumSchema(
 );
 
 export const FieldPreimageLengthForcedMembershipSchema =
-  rootMembershipProofSchema(OutputReferenceSchema, ForcedInclusionTxV1Schema);
+  ForcedLeafMembershipV1Schema;
 export const FieldPreimageLengthStep02ArgsSchema = Data.Enum([
   Data.Object({
     AuthenticateAccepted: Data.Object({

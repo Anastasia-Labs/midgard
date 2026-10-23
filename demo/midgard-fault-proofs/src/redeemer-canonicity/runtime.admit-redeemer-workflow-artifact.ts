@@ -32,7 +32,7 @@ import {
 } from "./contracts.js";
 import { prepareRedeemerCanonicityEvidence } from "./family.js";
 import {
-  RedeemerCanonicityStep01SourceSchema,
+  RedeemerCanonicityStep01SourceArtifactSchema,
   RedeemerCanonicityVerdictSubjectSchema,
 } from "./schemas.js";
 import { submitRedeemerCanonicityStep01Forced } from "./submit-step-01.js";
@@ -245,7 +245,7 @@ export const admitRedeemerWorkflowArtifact = (artifact: JournalJsonObject) => {
       : (
           Data.from(
             cursorStringField(artifact, "forcedSourceCbor"),
-            RedeemerCanonicityStep01SourceSchema as never,
+            RedeemerCanonicityStep01SourceArtifactSchema as never,
           ) as {
             ForcedSource: Parameters<
               typeof submitRedeemerCanonicityStep01Forced

@@ -2,13 +2,9 @@ import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 
-import {
-  H32Schema,
-  OutputReferenceSchema,
-  VerificationKeyHashSchema,
-} from "../common.js";
-import { ForcedInclusionTxV1Schema, HeaderSchema } from "../ledger-state.js";
-import { rootMembershipProofSchema } from "../transition-trace.js";
+import { H32Schema, VerificationKeyHashSchema } from "../common.js";
+import { HeaderSchema } from "../ledger-state.js";
+import { ForcedLeafMembershipV1Schema } from "../transition-trace.js";
 import { FieldOpeningSchema } from "./field-opening.js";
 import { MissingSignatureStep02State } from "./missing-signature.find-missing-required-signer-index.js";
 import {
@@ -250,10 +246,7 @@ export const MissingSignatureForcedStepArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   header: HeaderSchema,
-  membership: rootMembershipProofSchema(
-    OutputReferenceSchema,
-    ForcedInclusionTxV1Schema,
-  ),
+  membership: ForcedLeafMembershipV1Schema,
 });
 
 export const MissingSignatureForcedSignerStateSchema = Data.Object({

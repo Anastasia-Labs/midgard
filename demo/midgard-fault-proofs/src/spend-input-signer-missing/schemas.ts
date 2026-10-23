@@ -2,13 +2,11 @@ import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
   FieldOpeningSchema,
-  ForcedInclusionTxV1Schema,
+  ForcedLeafMembershipV1Schema,
   HeaderSchema,
   MembershipCarriageSchema,
   NativeTxInclusionCarriageSchema,
-  OutputReferenceSchema,
   RejectionReasonSchema,
-  rootMembershipProofSchema,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
@@ -50,10 +48,7 @@ export const SpendInputSignerStep01SourceSchema = Data.Enum([
       input_index: Data.Integer(),
       output_index: Data.Integer(),
       header: HeaderSchema,
-      membership: rootMembershipProofSchema(
-        OutputReferenceSchema,
-        ForcedInclusionTxV1Schema,
-      ),
+      membership: ForcedLeafMembershipV1Schema,
     }),
   }),
 ]);

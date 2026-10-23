@@ -184,7 +184,7 @@ export const submitMissingRedeemerStep01Forced = async ({
                 input_index: inputIndex,
                 output_index: outputIndex,
                 header,
-                membership,
+                membership: SDK.forcedLeafMembershipV1(membership),
               },
             },
           },

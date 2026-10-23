@@ -5,6 +5,7 @@ import {
 } from "@al-ft/midgard-core/codec/forced";
 import {
   encodeHeaderCbor,
+  forcedLeafMembershipV1,
   type ForcedTransactionSourceMembershipProof,
   type Header,
 } from "@al-ft/midgard-sdk";
@@ -79,7 +80,12 @@ export const conservationForcedSource = ({
       nextPosition: "unionEvent",
       outputState: Data.to(source, ConservationSource),
       args: Data.to(
-        { input_index: 0n, output_index: 0n, header, membership },
+        {
+          input_index: 0n,
+          output_index: 0n,
+          header,
+          membership: forcedLeafMembershipV1(membership),
+        },
         ConservationForcedSourceArgs,
       ),
     },

@@ -49,7 +49,7 @@ import {
   WITNESS_ROLES,
 } from "./runtime.admit-redeemer-workflow-artifact.js";
 import {
-  RedeemerCanonicityStep01SourceSchema,
+  RedeemerCanonicityStep01SourceArtifactSchema,
   RedeemerCanonicityStep02DataDatumSchema,
   RedeemerCanonicityStep02DatumSchema,
   RedeemerCanonicityStep03DatumSchema,
@@ -198,7 +198,7 @@ export const prepareRedeemerCanonicityWorkflowArtifact = async (
                 membership,
               },
             } as never,
-            RedeemerCanonicityStep01SourceSchema as never,
+            RedeemerCanonicityStep01SourceArtifactSchema as never,
           ),
   };
 };

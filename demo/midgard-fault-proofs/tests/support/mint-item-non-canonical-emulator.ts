@@ -1,5 +1,7 @@
 import {
   type FieldOpening,
+  forcedLeafMembershipV1,
+  type ForcedTransactionSourceMembershipProof,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
@@ -151,7 +153,16 @@ export const submitMintStep01ForcedRaw = async ({
     ),
     redeemerSchema: MintItemStep01RedeemerSchema,
     args: (input_index, output_index) => ({
-      source: { ForcedSource: { ...forcedSource, input_index, output_index } },
+      source: {
+        ForcedSource: {
+          ...forcedSource,
+          membership: forcedLeafMembershipV1(
+            forcedSource.membership as ForcedTransactionSourceMembershipProof,
+          ),
+          input_index,
+          output_index,
+        },
+      },
       item_index: BigInt(itemIndex),
     }),
   });

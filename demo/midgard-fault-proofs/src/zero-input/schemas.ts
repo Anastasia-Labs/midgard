@@ -3,6 +3,7 @@ import {
   faultProofStepRedeemerSchema,
   FieldOpeningSchema,
   ForcedInclusionTxV1Schema,
+  ForcedLeafMembershipV1Schema,
   HeaderSchema,
   NativeTxInclusionCarriageSchema,
   OutputReferenceSchema,
@@ -21,10 +22,7 @@ export const ZeroInputStep01SourceSchema = Data.Enum([
       input_index: Data.Integer(),
       output_index: Data.Integer(),
       header: HeaderSchema,
-      membership: rootMembershipProofSchema(
-        OutputReferenceSchema,
-        ForcedInclusionTxV1Schema,
-      ),
+      membership: ForcedLeafMembershipV1Schema,
     }),
   }),
 ]);

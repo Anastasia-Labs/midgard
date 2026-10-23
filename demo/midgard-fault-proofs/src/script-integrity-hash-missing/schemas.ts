@@ -3,13 +3,11 @@ import {
   faultProofStepRedeemerSchema,
   FieldCarriageSchema,
   FieldOpeningSchema,
-  ForcedInclusionTxV1Schema,
+  ForcedLeafMembershipV1Schema,
   HeaderSchema,
   NativeTxInclusionCarriageSchema,
   NativeTxWitnessSetCompactSchema,
-  OutputReferenceSchema,
   RejectionReason as RejectionReasonSchema,
-  rootMembershipProofSchema,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
@@ -95,9 +93,7 @@ export const ScriptIntegrityStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   header: HeaderSchema,
-  forced_membership: Data.Nullable(
-    rootMembershipProofSchema(OutputReferenceSchema, ForcedInclusionTxV1Schema),
-  ),
+  forced_membership: Data.Nullable(ForcedLeafMembershipV1Schema),
 });
 export const ScriptIntegrityStep03ArgsSchema = Data.Enum([
   Data.Object({

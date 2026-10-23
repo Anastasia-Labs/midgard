@@ -1,4 +1,6 @@
 import {
+  forcedLeafMembershipV1,
+  type ForcedTransactionSourceMembershipProof,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
@@ -109,6 +111,9 @@ export const submitTransactionOutputNonCanonicalStep01Forced = async ({
             source: {
               ForcedSource: {
                 ...forcedSource,
+                membership: forcedLeafMembershipV1(
+                  forcedSource.membership as ForcedTransactionSourceMembershipProof,
+                ),
                 input_index: inputIndex,
                 output_index: outputIndex,
               },

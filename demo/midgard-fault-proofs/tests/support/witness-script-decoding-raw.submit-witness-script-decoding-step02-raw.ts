@@ -5,6 +5,7 @@ import {
 import {
   type FieldOpening,
   type ForcedInclusionTxV1,
+  forcedLeafMembershipV1,
   type Header,
   MIDGARD_FIELD_INDEX,
   type OutputReference,
@@ -137,7 +138,7 @@ export const submitWitnessScriptDecodingStep01ForcedRaw = async ({
                 input_index: inputIndex,
                 output_index: outputIndex,
                 header,
-                membership,
+                membership: forcedLeafMembershipV1(membership),
               },
             },
             script_index: scriptIndex,

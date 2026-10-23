@@ -26,6 +26,7 @@ import type {
   OutputReference,
 } from "@al-ft/midgard-sdk";
 import {
+  forcedLeafMembershipV1,
   hashHexWithBlake2b,
   Header,
   NATIVE_SCRIPT_DECODING_CLASS_PENDING,
@@ -333,7 +334,10 @@ export const submitNativeScriptDecodingStep02 = async ({
             header: reconstruction.header,
             event_to_step_membership: evidence.eventToStepMembership,
             transition_step_membership: evidence.transitionStepMembership,
-            forced_membership: evidence.forcedMembership,
+            forced_membership:
+              evidence.forcedMembership === null
+                ? null
+                : forcedLeafMembershipV1(evidence.forcedMembership),
             chosen_outpoint_source_kind: scanState.outpoint_source_kind,
             chosen_outpoint_cursor: scanState.outpoint_cursor,
           },

@@ -2,6 +2,7 @@ import {
   acceptedVerdictSubject,
   type FieldCarriage,
   type ForcedInclusionTxV1,
+  forcedLeafMembershipV1,
   forcedVerdictSubject,
   type Header,
   type NativeTxWitnessSetCompact,
@@ -168,7 +169,10 @@ export const submitScriptIntegrityHashMissingStep02Binding = async ({
       input_index,
       output_index,
       header,
-      forced_membership: forcedMembership,
+      forced_membership:
+        forcedMembership === null
+          ? null
+          : forcedLeafMembershipV1(forcedMembership),
     }),
   });
 };

@@ -1,4 +1,7 @@
-import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk";
+import {
+  forcedLeafMembershipV1,
+  proofThreadDirectionOfForcedLeaf,
+} from "@al-ft/midgard-sdk";
 import {
   isAnyNetworkIdMismatch,
   NetworkIdForcedStepDatum,
@@ -175,6 +178,9 @@ export const submitNetworkIdAcceptedForcedBind = async ({
             input_index: requireInputIndex(ctx, threadUtxo, STEP_LABEL),
             output_index: outputIndex,
             ...prepared.forcedSource,
+            membership: forcedLeafMembershipV1(
+              prepared.forcedSource.membership,
+            ),
           },
         ],
       } as never,
