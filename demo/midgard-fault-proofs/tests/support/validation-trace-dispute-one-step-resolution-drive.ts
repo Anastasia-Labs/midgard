@@ -43,12 +43,14 @@ import {
   type TwoThreadCase,
 } from "./validation-trace-dispute-one-step-case.js";
 import {
+  capturePrepared,
   isPendingFor,
   playThreads,
   type PreparedMove,
   threadPlace,
   withLedgerParameters,
 } from "./validation-trace-dispute-one-step-play.js";
+import { makeRunner } from "./validation-trace-dispute-runner.js";
 import { reportFit } from "./validation-trace-dispute-scripted-defender.js";
 
 const outRefOf = (utxo: UTxO) =>
@@ -73,7 +75,9 @@ export const resolutionDrive = <
   minFeeA,
   planAt,
 }: {
-  readonly from: number;
+  readonly from: NonNullable<
+    Parameters<typeof defendTwoThreads>[0]["successorFrom"]
+  >;
   readonly at: Holder;
   readonly path: readonly ValidationTraceOneStepHolder[];
   readonly labels: readonly string[];
@@ -81,12 +85,14 @@ export const resolutionDrive = <
     Parameters<typeof defendTwoThreads>[0],
     | "canonicalDecode"
     | "contexts"
+    | "builtins"
     | "phases"
     | "scriptSourcesRedeemers"
     | "failingRedeemerData"
     | "failingReferenceInputs"
     | "failingSigners"
     | "failingScript"
+    | "operatorFrom"
     | "failingNativeSpend"
     | "failingNativeMint"
     | "releaseDepth"
@@ -214,6 +220,20 @@ export const resolutionDrive = <
         sides: [a, b],
         until: async () => (await placeOfB()).holder === at,
         limit: 80,
+      });
+    },
+
+    /** Stops the runner's process and starts another over its journal,
+     * holding nothing the first held in memory. */
+    restart: () => {
+      const { scene, deployment, prepared, runner } = dispute;
+      dispute = Object.freeze({
+        ...dispute,
+        runner: makeRunner(scene, {
+          deployment,
+          journal: runner.journal,
+          wrap: capturePrepared(prepared),
+        }),
       });
     },
 

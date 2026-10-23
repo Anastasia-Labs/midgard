@@ -2,13 +2,13 @@
  * the step from the agreed state at `low_index` to our state after it, its
  * one-step argument (the transition and its auxiliary evidence), and the
  * resolver chain that step selects. The runner drives the CEK core steps
- * whose arm settles in one hop (compute, machine, map conversion and case
- * constant), the CEK script selections when the deployment records
- * scripts' decodes, the CEK context steps whose stage verifies them in one
- * hop when the deployment installs the context resolution, and, when the
- * deployment installs their resolution, the canonical-decode steps whose
- * item it carries inline and the steps of the phases one-step-phase.ts
- * names; any other step is reported as one the runner does not drive, and
+ * through their arm chains (one-step-core-chains.ts), a builtin's when the
+ * deployment installs the builtin arms, the CEK script selections when the
+ * deployment records scripts' decodes, the CEK context steps whose stage
+ * verifies them in one hop when the deployment installs the context
+ * resolution, and, when the deployment installs their resolution, the
+ * canonical-decode steps whose item it carries inline and the steps of the
+ * phases one-step-phase.ts names; any other step is reported as one the runner does not drive, and
  * its thread waits under the one-step-required state, which raises the
  * operator's alarm while our deadline runs. */
 import {
@@ -39,6 +39,13 @@ import {
   planValidationTraceContextStep,
   type ValidationTraceContextStep,
 } from "./one-step-context.js";
+import {
+  type CekCoreArmHops,
+  cekCoreArmHops,
+  type CekCoreGroup,
+  isCekCoreBuiltinGroup,
+  isCekCoreGroup,
+} from "./one-step-core-chains.js";
 import { cekCoreGroup } from "./one-step-core-group.js";
 import {
   isValidationTracePhase,
@@ -59,16 +66,6 @@ export const CEK_CONTEXT_SEMANTIC_RESOLVER_INDEX = 2;
 
 /** The CEK core step's semantic resolver in the CEK group. */
 export const CEK_CORE_SEMANTIC_RESOLVER_INDEX = 3;
-
-/** The arms whose step settles after one hop, by their core group. */
-export const SINGLE_HOP_CORE_ARMS = {
-  0: "compute",
-  1: "machine",
-  2: "mapConversion",
-  11: "caseConstant",
-} as const;
-
-export type SingleHopCoreGroup = keyof typeof SINGLE_HOP_CORE_ARMS;
 
 /** `hash_one_step_evidence`'s domain (validation-resolution-v1). */
 const ONE_STEP_EVIDENCE_DOMAIN =
@@ -119,7 +116,9 @@ export type ValidationTraceCoreStepPlan = ValidationTraceOneStepArgument &
       postCbor: string;
       armWitnessCbor: string;
       arm: number;
-      group: SingleHopCoreGroup;
+      group: CekCoreGroup;
+      /** The arm chain's holders, in order, and the facts each writes. */
+      hops: CekCoreArmHops;
     }>;
   }>;
 
@@ -168,6 +167,9 @@ export type ValidationTraceOneStepDrives = Readonly<{
   decodeRecords?: boolean;
   /** Whether the deployment installs the CEK context resolution. */
   contexts?: boolean;
+  /** Whether the deployment installs the builtin arms (core groups 3 to
+   * 10). */
+  builtins?: boolean;
   /** Whether the deployment installs the canonical-decode resolution. */
   canonicalDecode?: boolean;
   /** The phases whose resolution the deployment installs. */
@@ -221,6 +223,7 @@ export const planValidationTraceOneStep = async ({
   challengerHighHash,
   decodeRecords = false,
   contexts = false,
+  builtins = false,
   canonicalDecode = false,
   phases = [],
   scriptSourcesRedeemers = false,
@@ -385,10 +388,31 @@ export const planValidationTraceOneStep = async ({
     arm,
     typeof tag === "bigint" ? tag : undefined,
   );
-  if (group === undefined || !(group in SINGLE_HOP_CORE_ARMS))
+  if (group === undefined || !isCekCoreGroup(group))
     return unsupported(
-      `a CEK core step of arm ${arm.toString()}, which settles after more than one hop`,
+      `a CEK core step of arm ${arm.toString()}, which no core group takes`,
     );
+  if (isCekCoreBuiltinGroup(group) && !builtins)
+    return unsupported(
+      `a CEK builtin step of arm ${arm.toString()}, whose resolution the deployment does not install`,
+    );
+  const auxiliary = trace.witnesses[stateIndex]?.auxiliary;
+  if (auxiliary?.kind !== "cekCoreStep")
+    return unsupported(
+      `a CEK core step of arm ${arm.toString()} whose witness carries no core step`,
+    );
+  let hops: CekCoreArmHops;
+  try {
+    hops = cekCoreArmHops(
+      group,
+      auxiliary.step.witness,
+      auxiliary.step.pre.focusRoot,
+    );
+  } catch (error) {
+    return unsupported(
+      `a CEK core step of arm ${arm.toString()} whose arm chain cannot be built (${error instanceof Error ? error.message : String(error)})`,
+    );
+  }
   return {
     kind: "plan",
     plan: Object.freeze({
@@ -400,7 +424,8 @@ export const planValidationTraceOneStep = async ({
         postCbor: plutusConstrFieldCbor(stepCbor, [1]),
         armWitnessCbor,
         arm,
-        group: group as SingleHopCoreGroup,
+        group,
+        hops,
       }),
     }),
   };

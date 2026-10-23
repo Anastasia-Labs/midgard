@@ -11,10 +11,7 @@
  * Convicted with our bond back; every move of ours lands within the
  * transaction limits at its real fee, the thread paying it under the
  * per-move cap and our wallet over it. */
-import {
-  hashMidgardValidationMachineState,
-  validationTraceDepthForStepCount,
-} from "@al-ft/midgard-core";
+import { validationTraceDepthForStepCount } from "@al-ft/midgard-core";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import { plutusV3ScriptWitness } from "@al-ft/midgard-validation/tests/validation-fixtures";
@@ -26,14 +23,9 @@ import {
   VALIDATION_TRACE_CASE_CONVICTED,
   VALIDATION_TRACE_CASE_OPEN,
 } from "../../src/validation-trace-dispute/adapter.js";
-import type { ValidationTraceClaimMaterial } from "../../src/validation-trace-dispute/claim-material.js";
 import { VALIDATION_TRACE_MOVE_FEE_CAP_LOVELACE } from "../../src/validation-trace-dispute/move-fee.js";
 import { VALIDATION_TRACE_INLINE_OBSERVE_MAX_PREIMAGE_BYTES } from "../../src/validation-trace-dispute/one-step-canonical-decode.js";
 import { validationTraceOneStepHolder } from "../../src/validation-trace-dispute/one-step-holders.js";
-import {
-  planValidationTraceOneStep,
-  type SingleHopCoreGroup,
-} from "../../src/validation-trace-dispute/one-step-plan.js";
 import { validationTraceDefenseDeadlineMs } from "../../src/validation-trace-dispute/waiting.js";
 import { parseOwnOutRef } from "../../src/workflow/own-outputs.js";
 import { ADMITTED_TX_EX_UNITS } from "../helpers/plutus-execution-block-fixture.js";
@@ -50,6 +42,7 @@ import {
   threadClosed,
   type TwoThreadCase,
 } from "./validation-trace-dispute-one-step-case.js";
+import { lastCoreStepOf } from "./validation-trace-dispute-one-step-cek-builtin-drive.js";
 import {
   confirmedOneStepMoves,
   isPendingFor,
@@ -86,31 +79,6 @@ export const TIMEOUT = 3_600_000;
 
 /** The one-step holder each CEK core group's arm resolves at. */
 const ARM_OF = { 0: "compute", 1: "machine" } as const;
-
-/** The last state of our trace before a CEK core step of `group`. */
-const lastCoreStepOf =
-  (group: SingleHopCoreGroup) =>
-  async (material: ValidationTraceClaimMaterial): Promise<number> => {
-    for (let index = Number(material.stepCount) - 1; index >= 0; index -= 1) {
-      const { states } = await material.steps(index);
-      const planning = await planValidationTraceOneStep({
-        material,
-        stateIndex: index,
-        challengerHighHash: hashMidgardValidationMachineState(
-          states[index + 1]!,
-        ).toString("hex"),
-      });
-      if (
-        planning.kind === "plan" &&
-        planning.plan.kind === "core" &&
-        planning.plan.core.group === group
-      )
-        return index;
-    }
-    throw new Error(
-      `our trace has no CEK core step of group ${group.toString()}`,
-    );
-  };
 
 /** The address of the first output of the signed transaction `cbor`. */
 const firstOutputAddress = (cbor: string) =>
