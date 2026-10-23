@@ -16,21 +16,12 @@ import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-
 import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import { depth, isSafe } from "@al-ft/midgard-l1-follower/heads";
 import {
-  buildUnsignedMidgardCekStagingProgram,
-  buildUnsignedMidgardCekStagingReclaimProgram,
   midgardCekStagingAddress,
-  midgardCekStagingOutRef,
   MidgardCekStagingPins,
   midgardCekStagingResult,
-  type MidgardCekStagingRun,
   planMidgardCekStaging,
 } from "@al-ft/midgard-sdk";
-import type {
-  LucidEvolution,
-  TxSignBuilder,
-  UTxO,
-} from "@lucid-evolution/lucid";
-import { Effect, Either } from "effect";
+import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import type { ResolvedProverSigner } from "../runtime.js";
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
@@ -53,6 +44,11 @@ import {
 } from "./one-step-holders.js";
 import { resolvingPlan } from "./one-step-resolving-plan.js";
 import type { ValidationTraceStagingLookup } from "./one-step-staged.js";
+import {
+  stagedStepWalletPaidHops,
+  validationTraceStagingSigner,
+  type ValidationTraceStagingStep,
+} from "./one-step-staging-funding.js";
 import {
   type JournaledStaging,
   journaledStagings,
@@ -104,13 +100,6 @@ const stagedOutRef = (outRef: string) => {
   return { transactionId: Buffer.from(txHash, "hex"), outputIndex };
 };
 
-/** The value of `program`, or its error thrown as itself. */
-const run = async <A>(program: Effect.Effect<A, Error>): Promise<A> => {
-  const result = await Effect.runPromise(Effect.either(program));
-  if (Either.isLeft(result)) throw result.left;
-  return result.right;
-};
-
 /**
  * Our staging of the staged steps of our threads: `wrap`, which stages a
  * step's operands before its PrepareSelected move and spends the outputs
@@ -138,8 +127,9 @@ export const validationTraceStaging = ({
     lucid.config().network!,
     signer.paymentKeyHash,
   );
+  const signing = validationTraceStagingSigner({ lucid, signer, deployment });
   /** The runs and reclaims last observed, by action id, for their builds. */
-  const runs = new Map<string, MidgardCekStagingRun>();
+  const runs = new Map<string, ValidationTraceStagingStep>();
   const reclaims = new Map<
     string,
     Readonly<{ utxo: UTxO; pins: MidgardCekStagingPins }>
@@ -267,12 +257,17 @@ export const validationTraceStaging = ({
       return undefined;
     const known = journal(context);
     let shallow = false;
+    const missing = [];
     for (const planned of planMidgardCekStaging(plan.core.staged.operands)) {
       const found = await usable(known, planned.datumCbor);
-      if (found !== undefined) {
-        shallow ||= !found.ready;
-        continue;
-      }
+      if (found === undefined) missing.push(planned);
+      else shallow ||= !found.ready;
+    }
+    // The first run still to stage; its staging names what the rest of the
+    // step needs from our wallet: the other runs' deposits, and the step's
+    // loop hops.
+    const [planned, ...rest] = missing;
+    if (planned !== undefined) {
       const digest = digestOf(planned.datumCbor);
       const action = stageAction(
         digest,
@@ -287,7 +282,12 @@ export const validationTraceStaging = ({
           kind: "pending",
           reason: `validation-trace staged operands are not staged: ${action.actionId} does not build`,
         };
-      runs.set(action.actionId, planned);
+      runs.set(action.actionId, {
+        run: planned,
+        rest: rest.map(({ datumCbor }) => datumCbor),
+        walletPaidHops: stagedStepWalletPaidHops(plan.core.hops.holders),
+        threadOutRef: consumes,
+      });
       return { kind: "action_required", action };
     }
     return shallow
@@ -367,21 +367,21 @@ export const validationTraceStaging = ({
   };
 
   const build = async (
-    _context: FraudProofWorkflowAdapterContext,
+    context: FraudProofWorkflowAdapterContext,
     action: FraudProofWorkflowAction,
   ) => {
     signer.selectWallet(lucid);
     if (action.input.schemaVersion === VALIDATION_TRACE_STAGING) {
-      const planned = runs.get(action.actionId);
-      if (planned === undefined)
+      const step = runs.get(action.actionId);
+      if (step === undefined)
         throw new WorkflowActionChangedError(
           `validation-trace ${action.actionId} has no run to stage`,
         );
-      const unsigned: TxSignBuilder = await run(
-        buildUnsignedMidgardCekStagingProgram(lucid, { run: planned }),
+      const { signed, outputIndex } = await signing.stage(
+        context,
+        action.actionId,
+        step,
       );
-      const { outputIndex } = midgardCekStagingOutRef(unsigned, planned);
-      const signed = await unsigned.sign.withWallet().complete();
       return {
         signed,
         recovery: {
@@ -394,13 +394,9 @@ export const validationTraceStaging = ({
       throw new WorkflowActionChangedError(
         `validation-trace ${action.actionId} has no output to spend back`,
       );
-    const unsigned = await run(
-      buildUnsignedMidgardCekStagingReclaimProgram(lucid, {
-        outputs: [found.utxo],
-        pins: found.pins,
-      }),
-    );
-    return { signed: await unsigned.sign.withWallet().complete() };
+    return {
+      signed: await signing.reclaim(context, found.utxo, found.pins),
+    };
   };
 
   const own: OwnKeyActions = {

@@ -22,6 +22,7 @@ import {
   assertNoUnrelatedLedgerAccounting,
 } from "./funding-reservation-permit.ledger-accounting.js";
 import { bindSlashFunding } from "./funding-reservation-permit.slash-funding-binding.js";
+import { validationDisputeStagingFunding } from "./funding-reservation-permit.validation-dispute-staging-authority.js";
 import { type PermitState } from "./funding-reservation-permit.workflow-funding-reservation-port.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
 import { workflowRuntimeFundingMinimumFee } from "./runtime-funding-fee.js";
@@ -61,6 +62,14 @@ export const assertRuntimeTransactionBound = async ({
     bodyInputs,
     fundingOutRefs,
   });
+  // Our staging of a staged step's operands, or its spend back.
+  const staging = await validationDisputeStagingFunding({
+    signed,
+    slash: slash !== null,
+    policy,
+    state,
+    action,
+  });
   // VerifySource's bond and case floor, or a thread move; else refused as before.
   // A lost-defense slash spends its receipt under the slash binding alone.
   const dispute = slash?.lostDefense
@@ -98,7 +107,8 @@ export const assertRuntimeTransactionBound = async ({
       (witnesses.plutus_v1_scripts()?.len() ?? 0) +
       (witnesses.plutus_v2_scripts()?.len() ?? 0) +
       (witnesses.plutus_v3_scripts()?.len() ?? 0) !==
-    0
+      0 &&
+    staging?.admitsScriptWitnesses(witnesses) !== true
   )
     throw new Error("funding transaction embeds executable script witnesses");
   let memory = 0n,
@@ -256,6 +266,10 @@ export const assertRuntimeTransactionBound = async ({
       addAssets(walletAssets, input.assets);
       continue;
     }
+    if (staging !== null) {
+      staging.admitInput(outRef, input);
+      continue;
+    }
     const contract = contracts.get(input.address);
     if (contract === undefined)
       throw new Error(
@@ -346,7 +360,7 @@ export const assertRuntimeTransactionBound = async ({
     )
       throw new Error("funding output violates exact min-Ada or maxValueSize");
     addAssets(outputAssets, output.assets);
-    const disputed = dispute?.output(raw) ?? null;
+    const disputed = dispute?.output(raw) ?? staging?.output(raw) ?? null;
     if (disputed !== null) {
       custody += disputed.custody;
       custodyAllocation += disputed.allocation;
@@ -378,6 +392,7 @@ export const assertRuntimeTransactionBound = async ({
     }
   }
   dispute?.assertComplete();
+  staging?.assertComplete();
   if (custody > releasedCustody + custodyAllocation)
     throw new Error(
       `funding transaction exceeds its governed custody allocation: actual=${custody.toString()} allowed=${(releasedCustody + custodyAllocation).toString()}`,
@@ -413,6 +428,7 @@ export const assertRuntimeTransactionBound = async ({
       "signed transaction loses reserved wallet value outside fees and governed custody",
     );
   dispute?.keepWalletMoveReserve(walletSpent);
+  staging?.keepStepReserve(walletSpent);
   for (const [unit, quantity] of walletAssets) {
     if (unit !== "lovelace" && (walletOutputAssets.get(unit) ?? 0n) < quantity)
       throw new Error("signed transaction loses reserved wallet native assets");
