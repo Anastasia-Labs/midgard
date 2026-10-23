@@ -147,6 +147,18 @@
       "witnessHash": "2bac31fc9a76697a1fe7161760ef37e2a22a2d0fabb45725efa28be379987904"
     },
     {
+      "name": "appends_two_staged_strings_that_are_not_utf8",
+      "tag": 22,
+      "accepts": true,
+      "witnessHash": "1a8a12f8804241dc6eff75dcfc9b6f159979e6f8b0531c3bee86add7372b0b4a"
+    },
+    {
+      "name": "compares_two_staged_strings_that_are_not_utf8",
+      "tag": 23,
+      "accepts": true,
+      "witnessHash": "7c206e764e6cb2be88206d60cfe72982e98b3fd7eef677df330127fb50a45c81"
+    },
+    {
       "name": "compares_strings_past_the_argument_bound_by_leaf",
       "tag": 23,
       "accepts": true,

@@ -1066,6 +1066,98 @@ test appends_two_staged_strings_past_the_argument_bound() {
   spend_staged_bytes(appends_two_staged_strings_past_the_argument_bound_step())
 }
 
+fn appends_two_staged_strings_that_are_not_utf8_step() -> StagedStepV1 {
+  let staging = stage_pieces([[text(9216), #"ff"], [#"c3", text(9216)]])
+  staged_step(
+    22,
+    [
+      SemanticConstantValue {
+        type_cbor: #"9f02ff",
+        payload: DataSummaryV1 {
+          root: #"e4ae95588cd700132827fc2b0c428ac683086ca6fb548ff974563cd83c98980b",
+          cbor_length: 9508,
+          memory: 1157,
+        },
+        memory: 2304,
+      },
+      SemanticConstantValue {
+        type_cbor: #"9f02ff",
+        payload: DataSummaryV1 {
+          root: #"8c9eca81400cbac8c51003d2258f33d64440ffc20a92fb4c0a3c2a55d4c5197b",
+          cbor_length: 9508,
+          memory: 1157,
+        },
+        memory: 2304,
+      },
+    ],
+    SemanticConstantValue {
+      type_cbor: #"9f02ff",
+      payload: DataSummaryV1 {
+        root: #"4f20b237c227d0e790c392ca08809737dc9c5acd4241045d172d273df57623ee",
+        cbor_length: 19013,
+        memory: 2309,
+      },
+      memory: 4608,
+    },
+    material(staging, [staged(0), staged(1)]),
+    staging.reference_inputs,
+  )
+}
+
+test appends_two_staged_strings_that_are_not_utf8_has_the_typescript_witness() {
+  let step = appends_two_staged_strings_that_are_not_utf8_step()
+  expect Some(datum) = step.datum
+  expect Some(bound) = datum.data
+  bound.witness_hash == #"1a8a12f8804241dc6eff75dcfc9b6f159979e6f8b0531c3bee86add7372b0b4a"
+}
+
+test appends_two_staged_strings_that_are_not_utf8() {
+  spend_staged_bytes(appends_two_staged_strings_that_are_not_utf8_step())
+}
+
+fn compares_two_staged_strings_that_are_not_utf8_step() -> StagedStepV1 {
+  let staging = stage_pieces([[text(9216), #"ff"], [text(9216), #"ff"]])
+  staged_step(
+    23,
+    [
+      SemanticConstantValue {
+        type_cbor: #"9f02ff",
+        payload: DataSummaryV1 {
+          root: #"e4ae95588cd700132827fc2b0c428ac683086ca6fb548ff974563cd83c98980b",
+          cbor_length: 9508,
+          memory: 1157,
+        },
+        memory: 2304,
+      },
+      SemanticConstantValue {
+        type_cbor: #"9f02ff",
+        payload: DataSummaryV1 {
+          root: #"e4ae95588cd700132827fc2b0c428ac683086ca6fb548ff974563cd83c98980b",
+          cbor_length: 9508,
+          memory: 1157,
+        },
+        memory: 2304,
+      },
+    ],
+    ConstantValue(
+      ConstantWitnessV1 { type_cbor: #"9f04ff", payload_cbor: #"d87a80" },
+    ),
+    material(staging, [staged(0), staged(1)]),
+    staging.reference_inputs,
+  )
+}
+
+test compares_two_staged_strings_that_are_not_utf8_has_the_typescript_witness() {
+  let step = compares_two_staged_strings_that_are_not_utf8_step()
+  expect Some(datum) = step.datum
+  expect Some(bound) = datum.data
+  bound.witness_hash == #"7c206e764e6cb2be88206d60cfe72982e98b3fd7eef677df330127fb50a45c81"
+}
+
+test compares_two_staged_strings_that_are_not_utf8() {
+  spend_staged_bytes(compares_two_staged_strings_that_are_not_utf8_step())
+}
+
 fn compares_strings_past_the_argument_bound_by_leaf_step() -> StagedStepV1 {
   let staging = no_staging()
   staged_step(
