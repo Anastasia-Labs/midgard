@@ -1,8 +1,7 @@
 /** The validation-trace dispute's staging of a staged builtin step's
- * operands (arm 31) under the watcher's prover funding. A funded watcher
- * opens our case; the scene's operator defends it with a trace agreeing
- * with ours up to the state before a staged step, and reveals from it; the
- * watcher bisects the thread to the PrepareSelected move's holder.
+ * operands (arm 31) under the watcher's prover funding, over the scene of
+ * support/validation-trace-dispute-funded-one-step-staging.ts: the watcher
+ * has bisected our case's one thread to the PrepareSelected move's holder.
  *
  * A wallet too short to build the step's first staging holds it under the
  * operator's alarm, naming the case, the thread, the deadline and what the
@@ -12,120 +11,42 @@
  * run's staging output live and no wallet coin spent twice. Topped up, each
  * run left is staged under the permit, the thread plays through the staged
  * chain to the award, and each staging output is spent back to our wallet
- * under the permit.
- *
- * The category is not installed until its defender exists; this file
- * stands in for that install so the production classifier mints the
- * objective's actuation permit. */
-import { createHash } from "node:crypto";
-
-import * as SDK from "@al-ft/midgard-sdk";
-import { CML, coreToTxOutput, Data, type UTxO } from "@lucid-evolution/lucid";
+ * under the permit. */
+import { CML, coreToTxOutput } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adapter.js";
 import {
   confirmedIntents,
   VALIDATION_TRACE_STAGING_RECLAIM,
 } from "../src/validation-trace-dispute/one-step-staging-journal.js";
-import { validationTraceCaseExpiryMs } from "../src/validation-trace-dispute/threads.js";
-import type { ValidationTraceOneStepReferences } from "../src/validation-trace-dispute/transactions.js";
 import { validationTraceRunState } from "../src/validation-trace-dispute/waiting.js";
 import { VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED } from "../src/workflow/funding-reservation-permit.validation-dispute-wallet-move-reserve.js";
 import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import { drainProver, topUpProver } from "./support/installed-prover-wallet.js";
 import { watchLedger } from "./support/own-outputs-installed.js";
-import { sceneOperator } from "./support/validation-trace-dispute-defend.js";
-import type { CapturedMove } from "./support/validation-trace-dispute-funded-moves.js";
 import {
-  fundedOneStepTurns,
-  outRefOf,
-} from "./support/validation-trace-dispute-funded-one-step-turns.js";
-import {
-  type FundedDispute,
-  openFundedDispute,
-  turnUntil,
-} from "./support/validation-trace-dispute-funded-runner.js";
+  digestOf,
+  fundedStagingScene,
+  runs,
+} from "./support/validation-trace-dispute-funded-one-step-staging.js";
+import { outRefOf } from "./support/validation-trace-dispute-funded-one-step-turns.js";
+import { turnUntil } from "./support/validation-trace-dispute-funded-runner.js";
 import {
   ADA,
-  caseAndBond,
-  FUNDED,
   TIMEOUT,
 } from "./support/validation-trace-dispute-funded-verify-source.js";
 import {
-  publishBuiltinArmReferences,
-  publishOneStepReferences,
-} from "./support/validation-trace-dispute-one-step.js";
-import {
   confirmedOneStepMoves,
   playThreads,
-  type Side,
 } from "./support/validation-trace-dispute-one-step-play.js";
-import {
-  entriesOf,
-  lastStagedStep,
-} from "./support/validation-trace-dispute-one-step-staged-drive.js";
-import {
-  failingMaterial,
-  type Scene,
-  setUpScene,
-} from "./support/validation-trace-dispute-open-scene.js";
-import {
-  defendScripted,
-  reportFit,
-  scriptedTrace,
-  threadUnitOf,
-} from "./support/validation-trace-dispute-scripted-defender.js";
-import {
-  STAGED_SHA2_SCRIPT,
-  stagedScript,
-  stagedStep,
-} from "./support/validation-trace-dispute-staged-scripts.js";
+import { entriesOf } from "./support/validation-trace-dispute-one-step-staged-drive.js";
+import { reportFit } from "./support/validation-trace-dispute-scripted-defender.js";
 
-let scene: Scene;
-let dispute: FundedDispute;
-let side: Side;
-let caseUnit: string;
-let caseExpiresAtMs: number;
-let threadAtPrepare: UTxO;
-const moves: CapturedMove[] = [];
+const { at, turns, place, open, stagingAddress, stagedOutputs, depositOf } =
+  fundedStagingScene();
 /** The staging outputs the funded play staged, one per run. */
 const stagedOutRefs: string[] = [];
-
-const { turns, place, playTo } = fundedOneStepTurns({
-  scene: () => scene,
-  dispute: () => dispute,
-  side: () => side,
-  moves,
-});
-
-/** The runs our staging of the step stages, in order. */
-const runs = SDK.planMidgardCekStaging(
-  stagedStep(STAGED_SHA2_SCRIPT, 18n).stagedOperands,
-);
-
-/** Our staging address. */
-const stagingAddress = () =>
-  SDK.midgardCekStagingAddress("Custom", scene.h.proverSigner.paymentKeyHash);
-
-/** Our staging outputs on the ledger now. */
-const stagedOutputs = async () =>
-  await scene.h.emulator.getUtxos(stagingAddress());
-
-/** The deposit our staging of the run `datumCbor` holds. */
-const depositOf = (datumCbor: string) =>
-  SDK.midgardCekStagingDeposit({
-    address: stagingAddress(),
-    datumCbor,
-    coinsPerUtxoByte: BigInt(
-      scene.h.emulator.protocolParameters.coinsPerUtxoByte,
-    ),
-  });
-
-/** The sha-256 of the run `datumCbor`, which its staging's action names. */
-const digestOf = (datumCbor: string) =>
-  createHash("sha256").update(Buffer.from(datumCbor, "hex")).digest("hex");
 
 /**
  * Turns the watcher twice from a wallet holding `held` and expects each
@@ -135,7 +56,7 @@ const digestOf = (datumCbor: string) =>
  * ledger took meanwhile.
  */
 const expectHeldUnderAlarm = async (held: bigint, index: number) => {
-  const { h } = scene;
+  const { h } = at.scene;
   await topUpProver(h as never, 200n * ADA);
   await drainProver(h as never, held);
   const watch = watchLedger(h.emulator);
@@ -144,7 +65,7 @@ const expectHeldUnderAlarm = async (held: bigint, index: number) => {
   } finally {
     watch.restore();
   }
-  expect(outRefOf((await place())!.utxo)).toBe(outRefOf(threadAtPrepare));
+  expect(outRefOf((await place())!.utxo)).toBe(outRefOf(at.threadAtPrepare));
   return watch.ours();
 };
 
@@ -153,7 +74,7 @@ const expectHeldUnderAlarm = async (held: bigint, index: number) => {
 const holdTwice = async (index: number) => {
   for (let pause = 0; pause < 2; pause += 1) {
     const { result, history } = await turnUntil(
-      dispute,
+      at.dispute,
       VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED,
     );
     expect(result.kind, history.join("\n")).toBe("pending");
@@ -168,12 +89,12 @@ const holdTwice = async (index: number) => {
       ),
     );
     expect(result.reason).toContain(
-      `on thread ${outRefOf(threadAtPrepare)} of case ${caseUnit},`,
+      `on thread ${outRefOf(at.threadAtPrepare)} of case ${at.caseUnit},`,
     );
     // The PrepareSelected move it waits on must land before the case
     // expires.
     expect(result.reason).toContain(
-      `before its deadline ${caseExpiresAtMs.toString()};`,
+      `before its deadline ${at.caseExpiresAtMs.toString()};`,
     );
     expect(validationTraceRunState(result)).toMatchObject({
       kind: "pending",
@@ -183,57 +104,16 @@ const holdTwice = async (index: number) => {
         alarm: true,
       },
     });
-    for (const reservation of await dispute.readReservations())
+    for (const reservation of await at.dispute.readReservations())
       expect(reservation).toMatchObject({ activeInputs: [] });
   }
 };
 
 describe("validation-trace dispute staging of a staged builtin step's operands under the prover funding permit", () => {
-  beforeAll(async () => {
-    let oneStep: ValidationTraceOneStepReferences | undefined;
-    scene = await setUpScene(
-      async (contracts) => {
-        oneStep = {
-          ...(await publishOneStepReferences(contracts)),
-          cekBuiltins: await publishBuiltinArmReferences(contracts),
-        };
-      },
-      { failingScript: stagedScript(STAGED_SHA2_SCRIPT) },
-    );
-    await drainProver(scene.h as never, FUNDED);
-    dispute = await openFundedDispute(scene, {
-      oneStep: oneStep!,
-      liveParameters: true,
-    });
-    const opened = await turnUntil(dispute, VALIDATION_TRACE_CASE_OPEN);
-    if (opened.result.kind !== "pending")
-      throw new Error(`the case did not open: ${opened.history.join("\n")}`);
-    const { caseOutput } = await caseAndBond(scene, opened.result);
-    caseUnit = Object.keys(caseOutput.assets).find((unit) =>
-      unit.startsWith(scene.chain.case.policyId),
-    )!;
-    caseExpiresAtMs = validationTraceCaseExpiryMs(
-      Data.from(caseOutput.datum!, SDK.Case),
-    );
-    const defender = sceneOperator(scene);
-    const material = await failingMaterial(scene);
-    const trace = scriptedTrace(material, await lastStagedStep(material));
-    const threadOutRef = await defendScripted(
-      scene,
-      caseOutput,
-      defender,
-      trace,
-    );
-    const [thread] = await scene.h.emulator.getUtxosByOutRef([
-      parseOwnOutRef(threadOutRef),
-    ]);
-    side = { defender, trace, unit: threadUnitOf(scene, thread!) };
-    await playTo("prepare");
-    threadAtPrepare = (await place())!.utxo;
-  }, 1_800_000);
+  beforeAll(open, 1_800_000);
 
   afterAll(async () => {
-    await dispute?.close();
+    await at.dispute?.close();
   });
 
   it(
@@ -279,7 +159,9 @@ describe("validation-trace dispute staging of a staged builtin step's operands u
       const consumed = ours.flatMap(({ inputs }) => inputs);
       expect(new Set(consumed).size).toBe(consumed.length);
       expect(
-        await scene.h.emulator.getUtxosByOutRef(consumed.map(parseOwnOutRef)),
+        await at.scene.h.emulator.getUtxosByOutRef(
+          consumed.map(parseOwnOutRef),
+        ),
       ).toStrictEqual([]);
     },
     TIMEOUT,
@@ -288,11 +170,11 @@ describe("validation-trace dispute staging of a staged builtin step's operands u
   it(
     "stages each run left under the funding permit once our wallet is topped up, and plays the thread through the staged chain to the award",
     async () => {
-      await topUpProver(scene.h as never, 400n * ADA);
+      await topUpProver(at.scene.h as never, 400n * ADA);
       const { result, history } = await playThreads({
-        scene,
+        scene: at.scene,
         runner: turns(),
-        sides: [side],
+        sides: [at.side],
         until: async (run) =>
           confirmedOneStepMoves(entriesOf(run)).some(
             ({ stage }) => stage === "close_awarded",
@@ -311,7 +193,7 @@ describe("validation-trace dispute staging of a staged builtin step's operands u
           ? [
               {
                 txHash: event.txHash,
-                cbor: scene.l1.signedCbors.get(event.txHash)!,
+                cbor: at.scene.l1.signedCbors.get(event.txHash)!,
               },
             ]
           : [],
@@ -352,12 +234,12 @@ describe("validation-trace dispute staging of a staged builtin step's operands u
       ).toEqual([...stagedOutRefs].sort());
       for (const { txHash } of reclaims) {
         const body = CML.Transaction.from_cbor_hex(
-          scene.l1.signedCbors.get(txHash)!,
+          at.scene.l1.signedCbors.get(txHash)!,
         ).body();
         expect(body.inputs().len()).toBe(1);
         expect(body.outputs().len()).toBe(1);
         expect(coreToTxOutput(body.outputs().get(0)).address).toBe(
-          scene.h.proverSigner.address,
+          at.scene.h.proverSigner.address,
         );
       }
     },
