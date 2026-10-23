@@ -751,8 +751,8 @@
   },
   {
     "file": "midgard-node/src/services/always-succeeds.make-always-succeeds-service.ts",
-    "max": 552,
-    "reason": "makeAlwaysSucceedsService is the dominant indivisible declaration (529 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Canonical production binding: Explicit canonicalDecodePrepare member aliases the existing canonical prepare validator. Exact formatter-final line count; no transaction budget changes. Adds the CEK core's two staged-operand semantics members."
+    "max": 550,
+    "reason": "makeAlwaysSucceedsService is the dominant indivisible declaration (529 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Canonical production binding: Explicit canonicalDecodePrepare member aliases the existing canonical prepare validator. Exact formatter-final line count; no transaction budget changes."
   },
   {
     "file": "midgard-node/src/services/config.make-config.ts",
