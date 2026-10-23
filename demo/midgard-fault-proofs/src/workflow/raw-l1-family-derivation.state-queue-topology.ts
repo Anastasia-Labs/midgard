@@ -153,7 +153,13 @@ export const outputQuantity = (
     unit
   ] ?? 0n;
 
-export const currentUnit = ({
+/**
+ * Every output of `role`'s scope holding exactly one `unit`, in out-ref
+ * order. The thread and proof units name a category and a header only, so
+ * any number of cases or proofs on one header can each hold one; an output
+ * holding another quantity holds no thread or proof of this family.
+ */
+export const unitHolders = ({
   snapshot,
   role,
   unit,
@@ -161,41 +167,46 @@ export const currentUnit = ({
   readonly snapshot: FraudProofRawL1Snapshot;
   readonly role: FraudProofRawL1ScopeRole;
   readonly unit: string;
-}): FraudProofRawL1Utxo | undefined => {
-  const matches = scope(snapshot, role).utxos.filter(
-    (candidate) => outputQuantity(candidate, unit) !== 0n,
-  );
-  if (matches.length > 1) {
-    throw new Error(`raw L1 family snapshot contains duplicate ${role} tokens`);
+}): readonly FraudProofRawL1Utxo[] =>
+  scope(snapshot, role)
+    .utxos.filter((candidate) => outputQuantity(candidate, unit) === 1n)
+    .sort((left, right) =>
+      left.outRef < right.outRef ? -1 : left.outRef > right.outRef ? 1 : 0,
+    );
+
+const fraudProverOf = (
+  raw: FraudProofRawL1Utxo,
+  schema: LucidDataSchema,
+): unknown => {
+  if (raw.datumCbor === null) return undefined;
+  try {
+    return (
+      Data.from(raw.datumCbor, schema) as { readonly fraud_prover?: unknown }
+    ).fraud_prover;
+  } catch {
+    return undefined;
   }
-  const match = matches[0];
-  if (match !== undefined && outputQuantity(match, unit) !== 1n) {
-    throw new Error(`raw L1 family snapshot ${role} token quantity is not one`);
-  }
-  return match;
 };
 
-export const requireThreadDatum = ({
+/** Whether `raw`'s inline datum decodes under `schema` and names us. */
+export const ownsThread = ({
   raw,
   schema,
   proverCredential,
-  label,
 }: {
   readonly raw: FraudProofRawL1Utxo;
   readonly schema: LucidDataSchema;
   readonly proverCredential: string;
-  readonly label: string;
-}): void => {
-  if (raw.datumCbor === null) {
-    throw new Error(`${label} is missing its inline computation datum`);
-  }
-  const datum = Data.from(raw.datumCbor, schema) as {
-    readonly fraud_prover?: unknown;
-  };
-  if (datum.fraud_prover !== proverCredential) {
-    throw new Error(`${label} is owned by another fraud prover`);
-  }
-};
+}): boolean => fraudProverOf(raw, schema) === proverCredential;
+
+/** Whether `raw` is a permanent proof token whose datum names us. */
+export const ownsProof = ({
+  raw,
+  proverCredential,
+}: {
+  readonly raw: FraudProofRawL1Utxo;
+  readonly proverCredential: string;
+}): boolean => fraudProverOf(raw, FraudProofTokenDatum) === proverCredential;
 
 export const requireProofDatum = ({
   raw,
@@ -280,6 +291,42 @@ export const stateQueueTopology = async ({
         ? undefined
         : ordered[targetIndex + 1],
   };
+};
+
+/**
+ * The family stage could not be derived from an admitted raw L1 snapshot.
+ * The snapshot is the chain as it stands, so the same view fails the same
+ * way: the caller records it against the one workflow and observes again,
+ * never failing anything else. Matched by tag: the package ships more than
+ * one entry bundle.
+ */
+export class FraudProofRawL1DerivationError extends Error {
+  readonly _tag = "FraudProofRawL1DerivationError";
+
+  constructor(category: string, cause: unknown) {
+    super(
+      `${category} raw L1 family stage derivation failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+      { cause },
+    );
+    this.name = "FraudProofRawL1DerivationError";
+  }
+}
+
+/** Whether `error`, or an error it was caused by, is a derivation failure. */
+export const isFraudProofRawL1DerivationError = (
+  error: unknown,
+): error is FraudProofRawL1DerivationError => {
+  let current: unknown = error;
+  for (let depth = 0; depth < 8; depth += 1) {
+    if (typeof current !== "object" || current === null) return false;
+    if (
+      (current as { readonly _tag?: unknown })._tag ===
+      "FraudProofRawL1DerivationError"
+    )
+      return true;
+    current = (current as { readonly cause?: unknown }).cause;
+  }
+  return false;
 };
 
 /** The selected header is no longer in the state queue. */

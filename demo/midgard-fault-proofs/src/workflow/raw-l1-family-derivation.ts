@@ -22,6 +22,7 @@ export {
   fraudProofRawL1HistoryReader,
 } from "./raw-l1-family-derivation.lost-defense-slash.js";
 export {
+  FraudProofRawL1DerivationError,
   type FraudProofRawL1FamilyDefinition,
   type FraudProofRawL1FamilyStage,
   type FraudProofRawL1TerminalDefinition,

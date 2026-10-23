@@ -86,6 +86,7 @@ import {
   createUnbuiltWorkflowActions,
   workflowRunOutcomes,
 } from "./orchestrator.unbuilt-actions.js";
+import { isFraudProofRawL1DerivationError } from "./raw-l1-family-derivation.state-queue-topology.js";
 import { type VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy.js";
 import { artifactPendingResult } from "./workflow-artifact-pending.js";
 /**
@@ -209,6 +210,26 @@ export const runAdmittedFraudProofWorkflow = async ({
     append,
     unbuilt,
   });
+  // A stage the family cannot derive from the admitted L1 view is this
+  // workflow's recorded stall, observed again on its next run. Every other
+  // failure reaches the caller as before.
+  const observeOrStall = async (
+    input: FraudProofWorkflowAdapterContext,
+  ): Promise<
+    | { readonly observation: FraudProofWorkflowObservation }
+    | { readonly stalled: FraudProofWorkflowRunResult }
+  > => {
+    try {
+      return { observation: await adapter.observe(input) };
+    } catch (cause) {
+      if (!isFraudProofRawL1DerivationError(cause)) throw cause;
+      return {
+        stalled: await stalled(
+          `observation failed: ${formatUnknownError(cause)}`,
+        ),
+      };
+    }
+  };
 
   if (entries.length === 0) {
     if (workflowJournalIsReconciliationOnly(journal))
@@ -320,7 +341,9 @@ export const runAdmittedFraudProofWorkflow = async ({
         headerHash,
         checkpoint: "before_observe",
       });
-      const current = await adapter.observe(context);
+      const observed = await observeOrStall(context);
+      if ("stalled" in observed) return observed.stalled;
+      const current = observed.observation;
       currentObservation = current;
       if (
         current.kind === "action_required" &&
@@ -604,12 +627,15 @@ export const runAdmittedFraudProofWorkflow = async ({
       headerHash,
       checkpoint: "before_observe",
     });
-    const observation: FraudProofWorkflowObservation =
-      currentObservation ??
-      (await adapter.observe({
-        ...context,
-        reconciliationOnly: workflowJournalIsReconciliationOnly(journal),
-      }));
+    const observed =
+      currentObservation === undefined
+        ? await observeOrStall({
+            ...context,
+            reconciliationOnly: workflowJournalIsReconciliationOnly(journal),
+          })
+        : { observation: currentObservation };
+    if ("stalled" in observed) return observed.stalled;
+    const observation: FraudProofWorkflowObservation = observed.observation;
     const held = unbuilt.held(observation);
     if (held !== undefined) return resumeOnObservation(held);
     if (observation.kind === "pending") return pending(observation.reason);

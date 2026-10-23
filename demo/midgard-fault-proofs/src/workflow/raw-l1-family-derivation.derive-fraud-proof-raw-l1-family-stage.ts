@@ -1,26 +1,142 @@
+import { CML } from "@lucid-evolution/lucid";
+
 import type { ComputationThreadStep } from "./computation-thread-steps.js";
 import { type FraudProofWorkflowTerminal } from "./journal.js";
+import { historicalTransactions } from "./raw-l1-family-derivation.derive-retained-state-queue-header-observation-from-raw-l1.js";
 import {
   authenticateFamilySnapshot,
   deriveTerminal,
 } from "./raw-l1-family-derivation.derive-terminal.js";
 import type { FraudProofRawL1HistoryReader } from "./raw-l1-family-derivation.lost-defense-slash.js";
 import {
-  currentUnit,
+  FraudProofRawL1DerivationError,
   type FraudProofRawL1FamilyDefinition,
   type FraudProofRawL1FamilyStage,
   type FraudProofRawL1TerminalDefinition,
+  mintQuantity,
   outRef,
-  requireProofDatum,
-  requireThreadDatum,
+  ownsProof,
+  ownsThread,
   scope,
   stateQueueTopology,
+  unitHolders,
 } from "./raw-l1-family-derivation.state-queue-topology.js";
-import type { FraudProofRawL1Snapshot } from "./raw-l1-snapshot.js";
+import type {
+  FraudProofRawL1Snapshot,
+  FraudProofRawL1Utxo,
+} from "./raw-l1-snapshot.js";
 import { type VerifiedFraudProofReleaseEconomicsPolicy } from "./release-economics-policy.js";
 
+/**
+ * Our permanent proof tokens on the header. Any prover may hold a proof of
+ * the same name, one per conviction; another prover's is no part of our
+ * workflow. Once the header is gone, the proof its removal referenced comes
+ * first; otherwise the lowest out-ref, which stays first while it lives.
+ */
+const ownProof = ({
+  snapshot,
+  definition,
+  stateUnit,
+  proofUnit,
+}: {
+  readonly snapshot: FraudProofRawL1Snapshot;
+  readonly definition: FraudProofRawL1TerminalDefinition;
+  readonly stateUnit: string;
+  readonly proofUnit: string;
+}): FraudProofRawL1Utxo | undefined => {
+  const proofs = unitHolders({
+    snapshot,
+    role: "permanent_proof_token",
+    unit: proofUnit,
+  }).filter((raw) =>
+    ownsProof({ raw, proverCredential: definition.proverCredential }),
+  );
+  if (proofs.length < 2) return proofs[0];
+  const referenced = new Set(
+    historicalTransactions({ snapshot, unit: stateUnit })
+      .filter(
+        (transaction) =>
+          mintQuantity(
+            CML.TransactionBody.from_cbor_hex(transaction.bodyCbor),
+            stateUnit,
+          ) === -1n,
+      )
+      .flatMap((transaction) =>
+        transaction.resolvedReferenceInputs.map(
+          (candidate) => candidate.outRef,
+        ),
+      ),
+  );
+  return proofs.find((proof) => referenced.has(proof.outRef)) ?? proofs[0];
+};
+
+/**
+ * Our live computation thread on the header. Init, Open and a case's
+ * VerifySource let any number of threads stand on one header, each carrying
+ * the same unit; another prover's, or one whose datum does not decode, is no
+ * part of our workflow. Among ours the newest comes first, so the successor
+ * our own last move created stays the thread we act on, then the furthest
+ * step, then the lowest out-ref.
+ */
+const ownThread = ({
+  snapshot,
+  definition,
+  threadUnit,
+}: {
+  readonly snapshot: FraudProofRawL1Snapshot;
+  readonly definition: FraudProofRawL1FamilyDefinition;
+  readonly threadUnit: string;
+}):
+  | { readonly step: ComputationThreadStep; readonly raw: FraudProofRawL1Utxo }
+  | undefined => {
+  const createdAt = new Map(
+    snapshot.transactions.map(
+      (transaction) =>
+        [transaction.txHash, BigInt(transaction.inclusionPoint.slot)] as const,
+    ),
+  );
+  const created = (raw: FraudProofRawL1Utxo) =>
+    createdAt.get(raw.outRef.split("#")[0]!) ?? -1n;
+  const threads = definition.computationThread.steps.flatMap((step, index) =>
+    unitHolders({ snapshot, role: step.role, unit: threadUnit })
+      .filter((raw) =>
+        ownsThread({
+          raw,
+          schema: step.datumSchema,
+          proverCredential: definition.proverCredential,
+        }),
+      )
+      .map((raw) => ({ step: (index + 1) as ComputationThreadStep, raw })),
+  );
+  return threads.reduce<(typeof threads)[number] | undefined>(
+    (best, candidate) => {
+      if (best === undefined) return candidate;
+      const age = created(candidate.raw) - created(best.raw);
+      if (age !== 0n) return age > 0n ? candidate : best;
+      if (candidate.step !== best.step)
+        return candidate.step > best.step ? candidate : best;
+      return candidate.raw.outRef < best.raw.outRef ? candidate : best;
+    },
+    undefined,
+  );
+};
+
+const assertStepAddresses = (
+  snapshot: FraudProofRawL1Snapshot,
+  definition: FraudProofRawL1TerminalDefinition,
+): void => {
+  definition.computationThread.steps.forEach((step, index) => {
+    if (scope(snapshot, step.role).address !== step.address) {
+      throw new Error(
+        `raw L1 snapshot changed step ${(index + 1).toString()} address`,
+      );
+    }
+  });
+};
+
 /** Read-only completion applicability: a live authenticated target invalidates
- * completion. No computation datum is decoded or used to authorize execution. */
+ * completion. No computation datum is decoded or used to authorize execution;
+ * live threads, ours or another case's, do not bear on a removed header. */
 export const deriveFraudProofRawL1CompletedTerminal = async ({
   snapshot,
   definition,
@@ -32,39 +148,15 @@ export const deriveFraudProofRawL1CompletedTerminal = async ({
   readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy;
   readonly history?: FraudProofRawL1HistoryReader | undefined;
 }): Promise<FraudProofWorkflowTerminal | null> => {
-  const { stateUnit, threadUnit, proofUnit } = authenticateFamilySnapshot({
+  const { stateUnit, proofUnit } = authenticateFamilySnapshot({
     snapshot,
     definition,
   });
-  const threads = definition.computationThread.steps.flatMap((step) => {
-    if (scope(snapshot, step.role).address !== step.address)
-      throw new Error("raw L1 terminal snapshot changed computation address");
-    const current = currentUnit({
-      snapshot,
-      role: step.role,
-      unit: threadUnit,
-    });
-    return current === undefined ? [] : [current];
-  });
-  if (threads.length > 1)
-    throw new Error("raw L1 snapshot has more than one live computation step");
-  const proof = currentUnit({
-    snapshot,
-    role: "permanent_proof_token",
-    unit: proofUnit,
-  });
-  if (proof !== undefined)
-    requireProofDatum({
-      raw: proof,
-      proverCredential: definition.proverCredential,
-    });
-  if (proof !== undefined && threads.length > 0)
-    throw new Error(
-      "raw L1 snapshot has both a computation thread and proof token",
-    );
+  assertStepAddresses(snapshot, definition);
   const topology = await stateQueueTopology({ snapshot, definition });
   if (topology.target !== undefined) return null;
-  if (proof === undefined || threads.length > 0)
+  const proof = ownProof({ snapshot, definition, stateUnit, proofUnit });
+  if (proof === undefined)
     throw new Error(
       "fraudulent header disappeared without a retained proof token",
     );
@@ -79,7 +171,7 @@ export const deriveFraudProofRawL1CompletedTerminal = async ({
   });
 };
 
-export const deriveFraudProofRawL1FamilyStage = async ({
+const deriveStage = async ({
   snapshot,
   definition,
   releaseEconomics,
@@ -88,60 +180,19 @@ export const deriveFraudProofRawL1FamilyStage = async ({
   readonly snapshot: FraudProofRawL1Snapshot;
   readonly definition: FraudProofRawL1FamilyDefinition;
   readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy;
-  /** Further token histories, for a bond a lost-defense receipt slashed. */
   readonly history?: FraudProofRawL1HistoryReader | undefined;
 }): Promise<FraudProofRawL1FamilyStage> => {
   const { stateUnit, threadUnit, proofUnit } = authenticateFamilySnapshot({
     snapshot,
     definition,
   });
-  const threads = definition.computationThread.steps.flatMap((step, index) => {
-    if (scope(snapshot, step.role).address !== step.address) {
-      throw new Error(
-        `raw L1 snapshot changed step ${(index + 1).toString()} address`,
-      );
-    }
-    const current = currentUnit({
-      snapshot,
-      role: step.role,
-      unit: threadUnit,
-    });
-    if (current === undefined) return [];
-    requireThreadDatum({
-      raw: current,
-      schema: step.datumSchema,
-      proverCredential: definition.proverCredential,
-      label: `computation step ${(index + 1).toString()}`,
-    });
-    return [
-      {
-        step: (index + 1) as ComputationThreadStep,
-        raw: current,
-      },
-    ];
-  });
-  if (threads.length > 1) {
-    throw new Error("raw L1 snapshot has more than one live computation step");
-  }
-  const proof = currentUnit({
-    snapshot,
-    role: "permanent_proof_token",
-    unit: proofUnit,
-  });
-  if (proof !== undefined) {
-    requireProofDatum({
-      raw: proof,
-      proverCredential: definition.proverCredential,
-    });
-  }
-  if (proof !== undefined && threads.length > 0) {
-    throw new Error(
-      "raw L1 snapshot has both a computation thread and proof token",
-    );
-  }
+  assertStepAddresses(snapshot, definition);
+  // Our proof decides the stage once it exists: another case's thread on the
+  // same header, still open, does not hold back our removal.
+  const proof = ownProof({ snapshot, definition, stateUnit, proofUnit });
   const topology = await stateQueueTopology({ snapshot, definition });
   if (topology.target === undefined) {
-    if (proof === undefined || threads.length > 0) {
+    if (proof === undefined) {
       throw new Error(
         "fraudulent header disappeared without a retained proof token",
       );
@@ -171,7 +222,7 @@ export const deriveFraudProofRawL1FamilyStage = async ({
           : outRef(topology.successor.utxo),
     };
   }
-  const thread = threads[0];
+  const thread = ownThread({ snapshot, definition, threadUnit });
   if (thread !== undefined) {
     return {
       kind: "step",
@@ -181,4 +232,40 @@ export const deriveFraudProofRawL1FamilyStage = async ({
     };
   }
   return { kind: "not_started", stateQueueBlockOutRef };
+};
+
+/**
+ * The family stage over an admitted raw L1 snapshot. A failure of the
+ * derivation itself is a `FraudProofRawL1DerivationError`, which the
+ * orchestrator records against this workflow alone; a failure of a further
+ * history read, an L1 wait among them, reaches the caller unchanged.
+ */
+export const deriveFraudProofRawL1FamilyStage = async (input: {
+  readonly snapshot: FraudProofRawL1Snapshot;
+  readonly definition: FraudProofRawL1FamilyDefinition;
+  readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy;
+  /** Further token histories, for a bond a lost-defense receipt slashed. */
+  readonly history?: FraudProofRawL1HistoryReader | undefined;
+}): Promise<FraudProofRawL1FamilyStage> => {
+  const read = input.history;
+  const readFailures = new WeakSet<object>();
+  const history: FraudProofRawL1HistoryReader | undefined =
+    read === undefined
+      ? undefined
+      : async (unit) => {
+          try {
+            return await read(unit);
+          } catch (cause) {
+            if (typeof cause === "object" && cause !== null)
+              readFailures.add(cause);
+            throw cause;
+          }
+        };
+  try {
+    return await deriveStage({ ...input, history });
+  } catch (cause) {
+    // `has` is false for a primitive; it never throws.
+    if (readFailures.has(cause as object)) throw cause;
+    throw new FraudProofRawL1DerivationError(input.definition.category, cause);
+  }
 };
