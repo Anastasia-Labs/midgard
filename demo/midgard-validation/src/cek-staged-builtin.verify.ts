@@ -46,12 +46,12 @@ import type {
 /**
  * The builtins the staged arms prove: addInteger, subtractInteger,
  * equalsInteger, lessThanInteger, lessThanEqualsInteger, the byte-string,
- * string, bitwise and signature builtins of semantics group 7 and
- * byteStringToInteger.
+ * string, bitwise and signature builtins of semantics group 7, and
+ * byteStringToInteger, shiftByteString and rotateByteString (group 9).
  */
 export const midgardCekStagedBuiltinProves = (tag: bigint): boolean =>
   midgardCekSemanticGroup(tag) === 7 ||
-  tag === 74n ||
+  midgardCekSemanticGroup(tag) === 9 ||
   tag === 0n ||
   tag === 1n ||
   (tag >= 7n && tag <= 9n);
@@ -220,16 +220,17 @@ export const scalarOperands = <T>(
   return [arguments_, []];
 };
 
-/** The padding of andByteString, orByteString and xorByteString, the
- * committed Boolean before their operands. */
-const padding = (leading: readonly Compacted[]): CEKConst => {
+/** A committed Boolean argument: the padding of andByteString,
+ * orByteString and xorByteString, or byteStringToInteger's endianness, each
+ * before the operands. */
+const committedBoolean = (leading: readonly Compacted[]): CEKConst => {
   const [committed] = leading;
-  if (leading.length !== 1) return refuse("padding");
+  if (leading.length !== 1) return refuse("committed Boolean");
   const value = [true, false].find((candidate) =>
     sameCompacted(committed!, compactValue(CEKConst.bool(candidate))),
   );
   return value === undefined
-    ? refuse("padding is not a Boolean")
+    ? refuse("committed value is not a Boolean")
     : CEKConst.bool(value);
 };
 
@@ -301,7 +302,7 @@ const verifyBytes = (
         : tag === 14 || tag === 79
           ? [values[0]!, CEKConst.int(integers[0]!)]
           : tag >= 75 && tag <= 77
-            ? [padding(leading), ...values]
+            ? [committedBoolean(leading), ...values]
             : values;
   const result = evaluateMidgardCekBuiltinOnValues(tag, ordered);
   return (
@@ -386,43 +387,45 @@ const verifyInteger = (inputs: ArmInputs): boolean => {
 };
 
 /**
- * byteStringToInteger over an input of at most 65,536 bytes, bound inline or
- * from staging outputs by the material's one source; the endianness is the
- * committed Boolean.
+ * Semantics group 9, over an input bound inline or from staging outputs by
+ * the material's first source: byteStringToInteger over at most 65,536
+ * bytes, the endianness the committed Boolean; or shiftByteString or
+ * rotateByteString over an input of any length (protocol version 11 bounds
+ * neither), by the amount the second source reveals.
  */
-const verifyConversion = (
+const verifyGroupNine = (
+  tag: bigint,
   arguments_: readonly MidgardCekDirectValueWitness[],
   result: MidgardCekDirectValueWitness,
   material: MidgardCekStagedBuiltinMaterial,
   referenceInputs: readonly MidgardCekStagedReferenceInput[],
 ): boolean => {
-  const [endianness, input] = arguments_.map(compact);
-  if (arguments_.length !== 2 || material.sources.length !== 1) return false;
-  const bigEndian = sameCompacted(
-    endianness!,
-    compactValue(CEKConst.bool(true)),
-  );
-  if (
-    !bigEndian &&
-    !sameCompacted(endianness!, compactValue(CEKConst.bool(false)))
-  ) {
-    return false;
-  }
+  const conversion = tag === 74n;
+  const [first, second] = arguments_.map(compact);
+  if (arguments_.length !== 2) return false;
+  if (material.sources.length !== (conversion ? 1 : 2)) return false;
   const inputs: ArmInputs = {
-    tag: 74,
+    tag: Number(tag),
     arguments: [],
     result: compact(result),
     runs: collectMidgardCekStagedRuns(referenceInputs, material.runs.refs),
     operands: material.runs.operands,
   };
-  const bound = bindBytes(inputs, [input!, material.sources[0]!], false, true);
+  const input: Compacted = conversion ? second! : first!;
+  const bound = bindBytes(
+    inputs,
+    [input, material.sources[0]!],
+    false,
+    conversion,
+  );
   if (bound.bytes === null) return false;
-  // The bound bytes are a fresh copy, which the reference builtin may reverse
-  // in place.
-  const evaluated = evaluateMidgardCekBuiltinOnValues(74, [
-    CEKConst.bool(bigEndian),
-    CEKConst.byteString(bound.bytes),
-  ]);
+  // The bound bytes are a fresh copy, which the reference byteStringToInteger
+  // may reverse in place.
+  const bytes = CEKConst.byteString(bound.bytes);
+  const values = conversion
+    ? [committedBoolean([first!]), bytes]
+    : [bytes, CEKConst.int(smallInteger([second!, material.sources[1]!]))];
+  const evaluated = evaluateMidgardCekBuiltinOnValues(Number(tag), values);
   return (
     evaluated !== "failure" &&
     sameCompacted(inputs.result, compactValue(evaluated))
@@ -444,7 +447,13 @@ export const verifyMidgardCekStagedBuiltin = (
   try {
     const group = midgardCekSemanticGroup(tag);
     if (group === 9) {
-      return verifyConversion(arguments_, result, material, referenceInputs);
+      return verifyGroupNine(
+        tag,
+        arguments_,
+        result,
+        material,
+        referenceInputs,
+      );
     }
     if (group !== 7 && group !== 8) return false;
     const compacted = arguments_.map(compact);

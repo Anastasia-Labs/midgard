@@ -51,10 +51,13 @@ validator main(
           expect direct: chain.BuiltinRoots = bound.facts
           direct
         }
-        let budget = builtin_witness.direct_builtin_budget_v1(
-          item.tag,
-          item.arguments,
-        )
+        // The staged route commits a shift's amount compacted, and both
+        // shifts cost their source alone.
+        let budget = if bound.arm == 31 && ( item.tag == 82 || item.tag == 83 ) {
+          builtin_witness.staged_shift_budget_v1(item.tag, item.arguments)
+        } else {
+          builtin_witness.direct_builtin_budget_v1(item.tag, item.arguments)
+        }
         expect
           bound.post == machine.exact_state(
             bound.pre,

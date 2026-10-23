@@ -1,7 +1,9 @@
 //// Transaction-level rows for the staged conversion semantics step (arm 31,
 //// group 5, semantics index 9): byteStringToInteger over an input bound
-//// inline or from staging outputs, of at most 65,536 bytes. The step must
-//// accept exactly the integer Cardano returns, in either byte order.
+//// inline or from staging outputs, of at most 65,536 bytes, and
+//// shiftByteString and rotateByteString over an input of any length. The
+//// step must accept exactly the integer Cardano returns, in either byte
+//// order, and exactly the bytes a shift or rotation returns.
 
 use aiken/builtin
 use aiken/cbor
@@ -11,6 +13,7 @@ use fraud_proofs/validation_trace/cek_core_staged_bytes as staged_bytes
 use fraud_proofs/validation_trace/cek_core_staged_conversion as staged_conversion
 use fraud_proofs/validation_trace/cek_core_staged_integer as staged_integer
 use midgard/cek_builtin_v1.{SemanticConstantValue, ValueWitnessV1}
+use midgard/cek_data_v1
 use midgard/cek_machine_v1 as machine
 use midgard/cek_staged_arm_v1.{
   BytesLeafOperand, InlineOperand, OperandSourceV1, SmallIntegerOperand,
@@ -21,10 +24,10 @@ use midgard/cek_staged_integer_v1.{
   CanonicalIntegerV1, integer_leaf_from_cbor_v1, magnitude_words_v1,
 }
 use midgard/fraud_proofs/cek_staged_fixture_v1.{
-  StagedStepV1, StagingV1, boolean_value, budget_step, bytes_value,
-  integer_type_cbor, integer_value, material, no_staging, other_input, pattern,
-  semantic_pieces, stage, stage_pieces, staged, staged_step, staged_step_at,
-  text, zeros,
+  StagedStepV1, StagingV1, boolean_value, budget_step, bytes_type_cbor,
+  bytes_value, flip_last_byte, integer_type_cbor, integer_value, material,
+  no_staging, other_input, pattern, semantic_pieces, stage, stage_pieces, staged,
+  staged_step, staged_step_at, text, zeros,
 }
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 
@@ -524,4 +527,490 @@ test staged_conversion_little_endian_at_the_argument_bound() {
 
 test staged_conversion_little_endian_fixture_only_at_the_argument_bound() {
   built(step_at_the_bound(False))
+}
+
+// ## shiftByteString and rotateByteString
+
+/// shiftByteString (82) or rotateByteString (83) over the staged input
+/// `pieces`, by the revealed `amount`, claiming `result`.
+fn shift_step(
+  tag: Int,
+  pieces: List<ByteArray>,
+  amount: Int,
+  result: ValueWitnessV1,
+) -> StagedStepV1 {
+  let staging = stage_pieces([pieces])
+  staged_step(
+    tag,
+    [semantic_pieces(pieces, False), integer_value(amount)],
+    result,
+    material(staging, [staged(0), SmallIntegerOperand { value: amount }]),
+    staging.reference_inputs,
+  )
+}
+
+/// What Cardano returns for builtin `tag` over `bytes` by `amount`.
+fn shifted(tag: Int, bytes: ByteArray, amount: Int) -> ByteArray {
+  if tag == 82 {
+    builtin.shift_bytearray(bytes, amount)
+  } else {
+    builtin.rotate_bytearray(bytes, amount)
+  }
+}
+
+/// The honest step for builtin `tag` over the staged `bytes` by `amount`
+/// verifies.
+fn shifts(tag: Int, bytes: ByteArray, amount: Int) -> Bool {
+  spend(
+    shift_step(
+      tag,
+      [bytes],
+      amount,
+      bytes_value(shifted(tag, bytes, amount), False),
+    ),
+  )
+}
+
+/// The honest step for builtin `tag` over the inline `bytes` by `amount`
+/// verifies.
+fn shifts_inline(tag: Int, bytes: ByteArray, amount: Int) -> Bool {
+  spend(
+    staged_step(
+      tag,
+      [bytes_value(bytes, False), integer_value(amount)],
+      bytes_value(shifted(tag, bytes, amount), False),
+      material(
+        no_staging(),
+        [InlineOperand { bytes }, SmallIntegerOperand { value: amount }],
+      ),
+      [],
+    ),
+  )
+}
+
+/// Amounts that shift an input of `length` bytes by none, part of a byte,
+/// whole bytes, across a chunk, by all of it and past it, either way.
+fn amounts(length: Int) -> List<Int> {
+  let towards_start = [
+    0,
+    1,
+    7,
+    8,
+    9,
+    8 * 4095 + 3,
+    8 * length - 1,
+    8 * length,
+    8 * length + 13,
+    9223372036854775807,
+  ]
+  list.concat(
+    towards_start,
+    [
+      -9223372036854775808,
+      ..list.map(list.drop(towards_start, 1), fn(n) { -n })
+    ],
+  )
+}
+
+fn shifts_by_each_amount(tag: Int, bytes: ByteArray) -> Bool {
+  list.all(
+    amounts(builtin.length_of_bytearray(bytes)),
+    fn(amount) { shifts(tag, bytes, amount) },
+  )
+}
+
+test shifts_a_staged_input_past_the_direct_bound_by_each_amount() {
+  shifts_by_each_amount(82, pattern(9216, 3))
+}
+
+test rotates_a_staged_input_past_the_direct_bound_by_each_amount() {
+  shifts_by_each_amount(83, pattern(9216, 3))
+}
+
+test shifts_and_rotates_a_staged_input_at_the_argument_bound() {
+  let bytes = pattern(65536, 5)
+  list.all(
+    [82, 83],
+    fn(tag) {
+      list.all(
+        [3, -3, 8 * 12345 + 5, -(8 * 12345 + 5), 8 * 65536 - 2],
+        fn(amount) { shifts(tag, bytes, amount) },
+      )
+    },
+  )
+}
+
+test shifts_and_rotates_inline_input_by_each_amount() {
+  list.all(
+    [#"", #"01", #"80ff", pattern(600, 1), pattern(4000, 9)],
+    fn(bytes) {
+      list.all(
+        [82, 83],
+        fn(tag) {
+          list.all(
+            amounts(builtin.length_of_bytearray(bytes)),
+            fn(amount) { shifts_inline(tag, bytes, amount) },
+          )
+        },
+      )
+    },
+  )
+}
+
+/// An input of 70,000 bytes, longer than one byte string can be, as its
+/// two pieces.
+fn first_piece() -> ByteArray {
+  pattern(65536, 1)
+}
+
+fn second_piece() -> ByteArray {
+  pattern(4464, 7)
+}
+
+fn moves_whole_pieces(tag: Int, amount: Int, result: List<ByteArray>) -> Bool {
+  spend(
+    shift_step(
+      tag,
+      [first_piece(), second_piece()],
+      amount,
+      semantic_pieces(result, False),
+    ),
+  )
+}
+
+test shifts_an_input_past_the_argument_bound_by_whole_pieces() {
+  and {
+    moves_whole_pieces(82, 8 * 65536, [second_piece(), zeros(65536)]),
+    moves_whole_pieces(82, -8 * 4464, [zeros(4464), first_piece()]),
+  }
+}
+
+test rotates_an_input_past_the_argument_bound_by_whole_pieces() {
+  and {
+    moves_whole_pieces(83, 8 * 65536, [second_piece(), first_piece()]),
+    moves_whole_pieces(83, -8 * 4464, [second_piece(), first_piece()]),
+    moves_whole_pieces(83, 8 * 70000 * 3, [first_piece(), second_piece()]),
+  }
+}
+
+test ignores_reference_inputs_the_shift_material_does_not_name() {
+  let bytes = pattern(9216, 1)
+  let staging = stage([bytes])
+  spend(
+    staged_step(
+      82,
+      [bytes_value(bytes, False), integer_value(11)],
+      bytes_value(builtin.shift_bytearray(bytes, 11), False),
+      material(staging, [staged(0), SmallIntegerOperand { value: 11 }]),
+      list.concat(staging.reference_inputs, [other_input(250)]),
+    ),
+  )
+}
+
+// ### Wrong results are refused
+
+test refuses_a_shift_by_another_amount() fail {
+  let bytes = pattern(9216, 3)
+  spend(
+    shift_step(
+      82,
+      [bytes],
+      11,
+      bytes_value(builtin.shift_bytearray(bytes, 12), False),
+    ),
+  )
+}
+
+test refuses_a_rotation_by_another_amount() fail {
+  let bytes = pattern(9216, 3)
+  spend(
+    shift_step(
+      83,
+      [bytes],
+      -11,
+      bytes_value(builtin.rotate_bytearray(bytes, -12), False),
+    ),
+  )
+}
+
+test refuses_the_rotation_for_a_shift() fail {
+  let bytes = pattern(9216, 3)
+  spend(
+    shift_step(
+      82,
+      [bytes],
+      8 * 100 + 3,
+      bytes_value(builtin.rotate_bytearray(bytes, 8 * 100 + 3), False),
+    ),
+  )
+}
+
+test refuses_the_shift_for_a_rotation() fail {
+  let bytes = pattern(9216, 3)
+  spend(
+    shift_step(
+      83,
+      [bytes],
+      -(8 * 100 + 3),
+      bytes_value(builtin.shift_bytearray(bytes, -(8 * 100 + 3)), False),
+    ),
+  )
+}
+
+test refuses_a_shift_with_its_last_byte_changed() fail {
+  let bytes = pattern(9216, 3)
+  spend(
+    shift_step(
+      82,
+      [bytes],
+      5,
+      bytes_value(flip_last_byte(builtin.shift_bytearray(bytes, 5)), False),
+    ),
+  )
+}
+
+test refuses_a_shift_one_byte_longer() fail {
+  let bytes = pattern(9216, 3)
+  spend(
+    shift_step(
+      82,
+      [bytes],
+      8,
+      bytes_value(
+        builtin.append_bytearray(builtin.shift_bytearray(bytes, 8), #"00"),
+        False,
+      ),
+    ),
+  )
+}
+
+test refuses_a_string_result_for_a_shift() fail {
+  let bytes = pattern(9216, 3)
+  spend(shift_step(82, [bytes], 0, bytes_value(text(9216), True)))
+}
+
+test refuses_a_shift_past_int64() fail {
+  let bytes = pattern(9216, 3)
+  spend(
+    shift_step(
+      82,
+      [bytes],
+      9223372036854775808,
+      bytes_value(zeros(9216), False),
+    ),
+  )
+}
+
+test refuses_a_rotation_past_int64() fail {
+  let bytes = pattern(9216, 3)
+  spend(
+    shift_step(83, [bytes], -9223372036854775809, bytes_value(bytes, False)),
+  )
+}
+
+// ### Binding
+
+test refuses_an_amount_other_than_the_committed_one() fail {
+  let bytes = pattern(9216, 3)
+  let staging = stage([bytes])
+  spend(
+    staged_step(
+      82,
+      [bytes_value(bytes, False), integer_value(11)],
+      bytes_value(builtin.shift_bytearray(bytes, 12), False),
+      material(staging, [staged(0), SmallIntegerOperand { value: 12 }]),
+      staging.reference_inputs,
+    ),
+  )
+}
+
+test refuses_a_shift_with_an_extra_source() fail {
+  let bytes = pattern(9216, 3)
+  let staging = stage([bytes])
+  spend(
+    staged_step(
+      82,
+      [bytes_value(bytes, False), integer_value(11)],
+      bytes_value(builtin.shift_bytearray(bytes, 11), False),
+      material(
+        staging,
+        [
+          staged(0),
+          SmallIntegerOperand { value: 11 },
+          SmallIntegerOperand { value: 11 },
+        ],
+      ),
+      staging.reference_inputs,
+    ),
+  )
+}
+
+test refuses_a_shift_input_bound_by_its_leaf_alone() fail {
+  let bytes = pattern(9216, 3)
+  spend(
+    staged_step(
+      82,
+      [bytes_value(bytes, False), integer_value(11)],
+      bytes_value(builtin.shift_bytearray(bytes, 11), False),
+      material(
+        no_staging(),
+        [
+          BytesLeafOperand {
+            root: flat_root_of_pieces_v1([bytes]),
+            length: 9216,
+          },
+          SmallIntegerOperand { value: 11 },
+        ],
+      ),
+      [],
+    ),
+  )
+}
+
+test refuses_staged_bytes_that_differ_from_the_shift_input() fail {
+  let bytes = pattern(9216, 3)
+  let staging = stage([pattern(9216, 4)])
+  spend(
+    staged_step(
+      83,
+      [bytes_value(bytes, False), integer_value(11)],
+      bytes_value(builtin.rotate_bytearray(bytes, 11), False),
+      material(staging, [staged(0), SmallIntegerOperand { value: 11 }]),
+      staging.reference_inputs,
+    ),
+  )
+}
+
+test refuses_a_string_shift_input() fail {
+  let bytes = text(9216)
+  let staging = stage([bytes])
+  spend(
+    staged_step(
+      82,
+      [bytes_value(bytes, True), integer_value(0)],
+      bytes_value(bytes, False),
+      material(staging, [staged(0), SmallIntegerOperand { value: 0 }]),
+      staging.reference_inputs,
+    ),
+  )
+}
+
+test refuses_a_staged_amount() fail {
+  let bytes = pattern(9216, 3)
+  let staging = stage([bytes])
+  spend(
+    staged_step(
+      82,
+      [bytes_value(bytes, False), integer_value(0)],
+      bytes_value(bytes, False),
+      material(staging, [staged(0), staged(0)]),
+      staging.reference_inputs,
+    ),
+  )
+}
+
+// ### Routing
+
+test the_budget_hop_routes_shifts_and_rotations_here() {
+  list.all(
+    [82, 83],
+    fn(tag) {
+      and {
+        routes_to(
+          tag,
+          [bytes_value(pattern(65536, 1), False), integer_value(-3)],
+          9,
+        ),
+        routes_to(
+          tag,
+          [semantic_pieces(max_shape_pieces(), False), integer_value(8003)],
+          9,
+        ),
+      }
+    },
+  )
+}
+
+test the_budget_hop_does_not_route_a_shift_to_the_byte_string_semantics() fail {
+  routes_to(82, [bytes_value(pattern(65536, 1), False), integer_value(3)], 7)
+}
+
+test the_byte_string_semantics_step_refuses_a_rotation() fail {
+  let bytes = pattern(9216, 3)
+  let step = shift_step(
+    83,
+    [bytes],
+    3,
+    bytes_value(builtin.rotate_bytearray(bytes, 3), False),
+  )
+  staged_bytes.main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    step.datum,
+    step.redeemer,
+    fixture.own_out_ref(),
+    step.transaction,
+  )
+}
+
+// ### Maximum shape
+
+/// The longest input an honest script can shift or rotate within the
+/// transaction budget is 370,340 bytes (serialiseData over copies of a
+/// 65,536-byte string). This input is 91 full chunks, 372,645 bytes: byte i
+/// is (i + 1) mod 256.
+fn max_shape_pieces() -> List<ByteArray> {
+  let piece = pattern(65536, 1)
+  [piece, piece, piece, piece, piece, pattern(44965, 1)]
+}
+
+/// The bytes result of 372,645 bytes whose flat root is `root`, which the
+/// validation package computes from Cardano's result.
+fn max_shape_result(root: ByteArray) -> ValueWitnessV1 {
+  SemanticConstantValue {
+    type_cbor: bytes_type_cbor,
+    payload: cek_data_v1.bytes_data_summary_v1(372645, root),
+    memory: cek_data_v1.bytes_memory_size_v1(372645),
+  }
+}
+
+fn max_shape_step(tag: Int, amount: Int, root: ByteArray) -> StagedStepV1 {
+  shift_step(tag, max_shape_pieces(), amount, max_shape_result(root))
+}
+
+const shifted_left_root =
+  #"5034610bed6f5f61831b2b18a36af6dacebda3d37d912465fcde996bd101fd22"
+
+const shifted_right_root =
+  #"95db54de631587287faf289955ea51272dc14d56481ab7ad6738a010e1b5884e"
+
+const rotated_root =
+  #"ea39496b399eb92fd8fb0e179ce948e191566ff75413d957c53fbab497c8c0d7"
+
+test staged_shift_left_at_the_maximum_shape() {
+  spend(max_shape_step(82, 8003, shifted_left_root))
+}
+
+test staged_shift_left_fixture_only_at_the_maximum_shape() {
+  built(max_shape_step(82, 8003, shifted_left_root))
+}
+
+test staged_shift_right_at_the_maximum_shape() {
+  spend(max_shape_step(82, -8003, shifted_right_root))
+}
+
+test staged_shift_right_fixture_only_at_the_maximum_shape() {
+  built(max_shape_step(82, -8003, shifted_right_root))
+}
+
+test staged_rotate_at_the_maximum_shape() {
+  spend(max_shape_step(83, 1600005, rotated_root))
+}
+
+test staged_rotate_fixture_only_at_the_maximum_shape() {
+  built(max_shape_step(83, 1600005, rotated_root))
+}
+
+test refuses_a_rotation_at_the_maximum_shape_rooted_as_the_shift() fail {
+  spend(max_shape_step(83, 8003, shifted_left_root))
 }

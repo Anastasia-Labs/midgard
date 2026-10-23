@@ -73,7 +73,8 @@ const stagedFailureTag = (tag: bigint): boolean =>
 /** The staged semantic stage of each staged `semantic_group(tag)`, the
  * groups past `CEK_CORE_SEMANTIC_STAGES` (cek-semantic-chain): the
  * byte-string, string and signature builtins (7), the linear integer
- * builtins (8) and byteStringToInteger (9). */
+ * builtins (8), and byteStringToInteger, shiftByteString and
+ * rotateByteString (9). */
 export const CEK_CORE_STAGED_SEMANTIC_STAGES = Object.freeze({
   7: "stagedBytes",
   8: "stagedInteger",

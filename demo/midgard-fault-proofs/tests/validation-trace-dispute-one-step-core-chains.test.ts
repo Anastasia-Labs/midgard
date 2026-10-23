@@ -83,6 +83,8 @@ describe("the staged route's semantic stage", () => {
     [85n, "stagedBytes"],
     [0n, "stagedInteger"],
     [74n, "stagedConversion"],
+    [82n, "stagedConversion"],
+    [83n, "stagedConversion"],
   ] as const)("routes builtin %s to %s", (tag, stage) => {
     expect(cekCoreStagedSemanticStage(tag)).toBe(stage);
     const name = `validationTraceDisputeCekCore${stage[0]!.toUpperCase()}${stage.slice(1)}`;

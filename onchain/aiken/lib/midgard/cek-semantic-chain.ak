@@ -182,8 +182,13 @@ pub fn semantic_group(tag: Int) -> Int {
     // The byte-string, string, bitwise and signature builtins over staged
     // operands.
     7
-  } else if tag == 74 {
-    // byteStringToInteger over a staged input.
+  } else if or {
+    tag == 74,
+    tag == 82,
+    tag == 83,
+  } {
+    // byteStringToInteger, shiftByteString and rotateByteString over a staged
+    // input.
     9
   } else {
     fail

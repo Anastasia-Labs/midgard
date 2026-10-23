@@ -1,8 +1,8 @@
 /**
  * The staged route of the scalar builtins (arm 31, semantics groups 7, 8 and
  * 9): a byte-string, string, bitwise, signature or linear integer builtin,
- * or byteStringToInteger, whose arguments or result do not fit the direct
- * carriage bound.
+ * or byteStringToInteger, shiftByteString or rotateByteString, whose
+ * arguments or result do not fit the direct carriage bound.
  *
  * The step is a pure function of the execution graph: each argument gets one
  * typed source (its bytes inline, a staged operand by index, its leaf
@@ -153,7 +153,7 @@ const smallInteger = (tag: number, index: number): boolean =>
   (tag === 11 && index === 0) ||
   (tag === 12 && index < 2) ||
   (tag === 14 && index === 1) ||
-  (tag === 79 && index === 1);
+  ((tag === 79 || tag === 82 || tag === 83) && index === 1);
 
 /**
  * The staged step of builtin `tag` over `arguments_` (presented, with value
@@ -178,7 +178,7 @@ export const executeMidgardCekStagedBuiltin = (
   }
   // byteStringToInteger's endianness and the logical builtins' padding are
   // committed Booleans, not operands.
-  const conversion = group === 9;
+  const conversion = tag === 74n;
   const leading = conversion || (tag >= 75n && tag <= 77n) ? 1 : 0;
   const operands = arguments_
     .slice(leading)

@@ -300,6 +300,17 @@ pub fn builtin_cost_sizes_v1(
   }
 }
 
+/// The charge of shiftByteString (82) or rotateByteString (83) over a source
+/// and an amount the staged route commits compacted. Both builtins cost the
+/// source alone, so the amount, which the semantics hop binds, is not read.
+pub fn staged_shift_budget_v1(
+  tag: Int,
+  arguments: List<ValueWitnessV1>,
+) -> cek_cost_v1.BuiltinBudgetV1 {
+  expect [source, _] = arguments
+  cek_cost_v1.builtin_budget_v1(tag, [value_memory_size_v1(source), 0])
+}
+
 pub fn direct_builtin_budget_v1(
   tag: Int,
   arguments: List<ValueWitnessV1>,

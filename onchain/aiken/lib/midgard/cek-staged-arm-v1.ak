@@ -422,11 +422,15 @@ fn bitwise_relation_v1(
   }
 }
 
-/// byteStringToInteger (74) over an input of at most 65,536 bytes, bound
-/// inline or from staging outputs by the material's one source. The input is
-/// read in limbs of 512 bytes, from the end for big-endian input and from the
-/// start for little-endian (the endianness is the committed Boolean), and the
-/// result must be the non-negative integer those limbs make.
+/// Semantics group 9: byteStringToInteger (74), and shiftByteString (82) and
+/// rotateByteString (83), the only other tags the budget hop routes here
+/// (`semantic_group`).
+///
+/// byteStringToInteger reads an input of at most 65,536 bytes, bound inline or
+/// from staging outputs by the material's one source. The input is read in
+/// limbs of 512 bytes, from the end for big-endian input and from the start
+/// for little-endian (the endianness is the committed Boolean), and the result
+/// must be the non-negative integer those limbs make.
 pub fn verify_staged_conversion_v1(
   bound: chain.CoreBound,
   witness: Data,
@@ -435,6 +439,18 @@ pub fn verify_staged_conversion_v1(
   let raw = chain.decode_builtin_success(bound.arm, witness)
   expect facts: chain.SemanticRoots = bound.facts
   expect material: StagedMaterialV1 = raw.material
+  if raw.tag == 74 {
+    verify_conversion_v1(facts, material, reference_inputs)
+  } else {
+    verify_shift_v1(raw.tag == 83, facts, material, reference_inputs)
+  }
+}
+
+fn verify_conversion_v1(
+  facts: chain.SemanticRoots,
+  material: StagedMaterialV1,
+  reference_inputs: List<Input>,
+) -> Bool {
   expect [endianness, input] = facts.arguments
   expect [source] = material.sources
   // The input's bound is not checked here: the limbs are read by slicing the
@@ -474,6 +490,172 @@ pub fn verify_staged_conversion_v1(
       words,
     ),
     memory: words,
+  }
+}
+
+/// shiftByteString (82) or rotateByteString (83, `rotate`) over an input of
+/// any length (protocol version 11 bounds neither), bound inline or from
+/// staging outputs, by an amount revealed as a machine integer. The input is
+/// never joined: with the amount split into whole bytes and 0 to 7 bits, each
+/// result piece is an input piece shifted by the bits with its neighbour's
+/// byte carried in, so no byte string longer than a piece and a byte is built.
+/// The whole bytes shifted out are replaced by zeros, or, for a rotation,
+/// moved to the other end.
+fn verify_shift_v1(
+  rotate: Bool,
+  facts: chain.SemanticRoots,
+  material: StagedMaterialV1,
+  reference_inputs: List<Input>,
+) -> Bool {
+  expect [input, amount] = facts.arguments
+  expect [source, amount_source] = material.sources
+  let operand = bind_bytes_v1(
+    failure_inputs_v1(material, reference_inputs),
+    Pair(input, source),
+    False,
+    False,
+  )
+  expect Some(pieces) = operand.pieces
+  let length = operand.length
+  let bits = small_integer_v1(Pair(amount, amount_source))
+  result_is_pieces_v1(
+    facts.result,
+    False,
+    if length == 0 {
+      []
+    } else if rotate {
+      // A rotation by n bits is one by n mod 8L, so by bytes then by bits.
+      let turn = builtin.mod_integer(bits, 8 * length)
+      let stream = list.concat(
+        drop_bytes_v1(pieces, turn / 8),
+        take_bytes_v1(pieces, turn / 8),
+      )
+      expect [first, ..] = stream
+      shift_left_v1(stream, turn % 8, builtin.index_bytearray(first, 0))
+    } else if bits >= 0 {
+      let bytes = at_most_v1(bits / 8, length)
+      list.concat(
+        shift_left_v1(drop_bytes_v1(pieces, bytes), bits % 8, 0),
+        zero_pieces_v1(bytes),
+      )
+    } else {
+      let right = -bits
+      let bytes = at_most_v1(right / 8, length)
+      list.concat(
+        zero_pieces_v1(bytes),
+        shift_right_v1(take_bytes_v1(pieces, length - bytes), right % 8, 0),
+      )
+    },
+  )
+}
+
+fn at_most_v1(value: Int, bound: Int) -> Int {
+  if value < bound {
+    value
+  } else {
+    bound
+  }
+}
+
+/// `pieces` without their first `count` bytes.
+fn drop_bytes_v1(pieces: List<ByteArray>, count: Int) -> List<ByteArray> {
+  when pieces is {
+    [] -> []
+    [piece, ..rest] -> {
+      let size = builtin.length_of_bytearray(piece)
+      if count >= size {
+        drop_bytes_v1(rest, count - size)
+      } else if count == 0 {
+        pieces
+      } else {
+        [builtin.slice_bytearray(count, size - count, piece), ..rest]
+      }
+    }
+  }
+}
+
+/// The first `count` bytes of `pieces`.
+fn take_bytes_v1(pieces: List<ByteArray>, count: Int) -> List<ByteArray> {
+  when pieces is {
+    [] -> []
+    [piece, ..rest] -> {
+      let size = builtin.length_of_bytearray(piece)
+      if count >= size {
+        [piece, ..take_bytes_v1(rest, count - size)]
+      } else if count == 0 {
+        []
+      } else {
+        [builtin.slice_bytearray(0, count, piece)]
+      }
+    }
+  }
+}
+
+/// `count` zero bytes, as pieces of at most 8,192. The piece size is computed
+/// so that the full piece is built when run rather than stored in the script.
+fn zero_pieces_v1(count: Int) -> List<ByteArray> {
+  let piece = builtin.replicate_byte(at_most_v1(count, 8192), 0)
+  if count <= 8192 {
+    [piece]
+  } else {
+    [piece, ..zero_pieces_v1(count - 8192)]
+  }
+}
+
+/// `pieces` shifted towards their start by `bits` (0 to 7): each piece takes
+/// its low bits from the first byte of the next piece, the last piece from
+/// `last`.
+fn shift_left_v1(
+  pieces: List<ByteArray>,
+  bits: Int,
+  last: Int,
+) -> List<ByteArray> {
+  when pieces is {
+    [] -> []
+    [piece, ..rest] -> {
+      let next = when rest is {
+        [following, ..] -> builtin.index_bytearray(following, 0)
+        [] -> last
+      }
+      [
+        builtin.slice_bytearray(
+          0,
+          builtin.length_of_bytearray(piece),
+          builtin.shift_bytearray(
+            builtin.append_bytearray(piece, builtin.cons_bytearray(next, #"")),
+            bits,
+          ),
+        ),
+        ..shift_left_v1(rest, bits, last)
+      ]
+    }
+  }
+}
+
+/// `pieces` shifted towards their end by `bits` (0 to 7): each piece takes its
+/// high bits from the last byte of the piece before, the first piece from
+/// `previous`.
+fn shift_right_v1(
+  pieces: List<ByteArray>,
+  bits: Int,
+  previous: Int,
+) -> List<ByteArray> {
+  when pieces is {
+    [] -> []
+    [piece, ..rest] -> {
+      let size = builtin.length_of_bytearray(piece)
+      [
+        builtin.slice_bytearray(
+          1,
+          size,
+          builtin.shift_bytearray(
+            builtin.cons_bytearray(previous, piece),
+            -bits,
+          ),
+        ),
+        ..shift_right_v1(rest, bits, builtin.index_bytearray(piece, size - 1))
+      ]
+    }
   }
 }
 
