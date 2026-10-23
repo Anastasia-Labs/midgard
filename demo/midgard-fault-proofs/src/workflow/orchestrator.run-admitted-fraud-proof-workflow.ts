@@ -79,6 +79,7 @@ import {
 } from "./orchestrator.normalize-workflow-terminal.js";
 import { assertWorkflowJournalReconciliation } from "./orchestrator.reconcile-superseded-attempts.js";
 import { reobserveRequiredWorkflowParent } from "./orchestrator.reobserve-required-parent.js";
+import { resolvedByAnotherRecordResult } from "./orchestrator.resolved-by-another-record.js";
 import {
   supersedeDisplacedFundingAttempt,
   supersedeWorkflowFundingAttempt,
@@ -87,7 +88,14 @@ import {
   createUnbuiltWorkflowActions,
   workflowRunOutcomes,
 } from "./orchestrator.unbuilt-actions.js";
+import { threadReclaimFundingHold } from "./own-thread-reclaim.js";
+import { isFraudProofRawL1DerivationError } from "./raw-l1-family-derivation.state-queue-topology.js";
 import { type VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy.js";
+import {
+  type FraudProofResolvedByAnotherRecord,
+  isFraudProofResolvedByAnotherRecordError,
+  journalCreatedRecord,
+} from "./resolved-by-another-record.js";
 import { artifactPendingResult } from "./workflow-artifact-pending.js";
 /**
  * Q51/W-O4 single-command core. Preparation, every submission intent,
@@ -210,6 +218,46 @@ export const runAdmittedFraudProofWorkflow = async ({
     append,
     unbuilt,
   });
+  // A stage the family cannot derive from the admitted L1 view is this
+  // workflow's recorded stall, observed again on its next run. Every other
+  // failure reaches the caller as before.
+  const observeOrStall = async (
+    input: FraudProofWorkflowAdapterContext,
+  ): Promise<
+    | { readonly observation: FraudProofWorkflowObservation }
+    | { readonly stalled: FraudProofWorkflowRunResult }
+    | { readonly resolved: FraudProofResolvedByAnotherRecord }
+  > => {
+    try {
+      return { observation: await adapter.observe(input) };
+    } catch (cause) {
+      if (isFraudProofResolvedByAnotherRecordError(cause))
+        return { resolved: cause.resolution };
+      if (!isFraudProofRawL1DerivationError(cause)) throw cause;
+      return {
+        stalled: await stalled(
+          `observation failed: ${formatUnknownError(cause)}`,
+        ),
+      };
+    }
+  };
+  // The orchestrator is the guard: no run resolves while the adapter still
+  // sees a thread of ours on the header, or cannot list them at all.
+  const resolvedByAnotherRecord = async (
+    resolution: FraudProofResolvedByAnotherRecord,
+  ): Promise<FraudProofWorkflowRunResult> =>
+    resolvedByAnotherRecordResult({
+      resolution,
+      threads:
+        resolution.standingThread === undefined
+          ? await adapter.observeOwnThreads?.({ headerHash })
+          : { standing: resolution.standingThread },
+      workflowId,
+      identity,
+      entries,
+      releaseFinality,
+      resumeOnObservation,
+    });
 
   if (entries.length === 0) {
     if (workflowJournalIsReconciliationOnly(journal))
@@ -321,10 +369,14 @@ export const runAdmittedFraudProofWorkflow = async ({
         headerHash,
         checkpoint: "before_observe",
       });
-      const current = await adapter.observe(context);
+      const observed = await observeOrStall(context);
+      if ("stalled" in observed) return observed.stalled;
+      // A resolution is acted on after this run's attempts are reconciled.
+      const current =
+        "observation" in observed ? observed.observation : undefined;
       currentObservation = current;
       if (
-        current.kind === "action_required" &&
+        current?.kind === "action_required" &&
         unresolvedEvent?.actionId !== current.action.actionId &&
         (latestJournalEvent?.kind !== "reconciled" ||
           latestJournalEvent.outcome !== "confirmed")
@@ -605,17 +657,23 @@ export const runAdmittedFraudProofWorkflow = async ({
       headerHash,
       checkpoint: "before_observe",
     });
-    const observation: FraudProofWorkflowObservation =
-      currentObservation ??
-      (await adapter.observe({
-        ...context,
-        reconciliationOnly: workflowJournalIsReconciliationOnly(journal),
-      }));
+    const observed =
+      currentObservation === undefined
+        ? await observeOrStall({
+            ...context,
+            reconciliationOnly: workflowJournalIsReconciliationOnly(journal),
+          })
+        : { observation: currentObservation };
+    if ("stalled" in observed) return observed.stalled;
+    if ("resolved" in observed)
+      return await resolvedByAnotherRecord(observed.resolved);
+    const observation: FraudProofWorkflowObservation = observed.observation;
     const held = unbuilt.held(observation);
     if (held !== undefined) return resumeOnObservation(held);
     if (observation.kind === "pending") return pending(observation.reason);
     if (observation.kind === "completed") {
-      let terminal: FraudProofWorkflowTerminal;
+      let terminal: FraudProofWorkflowTerminal | undefined;
+      let resolution: FraudProofResolvedByAnotherRecord | undefined;
       const inclusionOnly =
         observation.terminal.observedAt.confirmationDepth <=
         releaseFinality.policy.automaticRecoveryMaxDepth + 1;
@@ -627,24 +685,34 @@ export const runAdmittedFraudProofWorkflow = async ({
           headerHash,
           checkpoint: "before_terminal_verify",
         });
-        terminal = normalizeWorkflowTerminal({
+        const verified = await (
+          inclusionOnly
+            ? (terminalVerifier.verifyIncluded ?? terminalVerifier.verify)
+            : terminalVerifier.verify
+        )({
           identity,
-          terminal: await (
-            inclusionOnly
-              ? (terminalVerifier.verifyIncluded ?? terminalVerifier.verify)
-              : terminalVerifier.verify
-          )({
-            identity,
-            workflowId,
-            releaseFinality,
-            candidate: observation.terminal,
-            artifact: envelope.familyArtifact,
-            entries,
-          }),
-          entries,
+          workflowId,
           releaseFinality,
-          inclusionOnly,
+          candidate: observation.terminal,
+          artifact: envelope.familyArtifact,
+          entries,
         });
+        // A sibling run on our key created the record the removal cited.
+        if (!journalCreatedRecord(entries, verified.proofToken.createdByTxHash))
+          resolution = {
+            removalTxHash: verified.correction.removalTxHash,
+            referencedProofTokenOutRef:
+              verified.correction.referencedProofTokenOutRef,
+            confirmationDepth: verified.observedAt.confirmationDepth,
+          };
+        else
+          terminal = normalizeWorkflowTerminal({
+            identity,
+            terminal: verified,
+            entries,
+            releaseFinality,
+            inclusionOnly,
+          });
         assertWorkflowJournalActuation({
           journal,
           deploymentFingerprint,
@@ -658,6 +726,8 @@ export const runAdmittedFraudProofWorkflow = async ({
           `terminal verification failed: ${formatUnknownError(cause)}`,
         );
       }
+      if (terminal === undefined)
+        return await resolvedByAnotherRecord(resolution!);
       const terminalDigest = journalJsonDigest(
         normalizeJournalJson(terminal, "workflow terminal"),
       );
@@ -800,6 +870,8 @@ export const runAdmittedFraudProofWorkflow = async ({
       if (cause instanceof WorkflowFundingReservationUnavailableError)
         return resumeOnObservation(cause.message);
       if (isFraudProofL1WaitError(cause)) throw cause;
+      const reclaimHold = threadReclaimFundingHold(action, cause);
+      if (reclaimHold !== undefined) return resumeOnObservation(reclaimHold);
       return await stalled(
         `funding reservation failed for ${action.actionId}: ${formatUnknownError(cause)}`,
       );

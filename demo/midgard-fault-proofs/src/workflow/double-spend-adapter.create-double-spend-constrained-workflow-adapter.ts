@@ -619,6 +619,10 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
             signer: config.signer,
             fraudCategory: "doubleSpend",
             fraudulentHeaderHash: artifact.headerHash,
+            fraudProofOutRef: requireJournalString(
+              requested.input.fraudProofOutRef,
+              "action.fraudProofOutRef",
+            ),
             requireReferenceScripts: true,
             stateQueueMutationLeaseCoordinator: retainingCoordinator,
             ...(config.fraudProverRewardLovelace === undefined

@@ -189,13 +189,14 @@ export const setup = async (
       ? verifiedFinality.policy.automaticRecoveryMaxDepth + 2
       : undefined,
   });
-  const terminal = await deriveFraudProofRawL1CompletedTerminal({
+  const derived = await deriveFraudProofRawL1CompletedTerminal({
     snapshot: raw.snapshot,
     definition: raw.definition,
     releaseEconomics: verifiedEconomics,
   });
-  if (terminal === null)
+  if (derived.kind !== "removed")
     throw new Error("raw fixture omitted completed correction");
+  const terminal = derived.terminal;
   let capturedSnapshot = raw.snapshot;
   let beforeCapture = async (): Promise<void> => undefined;
   const completionVerified = deferred();

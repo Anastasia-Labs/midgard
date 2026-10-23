@@ -2,6 +2,7 @@
  * shared orchestrator, one emulator block per run. */
 import { createValidationTraceDisputeWorkflowAdapter } from "../../src/validation-trace-dispute/adapter.js";
 import type { ValidationTraceCaseHistory } from "../../src/validation-trace-dispute/case-history.js";
+import { withValidationTraceOwnThreadReclaim } from "../../src/validation-trace-dispute/own-thread-reclaim.js";
 import type { ValidationTraceRemovalConfig } from "../../src/validation-trace-dispute/removal.js";
 import type { ValidationTraceDisputeDeployment } from "../../src/validation-trace-dispute/transactions.js";
 import {
@@ -18,6 +19,7 @@ import {
 } from "../../src/workflow/orchestrator.js";
 import {
   DEPLOYMENT_FINGERPRINT,
+  RELEASE_FINALITY_POLICY,
   releaseFinalityAuthority,
   terminalVerifier,
 } from "../workflow.make-adapter.js";
@@ -120,28 +122,52 @@ export const makeRunner = (
     ) => FraudProofFamilyWorkflowAdapter;
     /** The adapter's clock; by default the emulator's. */
     readonly now?: () => number;
+    /** The prover's wallet and key; by default the scene's prover. */
+    readonly prover?: Readonly<{
+      lucid: Scene["h"]["proverLucid"];
+      signer: Scene["h"]["proverSigner"];
+    }>;
   } = {},
 ): Runner => {
   const { h } = scene;
+  const prover = options.prover ?? {
+    lucid: h.proverLucid,
+    signer: h.proverSigner,
+  };
   const journal = options.journal ?? new MemoryFraudProofWorkflowJournalStore();
   const signedRecovery =
     options.signedRecovery ?? emulatorSignedTransactionRecovery(h.emulator);
-  const adapter = createValidationTraceDisputeWorkflowAdapter({
-    lucid: h.proverLucid,
-    signer: h.proverSigner,
-    deployment: options.deployment ?? runnerDeployment(scene),
+  const deployment = options.deployment ?? runnerDeployment(scene);
+  const base = createValidationTraceDisputeWorkflowAdapter({
+    lucid: prover.lucid,
+    signer: prover.signer,
+    deployment,
     l1SlotConfig,
     removal: options.removal ?? unobservedRemoval,
     signedRecovery,
     caseHistory: options.caseHistory ?? sceneCaseHistory(scene),
     // A script-decode record transaction stands as the emulator shows it.
     publications: {
-      ...emulatorPublicationObserver(h.proverLucid),
+      ...emulatorPublicationObserver(prover.lucid),
       observeSignedTransaction: signedRecovery.observeSignedTransaction,
       rebroadcastSignedTransaction: signedRecovery.rebroadcastSignedTransaction,
     },
     now: options.now ?? (() => h.emulator.now()),
   });
+  // With the block's L1 view observed, the adapter is composed as the
+  // deployment composes it: the reclaim of our thread in front of it.
+  const adapter =
+    options.removal === undefined
+      ? base
+      : withValidationTraceOwnThreadReclaim({
+          base,
+          lucid: prover.lucid,
+          signer: prover.signer,
+          deployment,
+          l1For: options.removal.l1For,
+          signedRecovery,
+          releaseFinality: { policy: RELEASE_FINALITY_POLICY },
+        });
   const registry = createFraudProofWorkflowRegistry({
     adapters: [options.wrap?.(adapter) ?? adapter],
     launchScope: ["validationTraceDispute"],

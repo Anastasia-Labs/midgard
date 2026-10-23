@@ -30,6 +30,7 @@ import {
   familyAdapter,
   requireDefinition,
 } from "./manifest-bound-family-assembly.bind-reference-scripts.js";
+import { withDeploymentOwnThreadReclaim } from "./own-thread-reclaim.deployment.js";
 import {
   createAuthenticatedProofChunkPrerequisitePort,
   withProofChunkPrerequisite,
@@ -284,6 +285,11 @@ export const assembleBoundManifestBoundFamilyWorkflow = <
       }),
     });
   }
+  adapter = withDeploymentOwnThreadReclaim({
+    category,
+    base: adapter,
+    deployment,
+  });
   const workflow: ManifestBoundFamilyWorkflow<
     Category,
     Certificate,

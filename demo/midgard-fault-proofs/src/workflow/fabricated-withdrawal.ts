@@ -138,6 +138,7 @@ const captureRemoval = async (
   const transaction = await captureLocallyEvaluatedTransaction(
     async (boundary) => {
       await submitRemoveFraudulentBlock({
+        fraudProofOutRef,
         lucid: config.lucid,
         blueprint: config.binding.blueprint,
         deploymentInfo: config.binding.deploymentInfo,

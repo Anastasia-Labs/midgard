@@ -35,6 +35,10 @@ import {
   fraudProofRawL1SnapshotRequestForFamily,
 } from "./raw-l1-family-derivation.js";
 import {
+  deriveFraudProofRawL1OwnThreads,
+  type FraudProofOwnThreads,
+} from "./raw-l1-family-derivation.own-thread.js";
+import {
   createFraudProofAuthenticatedPublicationObserver,
   type FraudProofAuthenticatedPublicationObserver,
 } from "./raw-l1-publication-observation.js";
@@ -92,7 +96,26 @@ export interface FraudProofFamilyL1ObservationPort<
     readonly provenance: EvidenceProvenance;
     readonly stage: FraudProofRawL1FamilyStage;
   }>;
+  /** Our computation threads on the header: the one still standing, if any,
+   * and each transaction that spent one, at its depth. */
+  observeOwnThreads?(input: {
+    readonly headerHash: string;
+  }): Promise<FraudProofOwnThreads>;
+  /** One capture of the header, from which `observe` and `observeOwnThreads`
+   * both read, each derived only when asked for. */
+  observeView?(input: {
+    readonly headerHash: string;
+  }): Promise<FraudProofFamilyL1View>;
 }
+
+/** The family's stage and our threads on one header, from one capture. */
+export type FraudProofFamilyL1View = Readonly<{
+  observe(): Promise<{
+    readonly provenance: EvidenceProvenance;
+    readonly stage: FraudProofRawL1FamilyStage;
+  }>;
+  ownThreads(): FraudProofOwnThreads;
+}>;
 
 /**
  * Header observation for running or resuming a workflow. While the header is
@@ -170,6 +193,22 @@ export const createFraudProofFamilyRawL1ObservationPort = <
       observationDepth: "inclusion",
     });
   };
+  const stageOf = async (
+    headerHash: string,
+    snapshot: Awaited<ReturnType<typeof capture>>,
+  ) => ({
+    provenance: snapshot.provenance,
+    stage: await deriveFraudProofRawL1FamilyStage({
+      snapshot,
+      definition,
+      releaseEconomics,
+      history: fraudProofRawL1HistoryReader({
+        authority,
+        releaseFinality,
+        headerHash,
+      }),
+    }),
+  });
   const port: FraudProofFamilyL1ObservationPort<Category> = {
     portVersion: FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
     category: definition.category,
@@ -206,21 +245,20 @@ export const createFraudProofFamilyRawL1ObservationPort = <
       }),
     observeBoundary: async ({ headerHash }) =>
       (await capture(headerHash)).cursor.point,
-    observe: async ({ headerHash }) => {
+    observeOwnThreads: async ({ headerHash }) =>
+      deriveFraudProofRawL1OwnThreads({
+        snapshot: await capture(headerHash),
+        definition,
+      }),
+    observe: async ({ headerHash }) =>
+      await stageOf(headerHash, await capture(headerHash)),
+    observeView: async ({ headerHash }) => {
       const snapshot = await capture(headerHash);
-      return {
-        provenance: snapshot.provenance,
-        stage: await deriveFraudProofRawL1FamilyStage({
-          snapshot,
-          definition,
-          releaseEconomics,
-          history: fraudProofRawL1HistoryReader({
-            authority,
-            releaseFinality,
-            headerHash,
-          }),
-        }),
-      };
+      return Object.freeze({
+        observe: async () => await stageOf(headerHash, snapshot),
+        ownThreads: () =>
+          deriveFraudProofRawL1OwnThreads({ snapshot, definition }),
+      });
     },
   };
   return Object.freeze(port);

@@ -24,7 +24,7 @@ export type NetworkIdPhysicalStep =
   | "step02";
 
 export const networkIdPhysicalSteps = (
-  contracts: NetworkIdContracts,
+  contracts: Pick<NetworkIdContracts, "steps" | "forcedStep" | "forcedScan">,
 ): readonly (readonly [NetworkIdPhysicalStep, NetworkIdStepContract])[] => {
   const forced: (readonly [NetworkIdPhysicalStep, NetworkIdStepContract])[] =
     [];

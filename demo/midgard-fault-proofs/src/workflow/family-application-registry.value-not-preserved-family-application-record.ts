@@ -40,6 +40,10 @@ import {
   type ManifestBoundMissingSignatureWorkflowConfig,
   runOrResumeManifestBoundMissingSignatureWorkflow,
 } from "./missing-signature.js";
+import {
+  withMissingSignatureOwnThreadReclaim,
+  withValueConservationOwnThreadReclaim,
+} from "./own-thread-reclaim.special-families.js";
 
 /**
  * The witness roles the four hand-written records below spell out, in the
@@ -105,7 +109,11 @@ export const MISSING_SIGNATURE_FAMILY_APPLICATION_RECORD =
           ),
         }),
       }),
-    constructWorkflow: createManifestBoundMissingSignatureWorkflow,
+    constructWorkflow: async (config) =>
+      withMissingSignatureOwnThreadReclaim(
+        await createManifestBoundMissingSignatureWorkflow(config),
+        config,
+      ),
     execute: async ({ workflow, sources, journal }) =>
       await runOrResumeManifestBoundMissingSignatureWorkflow({
         workflow,
@@ -224,7 +232,11 @@ export const VALUE_NOT_PRESERVED_FAMILY_APPLICATION_RECORD =
           ),
         }),
       }),
-    constructWorkflow: createManifestBoundValueConservationWorkflow,
+    constructWorkflow: async (config) =>
+      withValueConservationOwnThreadReclaim(
+        await createManifestBoundValueConservationWorkflow(config),
+        config,
+      ),
     execute: async ({ workflow, sources, journal }) =>
       await runOrResumeManifestBoundValueConservationWorkflow({
         workflow,

@@ -23,6 +23,7 @@ import {
   assertNoUnrelatedLedgerAccounting,
 } from "./funding-reservation-permit.ledger-accounting.js";
 import { bindSlashFunding } from "./funding-reservation-permit.slash-funding-binding.js";
+import { assertThreadReclaimBound } from "./funding-reservation-permit.thread-reclaim-binding.js";
 import { validationDisputeStagingFunding } from "./funding-reservation-permit.validation-dispute-staging-authority.js";
 import { type PermitState } from "./funding-reservation-permit.workflow-funding-reservation-port.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
@@ -250,6 +251,13 @@ export const assertRuntimeTransactionBound = async ({
     port: state.port,
     outRefs: bodyInputs,
     label: "runtime funding ordinary inputs",
+  });
+  assertThreadReclaimBound({
+    state,
+    action,
+    signed,
+    inputs: allInputs,
+    slashOrDispute: slash !== null || dispute !== null,
   });
   const inputAssets = new Map<string, bigint>();
   const walletAssets = new Map<string, bigint>();

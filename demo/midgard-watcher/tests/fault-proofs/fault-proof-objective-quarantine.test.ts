@@ -144,57 +144,65 @@ const setup = async (cause: () => unknown) => {
     return { kind: "completed" };
   });
   const setAlert = vi.fn();
-  const execution = createWatcherFaultProofExecution({
-    application: {
-      runners: { doubleSpend: fixture.runner },
-      runOrResume,
-      verifyCompleted: async ({ entries, terminal, decisionDigest }) =>
-        verifyCompleted({
-          binding: raw.binding,
-          entries,
-          terminal,
-          decisionDigest,
-          authority: {
-            authorityVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
-            capture: async () => raw.snapshot,
-          },
-        }),
-    },
-    fundingFactory: fixture.fundingFactory(),
-    walletAddress,
-    // The prover wallet funds both objectives.
-    provider: {
-      getUtxos: async () => [
-        ...fixture.walletUtxos,
-        ...[0, 1, 2, 3].map((outputIndex) => ({
-          txHash: "97".repeat(32),
-          outputIndex,
-          address: walletAddress,
-          assets: { lovelace: 2_000_000_000n },
-        })),
-      ],
-      getUtxosByOutRef: async () => [],
-    },
-    workflowJournal: fixture.workflowJournal,
-    runtimeConfigPath: "/unused-quarantine-test.json",
-    deploymentFingerprint: deploymentIdentity.manifestId,
-    operationsSink: () => ({ recordProofStep: vi.fn(), setAlert }),
-  });
-  const supervisor = createWatcherFaultProofSupervisor({
-    reservationDecisionHolds: () => [],
-    proofRetention: storelessProofRetention,
-    journalRoot: fixture.journalRoot,
-    workflowJournal: fixture.workflowJournal,
-    deploymentFingerprint: deploymentIdentity.manifestId,
-    deadlineAlertHeadroomMs: MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
-    queueAuthenticationKey: TEST_JOURNAL_KEY,
-    execution,
-  });
-  closers.push(() => supervisor.close());
+  const recordProofStep = vi.fn();
+  /** A watcher process over the fixture's journals: a later call is a
+   * restart of the one before, which it closes. */
+  const start = async () => {
+    const execution = createWatcherFaultProofExecution({
+      application: {
+        runners: { doubleSpend: fixture.runner },
+        runOrResume,
+        verifyCompleted: async ({ entries, terminal, decisionDigest }) =>
+          verifyCompleted({
+            binding: raw.binding,
+            entries,
+            terminal,
+            decisionDigest,
+            authority: {
+              authorityVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
+              capture: async () => raw.snapshot,
+            },
+          }),
+      },
+      fundingFactory: fixture.fundingFactory(),
+      walletAddress,
+      // The prover wallet funds both objectives.
+      provider: {
+        getUtxos: async () => [
+          ...fixture.walletUtxos,
+          ...[0, 1, 2, 3].map((outputIndex) => ({
+            txHash: "97".repeat(32),
+            outputIndex,
+            address: walletAddress,
+            assets: { lovelace: 2_000_000_000n },
+          })),
+        ],
+        getUtxosByOutRef: async () => [],
+      },
+      workflowJournal: fixture.workflowJournal,
+      runtimeConfigPath: "/unused-quarantine-test.json",
+      deploymentFingerprint: deploymentIdentity.manifestId,
+      operationsSink: () => ({ recordProofStep, setAlert }),
+    });
+    const supervisor = createWatcherFaultProofSupervisor({
+      reservationDecisionHolds: () => [],
+      proofRetention: storelessProofRetention,
+      journalRoot: fixture.journalRoot,
+      workflowJournal: fixture.workflowJournal,
+      deploymentFingerprint: deploymentIdentity.manifestId,
+      deadlineAlertHeadroomMs:
+        MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
+      queueAuthenticationKey: TEST_JOURNAL_KEY,
+      execution,
+    });
+    closers.push(() => supervisor.close());
+    supervisor.done.catch((error: unknown) => {
+      failed = error;
+    });
+    return { execution, supervisor };
+  };
   let failed: unknown;
-  supervisor.done.catch((error: unknown) => {
-    failed = error;
-  });
+  let watcher = await start();
   const observation = progressObservation({
     deploymentFingerprint: deploymentIdentity.manifestId,
     headers: [fixture.fixture, second.block],
@@ -239,16 +247,36 @@ const setup = async (cause: () => unknown) => {
           second.decision.decisionDigest &&
         (alert as { active: boolean }).active === active,
     ).length;
+  /** The prover-step statuses the held objective recorded. */
+  const heldSteps = () =>
+    recordProofStep.mock.calls.flatMap(([step]) =>
+      (step as { decisionDigest: string }).decisionDigest ===
+      second.decision.decisionDigest
+        ? [(step as { status: string }).status]
+        : [],
+    );
   return {
     fixture,
     second,
-    supervisor,
-    execution,
+    get supervisor() {
+      return watcher.supervisor;
+    },
+    get execution() {
+      return watcher.execution;
+    },
     failed: () => failed,
     dispatch: async () => {
-      await supervisor.requestProgress(request(second.decision));
-      await supervisor.requestProgress(request(fixture.old));
+      await watcher.supervisor.requestProgress(request(second.decision));
+      await watcher.supervisor.requestProgress(request(fixture.old));
     },
+    /** An admission naming the convicted objective alone. */
+    admitOther: async () =>
+      await watcher.supervisor.requestProgress(request(fixture.old)),
+    restart: async () => {
+      await watcher.supervisor.close();
+      watcher = await start();
+    },
+    heldSteps,
     queue,
     heldRuns,
     alerts,
@@ -323,4 +351,101 @@ describe("an objective that stalls or meets its own integrity error is quarantin
     },
     120_000,
   );
+});
+
+/** The run's stall while no terminal of ours stands on a header gone. */
+const goneStall = (detail: string) => ({
+  kind: "stalled",
+  reason: `observation failed: doubleSpend raw L1 derivation failed: ${detail}`,
+});
+
+const settledRuns = async (runs: () => number) => {
+  const before = runs();
+  // Past the quarantine backoff: a run still scheduled would have started.
+  await new Promise((resolve) => setTimeout(resolve, 2_500));
+  return { before, after: runs() };
+};
+
+describe("an objective whose header left the queue without a conviction of ours", () => {
+  it("ends, never as our conviction, once its run reads the header as removed against another record, and stays ended across a restart", async () => {
+    let removed = false;
+    const test = await setup(() =>
+      removed
+        ? {
+            kind: "resolved_by_another_record",
+            resolution: {
+              removalTxHash: "c5".repeat(32),
+              referencedProofTokenOutRef: `${"c4".repeat(32)}#0`,
+              confirmationDepth: 40,
+            },
+            entries: [],
+          }
+        : goneStall("no terminal of ours stands: terminal_not_ours"),
+    );
+    const held = () =>
+      test
+        .queue()
+        .filter(
+          ({ headerHash }) => headerHash === test.second.decision.headerHash,
+        );
+    await test.dispatch();
+    await vi.waitFor(() => expect(test.heldRuns()).toBeGreaterThan(1), {
+      timeout: 30_000,
+    });
+    expect(test.execution.readiness()).toEqual([
+      expect.objectContaining({ reason: QUARANTINED }),
+    ]);
+    expect(test.alerts(true)).toBe(1);
+
+    // The removal against another record lands and is settled.
+    removed = true;
+    await vi.waitFor(() => expect(test.execution.readiness()).toEqual([]), {
+      timeout: 60_000,
+    });
+    expect(test.alerts(false)).toBe(1);
+    expect(test.heldSteps()).toContain("cancelled");
+    expect(test.heldSteps()).not.toContain("completed");
+    expect(held().map(({ state }) => state)).not.toContain("marked");
+    // It is not run again, and the next admission forgets its rows.
+    const ended = await settledRuns(test.heldRuns);
+    expect(ended.after).toBe(ended.before);
+    await test.admitOther();
+    await vi.waitFor(() => expect(held()).toEqual([]), { timeout: 30_000 });
+
+    await test.restart();
+    await test.admitOther();
+    const restarted = await settledRuns(test.heldRuns);
+    expect(restarted.after).toBe(ended.after);
+    expect(test.execution.readiness()).toEqual([]);
+    expect(held()).toEqual([]);
+    expect(test.alerts(true)).toBe(1);
+    expect(test.failed()).toBeUndefined();
+    expect(test.supervisor.status().phase).toBe("accepting");
+  }, 120_000);
+
+  it("keeps the objective quarantined and alarmed when no removal against a record of its header took it out", async () => {
+    const test = await setup(() =>
+      goneStall("fraudulent header disappeared without a retained proof token"),
+    );
+    await test.dispatch();
+    await vi.waitFor(() => expect(test.heldRuns()).toBeGreaterThan(2), {
+      timeout: 60_000,
+    });
+    await test.admitOther();
+    expect(test.execution.readiness()).toEqual([
+      {
+        reason: QUARANTINED,
+        detail: expect.stringContaining(
+          "disappeared without a retained proof token",
+        ),
+      },
+    ]);
+    expect(test.alerts(true)).toBe(1);
+    expect(test.alerts(false)).toBe(0);
+    expect(test.heldSteps()).not.toContain("cancelled");
+    expect(test.queue()).toContainEqual(
+      expect.objectContaining({ headerHash: test.second.decision.headerHash }),
+    );
+    expect(test.failed()).toBeUndefined();
+  }, 120_000);
 });
