@@ -75,6 +75,7 @@ export const resolutionDrive = <
   path,
   labels,
   installs,
+  withRemoval = false,
   minFeeA,
   planAt,
 }: {
@@ -101,6 +102,9 @@ export const resolutionDrive = <
     | "failingNativeMint"
     | "releaseDepth"
   >;
+  /** Whether the runner observes the disputed block's removal over the
+   * recorded L1, so a case the challenger won completes. */
+  readonly withRemoval?: boolean;
   /** The ledger's per-byte fee while the resolution plays, when raised so
    * its largest moves are priced over the per-move cap. */
   readonly minFeeA?: number;
@@ -215,7 +219,7 @@ export const resolutionDrive = <
     /** Plays both threads until the successor's stands at `at`. */
     setUp: async () => {
       dispute = await defendTwoThreads({
-        withRemoval: false,
+        withRemoval,
         successorFrom: from,
         ...installs,
       });
@@ -242,7 +246,7 @@ export const resolutionDrive = <
         adapter: FraudProofFamilyWorkflowAdapter,
       ) => FraudProofFamilyWorkflowAdapter;
     } = {}) => {
-      const { scene, deployment, prepared, runner } = dispute;
+      const { scene, deployment, prepared, runner, removal } = dispute;
       const recovery =
         signedRecovery ??
         (installs.releaseDepth === undefined
@@ -259,6 +263,14 @@ export const resolutionDrive = <
           wrap: (adapter) =>
             capturePrepared(prepared)(wrap?.(adapter) ?? adapter),
           ...(recovery === undefined ? {} : { signedRecovery: recovery }),
+          ...(removal === undefined
+            ? {}
+            : {
+                removal: removal.removal,
+                terminalVerifier: removal.terminalVerifier(
+                  scene.failing.evidence.headerHash,
+                ),
+              }),
         }),
       });
     },

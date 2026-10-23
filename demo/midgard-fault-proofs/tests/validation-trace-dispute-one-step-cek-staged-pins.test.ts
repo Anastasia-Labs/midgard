@@ -5,7 +5,9 @@
  * threads dispute the same step and read the same staging. While no thread
  * move builds, the runner waits and may spend back a staging output no
  * thread holds; a thread holds every output its moves read until its move
- * to the settle, which read them, is final at release depth. */
+ * to the settle, which read them, is final at release depth. The move from
+ * the settle reads none of them, and builds once they are spent back, from
+ * our journal alone. */
 import { CML, coreToTxOutput } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it } from "vitest";
 
@@ -29,10 +31,10 @@ const drive = stagedDrive({ releaseDepth: RELEASE_DEPTH });
 /** The holders past the PrepareSelected move and short of the settle. */
 const MID_CHAIN: readonly string[] = ["core", ...STAGED_BYTES_ARMS];
 
-/** The landed move that paid the thread `unit` to the settle, if any. */
-const settleMoveOf = async (unit: string) => {
+/** The landed move that paid the thread `unit` to `holder`, if any. */
+const moveTo = async (unit: string, holder: "settle" | "award") => {
   const { scene, deployment, prepared } = drive.dispute();
-  const settle = validationTraceOneStepHolder(deployment, "settle").address;
+  const target = validationTraceOneStepHolder(deployment, holder).address;
   for (const { stage, hash, cbor } of prepared) {
     if (stage !== "resolve") continue;
     const status = await scene.h.emulator.getTransactionStatus(hash);
@@ -40,11 +42,14 @@ const settleMoveOf = async (unit: string) => {
     const outputs = CML.Transaction.from_cbor_hex(cbor).body().outputs();
     for (let index = 0; index < outputs.len(); index += 1) {
       const { address, assets } = coreToTxOutput(outputs.get(index));
-      if (address === settle && assets[unit] === 1n) return hash;
+      if (address === target && assets[unit] === 1n) return hash;
     }
   }
   return undefined;
 };
+
+const settleMoveOf = async (unit: string) => await moveTo(unit, "settle");
+const awardMoveOf = async (unit: string) => await moveTo(unit, "award");
 
 /** The staging outputs the ledger shows staged. */
 const staged = async () =>
@@ -107,6 +112,24 @@ describe("validation-trace dispute runner: holding a staged step's staging outpu
       const landed = await drive.blockOf(reclaim!);
       for (const block of settled)
         expect(landed - block).toBeGreaterThanOrEqual(RELEASE_DEPTH);
+    }
+  }, 1_200_000);
+
+  it("plays each thread on from the settle to the award once they are spent back, by a runner started again from our journal alone, its move reading none of them", async () => {
+    const { a, b } = drive.dispute();
+    const outputs = await staged();
+    for (const outRef of outputs)
+      expect(await drive.live(outRef), outRef).toBeUndefined();
+    drive.restart();
+    await drive.play(
+      async () =>
+        (await awardMoveOf(a.unit)) !== undefined &&
+        (await awardMoveOf(b.unit)) !== undefined,
+      12,
+    );
+    for (const unit of [a.unit, b.unit]) {
+      const reads = drive.readsOf((await awardMoveOf(unit))!);
+      for (const outRef of outputs) expect(reads, outRef).not.toContain(outRef);
     }
   }, 1_200_000);
 });

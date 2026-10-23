@@ -2,6 +2,7 @@ import {
   FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED,
   FRAUD_PROOF_WORKFLOW_FRESH_SUBMISSION_REQUIRED,
   FraudProofL1CheckpointChangedError,
+  FraudProofL1RefusedError,
   FraudProofL1UnavailableError,
   type WorkflowAdapterRunnerInput,
 } from "@al-ft/midgard-fault-proofs";
@@ -16,7 +17,10 @@ import { WatcherProofDecisionMissingError } from "../../src/fault-proofs/watcher
 import { WatcherRetainedDaTransportUnavailableError } from "../../src/storage/retained-da-transport-unavailable.js";
 import { fundingTerminal } from "../funding/funding-handoff-fixture.js";
 import { setupFaultProofExecution } from "../support/fault-proof-execution-fixture.js";
-import { cleanupFundingRecoveryFixtures } from "../support/fault-proof-funding-fixture.js";
+import {
+  cleanupFundingRecoveryFixtures,
+  walletAddress,
+} from "../support/fault-proof-funding-fixture.js";
 
 afterEach(cleanupFundingRecoveryFixtures);
 
@@ -305,6 +309,82 @@ describe("supervisor execution adapter with durable funding", () => {
       await test.fixture.journal.load(test.fixture.initial.workflowId),
     ).toEqual(entries);
   });
+
+  it.each([
+    [
+      "an unavailable L1 read",
+      () => new FraudProofL1UnavailableError("the follower is catching up"),
+      {
+        kind: "retryable",
+        resume: "backoff",
+        retryAfterMs: 1000,
+        reason: "the follower is catching up",
+      },
+    ],
+    [
+      "a refused L1 read",
+      () => new FraudProofL1RefusedError("beyond_retention", "pruned"),
+      {
+        kind: "pending",
+        resume: "await_observation",
+        reason: "fault_proof_l1_refused:beyond_retention: pruned",
+      },
+    ],
+  ] as const)(
+    "waits on %s met while building the next move, run after run",
+    async (_label, failure, waiting) => {
+      const test = await setup(true);
+      // Plain coins a fresh reservation funds the move from.
+      test.fixture.walletUtxos.push(
+        ...[0, 1, 2, 3].map((outputIndex) => ({
+          txHash: "a1".repeat(32),
+          outputIndex,
+          address: walletAddress,
+          assets: { lovelace: 2_000_000_000n },
+        })),
+      );
+      test.getUtxosByOutRef.mockImplementation(async (...args: unknown[]) => {
+        const [refs] = args as [
+          readonly { txHash: string; outputIndex: number }[],
+        ];
+        return test.fixture.walletUtxos.filter((utxo) =>
+          refs.some(
+            ({ txHash, outputIndex }) =>
+              utxo.txHash === txHash && utxo.outputIndex === outputIndex,
+          ),
+        );
+      });
+      vi.mocked(test.fixture.adapter.observe).mockResolvedValue({
+        kind: "action_required",
+        action: { actionId: "step", input: { actionKind: "proof.step" } },
+      });
+      vi.mocked(test.fixture.adapter.preflight).mockImplementation(async () => {
+        throw failure();
+      });
+      // A run admitted to fund a fresh move.
+      const input = {
+        ...test.input,
+        job: { ...test.input.job, mode: "run" },
+        admission: { mode: "run", funding: "create_or_resume" },
+      } as const;
+      let before: unknown;
+      for (let run = 1; run <= 3; run += 1) {
+        expect(await test.execution.execute(input)).toMatchObject(waiting);
+        expect(test.fixture.adapter.preflight).toHaveBeenCalledTimes(run);
+        // The first run reserves the move's inputs; no later run moves them.
+        if (run === 1) before = await test.fixture.records();
+        else expect(await test.fixture.records()).toEqual(before);
+      }
+      expect(test.fixture.adapter.submit).not.toHaveBeenCalled();
+      expect(test.setAlert).not.toHaveBeenCalled();
+      const events = (
+        await test.fixture.journal.load(test.fixture.initial.workflowId)
+      ).map(({ event }) => event);
+      expect(events).not.toContainEqual(
+        expect.objectContaining({ actionId: "step" }),
+      );
+    },
+  );
 
   it.each([
     [

@@ -3,7 +3,8 @@
  * put in front of a family adapter. Each is taken in place of what the
  * adapter observes when `next` says so, built from the live chain at its
  * preflight, and reconciled from its exact signed bytes. A build that fails
- * is the action's recorded, retried outcome for its workflow alone. */
+ * is the action's recorded, retried outcome for its workflow alone; a wait on
+ * the L1 source goes to the orchestrator as a wait. */
 import type { TxSigned } from "@lucid-evolution/lucid";
 
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
@@ -12,7 +13,10 @@ import type {
   JournalJsonObject,
   JournalJsonValue,
 } from "../workflow/journal.js";
-import type { FraudProofSignedTransactionRecovery } from "../workflow/l1-source.js";
+import {
+  type FraudProofSignedTransactionRecovery,
+  isFraudProofL1WaitError,
+} from "../workflow/l1-source.js";
 import type { FraudProofWorkflowAdapterContext } from "../workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
 import type {
   FraudProofFamilyWorkflowAdapter,
@@ -55,24 +59,31 @@ export const ownKeySignedBytes = (
   return typeof recorded === "string" ? recorded : undefined;
 };
 
+/** Whether a transaction, where `observed` says it stands, is final at
+ * release depth. */
+export const isFinalAtReleaseDepth = (
+  observed: Awaited<
+    ReturnType<FraudProofSignedTransactionRecovery["observeSignedTransaction"]>
+  >,
+): boolean =>
+  observed.status === "included" &&
+  observed.inclusionPoint !== undefined &&
+  BigInt(observed.inclusionPoint.blockNo) <=
+    BigInt(observed.releaseFinalPoint.blockNo);
+
 /** Whether the transaction `txHash`, signed as `signed`, is final at
  * release depth. */
 export const finalAtReleaseDepth = async (
   signedRecovery: FraudProofSignedTransactionRecovery,
   txHash: string,
   signed: string,
-): Promise<boolean> => {
-  const observed = await signedRecovery.observeSignedTransaction({
-    transactionHash: txHash,
-    signedTransactionCborHex: signed,
-  });
-  return (
-    observed.status === "included" &&
-    observed.inclusionPoint !== undefined &&
-    BigInt(observed.inclusionPoint.blockNo) <=
-      BigInt(observed.releaseFinalPoint.blockNo)
+): Promise<boolean> =>
+  isFinalAtReleaseDepth(
+    await signedRecovery.observeSignedTransaction({
+      transactionHash: txHash,
+      signedTransactionCborHex: signed,
+    }),
   );
-};
 
 /** `base` with the actions of `own` in front of it. */
 export const withOwnKeyActions = ({
@@ -119,7 +130,8 @@ export const withOwnKeyActions = ({
       } catch (cause) {
         if (
           cause instanceof WorkflowActionChangedError ||
-          isWorkflowFundingShortfall(cause)
+          isWorkflowFundingShortfall(cause) ||
+          isFraudProofL1WaitError(cause)
         )
           throw cause;
         throw new WorkflowActionUnbuiltError(

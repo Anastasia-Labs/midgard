@@ -91,13 +91,13 @@ const challengerSuccessorPath = (
       ? CHALLENGER_SUCCESSOR_HASH.contextStage
       : CHALLENGER_SUCCESSOR_HASH.bound;
 
-/** Where a holder past the PrepareSelected move of a CEK core step keeps
- * the evidence that move committed: beside the state holding our
- * successor's hash. */
+/** Where a holder past the PrepareSelected move of a CEK core step, up to
+ * and through the settle, keeps the evidence that move committed: beside
+ * the state holding our successor's hash. */
 const committedEvidencePath = (
   holder: ValidationTraceOneStepContract["holder"],
 ): readonly number[] | undefined =>
-  holder === "core" || isValidationTraceArmHolder(holder)
+  holder === "core" || holder === "settle" || isValidationTraceArmHolder(holder)
     ? [...challengerSuccessorPath(holder).slice(0, -2), 2]
     : undefined;
 

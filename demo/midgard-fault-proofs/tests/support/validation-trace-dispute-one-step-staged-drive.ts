@@ -144,20 +144,24 @@ export const landedSpenderOf = async (
  * failing script `hex`, run under `exUnits` when given, whose arm chain is
  * `arms`, set up with the thread standing at the PrepareSelected move's
  * holder; a move is final at release depth `releaseDepth` blocks under the
- * tip when given, else at the tip.
+ * tip when given, else at the tip; with `withRemoval`, a case the challenger
+ * won removes the block and completes.
  */
 export const stagedDrive = ({
   hex = STAGED_SHA2_SCRIPT,
   exUnits,
   arms = STAGED_BYTES_ARMS,
   releaseDepth,
+  withRemoval = false,
 }: {
   readonly hex?: string;
   readonly exUnits?: readonly [bigint, bigint];
   readonly arms?: typeof STAGED_BYTES_ARMS | typeof STAGED_INTEGER_ARMS;
   readonly releaseDepth?: number;
+  readonly withRemoval?: boolean;
 } = {}) => {
   const drive = resolutionDrive({
+    withRemoval,
     from: lastStagedStep,
     at: "prepare",
     path: ["prepare", "core", ...arms, "settle"],

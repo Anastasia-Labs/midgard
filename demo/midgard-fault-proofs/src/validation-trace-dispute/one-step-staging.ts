@@ -6,10 +6,9 @@
  * transaction a run; once every run's output is at confirmation depth, our
  * plan fills those outputs in and the move goes. The outputs are found by
  * the journal alone, so a runner started again over it stages nothing
- * twice; an output no longer live is staged again. A thread pins the
- * outputs its moves read until its move to the settle, which read them, is
- * final at release depth; an output read and pinned by no thread, or any
- * once our workflow is done, is spent back by our key. */
+ * twice; an output no longer live is staged again, once the provider's
+ * grace after its confirmation has passed. Each output no thread of ours
+ * needs any more is spent back by our key (one-step-staging-sweep.ts). */
 import { createHash } from "node:crypto";
 
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
@@ -17,7 +16,6 @@ import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import { depth, isSafe } from "@al-ft/midgard-l1-follower/heads";
 import {
   midgardCekStagingAddress,
-  MidgardCekStagingPins,
   midgardCekStagingResult,
   planMidgardCekStaging,
 } from "@al-ft/midgard-sdk";
@@ -25,6 +23,7 @@ import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import type { ResolvedProverSigner } from "../runtime.js";
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
+import { isWorkflowFundingShortfall } from "../workflow/funding-reservation-permit.workflow-funding-shortfall.js";
 import {
   type FraudProofSignedTransactionRecovery,
   isFraudProofL1WaitError,
@@ -41,10 +40,7 @@ import {
 } from "./actions.js";
 import { parseValidationTraceDisputeArtifact } from "./artifact.js";
 import type { ValidationTraceClaimMaterial } from "./claim-material.js";
-import {
-  validationTraceOneStepHolder,
-  validationTraceOneStepHolderAt,
-} from "./one-step-holders.js";
+import { validationTraceOneStepHolderAt } from "./one-step-holders.js";
 import { resolvingPlan } from "./one-step-resolving-plan.js";
 import type { ValidationTraceStagingLookup } from "./one-step-staged.js";
 import {
@@ -54,20 +50,24 @@ import {
 } from "./one-step-staging-funding.js";
 import {
   type JournaledStaging,
-  journaledStagings,
   VALIDATION_TRACE_STAGING,
   VALIDATION_TRACE_STAGING_RECLAIM,
-  type ValidationTraceResolveReader,
-  validationTraceResolveReaders,
+  type ValidationTraceStagingJournal,
+  validationTraceStagingJournal,
 } from "./one-step-staging-journal.js";
 import {
-  finalAtReleaseDepth,
-  type OwnKeyActions,
-  withOwnKeyActions,
-} from "./own-key-actions.js";
+  stagedOutRef,
+  type ValidationTraceStagingReclaim,
+  validationTraceStagingSweep,
+} from "./one-step-staging-sweep.js";
+import { type OwnKeyActions, withOwnKeyActions } from "./own-key-actions.js";
 import type { ValidationTraceDisputeDeployment } from "./transactions.js";
 
 const CATEGORY = "validationTraceDispute" as const;
+
+/** The alarm of a staging output whose spend back does not build. */
+export const VALIDATION_TRACE_STAGING_UNRECLAIMED =
+  "validation-trace-staging-unreclaimed" as const;
 
 /** Why a staged step waits once each run is staged. */
 export const VALIDATION_TRACE_STAGING_SHALLOW =
@@ -87,22 +87,6 @@ const stageAction = (run: string, generation: number) =>
     }),
   });
 
-const reclaimAction = (outRef: string) =>
-  Object.freeze({
-    actionId: `validation-trace-reclaim-staging:${outRef}`,
-    input: Object.freeze({
-      schemaVersion: VALIDATION_TRACE_STAGING_RECLAIM,
-      category: CATEGORY,
-      stage: "reclaim_staging",
-      consumes: outRef,
-    }),
-  });
-
-const stagedOutRef = (outRef: string) => {
-  const { txHash, outputIndex } = parseOutRefLabel(outRef);
-  return { transactionId: Buffer.from(txHash, "hex"), outputIndex };
-};
-
 /**
  * Our staging of the staged steps of our threads: `wrap`, which stages a
  * step's operands before its PrepareSelected move and spends the outputs
@@ -115,6 +99,7 @@ export const validationTraceStaging = ({
   deployment,
   signedRecovery,
   materialOf,
+  recent,
   confirmationDepth = DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
 }: {
   readonly lucid: LucidEvolution;
@@ -124,6 +109,9 @@ export const validationTraceStaging = ({
   readonly materialOf: (
     headerHash: string,
   ) => ValidationTraceClaimMaterial | undefined;
+  /** Whether a confirmation recorded at `confirmedAt` is still inside the
+   * provider's grace, when the provider may not show what it produced. */
+  readonly recent: (confirmedAt: string) => boolean;
   readonly confirmationDepth?: number;
 }) => {
   const address = midgardCekStagingAddress(
@@ -132,11 +120,11 @@ export const validationTraceStaging = ({
   );
   const signing = validationTraceStagingSigner({ lucid, signer, deployment });
   /** The runs and reclaims last observed, by action id, for their builds. */
-  const runs = new Map<string, ValidationTraceStagingStep>();
-  const reclaims = new Map<
+  const runs = new Map<
     string,
-    Readonly<{ utxo: UTxO; pins: MidgardCekStagingPins }>
+    ValidationTraceStagingStep & Readonly<{ threadUnit: string | undefined }>
   >();
+  const reclaims = new Map<string, ValidationTraceStagingReclaim>();
 
   /** The output `staging` left, while it is live as staged. */
   const live = async (staging: JournaledStaging): Promise<UTxO | undefined> => {
@@ -177,52 +165,55 @@ export const validationTraceStaging = ({
     }
   };
 
-  const journal = (context: FraudProofWorkflowAdapterContext) => ({
-    ...journaledStagings(context.entries),
-    readers: validationTraceResolveReaders(context.entries),
-  });
-  type Journal = ReturnType<typeof journal>;
+  const journal = (context: FraudProofWorkflowAdapterContext) =>
+    validationTraceStagingJournal(context.entries);
 
   /**
    * The live staging output our journal shows for the run `datumCbor`,
    * and whether it is deep enough: the latest one a resolve move read, as
-   * a thread's evidence names it, else the latest staged.
+   * a thread's evidence names it, else the latest staged. While none is
+   * live, one we have not spent back whose confirmation is inside the
+   * provider's grace is taken for one the provider does not show yet, and
+   * waited on.
    */
   const usable = async (
-    { stagings, reclaimed, readers }: Journal,
+    { stagings, reclaims: spentBack, readers }: ValidationTraceStagingJournal,
     datumCbor: string,
   ) => {
     const candidates = stagings
-      .filter(
-        (staging) =>
-          staging.datumCbor === datumCbor && !reclaimed.has(staging.outRef),
-      )
+      .filter((staging) => staging.datumCbor === datumCbor)
       .reverse();
     const read = (staging: JournaledStaging) =>
       readers.some(({ reads }) => reads.has(staging.outRef));
-    for (const staging of [
+    const ordered = [
       ...candidates.filter(read),
       ...candidates.filter((candidate) => !read(candidate)),
-    ])
+    ];
+    for (const staging of ordered)
       if ((await live(staging)) !== undefined)
         return { staging, ready: await deep(staging) };
-    return undefined;
+    const unseen = ordered.find(
+      (staging) =>
+        !spentBack.has(staging.outRef) && recent(staging.confirmedAt),
+    );
+    return unseen === undefined ? undefined : { staging: unseen, ready: false };
   };
 
-  /** The latest live staging output deep enough our journal shows for the
-   * run `datumCbor` among those `reads` holds. */
+  /** The latest staging output our journal shows for the run `datumCbor`
+   * among those `reads` holds: one live and deep enough, or, when `onLedger`
+   * is false, any. */
   const readBy = async (
-    { stagings, reclaimed }: Journal,
+    { stagings }: ValidationTraceStagingJournal,
     reads: ReadonlySet<string>,
     datumCbor: string,
+    onLedger = true,
   ) => {
     for (const staging of [...stagings].reverse())
       if (
         staging.datumCbor === datumCbor &&
         reads.has(staging.outRef) &&
-        !reclaimed.has(staging.outRef) &&
-        (await live(staging)) !== undefined &&
-        (await deep(staging))
+        (!onLedger ||
+          ((await live(staging)) !== undefined && (await deep(staging))))
       )
         return staging.outRef;
     return undefined;
@@ -231,7 +222,11 @@ export const validationTraceStaging = ({
   /**
    * Where our journal shows `operands` staged: the stagings `usable` names,
    * or, when `accepts` holds of other stagings one resolve move of ours read
-   * (the latest such move first) and not of those, the other stagings.
+   * (the latest such move first) and not of those, the other stagings: live
+   * ones first, else ones no longer live. `accepts` holds only of the
+   * staging a thread's committed evidence names, whose window is rebuilt
+   * from it alone; a hop that reads the outputs still refuses one not live
+   * (one-step-staged.ts).
    */
   const lookup =
     (context: FraudProofWorkflowAdapterContext): ValidationTraceStagingLookup =>
@@ -258,12 +253,14 @@ export const validationTraceStaging = ({
         (preferred !== undefined && accepts(preferred))
       )
         return preferred;
-      for (const { reads } of [...known.readers].reverse()) {
-        const read = await stagedBy(
-          async (datumCbor) => await readBy(known, reads, datumCbor),
-        );
-        if (read !== undefined && accepts(read)) return read;
-      }
+      for (const onLedger of [true, false])
+        for (const { reads } of [...known.readers].reverse()) {
+          const read = await stagedBy(
+            async (datumCbor) =>
+              await readBy(known, reads, datumCbor, onLedger),
+          );
+          if (read !== undefined && accepts(read)) return read;
+        }
       return preferred;
     };
 
@@ -336,6 +333,9 @@ export const validationTraceStaging = ({
         rest: rest.map(({ datumCbor }) => datumCbor),
         walletPaidHops: stagedStepWalletPaidHops(plan.core.hops.holders),
         threadOutRef: consumes,
+        threadUnit: Object.entries(utxo.assets).find(
+          ([asset, quantity]) => asset !== "lovelace" && quantity === 1n,
+        )?.[0],
       });
       return { kind: "action_required", action };
     }
@@ -344,76 +344,15 @@ export const validationTraceStaging = ({
       : undefined;
   };
 
-  /** Each thread's pins of the staging outputs its moves read, released
-   * once its move to the settle, which read them, is final. */
-  const pinsOf = async (
-    readers: readonly ValidationTraceResolveReader[],
-    staged: ReadonlySet<string>,
-  ): Promise<MidgardCekStagingPins> => {
-    const pins = new MidgardCekStagingPins();
-    const settle = validationTraceOneStepHolder(deployment, "settle").address;
-    const released: string[] = [];
-    for (const reader of readers) {
-      const reads = [...reader.reads].filter((outRef) => staged.has(outRef));
-      const thread = reader.outputs.find(
-        (output) =>
-          validationTraceOneStepHolderAt(deployment, output.address) !==
-          undefined,
-      );
-      const unit = Object.entries(thread?.assets ?? {}).find(
-        ([asset, quantity]) => asset !== "lovelace" && quantity === 1n,
-      )?.[0];
-      if (reads.length === 0 || unit === undefined) continue;
-      pins.pin(unit, reads.map(stagedOutRef));
-      if (
-        thread!.address === settle &&
-        (await finalAtReleaseDepth(
-          signedRecovery,
-          reader.txHash,
-          reader.signed,
-        ))
-      )
-        released.push(unit);
-    }
-    for (const unit of released) pins.release(unit);
-    return pins;
-  };
-
-  /** The staging output of ours to spend back now, while our workflow
-   * waits or once it is done. */
-  const reclaim = async (
-    context: FraudProofWorkflowAdapterContext,
-    observed: FraudProofWorkflowObservation,
-  ): Promise<FraudProofWorkflowObservation | undefined> => {
-    if (observed.kind !== "pending" && observed.kind !== "completed")
-      return undefined;
-    const { stagings, reclaimed, readers } = journal(context);
-    const open = stagings.filter(
-      ({ outRef }) =>
-        !reclaimed.has(outRef) &&
-        context.unbuiltActionIds?.has(reclaimAction(outRef).actionId) !== true,
-    );
-    if (open.length === 0) return undefined;
-    const pins =
-      observed.kind === "completed"
-        ? new MidgardCekStagingPins()
-        : await pinsOf(readers, new Set(stagings.map(({ outRef }) => outRef)));
-    for (const staging of open) {
-      const ref = stagedOutRef(staging.outRef);
-      if (
-        observed.kind === "pending" &&
-        (pins.pinnedBy(ref).length > 0 ||
-          !readers.some(({ reads }) => reads.has(staging.outRef)))
-      )
-        continue;
-      const utxo = await live(staging);
-      if (utxo === undefined) continue;
-      const action = reclaimAction(staging.outRef);
-      reclaims.set(action.actionId, { utxo, pins });
-      return { kind: "action_required", action };
-    }
-    return undefined;
-  };
+  const sweep = validationTraceStagingSweep({
+    lucid,
+    deployment,
+    signedRecovery,
+    recent,
+    live,
+    usable,
+    select: (actionId, reclaim) => reclaims.set(actionId, reclaim),
+  });
 
   const build = async (
     context: FraudProofWorkflowAdapterContext,
@@ -435,6 +374,10 @@ export const validationTraceStaging = ({
         signed,
         recovery: {
           outRef: `${signed.toHash().toLowerCase()}#${outputIndex.toString()}`,
+          threadOutRef: step.threadOutRef,
+          ...(step.threadUnit === undefined
+            ? {}
+            : { threadUnit: step.threadUnit }),
         },
       };
     }
@@ -443,17 +386,34 @@ export const validationTraceStaging = ({
       throw new WorkflowActionChangedError(
         `validation-trace ${action.actionId} has no output to spend back`,
       );
-    return {
-      signed: await signing.reclaim(context, found.utxo, found.pins),
-    };
+    try {
+      return {
+        signed: await signing.reclaim(context, found.utxo, found.pins),
+      };
+    } catch (cause) {
+      if (
+        cause instanceof WorkflowActionChangedError ||
+        isWorkflowFundingShortfall(cause) ||
+        isFraudProofL1WaitError(cause)
+      )
+        throw cause;
+      const { txHash, outputIndex, assets } = found.utxo;
+      throw new Error(
+        `${VALIDATION_TRACE_STAGING_UNRECLAIMED}: staging output ${txHash}#${outputIndex.toString()} holds ${(assets.lovelace ?? 0n).toString()} lovelace of ours at our staging address, and its spend back to our wallet does not build; it is tried again every run: ${String(cause)}`,
+        { cause },
+      );
+    }
   };
 
   const own: OwnKeyActions = {
     owns: ({ input }) =>
       input.schemaVersion === VALIDATION_TRACE_STAGING ||
       input.schemaVersion === VALIDATION_TRACE_STAGING_RECLAIM,
-    next: async (context, observed) =>
-      (await staging(context, observed)) ?? (await reclaim(context, observed)),
+    next: async (context, observed) => {
+      const staged = await staging(context, observed);
+      if (staged?.kind === "action_required") return staged;
+      return (await sweep(context, staged ?? observed)) ?? staged;
+    },
     build,
   };
 

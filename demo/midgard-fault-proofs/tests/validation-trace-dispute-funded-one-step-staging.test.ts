@@ -11,10 +11,12 @@
  * run's staging output live and no wallet coin spent twice. Topped up, each
  * run left is staged under the permit, the thread plays through the staged
  * chain to the award, and each staging output is spent back to our wallet
- * under the permit. */
+ * under the permit; a spend back the ledger drops after its confirmation is
+ * sent again, its exact signed bytes. */
 import { CML, coreToTxOutput } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { VALIDATION_TRACE_STAGING_RECLAIM } from "../src/validation-trace-dispute/one-step-staging-journal.js";
 import { validationTraceRunState } from "../src/validation-trace-dispute/waiting.js";
 import { VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED } from "../src/workflow/funding-reservation-permit.validation-dispute-wallet-move-reserve.js";
 import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
@@ -39,6 +41,10 @@ import {
   entriesOf,
   landedSpenderOf,
 } from "./support/validation-trace-dispute-one-step-staged-drive.js";
+import {
+  onLedger,
+  rollBack,
+} from "./support/validation-trace-dispute-one-step-staging-ledger.js";
 import { reportFit } from "./support/validation-trace-dispute-scripted-defender.js";
 
 const { at, turns, place, open, stagingAddress, stagedOutputs, depositOf } =
@@ -207,6 +213,60 @@ describe("validation-trace dispute staging of a staged builtin step's operands u
             stagedOutRefs.push(outRefOf({ txHash, outputIndex: index }));
       }
       expect(stagedOutRefs).toHaveLength(runs.length);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "sends a spend back again, its exact signed bytes, when the ledger drops it after its confirmation",
+    async () => {
+      const { h } = at.scene;
+      const live = new Map(
+        (await stagedOutputs()).map((utxo) => [outRefOf(utxo), utxo]),
+      );
+      expect(live.size).toBeGreaterThan(0);
+      let dropped: { txHash: string; consumes: string } | undefined;
+      for (let turn = 0; turn < 30 && dropped === undefined; turn += 1) {
+        const entries = entriesOf(await turns().runOnce());
+        dropped = entries.flatMap(({ event }) =>
+          event.kind === "submission_intent" &&
+          event.actionInput.schemaVersion ===
+            VALIDATION_TRACE_STAGING_RECLAIM &&
+          live.has(event.actionInput.consumes as string) &&
+          entries.some(
+            ({ event: later }) =>
+              later.kind === "confirmed" && later.txHash === event.txHash,
+          )
+            ? [
+                {
+                  txHash: event.txHash,
+                  consumes: event.actionInput.consumes as string,
+                },
+              ]
+            : [],
+        )[0];
+      }
+      if (dropped === undefined) throw new Error("no spend back confirmed");
+      const staging = live.get(dropped.consumes)!;
+      rollBack(h.emulator, dropped.txHash, staging);
+      expect(onLedger(at.scene, staging)).toBe(true);
+      const sent = at.dispute.rebroadcasts.length;
+
+      for (let turn = 0; turn < 12; turn += 1) {
+        await turns().runOnce();
+        if (!onLedger(at.scene, staging)) break;
+      }
+      expect(onLedger(at.scene, staging)).toBe(false);
+      expect(
+        await landedSpenderOf(
+          at.scene.l1.signedCbors,
+          h.emulator,
+          dropped.consumes,
+        ),
+      ).toBe(dropped.txHash);
+      expect(at.dispute.rebroadcasts.slice(sent)).toContain(
+        at.scene.l1.signedCbors.get(dropped.txHash),
+      );
     },
     TIMEOUT,
   );

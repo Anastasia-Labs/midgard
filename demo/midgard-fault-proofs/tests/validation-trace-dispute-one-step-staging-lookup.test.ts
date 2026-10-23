@@ -2,8 +2,8 @@
  * reads it (one-step-staging.ts `lookup`): of the live staging outputs at
  * their confirmation depth, those a resolve move of ours read first, and,
  * past the PrepareSelected move, the staging whose evidence that move
- * committed; and a wait on the L1 source when it cannot say how deep a
- * staging output stands. */
+ * committed, from our journal when it is no longer live; and a wait on the
+ * L1 source when it cannot say how deep a staging output stands. */
 import {
   midgardCekStagingAddress,
   midgardCekStagingResult,
@@ -213,6 +213,7 @@ const lookupOver = ({
       observeSignedTransaction: observe,
     } as unknown as FraudProofSignedTransactionRecovery,
     materialOf: () => undefined,
+    recent: () => false,
   });
   return staging.lookup({
     entries: [
@@ -236,17 +237,30 @@ describe("where our journal shows a staged step's operands staged", () => {
     expect(await lookupOver()(OPERANDS, accepts)).toEqual(
       resultOn(first.outRefs),
     );
-    // A staging no longer live is no candidate: the latest is named, and the
-    // plan refuses it against the committed evidence.
-    expect(
-      await lookupOver({
-        live: [...first.outRefs.slice(1), ...second.outRefs],
-      })(OPERANDS, accepts),
-    ).toEqual(resultOn(second.outRefs));
     // Evidence no staging matches names the latest.
     expect(await lookupOver()(OPERANDS, () => false)).toEqual(
       resultOn(second.outRefs),
     );
+  });
+
+  it("names, past the PrepareSelected move, the staging its evidence names from our journal once an output of it is no longer live, and no other", async () => {
+    const named = (outRefs: readonly string[]) => {
+      const text = JSON.stringify(resultOn(outRefs));
+      return (staging: unknown) => JSON.stringify(staging) === text;
+    };
+    for (const live of [[...first.outRefs.slice(1), ...second.outRefs], []]) {
+      expect(
+        await lookupOver({ live })(OPERANDS, named(first.outRefs)),
+      ).toEqual(resultOn(first.outRefs));
+      expect(
+        await lookupOver({ live })(OPERANDS, named(second.outRefs)),
+      ).toEqual(resultOn(second.outRefs));
+    }
+    // Evidence neither staging matches names none of them once none is
+    // live.
+    expect(
+      await lookupOver({ live: [] })(OPERANDS, () => false),
+    ).toBeUndefined();
   });
 
   it("waits on the L1 source when it cannot say how deep a staging output stands", async () => {

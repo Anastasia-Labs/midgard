@@ -160,15 +160,16 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
     signedRecovery,
     materialOf,
   });
+  const recent = (confirmedAt: string): boolean =>
+    now() - Date.parse(confirmedAt) < VALIDATION_TRACE_PROVIDER_GRACE_MS;
   const staging = validationTraceStaging({
     ...own,
     signedRecovery,
     materialOf,
+    recent,
   });
   const read = (outRefs: readonly string[]) =>
     readOwnOutputs((refs) => lucid.utxosByOutRef([...refs]), outRefs);
-  const recent = (confirmedAt: string): boolean =>
-    now() - Date.parse(confirmedAt) < VALIDATION_TRACE_PROVIDER_GRACE_MS;
   const { recordAt, ourCase, isContested } = validationTraceCaseReads(own);
 
   const requireIdentity = (context: FraudProofWorkflowAdapterContext) => {
