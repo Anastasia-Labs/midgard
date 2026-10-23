@@ -53,6 +53,11 @@ import {
   type ValidationTracePhase,
   type ValidationTracePhaseStep,
 } from "./one-step-phase.js";
+import {
+  stagedTraceOf,
+  type ValidationTraceStagedStep,
+  type ValidationTraceStagingLookup,
+} from "./one-step-staged.js";
 import { recordedSelectionOf } from "./selected-scripts.js";
 
 /** `resolver_index(Cek)` (validation-resolution-v1). */
@@ -119,6 +124,9 @@ export type ValidationTraceCoreStepPlan = ValidationTraceOneStepArgument &
       group: CekCoreGroup;
       /** The arm chain's holders, in order, and the facts each writes. */
       hops: CekCoreArmHops;
+      /** A staged step's staged operands and the staging outputs its
+       * evidence names (one-step-staged.ts); undefined for any other. */
+      staged: ValidationTraceStagedStep | undefined;
     }>;
   }>;
 
@@ -227,11 +235,14 @@ export const planValidationTraceOneStep = async ({
   canonicalDecode = false,
   phases = [],
   scriptSourcesRedeemers = false,
+  staging,
 }: ValidationTraceOneStepDrives & {
   readonly material: ValidationTraceClaimMaterial;
   readonly stateIndex?: number;
   readonly agreedLowHash?: string;
   readonly challengerHighHash: string;
+  /** Where the driver staged a staged step's operands. */
+  readonly staging?: ValidationTraceStagingLookup;
 }): Promise<ValidationTraceOneStepPlanning> => {
   const stateIndex =
     given ?? (material.stateIndexOf(challengerHighHash) ?? 0) - 1;
@@ -333,8 +344,12 @@ export const planValidationTraceOneStep = async ({
       phase2Class: record.phase2Class,
     });
   }
+  // A staged step's evidence names its staging outputs.
+  const { trace: window, staged } = builtins
+    ? await stagedTraceOf(trace, stateIndex, staging)
+    : { trace, staged: undefined };
   const argument = buildValidationOneStepArgument({
-    trace,
+    trace: window,
     stateIndex,
     ...(resolveCekDecodeRecord === undefined ? {} : { resolveCekDecodeRecord }),
   });
@@ -396,7 +411,7 @@ export const planValidationTraceOneStep = async ({
     return unsupported(
       `a CEK builtin step of arm ${arm.toString()}, whose resolution the deployment does not install`,
     );
-  const auxiliary = trace.witnesses[stateIndex]?.auxiliary;
+  const auxiliary = window.witnesses[stateIndex]?.auxiliary;
   if (auxiliary?.kind !== "cekCoreStep")
     return unsupported(
       `a CEK core step of arm ${arm.toString()} whose witness carries no core step`,
@@ -426,6 +441,7 @@ export const planValidationTraceOneStep = async ({
         arm,
         group,
         hops,
+        staged,
       }),
     }),
   };

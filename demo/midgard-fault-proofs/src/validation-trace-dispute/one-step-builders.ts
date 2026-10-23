@@ -68,6 +68,7 @@ import {
   scriptSourcesRedeemerHop,
   type ValidationTraceScriptSourcesRedeemerReads,
 } from "./one-step-script-sources-redeemer.js";
+import { withStagingReads } from "./one-step-staged.js";
 
 /** The holders a hop spends, past the game. */
 export type ValidationTraceHopHolder = Exclude<
@@ -155,8 +156,10 @@ const datumOf = (utxo: UTxO): string => {
  * through a context step's redeemer item step reads `item`, a phase
  * semantic resolver's hop reads `phaseYield`, the yield it invokes, and a
  * hop through a script-sources redeemer normalization step reads
- * `redeemerChain`, and a canonical-decode item's observe hop of a field too
- * long to carry inline reads our published `copy` of it.
+ * `redeemerChain`, a canonical-decode item's observe hop of a field too
+ * long to carry inline reads our published `copy` of it, and a staged
+ * step's hops from the PrepareSelected move through its arm chain read its
+ * `staging` outputs (one-step-staged.ts).
  */
 export const validationTraceHop = ({
   plan,
@@ -169,6 +172,7 @@ export const validationTraceHop = ({
   phaseYieldList,
   redeemerChain,
   copy,
+  staging,
 }: {
   readonly plan: ValidationTraceOneStepPlan;
   readonly holder: ValidationTraceHopHolder;
@@ -180,6 +184,7 @@ export const validationTraceHop = ({
   readonly phaseYieldList?: ValidationTracePhaseYieldListReads | undefined;
   readonly redeemerChain?: ValidationTraceScriptSourcesRedeemerReads;
   readonly copy?: UTxO | undefined;
+  readonly staging?: readonly UTxO[] | undefined;
 }): ValidationTraceHop => {
   const datum = datumOf(utxo);
   if (plan.kind === "phase" && isScriptSourcesRedeemerChainHolder(holder))
@@ -235,7 +240,12 @@ export const validationTraceHop = ({
         });
   }
   if (isValidationTraceCoreHolder(holder))
-    return cekCoreHop({ plan, holder, datum, prover });
+    return withStagingReads(
+      plan,
+      holder,
+      cekCoreHop({ plan, holder, datum, prover }),
+      staging,
+    );
   if (isScriptSourcesRedeemerOwnHolder(holder))
     throw new Error(
       `validation-trace ${holder} holds a thread whose step is not a script-sources redeemer normalization step`,
@@ -285,15 +295,20 @@ export const validationTraceHop = ({
       };
     }
     case "prepare":
-      return preparedHop(
+      return withStagingReads(
         plan,
-        datum,
-        prover,
-        plan.kind === "selection"
-          ? "selection"
-          : plan.kind === "context"
-            ? "context"
-            : "core",
+        holder,
+        preparedHop(
+          plan,
+          datum,
+          prover,
+          plan.kind === "selection"
+            ? "selection"
+            : plan.kind === "context"
+              ? "context"
+              : "core",
+        ),
+        staging,
       );
     case "selection": {
       if (plan.kind !== "selection" || selection === undefined)

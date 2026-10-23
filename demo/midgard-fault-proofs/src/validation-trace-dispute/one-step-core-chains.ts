@@ -28,8 +28,7 @@
  * operands, waits for their confirmation depth and fills the output
  * references in before the plan commits the step's evidence. The tag also
  * picks how the material decodes (`decodeCekCoreSemanticMaterial`). A tag
- * with no stage
- * leaves the step unresolved, with its reason. */
+ * with no stage leaves the step unresolved, with its reason. */
 import { SemanticBuiltinWitness, StagedMaterialV1 } from "@al-ft/midgard-sdk";
 import {
   hashMidgardCekDirectArguments,

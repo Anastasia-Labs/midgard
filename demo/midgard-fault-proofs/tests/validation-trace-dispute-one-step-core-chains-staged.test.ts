@@ -1,10 +1,8 @@
 /** The arm chain a staged builtin step (arm 31, semantics groups 7 and 8)
  * settles through, and the decode of an arm-31 step's material by the
  * semantic group its tag selects. */
-import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import { StagedMaterialV1 } from "@al-ft/midgard-sdk";
 import {
-  evaluateMidgardCekScript,
   type MidgardCekCoreStepWitness,
   midgardCekStagedBuiltinMaterialData,
   stageMidgardCekStagedBuiltinMaterial,
@@ -16,53 +14,16 @@ import {
   cekCoreArmHops,
   decodeCekCoreSemanticMaterial,
 } from "../src/validation-trace-dispute/one-step-core-chains.js";
+import {
+  STAGED_ADD_SCRIPT,
+  STAGED_SHA2_SCRIPT,
+  stagedStep,
+  type StagedWitness,
+} from "./support/validation-trace-dispute-staged-scripts.js";
 
-type StagedWitness = Extract<
-  MidgardCekCoreStepWitness,
-  { readonly kind: "executeBuiltinStaged" }
->;
+const SHA2 = stagedStep(STAGED_SHA2_SCRIPT, 18n);
 
-/**
- * The staged step of builtin `tag` in the run of the failing script `hex`,
- * `(program 1.1.0 (lam ctx [(lam _ (error)) STEP]))`.
- */
-const stagedStep = (hex: string, tag: bigint): StagedWitness => {
-  const run = evaluateMidgardCekScript(
-    {
-      scriptBytes: encodeCbor(Buffer.from(hex, "hex")),
-      scriptLanguage: "PlutusV3",
-      contextCbor: Buffer.from("d87980", "hex"),
-      executionIndex: 0n,
-      maxSteps: 10_000,
-      executionBudget: { cpu: 10_000_000_000n, memory: 16_500_000n },
-    },
-    "proof",
-  );
-  const witness = run.execution?.steps
-    .map((step) => step.witness)
-    .find(
-      (candidate): candidate is StagedWitness =>
-        candidate.kind === "executeBuiltinStaged" && candidate.tag === tag,
-    );
-  if (witness === undefined) {
-    throw new Error(`the run has no staged step of ${tag.toString()}`);
-  }
-  return witness;
-};
-
-/** STEP: `[(builtin sha2_256) B]`, B the 16,384 bytes of fourteen
- * doublings of `#00` by `(lam x [(builtin appendByteString) x x])`. */
-const SHA2 = stagedStep(
-  "010100232637246466e28004004c8cdc50008009919b8a00100132337140020026466e28004004c8cdc50008009919b8a00100132337140020026466e28004004c8cdc50008009919b8a00100132337140020026466e28004004c8cdc5000800a44101000001",
-  18n,
-);
-
-/** STEP: `[(lam x [(builtin addInteger) x x]) N]`, N the 4,163-byte integer
- * of nine squarings of 2^63 + 1 by `(lam x [(builtin multiplyInteger) x x])`. */
-const ADD = stagedStep(
-  "010100232632337000020026466e08004004c8cdc10008009919b8200100132337040020026466e08004004c8cdc10008009919b8200100132337040020026466e08004005208280808080808080800201",
-  0n,
-);
+const ADD = stagedStep(STAGED_ADD_SCRIPT, 0n);
 
 const BUILTIN_ROOT = new Uint8Array(32).fill(7);
 
