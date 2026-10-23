@@ -73,8 +73,11 @@ const WALK_GATE_GROUPS = {
     "list of a unit pair chain over list unit, every element [()]",
     "list of a unit pair chain over a pair of list unit and unit, every element ([()], ())",
   ],
-  "unit pair chains over list Data": [
+  // One row each: the two rows in one process walk past a CI job's limit.
+  "unit pair chains over list Data, alternating": [
     "list of a unit pair chain over list Data, [] and [d] alternating",
+  ],
+  "unit pair chains over list Data, every element": [
     "list of a unit pair chain over list Data, every element [d]",
   ],
   "unit pair chains over pairs of lists": [
