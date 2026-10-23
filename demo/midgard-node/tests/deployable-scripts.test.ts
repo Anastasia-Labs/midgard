@@ -177,7 +177,7 @@ describe("deployable-script catalogue", () => {
   it("pins the manifest order of contracts and roles", () => {
     for (const contracts of [real, placeholder]) {
       const manifest = manifestDeployableScripts(contracts);
-      expect(manifest).toHaveLength(544);
+      expect(manifest).toHaveLength(576);
       expect(orderDigest(manifest.map(({ contract }) => contract))).toEqual(
         MANIFEST_CONTRACT_ORDER_DIGEST,
       );
@@ -189,7 +189,7 @@ describe("deployable-script catalogue", () => {
 
   it("pins the publication and per-command orders", () => {
     const realTargets = nodeRuntimeReferenceScriptTargets(real);
-    expect(realTargets).toHaveLength(539);
+    expect(realTargets).toHaveLength(571);
     expect(orderDigest(realTargets.map(({ name }) => name))).toEqual(
       REAL_PUBLICATION_ORDER_DIGEST,
     );
@@ -212,7 +212,7 @@ describe("deployable-script catalogue", () => {
     expectOrdersWithout([real, placeholder], {
       contracts: [phaseResolverContracts],
       roles: [phaseResolverRoles],
-      lengths: [528, 523],
+      lengths: [560, 555],
       pins: {
         manifestContract: PRE_PHASE_RESOLVER_MANIFEST_CONTRACT_ORDER_DIGEST,
         manifestRole: PRE_PHASE_RESOLVER_MANIFEST_ROLE_ORDER_DIGEST,
@@ -229,7 +229,7 @@ describe("deployable-script catalogue", () => {
     expectOrdersWithout([real, placeholder], {
       contracts: [phaseResolverContracts, cekResolverContracts],
       roles: [phaseResolverRoles, cekResolverRoles],
-      lengths: [523, 518],
+      lengths: [555, 550],
       pins: {
         manifestContract: PRE_CEK_RESOLVER_MANIFEST_CONTRACT_ORDER_DIGEST,
         manifestRole: PRE_CEK_RESOLVER_MANIFEST_ROLE_ORDER_DIGEST,
@@ -246,7 +246,7 @@ describe("deployable-script catalogue", () => {
     expectOrdersWithout([real, placeholder], {
       contracts: [phaseResolverContracts, cekResolverContracts, caseContracts],
       roles: [phaseResolverRoles, cekResolverRoles, caseRoles],
-      lengths: [517, 512],
+      lengths: [549, 544],
       pins: {
         manifestContract: PRE_CASE_MANIFEST_CONTRACT_ORDER_DIGEST,
         manifestRole: PRE_CASE_MANIFEST_ROLE_ORDER_DIGEST,
@@ -272,7 +272,7 @@ describe("deployable-script catalogue", () => {
         caseRoles,
         dataCanonicityRoles,
       ],
-      lengths: [513, 508],
+      lengths: [545, 540],
       pins: {
         manifestContract: PRE_DATA_CANONICITY_MANIFEST_CONTRACT_ORDER_DIGEST,
         manifestRole: PRE_DATA_CANONICITY_MANIFEST_ROLE_ORDER_DIGEST,
@@ -304,7 +304,7 @@ describe("deployable-script catalogue", () => {
         caseRoles,
         dataCanonicityRoles,
       ],
-      lengths: [506, 501],
+      lengths: [538, 533],
       restoreRetiredBond: true,
       pins: {
         manifestRole: PRE_HISTORY_MANIFEST_ROLE_ORDER_DIGEST,
@@ -333,7 +333,7 @@ describe("deployable-script catalogue", () => {
         caseRoles,
         dataCanonicityRoles,
       ],
-      lengths: [512, 507],
+      lengths: [544, 539],
       restoreRetiredBond: true,
       pins: {
         manifestRole: PRE_POOL_MANIFEST_ROLE_ORDER_DIGEST,

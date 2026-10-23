@@ -7,6 +7,33 @@ import type { DirectScriptMaterial } from "./material.js";
 import { directSpendInputAt } from "./purposes.js";
 import { buildDirectReceiveEvidence } from "./receive-evidence.js";
 
+/** The spent item at canonical spend rank `index`, its raw field position,
+ * and its predecessor descriptor with that descriptor's ledger membership.
+ * `null` past the spend count. */
+export const directSpendEvidence = async (
+  material: DirectScriptMaterial,
+  index: bigint,
+) => {
+  const selected = directSpendInputAt(material, index);
+  if (selected === null) return null;
+  const descriptor = material.ledger.root.entries.find((entry) =>
+    entry.key.equals(selected.item),
+  );
+  if (descriptor === undefined)
+    throw new Error("claimed purpose evidence: spent descriptor absent");
+  const [proof] = await keyValuePhasMembershipProofs(material.ledger.root, [
+    descriptor,
+  ]);
+  if (proof === undefined)
+    throw new Error("claimed purpose evidence: spent membership absent");
+  return {
+    item: selected.item,
+    rawItemIndex: BigInt(selected.rawItemIndex),
+    descriptorCbor: descriptor.value.toString("hex"),
+    proof,
+  };
+};
+
 /** Prepare authenticated domain evidence, never a trusted claimed receipt.
  * The leaf is the sole selector; the physical suffix checks each transition. */
 export const prepareClaimedPurposeEvidence = async ({
@@ -44,27 +71,10 @@ export const prepareClaimedPurposeEvidence = async ({
   }
   if (coordinate.kind === 0n) {
     const field = createDirectFieldPlan(material, 0, owner);
-    const selected = directSpendInputAt(material, coordinate.index);
-    if (selected === null)
+    const spend = await directSpendEvidence(material, coordinate.index);
+    if (spend === null)
       return { route: "SpendOutOfRange", coordinate, field } as const;
-    const descriptor = material.ledger.root.entries.find((entry) =>
-      entry.key.equals(selected.item),
-    );
-    if (descriptor === undefined)
-      throw new Error("claimed purpose evidence: spent descriptor absent");
-    const [proof] = await keyValuePhasMembershipProofs(material.ledger.root, [
-      descriptor,
-    ]);
-    if (proof === undefined)
-      throw new Error("claimed purpose evidence: spent membership absent");
-    return {
-      route: "Spend",
-      coordinate,
-      field,
-      rawItemIndex: BigInt(selected.rawItemIndex),
-      descriptorCbor: descriptor.value.toString("hex"),
-      proof,
-    } as const;
+    return { route: "Spend", coordinate, field, ...spend } as const;
   }
   if (coordinate.kind === 1n)
     return {

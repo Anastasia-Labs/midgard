@@ -8,6 +8,7 @@ import { detectInvalidSignatureWrongfulRejections } from "../invalid-signature/w
 import { detectMinAdaForcedReplay } from "../min-ada/forced.js";
 import { detectMinFeeForcedReplay } from "../min-fee-forced.js";
 import { detectMintDeclaredAssetLimitForcedReplay } from "../mint-declared-asset-limit/replay.js";
+import { detectMissingRedeemerReplay } from "../missing-redeemer/replay.js";
 import { detectNativeScriptDecodingReplay } from "../native-script-decoding/replay.js";
 import { detectNativeScriptInvalidForcedReplay } from "../native-script-invalid/forced.js";
 import { detectObserversForbiddenForcedReplay } from "../observers-forbidden-on-untagged-network/replay.js";
@@ -115,6 +116,19 @@ export const NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY =
         }),
       }),
   );
+
+/** Complete required-observer and forced `RedeemerMissing` replay. */
+export const MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY = completeReplayer(
+  ["missingRedeemer"],
+  async (evidence, context) =>
+    await detectMissingRedeemerReplay({
+      block: evidence,
+      predecessor: completeCanonicalReplayPredecessorLedger({
+        evidence,
+        context,
+      }),
+    }),
+);
 
 export const NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY = completeReplayer(
   ["nativeScriptInvalid"],

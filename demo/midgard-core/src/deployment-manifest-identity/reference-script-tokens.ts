@@ -676,13 +676,65 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
   "V1 fraud-proof missing-script-source step-04": "V1FpMissingScriptSourceS04",
   "V1 fraud-proof missing-script-source step-05": "V1FpMissingScriptSourceS05",
   "V1 fraud-proof missing-script-source step-06": "V1FpMissingScriptSourceS06",
-  "V1 fraud-proof missing-redeemer step-01": "V1FpMissingRedeemerS01",
-  "V1 fraud-proof missing-redeemer step-02": "V1FpMissingRedeemerS02",
-  "V1 fraud-proof missing-redeemer step-02a": "V1FpMissingRedeemerS02a",
-  "V1 fraud-proof missing-redeemer step-02b": "V1FpMissingRedeemerS02b",
-  "V1 fraud-proof missing-redeemer step-03": "V1FpMissingRedeemerS03",
-  "V1 fraud-proof missing-redeemer step-04": "V1FpMissingRedeemerS04",
-  "V1 fraud-proof missing-redeemer step-05": "V1FpMissingRedeemerS05",
+  "V1 fraud-proof missing-redeemer step-01": "V1FpMissingRdmrS01",
+  "V1 fraud-proof missing-redeemer bind-event": "V1FpMissingRdmrBindEvent",
+  "V1 fraud-proof missing-redeemer bind-pre-state":
+    "V1FpMissingRdmrBindPreState",
+  "V1 fraud-proof missing-redeemer source-start": "V1FpMissingRdmrSrcStart",
+  "V1 fraud-proof missing-redeemer source-resolved":
+    "V1FpMissingRdmrSrcResolved",
+  "V1 fraud-proof missing-redeemer source-authenticate":
+    "V1FpMissingRdmrSrcAuth",
+  "V1 fraud-proof missing-redeemer source-map": "V1FpMissingRdmrSrcMap",
+  "V1 fraud-proof missing-redeemer source-input-finish":
+    "V1FpMissingRdmrSrcInputFinish",
+  "V1 fraud-proof missing-redeemer source-grammar": "V1FpMissingRdmrSrcGrammar",
+  "V1 fraud-proof missing-redeemer source-witnesses":
+    "V1FpMissingRdmrSrcWitnesses",
+  "V1 fraud-proof missing-redeemer source-finish": "V1FpMissingRdmrSrcFinish",
+  "V1 fraud-proof missing-redeemer family-entry": "V1FpMissingRdmrEntry",
+  "V1 fraud-proof missing-redeemer purpose-select":
+    "V1FpMissingRdmrPurposeSelect",
+  "V1 fraud-proof missing-redeemer spend-select": "V1FpMissingRdmrSpendSelect",
+  "V1 fraud-proof missing-redeemer spend-scan": "V1FpMissingRdmrSpendScan",
+  "V1 fraud-proof missing-redeemer mint-grammar": "V1FpMissingRdmrMintGrammar",
+  "V1 fraud-proof missing-redeemer mint-scan": "V1FpMissingRdmrMintScan",
+  "V1 fraud-proof missing-redeemer receive-start": "V1FpMissingRdmrRecvStart",
+  "V1 fraud-proof missing-redeemer receive-grammar":
+    "V1FpMissingRdmrRecvGrammar",
+  "V1 fraud-proof missing-redeemer receive-outputs":
+    "V1FpMissingRdmrRecvOutputs",
+  "V1 fraud-proof missing-redeemer receive-finish": "V1FpMissingRdmrRecvFinish",
+  "V1 fraud-proof missing-redeemer receive-declaration":
+    "V1FpMissingRdmrRecvDecl",
+  "V1 fraud-proof missing-redeemer source-lookup": "V1FpMissingRdmrSrcLookup",
+  "V1 fraud-proof missing-redeemer step-02": "V1FpMissingRdmrS02",
+  "V1 fraud-proof missing-redeemer step-03": "V1FpMissingRdmrS03",
+  "V1 fraud-proof missing-redeemer step-04": "V1FpMissingRdmrS04",
+  "V1 fraud-proof missing-redeemer claim-start": "V1FpMissingRdmrClaimStart",
+  "V1 fraud-proof missing-redeemer claim-spend-start":
+    "V1FpMissingRdmrClaimSpendStart",
+  "V1 fraud-proof missing-redeemer claim-spend-scan":
+    "V1FpMissingRdmrClaimSpend",
+  "V1 fraud-proof missing-redeemer claim-mint-grammar":
+    "V1FpMissingRdmrClaimMintGrammar",
+  "V1 fraud-proof missing-redeemer claim-mint-scan":
+    "V1FpMissingRdmrClaimMintScan",
+  "V1 fraud-proof missing-redeemer claim-receive-grammar":
+    "V1FpMissingRdmrClaimRecvGrammar",
+  "V1 fraud-proof missing-redeemer claim-receive-outputs":
+    "V1FpMissingRdmrClaimRecvOutputs",
+  "V1 fraud-proof missing-redeemer claim-receive-finish":
+    "V1FpMissingRdmrClaimRecvFinish",
+  "V1 fraud-proof missing-redeemer claim-receive-declaration":
+    "V1FpMissingRdmrClaimRecvDecl",
+  "V1 fraud-proof missing-redeemer claim-adjudicate":
+    "V1FpMissingRdmrAdjudicate",
+  "V1 fraud-proof missing-redeemer claimed-redeemer-grammar":
+    "V1FpMissingRdmrClaimedGrammar",
+  "V1 fraud-proof missing-redeemer claimed-redeemer-scan":
+    "V1FpMissingRdmrClaimedScan",
+  "V1 fraud-proof missing-redeemer step-05": "V1FpMissingRdmrS05",
   "V1 fraud-proof unused-redeemer step-01": "V1FpUnusedRedeemerS01",
   "V1 fraud-proof unused-redeemer step-02": "V1FpUnusedRedeemerS02",
   "V1 fraud-proof unused-redeemer step-02a": "V1FpUnusedRedeemerS02a",

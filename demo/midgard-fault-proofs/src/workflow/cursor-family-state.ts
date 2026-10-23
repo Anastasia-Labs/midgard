@@ -4,6 +4,12 @@ import {
   type FraudProofCatalogueCategoryName,
 } from "@al-ft/midgard-sdk";
 
+import {
+  computationThreadStage,
+  type ComputationThreadStep,
+  isComputationThreadStep,
+  parseComputationThreadStage,
+} from "./computation-thread-steps.js";
 import type { RemovalConfirmation } from "./family-l1-observation.confirm-removal.js";
 import type {
   FraudProofWorkflowAction,
@@ -15,24 +21,7 @@ import type { FraudProofRawL1FamilyStage } from "./raw-l1-family-derivation.js";
 export const CURSOR_FAMILY_ACTION =
   "midgard-production-cursor-family-action-v1" as const;
 
-export type CursorFamilyStep =
-  | 1
-  | 2
-  | 3
-  | 4
-  | 5
-  | 6
-  | 7
-  | 8
-  | 9
-  | 10
-  | 11
-  | 12
-  | 13
-  | 14
-  | 15
-  | 16
-  | 17;
+export type CursorFamilyStep = ComputationThreadStep;
 export type CursorFamilySuccessor = CursorFamilyStep | "proof_token";
 
 export type CursorFamilySpec<
@@ -68,11 +57,7 @@ const action = (
 const validateSpec = <Category extends FraudProofCatalogueCategoryName>(
   spec: CursorFamilySpec<Category>,
 ): CursorFamilySpec<Category> => {
-  if (
-    !Number.isSafeInteger(spec.stepCount) ||
-    spec.stepCount < 1 ||
-    spec.stepCount > 13
-  ) {
+  if (!isComputationThreadStep(spec.stepCount)) {
     throw new Error(`${spec.category} cursor spec has an invalid step count`);
   }
   for (let ordinal = 1; ordinal <= spec.stepCount; ordinal += 1) {
@@ -179,7 +164,7 @@ export const cursorFamilyObservation = <
     };
   }
   if (admitted.kind === "step") {
-    const stageName = `step_${admitted.step.toString().padStart(2, "0")}`;
+    const stageName = computationThreadStage(admitted.step);
     return {
       kind: "action_required",
       action: action(
@@ -277,10 +262,10 @@ const parsedAction = <Category extends FraudProofCatalogueCategoryName>(
       ),
     };
   }
-  if (!/^step_(?:0[1-9]|1[0-3])$/u.test(input.stage)) {
+  const ordinal = parseComputationThreadStage(input.stage);
+  if (ordinal === undefined) {
     throw new Error(`${spec.category} cursor action names an unknown stage`);
   }
-  const ordinal = Number(input.stage.slice("step_".length)) as CursorFamilyStep;
   if (
     ordinal > spec.stepCount ||
     input.ordinal !== ordinal ||

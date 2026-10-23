@@ -1,17 +1,16 @@
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/field_opening_v1.{FieldOpeningV1}
+use midgard/fraud_proofs/direct_script_derivation/purpose_workers.{
+  ProgressArgsV1,
+}
 use midgard/fraud_proofs/missing_redeemer/rule.{ScanStateV1}
 
-pub type Args {
-  input_index: Int,
-  output_index: Int,
-  opening: FieldOpeningV1,
-  checkpoint_bytes: ByteArray,
-  item_budget: Int,
+pub type ActionV1 {
+  Scan { args: ProgressArgsV1 }
+  Finish { input_index: Int, output_index: Int }
 }
 
 pub type Datum =
   ct.StepDatum<ScanStateV1>
 
 pub type SpendRedeemer =
-  ct.StepRedeemer<Args>
+  ct.StepRedeemer<ActionV1>

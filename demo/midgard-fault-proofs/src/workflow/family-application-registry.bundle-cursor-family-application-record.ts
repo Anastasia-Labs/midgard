@@ -20,6 +20,13 @@ import {
   MINT_ITEM_NON_CANONICAL_MANIFEST_CONTRACTS,
 } from "../mint-item-non-canonical/workflow.js";
 import {
+  createManifestBoundMissingRedeemerWorkflow,
+  type ManifestBoundMissingRedeemerWorkflow,
+  MISSING_REDEEMER_FAMILY_DEFINITION,
+  runOrResumeManifestBoundMissingRedeemerWorkflow,
+} from "../missing-redeemer/workflow.js";
+import type { ManifestBoundMissingRedeemerWorkflowConfig } from "../missing-redeemer/workflow.transaction-port.js";
+import {
   createManifestBoundNativeScriptDecodingWorkflow,
   type ManifestBoundNativeScriptDecodingWorkflow,
   type ManifestBoundNativeScriptDecodingWorkflowConfig,
@@ -193,6 +200,17 @@ export const WITHDRAWAL_MISTAG_FAMILY_APPLICATION_RECORD =
     requires: ["replayContext"],
     constructWorkflow: createManifestBoundWithdrawalMistagWorkflow,
     execute: runOrResumeManifestBoundWithdrawalMistagWorkflow,
+  });
+
+export const MISSING_REDEEMER_FAMILY_APPLICATION_RECORD =
+  bundleCursorFamilyApplicationRecord<
+    "missingRedeemer",
+    ManifestBoundMissingRedeemerWorkflowConfig,
+    ManifestBoundMissingRedeemerWorkflow
+  >(MISSING_REDEEMER_FAMILY_DEFINITION, {
+    requires: ["replayContext"],
+    constructWorkflow: createManifestBoundMissingRedeemerWorkflow,
+    execute: runOrResumeManifestBoundMissingRedeemerWorkflow,
   });
 
 export const MIN_ADA_FAMILY_APPLICATION_RECORD =

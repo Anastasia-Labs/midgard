@@ -130,17 +130,33 @@ test empty_mint_set_needs_no_synthetic_policy() {
   mint.selected_purpose_v1(finished) == None
 }
 
-test partial_mint_scan_cannot_claim_a_purpose() fail {
+fn staged_partial() -> mint.StateV1 {
+  // Ordinal 0 is staged by the first batch while the policy set is unfinished.
   let (ready, checkpoint, opening) = semantic([a, b])
   let Pair(partial, _) = mint.advance_v1(
-    mint.initial_v1(ready, 1),
+    mint.initial_v1(ready, 0),
     opening,
     checkpoint,
     1,
     [],
     fixture.test_certificate_policy_id,
   )
-  mint.selected_purpose_v1(partial) != None
+  partial
+}
+
+test partial_mint_scan_stages_a_selection_before_completion() {
+  let partial = staged_partial()
+  expect Some(staged) = partial.selected
+  and {
+    !partial.complete,
+    staged.script_hash == a,
+    staged.coordinate.index == 0,
+  }
+}
+
+test partial_mint_scan_cannot_claim_a_purpose() fail {
+  let partial = staged_partial()
+  mint.selected_purpose_v1(partial) == partial.selected
 }
 
 test negative_mint_ordinal_is_refused() fail {

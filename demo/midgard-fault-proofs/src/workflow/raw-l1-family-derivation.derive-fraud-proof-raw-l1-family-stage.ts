@@ -1,3 +1,4 @@
+import type { ComputationThreadStep } from "./computation-thread-steps.js";
 import { type FraudProofWorkflowTerminal } from "./journal.js";
 import {
   authenticateFamilySnapshot,
@@ -114,20 +115,7 @@ export const deriveFraudProofRawL1FamilyStage = async ({
     });
     return [
       {
-        step: (index + 1) as
-          | 1
-          | 2
-          | 3
-          | 4
-          | 5
-          | 6
-          | 7
-          | 8
-          | 9
-          | 10
-          | 11
-          | 12
-          | 13,
+        step: (index + 1) as ComputationThreadStep,
         raw: current,
       },
     ];

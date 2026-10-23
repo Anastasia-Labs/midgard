@@ -7,13 +7,16 @@ use midgard/fraud_proofs/direct_script_derivation/receive_prefix as prefix
 use midgard/fraud_proofs/direct_script_derivation/source_index
 use midgard/fraud_proofs/direct_script_derivation/source_scan.{BoundIndexV1}
 use midgard/fraud_proofs/direct_script_derivation/types.{BoundV1}
-use midgard/fraud_proofs/field_opening_v1.{FieldOpeningV1, outputs_field_index}
+use midgard/fraud_proofs/field_opening_v1.{
+  FieldOpeningV1, outputs_field_index, redeemers_field_index,
+}
 use midgard/fraud_proofs/first_fault_v1.{NetworkOrderContextV1}
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_output}
 use midgard/fraud_proofs/native_tx/types.{MidgardTxOutput,
   ScriptCredential} as native_types
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
+use midgard/native_tx_machine_walk_v1 as walk
 
 const a = #"22222222222222222222222222222222222222222222222222222222"
 
@@ -206,4 +209,126 @@ test nonempty_output_set_cannot_finish_early() fail {
     [],
     fixture.test_certificate_policy_id,
   ).complete
+}
+
+// ## Body-only resume and the redeemers-field opening
+//
+// `resume_body_at_v1` returns exactly what `resume_at_v1` returns at the
+// outputs field, and `initial_redeemers_v1` exactly what
+// `initial_with_completion_v1` returns at the redeemers field. Each refusal
+// row fails one check only.
+
+fn resume_body(
+  ready: cursor.CursorV1,
+  field_index: Int,
+  opening: FieldOpeningV1,
+  checkpoint: ByteArray,
+) -> Int {
+  walk.walk_next_item_index(
+    cursor.resume_body_at_v1(
+      ready,
+      field_index,
+      opening,
+      checkpoint,
+      [],
+      fixture.test_certificate_policy_id,
+    ).2nd,
+  )
+}
+
+test body_resume_agrees_with_resume_at() {
+  let (ready, checkpoint, opening) = semantic([script_output(a)])
+  cursor.resume_body_at_v1(
+    ready,
+    outputs_field_index,
+    opening,
+    checkpoint,
+    [],
+    fixture.test_certificate_policy_id,
+  ) == cursor.resume_at_v1(
+    ready,
+    outputs_field_index,
+    opening,
+    checkpoint,
+    [],
+    fixture.test_certificate_policy_id,
+  )
+}
+
+test body_resume_refuses_a_cursor_at_another_field() fail {
+  let (ready, checkpoint, opening) = semantic([script_output(a)])
+  expect _opened = resume_body(
+    cursor.CursorV1 { ..ready, field_index: 0 },
+    outputs_field_index,
+    opening,
+    checkpoint,
+  )
+}
+
+test body_resume_refuses_a_certifying_cursor() fail {
+  let (ready, checkpoint, opening) = semantic([script_output(a)])
+  expect _opened = resume_body(
+    cursor.CursorV1 { ..ready, phase: cursor.Certifying },
+    outputs_field_index,
+    opening,
+    checkpoint,
+  )
+}
+
+/// The cursor and the requested index agree, but the committed checkpoint is
+/// at the outputs field.
+test body_resume_refuses_a_checkpoint_at_another_field() fail {
+  let (ready, checkpoint, opening) = semantic([script_output(a)])
+  expect _opened = resume_body(
+    cursor.CursorV1 { ..ready, field_index: 0 },
+    0,
+    opening,
+    checkpoint,
+  )
+}
+
+fn redeemer_bound() -> Pair<BoundV1, FieldOpeningV1> {
+  let Pair(bound, _) = opened([])
+  let tx = fixture.valid_native_tx_v1()
+  let block = fixture.native_block_fixture_v1(
+    native_types.MidgardTransaction {
+      ..tx,
+      body: native_types.MidgardTransactionBody { ..tx.body, outputs: [] },
+    },
+  )
+  expect block.compact_cbor == bound.compact_cbor
+  Pair(
+    bound,
+    fixture.inline_witness_opening(
+      block.compact_cbor,
+      block.witness_set_compact,
+      [],
+    ),
+  )
+}
+
+test redeemers_opening_agrees_with_initial_with_completion() {
+  let Pair(bound, opening) = redeemer_bound()
+  cursor.initial_redeemers_v1(
+    bound,
+    opening,
+    [],
+    fixture.test_certificate_policy_id,
+  ) == cursor.initial_with_completion_v1(
+    bound,
+    redeemers_field_index,
+    opening,
+    [],
+    fixture.test_certificate_policy_id,
+  )
+}
+
+test redeemers_opening_refuses_a_body_opening() fail {
+  let Pair(bound, body) = opened([])
+  expect _opened = cursor.initial_redeemers_v1(
+    bound,
+    body,
+    [],
+    fixture.test_certificate_policy_id,
+  )
 }

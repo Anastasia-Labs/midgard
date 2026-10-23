@@ -573,6 +573,113 @@ fn field_door_prologue(
   )
 }
 
+/// The resumable field door for a body field (index below 6). It takes no
+/// witness set, and the expected commitment is read from the body only. For
+/// an index below 6 it accepts exactly what
+/// `authenticated_resumable_field_view_with_commitment` accepts, and it refuses
+/// every other index.
+pub fn authenticated_resumable_body_field_view_with_commitment(
+  verified: VerifiedTxSourceView,
+  field_index: Int,
+  carriage: FieldCarriageV1,
+  reference_inputs: List<Input>,
+  certificate_policy_id: PolicyId,
+) -> Pair<ByteArray, FieldViewV1> {
+  // `field_stride` in `resumable_view_at` refuses a negative index.
+  expect field_index < 6
+  let body = verified.tx_compact.body
+  let expected_hash = if field_index == 0 {
+    body.spend_inputs_hash
+  } else if field_index == 1 {
+    body.reference_inputs_hash
+  } else if field_index == 2 {
+    body.outputs_hash
+  } else if field_index == 3 {
+    body.required_observers_hash
+  } else if field_index == 4 {
+    body.required_signers_hash
+  } else {
+    body.mint_hash
+  }
+  resumable_view_at(
+    verified,
+    field_index,
+    expected_hash,
+    carriage,
+    reference_inputs,
+    certificate_policy_id,
+  )
+}
+
+/// The resumable field door for a witness-set field (index 6 to 8). The
+/// supplied witness set must hash to the compact structure's
+/// `witness_set_hash`, and the expected commitment is read from it. For an
+/// index from 6 to 8 it accepts exactly what
+/// `authenticated_resumable_field_view_with_commitment` accepts, and it refuses
+/// every other index.
+pub fn authenticated_resumable_witness_field_view_with_commitment(
+  verified: VerifiedTxSourceView,
+  witness_set: NativeTxWitnessSetCompact,
+  field_index: Int,
+  carriage: FieldCarriageV1,
+  reference_inputs: List<Input>,
+  certificate_policy_id: PolicyId,
+) -> Pair<ByteArray, FieldViewV1> {
+  // `field_stride` in `resumable_view_at` refuses an index of 9 or more.
+  expect field_index >= 6
+  expect
+    blake2b_256(encode_native_tx_witness_set_compact(witness_set)) == verified.tx_compact.witness_set_hash
+  let expected_hash = if field_index == 6 {
+    witness_set.script_tx_wits_hash
+  } else if field_index == 7 {
+    witness_set.addr_tx_wits_hash
+  } else {
+    witness_set.redeemer_tx_wits_hash
+  }
+  resumable_view_at(
+    verified,
+    field_index,
+    expected_hash,
+    carriage,
+    reference_inputs,
+    certificate_policy_id,
+  )
+}
+
+/// The carriage branches shared by the two single-half resumable doors.
+/// `field_stride` refuses an index outside 0–8 before any carriage is read.
+fn resumable_view_at(
+  verified: VerifiedTxSourceView,
+  field_index: Int,
+  expected_hash: ByteArray,
+  carriage: FieldCarriageV1,
+  reference_inputs: List<Input>,
+  certificate_policy_id: PolicyId,
+) -> Pair<ByteArray, FieldViewV1> {
+  let stride = field_stride(field_index)
+  let view = when carriage is {
+    Inline { preimage } -> resumable_whole_view(preimage, expected_hash, stride)
+    RawUtxo { ref_input_index } ->
+      resumable_whole_view(
+        raw_carriage_bytes(reference_inputs, ref_input_index),
+        expected_hash,
+        stride,
+      )
+    Certified { cert_ref_input_index, chunk_ref_input_indices } ->
+      certified_view(
+        verified.tx_id,
+        field_index,
+        expected_hash,
+        stride,
+        reference_inputs,
+        cert_ref_input_index,
+        chunk_ref_input_indices,
+        certificate_policy_id,
+      )
+  }
+  Pair(expected_hash, view)
+}
+
 /// Tiers 1–2 (§8.1/§8.2): the whole preimage is in hand, so it is hashed once
 /// against the positionally-extracted commitment and then structurally
 /// validated before any accessor may touch it.

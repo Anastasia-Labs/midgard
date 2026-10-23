@@ -1,5 +1,8 @@
 export * from "./binding-plan.js";
-export { prepareClaimedPurposeEvidence } from "./claimed-purpose.js";
+export {
+  directSpendEvidence,
+  prepareClaimedPurposeEvidence,
+} from "./claimed-purpose.js";
 export { createDirectFieldPlan } from "./field-plan.js";
 export {
   type DirectScriptMaterial,

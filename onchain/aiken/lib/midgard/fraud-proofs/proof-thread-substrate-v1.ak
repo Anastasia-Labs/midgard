@@ -94,8 +94,8 @@ pub type EventPreStateV1 {
 /// `decode_header_view` (protocol version), and the carriage binds that
 /// node's key, the commit-time hash of this header, to the thread name. Only
 /// the accepted scalar is checked here. A forced source's header is supplied
-/// by the prover, so its protocol version and thread binding are checked
-/// before its leaf is opened.
+/// by the prover, so its thread binding is checked before its leaf is opened;
+/// the committed header it names was decoded at commit.
 ///
 /// A validator whose arms already know the source kind may call
 /// `open_accepted_subject_v1` or `open_forced_subject_v1` directly; each
@@ -130,13 +130,13 @@ pub fn open_forced_subject_v1(
   >,
 ) -> Pair<VerdictSubjectV1, VerifiedTxSourceView> {
   let header_data: Data = header
-  expect and {
-      header.protocol_version == ledger_state.protocol_version_v1,
-      utils.serialise_and_hash_28(header_data) == bytearray.drop(
-        thread_name,
-        fraud_proof_catalogue.id_byte_count,
-      ),
-    }
+  // The thread name binds this header's hash, and thread init binds that
+  // hash to a committed node whose commit decoded the protocol version.
+  expect
+    utils.serialise_and_hash_28(header_data) == bytearray.drop(
+      thread_name,
+      fraud_proof_catalogue.id_byte_count,
+    )
   bind_forced_subject_v1(header, membership)
 }
 
@@ -317,18 +317,16 @@ fn bind_forced_subject_v1(
     leaf.submitted_source.witness_set_compact_cbor,
     leaf.submitted_source.field_preimage_lengths_cbor,
   )
-  expect and {
-      membership.domain == transition_trace.ForcedTransactionsV1RootDomain,
-      membership.root == header.forced_transactions_root,
-      membership.count == header.forced_transaction_count,
-      forced_leaf_is_member_v1(
-        header,
-        source_key,
-        cbor.serialise(leaf),
-        membership.phas_root,
-        membership.proof,
-      ),
-    }
+  // The membership is opened under the header's own domain, root and count,
+  // so the carried copies of those three fields are not read.
+  expect
+    forced_leaf_is_member_v1(
+      header,
+      source_key,
+      cbor.serialise(leaf),
+      membership.phas_root,
+      membership.proof,
+    )
   let Pair(direction, rejection_reason) = when leaf.verdict is {
     ForcedTxValid -> Pair(direction_wrongful_acceptance, None)
     ForcedTxInvalid { reason } ->

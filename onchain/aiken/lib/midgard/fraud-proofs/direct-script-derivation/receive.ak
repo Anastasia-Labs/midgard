@@ -192,7 +192,7 @@ pub fn advance_outputs_v1(
   expect !state.complete
   expect state.cursor.field_index == outputs_field_index
   expect !list.is_empty(witnesses)
-  let Pair(view, position) = cursor.resume_at_v1(
+  let Pair(view, position) = cursor.resume_body_at_v1(
     state.cursor,
     outputs_field_index,
     field_opening,

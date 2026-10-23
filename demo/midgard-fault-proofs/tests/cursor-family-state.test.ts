@@ -6,6 +6,8 @@ import { describe, expect, it } from "vitest";
 import { CURSOR_FAMILY_SPECS } from "../src/workflow/cursor-family-spec.js";
 import {
   cursorFamilyObservation,
+  type CursorFamilySpec,
+  type CursorFamilyStep,
   reconcileCursorFamilyAction,
 } from "../src/workflow/cursor-family-state.js";
 import { THIRTEEN_STEP_CURSOR_SPEC } from "./support/thirteen-step-cursor-spec.js";
@@ -290,6 +292,93 @@ describe("production cursor-family authenticated state V1", () => {
     });
   });
 
+  it("drives a 39-step chain to its last step and refuses a 40th", async () => {
+    const linear = (stepCount: number): CursorFamilySpec =>
+      ({
+        category: "missingRedeemer",
+        stepCount,
+        successors: Object.fromEntries(
+          Array.from({ length: stepCount }, (_, index) => [
+            index + 1,
+            index + 1 === stepCount ? ["proof_token"] : [index + 2],
+          ]),
+        ),
+      }) as CursorFamilySpec;
+    const longest = linear(39);
+    const at = (ordinal: number, ref: string) => ({
+      kind: "step" as const,
+      step: ordinal as CursorFamilyStep,
+      threadOutRef: ref,
+      stateQueueBlockOutRef: outRef("10"),
+    });
+    const observe = (ordinal: number, ref: string) =>
+      cursorFamilyObservation({
+        spec: longest,
+        headerHash,
+        provenance,
+        stage: at(ordinal, ref),
+      });
+    const step38 = observe(38, outRef("38"));
+    if (step38.kind !== "action_required") throw new Error("missing action");
+    await expect(
+      reconcileCursorFamilyAction({
+        spec: longest,
+        headerHash,
+        action: step38.action,
+        txHash: hash("39"),
+        provenance,
+        stage: at(39, `${hash("39")}#0`),
+        transactionConfirmed: async () => true,
+      }),
+    ).resolves.toEqual({ kind: "confirmed", txHash: hash("39") });
+    const step39 = observe(39, outRef("39"));
+    expect(step39).toMatchObject({
+      kind: "action_required",
+      action: { input: { stage: "step_39", ordinal: 39 } },
+    });
+    if (step39.kind !== "action_required") throw new Error("missing action");
+    await expect(
+      reconcileCursorFamilyAction({
+        spec: longest,
+        headerHash,
+        action: step39.action,
+        txHash: hash("3a"),
+        provenance,
+        stage: {
+          kind: "proof_token",
+          fraudProofOutRef: `${hash("3a")}#0`,
+          stateQueueBlockOutRef: outRef("10"),
+          nextRemovalOutRef: outRef("55"),
+        },
+        transactionConfirmed: async () => true,
+      }),
+    ).resolves.toEqual({ kind: "confirmed", txHash: hash("3a") });
+    expect(() =>
+      cursorFamilyObservation({
+        spec: linear(40),
+        headerHash,
+        provenance,
+        stage: at(1, outRef("11")),
+      }),
+    ).toThrow("invalid step count");
+    const beyond = {
+      ...step39.action,
+      actionId: `step_40:${outRef("39")}:${outRef("10")}`,
+      input: { ...step39.action.input, stage: "step_40", ordinal: 40 },
+    };
+    await expect(
+      reconcileCursorFamilyAction({
+        spec: longest,
+        headerHash,
+        action: beyond,
+        txHash: hash("3b"),
+        provenance,
+        stage: at(39, `${hash("3b")}#0`),
+        transactionConfirmed: async () => true,
+      }),
+    ).rejects.toThrow("unknown stage");
+  });
+
   it("rejects skipped, substituted, and unauthenticated successors", async () => {
     const action = actionFor(4, outRef("40"));
     await expect(
@@ -338,6 +427,7 @@ describe("production cursor-family authenticated state V1", () => {
       "withdrawalMistag",
       "valueNotPreserved",
       "mintAuthorization",
+      "missingRedeemer",
     ]);
     for (const candidate of Object.values(CURSOR_FAMILY_SPECS)) {
       expect(Object.isFrozen(candidate)).toBe(true);
