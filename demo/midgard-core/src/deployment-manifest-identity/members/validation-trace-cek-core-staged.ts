@@ -53,7 +53,30 @@ const validationTraceCekCoreStagedFailureMembers = defineDeploymentFamily(
   },
 );
 
+const stagedFailure =
+  validationTraceCekCoreStagedFailureMembers.validationTraceDisputeCekCoreStagedFailure;
+
+/** byteStringToInteger over a staged input (index 9), placed directly after
+ * the staged failure member. */
+const validationTraceCekCoreStagedConversionMembers = defineDeploymentFamily(
+  "validationTraceDispute",
+  {
+    validationTraceDisputeCekCoreStagedConversion: {
+      purpose: "spend",
+      referenceRole: "V1 validation-trace CEK core staged conversion",
+      manifestPosition: stagedFailure.manifestPosition + 1,
+      publicationPosition: stagedFailure.publicationPosition + 1,
+      referenceRolePosition: stagedFailure.referenceRolePosition + 1,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/validation_trace/cek_core_staged_conversion.main.spend",
+      familyPaths: [["cekCoreStages", "stagedConversion"]],
+    },
+  },
+);
+
 export const validationTraceCekCoreStagedMembers = Object.freeze({
   ...validationTraceCekCoreStagedOperandMembers,
   ...validationTraceCekCoreStagedFailureMembers,
+  ...validationTraceCekCoreStagedConversionMembers,
 });

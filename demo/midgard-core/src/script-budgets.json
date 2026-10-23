@@ -1746,6 +1746,22 @@
         "mem": 752674,
         "cpu": 299326752
       }
+    },
+    "fraud_proofs/validation_trace/cek_core_staged_conversion.test/staged_conversion_big_endian_at_the_argument_bound - staged_conversion_big_endian_fixture_only_at_the_argument_bound": {
+      "test": "fraud_proofs/validation_trace/cek_core_staged_conversion.test/staged_conversion_big_endian_at_the_argument_bound",
+      "minusControl": "staged_conversion_big_endian_fixture_only_at_the_argument_bound",
+      "ceiling": {
+        "mem": 8304706,
+        "cpu": 3505785059
+      }
+    },
+    "fraud_proofs/validation_trace/cek_core_staged_conversion.test/staged_conversion_little_endian_at_the_argument_bound - staged_conversion_little_endian_fixture_only_at_the_argument_bound": {
+      "test": "fraud_proofs/validation_trace/cek_core_staged_conversion.test/staged_conversion_little_endian_at_the_argument_bound",
+      "minusControl": "staged_conversion_little_endian_fixture_only_at_the_argument_bound",
+      "ceiling": {
+        "mem": 8282991,
+        "cpu": 3491756229
+      }
     }
   },
   "growth": {

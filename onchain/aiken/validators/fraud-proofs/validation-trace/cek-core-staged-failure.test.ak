@@ -27,10 +27,10 @@ use midgard/cek_staged_integer_cbor_v1.{
 use midgard/cek_staged_integer_v1.{CanonicalIntegerV1, magnitude_words_v1}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/cek_staged_fixture_v1.{
-  StagedStepV1, StagingV1, bytes_value, charged_failure_step, compact,
-  failure_step, failure_step_at, integer_value, material, no_staging, pattern,
-  power_of_two, semantic_integer_cbor, semantic_pieces, stage, staged, text,
-  zeros,
+  StagedStepV1, StagingV1, boolean_value, bytes_value, charged_failure_step,
+  compact, failure_step, failure_step_at, integer_value, material, no_staging,
+  pattern, power_of_two, semantic_integer_cbor, semantic_pieces, stage, staged,
+  text, zeros,
 }
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 
@@ -1117,12 +1117,13 @@ test refuses_a_charged_post_on_the_material_route() fail {
   roots_route_charging(45, [integer_value(1)], False, 1)
 }
 
-// ## Signatures
+// ## Signatures and byteStringToInteger
 //
 // verifyEd25519Signature and verifySchnorrSecp256k1Signature bound only their
 // message, and fail on it before costing. A key or signature of the wrong
 // length (or, for BIP-340, a key off the curve) beside a message in bound
 // fails after costing, whatever the key's or signature's size.
+// byteStringToInteger bounds its input.
 
 /// The arguments of signature builtin `tag` of a key, message and signature.
 fn signature_arguments(
@@ -1187,6 +1188,17 @@ test refuses_a_key_or_signature_past_65536_bytes_as_a_bound_failure() {
           [bytes_value(zeros(32), False), small_bytes(), past_bound_bytes()],
         ),
       } })
+}
+
+test proves_byte_string_to_integer_fails_on_an_input_past_65536_bytes() {
+  and {
+    fails_on_arguments(74, [boolean_value(True), past_bound_bytes()]),
+    fails_on_arguments(74, [boolean_value(False), past_bound_bytes()]),
+  }
+}
+
+test refuses_byte_string_to_integer_at_65536_bytes() {
+  !decides_on_arguments(74, [boolean_value(False), at_bound_bytes()])
 }
 
 /// Spends the staged failure hop for signature builtin `tag` over `key`,
@@ -1419,6 +1431,24 @@ test refuses_a_charged_ecdsa_step() fail {
   )
 }
 
+test refuses_a_charged_byte_string_to_integer_step() fail {
+  let arguments = list.map(
+    [boolean_value(False), bytes_value(#"01", False)],
+    compact,
+  )
+  let budget = cek_builtin_v1.direct_builtin_budget_v1(74, arguments)
+  spend(
+    charged_failure_step(
+      74,
+      arguments,
+      material(no_staging(), [bytes_leaf(#"01"), bytes_leaf(#"01")]),
+      [],
+      budget.cpu,
+      budget.memory,
+    ),
+  )
+}
+
 test refuses_a_charged_step_on_a_message_of_another_type() fail {
   let arguments = list.map(
     [
@@ -1475,12 +1505,15 @@ test proves_a_malformed_key_beside_an_inline_message_with_one_charge() {
   )
 }
 
-test routes_schnorr_to_the_staged_failure_hop() {
-  roots_route(
-    53,
-    signature_arguments(on_curve_key(), past_bound_bytes(), zeros(64)),
-    True,
-  )
+test routes_schnorr_and_byte_string_to_integer_to_the_staged_failure_hop() {
+  and {
+    roots_route(
+      53,
+      signature_arguments(on_curve_key(), past_bound_bytes(), zeros(64)),
+      True,
+    ),
+    roots_route(74, [boolean_value(True), past_bound_bytes()], True),
+  }
 }
 
 test does_not_route_schnorr_to_the_material_hop() fail {
@@ -1489,6 +1522,10 @@ test does_not_route_schnorr_to_the_material_hop() fail {
     signature_arguments(on_curve_key(), past_bound_bytes(), zeros(64)),
     False,
   )
+}
+
+test does_not_route_byte_string_to_integer_to_the_material_hop() fail {
+  roots_route(74, [boolean_value(True), past_bound_bytes()], False)
 }
 
 test leaves_a_charged_signature_post_on_the_staged_route() {

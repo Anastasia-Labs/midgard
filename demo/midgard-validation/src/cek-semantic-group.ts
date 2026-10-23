@@ -17,5 +17,6 @@ export const midgardCekSemanticGroup = (tag: bigint): number | null => {
   if ((t >= 10 && t <= 25) || t === 53 || t === 71 || t === 72 || t === 86) {
     return 7;
   }
+  if (t === 74) return 9;
   return null;
 };

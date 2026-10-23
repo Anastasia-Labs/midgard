@@ -797,7 +797,7 @@ fn routes_to(tag: Int, arguments: List<ValueWitnessV1>, index: Int) -> Bool {
   let step = budget_step(tag, arguments, boolean_value(True))
   budget.main.spend(
     list.map(
-      list.range(0, 8),
+      list.range(0, 9),
       fn(i) {
         if i == index {
           fixture.next_step_script_hash

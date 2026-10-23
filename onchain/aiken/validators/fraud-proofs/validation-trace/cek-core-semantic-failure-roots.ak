@@ -51,16 +51,17 @@ validator main(
             count,
             root,
           )
-        // The byte-string, string, signature and integer builtins fail on
-        // their arguments' bounds or content at the staged failure hop, which
-        // checks the post-state since some of its failures are charged; the
-        // Data builtins on their material at the material hop, before
-        // costing.
+        // The byte-string, string, signature and integer builtins and
+        // byteStringToInteger fail on their arguments' bounds or content at
+        // the staged failure hop, which checks the post-state since some of
+        // its failures are charged; the Data builtins on their material at
+        // the material hop, before costing.
         let to_staged = or {
           tag < 26,
           tag == 53,
           tag == 71,
           tag == 72,
+          tag == 74,
           tag == 86,
         }
         expect or {

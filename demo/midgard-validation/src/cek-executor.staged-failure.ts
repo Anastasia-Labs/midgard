@@ -14,7 +14,9 @@
  *   compacted to its leaf;
  * - a signature builtin's message past its bound, and its malformed key or
  *   signature beside a message in bound (charged), go to the staged failure
- *   hop, the lengths read from the leaves.
+ *   hop, the lengths read from the leaves;
+ * - byteStringToInteger's input past its bound goes to the staged failure
+ *   hop.
  */
 import { MIDGARD_CEK_STAGED_CHUNK_BYTES } from "@al-ft/midgard-core";
 import { CEKConst } from "@harmoniclabs/plutus-machine";
@@ -184,6 +186,12 @@ const classify = (
         ? { kind: "inline", bytes: keyBytes }
         : key!.leaf;
     return staged([keySource, message!.leaf, signature!.leaf], true);
+  }
+  if (number === 74) {
+    // The operands are the input alone; only its bound fails here.
+    return operands[0]!.bytes.length > MAX_BOUNDED_BYTES
+      ? staged([], false)
+      : null;
   }
   const [byteOperands, integerOperands] = scalarOperands(number, operands);
   if (

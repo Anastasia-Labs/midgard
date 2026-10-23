@@ -1,5 +1,5 @@
 /**
- * The staged semantic arms (arm 31, semantics groups 7 and 8): the
+ * The staged semantic arms (arm 31, semantics groups 7, 8 and 9): the
  * TypeScript twin of `cek_staged_arm_v1`.
  *
  * Every argument and the result are compared in the compacted form the roots
@@ -45,11 +45,12 @@ import type {
 
 /**
  * The builtins the staged arms prove: addInteger, subtractInteger,
- * equalsInteger, lessThanInteger, lessThanEqualsInteger and the byte-string,
- * string and signature builtins of semantics group 7.
+ * equalsInteger, lessThanInteger, lessThanEqualsInteger, the byte-string,
+ * string and signature builtins of semantics group 7 and byteStringToInteger.
  */
 export const midgardCekStagedBuiltinProves = (tag: bigint): boolean =>
   midgardCekSemanticGroup(tag) === 7 ||
+  tag === 74n ||
   tag === 0n ||
   tag === 1n ||
   (tag >= 7n && tag <= 9n);
@@ -361,6 +362,50 @@ const verifyInteger = (inputs: ArmInputs): boolean => {
   return sameCompacted(inputs.result, compactValue(result));
 };
 
+/**
+ * byteStringToInteger over an input of at most 65,536 bytes, bound inline or
+ * from staging outputs by the material's one source; the endianness is the
+ * committed Boolean.
+ */
+const verifyConversion = (
+  arguments_: readonly MidgardCekDirectValueWitness[],
+  result: MidgardCekDirectValueWitness,
+  material: MidgardCekStagedBuiltinMaterial,
+  referenceInputs: readonly MidgardCekStagedReferenceInput[],
+): boolean => {
+  const [endianness, input] = arguments_.map(compact);
+  if (arguments_.length !== 2 || material.sources.length !== 1) return false;
+  const bigEndian = sameCompacted(
+    endianness!,
+    compactValue(CEKConst.bool(true)),
+  );
+  if (
+    !bigEndian &&
+    !sameCompacted(endianness!, compactValue(CEKConst.bool(false)))
+  ) {
+    return false;
+  }
+  const inputs: ArmInputs = {
+    tag: 74,
+    arguments: [],
+    result: compact(result),
+    runs: collectMidgardCekStagedRuns(referenceInputs, material.runs.refs),
+    operands: material.runs.operands,
+  };
+  const bound = bindBytes(inputs, [input!, material.sources[0]!], false, true);
+  if (bound.bytes === null) return false;
+  // The bound bytes are a fresh copy, which the reference builtin may reverse
+  // in place.
+  const evaluated = evaluateMidgardCekBuiltinOnValues(74, [
+    CEKConst.bool(bigEndian),
+    CEKConst.byteString(bound.bytes),
+  ]);
+  return (
+    evaluated !== "failure" &&
+    sameCompacted(inputs.result, compactValue(evaluated))
+  );
+};
+
 /** A plain constant of the staged builtins' types. */
 export type MidgardCekStagedConstant =
   | { readonly type: "integer"; readonly value: bigint }
@@ -418,6 +463,9 @@ export const verifyMidgardCekStagedBuiltin = (
 ): boolean => {
   try {
     const group = midgardCekSemanticGroup(tag);
+    if (group === 9) {
+      return verifyConversion(arguments_, result, material, referenceInputs);
+    }
     if (group !== 7 && group !== 8) return false;
     const compacted = arguments_.map(compact);
     if (compacted.length !== material.sources.length) return false;

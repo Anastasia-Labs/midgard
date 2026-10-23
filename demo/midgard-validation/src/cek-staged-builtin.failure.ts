@@ -20,8 +20,8 @@
  * - decodeUtf8 of bytes whose prefix up to the material's trailing value
  *   decodes and whose next character, as long as its first byte says, does
  *   not;
- * - verifyEd25519Signature's or verifySchnorrSecp256k1Signature's message
- *   of more than 8,192 words.
+ * - verifyEd25519Signature's or verifySchnorrSecp256k1Signature's message,
+ *   or byteStringToInteger's input, of more than 8,192 words.
  *
  * Only compacted arguments are read: a revealed constant is past no bound.
  *
@@ -221,8 +221,9 @@ export const verifyMidgardCekStagedBuiltinFailure = (
           integerPastRange(arguments_, material, referenceInputs))
       );
     }
-    if (tag === 21n || tag === 53n) {
-      // The signature builtins bound only their message, the second argument.
+    if (tag === 21n || tag === 53n || tag === 74n) {
+      // The signature builtins bound only their message, and
+      // byteStringToInteger its input: both the second argument.
       const bounded = arguments_[1] ?? refuse("argument count");
       return memoryPast(bounded, MAX_BOUNDED_BYTES_WORDS);
     }

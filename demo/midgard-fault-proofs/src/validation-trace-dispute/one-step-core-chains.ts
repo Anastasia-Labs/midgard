@@ -24,8 +24,9 @@
  * Staging hook (arm 31). The staged route a semantic builtin's oversize
  * operands take (C12-B1) runs this same chain, its semantic stage picked by
  * `midgardCekSemanticGroup` as for any semantic builtin (the staged stages
- * extend `CEK_CORE_SEMANTIC_STAGES`, and the group also picks how the arm-31
- * material decodes); what it adds is one move before the binder, the staging
+ * extend `CEK_CORE_SEMANTIC_STAGES` as `cekCoreStagedSemanticStage`, and the
+ * group also picks how the arm-31 material decodes); what it adds is one
+ * move before the binder, the staging
  * of the operands, whose out-refs fill the `StagedMaterialV1` the arm witness
  * carries. The driver then waits for the staged outputs' confirmation depth,
  * pins them before the binder, keeps the pins with the journal, releases
@@ -62,7 +63,36 @@ const STAGED_FAILURE_STAGE = "stagedFailure" as const;
 
 /** Whether group 7's roots route builtin `tag` to the staged failure hop. */
 const stagedFailureTag = (tag: bigint): boolean =>
-  tag < 26n || tag === 71n || tag === 72n || tag === 86n;
+  tag < 26n ||
+  tag === 53n ||
+  tag === 71n ||
+  tag === 72n ||
+  tag === 74n ||
+  tag === 86n;
+
+/** The staged semantic stage of each staged `semantic_group(tag)`, the
+ * groups past `CEK_CORE_SEMANTIC_STAGES` (cek-semantic-chain): the
+ * byte-string, string and signature builtins (7), the linear integer
+ * builtins (8) and byteStringToInteger (9). */
+export const CEK_CORE_STAGED_SEMANTIC_STAGES = Object.freeze({
+  7: "stagedBytes",
+  8: "stagedInteger",
+  9: "stagedConversion",
+} as const);
+
+export type CekCoreStagedSemanticStage =
+  (typeof CEK_CORE_STAGED_SEMANTIC_STAGES)[keyof typeof CEK_CORE_STAGED_SEMANTIC_STAGES];
+
+/** Staging hook (arm 31): the staged stage the budget hop routes semantic
+ * builtin `tag` to on the staged route, or null for a tag without one. */
+export const cekCoreStagedSemanticStage = (
+  tag: bigint,
+): CekCoreStagedSemanticStage | null => {
+  const group = midgardCekSemanticGroup(tag);
+  return group === 7 || group === 8 || group === 9
+    ? CEK_CORE_STAGED_SEMANTIC_STAGES[group]
+    : null;
+};
 
 /** Each core group's arm holders before its semantic stage, in order. */
 const CHAINS = Object.freeze({

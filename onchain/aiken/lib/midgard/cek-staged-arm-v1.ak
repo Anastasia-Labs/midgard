@@ -1,7 +1,7 @@
 //// The staged semantic arms: byte-string, string, signature and integer
-//// builtins whose operands are bound to their committed leaves through bytes
-//// the material reveals inline or reads from staging outputs among the
-//// transaction's reference inputs.
+//// builtins and byteStringToInteger, whose operands are bound to their
+//// committed leaves through bytes the material reveals inline or reads from
+//// staging outputs among the transaction's reference inputs.
 ////
 //// Every argument and the result are checked in the compacted form the roots
 //// hop committed (a type, a Data summary of the payload and a constant-level
@@ -44,12 +44,12 @@ use midgard/cek_staged_blob_v1.{
 }
 use midgard/cek_staged_integer_cbor_v1.{
   compare_canonical_integers_v1, encode_integer_cbor_bulk_v1,
-  parse_integer_cbor_bulk_v1,
+  encode_integer_cbor_pieces_v1, parse_integer_cbor_bulk_v1,
 }
 use midgard/cek_staged_integer_v1.{
   CanonicalIntegerV1, SignedLimbsV1, add_signed_v1, from_limbs_v1,
-  integer_leaf_from_cbor_v1, magnitude_words_v1, signed_limbs_v1, sub_limbs_v1,
-  subtract_signed_v1,
+  integer_leaf_from_cbor_v1, limb_bytes, magnitude_words_v1, signed_limbs_v1,
+  sub_limbs_v1, subtract_signed_v1, to_limbs_v1,
 }
 
 pub type OperandSourceV1 {
@@ -361,6 +361,80 @@ pub fn verify_staged_bytes_v1(
   }
 }
 
+/// byteStringToInteger (74) over an input of at most 65,536 bytes, bound
+/// inline or from staging outputs by the material's one source. The input is
+/// read in limbs of 512 bytes, from the end for big-endian input and from the
+/// start for little-endian (the endianness is the committed Boolean), and the
+/// result must be the non-negative integer those limbs make.
+pub fn verify_staged_conversion_v1(
+  bound: chain.CoreBound,
+  witness: Data,
+  reference_inputs: List<Input>,
+) -> Bool {
+  let raw = chain.decode_builtin_success(bound.arm, witness)
+  expect facts: chain.SemanticRoots = bound.facts
+  expect material: StagedMaterialV1 = raw.material
+  expect [endianness, input] = facts.arguments
+  expect [source] = material.sources
+  // The input's bound is not checked here: the limbs are read by slicing the
+  // whole input, which protocol version 11 refuses past 65,536 bytes.
+  let operand = bind_bytes_v1(
+    failure_inputs_v1(material, reference_inputs),
+    Pair(input, source),
+    False,
+    False,
+  )
+  expect Some(pieces) = operand.pieces
+  let bytes = concat_balanced_v1(pieces)
+  let canonical = CanonicalIntegerV1 {
+    negative: False,
+    argument: from_limbs_v1(
+      if endianness == true_result {
+        to_limbs_v1(bytes)
+      } else {
+        expect endianness == false_result
+        little_endian_limbs_v1(bytes, 0, operand.length)
+      },
+    ),
+  }
+  // The result's CBOR can be longer than one byte string, so it is rooted
+  // from its pieces.
+  let pieces = encode_integer_cbor_pieces_v1(canonical)
+  let words = magnitude_words_v1(canonical)
+  facts.result == SemanticConstantValue {
+    type_cbor: integer_type_cbor,
+    payload: integer_leaf_from_cbor_v1(
+      flat_root_of_pieces_v1(pieces),
+      list.foldl(
+        pieces,
+        0,
+        fn(piece, total) { total + builtin.length_of_bytearray(piece) },
+      ),
+      words,
+    ),
+    memory: words,
+  }
+}
+
+/// The limbs of little-endian `bytes` from `start`, least significant first.
+fn little_endian_limbs_v1(
+  bytes: ByteArray,
+  start: Int,
+  length: Int,
+) -> List<Int> {
+  if start < length {
+    [
+      builtin.bytearray_to_integer(
+        False,
+        builtin.slice_bytearray(start, limb_bytes, bytes),
+      ),
+      ..little_endian_limbs_v1(bytes, start + limb_bytes, length)
+    ]
+  } else {
+    []
+  }
+}
+
 /// An integer operand: its committed leaf's root, and its canonical CBOR read
 /// when its source reveals it.
 fn bind_integer_v1(
@@ -534,7 +608,8 @@ fn failure_inputs_v1(
 ///   revealed CBOR is outside [-2^262143, 2^262143 - 1];
 /// - a byte-string argument of a bounded builtin of more than 8,192 words
 ///   (more than 65,536 bytes), which for verifyEd25519Signature and
-///   verifySchnorrSecp256k1Signature is the message alone;
+///   verifySchnorrSecp256k1Signature is the message alone and for
+///   byteStringToInteger the input;
 /// - consByteString's byte, sliceByteString's start or length, or
 ///   indexByteString's index of more than one word (at least 2^64 in
 ///   magnitude, so neither a byte nor a machine integer);
@@ -590,8 +665,9 @@ pub fn verify_staged_failure_v1(
         not_utf8_v1(arguments, material, reference_inputs),
       },
     }
-  } else if tag == 21 || tag == 53 {
-    // The signature builtins bound only their message, the second argument.
+  } else if tag == 21 || tag == 53 || tag == 74 {
+    // The signature builtins bound only their message, and
+    // byteStringToInteger its input: both the second argument.
     expect Some(bounded) = list.at(arguments, 1)
     memory_past_v1(bounded, max_bounded_bytes_words)
   } else {

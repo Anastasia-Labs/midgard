@@ -178,6 +178,9 @@ pub fn semantic_group(tag: Int) -> Int {
   } {
     // The byte-string, string and signature builtins over staged operands.
     7
+  } else if tag == 74 {
+    // byteStringToInteger over a staged input.
+    9
   } else {
     fail
   }

@@ -1,7 +1,8 @@
 /**
- * The staged route of the scalar builtins (arm 31, semantics groups 7 and 8):
- * a byte-string, string or linear integer builtin whose arguments or result
- * do not fit the direct carriage bound.
+ * The staged route of the scalar builtins (arm 31, semantics groups 7, 8 and
+ * 9): a byte-string, string, signature or linear integer builtin, or
+ * byteStringToInteger, whose arguments or result do not fit the direct
+ * carriage bound.
  *
  * The step is a pure function of the execution graph: each argument gets one
  * typed source (its bytes inline, a staged operand by index, its leaf
@@ -51,7 +52,9 @@ import {
   stageMidgardCekStagedBuiltinMaterial,
 } from "./cek-staged-builtin.material.js";
 import {
+  compactValue,
   midgardCekStagedBuiltinProves,
+  sameCompacted,
   verifyMidgardCekStagedBuiltin,
 } from "./cek-staged-builtin.verify.js";
 import { plutusDataFromCborIterative } from "./plutus-data-iterative.decode.js";
@@ -124,6 +127,22 @@ const operandOf = (
   throw new Error("CEK staged builtin argument is not a scalar constant");
 };
 
+/** byteStringToInteger's endianness argument. */
+const endianness = (argument: MidgardCekDirectValueWitness): CEKConst => {
+  const committed = semanticizeMidgardCekDirectConstant(argument);
+  const constant = [true, false]
+    .map((value) => CEKConst.bool(value))
+    .find(
+      (value) =>
+        committed.kind === "semanticConstant" &&
+        sameCompacted(committed.witness, compactValue(value)),
+    );
+  if (constant === undefined) {
+    throw new Error("CEK staged conversion endianness is not a Boolean");
+  }
+  return constant;
+};
+
 /** Whether the staged arm binds every argument of `tag` by its leaf alone. */
 const leafOnly = (tag: number): boolean =>
   tag === 7 || tag === 13 || tag === 15 || tag === 23 || tag === 24;
@@ -152,17 +171,28 @@ export const executeMidgardCekStagedBuiltin = (
     }
   | ({ readonly kind: "failure" } & MidgardCekStagedFailure) => {
   const group = midgardCekSemanticGroup(tag);
-  if (group !== 7 && group !== 8) {
+  if (group !== 7 && group !== 8 && group !== 9) {
     throw new Error("CEK staged builtin has no staged semantics group");
   }
-  const operands = arguments_.map((argument, index) =>
-    operandOf(store, roots[index]!, argument),
-  );
-  const evaluate = () =>
-    evaluateMidgardCekBuiltinOnValues(
-      Number(tag),
-      operands.map((operand) => operand.value),
+  // byteStringToInteger's endianness is a committed Boolean, not an operand:
+  // its one operand is the input.
+  const conversion = group === 9;
+  const operands = arguments_
+    .slice(conversion ? 1 : 0)
+    .map((argument, index) =>
+      operandOf(store, roots[conversion ? index + 1 : index]!, argument),
     );
+  // The reference byteStringToInteger reverses a little-endian input in
+  // place, so each evaluation reads a copy of it.
+  const values = () =>
+    conversion
+      ? [
+          endianness(arguments_[0]!),
+          CEKConst.byteString(Buffer.from(operands[0]!.bytes)),
+        ]
+      : operands.map((operand) => operand.value);
+  const evaluate = () =>
+    evaluateMidgardCekBuiltinOnValues(Number(tag), values());
   const failure = midgardCekStagedFailure(
     tag,
     arguments_,
