@@ -46,9 +46,9 @@ use midgard/cek_staged_integer_cbor_v1.{
   parse_integer_cbor_bulk_v1,
 }
 use midgard/cek_staged_integer_v1.{
-  CanonicalIntegerV1, SignedLimbsV1, add_signed_v1, cmp_magnitude_v1,
-  from_limbs_v1, integer_leaf_from_cbor_v1, magnitude_words_v1,
-  multiply_signed_v1, signed_limbs_v1, sub_limbs_v1, subtract_signed_v1,
+  CanonicalIntegerV1, SignedLimbsV1, add_signed_v1, from_limbs_v1,
+  integer_leaf_from_cbor_v1, magnitude_words_v1, signed_limbs_v1, sub_limbs_v1,
+  subtract_signed_v1,
 }
 
 pub type OperandSourceV1 {
@@ -76,7 +76,7 @@ const max_bounded_integer_argument_bytes = 32768
 
 // The type CBOR `decode_constant_type_v1` accepts is canonical, so a type is
 // recognised by comparing its CBOR with that type's one encoding.
-const integer_type_cbor =
+pub const integer_type_cbor =
   cek_constant_v1.encode_constant_type_v1(cek_constant_v1.IntegerConstant)
 
 const bytes_type_cbor =
@@ -142,7 +142,7 @@ type BoundBytesV1 {
   pieces: Option<List<ByteArray>>,
 }
 
-type ArmInputsV1 {
+pub type ArmInputsV1 {
   tag: Int,
   arguments: List<Pair<ValueWitnessV1, OperandSourceV1>>,
   result: ValueWitnessV1,
@@ -342,7 +342,7 @@ pub fn verify_staged_bytes_v1(
 
 /// An integer operand: its committed leaf's root, and its canonical CBOR read
 /// when its source reveals it.
-fn bind_integer_v1(
+pub fn bind_integer_v1(
   inputs: ArmInputsV1,
   argument: Pair<ValueWitnessV1, OperandSourceV1>,
   bounded: Bool,
@@ -465,94 +465,6 @@ pub fn verify_staged_integer_v1(
           subtract_signed_v1(left_limbs, right_limbs)
         },
       )
-    }
-  }
-}
-
-/// The canonical CBOR an inline or staged source reveals.
-fn source_cbor_v1(inputs: ArmInputsV1, source: OperandSourceV1) -> ByteArray {
-  when source is {
-    InlineOperand { bytes } -> bytes
-    StagedOperand { operand } -> {
-      let Pair(_, chunks) = staged_operand_v1(inputs, operand)
-      concat_balanced_v1(chunks)
-    }
-    _ -> fail
-  }
-}
-
-/// multiplyInteger and the division builtins (divideInteger, quotientInteger,
-/// remainderInteger, modInteger) over staged operands.
-///
-/// A division's material carries one source more than its arguments: the
-/// quotient q, as canonical CBOR. The remainder r = a - q * b is computed, and
-/// the step holds when |r| < |b| and r is zero or has the sign of the dividend
-/// (quotientInteger, remainderInteger, which truncate) or of the divisor
-/// (divideInteger, modInteger, which floor). Those two conditions admit exactly
-/// one (q, r) for a non-zero divisor, and none for a zero one. The result is q
-/// for divideInteger and quotientInteger, whose result binds q's CBOR, and r
-/// for the other two. Both arguments are bounded; q, r and the result are not.
-pub fn verify_staged_product_v1(
-  bound: chain.CoreBound,
-  witness: Data,
-  reference_inputs: List<Input>,
-) -> Bool {
-  let raw = chain.decode_builtin_success(bound.arm, witness)
-  expect facts: chain.SemanticRoots = bound.facts
-  expect material: StagedMaterialV1 = raw.material
-  let tag = raw.tag
-  expect [left_value, right_value] = facts.arguments
-  expect [left_source, right_source, ..quotient] = material.sources
-  let left_argument = Pair(left_value, left_source)
-  let right_argument = Pair(right_value, right_source)
-  let inputs = ArmInputsV1 {
-    tag,
-    arguments: [left_argument, right_argument],
-    result: facts.result,
-    runs: collect_runs_v1(reference_inputs, material.runs.refs),
-    operands: material.runs.operands,
-  }
-  let Pair(_, left) = bind_integer_v1(inputs, left_argument, True)
-  let Pair(_, right) = bind_integer_v1(inputs, right_argument, True)
-  expect Some(left_integer) = left
-  expect Some(right_integer) = right
-  let dividend = signed_limbs_v1(left_integer)
-  let divisor = signed_limbs_v1(right_integer)
-  if tag == 2 {
-    expect [] = quotient
-    result_is_integer_v1(inputs.result, multiply_signed_v1(dividend, divisor))
-  } else {
-    expect [quotient_source] = quotient
-    let quotient_integer = if tag == 3 || tag == 4 {
-      let Pair(_, bound_quotient) = bind_integer_v1(
-        inputs,
-        Pair(inputs.result, quotient_source),
-        False,
-      )
-      expect Some(integer) = bound_quotient
-      integer
-    } else {
-      expect tag == 5 || tag == 6
-      parse_integer_cbor_bulk_v1(source_cbor_v1(inputs, quotient_source))
-    }
-    let remainder = subtract_signed_v1(
-      dividend,
-      multiply_signed_v1(signed_limbs_v1(quotient_integer), divisor),
-    )
-    and {
-      cmp_magnitude_v1(remainder.magnitude, divisor.magnitude) == Less,
-      or {
-        remainder.magnitude == [],
-        remainder.negative == if tag == 4 || tag == 5 {
-          dividend.negative
-        } else {
-          divisor.negative
-        },
-      },
-      or {
-        tag <= 4,
-        result_is_integer_v1(inputs.result, remainder),
-      },
     }
   }
 }

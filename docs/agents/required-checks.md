@@ -857,6 +857,7 @@ Golden channel cek-staged-arm-v1 (@al-ft/midgard-validation).
   - `demo/midgard-validation/tests/fixtures/cek-staged-arm-v1.generated.json`
   - `demo/midgard-validation/tests/fixtures/cek-staged-arm-v1.integer-rows.mjs`
   - `demo/midgard-validation/tests/fixtures/cek-staged-arm-v1.kit.mjs`
+  - `demo/midgard-validation/tests/fixtures/cek-staged-arm-v1.product-rows.mjs`
   - `demo/midgard-validation/tests/fixtures/cek-staged-arm-v1.vectors.mjs`
   - `onchain/aiken/validators/fraud-proofs/validation-trace/cek-core-staged-golden.test.ak`
   - `demo/lucid-midgard/src/**`

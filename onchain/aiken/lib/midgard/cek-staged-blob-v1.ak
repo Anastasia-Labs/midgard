@@ -335,6 +335,15 @@ fn gather_runs(
   }
 }
 
+/// The chunks of one operand, in order, without binding them: for an operand
+/// `bind_operand_v1` bound before, from the same runs.
+pub fn operand_chunks_v1(
+  runs: List<List<ByteArray>>,
+  indices: List<Int>,
+) -> List<ByteArray> {
+  gather_runs(runs, indices)
+}
+
 /// Hashes the chunks of a multi-chunk operand: every chunk but the last is
 /// full and the last holds at least one byte.
 fn hash_operand_chunks(chunks: List<ByteArray>) -> Pair<List<ByteArray>, Int> {

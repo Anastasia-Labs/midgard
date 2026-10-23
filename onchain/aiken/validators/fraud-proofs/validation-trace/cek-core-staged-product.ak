@@ -3,7 +3,7 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/cek_machine_v1 as machine
 use midgard/cek_semantic_chain as chain
-use midgard/cek_staged_arm_v1 as staged
+use midgard/cek_staged_product_v1.{advance_product_v1}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel}
 
@@ -13,7 +13,7 @@ validator main(
 ) {
   spend(
     datum: Option<chain.CoreDatum>,
-    redeemer: chain.ArmRedeemer,
+    redeemer: chain.LoopRedeemer,
     own_out_ref: OutputReference,
     tx: Transaction,
   ) {
@@ -33,21 +33,24 @@ validator main(
         expect bound.group == 5
         expect bound.pre.mode == machine.mode_builtin
         expect bound.arm == 31
-        expect
-          staged.verify_staged_product_v1(
-            bound,
-            action.witness,
-            tx.reference_inputs,
-          )
-        chain.continue_core(
+        chain.continue_loop(
           settle_script_hash,
           computation_thread_policy_id,
           step,
           action,
           3,
-          bound.facts,
           own_out_ref,
           tx,
+          fn(inner, from, end) {
+            advance_product_v1(
+              bound.arm,
+              inner,
+              action.witness,
+              tx.reference_inputs,
+              from,
+              end,
+            )
+          },
         )
       }
     }

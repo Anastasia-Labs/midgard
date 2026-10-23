@@ -15,8 +15,8 @@ import {
  * must reach the verdict the row declares, and its witness must hash to the
  * value the generated Aiken module requires of the Aiken-built step. The
  * Aiken half (`cek-core-staged-golden.test.ak`) spends each step through the
- * staged bytes or integer semantics validator and must reach the same
- * verdict. Regenerate both with `pnpm run fixtures:cek-staged-arm-v1:sync`.
+ * staged bytes, integer or product semantics validator and must reach the
+ * same verdict. Regenerate both with `pnpm run fixtures:cek-staged-arm-v1:sync`.
  */
 
 type GoldenRow = {
@@ -42,7 +42,7 @@ describe("cek-staged-arm-v1 golden rows", () => {
     );
   });
 
-  it("covers honest, wrong-result and past-the-bound rows of both groups", () => {
+  it("covers correct, wrong-result and past-the-bound rows of every group", () => {
     const groups = new Set(
       CEK_STAGED_ARM_ROWS.map(
         (row) =>
@@ -54,6 +54,8 @@ describe("cek-staged-arm-v1 golden rows", () => {
       "7:true",
       "8:false",
       "8:true",
+      "9:false",
+      "9:true",
     ]);
   });
 

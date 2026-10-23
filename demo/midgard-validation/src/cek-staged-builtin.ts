@@ -17,3 +17,19 @@ export {
   midgardCekStagedConstantWitness,
   verifyMidgardCekStagedBuiltin,
 } from "./cek-staged-builtin.verify.js";
+export {
+  halveMidgardCekStagedProductHop,
+  MIDGARD_CEK_STAGED_PRODUCT_HOP_BUDGET,
+  MIDGARD_CEK_STAGED_PRODUCT_HOP_MARGIN_PERCENT,
+  MIDGARD_CEK_STAGED_PRODUCT_MAX_HOP_COLUMNS,
+  type MidgardCekExUnits,
+  midgardCekStagedProductHopCost,
+  type MidgardCekStagedProductLoop,
+  midgardCekStagedProductLoop,
+  planMidgardCekStagedProductHop,
+} from "./cek-staged-product.hops.js";
+export {
+  type MidgardCekStagedIntegerReader,
+  midgardCekStagedSourceCount,
+  verifyMidgardCekStagedProduct,
+} from "./cek-staged-product.verify.js";

@@ -1,12 +1,14 @@
 /**
- * The staged route of the scalar builtins (arm 31, semantics groups 7 and 8):
- * a byte-string, string or linear integer builtin whose arguments or result
- * do not fit the direct carriage bound.
+ * The staged route of the scalar builtins (arm 31, semantics groups 7, 8 and
+ * 9): a byte-string, string or integer builtin whose arguments or result do
+ * not fit the direct carriage bound.
  *
  * The step is a pure function of the execution graph: each argument gets one
  * typed source (its bytes inline, a staged operand by index, its leaf
  * preimage, or a small integer's value), and the staged operands' bytes ride
- * with the witness. The material names no staging outputs; the one-step
+ * with the witness. multiplyInteger and the divisions also carry the CBOR
+ * their column loop compares (the result's, the quotient's, or both), and a
+ * step inlines at most two chunks of bytes in all, staging the rest. The material names no staging outputs; the one-step
  * driver stages the operands and fills them in
  * (`stageMidgardCekStagedBuiltinMaterial`) before the binder.
  *
@@ -16,8 +18,10 @@
  * indeterminate rather than given a step no verifier accepts.
  */
 import {
+  encodeMidgardCekCanonicalIntegerCbor,
   MIDGARD_CEK_STAGED_CHUNK_BYTES,
   midgardCekCanonicalIntegerMagnitudeWords,
+  midgardCekCanonicalIntegerOf,
   parseMidgardCekCanonicalIntegerCbor,
 } from "@al-ft/midgard-core";
 import { CEKConst } from "@harmoniclabs/plutus-machine";
@@ -153,7 +157,7 @@ export const executeMidgardCekStagedBuiltin = (
   readonly result: MidgardCekDirectValueWitness;
 } => {
   const group = midgardCekSemanticGroup(tag);
-  if (group !== 7 && group !== 8) {
+  if (group !== 7 && group !== 8 && group !== 9) {
     throw new Error("CEK staged builtin has no staged semantics group");
   }
   const operands = arguments_.map((argument, index) =>
@@ -167,23 +171,47 @@ export const executeMidgardCekStagedBuiltin = (
     throw new Error("CEK staged builtin failure has no staged proof");
   }
   const stagedOperands: Buffer[] = [];
+  let inlined = 0;
+  const carried = (bytes: Buffer): MidgardCekStagedOperandSource => {
+    if (
+      bytes.length <= MIDGARD_CEK_STAGED_CHUNK_BYTES &&
+      inlined + bytes.length <= 2 * MIDGARD_CEK_STAGED_CHUNK_BYTES
+    ) {
+      inlined += bytes.length;
+      return { kind: "inline", bytes };
+    }
+    const known = stagedOperands.findIndex((staged) => staged.equals(bytes));
+    if (known >= 0) return { kind: "staged", operand: known };
+    stagedOperands.push(bytes);
+    return { kind: "staged", operand: stagedOperands.length - 1 };
+  };
   const sources = operands.map(
     (operand, index): MidgardCekStagedOperandSource => {
       if (leafOnly(Number(tag))) return operand.leaf;
       if (smallInteger(Number(tag), index)) {
         return { kind: "smallInteger", value: operand.value.value as bigint };
       }
-      if (operand.bytes.length <= MIDGARD_CEK_STAGED_CHUNK_BYTES) {
-        return { kind: "inline", bytes: operand.bytes };
-      }
-      const known = stagedOperands.findIndex((bytes) =>
-        bytes.equals(operand.bytes),
-      );
-      if (known >= 0) return { kind: "staged", operand: known };
-      stagedOperands.push(operand.bytes);
-      return { kind: "staged", operand: stagedOperands.length - 1 };
+      return carried(operand.bytes);
     },
   );
+  if (group === 9) {
+    const cbor = (value: bigint): Buffer =>
+      encodeMidgardCekCanonicalIntegerCbor(midgardCekCanonicalIntegerOf(value));
+    const [a, b] = operands.map((operand) => operand.value.value as bigint);
+    const result = evaluated.value as bigint;
+    if (tag === 5n || tag === 6n) {
+      // The quotient of the division the remainder rounds as.
+      const quotient = evaluateMidgardCekBuiltinOnValues(tag === 5n ? 4 : 3, [
+        CEKConst.int(a!),
+        CEKConst.int(b!),
+      ]);
+      if (quotient === "failure") {
+        throw new Error("CEK staged builtin failure has no staged proof");
+      }
+      sources.push(carried(cbor(quotient.value as bigint)));
+    }
+    sources.push(carried(cbor(result)));
+  }
   const canonical = encodeMidgardCekCanonicalConstant(
     new UPLCConst(evaluated.type, evaluated.value as never),
   );

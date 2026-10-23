@@ -215,3 +215,99 @@ pub fn map_item(bound: CoreBound, witness: Data) -> BuiltinSuccess {
   expect facts: MapProjection = bound.facts
   BuiltinSuccess { ..raw, arguments: facts.arguments, result: facts.result }
 }
+
+/// A hop of an arm that runs as a loop over several transactions: the arm's
+/// action, and the end of the range of work this hop covers.
+pub type LoopAction {
+  LoopArm { input_index: Int, output_index: Int, witness: Data, end: Int }
+}
+
+pub type LoopRedeemer =
+  ct.StepRedeemer<LoopAction>
+
+/// The facts a `CoreBound` carries while an arm's loop runs: the arm's own
+/// facts (`inner`), where the next hop starts (`cursor`) and the loop's state.
+/// They are constructor 1, so they never read as an arm's facts.
+pub type LoopFacts {
+  inner: Data,
+  cursor: Int,
+  state: Data,
+}
+
+fn loop_facts_data(facts: LoopFacts) -> Data {
+  builtin.constr_data(
+    1,
+    [facts.inner, builtin.i_data(facts.cursor), facts.state],
+  )
+}
+
+fn read_loop_facts(facts: Data) -> Option<LoopFacts> {
+  let Pair(constructor, fields) = builtin.un_constr_data(facts)
+  if constructor == 1 {
+    expect [inner, cursor, state] = fields
+    Some(LoopFacts { inner, cursor: builtin.un_i_data(cursor), state })
+  } else {
+    None
+  }
+}
+
+/// One hop of an arm's loop at `expected_progress`. `advance` is given the
+/// arm's facts, the cursor and state the previous hop left (`None` on the
+/// first hop) and the hop's end. It returns the state after the hop, or
+/// `None` once the loop has finished and every final check holds.
+///
+/// A hop that does not finish re-outputs the bound to the spending script
+/// itself with the progress unchanged and the loop's facts; the hop that
+/// finishes restores the arm's facts and continues to `next_script_hash`
+/// exactly as `continue_core` does.
+pub fn continue_loop(
+  next_script_hash: ScriptHash,
+  computation_thread_policy_id: PolicyId,
+  step: CoreDatum,
+  action: LoopAction,
+  expected_progress: Int,
+  own_out_ref: OutputReference,
+  tx: Transaction,
+  advance: fn(Data, Option<Pair<Int, Data>>, Int) -> Option<Data>,
+) -> Bool {
+  expect Some(bound) = step.data
+  let LoopArm { input_index, output_index, witness, end } = action
+  let Pair(inner, from) = when read_loop_facts(bound.facts) is {
+    Some(facts) -> Pair(facts.inner, Some(Pair(facts.cursor, facts.state)))
+    None -> Pair(bound.facts, None)
+  }
+  let arm = VerifyArm { input_index, output_index, witness }
+  when advance(inner, from, end) is {
+    None ->
+      continue_core(
+        next_script_hash,
+        computation_thread_policy_id,
+        step,
+        arm,
+        expected_progress,
+        inner,
+        own_out_ref,
+        tx,
+      )
+    Some(state) -> {
+      expect bound.progress == expected_progress
+      expect witness_is_bound(bound, witness)
+      let next: Data = CoreBound {
+        ..bound,
+        facts: loop_facts_data(LoopFacts { inner, cursor: end, state }),
+      }
+      continue_validation_trace(
+        computation_thread_policy_id,
+        step,
+        input_index,
+        output_index,
+        own_out_ref,
+        tx,
+        ProverOnly,
+        fn(input_hash, _, _, _, output_hash, output_state) {
+          output_hash == input_hash && output_state == next
+        },
+      )
+    }
+  }
+}

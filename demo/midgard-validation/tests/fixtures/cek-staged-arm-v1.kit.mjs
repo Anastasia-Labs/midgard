@@ -116,6 +116,10 @@ const hashes = {
   86: ripemd160,
 };
 
+/** divideInteger's quotient: rounded toward negative infinity. */
+const floorQuotient = (a, b) =>
+  a % b !== 0n && a < 0n !== b < 0n ? a / b - 1n : a / b;
+
 /** Cardano's result of builtin `tag` over operand values, without bounds. */
 const native = (tag, values) => {
   const [a, b, c] = values;
@@ -147,6 +151,18 @@ const native = (tag, values) => {
   if (hashes[tag])
     return { type: "bytes", bytes: Buffer.from(hashes[tag](a.bytes)) };
   if (tag === 0) return { type: "integer", value: a.value + b.value };
+  if (tag === 2) return { type: "integer", value: a.value * b.value };
+  if (tag === 3) {
+    return { type: "integer", value: floorQuotient(a.value, b.value) };
+  }
+  if (tag === 4) return { type: "integer", value: a.value / b.value };
+  if (tag === 5) return { type: "integer", value: a.value % b.value };
+  if (tag === 6) {
+    return {
+      type: "integer",
+      value: a.value - b.value * floorQuotient(a.value, b.value),
+    };
+  }
   if (tag === 1) return { type: "integer", value: a.value - b.value };
   if (tag === 7) return boolValue(a.value === b.value);
   if (tag === 8) return boolValue(a.value < b.value);
@@ -244,3 +260,49 @@ export const stagedAndInline = (name, accepts, tag, left, right, claim) =>
 export const differ = (value) => ({ ...value, value: !value.value });
 export const claimed = (value) => () => value;
 export const PAST = (spec, tail = "00") => C(spec, H(tail));
+
+/**
+ * multiplyInteger or a division (tags 2 to 6) over a staged `left` and a
+ * staged or inline `right`, carrying the integers its column loop compares
+ * as further staged operands: the product for multiplyInteger, the quotient
+ * for quotientInteger and divideInteger (the result), and the quotient and
+ * the result for remainderInteger and modInteger. The claimed result is the
+ * last of `carried`; an accepted row must carry Cardano's quotient and
+ * result.
+ */
+export const looped = (
+  name,
+  accepts,
+  tag,
+  left,
+  right,
+  carried,
+  inlineRight = false,
+) => {
+  const values = [i(left), i(right)];
+  const result = i(carried.at(-1));
+  if (accepts) {
+    const quotient = native(tag === 5 ? 4 : tag === 6 ? 3 : tag, values);
+    if (
+      result.value !== native(tag, values).value ||
+      (carried.length === 2 && valueOf(carried[0]) !== quotient.value)
+    ) {
+      throw new Error(`${name}: an accepted row carries another integer`);
+    }
+  }
+  const stagedRight = inlineRight ? [] : [I(right)];
+  const first = 1 + stagedRight.length;
+  return Object.freeze({
+    name,
+    accepts,
+    tag,
+    arguments: values,
+    result,
+    staged: [I(left), ...stagedRight, ...carried.map(I)],
+    sources: [
+      staged(0),
+      inlineRight ? inline(I(right)) : staged(1),
+      ...carried.map((_, index) => staged(first + index)),
+    ],
+  });
+};
