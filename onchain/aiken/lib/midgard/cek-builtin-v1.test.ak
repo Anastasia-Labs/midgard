@@ -9,6 +9,7 @@ use midgard/cek_constant_v1
 use midgard/cek_cost_v1
 use midgard/cek_data_v1
 use midgard/cek_proof_v1
+use midgard/fraud_proofs/cek_staged_fixture_v1 as staged_fixture
 
 fn constant(
   type_cbor: ByteArray,
@@ -163,6 +164,56 @@ test quotient_by_zero_failure_charges_before_the_operation_fails() {
       arguments,
     ),
   }
+}
+
+/// A dividend of 10,000 bytes, past the direct carriage bound, presented by
+/// its leaf alone.
+fn dividend_by_its_leaf() -> cek_builtin_v1.ValueWitnessV1 {
+  staged_fixture.integer_value(
+    -builtin.bytearray_to_integer(True, staged_fixture.pattern(10000, 1)),
+  )
+}
+
+fn division_by_zero_of_a_leaf_is_known(tag: Int) -> Bool {
+  let arguments = [dividend_by_its_leaf(), integer(#"00")]
+  expect cek_builtin_v1.SemanticConstantValue { .. } = dividend_by_its_leaf()
+  and {
+    cek_builtin_v1.verify_direct_builtin_failure_v1(
+      tag,
+      builtin_root(tag, arguments),
+      arguments,
+    ),
+    cek_builtin_v1.authenticated_builtin_failure_budget(tag, arguments) == if tag == 3 {
+      cek_cost_v1.BuiltinBudgetV1 { cpu: 0, memory: 0 }
+    } else {
+      cek_builtin_v1.direct_builtin_budget_v1(tag, arguments)
+    },
+  }
+}
+
+test division_by_zero_of_a_dividend_by_its_leaf_is_a_known_failure() {
+  list.all([3, 4, 5, 6], division_by_zero_of_a_leaf_is_known)
+}
+
+test division_by_a_zero_presented_by_its_leaf_is_not_a_known_failure() fail {
+  let arguments = [
+    dividend_by_its_leaf(),
+    cek_builtin_v1.compact_semantic_value(integer(#"00")),
+  ]
+  cek_builtin_v1.verify_direct_builtin_failure_v1(
+    4,
+    builtin_root(4, arguments),
+    arguments,
+  )
+}
+
+test division_of_a_dividend_by_its_leaf_by_one_is_not_a_known_failure() {
+  let arguments = [dividend_by_its_leaf(), integer(#"01")]
+  !cek_builtin_v1.verify_direct_builtin_failure_v1(
+    4,
+    builtin_root(4, arguments),
+    arguments,
+  )
 }
 
 test invalid_utf8_failure_is_authenticated_without_decoding() {

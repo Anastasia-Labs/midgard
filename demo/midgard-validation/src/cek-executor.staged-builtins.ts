@@ -30,6 +30,7 @@ import type {
 import {
   evaluateMidgardCekBuiltinOnValues,
   midgardCekDirectBuiltinFits,
+  midgardCekDivisionByZero,
   referenceConstantToDirectWitness,
   semanticizeMidgardCekDirectConstant,
 } from "./cek-builtin.evaluate-reference-builtin.js";
@@ -58,13 +59,15 @@ type StagedWitness = Extract<
 /**
  * Whether builtin `tag` over these presented arguments takes the staged
  * route: a builtin the staged arms prove, with an argument already past the
- * direct carriage bound, or arguments or a result that do not fit it.
+ * direct carriage bound, or arguments or a result that do not fit it. A
+ * division by zero takes the direct failure route whatever the dividend.
  */
 export const isMidgardCekStagedStep = (
   tag: bigint,
   arguments_: readonly MidgardCekDirectValueWitness[],
 ): boolean =>
   midgardCekStagedBuiltinProves(tag) &&
+  !midgardCekDivisionByZero(tag, arguments_) &&
   (arguments_.some((argument) => argument.kind !== "constant") ||
     !midgardCekDirectBuiltinFits(tag, arguments_));
 

@@ -24,6 +24,7 @@ export {
 } from "./cek-builtin.cardano-tags.js";
 export {
   evaluateMidgardCekDirectBuiltin,
+  midgardCekDirectStepArguments,
   semanticizeMidgardCekDirectConstant,
 } from "./cek-builtin.evaluate-reference-builtin.js";
 export {

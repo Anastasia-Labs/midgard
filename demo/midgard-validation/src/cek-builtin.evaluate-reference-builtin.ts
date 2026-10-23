@@ -13,6 +13,7 @@ import {
 import { ConstTyTag, UPLCConst } from "@harmoniclabs/uplc";
 
 import {
+  directArgumentsMatchKinds,
   directWitnessPayloadBytes,
   type MidgardCekDirectValueWitness,
 } from "./cek-builtin.argument-kinds.js";
@@ -243,12 +244,43 @@ export const evaluateMidgardCekBuiltinOnValues = (
   return result;
 };
 
+/**
+ * Whether builtin `tag` divides an integer by a revealed zero:
+ * divideInteger, quotientInteger, remainderInteger and modInteger fail there
+ * whatever the dividend, so the dividend may be presented by its leaf alone.
+ */
+export const midgardCekDivisionByZero = (
+  tag: bigint,
+  arguments_: readonly MidgardCekDirectValueWitness[],
+): boolean => {
+  if (tag < 3n || tag > 6n) return false;
+  if (!directArgumentsMatchKinds(Number(tag), arguments_)) return false;
+  const divisor = arguments_[1]!;
+  return divisor.kind === "constant" && directInteger(divisor) === 0n;
+};
+
+/**
+ * The arguments of a direct step of builtin `tag`: those given, except that
+ * a division by zero presents a dividend past the direct payload bound by
+ * its leaf, as the direct failure arm reads only its type and memory.
+ */
+export const midgardCekDirectStepArguments = (
+  tag: bigint,
+  arguments_: readonly MidgardCekDirectValueWitness[],
+): readonly MidgardCekDirectValueWitness[] =>
+  midgardCekDivisionByZero(tag, arguments_) &&
+  directWitnessPayloadBytes(arguments_) >
+    BigInt(MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES)
+    ? [semanticizeMidgardCekDirectConstant(arguments_[0]!), arguments_[1]!]
+    : arguments_;
+
 const evaluateReferenceBuiltin = (
   tag: bigint,
   arguments_: readonly MidgardCekDirectValueWitness[],
 ): MidgardCekDirectValueWitness | "failure" => {
   const control = selectedControlResult(tag, arguments_);
   if (control !== null) return control;
+  if (midgardCekDivisionByZero(tag, arguments_)) return "failure";
   if (tag === 68n) {
     if (arguments_.length !== 2) {
       throw new Error("BLS millerLoop requires two arguments");

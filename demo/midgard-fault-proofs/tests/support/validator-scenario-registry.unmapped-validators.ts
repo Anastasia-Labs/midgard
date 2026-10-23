@@ -83,6 +83,7 @@ export const UNMAPPED_VALIDATORS: readonly Readonly<{
       "fraud_proofs/validation_trace/cek_core_settle.main",
       "fraud_proofs/validation_trace/cek_core_staged_bytes.main",
       "fraud_proofs/validation_trace/cek_core_staged_integer.main",
+      "fraud_proofs/validation_trace/cek_core_staged_product.main",
       "fraud_proofs/validation_trace/cek_core_step_semantic_v1.main",
       "fraud_proofs/validation_trace/cek_core_type_failure_kinds.main",
       "fraud_proofs/validation_trace/cek_core_type_failure_roots.main",

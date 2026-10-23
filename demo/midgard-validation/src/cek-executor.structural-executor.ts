@@ -35,6 +35,7 @@ import {
   midgardCekBuiltinArgumentsFailKinds,
   type MidgardCekConstantValueWitness,
   midgardCekDirectBuiltinBudget,
+  midgardCekDirectStepArguments,
   type MidgardCekDirectValueWitness,
   type MidgardCekRuntimeValueWitness,
   presentMidgardCekDirectArgument,
@@ -1243,16 +1244,17 @@ export class StructuralExecutor {
       );
       return;
     }
-    const evaluated = evaluateMidgardCekDirectBuiltin(
+    const presented = midgardCekDirectStepArguments(
       builtin.tag,
       directArguments,
     );
+    const evaluated = evaluateMidgardCekDirectBuiltin(builtin.tag, presented);
     if (evaluated.kind === "failure") {
       this.record(
         {
           kind: "executeBuiltinFailure",
           tag: builtin.tag,
-          arguments: directArguments,
+          arguments: presented,
         },
         exactState(pre, {
           mode: "haltError",
