@@ -13,6 +13,11 @@
  * the model admits that still goes over budget is replanned with half its
  * steps, which always makes progress (one step at the least). Planning is
  * deterministic, so a restart replays the plan to the cursor the chain holds.
+ *
+ * A hop retries with one more run only while the window cut it short, and
+ * each retry re-walks the hop's window. The runs one hop reads into are
+ * bounded by the hop budget, so planning time is linear in R's length times
+ * that bound.
  */
 import {
   compareMidgardCekStagedOutRefs,
@@ -111,10 +116,16 @@ const emptySteps = (): Record<MidgardCekSerialiseStepKind, number> => ({
   leaf: 0,
 });
 
+/**
+ * Why a trial stopped: it ended the loop, took `limit` steps, would go over
+ * the budget with one more step, or needs bytes past its window.
+ */
+type TrialStop = "finished" | "limit" | "budget" | "window";
+
 type Trial = {
   readonly steps: number;
   readonly at: number;
-  readonly finished: boolean;
+  readonly stop: TrialStop;
   readonly restore: number;
   readonly shape: MidgardCekSerialiseHopShape;
 };
@@ -167,10 +178,10 @@ const trial = (
     pushed: above.length,
     pushedBytes: aboveBytes,
   });
-  let accepted: Trial = {
+  let stop: TrialStop = "limit";
+  let accepted: Omit<Trial, "stop"> = {
     steps: 0,
     at: 0,
-    finished: false,
     restore: 0,
     shape: shapeOf(),
   };
@@ -182,7 +193,10 @@ const trial = (
       stack,
       window.length,
     );
-    if (progress.kind === "refused") break;
+    if (progress.kind === "refused") {
+      stop = "window";
+      break;
+    }
     const saved = {
       above: [...above],
       aboveBytes,
@@ -223,6 +237,7 @@ const trial = (
       steps[step.kind] -= 1;
       above.splice(0, above.length, ...saved.above);
       ({ aboveBytes, restore, restoreBytes, leafPieces, leafChunks } = saved);
+      stop = "budget";
       break;
     }
     taken += 1;
@@ -230,7 +245,7 @@ const trial = (
       return {
         steps: taken,
         at: window.length,
-        finished: true,
+        stop: "finished",
         restore: startEntries.length,
         shape: shapeOf(),
       };
@@ -238,14 +253,14 @@ const trial = (
     at = progress.at;
     frame = progress.frame;
     stack = progress.stack;
-    accepted = { steps: taken, at, finished: false, restore, shape: shapeOf() };
+    accepted = { steps: taken, at, restore, shape: shapeOf() };
   }
   // A hop that absorbs runs must leave its tail in the last of them.
   if (fresh > 0 && accepted.at < window.length) {
     const start = window.length - runBytes(freshRuns.at(-1)!);
-    if (accepted.at < start) return { ...accepted, steps: 0 };
+    if (accepted.at < start) return { ...accepted, stop, steps: 0 };
   }
-  return accepted;
+  return { ...accepted, stop };
 };
 
 /** The hop's staging outputs in ledger order and the byte-order indices. */
@@ -295,8 +310,9 @@ export const planMidgardCekSerialiseHop = (
     const tried = trial(loop, point, fresh, limit, budget);
     if (tried.steps > 0 && (best === null || tried.steps > best.trial.steps))
       best = { fresh, trial: tried };
-    // More runs help only a hop the window cut short.
-    if (tried.finished || tried.steps >= limit) break;
+    // More runs help only a hop the window cut short: a wider window costs
+    // more, so a hop stopped by its limit or budget takes no more steps.
+    if (tried.stop !== "window") break;
   }
   if (best === null) throw new Error("serialise hop cannot take a step");
   const { fresh, trial: chosen } = best;
