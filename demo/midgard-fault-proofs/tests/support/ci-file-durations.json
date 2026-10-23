@@ -488,6 +488,8 @@
     "tests/validation-trace-dispute-one-step-cek-builtin-semantic-stages.test.ts": 46,
     "tests/validation-trace-dispute-one-step-cek-builtin-semantic.test.ts": 25,
     "tests/validation-trace-dispute-one-step-cek-builtin-type-failure.test.ts": 24,
+    "tests/validation-trace-dispute-one-step-cek-staged-append-max.test.ts": 40,
+    "tests/validation-trace-dispute-one-step-cek-staged-sha2-max.test.ts": 35,
     "tests/validation-trace-dispute-one-step-cek-staged.test.ts": 60,
     "tests/validation-trace-dispute-one-step-compact-binding-9.test.ts": 25.5,
     "tests/validation-trace-dispute-one-step-context-assemble.test.ts": 21.9,

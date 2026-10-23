@@ -92,6 +92,7 @@ export const resolutionDrive = <
     | "failingReferenceInputs"
     | "failingSigners"
     | "failingScript"
+    | "failingExUnits"
     | "operatorFrom"
     | "failingNativeSpend"
     | "failingNativeMint"

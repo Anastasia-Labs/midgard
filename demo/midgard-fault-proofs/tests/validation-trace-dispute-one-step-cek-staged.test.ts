@@ -26,15 +26,24 @@ import {
 } from "../src/validation-trace-dispute/one-step-staging-journal.js";
 import { VALIDATION_TRACE_ONE_STEP_REQUIRED } from "../src/validation-trace-dispute/threads.js";
 import type { JournalJsonObject } from "../src/workflow/journal.js";
+import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import { WorkflowActionUnbuiltError } from "../src/workflow/orchestrator.unbuilt-actions.js";
 import { sceneCaseHistory } from "./support/validation-trace-dispute-case-history.js";
 import { liveCase } from "./support/validation-trace-dispute-one-step-case.js";
+import {
+  isPendingFor,
+  withLedgerParameters,
+} from "./support/validation-trace-dispute-one-step-play.js";
 import {
   stagedDrive,
   stagingIntents,
 } from "./support/validation-trace-dispute-one-step-staged-drive.js";
 
 const DEPTH = DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth;
+
+/** A transaction size limit under which the PrepareSelected move (2,670
+ * bytes) does not build and a spend back of one staging output does. */
+const NO_PREPARE_SELECTED = 2_000;
 
 const drive = stagedDrive();
 
@@ -55,7 +64,8 @@ const movesTo = (holder: ValidationTraceOneStepHolder) => {
   });
 };
 
-/** The staging outputs live now, in the order of the step's runs. */
+/** The staging outputs live now, one for each of the step's runs, in
+ * ledger order (the order a transaction reads them in). */
 const liveStagings = async () => {
   const runs = await drive.runs();
   const { stagings } = drive.stagings();
@@ -69,7 +79,7 @@ const liveStagings = async () => {
         live.push(staging.outRef);
         break;
       }
-  return live;
+  return live.sort();
 };
 
 /** An output of our wallet holding a datum and half its ada, which no move
@@ -176,6 +186,40 @@ describe("validation-trace dispute runner: staging the operands of a staged buil
       expect(utxo?.address).toBe(drive.stagingAddress());
       expect(utxo?.datum).toBe(datumCbor);
     }
+    expect((await drive.placeOfB())?.holder).toBe("prepare");
+  }, 600_000);
+
+  it("keeps each staging output no move has read while the PrepareSelected move does not build, spending none back", async () => {
+    const { scene } = drive.dispute();
+    const runs = await drive.runs();
+    let held: FraudProofWorkflowRunResult | undefined;
+    await withLedgerParameters(
+      scene,
+      { maxTxSize: NO_PREPARE_SELECTED },
+      async () =>
+        await drive.play(async (_, result) => {
+          if (!isPendingFor(result, VALIDATION_TRACE_ONE_STEP_REQUIRED))
+            return false;
+          held = result;
+          return true;
+        }, 12),
+    );
+    expect(held?.kind === "pending" && held.reason).toContain(
+      "the resolve move on thread",
+    );
+    expect(
+      drive
+        .entries()
+        .filter(
+          ({ event }) =>
+            event.kind === "submission_intent" &&
+            event.actionInput.schemaVersion ===
+              VALIDATION_TRACE_STAGING_RECLAIM,
+        ),
+    ).toEqual([]);
+    expect(stagingIntents(drive.entries())).toHaveLength(runs.length);
+    for (const { outRef } of drive.stagings().stagings)
+      expect(await drive.live(outRef)).toBeDefined();
     expect((await drive.placeOfB())?.holder).toBe("prepare");
   }, 600_000);
 

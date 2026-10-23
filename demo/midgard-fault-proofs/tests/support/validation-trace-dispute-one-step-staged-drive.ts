@@ -44,6 +44,14 @@ export const STAGED_BYTES_ARMS = [
   "stagedBytes",
 ] as const;
 
+/** The arm chain of a staged integer step. */
+export const STAGED_INTEGER_ARMS = [
+  "semanticRoots",
+  "semanticResult",
+  "semanticBudget",
+  "stagedInteger",
+] as const;
+
 /** The staged witness of the step from `index` of our trace, if it is one. */
 const stagedWitnessAt = async (
   material: ValidationTraceClaimMaterial,
@@ -90,15 +98,18 @@ export const stagingIntents = (
 
 /**
  * The drive of the successor's thread through the staged step of the
- * failing script `hex`, whose arm chain is `arms`, set up with the thread
- * standing at the PrepareSelected move's holder.
+ * failing script `hex`, run under `exUnits` when given, whose arm chain is
+ * `arms`, set up with the thread standing at the PrepareSelected move's
+ * holder.
  */
 export const stagedDrive = ({
   hex = STAGED_SHA2_SCRIPT,
+  exUnits,
   arms = STAGED_BYTES_ARMS,
 }: {
   readonly hex?: string;
-  readonly arms?: readonly (typeof STAGED_BYTES_ARMS)[number][];
+  readonly exUnits?: readonly [bigint, bigint];
+  readonly arms?: typeof STAGED_BYTES_ARMS | typeof STAGED_INTEGER_ARMS;
 } = {}) => {
   const drive = resolutionDrive({
     from: lastStagedStep,
@@ -113,6 +124,7 @@ export const stagedDrive = ({
     installs: {
       builtins: true,
       failingScript: stagedScript(hex),
+      ...(exUnits === undefined ? {} : { failingExUnits: exUnits }),
       // The operator's thread disputes the same step, so both threads read
       // the same staging.
       operatorFrom: lastStagedStep,
@@ -142,20 +154,22 @@ export const stagedDrive = ({
     return await threadPlace(scene, deployment, b.unit);
   };
 
+  const witness = async (): Promise<StagedWitness> => {
+    const { material } = drive.dispute();
+    return (await stagedWitnessAt(material, await lastStagedStep(material)))!;
+  };
+
   return {
     ...drive,
     entries: () => latest,
     placeOfB,
 
+    /** The witness of the staged step. */
+    witness,
+
     /** The runs our staging of the step stages, in order. */
-    runs: async (): Promise<readonly MidgardCekStagingRun[]> => {
-      const { material } = drive.dispute();
-      const witness = await stagedWitnessAt(
-        material,
-        await lastStagedStep(material),
-      );
-      return planMidgardCekStaging(witness!.stagedOperands);
-    },
+    runs: async (): Promise<readonly MidgardCekStagingRun[]> =>
+      planMidgardCekStaging((await witness()).stagedOperands),
 
     /** Our staging address. */
     stagingAddress: () => {
@@ -170,10 +184,11 @@ export const stagedDrive = ({
     },
 
     /** Plays the runner one block at a time until `until` holds over the
-     * journal; the history of its runs. */
+     * journal and the run; the history of its runs. */
     play: async (
       until: (
         entries: readonly FraudProofWorkflowJournalEntry[],
+        result: FraudProofWorkflowRunResult,
       ) => Promise<boolean>,
       limit = 40,
     ): Promise<readonly string[]> => {
@@ -184,7 +199,7 @@ export const stagedDrive = ({
         sides: [a, b],
         until: async (result) => {
           latest = entriesOf(result);
-          return await until(latest);
+          return await until(latest, result);
         },
         limit,
       });
