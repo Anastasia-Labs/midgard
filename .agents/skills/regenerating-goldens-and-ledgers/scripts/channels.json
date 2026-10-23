@@ -164,6 +164,32 @@
       }
     },
     {
+      "id": "cek-staged-v1",
+      "kind": "golden",
+      "summary": "Staged-operand and staged-integer libraries: flat blob roots, staged operand roots, Integer CBOR roots, memory words and leaves, and limbwise sums and differences from the TypeScript twins, rendered as a whole generated Aiken module.",
+      "generators": [
+        "demo/midgard-core/scripts/generate-cek-staged-v1-goldens.mjs",
+        "demo/midgard-core/scripts/generate-cek-staged-v1-goldens.render-aiken.mjs"
+      ],
+      "packageScripts": [
+        "demo/midgard-core:fixtures:cek-staged-v1:sync",
+        "demo/midgard-core:fixtures:cek-staged-v1:check"
+      ],
+      "producers": ["demo/midgard-core"],
+      "inputs": ["@golden-channel"],
+      "outputs": ["onchain/aiken/lib/midgard/cek-staged-v1-golden.test.ak"],
+      "aikenImportsOfOutputs": true,
+      "sync": {
+        "run": "pnpm --dir demo/midgard-core run fixtures:cek-staged-v1:sync"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-core run fixtures:cek-staged-v1:check"
+      },
+      "ci": {
+        "none": "No validator uses the staged libraries yet; the CI check step lands with the first staged arm."
+      }
+    },
+    {
       "id": "mpf-node-encoding-v1",
       "kind": "golden",
       "summary": "MPF node encoding (leaf suffix markers, leaf hashes, proofs and roots) from the MPF library's Trie alone: JSON fixture plus a whole generated Aiken module.",
