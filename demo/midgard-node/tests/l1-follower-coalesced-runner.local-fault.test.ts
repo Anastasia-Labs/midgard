@@ -18,6 +18,7 @@
  * sibling, or a rollback onto one) keeps it. A run that ends on a local
  * fault does not start a transient failure's budget over.
  */
+import { LOCAL_FAULT_RUN_LIMIT } from "@al-ft/midgard-fault-proofs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -38,7 +39,6 @@ import { replayOutcomeHold } from "../src/landed-blocks/replay-outcome-hold.js";
 import {
   coalescedRunner,
   type CoalescedRunnerBound,
-  LOCAL_FAULT_RUN_LIMIT,
   localFaultProgress,
 } from "../src/services/l1-follower.coalesced-runner.js";
 

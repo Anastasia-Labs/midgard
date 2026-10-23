@@ -4,6 +4,7 @@ import {
   encodeMidgardTxOutput,
   midgardAddressFromText,
 } from "@al-ft/midgard-core/codec";
+import { LOCAL_FAULT_RUN_LIMIT } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import { HttpServerResponse } from "@effect/platform";
 import { CML, Data, walletFromSeed } from "@lucid-evolution/lucid";
@@ -18,7 +19,6 @@ import {
   COMMIT_WORKER_SOURCE,
 } from "../src/fibers/block-commitment.worker-readiness.js";
 import { Globals } from "../src/services/globals.js";
-import { LOCAL_FAULT_RUN_LIMIT } from "../src/services/l1-follower.coalesced-runner.js";
 import { activeLivenessReasons } from "../src/services/liveness-halt.js";
 import { findTransientBudgetExhausted } from "../src/services/transient-exhaustion.js";
 import { captureCommitWorkerFailure } from "../src/workers/commit-block-header.run-commit-block-header-worker-program.js";

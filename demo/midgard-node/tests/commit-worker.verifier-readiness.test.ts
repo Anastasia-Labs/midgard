@@ -7,6 +7,7 @@
  * successful commit exit the node non-zero.
  */
 import { LedgerSignatureVerifierUnavailableError } from "@al-ft/midgard-core";
+import { LOCAL_FAULT_RUN_LIMIT } from "@al-ft/midgard-fault-proofs";
 import { HttpServerResponse } from "@effect/platform";
 import { SqlClient } from "@effect/sql";
 import {
@@ -29,7 +30,6 @@ import {
   NodeConfig,
 } from "../src/services/index.js";
 import { IntentJournal } from "../src/services/intent-journal.js";
-import { LOCAL_FAULT_RUN_LIMIT } from "../src/services/l1-follower.coalesced-runner.js";
 import { findTransientBudgetExhausted } from "../src/services/transient-exhaustion.js";
 import type { CommitLucidFactory } from "../src/workers/commit-block-header.pending-user-event-counts-up-to.js";
 import {

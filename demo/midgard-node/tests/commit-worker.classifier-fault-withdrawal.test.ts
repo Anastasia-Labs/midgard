@@ -13,13 +13,13 @@ import {
   ledgerEd25519SignatureReady,
   ledgerSignatureVerifierUnavailable,
 } from "@al-ft/midgard-core";
+import { LOCAL_FAULT_RUN_LIMIT } from "@al-ft/midgard-fault-proofs";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import type * as LedgerUtils from "../src/database/utils/ledger.js";
 import type * as WithdrawalsDB from "../src/database/withdrawals.js";
 import { COMMIT_WORKER_SOURCE } from "../src/fibers/block-commitment.worker-readiness.js";
 import type { Globals } from "../src/services/globals.js";
-import { LOCAL_FAULT_RUN_LIMIT } from "../src/services/l1-follower.coalesced-runner.js";
 import {
   attempt,
   attempts,

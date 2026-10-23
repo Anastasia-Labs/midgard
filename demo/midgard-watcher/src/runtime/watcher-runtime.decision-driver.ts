@@ -5,6 +5,7 @@ import {
   type WatcherFaultDecisionBridge,
   WatcherFaultDecisionRetired,
 } from "../fault-proofs/fault-decision-bridge.js";
+import { replayLocalFaultExhaustion } from "../fault-proofs/replay-local-fault-bound.js";
 import type { WatcherAuthenticatedStateQueueObservation } from "../indexers/authenticated-state-queue-observation.js";
 import {
   readHandledFollowerGeneration,
@@ -70,7 +71,9 @@ import {
  * after `retryDelayMs`; any other failure is not retried on a timer, and the
  * pass runs again only when the follower moves or rewinds. Those waits are
  * on the L1 source and the store a running watcher rides out, so they have
- * no deadline.
+ * no deadline. The one exception is a local replay fault that outlived its
+ * bound (`WatcherReplayLocalFaultExhaustedError`): it also rejects
+ * `exhausted`, which ends the watcher.
  */
 export type { WatcherDecisionReadiness } from "./watcher-runtime.decision-readiness.js";
 export {
@@ -145,6 +148,8 @@ export type WatcherDecisionDriver = Readonly<{
   recovered: Promise<number>;
   /** Settles once a pass completes with the follower at the node tip. */
   caughtUp: Promise<void>;
+  /** Rejects once a pass failed on a local replay fault past its bound. */
+  exhausted: Promise<never>;
   /** Runs (or joins) a pass. */
   wake(): void;
   /** Resolves when no pass is running or owed. */
@@ -216,6 +221,7 @@ export const createWatcherDecisionDriver = (
     resolveCaughtUp = resolve;
   });
   const idleWaiters = new Set<() => void>();
+  const exhaustion = replayLocalFaultExhaustion();
 
   /** Runs a pass after `retryDelayMs`, unless one is already scheduled. */
   const scheduleRetry = (): void => {
@@ -436,6 +442,7 @@ export const createWatcherDecisionDriver = (
         lastError = detail;
         held = [{ reason: WATCHER_DECISION_PASS_FAILED, detail: lastError }];
         log(`decision pass failed: ${lastError}`);
+        exhaustion.raise(error);
         if (transient) scheduleRetry();
       },
     );
@@ -465,6 +472,7 @@ export const createWatcherDecisionDriver = (
     readiness: () => Object.freeze([...held, ...input.bridge.readiness()]),
     recovered,
     caughtUp,
+    exhausted: exhaustion.exhausted,
     wake,
     idle: () =>
       running === null && !owed
