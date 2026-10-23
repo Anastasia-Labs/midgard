@@ -20,10 +20,16 @@
  *   three hops that write no facts.
  *
  * Staging hook (arm 31). The staged route a semantic builtin's oversize
- * operands take (C12-B1) runs this same chain, its semantic stage among
- * `CEK_CORE_SEMANTIC_STAGES`; what it adds is one move before the binder,
- * the staging of the operands, whose out-refs fill the `StagedMaterialV1`
- * the arm witness carries. The binder and every hop here are unchanged. */
+ * operands take (C12-B1) runs this same chain, its semantic stage picked by
+ * `cekCoreSemanticGroup` as for any semantic builtin (the staged stages
+ * extend `CEK_CORE_SEMANTIC_STAGES`, and the group also picks how the arm-31
+ * material decodes); what it adds is one move before the binder, the staging
+ * of the operands, whose out-refs fill the `StagedMaterialV1` the arm witness
+ * carries. The driver then waits for the staged outputs' confirmation depth,
+ * pins them before the binder, keeps the pins with the journal, releases
+ * them after the settle, and never lets a wallet-funded move spend one. The
+ * binder and every hop here are unchanged; until then a tag with no stage
+ * leaves the step unresolved, with its reason. */
 import {
   hashMidgardCekDirectArguments,
   hashMidgardCekDirectValueWitness,
