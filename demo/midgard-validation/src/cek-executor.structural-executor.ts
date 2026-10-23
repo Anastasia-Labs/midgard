@@ -1223,7 +1223,11 @@ export class StructuralExecutor {
       this.record(
         staged.witness,
         staged.kind === "failure"
-          ? errorSuccessor(pre, MidgardCekErrorCodes.BuiltinFailure)
+          ? errorSuccessor(
+              pre,
+              MidgardCekErrorCodes.BuiltinFailure,
+              staged.budget,
+            )
           : builtinReturnSuccessor(
               pre,
               this.addDirectResult(staged.result),

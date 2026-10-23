@@ -1,22 +1,17 @@
 import {
-  hashMidgardCekValueNode,
-  midgardCekCanonicalIntegerMagnitudeWords,
   midgardCekFlatRoot,
   type MidgardCekMachineState,
-  parseMidgardCekCanonicalIntegerCbor,
 } from "@al-ft/midgard-core";
-import { DataB, DataI } from "@harmoniclabs/plutus-data";
+import { DataB } from "@harmoniclabs/plutus-data";
 import { CEKConst } from "@harmoniclabs/plutus-machine";
 import { Builtin, UPLCConst, type UPLCTerm } from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
-import type { MidgardCekDirectValueWitness } from "../src/cek-builtin.argument-kinds.js";
 import {
   evaluateMidgardCekBuiltinOnValues,
   referenceConstantToDirectWitness,
   semanticizeMidgardCekDirectConstant,
 } from "../src/cek-builtin.evaluate-reference-builtin.js";
-import { hashMidgardCekDirectArguments } from "../src/cek-builtin.selected-control-result.js";
 import type { MidgardCekExecutionStep } from "../src/cek-executor.build-midgard-cek-execution-graph.js";
 import {
   midgardCekStagedFailure,
@@ -28,7 +23,11 @@ import { MidgardCekErrorCodes } from "../src/cek-machine.midgard-cek-core-step-w
 import { verifyMidgardCekCoreStep } from "../src/cek-machine.verify-builtin.js";
 import { verifyMidgardCekStagedBuiltinFailure } from "../src/cek-staged-builtin.failure.js";
 import type { MidgardCekStagedOperandSource } from "../src/cek-staged-builtin.material.js";
-import { encodeMidgardCekPlutusData } from "../src/plutus-data-iterative.encode.js";
+import {
+  builtinState,
+  integerOperand,
+  presented,
+} from "./helpers/cek-staged-failure-steps.js";
 import { bytes, call, int, run } from "./helpers/cek-staged-route-terms.js";
 
 /**
@@ -60,23 +59,6 @@ const BOTTOM = MIN - 1n;
 /** The least magnitude of 4,097 words. */
 const PAST_BAND = 2n ** 262_144n;
 
-const integerOperand = (value: bigint): MidgardCekStagedOperand => {
-  const cbor = encodeMidgardCekPlutusData(new DataI(value));
-  return {
-    type: "integer",
-    bytes: cbor,
-    value: CEKConst.int(value),
-    leaf: {
-      kind: "integerLeaf",
-      cborRoot: midgardCekFlatRoot(cbor),
-      cborLength: BigInt(cbor.length),
-      words: midgardCekCanonicalIntegerMagnitudeWords(
-        parseMidgardCekCanonicalIntegerCbor(cbor),
-      ),
-    },
-  };
-};
-
 const bytesOperand = (length: number): MidgardCekStagedOperand => {
   const value = Buffer.alloc(length, 0x61);
   return {
@@ -88,36 +70,6 @@ const bytesOperand = (length: number): MidgardCekStagedOperand => {
       root: midgardCekFlatRoot(value),
       length: BigInt(length),
     },
-  };
-};
-
-const presented = (
-  operand: MidgardCekStagedOperand,
-): MidgardCekDirectValueWitness =>
-  referenceConstantToDirectWitness(operand.value, true);
-
-/** A builtin-mode state from a real run, focused on builtin `tag` applied to
- * `arguments_`. */
-const BASE: MidgardCekMachineState = (() => {
-  const steps = run(call(Builtin.addInteger, int(1n), int(2n)), "proof")
-    .execution!.steps;
-  return steps.find((step) => step.pre.mode === "builtin")!.pre;
-})();
-
-const builtinState = (
-  tag: bigint,
-  arguments_: readonly MidgardCekDirectValueWitness[],
-): MidgardCekMachineState => {
-  const { root, count } = hashMidgardCekDirectArguments(arguments_);
-  return {
-    ...BASE,
-    focusRoot: hashMidgardCekValueNode({
-      kind: "builtin",
-      tag,
-      forcesRemaining: 0n,
-      argumentsCount: count,
-      argumentsRoot: root,
-    }),
   };
 };
 
@@ -133,7 +85,7 @@ const failureStep = (
   operands: readonly MidgardCekStagedOperand[],
 ): Step | null => {
   const arguments_ = operands.map(presented);
-  const witness = midgardCekStagedFailure(
+  const failure = midgardCekStagedFailure(
     tag,
     arguments_,
     operands,
@@ -143,12 +95,16 @@ const failureStep = (
         operands.map((operand) => operand.value),
       ) === "failure",
   );
-  if (witness === null) return null;
+  if (failure === null) return null;
   const pre = builtinState(tag, arguments_);
   return {
     pre,
-    post: errorSuccessor(pre, MidgardCekErrorCodes.BuiltinFailure),
-    witness,
+    post: errorSuccessor(
+      pre,
+      MidgardCekErrorCodes.BuiltinFailure,
+      failure.budget,
+    ),
+    witness: failure.witness,
   };
 };
 
@@ -415,6 +371,22 @@ describe("tampered staged failure steps", () => {
     if (source?.kind !== "bytesLeaf") throw new Error("kind");
     expect(
       verifies(withSources(step, [{ ...source, length: 16_001n }, index!])),
+    ).toBe(false);
+  });
+
+  it("refuses a focus with the wrong argument count", () => {
+    const step = failureStep(SHA2_256, [bytesOperand(65_537)])!;
+    expect(verifies(step)).toBe(true);
+    const witness = step.witness;
+    if (witness.kind !== "executeBuiltinStagedFailure") throw new Error("kind");
+    const arguments_ = [...witness.arguments, presented(bytesOperand(1))];
+    const pre = builtinState(SHA2_256, arguments_);
+    expect(
+      verifies({
+        pre,
+        post: errorSuccessor(pre, MidgardCekErrorCodes.BuiltinFailure),
+        witness: { ...witness, arguments: arguments_ },
+      }),
     ).toBe(false);
   });
 

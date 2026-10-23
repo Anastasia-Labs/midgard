@@ -20,7 +20,10 @@ export const UNMAPPED_FAMILIES: readonly Readonly<{
   },
 ];
 
-/** Only ever lowered. */
+/**
+ * Lowered as validators are mapped. A new validator with no emulator scenario
+ * yet raises it, so the raise is reviewed with the validator's commit.
+ */
 export const UNMAPPED_VALIDATOR_COUNT = 529;
 
 /** Only ever lowered. */

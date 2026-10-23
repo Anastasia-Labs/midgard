@@ -27,9 +27,10 @@ use midgard/cek_staged_integer_cbor_v1.{
 use midgard/cek_staged_integer_v1.{CanonicalIntegerV1, magnitude_words_v1}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/cek_staged_fixture_v1.{
-  StagedStepV1, StagingV1, bytes_value, compact, failure_step, failure_step_at,
-  integer_value, material, no_staging, pattern, power_of_two,
-  semantic_integer_cbor, semantic_pieces, stage, staged, text, zeros,
+  StagedStepV1, StagingV1, bytes_value, charged_failure_step, compact,
+  failure_step, failure_step_at, integer_value, material, no_staging, pattern,
+  power_of_two, semantic_integer_cbor, semantic_pieces, stage, staged, text,
+  zeros,
 }
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 
@@ -555,11 +556,14 @@ fn band_decides(tag: Int, integer_cbor: ByteArray) -> Bool {
 }
 
 test proves_the_bounded_integer_builtins_fail_one_past_the_largest() {
-  list.all([0, 1, 8, 9], fn(tag) { band_fails(tag, past_top_cbor()) })
+  list.all(bounded_integer_tags, fn(tag) { band_fails(tag, past_top_cbor()) })
 }
 
 test proves_the_bounded_integer_builtins_fail_one_past_the_smallest() {
-  list.all([0, 1, 8, 9], fn(tag) { band_fails(tag, past_bottom_cbor()) })
+  list.all(
+    bounded_integer_tags,
+    fn(tag) { band_fails(tag, past_bottom_cbor()) },
+  )
 }
 
 test proves_a_past_range_second_argument_from_an_inline_source() {
@@ -573,11 +577,15 @@ test proves_a_past_range_second_argument_from_an_inline_source() {
 }
 
 test refuses_the_largest_and_smallest_arguments() {
-  !or {
-    band_decides(0, cbor.serialise(top())),
-    band_decides(0, cbor.serialise(bottom())),
-    band_decides(8, cbor.serialise(top())),
-  }
+  !list.any(
+    bounded_integer_tags,
+    fn(tag) {
+      or {
+        band_decides(tag, cbor.serialise(top())),
+        band_decides(tag, cbor.serialise(bottom())),
+      }
+    },
+  )
 }
 
 test refuses_a_step_at_the_largest_argument() fail {
@@ -608,6 +616,302 @@ test refuses_other_bytes_for_a_past_range_argument() fail {
     stage([past_bottom_cbor()]),
     [staged(0), integer_leaf(1)],
   )
+}
+
+// ## Division by a zero divisor: one arm for each dividend
+
+/// The direct failure arm proves division builtin `tag` fails on `dividend`,
+/// compacted as the roots hop commits it, and a revealed zero divisor. The
+/// step is the one the staged failure hop is given: both argument forms have
+/// the same root.
+fn direct_divides_by_zero(tag: Int, dividend: ValueWitnessV1) -> Bool {
+  let arguments = [compact(dividend), integer_value(0)]
+  let Pair(root, count) = cek_builtin_v1.arguments_root_v1(arguments)
+  expect
+    cek_builtin_v1.arguments_root_v1(list.map(arguments, compact)) == Pair(
+      root,
+      count,
+    )
+  cek_builtin_v1.verify_direct_builtin_failure_v1(
+    tag,
+    proof.hash_builtin_value_v1(tag, 0, count, root),
+    arguments,
+  )
+}
+
+/// Spends the staged failure hop for division builtin `tag` over the staged
+/// integer of `integer_cbor` and a zero divisor, the post-state charging the
+/// builtin's cost when `charged` and nothing otherwise.
+fn staged_divides_by_zero(
+  tag: Int,
+  integer_cbor: ByteArray,
+  charged: Bool,
+) -> Bool {
+  let arguments = list.map(
+    [semantic_integer_cbor(integer_cbor), integer_value(0)],
+    compact,
+  )
+  let budget = if charged {
+    cek_builtin_v1.direct_builtin_budget_v1(tag, arguments)
+  } else {
+    cost.BuiltinBudgetV1 { cpu: 0, memory: 0 }
+  }
+  let staging = stage([integer_cbor])
+  spend(
+    charged_failure_step(
+      tag,
+      arguments,
+      material(staging, [staged(0), integer_leaf(0)]),
+      staging.reference_inputs,
+      budget.cpu,
+      budget.memory,
+    ),
+  )
+}
+
+const division_tags = [3, 4, 5, 6]
+
+/// 2^262079, the smallest positive integer of 4,096 words is 2^262080.
+fn largest_word_count_below_the_band() -> Int {
+  power_of_two(262079)
+}
+
+test proves_a_division_by_zero_past_the_range_at_the_staged_failure_hop_only() {
+  list.all(
+    division_tags,
+    fn(tag) {
+      and {
+        !direct_divides_by_zero(tag, semantic_integer_cbor(over_band_cbor())),
+        !direct_divides_by_zero(tag, semantic_integer_cbor(past_top_cbor())),
+        !direct_divides_by_zero(tag, semantic_integer_cbor(past_bottom_cbor())),
+        staged_divides_by_zero(tag, over_band_cbor(), False),
+        staged_divides_by_zero(tag, past_top_cbor(), False),
+        staged_divides_by_zero(tag, past_bottom_cbor(), False),
+      }
+    },
+  )
+}
+
+test proves_a_charged_division_by_zero_of_4096_words_at_the_staged_failure_hop_only() {
+  list.all(
+    division_tags,
+    fn(tag) {
+      and {
+        !direct_divides_by_zero(tag, integer_value(top())),
+        !direct_divides_by_zero(tag, integer_value(bottom())),
+        staged_divides_by_zero(tag, cbor.serialise(top()), True),
+        staged_divides_by_zero(tag, cbor.serialise(bottom()), True),
+      }
+    },
+  )
+}
+
+test proves_a_division_by_zero_below_4096_words_at_the_direct_failure_arm() {
+  let dividend = largest_word_count_below_the_band()
+  expect
+    magnitude_words_v1(parse_integer_cbor_bulk_v1(cbor.serialise(dividend))) == 4095
+  list.all(
+    division_tags,
+    fn(tag) { direct_divides_by_zero(tag, integer_value(dividend)) },
+  )
+}
+
+test refuses_a_charged_step_below_4096_words() fail {
+  staged_divides_by_zero(
+    3,
+    cbor.serialise(largest_word_count_below_the_band()),
+    True,
+  )
+}
+
+test refuses_an_uncharged_step_below_4096_words() fail {
+  staged_divides_by_zero(
+    3,
+    cbor.serialise(largest_word_count_below_the_band()),
+    False,
+  )
+}
+
+test refuses_an_uncharged_step_in_the_range() fail {
+  staged_divides_by_zero(4, cbor.serialise(top()), False)
+}
+
+test refuses_a_charged_step_past_the_range() fail {
+  staged_divides_by_zero(5, past_top_cbor(), True)
+}
+
+test refuses_a_charged_step_past_4096_words() fail {
+  staged_divides_by_zero(6, over_band_cbor(), True)
+}
+
+test refuses_a_charged_step_on_a_divisor_other_than_zero() fail {
+  let integer_cbor = cbor.serialise(top())
+  let arguments = list.map(
+    [semantic_integer_cbor(integer_cbor), integer_value(1)],
+    compact,
+  )
+  let budget = cek_builtin_v1.direct_builtin_budget_v1(3, arguments)
+  let staging = stage([integer_cbor])
+  spend(
+    charged_failure_step(
+      3,
+      arguments,
+      material(staging, [staged(0), integer_leaf(1)]),
+      staging.reference_inputs,
+      budget.cpu,
+      budget.memory,
+    ),
+  )
+}
+
+test refuses_a_charged_step_with_the_dividend_by_its_leaf_alone() fail {
+  let integer_cbor = cbor.serialise(top())
+  let arguments = list.map(
+    [semantic_integer_cbor(integer_cbor), integer_value(0)],
+    compact,
+  )
+  let budget = cek_builtin_v1.direct_builtin_budget_v1(3, arguments)
+  spend(
+    charged_failure_step(
+      3,
+      arguments,
+      material(no_staging(), [integer_leaf(top()), integer_leaf(0)]),
+      [],
+      budget.cpu,
+      budget.memory,
+    ),
+  )
+}
+
+test refuses_a_charged_step_with_another_charge() fail {
+  let integer_cbor = cbor.serialise(top())
+  let arguments = list.map(
+    [semantic_integer_cbor(integer_cbor), integer_value(0)],
+    compact,
+  )
+  let budget = cek_builtin_v1.direct_builtin_budget_v1(3, arguments)
+  let staging = stage([integer_cbor])
+  spend(
+    charged_failure_step(
+      3,
+      arguments,
+      material(staging, [staged(0), integer_leaf(0)]),
+      staging.reference_inputs,
+      budget.cpu + 1,
+      budget.memory,
+    ),
+  )
+}
+
+test refuses_a_charged_multiplication_by_zero() fail {
+  let integer_cbor = cbor.serialise(top())
+  let arguments = list.map(
+    [semantic_integer_cbor(integer_cbor), integer_value(0)],
+    compact,
+  )
+  let budget = cek_builtin_v1.direct_builtin_budget_v1(2, arguments)
+  let staging = stage([integer_cbor])
+  spend(
+    charged_failure_step(
+      2,
+      arguments,
+      material(staging, [staged(0), integer_leaf(0)]),
+      staging.reference_inputs,
+      budget.cpu,
+      budget.memory,
+    ),
+  )
+}
+
+test refuses_a_charged_post_for_a_bound_failure() fail {
+  let huge = semantic_integer_cbor(over_band_cbor())
+  let arguments = list.map([huge, integer_value(1)], compact)
+  spend(
+    charged_failure_step(0, arguments, material(no_staging(), []), [], 1, 0),
+  )
+}
+
+// ## Cost at the largest shapes
+//
+// Each spend is paired with its fixture alone: the spend's cost on L1 is the
+// difference.
+
+/// decodeUtf8 of 65,536 staged bytes whose last character is cut short: the
+/// prefix decoded is 65,534 bytes.
+fn decode_step_at_the_bound() -> StagedStepV1 {
+  let bytes = builtin.append_bytearray(text(65534), #"e282")
+  let staging = stage([bytes])
+  failure_step(
+    25,
+    [compact(bytes_value(bytes, False))],
+    material(staging, [staged(0), SmallIntegerOperand { value: 65534 }]),
+    staging.reference_inputs,
+  )
+}
+
+/// addInteger over two staged integers of 4,096 words, the largest and one
+/// past it: both are bound to their CBOR.
+fn band_step_at_the_bound() -> StagedStepV1 {
+  let staging = stage([cbor.serialise(top()), past_top_cbor()])
+  failure_step(
+    0,
+    [
+      compact(semantic_integer_cbor(cbor.serialise(top()))),
+      compact(semantic_integer_cbor(past_top_cbor())),
+    ],
+    material(staging, [staged(0), staged(1)]),
+    staging.reference_inputs,
+  )
+}
+
+/// divideInteger of the largest staged integer by zero, charged.
+fn division_step_at_the_bound() -> StagedStepV1 {
+  let integer_cbor = cbor.serialise(top())
+  let arguments = list.map(
+    [semantic_integer_cbor(integer_cbor), integer_value(0)],
+    compact,
+  )
+  let budget = cek_builtin_v1.direct_builtin_budget_v1(3, arguments)
+  let staging = stage([integer_cbor])
+  charged_failure_step(
+    3,
+    arguments,
+    material(staging, [staged(0), integer_leaf(0)]),
+    staging.reference_inputs,
+    budget.cpu,
+    budget.memory,
+  )
+}
+
+fn built(step: StagedStepV1) -> Bool {
+  when step.datum is {
+    Some(_) -> True
+    None -> False
+  }
+}
+
+test staged_failure_decode_at_the_byte_string_bound() {
+  spend(decode_step_at_the_bound())
+}
+
+test staged_failure_decode_fixture_only_at_the_byte_string_bound() {
+  built(decode_step_at_the_bound())
+}
+
+test staged_failure_band_at_the_integer_bound() {
+  spend(band_step_at_the_bound())
+}
+
+test staged_failure_band_fixture_only_at_the_integer_bound() {
+  built(band_step_at_the_bound())
+}
+
+test staged_failure_division_at_the_integer_bound() {
+  spend(division_step_at_the_bound())
+}
+
+test staged_failure_division_fixture_only_at_the_integer_bound() {
+  built(division_step_at_the_bound())
 }
 
 // ## The step's shape
@@ -680,6 +984,16 @@ fn roots_route(
   arguments: List<ValueWitnessV1>,
   to_staged: Bool,
 ) -> Bool {
+  roots_route_charging(tag, arguments, to_staged, 0)
+}
+
+/// `roots_route` with a post-state that charges `cpu`.
+fn roots_route_charging(
+  tag: Int,
+  arguments: List<ValueWitnessV1>,
+  to_staged: Bool,
+  cpu: Int,
+) -> Bool {
   let Pair(root, count) = cek_builtin_v1.arguments_root_v1(arguments)
   expect count == cost.builtin_argument_count_v1(tag)
   let pre = machine.MachineStateV1 {
@@ -699,7 +1013,7 @@ fn roots_route(
     proof.empty_environment_root_v1,
     proof.empty_continuation_root_v1,
     machine.error_builtin_failure,
-    0,
+    cpu,
     0,
   )
   let step_material: Data = StagedMaterialV1 {
@@ -761,4 +1075,44 @@ test routes_the_data_builtins_to_the_material_hop() {
 
 test does_not_route_the_data_builtins_to_the_staged_failure_hop() fail {
   roots_route(45, [integer_value(1)], True)
+}
+
+test does_not_route_decode_to_the_material_hop() fail {
+  roots_route(25, [past_bound_bytes()], False)
+}
+
+test routes_the_first_builtin_after_decode_to_the_material_hop() {
+  roots_route(26, [integer_value(1), integer_value(1), integer_value(1)], False)
+}
+
+test does_not_route_the_first_builtin_after_decode_to_the_staged_failure_hop() fail {
+  roots_route(26, [integer_value(1), integer_value(1), integer_value(1)], True)
+}
+
+test routes_head_and_tail_list_to_the_material_hop() {
+  and {
+    roots_route(33, [integer_value(1)], False),
+    roots_route(34, [integer_value(1)], False),
+  }
+}
+
+test does_not_route_head_list_to_the_staged_failure_hop() fail {
+  roots_route(33, [integer_value(1)], True)
+}
+
+test does_not_route_tail_list_to_the_staged_failure_hop() fail {
+  roots_route(34, [integer_value(1)], True)
+}
+
+test leaves_a_charged_post_on_the_staged_route_to_the_staged_failure_hop() {
+  roots_route_charging(
+    3,
+    [semantic_integer_cbor(over_band_cbor()), integer_value(0)],
+    True,
+    1,
+  )
+}
+
+test refuses_a_charged_post_on_the_material_route() fail {
+  roots_route_charging(45, [integer_value(1)], False, 1)
 }

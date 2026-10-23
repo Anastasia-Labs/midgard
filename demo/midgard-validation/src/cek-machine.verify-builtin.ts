@@ -18,6 +18,7 @@ import {
   verifyMidgardCekDirectBuiltin,
   verifyMidgardCekDirectBuiltinFailure,
 } from "./cek-builtin.js";
+import type { MidgardCekBuiltinBudget } from "./cek-cost.js";
 import {
   canonicalIntegerLeaf,
   exactTopMaterial,
@@ -51,7 +52,7 @@ import {
   verifySemanticChooseData,
   verifySemanticList,
 } from "./cek-machine.verify-semantic-list.js";
-import { verifyMidgardCekStagedBuiltinFailure } from "./cek-staged-builtin.failure.js";
+import { midgardCekStagedBuiltinFailureBudget } from "./cek-staged-builtin.failure.js";
 import type { MidgardCekStagedBuiltinMaterial } from "./cek-staged-builtin.material.js";
 import {
   midgardCekPlaceholderStaging,
@@ -133,9 +134,9 @@ const verifyStagedBuiltinFailure = (
     MidgardCekCoreStepWitness,
     { readonly kind: "executeBuiltinStagedFailure" }
   >,
-): boolean => {
+): MidgardCekBuiltinBudget | null => {
   const { staged, referenceInputs } = stagedMaterial(witness);
-  return verifyMidgardCekStagedBuiltinFailure(
+  return midgardCekStagedBuiltinFailureBudget(
     witness.tag,
     witness.arguments,
     staged,
@@ -311,14 +312,22 @@ const verifyBuiltin = (
     );
   }
   if (witness.kind === "executeBuiltinStagedFailure") {
-    // The roots hop fixes a zero budget: every one of these failures is
-    // raised before the builtin is costed.
+    // The staged failure hop charges a division by zero of a dividend of
+    // 4,096 words in the range, and nothing for its other failures.
+    if (
+      BigInt(witness.arguments.length) !==
+        midgardCekBuiltinArgumentCount(witness.tag) ||
+      !builtinRootMatches(pre, witness.tag, witness.arguments)
+    ) {
+      return false;
+    }
+    const budget = verifyStagedBuiltinFailure(witness);
     return (
-      BigInt(witness.arguments.length) ===
-        midgardCekBuiltinArgumentCount(witness.tag) &&
-      builtinRootMatches(pre, witness.tag, witness.arguments) &&
-      verifyStagedBuiltinFailure(witness) &&
-      sameState(post, errorSuccessor(pre, MidgardCekErrorCodes.BuiltinFailure))
+      budget !== null &&
+      sameState(
+        post,
+        errorSuccessor(pre, MidgardCekErrorCodes.BuiltinFailure, budget),
+      )
     );
   }
   if (witness.kind === "executeBuiltinTypeFailure") {

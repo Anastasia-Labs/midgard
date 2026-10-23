@@ -51,22 +51,27 @@ validator main(
             count,
             root,
           )
-        expect
-          bound.post == machine.exact_state(
-            bound.pre,
-            machine.mode_halt_error,
-            proof.hash_error_term_v1(),
-            proof.empty_environment_root_v1,
-            proof.empty_continuation_root_v1,
-            machine.error_builtin_failure,
-            0,
-            0,
-          )
         // The byte-string, string and integer builtins fail on their
-        // arguments' bounds or content at the staged failure hop; the Data
-        // builtins on their material at the material hop.
+        // arguments' bounds or content at the staged failure hop, which
+        // checks the post-state since one of its failures is charged; the
+        // Data builtins on their material at the material hop, before
+        // costing.
+        let to_staged = tag < 26 || tag == 71 || tag == 72 || tag == 86
+        expect or {
+            to_staged,
+            bound.post == machine.exact_state(
+              bound.pre,
+              machine.mode_halt_error,
+              proof.hash_error_term_v1(),
+              proof.empty_environment_root_v1,
+              proof.empty_continuation_root_v1,
+              machine.error_builtin_failure,
+              0,
+              0,
+            ),
+          }
         chain.continue_core(
-          if tag < 26 || tag == 71 || tag == 72 || tag == 86 {
+          if to_staged {
             staged_failure_script_hash
           } else {
             material_script_hash

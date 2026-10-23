@@ -143,6 +143,7 @@ export const exactComputeSuccessor = (
 export const errorSuccessor = (
   pre: MidgardCekMachineState,
   reason: bigint,
+  charge?: { readonly cpu: bigint; readonly memory: bigint },
 ): MidgardCekMachineState =>
   exactState(pre, {
     mode: "haltError",
@@ -150,6 +151,8 @@ export const errorSuccessor = (
     environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
     continuationRoot: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
     auxiliary: reason,
+    cpuDelta: charge?.cpu ?? 0n,
+    memoryDelta: charge?.memory ?? 0n,
   });
 
 export const nonNegativeUint32 = (value: bigint): boolean =>

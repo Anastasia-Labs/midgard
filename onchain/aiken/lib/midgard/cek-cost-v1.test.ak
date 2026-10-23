@@ -1,3 +1,4 @@
+use aiken/collection/list
 use midgard/cek_cost_v1
 
 test add_integer_budget_matches_pinned_v3() {
@@ -90,4 +91,25 @@ test invalid_arity_fails_closed() fail {
 
 test unknown_tag_fails_closed() fail {
   cek_cost_v1.builtin_budget_v1(87, [1]).cpu == 0
+}
+
+test division_budget_is_the_division_row() {
+  list.all(
+    [3, 4, 5, 6],
+    fn(tag) {
+      list.all(
+        [[4096, 1], [1, 4096], [1, 1], [0, 0], [300, 299], [7, 4000]],
+        fn(sizes) {
+          cek_cost_v1.division_budget_v1(tag, sizes) == cek_cost_v1.builtin_budget_v1(
+            tag,
+            sizes,
+          )
+        },
+      )
+    },
+  )
+}
+
+test division_budget_refuses_another_builtin() fail {
+  cek_cost_v1.division_budget_v1(2, [1, 1]).cpu > 0
 }

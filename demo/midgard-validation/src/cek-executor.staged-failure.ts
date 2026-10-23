@@ -6,9 +6,9 @@
  * outside its range, and bytes that are not UTF-8. Each failure is given the
  * witness of the arm that proves it:
  *
- * - a failure the committed arguments decide, and indexByteString's and
- *   decodeUtf8's, go to the staged failure hop (arm 36) with the sources it
- *   reads;
+ * - a failure the committed arguments decide, indexByteString's and
+ *   decodeUtf8's, and a division by zero of a dividend of 4,096 words, go to
+ *   the staged failure hop (arm 36) with the sources it reads;
  * - consByteString's byte and sliceByteString's start and length, which are
  *   revealed, go to the direct failure arm (arm 38), the byte string
  *   compacted to its leaf.
@@ -22,8 +22,9 @@ import {
   referenceConstantToDirectWitness,
   semanticizeMidgardCekDirectConstant,
 } from "./cek-builtin.evaluate-reference-builtin.js";
+import type { MidgardCekBuiltinBudget } from "./cek-cost.js";
 import type { MidgardCekCoreStepWitness } from "./cek-machine.js";
-import { verifyMidgardCekStagedBuiltinFailure } from "./cek-staged-builtin.failure.js";
+import { midgardCekStagedBuiltinFailureBudget } from "./cek-staged-builtin.failure.js";
 import {
   midgardCekPlaceholderStaging,
   type MidgardCekStagedOperandSource,
@@ -139,12 +140,25 @@ const classify = (
         (integer(operand) < INTEGER_LOWER_BOUND ||
           integer(operand) > INTEGER_UPPER_BOUND),
     );
-    if (past < 0) return null;
-    // Only the argument past the range is revealed; the rest by their leaf.
-    const sources = operands.map((operand, index) =>
-      index === past ? revealed(operand.bytes) : operand.leaf,
-    );
-    return staged(sources, false);
+    if (past >= 0) {
+      // Only the argument past the range is revealed; the rest by their leaf.
+      const sources = operands.map((operand, index) =>
+        index === past ? revealed(operand.bytes) : operand.leaf,
+      );
+      return staged(sources, false);
+    }
+    const [dividend, divisor] = operands;
+    // A division by zero, charged: the hop reads the dividend's range from
+    // its CBOR, which the direct failure arm does not have.
+    if (
+      number >= 3 &&
+      number <= 6 &&
+      words(dividend!) === MAX_BOUNDED_INTEGER_WORDS &&
+      integer(divisor!) === 0n
+    ) {
+      return staged([revealed(dividend!.bytes), divisor!.leaf], true);
+    }
+    return null;
   }
   const [byteOperands, integerOperands] = scalarOperands(number, operands);
   if (
@@ -194,21 +208,24 @@ const classify = (
   return null;
 };
 
-/** Whether the failure's arm accepts its witness, staged on placeholder
- * outputs. */
-const provable = (witness: MidgardCekStagedFailureWitness): boolean => {
+/** The budget the failure's arm charges, or null when it does not accept
+ * the witness, staged on placeholder outputs. */
+const provenBudget = (
+  witness: MidgardCekStagedFailureWitness,
+): MidgardCekBuiltinBudget | null => {
   if (witness.kind === "executeBuiltinFailure") {
-    return (
-      evaluateMidgardCekDirectBuiltin(witness.tag, witness.arguments).kind ===
-      "failure"
+    const evaluated = evaluateMidgardCekDirectBuiltin(
+      witness.tag,
+      witness.arguments,
     );
+    return evaluated.kind === "failure" ? evaluated.budget : null;
   }
   const material = stageMidgardCekStagedBuiltinMaterial(
     witness.material,
     witness.stagedOperands,
     midgardCekPlaceholderStaging(witness.stagedOperands),
   );
-  return verifyMidgardCekStagedBuiltinFailure(
+  return midgardCekStagedBuiltinFailureBudget(
     witness.tag,
     witness.arguments,
     material,
@@ -216,26 +233,33 @@ const provable = (witness: MidgardCekStagedFailureWitness): boolean => {
   );
 };
 
+/** A staged step's failure: its witness and the budget its arm charges. */
+export type MidgardCekStagedFailure = {
+  readonly witness: MidgardCekStagedFailureWitness;
+  readonly budget: MidgardCekBuiltinBudget;
+};
+
 /**
- * The failure witness of staged builtin `tag` over `arguments_` (presented)
- * and their `operands`, or null when it does not fail on a bound or on its
- * operands' content. `evaluatedFailure` is called for a content failure,
- * which the reference evaluator must agree with. Throws for a failure its
- * arm would not accept.
+ * The failure of staged builtin `tag` over `arguments_` (presented) and their
+ * `operands`, or null when it does not fail on a bound or on its operands'
+ * content. `evaluatedFailure` is called for a content failure, which the
+ * reference evaluator must agree with. Throws for a failure its arm would not
+ * accept.
  */
 export const midgardCekStagedFailure = (
   tag: bigint,
   arguments_: readonly MidgardCekDirectValueWitness[],
   operands: readonly MidgardCekStagedOperand[],
   evaluatedFailure: () => boolean,
-): MidgardCekStagedFailureWitness | null => {
+): MidgardCekStagedFailure | null => {
   const classified = classify(tag, arguments_, operands);
   if (classified === null) return null;
   if (classified.content && !evaluatedFailure()) {
     throw new Error("CEK staged builtin failure disagrees with the evaluator");
   }
-  if (!provable(classified.witness)) {
+  const budget = provenBudget(classified.witness);
+  if (budget === null) {
     throw new Error("CEK staged builtin failure is past its arm");
   }
-  return classified.witness;
+  return { witness: classified.witness, budget };
 };

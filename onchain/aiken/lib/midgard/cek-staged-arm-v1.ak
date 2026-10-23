@@ -35,6 +35,7 @@ use midgard/cek_builtin_v1.{
   StringResult, ValueWitnessV1,
 }
 use midgard/cek_constant_v1
+use midgard/cek_cost_v1
 use midgard/cek_data_v1
 use midgard/cek_semantic_chain as chain
 use midgard/cek_staged_blob_v1.{
@@ -573,6 +574,73 @@ pub fn verify_staged_failure_v1(
   }
 }
 
+/// The budget the staged failure hop's step charges, failing when the
+/// builtin does not fail. A division builtin over a dividend of 4,096 words
+/// in the range and a zero divisor is charged before it fails; every other
+/// failure here is raised before costing.
+pub fn staged_failure_budget_v1(
+  tag: Int,
+  arguments: List<ValueWitnessV1>,
+  material: StagedMaterialV1,
+  reference_inputs: List<Input>,
+) -> cek_cost_v1.BuiltinBudgetV1 {
+  let uncharged = cek_cost_v1.BuiltinBudgetV1 { cpu: 0, memory: 0 }
+  when dividend_over_zero_v1(tag, arguments, material, reference_inputs) is {
+    // The dividend is 4,096 words and the divisor the one-word zero.
+    Some(in_range) ->
+      if in_range {
+        cek_cost_v1.division_budget_v1(tag, [max_bounded_integer_words, 1])
+      } else {
+        uncharged
+      }
+    None -> {
+      expect
+        verify_staged_failure_v1(tag, arguments, material, reference_inputs)
+      uncharged
+    }
+  }
+}
+
+/// Zero as the roots hop commits it.
+const zero_integer =
+  SemanticConstantValue {
+    type_cbor: integer_type_cbor,
+    payload: integer_leaf_from_cbor_v1(flat_root_v1(#"00"), 1, 1),
+    memory: 1,
+  }
+
+/// For a division builtin over a dividend of 4,096 words and a zero divisor,
+/// whether the dividend, bound to its CBOR by its source, is in the range.
+/// The direct failure arm leaves these steps to this hop. None for any other
+/// step.
+fn dividend_over_zero_v1(
+  tag: Int,
+  arguments: List<ValueWitnessV1>,
+  material: StagedMaterialV1,
+  reference_inputs: List<Input>,
+) -> Option<Bool> {
+  if tag >= 3 && tag <= 6 {
+    expect [dividend, divisor] = arguments
+    when dividend is {
+      SemanticConstantValue { memory, .. } ->
+        if memory == max_bounded_integer_words && divisor == zero_integer {
+          expect [source, _] = material.sources
+          expect Pair(_, Some(integer)) = bind_integer_v1(
+            failure_inputs_v1(material, reference_inputs),
+            Pair(dividend, source),
+            False,
+          )
+          Some(integer_in_range_v1(integer))
+        } else {
+          None
+        }
+      _ -> None
+    }
+  } else {
+    None
+  }
+}
+
 /// An integer argument of 4,096 words, bound to its CBOR by its source, is
 /// outside the range. The band holds integers on both sides of the bounds.
 fn integer_past_range_v1(
@@ -647,8 +715,8 @@ fn not_utf8_v1(
   )
   expect Some(pieces) = operand.pieces
   let whole = concat_balanced_v1(pieces)
-  let prefix = builtin.slice_bytearray(0, valid, whole)
-  expect builtin.encode_utf8(builtin.decode_utf8(prefix)) == prefix
+  // The prefix decodes, or the builtin fails.
+  expect _ = builtin.decode_utf8(builtin.slice_bytearray(0, valid, whole))
   let lead = builtin.index_bytearray(whole, valid)
   let width = if lead < 0xc0 {
     1

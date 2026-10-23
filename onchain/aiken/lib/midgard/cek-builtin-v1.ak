@@ -3894,6 +3894,12 @@ fn known_builtin_failure_v1(tag: Int, arguments: List<ValueWitnessV1>) -> Bool {
     expect [dividend, divisor] = arguments
     and {
       constant_type_v1(dividend) == cek_constant_v1.IntegerConstant,
+      // A dividend of 4,096 words or more is the staged failure hop's, which
+      // reads from its CBOR whether it is in range and so charged.
+      when dividend is {
+        SemanticConstantValue { memory, .. } -> memory < 4096
+        _ -> True
+      },
       integer_v1(divisor) == 0,
     }
   } else if tag == 11 {

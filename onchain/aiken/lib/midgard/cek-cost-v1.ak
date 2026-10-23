@@ -154,6 +154,21 @@ fn division_cpu(tag: Int, sizes: List<Int>) -> Int {
   }
 }
 
+/// The budget of division builtin `tag` (3 to 6) over its two argument
+/// sizes: `builtin_budget_v1`'s row for it, without the other builtins.
+pub fn division_budget_v1(tag: Int, sizes: List<Int>) -> BuiltinBudgetV1 {
+  expect tag >= 3 && tag <= 6
+  expect list.all(sizes, fn(size) { size >= 0 })
+  BuiltinBudgetV1 {
+    cpu: division_cpu(tag, sizes),
+    memory: if tag <= 4 {
+      linear2_sub(0, 1, 1, sizes)
+    } else {
+      linear2_y(0, 1, sizes)
+    },
+  }
+}
+
 pub fn builtin_argument_count_v1(tag: Int) -> Int {
   expect and {
       tag >= 0,

@@ -268,6 +268,29 @@ const compactedSourceFailure = (
   return "failure";
 };
 
+const INTEGER_TYPE = Buffer.from("9f00ff", "hex");
+
+/**
+ * A division builtin over a compacted dividend fails only on a zero divisor,
+ * as the direct failure arm decides it from the dividend's type. A dividend
+ * of 4,096 words or more is left to the staged failure hop, which reads from
+ * its CBOR whether it is in range and so charged.
+ */
+const compactedDividendFailure = (
+  arguments_: readonly MidgardCekDirectValueWitness[],
+): "failure" => {
+  const [dividend, divisor] = arguments_;
+  if (
+    dividend?.kind !== "semanticConstant" ||
+    !Buffer.from(dividend.witness.typeCbor).equals(INTEGER_TYPE) ||
+    dividend.witness.memory >= 4_096n ||
+    directInteger(divisor!) !== 0n
+  ) {
+    throw new Error("V1 division over a compacted dividend must fail by zero");
+  }
+  return "failure";
+};
+
 const evaluateReferenceBuiltin = (
   tag: bigint,
   arguments_: readonly MidgardCekDirectValueWitness[],
@@ -352,6 +375,9 @@ const evaluateReferenceBuiltin = (
     arguments_.at(-1)?.kind === "semanticConstant"
   ) {
     return compactedSourceFailure(tag, arguments_);
+  }
+  if (tag >= 3n && tag <= 6n && arguments_[0]?.kind === "semanticConstant") {
+    return compactedDividendFailure(arguments_);
   }
   const referenceArguments: CEKConst[] = [];
   for (const argument of arguments_) {

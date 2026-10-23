@@ -22,6 +22,11 @@
  *   not.
  *
  * Only compacted arguments are read: a revealed constant is past no bound.
+ *
+ * These failures are raised before costing but one: a division builtin over
+ * a dividend of 4,096 words in the range and a zero divisor is charged before
+ * it fails. The direct failure arm leaves every dividend of 4,096 words or
+ * more to this hop, which reads the dividend's range from its CBOR.
  */
 import {
   collectMidgardCekStagedRuns,
@@ -30,6 +35,8 @@ import {
 import { CEKConst } from "@harmoniclabs/plutus-machine";
 
 import type { MidgardCekDirectValueWitness } from "./cek-builtin.argument-kinds.js";
+import { midgardCekDirectBuiltinBudget } from "./cek-builtin.selected-control-result.js";
+import type { MidgardCekBuiltinBudget } from "./cek-cost.js";
 import type {
   MidgardCekStagedBuiltinMaterial,
   MidgardCekStagedOperandSource,
@@ -223,5 +230,74 @@ export const verifyMidgardCekStagedBuiltinFailure = (
     );
   } catch {
     return false;
+  }
+};
+
+const UNCHARGED: MidgardCekBuiltinBudget = Object.freeze({
+  cpu: 0n,
+  memory: 0n,
+});
+
+/** For a division builtin over a dividend of 4,096 words and a zero divisor,
+ * whether the dividend, bound to its CBOR by its source, is in the range;
+ * null for any other step. */
+const dividendOverZero = (
+  tag: bigint,
+  arguments_: readonly MidgardCekDirectValueWitness[],
+  material: MidgardCekStagedBuiltinMaterial,
+  referenceInputs: readonly MidgardCekStagedReferenceInput[],
+): boolean | null => {
+  if (tag < 3n || tag > 6n) return null;
+  if (arguments_.length !== 2) return refuse("argument count");
+  const [dividend, divisor] = arguments_;
+  if (
+    dividend!.kind !== "semanticConstant" ||
+    dividend!.witness.memory !== MAX_BOUNDED_INTEGER_WORDS ||
+    divisor!.kind !== "semanticConstant" ||
+    !sameCompacted(divisor!.witness, compactValue(CEKConst.int(0n)))
+  ) {
+    return null;
+  }
+  if (material.sources.length !== 2) return refuse("argument count");
+  const { integer } = bindInteger(
+    failureInputs(material, referenceInputs),
+    [dividend!.witness, material.sources[0]!],
+    false,
+  );
+  if (integer === null) return refuse("dividend by its leaf alone");
+  return integer >= INTEGER_LOWER_BOUND && integer <= INTEGER_UPPER_BOUND;
+};
+
+/**
+ * The budget the staged failure hop's step of builtin `tag` charges over
+ * `arguments_` (compacted), with `material` read against `referenceInputs`,
+ * or null when the hop does not accept that the builtin fails: the twin of
+ * `staged_failure_budget_v1`.
+ */
+export const midgardCekStagedBuiltinFailureBudget = (
+  tag: bigint,
+  arguments_: readonly MidgardCekDirectValueWitness[],
+  material: MidgardCekStagedBuiltinMaterial,
+  referenceInputs: readonly MidgardCekStagedReferenceInput[],
+): MidgardCekBuiltinBudget | null => {
+  try {
+    const inRange = dividendOverZero(
+      tag,
+      arguments_,
+      material,
+      referenceInputs,
+    );
+    if (inRange === true) return midgardCekDirectBuiltinBudget(tag, arguments_);
+    if (inRange === false) return UNCHARGED;
+    return verifyMidgardCekStagedBuiltinFailure(
+      tag,
+      arguments_,
+      material,
+      referenceInputs,
+    )
+      ? UNCHARGED
+      : null;
+  } catch {
+    return null;
   }
 };

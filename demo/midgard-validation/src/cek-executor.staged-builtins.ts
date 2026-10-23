@@ -38,8 +38,8 @@ import { encodeMidgardCekCanonicalConstant } from "./cek-constant.js";
 import { commitMidgardCekDataTree } from "./cek-data-tree.js";
 import type { MidgardCekSemanticStore } from "./cek-executor.semantic-store.js";
 import {
+  type MidgardCekStagedFailure,
   midgardCekStagedFailure,
-  type MidgardCekStagedFailureWitness,
   type MidgardCekStagedOperand,
 } from "./cek-executor.staged-failure.js";
 import type { MidgardCekCoreStepWitness } from "./cek-machine.js";
@@ -150,10 +150,7 @@ export const executeMidgardCekStagedBuiltin = (
       readonly witness: StagedWitness;
       readonly result: MidgardCekDirectValueWitness;
     }
-  | {
-      readonly kind: "failure";
-      readonly witness: MidgardCekStagedFailureWitness;
-    } => {
+  | ({ readonly kind: "failure" } & MidgardCekStagedFailure) => {
   const group = midgardCekSemanticGroup(tag);
   if (group !== 7 && group !== 8) {
     throw new Error("CEK staged builtin has no staged semantics group");
@@ -172,7 +169,7 @@ export const executeMidgardCekStagedBuiltin = (
     operands,
     () => evaluate() === "failure",
   );
-  if (failure !== null) return { kind: "failure", witness: failure };
+  if (failure !== null) return { kind: "failure", ...failure };
   const evaluated = evaluate();
   if (evaluated === "failure") {
     throw new Error("CEK staged builtin failure has no staged proof");

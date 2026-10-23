@@ -518,15 +518,38 @@ pub fn budget_step(
 }
 
 /// The arm 36 step for builtin `tag` failing on these witness arguments, with
-/// this material, as the staged failure hop receives it (group 7, progress 1).
+/// this material, as the staged failure hop receives it (group 7, progress 1):
+/// the post-state halts on the builtin failure, charging nothing.
 pub fn failure_step(
   tag: Int,
   arguments: List<ValueWitnessV1>,
   step_material: StagedMaterialV1,
   reference_inputs: List<Input>,
 ) -> StagedStepV1 {
+  charged_failure_step(tag, arguments, step_material, reference_inputs, 0, 0)
+}
+
+/// `failure_step` with a post-state charging `cpu` and `memory`.
+pub fn charged_failure_step(
+  tag: Int,
+  arguments: List<ValueWitnessV1>,
+  step_material: StagedMaterialV1,
+  reference_inputs: List<Input>,
+  cpu: Int,
+  memory: Int,
+) -> StagedStepV1 {
   let material_data: Data = step_material
-  failure_step_at(tag, arguments, material_data, reference_inputs, 36, 7, 1)
+  failure_step_charging(
+    tag,
+    arguments,
+    material_data,
+    reference_inputs,
+    36,
+    7,
+    1,
+    cpu,
+    memory,
+  )
 }
 
 /// `failure_step` with the witness constructor, group and progress chosen and
@@ -539,6 +562,30 @@ pub fn failure_step_at(
   arm: Int,
   group: Int,
   progress: Int,
+) -> StagedStepV1 {
+  failure_step_charging(
+    tag,
+    arguments,
+    material_data,
+    reference_inputs,
+    arm,
+    group,
+    progress,
+    0,
+    0,
+  )
+}
+
+fn failure_step_charging(
+  tag: Int,
+  arguments: List<ValueWitnessV1>,
+  material_data: Data,
+  reference_inputs: List<Input>,
+  arm: Int,
+  group: Int,
+  progress: Int,
+  cpu: Int,
+  memory: Int,
 ) -> StagedStepV1 {
   let arguments_data: Data = arguments
   let witness = builtin.constr_data(
@@ -558,7 +605,16 @@ pub fn failure_step_at(
   let bound = chain.CoreBound {
     prepared: builtin.constr_data(0, []),
     pre: state,
-    post: state,
+    post: machine.exact_state(
+      state,
+      machine.mode_halt_error,
+      cek_proof_v1.hash_error_term_v1(),
+      cek_proof_v1.empty_environment_root_v1,
+      cek_proof_v1.empty_continuation_root_v1,
+      machine.error_builtin_failure,
+      cpu,
+      memory,
+    ),
     witness_hash: blake2b_256(cbor.serialise(witness)),
     arm,
     group,
