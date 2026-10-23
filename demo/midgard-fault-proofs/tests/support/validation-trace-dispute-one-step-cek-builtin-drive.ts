@@ -16,6 +16,7 @@ import { Data } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
 import type { ValidationTraceClaimMaterial } from "../../src/validation-trace-dispute/claim-material.js";
+import { validationTraceHop } from "../../src/validation-trace-dispute/one-step-builders.js";
 import type {
   CekCoreGroup,
   ValidationTraceArmHolder,
@@ -25,6 +26,7 @@ import {
   planValidationTraceOneStep,
   type ValidationTraceCoreStepPlan,
 } from "../../src/validation-trace-dispute/one-step-plan.js";
+import { threadPlace } from "./validation-trace-dispute-one-step-play.js";
 import { resolutionDrive } from "./validation-trace-dispute-one-step-resolution-drive.js";
 
 /** A PlutusV3 script in Flat, wrapped in one CBOR byte string. */
@@ -150,8 +152,9 @@ export const cekBuiltinDrive = ({
     restart: drive.restart,
 
     /** Our plan sends the thread's step through the binder to the group's
-     * arm chain; a deployment that does not install the builtin chains
-     * leaves it unresolved, naming why. */
+     * arm chain, and no hop is built for an arm outside it; a deployment
+     * that does not install the builtin chains leaves it unresolved, naming
+     * why. */
     plans: async () => {
       const plan = await drive.plan();
       expect(plan.preState.phase).toBe("cek");
@@ -159,6 +162,16 @@ export const cekBuiltinDrive = ({
       expect(plan.core.arm).toBe(arm);
       expect(plan.core.hops.holders).toStrictEqual(arms);
       expect(plan.core.hops.facts).toHaveLength(arms.length);
+      const { scene, deployment, b } = drive.dispute();
+      const place = await threadPlace(scene, deployment, b.unit);
+      expect(() =>
+        validationTraceHop({
+          plan,
+          holder: "compute",
+          utxo: place!.utxo,
+          prover: scene.h.proverSigner.paymentKeyHash,
+        }),
+      ).toThrow("settles through other arms");
       const uninstalled = await planValidationTraceOneStep({
         material: drive.dispute().material,
         stateIndex: plan.stateIndex,
