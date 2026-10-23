@@ -50,6 +50,7 @@ import {
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
 } from "../../src/workflow/transaction-boundary.js";
+import { withClaimedPreUtxosRoot } from "./claimed-pre-root.js";
 
 export const submitRawInputExistenceStep = async ({
   lucid,
@@ -70,6 +71,7 @@ export const submitRawInputExistenceStep = async ({
   preSubmitBoundary,
   awaitConfirmation = true,
   mutateArgs,
+  claimedPreUtxosRoot,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -93,6 +95,7 @@ export const submitRawInputExistenceStep = async ({
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
   readonly mutateArgs?: (args: unknown) => unknown;
+  readonly claimedPreUtxosRoot?: string;
 }) => {
   const family =
     prepared.field === 0 ? "non-existent-input" : "no-reference-input";
@@ -104,7 +107,11 @@ export const submitRawInputExistenceStep = async ({
     stepIndex,
     threadOutRef,
   });
-  const states = inputExistenceStates(prepared);
+  const claimed =
+    claimedPreUtxosRoot === undefined
+      ? prepared
+      : withClaimedPreUtxosRoot(prepared, claimedPreUtxosRoot);
+  const states = inputExistenceStates(claimed);
   if (threadToken.fraudulentHeaderHash !== prepared.source.headerHash) {
     throw new Error(`${family}: prepared header differs from the proof thread`);
   }
@@ -251,7 +258,7 @@ export const submitRawInputExistenceStep = async ({
       absencePublished,
     } = prepareInputExistenceStepCarriage({
       stepIndex,
-      prepared,
+      prepared: stepIndex === 3 ? claimed : prepared,
       blueprint,
       network,
       stepReference,

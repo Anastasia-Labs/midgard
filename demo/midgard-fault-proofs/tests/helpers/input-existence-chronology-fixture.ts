@@ -13,6 +13,10 @@ import {
   encodeMidgardForcedTxCanonical,
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
+import {
+  aikenSerialisedPlutusDataCborPreservingMapOrder,
+  plutusConstrFieldCbor,
+} from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import type { CanonicalTransitionEffect } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
@@ -21,6 +25,7 @@ import { canonicalBlockEvidenceFromVerifiedPayload } from "../../src/evidence/ca
 import {
   checkLedgerAgainstRoot,
   ledgerEntriesRoot,
+  type LedgerEntry,
 } from "../../src/ledger-at.js";
 import { buildCountedRoot } from "../../src/transition-trace/phas.js";
 import { admitCompleteCanonicalReplayPredecessor } from "../../src/workflow/complete-replay.js";
@@ -34,21 +39,33 @@ import {
 } from "./canonical-block-evidence-fixture.js";
 import {
   CHRONOLOGY_SEED_VALUE,
+  chronologyDeposit,
+  chronologyDepositEntry,
   chronologySeedEntries,
   signedChronologyTransaction,
 } from "./input-existence-chronology-seed.js";
 
-export type InputChronology =
-  | "forced_creator"
-  | "normal_creator"
-  | "later_creator"
-  | "forced_spend"
-  | "normal_spend"
-  | "withdrawal_consumed"
-  | "withdrawal_untouched"
-  | "rejected_creator"
-  | "forced_target"
-  | "prior_ledger_present_rejection";
+export const inputChronologies = [
+  "forced_creator",
+  "normal_creator",
+  "later_creator",
+  "forced_spend",
+  "normal_spend",
+  "withdrawal_consumed",
+  "withdrawal_untouched",
+  "rejected_creator",
+  "forced_target",
+  "prior_ledger_present_rejection",
+  // A deposit of this block creates the input; deposits apply after every
+  // transaction event.
+  "same_block_deposit",
+  // The input is a prior block's deposit output, still unspent.
+  "prior_deposit",
+  "forced_prior_deposit",
+  // A forced rejection for an input that is absent at its pre-root.
+  "absent_input_rejection",
+] as const;
+export type InputChronology = (typeof inputChronologies)[number];
 /** A committed withdrawal: its event key, withdrawals-root entry and ledger
  * effect, each as block production derives it. */
 export type CommittedChronologyWithdrawal = Readonly<{
@@ -57,6 +74,9 @@ export type CommittedChronologyWithdrawal = Readonly<{
   rootValue: Buffer;
   effect: CanonicalTransitionEffect;
 }>;
+/** The L1 transaction-id byte of the same-block deposit. The seed deposits
+ * use 81-83, so the deposit's output is absent from the predecessor ledger. */
+const SAME_BLOCK_DEPOSIT_BYTE = 84;
 const PROVENANCE = {
   trustClass: "public_or_permissionless_da",
   sourceId: "test/input-event-chronology",
@@ -100,13 +120,16 @@ export const inputExistenceChronologyFixture = async (
     outputIndex: 0,
   });
   const usesCreated = scenario.endsWith("creator");
+  const deposit = chronologyDeposit(SAME_BLOCK_DEPOSIT_BYTE);
   const selected = usesCreated
     ? created
-    : scenario === "forced_target"
-      ? outRefCbor(82, 1n)
-      : scenario === "withdrawal_untouched"
-        ? untouchedSeed
-        : seed;
+    : scenario === "same_block_deposit"
+      ? outRefCbor(SAME_BLOCK_DEPOSIT_BYTE, 0n)
+      : scenario === "forced_target" || scenario === "absent_input_rejection"
+        ? outRefCbor(82, 1n)
+        : scenario === "withdrawal_untouched"
+          ? untouchedSeed
+          : seed;
   const target = signedChronologyTransaction({
     spendInputs: field === 0 ? [selected] : [feeSeed],
     referenceInputs: field === 1 ? [selected] : [],
@@ -121,6 +144,7 @@ export const inputExistenceChronologyFixture = async (
   const forced: SDK.DaPayloadEntry[] = [];
   const forcedPreimages: SDK.DaPayloadEntry[] = [];
   const withdrawals: SDK.DaPayloadEntry[] = [];
+  const deposits: SDK.DaPayloadEntry[] = [];
   const trace: SDK.DaPayloadEntry[] = [];
   const events: SDK.DaPayloadEntry[] = [];
   const validations: SDK.DaPayloadEntry[] = [];
@@ -130,6 +154,8 @@ export const inputExistenceChronologyFixture = async (
   let targetEvent: SDK.EventKey | undefined;
   let targetStep = -1n;
   let targetPreRoot = "";
+  let targetPostRoot = "";
+  let targetPostEntries: readonly LedgerEntry[] = [];
   const append = async (
     event: SDK.EventKey,
     phase: SDK.TransitionPhase,
@@ -160,7 +186,7 @@ export const inputExistenceChronologyFixture = async (
       Data.to(event, SDK.EventKey),
       Data.to({ step_index: index, phase }, SDK.EventToStepValue),
     ]);
-    if (phase !== "Withdrawal")
+    if (phase === "L2Transaction" || phase === "ForcedTransaction")
       validations.push([
         Data.to(event, SDK.EventKey),
         Data.to(
@@ -185,6 +211,8 @@ export const inputExistenceChronologyFixture = async (
       targetEvent = event;
       targetStep = index;
       targetPreRoot = before;
+      targetPostRoot = after;
+      targetPostEntries = [...entries.values()];
     }
   };
   const apply = (
@@ -288,11 +316,14 @@ export const inputExistenceChronologyFixture = async (
       }
     });
   }
-  if (scenario === "prior_ledger_present_rejection")
+  if (
+    scenario === "prior_ledger_present_rejection" ||
+    scenario === "absent_input_rejection"
+  )
     await forcedTx(target, [], [], true, true, {
       InputNotFound: { source_kind: BigInt(field), input_index: 0n },
     });
-  else if (scenario === "forced_target")
+  else if (scenario === "forced_target" || scenario === "forced_prior_deposit")
     await forcedTx(
       target,
       field === 0 ? [selected] : [feeSeed],
@@ -302,9 +333,24 @@ export const inputExistenceChronologyFixture = async (
     );
   else await normal(target, field === 0 ? [selected] : [feeSeed], [], true);
   if (scenario === "later_creator") await normal(creator, [seed], [output]);
+  if (scenario === "same_block_deposit") {
+    const { id } = deposit.event;
+    const eventCbor = aikenSerialisedPlutusDataCborPreservingMapOrder(
+      Data.to(deposit.event, SDK.DepositEvent),
+    );
+    deposits.push([
+      SDK.committedDepositKeyBytes(id),
+      plutusConstrFieldCbor(eventCbor, [1]),
+    ]);
+    const entry = chronologyDepositEntry(deposit);
+    await append({ DepositEventKey: { deposit_id: id } }, "Deposit", () => {
+      entries.set(entry.outRef.toString("hex"), entry);
+    });
+  }
   // DA root entries are serialized by canonical key, independently of the
   // transition step_index that authenticates application order.
   for (const rows of [
+    deposits,
     forced,
     forcedPreimages,
     withdrawals,
@@ -331,6 +377,7 @@ export const inputExistenceChronologyFixture = async (
       )
     ).root;
   const counts = {
+    depositCount: BigInt(deposits.length),
     withdrawalCount: BigInt(withdrawals.length),
     forcedTransactionCount: BigInt(forced.length),
     totalEventCount: BigInt(trace.length),
@@ -347,6 +394,7 @@ export const inputExistenceChronologyFixture = async (
           endTime: executionHeader.startTime + 30_000n,
           blockSlot: fixtureBlockSlot(executionHeader.startTime + 30_000n),
         }),
+    depositCount: counts.depositCount,
     withdrawalCount: counts.withdrawalCount,
     forcedTransactionCount: counts.forcedTransactionCount,
     totalEventCount: counts.totalEventCount,
@@ -355,6 +403,7 @@ export const inputExistenceChronologyFixture = async (
     // keeps the built members and their count.
     validationTraceCount: 0n,
     utxosRoot: await ledgerEntriesRoot([...entries.values()]),
+    depositsRoot: await root(SDK.ROOT_DOMAINS.deposits, deposits),
     withdrawalsRoot: await root(SDK.ROOT_DOMAINS.withdrawals, withdrawals),
     forcedTransactionsRoot: await root(
       SDK.ROOT_DOMAINS.forcedTransactionsV1,
@@ -374,6 +423,7 @@ export const inputExistenceChronologyFixture = async (
       ...body,
       header,
       header_hash: headerHash,
+      deposits,
       withdrawals,
       forced_transactions: forced,
       forced_transaction_preimages: forcedPreimages,
@@ -382,6 +432,7 @@ export const inputExistenceChronologyFixture = async (
       validation_traces: validations,
       counts: {
         ...body.counts,
+        depositCount: header.depositCount,
         withdrawalCount: header.withdrawalCount,
         forcedTransactionCount: header.forcedTransactionCount,
         totalEventCount: header.totalEventCount,
@@ -416,6 +467,8 @@ export const inputExistenceChronologyFixture = async (
     targetEvent,
     targetStep,
     targetPreRoot,
+    targetPostRoot,
+    targetPostEntries,
     target,
     selected,
     creator,

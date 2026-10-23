@@ -200,6 +200,9 @@ describe("input-existence event chronology", () => {
     "normal_spend",
     "rejected_creator",
     "forced_target",
+    "same_block_deposit",
+    "prior_deposit",
+    "forced_prior_deposit",
   ];
   for (const field of [0, 1] as const) {
     it.each(scenarios)(
@@ -216,7 +219,10 @@ describe("input-existence event chronology", () => {
           d.subjectEventKeyCbors.includes(targetFingerprint),
         );
         const present =
-          scenario === "forced_creator" || scenario === "normal_creator";
+          scenario === "forced_creator" ||
+          scenario === "normal_creator" ||
+          scenario === "prior_deposit" ||
+          scenario === "forced_prior_deposit";
         expect(targetDetections).toHaveLength(present ? 0 : 1);
         if (!present)
           expect(targetDetections[0]!.violationId).toBe(
@@ -236,7 +242,9 @@ describe("input-existence event chronology", () => {
         );
         expect(prepared.source.subject.direction).toBe(0n);
         expect(prepared.source.subject.source_kind).toBe(
-          scenario === "forced_target" ? 1n : 0n,
+          scenario === "forced_target" || scenario === "forced_prior_deposit"
+            ? 1n
+            : 0n,
         );
         expect(prepared.ledgerEvidence).toHaveProperty(
           present ? "Present" : "Absent",
@@ -259,6 +267,10 @@ describe("input-existence event chronology", () => {
         ) {
           expect(f.targetPreRoot).not.toBe(f.evidence.header.prevUtxosRoot);
         }
+        // A later event of the block creates the input: the block's final
+        // ledger has it, the target event's ledger does not.
+        if (scenario === "later_creator" || scenario === "same_block_deposit")
+          expect(f.targetPostRoot).not.toBe(f.evidence.header.utxosRoot);
       },
     );
   }

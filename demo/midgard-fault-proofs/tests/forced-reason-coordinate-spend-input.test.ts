@@ -368,11 +368,11 @@ describe("forced spend InputNotFound coordinate the node writes", () => {
     let thread = await s.init();
     for (const stepIndex of [0, 1, 2] as const)
       thread = (await s.rawStep(thread, stepIndex)).nextThreadOutRef;
-    // The only membership the ledger can prove is input 0's, offered for
-    // input 1: the step's membership check cannot prove input 1 held.
+    // The only membership the ledger can prove is input 0's, so the
+    // terminal step's membership check of the selected input refuses.
     await expectOnchainRefusal(() => s.rawStep(thread, 3), {
       refusedBy: "fraud_proofs/no_input/step_04",
-      check: /^expect mpf_proof_v1\.has_value_hash\(/u,
+      check: /^expect mpf_proof_v1\.has_value_hash\( state\.pre_utxos_root,/u,
     });
   }, 600_000);
 });
