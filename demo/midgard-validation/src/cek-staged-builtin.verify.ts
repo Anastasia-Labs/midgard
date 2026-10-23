@@ -37,31 +37,11 @@ import {
   semanticizeMidgardCekDirectConstant,
 } from "./cek-builtin.evaluate-reference-builtin.js";
 import type { MidgardCekSemanticConstantWitness } from "./cek-constant.js";
+import { midgardCekSemanticGroup } from "./cek-semantic-group.js";
 import type {
   MidgardCekStagedBuiltinMaterial,
   MidgardCekStagedOperandSource,
 } from "./cek-staged-builtin.material.js";
-
-/**
- * The semantics group of an arm 31 step for builtin `tag`, as the budget hop
- * routes it, or null for a tag no semantics group takes.
- */
-export const midgardCekSemanticGroup = (tag: bigint): number | null => {
-  const t = Number(tag);
-  if (tag < 0n || tag > 255n) return null;
-  if (t === 29 || t === 30) return 0;
-  if (t === 31 || t === 32 || t === 35) return 1;
-  if (t === 33 || t === 34) return 2;
-  if (t === 36) return 3;
-  if (t === 37 || t === 42) return 4;
-  if (t >= 47 && t <= 51) return 6;
-  if ([39, 40, 41, 44, 45, 46].includes(t)) return 5;
-  if (t >= 0 && t <= 9) return 8;
-  if ((t >= 10 && t <= 25 && t !== 21) || t === 71 || t === 72 || t === 86) {
-    return 7;
-  }
-  return null;
-};
 
 /**
  * The builtins the staged arms prove: addInteger, subtractInteger,

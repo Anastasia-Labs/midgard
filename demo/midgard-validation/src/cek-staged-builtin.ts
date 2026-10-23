@@ -11,7 +11,6 @@ export {
 } from "./cek-staged-builtin.material.js";
 export {
   MIDGARD_CEK_STAGED_MAX_BOUNDED_BYTES_CBOR_LENGTH,
-  midgardCekSemanticGroup,
   midgardCekStagedBuiltinProves,
   type MidgardCekStagedConstant,
   midgardCekStagedConstantWitness,

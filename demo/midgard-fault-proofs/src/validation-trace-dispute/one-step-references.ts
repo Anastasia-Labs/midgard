@@ -13,6 +13,7 @@ import { CANONICAL_DECODE_HOLDERS } from "./one-step-canonical-decode.js";
 import { DRIVEN_CEK_CONTEXT_STAGES } from "./one-step-context.js";
 import { CONTEXT_FOLLOWER_HOLDERS } from "./one-step-context-followers.js";
 import { CONTEXT_ITEM_HOLDERS } from "./one-step-context-item-holders.js";
+import { CEK_CORE_BUILTIN_ARM_HOLDERS } from "./one-step-core-chains.js";
 import {
   CEK_CONTEXT_STAGE_HOLDERS,
   VALIDATION_TRACE_ONE_STEP_CONTRACT_NAMES,
@@ -123,6 +124,7 @@ export const validationTraceOneStepReferences = (
       mapConversion: holder("mapConversion"),
       caseConstant: holder("caseConstant"),
     }),
+    cekBuiltins: holders(CEK_CORE_BUILTIN_ARM_HOLDERS),
     ...(authenticate === undefined || successor === undefined
       ? {}
       : {
