@@ -1,5 +1,7 @@
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
+import { OutputReferenceSchema } from "../common.js";
 import {
   BlsExpressionWitnessSchema,
   CekMachineStateSchema,
@@ -15,6 +17,46 @@ import {
   RuntimeValueWitnessSchema,
   SemanticBuiltinWitnessSchema,
 } from "./validation-auxiliary-witness.data-node-schema.js";
+
+/** `cek_staged_arm_v1.OperandSourceV1`: where a staged builtin step's
+ * argument comes from. */
+const StagedOperandSourceSchema = Data.Enum([
+  Data.Object({ InlineOperand: Data.Object({ bytes: Data.Bytes() }) }),
+  Data.Object({ StagedOperand: Data.Object({ operand: Data.Integer() }) }),
+  Data.Object({
+    BytesLeafOperand: Data.Object({
+      root: Data.Bytes(),
+      length: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    IntegerLeafOperand: Data.Object({
+      cbor_root: Data.Bytes(),
+      cbor_length: Data.Integer(),
+      words: Data.Integer(),
+    }),
+  }),
+  Data.Object({ SmallIntegerOperand: Data.Object({ value: Data.Integer() }) }),
+]);
+
+/**
+ * `cek_staged_arm_v1.StagedMaterialV1`: the material of a staged builtin step
+ * (arm 31, semantics groups 7 and 8), the staging outputs it reads in ledger
+ * order, the indices of each staged operand's runs among them, and one source
+ * per argument.
+ */
+export const StagedMaterialV1Schema = Data.Object({
+  runs: Data.Object({
+    refs: Data.Array(OutputReferenceSchema),
+    operands: Data.Array(Data.Array(Data.Integer())),
+  }),
+  sources: Data.Array(StagedOperandSourceSchema),
+});
+
+export type StagedMaterialV1 = Data.Static<typeof StagedMaterialV1Schema>;
+export const StagedMaterialV1 = asDataType<StagedMaterialV1>(
+  StagedMaterialV1Schema,
+);
 
 const CoreStepWitnessSchema = Data.Enum([
   Data.Object({
@@ -223,7 +265,10 @@ const CoreStepWitnessSchema = Data.Enum([
       tag: Data.Integer(),
       arguments: Data.Array(DirectValueWitnessSchema),
       result: DirectValueWitnessSchema,
-      material: SemanticBuiltinWitnessSchema,
+      // `SemanticBuiltinWitnessSchema`, or `StagedMaterialV1Schema` for a tag
+      // of semantics group 7 or 8: both are a constructor 0, so the shape is
+      // the tag's to pick, not the schema's.
+      material: Data.Any(),
     }),
   }),
   Data.Object({

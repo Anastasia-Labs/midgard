@@ -72,6 +72,8 @@ describe("validation-trace dispute funding terms from the signed deployment", ()
         "validationTraceDisputeCekCoreSemanticDataConstruct",
         "validationTraceDisputeCekCoreSemanticDataScalar",
         "validationTraceDisputeCekCoreSemanticDataMisc",
+        "validationTraceDisputeCekCoreStagedBytes",
+        "validationTraceDisputeCekCoreStagedInteger",
         "validationTraceDisputeCekCoreSettle",
         "validationTraceDisputeCekExecutionSelectionSemantic",
         "validationTraceDisputeCekContextStepSemantic",
