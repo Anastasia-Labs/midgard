@@ -615,6 +615,38 @@
       }
     },
     {
+      "id": "cek-serialise-loop-v1",
+      "kind": "golden",
+      "summary": "Serialise loop hops (serialiseData, arm 31, semantics group 10) planned by the TypeScript twin: JSON fixture of hop counts, shapes and modelled ex-units plus a whole generated Aiken module spending each hop through the loop validator with the TypeScript next state, each with a control row.",
+      "generators": [
+        "demo/midgard-validation/scripts/generate-cek-serialise-loop-v1-goldens.mjs"
+      ],
+      "packageScripts": [
+        "demo/midgard-validation:fixtures:cek-serialise-loop-v1:sync",
+        "demo/midgard-validation:fixtures:cek-serialise-loop-v1:check"
+      ],
+      "producers": ["demo/midgard-validation"],
+      "inputs": [
+        "@golden-channel",
+        "demo/midgard-validation/tests/fixtures/cek-serialise-loop-v1.vectors.mjs"
+      ],
+      "outputs": [
+        "demo/midgard-validation/tests/fixtures/cek-serialise-loop-v1.generated.json",
+        "onchain/aiken/validators/fraud-proofs/validation-trace/cek-core-semantic-serialise-loop-golden.test.ak"
+      ],
+      "aikenImportsOfOutputs": true,
+      "sync": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:cek-serialise-loop-v1:sync"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:cek-serialise-loop-v1:check"
+      },
+      "ci": {
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Check serialise loop golden vectors"
+      }
+    },
+    {
       "id": "plutus-data-cbor-decoding-v1",
       "kind": "golden",
       "summary": "Plutus Data CBOR decoding, Data entry and envelope entry: JSON fixture plus a generated Aiken module holding midgard/cbor_deserialise to the TypeScript decoder.",
