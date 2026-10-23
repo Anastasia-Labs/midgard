@@ -1,4 +1,4 @@
-export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
+export const DEPLOYMENT_MANIFEST_BASE_REFERENCE_TOKEN_NAMES = Object.freeze({
   "V1 validation-trace resolve-inputs Initial semantic": "V1VtRiInitial",
   "V1 validation-trace resolve-inputs Finish semantic": "V1VtRiFinish",
   "V1 validation-trace resolve-inputs MembershipBegin semantic":

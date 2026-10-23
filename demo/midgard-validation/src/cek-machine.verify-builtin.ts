@@ -50,6 +50,12 @@ import {
   verifySemanticChooseData,
   verifySemanticList,
 } from "./cek-machine.verify-semantic-list.js";
+import {
+  midgardCekPlaceholderStaging,
+  midgardCekStagedReferenceInputs,
+  stageMidgardCekStagedBuiltinMaterial,
+} from "./cek-staged-builtin.material.js";
+import { verifyMidgardCekStagedBuiltin } from "./cek-staged-builtin.verify.js";
 
 const verifySemanticBuiltin = (
   tag: bigint,
@@ -74,6 +80,34 @@ const verifySemanticBuiltin = (
     tag !== 38n &&
     tag !== 43n &&
     verifySemanticData(tag, arguments_, result, material)
+  );
+};
+
+/**
+ * A staged step read against the staging outputs its material names, each
+ * holding its run of the witness's staged operands. A step not yet staged
+ * is read as staged on placeholder outputs.
+ */
+const verifyStagedBuiltin = (
+  witness: Extract<
+    MidgardCekCoreStepWitness,
+    { readonly kind: "executeBuiltinStaged" }
+  >,
+): boolean => {
+  const staged =
+    witness.material.runs.operands.length === witness.stagedOperands.length
+      ? witness.material
+      : stageMidgardCekStagedBuiltinMaterial(
+          witness.material,
+          witness.stagedOperands,
+          midgardCekPlaceholderStaging(witness.stagedOperands),
+        );
+  return verifyMidgardCekStagedBuiltin(
+    witness.tag,
+    witness.arguments,
+    witness.result,
+    staged,
+    midgardCekStagedReferenceInputs(staged, witness.stagedOperands),
   );
 };
 
@@ -180,6 +214,30 @@ const verifyBuiltin = (
         witness.result,
         witness.material,
       )
+    ) {
+      return false;
+    }
+    const budget = midgardCekDirectBuiltinBudget(
+      witness.tag,
+      witness.arguments,
+    );
+    return sameState(
+      post,
+      exactState(pre, {
+        mode: "return",
+        focusRoot: hashMidgardCekDirectValueWitness(witness.result),
+        environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
+        continuationRoot: pre.continuationRoot,
+        auxiliary: 0n,
+        cpuDelta: budget.cpu,
+        memoryDelta: budget.memory,
+      }),
+    );
+  }
+  if (witness.kind === "executeBuiltinStaged") {
+    if (
+      !builtinRootMatches(pre, witness.tag, witness.arguments) ||
+      !verifyStagedBuiltin(witness)
     ) {
       return false;
     }

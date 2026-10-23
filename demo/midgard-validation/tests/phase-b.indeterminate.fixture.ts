@@ -42,7 +42,8 @@ export const failingProgram = () => plutusProgram(new ErrorUPLC());
 /**
  * Doubles a 75-byte string six times with `appendByteString`, then returns
  * unit. Cardano accepts it; the last append's arguments and result together
- * pass the reference evaluator's 9,215-byte direct payload bound.
+ * pass the reference evaluator's 9,215-byte direct payload bound, so proof
+ * mode proves it on the staged route.
  */
 export const doublingProgram = () => {
   let bytes: UPLCTerm = UPLCConst.byteString(new Uint8Array(75).fill(0xab));

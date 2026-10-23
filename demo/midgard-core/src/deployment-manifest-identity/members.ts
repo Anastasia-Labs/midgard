@@ -1,4 +1,4 @@
-import { DEPLOYMENT_MANIFEST_CONTRACT_NAMES } from "./catalogue-roles.deployment-manifest-contract-names.js";
+import { DEPLOYMENT_MANIFEST_CONTRACT_NAMES } from "./catalogue-roles.deployment-manifest-contract-names.additions.js";
 import { DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "./catalogue-roles.protocol-categories.js";
 import { DEPLOYMENT_MEMBERS } from "./members.data.js";
 import {
@@ -7,7 +7,7 @@ import {
   type DeploymentMember,
   REFERENCE_SCRIPT_COMMAND_NAMES,
 } from "./members.types.js";
-import { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES } from "./reference-script-tokens.js";
+import { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES } from "./reference-script-tokens.additions.js";
 
 export { DEPLOYMENT_MEMBERS } from "./members.data.js";
 export {

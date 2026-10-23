@@ -48,6 +48,7 @@ export * from "./non-existent-input.js";
 export * from "./proof-thread-source.js";
 export * from "./proof-thread-substrate.js";
 export * from "./reference-input-no-idx.js";
+export * from "./staging.js";
 export * from "./tokens.js";
 export * from "./transition-trace.js";
 export * from "./validation-auxiliary-witness.js";

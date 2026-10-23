@@ -477,6 +477,14 @@ jobs:
       - name: Check V1 CEK core-step golden vectors
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run golden:cek-core-step-v1
+      # The staged-operand libraries and the staged builtin arms: the Aiken
+      # libraries and semantics validators are held to the TypeScript twins.
+      - name: Check staged-operand golden vectors
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run golden:cek-staged-v1
+      - name: Check staged builtin arm golden vectors
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run golden:cek-staged-arm-v1
       # The Plutus Data CBOR decoding channel: both entries of the on-chain
       # decoder are held to the TypeScript decoder's outcome on every row.
       - name: Check Plutus Data CBOR decoding golden vectors

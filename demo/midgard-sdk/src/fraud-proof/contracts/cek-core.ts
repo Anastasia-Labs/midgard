@@ -46,6 +46,8 @@ export const CEK_CORE_STAGE_TITLES = {
   semanticDataMisc: deployedTitle(
     "validationTraceDisputeCekCoreSemanticDataMisc",
   ),
+  stagedBytes: deployedTitle("validationTraceDisputeCekCoreStagedBytes"),
+  stagedInteger: deployedTitle("validationTraceDisputeCekCoreStagedInteger"),
   semanticBudget: deployedTitle(
     "validationTraceDisputeCekCoreDirectScalarBudget",
   ),
@@ -125,6 +127,8 @@ export const buildCekCoreStages = (
   const semanticDataConstruct = terminal("semanticDataConstruct");
   const semanticDataScalar = terminal("semanticDataScalar");
   const semanticDataMisc = terminal("semanticDataMisc");
+  const stagedBytes = terminal("stagedBytes");
+  const stagedInteger = terminal("stagedInteger");
   const mapStartNodes = terminal("mapStartNodes");
   const semanticFailureMaterial = terminal("semanticFailureMaterial");
   const blsFinal = terminal("blsFinal");
@@ -147,6 +151,8 @@ export const buildCekCoreStages = (
       semanticDataConstruct,
       semanticDataScalar,
       semanticDataMisc,
+      stagedBytes,
+      stagedInteger,
     ].map((stage) => stage.spendingScriptHash),
     ctPolicy,
   ]);
@@ -207,6 +213,8 @@ export const buildCekCoreStages = (
     semanticDataConstruct,
     semanticDataScalar,
     semanticDataMisc,
+    stagedBytes,
+    stagedInteger,
     semanticBudget,
     semanticRoots,
     semanticResult,
@@ -313,6 +321,14 @@ export const CEK_CORE_STAGE_REFERENCES = {
   semanticDataMisc: {
     deployment: "validationTraceDisputeCekCoreSemanticDataMisc",
     role: "V1 validation-trace CEK core semantic data misc",
+  },
+  stagedBytes: {
+    deployment: "validationTraceDisputeCekCoreStagedBytes",
+    role: "V1 validation-trace CEK core staged bytes",
+  },
+  stagedInteger: {
+    deployment: "validationTraceDisputeCekCoreStagedInteger",
+    role: "V1 validation-trace CEK core staged integer",
   },
   semanticBudget: {
     deployment: "validationTraceDisputeCekCoreSemanticBudget",

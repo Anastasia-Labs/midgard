@@ -591,6 +591,24 @@ Golden channel cek-data-canonical-corpus-v1 (@al-ft/midgard-core).
   - `demo/l1-node-transport/src/**`
 - Needs: `node-modules`, `aiken`
 
+### `golden:cek-staged-v1`
+
+Golden channel cek-staged-v1 (@al-ft/midgard-core).
+
+- Command: `pnpm --dir demo/midgard-core run fixtures:cek-staged-v1:check`
+- Fix: `pnpm --dir demo/midgard-core run fixtures:cek-staged-v1:sync`
+- Runs on:
+  - `demo/midgard-core/scripts/generate-cek-staged-v1-goldens.mjs`
+  - `demo/flake.lock`
+  - `demo/midgard-core/scripts/generate-cek-staged-v1-goldens.render-aiken.mjs`
+  - `demo/midgard-core/scripts/golden-channel.mjs`
+  - `onchain/aiken/lib/midgard/cek-staged-v1-golden.test.ak`
+  - `scripts/lib/aiken.mjs`
+  - `demo/midgard-core/src/**`
+  - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
+- Needs: `node-modules`, `aiken`
+
 ### `golden:mpf-node-encoding-v1`
 
 Golden channel mpf-node-encoding-v1 (@al-ft/midgard-core).
@@ -813,6 +831,34 @@ Golden channel cek-core-step-v1 (@al-ft/midgard-validation).
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/un-constr-wrong-variant.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/un-map-wrong-variant-constant.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/unbound-variable.test.ak`
+  - `demo/lucid-midgard/src/**`
+  - `demo/midgard-core/src/**`
+  - `demo/midgard-fault-proofs/src/**`
+  - `demo/midgard-validation/src/**`
+  - `demo/midgard-node/src/**`
+  - `demo/midgard-node-tools/src/**`
+  - `demo/midgard-sdk/src/**`
+  - `demo/midgard-watcher/src/**`
+  - `demo/da-committee-node/src/**`
+  - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
+  - `demo/midgard-l1-follower/src/**`
+- Needs: `node-modules`, `aiken`, `core-dist`
+
+### `golden:cek-staged-arm-v1`
+
+Golden channel cek-staged-arm-v1 (@al-ft/midgard-validation).
+
+- Command: `pnpm --dir demo/midgard-validation run fixtures:cek-staged-arm-v1:check`
+- Fix: `pnpm --dir demo/midgard-validation run fixtures:cek-staged-arm-v1:sync`
+- Runs on:
+  - `demo/midgard-validation/scripts/generate-cek-staged-arm-v1-goldens.mjs`
+  - `demo/midgard-validation/tests/fixtures/cek-staged-arm-v1.bytes-rows.mjs`
+  - `demo/midgard-validation/tests/fixtures/cek-staged-arm-v1.generated.json`
+  - `demo/midgard-validation/tests/fixtures/cek-staged-arm-v1.integer-rows.mjs`
+  - `demo/midgard-validation/tests/fixtures/cek-staged-arm-v1.kit.mjs`
+  - `demo/midgard-validation/tests/fixtures/cek-staged-arm-v1.vectors.mjs`
+  - `onchain/aiken/validators/fraud-proofs/validation-trace/cek-core-staged-golden.test.ak`
   - `demo/lucid-midgard/src/**`
   - `demo/midgard-core/src/**`
   - `demo/midgard-fault-proofs/src/**`

@@ -1,4 +1,4 @@
-export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
+export const DEPLOYMENT_MANIFEST_BASE_CONTRACT_NAMES = Object.freeze([
   "referenceScriptAuthMint",
   "hubOracleMint",
   "daParamsGovernorSpend",
