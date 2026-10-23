@@ -264,6 +264,8 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
         semanticDataConstruct: transitionTrace,
         semanticDataScalar: transitionTrace,
         semanticDataMisc: transitionTrace,
+        stagedBytes: transitionTrace,
+        stagedInteger: transitionTrace,
         semanticBudget: transitionTrace,
         semanticRoots: transitionTrace,
         semanticResult: transitionTrace,

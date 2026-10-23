@@ -773,4 +773,6 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
     "V1VtPhaseAPrecondPrepare",
   "V1 validation-trace resolve-inputs prepare": "V1VtResolveInputsPrepare",
   "V1 validation-trace script-sources prepare": "V1VtScriptSourcesPrepare",
+  "V1 validation-trace CEK core staged bytes": "V1VtCekCoreStaByt",
+  "V1 validation-trace CEK core staged integer": "V1VtCekCoreStaInt",
 } as const);

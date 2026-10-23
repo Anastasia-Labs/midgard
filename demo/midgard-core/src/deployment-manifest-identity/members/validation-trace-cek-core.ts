@@ -366,5 +366,27 @@ export const validationTraceCekCoreMembers = defineDeploymentFamily(
         "fraud_proofs/validation_trace/cek_core_type_failure_roots.main.spend",
       familyPaths: [["cekCoreStages", "typeFailureRoots"]],
     },
+    validationTraceDisputeCekCoreStagedBytes: {
+      purpose: "spend",
+      referenceRole: "V1 validation-trace CEK core staged bytes",
+      manifestPosition: 559,
+      publicationPosition: 554,
+      referenceRolePosition: 554,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/validation_trace/cek_core_staged_bytes.main.spend",
+      familyPaths: [["cekCoreStages", "stagedBytes"]],
+    },
+    validationTraceDisputeCekCoreStagedInteger: {
+      purpose: "spend",
+      referenceRole: "V1 validation-trace CEK core staged integer",
+      manifestPosition: 560,
+      publicationPosition: 555,
+      referenceRolePosition: 555,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/validation_trace/cek_core_staged_integer.main.spend",
+      familyPaths: [["cekCoreStages", "stagedInteger"]],
+    },
   },
 );
