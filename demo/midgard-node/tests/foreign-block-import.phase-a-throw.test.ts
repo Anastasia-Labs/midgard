@@ -11,6 +11,7 @@
  * would otherwise make of it.
  */
 import { LedgerSignatureVerifierUnavailableError } from "@al-ft/midgard-core";
+import { LOCAL_FAULT_RUN_LIMIT } from "@al-ft/midgard-fault-proofs";
 import {
   Deferred,
   Effect,
@@ -80,7 +81,6 @@ import {
 import { ForeignBlockVerificationError } from "../src/mpf/verified-block-import.js";
 import {
   coalescedRunner,
-  LOCAL_FAULT_RUN_LIMIT,
   localFaultProgress,
 } from "../src/services/l1-follower.coalesced-runner.js";
 import {

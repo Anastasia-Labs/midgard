@@ -1,13 +1,11 @@
 /**
  * The production lifecycle's liveness: `runtime.done` settles only when the
- * proof supervisor or the operations server stops, or rejects when the
- * follower's transient budget or the decision driver's local-fault bound ran
- * out. The follower stopping, on its own or on an intervention, is an L1
- * readiness condition and never ends the process.
+ * proof supervisor or the operations server stops. The follower stopping,
+ * on its own or on an intervention, is an L1 readiness condition and never
+ * ends the process.
  */
 import { describe, expect, it } from "vitest";
 
-import { WatcherReplayLocalFaultExhaustedError } from "../../src/fault-proofs/replay-local-fault-bound.js";
 import {
   createWatcherRuntimeLifecycle,
   WatcherFollowerExhaustedError,
@@ -37,10 +35,7 @@ const deferred = () => {
   return { promise, resolve };
 };
 
-const lifecycle = (
-  follower: Readonly<{ done: Promise<unknown> }>,
-  exhausted: Promise<never> = new Promise<never>(() => undefined),
-) => {
+const lifecycle = (follower: Readonly<{ done: Promise<unknown> }>) => {
   const supervisor = deferred();
   const operationsHttp = deferred();
   const runtime = createWatcherRuntimeLifecycle({
@@ -64,7 +59,7 @@ const lifecycle = (
     recoveredFaultProofWorkflowCount: 0,
     availability: { status: () => ({ phase: "running" }) },
     follower,
-    decisionDriver: { caughtUp: Promise.resolve(), exhausted },
+    decisionDriver: { caughtUp: Promise.resolve() },
     closeAllocatedResources: () => Promise.resolve(),
   } as unknown as LifecycleInput);
   return { runtime, supervisor, operationsHttp };
@@ -118,26 +113,6 @@ describe("watcher production lifecycle liveness", () => {
     );
     await expect(handle.runtime.done).rejects.toThrow(
       "l1_follower_transient_exhausted: the database did not answer",
-    );
-    expect(handle.runtime.status()).toMatchObject({
-      phase: "failed",
-      liveness: false,
-    });
-  });
-
-  it("ends liveness, rejecting with the named reason, when a replay local fault outlived its bound", async () => {
-    const exhaustion = new WatcherReplayLocalFaultExhaustedError(
-      "ab".repeat(28),
-      "the script evaluator failed locally",
-    );
-    const handle = lifecycle(
-      { done: new Promise(() => undefined) },
-      Promise.reject(exhaustion),
-    );
-    expect(await settled(handle.runtime.done)).toBe("rejected");
-    await expect(handle.runtime.done).rejects.toBe(exhaustion);
-    await expect(handle.runtime.done).rejects.toThrow(
-      `replayed_ledger_local_fault: ${"ab".repeat(28)}: the script evaluator failed locally`,
     );
     expect(handle.runtime.status()).toMatchObject({
       phase: "failed",

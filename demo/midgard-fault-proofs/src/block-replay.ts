@@ -13,7 +13,7 @@
  * Faults of the payload are thrown as `BlockReplayFault` defects; the
  * callbacks' and the root computation's failures pass through, and a
  * callback names a local fault of its own with `ReplayLocalFault`. A defect
- * of the event replay is a `ReplayLocalFault`.
+ * of the event replay is a `ReplayLocalFault` marked `held`.
  */
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
@@ -285,7 +285,8 @@ export const replayBlockEvents = (
             : { committedScriptRun: committed.onScriptRun }),
         }).pipe(
           // What the event's bytes and ledger decide is a verdict or a typed
-          // failure; a throw past them is this process's own fault.
+          // failure; a throw past them is this process's own fault, held on
+          // the block for as long as it recurs.
           Effect.catchAllDefect((cause) =>
             Effect.die(
               isReplayLocalFault(cause)
@@ -293,6 +294,7 @@ export const replayBlockEvents = (
                 : new ReplayLocalFault({
                     message: `event replay failed locally: ${String(cause)}`,
                     cause,
+                    held: true,
                   }),
             ),
           ),

@@ -108,10 +108,13 @@ describe("fault decision bridge deferral on a transient", () => {
     const [faulty] = current.finalizedHeaders;
     const warn = vi.fn();
     let faults = 2;
+    // Each pass comes after the held header's backoff passed.
+    let monotonicMs = 0;
     const h = harness({
       current,
       categoryByHeader: { [faulty!.headerHash]: "doubleSpend" },
       nowMs: IN_WINDOW,
+      monotonicNowMs: () => (monotonicMs += 60_000),
       warn,
       classifyOverride: (fresh) => {
         if (faults > 0) {

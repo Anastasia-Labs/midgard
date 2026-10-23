@@ -119,6 +119,21 @@ export const LANDED_BLOCK_REPLAY_INCOMPLETE = "landed_block_replay_incomplete";
  */
 export const LANDED_BLOCK_LOCAL_FAULT = "landed_block_local_fault";
 /**
+ * The event replay of a foreign block failed locally (a `ReplayLocalFault`
+ * marked `held`), which the block's input can reach. Never attributed to the
+ * block and never bounded by an exit: the block is held and its import
+ * retried on a backoff of 1 s doubling to 60 s (`replay-held.ts`), with the
+ * `landed_block_local_fault` alarm on every failed attempt, while the node
+ * keeps running.
+ */
+export const LANDED_BLOCK_REPLAY_HELD = "landed_block_replay_held";
+/**
+ * A `LANDED_BLOCK_REPLAY_HELD` block whose replay failed
+ * `LOCAL_FAULT_RUN_LIMIT` times in a row, whatever the message: still held and retried on the 60 s
+ * backoff, named so an operator sees it does not clear by itself.
+ */
+export const LANDED_BLOCK_REPLAY_STUCK = "landed_block_replay_stuck";
+/**
  * This node's Ed25519 verifier could not answer while it replayed a foreign
  * block (libsodium failed to initialise, or raised). A local fault, never
  * attributed to the block: retried on the driver's backoff, and after a
@@ -183,6 +198,8 @@ const PRIORITY = [
   NATIVE_MPF_RESTORE_READ_TRANSIENT,
   LANDED_BLOCK_REBASE_FAILED,
   LANDED_BLOCK_LOCAL_FAULT,
+  LANDED_BLOCK_REPLAY_STUCK,
+  LANDED_BLOCK_REPLAY_HELD,
   LANDED_BLOCK_REPLAY_INCOMPLETE,
   LANDED_BLOCK_REPLAY_FAILED,
   CONFIRMED_LEDGER_BASE_MISMATCH,

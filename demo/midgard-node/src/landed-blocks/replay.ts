@@ -2,7 +2,8 @@
  * What processing a foreign landed block needs from a replayer: the
  * block's post-state on its parent's ledger, or why it cannot be had yet
  * (`missing`, `da_refetch_pending`, `event_unknown`, `forced_order_pending`,
- * `local_fault`, `incomplete`, `verifier_unavailable`), ever (`invalid`:
+ * `local_fault`, `incomplete`, `verifier_unavailable`, `replay_held`,
+ * `replay_stuck`), ever (`invalid`:
  * the block does not replay to its header), or on this node's follower
  * store (`origin_after_frontier`). A replayer throws
  * only for faults it cannot classify; the hook holds on those too.
@@ -69,6 +70,12 @@ export type Replayed = Readonly<{
  *   block (a local computation, or a replay failure it cannot classify);
  * - `verifier_unavailable`: this node's Ed25519 verifier could not answer
  *   during the replay, a local fault and never the block's;
+ * - `replay_held`: the block's event replay failed locally, which input can
+ *   reach: held on the block and retried on a backoff for as long as it
+ *   recurs (`replay-held.ts`), never bounded by an exit;
+ * - `replay_stuck`: a `replay_held` block whose replay failed
+ *   `LOCAL_FAULT_RUN_LIMIT` times in a row, whatever the message; still
+ *   retried;
  * - `invalid`: the block does not replay to its header, and its node carries
  *   the availability commitment of the payload replayed;
  * - `origin_after_frontier`: the block names an event the view does not
@@ -86,6 +93,8 @@ export type ReplayOutcome =
         | "local_fault"
         | "incomplete"
         | "verifier_unavailable"
+        | "replay_held"
+        | "replay_stuck"
         | "invalid"
         | "origin_after_frontier";
       detail: string;

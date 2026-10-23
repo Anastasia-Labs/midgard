@@ -26,7 +26,7 @@ import {
   watcherDeploymentProtocolScriptAuthority,
 } from "../runtime/deployment-identity.js";
 import type { WatcherDecisionReadiness } from "../runtime/watcher-runtime.decision-driver.js";
-import { replayLocalFaultBound } from "./replay-local-fault-bound.js";
+import { replayLocalFaultHolds } from "./replay-local-fault-bound.js";
 
 export type WatcherReplayedLedger = Readonly<{
   ledgerAt(
@@ -61,6 +61,8 @@ export const createWatcherReplayedLedger = (
     /** The deployment's availability commitment authority. */
     availabilityAuthority: () => SDK.DaPayloadAvailabilityAuthority;
     unsafeCheckpointStoreForTest?: LedgerCheckpointStore;
+    /** The local-fault holds' clock, in ms (default `Date.now`). */
+    nowMs?: () => number;
   }>,
 ): WatcherReplayedLedger => {
   const checkpoints =
@@ -81,7 +83,7 @@ export const createWatcherReplayedLedger = (
   // Unbound copies a replay refused, kept across operations so a later fetch
   // asks past the peers that served them.
   const releases: RetainedPayloadReleases = new Map();
-  const localFaults = replayLocalFaultBound();
+  const localFaults = replayLocalFaultHolds(input.nowMs);
   const source = (
     sources: readonly RetainedDaPayloadSource[],
     retries?: number,
@@ -126,6 +128,9 @@ export const createWatcherReplayedLedger = (
           headerHash: confirmed.state.headerHash,
           utxosRoot: confirmed.state.utxoRoot,
         };
+        // A head held on a local fault waits out its backoff.
+        const waiting = localFaults.pass()(head.headerHash);
+        if (waiting !== undefined) return [waiting];
         const activeKeeper = currentKeeper();
         if (restoredKeeper !== activeKeeper) {
           await activeKeeper.restore(head);
@@ -156,17 +161,14 @@ export const createWatcherReplayedLedger = (
         return [];
       } catch (error) {
         // This watcher's own replay failed: held under its own reason, and
-        // replayed again on the next pass, up to the local-fault bound,
-        // whose exhaustion throws out of here.
-        if (isReplayLocalFault(error)) {
-          localFaults.fault(
-            head?.headerHash ?? "the confirmed head",
-            error.message,
-          );
+        // replayed again once its backoff passed, for as long as it recurs.
+        if (isReplayLocalFault(error))
           return [
-            { reason: "replayed_ledger_local_fault", detail: error.message },
+            localFaults.fault(
+              head?.headerHash ?? "the confirmed head",
+              error.message,
+            ),
           ];
-        }
         if (
           !isWatcherL1TransientFailure(error) &&
           !isFraudProofL1WaitError(error) &&

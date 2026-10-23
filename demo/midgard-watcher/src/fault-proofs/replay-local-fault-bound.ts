@@ -1,68 +1,79 @@
-import { LOCAL_FAULT_RUN_LIMIT } from "@al-ft/midgard-fault-proofs";
+import {
+  createValidationTraceReplayHolds,
+  LOCAL_FAULT_RUN_LIMIT,
+  type ValidationTraceReplayHold,
+} from "@al-ft/midgard-fault-proofs";
+
+import { WATCHER_PACKAGE_NAME } from "../runtime/scaffold.js";
+
+/** The readiness reason of a header or confirmed head held on a local
+ * replay fault. */
+export const WATCHER_REPLAY_LOCAL_FAULT = "replayed_ledger_local_fault";
+
+/** The readiness reason of a hold whose local replay fault repeated
+ * `LOCAL_FAULT_RUN_LIMIT` times in a row, whatever its message. Still
+ * retried. */
+export const WATCHER_REPLAY_LOCAL_FAULT_STUCK =
+  "replayed_ledger_local_fault_stuck";
+
+export type WatcherReplayLocalFaultHold = Readonly<{
+  reason:
+    | typeof WATCHER_REPLAY_LOCAL_FAULT
+    | typeof WATCHER_REPLAY_LOCAL_FAULT_STUCK;
+  detail: string;
+}>;
 
 /**
- * A local replay fault (`ReplayLocalFault`: this watcher's own replay
- * failed, which says nothing about the block) is held and retried, but not
- * without bound. `LOCAL_FAULT_RUN_LIMIT` attempts in a row on one header or
- * confirmed head that end on one, with no progress past it in between, fail
- * with this error: the decision driver's `exhausted` rejects with it,
- * `runtime.done` rejects, and the process exits non-zero, its supervisor's
- * restart being the retry after that.
+ * Holds on local replay faults (`ReplayLocalFault`: this watcher's own
+ * replay failed, which says nothing about the block), per header or
+ * confirmed head, in memory, for this process. A held key is retried after
+ * the replay-hold backoff (1 s doubling to 60 s), at most one held key per
+ * pass, for as long as its fault recurs. Once it failed
+ * `LOCAL_FAULT_RUN_LIMIT` times in a row, whatever the messages, the hold
+ * is named stuck, an alarm logged once at error level; it is still retried,
+ * and the watcher keeps running and doing its other work.
  */
-export class WatcherReplayLocalFaultExhaustedError extends Error {
-  override readonly name = "WatcherReplayLocalFaultExhaustedError";
-  readonly reason = "replayed_ledger_local_fault" as const;
-  constructor(key: string, detail: string) {
-    super(
-      `replayed_ledger_local_fault: ${key}: ${detail}; a local replay fault persisted for ${LOCAL_FAULT_RUN_LIMIT.toString()} attempts in a row and the watcher exits non-zero`,
-    );
-  }
-}
-
-const MAXIMUM_COUNTED_KEYS = 4_096;
-
-/**
- * Counts the attempts in a row that ended on a local replay fault, per
- * header or confirmed head, in memory, for this process.
- */
-export const replayLocalFaultBound = () => {
-  const runs = new Map<string, number>();
+export const replayLocalFaultHolds = (now?: () => number) => {
+  const holds = createValidationTraceReplayHolds({
+    ...(now === undefined ? {} : { now }),
+    stuckAfter: LOCAL_FAULT_RUN_LIMIT,
+    countEvery: true,
+    onStuck: (hold) =>
+      process.stderr.write(
+        `${JSON.stringify({
+          packageName: WATCHER_PACKAGE_NAME,
+          level: "error",
+          reason: WATCHER_REPLAY_LOCAL_FAULT_STUCK,
+          detail: `${hold.headerHash}: ${hold.detail}`,
+        })}\n`,
+      ),
+  });
+  const event = (key: string) => ({ headerHash: key, position: 0, txId: key });
+  const named = (
+    hold: ValidationTraceReplayHold,
+  ): WatcherReplayLocalFaultHold =>
+    Object.freeze({
+      reason: hold.stuck
+        ? WATCHER_REPLAY_LOCAL_FAULT_STUCK
+        : WATCHER_REPLAY_LOCAL_FAULT,
+      detail: hold.detail,
+    });
   return Object.freeze({
-    /** An attempt on `key` ended on a local fault; throws
-     * `WatcherReplayLocalFaultExhaustedError` on the limit-th in a row. */
-    fault: (key: string, detail: string): void => {
-      const count = (runs.get(key) ?? 0) + 1;
-      runs.delete(key);
-      if (count >= LOCAL_FAULT_RUN_LIMIT)
-        throw new WatcherReplayLocalFaultExhaustedError(key, detail);
-      if (runs.size >= MAXIMUM_COUNTED_KEYS)
-        runs.delete(runs.keys().next().value!);
-      runs.set(key, count);
+    /** Starts one pass: the returned check names the hold that keeps `key`
+     * from a retry in this pass, if any. */
+    pass: () => {
+      const pass = holds.pass();
+      return (key: string): WatcherReplayLocalFaultHold | undefined => {
+        const hold = pass.waiting(key, event(key));
+        return hold === undefined ? undefined : named(hold);
+      };
     },
-    /** An attempt on `key` made progress past it: its count starts over. */
+    /** An attempt on `key` ended on a local fault: its hold. */
+    fault: (key: string, detail: string): WatcherReplayLocalFaultHold =>
+      named(holds.failed(key, { ...event(key), detail })),
+    /** An attempt on `key` made progress past it: its hold is released. */
     progressed: (key: string): void => {
-      runs.delete(key);
-    },
-  });
-};
-
-/**
- * The decision driver's exhaustion signal: `exhausted` rejects with the
- * first `WatcherReplayLocalFaultExhaustedError` a pass failed with, and
- * stays pending otherwise.
- */
-export const replayLocalFaultExhaustion = () => {
-  let reject!: (error: WatcherReplayLocalFaultExhaustedError) => void;
-  const exhausted = new Promise<never>((_resolve, rejectExhausted) => {
-    reject = rejectExhausted;
-  });
-  // Observed by the runtime's liveness race; never an unhandled rejection.
-  void exhausted.catch(() => undefined);
-  return Object.freeze({
-    exhausted,
-    /** Rejects `exhausted` when `error` is the exhaustion; else nothing. */
-    raise: (error: unknown): void => {
-      if (error instanceof WatcherReplayLocalFaultExhaustedError) reject(error);
+      holds.decided(key);
     },
   });
 };

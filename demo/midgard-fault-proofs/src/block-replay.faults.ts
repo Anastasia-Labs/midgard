@@ -6,7 +6,9 @@
  * - `ReplayLocalFault`: the replaying process itself failed (a runtime
  *   fault of a library it calls, or its own bookkeeping), on input already
  *   known to be within what that code handles. Never the block's fault: the
- *   replay is retried.
+ *   replay is retried. One marked `held` (the event replay's own throw) is
+ *   held on its block and retried for as long as it recurs, never ending
+ *   the replaying process.
  *
  * Every other throw while replaying stays attributed as before: it may come
  * from parsing bytes the block or its L1 events supply, so it is never
@@ -21,6 +23,9 @@ export class BlockReplayFault extends Data.TaggedError("BlockReplayFault")<{
 export class ReplayLocalFault extends Data.TaggedError("ReplayLocalFault")<{
   readonly message: string;
   readonly cause: unknown;
+  /** Held on its block and retried on a backoff for as long as it recurs;
+   * never bounded by an exit of the replaying process. */
+  readonly held?: true;
 }> {}
 
 /** The block's fault `message`, to throw. */

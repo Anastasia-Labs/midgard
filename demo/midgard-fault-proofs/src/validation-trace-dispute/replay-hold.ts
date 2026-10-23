@@ -49,8 +49,9 @@ export type ValidationTraceReplayHold = Readonly<{
   /** No re-execution is tried before this time. */
   retryAtMs: number;
   detail: string;
-  /** Whether the last `VALIDATION_TRACE_REPLAY_STUCK_AFTER` or more
-   * failures were identical. */
+  /** Whether the last `VALIDATION_TRACE_REPLAY_STUCK_AFTER` (or the holds'
+   * `stuckAfter`) or more failures were identical, or with `countEvery`
+   * were in a row whatever their detail. */
   stuck: boolean;
 }>;
 
@@ -171,17 +172,24 @@ const createBacklog = () => {
   });
 };
 
-/** One replayer's holds, keyed by block and event. `onStuck` is called
+/** One replayer's holds, keyed by block and event. An event is stuck once
+ * `stuckAfter` failures in a row were identical, or with `countEvery` once
+ * `stuckAfter` failures in a row on its key happened whatever their detail
+ * (a fault whose message varies still reaches stuck); `onStuck` is called
  * once each time an event becomes stuck. */
 export const createValidationTraceReplayHolds = ({
   now = Date.now,
   backoff = VALIDATION_TRACE_REPLAY_BACKOFF,
   capacity = CAPACITY,
+  stuckAfter = VALIDATION_TRACE_REPLAY_STUCK_AFTER,
+  countEvery = false,
   onStuck,
 }: {
   readonly now?: () => number;
   readonly backoff?: Readonly<{ initialMs: number; maxMs: number }>;
   readonly capacity?: number;
+  readonly stuckAfter?: number;
+  readonly countEvery?: boolean;
   readonly onStuck?: (hold: ValidationTraceReplayHold) => void;
 } = {}): ValidationTraceReplayHolds => {
   /** By key, least recently failed first. */
@@ -252,7 +260,8 @@ export const createValidationTraceReplayHolds = ({
       const previous = holds.get(key);
       const attempts = (previous?.attempts ?? backlog.read(key).attempts) + 1;
       const repeats =
-        previous !== undefined && previous.detail === event.detail
+        previous !== undefined &&
+        (countEvery || previous.detail === event.detail)
           ? previous.repeats + 1
           : 1;
       const delay = Math.min(
@@ -263,7 +272,7 @@ export const createValidationTraceReplayHolds = ({
         ...event,
         attempts,
         retryAtMs: now() + delay,
-        stuck: repeats >= VALIDATION_TRACE_REPLAY_STUCK_AFTER,
+        stuck: repeats >= stuckAfter,
         repeats,
       });
       holds.delete(key);

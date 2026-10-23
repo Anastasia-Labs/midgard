@@ -605,6 +605,16 @@ reason=landed_block_origin_after_frontier`); a restart on the same store
   after a fixed number of runs with no progress past that block the node
   exits non-zero for its supervisor to restart it. If it repeats after a
   restart, check the node's libsodium install and read the detail.
+- `landed_block_replay_held`, `landed_block_replay_stuck`: the event replay
+  of a foreign block failed locally, which the block's input can reach.
+  Never attributed to the block and never an exit: the block is held and
+  imported again after a backoff of 1 s doubling to 60 s while the node
+  keeps running, each held run raising the `landed_block_local_fault`
+  alarm. `_stuck` means 8 failures in a row on the block, whatever their
+  message; it is still retried every 60 s. When it is stuck: read the
+  detail and the alarm's log lines, check the node's memory and evaluator,
+  and report it with the detail; it clears at the first import that
+  succeeds.
 - `landed_block_awaiting_da`, `landed_block_da_refetch_pending`: a foreign
   block's DA payload is not available yet, or a retained one failed to
   verify and is being fetched again. Wait; check the DA committee if it
@@ -645,12 +655,11 @@ transient a restart may clear (L1 reads past the startup budget, a system
 error such as a port in use) exits the process non-zero, its supervisor's
 restart policy (`restart: unless-stopped` in
 `demo/midgard-watcher/compose.yaml`) being the retry after that. A follower
-whose store transients outlast 15 min exits it the same way. So does a
-local replay fault (the watcher's own replay of a block failed, which says
-nothing about the block): it is held and retried, but after 8 attempts in a
-row on one header or confirmed head with no progress past it the process
-exits non-zero with `WatcherReplayLocalFaultExhaustedError`, its message
-starting `replayed_ledger_local_fault:`. A refused
+whose store transients outlast 15 min exits it the same way. A local
+replay fault (the watcher's own replay of a block failed, which says
+nothing about the block) never exits it: the header or confirmed head is
+held and retried while the watcher keeps serving (see
+`replayed_ledger_local_fault` below). A refused
 process configuration exits 78, before the operations server binds. Every
 reason in `WATCHER_OPERATIONS_READINESS_REASONS`
 (`demo/midgard-watcher/src/runtime/operations-observability.watcher-operations-readiness-reasons.ts`)
@@ -793,6 +802,22 @@ fault-proof execution holds and the L1 follower's reasons are listed by hand
   block time cannot be read, a classification hold is an alarm logged at
   error level, its detail naming the window's end: the case must open by
   then. Report it with the detail at once.
+- `replayed_ledger_local_fault`, `replayed_ledger_local_fault_stuck`: the
+  watcher's own replay of a header (its classification) or of the
+  replayed ledger's confirmed head failed locally (a `ReplayLocalFault`, such
+  as the script evaluator failing), which says nothing about the block. It
+  is not a verdict and never exits the watcher: that header or head is held
+  and replayed again after a backoff of 1 s doubling to 60 s, one retry per
+  pass, while every other header and duty keeps running; the detail names
+  the failure. `_stuck` means 8 failures in a row on that header or head,
+  whatever their message (`LOCAL_FAULT_RUN_LIMIT`); it is logged once at
+  error level (`reason` `replayed_ledger_local_fault_stuck`, its detail
+  `<headerHash>: <failure>`) and still retried every 60 s. It clears once the header is classified or
+  the ledger advances past the head (a header's hold also 180 s after its
+  last retry). When it is stuck: read the error line and the detail, check
+  the watcher's memory and evaluator, and report it with the detail; a
+  restart retries at once but is not needed for the watcher to keep
+  serving.
 - `validation-trace-claim-build-held`: a validation-trace objective could not
   build its claim because the claim's re-execution or pre-state read ended
   without a result; nothing was journaled. It is rebuilt on each

@@ -283,6 +283,7 @@ export const createBridge = (input: {
             reusedTargetDecision = targetDecision;
             continue;
           }
+          misses.assertDue(header.headerHash, token);
           const decision = await input.application.classifyHeader({
             runtimeConfigPath: input.runtimeConfigPath,
             observation: admitted,
@@ -372,8 +373,6 @@ export const createBridge = (input: {
       if (classification !== null) decisions.push(classification);
     }
     for (const decision of decisions) {
-      if (decision === undefined)
-        throw new Error("bounded production classification omitted a header");
       if (decision.decision === "fault_detected")
         await input.dependencies.append(decision);
     }
