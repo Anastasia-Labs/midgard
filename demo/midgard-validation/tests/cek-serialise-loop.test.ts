@@ -1,15 +1,9 @@
-import {
-  buildMidgardCekDataTraverseTrace,
-  type MidgardCekStagedOutRef,
-} from "@al-ft/midgard-core";
-import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import { describe, expect, it } from "vitest";
 
 import { vectors } from "../../midgard-core/tests/fixtures/cek-data-canonical-corpus-v1.vectors.mjs";
 import {
   MIDGARD_CEK_SERIALISE_START,
   type MidgardCekSerialiseLoop,
-  type MidgardCekSerialisePlannedHop,
   type MidgardCekSerialisePoint,
   planMidgardCekSerialiseHop,
   planMidgardCekSerialiseHops,
@@ -17,17 +11,25 @@ import {
 import {
   advanceMidgardCekSerialiseHop,
   type MidgardCekSerialiseFacts,
-  midgardCekSerialiseFactsOf,
 } from "../src/cek-serialise-loop.js";
 import { midgardCekSerialiseChain } from "../src/cek-serialise-walk.data.js";
 import { runMidgardCekSerialise } from "../src/cek-serialise-walk.js";
 import {
   bytes,
+  bytesOf,
   constr,
+  filler,
   int,
   list,
   values,
 } from "./fixtures/cek-serialise-loop-v1.vectors.mjs";
+import {
+  advance,
+  drive,
+  hexLoop,
+  loopOf,
+  summaryOf,
+} from "./helpers/cek-serialise-loop.js";
 
 /**
  * The serialise loop's off-chain twin: its reader gives every canonical Data
@@ -35,72 +37,6 @@ import {
  * span; an honest prover's hops end the loop for any hop split; and every
  * deviation from the honest hops is rejected.
  */
-
-const summaryOf = (source: Buffer) => {
-  const summary = buildMidgardCekDataTraverseTrace({ sourceStart: 0, source })
-    .terminal.result;
-  if (summary === null || summary === undefined)
-    throw new Error("not canonical Data");
-  return summary;
-};
-
-/** The staging output of run `index`, as the Aiken fixture names it. */
-const refOf = (index: number): MidgardCekStagedOutRef => ({
-  transactionId: computeHash32(Buffer.from([10 + index])),
-  outputIndex: 10 + index,
-});
-
-const runsOf = (chunks: readonly Buffer[]): Buffer[][] => {
-  const runs: Buffer[][] = [];
-  for (let index = 0; index < chunks.length; index += 3)
-    runs.push(chunks.slice(index, index + 3));
-  return runs;
-};
-
-/** The loop of serialiseData over `argument`, its result staged as `staged`. */
-const loopOf = (
-  argument: Buffer,
-  staged: Buffer = argument,
-): MidgardCekSerialiseLoop => {
-  const { facts, chunks } = midgardCekSerialiseFactsOf(
-    summaryOf(argument),
-    staged,
-  );
-  const runs = runsOf(chunks);
-  return { facts, runs, refs: runs.map((_, index) => refOf(index)) };
-};
-
-const hexLoop = (hex: string) => loopOf(Buffer.from(hex, "hex"));
-
-/** Plans and runs every hop at most `limit` steps long; the hops it ran. */
-const drive = (
-  loop: MidgardCekSerialiseLoop,
-  limit?: number,
-): MidgardCekSerialisePlannedHop[] => {
-  const hops: MidgardCekSerialisePlannedHop[] = [];
-  let point: MidgardCekSerialisePoint | null = MIDGARD_CEK_SERIALISE_START;
-  while (point !== null) {
-    const planned = planMidgardCekSerialiseHop(loop, point, { limit });
-    hops.push(planned);
-    point = planned.point;
-  }
-  return hops;
-};
-
-const advance = (
-  loop: { readonly facts: MidgardCekSerialiseFacts },
-  planned: MidgardCekSerialisePlannedHop,
-  edit: Partial<MidgardCekSerialisePlannedHop> = {},
-) => {
-  const hop = { ...planned, ...edit };
-  return advanceMidgardCekSerialiseHop(
-    loop.facts,
-    hop.hop,
-    hop.referenceInputs,
-    hop.from,
-    hop.end,
-  );
-};
 
 describe("the serialise reader over the canonical Data corpus", () => {
   it.each(vectors.map((vector) => [vector.name, vector] as const))(
@@ -318,6 +254,32 @@ describe("the loop rejects every deviation from the honest hops", () => {
       kind: "rejected",
       reason: "summary",
     });
+  });
+
+  it("reads a short chunk behind a long head up to the exit, which refuses it", () => {
+    const payload = filler(200);
+    const leaf = (lastHead: string) =>
+      `5f${[0, 1, 2]
+        .map((chunk) => `5840${payload.slice(128 * chunk, 128 * chunk + 128)}`)
+        .join("")}${lastHead}${payload.slice(384)}ff`;
+    const value = (bytesHex: string) =>
+      Buffer.from(list([int(1), bytesHex, int(2), int(3)]), "hex");
+    expect(leaf("48")).toBe(bytesOf(payload));
+    const argument = value(leaf("48"));
+    const loop = loopOf(argument, value(leaf("5808")));
+    const honest = drive(loopOf(argument), 1);
+    let point: MidgardCekSerialisePoint | null = MIDGARD_CEK_SERIALISE_START;
+    let accepted = 0;
+    expect(() => {
+      while (point !== null) {
+        const planned = planMidgardCekSerialiseHop(loop, point, { limit: 1 });
+        expect(advance(loop, planned).kind).toBe("next");
+        accepted += 1;
+        point = planned.point;
+      }
+    }).toThrow("serialise hop is rejected: summary");
+    expect(accepted).toBeGreaterThan(3);
+    expect(accepted).toBe(honest.length - 1);
   });
 
   it.each([

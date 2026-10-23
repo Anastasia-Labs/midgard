@@ -300,6 +300,65 @@ test refuses_the_bytes_of_another_value_of_the_same_memory() fail {
   claims(int(0), cbor.serialise(int(1)))
 }
 
+/// The 200 bytes of `block(200)` as an indefinite byte string whose last,
+/// 8-byte chunk has the head `last_head`.
+fn chunked_block(last_head: ByteArray) -> ByteArray {
+  let content = block(200)
+  let full = fn(offset) {
+    bytearray.concat(#"5840", builtin.slice_bytearray(offset, 64, content))
+  }
+  #"5f"
+    |> bytearray.concat(full(0))
+    |> bytearray.concat(full(64))
+    |> bytearray.concat(full(128))
+    |> bytearray.concat(last_head)
+    |> bytearray.concat(builtin.slice_bytearray(192, 8, content))
+    |> bytearray.concat(#"ff")
+}
+
+fn short_chunk_value() -> Data {
+  builtin.list_data([int(1), bytes_of(200), int(2), int(3)])
+}
+
+/// `short_chunk_value()` staged with its last leaf chunk behind the
+/// non-minimal head 0x58 0x08 instead of 0x48.
+fn long_head_case() -> SerialiseCaseV1 {
+  let value = short_chunk_value()
+  let wrap = fn(leaf) {
+    #"9f01" |> bytearray.concat(leaf) |> bytearray.concat(#"0203ff")
+  }
+  expect cbor.serialise(value) == wrap(chunked_block(#"48"))
+  let staged = wrap(chunked_block(#"5808"))
+  case_of(
+    data_value(cek_data_v1.semantic_data_summary_v1(value)),
+    bytes_result([staged]),
+    [staged],
+  )
+}
+
+fn but_last(items: List<a>) -> List<a> {
+  list.take(items, list.length(items) - 1)
+}
+
+/// The reader reads a short chunk behind a 0x58 head: every hop before the
+/// one that ends the loop, as many as the honest staging has, is accepted.
+test reads_a_short_chunk_behind_a_long_head_up_to_the_exit() {
+  let case = long_head_case()
+  let hops = plan(case, 1)
+  expect
+    list.length(hops) == list.length(plan(honest_case(short_chunk_value()), 1))
+  expect list.length(hops) > 3
+  list.all(but_last(hops), fn(planned) { spend(hop_step(case, planned)) })
+}
+
+/// The hop that ends the loop refuses it: the summary read counts the extra
+/// head byte, so it is not the argument's.
+test refuses_a_short_chunk_behind_a_long_head_at_the_exit() fail {
+  let case = long_head_case()
+  expect Some(last) = list.last(plan(case, 1))
+  spend(hop_step(case, last))
+}
+
 // ## Refused exits
 
 fn exit_with(argument, result) -> Bool {

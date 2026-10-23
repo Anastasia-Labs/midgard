@@ -173,7 +173,11 @@ export const reach = (
           : -2;
     const content = first === 0x58 ? at + 2 : at + 1;
     if (size === -1) return { after: at, got, done: false };
-    if (size < 1 || size > 64 || (first === 0x58 && size < 24)) return null;
+    // A chunk under 24 bytes behind a 0x58 head is read like a minimal one.
+    // It cannot end the loop: the leaf's cborLength counts the bytes read, so
+    // the summary the exit compares with the argument's is not the canonical
+    // encoding's.
+    if (size < 1 || size > 64) return null;
     if (size === 64) {
       if (content + 64 > end) return { after: at, got, done: false };
       const after = content + 64;

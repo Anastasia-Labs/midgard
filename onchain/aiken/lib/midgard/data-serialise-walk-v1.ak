@@ -667,7 +667,11 @@ fn reach(
     if size == -1 {
       // The second head byte is past the window.
       Some(Reach { after: at, got, done: False })
-    } else if size < 1 || size > 64 || first == 0x58 && size < 24 {
+    } else if size < 1 || size > 64 {
+      // A chunk under 24 bytes behind a 0x58 head is read like a minimal one.
+      // It cannot end the loop: the leaf's cbor_length counts the bytes read,
+      // so the summary the exit compares with the argument's is not the
+      // canonical encoding's.
       None
     } else if size == 64 {
       if content + 64 > end {
