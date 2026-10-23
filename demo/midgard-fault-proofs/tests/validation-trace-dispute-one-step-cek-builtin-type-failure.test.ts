@@ -1,6 +1,7 @@
 /** The validation-trace dispute runner at a CEK builtin step of core group
- * 10, a builtin's type failure (addInteger over bytes), driven through the binder and the group's arm chain to the
- * award (support/validation-trace-dispute-one-step-cek-builtin-drive.ts). */
+ * 10, a builtin's type failure (addInteger over bytes), driven through the
+ * binder and the group's arm chain to the award
+ * (support/validation-trace-dispute-one-step-cek-builtin-drive.ts). */
 import { beforeAll, describe, it } from "vitest";
 
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";

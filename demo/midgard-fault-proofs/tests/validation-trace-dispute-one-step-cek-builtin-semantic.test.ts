@@ -1,6 +1,7 @@
-/** The validation-trace dispute runner at a CEK builtin step of core group
- * 5, a semantic builtin (iData), driven through the binder and the group's arm chain to the
- * award (support/validation-trace-dispute-one-step-cek-builtin-drive.ts). */
+/** The validation-trace dispute runner at a CEK builtin step of core group 5,
+ * a semantic builtin (iData), driven through the binder and the group's arm
+ * chain to the award
+ * (support/validation-trace-dispute-one-step-cek-builtin-drive.ts). */
 import { beforeAll, describe, it } from "vitest";
 
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";

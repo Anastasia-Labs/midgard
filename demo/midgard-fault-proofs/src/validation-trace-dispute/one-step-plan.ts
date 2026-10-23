@@ -8,9 +8,9 @@
  * verifies them in one hop when the deployment installs the context
  * resolution, and, when the deployment installs their resolution, the
  * canonical-decode steps whose item it carries inline and the steps of the
- * phases one-step-phase.ts names; any other step is reported as one the runner does not drive, and
- * its thread waits under the one-step-required state, which raises the
- * operator's alarm while our deadline runs. */
+ * phases one-step-phase.ts names; any other step is reported as one the
+ * runner does not drive, and its thread waits under the one-step-required
+ * state, which raises the operator's alarm while our deadline runs. */
 import {
   hashMidgardValidationMachineState,
   type MidgardValidationMachineState,

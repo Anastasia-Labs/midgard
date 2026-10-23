@@ -2,12 +2,12 @@
  * step, past the game: from the boundary to the CEK resolver
  * (PrepareResolution), from it to the CEK core step binder (PrepareSelected),
  * and on through the step's arm chain and the settle to the award
- * (one-step-core-hops.ts). A CEK
- * script selection goes from the CEK resolver to the selection resolver
- * (PrepareSelected), and from it to the award with the selection's two
- * yields (VerifyExecutionSelection). A CEK context step goes from the CEK
- * resolver to the context step resolver (PrepareSelected), and on through
- * the context's holders to the award (one-step-context-hops.ts). A
+ * (one-step-core-hops.ts). A CEK script selection goes from the CEK
+ * resolver to the selection resolver (PrepareSelected), and from it to the
+ * award with the selection's two yields (VerifyExecutionSelection). A CEK
+ * context step goes from the CEK resolver to the context step resolver
+ * (PrepareSelected), and on through the context's holders to the award
+ * (one-step-context-hops.ts). A
  * canonical-decode step goes from the boundary to the canonical-decode
  * resolver and on to the award (one-step-canonical-decode.ts), and a step
  * of another phase from the boundary to the phase's resolver

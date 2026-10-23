@@ -61,8 +61,7 @@ type DisputeChain =
  * The published reference scripts of the one-step resolution of a CEK core
  * step: the boundary, the CEK phase resolver, the CEK core step binder, the
  * arms that settle in one hop, and the settle; of the builtin chains' arms;
- * and of a CEK script
- * selection, when the deployment drives it.
+ * and of a CEK script selection, when the deployment drives it.
  */
 export type ValidationTraceOneStepReferences = Readonly<{
   boundary: UTxO;
