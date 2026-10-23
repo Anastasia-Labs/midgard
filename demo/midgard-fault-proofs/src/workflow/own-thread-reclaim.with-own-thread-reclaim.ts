@@ -80,9 +80,12 @@ const headerOf = (
  * this run did not create, whether another prover's (the stage derivation's
  * typed error) or a sibling run's on our key (a completed terminal whose
  * record this journal never confirmed). While a thread of ours stands on it,
- * the run's next action is that thread's cancel; while a confirmed cancel is
- * still within rollback recovery, the run waits. Only then does the
- * resolution reach the run. Every other action is the family's own.
+ * the run waits for the removal to pass rollback recovery, and its next
+ * action is then that thread's cancel; while a confirmed cancel is still
+ * within rollback recovery, the run waits. Only then does the resolution
+ * reach the run. Every other action is the family's own. The adapter also
+ * reports our threads, so the orchestrator can refuse any resolution while
+ * one still stands.
  */
 export const withOwnThreadReclaim = <
   Category extends FraudProofCatalogueCategoryName,
@@ -110,14 +113,27 @@ export const withOwnThreadReclaim = <
     throw new Error(`${category} thread reclaim changed adapter identity`);
   }
   const finalDepth = releaseFinality.policy.automaticRecoveryMaxDepth + 2;
+  const observeOwnThreads = async ({
+    headerHash,
+  }: {
+    readonly headerHash: string;
+  }): Promise<FraudProofOwnThreads> => await reclaim.observe({ headerHash });
   const beforeResolution = async (
     context: FraudProofWorkflowAdapterContext,
+    removal: { readonly confirmationDepth: number },
     resolved: () => FraudProofWorkflowObservation,
   ): Promise<FraudProofWorkflowObservation> => {
-    const threads = await reclaim.observe({
+    const threads = await observeOwnThreads({
       headerHash: headerOf(category, context),
     });
     if (threads.standing !== undefined) {
+      // A removal still within rollback recovery may yet be dropped, and
+      // the header with it come back live: our thread stays where it is.
+      if (removal.confirmationDepth < finalDepth)
+        return {
+          kind: "pending",
+          reason: `${category} header removal awaits release finality before our thread ${threads.standing.threadOutRef} is reclaimed`,
+        };
       const unavailable = reclaim.unavailable?.();
       if (unavailable !== undefined)
         return {
@@ -190,13 +206,14 @@ export const withOwnThreadReclaim = <
     ...(base.validatePreparedRawArtifact === undefined
       ? {}
       : { validatePreparedRawArtifact: base.validatePreparedRawArtifact }),
+    observeOwnThreads,
     observe: async (context) => {
       let observed: FraudProofWorkflowObservation;
       try {
         observed = await base.observe(context);
       } catch (cause) {
         if (!isFraudProofResolvedByAnotherRecordError(cause)) throw cause;
-        return await beforeResolution(context, () => {
+        return await beforeResolution(context, cause.resolution, () => {
           throw cause;
         });
       }
@@ -207,7 +224,11 @@ export const withOwnThreadReclaim = <
           observed.terminal.proofToken.createdByTxHash,
         )
       )
-        return await beforeResolution(context, () => observed);
+        return await beforeResolution(
+          context,
+          observed.terminal.observedAt,
+          () => observed,
+        );
       return observed;
     },
     preflight: async (context) => {

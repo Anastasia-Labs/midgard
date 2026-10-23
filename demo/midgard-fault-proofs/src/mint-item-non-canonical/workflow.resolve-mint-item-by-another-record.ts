@@ -12,6 +12,7 @@ import {
   threadReclaimAction,
   threadReclaimIntents,
   threadReclaimNamedState,
+  threadReclaimRefusedReason,
   threadReclaimUnavailableReason,
 } from "../workflow/own-thread-reclaim.js";
 import type { OwnThreadReclaimPort } from "../workflow/own-thread-reclaim.with-own-thread-reclaim.js";
@@ -38,9 +39,10 @@ const describe = (cause: unknown): string =>
  * The mint-item header was removed against a record this run did not
  * create: another prover's, or a sibling run's on our key. A thread of ours
  * that still stands on it is first reclaimed to our wallet through the
- * family's cancel, journaled and permit-bound like any move. The run waits
- * while that cancel is within rollback recovery, then resolves by another
- * record with the reclaim reported as a reclaim, never as a conviction.
+ * family's cancel, journaled and permit-bound like any move, once the
+ * removal itself is past rollback recovery. The run waits while that cancel
+ * is within rollback recovery, then resolves by another record with the
+ * reclaim reported as a reclaim, never as a conviction.
  */
 export const resolveMintItemByAnotherRecord = async ({
   journal,
@@ -106,8 +108,15 @@ export const resolveMintItemByAnotherRecord = async ({
     if (!(cause instanceof MintItemWorkflowRecoveryPendingError)) throw cause;
     return await pending(cause.message);
   }
+  const finalDepth = releaseFinality.policy.automaticRecoveryMaxDepth + 2;
   if (standing !== undefined) {
     const { threadOutRef } = standing;
+    // A removal still within rollback recovery may yet be dropped, and the
+    // header with it come back live: our thread stays where it is.
+    if (removal.confirmationDepth < finalDepth)
+      return await pending(
+        `mintItemNonCanonical header removal awaits release finality before our thread ${threadOutRef} is reclaimed`,
+      );
     const unavailable =
       reclaim === undefined
         ? "this deployment has no cancel to reclaim it with"
@@ -137,6 +146,9 @@ export const resolveMintItemByAnotherRecord = async ({
       sourceStage: stageOfStep(standing.step),
       targetStage: "cancelled",
     } as const;
+    // Set while the funding permit binds the cancel: a refusal there is the
+    // permit's, named as such, not the cancel's being unavailable.
+    let binding = false;
     try {
       await centralJournal.beginAction(familyIdentity, action);
       const preflight = await reclaim.preflight({
@@ -145,7 +157,9 @@ export const resolveMintItemByAnotherRecord = async ({
         threadOutRef,
         step: standing.step,
       });
+      binding = true;
       await centralJournal.recordReclaimIntent(action, recovery, preflight);
+      binding = false;
       const txHash = await reclaim.submit({ preflight });
       await centralJournal.familyJournal.append({
         sequence: 0,
@@ -176,6 +190,10 @@ export const resolveMintItemByAnotherRecord = async ({
         await releaseUnfundedWorkflowFundingInputs({ journal, cause: failure });
         return await pending(failure.message);
       }
+      if (binding)
+        return await pending(
+          threadReclaimRefusedReason(threadOutRef, describe(failure)),
+        );
       // Anything else holds the objective under the operator's alarm and is
       // tried again, after reconciliation, at the next observation.
       return await pending(
@@ -185,7 +203,6 @@ export const resolveMintItemByAnotherRecord = async ({
   }
   const entries = await journal.load(workflowId);
   const ours = threadReclaimIntents(entries);
-  const finalDepth = releaseFinality.policy.automaticRecoveryMaxDepth + 2;
   const shallow = threads.spends.find(
     ({ txHash, confirmationDepth }) =>
       ours.has(txHash) && confirmationDepth < finalDepth,
@@ -196,6 +213,7 @@ export const resolveMintItemByAnotherRecord = async ({
     );
   return resolvedByAnotherRecordResult({
     resolution: removal,
+    standing,
     workflowId,
     identity,
     entries,

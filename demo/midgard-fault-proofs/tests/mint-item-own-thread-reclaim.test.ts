@@ -178,14 +178,28 @@ const fixture = ({ stepsTaken = 2 }: { stepsTaken?: 0 | 2 } = {}) => {
   /** How L1 shows the removal: a sibling's terminal, or another prover's
    * record, which the stage derivation throws as resolved. */
   const removedBy = { kind: "sibling" as "sibling" | "other" };
+  /** The removal's depth, as either record shows it. */
+  const removalAt = { depth: FINAL_DEPTH };
   const observe = vi.fn(async () => {
     if (removedBy.kind === "sibling")
-      return { stage: { kind: "removed" as const, terminal } };
+      return {
+        stage: {
+          kind: "removed" as const,
+          terminal: {
+            ...terminal,
+            observedAt: {
+              ...terminal.observedAt,
+              confirmationDepth: removalAt.depth,
+            },
+          },
+        },
+      };
     const standing = threads().standing;
+    const removal = { ...resolution, confirmationDepth: removalAt.depth };
     throw new FraudProofResolvedByAnotherRecordError(
       standing === undefined
-        ? resolution
-        : { ...resolution, standingThread: standing },
+        ? removal
+        : { ...removal, standingThread: standing },
     );
   });
   const transactionConfirmed = vi.fn(
@@ -255,7 +269,16 @@ const fixture = ({ stepsTaken = 2 }: { stepsTaken?: 0 | 2 } = {}) => {
       sources: [],
       journal,
     });
-  return { entries, land, removedBy, resolution, port, release, execute };
+  return {
+    entries,
+    land,
+    removedBy,
+    removalAt,
+    resolution,
+    port,
+    release,
+    execute,
+  };
 };
 
 const kinds = (entries: readonly FraudProofWorkflowJournalEntry[]) =>
@@ -331,6 +354,97 @@ describe("mint-item: our thread on a header another record removed", () => {
       expect(restarted.preflight).not.toHaveBeenCalled();
       expect(restarted.submit).not.toHaveBeenCalled();
       expect(f.release).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["sibling", "other"] as const)(
+    "still waits on our cancel one block short of release finality on the %s record",
+    async (removedBy) => {
+      const f = fixture();
+      f.removedBy.kind = removedBy;
+      const port = f.port();
+      await expect(f.execute(port)).resolves.toMatchObject({
+        kind: "pending",
+        reason: expect.stringContaining(RECLAIM_TX),
+      });
+      f.land(FINAL_DEPTH - 1);
+      await expect(f.execute(port)).resolves.toMatchObject({
+        kind: "pending",
+        reason: expect.stringContaining(
+          `reclaim ${RECLAIM_TX} of our thread ${OUR_THREAD} awaits release finality`,
+        ),
+      });
+      f.land(FINAL_DEPTH);
+      await expect(f.execute(port)).resolves.toMatchObject({
+        kind: "resolved_by_another_record",
+      });
+    },
+  );
+
+  it.each(["sibling", "other"] as const)(
+    "sends no cancel while the %s record's removal is short of release finality",
+    async (removedBy) => {
+      const f = fixture();
+      f.removedBy.kind = removedBy;
+      const port = f.port();
+      for (const depth of [1, FINAL_DEPTH - 1]) {
+        f.removalAt.depth = depth;
+        await expect(f.execute(port)).resolves.toMatchObject({
+          kind: "pending",
+          resumeOnObservation: true,
+          reason: expect.stringContaining(
+            `header removal awaits release finality before our thread ${OUR_THREAD} is reclaimed`,
+          ),
+        });
+      }
+      expect(port.preflight).not.toHaveBeenCalled();
+      expect(port.submit).not.toHaveBeenCalled();
+      f.removalAt.depth = FINAL_DEPTH;
+      await expect(f.execute(port)).resolves.toMatchObject({
+        kind: "pending",
+        reason: expect.stringContaining(RECLAIM_TX),
+      });
+      expect(port.submit).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each(["sibling", "other"] as const)(
+    "names the funding permit's refusal of our cancel on the %s record, and sends it once the cause is gone",
+    async (removedBy) => {
+      const f = fixture();
+      f.removedBy.kind = removedBy;
+      const port = f.port();
+      const refusal = "thread reclaim differs from its exact binding";
+      const prepare = vi
+        .spyOn(funding, "prepareWorkflowFundingReservationTransaction")
+        .mockRejectedValueOnce(new Error(refusal))
+        .mockRejectedValueOnce(new Error(refusal));
+      for (let pass = 0; pass < 2; pass += 1)
+        await expect(f.execute(port)).resolves.toMatchObject({
+          kind: "pending",
+          resumeOnObservation: true,
+          namedState: {
+            name: "fraud-proof-thread-reclaim-refused",
+            alarm: true,
+          },
+          reason: expect.stringContaining(
+            `the funding permit refused the cancel of our thread ${OUR_THREAD}; it is built again at the next observation: ${refusal}`,
+          ),
+        });
+      expect(port.submit).not.toHaveBeenCalled();
+      expect(
+        f.entries.some(
+          ({ event }) =>
+            event.kind === "submission_intent" &&
+            event.actionId === `reclaim:${OUR_THREAD}`,
+        ),
+      ).toBe(false);
+      await expect(f.execute(port)).resolves.toMatchObject({
+        kind: "pending",
+        reason: expect.stringContaining(RECLAIM_TX),
+      });
+      expect(prepare).toHaveBeenCalledTimes(3);
+      expect(port.submit).toHaveBeenCalledTimes(1);
     },
   );
 

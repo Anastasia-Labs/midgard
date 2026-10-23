@@ -1,10 +1,11 @@
 /** A header removed against another record while a thread of ours still
  * stands on it: the run reclaims that thread before it resolves. The
- * watcher keeps the objective while the reclaim is unfunded, unavailable
- * or in flight, alarms on the first two by name, and ends the objective,
- * never as our conviction, only once the run resolves with the reclaim
- * done. Readiness is then restored. */
+ * watcher keeps the objective while the reclaim is unfunded, unavailable,
+ * refused by the funding permit or in flight, alarms on the first three by
+ * name, and ends the objective, never as our conviction, only once the run
+ * resolves with the reclaim done. Readiness is then restored. */
 import {
+  FRAUD_PROOF_THREAD_RECLAIM_REFUSED,
   FRAUD_PROOF_THREAD_RECLAIM_UNAVAILABLE,
   FRAUD_PROOF_THREAD_RECLAIM_UNFUNDED,
 } from "@al-ft/midgard-fault-proofs";
@@ -33,7 +34,11 @@ describe("supervisor execution adapter with our thread on a header another recor
     },
     {
       name: FRAUD_PROOF_THREAD_RECLAIM_UNAVAILABLE,
-      reason: `${FRAUD_PROOF_THREAD_RECLAIM_UNAVAILABLE}: our thread ${THREAD} still holds funds on the removed header and cannot be reclaimed: this family has no cancel to reclaim it with`,
+      reason: `${FRAUD_PROOF_THREAD_RECLAIM_UNAVAILABLE}: our thread ${THREAD} still holds funds on the removed header and cannot be reclaimed: no reclaim is wired in front of this family's workflow`,
+    },
+    {
+      name: FRAUD_PROOF_THREAD_RECLAIM_REFUSED,
+      reason: `${FRAUD_PROOF_THREAD_RECLAIM_REFUSED}: the funding permit refused the cancel of our thread ${THREAD}; it is built again at the next observation: thread reclaim differs from its exact binding: pays only our wallet`,
     },
   ])(
     "holds the objective under $name, keeps it through the reclaim, and ends it only once the run resolves",

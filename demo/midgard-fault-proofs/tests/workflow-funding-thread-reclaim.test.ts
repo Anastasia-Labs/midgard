@@ -21,11 +21,17 @@ const THREAD_LOVELACE = 3_000_000n;
 const FUNDING_LOVELACE = 15_000_000n;
 const FEE = 200_000n;
 
-const thread = (address: string, txHash: string): UTxO => ({
+const SECOND_TOKEN = `${TOKEN_POLICY}bb`;
+
+const thread = (
+  address: string,
+  txHash: string,
+  extra: Readonly<Record<string, bigint>> = {},
+): UTxO => ({
   txHash,
   outputIndex: 0,
   address,
-  assets: { lovelace: THREAD_LOVELACE, [TOKEN]: 1n },
+  assets: { lovelace: THREAD_LOVELACE, [TOKEN]: 1n, ...extra },
   datum: "00",
 });
 
@@ -40,11 +46,11 @@ const burn = (entries: readonly (readonly [string, bigint])[]) => {
   return mint;
 };
 
-const setup = async () => {
+const setup = async (extra: Readonly<Record<string, bigint>> = {}) => {
   const sample = await runtimeFunding("step-one");
   const address = readWorkflowRuntimeFundingPolicy(sample.policy).contracts[0]!
     .address;
-  const ours = thread(address, "91".repeat(32));
+  const ours = thread(address, "91".repeat(32), extra);
   const theirs = thread(address, "92".repeat(32));
   const ourRef = `${ours.txHash}#0`;
   const action = threadReclaimAction({
@@ -154,6 +160,22 @@ describe("funding permit: thread reclaim", () => {
         "thread reclaim differs from its exact binding: burns exactly the thread's token",
       );
     }
+  });
+
+  it("refuses to cancel a thread that holds a second token, even burning only the first", async () => {
+    const { runtime, ourRef, prepare } = await setup({ [SECOND_TOKEN]: 1n });
+    await expect(
+      prepare(
+        signedFundingTransaction({
+          inputOutRefs: [...runtime.selected.fundingOutRefs, ourRef],
+          outputLovelace: FUNDING_LOVELACE + THREAD_LOVELACE - FEE,
+          fee: FEE,
+          mint: burn([[TOKEN_NAME, -1n]]),
+        }),
+      ),
+    ).rejects.toThrow(
+      "thread reclaim differs from its exact binding: thread holds exactly one token",
+    );
   });
 
   it("refuses a reclaim whose wallet output is not ours even with every other binding exact", async () => {

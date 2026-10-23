@@ -22,9 +22,15 @@ export const FRAUD_PROOF_THREAD_RECLAIM_UNFUNDED =
 export const FRAUD_PROOF_THREAD_RECLAIM_UNAVAILABLE =
   "fraud-proof-thread-reclaim-unavailable" as const;
 
+/** The reason prefix of a cancel of our thread that the funding permit
+ * refused to bind. */
+export const FRAUD_PROOF_THREAD_RECLAIM_REFUSED =
+  "fraud-proof-thread-reclaim-refused" as const;
+
 const NAMED_STATES = [
   FRAUD_PROOF_THREAD_RECLAIM_UNFUNDED,
   FRAUD_PROOF_THREAD_RECLAIM_UNAVAILABLE,
+  FRAUD_PROOF_THREAD_RECLAIM_REFUSED,
 ] as const;
 
 /** The operator's alarm a pending reason names, if it is a reclaim hold. */
@@ -43,6 +49,15 @@ export const threadReclaimUnavailableReason = (
   detail: string,
 ): string =>
   `${FRAUD_PROOF_THREAD_RECLAIM_UNAVAILABLE}: our thread ${threadOutRef} still holds funds on the removed header and cannot be reclaimed: ${detail}`;
+
+/** The pending reason of a cancel of our thread the funding permit refused:
+ * nothing was signed, and the cancel is built and bound again at the next
+ * observation, so the alarm clears by itself once the cause is gone. */
+export const threadReclaimRefusedReason = (
+  threadOutRef: string,
+  detail: string,
+): string =>
+  `${FRAUD_PROOF_THREAD_RECLAIM_REFUSED}: the funding permit refused the cancel of our thread ${threadOutRef}; it is built again at the next observation: ${detail}`;
 
 /**
  * A reclaim that does not build for want of our wallet's ada. The header is
@@ -83,6 +98,35 @@ export const isThreadReclaimInput = (
   typeof input.threadOutRef === "string" &&
   typeof input.step === "number" &&
   typeof input.lovelace === "string";
+
+/**
+ * The hold of a reclaim action whose funding the permit refused to bind:
+ * a shortfall waits for a top-up, anything else raises the refused alarm.
+ * Both are tried again at the next observation, never stalled. Undefined
+ * for any other action.
+ */
+export const threadReclaimFundingHold = (
+  action: Readonly<{
+    actionId: string;
+    input: Readonly<Record<string, unknown>>;
+  }>,
+  cause: unknown,
+): string | undefined => {
+  if (!isThreadReclaimInput(action.input)) return undefined;
+  const { threadOutRef } = action.input;
+  if (cause instanceof FraudProofThreadReclaimUnfundedError)
+    return cause.message;
+  if (cause instanceof WorkflowFundingShortfallError)
+    return new FraudProofThreadReclaimUnfundedError({
+      actionId: action.actionId,
+      threadOutRef,
+      cause,
+    }).message;
+  return threadReclaimRefusedReason(
+    threadOutRef,
+    cause instanceof Error ? cause.message : String(cause),
+  );
+};
 
 /** The action that reclaims `thread`. */
 export const threadReclaimAction = (

@@ -17,12 +17,15 @@ import {
  * Removed against a record this run did not create: done once the removal
  * is past rollback recovery and every signed attempt of this run is
  * settled, and never our conviction. A thread of ours that still stands on
- * the header holds the objective under the operator's alarm: the run that
- * reaches this point has no cancel to reclaim it with. The threads the run
+ * the header, as the stage derivation or the adapter's own view of our
+ * threads reports it, holds the objective under the operator's alarm: a
+ * family with a cancel wired in front of it reclaims the thread before its
+ * resolution gets here, so none is wired for this one. The threads the run
  * did reclaim are reported as reclaims.
  */
 export const resolvedByAnotherRecordResult = ({
   resolution,
+  standing,
   workflowId,
   identity,
   entries,
@@ -30,6 +33,8 @@ export const resolvedByAnotherRecordResult = ({
   resumeOnObservation,
 }: {
   readonly resolution: FraudProofResolvedByAnotherRecord;
+  /** Our thread the adapter still sees on the header, if any. */
+  readonly standing: FraudProofResolvedByAnotherRecord["standingThread"];
   readonly workflowId: string;
   readonly identity: FraudProofWorkflowIdentity;
   readonly entries: readonly FraudProofWorkflowJournalEntry[];
@@ -37,11 +42,12 @@ export const resolvedByAnotherRecordResult = ({
   readonly resumeOnObservation: (reason: string) => FraudProofWorkflowRunResult;
 }): FraudProofWorkflowRunResult => {
   const { standingThread, ...removal } = resolution;
-  if (standingThread !== undefined)
+  const thread = standingThread ?? standing;
+  if (thread !== undefined)
     return resumeOnObservation(
       threadReclaimUnavailableReason(
-        standingThread.threadOutRef,
-        "this family has no cancel to reclaim it with",
+        thread.threadOutRef,
+        "no reclaim is wired in front of this family's workflow",
       ),
     );
   if (

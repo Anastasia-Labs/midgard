@@ -87,6 +87,7 @@ import {
   createUnbuiltWorkflowActions,
   workflowRunOutcomes,
 } from "./orchestrator.unbuilt-actions.js";
+import { threadReclaimFundingHold } from "./own-thread-reclaim.js";
 import { isFraudProofRawL1DerivationError } from "./raw-l1-family-derivation.state-queue-topology.js";
 import { type VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy.js";
 import {
@@ -239,11 +240,16 @@ export const runAdmittedFraudProofWorkflow = async ({
       };
     }
   };
-  const resolvedByAnotherRecord = (
+  // The orchestrator is the guard: no run resolves while the adapter still
+  // sees a thread of ours on the header.
+  const resolvedByAnotherRecord = async (
     resolution: FraudProofResolvedByAnotherRecord,
-  ): FraudProofWorkflowRunResult =>
+  ): Promise<FraudProofWorkflowRunResult> =>
     resolvedByAnotherRecordResult({
       resolution,
+      standing:
+        resolution.standingThread ??
+        (await adapter.observeOwnThreads?.({ headerHash }))?.standing,
       workflowId,
       identity,
       entries,
@@ -658,7 +664,7 @@ export const runAdmittedFraudProofWorkflow = async ({
         : { observation: currentObservation };
     if ("stalled" in observed) return observed.stalled;
     if ("resolved" in observed)
-      return resolvedByAnotherRecord(observed.resolved);
+      return await resolvedByAnotherRecord(observed.resolved);
     const observation: FraudProofWorkflowObservation = observed.observation;
     const held = unbuilt.held(observation);
     if (held !== undefined) return resumeOnObservation(held);
@@ -718,7 +724,8 @@ export const runAdmittedFraudProofWorkflow = async ({
           `terminal verification failed: ${formatUnknownError(cause)}`,
         );
       }
-      if (terminal === undefined) return resolvedByAnotherRecord(resolution!);
+      if (terminal === undefined)
+        return await resolvedByAnotherRecord(resolution!);
       const terminalDigest = journalJsonDigest(
         normalizeJournalJson(terminal, "workflow terminal"),
       );
@@ -851,6 +858,8 @@ export const runAdmittedFraudProofWorkflow = async ({
       if (cause instanceof WorkflowFundingReservationUnavailableError)
         return resumeOnObservation(cause.message);
       if (isFraudProofL1WaitError(cause)) throw cause;
+      const reclaimHold = threadReclaimFundingHold(action, cause);
+      if (reclaimHold !== undefined) return resumeOnObservation(reclaimHold);
       return await stalled(
         `funding reservation failed for ${action.actionId}: ${formatUnknownError(cause)}`,
       );

@@ -10,6 +10,7 @@ import {
   type FraudProofWorkflowTerminal,
   type JournalJsonObject,
 } from "./journal.js";
+import type { FraudProofOwnThreads } from "./raw-l1-family-derivation.own-thread.js";
 import { type VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy.js";
 import {
   type SignedTransactionRecoveryObservation,
@@ -226,6 +227,15 @@ export interface FraudProofFamilyWorkflowAdapter {
       }) => Promise<void>;
     },
   ): Promise<FraudProofWorkflowReconcileResult>;
+  /**
+   * Our computation threads on the header as authenticated L1 shows them.
+   * The orchestrator never resolves a run by another record while one of
+   * them still stands; a family whose cancel is wired in front of it
+   * reclaims that thread first.
+   */
+  observeOwnThreads?(input: {
+    readonly headerHash: string;
+  }): Promise<FraudProofOwnThreads>;
 }
 
 export type FraudProofWorkflowRegistry = ReadonlyMap<
@@ -244,6 +254,7 @@ export const freezeWorkflowAdapter = (
   const preflight = adapter.preflight;
   const submit = adapter.submit;
   const reconcile = adapter.reconcile;
+  const observeOwnThreads = adapter.observeOwnThreads;
   return Object.freeze({
     adapterVersion: adapter.adapterVersion,
     category: adapter.category,
@@ -286,5 +297,13 @@ export const freezeWorkflowAdapter = (
     reconcile: Object.freeze((input: Parameters<typeof reconcile>[0]) =>
       reconcile(input),
     ),
+    ...(observeOwnThreads === undefined
+      ? {}
+      : {
+          observeOwnThreads: Object.freeze(
+            (input: Parameters<typeof observeOwnThreads>[0]) =>
+              observeOwnThreads(input),
+          ),
+        }),
   });
 };

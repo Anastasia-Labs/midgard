@@ -30,10 +30,7 @@ import { WITHDRAWAL_MISTAG_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/com
 import { createCursorFamilyWorkflowAdapter } from "../src/workflow/cursor-family-adapter.js";
 import { WITHDRAWAL_MISTAG_CURSOR_SPEC } from "../src/workflow/cursor-family-spec.js";
 import { createFraudProofFamilyRawL1ObservationPort } from "../src/workflow/family-l1-observation.js";
-import {
-  DirectoryFraudProofWorkflowJournalStore,
-  type FraudProofWorkflowJournalEntry,
-} from "../src/workflow/journal.js";
+import { DirectoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.js";
 import {
   createFraudProofWorkflowRegistry,
   type FraudProofWorkflowRunResult,
@@ -63,6 +60,10 @@ import {
   submitSecondHeaderTx,
   submitSetupTx,
 } from "./support/emulator/setup-tx.js";
+import {
+  expectResolvedWithReclaim,
+  walletLovelace,
+} from "./support/own-thread-reclaim-expectations.js";
 import { network } from "./support/submit-init-emulator-shared.js";
 import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
 import {
@@ -100,15 +101,6 @@ const DATUM_SCHEMAS = [
   SDK.WithdrawalMistagStep04Datum,
   SDK.WithdrawalMistagStep05Datum,
 ];
-
-const kinds = (entries: readonly FraudProofWorkflowJournalEntry[]) =>
-  entries.map(({ event }) => event.kind);
-
-const walletLovelace = async (lucid: LucidEvolution) =>
-  (await lucid.wallet().getUtxos()).reduce(
-    (sum, utxo) => sum + (utxo.assets.lovelace ?? 0n),
-    0n,
-  );
 
 /**
  * A withdrawal-mistag header on the emulator, its scripts published, and a
@@ -387,29 +379,6 @@ const theyConvictAndRemove = async (
   throw new Error("the other prover never removed the header");
 };
 
-const expectResolvedWithReclaim = (
-  result: FraudProofWorkflowRunResult,
-  thread: { readonly threadOutRef: string; readonly lovelace: string },
-  reclaimTxHash: string,
-) => {
-  expect(result).toMatchObject({
-    kind: "resolved_by_another_record",
-    reclaimed: [
-      {
-        txHash: reclaimTxHash,
-        threadOutRef: thread.threadOutRef,
-        lovelace: thread.lovelace,
-      },
-    ],
-  });
-  if (result.kind !== "resolved_by_another_record")
-    throw new Error("not resolved");
-  // Never our conviction: no terminal, no completion, no removal of ours.
-  expect("terminal" in result).toBe(false);
-  expect(kinds(result.entries)).not.toContain("completed");
-  expect(kinds(result.entries)).not.toContain("terminal_included");
-};
-
 describe("withdrawal-mistag: our thread on a header another prover's record removed", () => {
   it.each([{ restart: false }, { restart: true }])(
     "cancels our thread to our wallet, then resolves by the other record (restart between submit and confirm: $restart)",
@@ -432,11 +401,29 @@ describe("withdrawal-mistag: our thread on a header another prover's record remo
         });
         const thread = await openOurThread(s, ours);
         await theyConvictAndRemove(s, theirs);
-        const before = await walletLovelace(s.h.proverLucid);
         const submitted = submissions.length;
 
-        // Our run reconciles what it left, then builds our thread's cancel.
+        // The removal is still within rollback recovery: our run reconciles
+        // what it left (one action per run), then holds our thread where it
+        // stands and sends nothing.
+        const awaitingRemoval = `header removal awaits release finality before our thread ${thread.threadOutRef} is reclaimed`;
         let result = await ours.run();
+        for (
+          let pass = 0;
+          pass < 4 && !JSON.stringify(result).includes(awaitingRemoval);
+          pass += 1
+        )
+          result = await ours.run();
+        expect(result).toMatchObject({
+          kind: "pending",
+          reason: expect.stringContaining(awaitingRemoval),
+        });
+        expect(submissions.slice(submitted)).toEqual([]);
+
+        // Past rollback recovery, the run builds our thread's cancel.
+        s.h.emulator.awaitBlock(FINAL_DEPTH);
+        const before = await walletLovelace(s.h.proverLucid);
+        result = await ours.run();
         for (
           let pass = 0;
           pass < 4 &&
