@@ -861,3 +861,43 @@ test refuses_a_step_in_another_mode() fail {
 test refuses_a_step_of_another_arm() fail {
   spend_bound(fn(bound) { chain.CoreBound { ..bound, arm: 30 } })
 }
+
+// ## Routing
+
+/// Every builtin tag the budget hop routes to a semantics entry. For any
+/// other tag `semantic_group` fails, so the step reaches no entry.
+fn routed_tags() -> List<Int> {
+  list.concat(
+    list.range(0, 20),
+    list.concat(
+      list.range(22, 25),
+      list.concat(
+        list.range(29, 37),
+        list.concat(
+          list.range(39, 42),
+          list.concat(list.range(44, 51), [71, 72, 86]),
+        ),
+      ),
+    ),
+  )
+}
+
+/// The loop does not check the builtin tag itself: it relies on semantics
+/// entry 10 taking serialiseData (tag 51) alone. Arms other than 31 route to
+/// entry 0.
+test only_serialise_data_routes_to_the_serialise_loop() {
+  list.all(
+    routed_tags(),
+    fn(tag) {
+      if tag == 51 {
+        chain.semantic_group(tag) == 10
+      } else {
+        chain.semantic_group(tag) != 10
+      }
+    },
+  )
+}
+
+test routes_no_semantics_for_an_unrouted_tag() fail {
+  chain.semantic_group(52) >= 0
+}
