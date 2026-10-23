@@ -16,6 +16,10 @@
  * staged arms cannot certify (a builtin failure, or an argument or result
  * past protocol version 11's bounds) is not emitted: it throws, so the run is
  * indeterminate rather than given a step no verifier accepts.
+ *
+ * serialiseData (semantics group 10) takes this route too, past the direct
+ * bound or over an argument presented by its summary: the serialise loop
+ * proves it over its staged result (`cek-executor.serialise-builtin.ts`).
  */
 import {
   encodeMidgardCekCanonicalIntegerCbor,
@@ -41,7 +45,9 @@ import {
 import { encodeMidgardCekCanonicalConstant } from "./cek-constant.js";
 import { commitMidgardCekDataTree } from "./cek-data-tree.js";
 import type { MidgardCekSemanticStore } from "./cek-executor.semantic-store.js";
+import { executeMidgardCekSerialiseBuiltin } from "./cek-executor.serialise-builtin.js";
 import type { MidgardCekCoreStepWitness } from "./cek-machine.js";
+import type { MidgardCekSerialiseWitness } from "./cek-serialise-builtin.js";
 import type { MidgardCekStagedOperandSource } from "./cek-staged-builtin.material.js";
 import {
   midgardCekPlaceholderStaging,
@@ -70,7 +76,7 @@ export const isMidgardCekStagedStep = (
   tag: bigint,
   arguments_: readonly MidgardCekDirectValueWitness[],
 ): boolean =>
-  midgardCekStagedBuiltinProves(tag) &&
+  (midgardCekStagedBuiltinProves(tag) || tag === 51n) &&
   !midgardCekDivisionByZero(tag, arguments_) &&
   (arguments_.some((argument) => argument.kind !== "constant") ||
     !midgardCekDirectBuiltinFits(tag, arguments_));
@@ -145,7 +151,8 @@ const smallInteger = (tag: number, index: number): boolean =>
 
 /**
  * The staged step of builtin `tag` over `arguments_` (presented, with value
- * roots `roots`) and its result, which the caller adds to the store.
+ * roots `roots`) and its result, which the caller adds to the store unless
+ * the step gives the result's value root.
  */
 export const executeMidgardCekStagedBuiltin = (
   store: MidgardCekSemanticStore,
@@ -153,9 +160,13 @@ export const executeMidgardCekStagedBuiltin = (
   arguments_: readonly MidgardCekDirectValueWitness[],
   roots: readonly Bytes[],
 ): {
-  readonly witness: StagedWitness;
+  readonly witness: StagedWitness | MidgardCekSerialiseWitness;
   readonly result: MidgardCekDirectValueWitness;
+  readonly root?: Bytes;
 } => {
+  if (tag === 51n) {
+    return executeMidgardCekSerialiseBuiltin(store, arguments_, roots);
+  }
   const group = midgardCekSemanticGroup(tag);
   if (group !== 7 && group !== 8 && group !== 9) {
     throw new Error("CEK staged builtin has no staged semantics group");

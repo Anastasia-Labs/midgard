@@ -1,0 +1,3942 @@
+{
+  "generator": "demo/midgard-validation/scripts/generate-cek-serialise-loop-v1-goldens.mjs",
+  "aikenModule": "onchain/aiken/validators/fraud-proofs/validation-trace/cek-core-semantic-serialise-loop-golden.test.ak",
+  "values": [
+    {
+      "name": "small_mixed",
+      "bytes": 246,
+      "plans": [
+        {
+          "plan": "limit_1",
+          "hops": 46,
+          "rows": [
+            {
+              "name": "small_mixed_limit_1_hop_0",
+              "from": 0,
+              "end": 1,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 1,
+                "windowBytes": 246,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 1,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 1,
+                "pushedBytes": 7
+              },
+              "model": {
+                "memory": 1029332,
+                "cpu": 341661480
+              }
+            },
+            {
+              "name": "small_mixed_limit_1_hop_1",
+              "from": 1,
+              "end": 2,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 243,
+                "steps": {
+                  "integer": 1,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 1,
+                "pushedBytes": 44
+              },
+              "model": {
+                "memory": 1055120,
+                "cpu": 362411045
+              }
+            },
+            {
+              "name": "small_mixed_limit_1_hop_23",
+              "from": 23,
+              "end": 24,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 32,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 1,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 1,
+                "restoreBytes": 9,
+                "pushed": 1,
+                "pushedBytes": 45
+              },
+              "model": {
+                "memory": 1076063,
+                "cpu": 371350591
+              }
+            },
+            {
+              "name": "small_mixed_limit_1_hop_44",
+              "from": 44,
+              "end": 45,
+              "shape": {
+                "refs": 0,
+                "freshChunks": 0,
+                "windowBytes": 0,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 1,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 1,
+                "restoreBytes": 44,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 888228,
+                "cpu": 320742317
+              }
+            },
+            {
+              "name": "small_mixed_limit_1_hop_45",
+              "from": 45,
+              "end": 46,
+              "shape": {
+                "refs": 0,
+                "freshChunks": 0,
+                "windowBytes": 0,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 1,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 1,
+                "restoreBytes": 7,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 899257,
+                "cpu": 310154161
+              }
+            }
+          ]
+        },
+        {
+          "plan": "limit_4",
+          "hops": 12,
+          "rows": [
+            {
+              "name": "small_mixed_limit_4_hop_0",
+              "from": 0,
+              "end": 4,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 1,
+                "windowBytes": 246,
+                "steps": {
+                  "integer": 1,
+                  "bytes": 0,
+                  "open": 2,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 1
+                },
+                "leafPieces": 2,
+                "leafChunks": 1,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 4,
+                "pushedBytes": 105
+              },
+              "model": {
+                "memory": 1347522,
+                "cpu": 486507353
+              }
+            },
+            {
+              "name": "small_mixed_limit_4_hop_1",
+              "from": 4,
+              "end": 8,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 131,
+                "steps": {
+                  "integer": 1,
+                  "bytes": 2,
+                  "open": 1,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 4,
+                "pushedBytes": 141
+              },
+              "model": {
+                "memory": 1318512,
+                "cpu": 479049984
+              }
+            },
+            {
+              "name": "small_mixed_limit_4_hop_6",
+              "from": 24,
+              "end": 28,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 32,
+                "steps": {
+                  "integer": 1,
+                  "bytes": 0,
+                  "open": 1,
+                  "close": 1,
+                  "pop": 1,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 1,
+                "pushedBytes": 9
+              },
+              "model": {
+                "memory": 1134520,
+                "cpu": 395101442
+              }
+            },
+            {
+              "name": "small_mixed_limit_4_hop_10",
+              "from": 40,
+              "end": 44,
+              "shape": {
+                "refs": 0,
+                "freshChunks": 0,
+                "windowBytes": 0,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 4,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 4,
+                "restoreBytes": 179,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 1062384,
+                "cpu": 429513620
+              }
+            },
+            {
+              "name": "small_mixed_limit_4_hop_11",
+              "from": 44,
+              "end": 46,
+              "shape": {
+                "refs": 0,
+                "freshChunks": 0,
+                "windowBytes": 0,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 1,
+                  "popPair": 0,
+                  "finish": 1,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 2,
+                "restoreBytes": 51,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 957309,
+                "cpu": 346411262
+              }
+            }
+          ]
+        },
+        {
+          "plan": "limit_32",
+          "hops": 2,
+          "rows": [
+            {
+              "name": "small_mixed_limit_32_hop_0",
+              "from": 0,
+              "end": 32,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 1,
+                "windowBytes": 246,
+                "steps": {
+                  "integer": 6,
+                  "bytes": 2,
+                  "open": 6,
+                  "close": 3,
+                  "pop": 5,
+                  "popPair": 2,
+                  "finish": 6,
+                  "leaf": 2
+                },
+                "leafPieces": 4,
+                "leafChunks": 2,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 9,
+                "pushedBytes": 327
+              },
+              "model": {
+                "memory": 3210234,
+                "cpu": 1265203497
+              }
+            },
+            {
+              "name": "small_mixed_limit_32_hop_1",
+              "from": 32,
+              "end": 46,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 4,
+                "steps": {
+                  "integer": 1,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 2,
+                  "pop": 9,
+                  "popPair": 0,
+                  "finish": 2,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 9,
+                "restoreBytes": 327,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 1691612,
+                "cpu": 720616265
+              }
+            }
+          ]
+        },
+        {
+          "plan": "limit_256",
+          "hops": 1,
+          "rows": [
+            {
+              "name": "small_mixed_limit_256_hop_0",
+              "from": 0,
+              "end": 46,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 1,
+                "windowBytes": 246,
+                "steps": {
+                  "integer": 7,
+                  "bytes": 2,
+                  "open": 6,
+                  "close": 5,
+                  "pop": 14,
+                  "popPair": 2,
+                  "finish": 8,
+                  "leaf": 2
+                },
+                "leafPieces": 4,
+                "leafChunks": 2,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 3749520,
+                "cpu": 1518586894
+              }
+            }
+          ]
+        },
+        {
+          "plan": "budget",
+          "hops": 1,
+          "rows": [
+            {
+              "name": "small_mixed_budget_hop_0",
+              "from": 0,
+              "end": 46,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 1,
+                "windowBytes": 246,
+                "steps": {
+                  "integer": 7,
+                  "bytes": 2,
+                  "open": 6,
+                  "close": 5,
+                  "pop": 14,
+                  "popPair": 2,
+                  "finish": 8,
+                  "leaf": 2
+                },
+                "leafPieces": 4,
+                "leafChunks": 2,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 3749520,
+                "cpu": 1518586894
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "list_of_128_items",
+      "bytes": 508,
+      "plans": [
+        {
+          "plan": "limit_1",
+          "hops": 259,
+          "rows": [
+            {
+              "name": "list_of_128_items_limit_1_hop_0",
+              "from": 0,
+              "end": 1,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 1,
+                "windowBytes": 508,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 1,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 1,
+                "pushedBytes": 7
+              },
+              "model": {
+                "memory": 1030904,
+                "cpu": 342179454
+              }
+            },
+            {
+              "name": "list_of_128_items_limit_1_hop_1",
+              "from": 1,
+              "end": 2,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 507,
+                "steps": {
+                  "integer": 1,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 1,
+                "pushedBytes": 44
+              },
+              "model": {
+                "memory": 1056704,
+                "cpu": 362932973
+              }
+            },
+            {
+              "name": "list_of_128_items_limit_1_hop_129",
+              "from": 129,
+              "end": 130,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 1,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 1,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 983576,
+                "cpu": 326215054
+              }
+            },
+            {
+              "name": "list_of_128_items_limit_1_hop_257",
+              "from": 257,
+              "end": 258,
+              "shape": {
+                "refs": 0,
+                "freshChunks": 0,
+                "windowBytes": 0,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 1,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 1,
+                "restoreBytes": 44,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 888228,
+                "cpu": 320742317
+              }
+            },
+            {
+              "name": "list_of_128_items_limit_1_hop_258",
+              "from": 258,
+              "end": 259,
+              "shape": {
+                "refs": 0,
+                "freshChunks": 0,
+                "windowBytes": 0,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 1,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 1,
+                "restoreBytes": 7,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 899257,
+                "cpu": 310154161
+              }
+            }
+          ]
+        },
+        {
+          "plan": "limit_4",
+          "hops": 65,
+          "rows": [
+            {
+              "name": "list_of_128_items_limit_4_hop_0",
+              "from": 0,
+              "end": 4,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 1,
+                "windowBytes": 508,
+                "steps": {
+                  "integer": 3,
+                  "bytes": 0,
+                  "open": 1,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 4,
+                "pushedBytes": 139
+              },
+              "model": {
+                "memory": 1241180,
+                "cpu": 449332125
+              }
+            },
+            {
+              "name": "list_of_128_items_limit_4_hop_1",
+              "from": 4,
+              "end": 8,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 500,
+                "steps": {
+                  "integer": 4,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 4,
+                "pushedBytes": 176
+              },
+              "model": {
+                "memory": 1266938,
+                "cpu": 470071805
+              }
+            },
+            {
+              "name": "list_of_128_items_limit_4_hop_32",
+              "from": 128,
+              "end": 132,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 6,
+                "steps": {
+                  "integer": 1,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 1,
+                  "pop": 2,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 1,
+                "restoreBytes": 44,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 1147098,
+                "cpu": 415482622
+              }
+            },
+            {
+              "name": "list_of_128_items_limit_4_hop_63",
+              "from": 252,
+              "end": 256,
+              "shape": {
+                "refs": 0,
+                "freshChunks": 0,
+                "windowBytes": 0,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 4,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 4,
+                "restoreBytes": 176,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 1062384,
+                "cpu": 429513620
+              }
+            },
+            {
+              "name": "list_of_128_items_limit_4_hop_64",
+              "from": 256,
+              "end": 259,
+              "shape": {
+                "refs": 0,
+                "freshChunks": 0,
+                "windowBytes": 0,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 2,
+                  "popPair": 0,
+                  "finish": 1,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 3,
+                "restoreBytes": 95,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 1015361,
+                "cpu": 382668363
+              }
+            }
+          ]
+        },
+        {
+          "plan": "limit_32",
+          "hops": 9,
+          "rows": [
+            {
+              "name": "list_of_128_items_limit_32_hop_0",
+              "from": 0,
+              "end": 32,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 1,
+                "windowBytes": 508,
+                "steps": {
+                  "integer": 31,
+                  "bytes": 0,
+                  "open": 1,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 32,
+                "pushedBytes": 1371
+              },
+              "model": {
+                "memory": 3203756,
+                "cpu": 1449423721
+              }
+            },
+            {
+              "name": "list_of_128_items_limit_32_hop_1",
+              "from": 32,
+              "end": 64,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 416,
+                "steps": {
+                  "integer": 32,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 32,
+                "pushedBytes": 1408
+              },
+              "model": {
+                "memory": 3229010,
+                "cpu": 1469997333
+              }
+            },
+            {
+              "name": "list_of_128_items_limit_32_hop_4",
+              "from": 128,
+              "end": 160,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 6,
+                "steps": {
+                  "integer": 1,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 1,
+                  "pop": 30,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 29,
+                "restoreBytes": 1276,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 2772554,
+                "cpu": 1430681450
+              }
+            },
+            {
+              "name": "list_of_128_items_limit_32_hop_7",
+              "from": 224,
+              "end": 256,
+              "shape": {
+                "refs": 0,
+                "freshChunks": 0,
+                "windowBytes": 0,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 32,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 32,
+                "restoreBytes": 1408,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 2687840,
+                "cpu": 1444712448
+              }
+            },
+            {
+              "name": "list_of_128_items_limit_32_hop_8",
+              "from": 256,
+              "end": 259,
+              "shape": {
+                "refs": 0,
+                "freshChunks": 0,
+                "windowBytes": 0,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 2,
+                  "popPair": 0,
+                  "finish": 1,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 3,
+                "restoreBytes": 95,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 1015361,
+                "cpu": 382668363
+              }
+            }
+          ]
+        },
+        {
+          "plan": "limit_256",
+          "hops": 3,
+          "rows": [
+            {
+              "name": "list_of_128_items_limit_256_hop_0",
+              "from": 0,
+              "end": 112,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 1,
+                "windowBytes": 508,
+                "steps": {
+                  "integer": 111,
+                  "bytes": 0,
+                  "open": 1,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 112,
+                "pushedBytes": 4891
+              },
+              "model": {
+                "memory": 8811116,
+                "cpu": 4306828281
+              }
+            },
+            {
+              "name": "list_of_128_items_limit_256_hop_1",
+              "from": 112,
+              "end": 252,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 86,
+                "steps": {
+                  "integer": 17,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 1,
+                  "pop": 122,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 105,
+                "restoreBytes": 4620,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 8872026,
+                "cpu": 5034388598
+              }
+            },
+            {
+              "name": "list_of_128_items_limit_256_hop_2",
+              "from": 252,
+              "end": 259,
+              "shape": {
+                "refs": 0,
+                "freshChunks": 0,
+                "windowBytes": 0,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 6,
+                  "popPair": 0,
+                  "finish": 1,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 7,
+                "restoreBytes": 271,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 1247569,
+                "cpu": 527696767
+              }
+            }
+          ]
+        },
+        {
+          "plan": "budget",
+          "hops": 3,
+          "rows": [
+            {
+              "name": "list_of_128_items_budget_hop_0",
+              "from": 0,
+              "end": 112,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 1,
+                "windowBytes": 508,
+                "steps": {
+                  "integer": 111,
+                  "bytes": 0,
+                  "open": 1,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 112,
+                "pushedBytes": 4891
+              },
+              "model": {
+                "memory": 8811116,
+                "cpu": 4306828281
+              }
+            },
+            {
+              "name": "list_of_128_items_budget_hop_1",
+              "from": 112,
+              "end": 252,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 86,
+                "steps": {
+                  "integer": 17,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 1,
+                  "pop": 122,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 105,
+                "restoreBytes": 4620,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 8872026,
+                "cpu": 5034388598
+              }
+            },
+            {
+              "name": "list_of_128_items_budget_hop_2",
+              "from": 252,
+              "end": 259,
+              "shape": {
+                "refs": 0,
+                "freshChunks": 0,
+                "windowBytes": 0,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 6,
+                  "popPair": 0,
+                  "finish": 1,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 7,
+                "restoreBytes": 271,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 1247569,
+                "cpu": 527696767
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "nested_128_deep",
+      "bytes": 257,
+      "plans": [
+        {
+          "plan": "limit_1",
+          "hops": 513,
+          "rows": [
+            {
+              "name": "nested_128_deep_limit_1_hop_0",
+              "from": 0,
+              "end": 1,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 1,
+                "windowBytes": 257,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 1,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 1,
+                "pushedBytes": 7
+              },
+              "model": {
+                "memory": 1029398,
+                "cpu": 341683227
+              }
+            },
+            {
+              "name": "nested_128_deep_limit_1_hop_1",
+              "from": 1,
+              "end": 2,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 256,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 1,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 1,
+                "pushedBytes": 7
+              },
+              "model": {
+                "memory": 1029392,
+                "cpu": 341681250
+              }
+            },
+            {
+              "name": "nested_128_deep_limit_1_hop_256",
+              "from": 256,
+              "end": 257,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 85,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 1,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 1,
+                "restoreBytes": 46,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 1042132,
+                "cpu": 362638223
+              }
+            },
+            {
+              "name": "nested_128_deep_limit_1_hop_511",
+              "from": 511,
+              "end": 512,
+              "shape": {
+                "refs": 0,
+                "freshChunks": 0,
+                "windowBytes": 0,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 1,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 1,
+                "restoreBytes": 47,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 888228,
+                "cpu": 320742317
+              }
+            },
+            {
+              "name": "nested_128_deep_limit_1_hop_512",
+              "from": 512,
+              "end": 513,
+              "shape": {
+                "refs": 0,
+                "freshChunks": 0,
+                "windowBytes": 0,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 1,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 1,
+                "restoreBytes": 7,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 899257,
+                "cpu": 310154161
+              }
+            }
+          ]
+        },
+        {
+          "plan": "limit_4",
+          "hops": 129,
+          "rows": [
+            {
+              "name": "nested_128_deep_limit_4_hop_0",
+              "from": 0,
+              "end": 4,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 1,
+                "windowBytes": 257,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 4,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 4,
+                "pushedBytes": 28
+              },
+              "model": {
+                "memory": 1162256,
+                "cpu": 386569410
+              }
+            },
+            {
+              "name": "nested_128_deep_limit_4_hop_1",
+              "from": 4,
+              "end": 8,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 253,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 4,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 4,
+                "pushedBytes": 28
+              },
+              "model": {
+                "memory": 1162232,
+                "cpu": 386561502
+              }
+            },
+            {
+              "name": "nested_128_deep_limit_4_hop_64",
+              "from": 256,
+              "end": 260,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 85,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 1,
+                  "pop": 2,
+                  "popPair": 0,
+                  "finish": 1,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 2,
+                "restoreBytes": 53,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 1169265,
+                "cpu": 424564269
+              }
+            },
+            {
+              "name": "nested_128_deep_limit_4_hop_127",
+              "from": 508,
+              "end": 512,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 1,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 1,
+                  "pop": 2,
+                  "popPair": 0,
+                  "finish": 1,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 2,
+                "restoreBytes": 54,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 1168761,
+                "cpu": 424398201
+              }
+            },
+            {
+              "name": "nested_128_deep_limit_4_hop_128",
+              "from": 512,
+              "end": 513,
+              "shape": {
+                "refs": 0,
+                "freshChunks": 0,
+                "windowBytes": 0,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 1,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 1,
+                "restoreBytes": 7,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 899257,
+                "cpu": 310154161
+              }
+            }
+          ]
+        },
+        {
+          "plan": "limit_32",
+          "hops": 17,
+          "rows": [
+            {
+              "name": "nested_128_deep_limit_32_hop_0",
+              "from": 0,
+              "end": 32,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 1,
+                "windowBytes": 257,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 32,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 32,
+                "pushedBytes": 224
+              },
+              "model": {
+                "memory": 2402264,
+                "cpu": 805507118
+              }
+            },
+            {
+              "name": "nested_128_deep_limit_32_hop_1",
+              "from": 32,
+              "end": 64,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 225,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 32,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 32,
+                "pushedBytes": 224
+              },
+              "model": {
+                "memory": 2402072,
+                "cpu": 805443854
+              }
+            },
+            {
+              "name": "nested_128_deep_limit_32_hop_8",
+              "from": 256,
+              "end": 288,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 85,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 10,
+                  "pop": 11,
+                  "popPair": 0,
+                  "finish": 11,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 12,
+                "restoreBytes": 123,
+                "pushed": 1,
+                "pushedBytes": 46
+              },
+              "model": {
+                "memory": 2406279,
+                "cpu": 1027404162
+              }
+            },
+            {
+              "name": "nested_128_deep_limit_32_hop_15",
+              "from": 480,
+              "end": 512,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 11,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 11,
+                  "pop": 11,
+                  "popPair": 0,
+                  "finish": 10,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 11,
+                "restoreBytes": 117,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 2313018,
+                "cpu": 981752385
+              }
+            },
+            {
+              "name": "nested_128_deep_limit_32_hop_16",
+              "from": 512,
+              "end": 513,
+              "shape": {
+                "refs": 0,
+                "freshChunks": 0,
+                "windowBytes": 0,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 1,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 1,
+                "restoreBytes": 7,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 899257,
+                "cpu": 310154161
+              }
+            }
+          ]
+        },
+        {
+          "plan": "limit_256",
+          "hops": 3,
+          "rows": [
+            {
+              "name": "nested_128_deep_limit_256_hop_0",
+              "from": 0,
+              "end": 182,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 1,
+                "windowBytes": 257,
+                "steps": {
+                  "integer": 1,
+                  "bytes": 0,
+                  "open": 128,
+                  "close": 18,
+                  "pop": 18,
+                  "popPair": 0,
+                  "finish": 17,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 111,
+                "pushedBytes": 777
+              },
+              "model": {
+                "memory": 8859017,
+                "cpu": 3296292087
+              }
+            },
+            {
+              "name": "nested_128_deep_limit_256_hop_1",
+              "from": 182,
+              "end": 368,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 110,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 62,
+                  "pop": 62,
+                  "popPair": 0,
+                  "finish": 62,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 62,
+                "restoreBytes": 434,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 8866476,
+                "cpu": 4165845399
+              }
+            },
+            {
+              "name": "nested_128_deep_limit_256_hop_2",
+              "from": 368,
+              "end": 513,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 48,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 48,
+                  "pop": 48,
+                  "popPair": 0,
+                  "finish": 49,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 49,
+                "restoreBytes": 343,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 7155323,
+                "cpu": 3324427126
+              }
+            }
+          ]
+        },
+        {
+          "plan": "budget",
+          "hops": 3,
+          "rows": [
+            {
+              "name": "nested_128_deep_budget_hop_0",
+              "from": 0,
+              "end": 182,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 1,
+                "windowBytes": 257,
+                "steps": {
+                  "integer": 1,
+                  "bytes": 0,
+                  "open": 128,
+                  "close": 18,
+                  "pop": 18,
+                  "popPair": 0,
+                  "finish": 17,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 111,
+                "pushedBytes": 777
+              },
+              "model": {
+                "memory": 8859017,
+                "cpu": 3296292087
+              }
+            },
+            {
+              "name": "nested_128_deep_budget_hop_1",
+              "from": 182,
+              "end": 368,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 110,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 62,
+                  "pop": 62,
+                  "popPair": 0,
+                  "finish": 62,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 62,
+                "restoreBytes": 434,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 8866476,
+                "cpu": 4165845399
+              }
+            },
+            {
+              "name": "nested_128_deep_budget_hop_2",
+              "from": 368,
+              "end": 513,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 48,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 48,
+                  "pop": 48,
+                  "popPair": 0,
+                  "finish": 49,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 49,
+                "restoreBytes": 343,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 7155323,
+                "cpu": 3324427126
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "eight_input_records",
+      "bytes": 346,
+      "plans": [
+        {
+          "plan": "limit_1",
+          "hops": 99,
+          "rows": [
+            {
+              "name": "eight_input_records_limit_1_hop_0",
+              "from": 0,
+              "end": 1,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 1,
+                "windowBytes": 346,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 1,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 1,
+                "pushedBytes": 7
+              },
+              "model": {
+                "memory": 1029932,
+                "cpu": 341859180
+              }
+            },
+            {
+              "name": "eight_input_records_limit_1_hop_1",
+              "from": 1,
+              "end": 2,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 345,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 1,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 1,
+                "pushedBytes": 7
+              },
+              "model": {
+                "memory": 1029926,
+                "cpu": 341857203
+              }
+            },
+            {
+              "name": "eight_input_records_limit_1_hop_49",
+              "from": 49,
+              "end": 50,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 132,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 1,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 1,
+                "restoreBytes": 45,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 1042414,
+                "cpu": 362731142
+              }
+            },
+            {
+              "name": "eight_input_records_limit_1_hop_97",
+              "from": 97,
+              "end": 98,
+              "shape": {
+                "refs": 0,
+                "freshChunks": 0,
+                "windowBytes": 0,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 1,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 1,
+                "restoreBytes": 45,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 888228,
+                "cpu": 320742317
+              }
+            },
+            {
+              "name": "eight_input_records_limit_1_hop_98",
+              "from": 98,
+              "end": 99,
+              "shape": {
+                "refs": 0,
+                "freshChunks": 0,
+                "windowBytes": 0,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 1,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 1,
+                "restoreBytes": 7,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 899257,
+                "cpu": 310154161
+              }
+            }
+          ]
+        },
+        {
+          "plan": "limit_4",
+          "hops": 25,
+          "rows": [
+            {
+              "name": "eight_input_records_limit_4_hop_0",
+              "from": 0,
+              "end": 4,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 1,
+                "windowBytes": 346,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 1,
+                  "open": 3,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 4,
+                "pushedBytes": 68
+              },
+              "model": {
+                "memory": 1229425,
+                "cpu": 423594911
+              }
+            },
+            {
+              "name": "eight_input_records_limit_4_hop_1",
+              "from": 4,
+              "end": 8,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 305,
+                "steps": {
+                  "integer": 1,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 1,
+                  "pop": 1,
+                  "popPair": 0,
+                  "finish": 1,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 2,
+                "restoreBytes": 54,
+                "pushed": 2,
+                "pushedBytes": 89
+              },
+              "model": {
+                "memory": 1205845,
+                "cpu": 443864970
+              }
+            },
+            {
+              "name": "eight_input_records_limit_4_hop_12",
+              "from": 48,
+              "end": 52,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 133,
+                "steps": {
+                  "integer": 1,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 1,
+                  "pop": 1,
+                  "popPair": 0,
+                  "finish": 1,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 2,
+                "restoreBytes": 54,
+                "pushed": 2,
+                "pushedBytes": 89
+              },
+              "model": {
+                "memory": 1204813,
+                "cpu": 443524926
+              }
+            },
+            {
+              "name": "eight_input_records_limit_4_hop_23",
+              "from": 92,
+              "end": 96,
+              "shape": {
+                "refs": 0,
+                "freshChunks": 0,
+                "windowBytes": 0,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 4,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 4,
+                "restoreBytes": 180,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 1062384,
+                "cpu": 429513620
+              }
+            },
+            {
+              "name": "eight_input_records_limit_4_hop_24",
+              "from": 96,
+              "end": 99,
+              "shape": {
+                "refs": 0,
+                "freshChunks": 0,
+                "windowBytes": 0,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 2,
+                  "popPair": 0,
+                  "finish": 1,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 3,
+                "restoreBytes": 97,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 1015361,
+                "cpu": 382668363
+              }
+            }
+          ]
+        },
+        {
+          "plan": "limit_32",
+          "hops": 4,
+          "rows": [
+            {
+              "name": "eight_input_records_limit_32_hop_0",
+              "from": 0,
+              "end": 32,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 1,
+                "windowBytes": 346,
+                "steps": {
+                  "integer": 3,
+                  "bytes": 3,
+                  "open": 7,
+                  "close": 6,
+                  "pop": 8,
+                  "popPair": 0,
+                  "finish": 5,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 5,
+                "pushedBytes": 149
+              },
+              "model": {
+                "memory": 2559240,
+                "cpu": 1038017960
+              }
+            },
+            {
+              "name": "eight_input_records_limit_32_hop_1",
+              "from": 32,
+              "end": 64,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 216,
+                "steps": {
+                  "integer": 3,
+                  "bytes": 3,
+                  "open": 6,
+                  "close": 6,
+                  "pop": 8,
+                  "popPair": 0,
+                  "finish": 6,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 2,
+                "restoreBytes": 52,
+                "pushed": 6,
+                "pushedBytes": 231
+              },
+              "model": {
+                "memory": 2629179,
+                "cpu": 1086847215
+              }
+            },
+            {
+              "name": "eight_input_records_limit_32_hop_2",
+              "from": 64,
+              "end": 96,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 87,
+                "steps": {
+                  "integer": 2,
+                  "bytes": 2,
+                  "open": 4,
+                  "close": 5,
+                  "pop": 14,
+                  "popPair": 0,
+                  "finish": 5,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 6,
+                "restoreBytes": 231,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 2573035,
+                "cpu": 1106677701
+              }
+            },
+            {
+              "name": "eight_input_records_limit_32_hop_3",
+              "from": 96,
+              "end": 99,
+              "shape": {
+                "refs": 0,
+                "freshChunks": 0,
+                "windowBytes": 0,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 2,
+                  "popPair": 0,
+                  "finish": 1,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 3,
+                "restoreBytes": 97,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 1015361,
+                "cpu": 382668363
+              }
+            }
+          ]
+        },
+        {
+          "plan": "limit_256",
+          "hops": 1,
+          "rows": [
+            {
+              "name": "eight_input_records_limit_256_hop_0",
+              "from": 0,
+              "end": 99,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 1,
+                "windowBytes": 346,
+                "steps": {
+                  "integer": 8,
+                  "bytes": 8,
+                  "open": 17,
+                  "close": 17,
+                  "pop": 32,
+                  "popPair": 0,
+                  "finish": 17,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 5781601,
+                "cpu": 2512833818
+              }
+            }
+          ]
+        },
+        {
+          "plan": "budget",
+          "hops": 1,
+          "rows": [
+            {
+              "name": "eight_input_records_budget_hop_0",
+              "from": 0,
+              "end": 99,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 1,
+                "windowBytes": 346,
+                "steps": {
+                  "integer": 8,
+                  "bytes": 8,
+                  "open": 17,
+                  "close": 17,
+                  "pop": 32,
+                  "popPair": 0,
+                  "finish": 17,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 5781601,
+                "cpu": 2512833818
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "past_the_bound_9216",
+      "bytes": 9216,
+      "plans": [
+        {
+          "plan": "limit_1",
+          "hops": 283,
+          "rows": [
+            {
+              "name": "past_the_bound_9216_limit_1_hop_0",
+              "from": 0,
+              "end": 1,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 3,
+                "windowBytes": 9216,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 1,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 1,
+                "pushedBytes": 7
+              },
+              "model": {
+                "memory": 1083152,
+                "cpu": 359395170
+              }
+            },
+            {
+              "name": "past_the_bound_9216_limit_1_hop_1",
+              "from": 1,
+              "end": 2,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 9215,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 1,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 1,
+                "pushedBytes": 45
+              },
+              "model": {
+                "memory": 1148749,
+                "cpu": 395380283
+              }
+            },
+            {
+              "name": "past_the_bound_9216_limit_1_hop_141",
+              "from": 141,
+              "end": 142,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 1,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 1,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 983576,
+                "cpu": 326215054
+              }
+            },
+            {
+              "name": "past_the_bound_9216_limit_1_hop_281",
+              "from": 281,
+              "end": 282,
+              "shape": {
+                "refs": 0,
+                "freshChunks": 0,
+                "windowBytes": 0,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 1,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 1,
+                "restoreBytes": 45,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 888228,
+                "cpu": 320742317
+              }
+            },
+            {
+              "name": "past_the_bound_9216_limit_1_hop_282",
+              "from": 282,
+              "end": 283,
+              "shape": {
+                "refs": 0,
+                "freshChunks": 0,
+                "windowBytes": 0,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 1,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 1,
+                "restoreBytes": 7,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 899257,
+                "cpu": 310154161
+              }
+            }
+          ]
+        },
+        {
+          "plan": "limit_4",
+          "hops": 71,
+          "rows": [
+            {
+              "name": "past_the_bound_9216_limit_4_hop_0",
+              "from": 0,
+              "end": 4,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 3,
+                "windowBytes": 9216,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 3,
+                  "open": 1,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 4,
+                "pushedBytes": 142
+              },
+              "model": {
+                "memory": 1412819,
+                "cpu": 512242623
+              }
+            },
+            {
+              "name": "past_the_bound_9216_limit_4_hop_1",
+              "from": 4,
+              "end": 8,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 9017,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 4,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 4,
+                "pushedBytes": 180
+              },
+              "model": {
+                "memory": 1477228,
+                "cpu": 547836290
+              }
+            },
+            {
+              "name": "past_the_bound_9216_limit_4_hop_35",
+              "from": 140,
+              "end": 144,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 41,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 1,
+                  "open": 0,
+                  "close": 1,
+                  "pop": 2,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 1,
+                "restoreBytes": 45,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 1186589,
+                "cpu": 430352182
+              }
+            },
+            {
+              "name": "past_the_bound_9216_limit_4_hop_69",
+              "from": 276,
+              "end": 280,
+              "shape": {
+                "refs": 0,
+                "freshChunks": 0,
+                "windowBytes": 0,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 4,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 4,
+                "restoreBytes": 180,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 1062384,
+                "cpu": 429513620
+              }
+            },
+            {
+              "name": "past_the_bound_9216_limit_4_hop_70",
+              "from": 280,
+              "end": 283,
+              "shape": {
+                "refs": 0,
+                "freshChunks": 0,
+                "windowBytes": 0,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 2,
+                  "popPair": 0,
+                  "finish": 1,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 3,
+                "restoreBytes": 97,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 1015361,
+                "cpu": 382668363
+              }
+            }
+          ]
+        },
+        {
+          "plan": "limit_32",
+          "hops": 9,
+          "rows": [
+            {
+              "name": "past_the_bound_9216_limit_32_hop_0",
+              "from": 0,
+              "end": 32,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 3,
+                "windowBytes": 9216,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 31,
+                  "open": 1,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 32,
+                "pushedBytes": 1402
+              },
+              "model": {
+                "memory": 4489711,
+                "cpu": 1938818851
+              }
+            },
+            {
+              "name": "past_the_bound_9216_limit_32_hop_1",
+              "from": 32,
+              "end": 64,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 7169,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 32,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 32,
+                "pushedBytes": 1440
+              },
+              "model": {
+                "memory": 4543032,
+                "cpu": 1970759022
+              }
+            },
+            {
+              "name": "past_the_bound_9216_limit_32_hop_4",
+              "from": 128,
+              "end": 160,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 833,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 13,
+                  "open": 0,
+                  "close": 1,
+                  "pop": 18,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 5,
+                "restoreBytes": 225,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 3160201,
+                "cpu": 1390557734
+              }
+            },
+            {
+              "name": "past_the_bound_9216_limit_32_hop_7",
+              "from": 224,
+              "end": 256,
+              "shape": {
+                "refs": 0,
+                "freshChunks": 0,
+                "windowBytes": 0,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 32,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 32,
+                "restoreBytes": 1440,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 2687840,
+                "cpu": 1444712448
+              }
+            },
+            {
+              "name": "past_the_bound_9216_limit_32_hop_8",
+              "from": 256,
+              "end": 283,
+              "shape": {
+                "refs": 0,
+                "freshChunks": 0,
+                "windowBytes": 0,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 26,
+                  "popPair": 0,
+                  "finish": 1,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 27,
+                "restoreBytes": 1177,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 2408609,
+                "cpu": 1252838787
+              }
+            }
+          ]
+        },
+        {
+          "plan": "limit_256",
+          "hops": 3,
+          "rows": [
+            {
+              "name": "past_the_bound_9216_limit_256_hop_0",
+              "from": 0,
+              "end": 71,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 3,
+                "windowBytes": 9216,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 70,
+                  "open": 1,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 71,
+                "pushedBytes": 3157
+              },
+              "model": {
+                "memory": 8775382,
+                "cpu": 3925835740
+              }
+            },
+            {
+              "name": "past_the_bound_9216_limit_256_hop_1",
+              "from": 71,
+              "end": 147,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 4595,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 70,
+                  "open": 0,
+                  "close": 1,
+                  "pop": 5,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 65,
+                "pushedBytes": 2925
+              },
+              "model": {
+                "memory": 8877530,
+                "cpu": 3985996942
+              }
+            },
+            {
+              "name": "past_the_bound_9216_limit_256_hop_2",
+              "from": 147,
+              "end": 283,
+              "shape": {
+                "refs": 0,
+                "freshChunks": 0,
+                "windowBytes": 0,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 135,
+                  "popPair": 0,
+                  "finish": 1,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 136,
+                "restoreBytes": 6082,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 8736277,
+                "cpu": 5204862796
+              }
+            }
+          ]
+        },
+        {
+          "plan": "budget",
+          "hops": 3,
+          "rows": [
+            {
+              "name": "past_the_bound_9216_budget_hop_0",
+              "from": 0,
+              "end": 71,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 3,
+                "windowBytes": 9216,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 70,
+                  "open": 1,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 71,
+                "pushedBytes": 3157
+              },
+              "model": {
+                "memory": 8775382,
+                "cpu": 3925835740
+              }
+            },
+            {
+              "name": "past_the_bound_9216_budget_hop_1",
+              "from": 71,
+              "end": 147,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 4595,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 70,
+                  "open": 0,
+                  "close": 1,
+                  "pop": 5,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 65,
+                "pushedBytes": 2925
+              },
+              "model": {
+                "memory": 8877530,
+                "cpu": 3985996942
+              }
+            },
+            {
+              "name": "past_the_bound_9216_budget_hop_2",
+              "from": 147,
+              "end": 283,
+              "shape": {
+                "refs": 0,
+                "freshChunks": 0,
+                "windowBytes": 0,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 135,
+                  "popPair": 0,
+                  "finish": 1,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 136,
+                "restoreBytes": 6082,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 8736277,
+                "cpu": 5204862796
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "bignum_of_5000_bytes",
+      "bytes": 5160,
+      "plans": [
+        {
+          "plan": "limit_1",
+          "hops": 2,
+          "rows": [
+            {
+              "name": "bignum_of_5000_bytes_limit_1_hop_0",
+              "from": 0,
+              "end": 1,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 2,
+                "windowBytes": 5160,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 1
+                },
+                "leafPieces": 64,
+                "leafChunks": 1,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 3271152,
+                "cpu": 981035289
+              }
+            },
+            {
+              "name": "bignum_of_5000_bytes_limit_1_hop_1",
+              "from": 1,
+              "end": 2,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 1000,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 1
+                },
+                "leafPieces": 16,
+                "leafChunks": 1,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 1638144,
+                "cpu": 530961369
+              }
+            }
+          ]
+        },
+        {
+          "plan": "limit_4",
+          "hops": 1,
+          "rows": [
+            {
+              "name": "bignum_of_5000_bytes_limit_4_hop_0",
+              "from": 0,
+              "end": 2,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 2,
+                "windowBytes": 5160,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 2
+                },
+                "leafPieces": 80,
+                "leafChunks": 2,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 3919726,
+                "cpu": 1183806581
+              }
+            }
+          ]
+        },
+        {
+          "plan": "limit_32",
+          "hops": 1,
+          "rows": [
+            {
+              "name": "bignum_of_5000_bytes_limit_32_hop_0",
+              "from": 0,
+              "end": 2,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 2,
+                "windowBytes": 5160,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 2
+                },
+                "leafPieces": 80,
+                "leafChunks": 2,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 3919726,
+                "cpu": 1183806581
+              }
+            }
+          ]
+        },
+        {
+          "plan": "limit_256",
+          "hops": 1,
+          "rows": [
+            {
+              "name": "bignum_of_5000_bytes_limit_256_hop_0",
+              "from": 0,
+              "end": 2,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 2,
+                "windowBytes": 5160,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 2
+                },
+                "leafPieces": 80,
+                "leafChunks": 2,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 3919726,
+                "cpu": 1183806581
+              }
+            }
+          ]
+        },
+        {
+          "plan": "budget",
+          "hops": 1,
+          "rows": [
+            {
+              "name": "bignum_of_5000_bytes_budget_hop_0",
+              "from": 0,
+              "end": 2,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 2,
+                "windowBytes": 5160,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 2
+                },
+                "leafPieces": 80,
+                "leafChunks": 2,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 3919726,
+                "cpu": 1183806581
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "leaf_of_20000_bytes",
+      "bytes": 20628,
+      "plans": [
+        {
+          "plan": "limit_1",
+          "hops": 6,
+          "rows": [
+            {
+              "name": "leaf_of_20000_bytes_limit_1_hop_0",
+              "from": 0,
+              "end": 1,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 3,
+                "windowBytes": 12285,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 1
+                },
+                "leafPieces": 65,
+                "leafChunks": 1,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 3347403,
+                "cpu": 1004326614
+              }
+            },
+            {
+              "name": "leaf_of_20000_bytes_limit_1_hop_1",
+              "from": 1,
+              "end": 2,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 8060,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 1
+                },
+                "leafPieces": 64,
+                "leafChunks": 1,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 3288552,
+                "cpu": 986768589
+              }
+            },
+            {
+              "name": "leaf_of_20000_bytes_limit_1_hop_3",
+              "from": 3,
+              "end": 4,
+              "shape": {
+                "refs": 2,
+                "freshChunks": 3,
+                "windowBytes": 8351,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 1
+                },
+                "leafPieces": 6,
+                "leafChunks": 1,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 1500634,
+                "cpu": 495170157
+              }
+            },
+            {
+              "name": "leaf_of_20000_bytes_limit_1_hop_4",
+              "from": 4,
+              "end": 5,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 7955,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 1
+                },
+                "leafPieces": 64,
+                "leafChunks": 1,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 3287922,
+                "cpu": 986561004
+              }
+            },
+            {
+              "name": "leaf_of_20000_bytes_limit_1_hop_5",
+              "from": 5,
+              "end": 6,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 3731,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 1
+                },
+                "leafPieces": 57,
+                "leafChunks": 1,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 3028071,
+                "cpu": 913773756
+              }
+            }
+          ]
+        },
+        {
+          "plan": "limit_4",
+          "hops": 2,
+          "rows": [
+            {
+              "name": "leaf_of_20000_bytes_limit_4_hop_0",
+              "from": 0,
+              "end": 3,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 3,
+                "windowBytes": 12285,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 3
+                },
+                "leafPieces": 187,
+                "leafChunks": 2,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 7659641,
+                "cpu": 2238337198
+              }
+            },
+            {
+              "name": "leaf_of_20000_bytes_limit_4_hop_1",
+              "from": 3,
+              "end": 6,
+              "shape": {
+                "refs": 2,
+                "freshChunks": 3,
+                "windowBytes": 8351,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 3
+                },
+                "leafPieces": 127,
+                "leafChunks": 3,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 5779371,
+                "cpu": 1719975541
+              }
+            }
+          ]
+        },
+        {
+          "plan": "limit_32",
+          "hops": 2,
+          "rows": [
+            {
+              "name": "leaf_of_20000_bytes_limit_32_hop_0",
+              "from": 0,
+              "end": 3,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 3,
+                "windowBytes": 12285,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 3
+                },
+                "leafPieces": 187,
+                "leafChunks": 2,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 7659641,
+                "cpu": 2238337198
+              }
+            },
+            {
+              "name": "leaf_of_20000_bytes_limit_32_hop_1",
+              "from": 3,
+              "end": 6,
+              "shape": {
+                "refs": 2,
+                "freshChunks": 3,
+                "windowBytes": 8351,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 3
+                },
+                "leafPieces": 127,
+                "leafChunks": 3,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 5779371,
+                "cpu": 1719975541
+              }
+            }
+          ]
+        },
+        {
+          "plan": "limit_256",
+          "hops": 2,
+          "rows": [
+            {
+              "name": "leaf_of_20000_bytes_limit_256_hop_0",
+              "from": 0,
+              "end": 3,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 3,
+                "windowBytes": 12285,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 3
+                },
+                "leafPieces": 187,
+                "leafChunks": 2,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 7659641,
+                "cpu": 2238337198
+              }
+            },
+            {
+              "name": "leaf_of_20000_bytes_limit_256_hop_1",
+              "from": 3,
+              "end": 6,
+              "shape": {
+                "refs": 2,
+                "freshChunks": 3,
+                "windowBytes": 8351,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 3
+                },
+                "leafPieces": 127,
+                "leafChunks": 3,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 5779371,
+                "cpu": 1719975541
+              }
+            }
+          ]
+        },
+        {
+          "plan": "budget",
+          "hops": 2,
+          "rows": [
+            {
+              "name": "leaf_of_20000_bytes_budget_hop_0",
+              "from": 0,
+              "end": 3,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 3,
+                "windowBytes": 12285,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 3
+                },
+                "leafPieces": 187,
+                "leafChunks": 2,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 7659641,
+                "cpu": 2238337198
+              }
+            },
+            {
+              "name": "leaf_of_20000_bytes_budget_hop_1",
+              "from": 3,
+              "end": 6,
+              "shape": {
+                "refs": 2,
+                "freshChunks": 3,
+                "windowBytes": 8351,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 3
+                },
+                "leafPieces": 127,
+                "leafChunks": 3,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 5779371,
+                "cpu": 1719975541
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "flat_11700_empty_constrs",
+      "bytes": 35102,
+      "plans": [
+        {
+          "plan": "budget",
+          "hops": 223,
+          "rows": [
+            {
+              "name": "flat_11700_empty_constrs_budget_hop_0",
+              "from": 0,
+              "end": 85,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 3,
+                "windowBytes": 12285,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 1,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 84,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 85,
+                "pushedBytes": 3703
+              },
+              "model": {
+                "memory": 8811506,
+                "cpu": 4115476347
+              }
+            },
+            {
+              "name": "flat_11700_empty_constrs_budget_hop_1",
+              "from": 85,
+              "end": 170,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 12032,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 85,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 85,
+                "pushedBytes": 3740
+              },
+              "model": {
+                "memory": 8857487,
+                "cpu": 4144657126
+              }
+            },
+            {
+              "name": "flat_11700_empty_constrs_budget_hop_111",
+              "from": 9433,
+              "end": 9518,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 0,
+                "windowBytes": 6805,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 85,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 85,
+                "pushedBytes": 3740
+              },
+              "model": {
+                "memory": 8826125,
+                "cpu": 4134323347
+              }
+            },
+            {
+              "name": "flat_11700_empty_constrs_budget_hop_221",
+              "from": 23224,
+              "end": 23362,
+              "shape": {
+                "refs": 0,
+                "freshChunks": 0,
+                "windowBytes": 0,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 138,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 138,
+                "restoreBytes": 6072,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 8841352,
+                "cpu": 5287965154
+              }
+            },
+            {
+              "name": "flat_11700_empty_constrs_budget_hop_222",
+              "from": 23362,
+              "end": 23403,
+              "shape": {
+                "refs": 0,
+                "freshChunks": 0,
+                "windowBytes": 0,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 40,
+                  "popPair": 0,
+                  "finish": 1,
+                  "leaf": 0
+                },
+                "leafPieces": 0,
+                "leafChunks": 0,
+                "restore": 41,
+                "restoreBytes": 1767,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 3221337,
+                "cpu": 1760438201
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "leaf_of_370000_bytes",
+      "bytes": 381565,
+      "plans": [
+        {
+          "plan": "budget",
+          "hops": 32,
+          "rows": [
+            {
+              "name": "leaf_of_370000_bytes_budget_hop_0",
+              "from": 0,
+              "end": 3,
+              "shape": {
+                "refs": 1,
+                "freshChunks": 3,
+                "windowBytes": 12285,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 3
+                },
+                "leafPieces": 187,
+                "leafChunks": 2,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 7659641,
+                "cpu": 2238337198
+              }
+            },
+            {
+              "name": "leaf_of_370000_bytes_budget_hop_1",
+              "from": 3,
+              "end": 7,
+              "shape": {
+                "refs": 2,
+                "freshChunks": 3,
+                "windowBytes": 12293,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 4
+                },
+                "leafPieces": 186,
+                "leafChunks": 3,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 7892140,
+                "cpu": 2326363767
+              }
+            },
+            {
+              "name": "leaf_of_370000_bytes_budget_hop_16",
+              "from": 62,
+              "end": 66,
+              "shape": {
+                "refs": 2,
+                "freshChunks": 3,
+                "windowBytes": 12296,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 4
+                },
+                "leafPieces": 186,
+                "leafChunks": 3,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 7892158,
+                "cpu": 2326369698
+              }
+            },
+            {
+              "name": "leaf_of_370000_bytes_budget_hop_30",
+              "from": 117,
+              "end": 121,
+              "shape": {
+                "refs": 2,
+                "freshChunks": 3,
+                "windowBytes": 12290,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 4
+                },
+                "leafPieces": 186,
+                "leafChunks": 3,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 7892122,
+                "cpu": 2326357836
+              }
+            },
+            {
+              "name": "leaf_of_370000_bytes_budget_hop_31",
+              "from": 121,
+              "end": 122,
+              "shape": {
+                "refs": 2,
+                "freshChunks": 1,
+                "windowBytes": 744,
+                "steps": {
+                  "integer": 0,
+                  "bytes": 0,
+                  "open": 0,
+                  "close": 0,
+                  "pop": 0,
+                  "popPair": 0,
+                  "finish": 0,
+                  "leaf": 1
+                },
+                "leafPieces": 12,
+                "leafChunks": 1,
+                "restore": 0,
+                "restoreBytes": 0,
+                "pushed": 0,
+                "pushedBytes": 0
+              },
+              "model": {
+                "memory": 1655998,
+                "cpu": 535362318
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

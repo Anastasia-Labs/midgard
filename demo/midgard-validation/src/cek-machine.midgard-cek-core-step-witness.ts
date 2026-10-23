@@ -271,6 +271,15 @@ export type MidgardCekCoreStepWitness =
       readonly stagedOperands: readonly Bytes[];
     }
   | {
+      // serialiseData (51) proved by the serialise loop over the staged
+      // bytes of its result. `serialised` holds those bytes; it is staged,
+      // not encoded.
+      readonly kind: "executeBuiltinSerialise";
+      readonly arguments: readonly MidgardCekDirectValueWitness[];
+      readonly result: MidgardCekDirectValueWitness;
+      readonly serialised: Bytes;
+    }
+  | {
       readonly kind: "startBuiltinMapConversion";
       readonly tag: bigint;
       readonly arguments: readonly MidgardCekDirectValueWitness[];

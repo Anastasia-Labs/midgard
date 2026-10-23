@@ -1,20 +1,13 @@
-import {
-  commitMidgardCekBlob,
-  midgardCekBytesMemoryWords,
-} from "@al-ft/midgard-core";
-import { DataB, DataConstr, DataI } from "@harmoniclabs/plutus-data";
+import { commitMidgardCekBlob } from "@al-ft/midgard-core";
+import { DataConstr, DataI } from "@harmoniclabs/plutus-data";
 
 import { constrIndexIsOutOfRange } from "./cek-builtin.constr-data-index.js";
 import { type MidgardCekDirectValueWitness } from "./cek-builtin.js";
 import {
   decodeMidgardCekConstantWitness,
-  encodeMidgardCekPlutusData,
   type MidgardCekConstantType,
 } from "./cek-constant.js";
-import {
-  commitMidgardCekDataTree,
-  encodeMidgardCekDataTreeInteger,
-} from "./cek-data-tree.js";
+import { encodeMidgardCekDataTreeInteger } from "./cek-data-tree.js";
 import {
   canonicalBytesLeaf,
   canonicalIntegerLeaf,
@@ -135,48 +128,6 @@ export const verifySemanticData = (
       { kind: "list", element },
       listDataSummary(emptyListSequence()),
       0n,
-    );
-  }
-  if (tag === 51n) {
-    if (
-      arguments_.length !== 1 ||
-      material.dataNodes.length !== 0 ||
-      material.listNodes.length !== 0 ||
-      material.pairNodes.length !== 0 ||
-      material.scalarPreimages.length !== 1
-    ) {
-      return false;
-    }
-    const source = constantParts(arguments_[0]!);
-    const raw = material.scalarPreimages[0]!;
-    if (
-      source?.type.kind !== "data" ||
-      source.memory !== source.payload.memory ||
-      raw.length === 0 ||
-      raw.length > 9_215
-    ) {
-      return false;
-    }
-    const decoded = plutusDataFromCborIterative(raw);
-    if (!sameBytes(encodeMidgardCekPlutusData(decoded), raw)) {
-      return false;
-    }
-    const tree = commitMidgardCekDataTree(decoded);
-    if (
-      !sameDataSummary(source.payload, {
-        root: tree.root,
-        cborLength: tree.cborLength,
-        memory: tree.memory,
-      })
-    ) {
-      return false;
-    }
-    const payload = semanticSummary(new DataB(raw));
-    return resultMatchesParts(
-      result,
-      { kind: "bytes" },
-      payload,
-      midgardCekBytesMemoryWords(raw.length),
     );
   }
   if (tag === 37n || tag === 39n) {

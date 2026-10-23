@@ -1179,13 +1179,6 @@ export class StructuralExecutor {
       this.startMapConversion(pre, builtin.tag, directArguments, roots);
       return;
     }
-    if (
-      builtin.tag === 51n &&
-      directArguments[0]?.kind === "semanticConstant"
-    ) {
-      this.executeSemanticBuiltin(pre, builtin.tag, directArguments, roots);
-      return;
-    }
     if (isMidgardCekSemanticStep(builtin.tag, directArguments)) {
       this.executeSemanticBuiltin(pre, builtin.tag, directArguments, roots);
       return;
@@ -1236,7 +1229,7 @@ export class StructuralExecutor {
         directArguments,
         roots,
       );
-      const resultRoot = this.addDirectResult(staged.result);
+      const resultRoot = staged.root ?? this.addDirectResult(staged.result);
       const budget = this.budget(builtin.tag, directArguments);
       this.record(
         staged.witness,
@@ -1266,10 +1259,6 @@ export class StructuralExecutor {
           memoryDelta: evaluated.budget.memory,
         }),
       );
-      return;
-    }
-    if (builtin.tag === 51n && evaluated.result.kind === "semanticConstant") {
-      this.executeSemanticBuiltin(pre, builtin.tag, directArguments, roots);
       return;
     }
     const resultRoot = this.addDirectResult(evaluated.result);

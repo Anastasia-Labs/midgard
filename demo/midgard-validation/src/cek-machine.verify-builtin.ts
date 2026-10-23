@@ -50,6 +50,7 @@ import {
   verifySemanticChooseData,
   verifySemanticList,
 } from "./cek-machine.verify-semantic-list.js";
+import { verifyMidgardCekSerialiseBuiltin } from "./cek-serialise-builtin.js";
 import {
   midgardCekPlaceholderStaging,
   midgardCekStagedReferenceInputs,
@@ -76,7 +77,7 @@ const verifySemanticBuiltin = (
   }
   return (
     tag >= 37n &&
-    tag <= 51n &&
+    tag <= 50n &&
     tag !== 38n &&
     tag !== 43n &&
     verifySemanticData(tag, arguments_, result, material)
@@ -234,17 +235,20 @@ const verifyBuiltin = (
       }),
     );
   }
-  if (witness.kind === "executeBuiltinStaged") {
+  if (
+    witness.kind === "executeBuiltinStaged" ||
+    witness.kind === "executeBuiltinSerialise"
+  ) {
+    const tag = witness.kind === "executeBuiltinStaged" ? witness.tag : 51n;
     if (
-      !builtinRootMatches(pre, witness.tag, witness.arguments) ||
-      !verifyStagedBuiltin(witness)
+      !builtinRootMatches(pre, tag, witness.arguments) ||
+      !(witness.kind === "executeBuiltinStaged"
+        ? verifyStagedBuiltin(witness)
+        : verifyMidgardCekSerialiseBuiltin(witness))
     ) {
       return false;
     }
-    const budget = midgardCekDirectBuiltinBudget(
-      witness.tag,
-      witness.arguments,
-    );
+    const budget = midgardCekDirectBuiltinBudget(tag, witness.arguments);
     return sameState(
       post,
       exactState(pre, {

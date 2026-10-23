@@ -18,6 +18,12 @@
  * plan starts from the cursor the chain holds, so a restart resumes where
  * the last confirmed hop ended.
  */
+import {
+  MIDGARD_CEK_LOOP_HOP_BUDGET,
+  type MidgardCekExUnits,
+  midgardCekLoopHopFits,
+} from "./cek-loop-hop-budget.js";
+
 /** Bytes of one limb. */
 const LIMB_BYTES = 512;
 
@@ -27,23 +33,11 @@ const LIMB_BYTES = 512;
  */
 export const MIDGARD_CEK_STAGED_PRODUCT_MAX_HOP_COLUMNS = 64;
 
-/** Execution units. */
-export type MidgardCekExUnits = {
-  readonly memory: bigint;
-  readonly cpu: bigint;
-};
-
-/**
- * The ex-units a hop's semantics validator has after the fixed overhead of
- * the step transaction.
- */
-export const MIDGARD_CEK_STAGED_PRODUCT_HOP_BUDGET: MidgardCekExUnits = {
-  memory: 11_100_000n,
-  cpu: 7_200_000_000n,
-};
-
-/** The share of the budget the model keeps free, in percent. */
-export const MIDGARD_CEK_STAGED_PRODUCT_HOP_MARGIN_PERCENT = 20n;
+export {
+  MIDGARD_CEK_LOOP_HOP_BUDGET as MIDGARD_CEK_STAGED_PRODUCT_HOP_BUDGET,
+  MIDGARD_CEK_LOOP_HOP_MARGIN_PERCENT as MIDGARD_CEK_STAGED_PRODUCT_HOP_MARGIN_PERCENT,
+  type MidgardCekExUnits,
+} from "./cek-loop-hop-budget.js";
 
 /** The calibrated costs of one hop, for one axis. */
 type MidgardCekStagedProductCost = {
@@ -236,14 +230,6 @@ export const midgardCekStagedProductHopCost = (
   return { memory: units("memory"), cpu: units("cpu") };
 };
 
-const fits = (cost: MidgardCekExUnits, budget: MidgardCekExUnits): boolean => {
-  const kept = 100n - MIDGARD_CEK_STAGED_PRODUCT_HOP_MARGIN_PERCENT;
-  return (
-    cost.memory * 100n <= budget.memory * kept &&
-    cost.cpu * 100n <= budget.cpu * kept
-  );
-};
-
 /**
  * Where the hop from `cursor` (the cursor the chain holds, 0 before the
  * first hop) ends: the most columns the model fits in `budget` with its
@@ -253,7 +239,7 @@ const fits = (cost: MidgardCekExUnits, budget: MidgardCekExUnits): boolean => {
 export const planMidgardCekStagedProductHop = (
   loop: MidgardCekStagedProductLoop,
   cursor: number,
-  budget: MidgardCekExUnits = MIDGARD_CEK_STAGED_PRODUCT_HOP_BUDGET,
+  budget: MidgardCekExUnits = MIDGARD_CEK_LOOP_HOP_BUDGET,
 ): number => {
   if (!Number.isSafeInteger(cursor) || cursor < 0 || cursor >= loop.columns) {
     throw new RangeError("the loop has no hop from this cursor");
@@ -265,7 +251,10 @@ export const planMidgardCekStagedProductHop = (
   let end = cursor + 1;
   while (
     end < last &&
-    fits(midgardCekStagedProductHopCost(loop, cursor, end + 1), budget)
+    midgardCekLoopHopFits(
+      midgardCekStagedProductHopCost(loop, cursor, end + 1),
+      budget,
+    )
   ) {
     end += 1;
   }

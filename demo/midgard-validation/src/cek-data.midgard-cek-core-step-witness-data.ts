@@ -213,6 +213,15 @@ export const midgardCekCoreStepWitnessData = (
         directValueData(witness.result),
         midgardCekStagedBuiltinMaterialData(witness.material),
       ]);
+    case "executeBuiltinSerialise":
+      return new Constr(31, [
+        51n,
+        witness.arguments.map(directValueData),
+        directValueData(witness.result),
+        // The loop reads R from its staging outputs, so the step carries
+        // empty semantic material.
+        new Constr(0, [[], [], [], []]),
+      ]);
     case "startBuiltinMapConversion":
       return new Constr(32, [
         witness.tag,

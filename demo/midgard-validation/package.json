@@ -165,6 +165,8 @@
     "fixtures:cek-core-step-v1:check": "pnpm run build && node scripts/generate-cek-core-step-v1-goldens.mjs --check",
     "fixtures:cek-staged-arm-v1:sync": "pnpm run build && node scripts/generate-cek-staged-arm-v1-goldens.mjs",
     "fixtures:cek-staged-arm-v1:check": "pnpm run build && node scripts/generate-cek-staged-arm-v1-goldens.mjs --check",
+    "fixtures:cek-serialise-loop-v1:sync": "pnpm run build && node scripts/generate-cek-serialise-loop-v1-goldens.mjs",
+    "fixtures:cek-serialise-loop-v1:check": "pnpm run build && node scripts/generate-cek-serialise-loop-v1-goldens.mjs --check",
     "fixtures:plutus-data-cbor-decoding-v1:sync": "pnpm run build && node scripts/generate-plutus-data-cbor-decoding-v1-goldens.mjs",
     "fixtures:plutus-data-cbor-decoding-v1:check": "pnpm run build && node scripts/generate-plutus-data-cbor-decoding-v1-goldens.mjs --check",
     "fixtures:script-decode-step-v1:sync": "pnpm run build && node scripts/generate-script-decode-step-v1-goldens.mjs",
