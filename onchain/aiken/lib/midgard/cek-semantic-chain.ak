@@ -166,8 +166,11 @@ pub fn semantic_group(tag: Int) -> Int {
     6
   } else if tag == 39 || tag == 40 || tag == 41 || tag == 44 || tag == 45 || tag == 46 {
     5
+  } else if tag >= 2 && tag <= 6 {
+    // multiplyInteger and the division builtins over staged operands.
+    9
   } else if tag >= 0 && tag <= 9 {
-    // The integer builtins over staged operands.
+    // The linear integer builtins over staged operands.
     8
   } else if or {
     tag >= 10 && tag <= 25 && tag != 21,
