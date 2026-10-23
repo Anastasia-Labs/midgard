@@ -172,18 +172,24 @@ describe("raw L1 derivation with several records and threads on one header", () 
     });
   });
 
-  it("reports no terminal of ours when another prover's record removed the header", async () => {
-    const { snapshot, definition, referencedOutRef } = await removed();
+  it("reads the header as resolved by another record when another prover's record removed it", async () => {
+    const { snapshot, definition, referencedOutRef, removalTxHash } =
+      await removed();
     const foreign = record(definition, referencedOutRef, OTHER_PROVER);
+    const resolution = {
+      removalTxHash,
+      referencedProofTokenOutRef: referencedOutRef,
+    };
     // Only the other prover's record stands.
     const alone = derive(withRecords(snapshot, [foreign]), definition);
     await expect(alone.completed).resolves.toEqual({
       kind: "terminal_not_ours",
       reason: "the header is gone and no record of ours stands",
     });
-    await expect(alone.stage).rejects.toBeInstanceOf(
-      FraudProofRawL1DerivationError,
-    );
+    await expect(alone.stage).rejects.toMatchObject({
+      name: "FraudProofResolvedByAnotherRecordError",
+      resolution,
+    });
     // Ours stands beside it, but the removal cited theirs.
     const beside = derive(
       withRecords(snapshot, [
@@ -196,10 +202,86 @@ describe("raw L1 derivation with several records and threads on one header", () 
       kind: "terminal_not_ours",
       reason: "another prover's record removed the header",
     });
-    await expect(beside.stage).rejects.toBeInstanceOf(
-      FraudProofRawL1DerivationError,
-    );
-    await expect(beside.stage).rejects.toThrow(/no terminal of ours stands/u);
+    await expect(beside.stage).rejects.toMatchObject({
+      name: "FraudProofResolvedByAnotherRecordError",
+      resolution,
+    });
+  });
+
+  it("reads a header gone without a removal citing a record of it as a derivation failure, never as resolved", async () => {
+    const { snapshot, definition, referencedOutRef, removalTxHash } =
+      await removed();
+    const [removal, ...rest] = snapshot.transactions;
+    const cited = removal!.resolvedReferenceInputs[0]!;
+    const citing = (reference: FraudProofRawL1Utxo | undefined) =>
+      withRecords(
+        {
+          ...snapshot,
+          transactions: [
+            {
+              ...removal!,
+              resolvedReferenceInputs: removal!.resolvedReferenceInputs
+                .map((candidate) =>
+                  candidate === cited ? reference : candidate,
+                )
+                .filter((candidate) => candidate !== undefined),
+            },
+            ...rest,
+          ],
+        },
+        [record(definition, referencedOutRef, OTHER_PROVER)],
+      );
+    const token = (headerHash: string, categoryId = definition.categoryId) =>
+      toUnit(definition.proofToken.policyId, `${categoryId}${headerHash}`);
+    const holding = (address: string, unit: string, quantity = 1n) =>
+      raw(
+        referencedOutRef,
+        output({
+          address,
+          assets: { lovelace: 3_000_000n, [unit]: quantity },
+          datum: Data.to({ fraud_prover: OTHER_PROVER }, FraudProofTokenDatum),
+        }),
+      );
+    const otherCategory = `${definition.categoryId.slice(0, -1)}${
+      definition.categoryId.endsWith("0") ? "1" : "0"
+    }`;
+    // The record of the header in another family resolves it too.
+    await expect(
+      derive(
+        citing(
+          holding(
+            definition.proofToken.address,
+            token(definition.headerHash, otherCategory),
+          ),
+        ),
+        definition,
+      ).stage,
+    ).rejects.toMatchObject({
+      name: "FraudProofResolvedByAnotherRecordError",
+      resolution: {
+        removalTxHash,
+        referencedProofTokenOutRef: referencedOutRef,
+      },
+    });
+    for (const reference of [
+      // The burn cites nothing: a merge or any other exit.
+      undefined,
+      // It cites a record of another header.
+      holding(
+        definition.proofToken.address,
+        token("ab".repeat(definition.headerHash.length / 2)),
+      ),
+      // It cites the header's token away from the fraud-proof address.
+      holding(definition.stateQueue.address, token(definition.headerHash)),
+    ]) {
+      const { stage } = derive(citing(reference), definition);
+      await expect(stage).rejects.toBeInstanceOf(
+        FraudProofRawL1DerivationError,
+      );
+      await expect(stage).rejects.toThrow(
+        /disappeared without a retained proof token/u,
+      );
+    }
   });
 
   it("acts on the furthest of two equally old threads of ours, then on the lower out-ref", async () => {

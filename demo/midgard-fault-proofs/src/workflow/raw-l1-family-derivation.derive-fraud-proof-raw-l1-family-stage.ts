@@ -27,6 +27,11 @@ import type {
   FraudProofRawL1Utxo,
 } from "./raw-l1-snapshot.js";
 import { type VerifiedFraudProofReleaseEconomicsPolicy } from "./release-economics-policy.js";
+import {
+  FraudProofResolvedByAnotherRecordError,
+  isFraudProofResolvedByAnotherRecordError,
+  recordBackedRemoval,
+} from "./resolved-by-another-record.js";
 
 /** Our permanent proof token on the header, by the one rule of
  * `selectOwnFraudProofRecord`: once the header is gone, the record its
@@ -203,25 +208,31 @@ const deriveStage = async ({
   const proof = ownProof({ snapshot, definition, stateUnit, proofUnit });
   const topology = await stateQueueTopology({ snapshot, definition });
   if (topology.target === undefined) {
-    if (proof === undefined) {
-      throw new Error(
-        "fraudulent header disappeared without a retained proof token",
-      );
-    }
-    const derived = await deriveTerminal({
-      snapshot,
-      definition,
-      stateUnit,
-      proofUnit,
-      proof,
-      releaseEconomics,
-      history,
-    });
-    // A run cannot complete on another prover's terminal: the stage is a
-    // derivation failure, which the orchestrator records as a stall.
-    if (derived.kind !== "ours")
-      throw new Error(`no terminal of ours stands: ${derived.reason}`);
-    return { kind: "removed", terminal: derived.terminal };
+    const derived =
+      proof === undefined
+        ? undefined
+        : await deriveTerminal({
+            snapshot,
+            definition,
+            stateUnit,
+            proofUnit,
+            proof,
+            releaseEconomics,
+            history,
+          });
+    if (derived?.kind === "ours")
+      return { kind: "removed", terminal: derived.terminal };
+    // No terminal of ours stands. A removal against a record of the header,
+    // whoever's, resolved it; any other exit leaves a derivation failure,
+    // which the orchestrator records as a stall.
+    const resolution = recordBackedRemoval({ snapshot, definition, stateUnit });
+    if (resolution !== undefined)
+      throw new FraudProofResolvedByAnotherRecordError(resolution);
+    throw new Error(
+      derived === undefined
+        ? "fraudulent header disappeared without a retained proof token"
+        : `no terminal of ours stands: ${derived.reason}`,
+    );
   }
   const stateQueueBlockOutRef = outRef(topology.target.utxo);
   if (proof !== undefined) {
@@ -250,8 +261,10 @@ const deriveStage = async ({
 /**
  * The family stage over an admitted raw L1 snapshot. A failure of the
  * derivation itself is a `FraudProofRawL1DerivationError`, which the
- * orchestrator records against this workflow alone; a failure of a further
- * history read, an L1 wait among them, reaches the caller unchanged.
+ * orchestrator records against this workflow alone. A failure of a further
+ * history read, an L1 wait among them, reaches the caller unchanged, as does
+ * a `FraudProofResolvedByAnotherRecordError`: the header is gone through a
+ * removal against a record that is not ours.
  */
 export const deriveFraudProofRawL1FamilyStage = async (input: {
   readonly snapshot: FraudProofRawL1Snapshot;
@@ -278,7 +291,11 @@ export const deriveFraudProofRawL1FamilyStage = async (input: {
     return await deriveStage({ ...input, history });
   } catch (cause) {
     // `has` is false for a primitive; it never throws.
-    if (readFailures.has(cause as object)) throw cause;
+    if (
+      readFailures.has(cause as object) ||
+      isFraudProofResolvedByAnotherRecordError(cause)
+    )
+      throw cause;
     throw new FraudProofRawL1DerivationError(input.definition.category, cause);
   }
 };

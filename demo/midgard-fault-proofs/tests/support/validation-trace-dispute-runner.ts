@@ -120,15 +120,24 @@ export const makeRunner = (
     ) => FraudProofFamilyWorkflowAdapter;
     /** The adapter's clock; by default the emulator's. */
     readonly now?: () => number;
+    /** The prover's wallet and key; by default the scene's prover. */
+    readonly prover?: Readonly<{
+      lucid: Scene["h"]["proverLucid"];
+      signer: Scene["h"]["proverSigner"];
+    }>;
   } = {},
 ): Runner => {
   const { h } = scene;
+  const prover = options.prover ?? {
+    lucid: h.proverLucid,
+    signer: h.proverSigner,
+  };
   const journal = options.journal ?? new MemoryFraudProofWorkflowJournalStore();
   const signedRecovery =
     options.signedRecovery ?? emulatorSignedTransactionRecovery(h.emulator);
   const adapter = createValidationTraceDisputeWorkflowAdapter({
-    lucid: h.proverLucid,
-    signer: h.proverSigner,
+    lucid: prover.lucid,
+    signer: prover.signer,
     deployment: options.deployment ?? runnerDeployment(scene),
     l1SlotConfig,
     removal: options.removal ?? unobservedRemoval,
@@ -136,7 +145,7 @@ export const makeRunner = (
     caseHistory: options.caseHistory ?? sceneCaseHistory(scene),
     // A script-decode record transaction stands as the emulator shows it.
     publications: {
-      ...emulatorPublicationObserver(h.proverLucid),
+      ...emulatorPublicationObserver(prover.lucid),
       observeSignedTransaction: signedRecovery.observeSignedTransaction,
       rebroadcastSignedTransaction: signedRecovery.rebroadcastSignedTransaction,
     },

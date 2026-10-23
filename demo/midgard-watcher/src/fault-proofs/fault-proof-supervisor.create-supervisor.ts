@@ -25,7 +25,10 @@ import {
   watcherFaultProofQueueIdentityDigest,
   type WatcherFaultProofQueueJournal,
 } from "./fault-proof-queue-journal.js";
-import { admitWatcherProofRunnerCompletion } from "./fault-proof-supervisor.admit-runner-completion.js";
+import {
+  admitWatcherProofRunnerCompletion,
+  runnerOutcomeKind,
+} from "./fault-proof-supervisor.admit-runner-completion.js";
 import {
   CANONICAL_NATURAL,
   DEPLOYMENT_FINGERPRINT,
@@ -548,12 +551,11 @@ export const createSupervisor = (input: {
               execution: updated,
             });
           }
-          if (
-            typeof outcome === "object" &&
-            outcome !== null &&
-            "kind" in outcome &&
-            outcome.kind === "completed"
-          ) {
+          const kind = runnerOutcomeKind(outcome);
+          // Not our conviction: no completion marker, only the release.
+          if (kind === "resolved_by_another_record")
+            await progressAuthority.markResolved(job);
+          if (kind === "completed") {
             outcome = await admitWatcherProofRunnerCompletion({
               job,
               execution: updated,
@@ -636,12 +638,7 @@ export const createSupervisor = (input: {
       processedContexts.set(key, contextKey(job));
       if (isWatcherFaultProofContinuationStall(outcome)) yielded.add(key);
       entry.resolve(outcome);
-      if (
-        typeof outcome === "object" &&
-        outcome !== null &&
-        "kind" in outcome &&
-        outcome.kind === "retryable"
-      ) {
+      if (runnerOutcomeKind(outcome) === "retryable") {
         const previous = transportRetries.get(key);
         const retry = {
           update: pending ?? { job, actuationPermit },

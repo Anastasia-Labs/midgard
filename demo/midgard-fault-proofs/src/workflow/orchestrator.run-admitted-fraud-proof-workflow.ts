@@ -88,6 +88,12 @@ import {
 } from "./orchestrator.unbuilt-actions.js";
 import { isFraudProofRawL1DerivationError } from "./raw-l1-family-derivation.state-queue-topology.js";
 import { type VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy.js";
+import {
+  type FraudProofResolvedByAnotherRecord,
+  isFraudProofResolvedByAnotherRecordError,
+  journalAttemptsSettled,
+  journalCreatedRecord,
+} from "./resolved-by-another-record.js";
 import { artifactPendingResult } from "./workflow-artifact-pending.js";
 /**
  * Q51/W-O4 single-command core. Preparation, every submission intent,
@@ -218,10 +224,13 @@ export const runAdmittedFraudProofWorkflow = async ({
   ): Promise<
     | { readonly observation: FraudProofWorkflowObservation }
     | { readonly stalled: FraudProofWorkflowRunResult }
+    | { readonly resolved: FraudProofResolvedByAnotherRecord }
   > => {
     try {
       return { observation: await adapter.observe(input) };
     } catch (cause) {
+      if (isFraudProofResolvedByAnotherRecordError(cause))
+        return { resolved: cause.resolution };
       if (!isFraudProofRawL1DerivationError(cause)) throw cause;
       return {
         stalled: await stalled(
@@ -230,6 +239,28 @@ export const runAdmittedFraudProofWorkflow = async ({
       };
     }
   };
+  // Removed against a record this run did not create: done once the removal
+  // is past rollback recovery and every signed attempt of this run is
+  // settled, and never our conviction.
+  const resolvedByAnotherRecord = (
+    resolution: FraudProofResolvedByAnotherRecord,
+  ): FraudProofWorkflowRunResult =>
+    resolution.confirmationDepth <
+    releaseFinality.policy.automaticRecoveryMaxDepth + 2
+      ? resumeOnObservation(
+          `the header was removed against another record; the removal awaits release finality`,
+        )
+      : journalAttemptsSettled(entries)
+        ? {
+            kind: "resolved_by_another_record",
+            workflowId,
+            identity,
+            resolution,
+            entries,
+          }
+        : resumeOnObservation(
+            `the header was removed against another record; this run's signed attempts are not yet settled`,
+          );
 
   if (entries.length === 0) {
     if (workflowJournalIsReconciliationOnly(journal))
@@ -343,10 +374,12 @@ export const runAdmittedFraudProofWorkflow = async ({
       });
       const observed = await observeOrStall(context);
       if ("stalled" in observed) return observed.stalled;
-      const current = observed.observation;
+      // A resolution is acted on after this run's attempts are reconciled.
+      const current =
+        "observation" in observed ? observed.observation : undefined;
       currentObservation = current;
       if (
-        current.kind === "action_required" &&
+        current?.kind === "action_required" &&
         unresolvedEvent?.actionId !== current.action.actionId &&
         (latestJournalEvent?.kind !== "reconciled" ||
           latestJournalEvent.outcome !== "confirmed")
@@ -635,12 +668,15 @@ export const runAdmittedFraudProofWorkflow = async ({
           })
         : { observation: currentObservation };
     if ("stalled" in observed) return observed.stalled;
+    if ("resolved" in observed)
+      return resolvedByAnotherRecord(observed.resolved);
     const observation: FraudProofWorkflowObservation = observed.observation;
     const held = unbuilt.held(observation);
     if (held !== undefined) return resumeOnObservation(held);
     if (observation.kind === "pending") return pending(observation.reason);
     if (observation.kind === "completed") {
-      let terminal: FraudProofWorkflowTerminal;
+      let terminal: FraudProofWorkflowTerminal | undefined;
+      let resolution: FraudProofResolvedByAnotherRecord | undefined;
       const inclusionOnly =
         observation.terminal.observedAt.confirmationDepth <=
         releaseFinality.policy.automaticRecoveryMaxDepth + 1;
@@ -652,24 +688,34 @@ export const runAdmittedFraudProofWorkflow = async ({
           headerHash,
           checkpoint: "before_terminal_verify",
         });
-        terminal = normalizeWorkflowTerminal({
+        const verified = await (
+          inclusionOnly
+            ? (terminalVerifier.verifyIncluded ?? terminalVerifier.verify)
+            : terminalVerifier.verify
+        )({
           identity,
-          terminal: await (
-            inclusionOnly
-              ? (terminalVerifier.verifyIncluded ?? terminalVerifier.verify)
-              : terminalVerifier.verify
-          )({
-            identity,
-            workflowId,
-            releaseFinality,
-            candidate: observation.terminal,
-            artifact: envelope.familyArtifact,
-            entries,
-          }),
-          entries,
+          workflowId,
           releaseFinality,
-          inclusionOnly,
+          candidate: observation.terminal,
+          artifact: envelope.familyArtifact,
+          entries,
         });
+        // A sibling run on our key created the record the removal cited.
+        if (!journalCreatedRecord(entries, verified.proofToken.createdByTxHash))
+          resolution = {
+            removalTxHash: verified.correction.removalTxHash,
+            referencedProofTokenOutRef:
+              verified.correction.referencedProofTokenOutRef,
+            confirmationDepth: verified.observedAt.confirmationDepth,
+          };
+        else
+          terminal = normalizeWorkflowTerminal({
+            identity,
+            terminal: verified,
+            entries,
+            releaseFinality,
+            inclusionOnly,
+          });
         assertWorkflowJournalActuation({
           journal,
           deploymentFingerprint,
@@ -683,6 +729,7 @@ export const runAdmittedFraudProofWorkflow = async ({
           `terminal verification failed: ${formatUnknownError(cause)}`,
         );
       }
+      if (terminal === undefined) return resolvedByAnotherRecord(resolution!);
       const terminalDigest = journalJsonDigest(
         normalizeJournalJson(terminal, "workflow terminal"),
       );

@@ -19,10 +19,7 @@ import {
   type WatcherFaultDecisionJournal,
 } from "./fault-decision-journal.js";
 import type { WatcherInstalledWorkflowCategory } from "./fault-proof-application.js";
-import {
-  createWatcherProofObjectiveCleanup,
-  type WatcherProofCleanupFailure,
-} from "./fault-proof-objective-cleanup.js";
+import { createWatcherProofObjectiveCleanup } from "./fault-proof-objective-cleanup.js";
 import {
   readWatcherProofExecution,
   type WatcherProofExecution,
@@ -33,12 +30,14 @@ import {
   completeWatcherProofObjective,
   listWatcherProofObjectives,
   matchingWatcherProofMarker,
-  type WatcherProofCompletionMarker,
   watcherProofJobActive,
   watcherProofJobPending,
   watcherProofMarkerMatches,
 } from "./fault-proof-objective-table.js";
-import type { WatcherFaultProofDeadline } from "./fault-proof-supervisor.js";
+import type {
+  WatcherFaultProofProgressAuthority,
+  WatcherFaultProofProgressContext,
+} from "./fault-proof-progress-authority.types.js";
 import {
   isWatcherProofDecisionMissingError,
   type WatcherDecisionHold,
@@ -48,63 +47,11 @@ import { openWatcherJournalDatabase } from "./watcher-journal-database.js";
 import { watcherJournalOpener } from "./watcher-journal-database.opener.js";
 import type { WatcherWorkflowJournal } from "./watcher-workflow-journal.js";
 
-export type WatcherFaultProofProgressRequest = Readonly<{
-  observation: WatcherAuthenticatedStateQueueObservation;
-  rollbackGeneration: string;
-  fault?: Readonly<{
-    decision: HeaderFaultDecision;
-    actuationPermit: WorkflowActuationPermit;
-    deadline: WatcherFaultProofDeadline;
-  }>;
-}>;
-
-export type WatcherFaultProofProgressContext = Readonly<{
-  observationRevision: string;
-  decision: HeaderFaultDecision;
-  actuationPermit: WorkflowActuationPermit;
-  deadline: WatcherFaultProofDeadline | null;
-  rollbackGeneration: string;
-}>;
-
-export type WatcherFaultProofProgressAuthority = Readonly<{
-  admit(
-    request: WatcherFaultProofProgressRequest,
-  ): Promise<readonly WatcherFaultProofProgressContext[]>;
-  revokeAuthority(reason: string): void;
-  /** Open objectives, held ones included. */
-  unfinishedCount(): number;
-  /** Objectives held because their recorded decision is missing. */
-  decisionHolds(): readonly WatcherDecisionHold[];
-  /** Released or final objectives whose workflow rows a removal could not
-   * delete (their rows stay): each admission retries them. */
-  cleanupFailures(): readonly WatcherProofCleanupFailure[];
-  /** Holds an objective whose execution names a missing decision. */
-  holdObjective(hold: WatcherDecisionHold): Promise<void>;
-  /** Records the completion; one verified beyond rollback recovery is
-   * marked, and pruned with its workflow rows once its job is done. */
-  markCompleted(
-    objective: WatcherProofObjective,
-    verified?: Readonly<{
-      execution: WatcherProofExecution;
-      confirmationDepth: number;
-    }>,
-  ): Promise<void>;
-  /** The objective's marker when it matches this exact execution: verified
-   * beyond rollback recovery, so final and never verified or held again. */
-  completionMarker(
-    objective: WatcherProofObjective,
-    execution: WatcherProofExecution,
-  ): WatcherProofCompletionMarker | null;
-  updateExecution(input: {
-    readonly objective: WatcherProofObjective;
-    readonly execution: WatcherProofExecution;
-  }): Promise<void>;
-  reconcileExecution(input: {
-    readonly objective: WatcherProofObjective;
-    readonly execution: WatcherProofExecution;
-    readonly rollbackGeneration: string;
-  }): Promise<WorkflowActuationPermit>;
-}>;
+export type {
+  WatcherFaultProofProgressAuthority,
+  WatcherFaultProofProgressContext,
+  WatcherFaultProofProgressRequest,
+} from "./fault-proof-progress-authority.types.js";
 
 type Objective = {
   decision: HeaderFaultDecision;
@@ -665,6 +612,16 @@ export const createWatcherFaultProofProgressAuthority = (input: {
         await input.retention?.release(objective);
         await cleanup.forget(objective, { final: true, departed: false });
       }
+    },
+    markResolved: async (objective) => {
+      objectives.delete(keyOf(objective));
+      unheld.delete(keyOf(objective));
+      held.delete(keyOf(objective));
+      unreadable.delete(keyOf(objective));
+      input.onObjectiveSettled?.(objective);
+      pruneDecisions();
+      await input.retention?.release(objective);
+      await cleanup.forget(objective, { final: true, departed: true });
     },
     completionMarker: (objective, execution) =>
       matchingWatcherProofMarker(

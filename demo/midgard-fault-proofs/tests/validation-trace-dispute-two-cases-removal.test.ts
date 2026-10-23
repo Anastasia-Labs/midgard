@@ -11,10 +11,11 @@
  * block's stage; a prover named by neither case reads the block as not
  * started. Once the block is gone, the completed-workflow check reads the
  * same terminal from L1 while the other case still stands. When both cases
- * convict on our key, two records of the block stand, and the runner
- * removes the block against one of them, the lowest; the runner whose
- * journal created that record completes on the removal, and a prover named
- * by neither reads no terminal of its own. */
+ * convict on our key, two records of the block stand, and the runner whose
+ * record is not the lowest removes the block against the lowest. Past
+ * rollback recovery its run ends resolved by that other record, never as
+ * its conviction; the runner whose journal created the record completes on
+ * the removal, and a prover named by neither reads no terminal of its own. */
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -53,6 +54,7 @@ import {
   runnerDeployment,
   runUntil,
 } from "./support/validation-trace-dispute-runner.js";
+import { RELEASE_FINALITY_POLICY } from "./workflow.make-adapter.js";
 
 /** The shared remove stage's journaled intents. */
 const removalIntents = (entries: readonly FraudProofWorkflowJournalEntry[]) =>
@@ -69,16 +71,6 @@ const peeled = (entries: readonly FraudProofWorkflowJournalEntry[]) =>
     ({ event }) =>
       event.kind === "confirmed" && event.actionId.startsWith("remove:"),
   );
-
-/** Whether `entries` confirm every one of the block's three removal peels. */
-const removedAll = (entries: readonly FraudProofWorkflowJournalEntry[]) =>
-  new Set(
-    entries.flatMap(({ event }) =>
-      event.kind === "confirmed" && event.actionId.startsWith("remove:")
-        ? [event.actionId]
-        : [],
-    ),
-  ).size === 3;
 
 const entriesOf = (result: FraudProofWorkflowRunResult) => {
   if (!("entries" in result)) throw new Error("no workflow journal");
@@ -378,7 +370,7 @@ describe("validation-trace dispute runner: both cases on the block convicted on 
 
   afterAll(() => run?.recorder.restore());
 
-  it("removes the block against one of the two records, the lowest, though each convicted case left one", async () => {
+  it("removes the block against the lowest of the two records; the remover's run ends resolved by its sibling's record, and the creator's completes", async () => {
     const { scene, ours, other, ourCase, otherCase } = run;
     const { h } = scene;
     const lucid = h.proverLucid;
@@ -427,43 +419,48 @@ describe("validation-trace dispute runner: both cases on the block convicted on 
         ).toBe(h.proverSigner.paymentKeyHash);
       }
       const cited = [...records].sort()[0]!;
-      // Ours removes the block against the cited record. The workflow
-      // whose journal created that record completes on the removal: ours,
-      // or the other runner when the cited record is its own.
-      const completer = cited === records[0] ? ours : other;
-      const history: string[] = [];
-      let ourEntries: readonly FraudProofWorkflowJournalEntry[] = [];
-      let result: FraudProofWorkflowRunResult | undefined;
-      for (
-        let attempt = 0;
-        attempt < 16 && result === undefined;
-        attempt += 1
-      ) {
-        const runner = removedAll(ourEntries) ? completer : ours;
-        const outcome = await runner.runOnce(scene.failing);
-        history.push(
-          "reason" in outcome
-            ? `${outcome.kind}: ${outcome.reason}`
-            : outcome.kind,
-        );
-        if (runner === ours && "entries" in outcome)
-          ourEntries = outcome.entries;
-        if (
-          outcome.kind === "terminal_included" ||
-          outcome.kind === "completed"
-        )
-          result = outcome;
-      }
-      if (result === undefined || !("terminal" in result))
-        throw new Error(`the removal did not complete: ${history.join("\n")}`);
-      const intents = removalIntents(ourEntries);
+      // The removal cites the lowest record. The runner whose record it is
+      // not removes the block; the runner that created it never acts.
+      const byRecord = [
+        { runner: ours, record: records[0]! },
+        { runner: other, record: records[1]! },
+      ];
+      const creator = byRecord.find(({ record }) => record === cited)!.runner;
+      const remover = byRecord.find(({ record }) => record !== cited)!.runner;
+      const removed = await runUntil(
+        remover,
+        scene.failing,
+        "the header was removed against another record; the removal awaits release finality",
+        16,
+      );
+      const intents = removalIntents(entriesOf(removed.result));
       expect(intents).toHaveLength(3);
       for (const intent of intents)
         expect(intent.actionInput).toMatchObject({
           stage: "remove",
           fraudProofOutRef: cited,
         });
+      // Past rollback recovery, the remover's run ends resolved by its
+      // sibling's record, never as its own conviction; the creator's run
+      // completes on the same removal.
+      h.emulator.awaitBlock(
+        RELEASE_FINALITY_POLICY.automaticRecoveryMaxDepth + 2,
+      );
+      const resolved = await remover.runOnce(scene.failing);
+      if (resolved.kind !== "resolved_by_another_record")
+        throw new Error(`the remover did not resolve: ${resolved.kind}`);
+      expect(resolved.resolution.referencedProofTokenOutRef).toBe(cited);
+      expect(resolved.entries.map(({ event }) => event.kind)).not.toContain(
+        "completed",
+      );
+      const result = await creator.runOnce(scene.failing);
+      if (result.kind !== "completed")
+        throw new Error(`the creator did not complete: ${result.kind}`);
+      expect(removalIntents(result.entries)).toEqual([]);
       expect(result.terminal.correction.referencedProofTokenOutRef).toBe(cited);
+      expect(result.terminal.correction.removalTxHash).toBe(
+        resolved.resolution.removalTxHash,
+      );
       expect(result.terminal.proofToken.outRef).toBe(cited);
       await expectStateQueueHeaderOrder({
         lucid,
