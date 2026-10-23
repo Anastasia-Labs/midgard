@@ -45,9 +45,8 @@ pub fn initial_scan_v1(
       source.script_hash == actual.script_hash,
       is_redeemer_bearing_language_v1(source.language_tag),
     }
-  let (field_cursor, checkpoint, complete) = cursor.initial_with_completion_v1(
+  let (field_cursor, checkpoint, complete) = cursor.initial_redeemers_v1(
     selection.bound,
-    redeemers_field_index,
     opening,
     reference_inputs,
     certificate_policy_id,

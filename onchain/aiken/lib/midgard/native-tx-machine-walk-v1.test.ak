@@ -81,6 +81,8 @@ use midgard/native_tx_machine_walk_v1.{
   field_walk_checkpoint_bytes, field_walk_checkpoint_hash,
   open_certified_field_walk_from_grammar_commitment,
   open_field_grammar_certification, open_field_walk,
+  open_witness_field_grammar_certification,
+  resume_body_field_walk_from_commitment,
   resume_field_grammar_certification_from_commitment,
   resume_field_walk_from_commitment, spend_input_at, spend_input_count,
   walk_field_index, walk_fold, walk_is_complete, walk_next, walk_next_extent,
@@ -2352,4 +2354,158 @@ test next_extent_refuses_an_exhausted_checkpoint() fail {
     [],
   )
   walk_next_extent(view, start) == walk_next_extent(view, start)
+}
+
+// ---------------------------------------------------------------------------
+// Body-only resume and witness-only grammar opening
+// ---------------------------------------------------------------------------
+//
+// `resume_body_field_walk_from_commitment` returns exactly what
+// `resume_field_walk_from_commitment` returns for a body field, and
+// `open_witness_field_grammar_certification` exactly what
+// `open_field_grammar_certification` returns for a witness-set field.
+
+fn body_walk_preimage() -> ByteArray {
+  encode_field_preimage(input_items(item_tx_id_a, 0, walk_field_item_count))
+}
+
+fn initial_body_wire() -> ByteArray {
+  let Pair(_, checkpoint) = open_inline(0, body_walk_preimage())
+  encode_field_walk_checkpoint(checkpoint)
+}
+
+fn resume_body(
+  tx_id: ByteArray,
+  field_index: Int,
+  preimage: ByteArray,
+  committed: ByteArray,
+  wire: ByteArray,
+) -> Pair<FieldViewV1, FieldWalkCheckpointV1> {
+  let Pair(verified, _) = source(tx_id, field_index, preimage)
+  resume_body_field_walk_from_commitment(
+    verified,
+    committed,
+    wire,
+    Inline { preimage },
+    [],
+    certificate_policy_id,
+  )
+}
+
+test body_resume_agrees_with_the_two_half_resume() {
+  let preimage = body_walk_preimage()
+  let Pair(view, opened) = open_inline(0, preimage)
+  let advanced = walk_skip(view, opened, 3)
+  expect walk_next_item_index(advanced) == 3
+  let wire = encode_field_walk_checkpoint(advanced)
+  let resumed = resume_body(
+    sample_tx_id,
+    0,
+    preimage,
+    thread_commitment(wire),
+    wire,
+  )
+  and {
+    resumed == resume_wire(0, preimage, wire),
+    resumed.2nd == advanced,
+    resumed.1st == view,
+    walk_next_item_index(opened) == 0,
+  }
+}
+
+test body_resume_refuses_bytes_the_thread_did_not_commit() fail {
+  let preimage = body_walk_preimage()
+  let wire = initial_body_wire()
+  let Pair(view, opened) = open_inline(0, preimage)
+  let advanced = walk_skip(view, opened, 1)
+  expect _resumed = resume_body(
+    sample_tx_id,
+    0,
+    preimage,
+    field_walk_checkpoint_hash(advanced),
+    wire,
+  )
+}
+
+test body_resume_refuses_another_transactions_checkpoint() fail {
+  let preimage = body_walk_preimage()
+  let wire = initial_body_wire()
+  expect _resumed = resume_body(
+    other_tx_id,
+    0,
+    preimage,
+    thread_commitment(wire),
+    wire,
+  )
+}
+
+test body_resume_refuses_a_checkpoint_not_bound_to_the_view() fail {
+  let preimage = body_walk_preimage()
+  let patched = patch_wire_scalar(
+    initial_body_wire(),
+    wire_total_length_at,
+    bytearray.length(preimage) + 1,
+  )
+  expect _resumed = resume_body(
+    sample_tx_id,
+    0,
+    preimage,
+    thread_commitment(patched),
+    patched,
+  )
+}
+
+/// A checkpoint at a witness-set field is refused.
+test body_resume_refuses_a_witness_field_checkpoint() fail {
+  let preimage = walk_preimage()
+  let Pair(_, opened) = open_inline(6, preimage)
+  let wire = encode_field_walk_checkpoint(opened)
+  expect _resumed = resume_body(
+    sample_tx_id,
+    6,
+    preimage,
+    thread_commitment(wire),
+    wire,
+  )
+}
+
+fn open_witness_grammar(
+  field_index: Int,
+  committed_at: Int,
+  preimage: ByteArray,
+) -> Pair<FieldViewV1, FieldGrammarCheckpointV1> {
+  let Pair(verified, witness_set) = source(sample_tx_id, committed_at, preimage)
+  open_witness_field_grammar_certification(
+    verified,
+    witness_set,
+    field_index,
+    Inline { preimage },
+    [],
+    certificate_policy_id,
+  )
+}
+
+test witness_grammar_opening_agrees_with_the_two_half_opening() {
+  let preimage = walk_preimage()
+  open_witness_grammar(6, 6, preimage) == open_grammar(
+    sample_tx_id,
+    6,
+    preimage,
+    Inline { preimage },
+    [],
+  )
+}
+
+/// The mint field is variable-width too; the witness door refuses its index.
+test witness_grammar_opening_refuses_a_body_field() fail {
+  let preimage = walk_preimage()
+  expect _opened = open_witness_grammar(5, 5, preimage)
+}
+
+/// The address-witness field is fixed-width (103-byte items), so it needs no
+/// grammar certification and the opening refuses it after the door opens it.
+test witness_grammar_opening_refuses_a_fixed_width_field() fail {
+  let item = bytearray.from_int_big_endian(1, 101)
+  let preimage = encode_field_preimage([item, item])
+  expect _opened = open_witness_grammar(7, 7, preimage)
 }

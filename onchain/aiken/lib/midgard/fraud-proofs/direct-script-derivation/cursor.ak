@@ -247,6 +247,70 @@ pub fn resume_at_v1(
   opened
 }
 
+/// Resumes a walk over a body field (index below 6) from the cursor's
+/// committed checkpoint. It makes the same checks as `resume_at_v1`, and the
+/// opening must be a body opening under the thread's body anchor.
+pub fn resume_body_at_v1(
+  cursor: CursorV1,
+  field_index: Int,
+  field_opening: opening.FieldOpeningV1,
+  checkpoint_bytes: ByteArray,
+  reference_inputs: List<Input>,
+  certificate_policy_id: PolicyId,
+) -> Pair<FieldViewV1, walk.FieldWalkCheckpointV1> {
+  expect cursor.field_index == field_index
+  expect cursor.phase == Walking
+  let opened = opening.resume_opened_body_field_walk(
+    field_opening,
+    opening.BodyAnchor {
+      tx_id: cursor.bound.subject.transaction_id,
+      source_kind: cursor.bound.subject.source_kind,
+    },
+    cursor.checkpoint_hash,
+    checkpoint_bytes,
+    reference_inputs,
+    certificate_policy_id,
+  )
+  expect walk.walk_field_index(opened.2nd) == field_index
+  opened
+}
+
+/// Opens the redeemers field (index 8) for grammar certification under the
+/// thread's witness anchor. The field is variable-width, so the cursor always
+/// starts in the certifying phase and is never complete at opening.
+pub fn initial_redeemers_v1(
+  bound: BoundV1,
+  field_opening: opening.FieldOpeningV1,
+  reference_inputs: List<Input>,
+  certificate_policy_id: PolicyId,
+) -> (CursorV1, ByteArray, Bool) {
+  let compact = decode_tx_compact_view_v1(
+    opening.source_kind_of_anchor(bound.subject.source_kind),
+    bound.compact_cbor,
+  )
+  let Pair(_, position) = opening.opened_witness_field_grammar_certification(
+    field_opening,
+    opening.WitnessAnchor {
+      tx_id: bound.subject.transaction_id,
+      witness_set_hash: compact.witness_set_hash,
+      source_kind: bound.subject.source_kind,
+    },
+    opening.redeemers_field_index,
+    reference_inputs,
+    certificate_policy_id,
+  )
+  (
+    CursorV1 {
+      bound,
+      field_index: opening.redeemers_field_index,
+      phase: Certifying,
+      checkpoint_hash: walk.field_grammar_checkpoint_hash(position),
+    },
+    walk.encode_field_grammar_checkpoint(position),
+    False,
+  )
+}
+
 pub fn after_v1(
   cursor: CursorV1,
   position: walk.FieldWalkCheckpointV1,

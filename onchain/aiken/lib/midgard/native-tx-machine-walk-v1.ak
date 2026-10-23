@@ -66,7 +66,9 @@ use midgard/fraud_proofs/native_tx/types.{
 }
 use midgard/native_tx_field_access_v1.{
   FieldCarriageV1, FieldViewV1, authenticated_field_view,
-  authenticated_resumable_field_view_with_commitment, field_count,
+  authenticated_resumable_body_field_view_with_commitment,
+  authenticated_resumable_field_view_with_commitment,
+  authenticated_resumable_witness_field_view_with_commitment, field_count,
   field_count_requires_certification, field_header_len, field_item_at,
   field_item_count, field_item_header_at, field_read_range, field_total_length,
   field_view_stride, fixed_item_wrapper_bytes, max_field_item_count,
@@ -484,6 +486,67 @@ pub fn resume_field_walk_from_commitment(
     certificate_policy_id,
   )
   Pair(view, checkpoint)
+}
+
+/// Resumes a walk over a body field (index below 6) from a checkpoint
+/// commitment. It makes the same checks as `resume_field_walk_from_commitment`,
+/// and the field is authenticated by the body-only door.
+pub fn resume_body_field_walk_from_commitment(
+  verified: VerifiedTxSourceView,
+  committed: ByteArray,
+  checkpoint_bytes: ByteArray,
+  carriage: FieldCarriageV1,
+  reference_inputs: List<Input>,
+  certificate_policy_id: PolicyId,
+) -> Pair<FieldViewV1, FieldWalkCheckpointV1> {
+  let checkpoint = decode_field_walk_checkpoint(checkpoint_bytes)
+  expect field_walk_checkpoint_hash(checkpoint) == committed
+  expect checkpoint.tx_id == verified.tx_id
+  let Pair(_field_commitment, view) = authenticated_resumable_body_field_view_with_commitment(
+    verified,
+    checkpoint.field_index,
+    carriage,
+    reference_inputs,
+    certificate_policy_id,
+  )
+  expect checkpoint_is_bound_to_view(view, checkpoint)
+  Pair(view, checkpoint)
+}
+
+/// Opens a witness-set field (index 6 to 8) for grammar certification. It makes
+/// the same checks as `open_field_grammar_certification`, and the field is
+/// authenticated by the witness-only door.
+pub fn open_witness_field_grammar_certification(
+  verified: VerifiedTxSourceView,
+  witness_set: NativeTxWitnessSetCompact,
+  field_index: Int,
+  carriage: FieldCarriageV1,
+  reference_inputs: List<Input>,
+  certificate_policy_id: PolicyId,
+) -> Pair<FieldViewV1, FieldGrammarCheckpointV1> {
+  let Pair(field_commitment, view) = authenticated_resumable_witness_field_view_with_commitment(
+    verified,
+    witness_set,
+    field_index,
+    carriage,
+    reference_inputs,
+    certificate_policy_id,
+  )
+  // `provisional_field_item_count_for_certification` refuses a view that needs
+  // no grammar certification.
+  let declared_count = provisional_field_item_count_for_certification(view)
+  Pair(
+    view,
+    FieldGrammarCheckpointV1 {
+      tx_id: verified.tx_id,
+      field_index,
+      field_commitment,
+      total_length: field_total_length(view),
+      declared_count,
+      next_item_index: 0,
+      next_offset: field_header_len(view),
+    },
+  )
 }
 
 /// The §10.2 binding check, split out because it is the whole of what a resume
