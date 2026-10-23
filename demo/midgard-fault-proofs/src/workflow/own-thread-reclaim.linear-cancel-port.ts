@@ -13,6 +13,7 @@ import type { OwnThreadReclaimPort } from "./own-thread-reclaim.with-own-thread-
 import {
   bindWorkflowPreflightTransaction,
   captureLocallyEvaluatedTransaction,
+  type FraudProofPreSubmitBoundary,
   LOCAL_UPLC_EVALUATOR,
   type LocallyEvaluatedTransaction,
   requireReferenceOnlyScriptWitnesses,
@@ -29,11 +30,20 @@ export type LinearCancelContracts = Readonly<{
   }>;
 }>;
 
+/** A family's own cancel of one thread, built and signed up to the
+ * pre-submit boundary it is handed. */
+export type LinearCancelBuilder = (input: {
+  readonly threadOutRef: string;
+  readonly referenceScriptUtxo: UTxO;
+  readonly preSubmitBoundary: FraudProofPreSubmitBoundary;
+}) => Promise<unknown>;
+
 /**
  * The family's cancel as the reclaim of our own thread: the linear cancel,
  * which spends only a thread whose datum names our key, burns its token and
- * pays the rest to our wallet. It is captured at the pre-submit boundary
- * and only those exact bytes are submitted.
+ * pays the rest to our wallet. A family whose thread positions sit off its
+ * linear chain hands in its own cancel as `cancel`. It is captured at the
+ * pre-submit boundary and only those exact bytes are submitted.
  */
 export const createLinearCancelReclaimPort = ({
   family,
@@ -43,6 +53,7 @@ export const createLinearCancelReclaimPort = ({
   contracts,
   stepReferences,
   witnessReferenceScripts,
+  cancel,
   l1,
 }: {
   readonly family: string;
@@ -50,8 +61,11 @@ export const createLinearCancelReclaimPort = ({
   readonly signer: ResolvedProverSigner;
   readonly categoryId: string;
   readonly contracts: () => LinearCancelContracts;
-  readonly stepReferences: readonly UTxO[];
+  /** One reference script per step, at the step's place; a position the
+   * deployment did not publish is `undefined`. */
+  readonly stepReferences: readonly (UTxO | undefined)[];
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
+  readonly cancel?: LinearCancelBuilder;
   readonly l1: Required<
     Pick<
       FraudProofFamilyL1ObservationPort<never>,
@@ -86,6 +100,14 @@ export const createLinearCancelReclaimPort = ({
         );
       const transaction = await captureLocallyEvaluatedTransaction(
         async (boundary) => {
+          if (cancel !== undefined) {
+            await cancel({
+              threadOutRef,
+              referenceScriptUtxo,
+              preSubmitBoundary: boundary,
+            });
+            return;
+          }
           await submitLinearFaultCancel({
             lucid,
             family,

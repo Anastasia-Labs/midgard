@@ -39,6 +39,7 @@ import "./workflow-adapter.admit-network-id-forced-artifact.js";
 import "./workflow-adapter.create-network-id-raw-l1-observation-port.js";
 import "./workflow-adapter.seal-manifest-bound-network-id-runtime.js";
 import "./workflow-adapter.create-network-id-workflow-adapter.js";
+import "./workflow-adapter.own-thread-reclaim.js";
 import "./workflow-adapter.create-manifest-bound-network-id-workflow.js";
 export {
   admitNetworkIdAcceptedForcedArtifact,
@@ -64,6 +65,10 @@ export {
   type NetworkIdWorkflowAdapterConfig,
 } from "./workflow-adapter.create-network-id-raw-l1-observation-port.js";
 export { createNetworkIdWorkflowAdapter } from "./workflow-adapter.create-network-id-workflow-adapter.js";
+export {
+  networkIdOwnThreadPositions,
+  withNetworkIdOwnThreadReclaim,
+} from "./workflow-adapter.own-thread-reclaim.js";
 export {
   NetworkIdForcedSourceSchema,
   type NetworkIdForcedWorkflowArtifact,
