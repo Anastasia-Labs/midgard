@@ -1,10 +1,12 @@
 /** A header removed against another record while a thread of ours still
  * stands on it: the run reclaims that thread before it resolves. The
  * watcher keeps the objective while the reclaim is unfunded, unavailable,
- * refused by the funding permit or in flight, alarms on the first three by
- * name, and ends the objective, never as our conviction, only once the run
+ * refused by the funding permit or in flight, or while the run cannot list
+ * our threads at all; it alarms on all but the reclaim in flight by name,
+ * and ends the objective, never as our conviction, only once the run
  * resolves with the reclaim done. Readiness is then restored. */
 import {
+  FRAUD_PROOF_OWN_THREADS_UNOBSERVABLE,
   FRAUD_PROOF_THREAD_RECLAIM_REFUSED,
   FRAUD_PROOF_THREAD_RECLAIM_UNAVAILABLE,
   FRAUD_PROOF_THREAD_RECLAIM_UNFUNDED,
@@ -35,6 +37,10 @@ describe("supervisor execution adapter with our thread on a header another recor
     {
       name: FRAUD_PROOF_THREAD_RECLAIM_UNAVAILABLE,
       reason: `${FRAUD_PROOF_THREAD_RECLAIM_UNAVAILABLE}: our thread ${THREAD} still holds funds on the removed header and cannot be reclaimed: no reclaim is wired in front of this family's workflow`,
+    },
+    {
+      name: FRAUD_PROOF_OWN_THREADS_UNOBSERVABLE,
+      reason: `${FRAUD_PROOF_OWN_THREADS_UNOBSERVABLE}: this run cannot list our threads on the removed header, so none of them can be shown to be spent: this family's workflow has no view of our threads`,
     },
     {
       name: FRAUD_PROOF_THREAD_RECLAIM_REFUSED,
