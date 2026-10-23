@@ -80,17 +80,18 @@ economics:
 # Forfeited validation-dispute bonds go to the protocol treasury
 # (pd-design §6.4): an owner-quorum native script in the cardano-cli JSON
 # form, separate from the reserve. Its hash is derived by the generator.
-# PROJECTED: "placeholder:" keys stand in until the owner quorum is supplied.
+# P1 keys: payment key hashes of three Preprod treasury wallets, any two of
+# which sign.
 protocol_treasury_native_script:
   type: atLeast
   required: 2
   scripts:
     - type: sig
-      keyHash: "706c616365686f6c6465723a74726573000000000000000000000001"
+      keyHash: "f1fb1abc10fc4d90b367c7f994b87aeeb4db60fa8a42ee43a159256c"
     - type: sig
-      keyHash: "706c616365686f6c6465723a74726573000000000000000000000002"
+      keyHash: "9ac54f4b18dcdbaeb981b9acbb4e79b590315eb508a08b3a50509cb9"
     - type: sig
-      keyHash: "706c616365686f6c6465723a74726573000000000000000000000003"
+      keyHash: "65a0683b5ca28e4a8fed2b5a443210741faad5ed43802d20fd329a53"
 allow_lists:
   # P1 curated keys (owner input I1): payment key hashes of the Preprod
   # operator, fault-prover and DA-challenger wallets.

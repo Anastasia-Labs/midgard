@@ -11,10 +11,13 @@ file do not establish trust for public startup.
 
 Public full-stack release inputs add `provenanceFile` and
 `parameterRegistryFile` to the existing `signingKeyFile`, `programCommitments`
-and genuine measured `fundingProfiles`. Every category installed by the selected
-deployment profile needs its measured funding profile. Authoring refuses missing
-public provenance, incomplete parameter records, mismatched contract bytes or
-references, and reuse of a saved authority for changed release artifacts.
+and `fundingProfiles`. Funding profiles are optional for every profile: the list
+may be empty, and the watcher prices its reservations from the runtime funding
+policy either way. A profile that is supplied must be a genuine measurement for
+this deployment and funding wallet. Authoring refuses missing public provenance,
+incomplete parameter records, mismatched contract bytes or references, a
+supplied profile that belongs to another deployment or wallet, and reuse of a
+saved authority for changed release artifacts.
 
 The deployment and reference-publication tools require
 `MIDGARD_BLUEPRINT_CLASSIFICATION_FILE` for a public profile. It is an absolute

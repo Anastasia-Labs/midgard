@@ -25,7 +25,12 @@ export const createAdmittedWorkflowRunner = <Input>({
 }: {
   readonly category: FraudProofCatalogueCategoryName;
   readonly runOrResume: (input: Input) => Promise<unknown>;
-  /** Fixed measured profile; omission keeps W31 readiness fail-closed. */
+  /**
+   * Optional measured profile, bound to this runner for
+   * `workflowFundingRequirementsForRunner`. Omitting it changes nothing at
+   * runtime: the runner is installed and ready, and its reservations are
+   * priced from the runtime funding policy, which never reads this profile.
+   */
   readonly fundingRequirements?: WorkflowFundingRequirements;
 }): AdmittedRunner<Input> => {
   const runner = Object.freeze({

@@ -35,9 +35,6 @@ const author = vi.mocked(authorWatcherDeploymentRelease);
 beforeEach(() => author.mockReset());
 afterEach(removeStackFixtures);
 
-const everyCategory = Object.fromEntries(
-  FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((category) => [category, {}]),
-);
 const PROGRAMS = { "computation-thread-policy-v1": "cd".repeat(32) };
 
 /** A stack whose release directory already holds a signed authority. */
@@ -98,27 +95,5 @@ it("reopens a saved release through the watcher's authoring, refusing any other 
         ),
       }),
     }),
-  );
-});
-
-it("requires a measured profile for every launch category in the reopened release", async () => {
-  const processes = await stackWithSavedAuthority();
-  const deploymentAuthority = { deploymentIdentity: {} };
-  author.mockResolvedValue({
-    deploymentAuthority,
-    fundingProfileOverlay: { profiles: everyCategory },
-  } as never);
-  await expect(prepareStackRelease(processes)).resolves.toBe(
-    deploymentAuthority,
-  );
-  const [missing] = FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER;
-  author.mockResolvedValue({
-    deploymentAuthority,
-    fundingProfileOverlay: {
-      profiles: { ...everyCategory, [missing!]: undefined },
-    },
-  } as never);
-  await expect(prepareStackRelease(processes)).rejects.toThrow(
-    "Release lacks a launch-category funding profile",
   );
 });

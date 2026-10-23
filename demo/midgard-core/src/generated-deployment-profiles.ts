@@ -149,15 +149,15 @@ export const DEPLOYMENT_PROFILES = {
       scripts: [
         {
           type: "sig",
-          keyHash: "706c616365686f6c6465723a74726573000000000000000000000001",
+          keyHash: "f1fb1abc10fc4d90b367c7f994b87aeeb4db60fa8a42ee43a159256c",
         },
         {
           type: "sig",
-          keyHash: "706c616365686f6c6465723a74726573000000000000000000000002",
+          keyHash: "9ac54f4b18dcdbaeb981b9acbb4e79b590315eb508a08b3a50509cb9",
         },
         {
           type: "sig",
-          keyHash: "706c616365686f6c6465723a74726573000000000000000000000003",
+          keyHash: "65a0683b5ca28e4a8fed2b5a443210741faad5ed43802d20fd329a53",
         },
       ],
     },
@@ -512,7 +512,7 @@ export const DEPLOYMENT_PROFILES = {
 export const DEPLOYMENT_PROFILE_DIGESTS = {
   mainnet: "f61d6aa00bd30087f5ca661a4feef5ef3ac9dc10e680d945b0fbe7f8c28fbf22",
   "preprod-public":
-    "34509247c46e8b0701a68e2c5d15836e914dc6acb9a02b83470e8062f5db28c4",
+    "88a0c900feb51bf250301928bcf2ed9baf90745ba6f935401cfd628f8f15c1c9",
   "preprod-testing":
     "03d291eb9b001aa7c569f9694f6434621f107e916fbf8f91fb8bb3bce2d460ed",
   "local-devnet-testing":
