@@ -2860,6 +2860,49 @@ test write_bits_success_is_refused_one_past_4096_bytes() fail {
   write_bit_zero_succeeds_at(4097)
 }
 
+// Setting bit 0 of `length` zero bytes, as a known failure.
+fn write_bit_zero_arguments(length: Int) -> List<cek_builtin_v1.ValueWitnessV1> {
+  [
+    bytes(cbor.serialise(builtin.b_data(zero_run(length)))),
+    constant(
+      #"9f0500ff",
+      cbor.serialise(builtin.list_data([builtin.i_data(0)])),
+    ),
+    boolean(#"d87a80"),
+  ]
+}
+
+fn write_bit_zero_fails_at(length: Int) -> Bool {
+  let arguments = write_bit_zero_arguments(length)
+  cek_builtin_v1.verify_direct_builtin_failure_v1(
+    80,
+    builtin_root(80, arguments),
+    arguments,
+  )
+}
+
+// Past 4,096 bytes writeBits fails whatever its indices, up to the longest
+// input the direct bound reveals beside one index, and without a charge, as
+// its other failures are.
+test write_bits_fails_one_past_4096_bytes() {
+  let arguments = write_bit_zero_arguments(4097)
+  and {
+    write_bit_zero_fails_at(4097),
+    cek_builtin_v1.authenticated_builtin_failure_budget(80, arguments) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 0,
+      memory: 0,
+    },
+  }
+}
+
+test write_bits_fails_at_the_longest_direct_input() {
+  write_bit_zero_fails_at(8927)
+}
+
+test write_bits_does_not_fail_at_4096_bytes() {
+  !write_bit_zero_fails_at(4096)
+}
+
 // Shifting one byte by eight bits or more leaves zero; rotating 0xff leaves it.
 fn shift_or_rotate_succeeds(tag: Int, amount: Int) -> Bool {
   let source = if tag == 82 {

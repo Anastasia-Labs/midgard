@@ -4017,13 +4017,16 @@ fn known_builtin_failure_v1(tag: Int, arguments: List<ValueWitnessV1>) -> Bool {
   } else if tag == 80 {
     expect [source, indices, bit] = arguments
     let Pair(element_type, index_data) = list_payload_v1(indices)
+    let length = bytearray.length(bytes_v1(source))
     and {
       element_type == cek_constant_v1.IntegerConstant,
       constant_type_v1(bit) == cek_constant_v1.BooleanConstant,
-      !all_bit_indices_valid_v1(
-        semantic_integers_v1(index_data),
-        bytearray.length(bytes_v1(source)) * 8,
-      ),
+      // Variant E fails writeBits on an input over 4,096 bytes whatever its
+      // indices, as the success arm refuses it.
+      or {
+        length > 4096,
+        !all_bit_indices_valid_v1(semantic_integers_v1(index_data), length * 8),
+      },
     }
   } else if tag == 81 {
     expect [length_value, byte_value] = arguments

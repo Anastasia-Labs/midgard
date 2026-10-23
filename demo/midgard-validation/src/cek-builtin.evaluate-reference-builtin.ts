@@ -218,6 +218,14 @@ export const referenceConstantToDirectWitness = (
   return { kind: "constant", witness };
 };
 
+const WRITE_BITS = 80;
+
+/** Protocol version 11 fails writeBits on an input over 4,096 bytes
+ * (Plutus' `Bitwise.maximumInputLength`) whatever its indices; the pinned
+ * reference evaluator has no such bound. */
+const writeBitsInputTooLong = (source: CEKConst): boolean =>
+  source.value instanceof Uint8Array && source.value.length > 4_096;
+
 /**
  * Cardano's builtin `tag` (flat numbering) on constant values, or "failure"
  * where Cardano's builtin fails. It is the one value-level relation of the
@@ -234,6 +242,9 @@ export const evaluateMidgardCekBuiltinOnValues = (
       arguments_.map(cardanoExactArgument),
     );
     return result === "failure" ? "failure" : cardanoExactResult(result);
+  }
+  if (tag === WRITE_BITS && writeBitsInputTooLong(arguments_[0]!)) {
+    return "failure";
   }
   const result = runPinnedReferenceBuiltin(tag, arguments_);
   if (result instanceof CEKError) return "failure";

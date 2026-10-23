@@ -1707,6 +1707,14 @@
         "why": "Deriving the §5.3 descriptor for a single 4,931-byte canonical output costs 13,309,711 mem net of every fixture the test builds, 100.8% of the 13,200,000 basis. The rest of a fraud-proof transaction can only reduce the headroom. #628 sign-off item, #617 wave. Whether §5.3 owes a maximum serviceable output width, and whether the L2 ledger must refuse an output the fraud-proof arms cannot re-derive, is owed an owner ruling (`maximum-serviceable-output-width`)."
       }
     },
+    "fraud_proofs/validation_trace/cek_core_failure_known.test/failure_known_write_bits_at_the_longest_input - failure_known_write_bits_fixture_only_at_the_longest_input": {
+      "test": "fraud_proofs/validation_trace/cek_core_failure_known.test/failure_known_write_bits_at_the_longest_input",
+      "minusControl": "failure_known_write_bits_fixture_only_at_the_longest_input",
+      "ceiling": {
+        "mem": 5164681,
+        "cpu": 2794592966
+      }
+    },
     "fraud_proofs/validation_trace/cek_core_staged_failure.test/staged_failure_decode_at_the_byte_string_bound - staged_failure_decode_fixture_only_at_the_byte_string_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_staged_failure.test/staged_failure_decode_at_the_byte_string_bound",
       "minusControl": "staged_failure_decode_fixture_only_at_the_byte_string_bound",
