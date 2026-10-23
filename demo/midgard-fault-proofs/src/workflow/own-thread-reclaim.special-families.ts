@@ -7,6 +7,7 @@ import type {
   ManifestBoundValueConservationWorkflowConfig,
 } from "../value-not-preserved/workflow.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
+import type { ManifestBoundDoubleSpendWorkflow } from "./double-spend-adapter.preflight-of.js";
 import type { FraudProofFamilyL1ObservationPort } from "./family-l1-observation.js";
 import type {
   ManifestBoundMissingSignatureWorkflow,
@@ -21,10 +22,11 @@ import { withOwnThreadReclaim } from "./own-thread-reclaim.with-own-thread-recla
 import type { VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy.js";
 
 /**
- * The reclaim of our own threads in front of a family whose thread runs past
- * its four linear steps into further step scripts, in the order its L1 port
- * lists them. Its cancel is the linear cancel over that whole step list. An
- * L1 port that cannot list our threads leaves the adapter as it is.
+ * The reclaim of our own threads in front of a family built outside the
+ * shared family records: its cancel is the linear cancel over the family's
+ * whole step list, in the order its L1 port lists the steps, past its four
+ * linear steps where its thread runs further. An L1 port that cannot list
+ * our threads leaves the adapter as it is.
  */
 const withExtendedChainOwnThreadReclaim = ({
   category,
@@ -39,11 +41,14 @@ const withExtendedChainOwnThreadReclaim = ({
   stepReferences,
   witnessReferenceScripts,
 }: {
-  readonly category: "missingSignature" | "valueNotPreserved";
+  readonly category: "doubleSpend" | "missingSignature" | "valueNotPreserved";
   readonly family: string;
   readonly base: FraudProofFamilyWorkflowAdapter;
-  readonly l1: FraudProofFamilyL1ObservationPort<
-    "missingSignature" | "valueNotPreserved"
+  readonly l1: Pick<
+    FraudProofFamilyL1ObservationPort<never>,
+    | "observeOwnThreads"
+    | "observeSignedTransaction"
+    | "rebroadcastSignedTransaction"
   >;
   readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
   readonly lucid: LucidEvolution;
@@ -79,6 +84,39 @@ const withExtendedChainOwnThreadReclaim = ({
                 await l1.rebroadcastSignedTransaction!(input),
             }),
       },
+    }),
+  });
+};
+
+/** Double-spend with the reclaim of our threads: its four linear steps. */
+export const withDoubleSpendOwnThreadReclaim = (
+  workflow: ManifestBoundDoubleSpendWorkflow,
+): ManifestBoundDoubleSpendWorkflow => {
+  const { binding, adapterConfig } = workflow;
+  return Object.freeze({
+    ...workflow,
+    adapter: withExtendedChainOwnThreadReclaim({
+      category: "doubleSpend",
+      family: "double-spend",
+      base: workflow.adapter,
+      l1: adapterConfig.l1,
+      releaseFinality: binding.releaseFinality,
+      lucid: adapterConfig.lucid,
+      signer: adapterConfig.signer,
+      categoryId: binding.definition.categoryId,
+      contracts: () => {
+        const chain = binding.resolvedContracts.contracts.doubleSpend;
+        if (chain === undefined)
+          throw new Error("double-spend deployment binds no steps");
+        return {
+          steps: chain.steps,
+          computationThread:
+            binding.resolvedContracts.contracts.computationThread,
+        };
+      },
+      stepReferences: adapterConfig.referenceScripts.steps,
+      witnessReferenceScripts: adapterConfig.referenceScripts
+        .witnesses as FaultProofWitnessReferenceScripts,
     }),
   });
 };

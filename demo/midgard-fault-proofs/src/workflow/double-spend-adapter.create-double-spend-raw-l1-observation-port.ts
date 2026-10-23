@@ -21,6 +21,10 @@ import {
   fraudProofRawL1SnapshotRequestForFamily,
 } from "./raw-l1-family-derivation.js";
 import {
+  deriveFraudProofRawL1OwnThreads,
+  type FraudProofOwnThreads,
+} from "./raw-l1-family-derivation.own-thread.js";
+import {
   createFraudProofAuthenticatedPublicationObserver,
   type FraudProofAuthenticatedPublicationObserver,
 } from "./raw-l1-publication-observation.js";
@@ -84,6 +88,11 @@ export interface DoubleSpendL1ObservationPort
     readonly provenance: EvidenceProvenance;
     readonly stage: DoubleSpendWorkflowStage;
   }>;
+  /** Our computation threads on the header: the one still standing, if any,
+   * and each transaction that spent one, at its depth. */
+  observeOwnThreads?(input: {
+    readonly headerHash: string;
+  }): Promise<FraudProofOwnThreads>;
 }
 
 /**
@@ -140,6 +149,11 @@ export const createDoubleSpendRawL1ObservationPort = ({
       }),
     observeRetainedHeader: async ({ headerHash }) =>
       await deriveRetainedStateQueueHeaderObservationFromRawL1({
+        snapshot: await capture(headerHash),
+        definition,
+      }),
+    observeOwnThreads: async ({ headerHash }) =>
+      deriveFraudProofRawL1OwnThreads({
         snapshot: await capture(headerHash),
         definition,
       }),
