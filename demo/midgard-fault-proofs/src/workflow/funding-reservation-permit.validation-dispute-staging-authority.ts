@@ -24,6 +24,11 @@
  *
  * It binds the exact signed bytes evaluated locally and is minted only by
  * the staging builder, for category 00000006.
+ *
+ * A reservation under reconciliation-only authority (its header rolled
+ * back) still signs a spend back, and nothing else: it reserves no wallet
+ * coin and no collateral for it, and refuses any other transaction
+ * (begin-workflow-funding-reservation-action.ts).
  */
 import { createHash } from "node:crypto";
 
@@ -156,6 +161,26 @@ export const readValidationDisputeStagingAuthority = (
     );
   return authority;
 };
+
+const PAYS_ELSEWHERE =
+  "validation dispute staging pays an output besides its staging output and our wallet";
+
+/** Why a reconciliation-only reservation refuses a transaction other than
+ * a spend back of a staging output of ours. */
+export const VALIDATION_DISPUTE_RECONCILIATION_RECLAIM_ONLY =
+  "reconciliation-only funding signs only the spend back of a staging output of ours";
+
+/** Whether `action` is the spend back of a staging output of ours, for
+ * `category`: under reconciliation-only authority, the one action a
+ * reservation still signs. */
+export const isValidationDisputeStagingReclaim = (
+  category: string,
+  action: FraudProofWorkflowAction,
+): boolean =>
+  category === CATEGORY &&
+  (typeof action.input.actionKind === "string"
+    ? action.input.actionKind
+    : action.input.stage) === RECLAIM;
 
 export const VALIDATION_DISPUTE_STAGING_BINDING =
   "validation dispute staging authority differs from its exact staging or deployment terms";
@@ -298,10 +323,9 @@ export const validationDisputeStagingWalk = ({
     ): Readonly<{ custody: bigint; allocation: bigint }> | null => {
       const to = raw.address().to_bech32();
       if (to === walletAddress) return null;
-      if (shape.kind !== STAGE || to !== address)
-        throw new Error(
-          "validation dispute staging pays an output besides its staging output and our wallet",
-        );
+      // A spend back pays our wallet alone.
+      if (shape.kind === RECLAIM) throw new Error(PAYS_ELSEWHERE);
+      if (to !== address) throw new Error(PAYS_ELSEWHERE);
       const coin = raw.amount().coin();
       if (
         staged !== 0 ||
@@ -326,11 +350,13 @@ export const validationDisputeStagingWalk = ({
 /**
  * Our staging's or its spend back's funding under the authority its signed
  * transaction carries, checked step by step as the runtime bound walks it;
- * `null` when it carries none. Neither mints.
+ * `null` when it carries none. Neither mints. A reservation under
+ * reconciliation-only authority (`reconciling`) signs a spend back only.
  */
 export const validationDisputeStagingFunding = async ({
   signed,
   slash,
+  reconciling,
   policy,
   state,
   action,
@@ -338,11 +364,15 @@ export const validationDisputeStagingFunding = async ({
   readonly signed: TxSigned;
   /** Whether the transaction also carries a fraud slash authority. */
   readonly slash: boolean;
+  /** Whether the reservation signs under reconciliation-only authority. */
+  readonly reconciling: boolean;
   readonly policy: Policy;
   readonly state: PermitState;
   readonly action: FraudProofWorkflowAction;
 }) => {
   const authority = readValidationDisputeStagingAuthority(signed);
+  if (reconciling && authority?.shape.kind !== RECLAIM)
+    throw new Error(VALIDATION_DISPUTE_RECONCILIATION_RECLAIM_ONLY);
   if (authority === null) return null;
   if (
     slash ||

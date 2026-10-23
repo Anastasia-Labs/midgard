@@ -16,10 +16,12 @@
  * Where each thread stands is read from the chain every time, as is whether
  * a spend back of ours stands: one the ledger took and then dropped is
  * required again, and its exact signed bytes are sent again. A thread move
- * of ours goes first. Once our workflow is done (completed, or in conflict)
- * no thread needs any output: each is spent back before its ending is taken,
- * and the ending waits until each spend back is final at release depth, and
- * while an output the provider does not show may still be live. A spend back
+ * of ours goes first, save once the header has rolled back: the workflow,
+ * then reconciliation-only, takes no move, and its spend backs go on. Once
+ * our workflow is done (completed, or in conflict) no thread needs any
+ * output: each is spent back before its ending is taken, and the ending
+ * waits until each spend back is final at release depth, and while an
+ * output the provider does not show may still be live. A spend back
  * that does not build is the run's alarm, and is tried again every run. */
 import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import { MidgardCekStagingPins } from "@al-ft/midgard-sdk";
@@ -248,7 +250,13 @@ export const validationTraceStagingSweep = ({
   ): Promise<FraudProofWorkflowObservation | undefined> => {
     const unbuilt = (actionId: string) =>
       context.unbuiltActionIds?.has(actionId) === true;
-    if (current.kind === "action_required" && !unbuilt(current.action.actionId))
+    // A thread move of ours goes first, save under reconciliation-only
+    // authority, which takes no move.
+    if (
+      current.kind === "action_required" &&
+      context.reconciliationOnly !== true &&
+      !unbuilt(current.action.actionId)
+    )
       return undefined;
     const known = validationTraceStagingJournal(context.entries);
     if (known.stagings.length === 0) return undefined;

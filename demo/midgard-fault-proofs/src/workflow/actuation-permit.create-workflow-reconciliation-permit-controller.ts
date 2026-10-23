@@ -20,6 +20,11 @@ export type WorkflowActuationCheckpoint =
   | "before_observe"
   | "before_preflight"
   | "before_submit"
+  // The spend back of a staging output of ours, the one fresh submission a
+  // reconciliation-only workflow still makes
+  // (funding-reservation-permit.begin-workflow-funding-reservation-action.ts).
+  | "before_reclaim_preflight"
+  | "before_reclaim_submit"
   | "before_reconcile"
   | "before_terminal_verify";
 

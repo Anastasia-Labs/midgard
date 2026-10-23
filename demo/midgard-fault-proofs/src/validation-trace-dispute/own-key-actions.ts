@@ -41,6 +41,13 @@ export type OwnKeyActions = Readonly<{
     context: FraudProofWorkflowAdapterContext,
     observed: FraudProofWorkflowObservation,
   ) => Promise<FraudProofWorkflowObservation | undefined>;
+  /** As `next`, for a workflow under reconciliation-only authority: the
+   * spend back to take instead of `observed`, the one action of ours such
+   * a workflow still takes; none to keep it. */
+  reclaim?: (
+    context: FraudProofWorkflowAdapterContext,
+    observed: FraudProofWorkflowObservation,
+  ) => Promise<FraudProofWorkflowObservation | undefined>;
   /** The signed transaction of `action`, and what its recovery keeps
    * besides the signed bytes. */
   build: (
@@ -105,7 +112,8 @@ export const withOwnKeyActions = ({
     context: FraudProofWorkflowAdapterContext,
   ): Promise<FraudProofWorkflowObservation> => {
     const observed = await base.observe(context);
-    if (context.reconciliationOnly === true) return observed;
+    if (context.reconciliationOnly === true)
+      return (await own.reclaim?.(context, observed)) ?? observed;
     return (await own.next(context, observed)) ?? observed;
   };
   const adapter: FraudProofFamilyWorkflowAdapter = {

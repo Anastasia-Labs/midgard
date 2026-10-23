@@ -10,6 +10,7 @@ import { validationDisputeFunding } from "./funding-reservation-permit.assert-va
 import {
   addAssets,
   isProtocolFundingContract,
+  isReconciliationReclaim,
 } from "./funding-reservation-permit.begin-workflow-funding-reservation-action.js";
 import {
   exactResolvedOutputCbor,
@@ -66,6 +67,7 @@ export const assertRuntimeTransactionBound = async ({
   const staging = await validationDisputeStagingFunding({
     signed,
     slash: slash !== null,
+    reconciling: isReconciliationReclaim(state),
     policy,
     state,
     action,

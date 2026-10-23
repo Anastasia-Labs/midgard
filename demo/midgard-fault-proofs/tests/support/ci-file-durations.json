@@ -462,6 +462,7 @@
     "tests/validation-trace-dispute-funded-one-step-restarts.test.ts": 9.3,
     "tests/validation-trace-dispute-funded-one-step-selection.test.ts": 22.7,
     "tests/validation-trace-dispute-funded-one-step-staging-in-flight.test.ts": 21.8,
+    "tests/validation-trace-dispute-funded-one-step-staging-reconciliation.test.ts": 24.2,
     "tests/validation-trace-dispute-funded-one-step-staging.test.ts": 21.3,
     "tests/validation-trace-dispute-funded-refusals.test.ts": 44.3,
     "tests/validation-trace-dispute-funded-roster-restore.test.ts": 20.7,

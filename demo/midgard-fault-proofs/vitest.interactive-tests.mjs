@@ -161,6 +161,7 @@ export const interactiveTests = [
   "./tests/validation-trace-dispute-funded-one-step-selection.test.ts",
   "./tests/validation-trace-dispute-funded-one-step-staging.test.ts",
   "./tests/validation-trace-dispute-funded-one-step-staging-in-flight.test.ts",
+  "./tests/validation-trace-dispute-funded-one-step-staging-reconciliation.test.ts",
   "./tests/validation-trace-dispute-funded-refusals.test.ts",
   "./tests/validation-trace-dispute-funded-roster-restore.test.ts",
   "./tests/validation-trace-dispute-funded-shortfall.test.ts",

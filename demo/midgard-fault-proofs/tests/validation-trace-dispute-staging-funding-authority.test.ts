@@ -2,7 +2,8 @@
  * a staged builtin step's operands, and its spend back, by: bound to its
  * action, header and deployment, carried alone, never beside another
  * funding authority (a fraud slash, a VerifySource, a thread move or a case
- * close), and over a transaction that mints nothing. */
+ * close), and over a transaction that mints nothing; under
+ * reconciliation-only authority, a spend back alone. */
 import { createHash } from "node:crypto";
 
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
@@ -23,6 +24,7 @@ import { grantValidationDisputeMoveAuthority } from "../src/workflow/funding-res
 import {
   assertValidationDisputeStagingBinding,
   grantValidationDisputeStagingAuthority,
+  VALIDATION_DISPUTE_RECONCILIATION_RECLAIM_ONLY,
   VALIDATION_DISPUTE_STAGING_BINDING,
   type ValidationDisputeStagingAuthority,
   validationDisputeStagingFunding,
@@ -219,6 +221,7 @@ describe("the prover funding permit over our staging beside another funding auth
       validationDisputeStagingFunding({
         signed,
         slash,
+        reconciling: false,
         policy: {} as never,
         state: {} as never,
         action: {} as never,
@@ -234,6 +237,7 @@ describe("the prover funding permit over our staging beside another funding auth
       const checked = validationDisputeStagingFunding({
         signed: await staged({ shape, mints }),
         slash: false,
+        reconciling: false,
         policy: {} as never,
         state: {} as never,
         action: {} as never,
@@ -243,11 +247,44 @@ describe("the prover funding permit over our staging beside another funding auth
     }
   });
 
+  it("refuses, under reconciliation-only authority, a transaction that is no spend back, and passes a spend back on to its binding", async () => {
+    const reconciling = async (signed: TxSigned) =>
+      await validationDisputeStagingFunding({
+        signed,
+        slash: false,
+        reconciling: true,
+        policy: {} as never,
+        state: {} as never,
+        action: {} as never,
+      });
+    await expect(reconciling(await staged())).rejects.toThrow(
+      VALIDATION_DISPUTE_RECONCILIATION_RECLAIM_ONLY,
+    );
+    await expect(
+      reconciling(await staged({ shape: { output: stagedOutput } })),
+    ).rejects.not.toThrow(VALIDATION_DISPUTE_RECONCILIATION_RECLAIM_ONLY);
+    // Bytes with no staging authority at all.
+    const lucid = await Lucid(new Emulator([payer]), "Custom");
+    lucid.selectWallet.fromSeed(payer.seedPhrase);
+    const bare = await (
+      await lucid
+        .newTx()
+        .pay.ToAddress(theirs.address, { lovelace: 2n * ADA })
+        .complete()
+    ).sign
+      .withWallet()
+      .complete();
+    await expect(reconciling(bare)).rejects.toThrow(
+      VALIDATION_DISPUTE_RECONCILIATION_RECLAIM_ONLY,
+    );
+  });
+
   it("passes a staging under its own authority alone on to its binding", async () => {
     await expect(
       validationDisputeStagingFunding({
         signed: await staged(),
         slash: false,
+        reconciling: false,
         policy: {} as never,
         state: {} as never,
         action: {} as never,

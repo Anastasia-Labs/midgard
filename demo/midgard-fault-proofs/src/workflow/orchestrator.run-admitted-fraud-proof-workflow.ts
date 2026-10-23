@@ -22,6 +22,7 @@ import {
   releaseWorkflowFundingReservation,
   WorkflowFundingReservationUnavailableError,
   WorkflowFundingShortfallError,
+  workflowJournalAdmitsReconciliationReclaim,
   workflowJournalHasFundingReservation,
   type WorkflowJournalWriter,
 } from "./funding-reservation-permit.js";
@@ -696,8 +697,18 @@ export const runAdmittedFraudProofWorkflow = async ({
     if (observation.kind === "conflict") {
       return await stalled(`chain conflict: ${observation.reason}`);
     }
-    if (workflowJournalIsReconciliationOnly(journal))
+    // Under reconciliation-only authority a fresh submission waits for the
+    // operator, save the spend back of a staging output of ours.
+    const reclaiming = workflowJournalIsReconciliationOnly(journal);
+    if (
+      reclaiming &&
+      !workflowJournalAdmitsReconciliationReclaim(journal, observation.action)
+    )
       return pending(FRAUD_PROOF_WORKFLOW_FRESH_SUBMISSION_REQUIRED);
+    const beforePreflight = reclaiming
+      ? "before_reclaim_preflight"
+      : "before_preflight";
+    const beforeSubmit = reclaiming ? "before_reclaim_submit" : "before_submit";
     const action = validateAction(observation.action);
     const latest = lastActionEvent(entries, action.actionId);
     if (latest?.kind === "confirmed") {
@@ -723,7 +734,7 @@ export const runAdmittedFraudProofWorkflow = async ({
         deploymentFingerprint,
         category,
         headerHash,
-        checkpoint: "before_preflight",
+        checkpoint: beforePreflight,
       });
       await beginWorkflowFundingReservationAction({ journal, action });
       assertWorkflowJournalActuation({
@@ -731,7 +742,7 @@ export const runAdmittedFraudProofWorkflow = async ({
         deploymentFingerprint,
         category,
         headerHash,
-        checkpoint: "before_preflight",
+        checkpoint: beforePreflight,
       });
       let captured: Awaited<ReturnType<typeof adapter.preflight>>;
       try {
@@ -799,7 +810,7 @@ export const runAdmittedFraudProofWorkflow = async ({
       deploymentFingerprint,
       category,
       headerHash,
-      checkpoint: "before_submit",
+      checkpoint: beforeSubmit,
     });
     try {
       await assertWorkflowFundingReservationReadyToSubmit({
@@ -818,7 +829,7 @@ export const runAdmittedFraudProofWorkflow = async ({
       deploymentFingerprint,
       category,
       headerHash,
-      checkpoint: "before_submit",
+      checkpoint: beforeSubmit,
     });
     try {
       submitted = await adapter.submit({

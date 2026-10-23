@@ -43,6 +43,7 @@ import type { ValidationTraceOneStepReferences } from "../../src/validation-trac
 import {
   bindWorkflowActuationJournal,
   createWorkflowActuationPermitController,
+  createWorkflowReconciliationPermitController,
 } from "../../src/workflow/actuation-permit.js";
 import { createValidationTraceDisputeCompleteCanonicalReplay } from "../../src/workflow/complete-replay.js";
 import {
@@ -54,6 +55,11 @@ import {
   classifyHeader,
   createHeaderClassifier,
 } from "../../src/workflow/header-classifier.js";
+import {
+  computeFraudProofWorkflowId,
+  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+  normalizeFraudProofWorkflowIdentity,
+} from "../../src/workflow/journal.js";
 import type { FraudProofSignedTransactionRecovery } from "../../src/workflow/l1-source.js";
 import type { FraudProofWorkflowRunResult } from "../../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import {
@@ -225,7 +231,7 @@ export const openFundedDispute = async (
     h.proverLucid,
     options.liveParameters === true ? h.emulator : undefined,
   );
-  const actuationPermit = createWorkflowActuationPermitController({
+  let actuationPermit = createWorkflowActuationPermitController({
     decision,
     rollbackGeneration: "0",
   }).permit;
@@ -390,6 +396,26 @@ export const openFundedDispute = async (
       funding = await boot();
     },
     readReservations: async () => await funding.readReservations(),
+    /** The header rolls back: every later turn runs under the
+     * reconciliation-only permit the watcher derives from the workflow it
+     * recorded. */
+    rollBackHeader: async () => {
+      const identity = normalizeFraudProofWorkflowIdentity({
+        schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+        deploymentFingerprint: fingerprint,
+        category: CATEGORY,
+        target: { kind: "state_queue_header", headerHash },
+        decisionDigest: decision.decisionDigest,
+      });
+      actuationPermit = createWorkflowReconciliationPermitController({
+        decision,
+        deploymentFingerprint: fingerprint,
+        rollbackGeneration: "0",
+        entries: await funding.workflowJournal
+          .forObjective({ category: CATEGORY, headerHash })
+          .load(computeFraudProofWorkflowId(identity)),
+      }).permit;
+    },
     /** What the watcher's terms keep for a move our wallet pays, at the
      * emulator's fees now. */
     walletMoveReserve: async () =>

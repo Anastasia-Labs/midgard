@@ -414,6 +414,9 @@ export const validationTraceStaging = ({
       if (staged?.kind === "action_required") return staged;
       return (await sweep(context, staged ?? observed)) ?? staged;
     },
+    // Once the header rolls back, each staging output no thread of ours
+    // needs is still spent back; nothing is staged.
+    reclaim: async (context, observed) => await sweep(context, observed),
     build,
   };
 

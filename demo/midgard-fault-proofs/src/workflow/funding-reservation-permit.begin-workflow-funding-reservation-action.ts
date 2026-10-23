@@ -11,6 +11,7 @@ import {
 } from "./funding-reservation-permit.create-workflow-funding-reservation-permit.js";
 import { workflowFundingExclusiveProtocolInput } from "./funding-reservation-permit.excluded-by-protocol-input.js";
 import { parseStateSnapshot } from "./funding-reservation-permit.parse-workflow-funding-snapshot.js";
+import { isValidationDisputeStagingReclaim } from "./funding-reservation-permit.validation-dispute-staging-authority.js";
 import {
   admittedPermits,
   journalPermits,
@@ -50,11 +51,55 @@ export const bindWorkflowFundingReservationJournal = <Journal extends object>({
   return journal;
 };
 
+/** Reservations under reconciliation-only authority whose current action is
+ * the spend back of a staging output of ours, the one action they sign. */
+const reconciliationReclaims = new WeakSet<PermitState>();
+
+/** Whether the reservation's current action is a spend back it signs under
+ * reconciliation-only authority. */
+export const isReconciliationReclaim = (state: PermitState): boolean =>
+  reconciliationReclaims.has(state);
+
+/** Whether the reservation bound to `journal` signs `action` under
+ * reconciliation-only authority: only the spend back of a staging output
+ * of ours, which its runtime bound then admits only as such. */
+export const workflowJournalAdmitsReconciliationReclaim = (
+  journal: object,
+  action: FraudProofWorkflowAction,
+): boolean => {
+  const state = stateForJournal(journal);
+  return (
+    state?.policy !== undefined &&
+    isValidationDisputeStagingReclaim(state.category, action)
+  );
+};
+
 export const assertFundingSubmissionAuthority = (state: PermitState): void => {
-  if (workflowActuationPermitIsReconciliationOnly(state.actuationPermit))
+  if (
+    workflowActuationPermitIsReconciliationOnly(state.actuationPermit) &&
+    !reconciliationReclaims.has(state)
+  )
     throw new Error(
       "reconciliation-only funding authority cannot spend or sign",
     );
+};
+
+/** Begins the spend back `action` under reconciliation-only authority: it
+ * spends its staging output alone, so it reserves no wallet coin and no
+ * collateral. */
+const beginReconciliationReclaim = async (
+  state: PermitState,
+  action: FraudProofWorkflowAction,
+): Promise<void> => {
+  await refresh(state);
+  if (state.snapshot.state !== "active")
+    throw new Error("production funding reservation is not active");
+  state.currentActionKind = actionKind(action);
+  state.currentActionDigest = computeDeploymentManifestJsonDigest(action);
+  state.currentFundingOutRefs = Object.freeze([]);
+  state.currentRequiredFundingOutRefs = Object.freeze([]);
+  state.currentCollateralOutRefs = Object.freeze([]);
+  reconciliationReclaims.add(state);
 };
 
 export const assertCurrentFundingCollateralLimit = (
@@ -80,6 +125,14 @@ export const beginWorkflowFundingReservationAction = async ({
   if (state === undefined) return;
   if (state.policy === undefined)
     throw new Error("test-only funding permit cannot build transactions");
+  reconciliationReclaims.delete(state);
+  if (
+    workflowActuationPermitIsReconciliationOnly(state.actuationPermit) &&
+    isValidationDisputeStagingReclaim(state.category, action)
+  ) {
+    await beginReconciliationReclaim(state, action);
+    return;
+  }
   assertFundingSubmissionAuthority(state);
   let staleInputs = false;
   try {
