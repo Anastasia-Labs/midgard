@@ -1227,7 +1227,7 @@ test wrong_successor_budget_fails_closed() {
   !cek_machine_v1.verify_core_step_v1(
     pre,
     wrong,
-    cek_machine_v1.ComputeConstant { value },
+    cek_machine_v1.ComputeConstant { value_root },
   )
 }
 
@@ -1277,7 +1277,7 @@ test source_and_runtime_context_constants_use_distinct_exact_steps() {
     cek_machine_v1.verify_core_step_v1(
       source_pre,
       source_post,
-      cek_machine_v1.ComputeConstant { value: source_value },
+      cek_machine_v1.ComputeConstant { value_root: source_root },
     ),
     cek_machine_v1.verify_core_step_v1(
       context_pre,
@@ -2290,15 +2290,20 @@ test builtin_argument_count_aborts_on_an_unresolved_tag() fail {
   cek_machine_v1.builtin_argument_count(94) >= 0
 }
 
-// ComputeConstant at the 64-bit and constructor-128 boundaries. The post root
-// is the TypeScript builder's root (cek-data.cardano-integer-layout.test.ts),
-// which commits Cardano's memory for the value; the step charges one
-// 16000/100 machine step after the 100/100 start-up.
+// Constants at the 64-bit and constructor-128 boundaries. `constant_root_v1`
+// of each gives the TypeScript builder's root
+// (cek-data.cardano-integer-layout.test.ts), which commits Cardano's memory
+// for the value, and ComputeConstant over that root charges one 16000/100
+// machine step after the 100/100 start-up.
 fn compute_constant_commits(
   type_cbor: ByteArray,
   payload_cbor: ByteArray,
   root: ByteArray,
 ) -> Bool {
+  expect
+    cek_constant_v1.constant_root_v1(
+      cek_constant_v1.ConstantWitnessV1 { type_cbor, payload_cbor },
+    ) == root
   cek_machine_v1.verify_core_step_v1(
     state(
       cek_machine_v1.mode_compute,
@@ -2318,9 +2323,7 @@ fn compute_constant_commits(
       16100,
       200,
     ),
-    cek_machine_v1.ComputeConstant {
-      value: cek_constant_v1.ConstantWitnessV1 { type_cbor, payload_cbor },
-    },
+    cek_machine_v1.ComputeConstant { value_root: root },
   )
 }
 
@@ -2369,8 +2372,10 @@ test constructor_127_and_128_constants_compute_to_their_roots() {
   }
 }
 
-// Payloads Cardano's Data decoder refuses, each against the root of the value
-// it would otherwise spell.
+// Each payload against the root of the canonical value it spells.
+// `constant_root_v1` refuses the payloads Cardano's Data decoder refuses; the
+// script decoder refuses the same programs
+// (`script_decode_data_refuses_what_the_constant_root_refuses`).
 fn compute_data_constant_against(value: Data, payload_cbor: ByteArray) -> Bool {
   compute_constant_commits(
     #"9f08ff",
@@ -2399,31 +2404,31 @@ test data_constants_compute_against_the_roots_of_their_canonical_values() {
   }
 }
 
-test compute_constant_refuses_a_long_tag_2_head() fail {
+test constant_root_refuses_a_long_tag_2_head() fail {
   compute_data_constant_against(
     builtin.i_data(18446744073709551616),
     #"d80249010000000000000000",
   )
 }
 
-test compute_constant_refuses_a_long_tag_3_head() fail {
+test constant_root_refuses_a_long_tag_3_head() fail {
   compute_data_constant_against(
     builtin.i_data(-18446744073709551617),
     #"d80349010000000000000000",
   )
 }
 
-test compute_constant_refuses_constructor_102_with_a_negative_index() fail {
+test constant_root_refuses_constructor_102_with_a_negative_index() fail {
   compute_data_constant_against(builtin.constr_data(0, []), #"d866822080")
 }
 
-test compute_constant_refuses_constructor_102_with_a_bignum_index() fail {
+test constant_root_refuses_constructor_102_with_a_bignum_index() fail {
   compute_data_constant_against(builtin.constr_data(1, []), #"d86682c2410180")
 }
 
-// ComputeConstant over Data payloads that end in an empty byte string, or
-// hold one before their last item: Cardano runs `(con data _)` over each for
-// 16100/200, and the post root is the TypeScript builder's.
+// Data payloads that end in an empty byte string, or hold one before their
+// last item: Cardano runs `(con data _)` over each for 16100/200, and the
+// root is the TypeScript builder's.
 test data_constants_ending_in_an_empty_byte_string_compute_to_their_roots() {
   and {
     compute_constant_commits(
@@ -2464,11 +2469,11 @@ test data_constants_ending_in_an_empty_byte_string_compute_to_their_roots() {
   }
 }
 
-test compute_constant_refuses_a_byte_string_claiming_one_byte_past_the_end() fail {
+test constant_root_refuses_a_byte_string_claiming_one_byte_past_the_end() fail {
   compute_data_constant_against(builtin.b_data(#""), #"41")
 }
 
-test compute_constant_refuses_a_list_ending_in_a_byte_string_claiming_one_byte() fail {
+test constant_root_refuses_a_list_ending_in_a_byte_string_claiming_one_byte() fail {
   compute_data_constant_against(
     builtin.list_data([builtin.b_data(#"")]),
     #"8141",

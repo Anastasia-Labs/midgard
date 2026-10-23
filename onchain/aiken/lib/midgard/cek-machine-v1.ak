@@ -143,7 +143,7 @@ pub type MachineValueWitnessV1 {
 
 pub type CoreStepWitnessV1 {
   ComputeVariable { index: Int }
-  ComputeConstant { value: cek_constant_v1.ConstantWitnessV1 }
+  ComputeConstant { value_root: ByteArray }
   ComputeLambda { body: ByteArray }
   ComputeDelay { body: ByteArray }
   ComputeApplication { function: ByteArray, argument: ByteArray }
@@ -755,9 +755,7 @@ pub fn verify_compute_step(
           )
         },
       }
-    ComputeConstant { value } -> {
-      let value_root = cek_constant_v1.constant_root_v1(value)
-      and {
+    ComputeConstant { value_root } -> and {
         pre.focus_root == cek_proof_v1.hash_constant_term_v1(value_root),
         post == exact_compute_successor(
           pre,
@@ -768,7 +766,6 @@ pub fn verify_compute_step(
           0,
         ),
       }
-    }
     ComputeContextConstant { value_root } -> and {
         pre.focus_root == cek_proof_v1.hash_context_constant_term_v1(value_root),
         post == exact_compute_successor(

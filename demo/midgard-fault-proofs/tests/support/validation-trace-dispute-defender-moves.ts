@@ -212,7 +212,7 @@ export const operatorReveal = async (
 export const challengerReveal = async (
   scene: Scene,
   thread: UTxO,
-  trace: SparseTrace,
+  trace: Pick<SparseTrace, "proofAt">,
 ): Promise<TxSignBuilder> => {
   const lucid = scene.h.proverLucid;
   const datum = Data.from(thread.datum!, SDK.CaseThreadDatum);

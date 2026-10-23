@@ -10,7 +10,6 @@ import {
   type MidgardCekDirectValueWitness,
   type MidgardCekRuntimeValueWitness,
 } from "./cek-builtin.js";
-import { type MidgardCekConstantWitness } from "./cek-constant.js";
 
 export const MACHINE_STEP_CPU = 16_000n;
 
@@ -79,10 +78,7 @@ export type MidgardCekMapConversionStartWitness = {
 
 export type MidgardCekCoreStepWitness =
   | { readonly kind: "computeVariable"; readonly index: bigint }
-  | {
-      readonly kind: "computeConstant";
-      readonly value: MidgardCekConstantWitness;
-    }
+  | { readonly kind: "computeConstant"; readonly valueRoot: Bytes }
   | { readonly kind: "computeLambda"; readonly body: Bytes }
   | { readonly kind: "computeDelay"; readonly body: Bytes }
   | {

@@ -122,12 +122,6 @@ export type MidgardCekExecutionGraph = {
   >;
 };
 
-/** A constant witness that reveals the constant's own bytes. */
-export type MidgardCekSourceConstantWitness = Extract<
-  MidgardCekConstantValueWitness,
-  { readonly kind: "constant" }
->;
-
 /** A constant's value root (hex) and one witness of it. */
 export type MidgardCekConstantWitnessEntry = readonly [
   string,
