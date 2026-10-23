@@ -21,7 +21,7 @@
  *
  * Staging hook (arm 31). The staged route a semantic builtin's oversize
  * operands take (C12-B1) runs this same chain, its semantic stage picked by
- * `cekCoreSemanticGroup` as for any semantic builtin (the staged stages
+ * `midgardCekSemanticGroup` as for any semantic builtin (the staged stages
  * extend `CEK_CORE_SEMANTIC_STAGES`, and the group also picks how the arm-31
  * material decodes); what it adds is one move before the binder, the staging
  * of the operands, whose out-refs fill the `StagedMaterialV1` the arm witness
@@ -37,6 +37,7 @@ import {
   midgardCekDirectBuiltinBudget,
   midgardCekDirectValueData,
   type MidgardCekDirectValueWitness,
+  midgardCekSemanticGroup,
   semanticizeMidgardCekDirectConstant,
 } from "@al-ft/midgard-validation";
 import { Constr, Data } from "@lucid-evolution/lucid";
@@ -126,19 +127,6 @@ export const CEK_CORE_ARM_CONTRACT_NAMES = Object.freeze(
   ) as Record<ValidationTraceArmHolder, string>,
 );
 
-/** `semantic_group(tag)` (cek-semantic-chain): the semantic stage index of
- * a semantic builtin; undefined for a tag the chain refuses. */
-export const cekCoreSemanticGroup = (tag: bigint): number | undefined => {
-  if (tag === 29n || tag === 30n) return 0;
-  if (tag === 31n || tag === 32n || tag === 35n) return 1;
-  if (tag === 33n || tag === 34n) return 2;
-  if (tag === 36n) return 3;
-  if (tag === 37n || tag === 42n) return 4;
-  if (tag >= 47n && tag <= 51n) return 6;
-  if ([39n, 40n, 41n, 44n, 45n, 46n].includes(tag)) return 5;
-  return undefined;
-};
-
 /** The hops of a core step's arm chain: the holders in order, and the
  * facts' CBOR each writes. */
 export type CekCoreArmHops = Readonly<{
@@ -201,9 +189,9 @@ export const cekCoreArmHops = (
   if (group === 5) {
     if (witness.kind !== "executeBuiltinSemantic")
       throw new Error("a semantic builtin step has another witness");
-    const stage = cekCoreSemanticGroup(witness.tag);
+    const stage = midgardCekSemanticGroup(witness.tag);
     const semantic =
-      stage === undefined ? undefined : CEK_CORE_SEMANTIC_STAGES[stage];
+      stage === null ? undefined : CEK_CORE_SEMANTIC_STAGES[stage];
     if (semantic === undefined)
       throw new Error(
         `semantic builtin ${witness.tag.toString()} has no semantic stage`,
