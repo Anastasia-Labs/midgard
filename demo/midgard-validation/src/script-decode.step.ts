@@ -368,11 +368,11 @@ const openReveals = (
   reveals: readonly Frame[],
   base: Uint8Array,
 ): readonly [(readonly [Frame, Buffer])[], Buffer] => {
-  const opened: (readonly [Frame, Buffer])[] = [];
+  const opened = new Array<readonly [Frame, Buffer]>(reveals.length);
   let root = Buffer.from(base);
   for (let index = reveals.length - 1; index >= 0; index -= 1) {
     const frame = reveals[index]!;
-    opened.unshift([frame, root]);
+    opened[index] = [frame, root];
     root = pushStackRoot(frame, root);
   }
   return [opened, root];
