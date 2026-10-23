@@ -330,12 +330,27 @@ export const hopFrom =
 export const secondCaseAtTheStep = async (
   dispute: TwoThreadCase,
   step: ComputeConstantStep,
+) =>
+  await secondCaseWithSuccessor(
+    dispute,
+    step.agreedUpTo,
+    hashMidgardValidationMachineState(
+      otherWindow(step, step.valueRoot).states[step.agreedUpTo + 1]!,
+    ),
+  );
+
+/** Opens a second case on the failing block whose trace agrees with ours up
+ * to `agreedUpTo` and commits `successorHash` after it, has both operators
+ * defend it with our trace up to our successor, bisects both threads to
+ * ReadyForOneStep on that step and enters the resolution on each. Returns
+ * the committed successor's hash and each thread as it stood
+ * ReadyForOneStep. */
+export const secondCaseWithSuccessor = async (
+  dispute: TwoThreadCase,
+  agreedUpTo: number,
+  successorHash: Buffer,
 ) => {
   const { scene, material, a, b } = dispute;
-  const { agreedUpTo, valueRoot } = step;
-  const successorHash = hashMidgardValidationMachineState(
-    otherWindow(step, valueRoot).states[agreedUpTo + 1]!,
-  );
   const committed = committedTrace(material, agreedUpTo, successorHash);
   const lucid = scene.h.proverLucid;
   const { opener } = await initAndOpen(scene, scene.failing, {
