@@ -1,9 +1,11 @@
 //// Transaction-level rows for the staged failure step (arm 36, group 7,
-//// progress 1): a byte-string, string or integer builtin that fails on an
-//// argument past protocol version 11's bounds, on an index outside its byte
-//// string, or on bytes that are not UTF-8. The step must accept exactly the
-//// failures Cardano raises, and the roots hop must route these builtins to
-//// it.
+//// progress 1): a byte-string, string, integer, signature or bitwise builtin
+//// that fails on an argument past protocol version 11's bounds, on an index
+//// outside its byte string or the machine integers, on bytes that are not
+//// UTF-8, or after costing on a malformed key, message or signature or an
+//// integer past integerToByteString's widest output. The step must accept
+//// exactly the failures Cardano raises, and the roots hop must route these
+//// builtins to it.
 
 use aiken/builtin
 use aiken/cbor
@@ -1418,19 +1420,6 @@ test refuses_a_charged_step_on_a_message_past_65536_bytes() fail {
   )
 }
 
-test refuses_a_charged_ecdsa_step() fail {
-  let message = pattern(65536, 3)
-  let budget = signature_charge(52, zeros(32), message, zeros(64))
-  signature_fails_charging(
-    52,
-    zeros(32),
-    message,
-    zeros(64),
-    budget.cpu,
-    budget.memory,
-  )
-}
-
 test refuses_a_charged_byte_string_to_integer_step() fail {
   let arguments = list.map(
     [boolean_value(False), bytes_value(#"01", False)],
@@ -1479,7 +1468,7 @@ test refuses_a_charged_step_on_a_message_of_another_type() fail {
 test proves_a_malformed_key_beside_an_inline_message_with_one_charge() {
   let message = pattern(100, 5)
   list.all(
-    signature_tags,
+    [21, 52, 53],
     fn(tag) {
       let arguments = [
         bytes_value(zeros(31), False),
@@ -1569,4 +1558,637 @@ test staged_failure_signature_at_the_byte_string_bound() {
 
 test staged_failure_signature_fixture_only_at_the_byte_string_bound() {
   built(signature_step_at_the_bound())
+}
+
+// ## The bitwise builtins
+//
+// andByteString, orByteString, xorByteString, complementByteString, readBit,
+// countSetBits and findFirstSetBit bound their byte-string operands, and fail
+// on one past 65,536 bytes before costing. readBit's index and
+// shiftByteString's and rotateByteString's amount are machine integers: a
+// value outside Int64 fails the builtin before costing too. The input of
+// shiftByteString and rotateByteString is unbounded.
+
+/// The arguments of bitwise builtin `tag` with `bytes` as its first
+/// byte-string operand and a small operand or index elsewhere.
+fn bitwise_arguments(tag: Int, bytes: ValueWitnessV1) -> List<ValueWitnessV1> {
+  if tag <= 77 {
+    [boolean_value(True), bytes, small_bytes()]
+  } else if tag == 79 {
+    [bytes, integer_value(0)]
+  } else {
+    [bytes]
+  }
+}
+
+const bounded_bitwise_tags = [75, 76, 77, 78, 79, 84, 85]
+
+const machine_integer_tags = [79, 82, 83]
+
+test proves_the_bounded_bitwise_builtins_fail_past_65536_bytes() {
+  and {
+    list.all(
+      bounded_bitwise_tags,
+      fn(tag) {
+        fails_on_arguments(tag, bitwise_arguments(tag, past_bound_bytes()))
+      },
+    ),
+    list.all(
+      [75, 76, 77],
+      fn(tag) {
+        fails_on_arguments(
+          tag,
+          [boolean_value(False), small_bytes(), past_bound_bytes()],
+        )
+      },
+    ),
+  }
+}
+
+test refuses_the_bounded_bitwise_builtins_at_65536_bytes() {
+  list.all(
+    [75, 76, 77, 78, 84, 85],
+    fn(tag) {
+      !decides_on_arguments(tag, bitwise_arguments(tag, at_bound_bytes()))
+    },
+  )
+}
+
+test refuses_a_charged_bitwise_step_past_65536_bytes() fail {
+  spend(
+    charged_failure_step(
+      78,
+      list.map([past_bound_bytes()], compact),
+      material(no_staging(), []),
+      [],
+      1,
+      0,
+    ),
+  )
+}
+
+/// Bitwise builtin `tag` over a byte string and the one-word `integer`,
+/// revealed by its value: the step's check, then a spend of it.
+fn machine_integer_decides(tag: Int, integer: Int) -> Bool {
+  decides(
+    tag,
+    [at_bound_bytes(), integer_value(integer)],
+    no_staging(),
+    [bytes_leaf(pattern(65536, 0)), SmallIntegerOperand(integer)],
+  )
+}
+
+fn machine_integer_fails(tag: Int, integer: Int) -> Bool {
+  fails(
+    tag,
+    [at_bound_bytes(), integer_value(integer)],
+    no_staging(),
+    [bytes_leaf(pattern(65536, 0)), SmallIntegerOperand(integer)],
+  )
+}
+
+test proves_an_index_or_amount_of_two_words_fails() {
+  list.all(
+    machine_integer_tags,
+    fn(tag) {
+      and {
+        fails_on_arguments(
+          tag,
+          [at_bound_bytes(), integer_value(power_of_two(64))],
+        ),
+        fails_on_arguments(
+          tag,
+          [at_bound_bytes(), integer_value(-power_of_two(64) - 1)],
+        ),
+        fails_on_arguments(
+          tag,
+          [at_bound_bytes(), integer_value(magnitude(9300))],
+        ),
+      }
+    },
+  )
+}
+
+test proves_a_one_word_index_or_amount_outside_int64_fails() {
+  list.all(
+    machine_integer_tags,
+    fn(tag) {
+      and {
+        machine_integer_fails(tag, power_of_two(63)),
+        machine_integer_fails(tag, -power_of_two(63) - 1),
+        machine_integer_fails(tag, power_of_two(64) - 1),
+        machine_integer_fails(tag, -power_of_two(64) + 1),
+      }
+    },
+  )
+}
+
+test refuses_an_index_or_amount_with_an_extra_source() fail {
+  fails(
+    79,
+    [at_bound_bytes(), integer_value(power_of_two(63))],
+    no_staging(),
+    [
+      bytes_leaf(pattern(65536, 0)),
+      SmallIntegerOperand(power_of_two(63)),
+      SmallIntegerOperand(power_of_two(63)),
+    ],
+  )
+}
+
+test refuses_an_index_or_amount_at_the_int64_bounds() {
+  list.all(machine_integer_tags, fn(tag) { !or {
+        machine_integer_decides(tag, power_of_two(63) - 1),
+        machine_integer_decides(tag, -power_of_two(63)),
+      } })
+}
+
+test proves_shift_and_rotate_fail_on_their_amount_beside_any_input() {
+  let input_source = BytesLeafOperand {
+    root: flat_root_of_pieces_v1([pattern(65536, 0), #"01"]),
+    length: 65537,
+  }
+  list.all(
+    [82, 83],
+    fn(tag) {
+      and {
+        fails(
+          tag,
+          [past_bound_bytes(), integer_value(power_of_two(63))],
+          no_staging(),
+          [input_source, SmallIntegerOperand(power_of_two(63))],
+        ),
+        !decides(
+          tag,
+          [past_bound_bytes(), integer_value(3)],
+          no_staging(),
+          [input_source, SmallIntegerOperand(3)],
+        ),
+      }
+    },
+  )
+}
+
+test refuses_an_amount_other_than_the_committed_one() fail {
+  fails(
+    82,
+    [at_bound_bytes(), integer_value(power_of_two(63))],
+    no_staging(),
+    [bytes_leaf(pattern(65536, 0)), SmallIntegerOperand(power_of_two(63) + 1)],
+  )
+}
+
+test refuses_a_charged_step_on_an_amount_outside_int64() fail {
+  spend(
+    charged_failure_step(
+      83,
+      list.map([at_bound_bytes(), integer_value(power_of_two(63))], compact),
+      material(
+        no_staging(),
+        [bytes_leaf(pattern(65536, 0)), SmallIntegerOperand(power_of_two(63))],
+      ),
+      [],
+      1,
+      0,
+    ),
+  )
+}
+
+/// An index outside Int64 beside a revealed byte string is also proved by
+/// the direct failure arm; both arms post no charge.
+test proves_an_index_outside_int64_beside_inline_bytes_with_one_charge() {
+  let bytes = pattern(100, 5)
+  let index = power_of_two(63)
+  let arguments = [bytes_value(bytes, False), integer_value(index)]
+  let Pair(root, count) = cek_builtin_v1.arguments_root_v1(arguments)
+  and {
+    cek_builtin_v1.verify_direct_builtin_failure_v1(
+      79,
+      proof.hash_builtin_value_v1(79, 0, count, root),
+      arguments,
+    ),
+    cek_builtin_v1.authenticated_builtin_failure_budget(79, arguments) == cost.BuiltinBudgetV1 {
+      cpu: 0,
+      memory: 0,
+    },
+    fails(
+      79,
+      arguments,
+      no_staging(),
+      [bytes_leaf(bytes), SmallIntegerOperand(index)],
+    ),
+  }
+}
+
+// ## verifyEcdsaSecp256k1Signature
+//
+// ECDSA bounds none of its arguments and is costed before it fails on a key
+// other than 33 bytes, a message other than 32 or a signature other than 64,
+// whatever their sizes.
+
+test proves_ecdsa_fails_on_a_malformed_length_charged() {
+  let key = builtin.cons_bytearray(2, zeros(32))
+  and {
+    signature_fails(52, zeros(32), zeros(32), zeros(64), False),
+    signature_fails(52, key, pattern(9216, 1), zeros(64), False),
+    signature_fails(52, key, pattern(65536, 3), zeros(64), False),
+    signature_fails(52, key, zeros(31), zeros(64), False),
+    signature_fails(52, key, zeros(32), zeros(63), False),
+    signature_fails(52, key, zeros(32), pattern(9216, 2), False),
+  }
+}
+
+test proves_ecdsa_fails_on_a_message_past_65536_bytes_charged() {
+  let key = builtin.cons_bytearray(2, zeros(32))
+  let arguments = list.map(
+    signature_arguments(key, past_bound_bytes(), zeros(64)),
+    compact,
+  )
+  let budget = cek_builtin_v1.direct_builtin_budget_v1(52, arguments)
+  spend(
+    charged_failure_step(
+      52,
+      arguments,
+      material(
+        no_staging(),
+        [
+          bytes_leaf(key),
+          BytesLeafOperand {
+            root: flat_root_of_pieces_v1([pattern(65536, 0), #"01"]),
+            length: 65537,
+          },
+          bytes_leaf(zeros(64)),
+        ],
+      ),
+      [],
+      budget.cpu,
+      budget.memory,
+    ),
+  )
+}
+
+test refuses_ecdsa_on_well_formed_lengths() fail {
+  signature_fails(
+    52,
+    builtin.cons_bytearray(2, zeros(32)),
+    zeros(32),
+    zeros(64),
+    False,
+  )
+}
+
+test refuses_an_uncharged_ecdsa_step() fail {
+  signature_fails_charging(52, zeros(32), zeros(32), zeros(64), 0, 0)
+}
+
+test refuses_an_ecdsa_step_with_another_charge() fail {
+  let budget = signature_charge(52, zeros(32), zeros(32), zeros(64))
+  signature_fails_charging(
+    52,
+    zeros(32),
+    zeros(32),
+    zeros(64),
+    budget.cpu,
+    budget.memory + 1,
+  )
+}
+
+// ## integerToByteString
+//
+// integerToByteString fails before costing on a width past one word or
+// outside 0..8,192 (a width the direct failure arm charges nothing for). With
+// a width in range it is costed, then fails on an input of more than 1,024
+// words: at least 2^65536 in magnitude, so more than 8,192 bytes, or
+// negative. Its input is unbounded.
+
+/// 2^65536, the smallest positive integer of 1,025 words.
+fn smallest_of_1025_words() -> Int {
+  power_of_two(65536)
+}
+
+fn integer_to_bytes_arguments(
+  width: Int,
+  input: ValueWitnessV1,
+) -> List<ValueWitnessV1> {
+  [boolean_value(True), integer_value(width), input]
+}
+
+/// The charge the builtin's cost row gives over a revealed width.
+fn integer_to_bytes_charge(
+  width: Int,
+  input: ValueWitnessV1,
+) -> cost.BuiltinBudgetV1 {
+  cek_builtin_v1.direct_builtin_budget_v1(
+    73,
+    [boolean_value(True), integer_value(width), compact(input)],
+  )
+}
+
+/// Spends the staged failure hop for integerToByteString over `width`,
+/// revealed by its value, and `input`, charging `cpu` and `memory`.
+fn integer_to_bytes_fails_charging(
+  width: Int,
+  input: ValueWitnessV1,
+  cpu: Int,
+  memory: Int,
+) -> Bool {
+  spend(
+    charged_failure_step(
+      73,
+      list.map(integer_to_bytes_arguments(width, input), compact),
+      material(no_staging(), [SmallIntegerOperand(width)]),
+      [],
+      cpu,
+      memory,
+    ),
+  )
+}
+
+/// Spends it charged by the cost row.
+fn integer_to_bytes_fails(width: Int, input: ValueWitnessV1) -> Bool {
+  let budget = integer_to_bytes_charge(width, input)
+  integer_to_bytes_fails_charging(width, input, budget.cpu, budget.memory)
+}
+
+test proves_integer_to_bytes_fails_on_an_input_past_1024_words_charged() {
+  and {
+    integer_to_bytes_fails(0, integer_value(smallest_of_1025_words())),
+    integer_to_bytes_fails(8192, integer_value(smallest_of_1025_words())),
+    integer_to_bytes_fails(100, integer_value(magnitude(10000))),
+    integer_to_bytes_fails(0, integer_value(-magnitude(10000))),
+    integer_to_bytes_fails(1, semantic_integer_cbor(over_band_cbor())),
+  }
+}
+
+test refuses_integer_to_bytes_on_an_input_of_1024_words() fail {
+  integer_to_bytes_fails(0, integer_value(smallest_of_1025_words() - 1))
+}
+
+test refuses_an_uncharged_step_on_an_input_past_1024_words() fail {
+  integer_to_bytes_fails_charging(
+    0,
+    integer_value(smallest_of_1025_words()),
+    0,
+    0,
+  )
+}
+
+test refuses_integer_to_bytes_on_an_endianness_of_another_type() fail {
+  let input = integer_value(smallest_of_1025_words())
+  let budget = integer_to_bytes_charge(0, input)
+  spend(
+    charged_failure_step(
+      73,
+      list.map([integer_value(1), integer_value(0), input], compact),
+      material(no_staging(), [SmallIntegerOperand(0)]),
+      [],
+      budget.cpu,
+      budget.memory,
+    ),
+  )
+}
+
+test refuses_integer_to_bytes_on_an_input_of_another_type() fail {
+  let input = past_bound_bytes()
+  let budget = integer_to_bytes_charge(0, input)
+  integer_to_bytes_fails_charging(0, input, budget.cpu, budget.memory)
+}
+
+test proves_integer_to_bytes_fails_on_a_width_out_of_range_uncharged() {
+  let input = integer_value(magnitude(10000))
+  and {
+    fails_on_arguments(73, integer_to_bytes_arguments(power_of_two(64), input)),
+    fails_on_arguments(
+      73,
+      integer_to_bytes_arguments(magnitude(9300), integer_value(5)),
+    ),
+    integer_to_bytes_fails_charging(8193, input, 0, 0),
+    integer_to_bytes_fails_charging(-1, input, 0, 0),
+    integer_to_bytes_fails_charging(power_of_two(63), integer_value(5), 0, 0),
+  }
+}
+
+test refuses_integer_to_bytes_on_a_width_in_range_uncharged() fail {
+  integer_to_bytes_fails_charging(8192, integer_value(5), 0, 0)
+}
+
+test refuses_a_charged_step_on_a_width_out_of_range() fail {
+  let input = integer_value(magnitude(10000))
+  let budget = integer_to_bytes_charge(8192, input)
+  integer_to_bytes_fails_charging(8193, input, budget.cpu, budget.memory)
+}
+
+test refuses_a_width_other_than_the_committed_one() fail {
+  let input = integer_value(magnitude(10000))
+  let budget = integer_to_bytes_charge(0, input)
+  spend(
+    charged_failure_step(
+      73,
+      list.map(integer_to_bytes_arguments(0, input), compact),
+      material(no_staging(), [SmallIntegerOperand(1)]),
+      [],
+      budget.cpu,
+      budget.memory,
+    ),
+  )
+}
+
+test refuses_a_width_out_of_range_with_an_extra_source() fail {
+  spend(
+    charged_failure_step(
+      73,
+      list.map(
+        integer_to_bytes_arguments(8193, integer_value(magnitude(10000))),
+        compact,
+      ),
+      material(
+        no_staging(),
+        [SmallIntegerOperand(8193), SmallIntegerOperand(8193)],
+      ),
+      [],
+      0,
+      0,
+    ),
+  )
+}
+
+/// An input of 1,025 words is also within the direct carriage bound: the
+/// direct failure arm proves it with the same charge.
+test proves_an_input_of_1025_words_at_both_arms_with_one_charge() {
+  let arguments = integer_to_bytes_arguments(
+    0,
+    integer_value(smallest_of_1025_words()),
+  )
+  let Pair(root, count) = cek_builtin_v1.arguments_root_v1(arguments)
+  and {
+    cek_builtin_v1.verify_direct_builtin_failure_v1(
+      73,
+      proof.hash_builtin_value_v1(73, 0, count, root),
+      arguments,
+    ),
+    cek_builtin_v1.authenticated_builtin_failure_budget(73, arguments) == integer_to_bytes_charge(
+      0,
+      integer_value(smallest_of_1025_words()),
+    ),
+    integer_to_bytes_fails(0, integer_value(smallest_of_1025_words())),
+  }
+}
+
+// ## Routing the bitwise builtins, ECDSA and integerToByteString
+
+test routes_the_bitwise_builtins_ecdsa_and_integer_to_bytes_to_the_staged_failure_hop() {
+  let key = builtin.cons_bytearray(2, zeros(32))
+  and {
+    roots_route(
+      52,
+      signature_arguments(key, past_bound_bytes(), zeros(64)),
+      True,
+    ),
+    roots_route(
+      73,
+      integer_to_bytes_arguments(0, integer_value(magnitude(10000))),
+      True,
+    ),
+    list.all(
+      bounded_bitwise_tags,
+      fn(tag) {
+        roots_route(tag, bitwise_arguments(tag, past_bound_bytes()), True)
+      },
+    ),
+    roots_route(82, [past_bound_bytes(), integer_value(power_of_two(64))], True),
+    roots_route(83, [past_bound_bytes(), integer_value(power_of_two(64))], True),
+  }
+}
+
+test does_not_route_ecdsa_to_the_material_hop() fail {
+  roots_route(
+    52,
+    signature_arguments(zeros(32), past_bound_bytes(), zeros(64)),
+    False,
+  )
+}
+
+test does_not_route_integer_to_bytes_to_the_material_hop() fail {
+  roots_route(
+    73,
+    integer_to_bytes_arguments(0, integer_value(magnitude(10000))),
+    False,
+  )
+}
+
+test does_not_route_read_bit_to_the_material_hop() fail {
+  roots_route(79, bitwise_arguments(79, past_bound_bytes()), False)
+}
+
+test does_not_route_shift_to_the_material_hop() fail {
+  roots_route(82, [past_bound_bytes(), integer_value(power_of_two(64))], False)
+}
+
+test does_not_route_find_first_set_bit_to_the_material_hop() fail {
+  roots_route(85, [past_bound_bytes()], False)
+}
+
+test routes_write_bits_and_replicate_byte_to_the_material_hop() {
+  and {
+    roots_route(
+      80,
+      [past_bound_bytes(), integer_value(0), boolean_value(True)],
+      False,
+    ),
+    roots_route(81, [integer_value(power_of_two(64)), integer_value(0)], False),
+  }
+}
+
+test leaves_a_charged_ecdsa_and_integer_to_bytes_post_on_the_staged_route() {
+  and {
+    roots_route_charging(
+      52,
+      signature_arguments(zeros(32), past_bound_bytes(), zeros(64)),
+      True,
+      1,
+    ),
+    roots_route_charging(
+      73,
+      integer_to_bytes_arguments(0, integer_value(magnitude(10000))),
+      True,
+      1,
+    ),
+  }
+}
+
+// ## Budget rows
+
+/// readBit at an index outside Int64 beside a byte string of 65,536 bytes,
+/// the index revealed by its value.
+fn read_bit_step_at_the_bound() -> StagedStepV1 {
+  let index = -power_of_two(63) - 1
+  failure_step(
+    79,
+    list.map([at_bound_bytes(), integer_value(index)], compact),
+    material(
+      no_staging(),
+      [bytes_leaf(pattern(65536, 0)), SmallIntegerOperand(index)],
+    ),
+    [],
+  )
+}
+
+/// verifyEcdsaSecp256k1Signature over a key, a message and a signature of
+/// 65,536 bytes each, each bound by its leaf.
+fn ecdsa_step_at_the_bound() -> StagedStepV1 {
+  let bytes = pattern(65536, 3)
+  let arguments = list.map(
+    signature_arguments(bytes, at_bound_bytes(), bytes),
+    compact,
+  )
+  let budget = cek_builtin_v1.direct_builtin_budget_v1(52, arguments)
+  charged_failure_step(
+    52,
+    arguments,
+    material(
+      no_staging(),
+      [bytes_leaf(bytes), bytes_leaf(pattern(65536, 0)), bytes_leaf(bytes)],
+    ),
+    [],
+    budget.cpu,
+    budget.memory,
+  )
+}
+
+/// integerToByteString to 8,192 bytes of an input past the integer band.
+fn integer_to_bytes_step_at_the_bound() -> StagedStepV1 {
+  let input = semantic_integer_cbor(over_band_cbor())
+  let budget = integer_to_bytes_charge(8192, input)
+  charged_failure_step(
+    73,
+    list.map(integer_to_bytes_arguments(8192, input), compact),
+    material(no_staging(), [SmallIntegerOperand(8192)]),
+    [],
+    budget.cpu,
+    budget.memory,
+  )
+}
+
+test staged_failure_read_bit_at_the_byte_string_bound() {
+  spend(read_bit_step_at_the_bound())
+}
+
+test staged_failure_read_bit_fixture_only_at_the_byte_string_bound() {
+  built(read_bit_step_at_the_bound())
+}
+
+test staged_failure_ecdsa_at_the_byte_string_bound() {
+  spend(ecdsa_step_at_the_bound())
+}
+
+test staged_failure_ecdsa_fixture_only_at_the_byte_string_bound() {
+  built(ecdsa_step_at_the_bound())
+}
+
+test staged_failure_integer_to_bytes_past_the_integer_band() {
+  spend(integer_to_bytes_step_at_the_bound())
+}
+
+test staged_failure_integer_to_bytes_fixture_only_past_the_integer_band() {
+  built(integer_to_bytes_step_at_the_bound())
 }

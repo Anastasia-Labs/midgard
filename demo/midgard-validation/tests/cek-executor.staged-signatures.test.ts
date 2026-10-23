@@ -1,7 +1,4 @@
-import {
-  midgardCekFlatRoot,
-  PLUTUS_V3_CANONICAL_COST_MODEL_VIEW,
-} from "@al-ft/midgard-core";
+import { PLUTUS_V3_CANONICAL_COST_MODEL_VIEW } from "@al-ft/midgard-core";
 import { DataB } from "@harmoniclabs/plutus-data";
 import { CEKConst } from "@harmoniclabs/plutus-machine";
 import {
@@ -30,7 +27,11 @@ import { errorSuccessor } from "../src/cek-machine.midgard-cek-builtin-argument-
 import { MidgardCekErrorCodes } from "../src/cek-machine.midgard-cek-core-step-witness.js";
 import { verifyMidgardCekCoreStep } from "../src/cek-machine.verify-builtin.js";
 import type { MidgardUplcEvalProgram } from "../src/plutus-script-evaluator.js";
-import { builtinState, presented } from "./helpers/cek-staged-failure-steps.js";
+import {
+  builtinState,
+  bytesOperand,
+  presented,
+} from "./helpers/cek-staged-failure-steps.js";
 import { built, call, run, staged } from "./helpers/cek-staged-route-terms.js";
 import {
   discard,
@@ -323,18 +324,6 @@ describe("a signature builtin that fails beside a staged operand", () => {
       ).toBe(true);
     },
   );
-});
-
-/** A byte string as a staged step reads it from the store. */
-const bytesOperand = (bytes: Uint8Array): MidgardCekStagedOperand => ({
-  type: "bytes",
-  bytes: Buffer.from(bytes),
-  value: CEKConst.byteString(Buffer.from(bytes)),
-  leaf: {
-    kind: "bytesLeaf",
-    root: midgardCekFlatRoot(Buffer.from(bytes)),
-    length: BigInt(bytes.length),
-  },
 });
 
 const failureVerifies = (

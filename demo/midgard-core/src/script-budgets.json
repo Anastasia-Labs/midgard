@@ -1755,6 +1755,30 @@
         "cpu": 299326752
       }
     },
+    "fraud_proofs/validation_trace/cek_core_staged_failure.test/staged_failure_read_bit_at_the_byte_string_bound - staged_failure_read_bit_fixture_only_at_the_byte_string_bound": {
+      "test": "fraud_proofs/validation_trace/cek_core_staged_failure.test/staged_failure_read_bit_at_the_byte_string_bound",
+      "minusControl": "staged_failure_read_bit_fixture_only_at_the_byte_string_bound",
+      "ceiling": {
+        "mem": 483660,
+        "cpu": 195551448
+      }
+    },
+    "fraud_proofs/validation_trace/cek_core_staged_failure.test/staged_failure_ecdsa_at_the_byte_string_bound - staged_failure_ecdsa_fixture_only_at_the_byte_string_bound": {
+      "test": "fraud_proofs/validation_trace/cek_core_staged_failure.test/staged_failure_ecdsa_at_the_byte_string_bound",
+      "minusControl": "staged_failure_ecdsa_fixture_only_at_the_byte_string_bound",
+      "ceiling": {
+        "mem": 697282,
+        "cpu": 282026309
+      }
+    },
+    "fraud_proofs/validation_trace/cek_core_staged_failure.test/staged_failure_integer_to_bytes_past_the_integer_band - staged_failure_integer_to_bytes_fixture_only_past_the_integer_band": {
+      "test": "fraud_proofs/validation_trace/cek_core_staged_failure.test/staged_failure_integer_to_bytes_past_the_integer_band",
+      "minusControl": "staged_failure_integer_to_bytes_fixture_only_past_the_integer_band",
+      "ceiling": {
+        "mem": 594495,
+        "cpu": 243870403
+      }
+    },
     "fraud_proofs/validation_trace/cek_core_staged_conversion.test/staged_conversion_big_endian_at_the_argument_bound - staged_conversion_big_endian_fixture_only_at_the_argument_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_staged_conversion.test/staged_conversion_big_endian_at_the_argument_bound",
       "minusControl": "staged_conversion_big_endian_fixture_only_at_the_argument_bound",

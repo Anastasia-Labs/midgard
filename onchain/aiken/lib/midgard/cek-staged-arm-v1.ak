@@ -860,7 +860,15 @@ fn failure_inputs_v1(
 /// - indexByteString's index, revealed by its value, below zero or at or past
 ///   the length its source binds;
 /// - decodeUtf8 of bytes with a valid prefix whose next character is not
-///   valid, the prefix's end given by the material's trailing source.
+///   valid, the prefix's end given by the material's trailing source;
+/// - a byte-string argument of andByteString, orByteString, xorByteString,
+///   complementByteString, readBit, countSetBits or findFirstSetBit of more
+///   than 8,192 words;
+/// - readBit's index, or shiftByteString's or rotateByteString's amount, of
+///   more than one word, or of one word revealed by its value and outside the
+///   machine integers;
+/// - integerToByteString's width of more than one word, or of one word
+///   revealed by its value and outside 0..8,192.
 ///
 /// The witness carries each argument in the compacted form the roots hop
 /// commits (its value root is the same), and only compacted arguments are
@@ -914,16 +922,79 @@ pub fn verify_staged_failure_v1(
     // byteStringToInteger its input: both the second argument.
     expect Some(bounded) = list.at(arguments, 1)
     memory_past_v1(bounded, max_bounded_bytes_words)
+  } else if or {
+    tag >= 75 && tag <= 79,
+    tag >= 82 && tag <= 85,
+  } {
+    // The input of shiftByteString and rotateByteString is unbounded.
+    or {
+      and {
+        tag != 82 && tag != 83,
+        list.any(
+          arguments,
+          fn(value) { memory_past_v1(value, max_bounded_bytes_words) },
+        ),
+      },
+      and {
+        tag == 79 || tag == 82 || tag == 83,
+        {
+          expect [_, integer] = arguments
+          or {
+            memory_past_v1(integer, 1),
+            {
+              expect [_, source] = material.sources
+              let value = one_word_integer_v1(integer, source)
+              value < int64_min || value > int64_max
+            },
+          }
+        },
+      },
+    }
+  } else if tag == 73 {
+    expect [_, width, _] = arguments
+    or {
+      memory_past_v1(width, 1),
+      {
+        expect [source] = material.sources
+        let value = one_word_integer_v1(width, source)
+        value < 0 || value > max_integer_to_bytes_width
+      },
+    }
   } else {
     False
   }
 }
 
+/// The widest output of integerToByteString, in bytes and in words.
+const max_integer_to_bytes_width = 8192
+
+const max_integer_to_bytes_words = 1024
+
+/// The value of a one-word integer argument, revealed by its source and
+/// re-encoded to its leaf; it may be outside the machine integers.
+fn one_word_integer_v1(value: ValueWitnessV1, source: OperandSourceV1) -> Int {
+  expect SmallIntegerOperand { value: integer } = source
+  let integer_cbor = cbor.serialise(integer)
+  expect
+    value == SemanticConstantValue {
+      type_cbor: integer_type_cbor,
+      payload: integer_leaf_from_cbor_v1(
+        flat_root_v1(integer_cbor),
+        builtin.length_of_bytearray(integer_cbor),
+        1,
+      ),
+      memory: 1,
+    }
+  integer
+}
+
 /// The budget the staged failure hop's step charges, failing when the
 /// builtin does not fail. A division builtin over a dividend of 4,096 words
-/// in the range and a zero divisor, and a signature builtin over a message in
-/// bound with a malformed key or signature, are charged before they fail;
-/// every other failure here is raised before costing.
+/// in the range and a zero divisor, a signature builtin over a message in
+/// bound with a malformed key or signature (any ECDSA argument of the wrong
+/// length), and integerToByteString with its width in range over an input
+/// past 1,024 words are charged before they fail; every other failure here is
+/// raised before costing.
 pub fn staged_failure_budget_v1(
   tag: Int,
   arguments: List<ValueWitnessV1>,
@@ -942,6 +1013,8 @@ pub fn staged_failure_budget_v1(
     None ->
       if verify_staged_failure_v1(tag, arguments, material, reference_inputs) {
         uncharged
+      } else if tag == 73 {
+        integer_to_bytes_charge_v1(arguments, material)
       } else {
         // A signature builtin over a message in bound fails after costing.
         expect
@@ -962,21 +1035,20 @@ pub fn staged_failure_budget_v1(
 
 /// verifyEd25519Signature or verifySchnorrSecp256k1Signature fails on its key
 /// or signature: a key of other than 32 bytes, a signature of other than 64,
-/// or a BIP-340 key off the curve. The lengths are decided from the leaves;
-/// a BIP-340 key of 32 bytes is revealed inline. Every argument is a byte
-/// string (an ill-typed application fails before costing) and the message's
-/// committed memory is the cost's size.
+/// or a BIP-340 key off the curve; verifyEcdsaSecp256k1Signature on a key of
+/// other than 33 bytes, a message of other than 32 or a signature of other
+/// than 64. The lengths are decided from the leaves; a BIP-340 key of 32
+/// bytes is revealed inline. Every argument is a byte string (an ill-typed
+/// application fails before costing) and the message's committed memory is
+/// the cost's size.
 fn malformed_signature_v1(
   tag: Int,
   arguments: List<ValueWitnessV1>,
   material: StagedMaterialV1,
   reference_inputs: List<Input>,
 ) -> Bool {
-  expect tag == 21 || tag == 53
   expect [key_value, message_value, signature_value] = arguments
-  expect [key_source, _, signature_source] = material.sources
-  expect SemanticConstantValue { type_cbor, .. } = message_value
-  expect type_cbor == bytes_type_cbor
+  expect [key_source, message_source, signature_source] = material.sources
   let inputs = failure_inputs_v1(material, reference_inputs)
   let key = bind_bytes_v1(inputs, Pair(key_value, key_source), False, False)
   let signature = bind_bytes_v1(
@@ -985,17 +1057,49 @@ fn malformed_signature_v1(
     False,
     False,
   )
-  or {
-    key.length != 32,
-    signature.length != 64,
-    and {
-      tag == 53,
-      {
-        expect Some([key_bytes]) = key.pieces
-        !cek_builtin_v1.secp256k1_public_key_is_valid_v1(tag, key_bytes)
+  if tag == 52 {
+    or {
+      key.length != 33,
+      signature.length != 64,
+      bind_bytes_v1(inputs, Pair(message_value, message_source), False, False).length != 32,
+    }
+  } else {
+    expect tag == 21 || tag == 53
+    expect SemanticConstantValue { type_cbor, .. } = message_value
+    expect type_cbor == bytes_type_cbor
+    or {
+      key.length != 32,
+      signature.length != 64,
+      and {
+        tag == 53,
+        {
+          expect Some([key_bytes]) = key.pieces
+          !cek_builtin_v1.secp256k1_public_key_is_valid_v1(tag, key_bytes)
+        },
       },
-    },
+    }
   }
+}
+
+/// integerToByteString with its width in range fails after costing on an
+/// input of more than 1,024 words: at least 2^65536 in magnitude, past the
+/// widest output. The endianness is a Boolean and the input an integer (an
+/// ill-typed application fails before costing); the width, revealed by its
+/// source, is costed by its words.
+fn integer_to_bytes_charge_v1(
+  arguments: List<ValueWitnessV1>,
+  material: StagedMaterialV1,
+) -> cek_cost_v1.BuiltinBudgetV1 {
+  expect [endianness, width, input] = arguments
+  expect endianness == true_result || endianness == false_result
+  expect [source] = material.sources
+  let value = one_word_integer_v1(width, source)
+  expect SemanticConstantValue { type_cbor, memory, .. } = input
+  expect type_cbor == integer_type_cbor
+  expect memory > max_integer_to_bytes_words
+  cek_cost_v1.integer_to_bytes_budget_v1(
+    [1, cek_builtin_v1.width_cost_size_v1(value), memory],
+  )
 }
 
 /// Zero as the roots hop commits it.
@@ -1073,18 +1177,8 @@ fn index_past_end_v1(
   reference_inputs: List<Input>,
 ) -> Bool {
   expect [bytes, index] = values
-  expect [source, SmallIntegerOperand { value }] = material.sources
-  let integer_cbor = cbor.serialise(value)
-  expect
-    index == SemanticConstantValue {
-      type_cbor: integer_type_cbor,
-      payload: integer_leaf_from_cbor_v1(
-        flat_root_v1(integer_cbor),
-        builtin.length_of_bytearray(integer_cbor),
-        1,
-      ),
-      memory: 1,
-    }
+  expect [source, index_source] = material.sources
+  let value = one_word_integer_v1(index, index_source)
   let operand = bind_bytes_v1(
     failure_inputs_v1(material, reference_inputs),
     Pair(bytes, source),

@@ -64,6 +64,10 @@ type StagedWitness = Extract<
   { readonly kind: "executeBuiltinStaged" }
 >;
 
+/** verifyEcdsaSecp256k1Signature and integerToByteString, whose staged
+ * steps the staged failure hop proves only when they fail. */
+const failureOnly = (tag: bigint): boolean => tag === 52n || tag === 73n;
+
 /**
  * Whether builtin `tag` over these presented arguments takes the staged
  * route: a builtin the staged arms prove, with an argument already past the
@@ -73,7 +77,7 @@ export const isMidgardCekStagedStep = (
   tag: bigint,
   arguments_: readonly MidgardCekDirectValueWitness[],
 ): boolean =>
-  midgardCekStagedBuiltinProves(tag) &&
+  (midgardCekStagedBuiltinProves(tag) || failureOnly(tag)) &&
   (arguments_.some((argument) => argument.kind !== "constant") ||
     !midgardCekDirectBuiltinFits(tag, arguments_));
 
@@ -173,13 +177,14 @@ export const executeMidgardCekStagedBuiltin = (
     }
   | ({ readonly kind: "failure" } & MidgardCekStagedFailure) => {
   const group = midgardCekSemanticGroup(tag);
-  if (group !== 7 && group !== 8 && group !== 9) {
+  if (group !== 7 && group !== 8 && group !== 9 && !failureOnly(tag)) {
     throw new Error("CEK staged builtin has no staged semantics group");
   }
-  // byteStringToInteger's endianness and the logical builtins' padding are
-  // committed Booleans, not operands.
+  // byteStringToInteger's and integerToByteString's endianness and the
+  // logical builtins' padding are committed Booleans, not operands.
   const conversion = tag === 74n;
-  const leading = conversion || (tag >= 75n && tag <= 77n) ? 1 : 0;
+  const leading =
+    conversion || tag === 73n || (tag >= 75n && tag <= 77n) ? 1 : 0;
   const operands = arguments_
     .slice(leading)
     .map((argument, index) =>
@@ -206,6 +211,9 @@ export const executeMidgardCekStagedBuiltin = (
     () => evaluate() === "failure",
   );
   if (failure !== null) return { kind: "failure", ...failure };
+  if (failureOnly(tag)) {
+    throw new Error("CEK staged builtin step has no staged proof");
+  }
   const evaluated = evaluate();
   if (evaluated === "failure") {
     throw new Error("CEK staged builtin failure has no staged proof");

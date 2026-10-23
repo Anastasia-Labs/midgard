@@ -27,16 +27,34 @@ const stagedFailure = (
 });
 
 describe("group 7's arm chain", () => {
-  it.each([0n, 1n, 9n, 10n, 14n, 20n, 21n, 25n, 53n, 71n, 72n, 74n, 86n])(
-    "takes builtin %s from the roots to the staged failure hop",
-    (tag) => {
-      const hops = cekCoreArmHops(7, stagedFailure(tag), ROOT);
-      expect(hops.holders).toEqual(["semanticFailureRoots", "stagedFailure"]);
-      expect(hops.facts).toHaveLength(2);
-    },
-  );
+  it.each([
+    0n,
+    1n,
+    9n,
+    10n,
+    14n,
+    20n,
+    21n,
+    25n,
+    52n,
+    53n,
+    71n,
+    72n,
+    73n,
+    74n,
+    75n,
+    79n,
+    82n,
+    83n,
+    85n,
+    86n,
+  ])("takes builtin %s from the roots to the staged failure hop", (tag) => {
+    const hops = cekCoreArmHops(7, stagedFailure(tag), ROOT);
+    expect(hops.holders).toEqual(["semanticFailureRoots", "stagedFailure"]);
+    expect(hops.facts).toHaveLength(2);
+  });
 
-  it.each([26n, 30n, 52n, 54n, 70n, 73n, 75n, 85n, 87n])(
+  it.each([26n, 30n, 51n, 54n, 70n, 80n, 81n, 87n])(
     "takes builtin %s from the roots to the material hop",
     (tag) => {
       expect(cekCoreArmHops(7, stagedFailure(tag), ROOT).holders).toEqual([

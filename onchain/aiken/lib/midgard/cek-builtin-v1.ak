@@ -224,7 +224,7 @@ fn standard_cost_sizes_v1(arguments: List<ValueWitnessV1>) -> List<Int> {
 /// Cardano costs an output width (integerToByteString) or a replication count
 /// (replicateByte) as the words it occupies. Out-of-range widths fail before
 /// costing; this stays total so the failure arm never aborts.
-fn width_cost_size_v1(width: Int) -> Int {
+pub fn width_cost_size_v1(width: Int) -> Int {
   if width <= 0 {
     0
   } else {

@@ -16,7 +16,17 @@
  *   signature beside a message in bound (charged), go to the staged failure
  *   hop, the lengths read from the leaves;
  * - byteStringToInteger's input past its bound goes to the staged failure
- *   hop.
+ *   hop;
+ * - a bitwise builtin's byte string past its bound, and readBit's index or
+ *   shiftByteString's or rotateByteString's amount outside the machine
+ *   integers, go to the staged failure hop, a one-word index or amount
+ *   revealed by its value;
+ * - verifyEcdsaSecp256k1Signature's key, message or signature of the wrong
+ *   length (charged) goes to the staged failure hop, the lengths read from
+ *   the leaves;
+ * - integerToByteString's width outside 0..8,192, and with its width in
+ *   range its input past 1,024 words (charged), go to the staged failure
+ *   hop, a one-word width revealed by its value.
  */
 import { MIDGARD_CEK_STAGED_CHUNK_BYTES } from "@al-ft/midgard-core";
 import { CEKConst } from "@harmoniclabs/plutus-machine";
@@ -61,6 +71,9 @@ const INTEGER_LOWER_BOUND = -(2n ** 262_143n);
 const INTEGER_UPPER_BOUND = 2n ** 262_143n - 1n;
 const INT64_MIN = -(2n ** 63n);
 const INT64_MAX = 2n ** 63n - 1n;
+/** integerToByteString's widest output, in bytes and in words. */
+const MAX_INTEGER_TO_BYTES_WIDTH = 8_192n;
+const MAX_INTEGER_TO_BYTES_WORDS = 1_024n;
 
 const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 
@@ -186,6 +199,54 @@ const classify = (
         ? { kind: "inline", bytes: keyBytes }
         : key!.leaf;
     return staged([keySource, message!.leaf, signature!.leaf], true);
+  }
+  if (number === 52) {
+    const [key, message, signature] = operands;
+    if (
+      key!.bytes.length === 33 &&
+      message!.bytes.length === 32 &&
+      signature!.bytes.length === 64
+    ) {
+      return null;
+    }
+    return staged([key!.leaf, message!.leaf, signature!.leaf], true);
+  }
+  if (number === 73) {
+    // The operands are the width and the input; the endianness is committed.
+    const [width, input] = operands;
+    if (width!.type !== "integer" || input!.type !== "integer") return null;
+    if (words(width!) > 1n) return staged([], false);
+    const value = integer(width!);
+    const source: MidgardCekStagedOperandSource = {
+      kind: "smallInteger",
+      value,
+    };
+    if (value < 0n || value > MAX_INTEGER_TO_BYTES_WIDTH) {
+      return staged([source], false);
+    }
+    return words(input!) > MAX_INTEGER_TO_BYTES_WORDS
+      ? staged([source], true)
+      : null;
+  }
+  if ((number >= 75 && number <= 79) || (number >= 82 && number <= 85)) {
+    const shift = number === 82 || number === 83;
+    if (
+      !shift &&
+      operands.some(
+        (operand) =>
+          operand.type === "bytes" && operand.bytes.length > MAX_BOUNDED_BYTES,
+      )
+    ) {
+      return staged([], false);
+    }
+    if (!shift && number !== 79) return null;
+    const [bytes, index] = operands;
+    if (index!.type !== "integer") return null;
+    if (words(index!) > 1n) return staged([], false);
+    const value = integer(index!);
+    return value < INT64_MIN || value > INT64_MAX
+      ? staged([bytes!.leaf, { kind: "smallInteger", value }], false)
+      : null;
   }
   if (number === 74) {
     // The operands are the input alone; only its bound fails here.

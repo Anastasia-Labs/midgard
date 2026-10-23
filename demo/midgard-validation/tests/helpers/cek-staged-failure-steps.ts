@@ -36,6 +36,18 @@ export const integerOperand = (value: bigint): MidgardCekStagedOperand => {
   };
 };
 
+/** A byte string as a staged step reads it from the store. */
+export const bytesOperand = (bytes: Uint8Array): MidgardCekStagedOperand => ({
+  type: "bytes",
+  bytes: Buffer.from(bytes),
+  value: CEKConst.byteString(Buffer.from(bytes)),
+  leaf: {
+    kind: "bytesLeaf",
+    root: midgardCekFlatRoot(Buffer.from(bytes)),
+    length: BigInt(bytes.length),
+  },
+});
+
 /** An operand as the machine presents it. */
 export const presented = (
   operand: MidgardCekStagedOperand,

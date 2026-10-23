@@ -58,17 +58,18 @@ export const CEK_CORE_SEMANTIC_STAGES = Object.freeze([
 ] as const);
 
 /** The staged failure hop, which group 7's roots take for a byte-string,
- * string or integer builtin in place of the material hop. */
+ * string, signature, integer or bitwise builtin in place of the material
+ * hop. */
 const STAGED_FAILURE_STAGE = "stagedFailure" as const;
 
-/** Whether group 7's roots route builtin `tag` to the staged failure hop. */
+/** Whether group 7's roots route builtin `tag` to the staged failure hop:
+ * all but the Data builtins, writeBits and replicateByte. */
 const stagedFailureTag = (tag: bigint): boolean =>
   tag < 26n ||
+  tag === 52n ||
   tag === 53n ||
-  tag === 71n ||
-  tag === 72n ||
-  tag === 74n ||
-  tag === 86n;
+  (tag >= 71n && tag <= 79n) ||
+  (tag >= 82n && tag <= 86n);
 
 /** The staged semantic stage of each staged `semantic_group(tag)`, the
  * groups past `CEK_CORE_SEMANTIC_STAGES` (cek-semantic-chain): the

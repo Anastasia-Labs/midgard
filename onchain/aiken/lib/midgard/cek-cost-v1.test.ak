@@ -116,7 +116,7 @@ test division_budget_refuses_another_builtin() fail {
 
 test signature_budget_is_the_builtin_row() {
   list.all(
-    [21, 53],
+    [21, 52, 53],
     fn(tag) {
       list.all(
         [[4, 8192, 8], [4, 1, 8], [1, 1, 1], [0, 0, 0], [8193, 1150, 9]],
@@ -132,5 +132,21 @@ test signature_budget_is_the_builtin_row() {
 }
 
 test signature_budget_refuses_another_builtin() fail {
-  cek_cost_v1.signature_budget_v1(52, [5, 4, 8]).cpu > 0
+  cek_cost_v1.signature_budget_v1(54, [5, 4, 8]).cpu > 0
+}
+
+test integer_to_bytes_budget_is_the_builtin_row() {
+  list.all(
+    [[1, 0, 1025], [1, 1024, 8192], [1, 13, 1250], [1, 0, 0], [1, 1, 4097]],
+    fn(sizes) {
+      cek_cost_v1.integer_to_bytes_budget_v1(sizes) == cek_cost_v1.builtin_budget_v1(
+        73,
+        sizes,
+      )
+    },
+  )
+}
+
+test integer_to_bytes_budget_refuses_two_sizes() fail {
+  cek_cost_v1.integer_to_bytes_budget_v1([1, 1]).cpu > 0
 }
