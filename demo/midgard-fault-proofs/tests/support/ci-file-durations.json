@@ -467,6 +467,8 @@
     "tests/validation-trace-dispute-funded-wallet-move.test.ts": 7.9,
     "tests/validation-trace-dispute-funded.test.ts": 33.5,
     "tests/validation-trace-dispute-lookalikes.test.ts": 5,
+    "tests/validation-trace-dispute-max-shape-cek-builtin-failure.test.ts": 1480,
+    "tests/validation-trace-dispute-max-shape-cek-builtin-semantic.test.ts": 1502,
     "tests/validation-trace-dispute-max-shape-copy.test.ts": 1420,
     "tests/validation-trace-dispute-max-shape-inline.test.ts": 1604,
     "tests/validation-trace-dispute-move-fee.test.ts": 1,
