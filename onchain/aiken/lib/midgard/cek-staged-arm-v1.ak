@@ -21,9 +21,10 @@
 //// and its constant-level memory is checked against them. The arms admit
 //// operands beyond the direct carriage bound, so they check protocol version
 //// 11's argument bounds themselves before binding: every byte-string argument
-//// of a bounded builtin is at most 65,536 bytes, and every integer argument and
-//// result of the integer builtins (but equalsInteger) is in
-//// [-2^262143, 2^262143 - 1]. A success past a bound is refused.
+//// of a bounded builtin is at most 65,536 bytes, and every integer argument of
+//// the integer builtins (but equalsInteger) is in [-2^262143, 2^262143 - 1].
+//// A success past a bound is refused. The bounds are on arguments only: a
+//// result past the integer range is a success, as on L1.
 
 use aiken/builtin
 use aiken/cbor
@@ -409,11 +410,9 @@ fn canonical_of_signed_v1(integer: SignedLimbsV1) -> CanonicalIntegerV1 {
   }
 }
 
-/// True when `result` (compacted) is the integer `integer`, which must be in
-/// range: past it the builtin fails.
+/// True when `result` (compacted) is the integer `integer`.
 fn result_is_integer_v1(result: ValueWitnessV1, integer: SignedLimbsV1) -> Bool {
   let canonical = canonical_of_signed_v1(integer)
-  expect integer_in_range_v1(canonical)
   let integer_cbor = encode_integer_cbor_bulk_v1(canonical)
   let words = magnitude_words_v1(canonical)
   result == SemanticConstantValue {

@@ -543,15 +543,15 @@
       "witnessHash": "0810b1aaf8b477e703b8ec8a99c7578b65c6ed39bee7e4c0bff95734c06b16c9"
     },
     {
-      "name": "refuses_a_sum_one_past_the_largest",
+      "name": "admits_a_sum_one_past_the_largest",
       "tag": 0,
-      "accepts": false,
+      "accepts": true,
       "witnessHash": "2367ceb0655428b30a4cd61cdf34591cdad338e15cf00bd96eed502bc0ebed03"
     },
     {
-      "name": "refuses_a_difference_one_past_the_smallest",
+      "name": "admits_a_difference_one_past_the_smallest",
       "tag": 1,
-      "accepts": false,
+      "accepts": true,
       "witnessHash": "e13e14a216e931432eee6a3a6a84cb1b0b2b346c234dd0f313572dbbfca664ed"
     }
   ]

@@ -104,7 +104,7 @@ fn half() -> Int {
   power_of_two(262142) - 1
 }
 
-/// 2^262143 - 1, the largest integer argument and result.
+/// 2^262143 - 1, the largest integer argument.
 fn top() -> Int {
   half() + half() + 1
 }
@@ -318,7 +318,7 @@ test refuses_a_sum_typed_as_a_byte_string() fail {
   staged_pair(0, left, right, bytes_value(cbor.serialise(left + right), False))
 }
 
-// ## Argument and result range
+// ## Argument range (a result past it is a success)
 
 test refuses_an_argument_one_past_the_largest() fail {
   staged_and_inline(0, past_top(), -1, integer_value(top()))
@@ -344,12 +344,16 @@ test refuses_an_order_of_an_argument_past_the_range() fail {
   staged_and_inline(8, past_top(), 0, boolean_value(False))
 }
 
-test refuses_a_sum_one_past_the_largest() fail {
+test admits_a_sum_one_past_the_largest() {
   staged_and_inline(0, top(), 1, integer_value(past_top()))
 }
 
-test refuses_a_difference_one_past_the_smallest() fail {
+test admits_a_difference_one_past_the_smallest() {
   staged_and_inline(1, bottom(), 1, semantic_integer_cbor(past_bottom_cbor()))
+}
+
+test refuses_a_wrong_sum_one_past_the_largest() fail {
+  staged_and_inline(0, top(), 1, integer_value(top()))
 }
 
 // ## Binding

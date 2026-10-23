@@ -4592,7 +4592,7 @@ test refuses_an_order_of_an_argument_past_the_range() fail {
   spend_staged_integer(refuses_an_order_of_an_argument_past_the_range_step())
 }
 
-fn refuses_a_sum_one_past_the_largest_step() -> StagedStepV1 {
+fn admits_a_sum_one_past_the_largest_step() -> StagedStepV1 {
   let staging = stage_pieces(
     [
       [
@@ -4645,18 +4645,18 @@ fn refuses_a_sum_one_past_the_largest_step() -> StagedStepV1 {
   )
 }
 
-test refuses_a_sum_one_past_the_largest_has_the_typescript_witness() {
-  let step = refuses_a_sum_one_past_the_largest_step()
+test admits_a_sum_one_past_the_largest_has_the_typescript_witness() {
+  let step = admits_a_sum_one_past_the_largest_step()
   expect Some(datum) = step.datum
   expect Some(bound) = datum.data
   bound.witness_hash == #"2367ceb0655428b30a4cd61cdf34591cdad338e15cf00bd96eed502bc0ebed03"
 }
 
-test refuses_a_sum_one_past_the_largest() fail {
-  spend_staged_integer(refuses_a_sum_one_past_the_largest_step())
+test admits_a_sum_one_past_the_largest() {
+  spend_staged_integer(admits_a_sum_one_past_the_largest_step())
 }
 
-fn refuses_a_difference_one_past_the_smallest_step() -> StagedStepV1 {
+fn admits_a_difference_one_past_the_smallest_step() -> StagedStepV1 {
   let staging = stage_pieces(
     [
       [
@@ -4709,13 +4709,13 @@ fn refuses_a_difference_one_past_the_smallest_step() -> StagedStepV1 {
   )
 }
 
-test refuses_a_difference_one_past_the_smallest_has_the_typescript_witness() {
-  let step = refuses_a_difference_one_past_the_smallest_step()
+test admits_a_difference_one_past_the_smallest_has_the_typescript_witness() {
+  let step = admits_a_difference_one_past_the_smallest_step()
   expect Some(datum) = step.datum
   expect Some(bound) = datum.data
   bound.witness_hash == #"e13e14a216e931432eee6a3a6a84cb1b0b2b346c234dd0f313572dbbfca664ed"
 }
 
-test refuses_a_difference_one_past_the_smallest() fail {
-  spend_staged_integer(refuses_a_difference_one_past_the_smallest_step())
+test admits_a_difference_one_past_the_smallest() {
+  spend_staged_integer(admits_a_difference_one_past_the_smallest_step())
 }

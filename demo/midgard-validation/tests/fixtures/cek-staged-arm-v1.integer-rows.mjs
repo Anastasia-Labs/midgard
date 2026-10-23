@@ -1,6 +1,7 @@
 /**
  * The integer rows of `cek-staged-arm-v1` (semantics group 8): honest steps,
- * wrong results, and successes past the integer range.
+ * wrong results, successes on arguments past the integer range, and results
+ * past it (a success, as on L1).
  */
 
 import {
@@ -245,7 +246,7 @@ export const INTEGER_ROWS = [
       bytes: integerCbor(value.value),
     }),
   ),
-  // B3: a success past the integer range is refused.
+  // B3: a success on an argument past the integer range is refused.
   stagedAndInline(
     "refuses_an_argument_one_past_the_largest",
     false,
@@ -274,16 +275,11 @@ export const INTEGER_ROWS = [
     PAST_TOP,
     small(0n),
   ),
+  // A result past the integer range is a success.
+  stagedAndInline("admits_a_sum_one_past_the_largest", true, 0, TOP, small(1n)),
   stagedAndInline(
-    "refuses_a_sum_one_past_the_largest",
-    false,
-    0,
-    TOP,
-    small(1n),
-  ),
-  stagedAndInline(
-    "refuses_a_difference_one_past_the_smallest",
-    false,
+    "admits_a_difference_one_past_the_smallest",
+    true,
     1,
     BOTTOM,
     small(1n),

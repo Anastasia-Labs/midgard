@@ -7,8 +7,9 @@
  * source, and the builtin's result is computed by the same value-level
  * relation the direct route uses. Arguments past protocol version 11's
  * bounds (65,536 bytes for a byte-string argument of a bounded builtin, and
- * [-2^262143, 2^262143 - 1] for an integer argument or result of an integer
- * builtin but equalsInteger) are refused.
+ * [-2^262143, 2^262143 - 1] for an integer argument of an integer builtin
+ * but equalsInteger) are refused. The bounds are on arguments only: a result
+ * past the integer range is a success, as on L1.
  */
 import {
   bindMidgardCekStagedOperand,
@@ -17,7 +18,6 @@ import {
   midgardCekBytesMemoryWords,
   type MidgardCekCanonicalInteger,
   midgardCekCanonicalIntegerMagnitudeWords,
-  midgardCekCanonicalIntegerOf,
   midgardCekCanonicalIntegerValue,
   midgardCekDataBytesCborLength,
   midgardCekFlatRoot,
@@ -366,12 +366,6 @@ const verifyInteger = (inputs: ArmInputs): boolean => {
     CEKConst.int(right.integer),
   ]);
   if (result === "failure") return false;
-  if (
-    typeof result.value === "bigint" &&
-    !integerInRange(midgardCekCanonicalIntegerOf(result.value))
-  ) {
-    return false;
-  }
   return sameCompacted(inputs.result, compactValue(result));
 };
 
