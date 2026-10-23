@@ -63,6 +63,10 @@ export const runtimeFunding = async (
     supersededAttemptFundingOutRefs?: readonly (readonly string[])[];
     /** One more reserved funding coin, holding a token beside its ada. */
     tokenFunding?: Readonly<{ outRef: string; lovelace: bigint; unit: string }>;
+    /** The action the reservation begins, in place of `actionKind`'s. */
+    action?: FraudProofWorkflowAction;
+    /** Further confirmed workflow outputs, beside `confirmedInput`. */
+    confirmedInputs?: readonly UTxO[];
   }> = {},
 ) => {
   const actuation = await admittedActuation();
@@ -180,7 +184,16 @@ export const runtimeFunding = async (
       load: async () => currentSnapshot,
       resolveInputs,
       resolveConfirmedInput: async ({ outRef }) => {
-        const input = options.confirmedInput;
+        const input = [
+          ...(options.confirmedInput === undefined
+            ? []
+            : [options.confirmedInput]),
+          ...(options.confirmedInputs ?? []),
+        ].find(
+          (candidate) =>
+            outRef ===
+            `${candidate.txHash}#${candidate.outputIndex.toString()}`,
+        );
         if (
           input === undefined ||
           outRef !== `${input.txHash}#${input.outputIndex.toString()}`
@@ -218,7 +231,7 @@ export const runtimeFunding = async (
   const begin = () =>
     beginWorkflowFundingReservationAction({
       journal,
-      action: {
+      action: options.action ?? {
         actionId: actionKind,
         input: options.useStage ? { stage: actionKind } : { actionKind },
       },
@@ -272,6 +285,7 @@ export const signedFundingTransaction = (input: {
   readonly redeemerMemory?: bigint;
   readonly signingKey?: CML.PrivateKey;
   readonly nonCanonicalBody?: boolean;
+  readonly mint?: CML.Mint;
 }): TxSigned => {
   const inputs = CML.TransactionInputList.new();
   for (const outRef of input.inputOutRefs) {
@@ -292,6 +306,7 @@ export const signedFundingTransaction = (input: {
   );
   for (const output of input.additionalOutputs ?? []) outputs.add(output);
   let body = CML.TransactionBody.new(inputs, outputs, input.fee ?? 200_000n);
+  if (input.mint !== undefined) body.set_mint(input.mint);
   if (input.collateral !== undefined) {
     const collateral = CML.TransactionInputList.new();
     for (const outRef of input.collateral.outRefs) {

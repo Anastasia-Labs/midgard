@@ -22,11 +22,18 @@ import {
 import type { FraudProofRawL1Snapshot } from "./raw-l1-snapshot.js";
 
 /** The removal that took the header out of the state queue, the record it
- * cited, and the removal's depth on the observed chain. */
+ * cited, and the removal's depth on the observed chain. `standingThread` is
+ * a computation thread of ours that still holds funds on the header: the run
+ * reclaims it before it may resolve. */
 export type FraudProofResolvedByAnotherRecord = Readonly<{
   removalTxHash: string;
   referencedProofTokenOutRef: string;
   confirmationDepth: number;
+  standingThread?: Readonly<{
+    threadOutRef: string;
+    step: number;
+    lovelace: string;
+  }>;
 }>;
 
 /** Thrown by the stage derivation when the header is gone through a record's

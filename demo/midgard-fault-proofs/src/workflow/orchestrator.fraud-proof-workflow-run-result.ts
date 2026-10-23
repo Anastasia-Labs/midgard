@@ -5,6 +5,7 @@ import {
   type FraudProofWorkflowJournalEvent,
   type FraudProofWorkflowTerminal,
 } from "./journal.js";
+import type { FraudProofThreadReclaim } from "./own-thread-reclaim.js";
 import type { FraudProofResolvedByAnotherRecord } from "./resolved-by-another-record.js";
 
 export const attemptCount = (
@@ -119,6 +120,12 @@ export type FraudProofWorkflowRunResult =
       readonly identity: FraudProofWorkflowIdentity;
       readonly resolution: FraudProofResolvedByAnotherRecord;
       readonly entries: readonly FraudProofWorkflowJournalEntry[];
+      /**
+       * Our threads on the header that this run cancelled before resolving,
+       * their value returned to our wallet: our own deposit back, never a
+       * reward. Absent when there were none.
+       */
+      readonly reclaimed?: readonly FraudProofThreadReclaim[];
     }
   | {
       readonly kind: "pending" | "stalled";

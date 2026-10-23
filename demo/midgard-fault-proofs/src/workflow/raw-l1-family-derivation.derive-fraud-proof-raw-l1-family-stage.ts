@@ -1,7 +1,6 @@
 import { CML } from "@lucid-evolution/lucid";
 
 import { selectOwnFraudProofRecord } from "../fraud-proof-record-selection.js";
-import type { ComputationThreadStep } from "./computation-thread-steps.js";
 import { type FraudProofWorkflowTerminal } from "./journal.js";
 import { historicalTransactions } from "./raw-l1-family-derivation.derive-retained-state-queue-header-observation-from-raw-l1.js";
 import {
@@ -11,13 +10,16 @@ import {
 } from "./raw-l1-family-derivation.derive-terminal.js";
 import type { FraudProofRawL1HistoryReader } from "./raw-l1-family-derivation.lost-defense-slash.js";
 import {
+  ownThread,
+  standingThreadOf,
+} from "./raw-l1-family-derivation.own-thread.js";
+import {
   FraudProofRawL1DerivationError,
   type FraudProofRawL1FamilyDefinition,
   type FraudProofRawL1FamilyStage,
   type FraudProofRawL1TerminalDefinition,
   mintQuantity,
   outRef,
-  ownsThread,
   scope,
   stateQueueTopology,
   unitHolders,
@@ -73,57 +75,6 @@ const ownProof = ({
           ),
       ),
   });
-
-/**
- * Our live computation thread on the header. Init, Open and a case's
- * VerifySource let any number of threads stand on one header, each carrying
- * the same unit; another prover's, or one whose datum does not decode, is no
- * part of our workflow. Among ours the newest comes first, so the successor
- * our own last move created stays the thread we act on, then the furthest
- * step, then the lowest out-ref.
- */
-const ownThread = ({
-  snapshot,
-  definition,
-  threadUnit,
-}: {
-  readonly snapshot: FraudProofRawL1Snapshot;
-  readonly definition: FraudProofRawL1FamilyDefinition;
-  readonly threadUnit: string;
-}):
-  | { readonly step: ComputationThreadStep; readonly raw: FraudProofRawL1Utxo }
-  | undefined => {
-  const createdAt = new Map(
-    snapshot.transactions.map(
-      (transaction) =>
-        [transaction.txHash, BigInt(transaction.inclusionPoint.slot)] as const,
-    ),
-  );
-  const created = (raw: FraudProofRawL1Utxo) =>
-    createdAt.get(raw.outRef.split("#")[0]!) ?? -1n;
-  const threads = definition.computationThread.steps.flatMap((step, index) =>
-    unitHolders({ snapshot, role: step.role, unit: threadUnit })
-      .filter((raw) =>
-        ownsThread({
-          raw,
-          schema: step.datumSchema,
-          proverCredential: definition.proverCredential,
-        }),
-      )
-      .map((raw) => ({ step: (index + 1) as ComputationThreadStep, raw })),
-  );
-  return threads.reduce<(typeof threads)[number] | undefined>(
-    (best, candidate) => {
-      if (best === undefined) return candidate;
-      const age = created(candidate.raw) - created(best.raw);
-      if (age !== 0n) return age > 0n ? candidate : best;
-      if (candidate.step !== best.step)
-        return candidate.step > best.step ? candidate : best;
-      return candidate.raw.outRef < best.raw.outRef ? candidate : best;
-    },
-    undefined,
-  );
-};
 
 const assertStepAddresses = (
   snapshot: FraudProofRawL1Snapshot,
@@ -224,10 +175,18 @@ const deriveStage = async ({
       return { kind: "removed", terminal: derived.terminal };
     // No terminal of ours stands. A removal against a record of the header,
     // whoever's, resolved it; any other exit leaves a derivation failure,
-    // which the orchestrator records as a stall.
+    // which the orchestrator records as a stall. A thread of ours still
+    // standing travels with the resolution: its funds are reclaimed before
+    // the objective may resolve.
     const resolution = recordBackedRemoval({ snapshot, definition, stateUnit });
-    if (resolution !== undefined)
-      throw new FraudProofResolvedByAnotherRecordError(resolution);
+    if (resolution !== undefined) {
+      const standing = ownThread({ snapshot, definition, threadUnit });
+      throw new FraudProofResolvedByAnotherRecordError(
+        standing === undefined
+          ? resolution
+          : { ...resolution, standingThread: standingThreadOf(standing) },
+      );
+    }
     throw new Error(
       derived === undefined
         ? "fraudulent header disappeared without a retained proof token"

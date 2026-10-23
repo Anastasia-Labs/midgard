@@ -25,6 +25,12 @@ import type {
   FraudProofL1Source,
   FraudProofSignedTransactionRecovery,
 } from "../workflow/l1-source.js";
+import { createLinearCancelReclaimPort } from "../workflow/own-thread-reclaim.linear-cancel-port.js";
+import type { OwnThreadReclaimPort } from "../workflow/own-thread-reclaim.with-own-thread-reclaim.js";
+import {
+  type FraudProofResolvedByAnotherRecord,
+  isFraudProofResolvedByAnotherRecordError,
+} from "../workflow/resolved-by-another-record.js";
 import {
   createMintItemNonCanonicalCentralJournalAdapter,
   MintItemWorkflowRecoveryPendingError,
@@ -48,6 +54,7 @@ import {
   type ManifestBoundMintItemNonCanonicalConfig,
   MINT_ITEM_NON_CANONICAL_WORKFLOW,
 } from "./workflow.load-manifest-bound-mint-item-non-canonical-config.js";
+import { resolveMintItemByAnotherRecord } from "./workflow.resolve-mint-item-by-another-record.js";
 
 export const loadMintItemNonCanonicalRuntime = async (
   input: MintItemNonCanonicalRuntimeLoader,
@@ -117,6 +124,9 @@ export type ManifestBoundMintItemNonCanonicalWorkflow = Readonly<{
   binding: FraudProofWorkflowDeploymentBinding<"mintItemNonCanonical">;
   l1: FraudProofFamilyL1ObservationPort<FraudProofCatalogueCategoryName> &
     FraudProofSignedTransactionRecovery;
+  /** The cancel of one of our threads, to reclaim it from a header another
+   * record removed. Absent, such a thread holds under the operator's alarm. */
+  reclaim?: OwnThreadReclaimPort;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   decisionDigest: string;
 }>;
@@ -132,11 +142,35 @@ export const createManifestBoundMintItemNonCanonicalWorkflow = async (
     releaseEconomics: config.binding.releaseEconomics,
     definition: config.binding.definition,
   });
+  const { observeOwnThreads } = l1;
+  const reclaim =
+    observeOwnThreads === undefined
+      ? undefined
+      : createLinearCancelReclaimPort({
+          family: "mint-item-non-canonical",
+          lucid: config.lucid,
+          signer: config.signer,
+          categoryId: config.binding.resolvedContracts.category.categoryId,
+          contracts: () => config.contracts,
+          stepReferences: [
+            config.referenceScripts.step01,
+            config.referenceScripts.step02,
+            config.referenceScripts.step03,
+            config.referenceScripts.step04,
+          ],
+          witnessReferenceScripts: config.referenceScripts.witnesses,
+          l1: {
+            observeOwnThreads,
+            observeSignedTransaction: l1.observeSignedTransaction,
+            rebroadcastSignedTransaction: l1.rebroadcastSignedTransaction,
+          },
+        });
   return Object.freeze({
     workflowVersion: MINT_ITEM_NON_CANONICAL_WORKFLOW,
     config,
     binding: config.binding,
     l1,
+    ...(reclaim === undefined ? {} : { reclaim }),
     stateQueueMutationLeaseCoordinator:
       input.stateQueueMutationLeaseCoordinator,
     decisionDigest: input.decisionDigest,
@@ -236,6 +270,17 @@ export const executeManifestBoundMintItemNonCanonicalWorkflow = async ({
     transactionConfirmed: async (txHash) =>
       await workflow.l1.transactionConfirmed({ headerHash, txHash }),
   });
+  // Removed against a record this run did not create: reclaim any thread of
+  // ours first, then resolve, never as our conviction.
+  const otherRecord = async (resolution: FraudProofResolvedByAnotherRecord) =>
+    await resolveMintItemByAnotherRecord({
+      journal,
+      centralJournal,
+      headerHash,
+      releaseFinality: workflow.binding.releaseFinality,
+      reclaim: workflow.reclaim,
+      resolution,
+    });
   const finish = async (
     terminal: Parameters<typeof centralJournal.finish>[0]["candidate"],
   ) => {
@@ -245,9 +290,16 @@ export const executeManifestBoundMintItemNonCanonicalWorkflow = async ({
       verifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(
         workflow.l1,
       ),
+      otherRecord,
     });
   };
-  const observed = await workflow.l1.observe({ headerHash });
+  let observed;
+  try {
+    observed = await workflow.l1.observe({ headerHash });
+  } catch (cause) {
+    if (!isFraudProofResolvedByAnotherRecordError(cause)) throw cause;
+    return await otherRecord(cause.resolution);
+  }
   try {
     await centralJournal.reconcile(mintItemStageFromL1(observed.stage));
   } catch (cause) {
@@ -296,6 +348,8 @@ export const executeManifestBoundMintItemNonCanonicalWorkflow = async ({
   try {
     result = await runtime.runOrResume(evidence);
   } catch (failure) {
+    if (isFraudProofResolvedByAnotherRecordError(failure))
+      return await otherRecord(failure.resolution);
     // As in the shared orchestrator's preflight, a build the prover wallet
     // cannot fund pauses until a top-up: the idle reservation is released
     // (only once every recorded attempt is resolved), and a later
@@ -322,7 +376,13 @@ export const executeManifestBoundMintItemNonCanonicalWorkflow = async ({
     };
   }
   if (result !== "removed") return result;
-  const removed = await workflow.l1.observe({ headerHash });
+  let removed;
+  try {
+    removed = await workflow.l1.observe({ headerHash });
+  } catch (cause) {
+    if (!isFraudProofResolvedByAnotherRecordError(cause)) throw cause;
+    return await otherRecord(cause.resolution);
+  }
   if (removed.stage.kind !== "removed")
     throw new Error(
       "mintItemNonCanonical removal changed before terminal verification",

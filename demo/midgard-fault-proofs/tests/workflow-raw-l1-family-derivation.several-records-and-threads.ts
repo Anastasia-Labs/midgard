@@ -16,6 +16,7 @@ import {
   type FraudProofRawL1Snapshot,
   type FraudProofRawL1Utxo,
 } from "../src/workflow/index.js";
+import { deriveFraudProofRawL1OwnThreads } from "../src/workflow/raw-l1-family-derivation.own-thread.js";
 import {
   fixture,
   hash32,
@@ -87,6 +88,52 @@ const derive = (
     releaseEconomics,
   }),
 });
+
+/** `snapshot` with `threads` standing at their steps, each naming its
+ * prover. */
+const withThreads = (
+  snapshot: FraudProofRawL1Snapshot,
+  definition: FraudProofRawL1FamilyDefinition,
+  threads: readonly {
+    readonly step: number;
+    readonly outRef: string;
+    readonly prover: string;
+  }[],
+): FraudProofRawL1Snapshot => {
+  const steps = definition.computationThread.steps;
+  return {
+    ...snapshot,
+    scopes: snapshot.scopes.map((scope) => {
+      const index = steps.findIndex((step) => step.role === scope.role);
+      return index < 0
+        ? scope
+        : {
+            ...scope,
+            utxos: threads
+              .filter(({ step }) => step === index + 1)
+              .map(({ step, outRef, prover }) =>
+                raw(
+                  outRef,
+                  output({
+                    address: steps[step - 1]!.address,
+                    assets: {
+                      lovelace: 7_000_000n,
+                      [unitOf(
+                        definition,
+                        definition.computationThread.policyId,
+                      )]: 1n,
+                    },
+                    datum: Data.to(
+                      { fraud_prover: prover },
+                      FraudProofTokenDatum,
+                    ),
+                  }),
+                ),
+              ),
+          };
+    }) as FraudProofRawL1Snapshot["scopes"],
+  };
+};
 
 /** The fixture with its header live again, and `threads` standing on it. */
 const liveWithThreads = async (
@@ -206,6 +253,54 @@ describe("raw L1 derivation with several records and threads on one header", () 
       name: "FraudProofResolvedByAnotherRecordError",
       resolution,
     });
+  });
+
+  it("names our own thread still standing on a header another prover's record removed, and never another prover's", async () => {
+    const { snapshot, definition, referencedOutRef, removalTxHash } =
+      await removed();
+    const foreign = withRecords(snapshot, [
+      record(definition, referencedOutRef, OTHER_PROVER),
+    ]);
+    const ours = `${hash32("b1")}#0`;
+    const theirs = `${hash32("b2")}#0`;
+    const resolution = {
+      removalTxHash,
+      referencedProofTokenOutRef: referencedOutRef,
+    };
+    // Their thread alone: nothing of ours stands, and the run may resolve.
+    const theirsOnly = withThreads(foreign, definition, [
+      { step: 1, outRef: theirs, prover: OTHER_PROVER },
+    ]);
+    const alone = await derive(theirsOnly, definition).stage.catch(
+      (error: unknown) => error,
+    );
+    expect(alone).toMatchObject({
+      name: "FraudProofResolvedByAnotherRecordError",
+    });
+    expect(
+      (alone as { readonly resolution: object }).resolution,
+    ).not.toHaveProperty("standingThread");
+    expect(
+      deriveFraudProofRawL1OwnThreads({ snapshot: theirsOnly, definition })
+        .standing,
+    ).toBeUndefined();
+    // Ours beside theirs: ours, and only ours, is the thread to reclaim.
+    const both = withThreads(foreign, definition, [
+      { step: 1, outRef: theirs, prover: OTHER_PROVER },
+      { step: 2, outRef: ours, prover: PROVER },
+    ]);
+    const standingThread = {
+      threadOutRef: ours,
+      step: 2,
+      lovelace: "7000000",
+    };
+    await expect(derive(both, definition).stage).rejects.toMatchObject({
+      name: "FraudProofResolvedByAnotherRecordError",
+      resolution: { ...resolution, standingThread },
+    });
+    expect(
+      deriveFraudProofRawL1OwnThreads({ snapshot: both, definition }).standing,
+    ).toEqual(standingThread);
   });
 
   it("reads a header gone without a removal citing a record of it as a derivation failure, never as resolved", async () => {

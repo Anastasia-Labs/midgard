@@ -11,6 +11,7 @@ import { reconcileWorkflowFundingSupersededAttempts } from "../workflow/funding-
 import type { FraudProofWorkflowJournalEntry } from "../workflow/journal.js";
 import { lastActionEvent } from "../workflow/orchestrator.normalize-workflow-terminal.js";
 import { supersedeWorkflowFundingAttempt } from "../workflow/orchestrator.supersede-funding-attempt.js";
+import { isThreadReclaimInput } from "../workflow/own-thread-reclaim.js";
 import { reconcileSignedWorkflowTransaction } from "../workflow/signed-transaction-reconciliation.js";
 import {
   recoveryFrom,
@@ -114,7 +115,13 @@ export const createMintItemCanonicalReconciliation =
     const recovery = recoveryFrom(intent);
     const intentActionId = intent.event.actionId;
     const confirmed = await transactionConfirmed(intent.event.txHash);
-    if (confirmed && observedStage === recovery.targetStage) {
+    // A reclaim cancels one of our threads on a header already removed: its
+    // landing is the whole of its effect, whatever stage L1 now shows.
+    if (
+      confirmed &&
+      (observedStage === recovery.targetStage ||
+        isThreadReclaimInput(intent.event.actionInput))
+    ) {
       await confirmWorkflowFundingReservationTransaction({
         writer,
         transactionHash: intent.event.txHash,

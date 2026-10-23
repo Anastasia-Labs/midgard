@@ -57,6 +57,11 @@ export * from "./native-index-artifact.js";
 export * from "./no-reference-input.js";
 export * from "./non-existent-input.js";
 export * from "./orchestrator.js";
+export {
+  FRAUD_PROOF_THREAD_RECLAIM_UNAVAILABLE,
+  FRAUD_PROOF_THREAD_RECLAIM_UNFUNDED,
+  type FraudProofThreadReclaim,
+} from "./own-thread-reclaim.js";
 export * from "./proof-chunk-prerequisite.js";
 export * from "./raw-datum-preimage-prerequisite.js";
 export * from "./raw-l1-family-derivation.js";

@@ -78,6 +78,7 @@ import {
 } from "./orchestrator.normalize-workflow-terminal.js";
 import { assertWorkflowJournalReconciliation } from "./orchestrator.reconcile-superseded-attempts.js";
 import { reobserveRequiredWorkflowParent } from "./orchestrator.reobserve-required-parent.js";
+import { resolvedByAnotherRecordResult } from "./orchestrator.resolved-by-another-record.js";
 import {
   supersedeDisplacedFundingAttempt,
   supersedeWorkflowFundingAttempt,
@@ -91,7 +92,6 @@ import { type VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality
 import {
   type FraudProofResolvedByAnotherRecord,
   isFraudProofResolvedByAnotherRecordError,
-  journalAttemptsSettled,
   journalCreatedRecord,
 } from "./resolved-by-another-record.js";
 import { artifactPendingResult } from "./workflow-artifact-pending.js";
@@ -239,28 +239,17 @@ export const runAdmittedFraudProofWorkflow = async ({
       };
     }
   };
-  // Removed against a record this run did not create: done once the removal
-  // is past rollback recovery and every signed attempt of this run is
-  // settled, and never our conviction.
   const resolvedByAnotherRecord = (
     resolution: FraudProofResolvedByAnotherRecord,
   ): FraudProofWorkflowRunResult =>
-    resolution.confirmationDepth <
-    releaseFinality.policy.automaticRecoveryMaxDepth + 2
-      ? resumeOnObservation(
-          `the header was removed against another record; the removal awaits release finality`,
-        )
-      : journalAttemptsSettled(entries)
-        ? {
-            kind: "resolved_by_another_record",
-            workflowId,
-            identity,
-            resolution,
-            entries,
-          }
-        : resumeOnObservation(
-            `the header was removed against another record; this run's signed attempts are not yet settled`,
-          );
+    resolvedByAnotherRecordResult({
+      resolution,
+      workflowId,
+      identity,
+      entries,
+      releaseFinality,
+      resumeOnObservation,
+    });
 
   if (entries.length === 0) {
     if (workflowJournalIsReconciliationOnly(journal))
