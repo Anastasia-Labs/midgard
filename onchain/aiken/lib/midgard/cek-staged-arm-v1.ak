@@ -468,3 +468,196 @@ pub fn verify_staged_integer_v1(
     }
   }
 }
+
+/// The largest constant-level memory, in words, of a byte-string argument of
+/// a bounded builtin (65,536 bytes) and of an integer argument of a bounded
+/// integer builtin (2^262144 - 1 in magnitude, past which every integer is
+/// out of range).
+const max_bounded_bytes_words = 8192
+
+const max_bounded_integer_words = 4096
+
+/// True when `value` is a constant whose committed memory is past `words`.
+fn memory_past_v1(value: ValueWitnessV1, words: Int) -> Bool {
+  when value is {
+    SemanticConstantValue { memory, .. } -> memory > words
+    _ -> False
+  }
+}
+
+/// The staging outputs `material` names, to bind its sources as the success
+/// arms do.
+fn failure_inputs_v1(
+  material: StagedMaterialV1,
+  reference_inputs: List<Input>,
+) -> ArmInputsV1 {
+  ArmInputsV1 {
+    tag: 0,
+    arguments: [],
+    result: false_result,
+    runs: collect_runs_v1(reference_inputs, material.runs.refs),
+    operands: material.runs.operands,
+  }
+}
+
+/// A staged step's builtin fails (arm 36) on its arguments. Protocol version
+/// 11 fails a builtin when an argument is past its bound, before costing it,
+/// and these builtins also fail on an index outside the byte string and on
+/// bytes that are not UTF-8. The roots hop committed every argument with its
+/// type, payload summary and memory, so most failures are decided from those
+/// alone:
+///
+/// - an integer argument of addInteger, subtractInteger, multiplyInteger, the
+///   division builtins, lessThanInteger or lessThanEqualsInteger of more than
+///   4,096 words (at least 2^262144 in magnitude), or of 4,096 words whose
+///   revealed CBOR is outside [-2^262143, 2^262143 - 1];
+/// - a byte-string argument of a bounded builtin of more than 8,192 words
+///   (more than 65,536 bytes);
+/// - consByteString's byte, sliceByteString's start or length, or
+///   indexByteString's index of more than one word (at least 2^64 in
+///   magnitude, so neither a byte nor a machine integer);
+/// - indexByteString's index, revealed by its value, below zero or at or past
+///   the length its source binds;
+/// - decodeUtf8 of bytes with a valid prefix whose next character is not
+///   valid, the prefix's end given by the material's trailing source.
+///
+/// The witness carries each argument in the compacted form the roots hop
+/// commits (its value root is the same), and only compacted arguments are
+/// read. An argument at a bounded position of another type fails the builtin
+/// on its type, so a memory past the bound is a failure whatever the type.
+pub fn verify_staged_failure_v1(
+  tag: Int,
+  arguments: List<ValueWitnessV1>,
+  material: StagedMaterialV1,
+  reference_inputs: List<Input>,
+) -> Bool {
+  if tag <= 9 {
+    and {
+      tag != 7,
+      or {
+        list.any(
+          arguments,
+          fn(value) { memory_past_v1(value, max_bounded_integer_words) },
+        ),
+        integer_past_range_v1(arguments, material, reference_inputs),
+      },
+    }
+  } else if or {
+    tag >= 10 && tag <= 20 && tag != 13,
+    tag == 25,
+    tag == 71,
+    tag == 72,
+    tag == 86,
+  } {
+    let Pair(byte_arguments, integer_arguments) = cek_builtin_v1.scalar_operands_v1(
+      tag,
+      arguments,
+    )
+    or {
+      list.any(
+        byte_arguments,
+        fn(value) { memory_past_v1(value, max_bounded_bytes_words) },
+      ),
+      list.any(integer_arguments, fn(value) { memory_past_v1(value, 1) }),
+      and {
+        tag == 14,
+        index_past_end_v1(arguments, material, reference_inputs),
+      },
+      and {
+        tag == 25,
+        not_utf8_v1(arguments, material, reference_inputs),
+      },
+    }
+  } else {
+    False
+  }
+}
+
+/// An integer argument of 4,096 words, bound to its CBOR by its source, is
+/// outside the range. The band holds integers on both sides of the bounds.
+fn integer_past_range_v1(
+  values: List<ValueWitnessV1>,
+  material: StagedMaterialV1,
+  reference_inputs: List<Input>,
+) -> Bool {
+  let inputs = failure_inputs_v1(material, reference_inputs)
+  list.any(
+    zip_arguments_v1(values, material.sources),
+    fn(argument) {
+      let Pair(value, _) = argument
+      when value is {
+        SemanticConstantValue { memory, .. } ->
+          memory == max_bounded_integer_words && when
+            bind_integer_v1(inputs, argument, False)
+          is {
+            Pair(_, Some(integer)) -> !integer_in_range_v1(integer)
+            _ -> False
+          }
+        _ -> False
+      }
+    },
+  )
+}
+
+/// indexByteString's index, a one-word integer revealed by its value, is
+/// below zero or at or past the byte string's length. The source need not
+/// reveal the bytes: their leaf binds the length.
+fn index_past_end_v1(
+  values: List<ValueWitnessV1>,
+  material: StagedMaterialV1,
+  reference_inputs: List<Input>,
+) -> Bool {
+  expect [bytes, index] = values
+  expect [source, SmallIntegerOperand { value }] = material.sources
+  let integer_cbor = cbor.serialise(value)
+  expect
+    index == SemanticConstantValue {
+      type_cbor: integer_type_cbor,
+      payload: integer_leaf_from_cbor_v1(
+        flat_root_v1(integer_cbor),
+        builtin.length_of_bytearray(integer_cbor),
+        1,
+      ),
+      memory: 1,
+    }
+  let operand = bind_bytes_v1(
+    failure_inputs_v1(material, reference_inputs),
+    Pair(bytes, source),
+    False,
+    True,
+  )
+  value < 0 || value >= operand.length
+}
+
+/// decodeUtf8's operand is not UTF-8. Its bytes up to the given offset
+/// decode, so in any decoding of the whole a character starts there; the
+/// sequence starting there, as long as its first byte says, is not one.
+fn not_utf8_v1(
+  values: List<ValueWitnessV1>,
+  material: StagedMaterialV1,
+  reference_inputs: List<Input>,
+) -> Bool {
+  expect [bytes] = values
+  expect [source, SmallIntegerOperand { value: valid }] = material.sources
+  let operand = bind_bytes_v1(
+    failure_inputs_v1(material, reference_inputs),
+    Pair(bytes, source),
+    False,
+    True,
+  )
+  expect Some(pieces) = operand.pieces
+  let whole = concat_balanced_v1(pieces)
+  let prefix = builtin.slice_bytearray(0, valid, whole)
+  expect builtin.encode_utf8(builtin.decode_utf8(prefix)) == prefix
+  let lead = builtin.index_bytearray(whole, valid)
+  let width = if lead < 0xc0 {
+    1
+  } else if lead < 0xe0 {
+    2
+  } else if lead < 0xf0 {
+    3
+  } else {
+    4
+  }
+  !cek_builtin_v1.is_valid_utf8_v1(builtin.slice_bytearray(valid, width, whole))
+}

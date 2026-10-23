@@ -2,7 +2,7 @@ import { defineDeploymentFamily } from "../members.types.js";
 
 /** The CEK core's semantics steps over staged operands: the byte-string and
  * string builtins (index 7), and the linear integer builtins (index 8). */
-export const validationTraceCekCoreStagedMembers = defineDeploymentFamily(
+const validationTraceCekCoreStagedOperandMembers = defineDeploymentFamily(
   "validationTraceDispute",
   {
     validationTraceDisputeCekCoreStagedBytes: {
@@ -29,3 +29,31 @@ export const validationTraceCekCoreStagedMembers = defineDeploymentFamily(
     },
   },
 );
+
+const stagedInteger =
+  validationTraceCekCoreStagedOperandMembers.validationTraceDisputeCekCoreStagedInteger;
+
+/** The failure hop of the byte-string, string and integer builtins, which
+ * group 7's roots route those builtins to, placed directly after the staged
+ * integer member. */
+const validationTraceCekCoreStagedFailureMembers = defineDeploymentFamily(
+  "validationTraceDispute",
+  {
+    validationTraceDisputeCekCoreStagedFailure: {
+      purpose: "spend",
+      referenceRole: "V1 validation-trace CEK core staged failure",
+      manifestPosition: stagedInteger.manifestPosition + 1,
+      publicationPosition: stagedInteger.publicationPosition + 1,
+      referenceRolePosition: stagedInteger.referenceRolePosition + 1,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/validation_trace/cek_core_staged_failure.main.spend",
+      familyPaths: [["cekCoreStages", "stagedFailure"]],
+    },
+  },
+);
+
+export const validationTraceCekCoreStagedMembers = Object.freeze({
+  ...validationTraceCekCoreStagedOperandMembers,
+  ...validationTraceCekCoreStagedFailureMembers,
+});

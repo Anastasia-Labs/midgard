@@ -12,6 +12,7 @@ use midgard/fraud_proofs/common.{cancel}
 
 validator main(
   material_script_hash: ScriptHash,
+  staged_failure_script_hash: ScriptHash,
   computation_thread_policy_id: PolicyId,
 ) {
   spend(
@@ -61,8 +62,15 @@ validator main(
             0,
             0,
           )
+        // The byte-string, string and integer builtins fail on their
+        // arguments' bounds or content at the staged failure hop; the Data
+        // builtins on their material at the material hop.
         chain.continue_core(
-          material_script_hash,
+          if tag < 26 || tag == 71 || tag == 72 || tag == 86 {
+            staged_failure_script_hash
+          } else {
+            material_script_hash
+          },
           computation_thread_policy_id,
           step,
           action,

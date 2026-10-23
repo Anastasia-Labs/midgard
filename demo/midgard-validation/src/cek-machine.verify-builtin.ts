@@ -26,6 +26,7 @@ import {
 import {
   errorSuccessor,
   exactState,
+  midgardCekBuiltinArgumentCount,
   sameState,
 } from "./cek-machine.midgard-cek-builtin-argument-count.js";
 import {
@@ -50,6 +51,8 @@ import {
   verifySemanticChooseData,
   verifySemanticList,
 } from "./cek-machine.verify-semantic-list.js";
+import { verifyMidgardCekStagedBuiltinFailure } from "./cek-staged-builtin.failure.js";
+import type { MidgardCekStagedBuiltinMaterial } from "./cek-staged-builtin.material.js";
 import {
   midgardCekPlaceholderStaging,
   midgardCekStagedReferenceInputs,
@@ -88,12 +91,10 @@ const verifySemanticBuiltin = (
  * holding its run of the witness's staged operands. A step not yet staged
  * is read as staged on placeholder outputs.
  */
-const verifyStagedBuiltin = (
-  witness: Extract<
-    MidgardCekCoreStepWitness,
-    { readonly kind: "executeBuiltinStaged" }
-  >,
-): boolean => {
+const stagedMaterial = (witness: {
+  readonly material: MidgardCekStagedBuiltinMaterial;
+  readonly stagedOperands: readonly Uint8Array[];
+}) => {
   const staged =
     witness.material.runs.operands.length === witness.stagedOperands.length
       ? witness.material
@@ -102,12 +103,43 @@ const verifyStagedBuiltin = (
           witness.stagedOperands,
           midgardCekPlaceholderStaging(witness.stagedOperands),
         );
+  return {
+    staged,
+    referenceInputs: midgardCekStagedReferenceInputs(
+      staged,
+      witness.stagedOperands,
+    ),
+  };
+};
+
+const verifyStagedBuiltin = (
+  witness: Extract<
+    MidgardCekCoreStepWitness,
+    { readonly kind: "executeBuiltinStaged" }
+  >,
+): boolean => {
+  const { staged, referenceInputs } = stagedMaterial(witness);
   return verifyMidgardCekStagedBuiltin(
     witness.tag,
     witness.arguments,
     witness.result,
     staged,
-    midgardCekStagedReferenceInputs(staged, witness.stagedOperands),
+    referenceInputs,
+  );
+};
+
+const verifyStagedBuiltinFailure = (
+  witness: Extract<
+    MidgardCekCoreStepWitness,
+    { readonly kind: "executeBuiltinStagedFailure" }
+  >,
+): boolean => {
+  const { staged, referenceInputs } = stagedMaterial(witness);
+  return verifyMidgardCekStagedBuiltinFailure(
+    witness.tag,
+    witness.arguments,
+    staged,
+    referenceInputs,
   );
 };
 
@@ -276,6 +308,17 @@ const verifyBuiltin = (
           auxiliary: MidgardCekErrorCodes.BuiltinFailure,
         }),
       )
+    );
+  }
+  if (witness.kind === "executeBuiltinStagedFailure") {
+    // The roots hop fixes a zero budget: every one of these failures is
+    // raised before the builtin is costed.
+    return (
+      BigInt(witness.arguments.length) ===
+        midgardCekBuiltinArgumentCount(witness.tag) &&
+      builtinRootMatches(pre, witness.tag, witness.arguments) &&
+      verifyStagedBuiltinFailure(witness) &&
+      sameState(post, errorSuccessor(pre, MidgardCekErrorCodes.BuiltinFailure))
     );
   }
   if (witness.kind === "executeBuiltinTypeFailure") {

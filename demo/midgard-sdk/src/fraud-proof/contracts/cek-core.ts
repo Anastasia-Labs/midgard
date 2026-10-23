@@ -48,6 +48,7 @@ export const CEK_CORE_STAGE_TITLES = {
   ),
   stagedBytes: deployedTitle("validationTraceDisputeCekCoreStagedBytes"),
   stagedInteger: deployedTitle("validationTraceDisputeCekCoreStagedInteger"),
+  stagedFailure: deployedTitle("validationTraceDisputeCekCoreStagedFailure"),
   semanticBudget: deployedTitle(
     "validationTraceDisputeCekCoreDirectScalarBudget",
   ),
@@ -131,6 +132,7 @@ export const buildCekCoreStages = (
   const stagedInteger = terminal("stagedInteger");
   const mapStartNodes = terminal("mapStartNodes");
   const semanticFailureMaterial = terminal("semanticFailureMaterial");
+  const stagedFailure = terminal("stagedFailure");
   const blsFinal = terminal("blsFinal");
   const failureBudget = terminal("failureBudget");
   const typeFailureKinds = terminal("typeFailureKinds");
@@ -182,6 +184,7 @@ export const buildCekCoreStages = (
   ]);
   const semanticFailureRoots = build("semanticFailureRoots", [
     semanticFailureMaterial.spendingScriptHash,
+    stagedFailure.spendingScriptHash,
     ctPolicy,
   ]);
   const blsRoots = build("blsRoots", [blsFinal.spendingScriptHash, ctPolicy]);
@@ -223,6 +226,7 @@ export const buildCekCoreStages = (
     mapStartRoots,
     semanticFailureMaterial,
     semanticFailureRoots,
+    stagedFailure,
     blsFinal,
     blsBudget,
     blsRoots,
@@ -329,6 +333,10 @@ export const CEK_CORE_STAGE_REFERENCES = {
   stagedInteger: {
     deployment: "validationTraceDisputeCekCoreStagedInteger",
     role: "V1 validation-trace CEK core staged integer",
+  },
+  stagedFailure: {
+    deployment: "validationTraceDisputeCekCoreStagedFailure",
+    role: "V1 validation-trace CEK core staged failure",
   },
   semanticBudget: {
     deployment: "validationTraceDisputeCekCoreSemanticBudget",

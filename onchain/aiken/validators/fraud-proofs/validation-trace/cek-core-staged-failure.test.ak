@@ -1,0 +1,764 @@
+//// Transaction-level rows for the staged failure step (arm 36, group 7,
+//// progress 1): a byte-string, string or integer builtin that fails on an
+//// argument past protocol version 11's bounds, on an index outside its byte
+//// string, or on bytes that are not UTF-8. The step must accept exactly the
+//// failures Cardano raises, and the roots hop must route these builtins to
+//// it.
+
+use aiken/builtin
+use aiken/cbor
+use aiken/collection/list
+use cardano/transaction.{Transaction}
+use fraud_proofs/validation_trace/cek_core_semantic_failure_roots as failure_roots
+use fraud_proofs/validation_trace/cek_core_staged_failure as staged_failure
+use midgard/cek_builtin_v1.{ValueWitnessV1}
+use midgard/cek_cost_v1 as cost
+use midgard/cek_machine_v1 as machine
+use midgard/cek_proof_v1 as proof
+use midgard/cek_semantic_chain as chain
+use midgard/cek_staged_arm_v1.{
+  BytesLeafOperand, InlineOperand, IntegerLeafOperand, OperandSourceV1,
+  SmallIntegerOperand, StagedMaterialV1, verify_staged_failure_v1,
+}
+use midgard/cek_staged_blob_v1.{flat_root_v1}
+use midgard/cek_staged_integer_cbor_v1.{
+  encode_integer_cbor_bulk_v1, parse_integer_cbor_bulk_v1,
+}
+use midgard/cek_staged_integer_v1.{CanonicalIntegerV1, magnitude_words_v1}
+use midgard/computation_thread as ct
+use midgard/fraud_proofs/cek_staged_fixture_v1.{
+  StagedStepV1, StagingV1, bytes_value, compact, failure_step, failure_step_at,
+  integer_value, material, no_staging, pattern, power_of_two,
+  semantic_integer_cbor, semantic_pieces, stage, staged, text, zeros,
+}
+use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
+
+// ## Spending
+
+fn spend(step: StagedStepV1) -> Bool {
+  staged_failure.main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    step.datum,
+    step.redeemer,
+    fixture.own_out_ref(),
+    step.transaction,
+  )
+}
+
+/// Spends the failure step for `tag` over `arguments`, carried compacted as
+/// the roots hop commits them, with `sources` over `staging`.
+fn fails(
+  tag: Int,
+  arguments: List<ValueWitnessV1>,
+  staging: StagingV1,
+  sources: List<OperandSourceV1>,
+) -> Bool {
+  spend(
+    failure_step(
+      tag,
+      list.map(arguments, compact),
+      material(staging, sources),
+      staging.reference_inputs,
+    ),
+  )
+}
+
+/// Spends the failure step deciding from the committed arguments alone.
+fn fails_on_arguments(tag: Int, arguments: List<ValueWitnessV1>) -> Bool {
+  fails(tag, arguments, no_staging(), [])
+}
+
+/// The staged failure check itself, which a refused step fails on: True when
+/// it decides that `tag` fails over `arguments`.
+fn decides(
+  tag: Int,
+  arguments: List<ValueWitnessV1>,
+  staging: StagingV1,
+  sources: List<OperandSourceV1>,
+) -> Bool {
+  verify_staged_failure_v1(
+    tag,
+    list.map(arguments, compact),
+    material(staging, sources),
+    staging.reference_inputs,
+  )
+}
+
+fn decides_on_arguments(tag: Int, arguments: List<ValueWitnessV1>) -> Bool {
+  decides(tag, arguments, no_staging(), [])
+}
+
+// ## Values
+
+/// A byte string of 65,537 bytes, one past the bound, as the roots hop
+/// commits it.
+fn past_bound_bytes() -> ValueWitnessV1 {
+  semantic_pieces([pattern(65536, 0), #"01"], False)
+}
+
+/// A byte string of exactly 65,536 bytes.
+fn at_bound_bytes() -> ValueWitnessV1 {
+  semantic_pieces([pattern(65536, 0)], False)
+}
+
+fn small_bytes() -> ValueWitnessV1 {
+  bytes_value(#"0102", False)
+}
+
+/// The arguments of byte-string builtin `tag` with `bytes` as every
+/// byte-string argument and small in-range integers elsewhere.
+fn bytes_arguments(tag: Int, bytes: ValueWitnessV1) -> List<ValueWitnessV1> {
+  if tag == 11 {
+    [integer_value(1), bytes]
+  } else if tag == 12 {
+    [integer_value(0), integer_value(1), bytes]
+  } else if tag == 14 {
+    [bytes, integer_value(0)]
+  } else if tag == 10 || tag >= 15 && tag <= 17 {
+    [bytes, small_bytes()]
+  } else {
+    [bytes]
+  }
+}
+
+/// The byte-string builtins with a bounded byte-string argument.
+const bounded_bytes_tags =
+  [10, 11, 12, 14, 15, 16, 17, 18, 19, 20, 25, 71, 72, 86]
+
+/// A source binding `bytes` by its leaf alone.
+fn bytes_leaf(bytes: ByteArray) -> OperandSourceV1 {
+  BytesLeafOperand {
+    root: flat_root_v1(bytes),
+    length: builtin.length_of_bytearray(bytes),
+  }
+}
+
+/// The leaf preimage of `value`.
+fn integer_leaf(value: Int) -> OperandSourceV1 {
+  let integer_cbor = cbor.serialise(value)
+  IntegerLeafOperand {
+    cbor_root: flat_root_v1(integer_cbor),
+    cbor_length: builtin.length_of_bytearray(integer_cbor),
+    words: magnitude_words_v1(parse_integer_cbor_bulk_v1(integer_cbor)),
+  }
+}
+
+/// 2^262142 - 1.
+fn half() -> Int {
+  power_of_two(262142) - 1
+}
+
+/// 2^262143 - 1, the largest integer argument.
+fn top() -> Int {
+  half() + half() + 1
+}
+
+/// -2^262143, the smallest.
+fn bottom() -> Int {
+  -top() - 1
+}
+
+/// 2^262143, one past the largest (4,096 words, like the largest).
+fn past_top_cbor() -> ByteArray {
+  cbor.serialise(power_of_two(262143))
+}
+
+/// -2^262143 - 1, one past the smallest (CBOR argument 2^262143).
+fn past_bottom_cbor() -> ByteArray {
+  encode_integer_cbor_bulk_v1(
+    CanonicalIntegerV1 {
+      negative: True,
+      argument: builtin.cons_bytearray(0x80, zeros(32767)),
+    },
+  )
+}
+
+/// 2^262144, the smallest positive integer of 4,097 words.
+fn over_band_cbor() -> ByteArray {
+  encode_integer_cbor_bulk_v1(
+    CanonicalIntegerV1 {
+      negative: False,
+      argument: builtin.cons_bytearray(1, zeros(32768)),
+    },
+  )
+}
+
+/// The integer of `bytes` magnitude bytes, past the direct carriage bound
+/// when `bytes` is over 9,215.
+fn magnitude(bytes: Int) -> Int {
+  builtin.bytearray_to_integer(True, pattern(bytes, 1))
+}
+
+// ## Byte-string arguments past 65,536 bytes
+
+test proves_every_bounded_byte_string_builtin_fails_past_65536_bytes() {
+  list.all(
+    bounded_bytes_tags,
+    fn(tag) {
+      fails_on_arguments(tag, bytes_arguments(tag, past_bound_bytes()))
+    },
+  )
+}
+
+test refuses_every_bounded_byte_string_builtin_at_65536_bytes() {
+  and {
+    list.all(
+      bounded_bytes_tags,
+      fn(tag) {
+        or {
+          tag == 14,
+          tag == 25,
+          !decides_on_arguments(tag, bytes_arguments(tag, at_bound_bytes())),
+        }
+      },
+    ),
+    !index_decides(pattern(65536, 0), 65535),
+    !decode_decides(text(65536), 0),
+  }
+}
+
+test refuses_a_step_of_index_at_65536_bytes_without_an_index() fail {
+  fails_on_arguments(14, bytes_arguments(14, at_bound_bytes()))
+}
+
+test proves_append_fails_on_a_second_argument_past_65536_bytes() {
+  fails_on_arguments(10, [small_bytes(), past_bound_bytes()])
+}
+
+test refuses_the_unbounded_byte_string_and_string_builtins() {
+  let long_string = semantic_pieces([pattern(65536, 0), #"01"], True)
+  !or {
+    decides_on_arguments(13, [past_bound_bytes()]),
+    decides_on_arguments(22, [long_string, long_string]),
+    decides_on_arguments(23, [long_string, long_string]),
+    decides_on_arguments(24, [long_string]),
+    decides_on_arguments(21, [past_bound_bytes(), small_bytes(), small_bytes()]),
+  }
+}
+
+test refuses_a_step_that_fails_on_no_bound() fail {
+  fails_on_arguments(13, [past_bound_bytes()])
+}
+
+// ## Integer arguments of a byte-string builtin past one word
+
+test proves_cons_fails_on_a_byte_of_two_words() {
+  fails_on_arguments(11, [integer_value(power_of_two(64)), small_bytes()])
+}
+
+test refuses_cons_on_a_byte_of_one_word() {
+  !decides_on_arguments(
+    11,
+    [integer_value(power_of_two(64) - 1), small_bytes()],
+  )
+}
+
+test proves_cons_fails_on_a_byte_past_the_direct_carriage_bound() {
+  fails_on_arguments(11, [integer_value(magnitude(9300)), small_bytes()])
+}
+
+test proves_slice_fails_on_a_start_or_length_of_two_words() {
+  and {
+    fails_on_arguments(
+      12,
+      [integer_value(power_of_two(64)), integer_value(1), small_bytes()],
+    ),
+    fails_on_arguments(
+      12,
+      [integer_value(0), integer_value(-power_of_two(64) - 1), small_bytes()],
+    ),
+  }
+}
+
+test refuses_slice_on_a_start_and_length_of_one_word() {
+  !decides_on_arguments(
+    12,
+    [
+      integer_value(power_of_two(63)),
+      integer_value(-power_of_two(64) + 1),
+      small_bytes(),
+    ],
+  )
+}
+
+test proves_index_fails_on_an_index_past_the_direct_carriage_bound() {
+  fails_on_arguments(
+    14,
+    [bytes_value(pattern(1000, 0), False), integer_value(magnitude(8930))],
+  )
+}
+
+// ## indexByteString from the committed length
+
+/// indexByteString of `bytes` (by its leaf) at `index`.
+fn index_fails(bytes: ByteArray, index: Int) -> Bool {
+  fails(
+    14,
+    [bytes_value(bytes, False), integer_value(index)],
+    no_staging(),
+    [bytes_leaf(bytes), SmallIntegerOperand { value: index }],
+  )
+}
+
+fn index_decides(bytes: ByteArray, index: Int) -> Bool {
+  decides(
+    14,
+    [bytes_value(bytes, False), integer_value(index)],
+    no_staging(),
+    [bytes_leaf(bytes), SmallIntegerOperand { value: index }],
+  )
+}
+
+test proves_index_fails_at_and_past_the_length() {
+  let bytes = pattern(20000, 3)
+  and {
+    index_fails(bytes, 20000),
+    index_fails(bytes, 20001),
+    index_fails(bytes, power_of_two(63)),
+    index_fails(bytes, power_of_two(64) - 1),
+  }
+}
+
+test proves_index_fails_below_zero() {
+  let bytes = pattern(20000, 3)
+  and {
+    index_fails(bytes, -1),
+    index_fails(bytes, -power_of_two(63) - 1),
+  }
+}
+
+test proves_index_fails_on_the_empty_byte_string() {
+  index_fails(#"", 0)
+}
+
+test refuses_index_within_the_length() {
+  let bytes = pattern(20000, 3)
+  !or {
+    index_decides(bytes, 0),
+    index_decides(bytes, 19999),
+  }
+}
+
+test refuses_a_step_indexing_within_the_length() fail {
+  index_fails(pattern(20000, 3), 19999)
+}
+
+test refuses_an_index_other_than_the_committed_one() fail {
+  let bytes = pattern(20000, 3)
+  fails(
+    14,
+    [bytes_value(bytes, False), integer_value(5)],
+    no_staging(),
+    [bytes_leaf(bytes), SmallIntegerOperand { value: 20000 }],
+  )
+}
+
+test refuses_a_length_other_than_the_committed_one() fail {
+  let bytes = pattern(20000, 3)
+  fails(
+    14,
+    [bytes_value(bytes, False), integer_value(20000)],
+    no_staging(),
+    [
+      BytesLeafOperand { root: flat_root_v1(bytes), length: 20001 },
+      SmallIntegerOperand { value: 20000 },
+    ],
+  )
+}
+
+test refuses_a_leaf_of_other_bytes() fail {
+  let bytes = pattern(20000, 3)
+  fails(
+    14,
+    [bytes_value(bytes, False), integer_value(19000)],
+    no_staging(),
+    [bytes_leaf(pattern(19000, 3)), SmallIntegerOperand { value: 19000 }],
+  )
+}
+
+// ## decodeUtf8
+
+/// decodeUtf8 of `bytes` staged, with the valid prefix ending at `valid`.
+fn decode_fails(bytes: ByteArray, valid: Int) -> Bool {
+  fails(
+    25,
+    [bytes_value(bytes, False)],
+    stage([bytes]),
+    [staged(0), SmallIntegerOperand { value: valid }],
+  )
+}
+
+fn decode_decides(bytes: ByteArray, valid: Int) -> Bool {
+  decides(
+    25,
+    [bytes_value(bytes, False)],
+    stage([bytes]),
+    [staged(0), SmallIntegerOperand { value: valid }],
+  )
+}
+
+/// `text(length)` with `bytes` written at `at`.
+fn with_bytes(length: Int, at: Int, bytes: ByteArray) -> ByteArray {
+  let base = text(length)
+  let size = builtin.length_of_bytearray(bytes)
+  builtin.append_bytearray(
+    builtin.slice_bytearray(0, at, base),
+    builtin.append_bytearray(
+      bytes,
+      builtin.slice_bytearray(at + size, length - at - size, base),
+    ),
+  )
+}
+
+test proves_decode_fails_on_a_byte_that_starts_no_character() {
+  and {
+    decode_fails(with_bytes(10000, 5000, #"ff"), 5000),
+    decode_fails(with_bytes(10000, 5000, #"80"), 5000),
+    decode_fails(with_bytes(10000, 0, #"c0"), 0),
+  }
+}
+
+test proves_decode_fails_on_overlong_and_surrogate_sequences() {
+  and {
+    decode_fails(with_bytes(10000, 7000, #"c080"), 7000),
+    decode_fails(with_bytes(10000, 7000, #"e08080"), 7000),
+    decode_fails(with_bytes(10000, 7000, #"eda080"), 7000),
+    decode_fails(with_bytes(10000, 7000, #"f4908080"), 7000),
+  }
+}
+
+test proves_decode_fails_on_a_truncated_last_character() {
+  let bytes = builtin.append_bytearray(text(65534), #"e282")
+  decode_fails(bytes, 65534)
+}
+
+test proves_decode_fails_after_multi_byte_characters() {
+  let bytes = builtin.append_bytearray(
+    #"e282acf09f9880",
+    with_bytes(9000, 10, #"e2"),
+  )
+  decode_fails(bytes, 17)
+}
+
+test proves_decode_fails_on_an_inline_operand() {
+  let bytes = with_bytes(100, 50, #"ff")
+  fails(
+    25,
+    [bytes_value(bytes, False)],
+    no_staging(),
+    [InlineOperand { bytes }, SmallIntegerOperand { value: 50 }],
+  )
+}
+
+test refuses_decode_at_a_valid_character() {
+  !or {
+    decode_decides(with_bytes(10000, 5000, #"e282ac"), 5000),
+    decode_decides(with_bytes(10000, 5000, #"f09f9880"), 5000),
+    decode_decides(with_bytes(10000, 5000, #"c3a9"), 5000),
+  }
+}
+
+test refuses_decode_at_a_valid_character_before_a_multi_byte_one() {
+  !or {
+    decode_decides(with_bytes(10000, 5000, #"c3a9"), 4999),
+    decode_decides(with_bytes(10000, 5000, #"c3a9e282ac"), 5000),
+    decode_decides(with_bytes(10000, 5000, #"e282acf09f9880"), 5000),
+  }
+}
+
+test refuses_decode_before_the_invalid_byte() {
+  !decode_decides(with_bytes(10000, 5000, #"ff"), 4999)
+}
+
+test refuses_a_step_decoding_valid_text() fail {
+  decode_fails(text(10000), 0)
+}
+
+test refuses_decode_with_an_invalid_prefix() fail {
+  decode_fails(with_bytes(10000, 5000, #"ff"), 5001)
+}
+
+test refuses_decode_inside_a_valid_character() fail {
+  decode_fails(with_bytes(10000, 5000, #"c3a9"), 5001)
+}
+
+test refuses_the_decode_proof_for_another_builtin() fail {
+  let bytes = with_bytes(10000, 5000, #"ff")
+  fails(
+    18,
+    [bytes_value(bytes, False)],
+    stage([bytes]),
+    [staged(0), SmallIntegerOperand { value: 5000 }],
+  )
+}
+
+test refuses_decode_past_the_end_of_valid_text() fail {
+  decode_fails(text(10000), 10000)
+}
+
+test refuses_decode_by_the_leaf_alone() fail {
+  let bytes = with_bytes(10000, 5000, #"ff")
+  fails(
+    25,
+    [bytes_value(bytes, False)],
+    no_staging(),
+    [bytes_leaf(bytes), SmallIntegerOperand { value: 5000 }],
+  )
+}
+
+// ## Integer arguments outside [-2^262143, 2^262143 - 1]
+
+/// The bounded integer builtins.
+const bounded_integer_tags = [0, 1, 2, 3, 4, 5, 6, 8, 9]
+
+test proves_every_bounded_integer_builtin_fails_past_4096_words() {
+  let huge = semantic_integer_cbor(over_band_cbor())
+  list.all(
+    bounded_integer_tags,
+    fn(tag) {
+      and {
+        fails_on_arguments(tag, [huge, integer_value(1)]),
+        fails_on_arguments(tag, [integer_value(1), huge]),
+      }
+    },
+  )
+}
+
+test refuses_equals_integer_past_4096_words() {
+  let huge = semantic_integer_cbor(over_band_cbor())
+  !decides_on_arguments(7, [huge, huge])
+}
+
+test refuses_a_step_of_equals_integer_past_4096_words() fail {
+  let huge = semantic_integer_cbor(over_band_cbor())
+  fails_on_arguments(7, [huge, huge])
+}
+
+/// Builtin `tag` over the staged integer of `integer_cbor` and 1.
+fn band_fails(tag: Int, integer_cbor: ByteArray) -> Bool {
+  fails(
+    tag,
+    [semantic_integer_cbor(integer_cbor), integer_value(1)],
+    stage([integer_cbor]),
+    [staged(0), InlineOperand { bytes: cbor.serialise(1) }],
+  )
+}
+
+fn band_decides(tag: Int, integer_cbor: ByteArray) -> Bool {
+  decides(
+    tag,
+    [semantic_integer_cbor(integer_cbor), integer_value(1)],
+    stage([integer_cbor]),
+    [staged(0), InlineOperand { bytes: cbor.serialise(1) }],
+  )
+}
+
+test proves_the_bounded_integer_builtins_fail_one_past_the_largest() {
+  list.all([0, 1, 8, 9], fn(tag) { band_fails(tag, past_top_cbor()) })
+}
+
+test proves_the_bounded_integer_builtins_fail_one_past_the_smallest() {
+  list.all([0, 1, 8, 9], fn(tag) { band_fails(tag, past_bottom_cbor()) })
+}
+
+test proves_a_past_range_second_argument_from_an_inline_source() {
+  let integer_cbor = past_top_cbor()
+  fails(
+    0,
+    [integer_value(1), semantic_integer_cbor(integer_cbor)],
+    no_staging(),
+    [integer_leaf(1), InlineOperand { bytes: integer_cbor }],
+  )
+}
+
+test refuses_the_largest_and_smallest_arguments() {
+  !or {
+    band_decides(0, cbor.serialise(top())),
+    band_decides(0, cbor.serialise(bottom())),
+    band_decides(8, cbor.serialise(top())),
+  }
+}
+
+test refuses_a_step_at_the_largest_argument() fail {
+  band_fails(0, cbor.serialise(top()))
+}
+
+test refuses_a_past_range_argument_by_its_leaf_alone() {
+  let integer_cbor = past_top_cbor()
+  !decides(
+    0,
+    [semantic_integer_cbor(integer_cbor), integer_value(1)],
+    no_staging(),
+    [
+      IntegerLeafOperand {
+        cbor_root: flat_root_v1(integer_cbor),
+        cbor_length: builtin.length_of_bytearray(integer_cbor),
+        words: 4096,
+      },
+      integer_leaf(1),
+    ],
+  )
+}
+
+test refuses_other_bytes_for_a_past_range_argument() fail {
+  fails(
+    0,
+    [semantic_integer_cbor(past_top_cbor()), integer_value(1)],
+    stage([past_bottom_cbor()]),
+    [staged(0), integer_leaf(1)],
+  )
+}
+
+// ## The step's shape
+
+fn shaped(arm: Int, group: Int, progress: Int) -> Bool {
+  let step_material: Data = StagedMaterialV1 {
+    runs: no_staging().runs,
+    sources: [],
+  }
+  spend(
+    failure_step_at(
+      10,
+      [past_bound_bytes(), small_bytes()],
+      step_material,
+      [],
+      arm,
+      group,
+      progress,
+    ),
+  )
+}
+
+test accepts_the_failure_step_shape() {
+  shaped(36, 7, 1)
+}
+
+test refuses_another_witness_constructor() fail {
+  shaped(31, 7, 1)
+}
+
+test refuses_another_group() fail {
+  shaped(36, 5, 1)
+}
+
+test refuses_another_progress() fail {
+  shaped(36, 7, 0)
+}
+
+test refuses_a_step_in_another_mode() fail {
+  let step = failure_step(
+    10,
+    [past_bound_bytes(), small_bytes()],
+    material(no_staging(), []),
+    [],
+  )
+  expect Some(datum) = step.datum
+  expect Some(bound) = datum.data
+  let pre = machine.MachineStateV1 { ..bound.pre, mode: machine.mode_return }
+  spend(
+    StagedStepV1 {
+      ..step,
+      datum: Some(
+        ct.StepDatum { ..datum, data: Some(chain.CoreBound { ..bound, pre }) },
+      ),
+    },
+  )
+}
+
+// ## Routing at the roots hop
+
+const other_hop_hash =
+  #"5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f"
+
+/// Spends the roots hop for an arm 36 step of `tag` over `arguments`, the
+/// continuation paying to the fixture's next step: that is the staged
+/// failure hop's hash when `to_staged`, the material hop's otherwise, and the
+/// other hop has another hash.
+fn roots_route(
+  tag: Int,
+  arguments: List<ValueWitnessV1>,
+  to_staged: Bool,
+) -> Bool {
+  let Pair(root, count) = cek_builtin_v1.arguments_root_v1(arguments)
+  expect count == cost.builtin_argument_count_v1(tag)
+  let pre = machine.MachineStateV1 {
+    mode: machine.mode_builtin,
+    execution_index: 0,
+    focus_root: proof.hash_builtin_value_v1(tag, 0, count, root),
+    environment_root: #"",
+    continuation_root: #"",
+    auxiliary: 0,
+    cpu: 0,
+    memory: 0,
+  }
+  let post = machine.exact_state(
+    pre,
+    machine.mode_halt_error,
+    proof.hash_error_term_v1(),
+    proof.empty_environment_root_v1,
+    proof.empty_continuation_root_v1,
+    machine.error_builtin_failure,
+    0,
+    0,
+  )
+  let step_material: Data = StagedMaterialV1 {
+    runs: no_staging().runs,
+    sources: [],
+  }
+  let step = failure_step_at(tag, arguments, step_material, [], 36, 7, 0)
+  expect Some(datum) = step.datum
+  expect Some(bound) = datum.data
+  let at_roots = chain.CoreBound { ..bound, pre, post }
+  let next: Data = chain.CoreBound { ..at_roots, progress: 1 }
+  let Pair(material_hop, staged_hop) = if to_staged {
+    Pair(other_hop_hash, fixture.next_step_script_hash)
+  } else {
+    Pair(fixture.next_step_script_hash, other_hop_hash)
+  }
+  failure_roots.main.spend(
+    material_hop,
+    staged_hop,
+    fixture.computation_thread_policy_id,
+    Some(ct.StepDatum { ..datum, data: Some(at_roots) }),
+    step.redeemer,
+    fixture.own_out_ref(),
+    Transaction {
+      ..step.transaction,
+      outputs: fixture.continue_mid_step_l1_tx_v1("cek-core-staged", next).outputs,
+    },
+  )
+}
+
+test routes_the_byte_string_builtins_to_the_staged_failure_hop() {
+  roots_route(10, [past_bound_bytes(), small_bytes()], True)
+}
+
+test does_not_route_the_byte_string_builtins_to_the_material_hop() fail {
+  roots_route(10, [past_bound_bytes(), small_bytes()], False)
+}
+
+test routes_decode_and_the_later_hash_builtins_to_the_staged_failure_hop() {
+  and {
+    roots_route(25, [past_bound_bytes()], True),
+    roots_route(71, [past_bound_bytes()], True),
+    roots_route(72, [past_bound_bytes()], True),
+    roots_route(86, [past_bound_bytes()], True),
+  }
+}
+
+test routes_the_integer_builtins_to_the_staged_failure_hop() {
+  roots_route(
+    0,
+    [semantic_integer_cbor(over_band_cbor()), integer_value(1)],
+    True,
+  )
+}
+
+test routes_the_data_builtins_to_the_material_hop() {
+  roots_route(45, [integer_value(1)], False)
+}
+
+test does_not_route_the_data_builtins_to_the_staged_failure_hop() fail {
+  roots_route(45, [integer_value(1)], True)
+}

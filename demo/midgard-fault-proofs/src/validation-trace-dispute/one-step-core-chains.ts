@@ -17,7 +17,9 @@
  *   write the compacted arguments and result, and the budget adds the
  *   builtin's budget;
  * - groups 7 to 10 (a semantic, BLS final, direct or type failure): two or
- *   three hops that write no facts.
+ *   three hops that write no facts; group 7's roots go on to the staged
+ *   failure hop for a byte-string, string or integer builtin and to the
+ *   material hop for the rest.
  *
  * Staging hook (arm 31). The staged route a semantic builtin's oversize
  * operands take (C12-B1) runs this same chain, its semantic stage picked by
@@ -54,6 +56,14 @@ export const CEK_CORE_SEMANTIC_STAGES = Object.freeze([
   "semanticDataMisc",
 ] as const);
 
+/** The staged failure hop, which group 7's roots take for a byte-string,
+ * string or integer builtin in place of the material hop. */
+const STAGED_FAILURE_STAGE = "stagedFailure" as const;
+
+/** Whether group 7's roots route builtin `tag` to the staged failure hop. */
+const stagedFailureTag = (tag: bigint): boolean =>
+  tag < 26n || tag === 71n || tag === 72n || tag === 86n;
+
 /** Each core group's arm holders before its semantic stage, in order. */
 const CHAINS = Object.freeze({
   0: ["compute"],
@@ -76,12 +86,17 @@ export type CekCoreGroup = keyof typeof CHAINS;
  * the settle. */
 export type ValidationTraceArmHolder =
   | (typeof CHAINS)[CekCoreGroup][number]
-  | (typeof CEK_CORE_SEMANTIC_STAGES)[number];
+  | (typeof CEK_CORE_SEMANTIC_STAGES)[number]
+  | typeof STAGED_FAILURE_STAGE;
 
 /** Every arm holder, each once. */
 export const CEK_CORE_ARM_HOLDERS: readonly ValidationTraceArmHolder[] =
   Object.freeze([
-    ...new Set([...Object.values(CHAINS).flat(), ...CEK_CORE_SEMANTIC_STAGES]),
+    ...new Set([
+      ...Object.values(CHAINS).flat(),
+      ...CEK_CORE_SEMANTIC_STAGES,
+      STAGED_FAILURE_STAGE,
+    ]),
   ]);
 
 export const isCekCoreGroup = (group: number): group is CekCoreGroup =>
@@ -211,6 +226,26 @@ export const cekCoreArmHops = (
           valueData(result),
         ]),
       ]),
+    });
+  }
+  if (group === 7) {
+    if (
+      witness.kind !== "executeBuiltinSemanticFailure" &&
+      witness.kind !== "executeBuiltinStagedFailure"
+    )
+      throw new Error("a semantic failure step has another witness");
+    if (
+      witness.kind === "executeBuiltinStagedFailure" &&
+      witness.stagedOperands.length > 0
+    )
+      throw new Error("a staged failure's staged operands are not driven");
+    const [roots, material] = CHAINS[7];
+    return Object.freeze({
+      holders: Object.freeze([
+        roots,
+        stagedFailureTag(witness.tag) ? STAGED_FAILURE_STAGE : material,
+      ]),
+      facts: keptAfter(2, []),
     });
   }
   const holders = CHAINS[group];

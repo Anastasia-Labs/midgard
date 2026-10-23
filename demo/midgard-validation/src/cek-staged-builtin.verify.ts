@@ -62,16 +62,16 @@ const INTEGER_TYPE = Buffer.from("9f00ff", "hex");
 const BYTES_TYPE = Buffer.from("9f01ff", "hex");
 const STRING_TYPE = Buffer.from("9f02ff", "hex");
 
-type Compacted = MidgardCekSemanticConstantWitness;
+export type Compacted = MidgardCekSemanticConstantWitness;
 
-const refuse = (reason: string): never => {
+export const refuse = (reason: string): never => {
   throw new Error(`staged step refused: ${reason}`);
 };
 
 const same = (left: Bytes, right: Bytes): boolean =>
   Buffer.from(left).equals(Buffer.from(right));
 
-const sameCompacted = (left: Compacted, right: Compacted): boolean =>
+export const sameCompacted = (left: Compacted, right: Compacted): boolean =>
   same(left.typeCbor, right.typeCbor) &&
   same(left.payload.root, right.payload.root) &&
   left.payload.cborLength === right.payload.cborLength &&
@@ -85,7 +85,7 @@ const compact = (value: MidgardCekDirectValueWitness): Compacted => {
 };
 
 /** A constant value in the compacted form the roots hop commits. */
-const compactValue = (value: CEKConst): Compacted =>
+export const compactValue = (value: CEKConst): Compacted =>
   compact(referenceConstantToDirectWitness(value, true));
 
 const bytesMemory = (string: boolean, length: bigint): bigint =>
@@ -116,7 +116,7 @@ const samePayload = (
   left.cborLength === right.cborLength &&
   left.memory === right.memory;
 
-type ArmInputs = {
+export type ArmInputs = {
   readonly tag: number;
   readonly arguments: readonly (readonly [
     Compacted,
@@ -139,7 +139,7 @@ type BoundBytes = {
   readonly bytes: Buffer | null;
 };
 
-const bindBytes = (
+export const bindBytes = (
   inputs: ArmInputs,
   [value, source]: readonly [Compacted, MidgardCekStagedOperandSource],
   string: boolean,
@@ -202,7 +202,7 @@ const smallInteger = ([value, source]: readonly [
 };
 
 /** The byte-string or string operands of `tag`, and its integer operands. */
-const scalarOperands = <T>(
+export const scalarOperands = <T>(
   tag: number,
   arguments_: readonly T[],
 ): readonly [readonly T[], readonly T[]] => {
@@ -286,7 +286,9 @@ const verifyBytes = (inputs: ArmInputs): boolean => {
 };
 
 /** True when the integer is in [-2^262143, 2^262143 - 1]. */
-const integerInRange = (integer: MidgardCekCanonicalInteger): boolean => {
+export const integerInRange = (
+  integer: MidgardCekCanonicalInteger,
+): boolean => {
   const size = integer.argument.length;
   return (
     size < MAX_BOUNDED_INTEGER_ARGUMENT_BYTES ||
@@ -295,7 +297,7 @@ const integerInRange = (integer: MidgardCekCanonicalInteger): boolean => {
   );
 };
 
-const bindInteger = (
+export const bindInteger = (
   inputs: ArmInputs,
   [value, source]: readonly [Compacted, MidgardCekStagedOperandSource],
   bounded: boolean,

@@ -516,3 +516,70 @@ pub fn budget_step(
     },
   }
 }
+
+/// The arm 36 step for builtin `tag` failing on these witness arguments, with
+/// this material, as the staged failure hop receives it (group 7, progress 1).
+pub fn failure_step(
+  tag: Int,
+  arguments: List<ValueWitnessV1>,
+  step_material: StagedMaterialV1,
+  reference_inputs: List<Input>,
+) -> StagedStepV1 {
+  let material_data: Data = step_material
+  failure_step_at(tag, arguments, material_data, reference_inputs, 36, 7, 1)
+}
+
+/// `failure_step` with the witness constructor, group and progress chosen and
+/// the material given as Data.
+pub fn failure_step_at(
+  tag: Int,
+  arguments: List<ValueWitnessV1>,
+  material_data: Data,
+  reference_inputs: List<Input>,
+  arm: Int,
+  group: Int,
+  progress: Int,
+) -> StagedStepV1 {
+  let arguments_data: Data = arguments
+  let witness = builtin.constr_data(
+    arm,
+    [builtin.i_data(tag), arguments_data, material_data],
+  )
+  let state = machine.MachineStateV1 {
+    mode: machine.mode_builtin,
+    execution_index: 0,
+    focus_root: #"",
+    environment_root: #"",
+    continuation_root: #"",
+    auxiliary: 0,
+    cpu: 0,
+    memory: 0,
+  }
+  let bound = chain.CoreBound {
+    prepared: builtin.constr_data(0, []),
+    pre: state,
+    post: state,
+    witness_hash: blake2b_256(cbor.serialise(witness)),
+    arm,
+    group,
+    progress,
+    facts: builtin.constr_data(0, []),
+  }
+  let next: Data = chain.CoreBound { ..bound, progress: progress + 1 }
+  StagedStepV1 {
+    datum: Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(bound),
+      },
+    ),
+    redeemer: ct.Continue(
+      chain.VerifyArm { input_index: 0, output_index: 0, witness },
+    ),
+    transaction: Transaction {
+      ..fixture.continue_mid_step_l1_tx_v1(ct_asset, next),
+      reference_inputs,
+      extra_signatories: [fixture.fraud_prover_key_hash],
+    },
+  }
+}

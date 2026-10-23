@@ -243,6 +243,31 @@ export const evaluateMidgardCekBuiltinOnValues = (
   return result;
 };
 
+const INT64_MIN = -(2n ** 63n);
+const INT64_MAX = 2n ** 63n - 1n;
+
+/**
+ * consByteString and sliceByteString over a compacted byte string: their
+ * failures (a byte outside [0, 255], a start or length outside Int64) are
+ * decided by the revealed integers alone, the byte string by its type, as the
+ * direct failure arm decides them. A success needs the bytes, which a
+ * compacted byte string does not reveal.
+ */
+const compactedSourceFailure = (
+  tag: bigint,
+  arguments_: readonly MidgardCekDirectValueWitness[],
+): "failure" => {
+  const integers = arguments_.slice(0, -1).map(directInteger);
+  const fails =
+    tag === 11n
+      ? integers[0]! < 0n || integers[0]! > 255n
+      : integers.some((value) => value < INT64_MIN || value > INT64_MAX);
+  if (!fails) {
+    throw new Error("V1 builtin over a compacted byte string must fail");
+  }
+  return "failure";
+};
+
 const evaluateReferenceBuiltin = (
   tag: bigint,
   arguments_: readonly MidgardCekDirectValueWitness[],
@@ -321,6 +346,12 @@ const evaluateReferenceBuiltin = (
       ),
       true,
     );
+  }
+  if (
+    (tag === 11n || tag === 12n) &&
+    arguments_.at(-1)?.kind === "semanticConstant"
+  ) {
+    return compactedSourceFailure(tag, arguments_);
   }
   const referenceArguments: CEKConst[] = [];
   for (const argument of arguments_) {
