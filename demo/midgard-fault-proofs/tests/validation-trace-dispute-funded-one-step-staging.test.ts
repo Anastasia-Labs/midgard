@@ -15,13 +15,8 @@
 import { CML, coreToTxOutput } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import {
-  confirmedIntents,
-  VALIDATION_TRACE_STAGING_RECLAIM,
-} from "../src/validation-trace-dispute/one-step-staging-journal.js";
 import { validationTraceRunState } from "../src/validation-trace-dispute/waiting.js";
 import { VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED } from "../src/workflow/funding-reservation-permit.validation-dispute-wallet-move-reserve.js";
-import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import { drainProver, topUpProver } from "./support/installed-prover-wallet.js";
 import { watchLedger } from "./support/own-outputs-installed.js";
@@ -40,7 +35,10 @@ import {
   confirmedOneStepMoves,
   playThreads,
 } from "./support/validation-trace-dispute-one-step-play.js";
-import { entriesOf } from "./support/validation-trace-dispute-one-step-staged-drive.js";
+import {
+  entriesOf,
+  landedSpenderOf,
+} from "./support/validation-trace-dispute-one-step-staged-drive.js";
 import { reportFit } from "./support/validation-trace-dispute-scripted-defender.js";
 
 const { at, turns, place, open, stagingAddress, stagedOutputs, depositOf } =
@@ -216,23 +214,23 @@ describe("validation-trace dispute staging of a staged builtin step's operands u
   it(
     "spends each staging output back to our wallet under the funding permit once the thread has settled",
     async () => {
-      const reclaimsOf = (result: FraudProofWorkflowRunResult) =>
-        confirmedIntents(entriesOf(result), VALIDATION_TRACE_STAGING_RECLAIM);
-      let last = await turns().runOnce();
       for (let turn = 0; turn < 30; turn += 1) {
-        if (
-          (await stagedOutputs()).length === 0 &&
-          reclaimsOf(last).length === runs.length
-        )
-          break;
-        last = await turns().runOnce();
+        await turns().runOnce();
+        if ((await stagedOutputs()).length === 0) break;
       }
       expect(await stagedOutputs()).toStrictEqual([]);
-      const reclaims = reclaimsOf(last);
-      expect(
-        reclaims.map(({ actionInput }) => String(actionInput.consumes)).sort(),
-      ).toEqual([...stagedOutRefs].sort());
-      for (const { txHash } of reclaims) {
+      const reclaims = await Promise.all(
+        stagedOutRefs.map(
+          async (outRef) =>
+            await landedSpenderOf(
+              at.scene.l1.signedCbors,
+              at.scene.h.emulator,
+              outRef,
+            ),
+        ),
+      );
+      expect(reclaims.every((txHash) => txHash !== undefined)).toBe(true);
+      for (const txHash of reclaims as string[]) {
         const body = CML.Transaction.from_cbor_hex(
           at.scene.l1.signedCbors.get(txHash)!,
         ).body();

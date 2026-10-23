@@ -1,8 +1,8 @@
 /** The staging authority the prover funding permit admits our staging of
  * a staged builtin step's operands, and its spend back, by: bound to its
- * action, header and deployment, and carried alone, never beside another
+ * action, header and deployment, carried alone, never beside another
  * funding authority (a fraud slash, a VerifySource, a thread move or a case
- * close). */
+ * close), and over a transaction that mints nothing. */
 import { createHash } from "node:crypto";
 
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
@@ -10,6 +10,9 @@ import {
   Emulator,
   generateEmulatorAccount,
   Lucid,
+  mintingPolicyToId,
+  paymentCredentialOf,
+  scriptFromNative,
   type TxSigned,
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
@@ -40,6 +43,7 @@ import {
 
 const BESIDE =
   "funding transaction carries a validation dispute staging authority beside another funding authority";
+const MINTS = "validation dispute staging mints";
 const identity = { deploymentFingerprint: "fingerprint", headerHash: "header" };
 const payer = generateEmulatorAccount({ lovelace: 100n * ADA });
 
@@ -122,23 +126,39 @@ describe("the staging authority's binding", () => {
   });
 });
 
-/** A signed transaction of ours granted a staging authority. */
-const staged = async (): Promise<TxSigned> => {
+/** A signed transaction of ours granted a staging authority of `shape`,
+ * a staging by default; minting a token under our key's own policy when
+ * `mints`. */
+const staged = async ({
+  shape = { datumCborHex: RUN },
+  mints = false,
+}: {
+  readonly shape?: Parameters<
+    typeof grantValidationDisputeStagingAuthority
+  >[0]["shape"];
+  readonly mints?: boolean;
+} = {}): Promise<TxSigned> => {
   const lucid = await Lucid(new Emulator([payer]), "Custom");
   lucid.selectWallet.fromSeed(payer.seedPhrase);
+  const policy = scriptFromNative({
+    type: "sig",
+    keyHash: paymentCredentialOf(payer.address).hash,
+  });
+  const pay = lucid
+    .newTx()
+    .pay.ToAddress(theirs.address, { lovelace: 2n * ADA });
   const signed = await (
-    await lucid
-      .newTx()
-      .pay.ToAddress(theirs.address, { lovelace: 2n * ADA })
-      .complete()
+    await (
+      mints
+        ? pay
+            .mintAssets({ [`${mintingPolicyToId(policy)}01`]: 1n })
+            .attach.MintingPolicy(policy)
+        : pay
+    ).complete()
   ).sign
     .withWallet()
     .complete();
-  grantValidationDisputeStagingAuthority({
-    signed,
-    ...identity,
-    shape: { datumCborHex: RUN },
-  });
+  grantValidationDisputeStagingAuthority({ signed, ...identity, shape });
   return signed;
 };
 
@@ -204,6 +224,23 @@ describe("the prover funding permit over our staging beside another funding auth
         action: {} as never,
       }),
     ).rejects.toThrow(BESIDE);
+  });
+
+  it.each([
+    { name: "a staging", shape: { datumCborHex: RUN } },
+    { name: "a spend back", shape: { output: stagedOutput } },
+  ])("refuses $name that mints", async ({ shape }) => {
+    for (const mints of [true, false]) {
+      const checked = validationDisputeStagingFunding({
+        signed: await staged({ shape, mints }),
+        slash: false,
+        policy: {} as never,
+        state: {} as never,
+        action: {} as never,
+      });
+      if (mints) await expect(checked).rejects.toThrow(MINTS);
+      else await expect(checked).rejects.not.toThrow(MINTS);
+    }
   });
 
   it("passes a staging under its own authority alone on to its binding", async () => {

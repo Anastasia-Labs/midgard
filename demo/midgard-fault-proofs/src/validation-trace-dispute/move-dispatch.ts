@@ -12,6 +12,7 @@ import type { UTxO } from "@lucid-evolution/lucid";
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
 import { ValidationDisputeWalletMoveUnfundedError } from "../workflow/funding-reservation-permit.validation-dispute-wallet-move-reserve.js";
 import { isWorkflowFundingShortfall } from "../workflow/funding-reservation-permit.workflow-funding-shortfall.js";
+import { isFraudProofL1WaitError } from "../workflow/l1-source.js";
 import { WorkflowActionUnbuiltError } from "../workflow/orchestrator.unbuilt-actions.js";
 import {
   validationTraceActionId,
@@ -138,10 +139,19 @@ export class ValidationTraceMoveUnbuiltError extends WorkflowActionUnbuiltError 
   }
 }
 
+/** Whether a move's build failed for a reason the move does not report as
+ * its own: the thread moved, our wallet is short, or the L1 source waits,
+ * which the orchestrator reports. */
+export const isValidationTraceBuildPassedOn = (cause: unknown): boolean =>
+  cause instanceof WorkflowActionChangedError ||
+  isWorkflowFundingShortfall(cause) ||
+  isFraudProofL1WaitError(cause);
+
 /**
  * The move on a thread of our case, whose datum is `caseDatum`. A build our
  * wallet is short of ada for is the operator's alarm, and so is a move that
- * does not build for any other reason than the thread having moved.
+ * does not build for any other reason than the thread having moved or a
+ * wait on the L1 source, which is the orchestrator's to report.
  */
 export const captureValidationTraceThreadMove = async ({
   caseDatum,
@@ -152,6 +162,7 @@ export const captureValidationTraceThreadMove = async ({
   try {
     return await capture(input);
   } catch (cause) {
+    if (isFraudProofL1WaitError(cause)) throw cause;
     const unfunded = isWorkflowFundingShortfall(cause);
     if (!unfunded && cause instanceof WorkflowActionChangedError) throw cause;
     const thread = await ours(move.lucid, move.threadOutRef, "thread").catch(

@@ -326,7 +326,7 @@ export const validationDisputeStagingWalk = ({
 /**
  * Our staging's or its spend back's funding under the authority its signed
  * transaction carries, checked step by step as the runtime bound walks it;
- * `null` when it carries none.
+ * `null` when it carries none. Neither mints.
  */
 export const validationDisputeStagingFunding = async ({
   signed,
@@ -352,6 +352,12 @@ export const validationDisputeStagingFunding = async ({
   )
     throw new Error(
       "funding transaction carries a validation dispute staging authority beside another funding authority",
+    );
+  // Neither a staging nor its spend back mints: our key's native script
+  // admitted on a spend back is no minting policy.
+  if (signed.toTransaction().body().mint() !== undefined)
+    throw new Error(
+      "validation dispute staging mints under the staging authority",
     );
   assertValidationDisputeStagingBinding({
     authority,

@@ -232,6 +232,10 @@ export const cekCoreArmHops = (
   builtinRoot: Uint8Array,
 ): CekCoreArmHops => {
   if (group === 5) {
+    // A staged witness is taken here under any tag, as a semantic one is:
+    // one whose tag's semantics group is not 7 or 8 is refused later, by
+    // the staged verifier (midgard-validation cek-staged-builtin.verify.ts),
+    // and our executor writes none (cek-executor.staged-builtins.ts).
     if (
       witness.kind !== "executeBuiltinSemantic" &&
       witness.kind !== "executeBuiltinStaged"

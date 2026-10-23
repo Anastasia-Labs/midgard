@@ -12,7 +12,10 @@ import { CML, coreToTxOutput, Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { confirmedValidationTraceStages } from "../src/validation-trace-dispute/actions.js";
+import {
+  confirmedValidationTraceStages,
+  VALIDATION_TRACE_DISPUTE_ACTION,
+} from "../src/validation-trace-dispute/actions.js";
 import { parseValidationTraceDisputeArtifact } from "../src/validation-trace-dispute/artifact.js";
 import { captureValidationTraceThreadMove } from "../src/validation-trace-dispute/move-dispatch.js";
 import {
@@ -20,14 +23,13 @@ import {
   validationTraceOneStepHolder,
 } from "../src/validation-trace-dispute/one-step-holders.js";
 import { VALIDATION_TRACE_STAGING_SHALLOW } from "../src/validation-trace-dispute/one-step-staging.js";
-import {
-  confirmedIntents,
-  VALIDATION_TRACE_STAGING_RECLAIM,
-} from "../src/validation-trace-dispute/one-step-staging-journal.js";
+import { VALIDATION_TRACE_STAGING_RECLAIM } from "../src/validation-trace-dispute/one-step-staging-journal.js";
 import { VALIDATION_TRACE_ONE_STEP_REQUIRED } from "../src/validation-trace-dispute/threads.js";
 import type { JournalJsonObject } from "../src/workflow/journal.js";
+import { FraudProofL1UnavailableError } from "../src/workflow/l1-source.js";
 import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import { WorkflowActionUnbuiltError } from "../src/workflow/orchestrator.unbuilt-actions.js";
+import { emulatorSignedTransactionRecovery } from "./support/emulator-signed-recovery.js";
 import { sceneCaseHistory } from "./support/validation-trace-dispute-case-history.js";
 import { liveCase } from "./support/validation-trace-dispute-one-step-case.js";
 import {
@@ -68,7 +70,7 @@ const movesTo = (holder: ValidationTraceOneStepHolder) => {
  * ledger order (the order a transaction reads them in). */
 const liveStagings = async () => {
   const runs = await drive.runs();
-  const { stagings } = drive.stagings();
+  const stagings = await drive.stagedOnL1();
   const live: string[] = [];
   for (const { datumCbor } of runs)
     for (const staging of [...stagings].reverse())
@@ -166,13 +168,18 @@ describe("validation-trace dispute runner: staging the operands of a staged buil
   it("stages each run of the step's operands once at our staging address, a runner started again over the journal mid-staging staging none twice", async () => {
     const runs = await drive.runs();
     expect(runs.length).toBeGreaterThan(1);
-    await drive.play(async () => drive.stagings().stagings.length >= 1);
-    expect(drive.stagings().stagings.length).toBeLessThan(runs.length);
+    // The run before may have landed the first staging already.
+    if ((await drive.stagedOnL1()).length === 0)
+      await drive.play(async () => (await drive.stagedOnL1()).length >= 1);
+    expect((await drive.stagedOnL1()).length).toBeLessThan(runs.length);
     drive.restart();
     await drive.play(
-      async () => drive.stagings().stagings.length >= runs.length,
+      async () => (await drive.stagedOnL1()).length >= runs.length,
     );
-    const { stagings } = drive.stagings();
+    // Our journal shows the last staging confirmed a run later.
+    await drive.play(async () => drive.stagings().length >= runs.length);
+    expect(await drive.stagedOnL1()).toHaveLength(runs.length);
+    const stagings = drive.stagings();
     expect(stagings).toHaveLength(runs.length);
     expect(stagingIntents(drive.entries())).toHaveLength(runs.length);
     expect(stagings.map(({ actionId }) => actionId.endsWith(":0"))).toEqual(
@@ -188,6 +195,33 @@ describe("validation-trace dispute runner: staging the operands of a staged buil
     }
     expect((await drive.placeOfB())?.holder).toBe("prepare");
   }, 600_000);
+
+  it("waits on the L1 source when it cannot say how deep a staging output stands, staging nothing again and moving no thread", async () => {
+    const { scene } = drive.dispute();
+    const staged = await drive.stagedOnL1();
+    const stagedBy = new Set(staged.map(({ outRef }) => outRef.split("#")[0]));
+    const recovery = emulatorSignedTransactionRecovery(scene.h.emulator);
+    drive.restart({
+      signedRecovery: {
+        ...recovery,
+        observeSignedTransaction: async (input) => {
+          if (stagedBy.has(input.transactionHash))
+            throw new FraudProofL1UnavailableError("the L1 source is behind");
+          return await recovery.observeSignedTransaction(input);
+        },
+      },
+    });
+    const place = await drive.placeOfB();
+    const run = drive
+      .dispute()
+      .runner.runOnce(scene.failing)
+      .finally(() => drive.restart());
+    await expect(run).rejects.toBeInstanceOf(FraudProofL1UnavailableError);
+    expect(await drive.stagedOnL1()).toEqual(staged);
+    expect(outRefOf((await drive.placeOfB())!.utxo)).toBe(
+      outRefOf(place!.utxo),
+    );
+  }, 300_000);
 
   it("keeps each staging output no move has read while the PrepareSelected move does not build, spending none back", async () => {
     const { scene } = drive.dispute();
@@ -218,15 +252,59 @@ describe("validation-trace dispute runner: staging the operands of a staged buil
         ),
     ).toEqual([]);
     expect(stagingIntents(drive.entries())).toHaveLength(runs.length);
-    for (const { outRef } of drive.stagings().stagings)
+    const staged = await drive.stagedOnL1();
+    expect(staged).toHaveLength(runs.length);
+    for (const { outRef } of staged)
       expect(await drive.live(outRef)).toBeDefined();
     expect((await drive.placeOfB())?.holder).toBe("prepare");
   }, 600_000);
 
+  it("waits on the L1 source when it cannot say how deep a staging output stands as the PrepareSelected move builds", async () => {
+    const { scene } = drive.dispute();
+    const stagedBy = new Set(
+      (await drive.stagedOnL1()).map(({ outRef }) => outRef.split("#")[0]),
+    );
+    const recovery = emulatorSignedTransactionRecovery(scene.h.emulator);
+    // The L1 source falls behind once the move's build starts.
+    let building = false;
+    drive.restart({
+      signedRecovery: {
+        ...recovery,
+        observeSignedTransaction: async (input) => {
+          if (building && stagedBy.has(input.transactionHash))
+            throw new FraudProofL1UnavailableError("the L1 source is behind");
+          return await recovery.observeSignedTransaction(input);
+        },
+      },
+      wrap: (adapter) => ({
+        ...adapter,
+        preflight: async (context) => {
+          building =
+            context.action.input.schemaVersion ===
+            VALIDATION_TRACE_DISPUTE_ACTION;
+          try {
+            return await adapter.preflight(context);
+          } finally {
+            building = false;
+          }
+        },
+      }),
+    });
+    const place = await drive.placeOfB();
+    const run = drive
+      .dispute()
+      .runner.runOnce(scene.failing)
+      .finally(() => drive.restart());
+    await expect(run).rejects.toBeInstanceOf(FraudProofL1UnavailableError);
+    expect(outRefOf((await drive.placeOfB())!.utxo)).toBe(
+      outRefOf(place!.utxo),
+    );
+  }, 300_000);
+
   it("stages a run again when its staging output is no longer live, and holds the PrepareSelected move until every run is at confirmation depth", async () => {
     const { scene } = drive.dispute();
     const lucid = scene.h.proverLucid;
-    const [first] = drive.stagings().stagings;
+    const [first] = drive.stagings();
     spent = first!.outRef;
     scene.h.proverSigner.selectWallet(lucid);
     const unsigned = await Effect.runPromise(
@@ -298,23 +376,19 @@ describe("validation-trace dispute runner: staging the operands of a staged buil
 
   it("spends each staging output back to our wallet by our key once every thread that read it has settled, funding no move from it or from a datum-bearing output of our wallet", async () => {
     const live = await liveStagings();
-    await drive.play(
-      async () =>
-        live.every((outRef) => drive.stagings().reclaimed.has(outRef)),
-      60,
-    );
+    await drive.play(async () => {
+      for (const outRef of live)
+        if ((await drive.live(outRef)) !== undefined) return false;
+      return true;
+    }, 60);
     const { scene } = drive.dispute();
-    const reclaims = confirmedIntents(
-      drive.entries(),
-      VALIDATION_TRACE_STAGING_RECLAIM,
-    );
-    expect(
-      reclaims.map(({ actionInput }) => String(actionInput.consumes)).sort(),
-    ).toEqual([...live].sort());
+    const reclaims = await Promise.all(live.map(drive.spenderOf));
     const settled = await Promise.all(
       movesTo("award").map(async ({ hash }) => await drive.blockOf(hash)),
     );
-    for (const { txHash } of reclaims) {
+    for (const txHash of reclaims) {
+      expect(txHash).toBeDefined();
+      if (txHash === undefined) continue;
       const body = CML.Transaction.from_cbor_hex(
         scene.l1.signedCbors.get(txHash)!,
       ).body();

@@ -24,6 +24,7 @@ import {
   buildValidationOneStepArgument,
   CekDecodeRecordRequiredError,
   type CekSelectionDecodeRecordResolver,
+  type ValidationTraceSteps,
 } from "@al-ft/midgard-validation";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -236,6 +237,7 @@ export const planValidationTraceOneStep = async ({
   phases = [],
   scriptSourcesRedeemers = false,
   staging,
+  committedEvidenceHash,
 }: ValidationTraceOneStepDrives & {
   readonly material: ValidationTraceClaimMaterial;
   readonly stateIndex?: number;
@@ -243,6 +245,10 @@ export const planValidationTraceOneStep = async ({
   readonly challengerHighHash: string;
   /** Where the driver staged a staged step's operands. */
   readonly staging?: ValidationTraceStagingLookup;
+  /** The evidence the thread's PrepareSelected move committed, once it
+   * has (read only for a staged step): a staged step is planned over the
+   * staging it names. */
+  readonly committedEvidenceHash?: () => string;
 }): Promise<ValidationTraceOneStepPlanning> => {
   const stateIndex =
     given ?? (material.stateIndexOf(challengerHighHash) ?? 0) - 1;
@@ -344,15 +350,28 @@ export const planValidationTraceOneStep = async ({
       phase2Class: record.phase2Class,
     });
   }
+  const argumentOf = (window: ValidationTraceSteps) =>
+    buildValidationOneStepArgument({
+      trace: window,
+      stateIndex,
+      ...(resolveCekDecodeRecord === undefined
+        ? {}
+        : { resolveCekDecodeRecord }),
+    });
   // A staged step's evidence names its staging outputs.
   const { trace: window, staged } = builtins
-    ? await stagedTraceOf(trace, stateIndex, staging)
+    ? await stagedTraceOf(
+        trace,
+        stateIndex,
+        staging,
+        committedEvidenceHash === undefined
+          ? undefined
+          : (candidate) =>
+              commonOf(stateIndex, preState, argumentOf(candidate))
+                .evidenceHash === committedEvidenceHash(),
+      )
     : { trace, staged: undefined };
-  const argument = buildValidationOneStepArgument({
-    trace: window,
-    stateIndex,
-    ...(resolveCekDecodeRecord === undefined ? {} : { resolveCekDecodeRecord }),
-  });
+  const argument = argumentOf(window);
   const common = commonOf(stateIndex, preState, argument);
   const { auxiliaryCbor } = common;
   if (

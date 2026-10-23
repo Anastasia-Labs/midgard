@@ -14,12 +14,16 @@ import { Constr, Data, type UTxO } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import type { ValidationTraceClaimMaterial } from "../src/validation-trace-dispute/claim-material.js";
-import { validationTraceHop } from "../src/validation-trace-dispute/one-step-builders.js";
+import {
+  validationTraceHop,
+  type ValidationTraceHopHolder,
+} from "../src/validation-trace-dispute/one-step-builders.js";
 import { decodeCekCoreSemanticMaterial } from "../src/validation-trace-dispute/one-step-core-chains.js";
 import {
   planValidationTraceOneStep,
   type ValidationTraceCoreStepPlan,
 } from "../src/validation-trace-dispute/one-step-plan.js";
+import { resolvingPlan } from "../src/validation-trace-dispute/one-step-resolving-plan.js";
 import {
   stagedTraceOf,
   type ValidationTraceStagingLookup,
@@ -87,6 +91,21 @@ const lookup = (
   return { asked, answer };
 };
 
+/** A lookup offering each of `stagings`: the first `accepts` holds of,
+ * else the first. */
+const offering =
+  (
+    ...stagings: ((
+      operands: readonly Uint8Array[],
+    ) => MidgardCekStagingResult)[]
+  ): ValidationTraceStagingLookup =>
+  (operands, accepts) => {
+    const offered = stagings.map((staging) => staging(operands));
+    return Promise.resolve(
+      offered.find((staging) => accepts?.(staging) === true) ?? offered[0],
+    );
+  };
+
 /** A thread whose datum has the shape every core holder's hop reads. */
 const threadUtxo: UTxO = {
   txHash: "00".repeat(32),
@@ -133,6 +152,7 @@ describe("our plan of a staged builtin step", () => {
   const plan = async (
     staging: ValidationTraceStagingLookup | undefined,
     on: ValidationTraceClaimMaterial = material,
+    committedEvidenceHash?: () => string,
   ): Promise<ValidationTraceCoreStepPlan> => {
     const planning = await planValidationTraceOneStep({
       material: on,
@@ -140,6 +160,7 @@ describe("our plan of a staged builtin step", () => {
       challengerHighHash,
       builtins: true,
       ...(staging === undefined ? {} : { staging }),
+      ...(committedEvidenceHash === undefined ? {} : { committedEvidenceHash }),
     });
     if (planning.kind !== "plan" || planning.plan.kind !== "core")
       throw new Error(`the step is not planned as a core step`);
@@ -281,6 +302,77 @@ describe("our plan of a staged builtin step", () => {
     expect(staged.staged).toBeUndefined();
     expect(staged.trace).toBe(inline);
     expect(asked).toEqual([]);
+  });
+
+  describe("past its PrepareSelected move", () => {
+    it("plans a staged step over the staging whose evidence the move committed", async () => {
+      const committed = await plan(lookup(stagingOn(0x11)).answer);
+      const offered = offering(stagingOn(0x22), stagingOn(0x11));
+      const latest = await plan(offered);
+      expect(latest.evidenceHash).not.toBe(committed.evidenceHash);
+      const planned = await plan(
+        offered,
+        material,
+        () => committed.evidenceHash,
+      );
+      expect(planned.evidenceHash).toBe(committed.evidenceHash);
+      expect(planned.core.staged).toEqual(committed.core.staged);
+    });
+
+    it("refuses a staging other than the one the move's evidence names", async () => {
+      const committed = await plan(lookup(stagingOn(0x11)).answer);
+      await expect(
+        plan(offering(stagingOn(0x22)), material, () => committed.evidenceHash),
+      ).rejects.toThrow(/differs from the evidence its thread committed/);
+      // While no staging is found, the step is planned unstaged: its hops
+      // refuse it.
+      expect(
+        (await plan(lookup(undefined).answer, material, () => "00")).core.staged
+          ?.refs,
+      ).toBeUndefined();
+    });
+
+    it("reads the evidence the move committed where the core holder and each arm holder keep it", async () => {
+      const committed = await plan(lookup(stagingOn(0x11)).answer);
+      const outputs = committed.core.staged!.refs!.map(stagingOutput);
+      const deployment = {
+        references: { oneStep: { cekBuiltins: {} } },
+      } as never;
+      let holder: ValidationTraceHopHolder = "prepare";
+      let datum = Data.to(
+        new Constr(0, [
+          PROVER,
+          new Constr(0, [
+            new Constr(0, [0n, 0n, 0n, challengerHighHash, 0n, 0n, 0n, 0n]),
+          ]),
+        ]),
+      );
+      const resolved: string[] = [];
+      for (;;) {
+        const hop = validationTraceHop({
+          plan: committed,
+          holder,
+          utxo: { ...threadUtxo, datum },
+          prover: PROVER,
+          staging: outputs,
+        });
+        if (hop.next === "settle" || hop.next === "award") break;
+        holder = hop.next as ValidationTraceHopHolder;
+        datum = hop.datum;
+        const planned = await resolvingPlan({
+          deployment,
+          material,
+          utxo: { ...threadUtxo, datum },
+          holder,
+          caseThread: undefined,
+          carried: undefined,
+          staging: offering(stagingOn(0x22), stagingOn(0x11)),
+        });
+        expect(planned.evidenceHash, holder).toBe(committed.evidenceHash);
+        resolved.push(holder);
+      }
+      expect(resolved).toEqual(["core", ...committed.core.hops.holders]);
+    });
   });
 
   describe("the hops of a staged step", () => {

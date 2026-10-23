@@ -25,7 +25,10 @@ import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import type { ResolvedProverSigner } from "../runtime.js";
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
-import type { FraudProofSignedTransactionRecovery } from "../workflow/l1-source.js";
+import {
+  type FraudProofSignedTransactionRecovery,
+  isFraudProofL1WaitError,
+} from "../workflow/l1-source.js";
 import type { FraudProofWorkflowAdapterContext } from "../workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
 import type {
   FraudProofFamilyWorkflowAdapter,
@@ -149,7 +152,8 @@ export const validationTraceStaging = ({
   };
 
   /** Whether `staging`'s transaction is safe: at depth `confirmationDepth`
-   * or deeper, counted by the heads module. */
+   * or deeper, counted by the heads module. A wait on the L1 source is the
+   * orchestrator's to report. */
   const deep = async (staging: JournaledStaging): Promise<boolean> => {
     try {
       const observed = await signedRecovery.observeSignedTransaction({
@@ -167,7 +171,8 @@ export const validationTraceStaging = ({
           { confirmationDepth },
         )
       );
-    } catch {
+    } catch (cause) {
+      if (isFraudProofL1WaitError(cause)) throw cause;
       return false;
     }
   };
@@ -204,18 +209,62 @@ export const validationTraceStaging = ({
     return undefined;
   };
 
+  /** The latest live staging output deep enough our journal shows for the
+   * run `datumCbor` among those `reads` holds. */
+  const readBy = async (
+    { stagings, reclaimed }: Journal,
+    reads: ReadonlySet<string>,
+    datumCbor: string,
+  ) => {
+    for (const staging of [...stagings].reverse())
+      if (
+        staging.datumCbor === datumCbor &&
+        reads.has(staging.outRef) &&
+        !reclaimed.has(staging.outRef) &&
+        (await live(staging)) !== undefined &&
+        (await deep(staging))
+      )
+        return staging.outRef;
+    return undefined;
+  };
+
+  /**
+   * Where our journal shows `operands` staged: the stagings `usable` names,
+   * or, when `accepts` holds of other stagings one resolve move of ours read
+   * (the latest such move first) and not of those, the other stagings.
+   */
   const lookup =
     (context: FraudProofWorkflowAdapterContext): ValidationTraceStagingLookup =>
-    async (operands) => {
+    async (operands, accepts) => {
       const known = journal(context);
       const plan = planMidgardCekStaging(operands);
-      const refs = [];
-      for (const { datumCbor } of plan) {
+      const stagedBy = async (
+        pick: (datumCbor: string) => Promise<string | undefined>,
+      ) => {
+        const refs = [];
+        for (const { datumCbor } of plan) {
+          const outRef = await pick(datumCbor);
+          if (outRef === undefined) return undefined;
+          refs.push(stagedOutRef(outRef));
+        }
+        return midgardCekStagingResult(operands, plan, refs);
+      };
+      const preferred = await stagedBy(async (datumCbor) => {
         const found = await usable(known, datumCbor);
-        if (found?.ready !== true) return undefined;
-        refs.push(stagedOutRef(found.staging.outRef));
+        return found?.ready === true ? found.staging.outRef : undefined;
+      });
+      if (
+        accepts === undefined ||
+        (preferred !== undefined && accepts(preferred))
+      )
+        return preferred;
+      for (const { reads } of [...known.readers].reverse()) {
+        const read = await stagedBy(
+          async (datumCbor) => await readBy(known, reads, datumCbor),
+        );
+        if (read !== undefined && accepts(read)) return read;
       }
-      return midgardCekStagingResult(operands, plan, refs);
+      return preferred;
     };
 
   /** The staging our next move, `observed`, waits on, if any. */

@@ -12,7 +12,12 @@ import {
   type MidgardCekStagingRun,
   planMidgardCekStaging,
 } from "@al-ft/midgard-sdk";
-import { CML, type UTxO } from "@lucid-evolution/lucid";
+import {
+  CML,
+  coreToTxOutput,
+  type Emulator,
+  type UTxO,
+} from "@lucid-evolution/lucid";
 
 import type { ValidationTraceClaimMaterial } from "../../src/validation-trace-dispute/claim-material.js";
 import {
@@ -96,20 +101,61 @@ export const stagingIntents = (
   ),
 ];
 
+/** The transactions of `signedCbors` the ledger of `emulator` holds, in
+ * the order they landed. */
+const landed = async (
+  signedCbors: ReadonlyMap<string, string>,
+  emulator: Emulator,
+) => {
+  const found: { hash: string; body: CML.TransactionBody; block: number }[] =
+    [];
+  for (const [hash, cbor] of signedCbors) {
+    const status = await emulator.getTransactionStatus(hash);
+    if (status.status === "confirmed")
+      found.push({
+        hash,
+        body: CML.Transaction.from_cbor_hex(cbor).body(),
+        block: status.confirmation.blockHeight ?? 0,
+      });
+  }
+  return found.sort((x, y) => x.block - y.block);
+};
+
+/** The landed transaction of `signedCbors` that spent `outRef`, by the
+ * ledger of `emulator`; undefined while none has. */
+export const landedSpenderOf = async (
+  signedCbors: ReadonlyMap<string, string>,
+  emulator: Emulator,
+  outRef: string,
+): Promise<string | undefined> =>
+  (await landed(signedCbors, emulator)).find(({ body }) => {
+    const inputs = body.inputs();
+    return Array.from({ length: inputs.len() }, (_, index) =>
+      inputs.get(index),
+    ).some(
+      (input) =>
+        `${input.transaction_id().to_hex()}#${input.index().toString()}` ===
+        outRef,
+    );
+  })?.hash;
+
 /**
  * The drive of the successor's thread through the staged step of the
  * failing script `hex`, run under `exUnits` when given, whose arm chain is
  * `arms`, set up with the thread standing at the PrepareSelected move's
- * holder.
+ * holder; a move is final at release depth `releaseDepth` blocks under the
+ * tip when given, else at the tip.
  */
 export const stagedDrive = ({
   hex = STAGED_SHA2_SCRIPT,
   exUnits,
   arms = STAGED_BYTES_ARMS,
+  releaseDepth,
 }: {
   readonly hex?: string;
   readonly exUnits?: readonly [bigint, bigint];
   readonly arms?: typeof STAGED_BYTES_ARMS | typeof STAGED_INTEGER_ARMS;
+  readonly releaseDepth?: number;
 } = {}) => {
   const drive = resolutionDrive({
     from: lastStagedStep,
@@ -125,6 +171,7 @@ export const stagedDrive = ({
       builtins: true,
       failingScript: stagedScript(hex),
       ...(exUnits === undefined ? {} : { failingExUnits: exUnits }),
+      ...(releaseDepth === undefined ? {} : { releaseDepth }),
       // The operator's thread disputes the same step, so both threads read
       // the same staging.
       operatorFrom: lastStagedStep,
@@ -206,9 +253,44 @@ export const stagedDrive = ({
       return history;
     },
 
-    /** The staging outputs the journal shows, and those it shows spent
-     * back. */
-    stagings: () => journaledStagings(latest),
+    /** The staging outputs the journal shows. */
+    stagings: () => journaledStagings(latest).stagings,
+
+    /** The staging outputs the landed transactions left at our staging
+     * address, in the order they landed: what the ledger shows staged. */
+    stagedOnL1: async (): Promise<
+      readonly Readonly<{ outRef: string; datumCbor: string | undefined }>[]
+    > => {
+      const { scene } = drive.dispute();
+      const address = midgardCekStagingAddress(
+        scene.h.proverLucid.config().network!,
+        scene.h.proverSigner.paymentKeyHash,
+      );
+      return (await landed(scene.l1.signedCbors, scene.h.emulator)).flatMap(
+        ({ hash, body }) => {
+          const outputs = body.outputs();
+          return Array.from({ length: outputs.len() }, (_, index) => ({
+            output: outputs.get(index),
+            index,
+          }))
+            .filter(({ output }) => coreToTxOutput(output).address === address)
+            .map(({ output, index }) => ({
+              outRef: `${hash}#${index.toString()}`,
+              datumCbor: output.datum()?.as_datum()?.to_cbor_hex(),
+            }));
+        },
+      );
+    },
+
+    /** The landed transaction that spent `outRef`, if any. */
+    spenderOf: async (outRef: string): Promise<string | undefined> => {
+      const { scene } = drive.dispute();
+      return await landedSpenderOf(
+        scene.l1.signedCbors,
+        scene.h.emulator,
+        outRef,
+      );
+    },
 
     /** The block the transaction `hash` landed in. */
     blockOf: async (hash: string): Promise<number> => {

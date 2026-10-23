@@ -22,7 +22,6 @@ import type { LucidEvolution } from "@lucid-evolution/lucid";
 
 import type { ResolvedProverSigner } from "../runtime.js";
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
-import { isWorkflowFundingShortfall } from "../workflow/funding-reservation-permit.workflow-funding-shortfall.js";
 import type { FraudProofSignedTransactionRecovery } from "../workflow/l1-source.js";
 import type { FraudProofWorkflowAdapterContext } from "../workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
 import {
@@ -61,7 +60,10 @@ import {
   dueValidationTraceLostDefenseSlash,
   validationTraceLostDefenseSlashDeadlines,
 } from "./lost-defense-slash-due.js";
-import { captureValidationTraceThreadMove } from "./move-dispatch.js";
+import {
+  captureValidationTraceThreadMove,
+  isValidationTraceBuildPassedOn,
+} from "./move-dispatch.js";
 import { validationTraceObserveCopy } from "./observe-copy.js";
 import { validationTraceStaging } from "./one-step-staging.js";
 import { validationTraceReconcile } from "./reconcile.js";
@@ -385,11 +387,7 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
         history,
       });
     } catch (cause) {
-      if (
-        cause instanceof WorkflowActionChangedError ||
-        isWorkflowFundingShortfall(cause)
-      )
-        throw cause;
+      if (isValidationTraceBuildPassedOn(cause)) throw cause;
       throw await validationTraceStageUnbuilt({
         action,
         lucid,

@@ -22,9 +22,11 @@ import type { ValidationTraceOneStepPlan } from "./one-step-plan.js";
 
 /** Where the driver staged the staged operands `operands` of a step,
  * indexed as the step names them; undefined while they are not staged (at
- * their confirmation depth). */
+ * their confirmation depth). Of several stagings, one `accepts` holds of
+ * when there is one. */
 export type ValidationTraceStagingLookup = (
   operands: readonly Uint8Array[],
+  accepts?: (staging: MidgardCekStagingResult) => boolean,
 ) => Promise<MidgardCekStagingResult | undefined>;
 
 /** A staged step's staged operands and the staging outputs its evidence
@@ -52,12 +54,15 @@ const isStagedOperandWitness = (
  * Our trace's window `trace` with the step from `stateIndex`, when it is a
  * staged step with staged operands, staged where `staging` says, and the
  * step's staging; the window itself, and no staging, for any other step.
- * Throws for a staging that does not name each run of each operand.
+ * Of several stagings, the one whose window `committed` holds of. Throws for
+ * a staging that does not name each run of each operand, or, given
+ * `committed`, for one whose window it does not hold of.
  */
 export const stagedTraceOf = async (
   trace: ValidationTraceSteps,
   stateIndex: number,
   staging: ValidationTraceStagingLookup | undefined,
+  committed?: (window: ValidationTraceSteps) => boolean,
 ): Promise<
   Readonly<{
     trace: ValidationTraceSteps;
@@ -74,30 +79,47 @@ export const stagedTraceOf = async (
     return { trace, staged: undefined };
   const witness = auxiliary.step.witness;
   const operands = witness.stagedOperands;
-  const result = await staging?.(operands);
+  const windowOf = (result: MidgardCekStagingResult) => {
+    const material = stageMidgardCekStagedBuiltinMaterial(
+      witness.material,
+      operands,
+      result,
+    );
+    return {
+      trace: {
+        states: trace.states,
+        witnesses: {
+          [stateIndex]: {
+            ...work!,
+            auxiliary: {
+              ...auxiliary,
+              step: { ...auxiliary.step, witness: { ...witness, material } },
+            },
+          },
+          [stateIndex + 1]: trace.witnesses[stateIndex + 1],
+        },
+      },
+      staged: Object.freeze({ operands, refs: material.runs.refs }),
+    };
+  };
+  const accepts =
+    committed &&
+    ((result: MidgardCekStagingResult) => {
+      try {
+        return committed(windowOf(result).trace);
+      } catch {
+        return false;
+      }
+    });
+  const result = await staging?.(operands, accepts);
   if (result === undefined)
     return { trace, staged: Object.freeze({ operands, refs: undefined }) };
-  const material = stageMidgardCekStagedBuiltinMaterial(
-    witness.material,
-    operands,
-    result,
-  );
-  return {
-    trace: {
-      states: trace.states,
-      witnesses: {
-        [stateIndex]: {
-          ...work!,
-          auxiliary: {
-            ...auxiliary,
-            step: { ...auxiliary.step, witness: { ...witness, material } },
-          },
-        },
-        [stateIndex + 1]: trace.witnesses[stateIndex + 1],
-      },
-    },
-    staged: Object.freeze({ operands, refs: material.runs.refs }),
-  };
+  const window = windowOf(result);
+  if (committed !== undefined && !committed(window.trace))
+    throw new Error(
+      "validation-trace staged step's staging differs from the evidence its thread committed",
+    );
+  return window;
 };
 
 /** The live staging outputs the staged step of `plan` names, in its

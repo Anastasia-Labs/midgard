@@ -11,10 +11,6 @@
 import { CML, coreToTxOutput } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import {
-  confirmedIntents,
-  VALIDATION_TRACE_STAGING_RECLAIM,
-} from "../../src/validation-trace-dispute/one-step-staging-journal.js";
 import { honestBlock } from "./validation-trace-dispute-max-shape-case.js";
 import {
   STAGED_BYTES_ARMS,
@@ -52,12 +48,9 @@ export const stagedMaxCase = ({
   const signedOf = (hash: string) =>
     drive.dispute().scene.l1.signedCbors.get(hash)!;
 
-  /** Our staging outputs, in ledger order. */
-  const stagings = () =>
-    drive
-      .stagings()
-      .stagings.map(({ outRef }) => outRef)
-      .sort();
+  /** Our staging outputs the ledger shows, in ledger order. */
+  const stagings = async () =>
+    (await drive.stagedOnL1()).map(({ outRef }) => outRef).sort();
 
   describe("a wrong post state is convicted", () => {
     beforeAll(drive.setUp, 1_800_000);
@@ -69,10 +62,8 @@ export const stagedMaxCase = ({
         operandBytes,
       );
       const runs = await drive.runs();
-      await drive.play(
-        async () => drive.stagings().stagings.length >= runs.length,
-      );
-      const live = stagings();
+      await drive.play(async () => (await stagings()).length >= runs.length);
+      const live = await stagings();
       await drive.awards();
       expect(live).toHaveLength(runs.length);
       for (const label of [
@@ -117,31 +108,23 @@ export const stagedMaxCase = ({
       await drive.pays());
 
     it("spends each staging output back to our wallet by our key once the thread has settled", async () => {
-      const live = stagings();
-      await drive.play(
-        async () =>
-          live.every((outRef) => drive.stagings().reclaimed.has(outRef)),
-        60,
-      );
+      const live = await stagings();
+      await drive.play(async () => {
+        for (const outRef of live)
+          if ((await drive.live(outRef)) !== undefined) return false;
+        return true;
+      }, 60);
       const { scene } = drive.dispute();
-      const reclaims = confirmedIntents(
-        drive.entries(),
-        VALIDATION_TRACE_STAGING_RECLAIM,
-      );
-      expect(
-        reclaims.map(({ actionInput }) => String(actionInput.consumes)).sort(),
-      ).toEqual(live);
-      for (const { txHash } of reclaims) {
+      const reclaims = await Promise.all(live.map(drive.spenderOf));
+      expect(reclaims.every((txHash) => txHash !== undefined)).toBe(true);
+      for (const txHash of reclaims as string[]) {
         const body = CML.Transaction.from_cbor_hex(signedOf(txHash)).body();
         expect(body.inputs().len()).toBe(1);
         expect(coreToTxOutput(body.outputs().get(0)).address).toBe(
           scene.h.proverSigner.address,
         );
       }
-      reportFit(
-        "Staging reclaim",
-        reclaims.map(({ txHash }) => signedOf(txHash)),
-      );
+      reportFit("Staging reclaim", (reclaims as string[]).map(signedOf));
     }, 1_200_000);
   });
 

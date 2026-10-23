@@ -36,6 +36,9 @@ import {
 import type { ValidationTraceOneStepPlan } from "../../src/validation-trace-dispute/one-step-plan.js";
 import { scriptSourcesRedeemerReads } from "../../src/validation-trace-dispute/one-step-script-sources-redeemer.js";
 import { VALIDATION_TRACE_ONE_STEP_REQUIRED } from "../../src/validation-trace-dispute/threads.js";
+import type { FraudProofSignedTransactionRecovery } from "../../src/workflow/l1-source.js";
+import type { FraudProofFamilyWorkflowAdapter } from "../../src/workflow/orchestrator.js";
+import { emulatorSignedTransactionRecovery } from "./emulator-signed-recovery.js";
 import { expectWithinWalletMoveShape } from "./validation-trace-dispute-move-fees.js";
 import {
   defendTwoThreads,
@@ -227,15 +230,35 @@ export const resolutionDrive = <
     },
 
     /** Stops the runner's process and starts another over its journal,
-     * holding nothing the first held in memory. */
-    restart: () => {
+     * holding nothing the first held in memory, reading where each signed
+     * transaction stands from `signedRecovery` and its adapter rewritten by
+     * `wrap` when given. */
+    restart: ({
+      signedRecovery,
+      wrap,
+    }: {
+      readonly signedRecovery?: FraudProofSignedTransactionRecovery;
+      readonly wrap?: (
+        adapter: FraudProofFamilyWorkflowAdapter,
+      ) => FraudProofFamilyWorkflowAdapter;
+    } = {}) => {
       const { scene, deployment, prepared, runner } = dispute;
+      const recovery =
+        signedRecovery ??
+        (installs.releaseDepth === undefined
+          ? undefined
+          : emulatorSignedTransactionRecovery(
+              scene.h.emulator,
+              installs.releaseDepth,
+            ));
       dispute = Object.freeze({
         ...dispute,
         runner: makeRunner(scene, {
           deployment,
           journal: runner.journal,
-          wrap: capturePrepared(prepared),
+          wrap: (adapter) =>
+            capturePrepared(prepared)(wrap?.(adapter) ?? adapter),
+          ...(recovery === undefined ? {} : { signedRecovery: recovery }),
         }),
       });
     },

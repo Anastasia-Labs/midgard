@@ -8,6 +8,7 @@ import type { ValidationTraceClaimMaterial } from "./claim-material.js";
 import { CANONICAL_DECODE_CHALLENGER_SUCCESSOR_HASH } from "./one-step-canonical-decode.js";
 import { isValidationTraceContextHolder } from "./one-step-context-hops.js";
 import type { ValidationTraceRedeemerItemCarried } from "./one-step-context-item-hops.js";
+import { isValidationTraceArmHolder } from "./one-step-core-chains.js";
 import {
   type ValidationTraceOneStepContract,
   validationTraceOneStepDrives,
@@ -90,12 +91,23 @@ const challengerSuccessorPath = (
       ? CHALLENGER_SUCCESSOR_HASH.contextStage
       : CHALLENGER_SUCCESSOR_HASH.bound;
 
+/** Where a holder past the PrepareSelected move of a CEK core step keeps
+ * the evidence that move committed: beside the state holding our
+ * successor's hash. */
+const committedEvidencePath = (
+  holder: ValidationTraceOneStepContract["holder"],
+): readonly number[] | undefined =>
+  holder === "core" || isValidationTraceArmHolder(holder)
+    ? [...challengerSuccessorPath(holder).slice(0, -2), 2]
+    : undefined;
+
 /**
  * The plan the thread `utxo` at `holder` resolves, from our trace in
  * `material`: at the boundary, by its case thread `caseThread`; past it, by
  * our successor's hash its holder keeps, or, along the shared item chain,
  * the state it carried into the chain's entry, `carried`, keeps; a staged
- * step past the boundary staged where `staging` says.
+ * step past the boundary staged where `staging` says, and, past its
+ * PrepareSelected move, staged as the evidence that move committed names.
  */
 export const resolvingPlan = async ({
   deployment,
@@ -126,6 +138,8 @@ export const resolvingPlan = async ({
   }
   if (material === undefined)
     throw new Error("validation-trace one step has no trace of ours");
+  const evidencePath =
+    carried === undefined ? committedEvidencePath(holder) : undefined;
   return planned(
     await planValidationTraceOneStep({
       material,
@@ -140,6 +154,14 @@ export const resolvingPlan = async ({
       ),
       ...drives,
       ...(staging === undefined ? {} : { staging }),
+      ...(evidencePath === undefined
+        ? {}
+        : {
+            committedEvidenceHash: () =>
+              Data.from<string>(
+                plutusConstrFieldCbor(utxo.datum!, [...evidencePath]),
+              ),
+          }),
     }),
   );
 };
