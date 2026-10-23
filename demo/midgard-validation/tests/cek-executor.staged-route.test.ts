@@ -232,6 +232,33 @@ const unprovable: readonly (readonly [string, UPLCTerm])[] = [
     "indexByteString past the end of 20,000 bytes",
     call(Builtin.indexByteString, built(20_000), int(20_000n)),
   ],
+  [
+    "indexByteString at -1 of 20,000 bytes",
+    call(Builtin.indexByteString, built(20_000), int(-1n)),
+  ],
+  [
+    "consByteString of 256 onto 10,000 bytes",
+    call(Builtin.consByteString, int(256n), built(10_000)),
+  ],
+  [
+    "sliceByteString from 2^63 of 20,000 bytes",
+    call(Builtin.sliceByteString, int(1n << 63n), int(10n), built(20_000)),
+  ],
+  [
+    "decodeUtf8 of 10,000 bytes ending mid-character",
+    call(
+      Builtin.decodeUtf8,
+      call(
+        Builtin.appendByteString,
+        call(Builtin.encodeUtf8, builtText(10_000)),
+        UPLCConst.byteString(new DataB(Uint8Array.of(0xc3)).bytes),
+      ),
+    ),
+  ],
+  [
+    "decodeUtf8 of 65,537 bytes",
+    call(Builtin.decodeUtf8, call(Builtin.encodeUtf8, builtText(65_537))),
+  ],
 ];
 
 const stagedSteps = (
