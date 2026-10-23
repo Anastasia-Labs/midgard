@@ -4220,27 +4220,6 @@ pub fn verify_semantic_data_misc(
       cek_data_v1.list_data_summary_v1(empty),
       0,
     )
-  } else if tag == 51 {
-    expect [source] = arguments
-    expect witness.data_nodes == []
-    expect witness.list_nodes == []
-    expect witness.pair_nodes == []
-    expect [raw_data] = witness.scalar_preimages
-    expect bytearray.length(raw_data) > 0
-    expect bytearray.length(raw_data) <= cek_proof_v1.max_bounded_blob_bytes
-    let data <- cbor_deserialise.expect_deserialise(raw_data)
-    expect cbor.serialise(data) == raw_data
-    expect
-      cek_data_v1.semantic_data_summary_v1(data) == data_constant_summary_v1(
-        source,
-      )
-    let payload = builtin.b_data(raw_data)
-    result_is_semantic_constant_v1(
-      result,
-      cek_constant_v1.ByteStringConstant,
-      cek_data_v1.semantic_data_summary_v1(payload),
-      cek_constant_v1.bytearray_memory_size_v1(raw_data),
-    )
   } else {
     False
   }

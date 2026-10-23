@@ -162,7 +162,10 @@ pub fn semantic_group(tag: Int) -> Int {
     3
   } else if tag == 37 || tag == 42 {
     4
-  } else if tag >= 47 && tag <= 51 {
+  } else if tag == 51 {
+    // serialiseData, over a Data argument of any size.
+    10
+  } else if tag >= 47 && tag <= 50 {
     6
   } else if tag == 39 || tag == 40 || tag == 41 || tag == 44 || tag == 45 || tag == 46 {
     5
