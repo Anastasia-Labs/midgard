@@ -123,11 +123,8 @@ describe("Phase B: an evaluator limit is indeterminate, never a rejection", () =
     expectAccepted(await runPhaseB(doubling));
   });
 
-  it("is indeterminate when a proof-mode builtin passes the payload bound", async () => {
-    expectIndeterminate(
-      await runPhaseB(doubling, { cekExecutionMode: "proof" }),
-      doubling,
-    );
+  it("proves a proof-mode builtin past the payload bound on the staged route", async () => {
+    expectAccepted(await runPhaseB(doubling, { cekExecutionMode: "proof" }));
     expectScriptRejected(
       await runPhaseB(failing, { cekExecutionMode: "proof" }),
     );

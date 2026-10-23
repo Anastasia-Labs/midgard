@@ -47,6 +47,7 @@ import {
 } from "./cek-constant.js";
 import { commitMidgardCekDataTree } from "./cek-data-tree.js";
 import {
+  builtinReturnSuccessor,
   type Bytes,
   type EnvironmentNode,
   errorSuccessor,
@@ -82,6 +83,10 @@ import {
   presentMidgardCekSemanticResult,
 } from "./cek-executor.semantic-presentation.js";
 import { MidgardCekSemanticStore } from "./cek-executor.semantic-store.js";
+import {
+  executeMidgardCekStagedBuiltin,
+  isMidgardCekStagedStep,
+} from "./cek-executor.staged-builtins.js";
 import {
   type MidgardCekStepRecorder,
   type MidgardCekStructuralVerdict,
@@ -1058,15 +1063,7 @@ export class StructuralExecutor {
         result: presentMidgardCekSemanticResult(tag, result),
         material,
       },
-      exactState(pre, {
-        mode: "return",
-        focusRoot: resultRoot,
-        environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
-        continuationRoot: pre.continuationRoot,
-        auxiliary: 0n,
-        cpuDelta: budget.cpu,
-        memoryDelta: budget.memory,
-      }),
+      builtinReturnSuccessor(pre, resultRoot, budget),
     );
   }
 
@@ -1227,15 +1224,22 @@ export class StructuralExecutor {
           rightExpression,
           result: evaluated.result,
         },
-        exactState(pre, {
-          mode: "return",
-          focusRoot: resultRoot,
-          environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
-          continuationRoot: pre.continuationRoot,
-          auxiliary: 0n,
-          cpuDelta: evaluated.budget.cpu,
-          memoryDelta: evaluated.budget.memory,
-        }),
+        builtinReturnSuccessor(pre, resultRoot, evaluated.budget),
+      );
+      return;
+    }
+    if (isMidgardCekStagedStep(builtin.tag, directArguments)) {
+      const staged = executeMidgardCekStagedBuiltin(
+        this.store,
+        builtin.tag,
+        directArguments,
+        roots,
+      );
+      const resultRoot = this.addDirectResult(staged.result);
+      const budget = this.budget(builtin.tag, directArguments);
+      this.record(
+        staged.witness,
+        builtinReturnSuccessor(pre, resultRoot, budget),
       );
       return;
     }
@@ -1322,15 +1326,7 @@ export class StructuralExecutor {
         arguments: directArguments,
         result: evaluated.result,
       },
-      exactState(pre, {
-        mode: "return",
-        focusRoot: resultRoot,
-        environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
-        continuationRoot: pre.continuationRoot,
-        auxiliary: 0n,
-        cpuDelta: evaluated.budget.cpu,
-        memoryDelta: evaluated.budget.memory,
-      }),
+      builtinReturnSuccessor(pre, resultRoot, evaluated.budget),
     );
   }
 

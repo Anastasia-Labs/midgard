@@ -69,6 +69,22 @@ export const exactState = (
     memory: pre.memory + (update.memoryDelta ?? 0n),
   });
 
+/** The state after a builtin returns `resultRoot`, charging `budget`. */
+export const builtinReturnSuccessor = (
+  pre: MidgardCekMachineState,
+  resultRoot: Bytes,
+  budget: { readonly cpu: bigint; readonly memory: bigint },
+): MidgardCekMachineState =>
+  exactState(pre, {
+    mode: "return",
+    focusRoot: resultRoot,
+    environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
+    continuationRoot: pre.continuationRoot,
+    auxiliary: 0n,
+    cpuDelta: budget.cpu,
+    memoryDelta: budget.memory,
+  });
+
 export const exactComputeSuccessor = (
   pre: MidgardCekMachineState,
   update: Omit<Parameters<typeof exactState>[1], "cpuDelta" | "memoryDelta">,
