@@ -30,7 +30,7 @@ export const interactiveTests = [
   "./tests/validation-trace-dispute-one-step-cek-staged.test.ts",
   "./tests/validation-trace-dispute-one-step-cek-staged-append-max.test.ts",
   "./tests/validation-trace-dispute-one-step-cek-staged-sha2-max.test.ts",
-  "./tests/validation-trace-dispute-one-step-cek-staged-add-largest-literal.test.ts",
+  "./tests/validation-trace-dispute-one-step-cek-staged-add-long-literal.test.ts",
   "./tests/validation-trace-dispute-one-step-compact-binding-9.test.ts",
   "./tests/validation-trace-dispute-one-step-static-ledger-rules-10.test.ts",
   "./tests/validation-trace-dispute-one-step-input-sets-11.test.ts",
