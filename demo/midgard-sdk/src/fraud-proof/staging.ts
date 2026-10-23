@@ -9,8 +9,13 @@ import {
   Constr,
   Data,
   type LucidEvolution,
+  type Network,
+  paymentCredentialOf,
+  type Script,
+  scriptFromNative,
   type TxSignBuilder,
   type UTxO,
+  validatorToAddress,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -25,9 +30,14 @@ import {
  *
  * A staged operand is split into 4,095-byte chunks, and each run of up to
  * three chunks is staged as the inline datum `Constr 0 [List [B c1, ...]]` of
- * one output at the stager's own wallet address, one output a transaction.
+ * one output at the stager's staging address, one output a transaction.
  * The step names those outputs by output reference; their owner and address
  * do not matter, only their content, so equal runs share one output.
+ *
+ * The staging address is locked by the native script `sig(<stager's payment
+ * key hash>)`. Its payment credential is a script hash, so the wallet's own
+ * output set, which every wallet-funded builder selects from, never holds a
+ * staging output, while the same key still controls reclaim.
  *
  * After the step's binder, the staging outputs it names must stay unspent
  * until the thread settles: the binder fixed their output references, so
@@ -162,6 +172,35 @@ export const midgardCekStagingResult = (
   );
 };
 
+/** The native script `sig(stagerKeyHash)` locking a stager's staging outputs. */
+export const midgardCekStagingScript = (stagerKeyHash: string): Script =>
+  scriptFromNative({ type: "sig", keyHash: stagerKeyHash });
+
+/** The staging address of the stager with payment key hash `stagerKeyHash`. */
+export const midgardCekStagingAddress = (
+  network: Network,
+  stagerKeyHash: string,
+): string =>
+  validatorToAddress(network, midgardCekStagingScript(stagerKeyHash));
+
+/** The staging script and address of the selected wallet's payment key. */
+const walletStaging = async (
+  lucid: LucidEvolution,
+): Promise<{ readonly script: Script; readonly address: string }> => {
+  const network = lucid.config().network;
+  if (network === undefined) {
+    throw new Error("staging requires a configured network");
+  }
+  const credential = paymentCredentialOf(await lucid.wallet().address());
+  if (credential.type !== "Key") {
+    throw new Error("staging requires a key-hash wallet");
+  }
+  return {
+    script: midgardCekStagingScript(credential.hash),
+    address: midgardCekStagingAddress(network, credential.hash),
+  };
+};
+
 const plainAda = (utxo: UTxO): boolean =>
   utxo.datum == null &&
   utxo.datumHash == null &&
@@ -169,22 +208,16 @@ const plainAda = (utxo: UTxO): boolean =>
   Object.keys(utxo.assets).every((unit) => unit === "lovelace");
 
 /**
- * The transaction staging `run` as one output at `stagerAddress`. It is funded
- * from the wallet's plain-Ada outputs only, so it never spends an earlier
- * staging output.
+ * The transaction staging `run` as one output at the wallet's staging address.
+ * It is funded from the wallet's plain-Ada outputs only.
  */
 export const buildUnsignedMidgardCekStagingProgram = (
   lucid: LucidEvolution,
-  {
-    run,
-    stagerAddress,
-  }: {
-    readonly run: MidgardCekStagingRun;
-    readonly stagerAddress: string;
-  },
+  { run }: { readonly run: MidgardCekStagingRun },
 ): Effect.Effect<TxSignBuilder, Error> =>
   Effect.tryPromise({
     try: async () => {
+      const { address: stagerAddress } = await walletStaging(lucid);
       const fundingInputs = (await lucid.wallet().getUtxos()).filter(plainAda);
       if (fundingInputs.length === 0) {
         throw new Error("staging requires plain-Ada funding");
@@ -298,9 +331,10 @@ export class MidgardCekStagingPins {
 }
 
 /**
- * The transaction spending staging `outputs` back to the wallet. It refuses
- * an output that is not a staging run and an output any thread pins, and it
- * spends nothing else, so no other staging output is swept into it.
+ * The transaction spending staging `outputs` from the wallet's staging address
+ * back to the wallet. It refuses an output that is not a staging run at that
+ * address and an output any thread pins, and it spends nothing else, so no
+ * other staging output is swept into it.
  */
 export const buildUnsignedMidgardCekStagingReclaimProgram = (
   lucid: LucidEvolution,
@@ -317,12 +351,14 @@ export const buildUnsignedMidgardCekStagingReclaimProgram = (
       if (outputs.length === 0) {
         throw new Error("nothing to reclaim");
       }
+      const staging = await walletStaging(lucid);
       for (const output of outputs) {
         const ref = {
           transactionId: output.txHash,
           outputIndex: output.outputIndex,
         };
         if (
+          output.address !== staging.address ||
           output.datum == null ||
           midgardCekStagingRunChunks(output.datum) === null
         ) {
@@ -338,6 +374,8 @@ export const buildUnsignedMidgardCekStagingReclaimProgram = (
       return await lucid
         .newTx()
         .collectFrom([...outputs])
+        // eslint-disable-next-line midgard/fault-proof-reference-scripts-only -- the stager's own sig(key hash) native lock, not a fault-proof script.
+        .attach.SpendingValidator(staging.script)
         .complete({ localUPLCEval: true, coinSelection: false });
     },
     catch: (cause) =>
