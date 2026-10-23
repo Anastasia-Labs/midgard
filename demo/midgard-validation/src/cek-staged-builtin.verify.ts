@@ -26,7 +26,6 @@ import {
   parseMidgardCekCanonicalIntegerCbor,
 } from "@al-ft/midgard-core";
 import { CEKConst } from "@harmoniclabs/plutus-machine";
-import { UPLCConst } from "@harmoniclabs/uplc";
 
 import type {
   Bytes,
@@ -235,8 +234,6 @@ const scalarOperands = <T>(
   return [arguments_, []];
 };
 
-const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
-
 const verifyBytes = (inputs: ArmInputs): boolean => {
   const { tag } = inputs;
   const string = tag >= 22 && tag <= 24;
@@ -264,6 +261,21 @@ const verifyBytes = (inputs: ArmInputs): boolean => {
       compactValue(CEKConst.bool(same(left!.root, right!.root))),
     );
   }
+  if (tag === 22) {
+    if (operands.length !== 2) return false;
+    // appendString joins the bytes, as the arm does, without decoding them.
+    const joined = Buffer.concat(
+      operands.map(
+        (operand) => operand.bytes ?? refuse("operand bytes not revealed"),
+      ),
+    );
+    const length = BigInt(joined.length);
+    return sameCompacted(inputs.result, {
+      typeCbor: STRING_TYPE,
+      payload: bytesSummary(length, midgardCekFlatRoot(joined)),
+      memory: bytesMemory(true, length),
+    });
+  }
   if (tag === 24) {
     if (operands.length !== 1) return false;
     const [operand] = operands;
@@ -277,9 +289,7 @@ const verifyBytes = (inputs: ArmInputs): boolean => {
   const integers = integerArguments.map(smallInteger);
   const values = operands.map((operand) => {
     if (operand.bytes === null) return refuse("operand bytes not revealed");
-    return string
-      ? CEKConst.fromUplc(UPLCConst.str(utf8.decode(operand.bytes)))
-      : CEKConst.byteString(operand.bytes);
+    return CEKConst.byteString(operand.bytes);
   });
   const ordered =
     tag === 11
