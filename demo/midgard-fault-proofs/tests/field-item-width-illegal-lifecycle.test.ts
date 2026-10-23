@@ -387,7 +387,7 @@ describe("fieldItemWidthIllegal registered-chain lifecycle", () => {
         header: { ...forced.header, validationTracesRoot: "ff".repeat(32) },
       });
       await door("forced_leaf_membership", evidence, {
-        membership: { ...membership, root: "ee".repeat(32) },
+        membership: { ...membership, phas_root: "ee".repeat(32) },
       });
       await door(
         "forced_direction",

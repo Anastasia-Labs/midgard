@@ -1,7 +1,8 @@
 /** Where a thread of ours stands during the one-step resolution of a step
  * the runner drives: the boundary game-v1 EnterResolution sends it to; for
  * a CEK step the CEK phase resolver, then for a core step the CEK core step
- * binder, the arm its step selects and the settle, for a script selection
+ * binder, the arms of the chain its step selects (one-step-core-chains.ts)
+ * and the settle, for a script selection
  * the selection resolver, or for a context step the context step resolver,
  * the context control, the stage it routes the step to (at the item bind
  * stage, then the redeemer item step's holders,
@@ -42,6 +43,12 @@ import {
   type ValidationTraceContextItemHolder,
 } from "./one-step-context-item-holders.js";
 import {
+  CEK_CORE_ARM_CONTRACT_NAMES,
+  CEK_CORE_BUILTIN_ARM_HOLDERS,
+  CEK_CORE_SINGLE_HOP_ARM_HOLDERS,
+  type ValidationTraceArmHolder,
+} from "./one-step-core-chains.js";
+import {
   isValidationTracePhase,
   PHASE_CONTRACT_NAMES,
   PHASE_HOLDERS,
@@ -55,8 +62,6 @@ import {
   CEK_CORE_SEMANTIC_RESOLVER_INDEX,
   CEK_RESOLVER_INDEX,
   CEK_SELECTION_SEMANTIC_RESOLVER_INDEX,
-  SINGLE_HOP_CORE_ARMS,
-  type SingleHopCoreGroup,
   type ValidationTraceOneStepDrives,
 } from "./one-step-plan.js";
 import {
@@ -68,8 +73,7 @@ import {
 } from "./one-step-script-sources-redeemer.js";
 import type { ValidationTraceDisputeDeployment } from "./transactions.js";
 
-export type ValidationTraceArmHolder =
-  (typeof SINGLE_HOP_CORE_ARMS)[SingleHopCoreGroup];
+export type { ValidationTraceArmHolder };
 
 /** The holder of each context stage the runner drives. */
 export const CEK_CONTEXT_STAGE_HOLDERS = Object.freeze({
@@ -128,10 +132,7 @@ export const VALIDATION_TRACE_ONE_STEP_CONTRACT_NAMES = Object.freeze({
   boundary: "validationTraceDisputeBoundary",
   prepare: "validationTraceDisputeCekPrepare",
   core: "validationTraceDisputeCekCoreStepSemantic",
-  compute: "validationTraceDisputeCekCoreCompute",
-  machine: "validationTraceDisputeCekCoreMachine",
-  mapConversion: "validationTraceDisputeCekCoreMapConversion",
-  caseConstant: "validationTraceDisputeCekCoreCaseConstant",
+  ...CEK_CORE_ARM_CONTRACT_NAMES,
   settle: "validationTraceDisputeCekCoreSettle",
   selection: "validationTraceDisputeCekExecutionSelectionSemantic",
   context: "validationTraceDisputeCekContextStepSemantic",
@@ -233,6 +234,7 @@ export const validationTraceOneStepDrives = (
       deployment.references.oneStep?.scriptSourcesRedeemers !== undefined,
     decodeRecords: validationTraceDrivesSelections(deployment),
     contexts: deployment.references.oneStep?.cekContext !== undefined,
+    builtins: deployment.references.oneStep?.cekBuiltins !== undefined,
     canonicalDecode:
       deployment.references.oneStep?.canonicalDecode !== undefined,
     phases: Object.keys(PHASE_RESOLUTIONS)
@@ -275,6 +277,7 @@ export const validationTraceOneStepContracts = (
       reference,
     });
   const prepare = chain.prepareResolvers[CEK_RESOLVER_INDEX];
+  const builtins = references.cekBuiltins;
   const selection = references.cekSelection;
   const context = references.cekContext;
   const stages = chain.cekContextStages;
@@ -292,9 +295,14 @@ export const validationTraceOneStepContracts = (
     contract("boundary", chain.boundary, references.boundary),
     contract("prepare", prepare, references.cekPrepare),
     contract("core", cekCoreSemanticResolver(deployment), references.cekCore),
-    ...Object.values(SINGLE_HOP_CORE_ARMS).map((arm) =>
+    ...CEK_CORE_SINGLE_HOP_ARM_HOLDERS.map((arm) =>
       contract(arm, chain.cekCoreStages[arm], references.arms[arm]),
     ),
+    ...(builtins === undefined
+      ? []
+      : CEK_CORE_BUILTIN_ARM_HOLDERS.map((arm) =>
+          contract(arm, chain.cekCoreStages[arm], builtins[arm]),
+        )),
     contract("settle", chain.cekCoreStages.settle, references.settle),
     ...(selection === undefined
       ? []

@@ -19,6 +19,7 @@ import { publishRemovalReferenceScripts } from "./submit-init-emulator-shared.js
 import { FUNDED } from "./validation-trace-dispute-funded-verify-source.js";
 import {
   oneStepScripts,
+  publishBuiltinArmReferences,
   publishCanonicalDecodeReferences,
   publishContextReferences,
   publishOneStepReferences,
@@ -54,6 +55,7 @@ export const setUpInstalledScene = async (): Promise<InstalledScene> => {
       ...(await publishOneStepReferences(contracts)),
       cekSelection: await publishSelectionReferences(contracts),
       cekContext: await publishContextReferences(contracts),
+      cekBuiltins: await publishBuiltinArmReferences(contracts),
       canonicalDecode: await publishCanonicalDecodeReferences(contracts),
       phases: await publishPhaseReferences(contracts),
       phaseYields: await publishPhaseYieldReferences(contracts),

@@ -37,6 +37,7 @@ import { encodeMidgardCekCanonicalConstant } from "./cek-constant.js";
 import { commitMidgardCekDataTree } from "./cek-data-tree.js";
 import type { MidgardCekSemanticStore } from "./cek-executor.semantic-store.js";
 import type { MidgardCekCoreStepWitness } from "./cek-machine.js";
+import { midgardCekSemanticGroup } from "./cek-semantic-group.js";
 import type { MidgardCekStagedOperandSource } from "./cek-staged-builtin.material.js";
 import {
   midgardCekPlaceholderStaging,
@@ -44,7 +45,6 @@ import {
   stageMidgardCekStagedBuiltinMaterial,
 } from "./cek-staged-builtin.material.js";
 import {
-  midgardCekSemanticGroup,
   midgardCekStagedBuiltinProves,
   verifyMidgardCekStagedBuiltin,
 } from "./cek-staged-builtin.verify.js";
