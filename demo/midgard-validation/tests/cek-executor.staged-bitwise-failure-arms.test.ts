@@ -364,8 +364,16 @@ describe("a failing bitwise, ECDSA or integerToByteString step has one provable 
     ).toBe(false);
   });
 
-  it("readBit: the staged failure hop proves no failure on an index at the machine integer bounds", () => {
-    for (const index of [INT64_MAX, INT64_MIN]) {
+  it("readBit: the staged failure hop proves an index past the bits, uncharged, and no failure on an index inside them", () => {
+    const bits = BigInt(LONGEST) * 8n;
+    for (const [index, fails] of [
+      [INT64_MAX, true],
+      [INT64_MIN, true],
+      [bits, true],
+      [-1n, true],
+      [bits - 1n, false],
+      [0n, false],
+    ] as const) {
       const operands = [
         bytesOperand(builtBytes(LONGEST)),
         integerOperand(index),
@@ -375,6 +383,9 @@ describe("a failing bitwise, ECDSA or integerToByteString step has one provable 
         smallInteger(index),
       ]);
       expect(failureVerifies(READ_BIT, arguments_, staged, UNCHARGED)).toBe(
+        fails,
+      );
+      expect(failureVerifies(READ_BIT, arguments_, staged, SOME_CHARGE)).toBe(
         false,
       );
     }

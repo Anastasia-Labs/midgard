@@ -1696,11 +1696,84 @@ test refuses_an_index_or_amount_with_an_extra_source() fail {
   )
 }
 
-test refuses_an_index_or_amount_at_the_int64_bounds() {
-  list.all(machine_integer_tags, fn(tag) { !or {
+test refuses_an_amount_at_the_int64_bounds() {
+  list.all([82, 83], fn(tag) { !or {
         machine_integer_decides(tag, power_of_two(63) - 1),
         machine_integer_decides(tag, -power_of_two(63)),
       } })
+}
+
+// ## readBit from the committed length
+//
+// readBit fails on an index outside the bits of its byte string, which the
+// byte string's leaf binds; an index outside Int64 is one of them.
+
+/// readBit of `bytes` (by its leaf) at `index`.
+fn read_bit_fails(bytes: ByteArray, index: Int) -> Bool {
+  fails(
+    79,
+    [bytes_value(bytes, False), integer_value(index)],
+    no_staging(),
+    [bytes_leaf(bytes), SmallIntegerOperand { value: index }],
+  )
+}
+
+fn read_bit_decides(bytes: ByteArray, index: Int) -> Bool {
+  decides(
+    79,
+    [bytes_value(bytes, False), integer_value(index)],
+    no_staging(),
+    [bytes_leaf(bytes), SmallIntegerOperand { value: index }],
+  )
+}
+
+test proves_read_bit_fails_at_and_past_the_bits() {
+  let bytes = pattern(20000, 3)
+  and {
+    read_bit_fails(bytes, 160000),
+    read_bit_fails(bytes, 160001),
+    read_bit_fails(bytes, power_of_two(63) - 1),
+    machine_integer_fails(79, 524288),
+    machine_integer_fails(79, power_of_two(63) - 1),
+  }
+}
+
+test proves_read_bit_fails_below_zero() {
+  let bytes = pattern(20000, 3)
+  and {
+    read_bit_fails(bytes, -1),
+    read_bit_fails(bytes, -power_of_two(63)),
+    machine_integer_fails(79, -power_of_two(63)),
+  }
+}
+
+test proves_read_bit_fails_on_the_empty_byte_string() {
+  read_bit_fails(#"", 0)
+}
+
+test refuses_read_bit_within_the_bits() {
+  !or {
+    read_bit_decides(pattern(20000, 3), 0),
+    read_bit_decides(pattern(20000, 3), 159999),
+    machine_integer_decides(79, 524287),
+  }
+}
+
+test refuses_a_step_reading_within_the_bits() fail {
+  read_bit_fails(pattern(20000, 3), 159999)
+}
+
+test refuses_a_bit_length_shorter_than_the_committed_one() fail {
+  let bytes = pattern(20000, 3)
+  fails(
+    79,
+    [bytes_value(bytes, False), integer_value(159999)],
+    no_staging(),
+    [
+      BytesLeafOperand { root: flat_root_v1(bytes), length: 19999 },
+      SmallIntegerOperand { value: 159999 },
+    ],
+  )
 }
 
 test proves_shift_and_rotate_fail_on_their_amount_beside_any_input() {
@@ -2118,10 +2191,10 @@ test leaves_a_charged_ecdsa_and_integer_to_bytes_post_on_the_staged_route() {
 
 // ## Budget rows
 
-/// readBit at an index outside Int64 beside a byte string of 65,536 bytes,
-/// the index revealed by its value.
+/// readBit at the first index past the bits of a byte string of 65,536
+/// bytes, the index revealed by its value and the length bound by the leaf.
 fn read_bit_step_at_the_bound() -> StagedStepV1 {
-  let index = -power_of_two(63) - 1
+  let index = 524288
   failure_step(
     79,
     list.map([at_bound_bytes(), integer_value(index)], compact),

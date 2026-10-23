@@ -17,10 +17,10 @@
  *   hop, the lengths read from the leaves;
  * - byteStringToInteger's input past its bound goes to the staged failure
  *   hop;
- * - a bitwise builtin's byte string past its bound, and readBit's index or
- *   shiftByteString's or rotateByteString's amount outside the machine
- *   integers, go to the staged failure hop, a one-word index or amount
- *   revealed by its value;
+ * - a bitwise builtin's byte string past its bound, readBit's index outside
+ *   the bits, and shiftByteString's or rotateByteString's amount outside the
+ *   machine integers, go to the staged failure hop, a one-word index or
+ *   amount revealed by its value;
  * - verifyEcdsaSecp256k1Signature's key, message or signature of the wrong
  *   length (charged) goes to the staged failure hop, the lengths read from
  *   the leaves;
@@ -244,9 +244,19 @@ const classify = (
     if (index!.type !== "integer") return null;
     if (words(index!) > 1n) return staged([], false);
     const value = integer(index!);
-    return value < INT64_MIN || value > INT64_MAX
-      ? staged([bytes!.leaf, { kind: "smallInteger", value }], false)
-      : null;
+    const inInt64 = value >= INT64_MIN && value <= INT64_MAX;
+    const sources: MidgardCekStagedOperandSource[] = [
+      bytes!.leaf,
+      { kind: "smallInteger", value },
+    ];
+    if (number === 79) {
+      // Inside the machine integers, an index outside the bits fails after
+      // costing, as the reference evaluator also decides.
+      return value < 0n || value >= BigInt(bytes!.bytes.length) * 8n
+        ? staged(sources, inInt64)
+        : null;
+    }
+    return inInt64 ? null : staged(sources, false);
   }
   if (number === 74) {
     // The operands are the input alone; only its bound fails here.

@@ -168,12 +168,14 @@ const oneWordInteger = (
   return integer;
 };
 
-/** indexByteString's index, a one-word integer revealed by its value, is
- * below zero or at or past the length the byte string's source binds. */
+/** indexByteString's index (`unit` 1) or readBit's (`unit` 8), a one-word
+ * integer revealed by its value, is below zero or at or past the length in
+ * bytes or bits the byte string's source binds. */
 const indexPastEnd = (
   values: readonly MidgardCekDirectValueWitness[],
   material: MidgardCekStagedBuiltinMaterial,
   referenceInputs: readonly MidgardCekStagedReferenceInput[],
+  unit: bigint,
 ): boolean => {
   const [bytes, index] = values;
   const [source, trailing] = material.sources;
@@ -187,7 +189,7 @@ const indexPastEnd = (
     false,
     true,
   );
-  return value < 0n || value >= operand.length;
+  return value < 0n || value >= operand.length * unit;
 };
 
 /** decodeUtf8's operand is not UTF-8: its bytes up to the given offset
@@ -220,14 +222,15 @@ const notUtf8 = (
   return !isUtf8(whole.subarray(offset, offset + width));
 };
 
-/** A bitwise builtin fails before costing: a byte-string argument (but
- * shiftByteString's and rotateByteString's input, which is unbounded) past
- * its bound, or readBit's index or the amount outside the machine
- * integers. */
+/** A bitwise builtin fails: a byte-string argument (but shiftByteString's
+ * and rotateByteString's input, which is unbounded) past its bound,
+ * readBit's index outside the bits (which takes in every index outside the
+ * machine integers), or the amount outside the machine integers. */
 const bitwiseFails = (
   tag: bigint,
   arguments_: readonly MidgardCekDirectValueWitness[],
   material: MidgardCekStagedBuiltinMaterial,
+  referenceInputs: readonly MidgardCekStagedReferenceInput[],
 ): boolean => {
   if (
     tag !== 82n &&
@@ -240,6 +243,9 @@ const bitwiseFails = (
   if (arguments_.length !== 2) return refuse("argument count");
   const integer = arguments_[1]!;
   if (memoryPast(integer, 1n)) return true;
+  if (tag === 79n) {
+    return indexPastEnd(arguments_, material, referenceInputs, 8n);
+  }
   if (material.sources.length !== 2) return refuse("source count");
   const value = oneWordInteger(integer, material.sources[1]);
   return value < INT64_MIN || value > INT64_MAX;
@@ -281,7 +287,7 @@ export const verifyMidgardCekStagedBuiltinFailure = (
       return memoryPast(bounded, MAX_BOUNDED_BYTES_WORDS);
     }
     if ((tag >= 75n && tag <= 79n) || (tag >= 82n && tag <= 85n)) {
-      return bitwiseFails(tag, arguments_, material);
+      return bitwiseFails(tag, arguments_, material, referenceInputs);
     }
     if (tag === 73n) {
       const [, width] = arguments_;
@@ -301,7 +307,8 @@ export const verifyMidgardCekStagedBuiltinFailure = (
         memoryPast(value, MAX_BOUNDED_BYTES_WORDS),
       ) ||
       integerArguments.some((value) => memoryPast(value, 1n)) ||
-      (tag === 14n && indexPastEnd(arguments_, material, referenceInputs)) ||
+      (tag === 14n &&
+        indexPastEnd(arguments_, material, referenceInputs, 1n)) ||
       (tag === 25n && notUtf8(arguments_, material, referenceInputs))
     );
   } catch {

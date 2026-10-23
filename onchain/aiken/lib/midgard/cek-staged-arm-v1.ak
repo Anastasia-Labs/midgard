@@ -864,9 +864,11 @@ fn failure_inputs_v1(
 /// - a byte-string argument of andByteString, orByteString, xorByteString,
 ///   complementByteString, readBit, countSetBits or findFirstSetBit of more
 ///   than 8,192 words;
-/// - readBit's index, or shiftByteString's or rotateByteString's amount, of
-///   more than one word, or of one word revealed by its value and outside the
-///   machine integers;
+/// - readBit's index of more than one word, or of one word revealed by its
+///   value and outside the bits its source binds (which takes in every index
+///   outside the machine integers), and shiftByteString's or
+///   rotateByteString's amount of more than one word, or of one word revealed
+///   by its value and outside the machine integers;
 /// - integerToByteString's width of more than one word, or of one word
 ///   revealed by its value and outside 0..8,192.
 ///
@@ -910,7 +912,7 @@ pub fn verify_staged_failure_v1(
       list.any(integer_arguments, fn(value) { memory_past_v1(value, 1) }),
       and {
         tag == 14,
-        index_past_end_v1(arguments, material, reference_inputs),
+        index_past_end_v1(arguments, material, reference_inputs, 1),
       },
       and {
         tag == 25,
@@ -941,7 +943,10 @@ pub fn verify_staged_failure_v1(
           expect [_, integer] = arguments
           or {
             memory_past_v1(integer, 1),
-            {
+            if tag == 79 {
+              // An index outside the machine integers is outside the bits.
+              index_past_end_v1(arguments, material, reference_inputs, 8)
+            } else {
               expect [_, source] = material.sources
               let value = one_word_integer_v1(integer, source)
               value < int64_min || value > int64_max
@@ -993,8 +998,9 @@ fn one_word_integer_v1(value: ValueWitnessV1, source: OperandSourceV1) -> Int {
 /// in the range and a zero divisor, a signature builtin over a message in
 /// bound with a malformed key or signature (any ECDSA argument of the wrong
 /// length), and integerToByteString with its width in range over an input
-/// past 1,024 words are charged before they fail; every other failure here is
-/// raised before costing.
+/// past 1,024 words are charged before they fail. Every other failure here is
+/// uncharged: it is raised before costing, or it is readBit's index past the
+/// bits, which the direct failure arm leaves uncharged too.
 pub fn staged_failure_budget_v1(
   tag: Int,
   arguments: List<ValueWitnessV1>,
@@ -1168,13 +1174,15 @@ fn integer_past_range_v1(
   )
 }
 
-/// indexByteString's index, a one-word integer revealed by its value, is
-/// below zero or at or past the byte string's length. The source need not
-/// reveal the bytes: their leaf binds the length.
+/// indexByteString's index (`unit` 1) or readBit's (`unit` 8), a one-word
+/// integer revealed by its value, is below zero or at or past the byte
+/// string's length in bytes or bits. The source need not reveal the bytes:
+/// their leaf binds the length.
 fn index_past_end_v1(
   values: List<ValueWitnessV1>,
   material: StagedMaterialV1,
   reference_inputs: List<Input>,
+  unit: Int,
 ) -> Bool {
   expect [bytes, index] = values
   expect [source, index_source] = material.sources
@@ -1185,7 +1193,7 @@ fn index_past_end_v1(
     False,
     True,
   )
-  value < 0 || value >= operand.length
+  value < 0 || value >= operand.length * unit
 }
 
 /// decodeUtf8's operand is not UTF-8. Its bytes up to the given offset
