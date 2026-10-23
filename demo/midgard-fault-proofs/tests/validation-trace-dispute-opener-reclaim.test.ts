@@ -4,8 +4,9 @@
  * cannot carry the thread on. Past rollback recovery of the removal, our
  * run cancels the thread back to our wallet through the opener's Cancel
  * (the thread's lovelace less the cancel's fee), waits out the cancel's
- * rollback recovery, and only then ends resolved by their record: never as
- * our conviction, with no removal of ours. */
+ * rollback recovery (one block short of it, the run still waits), and only
+ * then ends resolved by their record: never as our conviction, with no
+ * removal of ours. */
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
@@ -189,31 +190,35 @@ describe("validation-trace dispute runner: another prover removes the block whil
 
       h.emulator.awaitBlock(FINAL_DEPTH);
       const before = await walletLovelace(lucid);
-      const runs: string[] = [];
-      let result: FraudProofWorkflowRunResult | undefined;
-      for (let attempt = 0; attempt < 8; attempt += 1) {
-        const outcome = await ours.runOnce(scene.failing);
-        runs.push(
-          "reason" in outcome
-            ? `${outcome.kind}: ${outcome.reason}`
-            : outcome.kind,
-        );
-        if (outcome.kind === "resolved_by_another_record") {
-          result = outcome;
-          break;
-        }
-        if (sent.length === 1 && runs.length === 1)
-          // The cancel's rollback recovery, in one step.
-          h.emulator.awaitBlock(FINAL_DEPTH);
-      }
-      if (result === undefined)
-        throw new Error(`our run did not resolve: ${runs.join("\n")}`);
+      // Past the removal's rollback recovery: the opener's Cancel is sent.
+      expect((await ours.runOnce(scene.failing)).kind).toBe("pending");
+      expect(sent).toHaveLength(1);
+      const reclaim = CML.Transaction.from_cbor_hex(sent[0]!);
+      const reclaimTxHash = CML.hash_transaction(reclaim.body()).to_hex();
+
+      // The cancel one block short of release finality: no resolve yet.
+      const depth = async () => {
+        const status = await h.emulator.getTransactionStatus(reclaimTxHash);
+        return status.status === "confirmed"
+          ? (status.confirmation.confirmations ?? 0)
+          : 0;
+      };
+      h.emulator.awaitBlock(FINAL_DEPTH - 1 - (await depth()));
+      expect(await depth()).toBe(FINAL_DEPTH - 1);
+      expect(await ours.runOnce(scene.failing)).toMatchObject({
+        kind: "pending",
+        reason: expect.stringContaining(
+          `reclaim ${reclaimTxHash} of our thread ${ourThread} awaits release finality`,
+        ),
+      });
+
+      // The block each run ends with puts the cancel past rollback recovery.
+      expect(await depth()).toBe(FINAL_DEPTH);
+      const result = await ours.runOnce(scene.failing);
 
       // One transaction of ours: the opener's Cancel of our thread, which
       // paid the thread's lovelace back to our wallet less its fee.
       expect(sent).toHaveLength(1);
-      const reclaim = CML.Transaction.from_cbor_hex(sent[0]!);
-      const reclaimTxHash = CML.hash_transaction(reclaim.body()).to_hex();
       expect(await walletLovelace(lucid)).toBe(
         before + threadLovelace - reclaim.body().fee(),
       );
