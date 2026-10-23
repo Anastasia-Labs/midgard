@@ -1,17 +1,17 @@
-import { Builtin, UPLCConst, type UPLCTerm } from "@harmoniclabs/uplc";
-import { describe, expect, it } from "vitest";
+import { Builtin } from "@harmoniclabs/uplc";
+import { describe, it } from "vitest";
 
-import type { MidgardCekBuiltinBudget } from "../src/cek-cost.js";
-import { verifyMidgardCekCoreStep } from "../src/cek-machine.verify-builtin.js";
+import { bytesConstant } from "./helpers/cek-staged-failure-charge.js";
 import {
-  type Budget,
-  builtBytes,
-  bytesConstant,
-  evaluatorCharge,
-  runWithin,
-} from "./helpers/cek-staged-failure-charge.js";
-import { built, call, int, staged } from "./helpers/cek-staged-route-terms.js";
-import { MIDGARD_CEK_TX_BUDGET } from "./helpers/cek-uplc-terms.js";
+  bool,
+  bytes,
+  type Charge,
+  constant,
+  expectStagedFailureProved,
+  integer,
+  type Operand,
+  small,
+} from "./helpers/cek-staged-failure-rows.js";
 
 /**
  * The failures of the bitwise builtins, verifyEcdsaSecp256k1Signature and
@@ -23,7 +23,9 @@ import { MIDGARD_CEK_TX_BUDGET } from "./helpers/cek-uplc-terms.js";
  * length, and integerToByteString on an input past 1,024 words with its
  * width in range, after costing them. A width out of range fails without a
  * charge, as at the direct failure arm. The proof-mode run reaches the PV11
- * evaluator's verdict and charge.
+ * evaluator's verdict and charge. The conversion of an input of 65,536
+ * bytes has its own file
+ * (cek-executor.staged-integer-to-bytes-max-shape.test.ts).
  */
 
 const AND = 75n;
@@ -38,51 +40,8 @@ const FIND_FIRST_SET_BIT = 85n;
 const ECDSA = 52n;
 const INTEGER_TO_BYTES = 73n;
 
-const bool = (value: boolean): UPLCTerm => UPLCConst.bool(value);
-
-const bigEndian = (value: Uint8Array): bigint =>
-  BigInt(`0x${Buffer.from(value).toString("hex")}`);
-
-/** An operand as a run-time term and as a program constant of its value. */
-type Operand = { readonly live: UPLCTerm; readonly constant: UPLCTerm };
-
-const constant = (term: UPLCTerm): Operand => ({ live: term, constant: term });
-
-const bytes = (length: number, salt = 1): Operand => ({
-  live: built(length, salt),
-  constant: bytesConstant(builtBytes(length, salt)),
-});
-
-/** The integer of `length` big-endian bytes, built at run time from them;
- * its first byte is not zero, so it has `length / 8` words. */
-const integer = (length: number, negative = false): Operand => {
-  const magnitude = bigEndian(builtBytes(length, 1));
-  const positive = call(
-    Builtin.byteStringToInteger,
-    bool(true),
-    built(length, 1),
-  );
-  return {
-    live: negative
-      ? call(Builtin.subtractInteger, int(0n), positive)
-      : positive,
-    constant: int(negative ? -magnitude : magnitude),
-  };
-};
-
-const small = (value: bigint): Operand => constant(int(value));
-
 const KEY = bytesConstant(Buffer.from([2, ...Array<number>(32).fill(7)]));
 const SIGNATURE = bytesConstant(Buffer.alloc(64, 9));
-
-const UNCHARGED: MidgardCekBuiltinBudget = { cpu: 0n, memory: 0n };
-
-/** A budget the conversion of the longest input to an integer fits. */
-const RAISED_BUDGET: Budget = { cpu: 40_000_000_000n, memory: 16_500_000n };
-
-/** How the failure is charged: as the evaluator charges it, or not at all
- * for a width out of range, which the evaluator charges. */
-type Charge = "evaluator" | "uncharged";
 
 type Row = readonly [
   label: string,
@@ -90,7 +49,6 @@ type Row = readonly [
   builtin: Builtin,
   operands: readonly Operand[],
   charge: Charge,
-  budget?: Budget,
 ];
 
 const LONGEST = 65_536;
@@ -255,7 +213,6 @@ const rows: readonly Row[] = [
       [false, 100n, 10_000, false],
       [true, 0n, 10_000, true],
       [true, 8_192n, 32_768, false],
-      [false, 0n, LONGEST, false],
     ] as const
   ).map(
     ([bigEndianOrder, width, length, negative]): Row => [
@@ -264,8 +221,6 @@ const rows: readonly Row[] = [
       Builtin.integerToByteString,
       [constant(bool(bigEndianOrder)), small(width), integer(length, negative)],
       "evaluator",
-      // Converting the longest input passes the transaction budget.
-      length > 40_000 ? RAISED_BUDGET : MIDGARD_CEK_TX_BUDGET,
     ],
   ),
   ...[8_193n, -1n, INT64_MAX + 1n, 2n ** 70n].map(
@@ -279,51 +234,11 @@ const rows: readonly Row[] = [
   ),
 ];
 
-const failing = rows.map(
-  ([label, tag, builtin, operands, charge, budget]) =>
-    [
-      label,
-      tag,
-      builtin,
-      operands,
-      charge,
-      budget ?? MIDGARD_CEK_TX_BUDGET,
-    ] as const,
-);
-
 describe("a bitwise, ECDSA or integerToByteString step that fails beside a staged operand", () => {
-  it.each(failing)(
+  it.each(rows)(
     "%s is proved with the PV11 evaluator's verdict and charge",
-    (_, tag, builtin, operands, policy, budget) => {
-      const body = call(builtin, ...operands.map(({ live }) => live));
-      expect(runWithin(body, "verdict", budget).result.kind).toBe(
-        "script_invalid",
-      );
-      const proof = runWithin(body, "proof", budget);
-      expect(proof.result.kind).toBe("script_invalid");
-      const last = proof.execution!.steps.at(-1)!;
-      expect(last.witness.kind).toBe("executeBuiltinStagedFailure");
-      expect("tag" in last.witness ? last.witness.tag : null).toBe(tag);
-      expect(last.post.mode).toBe("haltError");
-      const charge = {
-        cpu: last.post.cpu - last.pre.cpu,
-        memory: last.post.memory - last.pre.memory,
-      };
-      const evaluator = evaluatorCharge(
-        call(builtin, ...operands.map((operand) => operand.constant)),
-        budget,
-      );
-      if (policy === "evaluator") {
-        expect(charge).toEqual(evaluator);
-      } else {
-        expect(evaluator.cpu > 0n).toBe(true);
-        expect(charge).toEqual(UNCHARGED);
-      }
-      expect(
-        verifyMidgardCekCoreStep(last.pre, last.post, staged(last, 9)),
-      ).toBe(true);
+    (_, tag, builtin, operands, charge) => {
+      expectStagedFailureProved(tag, builtin, operands, charge);
     },
-    // The longest conversions take seconds under a loaded suite.
-    120_000,
   );
 });
