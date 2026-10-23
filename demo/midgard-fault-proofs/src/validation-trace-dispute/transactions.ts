@@ -16,6 +16,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { plainWalletInputs } from "../funding/plain-funding-output.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { requireSingletonUtxo } from "../runtime.js";
 import type { ScriptDecodeDeployment } from "../script-decode/submit.js";
@@ -390,7 +391,7 @@ export const captureValidationTraceOpen = async ({
     claim: artifact.claim,
   })
     .validTo(validTo)
-    .complete({ localUPLCEval: true });
+    .complete({ localUPLCEval: true, ...(await plainWalletInputs(lucid)) });
   const signed = await unsigned.sign.withWallet().complete();
   const transaction = captured(signed, [
     { role: "validation-trace-opener", utxo: references.opener },
@@ -448,7 +449,10 @@ export const captureValidationTraceVerifySource = async ({
       slots: lucid,
     },
   );
-  const unsigned = await tx.complete({ localUPLCEval: true });
+  const unsigned = await tx.complete({
+    localUPLCEval: true,
+    ...(await plainWalletInputs(lucid)),
+  });
   const signed = await unsigned.sign.withWallet().complete();
   const openerLovelace = opener.assets.lovelace ?? 0n;
   grantValidationDisputeFundingAuthority({

@@ -23,7 +23,8 @@
 //     patches and vendored evaluator they run on.
 // Measured: the 26 test files that run a pin reach midgard-core,
 // midgard-sdk, midgard-validation, lucid-midgard, midgard-node and
-// midgard-test-support, and no other workspace package. A pinned test that
+// midgard-test-support, and the fault-proofs runtime also reads L1 depth
+// through midgard-l1-follower's heads module. A pinned test that
 // starts importing another workspace package must add it here.
 //
 // On a pull request the checkout is the merge commit, so its first parent is
@@ -50,6 +51,7 @@ export const tracedRefusalInputs = [
   ".github/actions/demo-setup/",
   "demo/midgard-fault-proofs/",
   "demo/midgard-core/",
+  "demo/midgard-l1-follower/",
   "demo/midgard-sdk/",
   "demo/midgard-validation/",
   "demo/lucid-midgard/",

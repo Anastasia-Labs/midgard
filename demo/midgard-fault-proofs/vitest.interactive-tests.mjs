@@ -27,6 +27,7 @@ export const interactiveTests = [
   "./tests/validation-trace-dispute-one-step-cek-builtin-semantic-stages.test.ts",
   "./tests/validation-trace-dispute-one-step-cek-builtin-semantic.test.ts",
   "./tests/validation-trace-dispute-one-step-cek-builtin-type-failure.test.ts",
+  "./tests/validation-trace-dispute-one-step-cek-staged.test.ts",
   "./tests/validation-trace-dispute-one-step-compact-binding-9.test.ts",
   "./tests/validation-trace-dispute-one-step-static-ledger-rules-10.test.ts",
   "./tests/validation-trace-dispute-one-step-input-sets-11.test.ts",

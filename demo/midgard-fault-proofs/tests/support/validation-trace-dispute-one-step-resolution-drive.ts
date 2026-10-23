@@ -340,6 +340,9 @@ export const resolutionDrive = <
       reportFit("CloseAwardedThread", [close!.cbor]);
     },
 
+    /** The signed move reported under `label`. */
+    cborOf: (label: string) => reported.get(label)!,
+
     /** The size in bytes of the move reported under `label`. */
     bytesOf: (label: string) => reported.get(label)!.length / 2,
 

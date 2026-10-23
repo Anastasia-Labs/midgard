@@ -10,7 +10,8 @@
  * open, closes the case as an undefended one. On a deployment that drives
  * CEK script selections, the decode record of every script our trace selects
  * is made before Init (script-decode-records.ts); an observe move of a field
- * too long to carry inline reads our published copy (observe-copy.ts).
+ * too long to carry inline reads our published copy (observe-copy.ts), and
+ * a staged builtin step's operands are staged before it (one-step-staging.ts).
  * Every output of ours is claimed by out-ref from our own signed body before
  * submission and read back by that out-ref; chain state, not the journal's
  * idea of the step, decides the next action. A thread move needs the claim
@@ -62,6 +63,7 @@ import {
 } from "./lost-defense-slash-due.js";
 import { captureValidationTraceThreadMove } from "./move-dispatch.js";
 import { validationTraceObserveCopy } from "./observe-copy.js";
+import { validationTraceStaging } from "./one-step-staging.js";
 import { validationTraceReconcile } from "./reconcile.js";
 import {
   createValidationTraceRemoval,
@@ -153,6 +155,11 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
   const copy = validationTraceObserveCopy({
     ...own,
     publications,
+    signedRecovery,
+    materialOf,
+  });
+  const staging = validationTraceStaging({
+    ...own,
     signedRecovery,
     materialOf,
   });
@@ -372,6 +379,7 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
           caseOpenerOutRef: found.openerOutRef,
           material: materials.get(input.artifact.headerHash),
           observeCopy: async () => await copy.of(context, action),
+          staging: staging.lookup(context),
         },
         caseOutRef: found.outRef,
         history,
@@ -482,7 +490,7 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
     reconcile: validationTraceReconcile({ signedRecovery, read }),
   };
   return withValidationTraceScriptDecodeRecords({
-    base: copy.wrap(Object.freeze(removalStage.route(adapter))),
+    base: copy.wrap(staging.wrap(Object.freeze(removalStage.route(adapter)))),
     ...own,
     publications,
     now,

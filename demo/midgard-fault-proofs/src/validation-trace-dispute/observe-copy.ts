@@ -7,47 +7,42 @@
  * done, the copy is spent back by our key: only while our funding
  * reservation still holds it, when funding signs. */
 import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
-import { CML, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
+import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import type { ResolvedProverSigner } from "../runtime.js";
-import { WorkflowActionChangedError } from "../workflow/action-changed.js";
 import { RAW_DATUM_PREIMAGE_PREREQUISITE } from "../workflow/field-carriage-prerequisite.field-carriage-prerequisite-port.js";
 import { recordedCarriageRecovery } from "../workflow/field-carriage-prerequisite.recorded-carriage-recovery.js";
-import type {
-  FraudProofWorkflowJournalEntry,
-  JournalJsonObject,
-} from "../workflow/journal.js";
+import type { FraudProofWorkflowJournalEntry } from "../workflow/journal.js";
 import type { FraudProofSignedTransactionRecovery } from "../workflow/l1-source.js";
 import type { FraudProofWorkflowAdapterContext } from "../workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
-import { latestSubmissionIntent } from "../workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import type {
   FraudProofFamilyWorkflowAdapter,
   FraudProofWorkflowAction,
   FraudProofWorkflowObservation,
 } from "../workflow/orchestrator.js";
-import { WorkflowActionUnbuiltError } from "../workflow/orchestrator.unbuilt-actions.js";
 import {
   createAuthenticatedRawDatumPreimagePrerequisitePort,
   createRawDatumPreimageRequirement,
   withRawDatumPreimagePrerequisite,
 } from "../workflow/raw-datum-preimage-prerequisite.js";
 import type { FraudProofAuthenticatedPublicationObserver } from "../workflow/raw-l1-publication-observation.js";
-import { reconcileSignedWorkflowTransaction } from "../workflow/signed-transaction-reconciliation.js";
-import {
-  bindWorkflowPreflightTransaction,
-  LOCAL_UPLC_EVALUATOR,
-  type LocallyEvaluatedTransaction,
-  submitCapturedTransaction,
-} from "../workflow/transaction-boundary.js";
 import {
   parseValidationTraceAction,
-  recordedValidationTraceMoveBytes,
   VALIDATION_TRACE_DISPUTE_ACTION,
   validationTraceAction,
 } from "./actions.js";
 import { parseValidationTraceDisputeArtifact } from "./artifact.js";
 import type { ValidationTraceClaimMaterial } from "./claim-material.js";
 import { validationTraceObserveCopyPreimage } from "./one-step-moves.js";
+import {
+  confirmedIntents,
+  validationTraceResolveReaders,
+} from "./one-step-staging-journal.js";
+import {
+  finalAtReleaseDepth,
+  type OwnKeyActions,
+  withOwnKeyActions,
+} from "./own-key-actions.js";
 import type { ValidationTraceDisputeDeployment } from "./transactions.js";
 
 const CATEGORY = "validationTraceDispute" as const;
@@ -67,64 +62,30 @@ const reclaimAction = (outRef: string): FraudProofWorkflowAction =>
     }),
   });
 
-const isReclaim = (action: FraudProofWorkflowAction): boolean =>
-  action.input.schemaVersion === VALIDATION_TRACE_COPY_RECLAIM;
-
 const label = ({ txHash, outputIndex }: UTxO): string =>
   `${txHash}#${outputIndex.toString()}`;
 
 type Copy = Readonly<{ outRef: string; datumCbor: string }>;
 
-/**
- * From the journal's confirmed actions: each copy our raw publications
- * left, and each confirmed resolve move with the out-refs it read.
- */
+/** From the journal's confirmed actions: each copy our raw publications
+ * left. */
 const journaled = (entries: readonly FraudProofWorkflowJournalEntry[]) => {
   const copies = new Map<string, Copy>();
-  const readers: Readonly<{
-    txHash: string;
-    signed: string;
-    reads: Set<string>;
-  }>[] = [];
-  for (const { event } of entries) {
-    if (event.kind !== "confirmed") continue;
-    const intent = latestSubmissionIntent(entries, event.actionId);
-    if (intent === undefined || intent.txHash !== event.txHash) continue;
-    const { schemaVersion, category, stage } = intent.actionInput;
-    if (
-      schemaVersion === RAW_DATUM_PREIMAGE_PREREQUISITE &&
-      category === CATEGORY &&
-      stage === "publish_field_carriage"
-    ) {
-      const { outRef, datumCbor } = recordedCarriageRecovery({
-        category: CATEGORY,
-        action: { actionId: intent.actionId, input: intent.actionInput },
-        txHash: intent.txHash,
-        value: intent.durableRecovery,
-      });
-      copies.set(outRef, { outRef, datumCbor });
-    } else if (
-      schemaVersion === VALIDATION_TRACE_DISPUTE_ACTION &&
-      stage === "resolve"
-    ) {
-      const signed = recordedValidationTraceMoveBytes({
-        value: intent.durableRecovery,
-        txHash: intent.txHash,
-      });
-      const references = CML.Transaction.from_cbor_hex(signed)
-        .body()
-        .reference_inputs();
-      const reads = new Set<string>();
-      for (let index = 0; index < (references?.len() ?? 0); index += 1) {
-        const input = references!.get(index);
-        reads.add(
-          `${input.transaction_id().to_hex()}#${input.index().toString()}`,
-        );
-      }
-      readers.push({ txHash: intent.txHash, signed, reads });
-    }
+  for (const intent of confirmedIntents(
+    entries,
+    RAW_DATUM_PREIMAGE_PREREQUISITE,
+  )) {
+    const { category, stage } = intent.actionInput;
+    if (category !== CATEGORY || stage !== "publish_field_carriage") continue;
+    const { outRef, datumCbor } = recordedCarriageRecovery({
+      category: CATEGORY,
+      action: { actionId: intent.actionId, input: intent.actionInput },
+      txHash: intent.txHash,
+      value: intent.durableRecovery,
+    });
+    copies.set(outRef, { outRef, datumCbor });
   }
-  return { copies: [...copies.values()], readers };
+  return [...copies.values()];
 };
 
 /**
@@ -195,20 +156,6 @@ export const validationTraceObserveCopy = ({
       : undefined;
   };
 
-  /** Whether the transaction `txHash` is final at release depth. */
-  const final = async (txHash: string, signed: string): Promise<boolean> => {
-    const observed = await signedRecovery.observeSignedTransaction({
-      transactionHash: txHash,
-      signedTransactionCborHex: signed,
-    });
-    return (
-      observed.status === "included" &&
-      observed.inclusionPoint !== undefined &&
-      BigInt(observed.inclusionPoint.blockNo) <=
-        BigInt(observed.releaseFinalPoint.blockNo)
-    );
-  };
-
   /**
    * The copy of ours to spend back now, while the workflow waits or once it
    * is done: one a resolve move read that is final at release depth, or,
@@ -220,7 +167,9 @@ export const validationTraceObserveCopy = ({
   ): Promise<UTxO | undefined> => {
     if (inner.kind !== "pending" && inner.kind !== "completed")
       return undefined;
-    const { copies, readers } = journaled(context.entries);
+    const copies = journaled(context.entries);
+    if (copies.length === 0) return undefined;
+    const readers = validationTraceResolveReaders(context.entries);
     for (const copy of copies) {
       if (context.unbuiltActionIds?.has(reclaimAction(copy.outRef).actionId))
         continue;
@@ -230,141 +179,54 @@ export const validationTraceObserveCopy = ({
       for (const reader of readers)
         if (
           reader.reads.has(copy.outRef) &&
-          (await final(reader.txHash, reader.signed))
+          (await finalAtReleaseDepth(
+            signedRecovery,
+            reader.txHash,
+            reader.signed,
+          ))
         )
           return utxo;
     }
     return undefined;
   };
 
-  const wrap = (
-    base: FraudProofFamilyWorkflowAdapter,
-  ): FraudProofFamilyWorkflowAdapter => {
-    if (port === undefined) return base;
-    const inner = withRawDatumPreimagePrerequisite({
-      category: CATEGORY,
-      base,
-      prerequisite: port,
-    });
-    const prepared = new Map<string, LocallyEvaluatedTransaction>();
-    const observe = async (
-      context: FraudProofWorkflowAdapterContext,
-    ): Promise<FraudProofWorkflowObservation> => {
-      const observed = await inner.observe(context);
-      if (context.reconciliationOnly === true) return observed;
+  const own: OwnKeyActions = {
+    owns: (action) =>
+      action.input.schemaVersion === VALIDATION_TRACE_COPY_RECLAIM,
+    next: async (context, observed) => {
       const copy = await reclaimable(context, observed);
       return copy === undefined
-        ? observed
+        ? undefined
         : { kind: "action_required", action: reclaimAction(label(copy)) };
-    };
-    const adapter: FraudProofFamilyWorkflowAdapter = {
-      ...inner,
-      observe,
-      preflight: async (context) => {
-        if (!isReclaim(context.action)) return await inner.preflight(context);
-        const { actionId } = context.action;
-        const current = await observe(context);
-        if (
-          current.kind !== "action_required" ||
-          current.action.actionId !== actionId
-        )
-          throw new WorkflowActionChangedError(
-            `validation-trace ${actionId} is no longer the next action`,
-          );
-        const key = `${context.workflowId}\u0000${actionId}`;
-        prepared.delete(key);
-        const [copy] = await lucid.utxosByOutRef([
-          parseOutRefLabel(context.action.input.consumes as string),
-        ]);
-        let transaction: LocallyEvaluatedTransaction;
-        try {
-          signer.selectWallet(lucid);
-          const unsigned = await lucid
-            .newTx()
-            .collectFrom([copy!])
-            .complete({ coinSelection: false });
-          const signed = await unsigned.sign.withWallet().complete();
-          transaction = {
-            txHash: signed.toHash().toLowerCase(),
-            signed,
-            referenceScripts: [],
-          };
-        } catch (cause) {
-          throw new WorkflowActionUnbuiltError(
-            actionId,
-            `validation-trace ${actionId} does not build: ${String(cause)}`,
-          );
-        }
-        prepared.set(key, transaction);
-        return bindWorkflowPreflightTransaction(
-          {
-            actionId,
-            txHash: transaction.txHash,
-            scriptExecution: "none" as const,
-            localUplcEvaluation: {
-              status: "passed" as const,
-              evaluator: LOCAL_UPLC_EVALUATOR,
-            },
-            referenceScripts: [],
-            durableRecovery: {
-              signedTransactionCborHex: transaction.signed.toCBOR(),
-            },
-          },
-          transaction.signed,
-        );
-      },
-      submit: async (context) => {
-        if (!isReclaim(context.action)) return await inner.submit(context);
-        const key = `${context.workflowId}\u0000${context.action.actionId}`;
-        const transaction = prepared.get(key);
-        if (
-          transaction === undefined ||
-          transaction.txHash !== context.preflight.txHash
-        )
-          throw new Error(
-            `validation-trace ${context.action.actionId} has no captured body to submit`,
-          );
-        try {
-          return {
-            kind: "submitted",
-            txHash: await submitCapturedTransaction(transaction),
-          };
-        } finally {
-          prepared.delete(key);
-        }
-      },
-      reconcile: async (context) => {
-        if (!isReclaim(context.action)) return await inner.reconcile(context);
-        const { txHash, durableRecovery } = context;
-        if (txHash === undefined)
-          return {
-            kind: "conflict",
-            reason:
-              "validation-trace copy reclaim omitted its transaction hash",
-          };
-        const recorded = (durableRecovery as JournalJsonObject | undefined)
-          ?.signedTransactionCborHex;
-        const signed =
-          context.signedTransactionCborHex ??
-          (typeof recorded === "string" ? recorded : undefined);
-        const reconciled = await reconcileSignedWorkflowTransaction({
-          transactionHash: txHash,
-          ...(signed === undefined ? {} : { signedTransactionCborHex: signed }),
-          observe: signedRecovery.observeSignedTransaction,
-          rebroadcast: signedRecovery.rebroadcastSignedTransaction,
-          ...(context.authorizeResubmission === undefined
-            ? {}
-            : { authorizeResubmission: context.authorizeResubmission }),
-          reportInclusion: true,
-        });
-        return reconciled.kind === "pending" &&
-          reconciled.retirement?.reason === "included"
-          ? { kind: "confirmed", txHash }
-          : reconciled;
-      },
-    };
-    return Object.freeze(adapter);
+    },
+    build: async (_context, action) => {
+      const [copy] = await lucid.utxosByOutRef([
+        parseOutRefLabel(action.input.consumes as string),
+      ]);
+      signer.selectWallet(lucid);
+      const unsigned = await lucid
+        .newTx()
+        .collectFrom([copy!])
+        .complete({ coinSelection: false });
+      return { signed: await unsigned.sign.withWallet().complete() };
+    },
   };
+
+  const wrap = (
+    base: FraudProofFamilyWorkflowAdapter,
+  ): FraudProofFamilyWorkflowAdapter =>
+    port === undefined
+      ? base
+      : withOwnKeyActions({
+          base: withRawDatumPreimagePrerequisite({
+            category: CATEGORY,
+            base,
+            prerequisite: port,
+          }),
+          own,
+          signedRecovery,
+          label: "copy reclaim",
+        });
 
   return {
     wrap,

@@ -10,6 +10,7 @@
  * outputs, and none of those hops is built for it. */
 import type { MidgardCekStagedOutRef } from "@al-ft/midgard-core";
 import {
+  type MidgardCekCoreStepWitness,
   type MidgardCekStagingResult,
   stageMidgardCekStagedBuiltinMaterial,
   type ValidationTraceSteps,
@@ -33,6 +34,20 @@ export type ValidationTraceStagedStep = Readonly<{
   refs: readonly MidgardCekStagedOutRef[] | undefined;
 }>;
 
+/** A step witness whose operands past the direct carriage bound are
+ * staged: a staged builtin step's (arm 31). Any other witness that names
+ * staged operands by `material` and carries them in `stagedOperands` (a
+ * staged builtin failure's, arm 36) is staged and read the same way, and
+ * joins here. */
+type StagedOperandWitness = Extract<
+  MidgardCekCoreStepWitness,
+  { readonly kind: "executeBuiltinStaged" }
+>;
+
+const isStagedOperandWitness = (
+  witness: MidgardCekCoreStepWitness,
+): witness is StagedOperandWitness => witness.kind === "executeBuiltinStaged";
+
 /**
  * Our trace's window `trace` with the step from `stateIndex`, when it is a
  * staged step with staged operands, staged where `staging` says, and the
@@ -53,7 +68,7 @@ export const stagedTraceOf = async (
   const auxiliary = work?.auxiliary;
   if (
     auxiliary?.kind !== "cekCoreStep" ||
-    auxiliary.step.witness.kind !== "executeBuiltinStaged" ||
+    !isStagedOperandWitness(auxiliary.step.witness) ||
     auxiliary.step.witness.stagedOperands.length === 0
   )
     return { trace, staged: undefined };

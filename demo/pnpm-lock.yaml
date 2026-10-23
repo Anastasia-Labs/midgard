@@ -280,6 +280,9 @@ importers:
       '@al-ft/midgard-core':
         specifier: workspace:*
         version: link:../midgard-core
+      '@al-ft/midgard-l1-follower':
+        specifier: workspace:*
+        version: link:../midgard-l1-follower
       '@al-ft/midgard-sdk':
         specifier: workspace:*
         version: link:../midgard-sdk

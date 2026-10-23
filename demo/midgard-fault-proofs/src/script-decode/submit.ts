@@ -35,7 +35,7 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
-import { isPlainFundingOutput } from "../funding/plain-funding-output.js";
+import { plainWalletInputs } from "../funding/plain-funding-output.js";
 import { DEFAULT_CONFIRMATION_POLL_MS } from "../runtime.js";
 import {
   claimOwnOutputs,
@@ -85,19 +85,13 @@ export type ScriptDecodeExUnits = Readonly<{ mem: bigint; steps: bigint }>;
 
 /**
  * `complete`'s wallet inputs, read fresh (an earlier `complete` pins the
- * wallet's UTxO view): the plain-ADA coins only (`isPlainFundingOutput`, the
- * one funding predicate). A wallet offering nothing else, such as the
- * watcher's reserved wallet (`restrictWorkflowFundingSigner`), gets no
- * preset, so its own collateral survives: Lucid takes collateral only from
- * among preset inputs.
+ * wallet's UTxO view): the plain-ADA coins only (`plainWalletInputs`).
  */
 const freshWallet = async (
   lucid: LucidEvolution,
 ): Promise<{ presetWalletInputs?: UTxO[] }> => {
   lucid.clearUTxOOverride();
-  const utxos = await lucid.wallet().getUtxos();
-  const plain = utxos.filter(isPlainFundingOutput);
-  return plain.length === utxos.length ? {} : { presetWalletInputs: plain };
+  return await plainWalletInputs(lucid);
 };
 
 export const transactionExUnits = (txCbor: string): ScriptDecodeExUnits => {

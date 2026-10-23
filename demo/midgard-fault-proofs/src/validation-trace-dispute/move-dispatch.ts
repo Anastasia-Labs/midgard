@@ -30,6 +30,7 @@ import {
   captureValidationTraceEnterResolution,
   captureValidationTraceResolve,
 } from "./one-step-moves.js";
+import type { ValidationTraceStagingLookup } from "./one-step-staged.js";
 import { validationTraceRecordedThreads } from "./thread-observation.js";
 import {
   VALIDATION_TRACE_MOVE_UNBUILT,
@@ -45,6 +46,8 @@ type ThreadMove = Readonly<{
     readonly material: ValidationTraceClaimMaterial | undefined;
     /** Our published copy of the field an observe move reads. */
     readonly observeCopy?: () => Promise<UTxO | undefined>;
+    /** Where we staged a staged step's operands. */
+    readonly staging?: ValidationTraceStagingLookup;
   };
   /** Our case as it stands now. */
   caseOutRef: string;

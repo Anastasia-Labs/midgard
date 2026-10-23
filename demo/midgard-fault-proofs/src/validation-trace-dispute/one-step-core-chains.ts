@@ -43,7 +43,8 @@ import {
 import { Constr, Data } from "@lucid-evolution/lucid";
 
 /** The semantic stage of group 5 each `semantic_group(tag)` selects, in its
- * order (cek-semantic-chain); groups 7 and 8 are the staged stages. */
+ * order (cek-semantic-chain); groups 7 and 8 are the staged stages. A later
+ * semantics group's stage is the next entry. */
 export const CEK_CORE_SEMANTIC_STAGES = Object.freeze([
   "semanticPair",
   "semanticListConstruct",
@@ -56,13 +57,30 @@ export const CEK_CORE_SEMANTIC_STAGES = Object.freeze([
   "stagedInteger",
 ] as const);
 
-/** The semantics groups whose step is a staged one. */
-const STAGED_SEMANTIC_GROUPS: readonly number[] = Object.freeze([7, 8]);
-
 /** An arm-31 step's material, as the semantic group of its tag reads it. */
 export type CekCoreSemanticMaterial =
   | Readonly<{ kind: "semantic"; material: SemanticBuiltinWitness }>
   | Readonly<{ kind: "staged"; material: StagedMaterialV1 }>;
+
+type MaterialDecoder = (cborHex: string) => CekCoreSemanticMaterial;
+
+const stagedMaterial: MaterialDecoder = (cborHex) =>
+  Object.freeze({
+    kind: "staged",
+    material: Data.from(cborHex, StagedMaterialV1),
+  });
+
+const semanticMaterial: MaterialDecoder = (cborHex) =>
+  Object.freeze({
+    kind: "semantic",
+    material: Data.from(cborHex, SemanticBuiltinWitness),
+  });
+
+/** How the material of each semantics group whose step is not a semantic
+ * one decodes, one entry a group; any other group's is the semantic
+ * witness. */
+const MATERIAL_DECODERS: Readonly<Partial<Record<number, MaterialDecoder>>> =
+  Object.freeze({ 7: stagedMaterial, 8: stagedMaterial });
 
 /**
  * The material of an arm-31 step of builtin `tag`: a staged step's
@@ -78,16 +96,7 @@ export const decodeCekCoreSemanticMaterial = (
   const group = midgardCekSemanticGroup(tag);
   if (group === null)
     throw new Error(`builtin ${tag.toString()} has no semantics group`);
-  const cborHex = Data.to(material);
-  return STAGED_SEMANTIC_GROUPS.includes(group)
-    ? Object.freeze({
-        kind: "staged",
-        material: Data.from(cborHex, StagedMaterialV1),
-      })
-    : Object.freeze({
-        kind: "semantic",
-        material: Data.from(cborHex, SemanticBuiltinWitness),
-      });
+  return (MATERIAL_DECODERS[group] ?? semanticMaterial)(Data.to(material));
 };
 
 /** Each core group's arm holders before its semantic stage, in order. */
