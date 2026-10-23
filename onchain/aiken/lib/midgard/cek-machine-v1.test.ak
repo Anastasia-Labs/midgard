@@ -814,8 +814,8 @@ test builtin_failure_halts_with_the_authenticated_failure_code() {
     cek_proof_v1.empty_environment_root_v1,
     cek_proof_v1.empty_continuation_root_v1,
     cek_machine_v1.error_builtin_failure,
-    100,
-    100,
+    100 + 132341,
+    100 + 1,
   )
   cek_machine_v1.verify_core_step_v1(
     pre,

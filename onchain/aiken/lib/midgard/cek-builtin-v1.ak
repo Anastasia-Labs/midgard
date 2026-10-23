@@ -4355,6 +4355,7 @@ pub fn authenticated_builtin_failure_budget(
     False
   }
   if or {
+    tag == 3,
     tag == 4,
     tag == 5,
     tag == 6,

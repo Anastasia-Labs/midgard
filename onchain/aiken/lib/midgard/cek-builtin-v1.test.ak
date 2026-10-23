@@ -135,7 +135,7 @@ test empty_trace_message_uses_the_reference_zero_size_quirk() {
   }
 }
 
-test division_by_zero_failure_is_authenticated_without_charging() {
+test division_by_zero_failure_charges_before_the_operation_fails() {
   let arguments = [integer(#"01"), integer(#"00")]
   and {
     cek_builtin_v1.verify_direct_builtin_failure_v1(
@@ -143,9 +143,10 @@ test division_by_zero_failure_is_authenticated_without_charging() {
       builtin_root(3, arguments),
       arguments,
     ),
+    // What the pinned PV11 evaluator charges a one-word dividend by zero.
     cek_builtin_v1.authenticated_builtin_failure_budget(3, arguments) == cek_cost_v1.BuiltinBudgetV1 {
-      cpu: 0,
-      memory: 0,
+      cpu: 132341,
+      memory: 1,
     },
   }
 }
