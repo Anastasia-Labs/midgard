@@ -325,6 +325,29 @@ export const missingRedeemerClaimRoute = async (
   };
 };
 
+/** Whether a rejected leaf whose reason names no purpose coordinate admits a
+ * missing redeemer observed at `coordinate`: the off-chain twin of
+ * `adjudicate.leaf_admits_observed_v1` for such a reason. */
+export const missingRedeemerLeafAdmits = (
+  bound: SDK.DirectScriptBound,
+  coordinate: Coordinate,
+): boolean => {
+  const reason = bound.subject.rejection_reason;
+  if (reason === null || SDK.purposeCoordinateOfReason(reason) !== null)
+    throw new Error(
+      "missing-redeemer: leaf reason is absent or names a purpose",
+    );
+  return SDK.leafAdmitsFault(
+    bound.subject,
+    bound.network_order_context,
+    {
+      phase: "purpose",
+      position: { coordinate, subcheck: "RedeemerRequired" },
+    },
+    "NotRequired",
+  );
+};
+
 /** Off-chain twin of `adjudicate.convicts_v1` over the shapes this prover
  * builds; any other shape fails closed. */
 export const missingRedeemerConvicts = (
@@ -336,10 +359,17 @@ export const missingRedeemerConvicts = (
       throw new Error("missing-redeemer: accepted final state differs");
     return context.observed.redeemer_missing;
   }
-  if (context.observed !== null)
-    throw new Error(
-      "missing-redeemer: rejected leaf with an observation is not supported by this prover",
+  if (context.observed !== null) {
+    if (claim !== "NotRequired")
+      throw new Error("missing-redeemer: observed final state differs");
+    return (
+      context.observed.redeemer_missing &&
+      !missingRedeemerLeafAdmits(
+        context.bound.bound,
+        context.observed.authenticated.selection.coordinate,
+      )
     );
+  }
   if (claim === "NotRequired" || "SourcePresent" in claim)
     throw new Error("missing-redeemer: rejected final state differs");
   return !("RedeemerAbsent" in claim);

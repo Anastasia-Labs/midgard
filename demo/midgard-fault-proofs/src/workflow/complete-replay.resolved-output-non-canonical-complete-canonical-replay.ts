@@ -117,7 +117,9 @@ export const NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY =
       }),
   );
 
-/** Complete required-observer and forced `RedeemerMissing` replay. */
+/** Complete missing-redeemer replay: script purposes of admitted transactions,
+ * forced `RedeemerMissing` rejections, and forced rejections whose reason
+ * names no purpose. */
 export const MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY = completeReplayer(
   ["missingRedeemer"],
   async (evidence, context) =>
