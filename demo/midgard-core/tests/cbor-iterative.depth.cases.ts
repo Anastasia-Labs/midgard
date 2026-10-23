@@ -144,7 +144,7 @@ export const registerDeepDataDepthCases = (thread: DepthThread): void => {
           );
           expect(verified.constants).toHaveLength(1);
           expect(
-            verified.constants[0]!.payloadCbor.equals(fixture.payloadCbor),
+            verified.constants[0]!.payloadCbor!.equals(fixture.payloadCbor),
           ).toBe(true);
         },
         CASE_TIMEOUT_MS,

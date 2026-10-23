@@ -18,7 +18,7 @@ import {
   MIDGARD_CEK_MAX_CONSTANT_TYPE_CBOR_BYTES,
 } from "./cek-proof.encode-midgard-cek-term-node.js";
 import { MIDGARD_CEK_EMPTY_SEQUENCE_ROOT } from "./cek-proof.encode-midgard-cek-value-node.js";
-import { encodeSemanticData } from "./cek-proof.encode-semantic-data.js";
+import { encodeSemanticDataWithBytes } from "./cek-proof.encode-semantic-data.js";
 import {
   type MidgardCekProgramMaterialEntry,
   type MidgardCekProgramMaterialKind,
@@ -814,7 +814,8 @@ export const verifyOneProgramMaterial = (
     string,
     {
       readonly typeCbor: Buffer;
-      readonly payloadCbor: Buffer;
+      readonly payloadMemory: bigint;
+      readonly payloadCbor: Buffer | undefined;
     }
   >();
   for (const [valueKey, value] of decodedValues) {
@@ -836,7 +837,9 @@ export const verifyOneProgramMaterial = (
       // Committing first checks every node's length, so the encode below is
       // bounded by the payload length even when subtrees are shared.
       const semantic = commitSemanticData(decodedPayload);
-      const payloadCbor = encodeSemanticData(decodedPayload);
+      // A payload holding a committed leaf is not encoded: its leaf's bytes
+      // are not materialised.
+      const payloadCbor = encodeSemanticDataWithBytes(decodedPayload);
       if (!Buffer.from(semantic.root).equals(value.semanticRoot)) {
         throw new Error(
           `CEK constant value ${valueKey} semantic root does not match its canonical payload`,
@@ -859,19 +862,30 @@ export const verifyOneProgramMaterial = (
       }
       validated = {
         typeCbor: Buffer.from(typeCbor),
-        payloadCbor: Buffer.from(payloadCbor),
+        payloadMemory: semantic.memory,
+        payloadCbor:
+          payloadCbor === undefined ? undefined : Buffer.from(payloadCbor),
       };
       cache.validatedConstants.set(valueKey, validated);
-      try {
-        options.onConstantMaterialized?.(valueKey, BigInt(payloadCbor.length));
-      } catch {
-        // Allocation observability must not change verification semantics.
+      if (payloadCbor !== undefined) {
+        try {
+          options.onConstantMaterialized?.(
+            valueKey,
+            BigInt(payloadCbor.length),
+          );
+        } catch {
+          // Allocation observability must not change verification semantics.
+        }
       }
     }
     if (options.includeConstants) {
       retainedConstants.set(valueKey, {
         typeCbor: Buffer.from(validated.typeCbor),
-        payloadCbor: Buffer.from(validated.payloadCbor),
+        payloadMemory: validated.payloadMemory,
+        payloadCbor:
+          validated.payloadCbor === undefined
+            ? undefined
+            : Buffer.from(validated.payloadCbor),
       });
     }
   }
@@ -894,6 +908,8 @@ export const verifyOneProgramMaterial = (
             semanticRoot: value.semanticRoot,
             memory: value.memory,
             typeCbor: retained.typeCbor,
+            payloadLength: value.payloadLength,
+            payloadMemory: retained.payloadMemory,
             payloadCbor: retained.payloadCbor,
           });
         },
