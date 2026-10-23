@@ -428,7 +428,6 @@ export const assertRuntimeTransactionBound = async ({
       "signed transaction loses reserved wallet value outside fees and governed custody",
     );
   dispute?.keepWalletMoveReserve(walletSpent);
-  staging?.keepStepReserve(walletSpent);
   for (const [unit, quantity] of walletAssets) {
     if (unit !== "lovelace" && (walletOutputAssets.get(unit) ?? 0n) < quantity)
       throw new Error("signed transaction loses reserved wallet native assets");

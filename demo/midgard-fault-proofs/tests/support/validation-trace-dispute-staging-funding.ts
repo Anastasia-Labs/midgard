@@ -1,7 +1,7 @@
 /** Fixtures for the prover funding permit's walk over our staging of a
  * staged builtin step's operands and over its spend back: our staging
- * address and another key's, three runs, a staging output of ours, the
- * permit policy and reservation, and the walk under them. */
+ * address and another key's, two runs, a staging output of ours, the
+ * permit policy, and the walk under them. */
 import {
   midgardCekStagingAddress,
   midgardCekStagingDeposit,
@@ -23,7 +23,6 @@ import {
 } from "../../src/workflow/funding-reservation-permit.validation-dispute-staging-authority.js";
 
 const COINS_PER_UTXO_BYTE = 4_310n;
-export const RESERVE = 3_000_000n;
 export const ADA = 1_000_000n;
 
 export const ours = generateEmulatorAccount({ lovelace: 0n });
@@ -42,7 +41,6 @@ export const RUN = midgardCekStagingRunDatumCbor([
   chunk(4_095, 2),
 ]);
 export const NEXT = midgardCekStagingRunDatumCbor([chunk(1_000, 3)]);
-export const LAST = midgardCekStagingRunDatumCbor([chunk(4_095, 4)]);
 export const depositOf = (datumCbor: string) =>
   midgardCekStagingDeposit({
     address: STAGING,
@@ -51,53 +49,18 @@ export const depositOf = (datumCbor: string) =>
   });
 
 export const STAGED_OUT_REF = `${"ab".repeat(32)}#0`;
-const FUNDING_OUT_REF = `${"cd".repeat(32)}#1`;
-export const CASE_UNIT = `${"ef".repeat(28)}0123`;
 export const THREAD_OUT_REF = `${"12".repeat(32)}#0`;
-export const DEADLINE_MS = 1_900_000_000_000;
 
 export const policy = {
   category: "validationTraceDispute",
   deploymentFingerprint: "fingerprint",
   fundingPaymentKeyHash: KEY,
   protocolParameters: { coinsPerUtxoByte: COINS_PER_UTXO_BYTE.toString() },
-  validationDispute: {
-    moves: { walletMoveReserveLovelace: RESERVE.toString() },
-  },
 } as never;
 
-/** The permit state of a reservation holding `plain` lovelace of plain
- * coins for its action. */
-const stateHolding = (plain: bigint) =>
-  ({
-    snapshot: {
-      walletAddress: ours.address,
-      activeInputs: [
-        {
-          outRef: FUNDING_OUT_REF,
-          role: "funding",
-          assets: [],
-          lovelace: plain.toString(),
-        },
-      ],
-    },
-    currentFundingOutRefs: [FUNDING_OUT_REF],
-  }) as never;
-
 export const stagingShape = (
-  shape: Partial<
-    Extract<ValidationDisputeStagingShape, { kind: "stage_operands" }>
-  > = {},
-): ValidationDisputeStagingShape => ({
-  kind: "stage_operands",
-  datumCborHex: RUN,
-  remainingDatumCborHexes: [NEXT, LAST],
-  walletPaidHops: 0,
-  caseUnit: CASE_UNIT,
-  threadOutRef: THREAD_OUT_REF,
-  deadlineMs: DEADLINE_MS,
-  ...shape,
-});
+  datumCborHex: string = RUN,
+): ValidationDisputeStagingShape => ({ kind: "stage_operands", datumCborHex });
 
 /** Our staging output holding `RUN`, as the ledger shows it. */
 export const stagedOutput: UTxO = {
@@ -130,16 +93,13 @@ export const stagingLineage = (
 export const walkOf = (
   shape: ValidationDisputeStagingShape,
   {
-    plain = 1_000n * ADA,
     lineage = shape.kind === "reclaim_staging" ? stagingLineage() : null,
-  }: { readonly plain?: bigint; readonly lineage?: unknown } = {},
+  }: { readonly lineage?: unknown } = {},
 ) =>
   validationDisputeStagingWalk({
     shape,
-    actionId: "validation-trace-stage:run:0",
     policy,
-    state: stateHolding(plain),
-    moves: { walletMoveReserveLovelace: RESERVE.toString() },
+    state: { snapshot: { walletAddress: ours.address } } as never,
     lineage,
   });
 

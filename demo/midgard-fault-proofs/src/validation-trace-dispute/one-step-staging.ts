@@ -263,9 +263,9 @@ export const validationTraceStaging = ({
       if (found === undefined) missing.push(planned);
       else shallow ||= !found.ready;
     }
-    // The first run still to stage; its staging names what the rest of the
-    // step needs from our wallet: the other runs' deposits, and the step's
-    // loop hops.
+    // The first run still to stage; when its staging does not build, the
+    // operator's alarm names what the rest of the step needs from our
+    // wallet: the other runs' deposits, and the step's loop hops.
     const [planned, ...rest] = missing;
     if (planned !== undefined) {
       const digest = digestOf(planned.datumCbor);

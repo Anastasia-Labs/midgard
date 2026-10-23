@@ -5,17 +5,20 @@
  * watcher bisects the thread to the PrepareSelected move's holder.
  *
  * A wallet too short to build the step's first staging holds it under the
- * operator's alarm, naming the case, the thread and the deadline, before any
- * byte reaches the ledger, releasing what it reserved. A wallet that can
- * build the first staging but not keep the deposit of the step's next run
- * and a move our wallet pays for it is held the same way by the funding
- * permit, before any byte reaches the ledger. Topped up, each run is staged
- * under the permit, the thread plays through the staged chain to the award,
- * and each staging output is spent back to our wallet under the permit.
+ * operator's alarm, naming the case, the thread, the deadline and what the
+ * step still needs from our wallet, before any byte reaches the ledger,
+ * releasing what it reserved. A wallet that can build the first staging but
+ * not the next stages the first and holds the next the same way, the first
+ * run's staging output live and no wallet coin spent twice. Topped up, each
+ * run left is staged under the permit, the thread plays through the staged
+ * chain to the award, and each staging output is spent back to our wallet
+ * under the permit.
  *
  * The category is not installed until its defender exists; this file
  * stands in for that install so the production classifier mints the
  * objective's actuation permit. */
+import { createHash } from "node:crypto";
+
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML, coreToTxOutput, Data, type UTxO } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -120,56 +123,69 @@ const depositOf = (datumCbor: string) =>
     ),
   });
 
-/** Why the funding permit holds a staging our wallet can build. */
-const STEP_SHORT = "validation dispute staging leaves less than its step needs";
+/** The sha-256 of the run `datumCbor`, which its staging's action names. */
+const digestOf = (datumCbor: string) =>
+  createHash("sha256").update(Buffer.from(datumCbor, "hex")).digest("hex");
 
 /**
  * Turns the watcher twice from a wallet holding `held` and expects each
- * turn to hold the step's first staging under the operator's alarm, before
- * any byte reaches the ledger, releasing what it reserved; `byPermit`, that
- * the funding permit held it, not its build.
+ * turn to hold the staging of the step's run `index` under the operator's
+ * alarm, naming what the step still needs, before any byte of it reaches
+ * the ledger, releasing what it reserved; returns our transactions the
+ * ledger took meanwhile.
  */
-const expectHeldUnderAlarm = async (held: bigint, byPermit: boolean) => {
+const expectHeldUnderAlarm = async (held: bigint, index: number) => {
   const { h } = scene;
   await topUpProver(h as never, 200n * ADA);
   await drainProver(h as never, held);
   const watch = watchLedger(h.emulator);
   try {
-    for (let pause = 0; pause < 2; pause += 1) {
-      const { result, history } = await turnUntil(
-        dispute,
-        VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED,
-      );
-      expect(result.kind, history.join("\n")).toBe("pending");
-      if (result.kind !== "pending") return;
-      expect(result.reason).toContain("cannot fund validation-trace-stage:");
-      if (byPermit) expect(result.reason).toContain(STEP_SHORT);
-      else expect(result.reason).not.toContain(STEP_SHORT);
-      expect(result.reason).toContain(
-        `on thread ${outRefOf(threadAtPrepare)} of case ${caseUnit},`,
-      );
-      // The PrepareSelected move it waits on must land before the case
-      // expires.
-      expect(result.reason).toContain(
-        `before its deadline ${caseExpiresAtMs.toString()};`,
-      );
-      expect(validationTraceRunState(result)).toMatchObject({
-        kind: "pending",
-        resumeOnObservation: true,
-        namedState: {
-          name: VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED,
-          alarm: true,
-        },
-      });
-      for (const reservation of await dispute.readReservations())
-        expect(reservation).toMatchObject({ activeInputs: [] });
-    }
-    expect(watch.ours()).toHaveLength(0);
+    await holdTwice(index);
   } finally {
     watch.restore();
   }
-  expect(await stagedOutputs()).toStrictEqual([]);
   expect(outRefOf((await place())!.utxo)).toBe(outRefOf(threadAtPrepare));
+  return watch.ours();
+};
+
+/** Two turns, each holding the staging of the step's run `index` under the
+ * operator's alarm, releasing what it reserved. */
+const holdTwice = async (index: number) => {
+  for (let pause = 0; pause < 2; pause += 1) {
+    const { result, history } = await turnUntil(
+      dispute,
+      VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED,
+    );
+    expect(result.kind, history.join("\n")).toBe("pending");
+    if (result.kind !== "pending") return;
+    expect(result.reason).toContain(
+      `cannot fund validation-trace-stage:${digestOf(runs[index]!.datumCbor)}:`,
+    );
+    // What the step still needs is text for the operator only.
+    expect(result.reason).toMatch(
+      new RegExp(
+        `: ${(runs.length - index).toString()} runs / \\d+ hops remain; about \\d+ ADA needed: `,
+      ),
+    );
+    expect(result.reason).toContain(
+      `on thread ${outRefOf(threadAtPrepare)} of case ${caseUnit},`,
+    );
+    // The PrepareSelected move it waits on must land before the case
+    // expires.
+    expect(result.reason).toContain(
+      `before its deadline ${caseExpiresAtMs.toString()};`,
+    );
+    expect(validationTraceRunState(result)).toMatchObject({
+      kind: "pending",
+      resumeOnObservation: true,
+      namedState: {
+        name: VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED,
+        alarm: true,
+      },
+    });
+    for (const reservation of await dispute.readReservations())
+      expect(reservation).toMatchObject({ activeInputs: [] });
+  }
 };
 
 describe("validation-trace dispute staging of a staged builtin step's operands under the prover funding permit", () => {
@@ -224,33 +240,53 @@ describe("validation-trace dispute staging of a staged builtin step's operands u
     "holds the step's first staging under the operator's alarm, naming the case, the thread and the deadline, when our wallet cannot build it, before any byte reaches the ledger",
     async () => {
       expect(runs.length).toBeGreaterThan(1);
-      await expectHeldUnderAlarm(1n * ADA, false);
+      expect(await expectHeldUnderAlarm(1n * ADA, 0)).toHaveLength(0);
+      expect(await stagedOutputs()).toStrictEqual([]);
     },
     TIMEOUT,
   );
 
   it(
-    "holds the step's first staging under the funding permit's alarm when our wallet can build it but cannot then keep the next run's deposit and a move it pays, before any byte reaches the ledger",
+    "stages the step's first run from a wallet that can build it, then holds the next run under the operator's alarm, the first run's staging output live and no wallet coin spent twice",
     async () => {
-      const reserve = BigInt(await dispute.walletMoveReserve());
-      const next = runs
-        .slice(1)
-        .reduce((sum, { datumCbor }) => sum + depositOf(datumCbor), 0n);
-      // Enough for the first staging and its fee; short of what the rest of
-      // the step needs.
+      // Enough for the first staging and its fee, short of the next.
       const held = depositOf(runs[0]!.datumCbor) + 5n * ADA;
       expect(held).toBeLessThan(
-        depositOf(runs[0]!.datumCbor) +
-          next +
-          BigInt(runs.length - 1) * reserve,
+        depositOf(runs[0]!.datumCbor) + depositOf(runs[1]!.datumCbor),
       );
-      await expectHeldUnderAlarm(held, true);
+      const ours = await expectHeldUnderAlarm(held, 1);
+      expect(ours).toHaveLength(1);
+      const [staging] = ours;
+      expect(
+        staging!.outputs.filter(({ address }) => address === stagingAddress()),
+      ).toMatchObject([
+        {
+          datum: runs[0]!.datumCbor,
+          assets: { lovelace: depositOf(runs[0]!.datumCbor) },
+        },
+      ]);
+      const live = await stagedOutputs();
+      expect(live.map(outRefOf)).toStrictEqual([
+        outRefOf({
+          txHash: staging!.txHash,
+          outputIndex: staging!.outputs.findIndex(
+            ({ address }) => address === stagingAddress(),
+          ),
+        }),
+      ]);
+      expect(live[0]!.datum).toBe(runs[0]!.datumCbor);
+      // The staging's wallet coins are spent once, and by nothing else.
+      const consumed = ours.flatMap(({ inputs }) => inputs);
+      expect(new Set(consumed).size).toBe(consumed.length);
+      expect(
+        await scene.h.emulator.getUtxosByOutRef(consumed.map(parseOwnOutRef)),
+      ).toStrictEqual([]);
     },
     TIMEOUT,
   );
 
   it(
-    "stages each run under the funding permit once our wallet is topped up, and plays the thread through the staged chain to the award",
+    "stages each run left under the funding permit once our wallet is topped up, and plays the thread through the staged chain to the award",
     async () => {
       await topUpProver(scene.h as never, 400n * ADA);
       const { result, history } = await playThreads({

@@ -30,7 +30,6 @@ import {
   NEXT,
   policy,
   reclaimShape,
-  RESERVE,
   RUN,
   STAGED_OUT_REF,
   stagedOutput,
@@ -43,18 +42,16 @@ const BESIDE =
   "funding transaction carries a validation dispute staging authority beside another funding authority";
 const identity = { deploymentFingerprint: "fingerprint", headerHash: "header" };
 const payer = generateEmulatorAccount({ lovelace: 100n * ADA });
-const { kind: _kind, ...stagingRun } = stagingShape() as Extract<
-  ValidationDisputeStagingShape,
-  { kind: "stage_operands" }
->;
 
 describe("the staging authority's binding", () => {
   const run = (datum: string) =>
     createHash("sha256").update(Buffer.from(datum, "hex")).digest("hex");
-  const stageAction = {
-    actionId: "validation-trace-stage:run:0",
-    input: { stage: "stage_operands", run: run(RUN) },
-  } as never;
+  const stageActionOf = (datum: string) =>
+    ({
+      actionId: "validation-trace-stage:run:0",
+      input: { stage: "stage_operands", run: run(datum) },
+    }) as never;
+  const stageAction = stageActionOf(RUN);
   const reclaimAction = {
     actionId: `validation-trace-reclaim-staging:${STAGED_OUT_REF}`,
     input: { stage: "reclaim_staging", consumes: STAGED_OUT_REF },
@@ -93,21 +90,14 @@ describe("the staging authority's binding", () => {
     });
 
   it("binds a staging to its action's run, and a spend back to the output its action spends, under this header and deployment", () => {
-    expect(bind(stagingShape(), stageAction)).toMatchObject({
-      walletMoveReserveLovelace: RESERVE.toString(),
-    });
+    bind(stagingShape(), stageAction);
     bind(reclaimShape, reclaimAction);
   });
 
-  it("refuses a staging authority for another run, another action, header or deployment", () => {
+  it("refuses a staging authority for another run, a datum that is no staging run, another action, header or deployment", () => {
     for (const [refused, names] of [
-      [() => bind(stagingShape({ datumCborHex: NEXT }), stageAction), "run"],
-      [
-        () =>
-          bind(stagingShape({ remainingDatumCborHexes: ["00"] }), stageAction),
-        "run",
-      ],
-      [() => bind(stagingShape({ walletPaidHops: -1 }), stageAction), "run"],
+      [() => bind(stagingShape(NEXT), stageAction), "run"],
+      [() => bind(stagingShape("00"), stageActionOf("00")), "run"],
       [() => bind(stagingShape(), reclaimAction), "action kind, run"],
       [
         () => bind(stagingShape(), stageAction, { headerHash: "other" }),
@@ -147,7 +137,7 @@ const staged = async (): Promise<TxSigned> => {
   grantValidationDisputeStagingAuthority({
     signed,
     ...identity,
-    shape: stagingRun,
+    shape: { datumCborHex: RUN },
   });
   return signed;
 };

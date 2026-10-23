@@ -13,12 +13,11 @@
  * - a staging, which spends only our wallet's reserved plain coins and pays
  *   exactly one output at our staging address, holding the run's exact
  *   inline datum and lovelace only, no more than the run's deposit (its
- *   minimum ada), the rest back to our wallet. The reservation then still
- *   holds the deposits of the step's runs still to stage, and a move our
- *   wallet pays for each of those runs and each loop hop of the step; a
- *   wallet short of that raises the operator's alarm, naming the case, the
- *   thread and its deadline, and the run tries again at its next
- *   observation;
+ *   minimum ada), the rest back to our wallet. The reserved coins it spends
+ *   are this staging's alone; a staging that does not build for want of
+ *   our wallet's ada raises the operator's alarm instead
+ *   (validation-trace-dispute/one-step-staging-funding.ts), and nothing
+ *   here holds back a staging that builds;
  * - a spend back, which spends exactly one staging output of ours, the one
  *   this reservation's lineage shows a staging of ours left, with that one
  *   native script as its only script witness, and pays our wallet only.
@@ -51,14 +50,9 @@ import {
 import { readValidationDisputeCloseAuthority } from "./funding-reservation-permit.validation-dispute-close-authority.js";
 import {
   failing,
-  type Moves,
   type Policy,
   readValidationDisputeMoveAuthority,
 } from "./funding-reservation-permit.validation-dispute-move-authority.js";
-import {
-  reservedPlainLovelace,
-  ValidationDisputeWalletMoveUnfundedError,
-} from "./funding-reservation-permit.validation-dispute-wallet-move-reserve.js";
 import type { PermitState } from "./funding-reservation-permit.workflow-funding-reservation-port.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
 
@@ -66,19 +60,11 @@ const CATEGORY = "validationTraceDispute" as const;
 const STAGE = "stage_operands" as const;
 const RECLAIM = "reclaim_staging" as const;
 
-/** A staging: the run it stages, and what the rest of its step needs. */
+/** A staging: the run it stages. */
 export type ValidationDisputeStagingRun = Readonly<{
   kind: typeof STAGE;
   /** The inline datum of the run this transaction stages. */
   datumCborHex: string;
-  /** The runs of the step still to stage after this one. */
-  remainingDatumCborHexes: readonly string[];
-  /** The step's loop hops, each a move our wallet pays. */
-  walletPaidHops: number;
-  /** What the operator's alarm names when our wallet is short. */
-  caseUnit: string;
-  threadOutRef: string;
-  deadlineMs: number | undefined;
 }>;
 
 /** A spend back: the one staging output of ours it spends. */
@@ -143,13 +129,7 @@ export const grantValidationDisputeStagingAuthority = ({
               outRef: outRefLabel(shape.output),
               resolvedOutputCborHex: exactResolvedOutputCbor(shape.output),
             }
-          : {
-              kind: STAGE,
-              ...shape,
-              remainingDatumCborHexes: Object.freeze([
-                ...shape.remainingDatumCborHexes,
-              ]),
-            },
+          : { kind: STAGE, datumCborHex: shape.datumCborHex },
       ),
       transactionHash: CML.hash_transaction(transaction.body()).to_hex(),
       transactionBodySha256: bodySha256(signed),
@@ -181,8 +161,8 @@ export const VALIDATION_DISPUTE_STAGING_BINDING =
   "validation dispute staging authority differs from its exact staging or deployment terms";
 
 /**
- * The authority's binding to this workflow, its action and the policy's
- * dispute move terms. Each refusal names the failed binding.
+ * The authority's binding to this workflow and its action. Each refusal
+ * names the failed binding.
  */
 export const assertValidationDisputeStagingBinding = ({
   authority,
@@ -200,13 +180,11 @@ export const assertValidationDisputeStagingBinding = ({
   readonly action: FraudProofWorkflowAction;
   /** The actuation permit's challenged header. */
   readonly headerHash: string;
-}): Moves => {
-  const moves = policy.validationDispute?.moves;
+}): void => {
   const { shape } = authority;
   const differing = failing([
     ["category", state.category === CATEGORY],
     ["policy category", policy.category === CATEGORY],
-    ["dispute move terms", moves !== undefined],
     ["current action kind", state.currentActionKind === shape.kind],
     ["action kind", actionKind(action) === shape.kind],
     [
@@ -222,40 +200,30 @@ export const assertValidationDisputeStagingBinding = ({
       ? [
           "run",
           action.input.run === sha256(shape.datumCborHex) &&
-            [shape.datumCborHex, ...shape.remainingDatumCborHexes].every(
-              (datum) => midgardCekStagingRunChunks(datum) !== null,
-            ) &&
-            Number.isSafeInteger(shape.walletPaidHops) &&
-            shape.walletPaidHops >= 0,
+            midgardCekStagingRunChunks(shape.datumCborHex) !== null,
         ]
       : ["staging output", action.input.consumes === shape.outRef],
   ]);
-  if (differing.length > 0 || moves === undefined)
+  if (differing.length > 0)
     throw new Error(
       `${VALIDATION_DISPUTE_STAGING_BINDING} (${differing.join(", ")})`,
     );
-  return moves;
 };
 
 /**
  * The staging `shape`'s funding, checked step by step as the runtime bound
  * walks its signed transaction: `lineage` is what this reservation's
- * lineage shows for a spend back's staging output, and `moves` the policy's
- * dispute move terms.
+ * lineage shows for a spend back's staging output.
  */
 export const validationDisputeStagingWalk = ({
   shape,
-  actionId,
   policy,
   state,
-  moves,
   lineage,
 }: {
   readonly shape: ValidationDisputeStagingShape;
-  readonly actionId: string;
   readonly policy: Pick<Policy, "fundingPaymentKeyHash" | "protocolParameters">;
-  readonly state: Pick<PermitState, "snapshot" | "currentFundingOutRefs">;
-  readonly moves: Pick<Moves, "walletMoveReserveLovelace">;
+  readonly state: Pick<PermitState, "snapshot">;
   readonly lineage: unknown;
 }) => {
   const walletAddress = state.snapshot.walletAddress;
@@ -352,27 +320,6 @@ export const validationDisputeStagingWalk = ({
       if ((shape.kind === STAGE ? staged : spent) !== 1)
         throw new Error("validation dispute staging omits its staging output");
     },
-    /** What the plain coins a staging leaves the reservation must still
-     * hold for its step. */
-    keepStepReserve: (walletSpent: bigint): void => {
-      if (shape.kind !== STAGE) return;
-      const remaining = shape.remainingDatumCborHexes;
-      const reserve =
-        remaining.reduce((sum, datum) => sum + deposit(datum), 0n) +
-        BigInt(remaining.length + shape.walletPaidHops) *
-          BigInt(moves.walletMoveReserveLovelace);
-      const left = reservedPlainLovelace(state) - walletSpent;
-      if (left < reserve)
-        throw new ValidationDisputeWalletMoveUnfundedError({
-          actionId,
-          caseUnit: shape.caseUnit,
-          threadOutRef: shape.threadOutRef,
-          deadlineMs: shape.deadlineMs,
-          cause: new Error(
-            `validation dispute staging leaves less than its step needs: left=${left.toString()} reserve=${reserve.toString()}`,
-          ),
-        });
-    },
   });
 };
 
@@ -406,7 +353,7 @@ export const validationDisputeStagingFunding = async ({
     throw new Error(
       "funding transaction carries a validation dispute staging authority beside another funding authority",
     );
-  const moves = assertValidationDisputeStagingBinding({
+  assertValidationDisputeStagingBinding({
     authority,
     policy,
     state,
@@ -420,10 +367,8 @@ export const validationDisputeStagingFunding = async ({
   const { shape } = authority;
   return validationDisputeStagingWalk({
     shape,
-    actionId: action.actionId,
     policy,
     state,
-    moves,
     lineage:
       shape.kind === RECLAIM
         ? await state.port.resolveConfirmedInput({ outRef: shape.outRef })

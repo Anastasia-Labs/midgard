@@ -7,9 +7,7 @@ export const VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED =
   "validation-trace-wallet-move-unfunded" as const;
 
 /** The plain-ADA funding the reservation holds for its current action. */
-export const reservedPlainLovelace = (
-  state: Pick<PermitState, "snapshot" | "currentFundingOutRefs">,
-): bigint =>
+const reservedPlainLovelace = (state: PermitState): bigint =>
   state.snapshot.activeInputs
     .filter(
       ({ outRef, role, assets }) =>

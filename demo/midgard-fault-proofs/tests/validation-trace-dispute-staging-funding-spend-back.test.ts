@@ -35,7 +35,6 @@ describe("the prover funding permit over our spend back of a staging output", ()
     walk.admitInput(STAGED_OUT_REF, stagedOutput);
     expect(walk.output(outputAt(ours.address, depositOf(RUN)))).toBeNull();
     walk.assertComplete();
-    walk.keepStepReserve(-depositOf(RUN));
   });
 
   it("refuses a spend back carrying another key's native script, a second native script, a Plutus script or none", () => {

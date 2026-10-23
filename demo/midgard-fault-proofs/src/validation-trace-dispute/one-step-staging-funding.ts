@@ -1,15 +1,17 @@
 /** Our staging of a staged builtin step's operands under the prover
  * funding permit (workflow/funding-reservation-permit.validation-dispute-
  * staging-authority.ts): each staging, and each spend back, signed with the
- * authority the permit admits it by. A staging names what the rest of its
- * step needs from our wallet, the deposits of the runs still to stage and
- * the step's loop hops our wallet pays, and the case, the thread and the
- * deadline the operator's alarm names when our wallet is short of it; a
- * staging that does not build for want of our wallet's ada raises that
- * alarm too. */
+ * authority the permit admits it by. A staging that does not build for want
+ * of our wallet's ada raises the operator's alarm, naming the case, the
+ * thread and the deadline, and what the rest of the step needs from our
+ * wallet: the runs still to stage, the step's loop hops our wallet pays,
+ * and about the ada they take. That sum is for the operator only; it holds
+ * back no staging that builds. */
 import {
   buildUnsignedMidgardCekStagingProgram,
   buildUnsignedMidgardCekStagingReclaimProgram,
+  midgardCekStagingAddress,
+  midgardCekStagingDeposit,
   midgardCekStagingOutRef,
   type MidgardCekStagingPins,
   type MidgardCekStagingRun,
@@ -56,6 +58,10 @@ export const stagedStepWalletPaidHops = (holders: readonly string[]): number =>
     (holder) => holders.indexOf(holder) !== holders.lastIndexOf(holder),
   ).length;
 
+/** The ada `lovelace` is, rounded up. */
+const adaOf = (lovelace: bigint): string =>
+  ((lovelace + 999_999n) / 1_000_000n).toString();
+
 /** The value of `program`, or its error thrown as itself. */
 const run = async <A>(program: Effect.Effect<A, Error>): Promise<A> => {
   const result = await Effect.runPromise(Effect.either(program));
@@ -76,6 +82,42 @@ export const validationTraceStagingSigner = ({
   const { ourCase } = validationTraceCaseReads({ lucid, signer, deployment });
   const headerHashOf = (context: FraudProofWorkflowAdapterContext) =>
     parseValidationTraceDisputeArtifact(context.artifact).headerHash;
+
+  /** What `step`, its run included, still needs from our wallet, for the
+   * operator's alarm: each run's deposit and the fee of a full-size
+   * transaction for each run, and the fee of a full-size transaction at the
+   * largest execution units for each loop hop our wallet pays. */
+  const needsOf = (step: ValidationTraceStagingStep): string => {
+    const parameters = lucid.config().protocolParameters!;
+    const address = midgardCekStagingAddress(
+      lucid.config().network!,
+      signer.paymentKeyHash,
+    );
+    const runs = [step.run.datumCbor, ...step.rest];
+    const fee =
+      BigInt(parameters.minFeeA) * BigInt(parameters.maxTxSize) +
+      BigInt(parameters.minFeeB);
+    const scripts = BigInt(
+      Math.ceil(
+        parameters.priceMem * Number(parameters.maxTxExMem) +
+          parameters.priceStep * Number(parameters.maxTxExSteps),
+      ),
+    );
+    const lovelace =
+      runs.reduce(
+        (sum, datumCbor) =>
+          sum +
+          midgardCekStagingDeposit({
+            address,
+            datumCbor,
+            coinsPerUtxoByte: parameters.coinsPerUtxoByte,
+          }) +
+          fee,
+        0n,
+      ) +
+      BigInt(step.walletPaidHops) * (fee + scripts);
+    return `${runs.length.toString()} runs / ${step.walletPaidHops.toString()} hops remain; about ${adaOf(lovelace)} ADA needed`;
+  };
 
   /** The case of ours `threadOutRef` plays, and the deadline its move
    * must land by: what the operator's alarm names. */
@@ -110,7 +152,6 @@ export const validationTraceStagingSigner = ({
       actionId: string,
       step: ValidationTraceStagingStep,
     ) => {
-      const alarm = await alarmOf(context, step.threadOutRef);
       let unsigned: TxSignBuilder;
       try {
         unsigned = await run(
@@ -120,8 +161,11 @@ export const validationTraceStagingSigner = ({
         if (!isWorkflowFundingShortfall(cause)) throw cause;
         throw new ValidationDisputeWalletMoveUnfundedError({
           actionId,
-          ...alarm,
-          cause,
+          ...(await alarmOf(context, step.threadOutRef)),
+          cause: new Error(
+            `${needsOf(step)}: ${cause instanceof Error ? cause.message : String(cause)}`,
+            { cause },
+          ),
         });
       }
       const { outputIndex } = midgardCekStagingOutRef(unsigned, step.run);
@@ -130,12 +174,7 @@ export const validationTraceStagingSigner = ({
         signed,
         deploymentFingerprint: deployment.deploymentFingerprint,
         headerHash: headerHashOf(context),
-        shape: {
-          datumCborHex: step.run.datumCbor,
-          remainingDatumCborHexes: step.rest,
-          walletPaidHops: step.walletPaidHops,
-          ...alarm,
-        },
+        shape: { datumCborHex: step.run.datumCbor },
       });
       return { signed, outputIndex };
     },
