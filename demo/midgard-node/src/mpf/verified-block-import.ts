@@ -124,9 +124,9 @@ const blockChecksCollector = (context: ImportCheckContext) => {
   const scripts = new Map<string, Buffer>();
   return {
     committedVerdicts: {
-      // The bookkeeping is this node's own: a throw from it is local. The
-      // transaction's decoding reads the block's bytes, so a throw from it
-      // keeps the block's attribution.
+      // The bookkeeping is this node's own: a throw from it is local. That
+      // includes decoding the transaction again: the replay has already
+      // decoded and accepted it with the same decoder.
       onScriptRun: (run: MidgardCommittedScriptRun) =>
         locally("import check bookkeeping", () => {
           runs += 1;
@@ -138,13 +138,13 @@ const blockChecksCollector = (context: ImportCheckContext) => {
         }),
       onTransaction: (transaction: CommittedTransaction) => {
         if (runs > 0) {
-          const tx = decodeMidgardLedgerTxFromCanonicalCbor(
-            transaction.canonicalTransactionCbor,
-          );
-          const keys = [...tx.spendInputs, ...tx.referenceInputs].map(
-            midgardOutRefToCborHex,
-          );
           locally("import check bookkeeping", () => {
+            const tx = decodeMidgardLedgerTxFromCanonicalCbor(
+              transaction.canonicalTransactionCbor,
+            );
+            const keys = [...tx.spendInputs, ...tx.referenceInputs].map(
+              midgardOutRefToCborHex,
+            );
             // No run's context is built at import: each is estimated as
             // the transaction and the outputs it resolves.
             let contextBytes = transaction.canonicalTransactionCbor.byteLength;
