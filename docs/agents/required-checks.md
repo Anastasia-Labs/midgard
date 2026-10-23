@@ -853,7 +853,10 @@ Golden channel cek-staged-arm-v1 (@al-ft/midgard-validation).
 - Fix: `pnpm --dir demo/midgard-validation run fixtures:cek-staged-arm-v1:sync`
 - Runs on:
   - `demo/midgard-validation/scripts/generate-cek-staged-arm-v1-goldens.mjs`
+  - `demo/midgard-validation/tests/fixtures/cek-staged-arm-v1.bytes-rows.mjs`
   - `demo/midgard-validation/tests/fixtures/cek-staged-arm-v1.generated.json`
+  - `demo/midgard-validation/tests/fixtures/cek-staged-arm-v1.integer-rows.mjs`
+  - `demo/midgard-validation/tests/fixtures/cek-staged-arm-v1.kit.mjs`
   - `demo/midgard-validation/tests/fixtures/cek-staged-arm-v1.vectors.mjs`
   - `onchain/aiken/validators/fraud-proofs/validation-trace/cek-core-staged-golden.test.ak`
   - `demo/lucid-midgard/src/**`
