@@ -19,20 +19,26 @@
  *   the length its source binds;
  * - decodeUtf8 of bytes whose prefix up to the material's trailing value
  *   decodes and whose next character, as long as its first byte says, does
- *   not.
+ *   not;
+ * - verifyEd25519Signature's or verifySchnorrSecp256k1Signature's message
+ *   of more than 8,192 words.
  *
  * Only compacted arguments are read: a revealed constant is past no bound.
  *
- * These failures are raised before costing but one: a division builtin over
+ * These failures are raised before costing but two: a division builtin over
  * a dividend of 4,096 words in the range and a zero divisor is charged before
- * it fails. The direct failure arm leaves every dividend of 4,096 words or
- * more to this hop, which reads the dividend's range from its CBOR.
+ * it fails, and so is a signature builtin over a message in bound and a key
+ * or signature of the wrong length, or a BIP-340 key off the curve. The
+ * direct failure arm leaves every dividend of 4,096 words or more to this
+ * hop, which reads the dividend's range from its CBOR; it proves a malformed
+ * key or signature only beside an inline message, with the same charge.
  */
 import {
   collectMidgardCekStagedRuns,
   type MidgardCekStagedReferenceInput,
 } from "@al-ft/midgard-core";
 import { CEKConst } from "@harmoniclabs/plutus-machine";
+import { schnorr } from "@noble/curves/secp256k1.js";
 
 import type { MidgardCekDirectValueWitness } from "./cek-builtin.argument-kinds.js";
 import { midgardCekDirectBuiltinBudget } from "./cek-builtin.selected-control-result.js";
@@ -215,6 +221,11 @@ export const verifyMidgardCekStagedBuiltinFailure = (
           integerPastRange(arguments_, material, referenceInputs))
       );
     }
+    if (tag === 21n || tag === 53n) {
+      // The signature builtins bound only their message, the second argument.
+      const bounded = arguments_[1] ?? refuse("argument count");
+      return memoryPast(bounded, MAX_BOUNDED_BYTES_WORDS);
+    }
     if (!boundedBytesTag(tag)) return false;
     const [byteArguments, integerArguments] = scalarOperands(
       Number(tag),
@@ -231,6 +242,57 @@ export const verifyMidgardCekStagedBuiltinFailure = (
   } catch {
     return false;
   }
+};
+
+const BYTES_TYPE = Buffer.from("9f01ff", "hex");
+
+/** Whether `key` is an x-only BIP-340 key: x below p and on the curve. */
+export const schnorrKeyIsValid = (key: Uint8Array): boolean => {
+  try {
+    schnorr.utils.lift_x(BigInt(`0x${Buffer.from(key).toString("hex")}`));
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/** verifyEd25519Signature or verifySchnorrSecp256k1Signature fails on its
+ * key or signature: a key of other than 32 bytes, a signature of other than
+ * 64, or a BIP-340 key off the curve, revealed. Every argument is a byte
+ * string; the lengths are read from the leaves. */
+const malformedSignature = (
+  tag: bigint,
+  arguments_: readonly MidgardCekDirectValueWitness[],
+  material: MidgardCekStagedBuiltinMaterial,
+  referenceInputs: readonly MidgardCekStagedReferenceInput[],
+): boolean => {
+  if (tag !== 21n && tag !== 53n) return refuse("not a signature builtin");
+  const [keyValue, messageValue, signatureValue] = arguments_;
+  const [keySource, , signatureSource] = material.sources;
+  if (arguments_.length !== 3 || material.sources.length !== 3) {
+    return refuse("argument count");
+  }
+  if (!Buffer.from(compacted(messageValue!).typeCbor).equals(BYTES_TYPE)) {
+    return refuse("message type");
+  }
+  const inputs = failureInputs(material, referenceInputs);
+  const key = bindBytes(
+    inputs,
+    [compacted(keyValue!), keySource!],
+    false,
+    false,
+  );
+  const signature = bindBytes(
+    inputs,
+    [compacted(signatureValue!), signatureSource!],
+    false,
+    false,
+  );
+  return (
+    key.length !== 32n ||
+    signature.length !== 64n ||
+    (tag === 53n && !schnorrKeyIsValid(key.bytes ?? refuse("key not revealed")))
+  );
 };
 
 const UNCHARGED: MidgardCekBuiltinBudget = Object.freeze({
@@ -289,13 +351,19 @@ export const midgardCekStagedBuiltinFailureBudget = (
     );
     if (inRange === true) return midgardCekDirectBuiltinBudget(tag, arguments_);
     if (inRange === false) return UNCHARGED;
-    return verifyMidgardCekStagedBuiltinFailure(
-      tag,
-      arguments_,
-      material,
-      referenceInputs,
-    )
-      ? UNCHARGED
+    if (
+      verifyMidgardCekStagedBuiltinFailure(
+        tag,
+        arguments_,
+        material,
+        referenceInputs,
+      )
+    ) {
+      return UNCHARGED;
+    }
+    // A signature builtin over a message in bound fails after costing.
+    return malformedSignature(tag, arguments_, material, referenceInputs)
+      ? midgardCekDirectBuiltinBudget(tag, arguments_)
       : null;
   } catch {
     return null;

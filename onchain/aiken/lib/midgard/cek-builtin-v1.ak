@@ -3702,7 +3702,7 @@ fn secp256k1_x_is_on_curve_v1(x: Int) -> Bool {
   }
 }
 
-fn secp256k1_public_key_is_valid_v1(tag: Int, key: ByteArray) -> Bool {
+pub fn secp256k1_public_key_is_valid_v1(tag: Int, key: ByteArray) -> Bool {
   if tag == 52 {
     and {
       bytearray.length(key) == 33,

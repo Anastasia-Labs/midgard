@@ -1730,6 +1730,22 @@
         "mem": 2501839,
         "cpu": 824849901
       }
+    },
+    "fraud_proofs/validation_trace/cek_core_staged_bytes.test/staged_bytes_schnorr_at_the_argument_bound - staged_bytes_schnorr_fixture_only_at_the_argument_bound": {
+      "test": "fraud_proofs/validation_trace/cek_core_staged_bytes.test/staged_bytes_schnorr_at_the_argument_bound",
+      "minusControl": "staged_bytes_schnorr_fixture_only_at_the_argument_bound",
+      "ceiling": {
+        "mem": 2032387,
+        "cpu": 1063320851
+      }
+    },
+    "fraud_proofs/validation_trace/cek_core_staged_failure.test/staged_failure_signature_at_the_byte_string_bound - staged_failure_signature_fixture_only_at_the_byte_string_bound": {
+      "test": "fraud_proofs/validation_trace/cek_core_staged_failure.test/staged_failure_signature_at_the_byte_string_bound",
+      "minusControl": "staged_failure_signature_fixture_only_at_the_byte_string_bound",
+      "ceiling": {
+        "mem": 752674,
+        "cpu": 299326752
+      }
     }
   },
   "growth": {

@@ -45,8 +45,8 @@ import type {
 
 /**
  * The builtins the staged arms prove: addInteger, subtractInteger,
- * equalsInteger, lessThanInteger, lessThanEqualsInteger and the byte-string
- * and string builtins of semantics group 7.
+ * equalsInteger, lessThanInteger, lessThanEqualsInteger and the byte-string,
+ * string and signature builtins of semantics group 7.
  */
 export const midgardCekStagedBuiltinProves = (tag: bigint): boolean =>
   midgardCekSemanticGroup(tag) === 7 ||

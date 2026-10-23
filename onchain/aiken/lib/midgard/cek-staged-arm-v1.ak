@@ -1,7 +1,7 @@
-//// The staged semantic arms: byte-string, string and integer builtins whose
-//// operands are bound to their committed leaves through bytes the material
-//// reveals inline or reads from staging outputs among the transaction's
-//// reference inputs.
+//// The staged semantic arms: byte-string, string, signature and integer
+//// builtins whose operands are bound to their committed leaves through bytes
+//// the material reveals inline or reads from staging outputs among the
+//// transaction's reference inputs.
 ////
 //// Every argument and the result are checked in the compacted form the roots
 //// hop committed (a type, a Data summary of the payload and a constant-level
@@ -289,7 +289,8 @@ fn result_is_v1(result: ValueWitnessV1, expected: ScalarResultV1) -> Bool {
 }
 
 /// The byte-string and string builtins (tags 10 to 20, 22 to 25, 71, 72 and
-/// 86) over staged operands.
+/// 86), verifyEd25519Signature (21) and verifySchnorrSecp256k1Signature (53)
+/// over staged operands.
 pub fn verify_staged_bytes_v1(
   bound: chain.CoreBound,
   witness: Data,
@@ -323,6 +324,25 @@ pub fn verify_staged_bytes_v1(
       payload: cek_data_v1.bytes_data_summary_v1(operand.length, operand.root),
       memory: bytes_memory_v1(False, operand.length),
     }
+  } else if tag == 21 || tag == 53 {
+    // The builtin fails on a malformed key or signature, which the staged
+    // failure hop proves instead.
+    expect [key,
+          message,
+          signature] = list.map(
+      operands,
+      fn(operand) {
+        expect Some(pieces) = operand.pieces
+        concat_balanced_v1(pieces)
+      },
+    )
+    inputs.result == boolean_result_v1(
+      if tag == 21 {
+        builtin.verify_ed25519_signature(key, message, signature)
+      } else {
+        builtin.verify_schnorr_secp256k1_signature(key, message, signature)
+      },
+    )
   } else {
     result_is_v1(
       inputs.result,
@@ -513,7 +533,8 @@ fn failure_inputs_v1(
 ///   4,096 words (at least 2^262144 in magnitude), or of 4,096 words whose
 ///   revealed CBOR is outside [-2^262143, 2^262143 - 1];
 /// - a byte-string argument of a bounded builtin of more than 8,192 words
-///   (more than 65,536 bytes);
+///   (more than 65,536 bytes), which for verifyEd25519Signature and
+///   verifySchnorrSecp256k1Signature is the message alone;
 /// - consByteString's byte, sliceByteString's start or length, or
 ///   indexByteString's index of more than one word (at least 2^64 in
 ///   magnitude, so neither a byte nor a machine integer);
@@ -569,6 +590,10 @@ pub fn verify_staged_failure_v1(
         not_utf8_v1(arguments, material, reference_inputs),
       },
     }
+  } else if tag == 21 || tag == 53 {
+    // The signature builtins bound only their message, the second argument.
+    expect Some(bounded) = list.at(arguments, 1)
+    memory_past_v1(bounded, max_bounded_bytes_words)
   } else {
     False
   }
@@ -576,8 +601,9 @@ pub fn verify_staged_failure_v1(
 
 /// The budget the staged failure hop's step charges, failing when the
 /// builtin does not fail. A division builtin over a dividend of 4,096 words
-/// in the range and a zero divisor is charged before it fails; every other
-/// failure here is raised before costing.
+/// in the range and a zero divisor, and a signature builtin over a message in
+/// bound with a malformed key or signature, are charged before they fail;
+/// every other failure here is raised before costing.
 pub fn staged_failure_budget_v1(
   tag: Int,
   arguments: List<ValueWitnessV1>,
@@ -593,11 +619,62 @@ pub fn staged_failure_budget_v1(
       } else {
         uncharged
       }
-    None -> {
-      expect
-        verify_staged_failure_v1(tag, arguments, material, reference_inputs)
-      uncharged
-    }
+    None ->
+      if verify_staged_failure_v1(tag, arguments, material, reference_inputs) {
+        uncharged
+      } else {
+        // A signature builtin over a message in bound fails after costing.
+        expect
+          malformed_signature_v1(tag, arguments, material, reference_inputs)
+        cek_cost_v1.signature_budget_v1(
+          tag,
+          list.map(
+            arguments,
+            fn(value) {
+              expect SemanticConstantValue { memory, .. } = value
+              memory
+            },
+          ),
+        )
+      }
+  }
+}
+
+/// verifyEd25519Signature or verifySchnorrSecp256k1Signature fails on its key
+/// or signature: a key of other than 32 bytes, a signature of other than 64,
+/// or a BIP-340 key off the curve. The lengths are decided from the leaves;
+/// a BIP-340 key of 32 bytes is revealed inline. Every argument is a byte
+/// string (an ill-typed application fails before costing) and the message's
+/// committed memory is the cost's size.
+fn malformed_signature_v1(
+  tag: Int,
+  arguments: List<ValueWitnessV1>,
+  material: StagedMaterialV1,
+  reference_inputs: List<Input>,
+) -> Bool {
+  expect tag == 21 || tag == 53
+  expect [key_value, message_value, signature_value] = arguments
+  expect [key_source, _, signature_source] = material.sources
+  expect SemanticConstantValue { type_cbor, .. } = message_value
+  expect type_cbor == bytes_type_cbor
+  let inputs = failure_inputs_v1(material, reference_inputs)
+  let key = bind_bytes_v1(inputs, Pair(key_value, key_source), False, False)
+  let signature = bind_bytes_v1(
+    inputs,
+    Pair(signature_value, signature_source),
+    False,
+    False,
+  )
+  or {
+    key.length != 32,
+    signature.length != 64,
+    and {
+      tag == 53,
+      {
+        expect Some([key_bytes]) = key.pieces
+        !cek_builtin_v1.secp256k1_public_key_is_valid_v1(tag, key_bytes)
+      },
+    },
   }
 }
 

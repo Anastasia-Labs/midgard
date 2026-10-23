@@ -11,7 +11,10 @@
  *   the staged failure hop (arm 36) with the sources it reads;
  * - consByteString's byte and sliceByteString's start and length, which are
  *   revealed, go to the direct failure arm (arm 38), the byte string
- *   compacted to its leaf.
+ *   compacted to its leaf;
+ * - a signature builtin's message past its bound, and its malformed key or
+ *   signature beside a message in bound (charged), go to the staged failure
+ *   hop, the lengths read from the leaves.
  */
 import { MIDGARD_CEK_STAGED_CHUNK_BYTES } from "@al-ft/midgard-core";
 import { CEKConst } from "@harmoniclabs/plutus-machine";
@@ -24,7 +27,10 @@ import {
 } from "./cek-builtin.evaluate-reference-builtin.js";
 import type { MidgardCekBuiltinBudget } from "./cek-cost.js";
 import type { MidgardCekCoreStepWitness } from "./cek-machine.js";
-import { midgardCekStagedBuiltinFailureBudget } from "./cek-staged-builtin.failure.js";
+import {
+  midgardCekStagedBuiltinFailureBudget,
+  schnorrKeyIsValid,
+} from "./cek-staged-builtin.failure.js";
 import {
   midgardCekPlaceholderStaging,
   type MidgardCekStagedOperandSource,
@@ -159,6 +165,25 @@ const classify = (
       return staged([revealed(dividend!.bytes), divisor!.leaf], true);
     }
     return null;
+  }
+  if (number === 21 || number === 53) {
+    const [key, message, signature] = operands;
+    // Only the message is bounded, and the bound is checked first.
+    if (message!.bytes.length > MAX_BOUNDED_BYTES) return staged([], false);
+    const keyBytes = key!.bytes;
+    if (
+      keyBytes.length === 32 &&
+      signature!.bytes.length === 64 &&
+      (number === 21 || schnorrKeyIsValid(keyBytes))
+    ) {
+      return null;
+    }
+    // A BIP-340 key of 32 bytes is revealed for its curve check.
+    const keySource: MidgardCekStagedOperandSource =
+      number === 53 && keyBytes.length === 32
+        ? { kind: "inline", bytes: keyBytes }
+        : key!.leaf;
+    return staged([keySource, message!.leaf, signature!.leaf], true);
   }
   const [byteOperands, integerOperands] = scalarOperands(number, operands);
   if (

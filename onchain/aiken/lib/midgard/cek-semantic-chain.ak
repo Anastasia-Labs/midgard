@@ -170,12 +170,13 @@ pub fn semantic_group(tag: Int) -> Int {
     // The integer builtins over staged operands.
     8
   } else if or {
-    tag >= 10 && tag <= 25 && tag != 21,
+    tag >= 10 && tag <= 25,
+    tag == 53,
     tag == 71,
     tag == 72,
     tag == 86,
   } {
-    // The byte-string and string builtins over staged operands.
+    // The byte-string, string and signature builtins over staged operands.
     7
   } else {
     fail

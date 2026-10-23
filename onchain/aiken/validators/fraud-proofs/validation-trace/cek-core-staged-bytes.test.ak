@@ -939,3 +939,271 @@ test compacts_to_the_committed_form() {
   let bytes = pattern(8000, 4)
   compact(bytes_value(bytes, False)) == semantic_bytes(bytes, False)
 }
+
+// ## Signatures over staged messages
+//
+// verifyEd25519Signature and verifySchnorrSecp256k1Signature over a message
+// past the direct carriage bound, bound through its staging runs; the key
+// and signature are inline. Keys and signatures are fixed vectors over
+// `pattern` messages.
+
+const ed25519_key =
+  #"ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c"
+
+const schnorr_key =
+  #"56b328b30c8bf5839e24058747879408bdb36241dc9c2e7c619faa12b2920967"
+
+/// The signature of `tag`'s key over `pattern(65536, 3)`.
+fn signature_at_the_bound(tag: Int) -> ByteArray {
+  if tag == 21 {
+    #"04ed5fc52f4a8159c2ad55d0e9f0ff67c4f3164646bd7c34ca24ffcd4b1d893d9dfab324d99afc373aa9cca144cd681fc43c94fff1449567fcf8c6ad57704807"
+  } else {
+    #"5f88e4bb68977fe0cc5f49a5583e4c14d45767ff6f031dfbd46a664dccb7009b464344b921a72ec1c44edd9ae892654d683d3e67fe3cf7149e74aa20c22c17ca"
+  }
+}
+
+/// The signature of `tag`'s key over `pattern(9216, 1)`.
+fn signature_past_the_direct_bound(tag: Int) -> ByteArray {
+  if tag == 21 {
+    #"d961b8397dbf30f76137bd920c359287df486c4cc3429ac75d66c07ed190ee71f35222fdd9d67e7418ab5b6c93099e6ffa30f5ffb50460695f1239386e9b030d"
+  } else {
+    #"66e5eecf14219364f9540e4f1dbd92696b35baec085c75995e0f2cbe34f9668e7809385bdb78b1f74d522e2bdebbaca97625af6f261f4a78771141bea1b6bbcf"
+  }
+}
+
+fn signature_key(tag: Int) -> ByteArray {
+  if tag == 21 {
+    ed25519_key
+  } else {
+    schnorr_key
+  }
+}
+
+/// Spends the step for signature builtin `tag` over `key`, the staged
+/// `message` and `signature`, claiming `verified`.
+fn signature_verifies(
+  tag: Int,
+  key: ByteArray,
+  message: ByteArray,
+  signature: ByteArray,
+  verified: Bool,
+) -> Bool {
+  verifies(
+    tag,
+    [
+      bytes_value(key, False),
+      bytes_value(message, False),
+      bytes_value(signature, False),
+    ],
+    boolean_value(verified),
+    stage([message]),
+    [
+      InlineOperand { bytes: key },
+      staged(0),
+      InlineOperand { bytes: signature },
+    ],
+  )
+}
+
+const signature_tags = [21, 53]
+
+test verifies_a_signature_over_a_staged_message_at_the_argument_bound() {
+  list.all(
+    signature_tags,
+    fn(tag) {
+      signature_verifies(
+        tag,
+        signature_key(tag),
+        pattern(65536, 3),
+        signature_at_the_bound(tag),
+        True,
+      )
+    },
+  )
+}
+
+test verifies_a_signature_over_a_message_past_the_direct_bound() {
+  list.all(
+    signature_tags,
+    fn(tag) {
+      signature_verifies(
+        tag,
+        signature_key(tag),
+        pattern(9216, 1),
+        signature_past_the_direct_bound(tag),
+        True,
+      )
+    },
+  )
+}
+
+test rejects_a_signature_over_another_message() {
+  list.all(
+    signature_tags,
+    fn(tag) {
+      and {
+        signature_verifies(
+          tag,
+          signature_key(tag),
+          pattern(65536, 4),
+          signature_at_the_bound(tag),
+          False,
+        ),
+        signature_verifies(
+          tag,
+          signature_key(tag),
+          pattern(65536, 3),
+          flip_last_byte(signature_at_the_bound(tag)),
+          False,
+        ),
+      }
+    },
+  )
+}
+
+test refuses_a_claimed_verification_of_a_wrong_signature() fail {
+  signature_verifies(
+    53,
+    schnorr_key,
+    pattern(65536, 4),
+    signature_at_the_bound(53),
+    True,
+  )
+}
+
+test refuses_a_claimed_rejection_of_a_valid_signature() fail {
+  signature_verifies(
+    21,
+    ed25519_key,
+    pattern(65536, 3),
+    signature_at_the_bound(21),
+    False,
+  )
+}
+
+test refuses_a_signature_over_a_message_past_the_argument_bound() fail {
+  let pieces = [pattern(65536, 3), #"01"]
+  let staging = stage_pieces([pieces])
+  verifies(
+    21,
+    [
+      bytes_value(ed25519_key, False),
+      semantic_pieces(pieces, False),
+      bytes_value(signature_at_the_bound(21), False),
+    ],
+    boolean_value(False),
+    staging,
+    [
+      InlineOperand { bytes: ed25519_key },
+      staged(0),
+      InlineOperand { bytes: signature_at_the_bound(21) },
+    ],
+  )
+}
+
+test refuses_a_schnorr_key_off_the_curve() fail {
+  signature_verifies(
+    53,
+    builtin.replicate_byte(32, 0xff),
+    pattern(65536, 3),
+    signature_at_the_bound(53),
+    False,
+  )
+}
+
+test refuses_an_ed25519_key_of_31_bytes() fail {
+  signature_verifies(
+    21,
+    builtin.slice_bytearray(0, 31, ed25519_key),
+    pattern(65536, 3),
+    signature_at_the_bound(21),
+    False,
+  )
+}
+
+test refuses_a_message_bound_by_its_leaf_alone() fail {
+  let message = pattern(65536, 3)
+  verifies(
+    53,
+    [
+      bytes_value(schnorr_key, False),
+      bytes_value(message, False),
+      bytes_value(signature_at_the_bound(53), False),
+    ],
+    boolean_value(True),
+    no_staging(),
+    [
+      InlineOperand { bytes: schnorr_key },
+      leaf(message),
+      InlineOperand { bytes: signature_at_the_bound(53) },
+    ],
+  )
+}
+
+test the_budget_hop_routes_the_signature_builtins_here() {
+  list.all(
+    signature_tags,
+    fn(tag) {
+      routes_to(
+        tag,
+        [
+          bytes_value(signature_key(tag), False),
+          bytes_value(pattern(65536, 3), False),
+          bytes_value(signature_at_the_bound(tag), False),
+        ],
+        7,
+      )
+    },
+  )
+}
+
+test the_budget_hop_does_not_route_schnorr_to_the_integer_semantics() fail {
+  routes_to(
+    53,
+    [
+      bytes_value(schnorr_key, False),
+      bytes_value(pattern(65536, 3), False),
+      bytes_value(signature_at_the_bound(53), False),
+    ],
+    8,
+  )
+}
+
+/// verifySchnorrSecp256k1Signature over a staged message of 65,536 bytes.
+fn schnorr_step_at_the_bound() -> StagedStepV1 {
+  let message = pattern(65536, 3)
+  let staging = stage([message])
+  staged_step(
+    53,
+    [
+      bytes_value(schnorr_key, False),
+      bytes_value(message, False),
+      bytes_value(signature_at_the_bound(53), False),
+    ],
+    boolean_value(True),
+    material(
+      staging,
+      [
+        InlineOperand { bytes: schnorr_key },
+        staged(0),
+        InlineOperand { bytes: signature_at_the_bound(53) },
+      ],
+    ),
+    staging.reference_inputs,
+  )
+}
+
+fn built(step: StagedStepV1) -> Bool {
+  when step.datum is {
+    Some(_) -> True
+    None -> False
+  }
+}
+
+test staged_bytes_schnorr_at_the_argument_bound() {
+  spend(schnorr_step_at_the_bound())
+}
+
+test staged_bytes_schnorr_fixture_only_at_the_argument_bound() {
+  built(schnorr_step_at_the_bound())
+}

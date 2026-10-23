@@ -113,3 +113,24 @@ test division_budget_is_the_division_row() {
 test division_budget_refuses_another_builtin() fail {
   cek_cost_v1.division_budget_v1(2, [1, 1]).cpu > 0
 }
+
+test signature_budget_is_the_builtin_row() {
+  list.all(
+    [21, 53],
+    fn(tag) {
+      list.all(
+        [[4, 8192, 8], [4, 1, 8], [1, 1, 1], [0, 0, 0], [8193, 1150, 9]],
+        fn(sizes) {
+          cek_cost_v1.signature_budget_v1(tag, sizes) == cek_cost_v1.builtin_budget_v1(
+            tag,
+            sizes,
+          )
+        },
+      )
+    },
+  )
+}
+
+test signature_budget_refuses_another_builtin() fail {
+  cek_cost_v1.signature_budget_v1(52, [5, 4, 8]).cpu > 0
+}

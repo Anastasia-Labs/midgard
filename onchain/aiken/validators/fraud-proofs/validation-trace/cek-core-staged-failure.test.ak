@@ -20,7 +20,7 @@ use midgard/cek_staged_arm_v1.{
   BytesLeafOperand, InlineOperand, IntegerLeafOperand, OperandSourceV1,
   SmallIntegerOperand, StagedMaterialV1, verify_staged_failure_v1,
 }
-use midgard/cek_staged_blob_v1.{flat_root_v1}
+use midgard/cek_staged_blob_v1.{flat_root_of_pieces_v1, flat_root_v1}
 use midgard/cek_staged_integer_cbor_v1.{
   encode_integer_cbor_bulk_v1, parse_integer_cbor_bulk_v1,
 }
@@ -1115,4 +1115,421 @@ test leaves_a_charged_post_on_the_staged_route_to_the_staged_failure_hop() {
 
 test refuses_a_charged_post_on_the_material_route() fail {
   roots_route_charging(45, [integer_value(1)], False, 1)
+}
+
+// ## Signatures
+//
+// verifyEd25519Signature and verifySchnorrSecp256k1Signature bound only their
+// message, and fail on it before costing. A key or signature of the wrong
+// length (or, for BIP-340, a key off the curve) beside a message in bound
+// fails after costing, whatever the key's or signature's size.
+
+/// The arguments of signature builtin `tag` of a key, message and signature.
+fn signature_arguments(
+  key: ByteArray,
+  message: ValueWitnessV1,
+  signature: ByteArray,
+) -> List<ValueWitnessV1> {
+  [bytes_value(key, False), message, bytes_value(signature, False)]
+}
+
+const signature_tags = [21, 53]
+
+/// An x coordinate on the curve (x = 1), as a BIP-340 key.
+fn on_curve_key() -> ByteArray {
+  builtin.append_bytearray(zeros(31), #"01")
+}
+
+/// An x coordinate off the curve (x = 2^256 - 1, past the field prime).
+fn off_curve_key() -> ByteArray {
+  builtin.replicate_byte(32, 0xff)
+}
+
+test proves_the_signature_builtins_fail_on_a_message_past_65536_bytes() {
+  list.all(
+    signature_tags,
+    fn(tag) {
+      and {
+        fails_on_arguments(
+          tag,
+          signature_arguments(on_curve_key(), past_bound_bytes(), zeros(64)),
+        ),
+        // The bound is checked before the lengths.
+        fails_on_arguments(
+          tag,
+          signature_arguments(zeros(31), past_bound_bytes(), zeros(65)),
+        ),
+      }
+    },
+  )
+}
+
+test refuses_the_signature_builtins_at_65536_bytes() {
+  list.all(
+    signature_tags,
+    fn(tag) {
+      !decides_on_arguments(
+        tag,
+        signature_arguments(zeros(31), at_bound_bytes(), zeros(64)),
+      )
+    },
+  )
+}
+
+test refuses_a_key_or_signature_past_65536_bytes_as_a_bound_failure() {
+  list.all(signature_tags, fn(tag) { !or {
+        decides_on_arguments(
+          tag,
+          [past_bound_bytes(), small_bytes(), bytes_value(zeros(64), False)],
+        ),
+        decides_on_arguments(
+          tag,
+          [bytes_value(zeros(32), False), small_bytes(), past_bound_bytes()],
+        ),
+      } })
+}
+
+/// Spends the staged failure hop for signature builtin `tag` over `key`,
+/// `message` and `signature`, each bound by its leaf, charging `cpu`.
+fn signature_fails_charging(
+  tag: Int,
+  key: ByteArray,
+  message: ByteArray,
+  signature: ByteArray,
+  cpu: Int,
+  memory: Int,
+) -> Bool {
+  signature_fails_from(
+    tag,
+    [bytes_leaf(key), bytes_leaf(message), bytes_leaf(signature)],
+    key,
+    message,
+    signature,
+    cpu,
+    memory,
+  )
+}
+
+fn signature_fails_from(
+  tag: Int,
+  sources: List<OperandSourceV1>,
+  key: ByteArray,
+  message: ByteArray,
+  signature: ByteArray,
+  cpu: Int,
+  memory: Int,
+) -> Bool {
+  spend(
+    charged_failure_step(
+      tag,
+      list.map(
+        [
+          bytes_value(key, False),
+          bytes_value(message, False),
+          bytes_value(signature, False),
+        ],
+        compact,
+      ),
+      material(no_staging(), sources),
+      [],
+      cpu,
+      memory,
+    ),
+  )
+}
+
+/// The charge the builtin's cost row gives.
+fn signature_charge(
+  tag: Int,
+  key: ByteArray,
+  message: ByteArray,
+  signature: ByteArray,
+) -> cost.BuiltinBudgetV1 {
+  cek_builtin_v1.direct_builtin_budget_v1(
+    tag,
+    list.map(
+      [
+        bytes_value(key, False),
+        bytes_value(message, False),
+        bytes_value(signature, False),
+      ],
+      compact,
+    ),
+  )
+}
+
+/// Spends the staged failure hop charged by the cost row, with the key
+/// revealed inline when `inline_key`.
+fn signature_fails(
+  tag: Int,
+  key: ByteArray,
+  message: ByteArray,
+  signature: ByteArray,
+  inline_key: Bool,
+) -> Bool {
+  let budget = signature_charge(tag, key, message, signature)
+  signature_fails_from(
+    tag,
+    [
+      if inline_key {
+        InlineOperand(key)
+      } else {
+        bytes_leaf(key)
+      },
+      bytes_leaf(message),
+      bytes_leaf(signature),
+    ],
+    key,
+    message,
+    signature,
+    budget.cpu,
+    budget.memory,
+  )
+}
+
+test proves_a_malformed_key_or_signature_beside_a_staged_message_charged() {
+  let message = pattern(65536, 3)
+  list.all(
+    signature_tags,
+    fn(tag) {
+      and {
+        signature_fails(tag, zeros(31), message, zeros(64), False),
+        signature_fails(tag, zeros(33), message, zeros(64), False),
+        signature_fails(tag, on_curve_key(), message, zeros(63), False),
+        signature_fails(tag, on_curve_key(), message, zeros(65), False),
+        signature_fails(tag, zeros(31), pattern(9216, 1), zeros(65), False),
+      }
+    },
+  )
+}
+
+/// Spends the staged failure hop for signature builtin `tag` over a key or
+/// signature of 65,537 bytes (the key when `long_key`), bound by its leaf,
+/// beside a one-byte message, charged by the cost row.
+fn long_key_or_signature_fails(tag: Int, long_key: Bool) -> Bool {
+  let long_source = BytesLeafOperand {
+    root: flat_root_of_pieces_v1([pattern(65536, 0), #"01"]),
+    length: 65537,
+  }
+  let Pair(key, key_source) = if long_key {
+    Pair(past_bound_bytes(), long_source)
+  } else {
+    Pair(bytes_value(on_curve_key(), False), bytes_leaf(on_curve_key()))
+  }
+  let Pair(signature, signature_source) = if long_key {
+    Pair(bytes_value(zeros(64), False), bytes_leaf(zeros(64)))
+  } else {
+    Pair(past_bound_bytes(), long_source)
+  }
+  let arguments = list.map([key, bytes_value(#"01", False), signature], compact)
+  let budget = cek_builtin_v1.direct_builtin_budget_v1(tag, arguments)
+  spend(
+    charged_failure_step(
+      tag,
+      arguments,
+      material(no_staging(), [key_source, bytes_leaf(#"01"), signature_source]),
+      [],
+      budget.cpu,
+      budget.memory,
+    ),
+  )
+}
+
+test proves_a_key_or_signature_past_65536_bytes_charged() {
+  list.all(
+    signature_tags,
+    fn(tag) {
+      and {
+        long_key_or_signature_fails(tag, True),
+        long_key_or_signature_fails(tag, False),
+      }
+    },
+  )
+}
+
+test proves_schnorr_fails_on_a_key_off_the_curve_charged() {
+  signature_fails(53, off_curve_key(), pattern(65536, 3), zeros(64), True)
+}
+
+test refuses_ed25519_on_well_formed_lengths() fail {
+  signature_fails(21, off_curve_key(), pattern(65536, 3), zeros(64), True)
+}
+
+test refuses_schnorr_on_a_key_on_the_curve() fail {
+  signature_fails(53, on_curve_key(), pattern(65536, 3), zeros(64), True)
+}
+
+test refuses_schnorr_off_the_curve_by_the_key_leaf_alone() fail {
+  signature_fails(53, off_curve_key(), pattern(65536, 3), zeros(64), False)
+}
+
+test refuses_a_charged_step_with_another_charge_for_a_malformed_key() fail {
+  let message = pattern(65536, 3)
+  let budget = signature_charge(21, zeros(31), message, zeros(64))
+  signature_fails_charging(
+    21,
+    zeros(31),
+    message,
+    zeros(64),
+    budget.cpu + 1,
+    budget.memory,
+  )
+}
+
+test refuses_an_uncharged_step_for_a_malformed_key() fail {
+  signature_fails_charging(21, zeros(31), pattern(65536, 3), zeros(64), 0, 0)
+}
+
+test refuses_a_charged_step_on_a_message_past_65536_bytes() fail {
+  let arguments = signature_arguments(zeros(31), past_bound_bytes(), zeros(64))
+    |> list.map(compact)
+  let budget = cek_builtin_v1.direct_builtin_budget_v1(21, arguments)
+  spend(
+    charged_failure_step(
+      21,
+      arguments,
+      material(
+        no_staging(),
+        [
+          bytes_leaf(zeros(31)),
+          BytesLeafOperand {
+            root: flat_root_of_pieces_v1([pattern(65536, 0), #"01"]),
+            length: 65537,
+          },
+          bytes_leaf(zeros(64)),
+        ],
+      ),
+      [],
+      budget.cpu,
+      budget.memory,
+    ),
+  )
+}
+
+test refuses_a_charged_ecdsa_step() fail {
+  let message = pattern(65536, 3)
+  let budget = signature_charge(52, zeros(32), message, zeros(64))
+  signature_fails_charging(
+    52,
+    zeros(32),
+    message,
+    zeros(64),
+    budget.cpu,
+    budget.memory,
+  )
+}
+
+test refuses_a_charged_step_on_a_message_of_another_type() fail {
+  let arguments = list.map(
+    [
+      bytes_value(zeros(31), False),
+      integer_value(1),
+      bytes_value(zeros(64), False),
+    ],
+    compact,
+  )
+  let budget = cek_builtin_v1.direct_builtin_budget_v1(21, arguments)
+  spend(
+    charged_failure_step(
+      21,
+      arguments,
+      material(
+        no_staging(),
+        [bytes_leaf(zeros(31)), integer_leaf(1), bytes_leaf(zeros(64))],
+      ),
+      [],
+      budget.cpu,
+      budget.memory,
+    ),
+  )
+}
+
+/// A malformed key beside an inline message is also proved by the direct
+/// failure arm; both arms post the same charge.
+test proves_a_malformed_key_beside_an_inline_message_with_one_charge() {
+  let message = pattern(100, 5)
+  list.all(
+    signature_tags,
+    fn(tag) {
+      let arguments = [
+        bytes_value(zeros(31), False),
+        bytes_value(message, False),
+        bytes_value(zeros(64), False),
+      ]
+      let Pair(root, count) = cek_builtin_v1.arguments_root_v1(arguments)
+      and {
+        cek_builtin_v1.verify_direct_builtin_failure_v1(
+          tag,
+          proof.hash_builtin_value_v1(tag, 0, count, root),
+          arguments,
+        ),
+        cek_builtin_v1.direct_builtin_budget_v1(tag, arguments) == signature_charge(
+          tag,
+          zeros(31),
+          message,
+          zeros(64),
+        ),
+        signature_fails(tag, zeros(31), message, zeros(64), False),
+      }
+    },
+  )
+}
+
+test routes_schnorr_to_the_staged_failure_hop() {
+  roots_route(
+    53,
+    signature_arguments(on_curve_key(), past_bound_bytes(), zeros(64)),
+    True,
+  )
+}
+
+test does_not_route_schnorr_to_the_material_hop() fail {
+  roots_route(
+    53,
+    signature_arguments(on_curve_key(), past_bound_bytes(), zeros(64)),
+    False,
+  )
+}
+
+test leaves_a_charged_signature_post_on_the_staged_route() {
+  roots_route_charging(
+    53,
+    signature_arguments(off_curve_key(), at_bound_bytes(), zeros(64)),
+    True,
+    1,
+  )
+}
+
+/// verifySchnorrSecp256k1Signature of a key off the curve beside a message of
+/// 65,536 bytes: the key is revealed and checked against the curve.
+fn signature_step_at_the_bound() -> StagedStepV1 {
+  let key = off_curve_key()
+  let message = pattern(65536, 3)
+  let budget = signature_charge(53, key, message, zeros(64))
+  charged_failure_step(
+    53,
+    list.map(
+      [
+        bytes_value(key, False),
+        bytes_value(message, False),
+        bytes_value(zeros(64), False),
+      ],
+      compact,
+    ),
+    material(
+      no_staging(),
+      [InlineOperand(key), bytes_leaf(message), bytes_leaf(zeros(64))],
+    ),
+    [],
+    budget.cpu,
+    budget.memory,
+  )
+}
+
+test staged_failure_signature_at_the_byte_string_bound() {
+  spend(signature_step_at_the_bound())
+}
+
+test staged_failure_signature_fixture_only_at_the_byte_string_bound() {
+  built(signature_step_at_the_bound())
 }
