@@ -579,8 +579,9 @@ test refuses_a_byte_string_builtin() fail {
   )
 }
 
+// -2 * 2 and -2 - 2 agree, so only the tag tells them apart.
 test refuses_a_multiplication() fail {
-  staged_pair(2, 3, 4, integer_value(12))
+  staged_pair(2, -2, 2, integer_value(-4))
 }
 
 test refuses_a_step_before_the_budget_hop() fail {
