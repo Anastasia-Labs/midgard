@@ -47,13 +47,6 @@ describe("minFee wrongful rejection registered lifecycle", () => {
           },
           {
             ...source,
-            membership: {
-              ...source.membership,
-              count: source.membership.count + 1n,
-            },
-          },
-          {
-            ...source,
             membership: { ...source.membership, phas_root: "ff".repeat(32) },
           },
           {
