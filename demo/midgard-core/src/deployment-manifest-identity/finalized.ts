@@ -12,7 +12,7 @@ import "./identity.js";
 import "./primitives.js";
 import "./protocol-parameters.js";
 import "./reference-script-contracts.js";
-import "./reference-script-tokens.js";
+import "./reference-script-tokens.additions.js";
 import "./types.js";
 import "./finalized.validate-finalized-contracts.js";
 import "./finalized.validate-finalized-da.js";
