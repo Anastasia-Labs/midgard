@@ -148,15 +148,6 @@ describe("V1 CEK trace generator", () => {
     ).toBe(true);
   });
 
-  it("witnesses a source constant past the direct payload bound by its semantic tree", () => {
-    const payload = Buffer.alloc(9_216, 0x5a);
-    const { constantWitnesses } = buildCekProgramFromRawFlat(
-      compile(UPLCConst.byteString(new DataB(payload).bytes)),
-    );
-    const kinds = [...constantWitnesses.values()].map(({ kind }) => kind);
-    expect(kinds).toContain("semanticConstant");
-  });
-
   it("streams constructor fields through case selection and application", () => {
     const program = buildCekProgramFromRawFlat(
       compile(

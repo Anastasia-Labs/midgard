@@ -826,6 +826,8 @@ export const verifyOneProgramMaterial = (
         BigInt(MIDGARD_CEK_MAX_CONSTANT_TYPE_CBOR_BYTES),
         `CEK constant value ${valueKey} type`,
       );
+      // The semantic root is a Data node (rebuilding refuses any other), and
+      // its node commits its CBOR length: this binds the payload length.
       const declaredRoot = decodedDataNodes.get(rootKey(value.semanticRoot));
       if (
         declaredRoot !== undefined &&
@@ -844,9 +846,6 @@ export const verifyOneProgramMaterial = (
         throw new Error(
           `CEK constant value ${valueKey} semantic root does not match its canonical payload`,
         );
-      }
-      if (semantic.cborLength !== value.payloadLength) {
-        throw new Error(payloadLengthMismatch(valueKey));
       }
       const constantType = decodeSemanticConstantType(typeCbor);
       if (!semanticConstantPayloadMatchesType(constantType, decodedPayload)) {

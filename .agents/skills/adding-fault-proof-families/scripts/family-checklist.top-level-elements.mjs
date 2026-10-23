@@ -43,6 +43,21 @@ export const readSource = (root, key) => {
   }
 };
 
+// Like extractLiteral, but each `...<other>` spread is replaced by the entries
+// of <other>'s own literal from the same text, so a table kept as a base plus
+// an additions list reads as one table.
+export const extractSpreadLiteral = (text, name, file, seen = new Set()) => {
+  if (seen.has(name)) throw new CannotLook(`${file}: ${name} spreads itself`);
+  return extractLiteral(text, name, file).replace(
+    /\.\.\.([A-Za-z_$][\w$]*)/gu,
+    (_, spread) =>
+      extractSpreadLiteral(text, spread, file, new Set([...seen, name])).slice(
+        1,
+        -1,
+      ),
+  );
+};
+
 // Returns the text of the bracketed literal that follows `const <name>`,
 // skipping strings and comments so brackets inside them do not count.
 export const extractLiteral = (text, name, file) => {
