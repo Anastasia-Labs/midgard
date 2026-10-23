@@ -10,6 +10,7 @@ import {
   arrayStrings,
   CannotLook,
   extractLiteral,
+  extractSpreadLiteral,
   kebab,
   listFiles,
   objectKeys,
@@ -41,14 +42,14 @@ export const checkFamily = (root, category) => {
     ),
   );
   const contractNames = arrayStrings(
-    extractLiteral(
+    extractSpreadLiteral(
       core,
       "DEPLOYMENT_MANIFEST_CONTRACT_NAMES",
       SOURCES.coreCatalogue,
     ),
   );
   const tokenByRole = objectStringPairs(
-    extractLiteral(
+    extractSpreadLiteral(
       readSource(root, "coreReferenceTokens"),
       "DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES",
       SOURCES.coreReferenceTokens,
