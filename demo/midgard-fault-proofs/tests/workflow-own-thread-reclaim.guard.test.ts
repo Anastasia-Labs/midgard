@@ -38,20 +38,26 @@ afterEach(() => {
 
 /** `makeAdapter`'s family on a header a sibling run on our key convicted:
  * its own proof never lands, and once `convicted()` it observes the
- * sibling's completed record. */
+ * sibling's completed record, its removal at depth `depth()`. */
 const siblingConvicted = (
   convicted: () => boolean,
+  depth: () => number = () => FINAL_DEPTH,
 ): FraudProofFamilyWorkflowAdapter => {
   const base = makeAdapter();
   return {
     ...base,
-    observe: async (context) =>
-      convicted()
-        ? {
-            kind: "completed",
-            terminal: terminal(String(context.artifact.headerHash)),
-          }
-        : { kind: "pending", reason: "our thread awaits its next step" },
+    observe: async (context) => {
+      if (!convicted())
+        return { kind: "pending", reason: "our thread awaits its next step" };
+      const sibling = terminal(String(context.artifact.headerHash));
+      return {
+        kind: "completed",
+        terminal: {
+          ...sibling,
+          observedAt: { ...sibling.observedAt, confirmationDepth: depth() },
+        },
+      };
+    },
   };
 };
 
@@ -117,6 +123,38 @@ describe("workflow: reclaim edges on a header another record removed", () => {
     ledger.land(FINAL_DEPTH);
     expectReclaimedThenResolved(await run({ evidence, adapter, journal }), {
       ...resolution,
+      confirmationDepth: FINAL_DEPTH,
+    });
+  });
+
+  it("sends no cancel while a sibling run's removal is one block short of release finality", async () => {
+    const evidence = await canonicalEvidence();
+    const journal = new MemoryFraudProofWorkflowJournalStore();
+    const ledger = chain();
+    const port = reclaimPort(ledger);
+    let depth = FINAL_DEPTH - 1;
+    const adapter = decorate(
+      siblingConvicted(
+        () => true,
+        () => depth,
+      ),
+      port,
+    );
+    expect(await run({ evidence, adapter, journal })).toMatchObject({
+      kind: "pending",
+      reason: expect.stringContaining(
+        `header removal awaits release finality before our thread ${OUR_THREAD} is reclaimed`,
+      ),
+    });
+    expect(port.preflight).not.toHaveBeenCalled();
+    expect(port.submit).not.toHaveBeenCalled();
+    depth = FINAL_DEPTH;
+    expect((await run({ evidence, adapter, journal })).kind).toBe("pending");
+    expect(port.submit).toHaveBeenCalledTimes(1);
+    ledger.land(FINAL_DEPTH);
+    expectReclaimedThenResolved(await run({ evidence, adapter, journal }), {
+      removalTxHash: REMOVAL_TX_HASH,
+      referencedProofTokenOutRef: `${PROOF_TX_HASH}#0`,
       confirmationDepth: FINAL_DEPTH,
     });
   });
