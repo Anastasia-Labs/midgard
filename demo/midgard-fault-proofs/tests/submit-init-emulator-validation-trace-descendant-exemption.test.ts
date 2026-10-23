@@ -15,9 +15,9 @@ import {
 import { Effect } from "effect";
 import { expect, it, vi } from "vitest";
 
+import * as recordSelection from "../src/fraud-proof-record-selection.js";
 import { workflowTransactionInputOutRefs } from "../src/index.js";
 import * as slashingApproach from "../src/remove-fraudulent-block.resolve-state-queue-slashing-approach.js";
-import * as runtimeContracts from "../src/runtime.resolve-category-deployment-contracts.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
   buildProvedDoubleSpendFixture,
@@ -46,12 +46,13 @@ const presentingProofToken = async <T>(
   substitute: UTxO,
   operation: () => Promise<T>,
 ): Promise<T> => {
-  const original = runtimeContracts.requireSingletonUtxo;
+  const original = recordSelection.requireFraudProofRecord;
   const spy = vi
-    .spyOn(runtimeContracts, "requireSingletonUtxo")
-    .mockImplementation(async (params) =>
-      params.label === "fraud-proof token" ? substitute : original(params),
-    );
+    .spyOn(recordSelection, "requireFraudProofRecord")
+    .mockImplementation(async (params) => ({
+      ...(await original(params)),
+      utxo: substitute,
+    }));
   try {
     return await operation();
   } finally {
