@@ -15,6 +15,7 @@ import {
   lam,
   MIDGARD_CEK_TX_BUDGET,
   prepareMidgardCekProgram,
+  v,
 } from "../helpers/cek-uplc-terms.js";
 import { cataloguedClassOf } from "./cek-step-fuzz.catalogue.js";
 import { executedBuiltin } from "./cek-step-fuzz.harness.js";
@@ -35,6 +36,7 @@ const HEAD_LIST = 33;
 const NULL_LIST = 35;
 const I_DATA = 40;
 const B_DATA = 41;
+const SERIALISE_DATA = 51;
 
 /** The one step of a program that executes `builtin`. */
 const stepExecuting = (
@@ -182,5 +184,31 @@ describe("catalogued classes of a step revealing an empty byte string", () => {
 
   it("bData of the empty byte string: an accepted step is in no class", () => {
     expect(cataloguedClassOf(step(), B_DATA, "accepted")).toBeNull();
+  });
+});
+
+describe("catalogued classes of a serialiseData step", () => {
+  const program: CekStepFuzzProgram = {
+    label: "serialiseData of the context",
+    term: lam(builtinCall(SERIALISE_DATA, [v(0)])),
+    context: new DataI(7n),
+    tightBudget: false,
+  };
+  const step = () => stepExecuting(program, SERIALISE_DATA);
+
+  it("serialiseData of the context: the step is a serialise loop step", () => {
+    expect(step().witness.kind).toBe("executeBuiltinSerialise");
+  });
+
+  it("serialiseData of the context: a failure, a refusal or a budget stop is serialiseLoop", () => {
+    for (const verdict of ["failed", "refused", "overBudget"] as const) {
+      expect(cataloguedClassOf(step(), SERIALISE_DATA, verdict)).toBe(
+        "serialiseLoop",
+      );
+    }
+  });
+
+  it("serialiseData of the context: an accepted step is in no class", () => {
+    expect(cataloguedClassOf(step(), SERIALISE_DATA, "accepted")).toBeNull();
   });
 });

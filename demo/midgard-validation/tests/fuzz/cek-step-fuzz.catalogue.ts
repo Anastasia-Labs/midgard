@@ -30,11 +30,18 @@ import type { AikenVerdict } from "./cek-step-fuzz.oracle.js";
  *   compound in another (a pair, or a list of lists), whose adjudication goes
  *   over the evaluator's budget. Owner: the on-chain constant step. Pending
  *   the on-chain constant-step cost update.
+ * - `serialiseLoop`: a serialiseData step. The serialise loop
+ *   (`cek_core_semantic_serialise_loop`) proves it hop by hop over its staged
+ *   result, which the one-step adjudicator run here does not read. Its
+ *   agreement with the TypeScript verifier is pinned by the loop's golden
+ *   channel (`scripts/generate-cek-serialise-loop-v1-goldens.mjs`) instead.
+ *   Owner: Cap 2. Stays while this differential runs one step at a time.
  */
 export type CataloguedClass =
   | "blsInvalidPointPending"
   | "computationCost"
-  | "nestedConstantCost";
+  | "nestedConstantCost"
+  | "serialiseLoop";
 
 type StepWitness = MidgardCekExecutionStep["witness"];
 
@@ -187,6 +194,7 @@ export const cataloguedClassOf = (
 ): CataloguedClass | null => {
   if (verdict === "accepted") return null;
   const witness = step.witness;
+  if (witness.kind === "executeBuiltinSerialise") return "serialiseLoop";
   if (isPendingBlsFailure(witness)) return "blsInvalidPointPending";
   if (verdict === "overBudget" && isComputationCostKind(witness, builtin)) {
     return "computationCost";

@@ -94,7 +94,7 @@
       "48": ["executeBuiltinSemantic", "executeBuiltinTypeFailure"],
       "49": ["executeBuiltinSemantic"],
       "50": ["executeBuiltinSemantic", "executeBuiltinTypeFailure"],
-      "51": ["executeBuiltinDirect", "executeBuiltinSemantic"],
+      "51": ["executeBuiltinDirect"],
       "52": ["executeBuiltinDirect", "executeBuiltinFailure"],
       "53": ["executeBuiltinDirect", "executeBuiltinFailure"],
       "54": ["executeBuiltinDirect", "executeBuiltinTypeFailure"],

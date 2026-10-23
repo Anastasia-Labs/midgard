@@ -52,7 +52,10 @@ export const TX_FIXED_SET_PINS: TxRowPins = {
   seeds: {
     "14876674": { known: { blsTagNumbering: 1 } },
     "14876682": { known: { blsTagNumbering: 1 } },
-    "14876683": { known: { blsTagNumbering: 1 } },
+    "14876683": {
+      known: { blsTagNumbering: 1 },
+      catalogued: { serialiseLoop: 1 },
+    },
     "14876686": { known: { blsTagNumbering: 1 } },
     "14876693": { known: { blsTagNumbering: 1 } },
     "14876701": { known: { blsTagNumbering: 1 } },
@@ -63,14 +66,15 @@ export const TX_FIXED_SET_PINS: TxRowPins = {
     "14876731": { known: { blsTagNumbering: 1 } },
   },
   known: { blsTagNumbering: 11 },
-  catalogued: {},
+  catalogued: { serialiseLoop: 1 },
 };
 
 /** The corpus seeds' pins. */
 export const TX_CORPUS_PINS: TxRowPins = {
   seeds: {
+    "1088032817": { catalogued: { serialiseLoop: 1 } },
     "1405241274": { known: { blsTagNumbering: 1 } },
   },
   known: { blsTagNumbering: 1 },
-  catalogued: {},
+  catalogued: { serialiseLoop: 1 },
 };

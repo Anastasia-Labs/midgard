@@ -63,6 +63,7 @@ const EXECUTING_KINDS = new Set<WitnessKind>([
   "startBuiltinMapConversion",
 ]);
 const FINAL_VERIFY_TAG = 70;
+const SERIALISE_DATA_TAG = 51;
 
 /** The builtin a step executes, or null. */
 export const executedBuiltin = (
@@ -70,6 +71,7 @@ export const executedBuiltin = (
 ): number | null => {
   const witness = step.witness;
   if (witness.kind === "executeBuiltinBlsFinal") return FINAL_VERIFY_TAG;
+  if (witness.kind === "executeBuiltinSerialise") return SERIALISE_DATA_TAG;
   return EXECUTING_KINDS.has(witness.kind) && "tag" in witness
     ? Number(witness.tag)
     : null;
