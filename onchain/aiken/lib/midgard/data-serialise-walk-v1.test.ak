@@ -342,7 +342,11 @@ test non_canonical_forms_are_refused() {
       #"d86682187f80",
       #"d866821900c880",
       #"d86682c249010000000000000000" |> bytearray.concat(#"80"),
+      #"d866822080",
+      #"d86682c2410180",
       #"d8668318c88080",
+      // a bignum tag behind a long tag head
+      #"d80249010000000000000000",
       // definite non-empty list or field list, indefinite map, non-minimal
       // heads
       #"8100",
