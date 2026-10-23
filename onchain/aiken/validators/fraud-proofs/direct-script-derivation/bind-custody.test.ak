@@ -63,7 +63,7 @@ fn source_network(
     phase,
     tf.h32_d,
     if forced {
-      Some(forced_membership.root)
+      Some(tf.forced_counted_root_v1(forced_membership.phas_root, 1))
     } else {
       None
     },

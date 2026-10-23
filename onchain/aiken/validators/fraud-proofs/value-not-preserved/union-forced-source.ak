@@ -15,7 +15,7 @@ pub type Args {
   input_index: Int,
   output_index: Int,
   header: ledger_state.HeaderV1,
-  membership: transition_trace.RootMembershipProof<
+  membership: transition_trace.ForcedLeafMembershipV1<
     ledger_state.TxOrderId,
     ledger_state.ForcedInclusionTxV1,
   >,

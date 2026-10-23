@@ -35,6 +35,16 @@ pub type RootMembershipProof<key, value> {
   proof: Proof,
 }
 
+/// A forced-leaf membership carrying only the fields its check reads. The
+/// leaf is opened under the domain, root and count of the header it is
+/// checked against, so those three are not carried.
+pub type ForcedLeafMembershipV1<key, value> {
+  phas_root: MerkleRoot<key, value>,
+  key: key,
+  value: value,
+  proof: Proof,
+}
+
 pub type RootNonMembershipProof<key> {
   domain: RootDomain,
   root: ByteArray,

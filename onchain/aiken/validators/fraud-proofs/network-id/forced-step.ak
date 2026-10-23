@@ -212,27 +212,33 @@ fn forced_leaf_v1(
 fn forced_membership_v1(
   key: ledger_state.TxOrderId,
   leaf: ledger_state.ForcedInclusionTxV1,
-  count: Int,
-) -> transition_trace.RootMembershipProof<
+) -> transition_trace.ForcedLeafMembershipV1<
   ledger_state.TxOrderId,
   ledger_state.ForcedInclusionTxV1,
 > {
   let phas_root = mpf.root(
     mpf.insert(mpf.empty, cbor.serialise(key), cbor.serialise(leaf), []),
   )
-  transition_trace.RootMembershipProof {
-    domain: transition_trace.ForcedTransactionsV1RootDomain,
-    root: transition_trace.commit_counted_root(
-      transition_trace.ForcedTransactionsV1RootDomain,
-      phas_root,
-      count,
-    ),
+  transition_trace.ForcedLeafMembershipV1 {
     phas_root,
-    count,
     key,
     value: leaf,
     proof: [],
   }
+}
+
+/// The counted forced-transactions root of a one-leaf tree.
+fn forced_root_v1(
+  membership: transition_trace.ForcedLeafMembershipV1<
+    ledger_state.TxOrderId,
+    ledger_state.ForcedInclusionTxV1,
+  >,
+) -> ByteArray {
+  transition_trace.commit_counted_root(
+    transition_trace.ForcedTransactionsV1RootDomain,
+    membership.phas_root,
+    1,
+  )
 }
 
 fn forced_header_v1(root: ByteArray, count: Int) -> ledger_state.HeaderV1 {
@@ -278,7 +284,7 @@ fn run_forced_step_v1(
   input_state: Option<NetworkIdFaultV1>,
   header: ledger_state.HeaderV1,
   thread_name: ByteArray,
-  membership: transition_trace.RootMembershipProof<
+  membership: transition_trace.ForcedLeafMembershipV1<
     ledger_state.TxOrderId,
     ledger_state.ForcedInclusionTxV1,
   >,
@@ -311,8 +317,8 @@ fn run_canonical_forced_bind_v1(leaf_network_id: Int) -> Bool {
   let tx = rejected_forced_tx_v1(leaf_network_id)
   let key = forced_order_key_v1()
   let leaf = forced_leaf_v1(tx, ForcedTxInvalid { reason: NetworkIdMismatch })
-  let membership = forced_membership_v1(key, leaf, 1)
-  let header = forced_header_v1(membership.root, 1)
+  let membership = forced_membership_v1(key, leaf)
+  let header = forced_header_v1(forced_root_v1(membership), 1)
   let state: Data = expected_forced_state_v1(leaf, key, leaf_network_id)
   run_forced_step_v1(
     fixture.next_step_script_hash,
@@ -347,8 +353,8 @@ test network_id_forced_step_derives_direction_without_the_obsolete_zero_input() 
   let tx = rejected_forced_tx_v1(0)
   let key = forced_order_key_v1()
   let leaf = forced_leaf_v1(tx, ForcedTxInvalid { reason: NetworkIdMismatch })
-  let membership = forced_membership_v1(key, leaf, 1)
-  let header = forced_header_v1(membership.root, 1)
+  let membership = forced_membership_v1(key, leaf)
+  let header = forced_header_v1(forced_root_v1(membership), 1)
   let state: Data = expected_forced_state_v1(leaf, key, 0)
   run_forced_step_v1(
     fixture.next_step_script_hash,
@@ -367,8 +373,8 @@ test network_id_forced_step_derives_direction_without_the_obsolete_two_input() {
   let tx = rejected_forced_tx_v1(0)
   let key = forced_order_key_v1()
   let leaf = forced_leaf_v1(tx, ForcedTxInvalid { reason: NetworkIdMismatch })
-  let membership = forced_membership_v1(key, leaf, 1)
-  let header = forced_header_v1(membership.root, 1)
+  let membership = forced_membership_v1(key, leaf)
+  let header = forced_header_v1(forced_root_v1(membership), 1)
   let state: Data = expected_forced_state_v1(leaf, key, 0)
   run_forced_step_v1(
     fixture.next_step_script_hash,
@@ -387,8 +393,8 @@ test network_id_forced_step_rejects_a_substituted_header() fail {
   let tx = rejected_forced_tx_v1(0)
   let key = forced_order_key_v1()
   let leaf = forced_leaf_v1(tx, ForcedTxInvalid { reason: NetworkIdMismatch })
-  let membership = forced_membership_v1(key, leaf, 1)
-  let header = forced_header_v1(membership.root, 1)
+  let membership = forced_membership_v1(key, leaf)
+  let header = forced_header_v1(forced_root_v1(membership), 1)
   // The thread NFT names a different block than the redeemer-carried header.
   let other_header = ledger_state.HeaderV1 {
     ..header,
@@ -412,7 +418,7 @@ test network_id_forced_step_rejects_a_substituted_forced_root() fail {
   let tx = rejected_forced_tx_v1(0)
   let key = forced_order_key_v1()
   let leaf = forced_leaf_v1(tx, ForcedTxInvalid { reason: NetworkIdMismatch })
-  let membership = forced_membership_v1(key, leaf, 1)
+  let membership = forced_membership_v1(key, leaf)
   let header = forced_header_v1(env.empty_merkle_tree_root, 1)
   let state: Data = expected_forced_state_v1(leaf, key, 0)
   run_forced_step_v1(
@@ -432,8 +438,8 @@ test network_id_forced_step_rejects_a_substituted_forced_count() fail {
   let tx = rejected_forced_tx_v1(0)
   let key = forced_order_key_v1()
   let leaf = forced_leaf_v1(tx, ForcedTxInvalid { reason: NetworkIdMismatch })
-  let membership = forced_membership_v1(key, leaf, 1)
-  let header = forced_header_v1(membership.root, 2)
+  let membership = forced_membership_v1(key, leaf)
+  let header = forced_header_v1(forced_root_v1(membership), 2)
   let state: Data = expected_forced_state_v1(leaf, key, 0)
   run_forced_step_v1(
     fixture.next_step_script_hash,
@@ -454,8 +460,8 @@ test network_id_forced_step_rejects_a_substituted_order_key() fail {
   let tx = rejected_forced_tx_v1(0)
   let key = forced_order_key_v1()
   let leaf = forced_leaf_v1(tx, ForcedTxInvalid { reason: NetworkIdMismatch })
-  let membership = forced_membership_v1(key, leaf, 1)
-  let header = forced_header_v1(membership.root, 1)
+  let membership = forced_membership_v1(key, leaf)
+  let header = forced_header_v1(forced_root_v1(membership), 1)
   let forged_key = OutputReference {
     transaction_id: other_transaction_id,
     output_index: 0,
@@ -466,7 +472,7 @@ test network_id_forced_step_rejects_a_substituted_order_key() fail {
     Some(ForcedNetworkIdMismatch),
     header,
     thread_name_v1(header),
-    transition_trace.RootMembershipProof { ..membership, key: forged_key },
+    transition_trace.ForcedLeafMembershipV1 { ..membership, key: forged_key },
     1,
     0,
     0,
@@ -484,8 +490,8 @@ test network_id_forced_step_rejects_a_substituted_leaf_tx_id() fail {
     ..base,
     tx_id: other_transaction_id,
   }
-  let membership = forced_membership_v1(key, leaf, 1)
-  let header = forced_header_v1(membership.root, 1)
+  let membership = forced_membership_v1(key, leaf)
+  let header = forced_header_v1(forced_root_v1(membership), 1)
   let state: Data = expected_forced_state_v1(leaf, key, 0)
   run_forced_step_v1(
     fixture.next_step_script_hash,
@@ -512,8 +518,8 @@ test network_id_forced_step_rejects_a_substituted_leaf_source() fail {
       proof_source_of_v1(rejected_forced_tx_v1(1)),
     ),
   }
-  let membership = forced_membership_v1(key, leaf, 1)
-  let header = forced_header_v1(membership.root, 1)
+  let membership = forced_membership_v1(key, leaf)
+  let header = forced_header_v1(forced_root_v1(membership), 1)
   let state: Data = expected_forced_state_v1(leaf, key, 0)
   run_forced_step_v1(
     fixture.next_step_script_hash,
@@ -543,8 +549,8 @@ test network_id_forced_step_rejects_substituted_witness_set_bytes() fail {
       ),
     },
   }
-  let membership = forced_membership_v1(key, leaf, 1)
-  let header = forced_header_v1(membership.root, 1)
+  let membership = forced_membership_v1(key, leaf)
+  let header = forced_header_v1(forced_root_v1(membership), 1)
   let state: Data = expected_forced_state_v1(leaf, key, 0)
   run_forced_step_v1(
     fixture.next_step_script_hash,
@@ -575,8 +581,8 @@ test network_id_forced_step_rejects_a_malformed_field_length_vector() fail {
       ),
     },
   }
-  let membership = forced_membership_v1(key, leaf, 1)
-  let header = forced_header_v1(membership.root, 1)
+  let membership = forced_membership_v1(key, leaf)
+  let header = forced_header_v1(forced_root_v1(membership), 1)
   let state: Data = expected_forced_state_v1(leaf, key, 0)
   run_forced_step_v1(
     fixture.next_step_script_hash,
@@ -603,8 +609,8 @@ test network_id_forced_step_rejects_an_obsolete_four_element_source() fail {
       compact_cbor: native_transaction.midgard_transaction_proof_source_v1(tx).compact_cbor,
     },
   }
-  let membership = forced_membership_v1(key, leaf, 1)
-  let header = forced_header_v1(membership.root, 1)
+  let membership = forced_membership_v1(key, leaf)
+  let header = forced_header_v1(forced_root_v1(membership), 1)
   let state: Data = expected_forced_state_v1(leaf, key, 0)
   run_forced_step_v1(
     fixture.next_step_script_hash,
@@ -623,8 +629,8 @@ test network_id_forced_step_rejects_an_accepting_verdict() fail {
   let tx = rejected_forced_tx_v1(0)
   let key = forced_order_key_v1()
   let leaf = forced_leaf_v1(tx, ForcedTxValid)
-  let membership = forced_membership_v1(key, leaf, 1)
-  let header = forced_header_v1(membership.root, 1)
+  let membership = forced_membership_v1(key, leaf)
+  let header = forced_header_v1(forced_root_v1(membership), 1)
   let state: Data = expected_forced_state_v1(leaf, key, 0)
   run_forced_step_v1(
     fixture.next_step_script_hash,
@@ -643,8 +649,8 @@ test network_id_forced_step_rejects_a_foreign_rejection_reason() fail {
   let tx = rejected_forced_tx_v1(0)
   let key = forced_order_key_v1()
   let leaf = forced_leaf_v1(tx, ForcedTxInvalid { reason: FeeBelowMinimum })
-  let membership = forced_membership_v1(key, leaf, 1)
-  let header = forced_header_v1(membership.root, 1)
+  let membership = forced_membership_v1(key, leaf)
+  let header = forced_header_v1(forced_root_v1(membership), 1)
   let state: Data = expected_forced_state_v1(leaf, key, 0)
   run_forced_step_v1(
     fixture.next_step_script_hash,
@@ -663,8 +669,8 @@ test network_id_forced_step_rejects_a_missing_handoff_marker() fail {
   let tx = rejected_forced_tx_v1(0)
   let key = forced_order_key_v1()
   let leaf = forced_leaf_v1(tx, ForcedTxInvalid { reason: NetworkIdMismatch })
-  let membership = forced_membership_v1(key, leaf, 1)
-  let header = forced_header_v1(membership.root, 1)
+  let membership = forced_membership_v1(key, leaf)
+  let header = forced_header_v1(forced_root_v1(membership), 1)
   let state: Data = expected_forced_state_v1(leaf, key, 0)
   run_forced_step_v1(
     fixture.next_step_script_hash,
@@ -683,8 +689,8 @@ test network_id_forced_step_rejects_a_foreign_handoff_marker() fail {
   let tx = rejected_forced_tx_v1(0)
   let key = forced_order_key_v1()
   let leaf = forced_leaf_v1(tx, ForcedTxInvalid { reason: NetworkIdMismatch })
-  let membership = forced_membership_v1(key, leaf, 1)
-  let header = forced_header_v1(membership.root, 1)
+  let membership = forced_membership_v1(key, leaf)
+  let header = forced_header_v1(forced_root_v1(membership), 1)
   let state: Data = expected_forced_state_v1(leaf, key, 0)
   run_forced_step_v1(
     fixture.next_step_script_hash,
@@ -703,8 +709,8 @@ test network_id_forced_step_rejects_a_wrong_successor() fail {
   let tx = rejected_forced_tx_v1(0)
   let key = forced_order_key_v1()
   let leaf = forced_leaf_v1(tx, ForcedTxInvalid { reason: NetworkIdMismatch })
-  let membership = forced_membership_v1(key, leaf, 1)
-  let header = forced_header_v1(membership.root, 1)
+  let membership = forced_membership_v1(key, leaf)
+  let header = forced_header_v1(forced_root_v1(membership), 1)
   let state: Data = expected_forced_state_v1(leaf, key, 0)
   run_forced_step_v1(
     fixture.step_script_hash,
@@ -723,8 +729,8 @@ test network_id_forced_step_rejects_an_out_of_range_output_index() fail {
   let tx = rejected_forced_tx_v1(0)
   let key = forced_order_key_v1()
   let leaf = forced_leaf_v1(tx, ForcedTxInvalid { reason: NetworkIdMismatch })
-  let membership = forced_membership_v1(key, leaf, 1)
-  let header = forced_header_v1(membership.root, 1)
+  let membership = forced_membership_v1(key, leaf)
+  let header = forced_header_v1(forced_root_v1(membership), 1)
   let state: Data = expected_forced_state_v1(leaf, key, 0)
   run_forced_step_v1(
     fixture.next_step_script_hash,
@@ -743,8 +749,8 @@ test network_id_forced_step_rejects_an_out_of_range_input_index() fail {
   let tx = rejected_forced_tx_v1(0)
   let key = forced_order_key_v1()
   let leaf = forced_leaf_v1(tx, ForcedTxInvalid { reason: NetworkIdMismatch })
-  let membership = forced_membership_v1(key, leaf, 1)
-  let header = forced_header_v1(membership.root, 1)
+  let membership = forced_membership_v1(key, leaf)
+  let header = forced_header_v1(forced_root_v1(membership), 1)
   let state: Data = expected_forced_state_v1(leaf, key, 0)
   run_forced_step_v1(
     fixture.next_step_script_hash,
@@ -763,8 +769,8 @@ test network_id_forced_step_rejects_a_tampered_committed_network_id() fail {
   let tx = rejected_forced_tx_v1(255)
   let key = forced_order_key_v1()
   let leaf = forced_leaf_v1(tx, ForcedTxInvalid { reason: NetworkIdMismatch })
-  let membership = forced_membership_v1(key, leaf, 1)
-  let header = forced_header_v1(membership.root, 1)
+  let membership = forced_membership_v1(key, leaf)
+  let header = forced_header_v1(forced_root_v1(membership), 1)
   // Claims the committed body named the deployment network when the field was
   // absent.
   let state: Data = expected_forced_state_v1(leaf, key, 0)
@@ -785,8 +791,8 @@ test network_id_forced_step_rejects_a_dropped_forced_source_key() fail {
   let tx = rejected_forced_tx_v1(0)
   let key = forced_order_key_v1()
   let leaf = forced_leaf_v1(tx, ForcedTxInvalid { reason: NetworkIdMismatch })
-  let membership = forced_membership_v1(key, leaf, 1)
-  let header = forced_header_v1(membership.root, 1)
+  let membership = forced_membership_v1(key, leaf)
+  let header = forced_header_v1(forced_root_v1(membership), 1)
   let state: Data = Ready {
     bound: BoundV1 { ..expected_bound_v1(leaf, key, 0), forced_source_key: #"" },
   }
@@ -807,8 +813,8 @@ test network_id_forced_step_rejects_a_substituted_forced_source_key() fail {
   let tx = rejected_forced_tx_v1(0)
   let key = forced_order_key_v1()
   let leaf = forced_leaf_v1(tx, ForcedTxInvalid { reason: NetworkIdMismatch })
-  let membership = forced_membership_v1(key, leaf, 1)
-  let header = forced_header_v1(membership.root, 1)
+  let membership = forced_membership_v1(key, leaf)
+  let header = forced_header_v1(forced_root_v1(membership), 1)
   let other_key = OutputReference {
     transaction_id: other_transaction_id,
     output_index: 0,
@@ -839,8 +845,8 @@ test network_id_forced_step_rejects_a_state_that_is_not_ready() fail {
   let tx = rejected_forced_tx_v1(0)
   let key = forced_order_key_v1()
   let leaf = forced_leaf_v1(tx, ForcedTxInvalid { reason: NetworkIdMismatch })
-  let membership = forced_membership_v1(key, leaf, 1)
-  let header = forced_header_v1(membership.root, 1)
+  let membership = forced_membership_v1(key, leaf)
+  let header = forced_header_v1(forced_root_v1(membership), 1)
   let state: Data = Scanning {
     bound: expected_bound_v1(leaf, key, 0),
     checkpoint_hash: other_transaction_id,
@@ -864,8 +870,8 @@ test network_id_forced_step_rejects_a_tampered_expected_network_id() fail {
   let tx = rejected_forced_tx_v1(0)
   let key = forced_order_key_v1()
   let leaf = forced_leaf_v1(tx, ForcedTxInvalid { reason: NetworkIdMismatch })
-  let membership = forced_membership_v1(key, leaf, 1)
-  let header = forced_header_v1(membership.root, 1)
+  let membership = forced_membership_v1(key, leaf)
+  let header = forced_header_v1(forced_root_v1(membership), 1)
   let state: Data = Ready {
     bound: BoundV1 { ..expected_bound_v1(leaf, key, 0), expected_network_id: 1 },
   }
@@ -886,8 +892,8 @@ test network_id_forced_step_rejects_a_tampered_bad_tx_id() fail {
   let tx = rejected_forced_tx_v1(0)
   let key = forced_order_key_v1()
   let leaf = forced_leaf_v1(tx, ForcedTxInvalid { reason: NetworkIdMismatch })
-  let membership = forced_membership_v1(key, leaf, 1)
-  let header = forced_header_v1(membership.root, 1)
+  let membership = forced_membership_v1(key, leaf)
+  let header = forced_header_v1(forced_root_v1(membership), 1)
   let state: Data = Ready {
     bound: BoundV1 {
       ..expected_bound_v1(leaf, key, 0),
@@ -920,8 +926,8 @@ fn run_accepted_forced_step_v1(
   output_state: Data,
 ) -> Bool {
   let key = forced_order_key_v1()
-  let membership = forced_membership_v1(key, leaf, 1)
-  let header = forced_header_v1(membership.root, 1)
+  let membership = forced_membership_v1(key, leaf)
+  let header = forced_header_v1(forced_root_v1(membership), 1)
   main.spend(
     fixture.step_script_hash,
     step_02_script_hash,

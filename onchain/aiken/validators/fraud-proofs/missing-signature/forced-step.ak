@@ -142,27 +142,33 @@ fn forced_leaf(
 fn forced_membership(
   key: ledger_state.TxOrderId,
   leaf: ledger_state.ForcedInclusionTxV1,
-  count: Int,
-) -> transition_trace.RootMembershipProof<
+) -> transition_trace.ForcedLeafMembershipV1<
   ledger_state.TxOrderId,
   ledger_state.ForcedInclusionTxV1,
 > {
   let phas_root = mpf.root(
     mpf.insert(mpf.empty, cbor.serialise(key), cbor.serialise(leaf), []),
   )
-  transition_trace.RootMembershipProof {
-    domain: transition_trace.ForcedTransactionsV1RootDomain,
-    root: transition_trace.commit_counted_root(
-      transition_trace.ForcedTransactionsV1RootDomain,
-      phas_root,
-      count,
-    ),
+  transition_trace.ForcedLeafMembershipV1 {
     phas_root,
-    count,
     key,
     value: leaf,
     proof: [],
   }
+}
+
+/// The counted forced-transactions root of a one-leaf tree.
+fn forced_root(
+  membership: transition_trace.ForcedLeafMembershipV1<
+    ledger_state.TxOrderId,
+    ledger_state.ForcedInclusionTxV1,
+  >,
+) -> ByteArray {
+  transition_trace.commit_counted_root(
+    transition_trace.ForcedTransactionsV1RootDomain,
+    membership.phas_root,
+    1,
+  )
 }
 
 fn forced_header(root: ByteArray, count: Int) -> ledger_state.HeaderV1 {
@@ -206,7 +212,7 @@ fn run_forced_step(
   input_state: Option<Int>,
   header: ledger_state.HeaderV1,
   thread_name: ByteArray,
-  membership: transition_trace.RootMembershipProof<
+  membership: transition_trace.ForcedLeafMembershipV1<
     ledger_state.TxOrderId,
     ledger_state.ForcedInclusionTxV1,
   >,
@@ -240,8 +246,8 @@ fn run_canonical_forced_bind(leaf_network_id: Int) -> Bool {
     tx,
     ForcedTxInvalid { reason: RequiredSignerUnsigned { signer_index: 0 } },
   )
-  let membership = forced_membership(key, leaf, 1)
-  let header = forced_header(membership.root, 1)
+  let membership = forced_membership(key, leaf)
+  let header = forced_header(forced_root(membership), 1)
   let state: Data = expected_forced_state(leaf, key, leaf_network_id)
   run_forced_step(
     fixture.next_step_script_hash,
@@ -267,8 +273,8 @@ test missing_signature_forced_step_derives_direction_without_the_obsolete_zero_i
     tx,
     ForcedTxInvalid { reason: RequiredSignerUnsigned { signer_index: 0 } },
   )
-  let membership = forced_membership(key, leaf, 1)
-  let header = forced_header(membership.root, 1)
+  let membership = forced_membership(key, leaf)
+  let header = forced_header(forced_root(membership), 1)
   let state: Data = expected_forced_state(leaf, key, 0)
   run_forced_step(
     fixture.next_step_script_hash,
@@ -290,8 +296,8 @@ test missing_signature_forced_step_derives_direction_without_the_obsolete_two_in
     tx,
     ForcedTxInvalid { reason: RequiredSignerUnsigned { signer_index: 0 } },
   )
-  let membership = forced_membership(key, leaf, 1)
-  let header = forced_header(membership.root, 1)
+  let membership = forced_membership(key, leaf)
+  let header = forced_header(forced_root(membership), 1)
   let state: Data = expected_forced_state(leaf, key, 0)
   run_forced_step(
     fixture.next_step_script_hash,
@@ -313,8 +319,8 @@ test missing_signature_forced_step_rejects_a_substituted_header() fail {
     tx,
     ForcedTxInvalid { reason: RequiredSignerUnsigned { signer_index: 0 } },
   )
-  let membership = forced_membership(key, leaf, 1)
-  let header = forced_header(membership.root, 1)
+  let membership = forced_membership(key, leaf)
+  let header = forced_header(forced_root(membership), 1)
   // The thread NFT names a different block than the redeemer-carried header.
   let other_header = ledger_state.HeaderV1 {
     ..header,
@@ -341,7 +347,7 @@ test missing_signature_forced_step_rejects_a_substituted_forced_root() fail {
     tx,
     ForcedTxInvalid { reason: RequiredSignerUnsigned { signer_index: 0 } },
   )
-  let membership = forced_membership(key, leaf, 1)
+  let membership = forced_membership(key, leaf)
   let header = forced_header(env.empty_merkle_tree_root, 1)
   let state: Data = expected_forced_state(leaf, key, 0)
   run_forced_step(
@@ -364,8 +370,8 @@ test missing_signature_forced_step_rejects_a_substituted_forced_count() fail {
     tx,
     ForcedTxInvalid { reason: RequiredSignerUnsigned { signer_index: 0 } },
   )
-  let membership = forced_membership(key, leaf, 1)
-  let header = forced_header(membership.root, 2)
+  let membership = forced_membership(key, leaf)
+  let header = forced_header(forced_root(membership), 2)
   let state: Data = expected_forced_state(leaf, key, 0)
   run_forced_step(
     fixture.next_step_script_hash,
@@ -389,8 +395,8 @@ test missing_signature_forced_step_rejects_a_substituted_order_key() fail {
     tx,
     ForcedTxInvalid { reason: RequiredSignerUnsigned { signer_index: 0 } },
   )
-  let membership = forced_membership(key, leaf, 1)
-  let header = forced_header(membership.root, 1)
+  let membership = forced_membership(key, leaf)
+  let header = forced_header(forced_root(membership), 1)
   let forged_key = OutputReference {
     transaction_id: other_transaction_id,
     output_index: 0,
@@ -401,7 +407,7 @@ test missing_signature_forced_step_rejects_a_substituted_order_key() fail {
     Some(1),
     header,
     thread_name(header),
-    transition_trace.RootMembershipProof { ..membership, key: forged_key },
+    transition_trace.ForcedLeafMembershipV1 { ..membership, key: forged_key },
     1,
     0,
     0,
@@ -422,8 +428,8 @@ test missing_signature_forced_step_rejects_a_substituted_leaf_tx_id() fail {
     ..base,
     tx_id: other_transaction_id,
   }
-  let membership = forced_membership(key, leaf, 1)
-  let header = forced_header(membership.root, 1)
+  let membership = forced_membership(key, leaf)
+  let header = forced_header(forced_root(membership), 1)
   let state: Data = expected_forced_state(leaf, key, 0)
   run_forced_step(
     fixture.next_step_script_hash,
@@ -453,8 +459,8 @@ test missing_signature_forced_step_rejects_a_substituted_leaf_source() fail {
       proof_source_of(rejected_forced_tx(1)),
     ),
   }
-  let membership = forced_membership(key, leaf, 1)
-  let header = forced_header(membership.root, 1)
+  let membership = forced_membership(key, leaf)
+  let header = forced_header(forced_root(membership), 1)
   let state: Data = expected_forced_state(leaf, key, 0)
   run_forced_step(
     fixture.next_step_script_hash,
@@ -487,8 +493,8 @@ test missing_signature_forced_step_rejects_substituted_witness_set_bytes() fail 
       ),
     },
   }
-  let membership = forced_membership(key, leaf, 1)
-  let header = forced_header(membership.root, 1)
+  let membership = forced_membership(key, leaf)
+  let header = forced_header(forced_root(membership), 1)
   let state: Data = expected_forced_state(leaf, key, 0)
   run_forced_step(
     fixture.next_step_script_hash,
@@ -522,8 +528,8 @@ test missing_signature_forced_step_rejects_a_malformed_field_length_vector() fai
       ),
     },
   }
-  let membership = forced_membership(key, leaf, 1)
-  let header = forced_header(membership.root, 1)
+  let membership = forced_membership(key, leaf)
+  let header = forced_header(forced_root(membership), 1)
   let state: Data = expected_forced_state(leaf, key, 0)
   run_forced_step(
     fixture.next_step_script_hash,
@@ -553,8 +559,8 @@ test missing_signature_forced_step_rejects_an_obsolete_four_element_source() fai
       compact_cbor: native_transaction.midgard_transaction_proof_source_v1(tx).compact_cbor,
     },
   }
-  let membership = forced_membership(key, leaf, 1)
-  let header = forced_header(membership.root, 1)
+  let membership = forced_membership(key, leaf)
+  let header = forced_header(forced_root(membership), 1)
   let state: Data = expected_forced_state(leaf, key, 0)
   run_forced_step(
     fixture.next_step_script_hash,
@@ -573,8 +579,8 @@ test missing_signature_forced_step_rejects_an_accepting_verdict() fail {
   let tx = rejected_forced_tx(0)
   let key = forced_order_key()
   let leaf = forced_leaf(tx, ForcedTxValid)
-  let membership = forced_membership(key, leaf, 1)
-  let header = forced_header(membership.root, 1)
+  let membership = forced_membership(key, leaf)
+  let header = forced_header(forced_root(membership), 1)
   let state: Data = expected_forced_state(leaf, key, 0)
   run_forced_step(
     fixture.next_step_script_hash,
@@ -593,8 +599,8 @@ test missing_signature_forced_step_rejects_a_foreign_rejection_reason() fail {
   let tx = rejected_forced_tx(0)
   let key = forced_order_key()
   let leaf = forced_leaf(tx, ForcedTxInvalid { reason: FeeBelowMinimum })
-  let membership = forced_membership(key, leaf, 1)
-  let header = forced_header(membership.root, 1)
+  let membership = forced_membership(key, leaf)
+  let header = forced_header(forced_root(membership), 1)
   let state: Data = expected_forced_state(leaf, key, 0)
   run_forced_step(
     fixture.next_step_script_hash,
@@ -616,8 +622,8 @@ test missing_signature_forced_step_rejects_a_missing_handoff_marker() fail {
     tx,
     ForcedTxInvalid { reason: RequiredSignerUnsigned { signer_index: 0 } },
   )
-  let membership = forced_membership(key, leaf, 1)
-  let header = forced_header(membership.root, 1)
+  let membership = forced_membership(key, leaf)
+  let header = forced_header(forced_root(membership), 1)
   let state: Data = expected_forced_state(leaf, key, 0)
   run_forced_step(
     fixture.next_step_script_hash,
@@ -639,8 +645,8 @@ test missing_signature_forced_step_rejects_a_foreign_handoff_marker() fail {
     tx,
     ForcedTxInvalid { reason: RequiredSignerUnsigned { signer_index: 0 } },
   )
-  let membership = forced_membership(key, leaf, 1)
-  let header = forced_header(membership.root, 1)
+  let membership = forced_membership(key, leaf)
+  let header = forced_header(forced_root(membership), 1)
   let state: Data = expected_forced_state(leaf, key, 0)
   run_forced_step(
     fixture.next_step_script_hash,
@@ -662,8 +668,8 @@ test missing_signature_forced_step_rejects_a_wrong_successor() fail {
     tx,
     ForcedTxInvalid { reason: RequiredSignerUnsigned { signer_index: 0 } },
   )
-  let membership = forced_membership(key, leaf, 1)
-  let header = forced_header(membership.root, 1)
+  let membership = forced_membership(key, leaf)
+  let header = forced_header(forced_root(membership), 1)
   let state: Data = expected_forced_state(leaf, key, 0)
   run_forced_step(
     fixture.step_script_hash,
@@ -685,8 +691,8 @@ test missing_signature_forced_step_rejects_an_out_of_range_output_index() fail {
     tx,
     ForcedTxInvalid { reason: RequiredSignerUnsigned { signer_index: 0 } },
   )
-  let membership = forced_membership(key, leaf, 1)
-  let header = forced_header(membership.root, 1)
+  let membership = forced_membership(key, leaf)
+  let header = forced_header(forced_root(membership), 1)
   let state: Data = expected_forced_state(leaf, key, 0)
   run_forced_step(
     fixture.next_step_script_hash,
@@ -708,8 +714,8 @@ test missing_signature_forced_step_rejects_an_out_of_range_input_index() fail {
     tx,
     ForcedTxInvalid { reason: RequiredSignerUnsigned { signer_index: 0 } },
   )
-  let membership = forced_membership(key, leaf, 1)
-  let header = forced_header(membership.root, 1)
+  let membership = forced_membership(key, leaf)
+  let header = forced_header(forced_root(membership), 1)
   let state: Data = expected_forced_state(leaf, key, 0)
   run_forced_step(
     fixture.next_step_script_hash,
