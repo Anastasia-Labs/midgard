@@ -79,6 +79,8 @@ describe("the staged route's semantic stage", () => {
     [21n, "stagedBytes"],
     [53n, "stagedBytes"],
     [71n, "stagedBytes"],
+    [75n, "stagedBytes"],
+    [85n, "stagedBytes"],
     [0n, "stagedInteger"],
     [74n, "stagedConversion"],
   ] as const)("routes builtin %s to %s", (tag, stage) => {
@@ -87,7 +89,7 @@ describe("the staged route's semantic stage", () => {
     expect(DEPLOYMENT_MANIFEST_CONTRACT_NAMES).toContain(name);
   });
 
-  it.each([52n, 73n, 75n, 26n])("gives builtin %s no staged stage", (tag) => {
+  it.each([52n, 73n, 80n, 26n])("gives builtin %s no staged stage", (tag) => {
     expect(cekCoreStagedSemanticStage(tag)).toBeNull();
   });
 });

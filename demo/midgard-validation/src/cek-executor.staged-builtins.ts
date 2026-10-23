@@ -1,7 +1,7 @@
 /**
  * The staged route of the scalar builtins (arm 31, semantics groups 7, 8 and
- * 9): a byte-string, string, signature or linear integer builtin, or
- * byteStringToInteger, whose arguments or result do not fit the direct
+ * 9): a byte-string, string, bitwise, signature or linear integer builtin,
+ * or byteStringToInteger, whose arguments or result do not fit the direct
  * carriage bound.
  *
  * The step is a pure function of the execution graph: each argument gets one
@@ -127,8 +127,9 @@ const operandOf = (
   throw new Error("CEK staged builtin argument is not a scalar constant");
 };
 
-/** byteStringToInteger's endianness argument. */
-const endianness = (argument: MidgardCekDirectValueWitness): CEKConst => {
+/** A committed Boolean argument: byteStringToInteger's endianness, or the
+ * padding of andByteString, orByteString and xorByteString. */
+const committedBoolean = (argument: MidgardCekDirectValueWitness): CEKConst => {
   const committed = semanticizeMidgardCekDirectConstant(argument);
   const constant = [true, false]
     .map((value) => CEKConst.bool(value))
@@ -138,7 +139,7 @@ const endianness = (argument: MidgardCekDirectValueWitness): CEKConst => {
         sameCompacted(committed.witness, compactValue(value)),
     );
   if (constant === undefined) {
-    throw new Error("CEK staged conversion endianness is not a Boolean");
+    throw new Error("CEK staged builtin Boolean argument is not a Boolean");
   }
   return constant;
 };
@@ -151,7 +152,8 @@ const leafOnly = (tag: number): boolean =>
 const smallInteger = (tag: number, index: number): boolean =>
   (tag === 11 && index === 0) ||
   (tag === 12 && index < 2) ||
-  (tag === 14 && index === 1);
+  (tag === 14 && index === 1) ||
+  (tag === 79 && index === 1);
 
 /**
  * The staged step of builtin `tag` over `arguments_` (presented, with value
@@ -174,23 +176,27 @@ export const executeMidgardCekStagedBuiltin = (
   if (group !== 7 && group !== 8 && group !== 9) {
     throw new Error("CEK staged builtin has no staged semantics group");
   }
-  // byteStringToInteger's endianness is a committed Boolean, not an operand:
-  // its one operand is the input.
+  // byteStringToInteger's endianness and the logical builtins' padding are
+  // committed Booleans, not operands.
   const conversion = group === 9;
+  const leading = conversion || (tag >= 75n && tag <= 77n) ? 1 : 0;
   const operands = arguments_
-    .slice(conversion ? 1 : 0)
+    .slice(leading)
     .map((argument, index) =>
-      operandOf(store, roots[conversion ? index + 1 : index]!, argument),
+      operandOf(store, roots[index + leading]!, argument),
     );
   // The reference byteStringToInteger reverses a little-endian input in
   // place, so each evaluation reads a copy of it.
   const values = () =>
     conversion
       ? [
-          endianness(arguments_[0]!),
+          committedBoolean(arguments_[0]!),
           CEKConst.byteString(Buffer.from(operands[0]!.bytes)),
         ]
-      : operands.map((operand) => operand.value);
+      : [
+          ...arguments_.slice(0, leading).map(committedBoolean),
+          ...operands.map((operand) => operand.value),
+        ];
   const evaluate = () =>
     evaluateMidgardCekBuiltinOnValues(Number(tag), values());
   const failure = midgardCekStagedFailure(

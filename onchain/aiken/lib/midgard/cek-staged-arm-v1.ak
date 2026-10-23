@@ -145,6 +145,9 @@ type BoundBytesV1 {
 
 type ArmInputsV1 {
   tag: Int,
+  /// The committed arguments before the operands, which have no source: the
+  /// padding of andByteString, orByteString and xorByteString.
+  leading: List<ValueWitnessV1>,
   arguments: List<Pair<ValueWitnessV1, OperandSourceV1>>,
   result: ValueWitnessV1,
   runs: List<List<ByteArray>>,
@@ -159,9 +162,16 @@ fn arm_inputs_v1(
   let raw = chain.decode_builtin_success(bound.arm, witness)
   expect facts: chain.SemanticRoots = bound.facts
   expect material: StagedMaterialV1 = raw.material
+  let Pair(leading, operands) = if raw.tag >= 75 && raw.tag <= 77 {
+    expect [padding, ..rest] = facts.arguments
+    Pair([padding], rest)
+  } else {
+    Pair([], facts.arguments)
+  }
   ArmInputsV1 {
     tag: raw.tag,
-    arguments: zip_arguments_v1(facts.arguments, material.sources),
+    leading,
+    arguments: zip_arguments_v1(operands, material.sources),
     result: facts.result,
     runs: collect_runs_v1(reference_inputs, material.runs.refs),
     operands: material.runs.operands,
@@ -289,8 +299,8 @@ fn result_is_v1(result: ValueWitnessV1, expected: ScalarResultV1) -> Bool {
 }
 
 /// The byte-string and string builtins (tags 10 to 20, 22 to 25, 71, 72 and
-/// 86), verifyEd25519Signature (21) and verifySchnorrSecp256k1Signature (53)
-/// over staged operands.
+/// 86), the bitwise builtins (75 to 79, 84 and 85), verifyEd25519Signature
+/// (21) and verifySchnorrSecp256k1Signature (53) over staged operands.
 pub fn verify_staged_bytes_v1(
   bound: chain.CoreBound,
   witness: Data,
@@ -301,10 +311,12 @@ pub fn verify_staged_bytes_v1(
   let string = cek_builtin_v1.string_operands_v1(tag)
   // lengthOfByteString and the string builtins take operands of any length.
   let bounded = tag != 13 && !string
-  let Pair(byte_arguments, integer_arguments) = cek_builtin_v1.scalar_operands_v1(
-    tag,
-    inputs.arguments,
-  )
+  let Pair(byte_arguments, integer_arguments) = if tag == 79 {
+    expect [source, index] = inputs.arguments
+    Pair([source], [index])
+  } else {
+    cek_builtin_v1.scalar_operands_v1(tag, inputs.arguments)
+  }
   let operands = list.map(
     byte_arguments,
     fn(argument) { bind_bytes_v1(inputs, argument, string, bounded) },
@@ -344,20 +356,69 @@ pub fn verify_staged_bytes_v1(
       },
     )
   } else {
+    let pieces = list.map(
+      operands,
+      fn(operand) {
+        expect Some(pieces) = operand.pieces
+        pieces
+      },
+    )
+    let integers = list.map(integer_arguments, small_integer_v1)
     result_is_v1(
       inputs.result,
-      cek_builtin_v1.bytes_relation_v1(
-        tag,
-        list.map(
-          operands,
-          fn(operand) {
-            expect Some(pieces) = operand.pieces
-            pieces
-          },
-        ),
-        list.map(integer_arguments, small_integer_v1),
-      ),
+      if tag >= 75 && tag <= 85 {
+        bitwise_relation_v1(
+          tag,
+          inputs.leading,
+          list.map(pieces, concat_balanced_v1),
+          integers,
+        )
+      } else {
+        cek_builtin_v1.bytes_relation_v1(tag, pieces, integers)
+      },
     )
+  }
+}
+
+/// The bitwise builtins (tags 75 to 79, 84 and 85) on their revealed
+/// operands. The padding of tags 75 to 77 is the committed Boolean before the
+/// operands; readBit's index is its revealed value. Each builtin fails on an
+/// index outside the operand, as on L1.
+fn bitwise_relation_v1(
+  tag: Int,
+  leading: List<ValueWitnessV1>,
+  operands: List<ByteArray>,
+  integers: List<Int>,
+) -> ScalarResultV1 {
+  if tag <= 77 {
+    expect [padding] = leading
+    let pad = padding == true_result
+    expect pad || padding == false_result
+    expect [left, right] = operands
+    BytesResult(
+      [
+        if tag == 75 {
+          builtin.and_bytearray(pad, left, right)
+        } else if tag == 76 {
+          builtin.or_bytearray(pad, left, right)
+        } else {
+          builtin.xor_bytearray(pad, left, right)
+        },
+      ],
+    )
+  } else {
+    expect [bytes] = operands
+    if tag == 78 {
+      BytesResult([builtin.complement_bytearray(bytes)])
+    } else if tag == 79 {
+      expect [index] = integers
+      BoolResult(builtin.read_bit(bytes, index))
+    } else if tag == 84 {
+      IntegerResult(builtin.count_set_bits(bytes))
+    } else {
+      expect tag == 85
+      IntegerResult(builtin.find_first_set_bit(bytes))
+    }
   }
 }
 
@@ -588,6 +649,7 @@ fn failure_inputs_v1(
 ) -> ArmInputsV1 {
   ArmInputsV1 {
     tag: 0,
+    leading: [],
     arguments: [],
     result: false_result,
     runs: collect_runs_v1(reference_inputs, material.runs.refs),

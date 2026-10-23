@@ -24,7 +24,7 @@ use midgard/fraud_proofs/cek_staged_fixture_v1.{
   StagedStepV1, StagingV1, boolean_value, budget_step, bytes_value, chunks_of,
   compact, flip_last_byte, integer_value, material, no_staging, other_input,
   pattern, semantic_bytes, semantic_pieces, stage, stage_pieces, staged,
-  staged_step, staged_step_at, staging_input, text,
+  staged_step, staged_step_at, staging_input, text, zeros,
 }
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 
@@ -1206,4 +1206,316 @@ test staged_bytes_schnorr_at_the_argument_bound() {
 
 test staged_bytes_schnorr_fixture_only_at_the_argument_bound() {
   built(schnorr_step_at_the_bound())
+}
+
+// ## Bitwise builtins over staged operands
+
+/// andByteString, orByteString or xorByteString (`tag`) with `padding`.
+fn logical(
+  tag: Int,
+  padding: Bool,
+  left: ByteArray,
+  right: ByteArray,
+) -> ByteArray {
+  if tag == 75 {
+    builtin.and_bytearray(padding, left, right)
+  } else if tag == 76 {
+    builtin.or_bytearray(padding, left, right)
+  } else {
+    builtin.xor_bytearray(padding, left, right)
+  }
+}
+
+/// `logical` over two staged operands, claiming `result`.
+fn logical_staged(
+  tag: Int,
+  padding: Bool,
+  left: ByteArray,
+  right: ByteArray,
+  result: ValueWitnessV1,
+) -> Bool {
+  verifies(
+    tag,
+    [
+      boolean_value(padding),
+      bytes_value(left, False),
+      bytes_value(right, False),
+    ],
+    result,
+    stage([left, right]),
+    [staged(0), staged(1)],
+  )
+}
+
+/// `logical` over two staged operands, claiming its result.
+fn logical_verifies(
+  tag: Int,
+  padding: Bool,
+  left: ByteArray,
+  right: ByteArray,
+) -> Bool {
+  logical_staged(
+    tag,
+    padding,
+    left,
+    right,
+    bytes_value(logical(tag, padding, left, right), False),
+  )
+}
+
+/// readBit over a staged operand at `index`, claiming `result`.
+fn read_bit_staged(bytes: ByteArray, index: Int, result: Bool) -> Bool {
+  verifies(
+    79,
+    [bytes_value(bytes, False), integer_value(index)],
+    boolean_value(result),
+    stage([bytes]),
+    [staged(0), SmallIntegerOperand { value: index }],
+  )
+}
+
+test ands_two_staged_operands_at_the_argument_bound() {
+  logical_verifies(75, False, pattern(65536, 1), pattern(65536, 7))
+}
+
+test ors_operands_of_different_lengths_with_padding() {
+  logical_verifies(76, True, pattern(65536, 1), pattern(9216, 4))
+}
+
+test xors_operands_of_different_lengths_without_padding() {
+  logical_verifies(77, False, pattern(9216, 2), pattern(20000, 5))
+}
+
+test complements_a_staged_operand_at_the_argument_bound() {
+  let bytes = pattern(65536, 6)
+  unary_staged(
+    78,
+    bytes,
+    bytes_value(builtin.complement_bytearray(bytes), False),
+  )
+}
+
+test reads_the_first_and_last_bits_of_a_staged_operand() {
+  let bytes = pattern(65536, 3)
+  and {
+    read_bit_staged(bytes, 0, builtin.read_bit(bytes, 0)),
+    read_bit_staged(bytes, 524287, builtin.read_bit(bytes, 524287)),
+  }
+}
+
+test counts_the_set_bits_of_a_staged_operand_at_the_argument_bound() {
+  let bytes = pattern(65536, 5)
+  unary_staged(84, bytes, integer_value(builtin.count_set_bits(bytes)))
+}
+
+test finds_the_first_set_bit_past_trailing_zero_bytes() {
+  let bytes = builtin.append_bytearray(pattern(30000, 1), zeros(20000))
+  unary_staged(85, bytes, integer_value(builtin.find_first_set_bit(bytes)))
+}
+
+test finds_no_set_bit_in_a_staged_operand_of_zeros() {
+  unary_staged(85, zeros(20000), integer_value(-1))
+}
+
+/// Steps whose operands fit inline verify on this route too, with the
+/// result the direct route computes.
+test agrees_with_the_direct_route_on_inline_bitwise_operands() {
+  let left = pattern(5000, 1)
+  let right = pattern(5000, 2)
+  and {
+    verifies(
+      75,
+      [boolean_value(True), bytes_value(left, False), bytes_value(right, False)],
+      bytes_value(builtin.and_bytearray(True, left, right), False),
+      no_staging(),
+      [InlineOperand { bytes: left }, InlineOperand { bytes: right }],
+    ),
+    verifies(
+      78,
+      [bytes_value(left, False)],
+      bytes_value(builtin.complement_bytearray(left), False),
+      no_staging(),
+      [InlineOperand { bytes: left }],
+    ),
+  }
+}
+
+test refuses_a_logical_result_of_the_other_padding() fail {
+  let left = pattern(65536, 1)
+  let right = pattern(9216, 4)
+  logical_staged(
+    76,
+    False,
+    left,
+    right,
+    bytes_value(logical(76, True, left, right), False),
+  )
+}
+
+test refuses_a_padding_that_is_not_a_boolean() fail {
+  let left = pattern(9216, 1)
+  let right = pattern(9216, 4)
+  verifies(
+    75,
+    [integer_value(1), bytes_value(left, False), bytes_value(right, False)],
+    bytes_value(builtin.and_bytearray(True, left, right), False),
+    stage([left, right]),
+    [staged(0), staged(1)],
+  )
+}
+
+test refuses_a_complement_with_its_last_byte_changed() fail {
+  let bytes = pattern(65536, 6)
+  unary_staged(
+    78,
+    bytes,
+    bytes_value(flip_last_byte(builtin.complement_bytearray(bytes)), False),
+  )
+}
+
+test refuses_a_wrong_bit() fail {
+  let bytes = pattern(20000, 3)
+  read_bit_staged(bytes, 9, !builtin.read_bit(bytes, 9))
+}
+
+test refuses_a_bit_index_at_the_end_of_the_operand() fail {
+  read_bit_staged(pattern(20000, 3), 160000, False)
+}
+
+test refuses_a_negative_bit_index() fail {
+  read_bit_staged(pattern(20000, 3), -1, False)
+}
+
+test refuses_a_wrong_count_of_set_bits() fail {
+  let bytes = pattern(20000, 5)
+  unary_staged(84, bytes, integer_value(builtin.count_set_bits(bytes) + 1))
+}
+
+test refuses_a_wrong_first_set_bit() fail {
+  let bytes = builtin.append_bytearray(pattern(30000, 1), zeros(20000))
+  unary_staged(85, bytes, integer_value(builtin.find_first_set_bit(bytes) + 1))
+}
+
+test refuses_a_bitwise_operand_bound_by_its_leaf_alone() fail {
+  let bytes = pattern(20000, 6)
+  verifies(
+    78,
+    [bytes_value(bytes, False)],
+    bytes_value(builtin.complement_bytearray(bytes), False),
+    no_staging(),
+    [leaf(bytes)],
+  )
+}
+
+/// The operand one byte past the argument bound, as pieces.
+fn past_bound_pieces() -> List<ByteArray> {
+  [text(65536), #"41"]
+}
+
+test refuses_a_logical_operand_past_the_argument_bound() fail {
+  let right = pattern(65536, 7)
+  verifies(
+    75,
+    [
+      boolean_value(False),
+      semantic_pieces(past_bound_pieces(), False),
+      bytes_value(right, False),
+    ],
+    bytes_value(builtin.and_bytearray(False, text(65536), right), False),
+    stage_pieces([past_bound_pieces(), [right]]),
+    [staged(0), staged(1)],
+  )
+}
+
+test refuses_a_complement_past_the_argument_bound() fail {
+  unary_past_bound(
+    78,
+    semantic_pieces(
+      list.map(past_bound_pieces(), builtin.complement_bytearray),
+      False,
+    ),
+  )
+}
+
+test refuses_a_bit_read_past_the_argument_bound() fail {
+  verifies(
+    79,
+    [semantic_pieces(past_bound_pieces(), False), integer_value(0)],
+    boolean_value(True),
+    stage_pieces([past_bound_pieces()]),
+    [staged(0), SmallIntegerOperand { value: 0 }],
+  )
+}
+
+test refuses_a_count_of_set_bits_past_the_argument_bound() fail {
+  unary_past_bound(
+    84,
+    integer_value(
+      list.foldl(
+        past_bound_pieces(),
+        0,
+        fn(piece, total) { total + builtin.count_set_bits(piece) },
+      ),
+    ),
+  )
+}
+
+test refuses_a_first_set_bit_past_the_argument_bound() fail {
+  unary_past_bound(85, integer_value(0))
+}
+
+/// Every bitwise builtin at the argument bound.
+fn bitwise_rows() -> List<Pair<Int, List<ValueWitnessV1>>> {
+  let bytes = bytes_value(pattern(65536, 1), False)
+  [
+    Pair(75, [boolean_value(True), bytes, bytes]),
+    Pair(76, [boolean_value(False), bytes, bytes]),
+    Pair(77, [boolean_value(True), bytes, bytes]),
+    Pair(78, [bytes]),
+    Pair(79, [bytes, integer_value(7)]),
+    Pair(84, [bytes]),
+    Pair(85, [bytes]),
+  ]
+}
+
+test the_budget_hop_routes_the_bitwise_builtins_here() {
+  list.all(
+    bitwise_rows(),
+    fn(row) {
+      let Pair(tag, arguments) = row
+      routes_to(tag, arguments, 7)
+    },
+  )
+}
+
+test the_budget_hop_does_not_route_the_bitwise_builtins_to_the_integer_semantics() fail {
+  list.any(
+    bitwise_rows(),
+    fn(row) {
+      let Pair(tag, arguments) = row
+      routes_to(tag, arguments, 8)
+    },
+  )
+}
+
+/// xorByteString with padding over two staged operands of 65,536 bytes.
+fn xor_step_at_the_bound() -> StagedStepV1 {
+  let left = pattern(65536, 1)
+  let right = pattern(65536, 7)
+  let staging = stage([left, right])
+  staged_step(
+    77,
+    [boolean_value(True), bytes_value(left, False), bytes_value(right, False)],
+    bytes_value(builtin.xor_bytearray(True, left, right), False),
+    material(staging, [staged(0), staged(1)]),
+    staging.reference_inputs,
+  )
+}
+
+test staged_bytes_xor_at_the_argument_bound() {
+  spend(xor_step_at_the_bound())
+}
+
+test staged_bytes_xor_fixture_only_at_the_argument_bound() {
+  built(xor_step_at_the_bound())
 }

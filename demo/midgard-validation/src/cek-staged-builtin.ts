@@ -1,4 +1,8 @@
 export {
+  type MidgardCekStagedConstant,
+  midgardCekStagedConstantWitness,
+} from "./cek-staged-builtin.constant.js";
+export {
   midgardCekPlaceholderStaging,
   type MidgardCekStagedBuiltinMaterial,
   midgardCekStagedBuiltinMaterialData,
@@ -12,7 +16,5 @@ export {
 export {
   MIDGARD_CEK_STAGED_MAX_BOUNDED_BYTES_CBOR_LENGTH,
   midgardCekStagedBuiltinProves,
-  type MidgardCekStagedConstant,
-  midgardCekStagedConstantWitness,
   verifyMidgardCekStagedBuiltin,
 } from "./cek-staged-builtin.verify.js";

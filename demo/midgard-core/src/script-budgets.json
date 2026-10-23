@@ -1739,6 +1739,14 @@
         "cpu": 1063320851
       }
     },
+    "fraud_proofs/validation_trace/cek_core_staged_bytes.test/staged_bytes_xor_at_the_argument_bound - staged_bytes_xor_fixture_only_at_the_argument_bound": {
+      "test": "fraud_proofs/validation_trace/cek_core_staged_bytes.test/staged_bytes_xor_at_the_argument_bound",
+      "minusControl": "staged_bytes_xor_fixture_only_at_the_argument_bound",
+      "ceiling": {
+        "mem": 3565460,
+        "cpu": 1451461926
+      }
+    },
     "fraud_proofs/validation_trace/cek_core_staged_failure.test/staged_failure_signature_at_the_byte_string_bound - staged_failure_signature_fixture_only_at_the_byte_string_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_staged_failure.test/staged_failure_signature_at_the_byte_string_bound",
       "minusControl": "staged_failure_signature_fixture_only_at_the_byte_string_bound",
