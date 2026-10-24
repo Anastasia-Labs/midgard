@@ -491,10 +491,11 @@ pub fn budget_step(
   )
   expect Some(datum) = step.datum
   expect Some(bound) = datum.data
-  // A shift's charge is read from its plain amount, as Cardano costs it.
+  // A shift's or integerToByteString's charge is read from its plain amount
+  // or width, as Cardano costs it.
   let budget = cek_builtin_v1.direct_builtin_budget_v1(
     tag,
-    if tag == 82 || tag == 83 {
+    if tag == 73 || tag == 82 || tag == 83 {
       arguments
     } else {
       list.map(arguments, compact)

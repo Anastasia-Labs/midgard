@@ -422,9 +422,9 @@ fn bitwise_relation_v1(
   }
 }
 
-/// Semantics group 9: byteStringToInteger (74), and shiftByteString (82) and
-/// rotateByteString (83), the only other tags the budget hop routes here
-/// (`semantic_group`).
+/// Semantics group 9: byteStringToInteger (74), integerToByteString (73),
+/// and shiftByteString (82) and rotateByteString (83), the only other tags the
+/// budget hop routes here (`semantic_group`).
 ///
 /// byteStringToInteger reads an input of at most 65,536 bytes, bound inline or
 /// from staging outputs by the material's one source. The input is read in
@@ -441,9 +441,48 @@ pub fn verify_staged_conversion_v1(
   expect material: StagedMaterialV1 = raw.material
   if raw.tag == 74 {
     verify_conversion_v1(facts, material, reference_inputs)
+  } else if raw.tag == 73 {
+    verify_integer_to_bytes_v1(facts, material, reference_inputs)
   } else {
     verify_shift_v1(raw.tag == 83, facts, material, reference_inputs)
   }
+}
+
+/// integerToByteString over an input bound inline or from staging outputs by
+/// its canonical CBOR, at a width revealed as a machine integer, in the order
+/// the committed Boolean names. The result is the L1 builtin's over the input's
+/// value, which, as protocol version 11, fails on a negative input, a width
+/// past 8,192 and an input the width does not hold, so only a success is
+/// proved here.
+fn verify_integer_to_bytes_v1(
+  facts: chain.SemanticRoots,
+  material: StagedMaterialV1,
+  reference_inputs: List<Input>,
+) -> Bool {
+  expect [endianness, width, input] = facts.arguments
+  expect [width_source, input_source] = material.sources
+  let Pair(_, revealed) = bind_integer_v1(
+    failure_inputs_v1(material, reference_inputs),
+    Pair(input, input_source),
+    False,
+  )
+  expect Some(CanonicalIntegerV1 { negative: False, argument }) = revealed
+  result_is_pieces_v1(
+    facts.result,
+    False,
+    [
+      builtin.integer_to_bytearray(
+        if endianness == true_result {
+          True
+        } else {
+          expect endianness == false_result
+          False
+        },
+        small_integer_v1(Pair(width, width_source)),
+        builtin.bytearray_to_integer(True, argument),
+      ),
+    ],
+  )
 }
 
 fn verify_conversion_v1(

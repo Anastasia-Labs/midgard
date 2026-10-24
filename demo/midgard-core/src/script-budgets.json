@@ -1821,6 +1821,14 @@
         "cpu": 3491756229
       }
     },
+    "fraud_proofs/validation_trace/cek_core_staged_integer_to_bytes.test/staged_integer_to_bytes_at_the_maximum_shape - staged_integer_to_bytes_fixture_only_at_the_maximum_shape": {
+      "test": "fraud_proofs/validation_trace/cek_core_staged_integer_to_bytes.test/staged_integer_to_bytes_at_the_maximum_shape",
+      "minusControl": "staged_integer_to_bytes_fixture_only_at_the_maximum_shape",
+      "ceiling": {
+        "mem": 1508171,
+        "cpu": 1418965445
+      }
+    },
     "fraud_proofs/validation_trace/cek_core_staged_conversion.test/staged_shift_left_at_the_maximum_shape - staged_shift_left_fixture_only_at_the_maximum_shape": {
       "test": "fraud_proofs/validation_trace/cek_core_staged_conversion.test/staged_shift_left_at_the_maximum_shape",
       "minusControl": "staged_shift_left_fixture_only_at_the_maximum_shape",

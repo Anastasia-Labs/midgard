@@ -183,12 +183,13 @@ pub fn semantic_group(tag: Int) -> Int {
     // operands.
     7
   } else if or {
+    tag == 73,
     tag == 74,
     tag == 82,
     tag == 83,
   } {
-    // byteStringToInteger, shiftByteString and rotateByteString over a staged
-    // input.
+    // integerToByteString, byteStringToInteger, shiftByteString and
+    // rotateByteString past the direct carriage bound.
     9
   } else {
     fail

@@ -5,10 +5,8 @@ import {
   MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
   type MidgardCekMachineState,
 } from "@al-ft/midgard-core";
-import { CEKConst } from "@harmoniclabs/plutus-machine";
 
 import { constrIndexIsOutOfRange } from "./cek-builtin.constr-data-index.js";
-import { referenceConstantToDirectWitness } from "./cek-builtin.evaluate-reference-builtin.js";
 import {
   evaluateMidgardCekBlsFinal,
   evaluateMidgardCekDirectBuiltin,
@@ -54,6 +52,7 @@ import {
   verifySemanticChooseData,
   verifySemanticList,
 } from "./cek-machine.verify-semantic-list.js";
+import { midgardCekStagedBuiltinBudget } from "./cek-staged-builtin.budget.js";
 import { midgardCekStagedBuiltinFailureBudget } from "./cek-staged-builtin.failure.js";
 import type { MidgardCekStagedBuiltinMaterial } from "./cek-staged-builtin.material.js";
 import {
@@ -129,25 +128,6 @@ const verifyStagedBuiltin = (
     staged,
     referenceInputs,
   );
-};
-
-/** The amount 0, which a shift's charge does not read. */
-const UNREAD_AMOUNT = referenceConstantToDirectWitness(CEKConst.int(0n));
-
-/**
- * The budget hop's charge for a staged step. The staged route commits a
- * shift's amount compacted, and shiftByteString and rotateByteString cost
- * their source alone, so the amount is not read.
- */
-const stagedBuiltinBudget = (
-  tag: bigint,
-  arguments_: readonly MidgardCekDirectValueWitness[],
-): MidgardCekBuiltinBudget => {
-  if (tag !== 82n && tag !== 83n) {
-    return midgardCekDirectBuiltinBudget(tag, arguments_);
-  }
-  if (arguments_.length !== 2) throw new Error("shift requires two arguments");
-  return midgardCekDirectBuiltinBudget(tag, [arguments_[0]!, UNREAD_AMOUNT]);
 };
 
 const verifyStagedBuiltinFailure = (
@@ -295,7 +275,11 @@ const verifyBuiltin = (
     ) {
       return false;
     }
-    const budget = stagedBuiltinBudget(witness.tag, witness.arguments);
+    const budget = midgardCekStagedBuiltinBudget(
+      witness.tag,
+      witness.arguments,
+      witness.result,
+    );
     return sameState(
       post,
       exactState(pre, {

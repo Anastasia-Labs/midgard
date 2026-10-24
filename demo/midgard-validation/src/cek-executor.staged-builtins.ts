@@ -1,8 +1,9 @@
 /**
  * The staged route of the scalar builtins (arm 31, semantics groups 7, 8 and
  * 9): a byte-string, string, bitwise, signature or linear integer builtin,
- * or byteStringToInteger, shiftByteString or rotateByteString, whose
- * arguments or result do not fit the direct carriage bound.
+ * or integerToByteString, byteStringToInteger, shiftByteString or
+ * rotateByteString, whose arguments or result do not fit the direct carriage
+ * bound.
  *
  * The step is a pure function of the execution graph: each argument gets one
  * typed source (its bytes inline, a staged operand by index, its leaf
@@ -64,11 +65,10 @@ type StagedWitness = Extract<
   { readonly kind: "executeBuiltinStaged" }
 >;
 
-/** verifyEcdsaSecp256k1Signature, integerToByteString, writeBits and
- * replicateByte, whose staged steps the staged failure hop proves only when
- * they fail. */
+/** verifyEcdsaSecp256k1Signature, writeBits and replicateByte, whose staged
+ * steps the staged failure hop proves only when they fail. */
 const failureOnly = (tag: bigint): boolean =>
-  tag === 52n || tag === 73n || tag === 80n || tag === 81n;
+  tag === 52n || tag === 80n || tag === 81n;
 
 /**
  * Whether builtin `tag` over these presented arguments takes the staged
@@ -154,8 +154,10 @@ const committedBoolean = (argument: MidgardCekDirectValueWitness): CEKConst => {
 const leafOnly = (tag: number): boolean =>
   tag === 7 || tag === 13 || tag === 15 || tag === 23 || tag === 24;
 
-/** Whether argument `index` of `tag` is a byte-string builtin's integer. */
+/** Whether operand `index` of `tag` is a byte-string builtin's integer or
+ * integerToByteString's width. */
 const smallInteger = (tag: number, index: number): boolean =>
+  (tag === 73 && index === 0) ||
   (tag === 11 && index === 0) ||
   (tag === 12 && index < 2) ||
   (tag === 14 && index === 1) ||

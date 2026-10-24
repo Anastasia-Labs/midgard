@@ -300,15 +300,34 @@ pub fn builtin_cost_sizes_v1(
   }
 }
 
-/// The charge of shiftByteString (82) or rotateByteString (83) over a source
-/// and an amount the staged route commits compacted. Both builtins cost the
-/// source alone, so the amount, which the semantics hop binds, is not read.
-pub fn staged_shift_budget_v1(
+/// The charge of a staged success (arm 31), whose arguments the roots hop
+/// committed compacted. shiftByteString (82) and rotateByteString (83) cost
+/// their source alone, so the amount, which the semantics hop binds, is not
+/// read. integerToByteString (73) costs its width's words, or for width 0 its
+/// input's memory: in both cases the memory of its result, which the semantics
+/// hop binds, so the width is not read. Every other builtin is charged as on
+/// the direct route.
+pub fn staged_builtin_budget_v1(
   tag: Int,
   arguments: List<ValueWitnessV1>,
+  result: ValueWitnessV1,
 ) -> cek_cost_v1.BuiltinBudgetV1 {
-  expect [source, _] = arguments
-  cek_cost_v1.builtin_budget_v1(tag, [value_memory_size_v1(source), 0])
+  if tag == 82 || tag == 83 {
+    expect [source, _] = arguments
+    cek_cost_v1.builtin_budget_v1(tag, [value_memory_size_v1(source), 0])
+  } else if tag == 73 {
+    expect [endianness, _, input] = arguments
+    cek_cost_v1.builtin_budget_v1(
+      tag,
+      [
+        value_memory_size_v1(endianness),
+        value_memory_size_v1(result),
+        value_memory_size_v1(input),
+      ],
+    )
+  } else {
+    direct_builtin_budget_v1(tag, arguments)
+  }
 }
 
 pub fn direct_builtin_budget_v1(
