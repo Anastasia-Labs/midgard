@@ -49,13 +49,15 @@ export type RawRemoval = {
   readonly approach:
     | "DescendantOfValidationTraceConviction"
     | "SlashActiveOperator"
+    | "SlashRetiredOperator"
     | "OperatorAlreadySlashed";
   /** What the transaction does to the removed block's operator:
    * - `untouched`: nothing;
    * - `witnessed`: cite the directory entries proving it is in neither
    *   operator directory;
-   * - `{ slashRewardTo }`: spend and burn its active-directory node, as a
-   *   bond-backed slash does, paying the reward tranche to `slashRewardTo`. */
+   * - `{ slashRewardTo }`: spend and burn its node in whichever directory
+   *   holds it, as a bond-backed slash does, paying the reward tranche to
+   *   `slashRewardTo`. */
   readonly operator:
     | "untouched"
     | "witnessed"
@@ -180,19 +182,23 @@ export const submitRawFraudulentBlockRemoval = async (
         readonly referenceInputs: readonly UTxO[];
         readonly component: Extract<
           ReturnType<ReturnType<typeof buildSlashingInputs>["buildSlashing"]>,
-          { readonly kind: "slashActiveOperator" }
+          { readonly kind: "slashActiveOperator" | "slashRetiredOperator" }
         >;
       }
     | undefined;
   if (typeof removal.operator === "object") {
-    if (directoryPlan?.approach !== "SlashActiveOperator") {
-      throw new Error("the removed operator has no active-directory node");
+    if (
+      directoryPlan?.approach !== "SlashActiveOperator" &&
+      directoryPlan?.approach !== "SlashRetiredOperator"
+    ) {
+      throw new Error("the removed operator has no directory node");
     }
     const economics = resolveFraudSlashEconomics(
       fraudSlashEconomicsFromDeploymentManifest(document),
       directoryPlan.removalPlan.node.utxo.assets.lovelace ?? 0n,
     );
     const registeredOperatorsElementUtxo =
+      directoryPlan.approach === "SlashActiveOperator" &&
       directoryPlan.schedulerPlan.kind === "rewind"
         ? await resolveRegisteredOperatorRemovalWitness({
             utxos: await lucid.utxosAt(contracts.registeredOperatorsAddress),
@@ -216,7 +222,10 @@ export const submitRawFraudulentBlockRemoval = async (
       bondExcessLovelace: economics.excessLovelace,
     });
     const component = plan.buildSlashing(schedulerStartTime);
-    if (component.kind !== "slashActiveOperator") {
+    if (
+      component.kind !== "slashActiveOperator" &&
+      component.kind !== "slashRetiredOperator"
+    ) {
       throw new Error("the directory slash resolved to another arm");
     }
     slash = {
@@ -258,6 +267,16 @@ export const submitRawFraudulentBlockRemoval = async (
               ctx,
               contracts.activeOperatorsPolicyId,
               "raw removal active-operators burn",
+            ),
+          },
+        };
+      case "SlashRetiredOperator":
+        return {
+          SlashRetiredOperator: {
+            retired_operators_redeemer_index: SDK.requireMintRedeemerIndex(
+              ctx,
+              contracts.retiredOperatorsPolicyId,
+              "raw removal retired-operators burn",
             ),
           },
         };
@@ -394,24 +413,38 @@ export const submitRawFraudulentBlockRemoval = async (
     );
   if (slash !== undefined) {
     const { component } = slash;
-    tx = tx
-      .collectFrom(
-        [...component.activeOperatorInputs],
-        Data.to("ListStateTransition", SDK.ActiveOperatorSpendRedeemer),
-      )
-      .mintAssets(
-        component.activeOperatorsAssetsToBurn,
-        component.activeOperatorsMintRedeemer,
-      );
-    if (component.continuedActiveOperatorAnchorOutput !== undefined) {
-      const anchorOutput = component.continuedActiveOperatorAnchorOutput;
+    const anchorOutput =
+      component.kind === "slashActiveOperator"
+        ? component.continuedActiveOperatorAnchorOutput
+        : component.continuedRetiredOperatorAnchorOutput;
+    tx =
+      component.kind === "slashActiveOperator"
+        ? tx
+            .collectFrom(
+              [...component.activeOperatorInputs],
+              Data.to("ListStateTransition", SDK.ActiveOperatorSpendRedeemer),
+            )
+            .mintAssets(
+              component.activeOperatorsAssetsToBurn,
+              component.activeOperatorsMintRedeemer,
+            )
+        : tx
+            .collectFrom([...component.retiredOperatorInputs], Data.void())
+            .mintAssets(
+              component.retiredOperatorsAssetsToBurn,
+              component.retiredOperatorsMintRedeemer,
+            );
+    if (anchorOutput !== undefined) {
       tx = tx.pay.ToContract(
         anchorOutput.address,
         { kind: "inline", value: anchorOutput.datum },
         anchorOutput.assets,
       );
     }
-    if (component.schedulerSpend !== undefined) {
+    if (
+      component.kind === "slashActiveOperator" &&
+      component.schedulerSpend !== undefined
+    ) {
       const scheduler = component.schedulerSpend;
       tx = tx.pay
         .ToContract(

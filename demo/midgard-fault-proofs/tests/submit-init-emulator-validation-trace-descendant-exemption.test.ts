@@ -2,7 +2,9 @@
  * slashing their operators; every other conviction keeps descendant slashing,
  * and the convicted block's own operator is always slashed. Each negative is
  * paired with a positive from the same queue state, so exactly one of the two
- * successors verifies. */
+ * successors verifies. Every row is a transaction written directly against
+ * the deployed scripts; the removal builder's own choice of these shapes is
+ * exercised by the validation-trace dispute conviction suites. */
 import { outRefLabel } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -20,7 +22,6 @@ import {
   buildProvedDoubleSpendFixture,
   expectStateQueueHeaderOrder,
   type ProvedDoubleSpendFixture,
-  submitRemovalForFixture,
 } from "./support/submit-init-emulator-fixtures.js";
 import { network } from "./support/submit-init-emulator-shared.js";
 import {
@@ -30,8 +31,6 @@ import {
 } from "./support/validation-trace-conviction.js";
 import {
   proverEnterpriseAddress,
-  removeFirst,
-  resolvingRemovalAs,
   rewardOutputs,
 } from "./support/validation-trace-removal.js";
 
@@ -200,22 +199,27 @@ it("prunes validation-trace descendants unslashed, refuses every other arm, and 
 
   // B1: the exempt prune of S1 verifies. No directory input, no burn, no
   // reward; the operator keeps its node and bond.
-  const [exemptPrune] = await removeFirst(fixture, 1, "validationTraceDispute");
+  const exemptPrune = await submitRawFraudulentBlockRemoval(fixture, {
+    removes: "successor",
+    record: proof,
+    approach: "DescendantOfValidationTraceConviction",
+    operator: "untouched",
+  });
   await expectStateQueueHeaderOrder({
     lucid: funderLucid,
     contracts,
     expectedHeaderHashes: queueHashes(fixture, 1),
   });
-  expect(workflowTransactionInputOutRefs(exemptPrune!)).not.toContain(
+  expect(workflowTransactionInputOutRefs(exemptPrune)).not.toContain(
     outRefLabel(operatorNodeBefore!),
   );
   expect(
-    mintsUnderPolicy(exemptPrune!, contracts.activeOperators.policyId),
+    mintsUnderPolicy(exemptPrune, contracts.activeOperators.policyId),
   ).toBe(false);
   expect(
-    mintsUnderPolicy(exemptPrune!, contracts.retiredOperators.policyId),
+    mintsUnderPolicy(exemptPrune, contracts.retiredOperators.policyId),
   ).toBe(false);
-  expect(rewardOutputs(fixture, exemptPrune!)).toHaveLength(0);
+  expect(rewardOutputs(fixture, exemptPrune)).toHaveLength(0);
   expect(await liveOperatorNode(fixture)).toEqual(operatorNodeBefore);
   expect(operatorNodeBefore!.assets.lovelace).toBe(economics.required_bond);
 
@@ -243,8 +247,13 @@ it("prunes validation-trace descendants unslashed, refuses every other arm, and 
     contracts,
     expectedHeaderHashes: queueHashes(fixture, 1),
   });
-  const [secondPrune] = await removeFirst(fixture, 1, "validationTraceDispute");
-  expect(rewardOutputs(fixture, secondPrune!)).toHaveLength(0);
+  const secondPrune = await submitRawFraudulentBlockRemoval(fixture, {
+    removes: "successor",
+    record: proof,
+    approach: "DescendantOfValidationTraceConviction",
+    operator: "untouched",
+  });
+  expect(rewardOutputs(fixture, secondPrune)).toHaveLength(0);
   expect(await liveOperatorNode(fixture)).toEqual(operatorNodeBefore);
   await expectStateQueueHeaderOrder({
     lucid: funderLucid,
@@ -272,31 +281,19 @@ it("prunes validation-trace descendants unslashed, refuses every other arm, and 
     contracts,
     expectedHeaderHashes: [fixture.headerHash],
   });
-  const signed: TxSigned[] = [];
-  const result = await resolvingRemovalAs("validationTraceDispute", {}, () =>
-    submitRemovalForFixture(fixture, {
-      preSubmitBoundary: ({ signed: transaction }) => {
-        signed.push(transaction);
-      },
-    }),
-  );
-  expect(
-    result.transactions.map(({ kind, slashingApproach: approach }) => ({
-      kind,
-      approach,
-    })),
-  ).toEqual([{ kind: "remove-target", approach: "SlashActiveOperator" }]);
-  expect(result.fraudCategoryId).toBe(
-    SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.validationTraceDispute,
-  );
-  expect(signed).toHaveLength(1);
-  expect(workflowTransactionInputOutRefs(signed[0]!)).toContain(
+  const targetRemoval = await submitRawFraudulentBlockRemoval(fixture, {
+    removes: "convicted",
+    record: proof,
+    approach: "SlashActiveOperator",
+    operator: { slashRewardTo: proverEnterpriseAddress(fixture) },
+  });
+  expect(workflowTransactionInputOutRefs(targetRemoval)).toContain(
     outRefLabel(operatorNodeBefore!),
   );
-  expect(signed[0]!.toTransaction().body().fee()).toBe(
+  expect(targetRemoval.toTransaction().body().fee()).toBe(
     economics.slashing_penalty,
   );
-  expect(rewardOutputs(fixture, signed[0]!)).toHaveLength(1);
+  expect(rewardOutputs(fixture, targetRemoval)).toHaveLength(1);
   expect(await liveOperatorNode(fixture)).toBeUndefined();
   await expectStateQueueHeaderOrder({
     lucid: funderLucid,
@@ -337,11 +334,16 @@ it("keeps descendant slashing for every other conviction category", async () => 
     contracts,
     expectedHeaderHashes: queueHashes(fixture, 0),
   });
-  const [slashingPrune] = await removeFirst(fixture, 1, "doubleSpend");
-  expect(workflowTransactionInputOutRefs(slashingPrune!)).toContain(
+  const slashingPrune = await submitRawFraudulentBlockRemoval(fixture, {
+    removes: "successor",
+    record: fixture.fraudProofUtxo,
+    approach: "SlashActiveOperator",
+    operator: { slashRewardTo: proverEnterpriseAddress(fixture) },
+  });
+  expect(workflowTransactionInputOutRefs(slashingPrune)).toContain(
     outRefLabel(operatorNodeBefore!),
   );
-  expect(rewardOutputs(fixture, slashingPrune!)).toHaveLength(1);
+  expect(rewardOutputs(fixture, slashingPrune)).toHaveLength(1);
   expect(await liveOperatorNode(fixture)).toBeUndefined();
   // The convicted block's operator is now already slashed: that removal
   // consumes no bond and carries no output shaped like the prover's reward.
@@ -364,19 +366,13 @@ it("keeps descendant slashing for every other conviction category", async () => 
     contracts,
     expectedHeaderHashes: [fixture.headerHash],
   });
-  const signed: TxSigned[] = [];
-  const result = await submitRemovalForFixture(fixture, {
-    preSubmitBoundary: ({ signed: transaction }) => {
-      signed.push(transaction);
-    },
+  const alreadySlashedRemoval = await submitRawFraudulentBlockRemoval(fixture, {
+    removes: "convicted",
+    record: fixture.fraudProofUtxo,
+    approach: "OperatorAlreadySlashed",
+    operator: "witnessed",
   });
-  expect(
-    result.transactions.map(({ kind, slashingApproach: approach }) => ({
-      kind,
-      approach,
-    })),
-  ).toEqual([{ kind: "remove-target", approach: "OperatorAlreadySlashed" }]);
-  expect(rewardOutputs(fixture, signed[0]!)).toHaveLength(0);
+  expect(rewardOutputs(fixture, alreadySlashedRemoval)).toHaveLength(0);
   await expectStateQueueHeaderOrder({
     lucid: funderLucid,
     contracts,
