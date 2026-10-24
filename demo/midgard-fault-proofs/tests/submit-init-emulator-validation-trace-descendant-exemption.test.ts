@@ -10,15 +10,12 @@ import {
   mintingPolicyToId,
   scriptFromNative,
   type TxSigned,
-  type UTxO,
 } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
-import { expect, it, vi } from "vitest";
+import { expect, it } from "vitest";
 
-import * as recordSelection from "../src/fraud-proof-record-selection.js";
 import { workflowTransactionInputOutRefs } from "../src/index.js";
-import * as slashingApproach from "../src/remove-fraudulent-block.resolve-state-queue-slashing-approach.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+import { submitRawFraudulentBlockRemoval } from "./support/raw-fraudulent-block-removal.js";
 import {
   buildProvedDoubleSpendFixture,
   expectStateQueueHeaderOrder,
@@ -32,91 +29,13 @@ import {
   mintValidationTraceProof,
 } from "./support/validation-trace-conviction.js";
 import {
-  forcingExemption,
-  payingProverRewardShape,
+  proverEnterpriseAddress,
   removeFirst,
   resolvingRemovalAs,
   rewardOutputs,
 } from "./support/validation-trace-removal.js";
 
 const economics = SDK.getProtocolParameters(network);
-
-/** Present `substitute` as the removal's fraud-proof reference input. */
-const presentingProofToken = async <T>(
-  substitute: UTxO,
-  operation: () => Promise<T>,
-): Promise<T> => {
-  const original = recordSelection.requireFraudProofRecord;
-  const spy = vi
-    .spyOn(recordSelection, "requireFraudProofRecord")
-    .mockImplementation(async (params) => ({
-      ...(await original(params)),
-      utxo: substitute,
-    }));
-  try {
-    return await operation();
-  } finally {
-    spy.mockRestore();
-  }
-};
-
-/** Build as if the correction lock were idle, so the off-chain builder lets
- * a different correction identity reach the lock validator. */
-const misreadingCorrectionLockAsIdle = async <T>(
-  operation: () => Promise<T>,
-): Promise<T> => {
-  const original = SDK.fetchCorrectionLockUTxOProgram;
-  const spy = vi
-    .spyOn(SDK, "fetchCorrectionLockUTxOProgram")
-    .mockImplementation((lucid, config) =>
-      Effect.map(original(lucid, config), (lock) => ({
-        ...lock,
-        datum: "Idle" as const,
-      })),
-    );
-  try {
-    return await operation();
-  } finally {
-    spy.mockRestore();
-  }
-};
-
-/** Keep the real active-operator slash (bond input, node burn, exact fee) but
- * label the removal with the exemption arm and pay the reward tranche to
- * `taker` instead of the prover. */
-const splicingDirectorySlashIntoExemptPrune = async <T>(
-  taker: string,
-  operation: () => Promise<T>,
-): Promise<T> => {
-  const originalInputs = slashingApproach.buildSlashingInputs;
-  const inputsSpy = vi
-    .spyOn(slashingApproach, "buildSlashingInputs")
-    .mockImplementation((params) =>
-      originalInputs({
-        ...params,
-        ...(params.fraudProverReward === undefined
-          ? {}
-          : {
-              fraudProverReward: {
-                ...params.fraudProverReward,
-                proverEnterpriseAddress: taker,
-              },
-            }),
-      }),
-    );
-  const approachSpy = vi
-    .spyOn(slashingApproach, "resolveStateQueueSlashingApproach")
-    .mockReturnValue({
-      slashingApproach: "DescendantOfValidationTraceConviction",
-      layout: {},
-    });
-  try {
-    return await forcingExemption(false, operation);
-  } finally {
-    approachSpy.mockRestore();
-    inputsSpy.mockRestore();
-  }
-};
 
 const mintsUnderPolicy = (tx: TxSigned, policyId: string): boolean => {
   const mint = tx.toTransaction().body().mint();
@@ -192,63 +111,84 @@ it("prunes validation-trace descendants unslashed, refuses every other arm, and 
 
   // B4: the exemption is mandatory, so slashing a validation-trace
   // descendant's operator is refused.
-  await forcingExemption(false, () =>
-    expectOnchainRefusal(
-      () => removeFirst(fixture, 1, "validationTraceDispute"),
-      {
-        refusedBy: "state_queue_yields",
-        check: /slashing_approach_admits_removal_v1/u,
-      },
-    ),
-  );
-  // B3: the category prefix is read only from the authenticated token of the
-  // convicted header.
   await expectOnchainRefusal(
     () =>
-      removeFirst(fixture, 1, "validationTraceDispute", {
-        fraudProofPolicyId: foreignPolicyId,
+      submitRawFraudulentBlockRemoval(fixture, {
+        removes: "successor",
+        record: proof,
+        approach: "SlashActiveOperator",
+        operator: { slashRewardTo: proverEnterpriseAddress(fixture) },
+      }),
+    {
+      refusedBy: "state_queue_yields",
+      check: /slashing_approach_admits_removal_v1/u,
+    },
+  );
+  // B3: the category prefix is read only from the authenticated token of the
+  // convicted header: a same-named token under another policy, or the
+  // authentic record of another header, is refused.
+  expect(foreignProof.assets).toHaveProperty(
+    `${foreignPolicyId}${SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.validationTraceDispute}${fixture.headerHash}`,
+    1n,
+  );
+  await expectOnchainRefusal(
+    () =>
+      submitRawFraudulentBlockRemoval(fixture, {
+        removes: "successor",
+        record: foreignProof,
+        approach: "DescendantOfValidationTraceConviction",
+        operator: "untouched",
       }),
     {
       refusedBy: "correction_lock",
       check: /expect input_nft_policy_id == nft_policy_id/u,
     },
   );
-  expect(foreignProof.assets).toHaveProperty(
-    `${foreignPolicyId}${SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.validationTraceDispute}${fixture.headerHash}`,
-    1n,
-  );
-  await presentingProofToken(successorProof, () =>
-    expectOnchainRefusal(
-      () => removeFirst(fixture, 1, "validationTraceDispute"),
-      {
-        refusedBy: "correction_lock",
-        check: /referenced_header_hash == fraudulent_blocks_header_hash/u,
-      },
-    ),
+  await expectOnchainRefusal(
+    () =>
+      submitRawFraudulentBlockRemoval(fixture, {
+        removes: "successor",
+        record: successorProof,
+        approach: "DescendantOfValidationTraceConviction",
+        operator: "untouched",
+      }),
+    {
+      refusedBy: "correction_lock",
+      check: /referenced_header_hash == fraudulent_blocks_header_hash/u,
+    },
   );
   // B5: an exempt prune cannot carry a directory slash of the exempt
   // operator, which would otherwise hand the bond's reward tranche to the
   // submitter.
   const taker = generateEmulatorAccount({ lovelace: 0n }).address;
-  await splicingDirectorySlashIntoExemptPrune(taker, () =>
-    expectOnchainRefusal(
-      () => removeFirst(fixture, 1, "validationTraceDispute"),
-      {
-        refusedBy: "operator_directory/active_operators",
-        check: /bad_state_slashing_approach_matches_directory/u,
-      },
-    ),
+  await expectOnchainRefusal(
+    () =>
+      submitRawFraudulentBlockRemoval(fixture, {
+        removes: "successor",
+        record: proof,
+        approach: "DescendantOfValidationTraceConviction",
+        operator: { slashRewardTo: taker },
+      }),
+    {
+      refusedBy: "operator_directory/active_operators",
+      check: /bad_state_slashing_approach_matches_directory/u,
+    },
   );
   // B8: an exempt prune consumes no bond, so it carries no output shaped like
   // the prover's reward, even one the submitter funds.
-  await payingProverRewardShape(fixture, () =>
-    expectOnchainRefusal(
-      () => removeFirst(fixture, 1, "validationTraceDispute"),
-      {
-        refusedBy: "state_queue_yields",
-        check: /no_output_pays_fraud_prover_reward_v1/u,
-      },
-    ),
+  await expectOnchainRefusal(
+    () =>
+      submitRawFraudulentBlockRemoval(fixture, {
+        removes: "successor",
+        record: proof,
+        approach: "DescendantOfValidationTraceConviction",
+        operator: "untouched",
+        payRewardShapedOutput: true,
+      }),
+    {
+      refusedBy: "state_queue_yields",
+      check: /no_output_pays_fraud_prover_reward_v1/u,
+    },
   );
   await expectStateQueueHeaderOrder({
     lucid: funderLucid,
@@ -281,14 +221,22 @@ it("prunes validation-trace descendants unslashed, refuses every other arm, and 
 
   // Pre-state P1: [F, S2], correction locked to the validation-trace token.
   // B7: the lock refuses a link presenting another category's token for the
-  // same header; the validation-trace link of S2 verifies.
-  await misreadingCorrectionLockAsIdle(() =>
-    expectOnchainRefusal(() => removeFirst(fixture, 1, "doubleSpend"), {
+  // same header (here the double-spend record, slashing S2's operator as that
+  // category would); the validation-trace link of S2 verifies.
+  await expectOnchainRefusal(
+    () =>
+      submitRawFraudulentBlockRemoval(fixture, {
+        removes: "successor",
+        record: fixture.fraudProofUtxo,
+        approach: "SlashActiveOperator",
+        operator: { slashRewardTo: proverEnterpriseAddress(fixture) },
+      }),
+    {
       // The final `and` of the transition: the locked datum must equal the
       // one this link's token identifies.
       refusedBy: "correction_lock",
       check: /^Validator returned false$/u,
-    }),
+    },
   );
   await expectStateQueueHeaderOrder({
     lucid: funderLucid,
@@ -306,14 +254,18 @@ it("prunes validation-trace descendants unslashed, refuses every other arm, and 
 
   // Pre-state P2: [F]. B6: the convicted block never takes the exemption;
   // it is removed with its own operator slashed and the prover rewarded.
-  await forcingExemption(true, () =>
-    expectOnchainRefusal(
-      () => removeFirst(fixture, 1, "validationTraceDispute"),
-      {
-        refusedBy: "state_queue_yields",
-        check: /slashing_approach_admits_removal_v1/u,
-      },
-    ),
+  await expectOnchainRefusal(
+    () =>
+      submitRawFraudulentBlockRemoval(fixture, {
+        removes: "convicted",
+        record: proof,
+        approach: "DescendantOfValidationTraceConviction",
+        operator: "untouched",
+      }),
+    {
+      refusedBy: "state_queue_yields",
+      check: /slashing_approach_admits_removal_v1/u,
+    },
   );
   await expectStateQueueHeaderOrder({
     lucid: funderLucid,
@@ -367,11 +319,18 @@ it("keeps descendant slashing for every other conviction category", async () => 
   const operatorNodeBefore = await liveOperatorNode(fixture);
   // B2: under a double-spend conviction the exemption is refused, and the
   // descendant's operator is slashed from the same pre-state.
-  await forcingExemption(true, () =>
-    expectOnchainRefusal(() => removeFirst(fixture, 1, "doubleSpend"), {
+  await expectOnchainRefusal(
+    () =>
+      submitRawFraudulentBlockRemoval(fixture, {
+        removes: "successor",
+        record: fixture.fraudProofUtxo,
+        approach: "DescendantOfValidationTraceConviction",
+        operator: "untouched",
+      }),
+    {
       refusedBy: "state_queue_yields",
       check: /slashing_approach_admits_removal_v1/u,
-    }),
+    },
   );
   await expectStateQueueHeaderOrder({
     lucid: funderLucid,
@@ -386,11 +345,19 @@ it("keeps descendant slashing for every other conviction category", async () => 
   expect(await liveOperatorNode(fixture)).toBeUndefined();
   // The convicted block's operator is now already slashed: that removal
   // consumes no bond and carries no output shaped like the prover's reward.
-  await payingProverRewardShape(fixture, () =>
-    expectOnchainRefusal(() => removeFirst(fixture, 1, "doubleSpend"), {
+  await expectOnchainRefusal(
+    () =>
+      submitRawFraudulentBlockRemoval(fixture, {
+        removes: "convicted",
+        record: fixture.fraudProofUtxo,
+        approach: "OperatorAlreadySlashed",
+        operator: "witnessed",
+        payRewardShapedOutput: true,
+      }),
+    {
       refusedBy: "state_queue_yields",
       check: /no_output_pays_fraud_prover_reward_v1/u,
-    }),
+    },
   );
   await expectStateQueueHeaderOrder({
     lucid: funderLucid,

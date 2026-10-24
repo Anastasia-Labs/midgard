@@ -5,7 +5,6 @@ import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
   credentialToAddress,
-  type TxBuilder,
   type TxSigned,
 } from "@lucid-evolution/lucid";
 import { vi } from "vitest";
@@ -63,11 +62,10 @@ export const removeFirst = async (
   fixture: ProvedDoubleSpendFixture,
   count: number,
   category: ConvictionCategory,
-  overrides: { readonly fraudProofPolicyId?: string } = {},
 ): Promise<readonly TxSigned[]> => {
   const signed: TxSigned[] = [];
   try {
-    await resolvingRemovalAs(category, overrides, () =>
+    await resolvingRemovalAs(category, {}, () =>
       submitRemovalForFixture(fixture, {
         preSubmitBoundary: ({ signed: transaction }) => {
           if (signed.length === count) throw new StopAfterRemovals();
@@ -96,33 +94,6 @@ export const forcingExemption = async <T>(
     return await operation();
   } finally {
     spy.mockRestore();
-  }
-};
-
-/** Add one output paying exactly the fraud-prover reward, ADA only, to the
- * prover's enterprise address, funded by the submitter's wallet, to every
- * removal built inside `operation`. */
-export const payingProverRewardShape = async <T>(
-  fixture: ProvedDoubleSpendFixture,
-  operation: () => Promise<T>,
-): Promise<T> => {
-  const pay = (tx: TxBuilder) =>
-    tx.pay.ToAddress(proverEnterpriseAddress(fixture), {
-      lovelace: economics.fraud_prover_reward,
-    });
-  const link = SDK.incompleteRemoveFraudulentBlocksLinkTxProgram;
-  const last = SDK.incompleteRemoveLastFraudulentBlockHeaderTxProgram;
-  const linkSpy = vi
-    .spyOn(SDK, "incompleteRemoveFraudulentBlocksLinkTxProgram")
-    .mockImplementation((...params) => pay(link(...params)));
-  const lastSpy = vi
-    .spyOn(SDK, "incompleteRemoveLastFraudulentBlockHeaderTxProgram")
-    .mockImplementation((...params) => pay(last(...params)));
-  try {
-    return await operation();
-  } finally {
-    lastSpy.mockRestore();
-    linkSpy.mockRestore();
   }
 };
 
