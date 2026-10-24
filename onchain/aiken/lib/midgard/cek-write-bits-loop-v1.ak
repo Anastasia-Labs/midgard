@@ -190,6 +190,8 @@ pub fn advance_write_bits_v1(
   expect set || value == boolean_result_v1(False)
   let out = builtin.write_bits(state.out, hop.items, set)
   if hop.tail.root == empty_data_list_root_v1() {
+    // The list ends after as many indices as its node counts.
+    expect end == state.count
     let length = builtin.length_of_bytearray(out)
     // The output has the input's length, and a Boolean's memory is 1.
     let memory = bytes_memory_size_v1(length)

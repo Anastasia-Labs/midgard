@@ -594,6 +594,60 @@ test refuses_an_uncharged_success() fail {
   last_hop_claiming(honest_result(), 0, 0)
 }
 
+/// The index list's node with its count one more than its items: its root is
+/// that node's hash, so the first hop opens it.
+fn overcounted_indices(indices: List<Int>) -> ValueWitnessV1 {
+  expect SemanticConstantValue { type_cbor, payload, memory } = compact(
+    indices_value(indices),
+  )
+  expect [whole, ..] = suffixes(indices)
+  SemanticConstantValue {
+    type_cbor,
+    payload: cek_data_v1.DataSummaryV1 {
+      ..payload,
+      root: cek_data_v1.hash_data_node_v1(
+        cek_data_v1.ListData {
+          items_count: whole.length + 1,
+          items_root: whole.root,
+          cbor_length: payload.cbor_length,
+          memory: payload.memory,
+        },
+      ),
+    },
+    memory,
+  }
+}
+
+/// A list whose node counts one index more than it holds, charged for that
+/// count: the list ends one index short of the count.
+test refuses_a_list_that_ends_short_of_its_count() fail {
+  let input = pattern(8, 0)
+  let indices = [0, 9, 63]
+  let budget = charge(write_bits_arguments(input, indices, True), 4)
+  let case = success_case_claiming(
+    input,
+    indices,
+    [
+      bytes_value(input, False),
+      overcounted_indices(indices),
+      boolean_value(True),
+    ],
+    semantic_bytes(builtin.write_bits(input, indices, True), False),
+    budget.cpu,
+    budget.memory,
+  )
+  expect [only] = plan(case, 10)
+  spend_as_computed(
+    case,
+    with_start(
+      only,
+      fn(start) {
+        WriteBitsStartV1 { ..start, items_count: start.items_count + 1 }
+      },
+    ),
+  )
+}
+
 // ## Exactly one result
 
 /// A success over a list holding an index outside the input: the hop that
@@ -1238,6 +1292,27 @@ test write_bits_loop_failure_hop_at_the_longest_input() {
 
 test write_bits_loop_failure_hop_fixture_only_at_the_longest_input() {
   built(max_failure_step())
+}
+
+/// A signed hop transaction carrying the first hop's redeemer and output
+/// datum below measured 15,028 bytes in the lucid-evolution emulator, 727
+/// besides those two fields (the thread input, one fee input, one collateral
+/// input, the reference script input, the thread output, change, collateral
+/// return, two signatures, the required signer and validity bounds). The rest
+/// allows 1,000 for that part.
+const hop_transaction_rest = 1_000
+
+const max_transaction_bytes = 16_384
+
+/// The first hop is the largest: it alone reveals the input beside the
+/// witness, and its output carries the bytes so far.
+test write_bits_loop_first_hop_fits_a_transaction_at_the_longest_input() {
+  let step = max_first_step()
+  expect [output, ..] = step.transaction.outputs
+  expect transaction.InlineDatum(datum) = output.datum
+  builtin.length_of_bytearray(cbor.serialise(step.redeemer)) + builtin.length_of_bytearray(
+    cbor.serialise(datum),
+  ) + hop_transaction_rest <= max_transaction_bytes
 }
 
 /// writeBits itself refuses an input past 4,096 bytes, so the loop, which
