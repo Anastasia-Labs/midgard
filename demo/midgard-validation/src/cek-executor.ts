@@ -1,6 +1,4 @@
 import "@al-ft/midgard-core";
-import "@harmoniclabs/plutus-data";
-import "@harmoniclabs/uplc";
 import "./cek-builtin.js";
 import "./cek-constant.js";
 import "./cek-data-tree.js";

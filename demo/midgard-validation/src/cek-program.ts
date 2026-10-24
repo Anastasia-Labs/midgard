@@ -1,6 +1,4 @@
 import "@al-ft/midgard-core";
-import "@harmoniclabs/plutus-data";
-import "@harmoniclabs/uplc";
 import "./cek-constant.js";
 import "./cek-data-tree.js";
 import "./cek-program.unwrap-canonical-cbor-byte-string.js";

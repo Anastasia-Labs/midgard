@@ -142,7 +142,6 @@
     "@al-ft/midgard-core": "workspace:*",
     "@al-ft/midgard-sdk": "workspace:*",
     "@al-ft/midgard-validation": "workspace:*",
-    "@harmoniclabs/cbor": "2.0.2",
     "@lucid-evolution/lucid": "0.8.3",
     "effect": "^3.14.22",
     "json-bigint": "npm:@cardanosolutions/json-bigint@1.1.0",

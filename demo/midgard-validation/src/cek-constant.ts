@@ -1,7 +1,5 @@
 import "@al-ft/midgard-core";
 import "@al-ft/midgard-core/codec/cbor";
-import "@harmoniclabs/plutus-data";
-import "@harmoniclabs/uplc";
 import "./cek-data-tree.js";
 import "./plutus-data-narrowing.js";
 import "./cek-constant.semantic-data.js";

@@ -1,5 +1,4 @@
 import "@al-ft/midgard-core";
-import "@harmoniclabs/plutus-data";
 import "@lucid-evolution/lucid";
 import "@noble/hashes/blake2.js";
 import "./cek-data-tree.js";

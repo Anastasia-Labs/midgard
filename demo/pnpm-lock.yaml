@@ -286,9 +286,6 @@ importers:
       '@al-ft/midgard-validation':
         specifier: workspace:*
         version: link:../midgard-validation
-      '@harmoniclabs/cbor':
-        specifier: 2.0.2
-        version: 2.0.2
       '@lucid-evolution/lucid':
         specifier: 0.8.3
         version: 0.8.3(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(fast-check@3.23.2)
@@ -429,15 +426,9 @@ importers:
       '@effect/sql-pg':
         specifier: ^0.35.1
         version: 0.35.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.80.21(effect@3.21.2))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
-      '@harmoniclabs/bytestring':
-        specifier: 1.0.0
-        version: 1.0.0
       '@harmoniclabs/cbor':
         specifier: 2.0.2
         version: 2.0.2
-      '@harmoniclabs/pair':
-        specifier: 1.0.0
-        version: 1.0.0
       '@harmoniclabs/plutus-data':
         specifier: 2.0.1
         version: 2.0.1(@harmoniclabs/cbor@2.0.2)
@@ -628,24 +619,6 @@ importers:
       '@effect/sql-pg':
         specifier: ^0.35.1
         version: 0.35.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.80.21(effect@3.21.2))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
-      '@harmoniclabs/bytestring':
-        specifier: 1.0.0
-        version: 1.0.0
-      '@harmoniclabs/cbor':
-        specifier: 2.0.2
-        version: 2.0.2
-      '@harmoniclabs/pair':
-        specifier: 1.0.0
-        version: 1.0.0
-      '@harmoniclabs/plutus-data':
-        specifier: 2.0.1
-        version: 2.0.1(@harmoniclabs/cbor@2.0.2)
-      '@harmoniclabs/plutus-machine':
-        specifier: 3.0.3
-        version: 3.0.3(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/plutus-data@2.0.1(@harmoniclabs/cbor@2.0.2))(@harmoniclabs/uplc@2.0.7(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(@harmoniclabs/plutus-data@2.0.1(@harmoniclabs/cbor@2.0.2)))
-      '@harmoniclabs/uplc':
-        specifier: 2.0.7
-        version: 2.0.7(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(@harmoniclabs/plutus-data@2.0.1(@harmoniclabs/cbor@2.0.2))
       '@libp2p/bootstrap':
         specifier: 12.0.25
         version: 12.0.25
@@ -1391,9 +1364,6 @@ packages:
   '@harmoniclabs/bitstream@1.0.0':
     resolution: {integrity: sha512-Ed/I46IuCiytE5QiMmmUo9kPJcypM7OuUqoRaAXUALL5C6LKLpT6kYE1qeuhLkx2/WvkHT18jcOX6jhM/nmqoA==}
 
-  '@harmoniclabs/bytestring@1.0.0':
-    resolution: {integrity: sha512-d5m10O0okKc6QNX0pSRriFTkk/kNMnMBGbo5X3kEZwKaXTI4tDVoTZBL7bwbYHwOEdSxWJjVtlO9xtB7ZrYZNg==}
-
   '@harmoniclabs/cardano-costmodels-ts@1.6.1':
     resolution: {integrity: sha512-rbkhdCXbG2C8RgQxWAgAAIrOEQCGr6qVk8IzF4aVjVqrcXDPmaWFVqCpHk3GjX8D9NVj277TfEEav3gIR2hMFQ==}
 
@@ -1405,9 +1375,6 @@ packages:
 
   '@harmoniclabs/obj-utils@1.0.0':
     resolution: {integrity: sha512-EO1bQBZAORrutcP+leP5YNDwNd/9TOE23VEvs3ktniXg6w0knUrLjUIl2Pkcbs/D1VQxqmsNpXho+vaMj00qxA==}
-
-  '@harmoniclabs/pair@1.0.0':
-    resolution: {integrity: sha512-D9OBowsUsy1LctHxWzd9AngTzoo5x3rBiJ0gu579t41Q23pb+VNx1euEfluUEiaYbgljcl1lb/4D1fFTZd1tRQ==}
 
   '@harmoniclabs/plutus-data@2.0.1':
     resolution: {integrity: sha512-JOU1SgcFdss9cTR4fifpoqXIIiimv837OC4jX0yRzT97ACxOVNFy7DvqfG2ur5k50+RzGdF3qYtEaV8dbTJ2Qw==}
@@ -3763,10 +3730,6 @@ snapshots:
     dependencies:
       '@harmoniclabs/uint8array-utils': 1.0.4
 
-  '@harmoniclabs/bytestring@1.0.0':
-    dependencies:
-      '@harmoniclabs/uint8array-utils': 1.0.4
-
   '@harmoniclabs/cardano-costmodels-ts@1.6.1':
     dependencies:
       '@harmoniclabs/cbor': 2.0.2
@@ -3784,8 +3747,6 @@ snapshots:
       '@harmoniclabs/uint8array-utils': 1.0.4
 
   '@harmoniclabs/obj-utils@1.0.0': {}
-
-  '@harmoniclabs/pair@1.0.0': {}
 
   '@harmoniclabs/plutus-data@2.0.1(@harmoniclabs/cbor@2.0.2)':
     dependencies:
