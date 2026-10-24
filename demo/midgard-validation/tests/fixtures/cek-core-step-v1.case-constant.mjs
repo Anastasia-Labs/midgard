@@ -2,19 +2,11 @@
  * The `case` on a constant programs of the V1 CEK core-step golden vectors
  * (`cek-core-step-v1.vectors.mjs`), one per kind of outcome, plus a `case` on
  * a constructor that selects its first branch. Like the rest of the set, these
- * are UPLC terms only and import nothing from the package.
+ * are UPLC terms only; their constants come from the package's `uplc` entry.
  */
 
-import { DataB } from "@harmoniclabs/plutus-data";
-import {
-  Case,
-  Constr,
-  constT,
-  ErrorUPLC,
-  Lambda,
-  UPLCConst,
-  UPLCVar,
-} from "@harmoniclabs/uplc";
+import { constT, DataB, UPLCConst } from "@al-ft/midgard-validation/uplc";
+import { Case, Constr, ErrorUPLC, Lambda, UPLCVar } from "@harmoniclabs/uplc";
 
 /** The programs, each applied to `context`. */
 export const caseConstantPrograms = (context) => [

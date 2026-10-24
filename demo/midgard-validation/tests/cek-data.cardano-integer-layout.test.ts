@@ -5,15 +5,6 @@ import {
   type MidgardCekMachineState,
 } from "@al-ft/midgard-core";
 import { lucidDataToCborIterative } from "@al-ft/midgard-core/plutus-data-lucid-iterative";
-import {
-  type Data,
-  DataB,
-  DataConstr,
-  DataI,
-  DataList,
-  DataMap,
-} from "@harmoniclabs/plutus-data";
-import { UPLCConst } from "@harmoniclabs/uplc";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
@@ -39,6 +30,15 @@ import {
   encodeMidgardCekDataTreeInteger,
 } from "../src/cek-data-tree.js";
 import { executeMidgardCekStructuralProgram } from "../src/cek-executor.js";
+import { UPLCConst } from "../src/uplc-constant.js";
+import {
+  type Data,
+  DataB,
+  DataConstr,
+  DataI,
+  DataList,
+  DataMap,
+} from "../src/uplc-data.js";
 import {
   type AikenStepOracle,
   makeAikenStepOracle,

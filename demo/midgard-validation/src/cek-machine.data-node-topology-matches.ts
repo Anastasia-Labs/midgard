@@ -10,7 +10,6 @@ import {
   type MidgardCekDataPairNode,
   midgardCekStringMemoryWords,
 } from "@al-ft/midgard-core";
-import { DataConstr, DataI } from "@harmoniclabs/plutus-data";
 
 import { type MidgardCekDirectValueWitness } from "./cek-builtin.js";
 import {
@@ -41,6 +40,7 @@ import {
   semanticSummary,
 } from "./cek-machine.verify-semantic-builtin-control.js";
 import { plutusDataFromCborIterative } from "./plutus-data-iterative.decode.js";
+import { DataConstr, DataI } from "./uplc-data.js";
 
 const dataNodeTopologyMatches = (
   node: MidgardCekDataNode,

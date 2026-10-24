@@ -14,7 +14,6 @@ import {
   type MidgardCekDecodedProgramBlob,
   type MidgardCekValueNode,
 } from "@al-ft/midgard-core";
-import { DataI } from "@harmoniclabs/plutus-data";
 
 import {
   hashMidgardCekDirectValueWitness,
@@ -49,6 +48,7 @@ import {
   readMidgardCekSemanticData,
 } from "./cek-executor.structural-executor-data.js";
 import { plutusDataFromCborIterative } from "./plutus-data-iterative.decode.js";
+import { DataI } from "./uplc-data.js";
 
 /** What a constant value is, independent of how its witness reveals it. */
 export type MidgardCekConstantInfo = {

@@ -15,7 +15,9 @@
  * rendered as `tests/plutus-data-iterative.differential.test.ts` renders it,
  * or `REFUSED`. That suite holds the Data entry to these outcomes.
  *
- * This module imports nothing from the package, so either side can load it.
+ * From the package this module imports only the `uplc` entry, which resolves
+ * to `src/` under vitest and to `dist/` on bare `node`, so either side can
+ * load it.
  */
 
 import {
@@ -24,7 +26,7 @@ import {
   DataI,
   DataList,
   DataMap,
-} from "@harmoniclabs/plutus-data";
+} from "@al-ft/midgard-validation/uplc";
 
 export const REFUSED = "refused";
 

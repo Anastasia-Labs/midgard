@@ -1,12 +1,6 @@
-import { DataB } from "@harmoniclabs/plutus-data";
-import {
-  Builtin,
-  constT,
-  ErrorUPLC,
-  UPLCConst,
-  type UPLCTerm,
-} from "@harmoniclabs/uplc";
-
+import { constT, UPLCConst } from "../src/uplc-constant.js";
+import { DataB } from "../src/uplc-data.js";
+import { ErrorUPLC, type UPLCTerm } from "../src/uplc-term.js";
 import {
   app,
   data,
@@ -16,6 +10,7 @@ import {
   lam,
   mkCons,
 } from "./helpers/cek-uplc-terms.js";
+import { builtin } from "./helpers/uplc-builtins.js";
 import {
   plutusProgram,
   plutusProgramSpend,
@@ -50,7 +45,7 @@ const thenFail = (term: UPLCTerm): UPLCTerm => app(lam(new ErrorUPLC()), term);
 const equalStrings = (length: number, rightFill = 0x61) =>
   unitWhen(
     app(
-      Builtin.equalsByteString,
+      builtin("equalsByteString"),
       bytes(length, 0x61),
       bytes(length, rightFill),
     ),
@@ -60,10 +55,14 @@ const equalStrings = (length: number, rightFill = 0x61) =>
 const appendStrings = (length: number, expected = 2 * length) =>
   unitWhen(
     app(
-      Builtin.equalsInteger,
+      builtin("equalsInteger"),
       app(
-        Builtin.lengthOfByteString,
-        app(Builtin.appendByteString, bytes(length, 0x61), bytes(length, 0x62)),
+        builtin("lengthOfByteString"),
+        app(
+          builtin("appendByteString"),
+          bytes(length, 0x61),
+          bytes(length, 0x62),
+        ),
       ),
       int(expected),
     ),
@@ -72,9 +71,9 @@ const appendStrings = (length: number, expected = 2 * length) =>
 /** serialiseData of a two-item list of byte strings of `length` bytes. */
 const serialised = (length: number) =>
   app(
-    Builtin.serialiseData,
+    builtin("serialiseData"),
     app(
-      Builtin.listData,
+      builtin("listData"),
       mkCons(
         data(dataBytes(length, 0x61)),
         UPLCConst.listOf(constT.data)([dataBytes(length, 0x62)] as never),
@@ -84,7 +83,7 @@ const serialised = (length: number) =>
 
 /** decodeUtf8 of `length` ASCII bytes. */
 const decoded = (length: number) =>
-  app(Builtin.decodeUtf8, bytes(length, 0x61));
+  app(builtin("decodeUtf8"), bytes(length, 0x61));
 
 export type PayloadBoundRow = Readonly<{
   label: string;

@@ -4,7 +4,6 @@ import {
   midgardBlake2b,
 } from "@al-ft/midgard-core";
 import { lucidDataToCborIterative } from "@al-ft/midgard-core/plutus-data-lucid-iterative";
-import { type Data as PlutusData } from "@harmoniclabs/plutus-data";
 import { Constr, type Data as LucidDataValue } from "@lucid-evolution/lucid";
 
 import { commitMidgardCekDataTree } from "./cek-data-tree.js";
@@ -20,6 +19,7 @@ import {
   summarizeMidgardCekListData,
   summarizeMidgardCekMapData,
 } from "./script-context-proof.js";
+import { type Data as PlutusData } from "./uplc-data.js";
 
 const REDEEMER_CONTEXT_DOMAIN = Buffer.from(
   "MidgardCekRedeemerContextControlV1",

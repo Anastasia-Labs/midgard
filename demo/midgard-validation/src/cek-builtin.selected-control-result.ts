@@ -5,7 +5,6 @@ import {
   MIDGARD_CEK_EMPTY_SEQUENCE_ROOT,
   MIDGARD_CEK_MAX_RESOLVED_BUILTIN_TAG,
 } from "@al-ft/midgard-core";
-import { DataB, DataConstr, DataI, DataList } from "@harmoniclabs/plutus-data";
 
 import {
   argumentKinds,
@@ -30,6 +29,7 @@ import {
   computeMidgardCekBuiltinBudget,
   type MidgardCekBuiltinBudget,
 } from "./cek-cost.js";
+import { DataB, DataConstr, DataI, DataList } from "./uplc-data.js";
 
 /**
  * Whether a saturated builtin's arguments fail its argument kinds, so that

@@ -1,10 +1,4 @@
-import {
-  Builtin,
-  ErrorUPLC,
-  UPLCConst,
-  UPLCProgram,
-  type UPLCTerm,
-} from "@harmoniclabs/uplc";
+import { UPLCConst } from "@harmoniclabs/uplc";
 
 import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
 import {
@@ -13,8 +7,10 @@ import {
   RejectCodes,
   type ValidationMachineReplayInput,
 } from "../src/index.js";
+import { ErrorUPLC, UPLCProgram, type UPLCTerm } from "../src/uplc-term.js";
 import { app, lam, seq, v } from "./helpers/cek-uplc-terms.js";
 import { MIDGARD_TX_EX_UNITS_CAP } from "./helpers/plutus-spend-input.js";
+import { builtin } from "./helpers/uplc-builtins.js";
 import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 import {
   FUNDED_OUTPUT_LOVELACE,
@@ -48,7 +44,7 @@ export const failingProgram = () => plutusProgram(new ErrorUPLC());
 export const doublingProgram = () => {
   let bytes: UPLCTerm = UPLCConst.byteString(new Uint8Array(75).fill(0xab));
   for (let round = 0; round < 6; round += 1) {
-    bytes = app(lam(app(Builtin.appendByteString, v(0), v(0))), bytes);
+    bytes = app(lam(app(builtin("appendByteString"), v(0), v(0))), bytes);
   }
   return plutusProgram(seq(bytes, UPLCConst.unit));
 };

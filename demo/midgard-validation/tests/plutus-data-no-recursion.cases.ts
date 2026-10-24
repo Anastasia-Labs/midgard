@@ -17,14 +17,6 @@ import {
   deepPlutusDataCbor,
   PLUTUS_DATA_PROTOCOL_MAX_DEPTHS,
 } from "@al-ft/midgard-test-support/plutus-data-fuzz";
-import {
-  type Data,
-  DataConstr,
-  DataI,
-  DataList,
-  DataMap,
-  type KV,
-} from "@harmoniclabs/plutus-data";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -36,6 +28,14 @@ import { readMidgardCekSemanticData } from "../src/cek-executor.structural-execu
 import { plutusDataFromCborIterative } from "../src/plutus-data-iterative.decode.js";
 import { encodeMidgardCekPlutusData } from "../src/plutus-data-iterative.encode.js";
 import { midgardCekDataMemorySize } from "../src/plutus-data-iterative.memory.js";
+import {
+  type Data,
+  DataConstr,
+  DataI,
+  DataList,
+  DataMap,
+  type KV,
+} from "../src/uplc-data.js";
 import {
   blsLeftChain,
   expressionRoot,

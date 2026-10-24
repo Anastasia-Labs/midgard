@@ -3,12 +3,6 @@ import {
   type MidgardCekContinuationFrame,
   type MidgardCekMachineState,
 } from "@al-ft/midgard-core";
-import {
-  type Data,
-  DataConstr,
-  DataI,
-  DataList,
-} from "@harmoniclabs/plutus-data";
 
 import {
   type MidgardCekConstantValueWitness,
@@ -35,6 +29,7 @@ import {
   MidgardCekErrorCodes,
   type MidgardCekSemanticBuiltinWitness,
 } from "./cek-machine.js";
+import { type Data, DataConstr, DataI, DataList } from "./uplc-data.js";
 
 type DataTree = ReturnType<typeof commitMidgardCekDataTree>;
 

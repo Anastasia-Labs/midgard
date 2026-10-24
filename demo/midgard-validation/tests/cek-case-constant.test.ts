@@ -6,14 +6,6 @@ import {
   type MidgardCekMachineState,
   type MidgardCekValueNode,
 } from "@al-ft/midgard-core";
-import { type Data, DataConstr, DataI } from "@harmoniclabs/plutus-data";
-import {
-  Case,
-  Constr,
-  Lambda,
-  UPLCConst,
-  UPLCProgram,
-} from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -39,6 +31,9 @@ import {
   verifyMidgardCekCoreStep,
 } from "../src/cek-machine.js";
 import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
+import { UPLCConst } from "../src/uplc-constant.js";
+import { type Data, DataConstr, DataI } from "../src/uplc-data.js";
+import { Case, Constr, Lambda, UPLCProgram } from "../src/uplc-term.js";
 import { type CaseConstantCorpusEntry } from "./fixtures/cek-case-constant-v1.corpus.js";
 import { CASE_CONSTANT_CORPUS } from "./fixtures/cek-case-constant-v1.edges.js";
 import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";

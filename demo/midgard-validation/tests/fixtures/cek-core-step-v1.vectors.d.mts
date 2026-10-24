@@ -13,7 +13,7 @@
  * checked-in fixture.
  */
 
-import type { Data } from "@harmoniclabs/plutus-data";
+import type { Data } from "../../src/uplc-data.js";
 import type { UPLCTerm } from "@harmoniclabs/uplc";
 
 import type { MidgardCekExecutionStep } from "../../src/cek-executor.js";

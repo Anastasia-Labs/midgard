@@ -1,10 +1,12 @@
 import { readFileSync, writeFileSync } from "node:fs";
 
-import { dataFromCbor } from "@harmoniclabs/plutus-data";
-import { parseUPLC, UPLCProgram } from "@harmoniclabs/uplc";
-
 import { encodeMidgardCekPlutusData } from "../../src/cek-constant.js";
-import { encodeMidgardCekCardanoFlatProgram } from "../../src/cek-program.cardano-flat.js";
+import {
+  decodeMidgardCekCardanoFlatProgram,
+  encodeMidgardCekCardanoFlatProgram,
+} from "../../src/cek-program.cardano-flat.js";
+import { plutusDataFromCborIterative } from "../../src/plutus-data-iterative.decode.js";
+import { UPLCProgram } from "../../src/uplc-term.js";
 import type { CaseResult } from "./cek-step-fuzz.harness.js";
 import type { CekStepFuzzProgram } from "./cek-step-fuzz.programs.js";
 
@@ -70,8 +72,10 @@ export const vectorOf = (
 
 export const programOf = (vector: CekStepFuzzVector): CekStepFuzzProgram => ({
   label: vector.label,
-  term: parseUPLC(Buffer.from(vector.programFlat, "hex"), "flat").body,
-  context: dataFromCbor(vector.contextCbor),
+  term: decodeMidgardCekCardanoFlatProgram(
+    Buffer.from(vector.programFlat, "hex"),
+  ).body,
+  context: plutusDataFromCborIterative(Buffer.from(vector.contextCbor, "hex")),
   tightBudget: vector.tightBudget,
 });
 

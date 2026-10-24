@@ -1,14 +1,3 @@
-import { DataB, DataI } from "@harmoniclabs/plutus-data";
-import {
-  Application,
-  Builtin,
-  constT,
-  Force,
-  Lambda,
-  UPLCConst,
-  UPLCProgram,
-  type UPLCTerm,
-} from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -25,7 +14,17 @@ import {
   prependListSequence,
 } from "../src/cek-machine.verify-semantic-builtin-control.js";
 import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
+import { constT, UPLCConst } from "../src/uplc-constant.js";
+import { DataB, DataI } from "../src/uplc-data.js";
+import {
+  Application,
+  Force,
+  Lambda,
+  UPLCProgram,
+  type UPLCTerm,
+} from "../src/uplc-term.js";
 import { listConstructSemanticWitness } from "./cek-machine.list-construct-witness.js";
+import { builtin } from "./helpers/uplc-builtins.js";
 import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 
 const D = constT.data;
@@ -33,7 +32,7 @@ const D = constT.data;
 /** `mkCons item items`, applied under a lambda so the step is reached. */
 const mkConsStep = (item: UPLCConst, items: UPLCConst) => {
   const term: UPLCTerm = new Application(
-    new Application(new Force(Builtin.mkCons), item),
+    new Application(new Force(builtin("mkCons")), item),
     items,
   );
   const program = buildCekProgramFromRawFlat(

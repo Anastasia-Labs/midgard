@@ -1,17 +1,13 @@
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import {
-  DataConstr,
-  DataI,
-  DataMap,
-  dataToCbor,
-} from "@harmoniclabs/plutus-data";
 
+import { encodeMidgardCekPlutusData } from "../src/cek-constant.js";
 import {
   type MidgardLedgerRedeemer,
   MidgardRedeemerTag,
   type MidgardScriptPurpose,
   type ScriptContextView,
 } from "../src/index.js";
+import { DataConstr, DataI, DataMap } from "../src/uplc-data.js";
 import { outRefFromByte } from "./validation-fixtures.js";
 
 /** The context's redeemer map, as (purpose constructor, redeemer int). */
@@ -44,7 +40,7 @@ export const orderingView = (): {
     redeemer: {
       tag,
       index,
-      dataCbor: Buffer.from(dataToCbor(new DataI(value))),
+      dataCbor: encodeMidgardCekPlutusData(new DataI(value)),
       exUnits: { memory: 0n, steps: 0n },
     },
   });

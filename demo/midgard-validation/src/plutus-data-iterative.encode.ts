@@ -1,17 +1,10 @@
 import {
-  type Data,
-  DataB,
-  DataConstr,
-  DataI,
-  DataList,
-} from "@harmoniclabs/plutus-data";
-
-import {
   encodeCardanoBytes,
   encodeCardanoInteger,
   encodeSmallCborArgument,
 } from "./cek-constant.semantic-data.js";
 import { isPlutusDataMap } from "./plutus-data-narrowing.js";
+import { type Data, DataB, DataConstr, DataI, DataList } from "./uplc-data.js";
 
 const EMPTY_LIST = Buffer.from([0x80]);
 const OPEN_LIST = Buffer.from([0x9f]);

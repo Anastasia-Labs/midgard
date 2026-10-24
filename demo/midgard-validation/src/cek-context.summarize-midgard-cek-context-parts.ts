@@ -1,9 +1,4 @@
 import { encodeCbor } from "@al-ft/midgard-core";
-import {
-  type Data as PlutusData,
-  DataConstr,
-  DataList,
-} from "@harmoniclabs/plutus-data";
 
 import {
   bytes,
@@ -32,6 +27,7 @@ import {
   summarizeMidgardCekMapData,
   summarizeMidgardCekSmallConstrData,
 } from "./script-context-proof.js";
+import { type Data as PlutusData, DataConstr, DataList } from "./uplc-data.js";
 
 export const initialMidgardCekContextControl = (input: {
   readonly languageTag: 3 | 128;

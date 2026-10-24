@@ -1,4 +1,4 @@
-import { type Data, DataB, DataI, DataMap } from "@harmoniclabs/plutus-data";
+import { type Data, DataB, DataI, DataMap } from "./uplc-data.js";
 
 /** Cardano's bound on a Value's currency symbols and token names. */
 export const MIDGARD_CEK_MAX_VALUE_KEY_BYTES = 32;

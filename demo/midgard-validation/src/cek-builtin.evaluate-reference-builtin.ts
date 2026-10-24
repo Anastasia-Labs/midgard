@@ -2,7 +2,6 @@ import {
   hashMidgardCekBlsExpressionNode,
   MIDGARD_CEK_MAX_RESOLVED_BUILTIN_TAG,
 } from "@al-ft/midgard-core";
-import { DataB } from "@harmoniclabs/plutus-data";
 import {
   BnCEK,
   CEKConst,
@@ -50,6 +49,7 @@ import { MIDGARD_CEK_PINNED_PLUTUS_V3_BUILTIN_COSTS } from "./cek-cost.js";
 import { commitMidgardCekDataTree } from "./cek-data-tree.js";
 import { plutusDataFromCborIterative } from "./plutus-data-iterative.decode.js";
 import { ConstTyTag, UPLCConst } from "./uplc-constant.js";
+import { DataB } from "./uplc-data.js";
 
 /** Runs Cardano's builtin `tag` (flat numbering) in the reference evaluator. */
 export const runPinnedReferenceBuiltin = (

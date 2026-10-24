@@ -1,12 +1,3 @@
-import {
-  type Data,
-  DataB,
-  DataConstr,
-  DataI,
-  DataList,
-  DataMap,
-  DataPair,
-} from "@harmoniclabs/plutus-data";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -20,6 +11,15 @@ import {
   type MidgardCekConstantType,
   midgardCekConstantTypeFlatSize,
 } from "../src/cek-constant.js";
+import {
+  type Data,
+  DataB,
+  DataConstr,
+  DataI,
+  DataList,
+  DataMap,
+  DataPair,
+} from "../src/uplc-data.js";
 
 const bytes = (hex: string): DataB => new DataB(Buffer.from(hex, "hex"));
 const tokens = (...entries: [string, bigint][]): DataMap<Data, Data> =>

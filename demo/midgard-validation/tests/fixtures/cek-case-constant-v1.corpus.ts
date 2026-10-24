@@ -19,17 +19,10 @@
  * Midgard halt reason that the failing step must prove.
  */
 
-import { type Data, DataConstr, DataI } from "@harmoniclabs/plutus-data";
-import {
-  Case,
-  constT,
-  Lambda,
-  UPLCConst,
-  type UPLCTerm,
-  UPLCVar,
-} from "@harmoniclabs/uplc";
-
 import type { MidgardCekConstantType } from "../../src/cek-constant.js";
+import { constT, UPLCConst } from "../../src/uplc-constant.js";
+import { type Data, DataConstr, DataI } from "../../src/uplc-data.js";
+import { Case, Lambda, type UPLCTerm, UPLCVar } from "../../src/uplc-term.js";
 
 export type CaseConstantExpectation =
   | {

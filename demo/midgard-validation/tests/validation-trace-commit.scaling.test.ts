@@ -1,4 +1,4 @@
-import { UPLCConst, UPLCProgram } from "@harmoniclabs/uplc";
+import { UPLCConst } from "@harmoniclabs/uplc";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -7,6 +7,7 @@ import {
   commitValidationTraceV1,
   type ValidationMachineReplayInput,
 } from "../src/index.js";
+import { UPLCProgram } from "../src/uplc-term.js";
 import {
   MIDGARD_CEK_ADVERSARIAL_HALF_CAP_SIZES,
   MIDGARD_CEK_ADVERSARIAL_SHAPES,

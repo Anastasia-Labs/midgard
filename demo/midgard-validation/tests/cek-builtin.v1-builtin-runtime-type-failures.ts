@@ -4,8 +4,6 @@ import {
   MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
   MIDGARD_CEK_EMPTY_SEQUENCE_ROOT,
 } from "@al-ft/midgard-core";
-import { DataB, DataI, DataList } from "@harmoniclabs/plutus-data";
-import { UPLCConst } from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -16,6 +14,8 @@ import {
   verifyMidgardCekBuiltinTypeFailure,
 } from "../src/cek-builtin.js";
 import { midgardCekConstantWitnessFromUplc } from "../src/cek-constant.js";
+import { UPLCConst } from "../src/uplc-constant.js";
+import { DataB, DataI, DataList } from "../src/uplc-data.js";
 
 export const hash = (fill: number): Buffer => Buffer.alloc(32, fill);
 

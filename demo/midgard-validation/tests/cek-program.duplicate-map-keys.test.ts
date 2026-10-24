@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import { encodeMidgardCekPlutusData } from "../src/cek-constant.js";
 import { commitMidgardCekDataTree } from "../src/cek-data-tree.js";
 import { buildMidgardCanonicalScriptArtifact } from "../src/cek-program.js";
+import { DataI, DataMap, DataPair } from "../src/uplc-data.js";
 import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 
 /**
@@ -26,7 +27,10 @@ const DUPLICATE_KEY_MAP_FLAT = "0101004c0105a2010201030001";
 
 describe("a CEK Data constant with a duplicate map key", () => {
   it("commits every entry to the on-chain root", () => {
-    const value = dataFromCbor(DUPLICATE_KEY_MAP_CBOR);
+    const value = new DataMap([
+      new DataPair(new DataI(1), new DataI(2)),
+      new DataPair(new DataI(1), new DataI(3)),
+    ]);
     expect(encodeMidgardCekPlutusData(value).toString("hex")).toBe(
       DUPLICATE_KEY_MAP_CBOR,
     );

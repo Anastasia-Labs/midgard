@@ -145,6 +145,12 @@
       "import": "./dist/types.js",
       "require": "./dist/types.cjs"
     },
+    "./uplc": {
+      "midgard-source": "./src/uplc.ts",
+      "types": "./dist/uplc.d.ts",
+      "import": "./dist/uplc.js",
+      "require": "./dist/uplc.cjs"
+    },
     "./tests/forced-native-first-fault-fixture": {
       "midgard-source": "./tests/forced-native-first-fault.fixture.ts"
     }
@@ -246,6 +252,7 @@
             "src/script-source.ts",
             "src/tx-out-ref.ts",
             "src/types.ts",
+            "src/uplc.ts",
             "src/validation-dispute-evidence.ts",
             "src/validation-machine/index.ts",
             "--format",

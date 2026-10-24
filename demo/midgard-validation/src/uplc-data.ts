@@ -35,6 +35,19 @@ export interface KV<DataKey extends Data, DataValue extends Data> {
   snd: DataValue;
 }
 
+/** A map entry as a class, for callers that build entries with `new`. */
+export class DataPair<DataKey extends Data, DataValue extends Data>
+  implements KV<DataKey, DataValue>
+{
+  fst: DataKey;
+  snd: DataValue;
+
+  constructor(fst: DataKey, snd: DataValue) {
+    this.fst = fst;
+    this.snd = snd;
+  }
+}
+
 /** Whether `value` is one of the five Data constructors (not recursive). */
 export const isData = (value: unknown): value is Data =>
   value instanceof DataConstr ||

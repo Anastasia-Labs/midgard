@@ -11,14 +11,6 @@ import {
   makeFuzzRng,
   randomPlutusDataCbor,
 } from "@al-ft/midgard-test-support/plutus-data-fuzz";
-import {
-  type Data,
-  DataB,
-  DataConstr,
-  DataI,
-  DataList,
-  DataMap,
-} from "@harmoniclabs/plutus-data";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -26,6 +18,14 @@ import {
   plutusDataFromCborIterative,
 } from "../src/plutus-data-iterative.decode.js";
 import { encodeMidgardCekPlutusData } from "../src/plutus-data-iterative.encode.js";
+import {
+  type Data,
+  DataB,
+  DataConstr,
+  DataI,
+  DataList,
+  DataMap,
+} from "../src/uplc-data.js";
 import {
   ENVELOPE_ONLY_VECTORS,
   ENVELOPE_REFUSED_VECTORS,

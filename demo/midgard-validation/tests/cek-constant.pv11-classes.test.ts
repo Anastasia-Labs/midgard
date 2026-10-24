@@ -5,13 +5,6 @@ import {
   midgardCekTermMinimumVersionMinor,
   type MidgardCekTermNode,
 } from "@al-ft/midgard-core";
-import {
-  type Data,
-  DataB,
-  DataConstr,
-  DataI,
-  DataList,
-} from "@harmoniclabs/plutus-data";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -20,6 +13,13 @@ import {
   type MidgardCekConstantType,
   midgardCekConstantTypeFlatSize,
 } from "../src/cek-constant.js";
+import {
+  type Data,
+  DataB,
+  DataConstr,
+  DataI,
+  DataList,
+} from "../src/uplc-data.js";
 
 const G1: MidgardCekConstantType = { kind: "blsG1" };
 const G2: MidgardCekConstantType = { kind: "blsG2" };

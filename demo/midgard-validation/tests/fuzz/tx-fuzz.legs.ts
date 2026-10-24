@@ -1,7 +1,6 @@
-import { dataFromCbor } from "@harmoniclabs/plutus-data";
-import { parseUPLC } from "@harmoniclabs/uplc";
 import { Effect, Either } from "effect";
 
+import { decodeMidgardCekCardanoFlatProgram } from "../../src/cek-program.cardano-flat.js";
 import {
   type LocalScriptEvalResult,
   type LocalScriptEvaluation,
@@ -10,6 +9,7 @@ import {
   type ValidationMachineReplayInput,
   ValidationTraceStopped,
 } from "../../src/index.js";
+import { plutusDataFromCborIterative } from "../../src/plutus-data-iterative.decode.js";
 import { buildDeterministicValidationMachineTrace } from "../helpers/trace-commit-golden.js";
 import { replayValidationMachineEvent } from "../validation-machine-event-replay.trace.js";
 import {
@@ -119,7 +119,9 @@ const referenceLeg = (
   divergences: string[],
   known: TxKnownClass[],
 ): void => {
-  const tags = builtinTagsOf(parseUPLC(scenario.scriptFlat, "flat").body);
+  const tags = builtinTagsOf(
+    decodeMidgardCekCardanoFlatProgram(scenario.scriptFlat).body,
+  );
   if (CARDANO_RENUMBERED_BLS_TAGS.some((tag) => tags.has(tag))) {
     known.push("blsTagNumbering");
     return;
@@ -252,8 +254,10 @@ export const runTxCase = async (
       steps = prepareExecution(
         {
           label: scenario.label,
-          term: parseUPLC(scenario.scriptFlat, "flat").body,
-          context: dataFromCbor(proofEvaluations[0]!.contextCbor),
+          term: decodeMidgardCekCardanoFlatProgram(scenario.scriptFlat).body,
+          context: plutusDataFromCborIterative(
+            proofEvaluations[0]!.contextCbor,
+          ),
           tightBudget: false,
         },
         execution,

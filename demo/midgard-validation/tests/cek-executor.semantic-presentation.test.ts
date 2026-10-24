@@ -1,12 +1,3 @@
-import {
-  type Data,
-  DataConstr,
-  DataI,
-  DataList,
-  DataMap,
-  DataPair,
-} from "@harmoniclabs/plutus-data";
-import { Builtin, constT, UPLCConst, type UPLCTerm } from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
 import { commitMidgardCekDataTree } from "../src/cek-data-tree.js";
@@ -16,6 +7,16 @@ import {
   MIDGARD_CEK_REVEALED_ITEM_MEMORY,
   midgardCekRevealIsCostly,
 } from "../src/cek-executor.reveal-cost.js";
+import { constT, UPLCConst } from "../src/uplc-constant.js";
+import {
+  type Data,
+  DataConstr,
+  DataI,
+  DataList,
+  DataMap,
+  DataPair,
+} from "../src/uplc-data.js";
+import { type UPLCTerm } from "../src/uplc-term.js";
 import {
   apply,
   data,
@@ -28,6 +29,7 @@ import {
   unit,
 } from "./cek-executor.semantic-presentation.shapes.js";
 import VECTORS from "./fixtures/cek-builtin-step-evidence-vectors.json" with { type: "json" };
+import { builtin } from "./helpers/uplc-builtins.js";
 
 // A semantic builtin step (tags 29 to 50 except mapData and unMapData)
 // presents each Data argument, each list or pair argument whose memory the
@@ -50,23 +52,25 @@ const MAX_SHAPES: readonly {
     pinned: "max_snd_pair_9200",
     term: () =>
       apply(
-        forced(Builtin.sndPair, 2),
+        forced(builtin("sndPair"), 2),
         pairData(new DataI(0n), new DataList(ints(MAX_ITEMS))),
       ),
   },
   {
     name: "headList",
-    term: () => apply(forced(Builtin.headList, 1), listData(ints(MAX_ITEMS))),
+    term: () =>
+      apply(forced(builtin("headList"), 1), listData(ints(MAX_ITEMS))),
   },
   {
     name: "tailList",
-    term: () => apply(forced(Builtin.tailList, 1), listData(ints(MAX_ITEMS))),
+    term: () =>
+      apply(forced(builtin("tailList"), 1), listData(ints(MAX_ITEMS))),
   },
   {
     name: "tailList over integers",
     term: () =>
       apply(
-        forced(Builtin.tailList, 1),
+        forced(builtin("tailList"), 1),
         UPLCConst.listOf(constT.int)(
           ints(MAX_ITEMS).map((item) => item.int) as never,
         ),
@@ -77,7 +81,7 @@ const MAX_SHAPES: readonly {
     pinned: "max_mk_cons_data_9200",
     term: () =>
       apply(
-        forced(Builtin.mkCons, 1),
+        forced(builtin("mkCons"), 1),
         data(new DataI(0n)),
         listData(ints(MAX_ITEMS)),
       ),
@@ -86,7 +90,7 @@ const MAX_SHAPES: readonly {
     name: "chooseData",
     term: () =>
       apply(
-        forced(Builtin.chooseData, 1),
+        forced(builtin("chooseData"), 1),
         data(new DataList(ints(MAX_ITEMS))),
         unit,
         unit,
@@ -99,13 +103,13 @@ const MAX_SHAPES: readonly {
     name: "unConstrData",
     pinned: "max_un_constr_data_9200",
     term: () =>
-      apply(Builtin.unConstrData, data(new DataConstr(0n, ints(MAX_ITEMS)))),
+      apply(builtin("unConstrData"), data(new DataConstr(0n, ints(MAX_ITEMS)))),
   },
   {
     name: "equalsData",
     term: () =>
       apply(
-        Builtin.equalsData,
+        builtin("equalsData"),
         data(new DataList(ints(MAX_ITEMS))),
         data(new DataI(0n)),
       ),
@@ -114,14 +118,14 @@ const MAX_SHAPES: readonly {
     name: "mkPairData",
     term: () =>
       apply(
-        Builtin.mkPairData,
+        builtin("mkPairData"),
         data(new DataList(ints(MAX_ITEMS))),
         data(new DataI(0n)),
       ),
   },
   {
     name: "listData",
-    term: () => apply(Builtin.listData, listData(ints(MAX_ITEMS))),
+    term: () => apply(builtin("listData"), listData(ints(MAX_ITEMS))),
   },
 ];
 

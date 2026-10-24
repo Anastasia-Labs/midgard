@@ -3,6 +3,14 @@ import {
   type MidgardCekMachineState,
 } from "@al-ft/midgard-core";
 import { lucidDataToCborIterative } from "@al-ft/midgard-core/plutus-data-lucid-iterative";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+import {
+  midgardCekCoreStepWitnessData,
+  midgardCekMachineStateData,
+} from "../../src/cek-data.js";
+import { executeMidgardCekStructuralProgram } from "../../src/cek-executor.js";
+import { constT, UPLCConst } from "../../src/uplc-constant.js";
 import {
   type Data,
   DataB,
@@ -11,15 +19,8 @@ import {
   DataList,
   DataMap,
   DataPair,
-} from "@harmoniclabs/plutus-data";
-import { Builtin, constT, UPLCConst, type UPLCTerm } from "@harmoniclabs/uplc";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-
-import {
-  midgardCekCoreStepWitnessData,
-  midgardCekMachineStateData,
-} from "../../src/cek-data.js";
-import { executeMidgardCekStructuralProgram } from "../../src/cek-executor.js";
+} from "../../src/uplc-data.js";
+import { Builtin, type UPLCTerm } from "../../src/uplc-term.js";
 import {
   app,
   data,
@@ -30,6 +31,7 @@ import {
   prepareMidgardCekProgram,
   v,
 } from "../helpers/cek-uplc-terms.js";
+import { builtin } from "../helpers/uplc-builtins.js";
 import {
   type AikenStepOracle,
   makeAikenStepOracle,
@@ -87,55 +89,55 @@ const cases: readonly (readonly [
     lam(
       discard(
         app(
-          force(Builtin.headList as never),
-          app(Builtin.unListData as never, v(0)),
+          force(builtin("headList") as never),
+          app(builtin("unListData") as never, v(0)),
         ),
       ),
     ),
     inputs(1),
-    [Builtin.unListData, Builtin.headList],
+    [builtin("unListData"), builtin("headList")],
   ],
   [
     "unListData ctx over five inputs",
-    lam(discard(app(Builtin.unListData as never, v(0)))),
+    lam(discard(app(builtin("unListData") as never, v(0)))),
     inputs(5),
-    [Builtin.unListData],
+    [builtin("unListData")],
   ],
   [
     "unConstrData ctx over a sixteen-field record",
-    lam(discard(app(Builtin.unConstrData as never, v(0)))),
+    lam(discard(app(builtin("unConstrData") as never, v(0)))),
     constr(
       0n,
       Array.from({ length: 16 }, (_, index) => new DataList([txInInfo(index)])),
     ),
-    [Builtin.unConstrData],
+    [builtin("unConstrData")],
   ],
   [
     "listData of two eight-integer lists",
     lam(
       discard(
         app(
-          Builtin.listData as never,
+          builtin("listData") as never,
           dataList([new DataList(integers(8)), new DataList(integers(8))]),
         ),
       ),
     ),
     EMPTY_CONTEXT,
-    [Builtin.listData],
+    [builtin("listData")],
   ],
   [
     "mkCons onto a 64-integer list",
     lam(
       discard(
         app(
-          force(Builtin.mkCons as never),
+          force(builtin("mkCons") as never),
           data(new DataI(0n)),
           dataList(integers(64)),
         ),
       ),
     ),
     EMPTY_CONTEXT,
-    [Builtin.mkCons],
+    [builtin("mkCons")],
   ],
 ];
 

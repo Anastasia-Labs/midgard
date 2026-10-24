@@ -1,5 +1,3 @@
-import { DataB, DataI } from "@harmoniclabs/plutus-data";
-import { UPLCConst } from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -11,6 +9,8 @@ import {
   executeMidgardCekStructuralProgram,
   type MidgardCekExecutionStep,
 } from "../../src/cek-executor.js";
+import { UPLCConst } from "../../src/uplc-constant.js";
+import { DataB, DataI } from "../../src/uplc-data.js";
 import {
   lam,
   MIDGARD_CEK_TX_BUDGET,

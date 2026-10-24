@@ -1,5 +1,11 @@
 import { MIDGARD_CEK_MAX_SOURCE_CONSTANT_PAYLOAD_BYTES } from "@al-ft/midgard-core";
 import { encodeCborBytes } from "@al-ft/midgard-core/codec/cbor";
+
+import {
+  type ConstType,
+  ConstTyTag,
+  type ConstValue,
+} from "./uplc-constant.js";
 import {
   type Data,
   DataB,
@@ -7,13 +13,7 @@ import {
   DataI,
   DataList,
   isData,
-} from "@harmoniclabs/plutus-data";
-
-import {
-  type ConstType,
-  ConstTyTag,
-  type ConstValue,
-} from "./uplc-constant.js";
+} from "./uplc-data.js";
 
 export type MidgardCekConstantType =
   | { readonly kind: "integer" }

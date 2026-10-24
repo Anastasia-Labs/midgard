@@ -19,6 +19,11 @@ import {
   randomDataTree,
   randomPlutusDataCbor,
 } from "@al-ft/midgard-test-support/plutus-data-fuzz";
+import { describe, expect, it } from "vitest";
+
+import { plutusDataFromCborIterative } from "../src/plutus-data-iterative.decode.js";
+import { encodeMidgardCekPlutusData } from "../src/plutus-data-iterative.encode.js";
+import { midgardCekDataMemorySize } from "../src/plutus-data-iterative.memory.js";
 import {
   type Data,
   DataB,
@@ -26,12 +31,7 @@ import {
   DataI,
   DataList,
   DataMap,
-} from "@harmoniclabs/plutus-data";
-import { describe, expect, it } from "vitest";
-
-import { plutusDataFromCborIterative } from "../src/plutus-data-iterative.decode.js";
-import { encodeMidgardCekPlutusData } from "../src/plutus-data-iterative.encode.js";
-import { midgardCekDataMemorySize } from "../src/plutus-data-iterative.memory.js";
+} from "../src/uplc-data.js";
 import {
   PLUTUS_DATA_CARDANO_EDGE_VECTORS,
   REFUSED,

@@ -1,6 +1,4 @@
 import { hashMidgardCekBlsExpressionNode } from "@al-ft/midgard-core";
-import { DataB, DataConstr } from "@harmoniclabs/plutus-data";
-import { UPLCConst } from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -17,6 +15,8 @@ import {
   decodeMidgardCekConstantWitness,
   MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES,
 } from "../src/cek-constant.js";
+import { UPLCConst } from "../src/uplc-constant.js";
+import { DataB, DataConstr } from "../src/uplc-data.js";
 import {
   builtinRoot,
   direct,

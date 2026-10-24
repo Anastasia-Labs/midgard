@@ -5,17 +5,10 @@
  * `cek-case-constant-v1.corpus.ts`.
  */
 
-import { DataB, DataConstr, DataI, DataList } from "@harmoniclabs/plutus-data";
-import {
-  Application,
-  Builtin,
-  constT,
-  Delay,
-  Lambda,
-  UPLCConst,
-  UPLCVar,
-} from "@harmoniclabs/uplc";
-
+import { constT, UPLCConst } from "../../src/uplc-constant.js";
+import { DataB, DataConstr, DataI, DataList } from "../../src/uplc-data.js";
+import { Application, Delay, Lambda, UPLCVar } from "../../src/uplc-term.js";
+import { builtin } from "../helpers/uplc-builtins.js";
 import {
   bool,
   BRANCH_MISSING,
@@ -248,7 +241,7 @@ const EDGES: readonly CaseConstantCorpusEntry[] = [
     label: "unit-builtin-branch",
     source: UPLC_EVAL,
     uplc: "(case (con unit ()) (builtin addInteger))",
-    term: () => constCase(UPLCConst.unit, Builtin.addInteger),
+    term: () => constCase(UPLCConst.unit, builtin("addInteger")),
     expected: { kind: "builtin", tag: 0n, cpu: 48_100n, memory: 400n },
   },
   {
@@ -261,7 +254,7 @@ const EDGES: readonly CaseConstantCorpusEntry[] = [
         new Lambda(
           new Lambda(
             new Application(
-              new Application(Builtin.addInteger, new UPLCVar(1)),
+              new Application(builtin("addInteger"), new UPLCVar(1)),
               int(1),
             ),
           ),
@@ -281,8 +274,8 @@ export const WIDE_LIST = () =>
 export const WIDE_CONSTR = () => new DataConstr(5n, [filler(), filler()]);
 
 const ctx = () => new UPLCVar(0);
-const unListData = () => new Application(Builtin.unListData, ctx());
-const unConstrData = () => new Application(Builtin.unConstrData, ctx());
+const unListData = () => new Application(builtin("unListData"), ctx());
+const unConstrData = () => new Application(builtin("unConstrData"), ctx());
 /** The tail of `WIDE_LIST`, and the field list of `WIDE_CONSTR`. */
 const WIDE_TAIL = () => new DataList([filler(), filler()]);
 

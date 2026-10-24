@@ -1,14 +1,9 @@
 import { hashMidgardCekMachineState } from "@al-ft/midgard-core";
-import { DataB, DataConstr, DataI } from "@harmoniclabs/plutus-data";
 import {
-  Application,
-  Builtin,
   type ConstType,
   ConstTyTag,
-  UPLCConst,
   UPLCEncoder,
-  UPLCProgram,
-  type UPLCTerm,
+  type UPLCProgram as ReferenceUPLCProgram,
 } from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
@@ -28,6 +23,9 @@ import {
   midgardEnvelopeDataFromCborIterative,
   plutusDataFromCborIterative,
 } from "../src/plutus-data-iterative.decode.js";
+import { UPLCConst } from "../src/uplc-constant.js";
+import { DataB, DataConstr, DataI } from "../src/uplc-data.js";
+import { Application, UPLCProgram, type UPLCTerm } from "../src/uplc-term.js";
 import {
   CARDANO_BOUNDARY_CONSTANTS,
   CARDANO_BOUNDARY_REFUSED,
@@ -38,6 +36,7 @@ import {
   DATA_DECODER_ACCEPTED,
   DATA_DECODER_REFUSED,
 } from "./cek-program.data-constant-spelling.vectors.js";
+import { builtin } from "./helpers/uplc-builtins.js";
 import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 
 /**
@@ -71,7 +70,7 @@ class SpelledFlatEncoder extends UPLCEncoder {
 const spelledFlat = (term: UPLCTerm, spellings: readonly string[]): Buffer =>
   Buffer.from(
     new SpelledFlatEncoder(spellings.map(bytes)).compile(
-      new UPLCProgram([1, 1, 0], term),
+      new UPLCProgram([1, 1, 0], term) as unknown as ReferenceUPLCProgram,
     ),
   );
 
@@ -79,11 +78,11 @@ const canonicalFlat = (term: UPLCTerm): Buffer =>
   encodeMidgardCekCardanoFlatProgram(new UPLCProgram([1, 1, 0], term));
 
 const serialiseDataTerm = (): UPLCTerm =>
-  new Application(Builtin.serialiseData, UPLCConst.data(new DataI(0n)));
+  new Application(builtin("serialiseData"), UPLCConst.data(new DataI(0n)));
 
 const equalsDataTerm = (): UPLCTerm =>
   new Application(
-    new Application(Builtin.equalsData, UPLCConst.data(new DataI(0n))),
+    new Application(builtin("equalsData"), UPLCConst.data(new DataI(0n))),
     UPLCConst.data(new DataI(0n)),
   );
 
@@ -200,7 +199,7 @@ describe("Data constants spelled as the Cardano ledger accepts them", () => {
       expect(twin).toEqual(
         canonicalFlat(
           new Application(
-            Builtin.serialiseData,
+            builtin("serialiseData"),
             UPLCConst.data(plutusDataFromCborIterative(bytes(canonical))),
           ),
         ),

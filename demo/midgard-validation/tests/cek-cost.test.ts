@@ -1,10 +1,3 @@
-import {
-  DataB,
-  DataConstr,
-  DataI,
-  DataList,
-  DataMap,
-} from "@harmoniclabs/plutus-data";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -13,6 +6,13 @@ import {
   midgardCekIntegerMemorySize,
 } from "../src/cek-constant.js";
 import { computeMidgardCekBuiltinBudget } from "../src/cek-cost.js";
+import {
+  DataB,
+  DataConstr,
+  DataI,
+  DataList,
+  DataMap,
+} from "../src/uplc-data.js";
 
 describe("V1 pinned Plutus V3 builtin costs", () => {
   it("matches integer, byte-string, and BLS cost-model vectors", () => {

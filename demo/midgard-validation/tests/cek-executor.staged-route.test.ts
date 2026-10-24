@@ -1,18 +1,14 @@
 import { encodeCbor } from "@al-ft/midgard-core";
-import { DataB, DataConstr } from "@harmoniclabs/plutus-data";
-import {
-  Builtin,
-  UPLCConst,
-  UPLCEncoder,
-  UPLCProgram,
-  type UPLCTerm,
-} from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
 import type { MidgardCekExecutionStep } from "../src/cek-executor.build-midgard-cek-execution-graph.js";
 import { verifyMidgardCekCoreStep } from "../src/cek-machine.verify-builtin.js";
+import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
 import { stageMidgardCekStagedBuiltinMaterial } from "../src/cek-staged-builtin.material.js";
 import { evaluateMidgardCekScript } from "../src/phase-b.evaluate-cek-script.js";
+import { UPLCConst } from "../src/uplc-constant.js";
+import { DataB, DataConstr } from "../src/uplc-data.js";
+import { Builtin, UPLCProgram, type UPLCTerm } from "../src/uplc-term.js";
 import {
   app,
   discard,
@@ -21,6 +17,7 @@ import {
   prepareMidgardCekProgram,
   runMidgardCekProgram,
 } from "./helpers/cek-uplc-terms.js";
+import { builtin } from "./helpers/uplc-builtins.js";
 
 /**
  * A byte-string, string or linear integer builtin whose arguments or result
@@ -47,8 +44,8 @@ const text = (length: number, letter = "x"): UPLCTerm =>
   UPLCConst.str(letter.repeat(length));
 const int = (value: bigint): UPLCTerm => UPLCConst.int(value);
 
-const call = (builtin: Builtin, ...args: readonly UPLCTerm[]): UPLCTerm =>
-  app(builtin as never, ...args);
+const call = (function_: Builtin, ...args: readonly UPLCTerm[]): UPLCTerm =>
+  app(function_, ...args);
 
 /** `length` bytes, appended from pieces of at most 8,000 bytes. */
 const built = (length: number, salt = 0): UPLCTerm => {
@@ -56,7 +53,7 @@ const built = (length: number, salt = 0): UPLCTerm => {
     bytes(Math.min(PIECE, length - index * PIECE), salt + index),
   );
   return pieces.reduce((left, right) =>
-    call(Builtin.appendByteString, left, right),
+    call(builtin("appendByteString"), left, right),
   );
 };
 
@@ -66,7 +63,7 @@ const builtText = (length: number, letter = "x"): UPLCTerm => {
     text(Math.min(PIECE, length - index * PIECE), letter),
   );
   return pieces.reduce((left, right) =>
-    call(Builtin.appendString, left, right),
+    call(builtin("appendString"), left, right),
   );
 };
 
@@ -77,7 +74,9 @@ const wide = (size: number, low = 0n): bigint =>
 const script = (body: UPLCTerm): Buffer =>
   encodeCbor(
     Buffer.from(
-      UPLCEncoder.compile(new UPLCProgram([1, 1, 0], lam(discard(body)))),
+      encodeMidgardCekCardanoFlatProgram(
+        new UPLCProgram([1, 1, 0], lam(discard(body))),
+      ),
     ),
   );
 
@@ -120,102 +119,106 @@ const KECCAK = 71n;
 const honest: readonly (readonly [string, UPLCTerm, bigint])[] = [
   [
     "appendByteString whose result passes the direct bound",
-    call(Builtin.appendByteString, bytes(5_000), bytes(5_000, 1)),
+    call(builtin("appendByteString"), bytes(5_000), bytes(5_000, 1)),
     APPEND,
   ],
-  ["sha2_256 of 20,000 bytes", call(Builtin.sha2_256, built(20_000)), SHA2],
+  ["sha2_256 of 20,000 bytes", call(builtin("sha2_256"), built(20_000)), SHA2],
   [
     "sha2_256 at the 65,536-byte argument bound",
-    call(Builtin.sha2_256, built(65_536)),
+    call(builtin("sha2_256"), built(65_536)),
     SHA2,
   ],
   [
     "appendByteString of two 65,536-byte operands",
     call(
-      Builtin.lengthOfByteString,
-      call(Builtin.appendByteString, built(65_536), built(65_536, 5)),
+      builtin("lengthOfByteString"),
+      call(builtin("appendByteString"), built(65_536), built(65_536, 5)),
     ),
     LENGTH,
   ],
   [
     "blake2b_256 of 9,216 bytes",
-    call(Builtin.blake2b_256, built(9_216)),
+    call(builtin("blake2b_256"), built(9_216)),
     BLAKE2B,
   ],
-  ["keccak_256 of 9,216 bytes", call(Builtin.keccak_256, built(9_216)), KECCAK],
+  [
+    "keccak_256 of 9,216 bytes",
+    call(builtin("keccak_256"), built(9_216)),
+    KECCAK,
+  ],
   [
     "lengthOfByteString of 70,000 bytes",
-    call(Builtin.lengthOfByteString, built(70_000)),
+    call(builtin("lengthOfByteString"), built(70_000)),
     LENGTH,
   ],
   [
     "equalsByteString of equal 10,000-byte values",
-    call(Builtin.equalsByteString, built(10_000), built(10_000)),
+    call(builtin("equalsByteString"), built(10_000), built(10_000)),
     EQUALS_BYTES,
   ],
   [
     "lessThanByteString of 10,000-byte values",
-    call(Builtin.lessThanByteString, built(10_000), built(10_000, 1)),
+    call(builtin("lessThanByteString"), built(10_000), built(10_000, 1)),
     LESS_THAN_BYTES,
   ],
   [
     "consByteString onto 10,000 bytes",
-    call(Builtin.consByteString, int(65n), built(10_000)),
+    call(builtin("consByteString"), int(65n), built(10_000)),
     CONS,
   ],
   [
     "sliceByteString of 20,000 bytes",
-    call(Builtin.sliceByteString, int(100n), int(12_000n), built(20_000)),
+    call(builtin("sliceByteString"), int(100n), int(12_000n), built(20_000)),
     SLICE,
   ],
   [
     "indexByteString of 20,000 bytes",
-    call(Builtin.indexByteString, built(20_000), int(19_999n)),
+    call(builtin("indexByteString"), built(20_000), int(19_999n)),
     INDEX,
   ],
   [
     "appendString of 5,000-character strings",
-    call(Builtin.appendString, text(5_000), text(5_000, "y")),
+    call(builtin("appendString"), text(5_000), text(5_000, "y")),
     APPEND_STRING,
   ],
   [
     "equalsString of unequal 10,000-character strings",
-    call(Builtin.equalsString, builtText(10_000), builtText(10_000, "y")),
+    call(builtin("equalsString"), builtText(10_000), builtText(10_000, "y")),
     EQUALS_STRING,
   ],
   [
     "encodeUtf8 of 10,000 characters",
-    call(Builtin.encodeUtf8, builtText(10_000)),
+    call(builtin("encodeUtf8"), builtText(10_000)),
     ENCODE_UTF8,
   ],
   [
     "decodeUtf8 of 10,000 bytes",
-    call(Builtin.decodeUtf8, call(Builtin.encodeUtf8, builtText(10_000))),
+    call(builtin("decodeUtf8"), call(builtin("encodeUtf8"), builtText(10_000))),
     DECODE_UTF8,
   ],
   [
     "addInteger of 5,000-byte integers",
-    call(Builtin.addInteger, int(wide(5_000)), int(-wide(5_000, 7n))),
+    call(builtin("addInteger"), int(wide(5_000)), int(-wide(5_000, 7n))),
     ADD,
   ],
   [
     "subtractInteger of 5,000-byte integers",
-    call(Builtin.subtractInteger, int(wide(5_000)), int(-wide(5_000, 7n))),
+    call(builtin("subtractInteger"), int(wide(5_000)), int(-wide(5_000, 7n))),
     SUBTRACT,
   ],
   [
     "equalsInteger of equal 5,000-byte integers",
-    call(Builtin.equalsInteger, int(wide(5_000)), int(wide(5_000))),
+    call(builtin("equalsInteger"), int(wide(5_000)), int(wide(5_000))),
     EQUALS_INTEGER,
   ],
   [
     "lessThanInteger of 5,000-byte integers",
-    call(Builtin.lessThanInteger, int(wide(5_000)), int(wide(5_000, 1n))),
+    call(builtin("lessThanInteger"), int(wide(5_000)), int(wide(5_000, 1n))),
     LESS_THAN_INTEGER,
   ],
   [
     "lessThanEqualsInteger of 5,000-byte integers",
-    call(Builtin.lessThanEqualInteger, int(-wide(5_000)), int(wide(5_000))),
+    call(builtin("lessThanEqualInteger"), int(-wide(5_000)), int(wide(5_000))),
     LESS_THAN_EQUALS_INTEGER,
   ],
 ];
@@ -223,14 +226,14 @@ const honest: readonly (readonly [string, UPLCTerm, bigint])[] = [
 // Each case: its label and a script body whose staged step the staged arms
 // cannot certify.
 const unprovable: readonly (readonly [string, UPLCTerm])[] = [
-  ["sha2_256 of 65,537 bytes", call(Builtin.sha2_256, built(65_537))],
+  ["sha2_256 of 65,537 bytes", call(builtin("sha2_256"), built(65_537))],
   [
     "appendByteString onto 65,537 bytes",
-    call(Builtin.appendByteString, built(65_537), bytes(1)),
+    call(builtin("appendByteString"), built(65_537), bytes(1)),
   ],
   [
     "indexByteString past the end of 20,000 bytes",
-    call(Builtin.indexByteString, built(20_000), int(20_000n)),
+    call(builtin("indexByteString"), built(20_000), int(20_000n)),
   ],
 ];
 
@@ -283,7 +286,7 @@ describe("CEK scalar builtins past the direct carriage bound", () => {
 
   it("binds each staged step to its staged operands' bytes", () => {
     const [step] = stagedSteps(
-      run(call(Builtin.sha2_256, built(20_000)), "proof"),
+      run(call(builtin("sha2_256"), built(20_000)), "proof"),
     );
     const witness = staged(step!, 9);
     const operand = Buffer.from(witness.stagedOperands[0]!);
@@ -298,7 +301,7 @@ describe("CEK scalar builtins past the direct carriage bound", () => {
 
   it("keeps a builtin whose arguments and result fit on the direct route", () => {
     const proof = run(
-      call(Builtin.appendByteString, bytes(2_000), bytes(2_000)),
+      call(builtin("appendByteString"), bytes(2_000), bytes(2_000)),
       "proof",
     );
     expect(proof.result.kind).toBe("accepted");

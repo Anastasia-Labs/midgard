@@ -4,11 +4,10 @@
  * `withDecodedUni`, Default/Universe.hs:1098-1122), then the value
  * (`decodeDefaultUniValue`, Default/Universe.hs:168-187).
  */
-import { type Data } from "@harmoniclabs/plutus-data";
-
 import type { CardanoFlatReader } from "./cek-program.cardano-flat.reader.js";
 import { plutusDataFirstItemFromCborIterative } from "./plutus-data-iterative.decode.js";
 import { type ConstType, ConstTyTag, UPLCConst } from "./uplc-constant.js";
+import { type Data } from "./uplc-data.js";
 import { ErrorUPLC, type UPLCTerm } from "./uplc-term.js";
 
 /** `mbHeader` at protocol version 11 (Versions.hs:397-401). */

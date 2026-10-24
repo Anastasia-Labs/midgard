@@ -1,14 +1,3 @@
-import { DataB, DataI } from "@harmoniclabs/plutus-data";
-import {
-  Application,
-  Builtin,
-  constT,
-  type ConstType,
-  Force,
-  Lambda,
-  UPLCConst,
-  UPLCProgram,
-} from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -25,8 +14,12 @@ import {
   verifyMidgardCekCoreStep,
 } from "../src/cek-machine.js";
 import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
+import { constT, type ConstType, UPLCConst } from "../src/uplc-constant.js";
+import { DataB, DataI } from "../src/uplc-data.js";
+import { Application, Force, Lambda, UPLCProgram } from "../src/uplc-term.js";
 import { listConstructSemanticWitness } from "./cek-machine.list-construct-witness.js";
 import VECTORS from "./fixtures/cek-builtin-step-evidence-vectors.json" with { type: "json" };
+import { builtin } from "./helpers/uplc-builtins.js";
 import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 
 // mkCons (32) is proved as a semantic step only over a list whose element
@@ -172,7 +165,7 @@ const mkConsStep = (element: MidgardCekConstantType) => {
         new Application(
           new Lambda(UPLCConst.unit),
           new Application(
-            new Application(new Force(Builtin.mkCons), item),
+            new Application(new Force(builtin("mkCons")), item),
             list,
           ),
         ),

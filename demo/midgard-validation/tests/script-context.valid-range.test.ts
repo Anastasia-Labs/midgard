@@ -2,15 +2,10 @@ import {
   type L1SlotConfig,
   NAMED_NETWORK_L1_SLOT_CONFIGS,
 } from "@al-ft/midgard-core/l1-slot-config";
-import {
-  type Data,
-  DataConstr,
-  DataI,
-  dataToCbor,
-} from "@harmoniclabs/plutus-data";
 import { slotToUnixTime } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { encodeMidgardCekPlutusData } from "../src/cek-constant.js";
 import type { MidgardLedgerRedeemer } from "../src/ledger-tx/types.js";
 import type { MidgardScriptPurpose } from "../src/midgard-redeemers.js";
 import {
@@ -18,6 +13,7 @@ import {
   buildPlutusV3ScriptContext,
   type ScriptContextView,
 } from "../src/script-context.js";
+import { type Data, DataConstr, DataI } from "../src/uplc-data.js";
 import { outRefFromByte } from "./validation-fixtures.js";
 
 // A committed body carries its validity interval in L1 slots; a script sees
@@ -246,8 +242,8 @@ describe.each(builders)(
           ...("end" in golden ? { end: golden.end } : {}),
         };
         expect(
-          Buffer.from(
-            dataToCbor(build(view(interval, GOLDEN_SLOT_CONFIG))!),
+          encodeMidgardCekPlutusData(
+            build(view(interval, GOLDEN_SLOT_CONFIG))!,
           ).toString("hex"),
         ).toBe(golden.cbor);
       },

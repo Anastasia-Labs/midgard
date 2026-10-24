@@ -6,7 +6,6 @@ import {
   MIDGARD_CEK_EMPTY_SEQUENCE_ROOT,
   type MidgardCekMachineState,
 } from "@al-ft/midgard-core";
-import { DataConstr, DataI, DataList } from "@harmoniclabs/plutus-data";
 
 import { type MidgardCekDirectValueWitness } from "./cek-builtin.js";
 import {
@@ -34,6 +33,7 @@ import {
   semanticSummary,
 } from "./cek-machine.verify-semantic-builtin-control.js";
 import { semanticListHeadAndTail } from "./cek-machine.verify-semantic-list.js";
+import { DataConstr, DataI, DataList } from "./uplc-data.js";
 
 /**
  * Where `case` sends a constant scrutinee under the protocol version 11

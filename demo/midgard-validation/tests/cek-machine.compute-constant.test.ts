@@ -1,11 +1,3 @@
-import {
-  type Data,
-  DataB,
-  DataConstr,
-  DataI,
-  DataList,
-} from "@harmoniclabs/plutus-data";
-import { UPLCConst } from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
 import { verifyMidgardCekCoreStep } from "../src/cek-machine.js";
@@ -13,6 +5,14 @@ import {
   encodeMidgardCekCanonicalConstant,
   MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES,
 } from "../src/index.js";
+import { UPLCConst } from "../src/uplc-constant.js";
+import {
+  type Data,
+  DataB,
+  DataConstr,
+  DataI,
+  DataList,
+} from "../src/uplc-data.js";
 import {
   discard,
   lam,

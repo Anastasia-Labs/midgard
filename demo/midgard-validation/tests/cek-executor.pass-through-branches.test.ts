@@ -1,14 +1,3 @@
-import { DataI } from "@harmoniclabs/plutus-data";
-import {
-  Application,
-  Builtin,
-  constT,
-  Force,
-  Lambda,
-  UPLCConst,
-  UPLCProgram,
-  type UPLCTerm,
-} from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -25,6 +14,16 @@ import {
   verifyMidgardCekCoreStep,
 } from "../src/cek-machine.js";
 import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
+import { constT, UPLCConst } from "../src/uplc-constant.js";
+import { DataI } from "../src/uplc-data.js";
+import {
+  Application,
+  Force,
+  Lambda,
+  UPLCProgram,
+  type UPLCTerm,
+} from "../src/uplc-term.js";
+import { builtin } from "./helpers/uplc-builtins.js";
 import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 
 type BuiltinWitness = Extract<
@@ -114,7 +113,7 @@ const cases = [
     name: "ifThenElse",
     tag: 26n,
     term: apply(
-      new Force(Builtin.ifThenElse),
+      new Force(builtin("ifThenElse")),
       UPLCConst.bool(true),
       wide,
       narrow(1),
@@ -124,20 +123,20 @@ const cases = [
   {
     name: "chooseUnit",
     tag: 27n,
-    term: apply(new Force(Builtin.chooseUnit), UPLCConst.unit, wide),
+    term: apply(new Force(builtin("chooseUnit")), UPLCConst.unit, wide),
     selected: 1,
   },
   {
     name: "trace",
     tag: 28n,
-    term: apply(new Force(Builtin.trace), UPLCConst.str("m"), wide),
+    term: apply(new Force(builtin("trace")), UPLCConst.str("m"), wide),
     selected: 1,
   },
   {
     name: "chooseList",
     tag: 31n,
     term: apply(
-      new Force(new Force(Builtin.chooseList)),
+      new Force(new Force(builtin("chooseList"))),
       UPLCConst.listOf(constT.int)([]),
       wide,
       narrow(1),
@@ -148,7 +147,7 @@ const cases = [
     name: "chooseData",
     tag: 36n,
     term: apply(
-      new Force(Builtin.chooseData),
+      new Force(builtin("chooseData")),
       UPLCConst.data(new DataI(1n)),
       narrow(1),
       narrow(2),

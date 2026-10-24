@@ -11,16 +11,6 @@ import {
   hashMidgardCekBlsExpressionNode,
   MIDGARD_CEK_MAX_RESOLVED_BUILTIN_TAG,
 } from "@al-ft/midgard-core";
-import {
-  type Data,
-  DataB,
-  DataConstr,
-  DataI,
-  DataList,
-  DataMap,
-  DataPair,
-} from "@harmoniclabs/plutus-data";
-import { UPLCConst } from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -37,6 +27,16 @@ import {
   type MidgardCekConstantWitness,
   midgardCekConstantWitnessFromUplc,
 } from "../src/cek-constant.js";
+import { UPLCConst } from "../src/uplc-constant.js";
+import {
+  type Data,
+  DataB,
+  DataConstr,
+  DataI,
+  DataList,
+  DataMap,
+  DataPair,
+} from "../src/uplc-data.js";
 
 type FixtureType =
   | "int"

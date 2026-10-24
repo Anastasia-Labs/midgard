@@ -3,7 +3,12 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { dataFromCbor } from "@harmoniclabs/plutus-data";
+import {
+  decodeMidgardCekCardanoFlatProgram,
+  encodeMidgardCekCardanoFlatProgram,
+} from "../../src/cek-program.cardano-flat.js";
+import { plutusDataFromCborIterative } from "../../src/plutus-data-iterative.decode.js";
+import { UPLCConst } from "../../src/uplc-constant.js";
 import {
   Application,
   Builtin,
@@ -12,13 +17,9 @@ import {
   Delay,
   Force,
   Lambda,
-  parseUPLC,
-  UPLCConst,
   UPLCProgram,
   type UPLCTerm,
-} from "@harmoniclabs/uplc";
-
-import { encodeMidgardCekCardanoFlatProgram } from "../../src/cek-program.cardano-flat.js";
+} from "../../src/uplc-term.js";
 import { aikenBinary } from "./cek-step-fuzz.oracle.js";
 
 /**
@@ -65,8 +66,8 @@ export const appliedProgramFlat = (
     new UPLCProgram(
       [1, 1, 0],
       new Application(
-        parseUPLC(scriptFlat, "flat").body,
-        UPLCConst.data(dataFromCbor(contextCbor)),
+        decodeMidgardCekCardanoFlatProgram(scriptFlat).body,
+        UPLCConst.data(plutusDataFromCborIterative(contextCbor)),
       ),
     ),
   );

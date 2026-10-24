@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { hashMidgardCekMachineState } from "@al-ft/midgard-core";
-import { Builtin, constT, UPLCConst, type UPLCTerm } from "@harmoniclabs/uplc";
+import { constT, UPLCConst } from "@harmoniclabs/uplc";
 
 import { encodeMidgardCekCoreStepDataCbor } from "../../src/cek-data.js";
 import {
@@ -9,6 +9,7 @@ import {
   type MidgardCekStructuralExecution,
   type MidgardCekStructuralVerdict,
 } from "../../src/cek-executor.js";
+import { type UPLCTerm } from "../../src/uplc-term.js";
 import {
   MIDGARD_CEK_ADVERSARIAL_SHAPES,
   prepareMidgardCekShape,
@@ -66,6 +67,7 @@ import {
   v,
   walkList,
 } from "./cek-uplc-terms.js";
+import { builtin } from "./uplc-builtins.js";
 
 /**
  * A corpus of CEK programs for comparing two structural executors step by
@@ -173,7 +175,10 @@ const grownLargeCases = (): MidgardCekDifferentialCase[] => [
       countdown(
         140,
         emptyDataList(),
-        mkCons(bData(app(Builtin.consByteString, v(1), bytesConst(69))), v(0)),
+        mkCons(
+          bData(app(builtin("consByteString"), v(1), bytesConst(69))),
+          v(0),
+        ),
       ),
       listWorkout(),
     ),

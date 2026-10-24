@@ -1,11 +1,4 @@
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import {
-  type Data,
-  DataB,
-  DataConstr,
-  DataI,
-  DataMap,
-} from "@harmoniclabs/plutus-data";
 import { describe, expect, it } from "vitest";
 
 import type { MidgardLedgerRedeemer } from "../src/ledger-tx/types.js";
@@ -15,6 +8,13 @@ import {
   buildPlutusV3ScriptContext,
   type ScriptContextView,
 } from "../src/script-context.js";
+import {
+  type Data,
+  DataB,
+  DataConstr,
+  DataI,
+  DataMap,
+} from "../src/uplc-data.js";
 import { outRefFromByte } from "./validation-fixtures.js";
 
 // Ruling 1: a Midgard receiving script's redeemer is part of the MidgardV1

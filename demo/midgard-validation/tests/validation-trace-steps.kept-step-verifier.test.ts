@@ -1,5 +1,3 @@
-import { DataB } from "@harmoniclabs/plutus-data";
-import { Builtin, UPLCConst } from "@harmoniclabs/uplc";
 import { Effect } from "effect";
 import { beforeAll, describe, expect, it } from "vitest";
 
@@ -7,11 +5,14 @@ import {
   openValidationTraceStepsV1,
   type ValidationMachineReplayInput,
 } from "../src/index.js";
+import { UPLCConst } from "../src/uplc-constant.js";
+import { DataB } from "../src/uplc-data.js";
 import { app, discard } from "./helpers/cek-uplc-terms.js";
 import {
   MIDGARD_TX_EX_UNITS_CAP,
   plutusV3SpendInput,
 } from "./helpers/plutus-spend-input.js";
+import { builtin } from "./helpers/uplc-builtins.js";
 import {
   claimedRejected,
   plutusProgram,
@@ -39,7 +40,7 @@ describe("openValidationTraceStepsV1: kept CEK steps pass the consensus verifier
         plutusProgram(
           discard(
             app(
-              Builtin.appendByteString,
+              builtin("appendByteString"),
               UPLCConst.byteString(
                 new DataB(new Uint8Array(LARGE).fill(7)).bytes,
               ),

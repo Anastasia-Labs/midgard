@@ -1,8 +1,9 @@
-import { type Data, DataConstr, DataI } from "@harmoniclabs/plutus-data";
-import { Builtin, constT, UPLCConst, type UPLCTerm } from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
 import { executeMidgardCekStructuralProgram } from "../src/cek-executor.js";
+import { constT, UPLCConst } from "../src/uplc-constant.js";
+import { type Data, DataConstr, DataI } from "../src/uplc-data.js";
+import { Builtin, type UPLCTerm } from "../src/uplc-term.js";
 import {
   app,
   discard,
@@ -11,6 +12,7 @@ import {
   MIDGARD_CEK_TX_BUDGET,
   prepareMidgardCekProgram,
 } from "./helpers/cek-uplc-terms.js";
+import { builtin } from "./helpers/uplc-builtins.js";
 
 /**
  * A source constant whose direct form is costly for the on-chain verifier
@@ -43,8 +45,8 @@ const dataPairs = UPLCConst.listOf(constT.pairOf(constT.data, constT.data))(
   ) as never,
 );
 
-const reading = (builtin: Builtin, constant: UPLCTerm): UPLCTerm =>
-  lam(discard(app(force(builtin as never), constant)));
+const reading = (reader: Builtin, constant: UPLCTerm): UPLCTerm =>
+  lam(discard(app(force(reader), constant)));
 
 const run = (script: UPLCTerm) => {
   const prepared = prepareMidgardCekProgram(script, CONTEXT);
@@ -69,17 +71,23 @@ const builtinArgumentKinds = (script: UPLCTerm): string[] => {
 };
 
 const semantic: readonly (readonly [string, UPLCTerm])[] = [
-  ["headList of a Data list", reading(Builtin.headList, dataList)],
-  ["tailList of a Data list", reading(Builtin.tailList, dataList)],
-  ["headList of a Data pair list", reading(Builtin.headList, dataPairs)],
-  ["tailList of an integer list", reading(Builtin.tailList, integerList)],
+  ["headList of a Data list", reading(builtin("headList"), dataList)],
+  ["tailList of a Data list", reading(builtin("tailList"), dataList)],
+  ["headList of a Data pair list", reading(builtin("headList"), dataPairs)],
+  ["tailList of an integer list", reading(builtin("tailList"), integerList)],
 ];
 
 const direct: readonly (readonly [string, UPLCTerm])[] = [
-  ["headList of a Data-integer pair list", reading(Builtin.headList, pairList)],
-  ["tailList of a Data-integer pair list", reading(Builtin.tailList, pairList)],
-  ["headList of a list of Data lists", reading(Builtin.headList, listList)],
-  ["tailList of a list of Data lists", reading(Builtin.tailList, listList)],
+  [
+    "headList of a Data-integer pair list",
+    reading(builtin("headList"), pairList),
+  ],
+  [
+    "tailList of a Data-integer pair list",
+    reading(builtin("tailList"), pairList),
+  ],
+  ["headList of a list of Data lists", reading(builtin("headList"), listList)],
+  ["tailList of a list of Data lists", reading(builtin("tailList"), listList)],
 ];
 
 describe("CEK source constants chosen by on-chain cost", () => {

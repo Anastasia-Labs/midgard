@@ -1,3 +1,5 @@
+import { encodeMidgardCekPlutusData } from "../../src/cek-constant.js";
+import { constT, UPLCConst } from "../../src/uplc-constant.js";
 import {
   type Data,
   DataB,
@@ -6,10 +8,8 @@ import {
   DataList,
   DataMap,
   DataPair,
-} from "@harmoniclabs/plutus-data";
-import { Builtin, constT, UPLCConst, type UPLCTerm } from "@harmoniclabs/uplc";
-
-import { encodeMidgardCekPlutusData } from "../../src/cek-constant.js";
+} from "../../src/uplc-data.js";
+import { type UPLCTerm } from "../../src/uplc-term.js";
 import {
   app,
   force,
@@ -18,6 +18,7 @@ import {
   type MidgardCekPreparedProgram,
   prepareMidgardCekProgram,
 } from "./cek-uplc-terms.js";
+import { builtin } from "./uplc-builtins.js";
 
 /** The bound on a direct constant witness payload, in bytes. */
 export const DIRECT_BOUND = 9_215;
@@ -92,33 +93,43 @@ export const chooseList = (
   whenEmpty: UPLCTerm,
   otherwise: UPLCTerm,
 ): UPLCTerm =>
-  app(force(force(Builtin.chooseList)), list, whenEmpty, otherwise);
+  app(force(force(builtin("chooseList"))), list, whenEmpty, otherwise);
 export const chooseData = (value: UPLCTerm): UPLCTerm =>
-  app(force(Builtin.chooseData), value, int(0), int(1), int(2), int(3), int(4));
+  app(
+    force(builtin("chooseData")),
+    value,
+    int(0),
+    int(1),
+    int(2),
+    int(3),
+    int(4),
+  );
 export const listData = (list: UPLCTerm): UPLCTerm =>
-  app(Builtin.listData, list);
+  app(builtin("listData"), list);
 export const unListData = (value: UPLCTerm): UPLCTerm =>
-  app(Builtin.unListData, value);
+  app(builtin("unListData"), value);
 export const constrData = (index: UPLCTerm, fields: UPLCTerm): UPLCTerm =>
-  app(Builtin.constrData, index, fields);
+  app(builtin("constrData"), index, fields);
 export const unConstrData = (value: UPLCTerm): UPLCTerm =>
-  app(Builtin.unConstrData, value);
+  app(builtin("unConstrData"), value);
 export const mapData = (pairs: UPLCTerm): UPLCTerm =>
-  app(Builtin.mapData, pairs);
+  app(builtin("mapData"), pairs);
 export const unMapData = (value: UPLCTerm): UPLCTerm =>
-  app(Builtin.unMapData, value);
+  app(builtin("unMapData"), value);
 export const mkPairData = (first: UPLCTerm, second: UPLCTerm): UPLCTerm =>
-  app(Builtin.mkPairData, first, second);
+  app(builtin("mkPairData"), first, second);
 export const equalsData = (left: UPLCTerm, right: UPLCTerm): UPLCTerm =>
-  app(Builtin.equalsData, left, right);
+  app(builtin("equalsData"), left, right);
 export const serialiseData = (value: UPLCTerm): UPLCTerm =>
-  app(Builtin.serialiseData, value);
-export const iData = (value: UPLCTerm): UPLCTerm => app(Builtin.iData, value);
-export const bData = (value: UPLCTerm): UPLCTerm => app(Builtin.bData, value);
+  app(builtin("serialiseData"), value);
+export const iData = (value: UPLCTerm): UPLCTerm =>
+  app(builtin("iData"), value);
+export const bData = (value: UPLCTerm): UPLCTerm =>
+  app(builtin("bData"), value);
 export const unIData = (value: UPLCTerm): UPLCTerm =>
-  app(Builtin.unIData, value);
+  app(builtin("unIData"), value);
 export const unBData = (value: UPLCTerm): UPLCTerm =>
-  app(Builtin.unBData, value);
+  app(builtin("unBData"), value);
 export const letIn = (value: UPLCTerm, body: UPLCTerm): UPLCTerm =>
   app(lam(body), value);
 

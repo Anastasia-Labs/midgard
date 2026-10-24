@@ -1,4 +1,3 @@
-import { DataB, DataConstr, DataI } from "@harmoniclabs/plutus-data";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -19,6 +18,7 @@ import {
   midgardEnvelopeDataFromCborIterative,
   plutusDataFromCborIterative,
 } from "../src/plutus-data-iterative.decode.js";
+import { DataB, DataConstr, DataI } from "../src/uplc-data.js";
 import {
   EMPTY_BYTES_CONSTANTS,
   EMPTY_BYTES_REFUSED,

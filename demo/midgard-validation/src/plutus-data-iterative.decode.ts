@@ -6,7 +6,7 @@ import {
   DataList,
   DataMap,
   type KV,
-} from "@harmoniclabs/plutus-data";
+} from "./uplc-data.js";
 
 /**
  * CBOR -> harmonic `Data` without recursion, decoding exactly as the Cardano

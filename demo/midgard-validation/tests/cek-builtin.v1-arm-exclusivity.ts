@@ -1,5 +1,3 @@
-import { DataB, DataI, DataMap, DataPair } from "@harmoniclabs/plutus-data";
-import { UPLCConst } from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -11,6 +9,8 @@ import {
   verifyMidgardCekDirectBuiltin,
   verifyMidgardCekDirectBuiltinFailure,
 } from "../src/cek-builtin.js";
+import { UPLCConst } from "../src/uplc-constant.js";
+import { DataB, DataI, DataMap, DataPair } from "../src/uplc-data.js";
 import {
   direct,
   directBuiltinRoot,

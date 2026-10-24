@@ -1,13 +1,8 @@
-import {
-  type Data,
-  DataConstr,
-  DataI,
-  DataList,
-} from "@harmoniclabs/plutus-data";
-import { Builtin, type UPLCTerm } from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
 import { verifyMidgardCekCoreStep } from "../src/cek-machine.js";
+import { type Data, DataConstr, DataI, DataList } from "../src/uplc-data.js";
+import { type UPLCTerm } from "../src/uplc-term.js";
 import {
   app,
   data,
@@ -17,6 +12,7 @@ import {
   runMidgardCekProgram,
   v,
 } from "./helpers/cek-uplc-terms.js";
+import { builtin } from "./helpers/uplc-builtins.js";
 
 /**
  * A source constant and the script context share a value root when their
@@ -40,7 +36,7 @@ const runBothModes = (script: UPLCTerm, context: Data) => {
 describe("CEK constant witnesses of equal values", () => {
   it("runs a source constant equal to the script context", () => {
     const { proof, verdict } = runBothModes(
-      lam(discard(app(Builtin.equalsData, v(0), data(RECORD)))),
+      lam(discard(app(builtin("equalsData"), v(0), data(RECORD)))),
       RECORD,
     );
     expect(proof.terminalState.mode).toBe("haltSuccess");

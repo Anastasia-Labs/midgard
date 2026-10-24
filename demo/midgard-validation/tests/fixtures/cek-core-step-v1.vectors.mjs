@@ -11,10 +11,12 @@
  * side too — not only by `--check` and the Aiken verifier.
  *
  * This module holds **UPLC terms, script contexts and twist definitions
- * only**. It imports nothing from the package, so it can be loaded by either
- * side without deciding which build of the CEK is under test. The UPLC terms
- * are built with `@harmoniclabs/uplc` exactly as `tests/cek-executor.test.ts`
- * does, and compiled as `(program 1.1.0 term)` Flat bytes.
+ * only**. From the package it imports only the `uplc` entry, Midgard's
+ * constant and Data classes, which resolves to `src/` under vitest and to
+ * `dist/` on bare `node`, so either side loads it without deciding which
+ * build of the CEK is under test. The UPLC terms are built exactly as
+ * `tests/cek-executor.test.ts` builds them, and compiled as
+ * `(program 1.1.0 term)` Flat bytes.
  *
  * Every program is small on purpose: the Aiken consumer decodes each step's
  * `CoreStepEvidenceV1` CBOR with the stdlib's pure-Aiken `cbor.deserialise`,
@@ -23,23 +25,23 @@
  */
 
 import {
+  constT,
   DataB,
   DataConstr,
   DataI,
   DataList,
   DataMap,
-} from "@harmoniclabs/plutus-data";
+  UPLCConst,
+} from "@al-ft/midgard-validation/uplc";
 import {
   Application,
   Builtin,
   Case,
   Constr,
-  constT,
   Delay,
   ErrorUPLC,
   Force,
   Lambda,
-  UPLCConst,
   UPLCProgram,
   UPLCVar,
 } from "@harmoniclabs/uplc";

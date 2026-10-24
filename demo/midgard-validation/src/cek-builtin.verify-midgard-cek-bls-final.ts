@@ -2,7 +2,6 @@ import {
   hashMidgardCekBlsExpressionNode,
   hashMidgardCekValueNode,
 } from "@al-ft/midgard-core";
-import { DataB } from "@harmoniclabs/plutus-data";
 
 import {
   type Bytes,
@@ -36,6 +35,7 @@ import {
 } from "./cek-constant.js";
 import { type MidgardCekBuiltinBudget } from "./cek-cost.js";
 import { UPLCConst } from "./uplc-constant.js";
+import { DataB } from "./uplc-data.js";
 
 export const verifyMidgardCekDirectBuiltin = (
   tag: bigint,

@@ -10,7 +10,6 @@ import {
   type MidgardCekDataNode,
   type MidgardCekMachineState,
 } from "@al-ft/midgard-core";
-import { type Data } from "@harmoniclabs/plutus-data";
 
 import { type MidgardCekDirectValueWitness } from "./cek-builtin.js";
 import {
@@ -41,6 +40,7 @@ import {
   nextMapControl,
   pairWrapperMatches,
 } from "./cek-machine.verify-map-conversion-start.js";
+import { type Data } from "./uplc-data.js";
 
 export const verifySemanticBuiltinControl = (
   pre: MidgardCekMachineState,

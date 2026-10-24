@@ -1,26 +1,4 @@
 import { verifyMidgardCekProgramMaterial } from "@al-ft/midgard-core";
-import {
-  type Data,
-  DataB,
-  DataConstr,
-  DataI,
-  DataList,
-  DataMap,
-} from "@harmoniclabs/plutus-data";
-import {
-  Application,
-  Builtin,
-  Case,
-  Constr,
-  constT,
-  Delay,
-  Force,
-  Lambda,
-  UPLCConst,
-  UPLCProgram,
-  type UPLCTerm,
-  UPLCVar,
-} from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
 import { MIDGARD_CEK_CARDANO_BLS_TAGS } from "../src/cek-builtin.cardano-tags.js";
@@ -35,6 +13,28 @@ import {
 } from "../src/cek-executor.js";
 import { verifyMidgardCekCoreStep } from "../src/cek-machine.js";
 import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
+import { constT, UPLCConst } from "../src/uplc-constant.js";
+import {
+  type Data,
+  DataB,
+  DataConstr,
+  DataI,
+  DataList,
+  DataMap,
+} from "../src/uplc-data.js";
+import {
+  Application,
+  Builtin,
+  Case,
+  Constr,
+  Delay,
+  Force,
+  Lambda,
+  UPLCProgram,
+  type UPLCTerm,
+  UPLCVar,
+} from "../src/uplc-term.js";
+import { builtin } from "./helpers/uplc-builtins.js";
 import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 
 // The identity script returns its context, a non-Unit value.
@@ -209,7 +209,7 @@ describe("V1 CEK trace generator", () => {
       compile(
         new Lambda(
           new Application(
-            new Application(Builtin.addInteger, new UPLCVar(0)),
+            new Application(builtin("addInteger"), new UPLCVar(0)),
             UPLCConst.int(1),
           ),
         ),
@@ -244,7 +244,7 @@ describe("V1 CEK trace generator", () => {
       compile(
         new Lambda(
           new Application(
-            new Application(Builtin.addInteger, UPLCConst.int(41)),
+            new Application(builtin("addInteger"), UPLCConst.int(41)),
             UPLCConst.int(1),
           ),
         ),
@@ -279,7 +279,7 @@ describe("V1 CEK trace generator", () => {
     const failingProgram = buildCekProgramFromRawFlat(
       compile(
         new Application(
-          new Application(Builtin.quotientInteger, UPLCConst.int(1)),
+          new Application(builtin("quotientInteger"), UPLCConst.int(1)),
           UPLCConst.int(0),
         ),
       ),
@@ -314,7 +314,7 @@ describe("V1 CEK trace generator", () => {
     const emptyDirectProgram = buildCekProgramFromRawFlat(
       compile(
         new Application(
-          Builtin.serialiseData,
+          builtin("serialiseData"),
           UPLCConst.data(new DataList([])),
         ),
       ),
@@ -349,7 +349,7 @@ describe("V1 CEK trace generator", () => {
     );
     const largeProgram = buildCekProgramFromRawFlat(
       compile(
-        new Application(Builtin.serialiseData, UPLCConst.data(largeData)),
+        new Application(builtin("serialiseData"), UPLCConst.data(largeData)),
       ),
     );
     const large = executeMidgardCekStructuralProgram({
@@ -394,7 +394,7 @@ describe("V1 CEK trace generator", () => {
   it("proves semantic tag-51 zero-count control with its exact result and budget", () => {
     const program = buildCekProgramFromRawFlat(
       compile(
-        new Lambda(new Application(Builtin.serialiseData, new UPLCVar(0))),
+        new Lambda(new Application(builtin("serialiseData"), new UPLCVar(0))),
       ),
     );
     const graph = buildMidgardCekExecutionGraph(
@@ -447,7 +447,7 @@ describe("V1 CEK trace generator", () => {
       [3n],
     ]);
     const program = buildCekProgramFromRawFlat(
-      compile(new Application(new Force(Builtin.headList), nested)),
+      compile(new Application(new Force(builtin("headList")), nested)),
     );
     const execution = executeMidgardCekStructuralProgram({
       root: program.termRoot,
@@ -480,7 +480,9 @@ describe("V1 CEK trace generator", () => {
 
   it("proves unMapData one map pair per semantic CEK step", () => {
     const program = buildCekProgramFromRawFlat(
-      compile(new Lambda(new Application(Builtin.unMapData, new UPLCVar(0)))),
+      compile(
+        new Lambda(new Application(builtin("unMapData"), new UPLCVar(0))),
+      ),
     );
     const context = new DataMap<Data, Data>([
       { fst: new DataI(1n), snd: new DataB(Buffer.alloc(9_000, 0x2a)) },
@@ -525,8 +527,8 @@ describe("V1 CEK trace generator", () => {
     const roundTrip = (source: UPLCTerm): UPLCTerm =>
       new Lambda(
         new Application(
-          Builtin.mapData,
-          new Application(Builtin.unMapData, source),
+          builtin("mapData"),
+          new Application(builtin("unMapData"), source),
         ),
       );
     const cases: readonly {
@@ -621,7 +623,9 @@ describe("V1 CEK trace generator", () => {
 
   it("rejects a map-conversion start whose inline result is swapped", () => {
     const program = buildCekProgramFromRawFlat(
-      compile(new Lambda(new Application(Builtin.unMapData, new UPLCVar(0)))),
+      compile(
+        new Lambda(new Application(builtin("unMapData"), new UPLCVar(0))),
+      ),
     );
     const startOf = (context: Data) => {
       const graph = buildMidgardCekExecutionGraph(
@@ -671,7 +675,7 @@ describe("V1 CEK trace generator", () => {
       compile(
         new Lambda(
           new Application(
-            Builtin.unMapData,
+            builtin("unMapData"),
             UPLCConst.data(new DataList([new DataI(1n)])),
           ),
         ),
@@ -704,7 +708,7 @@ describe("V1 CEK trace generator", () => {
   it("proves large structured Data traversal without revealing the whole constant", () => {
     const program = buildCekProgramFromRawFlat(
       compile(
-        new Lambda(new Application(Builtin.unConstrData, new UPLCVar(0))),
+        new Lambda(new Application(builtin("unConstrData"), new UPLCVar(0))),
       ),
     );
     const context = new DataConstr(128n, [
@@ -746,7 +750,7 @@ describe("V1 CEK trace generator", () => {
   it("proves a wrong semantic Data variant as a zero-budget CEK failure", () => {
     const program = buildCekProgramFromRawFlat(
       compile(
-        new Lambda(new Application(Builtin.unConstrData, new UPLCVar(0))),
+        new Lambda(new Application(builtin("unConstrData"), new UPLCVar(0))),
       ),
     );
     const context = new DataMap<Data, Data>([
@@ -795,7 +799,7 @@ describe("V1 CEK trace generator", () => {
     const millerLoop = (): UPLCTerm =>
       new Application(
         new Application(
-          Builtin.bls12_381_millerLoop,
+          builtin("bls12_381_millerLoop"),
           new Application(
             new Builtin(MIDGARD_CEK_CARDANO_BLS_TAGS.g1Uncompress),
             g1Bytes,
@@ -810,7 +814,7 @@ describe("V1 CEK trace generator", () => {
       compile(
         new Lambda(
           new Application(
-            new Application(Builtin.bls12_381_finalVerify, millerLoop()),
+            new Application(builtin("bls12_381_finalVerify"), millerLoop()),
             millerLoop(),
           ),
         ),

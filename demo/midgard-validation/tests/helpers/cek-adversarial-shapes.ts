@@ -1,6 +1,6 @@
-import { DataB } from "@harmoniclabs/plutus-data";
-import { Builtin, UPLCConst, type UPLCTerm } from "@harmoniclabs/uplc";
-
+import { UPLCConst } from "../../src/uplc-constant.js";
+import { DataB } from "../../src/uplc-data.js";
+import { type UPLCTerm } from "../../src/uplc-term.js";
 import {
   app,
   countdown,
@@ -21,6 +21,7 @@ import {
   v,
   walkList,
 } from "./cek-uplc-terms.js";
+import { builtin } from "./uplc-builtins.js";
 
 /**
  * Adversarial CEK program shapes, built at runtime from a size parameter.
@@ -44,7 +45,7 @@ const pairGrowth = (n: number): UPLCTerm =>
   countdown(
     n,
     emptyPairList(),
-    mkCons(app(Builtin.mkPairData, dataInt(7n), dataInt(7n)), v(0)),
+    mkCons(app(builtin("mkPairData"), dataInt(7n), dataInt(7n)), v(0)),
   );
 
 /** `appendByteString` doubling from one byte to 4,096 bytes. */
@@ -53,7 +54,7 @@ const doublingChain = (): UPLCTerm => {
     new DataB(Buffer.from([0x5a])).bytes,
   );
   for (let doubling = 0; doubling < 12; doubling += 1) {
-    term = app(lam(app(Builtin.appendByteString, v(0), v(0))), term);
+    term = app(lam(app(builtin("appendByteString"), v(0), v(0))), term);
   }
   return term;
 };
@@ -65,8 +66,8 @@ const doublingChain = (): UPLCTerm => {
 const deepEnvironment = (n: number): UPLCTerm => {
   const outermost = v(n - 1);
   let term: UPLCTerm = app(
-    Builtin.addInteger,
-    app(Builtin.addInteger, outermost, outermost),
+    builtin("addInteger"),
+    app(builtin("addInteger"), outermost, outermost),
     outermost,
   );
   for (let index = n; index >= 1; index -= 1) {
@@ -85,9 +86,9 @@ const deepContinuation = (n: number): UPLCTerm =>
             v(0),
             int(0),
             app(
-              Builtin.addInteger,
+              builtin("addInteger"),
               int(1),
-              app(v(1), app(Builtin.subtractInteger, v(0), int(1))),
+              app(v(1), app(builtin("subtractInteger"), v(0), int(1))),
             ),
           ),
         ),
@@ -119,7 +120,7 @@ export const MIDGARD_CEK_ADVERSARIAL_SHAPES: readonly MidgardCekAdversarialShape
           countdown(
             n,
             dataInt(0n),
-            app(Builtin.constrData, int(0), mkCons(v(0), emptyDataList())),
+            app(builtin("constrData"), int(0), mkCons(v(0), emptyDataList())),
           ),
         ),
     },
@@ -130,7 +131,7 @@ export const MIDGARD_CEK_ADVERSARIAL_SHAPES: readonly MidgardCekAdversarialShape
           countdown(
             n,
             dataInt(0n),
-            app(Builtin.listData, mkCons(v(0), emptyDataList())),
+            app(builtin("listData"), mkCons(v(0), emptyDataList())),
           ),
         ),
     },
@@ -142,9 +143,9 @@ export const MIDGARD_CEK_ADVERSARIAL_SHAPES: readonly MidgardCekAdversarialShape
             n,
             dataInt(0n),
             app(
-              Builtin.mapData,
+              builtin("mapData"),
               mkCons(
-                app(Builtin.mkPairData, dataInt(0n), v(0)),
+                app(builtin("mkPairData"), dataInt(0n), v(0)),
                 emptyPairList(),
               ),
             ),
@@ -160,9 +161,9 @@ export const MIDGARD_CEK_ADVERSARIAL_SHAPES: readonly MidgardCekAdversarialShape
             countdown(
               n,
               dataInt(0n),
-              app(Builtin.constrData, int(0), mkCons(v(0), emptyDataList())),
+              app(builtin("constrData"), int(0), mkCons(v(0), emptyDataList())),
             ),
-            headList(sndPair(app(Builtin.unConstrData, v(0)))),
+            headList(sndPair(app(builtin("unConstrData"), v(0)))),
           ),
         ),
     },
@@ -175,9 +176,9 @@ export const MIDGARD_CEK_ADVERSARIAL_SHAPES: readonly MidgardCekAdversarialShape
             countdown(
               n,
               dataInt(0n),
-              app(Builtin.listData, mkCons(v(0), emptyDataList())),
+              app(builtin("listData"), mkCons(v(0), emptyDataList())),
             ),
-            headList(app(Builtin.unListData, v(0))),
+            headList(app(builtin("unListData"), v(0))),
           ),
         ),
     },
@@ -189,7 +190,7 @@ export const MIDGARD_CEK_ADVERSARIAL_SHAPES: readonly MidgardCekAdversarialShape
             n,
             emptyDataList(),
             app(
-              lam(seq(app(Builtin.constrData, int(0), v(0)), v(0))),
+              lam(seq(app(builtin("constrData"), int(0), v(0)), v(0))),
               mkCons(dataInt(7n), v(0)),
             ),
           ),
@@ -203,7 +204,7 @@ export const MIDGARD_CEK_ADVERSARIAL_SHAPES: readonly MidgardCekAdversarialShape
             n,
             emptyDataList(),
             app(
-              lam(seq(app(Builtin.listData, v(0)), v(0))),
+              lam(seq(app(builtin("listData"), v(0)), v(0))),
               mkCons(dataInt(7n), v(0)),
             ),
           ),
@@ -212,7 +213,9 @@ export const MIDGARD_CEK_ADVERSARIAL_SHAPES: readonly MidgardCekAdversarialShape
     {
       label: "mapData widening",
       term: (n) =>
-        script(app(Builtin.unMapData, app(Builtin.mapData, pairGrowth(n)))),
+        script(
+          app(builtin("unMapData"), app(builtin("mapData"), pairGrowth(n))),
+        ),
     },
     {
       label: "appendByteString doubling chains",
@@ -225,14 +228,14 @@ export const MIDGARD_CEK_ADVERSARIAL_SHAPES: readonly MidgardCekAdversarialShape
           app(
             lam(
               seq(
-                app(Builtin.serialiseData, v(0)),
+                app(builtin("serialiseData"), v(0)),
                 seq(
-                  app(Builtin.serialiseData, v(0)),
-                  app(Builtin.serialiseData, v(0)),
+                  app(builtin("serialiseData"), v(0)),
+                  app(builtin("serialiseData"), v(0)),
                 ),
               ),
             ),
-            app(Builtin.listData, consGrowth(n)),
+            app(builtin("listData"), consGrowth(n)),
           ),
         ),
     },

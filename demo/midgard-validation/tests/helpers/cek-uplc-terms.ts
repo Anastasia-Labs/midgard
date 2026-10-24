@@ -1,17 +1,3 @@
-import { type Data, DataI } from "@harmoniclabs/plutus-data";
-import {
-  Application,
-  Builtin,
-  constT,
-  Delay,
-  Force,
-  Lambda,
-  UPLCConst,
-  UPLCProgram,
-  type UPLCTerm,
-  UPLCVar,
-} from "@harmoniclabs/uplc";
-
 import { encodeMidgardCekPlutusData } from "../../src/cek-constant.js";
 import {
   buildMidgardCekExecutionGraph,
@@ -21,7 +7,19 @@ import {
   type MidgardCekStructuralVerdict,
 } from "../../src/cek-executor.js";
 import { encodeMidgardCekCardanoFlatProgram } from "../../src/cek-program.cardano-flat.js";
+import { constT, UPLCConst } from "../../src/uplc-constant.js";
+import { type Data, DataI } from "../../src/uplc-data.js";
+import {
+  Application,
+  Delay,
+  Force,
+  Lambda,
+  UPLCProgram,
+  type UPLCTerm,
+  UPLCVar,
+} from "../../src/uplc-term.js";
 import { buildCekProgramFromRawFlat } from "../validation-fixtures.flat-program.js";
+import { builtin } from "./uplc-builtins.js";
 
 /** Small UPLC combinators for building CEK test programs at runtime. */
 
@@ -71,7 +69,7 @@ export const ifThenElse = (
 ): UPLCTerm =>
   force(
     app(
-      force(Builtin.ifThenElse),
+      force(builtin("ifThenElse")),
       condition,
       delay(whenTrue),
       delay(whenFalse),
@@ -83,7 +81,11 @@ export const ifZero = (
   whenZero: UPLCTerm,
   otherwise: UPLCTerm,
 ): UPLCTerm =>
-  ifThenElse(app(Builtin.equalsInteger, counter, int(0)), whenZero, otherwise);
+  ifThenElse(
+    app(builtin("equalsInteger"), counter, int(0)),
+    whenZero,
+    otherwise,
+  );
 
 /**
  * `loop n acc = n == 0 ? acc : loop (n - 1) (step acc)`, applied to `n` and
@@ -103,7 +105,7 @@ export const countdown = (
             ifZero(
               v(1),
               v(0),
-              app(v(2), app(Builtin.subtractInteger, v(1), int(1)), step),
+              app(v(2), app(builtin("subtractInteger"), v(1), int(1)), step),
             ),
           ),
         ),
@@ -114,17 +116,17 @@ export const countdown = (
   );
 
 export const mkCons = (head: UPLCTerm, tail: UPLCTerm): UPLCTerm =>
-  app(force(Builtin.mkCons), head, tail);
+  app(force(builtin("mkCons")), head, tail);
 export const headList = (list: UPLCTerm): UPLCTerm =>
-  app(force(Builtin.headList), list);
+  app(force(builtin("headList")), list);
 export const tailList = (list: UPLCTerm): UPLCTerm =>
-  app(force(Builtin.tailList), list);
+  app(force(builtin("tailList")), list);
 export const nullList = (list: UPLCTerm): UPLCTerm =>
-  app(force(Builtin.nullList), list);
+  app(force(builtin("nullList")), list);
 export const fstPair = (pair: UPLCTerm): UPLCTerm =>
-  app(force(force(Builtin.fstPair)), pair);
+  app(force(force(builtin("fstPair"))), pair);
 export const sndPair = (pair: UPLCTerm): UPLCTerm =>
-  app(force(force(Builtin.sndPair)), pair);
+  app(force(force(builtin("sndPair"))), pair);
 
 /**
  * Walks a list to its end with `tailList`, reading every head with

@@ -1,20 +1,6 @@
 import { createHash } from "node:crypto";
 
 import { encodeCbor } from "@al-ft/midgard-core";
-import {
-  DataB,
-  DataI,
-  DataList,
-  DataMap,
-  DataPair,
-} from "@harmoniclabs/plutus-data";
-import {
-  Builtin,
-  ErrorUPLC,
-  UPLCConst,
-  UPLCProgram,
-  type UPLCTerm,
-} from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
 import type { MidgardCekExecutionStep } from "../src/cek-executor.build-midgard-cek-execution-graph.js";
@@ -22,6 +8,9 @@ import { verifyMidgardCekCoreStep } from "../src/cek-machine.js";
 import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
 import { stageMidgardCekStagedBuiltinMaterial } from "../src/cek-staged-builtin.material.js";
 import { evaluateMidgardCekScript } from "../src/phase-b.evaluate-cek-script.js";
+import { UPLCConst } from "../src/uplc-constant.js";
+import { DataB, DataI, DataList, DataMap, DataPair } from "../src/uplc-data.js";
+import { ErrorUPLC, UPLCProgram, type UPLCTerm } from "../src/uplc-term.js";
 import { forced } from "./cek-executor.semantic-presentation.shapes.js";
 import {
   app,
@@ -31,6 +20,7 @@ import {
   lam,
   MIDGARD_CEK_TX_BUDGET,
 } from "./helpers/cek-uplc-terms.js";
+import { builtin } from "./helpers/uplc-builtins.js";
 
 /**
  * A script holding a constant past the direct payload bound and consuming it:
@@ -126,7 +116,7 @@ const RUNS: readonly (readonly [
     "equalsData of a 12,000-byte Data bytes leaf and itself",
     check(
       call(
-        Builtin.equalsData,
+        builtin("equalsData"),
         data(new DataB(pattern(LONG))),
         data(new DataB(pattern(LONG))),
       ),
@@ -137,7 +127,7 @@ const RUNS: readonly (readonly [
     "equalsData of a 12,000-byte Data bytes leaf and another",
     check(
       call(
-        Builtin.equalsData,
+        builtin("equalsData"),
         data(new DataB(pattern(LONG))),
         data(new DataB(pattern(LONG, 1))),
       ),
@@ -148,7 +138,7 @@ const RUNS: readonly (readonly [
     "equalsData of a Data list of 1,200 integers and itself",
     check(
       call(
-        Builtin.equalsData,
+        builtin("equalsData"),
         data(new DataList(WIDE_LIST)),
         data(new DataList(WIDE_LIST)),
       ),
@@ -159,10 +149,10 @@ const RUNS: readonly (readonly [
     "headList of unListData of a Data list of 1,200 integers",
     check(
       call(
-        Builtin.equalsData,
+        builtin("equalsData"),
         call(
-          forced(Builtin.headList, 1),
-          call(Builtin.unListData, data(new DataList(WIDE_LIST))),
+          forced(builtin("headList"), 1),
+          call(builtin("unListData"), data(new DataList(WIDE_LIST))),
         ),
         data(WIDE_LIST[0]!),
       ),
@@ -173,13 +163,13 @@ const RUNS: readonly (readonly [
     "the key of unMapData of a Data map with a 10,000-byte key",
     check(
       call(
-        Builtin.equalsData,
+        builtin("equalsData"),
         call(
-          forced(Builtin.fstPair, 2),
+          forced(builtin("fstPair"), 2),
           call(
-            forced(Builtin.headList, 1),
+            forced(builtin("headList"), 1),
             call(
-              Builtin.unMapData,
+              builtin("unMapData"),
               data(
                 new DataMap([
                   new DataPair(new DataB(pattern(10_000)), new DataI(1n)),
@@ -197,8 +187,11 @@ const RUNS: readonly (readonly [
     "lengthOfByteString of a 12,000-byte string",
     check(
       call(
-        Builtin.equalsInteger,
-        call(Builtin.lengthOfByteString, UPLCConst.byteString(pattern(LONG))),
+        builtin("equalsInteger"),
+        call(
+          builtin("lengthOfByteString"),
+          UPLCConst.byteString(pattern(LONG)),
+        ),
         UPLCConst.int(BigInt(LONG)),
       ),
     ),
@@ -208,8 +201,8 @@ const RUNS: readonly (readonly [
     "sha2_256 of a 12,000-byte string",
     check(
       call(
-        Builtin.equalsByteString,
-        call(Builtin.sha2_256, UPLCConst.byteString(pattern(LONG))),
+        builtin("equalsByteString"),
+        call(builtin("sha2_256"), UPLCConst.byteString(pattern(LONG))),
         UPLCConst.byteString(
           createHash("sha256").update(pattern(LONG)).digest(),
         ),
@@ -221,10 +214,10 @@ const RUNS: readonly (readonly [
     "encodeUtf8 of a 12,000-byte multibyte string",
     check(
       call(
-        Builtin.equalsInteger,
+        builtin("equalsInteger"),
         call(
-          Builtin.lengthOfByteString,
-          call(Builtin.encodeUtf8, UPLCConst.str(LONG_TEXT)),
+          builtin("lengthOfByteString"),
+          call(builtin("encodeUtf8"), UPLCConst.str(LONG_TEXT)),
         ),
         UPLCConst.int(BigInt(LONG)),
       ),
@@ -235,9 +228,9 @@ const RUNS: readonly (readonly [
     "addInteger onto an integer of 12,000 magnitude bytes",
     check(
       call(
-        Builtin.equalsInteger,
+        builtin("equalsInteger"),
         call(
-          Builtin.addInteger,
+          builtin("addInteger"),
           UPLCConst.int(LONG_INTEGER),
           UPLCConst.int(1n),
         ),

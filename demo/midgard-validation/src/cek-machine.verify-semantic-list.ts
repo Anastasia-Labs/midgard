@@ -2,7 +2,6 @@ import {
   type MidgardCekDataListNode,
   type MidgardCekDataNode,
 } from "@al-ft/midgard-core";
-import { DataConstr, DataList } from "@harmoniclabs/plutus-data";
 
 import {
   hashMidgardCekDirectValueWitness,
@@ -37,6 +36,7 @@ import {
   sameDataSummary,
   semanticSummary,
 } from "./cek-machine.verify-semantic-builtin-control.js";
+import { DataConstr, DataList } from "./uplc-data.js";
 
 export const semanticListSource = (
   source: MidgardCekDirectValueWitness,

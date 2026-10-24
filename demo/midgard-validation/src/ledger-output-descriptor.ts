@@ -21,12 +21,12 @@ import {
   type MidgardTxOutput,
   MidgardVersionedScriptTags,
 } from "@al-ft/midgard-core/codec";
-import { DataConstr } from "@harmoniclabs/plutus-data";
 
 import { commitMidgardCekDataTree } from "./cek-data-tree.js";
 import { decodeMidgardOutRefBytes } from "./ledger-tx/codec.js";
 import { plutusDataFromCborIterative } from "./plutus-data-iterative.decode.js";
 import { commitMidgardScriptContextTxOut } from "./script-context-proof.js";
+import { DataConstr } from "./uplc-data.js";
 
 const MAX_LEDGER_OUTPUT_INDEX = 65_535n;
 

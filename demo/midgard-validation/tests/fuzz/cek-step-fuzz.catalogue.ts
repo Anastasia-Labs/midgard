@@ -1,5 +1,3 @@
-import { DataB, DataI, DataList } from "@harmoniclabs/plutus-data";
-
 import { type MidgardCekDirectValueWitness } from "../../src/cek-builtin.argument-kinds.js";
 import {
   decodeMidgardCekConstantWitness,
@@ -7,6 +5,7 @@ import {
 } from "../../src/cek-constant.js";
 import { type MidgardCekExecutionStep } from "../../src/cek-executor.js";
 import { plutusDataFromCborIterative } from "../../src/plutus-data-iterative.decode.js";
+import { DataB, DataI, DataList } from "../../src/uplc-data.js";
 import type { AikenVerdict } from "./cek-step-fuzz.oracle.js";
 
 /**

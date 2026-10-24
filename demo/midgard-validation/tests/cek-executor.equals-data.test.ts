@@ -1,12 +1,3 @@
-import { type Data, DataConstr, DataI } from "@harmoniclabs/plutus-data";
-import {
-  Application,
-  Builtin,
-  Lambda,
-  UPLCConst,
-  UPLCProgram,
-  type UPLCTerm,
-} from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -16,6 +7,15 @@ import {
 import { executeMidgardCekStructuralProgram } from "../src/cek-executor.js";
 import { verifyMidgardCekCoreStep } from "../src/cek-machine.js";
 import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
+import { UPLCConst } from "../src/uplc-constant.js";
+import { type Data, DataConstr, DataI } from "../src/uplc-data.js";
+import {
+  Application,
+  Lambda,
+  UPLCProgram,
+  type UPLCTerm,
+} from "../src/uplc-term.js";
+import { builtin } from "./helpers/uplc-builtins.js";
 import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 
 const compile = (term: UPLCTerm): Buffer =>
@@ -31,7 +31,7 @@ const equalsDataStep = (left: Data, right: Data) => {
       new Application(
         new Lambda(UPLCConst.unit),
         new Application(
-          new Application(Builtin.equalsData, UPLCConst.data(left)),
+          new Application(builtin("equalsData"), UPLCConst.data(left)),
           UPLCConst.data(right),
         ),
       ),

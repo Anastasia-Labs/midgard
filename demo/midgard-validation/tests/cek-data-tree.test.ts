@@ -3,13 +3,8 @@ import {
   MIDGARD_CEK_BLOB_CHUNK_BYTES,
 } from "@al-ft/midgard-core";
 import {
-  type Data,
-  DataB,
-  DataConstr,
   dataFromCbor,
-  DataI,
-  DataList,
-  DataMap,
+  DataI as ReferenceDataI,
 } from "@harmoniclabs/plutus-data";
 import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
@@ -22,6 +17,14 @@ import {
   commitMidgardCekDataTree,
   encodeMidgardCekDataTreeInteger,
 } from "../src/cek-data-tree.js";
+import {
+  type Data,
+  DataB,
+  DataConstr,
+  DataI,
+  DataList,
+  DataMap,
+} from "../src/uplc-data.js";
 
 describe("V1 semantic Data commitment", () => {
   it("encodes the complete signed Cardano integer domain canonically", () => {
@@ -47,8 +50,8 @@ describe("V1 semantic Data commitment", () => {
     const decodedNegative = dataFromCbor(
       encodeMidgardCekPlutusData(new DataI(negativeBignum)),
     );
-    expect(decodedNegative).toBeInstanceOf(DataI);
-    expect((decodedNegative as DataI).int).toBe(negativeBignum);
+    expect(decodedNegative).toBeInstanceOf(ReferenceDataI);
+    expect((decodedNegative as ReferenceDataI).int).toBe(negativeBignum);
 
     const hugeMagnitude = (1n << 2_048n) - 1n;
     const positive = encodeMidgardCekPlutusData(new DataI(hugeMagnitude));

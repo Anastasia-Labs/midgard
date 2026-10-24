@@ -1,6 +1,5 @@
-import { type Data, DataConstr, DataList } from "@harmoniclabs/plutus-data";
-
 import { type MidgardCekConstantType } from "./cek-constant.semantic-data.js";
+import { type Data, DataConstr, DataList } from "./uplc-data.js";
 
 /** Cardano's PV 11 bound on a constant type's flat size (`mbHeader`). */
 export const MIDGARD_CEK_MAX_CONSTANT_TYPE_FLAT_SIZE = 32;

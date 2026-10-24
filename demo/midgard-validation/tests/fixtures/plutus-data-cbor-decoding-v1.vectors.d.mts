@@ -7,7 +7,7 @@
  * against the real module.
  */
 
-import type { Data } from "@harmoniclabs/plutus-data";
+import type { Data } from "../../src/uplc-data.js";
 
 export declare const REFUSED: "refused";
 

@@ -1,21 +1,3 @@
-import {
-  type Data,
-  DataB,
-  DataConstr,
-  DataI,
-  DataList,
-} from "@harmoniclabs/plutus-data";
-import {
-  Application,
-  Builtin,
-  constT,
-  Force,
-  Lambda,
-  UPLCConst,
-  UPLCProgram,
-  type UPLCTerm,
-} from "@harmoniclabs/uplc";
-
 import { type MidgardCekDirectValueWitness } from "../src/cek-builtin.js";
 import { encodeMidgardCekCoreStepDataCbor } from "../src/cek-data.js";
 import { executeMidgardCekStructuralProgram } from "../src/cek-executor.js";
@@ -24,6 +6,22 @@ import {
   verifyMidgardCekCoreStep,
 } from "../src/cek-machine.js";
 import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
+import { constT, UPLCConst } from "../src/uplc-constant.js";
+import {
+  type Data,
+  DataB,
+  DataConstr,
+  DataI,
+  DataList,
+} from "../src/uplc-data.js";
+import {
+  Application,
+  Force,
+  Lambda,
+  UPLCProgram,
+  type UPLCTerm,
+} from "../src/uplc-term.js";
+import { builtin } from "./helpers/uplc-builtins.js";
 import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 
 // A semantic builtin step (tags 29 to 50 except mapData and unMapData)
@@ -112,7 +110,7 @@ export const SHAPES: readonly Shape[] = [
     name: "fstPair over pair<data, data>",
     term: () =>
       apply(
-        forced(Builtin.fstPair, 2),
+        forced(builtin("fstPair"), 2),
         pairData(new DataI(7n), new DataList(ints(2))),
       ),
     arguments: ["semanticConstant"],
@@ -123,7 +121,7 @@ export const SHAPES: readonly Shape[] = [
     pinned: "snd_pair_data",
     term: () =>
       apply(
-        forced(Builtin.sndPair, 2),
+        forced(builtin("sndPair"), 2),
         pairData(new DataI(7n), new DataList(ints(2))),
       ),
     arguments: ["semanticConstant"],
@@ -134,7 +132,7 @@ export const SHAPES: readonly Shape[] = [
     pinned: "fst_pair_string_data",
     term: () =>
       apply(
-        forced(Builtin.fstPair, 2),
+        forced(builtin("fstPair"), 2),
         UPLCConst.pairOf(constT.str, D)(
           "ab",
           new DataB(Buffer.from("00", "hex")),
@@ -147,7 +145,7 @@ export const SHAPES: readonly Shape[] = [
     name: "sndPair over pair<integer, list<data>>",
     term: () =>
       apply(
-        forced(Builtin.sndPair, 2),
+        forced(builtin("sndPair"), 2),
         UPLCConst.pairOf(constT.int, constT.listOf(D))(3n, [new DataI(1n)]),
       ),
     arguments: ["semanticConstant"],
@@ -157,7 +155,7 @@ export const SHAPES: readonly Shape[] = [
     name: "sndPair over a nested-list pair",
     term: () =>
       apply(
-        forced(Builtin.sndPair, 2),
+        forced(builtin("sndPair"), 2),
         UPLCConst.pairOf(constT.listOf(constT.listOf(D)), constT.listOf(D))(
           [[new DataI(1n)]],
           [new DataI(2n)],
@@ -171,7 +169,7 @@ export const SHAPES: readonly Shape[] = [
     pinned: "choose_list_data",
     term: () =>
       apply(
-        forced(Builtin.chooseList, 2),
+        forced(builtin("chooseList"), 2),
         listData([new DataI(1n)]),
         unit,
         unit,
@@ -183,7 +181,11 @@ export const SHAPES: readonly Shape[] = [
     name: "mkCons of a Data item",
     pinned: "mk_cons_data",
     term: () =>
-      apply(forced(Builtin.mkCons, 1), data(new DataI(0n)), listData(ints(2))),
+      apply(
+        forced(builtin("mkCons"), 1),
+        data(new DataI(0n)),
+        listData(ints(2)),
+      ),
     arguments: ["semanticConstant", "semanticConstant"],
     result: "semanticConstant",
   },
@@ -191,7 +193,7 @@ export const SHAPES: readonly Shape[] = [
     name: "mkCons of a pair<data, data> item",
     term: () =>
       apply(
-        forced(Builtin.mkCons, 1),
+        forced(builtin("mkCons"), 1),
         pairData(new DataI(1n), new DataI(2n)),
         UPLCConst.listOf(constT.pairOf(D, D))([
           { fst: new DataI(3n), snd: new DataI(4n) },
@@ -205,7 +207,7 @@ export const SHAPES: readonly Shape[] = [
     pinned: "mk_cons_int",
     term: () =>
       apply(
-        forced(Builtin.mkCons, 1),
+        forced(builtin("mkCons"), 1),
         UPLCConst.int(0n),
         UPLCConst.listOf(constT.int)([1n, 2n] as never),
       ),
@@ -215,7 +217,7 @@ export const SHAPES: readonly Shape[] = [
   {
     name: "headList over list<data>",
     pinned: "head_list_data",
-    term: () => apply(forced(Builtin.headList, 1), listData(ints(3))),
+    term: () => apply(forced(builtin("headList"), 1), listData(ints(3))),
     arguments: ["semanticConstant"],
     result: "semanticConstant",
   },
@@ -224,7 +226,7 @@ export const SHAPES: readonly Shape[] = [
     pinned: "head_list_data_same_head",
     term: () =>
       apply(
-        forced(Builtin.headList, 1),
+        forced(builtin("headList"), 1),
         listData([new DataI(0n), new DataI(5n)]),
       ),
     arguments: ["semanticConstant"],
@@ -234,7 +236,7 @@ export const SHAPES: readonly Shape[] = [
     name: "headList over list<integer>",
     term: () =>
       apply(
-        forced(Builtin.headList, 1),
+        forced(builtin("headList"), 1),
         UPLCConst.listOf(constT.int)([5n, 6n] as never),
       ),
     arguments: ["semanticConstant"],
@@ -244,7 +246,7 @@ export const SHAPES: readonly Shape[] = [
     name: "headList over list<pair<data, data>>",
     term: () =>
       apply(
-        forced(Builtin.headList, 1),
+        forced(builtin("headList"), 1),
         UPLCConst.listOf(constT.pairOf(D, D))([
           { fst: new DataI(1n), snd: new DataI(2n) },
         ] as never),
@@ -256,7 +258,7 @@ export const SHAPES: readonly Shape[] = [
     name: "headList over list<string>",
     term: () =>
       apply(
-        forced(Builtin.headList, 1),
+        forced(builtin("headList"), 1),
         UPLCConst.listOf(constT.str)(["a", "b"] as never),
       ),
     arguments: ["constant"],
@@ -264,7 +266,7 @@ export const SHAPES: readonly Shape[] = [
   },
   {
     name: "tailList over list<data>",
-    term: () => apply(forced(Builtin.tailList, 1), listData(ints(3))),
+    term: () => apply(forced(builtin("tailList"), 1), listData(ints(3))),
     arguments: ["semanticConstant"],
     result: "semanticConstant",
   },
@@ -273,7 +275,7 @@ export const SHAPES: readonly Shape[] = [
     pinned: "tail_list_int",
     term: () =>
       apply(
-        forced(Builtin.tailList, 1),
+        forced(builtin("tailList"), 1),
         UPLCConst.listOf(constT.int)([5n, 6n] as never),
       ),
     arguments: ["semanticConstant"],
@@ -283,7 +285,7 @@ export const SHAPES: readonly Shape[] = [
     name: "tailList over list<list<data>>",
     term: () =>
       apply(
-        forced(Builtin.tailList, 1),
+        forced(builtin("tailList"), 1),
         UPLCConst.listOf(constT.listOf(D))([
           [new DataI(1n)],
           [new DataI(2n)],
@@ -295,7 +297,7 @@ export const SHAPES: readonly Shape[] = [
   {
     name: "nullList over list<data>",
     pinned: "null_list_data",
-    term: () => apply(forced(Builtin.nullList, 1), listData(ints(1))),
+    term: () => apply(forced(builtin("nullList"), 1), listData(ints(1))),
     arguments: ["semanticConstant"],
     result: "constant",
   },
@@ -304,7 +306,7 @@ export const SHAPES: readonly Shape[] = [
     pinned: "choose_data",
     term: () =>
       apply(
-        forced(Builtin.chooseData, 1),
+        forced(builtin("chooseData"), 1),
         data(new DataList(ints(1))),
         unit,
         unit,
@@ -325,7 +327,8 @@ export const SHAPES: readonly Shape[] = [
   {
     name: "constrData",
     pinned: "constr_data",
-    term: () => apply(Builtin.constrData, UPLCConst.int(3n), listData(ints(1))),
+    term: () =>
+      apply(builtin("constrData"), UPLCConst.int(3n), listData(ints(1))),
     arguments: ["constant", "semanticConstant"],
     result: "semanticConstant",
   },
@@ -334,7 +337,7 @@ export const SHAPES: readonly Shape[] = [
     pinned: "list_data",
     term: () =>
       apply(
-        Builtin.listData,
+        builtin("listData"),
         listData([new DataI(1n), new DataB(Buffer.from("01", "hex"))]),
       ),
     arguments: ["semanticConstant"],
@@ -343,14 +346,14 @@ export const SHAPES: readonly Shape[] = [
   {
     name: "iData",
     pinned: "i_data",
-    term: () => apply(Builtin.iData, UPLCConst.int(5n)),
+    term: () => apply(builtin("iData"), UPLCConst.int(5n)),
     arguments: ["constant"],
     result: "semanticConstant",
   },
   {
     name: "bData",
     term: () =>
-      apply(Builtin.bData, UPLCConst.byteString(Buffer.from("0102", "hex"))),
+      apply(builtin("bData"), UPLCConst.byteString(Buffer.from("0102", "hex"))),
     arguments: ["constant"],
     result: "semanticConstant",
   },
@@ -358,20 +361,20 @@ export const SHAPES: readonly Shape[] = [
     name: "unConstrData",
     pinned: "un_constr_data",
     term: () =>
-      apply(Builtin.unConstrData, data(new DataConstr(2n, [new DataI(1n)]))),
+      apply(builtin("unConstrData"), data(new DataConstr(2n, [new DataI(1n)]))),
     arguments: ["semanticConstant"],
     result: "semanticConstant",
   },
   {
     name: "unListData",
     pinned: "un_list_data",
-    term: () => apply(Builtin.unListData, data(new DataList(ints(2)))),
+    term: () => apply(builtin("unListData"), data(new DataList(ints(2)))),
     arguments: ["semanticConstant"],
     result: "semanticConstant",
   },
   {
     name: "unIData",
-    term: () => apply(Builtin.unIData, data(new DataI(9n))),
+    term: () => apply(builtin("unIData"), data(new DataI(9n))),
     arguments: ["semanticConstant"],
     result: "constant",
   },
@@ -379,7 +382,7 @@ export const SHAPES: readonly Shape[] = [
     name: "unBData",
     pinned: "un_b_data",
     term: () =>
-      apply(Builtin.unBData, data(new DataB(Buffer.from("aa", "hex")))),
+      apply(builtin("unBData"), data(new DataB(Buffer.from("aa", "hex")))),
     arguments: ["semanticConstant"],
     result: "constant",
   },
@@ -388,7 +391,7 @@ export const SHAPES: readonly Shape[] = [
     pinned: "equals_data_true",
     term: () =>
       apply(
-        Builtin.equalsData,
+        builtin("equalsData"),
         data(new DataList(ints(1))),
         data(new DataList(ints(1))),
       ),
@@ -400,7 +403,7 @@ export const SHAPES: readonly Shape[] = [
     pinned: "mk_pair_data",
     term: () =>
       apply(
-        Builtin.mkPairData,
+        builtin("mkPairData"),
         data(new DataI(1n)),
         data(new DataB(Buffer.from("01", "hex"))),
       ),
@@ -410,50 +413,50 @@ export const SHAPES: readonly Shape[] = [
   {
     name: "mkNilData",
     pinned: "mk_nil_data",
-    term: () => apply(Builtin.mkNilData, unit),
+    term: () => apply(builtin("mkNilData"), unit),
     arguments: ["constant"],
     result: "semanticConstant",
   },
   {
     name: "mkNilPairData",
-    term: () => apply(Builtin.mkNilPairData, unit),
+    term: () => apply(builtin("mkNilPairData"), unit),
     arguments: ["constant"],
     result: "semanticConstant",
   },
   {
     name: "headList over an empty list",
     pinned: "head_list_empty",
-    term: () => apply(forced(Builtin.headList, 1), listData([])),
+    term: () => apply(forced(builtin("headList"), 1), listData([])),
     arguments: ["semanticConstant"],
     result: null,
   },
   {
     name: "tailList over an empty list",
-    term: () => apply(forced(Builtin.tailList, 1), listData([])),
+    term: () => apply(forced(builtin("tailList"), 1), listData([])),
     arguments: ["semanticConstant"],
     result: null,
   },
   {
     name: "unConstrData over an integer",
-    term: () => apply(Builtin.unConstrData, data(new DataI(1n))),
+    term: () => apply(builtin("unConstrData"), data(new DataI(1n))),
     arguments: ["semanticConstant"],
     result: null,
   },
   {
     name: "unListData over an integer",
-    term: () => apply(Builtin.unListData, data(new DataI(1n))),
+    term: () => apply(builtin("unListData"), data(new DataI(1n))),
     arguments: ["semanticConstant"],
     result: null,
   },
   {
     name: "unIData over bytes",
-    term: () => apply(Builtin.unIData, data(new DataB(Buffer.alloc(0)))),
+    term: () => apply(builtin("unIData"), data(new DataB(Buffer.alloc(0)))),
     arguments: ["semanticConstant"],
     result: null,
   },
   {
     name: "unBData over an integer",
-    term: () => apply(Builtin.unBData, data(new DataI(1n))),
+    term: () => apply(builtin("unBData"), data(new DataI(1n))),
     arguments: ["semanticConstant"],
     result: null,
   },

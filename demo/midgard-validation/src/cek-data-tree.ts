@@ -17,19 +17,13 @@ import {
   type MidgardCekDataNode,
   type MidgardCekDataPairNode,
 } from "@al-ft/midgard-core";
-import {
-  type Data,
-  DataB,
-  DataConstr,
-  DataI,
-  DataList,
-} from "@harmoniclabs/plutus-data";
 
 import {
   encodeMidgardCekPlutusData,
   midgardCekIntegerMemorySize,
 } from "./cek-constant.js";
 import { isPlutusDataMap } from "./plutus-data-narrowing.js";
+import { type Data, DataB, DataConstr, DataI, DataList } from "./uplc-data.js";
 
 type HashedMaterial<Node> = {
   readonly node: Node;

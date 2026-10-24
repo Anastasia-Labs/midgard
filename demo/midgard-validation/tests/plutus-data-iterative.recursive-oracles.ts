@@ -3,14 +3,6 @@
  * as differential oracles (and nowhere in production source), plus
  * an explicit-stack structural comparison for harmonic `Data`.
  */
-import {
-  type Data,
-  DataB,
-  DataConstr,
-  DataI,
-  DataList,
-  DataMap,
-} from "@harmoniclabs/plutus-data";
 
 import {
   encodeCardanoBytes,
@@ -18,6 +10,14 @@ import {
   encodeSmallCborArgument,
 } from "../src/cek-constant.semantic-data.js";
 import { isPlutusDataMap } from "../src/plutus-data-narrowing.js";
+import {
+  type Data,
+  DataB,
+  DataConstr,
+  DataI,
+  DataList,
+  DataMap,
+} from "../src/uplc-data.js";
 
 const encodeCardanoList = (items: readonly Buffer[]): Buffer =>
   items.length === 0

@@ -1,7 +1,5 @@
 import { encodeCbor, MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import { type Data } from "@harmoniclabs/plutus-data";
-import { UPLCConst, UPLCProgram, type UPLCTerm } from "@harmoniclabs/uplc";
 
 import { encodeMidgardCekPlutusData } from "../../src/cek-constant.js";
 import { encodeMidgardCekCardanoFlatProgram } from "../../src/cek-program.cardano-flat.js";
@@ -9,6 +7,9 @@ import {
   MidgardRedeemerTag,
   validationMachineLedgerRoot,
 } from "../../src/index.js";
+import { UPLCConst } from "../../src/uplc-constant.js";
+import { type Data } from "../../src/uplc-data.js";
+import { UPLCProgram, type UPLCTerm } from "../../src/uplc-term.js";
 import {
   makeRng,
   randomData,

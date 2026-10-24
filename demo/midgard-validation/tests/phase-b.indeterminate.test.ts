@@ -1,5 +1,4 @@
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import { DataI } from "@harmoniclabs/plutus-data";
 import { Effect, Either } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -15,6 +14,7 @@ import {
   ScriptEvaluationIndeterminateError,
   ValidationTraceStopped,
 } from "../src/index.js";
+import { DataI } from "../src/uplc-data.js";
 import {
   MIDGARD_TX_EX_UNITS_CAP,
   plutusV3SpendInput,

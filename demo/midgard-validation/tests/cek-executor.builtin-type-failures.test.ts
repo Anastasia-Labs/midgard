@@ -1,5 +1,3 @@
-import { type Data, DataB, DataConstr } from "@harmoniclabs/plutus-data";
-import { Builtin, constT, UPLCConst, type UPLCTerm } from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
 import { midgardCekSemanticMkCons } from "../src/cek-executor.semantic-constructors.js";
@@ -9,6 +7,9 @@ import {
   type MidgardCekSemanticStep,
 } from "../src/cek-executor.semantic-step.js";
 import { executeMidgardCekStructuralProgram } from "../src/index.js";
+import { constT, UPLCConst } from "../src/uplc-constant.js";
+import { type Data, DataB, DataConstr } from "../src/uplc-data.js";
+import { Builtin, type UPLCTerm } from "../src/uplc-term.js";
 import {
   app,
   discard,
@@ -17,6 +18,7 @@ import {
   MIDGARD_CEK_TX_BUDGET,
   prepareMidgardCekProgram,
 } from "./helpers/cek-uplc-terms.js";
+import { builtin } from "./helpers/uplc-builtins.js";
 
 /**
  * A builtin applied to arguments outside its argument kinds fails, as on L1,
@@ -44,9 +46,9 @@ const textList = (length: number) =>
   UPLCConst.listOf(constT.str)(["x".repeat(length)] as never);
 
 const mkCons = (item: UPLCTerm, list: UPLCTerm): UPLCTerm =>
-  lam(discard(app(force(Builtin.mkCons), item, list)));
+  lam(discard(app(force(builtin("mkCons")), item, list)));
 const append = (left: UPLCTerm, right: UPLCTerm): UPLCTerm =>
-  lam(discard(app(Builtin.appendByteString, left, right)));
+  lam(discard(app(builtin("appendByteString"), left, right)));
 
 const runOf = (script: UPLCTerm, mode: "proof" | "verdict") => {
   const prepared = prepareMidgardCekProgram(script, CONTEXT);
@@ -80,19 +82,19 @@ const proved: readonly (readonly [
     "mkCons of small bytes onto a list of strings",
     mkCons(bytes(SMALL), textList(SMALL)),
     "haltError",
-    ["executeBuiltinTypeFailure", Builtin.mkCons],
+    ["executeBuiltinTypeFailure", builtin("mkCons")],
   ],
   [
     "appendByteString of small bytes and a string",
     append(bytes(SMALL), text(SMALL)),
     "haltError",
-    ["executeBuiltinTypeFailure", Builtin.appendByteString],
+    ["executeBuiltinTypeFailure", builtin("appendByteString")],
   ],
   [
     "mkCons of large bytes onto a list of large bytes",
     mkCons(bytes(LARGE), bytesList(LARGE)),
     "haltSuccess",
-    ["executeBuiltinSemantic", Builtin.mkCons],
+    ["executeBuiltinSemantic", builtin("mkCons")],
   ],
 ];
 

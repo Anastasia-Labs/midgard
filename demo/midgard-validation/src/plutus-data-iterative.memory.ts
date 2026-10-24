@@ -2,15 +2,9 @@ import {
   midgardCekBytesMemoryWords,
   midgardCekIntegerMemoryWords,
 } from "@al-ft/midgard-core";
-import {
-  type Data,
-  DataB,
-  DataConstr,
-  DataI,
-  DataList,
-} from "@harmoniclabs/plutus-data";
 
 import { isPlutusDataMap } from "./plutus-data-narrowing.js";
+import { type Data, DataB, DataConstr, DataI, DataList } from "./uplc-data.js";
 
 /**
  * Plutus' ExMemory size for an integer: 64-bit words of the magnitude, as the

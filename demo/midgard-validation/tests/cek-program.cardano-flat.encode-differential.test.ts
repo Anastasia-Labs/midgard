@@ -1,17 +1,10 @@
 import { readdirSync, readFileSync } from "node:fs";
 
-import { isData } from "@harmoniclabs/plutus-data";
 import {
-  Application,
-  Builtin,
   type ConstType,
   ConstTyTag,
-  ErrorUPLC,
-  Lambda,
-  UPLCConst,
   UPLCEncoder,
-  UPLCProgram,
-  type UPLCTerm,
+  type UPLCProgram as ReferenceUPLCProgram,
 } from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
@@ -25,6 +18,15 @@ import {
   decodeMidgardCekCardanoFlatProgram,
 } from "../src/cek-program.cardano-flat.js";
 import { storedFlatProgramBytes } from "../src/cek-program.unwrap-canonical-cbor-byte-string.js";
+import { UPLCConst } from "../src/uplc-constant.js";
+import { isData } from "../src/uplc-data.js";
+import {
+  Application,
+  ErrorUPLC,
+  Lambda,
+  UPLCProgram,
+  type UPLCTerm,
+} from "../src/uplc-term.js";
 import * as boundaries from "./cek-program.cardano-boundaries.vectors.js";
 import * as flatVectors from "./cek-program.cardano-flat.vectors.js";
 import * as dataSpelling from "./cek-program.data-constant-spelling.vectors.js";
@@ -36,6 +38,7 @@ import {
   cekStepFuzzProgram,
   FUZZ_PRIMARY_TAGS,
 } from "./fuzz/cek-step-fuzz.programs.js";
+import { builtin } from "./helpers/uplc-builtins.js";
 
 /**
  * The owned Flat encoder against HarmonicLabs' `UPLCEncoder` with the Data
@@ -56,7 +59,9 @@ class HarmonicCardanoFlatEncoder extends UPLCEncoder {
 
 const harmonic = (program: FlatProgram): string =>
   Buffer.from(
-    new HarmonicCardanoFlatEncoder().compile(program as UPLCProgram),
+    new HarmonicCardanoFlatEncoder().compile(
+      program as unknown as ReferenceUPLCProgram,
+    ),
   ).toString("hex");
 const owned = (program: FlatProgram): string =>
   Buffer.from(encodeCardanoFlatProgram(program)).toString("hex");
@@ -148,7 +153,7 @@ describe("the owned Flat encoder writes HarmonicLabs' bytes", () => {
           new Application(
             new Lambda(UPLCConst.unit),
             new Application(
-              new Application(Builtin.addInteger, UPLCConst.int(1n << 512n)),
+              new Application(builtin("addInteger"), UPLCConst.int(1n << 512n)),
               UPLCConst.int(1),
             ),
           ),

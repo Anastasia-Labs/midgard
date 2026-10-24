@@ -1,4 +1,8 @@
 import { MIDGARD_CEK_MAX_SOURCE_CONSTANT_PAYLOAD_BYTES } from "@al-ft/midgard-core";
+import { getNRequiredForces } from "@harmoniclabs/uplc";
+
+import { encodeMidgardCekPlutusData } from "../../src/cek-constant.js";
+import { UPLCConst } from "../../src/uplc-constant.js";
 import {
   type Data,
   DataB,
@@ -7,18 +11,14 @@ import {
   DataList,
   DataMap,
   DataPair,
-} from "@harmoniclabs/plutus-data";
+} from "../../src/uplc-data.js";
 import {
   Builtin,
   Case,
   Constr,
   ErrorUPLC,
-  getNRequiredForces,
-  UPLCConst,
   type UPLCTerm,
-} from "@harmoniclabs/uplc";
-
-import { encodeMidgardCekPlutusData } from "../../src/cek-constant.js";
+} from "../../src/uplc-term.js";
 import {
   type CekBuiltinData,
   makeRng,
@@ -33,6 +33,7 @@ import {
   randomArguments,
 } from "../fixtures/cek-builtin-cardano-v1.cases.mjs";
 import { app, delay, force, lam, seq, v } from "../helpers/cek-uplc-terms.js";
+import { builtin } from "../helpers/uplc-builtins.js";
 
 /**
  * Seeded UPLC programs for the step differential. Each case calls one
@@ -294,7 +295,7 @@ const wrap = (rng: Rng, term: UPLCTerm, depth: number): UPLCTerm => {
       case 6:
         wrapped = force(
           app(
-            force(Builtin.ifThenElse),
+            force(builtin("ifThenElse")),
             UPLCConst.bool(true),
             delay(inner),
             delay(new ErrorUPLC()),
@@ -305,7 +306,7 @@ const wrap = (rng: Rng, term: UPLCTerm, depth: number): UPLCTerm => {
         // A two-field constructor cased into a builtin branch:
         // chooseUnit () inner.
         wrapped = new Case(new Constr(0, [UPLCConst.unit, inner]), [
-          force(Builtin.chooseUnit),
+          force(builtin("chooseUnit")),
         ]);
         break;
       default:

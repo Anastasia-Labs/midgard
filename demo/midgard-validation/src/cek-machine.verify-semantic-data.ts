@@ -2,7 +2,6 @@ import {
   commitMidgardCekBlob,
   midgardCekBytesMemoryWords,
 } from "@al-ft/midgard-core";
-import { DataB, DataConstr, DataI } from "@harmoniclabs/plutus-data";
 
 import { constrIndexIsOutOfRange } from "./cek-builtin.constr-data-index.js";
 import { type MidgardCekDirectValueWitness } from "./cek-builtin.js";
@@ -41,6 +40,7 @@ import {
 } from "./cek-machine.verify-semantic-builtin-control.js";
 import { semanticListSource } from "./cek-machine.verify-semantic-list.js";
 import { plutusDataFromCborIterative } from "./plutus-data-iterative.decode.js";
+import { DataB, DataConstr, DataI } from "./uplc-data.js";
 
 export const verifySemanticData = (
   tag: bigint,

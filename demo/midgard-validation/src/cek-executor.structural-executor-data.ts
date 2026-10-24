@@ -6,15 +6,6 @@ import {
   type MidgardCekDataPairNode,
   type MidgardCekDecodedProgramBlob,
 } from "@al-ft/midgard-core";
-import {
-  type Data,
-  DataB,
-  DataConstr,
-  DataI,
-  DataList,
-  DataMap,
-  type KV,
-} from "@harmoniclabs/plutus-data";
 
 import {
   commitMidgardCekDataTree,
@@ -26,6 +17,15 @@ import {
   sameBytes,
 } from "./cek-executor.build-midgard-cek-execution-graph.js";
 import { plutusDataFromCborIterative } from "./plutus-data-iterative.decode.js";
+import {
+  type Data,
+  DataB,
+  DataConstr,
+  DataI,
+  DataList,
+  DataMap,
+  type KV,
+} from "./uplc-data.js";
 
 /** The authenticated semantic material a structural executor has installed. */
 export type MidgardCekSemanticDataMaterial = {

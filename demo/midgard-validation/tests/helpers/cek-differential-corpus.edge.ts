@@ -1,6 +1,6 @@
-import { DataB } from "@harmoniclabs/plutus-data";
-import { Builtin, constT, UPLCConst, type UPLCTerm } from "@harmoniclabs/uplc";
-
+import { constT, UPLCConst } from "../../src/uplc-constant.js";
+import { DataB } from "../../src/uplc-data.js";
+import { type UPLCTerm } from "../../src/uplc-term.js";
 import {
   B,
   BASE_ITEMS,
@@ -47,6 +47,7 @@ import {
   v,
   walkList,
 } from "./cek-uplc-terms.js";
+import { builtin } from "./uplc-builtins.js";
 
 export const edgeDataCases = (): MidgardCekDifferentialCase[] => [
   program(
@@ -165,11 +166,11 @@ export const edgeDataCases = (): MidgardCekDifferentialCase[] => [
   program(
     "empty lists and nil builtins",
     seqAll(
-      app(Builtin.mkNilData, UPLCConst.unit),
-      app(Builtin.mkNilPairData, UPLCConst.unit),
-      mapData(app(Builtin.mkNilPairData, UPLCConst.unit)),
-      listData(app(Builtin.mkNilData, UPLCConst.unit)),
-      constrData(int(3), app(Builtin.mkNilData, UPLCConst.unit)),
+      app(builtin("mkNilData"), UPLCConst.unit),
+      app(builtin("mkNilPairData"), UPLCConst.unit),
+      mapData(app(builtin("mkNilPairData"), UPLCConst.unit)),
+      listData(app(builtin("mkNilData"), UPLCConst.unit)),
+      constrData(int(3), app(builtin("mkNilData"), UPLCConst.unit)),
       nullList(emptyDataList()),
       chooseList(emptyDataList(), int(1), int(2)),
       unListData(data(L([]))),

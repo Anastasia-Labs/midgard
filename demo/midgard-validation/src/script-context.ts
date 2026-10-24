@@ -8,15 +8,6 @@ import {
   type L1SlotConfig,
   l1SlotToPosixTimeMs,
 } from "@al-ft/midgard-core/l1-slot-config";
-import {
-  type Data,
-  DataB,
-  DataConstr,
-  DataI,
-  DataList,
-  DataMap,
-  type KV,
-} from "@harmoniclabs/plutus-data";
 import { Constr } from "@lucid-evolution/lucid";
 
 import type { MidgardLedgerRedeemer } from "./ledger-tx/types.js";
@@ -27,6 +18,15 @@ import {
 } from "./midgard-redeemers.js";
 import { plutusDataFromCborIterative } from "./plutus-data-iterative.decode.js";
 import { txOutRefData } from "./tx-out-ref.js";
+import {
+  type Data,
+  DataB,
+  DataConstr,
+  DataI,
+  DataList,
+  DataMap,
+  type KV,
+} from "./uplc-data.js";
 
 type ResolvedInput = {
   readonly outRefHex: string;

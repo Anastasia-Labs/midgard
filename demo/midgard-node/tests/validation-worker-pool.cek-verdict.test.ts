@@ -4,7 +4,7 @@ import {
   type MidgardCekVerdictRequest,
 } from "@al-ft/midgard-validation";
 import { encodeMidgardCekPlutusData } from "@al-ft/midgard-validation/cek-constant";
-import { DataI } from "@harmoniclabs/plutus-data";
+import { DataI } from "@al-ft/midgard-validation/uplc";
 import {
   Application,
   ErrorUPLC,
