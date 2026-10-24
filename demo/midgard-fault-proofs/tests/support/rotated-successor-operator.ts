@@ -20,9 +20,24 @@ import {
 } from "./submit-init-emulator-fixtures.js";
 import { onboardEmulatorOperator } from "./submit-init-emulator-shared.js";
 
+/** What enrolling and retiring operators read of a deployment: the
+ * proved fixture, or any emulator deployment shaped like it. */
+export type OperatorLifecycleScene = Pick<
+  ProvedDoubleSpendFixture,
+  "funderLucid" | "emulator" | "contracts"
+> & {
+  readonly removalReferenceScriptPublications: Pick<
+    ProvedDoubleSpendFixture["removalReferenceScriptPublications"],
+    "published"
+  >;
+};
+
 /** Register and activate an operator whose key sorts after `lowerKey`. */
 export const enrollSuccessor = async (
-  fixture: ProvedDoubleSpendFixture,
+  fixture: Pick<
+    OperatorLifecycleScene,
+    "funderLucid" | "emulator" | "contracts"
+  >,
   lowerKey: string,
 ) => {
   let account = generateEmulatorAccount({ lovelace: 0n });
@@ -55,7 +70,7 @@ export type EnrolledOperator = Awaited<ReturnType<typeof enrollSuccessor>>;
 
 /** Voluntarily retire `operatorKeyHash`, submitted by `lucid`. */
 export const retireOperator = async (
-  fixture: ProvedDoubleSpendFixture,
+  fixture: Omit<OperatorLifecycleScene, "funderLucid">,
   operatorKeyHash: string,
   lucid: Awaited<ReturnType<typeof Lucid>>,
 ) => {
@@ -104,7 +119,9 @@ export const retireOperator = async (
 };
 
 /** Reads the live scheduler UTxO of the fixture's deployment. */
-export const liveSchedulerOf = (fixture: ProvedDoubleSpendFixture) => {
+export const liveSchedulerOf = (
+  fixture: Pick<OperatorLifecycleScene, "contracts" | "funderLucid">,
+) => {
   const { contracts, funderLucid } = fixture;
   const schedulerUnit = toUnit(
     contracts.scheduler.policyId,
