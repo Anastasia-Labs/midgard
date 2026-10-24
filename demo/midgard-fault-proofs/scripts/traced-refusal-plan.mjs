@@ -65,6 +65,15 @@ const declarationStarts = (source) =>
     ),
   ].map((match) => ({ index: match.index, name: match[1] }));
 
+/**
+ * Where each top-level statement starts: a line that begins with code, not
+ * with indentation, a closing bracket or a comment. A declaration ends where
+ * the next one starts, so a helper declared last, before a `describe` block,
+ * does not swallow the cases that call it.
+ */
+const statementStarts = (source) =>
+  [...source.matchAll(/^(?![\s)\]}/*])\S/gmu)].map((match) => match.index);
+
 const lastBefore = (starts, index) =>
   starts.filter((start) => start.index < index).at(-1);
 
@@ -194,7 +203,7 @@ const testTree = (testsRoot) => {
     }
     if (enclosing === undefined) return;
     const end =
-      declarations.find((start) => start.index > enclosing.index)?.index ??
+      statementStarts(source).find((start) => start > enclosing.index) ??
       source.length;
     reachDeclaration(
       file,

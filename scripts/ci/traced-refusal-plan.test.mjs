@@ -105,6 +105,43 @@ test("a pin in a test case runs in that case", () => {
   );
 });
 
+test("a helper declared last, before the describe block, runs in the cases that call it", () => {
+  withTree(
+    {
+      "a.test.ts": [
+        "let state = 0;",
+        "const refuse = async (index: number) => {",
+        `  ${pinCall("m/helper")}`,
+        "};",
+        'describe("a", () => {',
+        "  beforeAll(() => {",
+        "    state = 1;",
+        "  });",
+        '  it("calls the helper", async () => {',
+        "    await refuse(state);",
+        "  });",
+        '  it("does not", async () => {});',
+        "});",
+      ].join("\n"),
+    },
+    (directory) => {
+      assert.deepEqual(tracedRefusalPlan(directory), [
+        {
+          file: "tests/a.test.ts",
+          module: "m/helper",
+          sites: [
+            {
+              file: "tests/a.test.ts",
+              name: "calls the helper",
+              template: false,
+            },
+          ],
+        },
+      ]);
+    },
+  );
+});
+
 test("a pin in a support module runs in every case that reaches it", () => {
   withTree(
     {
