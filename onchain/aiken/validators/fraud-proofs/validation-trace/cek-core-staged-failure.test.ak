@@ -2173,6 +2173,51 @@ test refuses_a_charged_write_bits_step_past_4096_bytes() fail {
   )
 }
 
+// ## replicateByte with a count or byte past one word
+//
+// An integer past one word is at least 2^64 in magnitude, so it is neither a
+// count in 0..8,192 nor a byte. The direct failure arm leaves a replicateByte
+// failure uncharged, and so does this hop.
+
+fn replicate_byte_arguments(count: Int, byte: Int) -> List<ValueWitnessV1> {
+  [integer_value(count), integer_value(byte)]
+}
+
+test proves_replicate_byte_fails_on_a_count_or_byte_past_one_word() {
+  and {
+    fails_on_arguments(81, replicate_byte_arguments(power_of_two(64), 0)),
+    fails_on_arguments(81, replicate_byte_arguments(-power_of_two(64), 255)),
+    fails_on_arguments(81, replicate_byte_arguments(magnitude(10000), 0)),
+    fails_on_arguments(81, replicate_byte_arguments(5, power_of_two(64))),
+    fails_on_arguments(81, replicate_byte_arguments(5, -magnitude(10000))),
+  }
+}
+
+test refuses_replicate_byte_with_one_word_arguments() {
+  and {
+    !decides_on_arguments(81, replicate_byte_arguments(power_of_two(63), 0)),
+    !decides_on_arguments(81, replicate_byte_arguments(8193, 256)),
+    !decides_on_arguments(81, replicate_byte_arguments(5, 0)),
+  }
+}
+
+test refuses_a_step_of_replicate_byte_with_one_word_arguments() fail {
+  fails_on_arguments(81, replicate_byte_arguments(power_of_two(63), 0))
+}
+
+test refuses_a_charged_replicate_byte_step() fail {
+  spend(
+    charged_failure_step(
+      81,
+      list.map(replicate_byte_arguments(magnitude(10000), 0), compact),
+      material(no_staging(), []),
+      [],
+      1,
+      0,
+    ),
+  )
+}
+
 // ## Routing the bitwise builtins, ECDSA and integerToByteString
 
 test routes_the_bitwise_builtins_ecdsa_and_integer_to_bytes_to_the_staged_failure_hop() {
@@ -2235,8 +2280,12 @@ test does_not_route_write_bits_to_the_material_hop() fail {
   roots_route(80, write_bits_arguments(past_bound_bytes(), [0]), False)
 }
 
-test routes_replicate_byte_to_the_material_hop() {
-  roots_route(81, [integer_value(power_of_two(64)), integer_value(0)], False)
+test routes_replicate_byte_to_the_staged_failure_hop() {
+  roots_route(81, replicate_byte_arguments(magnitude(10000), 0), True)
+}
+
+test does_not_route_replicate_byte_to_the_material_hop() fail {
+  roots_route(81, replicate_byte_arguments(magnitude(10000), 0), False)
 }
 
 test leaves_a_charged_ecdsa_and_integer_to_bytes_post_on_the_staged_route() {
@@ -2320,6 +2369,17 @@ fn write_bits_step_at_the_bound() -> StagedStepV1 {
   )
 }
 
+/// replicateByte over a count of 10,000 bytes, decided by its committed
+/// memory alone.
+fn replicate_byte_step_past_one_word() -> StagedStepV1 {
+  failure_step(
+    81,
+    list.map(replicate_byte_arguments(magnitude(10000), 0), compact),
+    material(no_staging(), []),
+    [],
+  )
+}
+
 test staged_failure_read_bit_at_the_byte_string_bound() {
   spend(read_bit_step_at_the_bound())
 }
@@ -2350,4 +2410,12 @@ test staged_failure_write_bits_past_the_byte_string_bound() {
 
 test staged_failure_write_bits_fixture_only_past_the_byte_string_bound() {
   built(write_bits_step_at_the_bound())
+}
+
+test staged_failure_replicate_byte_past_one_word() {
+  spend(replicate_byte_step_past_one_word())
+}
+
+test staged_failure_replicate_byte_fixture_only_past_one_word() {
+  built(replicate_byte_step_past_one_word())
 }

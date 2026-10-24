@@ -871,7 +871,9 @@ fn failure_inputs_v1(
 ///   by its value and outside the machine integers;
 /// - integerToByteString's width of more than one word, or of one word
 ///   revealed by its value and outside 0..8,192;
-/// - writeBits' input of more than 512 words (more than 4,096 bytes).
+/// - writeBits' input of more than 512 words (more than 4,096 bytes);
+/// - replicateByte's count or byte of more than one word, which is neither a
+///   count in 0..8,192 nor a byte.
 ///
 /// The witness carries each argument in the compacted form the roots hop
 /// commits (its value root is the same), and only compacted arguments are
@@ -970,6 +972,8 @@ pub fn verify_staged_failure_v1(
     // writeBits fails on an input past 4,096 bytes whatever its indices.
     expect [input, _, _] = arguments
     memory_past_v1(input, max_write_bits_input_words)
+  } else if tag == 81 {
+    list.any(arguments, fn(value) { memory_past_v1(value, 1) })
   } else {
     False
   }

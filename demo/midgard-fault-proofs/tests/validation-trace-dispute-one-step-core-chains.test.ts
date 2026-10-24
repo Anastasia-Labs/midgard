@@ -45,6 +45,7 @@ describe("group 7's arm chain", () => {
     75n,
     79n,
     80n,
+    81n,
     82n,
     83n,
     85n,
@@ -55,7 +56,7 @@ describe("group 7's arm chain", () => {
     expect(hops.facts).toHaveLength(2);
   });
 
-  it.each([26n, 30n, 51n, 54n, 70n, 81n, 87n])(
+  it.each([26n, 30n, 51n, 54n, 70n, 87n])(
     "takes builtin %s from the roots to the material hop",
     (tag) => {
       expect(cekCoreArmHops(7, stagedFailure(tag), ROOT).holders).toEqual([
@@ -110,7 +111,10 @@ describe("the staged route's semantic stage", () => {
     expect(DEPLOYMENT_MANIFEST_CONTRACT_NAMES).toContain(name);
   });
 
-  it.each([52n, 73n, 80n, 26n])("gives builtin %s no staged stage", (tag) => {
-    expect(cekCoreStagedSemanticStage(tag)).toBeNull();
-  });
+  it.each([52n, 73n, 80n, 81n, 26n])(
+    "gives builtin %s no staged stage",
+    (tag) => {
+      expect(cekCoreStagedSemanticStage(tag)).toBeNull();
+    },
+  );
 });

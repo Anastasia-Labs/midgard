@@ -268,6 +268,12 @@ const classify = (
       ? staged([], false)
       : null;
   }
+  if (number === 81) {
+    // An integer past one word is neither a count in 0..8,192 nor a byte.
+    return operands.some((operand) => words(operand) > 1n)
+      ? staged([], false)
+      : null;
+  }
   if (number === 74) {
     // The operands are the input alone; only its bound fails here.
     return operands[0]!.bytes.length > MAX_BOUNDED_BYTES

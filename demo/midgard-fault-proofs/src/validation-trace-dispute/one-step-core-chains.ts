@@ -63,13 +63,9 @@ export const CEK_CORE_SEMANTIC_STAGES = Object.freeze([
 const STAGED_FAILURE_STAGE = "stagedFailure" as const;
 
 /** Whether group 7's roots route builtin `tag` to the staged failure hop:
- * all but the Data builtins and replicateByte. */
+ * all but the Data builtins. */
 const stagedFailureTag = (tag: bigint): boolean =>
-  tag < 26n ||
-  tag === 52n ||
-  tag === 53n ||
-  (tag >= 71n && tag <= 80n) ||
-  (tag >= 82n && tag <= 86n);
+  tag < 26n || tag === 52n || tag === 53n || (tag >= 71n && tag <= 86n);
 
 /** The staged semantic stage of each staged `semantic_group(tag)`, the
  * groups past `CEK_CORE_SEMANTIC_STAGES` (cek-semantic-chain): the

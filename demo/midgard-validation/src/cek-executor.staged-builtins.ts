@@ -64,10 +64,11 @@ type StagedWitness = Extract<
   { readonly kind: "executeBuiltinStaged" }
 >;
 
-/** verifyEcdsaSecp256k1Signature, integerToByteString and writeBits, whose
- * staged steps the staged failure hop proves only when they fail. */
+/** verifyEcdsaSecp256k1Signature, integerToByteString, writeBits and
+ * replicateByte, whose staged steps the staged failure hop proves only when
+ * they fail. */
 const failureOnly = (tag: bigint): boolean =>
-  tag === 52n || tag === 73n || tag === 80n;
+  tag === 52n || tag === 73n || tag === 80n || tag === 81n;
 
 /**
  * Whether builtin `tag` over these presented arguments takes the staged

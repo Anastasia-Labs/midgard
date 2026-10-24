@@ -6,30 +6,11 @@
  * before costing them, and indexByteString and decodeUtf8 also fail on their
  * operand's content. The roots hop commits every argument compacted, with its
  * type, payload summary and memory, so most failures are decided from those
- * alone:
- *
- * - an integer argument of an integer builtin but equalsInteger of more than
- *   4,096 words, or of 4,096 words whose CBOR, revealed by its source, is
- *   outside [-2^262143, 2^262143 - 1];
- * - a byte-string argument of a bounded builtin of more than 8,192 words
- *   (more than 65,536 bytes);
- * - consByteString's byte, sliceByteString's start or length, or
- *   indexByteString's index of more than one word;
- * - indexByteString's index, revealed by its value, below zero or at or past
- *   the length its source binds;
- * - decodeUtf8 of bytes whose prefix up to the material's trailing value
- *   decodes and whose next character, as long as its first byte says, does
- *   not;
- * - verifyEd25519Signature's or verifySchnorrSecp256k1Signature's message,
- *   or byteStringToInteger's input, of more than 8,192 words;
- * - a byte-string argument of andByteString, orByteString, xorByteString,
- *   complementByteString, readBit, countSetBits or findFirstSetBit of more
- *   than 8,192 words;
- * - readBit's index, or shiftByteString's or rotateByteString's amount, of
- *   more than one word, or of one word revealed by its value and outside the
- *   machine integers;
- * - integerToByteString's width of more than one word, or of one word
- *   revealed by its value and outside 0..8,192.
+ * alone. The failures decided here are the ones `verify_staged_failure_v1`
+ * (cek-staged-arm-v1.ak) lists, among them replicateByte's count or byte of
+ * more than one word, which is neither a count in 0..8,192 nor a byte (left
+ * uncharged, as at the direct failure arm, though Cardano charges a count
+ * out of range).
  *
  * Only compacted arguments are read: a revealed constant is past no bound.
  *
@@ -295,6 +276,10 @@ export const verifyMidgardCekStagedBuiltinFailure = (
       // writeBits fails on an input past 4,096 bytes whatever its indices.
       if (arguments_.length !== 3) return refuse("argument count");
       return memoryPast(arguments_[0]!, MAX_WRITE_BITS_INPUT_WORDS);
+    }
+    if (tag === 81n) {
+      // An integer past one word is neither a count in 0..8,192 nor a byte.
+      return arguments_.some((value) => memoryPast(value, 1n));
     }
     if (tag === 73n) {
       const [, width] = arguments_;
