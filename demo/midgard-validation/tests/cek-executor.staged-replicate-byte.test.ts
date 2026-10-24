@@ -8,6 +8,7 @@ import {
 } from "../src/cek-builtin.evaluate-reference-builtin.js";
 import type { MidgardCekCoreStepWitness } from "../src/cek-machine.js";
 import {
+  type Budget,
   builtBytes,
   failureVerifies,
 } from "./helpers/cek-staged-failure-charge.js";
@@ -25,8 +26,7 @@ import {
  * neither a count in 0..8,192 nor a byte. Protocol version 11 fails a byte
  * outside 0..255 before costing, and a count out of range after costing it,
  * which the direct failure arm leaves uncharged. The proof-mode run reaches
- * the PV11 evaluator's verdict. The longest count has its own file
- * (cek-executor.staged-replicate-byte-max-shape.test.ts).
+ * the PV11 evaluator's verdict.
  */
 
 const REPLICATE_BYTE = 81n;
@@ -67,7 +67,23 @@ const rows: readonly Row[] = [
   ],
 ];
 
+/** The longest integer protocol version 11 makes: byteStringToInteger's
+ * input and multiplyInteger's operands are bounded. Building it at run time
+ * passes the transaction budget, so its run has a larger one. */
+const LONGEST = 65_536;
+const RAISED_BUDGET: Budget = { cpu: 40_000_000_000n, memory: 16_500_000n };
+
 describe("a replicateByte step that fails beside a staged operand", () => {
+  it("a count of 65,536 bytes is proved with the PV11 evaluator's verdict", () => {
+    expectStagedFailureProved(
+      REPLICATE_BYTE,
+      Builtin.replicateByte,
+      [integer(LONGEST), small(0n)],
+      "uncharged",
+      RAISED_BUDGET,
+    );
+  });
+
   it.each(rows)(
     "%s is proved with the PV11 evaluator's verdict",
     (_, operands, charge) => {
