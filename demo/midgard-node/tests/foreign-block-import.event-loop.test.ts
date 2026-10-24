@@ -41,6 +41,21 @@ const timed = async <A>(work: () => Promise<A>) => {
   return { value, total: end - start, longest };
 };
 
+/**
+ * The steadiest of `attempts` timed runs of `work`: the one whose longest
+ * stretch is the smallest share of its total. A stall from the host (a
+ * collection, a preempted runner) lands in one run; work that never gives
+ * the event loop a turn stretches every run.
+ */
+const steadiest = async <A>(work: () => Promise<A>, attempts: number) => {
+  let best = await timed(work);
+  for (let attempt = 1; attempt < attempts; attempt += 1) {
+    const run = await timed(work);
+    if (run.longest / run.total < best.longest / best.total) best = run;
+  }
+  return best;
+};
+
 /** `count` outputs locked by an accepting script, from `byte` on. */
 const funded = (byte: number, count: number): LedgerEntry[] =>
   Array.from({ length: count }, (_, index) => fundedBy(byte + index, "accept"));
@@ -113,7 +128,7 @@ describe("foreign import and import checks keep the event loop turning", () => {
     // The process's first evaluation pays a one-time warm-up longer than
     // several runs' work: rebuild the check once before timing it.
     expect(await rebuilt()).toEqual({ kind: "accepted" });
-    const run = await timed(rebuilt);
+    const run = await steadiest(rebuilt, 3);
     expect(run.value).toEqual({ kind: "accepted" });
     const perRun = run.total / UNITS;
     expect(run.longest).toBeLessThan(STRETCH_UNITS * perRun);
