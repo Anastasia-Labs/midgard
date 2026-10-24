@@ -426,18 +426,6 @@ importers:
       '@effect/sql-pg':
         specifier: ^0.35.1
         version: 0.35.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.80.21(effect@3.21.2))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
-      '@harmoniclabs/cbor':
-        specifier: 2.0.2
-        version: 2.0.2
-      '@harmoniclabs/plutus-data':
-        specifier: 2.0.1
-        version: 2.0.1(@harmoniclabs/cbor@2.0.2)
-      '@harmoniclabs/plutus-machine':
-        specifier: 3.0.3
-        version: 3.0.3(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/plutus-data@2.0.1(@harmoniclabs/cbor@2.0.2))(@harmoniclabs/uplc@2.0.7(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(@harmoniclabs/plutus-data@2.0.1(@harmoniclabs/cbor@2.0.2)))
-      '@harmoniclabs/uplc':
-        specifier: 2.0.7
-        version: 2.0.7(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(@harmoniclabs/plutus-data@2.0.1(@harmoniclabs/cbor@2.0.2))
       '@libp2p/bootstrap':
         specifier: 12.0.25
         version: 12.0.25
@@ -538,6 +526,18 @@ importers:
       '@effect/vitest':
         specifier: ^0.22.0
         version: 0.22.5(effect@3.21.2)(vitest@5.0.3(@opentelemetry/api@1.9.0)(@types/node@22.19.17)(vite@6.4.2(@types/node@22.19.17)(yaml@2.9.0)))
+      '@harmoniclabs/cbor':
+        specifier: 2.0.2
+        version: 2.0.2
+      '@harmoniclabs/plutus-data':
+        specifier: 2.0.1
+        version: 2.0.1(@harmoniclabs/cbor@2.0.2)
+      '@harmoniclabs/plutus-machine':
+        specifier: 3.0.3
+        version: 3.0.3(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/plutus-data@2.0.1(@harmoniclabs/cbor@2.0.2))(@harmoniclabs/uplc@2.0.7(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(@harmoniclabs/plutus-data@2.0.1(@harmoniclabs/cbor@2.0.2)))
+      '@harmoniclabs/uplc':
+        specifier: 2.0.7
+        version: 2.0.7(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(@harmoniclabs/plutus-data@2.0.1(@harmoniclabs/cbor@2.0.2))
       '@types/json-bigint':
         specifier: 1.0.4
         version: 1.0.4
