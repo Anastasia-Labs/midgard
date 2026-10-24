@@ -1035,6 +1035,7 @@ fn roots_route_charging(
   failure_roots.main.spend(
     material_hop,
     staged_hop,
+    other_hop_hash,
     fixture.computation_thread_policy_id,
     Some(ct.StepDatum { ..datum, data: Some(at_roots) }),
     step.redeemer,

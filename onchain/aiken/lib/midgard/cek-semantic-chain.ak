@@ -197,6 +197,9 @@ pub fn semantic_group(tag: Int) -> Int {
     // integerToByteString, byteStringToInteger, shiftByteString and
     // rotateByteString past the direct carriage bound.
     11
+  } else if tag == 80 {
+    // writeBits over an index list of any length.
+    12
   } else {
     fail
   }

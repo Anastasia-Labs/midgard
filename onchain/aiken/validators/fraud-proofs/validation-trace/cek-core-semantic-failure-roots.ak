@@ -13,6 +13,7 @@ use midgard/fraud_proofs/common.{cancel}
 validator main(
   material_script_hash: ScriptHash,
   staged_failure_script_hash: ScriptHash,
+  write_bits_loop_script_hash: ScriptHash,
   computation_thread_policy_id: PolicyId,
 ) {
   spend(
@@ -52,11 +53,12 @@ validator main(
             root,
           )
         // The byte-string, string, signature, integer and bitwise builtins
-        // (writeBits and replicateByte among them), integerToByteString and
-        // byteStringToInteger fail on their arguments' bounds or content at
-        // the staged failure hop, which checks the post-state since some of
-        // its failures are charged; the Data builtins on their material at
-        // the material hop, before costing.
+        // (writeBits over an input past 4,096 bytes and replicateByte among
+        // them), integerToByteString and byteStringToInteger fail on their
+        // arguments' bounds or content at the staged failure hop, which checks
+        // the post-state since some of its failures are charged; writeBits
+        // over a shorter input at its loop, which checks it too; the Data
+        // builtins on their material at the material hop, before costing.
         let to_staged = or {
           tag < 26,
           tag == 52,
@@ -78,7 +80,22 @@ validator main(
           }
         chain.continue_core(
           if to_staged {
-            staged_failure_script_hash
+            if tag == 80 {
+              // writeBits over a compacted input of at most 4,096 bytes fails
+              // on an index, which its loop finds in a list of any length.
+              expect [input, _, _] = arguments
+              when input is {
+                builtin_witness.SemanticConstantValue { memory, .. } ->
+                  if memory <= 512 {
+                    write_bits_loop_script_hash
+                  } else {
+                    staged_failure_script_hash
+                  }
+                _ -> staged_failure_script_hash
+              }
+            } else {
+              staged_failure_script_hash
+            }
           } else {
             material_script_hash
           },

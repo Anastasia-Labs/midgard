@@ -44,33 +44,42 @@ validator main(
         } else {
           chain.decode_builtin_success(bound.arm, action.witness)
         }
-        let facts = if bound.arm == 31 {
-          expect semantic: chain.SemanticRoots = bound.facts
-          semantic.roots
-        } else {
-          expect direct: chain.BuiltinRoots = bound.facts
-          direct
-        }
-        let budget = if bound.arm == 31 {
-          builtin_witness.staged_builtin_budget_v1(
-            item.tag,
-            item.arguments,
-            item.result,
-          )
-        } else {
-          builtin_witness.direct_builtin_budget_v1(item.tag, item.arguments)
-        }
-        expect
-          bound.post == machine.exact_state(
-            bound.pre,
-            machine.mode_return,
-            facts.result_root,
-            proof.empty_environment_root_v1,
-            bound.pre.continuation_root,
-            0,
-            budget.cpu,
-            budget.memory,
-          )
+        // writeBits over a staged index list is charged by its loop, which
+        // reads the list's length; this hop only routes it.
+        expect or {
+            bound.arm == 31 && item.tag == 80,
+            {
+              let facts = if bound.arm == 31 {
+                expect semantic: chain.SemanticRoots = bound.facts
+                semantic.roots
+              } else {
+                expect direct: chain.BuiltinRoots = bound.facts
+                direct
+              }
+              let budget = if bound.arm == 31 {
+                builtin_witness.staged_builtin_budget_v1(
+                  item.tag,
+                  item.arguments,
+                  item.result,
+                )
+              } else {
+                builtin_witness.direct_builtin_budget_v1(
+                  item.tag,
+                  item.arguments,
+                )
+              }
+              bound.post == machine.exact_state(
+                bound.pre,
+                machine.mode_return,
+                facts.result_root,
+                proof.empty_environment_root_v1,
+                bound.pre.continuation_root,
+                0,
+                budget.cpu,
+                budget.memory,
+              )
+            },
+          }
         let group = if bound.arm == 31 {
           chain.semantic_group(item.tag)
         } else {
