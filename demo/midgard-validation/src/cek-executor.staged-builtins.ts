@@ -64,9 +64,10 @@ type StagedWitness = Extract<
   { readonly kind: "executeBuiltinStaged" }
 >;
 
-/** verifyEcdsaSecp256k1Signature and integerToByteString, whose staged
- * steps the staged failure hop proves only when they fail. */
-const failureOnly = (tag: bigint): boolean => tag === 52n || tag === 73n;
+/** verifyEcdsaSecp256k1Signature, integerToByteString and writeBits, whose
+ * staged steps the staged failure hop proves only when they fail. */
+const failureOnly = (tag: bigint): boolean =>
+  tag === 52n || tag === 73n || tag === 80n;
 
 /**
  * Whether builtin `tag` over these presented arguments takes the staged
@@ -185,8 +186,10 @@ export const executeMidgardCekStagedBuiltin = (
   const conversion = tag === 74n;
   const leading =
     conversion || tag === 73n || (tag >= 75n && tag <= 77n) ? 1 : 0;
+  // writeBits' indices and Boolean are not operands: its failure reads its
+  // input alone.
   const operands = arguments_
-    .slice(leading)
+    .slice(leading, tag === 80n ? 1 : undefined)
     .map((argument, index) =>
       operandOf(store, roots[index + leading]!, argument),
     );

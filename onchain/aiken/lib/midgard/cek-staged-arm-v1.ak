@@ -870,7 +870,8 @@ fn failure_inputs_v1(
 ///   rotateByteString's amount of more than one word, or of one word revealed
 ///   by its value and outside the machine integers;
 /// - integerToByteString's width of more than one word, or of one word
-///   revealed by its value and outside 0..8,192.
+///   revealed by its value and outside 0..8,192;
+/// - writeBits' input of more than 512 words (more than 4,096 bytes).
 ///
 /// The witness carries each argument in the compacted form the roots hop
 /// commits (its value root is the same), and only compacted arguments are
@@ -965,10 +966,17 @@ pub fn verify_staged_failure_v1(
         value < 0 || value > max_integer_to_bytes_width
       },
     }
+  } else if tag == 80 {
+    // writeBits fails on an input past 4,096 bytes whatever its indices.
+    expect [input, _, _] = arguments
+    memory_past_v1(input, max_write_bits_input_words)
   } else {
     False
   }
 }
+
+/// writeBits' longest input, 4,096 bytes, in words.
+const max_write_bits_input_words = 512
 
 /// The widest output of integerToByteString, in bytes and in words.
 const max_integer_to_bytes_width = 8192

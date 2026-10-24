@@ -77,6 +77,8 @@ const INTEGER_LOWER_BOUND = -(2n ** 262_143n);
 const INTEGER_UPPER_BOUND = 2n ** 262_143n - 1n;
 const INT64_MIN = -(2n ** 63n);
 const INT64_MAX = 2n ** 63n - 1n;
+/** writeBits' longest input, 4,096 bytes, in words. */
+const MAX_WRITE_BITS_INPUT_WORDS = 512n;
 /** integerToByteString's widest output, in bytes and in words. */
 const MAX_INTEGER_TO_BYTES_WIDTH = 8_192n;
 const MAX_INTEGER_TO_BYTES_WORDS = 1_024n;
@@ -288,6 +290,11 @@ export const verifyMidgardCekStagedBuiltinFailure = (
     }
     if ((tag >= 75n && tag <= 79n) || (tag >= 82n && tag <= 85n)) {
       return bitwiseFails(tag, arguments_, material, referenceInputs);
+    }
+    if (tag === 80n) {
+      // writeBits fails on an input past 4,096 bytes whatever its indices.
+      if (arguments_.length !== 3) return refuse("argument count");
+      return memoryPast(arguments_[0]!, MAX_WRITE_BITS_INPUT_WORDS);
     }
     if (tag === 73n) {
       const [, width] = arguments_;

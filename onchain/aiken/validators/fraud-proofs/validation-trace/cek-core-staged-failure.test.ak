@@ -30,9 +30,9 @@ use midgard/cek_staged_integer_v1.{CanonicalIntegerV1, magnitude_words_v1}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/cek_staged_fixture_v1.{
   StagedStepV1, StagingV1, boolean_value, bytes_value, charged_failure_step,
-  compact, failure_step, failure_step_at, integer_value, material, no_staging,
-  pattern, power_of_two, semantic_integer_cbor, semantic_pieces, stage, staged,
-  text, zeros,
+  compact, failure_step, failure_step_at, inline_constant, integer_value,
+  material, no_staging, pattern, power_of_two, semantic_bytes,
+  semantic_integer_cbor, semantic_pieces, stage, staged, text, zeros,
 }
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 
@@ -2107,6 +2107,72 @@ test proves_an_input_of_1025_words_at_both_arms_with_one_charge() {
   }
 }
 
+// ## writeBits over an input past 4,096 bytes
+
+/// The list of integers `indices`, inline.
+fn indices_value(indices: List<Int>) -> ValueWitnessV1 {
+  inline_constant(
+    #"9f0500ff",
+    builtin.list_data(list.map(indices, builtin.i_data)),
+  )
+}
+
+/// writeBits setting bits `indices` of `input`.
+fn write_bits_arguments(
+  input: ValueWitnessV1,
+  indices: List<Int>,
+) -> List<ValueWitnessV1> {
+  [input, indices_value(indices), boolean_value(True)]
+}
+
+test proves_write_bits_fails_on_an_input_past_4096_bytes() {
+  and {
+    fails_on_arguments(
+      80,
+      write_bits_arguments(semantic_bytes(pattern(4097, 0), False), [0]),
+    ),
+    fails_on_arguments(
+      80,
+      write_bits_arguments(semantic_bytes(pattern(4097, 0), False), []),
+    ),
+    fails_on_arguments(80, write_bits_arguments(at_bound_bytes(), [524287])),
+    fails_on_arguments(80, write_bits_arguments(past_bound_bytes(), [0])),
+  }
+}
+
+test refuses_write_bits_on_an_input_of_4096_bytes() {
+  and {
+    !decides_on_arguments(
+      80,
+      write_bits_arguments(semantic_bytes(pattern(4096, 0), False), [0]),
+    ),
+    !decides_on_arguments(
+      80,
+      write_bits_arguments(bytes_value(pattern(4096, 0), False), [0]),
+    ),
+  }
+}
+
+test refuses_a_step_of_write_bits_at_4096_bytes() fail {
+  fails_on_arguments(
+    80,
+    write_bits_arguments(semantic_bytes(pattern(4096, 0), False), [32767]),
+  )
+}
+
+test refuses_a_charged_write_bits_step_past_4096_bytes() fail {
+  spend(
+    charged_failure_step(
+      80,
+      list.map(write_bits_arguments(past_bound_bytes(), [0]), compact),
+      material(no_staging(), []),
+      [],
+      1,
+      0,
+    ),
+  )
+}
+
 // ## Routing the bitwise builtins, ECDSA and integerToByteString
 
 test routes_the_bitwise_builtins_ecdsa_and_integer_to_bytes_to_the_staged_failure_hop() {
@@ -2161,15 +2227,16 @@ test does_not_route_find_first_set_bit_to_the_material_hop() fail {
   roots_route(85, [past_bound_bytes()], False)
 }
 
-test routes_write_bits_and_replicate_byte_to_the_material_hop() {
-  and {
-    roots_route(
-      80,
-      [past_bound_bytes(), integer_value(0), boolean_value(True)],
-      False,
-    ),
-    roots_route(81, [integer_value(power_of_two(64)), integer_value(0)], False),
-  }
+test routes_write_bits_to_the_staged_failure_hop() {
+  roots_route(80, write_bits_arguments(past_bound_bytes(), [0]), True)
+}
+
+test does_not_route_write_bits_to_the_material_hop() fail {
+  roots_route(80, write_bits_arguments(past_bound_bytes(), [0]), False)
+}
+
+test routes_replicate_byte_to_the_material_hop() {
+  roots_route(81, [integer_value(power_of_two(64)), integer_value(0)], False)
 }
 
 test leaves_a_charged_ecdsa_and_integer_to_bytes_post_on_the_staged_route() {
@@ -2242,6 +2309,17 @@ fn integer_to_bytes_step_at_the_bound() -> StagedStepV1 {
   )
 }
 
+/// writeBits over an input of 65,537 bytes, one past the byte-string bound,
+/// decided by its committed memory alone.
+fn write_bits_step_at_the_bound() -> StagedStepV1 {
+  failure_step(
+    80,
+    list.map(write_bits_arguments(past_bound_bytes(), [0]), compact),
+    material(no_staging(), []),
+    [],
+  )
+}
+
 test staged_failure_read_bit_at_the_byte_string_bound() {
   spend(read_bit_step_at_the_bound())
 }
@@ -2264,4 +2342,12 @@ test staged_failure_integer_to_bytes_past_the_integer_band() {
 
 test staged_failure_integer_to_bytes_fixture_only_past_the_integer_band() {
   built(integer_to_bytes_step_at_the_bound())
+}
+
+test staged_failure_write_bits_past_the_byte_string_bound() {
+  spend(write_bits_step_at_the_bound())
+}
+
+test staged_failure_write_bits_fixture_only_past_the_byte_string_bound() {
+  built(write_bits_step_at_the_bound())
 }

@@ -1,7 +1,7 @@
 /** Group 7's arm chain: the roots hop goes on to the staged failure hop for
- * a byte-string, string, signature or integer builtin and to the material
- * hop for the rest, as the on-chain roots route them by tag; and the staged
- * semantic stage the budget hop routes a staged builtin to. */
+ * a byte-string, string, signature, integer or bitwise builtin and to the
+ * material hop for the rest, as the on-chain roots route them by tag; and
+ * the staged semantic stage the budget hop routes a staged builtin to. */
 import { DEPLOYMENT_MANIFEST_CONTRACT_NAMES } from "@al-ft/midgard-core/deployment-manifest-identity";
 import type { MidgardCekCoreStepWitness } from "@al-ft/midgard-validation";
 import { describe, expect, it } from "vitest";
@@ -44,6 +44,7 @@ describe("group 7's arm chain", () => {
     74n,
     75n,
     79n,
+    80n,
     82n,
     83n,
     85n,
@@ -54,7 +55,7 @@ describe("group 7's arm chain", () => {
     expect(hops.facts).toHaveLength(2);
   });
 
-  it.each([26n, 30n, 51n, 54n, 70n, 80n, 81n, 87n])(
+  it.each([26n, 30n, 51n, 54n, 70n, 81n, 87n])(
     "takes builtin %s from the roots to the material hop",
     (tag) => {
       expect(cekCoreArmHops(7, stagedFailure(tag), ROOT).holders).toEqual([

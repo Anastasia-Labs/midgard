@@ -1759,9 +1759,10 @@
       "test": "fraud_proofs/validation_trace/cek_core_staged_failure.test/staged_failure_signature_at_the_byte_string_bound",
       "minusControl": "staged_failure_signature_fixture_only_at_the_byte_string_bound",
       "ceiling": {
-        "mem": 752674,
-        "cpu": 299326752
-      }
+        "mem": 760319,
+        "cpu": 301084816
+      },
+      "raisedBecause": "The staged failure step also proves writeBits over an input past 4,096 bytes; the larger step script costs every row of the hop about 200 mem, past this row's margin."
     },
     "fraud_proofs/validation_trace/cek_core_staged_failure.test/staged_failure_read_bit_at_the_byte_string_bound - staged_failure_read_bit_fixture_only_at_the_byte_string_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_staged_failure.test/staged_failure_read_bit_at_the_byte_string_bound",
@@ -1786,6 +1787,14 @@
       "ceiling": {
         "mem": 594495,
         "cpu": 243870403
+      }
+    },
+    "fraud_proofs/validation_trace/cek_core_staged_failure.test/staged_failure_write_bits_past_the_byte_string_bound - staged_failure_write_bits_fixture_only_past_the_byte_string_bound": {
+      "test": "fraud_proofs/validation_trace/cek_core_staged_failure.test/staged_failure_write_bits_past_the_byte_string_bound",
+      "minusControl": "staged_failure_write_bits_fixture_only_past_the_byte_string_bound",
+      "ceiling": {
+        "mem": 403357,
+        "cpu": 165262924
       }
     },
     "fraud_proofs/validation_trace/cek_core_staged_conversion.test/staged_conversion_big_endian_at_the_argument_bound - staged_conversion_big_endian_fixture_only_at_the_argument_bound": {

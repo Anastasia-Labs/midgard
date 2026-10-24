@@ -1,5 +1,5 @@
 import { CEKConst } from "@harmoniclabs/plutus-machine";
-import { Builtin, UPLCConst } from "@harmoniclabs/uplc";
+import { Builtin, constT, UPLCConst } from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
 import type { MidgardCekDirectValueWitness } from "../src/cek-builtin.argument-kinds.js";
@@ -35,6 +35,7 @@ const READ_BIT = 79n;
 const SHIFT = 82n;
 const ECDSA = 52n;
 const INTEGER_TO_BYTES = 73n;
+const WRITE_BITS = 80n;
 
 const LONGEST = 65_536;
 const INT64_MAX = 2n ** 63n - 1n;
@@ -431,6 +432,48 @@ describe("a failing bitwise, ECDSA or integerToByteString step has one provable 
         smallInteger(amount),
       ]);
       expect(failureVerifies(SHIFT, arguments_, staged, UNCHARGED)).toBe(false);
+    }
+  });
+
+  it("writeBits: both failure arms prove an input past 4,096 bytes uncharged, and neither one of 4,096 bytes", () => {
+    const indices = referenceConstantToDirectWitness(
+      CEKConst.fromUplc(
+        UPLCConst.listOf(constT.int)([UPLCConst.int(0n).value as never]),
+      ),
+      true,
+    );
+    const flag = referenceConstantToDirectWitness(CEKConst.bool(true), true);
+    for (const [length, fails] of [
+      [4_097, true],
+      [LONGEST, true],
+      [4_096, false],
+    ] as const) {
+      const arguments_ = [
+        presented(bytesOperand(builtBytes(length))),
+        indices,
+        flag,
+      ];
+      const staged = {
+        kind: "executeBuiltinStagedFailure",
+        tag: WRITE_BITS,
+        arguments: arguments_.map(semanticizeMidgardCekDirectConstant),
+        material: { runs: { refs: [], operands: [] }, sources: [] },
+        stagedOperands: [],
+      } as MidgardCekCoreStepWitness;
+      const direct = {
+        kind: "executeBuiltinFailure",
+        tag: WRITE_BITS,
+        arguments: arguments_,
+      } as MidgardCekCoreStepWitness;
+      const witnesses_ = length === LONGEST ? [staged] : [staged, direct];
+      for (const witness of witnesses_) {
+        expect(
+          failureVerifies(WRITE_BITS, arguments_, witness, UNCHARGED),
+        ).toBe(fails);
+        expect(
+          failureVerifies(WRITE_BITS, arguments_, witness, SOME_CHARGE),
+        ).toBe(false);
+      }
     }
   });
 });

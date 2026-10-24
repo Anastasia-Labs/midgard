@@ -26,7 +26,9 @@
  *   the leaves;
  * - integerToByteString's width outside 0..8,192, and with its width in
  *   range its input past 1,024 words (charged), go to the staged failure
- *   hop, a one-word width revealed by its value.
+ *   hop, a one-word width revealed by its value;
+ * - writeBits' input past 4,096 bytes goes to the staged failure hop,
+ *   uncharged as at the direct failure arm, its indices unread.
  */
 import { MIDGARD_CEK_STAGED_CHUNK_BYTES } from "@al-ft/midgard-core";
 import { CEKConst } from "@harmoniclabs/plutus-machine";
@@ -71,6 +73,8 @@ const INTEGER_LOWER_BOUND = -(2n ** 262_143n);
 const INTEGER_UPPER_BOUND = 2n ** 262_143n - 1n;
 const INT64_MIN = -(2n ** 63n);
 const INT64_MAX = 2n ** 63n - 1n;
+/** writeBits' longest input, in bytes. */
+const MAX_WRITE_BITS_INPUT = 4_096;
 /** integerToByteString's widest output, in bytes and in words. */
 const MAX_INTEGER_TO_BYTES_WIDTH = 8_192n;
 const MAX_INTEGER_TO_BYTES_WORDS = 1_024n;
@@ -257,6 +261,12 @@ const classify = (
         : null;
     }
     return inInt64 ? null : staged(sources, false);
+  }
+  if (number === 80) {
+    // The operand is the input alone, whatever the indices.
+    return operands[0]!.bytes.length > MAX_WRITE_BITS_INPUT
+      ? staged([], false)
+      : null;
   }
   if (number === 74) {
     // The operands are the input alone; only its bound fails here.
