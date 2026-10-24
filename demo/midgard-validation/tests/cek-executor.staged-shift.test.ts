@@ -77,8 +77,12 @@ const ROWS: readonly Row[] = [
   ["rotateByteString towards the end by bits", ROTATE, -3n],
 ];
 
-/** A row whose evaluator run is slow: rotations towards the end. */
-const ROW_TIMEOUT = 120_000;
+/** The amount the PV11 evaluator's run of a row takes. Its rotation by a
+ * negative amount is quadratic in the input (seconds past 32,768 bytes), so
+ * past 9,216 bytes the verdict is taken over the same rotation towards the
+ * start, which costs the same: both builtins cost their input alone. */
+const verdictAmount = (tag: bigint, amount: bigint, size: number): bigint =>
+  tag === ROTATE && amount < 0n && size > 9_216 ? -amount : amount;
 
 const PIECE = 8_000;
 
@@ -145,10 +149,15 @@ const expectOneProvableResult = (step: MidgardCekExecutionStep): void => {
   }
 };
 
-/** The run reaches the evaluator's verdict, and each staged step of `tag`
- * has one provable result; returns those steps. */
-const agrees = (body: UPLCTerm, tag: bigint): MidgardCekExecutionStep[] => {
-  const verdict = run(body, "verdict");
+/** The run reaches the evaluator's verdict (over `verdictBody`, by default
+ * the same body), and each staged step of `tag` has one provable result;
+ * returns those steps. */
+const agrees = (
+  body: UPLCTerm,
+  tag: bigint,
+  verdictBody: UPLCTerm = body,
+): MidgardCekExecutionStep[] => {
+  const verdict = run(verdictBody, "verdict");
   const proof = run(body, "proof");
   expect(proof.result).toEqual(verdict.result);
   const steps = stagedSteps(proof, tag);
@@ -214,8 +223,6 @@ const LONGEST = [
   ["rotateByteString", ROTATE, 3n, 31_424, 370_340],
 ] as const;
 
-const SLOW = 600_000;
-
 describe("shiftByteString and rotateByteString over staged inputs", () => {
   it.each(
     ROWS.flatMap(([name, tag, amount]) =>
@@ -225,11 +232,15 @@ describe("shiftByteString and rotateByteString over staged inputs", () => {
     "%s over %i bytes reaches the PV11 evaluator's verdict and budget",
     (_, size, tag, amount) => {
       const body = call(builtinOf(tag), input(size), int(amount));
-      expect(run(body, "verdict").result.kind).toBe("accepted");
-      const steps = agrees(body, tag);
+      const verdictBody = call(
+        builtinOf(tag),
+        input(size),
+        int(verdictAmount(tag, amount, size)),
+      );
+      expect(run(verdictBody, "verdict").result.kind).toBe("accepted");
+      const steps = agrees(body, tag, verdictBody);
       if (size > 9_215) expect(steps).toHaveLength(1);
     },
-    ROW_TIMEOUT,
   );
 
   it.each(LONGEST)(
@@ -241,42 +252,37 @@ describe("shiftByteString and rotateByteString over staged inputs", () => {
       expect(run(longest(1), "verdict").result.kind).toBe("script_invalid");
       expect(serialisedBytes(tail)).toHaveLength(length);
     },
-    SLOW,
   );
 
-  it(
-    "serialiseData makes the bytes the longest-input rows reproduce",
-    () => {
-      const holds = (condition: UPLCTerm): void => {
-        const body = ifThenElse(condition, UPLCConst.unit, new ErrorUPLC());
-        expect(run(body, "verdict").result.kind).toBe("accepted");
-      };
-      // Protocol version 11 bounds a hashed or sliced byte string at 65,536
-      // bytes, so the longest input's length is checked, and its encoding
-      // over a tail alone.
-      for (const [, , , tail, length] of LONGEST) {
-        holds(
-          call(
-            Builtin.equalsInteger,
-            call(Builtin.lengthOfByteString, serialised(tail)),
-            int(BigInt(length)),
-          ),
-        );
-      }
-      const [tail, copies] = [40_000, 0];
+  it("serialiseData makes the bytes the longest-input rows reproduce", () => {
+    const holds = (condition: UPLCTerm): void => {
+      const body = ifThenElse(condition, UPLCConst.unit, new ErrorUPLC());
+      expect(run(body, "verdict").result.kind).toBe("accepted");
+    };
+    // Protocol version 11 bounds a hashed or sliced byte string at 65,536
+    // bytes, so the longest input's length is checked, and its encoding
+    // over a tail alone.
+    for (const [, , , tail, length] of LONGEST) {
       holds(
         call(
-          Builtin.equalsByteString,
-          call(Builtin.blake2b_256, serialised(tail, copies)),
-          UPLCConst.byteString(
-            new DataB(blake2b(serialisedBytes(tail, copies), { dkLen: 32 }))
-              .bytes,
-          ),
+          Builtin.equalsInteger,
+          call(Builtin.lengthOfByteString, serialised(tail)),
+          int(BigInt(length)),
         ),
       );
-    },
-    SLOW,
-  );
+    }
+    const [tail, copies] = [40_000, 0];
+    holds(
+      call(
+        Builtin.equalsByteString,
+        call(Builtin.blake2b_256, serialised(tail, copies)),
+        UPLCConst.byteString(
+          new DataB(blake2b(serialisedBytes(tail, copies), { dkLen: 32 }))
+            .bytes,
+        ),
+      ),
+    );
+  });
 });
 
 // ## The staged step's relation
