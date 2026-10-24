@@ -122,10 +122,34 @@ const validationTraceCekCoreStagedConversionMembers = defineDeploymentFamily(
   },
 );
 
+const stagedConversion =
+  validationTraceCekCoreStagedConversionMembers.validationTraceDisputeCekCoreStagedConversion;
+
+/** The writeBits loop, which proves writeBits over a long index list
+ * (semantic budget index 12) and its failure on an index outside the input,
+ * placed directly after the staged conversion member. */
+const validationTraceCekCoreStagedWriteBitsLoopMembers = defineDeploymentFamily(
+  "validationTraceDispute",
+  {
+    validationTraceDisputeCekCoreStagedWriteBitsLoop: {
+      purpose: "spend",
+      referenceRole: "V1 validation-trace CEK core staged write bits loop",
+      manifestPosition: stagedConversion.manifestPosition + 1,
+      publicationPosition: stagedConversion.publicationPosition + 1,
+      referenceRolePosition: stagedConversion.referenceRolePosition + 1,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/validation_trace/cek_core_staged_write_bits_loop.main.spend",
+      familyPaths: [["cekCoreStages", "stagedWriteBitsLoop"]],
+    },
+  },
+);
+
 export const validationTraceCekCoreStagedMembers = Object.freeze({
   ...validationTraceCekCoreStagedOperandMembers,
   ...validationTraceCekCoreStagedProductMembers,
   ...validationTraceCekCoreSerialiseLoopMembers,
   ...validationTraceCekCoreStagedFailureMembers,
   ...validationTraceCekCoreStagedConversionMembers,
+  ...validationTraceCekCoreStagedWriteBitsLoopMembers,
 });

@@ -295,6 +295,10 @@ const CEK_STAGED_CATALOGUE_ADDITIONS = [
     contract: "validationTraceDisputeCekCoreStagedConversion",
     role: "V1 validation-trace CEK core staged conversion",
   },
+  {
+    contract: "validationTraceDisputeCekCoreStagedWriteBitsLoop",
+    role: "V1 validation-trace CEK core staged write bits loop",
+  },
 ] as const;
 
 export const cekStagedContracts = new Set<string>(

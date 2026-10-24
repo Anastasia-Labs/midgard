@@ -56,6 +56,9 @@ export const CEK_CORE_STAGE_TITLES = {
   stagedConversion: deployedTitle(
     "validationTraceDisputeCekCoreStagedConversion",
   ),
+  stagedWriteBitsLoop: deployedTitle(
+    "validationTraceDisputeCekCoreStagedWriteBitsLoop",
+  ),
   semanticBudget: deployedTitle(
     "validationTraceDisputeCekCoreDirectScalarBudget",
   ),
@@ -140,6 +143,7 @@ export const buildCekCoreStages = (
   const stagedProduct = terminal("stagedProduct");
   const semanticSerialiseLoop = terminal("semanticSerialiseLoop");
   const stagedConversion = terminal("stagedConversion");
+  const stagedWriteBitsLoop = terminal("stagedWriteBitsLoop");
   const mapStartNodes = terminal("mapStartNodes");
   const semanticFailureMaterial = terminal("semanticFailureMaterial");
   const stagedFailure = terminal("stagedFailure");
@@ -168,6 +172,7 @@ export const buildCekCoreStages = (
       stagedProduct,
       semanticSerialiseLoop,
       stagedConversion,
+      stagedWriteBitsLoop,
     ].map((stage) => stage.spendingScriptHash),
     ctPolicy,
   ]);
@@ -198,6 +203,7 @@ export const buildCekCoreStages = (
   const semanticFailureRoots = build("semanticFailureRoots", [
     semanticFailureMaterial.spendingScriptHash,
     stagedFailure.spendingScriptHash,
+    stagedWriteBitsLoop.spendingScriptHash,
     ctPolicy,
   ]);
   const blsRoots = build("blsRoots", [blsFinal.spendingScriptHash, ctPolicy]);
@@ -234,6 +240,7 @@ export const buildCekCoreStages = (
     stagedProduct,
     semanticSerialiseLoop,
     stagedConversion,
+    stagedWriteBitsLoop,
     semanticBudget,
     semanticRoots,
     semanticResult,
@@ -365,6 +372,10 @@ export const CEK_CORE_STAGE_REFERENCES = {
   stagedConversion: {
     deployment: "validationTraceDisputeCekCoreStagedConversion",
     role: "V1 validation-trace CEK core staged conversion",
+  },
+  stagedWriteBitsLoop: {
+    deployment: "validationTraceDisputeCekCoreStagedWriteBitsLoop",
+    role: "V1 validation-trace CEK core staged write bits loop",
   },
   semanticBudget: {
     deployment: "validationTraceDisputeCekCoreSemanticBudget",
