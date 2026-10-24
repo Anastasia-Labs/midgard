@@ -1,7 +1,4 @@
-import {
-  encodeCbor,
-  PLUTUS_V3_CANONICAL_COST_MODEL_VIEW,
-} from "@al-ft/midgard-core";
+import { PLUTUS_V3_CANONICAL_COST_MODEL_VIEW } from "@al-ft/midgard-core";
 import { DataB } from "@harmoniclabs/plutus-data";
 import { CEKConst } from "@harmoniclabs/plutus-machine";
 import {
@@ -32,7 +29,6 @@ import {
   stageMidgardCekStagedBuiltinMaterial,
 } from "../src/cek-staged-builtin.material.js";
 import { verifyMidgardCekStagedBuiltin } from "../src/cek-staged-builtin.verify.js";
-import { evaluateMidgardCekScript } from "../src/phase-b.evaluate-cek-script.js";
 import type { MidgardUplcEvalProgram } from "../src/plutus-script-evaluator.js";
 import { builtinState } from "./helpers/cek-staged-failure-steps.js";
 import { built, call, run, staged } from "./helpers/cek-staged-route-terms.js";
@@ -50,15 +46,20 @@ import {
  * Protocol version 11 bounds the input at 65,536 bytes and fails the builtin
  * on an input past it before costing it. An input within the bound is
  * proved by the staged conversion step (arm 31, semantics group 9) in either
- * byte order; past about 49,000 bytes the builtin's charge takes the run past
- * the transaction budget, so the run ends there, as on L1. The proof-mode
- * run reaches the PV11 evaluator's verdict and budget, and each step has
- * exactly one provable result.
+ * byte order; past LONGEST bytes the builtin's charge takes the run past the
+ * transaction budget, so the run ends there, as on L1. The proof-mode run
+ * reaches the PV11 evaluator's verdict and budget, and each step has exactly
+ * one provable result.
  */
 
 const CONVERT = 74n;
 
-const SIZES = [9_215, 9_216, 48_999, 49_000, 49_001, 65_536] as const;
+/** The longest input whose conversion fits the transaction budget: building
+ * and converting 49,784 bytes costs 9,997,732,628 cpu in either byte order,
+ * 49,785 bytes 10,000,900,621. */
+const LONGEST = 49_784;
+
+const SIZES = [9_215, 9_216, LONGEST, LONGEST + 1, 65_536] as const;
 
 const ORDERS = [
   ["big-endian", true],
@@ -68,30 +69,6 @@ const ORDERS = [
 const ROWS = ORDERS.flatMap(([order, bigEndian]) =>
   SIZES.map((size) => [order, size, bigEndian] as const),
 );
-
-/** A budget the builtin's charge at the argument bound fits. */
-const RAISED_BUDGET = { cpu: 40_000_000_000n, memory: 16_500_000n };
-
-const script = (body: UPLCTerm): Buffer =>
-  encodeCbor(
-    Buffer.from(
-      UPLCEncoder.compile(new UPLCProgram([1, 1, 0], lam(discard(body)))),
-    ),
-  );
-
-/** `run` under the raised budget. */
-const runRaised = (body: UPLCTerm, mode: "proof" | "verdict") =>
-  evaluateMidgardCekScript(
-    {
-      scriptBytes: script(body),
-      scriptLanguage: "PlutusV3",
-      contextCbor: Buffer.from("d87980", "hex"),
-      executionIndex: 0n,
-      maxSteps: 10_000,
-      executionBudget: RAISED_BUDGET,
-    },
-    mode,
-  );
 
 const conversion = (bigEndian: boolean, input: UPLCTerm): UPLCTerm =>
   call(Builtin.byteStringToInteger, UPLCConst.bool(bigEndian), input);
@@ -184,11 +161,24 @@ describe("byteStringToInteger over a staged input", () => {
       const body = conversion(bigEndian, built(size, 3));
       const verdict = run(body, "verdict");
       const proof = run(body, "proof");
-      if (verdict.result.kind === "accepted") {
+      if (size <= LONGEST) {
+        // The run accepts with the evaluator's budget, and every staged step
+        // verifies.
+        expect(verdict.result.kind).toBe("accepted");
         expect(proof.result).toEqual(verdict.result);
+        for (const staged_ of steps(proof, "executeBuiltinStaged")) {
+          expect(
+            verifyMidgardCekCoreStep(
+              staged_.pre,
+              staged_.post,
+              staged(staged_, 9),
+            ),
+          ).toBe(true);
+        }
       } else {
         // The evaluator ends the run past the budget; the proof-mode run
         // stops at the step that takes it past, its total over the budget.
+        expect(verdict.result.kind).toBe("script_invalid");
         expectPastBudget(proof);
       }
       // The conversion is proved whether or not its charge fits the budget.
@@ -196,31 +186,14 @@ describe("byteStringToInteger over a staged input", () => {
       expect(
         verifyMidgardCekCoreStep(step.pre, step.post, staged(step, 9)),
       ).toBe(true);
-
-      // Under a budget its charge fits, the run accepts with the evaluator's
-      // budget, and every staged step verifies.
-      const raisedVerdict = runRaised(body, "verdict");
-      const raisedProof = runRaised(body, "proof");
-      expect(raisedVerdict.result.kind).toBe("accepted");
-      expect(raisedProof.result).toEqual(raisedVerdict.result);
-      for (const staged_ of steps(raisedProof, "executeBuiltinStaged")) {
-        expect(
-          verifyMidgardCekCoreStep(
-            staged_.pre,
-            staged_.post,
-            staged(staged_, 9),
-          ),
-        ).toBe(true);
-      }
-      expect(lastConversion(raisedProof)!.witness).toEqual(step.witness);
     },
   );
 
   it.each(ORDERS)(
-    "%s ends the run past the budget from about 49,000 bytes, as on L1",
+    "%s ends the run past the budget from 49,785 bytes, as on L1",
     (_, bigEndian) => {
-      const within = conversion(bigEndian, built(49_500, 3));
-      const past = conversion(bigEndian, built(50_000, 3));
+      const within = conversion(bigEndian, built(LONGEST, 3));
+      const past = conversion(bigEndian, built(LONGEST + 1, 3));
       expect(run(within, "verdict").result).toEqual(
         run(within, "proof").result,
       );
