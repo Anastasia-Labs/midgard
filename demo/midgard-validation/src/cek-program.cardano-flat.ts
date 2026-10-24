@@ -1,13 +1,10 @@
-import { isData } from "@harmoniclabs/plutus-data";
-import {
-  type ConstType,
-  ConstTyTag,
-  UPLCEncoder,
-  type UPLCProgram,
-} from "@harmoniclabs/uplc";
+import type { UPLCProgram } from "@harmoniclabs/uplc";
 
-import { encodeMidgardCekPlutusData } from "./cek-constant.js";
 import { decodeCardanoFlatProgramOrThrow } from "./cek-program.cardano-flat.decode.js";
+import {
+  encodeCardanoFlatProgram,
+  type FlatProgram,
+} from "./cek-program.cardano-flat.encode.js";
 
 /**
  * The Cardano-exact Flat decoder: `decodeCardanoFlatProgram` returns the
@@ -18,28 +15,22 @@ export {
   type CardanoFlatDecodeResult,
   decodeCardanoFlatProgram,
 } from "./cek-program.cardano-flat.decode.js";
+export type {
+  FlatProgram,
+  FlatTerm,
+} from "./cek-program.cardano-flat.encode.js";
 export {
   CardanoFlatRefusal,
   type CardanoFlatRefusalClass,
 } from "./cek-program.cardano-flat.reader.js";
 
-/** Flat uses Cardano Data CBOR inside Data constants, including nested types. */
-class CardanoFlatEncoder extends UPLCEncoder {
-  override encodeConstValue(type: ConstType, value: unknown): void {
-    if (type[0] === ConstTyTag.data) {
-      if (!isData(value))
-        throw new Error("Flat Data constant contains invalid Data");
-      this.encodeByteString(encodeMidgardCekPlutusData(value));
-      return;
-    }
-    // The encoder calls this method recursively for list/pair constants.
-    super.encodeConstValue(type, value);
-  }
-}
-
+/**
+ * A program's Flat bytes, with Data constants in Cardano's canonical Data
+ * CBOR, including inside list and pair constants.
+ */
 export const encodeMidgardCekCardanoFlatProgram = (
-  program: UPLCProgram,
-): Buffer => Buffer.from(new CardanoFlatEncoder().compile(program));
+  program: FlatProgram,
+): Buffer => Buffer.from(encodeCardanoFlatProgram(program));
 
 /**
  * Reads a script's Flat bytes as the Cardano ledger does (Plutus V3, protocol
