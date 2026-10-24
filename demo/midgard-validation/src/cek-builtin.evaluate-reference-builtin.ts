@@ -23,6 +23,7 @@ import {
   harmonicBuiltinTag,
   MIDGARD_CEK_CARDANO_BLS_TAGS,
 } from "./cek-builtin.cardano-tags.js";
+import { MIDGARD_CEK_REFERENCE_BUILTIN_COSTS } from "./cek-builtin.reference-costs.js";
 import {
   constantOfReferenceValue,
   referenceValueOf,
@@ -45,7 +46,6 @@ import {
   midgardCekConstantWitnessFromUplc,
   midgardCekConstantWitnessToUplc,
 } from "./cek-constant.js";
-import { MIDGARD_CEK_PINNED_PLUTUS_V3_BUILTIN_COSTS } from "./cek-cost.js";
 import { commitMidgardCekDataTree } from "./cek-data-tree.js";
 import { plutusDataFromCborIterative } from "./plutus-data-iterative.decode.js";
 import { ConstTyTag, UPLCConst } from "./uplc-constant.js";
@@ -61,7 +61,7 @@ export const runPinnedReferenceBuiltin = (
     throw new Error("V1 builtin argument count is incomplete");
   }
   const result = new BnCEK(
-    MIDGARD_CEK_PINNED_PLUTUS_V3_BUILTIN_COSTS,
+    MIDGARD_CEK_REFERENCE_BUILTIN_COSTS,
     new ExBudget({ cpu: 0, mem: 0 }),
     [],
   ).eval(builtinTag, arguments_);

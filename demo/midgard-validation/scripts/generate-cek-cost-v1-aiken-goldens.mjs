@@ -5,9 +5,11 @@
  * Plutus V3 builtin tag (0 to 86), the cpu and memory that
  * `cek_cost_v1.builtin_budget_v1` must charge at a spread of argument sizes.
  *
- * The expected budgets come from `computeMidgardCekBuiltinBudget`, which reads
- * every cost parameter from midgard-core's pinned 350-entry Plutus V3 cost
- * vector (`PLUTUS_V3_CANONICAL_COST_MODEL_VIEW`). The size points are chosen so
+ * The expected budgets come from `computeMidgardCekBuiltinBudget`, the
+ * TypeScript twin of `cek-cost-v1.ak`, whose coefficients are those of
+ * midgard-core's pinned 350-entry Plutus V3 cost vector
+ * (`PLUTUS_V3_CANONICAL_COST_MODEL_VIEW`; `tests/cek-cost.differential.test.ts`
+ * holds the twin to the costing that vector gives). The size points are chosen so
  * that every parameter of every cost model moves the result: an intercept and
  * a slope, both sides of a diagonal, equal and unequal sizes, a zero literal
  * and a non-zero one. Changing any single on-chain cost parameter therefore
