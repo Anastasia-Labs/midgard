@@ -40,11 +40,7 @@ export type MidgardCekConstantType =
     }
   | { readonly kind: "value" };
 
-/**
- * Cardano's flat constant-type tags (`DefaultUni`). Harmonic numbers Value and
- * array the other way round, so Midgard's type commitment never uses its enum
- * for them.
- */
+/** Cardano's flat constant-type tags (`DefaultUni`). */
 export const MidgardCekConstantTypeTags = Object.freeze({
   Integer: 0,
   ByteString: 1,
@@ -112,8 +108,8 @@ const parseTypeAt = (
         type: { kind: "blsMillerLoopResult" },
         nextOffset: offset + 1,
       };
-    // Harmonic's flat decoder swaps Cardano's Value and array tags; those
-    // constants enter through Midgard's own PV 11 decoder instead.
+    // No term constant holds an array or a Value: the Flat reader reads one
+    // as an error term (`readConstant`'s `outsideProfile`).
     case ConstTyTag.value:
     case ConstTyTag.array:
     default:
