@@ -1,9 +1,16 @@
+import { CEKConst } from "@harmoniclabs/plutus-machine";
 import { Builtin, constT, UPLCConst, type UPLCTerm } from "@harmoniclabs/uplc";
-import { describe, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
+import {
+  referenceConstantToDirectWitness,
+  semanticizeMidgardCekDirectConstant,
+} from "../src/cek-builtin.evaluate-reference-builtin.js";
+import type { MidgardCekCoreStepWitness } from "../src/cek-machine.js";
 import {
   builtBytes,
   bytesConstant,
+  failureVerifies,
 } from "./helpers/cek-staged-failure-charge.js";
 import {
   bool,
@@ -12,6 +19,7 @@ import {
   expectStagedFailureProved,
   type Operand,
 } from "./helpers/cek-staged-failure-rows.js";
+import { bytesOperand, presented } from "./helpers/cek-staged-failure-steps.js";
 import { call } from "./helpers/cek-staged-route-terms.js";
 
 /**
@@ -74,4 +82,39 @@ describe("writeBits over a staged input past 4,096 bytes", () => {
       );
     },
   );
+});
+
+describe("the staged failure hop's writeBits input bound", () => {
+  it("proves an input of 4,097 bytes uncharged, and refuses one of 4,096", () => {
+    const at = referenceConstantToDirectWitness(
+      CEKConst.fromUplc(
+        UPLCConst.listOf(constT.int)([UPLCConst.int(0n).value as never]),
+      ),
+      true,
+    );
+    const flag = referenceConstantToDirectWitness(CEKConst.bool(true), true);
+    for (const [length, fails] of [
+      [4_097, true],
+      [4_096, false],
+    ] as const) {
+      const arguments_ = [
+        presented(bytesOperand(builtBytes(length))),
+        at,
+        flag,
+      ];
+      const witness = {
+        kind: "executeBuiltinStagedFailure",
+        tag: WRITE_BITS,
+        arguments: arguments_.map(semanticizeMidgardCekDirectConstant),
+        material: { runs: { refs: [], operands: [] }, sources: [] },
+        stagedOperands: [],
+      } as MidgardCekCoreStepWitness;
+      expect(
+        failureVerifies(WRITE_BITS, arguments_, witness, {
+          cpu: 0n,
+          memory: 0n,
+        }),
+      ).toBe(fails);
+    }
+  });
 });
