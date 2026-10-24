@@ -3,6 +3,7 @@ import {
   encodeMidgardCekProgramMaterialEntry,
   type MidgardCekProgramMaterialEntry,
 } from "./cek-proof.program-material.js";
+import { type MidgardCekDataNode } from "./cek-semantic.js";
 import { type Hash32 } from "./codec/hash.js";
 
 export type ProgramMaterialTask =
@@ -63,7 +64,14 @@ export type MidgardCekProgramConstantMaterial = {
   readonly semanticRoot: Hash32;
   readonly memory: bigint;
   readonly typeCbor: Buffer;
-  readonly payloadCbor: Buffer;
+  /** The payload's canonical CBOR length and its semantic Data memory. */
+  readonly payloadLength: bigint;
+  readonly payloadMemory: bigint;
+  /**
+   * The payload's canonical CBOR, or `undefined` when it holds a leaf past
+   * the direct payload bound, which is kept by its committed node.
+   */
+  readonly payloadCbor: Buffer | undefined;
 };
 
 export type MidgardCekProgramMaterialVerification = {
@@ -107,7 +115,8 @@ export type ProgramMaterialCache = {
     string,
     {
       readonly typeCbor: Buffer;
-      readonly payloadCbor: Buffer;
+      readonly payloadMemory: bigint;
+      readonly payloadCbor: Buffer | undefined;
     }
   >;
 };
@@ -175,12 +184,26 @@ export type SemanticDataMap = {
   readonly entries: readonly SemanticDataEntry[];
 };
 
+/**
+ * A bytes or integer Data leaf past the direct payload bound, kept as its
+ * committed node instead of its bytes. Its root is the node's hash, and its
+ * lengths and memory are the node's summary.
+ */
+export type SemanticCommittedLeaf = {
+  readonly kind: "committedLeaf";
+  readonly node: Extract<
+    MidgardCekDataNode,
+    { readonly kind: "bytes" } | { readonly kind: "integer" }
+  >;
+};
+
 export type SemanticDataValue =
   | bigint
   | string
   | readonly SemanticDataValue[]
   | SemanticDataMap
-  | SemanticConstr;
+  | SemanticConstr
+  | SemanticCommittedLeaf;
 
 /**
  * `Array.isArray` is declared `value is any[]`, so using it to pick the list
@@ -208,6 +231,15 @@ export const isSemanticConstr = (
   !Array.isArray(value) &&
   "kind" in value &&
   value.kind === "constr";
+
+export const isSemanticCommittedLeaf = (
+  value: SemanticDataValue,
+): value is SemanticCommittedLeaf =>
+  typeof value === "object" &&
+  value !== null &&
+  !Array.isArray(value) &&
+  "kind" in value &&
+  value.kind === "committedLeaf";
 
 /**
  * A map's entries flattened key, value, key, value, in order. An entry that

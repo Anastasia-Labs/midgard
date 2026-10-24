@@ -18,8 +18,6 @@ pub type SourceV1 {
 
 pub type Args {
   source: SourceV1,
-  purpose_kind: Int,
-  purpose_index: Int,
 }
 
 pub type Datum =

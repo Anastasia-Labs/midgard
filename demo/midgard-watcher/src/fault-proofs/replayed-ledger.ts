@@ -26,6 +26,7 @@ import {
   watcherDeploymentProtocolScriptAuthority,
 } from "../runtime/deployment-identity.js";
 import type { WatcherDecisionReadiness } from "../runtime/watcher-runtime.decision-driver.js";
+import { replayLocalFaultHolds } from "./replay-local-fault-bound.js";
 
 export type WatcherReplayedLedger = Readonly<{
   ledgerAt(
@@ -60,6 +61,8 @@ export const createWatcherReplayedLedger = (
     /** The deployment's availability commitment authority. */
     availabilityAuthority: () => SDK.DaPayloadAvailabilityAuthority;
     unsafeCheckpointStoreForTest?: LedgerCheckpointStore;
+    /** The local-fault holds' clock, in ms (default `Date.now`). */
+    nowMs?: () => number;
   }>,
 ): WatcherReplayedLedger => {
   const checkpoints =
@@ -80,6 +83,7 @@ export const createWatcherReplayedLedger = (
   // Unbound copies a replay refused, kept across operations so a later fetch
   // asks past the peers that served them.
   const releases: RetainedPayloadReleases = new Map();
+  const localFaults = replayLocalFaultHolds(input.nowMs);
   const source = (
     sources: readonly RetainedDaPayloadSource[],
     retries?: number,
@@ -117,12 +121,16 @@ export const createWatcherReplayedLedger = (
       };
     },
     advance: async (observation, sources) => {
+      let head: Readonly<{ headerHash: string; utxosRoot: string }> | undefined;
       try {
         const confirmed = await input.follower.confirmed(observation);
-        const head = {
+        head = {
           headerHash: confirmed.state.headerHash,
           utxosRoot: confirmed.state.utxoRoot,
         };
+        // A head held on a local fault waits out its backoff.
+        const waiting = localFaults.pass()(head.headerHash);
+        if (waiting !== undefined) return [waiting];
         const activeKeeper = currentKeeper();
         if (restoredKeeper !== activeKeeper) {
           await activeKeeper.restore(head);
@@ -148,14 +156,18 @@ export const createWatcherReplayedLedger = (
               detail: `ledger for confirmed head ${head.headerHash} does not open its authenticated root yet`,
             },
           ];
+        localFaults.progressed(head.headerHash);
         input.follower.checkpointDurable(confirmed.state.endTime);
         return [];
       } catch (error) {
         // This watcher's own replay failed: held under its own reason, and
-        // replayed again on the next pass.
+        // replayed again once its backoff passed, for as long as it recurs.
         if (isReplayLocalFault(error))
           return [
-            { reason: "replayed_ledger_local_fault", detail: error.message },
+            localFaults.fault(
+              head?.headerHash ?? "the confirmed head",
+              error.message,
+            ),
           ];
         if (
           !isWatcherL1TransientFailure(error) &&

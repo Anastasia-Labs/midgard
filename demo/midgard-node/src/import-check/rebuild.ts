@@ -11,6 +11,7 @@ import { createHash } from "node:crypto";
 
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import { yieldToEventLoop } from "@al-ft/midgard-fault-proofs/block-replay";
 import {
   decodeMidgardLedgerTxFromCanonicalCbor,
   type MidgardCekVerdictRequest,
@@ -67,9 +68,10 @@ export const rebuildAndEvaluate = (
       ledgerWitnessEntries: material.outputs,
       ...material.context,
       sourceKind: "normal",
-      // Each run's context is built on this thread: yield between runs.
+      // Each run's context is built on this thread: give the event loop a
+      // turn between runs (`Effect.yieldNow` would run no timer or I/O).
       evaluateScriptRun: (run) =>
-        Effect.zipRight(Effect.yieldNow(), evaluate(run)).pipe(
+        Effect.zipRight(yieldToEventLoop, evaluate(run)).pipe(
           Effect.flatMap((outcome) => {
             if (outcome.kind === "evaluated")
               return Effect.succeed(outcome.result);

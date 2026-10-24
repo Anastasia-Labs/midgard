@@ -37,12 +37,15 @@ use aiken/collection/list
 use aiken/primitive/bytearray
 use cardano/transaction.{Input}
 use midgard/fraud_proofs/field_opening_v1.{
-  AnchoredNativeTxV1, BodyAnchor, BodyTxOpening, FieldOpeningV1,
-  NativeTxAnchorV1, WitnessAnchor, WitnessTxOpening,
-  address_witnesses_field_index, anchored_field_view, anchored_field_walk,
-  anchored_native_tx, first_witness_set_field_index, fold_opened_field,
-  mint_field_index, opened_field_view, opened_field_walk, redeemers_field_index,
-  reference_inputs_field_index, script_witnesses_field_index,
+  AnchoredNativeTxV1, BodyAnchor, BodyFieldOpening, BodyTxOpening,
+  FieldOpeningV1, NativeTxAnchorV1, WitnessAnchor, WitnessFieldOpening,
+  WitnessTxOpening, address_witnesses_field_index, anchored_field_view,
+  anchored_field_walk, anchored_native_tx, first_witness_set_field_index,
+  fold_opened_field, mint_field_index, opened_field_grammar_certification,
+  opened_field_view, opened_field_walk,
+  opened_witness_field_grammar_certification, redeemers_field_index,
+  reference_inputs_field_index, resume_opened_body_field_walk,
+  resume_opened_field_walk, script_witnesses_field_index,
   spend_inputs_field_index,
 }
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
@@ -58,7 +61,10 @@ use midgard/native_tx_carriage_v1.{
 }
 use midgard/native_tx_field_access_v1.{
   FieldCarriageV1, FieldViewV1, Inline, chunk_bytes_k, encode_field_preimage,
-  field_commitment, field_item_at, field_item_count,
+  field_commitment, field_item_at, field_item_count, field_total_length,
+}
+use midgard/native_tx_machine_walk_v1.{
+  encode_field_walk_checkpoint, field_walk_checkpoint_hash,
 }
 
 fn block() -> fixture.NativeBlockFixtureV1 {
@@ -885,4 +891,193 @@ test one_anchor_still_opens_certified_carriage_on_a_body_field_second() {
       0,
     ) == encode_midgard_address_witness(fixture.sample_address_witness()),
   }
+}
+
+// ## Body-only resume and witness-only grammar opening
+//
+// `resume_opened_body_field_walk` accepts exactly the (opening, anchor, index)
+// triples `resume_opened_field_walk` accepts with an index below 6, and
+// `opened_witness_field_grammar_certification` exactly those
+// `opened_field_grammar_certification` accepts with an index from 6 to 8. The
+// refusal rows cover the other opening kind, the other anchor kind and an
+// index on the other side, each carrying a preimage that would otherwise
+// open.
+
+fn body_resume_wire() -> Pair<ByteArray, ByteArray> {
+  let Pair(_, checkpoint) = opened_field_walk(
+    body_opening(),
+    body_anchor(),
+    spend_inputs_field_index,
+    [],
+    fixture.test_certificate_policy_id,
+  )
+  Pair(
+    field_walk_checkpoint_hash(checkpoint),
+    encode_field_walk_checkpoint(checkpoint),
+  )
+}
+
+fn resume_body_at(
+  opening: FieldOpeningV1,
+  anchor: NativeTxAnchorV1,
+  wire: Pair<ByteArray, ByteArray>,
+) -> Int {
+  field_item_count(
+    resume_opened_body_field_walk(
+      opening,
+      anchor,
+      wire.1st,
+      wire.2nd,
+      [],
+      fixture.test_certificate_policy_id,
+    ).1st,
+  )
+}
+
+fn carriage_of_opening(opening: FieldOpeningV1) -> FieldCarriageV1 {
+  when opening is {
+    BodyFieldOpening { carriage, .. } -> carriage
+    WitnessFieldOpening { carriage, .. } -> carriage
+  }
+}
+
+test body_resume_opening_agrees_with_the_two_half_resume() {
+  let wire = body_resume_wire()
+  resume_opened_body_field_walk(
+    body_opening(),
+    body_anchor(),
+    wire.1st,
+    wire.2nd,
+    [],
+    fixture.test_certificate_policy_id,
+  ) == resume_opened_field_walk(
+    body_opening(),
+    body_anchor(),
+    spend_inputs_field_index,
+    wire.1st,
+    wire.2nd,
+    [],
+    fixture.test_certificate_policy_id,
+  )
+}
+
+/// A witness opening that carries the body field's own preimage.
+test body_resume_opening_refuses_a_witness_opening() fail {
+  let committed = block()
+  let opening = WitnessFieldOpening {
+    native_tx_compact_cbor: committed.compact_cbor,
+    witness_set: committed.witness_set_compact,
+    carriage: carriage_of_opening(body_opening()),
+  }
+  expect _opened = resume_body_at(opening, body_anchor(), body_resume_wire())
+}
+
+test body_resume_opening_refuses_a_witness_anchor() fail {
+  expect _opened = resume_body_at(
+    body_opening(),
+    witness_anchor(),
+    body_resume_wire(),
+  )
+}
+
+/// A body opening that carries the address-witness preimage, resumed from a
+/// checkpoint at the address-witness field.
+test body_resume_opening_refuses_a_witness_field_checkpoint() fail {
+  let Pair(_, checkpoint) = opened_field_walk(
+    witness_opening(),
+    witness_anchor(),
+    address_witnesses_field_index,
+    [],
+    fixture.test_certificate_policy_id,
+  )
+  let opening = BodyFieldOpening {
+    native_tx_compact_cbor: block().compact_cbor,
+    carriage: carriage_of_opening(witness_opening()),
+  }
+  expect _opened = resume_body_at(
+    opening,
+    body_anchor(),
+    Pair(
+      field_walk_checkpoint_hash(checkpoint),
+      encode_field_walk_checkpoint(checkpoint),
+    ),
+  )
+}
+
+/// The fixture carries no redeemers, so field 8's preimage is the empty field;
+/// the fixture's mint field is empty too.
+fn redeemer_opening() -> FieldOpeningV1 {
+  let committed = block()
+  fixture.inline_witness_opening(
+    committed.compact_cbor,
+    committed.witness_set_compact,
+    [],
+  )
+}
+
+fn open_witness_grammar(
+  opening: FieldOpeningV1,
+  anchor: NativeTxAnchorV1,
+  field_index: Int,
+) -> Int {
+  field_total_length(
+    opened_witness_field_grammar_certification(
+      opening,
+      anchor,
+      field_index,
+      [],
+      fixture.test_certificate_policy_id,
+    ).1st,
+  )
+}
+
+test witness_grammar_opening_agrees_with_the_two_half_opening() {
+  expect [] = block().tx.witness_set.redeemer_tx_wits
+  opened_witness_field_grammar_certification(
+    redeemer_opening(),
+    witness_anchor(),
+    redeemers_field_index,
+    [],
+    fixture.test_certificate_policy_id,
+  ) == opened_field_grammar_certification(
+    redeemer_opening(),
+    witness_anchor(),
+    redeemers_field_index,
+    [],
+    fixture.test_certificate_policy_id,
+  )
+}
+
+test witness_grammar_opening_refuses_a_body_opening() fail {
+  let opening = BodyFieldOpening {
+    native_tx_compact_cbor: block().compact_cbor,
+    carriage: carriage_of_opening(redeemer_opening()),
+  }
+  expect _opened = open_witness_grammar(
+    opening,
+    witness_anchor(),
+    redeemers_field_index,
+  )
+}
+
+test witness_grammar_opening_refuses_a_body_anchor() fail {
+  expect _opened = open_witness_grammar(
+    redeemer_opening(),
+    body_anchor(),
+    redeemers_field_index,
+  )
+}
+
+/// The mint field is empty and variable-width, so its commitment equals the
+/// empty redeemer preimage's. Only the index range refuses it.
+test witness_grammar_opening_refuses_a_body_field() fail {
+  expect
+    block().compact.body.mint_hash == field_commitment(
+      encode_field_preimage([]),
+    )
+  expect _opened = open_witness_grammar(
+    redeemer_opening(),
+    witness_anchor(),
+    mint_field_index,
+  )
 }

@@ -7,6 +7,8 @@ const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAME_ADDITIONS = {
   "V1 validation-trace CEK core staged product": "V1VtCekCoreStaPro",
   "V1 validation-trace CEK core semantic serialise loop":
     "V1VtCekCoreSemSerLoo",
+  "V1 validation-trace CEK core staged failure": "V1VtCekCoreStaFai",
+  "V1 validation-trace CEK core staged conversion": "V1VtCekCoreStaCon",
 } as const;
 
 export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({

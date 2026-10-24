@@ -731,7 +731,7 @@ jobs:
   # tests/support/ci-file-durations.json), each job adds a few minutes of setup
   # and Vitest overhead, and shard 1 also runs the ~300 s traced-refusal step,
   # which that table reserves. At the median each shard projects ~1,690 s; the
-  # longest single file (a script-decode walk-cost gate group) is ~1,690 s,
+  # longest single file (a script-decode walk-cost gate group) is ~1,440 s,
   # so a group that walks longer is split into its own file rather than
   # holding one shard past the job's time limit. The matrix is the one count this
   # workflow reads (the jobs and test-durations take it from the matrix);
@@ -1252,6 +1252,7 @@ jobs:
             watcher-journeys/readiness-evidence.test.ts \
             watcher-journeys/readiness.test.ts \
             watcher-journeys/replayed-ledger.test.ts \
+            watcher-journeys/script-cases.test.ts \
             watcher-journeys/script-validation-trace-case.test.ts \
             watcher-journeys/signed-commit-reconciliation.test.ts \
             watcher-journeys/signed-transaction-recovery.test.ts \

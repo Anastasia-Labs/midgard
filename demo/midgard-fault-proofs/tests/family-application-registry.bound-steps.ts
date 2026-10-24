@@ -233,6 +233,7 @@ export const NO_DIGEST_FAMILIES = [
   "networkId",
   "validationTraceDispute",
   "valueNotPreserved",
+  "missingRedeemer",
 ];
 
 export const REPLAY_CONTEXT_FAMILIES = [
@@ -245,6 +246,7 @@ export const REPLAY_CONTEXT_FAMILIES = [
   "resolvedOutputNonCanonical",
   "spendInputSignerMissing",
   "validationTraceDispute",
+  "missingRedeemer",
 ];
 
 /**

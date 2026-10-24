@@ -1,3 +1,5 @@
+import { LOCAL_FAULT_RUN_LIMIT } from "@al-ft/midgard-fault-proofs";
+
 import {
   type DriverHold,
   EVENTS_INGESTION_FAILED,
@@ -12,15 +14,6 @@ import { NODE_TRANSIENT_BUDGET_MS } from "./transient-exhaustion.js";
 /** Retry delays for a held driver: capped exponential. */
 const RETRY_INITIAL_MS = 500;
 const RETRY_MAX_MS = 30_000;
-
-/**
- * How many runs may end on a local fault (a block whose import failed
- * locally: in this node's own computation, its Ed25519 verifier's included,
- * or in a replay failure it cannot classify) with no progress past the
- * faulted blocks before the runner stops: on the backoff above, about a
- * minute of retries.
- */
-export const LOCAL_FAULT_RUN_LIMIT = 8;
 
 /**
  * Where processing stands for the local-fault bound: processing reports each
@@ -63,8 +56,11 @@ export type CoalescedRunnerBound = Readonly<{
   budgetMs?: number;
   /** Wall-clock ms (default `Date.now`). */
   now?: () => number;
-  /** How many runs may end on a local fault with no progress past the
-   * blocks they faulted on (default `LOCAL_FAULT_RUN_LIMIT`). */
+  /** How many runs may end on a local fault (a block whose import failed
+   * locally: in this node's own computation, its Ed25519 verifier's
+   * included, or in a replay failure it cannot classify) with no progress
+   * past the blocks they faulted on (default `LOCAL_FAULT_RUN_LIMIT`: on the
+   * backoff above, about a minute of retries). */
   localFaultRuns?: number;
   /** Processing's progress past the faulted blocks. Without it, nothing
    * starts the local-fault count over in this process. */

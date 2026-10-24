@@ -27,6 +27,7 @@ import {
   buildMintAuthorizationFaultProofContracts,
   buildMintDeclaredAssetLimitFaultProofContracts,
   buildMintItemNonCanonicalFaultProofContracts,
+  buildMissingRedeemerFaultProofContracts,
   buildMissingSignatureFaultProofContracts,
   buildNativeScriptDecodingFaultProofContracts,
   buildNativeScriptInvalidFaultProofContracts,
@@ -80,6 +81,7 @@ import { type L2TxMistagContracts } from "../../../src/l2-tx-mistag/contracts.js
 import { type MinAdaContracts } from "../../../src/min-ada/contracts.js";
 import { type MinFeeContracts } from "../../../src/min-fee-contracts.js";
 import { type MintAuthorizationContracts } from "../../../src/mint-authorization/contracts.js";
+import { type MissingRedeemerContracts } from "../../../src/missing-redeemer/contracts.js";
 import { type MissingSignatureContracts } from "../../../src/missing-signature/contracts.js";
 import { type NativeScriptDecodingContracts } from "../../../src/native-script-decoding/contracts.js";
 import { type NativeScriptInvalidContracts } from "../../../src/native-script-invalid/contracts.js";
@@ -130,6 +132,7 @@ export const buildMinimalFaultProofContracts = async (
     realInvalidSignature = false,
     realValidationTraceDispute = false,
     realNativeScriptDecoding = false,
+    realMissingRedeemer = false,
     realMissingSignature = false,
     realNativeScriptInvalid = false,
     realMinAda = false,
@@ -183,6 +186,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly realInvalidSignature?: boolean;
     readonly realValidationTraceDispute?: boolean;
     readonly realNativeScriptDecoding?: boolean;
+    readonly realMissingRedeemer?: boolean;
     readonly realMissingSignature?: boolean;
     readonly realNativeScriptInvalid?: boolean;
     readonly realMinAda?: boolean;
@@ -238,6 +242,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly fabricatedDeposit?: FabricatedDepositContracts;
     readonly fabricatedWithdrawal?: FabricatedWithdrawalContracts;
     readonly nativeScriptDecoding?: NativeScriptDecodingContracts;
+    readonly missingRedeemer?: MissingRedeemerContracts;
     readonly missingSignature?: MissingSignatureContracts;
     readonly nativeScriptInvalid?: NativeScriptInvalidContracts;
     readonly minAda?: MinAdaContracts;
@@ -516,6 +521,10 @@ export const buildMinimalFaultProofContracts = async (
     realNativeScriptDecoding,
     buildNativeScriptDecodingFaultProofContracts,
   );
+  const missingRedeemerContracts = await buildFamilyContracts(
+    realMissingRedeemer,
+    buildMissingRedeemerFaultProofContracts,
+  );
   const missingSignatureContracts = await buildFamilyContracts(
     realMissingSignature,
     buildMissingSignatureFaultProofContracts,
@@ -745,6 +754,17 @@ export const buildMinimalFaultProofContracts = async (
           stateQueuePolicyId: stateQueue.policyId,
           fieldPreimageCertificatePolicyId,
         };
+  const missingRedeemer: MissingRedeemerContracts | undefined =
+    missingRedeemerContracts === undefined
+      ? undefined
+      : {
+          steps: missingRedeemerContracts.missingRedeemer.steps as never,
+          computationThread: missingRedeemerContracts.computationThread,
+          fraudProof: missingRedeemerContracts.fraudProof,
+          hubOraclePolicyId: hubOracle.policyId,
+          stateQueuePolicyId: stateQueue.policyId,
+          fieldPreimageCertificatePolicyId,
+        };
   const missingSignature: MissingSignatureContracts | undefined =
     missingSignatureContracts === undefined
       ? undefined
@@ -962,6 +982,10 @@ export const buildMinimalFaultProofContracts = async (
       nativeScriptDecoding === undefined
         ? withActiveOperators.fraudProofContracts.nativeScriptDecoding
         : chainFromSteps(nativeScriptDecoding.steps),
+    missingRedeemer:
+      missingRedeemer === undefined
+        ? withActiveOperators.fraudProofContracts.missingRedeemer
+        : chainFromSteps(missingRedeemer.steps),
     missingSignature:
       missingSignature === undefined
         ? withActiveOperators.fraudProofContracts.missingSignature
@@ -1086,6 +1110,7 @@ export const buildMinimalFaultProofContracts = async (
     ...(fabricatedDeposit === undefined ? {} : { fabricatedDeposit }),
     ...(fabricatedWithdrawal === undefined ? {} : { fabricatedWithdrawal }),
     ...(nativeScriptDecoding === undefined ? {} : { nativeScriptDecoding }),
+    ...(missingRedeemer === undefined ? {} : { missingRedeemer }),
     ...(missingSignature === undefined ? {} : { missingSignature }),
     ...(nativeScriptInvalid === undefined ? {} : { nativeScriptInvalid }),
     ...(minAda === undefined ? {} : { minAda }),

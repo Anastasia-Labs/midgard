@@ -19,6 +19,7 @@ import {
   deriveFraudProofRawL1FamilyStage,
   deriveRetainedStateQueueHeaderObservationFromRawL1,
   type FraudProofFamilyL1ObservationPort,
+  type FraudProofRawL1ComputationStepRole,
   type FraudProofRawL1FamilyDefinition,
   type FraudProofRawL1Snapshot,
   observeFraudProofWorkflowHeader,
@@ -35,6 +36,73 @@ import {
   releaseEconomics,
   scriptAddress,
 } from "./support/raw-l1-terminal-fixture.js";
+
+/** A fixture whose chain is extended to `stepCount` steps, the thread live at
+ * the last one. */
+const liveFinalStep = async (stepCount: number) => {
+  const value = await fixture();
+  const base = value.definition.computationThread.steps.length;
+  const extraSteps = Array.from({ length: stepCount - base }, (_, index) => ({
+    role: `computation_thread_step_${(base + index + 1).toString().padStart(2, "0")}` as FraudProofRawL1ComputationStepRole,
+    address: scriptAddress((0x80 + index).toString(16)),
+    datumSchema: FraudProofTokenDatum,
+  }));
+  const definition: FraudProofRawL1FamilyDefinition = {
+    ...value.definition,
+    computationThread: {
+      ...value.definition.computationThread,
+      steps: [...value.definition.computationThread.steps, ...extraSteps],
+    },
+  };
+  const threadUnit = toUnit(
+    definition.computationThread.policyId,
+    `${definition.categoryId}${definition.headerHash}`,
+  );
+  const thread = raw(
+    `${hash32("63")}#0`,
+    output({
+      address: extraSteps.at(-1)!.address,
+      assets: { lovelace: 3_000_000n, [threadUnit]: 1n },
+      datum: Data.to({ fraud_prover: PROVER }, FraudProofTokenDatum),
+    }),
+  );
+  const target = value.snapshot.transactions[0]!.resolvedInputs[0]!;
+  const root = raw(
+    `${hash32("64")}#0`,
+    output({
+      address: definition.stateQueue.address,
+      assets: {
+        lovelace: 3_000_000n,
+        [toUnit(definition.stateQueue.policyId, STATE_QUEUE_ROOT_ASSET_NAME)]:
+          1n,
+      },
+      datum: encodeLinkedListNodeView({
+        key: "Empty",
+        next: { Key: { key: definition.headerHash } },
+        data: castConfirmedStateToData(makeGenesisConfirmedState(0n)) as never,
+      }),
+    }),
+  );
+  const snapshot: FraudProofRawL1Snapshot = {
+    ...value.snapshot,
+    scopes: value.snapshot.scopes
+      .map((scope) =>
+        scope.role === "state_queue"
+          ? { ...scope, utxos: [root, target] }
+          : scope.role === "permanent_proof_token"
+            ? { ...scope, utxos: [] }
+            : scope,
+      )
+      .concat(
+        extraSteps.map((step, index) => ({
+          role: step.role,
+          address: step.address,
+          utxos: index === extraSteps.length - 1 ? [thread] : [],
+        })),
+      ),
+  };
+  return { snapshot, definition, thread };
+};
 
 describe("raw L1 family terminal economics", () => {
   it("reopens a removed header from its exact NFT mint and rejects absent or duplicated mints", async () => {
@@ -223,86 +291,25 @@ describe("raw L1 family terminal economics", () => {
     });
   });
 
-  it("derives a live ninth transition-trace final without truncating the exact role set", async () => {
-    const value = await fixture();
-    const extraAddresses = ["3a", "3b", "3c", "3d", "3e"].map(scriptAddress);
-    const extraSteps = extraAddresses.map((address, index) => ({
-      role: `computation_thread_step_0${(index + 5).toString()}` as
-        | "computation_thread_step_05"
-        | "computation_thread_step_06"
-        | "computation_thread_step_07"
-        | "computation_thread_step_08"
-        | "computation_thread_step_09",
-      address,
-      datumSchema: FraudProofTokenDatum,
-    }));
-    const definition: FraudProofRawL1FamilyDefinition = {
-      ...value.definition,
-      computationThread: {
-        ...value.definition.computationThread,
-        steps: [...value.definition.computationThread.steps, ...extraSteps],
-      },
-    };
-    const threadUnit = toUnit(
-      definition.computationThread.policyId,
-      `${definition.categoryId}${definition.headerHash}`,
-    );
-    const thread = raw(
-      `${hash32("63")}#0`,
-      output({
-        address: extraAddresses[4]!,
-        assets: { lovelace: 3_000_000n, [threadUnit]: 1n },
-        datum: Data.to({ fraud_prover: PROVER }, FraudProofTokenDatum),
-      }),
-    );
-    const target = value.snapshot.transactions[0]!.resolvedInputs[0]!;
-    const root = raw(
-      `${hash32("64")}#0`,
-      output({
-        address: definition.stateQueue.address,
-        assets: {
-          lovelace: 3_000_000n,
-          [toUnit(definition.stateQueue.policyId, STATE_QUEUE_ROOT_ASSET_NAME)]:
-            1n,
-        },
-        datum: encodeLinkedListNodeView({
-          key: "Empty",
-          next: { Key: { key: definition.headerHash } },
-          data: castConfirmedStateToData(
-            makeGenesisConfirmedState(0n),
-          ) as never,
+  it("derives a live ninth and 39th final step without truncating the exact role set", async () => {
+    for (const stepCount of [9, 39]) {
+      const { snapshot, definition, thread } = await liveFinalStep(stepCount);
+      await expect(
+        deriveFraudProofRawL1FamilyStage({
+          snapshot,
+          definition,
+          releaseEconomics,
         }),
-      }),
-    );
-    const snapshot: FraudProofRawL1Snapshot = {
-      ...value.snapshot,
-      scopes: value.snapshot.scopes
-        .map((scope) =>
-          scope.role === "state_queue"
-            ? { ...scope, utxos: [root, target] }
-            : scope.role === "permanent_proof_token"
-              ? { ...scope, utxos: [] }
-              : scope,
-        )
-        .concat(
-          extraSteps.map((step, index) => ({
-            role: step.role,
-            address: step.address,
-            utxos: index === 4 ? [thread] : [],
-          })),
-        ),
-    };
+      ).resolves.toMatchObject({
+        kind: "step",
+        step: stepCount,
+        threadOutRef: thread.outRef,
+      });
+    }
+    const beyond = await liveFinalStep(40);
     await expect(
-      deriveFraudProofRawL1FamilyStage({
-        snapshot,
-        definition,
-        releaseEconomics,
-      }),
-    ).resolves.toMatchObject({
-      kind: "step",
-      step: 9,
-      threadOutRef: thread.outRef,
-    });
+      deriveFraudProofRawL1FamilyStage({ ...beyond, releaseEconomics }),
+    ).rejects.toThrow(/canonically ordered computation steps/u);
   });
 
   it("rejects a reordered computation-step authority definition", async () => {

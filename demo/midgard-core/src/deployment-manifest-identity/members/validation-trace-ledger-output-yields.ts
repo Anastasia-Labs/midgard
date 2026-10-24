@@ -7,7 +7,7 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole: "V1 validation-trace ledger-output-proof structure yield",
       manifestPosition: 140,
-      publicationPosition: 419,
+      publicationPosition: 451,
       referenceRolePosition: 255,
       commands: [],
       validatorTitle:
@@ -18,7 +18,7 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole: "V1 validation-trace ledger-output-proof value yield",
       manifestPosition: 141,
-      publicationPosition: 420,
+      publicationPosition: 452,
       referenceRolePosition: 256,
       commands: [],
       validatorTitle:
@@ -30,7 +30,7 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace ledger-output-proof datum fold-map yield",
       manifestPosition: 142,
-      publicationPosition: 421,
+      publicationPosition: 453,
       referenceRolePosition: 257,
       commands: [],
       validatorTitle:
@@ -42,7 +42,7 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace ledger-output-proof datum finalize-frame yield",
       manifestPosition: 143,
-      publicationPosition: 422,
+      publicationPosition: 454,
       referenceRolePosition: 258,
       commands: [],
       validatorTitle:
@@ -54,7 +54,7 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace ledger-output-proof datum head-scalar yield",
       manifestPosition: 144,
-      publicationPosition: 423,
+      publicationPosition: 455,
       referenceRolePosition: 259,
       commands: [],
       validatorTitle:
@@ -66,7 +66,7 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace ledger-output-proof datum attach-integer yield",
       manifestPosition: 145,
-      publicationPosition: 424,
+      publicationPosition: 456,
       referenceRolePosition: 260,
       commands: [],
       validatorTitle:
@@ -78,7 +78,7 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace ledger-output-proof datum fold-list yield",
       manifestPosition: 146,
-      publicationPosition: 425,
+      publicationPosition: 457,
       referenceRolePosition: 261,
       commands: [],
       validatorTitle:
@@ -90,7 +90,7 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace ledger-output-proof datum advance-integer yield",
       manifestPosition: 147,
-      publicationPosition: 426,
+      publicationPosition: 458,
       referenceRolePosition: 262,
       commands: [],
       validatorTitle:
@@ -102,7 +102,7 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace ledger-output-proof reference-script yield",
       manifestPosition: 148,
-      publicationPosition: 427,
+      publicationPosition: 459,
       referenceRolePosition: 263,
       commands: [],
       validatorTitle:
@@ -114,7 +114,7 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace ledger-output-proof script-hash yield",
       manifestPosition: 149,
-      publicationPosition: 428,
+      publicationPosition: 460,
       referenceRolePosition: 264,
       commands: [],
       validatorTitle:
@@ -126,7 +126,7 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace ledger-output-proof native-script yield",
       manifestPosition: 150,
-      publicationPosition: 429,
+      publicationPosition: 461,
       referenceRolePosition: 265,
       commands: [],
       validatorTitle:
@@ -138,7 +138,7 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace ledger-output-proof structure assets yield",
       manifestPosition: 151,
-      publicationPosition: 430,
+      publicationPosition: 462,
       referenceRolePosition: 266,
       commands: [],
       validatorTitle:
@@ -150,7 +150,7 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace ledger-output-proof structure optional yield",
       manifestPosition: 152,
-      publicationPosition: 431,
+      publicationPosition: 463,
       referenceRolePosition: 267,
       commands: [],
       validatorTitle:
@@ -162,7 +162,7 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace ledger-output-proof structure finish yield",
       manifestPosition: 153,
-      publicationPosition: 432,
+      publicationPosition: 464,
       referenceRolePosition: 268,
       commands: [],
       validatorTitle:
@@ -174,7 +174,7 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace ledger-output-proof datum head-sequence yield",
       manifestPosition: 154,
-      publicationPosition: 433,
+      publicationPosition: 465,
       referenceRolePosition: 269,
       commands: [],
       validatorTitle:
@@ -186,7 +186,7 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace ledger-output-proof datum head-map yield",
       manifestPosition: 155,
-      publicationPosition: 434,
+      publicationPosition: 466,
       referenceRolePosition: 270,
       commands: [],
       validatorTitle:
@@ -198,7 +198,7 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace ledger-output-proof datum head-large-constructor yield",
       manifestPosition: 156,
-      publicationPosition: 435,
+      publicationPosition: 467,
       referenceRolePosition: 271,
       commands: [],
       validatorTitle:
@@ -210,7 +210,7 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace ledger-output-proof datum attach-bytes yield",
       manifestPosition: 157,
-      publicationPosition: 436,
+      publicationPosition: 468,
       referenceRolePosition: 272,
       commands: [],
       validatorTitle:
@@ -222,7 +222,7 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace ledger-output-proof datum advance-bytes yield",
       manifestPosition: 158,
-      publicationPosition: 437,
+      publicationPosition: 469,
       referenceRolePosition: 273,
       commands: [],
       validatorTitle:
@@ -234,7 +234,7 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace ledger-output-proof datum finish yield",
       manifestPosition: 159,
-      publicationPosition: 438,
+      publicationPosition: 470,
       referenceRolePosition: 274,
       commands: [],
       validatorTitle:
@@ -246,7 +246,7 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace ledger-output-proof datum large-constructor yield",
       manifestPosition: 160,
-      publicationPosition: 439,
+      publicationPosition: 471,
       referenceRolePosition: 275,
       commands: [],
       validatorTitle:
@@ -258,7 +258,7 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace ledger-output-proof datum large-fields yield",
       manifestPosition: 161,
-      publicationPosition: 440,
+      publicationPosition: 472,
       referenceRolePosition: 276,
       commands: [],
       validatorTitle:
@@ -270,7 +270,7 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace ledger-output-proof datum close yield",
       manifestPosition: 162,
-      publicationPosition: 441,
+      publicationPosition: 473,
       referenceRolePosition: 277,
       commands: [],
       validatorTitle:
@@ -281,7 +281,7 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole: "V1 validation-trace ledger-output-proof span yield",
       manifestPosition: 163,
-      publicationPosition: 442,
+      publicationPosition: 474,
       referenceRolePosition: 278,
       commands: [],
       validatorTitle:
@@ -293,7 +293,7 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace ledger-output-proof scalar-integer yield",
       manifestPosition: 164,
-      publicationPosition: 443,
+      publicationPosition: 475,
       referenceRolePosition: 279,
       commands: [],
       validatorTitle:
@@ -305,7 +305,7 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace ledger-output-proof scalar-bytes yield",
       manifestPosition: 165,
-      publicationPosition: 444,
+      publicationPosition: 476,
       referenceRolePosition: 280,
       commands: [],
       validatorTitle:
@@ -317,7 +317,7 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace ledger-output-descriptor scan-facts yield",
       manifestPosition: 166,
-      publicationPosition: 445,
+      publicationPosition: 477,
       referenceRolePosition: 281,
       commands: [],
       validatorTitle:
@@ -329,7 +329,7 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace ledger-output-descriptor reference-script yield",
       manifestPosition: 167,
-      publicationPosition: 446,
+      publicationPosition: 478,
       referenceRolePosition: 282,
       commands: [],
       validatorTitle:
@@ -341,7 +341,7 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace ledger-output-descriptor datum-summary yield",
       manifestPosition: 168,
-      publicationPosition: 447,
+      publicationPosition: 479,
       referenceRolePosition: 283,
       commands: [],
       validatorTitle:
@@ -353,7 +353,7 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace ledger-output-descriptor value-summary yield",
       manifestPosition: 169,
-      publicationPosition: 448,
+      publicationPosition: 480,
       referenceRolePosition: 284,
       commands: [],
       validatorTitle:

@@ -18,7 +18,9 @@ import {
   LANDED_BLOCK_INVALID,
   LANDED_BLOCK_LOCAL_FAULT,
   LANDED_BLOCK_ORIGIN_AFTER_FRONTIER,
+  LANDED_BLOCK_REPLAY_HELD,
   LANDED_BLOCK_REPLAY_INCOMPLETE,
+  LANDED_BLOCK_REPLAY_STUCK,
   LANDED_BLOCK_VERIFIER_UNAVAILABLE,
 } from "./holds.js";
 import type { ReplayOutcome } from "./replay.js";
@@ -31,6 +33,8 @@ const HOLD_OF = {
   local_fault: LANDED_BLOCK_LOCAL_FAULT,
   incomplete: LANDED_BLOCK_REPLAY_INCOMPLETE,
   verifier_unavailable: LANDED_BLOCK_VERIFIER_UNAVAILABLE,
+  replay_held: LANDED_BLOCK_REPLAY_HELD,
+  replay_stuck: LANDED_BLOCK_REPLAY_STUCK,
   invalid: LANDED_BLOCK_INVALID,
   origin_after_frontier: LANDED_BLOCK_ORIGIN_AFTER_FRONTIER,
 } as const satisfies Record<Exclude<ReplayOutcome["kind"], "replayed">, string>;
@@ -50,7 +54,10 @@ export type ReplayHoldKind = keyof typeof HOLD_OF;
  * order a replayed block's window can admit, so only a store pruned while
  * the floor did not apply or inconsistent facts leave one unread), is a
  * `localFault` on block `headerHash`, the block it stopped at, whatever the
- * failure's text: retried within the runner's bound.
+ * failure's text: retried within the runner's bound. A failed event replay
+ * (`replay_held`, `replay_stuck`), which the block's input can reach, is a
+ * plain retried hold: never bounded by an exit (`replay-held.ts` holds the
+ * block on its own backoff).
  */
 export const replayOutcomeHold = (
   kind: ReplayHoldKind,
@@ -84,15 +91,18 @@ export const landedBlockLocalFaultCounter = Metric.counter(
 
 /**
  * Raises the `landed_block_local_fault` alarm for an import that failed
- * locally (`local_fault`, `incomplete`), once per failed attempt; any other
- * outcome raises nothing.
+ * locally (`local_fault`, `incomplete`, `replay_held`, `replay_stuck`), once
+ * per failed or held attempt; any other outcome raises nothing.
  */
 export const replayOutcomeAlarm = (
   headerHash: string,
   kind: ReplayHoldKind,
   detail: string,
 ): Effect.Effect<void> =>
-  kind === "local_fault" || kind === "incomplete"
+  kind === "local_fault" ||
+  kind === "incomplete" ||
+  kind === "replay_held" ||
+  kind === "replay_stuck"
     ? Effect.logError("LandedBlockLocalFault").pipe(
         Effect.annotateLogs({
           alarm: LANDED_BLOCK_LOCAL_FAULT,

@@ -491,6 +491,7 @@ pub fn advance_product_v1(
   expect [a_source, b_source, ..more] = material.sources
   let inputs = ArmInputsV1 {
     tag,
+    leading: [],
     arguments: [],
     result: facts.result,
     runs: collect_runs_v1(reference_inputs, material.runs.refs),

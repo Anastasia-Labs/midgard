@@ -1,7 +1,8 @@
 /** Maximum admitted membership-carriage shapes, with opaque unmaterialized
- * siblings/model count129. These are not a complete honest native-source Trie
- * or a nonmembership maximum. Each physical consumer executes on the actual
- * registered chain with its field/certificate/verifier overhead included. */
+ * siblings/model count129, and a ledger non-membership at the deepest point an
+ * MPF path allows. These are not a complete honest native-source Trie. Each
+ * physical consumer executes on the actual registered chain with its
+ * field/certificate/verifier overhead included. */
 import {
   computeHash28,
   computeHash32,
@@ -50,7 +51,10 @@ import {
   publishPlainReferenceScriptUtxo,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
-import { syntheticDeepMembershipProof } from "./support/synthetic-deep-proof.js";
+import {
+  syntheticDeepInsertProof,
+  syntheticDeepMembershipProof,
+} from "./support/synthetic-deep-proof.js";
 
 type Shape = "branches" | "forks_branch" | "forks_leaf";
 const profiles = (["branches", "forks_branch", "forks_leaf"] as const).flatMap(
@@ -173,12 +177,19 @@ describe("registered maximum event/transition counted membership", () => {
           ),
           shape,
         );
+        // The selected input is absent from a ledger whose path to it is
+        // 63 forced branch levels and then a neighbouring leaf.
+        const absence = syntheticDeepInsertProof({
+          key: inputItems[0]!,
+          value: computeHash32(Buffer.from("absent selected input")),
+        });
+        const transition: SDK.TransitionStep = {
+          ...base.transitionMembership.value,
+          pre_utxos_root: absence.preRoot,
+        };
         const traceProof = proofFor(
           Buffer.from(Data.to(0n), "hex"),
-          Buffer.from(
-            Data.to(base.transitionMembership.value, SDK.TransitionStep),
-            "hex",
-          ),
+          Buffer.from(Data.to(transition, SDK.TransitionStep), "hex"),
           shape,
         );
         const counted = (domain: SDK.RootDomain, phasRoot: string) =>
@@ -229,10 +240,14 @@ describe("registered maximum event/transition counted membership", () => {
             },
             transitionMembership: {
               ...base.transitionMembership,
+              value: transition,
               root: header.transitionTraceRoot,
               phas_root: traceProof.transactionsPhasRoot,
               count: MODEL_COUNT,
               proof: Data.from(traceProof.proofCbor, SDK.Proof),
+            },
+            ledgerEvidence: {
+              Absent: { proof: Data.from(absence.proofCbor, SDK.Proof) },
             },
           }),
           h.proverSigner.paymentKeyHash,
@@ -342,6 +357,7 @@ describe("registered maximum event/transition counted membership", () => {
           sourceProof.proofCbor,
           eventProof.proofCbor,
           traceProof.proofCbor,
+          absence.proofCbor,
         ];
         const deploymentInfo = buildRemovalDeploymentInfo(
           h.contracts,
@@ -361,10 +377,10 @@ describe("registered maximum event/transition counted membership", () => {
         });
         let threadOutRef = `${init.txHash}#${init.firstStepOutputIndex}`;
         for (const stepIndex of [0, 1, 2, 3] as const) {
-          const chunks =
-            stepIndex === 3
-              ? []
-              : await publish(proofs[stepIndex]!, `step${stepIndex + 1}`);
+          const chunks = await publish(
+            proofs[stepIndex]!,
+            `step${stepIndex + 1}`,
+          );
           const submitted = await captureEmulatorSubmission(h.emulator, () =>
             submitInputExistenceStep({
               lucid: h.proverLucid,

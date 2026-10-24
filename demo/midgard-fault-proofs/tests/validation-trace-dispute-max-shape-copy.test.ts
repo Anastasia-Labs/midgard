@@ -10,7 +10,9 @@ import { deepestCase } from "./support/validation-trace-dispute-max-shape-case.j
 
 describe("validation-trace dispute runner at the deepest trace admission takes", () => {
   deepestCase({
-    fieldBytes: VALIDATION_TRACE_INLINE_OBSERVE_MAX_PREIMAGE_BYTES + 1,
     group: 1,
+    successor: {
+      fieldBytes: VALIDATION_TRACE_INLINE_OBSERVE_MAX_PREIMAGE_BYTES + 1,
+    },
   });
 });

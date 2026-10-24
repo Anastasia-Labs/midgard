@@ -15,6 +15,7 @@
  * `landed_block_forced_order_pending`, `landed_block_da_refetch_pending`,
  * `landed_block_awaiting_da`,
  * `landed_block_rebase_failed`, `landed_block_local_fault`,
+ * `landed_block_replay_stuck`, `landed_block_replay_held`,
  * `landed_block_replay_incomplete`,
  * `landed_block_replay_failed`, `confirmed_ledger_base_mismatch`,
  * `landed_blocks_waiting`, `confirmed_ledger_behind`,

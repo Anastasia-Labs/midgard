@@ -173,11 +173,9 @@ describe("division by zero", () => {
       ).toBe(true);
       const evaluated = evaluateMidgardCekDirectBuiltin(tag, arguments_);
       expect(evaluated.kind).toBe("failure");
-      // divideInteger's failure is charged nothing; the others are charged.
+      // Every division by zero is charged before it fails.
       expect(evaluated.budget).toEqual(
-        tag === 3n
-          ? { cpu: 0n, memory: 0n }
-          : midgardCekDirectBuiltinBudget(tag, arguments_),
+        midgardCekDirectBuiltinBudget(tag, arguments_),
       );
       // A divisor presented by its leaf is not a known failure.
       const leafDivisor = [
@@ -211,6 +209,7 @@ describe("division by zero", () => {
 
   it.each(
     rows([
+      ["divideInteger", Builtin.divideInteger],
       ["quotientInteger", Builtin.quotientInteger],
       ["remainderInteger", Builtin.remainderInteger],
       ["modInteger", Builtin.modInteger],

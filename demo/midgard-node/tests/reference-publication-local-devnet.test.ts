@@ -88,7 +88,7 @@ it.skipIf(runDirectory === undefined)(
     );
     const compiledCode: string = blueprint.validators.find(
       (validator: { title: string }) =>
-        validator.title === "fraud_proofs/missing_redeemer/step_02a.main.spend",
+        validator.title === "fraud_proofs/missing_redeemer/step_04.main.spend",
     ).compiledCode;
     const script = { type: "PlutusV3" as const, script: compiledCode };
     const targets = Object.keys(SDK.REFERENCE_SCRIPT_AUTH_TOKEN_NAMES)

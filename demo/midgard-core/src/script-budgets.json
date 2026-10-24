@@ -1706,6 +1706,152 @@
       "aboveBasis": {
         "why": "Deriving the §5.3 descriptor for a single 4,931-byte canonical output costs 13,309,711 mem net of every fixture the test builds, 100.8% of the 13,200,000 basis. The rest of a fraud-proof transaction can only reduce the headroom. #628 sign-off item, #617 wave. Whether §5.3 owes a maximum serviceable output width, and whether the L2 ledger must refuse an output the fraud-proof arms cannot re-derive, is owed an owner ruling (`maximum-serviceable-output-width`)."
       }
+    },
+    "fraud_proofs/validation_trace/cek_core_failure_known.test/failure_known_write_bits_at_the_longest_input - failure_known_write_bits_fixture_only_at_the_longest_input": {
+      "test": "fraud_proofs/validation_trace/cek_core_failure_known.test/failure_known_write_bits_at_the_longest_input",
+      "minusControl": "failure_known_write_bits_fixture_only_at_the_longest_input",
+      "ceiling": {
+        "mem": 5164681,
+        "cpu": 2794592966
+      }
+    },
+    "fraud_proofs/validation_trace/cek_core_staged_failure.test/staged_failure_decode_at_the_byte_string_bound - staged_failure_decode_fixture_only_at_the_byte_string_bound": {
+      "test": "fraud_proofs/validation_trace/cek_core_staged_failure.test/staged_failure_decode_at_the_byte_string_bound",
+      "minusControl": "staged_failure_decode_fixture_only_at_the_byte_string_bound",
+      "ceiling": {
+        "mem": 1611475,
+        "cpu": 635176107
+      }
+    },
+    "fraud_proofs/validation_trace/cek_core_staged_failure.test/staged_failure_band_at_the_integer_bound - staged_failure_band_fixture_only_at_the_integer_bound": {
+      "test": "fraud_proofs/validation_trace/cek_core_staged_failure.test/staged_failure_band_at_the_integer_bound",
+      "minusControl": "staged_failure_band_fixture_only_at_the_integer_bound",
+      "ceiling": {
+        "mem": 4550817,
+        "cpu": 1462901866
+      }
+    },
+    "fraud_proofs/validation_trace/cek_core_staged_failure.test/staged_failure_division_at_the_integer_bound - staged_failure_division_fixture_only_at_the_integer_bound": {
+      "test": "fraud_proofs/validation_trace/cek_core_staged_failure.test/staged_failure_division_at_the_integer_bound",
+      "minusControl": "staged_failure_division_fixture_only_at_the_integer_bound",
+      "ceiling": {
+        "mem": 2501839,
+        "cpu": 824849901
+      }
+    },
+    "fraud_proofs/validation_trace/cek_core_staged_bytes.test/staged_bytes_schnorr_at_the_argument_bound - staged_bytes_schnorr_fixture_only_at_the_argument_bound": {
+      "test": "fraud_proofs/validation_trace/cek_core_staged_bytes.test/staged_bytes_schnorr_at_the_argument_bound",
+      "minusControl": "staged_bytes_schnorr_fixture_only_at_the_argument_bound",
+      "ceiling": {
+        "mem": 2032387,
+        "cpu": 1063320851
+      }
+    },
+    "fraud_proofs/validation_trace/cek_core_staged_bytes.test/staged_bytes_xor_at_the_argument_bound - staged_bytes_xor_fixture_only_at_the_argument_bound": {
+      "test": "fraud_proofs/validation_trace/cek_core_staged_bytes.test/staged_bytes_xor_at_the_argument_bound",
+      "minusControl": "staged_bytes_xor_fixture_only_at_the_argument_bound",
+      "ceiling": {
+        "mem": 3565460,
+        "cpu": 1451461926
+      }
+    },
+    "fraud_proofs/validation_trace/cek_core_staged_failure.test/staged_failure_signature_at_the_byte_string_bound - staged_failure_signature_fixture_only_at_the_byte_string_bound": {
+      "test": "fraud_proofs/validation_trace/cek_core_staged_failure.test/staged_failure_signature_at_the_byte_string_bound",
+      "minusControl": "staged_failure_signature_fixture_only_at_the_byte_string_bound",
+      "ceiling": {
+        "mem": 760319,
+        "cpu": 301084816
+      },
+      "raisedBecause": "The staged failure step also proves writeBits over an input past 4,096 bytes; the larger step script costs every row of the hop about 200 mem, past this row's margin."
+    },
+    "fraud_proofs/validation_trace/cek_core_staged_failure.test/staged_failure_read_bit_at_the_byte_string_bound - staged_failure_read_bit_fixture_only_at_the_byte_string_bound": {
+      "test": "fraud_proofs/validation_trace/cek_core_staged_failure.test/staged_failure_read_bit_at_the_byte_string_bound",
+      "minusControl": "staged_failure_read_bit_fixture_only_at_the_byte_string_bound",
+      "ceiling": {
+        "mem": 593170,
+        "cpu": 238196614
+      },
+      "raisedBecause": "readBit at an index past the bits binds the byte string's length from its leaf; the row now measures that shape, the hop's widest readBit failure."
+    },
+    "fraud_proofs/validation_trace/cek_core_staged_failure.test/staged_failure_ecdsa_at_the_byte_string_bound - staged_failure_ecdsa_fixture_only_at_the_byte_string_bound": {
+      "test": "fraud_proofs/validation_trace/cek_core_staged_failure.test/staged_failure_ecdsa_at_the_byte_string_bound",
+      "minusControl": "staged_failure_ecdsa_fixture_only_at_the_byte_string_bound",
+      "ceiling": {
+        "mem": 697282,
+        "cpu": 282026309
+      }
+    },
+    "fraud_proofs/validation_trace/cek_core_staged_failure.test/staged_failure_integer_to_bytes_past_the_integer_band - staged_failure_integer_to_bytes_fixture_only_past_the_integer_band": {
+      "test": "fraud_proofs/validation_trace/cek_core_staged_failure.test/staged_failure_integer_to_bytes_past_the_integer_band",
+      "minusControl": "staged_failure_integer_to_bytes_fixture_only_past_the_integer_band",
+      "ceiling": {
+        "mem": 594495,
+        "cpu": 243870403
+      }
+    },
+    "fraud_proofs/validation_trace/cek_core_staged_failure.test/staged_failure_write_bits_past_the_byte_string_bound - staged_failure_write_bits_fixture_only_past_the_byte_string_bound": {
+      "test": "fraud_proofs/validation_trace/cek_core_staged_failure.test/staged_failure_write_bits_past_the_byte_string_bound",
+      "minusControl": "staged_failure_write_bits_fixture_only_past_the_byte_string_bound",
+      "ceiling": {
+        "mem": 403357,
+        "cpu": 165262924
+      }
+    },
+    "fraud_proofs/validation_trace/cek_core_staged_failure.test/staged_failure_replicate_byte_past_one_word - staged_failure_replicate_byte_fixture_only_past_one_word": {
+      "test": "fraud_proofs/validation_trace/cek_core_staged_failure.test/staged_failure_replicate_byte_past_one_word",
+      "minusControl": "staged_failure_replicate_byte_fixture_only_past_one_word",
+      "ceiling": {
+        "mem": 378369,
+        "cpu": 149202332
+      }
+    },
+    "fraud_proofs/validation_trace/cek_core_staged_conversion.test/staged_conversion_big_endian_at_the_argument_bound - staged_conversion_big_endian_fixture_only_at_the_argument_bound": {
+      "test": "fraud_proofs/validation_trace/cek_core_staged_conversion.test/staged_conversion_big_endian_at_the_argument_bound",
+      "minusControl": "staged_conversion_big_endian_fixture_only_at_the_argument_bound",
+      "ceiling": {
+        "mem": 8304706,
+        "cpu": 3505785059
+      }
+    },
+    "fraud_proofs/validation_trace/cek_core_staged_conversion.test/staged_conversion_little_endian_at_the_argument_bound - staged_conversion_little_endian_fixture_only_at_the_argument_bound": {
+      "test": "fraud_proofs/validation_trace/cek_core_staged_conversion.test/staged_conversion_little_endian_at_the_argument_bound",
+      "minusControl": "staged_conversion_little_endian_fixture_only_at_the_argument_bound",
+      "ceiling": {
+        "mem": 8282991,
+        "cpu": 3491756229
+      }
+    },
+    "fraud_proofs/validation_trace/cek_core_staged_integer_to_bytes.test/staged_integer_to_bytes_at_the_maximum_shape - staged_integer_to_bytes_fixture_only_at_the_maximum_shape": {
+      "test": "fraud_proofs/validation_trace/cek_core_staged_integer_to_bytes.test/staged_integer_to_bytes_at_the_maximum_shape",
+      "minusControl": "staged_integer_to_bytes_fixture_only_at_the_maximum_shape",
+      "ceiling": {
+        "mem": 1508171,
+        "cpu": 1418965445
+      }
+    },
+    "fraud_proofs/validation_trace/cek_core_staged_conversion.test/staged_shift_left_at_the_maximum_shape - staged_shift_left_fixture_only_at_the_maximum_shape": {
+      "test": "fraud_proofs/validation_trace/cek_core_staged_conversion.test/staged_shift_left_at_the_maximum_shape",
+      "minusControl": "staged_shift_left_fixture_only_at_the_maximum_shape",
+      "ceiling": {
+        "mem": 10617353,
+        "cpu": 4633017554
+      }
+    },
+    "fraud_proofs/validation_trace/cek_core_staged_conversion.test/staged_shift_right_at_the_maximum_shape - staged_shift_right_fixture_only_at_the_maximum_shape": {
+      "test": "fraud_proofs/validation_trace/cek_core_staged_conversion.test/staged_shift_right_at_the_maximum_shape",
+      "minusControl": "staged_shift_right_fixture_only_at_the_maximum_shape",
+      "ceiling": {
+        "mem": 10805962,
+        "cpu": 4685522544
+      }
+    },
+    "fraud_proofs/validation_trace/cek_core_staged_conversion.test/staged_rotate_at_the_maximum_shape - staged_rotate_fixture_only_at_the_maximum_shape": {
+      "test": "fraud_proofs/validation_trace/cek_core_staged_conversion.test/staged_rotate_at_the_maximum_shape",
+      "minusControl": "staged_rotate_fixture_only_at_the_maximum_shape",
+      "ceiling": {
+        "mem": 11004788,
+        "cpu": 4736263815
+      }
     }
   },
   "growth": {

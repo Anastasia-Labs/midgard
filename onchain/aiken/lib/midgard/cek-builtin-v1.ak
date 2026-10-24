@@ -224,7 +224,7 @@ fn standard_cost_sizes_v1(arguments: List<ValueWitnessV1>) -> List<Int> {
 /// Cardano costs an output width (integerToByteString) or a replication count
 /// (replicateByte) as the words it occupies. Out-of-range widths fail before
 /// costing; this stays total so the failure arm never aborts.
-fn width_cost_size_v1(width: Int) -> Int {
+pub fn width_cost_size_v1(width: Int) -> Int {
   if width <= 0 {
     0
   } else {
@@ -297,6 +297,36 @@ pub fn builtin_cost_sizes_v1(
     [value_memory_size_v1(source), literal_cost_size_v1(integer_v1(amount))]
   } else {
     standard_cost_sizes_v1(arguments)
+  }
+}
+
+/// The charge of a staged success (arm 31), whose arguments the roots hop
+/// committed compacted. shiftByteString (82) and rotateByteString (83) cost
+/// their source alone, so the amount, which the semantics hop binds, is not
+/// read. integerToByteString (73) costs its width's words, or for width 0 its
+/// input's memory: in both cases the memory of its result, which the semantics
+/// hop binds, so the width is not read. Every other builtin is charged as on
+/// the direct route.
+pub fn staged_builtin_budget_v1(
+  tag: Int,
+  arguments: List<ValueWitnessV1>,
+  result: ValueWitnessV1,
+) -> cek_cost_v1.BuiltinBudgetV1 {
+  if tag == 82 || tag == 83 {
+    expect [source, _] = arguments
+    cek_cost_v1.builtin_budget_v1(tag, [value_memory_size_v1(source), 0])
+  } else if tag == 73 {
+    expect [endianness, _, input] = arguments
+    cek_cost_v1.builtin_budget_v1(
+      tag,
+      [
+        value_memory_size_v1(endianness),
+        value_memory_size_v1(result),
+        value_memory_size_v1(input),
+      ],
+    )
+  } else {
+    direct_builtin_budget_v1(tag, arguments)
   }
 }
 
@@ -3681,7 +3711,7 @@ fn secp256k1_x_is_on_curve_v1(x: Int) -> Bool {
   }
 }
 
-fn secp256k1_public_key_is_valid_v1(tag: Int, key: ByteArray) -> Bool {
+pub fn secp256k1_public_key_is_valid_v1(tag: Int, key: ByteArray) -> Bool {
   if tag == 52 {
     and {
       bytearray.length(key) == 33,
@@ -3873,6 +3903,12 @@ fn known_builtin_failure_v1(tag: Int, arguments: List<ValueWitnessV1>) -> Bool {
     expect [dividend, divisor] = arguments
     and {
       constant_type_v1(dividend) == cek_constant_v1.IntegerConstant,
+      // A dividend of 4,096 words or more is the staged failure hop's, which
+      // reads from its CBOR whether it is in range and so charged.
+      when dividend is {
+        SemanticConstantValue { memory, .. } -> memory < 4096
+        _ -> True
+      },
       integer_v1(divisor) == 0,
     }
   } else if tag == 11 {
@@ -3979,13 +4015,16 @@ fn known_builtin_failure_v1(tag: Int, arguments: List<ValueWitnessV1>) -> Bool {
   } else if tag == 80 {
     expect [source, indices, bit] = arguments
     let Pair(element_type, index_data) = list_payload_v1(indices)
+    let length = bytearray.length(bytes_v1(source))
     and {
       element_type == cek_constant_v1.IntegerConstant,
       constant_type_v1(bit) == cek_constant_v1.BooleanConstant,
-      !all_bit_indices_valid_v1(
-        semantic_integers_v1(index_data),
-        bytearray.length(bytes_v1(source)) * 8,
-      ),
+      // Variant E fails writeBits on an input over 4,096 bytes whatever its
+      // indices, as the success arm refuses it.
+      or {
+        length > 4096,
+        !all_bit_indices_valid_v1(semantic_integers_v1(index_data), length * 8),
+      },
     }
   } else if tag == 81 {
     expect [length_value, byte_value] = arguments
@@ -4313,6 +4352,7 @@ pub fn authenticated_builtin_failure_budget(
     False
   }
   if or {
+    tag == 3,
     tag == 4,
     tag == 5,
     tag == 6,

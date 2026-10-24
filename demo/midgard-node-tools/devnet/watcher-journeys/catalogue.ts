@@ -50,6 +50,7 @@ export const JOURNEY_FIXTURE_OWNERS = {
   outputReferenceScriptDecoding: "script",
   redeemerCanonicity: "script",
   validationTraceDispute: "script",
+  missingRedeemer: "script",
   doubleSpend: "history",
   nonExistentInput: "history",
   nonExistentInputNoIndex: "history",

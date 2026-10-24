@@ -93,6 +93,8 @@ use midgard/native_tx_machine_walk_v1.{
   FieldGrammarCheckpointV1, FieldWalkCheckpointV1,
   open_certified_field_walk_from_grammar_commitment,
   open_field_grammar_certification, open_field_walk,
+  open_witness_field_grammar_certification,
+  resume_body_field_walk_from_commitment,
   resume_field_grammar_certification_from_commitment,
   resume_field_walk_from_commitment, walk_fold, walk_is_complete,
 }
@@ -523,6 +525,30 @@ pub fn resume_opened_field_walk(
   )
 }
 
+/// Resumes a walk over a body field (index below 6) from a checkpoint
+/// commitment. Only a `BodyFieldOpening` under a `BodyAnchor` is accepted.
+/// The field index comes from the checkpoint, and the body-only door refuses
+/// an index of 6 or more.
+pub fn resume_opened_body_field_walk(
+  opening: FieldOpeningV1,
+  anchor: NativeTxAnchorV1,
+  committed_checkpoint_hash: ByteArray,
+  checkpoint_bytes: ByteArray,
+  reference_inputs: List<Input>,
+  certificate_policy_id: PolicyId,
+) -> Pair<FieldViewV1, FieldWalkCheckpointV1> {
+  expect BodyFieldOpening { native_tx_compact_cbor, carriage } = opening
+  let anchored = anchored_body_tx(native_tx_compact_cbor, anchor)
+  resume_body_field_walk_from_commitment(
+    anchored.verified,
+    committed_checkpoint_hash,
+    checkpoint_bytes,
+    carriage,
+    reference_inputs,
+    certificate_policy_id,
+  )
+}
+
 /// Materialize an authenticated field and certify its complete envelope before a
 /// bounded consumer selects an item. This preserves the exact count guarantee
 /// for variable-width Certified carriage; it is not a resumable semantic fold.
@@ -586,6 +612,31 @@ pub fn opened_field_grammar_certification(
     anchored.witness_set,
     field_index,
     carriage_of(opening),
+    reference_inputs,
+    certificate_policy_id,
+  )
+}
+
+/// Opens a witness-set field (index 6 to 8) for grammar certification. Only a
+/// `WitnessFieldOpening` under a `WitnessAnchor` is accepted, and the
+/// witness-only door refuses an index below 6.
+pub fn opened_witness_field_grammar_certification(
+  opening: FieldOpeningV1,
+  anchor: NativeTxAnchorV1,
+  field_index: Int,
+  reference_inputs: List<Input>,
+  certificate_policy_id: PolicyId,
+) -> Pair<FieldViewV1, FieldGrammarCheckpointV1> {
+  expect WitnessFieldOpening { native_tx_compact_cbor, witness_set, carriage } = opening
+  let anchored = anchored_native_tx(
+    WitnessTxOpening { native_tx_compact_cbor, witness_set },
+    anchor,
+  )
+  open_witness_field_grammar_certification(
+    anchored.verified,
+    anchored.witness_set,
+    field_index,
+    carriage,
     reference_inputs,
     certificate_policy_id,
   )

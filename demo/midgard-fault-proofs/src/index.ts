@@ -12,10 +12,12 @@ export * from "./inspect-contracts.js";
 export * from "./invalid-range/index.js";
 export * from "./l2-tx-mistag/index.js";
 export * from "./ledger-output-proof-plan.js";
+export * from "./local-fault-bound.js";
 export * from "./min-ada/index.js";
 export * from "./min-fee-contracts.js";
 export * from "./min-fee-submit-common.js";
 export * from "./mint-authorization/index.js";
+export * from "./missing-redeemer/index.js";
 export * from "./missing-signature/index.js";
 export * from "./native-script-decoding/index.js";
 export * from "./native-script-invalid/index.js";
@@ -107,6 +109,7 @@ export * from "./validation-cek-selection.js";
 export * from "./validation-trace-dispute/defender.js";
 export { VALIDATION_TRACE_ONE_STEP_CONTRACT_NAMES } from "./validation-trace-dispute/one-step-holders.js";
 export {
+  createValidationTraceReplayHolds,
   isValidationTraceReplayHeldError,
   VALIDATION_TRACE_REPLAY_HELD,
   VALIDATION_TRACE_REPLAY_STUCK,

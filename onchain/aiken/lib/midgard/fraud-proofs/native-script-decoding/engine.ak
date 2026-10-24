@@ -472,25 +472,8 @@ pub fn budgeted_scan_v1(
   }
 }
 
-// ## Step-02 committed-claim openings
-//
-// Verbatim mirrors of the frozen validation-claim openings, so this family
-// authenticates the pre-state ledger root and the forced leaf against exactly
-// the roots the interactive machine would.
-
 // ## Direction-B accusation extraction
 
-/// Opens the event's transition step and event-to-step leaf under the
-/// header's counted roots, cross-checks them against each other and the event
-/// key (the `committed_claim_structure_is_valid` cross-check block), and
-/// returns the transition step's `pre_utxos_root` — the ledger the subject
-/// transaction was resolved against.
-/// Opens the forced leaf under the header's counted
-/// `forced_transactions_root` and enforces the §2.4.3(e) leaf-internal
-/// authoritativeness predicate: the leaf's verdict must agree with the
-/// embedded validity scalar of the leaf's own id-verified compact bytes.
-/// The caller builds the event key from `membership.key`, which is what binds
-/// the leaf to the transition step.
 /// The accusation a direction-B thread must contradict: the scan class and
 /// the ruled outpoint pair, copied verbatim from the forced leaf's rejection
 /// reason. Aborts on any reason outside this family's three arms.

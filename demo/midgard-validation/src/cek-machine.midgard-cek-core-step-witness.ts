@@ -10,7 +10,6 @@ import {
   type MidgardCekDirectValueWitness,
   type MidgardCekRuntimeValueWitness,
 } from "./cek-builtin.js";
-import { type MidgardCekConstantWitness } from "./cek-constant.js";
 import { type MidgardCekStagedBuiltinMaterial } from "./cek-staged-builtin.material.js";
 
 export const MACHINE_STEP_CPU = 16_000n;
@@ -80,10 +79,7 @@ export type MidgardCekMapConversionStartWitness = {
 
 export type MidgardCekCoreStepWitness =
   | { readonly kind: "computeVariable"; readonly index: bigint }
-  | {
-      readonly kind: "computeConstant";
-      readonly value: MidgardCekConstantWitness;
-    }
+  | { readonly kind: "computeConstant"; readonly valueRoot: Bytes }
   | { readonly kind: "computeLambda"; readonly body: Bytes }
   | { readonly kind: "computeDelay"; readonly body: Bytes }
   | {
@@ -322,6 +318,17 @@ export type MidgardCekCoreStepWitness =
       readonly kind: "executeBuiltinFailure";
       readonly tag: bigint;
       readonly arguments: readonly MidgardCekDirectValueWitness[];
+    }
+  | {
+      // A byte-string, string or integer builtin of the staged route that
+      // fails on its arguments' bounds or content (arm 36). The arguments
+      // are compacted; `material` binds the operands the failure reads, and
+      // `stagedOperands` holds the bytes of each staged operand it names.
+      readonly kind: "executeBuiltinStagedFailure";
+      readonly tag: bigint;
+      readonly arguments: readonly MidgardCekDirectValueWitness[];
+      readonly material: MidgardCekStagedBuiltinMaterial;
+      readonly stagedOperands: readonly Bytes[];
     }
   | {
       readonly kind: "executeBuiltinBlsFinal";

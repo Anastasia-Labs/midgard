@@ -40,6 +40,7 @@ import type { ValidationTraceCanonicalDecodeHolder } from "./one-step-canonical-
 import type { DrivenCekContextStage } from "./one-step-context.js";
 import type { ValidationTraceContextFollowerHolder } from "./one-step-context-followers.js";
 import type { ValidationTraceContextItemHolder } from "./one-step-context-item-holders.js";
+import type { ValidationTraceBuiltinArmHolder } from "./one-step-core-chains.js";
 import type {
   ValidationTracePhaseHolder,
   ValidationTracePhaseYield,
@@ -59,8 +60,8 @@ type DisputeChain =
 /**
  * The published reference scripts of the one-step resolution of a CEK core
  * step: the boundary, the CEK phase resolver, the CEK core step binder, the
- * arms that settle in one hop, and the settle; and of a CEK script
- * selection, when the deployment drives it.
+ * arms that settle in one hop, and the settle; of the builtin chains' arms;
+ * and of a CEK script selection, when the deployment drives it.
  */
 export type ValidationTraceOneStepReferences = Readonly<{
   boundary: UTxO;
@@ -73,6 +74,9 @@ export type ValidationTraceOneStepReferences = Readonly<{
     mapConversion: UTxO;
     caseConstant: UTxO;
   }>;
+  /** The arms of the builtin chains (core groups 3 to 10); without them a
+   * thread at a CEK builtin step waits. */
+  cekBuiltins?: Readonly<Record<ValidationTraceBuiltinArmHolder, UTxO>>;
   /**
    * The selection resolver, and its two yields' references, each carrying
    * its role's reference-script authentication token; without them a thread

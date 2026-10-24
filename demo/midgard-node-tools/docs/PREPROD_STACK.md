@@ -97,15 +97,15 @@ signing is required. Fresh deployment authoring requires a JSON file with:
 {
   "signingKeyFile": "/absolute/path/persistent-ed25519-private-key.pem",
   "programCommitments": { "<program-name>": "<release-commitment>" },
-  "fundingProfiles": [
-    "<measured WatcherWorkflowFundingProfileBody per launch category>"
-  ]
+  "fundingProfiles": []
 }
 ```
 
-The key must already exist. Profiles must be genuine measurements for the
-exact blueprint, Cardano parameter snapshot, applied reference scripts,
-economics and prover wallet. Setup signs their canonical bundle and the rule
+The key must already exist. `fundingProfiles` may stay empty: the watcher
+prices its reservations from the runtime funding policy and never needs one. A
+profile you do supply must be a genuine measurement for the exact blueprint,
+Cardano parameter snapshot, applied reference scripts, economics and prover
+wallet. Setup signs their canonical bundle and the rule
 bundle against the confirmed deployment; it never fabricates measurements or
 silently replaces an existing release. A profile mismatch stops setup and
 preserves all deployed state. Before the authority is signed, replace the

@@ -12,6 +12,7 @@ use midgard/fraud_proofs/common.{cancel}
 
 validator main(
   material_script_hash: ScriptHash,
+  staged_failure_script_hash: ScriptHash,
   computation_thread_policy_id: PolicyId,
 ) {
   spend(
@@ -50,19 +51,37 @@ validator main(
             count,
             root,
           )
-        expect
-          bound.post == machine.exact_state(
-            bound.pre,
-            machine.mode_halt_error,
-            proof.hash_error_term_v1(),
-            proof.empty_environment_root_v1,
-            proof.empty_continuation_root_v1,
-            machine.error_builtin_failure,
-            0,
-            0,
-          )
+        // The byte-string, string, signature, integer and bitwise builtins
+        // (writeBits and replicateByte among them), integerToByteString and
+        // byteStringToInteger fail on their arguments' bounds or content at
+        // the staged failure hop, which checks the post-state since some of
+        // its failures are charged; the Data builtins on their material at
+        // the material hop, before costing.
+        let to_staged = or {
+          tag < 26,
+          tag == 52,
+          tag == 53,
+          tag >= 71 && tag <= 86,
+        }
+        expect or {
+            to_staged,
+            bound.post == machine.exact_state(
+              bound.pre,
+              machine.mode_halt_error,
+              proof.hash_error_term_v1(),
+              proof.empty_environment_root_v1,
+              proof.empty_continuation_root_v1,
+              machine.error_builtin_failure,
+              0,
+              0,
+            ),
+          }
         chain.continue_core(
-          material_script_hash,
+          if to_staged {
+            staged_failure_script_hash
+          } else {
+            material_script_hash
+          },
           computation_thread_policy_id,
           step,
           action,

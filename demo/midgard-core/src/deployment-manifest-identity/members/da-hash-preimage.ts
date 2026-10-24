@@ -14,7 +14,7 @@ export const daHashPreimageMembers = defineDeploymentFamily("daHashPreimage", {
   fraudProofDaHashPreimageStep02: {
     purpose: "spend",
     referenceRole: "V1 fraud-proof da-hash-preimage step-02",
-    manifestPosition: 423,
+    manifestPosition: 455,
     publicationPosition: 89,
     referenceRolePosition: 166,
     commands: [],

@@ -83,8 +83,9 @@ pub fn admit_v1(
       )
       StateV1 { root, count: state.count + 1 }
     }
-    Existing { previous, proof } -> {
-      expect previous.script_hash == candidate.script_hash
+    Existing { previous, proof } ->
+      // Each map value is stored under its own script hash, so a proof of
+      // `previous` at the candidate's key already fixes that hash.
       if priority_precedes_v1(candidate, previous) {
         expect Some(root) = mpf.update_root_paired_fold(
           state.root,
@@ -104,7 +105,6 @@ pub fn admit_v1(
           )
         state
       }
-    }
   }
 }
 

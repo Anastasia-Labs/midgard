@@ -46,8 +46,8 @@ export const valueNotPreservedMembers = defineDeploymentFamily(
     fraudProofValueNotPreservedUnionAcceptedSource: {
       purpose: "spend",
       referenceRole: "value conservation accepted-source",
-      manifestPosition: 391,
-      publicationPosition: 297,
+      manifestPosition: 423,
+      publicationPosition: 329,
       referenceRolePosition: 108,
       commands: [],
       validatorTitle:
@@ -57,8 +57,8 @@ export const valueNotPreservedMembers = defineDeploymentFamily(
     fraudProofValueNotPreservedUnionForcedSource: {
       purpose: "spend",
       referenceRole: "value conservation forced-source",
-      manifestPosition: 392,
-      publicationPosition: 298,
+      manifestPosition: 424,
+      publicationPosition: 330,
       referenceRolePosition: 109,
       commands: [],
       validatorTitle:
@@ -68,8 +68,8 @@ export const valueNotPreservedMembers = defineDeploymentFamily(
     fraudProofValueNotPreservedUnionEvent: {
       purpose: "spend",
       referenceRole: "value conservation event",
-      manifestPosition: 393,
-      publicationPosition: 299,
+      manifestPosition: 425,
+      publicationPosition: 331,
       referenceRolePosition: 110,
       commands: [],
       validatorTitle: "fraud_proofs/value_not_preserved/union_event.main.spend",
@@ -78,8 +78,8 @@ export const valueNotPreservedMembers = defineDeploymentFamily(
     fraudProofValueNotPreservedUnionPreState: {
       purpose: "spend",
       referenceRole: "value conservation pre-state",
-      manifestPosition: 394,
-      publicationPosition: 300,
+      manifestPosition: 426,
+      publicationPosition: 332,
       referenceRolePosition: 111,
       commands: [],
       validatorTitle:
@@ -89,8 +89,8 @@ export const valueNotPreservedMembers = defineDeploymentFamily(
     fraudProofValueNotPreservedUnionInputs: {
       purpose: "spend",
       referenceRole: "value conservation inputs",
-      manifestPosition: 395,
-      publicationPosition: 301,
+      manifestPosition: 427,
+      publicationPosition: 333,
       referenceRolePosition: 112,
       commands: [],
       validatorTitle:
@@ -100,8 +100,8 @@ export const valueNotPreservedMembers = defineDeploymentFamily(
     fraudProofValueNotPreservedUnionInputValue: {
       purpose: "spend",
       referenceRole: "value conservation input-value",
-      manifestPosition: 396,
-      publicationPosition: 302,
+      manifestPosition: 428,
+      publicationPosition: 334,
       referenceRolePosition: 113,
       commands: [],
       validatorTitle:
@@ -111,8 +111,8 @@ export const valueNotPreservedMembers = defineDeploymentFamily(
     fraudProofValueNotPreservedUnionAssets: {
       purpose: "spend",
       referenceRole: "value conservation assets",
-      manifestPosition: 397,
-      publicationPosition: 303,
+      manifestPosition: 429,
+      publicationPosition: 335,
       referenceRolePosition: 114,
       commands: [],
       validatorTitle:
@@ -122,8 +122,8 @@ export const valueNotPreservedMembers = defineDeploymentFamily(
     fraudProofValueNotPreservedUnionFieldGrammar: {
       purpose: "spend",
       referenceRole: "value conservation field-grammar",
-      manifestPosition: 398,
-      publicationPosition: 304,
+      manifestPosition: 430,
+      publicationPosition: 336,
       referenceRolePosition: 115,
       commands: [],
       validatorTitle:
@@ -133,8 +133,8 @@ export const valueNotPreservedMembers = defineDeploymentFamily(
     fraudProofValueNotPreservedUnionOutputs: {
       purpose: "spend",
       referenceRole: "value conservation outputs",
-      manifestPosition: 399,
-      publicationPosition: 305,
+      manifestPosition: 431,
+      publicationPosition: 337,
       referenceRolePosition: 116,
       commands: [],
       validatorTitle:
@@ -144,8 +144,8 @@ export const valueNotPreservedMembers = defineDeploymentFamily(
     fraudProofValueNotPreservedUnionOutputScan: {
       purpose: "spend",
       referenceRole: "value conservation output-scan",
-      manifestPosition: 400,
-      publicationPosition: 306,
+      manifestPosition: 432,
+      publicationPosition: 338,
       referenceRolePosition: 117,
       commands: [],
       validatorTitle:
@@ -155,8 +155,8 @@ export const valueNotPreservedMembers = defineDeploymentFamily(
     fraudProofValueNotPreservedUnionMint: {
       purpose: "spend",
       referenceRole: "value conservation mint",
-      manifestPosition: 401,
-      publicationPosition: 307,
+      manifestPosition: 433,
+      publicationPosition: 339,
       referenceRolePosition: 118,
       commands: [],
       validatorTitle: "fraud_proofs/value_not_preserved/union_mint.main.spend",
@@ -165,8 +165,8 @@ export const valueNotPreservedMembers = defineDeploymentFamily(
     fraudProofValueNotPreservedUnionUpdate: {
       purpose: "spend",
       referenceRole: "value conservation update",
-      manifestPosition: 402,
-      publicationPosition: 308,
+      manifestPosition: 434,
+      publicationPosition: 340,
       referenceRolePosition: 119,
       commands: [],
       validatorTitle:
@@ -176,8 +176,8 @@ export const valueNotPreservedMembers = defineDeploymentFamily(
     fraudProofValueNotPreservedUnionTerminal: {
       purpose: "spend",
       referenceRole: "value conservation terminal",
-      manifestPosition: 403,
-      publicationPosition: 309,
+      manifestPosition: 435,
+      publicationPosition: 341,
       referenceRolePosition: 120,
       commands: [],
       validatorTitle:

@@ -594,9 +594,15 @@ export const workflowAdapterRegistrationRows = [
   {
     category: "missingRedeemer",
     status: "missing",
-    reason: "evidence_not_carried_by_da_payload",
-    existingSurface: [],
-    requiredClosure: daPayloadEvidenceClosure,
+    reason: "constrained_adapter_is_not_launch_scope_complete",
+    existingSurface: [
+      "missing-redeemer/replay.ts",
+      "missing-redeemer/artifact.ts",
+      "missing-redeemer/workflow.ts",
+      "workflow/family-application-registry.ts#MISSING_REDEEMER_FAMILY_APPLICATION_RECORD",
+    ],
+    requiredClosure:
+      "install and exercise the manifest-bound missing-redeemer runner in a compiled application with its retained-DA runtime",
   },
   {
     category: "unusedRedeemer",

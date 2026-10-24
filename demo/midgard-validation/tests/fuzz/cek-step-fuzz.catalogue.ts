@@ -49,7 +49,6 @@ type StepWitness = MidgardCekExecutionStep["witness"];
 const revealedConstants = (
   witness: StepWitness,
 ): MidgardCekConstantWitness[] => {
-  if (witness.kind === "computeConstant") return [witness.value];
   const values = [
     ...("arguments" in witness ? witness.arguments : []),
     ...("result" in witness ? [witness.result] : []),
@@ -170,9 +169,11 @@ const isPendingBlsFailure = (witness: StepWitness): boolean => {
  * for tags above 86 have no executor here yet.
  */
 const COMPUTATION_COST_BUILTINS = new Set([2, 22, 41, 46, 51, 70, 82, 83]);
-/** The constant-revealing arms, whose cost grows with a large Data value. */
+/**
+ * The constant-revealing arms, whose cost grows with a large Data value. A
+ * `computeConstant` step names only its value root, so its cost does not.
+ */
 const CONSTANT_REVEALING_KINDS = new Set<StepWitness["kind"]>([
-  "computeConstant",
   "computeContextConstant",
 ]);
 

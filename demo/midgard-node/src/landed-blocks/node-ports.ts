@@ -24,6 +24,7 @@ import {
   foreignBlockReplayer,
   type replayForeignBlock,
 } from "./replay-foreign.js";
+import { heldReplays } from "./replay-held.js";
 
 const confirmView = followerViewValid;
 
@@ -68,7 +69,7 @@ export const nodeLandedBlockPorts = (
     confirmView,
     queueHistory: (view) => readQueueHistory(store, plan.stateQueue, view),
     write: (work) => withFollowerWrite(work),
-    replay: replayer.replay,
+    replay: heldReplays(replayer.replay),
     bindRetained: replayer.bind,
     ownJournal,
     genesis,

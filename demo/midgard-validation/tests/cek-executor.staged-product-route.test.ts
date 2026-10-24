@@ -357,9 +357,10 @@ describe("multiplyInteger and the divisions past the direct carriage bound", () 
     expect(verifiesWith(found, [...sources, sources[3]!])).toBe(false);
   });
 
-  it("leaves a multiplyInteger argument one past the largest indeterminate", () => {
+  // The staged failure hop proves an integer argument past the bound fails.
+  it("proves a multiplyInteger argument one past the largest fails", () => {
     const body = multiply(pastTop, int(2n));
     expect(run(body, "verdict").result.kind).toBe("script_invalid");
-    expect(run(body, "proof").result.kind).toBe("indeterminate");
+    expect(run(body, "proof").result.kind).toBe("script_invalid");
   });
 });

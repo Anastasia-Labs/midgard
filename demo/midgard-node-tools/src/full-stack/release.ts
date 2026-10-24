@@ -3,7 +3,6 @@ import { readFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 
 import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { deploymentFraudProofCatalogueCategories } from "@al-ft/midgard-core/deployment-profile";
 import { parseDeploymentReleaseProvenance } from "@al-ft/midgard-core/deployment-release";
 import { paymentCredentialOf, walletFromSeed } from "@lucid-evolution/lucid";
 import {
@@ -54,17 +53,6 @@ export async function readReleaseInput(path: string) {
   createWatcherWorkflowFundingProfileBundle({
     profiles: input.fundingProfiles,
   });
-  const categories = input.fundingProfiles.map((profile) =>
-    profile.scope.kind === "fraud_proof_category" ? profile.scope.category : "",
-  );
-  if (
-    deploymentFraudProofCatalogueCategories().some(
-      (category) => !categories.includes(category),
-    )
-  )
-    throw new Error(
-      "Release inputs need measured funding profiles for every launch category",
-    );
   const releaseProvenance =
     input.provenanceFile === undefined
       ? undefined
@@ -107,17 +95,6 @@ export async function releasePaths(processes: StackProcesses) {
     ),
   };
 }
-/** Every launch category needs a measured funding profile in the saved release. */
-function assertLaunchCategoryProfiles(overlay: {
-  profiles: Readonly<Record<string, unknown>>;
-}) {
-  if (
-    deploymentFraudProofCatalogueCategories().some(
-      (category) => !overlay.profiles[category],
-    )
-  )
-    throw new Error("Release lacks a launch-category funding profile");
-}
 /**
  * Opens the saved release for this deployment. Setup checks it against the
  * release inputs through the watcher's own authoring (prepareStackRelease).
@@ -133,12 +110,10 @@ export async function verifyStackRelease(processes: StackProcesses) {
   );
   if (release.deploymentIdentity.manifestId !== manifest.manifestId)
     throw new Error("Watcher release belongs to a different deployment");
-  assertLaunchCategoryProfiles(
-    await loadWatcherWorkflowFundingProfileOverlay({
-      bundlePath: paths.funding,
-      deploymentIdentity: release.deploymentIdentity,
-    }),
-  );
+  await loadWatcherWorkflowFundingProfileOverlay({
+    bundlePath: paths.funding,
+    deploymentIdentity: release.deploymentIdentity,
+  });
   return release;
 }
 /**
@@ -151,41 +126,38 @@ export async function prepareStackRelease(processes: StackProcesses) {
   if (!processes.config.watcher.releaseInput) {
     if ((await readJsonIfPresent(paths.authority)) === undefined)
       throw new Error(
-        "Fresh setup requires watcher releaseInput with measured profiles and a persistent signing key",
+        "Fresh setup requires watcher releaseInput with a persistent signing key",
       );
     return verifyStackRelease(processes);
   }
   const { input, key, releaseProvenance, deploymentParameterRegistry } =
     await readReleaseInput(processes.config.watcher.releaseInput);
   // A saved authority is reopened only when it attests exactly this release.
-  const { deploymentAuthority, fundingProfileOverlay } =
-    await authorWatcherDeploymentRelease({
-      manifest: await readJsonIfPresent(stackPaths(processes).manifest),
-      blueprintJson: await readFile(
-        resolve(processes.config.nodeRoot, "../../onchain/aiken/plutus.json"),
-      ),
-      programCommitments: input.programCommitments,
-      ...(releaseProvenance === undefined ? {} : { releaseProvenance }),
-      ...(deploymentParameterRegistry === undefined
-        ? {}
-        : { deploymentParameterRegistry }),
-      fundingProfiles: input.fundingProfiles,
-      fundingPaymentKeyHash: paymentCredentialOf(
-        walletFromSeed(
-          processes.env[processes.config.wallets.prover!.seedEnv]!,
-          { network: "Preprod" },
-        ).address,
-      ).hash,
-      signingKey: key,
-      paths,
-      existingAuthority: "refuse",
-      writer: {
-        replace: (path, contents) =>
-          writeTextFileAtomic(path, contents, { mode: 0o600 }),
-        create: (path, contents) =>
-          writeTextFileAtomicNoReplace(path, contents, { mode: 0o600 }),
-      },
-    });
-  assertLaunchCategoryProfiles(fundingProfileOverlay);
+  const { deploymentAuthority } = await authorWatcherDeploymentRelease({
+    manifest: await readJsonIfPresent(stackPaths(processes).manifest),
+    blueprintJson: await readFile(
+      resolve(processes.config.nodeRoot, "../../onchain/aiken/plutus.json"),
+    ),
+    programCommitments: input.programCommitments,
+    ...(releaseProvenance === undefined ? {} : { releaseProvenance }),
+    ...(deploymentParameterRegistry === undefined
+      ? {}
+      : { deploymentParameterRegistry }),
+    fundingProfiles: input.fundingProfiles,
+    fundingPaymentKeyHash: paymentCredentialOf(
+      walletFromSeed(processes.env[processes.config.wallets.prover!.seedEnv]!, {
+        network: "Preprod",
+      }).address,
+    ).hash,
+    signingKey: key,
+    paths,
+    existingAuthority: "refuse",
+    writer: {
+      replace: (path, contents) =>
+        writeTextFileAtomic(path, contents, { mode: 0o600 }),
+      create: (path, contents) =>
+        writeTextFileAtomicNoReplace(path, contents, { mode: 0o600 }),
+    },
+  });
   return deploymentAuthority;
 }

@@ -4,10 +4,20 @@ import { join } from "node:path";
 
 import {
   deriveMidgardForcedTxFaultEvidenceMaterial,
+  encodeMidgardTxOutput,
   midgardFieldCommitment,
 } from "@al-ft/midgard-core";
 import * as FP from "@al-ft/midgard-fault-proofs";
+import {
+  buildCanonicalBlockFixture,
+  outRefCbor,
+} from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
 import * as SDK from "@al-ft/midgard-sdk";
+import {
+  CML,
+  generateEmulatorAccount,
+  walletFromSeed,
+} from "@lucid-evolution/lucid";
 import { readPublishedDepositHistory } from "midgard-watcher/tests/support/published-deposit-history";
 import type { PublishedDepositTraceCheckpoint } from "midgard-watcher/tests/support/published-deposit-trace";
 import { expect, it } from "vitest";
@@ -16,7 +26,10 @@ import { readJourneyArtifact } from "./artifacts.js";
 import { readCheckpointJourneyLedgerBlock } from "./journey-checkpoint-ledger.test-support.js";
 import { verifyJourneyFixture } from "./journey-classification.test-support.js";
 import { classifyFullCatalogueTransactionFixture } from "./journey-classification.test-support.js";
-import { depositEventsRetainedBlock } from "./journey-fixture-ledger.test-support.js";
+import {
+  checkedFixtureBlock,
+  depositEventsRetainedBlock,
+} from "./journey-fixture-ledger.test-support.js";
 import { journeyLedgerPairs } from "./journey-ledger.js";
 import {
   buildJourneyScriptForcedFault,
@@ -32,6 +45,7 @@ const replayers = {
   outputReferenceScriptDecoding:
     FP.OUTPUT_REFERENCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
   redeemerCanonicity: FP.REDEEMER_CANONICITY_COMPLETE_CANONICAL_REPLAY,
+  missingRedeemer: FP.MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY,
 };
 const runDirectory = process.env.MIDGARD_WATCHER_JOURNEY_RUN_DIR;
 const stagedPath =
@@ -196,7 +210,8 @@ it
       ).toBe(block.headerHash);
     if (
       category === "nativeScriptDecoding" ||
-      category === "scriptIntegrityHashMissing"
+      category === "scriptIntegrityHashMissing" ||
+      category === "missingRedeemer"
     ) {
       const context = FP.headerDecisionReplayContext(classification.decision);
       const replayer = replayers[category];
@@ -220,10 +235,16 @@ it
               classification: selected,
               replayContext: context,
             })
-          : await FP.prepareScriptIntegrityHashMissingArtifact({
-              evidence,
-              classification: selected,
-            });
+          : category === "missingRedeemer"
+            ? await FP.prepareMissingRedeemerWorkflowArtifact({
+                evidence,
+                classification: selected,
+                replayContext: context,
+              })
+            : await FP.prepareScriptIntegrityHashMissingArtifact({
+                evidence,
+                classification: selected,
+              });
       expect(artifact.headerHash).toBe(block.headerHash);
     }
     await verifyJourneyFixture({
@@ -237,3 +258,55 @@ it
   },
   60000,
 );
+
+it("classifies the missingRedeemer forced-claim fixture through the full catalogue and its honest successor as healthy", async () => {
+  const account = generateEmulatorAccount({ lovelace: 100_000_000n });
+  const wallet = walletFromSeed(account.seedPhrase, { network: "Custom" });
+  const owner = CML.PrivateKey.from_bech32(wallet.paymentKey)
+    .to_public()
+    .hash()
+    .to_raw_bytes();
+  const predecessor = await checkedFixtureBlock(
+    await buildCanonicalBlockFixture({
+      transactions: [],
+      utxos: [
+        {
+          key: outRefCbor(0x81, 0n),
+          value: encodeMidgardTxOutput({
+            address: Buffer.concat([Buffer.from([0x60]), Buffer.from(owner)]),
+            value: { lovelace: 100_000_000n, assets: new Map() },
+          }),
+        },
+      ],
+    }),
+  );
+  const orderKey = { transactionId: "a1".repeat(32), outputIndex: 0n };
+  const input = {
+    category: "missingRedeemer" as const,
+    predecessor,
+    ledgerOwnerSeedPhrase: account.seedPhrase,
+    operatorVkey: "82".repeat(28),
+    endTime: predecessor.header.endTime + 40_000n,
+    blockSlot: predecessor.header.blockSlot + 40n,
+    orderKey,
+  };
+  const block = await buildJourneyScriptForcedFault(input);
+  const forced = { transaction: block.material.transaction, orderKey };
+  const full = await classifyFullCatalogueTransactionFixture({
+    block,
+    predecessor,
+    history: [],
+    forced,
+  });
+  expect(full.decision).toMatchObject({
+    decision: "fault_detected",
+    category: "missingRedeemer",
+  });
+  const healthy = await classifyFullCatalogueTransactionFixture({
+    block: await buildJourneyScriptForcedSuccessor(input),
+    predecessor,
+    history: [],
+    forced,
+  });
+  expect(healthy.decision).toMatchObject({ decision: "healthy" });
+}, 60000);

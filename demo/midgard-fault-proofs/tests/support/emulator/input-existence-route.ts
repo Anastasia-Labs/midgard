@@ -1,9 +1,11 @@
 /** The registered four-step input-existence route on the emulator: publish
- * the family's step scripts, open the thread with `submitInit`, run steps
- * 01-03, then either convict at step 04 or hand step 04 to the caller's
- * refusal check and confirm the thread is kept and no proof minted. The
- * caller runs `expectOnchainRefusal` itself so a traced pin is checked
- * against the file that declares it. */
+ * the family's step scripts, open the thread with `submitInit`, run the steps
+ * before the decisive one, then either convict at step 04 or hand the refused
+ * step (step 04 unless `atStep` names step 03) to the caller's refusal check
+ * and confirm the thread is kept and no proof minted. The caller runs
+ * `expectOnchainRefusal` itself so a traced pin is checked against the file
+ * that declares it. `submitStep` replaces the local submitter, for a prover
+ * that carries evidence the local submitter would not admit. */
 import type { UTxO } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
@@ -42,17 +44,20 @@ export const runInputExistenceRoute = async ({
   field,
   prepared,
   fraudulentBlockOutRef,
+  submitStep = submitInputExistenceStep,
   outcome,
 }: {
   readonly h: Harness;
   readonly field: 0 | 1;
   readonly prepared: PreparedInputExistence;
   readonly fraudulentBlockOutRef: string;
+  readonly submitStep?: typeof submitInputExistenceStep;
   readonly outcome:
     | Readonly<{ kind: "conviction" }>
     | Readonly<{
         kind: "refusal";
-        refuse: (step04: () => Promise<unknown>) => Promise<unknown>;
+        atStep?: 2 | 3;
+        refuse: (step: () => Promise<unknown>) => Promise<unknown>;
       }>;
 }) => {
   const category = inputExistenceCategory(field);
@@ -100,7 +105,7 @@ export const runInputExistenceRoute = async ({
   checkFit(init.measurement);
   let threadOutRef = `${init.result.txHash}#${init.result.firstStepOutputIndex}`;
   const send = (stepIndex: 0 | 1 | 2 | 3) =>
-    submitInputExistenceStep({
+    submitStep({
       lucid: h.proverLucid,
       blueprint: h.realBlueprint,
       network,
@@ -123,7 +128,10 @@ export const runInputExistenceRoute = async ({
       },
       witnessReferenceScripts: h.witnessReferenceScripts,
     });
-  for (const index of [0, 1, 2] as const) {
+  const decisive = outcome.kind === "refusal" ? (outcome.atStep ?? 3) : 3;
+  for (const index of decisive === 2
+    ? ([0, 1] as const)
+    : ([0, 1, 2] as const)) {
     const submitted = await captureEmulatorSubmission(h.emulator, () =>
       send(index),
     );
@@ -131,8 +139,8 @@ export const runInputExistenceRoute = async ({
     threadOutRef = submitted.result.nextThreadOutRef;
   }
   if (outcome.kind === "refusal") {
-    await outcome.refuse(() => send(3));
-    // A refusal must preserve the actual step-04 thread and mint no proof.
+    await outcome.refuse(() => send(decisive));
+    // A refusal must preserve the refused step's thread and mint no proof.
     const [txHash, index] = threadOutRef.split("#");
     expect(
       await h.proverLucid.utxosByOutRef([

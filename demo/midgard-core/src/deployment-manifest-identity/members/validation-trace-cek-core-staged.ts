@@ -8,9 +8,9 @@ const validationTraceCekCoreStagedOperandMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreStagedBytes: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core staged bytes",
-      manifestPosition: 559,
-      publicationPosition: 554,
-      referenceRolePosition: 554,
+      manifestPosition: 591,
+      publicationPosition: 586,
+      referenceRolePosition: 586,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_core_staged_bytes.main.spend",
@@ -19,9 +19,9 @@ const validationTraceCekCoreStagedOperandMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreStagedInteger: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core staged integer",
-      manifestPosition: 560,
-      publicationPosition: 555,
-      referenceRolePosition: 555,
+      manifestPosition: 592,
+      publicationPosition: 587,
+      referenceRolePosition: 587,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_core_staged_integer.main.spend",
@@ -76,8 +76,56 @@ const validationTraceCekCoreSerialiseLoopMembers = defineDeploymentFamily(
   },
 );
 
+const serialiseLoop =
+  validationTraceCekCoreSerialiseLoopMembers.validationTraceDisputeCekCoreSemanticSerialiseLoop;
+
+/** The failure hop of the byte-string, string and integer builtins, which
+ * group 7's roots route those builtins to, placed directly after the
+ * serialise loop member. */
+const validationTraceCekCoreStagedFailureMembers = defineDeploymentFamily(
+  "validationTraceDispute",
+  {
+    validationTraceDisputeCekCoreStagedFailure: {
+      purpose: "spend",
+      referenceRole: "V1 validation-trace CEK core staged failure",
+      manifestPosition: serialiseLoop.manifestPosition + 1,
+      publicationPosition: serialiseLoop.publicationPosition + 1,
+      referenceRolePosition: serialiseLoop.referenceRolePosition + 1,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/validation_trace/cek_core_staged_failure.main.spend",
+      familyPaths: [["cekCoreStages", "stagedFailure"]],
+    },
+  },
+);
+
+const stagedFailure =
+  validationTraceCekCoreStagedFailureMembers.validationTraceDisputeCekCoreStagedFailure;
+
+/** byteStringToInteger, integerToByteString, shiftByteString and
+ * rotateByteString over a staged input (index 11), placed directly after the
+ * staged failure member. */
+const validationTraceCekCoreStagedConversionMembers = defineDeploymentFamily(
+  "validationTraceDispute",
+  {
+    validationTraceDisputeCekCoreStagedConversion: {
+      purpose: "spend",
+      referenceRole: "V1 validation-trace CEK core staged conversion",
+      manifestPosition: stagedFailure.manifestPosition + 1,
+      publicationPosition: stagedFailure.publicationPosition + 1,
+      referenceRolePosition: stagedFailure.referenceRolePosition + 1,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/validation_trace/cek_core_staged_conversion.main.spend",
+      familyPaths: [["cekCoreStages", "stagedConversion"]],
+    },
+  },
+);
+
 export const validationTraceCekCoreStagedMembers = Object.freeze({
   ...validationTraceCekCoreStagedOperandMembers,
   ...validationTraceCekCoreStagedProductMembers,
   ...validationTraceCekCoreSerialiseLoopMembers,
+  ...validationTraceCekCoreStagedFailureMembers,
+  ...validationTraceCekCoreStagedConversionMembers,
 });

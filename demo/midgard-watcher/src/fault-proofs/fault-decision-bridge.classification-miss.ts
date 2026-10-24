@@ -26,6 +26,18 @@ import {
   verificationRecorder,
 } from "./fault-decision-bridge.classification-record.js";
 import type { BridgeDependencies } from "./fault-decision-bridge.selected-target.js";
+import {
+  replayLocalFaultHolds,
+  type WatcherReplayLocalFaultHold,
+} from "./replay-local-fault-bound.js";
+
+/** A header held on a local replay fault whose backoff has not passed: it
+ * is deferred without a classification. */
+class WatcherReplayLocalFaultWaiting extends Error {
+  constructor(readonly hold: WatcherReplayLocalFaultHold) {
+    super(`${hold.reason}: ${hold.detail}`);
+  }
+}
 
 /**
  * What the bridge does with one header it could not classify:
@@ -99,10 +111,11 @@ const caseOpenWindowEndMs = (
 const MAXIMUM_WARNED_HEADERS = 4_096;
 
 /**
- * A header whose classification waits on held script re-executions names
- * its hold on readiness while its classification keeps being retried: each
- * retry renews it, so one never retried again (classified, merged, removed
- * or rolled back) stops holding readiness on its own once this old.
+ * A header whose classification waits on held script re-executions, or on a
+ * local replay fault, names its hold on readiness while its classification
+ * keeps being retried: each retry renews it, so one never retried again
+ * (classified, merged, removed or rolled back) stops holding readiness on
+ * its own once this old.
  */
 export const WATCHER_REPLAY_HOLD_MAXIMUM_AGE_MS = 180_000;
 
@@ -132,6 +145,10 @@ export const classificationMissRecorder = (
     dependencies.warn?.(warning);
   };
   const nowMs = dependencies.nowMs ?? (() => BigInt(Date.now()));
+  const localFaults = replayLocalFaultHolds(
+    dependencies.monotonicNowMs ?? (() => performance.now()),
+  );
+  let localFaultPass = { token: -1, waiting: localFaults.pass() };
   const replayHolds = new Map<
     string,
     Readonly<{ reason: string; detail: string; atMs: bigint }>
@@ -147,9 +164,19 @@ export const classificationMissRecorder = (
       active: false,
       observedAtMs: nowMs().toString(),
     });
+  const holdOnReadiness = (
+    headerHash: string,
+    hold: Readonly<{ reason: string; detail: string }>,
+  ): void => {
+    replayHolds.delete(headerHash);
+    if (replayHolds.size >= MAXIMUM_WARNED_HEADERS)
+      replayHolds.delete(replayHolds.keys().next().value!);
+    replayHolds.set(headerHash, { ...hold, atMs: nowMs() });
+  };
   const handle = (input: MissInput): WatcherClassificationMiss => {
     const { error, subjectDigest, verification } = input;
     const header = input.observation.finalizedHeaders[input.index]!;
+    if (error instanceof WatcherReplayLocalFaultWaiting) return "defer";
     // The follower, the node or a provider did not answer, or moved while a
     // snapshot was read (see `isWatcherL1TransientFailure`); or this
     // watcher's own DA node is not up, so no source was asked. Either way
@@ -165,13 +192,18 @@ export const classificationMissRecorder = (
       return "defer";
     }
     // This watcher's own replay failed, which says nothing about the
-    // header: it is classified again on a later wake.
+    // header: it is held by name and classified again on a later wake once
+    // its backoff passed, for as long as the fault recurs.
     if (isReplayLocalFault(error)) {
       warnOnce({
         event: "classification_deferred",
         headerHash: header.headerHash,
         cause: "replay_local_fault",
       });
+      holdOnReadiness(
+        header.headerHash,
+        localFaults.fault(header.headerHash, error.message),
+      );
       return "defer";
     }
     // Its script re-execution threw on an event that may be the one that
@@ -191,10 +223,7 @@ export const classificationMissRecorder = (
             ? error.message
             : `${error.message}, and its case must open by ${by}`,
       };
-      replayHolds.delete(header.headerHash);
-      if (replayHolds.size >= MAXIMUM_WARNED_HEADERS)
-        replayHolds.delete(replayHolds.keys().next().value!);
-      replayHolds.set(header.headerHash, { ...hold, atMs: nowMs() });
+      holdOnReadiness(header.headerHash, hold);
       if (by !== undefined)
         process.stderr.write(
           `${JSON.stringify({ packageName: WATCHER_PACKAGE_NAME, level: "error", ...hold })}\n`,
@@ -258,11 +287,25 @@ export const classificationMissRecorder = (
     return "defer";
   };
   return Object.freeze({
-    /** `headerHash` was classified: it no longer waits on a hold. */
+    /**
+     * Throws, for `resolve` to defer, while `headerHash` is held on a local
+     * replay fault whose backoff has not passed, or whose retry this pass
+     * (`token`) already gave another header.
+     */
+    assertDue: (headerHash: string, token: number): void => {
+      if (localFaultPass.token !== token)
+        localFaultPass = { token, waiting: localFaults.pass() };
+      const hold = localFaultPass.waiting(headerHash);
+      if (hold !== undefined) throw new WatcherReplayLocalFaultWaiting(hold);
+    },
+    /** `headerHash` was classified: it no longer waits on a hold, and its
+     * local-fault hold is released. */
     classified: (headerHash: string): void => {
       replayHolds.delete(headerHash);
+      localFaults.progressed(headerHash);
     },
-    /** The headers whose classification waits on held re-executions. */
+    /** The headers whose classification waits on held re-executions or a
+     * local replay fault. */
     readiness: (): readonly Readonly<{ reason: string; detail: string }>[] => {
       const now = nowMs();
       for (const [headerHash, { atMs }] of replayHolds)

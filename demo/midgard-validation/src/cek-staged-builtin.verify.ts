@@ -38,45 +38,27 @@ import {
   semanticizeMidgardCekDirectConstant,
 } from "./cek-builtin.evaluate-reference-builtin.js";
 import type { MidgardCekSemanticConstantWitness } from "./cek-constant.js";
+import { midgardCekSemanticGroup } from "./cek-semantic-group.js";
 import type {
   MidgardCekStagedBuiltinMaterial,
   MidgardCekStagedOperandSource,
 } from "./cek-staged-builtin.material.js";
+import { verifyConversionGroup } from "./cek-staged-conversion.verify.js";
 import {
   midgardCekStagedSourceCount,
   verifyMidgardCekStagedProduct,
 } from "./cek-staged-product.verify.js";
 
 /**
- * The semantics group of an arm 31 step for builtin `tag`, as the budget hop
- * routes it, or null for a tag no semantics group takes.
- */
-export const midgardCekSemanticGroup = (tag: bigint): number | null => {
-  const t = Number(tag);
-  if (tag < 0n || tag > 255n) return null;
-  if (t === 29 || t === 30) return 0;
-  if (t === 31 || t === 32 || t === 35) return 1;
-  if (t === 33 || t === 34) return 2;
-  if (t === 36) return 3;
-  if (t === 37 || t === 42) return 4;
-  if (t >= 47 && t <= 50) return 6;
-  if (t === 51) return 10;
-  if ([39, 40, 41, 44, 45, 46].includes(t)) return 5;
-  if (t >= 2 && t <= 6) return 9;
-  if (t >= 0 && t <= 9) return 8;
-  if ((t >= 10 && t <= 25 && t !== 21) || t === 71 || t === 72 || t === 86) {
-    return 7;
-  }
-  return null;
-};
-
-/**
  * The builtins the staged arms prove: the integer builtins up to
- * lessThanEqualsInteger and the byte-string and string builtins of
- * semantics group 7.
+ * lessThanEqualsInteger, the byte-string, string, bitwise and signature
+ * builtins of semantics group 7, and integerToByteString,
+ * byteStringToInteger, shiftByteString and rotateByteString (group 11).
  */
 export const midgardCekStagedBuiltinProves = (tag: bigint): boolean =>
-  midgardCekSemanticGroup(tag) === 7 || (tag >= 0n && tag <= 9n);
+  midgardCekSemanticGroup(tag) === 7 ||
+  midgardCekSemanticGroup(tag) === 11 ||
+  (tag >= 0n && tag <= 9n);
 
 /** The canonical CBOR length of a byte string of 65,536 bytes. */
 export const MIDGARD_CEK_STAGED_MAX_BOUNDED_BYTES_CBOR_LENGTH = 67_586n;
@@ -86,30 +68,30 @@ const INTEGER_TYPE = Buffer.from("9f00ff", "hex");
 const BYTES_TYPE = Buffer.from("9f01ff", "hex");
 const STRING_TYPE = Buffer.from("9f02ff", "hex");
 
-type Compacted = MidgardCekSemanticConstantWitness;
+export type Compacted = MidgardCekSemanticConstantWitness;
 
-const refuse = (reason: string): never => {
+export const refuse = (reason: string): never => {
   throw new Error(`staged step refused: ${reason}`);
 };
 
 const same = (left: Bytes, right: Bytes): boolean =>
   Buffer.from(left).equals(Buffer.from(right));
 
-const sameCompacted = (left: Compacted, right: Compacted): boolean =>
+export const sameCompacted = (left: Compacted, right: Compacted): boolean =>
   same(left.typeCbor, right.typeCbor) &&
   same(left.payload.root, right.payload.root) &&
   left.payload.cborLength === right.payload.cborLength &&
   left.payload.memory === right.payload.memory &&
   left.memory === right.memory;
 
-const compact = (value: MidgardCekDirectValueWitness): Compacted => {
+export const compact = (value: MidgardCekDirectValueWitness): Compacted => {
   const compacted = semanticizeMidgardCekDirectConstant(value);
   if (compacted.kind !== "semanticConstant") return refuse("not a constant");
   return compacted.witness;
 };
 
 /** A constant value in the compacted form the roots hop commits. */
-const compactValue = (value: CEKConst): Compacted =>
+export const compactValue = (value: CEKConst): Compacted =>
   compact(referenceConstantToDirectWitness(value, true));
 
 const bytesMemory = (string: boolean, length: bigint): bigint =>
@@ -140,7 +122,7 @@ const samePayload = (
   left.cborLength === right.cborLength &&
   left.memory === right.memory;
 
-type ArmInputs = {
+export type ArmInputs = {
   readonly tag: number;
   readonly arguments: readonly (readonly [
     Compacted,
@@ -163,7 +145,7 @@ type BoundBytes = {
   readonly bytes: Buffer | null;
 };
 
-const bindBytes = (
+export const bindBytes = (
   inputs: ArmInputs,
   [value, source]: readonly [Compacted, MidgardCekStagedOperandSource],
   string: boolean,
@@ -211,7 +193,7 @@ const INT64_MIN = -(2n ** 63n);
 const INT64_MAX = 2n ** 63n - 1n;
 
 /** The value of an integer argument of a byte-string builtin. */
-const smallInteger = ([value, source]: readonly [
+export const smallInteger = ([value, source]: readonly [
   Compacted,
   MidgardCekStagedOperandSource,
 ]): bigint => {
@@ -226,19 +208,40 @@ const smallInteger = ([value, source]: readonly [
 };
 
 /** The byte-string or string operands of `tag`, and its integer operands. */
-const scalarOperands = <T>(
+export const scalarOperands = <T>(
   tag: number,
   arguments_: readonly T[],
 ): readonly [readonly T[], readonly T[]] => {
   const [a, b, c] = arguments_;
   if (tag === 11 && arguments_.length === 2) return [[b!], [a!]];
   if (tag === 12 && arguments_.length === 3) return [[c!], [a!, b!]];
-  if (tag === 14 && arguments_.length === 2) return [[a!], [b!]];
-  if (tag === 11 || tag === 12 || tag === 14) return refuse("argument count");
+  if ((tag === 14 || tag === 79) && arguments_.length === 2) {
+    return [[a!], [b!]];
+  }
+  if (tag === 11 || tag === 12 || tag === 14 || tag === 79) {
+    return refuse("argument count");
+  }
   return [arguments_, []];
 };
 
-const verifyBytes = (inputs: ArmInputs): boolean => {
+/** A committed Boolean argument: the padding of andByteString,
+ * orByteString and xorByteString, or byteStringToInteger's endianness, each
+ * before the operands. */
+export const committedBoolean = (leading: readonly Compacted[]): CEKConst => {
+  const [committed] = leading;
+  if (leading.length !== 1) return refuse("committed Boolean");
+  const value = [true, false].find((candidate) =>
+    sameCompacted(committed!, compactValue(CEKConst.bool(candidate))),
+  );
+  return value === undefined
+    ? refuse("committed value is not a Boolean")
+    : CEKConst.bool(value);
+};
+
+const verifyBytes = (
+  inputs: ArmInputs,
+  leading: readonly Compacted[],
+): boolean => {
   const { tag } = inputs;
   const string = tag >= 22 && tag <= 24;
   const bounded = tag !== 13 && !string;
@@ -300,9 +303,11 @@ const verifyBytes = (inputs: ArmInputs): boolean => {
       ? [CEKConst.int(integers[0]!), values[0]!]
       : tag === 12
         ? [CEKConst.int(integers[0]!), CEKConst.int(integers[1]!), values[0]!]
-        : tag === 14
+        : tag === 14 || tag === 79
           ? [values[0]!, CEKConst.int(integers[0]!)]
-          : values;
+          : tag >= 75 && tag <= 77
+            ? [committedBoolean(leading), ...values]
+            : values;
   const result = evaluateMidgardCekBuiltinOnValues(tag, ordered);
   return (
     result !== "failure" && sameCompacted(inputs.result, compactValue(result))
@@ -310,7 +315,9 @@ const verifyBytes = (inputs: ArmInputs): boolean => {
 };
 
 /** True when the integer is in [-2^262143, 2^262143 - 1]. */
-const integerInRange = (integer: MidgardCekCanonicalInteger): boolean => {
+export const integerInRange = (
+  integer: MidgardCekCanonicalInteger,
+): boolean => {
   const size = integer.argument.length;
   return (
     size < MAX_BOUNDED_INTEGER_ARGUMENT_BYTES ||
@@ -331,7 +338,7 @@ const sourceCbor = (
   return refuse("operand source");
 };
 
-const bindInteger = (
+export const bindInteger = (
   inputs: ArmInputs,
   [value, source]: readonly [Compacted, MidgardCekStagedOperandSource],
   bounded: boolean,
@@ -388,49 +395,6 @@ const verifyInteger = (inputs: ArmInputs): boolean => {
   return sameCompacted(inputs.result, compactValue(result));
 };
 
-/** A plain constant of the staged builtins' types. */
-export type MidgardCekStagedConstant =
-  | { readonly type: "integer"; readonly value: bigint }
-  | { readonly type: "bytes"; readonly bytes: Bytes }
-  | { readonly type: "string"; readonly bytes: Bytes }
-  | { readonly type: "bool"; readonly value: boolean };
-
-/**
- * The witness of a constant as a staged step carries it: inline while its
- * payload fits the direct route, compacted to its leaf summary past it.
- */
-export const midgardCekStagedConstantWitness = (
-  constant: MidgardCekStagedConstant,
-): MidgardCekDirectValueWitness => {
-  if (constant.type === "integer") {
-    return referenceConstantToDirectWitness(CEKConst.int(constant.value), true);
-  }
-  if (constant.type === "bool") {
-    return referenceConstantToDirectWitness(
-      CEKConst.bool(constant.value),
-      true,
-    );
-  }
-  const bytes = referenceConstantToDirectWitness(
-    CEKConst.byteString(Buffer.from(constant.bytes)),
-    true,
-  );
-  if (constant.type === "bytes") return bytes;
-  // A string's payload is the Data of its bytes, as a byte string's is.
-  return bytes.kind === "constant"
-    ? { kind: "constant", witness: { ...bytes.witness, typeCbor: STRING_TYPE } }
-    : bytes.kind === "semanticConstant"
-      ? {
-          kind: "semanticConstant",
-          witness: {
-            ...bytes.witness,
-            typeCbor: STRING_TYPE,
-            memory: bytesMemory(true, BigInt(constant.bytes.length)),
-          },
-        }
-      : refuse("not a constant");
-};
-
 /**
  * Whether the staged arm accepts builtin `tag` over `arguments_` (as the
  * binder presents them) returning `result`, with `material` read against the
@@ -445,17 +409,29 @@ export const verifyMidgardCekStagedBuiltin = (
 ): boolean => {
   try {
     const group = midgardCekSemanticGroup(tag);
+    if (group === 11) {
+      return verifyConversionGroup(
+        tag,
+        arguments_,
+        result,
+        material,
+        referenceInputs,
+      );
+    }
     if (group !== 7 && group !== 8 && group !== 9) return false;
     const compacted = arguments_.map(compact);
+    // The logical builtins' padding precedes the operands and has no source.
+    const leading = compacted.slice(0, tag >= 75n && tag <= 77n ? 1 : 0);
+    const operands = compacted.slice(leading.length);
     if (
-      midgardCekStagedSourceCount(tag, compacted.length) !==
+      midgardCekStagedSourceCount(tag, operands.length) !==
       material.sources.length
     ) {
       return false;
     }
     const inputs: ArmInputs = {
       tag: Number(tag),
-      arguments: compacted.map(
+      arguments: operands.map(
         (value, index) => [value, material.sources[index]!] as const,
       ),
       result: compact(result),
@@ -467,7 +443,7 @@ export const verifyMidgardCekStagedBuiltin = (
         tag,
         inputs.arguments,
         inputs.result,
-        material.sources.slice(compacted.length),
+        material.sources.slice(operands.length),
         {
           bind: (value, source, bounded) =>
             bindInteger(inputs, [value, source], bounded).integer,
@@ -478,7 +454,7 @@ export const verifyMidgardCekStagedBuiltin = (
         },
       );
     }
-    return group === 7 ? verifyBytes(inputs) : verifyInteger(inputs);
+    return group === 7 ? verifyBytes(inputs, leading) : verifyInteger(inputs);
   } catch {
     return false;
   }

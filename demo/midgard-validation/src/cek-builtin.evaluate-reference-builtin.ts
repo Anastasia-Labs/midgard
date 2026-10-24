@@ -13,7 +13,6 @@ import {
 import { ConstTyTag, UPLCConst } from "@harmoniclabs/uplc";
 
 import {
-  directArgumentsMatchKinds,
   directWitnessPayloadBytes,
   type MidgardCekDirectValueWitness,
 } from "./cek-builtin.argument-kinds.js";
@@ -26,6 +25,11 @@ import {
   harmonicBuiltinTag,
   MIDGARD_CEK_CARDANO_BLS_TAGS,
 } from "./cek-builtin.cardano-tags.js";
+import {
+  compactedDividendFailure,
+  compactedSourceFailure,
+  midgardCekDivisionByZero,
+} from "./cek-builtin.compacted-failures.js";
 import {
   directByteLength,
   directInteger,
@@ -219,6 +223,14 @@ export const referenceConstantToDirectWitness = (
   return { kind: "constant", witness };
 };
 
+const WRITE_BITS = 80;
+
+/** Protocol version 11 fails writeBits on an input over 4,096 bytes
+ * (Plutus' `Bitwise.maximumInputLength`) whatever its indices; the pinned
+ * reference evaluator has no such bound. */
+const writeBitsInputTooLong = (source: CEKConst): boolean =>
+  source.value instanceof Uint8Array && source.value.length > 4_096;
+
 /**
  * Cardano's builtin `tag` (flat numbering) on constant values, or "failure"
  * where Cardano's builtin fails. It is the one value-level relation of the
@@ -236,27 +248,15 @@ export const evaluateMidgardCekBuiltinOnValues = (
     );
     return result === "failure" ? "failure" : cardanoExactResult(result);
   }
+  if (tag === WRITE_BITS && writeBitsInputTooLong(arguments_[0]!)) {
+    return "failure";
+  }
   const result = runPinnedReferenceBuiltin(tag, arguments_);
   if (result instanceof CEKError) return "failure";
   if (!(result instanceof CEKConst)) {
     throw new Error("reference builtin returned a non-constant value");
   }
   return result;
-};
-
-/**
- * Whether builtin `tag` divides an integer by a revealed zero:
- * divideInteger, quotientInteger, remainderInteger and modInteger fail there
- * whatever the dividend, so the dividend may be presented by its leaf alone.
- */
-export const midgardCekDivisionByZero = (
-  tag: bigint,
-  arguments_: readonly MidgardCekDirectValueWitness[],
-): boolean => {
-  if (tag < 3n || tag > 6n) return false;
-  if (!directArgumentsMatchKinds(Number(tag), arguments_)) return false;
-  const divisor = arguments_[1]!;
-  return divisor.kind === "constant" && directInteger(divisor) === 0n;
 };
 
 /**
@@ -354,6 +354,16 @@ const evaluateReferenceBuiltin = (
       true,
     );
   }
+  if (
+    ((tag === 11n || tag === 12n) &&
+      arguments_.at(-1)?.kind === "semanticConstant") ||
+    ((tag === 82n || tag === 83n) && arguments_[0]?.kind === "semanticConstant")
+  ) {
+    return compactedSourceFailure(tag, arguments_);
+  }
+  if (tag >= 3n && tag <= 6n && arguments_[0]?.kind === "semanticConstant") {
+    return compactedDividendFailure(arguments_);
+  }
   const referenceArguments: CEKConst[] = [];
   for (const argument of arguments_) {
     if (argument.kind !== "constant") {
@@ -374,7 +384,7 @@ const directFailureIsCharged = (
   tag: bigint,
   arguments_: readonly MidgardCekDirectValueWitness[],
 ): boolean =>
-  [4n, 5n, 6n, 21n, 52n, 53n, 60n, 67n].includes(tag) ||
+  [3n, 4n, 5n, 6n, 21n, 52n, 53n, 60n, 67n].includes(tag) ||
   // The reference CEK refuses an out-of-range width before charging.
   (tag === 73n &&
     directInteger(arguments_[1]!) >= 0n &&

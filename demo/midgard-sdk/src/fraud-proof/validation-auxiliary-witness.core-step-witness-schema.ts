@@ -3,7 +3,6 @@ import { Data } from "@lucid-evolution/lucid";
 import {
   BlsExpressionWitnessSchema,
   CekMachineStateSchema,
-  ConstantWitnessSchema,
   DataListNodeSchema,
   DataNodeSchema,
   DataPairNodeSchema,
@@ -21,7 +20,7 @@ const CoreStepWitnessSchema = Data.Enum([
     ComputeVariable: Data.Object({ index: Data.Integer() }),
   }),
   Data.Object({
-    ComputeConstant: Data.Object({ value: ConstantWitnessSchema }),
+    ComputeConstant: Data.Object({ value_root: Data.Bytes() }),
   }),
   Data.Object({
     ComputeLambda: Data.Object({ body: Data.Bytes() }),

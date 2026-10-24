@@ -57,11 +57,16 @@ const ledgerRows = (
  * - `verifier_unavailable`: this node's Ed25519 verifier could not answer
  *   (`LedgerSignatureVerifierUnavailableError`), a local fault and never the
  *   block's; retried on the driver's backoff, within a bound.
+ * - `replay_held`: the block's event replay failed locally (a
+ *   `ReplayLocalFault` marked `held`), which input can reach; held on the
+ *   block and retried on a backoff for as long as it recurs, never bounded
+ *   by an exit (`landed-blocks/replay-held.ts`).
  */
 export type ForeignBlockVerificationReason =
   | "missing"
   | "invalid"
   | "local_fault"
+  | "replay_held"
   | "incomplete"
   | "verifier_unavailable";
 
@@ -124,9 +129,9 @@ const blockChecksCollector = (context: ImportCheckContext) => {
   const scripts = new Map<string, Buffer>();
   return {
     committedVerdicts: {
-      // The bookkeeping is this node's own: a throw from it is local. The
-      // transaction's decoding reads the block's bytes, so a throw from it
-      // keeps the block's attribution.
+      // The bookkeeping is this node's own: a throw from it is local. That
+      // includes decoding the transaction again: the replay has already
+      // decoded and accepted it with the same decoder.
       onScriptRun: (run: MidgardCommittedScriptRun) =>
         locally("import check bookkeeping", () => {
           runs += 1;
@@ -138,13 +143,13 @@ const blockChecksCollector = (context: ImportCheckContext) => {
         }),
       onTransaction: (transaction: CommittedTransaction) => {
         if (runs > 0) {
-          const tx = decodeMidgardLedgerTxFromCanonicalCbor(
-            transaction.canonicalTransactionCbor,
-          );
-          const keys = [...tx.spendInputs, ...tx.referenceInputs].map(
-            midgardOutRefToCborHex,
-          );
           locally("import check bookkeeping", () => {
+            const tx = decodeMidgardLedgerTxFromCanonicalCbor(
+              transaction.canonicalTransactionCbor,
+            );
+            const keys = [...tx.spendInputs, ...tx.referenceInputs].map(
+              midgardOutRefToCborHex,
+            );
             // No run's context is built at import: each is estimated as
             // the transaction and the outputs it resolves.
             let contextBytes = transaction.canonicalTransactionCbor.byteLength;
@@ -236,7 +241,8 @@ const verifierUnavailable = (foreignHeaderHash: string, cause: unknown) => {
  * callback's included), is `verifier_unavailable`, checked first; otherwise
  * the caller's callbacks' pass through unchanged (their verdicts are the
  * caller's). A `ReplayLocalFault` defect (named where it arose) and
- * this import's own computations are `local_fault`; any other defect is
+ * this import's own computations are `local_fault`, one marked `held` (the
+ * event replay's) `replay_held`; any other defect is
  * `invalid`: it may come from reading the block's or its events' bytes, so
  * it is never taken for a local fault.
  * Any other typed failure is `incomplete`. */
@@ -395,7 +401,9 @@ export const verifyAndImportBlock = (
           new ForeignBlockVerificationError({
             foreignHeaderHash: input.headerHash,
             reason: isReplayLocalFault(cause)
-              ? "local_fault"
+              ? cause.held === true
+                ? "replay_held"
+                : "local_fault"
               : // A `BlockReplayFault`, or a throw not named local.
                 "invalid",
             detail: String(cause),

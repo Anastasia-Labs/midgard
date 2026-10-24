@@ -3,7 +3,7 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, finalize}
-use midgard/fraud_proofs/missing_redeemer/rule.{terminal_contradiction_v1}
+use midgard/fraud_proofs/missing_redeemer/adjudicate
 use midgard/fraud_proofs/missing_redeemer/step_05.{Args, Datum, SpendRedeemer}
 
 validator main(
@@ -48,7 +48,7 @@ validator main(
           redeemers,
         )
         expect Some(state) = input_state
-        terminal_contradiction_v1(state)
+        adjudicate.convicts_v1(state)
       }
     }
   }

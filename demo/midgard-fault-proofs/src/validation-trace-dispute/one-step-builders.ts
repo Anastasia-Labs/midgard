@@ -1,13 +1,13 @@
 /** The hops of a thread of ours through the one-step resolution of a CEK core
  * step, past the game: from the boundary to the CEK resolver
  * (PrepareResolution), from it to the CEK core step binder (PrepareSelected),
- * from the binder to the arm its step selects (VerifyCoreStep), from the arm
- * to the settle (VerifyArm), and from the settle to the award (Settle). A CEK
- * script selection goes from the CEK resolver to the selection resolver
- * (PrepareSelected), and from it to the award with the selection's two
- * yields (VerifyExecutionSelection). A CEK context step goes from the CEK
- * resolver to the context step resolver (PrepareSelected), and on through
- * the context's holders to the award (one-step-context-hops.ts). A
+ * and on through the step's arm chain and the settle to the award
+ * (one-step-core-hops.ts). A CEK script selection goes from the CEK
+ * resolver to the selection resolver (PrepareSelected), and from it to the
+ * award with the selection's two yields (VerifyExecutionSelection). A CEK
+ * context step goes from the CEK resolver to the context step resolver
+ * (PrepareSelected), and on through the context's holders to the award
+ * (one-step-context-hops.ts). A
  * canonical-decode step goes from the boundary to the canonical-decode
  * resolver and on to the award (one-step-canonical-decode.ts), and a step
  * of another phase from the boundary to the phase's resolver
@@ -19,10 +19,7 @@
  * its fee up to the cap, or our wallet pays it all (move-fee.ts decides); its
  * successor keeps the thread's single token and carries the state the next
  * holder checks as an inline datum. */
-import {
-  plutusConstrFieldCbor,
-  replacePlutusConstrFieldCbor,
-} from "@al-ft/midgard-core/plutus-data-cbor";
+import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import type { ValidationTraceSteps } from "@al-ft/midgard-validation";
 import {
@@ -47,28 +44,24 @@ import {
 } from "./one-step-context-hops.js";
 import type { ValidationTraceContextItemReads } from "./one-step-context-item-hops.js";
 import {
+  cekCoreHop,
+  isValidationTraceCoreHolder,
+} from "./one-step-core-hops.js";
+import {
   bytes,
   constr,
   continued,
   integer,
   stepDatum,
 } from "./one-step-data.js";
-import {
-  type ValidationTraceArmHolder,
-  type ValidationTraceOneStepHolder,
-} from "./one-step-holders.js";
+import { type ValidationTraceOneStepHolder } from "./one-step-holders.js";
 import {
   isValidationTracePhaseHolder,
   phaseSemanticHop,
   type ValidationTracePhaseYieldListReads,
   type ValidationTracePhaseYieldReads,
 } from "./one-step-phase.js";
-import {
-  hashSerialisedData,
-  SINGLE_HOP_CORE_ARMS,
-  type ValidationTraceCoreStepPlan,
-  type ValidationTraceOneStepPlan,
-} from "./one-step-plan.js";
+import { type ValidationTraceOneStepPlan } from "./one-step-plan.js";
 import {
   isScriptSourcesRedeemerChainHolder,
   isScriptSourcesRedeemerOwnHolder,
@@ -119,23 +112,6 @@ export type ValidationTraceSelectionReads = Readonly<{
   record: UTxO | undefined;
   scriptDecodePolicyId: string;
 }>;
-
-/** The arm holder of the plan's core group. */
-export const validationTraceArmOf = (
-  plan: ValidationTraceCoreStepPlan,
-): ValidationTraceArmHolder => SINGLE_HOP_CORE_ARMS[plan.core.group];
-
-/** The core step plan a core holder's hop needs. */
-const corePlan = (
-  plan: ValidationTraceOneStepPlan,
-  holder: ValidationTraceHopHolder,
-): ValidationTraceCoreStepPlan => {
-  if (plan.kind !== "core")
-    throw new Error(
-      `validation-trace ${holder} holds a thread whose step is not a CEK core step`,
-    );
-  return plan;
-};
 
 /** A phase resolver's hop (PrepareSelected): it commits the step's evidence
  * and hands the thread to the semantic resolver at `next`. */
@@ -258,6 +234,8 @@ export const validationTraceHop = ({
             : { yieldList: phaseYieldList }),
         });
   }
+  if (isValidationTraceCoreHolder(holder))
+    return cekCoreHop({ plan, holder, datum, prover });
   if (isScriptSourcesRedeemerOwnHolder(holder))
     throw new Error(
       `validation-trace ${holder} holds a thread whose step is not a script-sources redeemer normalization step`,
@@ -354,74 +332,6 @@ export const validationTraceHop = ({
           ],
           yields: yields.scripts,
         },
-      };
-    }
-    case "core": {
-      const step = corePlan(plan, holder);
-      const { core } = step;
-      return {
-        next: validationTraceArmOf(step),
-        datum: stepDatum(
-          prover,
-          constr(0, [
-            plutusConstrFieldCbor(datum, [1, 0]),
-            core.preCbor,
-            core.postCbor,
-            bytes(hashSerialisedData(core.armWitnessCbor)),
-            integer(core.arm),
-            integer(core.group),
-            integer(0),
-            constr(0, []),
-          ]),
-        ),
-        redeemer: (inputIndex, outputIndex) =>
-          continued(
-            constr(0, [
-              integer(inputIndex),
-              integer(outputIndex),
-              plan.transitionCbor,
-              core.stepCbor,
-            ]),
-          ),
-        proverOnly: true,
-      };
-    }
-    case "settle": {
-      const { core } = corePlan(plan, holder);
-      return {
-        next: "award",
-        datum: stepDatum(prover, constr(0, [integer(1)])),
-        redeemer: (inputIndex, outputIndex) =>
-          continued(
-            constr(0, [
-              integer(inputIndex),
-              integer(outputIndex),
-              plan.transitionCbor,
-              core.armWitnessCbor,
-            ]),
-          ),
-        proverOnly: false,
-      };
-    }
-    case "compute":
-    case "machine":
-    case "mapConversion":
-    case "caseConstant": {
-      const { core } = corePlan(plan, holder);
-      // An arm whose step settles after one hop carries the bound on with
-      // its progress one higher.
-      return {
-        next: "settle",
-        datum: replacePlutusConstrFieldCbor(datum, [1, 0, 6], integer(1)),
-        redeemer: (inputIndex, outputIndex) =>
-          continued(
-            constr(0, [
-              integer(inputIndex),
-              integer(outputIndex),
-              core.armWitnessCbor,
-            ]),
-          ),
-        proverOnly: true,
       };
     }
   }

@@ -85,8 +85,8 @@ const readSavedAuthority = async (
 
 /**
  * Signs one watcher release for a finalized deployment manifest: the rule
- * bundle, the measured funding profiles and the release bindings, under the
- * supplied ed25519 trust-root key. Every bound artifact is written durably
+ * bundle, any measured funding profiles (optional for every profile) and the
+ * release bindings, under the supplied ed25519 trust-root key. Every bound artifact is written durably
  * before the authority that attests it, and the authority is only ever
  * created, never overwritten. Measurements that do not belong to this
  * deployment or funding wallet are refused, never substituted.
@@ -208,23 +208,6 @@ export const authorWatcherDeploymentRelease = async ({
   const funding = createWatcherWorkflowFundingProfileBundle({
     profiles: fundingProfiles,
   });
-  if (publicProfile) {
-    const measuredCategories = new Set(
-      fundingProfiles.flatMap((profile) =>
-        profile.scope.kind === "fraud_proof_category"
-          ? [profile.scope.category]
-          : [],
-      ),
-    );
-    if (
-      deploymentFraudProofCatalogueCategories(manifest.deploymentProfile).some(
-        (category) => !measuredCategories.has(category),
-      )
-    )
-      throw new Error(
-        "Public release requires measured funding profiles for every installed catalogue category",
-      );
-  }
   const catalogue =
     manifest.contracts.fraudProofCatalogueMint?.fraudProofCatalogue;
   if (catalogue === undefined)

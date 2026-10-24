@@ -46,6 +46,9 @@ use midgard/fraud_proofs/native_tx/types.{
 use midgard/native_tx_field_access_v1.{
   Certified, Chunked, FieldCarriageV1, FieldPreimageCertificateV1, FieldViewV1,
   Inline, RawUtxo, Whole, authenticated_field_view,
+  authenticated_resumable_body_field_view_with_commitment,
+  authenticated_resumable_field_view_with_commitment,
+  authenticated_resumable_witness_field_view_with_commitment,
   authenticated_whole_fixed_field_view, chunk_bytes_k, empty_field_commitment,
   encode_field_array_header, encode_field_preimage, field_commitment,
   field_commitment_from_items, field_fixed_encoded_item_at,
@@ -1669,4 +1672,187 @@ test t235_encoded_item_observer_does_not_erase_bad_wrapper_bytes() {
     bytearray.length(observed) == hash28_stride,
     !fixed_item_legality_v1.fixed_item_is_legal_v1(4, None, observed),
   }
+}
+
+// ---------------------------------------------------------------------------
+// Body-only and witness-only resumable doors
+// ---------------------------------------------------------------------------
+//
+// Each single-half door returns exactly what the two-half resumable door
+// returns for an index on its own side, and refuses every index on the other
+// side. The refusal rows put the preimage's commitment in the slot the door
+// would read if its range check were absent, so only the range check can
+// refuse them.
+
+fn resumable_view(
+  committed_at: Int,
+  field_index: Int,
+  preimage: ByteArray,
+) -> Pair<ByteArray, FieldViewV1> {
+  let Pair(verified, witness_set) = source(committed_at, preimage)
+  authenticated_resumable_field_view_with_commitment(
+    verified,
+    witness_set,
+    field_index,
+    Inline { preimage },
+    [],
+    certificate_policy_id,
+  )
+}
+
+fn body_door(
+  committed_at: Int,
+  field_index: Int,
+  preimage: ByteArray,
+) -> Pair<ByteArray, FieldViewV1> {
+  let Pair(verified, _) = source(committed_at, preimage)
+  authenticated_resumable_body_field_view_with_commitment(
+    verified,
+    field_index,
+    Inline { preimage },
+    [],
+    certificate_policy_id,
+  )
+}
+
+fn witness_door(
+  committed_at: Int,
+  field_index: Int,
+  preimage: ByteArray,
+) -> Pair<ByteArray, FieldViewV1> {
+  let Pair(verified, witness_set) = source(committed_at, preimage)
+  authenticated_resumable_witness_field_view_with_commitment(
+    verified,
+    witness_set,
+    field_index,
+    Inline { preimage },
+    [],
+    certificate_policy_id,
+  )
+}
+
+fn body_door_agrees(field_index: Int) -> Bool {
+  let preimage = field_preimage(field_index)
+  let opened = body_door(field_index, field_index, preimage)
+  and {
+    opened == resumable_view(field_index, field_index, preimage),
+    opened.1st == field_commitment(preimage),
+  }
+}
+
+fn witness_door_agrees(field_index: Int) -> Bool {
+  let preimage = field_preimage(field_index)
+  let opened = witness_door(field_index, field_index, preimage)
+  and {
+    opened == resumable_view(field_index, field_index, preimage),
+    opened.1st == field_commitment(preimage),
+  }
+}
+
+test body_door_agrees_at_field_0() {
+  body_door_agrees(0)
+}
+
+test body_door_agrees_at_field_1() {
+  body_door_agrees(1)
+}
+
+test body_door_agrees_at_field_2() {
+  body_door_agrees(2)
+}
+
+test body_door_agrees_at_field_3() {
+  body_door_agrees(3)
+}
+
+test body_door_agrees_at_field_4() {
+  body_door_agrees(4)
+}
+
+test body_door_agrees_at_field_5() {
+  body_door_agrees(5)
+}
+
+/// The mint slot holds the commitment, so without the range check the body
+/// door would read it for any index of 6 or more.
+test body_door_refuses_field_6() fail {
+  expect _opened = body_door(5, 6, field_preimage(6))
+}
+
+test body_door_refuses_field_7() fail {
+  expect _opened = body_door(5, 7, field_preimage(7))
+}
+
+test body_door_refuses_field_8() fail {
+  expect _opened = body_door(5, 8, field_preimage(8))
+}
+
+test body_door_refuses_a_negative_index() fail {
+  expect _opened = body_door(5, -1, field_preimage(5))
+}
+
+test body_door_refuses_another_fields_commitment() fail {
+  expect _opened = body_door(0, 1, field_preimage(1))
+}
+
+test witness_door_agrees_at_field_6() {
+  witness_door_agrees(6)
+}
+
+test witness_door_agrees_at_field_7() {
+  witness_door_agrees(7)
+}
+
+test witness_door_agrees_at_field_8() {
+  witness_door_agrees(8)
+}
+
+/// The redeemer slot holds the commitment, so without the range check the
+/// witness door would read it for any index below 6.
+test witness_door_refuses_field_0() fail {
+  expect _opened = witness_door(8, 0, field_preimage(0))
+}
+
+test witness_door_refuses_field_1() fail {
+  expect _opened = witness_door(8, 1, field_preimage(1))
+}
+
+test witness_door_refuses_field_2() fail {
+  expect _opened = witness_door(8, 2, field_preimage(2))
+}
+
+test witness_door_refuses_field_3() fail {
+  expect _opened = witness_door(8, 3, field_preimage(3))
+}
+
+test witness_door_refuses_field_4() fail {
+  expect _opened = witness_door(8, 4, field_preimage(4))
+}
+
+test witness_door_refuses_field_5() fail {
+  expect _opened = witness_door(8, 5, field_preimage(5))
+}
+
+test witness_door_refuses_index_9() fail {
+  expect _opened = witness_door(8, 9, field_preimage(8))
+}
+
+test witness_door_refuses_another_fields_commitment() fail {
+  expect _opened = witness_door(6, 8, field_preimage(8))
+}
+
+/// The supplied witness set keeps the commitment in the redeemer slot but
+/// changes another slot, so it no longer hashes to the compact structure's
+/// `witness_set_hash`. Only the witness-set hash check refuses it.
+test witness_door_refuses_a_witness_set_that_does_not_hash_to_the_compact() fail {
+  let preimage = field_preimage(8)
+  let Pair(verified, witness_set) = source(8, preimage)
+  expect _opened = authenticated_resumable_witness_field_view_with_commitment(
+    verified,
+    NativeTxWitnessSetCompact { ..witness_set, addr_tx_wits_hash: h32(5) },
+    8,
+    Inline { preimage },
+    [],
+    certificate_policy_id,
+  )
 }
