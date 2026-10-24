@@ -47,6 +47,8 @@ export type TxFuzzScenario = {
   readonly label: string;
   /** The script as `(program 1.1.0 term)` Cardano Flat. */
   readonly scriptFlat: Buffer;
+  /** The script's term as generated, before it was written to `scriptFlat`. */
+  readonly scriptTerm: UPLCTerm;
   /** The declared ex-units of the spend redeemer. */
   readonly exUnits: { readonly memory: bigint; readonly steps: bigint };
   /** Builtin tags the script names, for the reference leg's known classes. */
@@ -99,8 +101,9 @@ export const txFuzzScenario = async (seed: number): Promise<TxFuzzScenario> => {
   const primaryTag = rng.pick(FUZZ_PRIMARY_TAGS);
   const program = cekStepFuzzProgram(seed, primaryTag);
   const returnsUnit = rng.chance(0.85);
+  const term = scriptTerm(program.term, returnsUnit);
   const scriptFlat = encodeMidgardCekCardanoFlatProgram(
-    new UPLCProgram([1, 1, 0], scriptTerm(program.term, returnsUnit)),
+    new UPLCProgram([1, 1, 0], term),
   );
   const script = plutusV3ScriptWitness(encodeCbor(scriptFlat));
   const spent = outRefFromByte(0x1d);
@@ -156,6 +159,7 @@ export const txFuzzScenario = async (seed: number): Promise<TxFuzzScenario> => {
   return {
     label: `tx seed ${seed.toString()} (${program.label})`,
     scriptFlat,
+    scriptTerm: term,
     exUnits,
     primaryTag,
     returnsUnit,

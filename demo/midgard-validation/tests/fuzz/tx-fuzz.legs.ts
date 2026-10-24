@@ -1,6 +1,5 @@
 import { Effect, Either } from "effect";
 
-import { decodeMidgardCekCardanoFlatProgram } from "../../src/cek-program.cardano-flat.js";
 import {
   type LocalScriptEvalResult,
   type LocalScriptEvaluation,
@@ -16,11 +15,7 @@ import {
   type PreparedCase,
   prepareExecution,
 } from "./cek-step-fuzz.harness.js";
-import {
-  appliedProgramFlat,
-  builtinTagsOf,
-  type Reference,
-} from "./tx-fuzz.reference.js";
+import { builtinTagsOf, type Reference } from "./tx-fuzz.reference.js";
 import type { TxFuzzScenario } from "./tx-fuzz.scenario.js";
 
 /**
@@ -119,16 +114,12 @@ const referenceLeg = (
   divergences: string[],
   known: TxKnownClass[],
 ): void => {
-  const tags = builtinTagsOf(
-    decodeMidgardCekCardanoFlatProgram(scenario.scriptFlat).body,
-  );
+  const tags = builtinTagsOf(scenario.scriptTerm);
   if (CARDANO_RENUMBERED_BLS_TAGS.some((tag) => tags.has(tag))) {
     known.push("blsTagNumbering");
     return;
   }
-  const run = reference.run(
-    appliedProgramFlat(scenario.scriptFlat, evaluation.contextCbor),
-  );
+  const run = reference.run(scenario.scriptFlat, evaluation.contextCbor);
   const midgard = scriptAccepted(evaluation);
   const inBudget =
     run.kind === "result" &&
@@ -254,7 +245,7 @@ export const runTxCase = async (
       steps = prepareExecution(
         {
           label: scenario.label,
-          term: decodeMidgardCekCardanoFlatProgram(scenario.scriptFlat).body,
+          term: scenario.scriptTerm,
           context: plutusDataFromCborIterative(
             proofEvaluations[0]!.contextCbor,
           ),
