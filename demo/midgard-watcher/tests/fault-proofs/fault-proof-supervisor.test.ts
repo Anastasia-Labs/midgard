@@ -1,0 +1,679 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { DatabaseSync } from "node:sqlite";
+
+import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
+import type { WorkflowActuationRevokedError } from "@al-ft/midgard-fault-proofs";
+import { h28 } from "@al-ft/midgard-test-support/hex";
+import { afterEach, describe, expect, it } from "vitest";
+
+import {
+  createWatcherFaultProofSupervisor,
+  unsafeCreateWatcherFaultProofSupervisorForTest,
+  type WatcherFaultProofJob,
+} from "../../src/fault-proofs/fault-proof-supervisor.js";
+import { WatcherProofDecisionMissingError } from "../../src/fault-proofs/watcher-decision-hold.js";
+import { createWatcherWorkflowJournal } from "../../src/fault-proofs/watcher-workflow-journal.js";
+import { progressObservation } from "../support/fault-proof-progress-observation.js";
+import { storelessProofRetention } from "../support/proof-retention.js";
+import {
+  emptyWorkflowJournal,
+  recordObjectives,
+  recordRawObjectiveRow,
+} from "../support/watcher-journal-fixture.js";
+
+const directories: string[] = [];
+const DEPLOYMENT_FINGERPRINT = "dd".repeat(32);
+const latestSafeStartOffsetMs =
+  MIDGARD_RETENTION_WINDOW.maturityMs -
+  MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs;
+const deadline = (headerHash: string, blockTimeMs: number) =>
+  Object.freeze({
+    headerHash,
+    headerBlockTimeMs: blockTimeMs.toString(),
+    maturityAtMs: (
+      blockTimeMs + MIDGARD_RETENTION_WINDOW.maturityMs
+    ).toString(),
+    latestSafeStartAtMs: (blockTimeMs + latestSafeStartOffsetMs).toString(),
+  });
+
+const directory = async (): Promise<string> => {
+  const path = await mkdtemp("/var/tmp/midgard-fault-supervisor-");
+  directories.push(path);
+  return path;
+};
+
+const deferred = <T>() => {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: Error) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+};
+
+const waitUntil = async (predicate: () => boolean): Promise<void> => {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error("test condition was not reached");
+};
+
+afterEach(async () => {
+  await Promise.all(
+    directories
+      .splice(0)
+      .map(async (path) => rm(path, { force: true, recursive: true })),
+  );
+});
+
+describe("production fault-proof supervisor", () => {
+  it("does not expose caller-selected category dispatch in production", async () => {
+    const root = await directory();
+    const supervisor = createWatcherFaultProofSupervisor({
+      reservationDecisionHolds: () => [],
+      proofRetention: storelessProofRetention,
+      journalRoot: root,
+      workflowJournal: emptyWorkflowJournal(),
+      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      deadlineAlertHeadroomMs:
+        MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
+      queueAuthenticationKey: Uint8Array.from({ length: 32 }, () => 0xa5),
+      execution: {
+        verifyCompleted: async () => {
+          throw new Error("unexpected completed execution");
+        },
+        execute: async () => ({
+          kind: "pending",
+          resume: "await_observation",
+          reason: "test observation",
+        }),
+      },
+    });
+    expect(Object.keys(supervisor).sort()).toEqual([
+      "close",
+      "done",
+      "durableQueueStatus",
+      "requestProgress",
+      "revokeAuthority",
+      "schemaVersion",
+      "status",
+    ]);
+    await supervisor.requestProgress({
+      observation: progressObservation({
+        deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      }),
+      rollbackGeneration: "0",
+    });
+    await supervisor.close();
+  });
+
+  it("recovers recorded objectives in installed category and header order, never listing workflow rows", async () => {
+    const root = await directory();
+    recordObjectives(root, [
+      { category: "networkId", headerHash: h28(0xbb) },
+      { category: "doubleSpend", headerHash: h28(0xcc) },
+      { category: "doubleSpend", headerHash: h28(0xaa) },
+    ]);
+    // Workflow rows without an objective row are not recovered.
+    const workflowDatabase = new DatabaseSync(":memory:");
+    const workflowJournal = createWatcherWorkflowJournal(workflowDatabase);
+    workflowDatabase
+      .prepare(
+        "INSERT INTO watcher_workflow_journal_v1 VALUES (?, 0, 'doubleSpend', ?, 'started', 0, '{}')",
+      )
+      .run("ee".repeat(32), h28(0xdd));
+    const observed: string[] = [];
+    const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
+      journalRoot: root,
+      workflowJournal,
+      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      run: async (job) => {
+        observed.push(`${job.mode}:${job.category}:${job.headerHash}`);
+        return job.headerHash;
+      },
+    });
+
+    await expect(supervisor.recoverExisting(null)).resolves.toBe(3);
+    await supervisor.close();
+
+    expect(observed).toEqual([
+      `run:doubleSpend:${h28(0xaa)}`,
+      `run:doubleSpend:${h28(0xcc)}`,
+      `run:networkId:${h28(0xbb)}`,
+    ]);
+    expect(supervisor.status()).toMatchObject({
+      phase: "closed",
+      recovered: true,
+      queuedJobCount: 0,
+    });
+  });
+
+  it("rejects unknown and malformed objectives", async () => {
+    const unknownRoot = await directory();
+    recordRawObjectiveRow(unknownRoot, {
+      category: "forgedFamily",
+      headerHash: h28(0xaa),
+    });
+    const unknown = unsafeCreateWatcherFaultProofSupervisorForTest({
+      journalRoot: unknownRoot,
+      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      run: async () => undefined,
+    });
+    await expect(unknown.recoverExisting(null)).rejects.toThrow(
+      "proof objective row is malformed",
+    );
+
+    const malformedRoot = await directory();
+    recordRawObjectiveRow(malformedRoot, {
+      category: "doubleSpend",
+      headerHash: "not-hex",
+    });
+    const malformed = unsafeCreateWatcherFaultProofSupervisorForTest({
+      journalRoot: malformedRoot,
+      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      run: async () => undefined,
+    });
+    await expect(malformed.recoverExisting(null)).rejects.toThrow(
+      "proof objective row is malformed",
+    );
+  });
+
+  it("keeps one pending update per objective and serializes other targets", async () => {
+    const root = await directory();
+    const first = deferred<string>();
+    const starts: WatcherFaultProofJob[] = [];
+    const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
+      journalRoot: root,
+      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      run: async (job) => {
+        starts.push(job);
+        return starts.length === 1 ? await first.promise : job.headerHash;
+      },
+    });
+    await supervisor.recoverExisting(null);
+    const firstJob = {
+      mode: "run" as const,
+      category: "doubleSpend" as const,
+      headerHash: h28(0x11),
+      decisionDigest: "11".repeat(32),
+      rollbackGeneration: "0",
+    };
+    const firstRun = supervisor.unsafeRunOrResumeForTest(firstJob);
+    const duplicate = supervisor.unsafeRunOrResumeForTest({
+      ...firstJob,
+      mode: "resume",
+    });
+    const replacement = supervisor.unsafeRunOrResumeForTest({
+      ...firstJob,
+      decisionDigest: "12".repeat(32),
+    });
+    const generationReplacement = supervisor.unsafeRunOrResumeForTest({
+      ...firstJob,
+      rollbackGeneration: "1",
+    });
+    const secondRun = supervisor.unsafeRunOrResumeForTest({
+      mode: "run",
+      category: "networkId",
+      headerHash: h28(0x22),
+      decisionDigest: "22".repeat(32),
+      rollbackGeneration: "0",
+    });
+    await waitUntil(
+      () => starts.length === 1 && supervisor.status().queuedJobCount === 1,
+    );
+    expect(starts).toHaveLength(1);
+    expect(supervisor.status().queuedJobCount).toBe(1);
+
+    first.resolve("first");
+    await expect(firstRun).resolves.toBe("first");
+    await expect(duplicate).resolves.toBe("first");
+    await expect(replacement).resolves.toBe("first");
+    await expect(generationReplacement).resolves.toBe("first");
+    await expect(secondRun).resolves.toBe(h28(0x22));
+    expect(starts.map(({ category }) => category)).toEqual([
+      "doubleSpend",
+      "doubleSpend",
+      "networkId",
+    ]);
+    await supervisor.close();
+  });
+
+  it("stops intake and drains an accepted workflow before graceful close", async () => {
+    const root = await directory();
+    const gate = deferred<string>();
+    const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
+      journalRoot: root,
+      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      run: async () => await gate.promise,
+    });
+    await supervisor.recoverExisting(null);
+    const running = supervisor.unsafeRunOrResumeForTest({
+      mode: "run",
+      category: "doubleSpend",
+      headerHash: h28(0x55),
+      decisionDigest: "55".repeat(32),
+      rollbackGeneration: "0",
+    });
+    await waitUntil(() => supervisor.status().activeJob !== null);
+    const closing = supervisor.close();
+    expect(supervisor.status().phase).toBe("closing");
+    await expect(
+      supervisor.unsafeRunOrResumeForTest({
+        mode: "run",
+        category: "networkId",
+        headerHash: h28(0x66),
+        decisionDigest: "66".repeat(32),
+        rollbackGeneration: "0",
+      }),
+    ).rejects.toThrow("supervisor is closing");
+    gate.resolve("completed");
+    await expect(running).resolves.toBe("completed");
+    await expect(closing).resolves.toBeUndefined();
+    await expect(supervisor.done).resolves.toBeUndefined();
+    expect(supervisor.status().phase).toBe("closed");
+  });
+
+  it("acknowledges durable scheduling without awaiting the active workflow", async () => {
+    const root = await directory();
+    const active = deferred<string>();
+    const starts: WatcherFaultProofJob[] = [];
+    const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
+      journalRoot: root,
+      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      run: async (job) => {
+        starts.push(job);
+        return starts.length === 1 ? await active.promise : "second";
+      },
+    });
+    await supervisor.recoverExisting(null);
+    const first = supervisor.unsafeScheduleForTest({
+      mode: "run",
+      category: "doubleSpend",
+      headerHash: h28(0x71),
+      decisionDigest: "71".repeat(32),
+      rollbackGeneration: "0",
+    });
+    await expect(first).resolves.toBeUndefined();
+    await waitUntil(() => starts.length === 1);
+
+    await expect(
+      supervisor.unsafeScheduleForTest({
+        mode: "run",
+        category: "networkId",
+        headerHash: h28(0x72),
+        decisionDigest: "72".repeat(32),
+        rollbackGeneration: "0",
+      }),
+    ).resolves.toBeUndefined();
+    expect(supervisor.status().queuedJobCount).toBe(1);
+    active.resolve("first");
+    await supervisor.close();
+    expect(starts.map(({ decisionDigest }) => decisionDigest)).toEqual([
+      "71".repeat(32),
+      "72".repeat(32),
+    ]);
+  });
+
+  it("treats an admitted rollback revocation as cancellation and accepts a fresh generation", async () => {
+    const root = await directory();
+    const revoked = Object.freeze({
+      decisionDigest: "73".repeat(32),
+      rollbackGeneration: "0",
+      checkpoint: "before_submit" as const,
+    }) as WorkflowActuationRevokedError;
+    let calls = 0;
+    const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
+      journalRoot: root,
+      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      unsafeIsActuationRevokedErrorForTest: (
+        error,
+      ): error is WorkflowActuationRevokedError => error === revoked,
+      run: async () => {
+        calls += 1;
+        if (calls === 1) throw revoked;
+        return "fresh-generation-completed";
+      },
+    });
+    await supervisor.recoverExisting(null);
+    const first = supervisor.unsafeRunOrResumeForTest({
+      mode: "run",
+      category: "doubleSpend",
+      headerHash: h28(0x73),
+      decisionDigest: "73".repeat(32),
+      rollbackGeneration: "0",
+    });
+    await expect(first).resolves.toMatchObject({
+      kind: "actuation_revoked",
+      rollbackGeneration: "0",
+      checkpoint: "before_submit",
+    });
+    expect(supervisor.status().phase).toBe("accepting");
+
+    await expect(
+      supervisor.unsafeRunOrResumeForTest({
+        mode: "resume",
+        category: "doubleSpend",
+        headerHash: h28(0x73),
+        decisionDigest: "73".repeat(32),
+        rollbackGeneration: "1",
+      }),
+    ).resolves.toBe("fresh-generation-completed");
+    expect(supervisor.status().phase).toBe("accepting");
+    await supervisor.close();
+  });
+
+  it("blocks every later target after a runner failure and drains accepted work on close", async () => {
+    const root = await directory();
+    const gate = deferred<void>();
+    let calls = 0;
+    const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
+      journalRoot: root,
+      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      run: async () => {
+        calls += 1;
+        await gate.promise;
+        throw new Error("authenticated workflow stalled");
+      },
+    });
+    await supervisor.recoverExisting(null);
+    const failed = supervisor.unsafeRunOrResumeForTest({
+      mode: "run",
+      category: "doubleSpend",
+      headerHash: h28(0x33),
+      decisionDigest: "33".repeat(32),
+      rollbackGeneration: "0",
+    });
+    const queued = supervisor.unsafeRunOrResumeForTest({
+      mode: "run",
+      category: "networkId",
+      headerHash: h28(0x44),
+      decisionDigest: "44".repeat(32),
+      rollbackGeneration: "0",
+    });
+    await waitUntil(
+      () => calls === 1 && supervisor.status().queuedJobCount === 1,
+    );
+    const closing = supervisor.close();
+    expect(supervisor.status().phase).toBe("closing");
+    gate.resolve();
+    await expect(failed).rejects.toThrow("authenticated workflow stalled");
+    await expect(queued).rejects.toThrow("supervisor is blocked");
+    await expect(supervisor.done).rejects.toThrow(
+      "authenticated workflow stalled",
+    );
+    await expect(closing).resolves.toBeUndefined();
+    expect(calls).toBe(1);
+    expect(supervisor.status()).toMatchObject({
+      phase: "blocked",
+      blockedJob: { category: "doubleSpend", headerHash: h28(0x33) },
+    });
+    await expect(
+      supervisor.unsafeRunOrResumeForTest({
+        mode: "resume",
+        category: "doubleSpend",
+        headerHash: h28(0x33),
+        decisionDigest: "33".repeat(32),
+        rollbackGeneration: "0",
+      }),
+    ).rejects.toThrow("supervisor is blocked");
+  });
+
+  it("holds a job whose recorded decision is missing by name and keeps running later targets", async () => {
+    const root = await directory();
+    const hold = {
+      kind: "objective",
+      category: "doubleSpend",
+      headerHash: h28(0x33),
+      decisionDigest: "33".repeat(32),
+      detail: "proof progress has no exact recorded execution decision",
+    } as const;
+    const ran: string[] = [];
+    const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
+      journalRoot: root,
+      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      run: async ({ category }) => {
+        ran.push(category);
+        if (category === "doubleSpend")
+          throw new WatcherProofDecisionMissingError(hold);
+        return { kind: "completed" };
+      },
+    });
+    await supervisor.recoverExisting(null);
+    const held = supervisor.unsafeRunOrResumeForTest({
+      mode: "run",
+      category: "doubleSpend",
+      headerHash: h28(0x33),
+      decisionDigest: "33".repeat(32),
+      rollbackGeneration: "0",
+    });
+    await expect(held).resolves.toMatchObject({
+      kind: "pending",
+      resume: "await_observation",
+    });
+    await expect(
+      supervisor.unsafeRunOrResumeForTest({
+        mode: "run",
+        category: "networkId",
+        headerHash: h28(0x44),
+        decisionDigest: "44".repeat(32),
+        rollbackGeneration: "0",
+      }),
+    ).resolves.toEqual({ kind: "completed" });
+    expect(ran).toEqual(["doubleSpend", "networkId"]);
+    expect(supervisor.status()).toMatchObject({
+      phase: "accepting",
+      blockedJob: null,
+      journalDecisionMissing: [hold],
+    });
+    await supervisor.close();
+    await expect(supervisor.done).resolves.toBeUndefined();
+  });
+
+  it("runs queued jobs by earliest authenticated safe-start deadline", async () => {
+    const root = await directory();
+    const active = deferred<void>();
+    const starts: string[] = [];
+    const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
+      journalRoot: root,
+      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      unsafeNowMsForTest: () => 1_000,
+      run: async (job) => {
+        starts.push(job.headerHash);
+        if (starts.length === 1) await active.promise;
+      },
+    });
+    await supervisor.recoverExisting(null);
+    const first = supervisor.unsafeRunOrResumeForTest({
+      mode: "run",
+      category: "doubleSpend",
+      headerHash: h28(0x81),
+      decisionDigest: "81".repeat(32),
+      rollbackGeneration: "0",
+      deadline: deadline(h28(0x81), 10_000),
+    });
+    await Promise.resolve();
+    const later = supervisor.unsafeRunOrResumeForTest({
+      mode: "run",
+      category: "networkId",
+      headerHash: h28(0x82),
+      decisionDigest: "82".repeat(32),
+      rollbackGeneration: "0",
+      deadline: deadline(h28(0x82), 30_000),
+    });
+    const earlier = supervisor.unsafeRunOrResumeForTest({
+      mode: "run",
+      category: "invalidRange",
+      headerHash: h28(0x83),
+      decisionDigest: "83".repeat(32),
+      rollbackGeneration: "0",
+      deadline: deadline(h28(0x83), 20_000),
+    });
+    await waitUntil(() => supervisor.status().queuedJobCount === 2);
+    active.resolve();
+    await Promise.all([first, later, earlier]);
+    expect(starts).toEqual([h28(0x81), h28(0x83), h28(0x82)]);
+    await supervisor.close();
+  });
+
+  it("reports an earlier queued deadline while a later-deadline job is active", async () => {
+    const root = await directory();
+    const active = deferred<void>();
+    let nowMs = 1_000;
+    const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
+      journalRoot: root,
+      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      deadlineAlertHeadroomMs: 1_000,
+      unsafeNowMsForTest: () => nowMs,
+      run: async (job) => {
+        if (job.headerHash === h28(0x84)) await active.promise;
+      },
+    });
+    await supervisor.recoverExisting(null);
+    const running = supervisor.unsafeRunOrResumeForTest({
+      mode: "run",
+      category: "doubleSpend",
+      headerHash: h28(0x84),
+      decisionDigest: "84".repeat(32),
+      rollbackGeneration: "0",
+      deadline: deadline(h28(0x84), 30_000),
+    });
+    await waitUntil(
+      () => supervisor.status().activeJob?.headerHash === h28(0x84),
+    );
+    const queued = supervisor.unsafeRunOrResumeForTest({
+      mode: "run",
+      category: "invalidRange",
+      headerHash: h28(0x85),
+      decisionDigest: "85".repeat(32),
+      rollbackGeneration: "0",
+      deadline: deadline(h28(0x85), 20_000),
+    });
+    await waitUntil(() => supervisor.status().queuedJobCount === 1);
+
+    nowMs = latestSafeStartOffsetMs + 19_500;
+    expect(supervisor.status()).toMatchObject({
+      deadlineHealth: "at_risk",
+      earliestDeadlineJob: { headerHash: h28(0x85) },
+      remainingSafeStartMs: "500",
+    });
+
+    active.resolve();
+    await expect(running).resolves.toBeUndefined();
+    await expect(queued).resolves.toBeUndefined();
+    await supervisor.close();
+  });
+
+  it("reports at-risk headroom and holds an unsafe job by name while later work runs, again after a restart", async () => {
+    const root = await directory();
+    const gate = deferred<void>();
+    const started = deferred<void>();
+    const starts: string[] = [];
+    let nowMs = latestSafeStartOffsetMs - 500;
+    const create = () =>
+      unsafeCreateWatcherFaultProofSupervisorForTest({
+        journalRoot: root,
+        deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+        deadlineAlertHeadroomMs: 1_000,
+        unsafeNowMsForTest: () => nowMs,
+        run: async (job) => {
+          starts.push(job.headerHash);
+          started.resolve();
+          if (job.headerHash === h28(0x91)) await gate.promise;
+          return { kind: "completed" };
+        },
+      });
+    const supervisor = create();
+    let settled = false;
+    void supervisor.done.then(
+      () => (settled = true),
+      () => (settled = true),
+    );
+    await supervisor.recoverExisting(null);
+    const run = supervisor.unsafeRunOrResumeForTest({
+      mode: "run",
+      category: "doubleSpend",
+      headerHash: h28(0x91),
+      decisionDigest: "91".repeat(32),
+      rollbackGeneration: "0",
+      deadline: deadline(h28(0x91), 0),
+    });
+    // Queue visibility precedes asynchronous journal admission and the
+    // safe-start check. Advance time only once the safe job's runner starts.
+    await started.promise;
+    expect(supervisor.status()).toMatchObject({
+      deadlineHealth: "at_risk",
+      remainingSafeStartMs: "500",
+    });
+    nowMs = latestSafeStartOffsetMs;
+    const late = {
+      mode: "run",
+      category: "networkId",
+      headerHash: h28(0x92),
+      decisionDigest: "92".repeat(32),
+      rollbackGeneration: "0",
+      deadline: deadline(h28(0x92), 0),
+    } as const;
+    const unsafe = supervisor.unsafeRunOrResumeForTest(late);
+    await waitUntil(() => supervisor.status().queuedJobCount === 1);
+    const later = supervisor.unsafeRunOrResumeForTest({
+      mode: "run",
+      category: "invalidRange",
+      headerHash: h28(0x93),
+      decisionDigest: "93".repeat(32),
+      rollbackGeneration: "0",
+      deadline: deadline(h28(0x93), 10_000),
+    });
+    await waitUntil(() => supervisor.status().queuedJobCount === 2);
+    gate.resolve();
+    const hold = {
+      kind: "objective",
+      category: "networkId",
+      headerHash: h28(0x92),
+      decisionDigest: "92".repeat(32),
+      detail: `networkId/${h28(0x92)}`,
+      readiness: "fault_proof_start_deadline_passed",
+    } as const;
+    await expect(run).resolves.toEqual({ kind: "completed" });
+    // The late objective never starts; it is held by name and the next
+    // objective, queued behind it, still runs.
+    await expect(unsafe).resolves.toEqual({
+      kind: "pending",
+      resume: "await_observation",
+      reason: hold.detail,
+    });
+    await expect(later).resolves.toEqual({ kind: "completed" });
+    expect(starts).toEqual([h28(0x91), h28(0x93)]);
+    expect(supervisor.status()).toMatchObject({
+      phase: "accepting",
+      blockedJob: null,
+      deadlineHealth: "safe",
+      journalDecisionMissing: [hold],
+    });
+    expect(settled).toBe(false);
+    await supervisor.close();
+
+    // A restart over the same journals meets the same objective and holds it
+    // again under the same name, instead of failing on it.
+    const restarted = create();
+    let restartSettled = false;
+    void restarted.done.then(
+      () => (restartSettled = true),
+      () => (restartSettled = true),
+    );
+    await expect(restarted.unsafeRunOrResumeForTest(late)).resolves.toEqual({
+      kind: "pending",
+      resume: "await_observation",
+      reason: hold.detail,
+    });
+    expect(restarted.status()).toMatchObject({
+      phase: "accepting",
+      blockedJob: null,
+      journalDecisionMissing: [hold],
+    });
+    expect(starts).toEqual([h28(0x91), h28(0x93)]);
+    expect(restartSettled).toBe(false);
+    await restarted.close();
+  });
+});

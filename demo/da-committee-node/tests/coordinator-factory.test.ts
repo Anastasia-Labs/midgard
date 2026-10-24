@@ -1,37 +1,24 @@
+import * as SDK from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { availabilityParametersFromConfig } from "../src/availability/factory.js";
+import { DA_L1_SUBMITTER_MIN_PLAIN_ADA_LOVELACE } from "../src/config.js";
 import { onChainCoordinatorFromConfig } from "../src/coordinator/factory.js";
+import type { LucidDaAttestationSubmitter } from "../src/coordinator/lucid-submitter.js";
+import { OnChainLifecycleCoordinator } from "../src/coordinator/on-chain.js";
 import type { DaAttestationChainReader } from "../src/l1/da-attestation-reader.js";
 import type { L1SubmitterPreflightOptions } from "../src/l1/submitter.js";
-import { minimalConfig } from "./helpers.js";
+import {
+  minimalAvailabilityChallengeYields,
+  minimalConfig,
+  minimalStateQueueYields,
+} from "./helpers.js";
 
 describe("onChainCoordinatorFromConfig", () => {
-  it("fails closed without Midgard node deployment metadata", async () => {
-    const config = {
-      ...minimalConfig({
-        dir: "/tmp",
-        manifestPath: "/tmp/manifest.json",
-        deploymentInfoPath: "/tmp/deployment.json",
-        signerSeed: "00".repeat(32),
-        signerPublicKey: "11".repeat(32),
-      }),
-      mode: "coordinator" as const,
-      l1SubmitterKeySource: "private-key:ed25519_sk_test",
-      cardanoProviderUrls: [
-        "blockfrost:https://cardano-preview.blockfrost.io/api/v0#project",
-      ],
-    };
-
-    await expect(onChainCoordinatorFromConfig(config)).rejects.toThrow(
-      /deployment-info/,
-    );
-  });
-
   it("fails closed without an L1 submitter key source", async () => {
     const config = {
       ...minimalConfig({
-        dir: "/tmp",
         manifestPath: "/tmp/manifest.json",
         deploymentInfoPath: "/tmp/deployment.json",
         signerSeed: "00".repeat(32),
@@ -39,16 +26,23 @@ describe("onChainCoordinatorFromConfig", () => {
       }),
       mode: "coordinator" as const,
       midgardNodeDeployment: {
+        referenceScriptAuthPolicyId: "f0".repeat(28),
+        hubOraclePolicyId: "99".repeat(28),
+        correctionLockAddress: "addr_test1correctionlock",
+        hubOracle: fakeDeployment("99".repeat(28)),
+        availabilityChallenge: fakeDeployment("ee".repeat(28)),
+        fraudProof: fakeDeployment("dd".repeat(28)),
         daAttestation: fakeDeployment("aa".repeat(28)),
+        daBondPool: fakeDeployment("ab".repeat(28)),
         daParamsGovernor: fakeDeployment("bb".repeat(28)),
         stateQueue: fakeDeployment("cc".repeat(28)),
+        availabilityChallengeYields: minimalAvailabilityChallengeYields(),
+        stateQueueYields: minimalStateQueueYields(),
       },
-      cardanoProviderUrls: [
-        "blockfrost:https://cardano-preview.blockfrost.io/api/v0#project",
-      ],
+      cardanoL1Source: { networkMagic: 1 },
     };
 
-    await expect(onChainCoordinatorFromConfig(config)).rejects.toThrow(
+    await expect(onChainCoordinatorFromConfig(config, noLucid)).rejects.toThrow(
       /L1_SUBMITTER_KEY_SOURCE/,
     );
   });
@@ -58,30 +52,32 @@ describe("onChainCoordinatorFromConfig", () => {
     let referenceScriptsResolved = false;
 
     await expect(
-      onChainCoordinatorFromConfig(config, undefined, undefined, {
-        lucidFromProviderUrl: async () => ({
-          lucid: {} as LucidEvolution,
-          providerSource: "test",
-        }),
-        selectL1SubmitterWallet: async () => ({
-          kind: "private_key",
-          value: "ed25519_sk_test",
-        }),
-        assertL1SubmitterWalletPreflight: async () => {
-          throw new Error("wallet preflight failed");
+      onChainCoordinatorFromConfig(
+        config,
+        noLucid,
+        fakeChainReader,
+        undefined,
+        {
+          selectL1SubmitterWallet: async () => ({
+            kind: "private_key",
+            value: "ed25519_sk_test",
+          }),
+          assertL1SubmitterWalletPreflight: async () => {
+            throw new Error("wallet preflight failed");
+          },
+          preflightL1SubmitterWallet: async () => readyPreflightResult,
+          fetchDaAttestationReferenceScripts: async () => {
+            referenceScriptsResolved = true;
+            return fakeReferenceScripts;
+          },
         },
-        preflightL1SubmitterWallet: async () => readyPreflightResult,
-        fetchDaAttestationReferenceScripts: async () => {
-          referenceScriptsResolved = true;
-          return fakeReferenceScripts;
-        },
-      }),
+      ),
     ).rejects.toThrow(/wallet preflight failed/);
 
     expect(referenceScriptsResolved).toBe(false);
   });
 
-  it("constructs the coordinator only after submitter wallet preflight succeeds", async () => {
+  it("threads one wallet-bearing lucid through preflight and into reference-script resolution", async () => {
     const calls: string[] = [];
     const config = {
       ...l1ReadyConfig(),
@@ -89,51 +85,312 @@ describe("onChainCoordinatorFromConfig", () => {
         ...l1ReadyConfig().l1SubmitterPreflight,
         autoFundKeySource: "private-key:funder",
       },
+      nativeLedger: {
+        authorityNodeId: "local-cardano-node",
+        socketPath: "/run/cardano/node.socket",
+        nodeConfigPath: "/etc/cardano/config.json",
+        binaryPath: "/opt/midgard/midgard-l1-node-transport",
+      },
     };
+    const lucid = {} as LucidEvolution;
+    const seen: {
+      selectLucid?: unknown;
+      keySource?: unknown;
+      preflightLucid?: unknown;
+      preflightOptions?: L1SubmitterPreflightOptions;
+      referenceLucid?: unknown;
+      referenceDeployment?: unknown;
+    } = {};
 
-    await expect(
-      onChainCoordinatorFromConfig(config, fakeChainReader, undefined, {
-        lucidFromProviderUrl: async () => {
-          calls.push("lucid");
-          return {
-            lucid: {} as LucidEvolution,
-            providerSource: "test",
-          };
-        },
-        selectL1SubmitterWallet: async () => {
+    const coordinator = await onChainCoordinatorFromConfig(
+      config,
+      async () => {
+        calls.push("lucid");
+        return lucid;
+      },
+      fakeChainReader,
+      undefined,
+      {
+        selectL1SubmitterWallet: async (selectLucid, keySource) => {
           calls.push("select");
-          return {
-            kind: "private_key",
-            value: "ed25519_sk_test",
-          };
+          seen.selectLucid = selectLucid;
+          seen.keySource = keySource;
+          return { kind: "private_key", value: "ed25519_sk_test" };
         },
         assertL1SubmitterWalletPreflight: async (
-          _lucid,
+          preflightLucid,
           options: L1SubmitterPreflightOptions,
         ) => {
-          calls.push(`preflight:${options.autoFundKeySource ?? ""}`);
+          calls.push("preflight");
+          seen.preflightLucid = preflightLucid;
+          seen.preflightOptions = options;
           return readyPreflightResult;
         },
         preflightL1SubmitterWallet: async () => readyPreflightResult,
-        fetchDaAttestationReferenceScripts: async () => {
+        fetchDaAttestationReferenceScripts: async (
+          referenceLucid,
+          deployment,
+        ) => {
           calls.push("reference-scripts");
+          seen.referenceLucid = referenceLucid;
+          seen.referenceDeployment = deployment;
           return fakeReferenceScripts;
         },
-      }),
-    ).resolves.toBeDefined();
+      },
+    );
 
-    expect(calls).toEqual([
-      "lucid",
-      "select",
-      "preflight:private-key:funder",
-      "reference-scripts",
+    expect(coordinator).toBeInstanceOf(OnChainLifecycleCoordinator);
+    // The ordering contract, stated as the two relations it exists to
+    // protect rather than as a transcript of every internal step: no wallet
+    // work before the follower's Lucid, and no on-chain reference-script reads before
+    // the wallet has passed preflight.
+    expect(calls.indexOf("lucid")).toBeLessThan(calls.indexOf("select"));
+    expect(calls.indexOf("select")).toBeLessThan(calls.indexOf("preflight"));
+    expect(calls.indexOf("preflight")).toBeLessThan(
+      calls.indexOf("reference-scripts"),
+    );
+    expect(calls.filter((call) => call === "preflight")).toHaveLength(1);
+    // Every collaborator must receive the SAME lucid instance: a second
+    // client would carry no selected wallet, so preflight and the submitter
+    // would be proving properties of the wrong account.
+    expect([
+      seen.selectLucid,
+      seen.preflightLucid,
+      seen.referenceLucid,
+    ]).toEqual([lucid, lucid, lucid]);
+    expect({
+      keySource: seen.keySource,
+      referenceDeployment: seen.referenceDeployment,
+    }).toEqual({
+      keySource: config.l1SubmitterKeySource,
+      referenceDeployment: config.midgardNodeDeployment,
+    });
+    expect(seen.preflightOptions).toEqual({
+      submitterKeySource: config.l1SubmitterKeySource,
+      minPlainAdaLovelace: config.l1SubmitterPreflight.minPlainAdaLovelace,
+      minCollateralLovelace: config.l1SubmitterPreflight.minCollateralLovelace,
+      minSpendableUtxoCount: config.l1SubmitterPreflight.minSpendableUtxoCount,
+      autoFundKeySource: "private-key:funder",
+      autoFundBufferLovelace:
+        config.l1SubmitterPreflight.autoFundBufferLovelace,
+      retryCount: config.l1SubmitterPreflight.retryCount,
+      retryDelayMs: config.l1SubmitterPreflight.retryDelayMs,
+    });
+  });
+
+  it("omits the auto-funding key source when the operator configured none", async () => {
+    const config = l1ReadyConfig();
+    let options: L1SubmitterPreflightOptions | undefined;
+    await onChainCoordinatorFromConfig(
+      config,
+      noLucid,
+      fakeChainReader,
+      undefined,
+      {
+        ...passingDeps(),
+        assertL1SubmitterWalletPreflight: async (_lucid, received) => {
+          options = received;
+          return readyPreflightResult;
+        },
+      },
+    );
+    expect(options).toBeDefined();
+    expect(Object.hasOwn(options!, "autoFundKeySource")).toBe(false);
+  });
+
+  it("skips wallet preflight only when the operator disabled it", async () => {
+    const config = {
+      ...l1ReadyConfig(),
+      l1SubmitterPreflight: {
+        ...l1ReadyConfig().l1SubmitterPreflight,
+        enabled: false,
+      },
+    };
+    let preflighted = false;
+    let referenceScriptsResolved = false;
+    const coordinator = await onChainCoordinatorFromConfig(
+      config,
+      noLucid,
+      fakeChainReader,
+      undefined,
+      {
+        ...passingDeps(),
+        assertL1SubmitterWalletPreflight: async () => {
+          preflighted = true;
+          return readyPreflightResult;
+        },
+        fetchDaAttestationReferenceScripts: async () => {
+          referenceScriptsResolved = true;
+          return fakeReferenceScripts;
+        },
+      },
+    );
+    expect(coordinator).toBeInstanceOf(OnChainLifecycleCoordinator);
+    expect(preflighted).toBe(false);
+    expect(referenceScriptsResolved).toBe(true);
+  });
+
+  it("refuses a deployment whose DA attestation policy id is not the configured one", async () => {
+    // The real cross-check runs here: the policy id is derived from the
+    // deployment by production code, not supplied by a stub.
+    const base = l1ReadyConfig();
+    const config = {
+      ...base,
+      daAttestationPolicyId: "ab".repeat(28),
+    };
+    await expect(
+      onChainCoordinatorFromConfig(
+        config,
+        noLucid,
+        fakeChainReader,
+        undefined,
+        passingDeps(),
+      ),
+    ).rejects.toThrow(
+      "configured DA attestation policy id does not match Midgard node deployment-info",
+    );
+    // ...and the identical configuration with the deployment's own policy id
+    // constructs, so the refusal is caused by the mismatch and nothing else.
+    await expect(
+      onChainCoordinatorFromConfig(
+        base,
+        noLucid,
+        fakeChainReader,
+        undefined,
+        passingDeps(),
+      ),
+    ).resolves.toBeInstanceOf(OnChainLifecycleCoordinator);
+  });
+
+  it("hands the submitter funding hook to the submitter, which reports each check to it", async () => {
+    const config = l1ReadyConfig();
+    const walletUtxo = {
+      txHash: "44".repeat(32),
+      outputIndex: 0,
+      address: "addr_test1submitter",
+      assets: { lovelace: 7_000_000n },
+    } as UTxO;
+    const lucid = {
+      wallet: () => ({ address: async () => walletUtxo.address }),
+      utxosAt: async () => [walletUtxo],
+      overrideUTxOs: () => undefined,
+      // No DA params UTxO, so an init stops right after its funding check.
+      utxosAtWithUnit: async () => [],
+    } as unknown as LucidEvolution;
+    const checks: unknown[] = [];
+    const coordinator = await onChainCoordinatorFromConfig(
+      config,
+      async () => lucid,
+      fakeChainReader,
+      undefined,
+      passingDeps(),
+      { recordSubmitterFunding: (check) => checks.push(check) },
+    );
+    const submitter = (
+      coordinator as unknown as {
+        readonly deps: { readonly submitter: LucidDaAttestationSubmitter };
+      }
+    ).deps.submitter;
+    (
+      submitter as unknown as {
+        findStateQueueHeader: () => Promise<unknown>;
+      }
+    ).findStateQueueHeader = async () => ({
+      stateQueueNode: { da_attestation: SDK.NO_DA_ATTESTATION },
+    });
+
+    await expect(
+      submitter.initAttestation({
+        headerHash: "01".repeat(28),
+        availabilityCommitmentCbor: "",
+        availabilityCommitmentDigest: "",
+      }),
+    ).rejects.toThrow(/expected exactly one DA params UTxO, found 0/);
+    expect(checks).toEqual([
+      {
+        checkedAt: expect.any(String),
+        plainAdaLovelace: 7_000_000n,
+        // Fee headroom plus attestation min-ADA; no DA bond.
+        requiredLovelace: DA_L1_SUBMITTER_MIN_PLAIN_ADA_LOVELACE,
+        sufficient: false,
+      },
     ]);
+  });
+
+  it("hands the pooled DA bond hooks to the submitter, which reports each read and each read failure", async () => {
+    const config = l1ReadyConfig();
+    const parameters = availabilityParametersFromConfig(config);
+    const pool = config.midgardNodeDeployment.daBondPool;
+    const poolUnit = SDK.daBondPoolUnit(pool.policyId);
+    const chain: { utxos: UTxO[] } = {
+      utxos: [
+        {
+          txHash: "55".repeat(32),
+          outputIndex: 0,
+          address: pool.spendingScriptAddress,
+          assets: {
+            lovelace: parameters.da_bond_pool_floor_lovelace,
+            [poolUnit]: 1n,
+          },
+          datum: SDK.encodeDaBondPoolDatum("Bonded"),
+        } as UTxO,
+      ],
+    };
+    const lucid = {
+      utxosAtWithUnit: async (address: string, unit: string) =>
+        chain.utxos.filter(
+          (utxo) => utxo.address === address && utxo.assets[unit] === 1n,
+        ),
+    } as unknown as LucidEvolution;
+    const checks: unknown[] = [];
+    const failures: unknown[] = [];
+    const coordinator = await onChainCoordinatorFromConfig(
+      config,
+      async () => lucid,
+      fakeChainReader,
+      undefined,
+      passingDeps(),
+      {
+        recordDaBondPool: (check) => checks.push(check),
+        recordDaBondPoolReadFailure: (error) => failures.push(error),
+      },
+    );
+
+    // A pool at its floor backs nothing.
+    await expect(coordinator.checkDaBondPool()).resolves.toMatchObject({
+      state: "bonded",
+      backing: 0n,
+      requiredBacking: parameters.da_bond_lovelace,
+      short: true,
+    });
+    chain.utxos = [];
+    await expect(coordinator.checkDaBondPool()).rejects.toThrow(
+      /expected exactly one DA bond pool UTxO at the pool address, found 0/u,
+    );
+    expect(checks).toEqual([
+      {
+        checkedAt: expect.any(String),
+        state: "bonded",
+        lovelace: parameters.da_bond_pool_floor_lovelace,
+        backing: 0n,
+        requiredBacking: parameters.da_bond_lovelace,
+        short: true,
+      },
+    ]);
+    expect(failures).toHaveLength(1);
+    expect((failures[0] as Error).message).toMatch(/found 0/u);
+  });
+
+  it("does not construct an unproven fallback chain reader", async () => {
+    const config = l1ReadyConfig();
+    await expect(onChainCoordinatorFromConfig(config, noLucid)).rejects.toThrow(
+      /canonical configured DA chain reader/u,
+    );
   });
 });
 
 const l1ReadyConfig = () => ({
   ...minimalConfig({
-    dir: "/tmp",
     manifestPath: "/tmp/manifest.json",
     deploymentInfoPath: "/tmp/deployment.json",
     signerSeed: "00".repeat(32),
@@ -152,13 +409,33 @@ const l1ReadyConfig = () => ({
     retryDelayMs: 5_000,
   },
   midgardNodeDeployment: {
+    referenceScriptAuthPolicyId: "f0".repeat(28),
+    hubOraclePolicyId: "99".repeat(28),
+    correctionLockAddress: "addr_test1correctionlock",
+    hubOracle: fakeDeployment("99".repeat(28)),
+    availabilityChallenge: fakeDeployment("ee".repeat(28)),
+    fraudProof: fakeDeployment("dd".repeat(28)),
     daAttestation: fakeDeployment("aa".repeat(28)),
+    daBondPool: fakeDeployment("ab".repeat(28)),
     daParamsGovernor: fakeDeployment("bb".repeat(28)),
     stateQueue: fakeDeployment("cc".repeat(28)),
+    availabilityChallengeYields: minimalAvailabilityChallengeYields(),
+    stateQueueYields: minimalStateQueueYields(),
   },
-  cardanoProviderUrls: [
-    "blockfrost:https://cardano-preview.blockfrost.io/api/v0#project",
-  ],
+  cardanoL1Source: { networkMagic: 1 },
+});
+
+/** A Lucid source whose client nothing in the test reads. */
+const noLucid = async () => ({}) as LucidEvolution;
+
+const passingDeps = () => ({
+  selectL1SubmitterWallet: async () => ({
+    kind: "private_key" as const,
+    value: "ed25519_sk_test",
+  }),
+  assertL1SubmitterWalletPreflight: async () => readyPreflightResult,
+  preflightL1SubmitterWallet: async () => readyPreflightResult,
+  fetchDaAttestationReferenceScripts: async () => fakeReferenceScripts,
 });
 
 const readyPreflightResult = {

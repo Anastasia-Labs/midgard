@@ -3,9 +3,14 @@
 **/coverage
 **/target
 **/*.tgz
+# Except the vendored packages that pnpm overrides point at.
+!vendor/*.tgz
 **/*.log
+**/config.yaml
+**/.env
+**/.env.*
+**/*.seed
 
-midgard-manager
 midgard-node/.env
 midgard-node/.env.*
 midgard-node/cardano

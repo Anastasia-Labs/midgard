@@ -1,0 +1,10 @@
+{
+  "node": "22.22.2",
+  "go": "1.26.5",
+  "rust": "1.91.0",
+  "postgres": "15",
+  "cardano-node": "11.1.0",
+  "ogmios": "7.0.0",
+  "kupo": "2.11.0",
+  "mithril-client": "2630.1-hotfix"
+}

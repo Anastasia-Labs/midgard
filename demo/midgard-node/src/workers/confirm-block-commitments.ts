@@ -3,22 +3,30 @@ import { LucidEvolution } from "@lucid-evolution/lucid";
 import { Cause, Data, Effect, Option, pipe } from "effect";
 import { parentPort, workerData } from "worker_threads";
 
-import { ConfigError, NodeConfig } from "@/services/config.js";
-import { Lucid } from "@/services/lucid.js";
-import { MidgardContracts } from "@/services/midgard-contracts.js";
-import { serializeStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
+import { ConfigError, NodeConfig } from "../services/config.js";
+import {
+  Database,
+  type DatabaseInitializationError,
+} from "../services/database.js";
+import { FollowerLucidLive, Lucid } from "../services/lucid.js";
+import {
+  FollowerMidgardContractServices,
+  MidgardContracts,
+} from "../services/midgard-contracts.js";
+import { serializeStateQueueUTxO } from "./utils/commit-block-header.js";
 import {
   decideUnsubmittedPendingBlockRecovery,
   fetchSortedCommittedStateQueueBlocks,
   findCommittedStateQueueBlockByHeaderHash,
   latestCommittedStateQueueBlockFromSorted,
   pendingBlockHasSubmittedTx,
+  pendingBlockLookupTxHash,
   resolveStateQueueBlockEndTimeMs,
   serializeCanonicalCommittedHeaders,
   shouldRunFullStateQueueConfirmationScan,
   WorkerInput,
   WorkerOutput,
-} from "@/workers/utils/confirm-block-commitments.js";
+} from "./utils/confirm-block-commitments.js";
 
 type StateQueueAuthValidator = SDK.MidgardValidators["stateQueue"];
 
@@ -58,7 +66,6 @@ export const probeSubmittedTx = (
   );
 
 const awaitPendingBlockResolution = (
-  lucid: LucidEvolution,
   stateQueueAuthValidator: StateQueueAuthValidator,
   pendingBlock: NonNullable<WorkerInput["data"]["pendingBlock"]>,
   timeoutMs: number,
@@ -68,7 +75,6 @@ const awaitPendingBlockResolution = (
     const pollIntervalMs = 2_000;
     while (Date.now() - startedAt < timeoutMs) {
       const sortedBlocks = yield* fetchSortedCommittedStateQueueBlocks(
-        lucid,
         stateQueueAuthValidator,
       );
       const latestBlock =
@@ -123,12 +129,13 @@ const resolveStateQueueAuthValidator = (): Effect.Effect<
   });
 
 const provideConfirmationWorkerServices = <A, E>(
-  effect: Effect.Effect<A, E, MidgardContracts | Lucid | NodeConfig>,
-): Effect.Effect<A, E | ConfigError, never> =>
+  effect: Effect.Effect<A, E, MidgardContracts | Lucid | NodeConfig | Database>,
+): Effect.Effect<A, E | ConfigError | DatabaseInitializationError, never> =>
   pipe(
     effect,
-    Effect.provide(MidgardContracts.Default),
-    Effect.provide(Lucid.Default),
+    Effect.provide(Database.workerLayer),
+    Effect.provide(FollowerMidgardContractServices),
+    Effect.provide(FollowerLucidLive),
     Effect.provide(NodeConfig.layer),
   );
 
@@ -137,7 +144,7 @@ export const runConfirmBlockCommitmentsWorkerProgram = (
 ): Effect.Effect<
   WorkerOutput,
   unknown,
-  MidgardContracts | Lucid | NodeConfig
+  MidgardContracts | Lucid | NodeConfig | Database
 > =>
   Effect.gen(function* () {
     const lucid = yield* Lucid;
@@ -153,7 +160,6 @@ export const runConfirmBlockCommitmentsWorkerProgram = (
     ) =>
       Effect.gen(function* () {
         const sortedBlocks = yield* fetchSortedCommittedStateQueueBlocks(
-          lucid.api,
           stateQueueAuthValidator,
         );
         const latestBlock =
@@ -172,7 +178,6 @@ export const runConfirmBlockCommitmentsWorkerProgram = (
     if (workerInput.data.firstRun) {
       yield* Effect.logInfo("🔍 First run. Fetching the latest block...");
       const sortedBlocks = yield* fetchSortedCommittedStateQueueBlocks(
-        lucid.api,
         stateQueueAuthValidator,
       );
       const latestBlock =
@@ -192,7 +197,6 @@ export const runConfirmBlockCommitmentsWorkerProgram = (
         "🔍 No active pending block. Refreshing canonical state_queue snapshot...",
       );
       const sortedBlocks = yield* fetchSortedCommittedStateQueueBlocks(
-        lucid.api,
         stateQueueAuthValidator,
       );
       const latestBlock =
@@ -214,7 +218,6 @@ export const runConfirmBlockCommitmentsWorkerProgram = (
     );
     if (!pendingBlockHasSubmittedTx(pendingBlock)) {
       const sortedBlocks = yield* fetchSortedCommittedStateQueueBlocks(
-        lucid.api,
         stateQueueAuthValidator,
       );
       const latestBlock =
@@ -263,7 +266,7 @@ export const runConfirmBlockCommitmentsWorkerProgram = (
       }
       if (recoveryDecision === "defer") {
         yield* Effect.logWarning(
-          `🔍 Pending block header ${pendingBlock.expectedHeaderHash} has no submitted tx hash and is not canonical yet; deferring stale recovery until the block validity window plus grace has elapsed (age_ms=${pendingAgeMs}, block_end_ms=${pendingBlock.blockEndTimeMs.toString()}, grace_ms=${recoveryGraceMs.toString()}).`,
+          `🔍 Pending block header ${pendingBlock.expectedHeaderHash} has no submitted tx hash and is not canonical yet; deferring stale recovery until the block validity window plus grace has elapsed (age_ms=${pendingAgeMs}, block_time_ms=${pendingBlock.blockTimeMs.toString()}, grace_ms=${recoveryGraceMs.toString()}).`,
         );
         return {
           type: "NoTxForConfirmationOutput",
@@ -279,14 +282,14 @@ export const runConfirmBlockCommitmentsWorkerProgram = (
     }
     const targetedTxConfirmed = yield* probeSubmittedTx(
       lucid.api,
-      pendingBlock.submittedTxHash,
+      pendingBlockLookupTxHash(pendingBlock),
     );
     const expiryRecoveryGraceMs = Math.max(
       nodeConfig.BLOCK_CONFIRMATION_AWAIT_TIMEOUT_MS,
       30_000,
     );
     const validityExpired =
-      Date.now() > pendingBlock.blockEndTimeMs + expiryRecoveryGraceMs;
+      Date.now() > pendingBlock.blockTimeMs + expiryRecoveryGraceMs;
     if (
       !shouldRunFullStateQueueConfirmationScan({
         targetedTxConfirmed,
@@ -304,7 +307,6 @@ export const runConfirmBlockCommitmentsWorkerProgram = (
     }
     const confirmationResult = yield* Effect.either(
       awaitPendingBlockResolution(
-        lucid.api,
         stateQueueAuthValidator,
         pendingBlock,
         nodeConfig.BLOCK_CONFIRMATION_AWAIT_TIMEOUT_MS,
@@ -315,7 +317,10 @@ export const runConfirmBlockCommitmentsWorkerProgram = (
       yield* Effect.logWarning(
         `🔍 Pending block header ${pendingBlock.expectedHeaderHash} not resolved yet (submitted_tx=${pendingBlock.submittedTxHash || "unknown"}, age_ms=${pendingAgeMs}, timeout_ms=${nodeConfig.BLOCK_CONFIRMATION_AWAIT_TIMEOUT_MS}).`,
       );
-      if (Date.now() > pendingBlock.blockEndTimeMs + expiryRecoveryGraceMs) {
+      if (
+        pendingBlock.intendedTxHash == null &&
+        Date.now() > pendingBlock.blockTimeMs + expiryRecoveryGraceMs
+      ) {
         yield* Effect.logWarning(
           `🔍 Pending block header ${pendingBlock.expectedHeaderHash} passed its validity upper bound without confirmation; abandoning expired submission and recovering canonical state_queue tip.`,
         );
@@ -356,6 +361,21 @@ export const runConfirmBlockCommitmentsWorkerProgram = (
       } satisfies WorkerOutput;
     }
 
+    // A signed commit is disposed of (and revived if it lands anyway) in one
+    // place: the landed-block rebase, from S6's derived status of the intent
+    // and the landed chain the follower holds (whichever lands wins). This
+    // unauthenticated snapshot only defers to it.
+    // Only the journal's age since its last update is reported here (age_ms,
+    // as in the lines above); past the warning age it is logged as a warning.
+    // Readiness reports signedIntentUnresolvedAgeMs from the journal's
+    // creation instead.
+    if (pendingBlock.intendedTxHash != null) {
+      const deferral = `🔍 Pending block header ${pendingBlock.expectedHeaderHash} holds a signed commit intent and is not on the queue; deferring to the landed-block rebase's journal disposition (age_ms=${pendingAgeMs}, warning_age_ms=${nodeConfig.UNCONFIRMED_BLOCK_MAX_AGE_MS}).`;
+      yield* pendingAgeMs >= nodeConfig.UNCONFIRMED_BLOCK_MAX_AGE_MS
+        ? Effect.logWarning(deferral)
+        : Effect.logInfo(deferral);
+      return { type: "NoTxForConfirmationOutput" } satisfies WorkerOutput;
+    }
     yield* Effect.logWarning(
       `🔍 Canonical state_queue advanced past pending block header ${pendingBlock.expectedHeaderHash} without including it; abandoning that pending submission.`,
     );
@@ -372,7 +392,7 @@ if (parentPort !== null) {
     provideConfirmationWorkerServices,
   );
 
-  Effect.runPromise(
+  void Effect.runPromise(
     program.pipe(
       Effect.catchAllCause((cause) =>
         Effect.succeed({

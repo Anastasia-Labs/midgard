@@ -1,17 +1,27 @@
 import { randomUUID } from "node:crypto";
 
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import type { L1Origin } from "@al-ft/midgard-core/l1-origin";
 import * as SDK from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { Lucid } from "@/services/lucid.js";
+import type { IntentJournal } from "../services/intent-journal.js";
+import { unjournaledSubmission } from "../services/intent-journal.js";
+import { Lucid } from "../services/lucid.js";
 import {
   awaitExactTransactionConfirmation,
   awaitSubmittedTransactionConfirmation,
+  BeforeSignedTransactionSubmission,
   signSubmitTransaction,
   TxConfirmError,
-} from "@/transactions/utils.js";
+} from "../transactions/utils.js";
+import {
+  type HubOracleNonceOriginSource,
+  noLocalNodeOriginError,
+  settledL1Origin,
+} from "./prepare-hub-oracle-nonce.l1-origin.js";
+import { resumeSignedHubOracleNonceTransaction } from "./prepare-hub-oracle-nonce.resume-signed.js";
 
 export const DEFAULT_NONCE_LOVELACE = 5_000_000n;
 const DEFAULT_CONFIRMATION_RECONCILE_TIMEOUT_MS = 300_000;
@@ -30,6 +40,8 @@ export type PreparedHubOracleNonce = {
   readonly lovelace: string;
   readonly inlineDatum: string;
   readonly confirmationStatus: HubOracleNonceConfirmationStatus;
+  /** The deployment's L1 origin, recorded before the nonce was first signed. */
+  readonly l1Origin?: L1Origin;
 };
 
 export type SubmittedHubOracleNonceAttempt = {
@@ -37,12 +49,30 @@ export type SubmittedHubOracleNonceAttempt = {
   readonly address: string;
   readonly lovelace: string;
   readonly inlineDatum: string;
+  /** Present when the attempt was recorded before its first submission. */
+  readonly signedTxCbor?: string;
+  /** The L1 origin recorded with the signed bytes, when one was. */
+  readonly l1Origin?: L1Origin;
+};
+
+export type SignedHubOracleNonceAttempt = SubmittedHubOracleNonceAttempt & {
+  readonly signedTxCbor: string;
+  readonly l1Origin: L1Origin;
 };
 
 export type PrepareHubOracleNonceOptions = {
   readonly confirmationReconcileTimeoutMs?: number;
   readonly outputLookupTimeoutMs?: number;
   readonly pollIntervalMs?: number;
+  /**
+   * Where a fresh nonce reads the deployment's L1 origin; without it the
+   * command refuses before the wallet is used.
+   */
+  readonly l1Origin?: HubOracleNonceOriginSource;
+  /** Must durably record the signed transaction; a failure blocks submission. */
+  readonly beforeSubmission?: (
+    attempt: SignedHubOracleNonceAttempt,
+  ) => Effect.Effect<void, unknown>;
   readonly onSubmitted?: (
     attempt: SubmittedHubOracleNonceAttempt,
   ) => Effect.Effect<void, unknown>;
@@ -202,6 +232,12 @@ export const reconcileHubOracleOneShotNonceAttemptProgram = (
       DEFAULT_NONCE_RECOVERY_POLL_INTERVAL_MS,
     );
     const amountLovelace = BigInt(attempt.lovelace);
+    if (attempt.signedTxCbor !== undefined)
+      yield* resumeSignedHubOracleNonceTransaction({
+        lucid,
+        txHash: attempt.txHash,
+        signedTxCbor: attempt.signedTxCbor,
+      });
     yield* awaitTxHashConfirmation({
       lucid,
       txHash: attempt.txHash,
@@ -243,6 +279,7 @@ export const reconcileHubOracleOneShotNonceAttemptProgram = (
       lovelace: attempt.lovelace,
       inlineDatum: attempt.inlineDatum,
       confirmationStatus: "reconciled_after_timeout",
+      ...(attempt.l1Origin === undefined ? {} : { l1Origin: attempt.l1Origin }),
     };
   });
 
@@ -291,8 +328,11 @@ export const inspectOperatorWalletForNonceProgram = (
 export const prepareHubOracleOneShotNonceProgram = (
   amountLovelace: bigint,
   options: PrepareHubOracleNonceOptions = {},
-): Effect.Effect<PreparedHubOracleNonce, unknown, Lucid> =>
+): Effect.Effect<PreparedHubOracleNonce, unknown, Lucid | IntentJournal> =>
   Effect.gen(function* () {
+    const originSource = options.l1Origin;
+    if (originSource === undefined)
+      return yield* Effect.fail(noLocalNodeOriginError());
     const lucidService = yield* Lucid;
     yield* lucidService.switchToOperatorsMainWallet;
     const lucid = lucidService.api;
@@ -303,6 +343,9 @@ export const prepareHubOracleOneShotNonceProgram = (
           `Failed to derive operator wallet address: ${formatUnknownError(cause)}`,
         ),
     });
+    // Read and settled before anything is built or signed: the nonce is
+    // broadcast only after `l1Origin` lies under the confirmation depth.
+    const l1Origin = yield* settledL1Origin(originSource);
     const markerHex = makeHubOracleOneShotNonceMarkerHex();
     const { txBuilder, inlineDatum } =
       yield* SDK.incompleteHubOracleOneShotNonceTxProgram(lucid, {
@@ -328,7 +371,27 @@ export const prepareHubOracleOneShotNonceProgram = (
           )}`,
         ),
     });
-    const submission = yield* signSubmitTransaction(lucid, unsigned);
+    const submit = signSubmitTransaction(
+      lucid,
+      unsigned,
+      unjournaledSubmission("no_follower", "hub_oracle_nonce:prepare"),
+    );
+    const { beforeSubmission } = options;
+    const submission = yield* beforeSubmission === undefined
+      ? submit
+      : submit.pipe(
+          Effect.provideService(BeforeSignedTransactionSubmission, {
+            persist: ({ txHash, signedTxCbor }) =>
+              beforeSubmission({
+                txHash,
+                signedTxCbor,
+                address,
+                lovelace: amountLovelace.toString(10),
+                inlineDatum,
+                l1Origin,
+              }),
+          }),
+        );
     const attempt: SubmittedHubOracleNonceAttempt = {
       txHash: submission.txHash,
       address,
@@ -409,5 +472,6 @@ export const prepareHubOracleOneShotNonceProgram = (
       lovelace: amountLovelace.toString(10),
       inlineDatum,
       confirmationStatus,
+      l1Origin,
     };
   });

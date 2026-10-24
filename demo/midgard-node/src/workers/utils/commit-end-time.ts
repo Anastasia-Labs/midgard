@@ -1,3 +1,5 @@
+import type { SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
+import * as SDK from "@al-ft/midgard-sdk";
 import { LucidEvolution } from "@lucid-evolution/lucid";
 
 export const EXPLICIT_COMMIT_DEFAULT_CANDIDATE_FUTURE_BUFFER_MS = 5 * 60 * 1000;
@@ -6,7 +8,12 @@ export const EXPLICIT_COMMIT_DEFAULT_CANDIDATE_FUTURE_BUFFER_MS = 5 * 60 * 1000;
 // lookups under provider latency; keep enough validity for submission after
 // the witness context is assembled without exceeding on-chain range limits.
 export const COMMIT_DEFAULT_MINIMUM_FUTURE_BUFFER_MS = 240_000;
-export const COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS = 8 * 60 * 1_000;
+export const COMMIT_VALIDITY_BACKDATE_MS = 60 * 1_000;
+const COMMIT_SLOT_ALIGNMENT_MARGIN_MS = 1_000;
+export const COMMIT_MINIMUM_FUTURE_BUFFER_MS =
+  SDK.COMMIT_MAX_VALIDITY_RANGE_MS -
+  COMMIT_VALIDITY_BACKDATE_MS -
+  COMMIT_SLOT_ALIGNMENT_MARGIN_MS;
 export const COMMIT_MIN_PRE_WITNESS_BUDGET_MS = 6 * 60 * 1_000;
 export const COMMIT_MIN_PRE_BUILD_BUDGET_MS = 3 * 60 * 1_000;
 export const COMMIT_MIN_PRE_SUBMIT_BUDGET_MS = 2 * 60 * 1_000;
@@ -20,6 +27,12 @@ export type CommitTimingBudget = {
   readonly remainingBudgetMs: number;
   readonly minimumBudgetMs: number;
   readonly satisfied: boolean;
+};
+
+export type CommitValidityInterval = {
+  readonly validFromMs: number;
+  readonly validToMs: number;
+  readonly inclusiveUpperBoundMs: number;
 };
 
 /**
@@ -94,6 +107,67 @@ export const alignedUnixTimeStrictlyAfter = (
   return strictlyAfter;
 };
 
+/**
+ * The commit's validity interval for a fixed `validToMs`. On-chain only the
+ * upper bound and the range width are checked; the signed lower bound is
+ * backdated from the ledger tip rather than widened to the full range, so
+ * the window in which the commit can land stays as narrow as it can be. The ledger tip, not the wall-clock submit slot:
+ * between blocks the submit slot runs ahead, and a lower bound past the tip is
+ * refused by the mempool as outside its validity interval.
+ */
+export const resolveCommitValidityInterval = ({
+  lucid,
+  submitSlotSnapshot,
+  validToMs,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly submitSlotSnapshot: SubmitSlotSnapshot;
+  readonly validToMs: number;
+}): CommitValidityInterval => {
+  if (!Number.isSafeInteger(validToMs)) {
+    throw new Error(`Commit validTo is invalid: ${String(validToMs)}`);
+  }
+  const ledgerTipSlotStartMs = lucid.slotToUnixTime(
+    submitSlotSnapshot.ledgerTipSlot ?? submitSlotSnapshot.currentSlot,
+  );
+  if (!Number.isSafeInteger(ledgerTipSlotStartMs)) {
+    throw new Error(
+      `Commit ledger-tip slot start is invalid: ${String(ledgerTipSlotStartMs)}`,
+    );
+  }
+  const backdatedLedgerTipStartMs = Math.max(
+    0,
+    ledgerTipSlotStartMs - COMMIT_VALIDITY_BACKDATE_MS,
+  );
+  const minimumRangeBoundedValidFromMs =
+    validToMs - SDK.COMMIT_MAX_VALIDITY_RANGE_MS;
+  let validFromMs = alignUnixTimeToSlotBoundary(
+    lucid,
+    Math.max(backdatedLedgerTipStartMs, minimumRangeBoundedValidFromMs),
+  );
+  if (validToMs - validFromMs > SDK.COMMIT_MAX_VALIDITY_RANGE_MS) {
+    validFromMs = alignedUnixTimeStrictlyAfter(
+      lucid,
+      minimumRangeBoundedValidFromMs,
+    );
+  }
+  const inclusiveUpperBoundMs = validToMs - 1;
+  if (
+    !Number.isSafeInteger(validFromMs) ||
+    validFromMs >= validToMs ||
+    inclusiveUpperBoundMs - validFromMs > SDK.COMMIT_MAX_VALIDITY_RANGE_MS
+  ) {
+    throw new Error(
+      `Commit validity interval is invalid: valid_from_ms=${validFromMs.toString()},valid_to_ms=${validToMs.toString()},inclusive_upper_bound_ms=${inclusiveUpperBoundMs.toString()}`,
+    );
+  }
+  return {
+    validFromMs,
+    validToMs,
+    inclusiveUpperBoundMs,
+  };
+};
+
 export const resolveAlignedCommitEndTime = ({
   lucid,
   latestEndTime,
@@ -142,7 +216,7 @@ export const resolveCommitEndTimeFit = ({
   readonly minimumFutureBufferMs?: number;
   readonly maximumEndTimeMs?: number;
 }): CommitEndTimeFit => {
-  const alignedCandidateEndTime = alignUnixTimeToSlotBoundary(
+  const alignedCandidateEndTime = alignedUnixTimeStrictlyAfter(
     lucid,
     candidateEndTime,
   );
@@ -165,12 +239,15 @@ export const resolveCommitEndTimeFit = ({
     minimumCurrentTimeEndTime,
     resolvedEndTime,
   };
-  if (maximumEndTimeMs !== undefined && resolvedEndTime > maximumEndTimeMs) {
+  if (
+    maximumEndTimeMs !== undefined &&
+    resolvedEndTime - 1 > maximumEndTimeMs
+  ) {
     return {
       ...resolution,
       status: "exceeds_cap",
       maximumEndTimeMs,
-      reason: `resolved_end_time_ms=${resolvedEndTime.toString()},maximum_end_time_ms=${maximumEndTimeMs.toString()},aligned_candidate_end_time_ms=${alignedCandidateEndTime.toString()},minimum_monotonic_end_time_ms=${minimumMonotonicEndTime.toString()},minimum_current_time_end_time_ms=${minimumCurrentTimeEndTime.toString()}`,
+      reason: `resolved_valid_to_ms=${resolvedEndTime.toString()},resolved_inclusive_end_time_ms=${(resolvedEndTime - 1).toString()},maximum_end_time_ms=${maximumEndTimeMs.toString()},aligned_candidate_valid_to_ms=${alignedCandidateEndTime.toString()},minimum_monotonic_valid_to_ms=${minimumMonotonicEndTime.toString()},minimum_current_time_valid_to_ms=${minimumCurrentTimeEndTime.toString()}`,
     };
   }
   return {
@@ -178,6 +255,132 @@ export const resolveCommitEndTimeFit = ({
     status: "fits",
     maximumEndTimeMs,
   };
+};
+
+/**
+ * The latest inclusive header end a commit built in `currentSlot` can carry.
+ * The header end is the transaction's inclusive upper bound, and the lower
+ * bound can be no earlier than the profile's validity range before it. At this
+ * cap that floor sits `COMMIT_VALIDITY_BACKDATE_MS` before the submit slot; an
+ * end past it would push the lower bound closer to or after the submit slot,
+ * and the ledger would not admit the transaction yet. Near the cap, a ledger
+ * tip more than that backdate behind the submit slot can still refuse it until
+ * the next block.
+ */
+export const commitValidityEndTimeCapMs = (
+  lucid: LucidEvolution,
+  currentSlot: number,
+): number => {
+  const currentSlotStartMs = lucid.slotToUnixTime(currentSlot);
+  if (!Number.isSafeInteger(currentSlotStartMs)) {
+    throw new Error(
+      `Commit submit-slot start is invalid: ${String(currentSlotStartMs)}`,
+    );
+  }
+  return currentSlotStartMs + COMMIT_MINIMUM_FUTURE_BUFFER_MS;
+};
+
+/**
+ * Chooses the latest header end at or below `maximumEndTimeMs`, the minimum
+ * of every cap the caller applies. The result still has to clear both floors:
+ * strictly after the previous block's end, and at least the future buffer past
+ * `nowMs`. When no end fits between them the fit reports `exceeds_cap` and the
+ * caller keeps its existing wait or due-work path.
+ */
+export const resolveLatestFeasibleCommitEndTime = ({
+  lucid,
+  latestEndTime,
+  nowMs,
+  minimumFutureBufferMs,
+  maximumEndTimeMs,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly latestEndTime: number;
+  readonly nowMs: number;
+  readonly minimumFutureBufferMs: number;
+  readonly maximumEndTimeMs: number;
+}): CommitEndTimeFit => {
+  // The header end is valid_to - 1, so the latest end at or below the cap is
+  // the slot boundary at or below cap + 1, less one.
+  const resolvedEndTime = alignUnixTimeToSlotBoundary(
+    lucid,
+    maximumEndTimeMs + 1,
+  );
+  // The next header starts at the previous end and must end strictly after
+  // it, so valid_to - 1 > latestEndTime.
+  const minimumMonotonicEndTime = alignedUnixTimeStrictlyAfter(
+    lucid,
+    latestEndTime + 1,
+  );
+  const minimumCurrentTimeEndTime = alignedUnixTimeStrictlyAfter(
+    lucid,
+    nowMs + minimumFutureBufferMs,
+  );
+  const resolution = {
+    alignedCandidateEndTime: resolvedEndTime,
+    minimumMonotonicEndTime,
+    minimumCurrentTimeEndTime,
+    resolvedEndTime,
+  };
+  if (
+    resolvedEndTime < minimumMonotonicEndTime ||
+    resolvedEndTime < minimumCurrentTimeEndTime
+  ) {
+    return {
+      ...resolution,
+      status: "exceeds_cap",
+      maximumEndTimeMs,
+      reason: `latest_feasible_valid_to_ms=${resolvedEndTime.toString()},maximum_end_time_ms=${maximumEndTimeMs.toString()},minimum_monotonic_valid_to_ms=${minimumMonotonicEndTime.toString()},minimum_current_time_valid_to_ms=${minimumCurrentTimeEndTime.toString()}`,
+    };
+  }
+  return { ...resolution, status: "fits", maximumEndTimeMs };
+};
+
+/** Prefer a normal clock within safe coverage when it clears the submission floors.
+ * Otherwise use the current ledger/scheduler/fence clock for event-only catch-up. */
+export const resolveHistoryCommitBlockTime = ({
+  lucid,
+  currentSlot,
+  latestEndTime,
+  nowMs,
+  minimumFutureBufferMs,
+  schedulerWindowStartTimeMs,
+  schedulerWindowEndTimeMs,
+  appendFenceEndTimeMs,
+  coverageHorizonMs,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly currentSlot: number;
+  readonly latestEndTime: number;
+  readonly nowMs: number;
+  readonly minimumFutureBufferMs: number;
+  readonly schedulerWindowStartTimeMs?: number;
+  readonly schedulerWindowEndTimeMs?: number;
+  readonly appendFenceEndTimeMs?: number;
+  readonly coverageHorizonMs?: number;
+}): CommitEndTimeFit => {
+  const capsMs = [
+    commitValidityEndTimeCapMs(lucid, currentSlot),
+    schedulerWindowEndTimeMs,
+    appendFenceEndTimeMs,
+  ].filter((capMs): capMs is number => capMs !== undefined);
+  const currentCapMs = Math.min(...capsMs);
+  const fitAt = (maximumEndTimeMs: number) =>
+    resolveLatestFeasibleCommitEndTime({
+      lucid,
+      latestEndTime:
+        schedulerWindowStartTimeMs === undefined
+          ? latestEndTime
+          : Math.max(latestEndTime, schedulerWindowStartTimeMs - 1),
+      nowMs,
+      minimumFutureBufferMs,
+      maximumEndTimeMs,
+    });
+  if (coverageHorizonMs !== undefined) {
+    const normalFit = fitAt(Math.min(currentCapMs, coverageHorizonMs));
+    if (normalFit.status === "fits") return normalFit;
+  }
+  return fitAt(currentCapMs);
 };
 
 export const minimumCommitBudgetMs = (

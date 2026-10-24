@@ -1,0 +1,299 @@
+{
+  "schema": "midgard-canonical-decodability-golden",
+  "version": 1,
+  "specDocument": "docs/spec/midgard-tx.md",
+  "generator": "demo/midgard-sdk/scripts/generate-canonical-decodability-v1-goldens.mjs",
+  "verdictCodeCount": 11,
+  "verdictNames": [
+    "grammatical",
+    "missing_array_header",
+    "not_an_array_header",
+    "non_minimal_array_header",
+    "truncated_array_header",
+    "missing_item_header",
+    "not_an_item_header",
+    "non_minimal_item_header",
+    "truncated_item_header",
+    "truncated_item_payload",
+    "trailing_bytes"
+  ],
+  "vectors": [
+    {
+      "label": "empty_field",
+      "note": "§5.1's empty field, and the shortest admissible preimage there is",
+      "preimage": "80",
+      "byteCount": 1,
+      "verdict": 0,
+      "verdictName": "grammatical"
+    },
+    {
+      "label": "one_item",
+      "note": "the ordinary shape",
+      "preimage": "8144deadbeef",
+      "byteCount": 6,
+      "verdict": 0,
+      "verdictName": "grammatical"
+    },
+    {
+      "label": "twenty_three_items",
+      "note": "the widest one-byte array header, `97`",
+      "preimage": "9741004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100",
+      "byteCount": 47,
+      "verdict": 0,
+      "verdictName": "grammatical"
+    },
+    {
+      "label": "twenty_four_items",
+      "note": "the narrowest two-byte array header, `98 18`",
+      "preimage": "9818410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100",
+      "byteCount": 50,
+      "verdict": 0,
+      "verdictName": "grammatical"
+    },
+    {
+      "label": "two_hundred_fifty_six_items",
+      "note": "the narrowest three-byte array header, `99 0100`",
+      "preimage": "9901004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100410041004100",
+      "byteCount": 515,
+      "verdict": 0,
+      "verdictName": "grammatical"
+    },
+    {
+      "label": "twenty_four_byte_item",
+      "note": "the narrowest two-byte item header, `58 18`",
+      "preimage": "8158185a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+      "byteCount": 27,
+      "verdict": 0,
+      "verdictName": "grammatical"
+    },
+    {
+      "label": "two_hundred_fifty_six_byte_item",
+      "note": "the narrowest three-byte item header, `59 0100`",
+      "preimage": "815901005a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+      "byteCount": 260,
+      "verdict": 0,
+      "verdictName": "grammatical"
+    },
+    {
+      "label": "no_bytes",
+      "note": "one byte short of the empty field",
+      "preimage": "",
+      "byteCount": 0,
+      "verdict": 1,
+      "verdictName": "missing_array_header"
+    },
+    {
+      "label": "four_byte_array_head",
+      "note": "well-formed CBOR, outside §5.1's acceptance set",
+      "preimage": "9a00000001",
+      "byteCount": 5,
+      "verdict": 2,
+      "verdictName": "not_an_array_header"
+    },
+    {
+      "label": "four_byte_item_head",
+      "note": "the same exclusion at the item head",
+      "preimage": "815a0000000100",
+      "byteCount": 7,
+      "verdict": 6,
+      "verdictName": "not_an_item_header"
+    },
+    {
+      "label": "non_minimal_array_head_at_23",
+      "note": "23 items spelled in the two-byte form",
+      "preimage": "9817",
+      "byteCount": 2,
+      "verdict": 3,
+      "verdictName": "non_minimal_array_header"
+    },
+    {
+      "label": "non_minimal_array_head_at_255",
+      "note": "255 items spelled in the three-byte form",
+      "preimage": "9900ff",
+      "byteCount": 3,
+      "verdict": 3,
+      "verdictName": "non_minimal_array_header"
+    },
+    {
+      "label": "truncated_array_head_two_byte",
+      "note": "a `98` head with no count byte",
+      "preimage": "98",
+      "byteCount": 1,
+      "verdict": 4,
+      "verdictName": "truncated_array_header"
+    },
+    {
+      "label": "truncated_array_head_three_byte",
+      "note": "a `99` head with one of its two count bytes",
+      "preimage": "9900",
+      "byteCount": 2,
+      "verdict": 4,
+      "verdictName": "truncated_array_header"
+    },
+    {
+      "label": "declares_more_items_than_it_carries",
+      "note": "the walk runs out of preimage before it runs out of declared items",
+      "preimage": "8242dead",
+      "byteCount": 4,
+      "verdict": 5,
+      "verdictName": "missing_item_header"
+    },
+    {
+      "label": "declares_one_item_and_carries_none",
+      "note": "the same, at the smallest cardinality there is",
+      "preimage": "81",
+      "byteCount": 1,
+      "verdict": 5,
+      "verdictName": "missing_item_header"
+    },
+    {
+      "label": "item_head_wrong_major",
+      "note": "a CBOR uint where §5.1 requires a byte-string head",
+      "preimage": "8100",
+      "byteCount": 2,
+      "verdict": 6,
+      "verdictName": "not_an_item_header"
+    },
+    {
+      "label": "non_minimal_item_head_at_23",
+      "note": "a 23-byte item spelled in the two-byte form",
+      "preimage": "815817",
+      "byteCount": 3,
+      "verdict": 7,
+      "verdictName": "non_minimal_item_header"
+    },
+    {
+      "label": "non_minimal_item_head_at_255",
+      "note": "a 255-byte item spelled in the three-byte form",
+      "preimage": "815900ff",
+      "byteCount": 4,
+      "verdict": 7,
+      "verdictName": "non_minimal_item_header"
+    },
+    {
+      "label": "truncated_item_head_two_byte",
+      "note": "a `58` item head with no length byte",
+      "preimage": "8158",
+      "byteCount": 2,
+      "verdict": 8,
+      "verdictName": "truncated_item_header"
+    },
+    {
+      "label": "truncated_item_head_three_byte",
+      "note": "a `59` item head with one of its two length bytes",
+      "preimage": "815901",
+      "byteCount": 3,
+      "verdict": 8,
+      "verdictName": "truncated_item_header"
+    },
+    {
+      "label": "truncated_item_payload",
+      "note": "an item declaring two payload bytes with one left",
+      "preimage": "8142ff",
+      "byteCount": 3,
+      "verdict": 9,
+      "verdictName": "truncated_item_payload"
+    },
+    {
+      "label": "truncated_item_payload_at_the_end",
+      "note": "a complete first item and a truncated second — the walk gets past item 0 before it fails",
+      "preimage": "81410142ff",
+      "byteCount": 5,
+      "verdict": 10,
+      "verdictName": "trailing_bytes"
+    },
+    {
+      "label": "declares_fewer_items_than_it_carries",
+      "note": "the preimage runs out of walk before it runs out of bytes",
+      "preimage": "8142dead42beef",
+      "byteCount": 7,
+      "verdict": 10,
+      "verdictName": "trailing_bytes"
+    },
+    {
+      "label": "trailing_byte_after_the_empty_field",
+      "note": "the smallest trailing-content vector there is",
+      "preimage": "8041",
+      "byteCount": 2,
+      "verdict": 10,
+      "verdictName": "trailing_bytes"
+    }
+  ],
+  "wireVectors": [
+    {
+      "label": "claim_body_inline",
+      "aikenType": "CommittedFieldClaimV1",
+      "value": {
+        "BodyFieldClaim": {
+          "field_index": "2n",
+          "carriage": {
+            "Inline": {
+              "preimage": "8041"
+            }
+          }
+        }
+      },
+      "cborHex": "d8799f02d8799f428041ffff"
+    },
+    {
+      "label": "claim_body_certified",
+      "aikenType": "CommittedFieldClaimV1",
+      "value": {
+        "BodyFieldClaim": {
+          "field_index": "0n",
+          "carriage": {
+            "Certified": {
+              "cert_ref_input_index": "2n",
+              "chunk_ref_input_indices": [
+                "3n",
+                "4n",
+                "5n"
+              ]
+            }
+          }
+        }
+      },
+      "cborHex": "d8799f00d87b9f029f030405ffffff"
+    },
+    {
+      "label": "claim_witness_raw_utxo",
+      "aikenType": "CommittedFieldClaimV1",
+      "value": {
+        "WitnessFieldClaim": {
+          "field_index": "6n",
+          "witness_set": {
+            "addr_tx_wits_hash": "3131313131313131313131313131313131313131313131313131313131313131",
+            "script_tx_wits_hash": "3232323232323232323232323232323232323232323232323232323232323232",
+            "redeemer_tx_wits_hash": "3333333333333333333333333333333333333333333333333333333333333333"
+          },
+          "carriage": {
+            "RawUtxo": {
+              "ref_input_index": "2n"
+            }
+          }
+        }
+      },
+      "cborHex": "d87a9f06d8799f582031313131313131313131313131313131313131313131313131313131313131315820323232323232323232323232323232323232323232323232323232323232323258203333333333333333333333333333333333333333333333333333333333333333ffd87a9f02ffff"
+    },
+    {
+      "label": "state_convicting",
+      "aikenType": "State",
+      "value": {
+        "bad_tx_id": "2222222222222222222222222222222222222222222222222222222222222222",
+        "field_index": "2n",
+        "verdict": "10n"
+      },
+      "cborHex": "d8799f58202222222222222222222222222222222222222222222222222222222222222222020aff"
+    },
+    {
+      "label": "state_grammatical",
+      "aikenType": "State",
+      "value": {
+        "bad_tx_id": "2222222222222222222222222222222222222222222222222222222222222222",
+        "field_index": "8n",
+        "verdict": "0n"
+      },
+      "cborHex": "d8799f582022222222222222222222222222222222222222222222222222222222222222220800ff"
+    }
+  ]
+}

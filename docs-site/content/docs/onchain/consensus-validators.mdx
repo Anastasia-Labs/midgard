@@ -6,14 +6,15 @@ description: "The validators that run Midgard's consensus on L1, from the hub or
 These validators, under
 [`onchain/aiken/validators/`](https://github.com/Anastasia-Labs/midgard/tree/main/onchain/aiken/validators),
 enforce the consensus and settlement machinery described in the
-[Consensus Protocol](/docs/spec/consensus-protocol) chapter. Each has a matching
+[Consensus Protocol](/docs/spec/consensus-protocol) chapter. Most have a corresponding
 `lib/` module following the repository's
 [one-to-one convention](/docs/onchain/conventions).
 
 ## Validators
 
 - **`hub-oracle`**: the central hub / oracle authority. Holds protocol-level
-  configuration and nonce authority that other validators reference.
+  configuration that other validators reference. Its mint policy binds the hub
+  NFT and correction-lock NFT to the one-shot initialization input.
 - **`state-queue`**: the on-chain queue of committed block headers. Governs the
   commit → confirm → merge lifecycle of blocks awaiting settlement.
 - **`scheduler`**: rotates block-production duty between operators and advances
@@ -23,9 +24,9 @@ enforce the consensus and settlement machinery described in the
 - **`payout`**: governs withdrawal payout minting and spending.
 
 <Callout type="info" title="Datums and redeemers">
-Each validator defines its own datum (the state it protects) and redeemer (the
-allowed transitions). For exact type definitions and validation logic, read the
-corresponding `.ak` file and its `lib/` module.
+  Each validator defines its own datum (the state it protects) and redeemer (the
+  allowed transitions). For exact type definitions and validation logic, read
+  the corresponding `.ak` file and its `lib/` module.
 </Callout>
 
 ## Related

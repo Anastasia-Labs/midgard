@@ -5,8 +5,8 @@ import { describe, expect, it } from "vitest";
 import {
   encodeDepositStatus,
   parseDepositStatusLookup,
-} from "@/commands/deposit-status.js";
-import * as DepositsDB from "@/database/deposits.js";
+} from "../src/commands/deposit-status.js";
+import * as DepositsDB from "../src/database/deposits.js";
 
 const makeDepositEntry = (
   overrides: Partial<DepositsDB.Entry> = {},

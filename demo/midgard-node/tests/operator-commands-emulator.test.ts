@@ -1,0 +1,434 @@
+/**
+ * The node-side operator programs (status report, retirement, bond recovery,
+ * takeover planning and strike submission, forced retirement, duplicate
+ * selection) against the real compiled validators in the emulator.
+ *
+ * The SDK builders themselves are covered by `operator-exit-emulator.test.ts`
+ * and `operator-inactivity-emulator.test.ts`; this file covers the layer the
+ * CLI verbs and the watchdog call: local refusals with printable reasons, the
+ * funding preflight, witness derivation from a live snapshot, and the
+ * scheduler route each retirement takes.
+ */
+import "./helpers/follower-emulator-installed.js";
+import "./operator-commands-emulator.select-duplicate-registration.js";
+
+import * as SDK from "@al-ft/midgard-sdk";
+import { generateSeedPhrase, Lucid } from "@lucid-evolution/lucid";
+import { Effect, Either } from "effect";
+import { describe, expect, it } from "vitest";
+
+import { openPlan } from "../src/services/intent-journal.js";
+import {
+  type OperatorEconomics,
+  OperatorExitRefusal,
+  recoverOperatorBondProgram,
+  retireOperatorProgram,
+} from "../src/transactions/operators/exit.js";
+import { OperatorFundingShortfall } from "../src/transactions/operators/funding-preflight.js";
+import { deriveOperatorStatusReport } from "../src/transactions/operators/status.js";
+import {
+  planTakeoverProgram,
+  submitInactivityStrikeProgram,
+} from "../src/transactions/operators/takeover.js";
+import {
+  drainJournaledWithoutFollower,
+  runWithoutFollower,
+  withoutFollowerJournal,
+} from "./helpers/intent-journal.js";
+import {
+  expectReplayedFamilies,
+  walletReplayConfig,
+} from "./helpers/intent-journal-replay.expect.js";
+import { replayJournaledOnFollower } from "./helpers/intent-journal-replay.js";
+import {
+  advanceEmulatorPastUnixTime,
+  appointFirstSchedulerOperator,
+  fetchInactivityDirectorySnapshot,
+  fetchNeglectedUserEvent,
+  initOperatorInactivityFixture,
+  type OperatorInactivityFixture,
+  strikeOperatorToMaxStrikes,
+  submitNeglectedDeposit,
+} from "./helpers/operator-inactivity.js";
+
+const ECONOMICS: OperatorEconomics = {
+  requiredBondLovelace: 900_000_000n,
+  slashingPenaltyLovelace: 500_000_000n,
+  inactivitySlashingPenaltyLovelace: 100_000_000n,
+  fraudProverRewardLovelace: 400_000_000n,
+};
+
+const WATCHDOG = { enabled: true, patienceMs: 120_000 } as const;
+
+const UNKNOWN_KEY = "ab".repeat(28);
+
+const report = async (
+  fixture: OperatorInactivityFixture,
+  operatorKeyHash: string,
+) => {
+  const snapshot = await fetchInactivityDirectorySnapshot(fixture);
+  return deriveOperatorStatusReport(snapshot, {
+    operatorKeyHash,
+    watchdog: WATCHDOG,
+    nowMs: BigInt(fixture.emulator.now()),
+    neglectedEvent: await fetchNeglectedUserEvent(fixture, snapshot),
+  });
+};
+
+/** A planned snapshot as the exit programs open one: the plan, then the read. */
+const plannedSnapshot = async (fixture: OperatorInactivityFixture) => {
+  const intentPlan = await runWithoutFollower(openPlan);
+  return {
+    intentPlan,
+    snapshot: await fetchInactivityDirectorySnapshot(fixture),
+  };
+};
+
+const retiredBondOf = async (
+  fixture: OperatorInactivityFixture,
+  operatorKeyHash: string,
+): Promise<bigint | null> => {
+  const snapshot = await fetchInactivityDirectorySnapshot(fixture);
+  const node = SDK.findNodeByKey(snapshot.retired, operatorKeyHash);
+  return node === undefined ? null : (node.utxo.assets["lovelace"] ?? 0n);
+};
+
+const expectRefusal = async <A, E>(effect: Effect.Effect<A, E>): Promise<E> => {
+  const outcome = await Effect.runPromise(Effect.either(effect));
+  if (Either.isRight(outcome)) {
+    throw new Error("Expected the program to refuse");
+  }
+  return outcome.left;
+};
+
+describe("operator status report", () => {
+  it("describes the scheduled operator, an idle operator, and an unknown key", async () => {
+    const fixture = await initOperatorInactivityFixture(2);
+    const appointed = await appointFirstSchedulerOperator(fixture);
+    const idle = fixture.operators.find(
+      ({ keyHash }) => keyHash !== appointed.operatorKeyHash,
+    )!;
+
+    const scheduled = await report(fixture, appointed.operatorKeyHash);
+    expect(scheduled.state).toBe("active");
+    expect(scheduled.duplicate).toBe(false);
+    expect(scheduled.bondLovelace).toBe("900000000");
+    expect(scheduled.inactivityStrikes).toBe(0);
+    expect(scheduled.maxInactivityStrikes).toBe(5);
+    expect(scheduled.scheduler.holdsShift).toBe(true);
+    expect(scheduled.scheduler.currentOperator).toBe(appointed.operatorKeyHash);
+    expect(scheduled.scheduler.shiftStartTime).toBe(
+      appointed.startTime.toString(),
+    );
+    // With no user event undelivered the shift cannot be struck at all.
+    expect(scheduled.inactivity).not.toBeNull();
+    expect(scheduled.inactivity!.neglectedEvent).toBeNull();
+    expect(scheduled.inactivity!.thresholdTime).toBeNull();
+    expect(scheduled.inactivity!.nextTakeoverTime).toBeNull();
+    expect(scheduled.inactivity!.strikesExhausted).toBe(false);
+
+    // A deposit the tail has not delivered gives the shift a threshold.
+    const deposit = await submitNeglectedDeposit(fixture);
+    const owed = await report(fixture, appointed.operatorKeyHash);
+    expect(owed.inactivity!.neglectedEvent).toEqual({
+      kind: "Deposit",
+      inclusionTime: deposit.inclusionTimeMs.toString(),
+    });
+    expect(owed.inactivity!.blocked).toBeNull();
+    expect(BigInt(owed.inactivity!.nextTakeoverTime!)).toBe(
+      BigInt(owed.inactivity!.thresholdTime!) + 1n,
+    );
+    expect(scheduled.watchdog).toMatchObject({
+      enabled: true,
+      patienceMs: 120_000,
+      lastTakeoverTxHash: null,
+    });
+
+    const idleReport = await report(fixture, idle.keyHash);
+    expect(idleReport.state).toBe("active");
+    expect(idleReport.scheduler.holdsShift).toBe(false);
+    expect(idleReport.scheduler.currentOperator).toBe(
+      appointed.operatorKeyHash,
+    );
+
+    const unknown = await report(fixture, UNKNOWN_KEY);
+    expect(unknown.state).toBe("none");
+    expect(unknown.memberships).toEqual([]);
+    expect(unknown.bondLovelace).toBeNull();
+    expect(unknown.bondRecoverable).toBe(false);
+  }, 600_000);
+});
+
+describe("voluntary retirement and bond recovery", () => {
+  it("retires the idle operator without touching the scheduler, rewinds when the scheduled operator leaves last, and recovers both bonds", async () => {
+    const fixture = await initOperatorInactivityFixture(2);
+    const appointed = await appointFirstSchedulerOperator(fixture);
+    const idle = fixture.operators.find(
+      ({ keyHash }) => keyHash !== appointed.operatorKeyHash,
+    )!;
+
+    const idleLucid = await fixture.lucidFor(idle.keyHash);
+    const idleRetirement = await runWithoutFollower(
+      retireOperatorProgram(
+        idleLucid,
+        fixture.contracts,
+        fixture.referenceScriptsAddress,
+        {
+          operatorKeyHash: idle.keyHash,
+          mode: "voluntary",
+          economics: ECONOMICS,
+        },
+      ),
+    );
+    expect(idleRetirement.schedulerRoute).toBe("OperatorIsInactive");
+    expect(idleRetirement.retiredBondLovelace).toBe(900_000_000n);
+    expect(await retiredBondOf(fixture, idle.keyHash)).toBe(900_000_000n);
+    expect((await report(fixture, idle.keyHash)).state).toBe("retired");
+
+    // Retiring again is refused locally with a printable reason.
+    const again = await expectRefusal(
+      withoutFollowerJournal(
+        retireOperatorProgram(
+          idleLucid,
+          fixture.contracts,
+          fixture.referenceScriptsAddress,
+          {
+            operatorKeyHash: idle.keyHash,
+            mode: "voluntary",
+            economics: ECONOMICS,
+          },
+        ),
+      ),
+    );
+    expect(again).toBeInstanceOf(OperatorExitRefusal);
+    expect((again as Error).message).toMatch(/retired, not active/);
+
+    const scheduledLucid = await fixture.lucidFor(appointed.operatorKeyHash);
+    const lastRetirement = await runWithoutFollower(
+      retireOperatorProgram(
+        scheduledLucid,
+        fixture.contracts,
+        fixture.referenceScriptsAddress,
+        {
+          operatorKeyHash: appointed.operatorKeyHash,
+          mode: "voluntary",
+          economics: ECONOMICS,
+        },
+      ),
+    );
+    expect(lastRetirement.schedulerRoute).toBe("Rewind");
+    const afterLast = await fetchInactivityDirectorySnapshot(fixture);
+    expect(afterLast.scheduler.datum).toBe("NoActiveOperators");
+    expect(
+      (await report(fixture, appointed.operatorKeyHash)).inactivity,
+    ).toBeNull();
+
+    for (const operator of [idle.keyHash, appointed.operatorKeyHash]) {
+      const before = await report(fixture, operator);
+      expect(before.bondRecoverable).toBe(true);
+      const recovery = await runWithoutFollower(
+        recoverOperatorBondProgram(
+          await fixture.lucidFor(operator),
+          fixture.contracts,
+          fixture.referenceScriptsAddress,
+          { operatorKeyHash: operator },
+        ),
+      );
+      expect(recovery.bondLovelace).toBe(900_000_000n);
+      expect(await retiredBondOf(fixture, operator)).toBeNull();
+      expect((await report(fixture, operator)).state).toBe("none");
+    }
+
+    const nothingLeft = await expectRefusal(
+      withoutFollowerJournal(
+        recoverOperatorBondProgram(
+          idleLucid,
+          fixture.contracts,
+          fixture.referenceScriptsAddress,
+          { operatorKeyHash: idle.keyHash },
+        ),
+      ),
+    );
+    expect(nothingLeft).toBeInstanceOf(OperatorExitRefusal);
+    expect((nothingLeft as Error).message).toMatch(/no retired node/);
+  }, 600_000);
+
+  it("refuses to build when the submitting wallet cannot fund the fee", async () => {
+    const fixture = await initOperatorInactivityFixture(1);
+    const operator = fixture.operators[0]!;
+    const emptyWallet = await Lucid(fixture.emulator, "Custom");
+    emptyWallet.selectWallet.fromSeed(generateSeedPhrase());
+    const refusal = await expectRefusal(
+      withoutFollowerJournal(
+        retireOperatorProgram(
+          emptyWallet,
+          fixture.contracts,
+          fixture.referenceScriptsAddress,
+          {
+            operatorKeyHash: operator.keyHash,
+            mode: "voluntary",
+            economics: ECONOMICS,
+          },
+        ),
+      ),
+    );
+    expect(refusal).toBeInstanceOf(OperatorFundingShortfall);
+    expect((refusal as Error).message).toMatch(/ADA/);
+  }, 600_000);
+});
+
+describe("takeover planning, strike, and forced retirement", () => {
+  it("plans not-yet before the threshold, strikes after it, and force-retires at the strike limit", async () => {
+    const fixture = await initOperatorInactivityFixture(2);
+    drainJournaledWithoutFollower();
+    const appointed = await appointFirstSchedulerOperator(fixture);
+    const successor = fixture.operators.find(
+      ({ keyHash }) => keyHash !== appointed.operatorKeyHash,
+    )!;
+    const successorLucid = await fixture.lucidFor(successor.keyHash);
+    // The shift owes a deposit; without one it could never be struck.
+    await submitNeglectedDeposit(fixture);
+
+    const early = await runWithoutFollower(
+      planTakeoverProgram(successorLucid, fixture.contracts),
+    );
+    expect(early.plan.kind).toBe("not-yet");
+    if (early.plan.kind !== "not-yet") {
+      throw new Error("unreachable");
+    }
+    expect(early.plan.currentOperator).toBe(appointed.operatorKeyHash);
+
+    advanceEmulatorPastUnixTime(fixture.emulator, early.plan.thresholdMs);
+    const due = await runWithoutFollower(
+      planTakeoverProgram(successorLucid, fixture.contracts),
+    );
+    expect(due.plan.kind).toBe("ready");
+    if (due.plan.kind !== "ready") {
+      throw new Error("unreachable");
+    }
+    expect(due.plan.newOperatorKey).toBe(successor.keyHash);
+    const strike = await runWithoutFollower(
+      submitInactivityStrikeProgram(
+        successorLucid,
+        fixture.contracts,
+        fixture.referenceScriptsAddress,
+        { ...due, plan: due.plan },
+      ),
+    );
+    expect(strike.skippedOperator).toBe(appointed.operatorKeyHash);
+    expect(strike.newOperator).toBe(successor.keyHash);
+    expect(strike.struckInactivityStrikes).toBe(1n);
+    const struck = await report(fixture, appointed.operatorKeyHash);
+    expect(struck.inactivityStrikes).toBe(1);
+    expect(struck.scheduler.holdsShift).toBe(false);
+    expect(
+      (await report(fixture, successor.keyHash)).scheduler.holdsShift,
+    ).toBe(true);
+
+    // Forced retirement is refused locally below the strike limit.
+    const tooEarly = await expectRefusal(
+      withoutFollowerJournal(
+        retireOperatorProgram(
+          successorLucid,
+          fixture.contracts,
+          fixture.referenceScriptsAddress,
+          {
+            mode: "forced-inactivity",
+            ...(await plannedSnapshot(fixture)),
+            operatorKeyHash: appointed.operatorKeyHash,
+            economics: ECONOMICS,
+          },
+        ),
+      ),
+    );
+    expect(tooEarly).toBeInstanceOf(OperatorExitRefusal);
+    expect((tooEarly as Error).message).toMatch(/forced retirement needs 5/);
+
+    const exhausted = await strikeOperatorToMaxStrikes(
+      fixture,
+      appointed.operatorKeyHash,
+    );
+    expect(exhausted.inactivityStrikes).toBe(SDK.MAX_INACTIVITY_STRIKES);
+    const atLimit = await report(fixture, appointed.operatorKeyHash);
+    expect(atLimit.inactivityStrikes).toBe(5);
+
+    // Past the cap the voluntary verb is refused before anything is built.
+    const appointedLucid = await fixture.lucidFor(appointed.operatorKeyHash);
+    const capped = await runWithoutFollower(
+      retireOperatorProgram(
+        appointedLucid,
+        fixture.contracts,
+        fixture.referenceScriptsAddress,
+        {
+          mode: "voluntary",
+          ...(await plannedSnapshot(fixture)),
+          operatorKeyHash: appointed.operatorKeyHash,
+          economics: ECONOMICS,
+        },
+      ),
+    ).catch((error: unknown) => error);
+    expect((capped as Error).message).toMatch(/can only be force-retired/);
+
+    // Anyone may submit; the successor's wallet does, paying nothing net.
+    const forced = await runWithoutFollower(
+      retireOperatorProgram(
+        successorLucid,
+        fixture.contracts,
+        fixture.referenceScriptsAddress,
+        {
+          mode: "forced-inactivity",
+          ...(await plannedSnapshot(fixture)),
+          operatorKeyHash: appointed.operatorKeyHash,
+          economics: ECONOMICS,
+        },
+      ),
+    );
+    expect(forced.mode).toBe("forced-inactivity");
+    expect(forced.retiredBondLovelace).toBe(800_000_000n);
+    expect(await retiredBondOf(fixture, appointed.operatorKeyHash)).toBe(
+      800_000_000n,
+    );
+    const retired = await report(fixture, appointed.operatorKeyHash);
+    expect(retired.state).toBe("retired");
+    expect(retired.bondLovelace).toBe("800000000");
+    expect(retired.bondRecoverable).toBe(true);
+
+    // The partially slashed bond comes back to the operator in full.
+    const recovery = await runWithoutFollower(
+      recoverOperatorBondProgram(
+        await fixture.lucidFor(appointed.operatorKeyHash),
+        fixture.contracts,
+        fixture.referenceScriptsAddress,
+        { operatorKeyHash: appointed.operatorKeyHash },
+      ),
+    );
+    expect(recovery.bondLovelace).toBe(800_000_000n);
+    expect((await report(fixture, appointed.operatorKeyHash)).state).toBe(
+      "none",
+    );
+
+    // Each operator's node, following this chain, records its own intents
+    // and judges them wanted at the tip before they landed (I1-fix F5).
+    const journaled = drainJournaledWithoutFollower();
+    for (const [operator, families] of [
+      [successor.keyHash, ["takeover", "retire"]],
+      [appointed.operatorKeyHash, ["recover_bond"]],
+    ] as const)
+      expectReplayedFamilies(
+        await replayJournaledOnFollower({
+          emulator: fixture.emulator,
+          contracts: fixture.contracts,
+          config: walletReplayConfig({
+            operatorSeed: fixture.operators.find((o) => o.keyHash === operator)!
+              .seedPhrase,
+            referenceScriptsSeed: fixture.referenceScriptsSeedPhrase,
+            referenceScriptsAddress: fixture.referenceScriptsAddress,
+          }),
+          slotToPosixMs: (slot) => fixture.lucid.slotToUnixTime(slot),
+          operatorKeyHash: operator,
+          journaled,
+        }),
+        families,
+      );
+  }, 600_000);
+});

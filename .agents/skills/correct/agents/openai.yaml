@@ -1,0 +1,6 @@
+interface:
+  display_name: "Correct"
+  short_description: "Prevent recurring agent mistakes through code and checks"
+  default_prompt: "Use $correct to find recurring Midgard mistakes and prevent them at the highest effective level within the requested scope."
+policy:
+  allow_implicit_invocation: false

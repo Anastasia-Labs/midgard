@@ -1,0 +1,70 @@
+{
+  "schema": "midgard-devnet-campaign/v1",
+  "id": "l1-follower-acceptance",
+  "commit": "0000000000000000000000000000000000000000",
+  "deploymentProfile": "local-devnet-testing",
+  "directory": "/absolute/campaigns/l1-follower-acceptance",
+  "stages": [
+    {
+      "id": "stack-up",
+      "kind": "devnet-stack",
+      "timeoutSeconds": 10800,
+      "args": ["up", "--run-dir", "/absolute/devnets/stack", "--no-build"]
+    },
+    {
+      "id": "stack-journey",
+      "kind": "devnet-stack",
+      "timeoutSeconds": 10800,
+      "args": ["journey", "--run-dir", "/absolute/devnets/stack"]
+    },
+    {
+      "id": "stack-status",
+      "kind": "devnet-stack",
+      "timeoutSeconds": 600,
+      "args": ["status", "--run-dir", "/absolute/devnets/stack"]
+    },
+    {
+      "id": "stack-down",
+      "kind": "devnet-stack",
+      "timeoutSeconds": 900,
+      "always": true,
+      "args": ["down", "--run-dir", "/absolute/devnets/stack", "--l1"]
+    },
+    {
+      "id": "journeys-l1-up",
+      "kind": "phase4",
+      "action": "up",
+      "runDir": "/absolute/devnets/watcher-journeys",
+      "timeoutSeconds": 900
+    },
+    {
+      "id": "journeys-configuration",
+      "kind": "watcher-journeys",
+      "runDir": "/absolute/devnets/watcher-journeys",
+      "files": ["devnet/watcher-journeys/configuration.test.ts"],
+      "timeoutSeconds": 1800
+    },
+    {
+      "id": "journeys-deployment",
+      "kind": "watcher-journeys",
+      "runDir": "/absolute/devnets/watcher-journeys",
+      "files": ["devnet/watcher-journeys/deployment.test.ts"],
+      "timeoutSeconds": 7200
+    },
+    {
+      "id": "journeys-journey",
+      "kind": "watcher-journeys",
+      "runDir": "/absolute/devnets/watcher-journeys",
+      "files": ["devnet/watcher-journeys/journey.test.ts"],
+      "timeoutSeconds": 129600
+    },
+    {
+      "id": "journeys-l1-down",
+      "kind": "phase4",
+      "action": "down",
+      "runDir": "/absolute/devnets/watcher-journeys",
+      "timeoutSeconds": 600,
+      "always": true
+    }
+  ]
+}

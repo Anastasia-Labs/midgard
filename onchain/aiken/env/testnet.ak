@@ -1,7 +1,7 @@
 use aiken/builtin
 use aiken/cbor
 use aiken/crypto.{ScriptHash, blake2b_256}
-use midgard/common/types.{Empty, H32, PosixTime, PosixTimeDuration}
+use midgard/common/types.{Empty, H32, PosixTime}
 
 pub const posix_time_none: PosixTime = -1
 
@@ -9,49 +9,111 @@ pub const plutus_version: Int = 3
 
 pub const max_tokens_allowed_in_deposits: Int = 10
 
-pub const event_wait_duration: Int = 60_000
-
-pub const shift_duration: PosixTimeDuration = 60 * 60 * 1000
-
-pub const registration_duration: PosixTimeDuration = 30
-
-pub const maturity_duration: PosixTimeDuration = 30
-
-pub const slashing_penalty: Int = 0
-
-pub const fraud_prover_reward: Int = 0
-
-pub const required_bond: Int = slashing_penalty + fraud_prover_reward
-
-pub const inactivity_slashing_penalty: Int = 0
-
-pub const user_events_negligence_timeout: PosixTimeDuration = 5 * 60 * 1000
-
-pub const max_inactivity_between_block_commitments: PosixTimeDuration =
-  10 * 6 * 1000
-
-pub const new_shift_inactivity_grace_period: PosixTimeDuration = 5 * 60 * 1000
-
-pub const max_inactivity_strikes: Int = 5
-
-pub const max_validity_range_length: PosixTimeDuration = 8 * 60 * 1000
-
 pub const empty: Empty = ""
 
 pub const empty_data: Data = empty |> builtin.b_data()
 
-pub const empty_list_hash: H32<List<Data>> = [] |> cbor.serialise |> blake2b_256
+pub const empty_list_hash: H32<List<Data>> =
+  builtin.list_data([]) |> cbor.serialise |> blake2b_256
 
 pub const empty_merkle_tree_root =
   #"0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8"
 
 pub const plutarch_phas_validator_hash: ScriptHash =
-  #"46df0027fc0af07197924dc07f1c27ac6b15eb2bd6efc7a73b0dbb4d"
+  #"540660a975f99e74f17236217d218494ff0b0eca85e8fc74398464e2"
 
 pub const plutarch_pexcludes_validator_hash: ScriptHash =
-  #"5a06db38b22c52ca7d1789f16c1819da03b15171efe245ef18ad7af6"
+  #"b0d2d7144f6f349ed9bf7a6c5b5c709203e79f686743163c3c0e243b"
 
-pub const plutarch_pdelete_validator_hash: ScriptHash = #""
+/// Merkelized verifier of published-chunk MPF proof carriage (issue #545).
+/// Compiled from `validators/mpf-chunked-verify.ak` in this very project,
+/// so this constant is the blueprint hash of
+/// `mpf_chunked_verify.verify.withdraw`
+/// and is re-pinned whenever that validator changes.
+pub const mpf_chunked_verify_validator_hash: ScriptHash =
+  #"39f64e95ef5c8d243ae9287a8b13ba22360009c96e1913328d543065"
 
 pub const user_events_witness_script_prefix: ByteArray =
-  #"5902ce0101003229800aba2aba1aab9faab9eaab9dab9a9bae002488888896600264653001300800198041804800cc0200092225980099b8748018c020dd500146600260126ea800a6e1d20029b874800260106ea800d222232332259800980280244c8c966002602a0050048b2026375c602600260206ea802a2b30013006004899192cc004c05400a00916404c6eb4c04c004c040dd5005456600266e1d2004004899192cc004c05400a00916404c6eb4c04c004c040dd500545900e201c40382653001300100198071baa0099180918099809980998099809800a444b3001300700289919912cc004c028006260160051598009805800c4cdc38012400314a0809901319199119801001000912cc004006007132325980099b910150018acc004cdc780a800c4dd6980c001401501644cc010010c06c00d0161bae30160013018001405c6464660020026eacc060c064c064c064c064c058dd5007112cc004006007132325980099b910070018acc004cdc7803800c4dd5980c801401501744cc010010c07000d0171bae301700130190014060297adef6c60148000c048dd50031bae301430123754019159800980400144c8c96600266ebc00401e2b3001300930133754003132598009805980a1baa0018acc004cdd7980b980a9baa00230173015375400314a316404d16404c602c602e005164049164048602a002660066eb0c004c048dd50051bad301430123754019159800980418089baa0058992cc004c020c048dd5000c56600266ebcc054c04cdd5000980a98099baa0068a518b20228b20223014330033758600260246ea8028dd6980a18091baa00c8b202040408080444b30013371200290004400a2b30010028a5eb8233001003980a0014cdc0000a40028019012201e375a602000a601e60200088b200e180400098021baa0088a4d1365640084c01225820"
+  #"5902e20101003229800aba2aba1aab9faab9eaab9dab9a9bae002488888896600264653001300800198041804800cc0200092225980099b8748018c020dd500146600260126ea800a6e1d20029b874800260106ea800d222232332259800980280244c8c966002602a0050048b2026375c602600260206ea802a2b30013006004899192cc004c05400a00916404c6eb4c04c004c040dd5005456600266e1d2004004899192cc004c05400a00916404c6eb4c04c004c040dd500545900e201c40382653001300100198071baa0099180918099809980998099809800a444b3001300700289919912cc004c028006260160051598009805800c4cdc3a400200514a0809901319199119801001000912cc004006007132325980099b910150018acc004cdc780a800c4dd6980c001401501644cc010010c06c00d0161bae30160013018001405c6464660020026eacc060c064c064c064c064c058dd5007112cc004006007132325980099b910070018acc004cdc7803800c4dd5980c801401501744cc010010c07000d0171bae301700130190014060297adef6c60148000c048dd50031bae301430123754019159800980400144c8c966002003168992cc004cdd78008044566002601460286ea8006264b3001300c3015375400315980099baf3018301637540046030602c6ea800629462c80a22c80a0c05c00a2c809a2c8098c058009015180b000998019bac3001301237540146eb4c050c048dd50064566002601060226ea8016264b30010018b44c966002601260266ea80062b30013375e602c60286ea8004c058c050dd5003c528c59012459012180a800a028330033758600260246ea8028dd6980a18091baa00c8b202040408080444b30013371200290004400a2b30010028a5eb8233001003980a0014cdc0240020028019012201e375a602000a601e60200088b200e180400098021baa0088a4d1365640084c1225820"
+
+pub const block_maturity_duration_v1: Int = 900_000
+
+pub const response_window_milliseconds: Int = 60_000
+
+pub const dispute_side_clock_milliseconds: Int = 3_600_000
+
+pub const dispute_max_validity_range_milliseconds: Int = 20_000
+
+pub const dispute_resolution_allowance_milliseconds: Int = 900_000
+
+pub const shift_duration: Int = 1_800_000
+
+pub const registration_duration: Int = 30_000
+
+pub const event_wait_duration: Int = 300_000
+
+pub const user_events_negligence_timeout: Int = 1_200_000
+
+pub const new_shift_inactivity_grace_period: Int = 480_000
+
+pub const max_validity_range_length: Int = 480_000
+
+pub const max_event_validity_range_length: Int = 600_000
+
+pub const da_attestation_timeout_v1: Int = 600_000
+
+pub const small_response_window_ms_v1: Int = 880_000
+
+pub const full_response_window_ms_v1: Int = 880_000
+
+pub const da_challenge_window_ms_v1: Int = 720_000
+
+pub const da_slash_grace_ms_v1: Int = 300_000
+
+pub const da_bond_withdraw_delay_ms_v1: Int = 2_380_000
+
+pub const da_bond_lovelace_v1: Int = 500_000_000
+
+pub const da_slash_penalty_lovelace_v1: Int = 100_000_000
+
+pub const da_bond_min_top_up_lovelace_v1: Int = 5_000_000
+
+pub const da_bond_pool_floor_lovelace_v1: Int = 5_000_000
+
+pub const challenge_record_lovelace_v1: Int = 27_000_000
+
+pub const max_bisection_rounds: Int = 32
+
+pub const max_inactivity_strikes: Int = 5
+
+pub const coins_per_utxo_byte: Int = 4_310
+
+pub const max_dispute_move_fee_lovelace: Int = 1_200_000
+
+pub const fraud_proof_output_lovelace: Int = 2_000_000
+
+pub const required_bond: Int = 900_000_000
+
+pub const slashing_penalty: Int = 500_000_000
+
+pub const inactivity_slashing_penalty: Int = 100_000_000
+
+pub const fraud_prover_reward: Int = 400_000_000
+
+pub const prover_collateral_floor: Int = 5_000_000
+
+pub const operator_allow_list: Option<List<ByteArray>> = None
+
+pub const fraud_prover_allow_list: Option<List<ByteArray>> = None
+
+pub const da_challenger_allow_list: Option<List<ByteArray>> = None
+
+pub const protocol_treasury_native_script_cbor: ByteArray =
+  #"830302838200581c706c616365686f6c6465723a747265730000000000000000000000018200581c706c616365686f6c6465723a747265730000000000000000000000028200581c706c616365686f6c6465723a74726573000000000000000000000003"
+
+/// The forfeit destination of the validation-dispute bond: the hash of
+/// `protocol_treasury_native_script_cbor`, never passed.
+pub const protocol_treasury_script_hash: ScriptHash =
+  builtin.blake2b_224(
+    builtin.cons_bytearray(0, protocol_treasury_native_script_cbor),
+  )

@@ -5,16 +5,17 @@ import { describe, expect, it } from "vitest";
 import {
   resolveConfirmationDetectionLagMs,
   shouldObserveConfirmationDetectionLag,
-} from "@/fibers/block-confirmation.js";
-import { resolveTransactionConfirmationMetadata } from "@/transaction-confirmation-metadata.js";
-import { probeSubmittedTx } from "@/workers/confirm-block-commitments.js";
+} from "../src/fibers/block-confirmation.js";
+import { resolveTransactionConfirmationMetadata } from "../src/transaction-confirmation-metadata.js";
+import { probeSubmittedTx } from "../src/workers/confirm-block-commitments.js";
 import {
   decideUnsubmittedPendingBlockRecovery,
   type PendingBlockConfirmation,
   pendingBlockHasSubmittedTx,
+  pendingBlockLookupTxHash,
   shouldDeferUnsubmittedPendingBlockRecovery,
   shouldRunFullStateQueueConfirmationScan,
-} from "@/workers/utils/confirm-block-commitments.js";
+} from "../src/workers/utils/confirm-block-commitments.js";
 
 const pendingBlock = (
   submittedTxHash: PendingBlockConfirmation["submittedTxHash"],
@@ -22,6 +23,7 @@ const pendingBlock = (
   expectedHeaderHash: "aa".repeat(32),
   submittedTxHash,
   blockEndTimeMs: Date.now() + 60_000,
+  blockTimeMs: Date.now() + 60_000,
   updatedAtMs: Date.now(),
 });
 
@@ -203,14 +205,14 @@ describe("confirm-block-commitments utilities", () => {
     expect(
       shouldDeferUnsubmittedPendingBlockRecovery({
         pendingBlock: block,
-        nowMs: block.blockEndTimeMs + recoveryGraceMs,
+        nowMs: block.blockTimeMs + recoveryGraceMs,
         recoveryGraceMs,
       }),
     ).toBe(true);
     expect(
       shouldDeferUnsubmittedPendingBlockRecovery({
         pendingBlock: block,
-        nowMs: block.blockEndTimeMs + recoveryGraceMs + 1,
+        nowMs: block.blockTimeMs + recoveryGraceMs + 1,
         recoveryGraceMs,
       }),
     ).toBe(false);
@@ -224,7 +226,7 @@ describe("confirm-block-commitments utilities", () => {
       decideUnsubmittedPendingBlockRecovery({
         canonicalMatchFound: true,
         pendingBlock: block,
-        nowMs: block.blockEndTimeMs + recoveryGraceMs + 1,
+        nowMs: block.blockTimeMs + recoveryGraceMs + 1,
         recoveryGraceMs,
       }),
     ).toBe("recover_canonical");
@@ -232,7 +234,7 @@ describe("confirm-block-commitments utilities", () => {
       decideUnsubmittedPendingBlockRecovery({
         canonicalMatchFound: false,
         pendingBlock: block,
-        nowMs: block.blockEndTimeMs + recoveryGraceMs,
+        nowMs: block.blockTimeMs + recoveryGraceMs,
         recoveryGraceMs,
       }),
     ).toBe("defer");
@@ -240,9 +242,60 @@ describe("confirm-block-commitments utilities", () => {
       decideUnsubmittedPendingBlockRecovery({
         canonicalMatchFound: false,
         pendingBlock: block,
-        nowMs: block.blockEndTimeMs + recoveryGraceMs + 1,
+        nowMs: block.blockTimeMs + recoveryGraceMs + 1,
         recoveryGraceMs,
       }),
     ).toBe("recover_stale");
   });
+});
+
+it("retains an unresolved durable signed intent past expiry and looks up its exact hash", () => {
+  const pending = { ...pendingBlock(""), intendedTxHash: "12".repeat(32) };
+  expect(pendingBlockHasSubmittedTx(pending)).toBe(true);
+  expect(pendingBlockLookupTxHash(pending)).toBe(pending.intendedTxHash);
+  expect(
+    decideUnsubmittedPendingBlockRecovery({
+      canonicalMatchFound: false,
+      pendingBlock: pending,
+      nowMs: pending.blockEndTimeMs + 1_000_000,
+      recoveryGraceMs: 30_000,
+    }),
+  ).toBe("defer");
+  expect(
+    decideUnsubmittedPendingBlockRecovery({
+      canonicalMatchFound: true,
+      pendingBlock: pending,
+      nowMs: pending.blockEndTimeMs + 1_000_000,
+      recoveryGraceMs: 30_000,
+    }),
+  ).toBe("recover_canonical");
+});
+
+it("does not expire a catch-up commit at its coverage end", () => {
+  const pending = {
+    ...pendingBlock(""),
+    blockEndTimeMs: 1_000,
+    blockTimeMs: 20_000,
+  };
+  expect(
+    shouldDeferUnsubmittedPendingBlockRecovery({
+      pendingBlock: pending,
+      nowMs: 10_000,
+      recoveryGraceMs: 0,
+    }),
+  ).toBe(true);
+  expect(
+    shouldDeferUnsubmittedPendingBlockRecovery({
+      pendingBlock: pending,
+      nowMs: 20_000,
+      recoveryGraceMs: 0,
+    }),
+  ).toBe(true);
+  expect(
+    shouldDeferUnsubmittedPendingBlockRecovery({
+      pendingBlock: pending,
+      nowMs: 20_001,
+      recoveryGraceMs: 0,
+    }),
+  ).toBe(false);
 });

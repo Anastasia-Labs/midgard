@@ -4,7 +4,11 @@ import {
   type MidgardCredential,
   type MidgardTxOutput,
 } from "@al-ft/midgard-core/codec";
-import { Constr, Data } from "@lucid-evolution/lucid";
+import {
+  type L1SlotConfig,
+  l1SlotToPosixTimeMs,
+} from "@al-ft/midgard-core/l1-slot-config";
+import { Constr } from "@lucid-evolution/lucid";
 
 import type { MidgardLedgerRedeemer } from "./ledger-tx/types.js";
 import {
@@ -12,25 +16,42 @@ import {
   MidgardScriptPurpose,
   midgardScriptPurposeData,
 } from "./midgard-redeemers.js";
+import { plutusDataFromCborIterative } from "./plutus-data-iterative.decode.js";
 import { txOutRefData } from "./tx-out-ref.js";
+import {
+  type Data,
+  DataB,
+  DataConstr,
+  DataI,
+  DataList,
+  DataMap,
+  type KV,
+} from "./uplc-data.js";
 
 type ResolvedInput = {
   readonly outRefHex: string;
   readonly output: MidgardTxOutput;
 };
 
-type AddressEncoding = "cardano" | "midgard";
+export type ScriptContextAddressEncoding = "cardano" | "midgard";
 
 export type ScriptMintValue = ReadonlyMap<string, ReadonlyMap<string, bigint>>;
 
+/**
+ * The context's redeemer map is in ledger order, (tag, index) ascending,
+ * whatever the order of `redeemers`.
+ */
 export type ScriptContextView = {
   readonly txId: Buffer;
   readonly inputs: readonly ResolvedInput[];
   readonly referenceInputs: readonly ResolvedInput[];
   readonly outputs: readonly MidgardTxOutput[];
   readonly fee: bigint;
+  /** The committed body interval, in L1 slots. */
   readonly validityIntervalStart?: bigint;
   readonly validityIntervalEnd?: bigint;
+  /** The deployment's slot mapping, which turns the interval into POSIX time. */
+  readonly l1SlotConfig: L1SlotConfig;
   readonly observers: readonly string[];
   readonly signatories: readonly string[];
   readonly mint: ScriptMintValue;
@@ -40,182 +61,269 @@ export type ScriptContextView = {
   }[];
 };
 
-const none = new Constr(1, []);
-const some = (value: unknown) => new Constr(0, [value]);
-const bool = (value: boolean) => new Constr(value ? 1 : 0, []);
+// The context is built as harmonic `Data`, never as Lucid `Data`: Lucid's
+// encoder sorts every map and its decoder merges duplicate keys, while the
+// fault-proof side commits datum and redeemer maps in their CBOR entry order.
+// Maps built here are sorted explicitly where the context orders them.
 
-const credentialData = (credential: MidgardCredential): Constr<unknown> =>
-  new Constr(credential.kind === "PubKey" ? 0 : 1, [
-    credential.hash.toString("hex"),
+const constr = (index: number, fields: Data[]): DataConstr =>
+  new DataConstr(index, fields);
+const bytes = (hex: string): DataB => new DataB(Buffer.from(hex, "hex"));
+const none = (): DataConstr => constr(1, []);
+const some = (value: Data): DataConstr => constr(0, [value]);
+const bool = (value: boolean): DataConstr => constr(value ? 1 : 0, []);
+
+/**
+ * Converts the purpose and out-ref Data, which have no maps, from the Lucid
+ * form their builders return.
+ */
+const fixedShapeData = (value: unknown): Data => {
+  if (typeof value === "bigint") {
+    return new DataI(value);
+  }
+  if (typeof value === "string") {
+    return bytes(value);
+  }
+  if (Array.isArray(value)) {
+    return new DataList(value.map(fixedShapeData));
+  }
+  if (value instanceof Constr) {
+    return constr(value.index, value.fields.map(fixedShapeData));
+  }
+  throw new Error("script context purpose must be map-free Data");
+};
+
+const compareHex = (left: string, right: string): number =>
+  left < right ? -1 : left > right ? 1 : 0;
+
+const credentialData = (credential: MidgardCredential): DataConstr =>
+  constr(credential.kind === "PubKey" ? 0 : 1, [
+    new DataB(Uint8Array.from(credential.hash)),
   ]);
 
 const stakingCredentialData = (
   credential: MidgardCredential | undefined,
-): Constr<unknown> =>
+): DataConstr =>
   credential === undefined
-    ? none
-    : some(new Constr(0, [credentialData(credential)]));
+    ? none()
+    : some(constr(0, [credentialData(credential)]));
 
 const addressData = (
   output: MidgardTxOutput,
-  encoding: AddressEncoding,
-): Constr<unknown> => {
+  encoding: ScriptContextAddressEncoding,
+): DataConstr => {
   const decoded = decodeMidgardAddressBytes(output.address);
   const constructor = encoding === "midgard" && decoded.protected ? 1 : 0;
-  return new Constr(constructor, [
+  return constr(constructor, [
     credentialData(decoded.paymentCredential),
     stakingCredentialData(decoded.stakeCredential),
   ]);
 };
 
-const valueData = (
-  output: MidgardTxOutput,
-): Map<string, Map<string, bigint>> => {
-  const result = new Map<string, Map<string, bigint>>();
-  for (const [policyId, assets] of output.value.assets.entries()) {
-    result.set(policyId, new Map(assets));
-  }
+/** Policies and asset names ordered by their bytes. */
+const multiAssetPairs = (assets: ScriptMintValue): KV<Data, Data>[] =>
+  [...assets.entries()]
+    .sort(([left], [right]) => compareHex(left, right))
+    .map(([policyId, names]) => ({
+      fst: bytes(policyId),
+      snd: new DataMap(
+        [...names.entries()]
+          .sort(([left], [right]) => compareHex(left, right))
+          .map(([name, quantity]) => ({
+            fst: bytes(name),
+            snd: new DataI(quantity),
+          })),
+      ),
+    }));
+
+const valueData = (output: MidgardTxOutput): DataMap<Data, Data> => {
   const coin = output.value.lovelace;
-  if (coin !== 0n) {
-    result.set("", new Map([["", coin]]));
-  }
-  return result;
+  return new DataMap([
+    ...(coin === 0n
+      ? []
+      : [
+          {
+            fst: bytes(""),
+            snd: new DataMap([{ fst: bytes(""), snd: new DataI(coin) }]),
+          },
+        ]),
+    ...multiAssetPairs(output.value.assets),
+  ]);
 };
 
-const compareEntryKeys = (
-  [left]: readonly [string, unknown],
-  [right]: readonly [string, unknown],
-): number => (left < right ? -1 : left > right ? 1 : 0);
+const mintData = (mint: ScriptMintValue): DataMap<Data, Data> =>
+  new DataMap(multiAssetPairs(mint));
 
-const mintData = (mint: ScriptMintValue): Map<string, Map<string, bigint>> => {
-  const result = new Map<string, Map<string, bigint>>();
-  for (const [policyId, assets] of [...mint.entries()].sort(compareEntryKeys)) {
-    result.set(policyId, new Map([...assets.entries()].sort(compareEntryKeys)));
-  }
-  return result;
-};
-
-const datumData = (output: MidgardTxOutput): Constr<unknown> => {
+const datumData = (output: MidgardTxOutput): DataConstr => {
   const datum = output.datum;
   if (datum === undefined) {
-    return new Constr(0, []);
+    return constr(0, []);
   }
-  return new Constr(2, [Data.from(datum.cbor.toString("hex")) as unknown]);
+  return constr(2, [plutusDataFromCborIterative(datum.cbor)]);
 };
 
-const txOutData = (
+/**
+ * `referenceScriptHash` names the reference script by its hash, which is all
+ * a `TxOut` carries of it; when omitted it is the hash of `output.script_ref`.
+ */
+export const scriptContextTxOutData = (
   output: MidgardTxOutput,
-  addressEncoding: AddressEncoding,
-): Constr<unknown> => {
-  const scriptRef = output.script_ref;
-  return new Constr(0, [
+  addressEncoding: ScriptContextAddressEncoding,
+  referenceScriptHash: string | undefined = output.script_ref === undefined
+    ? undefined
+    : hashMidgardVersionedScript(output.script_ref),
+): DataConstr =>
+  constr(0, [
     addressData(output, addressEncoding),
     valueData(output),
     datumData(output),
-    scriptRef === undefined
-      ? none
-      : some(hashMidgardVersionedScript(scriptRef)),
+    referenceScriptHash === undefined
+      ? none()
+      : some(bytes(referenceScriptHash)),
   ]);
-};
 
-const txInInfoData = (
+export const scriptContextTxInInfoData = (
   input: ResolvedInput,
-  addressEncoding: AddressEncoding,
-): Constr<unknown> =>
-  new Constr(0, [
-    txOutRefData(input.outRefHex),
-    txOutData(input.output, addressEncoding),
+  addressEncoding: ScriptContextAddressEncoding,
+): DataConstr =>
+  constr(0, [
+    fixedShapeData(txOutRefData(input.outRefHex)),
+    scriptContextTxOutData(input.output, addressEncoding),
   ]);
 
+/**
+ * The `validRange` of a committed slot interval, as Cardano's
+ * `transValidityInterval` builds it: finite bounds in POSIX milliseconds on
+ * the deployment's slot mapping, an inclusive finite lower bound, a strict
+ * finite upper bound, and an absent bound as `NegInf`/`PosInf`, both
+ * inclusive (`PV1.from`, `PV1.always`).
+ */
 const validRangeData = (
+  slotConfig: L1SlotConfig,
   start: bigint | undefined,
   end: bigint | undefined,
-): Constr<unknown> =>
-  new Constr(0, [
-    new Constr(0, [
-      start === undefined ? new Constr(0, []) : new Constr(1, [start]),
-      bool(true),
-    ]),
-    new Constr(0, [
-      end === undefined ? new Constr(0, []) : new Constr(1, [end]),
-      bool(false),
-    ]),
+): DataConstr =>
+  constr(0, [
+    start === undefined
+      ? constr(0, [constr(0, []), bool(true)])
+      : constr(0, [
+          constr(1, [new DataI(l1SlotToPosixTimeMs(slotConfig, start))]),
+          bool(true),
+        ]),
+    end === undefined
+      ? constr(0, [constr(2, []), bool(true)])
+      : constr(0, [
+          constr(1, [new DataI(l1SlotToPosixTimeMs(slotConfig, end))]),
+          bool(false),
+        ]),
   ]);
+
+const redeemerData = (redeemer: MidgardLedgerRedeemer): Data =>
+  plutusDataFromCborIterative(redeemer.dataCbor);
+
+// Cardano orders its redeemer map by (tag, index), and Midgard's redeemer
+// tags follow the same order: spend, mint, reward, then receiving.
+const compareRedeemerPointers = (
+  left: ScriptContextView["redeemers"][number],
+  right: ScriptContextView["redeemers"][number],
+): number =>
+  left.redeemer.tag - right.redeemer.tag ||
+  (left.redeemer.index < right.redeemer.index
+    ? -1
+    : left.redeemer.index > right.redeemer.index
+      ? 1
+      : 0);
 
 const redeemersData = (
   redeemers: ScriptContextView["redeemers"],
   purposeData: (purpose: MidgardScriptPurpose) => Constr<unknown> | undefined,
-): Map<Constr<unknown>, unknown> => {
-  const result = new Map<Constr<unknown>, unknown>();
-  for (const entry of redeemers) {
-    const purpose = purposeData(entry.purpose);
-    if (purpose === undefined) {
-      continue;
-    }
-    result.set(purpose, entry.redeemer.data);
-  }
-  return result;
-};
+): DataMap<Data, Data> =>
+  new DataMap(
+    [...redeemers].sort(compareRedeemerPointers).flatMap((entry) => {
+      const purpose = purposeData(entry.purpose);
+      return purpose === undefined
+        ? []
+        : [{ fst: fixedShapeData(purpose), snd: redeemerData(entry.redeemer) }];
+    }),
+  );
 
 const withdrawalsData = (
   observers: ScriptContextView["observers"],
-): Map<Constr<unknown>, bigint> =>
-  new Map(
-    [...observers].sort().map((observer) => [new Constr(1, [observer]), 0n]),
+): DataMap<Data, Data> =>
+  new DataMap(
+    [...observers].sort().map((observer) => ({
+      fst: constr(1, [bytes(observer)]),
+      snd: new DataI(0n),
+    })),
   );
+
+const bytesList = (values: readonly string[]): DataList =>
+  new DataList([...values].sort().map(bytes));
 
 const baseTxInfoData = (
   view: ScriptContextView,
   purposeData: (purpose: MidgardScriptPurpose) => Constr<unknown> | undefined,
-): Constr<unknown> =>
-  new Constr(0, [
-    view.inputs.map((input) => txInInfoData(input, "cardano")),
-    view.referenceInputs.map((input) => txInInfoData(input, "cardano")),
-    view.outputs.map((output) => txOutData(output, "cardano")),
-    view.fee,
+): DataConstr =>
+  constr(0, [
+    new DataList(
+      view.inputs.map((input) => scriptContextTxInInfoData(input, "cardano")),
+    ),
+    new DataList(
+      view.referenceInputs.map((input) =>
+        scriptContextTxInInfoData(input, "cardano"),
+      ),
+    ),
+    new DataList(
+      view.outputs.map((output) => scriptContextTxOutData(output, "cardano")),
+    ),
+    new DataI(view.fee),
     mintData(view.mint),
-    [],
+    new DataList([]),
     withdrawalsData(view.observers),
-    validRangeData(view.validityIntervalStart, view.validityIntervalEnd),
-    [...view.signatories].sort(),
+    validRangeData(
+      view.l1SlotConfig,
+      view.validityIntervalStart,
+      view.validityIntervalEnd,
+    ),
+    bytesList(view.signatories),
     redeemersData(view.redeemers, purposeData),
-    new Map(),
-    view.txId.toString("hex"),
-    new Map(),
-    [],
-    none,
-    none,
+    new DataMap([]),
+    new DataB(Uint8Array.from(view.txId)),
+    new DataMap([]),
+    new DataList([]),
+    none(),
+    none(),
   ]);
 
 const spendDatumData = (
   view: ScriptContextView,
   purpose: Extract<MidgardScriptPurpose, { readonly kind: "spend" }>,
-): Constr<unknown> => {
+): DataConstr => {
   const input = view.inputs.find(
     (candidateInput) => candidateInput.outRefHex === purpose.outRefHex,
   );
   const datum = input?.output.datum;
   if (datum === undefined) {
-    return none;
+    return none();
   }
 
-  return some(Data.from(datum.cbor.toString("hex")) as unknown);
+  return some(plutusDataFromCborIterative(datum.cbor));
 };
 
 const cardanoScriptInfoData = (
   view: ScriptContextView,
   purpose: MidgardScriptPurpose,
-): Constr<unknown> => {
+): DataConstr => {
   switch (purpose.kind) {
     case "mint":
-      return new Constr(0, [purpose.policyId]);
+      return constr(0, [bytes(purpose.policyId)]);
     case "spend":
-      return new Constr(1, [
-        txOutRefData(purpose.outRefHex),
+      return constr(1, [
+        fixedShapeData(txOutRefData(purpose.outRefHex)),
         spendDatumData(view, purpose),
       ]);
     case "observe":
-      return new Constr(2, [new Constr(1, [purpose.scriptHash])]);
+      return constr(2, [constr(1, [bytes(purpose.scriptHash)])]);
     case "receive":
       throw new Error("Receiving scripts require MidgardV1 context");
   }
@@ -230,31 +338,43 @@ export const buildPlutusV3ScriptContext = (
   view: ScriptContextView,
   purpose: MidgardScriptPurpose,
   redeemer: MidgardLedgerRedeemer,
-): Constr<unknown> =>
-  new Constr(0, [
+): DataConstr =>
+  constr(0, [
     baseTxInfoData(view, cardanoScriptPurposeDataOrUndefined),
-    redeemer.data,
+    redeemerData(redeemer),
     cardanoScriptInfoData(view, purpose),
   ]);
 
-export const buildMidgardV1ScriptContext = (
+export const buildMidgardScriptContext = (
   view: ScriptContextView,
   purpose: MidgardScriptPurpose,
   redeemer: MidgardLedgerRedeemer,
-): Constr<unknown> =>
-  new Constr(0, [
-    new Constr(0, [
-      view.inputs.map((input) => txInInfoData(input, "midgard")),
-      view.referenceInputs.map((input) => txInInfoData(input, "midgard")),
-      view.outputs.map((output) => txOutData(output, "midgard")),
-      view.fee,
-      validRangeData(view.validityIntervalStart, view.validityIntervalEnd),
-      [...view.observers].sort(),
-      [...view.signatories].sort(),
+): DataConstr =>
+  constr(0, [
+    constr(0, [
+      new DataList(
+        view.inputs.map((input) => scriptContextTxInInfoData(input, "midgard")),
+      ),
+      new DataList(
+        view.referenceInputs.map((input) =>
+          scriptContextTxInInfoData(input, "midgard"),
+        ),
+      ),
+      new DataList(
+        view.outputs.map((output) => scriptContextTxOutData(output, "midgard")),
+      ),
+      new DataI(view.fee),
+      validRangeData(
+        view.l1SlotConfig,
+        view.validityIntervalStart,
+        view.validityIntervalEnd,
+      ),
+      bytesList(view.observers),
+      bytesList(view.signatories),
       mintData(view.mint),
       redeemersData(view.redeemers, midgardScriptPurposeData),
-      view.txId.toString("hex"),
+      new DataB(Uint8Array.from(view.txId)),
     ]),
-    redeemer.data,
-    midgardScriptPurposeData(purpose),
+    redeemerData(redeemer),
+    fixedShapeData(midgardScriptPurposeData(purpose)),
   ]);

@@ -3,7 +3,7 @@ title: "Overview"
 description: "The three @al-ft/* packages for building on Midgard: midgard-core protocol primitives, lucid-midgard native L2 transaction builder, and midgard-sdk operator/watcher transaction builders."
 ---
 
-Midgard's TypeScript stack is organized as three `@al-ft/*` packages. Each owns a
+The three SDK entry points below each own a
 distinct layer, from shared protocol serialization up to developer-facing
 transaction builders.
 
@@ -14,11 +14,12 @@ Pick by what you are building:
 - Working on protocol serialization or the codec itself? That lives in
   **`midgard-core`**.
 
-<Callout type="info" title="Not yet on a registry">
-These packages currently live in the [`demo/`](https://github.com/Anastasia-Labs/midgard/tree/main/demo)
-monorepo (version `0.1.0`) and are consumed via workspace links. Publishing them to a
-public registry is a pending release step, so the names below are the intended public
-package names rather than an installable release.
+<Callout type="info" title="Workspace packages">
+  These packages live in the
+  [`demo/`](https://github.com/Anastasia-Labs/midgard/tree/main/demo) workspace
+  and are consumed through workspace links or locally built packages. The
+  checked-in package names and versions do not establish public registry
+  availability; the examples assume the repository toolchain.
 </Callout>
 
 ## The three packages
@@ -45,13 +46,13 @@ package names rather than an installable release.
 
 Shared Midgard protocol primitives. This package owns the Midgard **native
 transaction v1 codec** used by both `midgard-node` and `lucid-midgard`:
-canonical CBOR encoding, root hashing, transaction id derivation, output
-normalization, and Cardano-bridge logic.
+canonical CBOR encoding, field hashing, transaction id derivation, and output
+encoding. Explicit Cardano conversion helpers are separate from native admission.
 
 The codec is the single source of truth. Downstream packages may keep re-export
 paths, but codec semantics change here first and are verified through shared
 conformance tests. Exported symbols include the native
-tuple types (`MidgardNativeTxFull`, `MidgardNativeTxCompact`), the protocol
+transaction types (`MidgardNativeTxFull`, `MidgardNativeTxCompact`), the protocol
 constants (`MIDGARD_NATIVE_TX_VERSION`, `MIDGARD_POSIX_TIME_NONE`,
 `MIDGARD_NATIVE_NETWORK_ID_NONE`, `EMPTY_NULL_ROOT`), and the transaction id
 helper `computeMidgardNativeTxId`.
@@ -74,8 +75,8 @@ The Midgard off-chain SDK for building **operator and watcher** transactions: th
 protocol actions (block commitment, settlement, fraud proofs, and related flows) that
 run the rollup. It is built with `effect` and follows the Lucid Evolution convention
 where functions returning `Effect` blueprints are postfixed with `Program` (for
-example `incompleteInitializationTxProgram`), but it does not impose `effect` on
-dependent packages.
+example `incompleteInitializationTxProgram`), and supplies Promise-returning wrappers for callers that do not compose
+`Effect` programs. `effect` remains a declared peer dependency.
 
 ## How they relate
 
@@ -90,19 +91,15 @@ graph TD
   sdk["@al-ft/midgard-sdk<br/>operator / watcher tx builders"]
   node["midgard-node<br/>node + validation"]
 
-  lucid --> core
-  node --> core
-  lucid -.->|submit / status| node
+lucid --> core
+sdk --> core
+node --> sdk
+node --> core
+lucid -.->|submit / status| node
 
-  classDef pkg fill:#1f2937,stroke:#60a5fa,color:#e5e7eb;
-  class core,lucid,sdk,node pkg;
+classDef pkg fill:#1f2937,stroke:#60a5fa,color:#e5e7eb;
+class core,lucid,sdk,node pkg;
 `} />
-
-<Callout type="info" title="Which package do I need?">
-Building user-facing L2 transfers and scripts? Use `lucid-midgard`. Running an
-operator or watcher against L1? Use `midgard-sdk`. Working on protocol
-serialization or the codec itself? That lives in `midgard-core`.
-</Callout>
 
 ## The L2 vs L1 boundary
 
@@ -114,6 +111,6 @@ The Midgard repository has two transaction domains:
   `lucid-midgard`.
 
 `lucid-midgard` owns the second domain only. Its normal output is native v1
-bytes; Cardano-to-native conversion is a diagnostic/import path, never the
-default. See the [design notes](/docs/sdk/lucid-midgard/design-notes) for the
+bytes. Its import and submission boundaries reject Cardano transaction bytes;
+explicit conversion utilities in `midgard-core` are not a `lucid-midgard` import mode. See the [design notes](/docs/sdk/lucid-midgard/design-notes) for the
 full scope and non-goals.

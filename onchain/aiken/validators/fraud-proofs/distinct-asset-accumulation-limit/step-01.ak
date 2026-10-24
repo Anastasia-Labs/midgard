@@ -1,0 +1,95 @@
+use aiken/crypto.{ScriptHash}
+use cardano/assets.{PolicyId}
+use cardano/transaction.{OutputReference, Transaction}
+use midgard/computation_thread as ct
+use midgard/fraud_proofs/common.{
+  cancel, continue, pass_native_tx_to_next_step_carried,
+}
+use midgard/fraud_proofs/distinct_asset_accumulation_limit/rule.{
+  bind_coordinate_v1,
+}
+use midgard/fraud_proofs/distinct_asset_accumulation_limit/step_01.{
+  AcceptedSource, Args, Datum, ForcedSource, SpendRedeemer,
+}
+use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
+
+validator main(
+  step_02_validator_script_hash: ScriptHash,
+  computation_thread_token_policy_id: PolicyId,
+  hub_oracle: ScriptHash,
+) {
+  spend(
+    datum: Option<Datum>,
+    redeemer: SpendRedeemer,
+    own_out_ref: OutputReference,
+    tx: Transaction,
+  ) {
+    when redeemer is {
+      ct.Cancel { input_index, computation_thread_mint_redeemer_index } ->
+        cancel(
+          computation_thread_token_policy_id,
+          datum,
+          input_index,
+          own_out_ref,
+          computation_thread_mint_redeemer_index,
+          tx,
+        )
+      ct.Continue(Args { source: AcceptedSource { inclusion }, coordinate }) -> {
+        let _, _, _, _, next_script_hash, next_state, header, _, verified <- pass_native_tx_to_next_step_carried(
+          computation_thread_token_policy_id,
+          hub_oracle,
+          datum,
+          inclusion,
+          own_out_ref,
+          tx,
+        )
+        let expected: Data = bind_coordinate_v1(
+          substrate.open_accepted_subject_v1(verified),
+          header.validation_traces_root,
+          header.validation_trace_count,
+          coordinate,
+        )
+        and {
+          next_script_hash == step_02_validator_script_hash,
+          next_state == expected,
+        }
+      }
+      ct.Continue(Args {
+        source: ForcedSource { input_index, output_index, header, membership },
+        coordinate,
+      }) -> {
+        let Transaction { inputs, outputs, .. } = tx
+        expect Some(step_datum) = datum
+        let _, thread_name, _, _, next_script_hash, next_state <- continue(
+          computation_thread_token_policy_id,
+          step_datum,
+          input_index,
+          output_index,
+          own_out_ref,
+          inputs,
+          outputs,
+        )
+        let Pair(subject, _) = substrate.open_forced_subject_v1(
+          thread_name,
+          header,
+          membership,
+        )
+        // The substrate already verified the immutable source and its body ID.
+        let expected: Data = bind_coordinate_v1(
+          subject,
+          header.validation_traces_root,
+          header.validation_trace_count,
+          coordinate,
+        )
+        and {
+          next_script_hash == step_02_validator_script_hash,
+          next_state == expected,
+        }
+      }
+    }
+  }
+
+  else(_) {
+    fail
+  }
+}

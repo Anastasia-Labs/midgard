@@ -44,12 +44,15 @@ await submitted.awaitStatus({ until: "accepted" });
 
 Use `MidgardProvider` or `MidgardNodeProvider`. A provider must expose Midgard
 UTxOs, Midgard native transaction submission, transaction status, protocol fee
-parameters, and `GET /protocol-info` facts. `supportedScriptLanguages` must
-advertise exactly the stable protocol tags for `PlutusV3` and `MidgardV1`.
+parameters, and `GET /protocol-info` facts. The canonical V1 profile requires
+the exact V1 consensus limits and exactly `PlutusV3` and `MidgardV1` in
+`supportedScriptLanguages`, as defined by `MIDGARD_SUPPORTED_SCRIPT_LANGUAGES`
+in `@al-ft/midgard-core/codec/script-language-views`.
+`codecSupportedScriptLanguages` must agree with the enabled language set.
 
 `MidgardNodeProvider.create(...)` fails closed when protocol info is unavailable
-unless an explicit fallback is supplied. Fallback diagnostics are visible through
-`provider.diagnostics()` and `midgard.config()`.
+or malformed. It has no fallback protocol configuration. Provider diagnostics
+are visible through `provider.diagnostics()` and `midgard.config()`.
 
 ## Provider Switching And UTxO Overrides
 
@@ -64,32 +67,35 @@ Convenience methods include `currentSlot`, `utxosAt`, `utxosAtWithUnit`,
 
 ## Builder Surface
 
-The fluent builder supports `collectFrom`, `readFrom`, `pay.ToAddress`,
-`pay.ToContract`, `pay.ToProtectedAddress`, `addSigner`, `addSignerKey`,
-`mintAssets`, `mint`, `validFrom`, `validTo`, `setMinFee`, `compose`,
-`complete`, `completeSafe`, `completeProgram`, `chain`, `chainSafe`, and
-`chainProgram`.
+The canonical V1 builder supports pubkey and script inputs, reference inputs
+and scripts, ordinary and protected outputs, redeemers, observers, receive
+redeemers, mint and burn, required signers, validity intervals, composition,
+local chaining, signing, and submission. The fluent surface includes
+`collectFrom`, `readFrom`, `pay.ToAddress`, `pay.ToProtectedAddress`,
+`mintAssets`, `mint`, `observe`, `receiveRedeemer`, `addSigner`,
+`addSignerKey`, `validFrom`, `validTo`, `setMinFee`, `compose`, `complete`,
+`completeSafe`, `completeProgram`, `chain`, `chainSafe`, and `chainProgram`.
 
 `setMinFee` is a fee floor. Provider fee policy remains authoritative for
 balanced transactions unless the caller supplies an explicit `feePolicy`.
 
 ## Observer Validators
 
-Observers are Midgard script executions, not withdrawal or reward-account
-operations.
+Attach an observer validator and bind its hash to a redeemer:
 
 ```ts
-await midgard
+const tx = await midgard
   .newTx()
   .attach.ObserverValidator({ language: "MidgardV1", script })
-  .observe(observerScriptHash, redeemer)
+  .observe(observerHash, redeemer)
   .complete();
 ```
 
-The supported non-native validator languages are `PlutusV3` and `MidgardV1`.
-Reference scripts without locally inspectable script bytes require explicit
-trusted metadata through `readFrom(..., { trustedReferenceScripts })` or
-`attach.ReferenceScriptMetadata(...)`.
+Non-native script byte arguments contain the stored script: one CBOR byte
+string wrapping the Flat program. The builder preserves those bytes for script
+identity and carries them in the transaction witness or reference output.
+Admission and replay use those carried bytes; dispute tooling derives CEK
+material locally when it needs a trace.
 
 ## Partial Signing
 
@@ -101,6 +107,9 @@ one transaction id/body hash.
 const bundleA = await tx.sign.withWallet(walletA).partial();
 const bundleB = await tx.sign.withPrivateKey(privateKeyB).partial();
 const signed = tx.assemble([bundleA, bundleB]);
+if (!("submit" in signed)) {
+  throw new Error("The assembled transaction still needs witnesses");
+}
 ```
 
 `PartiallySignedTx` is non-submit-capable. The sign builder also exposes
@@ -149,18 +158,21 @@ failures into strings or booleans.
 `submit` returns `SubmittedTx` with durable admission metadata. Admission is not
 final validation acceptance. Use `status` or `awaitStatus` to observe `queued`,
 `accepted`, `rejected`, and `committed` states. Rejected status preserves node
-reject codes and details. Provider submission posts the raw Midgard transaction
-canonical transaction CBOR to `/submit` with `Content-Type: application/cbor`.
+reject codes and details. Provider submission posts the mandatory canonical V1
+proof-submission envelope, containing transaction CBOR and authenticated
+program material, to `/submit` with
+`Content-Type: application/vnd.midgard.v1+cbor`.
 
 ## Protected Outputs
 
-`pay.ToProtectedAddress(...)` preserves the protected-output marker in the exact
-output CBOR. Local output derivation and chaining keep that byte representation
-instead of rebuilding outputs from decoded display fields.
+`pay.ToProtectedAddress(...)` constructs protected V1 outputs. Script payment
+credentials, inline datums, and reference scripts remain authenticated through
+the canonical output encoding and are validated at the same boundaries as
+ordinary outputs.
 
 ## Runnable Examples
 
 See [examples/usage.ts](./examples/usage.ts) for runnable in-memory examples
 covering balanced transfers, provider switching, UTxO overrides, observer
-validators, imports, composition, local chaining, signing, submission, status,
-safe-result errors, Effect errors, and protected outputs.
+construction, imports, composition, local chaining, signing, submission, status,
+safe-result errors, and Effect errors.

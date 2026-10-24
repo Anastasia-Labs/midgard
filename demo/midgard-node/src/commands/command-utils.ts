@@ -1,9 +1,12 @@
 import {
+  decodeMidgardSpendInputItem,
   decodeMidgardTxOutput,
   encodeMidgardAddressText,
+  encodeMidgardSpendInputItem,
   midgardAddressFromText,
   midgardValueToCmlValue,
 } from "@al-ft/midgard-core/codec";
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import { hexToBytes } from "@al-ft/midgard-core/hex";
 import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -18,7 +21,16 @@ import {
   walletFromSeed,
 } from "@lucid-evolution/lucid";
 
-import type { OutRefLike } from "@/tx-context.js";
+import type { OutRefLike } from "../tx-context.js";
+import {
+  paceUtxoPage,
+  readUtxoBatchPages,
+  readUtxoPage,
+} from "./command-utils.utxo-http-request.js";
+import {
+  isPublicDeploymentProfile,
+  readMountedHttpFile,
+} from "./listen-public-http.js";
 
 const DEFAULT_MIDGARD_NODE_PORT = "3000";
 
@@ -187,19 +199,25 @@ export const parseTxOutRefLabel = (
     throw new Error(`${fieldName} must be a string.`);
   }
   let parsed: OutRefLike;
+  let cbor: Buffer;
   try {
     parsed = parseOutRefLabel(value);
+    // The §5.3 field-0/1 item encoding — `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`,
+    // a fixed 38 bytes with a deliberately non-minimal output index. These are
+    // the ledger MPF trie key / `outref` column bytes that on-chain
+    // `ledger_outref_key` derives through `encode_midgard_tx_input`, not CML's
+    // minimal-index `TransactionInput` CBOR.
+    cbor = encodeMidgardSpendInputItem({
+      txId: hexToBytes(parsed.txHash, { fieldName: `${fieldName}.txHash` }),
+      outputIndex: parsed.outputIndex,
+    });
   } catch (cause) {
     const detail = cause instanceof Error ? cause.message : String(cause);
     throw new Error(`${fieldName}: ${detail}`);
   }
-  const input = CML.TransactionInput.new(
-    CML.TransactionHash.from_hex(parsed.txHash),
-    BigInt(parsed.outputIndex),
-  );
   return {
     ...parsed,
-    cbor: Buffer.from(input.to_cbor_bytes()),
+    cbor,
   };
 };
 
@@ -209,8 +227,11 @@ export const parseTxOutRefCborHex = (
 ): Buffer => {
   const bytes = parseHexBytes(value, fieldName);
   try {
-    const parsed = CML.TransactionInput.from_cbor_bytes(bytes);
-    return Buffer.from(parsed.to_cbor_bytes());
+    // §5.3 field-0/1 item form, not CML's minimal-index `TransactionInput`
+    // CBOR: the decoder asserts the fixed 38-byte width and the `0x19` index
+    // head, so a minimal-index spelling is rejected rather than re-canonicalized.
+    // Re-encoding proves the round trip lands on the one admissible spelling.
+    return encodeMidgardSpendInputItem(decodeMidgardSpendInputItem(bytes));
   } catch (cause) {
     throw new Error(
       `Invalid ${fieldName}: failed to decode TxOutRef CBOR (${String(cause)}).`,
@@ -244,13 +265,29 @@ const candidateWalletSeedPhraseEnvNames = (name: string): readonly string[] => {
 
 export const resolveWalletSeedPhrase = ({
   walletSeedPhrase,
+  walletSeedPhraseFile,
   walletSeedPhraseEnv,
   env = process.env,
 }: {
   readonly walletSeedPhrase?: string;
+  readonly walletSeedPhraseFile?: string;
   readonly walletSeedPhraseEnv: string;
   readonly env?: NodeJS.ProcessEnv;
 }): ResolvedWalletSeedPhrase => {
+  if (walletSeedPhraseFile !== undefined) {
+    if (walletSeedPhrase !== undefined)
+      throw new Error("Use only one wallet secret source");
+    const seedPhrase = readMountedHttpFile(walletSeedPhraseFile, true)
+      .toString("utf8")
+      .trim();
+    if (seedPhrase.length === 0)
+      throw new Error("Mounted wallet seed is empty");
+    return { seedPhrase, resolvedFrom: "mounted-file" };
+  }
+  if (isPublicDeploymentProfile(SELECTED_DEPLOYMENT_PROFILE.name))
+    throw new Error(
+      "Public wallet commands require a mounted wallet seed file; literal and environment seeds are unavailable",
+    );
   const direct = walletSeedPhrase?.trim() ?? "";
   if (direct.length > 0) {
     return { seedPhrase: direct, resolvedFrom: "direct-argument" };
@@ -327,11 +364,14 @@ export const parseNodeUtxoResponse = (
 export const decodeNodeUtxo = (raw: RawNodeUtxo): NodeUtxo => {
   const outrefCbor = parseHexBytes(raw.outref, "outref");
   const outputCbor = parseHexBytes(raw.outputCbor, "outputCbor");
-  const input = CML.TransactionInput.from_cbor_bytes(outrefCbor);
+  // §5.3 field-0/1 item form (fixed 38 bytes, `19 XXXX` output index) — the
+  // ledger out-ref encoding matching on-chain `ledger_outref_key`, not CML's
+  // minimal-index `TransactionInput` CBOR.
+  const input = decodeMidgardSpendInputItem(outrefCbor);
   const output = decodeMidgardTxOutput(outputCbor);
   return {
-    txHash: input.transaction_id().to_hex(),
-    outputIndex: Number(input.index()),
+    txHash: Buffer.from(input.txId).toString("hex"),
+    outputIndex: input.outputIndex,
     outrefCbor,
     outputCbor,
     address: encodeMidgardAddressText(output.address),
@@ -342,47 +382,71 @@ export const decodeNodeUtxo = (raw: RawNodeUtxo): NodeUtxo => {
   };
 };
 
-const parseUtxoResponseText = (responseText: string): readonly NodeUtxo[] =>
-  parseNodeUtxoResponse(JSON.parse(responseText) as unknown).map(
-    decodeNodeUtxo,
-  );
-
 export const fetchNodeUtxosByAddress = async (
   nodeEndpoint: string,
   address: string,
   options?: { readonly timeoutMs?: number },
 ): Promise<readonly NodeUtxo[]> => {
-  const response = await fetch(
-    `${nodeEndpoint}/utxos?address=${encodeURIComponent(address)}`,
-    options?.timeoutMs === undefined
-      ? undefined
-      : { signal: AbortSignal.timeout(options.timeoutMs) },
-  );
-  const responseText = await response.text();
-  if (!response.ok) {
-    throw new Error(
-      `Midgard node UTxO query failed (${response.status.toString()}): ${responseText}`,
+  const all: NodeUtxo[] = [];
+  const seen = new Set<string>();
+  const deadline = Date.now() + 60_000;
+  let cursor: string | null = null;
+  for (let page = 0; page < 100; page += 1) {
+    if (page > 0) await paceUtxoPage();
+    const parsed = await readUtxoPage(
+      `${nodeEndpoint}/utxos?address=${encodeURIComponent(address)}&limit=100${cursor === null ? "" : `&cursor=${cursor}`}`,
+      {},
+      deadline,
+      options?.timeoutMs ?? 10_000,
     );
+    const entries = parseNodeUtxoResponse(parsed).map(decodeNodeUtxo);
+    if (entries.length > 100)
+      throw new Error("Midgard node UTxO page exceeds the row limit");
+    all.push(...entries);
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      !("nextCursor" in parsed)
+    )
+      throw new Error("Midgard node UTxO page is missing its cursor");
+    const next = parsed.nextCursor;
+    if (next === null) return all;
+    if (
+      typeof next !== "string" ||
+      !/^(?:[0-9a-f]{2}){38}$/u.test(next) ||
+      seen.has(next) ||
+      (cursor !== null && next <= cursor)
+    )
+      throw new Error(
+        "Midgard node UTxO page has an invalid or repeated cursor",
+      );
+    seen.add(next);
+    cursor = next;
   }
-  return parseUtxoResponseText(responseText);
+  throw new Error("Midgard node UTxO query exceeds the page limit");
 };
 
 export const fetchNodeUtxosByOutRefs = async (
   nodeEndpoint: string,
   outRefs: readonly string[],
 ): Promise<readonly NodeUtxo[]> => {
-  const response = await fetch(`${nodeEndpoint}/utxos?by-outrefs`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(outRefs),
-  });
-  const responseText = await response.text();
-  if (!response.ok) {
+  if (outRefs.length > 10_000 || new Set(outRefs).size !== outRefs.length)
     throw new Error(
-      `Midgard node UTxO query failed (${response.status.toString()}): ${responseText}`,
+      "Midgard node UTxO references exceed the limit or contain duplicates",
     );
+  const all: NodeUtxo[] = [];
+  const deadline = Date.now() + 60_000;
+  for await (const { page, requestedCount } of readUtxoBatchPages(
+    `${nodeEndpoint}/utxos?by-outrefs`,
+    outRefs,
+    deadline,
+  )) {
+    const entries = parseNodeUtxoResponse(page).map(decodeNodeUtxo);
+    if (entries.length > requestedCount)
+      throw new Error("Midgard node UTxO page exceeds the row limit");
+    all.push(...entries);
   }
-  return parseUtxoResponseText(responseText);
+  return all;
 };
 
 export const lucidUtxoFromNodeUtxo = (utxo: NodeUtxo): UTxO => ({

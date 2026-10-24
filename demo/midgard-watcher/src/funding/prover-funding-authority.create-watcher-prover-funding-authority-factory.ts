@@ -1,0 +1,486 @@
+import {
+  assertWorkflowActuationPermitIdentity,
+  createWorkflowRuntimeFundingPolicy,
+  readWorkflowRuntimeFundingPolicy,
+  VALIDATION_TRACE_ONE_STEP_CONTRACT_NAMES,
+  type WorkflowActuationPermit,
+} from "@al-ft/midgard-fault-proofs";
+import {
+  credentialToAddress,
+  getAddressDetails,
+  scriptHashToCredential,
+} from "@lucid-evolution/lucid";
+
+import type { WatcherInstalledWorkflowCategory } from "../fault-proofs/fault-proof-application.js";
+import type { WatcherWorkflowJournal } from "../fault-proofs/watcher-workflow-journal.js";
+import {
+  assertVerifiedWatcherDeploymentIdentity,
+  type VerifiedWatcherDeploymentIdentity,
+  watcherDeploymentAppliedScriptHashes,
+  watcherDeploymentAvailabilityChallengeAuthority,
+  watcherDeploymentProtocolScriptAuthority,
+  watcherDeploymentReleaseEconomicsAuthority,
+} from "../runtime/deployment-identity.js";
+import type { WatcherOperationsSink } from "../runtime/operations-observability.js";
+import {
+  assertWatcherProtocolParameterHistory,
+  assertWatcherProtocolParameterRuntimeAuthority,
+  refreshWatcherProtocolParameterRuntimeAuthority,
+  type WatcherProtocolParameterHistory,
+  type WatcherProtocolParameterRuntimeAuthority,
+  watcherSignedDeploymentProtocolParameterRecoveryAuthority,
+} from "./prover-funding.js";
+import { createWatcherProverFundingAuthority } from "./prover-funding-authority.create-watcher-prover-funding-authority.js";
+import { createWatcherReservationHoldRegister } from "./prover-funding-authority.decision-hold-register.js";
+import {
+  admittedFactories,
+  WATCHER_PROVER_FUNDING_AUTHORITY,
+  type WatcherProverFundingAuthorityFactory,
+} from "./prover-funding-authority.watcher-prover-funding-authority-factory.js";
+import type { WatcherRuntimeProverFundingCalculation } from "./prover-funding-calculation.js";
+import { calculateWatcherRuntimeProverFunding } from "./prover-funding-calculation.js";
+import {
+  authorizeWatcherProverFundingRecovery,
+  releaseUnusedWatcherProverFundingReservations,
+} from "./prover-funding-recovery.js";
+import {
+  createWatcherOrphanedReservations,
+  type WatcherOrphanedReservationObserver,
+} from "./prover-funding-recovery.orphaned-reservation.js";
+import {
+  parseWatcherProverFundingReservationRecord,
+  type WatcherProverFundingReservationRecord,
+  type WatcherProverFundingReservationStore,
+  WatcherProverFundingUnavailableError,
+} from "./prover-funding-reservation.js";
+
+/**
+ * A validation-trace dispute policy's custody terms, from the signed
+ * deployment: the manifest's dispute bond (the case validator's applied
+ * bond), the dispute contracts VerifySource pays, and those the thread
+ * moves spend and pay, among them the boundary and the one-step resolvers
+ * a thread visits between the game and the award. Any other category's
+ * policy carries none.
+ */
+export const watcherValidationDisputeFundingTerms = (
+  identity: VerifiedWatcherDeploymentIdentity,
+  category: string,
+): Readonly<{
+  validationDispute?: Parameters<
+    typeof createWorkflowRuntimeFundingPolicy
+  >[0]["validationDispute"];
+}> => {
+  if (category !== "validationTraceDispute") return {};
+  const hashes = watcherDeploymentAppliedScriptHashes(identity);
+  const hash = (name: string) => {
+    const scriptHash = hashes[name];
+    if (scriptHash === undefined)
+      throw new Error(`signed deployment omits validation dispute ${name}`);
+    return scriptHash;
+  };
+  const address = (name: string) =>
+    credentialToAddress(identity.network, scriptHashToCredential(hash(name)));
+  const { boundary, ...resolvers } = VALIDATION_TRACE_ONE_STEP_CONTRACT_NAMES;
+  return {
+    validationDispute: {
+      deploymentFingerprint: identity.manifestId,
+      bondLovelace: BigInt(
+        watcherDeploymentAvailabilityChallengeAuthority(identity).parameters
+          .challengerBondLovelace,
+      ),
+      bondAddress: address("validationTraceDisputeBond"),
+      caseAddress: address("validationTraceDisputeCase"),
+      casePolicyId: hash("validationTraceDisputeCaseMint"),
+      moves: {
+        gameAddress: address("validationTraceDisputeGame"),
+        timeoutAddress: address("validationTraceDisputeTimeout"),
+        awardAddress: address("validationTraceDisputeAward"),
+        awardPolicyId: hash("validationTraceDisputeAwardMint"),
+        oneStep: {
+          boundaryAddress: address(boundary),
+          resolverAddresses: Object.values(resolvers).map(address),
+        },
+      },
+    },
+  };
+};
+
+/**
+ * Runtime-owned funding authority bound to the admitted runner, deployment,
+ * current protocol parameters, and exact wallet leases.
+ */
+export const createWatcherProverFundingAuthorityFactory = (input: {
+  readonly journalRoot: string;
+  /** The key the fault-proof journals' rows are authenticated with. */
+  readonly journalAuthenticationKey: Uint8Array;
+  readonly launchScope: readonly WatcherInstalledWorkflowCategory[];
+  readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
+  readonly protocolParameters: WatcherProtocolParameterRuntimeAuthority;
+  readonly store: WatcherProverFundingReservationStore;
+  /** The per-proof workflow journal on the funding store's connection. */
+  readonly workflowJournal: WatcherWorkflowJournal;
+  readonly protocolParameterHistory?: WatcherProtocolParameterHistory;
+  /** This deployment's computation-thread policy, which proves own thread custody. */
+  readonly computationThreadPolicyId?: string;
+  /** Reads signed attempts from their own bytes; it alone settles funding
+   * no workflow will drive again. */
+  readonly observeSignedTransaction?: WatcherOrphanedReservationObserver;
+  /** The clock that paces those reads. */
+  readonly now?: () => number;
+  /** Where an orphaned reservation's failure alert is raised and cleared. */
+  readonly alertSink?: () => Pick<WatcherOperationsSink, "setAlert">;
+}): WatcherProverFundingAuthorityFactory => {
+  assertVerifiedWatcherDeploymentIdentity(input.deploymentIdentity);
+  assertWatcherProtocolParameterRuntimeAuthority(input.protocolParameters);
+  if (input.protocolParameterHistory !== undefined)
+    assertWatcherProtocolParameterHistory(input.protocolParameterHistory);
+  // One immutable policy calculation, never an authority, lease or wallet view.
+  // A changed admitted policy/parameter/economics basis replaces this entry.
+  const signedParameters =
+    watcherSignedDeploymentProtocolParameterRecoveryAuthority(
+      input.deploymentIdentity,
+    );
+  let lastCalculation: WatcherRuntimeProverFundingCalculation | undefined;
+  let lastSelectionCalculation:
+    | WatcherRuntimeProverFundingCalculation
+    | undefined;
+  const reservationByPermit = new WeakMap<
+    WorkflowActuationPermit,
+    WatcherProverFundingReservationRecord
+  >();
+  const orphans =
+    input.observeSignedTransaction === undefined
+      ? undefined
+      : createWatcherOrphanedReservations({
+          ...input,
+          observe: input.observeSignedTransaction,
+        });
+  // Reservations a run is bound to; no sweep beside it settles them.
+  const live = new Set<string>();
+  const idle = async () =>
+    (await input.store.readAll())
+      .map(parseWatcherProverFundingReservationRecord)
+      .filter(({ reservationId }) => !live.has(reservationId));
+  // Reservations held because no workflow drives them, by id.
+  const decisionHolds = createWatcherReservationHoldRegister(input.alertSink);
+  const recordHolds = decisionHolds.record;
+  // A sweep, a per-run release and a hold recheck each read the store and
+  // then record holds; one at a time, none records over another's newer read.
+  let releasing = Promise.resolve();
+  const serialize = (operation: () => Promise<void>): Promise<void> => {
+    const result = releasing.then(operation);
+    releasing = result.catch(() => undefined);
+    return result;
+  };
+  const factory: WatcherProverFundingAuthorityFactory = Object.freeze({
+    schemaVersion: WATCHER_PROVER_FUNDING_AUTHORITY,
+    releaseUnused: (scope) =>
+      serialize(async () => {
+        const reservation =
+          scope === undefined
+            ? undefined
+            : reservationByPermit.get(scope.actuationPermit);
+        if (scope !== undefined && reservation === undefined) return;
+        if (reservation !== undefined) live.delete(reservation.reservationId);
+        recordHolds(
+          reservation === undefined ? null : [reservation.reservationId],
+          await releaseUnusedWatcherProverFundingReservations({
+            ...input,
+            reservations:
+              reservation === undefined ? await idle() : [reservation],
+            ...(orphans === undefined ? {} : { orphans }),
+          }),
+        );
+      }),
+    recheckDecisionHolds: () =>
+      serialize(async () => {
+        const checked = decisionHolds.ids();
+        if (checked.length === 0) return;
+        const reservations = (await idle()).filter(({ reservationId }) =>
+          checked.includes(reservationId),
+        );
+        recordHolds(
+          checked,
+          await releaseUnusedWatcherProverFundingReservations({
+            ...input,
+            reservations,
+            decisionMissingOnly: true,
+            ...(orphans === undefined ? {} : { orphans }),
+          }),
+        );
+      }),
+    settleUnattended: () =>
+      serialize(async () => {
+        const reservations = await idle();
+        recordHolds(
+          reservations.map(({ reservationId }) => reservationId),
+          await releaseUnusedWatcherProverFundingReservations({
+            ...input,
+            reservations,
+            decisionMissingOnly: true,
+            ...(orphans === undefined ? {} : { orphans }),
+          }),
+        );
+      }),
+    decisionHolds: decisionHolds.current,
+    create: async (request) => {
+      assertVerifiedWatcherDeploymentIdentity(input.deploymentIdentity);
+      let protocolParameters =
+        await refreshWatcherProtocolParameterRuntimeAuthority(
+          input.protocolParameters,
+        );
+      const currentParameters = protocolParameters;
+      const credential = getAddressDetails(
+        request.walletAddress,
+      ).paymentCredential;
+      if (credential?.type !== "Key")
+        throw new Error("prover funding wallet has no payment key");
+      const economics = await watcherDeploymentReleaseEconomicsAuthority(
+        input.deploymentIdentity,
+      ).verifyForWorkflow({
+        deploymentFingerprint: input.deploymentIdentity.manifestId,
+      });
+      const priorAddresses = new Set<string>();
+      const contracts = Object.entries(
+        watcherDeploymentAppliedScriptHashes(input.deploymentIdentity),
+      ).flatMap(([name, scriptHash]) => {
+        // These deployed names describe proof subjects, not script purposes:
+        // both are spending validators despite their Mint/Withdraw suffixes.
+        const namedProofSpend =
+          name === "fraudProofValueNotPreservedUnionMint" ||
+          name === "fraudProofDoubleWithdraw";
+        if (
+          !namedProofSpend &&
+          (name.endsWith("Mint") || name.endsWith("Withdraw"))
+        )
+          return [];
+        const role =
+          name === "correctionLockSpend"
+            ? ("correction_lock" as const)
+            : name === "fraudProofSpend" ||
+                name === "fraudProofCatalogueSpend" ||
+                name === "fieldPreimageCertificateSpend" ||
+                name === "scriptDecodeSpend" ||
+                // Append-only proof-item publication uses the same immutable
+                // spending validator as the fraud-proof certificate carriers.
+                name === "validationTraceDisputeProofItem"
+              ? ("field_carrier" as const)
+              : (name.startsWith("fraudProof") &&
+                    !name.startsWith("fraudProofCatalogue")) ||
+                  name.startsWith("validationTraceDispute")
+                ? ("proof_thread" as const)
+                : name.endsWith("Spend")
+                  ? ("protocol_state" as const)
+                  : undefined;
+        if (role === undefined) return [];
+        const address = credentialToAddress(
+          input.deploymentIdentity.network,
+          scriptHashToCredential(scriptHash),
+        );
+        if (!name.endsWith("Mint") && !name.endsWith("Withdraw"))
+          priorAddresses.add(address);
+        return [{ address, scriptHash, role }];
+      });
+      const uniqueContracts = new Map<string, (typeof contracts)[number]>();
+      for (const contract of contracts) {
+        const prior = uniqueContracts.get(contract.address);
+        if (prior !== undefined && prior.role !== contract.role) {
+          throw new Error(
+            `signed funding contract ${contract.scriptHash} has conflicting custody roles: ${prior.role}/${contract.role}`,
+          );
+        }
+        uniqueContracts.set(contract.address, contract);
+      }
+      const referenceScripts = new Map<
+        string,
+        { outRef: string; scriptHash: string }
+      >();
+      for (const { outRef, scriptHash } of Object.values(
+        watcherDeploymentProtocolScriptAuthority(input.deploymentIdentity)
+          .referenceScripts,
+      )) {
+        const prior = referenceScripts.get(outRef);
+        if (prior !== undefined && prior.scriptHash !== scriptHash)
+          throw new Error(
+            "signed funding reference has conflicting script identities",
+          );
+        referenceScripts.set(outRef, { outRef, scriptHash });
+      }
+      const policyInput = {
+        category: request.category,
+        runner: request.runner,
+        deploymentFingerprint: input.deploymentIdentity.manifestId,
+        fundingPaymentKeyHash: credential.hash,
+        protocolParameters: protocolParameters.snapshot,
+        economics,
+        contracts: [...uniqueContracts.values()],
+        referenceScripts: [...referenceScripts.values()],
+        ...watcherValidationDisputeFundingTerms(
+          input.deploymentIdentity,
+          request.category,
+        ),
+      };
+      const policy = createWorkflowRuntimeFundingPolicy(policyInput);
+      let reservationPolicy = policy;
+      await authorizeWatcherProverFundingRecovery({
+        journalRoot: input.journalRoot,
+        journalAuthenticationKey: input.journalAuthenticationKey,
+        workflowJournal: input.workflowJournal,
+        deploymentIdentity: input.deploymentIdentity,
+        actuationPermit: request.actuationPermit,
+        category: request.category,
+        rollbackGeneration: request.rollbackGeneration,
+        store: input.store,
+      });
+      const execution = assertWorkflowActuationPermitIdentity({
+        permit: request.actuationPermit,
+        category: request.category,
+        rollbackGeneration: request.rollbackGeneration,
+      });
+      if (execution.decisionDigest !== request.decisionDigest)
+        throw new Error(
+          "prover funding invocation changed its authorizing decision",
+        );
+      const existing = (await input.store.readAll())
+        .map(parseWatcherProverFundingReservationRecord)
+        .find(
+          (record) =>
+            record.deploymentFingerprint ===
+              input.deploymentIdentity.manifestId &&
+            record.decisionDigest === execution.executionDecisionDigest,
+        );
+      if (request.reservationMode === "resume_only" && existing === undefined)
+        throw new Error(
+          "existing-only funding requires its durable reservation",
+        );
+      if (
+        existing !== undefined &&
+        existing.policyDigest !==
+          readWorkflowRuntimeFundingPolicy(policy).policyDigest
+      ) {
+        // Recover only an actually admitted historical snapshot, never a digest
+        // supplied by the durable record. Signed attempts retain their leases.
+        let recovered = false;
+        for (const historical of [
+          input.protocolParameterHistory?.read(existing),
+          signedParameters,
+          input.protocolParameters,
+        ]) {
+          if (historical == null) continue;
+          const historicalInput = {
+            ...policyInput,
+            protocolParameters: historical.snapshot,
+          };
+          const historicalPolicy =
+            createWorkflowRuntimeFundingPolicy(historicalInput);
+          const priorPolicy = createWorkflowRuntimeFundingPolicy({
+            ...historicalInput,
+            contracts: policyInput.contracts.filter(({ address }) =>
+              priorAddresses.has(address),
+            ),
+          });
+          for (const candidate of [historicalPolicy, priorPolicy]) {
+            if (
+              existing.policyDigest !==
+              readWorkflowRuntimeFundingPolicy(candidate).policyDigest
+            )
+              continue;
+            protocolParameters = historical;
+            reservationPolicy = candidate;
+            recovered = true;
+            break;
+          }
+          if (recovered) break;
+        }
+        if (!recovered) {
+          throw new WatcherProverFundingUnavailableError(
+            "restored prover funding reservation identity mismatch: original protocol parameters are unavailable; signed attempts must reconcile before repricing",
+          );
+        }
+      }
+      const selectedPolicy =
+        readWorkflowRuntimeFundingPolicy(reservationPolicy);
+      const calculation =
+        lastCalculation?.policyDigest === selectedPolicy.policyDigest &&
+        lastCalculation.protocolParametersDigest ===
+          protocolParameters.snapshotDigest &&
+        lastCalculation.economicsPolicyDigest === economics.policyDigest
+          ? lastCalculation
+          : await calculateWatcherRuntimeProverFunding({
+              deploymentIdentity: input.deploymentIdentity,
+              protocolParameters,
+              policy: reservationPolicy,
+            });
+      // Original durable leases remain authoritative on every generation,
+      // including cache hits and selection of the earlier deployed roster.
+      if (
+        existing !== undefined &&
+        (existing.policyDigest !== calculation.policyDigest ||
+          existing.reservationBasisDigest !==
+            calculation.reservationBasisDigest)
+      )
+        throw new Error(
+          "restored prover funding reservation identity mismatch",
+        );
+      lastCalculation = calculation;
+      const currentPolicy = readWorkflowRuntimeFundingPolicy(policy);
+      const selectionCalculation =
+        currentParameters.snapshotDigest ===
+        calculation.protocolParametersDigest
+          ? calculation
+          : lastSelectionCalculation?.policyDigest ===
+              currentPolicy.policyDigest
+            ? lastSelectionCalculation
+            : await calculateWatcherRuntimeProverFunding({
+                deploymentIdentity: input.deploymentIdentity,
+                protocolParameters: currentParameters,
+                policy,
+              });
+      lastSelectionCalculation = selectionCalculation;
+      const authority = await createWatcherProverFundingAuthority({
+        category: request.category,
+        runner: request.runner,
+        actuationPermit: request.actuationPermit,
+        rollbackGeneration: request.rollbackGeneration,
+        deploymentIdentity: input.deploymentIdentity,
+        calculation,
+        selectionCalculation,
+        policy,
+        capacityPolicy:
+          existing === undefined
+            ? policy
+            : createWorkflowRuntimeFundingPolicy({
+                ...policyInput,
+                protocolParameters:
+                  input.protocolParameterHistory?.readCapacity(existing)
+                    ?.snapshot ?? policyInput.protocolParameters,
+              }),
+        reservationPolicy,
+        decisionDigest: execution.executionDecisionDigest,
+        onReserved: (record) => {
+          // Persist the original admitted basis before any signed intent exists.
+          input.protocolParameterHistory?.remember(record, protocolParameters);
+          input.protocolParameterHistory?.rememberCapacity(
+            record,
+            currentParameters,
+          );
+          reservationByPermit.set(request.actuationPermit, record);
+          live.add(record.reservationId);
+        },
+        walletAddress: request.walletAddress,
+        walletUtxos:
+          existing === undefined
+            ? (request.walletUtxos ?? (await request.readWalletUtxos()))
+            : [],
+        readWalletUtxos: request.readWalletUtxos,
+        store: input.store,
+        resolveInputs: request.resolveInputs,
+        computationThreadPolicyId: input.computationThreadPolicyId,
+        resolveProtocolInputAuthority: request.resolveProtocolInputAuthority,
+      });
+      return authority.permit;
+    },
+  });
+  admittedFactories.add(factory);
+  return factory;
+};

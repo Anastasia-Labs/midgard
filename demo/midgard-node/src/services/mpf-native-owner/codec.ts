@@ -5,8 +5,8 @@ import {
   NATIVE_MPF_RPC_DIGEST_DOMAIN,
   NATIVE_MPF_RPC_MAGIC,
   NATIVE_MPF_RPC_SCHEMA,
-  NativeMpfRpcKind,
   type NativeMpfRpcFrame,
+  NativeMpfRpcKind,
 } from "./protocol.js";
 
 const LENGTH_BYTES = 4;
@@ -29,8 +29,8 @@ const assertKind: (value: number) => asserts value is NativeMpfRpcKind = (
 ) => {
   if (
     !Number.isSafeInteger(value) ||
-    value < NativeMpfRpcKind.Hello ||
-    value > NativeMpfRpcKind.Error
+    value < Number(NativeMpfRpcKind.Hello) ||
+    value > Number(NativeMpfRpcKind.Error)
   ) {
     throw new Error(`Unknown native MPF RPC message kind ${value.toString()}`);
   }

@@ -33,8 +33,8 @@ validator main(nonce: Hash<Blake2b_256, ByteArray>) {
         // 1. The registration certificate must be immediately followed by the
         //    unregistration counterpart.
         expect [reg_cert,
-          unreg_cert, ..] =
-          tx.certificates |> list.drop(registration_certificate_index)
+              unreg_cert, ..] = tx.certificates
+          |> list.drop(registration_certificate_index)
 
         // 2. Ensure correctness of the provided certificate index.
         expect reg_cert == certificate
@@ -54,8 +54,8 @@ validator main(nonce: Hash<Blake2b_256, ByteArray>) {
         expect UnregisterCredential { credential: unreg_cred, .. } = certificate
 
         // 2. The provided index must point to a registration certificate.
-        expect [reg_cert, ..] =
-          tx.certificates |> list.drop(registration_certificate_index)
+        expect [reg_cert, ..] = tx.certificates
+          |> list.drop(registration_certificate_index)
         expect RegisterCredential { credential: reg_cred, .. } = reg_cert
 
         // 3. Credential from the registration certificate must match the

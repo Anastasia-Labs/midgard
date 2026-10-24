@@ -1,14 +1,15 @@
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { runDaZstdStartupSelfTest } from "@al-ft/midgard-core/da-compression";
+import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { readDaHardeningConfig } from "@/da/hardening-config.js";
+import { readDaHardeningConfig } from "../src/da/hardening-config.js";
 import {
   assertDaDeploymentIdentityCompatible,
-  assertDaEnvelopeManifestConfigured,
   assertDaThresholdCompatible,
   runDaIdentityGatedStartupSequence,
-} from "@/da/startup.js";
+} from "../src/da/startup.js";
 
 describe("DA hardening startup and configuration", () => {
   it("runs the required native zstd startup round-trip", async () => {
@@ -29,18 +30,25 @@ describe("DA hardening startup and configuration", () => {
       assertDaDeploymentIdentityCompatible(manifestId, {
         kind: "manifest",
         manifestId,
+        deploymentMarker: makeDeploymentMarker(manifestId),
         path: "/deployment.json",
+        consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       }),
     ).not.toThrow();
     expect(() =>
       assertDaDeploymentIdentityCompatible("cd".repeat(32), {
         kind: "manifest",
         manifestId,
+        deploymentMarker: makeDeploymentMarker(manifestId),
         path: "/deployment.json",
+        consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       }),
     ).toThrow(/identities do not match/);
     expect(() =>
-      assertDaDeploymentIdentityCompatible(manifestId, { kind: "derived" }),
+      assertDaDeploymentIdentityCompatible(manifestId, {
+        kind: "derived",
+        consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+      }),
     ).toThrow(/requires a verified deployment-manifest contract source/);
   });
 
@@ -51,12 +59,11 @@ describe("DA hardening startup and configuration", () => {
       assertDaDeploymentIdentityCompatible("cd".repeat(32), {
         kind: "manifest",
         manifestId,
+        deploymentMarker: makeDeploymentMarker(manifestId),
         path: "/deployment.json",
+        consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       });
-      return {
-        envelopeMode: "identity" as const,
-        manifest: null,
-      };
+      throw new Error("deployment mismatch unexpectedly accepted");
     });
 
     await expect(
@@ -79,16 +86,6 @@ describe("DA hardening startup and configuration", () => {
     expect(calls).toEqual([]);
   });
 
-  it("requires a publication manifest for every non-off envelope mode", () => {
-    expect(() => assertDaEnvelopeManifestConfigured("off", null)).not.toThrow();
-    expect(() => assertDaEnvelopeManifestConfigured("identity", null)).toThrow(
-      /requires a configured publication manifest/,
-    );
-    expect(() => assertDaEnvelopeManifestConfigured("zstd", null)).toThrow(
-      /requires a configured publication manifest/,
-    );
-  });
-
   it("parses strict rollout and retry controls from one canonical source", () => {
     expect(
       readDaHardeningConfig({
@@ -109,7 +106,7 @@ describe("DA hardening startup and configuration", () => {
     });
     expect(() =>
       readDaHardeningConfig({ MIDGARD_DA_PAYLOAD_ENVELOPE: "gzip" }),
-    ).toThrow(/off, identity, or zstd/);
+    ).toThrow(/identity or zstd/);
     expect(() =>
       readDaHardeningConfig({
         MIDGARD_DA_PUBLISH_RETRY_BACKOFF_MS: "100",

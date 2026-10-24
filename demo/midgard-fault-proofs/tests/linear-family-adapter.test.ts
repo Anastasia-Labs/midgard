@@ -1,0 +1,761 @@
+import "vitest";
+import "../src/remove-fraudulent-block.js";
+import "../src/workflow/action-changed.js";
+import "../src/workflow/family-l1-observation.js";
+import "../src/workflow/journal.js";
+import "../src/workflow/linear-family-adapter.js";
+import "../src/workflow/linear-family-state.js";
+import "../src/workflow/transaction-boundary.js";
+import "./linear-family-adapter.terminal.js";
+
+import { describe, expect, it, vi } from "vitest";
+
+import {
+  createLocalStateQueueMutationLeaseCoordinator,
+  LOCAL_STATE_QUEUE_MUTATION_LEASE_SOURCE,
+  LOCAL_STATE_QUEUE_MUTATION_LEASE_TOKEN,
+} from "../src/remove-fraudulent-block.js";
+import { WorkflowActionChangedError } from "../src/workflow/action-changed.js";
+import {
+  type JournalJsonObject,
+  normalizeJournalJson,
+} from "../src/workflow/journal.js";
+import { createLinearFamilyWorkflowAdapter } from "../src/workflow/linear-family-adapter.js";
+import { linearFamilyObservation } from "../src/workflow/linear-family-state.js";
+import type { FraudProofRawL1FamilyStage } from "../src/workflow/raw-l1-family-derivation.js";
+import { workflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
+import {
+  context,
+  headerHash,
+  identity,
+  l1,
+  leaseCoordinator,
+  outRef,
+  port,
+  provenance,
+  signed,
+  terminal,
+  transaction,
+  txHash,
+} from "./linear-family-adapter.terminal.js";
+
+describe("production linear family adapter V1", () => {
+  it.each(["fabricatedDeposit", "fabricatedWithdrawal"] as const)(
+    "persists and resumes the terminal queue lease for %s",
+    async (category) => {
+      const stage: { value: FraudProofRawL1FamilyStage } = {
+        value: {
+          kind: "step",
+          step: 4,
+          threadOutRef: outRef("22"),
+          stateQueueBlockOutRef: outRef("11"),
+        },
+      };
+      const required = linearFamilyObservation({
+        category,
+        headerHash,
+        provenance,
+        stage: stage.value,
+      });
+      if (required.kind !== "action_required")
+        throw new Error("missing terminal action");
+      const lease = {
+        token: "terminal-lease",
+        source: "queue-observer",
+        renew: vi.fn(async () => undefined),
+        release: vi.fn(async () => undefined),
+        fail: vi.fn(async () => undefined),
+      };
+      const resume = vi.fn(async () => lease);
+      const coordinator = { acquire: async () => lease, resume };
+      const observation = { ...l1(stage), category };
+      const transactions = {
+        ...port(async () => ({
+          transaction: transaction(),
+          mutationLease: lease,
+        })),
+        category,
+      };
+      const args = {
+        ...context,
+        identity: { ...identity, category },
+        action: required.action,
+      };
+      const adapter = createLinearFamilyWorkflowAdapter({
+        category,
+        l1: observation,
+        transactions,
+        stateQueueMutationLeaseCoordinator: coordinator,
+      });
+      const preflight = await adapter.preflight(args);
+      expect(preflight.durableRecovery).toEqual({
+        stateQueueMutationLease: { token: lease.token, source: lease.source },
+      });
+      const fresh = createLinearFamilyWorkflowAdapter({
+        category,
+        l1: observation,
+        transactions,
+        stateQueueMutationLeaseCoordinator: coordinator,
+      });
+      await expect(
+        fresh.reconcile({
+          ...args,
+          txHash,
+          durableRecovery: preflight.durableRecovery,
+        }),
+      ).resolves.toMatchObject({ kind: "unknown" });
+      expect(resume).toHaveBeenCalledWith({
+        token: lease.token,
+        source: lease.source,
+      });
+      expect(lease.release).not.toHaveBeenCalled();
+      const withoutLease = createLinearFamilyWorkflowAdapter({
+        category,
+        l1: observation,
+        transactions: {
+          ...transactions,
+          capture: async () => ({ transaction: transaction() }),
+        },
+        stateQueueMutationLeaseCoordinator: coordinator,
+      });
+      await expect(withoutLease.preflight(args)).rejects.toThrow(
+        "topology disagreed with its mutation lease",
+      );
+    },
+  );
+
+  it("distinguishes a changed authenticated action from a deterministic build failure", async () => {
+    const stage: { value: FraudProofRawL1FamilyStage } = {
+      value: { kind: "not_started", stateQueueBlockOutRef: outRef("10") },
+    };
+    const failure = new Error("local UPLC validator rejected the transaction");
+    const capture = vi.fn(async () => {
+      throw failure;
+    });
+    const adapter = createLinearFamilyWorkflowAdapter({
+      category: "daHashPreimage",
+      l1: l1(stage),
+      transactions: port(capture),
+      stateQueueMutationLeaseCoordinator: leaseCoordinator,
+    });
+    const original = await adapter.observe(context);
+    if (original.kind !== "action_required") throw new Error("missing action");
+    stage.value = { kind: "not_started", stateQueueBlockOutRef: outRef("12") };
+    await expect(
+      adapter.preflight({ ...context, action: original.action }),
+    ).rejects.toBeInstanceOf(WorkflowActionChangedError);
+    expect(capture).not.toHaveBeenCalled();
+    const current = await adapter.observe(context);
+    if (current.kind !== "action_required")
+      throw new Error("missing replacement action");
+    await expect(
+      adapter.preflight({ ...context, action: current.action }),
+    ).rejects.toBe(failure);
+    expect(capture).toHaveBeenCalledExactlyOnceWith({
+      action: current.action,
+      artifact: context.artifact,
+      entries: context.entries,
+    });
+  });
+
+  it("captures local UPLC intent, binds signed reference inputs, and submits the exact body", async () => {
+    const stage = {
+      value: {
+        kind: "step",
+        step: 1,
+        threadOutRef: outRef("11"),
+        stateQueueBlockOutRef: outRef("10"),
+      } as const,
+    };
+    const capture = vi.fn(async () => ({ transaction: transaction() }));
+    const adapter = createLinearFamilyWorkflowAdapter({
+      category: "daHashPreimage",
+      l1: l1(stage),
+      transactions: port(capture),
+      stateQueueMutationLeaseCoordinator: leaseCoordinator,
+    });
+    const observation = await adapter.observe(context);
+    if (observation.kind !== "action_required") {
+      throw new Error("expected action");
+    }
+    const preflight = await adapter.preflight({
+      ...context,
+      action: observation.action,
+    });
+    expect(workflowPreflightTransaction(preflight)).toBe(
+      (await capture.mock.results[0]!.value).transaction.signed,
+    );
+    expect(preflight).toMatchObject({
+      actionId: observation.action.actionId,
+      txHash,
+      scriptExecution: "reference_scripts",
+      localUplcEvaluation: { status: "passed" },
+    });
+    await expect(
+      adapter.submit({
+        ...context,
+        action: observation.action,
+        preflight,
+      }),
+    ).resolves.toEqual({ kind: "submitted", txHash });
+    expect(capture).toHaveBeenCalledTimes(1);
+  });
+
+  it("accepts the orchestrator's journal-normalized copy of the required action", async () => {
+    const stage = {
+      value: {
+        kind: "not_started",
+        stateQueueBlockOutRef: outRef("10"),
+      } as const,
+    };
+    const capture = vi.fn(async () => ({ transaction: transaction() }));
+    const adapter = createLinearFamilyWorkflowAdapter({
+      category: "daHashPreimage",
+      l1: l1(stage),
+      transactions: port(capture),
+      stateQueueMutationLeaseCoordinator: leaseCoordinator,
+    });
+    const observation = await adapter.observe(context);
+    if (observation.kind !== "action_required") {
+      throw new Error("expected action");
+    }
+    const normalized = {
+      actionId: observation.action.actionId,
+      input: normalizeJournalJson(
+        observation.action.input,
+        "action",
+      ) as JournalJsonObject,
+    };
+    expect(Object.keys(normalized.input)).not.toEqual(
+      Object.keys(observation.action.input),
+    );
+    const preflight = await adapter.preflight({
+      ...context,
+      action: normalized,
+    });
+    expect(preflight.actionId).toBe(observation.action.actionId);
+    expect(capture).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects stale/substituted actions before invoking a builder", async () => {
+    const stage = {
+      value: {
+        kind: "step",
+        step: 1,
+        threadOutRef: outRef("11"),
+        stateQueueBlockOutRef: outRef("10"),
+      } as const,
+    };
+    const capture = vi.fn(async () => ({ transaction: transaction() }));
+    const adapter = createLinearFamilyWorkflowAdapter({
+      category: "daHashPreimage",
+      l1: l1(stage),
+      transactions: port(capture),
+      stateQueueMutationLeaseCoordinator: leaseCoordinator,
+    });
+    const required = linearFamilyObservation({
+      category: "daHashPreimage",
+      headerHash,
+      provenance,
+      stage: stage.value,
+    });
+    if (required.kind !== "action_required") throw new Error("missing action");
+    await expect(
+      adapter.preflight({
+        ...context,
+        action: {
+          ...required.action,
+          input: { ...required.action.input, threadOutRef: outRef("12") },
+        },
+      }),
+    ).rejects.toThrow("differs from authenticated current L1 state");
+    expect(capture).not.toHaveBeenCalled();
+  });
+
+  it("rejects inline-only and forged reference-script claims", async () => {
+    const stage = {
+      value: {
+        kind: "step",
+        step: 1,
+        threadOutRef: outRef("11"),
+        stateQueueBlockOutRef: outRef("10"),
+      } as const,
+    };
+    const required = linearFamilyObservation({
+      category: "daHashPreimage",
+      headerHash,
+      provenance,
+      stage: stage.value,
+    });
+    if (required.kind !== "action_required") throw new Error("missing action");
+
+    const inline = createLinearFamilyWorkflowAdapter({
+      category: "daHashPreimage",
+      l1: l1(stage),
+      transactions: port(async () => ({
+        transaction: transaction({ referenceScripts: [] }),
+      })),
+      stateQueueMutationLeaseCoordinator: leaseCoordinator,
+    });
+    await expect(
+      inline.preflight({ ...context, action: required.action }),
+    ).rejects.toThrow("did not use published reference scripts");
+
+    const forged = createLinearFamilyWorkflowAdapter({
+      category: "daHashPreimage",
+      l1: l1(stage),
+      transactions: port(async () => ({
+        transaction: transaction({
+          signed: signed({ includedReferenceOutRef: outRef("56") }),
+        }),
+      })),
+      stateQueueMutationLeaseCoordinator: leaseCoordinator,
+    });
+    await expect(
+      forged.preflight({ ...context, action: required.action }),
+    ).rejects.toThrow("claimed a reference script absent from the signed body");
+
+    for (const inlineScriptKind of [
+      "native",
+      "plutusV1",
+      "plutusV2",
+      "plutusV3",
+    ] as const) {
+      const embedded = createLinearFamilyWorkflowAdapter({
+        category: "daHashPreimage",
+        l1: l1(stage),
+        transactions: port(async () => ({
+          transaction: transaction({ signed: signed({ inlineScriptKind }) }),
+        })),
+        stateQueueMutationLeaseCoordinator: leaseCoordinator,
+      });
+      await expect(
+        embedded.preflight({ ...context, action: required.action }),
+      ).rejects.toThrow("embeds inline script witnesses");
+    }
+  });
+
+  it("rejects duplicate outstanding preflight capture without replacing it", async () => {
+    const stage = {
+      value: {
+        kind: "step",
+        step: 1,
+        threadOutRef: outRef("11"),
+        stateQueueBlockOutRef: outRef("10"),
+      } as const,
+    };
+    const required = linearFamilyObservation({
+      category: "daHashPreimage",
+      headerHash,
+      provenance,
+      stage: stage.value,
+    });
+    if (required.kind !== "action_required") throw new Error("missing action");
+    const capture = vi.fn(async () => ({ transaction: transaction() }));
+    const adapter = createLinearFamilyWorkflowAdapter({
+      category: "daHashPreimage",
+      l1: l1(stage),
+      transactions: port(capture),
+      stateQueueMutationLeaseCoordinator: leaseCoordinator,
+    });
+    await adapter.preflight({ ...context, action: required.action });
+    await expect(
+      adapter.preflight({ ...context, action: required.action }),
+    ).rejects.toThrow("already has an outstanding captured body");
+    expect(capture).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails an acquired mutation lease when signed-body admission rejects", async () => {
+    const stage = {
+      value: {
+        kind: "proof_token",
+        fraudProofOutRef: outRef("22"),
+        stateQueueBlockOutRef: outRef("11"),
+        nextRemovalOutRef: outRef("33"),
+      } as FraudProofRawL1FamilyStage,
+    };
+    const required = linearFamilyObservation({
+      category: "daHashPreimage",
+      headerHash,
+      provenance,
+      stage: stage.value,
+    });
+    if (required.kind !== "action_required") throw new Error("missing action");
+    const lease = {
+      token: "lease-before-admission",
+      source: "state-queue-observer-v1",
+      renew: vi.fn(async () => undefined),
+      release: vi.fn(async () => undefined),
+      fail: vi.fn(async () => undefined),
+    };
+    const adapter = createLinearFamilyWorkflowAdapter({
+      category: "daHashPreimage",
+      l1: l1(stage),
+      transactions: port(async () => ({
+        transaction: transaction({
+          signed: signed({ inlineScriptKind: "plutusV3" }),
+        }),
+        mutationLease: lease,
+      })),
+      stateQueueMutationLeaseCoordinator: { acquire: async () => lease },
+    });
+    await expect(
+      adapter.preflight({ ...context, action: required.action }),
+    ).rejects.toThrow("embeds inline script witnesses");
+    expect(lease.fail).toHaveBeenCalledTimes(1);
+    expect(lease.release).not.toHaveBeenCalled();
+  });
+
+  it("reconciles through a fresh adapter without an in-memory captured body", async () => {
+    const stage = {
+      value: {
+        kind: "step",
+        step: 1,
+        threadOutRef: outRef("11"),
+        stateQueueBlockOutRef: outRef("10"),
+      } as FraudProofRawL1FamilyStage,
+    };
+    const required = linearFamilyObservation({
+      category: "daHashPreimage",
+      headerHash,
+      provenance,
+      stage: stage.value,
+    });
+    if (required.kind !== "action_required") throw new Error("missing action");
+    const fresh = createLinearFamilyWorkflowAdapter({
+      category: "daHashPreimage",
+      l1: l1(stage, async (requested) => requested === txHash),
+      transactions: port(async () => ({ transaction: transaction() })),
+      stateQueueMutationLeaseCoordinator: leaseCoordinator,
+    });
+    stage.value = {
+      kind: "step",
+      step: 2,
+      threadOutRef: `${txHash}#0`,
+      stateQueueBlockOutRef: outRef("10"),
+    };
+    await expect(
+      fresh.reconcile({
+        ...context,
+        action: required.action,
+        txHash,
+      }),
+    ).resolves.toEqual({ kind: "confirmed", txHash });
+  });
+
+  it("persists and resumes the exact mutation lease for descendant removal", async () => {
+    const stage = {
+      value: {
+        kind: "proof_token",
+        fraudProofOutRef: outRef("22"),
+        stateQueueBlockOutRef: outRef("11"),
+        nextRemovalOutRef: outRef("33"),
+      } as FraudProofRawL1FamilyStage,
+    };
+    const required = linearFamilyObservation({
+      category: "daHashPreimage",
+      headerHash,
+      provenance,
+      stage: stage.value,
+    });
+    if (required.kind !== "action_required") throw new Error("missing action");
+    const lease = {
+      token: "lease-token-1",
+      source: "state-queue-observer-v1",
+      renew: vi.fn(async () => undefined),
+      release: vi.fn(async () => undefined),
+      fail: vi.fn(async () => undefined),
+    };
+    const adapter = createLinearFamilyWorkflowAdapter({
+      category: "daHashPreimage",
+      l1: l1(stage),
+      transactions: port(async () => ({
+        transaction: transaction(),
+        mutationLease: lease,
+      })),
+      stateQueueMutationLeaseCoordinator: {
+        acquire: async () => lease,
+      },
+    });
+    const preflight = await adapter.preflight({
+      ...context,
+      action: required.action,
+    });
+    expect(preflight.durableRecovery).toEqual({
+      stateQueueMutationLease: {
+        token: lease.token,
+        source: lease.source,
+      },
+    });
+
+    const resumedLease = {
+      ...lease,
+      renew: vi.fn(async () => undefined),
+    };
+    const resume = vi.fn(async () => resumedLease);
+    const fresh = createLinearFamilyWorkflowAdapter({
+      category: "daHashPreimage",
+      l1: l1(stage),
+      transactions: port(async () => ({ transaction: transaction() })),
+      stateQueueMutationLeaseCoordinator: {
+        acquire: async () => resumedLease,
+        resume,
+      },
+    });
+    await expect(
+      fresh.reconcile({
+        ...context,
+        action: required.action,
+        txHash,
+        durableRecovery: preflight.durableRecovery,
+      }),
+    ).resolves.toMatchObject({
+      kind: "unknown",
+      reason:
+        "Recorded signed bytes or canonical recovery source are unavailable",
+    });
+    expect(resume).toHaveBeenCalledWith({
+      token: lease.token,
+      source: lease.source,
+    });
+    expect(resumedLease.renew).toHaveBeenCalledTimes(1);
+    stage.value = { kind: "removed", terminal: terminal() };
+
+    const expiredResume = vi.fn(async () => {
+      throw new Error("old mutation lease expired after confirmed removal");
+    });
+    const expired = createLinearFamilyWorkflowAdapter({
+      category: "daHashPreimage",
+      l1: l1(stage, async () => true),
+      transactions: port(async () => {
+        throw new Error("must not rebuild");
+      }),
+      stateQueueMutationLeaseCoordinator: {
+        acquire: async () => {
+          throw new Error("must not acquire");
+        },
+        resume: expiredResume,
+      },
+    });
+    await expect(
+      expired.reconcile({
+        ...context,
+        action: required.action,
+        txHash,
+        durableRecovery: preflight.durableRecovery,
+        authorizeResubmission: async () => {
+          throw new Error("must not submit");
+        },
+      }),
+    ).resolves.toEqual({ kind: "confirmed", txHash });
+    expect(expiredResume).toHaveBeenCalledTimes(1);
+  });
+
+  it("resumes the local coordinator's journaled lease and refuses a node-lease journal", async () => {
+    const stage = {
+      value: {
+        kind: "proof_token",
+        fraudProofOutRef: outRef("22"),
+        stateQueueBlockOutRef: outRef("11"),
+        nextRemovalOutRef: outRef("33"),
+      } as FraudProofRawL1FamilyStage,
+    };
+    const required = linearFamilyObservation({
+      category: "daHashPreimage",
+      headerHash,
+      provenance,
+      stage: stage.value,
+    });
+    if (required.kind !== "action_required") throw new Error("missing action");
+    const coordinator = createLocalStateQueueMutationLeaseCoordinator();
+    const lease = await coordinator.acquire();
+    const adapter = createLinearFamilyWorkflowAdapter({
+      category: "daHashPreimage",
+      l1: l1(stage),
+      transactions: port(async () => ({
+        transaction: transaction(),
+        mutationLease: lease,
+      })),
+      stateQueueMutationLeaseCoordinator: coordinator,
+    });
+    const preflight = await adapter.preflight({
+      ...context,
+      action: required.action,
+    });
+    expect(preflight.durableRecovery).toEqual({
+      stateQueueMutationLease: {
+        token: LOCAL_STATE_QUEUE_MUTATION_LEASE_TOKEN,
+        source: LOCAL_STATE_QUEUE_MUTATION_LEASE_SOURCE,
+      },
+    });
+
+    // A restarted process: fresh adapter, fresh local coordinator.
+    const localCoordinator = createLocalStateQueueMutationLeaseCoordinator();
+    const resume = vi.fn(localCoordinator.resume!);
+    const freshCoordinator = { ...localCoordinator, resume };
+    const fresh = createLinearFamilyWorkflowAdapter({
+      category: "daHashPreimage",
+      l1: l1(stage),
+      transactions: port(async () => ({ transaction: transaction() })),
+      stateQueueMutationLeaseCoordinator: freshCoordinator,
+    });
+    await expect(
+      fresh.reconcile({
+        ...context,
+        action: required.action,
+        txHash,
+        durableRecovery: preflight.durableRecovery,
+      }),
+    ).resolves.toMatchObject({
+      kind: "unknown",
+      reason:
+        "Recorded signed bytes or canonical recovery source are unavailable",
+    });
+    expect(resume).toHaveBeenCalledWith({
+      token: LOCAL_STATE_QUEUE_MUTATION_LEASE_TOKEN,
+      source: LOCAL_STATE_QUEUE_MUTATION_LEASE_SOURCE,
+    });
+    await expect(resume.mock.results[0]!.value).resolves.toMatchObject({
+      token: lease.token,
+      source: lease.source,
+    });
+
+    // A journal written under a Midgard node's HTTP lease never resumes locally.
+    const nodeJournal = createLinearFamilyWorkflowAdapter({
+      category: "daHashPreimage",
+      l1: l1(stage),
+      transactions: port(async () => {
+        throw new Error("must not rebuild");
+      }),
+      stateQueueMutationLeaseCoordinator:
+        createLocalStateQueueMutationLeaseCoordinator(),
+    });
+    const refused = await nodeJournal.reconcile({
+      ...context,
+      action: required.action,
+      txHash,
+      durableRecovery: {
+        stateQueueMutationLease: {
+          token: "lease-token-1",
+          source: "http://midgard-node.test",
+        },
+      },
+    });
+    expect(refused).toMatchObject({ kind: "unknown" });
+    expect(refused.kind === "unknown" ? refused.reason : "").toContain(
+      "different coordinator",
+    );
+  });
+
+  it("rejects missing, surplus, or substituted mutation-lease authority", async () => {
+    const stage = {
+      value: {
+        kind: "proof_token",
+        fraudProofOutRef: outRef("22"),
+        stateQueueBlockOutRef: outRef("11"),
+        nextRemovalOutRef: outRef("33"),
+      } as FraudProofRawL1FamilyStage,
+    };
+    const required = linearFamilyObservation({
+      category: "daHashPreimage",
+      headerHash,
+      provenance,
+      stage: stage.value,
+    });
+    if (required.kind !== "action_required") throw new Error("missing action");
+    const missing = createLinearFamilyWorkflowAdapter({
+      category: "daHashPreimage",
+      l1: l1(stage),
+      transactions: port(async () => ({ transaction: transaction() })),
+      stateQueueMutationLeaseCoordinator: leaseCoordinator,
+    });
+    await expect(
+      missing.preflight({ ...context, action: required.action }),
+    ).rejects.toThrow("topology disagreed with its mutation lease");
+
+    await expect(
+      missing.reconcile({
+        ...context,
+        action: required.action,
+        txHash,
+        durableRecovery: {
+          stateQueueMutationLease: {
+            token: "substituted",
+            source: "foreign-observer",
+          },
+        },
+      }),
+    ).resolves.toMatchObject({ kind: "unknown" });
+  });
+
+  it("rejects category-substituted L1 or transaction ports", () => {
+    const stage = {
+      value: {
+        kind: "not_started",
+        stateQueueBlockOutRef: outRef("10"),
+      } as const,
+    };
+    expect(() =>
+      createLinearFamilyWorkflowAdapter({
+        category: "daHashPreimage",
+        l1: { ...l1(stage), category: "minFee" } as never,
+        transactions: port(async () => ({ transaction: transaction() })),
+        stateQueueMutationLeaseCoordinator: leaseCoordinator,
+      }),
+    ).toThrow("ports changed identity");
+    expect(() =>
+      createLinearFamilyWorkflowAdapter({
+        category: "daHashPreimage",
+        l1: l1(stage),
+        transactions: {
+          ...port(async () => ({ transaction: transaction() })),
+          category: "minFee",
+        } as never,
+        stateQueueMutationLeaseCoordinator: leaseCoordinator,
+      }),
+    ).toThrow("ports changed identity");
+  });
+});
+
+it("reobserves the original linear step after its successor rolls back", async () => {
+  const original: FraudProofRawL1FamilyStage = {
+    kind: "step",
+    step: 1,
+    threadOutRef: outRef("11"),
+    stateQueueBlockOutRef: outRef("10"),
+  };
+  const stage = { value: original };
+  let included = true;
+  const capture = vi.fn(async () => ({ transaction: transaction() }));
+  const adapter = createLinearFamilyWorkflowAdapter({
+    category: "daHashPreimage",
+    l1: l1(stage, async () => included),
+    transactions: port(capture),
+    stateQueueMutationLeaseCoordinator: leaseCoordinator,
+  });
+  const before = await adapter.observe(context);
+  if (before.kind !== "action_required")
+    throw new Error("missing original action");
+  stage.value = {
+    kind: "step",
+    step: 2,
+    threadOutRef: `${txHash}#0`,
+    stateQueueBlockOutRef: outRef("10"),
+  };
+  await expect(
+    adapter.reconcile({ ...context, action: before.action, txHash }),
+  ).resolves.toEqual({ kind: "confirmed", txHash });
+  const successor = await adapter.observe(context);
+  if (successor.kind !== "action_required")
+    throw new Error("missing successor action");
+  stage.value = original;
+  included = false;
+  await expect(adapter.observe(context)).resolves.toEqual(before);
+  await expect(
+    adapter.preflight({ ...context, action: successor.action }),
+  ).rejects.toThrow("differs from authenticated current L1 state");
+  await expect(
+    adapter.reconcile({ ...context, action: before.action, txHash }),
+  ).resolves.toMatchObject({ kind: "unknown" });
+  expect(capture).not.toHaveBeenCalled();
+});

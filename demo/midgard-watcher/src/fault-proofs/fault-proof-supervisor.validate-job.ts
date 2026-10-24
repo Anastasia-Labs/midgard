@@ -1,0 +1,301 @@
+import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
+import {
+  assertWorkflowActuationPermitIdentity,
+  type HeaderDecision,
+  type WorkflowActuationPermit,
+  type WorkflowActuationRevokedError,
+} from "@al-ft/midgard-fault-proofs";
+import { Header, StateQueueNode } from "@al-ft/midgard-sdk";
+import { Data } from "@lucid-evolution/lucid";
+
+import {
+  assertWatcherStateQueueHeaderObservation,
+  type WatcherStateQueueHeaderObservation,
+} from "../indexers/authenticated-state-queue-observation.js";
+import { type WatcherInstalledWorkflowCategory } from "./fault-proof-application.js";
+import type { WatcherFaultProofExecutionAdmission } from "./fault-proof-execution.js";
+import type { WatcherProofCleanupFailure } from "./fault-proof-objective-cleanup.js";
+import {
+  type WatcherProofExecution,
+  type WatcherProofObjective,
+} from "./fault-proof-objective-journal.js";
+import { listWatcherProofObjectives } from "./fault-proof-objective-table.js";
+import { type WatcherFaultProofProgressRequest } from "./fault-proof-progress-authority.js";
+import type { WatcherDecisionHold } from "./watcher-decision-hold.js";
+import type { WatcherJournalDatabase } from "./watcher-journal-database.js";
+
+export const WATCHER_FAULT_PROOF_SUPERVISOR_SCHEMA_VERSION =
+  "midgard-watcher-production-fault-proof-supervisor-v1" as const;
+
+const HEADER_HASH = /^[0-9a-f]{56}$/u;
+
+export const DEPLOYMENT_FINGERPRINT = /^[0-9a-f]{64}$/u;
+
+export const CANONICAL_NATURAL = /^(?:0|[1-9][0-9]*)$/u;
+
+export const MAX_RECOVERABLE_WORKFLOWS = 2_048;
+
+export type WatcherFaultProofDeadline = Readonly<{
+  headerHash: string;
+  headerBlockTimeMs: string;
+  maturityAtMs: string;
+  latestSafeStartAtMs: string;
+}>;
+
+const admittedDeadlines = new WeakSet<object>();
+
+/**
+ * Derives W04/W34 timing authority from the authenticated queue node. The
+ * complete correction path owns the canonical half-maturity budget, so the
+ * latest safe start is exactly maturity minus that bound.
+ */
+export const watcherFaultProofDeadline = (
+  header: WatcherStateQueueHeaderObservation,
+): WatcherFaultProofDeadline => {
+  assertWatcherStateQueueHeaderObservation(header);
+  const decoded = Data.from(header.headerCborHex, Header);
+  if (Data.to(decoded, Header) !== header.headerCborHex) {
+    throw new Error("fault-proof deadline HeaderV1 CBOR is noncanonical");
+  }
+  const node = Data.from(header.stateQueueNodeCborHex, StateQueueNode);
+  if (Data.to(node.header, Header) !== header.headerCborHex) {
+    throw new Error(
+      "fault-proof deadline node does not carry its authenticated HeaderV1",
+    );
+  }
+  const headerBlockTimeMs = node.block_time;
+  const maturityAtMs =
+    headerBlockTimeMs + BigInt(MIDGARD_RETENTION_WINDOW.maturityMs);
+  const latestSafeStartAtMs =
+    maturityAtMs - BigInt(MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs);
+  const deadline = Object.freeze({
+    headerHash: header.headerHash,
+    headerBlockTimeMs: headerBlockTimeMs.toString(),
+    maturityAtMs: maturityAtMs.toString(),
+    latestSafeStartAtMs: latestSafeStartAtMs.toString(),
+  });
+  admittedDeadlines.add(deadline);
+  return deadline;
+};
+
+export type WatcherFaultProofJob = Readonly<{
+  mode: "run" | "resume";
+  category: WatcherInstalledWorkflowCategory;
+  headerHash: string;
+  decisionDigest: string;
+  rollbackGeneration: string;
+  deadline: WatcherFaultProofDeadline | null;
+  /** Wake-up revision, not part of the durable execution or queue identity. */
+  observationRevision?: string;
+}>;
+
+export type WatcherFaultProofReconciliation = Readonly<{
+  category: WatcherInstalledWorkflowCategory;
+  headerHash: string;
+  decisionDigest: string;
+  actuationPermit: WorkflowActuationPermit;
+}>;
+
+export type UnsafeWatcherFaultProofJobForTest = Omit<
+  WatcherFaultProofJob,
+  "deadline"
+> &
+  Readonly<{ deadline?: WatcherFaultProofDeadline }>;
+
+export type WatcherFaultProofSupervisorStatus = Readonly<{
+  phase: "accepting" | "blocked" | "closing" | "closed";
+  recovered: boolean;
+  unfinishedObjectiveCount: number;
+  queuedJobCount: number;
+  activeJob: WatcherFaultProofJob | null;
+  blockedJob: WatcherFaultProofJob | null;
+  deadlineHealth: "safe" | "at_risk" | "unsafe";
+  earliestDeadlineJob: WatcherFaultProofJob | null;
+  remainingSafeStartMs: string | null;
+  /** The journals' first integrity failure in this process, or null:
+   * readiness reports journal_integrity until an operator repairs them. */
+  journalIntegrity: string | null;
+  /** Why the journals could not be opened, or null: readiness reports
+   * journal_unavailable while the open is retried. */
+  journalUnavailable: string | null;
+  /** A fault-proof journal holds its cap of live rows: readiness reports
+   * journal_capacity until rows complete or are pruned. */
+  journalCapacity: boolean;
+  /** Objectives and funding reservations whose recorded decision is
+   * missing: readiness reports journal_decision_missing until each one
+   * resolves from L1 facts. */
+  journalDecisionMissing: readonly WatcherDecisionHold[];
+  /** Released or final objectives whose workflow rows could not be deleted
+   * (their rows stay): every admission retries the removal, and readiness
+   * reports fault_proof_objective_cleanup_failed until it succeeds. */
+  objectiveCleanupFailures: readonly WatcherProofCleanupFailure[];
+  /** A busy or locked database the supervisor holds on, or null: readiness
+   * reports journal_busy until the in-process requeue after its backoff. */
+  journalBusy: string | null;
+}>;
+
+/** What the runtime does around the in-process requeue after journal_busy,
+ * as a fresh process does at startup. */
+export type WatcherJournalBusyRequeue = Readonly<{
+  /** The startup funding sweep; runs while no supervisor job runs. */
+  releaseUnusedFunding(): Promise<void>;
+  /** Asks the decision driver for a pass, which dispatches the work again. */
+  wake(): void;
+}>;
+
+export type WatcherFaultProofSupervisor = Readonly<{
+  schemaVersion: typeof WATCHER_FAULT_PROOF_SUPERVISOR_SCHEMA_VERSION;
+  done: Promise<void>;
+  requestProgress(request: WatcherFaultProofProgressRequest): Promise<void>;
+  revokeAuthority(reason: string): void;
+  status(): WatcherFaultProofSupervisorStatus;
+  durableQueueStatus(): Readonly<{
+    queuedJobCount: number;
+    oldestQueuedAtMs: string | null;
+  }>;
+  close(): Promise<void>;
+}>;
+
+export type UnsafeWatcherFaultProofSupervisorForTest =
+  WatcherFaultProofSupervisor &
+    Readonly<{
+      recoverExisting(
+        decision: HeaderDecision | null,
+        actuationPermit?: WorkflowActuationPermit,
+        deadline?: WatcherFaultProofDeadline,
+        rollbackGeneration?: string,
+        reconciliations?: readonly WatcherFaultProofReconciliation[],
+      ): Promise<number>;
+      unsafeRunOrResumeForTest(
+        job: UnsafeWatcherFaultProofJobForTest,
+      ): Promise<unknown>;
+      unsafeScheduleForTest(
+        job: UnsafeWatcherFaultProofJobForTest,
+      ): Promise<void>;
+    }>;
+
+export type SupervisorDependencies = Readonly<{
+  categories: readonly WatcherInstalledWorkflowCategory[];
+  run(
+    input: Readonly<{
+      job: WatcherFaultProofJob;
+      actuationPermit: WorkflowActuationPermit | null;
+      admission: WatcherFaultProofExecutionAdmission;
+    }>,
+  ): Promise<unknown>;
+  verifyCompleted(
+    input: Readonly<{
+      job: WatcherFaultProofJob;
+      execution: WatcherProofExecution;
+      actuationPermit: WorkflowActuationPermit | null;
+    }>,
+  ): Promise<
+    | Readonly<{ kind: "applicable"; confirmationDepth: number }>
+    | Readonly<{ kind: "pending" | "retryable"; reason?: string }>
+  >;
+  isActuationRevokedError(
+    error: unknown,
+  ): error is WorkflowActuationRevokedError;
+  /** The objective is no longer driven: held, completed or its header gone. */
+  objectiveSettled?(objective: WatcherProofObjective): void;
+}>;
+
+/** The recorded objectives that still hold work, in category order. */
+export const recordedWorkflowObjectives = (
+  database: WatcherJournalDatabase,
+  categories: readonly WatcherInstalledWorkflowCategory[],
+): readonly Readonly<{
+  mode: "resume";
+  category: WatcherInstalledWorkflowCategory;
+  headerHash: string;
+}>[] =>
+  Object.freeze(
+    listWatcherProofObjectives(database, categories)
+      .filter(({ state }) => state !== "marked")
+      .map(({ objective }) =>
+        Object.freeze({ mode: "resume" as const, ...objective }),
+      )
+      .sort(
+        (left, right) =>
+          categories.indexOf(left.category) -
+            categories.indexOf(right.category) ||
+          (left.headerHash < right.headerHash
+            ? -1
+            : left.headerHash > right.headerHash
+              ? 1
+              : 0),
+      ),
+  );
+
+export const validateJob = (
+  job: WatcherFaultProofJob | UnsafeWatcherFaultProofJobForTest,
+  categories: readonly WatcherInstalledWorkflowCategory[],
+  requireAdmittedDeadline: boolean,
+  actuationPermit: WorkflowActuationPermit | null,
+): WatcherFaultProofJob => {
+  if (job.deadline === null) {
+    if (
+      actuationPermit === null ||
+      job.mode !== "resume" ||
+      !categories.includes(job.category)
+    )
+      throw new Error("reconciliation job omitted its admitted authority");
+    const authority = assertWorkflowActuationPermitIdentity({
+      permit: actuationPermit,
+      category: job.category,
+      rollbackGeneration: job.rollbackGeneration,
+    });
+    if (
+      authority.authority !== "reconciliation" ||
+      authority.headerHash !== job.headerHash ||
+      authority.decisionDigest !== job.decisionDigest
+    )
+      throw new Error(
+        "reconciliation job changed its existing execution identity",
+      );
+    return Object.freeze({ ...job, deadline: null });
+  }
+  const deadline =
+    job.deadline ??
+    Object.freeze({
+      headerHash: job.headerHash,
+      headerBlockTimeMs: "0",
+      maturityAtMs: MIDGARD_RETENTION_WINDOW.maturityMs.toString(),
+      latestSafeStartAtMs:
+        MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs.toString(),
+    });
+  if (
+    (job.mode !== "run" && job.mode !== "resume") ||
+    !categories.includes(job.category) ||
+    !HEADER_HASH.test(job.headerHash) ||
+    !DEPLOYMENT_FINGERPRINT.test(job.decisionDigest) ||
+    !CANONICAL_NATURAL.test(job.rollbackGeneration) ||
+    deadline.headerHash !== job.headerHash ||
+    !CANONICAL_NATURAL.test(deadline.headerBlockTimeMs) ||
+    !CANONICAL_NATURAL.test(deadline.maturityAtMs) ||
+    !CANONICAL_NATURAL.test(deadline.latestSafeStartAtMs) ||
+    (requireAdmittedDeadline && !admittedDeadlines.has(deadline))
+  ) {
+    throw new Error("watcher fault-proof supervisor job is invalid");
+  }
+  const headerBlockTimeMs = BigInt(deadline.headerBlockTimeMs);
+  const maturityAtMs = BigInt(deadline.maturityAtMs);
+  const latestSafeStartAtMs = BigInt(deadline.latestSafeStartAtMs);
+  if (
+    maturityAtMs !==
+      headerBlockTimeMs + BigInt(MIDGARD_RETENTION_WINDOW.maturityMs) ||
+    latestSafeStartAtMs !==
+      maturityAtMs - BigInt(MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs)
+  ) {
+    throw new Error("watcher fault-proof supervisor job is invalid");
+  }
+  return Object.freeze({
+    mode: job.mode,
+    category: job.category,
+    headerHash: job.headerHash,
+    decisionDigest: job.decisionDigest,
+    rollbackGeneration: job.rollbackGeneration,
+    deadline,
+    observationRevision: job.observationRevision,
+  });
+};

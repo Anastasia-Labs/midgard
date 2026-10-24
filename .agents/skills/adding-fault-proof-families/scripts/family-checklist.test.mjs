@@ -1,0 +1,594 @@
+import assert from "node:assert/strict";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { afterEach, describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
+
+import {
+  EXIT_CANNOT_READ,
+  EXIT_COMPLETE,
+  EXIT_GAPS,
+  EXIT_USAGE,
+  SOURCES,
+  main,
+} from "./family-checklist.mjs";
+
+// A minimal tree with two families: fooBar (complete) and bazFooBar, whose
+// kebab stem contains fooBar's, so name matching must not give its tests to
+// fooBar.
+const completeTree = () => ({
+  [SOURCES.coreCatalogue]: `
+export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
+  "fraudProofFooBar",
+  "fraudProofFooBarStep02",
+  "fraudProofBazFooBar",
+] as const);
+export const DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER =
+  Object.freeze(["fooBar", "bazFooBar"] as const);
+export const DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS =
+  Object.freeze({ fooBar: "00000040", bazFooBar: "00000041" } as const);
+`,
+  [SOURCES.coreMembers]: `
+import { fooBarMembers } from "./members/foo-bar.js";
+import { bazFooBarMembers } from "./members/baz-foo-bar.js";
+export const DEPLOYMENT_MEMBERS = Object.freeze({
+  ...fooBarMembers,
+  ...bazFooBarMembers,
+});
+`,
+  "demo/midgard-core/src/deployment-manifest-identity/members/foo-bar.ts": `
+export const fooBarMembers = defineDeploymentFamily("fooBar", {
+  fraudProofFooBar: {
+    referenceRole: "V1 fraud-proof foo-bar step-01",
+    validatorTitle: "fraud_proofs/foo_bar/step_01.main.spend",
+    familyPaths: [["firstStep"], ["steps", "0"]],
+  },
+  fraudProofFooBarStep02: {
+    referenceRole: "V1 fraud-proof foo-bar step-02",
+    validatorTitle: "fraud_proofs/foo_bar/step_02.main.spend",
+    familyPaths: [["steps", "1"]],
+  },
+});
+`,
+  "demo/midgard-core/src/deployment-manifest-identity/members/baz-foo-bar.ts": `
+export const bazFooBarMembers = defineDeploymentFamily("bazFooBar", {
+  fraudProofBazFooBar: {
+    referenceRole: "V1 fraud-proof baz-foo-bar step-01",
+    validatorTitle: "fraud_proofs/baz_foo_bar/step_01.main.spend",
+    familyPaths: [["firstStep"], ["steps", "0"]],
+  },
+});
+`,
+  [SOURCES.coreReferenceTokens]: `
+export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
+  "V1 fraud-proof foo-bar step-01": "V1FpFooBarS01",
+  "V1 fraud-proof foo-bar step-02": "V1FpFooBarS02",
+  "V1 fraud-proof baz-foo-bar step-01": "V1FpBazFooBarS01",
+} as const);
+`,
+  [SOURCES.sdkBuild]: `
+import { buildFooBarChain } from "./families/foo-bar.js";
+import { buildBazFooBarChain } from "./families/baz-foo-bar.js";
+export const build = () =>
+  Effect.gen(function* () {
+    const fooBar = yield* buildFooBarChain({ ...params, ...shared });
+    const bazFooBar = yield* buildBazFooBarChain({ ...params, ...shared });
+  });
+`,
+  "demo/midgard-sdk/src/fraud-proof/contracts/families/foo-bar.ts": `
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
+export const buildFooBarChain = () => FOO_BAR_TITLES;
+export const FOO_BAR_TITLES = {
+  step01: deployedTitle("fraudProofFooBar"),
+  step02: deployedTitle("fraudProofFooBarStep02"),
+} as const;
+`,
+  "demo/midgard-sdk/src/fraud-proof/contracts/families/baz-foo-bar.ts": `
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
+export const buildBazFooBarChain = () => BAZ_FOO_BAR_TITLES;
+export const BAZ_FOO_BAR_TITLES = {
+  step01: deployedTitle("fraudProofBazFooBar"),
+} as const;
+`,
+  "onchain/aiken/validators/fraud-proofs/foo-bar/step-01.ak": "",
+  "onchain/aiken/validators/fraud-proofs/foo-bar/step-02.ak": "",
+  "onchain/aiken/validators/fraud-proofs/baz-foo-bar/step-01.ak": "",
+  [SOURCES.registry]: `
+export const FAMILY_APPLICATION_REGISTRY: {
+  readonly [Category in FraudProofCatalogueCategoryName]: FamilyApplicationRegistryEntry<Category>;
+} = Object.freeze({
+  ...LINEAR_FAMILY_APPLICATION_RECORDS,
+  fooBar: FOO_BAR_FAMILY_APPLICATION_RECORD,
+});
+`,
+  [SOURCES.linearSpec]: `
+export const LINEAR_FAMILY_CATEGORIES = Object.freeze([
+  "bazFooBar",
+] as const);
+`,
+  [SOURCES.definitions]: `
+export const CURSOR_FAMILY_DEFINITIONS: CursorFamilyDefinitions = Object.freeze(
+  { fooBar: FOO_BAR_FAMILY_DEFINITION },
+);
+`,
+  [SOURCES.classification]: `
+export const FRAUD_PROOF_CLASSIFICATION_RULES = Object.freeze([
+  { category: "fooBar", violationIds: ["foo-bar"] },
+  { category: "bazFooBar", violationIds: [BAZ_VIOLATION_ID] },
+] as const);
+`,
+  [SOURCES.adapters]: `
+const workflowAdapterRegistrationRows = [
+  { category: "fooBar", status: "ready", runner: fooBarRunner },
+  // A helper-call row, as in the real table (manual("transitionTrace", ...)).
+  manual("bazFooBar", ["baz-foo-bar/workflow.ts, with a comma"]),
+] as const satisfies readonly WorkflowAdapterRegistration[];
+`,
+  [SOURCES.catalogueStatus]: `
+| ID         | Category    | Watcher installed |
+| ---------- | ----------- | ----------------- |
+| \`00000040\` | \`fooBar\`    | Yes               |
+| \`00000041\` | \`bazFooBar\` | Yes               |
+`,
+  [SOURCES.journeys]: `
+export const JOURNEY_FIXTURE_OWNERS = {
+  fooBar: "transaction",
+  bazFooBar: "history",
+} as const;
+`,
+  [`${SOURCES.faultProofTests}/foo-bar-lifecycle.test.ts`]:
+    "await expectOnchainRefusal(() => build());\n",
+  [`${SOURCES.faultProofTests}/baz-foo-bar.test.ts`]: "",
+});
+
+const roots = [];
+afterEach(() => {
+  while (roots.length > 0) {
+    rmSync(roots.pop(), { recursive: true, force: true });
+  }
+});
+
+const writeTree = (files) => {
+  const root = mkdtempSync(join(tmpdir(), "family-checklist-"));
+  roots.push(root);
+  for (const [path, text] of Object.entries(files)) {
+    if (text === null) continue;
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    writeFileSync(join(root, path), text);
+  }
+  return root;
+};
+
+const run = (root, category) => {
+  const out = [];
+  const err = [];
+  const code = main(
+    [category, "--root", root],
+    (line) => out.push(line),
+    (line) => err.push(line),
+  );
+  return { code, out: out.join("\n"), err: err.join("\n") };
+};
+
+const edit = (tree, path, from, to) => {
+  assert.ok(tree[path].includes(from), `fixture ${path} lacks ${from}`);
+  return { ...tree, [path]: tree[path].replace(from, to) };
+};
+
+describe("family-checklist", () => {
+  it("passes a complete family and reports its evidence", () => {
+    const result = run(writeTree(completeTree()), "fooBar");
+    assert.equal(result.code, EXIT_COMPLETE, result.out + result.err);
+    assert.match(result.out, /OK\s+catalogue-id\s+ID 00000040/u);
+    assert.match(
+      result.out,
+      /OK\s+reference-scripts\s+2 member\(s\) in family fooBar/u,
+    );
+    assert.match(result.out, /cursor FamilyDefinition/u);
+    assert.match(result.out, /foo-bar-lifecycle\.test\.ts/u);
+  });
+
+  it("reads name and token tables kept as a base plus an additions list", () => {
+    const names = edit(
+      completeTree(),
+      SOURCES.coreCatalogue,
+      'export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([\n  "fraudProofFooBar",\n  "fraudProofFooBarStep02",\n',
+      'export const DEPLOYMENT_MANIFEST_BASE_CONTRACT_NAMES = Object.freeze([\n  "fraudProofFooBar",\n',
+    );
+    const tree = edit(
+      names,
+      SOURCES.coreReferenceTokens,
+      'export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({\n  "V1 fraud-proof foo-bar step-01": "V1FpFooBarS01",\n  "V1 fraud-proof foo-bar step-02": "V1FpFooBarS02",\n',
+      'export const DEPLOYMENT_MANIFEST_BASE_REFERENCE_TOKEN_NAMES = Object.freeze({\n  "V1 fraud-proof foo-bar step-01": "V1FpFooBarS01",\n',
+    );
+    tree[SOURCES.coreCatalogue.replace(/\.ts$/u, ".names.additions.ts")] = `
+const DEPLOYMENT_MANIFEST_CONTRACT_NAME_ADDITIONS = [
+  "fraudProofFooBarStep02",
+] as const;
+export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
+  ...DEPLOYMENT_MANIFEST_BASE_CONTRACT_NAMES,
+  ...DEPLOYMENT_MANIFEST_CONTRACT_NAME_ADDITIONS,
+] as const);
+`;
+    tree[SOURCES.coreReferenceTokens.replace(/\.ts$/u, ".additions.ts")] = `
+const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAME_ADDITIONS = {
+  "V1 fraud-proof foo-bar step-02": "V1FpFooBarS02",
+} as const;
+export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
+  ...DEPLOYMENT_MANIFEST_BASE_REFERENCE_TOKEN_NAMES,
+  ...DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAME_ADDITIONS,
+} as const);
+`;
+    const result = run(writeTree(tree), "fooBar");
+    assert.equal(result.code, EXIT_COMPLETE, result.out + result.err);
+    assert.match(
+      result.out,
+      /OK\s+reference-scripts\s+2 member\(s\) in family fooBar/u,
+    );
+  });
+
+  it("does not credit a family with tests named after a longer stem", () => {
+    const tree = completeTree();
+    delete tree[`${SOURCES.faultProofTests}/foo-bar-lifecycle.test.ts`];
+    const result = run(writeTree(tree), "fooBar");
+    assert.equal(result.code, EXIT_GAPS, result.out);
+    assert.match(result.out, /GAP\s+tests\s/u);
+  });
+
+  it("derives a linear family's record from LINEAR_FAMILY_CATEGORIES", () => {
+    const result = run(writeTree(completeTree()), "bazFooBar");
+    assert.equal(result.code, EXIT_COMPLETE, result.out + result.err);
+    assert.match(result.out, /OK\s+adapter-registration\s+.*row 1,/u);
+    assert.match(result.out, /derived record via LINEAR_FAMILY_CATEGORIES/u);
+  });
+
+  it("fails on a family missing from the application registry", () => {
+    const tree = edit(
+      completeTree(),
+      SOURCES.registry,
+      "  fooBar: FOO_BAR_FAMILY_APPLICATION_RECORD,\n",
+      "",
+    );
+    const result = run(writeTree(tree), "fooBar");
+    assert.equal(result.code, EXIT_GAPS);
+    assert.match(result.out, /GAP\s+application-record/u);
+  });
+
+  it("fails when two categories share an ID", () => {
+    const tree = edit(
+      completeTree(),
+      SOURCES.coreCatalogue,
+      'bazFooBar: "00000041"',
+      'bazFooBar: "00000040"',
+    );
+    const result = run(writeTree(tree), "fooBar");
+    assert.equal(result.code, EXIT_GAPS);
+    assert.match(result.out, /GAP\s+catalogue-id.*also used by bazFooBar/u);
+  });
+
+  it("fails when a step contract has no reference-script token name", () => {
+    const tree = edit(
+      completeTree(),
+      SOURCES.coreReferenceTokens,
+      '  "V1 fraud-proof foo-bar step-02": "V1FpFooBarS02",\n',
+      "",
+    );
+    const result = run(writeTree(tree), "fooBar");
+    assert.equal(result.code, EXIT_GAPS);
+    assert.match(result.out, /GAP\s+reference-scripts.*step-02.*token name/u);
+  });
+
+  it("detects a yield omitted from every reached member view", () => {
+    const tree = edit(
+      completeTree(),
+      SOURCES.coreCatalogue,
+      '  "fraudProofBazFooBar",\n] as const);',
+      '  "fraudProofBazFooBar",\n  "txYieldWithoutFamilyPrefix",\n] as const);',
+    );
+    const result = run(writeTree(tree), "fooBar");
+    assert.equal(result.code, EXIT_GAPS, result.err);
+    assert.match(
+      result.out,
+      /GAP\s+deployment-members.*txYieldWithoutFamilyPrefix has no reached deployment member/u,
+    );
+  });
+
+  it("does not credit an orphaned member file absent from the aggregate", () => {
+    const tree = edit(
+      completeTree(),
+      SOURCES.coreMembers,
+      "  ...fooBarMembers,\n",
+      "",
+    );
+    const result = run(writeTree(tree), "fooBar");
+    assert.equal(result.code, EXIT_GAPS, result.err);
+    assert.match(
+      result.out,
+      /GAP\s+deployment-members.*fraudProofFooBar has no reached deployment member/u,
+    );
+    assert.match(result.out, /GAP\s+first-step.*found 0/u);
+  });
+
+  it("rejects a reached member absent from the independent ABI", () => {
+    const tree = edit(
+      completeTree(),
+      SOURCES.coreCatalogue,
+      '  "fraudProofFooBarStep02",\n',
+      "",
+    );
+    const result = run(writeTree(tree), "fooBar");
+    assert.equal(result.code, EXIT_GAPS, result.err);
+    assert.match(
+      result.out,
+      /GAP\s+deployment-members.*fraudProofFooBarStep02 is absent from DEPLOYMENT_MANIFEST_CONTRACT_NAMES/u,
+    );
+  });
+
+  it("fails when an explicitly owned member has no reference role", () => {
+    const tree = edit(
+      completeTree(),
+      "demo/midgard-core/src/deployment-manifest-identity/members/foo-bar.ts",
+      'referenceRole: "V1 fraud-proof foo-bar step-02"',
+      "referenceRole: null",
+    );
+    const result = run(writeTree(tree), "fooBar");
+    assert.equal(result.code, EXIT_GAPS, result.err);
+    assert.match(
+      result.out,
+      /GAP\s+reference-scripts.*fraudProofFooBarStep02 has no reference-script role/u,
+    );
+  });
+
+  it("refuses malformed member declarations instead of guessing their values", () => {
+    const tree = edit(
+      completeTree(),
+      "demo/midgard-core/src/deployment-manifest-identity/members/foo-bar.ts",
+      'validatorTitle: "fraud_proofs/foo_bar/step_02.main.spend"',
+      "validatorTitle: resolveTitle()",
+    );
+    const result = run(writeTree(tree), "fooBar");
+    assert.equal(result.code, EXIT_CANNOT_READ);
+    assert.match(
+      result.err,
+      /validatorTitle must be a string literal or null/u,
+    );
+    assert.equal(result.out, "");
+  });
+
+  it("refuses an aggregate expression outside the supported source shape", () => {
+    const tree = edit(
+      completeTree(),
+      SOURCES.coreMembers,
+      "...fooBarMembers",
+      "...makeMembers()",
+    );
+    const result = run(writeTree(tree), "fooBar");
+    assert.equal(result.code, EXIT_CANNOT_READ);
+    assert.match(result.err, /expected an imported member spread/u);
+    assert.equal(result.out, "");
+  });
+
+  it("refuses an aggregate expression that discards the declared members", () => {
+    const tree = edit(completeTree(), SOURCES.coreMembers, "});", "}) && {};");
+    const result = run(writeTree(tree), "fooBar");
+    assert.equal(result.code, EXIT_CANNOT_READ);
+    assert.match(result.err, /plain Object.freeze member aggregate/u);
+    assert.equal(result.out, "");
+  });
+
+  it("refuses a member declaration found only in an unimported sibling", () => {
+    const tree = completeTree();
+    const member =
+      "demo/midgard-core/src/deployment-manifest-identity/members/foo-bar.ts";
+    tree[member.replace(".ts", ".unused.ts")] = tree[member];
+    tree[member] = "export {};";
+    const result = run(writeTree(tree), "fooBar");
+    assert.equal(result.code, EXIT_CANNOT_READ);
+    assert.match(
+      result.err,
+      /expected fooBarMembers = defineDeploymentFamily/u,
+    );
+    assert.equal(result.out, "");
+  });
+
+  it("refuses an aggregate found only in an unimported sibling", () => {
+    const tree = completeTree();
+    tree[SOURCES.coreMembers.replace(".ts", ".unused.ts")] =
+      tree[SOURCES.coreMembers];
+    tree[SOURCES.coreMembers] = "export {};";
+    const result = run(writeTree(tree), "fooBar");
+    assert.equal(result.code, EXIT_CANNOT_READ);
+    assert.match(result.err, /expected DEPLOYMENT_MEMBERS = Object.freeze/u);
+    assert.equal(result.out, "");
+  });
+
+  it("fails when the imported SDK family source is empty despite complete core titles", () => {
+    const tree = completeTree();
+    tree["demo/midgard-sdk/src/fraud-proof/contracts/families/foo-bar.ts"] = "";
+    const result = run(writeTree(tree), "fooBar");
+    assert.equal(result.code, EXIT_GAPS);
+    assert.match(
+      result.out,
+      /GAP\s+sdk-chain.*no reached exported buildFooBarChain declaration/u,
+    );
+    assert.match(result.out, /no reached deploymentValidatorTitle lookup/u);
+  });
+
+  it("does not credit unused SDK siblings as chain or title evidence", () => {
+    const tree = completeTree();
+    const sdk =
+      "demo/midgard-sdk/src/fraud-proof/contracts/families/foo-bar.ts";
+    tree[sdk.replace(".ts", ".unused.ts")] = tree[sdk];
+    tree[sdk] = "export {};";
+    const result = run(writeTree(tree), "fooBar");
+    assert.equal(result.code, EXIT_GAPS);
+    assert.match(
+      result.out,
+      /GAP\s+sdk-chain.*no reached exported buildFooBarChain declaration/u,
+    );
+  });
+
+  it("fails when an SDK title lookup names another family's member", () => {
+    const tree = edit(
+      completeTree(),
+      "demo/midgard-sdk/src/fraud-proof/contracts/families/foo-bar.ts",
+      'deployedTitle("fraudProofFooBarStep02")',
+      'deployedTitle("fraudProofBazFooBar")',
+    );
+    const result = run(writeTree(tree), "fooBar");
+    assert.equal(result.code, EXIT_GAPS);
+    assert.match(
+      result.out,
+      /GAP\s+sdk-chain.*fraudProofBazFooBar is not a reached fooBar member/u,
+    );
+  });
+
+  it("fails when classification rules are out of catalogue order", () => {
+    const tree = edit(
+      completeTree(),
+      SOURCES.classification,
+      '  { category: "fooBar", violationIds: ["foo-bar"] },\n  { category: "bazFooBar", violationIds: [BAZ_VIOLATION_ID] },',
+      '  { category: "bazFooBar", violationIds: [BAZ_VIOLATION_ID] },\n  { category: "fooBar", violationIds: ["foo-bar"] },',
+    );
+    const result = run(writeTree(tree), "fooBar");
+    assert.equal(result.code, EXIT_GAPS);
+    assert.match(
+      result.out,
+      /GAP\s+classification-rule\s+FRAUD_PROOF_CLASSIFICATION_RULES row 1 but catalogue position 0/u,
+    );
+  });
+
+  it("fails when the adapter registration row is missing", () => {
+    const tree = edit(
+      completeTree(),
+      SOURCES.adapters,
+      '  { category: "fooBar", status: "ready", runner: fooBarRunner },\n',
+      "",
+    );
+    const result = run(writeTree(tree), "fooBar");
+    assert.equal(result.code, EXIT_GAPS);
+    assert.match(
+      result.out,
+      /GAP\s+adapter-registration\s+no workflowAdapterRegistrationRows row/u,
+    );
+  });
+
+  it("fails when a blueprint title has no validator file", () => {
+    const tree = completeTree();
+    tree["onchain/aiken/validators/fraud-proofs/foo-bar/step-02.ak"] = null;
+    const result = run(writeTree(tree), "fooBar");
+    assert.equal(result.code, EXIT_GAPS);
+    assert.match(result.out, /GAP\s+sdk-chain.*step_02/u);
+  });
+
+  it("fails on a missing catalogue-status row and journey owner", () => {
+    let tree = edit(
+      completeTree(),
+      SOURCES.catalogueStatus,
+      "| `00000040` | `fooBar`    | Yes               |\n",
+      "",
+    );
+    tree = edit(tree, SOURCES.journeys, '  fooBar: "transaction",\n', "");
+    const result = run(writeTree(tree), "fooBar");
+    assert.equal(result.code, EXIT_GAPS);
+    assert.match(result.out, /GAP\s+catalogue-status-row/u);
+    assert.match(result.out, /GAP\s+journey-owner/u);
+  });
+
+  it("reports every gap for a category that is not registered at all", () => {
+    const result = run(writeTree(completeTree()), "quxQuux");
+    assert.equal(result.code, EXIT_GAPS);
+    assert.match(result.out, /GAP\s+catalogue-order/u);
+    assert.match(result.out, /GAP\s+application-record/u);
+  });
+
+  it("exits 2, not 1, when the registry cannot be read", () => {
+    const tree = completeTree();
+    tree[SOURCES.registry] = null;
+    const result = run(writeTree(tree), "fooBar");
+    assert.equal(result.code, EXIT_CANNOT_READ);
+    assert.match(result.err, /could not look: cannot read .*registry/u);
+    assert.equal(result.out, "");
+  });
+
+  it("exits 2 when the registry no longer has the parsed shape", () => {
+    const tree = edit(
+      completeTree(),
+      SOURCES.registry,
+      "FAMILY_APPLICATION_REGISTRY",
+      "FAMILY_REGISTRY_RENAMED",
+    );
+    const result = run(writeTree(tree), "fooBar");
+    assert.equal(result.code, EXIT_CANNOT_READ);
+    assert.match(result.err, /FAMILY_APPLICATION_REGISTRY/u);
+  });
+
+  it("exits 64 on bad usage", () => {
+    assert.equal(
+      main(
+        [],
+        () => {},
+        () => {},
+      ),
+      EXIT_USAGE,
+    );
+    assert.equal(
+      main(
+        ["Foo-Bar"],
+        () => {},
+        () => {},
+      ),
+      EXIT_USAGE,
+    );
+    assert.equal(
+      main(
+        ["fooBar", "--root"],
+        () => {},
+        () => {},
+      ),
+      EXIT_USAGE,
+    );
+  });
+
+  // Parser-rot guard: the real tree must stay readable. This asserts only
+  // that the script can look (exit 0 or 1), not that every family is complete.
+  it("can read every category in the repository tree", () => {
+    const repository = resolve(
+      dirname(fileURLToPath(import.meta.url)),
+      "../../../..",
+    );
+    const catalogue = readFileSync(
+      join(
+        repository,
+        SOURCES.coreCatalogue.replace(/\.ts$/u, ".protocol-categories.ts"),
+      ),
+      "utf8",
+    );
+    const order = catalogue.slice(
+      catalogue.indexOf(
+        "DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER",
+      ),
+      catalogue.indexOf(
+        "DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS",
+      ),
+    );
+    const categories = [...order.matchAll(/"(\w+)"/gu)].map((m) => m[1]);
+    assert.ok(categories.length > 0, "found no categories in the real tree");
+    for (const category of categories) {
+      const result = run(repository, category);
+      assert.notEqual(
+        result.code,
+        EXIT_CANNOT_READ,
+        `${category}: ${result.err}`,
+      );
+      assert.match(result.out, /catalogue-order/u);
+    }
+  });
+});

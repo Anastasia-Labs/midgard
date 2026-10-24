@@ -1,23 +1,81 @@
 {
-  "name": "midgard-watcher",
+  "name": "da-committee-node",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "bin": {
-    "midgard-watcher": "./dist/index.js"
+    "da-committee-node": "./dist/index.js",
+    "midgard-public-retained-da": "./dist/public-retained-da.js"
+  },
+  "exports": {
+    "./store/postgres": {
+      "midgard-source": "./src/store/postgres.ts",
+      "types": "./dist/store/postgres.d.ts",
+      "import": "./dist/store/postgres.js"
+    },
+    "./store/public-retained-da": {
+      "midgard-source": "./src/store/public-retained-da.ts",
+      "types": "./dist/store/public-retained-da.d.ts",
+      "import": "./dist/store/public-retained-da.js"
+    },
+    "./availability": {
+      "midgard-source": "./src/availability/index.ts",
+      "types": "./dist/availability/index.d.ts",
+      "import": "./dist/availability/index.js"
+    },
+    "./config": {
+      "midgard-source": "./src/config.ts",
+      "types": "./dist/config.d.ts",
+      "import": "./dist/config.js"
+    },
+    "./store": {
+      "midgard-source": "./src/store.ts",
+      "types": "./dist/store.d.ts",
+      "import": "./dist/store.js"
+    },
+    "./coordinator/lucid-submitter": {
+      "midgard-source": "./src/coordinator/lucid-submitter.ts",
+      "types": "./dist/coordinator/lucid-submitter.d.ts",
+      "import": "./dist/coordinator/lucid-submitter.js"
+    },
+    "./coordinator/pool-monitor": {
+      "midgard-source": "./src/coordinator/pool-monitor.ts",
+      "types": "./dist/coordinator/pool-monitor.d.ts",
+      "import": "./dist/coordinator/pool-monitor.js"
+    },
+    "./coordinator/tx-builders": {
+      "midgard-source": "./src/coordinator/tx-builders.ts",
+      "types": "./dist/coordinator/tx-builders.d.ts",
+      "import": "./dist/coordinator/tx-builders.js"
+    },
+    "./da/libp2p": {
+      "midgard-source": "./src/da/libp2p/index.ts",
+      "types": "./dist/da/libp2p/index.d.ts",
+      "import": "./dist/da/libp2p/index.js"
+    },
+    "./da/payload": {
+      "midgard-source": "./src/da/payload.ts",
+      "types": "./dist/da/payload.d.ts",
+      "import": "./dist/da/payload.js"
+    }
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm --dts --clean",
+    "build": "node ../../scripts/contrib.mjs build --package da-committee-node",
     "guard:no-http-da-transport": "node scripts/check-no-http-da-transport.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "node ../scripts/package-test.mjs",
+    "bench": "vitest run --config vitest.bench.config.ts",
     "start": "node dist/index.js",
-    "clean": "rimraf dist node_modules"
+    "clean": "rimraf dist node_modules",
+    "build:contrib-raw": "node ../scripts/package-tasks.mjs build"
   },
   "dependencies": {
     "@aiken-lang/merkle-patricia-forestry": "github:Anastasia-Labs/merkle-patricia-forestry#b139785f7c118854f9824c26cc443e2df95cb50e&path:/off-chain",
+    "@al-ft/l1-node-transport": "workspace:*",
     "@al-ft/midgard-core": "workspace:*",
+    "@al-ft/midgard-l1-follower": "workspace:*",
     "@al-ft/midgard-sdk": "workspace:*",
+    "@al-ft/midgard-validation": "workspace:*",
     "@chainsafe/libp2p-noise": "17.0.0",
     "@chainsafe/libp2p-yamux": "8.0.1",
     "@libp2p/bootstrap": "12.0.25",
@@ -26,25 +84,85 @@
     "@libp2p/identify": "4.1.8",
     "@libp2p/interface": "3.2.4",
     "@libp2p/peer-id": "6.0.11",
+    "@libp2p/ping": "3.1.7",
     "@libp2p/tcp": "11.0.22",
-    "@lucid-evolution/lucid": "0.6.0",
-    "@lucid-evolution/scalus-uplc": "0.1.3",
+    "@lucid-evolution/lucid": "0.8.3",
+    "@lucid-evolution/scalus-uplc": "0.2.2",
     "@multiformats/multiaddr": "13.0.3",
     "@noble/hashes": "^2.0.1",
     "effect": "^3.14.22",
     "libp2p": "3.3.4",
-    "pg": "^8.21.0"
+    "pg": "^8.21.0",
+    "undici": "7.30.0",
+    "ws": "8.22.0"
   },
   "devDependencies": {
+    "@al-ft/midgard-test-support": "workspace:*",
     "@types/node": "^22.17.0",
     "@types/pg": "^8.20.0",
+    "@types/ws": "8.18.1",
+    "fast-check": "^4.5.3",
+    "midgard-node": "workspace:*",
+    "midgard-watcher": "workspace:*",
     "rimraf": "^6.0.1",
     "tsup": "^8.4.0",
     "typescript": "^5.7.3",
-    "vitest": "^3.0.7"
+    "vitest": "^5.0.3"
   },
   "engines": {
-    "node": ">=22.15.0"
+    "node": ">=22.16.0"
   },
-  "packageManager": "pnpm@9.15.4+sha512.b2dc20e2fc72b3e18848459b37359a32064663e5627a51e4c74b2c29dd8e8e0491483c3abb40789cfd578bf362fb6ba8261b05f0387d76792ed6e23ea3b1b6a0"
+  "packageManager": "pnpm@11.18.0+sha512.33d83c77da82f49fba836925c6f1b841181ec3132b670639bd012f7075f5c7cf634c5f870147c19aae7478fac01df09d8892e880454896edd23ee9b33757563c",
+  "midgardTasks": {
+    "build": {
+      "steps": [
+        {
+          "command": [
+            "tsup",
+            "src/index.ts",
+            "src/public-retained-da.ts",
+            "src/config.ts",
+            "src/store.ts",
+            "src/store/postgres.ts",
+            "src/store/public-retained-da.ts",
+            "src/availability/index.ts",
+            "src/coordinator/lucid-submitter.ts",
+            "src/coordinator/pool-monitor.ts",
+            "src/coordinator/tx-builders.ts",
+            "src/da/libp2p/index.ts",
+            "src/da/payload.ts",
+            "--format",
+            "esm",
+            "--dts",
+            "--clean"
+          ]
+        }
+      ],
+      "outputs": [
+        "dist"
+      ]
+    },
+    "test": {
+      "command": [
+        "vitest",
+        "run"
+      ],
+      "prerequisites": [
+        {
+          "kind": "build",
+          "package": "@al-ft/midgard-core"
+        },
+        {
+          "kind": "build",
+          "package": "da-committee-node"
+        },
+        {
+          "kind": "blueprint"
+        },
+        {
+          "kind": "postgres"
+        }
+      ]
+    }
+  }
 }

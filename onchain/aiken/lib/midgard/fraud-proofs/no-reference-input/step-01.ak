@@ -1,11 +1,10 @@
-use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{TxInclusionArgs}
-
-pub type Datum =
-  ct.StepDatum<Data>
+use midgard/fraud_proofs/input_existence_v1/source
 
 pub type Args =
-  TxInclusionArgs
+  source.Args
+
+pub type Datum =
+  source.Datum
 
 pub type SpendRedeemer =
-  ct.StepRedeemer<Args>
+  source.SpendRedeemer

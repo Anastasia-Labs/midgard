@@ -1,0 +1,494 @@
+import { DaGossipTopic } from "@al-ft/midgard-core/da-transport";
+import {
+  FOLLOWER_CATCHING_UP,
+  FOLLOWER_NODE_BEHIND,
+  FOLLOWER_NODE_UNAVAILABLE,
+  WALLET_SEED_PENDING,
+} from "@al-ft/midgard-l1-follower";
+import * as SDK from "@al-ft/midgard-sdk";
+import { expect, it, vi } from "vitest";
+
+import { availabilityParametersFromConfig } from "../../src/availability/factory.js";
+import { CommitteeService } from "../../src/committee-service.js";
+import {
+  createDaBondPoolMonitor,
+  createDaBondPoolWiring,
+  daBondPoolCheckFromStatus,
+  type DaBondPoolEvent,
+} from "../../src/coordinator/pool-monitor.js";
+import { DaPeerRegistry } from "../../src/da/libp2p/DaPeerRegistry.js";
+import { type CommitteeL1Readiness } from "../../src/l1/follower/l1-follower.js";
+import { loadDaSigner } from "../../src/signer.js";
+import { createCommitteeTickRunner } from "../../src/tick-runner.js";
+import {
+  minimalConfig,
+  payloadSourceFromBytes,
+  tempDir,
+} from ".././helpers.js";
+import { fakeL1Source } from ".././helpers/fake-l1-source.js";
+import { openTestCommitteeStore } from "./fixtures.js";
+
+export const registerReadinessTests = () => {
+  it("registers the store-backed conflict handler before libp2p startup", async () => {
+    const dir = await tempDir();
+    const seed = "00".repeat(31) + "01";
+    const signer = await loadDaSigner(`hex:${seed}`);
+    const config = minimalConfig({
+      manifestPath: `${dir}/manifest.json`,
+      deploymentInfoPath: `${dir}/deployment.json`,
+      signerSeed: seed,
+      signerPublicKey: signer.publicKeyHex,
+    });
+    const registry = DaPeerRegistry.fromConfig(config.daTransport);
+    const setGossipHandler = vi.fn();
+
+    new CommitteeService({
+      config,
+      store: await openTestCommitteeStore(),
+      l1: fakeL1Source({ fetchStateQueueNodes: async () => [] }),
+      payloadSource: {
+        fetchPayloadCandidates: async () => ({
+          ok: false,
+          attempts: [],
+        }),
+      },
+      daLibp2pNode: { setGossipHandler, publishGossip: vi.fn() },
+      daPeerRegistry: registry,
+    });
+
+    expect(setGossipHandler).toHaveBeenCalledWith(
+      DaGossipTopic.conflicts,
+      expect.any(Function),
+    );
+  });
+
+  it("is not ready, and decides nothing, while the L1 follower names a reason", async () => {
+    const dir = await tempDir();
+    const seed = "00".repeat(31) + "01";
+    const signer = await loadDaSigner(`hex:${seed}`);
+    const config = minimalConfig({
+      manifestPath: `${dir}/manifest.json`,
+      deploymentInfoPath: `${dir}/deployment.json`,
+      signerSeed: seed,
+      signerPublicKey: signer.publicKeyHex,
+    });
+    let following: CommitteeL1Readiness[] = [];
+    const service = new CommitteeService({
+      config,
+      store: await openTestCommitteeStore(),
+      l1: fakeL1Source({
+        fetchStateQueueNodes: async () => [],
+        readiness: () => following,
+      }),
+      payloadSource: payloadSourceFromBytes(Buffer.alloc(0)),
+    });
+    await service.initialize();
+    await service.tick();
+    await expect(service.readinessSnapshot()).resolves.toMatchObject({
+      ready: true,
+    });
+
+    // A follower catching up holds the tick and names itself in readiness;
+    // it is ready again the moment the follower is.
+    following = [
+      { reason: FOLLOWER_CATCHING_UP, detail: "cursor 1000, tip 90000" },
+    ];
+    await expect(service.tick()).resolves.toMatchObject({
+      held: [`${FOLLOWER_CATCHING_UP}: cursor 1000, tip 90000`],
+    });
+    await expect(service.readinessSnapshot()).resolves.toMatchObject({
+      ready: false,
+      reasons: [`${FOLLOWER_CATCHING_UP}: cursor 1000, tip 90000`],
+    });
+
+    // A lost L1 node is named, and is transient: no intervention.
+    following = [
+      {
+        reason: FOLLOWER_NODE_UNAVAILABLE,
+        detail: "node_unreachable: dial: no such file",
+      },
+    ];
+    await service.tick();
+    const lost = await service.readinessSnapshot();
+    expect(lost).toMatchObject({
+      ready: false,
+      reasons: [
+        `${FOLLOWER_NODE_UNAVAILABLE}: node_unreachable: dial: no such file`,
+      ],
+    });
+    expect(lost.l1Source).not.toHaveProperty("intervention");
+
+    // A node behind wall-clock time holds the tick (nothing is submitted),
+    // is named with its lag, and is transient: no intervention.
+    const lag = "node tip slot 1000 is 600 s behind (bound 300 s)";
+    following = [{ reason: FOLLOWER_NODE_BEHIND, detail: lag }];
+    const held = [`${FOLLOWER_NODE_BEHIND}: ${lag}`];
+    await expect(service.tick()).resolves.toMatchObject({ held });
+    const behind = await service.readinessSnapshot();
+    expect(behind).toMatchObject({ ready: false, reasons: held });
+    expect(behind.l1Source).not.toHaveProperty("intervention");
+
+    // An owed own-wallet seed is unready but holds no decision.
+    following = [{ reason: WALLET_SEED_PENDING, detail: "not seeded yet" }];
+    const result = await service.tick();
+    expect(result.held).toBeUndefined();
+    await expect(service.readinessSnapshot()).resolves.toMatchObject({
+      ready: false,
+      reasons: [`${WALLET_SEED_PENDING}: not seeded yet`],
+    });
+
+    following = [];
+    await service.tick();
+    await expect(service.readinessSnapshot()).resolves.toMatchObject({
+      ready: true,
+    });
+  });
+
+  it("is not ready while the L1 submitter's plain ADA cannot fund the next attestation round", async () => {
+    const dir = await tempDir();
+    const seed = "00".repeat(31) + "01";
+    const signer = await loadDaSigner(`hex:${seed}`);
+    const config = minimalConfig({
+      manifestPath: `${dir}/manifest.json`,
+      deploymentInfoPath: `${dir}/deployment.json`,
+      signerSeed: seed,
+      signerPublicKey: signer.publicKeyHex,
+    });
+    const service = new CommitteeService({
+      config,
+      store: await openTestCommitteeStore(),
+      l1: fakeL1Source({
+        fetchStateQueueNodes: async () => [],
+      }),
+      payloadSource: payloadSourceFromBytes(Buffer.alloc(0)),
+    });
+    await service.initialize();
+    await service.tick();
+    const check = {
+      checkedAt: "2026-09-26T00:00:00.000Z",
+      plainAdaLovelace: 79_999_999n,
+      requiredLovelace: 80_000_000n,
+    };
+
+    await expect(
+      service.readinessSnapshot({
+        l1SubmitterFunding: { ...check, sufficient: false },
+      }),
+    ).resolves.toMatchObject({
+      ready: false,
+      reasons: [
+        "l1_submitter_fee_funding_short: plainAdaLovelace=79999999, requiredLovelace=80000000, checkedAt=2026-09-26T00:00:00.000Z",
+      ],
+    });
+    await expect(
+      service.readinessSnapshot({
+        l1SubmitterFunding: {
+          ...check,
+          plainAdaLovelace: 80_000_000n,
+          sufficient: true,
+        },
+      }),
+    ).resolves.toMatchObject({ ready: true, reasons: [] });
+  });
+
+  it("shows a retirement hold as detail while ready, and is not ready on a pin failure or a failed compaction", async () => {
+    const dir = await tempDir();
+    const seed = "00".repeat(31) + "01";
+    const signer = await loadDaSigner(`hex:${seed}`);
+    const service = new CommitteeService({
+      config: minimalConfig({
+        manifestPath: `${dir}/manifest.json`,
+        deploymentInfoPath: `${dir}/deployment.json`,
+        signerSeed: seed,
+        signerPublicKey: signer.publicKeyHex,
+      }),
+      store: await openTestCommitteeStore(),
+      l1: fakeL1Source({ fetchStateQueueNodes: async () => [] }),
+      payloadSource: payloadSourceFromBytes(Buffer.alloc(0)),
+    });
+    await service.initialize();
+    await service.tick();
+    const retention = {
+      status: "ok",
+      checkedAt: "2026-10-08T00:00:00.000Z",
+      scanned: 1,
+      retained: 1,
+      prunable: 0,
+      alerting: 0,
+    } as const;
+    const hold = `committee_retirement_held: header ${"bb".repeat(28)}: submission_without_valid_landing: its submission has no valid landing`;
+
+    const pinPruned = `committee_retention_pin_pruned: retirement need 1 pruned item(s): block ${"cc".repeat(32)}`;
+    const pinFailed = "committee_retention_pin_failed: connection refused";
+    const compaction = "committee_retirement_compaction_failed: disk full";
+
+    // A hold no rule releases is detail on /readyz, never a readiness failure.
+    await expect(
+      service.readinessSnapshot({ retention: { ...retention, holds: [hold] } }),
+    ).resolves.toMatchObject({
+      ready: true,
+      reasons: [],
+      retention: { holds: [hold] },
+    });
+    for (const pin of [pinPruned, pinFailed]) {
+      await expect(
+        service.readinessSnapshot({
+          retention: { ...retention, holds: [hold], pinFailures: [pin] },
+        }),
+      ).resolves.toMatchObject({
+        ready: false,
+        reasons: [pin],
+        retention: { holds: [hold], pinFailures: [pin] },
+      });
+    }
+    await expect(
+      service.readinessSnapshot({
+        retention: { ...retention, status: "failed", error: compaction },
+      }),
+    ).resolves.toMatchObject({
+      ready: false,
+      reasons: [`retention check failed: ${compaction}`],
+    });
+    await expect(
+      service.readinessSnapshot({
+        retention: { ...retention, holds: [], pinFailures: [] },
+      }),
+    ).resolves.toMatchObject({ ready: true, reasons: [] });
+  });
+
+  it("is not ready while the pooled DA bond is short or Withdrawing, and ready again after a top-up or cancel", async () => {
+    const dir = await tempDir();
+    const seed = "00".repeat(31) + "01";
+    const signer = await loadDaSigner(`hex:${seed}`);
+    const config = minimalConfig({
+      manifestPath: `${dir}/manifest.json`,
+      deploymentInfoPath: `${dir}/deployment.json`,
+      signerSeed: seed,
+      signerPublicKey: signer.publicKeyHex,
+    });
+    const service = new CommitteeService({
+      config,
+      store: await openTestCommitteeStore(),
+      l1: fakeL1Source({
+        fetchStateQueueNodes: async () => [],
+      }),
+      payloadSource: payloadSourceFromBytes(Buffer.alloc(0)),
+    });
+    await service.initialize();
+    await service.tick();
+    const parameters = availabilityParametersFromConfig(config);
+    const bonded =
+      parameters.da_bond_pool_floor_lovelace + parameters.da_bond_lovelace;
+    const monitor = createDaBondPoolMonitor({ writeEvent: () => undefined });
+    const readiness = async (
+      lovelace: bigint,
+      datum: SDK.DaBondPoolDatum,
+      checkedAt: string,
+    ) => {
+      monitor.record(
+        daBondPoolCheckFromStatus(
+          SDK.daBondPoolStatus({ lovelace, datum, parameters }),
+          checkedAt,
+        ),
+      );
+      return service.readinessSnapshot({ daBondPool: monitor.latest() });
+    };
+
+    await expect(readiness(bonded, "Bonded", "t0")).resolves.toMatchObject({
+      ready: true,
+      reasons: [],
+    });
+    await expect(readiness(bonded - 1n, "Bonded", "t1")).resolves.toMatchObject(
+      {
+        ready: false,
+        reasons: [
+          `da_bond_pool_backing_short: backing=${(parameters.da_bond_lovelace - 1n).toString()}, required=${parameters.da_bond_lovelace.toString()}, checkedAt=t1`,
+        ],
+      },
+    );
+    // A read failure keeps the last good check's reason.
+    monitor.recordReadFailure(new Error("kupo unavailable"));
+    await expect(
+      service.readinessSnapshot({ daBondPool: monitor.latest() }),
+    ).resolves.toMatchObject({ ready: false, reasons: [expect.any(String)] });
+    await expect(readiness(bonded, "Bonded", "t2")).resolves.toMatchObject({
+      ready: true,
+      reasons: [],
+    });
+    await expect(
+      readiness(bonded, { Withdrawing: { unlock_at: 42n } }, "t3"),
+    ).resolves.toMatchObject({
+      ready: false,
+      reasons: ["da_bond_pool_withdrawing: unlockAt=42, checkedAt=t3"],
+    });
+    await expect(readiness(bonded, "Bonded", "t4")).resolves.toMatchObject({
+      ready: true,
+      reasons: [],
+    });
+  });
+
+  it("carries a drained pool read from the submitter hooks, through the tick runner, to one event and a not-ready snapshot", async () => {
+    const dir = await tempDir();
+    const seed = "00".repeat(31) + "01";
+    const signer = await loadDaSigner(`hex:${seed}`);
+    const config = minimalConfig({
+      manifestPath: `${dir}/manifest.json`,
+      deploymentInfoPath: `${dir}/deployment.json`,
+      signerSeed: seed,
+      signerPublicKey: signer.publicKeyHex,
+    });
+    const service = new CommitteeService({
+      config,
+      store: await openTestCommitteeStore(),
+      l1: fakeL1Source({
+        fetchStateQueueNodes: async () => [],
+      }),
+      payloadSource: payloadSourceFromBytes(Buffer.alloc(0)),
+    });
+    await service.initialize();
+    const parameters = availabilityParametersFromConfig(config);
+    const events: DaBondPoolEvent[] = [];
+    const wiring = createDaBondPoolWiring({
+      writeEvent: (event) => events.push(event),
+    });
+    // The submitter reports each pool read through the factory hooks.
+    let lovelace = parameters.da_bond_pool_floor_lovelace;
+    let reads = 0;
+    let readFails = false;
+    const coordinator = {
+      checkDaBondPool: async () => {
+        reads += 1;
+        if (readFails) {
+          // As the submitter does: report the failure, then rethrow.
+          const error = new Error("kupo unavailable");
+          wiring.coordinatorHooks.recordDaBondPoolReadFailure(error);
+          throw error;
+        }
+        const check = daBondPoolCheckFromStatus(
+          SDK.daBondPoolStatus({ lovelace, datum: "Bonded", parameters }),
+          `t${reads.toString()}`,
+        );
+        wiring.coordinatorHooks.recordDaBondPool(check);
+        return check;
+      },
+    };
+    const runner = createCommitteeTickRunner({
+      tick: async () => service.tick(),
+      runAvailabilityResponse: async () => undefined,
+      ...wiring.tickRunnerDeps(coordinator),
+      runRetention: async () => undefined,
+      latestL1View: () => service.latestL1View(),
+      latestL1ProgressAtMs: () => service.latestL1ProgressAtMs(),
+      setRetentionReadiness: () => undefined,
+      l1ViewFatalMs: 60_000,
+      startedAtMs: Date.now(),
+      nowMs: () => Date.now(),
+      write: () => undefined,
+    });
+    expect(wiring.tickRunnerDeps(undefined)).toEqual({});
+
+    await runner.runTick();
+    expect(reads).toBe(1);
+    await expect(
+      service.readinessSnapshot(wiring.readiness()),
+    ).resolves.toMatchObject({
+      ready: false,
+      reasons: [
+        `da_bond_pool_backing_short: backing=0, required=${parameters.da_bond_lovelace.toString()}, checkedAt=t1`,
+      ],
+    });
+    expect(events).toEqual([
+      expect.objectContaining({
+        event: "da_bond_pool_backing_short",
+        backing: "0",
+      }),
+    ]);
+
+    // A failed read reaches the monitor through the failure hook: one event,
+    // and the last good check's reason stays.
+    readFails = true;
+    await runner.runTick();
+    expect(reads).toBe(2);
+    await expect(
+      service.readinessSnapshot(wiring.readiness()),
+    ).resolves.toMatchObject({
+      ready: false,
+      reasons: [expect.stringContaining("da_bond_pool_backing_short: ")],
+    });
+    expect(events.slice(1)).toEqual([
+      expect.objectContaining({
+        event: "da_bond_pool_read_failed",
+        error: "kupo unavailable",
+      }),
+    ]);
+
+    readFails = false;
+    lovelace += parameters.da_bond_lovelace;
+    await runner.runTick();
+    await expect(
+      service.readinessSnapshot(wiring.readiness()),
+    ).resolves.toMatchObject({ ready: true, reasons: [] });
+    expect(events.map(({ event }) => event)).toEqual([
+      "da_bond_pool_backing_short",
+      "da_bond_pool_read_failed",
+      "da_bond_pool_backing_restored",
+    ]);
+  });
+
+  it("keeps a member whose L1 follower is still moving toward the tip clear of the L1-view deadline", async () => {
+    const dir = await tempDir();
+    const seed = "00".repeat(31) + "01";
+    const signer = await loadDaSigner(`hex:${seed}`);
+    const config = minimalConfig({
+      manifestPath: `${dir}/manifest.json`,
+      deploymentInfoPath: `${dir}/deployment.json`,
+      signerSeed: seed,
+      signerPublicKey: signer.publicKeyHex,
+    });
+    let nowMs = Date.parse("2026-09-26T00:00:00.000Z");
+    let cursorSlot: number | null = null;
+    const service = new CommitteeService({
+      config,
+      store: await openTestCommitteeStore(),
+      l1: fakeL1Source({
+        fetchStateQueueNodes: async () => [],
+        readiness: () => [
+          { reason: FOLLOWER_CATCHING_UP, detail: "far behind the tip" },
+        ],
+        cursorSlot: () => cursorSlot,
+      }),
+      payloadSource: payloadSourceFromBytes(Buffer.alloc(0)),
+      now: () => new Date(nowMs),
+    });
+    await service.initialize();
+    // Catching up is a wait, not an intervention.
+    const snapshot = await service.readinessSnapshot();
+    expect(snapshot.l1Source?.status).not.toBe("intervention");
+    expect(snapshot.l1Source?.intervention).toBeUndefined();
+    const fatalMs = 240_000;
+    const runner = createCommitteeTickRunner({
+      tick: async () => service.tick(),
+      runAvailabilityResponse: async () => undefined,
+      runRetention: async () => undefined,
+      latestL1View: () => service.latestL1View(),
+      latestL1ProgressAtMs: () => service.latestL1ProgressAtMs(),
+      setRetentionReadiness: () => undefined,
+      l1ViewFatalMs: fatalMs,
+      startedAtMs: nowMs,
+      nowMs: () => nowMs,
+      write: () => undefined,
+    });
+
+    for (let chunk = 1; chunk <= 3; chunk += 1) {
+      nowMs += fatalMs;
+      cursorSlot = chunk * 1_000;
+      await runner.runTick();
+      expect(runner.liveness().l1ViewUnavailable).toBeUndefined();
+    }
+    expect(service.latestL1View()).toBeUndefined();
+    // A cursor that stops moving is no progress.
+    nowMs += fatalMs + 1;
+    await runner.runTick();
+    expect(runner.liveness().l1ViewUnavailable).toBeDefined();
+  });
+};

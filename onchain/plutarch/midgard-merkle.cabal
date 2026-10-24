@@ -1,6 +1,6 @@
-cabal-version:      3.0
-name:               midgard-merkle
-version:            0.1.0.0
+cabal-version: 3.0
+name:          midgard-merkle
+version:       0.1.0.0
 
 -- A short (one-line) description of the package.
 -- synopsis:
@@ -13,13 +13,12 @@ version:            0.1.0.0
 
 -- The license under which the package is released.
 -- license:
-author:             colll78
-maintainer:         colll78@colll78
+author:        colll78
+maintainer:    colll78@colll78
 
 -- A copyright notice.
 -- copyright:
 -- category:
-extra-source-files: CHANGELOG.md
 
 common lang
   ghc-options:

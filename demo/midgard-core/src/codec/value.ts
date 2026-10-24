@@ -26,6 +26,17 @@ export type MidgardValue = {
 const POLICY_ID_LENGTH = 28;
 const MAX_ASSET_NAME_LENGTH = 32;
 
+/**
+ * The one key order for policy ids and asset names in a Value or a mint field
+ * (§5.5, §5.6): plain byte order, Cardano's, and the twin of Aiken's
+ * `ledger_output_v1.asset_key_precedes`. Negative when `left` sorts first; on
+ * an equal prefix the shorter key sorts first.
+ */
+export const compareMidgardAssetKeyBytes = (
+  left: Uint8Array,
+  right: Uint8Array,
+): number => compareBytes(left, right);
+
 const fail = (message: string, detail?: string): never => {
   throw new MidgardTxCodecError(
     MidgardTxCodecErrorCodes.InvalidFieldType,
@@ -64,7 +75,9 @@ export const encodeMidgardValue = (value: MidgardValue): Buffer => {
       if (assetEntries.length === 0) {
         fail("Value policy asset map cannot be empty", policyHex);
       }
-      assetEntries.sort(([left], [right]) => compareBytes(left, right));
+      assetEntries.sort(([left], [right]) =>
+        compareMidgardAssetKeyBytes(left, right),
+      );
       return [
         policy,
         encodeCborMapRaw(
@@ -77,7 +90,9 @@ export const encodeMidgardValue = (value: MidgardValue): Buffer => {
     },
   );
 
-  policyEntries.sort(([left], [right]) => compareBytes(left, right));
+  policyEntries.sort(([left], [right]) =>
+    compareMidgardAssetKeyBytes(left, right),
+  );
 
   return encodeCborArrayRaw([
     encodeCborUnsigned(value.lovelace),
@@ -90,8 +105,17 @@ export const encodeMidgardValue = (value: MidgardValue): Buffer => {
   ]);
 };
 
-export const decodeMidgardValue = (bytes: Uint8Array): MidgardValue => {
-  const top = readCborArrayHeader(bytes, 0, "value");
+/**
+ * Decodes the canonical Midgard value that starts at `offset` and returns the
+ * offset just past it. A Value is read structurally, never through the generic
+ * CBOR map-key check, because its policy and asset-name keys follow §5.5's
+ * plain byte order rather than CBOR's length-first one.
+ */
+export const decodeMidgardValueAt = (
+  bytes: Uint8Array,
+  offset: number,
+): { readonly value: MidgardValue; readonly nextOffset: number } => {
+  const top = readCborArrayHeader(bytes, offset, "value");
   if (top.length !== 2) {
     fail("Midgard value must be [coin, assets]", `length=${top.length}`);
   }
@@ -113,7 +137,7 @@ export const decodeMidgardValue = (bytes: Uint8Array): MidgardValue => {
     }
     if (
       previousPolicy !== undefined &&
-      compareBytes(previousPolicy, policy.value) >= 0
+      compareMidgardAssetKeyBytes(previousPolicy, policy.value) >= 0
     ) {
       fail(
         "Value policies must be sorted by raw policy id bytes",
@@ -140,10 +164,10 @@ export const decodeMidgardValue = (bytes: Uint8Array): MidgardValue => {
       }
       if (
         previousAssetName !== undefined &&
-        compareBytes(previousAssetName, assetName.value) >= 0
+        compareMidgardAssetKeyBytes(previousAssetName, assetName.value) >= 0
       ) {
         fail(
-          "Value asset names must be sorted by raw bytes",
+          "Value asset names must be sorted by raw asset name bytes",
           `policy=${policyHex}`,
         );
       }
@@ -158,25 +182,29 @@ export const decodeMidgardValue = (bytes: Uint8Array): MidgardValue => {
     policies.set(policyHex, assets);
   }
 
-  if (cursor !== bytes.length) {
-    throw new MidgardTxCodecError(
-      MidgardTxCodecErrorCodes.CborDecode,
-      "Trailing bytes after Midgard value",
-      `offset=${cursor}`,
-    );
-  }
-
   const decoded: MidgardValue = {
     lovelace: coin.value,
     assets: policies,
   };
   assertCanonicalCborRoundTrip(
-    bytes,
+    bytes.subarray(offset, cursor),
     decoded,
     encodeMidgardValue,
     "Midgard value is not canonical",
   );
-  return decoded;
+  return { value: decoded, nextOffset: cursor };
+};
+
+export const decodeMidgardValue = (bytes: Uint8Array): MidgardValue => {
+  const { value, nextOffset } = decodeMidgardValueAt(bytes, 0);
+  if (nextOffset !== bytes.length) {
+    throw new MidgardTxCodecError(
+      MidgardTxCodecErrorCodes.CborDecode,
+      "Trailing bytes after Midgard value",
+      `offset=${nextOffset}`,
+    );
+  }
+  return value;
 };
 
 export const midgardValueToCmlValue = (value: MidgardValue): CML.Value => {
@@ -202,3 +230,9 @@ export const midgardValueToCmlValue = (value: MidgardValue): CML.Value => {
     ? CML.Value.from_coin(value.lovelace)
     : CML.Value.new(value.lovelace, multiasset);
 };
+
+/** The byte length of `value` as one Cardano output carries it: the ledger
+ * descriptor's `cardano_value_size`, which the value-size cap and the
+ * withdrawal payout size both read. */
+export const midgardCardanoValueCborLength = (value: MidgardValue): number =>
+  midgardValueToCmlValue(value).to_cbor_bytes().length;

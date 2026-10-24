@@ -4,9 +4,7 @@
     "concept",
     "da-committee-node",
     "libp2p-runtime",
-    "da-layer-spec",
-    "---Design history---",
-    "da-transport-migration",
-    "adversarial-review"
+    "da-transport",
+    "da-layer-spec"
   ]
 }

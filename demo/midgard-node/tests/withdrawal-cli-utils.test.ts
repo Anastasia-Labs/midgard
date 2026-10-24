@@ -1,31 +1,37 @@
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
 import {
   encodeMidgardAddressText,
   midgardAddressFromText,
   protectMidgardAddress,
 } from "@al-ft/midgard-core/codec";
+import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML, Data, walletFromSeed } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import {
   parseEventId,
   resolveWalletSeedPhrase,
-} from "@/commands/command-utils.js";
+} from "../src/commands/command-utils.js";
 import {
   __submitWithdrawalTest,
   withdrawalEventIdFromBuildMetadata,
-} from "@/commands/submit-withdrawal.js";
+} from "../src/commands/submit-withdrawal.js";
 import {
   parseCardanoDatum,
+  parseCardanoDatumCbor,
   parseWithdrawalTxOutRefLabel,
-} from "@/commands/withdrawal-utils.js";
-import { assetsToValue } from "@/transactions/reserve-payout.js";
-import {
-  publicKeyHashFromWithdrawalSignature,
-  signWithdrawalBody,
-  verifyWithdrawalSignature,
-} from "@/withdrawal-signature.js";
+} from "../src/commands/withdrawal-utils.js";
+import { assetsToValue } from "../src/transactions/reserve-payout.js";
+
+// The ledger's Ed25519 check is libsodium's, which initialises
+// asynchronously; production entry points await it, and so does this file.
+beforeAll(() => ledgerEd25519SignatureReady());
 
 const seedPhrase =
   "test test test test test test test test test test test junk";
@@ -53,11 +59,13 @@ const makeWithdrawalBody = async (): Promise<SDK.WithdrawalBody> => {
 describe("withdrawal signature utilities", () => {
   it("signs and verifies a withdrawal body", async () => {
     const body = await makeWithdrawalBody();
-    const signature = signWithdrawalBody(privateKey, body);
-    expect(publicKeyHashFromWithdrawalSignature(signature)).toEqual(
+    const signature = SDK.signWithdrawalBody(privateKey, body);
+    expect(SDK.publicKeyHashFromWithdrawalSignature(signature)).toEqual(
       body.l2_owner,
     );
-    expect(verifyWithdrawalSignature(body, signature, body.l2_owner)).toEqual({
+    expect(
+      SDK.verifyWithdrawalSignature(body, signature, body.l2_owner),
+    ).toEqual({
       valid: true,
       publicKeyHash: body.l2_owner,
     });
@@ -65,19 +73,19 @@ describe("withdrawal signature utilities", () => {
 
   it("rejects tampered withdrawal bodies and wrong owners", async () => {
     const body = await makeWithdrawalBody();
-    const signature = signWithdrawalBody(privateKey, body);
+    const signature = SDK.signWithdrawalBody(privateKey, body);
     const tampered: SDK.WithdrawalBody = {
       ...body,
       l2_value: assetsToValue({ lovelace: 8_000_000n }),
     };
     expect(
-      verifyWithdrawalSignature(tampered, signature, body.l2_owner),
+      SDK.verifyWithdrawalSignature(tampered, signature, body.l2_owner),
     ).toMatchObject({
       valid: false,
       reason: "invalid_signature",
     });
     expect(
-      verifyWithdrawalSignature(
+      SDK.verifyWithdrawalSignature(
         body,
         signature,
         "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
@@ -91,14 +99,14 @@ describe("withdrawal signature utilities", () => {
   it("rejects malformed public keys and signatures", async () => {
     const body = await makeWithdrawalBody();
     expect(
-      verifyWithdrawalSignature(body, ["aa", "bb"], body.l2_owner),
+      SDK.verifyWithdrawalSignature(body, ["aa", "bb"], body.l2_owner),
     ).toEqual({
       valid: false,
       reason: "malformed_public_key",
     });
-    const [publicKey] = signWithdrawalBody(privateKey, body);
+    const [publicKey] = SDK.signWithdrawalBody(privateKey, body);
     expect(
-      verifyWithdrawalSignature(body, [publicKey, "bb"], body.l2_owner),
+      SDK.verifyWithdrawalSignature(body, [publicKey, "bb"], body.l2_owner),
     ).toEqual({
       valid: false,
       reason: "malformed_signature",
@@ -129,6 +137,39 @@ describe("withdrawal CLI parsers", () => {
       __submitWithdrawalTest.selectedUtxoPaymentKeyHash(scriptAddress),
     ).toThrow("Selected L2 UTxO must be owned by a key credential.");
   });
+
+  it.each(["committed", "not_found"])(
+    "withdraws an output whose producing L2 tx is %s",
+    (status) => {
+      expect(() =>
+        __submitWithdrawalTest.requireCommittedProducer(
+          "aa".repeat(32),
+          status,
+        ),
+      ).not.toThrow();
+    },
+  );
+
+  it.each([
+    "accepted",
+    "pending_commit",
+    "awaiting_local_recovery",
+    "validating",
+    "queued",
+    "rejected",
+  ])(
+    "refuses an output whose producing L2 tx is %s until it commits",
+    (status) => {
+      expect(() =>
+        __submitWithdrawalTest.requireCommittedProducer(
+          "aa".repeat(32),
+          status,
+        ),
+      ).toThrow(
+        `Producing L2 tx ${"aa".repeat(32)} is ${status}, not committed; wait for the producing tx to commit`,
+      );
+    },
+  );
 
   it("rejects malformed selected L2 UTxO addresses", () => {
     expect(() =>
@@ -174,6 +215,8 @@ describe("withdrawal CLI parsers", () => {
         nonceInput,
         validTo: 123,
         inclusionTime: 456,
+        lockedLovelace: 3_000_000n,
+        orderOutputIndex: 0,
       }),
     ).toEqual(expectedEventId);
     expect(expectedEventId).not.toEqual(
@@ -182,6 +225,10 @@ describe("withdrawal CLI parsers", () => {
   });
 
   it("parses absent and inline datum arguments", () => {
+    const duplicatePairs = "a3020a010b020c";
+    expect(
+      plutusConstrFieldCbor(parseCardanoDatumCbor(duplicatePairs), [0]),
+    ).toBe(duplicatePairs);
     expect(parseCardanoDatum(undefined)).toEqual("NoDatum");
     expect(parseCardanoDatum("   ")).toEqual("NoDatum");
     const datum = parseCardanoDatum("d87980");
@@ -202,5 +249,35 @@ describe("withdrawal CLI parsers", () => {
       seedPhrase: "direct seed",
       resolvedFrom: "direct-argument",
     });
+  });
+  it("reads a private mounted wallet seed without literal arguments and refuses conflicting or readable secrets", () => {
+    const directory = mkdtempSync(join(tmpdir(), "midgard-r7-wallet-"));
+    const path = join(directory, "wallet");
+    try {
+      writeFileSync(path, seedPhrase, { mode: 0o600 });
+      expect(
+        resolveWalletSeedPhrase({
+          walletSeedPhraseFile: path,
+          walletSeedPhraseEnv: "USER_WALLET",
+          env: {},
+        }),
+      ).toEqual({ seedPhrase, resolvedFrom: "mounted-file" });
+      expect(() =>
+        resolveWalletSeedPhrase({
+          walletSeedPhraseFile: path,
+          walletSeedPhrase: seedPhrase,
+          walletSeedPhraseEnv: "USER_WALLET",
+        }),
+      ).toThrow("one wallet secret source");
+      chmodSync(path, 0o644);
+      expect(() =>
+        resolveWalletSeedPhrase({
+          walletSeedPhraseFile: path,
+          walletSeedPhraseEnv: "USER_WALLET",
+        }),
+      ).toThrow("E_PUBLIC_HTTP_CONFIG");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });

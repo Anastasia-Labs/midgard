@@ -1,7 +1,7 @@
 import { Effect, Metric } from "effect";
 
-import { clearTable } from "@/database/utils/common.js";
-import * as Ledger from "@/database/utils/ledger.js";
+import { clearTable } from "./utils/common.js";
+import * as Ledger from "./utils/ledger.js";
 
 export const tableName = "confirmed_ledger";
 

@@ -1,0 +1,184 @@
+use aiken/collection/list
+use aiken/crypto.{ScriptHash}
+use cardano/assets.{PolicyId}
+use cardano/transaction.{OutputReference, Transaction}
+use midgard/computation_thread as ct
+use midgard/fraud_proofs/common.{ProverOnly, cancel, continue_validation_trace}
+use midgard/validation_machine/machine_types as vm_machine_types
+use midgard/validation_resolution_v1
+use midgard/validation_trace_v1
+
+pub const phase_a_script_preconditions_semantic_resolver_count: Int = 2
+
+pub const script_sources_semantic_resolver_count: Int = 29
+
+pub type Datum =
+  ct.StepDatum<validation_resolution_v1.ValidationResolutionStateV1>
+
+pub type PrepareActionV1 {
+  Prepare {
+    input_index: Int,
+    output_index: Int,
+    transition: vm_machine_types.ValidationOneStepWitnessV1,
+    auxiliary: Data,
+  }
+}
+
+pub type PrepareSpendRedeemer =
+  ct.StepRedeemer<PrepareActionV1>
+
+pub type PrepareSelectedActionV1 {
+  PrepareSelected {
+    input_index: Int,
+    output_index: Int,
+    semantic_resolver_index: Int,
+    transition: vm_machine_types.ValidationOneStepWitnessV1,
+    auxiliary: Data,
+  }
+}
+
+pub type PrepareSelectedSpendRedeemer =
+  ct.StepRedeemer<PrepareSelectedActionV1>
+
+/// Selects one semantic resolver from the deployed phase group. The group's
+/// cardinality is a deployment parameter and is asserted off-chain at
+/// parameter application, not here.
+pub fn select_semantic_resolver(
+  semantic_resolver_script_hashes: List<ScriptHash>,
+  expected_semantic_resolver_count: Int,
+  semantic_resolver_index: Int,
+) -> Option<ScriptHash> {
+  if and {
+    semantic_resolver_index >= 0,
+    semantic_resolver_index < expected_semantic_resolver_count,
+  } {
+    list.at(semantic_resolver_script_hashes, semantic_resolver_index)
+  } else {
+    None
+  }
+}
+
+pub fn prepare(
+  expected_phase: validation_trace_v1.ValidationPhase,
+  semantic_resolver_script_hash: ScriptHash,
+  computation_thread_token_policy_id: PolicyId,
+  datum: Option<Datum>,
+  redeemer: PrepareSpendRedeemer,
+  own_out_ref: OutputReference,
+  tx: Transaction,
+) -> Bool {
+  when redeemer is {
+    ct.Cancel { input_index, computation_thread_mint_redeemer_index } ->
+      cancel(
+        computation_thread_token_policy_id,
+        datum,
+        input_index,
+        own_out_ref,
+        computation_thread_mint_redeemer_index,
+        tx,
+      )
+    ct.Continue(Prepare { input_index, output_index, transition, auxiliary }) -> {
+      expect Some(step_datum) = datum
+      continue_validation_trace(
+        computation_thread_token_policy_id,
+        step_datum,
+        input_index,
+        output_index,
+        own_out_ref,
+        tx,
+        ProverOnly,
+        fn(
+          _input_script_hash,
+          _computation_thread_token_asset_name,
+          _fraud_prover,
+          input_state,
+          output_script_hash,
+          output_state,
+        ) {
+          expect Some(state) = input_state
+          let expected_output_state: Data = validation_resolution_v1.prepare_semantic_resolution(
+            state,
+            transition,
+            auxiliary,
+          )
+          and {
+            state.pre_state.phase == expected_phase,
+            output_script_hash == semantic_resolver_script_hash,
+            output_state == expected_output_state,
+          }
+        },
+      )
+    }
+  }
+}
+
+/// Routes one authenticated phase-level boundary to exactly one narrow
+/// semantic proof family. The selector is intentionally not part of the
+/// evidence hash: the selected validator reconstructs and authenticates the
+/// complete transition/auxiliary evidence, so choosing the wrong family
+/// cannot produce a winning resolution.
+pub fn prepare_selected(
+  expected_phase: validation_trace_v1.ValidationPhase,
+  semantic_resolver_script_hashes: List<ScriptHash>,
+  expected_semantic_resolver_count: Int,
+  computation_thread_token_policy_id: PolicyId,
+  datum: Option<Datum>,
+  redeemer: PrepareSelectedSpendRedeemer,
+  own_out_ref: OutputReference,
+  tx: Transaction,
+) -> Bool {
+  when redeemer is {
+    ct.Cancel { input_index, computation_thread_mint_redeemer_index } ->
+      cancel(
+        computation_thread_token_policy_id,
+        datum,
+        input_index,
+        own_out_ref,
+        computation_thread_mint_redeemer_index,
+        tx,
+      )
+    ct.Continue(PrepareSelected {
+      input_index,
+      output_index,
+      semantic_resolver_index,
+      transition,
+      auxiliary,
+    }) -> {
+      expect Some(step_datum) = datum
+      expect Some(semantic_resolver_script_hash) = select_semantic_resolver(
+        semantic_resolver_script_hashes,
+        expected_semantic_resolver_count,
+        semantic_resolver_index,
+      )
+      continue_validation_trace(
+        computation_thread_token_policy_id,
+        step_datum,
+        input_index,
+        output_index,
+        own_out_ref,
+        tx,
+        ProverOnly,
+        fn(
+          _input_script_hash,
+          _computation_thread_token_asset_name,
+          _fraud_prover,
+          input_state,
+          output_script_hash,
+          output_state,
+        ) {
+          expect Some(state) = input_state
+          let expected_output_state: Data = validation_resolution_v1.prepare_semantic_resolution(
+            state,
+            transition,
+            auxiliary,
+          )
+          and {
+            state.pre_state.phase == expected_phase,
+            output_script_hash == semantic_resolver_script_hash,
+            output_state == expected_output_state,
+          }
+        },
+      )
+    }
+  }
+}

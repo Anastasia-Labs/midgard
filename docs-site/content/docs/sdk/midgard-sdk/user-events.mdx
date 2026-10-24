@@ -7,8 +7,9 @@ The `user-events/` module builds the L1 transactions for the
 [user-event protocol](/docs/spec/user-event-protocol):
 
 - **`deposit`**: deposit funds from L1 into the L2 ledger.
-- **`withdrawal`**: withdrawal orders moving funds from L2 back to L1.
-- **`tx-order`**: transaction-order events used to sequence L2 transactions.
+- **`withdrawal`**: withdrawal orders whose valid, settled outcomes authorize the later L1 payout.
+- **`tx-order`**: L1 transaction orders for forced inclusion, with committed transaction
+  material and validity classification.
 
 (Shared helpers live in `user-events/internals.ts`, re-exported via
 `user-events/index.ts`.)

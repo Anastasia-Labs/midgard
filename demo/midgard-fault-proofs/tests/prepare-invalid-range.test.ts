@@ -7,12 +7,13 @@ import {
   computeMidgardNativeTxId,
   encodeCbor,
   encodeMidgardNativeTxCanonical,
+  encodeMidgardSpendInputItem,
   materializeMidgardNativeTxFromCanonical,
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
-import { CML } from "@lucid-evolution/lucid";
+import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -22,19 +23,15 @@ import {
   prepareInvalidRangeFromTransactions,
 } from "../src/index.js";
 
-const h28 = (byte: string): string => byte.repeat(28);
-const h32 = (byte: string): string => byte.repeat(32);
 const EMPTY_CBOR_LIST = encodeCbor([]);
 const EMPTY_CBOR_NULL = encodeCbor(null);
 const EMPTY_NULL_ROOT = computeHash32(EMPTY_CBOR_NULL);
 
 const inputCbor = (txHash: string, outputIndex: bigint): Buffer =>
-  Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(txHash),
-      outputIndex,
-    ).to_cbor_bytes(),
-  );
+  encodeMidgardSpendInputItem({
+    txId: Buffer.from(txHash, "hex"),
+    outputIndex: Number(outputIndex),
+  });
 
 const makeNativeTx = ({
   validityIntervalStart,
@@ -49,7 +46,7 @@ const makeNativeTx = ({
     version: MIDGARD_NATIVE_TX_VERSION,
     validity: "TxIsValid",
     body: {
-      spendInputsPreimageCbor: encodeCbor([inputCbor(h32("11"), fee)]),
+      spendInputsPreimageCbor: encodeCbor([inputCbor(h32(0x11), fee)]),
       referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
       outputsPreimageCbor: EMPTY_CBOR_LIST,
       fee,
@@ -84,35 +81,35 @@ const withTempDir = async <A>(run: (dir: string) => Promise<A>): Promise<A> => {
 };
 
 describe("prepare-invalid-range", () => {
-  it("prepares submit-step material for a transaction whose lower bound starts before the block", async () => {
+  it("prepares submit-step material for a transaction whose lower bound is after the committed block slot", async () => {
     const validTx = payloadFromTx(
       makeNativeTx({
         validityIntervalStart: 100n,
-        validityIntervalEnd: 200n,
+        validityIntervalEnd: 201n,
         fee: 1n,
       }),
     );
     const badTx = payloadFromTx(
       makeNativeTx({
-        validityIntervalStart: 99n,
-        validityIntervalEnd: 150n,
+        validityIntervalStart: 151n,
+        validityIntervalEnd: 201n,
         fee: 2n,
       }),
     );
 
     const output = await prepareInvalidRangeFromTransactions({
-      headerHash: h28("aa"),
+      headerHash: h28(0xaa),
       transactions: [validTx, badTx],
-      blockValidFrom: 100n,
-      blockValidTo: 200n,
+      blockSlot: 150n,
     });
 
-    expect(output.headerHash).toBe(h28("aa"));
+    expect(output.headerHash).toBe(h28(0xaa));
     expect(output.txCount).toBe(2);
     expect(output.tx.nodeTxId).toBe(badTx.nodeTxId);
-    expect(output.tx.violationReason).toBe("lower-before-block");
+    expect(output.blockSlot).toBe(150n);
+    expect(output.tx.violationReason).toBe("starts-after-block-slot");
     expect(output.tx.normalizedValidityRange).toEqual({
-      ClosedRange: { lower: 99n, upper: 149n },
+      ClosedRange: { lower: 151n, upper: 200n },
     });
     expect(output.tx.txInclusion.nativeTxId).toBe(badTx.nodeTxId);
     expect(output.tx.txInclusion.txMembershipProofCbor.length).toBeGreaterThan(
@@ -121,73 +118,84 @@ describe("prepare-invalid-range", () => {
     expect(output.commitmentEncodings.nativeNode.transactionsRoot).toMatch(
       /^[0-9a-f]{64}$/,
     );
-    expect(output.compatibility).toEqual({
-      canUseSubmitStepCommands: true,
-      reasons: [],
-    });
   });
 
   it("honors explicit tx selection and rejects a selected non-violating tx", async () => {
     const validTx = payloadFromTx(
       makeNativeTx({
         validityIntervalStart: 100n,
-        validityIntervalEnd: 200n,
+        validityIntervalEnd: 201n,
         fee: 1n,
       }),
     );
-    const upperBadTx = payloadFromTx(
+    const expiredTx = payloadFromTx(
       makeNativeTx({
         validityIntervalStart: 100n,
-        validityIntervalEnd: 201n,
+        validityIntervalEnd: 150n,
         fee: 2n,
       }),
     );
 
     await expect(
       prepareInvalidRangeFromTransactions({
-        headerHash: h28("bb"),
-        transactions: [validTx, upperBadTx],
-        blockValidFrom: 100n,
-        blockValidTo: 200n,
+        headerHash: h28(0xbb),
+        transactions: [validTx, expiredTx],
+        blockSlot: 150n,
         txId: validTx.nodeTxId,
       }),
-    ).rejects.toThrow("does not violate the block validity range");
+    ).rejects.toThrow("is valid at --block-slot 150");
 
     const output = await prepareInvalidRangeFromTransactions({
-      headerHash: h28("bb"),
-      transactions: [validTx, upperBadTx],
-      blockValidFrom: 100n,
-      blockValidTo: 200n,
-      txId: upperBadTx.nodeTxId,
+      headerHash: h28(0xbb),
+      transactions: [validTx, expiredTx],
+      blockSlot: 150n,
+      txId: expiredTx.nodeTxId,
     });
-    expect(output.tx.nodeTxId).toBe(upperBadTx.nodeTxId);
-    expect(output.tx.violationReason).toBe("upper-at-or-after-block");
+    expect(output.tx.nodeTxId).toBe(expiredTx.nodeTxId);
+    expect(output.tx.violationReason).toBe("ends-before-block-slot");
+  });
+
+  it("fails closed when the expected V1 transactions root differs", async () => {
+    const badTx = payloadFromTx(
+      makeNativeTx({
+        validityIntervalStart: 151n,
+        validityIntervalEnd: 201n,
+        fee: 8n,
+      }),
+    );
+    await expect(
+      prepareInvalidRangeFromTransactions({
+        headerHash: h28(0xbc),
+        expectedTransactionsRoot: h32(0x00),
+        transactions: [badTx],
+        blockSlot: 150n,
+      }),
+    ).rejects.toThrow("Expected V1 transactions root");
   });
 
   it("rejects blocks without invalid-range transactions", async () => {
     await expect(
       prepareInvalidRangeFromTransactions({
-        headerHash: h28("cc"),
+        headerHash: h28(0xcc),
         transactions: [
           payloadFromTx(
             makeNativeTx({
               validityIntervalStart: 100n,
-              validityIntervalEnd: 200n,
+              validityIntervalEnd: 201n,
               fee: 1n,
             }),
           ),
           payloadFromTx(
             makeNativeTx({
               validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
-              validityIntervalEnd: 199n,
+              validityIntervalEnd: 151n,
               fee: 2n,
             }),
           ),
         ],
-        blockValidFrom: 100n,
-        blockValidTo: 200n,
+        blockSlot: 150n,
       }),
-    ).rejects.toThrow("No invalid-range transaction found");
+    ).rejects.toThrow("No transaction with a validity interval excluding");
   });
 
   it("writes deterministic tx inclusion and plan files from an explicit transactions file", async () => {
@@ -203,10 +211,9 @@ describe("prepare-invalid-range", () => {
       await writeFile(transactionsPath, JSON.stringify([badTx]));
 
       const output = await prepareInvalidRangeFromFile({
-        headerHash: h28("dd"),
+        headerHash: h28(0xdd),
         transactionsPath,
-        blockValidFrom: 100n,
-        blockValidTo: 200n,
+        blockSlot: 100n,
         outputDir: dir,
       });
 
@@ -236,7 +243,7 @@ describe("prepare-invalid-range", () => {
     const badTx = payloadFromTx(
       makeNativeTx({
         validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
-        validityIntervalEnd: 250n,
+        validityIntervalEnd: 100n,
         fee: 4n,
       }),
     );
@@ -257,13 +264,12 @@ describe("prepare-invalid-range", () => {
 
     const output = await prepareInvalidRangeFromNode({
       midgardNodeUrl: "http://node.local/",
-      headerHash: h28("ee"),
-      blockValidFrom: 100n,
-      blockValidTo: 200n,
+      headerHash: h28(0xee),
+      blockSlot: 100n,
       fetchImpl,
     });
 
     expect(output.tx.nodeTxId).toBe(badTx.nodeTxId);
-    expect(output.tx.violationReason).toBe("upper-at-or-after-block");
+    expect(output.tx.violationReason).toBe("ends-before-block-slot");
   });
 });

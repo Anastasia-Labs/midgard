@@ -3,13 +3,19 @@ import { once } from "node:events";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 import { Level } from "level";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
+import { MidgardMpf } from "../src/mpf/index.js";
+import {
+  buildNativeRootProbe,
+  buildTransactionsSourceRoot,
+  buildTransitionTraceResult,
+  type NativeMpfBuildContext,
+} from "../src/mpf/index.js";
 import {
   assertNativeOwnerRuntimeMemoryBudget,
   encodeNativeMpfEventLog,
@@ -18,24 +24,23 @@ import {
   parseNativeOwnerCgroupMemoryLimit,
   ProductionNativeMpfOwnerService,
 } from "../src/services/mpf-native-owner/index.js";
-import { MidgardMpf } from "../src/workers/utils/mpf.js";
-import {
-  buildNativeProductionRootProbe,
-  buildTransactionsSourceRoot,
-  buildTransitionTraceResult,
-  type NativeMpfBuildContext,
-} from "../src/workers/utils/mpf.js";
 import {
   createEventFlatDigest,
   prepareEventFlatDigest,
 } from "../src/workers/utils/mpf-event-flat-digest.js";
+import {
+  nativeOwnerBinaryPath,
+  nativeOwnerBinaryPresent,
+  warnNativeOwnerBinaryAbsent,
+} from "./helpers/native-owner-binary.js";
 
-const binaryPath = fileURLToPath(
-  new URL(
-    "../native/mpf-event-flat-wasm/target/release/architecture-g-owner",
-    import.meta.url,
-  ),
-);
+// The service spawns the native owner binary; see the helper for the
+// build/skip contract (#642).
+const binaryPath = nativeOwnerBinaryPath;
+const binaryPresent = nativeOwnerBinaryPresent();
+if (!binaryPresent) {
+  warnNativeOwnerBinaryAbsent("mpf-native-owner-service");
+}
 
 const digest = (...parts: readonly Uint8Array[]): Buffer => {
   const state = createEventFlatDigest();
@@ -74,7 +79,7 @@ const event = (
   { type: "insert", key: inserted, value },
 ];
 
-describe("production native MPF owner service", () => {
+describe.skipIf(!binaryPresent)("production native MPF owner service", () => {
   const temporaryPaths: string[] = [];
   let binarySha256 = "";
 
@@ -91,6 +96,78 @@ describe("production native MPF owner service", () => {
         .splice(0)
         .map((path) => rm(path, { recursive: true, force: true })),
     );
+  });
+
+  it("loads genuine empty genesis and promotes insertion and final deletion across restart", async () => {
+    const root = await mkdtemp(join(tmpdir(), "midgard-native-empty-"));
+    temporaryPaths.push(root);
+    const levelPath = join(root, "ledger");
+    const sidecarPath = join(root, "ledger.sidecar");
+    const emptyRoot = SDK.EMPTY_MERKLE_TREE_ROOT;
+    const seed = new Level<string, unknown>(levelPath, {
+      valueEncoding: "json",
+    });
+    await seed.open();
+    await seed.put("__root__", emptyRoot);
+    await seed.close();
+    const options = { levelPath, binaryPath, binarySha256, sidecarPath };
+    const key = Buffer.alloc(32, 91);
+    const value = Buffer.alloc(64, 92);
+    let service = await ProductionNativeMpfOwnerService.create(options);
+    try {
+      expect(await service.diagnostics()).toMatchObject({
+        durableRoot: emptyRoot,
+        residentNodes: 0,
+      });
+      const inserted = await service.fork(emptyRoot);
+      const result = await service.applyEvents(
+        inserted,
+        encodeNativeMpfEventLog(emptyRoot, [[{ type: "insert", key, value }]]),
+      );
+      expect(result.candidateRoot).toBe(leafRoot(key, value));
+      await service.promote(inserted);
+      await service.close();
+      service = await ProductionNativeMpfOwnerService.create(options);
+      expect(await service.diagnostics()).toMatchObject({
+        durableRoot: result.candidateRoot,
+        residentNodes: 1,
+      });
+      const deleted = await service.fork(result.candidateRoot);
+      const removed = await service.applyEvents(
+        deleted,
+        encodeNativeMpfEventLog(result.candidateRoot, [
+          [{ type: "delete", key }],
+        ]),
+      );
+      expect(removed.candidateRoot).toBe(emptyRoot);
+      await service.promote(deleted);
+      await service.close();
+      service = await ProductionNativeMpfOwnerService.create(options);
+      expect(await service.diagnostics()).toMatchObject({
+        durableRoot: emptyRoot,
+        residentNodes: 0,
+      });
+      // Loading the empty sidecar is the same authenticated empty closure.
+      await service.close();
+      service = await ProductionNativeMpfOwnerService.create(options);
+      expect((await service.diagnostics()).durableRoot).toBe(emptyRoot);
+    } finally {
+      await service.close();
+    }
+    const invalidPath = join(root, "missing-root");
+    const invalid = new Level<string, unknown>(invalidPath, {
+      valueEncoding: "json",
+    });
+    await invalid.open();
+    await invalid.put("__root__", leafRoot(key, value));
+    await invalid.close();
+    await expect(
+      ProductionNativeMpfOwnerService.create({
+        ...options,
+        levelPath: invalidPath,
+        sidecarPath: undefined,
+      }),
+    ).rejects.toThrow(/missing record/);
   });
 
   it("matches legacy roots, promotes atomically, restarts, and replays recovery", async () => {
@@ -223,18 +300,18 @@ describe("production native MPF owner service", () => {
     const expectedTxRoot = await Effect.runPromise(
       buildTransactionsSourceRoot(transactionOps),
     );
-    const productionRoots = await Effect.runPromise(
-      buildNativeProductionRootProbe({
+    const roots = await Effect.runPromise(
+      buildNativeRootProbe({
         nativeMpf: nativeContext,
         sourceEvents,
         transactionOps,
       }),
     );
-    const trace = productionRoots.transitionTraceBuild;
+    const trace = roots.transitionTraceBuild;
     expect(nativeContext.eventRoots).toEqual(expectedRoots);
     expect(nativeContext.candidateRoot).toBe(expectedRoots.at(-1));
     expect(trace.finalUtxosRoot).toBe(expectedRoots.at(-1));
-    expect(productionRoots).toMatchObject({
+    expect(roots).toMatchObject({
       utxoRoot: expectedRoots.at(-1),
       rawTxRoot: expectedRawTxRoot,
       txRoot: expectedTxRoot,
@@ -244,12 +321,12 @@ describe("production native MPF owner service", () => {
       withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
       forcedTransactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
     });
-    expect(productionRoots.rawTxRoot).toMatch(/^[0-9a-f]{64}$/);
-    expect(productionRoots.txRoot).toMatch(/^[0-9a-f]{64}$/);
-    expect(productionRoots.depositsRoot).toMatch(/^[0-9a-f]{64}$/);
-    expect(productionRoots.withdrawalsRoot).toMatch(/^[0-9a-f]{64}$/);
-    expect(productionRoots.forcedTransactionsRoot).toMatch(/^[0-9a-f]{64}$/);
-    expect(productionRoots.transitionRoots).toEqual(
+    expect(roots.rawTxRoot).toMatch(/^[0-9a-f]{64}$/);
+    expect(roots.txRoot).toMatch(/^[0-9a-f]{64}$/);
+    expect(roots.depositsRoot).toMatch(/^[0-9a-f]{64}$/);
+    expect(roots.withdrawalsRoot).toMatch(/^[0-9a-f]{64}$/);
+    expect(roots.forcedTransactionsRoot).toMatch(/^[0-9a-f]{64}$/);
+    expect(roots.transitionRoots).toEqual(
       trace.transitionTraceMembers.map((member) => ({
         pre: member.value.pre_utxos_root,
         post: member.value.post_utxos_root,
@@ -486,7 +563,6 @@ describe("production native MPF owner service", () => {
       levelPath,
       binaryPath,
       binarySha256,
-      restartLimit: 1,
       onChildSpawnForTests(pid) {
         childPids.push(pid);
       },

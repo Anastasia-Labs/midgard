@@ -1,0 +1,4 @@
+interface:
+  display_name: "Regenerating Goldens and Ledgers"
+  short_description: "Find, check and regenerate stale goldens, profiles and ledgers."
+  default_prompt: "Use the Midgard golden and ledger regeneration workflow: run affected-channels.mjs, then each listed check."

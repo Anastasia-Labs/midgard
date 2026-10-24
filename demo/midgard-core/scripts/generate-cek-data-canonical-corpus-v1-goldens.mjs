@@ -1,0 +1,176 @@
+#!/usr/bin/env node
+
+/**
+ * The `cek-data-canonical-corpus-v1` cross-language golden channel: the
+ * canonical Data corpus (`tests/fixtures/cek-data-canonical-corpus-v1.vectors.mjs`)
+ * rendered as an Aiken module.
+ *
+ * Every accepted span is bound to the Data summary the TypeScript traverse
+ * twin computes for it (built `dist/`); the generated Aiken tests run the
+ * honest driver (`midgard/validation_machine_tests/data_traverse_driver`) over
+ * `cek_data_traverse_v1` and require that same summary, both for the span on
+ * its own and for the span embedded at a nonzero offset of a larger blob.
+ * Every other span must stop with `unreadable_v1` at the named stage. The
+ * one-shot `canonical_plutus_data_v1` predicate and its resumable reader
+ * `canonical_plutus_data_stream_v1` (whole, and resumed one node per call over
+ * 68-byte chunks with one revealed frame) must give the same verdict on every
+ * span. The linear summariser `data_summary_walk_v1` must give the accepted
+ * span's summary, on its own and embedded, and `Unreadable` for every other
+ * span.
+ *
+ * usage: node scripts/generate-cek-data-canonical-corpus-v1-goldens.mjs [--check]
+ */
+
+import { basename, dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { buildMidgardCekDataTraverseTrace } from "../dist/index.js";
+import { vectors } from "../tests/fixtures/cek-data-canonical-corpus-v1.vectors.mjs";
+import {
+  aikenBytes,
+  formatAikenSource,
+  goldenChannelEmitter,
+  hex,
+  parseGoldenChannelArguments,
+} from "./golden-channel.mjs";
+
+const scriptDirectory = dirname(fileURLToPath(import.meta.url));
+const packageRoot = resolve(scriptDirectory, "..");
+const repositoryRoot = resolve(packageRoot, "../..");
+const generatedAikenPath = join(
+  repositoryRoot,
+  "onchain/aiken/lib/midgard/cek-data-canonical-corpus-v1-golden.test.ak",
+);
+const aikenFileName = basename(generatedAikenPath);
+
+const { checkOnly } = parseGoldenChannelArguments(
+  "usage: node scripts/generate-cek-data-canonical-corpus-v1-goldens.mjs [--check]",
+);
+const writeOrCheck = goldenChannelEmitter({ repositoryRoot, checkOnly });
+
+const fail = (message) => {
+  throw new Error(`cek-data-canonical-corpus-v1: ${message}`);
+};
+
+const names = new Set();
+for (const vector of vectors) {
+  if (!/^[a-z0-9_]+$/u.test(vector.name) || names.has(vector.name)) {
+    fail(`vector name ${vector.name} is not a fresh snake_case name`);
+  }
+  names.add(vector.name);
+  if (!/^(?:[0-9a-f]{2})+$/u.test(vector.hex)) {
+    fail(`vector ${vector.name} is not lowercase hex`);
+  }
+}
+
+const expectedOf = (vector) => {
+  if (vector.verdict === "unreadable") {
+    if (!Number.isInteger(vector.stage)) {
+      fail(`unreadable vector ${vector.name} names no stage`);
+    }
+    return `data_traverse_driver.DriveUnreadable { stage: ${vector.stage} }`;
+  }
+  if (vector.verdict !== "accepted") {
+    fail(`vector ${vector.name} has verdict ${vector.verdict}`);
+  }
+  const trace = buildMidgardCekDataTraverseTrace({
+    sourceStart: 0,
+    source: Buffer.from(vector.hex, "hex"),
+  });
+  const summary = trace.terminal.result;
+  if (summary === null || summary === undefined) {
+    fail(`the TypeScript twin gives accepted vector ${vector.name} no summary`);
+  }
+  return [
+    "data_traverse_driver.DriveAccepted {",
+    "summary: cek_data_v1.DataSummaryV1 {",
+    `root: ${aikenBytes(hex(summary.root))},`,
+    `cbor_length: ${summary.cborLength},`,
+    `memory: ${summary.memory},`,
+    "},",
+    "}",
+  ].join(" ");
+};
+
+const walkOutcomeOf = (vector) => {
+  if (vector.verdict !== "accepted") {
+    return "data_summary_walk_v1.Unreadable";
+  }
+  const trace = buildMidgardCekDataTraverseTrace({
+    sourceStart: 0,
+    source: Buffer.from(vector.hex, "hex"),
+  });
+  const summary = trace.terminal.result;
+  return [
+    "data_summary_walk_v1.Summarised {",
+    "summary: cek_data_v1.DataSummaryV1 {",
+    `root: ${aikenBytes(hex(summary.root))},`,
+    `cbor_length: ${summary.cborLength},`,
+    `memory: ${summary.memory},`,
+    "},",
+    "}",
+  ].join(" ");
+};
+
+const renderTest = (vector) => `
+test corpus_${vector.name}() {
+  let source = ${aikenBytes(vector.hex)}
+  let expected = ${expectedOf(vector)}
+  let walked = ${walkOutcomeOf(vector)}
+  and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_traverse_driver.drive_source_v1(source) == expected,
+    data_traverse_driver.drive_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+    ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == ${vector.verdict === "accepted" ? "True" : "False"},
+    data_stream_driver.stream_verdict_v1(source, 0, bytearray.length(source), 4095, 1_000_000) == ${vector.verdict === "accepted" ? "True" : "False"},
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == ${vector.verdict === "accepted" ? "True" : "False"},
+  }
+}
+`;
+
+const source = `//// GENERATED by demo/midgard-core/scripts/generate-cek-data-canonical-corpus-v1-goldens.mjs
+//// from demo/midgard-core/tests/fixtures/cek-data-canonical-corpus-v1.vectors.mjs.
+//// Do not edit; run \`pnpm --dir demo/midgard-core run fixtures:cek-data-canonical-corpus-v1:sync\`.
+
+use aiken/primitive/bytearray
+use midgard/canonical_plutus_data_v1
+use midgard/cek_data_v1
+use midgard/data_summary_walk_v1
+use midgard/validation_machine_tests/data_stream_driver
+use midgard/validation_machine_tests/data_traverse_driver
+${vectors.map(renderTest).join("")}`;
+
+writeOrCheck(
+  generatedAikenPath,
+  formatAikenSource({
+    source,
+    fileName: aikenFileName,
+    repositoryRoot,
+    tmpPrefix: "cek-data-canonical-corpus-v1-",
+  }),
+);

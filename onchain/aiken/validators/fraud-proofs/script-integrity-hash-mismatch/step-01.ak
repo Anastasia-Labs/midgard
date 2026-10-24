@@ -1,0 +1,96 @@
+use aiken/crypto.{ScriptHash}
+use cardano/assets.{PolicyId}
+use cardano/transaction.{OutputReference, Transaction}
+use midgard/computation_thread as ct
+use midgard/fraud_proofs/common.{
+  cancel, continue, pass_native_tx_to_next_step_carried,
+}
+use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_proof_source_v1}
+use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
+use midgard/fraud_proofs/script_integrity_hash_mismatch/rule.{bind_integrity_v1}
+use midgard/fraud_proofs/script_integrity_hash_mismatch/step_01.{
+  AcceptedSource, Args, Datum, ForcedSource, SpendRedeemer,
+}
+
+validator main(
+  step_02_hash: ScriptHash,
+  thread_policy: PolicyId,
+  hub_oracle: ScriptHash,
+) {
+  spend(
+    datum: Option<Datum>,
+    redeemer: SpendRedeemer,
+    own_ref: OutputReference,
+    tx: Transaction,
+  ) {
+    when redeemer is {
+      ct.Cancel { input_index, computation_thread_mint_redeemer_index } ->
+        cancel(
+          thread_policy,
+          datum,
+          input_index,
+          own_ref,
+          computation_thread_mint_redeemer_index,
+          tx,
+        )
+      ct.Continue(Args{source: AcceptedSource { inclusion }}) -> {
+        let _, _, _, _, output_hash, output_state, header, _, verified <- pass_native_tx_to_next_step_carried(
+          thread_policy,
+          hub_oracle,
+          datum,
+          inclusion,
+          own_ref,
+          tx,
+        )
+        let expected: Data = bind_integrity_v1(
+          substrate.open_accepted_subject_v1(verified),
+          header.validation_traces_root,
+          header.validation_trace_count,
+          verified.tx_compact.body.script_integrity_hash,
+        )
+        and {
+          output_hash == step_02_hash,
+          output_state == expected,
+        }
+      }
+      ct.Continue(Args{source: ForcedSource {
+        input_index,
+        output_index,
+        header,
+        membership,
+      }}) -> {
+        let Transaction { inputs, outputs, .. } = tx
+        expect Some(step_datum) = datum
+        let _, thread_name, _, _, output_hash, output_state <- continue(
+          thread_policy,
+          step_datum,
+          input_index,
+          output_index,
+          own_ref,
+          inputs,
+          outputs,
+        )
+        let Pair(subject, verified) = substrate.open_forced_subject_v1(
+          thread_name,
+          header,
+          membership,
+        )
+        expect verified.tx_id == subject.transaction_id
+        let expected: Data = bind_integrity_v1(
+          subject,
+          header.validation_traces_root,
+          header.validation_trace_count,
+          verified.tx_compact.body.script_integrity_hash,
+        )
+        and {
+          output_hash == step_02_hash,
+          output_state == expected,
+        }
+      }
+    }
+  }
+
+  else(_) {
+    fail
+  }
+}

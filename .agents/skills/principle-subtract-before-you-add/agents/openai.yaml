@@ -1,0 +1,6 @@
+interface:
+  display_name: "Principle Subtract Before You Add"
+  short_description: "Apply when sequencing an addition, refactor, or rewrite. Remove "
+  default_prompt: "Use $principle-subtract-before-you-add for the requested Midgard task."
+policy:
+  allow_implicit_invocation: false

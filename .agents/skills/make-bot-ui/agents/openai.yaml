@@ -1,0 +1,6 @@
+interface:
+  display_name: "Make Bot Ui"
+  short_description: "Design and verify a UI that submits bounded jobs to an available"
+  default_prompt: "Use $make-bot-ui for the requested Midgard task."
+policy:
+  allow_implicit_invocation: false

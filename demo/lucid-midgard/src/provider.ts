@@ -1,3 +1,4 @@
+import { encodeMidgardProofSubmission } from "@al-ft/midgard-core/cek-proof";
 import {
   computeMidgardNativeTxId,
   decodeMidgardNativeTxFullFromCanonicalCbor,
@@ -34,13 +35,13 @@ import {
   isObject,
   normalizeTxIdHex,
   parseProtocolInfo,
+  parseRedeemerBudgets,
   parseSubmitTxCanonicalCbor,
   parseSubmitTxResult,
   parseTxStatus,
   parseUtxoResponse,
   parseUtxosResponse,
   txOutRefCborHex,
-  validateFallbackProtocolInfo,
 } from "./provider/payload.js";
 import {
   MidgardNodeTransport,
@@ -50,7 +51,7 @@ import type {
   MidgardNodeProviderOptions,
   MidgardProtocolInfo,
   MidgardProvider,
-  ProtocolInfoFallback,
+  MidgardRedeemerBudget,
   ProviderDiagnostics,
 } from "./provider/types.js";
 
@@ -59,7 +60,7 @@ export type {
   MidgardNodeProviderOptions,
   MidgardProtocolInfo,
   MidgardProvider,
-  ProtocolInfoFallback,
+  MidgardRedeemerBudget,
   ProtocolScriptLanguage,
   ProviderDiagnostics,
 } from "./provider/types.js";
@@ -116,10 +117,8 @@ const submittedTxCanonicalCbor = (
 export class MidgardNodeProvider implements MidgardProvider {
   readonly endpoint: string;
   private readonly transport: MidgardNodeTransport;
-  private readonly protocolInfoFallback?: ProtocolInfoFallback;
   private protocolInfoSource: ProviderDiagnostics["protocolInfoSource"] =
     "unknown";
-  private protocolInfoFallbackReason: string | undefined;
 
   private constructor(
     options: MidgardNodeProviderOptions,
@@ -136,7 +135,6 @@ export class MidgardNodeProvider implements MidgardProvider {
       this.endpoint,
       options.fetch ?? fetch,
     );
-    this.protocolInfoFallback = options.protocolInfoFallback;
   }
 
   static async create(
@@ -154,7 +152,6 @@ export class MidgardNodeProvider implements MidgardProvider {
     return providerDiagnostics({
       endpoint: this.endpoint,
       protocolInfoSource: this.protocolInfoSource,
-      protocolInfoFallbackReason: this.protocolInfoFallbackReason,
     });
   }
 
@@ -163,17 +160,9 @@ export class MidgardNodeProvider implements MidgardProvider {
     const { response, payload } = await this.transport.requestJson(endpoint);
     if (!response.ok) {
       if (unavailableProtocolInfoStatuses.has(response.status)) {
-        if (this.protocolInfoFallback === undefined) {
-          throw new ProviderCapabilityError(
-            endpoint,
-            "GET /protocol-info is unavailable and no explicit fallback was supplied",
-          );
-        }
-        this.protocolInfoSource = "fallback";
-        this.protocolInfoFallbackReason = this.protocolInfoFallback.reason;
-        return validateFallbackProtocolInfo(
-          this.protocolInfoFallback.protocolInfo,
+        throw new ProviderCapabilityError(
           endpoint,
+          "GET /protocol-info is required but unavailable",
         );
       }
       throw new ProviderHttpError({
@@ -185,7 +174,6 @@ export class MidgardNodeProvider implements MidgardProvider {
     }
     const protocolInfo = parseProtocolInfo(payload, endpoint);
     this.protocolInfoSource = "node";
-    this.protocolInfoFallbackReason = undefined;
     return protocolInfo;
   }
 
@@ -297,10 +285,15 @@ export class MidgardNodeProvider implements MidgardProvider {
       endpoint,
       protocolInfo.submissionLimits.maxSubmitTxCborBytes,
     );
+    const body = encodeMidgardProofSubmission({
+      transactionCbor: submittedTx.txCanonicalCbor,
+    });
     const { response, payload } = await this.transport.requestJson(endpoint, {
       method: "POST",
-      headers: { "content-type": "application/cbor" },
-      body: submittedTx.txCanonicalCbor,
+      headers: {
+        "content-type": "application/vnd.midgard.v1+cbor",
+      },
+      body,
     });
     if (response.status !== 200 && response.status !== 202) {
       const message = isObject(payload)
@@ -325,6 +318,43 @@ export class MidgardNodeProvider implements MidgardProvider {
       );
     }
     return admission;
+  }
+
+  async evaluateTx(
+    txCanonicalCborHex: string,
+  ): Promise<readonly MidgardRedeemerBudget[]> {
+    const endpoint = "/tx/evaluate";
+    const protocolInfo = await this.getProtocolInfo();
+    const draft = submittedTxCanonicalCbor(
+      txCanonicalCborHex,
+      endpoint,
+      protocolInfo.submissionLimits.maxSubmitTxCborBytes,
+    );
+    const { response, payload } = await this.transport.requestJson(endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/vnd.midgard.v1+cbor" },
+      body: encodeMidgardProofSubmission({
+        transactionCbor: draft.txCanonicalCbor,
+      }),
+    });
+    if (response.status !== 200) {
+      const detail = isObject(payload)
+        ? [payload.error, payload.detail]
+            .filter((part) => typeof part === "string")
+            .join(": ")
+        : "";
+      throw new ProviderHttpError({
+        endpoint,
+        statusCode: response.status,
+        message:
+          detail.length > 0
+            ? detail
+            : `POST ${endpoint} failed with status ${response.status.toString()}`,
+        detail: JSON.stringify(payload ?? null),
+        retryable: response.status === 503 || response.status >= 500,
+      });
+    }
+    return parseRedeemerBudgets(payload, endpoint);
   }
 
   async getTxStatus(txId: string): Promise<TxStatus> {

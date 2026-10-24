@@ -1,17 +1,26 @@
+import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
 import { SqlClient } from "@effect/sql";
 import { Effect, Option } from "effect";
 
 import {
+  latestMergedHeader,
+  liveQueueNodeHeader,
+  nonFinalTerminalHeader,
+  removedHeader,
+} from "../l1-queue-terminals/reads.js";
+import { Database } from "../services/database.js";
+import { recoveryRelevantJournal } from "./retention-holds.js";
+import {
   clearTable,
   DatabaseError,
   sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import { Database } from "@/services/database.js";
+} from "./utils/common.js";
 
 export const tableName = "da_payloads";
 
 export enum Columns {
   HEADER_HASH = "header_hash",
+  CONSENSUS_PROFILE_ID = "consensus_profile_id",
   VERSION = "version",
   PAYLOAD_CBOR = "payload_cbor",
   PAYLOAD_SHA256 = "payload_sha256",
@@ -22,21 +31,25 @@ export enum Columns {
   WITHDRAWALS_ROOT = "withdrawals_root",
   TRANSITION_TRACE_ROOT = "transition_trace_root",
   EVENT_TO_STEP_ROOT = "event_to_step_root",
+  VALIDATION_TRACES_ROOT = "validation_traces_root",
   WITHDRAWAL_COUNT = "withdrawal_count",
   FORCED_TRANSACTION_COUNT = "forced_transaction_count",
   L2_TRANSACTION_COUNT = "l2_transaction_count",
   DEPOSIT_COUNT = "deposit_count",
   TOTAL_EVENT_COUNT = "total_event_count",
   TRANSITION_STEP_COUNT = "transition_step_count",
+  VALIDATION_TRACE_COUNT = "validation_trace_count",
   BLOCK_START_TIME = "block_start_time",
   BLOCK_END_TIME = "block_end_time",
+  BLOCK_TIME = "block_time",
   CREATED_AT = "created_at",
   UPDATED_AT = "updated_at",
 }
 
 export type Row = {
   [Columns.HEADER_HASH]: Buffer;
-  [Columns.VERSION]: number;
+  [Columns.CONSENSUS_PROFILE_ID]: typeof MIDGARD_CONSENSUS_PROFILE_ID;
+  [Columns.VERSION]: 1;
   [Columns.PAYLOAD_CBOR]: Buffer;
   [Columns.PAYLOAD_SHA256]: Buffer;
   [Columns.UTXOS_ROOT]: string;
@@ -46,14 +59,17 @@ export type Row = {
   [Columns.WITHDRAWALS_ROOT]: string;
   [Columns.TRANSITION_TRACE_ROOT]: string;
   [Columns.EVENT_TO_STEP_ROOT]: string;
+  [Columns.VALIDATION_TRACES_ROOT]: string;
   [Columns.WITHDRAWAL_COUNT]: bigint;
   [Columns.FORCED_TRANSACTION_COUNT]: bigint;
   [Columns.L2_TRANSACTION_COUNT]: bigint;
   [Columns.DEPOSIT_COUNT]: bigint;
   [Columns.TOTAL_EVENT_COUNT]: bigint;
   [Columns.TRANSITION_STEP_COUNT]: bigint;
+  [Columns.VALIDATION_TRACE_COUNT]: bigint;
   [Columns.BLOCK_START_TIME]: Date;
   [Columns.BLOCK_END_TIME]: Date;
+  [Columns.BLOCK_TIME]: Date;
   [Columns.CREATED_AT]: Date;
   [Columns.UPDATED_AT]: Date;
 };
@@ -68,6 +84,7 @@ type RawRow = Omit<
   | Columns.DEPOSIT_COUNT
   | Columns.TOTAL_EVENT_COUNT
   | Columns.TRANSITION_STEP_COUNT
+  | Columns.VALIDATION_TRACE_COUNT
 > & {
   [Columns.WITHDRAWAL_COUNT]: PgBigInt;
   [Columns.FORCED_TRANSACTION_COUNT]: PgBigInt;
@@ -75,6 +92,7 @@ type RawRow = Omit<
   [Columns.DEPOSIT_COUNT]: PgBigInt;
   [Columns.TOTAL_EVENT_COUNT]: PgBigInt;
   [Columns.TRANSITION_STEP_COUNT]: PgBigInt;
+  [Columns.VALIDATION_TRACE_COUNT]: PgBigInt;
 };
 
 const toBigInt = (value: PgBigInt): bigint =>
@@ -90,11 +108,15 @@ const normalizeRow = (row: RawRow): Row => ({
   [Columns.DEPOSIT_COUNT]: toBigInt(row[Columns.DEPOSIT_COUNT]),
   [Columns.TOTAL_EVENT_COUNT]: toBigInt(row[Columns.TOTAL_EVENT_COUNT]),
   [Columns.TRANSITION_STEP_COUNT]: toBigInt(row[Columns.TRANSITION_STEP_COUNT]),
+  [Columns.VALIDATION_TRACE_COUNT]: toBigInt(
+    row[Columns.VALIDATION_TRACE_COUNT],
+  ),
 });
 
 export type InsertInput = Pick<
   Row,
   | Columns.HEADER_HASH
+  | Columns.CONSENSUS_PROFILE_ID
   | Columns.VERSION
   | Columns.PAYLOAD_CBOR
   | Columns.PAYLOAD_SHA256
@@ -105,14 +127,17 @@ export type InsertInput = Pick<
   | Columns.WITHDRAWALS_ROOT
   | Columns.TRANSITION_TRACE_ROOT
   | Columns.EVENT_TO_STEP_ROOT
+  | Columns.VALIDATION_TRACES_ROOT
   | Columns.WITHDRAWAL_COUNT
   | Columns.FORCED_TRANSACTION_COUNT
   | Columns.L2_TRANSACTION_COUNT
   | Columns.DEPOSIT_COUNT
   | Columns.TOTAL_EVENT_COUNT
   | Columns.TRANSITION_STEP_COUNT
+  | Columns.VALIDATION_TRACE_COUNT
   | Columns.BLOCK_START_TIME
   | Columns.BLOCK_END_TIME
+  | Columns.BLOCK_TIME
 >;
 
 export const upsertAvailable = (
@@ -120,7 +145,9 @@ export const upsertAvailable = (
 ): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    const rows = yield* sql<Pick<Row, Columns.HEADER_HASH>>`
+    yield* sql.withTransaction(
+      Effect.gen(function* () {
+        const rows = yield* sql<Pick<Row, Columns.HEADER_HASH>>`
       INSERT INTO ${sql(tableName)} ${sql.insert(input)}
       ON CONFLICT (${sql(Columns.HEADER_HASH)}) DO UPDATE SET
         ${sql(Columns.UPDATED_AT)} = NOW()
@@ -154,6 +181,9 @@ export const upsertAvailable = (
         AND ${sql(tableName)}.${sql(Columns.EVENT_TO_STEP_ROOT)} = EXCLUDED.${sql(
           Columns.EVENT_TO_STEP_ROOT,
         )}
+        AND ${sql(tableName)}.${sql(
+          Columns.VALIDATION_TRACES_ROOT,
+        )} = EXCLUDED.${sql(Columns.VALIDATION_TRACES_ROOT)}
         AND ${sql(tableName)}.${sql(Columns.WITHDRAWAL_COUNT)} = EXCLUDED.${sql(
           Columns.WITHDRAWAL_COUNT,
         )}
@@ -172,24 +202,35 @@ export const upsertAvailable = (
         AND ${sql(tableName)}.${sql(
           Columns.TRANSITION_STEP_COUNT,
         )} = EXCLUDED.${sql(Columns.TRANSITION_STEP_COUNT)}
+        AND ${sql(tableName)}.${sql(
+          Columns.VALIDATION_TRACE_COUNT,
+        )} = EXCLUDED.${sql(Columns.VALIDATION_TRACE_COUNT)}
+        AND ${sql(tableName)}.${sql(
+          Columns.CONSENSUS_PROFILE_ID,
+        )} = EXCLUDED.${sql(Columns.CONSENSUS_PROFILE_ID)}
         AND ${sql(tableName)}.${sql(Columns.BLOCK_START_TIME)} = EXCLUDED.${sql(
           Columns.BLOCK_START_TIME,
         )}
         AND ${sql(tableName)}.${sql(Columns.BLOCK_END_TIME)} = EXCLUDED.${sql(
           Columns.BLOCK_END_TIME,
         )}
+        AND ${sql(tableName)}.${sql(Columns.BLOCK_TIME)} = EXCLUDED.${sql(
+          Columns.BLOCK_TIME,
+        )}
       RETURNING ${sql(Columns.HEADER_HASH)}
     `;
-    if (rows.length !== 1) {
-      return yield* Effect.fail(
-        new DatabaseError({
-          table: tableName,
-          message:
-            "Refusing to overwrite DA payload because an existing payload for the header differs",
-          cause: `header_hash=${input[Columns.HEADER_HASH].toString("hex")}`,
-        }),
-      );
-    }
+        if (rows.length !== 1) {
+          return yield* Effect.fail(
+            new DatabaseError({
+              table: tableName,
+              message:
+                "Refusing to overwrite DA payload because an existing payload for the header differs",
+              cause: `header_hash=${input[Columns.HEADER_HASH].toString("hex")}`,
+            }),
+          );
+        }
+      }),
+    );
   }).pipe(
     Effect.withLogSpan(`upsertAvailable ${tableName}`),
     sqlErrorToDatabaseError(tableName, "Failed to store DA payload"),
@@ -211,21 +252,104 @@ export const retrieveByHeaderHash = (
     sqlErrorToDatabaseError(tableName, "Failed to retrieve DA payload"),
   );
 
-export const pruneOlderThan = (
-  cutoff: Date,
-): Effect.Effect<number, DatabaseError, Database> =>
+/**
+ * Deletes one retained payload whose stored bytes no longer verify, so it
+ * can be fetched again. Takes the material-store lock first, as retention
+ * pruning does, and releases the material only that row owned.
+ */
+export const removeByHeaderHash = (
+  headerHash: Buffer,
+): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    const rows = yield* sql<{ readonly deleted_count: string }>`
-      WITH deleted AS (
-        DELETE FROM ${sql(tableName)}
-        WHERE ${sql(Columns.CREATED_AT)} < ${cutoff}
-        RETURNING 1
-      )
-      SELECT COUNT(*)::text AS deleted_count FROM deleted`;
-    return Number(rows[0]?.deleted_count ?? "0");
+    yield* sql.withTransaction(
+      Effect.gen(function* () {
+        yield* sql`DELETE FROM ${sql(tableName)}
+          WHERE ${sql(Columns.HEADER_HASH)} = ${headerHash}`;
+      }),
+    );
   }).pipe(
-    Effect.withLogSpan(`pruneOlderThan ${tableName}`),
+    Effect.withLogSpan(`removeByHeaderHash ${tableName}`),
+    sqlErrorToDatabaseError(tableName, "Failed to remove DA payload"),
+  );
+
+/**
+ * The node's L1 view of the state queue for retention: the header hash in
+ * the `ConfirmedState` datum and the hash of every header node in the
+ * landed queue (the only payloads exempt from retention pruning), and the
+ * greatest final height at that view.
+ */
+export type RetentionL1View = {
+  readonly confirmedHeadHash: Buffer;
+  readonly liveQueueHeaderHashes: readonly Buffer[];
+  /**
+   * The greatest height deeper than k at the view (`heightAtDepth(tip,
+   * k + 1)`): a terminal row at or below it survives every legal rollback.
+   * Absent, no terminal row counts as final. Under a later tip or a
+   * rollback of at most k it only holds more.
+   */
+  readonly finalThroughHeight?: number;
+};
+
+/**
+ * Holds every payload a rollback could still need, re-read from the
+ * follower's facts and the queue-terminal projection in the statement that
+ * acts: a header whose node is live in the facts (even one the caller's view
+ * missed: a rollback put it back), a header a landed tx took out of the
+ * queue that is not final yet, and the newest merged header whose merge is
+ * final (the merge boundary a reader at finality sees). Nothing is held
+ * without a verified deployment.
+ */
+export const finalityHeldPayload = (
+  sql: SqlClient.SqlClient,
+  deploymentIdentityDigest: Buffer | undefined,
+  headerColumn: string = `${tableName}.${Columns.HEADER_HASH}`,
+  finalThroughHeight?: number,
+) =>
+  deploymentIdentityDigest === undefined
+    ? sql`FALSE`
+    : sql`(${liveQueueNodeHeader(sql, headerColumn)}
+      OR ${nonFinalTerminalHeader(sql, headerColumn, finalThroughHeight)}
+      OR ${latestMergedHeader(sql, headerColumn, finalThroughHeight)})`;
+
+/**
+ * Retention prune (GOAL_SPEC 9.4 / Q54), the SQL form of the core
+ * `daRetentionPruneDecision`.
+ *
+ * Challengeability age or a removal permits deletion only once the removal
+ * is final, and never for the confirmed head, the live queue, a header held
+ * for finality (`finalityHeldPayload`, re-read in the DELETE statement) or a
+ * journal still read by recovery.
+ */
+export const pruneBeyondRetention = (args: {
+  readonly challengeableCutoff: Date;
+  readonly view: RetentionL1View;
+  readonly deploymentIdentityDigest: Buffer | undefined;
+}): Effect.Effect<number, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const exempt = [
+      args.view.confirmedHeadHash,
+      ...args.view.liveQueueHeaderHashes,
+    ];
+    const removed =
+      args.deploymentIdentityDigest === undefined
+        ? sql`FALSE`
+        : removedHeader(sql, `${tableName}.${Columns.HEADER_HASH}`);
+    return yield* sql.withTransaction(
+      Effect.gen(function* () {
+        const rows = yield* sql<{ readonly header_hash: Buffer }>`
+      DELETE FROM ${sql(tableName)}
+      WHERE (${sql(Columns.BLOCK_TIME)} < ${args.challengeableCutoff} OR ${removed})
+        AND NOT ${sql.in(Columns.HEADER_HASH, exempt)}
+        AND NOT ${finalityHeldPayload(sql, args.deploymentIdentityDigest, `${tableName}.${Columns.HEADER_HASH}`, args.view.finalThroughHeight)}
+        AND NOT ${args.deploymentIdentityDigest === undefined ? sql`FALSE` : recoveryRelevantJournal(sql, Columns.HEADER_HASH)}
+      RETURNING ${sql(Columns.HEADER_HASH)}`;
+        return rows.length;
+      }),
+    );
+  }).pipe(
+    Effect.withLogSpan(`pruneBeyondRetention ${tableName}`),
     sqlErrorToDatabaseError(tableName, "Failed to prune DA payloads"),
   );
 

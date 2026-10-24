@@ -1,0 +1,2851 @@
+use aiken/builtin
+use aiken/collection/list
+use aiken/crypto
+use aiken/interval.{between}
+use aiken/primitive/bytearray
+use aiken_design_patterns/linked_list
+use cardano/address
+use cardano/assets
+use cardano/transaction.{
+  InlineDatum, Input, Mint, Output, OutputReference, ScriptPurpose,
+}
+use env
+use midgard/availability_challenge as availability
+use midgard/correction_lock
+use midgard/fraud_proof
+use midgard/fraud_proof_catalogue as catalogue
+use midgard/ledger_state.{ConfirmedState, HeaderV1, protocol_version_v1}
+use midgard/operator_directory
+use midgard/operator_directory/active_operators
+use midgard/operator_directory/retired_operators
+use midgard/state_queue
+use state_queue as state_queue_validator
+
+const state_queue_policy =
+  #"11111111111111111111111111111111111111111111111111111111"
+
+const faulty_header_hash =
+  #"22222222222222222222222222222222222222222222222222222222"
+
+const intermediate_header_hash =
+  #"33333333333333333333333333333333333333333333333333333333"
+
+const descendant_header_hash =
+  #"44444444444444444444444444444444444444444444444444444444"
+
+const parent_header_hash =
+  #"55555555555555555555555555555555555555555555555555555555"
+
+const faulty_operator =
+  #"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+const rotated_operator =
+  #"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+const da_attestation_policy =
+  #"dddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+
+const commitment_hash =
+  #"c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0"
+
+const challenge_asset_name =
+  #"44414348eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+
+const other_challenge_asset_name =
+  #"44414348ffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+
+const availability_policy =
+  #"abababababababababababababababababababababababababababab"
+
+fn availability_status_open_redeemer() -> availability.MintRedeemerV1 {
+  availability.OpenChallenge {
+    yield_to_ref_input_index: 0,
+    hub_oracle_ref_input_index: 0,
+    record_output_index: 1,
+    challenger_input_index: 1,
+    state_queue_input_index: 2,
+    state_queue_output_index: 3,
+    first_tranche_output_index: 4,
+    terminal_accumulator_output_index: 5,
+    challenger: faulty_operator,
+  }
+}
+
+fn availability_status_redeemers(
+  redeemer: availability.MintRedeemerV1,
+) -> List<Pair<ScriptPurpose, Data>> {
+  let data: Data = redeemer
+  [Pair(Mint(availability_policy), data)]
+}
+
+test availability_status_spend_accepts_exact_open_binding() {
+  state_queue_validator.availability_status_update_is_authorized_v1(
+    availability_status_redeemers(availability_status_open_redeemer()),
+    availability_policy,
+    0,
+    2,
+    3,
+  )
+}
+
+test availability_status_spend_rejects_wrong_input_or_output_index() {
+  and {
+    !state_queue_validator.availability_status_update_is_authorized_v1(
+      availability_status_redeemers(availability_status_open_redeemer()),
+      availability_policy,
+      0,
+      1,
+      3,
+    ),
+    !state_queue_validator.availability_status_update_is_authorized_v1(
+      availability_status_redeemers(availability_status_open_redeemer()),
+      availability_policy,
+      0,
+      2,
+      4,
+    ),
+  }
+}
+
+test availability_status_spend_rejects_timeout_removal_arm() {
+  let timeout = availability.TimeoutChallenge {
+    yield_to_ref_input_index: 0,
+    hub_oracle_ref_input_index: 0,
+    record_input_index: 1,
+    terminal_accumulator_input_index: 2,
+    state_queue_mint_redeemer_index: 0,
+    pool_input_index: 3,
+    pool_output_index: 0,
+    challenger_refund_output_index: 1,
+  }
+  !state_queue_validator.availability_status_update_is_authorized_v1(
+    availability_status_redeemers(timeout),
+    availability_policy,
+    0,
+    2,
+    3,
+  )
+}
+
+fn availability_status_close_redeemer() -> availability.MintRedeemerV1 {
+  availability.CloseChallenge {
+    yield_to_ref_input_index: 0,
+    hub_oracle_ref_input_index: 0,
+    record_input_index: 0,
+    terminal_accumulator_input_index: 1,
+    state_queue_input_index: 2,
+    state_queue_output_index: 3,
+    challenger_refund_output_index: 0,
+  }
+}
+
+test availability_status_spend_accepts_exact_close_binding() {
+  state_queue_validator.availability_status_update_is_authorized_v1(
+    availability_status_redeemers(availability_status_close_redeemer()),
+    availability_policy,
+    0,
+    2,
+    3,
+  )
+}
+
+test availability_status_spend_rejects_close_with_wrong_input_or_output_index() {
+  and {
+    !state_queue_validator.availability_status_update_is_authorized_v1(
+      availability_status_redeemers(availability_status_close_redeemer()),
+      availability_policy,
+      0,
+      1,
+      3,
+    ),
+    !state_queue_validator.availability_status_update_is_authorized_v1(
+      availability_status_redeemers(availability_status_close_redeemer()),
+      availability_policy,
+      0,
+      2,
+      4,
+    ),
+  }
+}
+
+/// A settle spends only tranche threads and the terminal accumulator; it must
+/// not authorize a state-queue status update even at matching indices.
+test availability_status_spend_rejects_settle_arm() {
+  let settle = availability.SettleTranche {
+    yield_to_ref_input_index: 0,
+    record_ref_input_index: 0,
+    terminal_accumulator_input_index: 2,
+    terminal_accumulator_output_index: 3,
+    tranche_input_index: 2,
+    carrier_input_index: None,
+  }
+  !state_queue_validator.availability_status_update_is_authorized_v1(
+    availability_status_redeemers(settle),
+    availability_policy,
+    0,
+    2,
+    3,
+  )
+}
+
+test availability_status_spend_rejects_wrong_policy() fail {
+  state_queue_validator.availability_status_update_is_authorized_v1(
+    availability_status_redeemers(availability_status_open_redeemer()),
+    #"cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+    0,
+    2,
+    3,
+  )
+}
+
+const empty_root =
+  #"0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8"
+
+fn header(operator: ByteArray, previous_header_hash: ByteArray) -> HeaderV1 {
+  HeaderV1 {
+    prev_utxos_root: empty_root,
+    utxos_root: empty_root,
+    withdrawals_root: empty_root,
+    forced_transactions_root: empty_root,
+    transactions_root: empty_root,
+    deposits_root: empty_root,
+    transition_trace_root: empty_root,
+    event_to_step_root: empty_root,
+    validation_traces_root: empty_root,
+    withdrawal_count: 0,
+    forced_transaction_count: 0,
+    l2_transaction_count: 0,
+    deposit_count: 0,
+    total_event_count: 0,
+    transition_step_count: 0,
+    validation_trace_count: 0,
+    start_time: 1_000,
+    end_time: 2_000,
+    block_slot: 0,
+    expected_network_id: 0,
+    min_fee_a: 0,
+    min_fee_b: 0,
+    prev_header_hash: previous_header_hash,
+    operator_vkey: operator,
+    protocol_version: protocol_version_v1,
+  }
+}
+
+fn out_ref(output_index: Int) -> OutputReference {
+  OutputReference {
+    transaction_id: #"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    output_index,
+  }
+}
+
+fn node_asset_name(header_hash: ByteArray) -> ByteArray {
+  state_queue.block_asset_name_prefix
+    |> bytearray.concat(header_hash)
+}
+
+fn node_input(
+  output_index: Int,
+  header_hash: ByteArray,
+  node_header: HeaderV1,
+  link: Option<ByteArray>,
+) -> Input {
+  node_input_with_attestation(
+    output_index,
+    header_hash,
+    node_header,
+    state_queue.no_da_attestation,
+    link,
+  )
+}
+
+fn node_input_with_attestation(
+  output_index: Int,
+  header_hash: ByteArray,
+  node_header: HeaderV1,
+  da_attestation: availability.StateQueueStatusV1,
+  link: Option<ByteArray>,
+) -> Input {
+  let datum: state_queue.Datum = linked_list.Element {
+    data: linked_list.Node(
+      state_queue.StateQueueNode {
+        header: node_header,
+        block_time: node_header.end_time,
+        da_attestation,
+        proven_fraud: None,
+      },
+    ),
+    link,
+  }
+  Input {
+    output_reference: out_ref(output_index),
+    output: Output {
+      address: address.from_script(state_queue_policy),
+      value: assets.from_lovelace(2_000_000)
+        |> assets.add(state_queue_policy, node_asset_name(header_hash), 1),
+      datum: InlineDatum(datum),
+      reference_script: None,
+    },
+  }
+}
+
+fn root_input(output_index: Int, link: Option<ByteArray>) -> Input {
+  let datum: state_queue.Datum = linked_list.Element {
+    data: linked_list.Root(
+      ConfirmedState {
+        header_hash: parent_header_hash,
+        prev_header_hash: intermediate_header_hash,
+        utxo_root: empty_root,
+        start_time: 0,
+        end_time: 1_000,
+        protocol_version: protocol_version_v1,
+      },
+    ),
+    link,
+  }
+  Input {
+    output_reference: out_ref(output_index),
+    output: Output {
+      address: address.from_script(state_queue_policy),
+      value: assets.from_lovelace(2_000_000)
+        |> assets.add(
+            state_queue_policy,
+            state_queue.confirmed_state_asset_name,
+            1,
+          ),
+      datum: InlineDatum(datum),
+      reference_script: None,
+    },
+  }
+}
+
+fn hash_header(node_header: HeaderV1) -> ByteArray {
+  crypto.blake2b_224(builtin.serialise_data(node_header))
+}
+
+fn continue_node(input: Input, link: Option<ByteArray>) -> Output {
+  expect InlineDatum(input_datum_data) = input.output.datum
+  expect linked_list.Element { data, .. }: state_queue.Datum = input_datum_data
+  let continued_datum: state_queue.Datum = linked_list.Element { data, link }
+  Output { ..input.output, datum: InlineDatum(continued_datum) }
+}
+
+fn attach_da_attestation(input: Input, attested_hash: ByteArray) -> Output {
+  expect InlineDatum(input_datum_data) = input.output.datum
+  expect
+      linked_list.Element { data: linked_list.Node { data: input_node }, link }: state_queue.Datum
+    = input_datum_data
+  let continued_datum: state_queue.Datum = linked_list.Element {
+    data: linked_list.Node(
+      state_queue.StateQueueNode {
+        ..input_node,
+        da_attestation: availability.Attested { commitment_hash: attested_hash },
+      },
+    ),
+    link,
+  }
+  Output { ..input.output, datum: InlineDatum(continued_datum) }
+}
+
+fn burn_node(header_hash: ByteArray) -> assets.Value {
+  assets.from_asset(state_queue_policy, node_asset_name(header_hash), -1)
+}
+
+/// W-C9 regression: after an earlier child was pruned, the faulty anchor can
+/// point directly at a later descendant.  The descendant retains its original
+/// predecessor hash and may have been committed by a rotated operator; neither
+/// fact weakens the authenticated linked-list descendant relation.
+test state_queue_removal_prunes_transitive_descendant_from_rotated_operator() {
+  let fraudulent_anchor = node_input(
+    0,
+    faulty_header_hash,
+    header(faulty_operator, parent_header_hash),
+    Some(descendant_header_hash),
+  )
+  let transitive_descendant = node_input(
+    1,
+    descendant_header_hash,
+    header(rotated_operator, intermediate_header_hash),
+    None,
+  )
+  state_queue_validator.remove_fraudulent_blocks_link_v1(
+    state_queue_policy,
+    inputs: [fraudulent_anchor, transitive_descendant],
+    outputs: [continue_node(fraudulent_anchor, None)],
+    mint: burn_node(descendant_header_hash),
+    fraudulent_operator: rotated_operator,
+    fraudulent_blocks_header_hash: faulty_header_hash,
+    fraudulent_node_input_outref: fraudulent_anchor.output_reference,
+    fraudulent_node_output_index: 0,
+  )
+}
+
+/// A link-removal slash must name the removed descendant, not the proof anchor.
+test state_queue_removal_rejects_wrong_descendant_operator() fail {
+  let fraudulent_anchor = node_input(
+    0,
+    faulty_header_hash,
+    header(faulty_operator, parent_header_hash),
+    Some(descendant_header_hash),
+  )
+  let transitive_descendant = node_input(
+    1,
+    descendant_header_hash,
+    header(rotated_operator, intermediate_header_hash),
+    None,
+  )
+  state_queue_validator.remove_fraudulent_blocks_link_v1(
+    state_queue_policy,
+    inputs: [fraudulent_anchor, transitive_descendant],
+    outputs: [continue_node(fraudulent_anchor, None)],
+    mint: burn_node(descendant_header_hash),
+    fraudulent_operator: faulty_operator,
+    fraudulent_blocks_header_hash: faulty_header_hash,
+    fraudulent_node_input_outref: fraudulent_anchor.output_reference,
+    fraudulent_node_output_index: 0,
+  )
+}
+
+/// The descendant-pruning route stays tied to the fraud-proved anchor.  A
+/// caller cannot use a proof for one header to prune from another queue node.
+test state_queue_removal_rejects_wrong_fraud_proved_anchor() fail {
+  let fraudulent_anchor = node_input(
+    0,
+    faulty_header_hash,
+    header(faulty_operator, parent_header_hash),
+    Some(descendant_header_hash),
+  )
+  let descendant = node_input(
+    1,
+    descendant_header_hash,
+    header(rotated_operator, faulty_header_hash),
+    None,
+  )
+  state_queue_validator.remove_fraudulent_blocks_link_v1(
+    state_queue_policy,
+    inputs: [fraudulent_anchor, descendant],
+    outputs: [continue_node(fraudulent_anchor, None)],
+    mint: burn_node(descendant_header_hash),
+    fraudulent_operator: rotated_operator,
+    fraudulent_blocks_header_hash: intermediate_header_hash,
+    fraudulent_node_input_outref: fraudulent_anchor.output_reference,
+    fraudulent_node_output_index: 0,
+  )
+}
+
+/// W-T5 terminal-branch control: once every descendant is gone, the target
+/// itself can be removed only when its header is terminal and names the
+/// operator being slashed.
+test state_queue_removal_removes_terminal_fraud_proved_block() {
+  let parent = node_input(
+    0,
+    parent_header_hash,
+    header(rotated_operator, intermediate_header_hash),
+    Some(faulty_header_hash),
+  )
+  let fraudulent_tail = node_input(
+    1,
+    faulty_header_hash,
+    header(faulty_operator, parent_header_hash),
+    None,
+  )
+  state_queue_validator.remove_last_fraudulent_block_v1(
+    state_queue_policy,
+    inputs: [parent, fraudulent_tail],
+    outputs: [continue_node(parent, None)],
+    mint: burn_node(faulty_header_hash),
+    fraudulent_operator: faulty_operator,
+    fraudulent_blocks_header_hash: faulty_header_hash,
+    anchor_element_input_outref: parent.output_reference,
+    anchor_element_output_index: 0,
+  )
+}
+
+/// The target-removal route cannot slash a different operator from the one
+/// carried by the fraud-proved block header.
+test state_queue_removal_rejects_wrong_target_operator() fail {
+  let parent = node_input(
+    0,
+    parent_header_hash,
+    header(rotated_operator, intermediate_header_hash),
+    Some(faulty_header_hash),
+  )
+  let fraudulent_tail = node_input(
+    1,
+    faulty_header_hash,
+    header(faulty_operator, parent_header_hash),
+    None,
+  )
+  state_queue_validator.remove_last_fraudulent_block_v1(
+    state_queue_policy,
+    inputs: [parent, fraudulent_tail],
+    outputs: [continue_node(parent, None)],
+    mint: burn_node(faulty_header_hash),
+    fraudulent_operator: rotated_operator,
+    fraudulent_blocks_header_hash: faulty_header_hash,
+    anchor_element_input_outref: parent.output_reference,
+    anchor_element_output_index: 0,
+  )
+}
+
+/// The target itself cannot be removed while it still has a descendant; the
+/// link-pruning route must be used first so correction remains ordered.
+test state_queue_removal_rejects_non_terminal_target() fail {
+  let parent = node_input(
+    0,
+    parent_header_hash,
+    header(rotated_operator, intermediate_header_hash),
+    Some(faulty_header_hash),
+  )
+  let fraudulent_non_tail = node_input(
+    1,
+    faulty_header_hash,
+    header(faulty_operator, parent_header_hash),
+    Some(descendant_header_hash),
+  )
+  state_queue_validator.remove_last_fraudulent_block_v1(
+    state_queue_policy,
+    inputs: [parent, fraudulent_non_tail],
+    outputs: [continue_node(parent, Some(descendant_header_hash))],
+    mint: burn_node(faulty_header_hash),
+    fraudulent_operator: faulty_operator,
+    fraudulent_blocks_header_hash: faulty_header_hash,
+    anchor_element_input_outref: parent.output_reference,
+    anchor_element_output_index: 0,
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Q61 — permissionless attestation-timeout correction.
+// ---------------------------------------------------------------------------
+
+test attestation_timeout_accepts_exact_boundary_and_rejects_adjacent_premature() {
+  let timed_out_header = header(faulty_operator, parent_header_hash)
+  let timed_out_header_hash = hash_header(timed_out_header)
+  let node = state_queue.StateQueueNode {
+    proven_fraud: None,
+    header: timed_out_header,
+    block_time: timed_out_header.end_time,
+    da_attestation: state_queue.no_da_attestation,
+  }
+  let boundary = timed_out_header.end_time + state_queue.da_attestation_timeout_v1
+  and {
+    state_queue.da_attestation_timeout_v1 == 3_600_000,
+    state_queue_validator.unattested_block_timeout_elapsed_v1(
+      timed_out_header_hash,
+      timed_out_header_hash,
+      node,
+      between(boundary, boundary + 1_000),
+    ),
+    !state_queue_validator.unattested_block_timeout_elapsed_v1(
+      timed_out_header_hash,
+      timed_out_header_hash,
+      node,
+      between(boundary - 1, boundary + 999),
+    ),
+  }
+}
+
+/// Descendants are removed first while the timed-out block remains the root's
+/// current head. The root reference makes this topology claim conflict with a
+/// concurrent merge or head replacement.
+test attestation_timeout_prunes_descendant_of_current_head() {
+  let timed_out_header = header(faulty_operator, parent_header_hash)
+  let timed_out_header_hash = hash_header(timed_out_header)
+  let root = root_input(0, Some(timed_out_header_hash))
+  let timed_out_head = node_input(
+    1,
+    timed_out_header_hash,
+    timed_out_header,
+    Some(descendant_header_hash),
+  )
+  let descendant = node_input(
+    2,
+    descendant_header_hash,
+    header(rotated_operator, timed_out_header_hash),
+    None,
+  )
+  let boundary = timed_out_header.end_time + state_queue.da_attestation_timeout_v1
+  state_queue_validator.prune_unattested_block_descendant_v1(
+    state_queue_policy,
+    inputs: [timed_out_head, descendant],
+    outputs: [continue_node(timed_out_head, None)],
+    reference_inputs: [root],
+    mint: burn_node(descendant_header_hash),
+    validity_range: between(boundary, boundary + 1_000),
+    timed_out_header_hash: timed_out_header_hash,
+    predecessor_ref_input_index: 0,
+    timed_out_node_input_outref: timed_out_head.output_reference,
+    timed_out_node_output_index: 0,
+  )
+}
+
+/// A reference that does not link to the target cannot authorize pruning.
+test attestation_timeout_rejects_unlinked_predecessor_reference() fail {
+  let timed_out_header = header(faulty_operator, parent_header_hash)
+  let timed_out_header_hash = hash_header(timed_out_header)
+  let root = root_input(0, Some(intermediate_header_hash))
+  let timed_out_node = node_input(
+    1,
+    timed_out_header_hash,
+    timed_out_header,
+    Some(descendant_header_hash),
+  )
+  let descendant = node_input(
+    2,
+    descendant_header_hash,
+    header(rotated_operator, timed_out_header_hash),
+    None,
+  )
+  let boundary = timed_out_header.end_time + state_queue.da_attestation_timeout_v1
+  state_queue_validator.prune_unattested_block_descendant_v1(
+    state_queue_policy,
+    inputs: [timed_out_node, descendant],
+    outputs: [continue_node(timed_out_node, None)],
+    reference_inputs: [root],
+    mint: burn_node(descendant_header_hash),
+    validity_range: between(boundary, boundary + 1_000),
+    timed_out_header_hash: timed_out_header_hash,
+    predecessor_ref_input_index: 0,
+    timed_out_node_input_outref: timed_out_node.output_reference,
+    timed_out_node_output_index: 0,
+  )
+}
+
+test attestation_timeout_removes_terminal_unattested_head_at_boundary() {
+  let timed_out_header = header(faulty_operator, parent_header_hash)
+  let timed_out_header_hash = hash_header(timed_out_header)
+  let root = root_input(0, Some(timed_out_header_hash))
+  let timed_out_head = node_input(
+    1,
+    timed_out_header_hash,
+    timed_out_header,
+    None,
+  )
+  let boundary = timed_out_header.end_time + state_queue.da_attestation_timeout_v1
+  state_queue_validator.remove_last_unattested_block_v1(
+    state_queue_policy,
+    inputs: [root, timed_out_head],
+    outputs: [continue_node(root, None)],
+    mint: burn_node(timed_out_header_hash),
+    validity_range: between(boundary, boundary + 1_000),
+    timed_out_header_hash: timed_out_header_hash,
+    predecessor_input_outref: root.output_reference,
+    predecessor_output_index: 0,
+  )
+}
+
+/// If `AttachDaAttestation` wins the eUTxO race, the continued node carries the
+/// DA policy marker. A timeout transaction rebuilt against that new node must
+/// reject even though the wall-clock boundary has passed.
+test attestation_timeout_rejects_attested_head_after_race() fail {
+  let timed_out_header = header(faulty_operator, parent_header_hash)
+  let timed_out_header_hash = hash_header(timed_out_header)
+  let root = root_input(0, Some(timed_out_header_hash))
+  let attested_head = node_input_with_attestation(
+    1,
+    timed_out_header_hash,
+    timed_out_header,
+    availability.Attested { commitment_hash },
+    None,
+  )
+  let boundary = timed_out_header.end_time + state_queue.da_attestation_timeout_v1
+  state_queue_validator.remove_last_unattested_block_v1(
+    state_queue_policy,
+    inputs: [root, attested_head],
+    outputs: [continue_node(root, None)],
+    mint: burn_node(timed_out_header_hash),
+    validity_range: between(boundary, boundary + 1_000),
+    timed_out_header_hash: timed_out_header_hash,
+    predecessor_input_outref: root.output_reference,
+    predecessor_output_index: 0,
+  )
+}
+
+test attestation_timeout_rejects_nonterminal_head_removal() fail {
+  let timed_out_header = header(faulty_operator, parent_header_hash)
+  let timed_out_header_hash = hash_header(timed_out_header)
+  let root = root_input(0, Some(timed_out_header_hash))
+  let timed_out_head = node_input(
+    1,
+    timed_out_header_hash,
+    timed_out_header,
+    Some(descendant_header_hash),
+  )
+  let boundary = timed_out_header.end_time + state_queue.da_attestation_timeout_v1
+  state_queue_validator.remove_last_unattested_block_v1(
+    state_queue_policy,
+    inputs: [root, timed_out_head],
+    outputs: [continue_node(root, Some(descendant_header_hash))],
+    mint: burn_node(timed_out_header_hash),
+    validity_range: between(boundary, boundary + 1_000),
+    timed_out_header_hash: timed_out_header_hash,
+    predecessor_input_outref: root.output_reference,
+    predecessor_output_index: 0,
+  )
+}
+
+test attestation_timeout_rejects_wrong_header_identity() fail {
+  let timed_out_header = header(faulty_operator, parent_header_hash)
+  let timed_out_header_hash = hash_header(timed_out_header)
+  let root = root_input(0, Some(timed_out_header_hash))
+  let timed_out_head = node_input(
+    1,
+    timed_out_header_hash,
+    timed_out_header,
+    None,
+  )
+  let boundary = timed_out_header.end_time + state_queue.da_attestation_timeout_v1
+  state_queue_validator.remove_last_unattested_block_v1(
+    state_queue_policy,
+    inputs: [root, timed_out_head],
+    outputs: [continue_node(root, None)],
+    mint: burn_node(timed_out_header_hash),
+    validity_range: between(boundary, boundary + 1_000),
+    timed_out_header_hash: descendant_header_hash,
+    predecessor_input_outref: root.output_reference,
+    predecessor_output_index: 0,
+  )
+}
+
+/// The append fence closes the starvation race at the same boundary used by
+/// timeout correction: an unattested head may be extended only when the append
+/// window ends strictly before it. A head that attached in time remains
+/// appendable later; an unknown marker does not masquerade as that attachment.
+test attestation_timeout_append_fence_pins_boundary_and_marker_identity() {
+  let head_header = header(faulty_operator, parent_header_hash)
+  let boundary = head_header.end_time + state_queue.da_attestation_timeout_v1
+  and {
+    state_queue_validator.state_queue_head_allows_append_v1(
+      state_queue.StateQueueNode {
+        proven_fraud: None,
+        header: head_header,
+        block_time: head_header.end_time,
+        da_attestation: state_queue.no_da_attestation,
+      },
+      da_attestation_policy,
+      between(boundary - 1_000, boundary - 1),
+    ),
+    !state_queue_validator.state_queue_head_allows_append_v1(
+      state_queue.StateQueueNode {
+        proven_fraud: None,
+        header: head_header,
+        block_time: head_header.end_time,
+        da_attestation: state_queue.no_da_attestation,
+      },
+      da_attestation_policy,
+      between(boundary - 1_000, boundary),
+    ),
+    state_queue_validator.state_queue_head_allows_append_v1(
+      state_queue.StateQueueNode {
+        proven_fraud: None,
+        header: head_header,
+        block_time: head_header.end_time,
+        da_attestation: availability.Attested { commitment_hash },
+      },
+      da_attestation_policy,
+      between(boundary, boundary + 1_000),
+    ),
+    !state_queue_validator.state_queue_head_allows_append_v1(
+      state_queue.StateQueueNode {
+        proven_fraud: None,
+        header: head_header,
+        block_time: head_header.end_time,
+        da_attestation: availability.Challenged {
+          commitment_hash,
+          challenge_asset_name,
+        },
+      },
+      da_attestation_policy,
+      between(boundary - 1_000, boundary - 1),
+    ),
+  }
+}
+
+fn append_head_with_status(
+  da_attestation: availability.StateQueueStatusV1,
+) -> state_queue.StateQueueNode {
+  state_queue.StateQueueNode {
+    proven_fraud: None,
+    header: header(faulty_operator, parent_header_hash),
+    block_time: header(faulty_operator, parent_header_hash).end_time,
+    da_attestation,
+  }
+}
+
+/// One append window, early enough that even an unattested head is still
+/// appendable, so any refusal below comes from the head's DA status.
+fn append_window() -> transaction.ValidityRange {
+  let boundary = header(faulty_operator, parent_header_hash).end_time + state_queue.da_attestation_timeout_v1
+  between(boundary - 1_000, boundary - 1)
+}
+
+test append_fence_accepts_attested_head() {
+  state_queue_validator.state_queue_head_allows_append_v1(
+    append_head_with_status(availability.Attested { commitment_hash }),
+    da_attestation_policy,
+    append_window(),
+  )
+}
+
+test append_fence_accepts_published_head() {
+  state_queue_validator.state_queue_head_allows_append_v1(
+    append_head_with_status(
+      availability.Published { terminal_commitment: commitment_hash },
+    ),
+    da_attestation_policy,
+    append_window(),
+  )
+}
+
+/// Refused by the `Challenged { .. } -> False` arm of the append fence: a
+/// challenged queue head halts appends until close or timeout resolves it.
+test append_fence_refuses_challenged_head() {
+  !state_queue_validator.state_queue_head_allows_append_v1(
+    append_head_with_status(
+      availability.Challenged { commitment_hash, challenge_asset_name },
+    ),
+    da_attestation_policy,
+    append_window(),
+  )
+}
+
+/// The append fence resolves the singleton root's head both when the consumed
+/// tail is that head and when a deeper queue needs a separate authenticated
+/// head reference. This is the topology seam that makes tail extension observe
+/// timeout pruning.
+test attestation_timeout_append_fence_authenticates_single_and_deep_queue_heads() {
+  let head_header = header(faulty_operator, parent_header_hash)
+  let head_header_hash = hash_header(head_header)
+  let head_node = state_queue.StateQueueNode {
+    proven_fraud: None,
+    header: head_header,
+    block_time: head_header.end_time,
+    da_attestation: state_queue.no_da_attestation,
+  }
+  let head_data: Data = head_node
+  let root = root_input(0, Some(head_header_hash))
+  let head_ref = node_input(1, head_header_hash, head_header, None)
+  let tail_data: Data = state_queue.StateQueueNode {
+    proven_fraud: None,
+    header: header(rotated_operator, head_header_hash),
+    block_time: header(rotated_operator, head_header_hash).end_time,
+    da_attestation: state_queue.no_da_attestation,
+  }
+  and {
+    state_queue_validator.authenticated_queue_head_for_append_v1(
+      [root],
+      state_queue_policy,
+      head_header_hash,
+      head_data,
+      0,
+      None,
+    ) == head_node,
+    state_queue_validator.authenticated_queue_head_for_append_v1(
+      [root, head_ref],
+      state_queue_policy,
+      descendant_header_hash,
+      tail_data,
+      0,
+      Some(1),
+    ) == head_node,
+  }
+}
+
+test attestation_timeout_append_fence_rejects_missing_deep_head_reference() fail {
+  let head_header = header(faulty_operator, parent_header_hash)
+  let head_header_hash = hash_header(head_header)
+  let root = root_input(0, Some(head_header_hash))
+  let tail_data: Data = state_queue.StateQueueNode {
+    proven_fraud: None,
+    header: header(rotated_operator, head_header_hash),
+    block_time: header(rotated_operator, head_header_hash).end_time,
+    da_attestation: state_queue.no_da_attestation,
+  }
+  state_queue_validator.authenticated_queue_head_for_append_v1(
+    [root],
+    state_queue_policy,
+    descendant_header_hash,
+    tail_data,
+    0,
+    None,
+  ) == state_queue.StateQueueNode {
+    proven_fraud: None,
+    header: head_header,
+    block_time: head_header.end_time,
+    da_attestation: state_queue.no_da_attestation,
+  }
+}
+
+/// A quorum application whose window closes exactly at the deadline is the
+/// last admissible attachment. It spends the same head UTxO as timeout
+/// correction, so the ledger serializes the exact-boundary race.
+test da_attestation_apply_accepts_window_ending_at_timeout_boundary() {
+  let head_header = header(faulty_operator, parent_header_hash)
+  let head_header_hash = hash_header(head_header)
+  let unattested_head = node_input(0, head_header_hash, head_header, None)
+  let boundary = head_header.end_time + state_queue.da_attestation_timeout_v1
+  state_queue.validate_da_attestation_attachment(
+    [unattested_head],
+    [attach_da_attestation(unattested_head, commitment_hash)],
+    state_queue_policy,
+    0,
+    0,
+    head_header_hash,
+    commitment_hash,
+    between(boundary - 1_000, boundary),
+  )
+}
+
+/// No transaction whose validity window extends beyond the deadline can make
+/// a late quorum win by landing before timeout correction.
+test da_attestation_apply_rejects_window_ending_after_timeout() fail {
+  let head_header = header(faulty_operator, parent_header_hash)
+  let head_header_hash = hash_header(head_header)
+  let unattested_head = node_input(0, head_header_hash, head_header, None)
+  let boundary = head_header.end_time + state_queue.da_attestation_timeout_v1
+  state_queue.validate_da_attestation_attachment(
+    [unattested_head],
+    [attach_da_attestation(unattested_head, commitment_hash)],
+    state_queue_policy,
+    0,
+    0,
+    head_header_hash,
+    commitment_hash,
+    between(boundary - 999, boundary + 1),
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Q58 — challenge-timeout correction.
+// ---------------------------------------------------------------------------
+
+test availability_timeout_prunes_descendant_from_exact_challenged_head() {
+  let unavailable_header = header(faulty_operator, parent_header_hash)
+  let unavailable_header_hash = hash_header(unavailable_header)
+  let root = root_input(0, Some(unavailable_header_hash))
+  let unavailable_head = node_input_with_attestation(
+    1,
+    unavailable_header_hash,
+    unavailable_header,
+    availability.Challenged { commitment_hash, challenge_asset_name },
+    Some(descendant_header_hash),
+  )
+  let descendant = node_input(
+    2,
+    descendant_header_hash,
+    header(rotated_operator, unavailable_header_hash),
+    None,
+  )
+  state_queue_validator.prune_unavailable_block_descendant_v1(
+    state_queue_policy,
+    inputs: [unavailable_head, descendant],
+    outputs: [continue_node(unavailable_head, None)],
+    reference_inputs: [root],
+    mint: burn_node(descendant_header_hash),
+    unavailable_header_hash: unavailable_header_hash,
+    challenge_asset_name: challenge_asset_name,
+    confirmed_state_ref_input_index: 0,
+    unavailable_node_input_outref: unavailable_head.output_reference,
+    unavailable_node_output_index: 0,
+  )
+}
+
+test availability_timeout_removes_terminal_exact_challenged_head() {
+  let unavailable_header = header(faulty_operator, parent_header_hash)
+  let unavailable_header_hash = hash_header(unavailable_header)
+  let root = root_input(0, Some(unavailable_header_hash))
+  let unavailable_head = node_input_with_attestation(
+    1,
+    unavailable_header_hash,
+    unavailable_header,
+    availability.Challenged { commitment_hash, challenge_asset_name },
+    None,
+  )
+  state_queue_validator.remove_unavailable_head_v1(
+    state_queue_policy,
+    inputs: [root, unavailable_head],
+    outputs: [continue_node(root, None)],
+    mint: burn_node(unavailable_header_hash),
+    unavailable_header_hash: unavailable_header_hash,
+    challenge_asset_name: challenge_asset_name,
+    confirmed_state_input_outref: root.output_reference,
+    confirmed_state_output_index: 0,
+  )
+}
+
+test availability_timeout_rejects_substituted_challenge_identity() fail {
+  let unavailable_header = header(faulty_operator, parent_header_hash)
+  let unavailable_header_hash = hash_header(unavailable_header)
+  let root = root_input(0, Some(unavailable_header_hash))
+  let unavailable_head = node_input_with_attestation(
+    1,
+    unavailable_header_hash,
+    unavailable_header,
+    availability.Challenged { commitment_hash, challenge_asset_name },
+    None,
+  )
+  state_queue_validator.remove_unavailable_head_v1(
+    state_queue_policy,
+    inputs: [root, unavailable_head],
+    outputs: [continue_node(root, None)],
+    mint: burn_node(unavailable_header_hash),
+    unavailable_header_hash: unavailable_header_hash,
+    challenge_asset_name: other_challenge_asset_name,
+    confirmed_state_input_outref: root.output_reference,
+    confirmed_state_output_index: 0,
+  )
+}
+
+test availability_timeout_rejects_attested_but_unchallenged_head() fail {
+  let unavailable_header = header(faulty_operator, parent_header_hash)
+  let unavailable_header_hash = hash_header(unavailable_header)
+  let root = root_input(0, Some(unavailable_header_hash))
+  let attested_head = node_input_with_attestation(
+    1,
+    unavailable_header_hash,
+    unavailable_header,
+    availability.Attested { commitment_hash },
+    None,
+  )
+  state_queue_validator.remove_unavailable_head_v1(
+    state_queue_policy,
+    inputs: [root, attested_head],
+    outputs: [continue_node(root, None)],
+    mint: burn_node(unavailable_header_hash),
+    unavailable_header_hash: unavailable_header_hash,
+    challenge_asset_name: challenge_asset_name,
+    confirmed_state_input_outref: root.output_reference,
+    confirmed_state_output_index: 0,
+  )
+}
+
+/// Removes the challenged head with the redeemer naming `challenge_asset_name`,
+/// the head carrying `da_attestation`.
+fn remove_unavailable_head_with_status(
+  da_attestation: availability.StateQueueStatusV1,
+) -> Bool {
+  let unavailable_header = header(faulty_operator, parent_header_hash)
+  let unavailable_header_hash = hash_header(unavailable_header)
+  let root = root_input(0, Some(unavailable_header_hash))
+  let unavailable_head = node_input_with_attestation(
+    1,
+    unavailable_header_hash,
+    unavailable_header,
+    da_attestation,
+    None,
+  )
+  state_queue_validator.remove_unavailable_head_v1(
+    state_queue_policy,
+    inputs: [root, unavailable_head],
+    outputs: [continue_node(root, None)],
+    mint: burn_node(unavailable_header_hash),
+    unavailable_header_hash: unavailable_header_hash,
+    challenge_asset_name: challenge_asset_name,
+    confirmed_state_input_outref: root.output_reference,
+    confirmed_state_output_index: 0,
+  )
+}
+
+/// The removal binds the challenge by its name only: the availability timeout
+/// checks the commitment hash against the record, so the state queue accepts
+/// `Challenged` under any commitment hash.
+test availability_timeout_accepts_challenged_head_under_any_commitment_hash() {
+  remove_unavailable_head_with_status(
+    availability.Challenged {
+      commitment_hash: #"0101010101010101010101010101010101010101010101010101010101010101",
+      challenge_asset_name,
+    },
+  )
+}
+
+/// Refused by the challenge-name match in `unavailable_target_matches_v1`:
+/// the node is challenged under another name than the redeemer's.
+test availability_timeout_rejects_head_challenged_under_other_name() fail {
+  remove_unavailable_head_with_status(
+    availability.Challenged {
+      commitment_hash,
+      challenge_asset_name: other_challenge_asset_name,
+    },
+  )
+}
+
+/// Refused by the `Challenged` pattern in `unavailable_target_matches_v1`: a
+/// published block has answered its challenge.
+test availability_timeout_rejects_published_head() fail {
+  remove_unavailable_head_with_status(
+    availability.Published { terminal_commitment: commitment_hash },
+  )
+}
+
+// Generalized timeout correction must preserve an honest prefix whose ordinary
+// seven-day maturity has not elapsed. The timeout target is its immediate child.
+type TimeoutSuffixFixture {
+  TimeoutSuffixFixture {
+    predecessor: Input,
+    target: Input,
+    descendant: Input,
+    target_hash: ByteArray,
+    boundary: Int,
+  }
+}
+
+fn timeout_suffix_fixture(with_descendant: Bool) -> TimeoutSuffixFixture {
+  let predecessor_header = header(rotated_operator, parent_header_hash)
+  let predecessor_hash = hash_header(predecessor_header)
+  let target_header = HeaderV1 {
+    ..header(faulty_operator, predecessor_hash),
+    start_time: 2_000,
+    end_time: 3_000,
+  }
+  let target_hash = hash_header(target_header)
+  let descendant_header = HeaderV1 {
+    ..header(rotated_operator, target_hash),
+    start_time: 3_000,
+    end_time: 4_000,
+  }
+  let descendant_hash = hash_header(descendant_header)
+  TimeoutSuffixFixture {
+    predecessor: node_input_with_attestation(
+      0,
+      predecessor_hash,
+      predecessor_header,
+      availability.Attested { commitment_hash },
+      Some(target_hash),
+    ),
+    target: node_input(
+      1,
+      target_hash,
+      target_header,
+      if with_descendant {
+        Some(descendant_hash)
+      } else {
+        None
+      },
+    ),
+    descendant: node_input(2, descendant_hash, descendant_header, None),
+    target_hash,
+    boundary: target_header.end_time + state_queue.da_attestation_timeout_v1,
+  }
+}
+
+fn remove_timeout_suffix_tail(
+  fixture: TimeoutSuffixFixture,
+  continued_predecessor: Output,
+  lower_bound: Int,
+) -> Bool {
+  state_queue_validator.remove_last_unattested_block_v1(
+    state_queue_policy,
+    inputs: [fixture.predecessor, fixture.target],
+    outputs: [continued_predecessor],
+    mint: burn_node(fixture.target_hash),
+    validity_range: between(lower_bound, lower_bound + 1_000),
+    timed_out_header_hash: fixture.target_hash,
+    predecessor_input_outref: fixture.predecessor.output_reference,
+    predecessor_output_index: 0,
+  )
+}
+
+fn prune_timeout_suffix_child(
+  fixture: TimeoutSuffixFixture,
+  predecessor_references: List<Input>,
+) -> Bool {
+  expect InlineDatum(descendant_datum) = fixture.descendant.output.datum
+  expect
+      linked_list.Element { data: linked_list.Node { data: node }, .. }: state_queue.Datum
+    = descendant_datum
+  let removed_hash = crypto.blake2b_224(builtin.serialise_data(node.header))
+  state_queue_validator.prune_unattested_block_descendant_v1(
+    state_queue_policy,
+    inputs: [fixture.target, fixture.descendant],
+    outputs: [continue_node(fixture.target, None)],
+    reference_inputs: predecessor_references,
+    mint: burn_node(removed_hash),
+    validity_range: between(fixture.boundary, fixture.boundary + 1_000),
+    timed_out_header_hash: fixture.target_hash,
+    predecessor_ref_input_index: 0,
+    timed_out_node_input_outref: fixture.target.output_reference,
+    timed_out_node_output_index: 0,
+  )
+}
+
+test unattested_timeout_removes_tail_behind_immature_attested_prefix() {
+  let fixture = timeout_suffix_fixture(False)
+  and {
+    fixture.boundary < 2_000 + 604_800_000,
+    remove_timeout_suffix_tail(
+      fixture,
+      continue_node(fixture.predecessor, None),
+      fixture.boundary,
+    ),
+  }
+}
+
+test unattested_timeout_prunes_interior_then_removes_target_preserving_prefix() {
+  let fixture = timeout_suffix_fixture(True)
+  let pruned = TimeoutSuffixFixture {
+    ..fixture,
+    target: Input {
+      ..fixture.target,
+      output_reference: out_ref(3),
+      output: continue_node(fixture.target, None),
+    },
+  }
+  and {
+    fixture.boundary < 2_000 + 604_800_000,
+    prune_timeout_suffix_child(fixture, [fixture.predecessor]),
+    remove_timeout_suffix_tail(
+      pruned,
+      continue_node(fixture.predecessor, None),
+      fixture.boundary,
+    ),
+  }
+}
+
+test unattested_timeout_rejects_missing_predecessor_reference() fail {
+  let fixture = timeout_suffix_fixture(True)
+  prune_timeout_suffix_child(fixture, [])
+}
+
+test unattested_timeout_rejects_forged_predecessor_reference_token() fail {
+  let fixture = timeout_suffix_fixture(True)
+  let forged = Input {
+    ..fixture.predecessor,
+    output: Output {
+      ..fixture.predecessor.output,
+      value: assets.from_lovelace(2_000_000)
+        |> assets.add(
+            availability_policy,
+            node_asset_name(parent_header_hash),
+            1,
+          ),
+    },
+  }
+  prune_timeout_suffix_child(fixture, [forged])
+}
+
+test unattested_timeout_rejects_predecessor_header_hash_substitution() fail {
+  let fixture = timeout_suffix_fixture(True)
+  let forged = Input {
+    ..fixture.predecessor,
+    output: Output {
+      ..fixture.predecessor.output,
+      value: assets.from_lovelace(2_000_000)
+        |> assets.add(
+            state_queue_policy,
+            node_asset_name(parent_header_hash),
+            1,
+          ),
+    },
+  }
+  prune_timeout_suffix_child(fixture, [forged])
+}
+
+test unattested_timeout_rejects_replaced_predecessor_link() fail {
+  let fixture = timeout_suffix_fixture(True)
+  let replaced = Input {
+    ..fixture.predecessor,
+    output_reference: out_ref(4),
+    output: continue_node(fixture.predecessor, Some(parent_header_hash)),
+  }
+  prune_timeout_suffix_child(fixture, [replaced])
+}
+
+test unattested_timeout_rejects_attested_interior_target_after_race() fail {
+  let fixture = timeout_suffix_fixture(True)
+  let attested = TimeoutSuffixFixture {
+    ..fixture,
+    target: Input {
+      ..fixture.target,
+      output_reference: out_ref(4),
+      output: attach_da_attestation(fixture.target, commitment_hash),
+    },
+  }
+  prune_timeout_suffix_child(attested, [fixture.predecessor])
+}
+
+test unattested_timeout_rejects_premature_tail_removal() fail {
+  let fixture = timeout_suffix_fixture(False)
+  remove_timeout_suffix_tail(
+    fixture,
+    continue_node(fixture.predecessor, None),
+    fixture.boundary - 1,
+  )
+}
+
+test unattested_timeout_rejects_nonterminal_interior_target() fail {
+  let fixture = timeout_suffix_fixture(True)
+  expect InlineDatum(target_datum) = fixture.target.output.datum
+  expect linked_list.Element { link, .. }: state_queue.Datum = target_datum
+  remove_timeout_suffix_tail(
+    fixture,
+    continue_node(fixture.predecessor, link),
+    fixture.boundary,
+  )
+}
+
+test unattested_timeout_rejects_changed_predecessor_value() fail {
+  let fixture = timeout_suffix_fixture(False)
+  let continued = continue_node(fixture.predecessor, None)
+  let changed = Output {
+    ..continued,
+    value: continued.value |> assets.add(#"", #"", -1),
+  }
+  remove_timeout_suffix_tail(fixture, changed, fixture.boundary)
+}
+
+test unattested_timeout_rejects_changed_predecessor_datum() fail {
+  let fixture = timeout_suffix_fixture(False)
+  let continued = continue_node(fixture.predecessor, None)
+  expect InlineDatum(datum) = continued.datum
+  expect
+      linked_list.Element { data: linked_list.Node { data: node }, link }: state_queue.Datum
+    = datum
+  let changed_datum: state_queue.Datum = linked_list.Element {
+    data: linked_list.Node(
+      state_queue.StateQueueNode {
+        ..node,
+        da_attestation: availability.Published {
+          terminal_commitment: empty_root,
+        },
+      },
+    ),
+    link,
+  }
+  remove_timeout_suffix_tail(
+    fixture,
+    Output { ..continued, datum: InlineDatum(changed_datum) },
+    fixture.boundary,
+  )
+}
+
+// A completed proof consumes its exact queue node before maturity. Open proof
+// threads do not have this authority; topology and DA status are preserved.
+const completed_fraud_policy =
+  #"12121212121212121212121212121212121212121212121212121212"
+
+fn completed_fraud_asset() -> ByteArray {
+  #"00000001"
+    |> bytearray.concat(
+        hash_header(header(faulty_operator, parent_header_hash)),
+      )
+}
+
+fn marked_output(output: Output, marker: Option<ByteArray>) -> Output {
+  expect InlineDatum(data) = output.datum
+  expect element: state_queue.Datum = data
+  expect linked_list.Node(node) = element.data
+  let continued: state_queue.Datum = linked_list.Element {
+    ..element,
+    data: linked_list.Node(
+      state_queue.StateQueueNode { ..node, proven_fraud: marker },
+    ),
+  }
+  Output { ..output, datum: InlineDatum(continued) }
+}
+
+fn completed_fraud_tx() -> transaction.Transaction {
+  let block = header(faulty_operator, parent_header_hash)
+  let input = node_input(
+    0,
+    hash_header(block),
+    block,
+    Some(descendant_header_hash),
+  )
+  transaction.Transaction {
+    ..transaction.placeholder,
+    inputs: [input],
+    outputs: [marked_output(input.output, Some(completed_fraud_asset()))],
+    mint: assets.from_asset(completed_fraud_policy, completed_fraud_asset(), 1),
+    validity_range: between(3_000, 4_000),
+  }
+}
+
+fn record_completed_fraud(tx: transaction.Transaction) -> Bool {
+  record_completed_fraud_with(tx, completed_fraud_asset(), None)
+}
+
+fn record_completed_fraud_with(
+  tx: transaction.Transaction,
+  fraud_proof_asset_name: ByteArray,
+  m_fraud_proof_ref_input_index: Option<Int>,
+) -> Bool {
+  state_queue_validator.spend.spend(
+    state_queue_policy,
+    da_attestation_policy,
+    availability_policy,
+    completed_fraud_policy,
+    None,
+    state_queue.RecordCompletedFraud {
+      state_queue_input_index: 0,
+      state_queue_output_index: 0,
+      fraud_proof_asset_name,
+      m_fraud_proof_ref_input_index,
+    },
+    out_ref(0),
+    tx,
+  )
+}
+
+test completed_fraud_marks_exact_header_with_fresh_terminal_mint() {
+  record_completed_fraud(completed_fraud_tx())
+}
+
+test completed_fraud_marker_allows_permissionless_min_ada_topup() {
+  let tx = completed_fraud_tx()
+  expect [output] = tx.outputs
+  record_completed_fraud(
+    transaction.Transaction {
+      ..tx,
+      outputs: [
+        Output {
+          ..output,
+          value: assets.add(output.value, #"", #"", 1_000_000),
+        },
+      ],
+    },
+  )
+}
+
+test completed_fraud_marker_rejects_missing_proof_mint() {
+  let tx = completed_fraud_tx()
+  !record_completed_fraud(transaction.Transaction { ..tx, mint: assets.zero })
+}
+
+test completed_fraud_marker_rejects_foreign_proof_policy() {
+  let tx = completed_fraud_tx()
+  !record_completed_fraud(
+    transaction.Transaction {
+      ..tx,
+      mint: assets.from_asset(availability_policy, completed_fraud_asset(), 1),
+    },
+  )
+}
+
+test completed_fraud_marker_rejects_nonunit_proof_mint() {
+  let tx = completed_fraud_tx()
+  !record_completed_fraud(
+    transaction.Transaction {
+      ..tx,
+      mint: assets.from_asset(
+        completed_fraud_policy,
+        completed_fraud_asset(),
+        2,
+      ),
+    },
+  )
+}
+
+test completed_fraud_marker_rejects_simultaneous_queue_mutation() {
+  let tx = completed_fraud_tx()
+  !record_completed_fraud(
+    transaction.Transaction {
+      ..tx,
+      mint: assets.add(
+        tx.mint,
+        state_queue_policy,
+        node_asset_name(descendant_header_hash),
+        -1,
+      ),
+    },
+  )
+}
+
+test completed_fraud_marker_rejects_lower_bound_at_header_end() {
+  let tx = completed_fraud_tx()
+  !record_completed_fraud(
+    transaction.Transaction { ..tx, validity_range: between(2_000, 3_000) },
+  )
+}
+
+test completed_fraud_marker_rejects_terminal_at_maturity() {
+  let tx = completed_fraud_tx()
+  let boundary = 2_000 + ledger_state.block_maturity_duration_v1
+  !record_completed_fraud(
+    transaction.Transaction {
+      ..tx,
+      validity_range: between(boundary - 1_000, boundary),
+    },
+  )
+}
+
+test completed_fraud_marker_accepts_last_inclusive_tick_before_maturity() {
+  let tx = completed_fraud_tx()
+  let boundary = 2_000 + ledger_state.block_maturity_duration_v1
+  record_completed_fraud(
+    transaction.Transaction {
+      ..tx,
+      validity_range: between(boundary - 1_000, boundary - 1),
+    },
+  )
+}
+
+test completed_fraud_marker_rejects_removing_locked_ada() {
+  let tx = completed_fraud_tx()
+  expect [output] = tx.outputs
+  !record_completed_fraud(
+    transaction.Transaction {
+      ..tx,
+      outputs: [
+        Output { ..output, value: assets.add(output.value, #"", #"", -1) },
+      ],
+    },
+  )
+}
+
+test completed_fraud_marker_rejects_changing_address() {
+  let tx = completed_fraud_tx()
+  expect [output] = tx.outputs
+  !record_completed_fraud(
+    transaction.Transaction {
+      ..tx,
+      outputs: [
+        Output { ..output, address: address.from_script(availability_policy) },
+      ],
+    },
+  )
+}
+
+test completed_fraud_marker_rejects_attaching_reference_script() {
+  let tx = completed_fraud_tx()
+  expect [output] = tx.outputs
+  !record_completed_fraud(
+    transaction.Transaction {
+      ..tx,
+      outputs: [
+        Output { ..output, reference_script: Some(availability_policy) },
+      ],
+    },
+  )
+}
+
+test completed_fraud_marker_rejects_different_output_proof() {
+  let tx = completed_fraud_tx()
+  expect [output] = tx.outputs
+  !record_completed_fraud(
+    transaction.Transaction {
+      ..tx,
+      outputs: [
+        marked_output(
+          output,
+          Some(
+            #"00000002"
+              |> bytearray.concat(
+                  hash_header(header(faulty_operator, parent_header_hash)),
+                ),
+          ),
+        ),
+      ],
+    },
+  )
+}
+
+test completed_fraud_marker_rejects_repeated_write() {
+  let tx = completed_fraud_tx()
+  expect [input] = tx.inputs
+  expect [output] = tx.outputs
+  !record_completed_fraud(
+    transaction.Transaction { ..tx, inputs: [Input { ..input, output }] },
+  )
+}
+
+test completed_fraud_marker_rejects_redirected_spending_index() fail {
+  let tx = completed_fraud_tx()
+  expect [input] = tx.inputs
+  record_completed_fraud(
+    transaction.Transaction {
+      ..tx,
+      inputs: [Input { ..input, output_reference: out_ref(1) }],
+    },
+  )
+}
+
+// ## Recording an already-minted proof token by reference
+
+const completed_fraud_prover =
+  #"34343434343434343434343434343434343434343434343434343434"
+
+const other_completed_fraud_prover =
+  #"35353535353535353535353535353535353535353535353535353535"
+
+/// A permanent proof output as finalize leaves it: exactly one token of
+/// `policy` under `asset_name` and the prover in its inline datum.
+fn completed_fraud_token_input(
+  output_index: Int,
+  policy: ByteArray,
+  asset_name: ByteArray,
+  quantity: Int,
+  prover: ByteArray,
+) -> Input {
+  let datum = fraud_proof.Datum { fraud_prover: prover }
+  Input {
+    output_reference: OutputReference {
+      transaction_id: #"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      output_index,
+    },
+    output: Output {
+      address: address.from_script(completed_fraud_policy),
+      value: assets.from_lovelace(2_000_000)
+        |> assets.add(policy, asset_name, quantity),
+      datum: InlineDatum(datum),
+      reference_script: None,
+    },
+  }
+}
+
+fn unrelated_reference_input() -> Input {
+  Input {
+    output_reference: out_ref(7),
+    output: Output {
+      address: address.from_script(availability_policy),
+      value: assets.from_lovelace(5_000_000),
+      datum: InlineDatum(
+        fraud_proof.Datum { fraud_prover: completed_fraud_prover },
+      ),
+      reference_script: None,
+    },
+  }
+}
+
+/// The same pre-state as `completed_fraud_tx`, except that nothing is minted
+/// and the proof token sits in `reference_inputs[1]`.
+fn completed_fraud_by_reference_tx(token: Input) -> transaction.Transaction {
+  let tx = completed_fraud_tx()
+  transaction.Transaction {
+    ..tx,
+    mint: assets.zero,
+    reference_inputs: [unrelated_reference_input(), token],
+  }
+}
+
+fn completed_fraud_token() -> Input {
+  completed_fraud_token_input(
+    0,
+    completed_fraud_policy,
+    completed_fraud_asset(),
+    1,
+    completed_fraud_prover,
+  )
+}
+
+fn record_completed_fraud_by_reference(tx: transaction.Transaction) -> Bool {
+  record_completed_fraud_with(tx, completed_fraud_asset(), Some(1))
+}
+
+test completed_fraud_by_reference_marks_exact_header() {
+  record_completed_fraud_by_reference(
+    completed_fraud_by_reference_tx(completed_fraud_token()),
+  )
+}
+
+/// One pre-state, two successors: the continuation naming the referenced
+/// token verifies; the one naming another category for the same header does
+/// not, although both are well-formed markers for this header.
+test completed_fraud_by_reference_binds_marker_to_referenced_token() {
+  let tx = completed_fraud_by_reference_tx(completed_fraud_token())
+  expect [output] = tx.outputs
+  let other_asset = #"00000002"
+    |> bytearray.concat(
+        hash_header(header(faulty_operator, parent_header_hash)),
+      )
+  let other_successor = transaction.Transaction {
+    ..tx,
+    outputs: [marked_output(output, Some(other_asset))],
+  }
+  and {
+    record_completed_fraud_by_reference(tx),
+    !record_completed_fraud_with(other_successor, other_asset, Some(1)),
+  }
+}
+
+test completed_fraud_by_reference_rejects_input_without_token() fail {
+  record_completed_fraud_with(
+    completed_fraud_by_reference_tx(completed_fraud_token()),
+    completed_fraud_asset(),
+    Some(0),
+  )
+}
+
+test completed_fraud_by_reference_rejects_missing_reference_index() fail {
+  record_completed_fraud_with(
+    completed_fraud_by_reference_tx(completed_fraud_token()),
+    completed_fraud_asset(),
+    Some(2),
+  )
+}
+
+test completed_fraud_by_reference_rejects_foreign_policy_with_same_name() fail {
+  record_completed_fraud_by_reference(
+    completed_fraud_by_reference_tx(
+      completed_fraud_token_input(
+        0,
+        availability_policy,
+        completed_fraud_asset(),
+        1,
+        completed_fraud_prover,
+      ),
+    ),
+  )
+}
+
+test completed_fraud_by_reference_rejects_token_for_another_header() {
+  let other_header_asset = #"00000001"
+    |> bytearray.concat(descendant_header_hash)
+  !record_completed_fraud_by_reference(
+    completed_fraud_by_reference_tx(
+      completed_fraud_token_input(
+        0,
+        completed_fraud_policy,
+        other_header_asset,
+        1,
+        completed_fraud_prover,
+      ),
+    ),
+  )
+}
+
+test completed_fraud_by_reference_rejects_redeemer_naming_another_header() {
+  let tx = completed_fraud_by_reference_tx(completed_fraud_token())
+  expect [output] = tx.outputs
+  let other_header_asset = #"00000001"
+    |> bytearray.concat(descendant_header_hash)
+  !record_completed_fraud_with(
+    transaction.Transaction {
+      ..tx,
+      outputs: [marked_output(output, Some(other_header_asset))],
+    },
+    other_header_asset,
+    Some(1),
+  )
+}
+
+test completed_fraud_by_reference_rejects_non_unit_token() fail {
+  record_completed_fraud_by_reference(
+    completed_fraud_by_reference_tx(
+      completed_fraud_token_input(
+        0,
+        completed_fraud_policy,
+        completed_fraud_asset(),
+        2,
+        completed_fraud_prover,
+      ),
+    ),
+  )
+}
+
+test completed_fraud_by_reference_rejects_upper_bound_at_maturity() {
+  let tx = completed_fraud_by_reference_tx(completed_fraud_token())
+  let boundary = 2_000 + ledger_state.block_maturity_duration_v1
+  and {
+    record_completed_fraud_by_reference(
+      transaction.Transaction {
+        ..tx,
+        validity_range: between(boundary - 1_000, boundary - 1),
+      },
+    ),
+    !record_completed_fraud_by_reference(
+      transaction.Transaction {
+        ..tx,
+        validity_range: between(boundary - 1_000, boundary),
+      },
+    ),
+  }
+}
+
+test completed_fraud_by_reference_rejects_repeated_write() {
+  let tx = completed_fraud_by_reference_tx(completed_fraud_token())
+  expect [input] = tx.inputs
+  expect [output] = tx.outputs
+  !record_completed_fraud_by_reference(
+    transaction.Transaction { ..tx, inputs: [Input { ..input, output }] },
+  )
+}
+
+test completed_fraud_by_reference_rejects_simultaneous_queue_mutation() {
+  let tx = completed_fraud_by_reference_tx(completed_fraud_token())
+  !record_completed_fraud_by_reference(
+    transaction.Transaction {
+      ..tx,
+      mint: assets.from_asset(
+        state_queue_policy,
+        node_asset_name(descendant_header_hash),
+        -1,
+      ),
+    },
+  )
+}
+
+/// `None` keeps the same-transaction mint requirement: a referenced token
+/// does not stand in for it.
+test completed_fraud_minted_here_ignores_referenced_token() {
+  !record_completed_fraud(
+    completed_fraud_by_reference_tx(completed_fraud_token()),
+  )
+}
+
+/// A second token of the same unit, held by another prover's output, changes
+/// nothing: either authentic output can be named, and the recorded node is
+/// identical.
+test completed_fraud_by_reference_ignores_second_token_of_same_unit() {
+  let second = completed_fraud_token_input(
+    1,
+    completed_fraud_policy,
+    completed_fraud_asset(),
+    1,
+    other_completed_fraud_prover,
+  )
+  let tx = completed_fraud_by_reference_tx(completed_fraud_token())
+  let with_second = transaction.Transaction {
+    ..tx,
+    reference_inputs: [second, ..tx.reference_inputs],
+  }
+  and {
+    record_completed_fraud_with(with_second, completed_fraud_asset(), Some(0)),
+    record_completed_fraud_with(with_second, completed_fraud_asset(), Some(2)),
+    record_completed_fraud(
+      transaction.Transaction {
+        ..completed_fraud_tx(),
+        reference_inputs: [second],
+      },
+    ),
+  }
+}
+
+test completed_fraud_marked_head_cannot_append() {
+  !state_queue_validator.state_queue_head_allows_append_v1(
+    state_queue.StateQueueNode {
+      header: header(faulty_operator, parent_header_hash),
+      block_time: header(faulty_operator, parent_header_hash).end_time,
+      da_attestation: availability.Attested { commitment_hash },
+      proven_fraud: Some(completed_fraud_asset()),
+    },
+    da_attestation_policy,
+    between(3_000, 4_000),
+  )
+}
+
+test completed_fraud_terminal_requires_exact_new_output_marker() {
+  state_queue.require_completed_fraud_witness(
+    completed_fraud_tx(),
+    state_queue_policy,
+    completed_fraud_asset(),
+    state_queue.RecordedOutput { output_index: 0 },
+  )
+}
+
+test completed_fraud_terminal_rejects_an_unmarked_header() fail {
+  let tx = completed_fraud_tx()
+  expect [input] = tx.inputs
+  state_queue.require_completed_fraud_witness(
+    transaction.Transaction { ..tx, outputs: [input.output] },
+    state_queue_policy,
+    completed_fraud_asset(),
+    state_queue.RecordedOutput { output_index: 0 },
+  )
+}
+
+test completed_fraud_terminal_rejects_a_different_new_marker() {
+  let tx = completed_fraud_tx()
+  let other_proof = #"00000002"
+    |> bytearray.concat(
+        hash_header(header(faulty_operator, parent_header_hash)),
+      )
+  !state_queue.require_completed_fraud_witness(
+    tx,
+    state_queue_policy,
+    other_proof,
+    state_queue.RecordedOutput { output_index: 0 },
+  )
+}
+
+test completed_fraud_terminal_references_an_already_marked_header_without_rewriting() {
+  let tx = completed_fraud_tx()
+  expect [output] = tx.outputs
+  let other_proof = #"00000002"
+    |> bytearray.concat(
+        hash_header(header(faulty_operator, parent_header_hash)),
+      )
+  state_queue.require_completed_fraud_witness(
+    transaction.Transaction {
+      ..tx,
+      inputs: [],
+      outputs: [],
+      reference_inputs: [Input { output_reference: out_ref(1), output }],
+    },
+    state_queue_policy,
+    other_proof,
+    state_queue.PreviouslyRecorded { reference_input_index: 0 },
+  )
+}
+
+test completed_fraud_terminal_rejects_a_reference_to_another_header() {
+  let tx = completed_fraud_tx()
+  expect [output] = tx.outputs
+  let other_proof = #"00000002" |> bytearray.concat(descendant_header_hash)
+  !state_queue.require_completed_fraud_witness(
+    transaction.Transaction {
+      ..tx,
+      reference_inputs: [Input { output_reference: out_ref(1), output }],
+    },
+    state_queue_policy,
+    other_proof,
+    state_queue.PreviouslyRecorded { reference_input_index: 0 },
+  )
+}
+
+test completed_fraud_terminal_rejects_unmarked_reference() fail {
+  let tx = completed_fraud_tx()
+  state_queue.require_completed_fraud_witness(
+    transaction.Transaction { ..tx, reference_inputs: tx.inputs },
+    state_queue_policy,
+    completed_fraud_asset(),
+    state_queue.PreviouslyRecorded { reference_input_index: 0 },
+  )
+}
+
+test completed_fraud_terminal_rejects_foreign_queue_policy() fail {
+  state_queue.require_completed_fraud_witness(
+    completed_fraud_tx(),
+    availability_policy,
+    completed_fraud_asset(),
+    state_queue.RecordedOutput { output_index: 0 },
+  )
+}
+
+test completed_fraud_terminal_rejects_expired_terminal_even_when_already_recorded() {
+  let tx = completed_fraud_tx()
+  expect [output] = tx.outputs
+  let boundary = 2_000 + ledger_state.block_maturity_duration_v1
+  !state_queue.require_completed_fraud_witness(
+    transaction.Transaction {
+      ..tx,
+      validity_range: between(boundary, boundary + 1_000),
+      reference_inputs: [Input { output_reference: out_ref(1), output }],
+    },
+    state_queue_policy,
+    completed_fraud_asset(),
+    state_queue.PreviouslyRecorded { reference_input_index: 0 },
+  )
+}
+
+test completed_fraud_da_update_preserves_marker() {
+  let tx = completed_fraud_tx()
+  expect [input] = tx.inputs
+  expect [marked] = tx.outputs
+  expect InlineDatum(data) = marked.datum
+  expect element: state_queue.Datum = data
+  expect linked_list.Node(node) = element.data
+  let attested = availability.Attested { commitment_hash }
+  let continued: state_queue.Datum = linked_list.Element {
+    ..element,
+    data: linked_list.Node(
+      state_queue.StateQueueNode { ..node, da_attestation: attested },
+    ),
+  }
+  state_queue.validate_da_availability_status_transition(
+    [Input { ..input, output: marked }],
+    [Output { ..marked, datum: InlineDatum(continued) }],
+    state_queue_policy,
+    0,
+    0,
+    hash_header(node.header),
+    state_queue.no_da_attestation,
+    attested,
+  )
+}
+
+test completed_fraud_da_update_cannot_clear_marker() fail {
+  let tx = completed_fraud_tx()
+  expect [input] = tx.inputs
+  expect [marked] = tx.outputs
+  let attested = availability.Attested { commitment_hash }
+  let block = header(faulty_operator, parent_header_hash)
+  let unmarked = node_input_with_attestation(
+    0,
+    hash_header(block),
+    block,
+    attested,
+    Some(descendant_header_hash),
+  )
+  state_queue.validate_da_availability_status_transition(
+    [Input { ..input, output: marked }],
+    [unmarked.output],
+    state_queue_policy,
+    0,
+    0,
+    hash_header(block),
+    state_queue.no_da_attestation,
+    attested,
+  )
+}
+
+// ---------------------------------------------------------------------------
+// State-queue element invariant: no continued anchor carries a reference
+// script. `validate_completed_fraud_record` requires the fraud node to carry
+// none, so every arm that continues an element pins
+// `element_output_has_no_reference_script` on its output. Each arm below runs
+// the same fixture as its existing control, with the continued anchor passed
+// through `rewrite`; the paired control passes it through unchanged.
+// ---------------------------------------------------------------------------
+
+const probe_reference_script =
+  #"f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3"
+
+fn unchanged(output: Output) -> Output {
+  output
+}
+
+fn with_probe_reference_script(output: Output) -> Output {
+  Output { ..output, reference_script: Some(probe_reference_script) }
+}
+
+/// `state_queue_removal_prunes_transitive_descendant_from_rotated_operator`,
+/// with the continued fraud-proved anchor passed through `rewrite`.
+fn fraud_link_removal(rewrite: fn(Output) -> Output) -> Bool {
+  let fraudulent_anchor = node_input(
+    0,
+    faulty_header_hash,
+    header(faulty_operator, parent_header_hash),
+    Some(descendant_header_hash),
+  )
+  let transitive_descendant = node_input(
+    1,
+    descendant_header_hash,
+    header(rotated_operator, intermediate_header_hash),
+    None,
+  )
+  state_queue_validator.remove_fraudulent_blocks_link_v1(
+    state_queue_policy,
+    inputs: [fraudulent_anchor, transitive_descendant],
+    outputs: [rewrite(continue_node(fraudulent_anchor, None))],
+    mint: burn_node(descendant_header_hash),
+    fraudulent_operator: rotated_operator,
+    fraudulent_blocks_header_hash: faulty_header_hash,
+    fraudulent_node_input_outref: fraudulent_anchor.output_reference,
+    fraudulent_node_output_index: 0,
+  )
+}
+
+test fraud_link_removal_reference_script_control() {
+  fraud_link_removal(unchanged)
+}
+
+/// Control: `fraud_link_removal_reference_script_control`. Refused by
+/// `expect element_output_has_no_reference_script(fraudulent_node_output)` in
+/// `remove_fraudulent_blocks_link_v1`.
+test fraud_link_removal_rejects_continued_anchor_reference_script() fail {
+  fraud_link_removal(with_probe_reference_script)
+}
+
+/// `state_queue_removal_removes_terminal_fraud_proved_block`, with the
+/// continued parent passed through `rewrite`.
+fn fraud_last_removal(rewrite: fn(Output) -> Output) -> Bool {
+  let parent = node_input(
+    0,
+    parent_header_hash,
+    header(rotated_operator, intermediate_header_hash),
+    Some(faulty_header_hash),
+  )
+  let fraudulent_tail = node_input(
+    1,
+    faulty_header_hash,
+    header(faulty_operator, parent_header_hash),
+    None,
+  )
+  state_queue_validator.remove_last_fraudulent_block_v1(
+    state_queue_policy,
+    inputs: [parent, fraudulent_tail],
+    outputs: [rewrite(continue_node(parent, None))],
+    mint: burn_node(faulty_header_hash),
+    fraudulent_operator: faulty_operator,
+    fraudulent_blocks_header_hash: faulty_header_hash,
+    anchor_element_input_outref: parent.output_reference,
+    anchor_element_output_index: 0,
+  )
+}
+
+test fraud_last_removal_reference_script_control() {
+  fraud_last_removal(unchanged)
+}
+
+/// Control: `fraud_last_removal_reference_script_control`. Refused by
+/// `expect element_output_has_no_reference_script(anchor_element_output)` in
+/// `remove_last_fraudulent_block_v1`.
+test fraud_last_removal_rejects_continued_anchor_reference_script() fail {
+  fraud_last_removal(with_probe_reference_script)
+}
+
+/// `attestation_timeout_prunes_descendant_of_current_head`, with the continued
+/// timed-out head passed through `rewrite`.
+fn unattested_prune(rewrite: fn(Output) -> Output) -> Bool {
+  let timed_out_header = header(faulty_operator, parent_header_hash)
+  let timed_out_header_hash = hash_header(timed_out_header)
+  let root = root_input(0, Some(timed_out_header_hash))
+  let timed_out_head = node_input(
+    1,
+    timed_out_header_hash,
+    timed_out_header,
+    Some(descendant_header_hash),
+  )
+  let descendant = node_input(
+    2,
+    descendant_header_hash,
+    header(rotated_operator, timed_out_header_hash),
+    None,
+  )
+  let boundary = timed_out_header.end_time + state_queue.da_attestation_timeout_v1
+  state_queue_validator.prune_unattested_block_descendant_v1(
+    state_queue_policy,
+    inputs: [timed_out_head, descendant],
+    outputs: [rewrite(continue_node(timed_out_head, None))],
+    reference_inputs: [root],
+    mint: burn_node(descendant_header_hash),
+    validity_range: between(boundary, boundary + 1_000),
+    timed_out_header_hash: timed_out_header_hash,
+    predecessor_ref_input_index: 0,
+    timed_out_node_input_outref: timed_out_head.output_reference,
+    timed_out_node_output_index: 0,
+  )
+}
+
+test unattested_prune_reference_script_control() {
+  unattested_prune(unchanged)
+}
+
+/// Control: `unattested_prune_reference_script_control`. Refused by
+/// `expect element_output_has_no_reference_script(timed_out_node_output)` in
+/// `prune_unattested_block_descendant_v1`.
+test unattested_prune_rejects_continued_anchor_reference_script() fail {
+  unattested_prune(with_probe_reference_script)
+}
+
+/// `attestation_timeout_removes_terminal_unattested_head_at_boundary`, with the
+/// continued confirmed-state root passed through `rewrite`.
+fn unattested_last_removal(rewrite: fn(Output) -> Output) -> Bool {
+  let timed_out_header = header(faulty_operator, parent_header_hash)
+  let timed_out_header_hash = hash_header(timed_out_header)
+  let root = root_input(0, Some(timed_out_header_hash))
+  let timed_out_head = node_input(
+    1,
+    timed_out_header_hash,
+    timed_out_header,
+    None,
+  )
+  let boundary = timed_out_header.end_time + state_queue.da_attestation_timeout_v1
+  state_queue_validator.remove_last_unattested_block_v1(
+    state_queue_policy,
+    inputs: [root, timed_out_head],
+    outputs: [rewrite(continue_node(root, None))],
+    mint: burn_node(timed_out_header_hash),
+    validity_range: between(boundary, boundary + 1_000),
+    timed_out_header_hash: timed_out_header_hash,
+    predecessor_input_outref: root.output_reference,
+    predecessor_output_index: 0,
+  )
+}
+
+test unattested_last_removal_reference_script_control() {
+  unattested_last_removal(unchanged)
+}
+
+/// Control: `unattested_last_removal_reference_script_control`. Refused by
+/// `expect element_output_has_no_reference_script(predecessor_output)` in
+/// `remove_last_unattested_block_v1`.
+test unattested_last_removal_rejects_continued_anchor_reference_script() fail {
+  unattested_last_removal(with_probe_reference_script)
+}
+
+/// `availability_timeout_prunes_descendant_from_exact_challenged_head`, with
+/// the continued challenged head passed through `rewrite`.
+fn unavailable_prune(rewrite: fn(Output) -> Output) -> Bool {
+  let unavailable_header = header(faulty_operator, parent_header_hash)
+  let unavailable_header_hash = hash_header(unavailable_header)
+  let root = root_input(0, Some(unavailable_header_hash))
+  let unavailable_head = node_input_with_attestation(
+    1,
+    unavailable_header_hash,
+    unavailable_header,
+    availability.Challenged { commitment_hash, challenge_asset_name },
+    Some(descendant_header_hash),
+  )
+  let descendant = node_input(
+    2,
+    descendant_header_hash,
+    header(rotated_operator, unavailable_header_hash),
+    None,
+  )
+  state_queue_validator.prune_unavailable_block_descendant_v1(
+    state_queue_policy,
+    inputs: [unavailable_head, descendant],
+    outputs: [rewrite(continue_node(unavailable_head, None))],
+    reference_inputs: [root],
+    mint: burn_node(descendant_header_hash),
+    unavailable_header_hash: unavailable_header_hash,
+    challenge_asset_name: challenge_asset_name,
+    confirmed_state_ref_input_index: 0,
+    unavailable_node_input_outref: unavailable_head.output_reference,
+    unavailable_node_output_index: 0,
+  )
+}
+
+test unavailable_prune_reference_script_control() {
+  unavailable_prune(unchanged)
+}
+
+/// Control: `unavailable_prune_reference_script_control`. Refused by
+/// `expect element_output_has_no_reference_script(unavailable_node_output)` in
+/// `prune_unavailable_block_descendant_v1`.
+test unavailable_prune_rejects_continued_anchor_reference_script() fail {
+  unavailable_prune(with_probe_reference_script)
+}
+
+/// `availability_timeout_removes_terminal_exact_challenged_head`, with the
+/// continued confirmed-state root passed through `rewrite`.
+fn unavailable_head_removal(rewrite: fn(Output) -> Output) -> Bool {
+  let unavailable_header = header(faulty_operator, parent_header_hash)
+  let unavailable_header_hash = hash_header(unavailable_header)
+  let root = root_input(0, Some(unavailable_header_hash))
+  let unavailable_head = node_input_with_attestation(
+    1,
+    unavailable_header_hash,
+    unavailable_header,
+    availability.Challenged { commitment_hash, challenge_asset_name },
+    None,
+  )
+  state_queue_validator.remove_unavailable_head_v1(
+    state_queue_policy,
+    inputs: [root, unavailable_head],
+    outputs: [rewrite(continue_node(root, None))],
+    mint: burn_node(unavailable_header_hash),
+    unavailable_header_hash: unavailable_header_hash,
+    challenge_asset_name: challenge_asset_name,
+    confirmed_state_input_outref: root.output_reference,
+    confirmed_state_output_index: 0,
+  )
+}
+
+test unavailable_head_removal_reference_script_control() {
+  unavailable_head_removal(unchanged)
+}
+
+/// Control: `unavailable_head_removal_reference_script_control`. Refused by
+/// `expect element_output_has_no_reference_script(confirmed_state_output)` in
+/// `remove_unavailable_head_v1`.
+test unavailable_head_removal_rejects_continued_anchor_reference_script() fail {
+  unavailable_head_removal(with_probe_reference_script)
+}
+
+// ---------------------------------------------------------------------------
+// State-queue node lovelace floor: an arm that continues a queued node never
+// lets its lovelace fall, so no node can be drained below
+// `state_queue_node_min_lovelace_v1` after its commit. The prune arms keep the
+// continued node's lovelace exactly; the fraud-removal arms let it only grow,
+// because the SDK builders fold the removed node's lovelace into it. Each case
+// reuses the arm's fixture above with the continued node passed through
+// `with_lovelace_delta`; the paired controls are the `*_reference_script_control`
+// tests, which pass it through unchanged.
+// ---------------------------------------------------------------------------
+
+fn with_lovelace_delta(delta: Int) -> fn(Output) -> Output {
+  fn(output) {
+    Output {
+      ..output,
+      value: assets.add(
+        output.value,
+        assets.ada_policy_id,
+        assets.ada_asset_name,
+        delta,
+      ),
+    }
+  }
+}
+
+/// The honest SDK shape: the continued fraud-proved node gains the removed
+/// descendant's lovelace.
+test fraud_link_removal_accepts_anchor_gaining_removed_node_lovelace() {
+  fraud_link_removal(with_lovelace_delta(2_000_000))
+}
+
+/// Control: `fraud_link_removal_reference_script_control`. Refused by
+/// `expect fraudulent_header_lovelace_change >= 0` in
+/// `remove_fraudulent_blocks_link_v1`.
+test fraud_link_removal_rejects_anchor_losing_lovelace() fail {
+  fraud_link_removal(with_lovelace_delta(-1))
+}
+
+/// The honest SDK shape: the continued anchor gains the removed fraudulent
+/// block's lovelace.
+test fraud_last_removal_accepts_anchor_gaining_removed_node_lovelace() {
+  fraud_last_removal(with_lovelace_delta(2_000_000))
+}
+
+/// Control: `fraud_last_removal_reference_script_control`. Refused by
+/// `expect anchor_lovelace_change >= 0` in `remove_last_fraudulent_block_v1`.
+test fraud_last_removal_rejects_anchor_losing_lovelace() fail {
+  fraud_last_removal(with_lovelace_delta(-1))
+}
+
+/// Control: `unattested_prune_reference_script_control`. Refused by
+/// `expect timed_out_node_lovelace_change == 0` in
+/// `prune_unattested_block_descendant_v1`.
+test unattested_prune_rejects_anchor_losing_lovelace() fail {
+  unattested_prune(with_lovelace_delta(-1))
+}
+
+/// Control: `unattested_prune_reference_script_control`. Refused by
+/// `expect timed_out_node_lovelace_change == 0` in
+/// `prune_unattested_block_descendant_v1`: the pin is exact.
+test unattested_prune_rejects_anchor_gaining_lovelace() fail {
+  unattested_prune(with_lovelace_delta(1))
+}
+
+/// Control: `unavailable_prune_reference_script_control`. Refused by
+/// `expect anchor_lovelace_change == 0` in
+/// `prune_unavailable_block_descendant_v1`.
+test unavailable_prune_rejects_anchor_losing_lovelace() fail {
+  unavailable_prune(with_lovelace_delta(-1))
+}
+
+/// Control: `unavailable_prune_reference_script_control`. Refused by
+/// `expect anchor_lovelace_change == 0` in
+/// `prune_unavailable_block_descendant_v1`: the pin is exact.
+test unavailable_prune_rejects_anchor_gaining_lovelace() fail {
+  unavailable_prune(with_lovelace_delta(1))
+}
+
+// ---------------------------------------------------------------------------
+// C2 — the clocks read the node's `block_time`, not its header's `end_time`.
+//
+// Each fixture below is a catch-up node: committed `catch_up_lag` after its
+// covered interval ends. A clock read from `end_time` would open (or close)
+// `catch_up_lag` early, so each boundary is probed at `block_time`-relative
+// values that the `end_time`-relative rule would judge differently.
+// ---------------------------------------------------------------------------
+
+const catch_up_lag = 10_000
+
+fn catch_up_block_time() -> Int {
+  header(faulty_operator, parent_header_hash).end_time + catch_up_lag
+}
+
+fn catch_up_node(
+  da_attestation: availability.StateQueueStatusV1,
+) -> state_queue.StateQueueNode {
+  state_queue.StateQueueNode {
+    proven_fraud: None,
+    header: header(faulty_operator, parent_header_hash),
+    block_time: catch_up_block_time(),
+    da_attestation,
+  }
+}
+
+/// Unattested timeout: correction opens exactly at `block_time +
+/// da_attestation_timeout_v1`, and not one millisecond earlier, nor at the
+/// boundary measured from `end_time`. Refusals come from
+/// `inclusive_tx_lower_bound >= node.block_time + da_attestation_timeout_v1`
+/// in `unattested_block_timeout_elapsed_v1`.
+test attestation_timeout_runs_from_block_time() {
+  let timed_out_header_hash = hash_header(
+    header(faulty_operator, parent_header_hash),
+  )
+  let node = catch_up_node(state_queue.no_da_attestation)
+  let boundary = catch_up_block_time() + state_queue.da_attestation_timeout_v1
+  let elapsed = fn(lower) {
+    state_queue_validator.unattested_block_timeout_elapsed_v1(
+      timed_out_header_hash,
+      timed_out_header_hash,
+      node,
+      between(lower, lower + 1_000),
+    )
+  }
+  and {
+    elapsed(boundary),
+    !elapsed(boundary - 1),
+    !elapsed(boundary - catch_up_lag),
+  }
+}
+
+/// Append fence: an unattested catch-up head stays appendable through
+/// `block_time + da_attestation_timeout_v1 - 1`, past the `end_time`-relative
+/// boundary, and is fenced at `block_time + da_attestation_timeout_v1` by
+/// `inclusive_tx_upper_bound < head.block_time + da_attestation_timeout_v1`
+/// in `state_queue_head_allows_append_v1`.
+test append_fence_runs_from_block_time() {
+  let head = catch_up_node(state_queue.no_da_attestation)
+  let boundary = catch_up_block_time() + state_queue.da_attestation_timeout_v1
+  and {
+    state_queue_validator.state_queue_head_allows_append_v1(
+      head,
+      da_attestation_policy,
+      between(boundary - 1_000, boundary - 1),
+    ),
+    !state_queue_validator.state_queue_head_allows_append_v1(
+      head,
+      da_attestation_policy,
+      between(boundary - 1_000, boundary),
+    ),
+  }
+}
+
+/// `output`'s node with `block_time` replaced.
+fn with_node_block_time(output: Output, block_time: Int) -> Output {
+  expect InlineDatum(data) = output.datum
+  expect element: state_queue.Datum = data
+  expect linked_list.Node(node) = element.data
+  let continued: state_queue.Datum = linked_list.Element {
+    ..element,
+    data: linked_list.Node(state_queue.StateQueueNode { ..node, block_time }),
+  }
+  Output { ..output, datum: InlineDatum(continued) }
+}
+
+/// `completed_fraud_tx` over the catch-up node, inside `(lower, upper)`.
+fn catch_up_completed_fraud_tx(
+  lower: Int,
+  upper: Int,
+) -> transaction.Transaction {
+  let tx = completed_fraud_tx()
+  expect [input] = tx.inputs
+  expect [output] = tx.outputs
+  transaction.Transaction {
+    ..tx,
+    inputs: [
+      Input {
+        ..input,
+        output: with_node_block_time(input.output, catch_up_block_time()),
+      },
+    ],
+    outputs: [with_node_block_time(output, catch_up_block_time())],
+    validity_range: between(lower, upper),
+  }
+}
+
+/// Fraud-record maturity: a completed proof is recorded strictly after
+/// `block_time` and strictly before `block_time + block_maturity_duration_v1`.
+/// Refusals come from `before.block_time < lower` and
+/// `upper < before.block_time + block_maturity_duration_v1` in
+/// `validate_completed_fraud_record`.
+test completed_fraud_marker_runs_from_block_time() {
+  let block_time = catch_up_block_time()
+  let maturity = block_time + ledger_state.block_maturity_duration_v1
+  and {
+    record_completed_fraud(
+      catch_up_completed_fraud_tx(block_time + 1, block_time + 1_000),
+    ),
+    !record_completed_fraud(
+      catch_up_completed_fraud_tx(block_time, block_time + 1_000),
+    ),
+    record_completed_fraud(
+      catch_up_completed_fraud_tx(maturity - 1_000, maturity - 1),
+    ),
+    !record_completed_fraud(
+      catch_up_completed_fraud_tx(maturity - 1_000, maturity),
+    ),
+  }
+}
+
+/// A fraud record may not rewrite `block_time`: refused by the whole-node
+/// equality `after == StateQueueNode { ..before, proven_fraud: .. }` in
+/// `validate_completed_fraud_record`.
+test completed_fraud_marker_rejects_changed_block_time() {
+  let block_time = catch_up_block_time()
+  let tx = catch_up_completed_fraud_tx(block_time + 1, block_time + 1_000)
+  expect [output] = tx.outputs
+  and {
+    record_completed_fraud(tx),
+    !record_completed_fraud(
+      transaction.Transaction {
+        ..tx,
+        outputs: [with_node_block_time(output, block_time + 1)],
+      },
+    ),
+  }
+}
+
+fn committed_at(output: Output, block_time: Int) -> Output {
+  expect InlineDatum(data) = output.datum
+  expect element: state_queue.Datum = data
+  expect linked_list.Node(node) = element.data
+  let continued: state_queue.Datum = linked_list.Element {
+    ..element,
+    data: linked_list.Node(state_queue.StateQueueNode { ..node, block_time }),
+  }
+  Output { ..output, datum: InlineDatum(continued) }
+}
+
+fn late_committed_terminal(lower: Int, upper: Int) -> Bool {
+  let tx = completed_fraud_tx()
+  expect [output] = tx.outputs
+  let block_time = 2_000 + ledger_state.block_maturity_duration_v1 / 2
+  state_queue.require_completed_fraud_witness(
+    transaction.Transaction {
+      ..tx,
+      inputs: [],
+      outputs: [],
+      validity_range: between(lower, upper),
+      reference_inputs: [
+        Input {
+          output_reference: out_ref(1),
+          output: committed_at(output, block_time),
+        },
+      ],
+    },
+    state_queue_policy,
+    completed_fraud_asset(),
+    state_queue.PreviouslyRecorded { reference_input_index: 0 },
+  )
+}
+
+// The block ends at 2_000 but commits half a maturity later. The terminal's
+// deadline runs from block_time, so a terminal past end_time + maturity is
+// accepted while one at block_time + maturity is refused.
+test completed_fraud_terminal_runs_its_deadline_from_block_time() {
+  let past_end_maturity = 2_000 + ledger_state.block_maturity_duration_v1
+  late_committed_terminal(past_end_maturity, past_end_maturity + 1_000)
+}
+
+test completed_fraud_terminal_rejects_a_terminal_at_block_time_maturity() {
+  let deadline = 2_000 + ledger_state.block_maturity_duration_v1 / 2 + ledger_state.block_maturity_duration_v1
+  !late_committed_terminal(deadline - 1_000, deadline)
+}
+
+// Validation-trace descendant exemption (pd §6.9 B).
+
+fn proof_asset(category_id: ByteArray) -> ByteArray {
+  bytearray.concat(category_id, faulty_header_hash)
+}
+
+fn link_removal() -> state_queue.BlockRemovalApproach {
+  state_queue.RemoveFraudulentBlocksLink {
+    fraudulent_node_input_outref: out_ref(0),
+    fraudulent_node_output_index: 0,
+  }
+}
+
+fn last_removal() -> state_queue.BlockRemovalApproach {
+  state_queue.RemoveLastFraudulentBlock {
+    anchor_element_input_outref: out_ref(0),
+    anchor_element_output_index: 0,
+  }
+}
+
+fn slash_active() -> state_queue.SlashingApproach {
+  state_queue.SlashActiveOperator { active_operators_redeemer_index: 0 }
+}
+
+fn slash_retired() -> state_queue.SlashingApproach {
+  state_queue.SlashRetiredOperator { retired_operators_redeemer_index: 0 }
+}
+
+fn already_slashed() -> state_queue.SlashingApproach {
+  state_queue.OperatorAlreadySlashed {
+    active_operators_element_ref_input_index: 0,
+    retired_operators_element_ref_input_index: 1,
+  }
+}
+
+/// The admitted arms, in constructor order: active, retired, already
+/// slashed, exemption.
+fn admitted_arms(
+  block_removal_approach: state_queue.BlockRemovalApproach,
+  fraud_proof_asset_name: ByteArray,
+) -> List<Bool> {
+  [
+    slash_active(),
+    slash_retired(),
+    already_slashed(),
+    state_queue.DescendantOfValidationTraceConviction,
+  ]
+    |> list.map(
+        fn(approach) {
+          state_queue.slashing_approach_admits_removal_v1(
+            approach,
+            block_removal_approach,
+            fraud_proof_asset_name,
+          )
+        },
+      )
+}
+
+test validation_trace_prefix_is_read_from_the_first_four_bytes() {
+  and {
+    catalogue.is_validation_trace_dispute(proof_asset(#"00000006")),
+    !catalogue.is_validation_trace_dispute(proof_asset(#"00000001")),
+    !catalogue.is_validation_trace_dispute(proof_asset(#"00000016")),
+    !catalogue.is_validation_trace_dispute(proof_asset(#"06000000")),
+    // The category bytes inside the header suffix do not count.
+    !catalogue.is_validation_trace_dispute(
+      bytearray.concat(#"00000001", bytearray.concat(#"00000006", #"ff")),
+    ),
+    !catalogue.is_validation_trace_dispute(#"000000"),
+    !catalogue.is_validation_trace_dispute(#""),
+  }
+}
+
+test descendant_of_validation_trace_conviction_must_use_the_exemption() {
+  admitted_arms(link_removal(), proof_asset(#"00000006")) == [
+    False, False, True, True,
+  ]
+}
+
+test descendant_of_other_conviction_refuses_the_exemption() {
+  and {
+    admitted_arms(link_removal(), proof_asset(#"00000001")) == [
+      True, True, True, False,
+    ],
+    admitted_arms(link_removal(), proof_asset(#"00000005")) == [
+      True, True, True, False,
+    ],
+  }
+}
+
+test convicted_block_refuses_the_exemption_under_every_category() {
+  and {
+    admitted_arms(last_removal(), proof_asset(#"00000006")) == [
+      True, True, True, False,
+    ],
+    admitted_arms(last_removal(), proof_asset(#"00000001")) == [
+      True, True, True, False,
+    ],
+  }
+}
+
+test bad_state_directory_slash_requires_its_own_slash_arm() {
+  let matches = fn(approach, directory) {
+    operator_directory.bad_state_slashing_approach_matches_directory(
+      approach,
+      directory,
+    )
+  }
+  and {
+    matches(slash_active(), operator_directory.ActiveOperatorsDirectory),
+    !matches(slash_active(), operator_directory.RetiredOperatorsDirectory),
+    matches(slash_retired(), operator_directory.RetiredOperatorsDirectory),
+    !matches(slash_retired(), operator_directory.ActiveOperatorsDirectory),
+    !matches(already_slashed(), operator_directory.ActiveOperatorsDirectory),
+    !matches(already_slashed(), operator_directory.RetiredOperatorsDirectory),
+    !matches(
+      state_queue.DescendantOfValidationTraceConviction,
+      operator_directory.ActiveOperatorsDirectory,
+    ),
+    !matches(
+      state_queue.DescendantOfValidationTraceConviction,
+      operator_directory.RetiredOperatorsDirectory,
+    ),
+  }
+}
+
+// Bad-state reward routing through `validate_remove_fraudulent_v1`. A
+// `SlashActiveOperator` or `SlashRetiredOperator` removal consumes the
+// operator's bond, so exactly `env.fraud_prover_reward` must reach the prover
+// named by the fraud-proof datum. Each refusal below is the accepted
+// transaction with only its reward outputs changed, and is refused by the
+// arm's `bounty_routing_is_exact_v1` call.
+
+const removal_hub_oracle_policy =
+  #"61616161616161616161616161616161616161616161616161616161"
+
+const removal_correction_lock_script =
+  #"62626262626262626262626262626262626262626262626262626262"
+
+const removal_active_operators_policy =
+  #"63636363636363636363636363636363636363636363636363636363"
+
+const removal_retired_operators_policy =
+  #"64646464646464646464646464646464646464646464646464646464"
+
+const removal_foreign_policy =
+  #"65656565656565656565656565656565656565656565656565656565"
+
+fn removal_correction_lock_input() -> Input {
+  Input {
+    output_reference: out_ref(2),
+    output: Output {
+      address: address.from_script(removal_correction_lock_script),
+      value: assets.from_lovelace(2_000_000)
+        |> assets.add(removal_hub_oracle_policy, correction_lock.asset_name, 1),
+      datum: InlineDatum(
+        correction_lock.Locked {
+          target_header_hash: faulty_header_hash,
+          correction_identity: correction_lock.FraudProof {
+            fraud_proof_asset_name: proof_asset(#"00000001"),
+          },
+        },
+      ),
+      reference_script: None,
+    },
+  }
+}
+
+/// The directory redeemer a bad-state slash of `faulty_operator` presents
+/// under the policy that `slashing_approach` names.
+fn bad_state_directory_redeemer(
+  slashing_approach: state_queue.SlashingApproach,
+) -> Pair<ScriptPurpose, Data> {
+  let slashing_arguments = operator_directory.SlashingArguments {
+    slashed_operator: faulty_operator,
+    hub_oracle_ref_input_index: 0,
+    slashed_operator_anchor_element_input_outref: out_ref(3),
+    slashed_operator_anchor_element_output_index: 1,
+    slashing_reason: operator_directory.SlashOperatorForBadState {
+      state_queue_redeemer_index: 1,
+    },
+  }
+  when slashing_approach is {
+    state_queue.SlashActiveOperator { .. } -> {
+      let redeemer: Data = active_operators.SlashOperator {
+        slashing_arguments,
+        operator_removal_scheduler_sync: active_operators.ShowOperatorIsInactive {
+          scheduler_ref_input_index: 1,
+        },
+      }
+      Pair(Mint(removal_active_operators_policy), redeemer)
+    }
+    _ -> {
+      let redeemer: Data = retired_operators.SlashOperator {
+        slashing_arguments,
+      }
+      Pair(Mint(removal_retired_operators_policy), redeemer)
+    }
+  }
+}
+
+fn prover_reward_output(lovelace: Int) -> Output {
+  Output {
+    address: address.from_verification_key(completed_fraud_prover),
+    value: assets.from_lovelace(lovelace),
+    datum: transaction.NoDatum,
+    reference_script: None,
+  }
+}
+
+/// `fraud_last_removal` as a whole `RemoveFraudulentBlockHeader` transaction
+/// that slashes `faulty_operator` through `slashing_approach`, with
+/// `reward_outputs` after the continued parent and no signatory.
+fn bad_state_removal(
+  slashing_approach: state_queue.SlashingApproach,
+  reward_outputs: List<Output>,
+) -> Bool {
+  let parent = node_input(
+    0,
+    parent_header_hash,
+    header(rotated_operator, intermediate_header_hash),
+    Some(faulty_header_hash),
+  )
+  let fraudulent_tail = node_input(
+    1,
+    faulty_header_hash,
+    header(faulty_operator, parent_header_hash),
+    None,
+  )
+  let proof_token = completed_fraud_token_input(
+    0,
+    completed_fraud_policy,
+    proof_asset(#"00000001"),
+    1,
+    completed_fraud_prover,
+  )
+  state_queue_validator.validate_remove_fraudulent_v1(
+    removal_hub_oracle_policy,
+    removal_correction_lock_script,
+    removal_active_operators_policy,
+    removal_retired_operators_policy,
+    completed_fraud_policy,
+    state_queue_policy,
+    transaction.Transaction {
+      ..transaction.placeholder,
+      inputs: [parent, fraudulent_tail, removal_correction_lock_input()],
+      outputs: [continue_node(parent, None), ..reward_outputs],
+      reference_inputs: [proof_token],
+      mint: burn_node(faulty_header_hash),
+      redeemers: [bad_state_directory_redeemer(slashing_approach)],
+      extra_signatories: [],
+    },
+    faulty_operator,
+    faulty_header_hash,
+    slashing_approach,
+    0,
+    last_removal(),
+  )
+}
+
+/// Control for every bad-state routing refusal below. The fraud prover does
+/// not sign: the reward is routed by the transaction's outputs alone.
+test bad_state_reward_routing_does_not_require_the_prover_signature() {
+  let exact_reward = [prover_reward_output(env.fraud_prover_reward)]
+  and {
+    bad_state_removal(slash_active(), exact_reward),
+    bad_state_removal(slash_retired(), exact_reward),
+  }
+}
+
+test bad_state_active_slash_rejects_missing_reward_output() fail {
+  bad_state_removal(slash_active(), [])
+}
+
+test bad_state_retired_slash_rejects_missing_reward_output() fail {
+  bad_state_removal(slash_retired(), [])
+}
+
+test bad_state_active_slash_rejects_reward_one_lovelace_over() fail {
+  bad_state_removal(
+    slash_active(),
+    [prover_reward_output(env.fraud_prover_reward + 1)],
+  )
+}
+
+test bad_state_retired_slash_rejects_reward_one_lovelace_over() fail {
+  bad_state_removal(
+    slash_retired(),
+    [prover_reward_output(env.fraud_prover_reward + 1)],
+  )
+}
+
+test bad_state_active_slash_rejects_reward_one_lovelace_under() fail {
+  bad_state_removal(
+    slash_active(),
+    [prover_reward_output(env.fraud_prover_reward - 1)],
+  )
+}
+
+test bad_state_retired_slash_rejects_reward_one_lovelace_under() fail {
+  bad_state_removal(
+    slash_retired(),
+    [prover_reward_output(env.fraud_prover_reward - 1)],
+  )
+}
+
+test bad_state_active_slash_rejects_second_prover_output() fail {
+  bad_state_removal(
+    slash_active(),
+    [
+      prover_reward_output(env.fraud_prover_reward),
+      prover_reward_output(env.fraud_prover_reward),
+    ],
+  )
+}
+
+test bad_state_retired_slash_rejects_second_prover_output() fail {
+  bad_state_removal(
+    slash_retired(),
+    [
+      prover_reward_output(env.fraud_prover_reward),
+      prover_reward_output(env.fraud_prover_reward),
+    ],
+  )
+}
+
+fn prover_reward_output_with_token() -> Output {
+  let reward = prover_reward_output(env.fraud_prover_reward)
+  Output {
+    ..reward,
+    value: reward.value |> assets.add(removal_foreign_policy, "token", 1),
+  }
+}
+
+test bad_state_active_slash_rejects_reward_carrying_a_token() fail {
+  bad_state_removal(slash_active(), [prover_reward_output_with_token()])
+}
+
+test bad_state_retired_slash_rejects_reward_carrying_a_token() fail {
+  bad_state_removal(slash_retired(), [prover_reward_output_with_token()])
+}

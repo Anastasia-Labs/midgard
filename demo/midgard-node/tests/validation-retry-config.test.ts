@@ -1,9 +1,11 @@
 import "./utils.js";
 
+import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Effect } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { NodeConfig } from "@/services/config.js";
+import { NodeConfig } from "../src/services/config.js";
 
 const loadNodeConfig = () =>
   Effect.runPromise(
@@ -33,5 +35,91 @@ describe("validation retry configuration", () => {
     await expect(loadNodeConfig()).rejects.toThrow(
       "VALIDATION_RETRY_BACKOFF_MAX_MS must not be less than VALIDATION_RETRY_BACKOFF_BASE_MS",
     );
+  });
+});
+
+describe("durable admission byte backlog configuration", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("defaults to one full V1 DA envelope", async () => {
+    await expect(loadNodeConfig()).resolves.toMatchObject({
+      MAX_DURABLE_ADMISSION_BACKLOG_BYTES:
+        MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes,
+    });
+  });
+
+  it("accepts a positive operator override", async () => {
+    vi.stubEnv("MAX_DURABLE_ADMISSION_BACKLOG_BYTES", "1048576");
+    await expect(loadNodeConfig()).resolves.toMatchObject({
+      MAX_DURABLE_ADMISSION_BACKLOG_BYTES: 1_048_576,
+    });
+  });
+
+  it("rejects non-positive byte quotas", async () => {
+    vi.stubEnv("MAX_DURABLE_ADMISSION_BACKLOG_BYTES", "0");
+    await expect(loadNodeConfig()).rejects.toThrow(
+      "MAX_DURABLE_ADMISSION_BACKLOG_BYTES must be a positive safe integer",
+    );
+  });
+});
+
+describe("submit ingress resource configuration", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("defaults to four concurrent requests and one full V1 envelope", async () => {
+    await expect(loadNodeConfig()).resolves.toMatchObject({
+      SUBMIT_INGRESS_MAX_CONCURRENCY: 4,
+      SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES:
+        MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes,
+    });
+  });
+
+  it("accepts bounded operator overrides", async () => {
+    vi.stubEnv("SUBMIT_INGRESS_MAX_CONCURRENCY", "8");
+    vi.stubEnv(
+      "SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES",
+      String(MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes * 2),
+    );
+    await expect(loadNodeConfig()).resolves.toMatchObject({
+      SUBMIT_INGRESS_MAX_CONCURRENCY: 8,
+      SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES:
+        MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes * 2,
+    });
+  });
+
+  it("rejects non-positive concurrency and a byte cap below one envelope", async () => {
+    vi.stubEnv("SUBMIT_INGRESS_MAX_CONCURRENCY", "0");
+    await expect(loadNodeConfig()).rejects.toThrow(
+      "SUBMIT_INGRESS_MAX_CONCURRENCY must be a positive safe integer",
+    );
+
+    vi.stubEnv("SUBMIT_INGRESS_MAX_CONCURRENCY", "4");
+    vi.stubEnv(
+      "SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES",
+      String(MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes - 1),
+    );
+    await expect(loadNodeConfig()).rejects.toThrow(
+      "SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES must be a safe integer at least",
+    );
+  });
+});
+
+describe("commit-event depth configuration", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("is the deployment profile's commit-event depth, which no environment variable overrides", async () => {
+    const depth = DEPLOYMENT_MANIFEST_L1_FINALITY.commitEventDepth;
+    expect(Number.isSafeInteger(depth) && depth >= 0).toBe(true);
+    vi.stubEnv("COMMIT_EVENT_DEPTH", String(depth + 1));
+    vi.stubEnv("HISTORY_COMMIT_HORIZON_LAG_BLOCKS", String(depth + 1));
+    await expect(loadNodeConfig()).resolves.toMatchObject({
+      COMMIT_EVENT_DEPTH: depth,
+    });
   });
 });

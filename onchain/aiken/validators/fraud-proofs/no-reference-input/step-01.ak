@@ -1,17 +1,19 @@
-//// ## No Reference Input Fraud Proof (Section 5.1.16)
-////
-//// Proves a given transaction refers to a reference input that was missing
-//// from the block's starting ledger (i.e. `prev_utxos_root`), and that it
-//// wasn't produced by any of the block's transactions.
-
+use aiken/collection/list
 use aiken/crypto.{ScriptHash}
+use aiken/merkle_patricia_forestry as mpf
+use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{TxBodyProvided, cancel, pass_tx_to_next_step}
+use midgard/fraud_proofs/input_existence_fixture_v1 as carriage_fixture
+use midgard/fraud_proofs/input_existence_v1/bind
+use midgard/fraud_proofs/input_existence_v1/source.{AcceptedSource, Args}
+use midgard/fraud_proofs/input_existence_v1/types
+use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
+use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_input}
+use midgard/fraud_proofs/native_tx/types.{MidgardTxInput} as native_types
 use midgard/fraud_proofs/no_reference_input/step_01.{Datum, SpendRedeemer}
-use midgard/fraud_proofs/no_reference_input/step_02
-use midgard/ledger_state
+use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 
 validator main(
   step_02_validator_script_hash: ScriptHash,
@@ -24,64 +26,111 @@ validator main(
     own_out_ref: OutputReference,
     tx: Transaction,
   ) {
-    when redeemer is {
-      ct.Cancel { input_index, computation_thread_mint_redeemer_index } ->
-        cancel(
-          computation_thread_token_policy_id,
-          datum,
-          input_index,
-          own_out_ref,
-          computation_thread_mint_redeemer_index,
-          tx,
-        )
-      ct.Continue(tx_inclusion_args) -> {
-        // 1. Generic validations for passing the provided bad tx to the next
-        //    step must pass.
-        let
-          _own_script_hash,
-          _computation_thread_token_asset_name,
-          _fraud_prover,
-          _m_input_state_data,
-          output_script_hash,
-          output_state_data,
-          header,
-          _bad_tx_id,
-          _bad_tx,
-          bad_tx_field_preimage,
-        <-
-          pass_tx_to_next_step(
-            computation_thread_token_policy_id,
-            hub_oracle,
-            datum,
-            tx_inclusion_args,
-            own_out_ref,
-            tx,
-          )
-
-        // 2. Bad transaction's body must be provided.
-        expect TxBodyProvided(bad_tx_body) = bad_tx_field_preimage
-
-        let ledger_state.Header { prev_utxos_root, transactions_root, .. } =
-          header
-
-        // 3. The UTxO must be produced at next step's script hash with reference
-        //    inputs hash of the bad transaction, and relevant block roots.
-        expect output_script_hash == step_02_validator_script_hash
-        let expected_output_state: Data =
-          step_02.State {
-            bad_tx_reference_inputs_hash: bad_tx_body.reference_inputs,
-            blocks_prev_utxos_root: prev_utxos_root,
-            blocks_transactions_root: transactions_root,
-          }
-        expect output_state_data == expected_output_state
-
-        // Done.
-        True
-      }
-    }
+    bind.bind_source_v1(
+      step_02_validator_script_hash,
+      computation_thread_token_policy_id,
+      hub_oracle,
+      datum,
+      redeemer,
+      own_out_ref,
+      tx,
+    )
   }
 
   else(_) {
     fail
   }
+}
+
+/// Positive binding selector: a native-V1 transaction referencing an input,
+/// genuinely committed under the block's counted `transactions_root`, passes
+/// the first step and forwards its canonical reference-inputs hash together
+test no_reference_input_step_01_binds_native_v1_block_fixture() {
+  let block = fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
+  let expected_output_state: Data = types.SourceStateV1 {
+    compact: carriage_fixture.compact_view_v1(block.compact),
+    subject: substrate.VerdictSubjectV1 {
+      version: substrate.version,
+      direction: substrate.direction_wrongful_acceptance,
+      source_kind: substrate.source_kind_accepted,
+      transaction_id: block.tx_id,
+      source_key: #"",
+      rejection_reason: None,
+    },
+    header: block.header,
+  }
+  let l1_tx = fixture.continue_step_l1_tx_v1(
+    block,
+    expected_output_state,
+    block.transactions_phas_root,
+    block.tx_id,
+    block.source_cbor,
+  )
+  main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    fixture.hub_oracle_script_hash,
+    Some(fixture.step_datum_without_state()),
+    ct.Continue(
+      Args {
+        source: AcceptedSource {
+          inclusion: fixture.native_inclusion_carriage_v1(block),
+        },
+      },
+    ),
+    fixture.own_out_ref(),
+    l1_tx,
+  )
+}
+
+/// re-commit to the valid header's counted `transactions_root` cannot bind
+/// fabricated evidence, so a valid block cannot be challenged.
+test no_reference_input_step_01_rejects_forged_transactions_root() fail {
+  let valid_block = fixture.native_block_fixture_v1(
+    fixture.valid_native_tx_v1(),
+  )
+  let forged_tx = fixture.valid_native_tx_v1()
+  let forged_block = {
+    let base = fixture.native_block_fixture_v1(forged_tx)
+    fixture.NativeBlockFixtureV1 {
+      ..base,
+      transactions_phas_root: #"deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+      header: valid_block.header,
+      header_hash: valid_block.header_hash,
+    }
+  }
+  let expected_output_state: Data = types.SourceStateV1 {
+    compact: carriage_fixture.compact_view_v1(forged_block.compact),
+    subject: substrate.VerdictSubjectV1 {
+      version: substrate.version,
+      direction: substrate.direction_wrongful_acceptance,
+      source_kind: substrate.source_kind_accepted,
+      transaction_id: forged_block.tx_id,
+      source_key: #"",
+      rejection_reason: None,
+    },
+    header: forged_block.header,
+  }
+  let l1_tx = fixture.continue_step_l1_tx_v1(
+    forged_block,
+    expected_output_state,
+    forged_block.transactions_phas_root,
+    forged_block.tx_id,
+    forged_block.source_cbor,
+  )
+  main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    fixture.hub_oracle_script_hash,
+    Some(fixture.step_datum_without_state()),
+    ct.Continue(
+      Args {
+        source: AcceptedSource {
+          inclusion: fixture.native_inclusion_carriage_v1(forged_block),
+        },
+      },
+    ),
+    fixture.own_out_ref(),
+    l1_tx,
+  )
 }

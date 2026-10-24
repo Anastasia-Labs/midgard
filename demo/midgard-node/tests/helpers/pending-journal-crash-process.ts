@@ -1,7 +1,14 @@
+import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
+import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
-import { DepositsDB, PendingBlockFinalizationsDB } from "@/database/index.js";
-import { Database } from "@/services/database.js";
+import {
+  DepositsDB,
+  PendingBlockFinalizationsDB,
+} from "../../src/database/index.js";
+import { Database } from "../../src/services/database.js";
+import { FollowerWriteFixture } from "../../src/services/follower-write-gate.js";
 
 const mode = process.argv[2] as "before" | "during" | "after" | undefined;
 const depositIdHex = process.argv[3];
@@ -13,11 +20,11 @@ const killSelf = (): never => {
 };
 
 const emptyRoots = {
-  utxosRoot: "00".repeat(32),
-  forcedTransactionsRoot: "00".repeat(32),
-  transactionsRoot: "00".repeat(32),
-  depositsRoot: "00".repeat(32),
-  withdrawalsRoot: "00".repeat(32),
+  utxosRoot: EMPTY_MERKLE_TREE_ROOT,
+  forcedTransactionsRoot: EMPTY_MERKLE_TREE_ROOT,
+  transactionsRoot: EMPTY_MERKLE_TREE_ROOT,
+  depositsRoot: EMPTY_MERKLE_TREE_ROOT,
+  withdrawalsRoot: EMPTY_MERKLE_TREE_ROOT,
 };
 
 const program = Effect.gen(function* () {
@@ -41,6 +48,8 @@ const program = Effect.gen(function* () {
     headerHash: Buffer.from(headerHashHex, "hex"),
     headerCbor: Buffer.from("00", "hex"),
     metadata: {
+      deploymentMarker: makeDeploymentMarker("de".repeat(32)),
+      consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
       stateQueueLeaseToken: "crash-probe-lease",
       baseSnapshotId: "crash-probe-snapshot",
       baseTailOutRef: "crash-probe#0",
@@ -50,8 +59,9 @@ const program = Effect.gen(function* () {
       blockStartTime: new Date("2026-04-13T18:00:00.000Z"),
       expectedRoots: {
         ...emptyRoots,
-        transitionTraceRoot: "00".repeat(32),
-        eventToStepRoot: "00".repeat(32),
+        transitionTraceRoot: EMPTY_MERKLE_TREE_ROOT,
+        eventToStepRoot: EMPTY_MERKLE_TREE_ROOT,
+        validationTracesRoot: EMPTY_MERKLE_TREE_ROOT,
       },
       expectedCounts: {
         withdrawalCount: 0n,
@@ -60,9 +70,11 @@ const program = Effect.gen(function* () {
         depositCount: 1n,
         totalEventCount: 1n,
         transitionStepCount: 1n,
+        validationTraceCount: 0n,
       },
     },
     blockEndTime: new Date("2026-04-13T18:01:00.000Z"),
+    blockTime: new Date("2026-04-13T18:01:00.000Z"),
     depositEventIds: [depositId],
     depositEntries: [deposit],
     forcedTransactionEventIds: [],
@@ -74,21 +86,29 @@ const program = Effect.gen(function* () {
     mempoolTxSourceTable: "none",
     transitionTraceMembers: [],
     eventToStepMembers: [],
-    utxoEntries: [],
+    validationTraceMembers: [],
+    ledgerDelta: {
+      spent: [],
+      produced: [],
+    },
   };
   yield* PendingBlockFinalizationsDB.preparePendingSubmission(input, {
     beforeJournalInsert: DepositsDB.markAwaitingAsProjected([depositId]).pipe(
       Effect.andThen(mode === "during" ? Effect.sync(killSelf) : Effect.void),
+      Effect.as(undefined),
     ),
   });
   killSelf();
 });
 
-void Effect.runPromise(program.pipe(Effect.provide(Database.layer))).catch(
-  (error: unknown) => {
-    process.stderr.write(
-      `${error instanceof Error ? error.stack : String(error)}\n`,
-    );
-    process.exitCode = 1;
-  },
-);
+void Effect.runPromise(
+  program.pipe(
+    Effect.provideService(FollowerWriteFixture, true),
+    Effect.provide(Database.layer),
+  ),
+).catch((error: unknown) => {
+  process.stderr.write(
+    `${error instanceof Error ? error.stack : String(error)}\n`,
+  );
+  process.exitCode = 1;
+});

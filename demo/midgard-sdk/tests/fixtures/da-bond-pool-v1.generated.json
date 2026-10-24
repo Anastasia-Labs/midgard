@@ -1,0 +1,218 @@
+{
+  "schema": "midgard-da-bond-pool-v1-goldens",
+  "generator": "demo/midgard-sdk/scripts/generate-da-bond-pool-v1-goldens.mjs",
+  "aikenModule": "onchain/aiken/lib/midgard/da-bond-pool-v1-golden.test.ak",
+  "parametersProfile": "preprod-testing",
+  "integerEncoding": "decimal strings",
+  "poolDatums": [
+    {
+      "label": "pool_datum_bonded",
+      "note": "Bonded",
+      "datum": {
+        "kind": "Bonded"
+      },
+      "cborHex": "d87980"
+    },
+    {
+      "label": "pool_datum_withdrawing_zero",
+      "note": "Withdrawing at unlock_at 0",
+      "datum": {
+        "kind": "Withdrawing",
+        "unlockAt": "0"
+      },
+      "cborHex": "d87a9f00ff"
+    },
+    {
+      "label": "pool_datum_withdrawing_small",
+      "note": "Withdrawing at a small unlock_at (a 3-byte CBOR integer)",
+      "datum": {
+        "kind": "Withdrawing",
+        "unlockAt": "1000"
+      },
+      "cborHex": "d87a9f1903e8ff"
+    },
+    {
+      "label": "pool_datum_withdrawing_posix_ms",
+      "note": "Withdrawing at a realistic POSIX-millisecond unlock_at (a 9-byte CBOR integer)",
+      "datum": {
+        "kind": "Withdrawing",
+        "unlockAt": "1790002340000"
+      },
+      "cborHex": "d87a9f1b000001a0c47420a0ff"
+    },
+    {
+      "label": "pool_datum_withdrawing_large",
+      "note": "Withdrawing at the largest signed 64-bit unlock_at",
+      "datum": {
+        "kind": "Withdrawing",
+        "unlockAt": "9223372036854775807"
+      },
+      "cborHex": "d87a9f1b7fffffffffffffffff"
+    }
+  ],
+  "poolMintRedeemers": [
+    {
+      "label": "pool_mint_init_pool",
+      "note": "InitPool",
+      "redeemer": {
+        "kind": "InitPool",
+        "outputIndex": "2"
+      },
+      "cborHex": "d8799f02ff"
+    }
+  ],
+  "poolSpendRedeemers": [
+    {
+      "label": "pool_spend_top_up",
+      "redeemer": {
+        "kind": "TopUp",
+        "outputIndex": "1"
+      },
+      "cborHex": "d8799f01ff"
+    },
+    {
+      "label": "pool_spend_slash",
+      "redeemer": {
+        "kind": "Slash",
+        "hubOracleRefInputIndex": "2",
+        "stateQueueMintRedeemerIndex": "5",
+        "correctionLockInputIndex": "7",
+        "outputIndex": "11"
+      },
+      "cborHex": "d87a9f0205070bff"
+    },
+    {
+      "label": "pool_spend_begin_withdraw",
+      "redeemer": {
+        "kind": "BeginWithdraw",
+        "daParamsRefInputIndex": "1",
+        "outputIndex": "4"
+      },
+      "cborHex": "d87b9f0104ff"
+    },
+    {
+      "label": "pool_spend_cancel_withdraw",
+      "redeemer": {
+        "kind": "CancelWithdraw",
+        "daParamsRefInputIndex": "1",
+        "outputIndex": "4"
+      },
+      "cborHex": "d87c9f0104ff"
+    },
+    {
+      "label": "pool_spend_complete_withdraw",
+      "redeemer": {
+        "kind": "CompleteWithdraw",
+        "amount": "45000000000000000",
+        "daParamsRefInputIndex": "3",
+        "outputIndex": "6"
+      },
+      "cborHex": "d87d9f1b009fdf42f6e480000306ff"
+    }
+  ],
+  "statuses": [
+    {
+      "label": "status_unattested",
+      "status": {
+        "kind": "Unattested"
+      },
+      "cborHex": "d87980"
+    },
+    {
+      "label": "status_attested",
+      "status": {
+        "kind": "Attested",
+        "commitmentHash": "1812669f321a6d6ff415c95f964373ee69f4bb64138673d59e3501a44f7660b1"
+      },
+      "cborHex": "d87a9f58201812669f321a6d6ff415c95f964373ee69f4bb64138673d59e3501a44f7660b1ff"
+    },
+    {
+      "label": "status_challenged",
+      "status": {
+        "kind": "Challenged",
+        "commitmentHash": "6426bc988586066644a5a5c1244b39718244330c5cceb2cb46d46c395b42d7ab",
+        "challengeAssetName": "444143485fa27817e153fc1db5f8bff917abe67473bb3579cf5c66963b7cc793"
+      },
+      "cborHex": "d87b9f58206426bc988586066644a5a5c1244b39718244330c5cceb2cb46d46c395b42d7ab5820444143485fa27817e153fc1db5f8bff917abe67473bb3579cf5c66963b7cc793ff"
+    },
+    {
+      "label": "status_published",
+      "status": {
+        "kind": "Published",
+        "terminalCommitment": "1cac0802b9a93f5d2fe6e3cc5e5e8fa0a205df13b4bac0b1368ecb6dc0966226"
+      },
+      "cborHex": "d87c9f58201cac0802b9a93f5d2fe6e3cc5e5e8fa0a205df13b4bac0b1368ecb6dc0966226ff"
+    }
+  ],
+  "parameters": [
+    {
+      "label": "parameters_tranches_1",
+      "note": "preprod-testing amounts, 64 MiB tranches, max_tranche_count 1",
+      "parameters": {
+        "responseGeometry": {
+          "chunkByteLength": "14020",
+          "trancheByteLength": "67108864",
+          "maxTrancheCount": "1"
+        },
+        "daBondLovelace": "500000000",
+        "challengerBondLovelace": "10000000000",
+        "maxOpenFeeLovelace": "500000",
+        "maxPublicationFeeLovelace": "500000",
+        "maxSettlementFeeLovelace": "500000",
+        "maxCloseFeeLovelace": "1000000",
+        "maxTimeoutFeeLovelace": "1200000",
+        "daSlashPenaltyLovelace": "100000000",
+        "daBondMinTopUpLovelace": "5000000",
+        "daBondPoolFloorLovelace": "5000000",
+        "challengeRecordLovelace": "27000000"
+      },
+      "cborHex": "d8799fd8799f1936c41a0400000001ff1a1dcd65001b00000002540be4001a0007a1201a0007a1201a0007a1201a000f42401a00124f801a05f5e1001a004c4b401a004c4b401a019bfcc0ff"
+    },
+    {
+      "label": "parameters_tranches_16",
+      "note": "preprod-testing amounts, 4 MiB tranches, max_tranche_count 16",
+      "parameters": {
+        "responseGeometry": {
+          "chunkByteLength": "14020",
+          "trancheByteLength": "4194304",
+          "maxTrancheCount": "16"
+        },
+        "daBondLovelace": "500000000",
+        "challengerBondLovelace": "10000000000",
+        "maxOpenFeeLovelace": "500000",
+        "maxPublicationFeeLovelace": "500000",
+        "maxSettlementFeeLovelace": "500000",
+        "maxCloseFeeLovelace": "1000000",
+        "maxTimeoutFeeLovelace": "1200000",
+        "daSlashPenaltyLovelace": "100000000",
+        "daBondMinTopUpLovelace": "5000000",
+        "daBondPoolFloorLovelace": "5000000",
+        "challengeRecordLovelace": "27000000"
+      },
+      "cborHex": "d8799fd8799f1936c41a0040000010ff1a1dcd65001b00000002540be4001a0007a1201a0007a1201a0007a1201a000f42401a00124f801a05f5e1001a004c4b401a004c4b401a019bfcc0ff"
+    },
+    {
+      "label": "parameters_tranches_64",
+      "note": "preprod-testing amounts, 1 MiB tranches, max_tranche_count 64",
+      "parameters": {
+        "responseGeometry": {
+          "chunkByteLength": "14020",
+          "trancheByteLength": "1048576",
+          "maxTrancheCount": "64"
+        },
+        "daBondLovelace": "500000000",
+        "challengerBondLovelace": "10000000000",
+        "maxOpenFeeLovelace": "500000",
+        "maxPublicationFeeLovelace": "500000",
+        "maxSettlementFeeLovelace": "500000",
+        "maxCloseFeeLovelace": "1000000",
+        "maxTimeoutFeeLovelace": "1200000",
+        "daSlashPenaltyLovelace": "100000000",
+        "daBondMinTopUpLovelace": "5000000",
+        "daBondPoolFloorLovelace": "5000000",
+        "challengeRecordLovelace": "27000000"
+      },
+      "cborHex": "d8799fd8799f1936c41a001000001840ff1a1dcd65001b00000002540be4001a0007a1201a0007a1201a0007a1201a000f42401a00124f801a05f5e1001a004c4b401a004c4b401a019bfcc0ff"
+    }
+  ]
+}

@@ -5,6 +5,7 @@
     "server-http-api",
     "cli-reference",
     "initialization-deployment",
+    "operator-lifecycle",
     "database",
     "background-fibers",
     "deposits-withdrawals",

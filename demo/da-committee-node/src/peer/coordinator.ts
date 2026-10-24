@@ -3,9 +3,9 @@ import type {
   DaAttestationExchange,
   DaAttestationPeer,
 } from "../da/libp2p/attestations.js";
-import type { DaSignatureRecord } from "../domain.js";
+import type { DaPeerBroadcastRecord, DaSignatureRecord } from "../domain.js";
 import type { DaSigner, DaSignerValidation } from "../signer.js";
-import type { WatcherStore } from "../store.js";
+import type { CommitteeStore } from "../store.js";
 import {
   PeerSignaturePoller,
   recordPeerFailure,
@@ -21,7 +21,8 @@ export type PeerSignatureCoordinatorDeps = {
   readonly signer: DaSigner;
   readonly signerIndex: number;
   readonly signerValidation: DaSignerValidation;
-  readonly store: WatcherStore;
+  readonly availabilityCommitmentAuthority: import("./signatures.js").DaAvailabilityCommitmentAuthority;
+  readonly store: CommitteeStore;
   readonly requestTimeoutMs?: number;
   readonly retryInitialDelayMs: number;
   readonly retryMaxDelayMs: number;
@@ -51,6 +52,7 @@ export class PeerSignatureCoordinator implements AttestationCoordinator {
         : { localPeerId: deps.localPeerId }),
       attestationExchange: deps.attestationExchange,
       signerValidation: deps.signerValidation,
+      availabilityCommitmentAuthority: deps.availabilityCommitmentAuthority,
       store: deps.store,
       requestTimeoutMs: deps.requestTimeoutMs,
     });
@@ -115,6 +117,7 @@ export class PeerSignatureCoordinator implements AttestationCoordinator {
     const existing = await this.deps.store.getPeerBroadcast({
       peerId: peer.peerId,
       headerHash: record.headerHash,
+      availabilityCommitmentDigest: record.availabilityCommitmentDigest,
       signerIndex: record.signerIndex,
     });
     if (existing?.status === "posted") {
@@ -127,15 +130,30 @@ export class PeerSignatureCoordinator implements AttestationCoordinator {
     ) {
       return false;
     }
-    const attempts = (existing?.attempts ?? 0) + 1;
+    // A broadcast that exhausted its retry budget starts over once the peer
+    // has been reached after its last attempt, so a broadcast that gave up
+    // while the peer was away is sent again. Only an exhausted budget is
+    // reset, and a reset attempt postdates the success that allowed it: a
+    // peer that answers polls but keeps refusing the broadcast still walks
+    // the whole backoff before each reset. The service stops asking once the
+    // header settles.
+    const reconnected =
+      existing !== undefined &&
+      existing.attempts >= this.deps.retryMaxAttempts &&
+      (await this.peerReachedSince(peer, existing));
+    const attempts = (reconnected ? 0 : (existing?.attempts ?? 0)) + 1;
     if (attempts > this.deps.retryMaxAttempts) {
       await this.deps.store.savePeerBroadcast({
         deploymentFingerprint: record.deploymentFingerprint,
         peerId: peer.peerId,
         headerHash: record.headerHash,
+        availabilityCommitmentDigest: record.availabilityCommitmentDigest,
         signerIndex: record.signerIndex,
         status: "failed",
         attempts: existing?.attempts ?? this.deps.retryMaxAttempts,
+        ...(existing?.lastAttemptAt === undefined
+          ? {}
+          : { lastAttemptAt: existing.lastAttemptAt }),
         lastError: "peer retry budget exhausted",
         updatedAt: new Date().toISOString(),
       });
@@ -145,6 +163,7 @@ export class PeerSignatureCoordinator implements AttestationCoordinator {
       deploymentFingerprint: record.deploymentFingerprint,
       peerId: peer.peerId,
       headerHash: record.headerHash,
+      availabilityCommitmentDigest: record.availabilityCommitmentDigest,
       signerIndex: record.signerIndex,
       status: "pending",
       attempts,
@@ -166,6 +185,7 @@ export class PeerSignatureCoordinator implements AttestationCoordinator {
         deploymentFingerprint: record.deploymentFingerprint,
         peerId: peer.peerId,
         headerHash: record.headerHash,
+        availabilityCommitmentDigest: record.availabilityCommitmentDigest,
         signerIndex: record.signerIndex,
         status: "posted",
         attempts,
@@ -181,6 +201,7 @@ export class PeerSignatureCoordinator implements AttestationCoordinator {
         deploymentFingerprint: record.deploymentFingerprint,
         peerId: peer.peerId,
         headerHash: record.headerHash,
+        availabilityCommitmentDigest: record.availabilityCommitmentDigest,
         signerIndex: record.signerIndex,
         status: "failed",
         attempts,
@@ -194,6 +215,26 @@ export class PeerSignatureCoordinator implements AttestationCoordinator {
       await this.recordPeerFailure(peer, lastError);
       return false;
     }
+  }
+
+  /**
+   * Whether the peer answered this node (a broadcast or a signature poll)
+   * after the broadcast's last attempt, and has not failed since.
+   */
+  private async peerReachedSince(
+    peer: DaAttestationPeer,
+    broadcast: DaPeerBroadcastRecord,
+  ): Promise<boolean> {
+    const lastAttemptAt = broadcast.lastAttemptAt ?? broadcast.updatedAt;
+    const health = (await this.deps.store.listPeerHealth()).find(
+      (entry) => entry.peerId === peer.peerId,
+    );
+    return (
+      health !== undefined &&
+      health.consecutiveFailures === 0 &&
+      health.lastSuccessAt !== undefined &&
+      Date.parse(health.lastSuccessAt) > Date.parse(lastAttemptAt)
+    );
   }
 
   private retryDelayMs(attempts: number): number {

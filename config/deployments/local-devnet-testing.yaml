@@ -1,0 +1,89 @@
+name: local-devnet-testing
+network: Custom
+l1_finality:
+  confirmation_depth: 10
+  # Largest d a commit can be planned at, which the TTL floor sets here:
+  # (W - 30,000 - 1,000) / 60,000 ms - 1 = 269,000 / 60,000 - 1 = 3
+  # (config/deployments/README.md).
+  commit_event_depth: 3
+  # Cardano consensus the depth bounds assume: k, f and the slot length.
+  security_parameter: 2160
+  active_slot_coeff: "0.05"
+  slot_length_ms: 1000
+timing:
+  block_maturity_ms: 900000
+  dispute_response_window_ms: 60000
+  # Validation-trace chess clock (pd-design §6.3). Each side's cumulative budget C,
+  # the longest dispute-move validity range L_d, and the resolution allowance R.
+  # PROJECTED: provisional values until the deployment checks fix them.
+  dispute_side_clock_ms: 3600000
+  dispute_max_validity_range_ms: 20000
+  dispute_resolution_allowance_ms: 900000
+  operator_shift_ms: 1800000
+  registration_ms: 30000
+  event_wait_ms: 300000 # fixed 5 min for testing
+  user_events_negligence_timeout_ms: 1200000
+  new_shift_inactivity_grace_period_ms: 480000
+  max_validity_range_ms: 480000
+  max_event_validity_range_ms: 600000
+  da_attestation_timeout_ms: 600000
+  da_small_response_window_ms: 880000
+  da_full_response_window_ms: 880000
+  da_challenge_window_ms: 720000
+  da_slash_grace_ms: 300000
+  da_bond_withdraw_delay_ms: 2380000 # validity + max(window + full response, maturity) + grace
+da_bond:
+  da_bond_lovelace: 500000000
+  da_slash_penalty_lovelace: 100000000
+  da_bond_min_top_up_lovelace: 5000000
+  da_bond_pool_floor_lovelace: 5000000
+  # min-UTxO of the largest admitted ChallengeRecordV1 (64 tranche
+  # descriptors at worst-case field widths, 32-byte DACH token, inline datum,
+  # enterprise script address): datum 5,838 B, output 5,953 B,
+  # (160 + 5,953) x 4,310 = 26,347,030 lovelace, rounded up to a whole ADA.
+  # A stake credential on the address (+28 B) would need 26,467,710.
+  challenge_record_lovelace: 27000000
+limits:
+  max_bisection_rounds: 32
+  max_inactivity_strikes: 5
+  coins_per_utxo_byte: 4310
+  # Most a validation-trace move may take from its thread for the fee
+  # (pd-design 6.5). PROJECTED: twice the projected largest-move fee, to be
+  # re-measured on the fit rows.
+  max_dispute_move_fee_lovelace: 1200000
+  # Least lovelace of a validation-trace fraud-proof output. PROJECTED: above
+  # the min-UTxO of that fixed-shape output, to be re-measured.
+  fraud_proof_output_lovelace: 2000000
+economics:
+  profile: bounded-acceptance-v1
+  requiredBondLovelace: 900000000
+  slashingPenaltyLovelace: 500000000
+  inactivitySlashingPenaltyLovelace: 100000000
+  fraudProverRewardLovelace: 400000000
+  proverCollateralFloorLovelace: 5000000
+# Forfeited validation-dispute bonds go to the protocol treasury
+# (pd-design §6.4): an owner-quorum native script in the cardano-cli JSON
+# form, separate from the reserve. Its hash is derived by the generator.
+# PROJECTED: "placeholder:" keys stand in until the owner quorum is supplied.
+protocol_treasury_native_script:
+  type: atLeast
+  required: 2
+  scripts:
+    - type: sig
+      keyHash: "706c616365686f6c6465723a74726573000000000000000000000001"
+    - type: sig
+      keyHash: "706c616365686f6c6465723a74726573000000000000000000000002"
+    - type: sig
+      keyHash: "706c616365686f6c6465723a74726573000000000000000000000003"
+allow_lists:
+  # Testing admits every key.
+  operators: null
+  fraud_provers: null
+  da_challengers: null
+# Testing deployments carry the whole fraud-proof catalogue except the Plutus
+# execution dispute (validationTraceDispute, 00000006). Its case needs block
+# maturity of at least 2 D_case + 1 = 21,560,001 ms here (D_case = 2 * 3,600,000
+# + 2 * 67 * 20,000 + 900,000 = 10,780,000), far above fifteen minutes, so the
+# 900 s profiles leave it out (ruled 2026-10-13). The emulator profiles carry it.
+excluded_fraud_proof_categories:
+  - validationTraceDispute

@@ -1,6 +1,9 @@
 import type {
+  LocalScriptEvalResult,
+  MidgardCekVerdictRequest,
+  PhaseAConfig,
   RejectCode,
-  WirePhaseACandidate,
+  WirePhaseACandidateV1,
 } from "@al-ft/midgard-validation";
 
 export type ValidationWorkerInit = {
@@ -9,9 +12,8 @@ export type ValidationWorkerInit = {
     readonly minFeeA: bigint;
     readonly minFeeB: bigint;
     readonly strictnessProfile: string;
+    readonly consensusProfile: NonNullable<PhaseAConfig["consensusProfile"]>;
   };
-  /** Worker-local runtime choice; never enters serializable PhaseAConfig. */
-  readonly signatureVerifier?: "node" | "cml";
 };
 
 export type PhaseAJobRequest = {
@@ -27,14 +29,14 @@ export type PhaseAJobRequest = {
   }>;
 };
 
-export type UplcJobRequest = {
-  readonly kind: "uplc";
+/** One Phase B script run in verdict mode. */
+export type CekVerdictJobRequest = {
+  readonly kind: "cek_verdict";
   readonly jobId: number;
-  readonly scriptBytes: ArrayBuffer;
-  readonly contextCbor: ArrayBuffer;
+  readonly request: MidgardCekVerdictRequest;
 };
 
-export type ValidationJobRequest = PhaseAJobRequest | UplcJobRequest;
+export type ValidationJobRequest = PhaseAJobRequest | CekVerdictJobRequest;
 
 export type ValidationCacheStats = {
   readonly size: number;
@@ -48,10 +50,9 @@ export type PhaseAJobResponse = {
   readonly kind: "phase_a";
   readonly jobId: number;
   readonly workerThreadId: number;
-  readonly publicKeyCache: ValidationCacheStats;
   readonly addressCache: ValidationCacheStats;
   readonly results: ReadonlyArray<
-    | { readonly ok: true; readonly candidate: WirePhaseACandidate }
+    | { readonly ok: true; readonly candidate: WirePhaseACandidateV1 }
     | {
         readonly ok: false;
         readonly txId: Uint8Array;
@@ -61,23 +62,25 @@ export type PhaseAJobResponse = {
   >;
 };
 
-export type UplcJobResponse = {
-  readonly kind: "uplc";
-  readonly jobId: number;
-  readonly result:
-    | { readonly ok: true; readonly cpu: bigint; readonly memory: bigint }
-    | { readonly ok: false; readonly detail: string };
-};
-
 export type WorkerFailure = {
   readonly kind: "job_failed";
   readonly jobId: number;
   readonly error: string;
+  /** Set when the failure is the worker's Ed25519 verifier fault
+   * (`LedgerSignatureVerifierUnavailableError`): its libsodium did not
+   * initialise, or the verifier raised. */
+  readonly localFault?: "verifier_unavailable";
+};
+
+export type CekVerdictJobResponse = {
+  readonly kind: "cek_verdict";
+  readonly jobId: number;
+  readonly result: LocalScriptEvalResult;
 };
 
 export type ValidationWorkerResponse =
   | PhaseAJobResponse
-  | UplcJobResponse
+  | CekVerdictJobResponse
   | WorkerFailure;
 
 export type PhaseAWorkerInput = {
@@ -121,10 +124,4 @@ export const packPhaseAJob = (
     };
   });
   return { kind: "phase_a", jobId, arena, txs: descriptors };
-};
-
-export const copyToTransferable = (bytes: Uint8Array): ArrayBuffer => {
-  const copy = new ArrayBuffer(bytes.byteLength);
-  new Uint8Array(copy).set(bytes);
-  return copy;
 };

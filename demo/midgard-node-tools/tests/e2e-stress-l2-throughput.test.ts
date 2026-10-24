@@ -1,0 +1,12 @@
+import "node:fs/promises";
+import "@al-ft/midgard-core/codec";
+import "@al-ft/midgard-test-support/temp-files";
+import "@lucid-evolution/lucid";
+import "midgard-node/sha256";
+import "vitest";
+import "../src/commands/e2e-stress-l2-throughput/index.js";
+import "../src/commands/stress-open-loop.js";
+import "../src/commands/stress-stage-metrics.js";
+import "./e2e-stress-l2-throughput.e2e-stress-l2-throughput-config.js";
+import "./e2e-stress-l2-throughput.e2e-stress-l2-throughput-runner.js";
+import "./e2e-stress-l2-throughput.stress-stage-metrics.js";
