@@ -148,8 +148,7 @@
     "./uplc": {
       "midgard-source": "./src/uplc.ts",
       "types": "./dist/uplc.d.ts",
-      "import": "./dist/uplc.js",
-      "require": "./dist/uplc.cjs"
+      "import": "./dist/uplc.js"
     },
     "./tests/forced-native-first-fault-fixture": {
       "midgard-source": "./tests/forced-native-first-fault.fixture.ts"
