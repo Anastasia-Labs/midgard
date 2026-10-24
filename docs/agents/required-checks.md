@@ -899,6 +899,31 @@ Golden channel cek-serialise-loop-v1 (@al-ft/midgard-validation).
   - `demo/midgard-l1-follower/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
+### `golden:cek-write-bits-loop-v1`
+
+Golden channel cek-write-bits-loop-v1 (@al-ft/midgard-validation).
+
+- Command: `pnpm --dir demo/midgard-validation run fixtures:cek-write-bits-loop-v1:check`
+- Fix: `pnpm --dir demo/midgard-validation run fixtures:cek-write-bits-loop-v1:sync`
+- Runs on:
+  - `demo/midgard-validation/scripts/generate-cek-write-bits-loop-v1-goldens.mjs`
+  - `demo/midgard-validation/tests/fixtures/cek-write-bits-loop-v1.generated.json`
+  - `demo/midgard-validation/tests/fixtures/cek-write-bits-loop-v1.vectors.mjs`
+  - `onchain/aiken/validators/fraud-proofs/validation-trace/cek-core-staged-write-bits-loop-golden.test.ak`
+  - `demo/lucid-midgard/src/**`
+  - `demo/midgard-core/src/**`
+  - `demo/midgard-fault-proofs/src/**`
+  - `demo/midgard-validation/src/**`
+  - `demo/midgard-node/src/**`
+  - `demo/midgard-node-tools/src/**`
+  - `demo/midgard-sdk/src/**`
+  - `demo/midgard-watcher/src/**`
+  - `demo/da-committee-node/src/**`
+  - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
+  - `demo/midgard-l1-follower/src/**`
+- Needs: `node-modules`, `aiken`, `core-dist`
+
 ### `golden:plutus-data-cbor-decoding-v1`
 
 Golden channel plutus-data-cbor-decoding-v1 (@al-ft/midgard-validation).

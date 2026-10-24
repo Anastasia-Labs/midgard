@@ -20,7 +20,16 @@ import {
   unreachable,
 } from "./cek-data.data-node-data.js";
 import type { MidgardCekCoreStepWitness } from "./cek-machine.js";
-import { midgardCekStagedBuiltinMaterialData } from "./cek-staged-builtin.material.js";
+import {
+  type MidgardCekStagedBuiltinMaterial,
+  midgardCekStagedBuiltinMaterialData,
+} from "./cek-staged-builtin.material.js";
+
+/** The staged material of a step whose loop reveals its operands. */
+const EMPTY_STAGED_MATERIAL: MidgardCekStagedBuiltinMaterial = {
+  runs: { refs: [], operands: [] },
+  sources: [],
+};
 
 export const midgardCekCoreStepWitnessData = (
   witness: MidgardCekCoreStepWitness,
@@ -221,6 +230,15 @@ export const midgardCekCoreStepWitnessData = (
         // empty semantic material.
         new Constr(0, [[], [], [], []]),
       ]);
+    case "executeBuiltinWriteBits":
+      return new Constr(31, [
+        80n,
+        witness.arguments.map(directValueData),
+        directValueData(witness.result),
+        // The loop reveals the input and the indices, so the step carries
+        // empty staged material.
+        midgardCekStagedBuiltinMaterialData(EMPTY_STAGED_MATERIAL),
+      ]);
     case "startBuiltinMapConversion":
       return new Constr(32, [
         witness.tag,
@@ -263,6 +281,12 @@ export const midgardCekCoreStepWitnessData = (
         witness.tag,
         witness.arguments.map(directValueData),
         midgardCekStagedBuiltinMaterialData(witness.material),
+      ]);
+    case "executeBuiltinWriteBitsFailure":
+      return new Constr(36, [
+        80n,
+        witness.arguments.map(directValueData),
+        midgardCekStagedBuiltinMaterialData(EMPTY_STAGED_MATERIAL),
       ]);
     case "executeBuiltinBlsFinal":
       return new Constr(37, [

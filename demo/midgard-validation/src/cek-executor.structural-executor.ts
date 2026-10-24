@@ -1225,7 +1225,7 @@ export class StructuralExecutor {
           : builtinReturnSuccessor(
               pre,
               staged.root ?? this.addDirectResult(staged.result),
-              this.budget(builtin.tag, directArguments),
+              staged.budget ?? this.budget(builtin.tag, directArguments),
             ),
       );
       return;

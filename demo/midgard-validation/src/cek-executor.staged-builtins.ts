@@ -23,6 +23,10 @@
  * serialiseData (semantics group 10) takes this route too, past the direct
  * bound or over an argument presented by its summary: the serialise loop
  * proves it over its staged result (`cek-executor.serialise-builtin.ts`).
+ * So does writeBits (semantics group 12) over an input of at most 4,096
+ * bytes and an index list presented by its summary or past 64 indices: the
+ * writeBits loop proves it over its indices
+ * (`cek-executor.write-bits-builtin.ts`).
  */
 import {
   encodeMidgardCekCanonicalIntegerCbor,
@@ -46,6 +50,7 @@ import {
   semanticizeMidgardCekDirectConstant,
 } from "./cek-builtin.evaluate-reference-builtin.js";
 import { encodeMidgardCekCanonicalConstant } from "./cek-constant.js";
+import type { MidgardCekBuiltinBudget } from "./cek-cost.js";
 import { commitMidgardCekDataTree } from "./cek-data-tree.js";
 import type { MidgardCekSemanticStore } from "./cek-executor.semantic-store.js";
 import { executeMidgardCekSerialiseBuiltin } from "./cek-executor.serialise-builtin.js";
@@ -54,6 +59,10 @@ import {
   midgardCekStagedFailure,
   type MidgardCekStagedOperand,
 } from "./cek-executor.staged-failure.js";
+import {
+  executeMidgardCekWriteBitsBuiltin,
+  midgardCekWriteBitsTakesLoop,
+} from "./cek-executor.write-bits-builtin.js";
 import type { MidgardCekCoreStepWitness } from "./cek-machine.js";
 import { midgardCekSemanticGroup } from "./cek-semantic-group.js";
 import type { MidgardCekSerialiseWitness } from "./cek-serialise-builtin.js";
@@ -69,6 +78,7 @@ import {
   sameCompacted,
   verifyMidgardCekStagedBuiltin,
 } from "./cek-staged-builtin.verify.js";
+import type { MidgardCekWriteBitsWitness } from "./cek-write-bits-builtin.js";
 import { plutusDataFromCborIterative } from "./plutus-data-iterative.decode.js";
 
 type StagedWitness = Extract<
@@ -95,7 +105,8 @@ export const isMidgardCekStagedStep = (
   (midgardCekStagedBuiltinProves(tag) || tag === 51n || failureOnly(tag)) &&
   !midgardCekDivisionByZero(tag, arguments_) &&
   (arguments_.some((argument) => argument.kind !== "constant") ||
-    !midgardCekDirectBuiltinFits(tag, arguments_));
+    !midgardCekDirectBuiltinFits(tag, arguments_) ||
+    (tag === 80n && midgardCekWriteBitsTakesLoop(arguments_)));
 
 const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 
@@ -190,17 +201,33 @@ export const executeMidgardCekStagedBuiltin = (
 ):
   | {
       readonly kind: "success";
-      readonly witness: StagedWitness | MidgardCekSerialiseWitness;
+      readonly witness:
+        | StagedWitness
+        | MidgardCekSerialiseWitness
+        | MidgardCekWriteBitsWitness;
       readonly result: MidgardCekDirectValueWitness;
       readonly root?: Bytes;
+      /** The charge, when the direct budget cannot read the arguments. */
+      readonly budget?: MidgardCekBuiltinBudget;
     }
-  | ({ readonly kind: "failure" } & MidgardCekStagedFailure) => {
+  | ({ readonly kind: "failure" } & (
+      | MidgardCekStagedFailure
+      | {
+          readonly witness: MidgardCekWriteBitsWitness;
+          readonly budget: MidgardCekBuiltinBudget;
+        }
+    )) => {
   if (tag === 51n) {
     return {
       kind: "success",
       ...executeMidgardCekSerialiseBuiltin(store, arguments_, roots),
     };
   }
+  const looped =
+    tag === 80n
+      ? executeMidgardCekWriteBitsBuiltin(store, arguments_, roots)
+      : null;
+  if (looped !== null) return looped;
   const group = midgardCekSemanticGroup(tag);
   if (
     group !== 7 &&

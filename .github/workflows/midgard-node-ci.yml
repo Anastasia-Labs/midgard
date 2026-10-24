@@ -488,6 +488,9 @@ jobs:
       - name: Check serialise loop golden vectors
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run golden:cek-serialise-loop-v1
+      - name: Check writeBits loop golden vectors
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run golden:cek-write-bits-loop-v1
       # The Plutus Data CBOR decoding channel: both entries of the on-chain
       # decoder are held to the TypeScript decoder's outcome on every row.
       - name: Check Plutus Data CBOR decoding golden vectors

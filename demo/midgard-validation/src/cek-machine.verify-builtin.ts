@@ -62,6 +62,7 @@ import {
   stageMidgardCekStagedBuiltinMaterial,
 } from "./cek-staged-builtin.material.js";
 import { verifyMidgardCekStagedBuiltin } from "./cek-staged-builtin.verify.js";
+import { verifyMidgardCekWriteBitsStep } from "./cek-write-bits-builtin.js";
 
 const verifySemanticBuiltin = (
   tag: bigint,
@@ -320,6 +321,11 @@ const verifyBuiltin = (
       )
     );
   }
+  if (
+    witness.kind === "executeBuiltinWriteBits" ||
+    witness.kind === "executeBuiltinWriteBitsFailure"
+  )
+    return verifyMidgardCekWriteBitsStep(pre, post, witness);
   if (witness.kind === "executeBuiltinStagedFailure") {
     // The staged failure hop charges a division by zero of a dividend of
     // 4,096 words in the range, and nothing for its other failures.
