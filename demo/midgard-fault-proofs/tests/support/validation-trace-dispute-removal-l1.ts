@@ -3,7 +3,6 @@
  * fixture state-queue mutation lease, and the removal's published reference
  * scripts. The L1 view can be held at one capture, as an observer that has
  * not yet seen the transactions after it. */
-import type { UTxO } from "@lucid-evolution/lucid";
 import {
   watcherDeploymentReleaseEconomicsAuthority,
   watcherDeploymentReleaseFinalityAuthority,
@@ -28,6 +27,7 @@ import {
 import type { VerifiedFraudProofReleaseEconomicsPolicy } from "../../src/workflow/release-economics-policy.js";
 import type { VerifiedFraudProofReleaseFinalityPolicy } from "../../src/workflow/release-finality-policy.js";
 import type { recordCrossBlockRawEmulator } from "./cross-block-raw-emulator.js";
+import type { RemovalReferenceScriptPublications } from "./emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.js";
 import { emulatorSignedTransactionRecovery } from "./emulator-signed-recovery.js";
 import { fixtureLeaseCoordinator } from "./script-decode-installed-host.js";
@@ -41,7 +41,7 @@ type Snapshot = Awaited<
 export type RecordedRemoval = Readonly<{
   removal: ValidationTraceRemovalConfig;
   /** The removal's published reference scripts, by contract name. */
-  published: Readonly<Record<string, UTxO>>;
+  published: RemovalReferenceScriptPublications;
   l1For: (
     headerHash: string,
   ) => FraudProofFamilyL1ObservationPort<"validationTraceDispute">;

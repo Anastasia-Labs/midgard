@@ -25,20 +25,33 @@ const liveByUnit = async (
   return utxo;
 };
 
+/** An operator that commits: its wallet, key and active-node unit. */
+export type CommittingOperator = Readonly<{
+  lucid: Scene["h"]["funderLucid"];
+  vkey: string;
+  nodeUnit: string;
+}>;
+
 /**
  * Commits a successor of `previous` (the scene's last block by default) by
- * the scene's operator, now. Returns the committed block and the
- * operator's active node the commit continued.
+ * `operator` (the scene's by default), which the scheduler must name, now.
+ * Returns the committed block and the operator's active node the commit
+ * continued.
  */
 export const commitSceneSuccessor = async (
   scene: Scene,
   previous: CommittedBlock = scene.forced.evidence,
+  operator: CommittingOperator = {
+    lucid: scene.h.funderLucid,
+    vkey: scene.operator.vkey,
+    nodeUnit: scene.operator.nodeUnit,
+  },
 ): Promise<CommittedBlock & Readonly<{ activeNode: UTxO }>> => {
   const { h } = scene;
   const { contracts, emulator } = h;
   const endTime = BigInt(emulator.now() + 60_000) - 1n;
   const committed = await submitSuccessorBlockTx({
-    lucid: h.funderLucid,
+    lucid: operator.lucid,
     emulator,
     contracts,
     anchorBlockUnit: toUnit(
@@ -47,6 +60,7 @@ export const commitSceneSuccessor = async (
     ),
     header: {
       ...previous.header,
+      operatorVkey: operator.vkey,
       prevHeaderHash: previous.headerHash,
       prevUtxosRoot: previous.header.utxosRoot,
       startTime: previous.header.endTime,
@@ -67,10 +81,10 @@ export const commitSceneSuccessor = async (
     activeOperatorNode: await liveByUnit(
       scene,
       contracts.activeOperators.spendingScriptAddress,
-      scene.operator.nodeUnit,
+      operator.nodeUnit,
       "active-operator node",
     ),
-    activeOperatorNodeUnit: scene.operator.nodeUnit,
+    activeOperatorNodeUnit: operator.nodeUnit,
     validFrom: BigInt(emulator.now()) - 1_000n,
   });
   return {
