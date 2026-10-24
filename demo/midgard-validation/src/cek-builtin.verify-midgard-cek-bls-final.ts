@@ -3,8 +3,6 @@ import {
   hashMidgardCekValueNode,
 } from "@al-ft/midgard-core";
 import { DataB } from "@harmoniclabs/plutus-data";
-import { CEKConst } from "@harmoniclabs/plutus-machine";
-import { UPLCConst } from "@harmoniclabs/uplc";
 
 import {
   type Bytes,
@@ -24,6 +22,7 @@ import {
   evaluateMidgardCekDirectBuiltin,
   referenceConstantToDirectWitness,
 } from "./cek-builtin.evaluate-reference-builtin.js";
+import { referenceValueOf } from "./cek-builtin.reference-value.js";
 import {
   hashMidgardCekDirectArguments,
   hashMidgardCekDirectValueWitness,
@@ -36,6 +35,7 @@ import {
   type MidgardCekConstantWitness,
 } from "./cek-constant.js";
 import { type MidgardCekBuiltinBudget } from "./cek-cost.js";
+import { UPLCConst } from "./uplc-constant.js";
 
 export const verifyMidgardCekDirectBuiltin = (
   tag: bigint,
@@ -267,7 +267,7 @@ export const evaluateMidgardCekBlsFinal = (
       "BLS finalVerify expression exceeds the ten-leaf L1 proof reserve",
     );
   }
-  const result = CEKConst.fromUplc(
+  const result = referenceValueOf(
     UPLCConst.bool(cardanoBlsFinalVerify(left.value, right.value)),
   );
   const arguments_: readonly MidgardCekDirectValueWitness[] = [

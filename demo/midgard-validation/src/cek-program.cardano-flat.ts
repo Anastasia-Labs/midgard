@@ -1,10 +1,9 @@
-import type { UPLCProgram } from "@harmoniclabs/uplc";
-
 import { decodeCardanoFlatProgramOrThrow } from "./cek-program.cardano-flat.decode.js";
 import {
   encodeCardanoFlatProgram,
   type FlatProgram,
 } from "./cek-program.cardano-flat.encode.js";
+import type { UPLCProgram } from "./uplc-term.js";
 
 /**
  * The Cardano-exact Flat decoder: `decodeCardanoFlatProgram` returns the

@@ -16,7 +16,10 @@ import {
 import { describe, expect, it } from "vitest";
 
 import { encodeMidgardCekPlutusData } from "../src/cek-constant.js";
-import { encodeCardanoFlatProgram } from "../src/cek-program.cardano-flat.encode.js";
+import {
+  encodeCardanoFlatProgram,
+  type FlatProgram,
+} from "../src/cek-program.cardano-flat.encode.js";
 import {
   decodeCardanoFlatProgram,
   decodeMidgardCekCardanoFlatProgram,
@@ -51,11 +54,11 @@ class HarmonicCardanoFlatEncoder extends UPLCEncoder {
   }
 }
 
-const harmonic = (program: UPLCProgram): string =>
-  Buffer.from(new HarmonicCardanoFlatEncoder().compile(program)).toString(
-    "hex",
-  );
-const owned = (program: UPLCProgram): string =>
+const harmonic = (program: FlatProgram): string =>
+  Buffer.from(
+    new HarmonicCardanoFlatEncoder().compile(program as UPLCProgram),
+  ).toString("hex");
+const owned = (program: FlatProgram): string =>
   Buffer.from(encodeCardanoFlatProgram(program)).toString("hex");
 
 const v110 = (term: UPLCTerm): UPLCProgram => new UPLCProgram([1, 1, 0], term);
@@ -80,8 +83,8 @@ const hexStrings = (value: unknown, found: Set<string>): Set<string> => {
 };
 
 /** The Flat programs among the strings: raw, or wrapped in a CBOR byte string. */
-const decodablePrograms = (strings: Iterable<string>): UPLCProgram[] => {
-  const programs: UPLCProgram[] = [];
+const decodablePrograms = (strings: Iterable<string>): FlatProgram[] => {
+  const programs: FlatProgram[] = [];
   for (const string of strings) {
     const bytes = Buffer.from(string, "hex");
     const candidates = [bytes];
@@ -108,7 +111,7 @@ const jsonFixtures = fixtureDirectories.flatMap((directory) =>
     .map((name) => new URL(name, directory)),
 );
 
-const expectIdentical = (programs: readonly UPLCProgram[]): void => {
+const expectIdentical = (programs: readonly FlatProgram[]): void => {
   const differing = programs.filter(
     (program) => owned(program) !== harmonic(program),
   );

@@ -7,6 +7,12 @@
  * refusal. The term is read
  * with explicit stacks, so input nesting never deepens the JavaScript stack.
  */
+import { readConstant } from "./cek-program.cardano-flat.constant.js";
+import {
+  CardanoFlatReader,
+  CardanoFlatRefusal,
+  type CardanoFlatRefusalClass,
+} from "./cek-program.cardano-flat.reader.js";
 import {
   Application,
   Builtin,
@@ -19,14 +25,7 @@ import {
   UPLCProgram,
   type UPLCTerm,
   UPLCVar,
-} from "@harmoniclabs/uplc";
-
-import { readConstant } from "./cek-program.cardano-flat.constant.js";
-import {
-  CardanoFlatReader,
-  CardanoFlatRefusal,
-  type CardanoFlatRefusalClass,
-} from "./cek-program.cardano-flat.reader.js";
+} from "./uplc-term.js";
 
 /** Builtins of batches 1 to 6 (tags 0 to 100), available to V3 at PV11. */
 const LAST_AVAILABLE_BUILTIN = 100;

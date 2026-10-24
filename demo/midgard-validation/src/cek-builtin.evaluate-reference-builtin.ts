@@ -10,7 +10,6 @@ import {
   ExBudget,
   PartialBuiltin,
 } from "@harmoniclabs/plutus-machine";
-import { ConstTyTag, UPLCConst } from "@harmoniclabs/uplc";
 
 import {
   directWitnessPayloadBytes,
@@ -25,6 +24,10 @@ import {
   harmonicBuiltinTag,
   MIDGARD_CEK_CARDANO_BLS_TAGS,
 } from "./cek-builtin.cardano-tags.js";
+import {
+  constantOfReferenceValue,
+  referenceValueOf,
+} from "./cek-builtin.reference-value.js";
 import {
   directByteLength,
   directInteger,
@@ -46,6 +49,7 @@ import {
 import { MIDGARD_CEK_PINNED_PLUTUS_V3_BUILTIN_COSTS } from "./cek-cost.js";
 import { commitMidgardCekDataTree } from "./cek-data-tree.js";
 import { plutusDataFromCborIterative } from "./plutus-data-iterative.decode.js";
+import { ConstTyTag, UPLCConst } from "./uplc-constant.js";
 
 /** Runs Cardano's builtin `tag` (flat numbering) in the reference evaluator. */
 export const runPinnedReferenceBuiltin = (
@@ -75,12 +79,12 @@ export const directConstantToReferenceValue = (
     if (!(decoded.payload instanceof DataB)) {
       throw new Error("V1 byte-string payload is not bytes");
     }
-    return CEKConst.fromUplc(
+    return referenceValueOf(
       UPLCConst.byteString(Uint8Array.from(decoded.payload.bytes)),
     );
   }
   if (decoded.type.kind !== "blsG1" && decoded.type.kind !== "blsG2") {
-    return CEKConst.fromUplc(midgardCekConstantWitnessToUplc(witness));
+    return referenceValueOf(midgardCekConstantWitnessToUplc(witness));
   }
   if (!(decoded.payload instanceof DataB)) {
     throw new Error("V1 BLS payload is not bytes");
@@ -90,7 +94,7 @@ export const directConstantToReferenceValue = (
   // is detached; normalize here so the pinned evaluator sees the canonical
   // compressed point rather than a mask-cleared alias.
   const detachedBytes = Uint8Array.from(decoded.payload.bytes);
-  const compressed = CEKConst.fromUplc(UPLCConst.byteString(detachedBytes));
+  const compressed = referenceValueOf(UPLCConst.byteString(detachedBytes));
   const uncompressed = runPinnedReferenceBuiltin(
     decoded.type.kind === "blsG1"
       ? MIDGARD_CEK_CARDANO_BLS_TAGS.g1Uncompress
@@ -105,7 +109,8 @@ export const directConstantToReferenceValue = (
   return uncompressed;
 };
 
-const cardanoExactArgument = (reference: CEKConst): CardanoExactValue => {
+const cardanoExactArgument = (value: CEKConst): CardanoExactValue => {
+  const reference = constantOfReferenceValue(value);
   const type = reference.type[0];
   if (type === ConstTyTag.int) {
     return { kind: "integer", value: reference.value as bigint };
@@ -123,7 +128,7 @@ const cardanoExactArgument = (reference: CEKConst): CardanoExactValue => {
 };
 
 const cardanoExactResult = (value: CardanoExactValue): CEKConst =>
-  CEKConst.fromUplc(
+  referenceValueOf(
     value.kind === "integer"
       ? UPLCConst.int(value.value)
       : value.kind === "bytes"
@@ -174,14 +179,13 @@ export const referenceConstantToDirectWitness = (
   result: CEKConst,
   allowSemantic: boolean = false,
 ): MidgardCekDirectValueWitness => {
-  const tag = result.type[0];
+  const constant = constantOfReferenceValue(result);
+  const tag = constant.type[0];
   if (
     tag !== ConstTyTag.bls12_381_G1_element &&
     tag !== ConstTyTag.bls12_381_G2_element
   ) {
-    const canonical = encodeMidgardCekCanonicalConstant(
-      new UPLCConst(result.type, result.value as never),
-    );
+    const canonical = encodeMidgardCekCanonicalConstant(constant);
     const witness = Object.freeze({
       typeCbor: canonical.typeCbor,
       payloadCbor: canonical.payloadCbor,
@@ -206,7 +210,9 @@ export const referenceConstantToDirectWitness = (
   if (compressed instanceof CEKError) {
     throw new Error("reference evaluator could not compress a BLS result");
   }
-  const bytesWitness = midgardCekConstantWitnessFromUplc(compressed);
+  const bytesWitness = midgardCekConstantWitnessFromUplc(
+    constantOfReferenceValue(compressed),
+  );
   const witness = Object.freeze({
     typeCbor: Buffer.from(
       tag === ConstTyTag.bls12_381_G1_element ? "9f09ff" : "9f0aff",
@@ -316,7 +322,7 @@ const evaluateReferenceBuiltin = (
       throw new Error("serialiseData requires Data");
     }
     return referenceConstantToDirectWitness(
-      CEKConst.fromUplc(
+      referenceValueOf(
         UPLCConst.byteString(encodeMidgardCekPlutusData(decoded.payload)),
       ),
       true,

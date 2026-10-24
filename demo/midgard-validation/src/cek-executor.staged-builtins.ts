@@ -21,7 +21,6 @@ import {
   parseMidgardCekCanonicalIntegerCbor,
 } from "@al-ft/midgard-core";
 import { CEKConst } from "@harmoniclabs/plutus-machine";
-import { UPLCConst } from "@harmoniclabs/uplc";
 
 import type {
   Bytes,
@@ -33,6 +32,10 @@ import {
   referenceConstantToDirectWitness,
   semanticizeMidgardCekDirectConstant,
 } from "./cek-builtin.evaluate-reference-builtin.js";
+import {
+  constantOfReferenceValue,
+  referenceValueOf,
+} from "./cek-builtin.reference-value.js";
 import { encodeMidgardCekCanonicalConstant } from "./cek-constant.js";
 import { commitMidgardCekDataTree } from "./cek-data-tree.js";
 import type { MidgardCekSemanticStore } from "./cek-executor.semantic-store.js";
@@ -49,6 +52,7 @@ import {
   verifyMidgardCekStagedBuiltin,
 } from "./cek-staged-builtin.verify.js";
 import { plutusDataFromCborIterative } from "./plutus-data-iterative.decode.js";
+import { UPLCConst } from "./uplc-constant.js";
 
 type StagedWitness = Extract<
   MidgardCekCoreStepWitness,
@@ -115,7 +119,7 @@ const operandOf = (
       value:
         type.kind === "bytes"
           ? CEKConst.byteString(bytes)
-          : CEKConst.fromUplc(UPLCConst.str(utf8.decode(bytes))),
+          : referenceValueOf(UPLCConst.str(utf8.decode(bytes))),
       leaf: {
         kind: "bytesLeaf",
         root: node.bytesRoot,
@@ -182,7 +186,7 @@ export const executeMidgardCekStagedBuiltin = (
     },
   );
   const canonical = encodeMidgardCekCanonicalConstant(
-    new UPLCConst(evaluated.type, evaluated.value as never),
+    constantOfReferenceValue(evaluated),
   );
   const result = referenceConstantToDirectWitness(evaluated, true);
   if (result.kind === "semanticConstant") {

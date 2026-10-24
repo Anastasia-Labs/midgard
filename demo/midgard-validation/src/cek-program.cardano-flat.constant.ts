@@ -5,16 +5,11 @@
  * (`decodeDefaultUniValue`, Default/Universe.hs:168-187).
  */
 import { type Data } from "@harmoniclabs/plutus-data";
-import {
-  type ConstType,
-  ConstTyTag,
-  ErrorUPLC,
-  UPLCConst,
-  type UPLCTerm,
-} from "@harmoniclabs/uplc";
 
 import type { CardanoFlatReader } from "./cek-program.cardano-flat.reader.js";
 import { plutusDataFirstItemFromCborIterative } from "./plutus-data-iterative.decode.js";
+import { type ConstType, ConstTyTag, UPLCConst } from "./uplc-constant.js";
+import { ErrorUPLC, type UPLCTerm } from "./uplc-term.js";
 
 /** `mbHeader` at protocol version 11 (Versions.hs:397-401). */
 const MAX_CONSTANT_TYPE_TAGS = 32;
@@ -115,7 +110,7 @@ const parseType = (tags: readonly number[]): ValueType | undefined => {
   }
 };
 
-/** The harmonic `ConstType` of a type inside the profile. */
+/** The `ConstType` of a type inside the profile. */
 const constType = (type: ValueType): ConstType => {
   switch (type.kind) {
     case "integer":
@@ -143,7 +138,7 @@ const constType = (type: ValueType): ConstType => {
       return [type.tag];
     case "array":
     case "value":
-      throw new Error(`no harmonic constant type for ${type.kind}`);
+      throw new Error(`no constant type for ${type.kind}`);
   }
 };
 

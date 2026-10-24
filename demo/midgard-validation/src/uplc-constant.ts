@@ -46,9 +46,13 @@ export interface Pair<First, Second> {
   snd: Second;
 }
 
-/** A constant's value; BLS values are whatever the evaluator holds. */
+/**
+ * A constant's value; BLS values are whatever the evaluator holds. A number
+ * is an integer the constructor has not yet made a bigint.
+ */
 export type ConstValue =
   | bigint
+  | number
   | Uint8Array
   | string
   | undefined

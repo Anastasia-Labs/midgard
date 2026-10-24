@@ -13,12 +13,6 @@ import {
   DataI,
   DataList,
 } from "@harmoniclabs/plutus-data";
-import {
-  constT,
-  type ConstType,
-  type ConstValue,
-  UPLCConst,
-} from "@harmoniclabs/uplc";
 
 import {
   decodeMidgardCekConstantTypeCbor,
@@ -42,6 +36,12 @@ import {
   midgardCekDataMemorySize,
   midgardCekIntegerMemorySize,
 } from "./plutus-data-iterative.memory.js";
+import {
+  constT,
+  type ConstType,
+  type ConstValue,
+  UPLCConst,
+} from "./uplc-constant.js";
 
 const semanticUplcConstant = (
   type: MidgardCekConstantType,
@@ -120,8 +120,8 @@ const semanticUplcConstant = (
 };
 
 /**
- * Reconstructs the exact Harmonic UPLC constant consumed by the pinned
- * reference evaluator from the canonical semantic witness checked on L1.
+ * Reconstructs the UPLC constant consumed by the pinned reference evaluator
+ * from the canonical semantic witness checked on L1.
  */
 export const midgardCekConstantWitnessToUplc = (
   witness: MidgardCekConstantWitness,
@@ -281,7 +281,7 @@ export const encodeMidgardCekCanonicalConstant = (
 
 /**
  * `encodeMidgardCekCanonicalConstant(UPLCConst.data(data))` without building
- * the `UPLCConst`, whose constructor stringifies the whole value recursively.
+ * the `UPLCConst`.
  */
 export const encodeMidgardCekCanonicalDataConstant = (
   data: Data,

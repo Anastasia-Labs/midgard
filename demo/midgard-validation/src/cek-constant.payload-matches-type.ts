@@ -5,7 +5,6 @@ import {
   DataI,
   DataList,
 } from "@harmoniclabs/plutus-data";
-import { type ConstType, ConstTyTag } from "@harmoniclabs/uplc";
 
 import {
   MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES,
@@ -20,6 +19,7 @@ import {
 } from "./cek-constant.value.js";
 import { plutusDataFromCborIterative } from "./plutus-data-iterative.decode.js";
 import { encodeMidgardCekPlutusData } from "./plutus-data-iterative.encode.js";
+import { type ConstType, ConstTyTag } from "./uplc-constant.js";
 
 type ParsedTags = {
   readonly type: MidgardCekConstantType;

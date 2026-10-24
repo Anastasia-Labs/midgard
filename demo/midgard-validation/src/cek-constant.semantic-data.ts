@@ -8,11 +8,12 @@ import {
   DataList,
   isData,
 } from "@harmoniclabs/plutus-data";
+
 import {
   type ConstType,
   ConstTyTag,
   type ConstValue,
-} from "@harmoniclabs/uplc";
+} from "./uplc-constant.js";
 
 export type MidgardCekConstantType =
   | { readonly kind: "integer" }
@@ -169,7 +170,9 @@ export const semanticData = (
         throw new Error("V1 list constant has an invalid value");
       }
       return new DataList(
-        value.map((item) => semanticData(type.element, item)),
+        (value as readonly ConstValue[]).map((item) =>
+          semanticData(type.element, item),
+        ),
       );
     case "pair": {
       if (

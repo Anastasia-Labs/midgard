@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 
-import { UPLCProgram } from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -9,6 +8,7 @@ import {
   decodeMidgardCekCardanoFlatProgram,
   encodeMidgardCekCardanoFlatProgram,
 } from "../src/cek-program.cardano-flat.js";
+import { UPLCProgram } from "../src/uplc-term.js";
 import {
   CARDANO_ACCEPTED,
   CARDANO_REFUSED,

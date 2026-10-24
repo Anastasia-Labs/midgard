@@ -1,9 +1,7 @@
 import {
   constT,
   type ConstType,
-  constTypeEq,
   ConstTyTag,
-  eqConstValue,
   UPLCConst as Constant,
   type UPLCConst,
 } from "@harmoniclabs/uplc";
@@ -116,8 +114,8 @@ describe("V1 semantic CEK constants", () => {
       const decoded = midgardCekConstantWitnessToUplc(
         midgardCekConstantWitnessFromUplc(constant),
       );
-      expect(constTypeEq(decoded.type, constant.type)).toBe(true);
-      expect(eqConstValue(decoded.value, constant.value)).toBe(true);
+      expect(decoded.type).toEqual([...constant.type]);
+      expect(decoded.value).toEqual(constant.value);
     }
   });
 });

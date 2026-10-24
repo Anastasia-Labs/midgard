@@ -12,19 +12,6 @@ import {
   type MidgardCekTermNode,
   verifyMidgardCekProgramMaterial,
 } from "@al-ft/midgard-core";
-import {
-  Application,
-  Builtin,
-  Case,
-  Constr,
-  Delay,
-  ErrorUPLC,
-  Force,
-  Lambda,
-  UPLCConst,
-  type UPLCTerm,
-  UPLCVar,
-} from "@harmoniclabs/uplc";
 
 import type { MidgardCekConstantValueWitness } from "./cek-builtin.js";
 import {
@@ -43,6 +30,19 @@ import {
   storedFlatProgramBytes,
 } from "./cek-program.unwrap-canonical-cbor-byte-string.js";
 import { plutusDataFromCborIterative } from "./plutus-data-iterative.decode.js";
+import { UPLCConst } from "./uplc-constant.js";
+import {
+  Application,
+  Builtin,
+  Case,
+  Constr,
+  Delay,
+  ErrorUPLC,
+  Force,
+  Lambda,
+  type UPLCTerm,
+  UPLCVar,
+} from "./uplc-term.js";
 
 /** Derives local dispute material from the exact carried CBOR-wrapped Flat. */
 export const buildMidgardCanonicalCekProgram = (
