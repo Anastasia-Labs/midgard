@@ -8,7 +8,6 @@ import {
 } from "../src/cek-builtin.evaluate-reference-builtin.js";
 import type { MidgardCekCoreStepWitness } from "../src/cek-machine.js";
 import {
-  type Budget,
   builtBytes,
   failureVerifies,
 } from "./helpers/cek-staged-failure-charge.js";
@@ -67,20 +66,17 @@ const rows: readonly Row[] = [
   ],
 ];
 
-/** The longest integer protocol version 11 makes: byteStringToInteger's
- * input and multiplyInteger's operands are bounded. Building it at run time
- * passes the transaction budget, so its run has a larger one. */
-const LONGEST = 65_536;
-const RAISED_BUDGET: Budget = { cpu: 40_000_000_000n, memory: 16_500_000n };
+/** The longest count byteStringToInteger builds within the transaction
+ * budget: 49,784 bytes cost 9,997,732,628 cpu, 49,792 bytes 10,000,900,621. */
+const LONGEST = 49_784;
 
 describe("a replicateByte step that fails beside a staged operand", () => {
-  it("a count of 65,536 bytes is proved with the PV11 evaluator's verdict", () => {
+  it("the longest count byteStringToInteger builds is proved with the PV11 evaluator's verdict", () => {
     expectStagedFailureProved(
       REPLICATE_BYTE,
       Builtin.replicateByte,
       [integer(LONGEST), small(0n)],
       "uncharged",
-      RAISED_BUDGET,
     );
   });
 
