@@ -138,7 +138,7 @@ export const driveDirectHandoffRegression = async ({
       indices: { input_index: bigint; output_index: bigint },
       open: (index: number) => SDK.FieldOpening,
     ) => string,
-    asProver = false,
+    asProver = true,
     mustRefuse = false,
   ) => {
     const lucid = asProver ? ownerLucid : strangerLucid;
@@ -330,7 +330,7 @@ export const driveDirectHandoffRegression = async ({
           { Continue: [{ Advance: indices }] },
           SDK.DirectSourceResolveRedeemer,
         ),
-      false,
+      true,
       !empty,
     );
     if (empty) {
@@ -369,7 +369,7 @@ export const driveDirectHandoffRegression = async ({
           { Continue: [{ Finish: indices }] },
           SDK.DirectSourceWitnessRedeemer,
         ),
-      false,
+      true,
       !empty,
     );
     if (empty)
@@ -410,7 +410,7 @@ export const driveDirectHandoffRegression = async ({
           { Continue: [{ Finish: indices }] },
           SDK.DirectReceiveOutputRedeemer,
         ),
-      false,
+      true,
       !empty && !selection,
     );
     if (empty || selection) {

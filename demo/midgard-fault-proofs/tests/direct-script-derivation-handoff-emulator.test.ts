@@ -3,7 +3,7 @@ import { expect, it } from "vitest";
 import { driveDirectHandoffRegression } from "./support/direct-handoff-regressions.js";
 
 it.each(["input", "witness", "receive"] as const)(
-  "refuses unrelated-key premature %s handoff after authentic permissionless progress",
+  "refuses premature %s handoff after authentic progress",
   async (family) => {
     expect(
       await driveDirectHandoffRegression({ family, empty: false }),
@@ -13,7 +13,7 @@ it.each(["input", "witness", "receive"] as const)(
 );
 
 it.each(["input", "witness", "receive"] as const)(
-  "preserves authentic empty %s field handoff with unrelated-key deterministic progress",
+  "preserves authentic empty %s field handoff",
   async (family) => {
     const result = await driveDirectHandoffRegression({ family, empty: true });
     expect(result.accepted).toBeGreaterThanOrEqual(3);
@@ -23,7 +23,7 @@ it.each(["input", "witness", "receive"] as const)(
 );
 
 it.each(["unrelated", "none"] as const)(
-  "pins receive target choice against %s selection while output progress stays permissionless",
+  "pins receive target choice against %s selection",
   async (selectionRefusal) => {
     expect(
       await driveDirectHandoffRegression({
