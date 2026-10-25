@@ -39,6 +39,7 @@ validator main(
           own_out_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
         expect Some(bound) = input_state
         let expected: Data = accepted_reconstruction.initial_v1(

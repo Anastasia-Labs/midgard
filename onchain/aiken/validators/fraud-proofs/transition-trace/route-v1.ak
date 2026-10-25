@@ -87,6 +87,7 @@ validator main(
           own_out_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
           fn(
             _input_script_hash,
             computation_thread_token_asset_name,

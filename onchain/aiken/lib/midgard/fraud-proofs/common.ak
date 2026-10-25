@@ -262,6 +262,7 @@ pub fn pass_native_tx_to_next_step_carried(
         own_out_ref,
         inputs,
         outputs,
+        l1_tx.extra_signatories,
       )
 
       let _verified_tx_id, header, native_tx_view <- verify_native_tx_in_state_queue_node_with(
@@ -359,6 +360,7 @@ pub fn pass_native_tx_to_next_step(
     own_out_ref,
     inputs,
     outputs,
+    l1_tx.extra_signatories,
   )
 
   let _verified_tx_id, header, native_tx_view <- verify_native_tx_in_state_queue_node(
@@ -454,6 +456,7 @@ pub fn pass_committed_transactions_leaf_to_next_step(
     own_out_ref,
     inputs,
     outputs,
+    l1_tx.extra_signatories,
   )
 
   let header <- verify_committed_transactions_leaf_in_state_queue_node(
@@ -550,6 +553,9 @@ pub fn cancel(
 /// On the other hand, output state data is provided as `Data` directly to
 /// disallow this function to be used for final steps. [`finalize`](#finalize)
 /// should be used instead.
+///
+/// Continuing a fault-proof thread requires its prover: the `fraud_prover`
+/// recorded in the spent `StepDatum` must sign the transaction.
 pub fn continue(
   computation_thread_token_policy_id: PolicyId,
   step_datum: ct.StepDatum<input_state>,
@@ -558,6 +564,7 @@ pub fn continue(
   own_out_ref: OutputReference,
   inputs: List<Input>,
   outputs: List<Output>,
+  extra_signatories: List<VerificationKeyHash>,
   validation_fn: fn(
     ScriptHash,
     AssetName,
@@ -568,6 +575,7 @@ pub fn continue(
   ) ->
     Bool,
 ) -> Bool {
+  expect step_datum.fraud_prover |> has_signed(extra_signatories)
   continue_with_value_rule(
     computation_thread_token_policy_id,
     step_datum,
@@ -599,7 +607,8 @@ pub type Mover {
 ///   `min(tx.fee, env.max_dispute_move_fee_lovelace)` less lovelace than the
 ///   input. With any other input present the successor must hold at least the
 ///   input's lovelace.
-/// - `ProverOnly` moves also require the `fraud_prover` signature.
+/// - Only `ProverOnly` moves require the `fraud_prover` signature; `Anyone`
+///   moves need none.
 ///
 /// The successor is located only by the redeemer's `output_index`.
 pub fn continue_validation_trace(

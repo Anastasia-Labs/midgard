@@ -39,6 +39,7 @@ validator main(
           own_out_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
         expect Some(witness) = input_state
         let expected: Data = initial_reverse_scan_v1(witness)

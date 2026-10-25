@@ -73,6 +73,7 @@ validator main(
           own_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
         let Pair(subject, verified) = substrate.open_forced_subject_v1(
           thread_name,

@@ -47,6 +47,7 @@ validator main(
           own_out_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
         expect step_01.category_is_withdrawal_mistag_v1(asset_name)
         let hub_datum = hub.get_datum(

@@ -47,6 +47,7 @@ validator main(
           own_out_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
         expect Some(bound) = input_state
         let field = opened_committed_preimage(

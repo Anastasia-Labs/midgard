@@ -140,6 +140,7 @@ validator main(
             own_out_ref,
             tx.inputs,
             tx.outputs,
+            tx.extra_signatories,
             fn(input_hash, _, _, _, output_hash, _) {
               input_hash == output_hash
             },

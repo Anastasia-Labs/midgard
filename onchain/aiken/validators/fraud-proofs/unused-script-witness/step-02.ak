@@ -37,6 +37,7 @@ validator main(
           own_out_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
         expect Some(bound) = input_state
         let expected: Data = authenticate_witness_v1(

@@ -1289,6 +1289,7 @@ pub fn continue_step_chunked_l1_tx_v1(
   Transaction {
     ..placeholder,
     inputs: [ct_thread_input(asset_name)],
+    extra_signatories: [fraud_prover_key_hash],
     outputs: [next_step_output(asset_name, output_state_data)],
     reference_inputs: list.concat(
       [hub_reference_input(), state_queue_reference_input(fixture)],
@@ -1545,6 +1546,7 @@ pub fn continue_step_l1_tx_v1(
   Transaction {
     ..placeholder,
     inputs: [ct_thread_input(asset_name)],
+    extra_signatories: [fraud_prover_key_hash],
     outputs: [next_step_output(asset_name, output_state_data)],
     reference_inputs: [
       hub_reference_input(),
@@ -1576,6 +1578,7 @@ pub fn continue_step_l1_tx_with_carriage_v1(
   Transaction {
     ..placeholder,
     inputs: [ct_thread_input(asset_name)],
+    extra_signatories: [fraud_prover_key_hash],
     outputs: [next_step_output(asset_name, output_state_data)],
     reference_inputs: list.concat(
       [hub_reference_input(), state_queue_reference_input(fixture)],
@@ -1600,6 +1603,7 @@ pub fn continue_mid_step_l1_tx_v1(
   Transaction {
     ..placeholder,
     inputs: [ct_thread_input(asset_name)],
+    extra_signatories: [fraud_prover_key_hash],
     outputs: [next_step_output(asset_name, output_state_data)],
   }
 }
@@ -1615,6 +1619,7 @@ pub fn continue_same_step_l1_tx_v1(
   Transaction {
     ..placeholder,
     inputs: [ct_thread_input(asset_name)],
+    extra_signatories: [fraud_prover_key_hash],
     outputs: [
       Output { ..output, address: address.from_script(step_script_hash) },
     ],

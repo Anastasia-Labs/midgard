@@ -51,6 +51,7 @@ validator main(
           own_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
         expect Some(state) = input_state
         expect rule.scan_state_is_authentic_v1(state)

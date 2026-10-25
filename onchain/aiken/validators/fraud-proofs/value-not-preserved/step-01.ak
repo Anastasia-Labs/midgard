@@ -56,6 +56,7 @@ validator main(
           own_out_ref,
           tx.inputs,
           tx.outputs,
+          tx.extra_signatories,
         )
         expect input_state == None
         expect typed_claim: ConservationClaim = claim

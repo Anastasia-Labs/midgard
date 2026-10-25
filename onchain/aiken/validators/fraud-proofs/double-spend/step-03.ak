@@ -65,6 +65,7 @@ validator main(
           own_out_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
 
         expect Some(State { verified_tx1_id, verified_tx2_id }) = m_input_state_data

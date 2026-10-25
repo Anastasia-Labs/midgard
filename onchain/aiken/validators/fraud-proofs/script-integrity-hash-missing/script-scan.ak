@@ -63,6 +63,7 @@ validator main(
           own_out_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
         expect Some(state) = input_state
         expect ScriptScan { checkpoint_hash, contains_non_native_script } = state.phase

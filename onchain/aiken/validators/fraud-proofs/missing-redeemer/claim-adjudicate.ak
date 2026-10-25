@@ -38,6 +38,7 @@ validator main(
           own_ref,
           tx.inputs,
           tx.outputs,
+          tx.extra_signatories,
         )
         expect Some(state) = input_state
         let Pair(next_hash, expected) = when action is {

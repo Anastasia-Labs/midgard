@@ -73,6 +73,7 @@ validator main(
           own_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
         expect Some(bound) = state
         let view = opened_field_view(
