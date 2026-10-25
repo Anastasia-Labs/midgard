@@ -118,7 +118,15 @@ export type MidgardCekPinnedBuiltinResult =
 /**
  * Evaluates Cardano's builtin `tag` (Flat numbering) on `arguments_`, which
  * must be exactly its arguments. The Miller-loop builtins (68 to 70) are not
- * evaluated here. Throws only on input that is not a builtin application.
+ * evaluated here. A builtin that fails gives "failure"; this throws instead
+ * when:
+ * - the input is not a builtin application: an unknown tag, a Miller-loop
+ *   tag, or a wrong number of arguments;
+ * - a G1 or G2 argument is not a compressed point of its group, alone or in
+ *   a list of points (the evaluator refuses to uncompress it);
+ * - an argument or the result holds a BLS point other than alone or in a
+ *   list of points (inside a pair, say), which Flat cannot carry;
+ * - the Flat decoder refuses the result, or the result is not a constant.
  */
 export const evaluatePinnedBuiltin = (
   tag: number,
