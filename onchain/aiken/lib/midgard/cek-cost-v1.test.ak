@@ -150,3 +150,19 @@ test integer_to_bytes_budget_is_the_builtin_row() {
 test integer_to_bytes_budget_refuses_two_sizes() fail {
   cek_cost_v1.integer_to_bytes_budget_v1([1, 1]).cpu > 0
 }
+
+test write_bits_budget_is_the_builtin_row() {
+  list.all(
+    [[1, 0, 1], [513, 85, 1], [513, 170, 1], [4, 32768, 1], [0, 0, 0]],
+    fn(sizes) {
+      cek_cost_v1.write_bits_budget_v1(sizes) == cek_cost_v1.builtin_budget_v1(
+        80,
+        sizes,
+      )
+    },
+  )
+}
+
+test write_bits_budget_refuses_two_sizes() fail {
+  cek_cost_v1.write_bits_budget_v1([1, 1]).cpu > 0
+}

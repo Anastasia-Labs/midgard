@@ -1,5 +1,5 @@
 //// Transaction-level rows for integerToByteString (73) at the staged
-//// conversion semantics step (arm 31, group 5, semantics index 9): an input
+//// conversion semantics step (arm 31, group 5, semantics index 11): an input
 //// integer bound inline or from staging outputs by its canonical CBOR, a width
 //// revealed as a machine integer, and the endianness the committed Boolean.
 //// The step must accept exactly the bytes Cardano returns, and the budget hop
@@ -350,7 +350,7 @@ fn budget_routes(
   let hop = budget_step(73, step_arguments, bytes_value(result, False))
   budget.main.spend(
     list.map(
-      list.range(0, 9),
+      list.range(0, 11),
       fn(i) {
         if i == index {
           fixture.next_step_script_hash
@@ -371,7 +371,7 @@ fn charges_as_cardano(big_endian: Bool, width: Int, value: Int) -> Bool {
   budget_routes(
     arguments(big_endian, width, value),
     builtin.integer_to_bytearray(big_endian, width, value),
-    9,
+    11,
   )
 }
 
@@ -408,7 +408,7 @@ test the_budget_hop_refuses_the_charge_of_another_width() fail {
   budget_routes(
     arguments(True, 8192, value),
     builtin.integer_to_bytearray(True, 8184, value),
-    9,
+    11,
   )
 }
 

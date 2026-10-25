@@ -1,8 +1,8 @@
 /**
  * Rows of the `cek-staged-arm-v1` golden channel: staged arm 31 steps for
- * the byte-string, string and linear integer builtins, each with the verdict
- * both the Aiken staged semantics validators and the TypeScript verifier
- * must reach.
+ * the byte-string, string, linear integer, multiplyInteger and division
+ * builtins, each with the verdict both the Aiken staged semantics validators
+ * and the TypeScript verifier must reach.
  *
  * A row names its operand bytes by construction (`pattern`, `text`, repeated
  * bytes, joins and Integer CBOR), so the generated Aiken module rebuilds the
@@ -13,8 +13,9 @@
  * value an unbounded builtin would return past protocol version 11's
  * argument bounds.
  *
- * The rows live in `cek-staged-arm-v1.bytes-rows.mjs` and
- * `cek-staged-arm-v1.integer-rows.mjs`. Authored as plain ESM so the
+ * The rows live in `cek-staged-arm-v1.bytes-rows.mjs`,
+ * `cek-staged-arm-v1.integer-rows.mjs` and
+ * `cek-staged-arm-v1.product-rows.mjs`. Authored as plain ESM so the
  * generator loads them on bare `node`; the vitest suite drives the same rows
  * through `src/` and the generator through `dist/`.
  */
@@ -29,6 +30,7 @@ import { blake2b } from "@noble/hashes/blake2.js";
 
 import { BYTES_ROWS } from "./cek-staged-arm-v1.bytes-rows.mjs";
 import { INTEGER_ROWS } from "./cek-staged-arm-v1.integer-rows.mjs";
+import { PRODUCT_ROWS } from "./cek-staged-arm-v1.product-rows.mjs";
 import { bytesOf, integerCbor, valueOf } from "./cek-staged-arm-v1.kit.mjs";
 
 export { bytesOf, integerCbor, valueOf };
@@ -36,6 +38,7 @@ export { bytesOf, integerCbor, valueOf };
 export const CEK_STAGED_ARM_ROWS = Object.freeze([
   ...BYTES_ROWS,
   ...INTEGER_ROWS,
+  ...PRODUCT_ROWS,
 ]);
 
 // ## Building a row

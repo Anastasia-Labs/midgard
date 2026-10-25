@@ -17,15 +17,24 @@ export type StepRowPins = {
 /** The fixed seed set's catalogued steps. */
 export const STEP_FIXED_SET_PINS: StepRowPins = {
   vectors: {
+    "seed 4028760629 builtin 35": { serialiseLoop: 1 },
     "seed 4028760658 builtin 37": { nestedConstantCost: 1 },
+    "seed 4028760880 builtin 51": { serialiseLoop: 1 },
+    "seed 4028760881 builtin 51": { serialiseLoop: 1 },
+    "seed 4028760883 builtin 51": { serialiseLoop: 1 },
+    "seed 4028760884 builtin 51": { serialiseLoop: 1 },
     "seed 4028761122 builtin 66": { blsInvalidPointPending: 1 },
     "seed 4028761125 builtin 66": { blsInvalidPointPending: 1 },
   },
-  totals: { nestedConstantCost: 1, blsInvalidPointPending: 2 },
+  totals: {
+    nestedConstantCost: 1,
+    blsInvalidPointPending: 2,
+    serialiseLoop: 5,
+  },
 };
 
 /** The checked-in corpus's catalogued steps. */
 export const STEP_CORPUS_PINS: StepRowPins = {
-  vectors: {},
-  totals: {},
+  vectors: { "seed 4028760881 builtin 51": { serialiseLoop: 1 } },
+  totals: { serialiseLoop: 1 },
 };

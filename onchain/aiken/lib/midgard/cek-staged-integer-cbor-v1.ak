@@ -47,7 +47,7 @@ fn repeat_to(unit: ByteArray, length: Int) -> ByteArray {
 }
 
 /// True when the `full` segments from offset 2 all carry the full-segment head.
-fn full_heads_hold(cbor: ByteArray, full: Int) -> Bool {
+pub fn full_heads_hold(cbor: ByteArray, full: Int) -> Bool {
   let span = segment_span * full
   builtin.and_bytearray(
     False,
@@ -83,7 +83,7 @@ fn eight_payloads(cbor: ByteArray, at: Int) -> ByteArray {
 }
 
 /// The payloads of full segments `index` to `full - 1`, in order, then `tail`.
-fn payloads(
+pub fn payloads(
   cbor: ByteArray,
   index: Int,
   full: Int,

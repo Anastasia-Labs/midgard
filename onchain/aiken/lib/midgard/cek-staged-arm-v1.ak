@@ -77,7 +77,7 @@ const max_bounded_integer_argument_bytes = 32768
 
 // The type CBOR `decode_constant_type_v1` accepts is canonical, so a type is
 // recognised by comparing its CBOR with that type's one encoding.
-const integer_type_cbor =
+pub const integer_type_cbor =
   cek_constant_v1.encode_constant_type_v1(cek_constant_v1.IntegerConstant)
 
 const bytes_type_cbor =
@@ -143,7 +143,7 @@ type BoundBytesV1 {
   pieces: Option<List<ByteArray>>,
 }
 
-type ArmInputsV1 {
+pub type ArmInputsV1 {
   tag: Int,
   /// The committed arguments before the operands, which have no source: the
   /// padding of andByteString, orByteString and xorByteString.
@@ -422,7 +422,7 @@ fn bitwise_relation_v1(
   }
 }
 
-/// Semantics group 9: byteStringToInteger (74), integerToByteString (73),
+/// Semantics group 11: byteStringToInteger (74), integerToByteString (73),
 /// and shiftByteString (82) and rotateByteString (83), the only other tags the
 /// budget hop routes here (`semantic_group`).
 ///
@@ -719,7 +719,7 @@ fn little_endian_limbs_v1(
 
 /// An integer operand: its committed leaf's root, and its canonical CBOR read
 /// when its source reveals it.
-fn bind_integer_v1(
+pub fn bind_integer_v1(
   inputs: ArmInputsV1,
   argument: Pair<ValueWitnessV1, OperandSourceV1>,
   bounded: Bool,

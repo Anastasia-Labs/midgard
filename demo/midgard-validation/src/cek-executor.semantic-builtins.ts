@@ -1,8 +1,6 @@
 import { type MidgardCekDirectValueWitness } from "./cek-builtin.js";
 import { type MidgardCekConstantType } from "./cek-constant.js";
-import { encodeCardanoBytes } from "./cek-constant.semantic-data.js";
 import {
-  buildMidgardCekDataBytesNode,
   buildMidgardCekDataConstrNode,
   buildMidgardCekDataListNode,
   encodeMidgardCekDataTreeInteger,
@@ -52,7 +50,7 @@ const isConstr = (kind: string): boolean =>
   kind === "constrSmall" || kind === "constrLarge";
 
 /**
- * Executes one structural builtin (tags 29-37, 39-42 and 44-51) over the
+ * Executes one structural builtin (tags 29-37, 39-42 and 44-50) over the
  * authenticated payload roots of its arguments. Each result is built from
  * its arguments' nodes; only the nodes the result adds are created, and its
  * exact bytes, when it is revealed directly, are spliced from the bytes of
@@ -306,35 +304,6 @@ export const executeMidgardCekSemanticBuiltin = (
         buildMidgardCekDataListNode(store.items(new Uint8Array(0), 0n)),
       ),
       MIDGARD_CEK_SEMANTIC_EMPTY_MATERIAL,
-    );
-  }
-  if (tag === 51n) {
-    const source = resolve(0);
-    if (source.type.kind !== "data") {
-      throw new Error("serialiseData requires Data");
-    }
-    const limit = 9_215;
-    if (source.node.cborLength > BigInt(limit)) {
-      throw new Error(
-        "serialiseData source exceeds the exact L1 revealed-preimage envelope",
-      );
-    }
-    const raw = store.bytes(source.root);
-    if (raw.length > limit) {
-      throw new Error(
-        "serialiseData source exceeds the exact L1 revealed-preimage envelope",
-      );
-    }
-    return built(
-      BYTES,
-      store.addDataNode(buildMidgardCekDataBytesNode(raw, store.addBlob)),
-      {
-        dataNodes: [],
-        listNodes: [],
-        pairNodes: [],
-        scalarPreimages: [raw],
-      },
-      () => encodeCardanoBytes(raw),
     );
   }
   throw new Error(`unsupported CEK semantic builtin ${tag.toString()}`);

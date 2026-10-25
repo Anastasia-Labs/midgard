@@ -404,6 +404,69 @@ pub fn staged_step(
   )
 }
 
+/// The arm 31 witness for builtin `tag`.
+pub fn arm_witness(
+  tag: Int,
+  arguments: List<ValueWitnessV1>,
+  result: ValueWitnessV1,
+  step_material: StagedMaterialV1,
+) -> Data {
+  let arguments_data: Data = arguments
+  let result_data: Data = result
+  let material_data: Data = step_material
+  builtin.constr_data(
+    31,
+    [builtin.i_data(tag), arguments_data, result_data, material_data],
+  )
+}
+
+/// The facts the roots hop commits for these arguments and result.
+pub fn arm_facts(
+  arguments: List<ValueWitnessV1>,
+  result: ValueWitnessV1,
+) -> Data {
+  let facts: Data = chain.SemanticRoots {
+    roots: chain.BuiltinRoots {
+      arguments_root: #"",
+      arguments_count: list.length(arguments),
+      result_root: #"",
+      builtin_root: #"",
+    },
+    arguments: list.map(arguments, compact),
+    result: compact(result),
+  }
+  facts
+}
+
+fn bound_at(
+  witness: Data,
+  facts: Data,
+  mode: Int,
+  group: Int,
+  progress: Int,
+) -> chain.CoreBound {
+  let state = machine.MachineStateV1 {
+    mode,
+    execution_index: 0,
+    focus_root: #"",
+    environment_root: #"",
+    continuation_root: #"",
+    auxiliary: 0,
+    cpu: 0,
+    memory: 0,
+  }
+  chain.CoreBound {
+    prepared: builtin.constr_data(0, []),
+    pre: state,
+    post: state,
+    witness_hash: blake2b_256(cbor.serialise(witness)),
+    arm: 31,
+    group,
+    progress,
+    facts,
+  }
+}
+
 /// `staged_step` with the bound mode, group and progress chosen.
 pub fn staged_step_at(
   tag: Int,
@@ -415,43 +478,14 @@ pub fn staged_step_at(
   group: Int,
   progress: Int,
 ) -> StagedStepV1 {
-  let arguments_data: Data = arguments
-  let result_data: Data = result
-  let material_data: Data = step_material
-  let witness = builtin.constr_data(
-    31,
-    [builtin.i_data(tag), arguments_data, result_data, material_data],
-  )
-  let facts: Data = chain.SemanticRoots {
-    roots: chain.BuiltinRoots {
-      arguments_root: #"",
-      arguments_count: list.length(arguments),
-      result_root: #"",
-      builtin_root: #"",
-    },
-    arguments: list.map(arguments, compact),
-    result: compact(result),
-  }
-  let state = machine.MachineStateV1 {
+  let witness = arm_witness(tag, arguments, result, step_material)
+  let bound = bound_at(
+    witness,
+    arm_facts(arguments, result),
     mode,
-    execution_index: 0,
-    focus_root: #"",
-    environment_root: #"",
-    continuation_root: #"",
-    auxiliary: 0,
-    cpu: 0,
-    memory: 0,
-  }
-  let bound = chain.CoreBound {
-    prepared: builtin.constr_data(0, []),
-    pre: state,
-    post: state,
-    witness_hash: blake2b_256(cbor.serialise(witness)),
-    arm: 31,
     group,
     progress,
-    facts,
-  }
+  )
   let next: Data = chain.CoreBound { ..bound, progress: progress + 1 }
   StagedStepV1 {
     datum: Some(
@@ -465,6 +499,70 @@ pub fn staged_step_at(
     ),
     transaction: Transaction {
       ..fixture.continue_mid_step_l1_tx_v1(ct_asset, next),
+      reference_inputs,
+      extra_signatories: [fixture.fraud_prover_key_hash],
+    },
+  }
+}
+
+/// One hop of an arm 31 loop as the semantics hop receives it.
+pub type LoopStepV1 {
+  datum: Option<chain.CoreDatum>,
+  redeemer: chain.LoopRedeemer,
+  transaction: Transaction,
+}
+
+/// The facts a loop's bound carries with the cursor and state a hop left.
+pub fn loop_facts(inner: Data, cursor: Int, state: Data) -> Data {
+  builtin.constr_data(1, [inner, builtin.i_data(cursor), state])
+}
+
+/// The hop of an arm 31 loop over columns [cursor, end) for `witness` and the
+/// committed `facts`: from the start (`from` is `None`) or from the cursor and
+/// state a hop left. `next` is the state the hop's output carries, or `None`
+/// for the hop that ends the loop and continues to the next hop of the step.
+pub fn loop_step(
+  witness: Data,
+  facts: Data,
+  reference_inputs: List<Input>,
+  from: Option<Pair<Int, Data>>,
+  end: Int,
+  next: Option<Data>,
+) -> LoopStepV1 {
+  let bound = bound_at(
+    witness,
+    when from is {
+      None -> facts
+      Some(Pair(cursor, state)) -> loop_facts(facts, cursor, state)
+    },
+    machine.mode_builtin,
+    5,
+    3,
+  )
+  let transaction = when next is {
+    None ->
+      fixture.continue_mid_step_l1_tx_v1(
+        ct_asset,
+        chain.CoreBound { ..bound, facts, progress: 4 },
+      )
+    Some(state) ->
+      fixture.continue_same_step_l1_tx_v1(
+        ct_asset,
+        chain.CoreBound { ..bound, facts: loop_facts(facts, end, state) },
+      )
+  }
+  LoopStepV1 {
+    datum: Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(bound),
+      },
+    ),
+    redeemer: ct.Continue(
+      chain.LoopArm { input_index: 0, output_index: 0, witness, end },
+    ),
+    transaction: Transaction {
+      ..transaction,
       reference_inputs,
       extra_signatories: [fixture.fraud_prover_key_hash],
     },

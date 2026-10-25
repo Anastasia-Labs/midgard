@@ -52,6 +52,7 @@ import {
   verifySemanticChooseData,
   verifySemanticList,
 } from "./cek-machine.verify-semantic-list.js";
+import { verifyMidgardCekSerialiseBuiltin } from "./cek-serialise-builtin.js";
 import { midgardCekStagedBuiltinBudget } from "./cek-staged-builtin.budget.js";
 import { midgardCekStagedBuiltinFailureBudget } from "./cek-staged-builtin.failure.js";
 import type { MidgardCekStagedBuiltinMaterial } from "./cek-staged-builtin.material.js";
@@ -61,6 +62,7 @@ import {
   stageMidgardCekStagedBuiltinMaterial,
 } from "./cek-staged-builtin.material.js";
 import { verifyMidgardCekStagedBuiltin } from "./cek-staged-builtin.verify.js";
+import { verifyMidgardCekWriteBitsStep } from "./cek-write-bits-builtin.js";
 
 const verifySemanticBuiltin = (
   tag: bigint,
@@ -81,7 +83,7 @@ const verifySemanticBuiltin = (
   }
   return (
     tag >= 37n &&
-    tag <= 51n &&
+    tag <= 50n &&
     tag !== 38n &&
     tag !== 43n &&
     verifySemanticData(tag, arguments_, result, material)
@@ -268,15 +270,21 @@ const verifyBuiltin = (
       }),
     );
   }
-  if (witness.kind === "executeBuiltinStaged") {
+  if (
+    witness.kind === "executeBuiltinStaged" ||
+    witness.kind === "executeBuiltinSerialise"
+  ) {
+    const tag = witness.kind === "executeBuiltinStaged" ? witness.tag : 51n;
     if (
-      !builtinRootMatches(pre, witness.tag, witness.arguments) ||
-      !verifyStagedBuiltin(witness)
+      !builtinRootMatches(pre, tag, witness.arguments) ||
+      !(witness.kind === "executeBuiltinStaged"
+        ? verifyStagedBuiltin(witness)
+        : verifyMidgardCekSerialiseBuiltin(witness))
     ) {
       return false;
     }
     const budget = midgardCekStagedBuiltinBudget(
-      witness.tag,
+      tag,
       witness.arguments,
       witness.result,
     );
@@ -313,6 +321,11 @@ const verifyBuiltin = (
       )
     );
   }
+  if (
+    witness.kind === "executeBuiltinWriteBits" ||
+    witness.kind === "executeBuiltinWriteBitsFailure"
+  )
+    return verifyMidgardCekWriteBitsStep(pre, post, witness);
   if (witness.kind === "executeBuiltinStagedFailure") {
     // The staged failure hop charges a division by zero of a dividend of
     // 4,096 words in the range, and nothing for its other failures.

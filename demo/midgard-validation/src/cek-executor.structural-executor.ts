@@ -35,6 +35,7 @@ import {
   midgardCekBuiltinArgumentsFailKinds,
   type MidgardCekConstantValueWitness,
   midgardCekDirectBuiltinBudget,
+  midgardCekDirectStepArguments,
   type MidgardCekDirectValueWitness,
   type MidgardCekRuntimeValueWitness,
   presentMidgardCekDirectArgument,
@@ -1163,13 +1164,6 @@ export class StructuralExecutor {
       this.startMapConversion(pre, builtin.tag, directArguments, roots);
       return;
     }
-    if (
-      builtin.tag === 51n &&
-      directArguments[0]?.kind === "semanticConstant"
-    ) {
-      this.executeSemanticBuiltin(pre, builtin.tag, directArguments, roots);
-      return;
-    }
     if (isMidgardCekSemanticStep(builtin.tag, directArguments)) {
       this.executeSemanticBuiltin(pre, builtin.tag, directArguments, roots);
       return;
@@ -1230,22 +1224,23 @@ export class StructuralExecutor {
             )
           : builtinReturnSuccessor(
               pre,
-              this.addDirectResult(staged.result),
-              this.budget(builtin.tag, directArguments),
+              staged.root ?? this.addDirectResult(staged.result),
+              staged.budget ?? this.budget(builtin.tag, directArguments),
             ),
       );
       return;
     }
-    const evaluated = evaluateMidgardCekDirectBuiltin(
+    const presented = midgardCekDirectStepArguments(
       builtin.tag,
       directArguments,
     );
+    const evaluated = evaluateMidgardCekDirectBuiltin(builtin.tag, presented);
     if (evaluated.kind === "failure") {
       this.record(
         {
           kind: "executeBuiltinFailure",
           tag: builtin.tag,
-          arguments: directArguments,
+          arguments: presented,
         },
         exactState(pre, {
           mode: "haltError",
@@ -1257,10 +1252,6 @@ export class StructuralExecutor {
           memoryDelta: evaluated.budget.memory,
         }),
       );
-      return;
-    }
-    if (builtin.tag === 51n && evaluated.result.kind === "semanticConstant") {
-      this.executeSemanticBuiltin(pre, builtin.tag, directArguments, roots);
       return;
     }
     const resultRoot = this.addDirectResult(evaluated.result);

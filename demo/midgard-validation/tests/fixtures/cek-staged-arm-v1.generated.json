@@ -565,6 +565,192 @@
       "tag": 1,
       "accepts": true,
       "witnessHash": "e13e14a216e931432eee6a3a6a84cb1b0b2b346c234dd0f313572dbbfca664ed"
+    },
+    {
+      "name": "multiplies_5000_byte_operands",
+      "tag": 2,
+      "accepts": true,
+      "witnessHash": "4e5c09e420f45f5e2b30ce583cd7d35905eed7d4f371d6f2f53d31357fbd3ab5"
+    },
+    {
+      "name": "multiplies_to_a_negative_product",
+      "tag": 2,
+      "accepts": true,
+      "witnessHash": "1cc695660342185073c77caa7362eb779768557724d11ea333027a62e336e81d"
+    },
+    {
+      "name": "multiplies_by_zero",
+      "tag": 2,
+      "accepts": true,
+      "witnessHash": "15f8d3f06110b35b2e6ade2be1da3ceb1153f9bd8b8359cb70a134c2b596abe3"
+    },
+    {
+      "name": "multiplies_the_largest_argument_past_the_range",
+      "tag": 2,
+      "accepts": true,
+      "witnessHash": "0cb30cb2de6aaef8d2f298d8571fdaf8d47034a7da8b0e7bd21e34c7d815a050"
+    },
+    {
+      "name": "refuses_a_product_off_by_one",
+      "tag": 2,
+      "accepts": false,
+      "witnessHash": "75e680c81b946ff8de33f1b4b2c51455b0f728529f433ec37ad977df0c2ca4e4"
+    },
+    {
+      "name": "refuses_a_product_of_the_wrong_sign",
+      "tag": 2,
+      "accepts": false,
+      "witnessHash": "6bd2a2df482cfe9c3e34434886c6980d0db13a49d10daedc03f2e7cfbc8aa2d3"
+    },
+    {
+      "name": "refuses_a_product_of_an_argument_one_past_the_largest",
+      "tag": 2,
+      "accepts": false,
+      "witnessHash": "6da5ff37eb93ada4b52e7de8559f328e7b00a78a3e61d32cc25f16d795bf36b1"
+    },
+    {
+      "name": "divides_positive_by_positive",
+      "tag": 3,
+      "accepts": true,
+      "witnessHash": "3a956f06022b03e948d0da9c20ea5b8638a7a480c8572e48e4efca1f317e370f"
+    },
+    {
+      "name": "quotients_positive_by_positive",
+      "tag": 4,
+      "accepts": true,
+      "witnessHash": "411e155a49d33d17041e37b8e5705dce82336301a28b9ba2956b9179095b4f8d"
+    },
+    {
+      "name": "remainders_positive_by_positive",
+      "tag": 5,
+      "accepts": true,
+      "witnessHash": "df219a8a2cea6f82c8406e0173763a59a667588bb02dc0ad7fc08dc33962c194"
+    },
+    {
+      "name": "mods_positive_by_positive",
+      "tag": 6,
+      "accepts": true,
+      "witnessHash": "6a1583bbf93759ac5fdeefbeb123dc78596d5152f34097968175007e38e820e8"
+    },
+    {
+      "name": "divides_negative_by_positive",
+      "tag": 3,
+      "accepts": true,
+      "witnessHash": "c32930625f88c6a785150b0432781ad3993808643d174034161432008667e82c"
+    },
+    {
+      "name": "quotients_negative_by_positive",
+      "tag": 4,
+      "accepts": true,
+      "witnessHash": "acf25607d01d23bbcc1a88b9a459c7609308ea0fc21a614abb4cf4d214d13631"
+    },
+    {
+      "name": "remainders_negative_by_positive",
+      "tag": 5,
+      "accepts": true,
+      "witnessHash": "3ac8e661b4f60ed83c0ba2c54c5b3751ffe6d149f822cb03f1001c615835eccc"
+    },
+    {
+      "name": "mods_negative_by_positive",
+      "tag": 6,
+      "accepts": true,
+      "witnessHash": "b5b3c28c2ca224e97c3c047306cd5602e8de2dd4fb83303f7f26b11c78eab16d"
+    },
+    {
+      "name": "divides_positive_by_negative",
+      "tag": 3,
+      "accepts": true,
+      "witnessHash": "1c2d80b1fbbd3a9194e1f91171367f147a318ebbab75abb54ed6043a23dac06e"
+    },
+    {
+      "name": "quotients_positive_by_negative",
+      "tag": 4,
+      "accepts": true,
+      "witnessHash": "574b59c7d506573d001a94fbd1fbcd439b3dae772a38974e9a9c614a73bfee54"
+    },
+    {
+      "name": "remainders_positive_by_negative",
+      "tag": 5,
+      "accepts": true,
+      "witnessHash": "40a8b80abbaa83d55726be4dff52bf1f05ef3020a17ec6a44fb5f3fdefd62d36"
+    },
+    {
+      "name": "mods_positive_by_negative",
+      "tag": 6,
+      "accepts": true,
+      "witnessHash": "4ce011c46ece935936e4724c0c3ceaf8010c4c54686b4646854b6e2f633f8e36"
+    },
+    {
+      "name": "divides_negative_by_negative",
+      "tag": 3,
+      "accepts": true,
+      "witnessHash": "3333f25d1c685aaf9731c41d9eec63eb9acee60671771e4b73af2d4202b82c2a"
+    },
+    {
+      "name": "quotients_negative_by_negative",
+      "tag": 4,
+      "accepts": true,
+      "witnessHash": "64284c96a8419856fe7f260dff3a7171d5e7a7dbe2ba751a23d0c1b00505ba83"
+    },
+    {
+      "name": "remainders_negative_by_negative",
+      "tag": 5,
+      "accepts": true,
+      "witnessHash": "a12ba1637da3cc50bb8ca19c35303c5f598367e898944a21bce973feaf1d4024"
+    },
+    {
+      "name": "mods_negative_by_negative",
+      "tag": 6,
+      "accepts": true,
+      "witnessHash": "925614020ad2d5a6863a0a18eaae3a9a1c014ae08ee966405179caf7a24b4164"
+    },
+    {
+      "name": "divides_the_smallest_argument_by_minus_one_past_the_range",
+      "tag": 3,
+      "accepts": true,
+      "witnessHash": "814cd054a5b9813c379b68c4786d963158897d71c8166f619f183b989369e75c"
+    },
+    {
+      "name": "refuses_a_quotient_one_above",
+      "tag": 4,
+      "accepts": false,
+      "witnessHash": "6cf0c91d0d745fa95c732a925267ad17385e95bcc7a3e5736de872c1dcca6c7d"
+    },
+    {
+      "name": "refuses_a_divided_quotient_one_below",
+      "tag": 3,
+      "accepts": false,
+      "witnessHash": "30ddde60015f9a77843e6ba708a4c86451ec7b08c8164172b45923ac5324069c"
+    },
+    {
+      "name": "refuses_a_remainder_from_a_quotient_one_above",
+      "tag": 5,
+      "accepts": false,
+      "witnessHash": "df219a8a2cea6f82c8406e0173763a59a667588bb02dc0ad7fc08dc33962c194"
+    },
+    {
+      "name": "refuses_a_modulus_from_a_quotient_one_below",
+      "tag": 6,
+      "accepts": false,
+      "witnessHash": "6a1583bbf93759ac5fdeefbeb123dc78596d5152f34097968175007e38e820e8"
+    },
+    {
+      "name": "refuses_a_truncated_quotient_for_divide_integer",
+      "tag": 3,
+      "accepts": false,
+      "witnessHash": "cab029a6f91da1037b1cf899105cc283b370d6fe1b3187e132e4dfb8bd036e13"
+    },
+    {
+      "name": "refuses_a_floored_quotient_for_quotient_integer",
+      "tag": 4,
+      "accepts": false,
+      "witnessHash": "1f75e54ed22ae0185f91d67fc7830359473ca9263bdd7f10a1fa85cfe7ed44e4"
+    },
+    {
+      "name": "refuses_a_remainder_for_mod_integer",
+      "tag": 6,
+      "accepts": false,
+      "witnessHash": "57cbfdcdfa9006f19e91ed7116e0aff3cd054c0230bb665fd5d014bac366609f"
     }
   ]
 }

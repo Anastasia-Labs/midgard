@@ -23,6 +23,11 @@ import {
   harmonicBuiltinTag,
   MIDGARD_CEK_CARDANO_BLS_TAGS,
 } from "./cek-builtin.cardano-tags.js";
+import {
+  compactedDividendFailure,
+  compactedSourceFailure,
+  midgardCekDivisionByZero,
+} from "./cek-builtin.compacted-failures.js";
 import { MIDGARD_CEK_REFERENCE_BUILTIN_COSTS } from "./cek-builtin.reference-costs.js";
 import {
   constantOfReferenceValue,
@@ -225,6 +230,7 @@ export const referenceConstantToDirectWitness = (
 };
 
 const WRITE_BITS = 80;
+
 /** Protocol version 11 fails writeBits on an input over 4,096 bytes
  * (Plutus' `Bitwise.maximumInputLength`) whatever its indices; the pinned
  * reference evaluator has no such bound. */
@@ -259,51 +265,20 @@ export const evaluateMidgardCekBuiltinOnValues = (
   return result;
 };
 
-const [INT64_MIN, INT64_MAX] = [-(2n ** 63n), 2n ** 63n - 1n];
 /**
- * consByteString, sliceByteString, shiftByteString and rotateByteString over
- * a compacted byte string: their failures (a byte outside [0, 255], a start,
- * length or amount outside Int64) are decided by the revealed integers alone,
- * the byte string by its type, as the direct failure arm decides them. A
- * success needs the bytes, which a compacted byte string does not reveal.
+ * The arguments of a direct step of builtin `tag`: those given, except that
+ * a division by zero presents a dividend past the direct payload bound by
+ * its leaf, as the direct failure arm reads only its type and memory.
  */
-const compactedSourceFailure = (
+export const midgardCekDirectStepArguments = (
   tag: bigint,
   arguments_: readonly MidgardCekDirectValueWitness[],
-): "failure" => {
-  const integers = (
-    tag === 82n || tag === 83n ? arguments_.slice(1) : arguments_.slice(0, -1)
-  ).map(directInteger);
-  const fails =
-    tag === 11n
-      ? integers[0]! < 0n || integers[0]! > 255n
-      : integers.some((value) => value < INT64_MIN || value > INT64_MAX);
-  if (!fails) {
-    throw new Error("V1 builtin over a compacted byte string must fail");
-  }
-  return "failure";
-};
-const INTEGER_TYPE = Buffer.from("9f00ff", "hex");
-/**
- * A division builtin over a compacted dividend fails only on a zero divisor,
- * as the direct failure arm decides it from the dividend's type. A dividend
- * of 4,096 words or more is left to the staged failure hop, which reads from
- * its CBOR whether it is in range and so charged.
- */
-const compactedDividendFailure = (
-  arguments_: readonly MidgardCekDirectValueWitness[],
-): "failure" => {
-  const [dividend, divisor] = arguments_;
-  if (
-    dividend?.kind !== "semanticConstant" ||
-    !Buffer.from(dividend.witness.typeCbor).equals(INTEGER_TYPE) ||
-    dividend.witness.memory >= 4_096n ||
-    directInteger(divisor!) !== 0n
-  ) {
-    throw new Error("V1 division over a compacted dividend must fail by zero");
-  }
-  return "failure";
-};
+): readonly MidgardCekDirectValueWitness[] =>
+  midgardCekDivisionByZero(tag, arguments_) &&
+  directWitnessPayloadBytes(arguments_) >
+    BigInt(MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES)
+    ? [semanticizeMidgardCekDirectConstant(arguments_[0]!), arguments_[1]!]
+    : arguments_;
 
 const evaluateReferenceBuiltin = (
   tag: bigint,
@@ -311,6 +286,7 @@ const evaluateReferenceBuiltin = (
 ): MidgardCekDirectValueWitness | "failure" => {
   const control = selectedControlResult(tag, arguments_);
   if (control !== null) return control;
+  if (midgardCekDivisionByZero(tag, arguments_)) return "failure";
   if (tag === 68n) {
     if (arguments_.length !== 2) {
       throw new Error("BLS millerLoop requires two arguments");

@@ -70,12 +70,12 @@ const stagedFailureTag = (tag: bigint): boolean =>
 /** The staged semantic stage of each staged `semantic_group(tag)`, the
  * groups past `CEK_CORE_SEMANTIC_STAGES` (cek-semantic-chain): the
  * byte-string, string and signature builtins (7), the linear integer
- * builtins (8), and byteStringToInteger, shiftByteString and
- * rotateByteString (9). */
+ * builtins (8), and integerToByteString, byteStringToInteger,
+ * shiftByteString and rotateByteString (11). */
 export const CEK_CORE_STAGED_SEMANTIC_STAGES = Object.freeze({
   7: "stagedBytes",
   8: "stagedInteger",
-  9: "stagedConversion",
+  11: "stagedConversion",
 } as const);
 
 export type CekCoreStagedSemanticStage =
@@ -87,7 +87,7 @@ export const cekCoreStagedSemanticStage = (
   tag: bigint,
 ): CekCoreStagedSemanticStage | null => {
   const group = midgardCekSemanticGroup(tag);
-  return group === 7 || group === 8 || group === 9
+  return group === 7 || group === 8 || group === 11
     ? CEK_CORE_STAGED_SEMANTIC_STAGES[group]
     : null;
 };

@@ -22,8 +22,8 @@ import {
  * evaluator's 9,215-byte bounds: a direct builtin whose arguments and result
  * together pass the direct payload bound (equalsByteString, appendByteString,
  * decodeUtf8), which the staged route proves instead, and serialiseData of
- * Data whose CBOR passes the revealed-preimage envelope, which no route
- * proves. Cardano accepts each one. Every row has the step past the bound and
+ * Data whose CBOR passes the revealed-preimage envelope, which the serialise
+ * loop proves. Cardano accepts each one. Every row has the step past the bound and
  * one byte under it, each in an accepting script and in one that fails on its
  * own after the step.
  */
@@ -87,8 +87,6 @@ const decoded = (length: number) =>
 
 export type PayloadBoundRow = Readonly<{
   label: string;
-  /** Whether proof mode proves the step past the bound on the staged route. */
-  staged: boolean;
   /** Past the bound, accepting. */
   over: ProgramSpend;
   /** Past the bound, then failing on its own. */
@@ -109,7 +107,6 @@ export const payloadBoundRows = (
   return [
     {
       label: "equalsByteString over two 4,465-byte strings",
-      staged: true,
       over: spendOf(equalStrings(4_465)),
       overFailing: spendOf(equalStrings(4_465, 0x62)),
       under: spendOf(equalStrings(4_464)),
@@ -117,7 +114,6 @@ export const payloadBoundRows = (
     },
     {
       label: "appendByteString of two 2,233-byte strings",
-      staged: true,
       over: spendOf(appendStrings(2_233)),
       overFailing: spendOf(appendStrings(2_233, 0)),
       under: spendOf(appendStrings(2_232)),
@@ -125,7 +121,6 @@ export const payloadBoundRows = (
     },
     {
       label: "serialiseData of two 4,465-byte strings in a list",
-      staged: false,
       over: spendOf(discard(serialised(4_465))),
       overFailing: spendOf(thenFail(serialised(4_465))),
       under: spendOf(discard(serialised(4_464))),
@@ -133,7 +128,6 @@ export const payloadBoundRows = (
     },
     {
       label: "decodeUtf8 of a 4,466-byte string",
-      staged: true,
       over: spendOf(discard(decoded(4_466))),
       overFailing: spendOf(thenFail(decoded(4_466))),
       under: spendOf(discard(decoded(4_465))),

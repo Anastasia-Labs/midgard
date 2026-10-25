@@ -267,6 +267,25 @@ export type MidgardCekCoreStepWitness =
       readonly stagedOperands: readonly Bytes[];
     }
   | {
+      // serialiseData (51) proved by the serialise loop over the staged
+      // bytes of its result. `serialised` holds those bytes; it is staged,
+      // not encoded.
+      readonly kind: "executeBuiltinSerialise";
+      readonly arguments: readonly MidgardCekDirectValueWitness[];
+      readonly result: MidgardCekDirectValueWitness;
+      readonly serialised: Bytes;
+    }
+  | {
+      // writeBits (80) over an input of at most 4,096 bytes, proved by the
+      // writeBits loop over its index list. `input` and `indices` hold what
+      // the loop's hops reveal; they are not encoded.
+      readonly kind: "executeBuiltinWriteBits";
+      readonly arguments: readonly MidgardCekDirectValueWitness[];
+      readonly result: MidgardCekDirectValueWitness;
+      readonly input: Bytes;
+      readonly indices: readonly bigint[];
+    }
+  | {
       readonly kind: "startBuiltinMapConversion";
       readonly tag: bigint;
       readonly arguments: readonly MidgardCekDirectValueWitness[];
@@ -320,6 +339,16 @@ export type MidgardCekCoreStepWitness =
       readonly arguments: readonly MidgardCekDirectValueWitness[];
       readonly material: MidgardCekStagedBuiltinMaterial;
       readonly stagedOperands: readonly Bytes[];
+    }
+  | {
+      // writeBits (80) failing on an index outside its input of at most
+      // 4,096 bytes (arm 36), proved by the writeBits loop's walk over its
+      // compacted arguments. `input` and `indices` hold what the walk's hops
+      // reveal; they are not encoded.
+      readonly kind: "executeBuiltinWriteBitsFailure";
+      readonly arguments: readonly MidgardCekDirectValueWitness[];
+      readonly input: Bytes;
+      readonly indices: readonly bigint[];
     }
   | {
       readonly kind: "executeBuiltinBlsFinal";

@@ -310,7 +310,7 @@ describe("V1 CEK trace generator", () => {
     expect(failed.steps.at(-1)?.witness.kind).toBe("executeBuiltinFailure");
   });
 
-  it("routes tag-51 direct results to semantic witnesses only past the boundary", () => {
+  it("routes tag-51 direct results to the serialise loop only past the boundary", () => {
     const emptyDirectProgram = buildCekProgramFromRawFlat(
       compile(
         new Application(
@@ -358,29 +358,29 @@ describe("V1 CEK trace generator", () => {
       constantWitnesses: largeProgram.constantWitnesses,
       maxSteps: 32,
     });
-    const largeSemanticStep = large.steps.find(
-      (step) => step.witness.kind === "executeBuiltinSemantic",
+    const largeSerialiseStep = large.steps.find(
+      (step) => step.witness.kind === "executeBuiltinSerialise",
     );
-    expect(largeSemanticStep?.witness.kind).toBe("executeBuiltinSemantic");
-    if (largeSemanticStep?.witness.kind === "executeBuiltinSemantic") {
-      expect(largeSemanticStep.witness.tag).toBe(51n);
-      expect(largeSemanticStep.witness.result.kind).toBe("semanticConstant");
-      expect(largeSemanticStep.witness.material.dataNodes).toHaveLength(0);
-      expect(largeSemanticStep.witness.material.listNodes).toHaveLength(0);
-      expect(largeSemanticStep.witness.material.pairNodes).toHaveLength(0);
-      expect(
-        largeSemanticStep.witness.material.scalarPreimages[0]?.length,
-      ).toBe(9_002);
-      expect(largeSemanticStep.post.cpu - largeSemanticStep.pre.cpu).toBe(
+    expect(largeSerialiseStep?.witness.kind).toBe("executeBuiltinSerialise");
+    if (largeSerialiseStep?.witness.kind === "executeBuiltinSerialise") {
+      const serialised = Buffer.from(largeSerialiseStep.witness.serialised);
+      expect(serialised).toEqual(
+        Buffer.from(encodeMidgardCekPlutusData(largeData)),
+      );
+      expect(serialised).toHaveLength(9_002);
+      expect(largeSerialiseStep.post.cpu - largeSerialiseStep.pre.cpu).toBe(
         9_600_848_754n,
       );
-      expect(largeSemanticStep.post.memory - largeSemanticStep.pre.memory).toBe(
-        90_008n,
-      );
-      if (largeSemanticStep.witness.result.kind === "semanticConstant") {
-        expect(
-          largeSemanticStep.witness.result.witness.payload.cborLength,
-        ).toBe(9_286n);
+      expect(
+        largeSerialiseStep.post.memory - largeSerialiseStep.pre.memory,
+      ).toBe(90_008n);
+      const { result } = largeSerialiseStep.witness;
+      expect(result.kind).toBe("semanticConstant");
+      if (result.kind === "semanticConstant") {
+        expect(result.witness.payload.cborLength).toBe(9_286n);
+        expect(result.witness.payload.root).toEqual(
+          commitMidgardCekDataTree(new DataB(serialised)).root,
+        );
       }
     }
     expect(large.terminalState.mode).toBe("haltSuccess");
@@ -391,7 +391,7 @@ describe("V1 CEK trace generator", () => {
     ).toBe(true);
   }, 15_000);
 
-  it("proves semantic tag-51 zero-count control with its exact result and budget", () => {
+  it("proves tag-51 over a semantic empty list with the serialise loop, its exact result and budget", () => {
     const program = buildCekProgramFromRawFlat(
       compile(
         new Lambda(new Application(builtin("serialiseData"), new UPLCVar(0))),
@@ -408,30 +408,23 @@ describe("V1 CEK trace generator", () => {
       constantWitnesses: graph.constantWitnesses,
       maxSteps: 64,
     });
-    const semantic = execution.steps.find(
-      (step) => step.witness.kind === "executeBuiltinSemantic",
+    const serialise = execution.steps.find(
+      (step) => step.witness.kind === "executeBuiltinSerialise",
     );
-    expect(semantic?.witness.kind).toBe("executeBuiltinSemantic");
-    if (semantic?.witness.kind === "executeBuiltinSemantic") {
-      expect(semantic.witness.tag).toBe(51n);
-      expect(semantic.witness.material.dataNodes).toHaveLength(0);
-      expect(semantic.witness.material.listNodes).toHaveLength(0);
-      expect(semantic.witness.material.pairNodes).toHaveLength(0);
-      expect(semantic.witness.material.scalarPreimages).toEqual([
+    expect(serialise?.witness.kind).toBe("executeBuiltinSerialise");
+    if (serialise?.witness.kind === "executeBuiltinSerialise") {
+      expect(Buffer.from(serialise.witness.serialised)).toEqual(
         Buffer.from([0x80]),
-      ]);
-      expect(semantic.witness.result.kind).toBe("constant");
-      if (semantic.witness.result.kind === "constant") {
-        const decoded = decodeMidgardCekConstantWitness(
-          semantic.witness.result.witness,
+      );
+      const { result } = serialise.witness;
+      expect(result.kind).toBe("semanticConstant");
+      if (result.kind === "semanticConstant") {
+        expect(result.witness.payload.root).toEqual(
+          commitMidgardCekDataTree(new DataB(Buffer.from([0x80]))).root,
         );
-        expect(decoded.payload).toBeInstanceOf(DataB);
-        if (decoded.payload instanceof DataB) {
-          expect(decoded.payload.bytes).toEqual(Buffer.from([0x80]));
-        }
       }
-      expect(semantic.post.cpu - semantic.pre.cpu).toBe(1_808_754n);
-      expect(semantic.post.memory - semantic.pre.memory).toBe(8n);
+      expect(serialise.post.cpu - serialise.pre.cpu).toBe(1_808_754n);
+      expect(serialise.post.memory - serialise.pre.memory).toBe(8n);
     }
     expect(execution.terminalState.mode).toBe("haltSuccess");
     expect(

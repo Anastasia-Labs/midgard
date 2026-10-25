@@ -39,6 +39,9 @@ import * as orderPins from "./helpers/deployable-catalogue-order-pins.js";
 import { withRealEventHistoryForTest } from "./helpers/event-history.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
+/** The manifest and publication lengths before the staged-operand additions. */
+const PRE_CEK_STAGED_LENGTHS = [576, 571] as const;
+
 const orderDigest = (value: unknown): string =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
@@ -141,7 +144,9 @@ describe("deployable-script catalogue", () => {
   it("pins the manifest order of contracts and roles", () => {
     for (const contracts of [real, placeholder]) {
       const manifest = manifestDeployableScripts(contracts);
-      expect(manifest).toHaveLength(580);
+      expect(manifest).toHaveLength(
+        PRE_CEK_STAGED_LENGTHS[0] + cekStagedContracts.size,
+      );
       expect(orderDigest(manifest.map(({ contract }) => contract))).toEqual(
         orderPins.MANIFEST_CONTRACT_ORDER_DIGEST,
       );
@@ -153,7 +158,9 @@ describe("deployable-script catalogue", () => {
 
   it("pins the publication and per-command orders", () => {
     const realTargets = nodeRuntimeReferenceScriptTargets(real);
-    expect(realTargets).toHaveLength(575);
+    expect(realTargets).toHaveLength(
+      PRE_CEK_STAGED_LENGTHS[1] + cekStagedRoles.size,
+    );
     expect(orderDigest(realTargets.map(({ name }) => name))).toEqual(
       orderPins.REAL_PUBLICATION_ORDER_DIGEST,
     );
@@ -178,7 +185,7 @@ describe("deployable-script catalogue", () => {
     expectOrdersWithout([real, placeholder], {
       contracts: [],
       roles: [],
-      lengths: [576, 571],
+      lengths: PRE_CEK_STAGED_LENGTHS,
       pins: {
         manifestContract:
           orderPins.PRE_CEK_STAGED_MANIFEST_CONTRACT_ORDER_DIGEST,

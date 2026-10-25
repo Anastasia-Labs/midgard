@@ -1,6 +1,7 @@
 /**
  * The staged semantic arms (arm 31, semantics groups 7, 8 and 9): the
- * TypeScript twin of `cek_staged_arm_v1`.
+ * TypeScript twin of `cek_staged_arm_v1` and, for multiplyInteger and the
+ * divisions (group 9), of the result `cek_staged_product_v1` verifies.
  *
  * Every argument and the result are compared in the compacted form the roots
  * hop commits. Each argument is bound to its committed leaf through its
@@ -42,20 +43,22 @@ import type {
   MidgardCekStagedBuiltinMaterial,
   MidgardCekStagedOperandSource,
 } from "./cek-staged-builtin.material.js";
+import { verifyConversionGroup } from "./cek-staged-conversion.verify.js";
+import {
+  midgardCekStagedSourceCount,
+  verifyMidgardCekStagedProduct,
+} from "./cek-staged-product.verify.js";
 
 /**
- * The builtins the staged arms prove: addInteger, subtractInteger,
- * equalsInteger, lessThanInteger, lessThanEqualsInteger, the byte-string,
- * string, bitwise and signature builtins of semantics group 7, and
- * integerToByteString, byteStringToInteger, shiftByteString and
- * rotateByteString (group 9).
+ * The builtins the staged arms prove: the integer builtins up to
+ * lessThanEqualsInteger, the byte-string, string, bitwise and signature
+ * builtins of semantics group 7, and integerToByteString,
+ * byteStringToInteger, shiftByteString and rotateByteString (group 11).
  */
 export const midgardCekStagedBuiltinProves = (tag: bigint): boolean =>
   midgardCekSemanticGroup(tag) === 7 ||
-  midgardCekSemanticGroup(tag) === 9 ||
-  tag === 0n ||
-  tag === 1n ||
-  (tag >= 7n && tag <= 9n);
+  midgardCekSemanticGroup(tag) === 11 ||
+  (tag >= 0n && tag <= 9n);
 
 /** The canonical CBOR length of a byte string of 65,536 bytes. */
 export const MIDGARD_CEK_STAGED_MAX_BOUNDED_BYTES_CBOR_LENGTH = 67_586n;
@@ -81,7 +84,7 @@ export const sameCompacted = (left: Compacted, right: Compacted): boolean =>
   left.payload.memory === right.payload.memory &&
   left.memory === right.memory;
 
-const compact = (value: MidgardCekDirectValueWitness): Compacted => {
+export const compact = (value: MidgardCekDirectValueWitness): Compacted => {
   const compacted = semanticizeMidgardCekDirectConstant(value);
   if (compacted.kind !== "semanticConstant") return refuse("not a constant");
   return compacted.witness;
@@ -190,7 +193,7 @@ const INT64_MIN = -(2n ** 63n);
 const INT64_MAX = 2n ** 63n - 1n;
 
 /** The value of an integer argument of a byte-string builtin. */
-const smallInteger = ([value, source]: readonly [
+export const smallInteger = ([value, source]: readonly [
   Compacted,
   MidgardCekStagedOperandSource,
 ]): bigint => {
@@ -224,7 +227,7 @@ export const scalarOperands = <T>(
 /** A committed Boolean argument: the padding of andByteString,
  * orByteString and xorByteString, or byteStringToInteger's endianness, each
  * before the operands. */
-const committedBoolean = (leading: readonly Compacted[]): CEKConst => {
+export const committedBoolean = (leading: readonly Compacted[]): CEKConst => {
   const [committed] = leading;
   if (leading.length !== 1) return refuse("committed Boolean");
   const value = [true, false].find((candidate) =>
@@ -323,6 +326,18 @@ export const integerInRange = (
   );
 };
 
+/** The bytes an inline or staged source reveals. */
+const sourceCbor = (
+  inputs: ArmInputs,
+  source: MidgardCekStagedOperandSource,
+): Buffer => {
+  if (source.kind === "inline") return Buffer.from(source.bytes);
+  if (source.kind === "staged") {
+    return Buffer.concat(stagedOperand(inputs, source.operand).chunks);
+  }
+  return refuse("operand source");
+};
+
 export const bindInteger = (
   inputs: ArmInputs,
   [value, source]: readonly [Compacted, MidgardCekStagedOperandSource],
@@ -336,14 +351,7 @@ export const bindInteger = (
     }
     return { root: value.payload.root, integer: null };
   }
-  let cbor: Buffer;
-  if (source.kind === "inline") {
-    cbor = Buffer.from(source.bytes);
-  } else if (source.kind === "staged") {
-    cbor = Buffer.concat(stagedOperand(inputs, source.operand).chunks);
-  } else {
-    return refuse("operand source");
-  }
+  const cbor = sourceCbor(inputs, source);
   const integer = parseMidgardCekCanonicalIntegerCbor(cbor);
   const words = midgardCekCanonicalIntegerMagnitudeWords(integer);
   const leaf = midgardCekIntegerLeafFromCbor({
@@ -388,68 +396,6 @@ const verifyInteger = (inputs: ArmInputs): boolean => {
 };
 
 /**
- * Semantics group 9. byteStringToInteger over at most 65,536 bytes, and
- * shiftByteString or rotateByteString over any length (protocol version 11
- * bounds neither) by the amount the second source reveals, read an input
- * bound inline or from staging outputs by the first source.
- * integerToByteString reads the width the first source reveals and an input
- * bound by its canonical CBOR through the second. Endianness is the
- * committed Boolean.
- */
-const verifyGroupNine = (
-  tag: bigint,
-  arguments_: readonly MidgardCekDirectValueWitness[],
-  result: MidgardCekDirectValueWitness,
-  material: MidgardCekStagedBuiltinMaterial,
-  referenceInputs: readonly MidgardCekStagedReferenceInput[],
-): boolean => {
-  const compacted = arguments_.map(compact);
-  const { sources } = material;
-  const inputs: ArmInputs = {
-    tag: Number(tag),
-    arguments: [],
-    result: compact(result),
-    runs: collectMidgardCekStagedRuns(referenceInputs, material.runs.refs),
-    operands: material.runs.operands,
-  };
-  let values: CEKConst[];
-  if (tag === 73n) {
-    const [endianness, width, input] = compacted;
-    if (compacted.length !== 3 || sources.length !== 2) return false;
-    const { integer } = bindInteger(inputs, [input!, sources[1]!], false);
-    if (integer === null) return false;
-    values = [
-      committedBoolean([endianness!]),
-      CEKConst.int(smallInteger([width!, sources[0]!])),
-      CEKConst.int(integer),
-    ];
-  } else {
-    const conversion = tag === 74n;
-    const [first, second] = compacted;
-    if (compacted.length !== 2) return false;
-    if (sources.length !== (conversion ? 1 : 2)) return false;
-    const bound = bindBytes(
-      inputs,
-      [conversion ? second! : first!, sources[0]!],
-      false,
-      conversion,
-    );
-    if (bound.bytes === null) return false;
-    // The bound bytes are a fresh copy, which the reference
-    // byteStringToInteger may reverse in place.
-    const bytes = CEKConst.byteString(bound.bytes);
-    values = conversion
-      ? [committedBoolean([first!]), bytes]
-      : [bytes, CEKConst.int(smallInteger([second!, sources[1]!]))];
-  }
-  const evaluated = evaluateMidgardCekBuiltinOnValues(Number(tag), values);
-  return (
-    evaluated !== "failure" &&
-    sameCompacted(inputs.result, compactValue(evaluated))
-  );
-};
-
-/**
  * Whether the staged arm accepts builtin `tag` over `arguments_` (as the
  * binder presents them) returning `result`, with `material` read against the
  * transaction's `referenceInputs`.
@@ -463,8 +409,8 @@ export const verifyMidgardCekStagedBuiltin = (
 ): boolean => {
   try {
     const group = midgardCekSemanticGroup(tag);
-    if (group === 9) {
-      return verifyGroupNine(
+    if (group === 11) {
+      return verifyConversionGroup(
         tag,
         arguments_,
         result,
@@ -472,12 +418,17 @@ export const verifyMidgardCekStagedBuiltin = (
         referenceInputs,
       );
     }
-    if (group !== 7 && group !== 8) return false;
+    if (group !== 7 && group !== 8 && group !== 9) return false;
     const compacted = arguments_.map(compact);
     // The logical builtins' padding precedes the operands and has no source.
     const leading = compacted.slice(0, tag >= 75n && tag <= 77n ? 1 : 0);
     const operands = compacted.slice(leading.length);
-    if (operands.length !== material.sources.length) return false;
+    if (
+      midgardCekStagedSourceCount(tag, operands.length) !==
+      material.sources.length
+    ) {
+      return false;
+    }
     const inputs: ArmInputs = {
       tag: Number(tag),
       arguments: operands.map(
@@ -487,6 +438,22 @@ export const verifyMidgardCekStagedBuiltin = (
       runs: collectMidgardCekStagedRuns(referenceInputs, material.runs.refs),
       operands: material.runs.operands,
     };
+    if (group === 9) {
+      return verifyMidgardCekStagedProduct(
+        tag,
+        inputs.arguments,
+        inputs.result,
+        material.sources.slice(operands.length),
+        {
+          bind: (value, source, bounded) =>
+            bindInteger(inputs, [value, source], bounded).integer,
+          read: (source) =>
+            midgardCekCanonicalIntegerValue(
+              parseMidgardCekCanonicalIntegerCbor(sourceCbor(inputs, source)),
+            ),
+        },
+      );
+    }
     return group === 7 ? verifyBytes(inputs, leading) : verifyInteger(inputs);
   } catch {
     return false;

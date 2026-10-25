@@ -200,6 +200,16 @@ pub fn integer_to_bytes_budget_v1(sizes: List<Int>) -> BuiltinBudgetV1 {
   }
 }
 
+/// The budget of writeBits (80) over its three argument sizes (the input's
+/// memory, the index count and the value's memory): `builtin_budget_v1`'s row
+/// for it, without the other builtins.
+pub fn write_bits_budget_v1(sizes: List<Int>) -> BuiltinBudgetV1 {
+  BuiltinBudgetV1 {
+    cpu: linear3_y(281145, 18848, sizes),
+    memory: linear3_x(0, 1, sizes),
+  }
+}
+
 pub fn builtin_argument_count_v1(tag: Int) -> Int {
   expect and {
       tag >= 0,

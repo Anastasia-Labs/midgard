@@ -1,5 +1,5 @@
 //// Transaction-level rows for the staged conversion semantics step (arm 31,
-//// group 5, semantics index 9): byteStringToInteger over an input bound
+//// group 5, semantics index 11): byteStringToInteger over an input bound
 //// inline or from staging outputs, of at most 65,536 bytes, and
 //// shiftByteString and rotateByteString over an input of any length. The
 //// step must accept exactly the integer Cardano returns, in either byte
@@ -427,7 +427,7 @@ fn routes_to(tag: Int, arguments: List<ValueWitnessV1>, index: Int) -> Bool {
   let step = budget_step(tag, arguments, integer_value(1))
   budget.main.spend(
     list.map(
-      list.range(0, 9),
+      list.range(0, 11),
       fn(i) {
         if i == index {
           fixture.next_step_script_hash
@@ -451,7 +451,7 @@ test the_budget_hop_routes_a_conversion_here_at_the_bound() {
       routes_to(
         74,
         [boolean_value(big_endian), bytes_value(input(65536, 1), False)],
-        9,
+        11,
       )
     },
   )
@@ -953,12 +953,12 @@ test the_budget_hop_routes_shifts_and_rotations_here() {
         routes_to(
           tag,
           [bytes_value(pattern(65536, 1), False), integer_value(-3)],
-          9,
+          11,
         ),
         routes_to(
           tag,
           [semantic_pieces(max_shape_pieces(), False), integer_value(8003)],
-          9,
+          11,
         ),
       }
     },

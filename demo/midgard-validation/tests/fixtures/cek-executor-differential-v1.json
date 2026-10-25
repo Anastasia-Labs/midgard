@@ -373,7 +373,7 @@
       "steps": 904,
       "stopReason": "halted",
       "terminal": "be4c1eb39821d859679d3ba9f2f2fda01fe385be84c95f14373ed3f238784747",
-      "digest": "ad5eb0b9bdfdaa48864b2ebf71bb1a9228a0d767615ccde9544115ca5975f908"
+      "digest": "44882b2fecc566eb6ae8988e006041b17accf88b535adcc49b57ba52c512c6fc"
     },
     "verdict": {
       "throws": false,
@@ -469,7 +469,7 @@
       "steps": 28,
       "stopReason": "halted",
       "terminal": "20177603907f518df57ecac767cc8d1b82ff1ef13cb34ba8588c7d3f5a54dd14",
-      "digest": "727515616d8642c9bffb7858de78389ca436019746c7986726cf3f5db06b9f59"
+      "digest": "091b4957eedb33792f4bd75b25dda8f767d0ec3eff2db0fdec29c34359d8505d"
     },
     "verdict": {
       "throws": false,
@@ -485,7 +485,7 @@
       "steps": 32,
       "stopReason": "halted",
       "terminal": "e2ae864c70ce9fe8d4c0f8584bcf90ed4881ccb87a5e39d06c65aaaf53e3f1ca",
-      "digest": "a5e4f30ddea2ddad8b8eb8d16069ab2f6de061a1d1771a990479284128abd124"
+      "digest": "120beb3d3ac0b10d961869216a8077d90597950217a1417bdf277f79a13a0e50"
     },
     "verdict": {
       "throws": false,
@@ -533,7 +533,7 @@
       "steps": 28,
       "stopReason": "halted",
       "terminal": "149533d479019dfd6dba6e4b416303eea5cd9dd0a8fb1195ddd8acd796790ea2",
-      "digest": "27be71c8dd8de43dfe06b82db98eb323aa33a4f4034f1b321bda59358d9a58aa"
+      "digest": "054c045dbb15713d0b66815929dbe5179b91ab9534e62e20b8c50ec872a553c1"
     },
     "verdict": {
       "throws": false,
@@ -549,7 +549,7 @@
       "steps": 32,
       "stopReason": "halted",
       "terminal": "c7aa1d5b17162acff82686dccb3e9eaf6188deac2645c662a981e253b5586b31",
-      "digest": "ea4af651dfa7221730204b208a4e9a56c59cadf633e2e2a4cff040a06e0c569f"
+      "digest": "1d36d3e62149469ca4239417c1e1620f32a84106fc8bf4bdaf2a275a7ec1670b"
     },
     "verdict": {
       "throws": false,
@@ -597,7 +597,7 @@
       "steps": 28,
       "stopReason": "halted",
       "terminal": "149533d479019dfd6dba6e4b416303eea5cd9dd0a8fb1195ddd8acd796790ea2",
-      "digest": "d3ced55e844911068392a9d9fc025f63fdbf52ff378911bc2a849fbe52d3c8b4"
+      "digest": "daf38a3aaea3d4e499ad7e81ac6e5c3e6740dd0766d5854ff022af07400c307f"
     },
     "verdict": {
       "throws": false,
@@ -609,10 +609,18 @@
   },
   "serialiseData of a constructor at 9216 bytes": {
     "proof": {
-      "throws": true
+      "throws": false,
+      "steps": 32,
+      "stopReason": "halted",
+      "terminal": "c7aa1d5b17162acff82686dccb3e9eaf6188deac2645c662a981e253b5586b31",
+      "digest": "8789ecbafd445a727fcbbf00a3dad377953f3c7f7296adc7ca653eecefa89943"
     },
     "verdict": {
-      "throws": true
+      "throws": false,
+      "steps": 32,
+      "stopReason": "halted",
+      "terminal": "c7aa1d5b17162acff82686dccb3e9eaf6188deac2645c662a981e253b5586b31",
+      "digest": "50f804234ecf4ae2912fc1880750f46b26fc2a44f8ac90f7e6e7ff1e813cc079"
     }
   },
   "pair list at 9214 bytes": {
@@ -653,7 +661,7 @@
       "steps": 28,
       "stopReason": "halted",
       "terminal": "149533d479019dfd6dba6e4b416303eea5cd9dd0a8fb1195ddd8acd796790ea2",
-      "digest": "ab518210734fb24b51abed802039487cd517fb2053ac96ff7e5b43f8d97f1b9c"
+      "digest": "9e03151002bc30afd17df2936a38bd8c90c3ff37504c44b4f36561cf12205ef7"
     },
     "verdict": {
       "throws": false,
@@ -665,10 +673,18 @@
   },
   "serialiseData of a constructor at 9217 bytes": {
     "proof": {
-      "throws": true
+      "throws": false,
+      "steps": 32,
+      "stopReason": "halted",
+      "terminal": "c7aa1d5b17162acff82686dccb3e9eaf6188deac2645c662a981e253b5586b31",
+      "digest": "65383051ea5a066430a6c4736aa4957a79b51d1d651c6be472dfc0a61ea5c3ea"
     },
     "verdict": {
-      "throws": true
+      "throws": false,
+      "steps": 32,
+      "stopReason": "halted",
+      "terminal": "c7aa1d5b17162acff82686dccb3e9eaf6188deac2645c662a981e253b5586b31",
+      "digest": "d1613ec9b47c623155a838ae292d720406cfa9da94883f08ca757c230266872a"
     }
   },
   "pair list at 9215 bytes": {
@@ -705,18 +721,34 @@
   },
   "serialiseData of a list at 9216 bytes": {
     "proof": {
-      "throws": true
+      "throws": false,
+      "steps": 28,
+      "stopReason": "halted",
+      "terminal": "149533d479019dfd6dba6e4b416303eea5cd9dd0a8fb1195ddd8acd796790ea2",
+      "digest": "811658df26345f09585faa9cce9e8bb90adedf1d329efa1cf0976c5d935cd46a"
     },
     "verdict": {
-      "throws": true
+      "throws": false,
+      "steps": 28,
+      "stopReason": "halted",
+      "terminal": "149533d479019dfd6dba6e4b416303eea5cd9dd0a8fb1195ddd8acd796790ea2",
+      "digest": "d839f35fef032d81dd8f9f895eccda9cfcfd6531dd5c101ceeece0b9a877231a"
     }
   },
   "serialiseData of a constructor at 9218 bytes": {
     "proof": {
-      "throws": true
+      "throws": false,
+      "steps": 32,
+      "stopReason": "halted",
+      "terminal": "c7aa1d5b17162acff82686dccb3e9eaf6188deac2645c662a981e253b5586b31",
+      "digest": "373bc1f9ea007261e4d5eaafa1b8ef04a65aea7ce58d5bdc7ed57110c3c96e40"
     },
     "verdict": {
-      "throws": true
+      "throws": false,
+      "steps": 32,
+      "stopReason": "halted",
+      "terminal": "c7aa1d5b17162acff82686dccb3e9eaf6188deac2645c662a981e253b5586b31",
+      "digest": "372cded12a0c61808b44f0f8a60b11e655241248c352fbf7ce0ad382acea6731"
     }
   },
   "pair list at 9216 bytes": {
@@ -753,18 +785,34 @@
   },
   "serialiseData of a list at 9217 bytes": {
     "proof": {
-      "throws": true
+      "throws": false,
+      "steps": 28,
+      "stopReason": "halted",
+      "terminal": "149533d479019dfd6dba6e4b416303eea5cd9dd0a8fb1195ddd8acd796790ea2",
+      "digest": "512cdf3011532f04bf5a1ce0a309189e9fe4a62bc81560f17af5527c3ccfcc2c"
     },
     "verdict": {
-      "throws": true
+      "throws": false,
+      "steps": 28,
+      "stopReason": "halted",
+      "terminal": "149533d479019dfd6dba6e4b416303eea5cd9dd0a8fb1195ddd8acd796790ea2",
+      "digest": "b3559020711bf03fe5a2a2f340ee58cb4cc75975a5e6ab4d1b24ae1d258ef0a9"
     }
   },
   "serialiseData of a constructor at 9219 bytes": {
     "proof": {
-      "throws": true
+      "throws": false,
+      "steps": 32,
+      "stopReason": "halted",
+      "terminal": "c7aa1d5b17162acff82686dccb3e9eaf6188deac2645c662a981e253b5586b31",
+      "digest": "2e17856050955be1d4bcb1f29b57ec7e20527599e2e4dde66cdcae8f82cbd3c0"
     },
     "verdict": {
-      "throws": true
+      "throws": false,
+      "steps": 32,
+      "stopReason": "halted",
+      "terminal": "c7aa1d5b17162acff82686dccb3e9eaf6188deac2645c662a981e253b5586b31",
+      "digest": "131fff9314a6c2ebbe0f20fa073506ade2e3437e5f0a05ef1c6c9b83e0be61fe"
     }
   },
   "pair list at 9217 bytes": {
@@ -801,18 +849,34 @@
   },
   "serialiseData of a list at 9218 bytes": {
     "proof": {
-      "throws": true
+      "throws": false,
+      "steps": 28,
+      "stopReason": "halted",
+      "terminal": "149533d479019dfd6dba6e4b416303eea5cd9dd0a8fb1195ddd8acd796790ea2",
+      "digest": "4cea2e504cda0e9689b496352978234d42add01a2877c5d4c4932bc4d4b2f883"
     },
     "verdict": {
-      "throws": true
+      "throws": false,
+      "steps": 28,
+      "stopReason": "halted",
+      "terminal": "149533d479019dfd6dba6e4b416303eea5cd9dd0a8fb1195ddd8acd796790ea2",
+      "digest": "9ca4ed418f3437ff4e1fb165297252d30d3adda68ffb6ce32b73de8fba57ab49"
     }
   },
   "serialiseData of a constructor at 9220 bytes": {
     "proof": {
-      "throws": true
+      "throws": false,
+      "steps": 32,
+      "stopReason": "halted",
+      "terminal": "c7aa1d5b17162acff82686dccb3e9eaf6188deac2645c662a981e253b5586b31",
+      "digest": "5b4c0b957e1e9710302bfdc2b79d8a7ac69ae40ba888a2071d7cbd6a227adec0"
     },
     "verdict": {
-      "throws": true
+      "throws": false,
+      "steps": 32,
+      "stopReason": "halted",
+      "terminal": "c7aa1d5b17162acff82686dccb3e9eaf6188deac2645c662a981e253b5586b31",
+      "digest": "aa2401b3a36f22700c6cf0a277a70bf35bd2f87a2e129c3db40711c6e08d3c57"
     }
   },
   "pair list at 9218 bytes": {
@@ -849,18 +913,34 @@
   },
   "serialiseData of a list at 9220 bytes": {
     "proof": {
-      "throws": true
+      "throws": false,
+      "steps": 28,
+      "stopReason": "halted",
+      "terminal": "149533d479019dfd6dba6e4b416303eea5cd9dd0a8fb1195ddd8acd796790ea2",
+      "digest": "d6d3e1ef952c3883b6f798cea36f83816906791c69022b0d31040193f51b550f"
     },
     "verdict": {
-      "throws": true
+      "throws": false,
+      "steps": 28,
+      "stopReason": "halted",
+      "terminal": "149533d479019dfd6dba6e4b416303eea5cd9dd0a8fb1195ddd8acd796790ea2",
+      "digest": "498f8cbbc86d7396c25a60995e3a59fb395a0bdf2425193979c33e63f1ee8a95"
     }
   },
   "serialiseData of a constructor at 9222 bytes": {
     "proof": {
-      "throws": true
+      "throws": false,
+      "steps": 32,
+      "stopReason": "halted",
+      "terminal": "c7aa1d5b17162acff82686dccb3e9eaf6188deac2645c662a981e253b5586b31",
+      "digest": "6480b52ea444ded9639ae37353f19c91fda8f750979731b568ead4e69efa24c0"
     },
     "verdict": {
-      "throws": true
+      "throws": false,
+      "steps": 32,
+      "stopReason": "halted",
+      "terminal": "c7aa1d5b17162acff82686dccb3e9eaf6188deac2645c662a981e253b5586b31",
+      "digest": "8a0d5d12d4b7a71f349cce258153f8c5cee346c9d68b03fa7dfb5ed3ea4b4853"
     }
   },
   "pair list at 9220 bytes": {
@@ -929,10 +1009,18 @@
   },
   "serialiseData of a large list context": {
     "proof": {
-      "throws": true
+      "throws": false,
+      "steps": 13,
+      "stopReason": "halted",
+      "terminal": "7b6e259120abb0c59850fb686adfe30003cadadcd7c9c6a6af62c3d6a755ff47",
+      "digest": "f6618d16f146c2d08fdf48afe88d06be67fb2c179a6d6a7ed3333de6e9ff194d"
     },
     "verdict": {
-      "throws": true
+      "throws": false,
+      "steps": 13,
+      "stopReason": "halted",
+      "terminal": "7b6e259120abb0c59850fb686adfe30003cadadcd7c9c6a6af62c3d6a755ff47",
+      "digest": "7ad5a0dfd13c0b7a15a3c165772d9fcb16954967d660de2162d82db189bfeced"
     }
   },
   "large constructor context": {
@@ -1001,10 +1089,18 @@
   },
   "serialiseData of a large script context": {
     "proof": {
-      "throws": true
+      "throws": false,
+      "steps": 13,
+      "stopReason": "halted",
+      "terminal": "bca42de9181b1e7038bc4a7db95753c67a9a7f3cdbfe2536383ac38ec946de72",
+      "digest": "3c8d32f6b613dc037b230befee02d4d6c655c1643f198c58907cdbd39981af38"
     },
     "verdict": {
-      "throws": true
+      "throws": false,
+      "steps": 13,
+      "stopReason": "halted",
+      "terminal": "bca42de9181b1e7038bc4a7db95753c67a9a7f3cdbfe2536383ac38ec946de72",
+      "digest": "d2e48db62c7df8d7832b89b5c26fa879fcb9228a10d2e7616a2c9f40470fb2b2"
     }
   },
   "small script context": {
@@ -1221,7 +1317,7 @@
       "steps": 520,
       "stopReason": "halted",
       "terminal": "946b7b3e0ac27c5e82b17f77b7248048f7238930ba4793a2141e48f2adba0f12",
-      "digest": "91e4942bc185d31bd9fd7a2e16ee8f21b6f9b58d797b565416df12b158f3c64c"
+      "digest": "7867f8e9e112ca56db42938584a7026300058eaf15a1d2691661c298c8c1cf39"
     },
     "verdict": {
       "throws": false,
@@ -1237,7 +1333,7 @@
       "steps": 453,
       "stopReason": "halted",
       "terminal": "dbe6c9b81d193f2d298486276270311d48696b6fc2d35440ea805ba53bd69e5e",
-      "digest": "894e59a0c6daba58b33e26a87508211fcc084c13968181dfb6e82bd4e4451368"
+      "digest": "1352f2b5047ec705fb56762ec0c1a98064913983013034effa8de122c5d82338"
     },
     "verdict": {
       "throws": false,

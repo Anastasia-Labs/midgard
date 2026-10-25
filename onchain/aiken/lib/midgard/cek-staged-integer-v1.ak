@@ -515,6 +515,71 @@ pub fn subtract_signed_v1(
   }
 }
 
+/// The columns of the product of two magnitudes, least significant first:
+/// column k is the sum of `left[i] * right[j]` over i + j = k, before any
+/// carry. Each row `left[i] * right` is added one column up from the rows
+/// above it, so the columns are a sum over the rows of `left` and may be
+/// formed from any split of those rows.
+pub fn product_columns_v1(left: List<Int>, right: List<Int>) -> List<Int> {
+  when left is {
+    [] -> []
+    [x, ..xs] -> {
+      expect [low, ..high] = list.map(right, fn(y) { x * y })
+      [low, ..add_columns(high, product_columns_v1(xs, right))]
+    }
+  }
+}
+
+fn add_columns(left: List<Int>, right: List<Int>) -> List<Int> {
+  when left is {
+    [] -> right
+    [x, ..xs] ->
+      when right is {
+        [] -> left
+        [y, ..ys] -> [x + y, ..add_columns(xs, ys)]
+      }
+  }
+}
+
+/// The limbs of the value whose columns are `columns`, after `carry` into the
+/// first one, with no zero limb at the most significant end.
+pub fn carry_columns_v1(columns: List<Int>, carry: Int) -> List<Int> {
+  when columns is {
+    [] ->
+      if carry == 0 {
+        []
+      } else {
+        carry_columns_v1([carry], 0)
+      }
+    [column, ..rest] -> {
+      let value = column + carry
+      let high = value / limb_base
+      push_limb(value - high * limb_base, carry_columns_v1(rest, high))
+    }
+  }
+}
+
+/// The product of two magnitudes.
+pub fn mul_limbs_v1(left: List<Int>, right: List<Int>) -> List<Int> {
+  if right == [] {
+    []
+  } else {
+    carry_columns_v1(product_columns_v1(left, right), 0)
+  }
+}
+
+/// The product of two integers. A zero product is non-negative.
+pub fn multiply_signed_v1(
+  left: SignedLimbsV1,
+  right: SignedLimbsV1,
+) -> SignedLimbsV1 {
+  let magnitude = mul_limbs_v1(left.magnitude, right.magnitude)
+  SignedLimbsV1 {
+    negative: magnitude != [] && left.negative != right.negative,
+    magnitude,
+  }
+}
+
 /// The canonical CBOR of an integer given by sign and magnitude limbs. A
 /// negative integer's CBOR argument is its magnitude minus one.
 pub fn integer_cbor_from_magnitude_v1(integer: SignedLimbsV1) -> ByteArray {

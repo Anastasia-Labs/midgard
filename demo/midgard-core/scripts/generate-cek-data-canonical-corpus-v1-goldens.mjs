@@ -16,7 +16,9 @@
  * 68-byte chunks with one revealed frame) must give the same verdict on every
  * span. The linear summariser `data_summary_walk_v1` must give the accepted
  * span's summary, on its own and embedded, and `Unreadable` for every other
- * span.
+ * span. The serialise loop's reader `data_serialise_walk_v1` (whole, and in
+ * 68-byte windows of one step each) must give the accepted span's summary and
+ * `None` for every other span.
  *
  * usage: node scripts/generate-cek-data-canonical-corpus-v1-goldens.mjs [--check]
  */
@@ -112,11 +114,30 @@ const walkOutcomeOf = (vector) => {
   ].join(" ");
 };
 
+const serialiseOutcomeOf = (vector) => {
+  if (vector.verdict !== "accepted") {
+    return "None";
+  }
+  const trace = buildMidgardCekDataTraverseTrace({
+    sourceStart: 0,
+    source: Buffer.from(vector.hex, "hex"),
+  });
+  const summary = trace.terminal.result;
+  return [
+    "Some(cek_data_v1.DataSummaryV1 {",
+    `root: ${aikenBytes(hex(summary.root))},`,
+    `cbor_length: ${summary.cborLength},`,
+    `memory: ${summary.memory},`,
+    "})",
+  ].join(" ");
+};
+
 const renderTest = (vector) => `
 test corpus_${vector.name}() {
   let source = ${aikenBytes(vector.hex)}
   let expected = ${expectedOf(vector)}
   let walked = ${walkOutcomeOf(vector)}
+  let serialised = ${serialiseOutcomeOf(vector)}
   and {
     data_summary_walk_v1.resume(
       data_summary_walk_v1.start(0),
@@ -149,6 +170,8 @@ test corpus_${vector.name}() {
       68,
       1,
     ) == ${vector.verdict === "accepted" ? "True" : "False"},
+    data_serialise_driver.whole_v1(source) == serialised,
+    data_serialise_driver.windows_v1(source, 68, 1) == serialised,
   }
 }
 `;
@@ -161,6 +184,7 @@ use aiken/primitive/bytearray
 use midgard/canonical_plutus_data_v1
 use midgard/cek_data_v1
 use midgard/data_summary_walk_v1
+use midgard/validation_machine_tests/data_serialise_driver
 use midgard/validation_machine_tests/data_stream_driver
 use midgard/validation_machine_tests/data_traverse_driver
 ${vectors.map(renderTest).join("")}`;

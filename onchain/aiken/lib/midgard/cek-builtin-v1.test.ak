@@ -9,6 +9,7 @@ use midgard/cek_constant_v1
 use midgard/cek_cost_v1
 use midgard/cek_data_v1
 use midgard/cek_proof_v1
+use midgard/fraud_proofs/cek_staged_fixture_v1 as staged_fixture
 
 fn constant(
   type_cbor: ByteArray,
@@ -164,6 +165,55 @@ test quotient_by_zero_failure_charges_before_the_operation_fails() {
       arguments,
     ),
   }
+}
+
+/// A dividend of 10,000 bytes, past the direct carriage bound, presented by
+/// its leaf alone.
+fn dividend_by_its_leaf() -> cek_builtin_v1.ValueWitnessV1 {
+  staged_fixture.integer_value(
+    -builtin.bytearray_to_integer(True, staged_fixture.pattern(10000, 1)),
+  )
+}
+
+fn division_by_zero_of_a_leaf_is_known(tag: Int) -> Bool {
+  let arguments = [dividend_by_its_leaf(), integer(#"00")]
+  expect cek_builtin_v1.SemanticConstantValue { .. } = dividend_by_its_leaf()
+  and {
+    cek_builtin_v1.verify_direct_builtin_failure_v1(
+      tag,
+      builtin_root(tag, arguments),
+      arguments,
+    ),
+    cek_builtin_v1.authenticated_builtin_failure_budget(tag, arguments) == cek_builtin_v1.direct_builtin_budget_v1(
+      tag,
+      arguments,
+    ),
+  }
+}
+
+test division_by_zero_of_a_dividend_by_its_leaf_is_a_known_failure() {
+  list.all([3, 4, 5, 6], division_by_zero_of_a_leaf_is_known)
+}
+
+test division_by_a_zero_presented_by_its_leaf_is_not_a_known_failure() fail {
+  let arguments = [
+    dividend_by_its_leaf(),
+    cek_builtin_v1.compact_semantic_value(integer(#"00")),
+  ]
+  cek_builtin_v1.verify_direct_builtin_failure_v1(
+    4,
+    builtin_root(4, arguments),
+    arguments,
+  )
+}
+
+test division_of_a_dividend_by_its_leaf_by_one_is_not_a_known_failure() {
+  let arguments = [dividend_by_its_leaf(), integer(#"01")]
+  !cek_builtin_v1.verify_direct_builtin_failure_v1(
+    4,
+    builtin_root(4, arguments),
+    arguments,
+  )
 }
 
 /// A byte string of 12,000 bytes, past the direct carriage bound, presented
@@ -2033,91 +2083,6 @@ test ed25519_charges_message_words_and_keeps_true_false_successes() {
   }
 }
 
-// serialiseData over Data holding a constructor index of 128 or more and
-// integers outside 64 bits: the semantic arm decodes the argument constant and
-// the revealed serialisation with the Cardano Data decoder.
-fn wide_data() -> Data {
-  builtin.constr_data(
-    0,
-    [
-      builtin.constr_data(128, [builtin.i_data(1)]),
-      builtin.constr_data(18446744073709551615, []),
-      builtin.i_data(18446744073709551616),
-      builtin.i_data(-18446744073709551617),
-    ],
-  )
-}
-
-fn serialise_data_verifies(
-  source: Data,
-  revealed: ByteArray,
-  serialised: ByteArray,
-) -> Bool {
-  let arguments = [constant(#"9f08ff", cbor.serialise(source))]
-  verify_semantic_with_split_parity(
-    51,
-    arguments,
-    bytes(cbor.serialise(builtin.b_data(serialised))),
-    cek_builtin_v1.SemanticBuiltinWitnessV1 {
-      data_nodes: [],
-      list_nodes: [],
-      pair_nodes: [],
-      scalar_preimages: [revealed],
-    },
-  )
-}
-
-test semantic_serialise_data_handles_wide_constructors_and_integers() {
-  let raw = cbor.serialise(wide_data())
-  serialise_data_verifies(wide_data(), raw, raw)
-}
-
-test semantic_serialise_data_refuses_a_different_result() {
-  let raw = cbor.serialise(wide_data())
-  let other = cbor.serialise(builtin.constr_data(0, [builtin.i_data(1)]))
-  !serialise_data_verifies(wide_data(), raw, other)
-}
-
-test semantic_serialise_data_refuses_a_revealed_serialisation_of_other_data() fail {
-  let other = cbor.serialise(builtin.constr_data(0, [builtin.i_data(1)]))
-  serialise_data_verifies(wide_data(), other, other)
-}
-
-fn serialise_data_split_arm(source: Data) -> Bool {
-  let raw = cbor.serialise(source)
-  cek_builtin_v1.verify_semantic_data_misc(
-    51,
-    [constant(#"9f08ff", raw)],
-    bytes(cbor.serialise(builtin.b_data(raw))),
-    cek_builtin_v1.SemanticBuiltinWitnessV1 {
-      data_nodes: [],
-      list_nodes: [],
-      pair_nodes: [],
-      scalar_preimages: [raw],
-    },
-  )
-}
-
-// The production split arm alone, on the wide Data above.
-test semantic_data_misc_serialises_wide_data() {
-  serialise_data_split_arm(wide_data())
-}
-
-// The production split arm alone, on Data of the same shape within 64 bits.
-test semantic_data_misc_serialises_data_within_64_bits() {
-  serialise_data_split_arm(
-    builtin.constr_data(
-      0,
-      [
-        builtin.constr_data(127, [builtin.i_data(1)]),
-        builtin.constr_data(6, []),
-        builtin.i_data(18446744073709551615),
-        builtin.i_data(-18446744073709551616),
-      ],
-    ),
-  )
-}
-
 // Integer constants on both sides of the 64-bit head boundary, read by the
 // direct addInteger arm. Each sum crosses from a major-type head to a bignum.
 fn add_integer_verifies(left: Int, right: Int, sum: Int) -> Bool {
@@ -2269,50 +2234,6 @@ test integer_leaf_behind_a_long_tag_2_head_fails_closed() fail {
 
 test integer_leaf_behind_a_long_tag_3_head_fails_closed() fail {
   un_i_data_leaf_verifies(-18446744073709551617, #"d80349010000000000000000")
-}
-
-// serialiseData over constructor 127 (tag 1400) and 128 (tag 102), through the
-// production split arm.
-test semantic_data_misc_serialises_constructor_127() {
-  expect cbor.serialise(builtin.constr_data(127, [])) == #"d9057880"
-  serialise_data_split_arm(builtin.constr_data(127, []))
-}
-
-test semantic_data_misc_serialises_constructor_128() {
-  expect cbor.serialise(builtin.constr_data(128, [])) == #"d86682188080"
-  serialise_data_split_arm(builtin.constr_data(128, []))
-}
-
-fn serialise_data_split_arm_reveals(source: Data, revealed: ByteArray) -> Bool {
-  cek_builtin_v1.verify_semantic_data_misc(
-    51,
-    [constant(#"9f08ff", cbor.serialise(source))],
-    bytes(cbor.serialise(builtin.b_data(revealed))),
-    cek_builtin_v1.SemanticBuiltinWitnessV1 {
-      data_nodes: [],
-      list_nodes: [],
-      pair_nodes: [],
-      scalar_preimages: [revealed],
-    },
-  )
-}
-
-test semantic_data_misc_refuses_a_long_tag_2_head() fail {
-  serialise_data_split_arm_reveals(
-    builtin.i_data(18446744073709551616),
-    #"d80249010000000000000000",
-  )
-}
-
-test semantic_data_misc_refuses_constructor_102_with_a_negative_index() fail {
-  serialise_data_split_arm_reveals(builtin.constr_data(0, []), #"d866822080")
-}
-
-test semantic_data_misc_refuses_constructor_102_with_a_bignum_index() fail {
-  serialise_data_split_arm_reveals(
-    builtin.constr_data(1, []),
-    #"d86682c2410180",
-  )
 }
 
 // The revealed-leaf bound (9,215 bytes) admits the same integers as the
@@ -3689,10 +3610,6 @@ test data_builtins_read_and_return_an_ending_empty_byte_string() {
 
 test data_builtins_reveal_an_ending_empty_byte_string() {
   and {
-    serialise_data_verifies(builtin.b_data(#""), #"40", #"40"),
-    serialise_data_verifies(empty_bytes_list(), #"9f40ff", #"9f40ff"),
-    serialise_data_split_arm(builtin.b_data(#"")),
-    serialise_data_split_arm(empty_bytes_list()),
     equals_data_verifies(#"40", #"40", #"d87a80"),
     equals_data_verifies(#"9f40ff", #"9f40ff", #"d87a80"),
     equals_data_verifies(#"40", #"9f40ff", #"d87980"),
@@ -3702,8 +3619,4 @@ test data_builtins_reveal_an_ending_empty_byte_string() {
 test un_b_data_refuses_a_byte_string_claiming_one_byte_past_the_end() fail {
   let source = [constant(#"9f08ff", #"41")]
   verify_direct_with_split_parity(46, source, bytes(#"40"))
-}
-
-test serialise_data_refuses_a_revealed_byte_string_claiming_one_byte_past_the_end() fail {
-  serialise_data_verifies(builtin.b_data(#""), #"41", #"40")
 }

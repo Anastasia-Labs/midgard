@@ -1852,6 +1852,30 @@
         "mem": 11004788,
         "cpu": 4736263815
       }
+    },
+    "fraud_proofs/validation_trace/cek_core_staged_write_bits_loop.test/write_bits_loop_first_hop_at_the_longest_input - write_bits_loop_first_hop_fixture_only_at_the_longest_input": {
+      "test": "fraud_proofs/validation_trace/cek_core_staged_write_bits_loop.test/write_bits_loop_first_hop_at_the_longest_input",
+      "minusControl": "write_bits_loop_first_hop_fixture_only_at_the_longest_input",
+      "ceiling": {
+        "mem": 11054550,
+        "cpu": 5340375784
+      }
+    },
+    "fraud_proofs/validation_trace/cek_core_staged_write_bits_loop.test/write_bits_loop_last_hop_at_the_longest_input - write_bits_loop_last_hop_fixture_only_at_the_longest_input": {
+      "test": "fraud_proofs/validation_trace/cek_core_staged_write_bits_loop.test/write_bits_loop_last_hop_at_the_longest_input",
+      "minusControl": "write_bits_loop_last_hop_fixture_only_at_the_longest_input",
+      "ceiling": {
+        "mem": 11085800,
+        "cpu": 5331714705
+      }
+    },
+    "fraud_proofs/validation_trace/cek_core_staged_write_bits_loop.test/write_bits_loop_failure_hop_at_the_longest_input - write_bits_loop_failure_hop_fixture_only_at_the_longest_input": {
+      "test": "fraud_proofs/validation_trace/cek_core_staged_write_bits_loop.test/write_bits_loop_failure_hop_at_the_longest_input",
+      "minusControl": "write_bits_loop_failure_hop_fixture_only_at_the_longest_input",
+      "ceiling": {
+        "mem": 10887993,
+        "cpu": 5120879026
+      }
     }
   },
   "growth": {
