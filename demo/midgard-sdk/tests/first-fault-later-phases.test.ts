@@ -240,6 +240,15 @@ describe("first-fault later phases", () => {
       expect(
         admits({ PlutusExecutionFailed: purpose(2n, 0n) }, run(1n, 7n)),
       ).toBe(false);
+      expect(
+        admits(
+          { ReceivePurposePlutusV3Forbidden: purpose(3n, 2n) },
+          run(3n, 1n),
+        ),
+      ).toBe(false);
+      expect(
+        admits({ PlutusExecutionFailed: purpose(3n, 0n) }, receive(3n, 1n)),
+      ).toBe(true);
     });
   });
 

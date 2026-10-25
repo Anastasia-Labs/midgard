@@ -46,6 +46,11 @@ describe("first-fault later phases twin", () => {
         evaluation(1n, 2n),
         true,
       ],
+      [
+        { ExecutionNativeScriptNodeLimit: purpose(1n, 3n) },
+        evaluation(1n, 2n),
+        false,
+      ],
       ["ScriptIntegrityHashMismatch", evaluation(3n, 9n), false],
       [{ ExecutionNativeScriptFalse: purpose(3n, 9n) }, integrity, true],
       ["ScriptIntegrityHashMismatch", integrity, true],
@@ -54,6 +59,12 @@ describe("first-fault later phases twin", () => {
       [{ PlutusExecutionFailed: purpose(3n, 1n) }, receive(3n, 1n), false],
       [{ ReceivePurposePlutusV3Forbidden: purpose(3n, 1n) }, run(3n, 1n), true],
       [{ PlutusExecutionFailed: purpose(0n, 5n) }, receive(3n, 1n), true],
+      [
+        { ReceivePurposePlutusV3Forbidden: purpose(3n, 2n) },
+        run(3n, 1n),
+        false,
+      ],
+      [{ PlutusExecutionFailed: purpose(3n, 0n) }, receive(3n, 1n), true],
       [{ OutputBelowMinAda: { output_index: 0n } }, run(3n, 9n), false],
       [{ PlutusExecutionFailed: purpose(3n, 9n) }, inputAsset(0n, 0n), true],
       [

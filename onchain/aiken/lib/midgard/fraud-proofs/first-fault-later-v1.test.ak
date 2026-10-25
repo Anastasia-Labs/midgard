@@ -403,10 +403,23 @@ test cek_same_fault_is_admitted() {
 }
 
 test cek_earlier_execution_wins() {
-  !admits(
-    reason.PlutusExecutionFailed { purpose_kind: 3, purpose_index: 2 },
-    receive(3, 1),
-  )
+  and {
+    !admits(
+      reason.PlutusExecutionFailed { purpose_kind: 3, purpose_index: 2 },
+      receive(3, 1),
+    ),
+    !admits(
+      reason.ReceivePurposePlutusV3Forbidden {
+        purpose_kind: 3,
+        purpose_index: 2,
+      },
+      run(3, 1),
+    ),
+    admits(
+      reason.PlutusExecutionFailed { purpose_kind: 3, purpose_index: 0 },
+      receive(3, 1),
+    ),
+  }
 }
 
 test cek_kind_precedes_index() {
@@ -683,6 +696,14 @@ test twin_table() {
       evaluation(1, 2),
       True,
     ),
+    (
+      reason.ExecutionNativeScriptNodeLimit {
+        purpose_kind: 1,
+        purpose_index: 3,
+      },
+      evaluation(1, 2),
+      False,
+    ),
     (reason.ScriptIntegrityHashMismatch, evaluation(3, 9), False),
     (
       reason.ExecutionNativeScriptFalse { purpose_kind: 3, purpose_index: 9 },
@@ -711,6 +732,19 @@ test twin_table() {
     ),
     (
       reason.PlutusExecutionFailed { purpose_kind: 0, purpose_index: 5 },
+      receive(3, 1),
+      True,
+    ),
+    (
+      reason.ReceivePurposePlutusV3Forbidden {
+        purpose_kind: 3,
+        purpose_index: 2,
+      },
+      run(3, 1),
+      False,
+    ),
+    (
+      reason.PlutusExecutionFailed { purpose_kind: 3, purpose_index: 0 },
       receive(3, 1),
       True,
     ),
