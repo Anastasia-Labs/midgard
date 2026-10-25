@@ -373,5 +373,24 @@ describe("first-fault later phases", () => {
       for (const [reason, observed] of refusals)
         expect(() => admits(reason, observed)).toThrow();
     });
+
+    it("refuses an invalid observed position whatever the leaf's phase", () => {
+      expect(() =>
+        admits(
+          { FieldPreimageLengthMismatch: { field_index: 0n } },
+          scan(4n, 0n),
+        ),
+      ).toThrow("invalid later-fault position");
+      expect(() =>
+        leafAdmitsLaterFault(
+          acceptedVerdictSubject("11".repeat(32)),
+          context,
+          inputAsset(-1n, 0n),
+        ),
+      ).toThrow("invalid later-fault position");
+      expect(() => admits("ValueNotPreserved", redeemer(-1n))).toThrow(
+        "invalid later-fault position",
+      );
+    });
   });
 });

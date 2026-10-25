@@ -780,15 +780,31 @@ pub fn reason_precedes_or_equals_later_fault_v1(
   }
 }
 
+pub fn later_fault_position_is_valid_v1(position: LaterFaultPositionV1) -> Bool {
+  when position is {
+    UnusedAuditFault(UnusedWitnessAudit { script_index: i }) |
+    UnusedAuditFault(UnusedRedeemerAudit { redeemer_index: i }) |
+    ValueFault(MintAssetFault { mint_index: i }) -> i >= 0
+    ExecutionFault(ExecutionFaultPositionV1 { coordinate: c, .. }) |
+    CekFault(CekFaultPositionV1 { coordinate: c, .. }) ->
+      purpose_coordinate_is_valid_v1(c)
+    ScriptIntegrityFault -> True
+    ValueFault(InputAssetFault { input_index: i, asset_index: a }) |
+    ValueFault(OutputAssetFault { output_index: i, asset_index: a }) ->
+      i >= 0 && a >= 0
+  }
+}
+
 /// The later-fault twin of `leaf_admits_fault_v1`, with the same contract:
 /// terminal callers negate it, so an accepted leaf admits nothing and a
-/// malformed coordinate on either side aborts.
+/// malformed coordinate on either side aborts, whatever the leaf's phase.
 pub fn leaf_admits_later_fault_v1(
   subject: substrate.VerdictSubjectV1,
   context: NetworkOrderContextV1,
   observed: LaterFaultPositionV1,
 ) -> Bool {
   expect substrate.subject_is_canonical_v1(subject)
+  expect later_fault_position_is_valid_v1(observed)
   when subject.rejection_reason is {
     None -> False
     Some(r) -> reason_precedes_or_equals_later_fault_v1(r, context, observed)

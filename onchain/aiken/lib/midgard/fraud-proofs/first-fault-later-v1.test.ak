@@ -641,6 +641,18 @@ test negative_observed_mint_refuses() fail {
   admits(reason.ValueNotPreserved, mint_asset(-1))
 }
 
+test invalid_observed_position_refuses_even_for_an_earlier_leaf() fail {
+  admits(reason.FieldPreimageLengthMismatch { field_index: 0 }, scan(4, 0))
+}
+
+test invalid_observed_position_refuses_even_for_an_accepted_leaf() fail {
+  order.leaf_admits_later_fault_v1(accepted(), ctx(), input_asset(-1, 0))
+}
+
+test negative_observed_audit_refuses_for_a_later_phase_leaf() fail {
+  admits(reason.ValueNotPreserved, redeemer(-1))
+}
+
 // ── Twin table ──────────────────────────────────────────────────────────
 // The same rows are pinned off-chain in
 // demo/midgard-sdk/tests/first-fault-later-phases-twin.test.ts;

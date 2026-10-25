@@ -334,10 +334,43 @@ export const reasonPrecedesOrEqualsLaterFault = (
   }
 };
 
+const isIndex = (value: unknown): boolean =>
+  typeof value === "bigint" && value >= 0n;
+
+export const laterFaultPositionIsValid = (
+  position: LaterFaultPosition,
+): boolean => {
+  switch (position.phase) {
+    case "unusedAudit":
+      return position.position.kind === "witness"
+        ? isIndex(position.position.scriptIndex)
+        : position.position.kind === "redeemer" &&
+            isIndex(position.position.redeemerIndex);
+    case "execution":
+    case "cek":
+      return purposeCoordinateIsValid(position.position.coordinate);
+    case "scriptIntegrity":
+      return true;
+    case "value": {
+      const value = position.position;
+      if (value.kind === "mint") return isIndex(value.mintIndex);
+      const major =
+        value.kind === "input" ? value.inputIndex : value.outputIndex;
+      return (
+        (value.kind === "input" || value.kind === "output") &&
+        isIndex(major) &&
+        isIndex(value.assetIndex)
+      );
+    }
+    default:
+      return false;
+  }
+};
+
 /**
  * Twin of `leaf_admits_later_fault_v1`. Terminal callers negate it: an
  * accepted leaf admits nothing, and a malformed position on either side
- * throws.
+ * throws, whatever the leaf's phase.
  */
 export const leafAdmitsLaterFault = (
   subject: VerdictSubject,
@@ -345,12 +378,12 @@ export const leafAdmitsLaterFault = (
   observed: LaterFaultPosition,
 ): boolean => {
   if (!verdictSubjectIsCanonical(subject)) fail("noncanonical subject");
+  if (!laterFaultPositionIsValid(observed))
+    fail("invalid later-fault position");
   if (typeof context?.body_network_mismatch !== "boolean")
     fail("missing or malformed network context");
   const reason = subject.rejection_reason;
-  if (reason === null) {
-    laterFaultPhase(observed);
-    return false;
-  }
-  return reasonPrecedesOrEqualsLaterFault(reason, context, observed);
+  return reason === null
+    ? false
+    : reasonPrecedesOrEqualsLaterFault(reason, context, observed);
 };
