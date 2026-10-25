@@ -1747,3 +1747,121 @@ test refuses_a_hop_given_another_witness() fail {
   )
   mid_hop_given(other.witness, other.reference_inputs)
 }
+
+// ## The result's memory
+
+/// Builtin `tag` over `a` and `b` (with quotient `q` for a division) whose
+/// staged result is spelled `result` and has `words` memory words, in one hop.
+fn results_in(
+  tag: Int,
+  a: Int,
+  b: Int,
+  q: Int,
+  result: ByteArray,
+  words: Int,
+) -> Bool {
+  let arguments = [cbor.serialise(a), cbor.serialise(b)]
+  let case = if tag == 2 {
+    case_of(
+      tag,
+      [integer_value(a), integer_value(b)],
+      semantic_integer_pieces([result], words),
+      stage(list.concat(arguments, [result])),
+      [staged(0), staged(1), staged(2)],
+    )
+  } else {
+    case_of(
+      tag,
+      [integer_value(a), integer_value(b)],
+      semantic_integer_pieces([result], words),
+      stage(list.concat(arguments, [cbor.serialise(q), result])),
+      [staged(0), staged(1), staged(2), staged(3)],
+    )
+  }
+  completes(
+    case,
+    [
+      if tag == 2 {
+        product_columns(cbor.serialise(a), cbor.serialise(b))
+      } else {
+        columns_of(a, b, q)
+      },
+    ],
+  )
+}
+
+/// `value`'s CBOR with a zero byte in front of its argument: the same integer,
+/// spelled one byte longer.
+fn with_a_leading_zero(value: Int) -> ByteArray {
+  let integer = parse_integer_cbor_bulk_v1(cbor.serialise(value))
+  encode_integer_cbor_bulk_v1(
+    CanonicalIntegerV1 {
+      ..integer,
+      argument: builtin.cons_bytearray(0, integer.argument),
+    },
+  )
+}
+
+/// The memory words of `value`.
+fn words_of(value: Int) -> Int {
+  magnitude_words_v1(parse_integer_cbor_bulk_v1(cbor.serialise(value)))
+}
+
+test admits_a_large_product_with_its_memory() {
+  let doubled = magnitude(9216, 1) * 2
+  results_in(
+    2,
+    magnitude(9216, 1),
+    2,
+    0,
+    cbor.serialise(doubled),
+    words_of(doubled),
+  )
+}
+
+// 9,216 magnitude bytes spelled as 9,217 have the memory of 9,217 bytes, one
+// word more than Cardano's.
+test refuses_a_large_product_spelled_with_a_leading_zero_byte() fail {
+  let doubled = magnitude(9216, 1) * 2
+  results_in(
+    2,
+    magnitude(9216, 1),
+    2,
+    0,
+    with_a_leading_zero(doubled),
+    words_of(doubled) + 1,
+  )
+}
+
+test admits_a_large_remainder_with_its_memory() {
+  let a = magnitude(9216, 1)
+  results_in(5, a, magnitude(9728, 2), 0, cbor.serialise(a), words_of(a))
+}
+
+test refuses_a_large_remainder_spelled_with_a_leading_zero_byte() fail {
+  let a = magnitude(9216, 1)
+  results_in(
+    5,
+    a,
+    magnitude(9728, 2),
+    0,
+    with_a_leading_zero(a),
+    words_of(a) + 1,
+  )
+}
+
+test admits_a_zero_product_with_one_word() {
+  results_in(2, 0, -magnitude(9216, 3), 0, cbor.serialise(0), 1)
+}
+
+test refuses_a_zero_product_with_five_words() fail {
+  results_in(2, 0, -magnitude(9216, 3), 0, cbor.serialise(0), 5)
+}
+
+test admits_a_zero_remainder_with_one_word() {
+  results_in(5, 15, 5, 3, cbor.serialise(0), 1)
+}
+
+test refuses_a_zero_remainder_with_five_words() fail {
+  results_in(5, 15, 5, 3, cbor.serialise(0), 5)
+}

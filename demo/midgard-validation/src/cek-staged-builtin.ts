@@ -25,6 +25,7 @@ export {
   MIDGARD_CEK_STAGED_PRODUCT_MAX_HOP_COLUMNS,
   type MidgardCekExUnits,
   midgardCekStagedProductHopCost,
+  type MidgardCekStagedProductHopPlan,
   type MidgardCekStagedProductLoop,
   midgardCekStagedProductLoop,
   planMidgardCekStagedProductHop,

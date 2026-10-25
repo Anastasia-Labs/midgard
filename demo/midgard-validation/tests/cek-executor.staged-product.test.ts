@@ -15,6 +15,7 @@ import {
   semanticizeMidgardCekDirectConstant,
   verifyMidgardCekDirectBuiltinFailure,
 } from "../src/cek-builtin.js";
+import { verifyMidgardCekCoreStep } from "../src/cek-machine.verify-builtin.js";
 import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
 import { evaluateMidgardCekScript } from "../src/phase-b.evaluate-cek-script.js";
 import type { MidgardUplcEvalProgram } from "../src/plutus-script-evaluator.js";
@@ -203,6 +204,44 @@ describe("division by zero", () => {
     (_, builtin) => {
       const [dividend] = failureStep(call(builtin, int(7n), int(0n))).arguments;
       expect(dividend?.kind).toBe("constant");
+    },
+  );
+
+  // An 8,932-byte dividend's payload is 9,215 bytes, the direct bound, so
+  // with the zero divisor's the step's arguments are past it; a 16,000-byte
+  // one is built at run time from two 8,000-byte constants.
+  const PAST_BOUND: readonly (readonly [string, UPLCTerm])[] = [
+    ["an 8,932-byte constant", int(-wide(8_932, 5n))],
+    [
+      "a 16,000-byte product",
+      call(
+        builtin("multiplyInteger"),
+        int(-wide(8_000, 3n)),
+        int(wide(8_000, 5n)),
+      ),
+    ],
+  ];
+
+  it.each(
+    ALL_DIVISIONS.flatMap(([name, function_]) =>
+      PAST_BOUND.map(
+        ([label, dividend]) =>
+          [`${name} of ${label}`, function_, dividend] as const,
+      ),
+    ),
+  )(
+    "proves %s by zero past the direct bound with the dividend by its leaf",
+    (_, function_, dividend) => {
+      const proof = run(call(function_, dividend, int(0n)), "proof");
+      expect(proof.result.kind).toBe("script_invalid");
+      const step = proof.execution?.steps.at(-1);
+      expect(step?.witness.kind).toBe("executeBuiltinFailure");
+      expect(step?.post.mode).toBe("haltError");
+      if (step?.witness.kind !== "executeBuiltinFailure") return;
+      expect(step.witness.arguments[0]?.kind).toBe("semanticConstant");
+      expect(verifyMidgardCekCoreStep(step.pre, step.post, step.witness)).toBe(
+        true,
+      );
     },
   );
 

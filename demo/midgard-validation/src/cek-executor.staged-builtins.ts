@@ -10,9 +10,10 @@
  * preimage, or a small integer's value), and the staged operands' bytes ride
  * with the witness. multiplyInteger and the divisions also carry the CBOR
  * their column loop compares (the result's, the quotient's, or both), and a
- * step inlines at most two chunks of bytes in all, staging the rest. The material names no staging outputs; the one-step
- * driver stages the operands and fills them in
- * (`stageMidgardCekStagedBuiltinMaterial`) before the binder.
+ * step inlines at most two chunks of bytes in all, staging the rest. The
+ * material names no staging outputs; the one-step driver stages the operands
+ * and fills them in (`stageMidgardCekStagedBuiltinMaterial`) before the
+ * binder.
  *
  * The result is the value-level relation the direct route uses. A step that
  * fails on an argument past protocol version 11's bounds or on its operands'
