@@ -18,7 +18,7 @@
     flake-utils.url = "github:numtide/flake-utils";
     # The one Aiken compiler this repository compiles, formats and tests with.
     # flake.lock pins its exact commit; everything else reads the pin from there.
-    aiken.url = "github:colll78/aiken/midgard-28e42883";
+    aiken.url = "github:colll78/aiken/midgard-c08fcece";
     aiken.inputs.flake-utils.follows = "flake-utils";
   };
   outputs = { self, nixpkgs, nodeToolchain, goToolchain, flake-utils, aiken }:

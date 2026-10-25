@@ -100,8 +100,8 @@ permissions:
 # The pin is the `aiken` input of `demo/flake.nix`, locked in
 # `demo/flake.lock`. Every script reaches the compiler through `scripts/aiken`,
 # which builds exactly that commit with nix, so nothing can run another aiken;
-# `aiken-ci.yml`'s header records the 2026-10-15 move to midgard-28e42883 and
-# its measured blueprint invariance.
+# `aiken-ci.yml`'s header records each move of the pin (now midgard-c08fcece)
+# and its measured blueprint invariance.
 #
 # JOB LAYOUT. Every independent gate is its own job, so the first red no longer
 # hides the rest: the fork is built once into the nix cache the other jobs

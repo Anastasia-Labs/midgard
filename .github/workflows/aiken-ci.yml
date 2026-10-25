@@ -63,7 +63,7 @@ permissions:
 # role and is not installed here.
 #
 # The pin is the `aiken` input of `demo/flake.nix` (github:colll78/aiken, tag
-# midgard-28e42883), locked to its commit in `demo/flake.lock`; nothing else
+# midgard-c08fcece), locked to its commit in `demo/flake.lock`; nothing else
 # declares it. Every script, here and locally, runs the compiler through
 # `scripts/aiken` (`scripts/lib/aiken.mjs`), which builds exactly the locked
 # commit with nix; nothing puts an aiken on PATH, so no step can reach another
@@ -75,6 +75,14 @@ permissions:
 # byte-identical on `hash` and `compiledCode`. The only source change it needed:
 # an empty list typed as `Data` is now ambiguous and is spelled
 # `builtin.list_data([])`, the value the previous compiler chose for it.
+#
+# The 2026-10-25 move to midgard-c08fcece (colll78/aiken main: 28e42883 plus
+# linear-time byte-string rotation and `aiken check` runs that stream each test
+# through generate, optimize and run instead of holding them all) changes no
+# script either: same tree, `--env testnet` and the default env, all 1,206
+# validators are byte-identical on `hash` and `compiledCode`, and every shard 1
+# test reports the same verdict and execution units. Shard 1's peak memory
+# falls from about 19 GiB to 1.5 GiB.
 
 jobs:
   deployment-profiles:
