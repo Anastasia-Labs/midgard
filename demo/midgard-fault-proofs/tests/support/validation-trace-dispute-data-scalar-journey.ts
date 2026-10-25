@@ -29,7 +29,10 @@ import {
   VALIDATION_TRACE_CASE_OPEN,
 } from "../../src/validation-trace-dispute/adapter.js";
 import { validationTraceOneStepHolder } from "../../src/validation-trace-dispute/one-step-holders.js";
-import { planValidationTraceThread } from "../../src/validation-trace-dispute/one-step-plan.js";
+import {
+  planValidationTraceOneStep,
+  planValidationTraceThread,
+} from "../../src/validation-trace-dispute/one-step-plan.js";
 import { validationTraceDefenseDeadlineMs } from "../../src/validation-trace-dispute/waiting.js";
 import { parseOwnOutRef } from "../../src/workflow/own-outputs.js";
 import { expectOnchainRefusal } from "./emulator/expect-onchain-refusal.js";
@@ -62,6 +65,7 @@ import {
   confirmedOneStepMoves,
   isPendingFor,
   playThreads,
+  threadPlace,
 } from "./validation-trace-dispute-one-step-play.js";
 import { BOND_LOVELACE } from "./validation-trace-dispute-open-scene.js";
 
@@ -237,11 +241,64 @@ export const refusesAtTheArm = async (
   await resolveToTheArm(dispute!, steps.get(tag)!, window, ready[0]!);
 };
 
+/** Builds, without submitting, the resolve of our thread `unit` from the
+ * Data scalar arm over our step of `tag`, and throws, naming the arm, if the
+ * arm refuses it. */
+const armAcceptsOurStep = async (
+  { dispute, steps }: DataScalarJourney,
+  unit: string,
+  tag: bigint,
+) => {
+  const { agreedUpTo, ours } = steps.get(tag)!;
+  const planning = await planValidationTraceOneStep({
+    material: dispute!.material,
+    stateIndex: agreedUpTo,
+    challengerHighHash: hashMidgardValidationMachineState(
+      ours.states[agreedUpTo + 1]!,
+    ).toString("hex"),
+    builtins: true,
+  });
+  if (planning.kind !== "plan") throw new Error(planning.reason);
+  try {
+    await hopFrom(dispute!, unit, planning.plan, "semanticDataScalar")();
+  } catch (cause) {
+    throw new Error(
+      `the Data scalar arm refused our step of builtin ${tag.toString()}`,
+      { cause },
+    );
+  }
+};
+
 /** The runner bisects both threads of our case, resolves each through the
  * Data scalar arm and closes the case Convicted with our bond back. */
 export const convictsOurCase = async (journey: DataScalarJourney) => {
   const dispute = journey.dispute!;
   const { scene, runner, a, b, deployment } = dispute;
+  // Thread a resolves the first step and thread b the second. The play stops
+  // when the first of them stands at the Data scalar arm, and the arm must
+  // accept our step there before the play goes on, so a refusal fails here
+  // rather than at the play's limit.
+  const sides = [
+    { unit: a.unit, tag: journey.tags[0] },
+    { unit: b.unit, tag: journey.tags[1] },
+  ];
+  const atTheArm = async () => {
+    for (const side of sides) {
+      const found = await threadPlace(scene, deployment, side.unit);
+      if (found?.holder === "semanticDataScalar") return side;
+    }
+    return undefined;
+  };
+  await playThreads({
+    scene,
+    runner,
+    sides: [a, b],
+    until: async () => (await atTheArm()) !== undefined,
+    limit: 400,
+  });
+  const first = (await atTheArm())!;
+  await armAcceptsOurStep(journey, first.unit, first.tag);
+
   let pastDeadline = false;
   const { result, history } = await playThreads({
     scene,
