@@ -59,7 +59,9 @@ const semanticUplcConstant = (
         throw new Error("V1 string payload is not DataB");
       }
       return UPLCConst.str(
-        new TextDecoder("utf-8", { fatal: true }).decode(payload.bytes),
+        new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(
+          payload.bytes,
+        ),
       );
     }
     case "unit":
