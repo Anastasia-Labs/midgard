@@ -1,9 +1,4 @@
 import {
-  allowListAdmits,
-  AllowListRefusal,
-  deploymentAllowList,
-} from "@al-ft/midgard-core/deployment-profile";
-import {
   type Assets,
   Data,
   type LucidEvolution,
@@ -126,18 +121,6 @@ export const buildOpenDaAvailabilityChallengeTxProgram = (
   p: OpenDaAvailabilityChallengeParams,
 ) =>
   effect(async () => {
-    if (
-      !allowListAdmits(
-        p.challengerAllowList === undefined
-          ? deploymentAllowList("da_challengers")
-          : p.challengerAllowList,
-        p.challenger,
-      )
-    )
-      fail(
-        new AllowListRefusal("da_challengers", p.challenger).message,
-        "challenger-not-allow-listed",
-      );
     p = alignResources(lucid, p);
     const policy = d.contracts.availabilityChallenge.policyId,
       address = d.contracts.availabilityChallenge.spendingScriptAddress;

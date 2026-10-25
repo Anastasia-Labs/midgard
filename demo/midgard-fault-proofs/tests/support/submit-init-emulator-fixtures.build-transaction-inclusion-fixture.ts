@@ -17,6 +17,7 @@ import {
   tx2InputsPreimage,
 } from "./submit-init-emulator-fixtures.expect-state-queue-header-order.js";
 import {
+  h32,
   l2TransactionSourceCbor as l2TransactionSourceCborV1,
   makeNativeTx,
   trieRootHex,
@@ -132,6 +133,7 @@ export const buildTransactionInclusionFixture = async ({
   spendInputCardinality,
   emptyAddressWitnesses = false,
   canonicalTransactions,
+  honestBlock = false,
 }: {
   readonly adversarialBranchLevels?: number;
   readonly canonicalTransactions?: readonly [
@@ -150,6 +152,11 @@ export const buildTransactionInclusionFixture = async ({
    * cardinality axis (finding Q1X-F6) with the double-spent input last.
    */
   readonly spendInputCardinality?: number;
+  /**
+   * Give tx2 an input of its own in place of the one tx1 also spends, so the
+   * two transactions spend disjoint inputs, as in a valid block.
+   */
+  readonly honestBlock?: boolean;
 } = {}): Promise<{
   readonly transactionsRoot: string;
   readonly l2TransactionCount: bigint;
@@ -175,7 +182,7 @@ export const buildTransactionInclusionFixture = async ({
           cardinality: spendInputCardinality,
           domain: 0x0a01,
         });
-  const tx2Inputs =
+  const tx2SharedInputs =
     spendInputCardinality === undefined
       ? tx2InputsPreimage
       : spendInputsOfCardinality({
@@ -183,6 +190,13 @@ export const buildTransactionInclusionFixture = async ({
           cardinality: spendInputCardinality,
           domain: 0x0a02,
         });
+  const tx2Inputs = honestBlock
+    ? tx2SharedInputs.map((input) =>
+        input === doubleSpentInput
+          ? { transactionId: h32("b2"), outputIndex: 1n }
+          : input,
+      )
+    : tx2SharedInputs;
   const tx1Native =
     canonicalTransactions?.[0] ??
     makeNativeTx({

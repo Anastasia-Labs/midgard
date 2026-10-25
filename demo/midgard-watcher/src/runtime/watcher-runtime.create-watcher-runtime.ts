@@ -46,7 +46,6 @@ import {
   watcherDeploymentAppliedScriptHashes,
   watcherDeploymentReleaseFinalityPolicy,
 } from "./deployment-identity.watcher-deployment-availability-challenge-authority.js";
-import { watcherObserveAndPrepare } from "./observe-and-prepare.js";
 import { type WatcherOperationsHttpServer } from "./operations-http.js";
 import {
   createWatcherOperationsObservability,
@@ -272,13 +271,6 @@ export const startWatcherRuntime = async (
     });
     proverFundingStore = fundingRuntime.store;
 
-    const observeAndPrepare = watcherObserveAndPrepare({
-      proverWalletAddress,
-      availabilityWalletAddress,
-      storagePath: watcherConfig.storage.path,
-      deploymentFingerprint: deploymentIdentity.manifestId,
-      operationsSink: () => operations.sink,
-    });
     const execution = createWatcherFaultProofExecution({
       application: faultProofApplication,
       fundingFactory: fundingRuntime.factory,
@@ -288,7 +280,6 @@ export const startWatcherRuntime = async (
       runtimeConfigPath: input.config.watcherRuntimeConfigPath,
       deploymentFingerprint: deploymentIdentity.manifestId,
       operationsSink: () => operations.sink,
-      preparation: observeAndPrepare.preparation,
     });
     const activeSupervisor = createWatcherFaultProofSupervisor({
       journalRoot: input.config.workflowJournalDirectory,
@@ -327,7 +318,6 @@ export const startWatcherRuntime = async (
         faultProofApplication.retainedDaTransportStatus,
       l1Readiness: () => [...l1.read(), ...execution.readiness()],
       l1Degradations: l1.degradations,
-      submissionModes: () => observeAndPrepare.modes,
     });
     retainedDaOperationsBinding = bindWatcherRetainedDaOperations({
       deploymentIdentity,
@@ -357,7 +347,6 @@ export const startWatcherRuntime = async (
       onDaBondPoolReadFailure: watcherDaBondPoolReadFailureReporter(
         operations.sink,
       ),
-      onOpensPrepared: observeAndPrepare.onOpensPrepared,
     });
     availability = activeAvailability;
     const activeBridge = await createWatcherFaultDecisionBridge({

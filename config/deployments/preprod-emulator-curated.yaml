@@ -1,5 +1,5 @@
 # Isolated emulator tests of a curated deployment: the timing and economics of
-# preprod-emulator-testing, with stage-0 allow-lists and the P1 catalogue.
+# preprod-emulator-testing, with the stage-0 operator allow-list and the P1 catalogue.
 name: preprod-emulator-curated
 network: Preprod
 l1_finality:
@@ -81,14 +81,10 @@ protocol_treasury_native_script:
     - type: sig
       keyHash: "706c616365686f6c6465723a74726573000000000000000000000003"
 allow_lists:
-  # Each list admits one key the curated emulator tests derive from a fixed
+  # Admits one operator key the curated emulator tests derive from a fixed
   # seed (midgard-fault-proofs tests/support/curated-emulator.ts).
   operators:
     - "8372d26e23e36568f931b8e3a418ca29dc545054f017548733c78198"
-  fraud_provers:
-    - "d429435c9f332ef50d6fc8f5694bd256a36740da3d21e83aade0594f"
-  da_challengers:
-    - "3bd3eb08b8fb0166ddaa1cbe99248f88d6a749387740a7e6e1548d9b"
 # The preprod-public catalogue: the Plutus execution dispute
 # (validationTraceDispute, 00000006) is in it, and the families below, which
 # have no installed off-chain workflow yet, are left out

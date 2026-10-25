@@ -42,14 +42,13 @@ export const limitConstants = {
   max_dispute_move_fee_lovelace: "max_dispute_move_fee_lovelace",
   fraud_proof_output_lovelace: "fraud_proof_output_lovelace",
 };
-// Stage-0 allow-lists (P1). Each is null (every key admitted) or the
-// verification key hashes the deployment admits, fixed for its life. They
-// render as `Option<List<ByteArray>>` env constants checked by
-// `midgard/common/allow_list.admits`.
+// The stage-0 operator allow-list (P1): null (every key admitted) or the
+// verification key hashes the deployment admits, fixed for its life. It
+// renders as an `Option<List<ByteArray>>` env constant checked by
+// `midgard/common/allow_list.admits`. Fault provers and DA challengers are
+// permissionless.
 export const allowListConstants = {
   operators: "operator_allow_list",
-  fraud_provers: "fraud_prover_allow_list",
-  da_challengers: "da_challenger_allow_list",
 };
 
 // The protocol treasury (pd-design §6.4) is a native script in the cardano-cli

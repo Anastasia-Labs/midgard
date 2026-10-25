@@ -110,12 +110,6 @@ pub const operator_allow_list: Option<List<ByteArray>> =
     ],
   )
 
-pub const fraud_prover_allow_list: Option<List<ByteArray>> =
-  Some([#"3fce32946bbc65915c9abecaac07b0b00b0ee85fce73d06a209e3e5f"])
-
-pub const da_challenger_allow_list: Option<List<ByteArray>> =
-  Some([#"c3276ebd1e6886c2bdc4ef2ca4d084ed8da3901b6054d3c881eb1e81"])
-
 pub const protocol_treasury_native_script_cbor: ByteArray =
   #"830302838200581cf1fb1abc10fc4d90b367c7f994b87aeeb4db60fa8a42ee43a159256c8200581c9ac54f4b18dcdbaeb981b9acbb4e79b590315eb508a08b3a50509cb98200581c65a0683b5ca28e4a8fed2b5a443210741faad5ed43802d20fd329a53"
 

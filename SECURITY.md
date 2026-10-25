@@ -64,8 +64,8 @@ manifest and profile identify the contracts and parameters of an actual
 instance; a development branch or a passing test does not establish release
 readiness.
 
-The initial public testnet, P1, uses curated operators and allow-listed fault
-provers and DA challengers. Proof submission is manual. Users can submit normal
+The initial public testnet, P1, uses curated operators and permissionless fault
+provers and DA challengers. Users can submit normal
 L2 transactions, deposits, withdrawals, and native-only forced transactions.
 Forced transactions allow inline datums and refuse reference scripts, Plutus
 witnesses, redeemers, auxiliary data, and an L2 validity upper bound.
@@ -77,10 +77,12 @@ retrieved from peers are untrusted. Authentication must bind evidence to the
 correct deployment, committed roots, transaction, verdict, and proof stage
 before that evidence can authorize a state change.
 
-Curated operators and allow-listed challengers are part of the P1 trust model.
-Their permissions must still be enforced at the protocol entry points. A key's
-presence on an allow-list does not authenticate unrelated data or permit a
-caller to substitute another deployment, subject, or successor.
+Curated operators are part of the P1 trust model; fault provers and DA
+challengers are permissionless. Operator permissions must still be enforced at
+the protocol entry points. A key's presence on the operator allow-list does not
+authenticate unrelated data or permit a caller to substitute another
+deployment, subject, or successor. Because anyone may challenge, every proof
+family must refuse an adversary's proof against an honest block.
 
 The DA committee is trusted to retain and serve the exact attested payload;
 its signature does not prove ledger validity. Release and admin credentials

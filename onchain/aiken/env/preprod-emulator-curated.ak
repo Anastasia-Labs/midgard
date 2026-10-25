@@ -105,12 +105,6 @@ pub const prover_collateral_floor: Int = 5_000_000
 pub const operator_allow_list: Option<List<ByteArray>> =
   Some([#"8372d26e23e36568f931b8e3a418ca29dc545054f017548733c78198"])
 
-pub const fraud_prover_allow_list: Option<List<ByteArray>> =
-  Some([#"d429435c9f332ef50d6fc8f5694bd256a36740da3d21e83aade0594f"])
-
-pub const da_challenger_allow_list: Option<List<ByteArray>> =
-  Some([#"3bd3eb08b8fb0166ddaa1cbe99248f88d6a749387740a7e6e1548d9b"])
-
 pub const protocol_treasury_native_script_cbor: ByteArray =
   #"830302838200581c706c616365686f6c6465723a747265730000000000000000000000018200581c706c616365686f6c6465723a747265730000000000000000000000028200581c706c616365686f6c6465723a74726573000000000000000000000003"
 

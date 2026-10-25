@@ -93,15 +93,11 @@ protocol_treasury_native_script:
     - type: sig
       keyHash: "65a0683b5ca28e4a8fed2b5a443210741faad5ed43802d20fd329a53"
 allow_lists:
-  # P1 curated keys (owner input I1): payment key hashes of the Preprod
-  # operator, fault-prover and DA-challenger wallets.
+  # P1 curated operators (owner input I1): payment key hashes of the Preprod
+  # operator wallets. Fault provers and DA challengers are permissionless.
   operators:
     - "041388eef29da389e7b9dac19509ef8ac95a398a9909991a4326d424"
     - "4189f341bddd0c74ecb4f5a1ddae8653ee204be022fe530e2f65a6a6"
-  fraud_provers:
-    - "3fce32946bbc65915c9abecaac07b0b00b0ee85fce73d06a209e3e5f"
-  da_challengers:
-    - "c3276ebd1e6886c2bdc4ef2ca4d084ed8da3901b6054d3c881eb1e81"
 # The Plutus execution dispute (validationTraceDispute, 00000006) is in the
 # catalogue at launch (owner, 2026-10-21). The families below have no
 # installed off-chain workflow yet (UNINSTALLED_FRAUD_PROOF_CATEGORIES in
