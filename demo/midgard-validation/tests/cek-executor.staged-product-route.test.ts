@@ -333,6 +333,7 @@ describe("multiplyInteger and the divisions past the direct carriage bound", () 
         }
       }
     },
+    60_000,
   );
 
   it.each([

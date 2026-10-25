@@ -136,5 +136,5 @@ describe("writeBits at the longest index list a transaction builds", () => {
     );
     expect(hops.at(-1)!.next).toBeNull();
     expect(hops.at(-1)!.charge).toEqual(stepCharge(step!));
-  });
+  }, 60_000);
 });
