@@ -224,6 +224,13 @@ export const referenceConstantToDirectWitness = (
   return { kind: "constant", witness };
 };
 
+const WRITE_BITS = 80;
+/** Protocol version 11 fails writeBits on an input over 4,096 bytes
+ * (Plutus' `Bitwise.maximumInputLength`) whatever its indices; the pinned
+ * reference evaluator has no such bound. */
+const writeBitsInputTooLong = (source: CEKConst): boolean =>
+  source.value instanceof Uint8Array && source.value.length > 4_096;
+
 /**
  * Cardano's builtin `tag` (flat numbering) on constant values, or "failure"
  * where Cardano's builtin fails. It is the one value-level relation of the
@@ -241,12 +248,61 @@ export const evaluateMidgardCekBuiltinOnValues = (
     );
     return result === "failure" ? "failure" : cardanoExactResult(result);
   }
+  if (tag === WRITE_BITS && writeBitsInputTooLong(arguments_[0]!)) {
+    return "failure";
+  }
   const result = runPinnedReferenceBuiltin(tag, arguments_);
   if (result instanceof CEKError) return "failure";
   if (!(result instanceof CEKConst)) {
     throw new Error("reference builtin returned a non-constant value");
   }
   return result;
+};
+
+const [INT64_MIN, INT64_MAX] = [-(2n ** 63n), 2n ** 63n - 1n];
+/**
+ * consByteString, sliceByteString, shiftByteString and rotateByteString over
+ * a compacted byte string: their failures (a byte outside [0, 255], a start,
+ * length or amount outside Int64) are decided by the revealed integers alone,
+ * the byte string by its type, as the direct failure arm decides them. A
+ * success needs the bytes, which a compacted byte string does not reveal.
+ */
+const compactedSourceFailure = (
+  tag: bigint,
+  arguments_: readonly MidgardCekDirectValueWitness[],
+): "failure" => {
+  const integers = (
+    tag === 82n || tag === 83n ? arguments_.slice(1) : arguments_.slice(0, -1)
+  ).map(directInteger);
+  const fails =
+    tag === 11n
+      ? integers[0]! < 0n || integers[0]! > 255n
+      : integers.some((value) => value < INT64_MIN || value > INT64_MAX);
+  if (!fails) {
+    throw new Error("V1 builtin over a compacted byte string must fail");
+  }
+  return "failure";
+};
+const INTEGER_TYPE = Buffer.from("9f00ff", "hex");
+/**
+ * A division builtin over a compacted dividend fails only on a zero divisor,
+ * as the direct failure arm decides it from the dividend's type. A dividend
+ * of 4,096 words or more is left to the staged failure hop, which reads from
+ * its CBOR whether it is in range and so charged.
+ */
+const compactedDividendFailure = (
+  arguments_: readonly MidgardCekDirectValueWitness[],
+): "failure" => {
+  const [dividend, divisor] = arguments_;
+  if (
+    dividend?.kind !== "semanticConstant" ||
+    !Buffer.from(dividend.witness.typeCbor).equals(INTEGER_TYPE) ||
+    dividend.witness.memory >= 4_096n ||
+    directInteger(divisor!) !== 0n
+  ) {
+    throw new Error("V1 division over a compacted dividend must fail by zero");
+  }
+  return "failure";
 };
 
 const evaluateReferenceBuiltin = (
@@ -328,6 +384,16 @@ const evaluateReferenceBuiltin = (
       true,
     );
   }
+  if (
+    ((tag === 11n || tag === 12n) &&
+      arguments_.at(-1)?.kind === "semanticConstant") ||
+    ((tag === 82n || tag === 83n) && arguments_[0]?.kind === "semanticConstant")
+  ) {
+    return compactedSourceFailure(tag, arguments_);
+  }
+  if (tag >= 3n && tag <= 6n && arguments_[0]?.kind === "semanticConstant") {
+    return compactedDividendFailure(arguments_);
+  }
   const referenceArguments: CEKConst[] = [];
   for (const argument of arguments_) {
     if (argument.kind !== "constant") {
@@ -348,7 +414,7 @@ const directFailureIsCharged = (
   tag: bigint,
   arguments_: readonly MidgardCekDirectValueWitness[],
 ): boolean =>
-  [4n, 5n, 6n, 21n, 52n, 53n, 60n, 67n].includes(tag) ||
+  [3n, 4n, 5n, 6n, 21n, 52n, 53n, 60n, 67n].includes(tag) ||
   // The reference CEK refuses an out-of-range width before charging.
   (tag === 73n &&
     directInteger(arguments_[1]!) >= 0n &&

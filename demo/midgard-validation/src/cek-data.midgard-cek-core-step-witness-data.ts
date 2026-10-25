@@ -249,6 +249,12 @@ export const midgardCekCoreStepWitnessData = (
         witness.arguments.map(directValueData),
         semanticBuiltinWitnessData(witness.material),
       ]);
+    case "executeBuiltinStagedFailure":
+      return new Constr(36, [
+        witness.tag,
+        witness.arguments.map(directValueData),
+        midgardCekStagedBuiltinMaterialData(witness.material),
+      ]);
     case "executeBuiltinBlsFinal":
       return new Constr(37, [
         bytesData(witness.leftRoot),

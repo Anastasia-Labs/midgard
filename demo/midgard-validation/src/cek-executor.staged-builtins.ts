@@ -1,7 +1,9 @@
 /**
- * The staged route of the scalar builtins (arm 31, semantics groups 7 and 8):
- * a byte-string, string or linear integer builtin whose arguments or result
- * do not fit the direct carriage bound.
+ * The staged route of the scalar builtins (arm 31, semantics groups 7, 8 and
+ * 9): a byte-string, string, bitwise, signature or linear integer builtin,
+ * or integerToByteString, byteStringToInteger, shiftByteString or
+ * rotateByteString, whose arguments or result do not fit the direct carriage
+ * bound.
  *
  * The step is a pure function of the execution graph: each argument gets one
  * typed source (its bytes inline, a staged operand by index, its leaf
@@ -10,10 +12,11 @@
  * driver stages the operands and fills them in
  * (`stageMidgardCekStagedBuiltinMaterial`) before the binder.
  *
- * The result is the value-level relation the direct route uses. A step the
- * staged arms cannot certify (a builtin failure, or an argument or result
- * past protocol version 11's bounds) is not emitted: it throws, so the run is
- * indeterminate rather than given a step no verifier accepts.
+ * The result is the value-level relation the direct route uses. A step that
+ * fails on an argument past protocol version 11's bounds or on its operands'
+ * content is given its failure witness (`midgardCekStagedFailure`). A step
+ * no arm can certify is not emitted: it throws, so the run is indeterminate
+ * rather than given a step no verifier accepts.
  */
 import {
   MIDGARD_CEK_STAGED_CHUNK_BYTES,
@@ -39,6 +42,11 @@ import {
 import { encodeMidgardCekCanonicalConstant } from "./cek-constant.js";
 import { commitMidgardCekDataTree } from "./cek-data-tree.js";
 import type { MidgardCekSemanticStore } from "./cek-executor.semantic-store.js";
+import {
+  type MidgardCekStagedFailure,
+  midgardCekStagedFailure,
+  type MidgardCekStagedOperand,
+} from "./cek-executor.staged-failure.js";
 import type { MidgardCekCoreStepWitness } from "./cek-machine.js";
 import { midgardCekSemanticGroup } from "./cek-semantic-group.js";
 import type { MidgardCekStagedOperandSource } from "./cek-staged-builtin.material.js";
@@ -48,7 +56,9 @@ import {
   stageMidgardCekStagedBuiltinMaterial,
 } from "./cek-staged-builtin.material.js";
 import {
+  compactValue,
   midgardCekStagedBuiltinProves,
+  sameCompacted,
   verifyMidgardCekStagedBuiltin,
 } from "./cek-staged-builtin.verify.js";
 import { plutusDataFromCborIterative } from "./plutus-data-iterative.decode.js";
@@ -59,6 +69,11 @@ type StagedWitness = Extract<
   { readonly kind: "executeBuiltinStaged" }
 >;
 
+/** verifyEcdsaSecp256k1Signature, writeBits and replicateByte, whose staged
+ * steps the staged failure hop proves only when they fail. */
+const failureOnly = (tag: bigint): boolean =>
+  tag === 52n || tag === 80n || tag === 81n;
+
 /**
  * Whether builtin `tag` over these presented arguments takes the staged
  * route: a builtin the staged arms prove, with an argument already past the
@@ -68,17 +83,9 @@ export const isMidgardCekStagedStep = (
   tag: bigint,
   arguments_: readonly MidgardCekDirectValueWitness[],
 ): boolean =>
-  midgardCekStagedBuiltinProves(tag) &&
+  (midgardCekStagedBuiltinProves(tag) || failureOnly(tag)) &&
   (arguments_.some((argument) => argument.kind !== "constant") ||
     !midgardCekDirectBuiltinFits(tag, arguments_));
-
-type Operand = {
-  readonly type: "integer" | "bytes" | "string";
-  /** A byte string's or string's bytes, or an integer's canonical CBOR. */
-  readonly bytes: Buffer;
-  readonly value: CEKConst;
-  readonly leaf: MidgardCekStagedOperandSource;
-};
 
 const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 
@@ -86,7 +93,7 @@ const operandOf = (
   store: MidgardCekSemanticStore,
   root: Bytes,
   argument: MidgardCekDirectValueWitness,
-): Operand => {
+): MidgardCekStagedOperand => {
   if (argument.kind !== "constant" && argument.kind !== "semanticConstant") {
     throw new Error("CEK staged builtin requires constant arguments");
   }
@@ -130,40 +137,94 @@ const operandOf = (
   throw new Error("CEK staged builtin argument is not a scalar constant");
 };
 
+/** A committed Boolean argument: byteStringToInteger's endianness, or the
+ * padding of andByteString, orByteString and xorByteString. */
+const committedBoolean = (argument: MidgardCekDirectValueWitness): CEKConst => {
+  const committed = semanticizeMidgardCekDirectConstant(argument);
+  const constant = [true, false]
+    .map((value) => CEKConst.bool(value))
+    .find(
+      (value) =>
+        committed.kind === "semanticConstant" &&
+        sameCompacted(committed.witness, compactValue(value)),
+    );
+  if (constant === undefined) {
+    throw new Error("CEK staged builtin Boolean argument is not a Boolean");
+  }
+  return constant;
+};
+
 /** Whether the staged arm binds every argument of `tag` by its leaf alone. */
 const leafOnly = (tag: number): boolean =>
   tag === 7 || tag === 13 || tag === 15 || tag === 23 || tag === 24;
 
-/** Whether argument `index` of `tag` is a byte-string builtin's integer. */
+/** Whether operand `index` of `tag` is a byte-string builtin's integer or
+ * integerToByteString's width. */
 const smallInteger = (tag: number, index: number): boolean =>
+  (tag === 73 && index === 0) ||
   (tag === 11 && index === 0) ||
   (tag === 12 && index < 2) ||
-  (tag === 14 && index === 1);
+  (tag === 14 && index === 1) ||
+  ((tag === 79 || tag === 82 || tag === 83) && index === 1);
 
 /**
  * The staged step of builtin `tag` over `arguments_` (presented, with value
- * roots `roots`) and its result, which the caller adds to the store.
+ * roots `roots`) and its result, which the caller adds to the store, or the
+ * witness of its failure.
  */
 export const executeMidgardCekStagedBuiltin = (
   store: MidgardCekSemanticStore,
   tag: bigint,
   arguments_: readonly MidgardCekDirectValueWitness[],
   roots: readonly Bytes[],
-): {
-  readonly witness: StagedWitness;
-  readonly result: MidgardCekDirectValueWitness;
-} => {
+):
+  | {
+      readonly kind: "success";
+      readonly witness: StagedWitness;
+      readonly result: MidgardCekDirectValueWitness;
+    }
+  | ({ readonly kind: "failure" } & MidgardCekStagedFailure) => {
   const group = midgardCekSemanticGroup(tag);
-  if (group !== 7 && group !== 8) {
+  if (group !== 7 && group !== 8 && group !== 9 && !failureOnly(tag)) {
     throw new Error("CEK staged builtin has no staged semantics group");
   }
-  const operands = arguments_.map((argument, index) =>
-    operandOf(store, roots[index]!, argument),
+  // byteStringToInteger's and integerToByteString's endianness and the
+  // logical builtins' padding are committed Booleans, not operands.
+  const conversion = tag === 74n;
+  const leading =
+    conversion || tag === 73n || (tag >= 75n && tag <= 77n) ? 1 : 0;
+  // writeBits' indices and Boolean are not operands: its failure reads its
+  // input alone.
+  const operands = arguments_
+    .slice(leading, tag === 80n ? 1 : undefined)
+    .map((argument, index) =>
+      operandOf(store, roots[index + leading]!, argument),
+    );
+  // The reference byteStringToInteger reverses a little-endian input in
+  // place, so each evaluation reads a copy of it.
+  const values = () =>
+    conversion
+      ? [
+          committedBoolean(arguments_[0]!),
+          CEKConst.byteString(Buffer.from(operands[0]!.bytes)),
+        ]
+      : [
+          ...arguments_.slice(0, leading).map(committedBoolean),
+          ...operands.map((operand) => operand.value),
+        ];
+  const evaluate = () =>
+    evaluateMidgardCekBuiltinOnValues(Number(tag), values());
+  const failure = midgardCekStagedFailure(
+    tag,
+    arguments_,
+    operands,
+    () => evaluate() === "failure",
   );
-  const evaluated = evaluateMidgardCekBuiltinOnValues(
-    Number(tag),
-    operands.map((operand) => operand.value),
-  );
+  if (failure !== null) return { kind: "failure", ...failure };
+  if (failureOnly(tag)) {
+    throw new Error("CEK staged builtin step has no staged proof");
+  }
+  const evaluated = evaluate();
   if (evaluated === "failure") {
     throw new Error("CEK staged builtin failure has no staged proof");
   }
@@ -223,5 +284,5 @@ export const executeMidgardCekStagedBuiltin = (
   ) {
     throw new Error("CEK staged builtin step is past the staged arms' bounds");
   }
-  return { witness, result };
+  return { kind: "success", witness, result };
 };

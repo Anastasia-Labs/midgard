@@ -491,9 +491,15 @@ pub fn budget_step(
   )
   expect Some(datum) = step.datum
   expect Some(bound) = datum.data
+  // A shift's or integerToByteString's charge is read from its plain amount
+  // or width, as Cardano costs it.
   let budget = cek_builtin_v1.direct_builtin_budget_v1(
     tag,
-    list.map(arguments, compact),
+    if tag == 73 || tag == 82 || tag == 83 {
+      arguments
+    } else {
+      list.map(arguments, compact)
+    },
   )
   let post = machine.exact_state(
     bound.pre,
@@ -513,6 +519,129 @@ pub fn budget_step(
     transaction: Transaction {
       ..step.transaction,
       outputs: fixture.continue_mid_step_l1_tx_v1(ct_asset, next).outputs,
+    },
+  }
+}
+
+/// The arm 36 step for builtin `tag` failing on these witness arguments, with
+/// this material, as the staged failure hop receives it (group 7, progress 1):
+/// the post-state halts on the builtin failure, charging nothing.
+pub fn failure_step(
+  tag: Int,
+  arguments: List<ValueWitnessV1>,
+  step_material: StagedMaterialV1,
+  reference_inputs: List<Input>,
+) -> StagedStepV1 {
+  charged_failure_step(tag, arguments, step_material, reference_inputs, 0, 0)
+}
+
+/// `failure_step` with a post-state charging `cpu` and `memory`.
+pub fn charged_failure_step(
+  tag: Int,
+  arguments: List<ValueWitnessV1>,
+  step_material: StagedMaterialV1,
+  reference_inputs: List<Input>,
+  cpu: Int,
+  memory: Int,
+) -> StagedStepV1 {
+  let material_data: Data = step_material
+  failure_step_charging(
+    tag,
+    arguments,
+    material_data,
+    reference_inputs,
+    36,
+    7,
+    1,
+    cpu,
+    memory,
+  )
+}
+
+/// `failure_step` with the witness constructor, group and progress chosen and
+/// the material given as Data.
+pub fn failure_step_at(
+  tag: Int,
+  arguments: List<ValueWitnessV1>,
+  material_data: Data,
+  reference_inputs: List<Input>,
+  arm: Int,
+  group: Int,
+  progress: Int,
+) -> StagedStepV1 {
+  failure_step_charging(
+    tag,
+    arguments,
+    material_data,
+    reference_inputs,
+    arm,
+    group,
+    progress,
+    0,
+    0,
+  )
+}
+
+fn failure_step_charging(
+  tag: Int,
+  arguments: List<ValueWitnessV1>,
+  material_data: Data,
+  reference_inputs: List<Input>,
+  arm: Int,
+  group: Int,
+  progress: Int,
+  cpu: Int,
+  memory: Int,
+) -> StagedStepV1 {
+  let arguments_data: Data = arguments
+  let witness = builtin.constr_data(
+    arm,
+    [builtin.i_data(tag), arguments_data, material_data],
+  )
+  let state = machine.MachineStateV1 {
+    mode: machine.mode_builtin,
+    execution_index: 0,
+    focus_root: #"",
+    environment_root: #"",
+    continuation_root: #"",
+    auxiliary: 0,
+    cpu: 0,
+    memory: 0,
+  }
+  let bound = chain.CoreBound {
+    prepared: builtin.constr_data(0, []),
+    pre: state,
+    post: machine.exact_state(
+      state,
+      machine.mode_halt_error,
+      cek_proof_v1.hash_error_term_v1(),
+      cek_proof_v1.empty_environment_root_v1,
+      cek_proof_v1.empty_continuation_root_v1,
+      machine.error_builtin_failure,
+      cpu,
+      memory,
+    ),
+    witness_hash: blake2b_256(cbor.serialise(witness)),
+    arm,
+    group,
+    progress,
+    facts: builtin.constr_data(0, []),
+  }
+  let next: Data = chain.CoreBound { ..bound, progress: progress + 1 }
+  StagedStepV1 {
+    datum: Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(bound),
+      },
+    ),
+    redeemer: ct.Continue(
+      chain.VerifyArm { input_index: 0, output_index: 0, witness },
+    ),
+    transaction: Transaction {
+      ..fixture.continue_mid_step_l1_tx_v1(ct_asset, next),
+      reference_inputs,
+      extra_signatories: [fixture.fraud_prover_key_hash],
     },
   }
 }

@@ -356,6 +356,8 @@ test choose_data_refuses_a_forged_result() fail {
 
 fn failure_post(
   pre: cek_machine_v1.MachineStateV1,
+  cpu: Int,
+  memory: Int,
 ) -> cek_machine_v1.MachineStateV1 {
   cek_machine_v1.exact_state(
     pre,
@@ -364,13 +366,14 @@ fn failure_post(
     cek_proof_v1.empty_environment_root_v1,
     cek_proof_v1.empty_continuation_root_v1,
     cek_machine_v1.error_builtin_failure,
-    0,
-    0,
+    cpu,
+    memory,
   )
 }
 
 /// A division by zero whose pre-state binds `[1, 0]`, presented with a
-/// different dividend that fails the same way.
+/// different dividend that fails the same way. The halted state carries the
+/// builtin's charge for a one-word dividend.
 fn failure_proves(dividend: ByteArray) -> Bool {
   let pre = builtin_pre(
     3,
@@ -378,7 +381,7 @@ fn failure_proves(dividend: ByteArray) -> Bool {
   )
   cek_machine_v1.verify_core_step_v1(
     pre,
-    failure_post(pre),
+    failure_post(pre, 132341, 1),
     cek_machine_v1.ExecuteBuiltinFailure {
       tag: 3,
       arguments: [constant(#"9f00ff", dividend), constant(#"9f00ff", #"00")],
@@ -428,7 +431,7 @@ fn type_failure_proves(body: ByteArray) -> Bool {
   }
   cek_machine_v1.verify_core_step_v1(
     pre,
-    failure_post(pre),
+    failure_post(pre, 0, 0),
     cek_machine_v1.ExecuteBuiltinTypeFailure {
       tag: 0,
       arguments: type_failure_arguments(body),

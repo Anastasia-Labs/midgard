@@ -311,6 +311,17 @@ export type MidgardCekCoreStepWitness =
       readonly arguments: readonly MidgardCekDirectValueWitness[];
     }
   | {
+      // A byte-string, string or integer builtin of the staged route that
+      // fails on its arguments' bounds or content (arm 36). The arguments
+      // are compacted; `material` binds the operands the failure reads, and
+      // `stagedOperands` holds the bytes of each staged operand it names.
+      readonly kind: "executeBuiltinStagedFailure";
+      readonly tag: bigint;
+      readonly arguments: readonly MidgardCekDirectValueWitness[];
+      readonly material: MidgardCekStagedBuiltinMaterial;
+      readonly stagedOperands: readonly Bytes[];
+    }
+  | {
       readonly kind: "executeBuiltinBlsFinal";
       readonly leftRoot: Bytes;
       readonly rightRoot: Bytes;

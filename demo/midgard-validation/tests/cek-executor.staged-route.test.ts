@@ -1,22 +1,19 @@
-import { encodeCbor } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
 import type { MidgardCekExecutionStep } from "../src/cek-executor.build-midgard-cek-execution-graph.js";
 import { verifyMidgardCekCoreStep } from "../src/cek-machine.verify-builtin.js";
-import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
-import { stageMidgardCekStagedBuiltinMaterial } from "../src/cek-staged-builtin.material.js";
-import { evaluateMidgardCekScript } from "../src/phase-b.evaluate-cek-script.js";
-import { UPLCConst } from "../src/uplc-constant.js";
-import { DataB, DataConstr } from "../src/uplc-data.js";
-import { Builtin, UPLCProgram, type UPLCTerm } from "../src/uplc-term.js";
+import type { UPLCTerm } from "../src/uplc-term.js";
 import {
-  app,
-  discard,
-  lam,
-  MIDGARD_CEK_TX_BUDGET,
-  prepareMidgardCekProgram,
-  runMidgardCekProgram,
-} from "./helpers/cek-uplc-terms.js";
+  built,
+  builtText,
+  bytes,
+  call,
+  int,
+  run,
+  staged,
+  text,
+  wide,
+} from "./helpers/cek-staged-route-terms.js";
 import { builtin } from "./helpers/uplc-builtins.js";
 
 /**
@@ -25,73 +22,9 @@ import { builtin } from "./helpers/uplc-builtins.js";
  * instead of leaving the run indeterminate. The proof-mode run (the
  * structural executor, every step checked by the consensus verifier) reaches
  * the verdict and budget of the PV11 evaluator, and each staged step still
- * verifies once its operands are staged. A step the staged arms cannot
- * certify (a builtin failure, or an argument or result past protocol version
- * 11's bounds) leaves the proof-mode run indeterminate, never accepted.
+ * verifies once its operands are staged. The staged steps that fail are in
+ * cek-executor.staged-route-failures.test.ts.
  */
-
-// Program constants stay within the direct carriage bound, so larger values
-// are built at run time.
-const PIECE = 8_000;
-
-const bytes = (length: number, salt = 0): UPLCTerm =>
-  UPLCConst.byteString(
-    new DataB(
-      Uint8Array.from({ length }, (_, index) => (index * 7 + salt) & 0xff),
-    ).bytes,
-  );
-const text = (length: number, letter = "x"): UPLCTerm =>
-  UPLCConst.str(letter.repeat(length));
-const int = (value: bigint): UPLCTerm => UPLCConst.int(value);
-
-const call = (function_: Builtin, ...args: readonly UPLCTerm[]): UPLCTerm =>
-  app(function_, ...args);
-
-/** `length` bytes, appended from pieces of at most 8,000 bytes. */
-const built = (length: number, salt = 0): UPLCTerm => {
-  const pieces = Array.from({ length: Math.ceil(length / PIECE) }, (_, index) =>
-    bytes(Math.min(PIECE, length - index * PIECE), salt + index),
-  );
-  return pieces.reduce((left, right) =>
-    call(builtin("appendByteString"), left, right),
-  );
-};
-
-/** `length` copies of `letter`, appended from pieces of 8,000 at most. */
-const builtText = (length: number, letter = "x"): UPLCTerm => {
-  const pieces = Array.from({ length: Math.ceil(length / PIECE) }, (_, index) =>
-    text(Math.min(PIECE, length - index * PIECE), letter),
-  );
-  return pieces.reduce((left, right) =>
-    call(builtin("appendString"), left, right),
-  );
-};
-
-/** An integer of `size` magnitude bytes. */
-const wide = (size: number, low = 0n): bigint =>
-  (1n << BigInt(8 * size - 1)) + low;
-
-const script = (body: UPLCTerm): Buffer =>
-  encodeCbor(
-    Buffer.from(
-      encodeMidgardCekCardanoFlatProgram(
-        new UPLCProgram([1, 1, 0], lam(discard(body))),
-      ),
-    ),
-  );
-
-const run = (body: UPLCTerm, mode: "proof" | "verdict") =>
-  evaluateMidgardCekScript(
-    {
-      scriptBytes: script(body),
-      scriptLanguage: "PlutusV3",
-      contextCbor: Buffer.from("d87980", "hex"),
-      executionIndex: 0n,
-      maxSteps: 10_000,
-      executionBudget: MIDGARD_CEK_TX_BUDGET,
-    },
-    mode,
-  );
 
 // Flat builtin tags.
 const ADD = 0n;
@@ -223,47 +156,12 @@ const honest: readonly (readonly [string, UPLCTerm, bigint])[] = [
   ],
 ];
 
-// Each case: its label and a script body whose staged step the staged arms
-// cannot certify.
-const unprovable: readonly (readonly [string, UPLCTerm])[] = [
-  ["sha2_256 of 65,537 bytes", call(builtin("sha2_256"), built(65_537))],
-  [
-    "appendByteString onto 65,537 bytes",
-    call(builtin("appendByteString"), built(65_537), bytes(1)),
-  ],
-  [
-    "indexByteString past the end of 20,000 bytes",
-    call(builtin("indexByteString"), built(20_000), int(20_000n)),
-  ],
-];
-
 const stagedSteps = (
   outcome: ReturnType<typeof run>,
 ): MidgardCekExecutionStep[] =>
   (outcome.execution?.steps ?? []).filter(
     (step) => step.witness.kind === "executeBuiltinStaged",
   );
-
-/** The step's witness with its operands staged on outputs of `seed`. */
-const staged = (step: MidgardCekExecutionStep, seed: number) => {
-  const witness = step.witness;
-  if (witness.kind !== "executeBuiltinStaged") throw new Error("not staged");
-  let index = 0;
-  const staging = witness.stagedOperands.map((operand) =>
-    Array.from({ length: Math.ceil(operand.length / 12_285) }, () => ({
-      transactionId: Buffer.alloc(32, seed),
-      outputIndex: index++,
-    })),
-  );
-  return {
-    ...witness,
-    material: stageMidgardCekStagedBuiltinMaterial(
-      witness.material,
-      witness.stagedOperands,
-      staging,
-    ),
-  };
-};
 
 describe("CEK scalar builtins past the direct carriage bound", () => {
   it.each(honest)(
@@ -312,23 +210,4 @@ describe("CEK scalar builtins past the direct carriage bound", () => {
       ),
     ).toBe(true);
   });
-
-  it.each(unprovable)(
-    "leaves %s indeterminate where the PV11 evaluator fails it",
-    (_, body) => {
-      expect(run(body, "verdict").result.kind).toBe("script_invalid");
-      expect(run(body, "proof").result.kind).toBe("indeterminate");
-    },
-  );
-
-  it.each(unprovable)(
-    "stops the unchecked structural run of %s instead of succeeding",
-    (_, body) => {
-      const prepared = prepareMidgardCekProgram(
-        lam(discard(body)),
-        new DataConstr(0n, []),
-      );
-      expect(() => runMidgardCekProgram(prepared, "verdict")).toThrow();
-    },
-  );
 });

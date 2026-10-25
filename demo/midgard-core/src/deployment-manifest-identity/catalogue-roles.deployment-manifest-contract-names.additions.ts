@@ -4,6 +4,8 @@ import { DEPLOYMENT_MANIFEST_BASE_CONTRACT_NAMES } from "./catalogue-roles.deplo
 const DEPLOYMENT_MANIFEST_CONTRACT_NAME_ADDITIONS = [
   "validationTraceDisputeCekCoreStagedBytes",
   "validationTraceDisputeCekCoreStagedInteger",
+  "validationTraceDisputeCekCoreStagedFailure",
+  "validationTraceDisputeCekCoreStagedConversion",
 ] as const;
 
 export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([

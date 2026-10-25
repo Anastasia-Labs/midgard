@@ -154,6 +154,52 @@ fn division_cpu(tag: Int, sizes: List<Int>) -> Int {
   }
 }
 
+/// The budget of division builtin `tag` (3 to 6) over its two argument
+/// sizes: `builtin_budget_v1`'s row for it, without the other builtins.
+pub fn division_budget_v1(tag: Int, sizes: List<Int>) -> BuiltinBudgetV1 {
+  expect tag >= 3 && tag <= 6
+  expect list.all(sizes, fn(size) { size >= 0 })
+  BuiltinBudgetV1 {
+    cpu: division_cpu(tag, sizes),
+    memory: if tag <= 4 {
+      linear2_sub(0, 1, 1, sizes)
+    } else {
+      linear2_y(0, 1, sizes)
+    },
+  }
+}
+
+/// The budget of verifyEd25519Signature (21),
+/// verifyEcdsaSecp256k1Signature (52) or verifySchnorrSecp256k1Signature (53)
+/// over its three argument sizes: `builtin_budget_v1`'s row for it, without
+/// the other builtins.
+pub fn signature_budget_v1(tag: Int, sizes: List<Int>) -> BuiltinBudgetV1 {
+  expect list.all(sizes, fn(size) { size >= 0 })
+  expect [_, _, _] = sizes
+  BuiltinBudgetV1 {
+    cpu: if tag == 21 {
+      linear3_y(53384111, 14333, sizes)
+    } else if tag == 52 {
+      43053543
+    } else {
+      expect tag == 53
+      linear3_y(43574283, 26308, sizes)
+    },
+    memory: 10,
+  }
+}
+
+/// The budget of integerToByteString (73) over its three argument sizes
+/// (the endianness, the width's words and the input's memory):
+/// `builtin_budget_v1`'s row for it, without the other builtins.
+pub fn integer_to_bytes_budget_v1(sizes: List<Int>) -> BuiltinBudgetV1 {
+  expect [_, _, _] = sizes
+  BuiltinBudgetV1 {
+    cpu: quadratic3_z(1293828, 28716, 63, sizes),
+    memory: const_y_or_linear_z(0, 1, sizes),
+  }
+}
+
 pub fn builtin_argument_count_v1(tag: Int) -> Int {
   expect and {
       tag >= 0,

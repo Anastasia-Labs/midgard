@@ -17,13 +17,16 @@
  *   write the compacted arguments and result, and the budget adds the
  *   builtin's budget;
  * - groups 7 to 10 (a semantic, BLS final, direct or type failure): two or
- *   three hops that write no facts.
+ *   three hops that write no facts; group 7's roots go on to the staged
+ *   failure hop for a byte-string, string or integer builtin and to the
+ *   material hop for the rest.
  *
  * Staging hook (arm 31). The staged route a semantic builtin's oversize
  * operands take (C12-B1) runs this same chain, its semantic stage picked by
  * `midgardCekSemanticGroup` as for any semantic builtin (the staged stages
- * extend `CEK_CORE_SEMANTIC_STAGES`, and the group also picks how the arm-31
- * material decodes); what it adds is one move before the binder, the staging
+ * extend `CEK_CORE_SEMANTIC_STAGES` as `cekCoreStagedSemanticStage`, and the
+ * group also picks how the arm-31 material decodes); what it adds is one
+ * move before the binder, the staging
  * of the operands, whose out-refs fill the `StagedMaterialV1` the arm witness
  * carries. The driver then waits for the staged outputs' confirmation depth,
  * pins them before the binder, keeps the pins with the journal, releases
@@ -54,6 +57,41 @@ export const CEK_CORE_SEMANTIC_STAGES = Object.freeze([
   "semanticDataMisc",
 ] as const);
 
+/** The staged failure hop, which group 7's roots take for a byte-string,
+ * string, signature, integer or bitwise builtin in place of the material
+ * hop. */
+const STAGED_FAILURE_STAGE = "stagedFailure" as const;
+
+/** Whether group 7's roots route builtin `tag` to the staged failure hop:
+ * all but the Data builtins. */
+const stagedFailureTag = (tag: bigint): boolean =>
+  tag < 26n || tag === 52n || tag === 53n || (tag >= 71n && tag <= 86n);
+
+/** The staged semantic stage of each staged `semantic_group(tag)`, the
+ * groups past `CEK_CORE_SEMANTIC_STAGES` (cek-semantic-chain): the
+ * byte-string, string and signature builtins (7), the linear integer
+ * builtins (8), and byteStringToInteger, shiftByteString and
+ * rotateByteString (9). */
+export const CEK_CORE_STAGED_SEMANTIC_STAGES = Object.freeze({
+  7: "stagedBytes",
+  8: "stagedInteger",
+  9: "stagedConversion",
+} as const);
+
+export type CekCoreStagedSemanticStage =
+  (typeof CEK_CORE_STAGED_SEMANTIC_STAGES)[keyof typeof CEK_CORE_STAGED_SEMANTIC_STAGES];
+
+/** Staging hook (arm 31): the staged stage the budget hop routes semantic
+ * builtin `tag` to on the staged route, or null for a tag without one. */
+export const cekCoreStagedSemanticStage = (
+  tag: bigint,
+): CekCoreStagedSemanticStage | null => {
+  const group = midgardCekSemanticGroup(tag);
+  return group === 7 || group === 8 || group === 9
+    ? CEK_CORE_STAGED_SEMANTIC_STAGES[group]
+    : null;
+};
+
 /** Each core group's arm holders before its semantic stage, in order. */
 const CHAINS = Object.freeze({
   0: ["compute"],
@@ -76,12 +114,17 @@ export type CekCoreGroup = keyof typeof CHAINS;
  * the settle. */
 export type ValidationTraceArmHolder =
   | (typeof CHAINS)[CekCoreGroup][number]
-  | (typeof CEK_CORE_SEMANTIC_STAGES)[number];
+  | (typeof CEK_CORE_SEMANTIC_STAGES)[number]
+  | typeof STAGED_FAILURE_STAGE;
 
 /** Every arm holder, each once. */
 export const CEK_CORE_ARM_HOLDERS: readonly ValidationTraceArmHolder[] =
   Object.freeze([
-    ...new Set([...Object.values(CHAINS).flat(), ...CEK_CORE_SEMANTIC_STAGES]),
+    ...new Set([
+      ...Object.values(CHAINS).flat(),
+      ...CEK_CORE_SEMANTIC_STAGES,
+      STAGED_FAILURE_STAGE,
+    ]),
   ]);
 
 export const isCekCoreGroup = (group: number): group is CekCoreGroup =>
@@ -211,6 +254,26 @@ export const cekCoreArmHops = (
           valueData(result),
         ]),
       ]),
+    });
+  }
+  if (group === 7) {
+    if (
+      witness.kind !== "executeBuiltinSemanticFailure" &&
+      witness.kind !== "executeBuiltinStagedFailure"
+    )
+      throw new Error("a semantic failure step has another witness");
+    if (
+      witness.kind === "executeBuiltinStagedFailure" &&
+      witness.stagedOperands.length > 0
+    )
+      throw new Error("a staged failure's staged operands are not driven");
+    const [roots, material] = CHAINS[7];
+    return Object.freeze({
+      holders: Object.freeze([
+        roots,
+        stagedFailureTag(witness.tag) ? STAGED_FAILURE_STAGE : material,
+      ]),
+      facts: keptAfter(2, []),
     });
   }
   const holders = CHAINS[group];

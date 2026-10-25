@@ -1220,11 +1220,19 @@ export class StructuralExecutor {
         directArguments,
         roots,
       );
-      const resultRoot = this.addDirectResult(staged.result);
-      const budget = this.budget(builtin.tag, directArguments);
       this.record(
         staged.witness,
-        builtinReturnSuccessor(pre, resultRoot, budget),
+        staged.kind === "failure"
+          ? errorSuccessor(
+              pre,
+              MidgardCekErrorCodes.BuiltinFailure,
+              staged.budget,
+            )
+          : builtinReturnSuccessor(
+              pre,
+              this.addDirectResult(staged.result),
+              this.budget(builtin.tag, directArguments),
+            ),
       );
       return;
     }

@@ -135,7 +135,7 @@ test empty_trace_message_uses_the_reference_zero_size_quirk() {
   }
 }
 
-test division_by_zero_failure_is_authenticated_without_charging() {
+test division_by_zero_failure_charges_before_the_operation_fails() {
   let arguments = [integer(#"01"), integer(#"00")]
   and {
     cek_builtin_v1.verify_direct_builtin_failure_v1(
@@ -143,9 +143,10 @@ test division_by_zero_failure_is_authenticated_without_charging() {
       builtin_root(3, arguments),
       arguments,
     ),
+    // What the pinned PV11 evaluator charges a one-word dividend by zero.
     cek_builtin_v1.authenticated_builtin_failure_budget(3, arguments) == cek_cost_v1.BuiltinBudgetV1 {
-      cpu: 0,
-      memory: 0,
+      cpu: 132341,
+      memory: 1,
     },
   }
 }
@@ -163,6 +164,51 @@ test quotient_by_zero_failure_charges_before_the_operation_fails() {
       arguments,
     ),
   }
+}
+
+/// A byte string of 12,000 bytes, past the direct carriage bound, presented
+/// by its leaf alone.
+fn source_by_its_leaf() -> cek_builtin_v1.ValueWitnessV1 {
+  let source = bytearray.concat(
+    builtin.replicate_byte(8000, 7),
+    builtin.replicate_byte(4000, 7),
+  )
+  cek_builtin_v1.SemanticConstantValue {
+    type_cbor: #"9f01ff",
+    payload: cek_data_v1.semantic_data_summary_v1(builtin.b_data(source)),
+    memory: 1500,
+  }
+}
+
+test cons_past_255_onto_a_source_by_its_leaf_is_a_known_failure() {
+  let arguments = [integer(#"190100"), source_by_its_leaf()]
+  cek_builtin_v1.verify_direct_builtin_failure_v1(
+    11,
+    builtin_root(11, arguments),
+    arguments,
+  )
+}
+
+test cons_of_255_onto_a_source_by_its_leaf_is_not_a_known_failure() {
+  let arguments = [integer(#"18ff"), source_by_its_leaf()]
+  !cek_builtin_v1.verify_direct_builtin_failure_v1(
+    11,
+    builtin_root(11, arguments),
+    arguments,
+  )
+}
+
+test slice_from_past_int64_of_a_source_by_its_leaf_is_a_known_failure() {
+  let arguments = [
+    integer(#"1b8000000000000000"),
+    integer(#"0a"),
+    source_by_its_leaf(),
+  ]
+  cek_builtin_v1.verify_direct_builtin_failure_v1(
+    12,
+    builtin_root(12, arguments),
+    arguments,
+  )
 }
 
 test invalid_utf8_failure_is_authenticated_without_decoding() {
@@ -2812,6 +2858,49 @@ test write_bits_success_certifies_a_4096_byte_input() {
 
 test write_bits_success_is_refused_one_past_4096_bytes() fail {
   write_bit_zero_succeeds_at(4097)
+}
+
+// Setting bit 0 of `length` zero bytes, as a known failure.
+fn write_bit_zero_arguments(length: Int) -> List<cek_builtin_v1.ValueWitnessV1> {
+  [
+    bytes(cbor.serialise(builtin.b_data(zero_run(length)))),
+    constant(
+      #"9f0500ff",
+      cbor.serialise(builtin.list_data([builtin.i_data(0)])),
+    ),
+    boolean(#"d87a80"),
+  ]
+}
+
+fn write_bit_zero_fails_at(length: Int) -> Bool {
+  let arguments = write_bit_zero_arguments(length)
+  cek_builtin_v1.verify_direct_builtin_failure_v1(
+    80,
+    builtin_root(80, arguments),
+    arguments,
+  )
+}
+
+// Past 4,096 bytes writeBits fails whatever its indices, up to the longest
+// input the direct bound reveals beside one index, and without a charge, as
+// its other failures are.
+test write_bits_fails_one_past_4096_bytes() {
+  let arguments = write_bit_zero_arguments(4097)
+  and {
+    write_bit_zero_fails_at(4097),
+    cek_builtin_v1.authenticated_builtin_failure_budget(80, arguments) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 0,
+      memory: 0,
+    },
+  }
+}
+
+test write_bits_fails_at_the_longest_direct_input() {
+  write_bit_zero_fails_at(8927)
+}
+
+test write_bits_does_not_fail_at_4096_bytes() {
+  !write_bit_zero_fails_at(4096)
 }
 
 // Shifting one byte by eight bits or more leaves zero; rotating 0xff leaves it.
