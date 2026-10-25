@@ -17,6 +17,7 @@ import {
   compactedDividendFailure,
   compactedSourceFailure,
   midgardCekDivisionByZero,
+  midgardCekScalarMulOutOfBound,
 } from "./cek-builtin.compacted-failures.js";
 import {
   evaluatePinnedBuiltin,
@@ -226,6 +227,7 @@ const evaluateDirectBuiltinResult = (
   const control = selectedControlResult(tag, arguments_);
   if (control !== null) return control;
   if (midgardCekDivisionByZero(tag, arguments_)) return "failure";
+  if (midgardCekScalarMulOutOfBound(tag, arguments_)) return "failure";
   if (tag === 68n) {
     if (arguments_.length !== 2) {
       throw new Error("BLS millerLoop requires two arguments");
@@ -325,7 +327,8 @@ const directFailureIsCharged = (
   tag: bigint,
   arguments_: readonly MidgardCekDirectValueWitness[],
 ): boolean =>
-  [3n, 4n, 5n, 6n, 21n, 52n, 53n, 60n, 67n].includes(tag) ||
+  // Cardano charges scalarMul (56, 63) before its scalar bound check fails.
+  [3n, 4n, 5n, 6n, 21n, 52n, 53n, 56n, 60n, 63n, 67n].includes(tag) ||
   // Cardano's machine refuses an out-of-range width before charging.
   (tag === 73n &&
     directInteger(arguments_[1]!) >= 0n &&

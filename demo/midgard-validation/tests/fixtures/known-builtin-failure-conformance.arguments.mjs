@@ -87,6 +87,32 @@ export const semantic = (typeOf, memory) => ({
   },
 });
 
+/** A G1 point constant (type 9f09ff) held as its compressed `encoded` bytes. */
+export const g1Point = (encoded) => ({
+  kind: "constant",
+  witness: {
+    typeCbor: Uint8Array.of(0x9f, 0x09, 0xff),
+    payloadCbor: bytes(encoded).witness.payloadCbor,
+  },
+});
+/** A G2 point constant (type 9f0aff) held as its compressed `encoded` bytes. */
+export const g2Point = (encoded) => ({
+  kind: "constant",
+  witness: {
+    typeCbor: Uint8Array.of(0x9f, 0x0a, 0xff),
+    payloadCbor: bytes(encoded).witness.payloadCbor,
+  },
+});
+/** The compressed BLS12-381 G1 and G2 generators (IETF draft-irtf-cfrg-pairing-friendly-curves, ZCash encoding). */
+export const BLS12_381_G1_GENERATOR = Buffer.from(
+  "97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb",
+  "hex",
+);
+export const BLS12_381_G2_GENERATOR = Buffer.from(
+  "93e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8",
+  "hex",
+);
+
 export const opaque = { kind: "opaque", root: new Uint8Array(32).fill(9) };
 export const millerLoop = {
   kind: "blsMillerLoop",

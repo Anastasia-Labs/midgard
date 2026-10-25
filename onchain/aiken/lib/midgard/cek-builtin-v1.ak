@@ -3940,6 +3940,23 @@ pub fn known_builtin_failure_v1(
       constant_type_v1(message) == cek_constant_v1.ByteStringConstant,
       bytearray.length(bytes_v1(domain)) > 255,
     }
+  } else if or {
+    tag == 56,
+    tag == 63,
+  } {
+    // scalarMul fails on a scalar outside [-2^4095, 2^4095 - 1] whatever the
+    // point; the success arm refuses such a scalar.
+    expect [scalar, source] = arguments
+    let value = integer_v1(scalar)
+    let point_type = if tag == 56 {
+      cek_constant_v1.BlsG1Constant
+    } else {
+      cek_constant_v1.BlsG2Constant
+    }
+    and {
+      constant_type_v1(source) == point_type,
+      !bls_scalar_in_bound_v1(value),
+    }
   } else if tag == 59 {
     expect [source] = arguments
     let encoded = bytes_v1(source)
@@ -4343,6 +4360,7 @@ pub fn authenticated_builtin_failure_budget(
   } else {
     False
   }
+  // Cardano charges scalarMul (56, 63) before its scalar bound check fails.
   if or {
     tag == 3,
     tag == 4,
@@ -4351,7 +4369,9 @@ pub fn authenticated_builtin_failure_budget(
     tag == 21,
     tag == 52,
     tag == 53,
+    tag == 56,
     tag == 60,
+    tag == 63,
     tag == 67,
     failure_is_paid,
   } {

@@ -115,9 +115,9 @@ export const verifyMidgardCekDirectBuiltinFailure = (
     // application fails through the type-failure arm instead.
     if (!directArgumentsMatchKinds(Number(tag), arguments_)) return false;
     // Only the failures the L1 direct failure arm proves are this arm's; any
-    // other failure belongs to another arm. BLS12-381 uncompress and
-    // scalarMul failures stay admitted here as before, so a proof build still
-    // covers the rest of its trace.
+    // other failure belongs to another arm. BLS12-381 uncompress failures
+    // stay admitted here as before, so a proof build still covers the rest of
+    // its trace.
     if (
       !midgardCekKnownBuiltinFailure(tag, arguments_) &&
       !MIDGARD_CEK_BLS_FAILURES_PENDING_ON_L1.has(tag)

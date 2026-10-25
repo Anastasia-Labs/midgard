@@ -36,7 +36,11 @@ import {
   DataI,
   DataList,
   DataMap,
+  BLS12_381_G1_GENERATOR,
+  BLS12_381_G2_GENERATOR,
   filled,
+  g1Point,
+  g2Point,
   int,
   INT64_MAX,
   INT64_MIN,
@@ -52,8 +56,8 @@ import { cryptoCases } from "./known-builtin-failure-conformance.crypto-cases.mj
 
 /** The tags `known_builtin_failure_v1` can answer true for. */
 export const KNOWN_BUILTIN_FAILURE_TAGS = Object.freeze([
-  3, 4, 5, 6, 11, 12, 14, 21, 25, 33, 34, 42, 43, 44, 45, 46, 52, 53, 59, 60,
-  66, 67, 73, 79, 80, 81, 82, 83,
+  3, 4, 5, 6, 11, 12, 14, 21, 25, 33, 34, 42, 43, 44, 45, 46, 52, 53, 56, 59,
+  60, 63, 66, 67, 73, 79, 80, 81, 82, 83,
 ]);
 
 export const VERDICTS = Object.freeze(["known", "not-known", "refused"]);
@@ -338,6 +342,8 @@ const KIND_SWEEP_BASES = [
   [45, [data(new DataB(new Uint8Array([1])))]],
   [52, [filled(33, 2), filled(32), filled(64)]],
   [53, [filled(31), filled(7), filled(64)]],
+  [56, [int(2n ** 4095n), g1Point(BLS12_381_G1_GENERATOR)]],
+  [63, [int(2n ** 4095n), g2Point(BLS12_381_G2_GENERATOR)]],
   [59, [filled(47, 0x80)]],
   [60, [filled(3), filled(256)]],
   [66, [filled(95, 0x80)]],
@@ -387,15 +393,13 @@ const kindSweepCases = (add) => {
 const outsideCases = (add) => {
   for (const tag of [
     -1, 0, 1, 2, 7, 8, 9, 10, 13, 15, 20, 22, 24, 26, 32, 35, 37, 41, 47, 51,
-    54, 56, 58, 61, 63, 65, 68, 70, 71, 72, 74, 78, 84, 86, 87, 100,
+    54, 58, 61, 65, 68, 70, 71, 72, 74, 78, 84, 86, 87, 100,
   ]) {
     add(tag, "1 by 0", [int(1), int(0)]);
   }
   add(37, "constrData index -1", [int(-1), dataList([])]);
   add(37, "constrData index 2^64", [int(2n ** 64n), dataList([])]);
   add(32, "mkCons integer onto byte strings", [int(1), bytesList([])]);
-  add(56, "G1 scalarMul by 2^4095", [int(2n ** 4095n), filled(48)]);
-  add(63, "G2 scalarMul by 2^4095", [int(2n ** 4095n), filled(96)]);
   add(0, "opaque arguments", [opaque, millerLoop]);
 };
 

@@ -25,11 +25,11 @@ import {
 } from "./uplc-data.js";
 
 /**
- * G1/G2 uncompress (59, 66) and scalarMul (56, 63): builtins whose failures the
- * direct failure arm keeps admitting as before.
+ * G1/G2 uncompress (59, 66): builtins whose failures the direct failure arm
+ * keeps admitting as before.
  */
 export const MIDGARD_CEK_BLS_FAILURES_PENDING_ON_L1: ReadonlySet<bigint> =
-  new Set([56n, 59n, 63n, 66n]);
+  new Set([59n, 66n]);
 
 const INT64_MIN = -(2n ** 63n);
 const INT64_MAX = 2n ** 63n - 1n;
@@ -40,6 +40,8 @@ const SECP256K1_FIELD_PRIME =
   115792089237316195423570985008687907853269984665640564039457584007908834671663n;
 const BLS12_381_FIELD_PRIME =
   4002409555221667393417789825735904156556882819939007885332058136124031650490837864442687629129015664037894272559787n;
+/** scalarMul fails on a scalar outside [-2^4095, 2^4095 - 1]. */
+const BLS_SCALAR_BOUND = 2n ** 4095n;
 
 const refuse = (message: string): never => {
   throw new Error(`V1 known builtin failure: ${message}`);
@@ -436,6 +438,14 @@ export const midgardCekKnownBuiltinFailure = (
   if (number === 60 || number === 67) {
     const [message, domain] = exactly(arguments_, 2);
     return isType(message!, "bytes") && bytes(domain!).length > 255;
+  }
+  if (number === 56 || number === 63) {
+    const [scalar, source] = exactly(arguments_, 2);
+    const value = integer(scalar!);
+    return (
+      isType(source!, number === 56 ? "blsG1" : "blsG2") &&
+      (value < -BLS_SCALAR_BOUND || value >= BLS_SCALAR_BOUND)
+    );
   }
   if (number === 59) {
     const [source] = exactly(arguments_, 1);

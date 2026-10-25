@@ -2,16 +2,21 @@
  * The signature, UTF-8 and BLS12-381 cases of the known builtin failure
  * conformance corpus: tags 21, 52 and 53 (key, message and signature
  * lengths, secp256k1 key validity, ECDSA scalar range), 25 (strict UTF-8),
- * 59 and 66 (compressed point headers, coordinates and the G1 curve check)
- * and 60 and 67 (the hash-to-group domain length). See
+ * 59 and 66 (compressed point headers, coordinates and the G1 curve check),
+ * 60 and 67 (the hash-to-group domain length) and 56 and 63 (the scalarMul
+ * scalar bound). See
  * `known-builtin-failure-conformance.cases.mjs`.
  */
 
 import {
   BLS12_381_FIELD_PRIME,
+  BLS12_381_G1_GENERATOR,
+  BLS12_381_G2_GENERATOR,
   bigEndian,
   bytes,
   filled,
+  g1Point,
+  g2Point,
   int,
   millerLoop,
   opaque,
@@ -225,8 +230,44 @@ const blsCases = (add) => {
   }
 };
 
+/** G1 and G2 scalarMul (56, 63) over the scalar bound [-2^4095, 2^4095 - 1]. */
+const scalarMulCases = (add) => {
+  const bound = 2n ** 4095n;
+  for (const [tag, point, other] of [
+    [56, g1Point(BLS12_381_G1_GENERATOR), g2Point(BLS12_381_G2_GENERATOR)],
+    [63, g2Point(BLS12_381_G2_GENERATOR), g1Point(BLS12_381_G1_GENERATOR)],
+  ]) {
+    for (const [name, scalar] of [
+      ["2^4095 - 1", bound - 1n],
+      ["2^4095", bound],
+      ["-2^4095", -bound],
+      ["-2^4095 - 1", -bound - 1n],
+      ["0", 0n],
+      ["7", 7n],
+      ["2^5000", 2n ** 5000n],
+    ]) {
+      add(tag, `scalar ${name}`, [int(scalar), point]);
+      add(tag, `scalar ${name}, compacted point`, [
+        int(scalar),
+        semantic(point, 18),
+      ]);
+    }
+    add(tag, "scalar 2^4095, point of the other group", [int(bound), other]);
+    add(tag, "scalar 2^4095, byte-string point", [
+      int(bound),
+      filled(tag === 56 ? 48 : 96),
+    ]);
+    add(tag, "scalar 2^4095, integer point", [int(bound), int(1)]);
+    add(tag, "byte-string scalar", [filled(1), point]);
+    add(tag, "compacted scalar", [semantic(int(bound), 65), point]);
+    add(tag, "one argument", [int(bound)]);
+    add(tag, "three arguments", [int(bound), point, point]);
+  }
+};
+
 export const cryptoCases = (add) => {
   signatureCases(add);
   utf8Cases(add);
   blsCases(add);
+  scalarMulCases(add);
 };

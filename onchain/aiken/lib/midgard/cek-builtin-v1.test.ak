@@ -2943,6 +2943,61 @@ test scalar_mul_success_certifies_in_bound_scalars() {
   }
 }
 
+fn scalar_mul_arguments(
+  tag: Int,
+  scalar: Int,
+) -> List<cek_builtin_v1.ValueWitnessV1> {
+  let point = if tag == 56 {
+    g1_generator()
+  } else {
+    g2_generator()
+  }
+  [
+    integer(cbor.serialise(builtin.i_data(scalar))),
+    cek_builtin_v1.ConstantValue(point),
+  ]
+}
+
+fn scalar_mul_failure_is_proved(tag: Int, scalar: Int) -> Bool {
+  let arguments = scalar_mul_arguments(tag, scalar)
+  cek_builtin_v1.verify_direct_builtin_failure_v1(
+    tag,
+    builtin_root(tag, arguments),
+    arguments,
+  )
+}
+
+// Cardano charges scalarMul before its scalar bound check fails; the
+// TypeScript twin pins the same charges
+// (cek-builtin.v1-direct-builtin-execution.ts).
+test scalar_mul_failure_outside_the_scalar_bound_is_paid() {
+  let bound = power_of_two_4095()
+  and {
+    scalar_mul_failure_is_proved(56, bound),
+    scalar_mul_failure_is_proved(56, -bound - 1),
+    scalar_mul_failure_is_proved(63, bound),
+    scalar_mul_failure_is_proved(63, -bound - 1),
+    cek_builtin_v1.authenticated_builtin_failure_budget(
+      56,
+      scalar_mul_arguments(56, bound),
+    ) == cek_cost_v1.BuiltinBudgetV1 { cpu: 77000558, memory: 18 },
+    cek_builtin_v1.authenticated_builtin_failure_budget(
+      63,
+      scalar_mul_arguments(63, -bound - 1),
+    ) == cek_cost_v1.BuiltinBudgetV1 { cpu: 159920450, memory: 36 },
+  }
+}
+
+test scalar_mul_inside_the_scalar_bound_is_not_a_failure() {
+  let bound = power_of_two_4095()
+  and {
+    !scalar_mul_failure_is_proved(56, bound - 1),
+    !scalar_mul_failure_is_proved(56, -bound),
+    !scalar_mul_failure_is_proved(63, bound - 1),
+    !scalar_mul_failure_is_proved(63, -bound),
+  }
+}
+
 // Each builtin's own charge at the 64-bit and constructor-128 boundaries:
 // Cardano's PV 11 total for the program in
 // cek-program.cardano-boundaries.vectors.ts, less the 100/100 start-up and
