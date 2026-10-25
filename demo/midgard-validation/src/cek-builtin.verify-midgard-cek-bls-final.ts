@@ -22,6 +22,10 @@ import {
   referenceConstantToDirectWitness,
 } from "./cek-builtin.evaluate-reference-builtin.js";
 import {
+  MIDGARD_CEK_BLS_FAILURES_PENDING_ON_L1,
+  midgardCekKnownBuiltinFailure,
+} from "./cek-builtin.known-failure.js";
+import {
   hashMidgardCekDirectArguments,
   hashMidgardCekDirectValueWitness,
   midgardCekDirectBuiltinBudget,
@@ -110,6 +114,17 @@ export const verifyMidgardCekDirectBuiltinFailure = (
     // A known failure applies only to well-typed arguments; an ill-typed
     // application fails through the type-failure arm instead.
     if (!directArgumentsMatchKinds(Number(tag), arguments_)) return false;
+    // Only the failures the L1 direct failure arm proves are this arm's; any
+    // other failure belongs to another arm. The BLS12-381 uncompress and
+    // scalarMul failures L1 has no arm for yet stay admitted here, so a proof
+    // build still covers the rest of its trace (the step fuzz catalogues
+    // them as pending).
+    if (
+      !midgardCekKnownBuiltinFailure(tag, arguments_) &&
+      !MIDGARD_CEK_BLS_FAILURES_PENDING_ON_L1.has(tag)
+    ) {
+      return false;
+    }
     return evaluateMidgardCekDirectBuiltin(tag, arguments_).kind === "failure";
   } catch {
     return false;
