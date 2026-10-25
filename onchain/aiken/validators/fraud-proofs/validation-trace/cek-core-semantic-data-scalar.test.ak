@@ -16,12 +16,14 @@ use aiken/collection/list
 use aiken/crypto.{blake2b_256}
 use cardano/transaction.{Transaction}
 use fraud_proofs/validation_trace/cek_core_builtin_roots as builtin_roots
+use fraud_proofs/validation_trace/cek_core_semantic_data_misc as data_misc
 use fraud_proofs/validation_trace/cek_core_semantic_data_scalar as data_scalar
 use fraud_proofs/validation_trace/cek_core_staged_bytes as staged_bytes
 use fraud_proofs/validation_trace/cek_core_staged_integer as staged_integer
 use midgard/cek_builtin_v1.{
   SemanticBuiltinWitnessV1, SemanticConstantValue, ValueWitnessV1,
 }
+use midgard/cek_constant_v1
 use midgard/cek_data_v1.{
   BytesData, DataListNodeV1, DataNodeV1, DataPairNodeV1, DataSummaryV1,
   IntegerData, ListData,
@@ -32,7 +34,9 @@ use midgard/cek_semantic_chain as chain
 use midgard/cek_semantic_presentation_evidence_generated.{
   i_data_evidence, list_data_evidence, un_b_data_evidence, un_list_data_evidence,
 }
-use midgard/cek_staged_arm_v1.{InlineOperand}
+use midgard/cek_staged_arm_v1.{
+  BytesLeafOperand, InlineOperand, SmallIntegerOperand,
+}
 use midgard/cek_staged_blob_v1.{flat_root_of_pieces_v1, flat_root_v1}
 use midgard/cek_staged_integer_cbor_v1.{
   encode_integer_cbor_bulk_v1, parse_integer_cbor_bulk_v1,
@@ -42,10 +46,10 @@ use midgard/cek_staged_integer_v1.{
 }
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/cek_staged_fixture_v1.{
-  StagedStepV1, bytes_type_cbor, bytes_value, compact, flip_last_byte,
-  inline_constant, integer_type_cbor, integer_value, material, pattern,
-  semantic_bytes, semantic_integer_cbor, semantic_pieces, stage, staged,
-  staged_step, string_type_cbor,
+  StagedStepV1, boolean_value, bytes_type_cbor, bytes_value, compact,
+  flip_last_byte, inline_constant, integer_type_cbor, integer_value, material,
+  no_staging, pattern, semantic_bytes, semantic_integer_cbor, semantic_pieces,
+  stage, staged, staged_step, string_type_cbor, text,
 }
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 
@@ -539,6 +543,32 @@ test refuses_un_b_data_of_a_byte_string() fail {
   )
 }
 
+/// A string of 36 bytes weighs 9 words, as much as the B leaf of the same
+/// bytes, and its payload is that leaf: only the source's type separates it
+/// from a Data value the step accepts.
+test a_36_byte_string_weighs_as_much_as_the_leaf_of_its_bytes() {
+  let bytes = text(36)
+  let source = bytes_value(bytes, True)
+  let node = bytes_node([bytes])
+  and {
+    cek_builtin_v1.semantic_constant_type_v1(source) == cek_constant_v1.StringConstant,
+    cek_builtin_v1.semantic_constant_memory_v1(source) == 9,
+    cek_builtin_v1.semantic_constant_payload_v1(source) == summary_of(node),
+    summary_of(node).memory == 9,
+    cek_builtin_v1.semantic_constant_memory_v1(data_of(node)) == 9,
+  }
+}
+
+test refuses_un_b_data_of_a_36_byte_string() fail {
+  let bytes = text(36)
+  verifies(
+    46,
+    [bytes_value(bytes, True)],
+    bytes_value(bytes, False),
+    leaf(bytes_node([bytes])),
+  )
+}
+
 test refuses_un_b_data_of_a_source_one_word_heavier() fail {
   let bytes = long_bytes()
   let node = bytes_node([bytes])
@@ -998,6 +1028,125 @@ test the_un_i_data_result_adds_through_the_staged_step() {
 
 test refuses_a_wrong_sum_after_un_i_data() fail {
   add_after_un_i_data(long_integer() + 2)
+}
+
+// ## A staged byte-string result is equal as Data to a direct constant
+//
+// The staged step accepts exactly one result per builtin and operands, so the
+// leaf it accepts is the leaf the arm commits. bData relabels that leaf as a
+// Data value, and equalsData over it and the direct constant of the same bytes
+// returns True.
+
+/// equalsData over `left` and `right` returning True, through the Data
+/// semantics step.
+fn equals_data_returns_true(left: ValueWitnessV1, right: ValueWitnessV1) -> Bool {
+  let step = scalar_step(
+    47,
+    [left, right],
+    boolean_value(True),
+    SemanticBuiltinWitnessV1 {
+      data_nodes: [],
+      list_nodes: [],
+      pair_nodes: [],
+      scalar_preimages: [],
+    },
+  )
+  data_misc.main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    step.datum,
+    step.redeemer,
+    fixture.own_out_ref(),
+    step.transaction,
+  )
+}
+
+/// bData of the byte-string `result` over the leaf of `bytes`, then equalsData
+/// over that Data value and the direct constant of `bytes`.
+fn equal_as_data_to_a_direct_constant(
+  result: ValueWitnessV1,
+  bytes: ByteArray,
+) -> Bool {
+  let node = bytes_node([bytes])
+  and {
+    verifies(41, [result], data_of(node), leaf(node)),
+    equals_data_returns_true(
+      data_of(node),
+      inline_constant(data_type_cbor, builtin.b_data(bytes)),
+    ),
+  }
+}
+
+/// A result of two pieces: a staged operand and an inline one.
+test a_staged_append_result_is_equal_as_data_to_a_direct_constant() {
+  let left = pattern(4000, 1)
+  let right = pattern(100, 2)
+  let joined = builtin.append_bytearray(left, right)
+  let staging = stage([left])
+  let result = semantic_bytes(joined, False)
+  and {
+    staged_spend(
+      False,
+      staged_step(
+        10,
+        [bytes_value(left, False), bytes_value(right, False)],
+        result,
+        material(staging, [staged(0), InlineOperand { bytes: right }]),
+        staging.reference_inputs,
+      ),
+    ),
+    equal_as_data_to_a_direct_constant(result, joined),
+  }
+}
+
+/// A result of one piece.
+test a_staged_slice_result_is_equal_as_data_to_a_direct_constant() {
+  let bytes = pattern(9216, 8)
+  let slice = builtin.slice_bytearray(100, 4096, bytes)
+  let staging = stage([bytes])
+  let result = semantic_bytes(slice, False)
+  and {
+    staged_spend(
+      False,
+      staged_step(
+        12,
+        [integer_value(100), integer_value(4096), bytes_value(bytes, False)],
+        result,
+        material(
+          staging,
+          [
+            SmallIntegerOperand { value: 100 },
+            SmallIntegerOperand { value: 4096 },
+            staged(0),
+          ],
+        ),
+        staging.reference_inputs,
+      ),
+    ),
+    equal_as_data_to_a_direct_constant(result, slice),
+  }
+}
+
+/// encodeUtf8 keeps its operand's leaf.
+test a_staged_encode_utf8_result_is_equal_as_data_to_a_direct_constant() {
+  let string = text(4100)
+  let result = semantic_bytes(string, False)
+  and {
+    staged_spend(
+      False,
+      staged_step(
+        24,
+        [semantic_bytes(string, True)],
+        result,
+        material(
+          no_staging(),
+          [BytesLeafOperand { root: flat_root_v1(string), length: 4100 }],
+        ),
+        [],
+      ),
+    ),
+    equal_as_data_to_a_direct_constant(result, string),
+  }
 }
 
 // ## An I leaf over a non-canonical spelling never reaches the step

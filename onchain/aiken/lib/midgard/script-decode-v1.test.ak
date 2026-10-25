@@ -5,10 +5,15 @@ use aiken/fuzz
 use aiken/math
 use aiken/primitive/bytearray
 use midgard/cbor_deserialise
+use midgard/cek_builtin_v1.{
+  ConstantValue, SemanticBuiltinWitnessV1, SemanticConstantValue, ValueWitnessV1,
+}
 use midgard/cek_constant_v1.{ConstantWitnessV1}
 use midgard/cek_data_v1
 use midgard/cek_machine_v1
 use midgard/cek_proof_v1
+use midgard/cek_staged_blob_v1.{flat_root_v1}
+use midgard/fraud_proofs/cek_staged_fixture_v1.{pattern}
 use midgard/script_decode_bits_v1 as bits
 use midgard/script_decode_bulk_v1 as bulk
 use midgard/script_decode_v1.{
@@ -2492,6 +2497,176 @@ test script_decode_constant_root_agreement_past_the_bound_arrays_pairs_and_value
     ),
     agrees_past_the_bound([13], v_value(value), value_data(value)),
   }
+}
+
+// ## Byte strings are equal as Data to direct constants
+//
+// The decoder commits a byte string's B leaf as the root of a constant term.
+// ComputeConstant over that term returns the value whose root it is, and
+// equalsData over that value (through bData for a byte-string constant) and
+// the direct Data constant of the same bytes returns True, whatever chunk
+// layout the script spells the bytes in.
+
+/// Byte lengths on both sides of the 24-byte CBOR head, the 64-byte CBOR
+/// chunk, the 255-byte Flat chunk and the 4,095-byte blob chunk, up to the
+/// direct carriage bound.
+const leaf_lengths = [0, 1, 23, 24, 64, 65, 255, 256, 4095, 4096, 8900]
+
+fn no_material() -> SemanticBuiltinWitnessV1 {
+  SemanticBuiltinWitnessV1 {
+    data_nodes: [],
+    list_nodes: [],
+    pair_nodes: [],
+    scalar_preimages: [],
+  }
+}
+
+/// The Data value over the B leaf a direct constant of `bytes` has.
+fn data_leaf_value(bytes: ByteArray) -> ValueWitnessV1 {
+  let summary = cek_data_v1.semantic_data_summary_v1(builtin.b_data(bytes))
+  SemanticConstantValue {
+    type_cbor: cbor.serialise([8]),
+    payload: summary,
+    memory: summary.memory,
+  }
+}
+
+/// equalsData over `value` and the direct Data constant of `bytes` returns
+/// True, and not False.
+fn equal_as_data_to_direct(value: ValueWitnessV1, bytes: ByteArray) -> Bool {
+  let direct = ConstantValue(constant_witness([8], builtin.b_data(bytes)))
+  let returns = fn(verdict) {
+    cek_builtin_v1.verify_semantic_builtin_v1(
+      47,
+      [value, direct],
+      ConstantValue(constant_witness([4], bool_data(verdict))),
+      no_material(),
+    )
+  }
+  and {
+    returns(True),
+    !returns(False),
+  }
+}
+
+/// The decoded term is the constant term over `value`, and ComputeConstant
+/// over it returns `value`.
+fn decodes_to(flat: ByteArray, value: ValueWitnessV1) -> Bool {
+  let value_root = cek_builtin_v1.result_root_v1(value)
+  let term_root = root_of(flat)
+  and {
+    term_root == cek_proof_v1.hash_constant_term_v1(value_root),
+    computes(term_root, value_root),
+  }
+}
+
+test script_decode_byte_string_constants_are_equal_as_data_to_direct_constants() {
+  list.all(
+    leaf_lengths,
+    fn(length) {
+      let bytes = pattern(length, 11)
+      let summary = cek_data_v1.semantic_data_summary_v1(builtin.b_data(bytes))
+      let value = SemanticConstantValue {
+        type_cbor: cbor.serialise([1]),
+        payload: summary,
+        memory: cek_data_v1.bytes_memory_size_v1(length),
+      }
+      let node = cek_data_v1.BytesData {
+        bytes_root: flat_root_v1(bytes),
+        bytes_length: length,
+        cbor_length: cek_data_v1.bytes_data_cbor_length_v1(length),
+        memory: 4 + cek_data_v1.bytes_memory_size_v1(length),
+      }
+      let data = data_leaf_value(bytes)
+      and {
+        decodes_to(program(1, con([1], v_bytes(bytes))), value),
+        cek_builtin_v1.verify_semantic_builtin_v1(
+          41,
+          [value],
+          data,
+          SemanticBuiltinWitnessV1 { ..no_material(), data_nodes: [node] },
+        ),
+        equal_as_data_to_direct(data, bytes),
+      }
+    },
+  )
+}
+
+/// The definite CBOR head of a chunk of `length` bytes, at most 64.
+fn definite_head(length: Int) -> ByteArray {
+  if length < 24 {
+    builtin.cons_bytearray(64 + length, #"")
+  } else {
+    builtin.cons_bytearray(88, builtin.cons_bytearray(length, #""))
+  }
+}
+
+/// `bytes` (at most 64) as one definite CBOR byte string.
+fn definite(bytes: ByteArray) -> ByteArray {
+  bytearray.concat(definite_head(bytearray.length(bytes)), bytes)
+}
+
+/// `bytes` as definite chunks of 64 bytes, the last shorter.
+fn chunks_of_64(bytes: ByteArray) -> ByteArray {
+  if bytearray.length(bytes) <= 64 {
+    definite(bytes)
+  } else {
+    bytearray.concat(
+      definite(bytearray.take(bytes, 64)),
+      chunks_of_64(bytearray.drop(bytes, 64)),
+    )
+  }
+}
+
+/// `bytes` (at most 64) behind a two-byte length head.
+fn long_head(bytes: ByteArray) -> ByteArray {
+  bytearray.concat(
+    builtin.cons_bytearray(
+      89,
+      builtin.integer_to_bytearray(True, 2, bytearray.length(bytes)),
+    ),
+    bytes,
+  )
+}
+
+/// `bytes` as an indefinite CBOR byte string whose chunks start at another
+/// offset than the canonical layout's: a first chunk of at most 10 bytes,
+/// then chunks of 64.
+fn uneven_chunks(bytes: ByteArray) -> ByteArray {
+  let rest = bytearray.drop(bytes, 10)
+  bytearray.concat(
+    bytearray.concat(
+      bytearray.concat(#"5f", definite(bytearray.take(bytes, 10))),
+      if bytearray.is_empty(rest) {
+        #""
+      } else {
+        chunks_of_64(rest)
+      },
+    ),
+    #"ff",
+  )
+}
+
+test script_decode_data_byte_strings_are_equal_as_data_to_direct_constants() {
+  list.all(
+    leaf_lengths,
+    fn(length) {
+      let bytes = pattern(length, 13)
+      let value = data_leaf_value(bytes)
+      let spellings = if length <= 64 {
+        [cbor.serialise(bytes), long_head(bytes), uneven_chunks(bytes)]
+      } else {
+        [cbor.serialise(bytes), uneven_chunks(bytes)]
+      }
+      and {
+        list.all(
+          spellings,
+          fn(spelled) { decodes_to(data_flat(spelled), value) },
+        ),
+        equal_as_data_to_direct(value, bytes),
+      }
+    },
+  )
 }
 
 // ## Cost curves
