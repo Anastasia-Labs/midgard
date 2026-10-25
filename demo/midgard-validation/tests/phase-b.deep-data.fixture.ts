@@ -4,10 +4,20 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import { Builtin, ErrorUPLC, UPLCConst } from "@harmoniclabs/uplc";
+import { blake2b } from "@noble/hashes/blake2.js";
 
 import { MidgardRedeemerTag } from "../src/index.js";
-import { app, lam, v } from "./helpers/cek-uplc-terms.js";
+import {
+  app,
+  headList,
+  ifThenElse,
+  lam,
+  sndPair,
+  tailList,
+  v,
+} from "./helpers/cek-uplc-terms.js";
 import { MIDGARD_TX_EX_UNITS_CAP } from "./helpers/plutus-spend-input.js";
+import { builtin } from "./helpers/uplc-builtins.js";
 import {
   plutusProgram,
   type ProgramSpend,
@@ -71,6 +81,36 @@ export const walkingFailingProgram = () =>
   plutusProgram(app(lam(new ErrorUPLC()), app(Builtin.equalsData, v(0), v(0))));
 
 type Program = ReturnType<typeof walkingProgram>;
+
+/**
+ * The depth of the serialised redeemer rows, past the 2,500 to 3,000 levels at
+ * which serialising deeply nested Data used to exhaust the evaluator's stack.
+ */
+export const SERIALISED_REDEEMER_DEPTH = 11_700;
+
+/**
+ * Serialises the Spend redeemer (the second field of the script context) with
+ * `serialiseData`, and returns unit only when the BLAKE2b-256 of the bytes it
+ * returns is the BLAKE2b-256 of `expected`; otherwise it fails.
+ */
+export const serialisingProgram = (expected: Uint8Array) =>
+  plutusProgram(
+    ifThenElse(
+      app(
+        builtin("equalsByteString"),
+        app(
+          builtin("blake2b_256"),
+          app(
+            builtin("serialiseData"),
+            headList(tailList(sndPair(app(builtin("unConstrData"), v(0))))),
+          ),
+        ),
+        UPLCConst.byteString(blake2b(expected, { dkLen: 32 })),
+      ),
+      UPLCConst.unit,
+      new ErrorUPLC(),
+    ),
+  );
 
 const spendRedeemers = (data: Buffer) =>
   makeRedeemersCbor([

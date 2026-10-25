@@ -7,11 +7,14 @@ import {
   RejectCodes,
   runPhaseBValidationWithPatch,
 } from "../src/index.js";
+import { evaluateStoredMidgardPlutusScript } from "../src/plutus-script-evaluator.js";
 import {
   deepCanonicalData,
   deepestRedeemerDepth,
   deepRows,
   deepSpend,
+  SERIALISED_REDEEMER_DEPTH,
+  serialisingProgram,
   shallowSpend,
   walkingProgram,
 } from "./phase-b.deep-data.fixture.js";
@@ -93,4 +96,57 @@ describe("Phase B verdict mode on deeply nested Data", () => {
     },
     60_000,
   );
+});
+
+describe("the PV11 evaluator on serialiseData of deeply nested Data", () => {
+  const depth = SERIALISED_REDEEMER_DEPTH;
+  const redeemer = deepCanonicalData("list", depth);
+
+  /**
+   * Runs `program` on a script context whose redeemer field is
+   * `spendRedeemer`. Serialising Data this deep costs more than a
+   * transaction's step budget, so the script runs straight on the evaluator
+   * Phase B uses, with a budget that covers it.
+   */
+  const evaluateWithRedeemer = (
+    program: ReturnType<typeof serialisingProgram>,
+    spendRedeemer: Buffer,
+  ) =>
+    evaluateStoredMidgardPlutusScript({
+      scriptBytes: program.scriptBytes,
+      scriptLanguage: "PlutusV3",
+      contextCbor: Buffer.concat([
+        Buffer.from("d8799fd87980", "hex"),
+        spendRedeemer,
+        Buffer.from("d87980ff", "hex"),
+      ]),
+      executionBudget: { cpu: 20_000_000_000n, memory: 16_500_000n },
+      executionIndex: 0n,
+      maxSteps: 1,
+    });
+
+  const expectShallowAccepted = () => {
+    const shallow = deepCanonicalData("list", 1);
+    expect(
+      evaluateWithRedeemer(serialisingProgram(shallow), shallow).kind,
+    ).toBe("accepted");
+  };
+
+  it(`serialises a list redeemer ${depth.toString()} deep to its own bytes, then evaluates a shallow one`, () => {
+    expect(
+      evaluateWithRedeemer(serialisingProgram(redeemer), redeemer).kind,
+    ).toBe("accepted");
+    expectShallowAccepted();
+  });
+
+  it(`fails a script expecting a list one level shallower than a redeemer ${depth.toString()} deep, then evaluates a shallow one`, () => {
+    const verdict = evaluateWithRedeemer(
+      serialisingProgram(deepCanonicalData("list", depth - 1)),
+      redeemer,
+    );
+    expect(verdict.kind).toBe("script_invalid");
+    if (verdict.kind === "script_invalid")
+      expect(verdict.detail).toContain("execution failed (2)");
+    expectShallowAccepted();
+  });
 });
