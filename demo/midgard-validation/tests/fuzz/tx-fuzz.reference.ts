@@ -19,7 +19,7 @@ import { aikenBinary } from "./cek-step-fuzz.oracle.js";
  * The reference leg of the transaction differential: a UPLC evaluator outside
  * this repository, `<bin> uplc eval`, given by `MIDGARD_TX_FUZZ_UPLC_BIN`.
  * The leg and its pins are taken against the PV 11 fork build of the Aiken
- * CLI the repository pins (`demo/flake.lock`, `aiken v1.1.24+28e4288`, the
+ * CLI the repository pins (`demo/flake.lock`, `aiken v1.1.24+c08fcec`, the
  * binary `scripts/aiken` runs); another build may report other spends. It
  * reads the script's own flat bytes, applies them to the script context the
  * trace builder derived (`contextArgument`), runs the result under its default
