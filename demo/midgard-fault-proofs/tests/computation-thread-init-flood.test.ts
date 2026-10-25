@@ -42,7 +42,9 @@ describe("computation-thread Init flood against an honest block", () => {
         });
         expect(init.fraudulentHeaderHash).toBe(staged.headerHash);
         const outRef = `${init.txHash}#${init.firstStepOutputIndex}`;
-        const [thread] = await lucid.utxosByOutRef([parseOutRef(outRef)]);
+        const [thread] = await lucid.utxosByOutRef([
+          parseOutRef(outRef, "thread"),
+        ]);
         const lovelace = thread!.assets.lovelace;
         threads.push({
           outRef,
