@@ -1,5 +1,6 @@
 import { decodeMidgardForcedTxCompact } from "@al-ft/midgard-core/codec/forced";
 import {
+  forcedLeafMembershipV1,
   type ForcedTransactionSourceMembershipProof,
   type Header,
   requireInputIndex,
@@ -127,6 +128,7 @@ export const submitFieldItemWidthIllegalStep01Forced = async ({
             source: {
               ForcedSource: {
                 ...forcedSource,
+                membership: forcedLeafMembershipV1(forcedSource.membership),
                 input_index: inputIndex,
                 output_index: outputIndex,
               },

@@ -120,10 +120,7 @@ describe("step-02 redeemer envelope chart (THE escalation-capable check, §2.3)"
             proof: transitionStepProof,
           },
           forced_membership: {
-            domain: "ForcedTransactionsV1RootDomain",
-            root: h32("d8"),
             phas_root: h32("d9"),
-            count: 65_535n,
             key: txOrderId,
             value: {
               tx_id: h32("da"),

@@ -1,5 +1,9 @@
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
-import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk";
+import {
+  forcedLeafMembershipV1,
+  type ForcedTransactionSourceMembershipProof,
+  proofThreadDirectionOfForcedLeaf,
+} from "@al-ft/midgard-sdk";
 import {
   MinAdaStep01SpendRedeemerSchema,
   MinAdaStep02DatumSchema,
@@ -43,8 +47,10 @@ type ForcedPayload = Omit<
       { Continue: unknown }
     >["Continue"][0]["forced_source"]
   >,
-  "input_index" | "output_index"
->;
+  "input_index" | "output_index" | "membership"
+> & {
+  readonly membership: ForcedTransactionSourceMembershipProof;
+};
 
 export const submitMinAdaStep01Forced = async ({
   lucid,
@@ -117,6 +123,7 @@ export const submitMinAdaStep01Forced = async ({
             tx_inclusion: null,
             forced_source: {
               ...forcedSource,
+              membership: forcedLeafMembershipV1(forcedSource.membership),
               input_index: requireInputIndex(ctx, threadUtxo, "min-ada"),
               output_index: outputIndex,
             },

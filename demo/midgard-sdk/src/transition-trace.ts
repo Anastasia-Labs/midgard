@@ -234,6 +234,43 @@ export const ForcedTransactionSourceMembershipProof =
     ForcedTransactionSourceMembershipProofSchema,
   );
 
+/**
+ * A forced-leaf membership carrying only the fields its check reads. The
+ * leaf is opened under the domain, root and count of the header it is
+ * checked against, so those three are not carried.
+ */
+export const ForcedLeafMembershipV1Schema = Data.Object({
+  phas_root: MerkleRootSchema,
+  key: OutputReferenceSchema,
+  value: ForcedInclusionTxV1Schema,
+  proof: ProofSchema,
+});
+export type ForcedLeafMembershipV1 = {
+  readonly phas_root: MerkleRoot;
+  readonly key: OutputReference;
+  readonly value: ForcedInclusionTxV1;
+  readonly proof: Proof;
+};
+export const ForcedLeafMembershipV1 = asDataType<ForcedLeafMembershipV1>(
+  ForcedLeafMembershipV1Schema,
+);
+
+/** The fields of a forced-transaction membership that the forced leaf reads. */
+export const forcedLeafMembershipV1 = ({
+  phas_root,
+  key,
+  value,
+  proof,
+}: Pick<
+  ForcedTransactionSourceMembershipProof,
+  "phas_root" | "key" | "value" | "proof"
+>): ForcedLeafMembershipV1 => ({
+  phas_root,
+  key,
+  value,
+  proof,
+});
+
 export const EventSettlementMembershipProofSchema = Data.Enum([
   Data.Object({
     DepositMembership: Data.Object({

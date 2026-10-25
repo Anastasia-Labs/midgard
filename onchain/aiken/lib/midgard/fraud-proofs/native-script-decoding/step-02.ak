@@ -30,7 +30,7 @@ pub type Args {
   >,
   /// Forced threads: the verdict leaf. `None` for normal threads.
   forced_membership: Option<
-    transition_trace.RootMembershipProof<
+    transition_trace.ForcedLeafMembershipV1<
       ledger_state.TxOrderId,
       ledger_state.ForcedInclusionTxV1,
     >,

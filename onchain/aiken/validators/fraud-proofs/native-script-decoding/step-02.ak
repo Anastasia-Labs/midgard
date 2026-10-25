@@ -238,7 +238,7 @@ fn run_step_02(
   claim: tf.ThreadClaimFixtureV1,
   asset_name: ByteArray,
   forced_membership: Option<
-    transition_trace.RootMembershipProof<
+    transition_trace.ForcedLeafMembershipV1<
       ledger_state.TxOrderId,
       ledger_state.ForcedInclusionTxV1,
     >,
@@ -284,7 +284,7 @@ fn normal_claim() -> (ByteArray, tf.ThreadClaimFixtureV1) {
 fn forced_claim(
   leaf: ledger_state.ForcedInclusionTxV1,
 ) -> (
-  transition_trace.RootMembershipProof<
+  transition_trace.ForcedLeafMembershipV1<
     ledger_state.TxOrderId,
     ledger_state.ForcedInclusionTxV1,
   >,
@@ -299,7 +299,7 @@ fn forced_claim(
       },
       ledger_state.ForcedTransaction,
       prior_root,
-      Some(membership.root),
+      Some(tf.forced_counted_root_v1(membership.phas_root, 1)),
     ),
   )
 }

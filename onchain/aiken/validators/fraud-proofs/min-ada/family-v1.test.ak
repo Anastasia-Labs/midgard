@@ -204,7 +204,7 @@ fn forced_leaf(
 
 fn forced_membership(
   leaf: ledger_state.ForcedInclusionTxV1,
-) -> transition_trace.RootMembershipProof<
+) -> transition_trace.ForcedLeafMembershipV1<
   ledger_state.TxOrderId,
   ledger_state.ForcedInclusionTxV1,
 > {
@@ -217,26 +217,23 @@ fn forced_membership(
       [],
     ),
   )
-  transition_trace.RootMembershipProof {
-    domain: transition_trace.ForcedTransactionsV1RootDomain,
-    root: transition_trace.commit_counted_root(
-      transition_trace.ForcedTransactionsV1RootDomain,
-      phas_root,
-      1,
-    ),
+  transition_trace.ForcedLeafMembershipV1 {
     phas_root,
-    count: 1,
     key,
     value: leaf,
     proof: [],
   }
 }
 
-fn forced_header(root: ByteArray) -> ledger_state.HeaderV1 {
+fn forced_header(phas_root: ByteArray) -> ledger_state.HeaderV1 {
   let base = fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
   ledger_state.HeaderV1 {
     ..base.header,
-    forced_transactions_root: root,
+    forced_transactions_root: transition_trace.commit_counted_root(
+      transition_trace.ForcedTransactionsV1RootDomain,
+      phas_root,
+      1,
+    ),
     forced_transaction_count: 1,
   }
 }
@@ -250,7 +247,7 @@ fn run_forced_step_01(
   let tx = transaction_with_output(output_at_delta(-1))
   let leaf = forced_leaf(tx, verdict)
   let membership = forced_membership(leaf)
-  let header = forced_header(membership.root)
+  let header = forced_header(membership.phas_root)
   let header_data: Data = header
   let thread_name = bytearray.concat(
     fixture.fraud_category_id,

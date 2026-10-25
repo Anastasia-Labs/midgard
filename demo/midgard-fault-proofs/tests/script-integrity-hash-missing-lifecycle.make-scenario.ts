@@ -184,7 +184,10 @@ export const makeScenario = async ({
           input_index,
           output_index,
           header: block.header,
-          forced_membership: forcedMembership,
+          forced_membership:
+            forcedMembership === null
+              ? null
+              : SDK.forcedLeafMembershipV1(forcedMembership),
         }),
       })
     ).nextThreadOutRef;

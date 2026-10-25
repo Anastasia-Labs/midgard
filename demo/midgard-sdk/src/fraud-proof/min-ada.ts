@@ -4,7 +4,10 @@ import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema, OutputReferenceSchema } from "../common.js";
 import { ForcedInclusionTxV1Schema, HeaderSchema } from "../ledger-state.js";
-import { rootMembershipProofSchema } from "../transition-trace.js";
+import {
+  ForcedLeafMembershipV1Schema,
+  rootMembershipProofSchema,
+} from "../transition-trace.js";
 import { FieldOpeningSchema } from "./field-opening.js";
 import {
   faultProofStepDatumSchema,
@@ -39,10 +42,7 @@ export const MinAdaStep01ArgsSchema = Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
       header: HeaderSchema,
-      membership: rootMembershipProofSchema(
-        OutputReferenceSchema,
-        ForcedInclusionTxV1Schema,
-      ),
+      membership: ForcedLeafMembershipV1Schema,
     }),
   ),
   tx_inclusion: Data.Nullable(NativeTxInclusionCarriageSchema),

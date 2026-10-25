@@ -1,5 +1,7 @@
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
+  forcedLeafMembershipV1,
+  type ForcedTransactionSourceMembershipProof,
   NativeScriptInvalidStep01SpendRedeemerSchema,
   NativeScriptInvalidStep02DatumSchema,
   requireInputIndex,
@@ -47,8 +49,10 @@ type ForcedSource = Extract<
 >["Continue"][0]["source"];
 type ForcedPayload = Omit<
   Extract<ForcedSource, { ForcedSource: unknown }>["ForcedSource"],
-  "input_index" | "output_index"
->;
+  "input_index" | "output_index" | "membership"
+> & {
+  readonly membership: ForcedTransactionSourceMembershipProof;
+};
 
 export const submitNativeScriptInvalidStep01Forced = async ({
   lucid,
@@ -121,6 +125,7 @@ export const submitNativeScriptInvalidStep01Forced = async ({
             source: {
               ForcedSource: {
                 ...forcedSource,
+                membership: forcedLeafMembershipV1(forcedSource.membership),
                 input_index: requireInputIndex(
                   ctx,
                   threadUtxo,

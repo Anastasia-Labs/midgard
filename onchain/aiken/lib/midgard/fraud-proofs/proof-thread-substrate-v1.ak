@@ -73,7 +73,7 @@ pub type SubjectSourceV1 {
   }
   ForcedSource {
     header: ledger_state.HeaderV1,
-    membership: transition_trace.RootMembershipProof<
+    membership: transition_trace.ForcedLeafMembershipV1<
       ledger_state.TxOrderId,
       ledger_state.ForcedInclusionTxV1,
     >,
@@ -124,7 +124,7 @@ pub fn open_subject_v1(
 pub fn open_forced_subject_v1(
   thread_name: ByteArray,
   header: ledger_state.HeaderV1,
-  membership: transition_trace.RootMembershipProof<
+  membership: transition_trace.ForcedLeafMembershipV1<
     ledger_state.TxOrderId,
     ledger_state.ForcedInclusionTxV1,
   >,
@@ -302,7 +302,7 @@ pub fn event_key_matches_subject_v1(
 /// unchanged with the subject.
 fn bind_forced_subject_v1(
   header: ledger_state.HeaderV1,
-  membership: transition_trace.RootMembershipProof<
+  membership: transition_trace.ForcedLeafMembershipV1<
     ledger_state.TxOrderId,
     ledger_state.ForcedInclusionTxV1,
   >,
@@ -317,8 +317,7 @@ fn bind_forced_subject_v1(
     leaf.submitted_source.witness_set_compact_cbor,
     leaf.submitted_source.field_preimage_lengths_cbor,
   )
-  // The membership is opened under the header's own domain, root and count,
-  // so the carried copies of those three fields are not read.
+  // The membership is opened under the header's own domain, root and count.
   expect
     forced_leaf_is_member_v1(
       header,

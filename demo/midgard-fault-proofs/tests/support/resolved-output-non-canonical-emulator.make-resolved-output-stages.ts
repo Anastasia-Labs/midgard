@@ -5,14 +5,12 @@ import {
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import {
   type FieldOpening,
-  type ForcedInclusionTxV1,
+  forcedLeafMembershipV1,
   forcedVerdictSubject,
   type Header,
-  OutputReference,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
-  type RootMembershipProof,
 } from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
@@ -205,10 +203,7 @@ export const makeResolvedOutputStages = async (
     readonly coordinate: ResolvedOutputCoordinate;
     readonly priorRoot: string;
     readonly header?: Header;
-    readonly membership?: RootMembershipProof<
-      OutputReference,
-      ForcedInclusionTxV1
-    >;
+    readonly membership?: ResolvedOutputForcedSource["membership"];
     readonly direction?: bigint;
   }) => {
     const verdict = membership.value.verdict;
@@ -239,7 +234,7 @@ export const makeResolvedOutputStages = async (
             input_index,
             output_index,
             header,
-            membership,
+            membership: forcedLeafMembershipV1(membership),
           },
         },
         source_kind: BigInt(coordinate.sourceKind),

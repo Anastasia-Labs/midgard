@@ -288,7 +288,7 @@ fn run_forced_continue(written_verdict: OperatorVerdictV1) -> Bool {
   let membership = tf.forced_leaf_membership_v1(tf.forced_order_key_v1(), leaf)
   let header = ledger_state.HeaderV1 {
     ..fixture.native_block_fixture_v1(fixture.valid_native_tx_v1()).header,
-    forced_transactions_root: membership.root,
+    forced_transactions_root: tf.forced_counted_root_v1(membership.phas_root, 1),
     forced_transaction_count: 1,
     min_fee_a: 44,
     min_fee_b: 155_381,

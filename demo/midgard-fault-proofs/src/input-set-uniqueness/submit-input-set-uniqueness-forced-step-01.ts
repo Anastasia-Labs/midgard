@@ -1,5 +1,6 @@
 import {
   type ForcedInclusionTxV1,
+  forcedLeafMembershipV1,
   forcedVerdictSubject,
   type Header,
   InputSetUniquenessStep01SpendRedeemerSchema,
@@ -115,7 +116,7 @@ export const submitInputSetUniquenessForcedStep01 = async ({
                 input_index: inputIndex,
                 output_index: outputIndex,
                 header,
-                membership,
+                membership: forcedLeafMembershipV1(membership),
               },
             },
           },

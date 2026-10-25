@@ -1,4 +1,6 @@
 import {
+  forcedLeafMembershipV1,
+  type ForcedTransactionSourceMembershipProof,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
@@ -123,6 +125,9 @@ export const submitObserverOrderInvalidStep01ForcedRaw = async ({
             source: {
               ForcedSource: {
                 ...forcedSource,
+                membership: forcedLeafMembershipV1(
+                  forcedSource.membership as ForcedTransactionSourceMembershipProof,
+                ),
                 input_index: requireInputIndex(ctx, threadUtxo, FAMILY),
                 output_index: outputIndex,
               },

@@ -1,20 +1,18 @@
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
-import {
-  MerkleRootSchema,
-  OutputReferenceSchema,
-  ProofSchema,
-} from "../common.js";
+import { MerkleRootSchema, ProofSchema } from "../common.js";
 import {
   BoundedItemChunkProofSchema,
   EventKeySchema,
   EventToStepValueSchema,
-  ForcedInclusionTxV1Schema,
   HeaderSchema,
   TransitionStepSchema,
 } from "../ledger-state.js";
-import { rootMembershipProofSchema } from "../transition-trace.js";
+import {
+  ForcedLeafMembershipV1Schema,
+  rootMembershipProofSchema,
+} from "../transition-trace.js";
 import { type ChallengedHeaderHash } from "./fabricated-deposit.js";
 import { FieldOpeningSchema } from "./field-opening.js";
 import {
@@ -209,7 +207,7 @@ export const NativeScriptDecodingTransitionStepMembershipSchema =
   rootMembershipProofSchema(Data.Integer(), TransitionStepSchema);
 
 export const NativeScriptDecodingForcedMembershipSchema =
-  rootMembershipProofSchema(OutputReferenceSchema, ForcedInclusionTxV1Schema);
+  ForcedLeafMembershipV1Schema;
 
 /** Twin of `step_02.Args`. */
 export const NativeScriptDecodingStep02ArgsSchema = Data.Object({

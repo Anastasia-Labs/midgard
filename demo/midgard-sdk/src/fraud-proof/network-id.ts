@@ -12,9 +12,9 @@
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
-import { H32Schema, OutputReferenceSchema } from "../common.js";
-import { ForcedInclusionTxV1Schema, HeaderSchema } from "../ledger-state.js";
-import { rootMembershipProofSchema } from "../transition-trace.js";
+import { H32Schema } from "../common.js";
+import { HeaderSchema } from "../ledger-state.js";
+import { ForcedLeafMembershipV1Schema } from "../transition-trace.js";
 import { FieldOpeningSchema } from "./field-opening.js";
 import {
   faultProofStepDatumSchema,
@@ -63,10 +63,7 @@ export const NetworkIdForcedStepArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   header: HeaderSchema,
-  membership: rootMembershipProofSchema(
-    OutputReferenceSchema,
-    ForcedInclusionTxV1Schema,
-  ),
+  membership: ForcedLeafMembershipV1Schema,
 });
 export const NetworkIdForcedStepSpendRedeemerSchema =
   faultProofStepRedeemerSchema(NetworkIdForcedStepArgsSchema);

@@ -1,4 +1,7 @@
-import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk";
+import {
+  forcedLeafMembershipV1,
+  proofThreadDirectionOfForcedLeaf,
+} from "@al-ft/midgard-sdk";
 import {
   type ForcedInclusionTxV1,
   type Header,
@@ -163,6 +166,7 @@ export const submitResolvedOutputNonCanonicalStep01Forced = async ({
             source: {
               ForcedSource: {
                 ...forcedSource,
+                membership: forcedLeafMembershipV1(forcedSource.membership),
                 input_index: inputIndex,
                 output_index: outputIndex,
               },

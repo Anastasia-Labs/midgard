@@ -1,6 +1,8 @@
 import { initialMidgardLedgerOutputScanControl } from "@al-ft/midgard-core";
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import {
+  forcedLeafMembershipV1,
+  type ForcedTransactionSourceMembershipProof,
   forcedVerdictSubject,
   type Header,
   OutputReference,
@@ -351,7 +353,9 @@ export const submitOutputStep01ForcedRaw = async ({
           input_index,
           output_index,
           header,
-          membership,
+          membership: forcedLeafMembershipV1(
+            membership as ForcedTransactionSourceMembershipProof,
+          ),
         },
       },
       output_index: outputIndex,

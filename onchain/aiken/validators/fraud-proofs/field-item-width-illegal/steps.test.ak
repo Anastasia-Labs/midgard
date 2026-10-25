@@ -272,7 +272,7 @@ fn forced_claim_chain(field_index: Int, item_index: Int) -> Bool {
     },
     ledger_state.ForcedTransaction,
     #"5555555555555555555555555555555555555555555555555555555555555555",
-    Some(membership.root),
+    Some(forced_fixture.forced_counted_root_v1(membership.phas_root, 1)),
   )
   let asset_name = forced_fixture.header_asset_name_v1(claim.header)
   let subject = substrate.open_subject_v1(

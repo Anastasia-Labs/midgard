@@ -1,5 +1,6 @@
 /** Restartable forced direction: each action reads its current on-chain datum. */
 import {
+  forcedLeafMembershipV1,
   MissingSignatureForcedSignerDatum,
   MissingSignatureForcedSignerSpendRedeemer,
   MissingSignatureForcedStepDatum,
@@ -304,7 +305,17 @@ export const submitMissingSignatureForcedAction = async (
       );
     if (stage === "forcedStep")
       return Data.to(
-        { Continue: [{ ...layout, ...prepared.forcedSource }] },
+        {
+          Continue: [
+            {
+              ...layout,
+              header: prepared.forcedSource.header,
+              membership: forcedLeafMembershipV1(
+                prepared.forcedSource.membership,
+              ),
+            },
+          ],
+        },
         MissingSignatureForcedStepSpendRedeemer,
       );
     return Data.to(

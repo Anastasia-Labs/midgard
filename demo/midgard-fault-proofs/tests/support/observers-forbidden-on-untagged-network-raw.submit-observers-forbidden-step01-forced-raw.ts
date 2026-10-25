@@ -13,6 +13,8 @@ import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forc
 import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
 import {
   ForcedInclusionTxV1Schema,
+  forcedLeafMembershipV1,
+  type ForcedTransactionSourceMembershipProof,
   OutputReference,
   Proof,
   type RejectionReason,
@@ -317,6 +319,9 @@ export const submitObserversForbiddenStep01ForcedRaw = async ({
             source: {
               ForcedSource: {
                 ...forcedSource,
+                membership: forcedLeafMembershipV1(
+                  forcedSource.membership as ForcedTransactionSourceMembershipProof,
+                ),
                 input_index: requireInputIndex(ctx, threadUtxo, FAMILY),
                 output_index: outputIndex,
               },

@@ -556,10 +556,10 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
       },
     });
     const honestLeaf = evidence.forcedMembership!;
-    const forgedMembership = {
+    const forgedMembership = SDK.forcedLeafMembershipV1({
       ...honestLeaf,
       value: { ...honestLeaf.value, verdict: MALFORMED_REJECTION_VERDICT },
-    };
+    });
     const scanState = SDK.nativeScriptDecodingPreBindScanState({
       direction: 1n,
       sourceKind: SDK.NATIVE_SCRIPT_DECODING_SOURCE_KIND_FORCED,

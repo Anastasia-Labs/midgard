@@ -41,7 +41,7 @@ fn forced_claim_v1(
   leaf: ledger_state.ForcedInclusionTxV1,
 ) -> (
   ledger_state.HeaderV1,
-  transition_trace.RootMembershipProof<
+  transition_trace.ForcedLeafMembershipV1<
     ledger_state.TxOrderId,
     ledger_state.ForcedInclusionTxV1,
   >,
@@ -53,7 +53,7 @@ fn forced_claim_v1(
     },
     ledger_state.ForcedTransaction,
     prior_root,
-    Some(membership.root),
+    Some(tf.forced_counted_root_v1(membership.phas_root, 1)),
   )
   (claim.header, membership)
 }
@@ -286,7 +286,7 @@ test proof_thread_subject_rejects_a_substituted_forced_key() fail {
     tf.header_asset_name_v1(header),
     substrate.ForcedSource {
       header,
-      membership: transition_trace.RootMembershipProof {
+      membership: transition_trace.ForcedLeafMembershipV1 {
         ..membership,
         key: substituted_key,
       },
@@ -309,7 +309,7 @@ test proof_thread_subject_rejects_substituted_forced_source_bytes() fail {
     tf.header_asset_name_v1(header),
     substrate.ForcedSource {
       header,
-      membership: transition_trace.RootMembershipProof {
+      membership: transition_trace.ForcedLeafMembershipV1 {
         ..membership,
         value: substituted_leaf,
       },
@@ -329,7 +329,7 @@ test proof_thread_subject_rejects_a_substituted_transaction_id() fail {
     tf.header_asset_name_v1(header),
     substrate.ForcedSource {
       header,
-      membership: transition_trace.RootMembershipProof {
+      membership: transition_trace.ForcedLeafMembershipV1 {
         ..membership,
         value: substituted_leaf,
       },
@@ -682,13 +682,6 @@ test proof_thread_subject_rejects_a_leaf_outside_the_header_forced_root() fail {
   let other = tf.forced_leaf_membership_v1(tf.forced_order_key_v1(), other_leaf)
   substrate.open_subject_v1(
     tf.header_asset_name_v1(header),
-    substrate.ForcedSource {
-      header,
-      membership: transition_trace.RootMembershipProof {
-        ..other,
-        root: header.forced_transactions_root,
-        count: header.forced_transaction_count,
-      },
-    },
+    substrate.ForcedSource { header, membership: other },
   ).direction == substrate.direction_wrongful_rejection
 }

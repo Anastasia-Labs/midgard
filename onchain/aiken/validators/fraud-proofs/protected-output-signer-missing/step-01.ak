@@ -259,7 +259,7 @@ test protected_output_step_01_refuses_a_wrong_successor() fail {
 
 fn forced_membership(
   leaf: ledger_state.ForcedInclusionTxV1,
-) -> transition_trace.RootMembershipProof<
+) -> transition_trace.ForcedLeafMembershipV1<
   ledger_state.TxOrderId,
   ledger_state.ForcedInclusionTxV1,
 > {
@@ -285,7 +285,7 @@ fn thread_name(header: ledger_state.HeaderV1) -> ByteArray {
 
 fn expected_forced_state(
   header: ledger_state.HeaderV1,
-  membership: transition_trace.RootMembershipProof<
+  membership: transition_trace.ForcedLeafMembershipV1<
     ledger_state.TxOrderId,
     ledger_state.ForcedInclusionTxV1,
   >,
@@ -314,7 +314,7 @@ fn expected_forced_state(
 fn run_forced(
   header: ledger_state.HeaderV1,
   name: ByteArray,
-  membership: transition_trace.RootMembershipProof<
+  membership: transition_trace.ForcedLeafMembershipV1<
     ledger_state.TxOrderId,
     ledger_state.ForcedInclusionTxV1,
   >,
@@ -356,7 +356,10 @@ fn run_canonical_forced(
   redeemer_output_index: Int,
 ) -> Bool {
   let membership = forced_membership(leaf)
-  let header = forced_header(membership.root, 1)
+  let header = forced_header(
+    tf.forced_counted_root_v1(membership.phas_root, 1),
+    1,
+  )
   run_forced(
     header,
     thread_name(header),
@@ -404,7 +407,10 @@ test protected_output_step_01_binds_an_accepted_forced_leaf() {
 /// leaf. The authenticated leaf and redeemer stay unchanged.
 test protected_output_step_01_refuses_direction_zero_on_a_rejecting_leaf() {
   let membership = forced_membership(rejected_leaf(protected_output_index))
-  let header = forced_header(membership.root, 1)
+  let header = forced_header(
+    tf.forced_counted_root_v1(membership.phas_root, 1),
+    1,
+  )
   let correct = expected_forced_state(
     header,
     membership,
@@ -446,7 +452,10 @@ test protected_output_step_01_refuses_a_wrongful_rejection_on_an_accepting_leaf(
   let membership = forced_membership(
     tf.forced_leaf_v1(accepted_tx(), ForcedTxValid),
   )
-  let header = forced_header(membership.root, 1)
+  let header = forced_header(
+    tf.forced_counted_root_v1(membership.phas_root, 1),
+    1,
+  )
   let correct = expected_forced_state(
     header,
     membership,
@@ -498,7 +507,7 @@ test protected_output_step_01_refuses_a_substituted_forced_root() fail {
     membership,
     protected_output_index,
     expected_forced_state(
-      forced_header(membership.root, 1),
+      forced_header(tf.forced_counted_root_v1(membership.phas_root, 1), 1),
       membership,
       protected_output_index,
     ),
@@ -508,14 +517,17 @@ test protected_output_step_01_refuses_a_substituted_forced_root() fail {
 /// The counted root binds the count as well as the raw root.
 test protected_output_step_01_refuses_a_substituted_forced_count() fail {
   let membership = forced_membership(rejected_leaf(protected_output_index))
-  let header = forced_header(membership.root, 2)
+  let header = forced_header(
+    tf.forced_counted_root_v1(membership.phas_root, 1),
+    2,
+  )
   run_forced(
     header,
     thread_name(header),
     membership,
     protected_output_index,
     expected_forced_state(
-      forced_header(membership.root, 1),
+      forced_header(tf.forced_counted_root_v1(membership.phas_root, 1), 1),
       membership,
       protected_output_index,
     ),
@@ -525,10 +537,15 @@ test protected_output_step_01_refuses_a_substituted_forced_count() fail {
 /// The header must be the one the thread NFT names.
 test protected_output_step_01_refuses_a_header_the_thread_did_not_name() fail {
   let membership = forced_membership(rejected_leaf(protected_output_index))
-  let header = forced_header(membership.root, 1)
+  let header = forced_header(
+    tf.forced_counted_root_v1(membership.phas_root, 1),
+    1,
+  )
   run_forced(
     header,
-    thread_name(forced_header(membership.root, 2)),
+    thread_name(
+      forced_header(tf.forced_counted_root_v1(membership.phas_root, 1), 2),
+    ),
     membership,
     protected_output_index,
     expected_forced_state(header, membership, protected_output_index),
@@ -555,14 +572,20 @@ test protected_output_step_01_refuses_a_substituted_leaf_source() fail {
     submitted_source: foreign.submitted_source,
   }
   let membership = forced_membership(substituted)
-  let header = forced_header(membership.root, 1)
+  let header = forced_header(
+    tf.forced_counted_root_v1(membership.phas_root, 1),
+    1,
+  )
   run_forced(
     header,
     thread_name(header),
     membership,
     protected_output_index,
     expected_forced_state(
-      forced_header(forced_membership(honest).root, 1),
+      forced_header(
+        tf.forced_counted_root_v1(forced_membership(honest).phas_root, 1),
+        1,
+      ),
       forced_membership(honest),
       protected_output_index,
     ),
@@ -572,7 +595,10 @@ test protected_output_step_01_refuses_a_substituted_leaf_source() fail {
 /// The forced binding may only continue at step 02.
 test protected_output_step_01_refuses_a_forced_wrong_successor() fail {
   let membership = forced_membership(rejected_leaf(protected_output_index))
-  let header = forced_header(membership.root, 1)
+  let header = forced_header(
+    tf.forced_counted_root_v1(membership.phas_root, 1),
+    1,
+  )
   let name = thread_name(header)
   let state = expected_forced_state(header, membership, protected_output_index)
   main.spend(

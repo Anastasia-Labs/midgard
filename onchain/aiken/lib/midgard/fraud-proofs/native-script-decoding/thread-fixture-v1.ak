@@ -259,26 +259,29 @@ pub fn forced_leaf_v1(
 pub fn forced_leaf_membership_v1(
   order_key: ledger_state.TxOrderId,
   leaf: ledger_state.ForcedInclusionTxV1,
-) -> transition_trace.RootMembershipProof<
+) -> transition_trace.ForcedLeafMembershipV1<
   ledger_state.TxOrderId,
   ledger_state.ForcedInclusionTxV1,
 > {
   let key_bytes = cbor.serialise(order_key)
   let value_bytes = cbor.serialise(leaf)
   let phas_root = mpf.root(mpf.insert(mpf.empty, key_bytes, value_bytes, []))
-  transition_trace.RootMembershipProof {
-    domain: transition_trace.ForcedTransactionsV1RootDomain,
-    root: transition_trace.commit_counted_root(
-      transition_trace.ForcedTransactionsV1RootDomain,
-      phas_root,
-      1,
-    ),
+  transition_trace.ForcedLeafMembershipV1 {
     phas_root,
-    count: 1,
     key: order_key,
     value: leaf,
     proof: [],
   }
+}
+
+/// The header's counted forced-transactions root over `phas_root` holding
+/// `count` leaves.
+pub fn forced_counted_root_v1(phas_root: ByteArray, count: Int) -> ByteArray {
+  transition_trace.commit_counted_root(
+    transition_trace.ForcedTransactionsV1RootDomain,
+    phas_root,
+    count,
+  )
 }
 
 // ## Committed-claim fixture (header + trace openings)
