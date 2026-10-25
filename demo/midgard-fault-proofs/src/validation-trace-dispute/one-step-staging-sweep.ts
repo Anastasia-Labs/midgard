@@ -277,11 +277,13 @@ export const validationTraceStagingSweep = ({
       ending.kind === "conflict";
     const lagging =
       known.latestConfirmedAt !== undefined && recent(known.latestConfirmedAt);
-    // Under reconciliation-only authority a thread of ours past the
-    // PrepareSelected move still holds what it reads: its evidence names
+    // Under reconciliation-only authority a standing thread of ours still
+    // holds its stagings. Past the PrepareSelected move its evidence names
     // those very outputs, so none can be staged again should the header come
-    // back. The hold ends once the thread leaves its holders (a cancel, a
-    // timeout, an award or the case's close), and the spend back follows.
+    // back; at the prepare holder it keeps the usable ones so the thread can
+    // go on without a fresh staging. The hold ends once the thread leaves its
+    // holders (a cancel, a timeout, an award or the case's close), and the
+    // spend back follows.
     const { held, pins } = done
       ? { held: new Set<string>(), pins: new MidgardCekStagingPins() }
       : await heldBy(known, lagging);
