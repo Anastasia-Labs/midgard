@@ -331,14 +331,38 @@ test refuses_an_endianness_that_is_not_a_boolean() fail {
 
 // ## Binding
 
-test refuses_input_past_the_argument_bound() fail {
-  let pieces = [input(65536, 2), #"01"]
+/// byteStringToInteger over the staged input `pieces`, whose value is 7,
+/// claiming 7.
+fn claims_seven(big_endian: Bool, pieces: List<ByteArray>) -> Bool {
   verifies(
-    [boolean_value(True), semantic_pieces(pieces, False)],
-    integer_value(0),
+    [boolean_value(big_endian), semantic_pieces(pieces, False)],
+    integer_value(7),
     stage_pieces([pieces]),
     [staged(0)],
   )
+}
+
+test converts_input_of_pieces_at_the_argument_bound() {
+  and {
+    claims_seven(True, [zeros(65535), #"07"]),
+    claims_seven(False, [#"07", zeros(65535)]),
+    claims_seven(True, [zeros(30000), zeros(35535), #"07"]),
+  }
+}
+
+// The rows below claim the input's own value, so only the input's bound
+// refuses them.
+
+test refuses_big_endian_input_past_the_argument_bound() fail {
+  claims_seven(True, [zeros(65536), #"07"])
+}
+
+test refuses_little_endian_input_past_the_argument_bound() fail {
+  claims_seven(False, [#"07", zeros(65536)])
+}
+
+test refuses_input_of_three_pieces_past_the_argument_bound() fail {
+  claims_seven(True, [zeros(30000), zeros(35536), #"07"])
 }
 
 test refuses_input_bound_by_its_leaf_alone() fail {
@@ -351,16 +375,26 @@ test refuses_input_bound_by_its_leaf_alone() fail {
   )
 }
 
-test refuses_staged_bytes_that_differ_from_the_input() fail {
+/// byteStringToInteger over the argument `bytes` with `other`, of the same
+/// length, staged in its place, claiming the value of `other`, so only the
+/// binding of the staged bytes to the argument refuses it.
+fn stages_other_bytes(big_endian: Bool) -> Bool {
   let bytes = input(9216, 3)
   let other = input(9216, 4)
-  let staging = stage([other])
   verifies(
-    [boolean_value(True), bytes_value(bytes, False)],
-    converted(True, bytes),
-    staging,
+    [boolean_value(big_endian), bytes_value(bytes, False)],
+    converted(big_endian, other),
+    stage([other]),
     [staged(0)],
   )
+}
+
+test refuses_staged_bytes_that_differ_from_the_input() fail {
+  stages_other_bytes(True)
+}
+
+test refuses_little_endian_staged_bytes_that_differ_from_the_input() fail {
+  stages_other_bytes(False)
 }
 
 test refuses_a_string_input() fail {

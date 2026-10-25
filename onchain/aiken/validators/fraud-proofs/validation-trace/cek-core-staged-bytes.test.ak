@@ -1121,6 +1121,36 @@ test refuses_an_ed25519_key_of_31_bytes() fail {
   )
 }
 
+/// Signature builtin `tag` over the argument message `pattern(65536, 4)`
+/// with `pattern(65536, 3)` staged in its place, claiming the valid
+/// signature over the staged message, so only the binding of the staged
+/// message to the argument refuses it.
+fn signature_over_a_staged_message_in_place_of_another(tag: Int) -> Bool {
+  verifies(
+    tag,
+    [
+      bytes_value(signature_key(tag), False),
+      bytes_value(pattern(65536, 4), False),
+      bytes_value(signature_at_the_bound(tag), False),
+    ],
+    boolean_value(True),
+    stage([pattern(65536, 3)]),
+    [
+      InlineOperand { bytes: signature_key(tag) },
+      staged(0),
+      InlineOperand { bytes: signature_at_the_bound(tag) },
+    ],
+  )
+}
+
+test refuses_an_ed25519_message_staged_in_place_of_another() fail {
+  signature_over_a_staged_message_in_place_of_another(21)
+}
+
+test refuses_a_schnorr_message_staged_in_place_of_another() fail {
+  signature_over_a_staged_message_in_place_of_another(53)
+}
+
 test refuses_a_message_bound_by_its_leaf_alone() fail {
   let message = pattern(65536, 3)
   verifies(
