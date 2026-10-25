@@ -263,7 +263,6 @@
             "src/validation-machine/index.ts",
             "--format",
             "esm,cjs",
-            "--shims",
             "--dts",
             "--clean"
           ]

@@ -3,14 +3,11 @@ import {
   MIDGARD_CONSENSUS_LIMITS,
   PLUTUS_V3_CANONICAL_COST_MODEL_VIEW,
 } from "@al-ft/midgard-core";
+import * as UPLC from "@lucid-evolution/uplc";
 
 import { storedFlatProgramBytes } from "./cek-program.unwrap-canonical-cbor-byte-string.js";
 import type { MidgardCekScriptRun } from "./phase-b.evaluate-cek-script.js";
 import { MidgardUplcCapabilityError } from "./plutus-script-evaluator.capability-error.js";
-import {
-  discardUplcInstance,
-  uplcInstance,
-} from "./plutus-script-evaluator.uplc-instance.js";
 import type {
   ScriptDecodePhase2Class,
   ScriptDecodeRecord,
@@ -87,7 +84,6 @@ export const evaluateStoredMidgardPlutusScript = (
         kind: "script_invalid",
         detail: `UPLC PV11 phase-two class ${decoded.record.phase2Class}`,
       };
-    const UPLC = uplcInstance();
     if (
       !("eval_program_raw" in UPLC) ||
       typeof UPLC.eval_program_raw !== "function"
@@ -110,23 +106,16 @@ export const evaluateStoredMidgardPlutusScript = (
         MIDGARD_CONSENSUS_LIMITS.minSupportedTransactionExecutionMemoryUnits,
       ),
     };
-    let result: MidgardUplcEvalProgramResult;
-    try {
-      result = evaluate(
-        decoded.flatBytes,
-        [run.contextCbor],
-        3,
-        11,
-        BigInt64Array.from(PLUTUS_V3_CANONICAL_COST_MODEL_VIEW.map(BigInt)),
-        budget.cpu,
-        budget.memory,
-        false,
-      );
-    } catch (cause) {
-      // The instance may be left unusable; the next evaluation gets a new one.
-      discardUplcInstance();
-      throw cause;
-    }
+    const result = evaluate(
+      decoded.flatBytes,
+      [run.contextCbor],
+      3,
+      11,
+      BigInt64Array.from(PLUTUS_V3_CANONICAL_COST_MODEL_VIEW.map(BigInt)),
+      budget.cpu,
+      budget.memory,
+      false,
+    );
     try {
       if (
         typeof result.ok !== "boolean" ||
