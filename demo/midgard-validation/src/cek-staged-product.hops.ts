@@ -14,9 +14,9 @@
  * raised so that the model is at least every calibration row's measured
  * ex-units, and the planner keeps a margin of the budget free on top. A hop
  * the model admits that still goes over budget is retried with its range
- * halved, which always makes progress (one column at the least), and every
- * plan starts from the cursor the chain holds, so a restart resumes where
- * the last confirmed hop ended.
+ * halved, down to one column, and every plan starts from the cursor the
+ * chain holds, so a restart resumes where the last confirmed hop ended. A
+ * step with a column no hop fits is indeterminate, never a crash.
  */
 /** Bytes of one limb. */
 const LIMB_BYTES = 512;
@@ -67,7 +67,10 @@ type MidgardCekStagedProductCost = {
  * Calibrated on multiplyInteger steps of 9,216, 16,384 and 32,768-byte
  * operands, and on modInteger, divideInteger, quotientInteger and
  * remainderInteger steps of 9,216 to 32,768-byte dividends, the planned
- * hops of the largest steps among them.
+ * hops of the largest steps among them. A negative operand whose CBOR
+ * argument is all 0xff bytes (the smallest argument, -2^262143, is one)
+ * costs every hop more than any other operand of its size, so each fixed
+ * cost is raised to the planned hops of the largest such steps as well.
  */
 const COST: Readonly<
   Record<
@@ -77,7 +80,7 @@ const COST: Readonly<
 > = {
   product: {
     memory: {
-      fixed: 1_378_617n,
+      fixed: 1_898_617n,
       perByte: 73n,
       firstPerByte: 11n,
       perColumn: 84_956n,
@@ -86,7 +89,7 @@ const COST: Readonly<
       perCursor: 2_404n,
     },
     cpu: {
-      fixed: 486_064_498n,
+      fixed: 616_064_498n,
       perByte: 30_689n,
       firstPerByte: 4_499n,
       perColumn: 39_641_639n,
@@ -97,7 +100,7 @@ const COST: Readonly<
   },
   division: {
     memory: {
-      fixed: 2_171_091n,
+      fixed: 2_681_091n,
       perByte: 55n,
       firstPerByte: 12n,
       perColumn: 57_935n,
@@ -106,7 +109,7 @@ const COST: Readonly<
       perCursor: 4_311n,
     },
     cpu: {
-      fixed: 1_349_740_003n,
+      fixed: 1_474_740_003n,
       perByte: 17_392n,
       firstPerByte: 4_460n,
       perColumn: 18_208_159n,
@@ -245,18 +248,33 @@ const fits = (cost: MidgardCekExUnits, budget: MidgardCekExUnits): boolean => {
 };
 
 /**
+ * Where a hop ends, or `indeterminate` when no hop from its cursor fits the
+ * budget: the step cannot be proved in hops of that budget.
+ */
+export type MidgardCekStagedProductHopPlan =
+  | { readonly kind: "hop"; readonly end: number }
+  | { readonly kind: "indeterminate" };
+
+const INDETERMINATE: MidgardCekStagedProductHopPlan = Object.freeze({
+  kind: "indeterminate",
+});
+
+/**
  * Where the hop from `cursor` (the cursor the chain holds, 0 before the
  * first hop) ends: the most columns the model fits in `budget` with its
- * margin, at least one and at most
- * {@link MIDGARD_CEK_STAGED_PRODUCT_MAX_HOP_COLUMNS}.
+ * margin, at most {@link MIDGARD_CEK_STAGED_PRODUCT_MAX_HOP_COLUMNS}, and
+ * indeterminate when not even the column at `cursor` fits.
  */
 export const planMidgardCekStagedProductHop = (
   loop: MidgardCekStagedProductLoop,
   cursor: number,
   budget: MidgardCekExUnits = MIDGARD_CEK_STAGED_PRODUCT_HOP_BUDGET,
-): number => {
+): MidgardCekStagedProductHopPlan => {
   if (!Number.isSafeInteger(cursor) || cursor < 0 || cursor >= loop.columns) {
     throw new RangeError("the loop has no hop from this cursor");
+  }
+  if (!fits(midgardCekStagedProductHopCost(loop, cursor, cursor + 1), budget)) {
+    return INDETERMINATE;
   }
   const last = Math.min(
     loop.columns,
@@ -269,19 +287,18 @@ export const planMidgardCekStagedProductHop = (
   ) {
     end += 1;
   }
-  return end;
+  return { kind: "hop", end };
 };
 
 /**
- * The end of the hop from `cursor` that replaces one ending at `end` that
- * went over budget: half its columns, and at least one.
+ * The hop from `cursor` that replaces one ending at `end` that went over
+ * budget: half its columns, and at least one. A one-column hop that went
+ * over cannot be made smaller, so the step is indeterminate.
  */
 export const halveMidgardCekStagedProductHop = (
   cursor: number,
   end: number,
-): number => {
-  if (end - cursor < 2) {
-    throw new RangeError("a one-column hop cannot be halved");
-  }
-  return cursor + Math.floor((end - cursor) / 2);
-};
+): MidgardCekStagedProductHopPlan =>
+  end - cursor < 2
+    ? INDETERMINATE
+    : { kind: "hop", end: cursor + Math.floor((end - cursor) / 2) };

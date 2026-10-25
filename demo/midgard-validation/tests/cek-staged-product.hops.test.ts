@@ -5,6 +5,7 @@ import {
   MIDGARD_CEK_STAGED_PRODUCT_HOP_BUDGET,
   MIDGARD_CEK_STAGED_PRODUCT_MAX_HOP_COLUMNS,
   midgardCekStagedProductHopCost,
+  type MidgardCekStagedProductHopPlan,
   type MidgardCekStagedProductLoop,
   midgardCekStagedProductLoop,
   planMidgardCekStagedProductHop,
@@ -22,12 +23,18 @@ const wide = (bytes: number): bigint => 1n << BigInt(8 * bytes - 1);
 const top = (1n << 262_143n) - 1n;
 const bottom = -top - 1n;
 
+/** The end of a planned hop. */
+const endOf = (plan: MidgardCekStagedProductHopPlan): number => {
+  if (plan.kind !== "hop") throw new Error("indeterminate");
+  return plan.end;
+};
+
 /** Every hop of `loop`, planned from cursor 0 and then from each hop's end. */
 const plan = (loop: MidgardCekStagedProductLoop): number[] => {
   const ends: number[] = [];
   let cursor = 0;
   while (cursor < loop.columns) {
-    cursor = planMidgardCekStagedProductHop(loop, cursor);
+    cursor = endOf(planMidgardCekStagedProductHop(loop, cursor));
     ends.push(cursor);
   }
   return ends;
@@ -105,26 +112,25 @@ describe("the hops of the staged product loop", () => {
         MIDGARD_CEK_STAGED_PRODUCT_MAX_HOP_COLUMNS,
       );
       const cost = midgardCekStagedProductHopCost(loop, cursor, end);
-      if (end - cursor > 1) {
-        expect(cost.memory).toBeLessThanOrEqual(
-          kept(MIDGARD_CEK_STAGED_PRODUCT_HOP_BUDGET.memory),
-        );
-        expect(cost.cpu).toBeLessThanOrEqual(
-          kept(MIDGARD_CEK_STAGED_PRODUCT_HOP_BUDGET.cpu),
-        );
-      }
+      expect(cost.memory).toBeLessThanOrEqual(
+        kept(MIDGARD_CEK_STAGED_PRODUCT_HOP_BUDGET.memory),
+      );
+      expect(cost.cpu).toBeLessThanOrEqual(
+        kept(MIDGARD_CEK_STAGED_PRODUCT_HOP_BUDGET.cpu),
+      );
       cursor = end;
     }
   });
 
   it.each([
-    ["the largest product", loopOf(2n, top, top), 24],
+    ["the largest product", loopOf(2n, top, top), 31],
+    ["the smallest arguments' product", loopOf(2n, bottom, bottom), 31],
     [
       "a 32,768 by 17,000-byte division",
       loopOf(4n, -wide(32_768), wide(17_000)),
-      6,
+      8,
     ],
-    ["the smallest dividend by -1", loopOf(3n, bottom, -1n), 4],
+    ["the smallest dividend by -1", loopOf(3n, bottom, -1n), 5],
     ["a 9,216 by 4,000-byte product", loopOf(2n, wide(9_216), -wide(4_000)), 1],
   ] as const)("plans %s in its calibrated number of hops", (_, loop, hops) => {
     expect(plan(loop)).toHaveLength(hops);
@@ -147,22 +153,57 @@ describe("the hops of the staged product loop", () => {
     const ends = plan(loop);
     expect(plan(loop)).toEqual(ends);
     for (const [at, cursor] of ends.slice(0, -1).entries()) {
-      expect(planMidgardCekStagedProductHop(loop, cursor)).toBe(ends[at + 1]);
+      expect(planMidgardCekStagedProductHop(loop, cursor)).toEqual({
+        kind: "hop",
+        end: ends[at + 1],
+      });
     }
   });
 
-  it("plans one column at the least when the budget fits none", () => {
+  it("plans one column when the budget fits only one", () => {
+    const loop = loopOf(2n, top, top);
+    const one = midgardCekStagedProductHopCost(loop, 10, 11);
+    expect(
+      planMidgardCekStagedProductHop(loop, 10, {
+        memory: (one.memory * 100n) / 80n + 1n,
+        cpu: (one.cpu * 100n) / 80n + 1n,
+      }),
+    ).toEqual({ kind: "hop", end: 11 });
+  });
+
+  it("is indeterminate when the budget fits not even one column", () => {
     const loop = loopOf(2n, top, top);
     expect(
       planMidgardCekStagedProductHop(loop, 10, { memory: 1n, cpu: 1n }),
-    ).toBe(11);
+    ).toEqual({ kind: "indeterminate" });
+    const one = midgardCekStagedProductHopCost(loop, 10, 11);
+    expect(
+      planMidgardCekStagedProductHop(loop, 10, {
+        ...MIDGARD_CEK_STAGED_PRODUCT_HOP_BUDGET,
+        memory: (one.memory * 100n) / 80n - 1n,
+      }),
+    ).toEqual({ kind: "indeterminate" });
   });
 
   it("halves a hop that went over budget down to one column", () => {
-    expect(halveMidgardCekStagedProductHop(10, 74)).toBe(42);
-    expect(halveMidgardCekStagedProductHop(10, 13)).toBe(11);
-    expect(halveMidgardCekStagedProductHop(10, 12)).toBe(11);
-    expect(() => halveMidgardCekStagedProductHop(10, 11)).toThrow(RangeError);
+    expect(halveMidgardCekStagedProductHop(10, 74)).toEqual({
+      kind: "hop",
+      end: 42,
+    });
+    expect(halveMidgardCekStagedProductHop(10, 13)).toEqual({
+      kind: "hop",
+      end: 11,
+    });
+    expect(halveMidgardCekStagedProductHop(10, 12)).toEqual({
+      kind: "hop",
+      end: 11,
+    });
+  });
+
+  it("is indeterminate when a one-column hop went over budget", () => {
+    expect(halveMidgardCekStagedProductHop(10, 11)).toEqual({
+      kind: "indeterminate",
+    });
   });
 
   it("refuses a cursor outside the loop", () => {
