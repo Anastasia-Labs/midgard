@@ -28,14 +28,6 @@ const KIND = Object.freeze({
   g2List: 4,
 } as const);
 
-/** `BuiltinErrorKind` of `eval_builtin_raw`. */
-export const MIDGARD_CEK_PINNED_BUILTIN_ERROR = Object.freeze({
-  ok: 0,
-  notAvailable: 1,
-  rejectedArguments: 2,
-  failed: 3,
-} as const);
-
 const G1_BYTES = 48;
 const G2_BYTES = 96;
 
@@ -120,21 +112,8 @@ const decodeResult = (bytes: Uint8Array, kind: number): UPLCConst => {
 
 /** What the pinned evaluator gives for one saturated builtin application. */
 export type MidgardCekPinnedBuiltinResult =
-  | {
-      readonly kind: "value";
-      readonly value: UPLCConst;
-      /** The evaluator's charge under Plutus' default V3 cost model. */
-      readonly cpu: bigint;
-      readonly memory: bigint;
-    }
-  | {
-      readonly kind: "failure";
-      /** A `MIDGARD_CEK_PINNED_BUILTIN_ERROR` code other than `ok`. */
-      readonly errorKind: number;
-      readonly cpu: bigint;
-      readonly memory: bigint;
-      readonly message: string;
-    };
+  | { readonly kind: "value"; readonly value: UPLCConst }
+  | { readonly kind: "failure"; readonly message: string };
 
 /**
  * Evaluates Cardano's builtin `tag` (Flat numbering) on `arguments_`, which
@@ -159,16 +138,8 @@ export const evaluatePinnedBuiltin = (
       return {
         kind: "value",
         value: decodeResult(result.result, result.result_kind),
-        cpu: result.cpu,
-        memory: result.mem,
       };
-    return {
-      kind: "failure",
-      errorKind: result.error_kind,
-      cpu: result.cpu,
-      memory: result.mem,
-      message: result.error,
-    };
+    return { kind: "failure", message: result.error };
   } finally {
     result.free();
   }
