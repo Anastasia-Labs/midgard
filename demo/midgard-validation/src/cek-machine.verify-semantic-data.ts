@@ -8,7 +8,6 @@ import {
 } from "./cek-constant.js";
 import { encodeMidgardCekDataTreeInteger } from "./cek-data-tree.js";
 import {
-  canonicalBytesLeaf,
   canonicalIntegerLeaf,
   directUnit,
   exactTopMaterial,
@@ -198,73 +197,41 @@ export const verifySemanticData = (
       summary.memory,
     );
   }
-  if (tag === 40n || tag === 45n) {
+  if (tag === 40n || tag === 41n || tag === 45n || tag === 46n) {
+    // A Data leaf and the integer or byte string it holds share one payload
+    // summary: the leaf node alone proves the step, at any size.
+    const scalar = tag === 40n || tag === 45n ? "integer" : "bytes";
+    const intoData = tag === 40n || tag === 41n;
+    const node = material.dataNodes[0];
     if (
       arguments_.length !== 1 ||
       material.dataNodes.length !== 1 ||
-      material.listNodes.length !== 0 ||
-      material.pairNodes.length !== 0 ||
-      material.scalarPreimages.length !== 1
+      node === undefined ||
+      node.kind !== scalar ||
+      material.scalarPreimages.length !== 0
     ) {
       return false;
     }
     const source = constantParts(arguments_[0]!);
     if (
       source === null ||
-      source.type.kind !== (tag === 40n ? "integer" : "data")
-    ) {
-      return false;
-    }
-    const integer = canonicalIntegerLeaf(
-      source.payload,
-      material.dataNodes[0]!,
-      material.scalarPreimages[0]!,
-    );
-    if (
-      integer === null ||
-      (tag === 40n
-        ? source.memory !== source.payload.memory - 4n
-        : source.memory !== source.payload.memory)
-    ) {
-      return false;
-    }
-    return resultMatchesParts(
-      result,
-      { kind: tag === 40n ? "data" : "integer" },
-      source.payload,
-      tag === 40n ? source.payload.memory : source.payload.memory - 4n,
-    );
-  }
-  if (tag === 41n || tag === 46n) {
-    if (
-      arguments_.length !== 1 ||
-      material.dataNodes.length !== 1 ||
-      material.listNodes.length !== 0 ||
-      material.pairNodes.length !== 0 ||
-      material.scalarPreimages.length !== 1
-    ) {
-      return false;
-    }
-    const source = constantParts(arguments_[0]!);
-    if (
-      source === null ||
-      source.type.kind !== (tag === 41n ? "bytes" : "data") ||
-      !canonicalBytesLeaf(
+      source.type.kind !== (intoData ? scalar : "data") ||
+      !exactTopMaterial(
         source.payload,
-        material.dataNodes[0]!,
-        material.scalarPreimages[0]!,
+        node,
+        material.listNodes,
+        material.pairNodes,
       ) ||
-      (tag === 41n
-        ? source.memory !== source.payload.memory - 4n
-        : source.memory !== source.payload.memory)
+      source.memory !==
+        (intoData ? source.payload.memory - 4n : source.payload.memory)
     ) {
       return false;
     }
     return resultMatchesParts(
       result,
-      { kind: tag === 41n ? "data" : "bytes" },
+      { kind: intoData ? "data" : scalar },
       source.payload,
-      tag === 41n ? source.payload.memory : source.payload.memory - 4n,
+      intoData ? source.payload.memory : source.payload.memory - 4n,
     );
   }
   if (tag === 44n) {

@@ -234,17 +234,6 @@ export const canonicalIntegerLeaf = (
     : null;
 };
 
-export const canonicalBytesLeaf = (
-  summary: DataSummary,
-  node: MidgardCekDataNode,
-  raw: Bytes,
-): boolean =>
-  node.kind === "bytes" &&
-  raw.length <= 9_215 &&
-  sameBytes(node.bytesRoot, commitMidgardCekBlob(raw).root) &&
-  node.bytesLength === BigInt(raw.length) &&
-  sameDataSummary(summary, dataNodeSummary(node));
-
 export const directUnit = (value: MidgardCekDirectValueWitness): boolean => {
   if (value.kind !== "constant") return false;
   const decoded = decodeMidgardCekConstantWitness(value.witness);

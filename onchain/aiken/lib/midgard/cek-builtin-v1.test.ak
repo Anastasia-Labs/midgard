@@ -9,6 +9,7 @@ use midgard/cek_constant_v1
 use midgard/cek_cost_v1
 use midgard/cek_data_v1
 use midgard/cek_proof_v1
+use midgard/cek_staged_blob_v1.{flat_root_v1}
 use midgard/fraud_proofs/cek_staged_fixture_v1 as staged_fixture
 
 fn constant(
@@ -2118,10 +2119,11 @@ test add_integer_refuses_a_wrong_sum_across_the_64_bit_boundary() {
   }
 }
 
-// An IntegerData leaf revealed by its raw CBOR.
+// The IntegerData leaf over the CBOR `raw`, rooted by its flat root (the
+// bounded blob root up to 9,215 bytes).
 fn integer_leaf_node(memory: Int, raw: ByteArray) -> cek_data_v1.DataNodeV1 {
   cek_data_v1.IntegerData {
-    cbor_root: cek_proof_v1.bounded_blob_root_v1(raw),
+    cbor_root: flat_root_v1(raw),
     cbor_length: bytearray.length(raw),
     memory,
   }
@@ -2135,15 +2137,15 @@ fn node_summary(node: cek_data_v1.DataNodeV1) -> cek_data_v1.DataSummaryV1 {
   }
 }
 
+// The material of iData and unIData: the leaf node alone.
 fn leaf_witness(
   node: cek_data_v1.DataNodeV1,
-  raw: ByteArray,
 ) -> cek_builtin_v1.SemanticBuiltinWitnessV1 {
   cek_builtin_v1.SemanticBuiltinWitnessV1 {
     data_nodes: [node],
     list_nodes: [],
     pair_nodes: [],
-    scalar_preimages: [raw],
+    scalar_preimages: [],
   }
 }
 
@@ -2168,15 +2170,10 @@ fn un_i_data_leaf_with_memory_verifies(memory: Int, raw: ByteArray) -> Bool {
     payload: summary,
     memory: summary.memory - 4,
   }
-  verify_semantic_with_split_parity(
-    45,
-    [source],
-    result,
-    leaf_witness(node, raw),
-  )
+  verify_semantic_with_split_parity(45, [source], result, leaf_witness(node))
 }
 
-// iData from an integer constant: the leaf must reveal that integer.
+// iData from an integer constant: the leaf must be that integer's leaf.
 fn i_data_leaf_verifies(value: Int, raw: ByteArray) -> Bool {
   let argument = integer_value(value)
   let payload = cek_data_v1.integer_data_summary_v1(
@@ -2195,7 +2192,7 @@ fn i_data_leaf_verifies(value: Int, raw: ByteArray) -> Bool {
       payload,
       memory: payload.memory,
     },
-    leaf_witness(node, raw),
+    leaf_witness(node),
   )
 }
 
@@ -2223,37 +2220,45 @@ test integer_leaf_with_smallest_negative_bignum_verifies() {
   integer_leaf_verifies(-18446744073709551617, #"c349010000000000000000")
 }
 
-// The revealed leaf must be the integer constant's own serialisation.
+// The leaf must be the integer constant's own leaf.
 test integer_leaf_for_a_different_integer_fails_closed() fail {
   i_data_leaf_verifies(18446744073709551616, #"c349010000000000000000")
 }
 
-test integer_leaf_behind_a_long_tag_2_head_fails_closed() fail {
-  un_i_data_leaf_verifies(18446744073709551616, #"d80249010000000000000000")
-}
+// unIData reads the leaf's committed fields only. That every I leaf is over
+// canonical CBOR (so never behind a long tag 2 or tag 3 head) is checked where
+// leaves are created: `cek-integer-leaf-sites.test.ak`.
 
-test integer_leaf_behind_a_long_tag_3_head_fails_closed() fail {
-  un_i_data_leaf_verifies(-18446744073709551617, #"d80349010000000000000000")
-}
-
-// The revealed-leaf bound (9,215 bytes) admits the same integers as the
-// direct payload bound: up to 8,932 magnitude bytes (memory 4 + 8,933).
-test integer_leaf_at_the_revealed_leaf_bound_verifies() {
+// The largest integers within the direct payload bound (9,215 bytes): 8,932
+// magnitude bytes.
+test integer_leaf_at_the_direct_payload_bound_verifies() {
   let largest = math.pow2(71456) - 1
   let positive = cbor.serialise(builtin.i_data(largest))
   let negative = cbor.serialise(builtin.i_data(-largest - 1))
   expect bytearray.length(positive) == 9215
   expect bytearray.length(negative) == 9215
   and {
-    un_i_data_leaf_with_memory_verifies(8937, positive),
-    un_i_data_leaf_with_memory_verifies(8937, negative),
+    un_i_data_leaf_verifies(largest, positive),
+    un_i_data_leaf_verifies(-largest - 1, negative),
   }
 }
 
-// One magnitude byte more cannot be committed as a bounded leaf at all.
-test integer_leaf_beyond_the_revealed_leaf_bound_has_no_leaf_root() fail {
+// One magnitude byte more has no bounded blob root; its leaf is rooted by the
+// flat root, and unIData reads it the same way.
+test integer_leaf_beyond_the_direct_payload_bound_has_no_bounded_root() fail {
   let raw = cbor.serialise(builtin.i_data(math.pow2(71456)))
   bytearray.length(cek_proof_v1.bounded_blob_root_v1(raw)) == 32
+}
+
+test integer_leaf_beyond_the_direct_payload_bound_verifies() {
+  let positive = cbor.serialise(builtin.i_data(math.pow2(71456)))
+  let negative = cbor.serialise(builtin.i_data(-math.pow2(71456) - 1))
+  expect bytearray.length(positive) == 9216
+  expect bytearray.length(negative) == 9216
+  and {
+    un_i_data_leaf_verifies(math.pow2(71456), positive),
+    un_i_data_leaf_verifies(-math.pow2(71456) - 1, negative),
+  }
 }
 
 // equalsData compares Data by value. -6 is 25 and -5 is 24.
