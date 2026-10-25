@@ -1,7 +1,8 @@
 /** Actions of ours that run no script of the dispute: transactions our key
  * alone signs (a field copy spent back, an operand staged or spent back),
  * put in front of a family adapter. Each is taken in place of what the
- * adapter observes when `next` says so, built from the live chain at its
+ * adapter observes when `next` says so, or in place of a resolution by
+ * another record when `resolved` says so, built from the live chain at its
  * preflight, and reconciled from its exact signed bytes. A build that fails
  * is the action's recorded, retried outcome for its workflow alone; a wait on
  * the L1 source goes to the orchestrator as a wait. */
@@ -24,6 +25,7 @@ import type {
   FraudProofWorkflowObservation,
 } from "../workflow/orchestrator.js";
 import { WorkflowActionUnbuiltError } from "../workflow/orchestrator.unbuilt-actions.js";
+import { isFraudProofResolvedByAnotherRecordError } from "../workflow/resolved-by-another-record.js";
 import { reconcileSignedWorkflowTransaction } from "../workflow/signed-transaction-reconciliation.js";
 import {
   bindWorkflowPreflightTransaction,
@@ -47,6 +49,11 @@ export type OwnKeyActions = Readonly<{
   reclaim?: (
     context: FraudProofWorkflowAdapterContext,
     observed: FraudProofWorkflowObservation,
+  ) => Promise<FraudProofWorkflowObservation | undefined>;
+  /** What to take before the adapter's resolution by another record goes
+   * through: a spend back, or the wait on one; none to let it through. */
+  resolved?: (
+    context: FraudProofWorkflowAdapterContext,
   ) => Promise<FraudProofWorkflowObservation | undefined>;
   /** The signed transaction of `action`, and what its recovery keeps
    * besides the signed bytes. */
@@ -111,7 +118,19 @@ export const withOwnKeyActions = ({
   const observe = async (
     context: FraudProofWorkflowAdapterContext,
   ): Promise<FraudProofWorkflowObservation> => {
-    const observed = await base.observe(context);
+    let observed: FraudProofWorkflowObservation;
+    try {
+      observed = await base.observe(context);
+    } catch (cause) {
+      if (
+        own.resolved === undefined ||
+        !isFraudProofResolvedByAnotherRecordError(cause)
+      )
+        throw cause;
+      const instead = await own.resolved(context);
+      if (instead === undefined) throw cause;
+      return instead;
+    }
     if (context.reconciliationOnly === true)
       return (await own.reclaim?.(context, observed)) ?? observed;
     return (await own.next(context, observed)) ?? observed;

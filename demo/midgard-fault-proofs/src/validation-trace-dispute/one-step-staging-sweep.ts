@@ -17,12 +17,14 @@
  * a spend back of ours stands: one the ledger took and then dropped is
  * required again, and its exact signed bytes are sent again. A thread move
  * of ours goes first, save once the header has rolled back: the workflow,
- * then reconciliation-only, takes no move, and its spend backs go on. Once
- * our workflow is done (completed, or in conflict) no thread needs any
- * output: each is spent back before its ending is taken, and the ending
- * waits until each spend back is final at release depth, and while an
- * output the provider does not show may still be live. A spend back
- * that does not build is the run's alarm, and is tried again every run. */
+ * then reconciliation-only, takes no move, and its spend backs go on, save
+ * for the outputs a thread of ours past the PrepareSelected move holds. Once
+ * our workflow is done (completed, in conflict, or resolved by another
+ * record) no thread needs any output: each is spent back before its ending
+ * is taken, and the ending waits until each spend back is final at release
+ * depth, and while an output the provider does not show may still be live.
+ * A spend back that does not build is the run's alarm, and is tried again
+ * every run. */
 import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import { MidgardCekStagingPins } from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
@@ -69,6 +71,10 @@ export const stagedOutRef = (outRef: string) => {
   const { txHash, outputIndex } = parseOutRefLabel(outRef);
   return { transactionId: Buffer.from(txHash, "hex"), outputIndex };
 };
+
+/** Our workflow's resolution by another record, which the adapter throws
+ * rather than observes: an ending, as a completion is. */
+export const VALIDATION_TRACE_RESOLVED_ELSEWHERE = "resolved_by_another_record";
 
 /** The output of ours to spend back, and the pins its build checks. */
 export type ValidationTraceStagingReclaim = Readonly<{
@@ -243,26 +249,39 @@ export const validationTraceStagingSweep = ({
   };
 
   /** The spend back to take instead of `current`, our workflow's next step
-   * as observed; the wait its ending takes; none to keep `current`. */
+   * as observed or its resolution by another record; the wait its ending
+   * takes; none to keep `current`. */
   return async (
     context: FraudProofWorkflowAdapterContext,
-    current: FraudProofWorkflowObservation,
+    current:
+      | FraudProofWorkflowObservation
+      | typeof VALIDATION_TRACE_RESOLVED_ELSEWHERE,
   ): Promise<FraudProofWorkflowObservation | undefined> => {
     const unbuilt = (actionId: string) =>
       context.unbuiltActionIds?.has(actionId) === true;
+    const ending =
+      current === VALIDATION_TRACE_RESOLVED_ELSEWHERE ? undefined : current;
     // A thread move of ours goes first, save under reconciliation-only
     // authority, which takes no move.
     if (
-      current.kind === "action_required" &&
+      ending?.kind === "action_required" &&
       context.reconciliationOnly !== true &&
-      !unbuilt(current.action.actionId)
+      !unbuilt(ending.action.actionId)
     )
       return undefined;
     const known = validationTraceStagingJournal(context.entries);
     if (known.stagings.length === 0) return undefined;
-    const done = current.kind === "completed" || current.kind === "conflict";
+    const done =
+      ending === undefined ||
+      ending.kind === "completed" ||
+      ending.kind === "conflict";
     const lagging =
       known.latestConfirmedAt !== undefined && recent(known.latestConfirmedAt);
+    // Under reconciliation-only authority a thread of ours past the
+    // PrepareSelected move still holds what it reads: its evidence names
+    // those very outputs, so none can be staged again should the header come
+    // back. The hold ends once the thread leaves its holders (a cancel, a
+    // timeout, an award or the case's close), and the spend back follows.
     const { held, pins } = done
       ? { held: new Set<string>(), pins: new MidgardCekStagingPins() }
       : await heldBy(known, lagging);

@@ -224,7 +224,7 @@ export const createManifestBoundValidationTraceDisputeWorkflow = async (
       throw new Error("validation-trace removal names another block");
     return l1;
   };
-  const base = createValidationTraceDisputeWorkflowAdapter({
+  const adapter = createValidationTraceDisputeWorkflowAdapter({
     lucid: config.lucid,
     signer: config.signer,
     deployment,
@@ -247,16 +247,20 @@ export const createManifestBoundValidationTraceDisputeWorkflow = async (
       releaseFinality: binding.releaseFinality,
     }),
     publications: l1.publications,
+    // Our thread on the header is reclaimed before a resolution by another
+    // record, and each staging output of ours before that resolution goes
+    // through.
+    ownThreadReclaim: (base) =>
+      withValidationTraceOwnThreadReclaim({
+        base,
+        lucid: config.lucid,
+        signer: config.signer,
+        deployment,
+        l1For,
+        signedRecovery: l1,
+        releaseFinality: binding.releaseFinality,
+      }),
     ...(config.now === undefined ? {} : { now: config.now }),
-  });
-  const adapter = withValidationTraceOwnThreadReclaim({
-    base,
-    lucid: config.lucid,
-    signer: config.signer,
-    deployment,
-    l1For,
-    signedRecovery: l1,
-    releaseFinality: binding.releaseFinality,
   });
   return Object.freeze({
     binding,

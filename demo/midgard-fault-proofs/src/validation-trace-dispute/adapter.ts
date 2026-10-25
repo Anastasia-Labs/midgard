@@ -12,6 +12,7 @@
  * is made before Init (script-decode-records.ts); an observe move of a field
  * too long to carry inline reads our published copy (observe-copy.ts), and
  * a staged builtin step's operands are staged before it (one-step-staging.ts).
+ * The staging sits in front of our thread's reclaim (own-thread-reclaim.ts).
  * Every output of ours is claimed by out-ref from our own signed body before
  * submission and read back by that out-ref; chain state, not the journal's
  * idea of the step, decides the next action. A thread move needs the claim
@@ -45,7 +46,7 @@ import {
   parseValidationTraceAction,
   validationTraceAction,
 } from "./actions.js";
-import { parseValidationTraceDisputeArtifact } from "./artifact.js";
+import { validationTraceArtifactOf } from "./artifact.js";
 import type { ValidationTraceCaseHistory } from "./case-history.js";
 import { validationTraceCaseOrigin } from "./case-origin.js";
 import { validationTraceCaseReads } from "./case-reads.js";
@@ -122,6 +123,7 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
   signedRecovery,
   caseHistory,
   publications,
+  ownThreadReclaim,
   now = Date.now,
 }: {
   readonly lucid: LucidEvolution;
@@ -136,6 +138,11 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
   readonly caseHistory: ValidationTraceCaseHistory;
   /** Where a script-decode record stands; selection deployments need it. */
   readonly publications?: FraudProofAuthenticatedPublicationObserver;
+  /** Our thread's reclaim before a resolution by another record, put in
+   * front of the adapter and behind the staging, which sees what it does. */
+  readonly ownThreadReclaim?: (
+    adapter: FraudProofFamilyWorkflowAdapter,
+  ) => FraudProofFamilyWorkflowAdapter;
   readonly now?: () => number;
 }): FraudProofFamilyWorkflowAdapter => {
   if (
@@ -172,18 +179,6 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
     readOwnOutputs((refs) => lucid.utxosByOutRef([...refs]), outRefs);
   const { recordAt, ourCase, isContested } = validationTraceCaseReads(own);
 
-  const requireIdentity = (context: FraudProofWorkflowAdapterContext) => {
-    if (
-      context.identity.category !== CATEGORY ||
-      context.identity.target.kind !== "state_queue_header"
-    )
-      throw new Error("validation-trace adapter received another workflow");
-    const artifact = parseValidationTraceDisputeArtifact(context.artifact);
-    if (artifact.headerHash !== context.identity.target.headerHash)
-      throw new Error("validation-trace artifact names another block");
-    return artifact;
-  };
-
   const observe = async (
     context: FraudProofWorkflowAdapterContext,
   ): Promise<FraudProofWorkflowObservation> => {
@@ -203,7 +198,7 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
     if (!settled) return next;
     const slash = await dueValidationTraceLostDefenseSlash({
       ...own,
-      headerHash: requireIdentity(context).headerHash,
+      headerHash: validationTraceArtifactOf(context).headerHash,
       deadlines,
       stages,
       live,
@@ -221,7 +216,7 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
     stages: ReturnType<typeof confirmedValidationTraceStages>,
     live: Awaited<ReturnType<typeof read>>,
   ): Promise<FraudProofWorkflowObservation> => {
-    const artifact = requireIdentity(context);
+    const artifact = validationTraceArtifactOf(context);
     const newestFirst = [...stages].reverse();
     const liveClaim = (stage: (typeof stages)[number]["action"]["stage"]) =>
       newestFirst
@@ -310,7 +305,7 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
     context: FraudProofWorkflowAdapterContext,
     action: ReturnType<typeof parseValidationTraceAction>,
   ): Promise<CapturedValidationTraceStage> => {
-    const input = { ...own, artifact: requireIdentity(context) };
+    const input = { ...own, artifact: validationTraceArtifactOf(context) };
     let found: Awaited<ReturnType<typeof ourCase>> = undefined;
     try {
       switch (action.stage) {
@@ -488,11 +483,12 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
     },
     reconcile: validationTraceReconcile({ signedRecovery, read }),
   };
-  return withValidationTraceScriptDecodeRecords({
-    base: copy.wrap(staging.wrap(Object.freeze(removalStage.route(adapter)))),
+  const routed = withValidationTraceScriptDecodeRecords({
+    base: copy.wrap(Object.freeze(removalStage.route(adapter))),
     ...own,
     publications,
     now,
     materialOf,
   });
+  return staging.wrap(ownThreadReclaim?.(routed) ?? routed);
 };

@@ -138,12 +138,13 @@ export const makeRunner = (
   const signedRecovery =
     options.signedRecovery ?? emulatorSignedTransactionRecovery(h.emulator);
   const deployment = options.deployment ?? runnerDeployment(scene);
-  const base = createValidationTraceDisputeWorkflowAdapter({
+  const { removal } = options;
+  const adapter = createValidationTraceDisputeWorkflowAdapter({
     lucid: prover.lucid,
     signer: prover.signer,
     deployment,
     l1SlotConfig,
-    removal: options.removal ?? unobservedRemoval,
+    removal: removal ?? unobservedRemoval,
     signedRecovery,
     caseHistory: options.caseHistory ?? sceneCaseHistory(scene),
     // A script-decode record transaction stands as the emulator shows it.
@@ -152,22 +153,24 @@ export const makeRunner = (
       observeSignedTransaction: signedRecovery.observeSignedTransaction,
       rebroadcastSignedTransaction: signedRecovery.rebroadcastSignedTransaction,
     },
+    // With the block's L1 view observed, the adapter is composed as the
+    // deployment composes it: the reclaim of our thread in front of it.
+    ...(removal === undefined
+      ? {}
+      : {
+          ownThreadReclaim: (base) =>
+            withValidationTraceOwnThreadReclaim({
+              base,
+              lucid: prover.lucid,
+              signer: prover.signer,
+              deployment,
+              l1For: removal.l1For,
+              signedRecovery,
+              releaseFinality: { policy: RELEASE_FINALITY_POLICY },
+            }),
+        }),
     now: options.now ?? (() => h.emulator.now()),
   });
-  // With the block's L1 view observed, the adapter is composed as the
-  // deployment composes it: the reclaim of our thread in front of it.
-  const adapter =
-    options.removal === undefined
-      ? base
-      : withValidationTraceOwnThreadReclaim({
-          base,
-          lucid: prover.lucid,
-          signer: prover.signer,
-          deployment,
-          l1For: options.removal.l1For,
-          signedRecovery,
-          releaseFinality: { policy: RELEASE_FINALITY_POLICY },
-        });
   const registry = createFraudProofWorkflowRegistry({
     adapters: [options.wrap?.(adapter) ?? adapter],
     launchScope: ["validationTraceDispute"],

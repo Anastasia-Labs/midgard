@@ -60,14 +60,19 @@ export const runs = SDK.planMidgardCekStaging(
 export const digestOf = (datumCbor: string) =>
   createHash("sha256").update(Buffer.from(datumCbor, "hex")).digest("hex");
 
-/** The scene, opened by `open` (a test file's set-up), and what reads it. */
-export const fundedStagingScene = () => {
+/** The scene, opened by `open` (a test file's set-up), and what reads it;
+ * a signed transaction of the watcher's is final `releaseDepth()` blocks
+ * under the tip when given, read at each observation, else at the tip. */
+export const fundedStagingScene = ({
+  releaseDepth,
+}: { readonly releaseDepth?: () => number } = {}) => {
   const at = {} as {
     scene: Scene;
     dispute: FundedDispute;
     side: Side;
     caseUnit: string;
     caseExpiresAtMs: number;
+    bond: UTxO;
     threadAtPrepare: UTxO;
   };
   const moves: CapturedMove[] = [];
@@ -101,11 +106,13 @@ export const fundedStagingScene = () => {
     at.dispute = await openFundedDispute(scene, {
       oneStep: oneStep!,
       liveParameters: true,
+      ...(releaseDepth === undefined ? {} : { releaseDepth }),
     });
     const opened = await turnUntil(at.dispute, VALIDATION_TRACE_CASE_OPEN);
     if (opened.result.kind !== "pending")
       throw new Error(`the case did not open: ${opened.history.join("\n")}`);
-    const { caseOutput } = await caseAndBond(scene, opened.result);
+    const { caseOutput, bond } = await caseAndBond(scene, opened.result);
+    at.bond = bond;
     at.caseUnit = Object.keys(caseOutput.assets).find((unit) =>
       unit.startsWith(scene.chain.case.policyId),
     )!;
@@ -134,6 +141,7 @@ export const fundedStagingScene = () => {
     moves,
     turns,
     place,
+    playTo,
     open,
     stagingAddress,
     /** Our staging outputs on the ledger now. */

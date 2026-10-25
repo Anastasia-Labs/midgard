@@ -56,7 +56,7 @@ const isStagedOperandWitness = (
  * step's staging; the window itself, and no staging, for any other step.
  * Of several stagings, the one whose window `committed` holds of. Throws for
  * a staging that does not name each run of each operand, or, given
- * `committed`, for one whose window it does not hold of.
+ * `committed`, for none found or one whose window it does not hold of.
  */
 export const stagedTraceOf = async (
   trace: ValidationTraceSteps,
@@ -112,10 +112,13 @@ export const stagedTraceOf = async (
       }
     });
   const result = await staging?.(operands, accepts);
-  if (result === undefined)
+  if (result === undefined && committed === undefined)
     return { trace, staged: Object.freeze({ operands, refs: undefined }) };
-  const window = windowOf(result);
-  if (committed !== undefined && !committed(window.trace))
+  const window = result === undefined ? undefined : windowOf(result);
+  if (
+    window === undefined ||
+    (committed !== undefined && !committed(window.trace))
+  )
     throw new Error(
       "validation-trace staged step's staging differs from the evidence its thread committed",
     );

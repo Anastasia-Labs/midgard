@@ -319,17 +319,14 @@ describe("our plan of a staged builtin step", () => {
       expect(planned.core.staged).toEqual(committed.core.staged);
     });
 
-    it("refuses a staging other than the one the move's evidence names", async () => {
+    it("refuses a staging other than the one the move's evidence names, and refuses as well when no staging is found", async () => {
       const committed = await plan(lookup(stagingOn(0x11)).answer);
       await expect(
         plan(offering(stagingOn(0x22)), material, () => committed.evidenceHash),
       ).rejects.toThrow(/differs from the evidence its thread committed/);
-      // While no staging is found, the step is planned unstaged: its hops
-      // refuse it.
-      expect(
-        (await plan(lookup(undefined).answer, material, () => "00")).core.staged
-          ?.refs,
-      ).toBeUndefined();
+      await expect(
+        plan(lookup(undefined).answer, material, () => committed.evidenceHash),
+      ).rejects.toThrow(/differs from the evidence its thread committed/);
     });
 
     it("reads the evidence the move committed where the core holder and each arm holder keep it", async () => {

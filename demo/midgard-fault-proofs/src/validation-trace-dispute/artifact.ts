@@ -13,6 +13,7 @@ import { Data } from "@lucid-evolution/lucid";
 
 import { exact } from "../workflow/field-carriage-prerequisite.field-carriage-prerequisite-port.js";
 import type { JournalJsonObject } from "../workflow/journal.js";
+import type { FraudProofWorkflowAdapterContext } from "../workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
 import type { ValidationTraceClaimMaterial } from "./claim-material.js";
 
 export const VALIDATION_TRACE_DISPUTE_ARTIFACT =
@@ -151,4 +152,20 @@ export const parseValidationTraceDisputeArtifact = (
     }),
     initialState: state("initial state", fields.initialStateCbor),
   });
+};
+
+/** The artifact of the validation-trace workflow `context` runs, or throws
+ * for another workflow's, or for one naming another block. */
+export const validationTraceArtifactOf = (
+  context: Pick<FraudProofWorkflowAdapterContext, "identity" | "artifact">,
+): ValidationTraceDisputeArtifact => {
+  if (
+    context.identity.category !== "validationTraceDispute" ||
+    context.identity.target.kind !== "state_queue_header"
+  )
+    throw new Error("validation-trace adapter received another workflow");
+  const artifact = parseValidationTraceDisputeArtifact(context.artifact);
+  if (artifact.headerHash !== context.identity.target.headerHash)
+    throw new Error("validation-trace artifact names another block");
+  return artifact;
 };

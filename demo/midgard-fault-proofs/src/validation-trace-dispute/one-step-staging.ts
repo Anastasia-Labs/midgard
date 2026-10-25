@@ -57,6 +57,7 @@ import {
 } from "./one-step-staging-journal.js";
 import {
   stagedOutRef,
+  VALIDATION_TRACE_RESOLVED_ELSEWHERE,
   type ValidationTraceStagingReclaim,
   validationTraceStagingSweep,
 } from "./one-step-staging-sweep.js";
@@ -417,6 +418,10 @@ export const validationTraceStaging = ({
     // Once the header rolls back, each staging output no thread of ours
     // needs is still spent back; nothing is staged.
     reclaim: async (context, observed) => await sweep(context, observed),
+    // Resolved by another record, our workflow is done: each staging output
+    // is spent back, and final at release depth, before it resolves.
+    resolved: async (context) =>
+      await sweep(context, VALIDATION_TRACE_RESOLVED_ELSEWHERE),
     build,
   };
 

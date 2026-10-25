@@ -200,6 +200,9 @@ export const openFundedDispute = async (
       terms: ValidationDisputeFundingTerms,
       boot: number,
     ) => ValidationDisputeFundingTerms;
+    /** How many blocks under the tip a signed transaction of the watcher's
+     * is final, read at each observation; by default the tip. */
+    readonly releaseDepth?: () => number;
   } = {},
 ) => {
   const { h } = scene;
@@ -301,7 +304,18 @@ export const openFundedDispute = async (
   let funding = await boot();
   /** Every signed transaction the emulator recovery rebroadcast. */
   const rebroadcasts: string[] = [];
-  const emulatorRecovery = emulatorSignedTransactionRecovery(h.emulator);
+  const { releaseDepth } = options;
+  const emulatorRecovery: FraudProofSignedTransactionRecovery =
+    releaseDepth === undefined
+      ? emulatorSignedTransactionRecovery(h.emulator)
+      : {
+          ...emulatorSignedTransactionRecovery(h.emulator),
+          observeSignedTransaction: async (input) =>
+            await emulatorSignedTransactionRecovery(
+              h.emulator,
+              releaseDepth(),
+            ).observeSignedTransaction(input),
+        };
   const signedRecovery: FraudProofSignedTransactionRecovery = {
     ...emulatorRecovery,
     rebroadcastSignedTransaction: async (input) => {
