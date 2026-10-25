@@ -403,11 +403,11 @@ export const midgardCekKnownBuiltinFailure = (
   }
   if (number === 12) {
     const [start, length, source] = exactly(arguments_, 3);
-    const startValue = integer(start!);
-    const lengthValue = integer(length!);
+    // L1 reads the source first, then the start, and the length only when
+    // the start is in range.
     return (
       isType(source!, "bytes") &&
-      (outsideInt64(startValue) || outsideInt64(lengthValue))
+      (outsideInt64(integer(start!)) || outsideInt64(integer(length!)))
     );
   }
   if (number === 14) {
