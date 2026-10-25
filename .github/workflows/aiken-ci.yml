@@ -252,6 +252,15 @@ jobs:
         shard: [1, 2, 3, 4]
     env:
       RAYON_NUM_THREADS: "2"
+      # The pinned fork generates every selected test as an unoptimized
+      # program on the main thread, then optimizes and runs them on the rayon
+      # threads. With glibc's per-thread arenas the workers cannot reuse the
+      # memory the main thread frees, so the run phase adds about half the
+      # collected size again. With one arena the peak stays at the collected
+      # size (cek_core_staged group: 5.8 GiB -> 3.8 GiB), at the cost of a
+      # slower run phase. The planner cannot split the `fraud_proof`
+      # collision group, and without this its shard outgrows the runner.
+      MALLOC_ARENA_MAX: "1"
     defaults:
       run:
         working-directory: ./onchain/aiken
