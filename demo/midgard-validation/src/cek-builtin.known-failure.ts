@@ -25,8 +25,8 @@ import {
 } from "./uplc-data.js";
 
 /**
- * G1/G2 uncompress (59, 66) and scalarMul (56, 63): builtins with failures
- * outside the known set that no L1 arm proves yet.
+ * G1/G2 uncompress (59, 66) and scalarMul (56, 63): builtins whose failures the
+ * direct failure arm keeps admitting as before.
  */
 export const MIDGARD_CEK_BLS_FAILURES_PENDING_ON_L1: ReadonlySet<bigint> =
   new Set([56n, 59n, 63n, 66n]);

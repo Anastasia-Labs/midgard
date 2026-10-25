@@ -60,7 +60,7 @@ const holds = (condition: UPLCTerm): boolean => {
 const MARKED_BYTES = UPLCConst.byteString(
   Uint8Array.from([0xef, 0xbb, 0xbf, 0x41]),
 );
-const MARKED_TEXT = UPLCConst.str("﻿A");
+const MARKED_TEXT = UPLCConst.str("\uFEFFA");
 
 // A leading byte-order mark is one of the string's characters, as in Plutus.
 describe("V1 strings with a leading byte-order mark", () => {
