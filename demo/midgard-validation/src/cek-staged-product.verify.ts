@@ -12,11 +12,10 @@
  * remainderInteger and modInteger must be the matching division's, which
  * fixes it. A division by zero has no result, so no step.
  */
-import { CEKConst } from "@harmoniclabs/plutus-machine";
-
 import { evaluateMidgardCekBuiltinOnValues } from "./cek-builtin.evaluate-reference-builtin.js";
 import type { MidgardCekSemanticConstantWitness } from "./cek-constant.js";
 import type { MidgardCekStagedOperandSource } from "./cek-staged-builtin.material.js";
+import { UPLCConst } from "./uplc-constant.js";
 
 type Source = MidgardCekStagedOperandSource;
 type Value = MidgardCekSemanticConstantWitness;
@@ -53,8 +52,8 @@ export const midgardCekStagedSourceCount = (
 
 const evaluate = (tag: number, a: bigint, b: bigint): bigint | null => {
   const value = evaluateMidgardCekBuiltinOnValues(tag, [
-    CEKConst.int(a),
-    CEKConst.int(b),
+    UPLCConst.int(a),
+    UPLCConst.int(b),
   ]);
   return value === "failure" ? null : (value.value as bigint);
 };

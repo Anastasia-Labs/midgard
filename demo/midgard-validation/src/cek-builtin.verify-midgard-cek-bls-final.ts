@@ -21,7 +21,6 @@ import {
   evaluateMidgardCekDirectBuiltin,
   referenceConstantToDirectWitness,
 } from "./cek-builtin.evaluate-reference-builtin.js";
-import { referenceValueOf } from "./cek-builtin.reference-value.js";
 import {
   hashMidgardCekDirectArguments,
   hashMidgardCekDirectValueWitness,
@@ -267,9 +266,7 @@ export const evaluateMidgardCekBlsFinal = (
       "BLS finalVerify expression exceeds the ten-leaf L1 proof reserve",
     );
   }
-  const result = referenceValueOf(
-    UPLCConst.bool(cardanoBlsFinalVerify(left.value, right.value)),
-  );
+  const result = UPLCConst.bool(cardanoBlsFinalVerify(left.value, right.value));
   const arguments_: readonly MidgardCekDirectValueWitness[] = [
     { kind: "blsMillerLoop", expressionRoot: left.root },
     { kind: "blsMillerLoop", expressionRoot: right.root },

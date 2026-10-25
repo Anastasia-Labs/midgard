@@ -1,5 +1,4 @@
 import { PLUTUS_V3_CANONICAL_COST_MODEL_VIEW } from "@al-ft/midgard-core";
-import { CEKConst } from "@harmoniclabs/plutus-machine";
 import * as UPLC from "@lucid-evolution/uplc";
 import { describe, expect, it } from "vitest";
 
@@ -104,7 +103,7 @@ const directWitness = (
   tag,
   arguments: [
     semanticizeMidgardCekDirectConstant(presented(dividend)),
-    referenceConstantToDirectWitness(CEKConst.int(0n)),
+    referenceConstantToDirectWitness(UPLCConst.int(0n)),
   ],
 });
 

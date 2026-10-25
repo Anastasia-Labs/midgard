@@ -1,8 +1,3 @@
-import { CEKConst } from "@harmoniclabs/plutus-machine";
-import {
-  constT as harmonicConstT,
-  UPLCConst as HarmonicUPLCConst,
-} from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
 import type { MidgardCekDirectValueWitness } from "../src/cek-builtin.argument-kinds.js";
@@ -14,7 +9,7 @@ import type { MidgardCekBuiltinBudget } from "../src/cek-cost.js";
 import type { MidgardCekStagedOperand } from "../src/cek-executor.staged-failure.js";
 import type { MidgardCekCoreStepWitness } from "../src/cek-machine.js";
 import type { MidgardCekStagedOperandSource } from "../src/cek-staged-builtin.material.js";
-import { UPLCConst } from "../src/uplc-constant.js";
+import { constT, UPLCConst } from "../src/uplc-constant.js";
 import {
   builtBytes,
   bytesConstant,
@@ -189,7 +184,7 @@ describe("a failing bitwise, ECDSA or integerToByteString step has one provable 
 
   const widthArgument = (width: bigint) => presented(integerOperand(width));
   const endianness = referenceConstantToDirectWitness(
-    CEKConst.bool(true),
+    UPLCConst.bool(true),
     true,
   );
 
@@ -303,7 +298,7 @@ describe("a failing bitwise, ECDSA or integerToByteString step has one provable 
     const cases = [
       {
         leading: [
-          referenceConstantToDirectWitness(CEKConst.int(1n), true),
+          referenceConstantToDirectWitness(UPLCConst.int(1n), true),
           widthArgument(0n),
         ],
         operand: integerOperand(input),
@@ -442,14 +437,10 @@ describe("a failing bitwise, ECDSA or integerToByteString step has one provable 
 
   it("writeBits: both failure arms prove an input past 4,096 bytes uncharged, and neither one of 4,096 bytes", () => {
     const indices = referenceConstantToDirectWitness(
-      CEKConst.fromUplc(
-        HarmonicUPLCConst.listOf(harmonicConstT.int)([
-          HarmonicUPLCConst.int(0n).value as never,
-        ]),
-      ),
+      new UPLCConst(constT.listOf(constT.int), [0n]),
       true,
     );
-    const flag = referenceConstantToDirectWitness(CEKConst.bool(true), true);
+    const flag = referenceConstantToDirectWitness(UPLCConst.bool(true), true);
     for (const [length, fails] of [
       [4_097, true],
       [LONGEST, true],

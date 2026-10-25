@@ -1,4 +1,3 @@
-import { CEKConst } from "@harmoniclabs/plutus-machine";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -6,6 +5,7 @@ import {
   semanticizeMidgardCekDirectConstant,
 } from "../src/cek-builtin.evaluate-reference-builtin.js";
 import type { MidgardCekCoreStepWitness } from "../src/cek-machine.js";
+import { UPLCConst } from "../src/uplc-constant.js";
 import {
   builtBytes,
   failureVerifies,
@@ -97,7 +97,7 @@ const UNCHARGED = { cpu: 0n, memory: 0n };
 const SOME_CHARGE = { cpu: 1n, memory: 0n };
 
 const presentedInteger = (value: bigint) =>
-  referenceConstantToDirectWitness(CEKConst.int(value), true);
+  referenceConstantToDirectWitness(UPLCConst.int(value), true);
 
 describe("a replicateByte failure has exactly one provable result", () => {
   const past = BigInt(`0x${builtBytes(10_000, 1).toString("hex")}`);

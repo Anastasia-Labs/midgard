@@ -26,6 +26,7 @@ import {
   type MidgardCekValueNode,
 } from "@al-ft/midgard-core";
 
+import { midgardCekDirectBuiltinApplication } from "./cek-builtin.evaluate-reference-builtin.js";
 import {
   evaluateMidgardCekBlsFinal,
   evaluateMidgardCekDirectBuiltin,
@@ -1164,7 +1165,12 @@ export class StructuralExecutor {
       this.startMapConversion(pre, builtin.tag, directArguments, roots);
       return;
     }
-    if (isMidgardCekSemanticStep(builtin.tag, directArguments)) {
+    // The route choice and the direct evaluation share one evaluation.
+    const application = midgardCekDirectBuiltinApplication(
+      builtin.tag,
+      directArguments,
+    );
+    if (isMidgardCekSemanticStep(builtin.tag, directArguments, application)) {
       this.executeSemanticBuiltin(pre, builtin.tag, directArguments, roots);
       return;
     }
@@ -1207,7 +1213,7 @@ export class StructuralExecutor {
       );
       return;
     }
-    if (isMidgardCekStagedStep(builtin.tag, directArguments)) {
+    if (isMidgardCekStagedStep(builtin.tag, directArguments, application)) {
       const staged = executeMidgardCekStagedBuiltin(
         this.store,
         builtin.tag,
@@ -1234,7 +1240,11 @@ export class StructuralExecutor {
       builtin.tag,
       directArguments,
     );
-    const evaluated = evaluateMidgardCekDirectBuiltin(builtin.tag, presented);
+    const evaluated = evaluateMidgardCekDirectBuiltin(
+      builtin.tag,
+      presented,
+      presented === directArguments ? application : undefined,
+    );
     if (evaluated.kind === "failure") {
       this.record(
         {

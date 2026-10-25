@@ -2,7 +2,6 @@ import {
   midgardCekFlatRoot,
   type MidgardCekMachineState,
 } from "@al-ft/midgard-core";
-import { CEKConst } from "@harmoniclabs/plutus-machine";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -66,7 +65,7 @@ const bytesOperand = (length: number): MidgardCekStagedOperand => {
   return {
     type: "bytes",
     bytes: value,
-    value: CEKConst.byteString(value),
+    value: UPLCConst.byteString(value),
     leaf: {
       kind: "bytesLeaf",
       root: midgardCekFlatRoot(value),
@@ -263,7 +262,7 @@ describe("staged failure steps of the integer builtins", () => {
     if (witness.kind !== "executeBuiltinStagedFailure") throw new Error("kind");
     const revealed = [
       witness.arguments[0]!,
-      referenceConstantToDirectWitness(CEKConst.int(-1n)),
+      referenceConstantToDirectWitness(UPLCConst.int(-1n)),
     ];
     expect(
       verifies({ ...step, witness: { ...witness, arguments: revealed } }),

@@ -26,7 +26,6 @@ import {
   type MidgardCekStagedReferenceInput,
   parseMidgardCekCanonicalIntegerCbor,
 } from "@al-ft/midgard-core";
-import { CEKConst } from "@harmoniclabs/plutus-machine";
 
 import type {
   Bytes,
@@ -48,6 +47,7 @@ import {
   midgardCekStagedSourceCount,
   verifyMidgardCekStagedProduct,
 } from "./cek-staged-product.verify.js";
+import { UPLCConst } from "./uplc-constant.js";
 
 /**
  * The builtins the staged arms prove: the integer builtins up to
@@ -91,7 +91,7 @@ export const compact = (value: MidgardCekDirectValueWitness): Compacted => {
 };
 
 /** A constant value in the compacted form the roots hop commits. */
-export const compactValue = (value: CEKConst): Compacted =>
+export const compactValue = (value: UPLCConst): Compacted =>
   compact(referenceConstantToDirectWitness(value, true));
 
 const bytesMemory = (string: boolean, length: bigint): bigint =>
@@ -201,7 +201,7 @@ export const smallInteger = ([value, source]: readonly [
   if (source.value < INT64_MIN || source.value > INT64_MAX) {
     return refuse("integer past a machine integer");
   }
-  if (!sameCompacted(compactValue(CEKConst.int(source.value)), value)) {
+  if (!sameCompacted(compactValue(UPLCConst.int(source.value)), value)) {
     return refuse("integer leaf");
   }
   return source.value;
@@ -227,15 +227,15 @@ export const scalarOperands = <T>(
 /** A committed Boolean argument: the padding of andByteString,
  * orByteString and xorByteString, or byteStringToInteger's endianness, each
  * before the operands. */
-export const committedBoolean = (leading: readonly Compacted[]): CEKConst => {
+export const committedBoolean = (leading: readonly Compacted[]): UPLCConst => {
   const [committed] = leading;
   if (leading.length !== 1) return refuse("committed Boolean");
   const value = [true, false].find((candidate) =>
-    sameCompacted(committed!, compactValue(CEKConst.bool(candidate))),
+    sameCompacted(committed!, compactValue(UPLCConst.bool(candidate))),
   );
   return value === undefined
     ? refuse("committed value is not a Boolean")
-    : CEKConst.bool(value);
+    : UPLCConst.bool(value);
 };
 
 const verifyBytes = (
@@ -256,7 +256,7 @@ const verifyBytes = (
     if (operands.length !== 1) return false;
     return sameCompacted(
       inputs.result,
-      compactValue(CEKConst.int(operands[0]!.length)),
+      compactValue(UPLCConst.int(operands[0]!.length)),
     );
   }
   if (tag === 15 || tag === 23) {
@@ -265,7 +265,7 @@ const verifyBytes = (
     // Equal bytes have equal flat roots, and unequal bytes unequal ones.
     return sameCompacted(
       inputs.result,
-      compactValue(CEKConst.bool(same(left!.root, right!.root))),
+      compactValue(UPLCConst.bool(same(left!.root, right!.root))),
     );
   }
   if (tag === 22) {
@@ -296,15 +296,15 @@ const verifyBytes = (
   const integers = integerArguments.map(smallInteger);
   const values = operands.map((operand) => {
     if (operand.bytes === null) return refuse("operand bytes not revealed");
-    return CEKConst.byteString(operand.bytes);
+    return UPLCConst.byteString(operand.bytes);
   });
   const ordered =
     tag === 11
-      ? [CEKConst.int(integers[0]!), values[0]!]
+      ? [UPLCConst.int(integers[0]!), values[0]!]
       : tag === 12
-        ? [CEKConst.int(integers[0]!), CEKConst.int(integers[1]!), values[0]!]
+        ? [UPLCConst.int(integers[0]!), UPLCConst.int(integers[1]!), values[0]!]
         : tag === 14 || tag === 79
-          ? [values[0]!, CEKConst.int(integers[0]!)]
+          ? [values[0]!, UPLCConst.int(integers[0]!)]
           : tag >= 75 && tag <= 77
             ? [committedBoolean(leading), ...values]
             : values;
@@ -382,14 +382,14 @@ const verifyInteger = (inputs: ArmInputs): boolean => {
     // Bound leaves are canonical, so equal values have equal leaves.
     return sameCompacted(
       inputs.result,
-      compactValue(CEKConst.bool(same(left.root, right.root))),
+      compactValue(UPLCConst.bool(same(left.root, right.root))),
     );
   }
   if (left.integer === null || right.integer === null) return false;
   if (tag !== 0 && tag !== 1 && tag !== 8 && tag !== 9) return false;
   const result = evaluateMidgardCekBuiltinOnValues(tag, [
-    CEKConst.int(left.integer),
-    CEKConst.int(right.integer),
+    UPLCConst.int(left.integer),
+    UPLCConst.int(right.integer),
   ]);
   if (result === "failure") return false;
   return sameCompacted(inputs.result, compactValue(result));

@@ -31,7 +31,6 @@
  *   uncharged as at the direct failure arm, its indices unread.
  */
 import { MIDGARD_CEK_STAGED_CHUNK_BYTES } from "@al-ft/midgard-core";
-import { CEKConst } from "@harmoniclabs/plutus-machine";
 
 import type { MidgardCekDirectValueWitness } from "./cek-builtin.argument-kinds.js";
 import {
@@ -52,13 +51,14 @@ import {
   stageMidgardCekStagedBuiltinMaterial,
 } from "./cek-staged-builtin.material.js";
 import { scalarOperands } from "./cek-staged-builtin.verify.js";
+import { UPLCConst } from "./uplc-constant.js";
 
 /** A staged step's argument, read from the semantic store. */
 export type MidgardCekStagedOperand = {
   readonly type: "integer" | "bytes" | "string";
   /** A byte string's or string's bytes, or an integer's canonical CBOR. */
   readonly bytes: Buffer;
-  readonly value: CEKConst;
+  readonly value: UPLCConst;
   readonly leaf: MidgardCekStagedOperandSource;
 };
 
@@ -304,7 +304,7 @@ const classify = (
         tag,
         arguments: [
           ...integers.map((value) =>
-            referenceConstantToDirectWitness(CEKConst.int(value)),
+            referenceConstantToDirectWitness(UPLCConst.int(value)),
           ),
           semanticizeMidgardCekDirectConstant(arguments_.at(-1)!),
         ],

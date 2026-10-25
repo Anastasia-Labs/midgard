@@ -1,14 +1,13 @@
 /**
  * The witness of a plain constant as a staged step carries it.
  */
-import { CEKConst } from "@harmoniclabs/plutus-machine";
-
 import type {
   Bytes,
   MidgardCekDirectValueWitness,
 } from "./cek-builtin.argument-kinds.js";
 import { referenceConstantToDirectWitness } from "./cek-builtin.evaluate-reference-builtin.js";
 import { refuse } from "./cek-staged-builtin.verify.js";
+import { UPLCConst } from "./uplc-constant.js";
 
 const STRING_TYPE = Buffer.from("9f02ff", "hex");
 
@@ -27,16 +26,19 @@ export const midgardCekStagedConstantWitness = (
   constant: MidgardCekStagedConstant,
 ): MidgardCekDirectValueWitness => {
   if (constant.type === "integer") {
-    return referenceConstantToDirectWitness(CEKConst.int(constant.value), true);
+    return referenceConstantToDirectWitness(
+      UPLCConst.int(constant.value),
+      true,
+    );
   }
   if (constant.type === "bool") {
     return referenceConstantToDirectWitness(
-      CEKConst.bool(constant.value),
+      UPLCConst.bool(constant.value),
       true,
     );
   }
   const bytes = referenceConstantToDirectWitness(
-    CEKConst.byteString(Buffer.from(constant.bytes)),
+    UPLCConst.byteString(Buffer.from(constant.bytes)),
     true,
   );
   if (constant.type === "bytes") return bytes;

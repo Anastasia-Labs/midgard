@@ -9,8 +9,6 @@
  * The input and the indices are read from the store, which must hold the
  * list's nodes and each index's leaf.
  */
-import { CEKConst } from "@harmoniclabs/plutus-machine";
-
 import type {
   Bytes,
   MidgardCekDirectValueWitness,
@@ -31,6 +29,7 @@ import {
   midgardCekWriteBits,
   midgardCekWriteBitsCharge,
 } from "./cek-write-bits-loop.js";
+import { UPLCConst } from "./uplc-constant.js";
 import { DataList } from "./uplc-data.js";
 
 const BYTES: MidgardCekConstantType = Object.freeze({ kind: "bytes" });
@@ -117,7 +116,7 @@ export const executeMidgardCekWriteBitsBuiltin = (
   const set = [true, false].find(
     (candidate) =>
       committed.kind === "semanticConstant" &&
-      sameCompacted(committed.witness, compactValue(CEKConst.bool(candidate))),
+      sameCompacted(committed.witness, compactValue(UPLCConst.bool(candidate))),
   );
   if (list === null || set === undefined) return null;
   const compacted = arguments_.map(semanticizeMidgardCekDirectConstant);

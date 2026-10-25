@@ -7,7 +7,6 @@ import {
   collectMidgardCekStagedRuns,
   type MidgardCekStagedReferenceInput,
 } from "@al-ft/midgard-core";
-import { CEKConst } from "@harmoniclabs/plutus-machine";
 
 import type { MidgardCekDirectValueWitness } from "./cek-builtin.argument-kinds.js";
 import { evaluateMidgardCekBuiltinOnValues } from "./cek-builtin.evaluate-reference-builtin.js";
@@ -22,6 +21,7 @@ import {
   sameCompacted,
   smallInteger,
 } from "./cek-staged-builtin.verify.js";
+import { UPLCConst } from "./uplc-constant.js";
 
 /**
  * Semantics group 11. byteStringToInteger over at most 65,536 bytes, and
@@ -48,7 +48,7 @@ export const verifyConversionGroup = (
     runs: collectMidgardCekStagedRuns(referenceInputs, material.runs.refs),
     operands: material.runs.operands,
   };
-  let values: CEKConst[];
+  let values: UPLCConst[];
   if (tag === 73n) {
     const [endianness, width, input] = compacted;
     if (compacted.length !== 3 || sources.length !== 2) return false;
@@ -56,8 +56,8 @@ export const verifyConversionGroup = (
     if (integer === null) return false;
     values = [
       committedBoolean([endianness!]),
-      CEKConst.int(smallInteger([width!, sources[0]!])),
-      CEKConst.int(integer),
+      UPLCConst.int(smallInteger([width!, sources[0]!])),
+      UPLCConst.int(integer),
     ];
   } else {
     const conversion = tag === 74n;
@@ -73,10 +73,10 @@ export const verifyConversionGroup = (
     if (bound.bytes === null) return false;
     // The bound bytes are a fresh copy, which the reference
     // byteStringToInteger may reverse in place.
-    const bytes = CEKConst.byteString(bound.bytes);
+    const bytes = UPLCConst.byteString(bound.bytes);
     values = conversion
       ? [committedBoolean([first!]), bytes]
-      : [bytes, CEKConst.int(smallInteger([second!, sources[1]!]))];
+      : [bytes, UPLCConst.int(smallInteger([second!, sources[1]!]))];
   }
   const evaluated = evaluateMidgardCekBuiltinOnValues(Number(tag), values);
   return (

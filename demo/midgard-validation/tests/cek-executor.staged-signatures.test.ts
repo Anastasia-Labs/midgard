@@ -1,5 +1,4 @@
 import { PLUTUS_V3_CANONICAL_COST_MODEL_VIEW } from "@al-ft/midgard-core";
-import { CEKConst } from "@harmoniclabs/plutus-machine";
 import * as UPLC from "@lucid-evolution/uplc";
 import { ed25519 } from "@noble/curves/ed25519.js";
 import { schnorr } from "@noble/curves/secp256k1.js";
@@ -145,7 +144,7 @@ const steps = (
 
 const committedBool = (value: boolean) =>
   semanticizeMidgardCekDirectConstant(
-    referenceConstantToDirectWitness(CEKConst.bool(value), true),
+    referenceConstantToDirectWitness(UPLCConst.bool(value), true),
   );
 
 describe("a signature over a staged message", () => {

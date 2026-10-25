@@ -1,8 +1,3 @@
-import { CEKConst } from "@harmoniclabs/plutus-machine";
-import {
-  constT as harmonicConstT,
-  UPLCConst as HarmonicUPLCConst,
-} from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -93,14 +88,10 @@ describe("writeBits over a staged input past 4,096 bytes", () => {
 describe("the staged failure hop's writeBits input bound", () => {
   it("proves an input of 4,097 bytes uncharged, and refuses one of 4,096", () => {
     const at = referenceConstantToDirectWitness(
-      CEKConst.fromUplc(
-        HarmonicUPLCConst.listOf(harmonicConstT.int)([
-          HarmonicUPLCConst.int(0n).value as never,
-        ]),
-      ),
+      new UPLCConst(constT.listOf(constT.int), [0n]),
       true,
     );
-    const flag = referenceConstantToDirectWitness(CEKConst.bool(true), true);
+    const flag = referenceConstantToDirectWitness(UPLCConst.bool(true), true);
     for (const [length, fails] of [
       [4_097, true],
       [4_096, false],

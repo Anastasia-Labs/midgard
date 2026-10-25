@@ -1,4 +1,7 @@
-import { midgardCekDirectBuiltinFits } from "./cek-builtin.evaluate-reference-builtin.js";
+import {
+  type MidgardCekDirectBuiltinApplication,
+  midgardCekDirectBuiltinFits,
+} from "./cek-builtin.evaluate-reference-builtin.js";
 import {
   type MidgardCekDirectValueWitness,
   semanticizeMidgardCekDirectConstant,
@@ -99,6 +102,7 @@ export const midgardCekListConstructIsSemantic = (
 export const isMidgardCekSemanticStep = (
   tag: bigint,
   arguments_: readonly MidgardCekDirectValueWitness[],
+  application?: MidgardCekDirectBuiltinApplication,
 ): boolean => {
   if (!isSemanticStepTag(tag)) return false;
   const source = arguments_[1];
@@ -114,7 +118,7 @@ export const isMidgardCekSemanticStep = (
   }
   return !(
     arguments_.every((argument) => argument.kind === "constant") &&
-    midgardCekDirectBuiltinFits(tag, arguments_)
+    midgardCekDirectBuiltinFits(tag, arguments_, application)
   );
 };
 

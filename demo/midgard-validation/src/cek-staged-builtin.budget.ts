@@ -3,8 +3,6 @@
  * success (arm 31), whose arguments the roots hop committed compacted: the
  * TypeScript twin of `staged_builtin_budget_v1`.
  */
-import { CEKConst } from "@harmoniclabs/plutus-machine";
-
 import type { MidgardCekDirectValueWitness } from "./cek-builtin.argument-kinds.js";
 import {
   referenceConstantToDirectWitness,
@@ -15,9 +13,10 @@ import {
   computeMidgardCekBuiltinBudget,
   type MidgardCekBuiltinBudget,
 } from "./cek-cost.js";
+import { UPLCConst } from "./uplc-constant.js";
 
 /** The amount 0, which a shift's charge does not read. */
-const UNREAD_AMOUNT = referenceConstantToDirectWitness(CEKConst.int(0n));
+const UNREAD_AMOUNT = referenceConstantToDirectWitness(UPLCConst.int(0n));
 
 /** A value's memory as the roots hop commits it, compacted. */
 const committedMemory = (value: MidgardCekDirectValueWitness): bigint => {

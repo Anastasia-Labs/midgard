@@ -1,4 +1,3 @@
-import { CEKConst } from "@harmoniclabs/plutus-machine";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -99,7 +98,7 @@ const provedConversion = (
   expect(witness.kind === "executeBuiltinStaged" && witness.result).toEqual(
     semanticizeMidgardCekDirectConstant(
       referenceConstantToDirectWitness(
-        CEKConst.byteString(expected(bigEndian, width, size)),
+        UPLCConst.byteString(expected(bigEndian, width, size)),
         true,
       ),
     ),
@@ -161,7 +160,7 @@ describe("an integerToByteString success has exactly one provable result", () =>
   const withResult = (bytes: Buffer): boolean => {
     const { step, witness } = honest();
     const result = semanticizeMidgardCekDirectConstant(
-      referenceConstantToDirectWitness(CEKConst.byteString(bytes), true),
+      referenceConstantToDirectWitness(UPLCConst.byteString(bytes), true),
     );
     return verifyMidgardCekCoreStep(
       step.pre,
@@ -192,7 +191,7 @@ describe("an integerToByteString success has exactly one provable result", () =>
     const { step, witness } = honest();
     const result = semanticizeMidgardCekDirectConstant(
       referenceConstantToDirectWitness(
-        CEKConst.byteString(expected(bigEndian, 8_191, 4_096)),
+        UPLCConst.byteString(expected(bigEndian, 8_191, 4_096)),
         true,
       ),
     );
@@ -229,9 +228,9 @@ describe("an integerToByteString success has exactly one provable result", () =>
 
   it("is proved by no failure arm", () => {
     const arguments_ = [
-      CEKConst.bool(bigEndian),
-      CEKConst.int(8_192n),
-      CEKConst.int(magnitude(4_096)),
+      UPLCConst.bool(bigEndian),
+      UPLCConst.int(8_192n),
+      UPLCConst.int(magnitude(4_096)),
     ].map((value) => referenceConstantToDirectWitness(value, true));
     const committed = arguments_.map(semanticizeMidgardCekDirectConstant);
     const failures: MidgardCekCoreStepWitness[] = [

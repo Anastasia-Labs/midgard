@@ -3,7 +3,6 @@ import {
   hashMidgardCekValueNode,
   PLUTUS_V3_CANONICAL_COST_MODEL_VIEW,
 } from "@al-ft/midgard-core";
-import { CEKConst } from "@harmoniclabs/plutus-machine";
 import * as UPLC from "@lucid-evolution/uplc";
 import { describe, expect, it } from "vitest";
 
@@ -154,11 +153,11 @@ describe("division by zero", () => {
     "accepts %s by zero of a dividend presented by its leaf",
     (_, __, tag) => {
       const dividend = referenceConstantToDirectWitness(
-        CEKConst.int(-wide(10_000, 5n)),
+        UPLCConst.int(-wide(10_000, 5n)),
         true,
       );
       expect(dividend.kind).toBe("semanticConstant");
-      const divisor = referenceConstantToDirectWitness(CEKConst.int(0n));
+      const divisor = referenceConstantToDirectWitness(UPLCConst.int(0n));
       const arguments_ = [dividend, divisor];
       const committed = hashMidgardCekDirectArguments(arguments_);
       const builtinRoot = hashMidgardCekValueNode({
