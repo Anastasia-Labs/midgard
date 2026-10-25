@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 
+import { withOwnKeyActions } from "../src/validation-trace-dispute/own-key-actions.js";
 import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.js";
 import {
   FraudProofL1RefusedError,
   FraudProofL1UnavailableError,
+  type FraudProofSignedTransactionRecovery,
 } from "../src/workflow/l1-source.js";
 import { type FraudProofFamilyWorkflowAdapter } from "../src/workflow/orchestrator.js";
 import { terminalVerifierOf } from "./support/terminal-verifier.js";
@@ -81,4 +83,50 @@ describe("fraud-proof workflow L1 wait errors", () => {
       });
     },
   );
+
+  // An action our key alone signs, whose build fails.
+  const ownKeyBuildFailing = (error: Error) =>
+    withOwnKeyActions({
+      base: makeAdapter(),
+      own: {
+        owns: () => true,
+        next: async () => undefined,
+        build: async () => {
+          throw error;
+        },
+      },
+      signedRecovery: {} as FraudProofSignedTransactionRecovery,
+      label: "own-key test",
+    });
+
+  it.each(failures)(
+    "a build of an own-key action hands %s to its caller",
+    async (_name, make) => {
+      const error = make();
+      await expect(
+        run({
+          evidence: await canonicalEvidence(),
+          journal: new MemoryFraudProofWorkflowJournalStore(),
+          adapter: ownKeyBuildFailing(error),
+        }),
+      ).rejects.toBe(error);
+    },
+  );
+
+  it("a build of an own-key action that fails otherwise is its alarm, not a stall", async () => {
+    const result = await run({
+      evidence: await canonicalEvidence(),
+      journal: new MemoryFraudProofWorkflowJournalStore(),
+      adapter: ownKeyBuildFailing(new Error("integrity failure")),
+    });
+    expect(result).not.toMatchObject({ kind: "stalled" });
+    expect(result).toMatchObject({
+      alarms: [
+        expect.objectContaining({
+          actionId: "prove",
+          reason: expect.stringContaining("integrity failure"),
+        }),
+      ],
+    });
+  });
 });

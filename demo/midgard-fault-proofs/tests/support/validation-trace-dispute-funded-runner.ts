@@ -43,6 +43,7 @@ import type { ValidationTraceOneStepReferences } from "../../src/validation-trac
 import {
   bindWorkflowActuationJournal,
   createWorkflowActuationPermitController,
+  createWorkflowReconciliationPermitController,
 } from "../../src/workflow/actuation-permit.js";
 import { createValidationTraceDisputeCompleteCanonicalReplay } from "../../src/workflow/complete-replay.js";
 import {
@@ -54,6 +55,11 @@ import {
   classifyHeader,
   createHeaderClassifier,
 } from "../../src/workflow/header-classifier.js";
+import {
+  computeFraudProofWorkflowId,
+  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+  normalizeFraudProofWorkflowIdentity,
+} from "../../src/workflow/journal.js";
 import type { FraudProofSignedTransactionRecovery } from "../../src/workflow/l1-source.js";
 import type { FraudProofWorkflowRunResult } from "../../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import {
@@ -194,6 +200,9 @@ export const openFundedDispute = async (
       terms: ValidationDisputeFundingTerms,
       boot: number,
     ) => ValidationDisputeFundingTerms;
+    /** How many blocks under the tip a signed transaction of the watcher's
+     * is final, read at each observation; by default the tip. */
+    readonly releaseDepth?: () => number;
   } = {},
 ) => {
   const { h } = scene;
@@ -225,7 +234,7 @@ export const openFundedDispute = async (
     h.proverLucid,
     options.liveParameters === true ? h.emulator : undefined,
   );
-  const actuationPermit = createWorkflowActuationPermitController({
+  let actuationPermit = createWorkflowActuationPermitController({
     decision,
     rollbackGeneration: "0",
   }).permit;
@@ -295,7 +304,18 @@ export const openFundedDispute = async (
   let funding = await boot();
   /** Every signed transaction the emulator recovery rebroadcast. */
   const rebroadcasts: string[] = [];
-  const emulatorRecovery = emulatorSignedTransactionRecovery(h.emulator);
+  const { releaseDepth } = options;
+  const emulatorRecovery: FraudProofSignedTransactionRecovery =
+    releaseDepth === undefined
+      ? emulatorSignedTransactionRecovery(h.emulator)
+      : {
+          ...emulatorSignedTransactionRecovery(h.emulator),
+          observeSignedTransaction: async (input) =>
+            await emulatorSignedTransactionRecovery(
+              h.emulator,
+              releaseDepth(),
+            ).observeSignedTransaction(input),
+        };
   const signedRecovery: FraudProofSignedTransactionRecovery = {
     ...emulatorRecovery,
     rebroadcastSignedTransaction: async (input) => {
@@ -390,6 +410,26 @@ export const openFundedDispute = async (
       funding = await boot();
     },
     readReservations: async () => await funding.readReservations(),
+    /** The header rolls back: every later turn runs under the
+     * reconciliation-only permit the watcher derives from the workflow it
+     * recorded. */
+    rollBackHeader: async () => {
+      const identity = normalizeFraudProofWorkflowIdentity({
+        schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+        deploymentFingerprint: fingerprint,
+        category: CATEGORY,
+        target: { kind: "state_queue_header", headerHash },
+        decisionDigest: decision.decisionDigest,
+      });
+      actuationPermit = createWorkflowReconciliationPermitController({
+        decision,
+        deploymentFingerprint: fingerprint,
+        rollbackGeneration: "0",
+        entries: await funding.workflowJournal
+          .forObjective({ category: CATEGORY, headerHash })
+          .load(computeFraudProofWorkflowId(identity)),
+      }).permit;
+    },
     /** What the watcher's terms keep for a move our wallet pays, at the
      * emulator's fees now. */
     walletMoveReserve: async () =>

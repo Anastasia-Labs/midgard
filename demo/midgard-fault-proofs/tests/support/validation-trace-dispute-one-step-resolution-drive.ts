@@ -36,6 +36,9 @@ import {
 import type { ValidationTraceOneStepPlan } from "../../src/validation-trace-dispute/one-step-plan.js";
 import { scriptSourcesRedeemerReads } from "../../src/validation-trace-dispute/one-step-script-sources-redeemer.js";
 import { VALIDATION_TRACE_ONE_STEP_REQUIRED } from "../../src/validation-trace-dispute/threads.js";
+import type { FraudProofSignedTransactionRecovery } from "../../src/workflow/l1-source.js";
+import type { FraudProofFamilyWorkflowAdapter } from "../../src/workflow/orchestrator.js";
+import { emulatorSignedTransactionRecovery } from "./emulator-signed-recovery.js";
 import { expectWithinWalletMoveShape } from "./validation-trace-dispute-move-fees.js";
 import {
   defendTwoThreads,
@@ -72,6 +75,7 @@ export const resolutionDrive = <
   path,
   labels,
   installs,
+  withRemoval = false,
   minFeeA,
   planAt,
 }: {
@@ -92,11 +96,15 @@ export const resolutionDrive = <
     | "failingReferenceInputs"
     | "failingSigners"
     | "failingScript"
+    | "failingExUnits"
     | "operatorFrom"
     | "failingNativeSpend"
     | "failingNativeMint"
     | "releaseDepth"
   >;
+  /** Whether the runner observes the disputed block's removal over the
+   * recorded L1, so a case the challenger won completes. */
+  readonly withRemoval?: boolean;
   /** The ledger's per-byte fee while the resolution plays, when raised so
    * its largest moves are priced over the per-move cap. */
   readonly minFeeA?: number;
@@ -211,7 +219,7 @@ export const resolutionDrive = <
     /** Plays both threads until the successor's stands at `at`. */
     setUp: async () => {
       dispute = await defendTwoThreads({
-        withRemoval: false,
+        withRemoval,
         successorFrom: from,
         ...installs,
       });
@@ -226,15 +234,43 @@ export const resolutionDrive = <
     },
 
     /** Stops the runner's process and starts another over its journal,
-     * holding nothing the first held in memory. */
-    restart: () => {
-      const { scene, deployment, prepared, runner } = dispute;
+     * holding nothing the first held in memory, reading where each signed
+     * transaction stands from `signedRecovery` and its adapter rewritten by
+     * `wrap` when given. */
+    restart: ({
+      signedRecovery,
+      wrap,
+    }: {
+      readonly signedRecovery?: FraudProofSignedTransactionRecovery;
+      readonly wrap?: (
+        adapter: FraudProofFamilyWorkflowAdapter,
+      ) => FraudProofFamilyWorkflowAdapter;
+    } = {}) => {
+      const { scene, deployment, prepared, runner, removal } = dispute;
+      const recovery =
+        signedRecovery ??
+        (installs.releaseDepth === undefined
+          ? undefined
+          : emulatorSignedTransactionRecovery(
+              scene.h.emulator,
+              installs.releaseDepth,
+            ));
       dispute = Object.freeze({
         ...dispute,
         runner: makeRunner(scene, {
           deployment,
           journal: runner.journal,
-          wrap: capturePrepared(prepared),
+          wrap: (adapter) =>
+            capturePrepared(prepared)(wrap?.(adapter) ?? adapter),
+          ...(recovery === undefined ? {} : { signedRecovery: recovery }),
+          ...(removal === undefined
+            ? {}
+            : {
+                removal: removal.removal,
+                terminalVerifier: removal.terminalVerifier(
+                  scene.failing.evidence.headerHash,
+                ),
+              }),
         }),
       });
     },
@@ -339,6 +375,9 @@ export const resolutionDrive = <
       }
       reportFit("CloseAwardedThread", [close!.cbor]);
     },
+
+    /** The signed move reported under `label`. */
+    cborOf: (label: string) => reported.get(label)!,
 
     /** The size in bytes of the move reported under `label`. */
     bytesOf: (label: string) => reported.get(label)!.length / 2,

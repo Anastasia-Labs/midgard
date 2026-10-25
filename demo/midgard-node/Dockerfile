@@ -72,8 +72,8 @@ COPY midgard-core ./midgard-core
 COPY midgard-validation ./midgard-validation
 COPY lucid-midgard ./lucid-midgard
 COPY midgard-sdk ./midgard-sdk
-COPY midgard-fault-proofs ./midgard-fault-proofs
 COPY midgard-l1-follower ./midgard-l1-follower
+COPY midgard-fault-proofs ./midgard-fault-proofs
 COPY midgard-node ./midgard-node
 # END GENERATED sources
 # BEGIN GENERATED builds
@@ -82,8 +82,8 @@ RUN pnpm --filter @al-ft/midgard-core run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-validation run build:contrib-raw
 RUN pnpm --filter @al-ft/lucid-midgard run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-sdk run build:contrib-raw
-RUN pnpm --filter @al-ft/midgard-fault-proofs run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-l1-follower run build:contrib-raw
+RUN pnpm --filter @al-ft/midgard-fault-proofs run build:contrib-raw
 RUN pnpm --filter midgard-node run build:contrib-raw
 # END GENERATED builds
 # Same store as the install step: `deploy --prod` re-resolves the git-hosted
@@ -113,8 +113,8 @@ RUN pnpm --filter @al-ft/midgard-core run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-validation run build:contrib-raw
 RUN pnpm --filter @al-ft/lucid-midgard run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-sdk run build:contrib-raw
-RUN pnpm --filter @al-ft/midgard-fault-proofs run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-l1-follower run build:contrib-raw
+RUN pnpm --filter @al-ft/midgard-fault-proofs run build:contrib-raw
 RUN pnpm --filter midgard-node run build:contrib-raw
 # END GENERATED public-builds
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \

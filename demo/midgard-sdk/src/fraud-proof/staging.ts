@@ -201,6 +201,26 @@ const walletStaging = async (
   };
 };
 
+/**
+ * The deposit a staging output at `address` holding the inline datum
+ * `datumCbor` holds: its minimum ada, which no more lovelace changes.
+ */
+export const midgardCekStagingDeposit = ({
+  address,
+  datumCbor,
+  coinsPerUtxoByte,
+}: {
+  readonly address: string;
+  readonly datumCbor: string;
+  readonly coinsPerUtxoByte: bigint;
+}): bigint =>
+  stabilizedMinimumLovelace({
+    addressBech32: address,
+    datumCbor,
+    coinsPerUtxoByte,
+    label: "staging output",
+  });
+
 const plainAda = (utxo: UTxO): boolean =>
   utxo.datum == null &&
   utxo.datumHash == null &&
@@ -229,11 +249,10 @@ export const buildUnsignedMidgardCekStagingProgram = (
           stagerAddress,
           { kind: "inline", value: run.datumCbor },
           {
-            lovelace: stabilizedMinimumLovelace({
-              addressBech32: stagerAddress,
+            lovelace: midgardCekStagingDeposit({
+              address: stagerAddress,
               datumCbor: run.datumCbor,
               coinsPerUtxoByte,
-              label: "staging output",
             }),
           },
         )

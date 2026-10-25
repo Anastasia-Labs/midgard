@@ -19,6 +19,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { plainWalletInputs } from "../funding/plain-funding-output.js";
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
 import {
   workflowRuntimeFundingMaximumFee,
@@ -255,9 +256,11 @@ export const completeValidationTraceMove = async ({
   }>;
 }): Promise<TxSignBuilder> => {
   const cap = VALIDATION_TRACE_MOVE_FEE_CAP_LOVELACE;
+  // Our wallet funds a move from its plain-Ada outputs alone, so no output
+  // of ours that carries a datum (a published copy) is ever swept into one.
   const wallet: MoveWallet =
     ownWallet === undefined
-      ? {}
+      ? await plainWalletInputs(lucid)
       : {
           presetWalletInputs: [...ownWallet.inputs],
           changeAddress: ownWallet.changeAddress,

@@ -104,8 +104,14 @@ describe("mint retained prepared evidence reconciliation", () => {
     expect(() => check("before_terminal_verify")).not.toThrow();
     expect(() => check("before_preflight")).toThrow("actuation revoked");
     expect(() => check("before_submit")).toThrow("actuation revoked");
+    // A spend back of a staging output of ours is the one fresh submission
+    // left, as its funding reservation admits it.
+    expect(() => check("before_reclaim_preflight")).not.toThrow();
+    expect(() => check("before_reclaim_submit")).not.toThrow();
     revokeWorkflowActuationPermit(admitted.permit, "rollback");
     expect(() => check("before_reconcile")).toThrow("rollback");
+    expect(() => check("before_reclaim_preflight")).toThrow("rollback");
+    expect(() => check("before_reclaim_submit")).toThrow("rollback");
   });
 
   it("rejects lifecycle revocation of an unadmitted permit", () => {

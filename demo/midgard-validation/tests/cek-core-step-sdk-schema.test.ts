@@ -1,7 +1,11 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { CoreStepEvidenceSchema } from "@al-ft/midgard-sdk";
+import {
+  CoreStepEvidenceSchema,
+  SemanticBuiltinWitnessSchema,
+  StagedMaterialV1Schema,
+} from "@al-ft/midgard-sdk";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -13,6 +17,7 @@ import {
   type MidgardCekExecutionStep,
 } from "../src/cek-executor.js";
 import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.js";
+import { midgardCekStagedBuiltinMaterialData } from "../src/cek-staged-builtin.js";
 import * as vectors from "./fixtures/cek-core-step-v1.vectors.mjs";
 import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 
@@ -226,5 +231,94 @@ describe("SDK CoreStepEvidenceSchema against the core-step golden vectors", () =
     }
     expect(checkedSteps).toBe(steps.length);
     expect(checked.size).toBe(42);
+  });
+});
+
+describe("SDK CoreStepEvidenceSchema at a staged builtin step (arm 31, semantics groups 7 and 8)", () => {
+  const semanticStep = golden.programs
+    .flatMap((program) => program.steps)
+    .find((step) => witnessConstructor(step.evidenceCbor) === 31n);
+  if (semanticStep === undefined) {
+    throw new Error("the golden vectors have no arm-31 step");
+  }
+  const evidence = Data.from(semanticStep.evidenceCbor) as Constr<Data>;
+  const witness = evidence.fields[2] as Constr<Data>;
+  const semanticMaterial = witness.fields[3]!;
+  const staged = midgardCekStagedBuiltinMaterialData({
+    runs: {
+      refs: [
+        { transactionId: Buffer.alloc(32, 0x11), outputIndex: 0 },
+        { transactionId: Buffer.alloc(32, 0x22), outputIndex: 3 },
+      ],
+      operands: [[1, 0]],
+    },
+    sources: [
+      { kind: "staged", operand: 0 },
+      { kind: "inline", bytes: Buffer.from("abcd", "hex") },
+      { kind: "bytesLeaf", root: Buffer.alloc(32, 0x33), length: 70_000n },
+      {
+        kind: "integerLeaf",
+        cborRoot: Buffer.alloc(32, 0x44),
+        cborLength: 9n,
+        words: 2n,
+      },
+      { kind: "smallInteger", value: -5n },
+    ],
+  }) as Data;
+  const stagedEvidenceCbor = Data.to(
+    new Constr(evidence.index, [
+      evidence.fields[0]!,
+      evidence.fields[1]!,
+      new Constr(31, [...witness.fields.slice(0, 3), staged]),
+    ]),
+  );
+
+  it("decodes and re-encodes a staged step's evidence byte-for-byte, and the semantic step's still", () => {
+    expect(
+      Data.to(
+        Data.from(stagedEvidenceCbor, CoreStepEvidenceSchema),
+        CoreStepEvidenceSchema,
+      ),
+    ).toBe(stagedEvidenceCbor);
+    expect(
+      Data.to(
+        Data.from(semanticStep.evidenceCbor, CoreStepEvidenceSchema),
+        CoreStepEvidenceSchema,
+      ),
+    ).toBe(semanticStep.evidenceCbor);
+  });
+
+  it("reads the staged material's output references, runs and sources by name", () => {
+    expect(Data.from(Data.to(staged), StagedMaterialV1Schema)).toEqual({
+      runs: {
+        refs: [
+          { transactionId: "11".repeat(32), outputIndex: 0n },
+          { transactionId: "22".repeat(32), outputIndex: 3n },
+        ],
+        operands: [[1n, 0n]],
+      },
+      sources: [
+        { StagedOperand: { operand: 0n } },
+        { InlineOperand: { bytes: "abcd" } },
+        { BytesLeafOperand: { root: "33".repeat(32), length: 70_000n } },
+        {
+          IntegerLeafOperand: {
+            cbor_root: "44".repeat(32),
+            cbor_length: 9n,
+            words: 2n,
+          },
+        },
+        { SmallIntegerOperand: { value: -5n } },
+      ],
+    });
+  });
+
+  it("refuses each material shape under the other's schema", () => {
+    expect(() =>
+      Data.from(Data.to(semanticMaterial), StagedMaterialV1Schema),
+    ).toThrow();
+    expect(() =>
+      Data.from(Data.to(staged), SemanticBuiltinWitnessSchema),
+    ).toThrow();
   });
 });

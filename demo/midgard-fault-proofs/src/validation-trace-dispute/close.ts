@@ -15,6 +15,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { plainWalletInputs } from "../funding/plain-funding-output.js";
 import { witnessMintingPolicyCarriage } from "../witness-reference-scripts.js";
 import { grantValidationDisputeCloseAuthority } from "../workflow/funding-reservation-permit.validation-dispute-close-authority.js";
 import { validationTraceRecovery } from "./actions.js";
@@ -277,7 +278,10 @@ export const captureValidationTraceClose = async (
     throw new Error(
       `validation-trace case cannot close before its defense deadline ${deadline.toString()}`,
     );
-  const unsigned = await tx.complete({ localUPLCEval: true });
+  const unsigned = await tx.complete({
+    localUPLCEval: true,
+    ...(await plainWalletInputs(lucid)),
+  });
   const signed = await unsigned.sign.withWallet().complete();
   grantValidationDisputeCloseAuthority({
     signed,

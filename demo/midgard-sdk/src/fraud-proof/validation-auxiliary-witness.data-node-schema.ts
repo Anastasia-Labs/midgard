@@ -118,6 +118,13 @@ export const SemanticBuiltinWitnessSchema = Data.Object({
   scalar_preimages: ByteArrayListSchema,
 });
 
+export type SemanticBuiltinWitness = Data.Static<
+  typeof SemanticBuiltinWitnessSchema
+>;
+export const SemanticBuiltinWitness = asDataType<SemanticBuiltinWitness>(
+  SemanticBuiltinWitnessSchema,
+);
+
 export const DirectValueWitnessSchema = Data.Enum([
   Data.Object({
     ConstantValue: Data.Tuple([ConstantWitnessSchema]),

@@ -24,6 +24,7 @@ import {
   buildValidationOneStepArgument,
   CekDecodeRecordRequiredError,
   type CekSelectionDecodeRecordResolver,
+  type ValidationTraceSteps,
 } from "@al-ft/midgard-validation";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -53,6 +54,11 @@ import {
   type ValidationTracePhase,
   type ValidationTracePhaseStep,
 } from "./one-step-phase.js";
+import {
+  stagedTraceOf,
+  type ValidationTraceStagedStep,
+  type ValidationTraceStagingLookup,
+} from "./one-step-staged.js";
 import { recordedSelectionOf } from "./selected-scripts.js";
 
 /** `resolver_index(Cek)` (validation-resolution-v1). */
@@ -119,6 +125,9 @@ export type ValidationTraceCoreStepPlan = ValidationTraceOneStepArgument &
       group: CekCoreGroup;
       /** The arm chain's holders, in order, and the facts each writes. */
       hops: CekCoreArmHops;
+      /** A staged step's staged operands and the staging outputs its
+       * evidence names (one-step-staged.ts); undefined for any other. */
+      staged: ValidationTraceStagedStep | undefined;
     }>;
   }>;
 
@@ -227,11 +236,19 @@ export const planValidationTraceOneStep = async ({
   canonicalDecode = false,
   phases = [],
   scriptSourcesRedeemers = false,
+  staging,
+  committedEvidenceHash,
 }: ValidationTraceOneStepDrives & {
   readonly material: ValidationTraceClaimMaterial;
   readonly stateIndex?: number;
   readonly agreedLowHash?: string;
   readonly challengerHighHash: string;
+  /** Where the driver staged a staged step's operands. */
+  readonly staging?: ValidationTraceStagingLookup;
+  /** The evidence the thread's PrepareSelected move committed, once it
+   * has (read only for a staged step): a staged step is planned over the
+   * staging it names. */
+  readonly committedEvidenceHash?: () => string;
 }): Promise<ValidationTraceOneStepPlanning> => {
   const stateIndex =
     given ?? (material.stateIndexOf(challengerHighHash) ?? 0) - 1;
@@ -333,11 +350,28 @@ export const planValidationTraceOneStep = async ({
       phase2Class: record.phase2Class,
     });
   }
-  const argument = buildValidationOneStepArgument({
-    trace,
-    stateIndex,
-    ...(resolveCekDecodeRecord === undefined ? {} : { resolveCekDecodeRecord }),
-  });
+  const argumentOf = (window: ValidationTraceSteps) =>
+    buildValidationOneStepArgument({
+      trace: window,
+      stateIndex,
+      ...(resolveCekDecodeRecord === undefined
+        ? {}
+        : { resolveCekDecodeRecord }),
+    });
+  // A staged step's evidence names its staging outputs.
+  const { trace: window, staged } = builtins
+    ? await stagedTraceOf(
+        trace,
+        stateIndex,
+        staging,
+        committedEvidenceHash === undefined
+          ? undefined
+          : (candidate) =>
+              commonOf(stateIndex, preState, argumentOf(candidate))
+                .evidenceHash === committedEvidenceHash(),
+      )
+    : { trace, staged: undefined };
+  const argument = argumentOf(window);
   const common = commonOf(stateIndex, preState, argument);
   const { auxiliaryCbor } = common;
   if (
@@ -396,7 +430,7 @@ export const planValidationTraceOneStep = async ({
     return unsupported(
       `a CEK builtin step of arm ${arm.toString()}, whose resolution the deployment does not install`,
     );
-  const auxiliary = trace.witnesses[stateIndex]?.auxiliary;
+  const auxiliary = window.witnesses[stateIndex]?.auxiliary;
   if (auxiliary?.kind !== "cekCoreStep")
     return unsupported(
       `a CEK core step of arm ${arm.toString()} whose witness carries no core step`,
@@ -426,6 +460,7 @@ export const planValidationTraceOneStep = async ({
         arm,
         group,
         hops,
+        staged,
       }),
     }),
   };

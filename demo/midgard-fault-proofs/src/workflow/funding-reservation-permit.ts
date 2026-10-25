@@ -32,6 +32,7 @@ export {
 export {
   beginWorkflowFundingReservationAction,
   bindWorkflowFundingReservationJournal,
+  workflowJournalAdmitsReconciliationReclaim,
 } from "./funding-reservation-permit.begin-workflow-funding-reservation-action.js";
 export { createWorkflowFundingReservationPermit } from "./funding-reservation-permit.create-workflow-funding-reservation-permit.js";
 export { workflowFundingExclusiveProtocolInput } from "./funding-reservation-permit.excluded-by-protocol-input.js";

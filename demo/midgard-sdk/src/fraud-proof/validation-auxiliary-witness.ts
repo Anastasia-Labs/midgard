@@ -10,10 +10,16 @@ import "./validation-auxiliary-witness.cek-redeemer-context-control-schema.js";
 import "./validation-auxiliary-witness.validation-auxiliary-witness-schema.js";
 import "./validation-auxiliary-witness.validation-proof-item-datum-schema.js";
 export { ValueAssetMutationWitnessSchema } from "./validation-auxiliary-witness.cek-redeemer-context-control-schema.js";
-export { CoreStepEvidenceSchema } from "./validation-auxiliary-witness.core-step-witness-schema.js";
+export {
+  CoreStepEvidenceSchema,
+  StagedMaterialV1,
+  StagedMaterialV1Schema,
+} from "./validation-auxiliary-witness.core-step-witness-schema.js";
 export {
   FrontierPeak,
   FrontierPeakSchema,
+  SemanticBuiltinWitness,
+  SemanticBuiltinWitnessSchema,
 } from "./validation-auxiliary-witness.data-node-schema.js";
 export {
   NativeScriptFrame,
