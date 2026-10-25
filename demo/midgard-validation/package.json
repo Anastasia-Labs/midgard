@@ -152,6 +152,9 @@
     },
     "./tests/forced-native-first-fault-fixture": {
       "midgard-source": "./tests/forced-native-first-fault.fixture.ts"
+    },
+    "./tests/phase-b.deep-data.fixture": {
+      "midgard-source": "./tests/phase-b.deep-data.fixture.ts"
     }
   },
   "scripts": {
@@ -260,6 +263,7 @@
             "src/validation-machine/index.ts",
             "--format",
             "esm,cjs",
+            "--shims",
             "--dts",
             "--clean"
           ]
