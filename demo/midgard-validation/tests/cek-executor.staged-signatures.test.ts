@@ -6,9 +6,9 @@ import { describe, expect, it } from "vitest";
 
 import type { MidgardCekDirectValueWitness } from "../src/cek-builtin.argument-kinds.js";
 import {
-  referenceConstantToDirectWitness,
+  builtinValueToDirectWitness,
   semanticizeMidgardCekDirectConstant,
-} from "../src/cek-builtin.evaluate-reference-builtin.js";
+} from "../src/cek-builtin.evaluate-direct-builtin.js";
 import { midgardCekDirectBuiltinBudget } from "../src/cek-builtin.selected-control-result.js";
 import type { MidgardCekBuiltinBudget } from "../src/cek-cost.js";
 import type { MidgardCekExecutionStep } from "../src/cek-executor.build-midgard-cek-execution-graph.js";
@@ -144,7 +144,7 @@ const steps = (
 
 const committedBool = (value: boolean) =>
   semanticizeMidgardCekDirectConstant(
-    referenceConstantToDirectWitness(UPLCConst.bool(value), true),
+    builtinValueToDirectWitness(UPLCConst.bool(value), true),
   );
 
 describe("a signature over a staged message", () => {

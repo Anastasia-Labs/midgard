@@ -13,7 +13,7 @@ import type {
   Bytes,
   MidgardCekDirectValueWitness,
 } from "./cek-builtin.argument-kinds.js";
-import { semanticizeMidgardCekDirectConstant } from "./cek-builtin.evaluate-reference-builtin.js";
+import { semanticizeMidgardCekDirectConstant } from "./cek-builtin.evaluate-direct-builtin.js";
 import {
   decodeMidgardCekConstantWitness,
   type MidgardCekConstantType,

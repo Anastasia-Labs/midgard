@@ -17,10 +17,10 @@ import {
   type CardanoMlResult,
 } from "./cek-builtin.cardano-exact-bls.js";
 import {
-  directConstantToReferenceValue,
+  builtinValueToDirectWitness,
+  directConstantToBuiltinValue,
   evaluateMidgardCekDirectBuiltin,
-  referenceConstantToDirectWitness,
-} from "./cek-builtin.evaluate-reference-builtin.js";
+} from "./cek-builtin.evaluate-direct-builtin.js";
 import {
   MIDGARD_CEK_BLS_FAILURES_PENDING_ON_L1,
   midgardCekKnownBuiltinFailure,
@@ -159,8 +159,8 @@ const evaluateBlsLeaf = (
     throw new Error("BLS expression leaf requires G1 and G2 constants");
   }
   // Both points must uncompress under the L1 rule before the loop runs.
-  directConstantToReferenceValue(expression.g1);
-  directConstantToReferenceValue(expression.g2);
+  directConstantToBuiltinValue(expression.g1);
+  directConstantToBuiltinValue(expression.g2);
   if (
     !(g1Decoded.payload instanceof DataB) ||
     !(g2Decoded.payload instanceof DataB)
@@ -289,7 +289,7 @@ export const evaluateMidgardCekBlsFinal = (
   return Object.freeze({
     leftRoot: left.root,
     rightRoot: right.root,
-    result: referenceConstantToDirectWitness(result, false),
+    result: builtinValueToDirectWitness(result, false),
     budget: midgardCekDirectBuiltinBudget(70n, arguments_),
   });
 };

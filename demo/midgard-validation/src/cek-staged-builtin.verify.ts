@@ -32,10 +32,10 @@ import type {
   MidgardCekDirectValueWitness,
 } from "./cek-builtin.argument-kinds.js";
 import {
+  builtinValueToDirectWitness,
   evaluateMidgardCekBuiltinOnValues,
-  referenceConstantToDirectWitness,
   semanticizeMidgardCekDirectConstant,
-} from "./cek-builtin.evaluate-reference-builtin.js";
+} from "./cek-builtin.evaluate-direct-builtin.js";
 import type { MidgardCekSemanticConstantWitness } from "./cek-constant.js";
 import { midgardCekSemanticGroup } from "./cek-semantic-group.js";
 import type {
@@ -92,7 +92,7 @@ export const compact = (value: MidgardCekDirectValueWitness): Compacted => {
 
 /** A constant value in the compacted form the roots hop commits. */
 export const compactValue = (value: UPLCConst): Compacted =>
-  compact(referenceConstantToDirectWitness(value, true));
+  compact(builtinValueToDirectWitness(value, true));
 
 const bytesMemory = (string: boolean, length: bigint): bigint =>
   string ? length / 4n : midgardCekBytesMemoryWords(length);

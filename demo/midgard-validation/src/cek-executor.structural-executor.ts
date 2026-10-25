@@ -26,7 +26,7 @@ import {
   type MidgardCekValueNode,
 } from "@al-ft/midgard-core";
 
-import { midgardCekDirectBuiltinApplication } from "./cek-builtin.evaluate-reference-builtin.js";
+import { midgardCekDirectBuiltinApplication } from "./cek-builtin.evaluate-direct-builtin.js";
 import {
   evaluateMidgardCekBlsFinal,
   evaluateMidgardCekDirectBuiltin,

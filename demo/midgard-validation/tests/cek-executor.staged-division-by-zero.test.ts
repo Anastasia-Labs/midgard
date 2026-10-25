@@ -4,10 +4,10 @@ import { describe, expect, it } from "vitest";
 
 import type { MidgardCekDirectValueWitness } from "../src/cek-builtin.argument-kinds.js";
 import {
+  builtinValueToDirectWitness,
   evaluateMidgardCekBuiltinOnValues,
-  referenceConstantToDirectWitness,
   semanticizeMidgardCekDirectConstant,
-} from "../src/cek-builtin.evaluate-reference-builtin.js";
+} from "../src/cek-builtin.evaluate-direct-builtin.js";
 import { midgardCekDirectBuiltinBudget } from "../src/cek-builtin.selected-control-result.js";
 import type { MidgardCekBuiltinBudget } from "../src/cek-cost.js";
 import {
@@ -103,7 +103,7 @@ const directWitness = (
   tag,
   arguments: [
     semanticizeMidgardCekDirectConstant(presented(dividend)),
-    referenceConstantToDirectWitness(UPLCConst.int(0n)),
+    builtinValueToDirectWitness(UPLCConst.int(0n)),
   ],
 });
 

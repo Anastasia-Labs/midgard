@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { MidgardCekDirectValueWitness } from "../src/cek-builtin.argument-kinds.js";
-import { referenceConstantToDirectWitness } from "../src/cek-builtin.evaluate-reference-builtin.js";
+import { builtinValueToDirectWitness } from "../src/cek-builtin.evaluate-direct-builtin.js";
 import { midgardCekDirectBuiltinBudget } from "../src/cek-builtin.selected-control-result.js";
 import type { MidgardCekExecutionStep } from "../src/cek-executor.build-midgard-cek-execution-graph.js";
 import type { MidgardCekCoreStepWitness } from "../src/cek-machine.js";
@@ -253,7 +253,7 @@ describe("the bitwise builtins over staged operands", () => {
 });
 
 const presented = (value: UPLCConst): MidgardCekDirectValueWitness =>
-  referenceConstantToDirectWitness(value, true);
+  builtinValueToDirectWitness(value, true);
 
 const byteString = (value: Buffer): UPLCConst =>
   UPLCConst.byteString(new DataB(value).bytes);

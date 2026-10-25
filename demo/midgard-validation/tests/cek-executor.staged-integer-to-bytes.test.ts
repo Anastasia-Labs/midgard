@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  referenceConstantToDirectWitness,
+  builtinValueToDirectWitness,
   semanticizeMidgardCekDirectConstant,
-} from "../src/cek-builtin.evaluate-reference-builtin.js";
+} from "../src/cek-builtin.evaluate-direct-builtin.js";
 import {
   hashMidgardCekDirectValueWitness,
   midgardCekDirectBuiltinBudget,
@@ -97,7 +97,7 @@ const provedConversion = (
   const witness = staged(step!, 9);
   expect(witness.kind === "executeBuiltinStaged" && witness.result).toEqual(
     semanticizeMidgardCekDirectConstant(
-      referenceConstantToDirectWitness(
+      builtinValueToDirectWitness(
         UPLCConst.byteString(expected(bigEndian, width, size)),
         true,
       ),
@@ -160,7 +160,7 @@ describe("an integerToByteString success has exactly one provable result", () =>
   const withResult = (bytes: Buffer): boolean => {
     const { step, witness } = honest();
     const result = semanticizeMidgardCekDirectConstant(
-      referenceConstantToDirectWitness(UPLCConst.byteString(bytes), true),
+      builtinValueToDirectWitness(UPLCConst.byteString(bytes), true),
     );
     return verifyMidgardCekCoreStep(
       step.pre,
@@ -190,7 +190,7 @@ describe("an integerToByteString success has exactly one provable result", () =>
   it("binds the width to its argument", () => {
     const { step, witness } = honest();
     const result = semanticizeMidgardCekDirectConstant(
-      referenceConstantToDirectWitness(
+      builtinValueToDirectWitness(
         UPLCConst.byteString(expected(bigEndian, 8_191, 4_096)),
         true,
       ),
@@ -231,7 +231,7 @@ describe("an integerToByteString success has exactly one provable result", () =>
       UPLCConst.bool(bigEndian),
       UPLCConst.int(8_192n),
       UPLCConst.int(magnitude(4_096)),
-    ].map((value) => referenceConstantToDirectWitness(value, true));
+    ].map((value) => builtinValueToDirectWitness(value, true));
     const committed = arguments_.map(semanticizeMidgardCekDirectConstant);
     const failures: MidgardCekCoreStepWitness[] = [
       {

@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import type { MidgardCekDirectValueWitness } from "../src/cek-builtin.argument-kinds.js";
 import {
-  referenceConstantToDirectWitness,
+  builtinValueToDirectWitness,
   semanticizeMidgardCekDirectConstant,
-} from "../src/cek-builtin.evaluate-reference-builtin.js";
+} from "../src/cek-builtin.evaluate-direct-builtin.js";
 import type { MidgardCekBuiltinBudget } from "../src/cek-cost.js";
 import type { MidgardCekStagedOperand } from "../src/cek-executor.staged-failure.js";
 import type { MidgardCekCoreStepWitness } from "../src/cek-machine.js";
@@ -183,10 +183,7 @@ describe("a failing bitwise, ECDSA or integerToByteString step has one provable 
   });
 
   const widthArgument = (width: bigint) => presented(integerOperand(width));
-  const endianness = referenceConstantToDirectWitness(
-    UPLCConst.bool(true),
-    true,
-  );
+  const endianness = builtinValueToDirectWitness(UPLCConst.bool(true), true);
 
   it("integerToByteString: both failure arms prove an input of 1,025 words, with the evaluator's charge", () => {
     const input = 2n ** 65_536n;
@@ -298,7 +295,7 @@ describe("a failing bitwise, ECDSA or integerToByteString step has one provable 
     const cases = [
       {
         leading: [
-          referenceConstantToDirectWitness(UPLCConst.int(1n), true),
+          builtinValueToDirectWitness(UPLCConst.int(1n), true),
           widthArgument(0n),
         ],
         operand: integerOperand(input),
@@ -436,11 +433,11 @@ describe("a failing bitwise, ECDSA or integerToByteString step has one provable 
   });
 
   it("writeBits: both failure arms prove an input past 4,096 bytes uncharged, and neither one of 4,096 bytes", () => {
-    const indices = referenceConstantToDirectWitness(
+    const indices = builtinValueToDirectWitness(
       new UPLCConst(constT.listOf(constT.int), [0n]),
       true,
     );
-    const flag = referenceConstantToDirectWitness(UPLCConst.bool(true), true);
+    const flag = builtinValueToDirectWitness(UPLCConst.bool(true), true);
     for (const [length, fails] of [
       [4_097, true],
       [LONGEST, true],

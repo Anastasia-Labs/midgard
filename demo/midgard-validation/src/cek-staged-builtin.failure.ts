@@ -33,7 +33,7 @@ import {
 import { schnorr } from "@noble/curves/secp256k1.js";
 
 import type { MidgardCekDirectValueWitness } from "./cek-builtin.argument-kinds.js";
-import { referenceConstantToDirectWitness } from "./cek-builtin.evaluate-reference-builtin.js";
+import { builtinValueToDirectWitness } from "./cek-builtin.evaluate-direct-builtin.js";
 import { midgardCekDirectBuiltinBudget } from "./cek-builtin.selected-control-result.js";
 import type { MidgardCekBuiltinBudget } from "./cek-cost.js";
 import type {
@@ -411,7 +411,7 @@ const integerToBytesCharge = (
   }
   return midgardCekDirectBuiltinBudget(73n, [
     endianness!,
-    referenceConstantToDirectWitness(UPLCConst.int(value)),
+    builtinValueToDirectWitness(UPLCConst.int(value)),
     input!,
   ]);
 };

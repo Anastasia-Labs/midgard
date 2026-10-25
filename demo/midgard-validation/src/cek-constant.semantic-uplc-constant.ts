@@ -114,7 +114,7 @@ const semanticUplcConstant = (
 };
 
 /**
- * Reconstructs the UPLC constant consumed by the pinned reference evaluator
+ * Reconstructs the UPLC constant consumed by the pinned evaluator
  * from the canonical semantic witness checked on L1.
  */
 export const midgardCekConstantWitnessToUplc = (
@@ -125,7 +125,7 @@ export const midgardCekConstantWitnessToUplc = (
 };
 
 /**
- * Converts a reference-evaluator constant back into the canonical L1
+ * Converts a pinned-evaluator constant back into the canonical L1
  * witness. The ordinary witness decoder remains authoritative for the direct
  * one-step payload bound.
  */

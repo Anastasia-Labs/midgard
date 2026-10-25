@@ -9,7 +9,7 @@ import {
 } from "@al-ft/midgard-core";
 
 import type { MidgardCekDirectValueWitness } from "./cek-builtin.argument-kinds.js";
-import { evaluateMidgardCekBuiltinOnValues } from "./cek-builtin.evaluate-reference-builtin.js";
+import { evaluateMidgardCekBuiltinOnValues } from "./cek-builtin.evaluate-direct-builtin.js";
 import type { MidgardCekStagedBuiltinMaterial } from "./cek-staged-builtin.material.js";
 import {
   type ArmInputs,

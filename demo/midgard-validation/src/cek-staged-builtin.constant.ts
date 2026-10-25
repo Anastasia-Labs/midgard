@@ -5,7 +5,7 @@ import type {
   Bytes,
   MidgardCekDirectValueWitness,
 } from "./cek-builtin.argument-kinds.js";
-import { referenceConstantToDirectWitness } from "./cek-builtin.evaluate-reference-builtin.js";
+import { builtinValueToDirectWitness } from "./cek-builtin.evaluate-direct-builtin.js";
 import { refuse } from "./cek-staged-builtin.verify.js";
 import { UPLCConst } from "./uplc-constant.js";
 
@@ -26,18 +26,12 @@ export const midgardCekStagedConstantWitness = (
   constant: MidgardCekStagedConstant,
 ): MidgardCekDirectValueWitness => {
   if (constant.type === "integer") {
-    return referenceConstantToDirectWitness(
-      UPLCConst.int(constant.value),
-      true,
-    );
+    return builtinValueToDirectWitness(UPLCConst.int(constant.value), true);
   }
   if (constant.type === "bool") {
-    return referenceConstantToDirectWitness(
-      UPLCConst.bool(constant.value),
-      true,
-    );
+    return builtinValueToDirectWitness(UPLCConst.bool(constant.value), true);
   }
-  const bytes = referenceConstantToDirectWitness(
+  const bytes = builtinValueToDirectWitness(
     UPLCConst.byteString(Buffer.from(constant.bytes)),
     true,
   );

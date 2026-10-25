@@ -43,12 +43,12 @@ import type {
 } from "./cek-builtin.argument-kinds.js";
 import { midgardCekDivisionByZero } from "./cek-builtin.compacted-failures.js";
 import {
+  builtinValueToDirectWitness,
   evaluateMidgardCekBuiltinOnValues,
   type MidgardCekDirectBuiltinApplication,
   midgardCekDirectBuiltinFits,
-  referenceConstantToDirectWitness,
   semanticizeMidgardCekDirectConstant,
-} from "./cek-builtin.evaluate-reference-builtin.js";
+} from "./cek-builtin.evaluate-direct-builtin.js";
 import { encodeMidgardCekCanonicalConstant } from "./cek-constant.js";
 import type { MidgardCekBuiltinBudget } from "./cek-cost.js";
 import { commitMidgardCekDataTree } from "./cek-data-tree.js";
@@ -327,7 +327,7 @@ export const executeMidgardCekStagedBuiltin = (
     sources.push(carried(cbor(result)));
   }
   const canonical = encodeMidgardCekCanonicalConstant(evaluated);
-  const result = referenceConstantToDirectWitness(evaluated, true);
+  const result = builtinValueToDirectWitness(evaluated, true);
   if (result.kind === "semanticConstant") {
     // Later steps read a large result through its semantic tree.
     store.installTree(

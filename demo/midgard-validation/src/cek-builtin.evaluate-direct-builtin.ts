@@ -51,7 +51,7 @@ import { DataB } from "./uplc-data.js";
  * A BLS point stays its compressed bytes and must uncompress under the L1
  * rule (Cardano's uncompress builtin).
  */
-export const directConstantToReferenceValue = (
+export const directConstantToBuiltinValue = (
   witness: MidgardCekConstantWitness,
 ): UPLCConst => {
   const decoded = decodeMidgardCekConstantWitness(witness);
@@ -144,7 +144,7 @@ export const semanticizeMidgardCekDirectConstant = (
   });
 };
 
-export const referenceConstantToDirectWitness = (
+export const builtinValueToDirectWitness = (
   constant: UPLCConst,
   allowSemantic: boolean = false,
 ): MidgardCekDirectValueWitness => {
@@ -219,7 +219,7 @@ export const midgardCekDirectStepArguments = (
     ? [semanticizeMidgardCekDirectConstant(arguments_[0]!), arguments_[1]!]
     : arguments_;
 
-const evaluateReferenceBuiltin = (
+const evaluateDirectBuiltinResult = (
   tag: bigint,
   arguments_: readonly MidgardCekDirectValueWitness[],
 ): MidgardCekDirectValueWitness | "failure" => {
@@ -246,8 +246,8 @@ const evaluateReferenceBuiltin = (
     }
     // Both compressed points must uncompress before their expression
     // commitment is admitted, matching the L1 rule.
-    directConstantToReferenceValue(arguments_[0].witness);
-    directConstantToReferenceValue(arguments_[1].witness);
+    directConstantToBuiltinValue(arguments_[0].witness);
+    directConstantToBuiltinValue(arguments_[1].witness);
     const left = hashMidgardCekDirectValueWitness(arguments_[0]);
     const right = hashMidgardCekDirectValueWitness(arguments_[1]);
     return {
@@ -292,7 +292,7 @@ const evaluateReferenceBuiltin = (
     if (decoded.type.kind !== "data") {
       throw new Error("serialiseData requires Data");
     }
-    return referenceConstantToDirectWitness(
+    return builtinValueToDirectWitness(
       UPLCConst.byteString(encodeMidgardCekPlutusData(decoded.payload)),
       true,
     );
@@ -307,20 +307,18 @@ const evaluateReferenceBuiltin = (
   if (tag >= 3n && tag <= 6n && arguments_[0]?.kind === "semanticConstant") {
     return compactedDividendFailure(arguments_);
   }
-  const referenceArguments: UPLCConst[] = [];
+  const builtinArguments: UPLCConst[] = [];
   for (const argument of arguments_) {
     if (argument.kind !== "constant") {
       throw new Error("non-control V1 builtin arguments must be constants");
     }
-    referenceArguments.push(directConstantToReferenceValue(argument.witness));
+    builtinArguments.push(directConstantToBuiltinValue(argument.witness));
   }
   const result = evaluateMidgardCekBuiltinOnValues(
     Number(tag),
-    referenceArguments,
+    builtinArguments,
   );
-  return result === "failure"
-    ? "failure"
-    : referenceConstantToDirectWitness(result);
+  return result === "failure" ? "failure" : builtinValueToDirectWitness(result);
 };
 
 const directFailureIsCharged = (
@@ -328,7 +326,7 @@ const directFailureIsCharged = (
   arguments_: readonly MidgardCekDirectValueWitness[],
 ): boolean =>
   [3n, 4n, 5n, 6n, 21n, 52n, 53n, 60n, 67n].includes(tag) ||
-  // The reference CEK refuses an out-of-range width before charging.
+  // Cardano's machine refuses an out-of-range width before charging.
   (tag === 73n &&
     directInteger(arguments_[1]!) >= 0n &&
     directInteger(arguments_[1]!) <= 8192n) ||
@@ -354,7 +352,7 @@ export const midgardCekDirectBuiltinApplication = (
   return Object.freeze({
     tag,
     arguments: arguments_,
-    result: () => (result ??= evaluateReferenceBuiltin(tag, arguments_)),
+    result: () => (result ??= evaluateDirectBuiltinResult(tag, arguments_)),
   });
 };
 

@@ -1,7 +1,7 @@
 import {
   type MidgardCekDirectBuiltinApplication,
   midgardCekDirectBuiltinFits,
-} from "./cek-builtin.evaluate-reference-builtin.js";
+} from "./cek-builtin.evaluate-direct-builtin.js";
 import {
   type MidgardCekDirectValueWitness,
   semanticizeMidgardCekDirectConstant,

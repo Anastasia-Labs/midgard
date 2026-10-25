@@ -5,10 +5,10 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
+  builtinValueToDirectWitness,
   evaluateMidgardCekBuiltinOnValues,
-  referenceConstantToDirectWitness,
   semanticizeMidgardCekDirectConstant,
-} from "../src/cek-builtin.evaluate-reference-builtin.js";
+} from "../src/cek-builtin.evaluate-direct-builtin.js";
 import type { MidgardCekExecutionStep } from "../src/cek-executor.build-midgard-cek-execution-graph.js";
 import {
   midgardCekStagedFailure,
@@ -262,7 +262,7 @@ describe("staged failure steps of the integer builtins", () => {
     if (witness.kind !== "executeBuiltinStagedFailure") throw new Error("kind");
     const revealed = [
       witness.arguments[0]!,
-      referenceConstantToDirectWitness(UPLCConst.int(-1n)),
+      builtinValueToDirectWitness(UPLCConst.int(-1n)),
     ];
     expect(
       verifies({ ...step, witness: { ...witness, arguments: revealed } }),

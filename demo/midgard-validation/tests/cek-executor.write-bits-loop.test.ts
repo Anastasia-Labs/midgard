@@ -5,9 +5,9 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
-  referenceConstantToDirectWitness,
+  builtinValueToDirectWitness,
   semanticizeMidgardCekDirectConstant,
-} from "../src/cek-builtin.evaluate-reference-builtin.js";
+} from "../src/cek-builtin.evaluate-direct-builtin.js";
 import { hashMidgardCekDirectValueWitness } from "../src/cek-builtin.js";
 import { midgardCekWriteBitsTakesLoop } from "../src/cek-executor.write-bits-builtin.js";
 import {
@@ -101,7 +101,7 @@ describe("writeBits over a long index list", () => {
         indicesConstant(spread(count, 64)),
         UPLCConst.bool(true),
       ].map((value) => {
-        const witness = referenceConstantToDirectWitness(value, true);
+        const witness = builtinValueToDirectWitness(value, true);
         return compacted
           ? semanticizeMidgardCekDirectConstant(witness)
           : witness;

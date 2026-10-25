@@ -16,8 +16,8 @@ import { decodeCardanoFlatProgramOrThrow } from "./cek-program.cardano-flat.deco
 import { encodeCardanoFlatProgram } from "./cek-program.cardano-flat.encode.js";
 import { constT, ConstTyTag, UPLCConst } from "./uplc-constant.js";
 
-/** The protocol version whose builtin semantics Midgard follows. */
-const PROTOCOL_MAJOR_VERSION = 11;
+/** The protocol version whose Plutus semantics Midgard follows. */
+export const MIDGARD_PLUTUS_PROTOCOL_MAJOR_VERSION = 11;
 
 /** `BuiltinValueKind` of `eval_builtin_raw`. */
 const KIND = Object.freeze({
@@ -139,7 +139,7 @@ export const evaluatePinnedBuiltin = (
     tag,
     encoded.map((argument) => argument.bytes),
     Uint8Array.from(encoded.map((argument) => argument.kind)),
-    PROTOCOL_MAJOR_VERSION,
+    MIDGARD_PLUTUS_PROTOCOL_MAJOR_VERSION,
   );
   try {
     if (result.ok)

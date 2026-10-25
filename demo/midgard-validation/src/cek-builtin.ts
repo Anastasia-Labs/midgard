@@ -4,7 +4,7 @@ import "./cek-cost.js";
 import "./cek-data-tree.js";
 import "./cek-builtin.argument-kinds.js";
 import "./cek-builtin.selected-control-result.js";
-import "./cek-builtin.evaluate-reference-builtin.js";
+import "./cek-builtin.evaluate-direct-builtin.js";
 import "./cek-builtin.verify-midgard-cek-bls-final.js";
 export {
   hashMidgardCekRuntimeArguments,
@@ -23,7 +23,7 @@ export {
   evaluateMidgardCekDirectBuiltin,
   midgardCekDirectStepArguments,
   semanticizeMidgardCekDirectConstant,
-} from "./cek-builtin.evaluate-reference-builtin.js";
+} from "./cek-builtin.evaluate-direct-builtin.js";
 export {
   hashMidgardCekDirectArguments,
   hashMidgardCekDirectValueWitness,

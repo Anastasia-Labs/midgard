@@ -10,7 +10,7 @@ import {
   type MidgardCekDirectValueWitness,
   sameBytes,
 } from "../src/cek-builtin.argument-kinds.js";
-import { referenceConstantToDirectWitness } from "../src/cek-builtin.evaluate-reference-builtin.js";
+import { builtinValueToDirectWitness } from "../src/cek-builtin.evaluate-direct-builtin.js";
 import { midgardCekDirectBuiltinBudget } from "../src/cek-builtin.selected-control-result.js";
 import type {
   MidgardCekBlsExpressionWitness,
@@ -110,7 +110,7 @@ export const legacyEvaluateMidgardCekBlsFinal = (
   return Object.freeze({
     leftRoot: left.root,
     rightRoot: right.root,
-    result: referenceConstantToDirectWitness(
+    result: builtinValueToDirectWitness(
       UPLCConst.bool(result.value as boolean),
       false,
     ),

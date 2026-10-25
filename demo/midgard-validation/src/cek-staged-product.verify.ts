@@ -12,7 +12,7 @@
  * remainderInteger and modInteger must be the matching division's, which
  * fixes it. A division by zero has no result, so no step.
  */
-import { evaluateMidgardCekBuiltinOnValues } from "./cek-builtin.evaluate-reference-builtin.js";
+import { evaluateMidgardCekBuiltinOnValues } from "./cek-builtin.evaluate-direct-builtin.js";
 import type { MidgardCekSemanticConstantWitness } from "./cek-constant.js";
 import type { MidgardCekStagedOperandSource } from "./cek-staged-builtin.material.js";
 import { UPLCConst } from "./uplc-constant.js";

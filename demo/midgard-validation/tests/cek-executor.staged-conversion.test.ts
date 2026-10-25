@@ -4,9 +4,9 @@ import { describe, expect, it } from "vitest";
 
 import type { MidgardCekDirectValueWitness } from "../src/cek-builtin.argument-kinds.js";
 import {
-  referenceConstantToDirectWitness,
+  builtinValueToDirectWitness,
   semanticizeMidgardCekDirectConstant,
-} from "../src/cek-builtin.evaluate-reference-builtin.js";
+} from "../src/cek-builtin.evaluate-direct-builtin.js";
 import { midgardCekDirectBuiltinBudget } from "../src/cek-builtin.selected-control-result.js";
 import type { MidgardCekBuiltinBudget } from "../src/cek-cost.js";
 import type { MidgardCekExecutionStep } from "../src/cek-executor.build-midgard-cek-execution-graph.js";
@@ -260,7 +260,7 @@ describe("byteStringToInteger over a staged input", () => {
 });
 
 const presented = (value: UPLCConst): MidgardCekDirectValueWitness =>
-  referenceConstantToDirectWitness(value, true);
+  builtinValueToDirectWitness(value, true);
 
 /** The failure witnesses for byteStringToInteger over `input`: the staged
  * failure hop's, reading the input's length from its committed argument,

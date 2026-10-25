@@ -4,9 +4,9 @@ import { describe, expect, it } from "vitest";
 
 import type { MidgardCekDirectValueWitness } from "../src/cek-builtin.argument-kinds.js";
 import {
+  builtinValueToDirectWitness,
   evaluateMidgardCekBuiltinOnValues,
-  referenceConstantToDirectWitness,
-} from "../src/cek-builtin.evaluate-reference-builtin.js";
+} from "../src/cek-builtin.evaluate-direct-builtin.js";
 import type { MidgardCekExecutionStep } from "../src/cek-executor.build-midgard-cek-execution-graph.js";
 import type { MidgardCekCoreStepWitness } from "../src/cek-machine.js";
 import { errorSuccessor } from "../src/cek-machine.midgard-cek-builtin-argument-count.js";
@@ -287,7 +287,7 @@ describe("shiftByteString and rotateByteString over staged inputs", () => {
 // ## The staged step's relation
 
 const presented = (value: UPLCConst): MidgardCekDirectValueWitness =>
-  referenceConstantToDirectWitness(value, true);
+  builtinValueToDirectWitness(value, true);
 
 const byteString = (value: Buffer): UPLCConst =>
   UPLCConst.byteString(new DataB(value).bytes);

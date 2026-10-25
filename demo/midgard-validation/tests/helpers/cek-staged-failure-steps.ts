@@ -7,7 +7,7 @@ import {
 } from "@al-ft/midgard-core";
 
 import type { MidgardCekDirectValueWitness } from "../../src/cek-builtin.argument-kinds.js";
-import { referenceConstantToDirectWitness } from "../../src/cek-builtin.evaluate-reference-builtin.js";
+import { builtinValueToDirectWitness } from "../../src/cek-builtin.evaluate-direct-builtin.js";
 import { hashMidgardCekDirectArguments } from "../../src/cek-builtin.selected-control-result.js";
 import type { MidgardCekStagedOperand } from "../../src/cek-executor.staged-failure.js";
 import { encodeMidgardCekPlutusData } from "../../src/plutus-data-iterative.encode.js";
@@ -52,7 +52,7 @@ export const bytesOperand = (bytes: Uint8Array): MidgardCekStagedOperand => ({
 export const presented = (
   operand: MidgardCekStagedOperand,
 ): MidgardCekDirectValueWitness =>
-  referenceConstantToDirectWitness(operand.value, true);
+  builtinValueToDirectWitness(operand.value, true);
 
 const BASE: MidgardCekMachineState = (() => {
   const steps = run(call(builtin("addInteger"), int(1n), int(2n)), "proof")

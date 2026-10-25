@@ -3,9 +3,9 @@ import * as UPLC from "@lucid-evolution/uplc";
 
 import type { MidgardCekDirectValueWitness } from "../../src/cek-builtin.argument-kinds.js";
 import {
-  referenceConstantToDirectWitness,
+  builtinValueToDirectWitness,
   semanticizeMidgardCekDirectConstant,
-} from "../../src/cek-builtin.evaluate-reference-builtin.js";
+} from "../../src/cek-builtin.evaluate-direct-builtin.js";
 import type { MidgardCekBuiltinBudget } from "../../src/cek-cost.js";
 import type { MidgardCekExecutionStep } from "../../src/cek-executor.build-midgard-cek-execution-graph.js";
 import { encodeMidgardCekCardanoFlatProgram } from "../../src/cek-program.cardano-flat.js";
@@ -58,7 +58,7 @@ export const compactedArguments = (
     UPLCConst.bool(set),
   ].map((value) =>
     semanticizeMidgardCekDirectConstant(
-      referenceConstantToDirectWitness(value, true),
+      builtinValueToDirectWitness(value, true),
     ),
   );
 
@@ -67,10 +67,7 @@ export const compactedBytes = (
   bytes: Uint8Array,
 ): MidgardCekDirectValueWitness =>
   semanticizeMidgardCekDirectConstant(
-    referenceConstantToDirectWitness(
-      UPLCConst.byteString(Buffer.from(bytes)),
-      true,
-    ),
+    builtinValueToDirectWitness(UPLCConst.byteString(Buffer.from(bytes)), true),
   );
 
 const CONTEXT = Buffer.from("d87980", "hex");
