@@ -3860,7 +3860,10 @@ fn malformed_signature_lengths_v1(
 /// two arms exclusive. The readers below fix the type of every position they
 /// read (`constant_type_v1` refuses opaque and Miller-loop values), so each
 /// arm checks only the positions its reader skips.
-fn known_builtin_failure_v1(tag: Int, arguments: List<ValueWitnessV1>) -> Bool {
+pub fn known_builtin_failure_v1(
+  tag: Int,
+  arguments: List<ValueWitnessV1>,
+) -> Bool {
   if and {
     tag >= 3,
     tag <= 6,

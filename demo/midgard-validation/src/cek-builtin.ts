@@ -24,6 +24,7 @@ export {
   midgardCekDirectStepArguments,
   semanticizeMidgardCekDirectConstant,
 } from "./cek-builtin.evaluate-direct-builtin.js";
+export { midgardCekKnownBuiltinFailure } from "./cek-builtin.known-failure.js";
 export {
   hashMidgardCekDirectArguments,
   hashMidgardCekDirectValueWitness,

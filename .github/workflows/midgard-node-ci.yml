@@ -526,6 +526,13 @@ jobs:
       - name: Check CEK builtin step evidence vectors
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run golden:cek-builtin-step-evidence
+      # The known builtin failure conformance vectors: the off-chain twin's
+      # verdict on each case of a fixed corpus, rendered into the Aiken module
+      # that holds the on-chain rule to the same verdicts. The off-chain twin
+      # must match the on-chain rule.
+      - name: Check known builtin failure conformance vectors
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run golden:known-builtin-failure-conformance
       # The V1 CEK builtin cost channel: every builtin's budget at a spread of
       # argument sizes, from the pinned 350-entry cost vector, run against the
       # on-chain cost table as a generated Aiken module.

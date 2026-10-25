@@ -923,6 +923,40 @@
       }
     },
     {
+      "id": "known-builtin-failure-conformance",
+      "kind": "golden",
+      "summary": "Known builtin failure conformance: a corpus of builtin applications and the verdict the TypeScript twin midgardCekKnownBuiltinFailure gives each (known, not known, refused), as a JSON fixture plus a generated Aiken module holding midgard/cek_builtin_v1.known_builtin_failure_v1 to every verdict.",
+      "generators": [
+        "demo/midgard-validation/scripts/generate-known-builtin-failure-conformance-goldens.mjs"
+      ],
+      "packageScripts": [
+        "demo/midgard-validation:fixtures:known-builtin-failure-conformance:sync",
+        "demo/midgard-validation:fixtures:known-builtin-failure-conformance:check"
+      ],
+      "producers": ["demo/midgard-validation"],
+      "inputs": [
+        "@golden-channel",
+        "demo/midgard-validation/tests/fixtures/known-builtin-failure-conformance.cases.mjs",
+        "demo/midgard-validation/tests/fixtures/known-builtin-failure-conformance.arguments.mjs",
+        "demo/midgard-validation/tests/fixtures/known-builtin-failure-conformance.crypto-cases.mjs"
+      ],
+      "outputs": [
+        "demo/midgard-validation/tests/fixtures/known-builtin-failure-conformance.generated.json",
+        "onchain/aiken/lib/midgard/known-builtin-failure-conformance-golden.test.ak"
+      ],
+      "aikenImportsOfOutputs": true,
+      "sync": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:known-builtin-failure-conformance:sync"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:known-builtin-failure-conformance:check"
+      },
+      "ci": {
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Check known builtin failure conformance vectors"
+      }
+    },
+    {
       "id": "cek-program-large-integer",
       "kind": "golden",
       "summary": "Canonical CEK program envelope and material for a program that adds a 65-byte integer, decoded and executed by the material-execution vitest suite.",

@@ -190,6 +190,8 @@
     "fixtures:cek-builtin-cardano-v1:check": "node scripts/generate-cek-builtin-cardano-v1-goldens.mjs --check",
     "fixtures:cek-builtin-step-evidence:sync": "node scripts/generate-cek-builtin-step-evidence-goldens.mjs",
     "fixtures:cek-builtin-step-evidence:check": "node scripts/generate-cek-builtin-step-evidence-goldens.mjs --check",
+    "fixtures:known-builtin-failure-conformance:sync": "pnpm run build && node scripts/generate-known-builtin-failure-conformance-goldens.mjs",
+    "fixtures:known-builtin-failure-conformance:check": "pnpm run build && node scripts/generate-known-builtin-failure-conformance-goldens.mjs --check",
     "test": "node ../scripts/package-test.mjs",
     "bench": "vitest run --config vitest.bench.config.ts",
     "test:cardano-capability-p2:data-breadth": "NODE_OPTIONS=--max-old-space-size=4096 node scripts/verify-goal-cardano-capability-p2-data-breadth.mjs",
