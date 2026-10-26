@@ -10,12 +10,15 @@ import {
   type DirectPurposeCustody,
   type DirectPurposeFamily,
   directPurposeFieldPlans,
+  directPurposePaging,
   type DirectPurposeRole,
   type DirectPurposeTransition,
+  fitDirectPurposeTransition,
   submitDirectPurposeInit,
   submitDirectPurposeStep01Accepted,
   submitDirectPurposeStep01Forced,
   submitDirectPurposeTerminal,
+  submitDirectPurposeTransition,
   submitDirectPurposeTransitions,
 } from "../../src/direct-purpose-family/index.js";
 import {
@@ -202,6 +205,36 @@ export type DirectPurposePlan = {
   readonly transitions: readonly DirectPurposeTransition[];
 };
 
+/** Continues the thread role by role from step-01 to the terminal's input,
+ * as the workflow does: each page that opens MPF proofs is sized to the
+ * transaction budget. */
+const continueToTerminalInput = async (
+  custody: DirectPurposeCustody,
+  planned: readonly DirectPurposeTransition[],
+  start: UTxO,
+): Promise<UTxO> => {
+  const paging = directPurposePaging({
+    label: custody.family.label,
+    transitions: planned,
+    first: start.datum!,
+  });
+  const last = planned.at(-1)!;
+  let thread = start;
+  let role = planned[0]!.role;
+  while (role !== last.next || thread.datum !== last.datum) {
+    const transition = await fitDirectPurposeTransition({
+      custody,
+      paging,
+      role,
+      thread,
+    });
+    thread = (await submitDirectPurposeTransition(custody, thread, transition))
+      .thread;
+    role = transition.next;
+  }
+  return thread;
+};
+
 /** Genuine Init, the source-appropriate step-01, and the planned custody up
  * to the terminal's input. Every thread transaction is measured. */
 export const driveDirectPurposeThread = async <Plan extends DirectPurposePlan>({
@@ -211,6 +244,7 @@ export const driveDirectPurposeThread = async <Plan extends DirectPurposePlan>({
   references,
   prepare,
   transitions,
+  beforeStep01,
 }: {
   readonly harness: DirectPurposeHarness;
   readonly family: DirectPurposeFamily<unknown>;
@@ -224,6 +258,13 @@ export const driveDirectPurposeThread = async <Plan extends DirectPurposePlan>({
   }) => Promise<Plan>;
   /** Replaces the planned custody (e.g. a prefix for refusal rows). */
   readonly transitions?: (prepared: Plan) => Plan["transitions"];
+  /** Runs against the Init thread before step-01 spends it (e.g. a forged
+   * step-01 the validator must refuse). */
+  readonly beforeStep01?: (args: {
+    readonly thread: UTxO;
+    readonly unit: string;
+    readonly prepared: Plan;
+  }) => Promise<void>;
 }) => {
   const { proverLucid, direct, proverSigner } = harness;
   const steps: StepMeasurement[] = [];
@@ -264,6 +305,18 @@ export const driveDirectPurposeThread = async <Plan extends DirectPurposePlan>({
     }),
   );
   steps.push({ label: "init", measurement: init.measurement });
+  if (beforeStep01 !== undefined) {
+    const [txHash, outputIndex] = init.result.nextThreadOutRef.split("#");
+    const [initThread] = await proverLucid.utxosByOutRef([
+      { txHash: txHash!, outputIndex: Number(outputIndex) },
+    ]);
+    if (initThread === undefined) throw new Error("Init thread output absent");
+    await beforeStep01({
+      thread: initThread,
+      unit: init.result.computationThreadUnit,
+      prepared,
+    });
+  }
   const common = {
     family,
     lucid: proverLucid,
@@ -316,11 +369,14 @@ export const driveDirectPurposeThread = async <Plan extends DirectPurposePlan>({
     },
   ]);
   if (start === undefined) throw new Error("step-01 thread output absent");
-  const thread = await submitDirectPurposeTransitions(
-    custody,
-    start,
-    transitions?.(prepared) ?? prepared.transitions,
-  );
+  const thread =
+    transitions === undefined
+      ? await continueToTerminalInput(custody, prepared.transitions, start)
+      : await submitDirectPurposeTransitions(
+          custody,
+          start,
+          transitions(prepared),
+        );
   /** `at` is the terminal's input when the caller advanced the thread. */
   const terminal = (requireConviction = true, at: UTxO = thread) =>
     captureEmulatorSubmission(harness.emulator, () =>

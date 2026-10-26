@@ -32,7 +32,41 @@ export type DirectPurposeTransition = {
   /** A PHAS membership withdrawal rides the transaction. */
   readonly membership?: { readonly redeemer: string };
   readonly redeemer: (args: DirectPurposeRedeemerArgs) => string;
+  /** Set on the first transition of each page of a proof-opening run. */
+  readonly paged?: {
+    readonly run: DirectPurposePagedRun;
+    readonly start: number;
+  };
 };
+
+/** Pages over `count` items whose transactions open MPF proofs per item: the
+ * page from `start` of `size` items continues a thread holding
+ * `datumAt(start)` at `role`. Datums inside a page depend on its size; the
+ * datum at a page boundary depends only on the position. */
+export type DirectPurposePagedRun = {
+  readonly role: DirectPurposeRole;
+  readonly count: number;
+  /** The configured maximum page size. */
+  readonly batch: number;
+  readonly datumAt: (start: number) => string;
+  readonly page: (
+    start: number,
+    size: number,
+  ) => readonly DirectPurposeTransition[];
+};
+
+/** Every page of `run` at its configured size, each first transition marked
+ * with its run and start. */
+export const pagedRunTransitions = (
+  run: DirectPurposePagedRun,
+): readonly DirectPurposeTransition[] =>
+  pages(run.count, run.batch).flatMap(([start, size]) =>
+    run
+      .page(start, size)
+      .map((transition, index) =>
+        index === 0 ? { ...transition, paged: { run, start } } : transition,
+      ),
+  );
 
 export type DirectPurposeFieldPlan = ReturnType<typeof createDirectFieldPlan>;
 
