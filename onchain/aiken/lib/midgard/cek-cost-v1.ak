@@ -210,12 +210,30 @@ pub fn write_bits_budget_v1(sizes: List<Int>) -> BuiltinBudgetV1 {
   }
 }
 
+/// The argument count of protocol version 11 builtin `tag` (87 to 100).
+fn pv11_argument_count_v1(tag: Int) -> Int {
+  expect tag <= 100
+  if tag == 94 {
+    4
+  } else if tag == 87 || tag == 95 {
+    3
+  } else if or {
+    tag == 89,
+    tag == 90,
+    tag == 98,
+    tag == 99,
+  } {
+    1
+  } else {
+    2
+  }
+}
+
 pub fn builtin_argument_count_v1(tag: Int) -> Int {
-  expect and {
-      tag >= 0,
-      tag <= 86,
-    }
-  if tag == 36 {
+  expect tag >= 0
+  if tag > 86 {
+    pv11_argument_count_v1(tag)
+  } else if tag == 36 {
     6
   } else if or {
     tag == 12,
@@ -664,18 +682,93 @@ fn memory_cost_v1(tag: Int, sizes: List<Int>) -> Int {
   }
 }
 
+/// Cardano's `CostingInteger` saturates at the largest signed 64-bit integer.
+fn saturated(cost: Int) -> Int {
+  min(cost, 9223372036854775807)
+}
+
+/// The budget of protocol version 11 builtin `tag` (87 to 100). Each size is
+/// as Cardano measures it for that builtin (`builtin_cost_sizes_v1`); a size
+/// no cost function of the builtin reads is 0.
+fn pv11_budget_v1(tag: Int, sizes: List<Int>) -> BuiltinBudgetV1 {
+  let Pair(cpu, memory) = if tag == 87 {
+    // expModInteger over (base, exponent, modulus) words: half as much
+    // again when the base is larger than the modulus.
+    let Pair(x, Pair(y, z)) = three(sizes)
+    let cost = 607153 + 231697 * y * z + 53144 * y * z * z
+    Pair(
+      if x > z {
+        cost + cost / 2
+      } else {
+        cost
+      },
+      z,
+    )
+  } else if tag == 88 {
+    Pair(linear2_x(116711, 1957, sizes), 4)
+  } else if tag == 89 {
+    expect [_] = sizes
+    Pair(231883, 10)
+  } else if tag == 90 {
+    let x = one(sizes)
+    Pair(linear1(1000, 24838, x), linear1(7, 1, x))
+  } else if tag == 91 {
+    expect [_, _] = sizes
+    Pair(232010, 32)
+  } else if tag == 92 {
+    Pair(linear2_x(321837444, 25087669, sizes), 18)
+  } else if tag == 93 {
+    Pair(linear2_x(617887431, 67302824, sizes), 36)
+  } else if tag == 94 {
+    expect [_, _, _, depth] = sizes
+    Pair(linear1(356924, 18413, depth), linear1(45, 21, depth))
+  } else if tag == 95 {
+    Pair(linear3_z(219951, 9444, sizes), 1)
+  } else if tag == 96 {
+    let Pair(x, y) = two(sizes)
+    Pair(1000 + 172116 * x + 183150 * y + 6 * x * y, linear2_add(24, 21, sizes))
+  } else if tag == 97 {
+    let Pair(x, y) = two(sizes)
+    Pair(
+      if x < y {
+        213283
+      } else {
+        618401 + 1998 * x + 28258 * y
+      },
+      1,
+    )
+  } else if tag == 98 {
+    let x = one(sizes)
+    Pair(linear1(1000, 38159, x), linear1(2, 22, x))
+  } else if tag == 99 {
+    let x = one(sizes)
+    Pair(1000 + 95933 * x + x * x, linear1(1, 11, x))
+  } else {
+    expect tag == 100
+    Pair(linear2_y(1000, 277577, sizes), linear2_y(12, 21, sizes))
+  }
+  BuiltinBudgetV1 { cpu: saturated(cpu), memory: saturated(memory) }
+}
+
 pub fn builtin_budget_v1(
   tag: Int,
   cost_argument_sizes: List<Int>,
 ) -> BuiltinBudgetV1 {
-  expect and {
-      tag >= 0,
-      tag <= 86,
-      list.length(cost_argument_sizes) == builtin_argument_count_v1(tag),
-      list.all(cost_argument_sizes, fn(size) { size >= 0 }),
+  if tag > 86 {
+    expect and {
+        list.length(cost_argument_sizes) == builtin_argument_count_v1(tag),
+        list.all(cost_argument_sizes, fn(size) { size >= 0 }),
+      }
+    pv11_budget_v1(tag, cost_argument_sizes)
+  } else {
+    expect and {
+        tag >= 0,
+        list.length(cost_argument_sizes) == builtin_argument_count_v1(tag),
+        list.all(cost_argument_sizes, fn(size) { size >= 0 }),
+      }
+    BuiltinBudgetV1 {
+      cpu: cpu_cost_v1(tag, cost_argument_sizes),
+      memory: memory_cost_v1(tag, cost_argument_sizes),
     }
-  BuiltinBudgetV1 {
-    cpu: cpu_cost_v1(tag, cost_argument_sizes),
-    memory: memory_cost_v1(tag, cost_argument_sizes),
   }
 }

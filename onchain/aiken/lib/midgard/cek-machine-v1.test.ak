@@ -2245,49 +2245,102 @@ fn explicit_error() -> cek_machine_v1.MachineStateV1 {
   )
 }
 
-test compute_builtin_steps_a_resolved_tag() {
-  cek_machine_v1.verify_core_step_v1(
-    compute_builtin_pre(86),
-    state(
-      cek_machine_v1.mode_return,
-      cek_proof_v1.hash_builtin_value_v1(
-        86,
-        0,
-        0,
-        cek_proof_v1.empty_sequence_root_v1,
-      ),
-      cek_proof_v1.empty_environment_root_v1,
-      cek_proof_v1.empty_continuation_root_v1,
+fn compute_builtin_post(tag: Int, forces: Int) -> cek_machine_v1.MachineStateV1 {
+  state(
+    cek_machine_v1.mode_return,
+    cek_proof_v1.hash_builtin_value_v1(
+      tag,
+      forces,
       0,
-      16100,
-      200,
+      cek_proof_v1.empty_sequence_root_v1,
     ),
-    cek_machine_v1.ComputeBuiltin { tag: 86 },
+    cek_proof_v1.empty_environment_root_v1,
+    cek_proof_v1.empty_continuation_root_v1,
+    0,
+    16100,
+    200,
   )
 }
 
-test compute_builtin_aborts_on_tag_87() fail {
+fn compute_builtin_steps(tag: Int, forces: Int) -> Bool {
   cek_machine_v1.verify_core_step_v1(
+    compute_builtin_pre(tag),
+    compute_builtin_post(tag, forces),
+    cek_machine_v1.ComputeBuiltin { tag },
+  )
+}
+
+test compute_builtin_steps_a_resolved_tag() {
+  compute_builtin_steps(86, 0)
+}
+
+// The PV 11 builtins step to their builtin value: dropList, lengthOfArray,
+// listToArray and indexArray (88 to 91) awaiting one force, the others none.
+test compute_builtin_steps_every_pv11_tag() {
+  list.all(
+    [87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100],
+    fn(tag) {
+      compute_builtin_steps(
+        tag,
+        if tag >= 88 && tag <= 91 {
+          1
+        } else {
+          0
+        },
+      )
+    },
+  )
+}
+
+test compute_builtin_refuses_a_pv11_value_with_the_wrong_forces() {
+  and {
+    !compute_builtin_steps(88, 0),
+    !compute_builtin_steps(91, 2),
+    !compute_builtin_steps(87, 1),
+    !compute_builtin_steps(100, 1),
+  }
+}
+
+test compute_builtin_refuses_a_pv11_value_of_another_tag() {
+  !cek_machine_v1.verify_core_step_v1(
+    compute_builtin_pre(94),
+    compute_builtin_post(95, 0),
+    cek_machine_v1.ComputeBuiltin { tag: 94 },
+  )
+}
+
+test compute_builtin_refuses_an_error_for_a_pv11_tag() {
+  !cek_machine_v1.verify_core_step_v1(
     compute_builtin_pre(87),
     explicit_error(),
     cek_machine_v1.ComputeBuiltin { tag: 87 },
   )
 }
 
-test compute_builtin_aborts_on_tag_100() fail {
-  cek_machine_v1.verify_core_step_v1(
-    compute_builtin_pre(100),
-    explicit_error(),
-    cek_machine_v1.ComputeBuiltin { tag: 100 },
-  )
+test compute_builtin_aborts_on_tag_101() fail {
+  compute_builtin_steps(101, 0)
 }
 
-test builtin_force_count_aborts_on_an_unresolved_tag() fail {
-  cek_machine_v1.builtin_force_count(88) >= 0
+test builtin_force_count_of_the_pv11_tags() {
+  list.map(
+    [87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100],
+    cek_machine_v1.builtin_force_count,
+  ) == [0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 }
 
-test builtin_argument_count_aborts_on_an_unresolved_tag() fail {
-  cek_machine_v1.builtin_argument_count(94) >= 0
+test builtin_argument_count_of_the_pv11_tags() {
+  list.map(
+    [87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100],
+    cek_machine_v1.builtin_argument_count,
+  ) == [3, 2, 1, 1, 2, 2, 2, 4, 3, 2, 2, 1, 1, 2]
+}
+
+test builtin_force_count_aborts_past_tag_100() fail {
+  cek_machine_v1.builtin_force_count(101) >= 0
+}
+
+test builtin_argument_count_aborts_past_tag_100() fail {
+  cek_machine_v1.builtin_argument_count(101) >= 0
 }
 
 // Constants at the 64-bit and constructor-128 boundaries. `constant_root_v1`

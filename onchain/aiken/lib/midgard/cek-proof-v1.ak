@@ -34,10 +34,6 @@ pub const max_bounded_blob_bytes = 9215
 /// Cardano's PV 11 builtin indices: 0-100.
 pub const max_builtin_tag = 100
 
-/// The builtins the CEK machine can step through. Tags 87-100 are admitted in
-/// program material, but every step that reaches one aborts.
-pub const max_resolved_builtin_tag = 86
-
 /// Cardano's PV 11 bound on a constr's field count (`mbConstr`).
 pub const max_constr_fields = 1024
 
@@ -262,7 +258,7 @@ pub fn hash_builtin_value_v1(
   arguments_root: ByteArray,
 ) -> ByteArray {
   expect tag >= 0
-  expect tag <= max_resolved_builtin_tag
+  expect tag <= max_builtin_tag
   hash_value_preimage(
     #"85"
       |> bytearray.concat(cbor.serialise(4))

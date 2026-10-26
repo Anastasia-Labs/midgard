@@ -378,8 +378,16 @@ pub fn hash_state_v1(state: MachineStateV1) -> ByteArray {
 
 pub fn builtin_force_count(tag: Int) -> Int {
   expect tag >= 0
-  expect tag <= cek_proof_v1.max_resolved_builtin_tag
-  if or {
+  expect tag <= cek_proof_v1.max_builtin_tag
+  if tag > 86 {
+    // dropList, lengthOfArray, listToArray and indexArray take one type
+    // argument; the other PV 11 builtins none.
+    if tag >= 88 && tag <= 91 {
+      1
+    } else {
+      0
+    }
+  } else if or {
     tag == 29,
     tag == 30,
     tag == 31,
@@ -403,8 +411,10 @@ pub fn builtin_force_count(tag: Int) -> Int {
 
 pub fn builtin_argument_count(tag: Int) -> Int {
   expect tag >= 0
-  expect tag <= cek_proof_v1.max_resolved_builtin_tag
-  if tag == 36 {
+  expect tag <= cek_proof_v1.max_builtin_tag
+  if tag > 86 {
+    cek_cost_v1.builtin_argument_count_v1(tag)
+  } else if tag == 36 {
     6
   } else if or {
     tag == 12,

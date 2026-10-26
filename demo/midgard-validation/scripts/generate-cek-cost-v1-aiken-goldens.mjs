@@ -2,7 +2,7 @@
 
 /**
  * Produces `onchain/aiken/lib/midgard/cek-cost-v1-golden.test.ak`: for every
- * Plutus V3 builtin tag (0 to 86), the cpu and memory that
+ * Plutus V3 builtin tag (0 to 100), the cpu and memory that
  * `cek_cost_v1.builtin_budget_v1` must charge at a spread of argument sizes.
  *
  * The expected budgets come from `computeMidgardCekBuiltinBudget`, the
@@ -13,7 +13,8 @@
  * that every parameter of every cost model moves the result: an intercept and
  * a slope, both sides of a diagonal, equal and unequal sizes, a zero literal
  * and a non-zero one. Changing any single on-chain cost parameter therefore
- * fails at least one generated row.
+ * fails at least one generated row. A cost that can pass the largest signed
+ * 64-bit integer has a row there too, where Cardano saturates it.
  *
  * usage: node scripts/generate-cek-cost-v1-aiken-goldens.mjs [--check]
  * (run `pnpm run build` first; it reads `dist`).
@@ -60,7 +61,30 @@ if (
   throw new Error("the pinned Plutus V3 cost vector must have 350 entries");
 }
 
-const MAX_BUILTIN_TAG = 86;
+const MAX_BUILTIN_TAG = 100;
+
+/** The protocol version 11 builtins, which the reference library predates. */
+const PV11_BUILTINS = new Map([
+  [87, ["expModInteger", 3]],
+  [88, ["dropList", 2]],
+  [89, ["lengthOfArray", 1]],
+  [90, ["listToArray", 1]],
+  [91, ["indexArray", 2]],
+  [92, ["bls12_381_G1_multiScalarMul", 2]],
+  [93, ["bls12_381_G2_multiScalarMul", 2]],
+  [94, ["insertCoin", 4]],
+  [95, ["lookupCoin", 3]],
+  [96, ["unionValue", 2]],
+  [97, ["valueContains", 2]],
+  [98, ["valueData", 1]],
+  [99, ["unValueData", 1]],
+  [100, ["scaleValue", 2]],
+]);
+
+const MAX_SIGNED_64 = "9223372036854775807";
+
+/** Size points past which a builtin's cost saturates. */
+const SATURATING_POINTS = new Map([[88, [[MAX_SIGNED_64, 0]]]]);
 
 /** Argument-size points per arity. */
 const SIZE_POINTS = new Map([
@@ -91,6 +115,15 @@ const SIZE_POINTS = new Map([
     ],
   ],
   [
+    4,
+    [
+      [0, 0, 0, 0],
+      [0, 0, 0, 1],
+      [1, 2, 3, 5],
+      [0, 0, 0, 100],
+    ],
+  ],
+  [
     6,
     [
       [1, 1, 1, 1, 1, 1],
@@ -105,21 +138,31 @@ const snakeCase = (name) =>
     .replace(/[^A-Za-z0-9]+/gu, "_")
     .toLowerCase();
 
-const renderTest = (tag) => {
+const nameAndArity = (tag) => {
+  const pv11 = PV11_BUILTINS.get(tag);
+  if (pv11 !== undefined) return pv11;
   const harmonicTag = harmonicBuiltinTag(tag);
-  const name = builtinTagToString(harmonicTag);
-  const arity = PartialBuiltin.getNRequiredArgsFor(harmonicTag);
+  return [
+    builtinTagToString(harmonicTag),
+    PartialBuiltin.getNRequiredArgsFor(harmonicTag),
+  ];
+};
+
+const renderTest = (tag) => {
+  const [name, arity] = nameAndArity(tag);
   const points = SIZE_POINTS.get(arity);
   if (points === undefined) {
     throw new Error(`no size points for arity ${String(arity)} (tag ${tag})`);
   }
-  const rows = points.map((sizes) => {
-    const { cpu, memory } = computeMidgardCekBuiltinBudget(
-      tag,
-      sizes.map(BigInt),
-    );
-    return `    cek_cost_v1.builtin_budget_v1(${tag}, [${sizes.join(", ")}]) == cek_cost_v1.BuiltinBudgetV1 { cpu: ${cpu}, memory: ${memory} },`;
-  });
+  const rows = [...points, ...(SATURATING_POINTS.get(tag) ?? [])].map(
+    (sizes) => {
+      const { cpu, memory } = computeMidgardCekBuiltinBudget(
+        tag,
+        sizes.map(BigInt),
+      );
+      return `    cek_cost_v1.builtin_budget_v1(${tag}, [${sizes.join(", ")}]) == cek_cost_v1.BuiltinBudgetV1 { cpu: ${cpu}, memory: ${memory} },`;
+    },
+  );
   return `
 // ${name}
 test budget_${String(tag).padStart(2, "0")}_${snakeCase(name)}() {

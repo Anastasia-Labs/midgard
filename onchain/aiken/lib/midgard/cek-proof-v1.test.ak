@@ -101,9 +101,23 @@ test builtin_term_hash_refuses_tag_101() fail {
   cek_proof_v1.hash_builtin_term_v1(101) != #""
 }
 
-test builtin_value_hash_refuses_an_unresolved_tag() fail {
+test builtin_value_hash_takes_tag_100() {
   cek_proof_v1.hash_builtin_value_v1(
-    87,
+    100,
+    0,
+    0,
+    cek_proof_v1.empty_sequence_root_v1,
+  ) != cek_proof_v1.hash_builtin_value_v1(
+    86,
+    0,
+    0,
+    cek_proof_v1.empty_sequence_root_v1,
+  )
+}
+
+test builtin_value_hash_refuses_tag_101() fail {
+  cek_proof_v1.hash_builtin_value_v1(
+    101,
     0,
     0,
     cek_proof_v1.empty_sequence_root_v1,

@@ -296,6 +296,106 @@ pub fn builtin_cost_sizes_v1(
   } else if tag == 82 || tag == 83 {
     expect [source, amount] = arguments
     [value_memory_size_v1(source), literal_cost_size_v1(integer_v1(amount))]
+  } else if tag > 86 {
+    pv11_cost_sizes_v1(tag, arguments)
+  } else {
+    standard_cost_sizes_v1(arguments)
+  }
+}
+
+/// Bits needed for `size`: 0 for 0, else floor(log2 size) + 1.
+fn bit_length_v1(size: Int) -> Int {
+  if size == 0 {
+    0
+  } else {
+    1 + bit_length_v1(size / 2)
+  }
+}
+
+/// Cardano's `ValueMaxDepth`: the bit length of the number of currencies
+/// plus that of the largest token map.
+fn value_max_depth_v1(value: ValueWitnessV1) -> Int {
+  let currencies = value_payload_v1(value)
+  let Pair(count, largest) = list.foldl(
+    currencies,
+    Pair(0, 0),
+    fn(currency, totals) {
+      let Pair(count, largest) = totals
+      let tokens = list.length(builtin.un_map_data(currency.2nd))
+      Pair(
+        count + 1,
+        if tokens > largest {
+          tokens
+        } else {
+          largest
+        },
+      )
+    },
+  )
+  bit_length_v1(count) + bit_length_v1(largest)
+}
+
+fn data_list_node_count_v1(items: List<Data>) -> Int {
+  list.foldl(items, 0, fn(item, total) { total + data_node_count_v1(item) })
+}
+
+/// Cardano's Data node count: one for every constructor, map, list, integer
+/// and byte string, counting both sides of each map entry.
+fn data_node_count_v1(data: Data) -> Int {
+  if data_is_constr(data) {
+    1 + data_list_node_count_v1(builtin.un_constr_data(data).2nd)
+  } else if data_is_map(data) {
+    1 + list.foldl(
+      builtin.un_map_data(data),
+      0,
+      fn(entry, total) {
+        total + data_node_count_v1(entry.1st) + data_node_count_v1(entry.2nd)
+      },
+    )
+  } else if data_is_list(data) {
+    1 + data_list_node_count_v1(builtin.un_list_data(data))
+  } else {
+    1
+  }
+}
+
+/// The sizes Cardano costs protocol version 11 builtin `tag` (87 to 100) on;
+/// a size no cost function of the builtin reads is 0. expModInteger,
+/// unionValue, valueContains and valueData cost their arguments' memory.
+fn pv11_cost_sizes_v1(tag: Int, arguments: List<ValueWitnessV1>) -> List<Int> {
+  if tag == 88 {
+    expect [count, source] = arguments
+    let _ = list_payload_v1(source)
+    [literal_cost_size_v1(integer_v1(count)), 0]
+  } else if tag == 89 {
+    expect [source] = arguments
+    let _ = array_payload_v1(source)
+    [0]
+  } else if tag == 90 {
+    expect [source] = arguments
+    [list.length(list_payload_v1(source).2nd)]
+  } else if tag == 91 {
+    expect [source, index] = arguments
+    let _ = array_payload_v1(source)
+    let _ = integer_v1(index)
+    [0, 0]
+  } else if tag == 92 || tag == 93 {
+    expect [scalars, points] = arguments
+    let _ = list_payload_v1(points)
+    [list.length(list_payload_v1(scalars).2nd), 0]
+  } else if tag == 94 {
+    expect [_, _, _, value] = arguments
+    [0, 0, 0, value_max_depth_v1(value)]
+  } else if tag == 95 {
+    expect [_, _, value] = arguments
+    [0, 0, value_max_depth_v1(value)]
+  } else if tag == 99 {
+    expect [source] = arguments
+    [data_node_count_v1(data_payload_v1(source))]
+  } else if tag == 100 {
+    expect [scalar, value] = arguments
+    let _ = integer_v1(scalar)
+    [0, value_memory_size_v1(value)]
   } else {
     standard_cost_sizes_v1(arguments)
   }
@@ -725,6 +825,30 @@ fn pair_payload_v1(
 fn data_payload_v1(value: ValueWitnessV1) -> Data {
   expect constant_type_v1(value) == cek_constant_v1.DataConstant
   constant_payload_v1(value)
+}
+
+/// An array's element type and its elements' payloads: an array constant's
+/// payload is its elements' list.
+fn array_payload_v1(
+  value: ValueWitnessV1,
+) -> Pair<cek_constant_v1.ConstantTypeV1, List<Data>> {
+  expect cek_constant_v1.ArrayConstant { element } = constant_type_v1(value)
+  let payload = constant_payload_v1(value)
+  expect data_is_list(payload)
+  Pair(element, builtin.un_list_data(payload))
+}
+
+/// A Value's currencies, as its payload (its `valueData` map) holds them.
+fn value_payload_v1(value: ValueWitnessV1) -> Pairs<Data, Data> {
+  expect constant_type_v1(value) == cek_constant_v1.ValueConstant
+  let payload = constant_payload_v1(value)
+  expect data_is_map(payload)
+  builtin.un_map_data(payload)
+}
+
+fn ledger_value_v1(value: ValueWitnessV1) -> Value {
+  expect constant_type_v1(value) == cek_constant_v1.ValueConstant
+  builtin.un_value_data(constant_payload_v1(value))
 }
 
 fn g1_bytes_v1(value: ValueWitnessV1) -> ByteArray {
@@ -2942,6 +3066,192 @@ pub fn verify_direct_bls_final_roots_v1(
   )
 }
 
+/// The ledger value result of a Value builtin, as a Value constant's payload.
+fn result_is_value_v1(result: ValueWitnessV1, value: Value) -> Bool {
+  result_is_constant_v1(
+    result,
+    cek_constant_v1.ValueConstant,
+    builtin.value_data(value),
+  )
+}
+
+/// Verifies a protocol version 11 builtin (87 to 100) on its revealed
+/// constants. The list and array builtins act on the committed payloads; the
+/// others run the ledger's own builtin, which applies every Plutus-defined
+/// bound (operand ranges, key lengths, quantity range, canonical Value data),
+/// so a success the ledger refuses cannot be proven.
+fn verify_pv11_v1(
+  tag: Int,
+  arguments: List<ValueWitnessV1>,
+  result: ValueWitnessV1,
+) -> Bool {
+  if tag == 87 {
+    expect [base, exponent, modulus] = arguments
+    result_is_constant_v1(
+      result,
+      cek_constant_v1.IntegerConstant,
+      builtin.i_data(
+        builtin.exp_mod_integer(
+          integer_v1(base),
+          integer_v1(exponent),
+          integer_v1(modulus),
+        ),
+      ),
+    )
+  } else if tag == 88 {
+    expect [count_value, source] = arguments
+    let Pair(element, items) = list_payload_v1(source)
+    let count = integer_v1(count_value)
+    // The count is clamped to the list's length before the ledger's
+    // dropList, whose own charge grows with the count.
+    let dropped = if count <= 0 {
+      items
+    } else if count >= list.length(items) {
+      []
+    } else {
+      builtin.drop_list(count, items)
+    }
+    result_is_constant_v1(
+      result,
+      cek_constant_v1.ListConstant { element },
+      builtin.list_data(dropped),
+    )
+  } else if tag == 89 {
+    expect [source] = arguments
+    result_is_constant_v1(
+      result,
+      cek_constant_v1.IntegerConstant,
+      builtin.i_data(list.length(array_payload_v1(source).2nd)),
+    )
+  } else if tag == 90 {
+    expect [source] = arguments
+    expect cek_constant_v1.ListConstant { element } = constant_type_v1(source)
+    result_is_constant_v1(
+      result,
+      cek_constant_v1.ArrayConstant { element },
+      constant_payload_v1(source),
+    )
+  } else if tag == 91 {
+    expect [source, index_value] = arguments
+    let Pair(element, items) = array_payload_v1(source)
+    let index = integer_v1(index_value)
+    // An index at or past the length leaves no head to select.
+    expect index >= 0
+    result_is_constant_v1(
+      result,
+      element,
+      builtin.head_list(builtin.drop_list(index, items)),
+    )
+  } else if tag == 92 {
+    expect [scalars, points] = arguments
+    expect Pair(cek_constant_v1.IntegerConstant, scalar_items) = list_payload_v1(
+      scalars,
+    )
+    expect Pair(cek_constant_v1.BlsG1Constant, point_items) = list_payload_v1(
+      points,
+    )
+    result_is_constant_v1(
+      result,
+      cek_constant_v1.BlsG1Constant,
+      builtin.b_data(
+        builtin.bls12_381_g1_multi_scalar_mul(
+          list.map(scalar_items, builtin.un_i_data),
+          list.map(
+            point_items,
+            fn(point) {
+              builtin.un_b_data(point) |> builtin.bls12_381_g1_uncompress
+            },
+          ),
+        )
+          |> builtin.bls12_381_g1_compress,
+      ),
+    )
+  } else if tag == 93 {
+    expect [scalars, points] = arguments
+    expect Pair(cek_constant_v1.IntegerConstant, scalar_items) = list_payload_v1(
+      scalars,
+    )
+    expect Pair(cek_constant_v1.BlsG2Constant, point_items) = list_payload_v1(
+      points,
+    )
+    result_is_constant_v1(
+      result,
+      cek_constant_v1.BlsG2Constant,
+      builtin.b_data(
+        builtin.bls12_381_g2_multi_scalar_mul(
+          list.map(scalar_items, builtin.un_i_data),
+          list.map(
+            point_items,
+            fn(point) {
+              builtin.un_b_data(point) |> builtin.bls12_381_g2_uncompress
+            },
+          ),
+        )
+          |> builtin.bls12_381_g2_compress,
+      ),
+    )
+  } else if tag == 94 {
+    expect [currency, token, quantity, value] = arguments
+    result_is_value_v1(
+      result,
+      builtin.insert_value(
+        bytes_v1(currency),
+        bytes_v1(token),
+        integer_v1(quantity),
+        ledger_value_v1(value),
+      ),
+    )
+  } else if tag == 95 {
+    expect [currency, token, value] = arguments
+    result_is_constant_v1(
+      result,
+      cek_constant_v1.IntegerConstant,
+      builtin.i_data(
+        builtin.lookup_value(
+          bytes_v1(currency),
+          bytes_v1(token),
+          ledger_value_v1(value),
+        ),
+      ),
+    )
+  } else if tag == 96 {
+    expect [left, right] = arguments
+    result_is_value_v1(
+      result,
+      builtin.union_value(ledger_value_v1(left), ledger_value_v1(right)),
+    )
+  } else if tag == 97 {
+    expect [left, right] = arguments
+    result_is_constant_v1(
+      result,
+      cek_constant_v1.BooleanConstant,
+      bool_data(
+        builtin.contains_value(ledger_value_v1(left), ledger_value_v1(right)),
+      ),
+    )
+  } else if tag == 98 {
+    // A Value constant's payload is its valueData map. The ledger refuses
+    // valueData only past 40,000 entries, which no direct payload holds.
+    expect [value] = arguments
+    expect constant_type_v1(value) == cek_constant_v1.ValueConstant
+    result_is_constant_v1(
+      result,
+      cek_constant_v1.DataConstant,
+      constant_payload_v1(value),
+    )
+  } else if tag == 99 {
+    expect [source] = arguments
+    result_is_value_v1(result, builtin.un_value_data(data_payload_v1(source)))
+  } else {
+    expect tag == 100
+    expect [scalar, value] = arguments
+    result_is_value_v1(
+      result,
+      builtin.scale_value(integer_v1(scalar), ledger_value_v1(value)),
+    )
+  }
+}
+
 /// A proof limit, not a Cardano rule: over it a success or failure arm aborts.
 /// It also keeps every variant E out-of-bound argument (an integer outside
 /// [-2^262143, 2^262143 - 1], a byte string over 65,536 B) out of the success
@@ -3006,6 +3316,8 @@ pub fn verify_direct_builtin_v1(
     verify_bls_expression_v1(tag, arguments, result)
   } else if tag >= 71 && tag <= 86 {
     verify_v3_bytes_v1(tag, arguments, result)
+  } else if tag >= 87 && tag <= 100 {
+    verify_pv11_v1(tag, arguments, result)
   } else {
     False
   }
@@ -3154,6 +3466,10 @@ type RuntimeValueKindV1 {
   ListDataRuntimeValue
   ListDataPairRuntimeValue
   ListIntegerRuntimeValue
+  ArrayRuntimeValue
+  ValueRuntimeValue
+  ListBlsG1RuntimeValue
+  ListBlsG2RuntimeValue
 }
 
 fn runtime_value_matches_kind_v1(
@@ -3203,6 +3519,20 @@ fn runtime_value_matches_kind_v1(
             constant_type == cek_constant_v1.ListConstant {
               element: cek_constant_v1.IntegerConstant,
             }
+          ArrayRuntimeValue ->
+            when constant_type is {
+              cek_constant_v1.ArrayConstant { .. } -> True
+              _ -> False
+            }
+          ValueRuntimeValue -> constant_type == cek_constant_v1.ValueConstant
+          ListBlsG1RuntimeValue ->
+            constant_type == cek_constant_v1.ListConstant {
+              element: cek_constant_v1.BlsG1Constant,
+            }
+          ListBlsG2RuntimeValue ->
+            constant_type == cek_constant_v1.ListConstant {
+              element: cek_constant_v1.BlsG2Constant,
+            }
           AnyRuntimeValue -> True
           BlsMillerLoopRuntimeValue -> False
         }
@@ -3249,6 +3579,20 @@ fn runtime_value_matches_kind_v1(
           ListIntegerRuntimeValue ->
             constant_type == cek_constant_v1.ListConstant {
               element: cek_constant_v1.IntegerConstant,
+            }
+          ArrayRuntimeValue ->
+            when constant_type is {
+              cek_constant_v1.ArrayConstant { .. } -> True
+              _ -> False
+            }
+          ValueRuntimeValue -> constant_type == cek_constant_v1.ValueConstant
+          ListBlsG1RuntimeValue ->
+            constant_type == cek_constant_v1.ListConstant {
+              element: cek_constant_v1.BlsG1Constant,
+            }
+          ListBlsG2RuntimeValue ->
+            constant_type == cek_constant_v1.ListConstant {
+              element: cek_constant_v1.BlsG2Constant,
             }
           AnyRuntimeValue -> True
           BlsMillerLoopRuntimeValue -> False
@@ -3325,7 +3669,7 @@ fn mk_cons_arguments_are_well_typed_v1(
 fn builtin_argument_kinds_v1(tag: Int) -> List<RuntimeValueKindV1> {
   expect and {
       tag >= 0,
-      tag <= cek_proof_v1.max_resolved_builtin_tag,
+      tag <= cek_proof_v1.max_builtin_tag,
     }
   if tag >= 0 && tag <= 9 {
     [IntegerRuntimeValue, IntegerRuntimeValue]
@@ -3432,9 +3776,44 @@ fn builtin_argument_kinds_v1(tag: Int) -> List<RuntimeValueKindV1> {
     [IntegerRuntimeValue, IntegerRuntimeValue]
   } else if tag == 82 || tag == 83 {
     [ByteStringRuntimeValue, IntegerRuntimeValue]
-  } else {
-    expect tag >= 84 && tag <= 86
+  } else if tag >= 84 && tag <= 86 {
     [ByteStringRuntimeValue]
+  } else {
+    pv11_argument_kinds_v1(tag)
+  }
+}
+
+fn pv11_argument_kinds_v1(tag: Int) -> List<RuntimeValueKindV1> {
+  if tag == 87 {
+    [IntegerRuntimeValue, IntegerRuntimeValue, IntegerRuntimeValue]
+  } else if tag == 88 {
+    [IntegerRuntimeValue, ListRuntimeValue]
+  } else if tag == 89 {
+    [ArrayRuntimeValue]
+  } else if tag == 90 {
+    [ListRuntimeValue]
+  } else if tag == 91 {
+    [ArrayRuntimeValue, IntegerRuntimeValue]
+  } else if tag == 92 {
+    [ListIntegerRuntimeValue, ListBlsG1RuntimeValue]
+  } else if tag == 93 {
+    [ListIntegerRuntimeValue, ListBlsG2RuntimeValue]
+  } else if tag == 94 {
+    [
+      ByteStringRuntimeValue, ByteStringRuntimeValue, IntegerRuntimeValue,
+      ValueRuntimeValue,
+    ]
+  } else if tag == 95 {
+    [ByteStringRuntimeValue, ByteStringRuntimeValue, ValueRuntimeValue]
+  } else if tag == 96 || tag == 97 {
+    [ValueRuntimeValue, ValueRuntimeValue]
+  } else if tag == 98 {
+    [ValueRuntimeValue]
+  } else if tag == 99 {
+    [DataRuntimeValue]
+  } else {
+    expect tag == 100
+    [IntegerRuntimeValue, ValueRuntimeValue]
   }
 }
 
@@ -4117,6 +4496,8 @@ pub fn verify_direct_scalar_semantics(
     verify_control_v1(tag, arguments, result)
   } else if tag >= 71 && tag <= 86 {
     verify_v3_bytes_v1(tag, arguments, result)
+  } else if tag >= 87 && tag <= 100 {
+    verify_pv11_v1(tag, arguments, result)
   } else {
     False
   }

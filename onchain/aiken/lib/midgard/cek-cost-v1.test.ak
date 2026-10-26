@@ -90,7 +90,7 @@ test invalid_arity_fails_closed() fail {
 }
 
 test unknown_tag_fails_closed() fail {
-  cek_cost_v1.builtin_budget_v1(87, [1]).cpu == 0
+  cek_cost_v1.builtin_budget_v1(101, [1]).cpu == 0
 }
 
 test division_budget_is_the_division_row() {
