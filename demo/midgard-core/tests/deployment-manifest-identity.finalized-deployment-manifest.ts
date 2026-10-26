@@ -1,11 +1,13 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 
+import { deploymentDaRetentionDays } from "../src/da-transport.js";
 import {
   computeDeploymentManifestId,
   computeDeploymentManifestJsonDigest,
   verifyDeploymentManifestIdentity,
   verifyFinalizedDeploymentManifest,
 } from "../src/deployment-manifest-identity.js";
+import { validateFinalizedDa } from "../src/deployment-manifest-identity/finalized.validate-finalized-da.js";
 import { finalizedManifest } from "./deployment-manifest-identity.finalized-manifest.js";
 
 describe("finalized deployment manifest", () => {
@@ -23,6 +25,17 @@ describe("finalized deployment manifest", () => {
     expect(verifyFinalizedDeploymentManifest(document)).toBe(document);
     expect(Object.isFrozen(document)).toBe(false);
     expect(Object.isFrozen(document.artifacts)).toBe(false);
+  });
+
+  it("binds the manifest DA minimum to the actual compiled deployment profile", () => {
+    const da = finalizedManifest().da;
+    const withRetention = (retentionDays: number) => ({
+      ...da,
+      transportProfile: { ...da.transportProfile, retentionDays },
+    });
+    const minimum = deploymentDaRetentionDays();
+    expect(() => validateFinalizedDa(withRetention(minimum))).not.toThrow();
+    expect(() => validateFinalizedDa(withRetention(minimum - 1))).toThrow();
   });
 
   it.each([

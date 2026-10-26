@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 import { canonicalJson } from "../src/canonical-json.js";
+import { deploymentDaRetentionDays } from "../src/da-transport.js";
 import { DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "../src/deployment-manifest-identity.js";
 import {
   AllowListRefusal,
@@ -71,6 +72,18 @@ describe("deployment profile binding", () => {
     ).toThrow();
     expect(() => requireSelectedDeploymentProfile(undefined)).toThrow();
     expect(() => requireSelectedDeploymentProfile("preprod-public")).toThrow();
+  });
+
+  it("uses the public 120-day bootstrap window and keeps other profile floors", () => {
+    expect(
+      deploymentDaRetentionDays(DEPLOYMENT_PROFILES["preprod-public"]),
+    ).toBe(120);
+    for (const profile of Object.values(DEPLOYMENT_PROFILES))
+      if (!("da_transport" in profile))
+        expect(deploymentDaRetentionDays(profile)).toBe(15);
+    expect(deploymentDaRetentionDays()).toBe(
+      deploymentDaRetentionDays(SELECTED_DEPLOYMENT_PROFILE),
+    );
   });
 
   it("maps each DA bond amount to its own manifest key", () => {

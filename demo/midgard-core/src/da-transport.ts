@@ -49,6 +49,7 @@ export {
   DaRequestResponseProtocol,
   DaTransportSigningDomain,
   type DaTransportTimingOptions,
+  deploymentDaRetentionDays,
 } from "./da-transport.da-libp2p-runtime-manifest.js";
 export {
   decodeDaCapabilitiesRequestCbor,

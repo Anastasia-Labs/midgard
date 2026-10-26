@@ -61,6 +61,7 @@ export type RetentionPruneReasonCode =
   | "live_queue_header"
   | "terminal_recovery_pending"
   | "removed_header"
+  | "within_deployment_retention"
   | "past_challengeability_horizon"
   | "still_challengeable";
 
@@ -92,7 +93,8 @@ export type RetentionPruneInput = {
  * the deployment's automatic recovery horizon. That hold also precedes the
  * wall-clock horizon: a provisional removal or merge can still be rolled back.
  * After retirement, removed headers can be pruned immediately and merged
- * headers once challengeability has passed. The L1 head and live queue remain
+ * headers once both challengeability and their promised history retention have
+ * passed. The L1 head and live queue remain
  * exempt throughout.
  */
 export const daRetentionPruneDecision = (
@@ -107,7 +109,10 @@ export const daRetentionPruneDecision = (
       "blockTimeMs must be a non-negative safe integer of milliseconds",
     );
   }
-  const retentionDays = input.retentionDays ?? window.retentionDays;
+  const retentionDays = requireRetentionDays(
+    input.retentionDays ?? window.retentionDays,
+    "retentionDays",
+  );
   const challengeableUntilMs = input.blockTimeMs + window.requiredRetentionMs;
   const base = {
     challengeableUntilMs,
@@ -137,6 +142,12 @@ export const daRetentionPruneDecision = (
   if (input.headerStatus === "removed") {
     return { decision: "prune", reasonCode: "removed_header", ...base };
   }
+  if (input.nowMs > challengeableUntilMs && input.nowMs <= base.retainUntilMs)
+    return {
+      decision: "retain",
+      reasonCode: "within_deployment_retention",
+      ...base,
+    };
   if (input.nowMs > challengeableUntilMs) {
     return {
       decision: "prune",
