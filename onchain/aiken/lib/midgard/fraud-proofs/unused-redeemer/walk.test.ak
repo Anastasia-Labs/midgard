@@ -320,6 +320,21 @@ test walk_hands_a_first_pointer_to_claim_custody() {
   }
 }
 
+test walk_hands_a_spend_pointer_to_claim_custody() {
+  let witnesses = [witness(native_types.SpendRedeemer, 0)]
+  let fixture_block = block([], witnesses)
+  let state = bound(fixture_block, Some(source(3)))
+  let read = walked(fixture_block, witnesses, state, 0, Pair(0, 0))
+  and {
+    read.reached,
+    !read.repeated,
+    walk.claim_context_v1(read).target == RedeemerPointer {
+      redeemer_index: 0,
+      coordinate: PurposeCoordinateV1 { kind: 0, index: 0 },
+    },
+  }
+}
+
 test walk_stops_at_the_named_redeemer() {
   let witnesses = [reward(0), reward(0)]
   let fixture_block = block([hash], witnesses)
