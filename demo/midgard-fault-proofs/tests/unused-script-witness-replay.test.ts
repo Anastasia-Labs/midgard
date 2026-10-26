@@ -5,8 +5,11 @@
  * used witness, is detected at that witness. A transaction spending an input
  * with no predecessor descriptor gives no detection and the replay of the
  * block completes. Forced rejections are detected exactly when the recorded
- * reason contradicts the unused-witness audit.
+ * reason contradicts the unused-witness audit. A transaction whose output or
+ * mint item is not in the shape the purpose walk reads gives no detection,
+ * and a union with the canonicality family still returns its finding.
  */
+import { encodeMidgardVersionedScript } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
@@ -14,6 +17,9 @@ import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canon
 import { type LedgerEntry, singleLedgerAt } from "../src/ledger-at.js";
 import {
   admitCompleteCanonicalReplayPredecessor,
+  createCompleteCanonicalReplayUnion,
+  MINT_ITEM_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
+  TRANSACTION_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
   UNUSED_SCRIPT_WITNESS_COMPLETE_CANONICAL_REPLAY,
 } from "../src/workflow/complete-replay.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
@@ -29,6 +35,7 @@ import {
   expectedHash,
   honestForcedShape,
 } from "./support/script-integrity-hash-mismatch-emulator.subject.js";
+import { unreadableItemViolations } from "./support/unreadable-item-block.js";
 import { holdingNativeScript } from "./support/unused-script-witness-emulator.subject.js";
 
 const daProvenance = {
@@ -171,4 +178,62 @@ describe("unusedScriptWitness replay over forced transactions", () => {
       ids,
     );
   });
+});
+
+describe("unusedScriptWitness replay beside an item the purpose walk cannot read", () => {
+  const USW = UNUSED_SCRIPT_WITNESS_COMPLETE_CANONICAL_REPLAY;
+  const OUTPUT = TRANSACTION_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY;
+  const MINT = MINT_ITEM_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY;
+  // One native witness no purpose executes, so the leaf is a candidate.
+  const witness = {
+    scriptWitnesses: [encodeMidgardVersionedScript(holdingNativeScript(2))],
+  };
+  const output = { ...witness, outputs: [Buffer.alloc(64)] };
+  const mint = { ...witness, mintPolicyItems: [Buffer.from("00", "hex")] };
+
+  it("detects the unused witness when every item reads", async () => {
+    await expect(
+      unreadableItemViolations(USW, { kind: "normal" }, witness),
+    ).resolves.toEqual(["unused-script-witness"]);
+  });
+
+  // Union members in catalogue order. The output family convicts accepted
+  // outputs only; beside a forced-valid leaf the union still completes.
+  it.each([
+    [
+      "an accepted output",
+      { kind: "normal" },
+      output,
+      [OUTPUT, USW],
+      ["transaction-output-non-canonical"],
+    ],
+    [
+      "an accepted mint item",
+      { kind: "normal" },
+      mint,
+      [USW, MINT],
+      ["mint-item-non-canonical"],
+    ],
+    [
+      "a forced-valid output",
+      forced("ForcedTxValid"),
+      output,
+      [OUTPUT, USW],
+      [],
+    ],
+  ] as const)(
+    "finds nothing beside %s it cannot read and the union completes",
+    async (_label, source, items, members, union) => {
+      await expect(
+        unreadableItemViolations(USW, source, items),
+      ).resolves.toEqual([]);
+      await expect(
+        unreadableItemViolations(
+          createCompleteCanonicalReplayUnion([...members]),
+          source,
+          items,
+        ),
+      ).resolves.toEqual(union);
+    },
+  );
 });

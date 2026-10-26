@@ -55,38 +55,65 @@ export class UnusedScriptWitnessHonestLeaf extends Error {
   }
 }
 
+/** A spent ledger value, mint item or output not in the shape the walk
+ * reads; a decoding or canonicality phase refuses it first. */
+class UnreadableItem extends Error {}
+
+/** `decode` over one committed item, refused as unreadable when it does not
+ * decode. */
+const readItem = <T>(decode: () => T): T => {
+  try {
+    return decode();
+  } catch (error) {
+    throw new UnreadableItem(
+      `${UNUSED_SCRIPT_WITNESS_CATEGORY_LABEL}: ${String(error)}`,
+    );
+  }
+};
+
 /** The script hash of every purpose the walk resolves: spends with a script
  * credential, mint policies, required observers, then protected-script
  * receive outputs. `null` when a spent input has no predecessor descriptor,
- * which the walk cannot show. */
+ * which the walk cannot show, or when a spent ledger value, mint item or
+ * output does not decode, which makes an earlier phase the first fault. */
 const purposeScriptHashes = (
   material: DirectScriptMaterial,
 ): readonly string[] | null => {
   const spends: string[] = [];
-  for (const item of material.fields[0]!) {
-    const entry = material.ledger.root.entries.find((candidate) =>
-      candidate.key.equals(item),
-    );
-    if (entry === undefined) return null;
-    const credential = decodeMidgardAddressBytes(
-      decodeMidgardLedgerOutputCommitment(entry.value).address,
-    ).paymentCredential;
-    if (credential.kind === "Script")
-      spends.push(credential.hash.toString("hex"));
+  try {
+    for (const item of material.fields[0]!) {
+      const entry = material.ledger.root.entries.find((candidate) =>
+        candidate.key.equals(item),
+      );
+      if (entry === undefined) return null;
+      const credential = readItem(
+        () =>
+          decodeMidgardAddressBytes(
+            decodeMidgardLedgerOutputCommitment(entry.value).address,
+          ).paymentCredential,
+      );
+      if (credential.kind === "Script")
+        spends.push(credential.hash.toString("hex"));
+    }
+    return [
+      ...spends,
+      ...material.fields[5]!.map((item) =>
+        Buffer.from(
+          readItem(() => decodeMidgardMintPolicyItem(item)).policyId,
+        ).toString("hex"),
+      ),
+      ...material.fields[3]!.map((item) => item.toString("hex")),
+      ...material.fields[2]!.flatMap((item) => {
+        const address = readItem(() => directOutputAddress(item));
+        return address.protected && address.paymentCredential.kind === "Script"
+          ? [address.paymentCredential.hash.toString("hex")]
+          : [];
+      }),
+    ];
+  } catch (error) {
+    if (error instanceof UnreadableItem) return null;
+    throw error;
   }
-  return [
-    ...spends,
-    ...material.fields[5]!.map((item) =>
-      Buffer.from(decodeMidgardMintPolicyItem(item).policyId).toString("hex"),
-    ),
-    ...material.fields[3]!.map((item) => item.toString("hex")),
-    ...material.fields[2]!.flatMap((item) => {
-      const address = directOutputAddress(item);
-      return address.protected && address.paymentCredential.kind === "Script"
-        ? [address.paymentCredential.hash.toString("hex")]
-        : [];
-    }),
-  ];
 };
 
 /** What the terminal reads about the witness at `scriptIndex`, from the
@@ -302,8 +329,9 @@ export const requireConvictingUnusedScriptWitnessProof = async (
 
 /** The convicting witness, without planning custody; `null` when none
  * convicts, when a spent or referenced input has no predecessor descriptor,
- * when a witness is not a versioned script, or when a purpose's script has
- * no source, so no walk completes. */
+ * when a witness is not a versioned script, when a spent ledger value, mint
+ * item or output does not decode, or when a purpose's script has no source,
+ * so no walk completes. */
 export const unusedScriptWitnessDetection = async (
   material: DirectScriptMaterial,
 ): Promise<UnusedScriptWitnessChoice | null> => {
