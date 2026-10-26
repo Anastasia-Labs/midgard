@@ -265,8 +265,14 @@ export {
   buildReceivePurposeLanguageChain,
   buildReceivePurposeLanguageFaultProofContracts,
   type BuildReceivePurposeLanguageFaultProofContractsParams,
+  checkReceivePurposeLanguageRoleOrder,
   RECEIVE_PURPOSE_LANGUAGE_FAULT_PROOF_TITLES,
+  RECEIVE_PURPOSE_LANGUAGE_ROLE_ORDER,
+  type ReceivePurposeLanguageChain,
   type ReceivePurposeLanguageFaultProofContracts,
+  type ReceivePurposeLanguageRole,
+  type ReceivePurposeLanguageRoles,
+  receivePurposeLanguageRoles,
 } from "./families/receive-purpose-language.js";
 export {
   buildRedeemerCanonicityChain,

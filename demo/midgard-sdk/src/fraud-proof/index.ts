@@ -54,6 +54,7 @@ export * from "./no-reference-input.js";
 export * from "./non-existent-input.js";
 export * from "./proof-thread-source.js";
 export * from "./proof-thread-substrate.js";
+export * from "./receive-purpose-language.js";
 export * from "./reference-input-no-idx.js";
 export * from "./script-integrity-hash-mismatch.js";
 export * from "./staging.js";
