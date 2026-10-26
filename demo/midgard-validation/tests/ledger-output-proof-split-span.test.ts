@@ -18,6 +18,7 @@ describe("ledger output proofs with span attaches inside a datum scalar", () => 
       "DATUM_SCALAR_ROWS",
       "EMPTY_FIELD_ROWS",
       "LEDGER_OUTPUT_PROOF_REPLAY_ROWS",
+      "LONG_ASSET_NAME_ROWS",
       "ledgerOutputProofReplayClaimProblems",
       "ledgerOutputProofReplayVector",
     ]);

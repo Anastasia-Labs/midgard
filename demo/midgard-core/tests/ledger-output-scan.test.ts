@@ -16,6 +16,7 @@ import {
   encodeMidgardLedgerOutputScanControl,
   initialMidgardLedgerOutputScanControl,
   MidgardLedgerOutputScanStages,
+  traceMidgardLedgerOutputScan,
 } from "../src/index.js";
 
 const outputFixture = (): {
@@ -137,5 +138,82 @@ describe("ledger output scan V1", () => {
     expect(() => buildMidgardLedgerOutputScanTrace(emptyInlineDatum)).toThrow(
       /canonical Plutus Data|failed closed/,
     );
+  });
+});
+
+/** The output `{0: address, 1: value}` whose Cardano value is one policy of
+ * 141 32-byte names and one 23-byte tail name: 5,000 bytes with tail
+ * quantity 24 and 5,001 with 256. The value runs across the 4,095-byte chunk
+ * boundary. */
+const longNameOutput = (tailQuantity: 24n | 256n): MidgardTxOutput => ({
+  address: Buffer.concat([Buffer.from([0x60]), Buffer.alloc(28, 0x11)]),
+  value: {
+    lovelace: 2_000_000n,
+    assets: new Map([
+      [
+        "55".repeat(28),
+        new Map([
+          ...Array.from(
+            { length: 141 },
+            (_, index) =>
+              [
+                Buffer.concat([
+                  Buffer.from([index]),
+                  Buffer.alloc(31, 0xaa),
+                ]).toString("hex"),
+                1n,
+              ] as const,
+          ),
+          [`ff${"bb".repeat(22)}`, tailQuantity] as const,
+        ]),
+      ],
+    ]),
+  },
+});
+
+describe("ledger output scan V1 at the Cardano value cap", () => {
+  it("accepts a 5,000-byte value across the chunk boundary", () => {
+    const output = longNameOutput(24n);
+    const cbor = encodeMidgardTxOutput(output);
+    expect(midgardValueToCmlValue(output.value).to_cbor_bytes().length).toBe(
+      5_000,
+    );
+    expect(cbor.length).toBe(5_034);
+
+    const { terminal } = buildMidgardLedgerOutputScanTrace(cbor);
+    expect(terminal.stage).toBe(MidgardLedgerOutputScanStages.Terminal);
+    expect(terminal.cardanoValueSize).toBe(5_000);
+    expect(terminal.assetFrontier.count).toBe(142);
+  });
+
+  it("refuses a 5,001-byte value at the asset that crosses the cap", () => {
+    const output = longNameOutput(256n);
+    const cbor = encodeMidgardTxOutput(output);
+    expect(midgardValueToCmlValue(output.value).to_cbor_bytes().length).toBe(
+      5_001,
+    );
+
+    expect(() => buildMidgardLedgerOutputScanTrace(cbor)).toThrow(
+      /failed closed/,
+    );
+    const { refusal } = traceMidgardLedgerOutputScan(cbor);
+    expect(refusal).not.toBeNull();
+    expect(refusal!.chunkIndex).toBe(1);
+    expect(refusal!.control.stage).toBe(MidgardLedgerOutputScanStages.Asset);
+    expect(refusal!.control.assetRemaining).toBe(1);
+    expect(refusal!.control.cardanoValueSize).toBe(4_974);
+  });
+
+  it("encodes a control whose value size is at most the cap", () => {
+    const { terminal } = buildMidgardLedgerOutputScanTrace(
+      encodeMidgardTxOutput(longNameOutput(24n)),
+    );
+    expect(() => encodeMidgardLedgerOutputScanControl(terminal)).not.toThrow();
+    expect(() =>
+      encodeMidgardLedgerOutputScanControl({
+        ...terminal,
+        cardanoValueSize: 5_001,
+      }),
+    ).toThrow(/Cardano Value size/);
   });
 });

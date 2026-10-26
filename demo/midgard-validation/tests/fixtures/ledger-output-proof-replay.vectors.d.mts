@@ -37,13 +37,21 @@ export type LedgerOutputProofReplayRowV1 = {
     readonly nameHex: string;
     readonly quantity: bigint;
   };
+  /** One policy's asset entries, `[name, quantity]` in order. */
+  readonly assets?: {
+    readonly policyHex: string;
+    readonly entries: readonly (readonly [string, bigint])[];
+  };
   readonly total?: number;
   readonly steps: number;
   readonly emptySteps: number;
   readonly attaches?: readonly number[];
 };
 
-export type LedgerOutputProofReplayFamilyV1 = "emptyField" | "datumScalar";
+export type LedgerOutputProofReplayFamilyV1 =
+  | "emptyField"
+  | "datumScalar"
+  | "longAssetNames";
 
 /** What the twins produce for one row, as the generated fixture holds it. */
 export type LedgerOutputProofReplayVectorV1 = {
@@ -88,6 +96,8 @@ export type LedgerOutputProofReplayTwinsV1 = {
 export declare const EMPTY_FIELD_ROWS: readonly LedgerOutputProofReplayRowV1[];
 
 export declare const DATUM_SCALAR_ROWS: readonly LedgerOutputProofReplayRowV1[];
+
+export declare const LONG_ASSET_NAME_ROWS: readonly LedgerOutputProofReplayRowV1[];
 
 export declare const LEDGER_OUTPUT_PROOF_REPLAY_ROWS: readonly {
   readonly row: LedgerOutputProofReplayRowV1;

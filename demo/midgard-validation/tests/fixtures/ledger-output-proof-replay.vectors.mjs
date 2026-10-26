@@ -13,8 +13,8 @@
  * the same terminal control, feeding the step planner's scalar claims to the
  * scalar attestation and the split stage yields on the way.
  *
- * A row is an output (a datum, and optionally a reference script or an asset)
- * plus the claims that make it worth having: its step count, how many datum
+ * A row is an output (a datum, and optionally a reference script, an asset or
+ * a value of long asset names) plus the claims that make it worth having: its step count, how many datum
  * steps read an empty span and, for the datum-scalar rows, the shape of each
  * datum-stage span attach. The claims are written here by hand; the generator
  * refuses to emit a row whose producer no longer exhibits them.
@@ -190,6 +190,49 @@ export const DATUM_SCALAR_ROWS = [
   },
 ];
 
+/**
+ * The asset entries of a Cardano value spelled with long asset names: one
+ * policy, 141 32-byte names (`index ‖ 0xaa × 31`, quantity 1) and the 23-byte
+ * tail name `0xff ‖ 0xbb × 22` with quantity `tailQuantity`. With the 2 ADA
+ * lovelace the value is 5,000 bytes for tail quantity 24 and 4,999 for 23.
+ */
+const longNameAssets = (tailQuantity) => ({
+  policyHex: "55".repeat(28),
+  entries: [
+    ...Array.from({ length: 141 }, (_, index) => [
+      `${index.toString(16).padStart(2, "0")}${"aa".repeat(31)}`,
+      1n,
+    ]),
+    [`ff${"bb".repeat(22)}`, tailQuantity],
+  ],
+});
+
+/**
+ * Outputs whose Cardano value is spelled with long asset names up to the
+ * 5,000-byte value cap, across the 4,095-byte chunk boundary. Their chunk
+ * witnesses are written as for `DATUM_SCALAR_ROWS`.
+ */
+export const LONG_ASSET_NAME_ROWS = [
+  {
+    id: "long_asset_names_value_at_the_cap",
+    label: "a 5000-byte value of long asset names",
+    datumHex: "00",
+    assets: longNameAssets(24n),
+    total: 5_037,
+    steps: 315,
+    emptySteps: 0,
+  },
+  {
+    id: "long_asset_names_value_under_the_cap",
+    label: "a 4999-byte value of long asset names",
+    datumHex: "00",
+    assets: longNameAssets(23n),
+    total: 5_036,
+    steps: 315,
+    emptySteps: 0,
+  },
+];
+
 const hash = (bytes) => Buffer.from(blake2b(bytes, { dkLen: 32 }));
 
 const rowOutput = (row, twins) =>
@@ -199,14 +242,16 @@ const rowOutput = (row, twins) =>
       value: {
         lovelace: 2_000_000n,
         assets:
-          row.asset === undefined
-            ? new Map()
-            : new Map([
-                [
-                  row.asset.policyHex,
-                  new Map([[row.asset.nameHex, row.asset.quantity]]),
-                ],
-              ]),
+          row.assets !== undefined
+            ? new Map([[row.assets.policyHex, new Map(row.assets.entries)]])
+            : row.asset === undefined
+              ? new Map()
+              : new Map([
+                  [
+                    row.asset.policyHex,
+                    new Map([[row.asset.nameHex, row.asset.quantity]]),
+                  ],
+                ]),
       },
       datum: twins.decodeMidgardDatum(Buffer.from(row.datumHex, "hex")),
       ...(row.scriptHex === undefined
@@ -331,8 +376,8 @@ const plannerScalarClaims = (twins, trace) => {
 };
 
 /**
- * What the twins produce for `row` of `family` (`"emptyField"` or
- * `"datumScalar"`): the output, its proof's witness list and terminal control,
+ * What the twins produce for `row` of `family` (`"emptyField"`,
+ * `"datumScalar"` or `"longAssetNames"`): the output, its proof's witness list and terminal control,
  * and the measured claims.
  */
 export const ledgerOutputProofReplayVector = (row, family, twins) => {
@@ -392,8 +437,9 @@ export const ledgerOutputProofReplayClaimProblems = (row, vector) => {
   return problems;
 };
 
-/** The rows of both families, each with its family. */
+/** The rows of every family, each with its family. */
 export const LEDGER_OUTPUT_PROOF_REPLAY_ROWS = [
   ...EMPTY_FIELD_ROWS.map((row) => ({ row, family: "emptyField" })),
   ...DATUM_SCALAR_ROWS.map((row) => ({ row, family: "datumScalar" })),
+  ...LONG_ASSET_NAME_ROWS.map((row) => ({ row, family: "longAssetNames" })),
 ];

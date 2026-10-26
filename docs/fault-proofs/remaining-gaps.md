@@ -435,6 +435,8 @@ Severity: **Medium**
 Status: **Ownership decision required**  
 Confidence: **High**
 
+Fault-proof side closed: the ledger-output scan refuses an output Value over 5,000 bytes, so `transactionOutputNonCanonical` and `resolvedOutputNonCanonical` convict it under their existing arms.
+
 ### Summary
 
 Canonical V1 limits the Cardano CBOR encoding of each output Value to 5,000

@@ -130,11 +130,12 @@ const golden = {
 
 /**
  * The Aiken constants of one row: its witness list, terminal control hash and
- * planner scalar claims, and for an empty-field row also its output (a datum-scalar row's output is
- * built in the Aiken test from its structure).
+ * planner scalar claims, and for an empty-field or long-asset-name row also
+ * its output (a datum-scalar row's output is built in the Aiken test from its
+ * structure).
  */
 const rowConstants = ({ family, vector }) => ({
-  ...(family === "emptyField"
+  ...(family === "emptyField" || family === "longAssetNames"
     ? { [`${vector.id}_output`]: bytes(vector.outputCborHex) }
     : {}),
   [`${vector.id}_witnesses`]: bytes(vector.witnessesCborHex),
