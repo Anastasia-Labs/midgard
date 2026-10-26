@@ -41,6 +41,7 @@ import {
   buildRedeemerCanonicityFaultProofContracts,
   buildReferenceInputNoIdxFaultProofContracts,
   buildResolvedOutputNonCanonicalFaultProofContracts,
+  buildScriptIntegrityHashMismatchFaultProofContracts,
   buildScriptIntegrityHashMissingFaultProofContracts,
   buildSpendInputSignerMissingFaultProofContracts,
   buildStateQueueValidator,
@@ -87,6 +88,7 @@ import { type MintAuthorizationContracts } from "../../../src/mint-authorization
 import { type MissingSignatureContracts } from "../../../src/missing-signature/contracts.js";
 import { type NativeScriptDecodingContracts } from "../../../src/native-script-decoding/contracts.js";
 import { type NativeScriptInvalidContracts } from "../../../src/native-script-invalid/contracts.js";
+import { type ScriptIntegrityHashMismatchContracts } from "../../../src/script-integrity-hash-mismatch/contracts.js";
 import { type FabricatedDepositContracts } from "../../../src/submit-fabricated-deposit-step-01.js";
 import { type FabricatedWithdrawalContracts } from "../../../src/submit-fabricated-withdrawal-step-01.js";
 import { type ValueNotPreservedContracts } from "../../../src/value-not-preserved/contracts.js";
@@ -147,6 +149,7 @@ export const buildMinimalFaultProofContracts = async (
     realFieldPreimageLengthMismatch = false,
     realWitnessScriptDecoding = false,
     realScriptIntegrityHashMissing = false,
+    realScriptIntegrityHashMismatch = false,
     realWithdrawnReferenceInput = false,
     realMinFee = false,
     realDoubleWithdraw = false,
@@ -203,6 +206,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly realFieldPreimageLengthMismatch?: boolean;
     readonly realWitnessScriptDecoding?: boolean;
     readonly realScriptIntegrityHashMissing?: boolean;
+    readonly realScriptIntegrityHashMismatch?: boolean;
     readonly realWithdrawnReferenceInput?: boolean;
     readonly realMinFee?: boolean;
     readonly realDoubleWithdraw?: boolean;
@@ -251,6 +255,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly missingRedeemer?: DirectPurposeContracts;
     readonly missingScriptSource?: DirectPurposeContracts;
     readonly unusedRedeemer?: DirectPurposeContracts;
+    readonly scriptIntegrityHashMismatch?: ScriptIntegrityHashMismatchContracts;
     readonly missingSignature?: MissingSignatureContracts;
     readonly nativeScriptInvalid?: NativeScriptInvalidContracts;
     readonly minAda?: MinAdaContracts;
@@ -541,6 +546,10 @@ export const buildMinimalFaultProofContracts = async (
     realUnusedRedeemer,
     buildUnusedRedeemerFaultProofContracts,
   );
+  const scriptIntegrityHashMismatchContracts = await buildFamilyContracts(
+    realScriptIntegrityHashMismatch,
+    buildScriptIntegrityHashMismatchFaultProofContracts,
+  );
   const missingSignatureContracts = await buildFamilyContracts(
     realMissingSignature,
     buildMissingSignatureFaultProofContracts,
@@ -800,6 +809,21 @@ export const buildMinimalFaultProofContracts = async (
           steps: unusedRedeemerContracts.unusedRedeemer.steps as never,
           computationThread: unusedRedeemerContracts.computationThread,
           fraudProof: unusedRedeemerContracts.fraudProof,
+          hubOraclePolicyId: hubOracle.policyId,
+          stateQueuePolicyId: stateQueue.policyId,
+          fieldPreimageCertificatePolicyId,
+        };
+  const scriptIntegrityHashMismatch:
+    | ScriptIntegrityHashMismatchContracts
+    | undefined =
+    scriptIntegrityHashMismatchContracts === undefined
+      ? undefined
+      : {
+          steps: scriptIntegrityHashMismatchContracts
+            .scriptIntegrityHashMismatch.steps as never,
+          computationThread:
+            scriptIntegrityHashMismatchContracts.computationThread,
+          fraudProof: scriptIntegrityHashMismatchContracts.fraudProof,
           hubOraclePolicyId: hubOracle.policyId,
           stateQueuePolicyId: stateQueue.policyId,
           fieldPreimageCertificatePolicyId,
@@ -1148,7 +1172,9 @@ export const buildMinimalFaultProofContracts = async (
     executionSourceScriptDecoding:
       withActiveOperators.fraudProofContracts.executionSourceScriptDecoding,
     scriptIntegrityHashMismatch:
-      withActiveOperators.fraudProofContracts.scriptIntegrityHashMismatch,
+      scriptIntegrityHashMismatch === undefined
+        ? withActiveOperators.fraudProofContracts.scriptIntegrityHashMismatch
+        : chainFromSteps(scriptIntegrityHashMismatch.steps),
   };
 
   return {
@@ -1160,6 +1186,9 @@ export const buildMinimalFaultProofContracts = async (
     ...(missingRedeemer === undefined ? {} : { missingRedeemer }),
     ...(missingScriptSource === undefined ? {} : { missingScriptSource }),
     ...(unusedRedeemer === undefined ? {} : { unusedRedeemer }),
+    ...(scriptIntegrityHashMismatch === undefined
+      ? {}
+      : { scriptIntegrityHashMismatch }),
     ...(missingSignature === undefined ? {} : { missingSignature }),
     ...(nativeScriptInvalid === undefined ? {} : { nativeScriptInvalid }),
     ...(minAda === undefined ? {} : { minAda }),

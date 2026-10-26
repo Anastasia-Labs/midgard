@@ -13,6 +13,7 @@ import { OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_DEFINITION } from "../output-re
 import { PROTECTED_OUTPUT_SIGNER_MISSING_FAMILY_DEFINITION } from "../protected-output-signer-missing/authenticated-workflow.js";
 import { REDEEMER_CANONICITY_FAMILY_DEFINITION } from "../redeemer-canonicity/runtime.js";
 import { RESOLVED_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION } from "../resolved-output-non-canonical/authenticated-workflow.js";
+import { SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_DEFINITION } from "../script-integrity-hash-mismatch/workflow.js";
 import { SCRIPT_INTEGRITY_HASH_MISSING_FAMILY_DEFINITION } from "../script-integrity-hash-missing/v1.js";
 import { SPEND_INPUT_SIGNER_MISSING_FAMILY_DEFINITION } from "../spend-input-signer-missing/authenticated-workflow.js";
 import { TRANSACTION_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION } from "../transaction-output-non-canonical/workflow.js";
@@ -20,6 +21,7 @@ import { TRANSITION_TRACE_FAMILY_DEFINITION } from "../transition-trace/workflow
 import { UNUSED_REDEEMER_FAMILY_DEFINITION } from "../unused-redeemer/workflow.js";
 import { WITHDRAWAL_MISTAG_FAMILY_DEFINITION } from "../withdrawal-mistag/workflow.js";
 import { WITNESS_SCRIPT_DECODING_FAMILY_DEFINITION } from "../witness-script-decoding/workflow.js";
+import { CANONICAL_DECODABILITY_FAMILY_DEFINITION } from "./canonical-decodability.js";
 import { LINEAR_FAMILY_DEFINITIONS } from "./linear-family-definitions.js";
 
 /**
@@ -28,6 +30,7 @@ import { LINEAR_FAMILY_DEFINITIONS } from "./linear-family-definitions.js";
  * table-driven assembly test checks each key against its definition.
  */
 type CursorFamilyDefinitions = Readonly<{
+  canonicalDecodability: typeof CANONICAL_DECODABILITY_FAMILY_DEFINITION;
   witnessScriptDecoding: typeof WITNESS_SCRIPT_DECODING_FAMILY_DEFINITION;
   transactionOutputNonCanonical: typeof TRANSACTION_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION;
   resolvedOutputNonCanonical: typeof RESOLVED_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION;
@@ -50,10 +53,12 @@ type CursorFamilyDefinitions = Readonly<{
   missingRedeemer: typeof MISSING_REDEEMER_FAMILY_DEFINITION;
   missingScriptSource: typeof MISSING_SCRIPT_SOURCE_FAMILY_DEFINITION;
   unusedRedeemer: typeof UNUSED_REDEEMER_FAMILY_DEFINITION;
+  scriptIntegrityHashMismatch: typeof SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_DEFINITION;
 }>;
 
 export const CURSOR_FAMILY_DEFINITIONS: CursorFamilyDefinitions = Object.freeze(
   {
+    canonicalDecodability: CANONICAL_DECODABILITY_FAMILY_DEFINITION,
     witnessScriptDecoding: WITNESS_SCRIPT_DECODING_FAMILY_DEFINITION,
     transactionOutputNonCanonical:
       TRANSACTION_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION,
@@ -79,6 +84,8 @@ export const CURSOR_FAMILY_DEFINITIONS: CursorFamilyDefinitions = Object.freeze(
     missingRedeemer: MISSING_REDEEMER_FAMILY_DEFINITION,
     missingScriptSource: MISSING_SCRIPT_SOURCE_FAMILY_DEFINITION,
     unusedRedeemer: UNUSED_REDEEMER_FAMILY_DEFINITION,
+    scriptIntegrityHashMismatch:
+      SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_DEFINITION,
   },
 );
 

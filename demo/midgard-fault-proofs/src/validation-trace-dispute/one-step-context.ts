@@ -158,17 +158,17 @@ const peaks = (item: Item | undefined): Data => {
 };
 
 /** `native_scripts_control_from_witness`: its frontier peaks' positions. */
-const NATIVE_PEAKS = new Set([7, 11, 13, 15, 17, 18, 20, 22]);
+const NATIVE_PEAKS = new Set([6, 10, 12, 14, 16, 17, 19, 21]);
 
 /** `NativeFacts`' fields, by their position in the native control. */
-const NATIVE_FACTS = [0, 1, 2, 4, 6, 7, 8, 9, 12, 13, 14, 15, 16, 18, 19, 20];
+const NATIVE_FACTS = [0, 1, 2, 4, 5, 6, 7, 8, 11, 12, 13, 14, 15, 17, 18, 19];
 
 /** `cek_context_control_from_cbor`: its summaries' positions. */
 const CONTEXT_SEQUENCES = new Set([11, 12, 13, 14, 16, 21, 22]);
 const CONTEXT_SUMMARIES = new Set([18, 23]);
 
 const nativeControlFields = (cbor: string): Data[] =>
-  envelope(cbor, 26, "native control").map((item, index) =>
+  envelope(cbor, 25, "native control").map((item, index) =>
     NATIVE_PEAKS.has(index) ? peaks(item) : scalar(item),
   );
 

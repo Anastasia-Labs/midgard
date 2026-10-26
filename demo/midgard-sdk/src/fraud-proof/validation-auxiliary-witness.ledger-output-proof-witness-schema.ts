@@ -242,18 +242,10 @@ export const LedgerOutputProofWitnessSchema = Data.Enum([
   }),
   Data.Object({
     LedgerOutputProofValue: Data.Object({
-      asset_index: Data.Integer(),
       policy_id: Data.Bytes(),
       asset_name: Data.Bytes(),
       quantity: Data.Integer(),
       siblings: ByteArrayListSchema,
-      previous: Data.Nullable(
-        Data.Object({
-          asset_name: Data.Bytes(),
-          quantity: Data.Integer(),
-          tail: DataSequenceSummarySchema,
-        }),
-      ),
     }),
   }),
   Data.Object({

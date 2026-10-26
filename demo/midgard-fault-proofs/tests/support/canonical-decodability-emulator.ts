@@ -25,7 +25,10 @@ export {
   publishCanonicalDecodabilityReferenceScripts,
   setupCanonicalDecodabilityScenario,
 } from "./canonical-decodability-emulator.build-committed-fixture.js";
-export { submitCanonicalDecodabilityStep01Raw } from "./canonical-decodability-emulator.submit-canonical-decodability-step01-raw.js";
+export {
+  type CanonicalDecodabilityRawSuccessor,
+  submitCanonicalDecodabilityStep01Raw,
+} from "./canonical-decodability-emulator.submit-canonical-decodability-step01-raw.js";
 export { submitCanonicalDecodabilityStep02Raw } from "./canonical-decodability-emulator.submit-canonical-decodability-step02-raw.js";
 
 export { network };

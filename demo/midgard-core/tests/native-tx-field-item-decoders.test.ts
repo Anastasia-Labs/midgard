@@ -126,7 +126,7 @@ const itemEncoderFor = (
 ): readonly Buffer[] =>
   encodeMidgardFieldItems({ fieldIndex, items } as MidgardFieldItems);
 
-describe("fixed-item legality preserves authored input and signer order", () => {
+describe("fixed-item legality leaves repeated items to later phases", () => {
   const item = (field: number, index: number): Buffer =>
     field === 4
       ? Buffer.concat([Buffer.from("581c", "hex"), Buffer.alloc(28, index)])
@@ -135,15 +135,6 @@ describe("fixed-item legality preserves authored input and signer order", () => 
           Buffer.alloc(32),
           Buffer.of(0x19, 0x00, index),
         ]);
-
-  it.each([0, 1, 4])(
-    "accepts descending distinct items in field %i",
-    (field) => {
-      expect(
-        midgardFixedFieldItemIsLegal(field, item(field, 9), item(field, 8)),
-      ).toBe(true);
-    },
-  );
 
   it.each([0, 1, 4])(
     "leaves repeated items to their semantic phase in field %i",
@@ -326,7 +317,7 @@ describe("§5.3 item readers fail closed", () => {
 
 // Independently encoded and Ed25519-signed source vectors shared with the
 // actual FIWI validator-chain regression; physical signer hashes descend.
-describe("field-7 legality preserves authenticated witness order", () => {
+describe("fixed-item legality follows CanonicalDecode order", () => {
   const first = Buffer.from(
     "58658258208a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c584094da6e57c26fd188c52a4b23b2801f9c2fad870b15b2d289a5189141d8e18ada511c79dc9f7b32351c2a90aaafccb85bc9785189433ebc38c5ad8482d7b79e01",
     "hex",
@@ -335,43 +326,66 @@ describe("field-7 legality preserves authenticated witness order", () => {
     "58658258208139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b3945840aa08f5f3164fbe3da499efa9bc02d9ccb302c34e05b0089e82f2ffb30cbbb4732e9beaf9ce196bb62959de0f05e7c73de24f8d5d266758a74956d011b88e1a0f",
     "hex",
   );
+  const input = (byte: number) =>
+    Buffer.concat([
+      Buffer.from("5826825820", "hex"),
+      Buffer.alloc(32, byte),
+      Buffer.from("190000", "hex"),
+    ]);
 
-  it("accepts descending distinct signer hashes", () => {
-    expect(midgardFixedFieldItemIsLegal(7, first, second)).toBe(true);
+  it("accepts ascending signer hashes and refuses them descending", () => {
+    expect(midgardFixedFieldItemIsLegal(7, second, first)).toBe(true);
+    expect(midgardFixedFieldItemIsLegal(7, first, second)).toBe(false);
   });
 
-  it("accepts exact duplicate witnesses", () => {
-    expect(midgardFixedFieldItemIsLegal(7, first, first)).toBe(true);
+  it("refuses an exact duplicate witness", () => {
+    expect(midgardFixedFieldItemIsLegal(7, first, first)).toBe(false);
   });
 
-  it("does not impose a signature-byte order within one signer", () => {
+  it("orders one signer's witnesses by their bytes", () => {
     const changed = Buffer.from(first);
     changed.fill(0xff, 39);
-    expect(midgardFixedFieldItemIsLegal(7, changed, first)).toBe(true);
+    expect(midgardFixedFieldItemIsLegal(7, first, changed)).toBe(true);
+    expect(midgardFixedFieldItemIsLegal(7, changed, first)).toBe(false);
+  });
+
+  it.each([0, 1])(
+    "admits an ascending or repeated field-%i input and refuses a descending one",
+    (fieldIndex) => {
+      expect(midgardFixedFieldItemIsLegal(fieldIndex, input(1), input(2))).toBe(
+        true,
+      );
+      expect(midgardFixedFieldItemIsLegal(fieldIndex, input(2), input(2))).toBe(
+        true,
+      );
+      expect(midgardFixedFieldItemIsLegal(fieldIndex, input(2), input(1))).toBe(
+        false,
+      );
+    },
+  );
+
+  it("leaves required-signer order to later checks", () => {
+    const signer = (byte: number) =>
+      Buffer.concat([Buffer.from("581c", "hex"), Buffer.alloc(28, byte)]);
+    expect(midgardFixedFieldItemIsLegal(4, signer(2), signer(1))).toBe(true);
   });
 
   it.each(["current", "previous"] as const)(
     "still refuses malformed %s wrapper, key header, signature header and width",
     (position) => {
+      // second then first is a legal pair; only the malformed item differs.
+      expect(midgardFixedFieldItemIsLegal(7, second, first)).toBe(true);
+      const pair = (bad: Buffer) =>
+        position === "previous"
+          ? midgardFixedFieldItemIsLegal(7, bad, first)
+          : midgardFixedFieldItemIsLegal(7, second, bad);
+      const base = position === "previous" ? second : first;
       for (const offset of [1, 4, 38]) {
-        const malformed = Buffer.from(first);
+        const malformed = Buffer.from(base);
         malformed[offset] = malformed[offset]! + 1;
-        expect(
-          midgardFixedFieldItemIsLegal(
-            7,
-            position === "previous" ? malformed : first,
-            position === "current" ? malformed : first,
-          ),
-        ).toBe(false);
+        expect(pair(malformed)).toBe(false);
       }
-      const short = first.subarray(0, first.length - 1);
-      expect(
-        midgardFixedFieldItemIsLegal(
-          7,
-          position === "previous" ? short : first,
-          position === "current" ? short : first,
-        ),
-      ).toBe(false);
+      expect(pair(base.subarray(0, base.length - 1))).toBe(false);
     },
   );
 });

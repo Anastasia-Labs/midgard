@@ -239,7 +239,6 @@ fn phase_a_semantic_fixture() -> Pair<
         proof_source.field_preimage_lengths_cbor,
         validation_context_cbor,
         0,
-        vm_witness.initial_resolution_accumulator(),
         schedule_hash,
         0,
         signer_frontier_commitment,

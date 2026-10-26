@@ -1,3 +1,5 @@
+import "./deployment-profile-operator-economics.test-cases.mjs";
+
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { encodeNativeScript } from "./deployment-profile-aiken.mjs";
@@ -428,7 +430,7 @@ test("digest is independent of YAML key order and changes with timing or economi
   assert.notEqual(profileDigest(profile), profileDigest(daBondChanged));
 });
 
-test("profile validation rejects unsafe timing, economics, networks, and unknown fields", () => {
+test("profile validation rejects unsafe timing, networks, and unknown fields", () => {
   const mutations = [
     (profile) => {
       profile.timing.dispute_side_clock_ms = 0;
@@ -445,13 +447,6 @@ test("profile validation rejects unsafe timing, economics, networks, and unknown
     (profile) => {
       profile.timing.da_small_response_window_ms =
         profile.timing.da_full_response_window_ms + 1;
-    },
-    (profile) => {
-      profile.economics.requiredBondLovelace += 1;
-    },
-    (profile) => {
-      profile.economics.inactivitySlashingPenaltyLovelace =
-        profile.economics.slashingPenaltyLovelace;
     },
     (profile) => {
       profile.network = "Mainnet";

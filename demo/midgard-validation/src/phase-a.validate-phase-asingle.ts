@@ -44,6 +44,7 @@ import {
   RejectedTx,
 } from "./types.js";
 import { buildPhaseAValidatedTx } from "./validation-candidate.js";
+import { canonicalFieldOrderFault } from "./validation-machine/canonical-field-order.js";
 import { oversizedCanonicalOutputIndex } from "./validation-machine/canonical-output-bound.js";
 
 /**
@@ -245,6 +246,22 @@ export const validatePhaseASingle = (
 ): PhaseAValidatedTx | RejectedTx => {
   const sourceKind = queuedTx.sourceKind ?? "normal";
   const forced = sourceKind === "forced";
+  // CanonicalDecode, the machine's first item walk, refuses fields 0/1/7 out
+  // of order before any later phase reads them. The walk stops at an item
+  // refused for its width, whose verdict follows.
+  const orderFault = canonicalFieldOrderFault(queuedTx.txCbor, sourceKind);
+  if (orderFault !== undefined)
+    return reject(
+      queuedTx.txId,
+      RejectCodes.InvalidFieldType,
+      `field[${orderFault.fieldIndex}].item[${orderFault.itemIndex}] is out of canonical order`,
+      "canonicalDecode",
+      {
+        arm: "FieldItemWidthIllegal",
+        fieldIndex: BigInt(orderFault.fieldIndex),
+        itemIndex: BigInt(orderFault.itemIndex),
+      },
+    );
   // The canonical scan bounds every item's width before any later phase.
   const oversizedOutput = oversizedOutputIndex(queuedTx.txCbor, sourceKind);
   if (oversizedOutput !== undefined)

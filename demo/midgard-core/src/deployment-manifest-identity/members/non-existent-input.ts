@@ -16,7 +16,7 @@ export const nonExistentInputMembers = defineDeploymentFamily(
     fraudProofNonExistentInputStep02: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof non-existent-input step-02",
-      manifestPosition: 494,
+      manifestPosition: 510,
       publicationPosition: 77,
       referenceRolePosition: 154,
       commands: [],
@@ -26,7 +26,7 @@ export const nonExistentInputMembers = defineDeploymentFamily(
     fraudProofNonExistentInputStep03: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof non-existent-input step-03",
-      manifestPosition: 495,
+      manifestPosition: 511,
       publicationPosition: 78,
       referenceRolePosition: 155,
       commands: [],
@@ -36,7 +36,7 @@ export const nonExistentInputMembers = defineDeploymentFamily(
     fraudProofNonExistentInputStep04: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof non-existent-input step-04",
-      manifestPosition: 496,
+      manifestPosition: 512,
       publicationPosition: 79,
       referenceRolePosition: 156,
       commands: [],

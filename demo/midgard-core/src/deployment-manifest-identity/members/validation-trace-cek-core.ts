@@ -6,8 +6,8 @@ export const validationTraceCekCoreMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreSettle: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core settle",
-      manifestPosition: 546,
-      publicationPosition: 394,
+      manifestPosition: 562,
+      publicationPosition: 410,
       referenceRolePosition: 340,
       commands: [],
       validatorTitle:
@@ -17,8 +17,8 @@ export const validationTraceCekCoreMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreCompute: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core compute",
-      manifestPosition: 547,
-      publicationPosition: 395,
+      manifestPosition: 563,
+      publicationPosition: 411,
       referenceRolePosition: 341,
       commands: [],
       validatorTitle:
@@ -28,8 +28,8 @@ export const validationTraceCekCoreMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreMachine: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core machine",
-      manifestPosition: 548,
-      publicationPosition: 396,
+      manifestPosition: 564,
+      publicationPosition: 412,
       referenceRolePosition: 342,
       commands: [],
       validatorTitle:
@@ -39,8 +39,8 @@ export const validationTraceCekCoreMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreCaseConstant: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core case constant",
-      manifestPosition: 549,
-      publicationPosition: 397,
+      manifestPosition: 565,
+      publicationPosition: 413,
       referenceRolePosition: 343,
       commands: [],
       validatorTitle:
@@ -50,8 +50,8 @@ export const validationTraceCekCoreMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreMapConversion: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core map conversion",
-      manifestPosition: 550,
-      publicationPosition: 398,
+      manifestPosition: 566,
+      publicationPosition: 414,
       referenceRolePosition: 344,
       commands: [],
       validatorTitle:
@@ -61,8 +61,8 @@ export const validationTraceCekCoreMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreDirectScalar: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core direct scalar",
-      manifestPosition: 551,
-      publicationPosition: 399,
+      manifestPosition: 567,
+      publicationPosition: 415,
       referenceRolePosition: 345,
       commands: [],
       validatorTitle:
@@ -72,8 +72,8 @@ export const validationTraceCekCoreMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreDirectStructured: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core direct structured",
-      manifestPosition: 552,
-      publicationPosition: 400,
+      manifestPosition: 568,
+      publicationPosition: 416,
       referenceRolePosition: 346,
       commands: [],
       validatorTitle:
@@ -83,8 +83,8 @@ export const validationTraceCekCoreMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreDirectScalarBudget: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core direct scalar budget",
-      manifestPosition: 553,
-      publicationPosition: 401,
+      manifestPosition: 569,
+      publicationPosition: 417,
       referenceRolePosition: 347,
       commands: [],
       validatorTitle:
@@ -94,8 +94,8 @@ export const validationTraceCekCoreMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreDirectStructuredBudget: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core direct structured budget",
-      manifestPosition: 554,
-      publicationPosition: 402,
+      manifestPosition: 570,
+      publicationPosition: 418,
       referenceRolePosition: 348,
       commands: [],
       validatorTitle:
@@ -105,8 +105,8 @@ export const validationTraceCekCoreMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreDirectScalarRoots: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core direct scalar roots",
-      manifestPosition: 555,
-      publicationPosition: 403,
+      manifestPosition: 571,
+      publicationPosition: 419,
       referenceRolePosition: 349,
       commands: [],
       validatorTitle:
@@ -116,8 +116,8 @@ export const validationTraceCekCoreMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreDirectStructuredRoots: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core direct structured roots",
-      manifestPosition: 556,
-      publicationPosition: 404,
+      manifestPosition: 572,
+      publicationPosition: 420,
       referenceRolePosition: 350,
       commands: [],
       validatorTitle:
@@ -127,8 +127,8 @@ export const validationTraceCekCoreMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreSemanticPair: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core semantic pair",
-      manifestPosition: 557,
-      publicationPosition: 405,
+      manifestPosition: 573,
+      publicationPosition: 421,
       referenceRolePosition: 351,
       commands: [],
       validatorTitle:
@@ -138,8 +138,8 @@ export const validationTraceCekCoreMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreSemanticListConstruct: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core semantic list construct",
-      manifestPosition: 558,
-      publicationPosition: 406,
+      manifestPosition: 574,
+      publicationPosition: 422,
       referenceRolePosition: 352,
       commands: [],
       validatorTitle:
@@ -149,8 +149,8 @@ export const validationTraceCekCoreMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreSemanticListSelect: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core semantic list select",
-      manifestPosition: 559,
-      publicationPosition: 407,
+      manifestPosition: 575,
+      publicationPosition: 423,
       referenceRolePosition: 353,
       commands: [],
       validatorTitle:
@@ -160,8 +160,8 @@ export const validationTraceCekCoreMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreSemanticChoose: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core semantic choose",
-      manifestPosition: 560,
-      publicationPosition: 408,
+      manifestPosition: 576,
+      publicationPosition: 424,
       referenceRolePosition: 354,
       commands: [],
       validatorTitle:
@@ -171,8 +171,8 @@ export const validationTraceCekCoreMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreSemanticDataConstruct: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core semantic data construct",
-      manifestPosition: 561,
-      publicationPosition: 409,
+      manifestPosition: 577,
+      publicationPosition: 425,
       referenceRolePosition: 355,
       commands: [],
       validatorTitle:
@@ -182,8 +182,8 @@ export const validationTraceCekCoreMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreSemanticDataScalar: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core semantic data scalar",
-      manifestPosition: 562,
-      publicationPosition: 410,
+      manifestPosition: 578,
+      publicationPosition: 426,
       referenceRolePosition: 356,
       commands: [],
       validatorTitle:
@@ -193,8 +193,8 @@ export const validationTraceCekCoreMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreSemanticDataMisc: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core semantic data misc",
-      manifestPosition: 563,
-      publicationPosition: 411,
+      manifestPosition: 579,
+      publicationPosition: 427,
       referenceRolePosition: 357,
       commands: [],
       validatorTitle:
@@ -204,8 +204,8 @@ export const validationTraceCekCoreMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreSemanticBudget: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core semantic budget",
-      manifestPosition: 564,
-      publicationPosition: 412,
+      manifestPosition: 580,
+      publicationPosition: 428,
       referenceRolePosition: 358,
       commands: [],
       validatorTitle:
@@ -215,8 +215,8 @@ export const validationTraceCekCoreMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreSemanticRoots: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core semantic roots",
-      manifestPosition: 565,
-      publicationPosition: 413,
+      manifestPosition: 581,
+      publicationPosition: 429,
       referenceRolePosition: 359,
       commands: [],
       validatorTitle:
@@ -226,8 +226,8 @@ export const validationTraceCekCoreMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreSemanticResult: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core semantic result",
-      manifestPosition: 566,
-      publicationPosition: 414,
+      manifestPosition: 582,
+      publicationPosition: 430,
       referenceRolePosition: 360,
       commands: [],
       validatorTitle:
@@ -237,8 +237,8 @@ export const validationTraceCekCoreMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreMapStartNodes: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core map start nodes",
-      manifestPosition: 567,
-      publicationPosition: 415,
+      manifestPosition: 583,
+      publicationPosition: 431,
       referenceRolePosition: 361,
       commands: [],
       validatorTitle:
@@ -248,8 +248,8 @@ export const validationTraceCekCoreMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreMapStartBudget: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core map start budget",
-      manifestPosition: 568,
-      publicationPosition: 416,
+      manifestPosition: 584,
+      publicationPosition: 432,
       referenceRolePosition: 362,
       commands: [],
       validatorTitle:
@@ -259,8 +259,8 @@ export const validationTraceCekCoreMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreMapStartRoots: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core map start roots",
-      manifestPosition: 569,
-      publicationPosition: 417,
+      manifestPosition: 585,
+      publicationPosition: 433,
       referenceRolePosition: 363,
       commands: [],
       validatorTitle:
@@ -270,8 +270,8 @@ export const validationTraceCekCoreMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreSemanticFailureMaterial: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core semantic failure material",
-      manifestPosition: 570,
-      publicationPosition: 418,
+      manifestPosition: 586,
+      publicationPosition: 434,
       referenceRolePosition: 364,
       commands: [],
       validatorTitle:
@@ -281,8 +281,8 @@ export const validationTraceCekCoreMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreSemanticFailureRoots: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core semantic failure roots",
-      manifestPosition: 571,
-      publicationPosition: 419,
+      manifestPosition: 587,
+      publicationPosition: 435,
       referenceRolePosition: 365,
       commands: [],
       validatorTitle:
@@ -292,8 +292,8 @@ export const validationTraceCekCoreMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreBlsFinal: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core bls final",
-      manifestPosition: 572,
-      publicationPosition: 420,
+      manifestPosition: 588,
+      publicationPosition: 436,
       referenceRolePosition: 366,
       commands: [],
       validatorTitle:
@@ -303,8 +303,8 @@ export const validationTraceCekCoreMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreBlsBudget: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core bls budget",
-      manifestPosition: 573,
-      publicationPosition: 421,
+      manifestPosition: 589,
+      publicationPosition: 437,
       referenceRolePosition: 367,
       commands: [],
       validatorTitle:
@@ -314,8 +314,8 @@ export const validationTraceCekCoreMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreBlsRoots: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core bls roots",
-      manifestPosition: 574,
-      publicationPosition: 422,
+      manifestPosition: 590,
+      publicationPosition: 438,
       referenceRolePosition: 368,
       commands: [],
       validatorTitle:
@@ -325,8 +325,8 @@ export const validationTraceCekCoreMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreFailureBudget: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core failure budget",
-      manifestPosition: 575,
-      publicationPosition: 423,
+      manifestPosition: 591,
+      publicationPosition: 439,
       referenceRolePosition: 369,
       commands: [],
       validatorTitle:
@@ -336,8 +336,8 @@ export const validationTraceCekCoreMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreFailureKnown: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core failure known",
-      manifestPosition: 576,
-      publicationPosition: 424,
+      manifestPosition: 592,
+      publicationPosition: 440,
       referenceRolePosition: 370,
       commands: [],
       validatorTitle:
@@ -347,8 +347,8 @@ export const validationTraceCekCoreMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreTypeFailureKinds: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core type failure kinds",
-      manifestPosition: 577,
-      publicationPosition: 425,
+      manifestPosition: 593,
+      publicationPosition: 441,
       referenceRolePosition: 371,
       commands: [],
       validatorTitle:
@@ -358,8 +358,8 @@ export const validationTraceCekCoreMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreTypeFailureRoots: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core type failure roots",
-      manifestPosition: 578,
-      publicationPosition: 426,
+      manifestPosition: 594,
+      publicationPosition: 442,
       referenceRolePosition: 372,
       commands: [],
       validatorTitle:

@@ -863,7 +863,6 @@ fn ri_state(
     proof_source.field_preimage_lengths_cbor,
     validation_context_cbor,
     1,
-    vm_witness.initial_resolution_accumulator(),
     schedule,
     signer_frontier.count,
     validation_merkle_v1.frontier_commitment(
@@ -873,6 +872,7 @@ fn ri_state(
     Some(
       vm_machine_types.ResolveInputOutputProofV1 {
         source_kind: 0,
+        item_index: 0,
         key,
         next_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
         descriptor_cbor,
@@ -946,7 +946,6 @@ fn ri_successor(
         tx,
         singleton_root(key, descriptor_cbor),
         1,
-        vm_witness.initial_resolution_accumulator(),
         8,
       )
       let Pair(pre, pre_cbor) = ri_state(

@@ -3,17 +3,14 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, finalize}
-use midgard/fraud_proofs/script_integrity_hash_mismatch/rule.{
-  terminal_contradiction_v1,
-}
-use midgard/fraud_proofs/script_integrity_hash_mismatch/step_05.{
-  Args, Datum, SpendRedeemer,
+use midgard/fraud_proofs/script_integrity_hash_mismatch/terminal.{
+  Args, Datum, SpendRedeemer, convicts_v1,
 }
 
 validator main(
-  thread_policy: PolicyId,
   fraud_policy: PolicyId,
   fraud_address: Address,
+  thread_policy: PolicyId,
 ) {
   spend(
     datum: Option<Datum>,
@@ -35,6 +32,7 @@ validator main(
         input_index,
         output_index,
         fraud_proof_mint_redeemer_index,
+        witness_set_compact_cbor,
       }) -> {
         let Transaction { inputs, outputs, redeemers, .. } = tx
         expect Some(step_datum) = datum
@@ -51,8 +49,8 @@ validator main(
           outputs,
           redeemers,
         )
-        expect Some(decision) = input_state
-        terminal_contradiction_v1(decision)
+        expect Some(state) = input_state
+        convicts_v1(state, witness_set_compact_cbor)
       }
     }
   }

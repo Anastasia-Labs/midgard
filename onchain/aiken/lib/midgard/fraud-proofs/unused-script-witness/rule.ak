@@ -122,9 +122,9 @@ fn decode_terminal_control(
   expect
       [
         compact_cbor, witness_set_compact_cbor, field_preimage_lengths_cbor,
-        context_cbor, _, _, _, _, _, stage, source_count, source_peaks,
-        redeemer_count, redeemer_peaks, _, _, _, _, purpose_count, purpose_peaks,
-        _, _, _, _, _, inline_source_count, redeemer_total_count, _, _, _,
+        context_cbor, _, _, _, _, stage, source_count, source_peaks,
+        redeemer_count, redeemer_peaks, _, _, _, purpose_count, purpose_peaks, _,
+        _, _, _, _, inline_source_count, redeemer_total_count, _, _, _,
         discovery_cbor,
       ]
     = builtin.un_list_data(data)

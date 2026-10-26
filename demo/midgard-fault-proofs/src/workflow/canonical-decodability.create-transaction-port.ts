@@ -17,22 +17,23 @@ import {
   record,
   WITNESS_ROLES,
 } from "./canonical-decodability.admit-canonical-decodability-artifact.js";
+import {
+  CURSOR_FAMILY_TRANSACTION_PORT,
+  type CursorFamilyTransactionPort,
+} from "./cursor-family-adapter.js";
+import { CURSOR_FAMILY_ACTION } from "./cursor-family-state.js";
 import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
 import {
+  type FamilyReferenceScripts,
   type LinearFamilyPrerequisiteInput,
-  type LinearFamilyReferenceScripts,
-  type ManifestBoundLinearFamilyWorkflow,
-  type ManifestBoundLinearFamilyWorkflowConfig,
+  type ManifestBoundFamilyWorkflow,
+  type ManifestBoundFamilyWorkflowConfig,
 } from "./family-definition.js";
 import {
   createRawCommittedFieldCarriagePlan,
   type FieldCarriagePrerequisitePort,
   type PreimageCarriageRequirement,
 } from "./field-carriage-prerequisite.js";
-import {
-  LINEAR_FAMILY_TRANSACTION_PORT,
-  type LinearFamilyTransactionPort,
-} from "./linear-family-adapter.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
 import {
   captureLocallyEvaluatedTransaction,
@@ -41,10 +42,11 @@ import {
 } from "./transaction-boundary.js";
 
 export type CanonicalDecodabilityWorkflowReferenceScripts =
-  LinearFamilyReferenceScripts<
+  FamilyReferenceScripts<
     "canonicalDecodability",
     (typeof WITNESS_ROLES)[number],
-    true
+    true,
+    2
   >;
 
 type BoundConfig = Readonly<{
@@ -68,7 +70,7 @@ const actionInput = (
 ): Readonly<Record<string, unknown>> => {
   const input = record(action.input, "canonical-decodability workflow action");
   if (
-    input.schemaVersion !== "midgard-production-linear-family-action-v1" ||
+    input.schemaVersion !== CURSOR_FAMILY_ACTION ||
     input.category !== "canonicalDecodability" ||
     typeof input.stage !== "string"
   ) {
@@ -90,8 +92,8 @@ const stringField = (
 
 export const createTransactionPort = (
   config: BoundConfig,
-): LinearFamilyTransactionPort<"canonicalDecodability"> => ({
-  portVersion: LINEAR_FAMILY_TRANSACTION_PORT,
+): CursorFamilyTransactionPort<"canonicalDecodability"> => ({
+  portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
   category: "canonicalDecodability",
   prepare: async () => {
     throw new Error(
@@ -264,14 +266,15 @@ export const createTransactionPort = (
 });
 
 export type ManifestBoundCanonicalDecodabilityWorkflowConfig =
-  ManifestBoundLinearFamilyWorkflowConfig<
+  ManifestBoundFamilyWorkflowConfig<
     "canonicalDecodability",
     (typeof WITNESS_ROLES)[number],
-    true
+    true,
+    2
   >;
 
 export type ManifestBoundCanonicalDecodabilityWorkflow =
-  ManifestBoundLinearFamilyWorkflow<"canonicalDecodability", true>;
+  ManifestBoundFamilyWorkflow<"canonicalDecodability", true, 2>;
 
 export const contracts = (
   context: AssemblyContext,

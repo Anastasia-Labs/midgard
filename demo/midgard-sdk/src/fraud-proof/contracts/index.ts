@@ -292,8 +292,14 @@ export {
   buildScriptIntegrityHashMismatchChain,
   buildScriptIntegrityHashMismatchFaultProofContracts,
   type BuildScriptIntegrityHashMismatchFaultProofContractsParams,
+  checkScriptIntegrityHashMismatchRoleOrder,
   SCRIPT_INTEGRITY_HASH_MISMATCH_FAULT_PROOF_TITLES,
+  SCRIPT_INTEGRITY_HASH_MISMATCH_ROLE_ORDER,
+  type ScriptIntegrityHashMismatchChain,
   type ScriptIntegrityHashMismatchFaultProofContracts,
+  type ScriptIntegrityHashMismatchRole,
+  type ScriptIntegrityHashMismatchRoles,
+  scriptIntegrityHashMismatchRoles,
 } from "./families/script-integrity-hash-mismatch.js";
 export {
   buildScriptIntegrityHashMissingFaultProofContracts,

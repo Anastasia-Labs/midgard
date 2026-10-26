@@ -75,6 +75,7 @@ export * from "./resolved-output-non-canonical/index.js";
 export * from "./retained-payload-replay-source.js";
 export * from "./runtime.js";
 export * from "./script-decode/index.js";
+export * from "./script-integrity-hash-mismatch/index.js";
 export * from "./script-integrity-hash-missing/artifact.js";
 export * from "./script-integrity-hash-missing/contracts.js";
 export * from "./script-integrity-hash-missing/family.js";

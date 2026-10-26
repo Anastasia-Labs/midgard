@@ -261,7 +261,7 @@ export const workflowAdapterRegistrationRows = [
       "workflow/manifest-bound-family-assembly.ts",
       "workflow/field-carriage-prerequisite.ts",
       "workflow/runtime.ts#WORKFLOW_RUNNER_FACTORIES.canonicalDecodability",
-      "workflow/linear-family-definitions.ts#LINEAR_FAMILY_DEFINITIONS.canonicalDecodability",
+      "workflow/canonical-decodability.canonical-decodability-family-definition.ts#CANONICAL_DECODABILITY_FAMILY_DEFINITION",
       "canonical-decodability/submit-canonical-decodability-init.ts",
       "canonical-decodability/submit-canonical-decodability-step-01.ts..step-02.ts",
       "remove-fraudulent-block.ts",
@@ -633,9 +633,15 @@ export const workflowAdapterRegistrationRows = [
   {
     category: "scriptIntegrityHashMismatch",
     status: "missing",
-    reason: "evidence_not_carried_by_da_payload",
-    existingSurface: [],
-    requiredClosure: daPayloadEvidenceClosure,
+    reason: "constrained_adapter_is_not_launch_scope_complete",
+    existingSurface: [
+      "script-integrity-hash-mismatch/replay.ts",
+      "script-integrity-hash-mismatch/artifact.ts",
+      "script-integrity-hash-mismatch/workflow.ts",
+      "workflow/family-application-registry.ts#SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_APPLICATION_RECORD",
+    ],
+    requiredClosure:
+      "install and exercise the manifest-bound script-integrity-hash-mismatch runner in a compiled application with its retained-DA runtime",
   },
   {
     category: "distinctAssetAccumulationLimit",

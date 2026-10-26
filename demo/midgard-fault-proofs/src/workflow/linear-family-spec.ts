@@ -19,7 +19,6 @@ export const LINEAR_FAMILY_CATEGORIES = Object.freeze([
   "fabricatedDeposit",
   "fabricatedWithdrawal",
   "withdrawnReferenceInput",
-  "canonicalDecodability",
   "committedFieldShape",
   "minFee",
   "doubleWithdraw",
@@ -196,10 +195,6 @@ const rows = [
     "fraudProofWithdrawnReferenceInput",
     "fraudProofWithdrawnReferenceInputStep02",
     "fraudProofWithdrawnReferenceInputStep03",
-  ]),
-  spec("canonicalDecodability", [
-    "fraudProofCanonicalDecodability",
-    "fraudProofCanonicalDecodabilityStep02",
   ]),
   spec("committedFieldShape", [
     "fraudProofCommittedFieldShape",

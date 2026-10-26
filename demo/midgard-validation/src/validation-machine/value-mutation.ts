@@ -14,7 +14,7 @@ import {
 type ValidationValueAccumulator = {
   lovelaceDelta: bigint;
   assetRoot: Buffer;
-  seenAssetCount: number;
+  assetEntryCount: number;
   nonzeroAssetCount: number;
 };
 
@@ -22,7 +22,7 @@ export const emptyValidationValueAccumulator =
   (): ValidationValueAccumulator => ({
     lovelaceDelta: 0n,
     assetRoot: Buffer.alloc(32),
-    seenAssetCount: 0,
+    assetEntryCount: 0,
     nonzeroAssetCount: 0,
   });
 
@@ -32,7 +32,7 @@ export const encodeValidationValueAccumulator = (
   encodeCbor([
     accumulator.lovelaceDelta,
     accumulator.assetRoot,
-    BigInt(accumulator.seenAssetCount),
+    BigInt(accumulator.assetEntryCount),
     BigInt(accumulator.nonzeroAssetCount),
   ]);
 
@@ -96,7 +96,7 @@ export const buildValidationValueMutationSteps = async (
       preAssetRoot,
       postAssetRoot: exactTrieRoot(assetTrie),
       proofCbor,
-      postSeenAssetCount: deltas.size,
+      postAssetEntryCount: steps.length + 1,
       postNonzeroAssetCount: [...deltas.values()].filter(
         (quantity) => quantity !== 0n,
       ).length,
@@ -115,6 +115,6 @@ export const applyValidationValueMutationStep = (
     );
   }
   accumulator.assetRoot = Buffer.from(step.postAssetRoot);
-  accumulator.seenAssetCount = step.postSeenAssetCount;
+  accumulator.assetEntryCount = step.postAssetEntryCount;
   accumulator.nonzeroAssetCount = step.postNonzeroAssetCount;
 };

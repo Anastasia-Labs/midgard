@@ -88,7 +88,7 @@ export const planValidationTraceContextRedeemerSelect = ({
   if (
     !(auxiliary instanceof Constr) ||
     auxiliary.index !== SELECT_AUXILIARY ||
-    auxiliary.fields.length !== 12
+    auxiliary.fields.length !== 11
   )
     throw new Error(
       "validation-trace CEK context redeemer select's evidence is neither a select nor a skip",
@@ -117,6 +117,7 @@ export const planValidationTraceContextRedeemerSelect = ({
   );
   const leaf = hashMidgardRedeemerItemLeaf({
     redeemerIndex: Number(index),
+    itemLength: Number(length),
     itemCommitment: Buffer.from(commitment, "hex"),
   }).toString("hex");
   const frontier = (control.fields[PURPOSE_BOUND] as bigint) - 1n;

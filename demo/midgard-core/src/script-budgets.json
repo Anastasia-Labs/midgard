@@ -1877,6 +1877,22 @@
         "mem": 10887993,
         "cpu": 5120879026
       }
+    },
+    "fraud_proofs/canonical_decodability/step_01_walk.test/canonical_decodability_step_01_walk_first_step_at_the_worst_batch - canonical_decodability_step_01_walk_fixture_only_first_step_at_the_worst_batch": {
+      "test": "fraud_proofs/canonical_decodability/step_01_walk.test/canonical_decodability_step_01_walk_first_step_at_the_worst_batch",
+      "minusControl": "canonical_decodability_step_01_walk_fixture_only_first_step_at_the_worst_batch",
+      "ceiling": {
+        "mem": 8151021,
+        "cpu": 3329830810
+      }
+    },
+    "fraud_proofs/canonical_decodability/step_01_walk.test/canonical_decodability_step_01_walk_resumed_step_at_the_worst_batch - canonical_decodability_step_01_walk_fixture_only_resumed_step_at_the_worst_batch": {
+      "test": "fraud_proofs/canonical_decodability/step_01_walk.test/canonical_decodability_step_01_walk_resumed_step_at_the_worst_batch",
+      "minusControl": "canonical_decodability_step_01_walk_fixture_only_resumed_step_at_the_worst_batch",
+      "ceiling": {
+        "mem": 8142394,
+        "cpu": 3326956151
+      }
     }
   },
   "growth": {

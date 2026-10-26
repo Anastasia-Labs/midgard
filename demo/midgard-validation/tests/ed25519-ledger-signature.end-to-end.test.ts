@@ -2,6 +2,7 @@ import {
   hashMidgardValidationRejectionReasonV1,
   ledgerEd25519SignatureReady,
 } from "@al-ft/midgard-core";
+import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { beforeAll, describe, expect, it } from "vitest";
 
@@ -22,6 +23,7 @@ import {
 import {
   honestVkeyWitness,
   ownKeyIdentityRVkeyWitness,
+  signerPublicKey,
   signerSeed,
   TEST_SIGNER_SEED,
 } from "./ed25519-ledger-vectors.js";
@@ -44,7 +46,26 @@ const descriptorRejectionHash = (
 
 const owner = honestVkeyWitness(TEST_SIGNER_SEED);
 const ownerIdentityR = ownKeyIdentityRVkeyWitness(TEST_SIGNER_SEED);
-const otherIdentityR = ownKeyIdentityRVkeyWitness(signerSeed(1));
+
+const keyHash = (seed: Uint8Array): Buffer =>
+  Buffer.from(
+    CML.PublicKey.from_bytes(signerPublicKey(seed)).hash().to_raw_bytes(),
+  );
+
+/**
+ * An identity-R witness by the first deterministic signer whose key hash sorts
+ * on `side` of the owner's, so the two witnesses can be laid out in canonical
+ * order with the invalid one at either position.
+ */
+const otherIdentityRSorting = (side: "before" | "after") => {
+  const ownerHash = keyHash(TEST_SIGNER_SEED);
+  for (let index = 1; ; index += 1) {
+    const order = Buffer.compare(keyHash(signerSeed(index)), ownerHash);
+    if (side === "before" ? order < 0 : order > 0) {
+      return ownKeyIdentityRVkeyWitness(signerSeed(index));
+    }
+  }
+};
 
 describe("Ed25519 witness verdicts end to end", { timeout: 120_000 }, () => {
   beforeAll(() => ledgerEd25519SignatureReady());
@@ -96,8 +117,8 @@ describe("Ed25519 witness verdicts end to end", { timeout: 120_000 }, () => {
   });
 
   it.each([
-    ["second", [owner, otherIdentityR], 1],
-    ["first", [otherIdentityR, owner], 0],
+    ["second", [owner, otherIdentityRSorting("after")], 1],
+    ["first", [otherIdentityRSorting("before"), owner], 0],
   ] as const)(
     "names the same witness in Phase A and the trace when it is %s of two",
     async (_position, witnesses, invalidIndex) => {

@@ -237,21 +237,29 @@ pub fn redeemer_purpose_tag(purpose: MidgardRedeemerPurpose) -> Int {
 
 pub fn redeemer_item_leaf_hash(
   redeemer_index: Int,
+  item_length: Int,
   item_commitment: ByteArray,
 ) -> ByteArray {
   expect redeemer_index >= 0
+  expect item_length >= 0
   expect bytearray.length(item_commitment) == 32
-  redeemer_item_leaf_hash_unchecked(redeemer_index, item_commitment)
+  redeemer_item_leaf_hash_unchecked(
+    redeemer_index,
+    item_length,
+    item_commitment,
+  )
 }
 
 /// `redeemer_item_leaf_hash` without its shape guards, for a caller whose
 /// leaf is proved against an already-committed frontier.
 pub fn redeemer_item_leaf_hash_unchecked(
   redeemer_index: Int,
+  item_length: Int,
   item_commitment: ByteArray,
 ) -> ByteArray {
   redeemer_leaf_domain
     |> bytearray.concat(cbor.serialise(redeemer_index))
+    |> bytearray.concat(cbor.serialise(item_length))
     |> bytearray.concat(encode_definite_bytes(item_commitment))
     |> blake2b_256
 }
@@ -260,13 +268,11 @@ pub fn redeemer_leaf_hash(
   redeemer_index: Int,
   redeemer: MidgardRedeemerWitness,
 ) -> ByteArray {
+  let bytes = encode_midgard_redeemer_witness(redeemer)
   redeemer_item_leaf_hash(
     redeemer_index,
-    bounded_item_v1.from_bytes(
-      8,
-      redeemer_index,
-      encode_midgard_redeemer_witness(redeemer),
-    ),
+    bytearray.length(bytes),
+    bounded_item_v1.from_bytes(8, redeemer_index, bytes),
   )
 }
 
@@ -279,12 +285,15 @@ pub fn signer_leaf_hash(signer_hash: ByteArray) -> ByteArray {
 
 pub fn output_item_leaf_hash(
   output_index: Int,
+  item_length: Int,
   item_commitment: ByteArray,
 ) -> ByteArray {
   expect output_index >= 0
+  expect item_length >= 0
   expect bytearray.length(item_commitment) == 32
   output_item_leaf_domain
     |> bytearray.concat(cbor.serialise(output_index))
+    |> bytearray.concat(cbor.serialise(item_length))
     |> bytearray.concat(encode_definite_bytes(item_commitment))
     |> blake2b_256
 }
@@ -292,6 +301,7 @@ pub fn output_item_leaf_hash(
 pub fn output_leaf_hash(output_index: Int, output_cbor: ByteArray) -> ByteArray {
   output_item_leaf_hash(
     output_index,
+    bytearray.length(output_cbor),
     bounded_item_v1.from_bytes(2, output_index, output_cbor),
   )
 }

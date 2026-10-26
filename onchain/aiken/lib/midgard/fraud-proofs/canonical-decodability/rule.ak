@@ -46,6 +46,7 @@
 //// one question — is this byte string an envelope — and answers it. §12.7
 //// states the boundary in full.
 
+use aiken/builtin.{bytearray_to_integer, quotient_integer, slice_bytearray}
 use aiken/collection/list
 use aiken/primitive/bytearray
 use cardano/assets.{PolicyId}
@@ -124,14 +125,34 @@ pub const verdict_code_count: Int = 11
 // The verdict — a total function over arbitrary bytes
 // ---------------------------------------------------------------------------
 
-/// §5.1 grammaticality as a **verdict**, over any byte string at all.
+/// How many items one step reads, chosen by measurement. The worst batch a
+/// 32,768-byte field can present to one step — every item at the two-byte head,
+/// with as many three-byte heads as the remaining bytes pay for — read through
+/// the whole step-01 validator under tier-3 carriage is the pair of
+/// `step_01_walk` budget rows in `demo/midgard-core/src/script-budgets.json`.
+pub const envelope_batch_items: Int = 1000
+
+/// Where a §5.1 walk stands: finished with a verdict, or between two batches
+/// with `remaining` items still to read from byte `offset`.
+///
+/// `EnvelopeItems` is only ever produced with `remaining >= 1` and
+/// `offset < bytearray.length(preimage)`: an exhausted count or an exhausted
+/// preimage is already a verdict.
+pub type EnvelopeWalkV1 {
+  EnvelopeVerdict { verdict: Int }
+  EnvelopeItems { remaining: Int, offset: Int }
+}
+
+/// §5.1 grammaticality as a **verdict**, over any byte string at all: the
+/// array head, then every batch until one ends the walk.
 ///
 /// **Total by construction, and the property is the point.** There is no
-/// `expect`, no `fail` and no partial builtin call on an unchecked index in
-/// this function or the two it recurses through: `bytearray.at` aborts out of
-/// range, so every read below is preceded by the bound that makes it safe, and
-/// the bound's failure is a *return value*. A verdict that could abort would be
-/// the door again, and the door is what this family exists to route around.
+/// `expect`, no `fail` and no partial builtin call on an unchecked index here
+/// or in anything it calls: every byte below is read either behind the bound
+/// that makes it safe or through `slice_bytearray`, which answers an
+/// out-of-range read with no bytes rather than an abort. A verdict that could
+/// abort would be the door again, and the door is what this family exists to
+/// route around.
 ///
 /// **It is the door's grammar, restated as a decision rather than reused as
 /// one.** `decode_field_array_header_at`, `item_header_at` and `walk_to_end`
@@ -143,10 +164,43 @@ pub const verdict_code_count: Int = 11
 /// duplication §6.1's one-verdict rule tolerates here, because the alternative
 /// is a shared reader that returns an option, which would put a silently
 /// clampable `None` on the door's own hot path.
+///
+/// Step 01 takes the same walk one batch per transaction; this is that walk
+/// run to its end in one evaluation, for callers whose fields are small enough
+/// to afford it.
 pub fn envelope_verdict_v1(preimage: ByteArray) -> Int {
+  run_envelope_walk(preimage, envelope_first_batch_v1(preimage))
+}
+
+/// The walk's first batch: the array head, then up to `envelope_batch_items`
+/// items — what step 01 reads on the thread's first transaction.
+pub fn envelope_first_batch_v1(preimage: ByteArray) -> EnvelopeWalkV1 {
+  when envelope_array_head_v1(preimage) is {
+    EnvelopeItems { remaining, offset } ->
+      envelope_items_batch_v1(preimage, remaining, offset)
+    verdict -> verdict
+  }
+}
+
+fn run_envelope_walk(preimage: ByteArray, walk: EnvelopeWalkV1) -> Int {
+  when walk is {
+    EnvelopeVerdict { verdict } -> verdict
+    EnvelopeItems { remaining, offset } ->
+      run_envelope_walk(
+        preimage,
+        envelope_items_batch_v1(preimage, remaining, offset),
+      )
+  }
+}
+
+/// §5.1's `definite_array_header(N)`, read at offset 0. Every way the header
+/// itself can be wrong is a verdict here; otherwise the walk starts at the
+/// first item with `N` items to read — including `N = 0`, which the first
+/// batch settles.
+pub fn envelope_array_head_v1(preimage: ByteArray) -> EnvelopeWalkV1 {
   let total_length = bytearray.length(preimage)
   if total_length == 0 {
-    verdict_missing_array_header
+    EnvelopeVerdict(verdict_missing_array_header)
   } else {
     let tag = bytearray.at(preimage, 0)
     if and {
@@ -154,109 +208,246 @@ pub fn envelope_verdict_v1(preimage: ByteArray) -> Int {
       tag <= 151,
     } {
       // `80 + N` for N <= 23. The header is one byte and is already read.
-      walk_items(preimage, total_length, 1, tag - 128)
+      EnvelopeItems { remaining: tag - 128, offset: 1 }
     } else if tag == 152 {
       if total_length < 2 {
-        verdict_truncated_array_header
+        EnvelopeVerdict(verdict_truncated_array_header)
       } else {
         let count = bytearray.at(preimage, 1)
         if count < 24 {
-          verdict_non_minimal_array_header
+          EnvelopeVerdict(verdict_non_minimal_array_header)
         } else {
-          walk_items(preimage, total_length, 2, count)
+          EnvelopeItems { remaining: count, offset: 2 }
         }
       }
     } else if tag == 153 {
       if total_length < 3 {
-        verdict_truncated_array_header
+        EnvelopeVerdict(verdict_truncated_array_header)
       } else {
         let count = bytearray.at(preimage, 1) * 256 + bytearray.at(preimage, 2)
         if count <= 0xff {
-          verdict_non_minimal_array_header
+          EnvelopeVerdict(verdict_non_minimal_array_header)
         } else {
-          walk_items(preimage, total_length, 3, count)
+          EnvelopeItems { remaining: count, offset: 3 }
         }
       }
     } else {
-      verdict_not_an_array_header
+      EnvelopeVerdict(verdict_not_an_array_header)
     }
   }
 }
 
-/// Reads `remaining` enveloped items from `offset` and decides where they end.
+/// Reads up to `envelope_batch_items` of the `remaining` items from `offset`
+/// and says where the walk stands after them.
 ///
 /// The two ways to leave §5.1 that only the *end* of the walk can see are both
-/// here: items that run out of preimage (`verdict_missing_item_header`, and the
-/// truncation codes below it) and preimage that runs out of items
-/// (`verdict_trailing_bytes`). Everything else is a per-item head decision.
-fn walk_items(
+/// decided here: items that run out of preimage (`verdict_missing_item_header`,
+/// and the truncation codes) and preimage that runs out of items
+/// (`verdict_trailing_bytes`). A batch that reads its full share and lands
+/// exactly on the last byte with items still owed is the missing item header
+/// at once rather than one transaction later.
+pub fn envelope_items_batch_v1(
+  preimage: ByteArray,
+  remaining: Int,
+  offset: Int,
+) -> EnvelopeWalkV1 {
+  let total_length = bytearray.length(preimage)
+  if remaining > envelope_batch_items {
+    let reached = item_heads_verdict_in(
+      preimage,
+      total_length,
+      offset,
+      envelope_batch_items,
+    )
+    if reached < total_length {
+      EnvelopeItems {
+        remaining: remaining - envelope_batch_items,
+        offset: reached,
+      }
+    } else if reached == total_length {
+      EnvelopeVerdict(verdict_missing_item_header)
+    } else {
+      EnvelopeVerdict(stopped_walk_verdict(reached))
+    }
+  } else {
+    let reached = item_heads_verdict_in(
+      preimage,
+      total_length,
+      offset,
+      remaining,
+    )
+    if reached == total_length {
+      EnvelopeVerdict(verdict_grammatical)
+    } else if reached < total_length {
+      EnvelopeVerdict(verdict_trailing_bytes)
+    } else {
+      EnvelopeVerdict(stopped_walk_verdict(reached))
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The item-head walk
+// ---------------------------------------------------------------------------
+
+// A walk position is one `Int` with two readings, so that the hot loop
+// allocates nothing and tests nothing between items:
+//
+// - `0 ..= total_length + 65_538`: a byte offset. Past `total_length` it is an
+//   item payload that ran off the end of the preimage, which every later read
+//   sees as "no bytes left" and which ends the walk as
+//   `verdict_truncated_item_payload`.
+// - `stopped_walk_base + code`: the walk stopped on `code`. A stopped position
+//   is also past the end of every preimage, so every later item read keeps it
+//   unchanged.
+//
+// That is what lets eight item heads be read back to back with one check
+// after them instead of one after each.
+
+/// Larger than any offset a preimage carried by an L1 transaction can reach.
+const stopped_walk_base: Int = 4_294_967_296
+
+fn stopped_walk_verdict(reached: Int) -> Int {
+  if reached >= stopped_walk_base {
+    reached - stopped_walk_base
+  } else {
+    verdict_truncated_item_payload
+  }
+}
+
+/// One §5.1 `definite_bytes_header` and its payload, read at `offset`.
+///
+/// Returns the offset just past the item's payload, or a stopped position (see
+/// above). Reads go through `slice_bytearray`, so a read at or past the end of
+/// the preimage returns fewer bytes rather than aborting, and every such case
+/// is resolved by `item_head_at_end`. The common heads are decided from the
+/// first two bytes at once:
+///
+/// - `0x4000 ..< 0x5800`: `40 + L`, a one-byte head; the item ends `L` bytes
+///   after it.
+/// - `0x5800 ..< 0x5900`: `58 LL`; minimal only for `LL >= 24`.
+/// - `0x5900 ..< 0x5a00`: `59 LLLL`, read again three bytes wide; minimal only
+///   for `LLLL >= 256`.
+/// - anything at or above `0x5a00` is not an item head.
+pub fn item_head_verdict_in(
   preimage: ByteArray,
   total_length: Int,
   offset: Int,
-  remaining: Int,
 ) -> Int {
-  if remaining <= 0 {
-    if offset == total_length {
-      verdict_grammatical
+  let head = bytearray_to_integer(True, slice_bytearray(offset, 2, preimage))
+  if head < 0x5800 {
+    if head >= 0x4000 {
+      offset + quotient_integer(head, 256) - 63
     } else {
-      verdict_trailing_bytes
+      item_head_at_end(preimage, total_length, offset)
     }
-  } else if offset >= total_length {
-    verdict_missing_item_header
+  } else if head < 0x5900 {
+    if head < 0x5818 {
+      stopped_walk_base + verdict_non_minimal_item_header
+    } else {
+      // offset + 2 + (head - 0x5800)
+      offset + head - 0x57fe
+    }
+  } else if head < 0x5a00 {
+    let wide_head = bytearray_to_integer(
+      True,
+      slice_bytearray(offset, 3, preimage),
+    )
+    if wide_head < 0x590100 {
+      if wide_head < 0x10000 {
+        // Fewer than three bytes were left to read.
+        stopped_walk_base + verdict_truncated_item_header
+      } else {
+        stopped_walk_base + verdict_non_minimal_item_header
+      }
+    } else {
+      // offset + 3 + (wide_head - 0x590000)
+      offset + wide_head - 0x58fffd
+    }
   } else {
-    let tag = bytearray.at(preimage, offset)
-    if and {
-      tag >= 64,
-      tag <= 87,
-    } {
-      // `40 + L` for L <= 23.
-      advance_item(preimage, total_length, offset + 1, tag - 64, remaining)
-    } else if tag == 88 {
-      if offset + 2 > total_length {
-        verdict_truncated_item_header
-      } else {
-        let length = bytearray.at(preimage, offset + 1)
-        if length < 24 {
-          verdict_non_minimal_item_header
-        } else {
-          advance_item(preimage, total_length, offset + 2, length, remaining)
-        }
-      }
-    } else if tag == 89 {
-      if offset + 3 > total_length {
-        verdict_truncated_item_header
-      } else {
-        let length = bytearray.at(preimage, offset + 1) * 256 + bytearray.at(
-          preimage,
-          offset + 2,
-        )
-        if length <= 0xff {
-          verdict_non_minimal_item_header
-        } else {
-          advance_item(preimage, total_length, offset + 3, length, remaining)
-        }
-      }
-    } else {
-      verdict_not_an_item_header
-    }
+    item_head_at_end(preimage, total_length, offset)
   }
 }
 
-/// Steps over one item's payload, or reports that the payload leaves the
-/// preimage. Split out so that the bound is written once for all three header
-/// widths rather than three times — a bound written three times is a bound one
-/// of whose copies will one day be wrong.
-fn advance_item(
+/// The reads `item_head_verdict_in` cannot settle from two bytes: an item head
+/// in the preimage's last byte, a position at or past its end, and a first
+/// byte that is no item head at all.
+fn item_head_at_end(preimage: ByteArray, total_length: Int, offset: Int) -> Int {
+  if offset + 1 == total_length {
+    let tag = bytearray.at(preimage, offset)
+    if tag < 64 {
+      stopped_walk_base + verdict_not_an_item_header
+    } else if tag < 88 {
+      offset + tag - 63
+    } else if tag < 90 {
+      stopped_walk_base + verdict_truncated_item_header
+    } else {
+      stopped_walk_base + verdict_not_an_item_header
+    }
+  } else if offset < total_length {
+    stopped_walk_base + verdict_not_an_item_header
+  } else if offset == total_length {
+    stopped_walk_base + verdict_missing_item_header
+  } else if offset < stopped_walk_base {
+    stopped_walk_base + verdict_truncated_item_payload
+  } else {
+    offset
+  }
+}
+
+/// `count` item heads from `offset`, eight at a time. Returns the position
+/// after the last one (see above); a stopped or overrun position ends the walk
+/// at the next eight-item boundary at the latest.
+fn item_heads_verdict_in(
   preimage: ByteArray,
   total_length: Int,
-  payload_offset: Int,
-  length: Int,
-  remaining: Int,
+  offset: Int,
+  count: Int,
 ) -> Int {
-  if payload_offset + length > total_length {
-    verdict_truncated_item_payload
+  if count >= 8 {
+    let reached = item_head_verdict_in(
+      preimage,
+      total_length,
+      item_head_verdict_in(
+        preimage,
+        total_length,
+        item_head_verdict_in(
+          preimage,
+          total_length,
+          item_head_verdict_in(
+            preimage,
+            total_length,
+            item_head_verdict_in(
+              preimage,
+              total_length,
+              item_head_verdict_in(
+                preimage,
+                total_length,
+                item_head_verdict_in(
+                  preimage,
+                  total_length,
+                  item_head_verdict_in(preimage, total_length, offset),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    )
+    if reached > total_length {
+      reached
+    } else {
+      item_heads_verdict_in(preimage, total_length, reached, count - 8)
+    }
+  } else if count == 0 {
+    offset
   } else {
-    walk_items(preimage, total_length, payload_offset + length, remaining - 1)
+    let reached = item_head_verdict_in(preimage, total_length, offset)
+    if reached > total_length {
+      reached
+    } else {
+      item_heads_verdict_in(preimage, total_length, reached, count - 1)
+    }
   }
 }
 
@@ -301,13 +492,6 @@ pub type CommittedFieldClaimV1 {
   }
 }
 
-/// The evidence one step-01 derives and pins into the computation thread: the
-/// slot accused and the verdict its committed bytes earned.
-pub type CommittedFieldVerdictV1 {
-  field_index: Int,
-  verdict: Int,
-}
-
 /// The witness set handed to the door for a body field.
 ///
 /// The door short-circuits before looking at it for `field_index < 6`, so the
@@ -325,7 +509,7 @@ fn unread_witness_set() -> NativeTxWitnessSetCompact {
 }
 
 /// Authenticate the claimed slot's committed preimage against §4's commitment
-/// and render §5.1's verdict over it.
+/// and return the slot with its bytes.
 ///
 /// `verified` is the compact structure the block's counted `transactions_root`
 /// committed — a family step-01 holds it already authenticated from
@@ -339,18 +523,22 @@ fn unread_witness_set() -> NativeTxWitnessSetCompact {
 /// claim at a witness-set index would hand the door the placeholder above as if
 /// it were the transaction's witness set, and a witness claim at a body index
 /// would carry one the door discards.
-pub fn committed_field_verdict_v1(
+///
+/// The bytes come back undecided. Every step of the walk calls this, so every
+/// batch reads bytes the door has just held to the commitment, and nothing
+/// about them has to be carried from one transaction to the next.
+pub fn authenticated_claim_preimage_v1(
   verified: VerifiedTxSourceView,
   claim: CommittedFieldClaimV1,
   reference_inputs: List<Input>,
   certificate_policy_id: PolicyId,
-) -> CommittedFieldVerdictV1 {
+) -> Pair<Int, ByteArray> {
   when claim is {
     BodyFieldClaim { field_index, carriage } -> {
       expect field_index < first_witness_set_field_index
-      CommittedFieldVerdictV1 {
+      Pair(
         field_index,
-        verdict: authenticated_field_verdict(
+        authenticated_committed_preimage(
           verified,
           unread_witness_set(),
           field_index,
@@ -358,13 +546,13 @@ pub fn committed_field_verdict_v1(
           reference_inputs,
           certificate_policy_id,
         ),
-      }
+      )
     }
     WitnessFieldClaim { field_index, witness_set, carriage } -> {
       expect field_index >= first_witness_set_field_index
-      CommittedFieldVerdictV1 {
+      Pair(
         field_index,
-        verdict: authenticated_field_verdict(
+        authenticated_committed_preimage(
           verified,
           witness_set,
           field_index,
@@ -372,34 +560,9 @@ pub fn committed_field_verdict_v1(
           reference_inputs,
           certificate_policy_id,
         ),
-      }
+      )
     }
   }
-}
-
-/// Authenticate then decide, in that order and in one place: the door hashes
-/// the carried bytes against §4's positionally-extracted commitment and the
-/// verdict is taken over what it returns. Written once so neither claim arm can
-/// drift into deciding over bytes the other arm would have authenticated
-/// differently.
-fn authenticated_field_verdict(
-  verified: VerifiedTxSourceView,
-  witness_set: NativeTxWitnessSetCompact,
-  field_index: Int,
-  carriage: FieldCarriageV1,
-  reference_inputs: List<Input>,
-  certificate_policy_id: PolicyId,
-) -> Int {
-  envelope_verdict_v1(
-    authenticated_committed_preimage(
-      verified,
-      witness_set,
-      field_index,
-      carriage,
-      reference_inputs,
-      certificate_policy_id,
-    ),
-  )
 }
 
 /// The adjudicated violation predicate, stated over the two values step-01 pins

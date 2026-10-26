@@ -48,6 +48,8 @@ const replayers = {
   missingRedeemer: FP.MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY,
   missingScriptSource: FP.MISSING_SCRIPT_SOURCE_COMPLETE_CANONICAL_REPLAY,
   unusedRedeemer: FP.UNUSED_REDEEMER_COMPLETE_CANONICAL_REPLAY,
+  scriptIntegrityHashMismatch:
+    FP.SCRIPT_INTEGRITY_HASH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
 };
 const runDirectory = process.env.MIDGARD_WATCHER_JOURNEY_RUN_DIR;
 const stagedPath =
@@ -215,7 +217,8 @@ it
       category === "scriptIntegrityHashMissing" ||
       category === "missingRedeemer" ||
       category === "missingScriptSource" ||
-      category === "unusedRedeemer"
+      category === "unusedRedeemer" ||
+      category === "scriptIntegrityHashMismatch"
     ) {
       const context = FP.headerDecisionReplayContext(classification.decision);
       const replayer = replayers[category];
@@ -257,10 +260,18 @@ it
                     classification: selected,
                     replayContext: context,
                   })
-                : await FP.prepareScriptIntegrityHashMissingArtifact({
-                    evidence,
-                    classification: selected,
-                  });
+                : category === "scriptIntegrityHashMismatch"
+                  ? await FP.prepareScriptIntegrityHashMismatchWorkflowArtifact(
+                      {
+                        evidence,
+                        classification: selected,
+                        replayContext: context,
+                      },
+                    )
+                  : await FP.prepareScriptIntegrityHashMissingArtifact({
+                      evidence,
+                      classification: selected,
+                    });
       expect(artifact.headerHash).toBe(block.headerHash);
     }
     await verifyJourneyFixture({
@@ -275,7 +286,12 @@ it
   60000,
 );
 
-it.each(["missingRedeemer", "missingScriptSource", "unusedRedeemer"] as const)(
+it.each([
+  "missingRedeemer",
+  "missingScriptSource",
+  "unusedRedeemer",
+  "scriptIntegrityHashMismatch",
+] as const)(
   "classifies the %s forced-claim fixture through the full catalogue and its honest successor as healthy",
   async (category) => {
     const account = generateEmulatorAccount({ lovelace: 100_000_000n });

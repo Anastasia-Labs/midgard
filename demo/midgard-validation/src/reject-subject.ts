@@ -86,8 +86,9 @@ export type RejectSubject =
       readonly index: bigint;
     }
   /**
-   * The first asset that inserts a new unit into the value accumulator once
-   * the accumulator has seen the distinct-asset bound. `index` is the input's
+   * The first asset entry folded once the value accumulator holds the asset
+   * bound's count of entries; every asset of a spend input, an output or the
+   * mint is one entry, repeated units included. `index` is the input's
    * position in the input-resolution schedule (spend and reference inputs
    * merged and sorted by out-ref bytes; reference inputs hold a position but
    * carry no assets) or the output's field ordinal, and `assetIndex` the

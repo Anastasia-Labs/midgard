@@ -223,6 +223,7 @@ export const boundSentinels = (value: unknown, found = new Set<string>()) => {
  * their records do not bind it; every other registered non-linear family does.
  */
 export const NO_DIGEST_FAMILIES = [
+  "canonicalDecodability",
   "nativeScriptInvalid",
   "nativeScriptDecoding",
   "mintAuthorization",
@@ -236,6 +237,7 @@ export const NO_DIGEST_FAMILIES = [
   "missingRedeemer",
   "missingScriptSource",
   "unusedRedeemer",
+  "scriptIntegrityHashMismatch",
 ];
 
 export const REPLAY_CONTEXT_FAMILIES = [
@@ -251,6 +253,7 @@ export const REPLAY_CONTEXT_FAMILIES = [
   "missingRedeemer",
   "missingScriptSource",
   "unusedRedeemer",
+  "scriptIntegrityHashMismatch",
 ];
 
 /**

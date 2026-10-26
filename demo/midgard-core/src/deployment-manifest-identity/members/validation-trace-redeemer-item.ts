@@ -7,7 +7,7 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace redeemer item traversal normalizer",
       manifestPosition: 103,
-      publicationPosition: 461,
+      publicationPosition: 477,
       referenceRolePosition: 218,
       commands: [],
       validatorTitle:
@@ -21,7 +21,7 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace redeemer item outer normalizer",
       manifestPosition: 104,
-      publicationPosition: 462,
+      publicationPosition: 478,
       referenceRolePosition: 219,
       commands: [],
       validatorTitle:
@@ -35,7 +35,7 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace redeemer item source authenticator",
       manifestPosition: 105,
-      publicationPosition: 463,
+      publicationPosition: 479,
       referenceRolePosition: 220,
       commands: [],
       validatorTitle:
@@ -49,7 +49,7 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace redeemer item fold map executor",
       manifestPosition: 106,
-      publicationPosition: 464,
+      publicationPosition: 480,
       referenceRolePosition: 221,
       commands: [],
       validatorTitle:
@@ -65,7 +65,7 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace redeemer item finalize frame executor",
       manifestPosition: 107,
-      publicationPosition: 465,
+      publicationPosition: 481,
       referenceRolePosition: 222,
       commands: [],
       validatorTitle:
@@ -80,7 +80,7 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace redeemer item open header executor",
       manifestPosition: 108,
-      publicationPosition: 466,
+      publicationPosition: 482,
       referenceRolePosition: 223,
       commands: [],
       validatorTitle:
@@ -94,7 +94,7 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace redeemer item open tail executor",
       manifestPosition: 109,
-      publicationPosition: 467,
+      publicationPosition: 483,
       referenceRolePosition: 224,
       commands: [],
       validatorTitle:
@@ -108,7 +108,7 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace redeemer item head scalar executor",
       manifestPosition: 110,
-      publicationPosition: 468,
+      publicationPosition: 484,
       referenceRolePosition: 225,
       commands: [],
       validatorTitle:
@@ -122,7 +122,7 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace redeemer item head sequence executor",
       manifestPosition: 111,
-      publicationPosition: 469,
+      publicationPosition: 485,
       referenceRolePosition: 226,
       commands: [],
       validatorTitle:
@@ -136,7 +136,7 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace redeemer item head map executor",
       manifestPosition: 112,
-      publicationPosition: 470,
+      publicationPosition: 486,
       referenceRolePosition: 227,
       commands: [],
       validatorTitle:
@@ -151,7 +151,7 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace redeemer item head large constructor executor",
       manifestPosition: 113,
-      publicationPosition: 471,
+      publicationPosition: 487,
       referenceRolePosition: 228,
       commands: [],
       validatorTitle:
@@ -166,7 +166,7 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace redeemer item attach integer executor",
       manifestPosition: 114,
-      publicationPosition: 472,
+      publicationPosition: 488,
       referenceRolePosition: 229,
       commands: [],
       validatorTitle:
@@ -180,7 +180,7 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace redeemer item attach bytes executor",
       manifestPosition: 115,
-      publicationPosition: 473,
+      publicationPosition: 489,
       referenceRolePosition: 230,
       commands: [],
       validatorTitle:
@@ -194,7 +194,7 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace redeemer item fold list executor",
       manifestPosition: 116,
-      publicationPosition: 474,
+      publicationPosition: 490,
       referenceRolePosition: 231,
       commands: [],
       validatorTitle:
@@ -209,7 +209,7 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace redeemer item advance integer executor",
       manifestPosition: 117,
-      publicationPosition: 475,
+      publicationPosition: 491,
       referenceRolePosition: 232,
       commands: [],
       validatorTitle:
@@ -223,7 +223,7 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace redeemer item advance bytes executor",
       manifestPosition: 118,
-      publicationPosition: 476,
+      publicationPosition: 492,
       referenceRolePosition: 233,
       commands: [],
       validatorTitle:
@@ -238,7 +238,7 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace redeemer item advance large constructor executor",
       manifestPosition: 119,
-      publicationPosition: 477,
+      publicationPosition: 493,
       referenceRolePosition: 234,
       commands: [],
       validatorTitle:
@@ -253,7 +253,7 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace redeemer item advance large fields executor",
       manifestPosition: 120,
-      publicationPosition: 478,
+      publicationPosition: 494,
       referenceRolePosition: 235,
       commands: [],
       validatorTitle:
@@ -267,7 +267,7 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace redeemer item close executor",
       manifestPosition: 121,
-      publicationPosition: 479,
+      publicationPosition: 495,
       referenceRolePosition: 236,
       commands: [],
       validatorTitle:
@@ -281,7 +281,7 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace redeemer item finish data executor",
       manifestPosition: 122,
-      publicationPosition: 480,
+      publicationPosition: 496,
       referenceRolePosition: 237,
       commands: [],
       validatorTitle:
@@ -296,7 +296,7 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace redeemer item invalid header executor",
       manifestPosition: 123,
-      publicationPosition: 481,
+      publicationPosition: 497,
       referenceRolePosition: 238,
       commands: [],
       validatorTitle:
@@ -310,7 +310,7 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace redeemer item invalid tail executor",
       manifestPosition: 124,
-      publicationPosition: 482,
+      publicationPosition: 498,
       referenceRolePosition: 239,
       commands: [],
       validatorTitle:
@@ -324,7 +324,7 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace redeemer item invalid data executor",
       manifestPosition: 125,
-      publicationPosition: 483,
+      publicationPosition: 499,
       referenceRolePosition: 240,
       commands: [],
       validatorTitle:
@@ -339,7 +339,7 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace redeemer item invalid scalar data executor",
       manifestPosition: 126,
-      publicationPosition: 484,
+      publicationPosition: 500,
       referenceRolePosition: 241,
       commands: [],
       validatorTitle:
@@ -353,7 +353,7 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace redeemer item settlement",
       manifestPosition: 127,
-      publicationPosition: 485,
+      publicationPosition: 501,
       referenceRolePosition: 242,
       commands: [],
       validatorTitle:
@@ -368,7 +368,7 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace script-sources RedeemerNormalization semantic",
       manifestPosition: 128,
-      publicationPosition: 486,
+      publicationPosition: 502,
       referenceRolePosition: 243,
       commands: [],
       validatorTitle:
