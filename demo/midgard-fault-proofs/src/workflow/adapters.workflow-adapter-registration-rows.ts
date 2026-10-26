@@ -587,9 +587,15 @@ export const workflowAdapterRegistrationRows = [
   {
     category: "missingScriptSource",
     status: "missing",
-    reason: "evidence_not_carried_by_da_payload",
-    existingSurface: [],
-    requiredClosure: daPayloadEvidenceClosure,
+    reason: "constrained_adapter_is_not_launch_scope_complete",
+    existingSurface: [
+      "missing-script-source/replay.ts",
+      "missing-script-source/artifact.ts",
+      "missing-script-source/workflow.ts",
+      "workflow/family-application-registry.ts#MISSING_SCRIPT_SOURCE_FAMILY_APPLICATION_RECORD",
+    ],
+    requiredClosure:
+      "install and exercise the manifest-bound missing-script-source runner in a compiled application with its retained-DA runtime",
   },
   {
     category: "missingRedeemer",

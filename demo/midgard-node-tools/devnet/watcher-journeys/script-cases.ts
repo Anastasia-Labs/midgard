@@ -140,6 +140,9 @@ export const JOURNEY_SCRIPT_FORCED_REASONS = {
   missingRedeemer: {
     RedeemerMissing: { purpose_kind: 2n, purpose_index: 0n },
   },
+  missingScriptSource: {
+    ScriptSourceMissing: { purpose_kind: 1n, purpose_index: 0n },
+  },
 } satisfies Partial<
   Record<SDK.FraudProofCatalogueCategoryName, SDK.RejectionReason>
 >;

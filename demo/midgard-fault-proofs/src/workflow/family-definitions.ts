@@ -4,6 +4,7 @@ import { MIN_ADA_FAMILY_DEFINITION } from "../min-ada/workflow.js";
 import { MINT_AUTHORIZATION_FAMILY_DEFINITION } from "../mint-authorization/workflow.js";
 import { MINT_DECLARED_ASSET_LIMIT_FAMILY_DEFINITION } from "../mint-declared-asset-limit/v1.js";
 import { MISSING_REDEEMER_FAMILY_DEFINITION } from "../missing-redeemer/workflow.js";
+import { MISSING_SCRIPT_SOURCE_FAMILY_DEFINITION } from "../missing-script-source/workflow.js";
 import { NATIVE_SCRIPT_DECODING_FAMILY_DEFINITION } from "../native-script-decoding/workflow.js";
 import { NATIVE_SCRIPT_INVALID_FAMILY_DEFINITION } from "../native-script-invalid/workflow.js";
 import { OBSERVER_ORDER_INVALID_FAMILY_DEFINITION } from "../observer-order-invalid/v1.js";
@@ -46,6 +47,7 @@ type CursorFamilyDefinitions = Readonly<{
   scriptIntegrityHashMissing: typeof SCRIPT_INTEGRITY_HASH_MISSING_FAMILY_DEFINITION;
   withdrawalMistag: typeof WITHDRAWAL_MISTAG_FAMILY_DEFINITION;
   missingRedeemer: typeof MISSING_REDEEMER_FAMILY_DEFINITION;
+  missingScriptSource: typeof MISSING_SCRIPT_SOURCE_FAMILY_DEFINITION;
 }>;
 
 export const CURSOR_FAMILY_DEFINITIONS: CursorFamilyDefinitions = Object.freeze(
@@ -73,6 +75,7 @@ export const CURSOR_FAMILY_DEFINITIONS: CursorFamilyDefinitions = Object.freeze(
     scriptIntegrityHashMissing: SCRIPT_INTEGRITY_HASH_MISSING_FAMILY_DEFINITION,
     withdrawalMistag: WITHDRAWAL_MISTAG_FAMILY_DEFINITION,
     missingRedeemer: MISSING_REDEEMER_FAMILY_DEFINITION,
+    missingScriptSource: MISSING_SCRIPT_SOURCE_FAMILY_DEFINITION,
   },
 );
 

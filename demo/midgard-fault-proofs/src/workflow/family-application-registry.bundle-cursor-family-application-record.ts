@@ -27,6 +27,13 @@ import {
 } from "../missing-redeemer/workflow.js";
 import type { ManifestBoundMissingRedeemerWorkflowConfig } from "../missing-redeemer/workflow.transaction-port.js";
 import {
+  createManifestBoundMissingScriptSourceWorkflow,
+  type ManifestBoundMissingScriptSourceWorkflow,
+  MISSING_SCRIPT_SOURCE_FAMILY_DEFINITION,
+  runOrResumeManifestBoundMissingScriptSourceWorkflow,
+} from "../missing-script-source/workflow.js";
+import type { ManifestBoundMissingScriptSourceWorkflowConfig } from "../missing-script-source/workflow.transaction-port.js";
+import {
   createManifestBoundNativeScriptDecodingWorkflow,
   type ManifestBoundNativeScriptDecodingWorkflow,
   type ManifestBoundNativeScriptDecodingWorkflowConfig,
@@ -211,6 +218,17 @@ export const MISSING_REDEEMER_FAMILY_APPLICATION_RECORD =
     requires: ["replayContext"],
     constructWorkflow: createManifestBoundMissingRedeemerWorkflow,
     execute: runOrResumeManifestBoundMissingRedeemerWorkflow,
+  });
+
+export const MISSING_SCRIPT_SOURCE_FAMILY_APPLICATION_RECORD =
+  bundleCursorFamilyApplicationRecord<
+    "missingScriptSource",
+    ManifestBoundMissingScriptSourceWorkflowConfig,
+    ManifestBoundMissingScriptSourceWorkflow
+  >(MISSING_SCRIPT_SOURCE_FAMILY_DEFINITION, {
+    requires: ["replayContext"],
+    constructWorkflow: createManifestBoundMissingScriptSourceWorkflow,
+    execute: runOrResumeManifestBoundMissingScriptSourceWorkflow,
   });
 
 export const MIN_ADA_FAMILY_APPLICATION_RECORD =

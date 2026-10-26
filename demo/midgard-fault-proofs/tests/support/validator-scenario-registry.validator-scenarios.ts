@@ -38,6 +38,14 @@ const MR_OBSERVER =
   "refuses a forged successor at every role of the accepted observer route";
 const MR_CLAIMED =
   "refuses a forged successor at every role of the forced claimed-redeemer route";
+const MSS_FORGED_SUCCESSOR =
+  "demo/midgard-fault-proofs/tests/submit-init-emulator-missing-script-source-forged-successor.test.ts";
+const MSS_OBSERVER =
+  "refuses a forged successor at every role of the accepted observer route";
+const missingScriptSourceForgedSuccessor: ValidatorScenarioPair = {
+  passing: [{ file: MSS_FORGED_SUCCESSOR, test: MSS_OBSERVER }],
+  failing: [{ file: MSS_FORGED_SUCCESSOR, test: MSS_OBSERVER }],
+};
 const MR_VERTICALS =
   "demo/midgard-fault-proofs/tests/submit-init-emulator-missing-redeemer-verticals.test.ts";
 const streamedReplayStep = (failing: string): ValidatorScenarioPair => ({
@@ -417,6 +425,10 @@ export const VALIDATOR_SCENARIOS: Readonly<
     missingRedeemerForgedSuccessor(MR_OBSERVER),
   "fraud_proofs/missing_redeemer/family_entry.main":
     missingRedeemerForgedSuccessor(MR_OBSERVER),
+  "fraud_proofs/missing_script_source/family_entry.main":
+    missingScriptSourceForgedSuccessor,
+  "fraud_proofs/missing_script_source/observed_decision.main":
+    missingScriptSourceForgedSuccessor,
   "fraud_proofs/missing_redeemer/step_02.main":
     missingRedeemerForgedSuccessor(MR_OBSERVER),
   "fraud_proofs/missing_redeemer/step_03.main":
