@@ -75,7 +75,7 @@ validator main(
           output_index,
           transition,
           auxiliary,
-          frame.item_count == 30 && bytearray.length(yield_hash) == 28,
+          frame.item_count == 28 && bytearray.length(yield_hash) == 28,
           own_out_ref,
           tx,
         )
