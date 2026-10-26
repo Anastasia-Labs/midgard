@@ -38,8 +38,8 @@ const fixture = (
   languageTag: 0 | 3 | 128 = 3,
   purposeKind: 0 | 1 | 2 | 3 = 0,
 ) => {
-  const nativeFields: unknown[] = Array.from({ length: 26 }, () => 0n);
-  nativeFields[21] = 1n;
+  const nativeFields: unknown[] = Array.from({ length: 25 }, () => 0n);
+  nativeFields[20] = 1n;
   const nativeControlCbor = encodeCbor(nativeFields);
   const selectionFields = {
     nativeControlCbor,

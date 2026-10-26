@@ -14,6 +14,7 @@ import {
   decodeMidgardFieldPreimage,
   decodeSingleCbor,
   midgardFieldCommitment,
+  midgardFieldItemOrderIsValid,
 } from "@al-ft/midgard-core";
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -59,7 +60,7 @@ const RAW_UTXO_CARRIAGE = 1;
  * measured on the move paid from our wallet (the canonical-decode-8
  * observe-copy test). The observe move of an item of a longer field reads
  * the field from our published bytes-only copy of it instead (`RawUtxo`). */
-export const VALIDATION_TRACE_INLINE_OBSERVE_MAX_PREIMAGE_BYTES = 13_623;
+export const VALIDATION_TRACE_INLINE_OBSERVE_MAX_PREIMAGE_BYTES = 13_620;
 
 /** The holders of a canonical-decode step's resolution, in the order the
  * thread visits them, with the deployment manifest's name for each. */
@@ -132,8 +133,9 @@ export type ValidationTraceCanonicalDecodeItem = Readonly<{
   carriageCbor: string;
   /** `CanonicalDecodeItemSourceV1`: the field's commitment and length. */
   sourceCbor: string;
-  /** `CanonicalDecodeItemObservationV1`: the field's item count and the
-   * item's length. */
+  /** `CanonicalDecodeItemObservationV1`: the field's item count, the
+   * item's length, and whether the item follows its predecessor in the
+   * field's order. */
   observationCbor: string;
   /** `CanonicalDecodeItemProofV1`: the active item count, whether the
    * item's width is legal, and the field's encoded length past it. */
@@ -226,7 +228,12 @@ export const planValidationTraceCanonicalDecodeStep = ({
     itemCount === -1 &&
     encodedLength === 0;
   const activeItemCount = firstItem ? items.length : itemCount;
-  const encoded = canonicalFieldItemEncodedLength(fieldIndex, item.length);
+  const orderIsValid =
+    itemIndex === 0 ||
+    midgardFieldItemOrderIsValid(fieldIndex, items[itemIndex - 1]!, item);
+  const encoded = orderIsValid
+    ? canonicalFieldItemEncodedLength(fieldIndex, item.length)
+    : null;
   const before = firstItem
     ? canonicalCborArgumentHeaderSize(activeItemCount)
     : encodedLength;
@@ -238,7 +245,11 @@ export const planValidationTraceCanonicalDecodeStep = ({
         bytes(midgardFieldCommitment(preimage).toString("hex")),
         integer(preimage.length),
       ]),
-      observationCbor: constr(0, [integer(items.length), integer(item.length)]),
+      observationCbor: constr(0, [
+        integer(items.length),
+        integer(item.length),
+        constr(orderIsValid ? 1 : 0, []),
+      ]),
       proofCbor: constr(0, [
         integer(activeItemCount),
         constr(encoded === null ? 0 : 1, []),

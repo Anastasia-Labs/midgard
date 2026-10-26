@@ -21,6 +21,7 @@ pub type ActionV1 {
     output_index: Int,
     transition: ValidationOneStepWitnessV1,
     source_kind: Int,
+    item_index: Int,
     key: ByteArray,
     next_schedule_hash: ByteArray,
     yield_to_ref_input_index: Int,
@@ -57,6 +58,7 @@ validator main(
         output_index,
         transition,
         source_kind,
+        item_index,
         key,
         next_schedule_hash,
         yield_to_ref_input_index,
@@ -72,6 +74,7 @@ validator main(
         expect Some(d) = claim.descriptor
         let auxiliary = ValueInputAssetWitness {
           source_kind,
+          item_index,
           key,
           next_schedule_hash,
           policy_id: claim.policy_id,
@@ -97,6 +100,7 @@ validator main(
             datum |> semantic_pre_state,
             transition,
             source_kind,
+            item_index,
             key,
             next_schedule_hash,
             claim,

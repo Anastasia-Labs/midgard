@@ -17,7 +17,6 @@ pub type ResolveInputsControlRawV1 {
   field_preimage_lengths_cbor: ByteArray,
   context_cbor: ByteArray,
   cursor: Int,
-  accumulator: ByteArray,
   remaining_schedule_hash: ByteArray,
   signer_count: Int,
   signer_frontier_commitment: ByteArray,
@@ -33,7 +32,7 @@ pub fn control_raw_from_witness(
       [
         compact_cbor_data, witness_set_compact_cbor_data,
         field_preimage_lengths_cbor_data, context_cbor_data, cursor_data,
-        accumulator_data, remaining_schedule_hash_data, signer_count_data,
+        remaining_schedule_hash_data, signer_count_data,
         signer_frontier_commitment_data, pending_cbor_data,
         resolution_schedule_hash_data,
       ]
@@ -46,7 +45,6 @@ pub fn control_raw_from_witness(
     ),
     context_cbor: builtin.un_b_data(context_cbor_data),
     cursor: builtin.un_i_data(cursor_data),
-    accumulator: builtin.un_b_data(accumulator_data),
     remaining_schedule_hash: builtin.un_b_data(remaining_schedule_hash_data),
     signer_count: builtin.un_i_data(signer_count_data),
     signer_frontier_commitment: builtin.un_b_data(
@@ -59,12 +57,11 @@ pub fn control_raw_from_witness(
 
 pub fn encode_control_raw(control: ResolveInputsControlRawV1) -> ByteArray {
   expect control.cursor >= 0
-  expect bytearray.length(control.accumulator) == 32
   expect bytearray.length(control.remaining_schedule_hash) == 32
   expect control.signer_count >= 0
   expect bytearray.length(control.signer_frontier_commitment) == 32
   expect bytearray.length(control.resolution_schedule_hash) == 32
-  #"8b"
+  #"8a"
     |> bytearray.concat(encode_definite_bytes(control.compact_cbor))
     |> bytearray.concat(encode_definite_bytes(control.witness_set_compact_cbor))
     |> bytearray.concat(
@@ -72,7 +69,6 @@ pub fn encode_control_raw(control: ResolveInputsControlRawV1) -> ByteArray {
       )
     |> bytearray.concat(encode_definite_bytes(control.context_cbor))
     |> bytearray.concat(cbor.serialise(control.cursor))
-    |> bytearray.concat(encode_definite_bytes(control.accumulator))
     |> bytearray.concat(encode_definite_bytes(control.remaining_schedule_hash))
     |> bytearray.concat(cbor.serialise(control.signer_count))
     |> bytearray.concat(
@@ -104,7 +100,6 @@ pub fn control_no_pending_is_bound(
       control.field_preimage_lengths_cbor,
     ) == pre.transaction_commitment,
     validation_trace_v1.hash_validation_context(control.context_cbor) == pre.validation_context_hash,
-    bytearray.length(control.accumulator) == 32,
     bytearray.length(control.remaining_schedule_hash) == 32,
     bytearray.length(control.resolution_schedule_hash) == 32,
     control.cursor > 1 || control.remaining_schedule_hash == control.resolution_schedule_hash,
@@ -117,24 +112,27 @@ pub fn control_no_pending_is_bound(
 
 pub fn encode_pending_raw(
   source_kind: Int,
+  item_index: Int,
   key: ByteArray,
   next_schedule_hash: ByteArray,
   descriptor_cbor: ByteArray,
   output_proof_cbor: ByteArray,
 ) -> ByteArray {
-  #"85"
+  #"86"
     |> bytearray.concat(cbor.serialise(source_kind))
+    |> bytearray.concat(cbor.serialise(item_index))
     |> bytearray.concat(encode_definite_bytes(key))
     |> bytearray.concat(encode_definite_bytes(next_schedule_hash))
     |> bytearray.concat(encode_definite_bytes(descriptor_cbor))
     |> bytearray.concat(encode_definite_bytes(output_proof_cbor))
 }
 
-/// The five-item pending record of a resolve-inputs control, with the nested
+/// The six-item pending record of a resolve-inputs control, with the nested
 /// ledger-output-proof control kept as canonical bytes: the carrier binds it,
 /// the stage yield decodes it.
 pub type PendingRawV1 {
   source_kind: Int,
+  item_index: Int,
   key: ByteArray,
   next_schedule_hash: ByteArray,
   descriptor_cbor: ByteArray,
@@ -146,12 +144,13 @@ pub fn pending_raw_from_cbor(pending_cbor: ByteArray) -> PendingRawV1 {
   let data <- cbor_deserialise.expect_deserialise_envelope(pending_cbor)
   expect
       [
-        source_kind_data, key_data, next_schedule_hash_data,
+        source_kind_data, item_index_data, key_data, next_schedule_hash_data,
         descriptor_cbor_data, output_proof_cbor_data,
       ]
     = builtin.un_list_data(data)
   PendingRawV1 {
     source_kind: builtin.un_i_data(source_kind_data),
+    item_index: builtin.un_i_data(item_index_data),
     key: builtin.un_b_data(key_data),
     next_schedule_hash: builtin.un_b_data(next_schedule_hash_data),
     descriptor_cbor: builtin.un_b_data(descriptor_cbor_data),
@@ -162,6 +161,7 @@ pub fn pending_raw_from_cbor(pending_cbor: ByteArray) -> PendingRawV1 {
 pub fn encode_pending(pending: PendingRawV1) -> ByteArray {
   encode_pending_raw(
     pending.source_kind,
+    pending.item_index,
     pending.key,
     pending.next_schedule_hash,
     pending.descriptor_cbor,
@@ -210,7 +210,6 @@ pub fn control_raw_is_bound_with_descriptor(
       control.field_preimage_lengths_cbor,
     ) == pre.transaction_commitment,
     validation_trace_v1.hash_validation_context(control.context_cbor) == pre.validation_context_hash,
-    bytearray.length(control.accumulator) == 32,
     bytearray.length(control.remaining_schedule_hash) == 32,
     bytearray.length(control.resolution_schedule_hash) == 32,
     control.cursor > 1 || control.remaining_schedule_hash == control.resolution_schedule_hash,
@@ -220,6 +219,7 @@ pub fn control_raw_is_bound_with_descriptor(
     pending.source_kind == 0 || pending.source_kind == 1,
     resolution_schedule_node_hash(
       pending.source_kind,
+      pending.item_index,
       pending.key,
       pending.next_schedule_hash,
     ) == control.remaining_schedule_hash,

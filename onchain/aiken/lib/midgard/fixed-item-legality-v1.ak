@@ -3,6 +3,8 @@
 //// The caller authenticates the field and derives these exact stride slices.
 //// This module returns False for committed garbage; it never parses by expect.
 
+use aiken/builtin
+use aiken/crypto.{blake2b_224}
 use aiken/primitive/bytearray
 
 pub const max_serialized_output_preimage_bytes: Int = 16384
@@ -67,6 +69,35 @@ fn shape_is_legal(field_index: Int, item: ByteArray) -> Bool {
   }
 }
 
+/// CanonicalDecode's item order over two adjacent fixed-stride payloads
+/// (without the two-byte field-preimage wrapper) of one field. Fields 0 and 1
+/// ascend by item bytes, repeats allowed (`InputSets` reports them as
+/// `DuplicateInput`). Field 7 ascends strictly by
+/// `(blake2b_224(vkey), item bytes)`; the vkey is payload bytes 3..35 of
+/// `82 5820 <vkey> 5840 <signature>`. Every other field is unordered here.
+pub fn fixed_payload_follows_v1(
+  field_index: Int,
+  previous: ByteArray,
+  current: ByteArray,
+) -> Bool {
+  if field_index == 7 {
+    when
+      bytearray.compare(
+        blake2b_224(builtin.slice_bytearray(3, 32, previous)),
+        blake2b_224(builtin.slice_bytearray(3, 32, current)),
+      )
+    is {
+      Less -> True
+      Equal -> bytearray.compare(previous, current) == Less
+      Greater -> False
+    }
+  } else if field_index == 0 || field_index == 1 {
+    bytearray.compare(previous, current) != Greater
+  } else {
+    True
+  }
+}
+
 pub fn fixed_item_is_legal_v1(
   field_index: Int,
   previous: Option<ByteArray>,
@@ -78,9 +109,16 @@ pub fn fixed_item_is_legal_v1(
     when previous is {
       None -> True
       Some(prior) ->
-        // The committed order is authored. Signature execution sorts its
-        // logical work list and admits repeated witnesses.
-        shape_is_legal(field_index, prior)
+        // Shape is checked before the wrapper is dropped and the key read.
+        if !shape_is_legal(field_index, prior) {
+          False
+        } else {
+          fixed_payload_follows_v1(
+            field_index,
+            bytearray.drop(prior, 2),
+            bytearray.drop(item, 2),
+          )
+        }
     }
   }
 }

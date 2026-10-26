@@ -54,15 +54,15 @@ use midgard/validation_trace_v1.{ScriptSources, ValidationMachineStateV1}
 /// as its extension item.
 const output_proof_stage: Int = 5
 
-const output_cursor_index: Int = 20
+const output_cursor_index: Int = 18
 
-const output_count_index: Int = 21
+const output_count_index: Int = 19
 
-const receive_scan_index: Int = 24
+const receive_scan_index: Int = 22
 
-const extension_index: Int = 30
+const extension_index: Int = 28
 
-const frame_item_count: Int = 31
+const frame_item_count: Int = 29
 
 pub type ActionV1 {
   VerifyOutputProofFinalize {
@@ -71,7 +71,7 @@ pub type ActionV1 {
     transition: ValidationOneStepWitnessV1,
     descriptor_cbor: ByteArray,
     signer_proof: SignerSetProofV1,
-    /// The terminal ledger-output-proof control, pinned to frame item 30 and
+    /// The terminal ledger-output-proof control, pinned to frame item 28 and
     /// attested by every descriptor yield.
     control_cbor: ByteArray,
     /// `DataSummaryV1` on the wire; pinned by the value-summary yield and
@@ -274,8 +274,8 @@ fn output_proof_terminal_dispatch(
         when
           protected_output_authorization(
             address,
-            raw.item_int_v1(frame, 6),
-            raw.item_bytes_v1(frame, 7),
+            raw.item_int_v1(frame, 5),
+            raw.item_bytes_v1(frame, 6),
             signer_proof,
           )
         is {
@@ -310,8 +310,8 @@ fn output_proof_terminal_dispatch(
               ),
             }
             // Splice the higher-index item first: `replace_items_v1` targets
-            // offsets of the pre frame, and the item-24 replacement leaves
-            // item 20's offset intact while the reverse order would not.
+            // offsets of the pre frame, and the item-22 replacement leaves
+            // item 18's offset intact while the reverse order would not.
             let scan_spliced = raw.replace_items_v1(
               frame,
               transition.work_witness_cbor,

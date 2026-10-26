@@ -24,10 +24,8 @@ import { context } from "./validation-machine.validate-boundary-abi-and-collect-
 
 /**
  * With several invalid address witnesses, the one a rejection names is the
- * first the signature scan reaches: the scan runs in order-key order (signer
- * hash, then witness bytes, then index), not in witness-list order. Here the
- * two orders differ: the witness at list index 0 has the higher signer hash,
- * so the scan reaches list index 1 first.
+ * first in the witness list. Address witnesses ascend by signer hash, so list
+ * order is scan order: the witness at list index 0 has the lower signer hash.
  */
 const signerHash = (key: CML.PrivateKey): Buffer =>
   Buffer.from(key.to_public().hash().to_raw_bytes());
@@ -57,14 +55,14 @@ const transaction = encodeRecomputedNativeTx({
   witnessSet: {
     ...base.tx.witnessSet,
     addrTxWitsPreimageCbor: encodeByteList([
-      invalidWitness(higherSigner!),
       invalidWitness(lowerSigner!),
+      invalidWitness(higherSigner!),
     ]),
   },
 });
 
-const FIRST_IN_SCAN_ORDER = 1n;
-const FIRST_IN_LIST_ORDER = 0n;
+const FIRST_INVALID = 0n;
+const SECOND_INVALID = 1n;
 
 const rejectionCodeHashNaming = (witnessIndex: bigint): Buffer =>
   hashMidgardValidationRejectionReasonV1({
@@ -94,14 +92,14 @@ describe("first invalid address witness", { timeout: 120_000 }, () => {
     );
   });
 
-  it("is named by Phase A in scan order", async () => {
+  it("is named by Phase A", async () => {
     const rejection = await phaseARejection(
       transaction,
       RejectCodes.InvalidSignature,
     );
     expect(rejection.subject).toStrictEqual({
       arm: "AddressWitnessSignatureInvalid",
-      index: FIRST_IN_SCAN_ORDER,
+      index: FIRST_INVALID,
     });
   });
 
@@ -109,7 +107,7 @@ describe("first invalid address witness", { timeout: 120_000 }, () => {
     expect(forcedLeaves.descriptor.verdict).toBe("rejected");
     expect(
       Buffer.from(forcedLeaves.descriptor.rejectionCodeHash).equals(
-        rejectionCodeHashNaming(FIRST_IN_SCAN_ORDER),
+        rejectionCodeHashNaming(FIRST_INVALID),
       ),
     ).toBe(true);
   });
@@ -118,16 +116,16 @@ describe("first invalid address witness", { timeout: 120_000 }, () => {
     expect(
       decideValidationChallengeV1(forcedLeaves, {
         ...forcedLeaves.descriptor,
-        rejectionCodeHash: rejectionCodeHashNaming(FIRST_IN_SCAN_ORDER),
+        rejectionCodeHash: rejectionCodeHashNaming(FIRST_INVALID),
       }),
     ).toEqual({ kind: "agree" });
   });
 
-  it("disputes a descriptor naming the first in list order", () => {
+  it("disputes a descriptor naming the second", () => {
     expect(
       decideValidationChallengeV1(forcedLeaves, {
         ...forcedLeaves.descriptor,
-        rejectionCodeHash: rejectionCodeHashNaming(FIRST_IN_LIST_ORDER),
+        rejectionCodeHash: rejectionCodeHashNaming(SECOND_INVALID),
       }),
     ).toEqual({
       kind: "terminalIncoherent",

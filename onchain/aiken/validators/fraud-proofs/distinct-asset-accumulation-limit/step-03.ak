@@ -58,6 +58,7 @@ validator main(
             authenticate_input_fold_v1(
               state,
               evidence.source_kind,
+              evidence.item_index,
               evidence.key,
               evidence.next_schedule_hash,
               evidence.descriptor_cbor,
@@ -67,7 +68,6 @@ validator main(
               evidence.quantity,
               evidence.asset_peaks,
               evidence.asset_siblings,
-              evidence.mutation,
             )
         }
         let expected: Data = advanced

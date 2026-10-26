@@ -256,7 +256,6 @@ pub fn signatures_scan_witness(
   required_count: Int,
   address_seen: Int,
   required_seen: Int,
-  previous_order_key: ByteArray,
   previous_signer_hash: ByteArray,
   signer_frontier: validation_merkle_v1.BuiltFrontier,
   first_invalid_witness_index: Int,
@@ -276,7 +275,6 @@ pub fn signatures_scan_witness(
     required_count,
     address_seen,
     required_seen,
-    previous_order_key,
     previous_signer_hash,
     signer_frontier.count,
     signer_frontier.peaks,
@@ -300,7 +298,6 @@ pub fn initial_signatures_witness(tx: MidgardTransaction) -> ByteArray {
     },
     0,
     0,
-    #"",
     #"",
     validation_merkle_v1.build_frontier([]),
     -1,
@@ -538,7 +535,10 @@ pub fn input_sets_scan_witness(
   reference_count: Int,
   spend_seen: Int,
   reference_seen: Int,
-  previous_key: ByteArray,
+  last_key: ByteArray,
+  last_field: Int,
+  last_item: Int,
+  cached_other_head: ByteArray,
   schedule_hash: ByteArray,
 ) -> ByteArray {
   let proof_source = submitted_source(tx)
@@ -551,7 +551,10 @@ pub fn input_sets_scan_witness(
     reference_count,
     spend_seen,
     reference_seen,
-    previous_key,
+    last_key,
+    last_field,
+    last_item,
+    cached_other_head,
     schedule_hash,
   )
 }
@@ -721,7 +724,6 @@ pub fn resolve_inputs_step_fixture(
   tx: MidgardTransaction,
   prior_ledger_root: ByteArray,
   cursor: Int,
-  accumulator: ByteArray,
   program_counter: Int,
 ) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
   let proof_source = submitted_source(tx)
@@ -737,7 +739,6 @@ pub fn resolve_inputs_step_fixture(
     proof_source.field_preimage_lengths_cbor,
     validation_context_cbor,
     cursor,
-    accumulator,
     vm_witness.transaction_resolution_schedule_hash(
       tx.body.inputs,
       tx.body.reference_inputs,
@@ -772,13 +773,11 @@ pub fn resolve_inputs_step_fixture(
 pub fn script_sources_output_step_fixture_with_resolved_items(
   tx: MidgardTransaction,
   resolved_input_count: Int,
-  resolved_inputs_accumulator: ByteArray,
   stage: Int,
   source_frontier: validation_merkle_v1.BuiltFrontier,
   redeemer_frontier: validation_merkle_v1.BuiltFrontier,
   replay_cursor: Int,
   resolved_item_frontier: validation_merkle_v1.BuiltFrontier,
-  replay_accumulator: ByteArray,
   replay_remaining_schedule_hash: ByteArray,
   spend_index: Int,
   purpose_frontier: validation_merkle_v1.BuiltFrontier,
@@ -818,7 +817,6 @@ pub fn script_sources_output_step_fixture_with_resolved_items(
     proof_source.field_preimage_lengths_cbor,
     validation_context_cbor,
     resolved_input_count,
-    resolved_inputs_accumulator,
     signer_frontier.count,
     validation_merkle_v1.frontier_commitment(
       signer_frontier.count,
@@ -831,7 +829,6 @@ pub fn script_sources_output_step_fixture_with_resolved_items(
     redeemer_frontier.count,
     redeemer_frontier.peaks,
     replay_cursor,
-    replay_accumulator,
     replay_remaining_schedule_hash,
     spend_index,
     purpose_frontier.count,
@@ -866,12 +863,10 @@ pub fn script_sources_output_step_fixture_with_resolved_items(
 pub fn script_sources_output_step_fixture(
   tx: MidgardTransaction,
   resolved_input_count: Int,
-  resolved_inputs_accumulator: ByteArray,
   stage: Int,
   source_frontier: validation_merkle_v1.BuiltFrontier,
   redeemer_frontier: validation_merkle_v1.BuiltFrontier,
   replay_cursor: Int,
-  replay_accumulator: ByteArray,
   replay_remaining_schedule_hash: ByteArray,
   spend_index: Int,
   purpose_frontier: validation_merkle_v1.BuiltFrontier,
@@ -882,13 +877,11 @@ pub fn script_sources_output_step_fixture(
   script_sources_output_step_fixture_with_resolved_items(
     tx,
     resolved_input_count,
-    resolved_inputs_accumulator,
     stage,
     source_frontier,
     redeemer_frontier,
     replay_cursor,
     validation_merkle_v1.build_frontier([]),
-    replay_accumulator,
     replay_remaining_schedule_hash,
     spend_index,
     purpose_frontier,
@@ -922,7 +915,6 @@ pub fn script_sources_mint_fold_fixture(
     proof_source.field_preimage_lengths_cbor,
     validation_context_cbor,
     0,
-    vm_witness.initial_resolution_accumulator(),
     signer_frontier.count,
     validation_merkle_v1.frontier_commitment(
       signer_frontier.count,
@@ -935,7 +927,6 @@ pub fn script_sources_mint_fold_fixture(
     0,
     empty_frontier.peaks,
     0,
-    vm_witness.initial_resolution_accumulator(),
     vm_witness.empty_resolution_schedule_hash(),
     0,
     purpose_frontier.count,
@@ -1071,7 +1062,6 @@ pub fn script_sources_active_output_proof_fixture(
     field_preimage_lengths_cbor: proof_source.field_preimage_lengths_cbor,
     context_cbor: validation_context_cbor,
     resolved_input_count: 0,
-    resolved_inputs_accumulator: vm_witness.initial_resolution_accumulator(),
     signer_count: signer_frontier.count,
     signer_frontier_commitment: validation_merkle_v1.frontier_commitment(
       signer_frontier.count,
@@ -1084,7 +1074,6 @@ pub fn script_sources_active_output_proof_fixture(
     redeemer_count: 0,
     redeemer_peaks: validation_merkle_v1.empty_frontier(),
     replay_cursor: 0,
-    replay_accumulator: vm_witness.initial_resolution_accumulator(),
     replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     spend_index: 0,
     purpose_count: 0,
@@ -1126,13 +1115,11 @@ pub fn script_sources_active_output_proof_fixture(
 pub fn script_sources_step_fixture_with_resolved_items(
   tx: MidgardTransaction,
   resolved_input_count: Int,
-  resolved_inputs_accumulator: ByteArray,
   stage: Int,
   source_frontier: validation_merkle_v1.BuiltFrontier,
   redeemer_frontier: validation_merkle_v1.BuiltFrontier,
   replay_cursor: Int,
   resolved_item_frontier: validation_merkle_v1.BuiltFrontier,
-  replay_accumulator: ByteArray,
   replay_remaining_schedule_hash: ByteArray,
   spend_index: Int,
   purpose_frontier: validation_merkle_v1.BuiltFrontier,
@@ -1141,13 +1128,11 @@ pub fn script_sources_step_fixture_with_resolved_items(
   script_sources_output_step_fixture_with_resolved_items(
     tx,
     resolved_input_count,
-    resolved_inputs_accumulator,
     stage,
     source_frontier,
     redeemer_frontier,
     replay_cursor,
     resolved_item_frontier,
-    replay_accumulator,
     replay_remaining_schedule_hash,
     spend_index,
     purpose_frontier,
@@ -1168,17 +1153,14 @@ pub fn script_sources_receive_scan_step_fixture(
   receive_scan: vm_machine_types.ReceivePurposeScanControlV1,
   program_counter: Int,
 ) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
-  let accumulator = vm_witness.initial_resolution_accumulator()
   script_sources_output_step_fixture_with_resolved_items(
     tx,
     0,
-    accumulator,
     7,
     validation_merkle_v1.build_frontier([]),
     validation_merkle_v1.build_frontier([]),
     0,
     validation_merkle_v1.build_frontier([]),
-    accumulator,
     vm_witness.empty_resolution_schedule_hash(),
     0,
     purpose_frontier,
@@ -1194,12 +1176,10 @@ pub fn script_sources_receive_scan_step_fixture(
 pub fn script_sources_step_fixture(
   tx: MidgardTransaction,
   resolved_input_count: Int,
-  resolved_inputs_accumulator: ByteArray,
   stage: Int,
   source_frontier: validation_merkle_v1.BuiltFrontier,
   redeemer_frontier: validation_merkle_v1.BuiltFrontier,
   replay_cursor: Int,
-  replay_accumulator: ByteArray,
   replay_remaining_schedule_hash: ByteArray,
   spend_index: Int,
   purpose_frontier: validation_merkle_v1.BuiltFrontier,
@@ -1208,13 +1188,11 @@ pub fn script_sources_step_fixture(
   script_sources_step_fixture_with_resolved_items(
     tx,
     resolved_input_count,
-    resolved_inputs_accumulator,
     stage,
     source_frontier,
     redeemer_frontier,
     replay_cursor,
     validation_merkle_v1.build_frontier([]),
-    replay_accumulator,
     replay_remaining_schedule_hash,
     spend_index,
     purpose_frontier,
@@ -1223,7 +1201,7 @@ pub fn script_sources_step_fixture(
 }
 
 /// Stage-1 state whose work witness carries a pending redeemer-item control
-/// hash (the 31-item `encode_script_sources_redeemer_item_witness` form). This
+/// hash (the 29-item `encode_script_sources_redeemer_item_witness` form). This
 /// is the shape `script_sources_stage_one` commits to between the
 /// `TransactionRedeemerItemBeginWitness` step and the terminal item step.
 pub fn script_sources_pending_redeemer_item_fixture(
@@ -1247,7 +1225,6 @@ pub fn script_sources_pending_redeemer_item_fixture(
     field_preimage_lengths_cbor: proof_source.field_preimage_lengths_cbor,
     context_cbor: validation_context_cbor,
     resolved_input_count: 0,
-    resolved_inputs_accumulator: vm_witness.initial_resolution_accumulator(),
     signer_count: signer_frontier.count,
     signer_frontier_commitment: validation_merkle_v1.frontier_commitment(
       signer_frontier.count,
@@ -1260,7 +1237,6 @@ pub fn script_sources_pending_redeemer_item_fixture(
     redeemer_count: redeemer_frontier.count,
     redeemer_peaks: redeemer_frontier.peaks,
     replay_cursor: 0,
-    replay_accumulator: vm_witness.initial_resolution_accumulator(),
     replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     spend_index: 0,
     purpose_count: 0,
@@ -1324,7 +1300,6 @@ pub fn script_discovery_step_fixture_with_output_frontier(
     field_preimage_lengths_cbor: proof_source.field_preimage_lengths_cbor,
     context_cbor: validation_context_cbor,
     resolved_input_count: 0,
-    resolved_inputs_accumulator: vm_witness.initial_resolution_accumulator(),
     resolved_item_peaks: validation_merkle_v1.empty_frontier(),
     signer_count: signer_frontier.count,
     signer_frontier_commitment: validation_merkle_v1.frontier_commitment(
@@ -1337,7 +1312,6 @@ pub fn script_discovery_step_fixture_with_output_frontier(
     redeemer_count: redeemer_frontier.count,
     redeemer_peaks: redeemer_frontier.peaks,
     replay_cursor: 0,
-    replay_accumulator: vm_witness.initial_resolution_accumulator(),
     replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     spend_index: 0,
     purpose_count: purpose_frontier.count,
@@ -1429,7 +1403,6 @@ pub fn native_scripts_step_fixture(
     field_preimage_lengths_cbor: proof_source.field_preimage_lengths_cbor,
     context_cbor: validation_context_cbor,
     resolved_input_count: 0,
-    resolved_inputs_accumulator: vm_witness.initial_resolution_accumulator(),
     spend_input_count: 0,
     resolved_item_peaks: validation_merkle_v1.empty_frontier(),
     signer_count: signer_frontier.count,
@@ -1482,7 +1455,6 @@ pub fn empty_native_control_fixture(
     field_preimage_lengths_cbor: proof_source.field_preimage_lengths_cbor,
     context_cbor: validation_context_cbor,
     resolved_input_count: 0,
-    resolved_inputs_accumulator: vm_witness.initial_resolution_accumulator(),
     spend_input_count: 0,
     resolved_item_peaks: validation_merkle_v1.empty_frontier(),
     signer_count: signer_frontier.count,

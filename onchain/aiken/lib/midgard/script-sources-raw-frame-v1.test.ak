@@ -18,7 +18,6 @@ fn control(stage: Int, compact: ByteArray) -> ByteArray {
     #"80",
     #"80",
     0,
-    h,
     0,
     h,
     [],
@@ -28,7 +27,6 @@ fn control(stage: Int, compact: ByteArray) -> ByteArray {
     0,
     [],
     0,
-    h,
     h,
     0,
     0,
@@ -87,7 +85,7 @@ fn transition(compact: ByteArray) -> ValidationOneStepWitnessV1 {
 
 test stage_splice_equals_canonical_encoder(compact via fuzz.bytearray()) {
   let w = transition(compact)
-  let frame = raw.open_frame_v1(pre(compact), w, 30, 5)
+  let frame = raw.open_frame_v1(pre(compact), w, 28, 5)
   and {
     raw.replace_stage_v1(frame, w.work_witness_cbor, 6) == control(6, compact),
     raw.successor_is_exact_v1(pre(compact), w, control(6, compact)),
@@ -107,11 +105,11 @@ test extension_append_replace_and_drop_are_exact(
       work_witness_cbor: extended,
       claimed_successor: p,
     },
-    31,
+    29,
     5,
   )
   and {
-    raw.item_bytes_v1(frame, 30) == first,
+    raw.item_bytes_v1(frame, 28) == first,
     raw.drop_extension_v1(extended, first) == base,
     raw.replace_extension_v1(extended, first, next) == raw.append_extension_v1(
       base,
@@ -122,20 +120,20 @@ test extension_append_replace_and_drop_are_exact(
 
 test rejects_noncanonical_array_header() fail {
   let w = transition(#"80")
-  let malformed = #"99001e"
+  let malformed = #"99001c"
     |> builtin.append_bytearray(
         builtin.slice_bytearray(2, 100000, w.work_witness_cbor),
       )
   expect _ = raw.open_frame_v1(
     pre(#"80"),
     ValidationOneStepWitnessV1 { ..w, work_witness_cbor: malformed },
-    30,
+    28,
     5,
   )
 }
 
 test rejects_wrong_stage() fail {
-  expect _ = raw.open_frame_v1(pre(#"80"), transition(#"80"), 30, 6)
+  expect _ = raw.open_frame_v1(pre(#"80"), transition(#"80"), 28, 6)
 }
 
 test rejects_pending_extension_in_plain_frame() fail {
@@ -146,13 +144,13 @@ test rejects_pending_extension_in_plain_frame() fail {
       ..w,
       work_witness_cbor: raw.append_extension_v1(w.work_witness_cbor, #"80"),
     },
-    30,
+    28,
     5,
   )
 }
 
 test rejects_foreign_source_commitment() fail {
-  expect _ = raw.open_frame_v1(pre(#"00"), transition(#"80"), 30, 5)
+  expect _ = raw.open_frame_v1(pre(#"00"), transition(#"80"), 28, 5)
 }
 
 test rejects_splice_at_a_foreign_offset() fail {
@@ -160,7 +158,7 @@ test rejects_splice_at_a_foreign_offset() fail {
 }
 
 test rejects_short_extension_suffix() fail {
-  expect _ = raw.replace_extension_v1(#"981f00", #"0011223344", #"80")
+  expect _ = raw.replace_extension_v1(#"981d00", #"0011223344", #"80")
 }
 
 test pinned_initial_subcontrols_equal_canonical_encoders() {
@@ -181,11 +179,11 @@ test derived_field_offset_preserves_all_other_canonical_items(
   compact via fuzz.bytearray(),
 ) {
   let w = transition(compact)
-  let frame = raw.open_frame_v1(pre(compact), w, 30, 5)
+  let frame = raw.open_frame_v1(pre(compact), w, 28, 5)
   and {
-    raw.item_offset_v1(frame, 9) == frame.stage_offset,
-    raw.item_offset_v1(frame, 30) == bytearray.length(w.work_witness_cbor),
-    raw.replace_items_v1(frame, w.work_witness_cbor, 9, 1, cbor.serialise(6)) == control(
+    raw.item_offset_v1(frame, 8) == frame.stage_offset,
+    raw.item_offset_v1(frame, 28) == bytearray.length(w.work_witness_cbor),
+    raw.replace_items_v1(frame, w.work_witness_cbor, 8, 1, cbor.serialise(6)) == control(
       6,
       compact,
     ),
@@ -194,6 +192,6 @@ test derived_field_offset_preserves_all_other_canonical_items(
 
 test derived_field_splice_rejects_an_out_of_range_field() fail {
   let w = transition(#"80")
-  let frame = raw.open_frame_v1(pre(#"80"), w, 30, 5)
-  expect _ = raw.replace_items_v1(frame, w.work_witness_cbor, 30, 1, #"00")
+  let frame = raw.open_frame_v1(pre(#"80"), w, 28, 5)
+  expect _ = raw.replace_items_v1(frame, w.work_witness_cbor, 28, 1, #"00")
 }

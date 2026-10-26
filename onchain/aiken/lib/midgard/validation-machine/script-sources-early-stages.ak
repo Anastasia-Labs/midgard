@@ -35,8 +35,7 @@ use midgard/validation_machine/witness.{
   empty_observer_purpose_scan_control, empty_receive_purpose_scan_control,
   empty_resolution_schedule_hash, empty_script_discovery_control,
   encode_inline_source_hash_control_v1, exact_script_sources_control,
-  initial_resolution_accumulator, inline_source_hash_control_from_cbor,
-  script_sources_control_from_witness,
+  inline_source_hash_control_from_cbor, script_sources_control_from_witness,
   script_sources_stage_zero_control_from_witness,
 }
 use midgard/validation_machine_field_door_v1 as field_door
@@ -52,9 +51,9 @@ fn script_sources_stage_zero_work_witness_has_canonical_shape(
     0,
   )
   let expected_item_count = if pending_source_cbor == #"" {
-    30
+    28
   } else {
-    31
+    29
   }
   and {
     offset == 2,
@@ -90,9 +89,6 @@ pub fn script_sources_stage_zero_prefix_before_stage(
       )
     |> bytearray.concat(encode_definite_bytes(control.context_cbor))
     |> bytearray.concat(cbor.serialise(control.resolved_input_count))
-    |> bytearray.concat(
-        encode_definite_bytes(control.resolved_inputs_accumulator),
-      )
     |> bytearray.concat(cbor.serialise(control.signer_count))
     |> bytearray.concat(
         encode_definite_bytes(control.signer_frontier_commitment),
@@ -128,12 +124,10 @@ fn script_sources_stage_zero_control_is_bound(
     ) == pre.transaction_commitment,
     validation_trace_v1.hash_validation_context(control.context_cbor) == pre.validation_context_hash,
     control.resolved_input_count >= 0,
-    bytearray.length(control.resolved_inputs_accumulator) == 32,
     control.signer_count >= 0,
     bytearray.length(control.signer_frontier_commitment) == 32,
     control.resolved_item_peaks == [],
     control.replay_cursor == 0,
-    bytearray.length(control.replay_accumulator) == 32,
     bytearray.length(control.replay_remaining_schedule_hash) == 32,
     bytearray.length(control.resolution_schedule_hash) == 32,
     control.spend_index == 0,
@@ -185,7 +179,7 @@ fn script_sources_stage_zero_finish_successor_is_exact(
   witness: ValidationOneStepWitnessV1,
   control: ScriptSourcesControlV1,
 ) -> Bool {
-  let prefix = script_sources_stage_zero_prefix_before_stage(control, 30)
+  let prefix = script_sources_stage_zero_prefix_before_stage(control, 28)
   let stage_offset = bytearray.length(prefix)
   let work_length = bytearray.length(witness.work_witness_cbor)
   expect
@@ -244,7 +238,7 @@ fn script_sources_stage_zero_terminal_successor_is_exact(
   source_count: Int,
   source_peaks: List<validation_merkle_v1.FrontierPeak>,
 ) -> Bool {
-  let prefix = script_sources_stage_zero_prefix_before_stage(control, 31)
+  let prefix = script_sources_stage_zero_prefix_before_stage(control, 29)
     |> bytearray.concat(#"00")
   let source_offset = bytearray.length(prefix)
   let old_source_fields = cbor.serialise(control.source_count)
@@ -270,7 +264,7 @@ fn script_sources_stage_zero_terminal_successor_is_exact(
       bytearray.length(old_pending),
       witness.work_witness_cbor,
     ) == old_pending
-  let next_work_witness_cbor = encode_definite_array_header(30)
+  let next_work_witness_cbor = encode_definite_array_header(28)
     |> bytearray.concat(builtin.slice_bytearray(2, source_offset - 2, prefix))
     |> bytearray.concat(cbor.serialise(source_count))
     |> bytearray.concat(validation_merkle_v1.encode_frontier(source_peaks))
@@ -435,8 +429,8 @@ pub fn verify_script_sources_stage_zero_begin_semantics_v1(
   item_index: Int,
   carriage: native_tx_field_access_v1.FieldCarriageV1,
 ) -> Bool {
-  let frame = raw_frame.open_frame_v1(pre, witness, 30, 0)
-  expect Some(receive_scan) = list.at(frame.items, 24)
+  let frame = raw_frame.open_frame_v1(pre, witness, 28, 0)
+  expect Some(receive_scan) = list.at(frame.items, 22)
   expect
     receive_scan == builtin.list_data(
       [
@@ -448,8 +442,8 @@ pub fn verify_script_sources_stage_zero_begin_semantics_v1(
         builtin.list_data([]),
       ],
     )
-  let source_count = raw_frame.item_int_v1(frame, 10)
-  let inline_source_count = raw_frame.item_int_v1(frame, 25)
+  let source_count = raw_frame.item_int_v1(frame, 9)
+  let inline_source_count = raw_frame.item_int_v1(frame, 23)
   let witness_set = decode_native_tx_witness_set_compact(
     frame.witness_set_compact_cbor,
   )
@@ -473,16 +467,16 @@ pub fn verify_script_sources_stage_zero_begin_semantics_v1(
     item_length,
   )
   and {
-    raw_frame.item_frontier_v1(frame, 8) == [],
-    raw_frame.item_int_v1(frame, 12) == 0,
-    raw_frame.item_frontier_v1(frame, 13) == [],
-    raw_frame.item_int_v1(frame, 26) == 0,
+    raw_frame.item_frontier_v1(frame, 7) == [],
+    raw_frame.item_int_v1(frame, 11) == 0,
+    raw_frame.item_frontier_v1(frame, 12) == [],
+    raw_frame.item_int_v1(frame, 24) == 0,
+    raw_frame.item_int_v1(frame, 16) == 0,
+    raw_frame.item_frontier_v1(frame, 17) == [],
     raw_frame.item_int_v1(frame, 18) == 0,
-    raw_frame.item_frontier_v1(frame, 19) == [],
-    raw_frame.item_int_v1(frame, 20) == 0,
+    raw_frame.item_int_v1(frame, 19) == 0,
+    raw_frame.item_frontier_v1(frame, 20) == [],
     raw_frame.item_int_v1(frame, 21) == 0,
-    raw_frame.item_frontier_v1(frame, 22) == [],
-    raw_frame.item_int_v1(frame, 23) == 0,
     active_total_count > 0,
     active_total_count <= max_tx_size_derived_collection_item_count,
     item_length > 0,
@@ -518,14 +512,14 @@ pub fn verify_script_sources_stage_zero_begin_semantics_v1(
           |> bytearray.concat(raw_frame.empty_observer_scan_cbor)
           |> bytearray.concat(raw_frame.empty_mint_fold_cbor)
           |> bytearray.concat(
-              encode_definite_bytes(raw_frame.item_bytes_v1(frame, 29)),
+              encode_definite_bytes(raw_frame.item_bytes_v1(frame, 27)),
             )
         let new_suffix = cbor.serialise(active_total_count)
           |> bytearray.concat(#"00")
           |> bytearray.concat(raw_frame.empty_observer_scan_cbor)
           |> bytearray.concat(raw_frame.empty_mint_fold_cbor)
           |> bytearray.concat(
-              encode_definite_bytes(raw_frame.item_bytes_v1(frame, 29)),
+              encode_definite_bytes(raw_frame.item_bytes_v1(frame, 27)),
             )
         let next_cbor = raw_frame.splice_v1(
           witness.work_witness_cbor,
@@ -548,11 +542,11 @@ pub fn verify_script_sources_stage_zero_hash_block_semantics_v1(
   chunk_proof: bounded_item_v1.ChunkProofV1,
   next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
 ) -> Bool {
-  let frame = raw_frame.open_frame_v1(pre, witness, 31, 0)
-  let pending_cbor = raw_frame.item_bytes_v1(frame, 30)
+  let frame = raw_frame.open_frame_v1(pre, witness, 29, 0)
+  let pending_cbor = raw_frame.item_bytes_v1(frame, 28)
   let pending = inline_source_hash_control_from_cbor(pending_cbor)
-  expect pending.source_index == raw_frame.item_int_v1(frame, 10)
-  expect pending.inline_source_count == raw_frame.item_int_v1(frame, 25)
+  expect pending.source_index == raw_frame.item_int_v1(frame, 9)
+  expect pending.inline_source_count == raw_frame.item_int_v1(frame, 23)
   when inline_source_hash_block_v1(pending, chunk_proof, next_chunk_proof) is {
     None -> False
     Some(block) -> {
@@ -892,11 +886,11 @@ pub fn verify_script_sources_stage_one_finish_raw_semantics_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
 ) -> Bool {
-  let frame = raw_frame.open_frame_v1(pre, witness, 30, 1)
+  let frame = raw_frame.open_frame_v1(pre, witness, 28, 1)
   expect
       [
-        _, _, _, _, _, _, _, _, resolved_item_peaks_data, _, source_count_data,
-        _, redeemer_count_data, redeemer_peaks_data, replay_cursor_data, _, _,
+        _, _, _, _, _, _, _, resolved_item_peaks_data, _, source_count_data, _,
+        redeemer_count_data, redeemer_peaks_data, replay_cursor_data, _,
         spend_index_data, purpose_count_data, _, output_cursor_data,
         output_count_data, _, _, receive_scan_data, inline_source_count_data,
         redeemer_total_count_data, _, _, resolution_schedule_hash_data,
@@ -958,11 +952,11 @@ pub fn verify_script_sources_stage_one_begin_raw_semantics(
   carriage: native_tx_field_access_v1.FieldCarriageV1,
   door: field_door.MachineFieldDoorV1,
 ) -> Bool {
-  let frame = raw_frame.open_frame_v1(pre, witness, 30, 1)
+  let frame = raw_frame.open_frame_v1(pre, witness, 28, 1)
   expect
       [
-        _, _, _, _, _, _, _, _, resolved_item_peaks_data, _, source_count_data,
-        _, redeemer_count_data, _, replay_cursor_data, _, _, spend_index_data,
+        _, _, _, _, _, _, _, resolved_item_peaks_data, _, source_count_data, _,
+        redeemer_count_data, _, replay_cursor_data, _, spend_index_data,
         purpose_count_data, _, output_cursor_data, output_count_data, _, _,
         receive_scan_data, inline_source_count_data, redeemer_total_count_data,
         _, _, resolution_schedule_hash_data,
@@ -1019,11 +1013,11 @@ pub fn verify_script_sources_stage_one_begin_raw_semantics(
   let next_total = raw_frame.replace_items_v1(
     frame,
     witness.work_witness_cbor,
-    26,
+    24,
     1,
     cbor.serialise(active_total),
   )
-  let next = #"981f"
+  let next = #"981d"
     |> bytearray.concat(
         bytearray.slice(next_total, 2, bytearray.length(next_total) - 1),
       )
@@ -1169,6 +1163,7 @@ pub fn script_sources_stage_one(
                   control.redeemer_peaks,
                   script_proof_v1.redeemer_item_leaf_hash(
                     control.redeemer_count,
+                    next.total_length,
                     next.item_commitment,
                   ),
                 ),
@@ -1206,7 +1201,6 @@ pub fn script_sources_stage_two(
     control.resolved_input_count > 0,
     control.replay_cursor == 0,
     control.resolved_item_peaks == [],
-    control.replay_accumulator == initial_resolution_accumulator(),
     control.replay_remaining_schedule_hash == empty_resolution_schedule_hash(),
     control.spend_index == 0,
     control.purpose_count == 0,

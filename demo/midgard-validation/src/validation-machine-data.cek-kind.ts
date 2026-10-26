@@ -18,13 +18,13 @@ export const scriptSourcesDiscoveryCurrentPurpose = (
     "script_sources_control",
   );
   if (
-    control.length !== 31 ||
-    asBigInt(control[9], "script_sources_control.stage") !== 10n
+    control.length !== 29 ||
+    asBigInt(control[8], "script_sources_control.stage") !== 10n
   ) {
     throw new Error("script_sources_control is not at discovery stage 10");
   }
   const discovery = asArray(
-    decodeSingleCbor(asBytes(control[30], "script_sources_control.discovery")),
+    decodeSingleCbor(asBytes(control[28], "script_sources_control.discovery")),
     "script_sources_discovery",
   );
   if (discovery.length !== 15) {
@@ -80,7 +80,7 @@ export const resolveInputsCursor = (
     decodeSingleCbor(witness.cbor),
     "resolve_inputs_control",
   );
-  if (control.length !== 11) {
+  if (control.length !== 10) {
     throw new Error("resolve_inputs_control has an invalid field count");
   }
   const cursor = Number(asBigInt(control[4], "resolve_inputs_control.cursor"));
@@ -137,11 +137,11 @@ export const cekKind = (witness: ValidationMachineWorkWitness): CekStepKind => {
     decodeSingleCbor(asBytes(control[0], "cek_witness.native_control")),
     "cek_witness.native_control",
   );
-  if (nativeControl.length !== 26) {
+  if (nativeControl.length !== 25) {
     throw new Error("cek_witness native control has an invalid field count");
   }
   const executionCount = asBigInt(
-    nativeControl[21],
+    nativeControl[20],
     "cek_witness.native_control.execution_count",
   );
   const executionCursor = asBigInt(control[2], "cek_witness.execution_cursor");

@@ -421,6 +421,31 @@ pub fn open_machine_fixed_field_item(
   MachineFieldItemV1 { view, field_index, item_index, item_offset, item_length }
 }
 
+/// `open_machine_fixed_field_item` at the item `seen` places from the end of
+/// the field: index `count - seen - 1`, with the count read off the same
+/// authenticated view. For a scan that reads an ascending field from its tail
+/// (`InputSets`), so the step names no index.
+pub fn open_machine_fixed_field_tail_item(
+  door: MachineFieldDoorV1,
+  verified: VerifiedTxSourceView,
+  witness_set: NativeTxWitnessSetCompact,
+  field_index: Int,
+  seen: Int,
+  carriage: FieldCarriageV1,
+) -> MachineFieldItemV1 {
+  let view = authenticated_whole_fixed_field_view(
+    verified,
+    witness_set,
+    field_index,
+    carriage,
+    door.reference_inputs,
+    door.certificate_policy_id,
+  )
+  let item_index = whole_view_item_count(view) - seen - 1
+  let Pair(item_offset, item_length) = field_fixed_item_extent(view, item_index)
+  MachineFieldItemV1 { view, field_index, item_index, item_offset, item_length }
+}
+
 /// `machine_field_item_count` for an item opened through the fixed-stride door.
 pub fn machine_fixed_field_item_count(item: MachineFieldItemV1) -> Int {
   whole_view_item_count(item.view)

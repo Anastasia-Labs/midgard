@@ -4,10 +4,9 @@
  * records the decode of the script our trace selects, as journaled actions
  * of the workflow, and plays the successor's thread through the CEK resolver
  * to the selection resolver, whose hop to the award reads the record and
- * invokes both yields. The selection's hop needs more than the per-move
- * cap, so our wallet pays all of its fee and the thread reaches the award
- * with all its lovelace; every other move of the thread fits under the cap
- * and its thread pays it, and the awarded thread closes into our case. The
+ * invokes both yields. Every move of the thread, the selection's hop
+ * among them, fits under the per-move cap and its thread pays it, and the
+ * awarded thread closes into our case. The
  * selection's successor yield refuses a selection whose record reference
  * names an output that only looks like the record. */
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
@@ -355,7 +354,7 @@ describe("validation-trace dispute runner: driving a thread at a CEK script sele
     );
     expect(outRefOf((await placeOfB()).utxo)).toBe(outRefOf(before.utxo));
   }, 600_000);
-  it("moves the selection's thread to the award with our wallet paying all of the hop's fee, over the per-move cap, and closes it", async () => {
+  it("moves the selection's thread to the award and closes it", async () => {
     const { scene, deployment, runner, prepared, a, b } = dispute;
     const atSelection = await placeOfB();
     const plan = await selectionPlan(atSelection.utxo);
@@ -388,14 +387,10 @@ describe("validation-trace dispute runner: driving a thread at a CEK script sele
     );
     expect(close).toBeDefined();
     const body = bodyOf(hop.hash);
-    // Our wallet's inputs pay the whole fee; the thread keeps its lovelace.
-    expect(body.fee()).toBeGreaterThan(VALIDATION_TRACE_MOVE_FEE_CAP_LOVELACE);
-    expect(body.inputs().len()).toBeGreaterThan(1);
     const award = body.outputs().get(threadOutput(hop.cbor)!);
     expect(coreToTxOutput(award).address).toBe(
       scene.chain.award.spendingScriptAddress,
     );
-    expect(award.amount().coin()).toBe(atSelection.utxo.assets.lovelace);
     const read = new Set<string>();
     const references = body.reference_inputs()!;
     for (let index = 0; index < references.len(); index += 1) {
@@ -434,8 +429,8 @@ describe("validation-trace dispute runner: driving a thread at a CEK script sele
     reportFit("CloseAwardedThread", [close!.cbor]);
   }, 1_200_000);
 
-  it("pays each other move of the thread, whose fee fits under the cap, from the thread itself", () => {
-    for (const move of [...moves.slice(0, 3), close!]) {
+  it("pays each move of the thread, whose fee fits under the cap, from the thread itself", () => {
+    for (const move of [...moves, close!]) {
       const body = bodyOf(move.hash);
       const fee = body.fee();
       expect(fee).toBeLessThanOrEqual(VALIDATION_TRACE_MOVE_FEE_CAP_LOVELACE);

@@ -20,7 +20,7 @@ import {
 } from "./support/field-item-width-illegal-shapes.js";
 import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
 
-// Same independent signed vectors as the admission/accepted-trace oracle in
+// Same independent signed vectors as the FIWI witness-order oracle in
 // midgard-validation/tests/signature-order.test.ts (public fixed seeds 01/02).
 const signed = {
   descending:
@@ -28,6 +28,20 @@ const signed = {
   duplicate:
     "84018c582981582682582011111111111111111111111111111111111111111111111111111111111111111900004180582c815829a200581d600d6a577e9441ad8ed9663931906e4d43ece8f82c712b1d0235affb0601821a004c4b40a0002020418041804180582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53008358cf8258658258208a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c584094da6e57c26fd188c52a4b23b2801f9c2fad870b15b2d289a5189141d8e18ada511c79dc9f7b32351c2a90aaafccb85bc9785189433ebc38c5ad8482d7b79e0158658258208a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c584094da6e57c26fd188c52a4b23b2801f9c2fad870b15b2d289a5189141d8e18ada511c79dc9f7b32351c2a90aaafccb85bc9785189433ebc38c5ad8482d7b79e014180418000",
 };
+
+// The same two signed witnesses in ascending signer-hash order. Signatures
+// cover the body only, so the swap keeps both valid.
+const ascending = (() => {
+  const itemHex = 2 * 103;
+  const first = signed.descending.indexOf("5865825820");
+  const second = first + itemHex;
+  return (
+    signed.descending.slice(0, first) +
+    signed.descending.slice(second, second + itemHex) +
+    signed.descending.slice(first, second) +
+    signed.descending.slice(second + itemHex)
+  );
+})();
 
 const sourceMaterial = (hex: string, corruptWrapper: boolean) => {
   const envelope = decodeSingleCbor(Buffer.from(hex, "hex")) as unknown[];
@@ -46,14 +60,15 @@ const replaceWitnessField = (hex: string, field: Buffer) => {
 
 describe("source-bound fieldItemWidthIllegal physical chain", () => {
   it.each([
-    ["descending", signed.descending, false],
-    ["duplicate", signed.duplicate, false],
-    ["malformed wrapper", signed.descending, true],
+    ["ascending", ascending, false, false],
+    ["descending", signed.descending, false, true],
+    ["duplicate", signed.duplicate, false, true],
+    ["malformed wrapper", ascending, true, true],
   ] as const)(
     "authenticates %s witnesses through all three validators",
-    async (label, hex, illegal) => {
+    async (label, hex, corruptWrapper, illegal) => {
       const h = await makeHarness();
-      const material = sourceMaterial(hex, illegal);
+      const material = sourceMaterial(hex, corruptWrapper);
       // A witness-field change never moves the body-derived transaction id.
       expect(material.transactionId).toEqual(
         sourceMaterial(hex, false).transactionId,

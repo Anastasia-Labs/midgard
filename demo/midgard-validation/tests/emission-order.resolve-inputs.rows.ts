@@ -35,7 +35,8 @@ import {
  * The rows assert each reason's arm and, for InputNotFound, its source kind.
  * The machine's input ordinal (`input_index`) is pending X-N2C2 and is not
  * asserted; the producer's subject ordinal, the input's position in its own
- * field, is.
+ * field, is. Each field ascends: an input field out of canonical order stops
+ * at canonical decode (`UNSORTED_SPENDS`).
  */
 
 const LOW = outRefFromByte(0x70);
@@ -218,15 +219,16 @@ const overPresent = (
 });
 
 /**
- * Several inputs over a non-empty ledger, in field orders other than the
- * schedule's. The trace proves each key's presence or absence against the
- * one ledger trie, key by key, and the producer names the first faulty node
- * of the ascending schedule by its position in its own field.
+ * Several inputs over a non-empty ledger. Each field ascends, and the
+ * schedule interleaves the spend and reference fields. The trace proves each
+ * key's presence or absence against the one ledger trie, key by key, and the
+ * producer names the first faulty node of the ascending schedule by its
+ * position in its own field.
  */
 export const ABSENT_KEYS: readonly Row[] = [
   overPresent("accept", "accept", null, {
     spend: [PRESENT],
-    reference: [HIGH, LOW],
+    reference: [LOW, HIGH],
     state: [
       [PRESENT, funded],
       [LOW, funded],
@@ -242,44 +244,32 @@ export const ABSENT_KEYS: readonly Row[] = [
   overPresent("control_missing_high_spend", "control", inputNotFound(0n, 1n), {
     spend: [PRESENT, HIGH],
   }),
-  // The lowest absent key is the last spend in field order.
-  overPresent("unsorted_missing_spends", "multi", inputNotFound(0n, 2n), {
-    spend: [HIGH, PRESENT, LOW],
-  }),
+  // An absent key below an unsigned one, and the reverse.
   overPresent(
-    "control_unsorted_missing_high_spend",
-    "control",
-    inputNotFound(0n, 0n),
-    { spend: [HIGH, PRESENT] },
-  ),
-  // An absent key below an unsigned one, each out of field order.
-  overPresent(
-    "unsorted_missing_spend_before_unsigned_spend",
+    "missing_spend_before_unsigned_spend",
     "multi",
-    inputNotFound(0n, 2n),
+    inputNotFound(0n, 1n),
     {
-      spend: [HIGH, PRESENT, LOW],
+      spend: [PRESENT, LOW, HIGH],
       state: [...LEDGER, [HIGH, unsigned]],
     },
   ),
   overPresent(
-    "unsorted_unsigned_spend_before_missing_spend",
+    "unsigned_spend_before_missing_spend",
     "multi",
-    spendSignerMissing(2n),
+    spendSignerMissing(1n),
     {
-      spend: [HIGH, PRESENT, LOW],
+      spend: [PRESENT, LOW, HIGH],
       state: [...LEDGER, [LOW, unsigned]],
     },
   ),
-  overPresent(
-    "control_unsorted_unsigned_spend",
-    "control",
-    spendSignerMissing(0n),
-    { spend: [HIGH, PRESENT], state: [...LEDGER, [HIGH, unsigned]] },
-  ),
-  overPresent("missing_references", "multi", inputNotFound(1n, 1n), {
+  overPresent("control_unsigned_spend", "control", spendSignerMissing(1n), {
+    spend: [PRESENT, HIGH],
+    state: [...LEDGER, [HIGH, unsigned]],
+  }),
+  overPresent("missing_references", "multi", inputNotFound(1n, 0n), {
     spend: [PRESENT],
-    reference: [HIGH, LOW],
+    reference: [LOW, HIGH],
   }),
   overPresent(
     "control_missing_low_reference",
@@ -297,21 +287,32 @@ export const ABSENT_KEYS: readonly Row[] = [
   overPresent(
     "interleaved_missing_spend_before_missing_reference",
     "multi",
-    inputNotFound(0n, 1n),
+    inputNotFound(0n, 0n),
     {
-      spend: [HIGH, MID_LOW],
-      reference: [MID_HIGH, PRESENT],
+      spend: [MID_LOW, HIGH],
+      reference: [PRESENT, MID_HIGH],
       state: [...LEDGER, [HIGH, funded]],
     },
   ),
   overPresent(
     "interleaved_missing_reference_before_missing_spend",
     "multi",
-    inputNotFound(1n, 0n),
+    inputNotFound(1n, 1n),
     {
-      spend: [HIGH, MID_HIGH],
-      reference: [MID_LOW, PRESENT],
+      spend: [MID_HIGH, HIGH],
+      reference: [PRESENT, MID_LOW],
       state: [...LEDGER, [HIGH, funded]],
     },
   ),
 ];
+
+/**
+ * Spend inputs out of canonical order, two of them absent: the machine stops
+ * at canonical decode, on the second spend, before any key resolves.
+ */
+export const UNSORTED_SPENDS: Row = overPresent(
+  "refusal_unsorted_spends",
+  "refusal",
+  { code: RejectCodes.InvalidFieldType, reason: null },
+  { spend: [HIGH, PRESENT, LOW] },
+);

@@ -335,12 +335,12 @@ fn forced_claim_chain(field_index: Int, item_index: Int) -> Bool {
   finish_chain(first_output, asset_name, opening)
 }
 
-test fiwi_terminal_refuses_accepted_descending_signed_witnesses() {
-  !accepted_chain(False, False, 0)
+test fiwi_terminal_convicts_committed_descending_signed_witnesses() {
+  accepted_chain(False, False, 0)
 }
 
-test fiwi_terminal_refuses_accepted_duplicate_signed_witnesses() {
-  !accepted_chain(True, False, 0)
+test fiwi_terminal_convicts_committed_duplicate_signed_witnesses() {
+  accepted_chain(True, False, 0)
 }
 
 test fiwi_terminal_convicts_a_committed_malformed_witness_wrapper() {

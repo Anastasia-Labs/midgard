@@ -13,10 +13,8 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
-  advanceMidgardResolvedInputsAccumulator,
   buildCanonicalMidgardLedgerEntryOutputMaterial,
   emptyMidgardInputResolutionSchedule,
-  initialMidgardResolvedInputsAccumulator,
   prependMidgardInputResolutionSchedule,
 } from "../src/index.js";
 import { makeOutput } from "./validation-fixtures.js";
@@ -31,6 +29,7 @@ type BoundaryCorpus = {
 
 type ResolutionNode = {
   readonly sourceKind: "spend" | "reference";
+  readonly itemIndex: number;
   readonly key: Buffer;
   readonly value: Buffer;
   readonly nextScheduleHash: Buffer;
@@ -42,11 +41,9 @@ type ResolutionTerminalVector = {
   readonly spendCount: number;
   readonly referenceCount: number;
   readonly originalScheduleHashHex: string;
-  readonly terminalAccumulatorHex: string;
   readonly terminalFrontierCommitmentHex: string;
   readonly penultimate: {
     readonly cursor: number;
-    readonly accumulatorHex: string;
     readonly remainingScheduleHashHex: string;
     readonly spendIndex: number;
     readonly resolvedItemPeaks: readonly {
@@ -64,6 +61,7 @@ type ResolutionTerminalVector = {
   };
   readonly lastNode: {
     readonly sourceKind: "spend" | "reference";
+    readonly itemIndex: number;
     readonly keyHex: string;
     readonly valueHex: string;
     readonly nextScheduleHashHex: string;
@@ -76,17 +74,13 @@ const expectedTerminalVectors = {
     spendCount: 434,
     referenceCount: 0,
     originalScheduleHashHex:
-      "b1276de655cef9d7a3bc33abb49024dd36462f2cd2486dd25d9f7347563eab35",
-    terminalAccumulatorHex:
-      "ea27a61b8f396c3354831035b7fe4861195ca8796d1703ae0e89a6229952c98d",
+      "37dd5fe0c36256fb12a17ffe1c03c85f0554a83579f4ad5000f9baf2fbdd2877",
     terminalFrontierCommitmentHex:
       "839634308167c061ce5ebad392b4dba1e9d037d65177dc233a76667a416152a2",
     penultimate: {
       cursor: 433,
-      accumulatorHex:
-        "c73070dfccee71dfb0bb8775eebcf23fc9967f71620cd0e1fd35a5ccabf29b85",
       remainingScheduleHashHex:
-        "6d5383cff6142a4e20298cf82b71837886eeb853245d068a8cf43a540e1d2b3d",
+        "05d16c4dddaaec7b5c46fbdc0268b27ef430a0cea60630349adaf9f31fd7ff9b",
       spendIndex: 433,
       resolvedItemPeaks: [
         {
@@ -149,6 +143,7 @@ const expectedTerminalVectors = {
     },
     lastNode: {
       sourceKind: "spend",
+      itemIndex: 433,
       keyHex:
         "82582000000000000000000000000000000000000000000000000000000000000000001901b1",
       valueHex:
@@ -162,17 +157,13 @@ const expectedTerminalVectors = {
     spendCount: 1,
     referenceCount: 433,
     originalScheduleHashHex:
-      "320bc3d5140983c35d48db52cbf4e722de03b8ea618ef56b6a7f8b6fc6162e56",
-    terminalAccumulatorHex:
-      "8c0cb3c900dd4b1526b89b1ed63c46d1621cad53e608f5058de703bb49e5bd46",
+      "ffe1307d29932bb07004f4586071371d7f31bde1d565c0800353e345244e9ce7",
     terminalFrontierCommitmentHex:
       "ec0105edd129d2b374936f85aad9f28fe10e32703ddc0f205a301e2b773adf13",
     penultimate: {
       cursor: 433,
-      accumulatorHex:
-        "f31c120d3d965e078630f7b64155608a0d7550a84583426720e4f98785e04b98",
       remainingScheduleHashHex:
-        "11e90c7b9d22faa10a757fe7cbcfc12f5784cb6c546408583d36ce0dd5d49329",
+        "9ac79f779bf4a86b8a6c3835a012e644f7ad7ceff000393c453a177137a1b48d",
       spendIndex: 1,
       resolvedItemPeaks: [
         {
@@ -235,6 +226,7 @@ const expectedTerminalVectors = {
     },
     lastNode: {
       sourceKind: "reference",
+      itemIndex: 432,
       keyHex:
         "82582000000000000000000000000000000000000000000000000000000000000000001901b1",
       valueHex:
@@ -282,12 +274,14 @@ const buildResolutionNodes = (
     `${label}.reference_inputs`,
   );
   const ordered = [
-    ...spendKeys.map((key) => ({
+    ...spendKeys.map((key, itemIndex) => ({
       sourceKind: "spend" as const,
+      itemIndex,
       key: Buffer.from(key),
     })),
-    ...referenceKeys.map((key) => ({
+    ...referenceKeys.map((key, itemIndex) => ({
       sourceKind: "reference" as const,
+      itemIndex,
       key: Buffer.from(key),
     })),
   ].sort((left, right) => Buffer.compare(left.key, right.key));
@@ -308,6 +302,7 @@ const buildResolutionNodes = (
     const nextScheduleHash = scheduleHash;
     scheduleHash = prependMidgardInputResolutionSchedule({
       sourceKind: item.sourceKind,
+      itemIndex: item.itemIndex,
       key: item.key,
       nextHash: nextScheduleHash,
     });
@@ -342,7 +337,6 @@ const deriveTerminalVector = (label: string): ResolutionTerminalVector => {
     buildResolutionNodes(label);
   expect(nodes.length).toBeGreaterThan(0);
   let remainingScheduleHash = originalScheduleHash;
-  let accumulator = initialMidgardResolvedInputsAccumulator();
   let resolvedItemFrontier = emptyMidgardValidationMerkleFrontier();
   let spendIndex = 0;
   let penultimate: ResolutionTerminalVector["penultimate"] | undefined;
@@ -352,18 +346,11 @@ const deriveTerminalVector = (label: string): ResolutionTerminalVector => {
     if (cursor + 1 === nodes.length) {
       penultimate = {
         cursor,
-        accumulatorHex: accumulator.toString("hex"),
         remainingScheduleHashHex: remainingScheduleHash.toString("hex"),
         spendIndex,
         resolvedItemPeaks: toPeakVector(resolvedItemFrontier),
       };
     }
-    accumulator = advanceMidgardResolvedInputsAccumulator({
-      accumulator,
-      sourceKind: node.sourceKind,
-      key: node.key,
-      value: node.value,
-    });
     resolvedItemFrontier = appendMidgardValidationMerkleLeaf(
       resolvedItemFrontier,
       hashMidgardResolvedContextItemLeaf({
@@ -386,7 +373,6 @@ const deriveTerminalVector = (label: string): ResolutionTerminalVector => {
     spendCount,
     referenceCount,
     originalScheduleHashHex: originalScheduleHash.toString("hex"),
-    terminalAccumulatorHex: accumulator.toString("hex"),
     terminalFrontierCommitmentHex:
       commitMidgardValidationMerkleFrontier(resolvedItemFrontier).toString(
         "hex",
@@ -399,6 +385,7 @@ const deriveTerminalVector = (label: string): ResolutionTerminalVector => {
     },
     lastNode: {
       sourceKind: lastNode.sourceKind,
+      itemIndex: lastNode.itemIndex,
       keyHex: lastNode.key.toString("hex"),
       valueHex: lastNode.value.toString("hex"),
       nextScheduleHashHex: lastNode.nextScheduleHash.toString("hex"),
@@ -418,6 +405,7 @@ const assertAdjacentMutationsReject = (
   const key = Buffer.from(last.keyHex, "hex");
   const exact = prependMidgardInputResolutionSchedule({
     sourceKind: last.sourceKind,
+    itemIndex: last.itemIndex,
     key,
     nextHash: next,
   });
@@ -425,6 +413,7 @@ const assertAdjacentMutationsReject = (
   expect(
     prependMidgardInputResolutionSchedule({
       sourceKind: last.sourceKind === "spend" ? "reference" : "spend",
+      itemIndex: last.itemIndex,
       key,
       nextHash: next,
     }),
@@ -432,6 +421,15 @@ const assertAdjacentMutationsReject = (
   expect(
     prependMidgardInputResolutionSchedule({
       sourceKind: last.sourceKind,
+      itemIndex: last.itemIndex + 1,
+      key,
+      nextHash: next,
+    }),
+  ).not.toEqual(remaining);
+  expect(
+    prependMidgardInputResolutionSchedule({
+      sourceKind: last.sourceKind,
+      itemIndex: last.itemIndex,
       key: Buffer.concat([key.subarray(0, -1), Buffer.from([0xff])]),
       nextHash: next,
     }),
@@ -439,6 +437,7 @@ const assertAdjacentMutationsReject = (
   expect(
     prependMidgardInputResolutionSchedule({
       sourceKind: last.sourceKind,
+      itemIndex: last.itemIndex,
       key,
       nextHash: Buffer.alloc(32, 0xff),
     }),

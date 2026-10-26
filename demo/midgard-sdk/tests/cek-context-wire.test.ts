@@ -184,7 +184,7 @@ describe.each([
       }),
     ).toThrow("Expected exact CEK context array of 11 fields");
 
-    // Field 0 carries the 26-field native view as nested CBOR bytes; index 15 of
+    // Field 0 carries the 25-field native view as nested CBOR bytes; index 14 of
     // that view is one of the frontier peak lists, whose entries are exactly
     // two fields each. A three-field peak must be refused rather than silently
     // truncated into the record.
@@ -192,13 +192,13 @@ describe.each([
     if (!(nativeBytes instanceof Uint8Array))
       throw new Error("Invalid native view golden");
     const native = decodeSingleCbor(nativeBytes);
-    if (!Array.isArray(native) || native.length !== 26)
+    if (!Array.isArray(native) || native.length !== 25)
       throw new Error("Invalid native view golden");
-    const peaks = native[15];
+    const peaks = native[14];
     if (!Array.isArray(peaks) || peaks.length === 0)
       throw new Error("Invalid frontier peak golden");
     const widenedNative = [...(native as unknown[])];
-    widenedNative[15] = [
+    widenedNative[14] = [
       [...(peaks[0] as unknown[]), (peaks[0] as unknown[])[0]],
       ...(peaks as unknown[]).slice(1),
     ];

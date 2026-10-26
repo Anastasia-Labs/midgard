@@ -54,10 +54,11 @@ validator main(
         yield_role_index,
         yield_ref_input_index,
       }) -> {
-        let frame = raw.open_frame_v1(
+        // open_frame_v1 refuses any item count but 28 (script-sources-raw-frame-v1.ak:60).
+        expect _ = raw.open_frame_v1(
           datum |> semantic_pre_state,
           transition,
-          30,
+          28,
           source_yield.middle_stage(yield_role_index),
         )
         let yield_hash = validation_semantic_yield_v1.require_semantic_yield_v1(
@@ -75,7 +76,7 @@ validator main(
           output_index,
           transition,
           auxiliary,
-          frame.item_count == 30 && bytearray.length(yield_hash) == 28,
+          bytearray.length(yield_hash) == 28,
           own_out_ref,
           tx,
         )
