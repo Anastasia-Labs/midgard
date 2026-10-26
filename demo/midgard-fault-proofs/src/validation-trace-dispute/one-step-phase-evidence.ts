@@ -25,7 +25,7 @@ import {
  * (tests/validation-trace-dispute-one-step-input-sets-inline-cap.test.ts).
  * An input-sets field is a whole number of 40-byte out-refs, and this is
  * the longest such field that fits. */
-export const VALIDATION_TRACE_INPUT_SETS_INLINE_MAX_PREIMAGE_BYTES = 13_683;
+export const VALIDATION_TRACE_INPUT_SETS_INLINE_MAX_PREIMAGE_BYTES = 13_643;
 
 /** The same for a signatures step over an address-witness item, a field
  * of 103-byte witnesses
@@ -50,13 +50,13 @@ export const VALIDATION_TRACE_PHASE_A_NATIVE_ITEM_INLINE_MAX_PREIMAGE_BYTES = 13
  * phase-A native scripts step's do
  * (the validation-trace dispute one-step script-sources-witness-script
  * inline-cap test). */
-export const VALIDATION_TRACE_SCRIPT_SOURCES_WITNESS_SCRIPT_INLINE_MAX_PREIMAGE_BYTES = 13_544;
+export const VALIDATION_TRACE_SCRIPT_SOURCES_WITNESS_SCRIPT_INLINE_MAX_PREIMAGE_BYTES = 13_612;
 
 /** The same for a script-sources step over the redeemer field, a field of
  * redeemers of any length, so measured to the byte
  * (the validation-trace dispute one-step script-sources-redeemer
  * inline-cap test). */
-export const VALIDATION_TRACE_SCRIPT_SOURCES_REDEEMER_INLINE_MAX_PREIMAGE_BYTES = 13_508;
+export const VALIDATION_TRACE_SCRIPT_SOURCES_REDEEMER_INLINE_MAX_PREIMAGE_BYTES = 13_576;
 
 /** The auxiliary evidence each semantic resolver that takes any verifies
  * the transition beside: its constructor among the auxiliary witnesses, the
@@ -85,16 +85,16 @@ export const PHASE_SEMANTIC_EVIDENCE: Readonly<
     >
   >
 > = Object.freeze({
-  // `TransactionFieldChunkWitness { field_index, item_index, carriage }`.
+  // `TransactionFieldItemWitness { carriage }`: the control fixes the item.
   inputSetsItemSemantic: {
-    auxiliary: 1,
-    carriage: 2,
+    auxiliary: 28,
+    carriage: 0,
     inlineMaxPreimageBytes:
       VALIDATION_TRACE_INPUT_SETS_INLINE_MAX_PREIMAGE_BYTES,
   },
   signaturesAddressItemSemantic: {
-    auxiliary: 1,
-    carriage: 2,
+    auxiliary: 28,
+    carriage: 0,
     inlineMaxPreimageBytes:
       VALIDATION_TRACE_SIGNATURES_ADDRESS_INLINE_MAX_PREIMAGE_BYTES,
   },

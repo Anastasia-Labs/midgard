@@ -102,11 +102,11 @@ const pendingDescriptorCbor = (workCbor: string): string =>
   itemBytes(
     items(
       controlData(
-        itemBytes(items(controlData(workCbor), 11, "control")[9], "pending"),
+        itemBytes(items(controlData(workCbor), 10, "control")[8], "pending"),
       ),
-      5,
+      6,
       "pending input",
-    )[3],
+    )[4],
     "pending descriptor",
   );
 

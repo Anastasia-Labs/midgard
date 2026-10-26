@@ -168,9 +168,9 @@ const txOptions = (row: Row) => ({
   scriptWitnesses: [script],
 });
 
-/** The script-sources control stage a witness carries (control item 9). */
+/** The script-sources control stage a witness carries (control item 8). */
 const scriptSourcesStage = (cbor: Buffer): number =>
-  Number((decodeSingleCbor(cbor) as readonly bigint[])[9]);
+  Number((decodeSingleCbor(cbor) as readonly bigint[])[8]);
 
 describe("direct source order is the shared T224 lookup order", () => {
   it.each(ROWS)(
