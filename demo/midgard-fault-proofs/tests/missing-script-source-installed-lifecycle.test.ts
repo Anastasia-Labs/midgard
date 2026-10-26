@@ -10,6 +10,7 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { screenMidgardForcedTxAdmission } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
@@ -42,8 +43,10 @@ import {
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import {
+  buildMissingRedeemerSubject,
   honestForcedObserverShape,
   machineForcedVerdict,
+  type MissingRedeemerSubjectShape,
   plutusScript,
   setupMissingRedeemerScenario,
 } from "./support/missing-redeemer-emulator.subject.js";
@@ -106,7 +109,20 @@ const workflowReferences = async (
   };
 };
 
+/** An admissible forced transaction: a signed key-locked spend whose only
+ * observer is sourced from a reference input and which carries no
+ * redeemer. */
+const FORCED_SOURCED = honestForcedObserverShape(5);
+
 describe("missingScriptSource installed cursor actuator", () => {
+  it("commits a forced transaction the admission screen accepts", () => {
+    expect(
+      screenMidgardForcedTxAdmission(
+        buildMissingRedeemerSubject(FORCED_SOURCED).nativeTx,
+      ),
+    ).toBeNull();
+  });
+
   it.each([
     {
       name: "accepted observer with no source",
@@ -119,8 +135,8 @@ describe("missingScriptSource installed cursor actuator", () => {
       source: { kind: "normal" as const },
     },
     {
-      name: "forced ScriptSourceMissing on a witnessed observer",
-      shape: { observers: [{ script: plutusScript(3), redeemer: false }] },
+      name: "forced ScriptSourceMissing on a reference-sourced observer",
+      shape: FORCED_SOURCED,
       source: {
         kind: "forced" as const,
         verdict: scriptSourceMissingVerdict(2n, 0n),
@@ -137,6 +153,17 @@ describe("missingScriptSource installed cursor actuator", () => {
       });
       const { setup } = scenario;
       const evidence = await blockEvidence(scenario);
+      // The predecessor ledger the subject's inputs resolve against.
+      const shape: MissingRedeemerSubjectShape = scenarioCase.shape;
+      const replayContext = {
+        predecessor: await admitCompleteCanonicalReplayPredecessor({
+          ledgerAt: singleLedgerAt(evidence.header.prevHeaderHash, [
+            ...(shape.spend ?? []),
+            ...(shape.reference ?? []),
+          ]),
+          currentEvidence: evidence,
+        }),
+      };
       const references = await workflowReferences(h);
       const binding = {
         definition: { headerHash: setup.headerHash },
@@ -152,10 +179,14 @@ describe("missingScriptSource installed cursor actuator", () => {
         signer: h.proverSigner,
         contracts: h.missingScriptSource,
         references,
+        replayContext,
         stateQueueMutationLeaseCoordinator: leaseCoordinator,
       });
       const decision =
-        await MISSING_SCRIPT_SOURCE_COMPLETE_CANONICAL_REPLAY.replay(evidence);
+        await MISSING_SCRIPT_SOURCE_COMPLETE_CANONICAL_REPLAY.replay(
+          evidence,
+          replayContext,
+        );
       const classification = await classifyCanonicalBlockViolations({
         evidence,
         detections: decision.detections,
