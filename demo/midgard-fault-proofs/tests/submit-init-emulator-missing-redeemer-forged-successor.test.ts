@@ -10,10 +10,10 @@ import type { UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  buildMissingRedeemerTransition,
-  type MissingRedeemerRole,
-  submitMissingRedeemerTransition,
-} from "../src/missing-redeemer/index.js";
+  buildDirectPurposeTransition,
+  type DirectPurposeRole,
+  submitDirectPurposeTransition,
+} from "../src/direct-purpose-family/index.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
   driveMissingRedeemerThread,
@@ -30,7 +30,7 @@ import {
 type Scenario = Parameters<typeof setupMissingRedeemerScenario>[0];
 
 /** The shared binding and source prefix, which locates its own successor. */
-const PREFIX = new Set<MissingRedeemerRole>([
+const PREFIX = new Set<DirectPurposeRole>([
   "bindEvent",
   "bindPreState",
   "sourceStart",
@@ -48,7 +48,7 @@ const PREFIX = new Set<MissingRedeemerRole>([
 const forgeEveryRole = async (
   shape: Scenario["shape"],
   source: Scenario["source"],
-): Promise<readonly MissingRedeemerRole[]> => {
+): Promise<readonly DirectPurposeRole[]> => {
   const harness = await makeMissingRedeemerHarness();
   const references = await publishMissingRedeemerRoles(harness);
   const scenario = await setupMissingRedeemerScenario({
@@ -64,11 +64,11 @@ const forgeEveryRole = async (
   });
   const planned = run.prepared.transitions;
   let thread: UTxO = run.thread;
-  const refused: MissingRedeemerRole[] = [];
+  const refused: DirectPurposeRole[] = [];
   for (const [index, transition] of planned.entries()) {
     if (PREFIX.has(transition.role)) {
       thread = (
-        await submitMissingRedeemerTransition(run.custody, thread, transition)
+        await submitDirectPurposeTransition(run.custody, thread, transition)
       ).thread;
       continue;
     }
@@ -78,7 +78,7 @@ const forgeEveryRole = async (
       .find((datum) => datum !== transition.datum);
     if (forged === undefined)
       throw new Error(`${transition.label}: no distinct planned state`);
-    const built = await buildMissingRedeemerTransition(
+    const built = await buildDirectPurposeTransition(
       run.custody,
       thread,
       transition,
@@ -86,7 +86,7 @@ const forgeEveryRole = async (
     );
     await expectOnchainRefusal(() => built.complete());
     thread = (
-      await submitMissingRedeemerTransition(run.custody, thread, transition)
+      await submitDirectPurposeTransition(run.custody, thread, transition)
     ).thread;
     refused.push(transition.role);
   }
@@ -105,7 +105,7 @@ describe("missing-redeemer forged successor refusal", () => {
       { kind: "normal" },
     );
     expect(new Set(refused)).toStrictEqual(
-      new Set<MissingRedeemerRole>([
+      new Set<DirectPurposeRole>([
         "familyEntry",
         "purposeSelect",
         "sourceLookup",
@@ -124,7 +124,7 @@ describe("missing-redeemer forged successor refusal", () => {
       verdict: redeemerMissingVerdict(2n, 0n),
     });
     expect(new Set(refused)).toStrictEqual(
-      new Set<MissingRedeemerRole>([
+      new Set<DirectPurposeRole>([
         "familyEntry",
         "claimStart",
         "claimAdjudicate",

@@ -27,6 +27,13 @@ import {
 } from "../missing-redeemer/workflow.js";
 import type { ManifestBoundMissingRedeemerWorkflowConfig } from "../missing-redeemer/workflow.transaction-port.js";
 import {
+  createManifestBoundMissingScriptSourceWorkflow,
+  type ManifestBoundMissingScriptSourceWorkflow,
+  MISSING_SCRIPT_SOURCE_FAMILY_DEFINITION,
+  runOrResumeManifestBoundMissingScriptSourceWorkflow,
+} from "../missing-script-source/workflow.js";
+import type { ManifestBoundMissingScriptSourceWorkflowConfig } from "../missing-script-source/workflow.transaction-port.js";
+import {
   createManifestBoundNativeScriptDecodingWorkflow,
   type ManifestBoundNativeScriptDecodingWorkflow,
   type ManifestBoundNativeScriptDecodingWorkflowConfig,
@@ -41,6 +48,13 @@ import {
   runOrResumeManifestBoundNativeScriptInvalidWorkflow,
 } from "../native-script-invalid/workflow.js";
 import {
+  createManifestBoundReceivePurposeLanguageWorkflow,
+  type ManifestBoundReceivePurposeLanguageWorkflow,
+  RECEIVE_PURPOSE_LANGUAGE_FAMILY_DEFINITION,
+  runOrResumeManifestBoundReceivePurposeLanguageWorkflow,
+} from "../receive-purpose-language/workflow.js";
+import type { ManifestBoundReceivePurposeLanguageWorkflowConfig } from "../receive-purpose-language/workflow.transaction-port.js";
+import {
   createManifestBoundResolvedOutputNonCanonicalWorkflow,
   executeManifestBoundResolvedOutputNonCanonicalWorkflow,
   type ManifestBoundResolvedOutputNonCanonicalWorkflow,
@@ -48,6 +62,13 @@ import {
   RESOLVED_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION,
   RESOLVED_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS,
 } from "../resolved-output-non-canonical/authenticated-workflow.js";
+import {
+  createManifestBoundScriptIntegrityHashMismatchWorkflow,
+  type ManifestBoundScriptIntegrityHashMismatchWorkflow,
+  runOrResumeManifestBoundScriptIntegrityHashMismatchWorkflow,
+  SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_DEFINITION,
+} from "../script-integrity-hash-mismatch/workflow.js";
+import type { ManifestBoundScriptIntegrityHashMismatchWorkflowConfig } from "../script-integrity-hash-mismatch/workflow.transaction-port.js";
 import {
   createManifestBoundSpendInputSignerMissingWorkflow,
   executeManifestBoundSpendInputSignerMissingWorkflow,
@@ -65,6 +86,13 @@ import {
   TRANSITION_TRACE_FAMILY_DEFINITION,
 } from "../transition-trace/workflow.js";
 import {
+  createManifestBoundUnusedRedeemerWorkflow,
+  type ManifestBoundUnusedRedeemerWorkflow,
+  runOrResumeManifestBoundUnusedRedeemerWorkflow,
+  UNUSED_REDEEMER_FAMILY_DEFINITION,
+} from "../unused-redeemer/workflow.js";
+import type { ManifestBoundUnusedRedeemerWorkflowConfig } from "../unused-redeemer/workflow.transaction-port.js";
+import {
   createManifestBoundWithdrawalMistagWorkflow,
   type ManifestBoundWithdrawalMistagWorkflow,
   type ManifestBoundWithdrawalMistagWorkflowConfig,
@@ -78,6 +106,13 @@ import {
   type ManifestBoundCanonicalDecodabilityWorkflowConfig,
   runOrResumeManifestBoundCanonicalDecodabilityWorkflow,
 } from "./canonical-decodability.js";
+import {
+  COMMITTED_FIELD_SHAPE_FAMILY_DEFINITION,
+  createManifestBoundCommittedFieldShapeWorkflow,
+  type ManifestBoundCommittedFieldShapeWorkflow,
+  type ManifestBoundCommittedFieldShapeWorkflowConfig,
+  runOrResumeManifestBoundCommittedFieldShapeWorkflow,
+} from "./committed-field-shape.js";
 import {
   defineFamilyApplication,
   type FamilyApplicationRecord,
@@ -160,7 +195,7 @@ const bundleCursorFamilyApplicationRecord = <
 };
 
 /**
- * The five cursor families without a decision digest on the plain and
+ * The six cursor families without a decision digest on the plain and
  * replay-context shapes. Each row names its exact config and workflow types
  * so the record's `bindConfig` result is what its `constructWorkflow`
  * consumes.
@@ -174,6 +209,17 @@ export const CANONICAL_DECODABILITY_FAMILY_APPLICATION_RECORD =
     requires: [],
     constructWorkflow: createManifestBoundCanonicalDecodabilityWorkflow,
     execute: runOrResumeManifestBoundCanonicalDecodabilityWorkflow,
+  });
+
+export const COMMITTED_FIELD_SHAPE_FAMILY_APPLICATION_RECORD =
+  bundleCursorFamilyApplicationRecord<
+    "committedFieldShape",
+    ManifestBoundCommittedFieldShapeWorkflowConfig,
+    ManifestBoundCommittedFieldShapeWorkflow
+  >(COMMITTED_FIELD_SHAPE_FAMILY_DEFINITION, {
+    requires: [],
+    constructWorkflow: createManifestBoundCommittedFieldShapeWorkflow,
+    execute: runOrResumeManifestBoundCommittedFieldShapeWorkflow,
   });
 
 export const NATIVE_SCRIPT_INVALID_FAMILY_APPLICATION_RECORD =
@@ -229,6 +275,50 @@ export const MISSING_REDEEMER_FAMILY_APPLICATION_RECORD =
     requires: ["replayContext"],
     constructWorkflow: createManifestBoundMissingRedeemerWorkflow,
     execute: runOrResumeManifestBoundMissingRedeemerWorkflow,
+  });
+
+export const SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_APPLICATION_RECORD =
+  bundleCursorFamilyApplicationRecord<
+    "scriptIntegrityHashMismatch",
+    ManifestBoundScriptIntegrityHashMismatchWorkflowConfig,
+    ManifestBoundScriptIntegrityHashMismatchWorkflow
+  >(SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_DEFINITION, {
+    requires: ["replayContext"],
+    constructWorkflow: createManifestBoundScriptIntegrityHashMismatchWorkflow,
+    execute: runOrResumeManifestBoundScriptIntegrityHashMismatchWorkflow,
+  });
+
+export const MISSING_SCRIPT_SOURCE_FAMILY_APPLICATION_RECORD =
+  bundleCursorFamilyApplicationRecord<
+    "missingScriptSource",
+    ManifestBoundMissingScriptSourceWorkflowConfig,
+    ManifestBoundMissingScriptSourceWorkflow
+  >(MISSING_SCRIPT_SOURCE_FAMILY_DEFINITION, {
+    requires: ["replayContext"],
+    constructWorkflow: createManifestBoundMissingScriptSourceWorkflow,
+    execute: runOrResumeManifestBoundMissingScriptSourceWorkflow,
+  });
+
+export const UNUSED_REDEEMER_FAMILY_APPLICATION_RECORD =
+  bundleCursorFamilyApplicationRecord<
+    "unusedRedeemer",
+    ManifestBoundUnusedRedeemerWorkflowConfig,
+    ManifestBoundUnusedRedeemerWorkflow
+  >(UNUSED_REDEEMER_FAMILY_DEFINITION, {
+    requires: ["replayContext"],
+    constructWorkflow: createManifestBoundUnusedRedeemerWorkflow,
+    execute: runOrResumeManifestBoundUnusedRedeemerWorkflow,
+  });
+
+export const RECEIVE_PURPOSE_LANGUAGE_FAMILY_APPLICATION_RECORD =
+  bundleCursorFamilyApplicationRecord<
+    "receivePurposeLanguage",
+    ManifestBoundReceivePurposeLanguageWorkflowConfig,
+    ManifestBoundReceivePurposeLanguageWorkflow
+  >(RECEIVE_PURPOSE_LANGUAGE_FAMILY_DEFINITION, {
+    requires: ["replayContext"],
+    constructWorkflow: createManifestBoundReceivePurposeLanguageWorkflow,
+    execute: runOrResumeManifestBoundReceivePurposeLanguageWorkflow,
   });
 
 export const MIN_ADA_FAMILY_APPLICATION_RECORD =

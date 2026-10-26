@@ -6,8 +6,8 @@ export const transitionTraceMembers = defineDeploymentFamily(
     fraudProofTransitionTrace: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof transition-trace route",
-      manifestPosition: 414,
-      publicationPosition: 320,
+      manifestPosition: 477,
+      publicationPosition: 383,
       referenceRolePosition: 132,
       commands: [],
       validatorTitle: "fraud_proofs/transition_trace/route_v1.main.spend",
@@ -16,8 +16,8 @@ export const transitionTraceMembers = defineDeploymentFamily(
     fraudProofTransitionTraceControl: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof transition-trace final-0",
-      manifestPosition: 415,
-      publicationPosition: 321,
+      manifestPosition: 478,
+      publicationPosition: 384,
       referenceRolePosition: 133,
       commands: [],
       validatorTitle: "fraud_proofs/transition_trace/control_v1.main.spend",
@@ -29,8 +29,8 @@ export const transitionTraceMembers = defineDeploymentFamily(
     fraudProofTransitionTraceSource: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof transition-trace final-1",
-      manifestPosition: 416,
-      publicationPosition: 322,
+      manifestPosition: 479,
+      publicationPosition: 385,
       referenceRolePosition: 134,
       commands: [],
       validatorTitle: "fraud_proofs/transition_trace/source_v1.main.spend",
@@ -42,8 +42,8 @@ export const transitionTraceMembers = defineDeploymentFamily(
     fraudProofTransitionTraceWithdrawal: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof transition-trace final-2",
-      manifestPosition: 417,
-      publicationPosition: 323,
+      manifestPosition: 480,
+      publicationPosition: 386,
       referenceRolePosition: 135,
       commands: [],
       validatorTitle: "fraud_proofs/transition_trace/withdrawal_v1.main.spend",
@@ -55,8 +55,8 @@ export const transitionTraceMembers = defineDeploymentFamily(
     fraudProofTransitionTraceForced: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof transition-trace final-3",
-      manifestPosition: 418,
-      publicationPosition: 324,
+      manifestPosition: 481,
+      publicationPosition: 387,
       referenceRolePosition: 136,
       commands: [],
       validatorTitle: "fraud_proofs/transition_trace/forced_v1.main.spend",
@@ -68,8 +68,8 @@ export const transitionTraceMembers = defineDeploymentFamily(
     fraudProofTransitionTraceAcceptedTransaction: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof transition-trace final-4",
-      manifestPosition: 419,
-      publicationPosition: 325,
+      manifestPosition: 482,
+      publicationPosition: 388,
       referenceRolePosition: 137,
       commands: [],
       validatorTitle:
@@ -82,8 +82,8 @@ export const transitionTraceMembers = defineDeploymentFamily(
     fraudProofTransitionTraceDeposit: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof transition-trace final-5",
-      manifestPosition: 420,
-      publicationPosition: 326,
+      manifestPosition: 483,
+      publicationPosition: 389,
       referenceRolePosition: 138,
       commands: [],
       validatorTitle: "fraud_proofs/transition_trace/deposit_v1.main.spend",
@@ -95,8 +95,8 @@ export const transitionTraceMembers = defineDeploymentFamily(
     fraudProofTransitionTraceL1Event: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof transition-trace final-6",
-      manifestPosition: 421,
-      publicationPosition: 327,
+      manifestPosition: 484,
+      publicationPosition: 390,
       referenceRolePosition: 139,
       commands: [],
       validatorTitle: "fraud_proofs/transition_trace/l1_event_v1.main.spend",
@@ -108,8 +108,8 @@ export const transitionTraceMembers = defineDeploymentFamily(
     fraudProofTransitionTraceDuplicate: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof transition-trace final-7",
-      manifestPosition: 422,
-      publicationPosition: 328,
+      manifestPosition: 485,
+      publicationPosition: 391,
       referenceRolePosition: 140,
       commands: [],
       validatorTitle: "fraud_proofs/transition_trace/duplicate_v1.main.spend",
@@ -121,8 +121,8 @@ export const transitionTraceMembers = defineDeploymentFamily(
     fraudProofTransitionTraceAcceptedTransactionL2OpenWithdraw: {
       purpose: "withdraw",
       referenceRole: "V1 fraud-proof transition-trace final-4 L2 open yield",
-      manifestPosition: 537,
-      publicationPosition: 538,
+      manifestPosition: 600,
+      publicationPosition: 601,
       referenceRolePosition: 383,
       commands: [],
       validatorTitle:
@@ -132,8 +132,8 @@ export const transitionTraceMembers = defineDeploymentFamily(
     fraudProofTransitionTraceAcceptedTransactionL2DeleteWithdraw: {
       purpose: "withdraw",
       referenceRole: "V1 fraud-proof transition-trace final-4 L2 delete yield",
-      manifestPosition: 538,
-      publicationPosition: 539,
+      manifestPosition: 601,
+      publicationPosition: 602,
       referenceRolePosition: 384,
       commands: [],
       validatorTitle:
@@ -143,8 +143,8 @@ export const transitionTraceMembers = defineDeploymentFamily(
     fraudProofTransitionTraceAcceptedTransactionL2OutputsWithdraw: {
       purpose: "withdraw",
       referenceRole: "V1 fraud-proof transition-trace final-4 L2 outputs yield",
-      manifestPosition: 539,
-      publicationPosition: 540,
+      manifestPosition: 602,
+      publicationPosition: 603,
       referenceRolePosition: 385,
       commands: [],
       validatorTitle:
@@ -155,8 +155,8 @@ export const transitionTraceMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole:
         "V1 fraud-proof transition-trace final-4 L2 output step yield",
-      manifestPosition: 540,
-      publicationPosition: 541,
+      manifestPosition: 603,
+      publicationPosition: 604,
       referenceRolePosition: 386,
       commands: [],
       validatorTitle:
@@ -167,8 +167,8 @@ export const transitionTraceMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole:
         "V1 fraud-proof transition-trace final-4 L2 output descriptor yield",
-      manifestPosition: 541,
-      publicationPosition: 542,
+      manifestPosition: 604,
+      publicationPosition: 605,
       referenceRolePosition: 387,
       commands: [],
       validatorTitle:
@@ -179,8 +179,8 @@ export const transitionTraceMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole:
         "V1 fraud-proof transition-trace final-4 L2 output summary yield",
-      manifestPosition: 542,
-      publicationPosition: 543,
+      manifestPosition: 605,
+      publicationPosition: 606,
       referenceRolePosition: 388,
       commands: [],
       validatorTitle:
@@ -191,8 +191,8 @@ export const transitionTraceMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole:
         "V1 fraud-proof transition-trace final-4 L2 summaries yield",
-      manifestPosition: 543,
-      publicationPosition: 544,
+      manifestPosition: 606,
+      publicationPosition: 607,
       referenceRolePosition: 389,
       commands: [],
       validatorTitle:
@@ -202,8 +202,8 @@ export const transitionTraceMembers = defineDeploymentFamily(
     fraudProofTransitionTraceAcceptedTransactionL2ReplayWithdraw: {
       purpose: "withdraw",
       referenceRole: "V1 fraud-proof transition-trace final-4 L2 replay yield",
-      manifestPosition: 544,
-      publicationPosition: 545,
+      manifestPosition: 607,
+      publicationPosition: 608,
       referenceRolePosition: 390,
       commands: [],
       validatorTitle:
@@ -213,8 +213,8 @@ export const transitionTraceMembers = defineDeploymentFamily(
     fraudProofTransitionTraceDepositProjectionWithdraw: {
       purpose: "withdraw",
       referenceRole: "V1 fraud-proof transition-trace final-5 projection yield",
-      manifestPosition: 545,
-      publicationPosition: 546,
+      manifestPosition: 608,
+      publicationPosition: 609,
       referenceRolePosition: 391,
       commands: [],
       validatorTitle:
@@ -224,8 +224,8 @@ export const transitionTraceMembers = defineDeploymentFamily(
     fraudProofTransitionTraceL1EventWithdraw: {
       purpose: "withdraw",
       referenceRole: "V1 fraud-proof transition-trace final-6 L1 event yield",
-      manifestPosition: 546,
-      publicationPosition: 547,
+      manifestPosition: 609,
+      publicationPosition: 610,
       referenceRolePosition: 392,
       commands: [],
       validatorTitle:
@@ -236,8 +236,8 @@ export const transitionTraceMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole:
         "V1 fraud-proof transition-trace final-6 forced timing yield",
-      manifestPosition: 547,
-      publicationPosition: 548,
+      manifestPosition: 610,
+      publicationPosition: 611,
       referenceRolePosition: 393,
       commands: [],
       validatorTitle:
@@ -247,8 +247,8 @@ export const transitionTraceMembers = defineDeploymentFamily(
     fraudProofTransitionTraceDepositSummariesWithdraw: {
       purpose: "withdraw",
       referenceRole: "V1 fraud-proof transition-trace final-5 summaries yield",
-      manifestPosition: 548,
-      publicationPosition: 549,
+      manifestPosition: 611,
+      publicationPosition: 612,
       referenceRolePosition: 394,
       commands: [],
       validatorTitle:
@@ -259,8 +259,8 @@ export const transitionTraceMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole:
         "V1 fraud-proof transition-trace final-4 L2 assembly yield",
-      manifestPosition: 549,
-      publicationPosition: 550,
+      manifestPosition: 612,
+      publicationPosition: 613,
       referenceRolePosition: 377,
       commands: [],
       validatorTitle:
@@ -270,8 +270,8 @@ export const transitionTraceMembers = defineDeploymentFamily(
     fraudProofTransitionTraceAcceptedTransactionL2ScanWithdraw: {
       purpose: "withdraw",
       referenceRole: "V1 fraud-proof transition-trace final-4 L2 scan yield",
-      manifestPosition: 550,
-      publicationPosition: 551,
+      manifestPosition: 613,
+      publicationPosition: 614,
       referenceRolePosition: 378,
       commands: [],
       validatorTitle:
@@ -281,8 +281,8 @@ export const transitionTraceMembers = defineDeploymentFamily(
     fraudProofTransitionTraceAcceptedTransactionL2ValueWithdraw: {
       purpose: "withdraw",
       referenceRole: "V1 fraud-proof transition-trace final-4 L2 value yield",
-      manifestPosition: 551,
-      publicationPosition: 552,
+      manifestPosition: 614,
+      publicationPosition: 615,
       referenceRolePosition: 379,
       commands: [],
       validatorTitle:
@@ -292,8 +292,8 @@ export const transitionTraceMembers = defineDeploymentFamily(
     fraudProofTransitionTraceDepositAssemblyWithdraw: {
       purpose: "withdraw",
       referenceRole: "V1 fraud-proof transition-trace final-5 assembly yield",
-      manifestPosition: 552,
-      publicationPosition: 553,
+      manifestPosition: 615,
+      publicationPosition: 616,
       referenceRolePosition: 380,
       commands: [],
       validatorTitle:
@@ -303,8 +303,8 @@ export const transitionTraceMembers = defineDeploymentFamily(
     fraudProofTransitionTraceDepositScanWithdraw: {
       purpose: "withdraw",
       referenceRole: "V1 fraud-proof transition-trace final-5 scan yield",
-      manifestPosition: 553,
-      publicationPosition: 554,
+      manifestPosition: 616,
+      publicationPosition: 617,
       referenceRolePosition: 381,
       commands: [],
       validatorTitle:
@@ -314,8 +314,8 @@ export const transitionTraceMembers = defineDeploymentFamily(
     fraudProofTransitionTraceDepositValueWithdraw: {
       purpose: "withdraw",
       referenceRole: "V1 fraud-proof transition-trace final-5 value yield",
-      manifestPosition: 554,
-      publicationPosition: 555,
+      manifestPosition: 617,
+      publicationPosition: 618,
       referenceRolePosition: 382,
       commands: [],
       validatorTitle:
@@ -325,8 +325,8 @@ export const transitionTraceMembers = defineDeploymentFamily(
     fraudProofTransitionTraceDepositReplayWithdraw: {
       purpose: "withdraw",
       referenceRole: "V1 fraud-proof transition-trace final-5 replay yield",
-      manifestPosition: 555,
-      publicationPosition: 556,
+      manifestPosition: 618,
+      publicationPosition: 619,
       referenceRolePosition: 375,
       commands: [],
       validatorTitle:

@@ -11,12 +11,12 @@ import {
   SpendingValidator,
 } from "../../../common.js";
 import { buildDirectBindingContracts } from "../direct-binding.js";
+import {
+  buildDirectClaimContracts,
+  buildDirectClaimTerminal,
+} from "../direct-claim.js";
 import { buildDirectPurposeContracts } from "../direct-purpose.js";
 import { buildDirectSourceContracts } from "../direct-source.js";
-import {
-  buildMissingRedeemerClaimContracts,
-  buildMissingRedeemerFamilyEntry,
-} from "../missing-redeemer-claim.js";
 import type { CertifiedFaultProofChainInputs } from "../shared.js";
 import {
   buildFaultProofSpendingStep,
@@ -32,7 +32,7 @@ export const MISSING_REDEEMER_FAULT_PROOF_TITLES = {
   step02: deployedTitle("fraudProofMissingRedeemerStep02"),
   step03: deployedTitle("fraudProofMissingRedeemerStep03"),
   step04: deployedTitle("fraudProofMissingRedeemerStep04"),
-  step05: deployedTitle("fraudProofMissingRedeemerStep05"),
+  familyEntry: deployedTitle("fraudProofMissingRedeemerFamilyEntry"),
 } as const;
 
 /** Each spending role bound once to its deployment member, in deployment step
@@ -162,17 +162,14 @@ export const buildMissingRedeemerChain = ({
       computationThreadPolicyId,
       fieldPreimageCertificatePolicyId,
     ];
-    const terminal = yield* buildFaultProofSpendingStep(
-      context,
-      MISSING_REDEEMER_FAULT_PROOF_TITLES.step05,
-      [
-        fraudProof.policyId,
-        fraudProofTokenAddressData,
-        computationThreadPolicyId,
-      ],
-      "Failed to build missing-redeemer step 05",
-    );
-    const claim = yield* buildMissingRedeemerClaimContracts({
+    const terminal = yield* buildDirectClaimTerminal({
+      blueprint,
+      network,
+      fraudProofPolicyId: fraudProof.policyId,
+      fraudProofTokenAddressData,
+      computationThreadPolicyId,
+    });
+    const claim = yield* buildDirectClaimContracts({
       blueprint,
       network,
       computationThreadPolicyId,
@@ -204,13 +201,16 @@ export const buildMissingRedeemerChain = ({
       fieldPreimageCertificatePolicyId,
       nextStepScriptHash: start.spendingScriptHash,
     });
-    const familyEntry = yield* buildMissingRedeemerFamilyEntry({
-      blueprint,
-      network,
-      computationThreadPolicyId,
-      purposeSelectScriptHash: purpose.select.spendingScriptHash,
-      claimStartScriptHash: claim.start.spendingScriptHash,
-    });
+    const familyEntry = yield* buildFaultProofSpendingStep(
+      context,
+      MISSING_REDEEMER_FAULT_PROOF_TITLES.familyEntry,
+      [
+        purpose.select.spendingScriptHash,
+        claim.start.spendingScriptHash,
+        computationThreadPolicyId,
+      ],
+      "Failed to build missing-redeemer family entry",
+    );
     const source = yield* buildDirectSourceContracts({
       blueprint,
       network,

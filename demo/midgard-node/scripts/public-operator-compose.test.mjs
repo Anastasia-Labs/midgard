@@ -135,6 +135,57 @@ test("public rendering publishes only TLS and cannot inherit demo services, cred
   }
 });
 
+test("public ingress gives health, readiness and admin routes their own rate zone", () => {
+  const f = fixture();
+  try {
+    const nginx = renderPublicIngress(f.env);
+    const regexLocations = [
+      ...nginx.matchAll(/location ~ (\S+) \{([^}]*)\}/gu),
+    ];
+    const routeOf = (path) =>
+      regexLocations.find(([, pattern]) => new RegExp(pattern, "u").test(path));
+    const liveness = [
+      "/healthz",
+      "/readyz",
+      "/init",
+      "/commit",
+      "/merge",
+      "/stateQueue",
+      "/logBlocksDB",
+      "/logGlobals",
+      "/operator/status",
+      "/admin/session",
+    ];
+    for (const path of liveness) {
+      const location = routeOf(path);
+      assert.ok(location, `${path} has no liveness location`);
+      const zones = [...location[2].matchAll(/limit_req zone=(\w+)/gu)].map(
+        ([, zone]) => zone,
+      );
+      // A location's own limit_req replaces the server's, so the public
+      // global zone does not apply here.
+      assert.equal(zones.length, 1);
+      assert.ok(!["per_ip", "global"].includes(zones[0]));
+      assert.ok(
+        nginx.includes(`limit_req_zone $binary_remote_addr zone=${zones[0]}:`),
+      );
+      assert.ok(location[2].includes("proxy_pass https://node:3000;"));
+    }
+    for (const path of [
+      "/tx",
+      "/utxos",
+      "/tx-status",
+      "/submit",
+      "/tx/evaluate",
+      "/healthz/x",
+      "/xreadyz",
+    ])
+      assert.equal(routeOf(path), undefined, path);
+  } finally {
+    rmSync(f.root, { recursive: true, force: true });
+  }
+});
+
 test("public rendering refuses mutable roles, injected origin and topology/proxy mismatch", () => {
   const f = fixture();
   try {

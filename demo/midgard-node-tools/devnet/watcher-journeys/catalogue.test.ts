@@ -16,12 +16,12 @@ describe("automatic journey catalogue", () => {
       JOURNEY_FIXTURE_CANDIDATES.map(({ category }) => category).sort(),
     ).toEqual([...JOURNEY_CATEGORIES].sort());
   });
-  it("assigns each of the 44 installed families to exactly one fixture owner", () => {
+  it("assigns each of the 48 installed families to exactly one fixture owner", () => {
     const uninstalled: readonly string[] = UNINSTALLED_FRAUD_PROOF_CATEGORIES;
     const expected = FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.filter(
       (category) => !uninstalled.includes(category),
     );
-    expect(expected).toHaveLength(44);
+    expect(expected).toHaveLength(48);
     expect(JOURNEY_CATEGORIES).toEqual(expected);
     expect(Object.keys(JOURNEY_FIXTURE_OWNERS).sort()).toEqual(
       [...expected].sort(),
@@ -35,7 +35,7 @@ describe("automatic journey catalogue", () => {
       Object.values(JOURNEY_FIXTURE_OWNERS).filter(
         (owner) => owner === "script",
       ),
-    ).toHaveLength(8);
+    ).toHaveLength(12);
     expect(
       Object.values(JOURNEY_FIXTURE_OWNERS).filter(
         (owner) => owner === "history",
@@ -66,7 +66,7 @@ describe("automatic journey catalogue", () => {
 
   it.each([
     "validationTraceDispute",
-    "unusedRedeemer",
+    "unusedScriptWitness",
     "unknown",
     "transitionTrace,",
     "zeroInput,zeroInput",

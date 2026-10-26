@@ -277,7 +277,7 @@ export const workflowAdapterRegistrationRows = [
       "workflow/committed-field-shape.ts",
       "workflow/manifest-bound-family-assembly.ts",
       "workflow/runtime.ts#WORKFLOW_RUNNER_FACTORIES.committedFieldShape",
-      "workflow/linear-family-definitions.ts#LINEAR_FAMILY_DEFINITIONS.committedFieldShape",
+      "workflow/committed-field-shape.contracts.ts#COMMITTED_FIELD_SHAPE_FAMILY_DEFINITION",
       "committed-field-shape/submit-committed-field-shape-init.ts",
       "committed-field-shape/submit-committed-field-shape-step-01.ts..step-02.ts",
       "remove-fraudulent-block.ts",
@@ -573,9 +573,15 @@ export const workflowAdapterRegistrationRows = [
   {
     category: "receivePurposeLanguage",
     status: "missing",
-    reason: "evidence_not_carried_by_da_payload",
-    existingSurface: [],
-    requiredClosure: daPayloadEvidenceClosure,
+    reason: "constrained_adapter_is_not_launch_scope_complete",
+    existingSurface: [
+      "receive-purpose-language/replay.ts",
+      "receive-purpose-language/artifact.ts",
+      "receive-purpose-language/workflow.ts",
+      "workflow/family-application-registry.ts#RECEIVE_PURPOSE_LANGUAGE_FAMILY_APPLICATION_RECORD",
+    ],
+    requiredClosure:
+      "install and exercise the manifest-bound receive-purpose-language runner in a compiled application with its retained-DA runtime",
   },
   {
     category: "unusedScriptWitness",
@@ -587,9 +593,15 @@ export const workflowAdapterRegistrationRows = [
   {
     category: "missingScriptSource",
     status: "missing",
-    reason: "evidence_not_carried_by_da_payload",
-    existingSurface: [],
-    requiredClosure: daPayloadEvidenceClosure,
+    reason: "constrained_adapter_is_not_launch_scope_complete",
+    existingSurface: [
+      "missing-script-source/replay.ts",
+      "missing-script-source/artifact.ts",
+      "missing-script-source/workflow.ts",
+      "workflow/family-application-registry.ts#MISSING_SCRIPT_SOURCE_FAMILY_APPLICATION_RECORD",
+    ],
+    requiredClosure:
+      "install and exercise the manifest-bound missing-script-source runner in a compiled application with its retained-DA runtime",
   },
   {
     category: "missingRedeemer",
@@ -607,9 +619,15 @@ export const workflowAdapterRegistrationRows = [
   {
     category: "unusedRedeemer",
     status: "missing",
-    reason: "evidence_not_carried_by_da_payload",
-    existingSurface: [],
-    requiredClosure: daPayloadEvidenceClosure,
+    reason: "constrained_adapter_is_not_launch_scope_complete",
+    existingSurface: [
+      "unused-redeemer/replay.ts",
+      "unused-redeemer/artifact.ts",
+      "unused-redeemer/workflow.ts",
+      "workflow/family-application-registry.ts#UNUSED_REDEEMER_FAMILY_APPLICATION_RECORD",
+    ],
+    requiredClosure:
+      "install and exercise the manifest-bound unused-redeemer runner in a compiled application with its retained-DA runtime",
   },
   {
     category: "executionNativeScriptInvalid",
@@ -621,9 +639,15 @@ export const workflowAdapterRegistrationRows = [
   {
     category: "scriptIntegrityHashMismatch",
     status: "missing",
-    reason: "evidence_not_carried_by_da_payload",
-    existingSurface: [],
-    requiredClosure: daPayloadEvidenceClosure,
+    reason: "constrained_adapter_is_not_launch_scope_complete",
+    existingSurface: [
+      "script-integrity-hash-mismatch/replay.ts",
+      "script-integrity-hash-mismatch/artifact.ts",
+      "script-integrity-hash-mismatch/workflow.ts",
+      "workflow/family-application-registry.ts#SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_APPLICATION_RECORD",
+    ],
+    requiredClosure:
+      "install and exercise the manifest-bound script-integrity-hash-mismatch runner in a compiled application with its retained-DA runtime",
   },
   {
     category: "distinctAssetAccumulationLimit",

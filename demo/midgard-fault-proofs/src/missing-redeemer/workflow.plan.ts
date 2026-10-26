@@ -3,6 +3,15 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
+import type {
+  DirectPurposeContracts,
+  DirectPurposeRole,
+} from "../direct-purpose-family/family.js";
+import {
+  type DirectPurposePaging,
+  directPurposePaging,
+} from "../direct-purpose-family/paging.js";
+import { directPurposeStep01Datum } from "../direct-purpose-family/step01.js";
 import {
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
@@ -16,32 +25,25 @@ import {
   admitMissingRedeemerWorkflowArtifact,
   type AdmittedMissingRedeemerArtifact,
 } from "./artifact.js";
-import type {
-  MissingRedeemerContracts,
-  MissingRedeemerRole,
-} from "./contracts.js";
-import type { MissingRedeemerTransition } from "./custody.js";
 import {
   type MissingRedeemerProofPlan,
   requireConvictingMissingRedeemerProof,
 } from "./prover.js";
-import { missingRedeemerStep01Datum } from "./step01.js";
 
 export type PlannedMissingRedeemerArtifact = Readonly<{
   admitted: AdmittedMissingRedeemerArtifact;
   proof: MissingRedeemerProofPlan;
   /** Every field a transition spending `role` opens. */
-  fieldsOf: (role: MissingRedeemerRole) => readonly number[];
-  /** The one planned transition spending `role` from a thread holding `datum`. */
-  transitionAt: (
-    role: MissingRedeemerRole,
-    datum: string,
-  ) => MissingRedeemerTransition;
+  fieldsOf: (role: DirectPurposeRole) => readonly number[];
+  /** The custody re-paged at any page size; `transitionAt` names the one
+   * transition spending `role` from a thread holding `datum`. */
+  paging: DirectPurposePaging;
+  transitionAt: DirectPurposePaging["transitionAt"];
 }>;
 
 const plan = async (
   artifact: JournalJsonObject,
-  contracts: MissingRedeemerContracts,
+  contracts: DirectPurposeContracts,
   prover: string,
 ): Promise<PlannedMissingRedeemerArtifact> => {
   const admitted = await admitMissingRedeemerWorkflowArtifact(artifact);
@@ -51,32 +53,23 @@ const plan = async (
     prover,
     ...(admitted.observed === null ? {} : { observed: admitted.observed }),
   });
-  const fields = new Map<MissingRedeemerRole, Set<number>>();
+  const fields = new Map<DirectPurposeRole, Set<number>>();
   for (const transition of proof.transitions) {
     const opened = fields.get(transition.role) ?? new Set<number>();
     for (const field of transition.fields) opened.add(field);
     fields.set(transition.role, opened);
   }
-  const step01Datum = missingRedeemerStep01Datum(admitted.material, prover);
+  const paging = directPurposePaging({
+    label: "missingRedeemer",
+    transitions: proof.transitions,
+    first: directPurposeStep01Datum(admitted.material, prover),
+  });
   return Object.freeze({
     admitted,
     proof,
     fieldsOf: (role) => [...(fields.get(role) ?? [])].sort((l, r) => l - r),
-    transitionAt: (role, datum) => {
-      const matches = proof.transitions.filter(
-        (transition, index) =>
-          transition.role === role &&
-          (index === 0
-            ? step01Datum
-            : proof.transitions[index - 1]!.datum
-          ).toLowerCase() === datum.toLowerCase(),
-      );
-      if (matches.length !== 1)
-        throw new Error(
-          `missingRedeemer ${role} thread datum matches ${matches.length.toString()} planned transitions`,
-        );
-      return matches[0]!;
-    },
+    paging,
+    transitionAt: paging.transitionAt,
   });
 };
 
@@ -91,7 +84,7 @@ export const planMissingRedeemerArtifact = ({
   prover,
 }: {
   readonly artifact: JournalJsonObject;
-  readonly contracts: MissingRedeemerContracts;
+  readonly contracts: DirectPurposeContracts;
   readonly prover: string;
 }): Promise<PlannedMissingRedeemerArtifact> => {
   const key = [

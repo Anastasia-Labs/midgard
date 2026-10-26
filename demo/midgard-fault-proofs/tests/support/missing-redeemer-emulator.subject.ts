@@ -75,6 +75,9 @@ export type MissingRedeemerSubjectShape = MissingRedeemerPurposeShape & {
   /** Committed predecessor outputs; spent and referenced by the subject. */
   readonly spend?: readonly LedgerEntry[];
   readonly reference?: readonly LedgerEntry[];
+  /** Committed predecessor outputs the subject neither spends nor
+   * references (they deepen the ledger trie). */
+  readonly padding?: readonly LedgerEntry[];
   /** Extra Reward redeemers past the observer count (pointer padding). */
   readonly paddingRedeemers?: readonly Buffer[];
   /** Redeemer Data bytes for each observer redeemer. */
@@ -250,8 +253,16 @@ export const FORCED_ORDER_KEY: SDK.OutputReference = {
 };
 
 /** The ledger root the subject's spend and reference entries resolve in. */
-const predecessorRoot = async (shape: MissingRedeemerSubjectShape) => {
-  const entries = [...(shape.spend ?? []), ...(shape.reference ?? [])];
+const predecessorEntries = (shape: MissingRedeemerSubjectShape) => [
+  ...(shape.spend ?? []),
+  ...(shape.reference ?? []),
+  ...(shape.padding ?? []),
+];
+
+const predecessorRoot = async (
+  shape: MissingRedeemerSubjectShape,
+  entries: readonly LedgerEntry[] = predecessorEntries(shape),
+) => {
   return entries.length === 0
     ? SDK.EMPTY_MERKLE_TREE_ROOT
     : await ledgerEntriesRoot(entries);
@@ -366,6 +377,7 @@ export const buildMissingRedeemerBlock = async ({
   operatorVkey = "aa".repeat(28),
   startTime = 1_000_000n,
   prevHeaderHash,
+  ledger,
 }: {
   readonly shape: MissingRedeemerSubjectShape;
   readonly source: MissingRedeemerSource;
@@ -373,10 +385,13 @@ export const buildMissingRedeemerBlock = async ({
   readonly startTime?: bigint;
   /** The queued block the header follows; genesis when absent. */
   readonly prevHeaderHash?: string;
+  /** The predecessor ledger; every spent, referenced and padding entry when
+   * absent. */
+  readonly ledger?: readonly LedgerEntry[];
 }) => {
   const subject = buildMissingRedeemerSubject(shape);
-  const entries = [...(shape.spend ?? []), ...(shape.reference ?? [])];
-  const root = await predecessorRoot(shape);
+  const entries = ledger ?? predecessorEntries(shape);
+  const root = await predecessorRoot(shape, entries);
   const predecessor =
     entries.length === 0
       ? undefined

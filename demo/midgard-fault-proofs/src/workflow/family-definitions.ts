@@ -4,21 +4,26 @@ import { MIN_ADA_FAMILY_DEFINITION } from "../min-ada/workflow.js";
 import { MINT_AUTHORIZATION_FAMILY_DEFINITION } from "../mint-authorization/workflow.js";
 import { MINT_DECLARED_ASSET_LIMIT_FAMILY_DEFINITION } from "../mint-declared-asset-limit/v1.js";
 import { MISSING_REDEEMER_FAMILY_DEFINITION } from "../missing-redeemer/workflow.js";
+import { MISSING_SCRIPT_SOURCE_FAMILY_DEFINITION } from "../missing-script-source/workflow.js";
 import { NATIVE_SCRIPT_DECODING_FAMILY_DEFINITION } from "../native-script-decoding/workflow.js";
 import { NATIVE_SCRIPT_INVALID_FAMILY_DEFINITION } from "../native-script-invalid/workflow.js";
 import { OBSERVER_ORDER_INVALID_FAMILY_DEFINITION } from "../observer-order-invalid/v1.js";
 import { OBSERVERS_FORBIDDEN_FAMILY_DEFINITION } from "../observers-forbidden-on-untagged-network/v1.js";
 import { OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_DEFINITION } from "../output-reference-script-decoding/authenticated-workflow.js";
 import { PROTECTED_OUTPUT_SIGNER_MISSING_FAMILY_DEFINITION } from "../protected-output-signer-missing/authenticated-workflow.js";
+import { RECEIVE_PURPOSE_LANGUAGE_FAMILY_DEFINITION } from "../receive-purpose-language/workflow.js";
 import { REDEEMER_CANONICITY_FAMILY_DEFINITION } from "../redeemer-canonicity/runtime.js";
 import { RESOLVED_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION } from "../resolved-output-non-canonical/authenticated-workflow.js";
+import { SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_DEFINITION } from "../script-integrity-hash-mismatch/workflow.js";
 import { SCRIPT_INTEGRITY_HASH_MISSING_FAMILY_DEFINITION } from "../script-integrity-hash-missing/v1.js";
 import { SPEND_INPUT_SIGNER_MISSING_FAMILY_DEFINITION } from "../spend-input-signer-missing/authenticated-workflow.js";
 import { TRANSACTION_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION } from "../transaction-output-non-canonical/workflow.js";
 import { TRANSITION_TRACE_FAMILY_DEFINITION } from "../transition-trace/workflow.js";
+import { UNUSED_REDEEMER_FAMILY_DEFINITION } from "../unused-redeemer/workflow.js";
 import { WITHDRAWAL_MISTAG_FAMILY_DEFINITION } from "../withdrawal-mistag/workflow.js";
 import { WITNESS_SCRIPT_DECODING_FAMILY_DEFINITION } from "../witness-script-decoding/workflow.js";
 import { CANONICAL_DECODABILITY_FAMILY_DEFINITION } from "./canonical-decodability.js";
+import { COMMITTED_FIELD_SHAPE_FAMILY_DEFINITION } from "./committed-field-shape.js";
 import { LINEAR_FAMILY_DEFINITIONS } from "./linear-family-definitions.js";
 
 /**
@@ -28,6 +33,7 @@ import { LINEAR_FAMILY_DEFINITIONS } from "./linear-family-definitions.js";
  */
 type CursorFamilyDefinitions = Readonly<{
   canonicalDecodability: typeof CANONICAL_DECODABILITY_FAMILY_DEFINITION;
+  committedFieldShape: typeof COMMITTED_FIELD_SHAPE_FAMILY_DEFINITION;
   witnessScriptDecoding: typeof WITNESS_SCRIPT_DECODING_FAMILY_DEFINITION;
   transactionOutputNonCanonical: typeof TRANSACTION_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION;
   resolvedOutputNonCanonical: typeof RESOLVED_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION;
@@ -48,11 +54,16 @@ type CursorFamilyDefinitions = Readonly<{
   scriptIntegrityHashMissing: typeof SCRIPT_INTEGRITY_HASH_MISSING_FAMILY_DEFINITION;
   withdrawalMistag: typeof WITHDRAWAL_MISTAG_FAMILY_DEFINITION;
   missingRedeemer: typeof MISSING_REDEEMER_FAMILY_DEFINITION;
+  missingScriptSource: typeof MISSING_SCRIPT_SOURCE_FAMILY_DEFINITION;
+  unusedRedeemer: typeof UNUSED_REDEEMER_FAMILY_DEFINITION;
+  receivePurposeLanguage: typeof RECEIVE_PURPOSE_LANGUAGE_FAMILY_DEFINITION;
+  scriptIntegrityHashMismatch: typeof SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_DEFINITION;
 }>;
 
 export const CURSOR_FAMILY_DEFINITIONS: CursorFamilyDefinitions = Object.freeze(
   {
     canonicalDecodability: CANONICAL_DECODABILITY_FAMILY_DEFINITION,
+    committedFieldShape: COMMITTED_FIELD_SHAPE_FAMILY_DEFINITION,
     witnessScriptDecoding: WITNESS_SCRIPT_DECODING_FAMILY_DEFINITION,
     transactionOutputNonCanonical:
       TRANSACTION_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION,
@@ -76,6 +87,11 @@ export const CURSOR_FAMILY_DEFINITIONS: CursorFamilyDefinitions = Object.freeze(
     scriptIntegrityHashMissing: SCRIPT_INTEGRITY_HASH_MISSING_FAMILY_DEFINITION,
     withdrawalMistag: WITHDRAWAL_MISTAG_FAMILY_DEFINITION,
     missingRedeemer: MISSING_REDEEMER_FAMILY_DEFINITION,
+    missingScriptSource: MISSING_SCRIPT_SOURCE_FAMILY_DEFINITION,
+    unusedRedeemer: UNUSED_REDEEMER_FAMILY_DEFINITION,
+    receivePurposeLanguage: RECEIVE_PURPOSE_LANGUAGE_FAMILY_DEFINITION,
+    scriptIntegrityHashMismatch:
+      SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_DEFINITION,
   },
 );
 

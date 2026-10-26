@@ -224,6 +224,7 @@ export const boundSentinels = (value: unknown, found = new Set<string>()) => {
  */
 export const NO_DIGEST_FAMILIES = [
   "canonicalDecodability",
+  "committedFieldShape",
   "nativeScriptInvalid",
   "nativeScriptDecoding",
   "mintAuthorization",
@@ -235,6 +236,10 @@ export const NO_DIGEST_FAMILIES = [
   "validationTraceDispute",
   "valueNotPreserved",
   "missingRedeemer",
+  "missingScriptSource",
+  "unusedRedeemer",
+  "receivePurposeLanguage",
+  "scriptIntegrityHashMismatch",
 ];
 
 export const REPLAY_CONTEXT_FAMILIES = [
@@ -248,6 +253,10 @@ export const REPLAY_CONTEXT_FAMILIES = [
   "spendInputSignerMissing",
   "validationTraceDispute",
   "missingRedeemer",
+  "missingScriptSource",
+  "unusedRedeemer",
+  "receivePurposeLanguage",
+  "scriptIntegrityHashMismatch",
 ];
 
 /**

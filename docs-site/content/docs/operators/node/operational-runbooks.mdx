@@ -1,0 +1,174 @@
+---
+title: "Operational Runbooks"
+description: "Triage commit delays, catch-up, replay mismatches, follower refusals, settlement delays and proof deadlines."
+---
+
+Use the deployment manifest and the running revision when diagnosing a service.
+Record the network, manifest fingerprint, observed chain point, time, transaction
+or header id, and the exact readiness reason before taking action. Preserve the
+node's database and the watcher's journals throughout recovery.
+
+The node exposes `/healthz` and `/readyz`; the watcher also exposes `/v1/status`,
+`/v1/metrics` and paged `/v1/diagnostics?kind=alert`. Use the deployment's existing
+access controls. The watcher's operations listener is loopback by default.
+Node public readiness redacts details: use the authenticated operational view
+and service logs for event ids and errors. A live process or HTTP 200 readiness
+response does not establish that payouts or proofs are progressing.
+
+These are response procedures. Pager delivery and recovery drills still need
+release evidence; publishing this page does not establish either.
+
+## Commit lag
+
+**Trigger:** eligible work remains pending while its age increases. Inspect
+`durableAdmissionBacklog`, `durableAdmissionOldestAgeMs`, `mempoolTxCount`,
+`unresolvedBlockSubmissionAgeMs`, `pendingFinalizationAgeMs`, worker heartbeat
+reasons and the L1 follower's position in node readiness. An empty network does
+not require empty blocks, and an operator outside its shift need not commit.
+
+1. Run `operator-status` using the deployed node CLI. Confirm that this key is
+   active and determine which operator holds the shift. Check pending user
+   events before treating an idle shift as negligence.
+2. Read the named readiness holds and the commit worker's most recent planning
+   result. Resolve follower lag, missing DA evidence, funding or a failing
+   worker at its source. Fresh heartbeats alone do not clear a protocol hold.
+3. If a signed or submitted block is unresolved, reconcile its recorded hash
+   against L1 before another attempt. Preserve its intent and finalization
+   journal; an ambiguous submission remains in flight.
+
+**Recovery evidence:** the eligible backlog or its oldest age decreases and the
+recorded block advances through confirmation. A restart with the same stalled
+work is not recovery. Escalate persistent lag with the relevant plan, follower
+chain point and recorded transaction hashes.
+
+## Catch-up mode
+
+**Trigger:** the node's current `commitPlanningProgress` report has
+`planned.mode: "catch_up"`. Only use the plan when its `status` is `current`;
+`stale` and `unavailable` do not establish the current mode. Follower catch-up
+(`l1_follower_catching_up`) is a separate readiness condition.
+
+Catch-up blocks drain due L1 user-event work before ordinary mempool
+transactions. Compare successive selected event-window end times and event
+counts. Inspect `catch_up_da_frame_hold`, `catch_up_instant_exceeds_cap` and
+`catch_up_whole_instant_frame_hold` in worker logs when a window cannot advance.
+Retain the whole affected inclusion instant and its DA measurements for the
+maintainer. Changing admission limits, skipping events or marking them processed
+by hand would change the protocol result.
+
+**Recovery evidence:** authenticated event windows advance, the old due work is
+delivered, and a fresh plan returns to `normal` when appropriate. A stale plan
+changing its label is insufficient.
+
+## Watcher replay-root mismatch
+
+**Trigger:** `root_mismatch` in watcher `activeAlerts`, or replay diagnostics
+naming `prior_state_root_mismatch`, `intermediate_root_mismatch` or
+`post_state_root_mismatch`.
+
+1. Save the affected header, deployment fingerprint, authenticated DA payload
+   digest, replay chain point and exact diagnostic. Page the proof operator
+   promptly because the challenged header has a maturity deadline.
+2. Check follower readiness and retained-DA availability first. A stale view or
+   unavailable payload needs reconciliation before a fault claim is made.
+3. Follow the watcher's classified decision and installed family coverage.
+   `unprovable_gap` is an unresolved coverage case; it is not a proved fault.
+   A running objective resumes through its existing journal; see
+   [proof submission](#proof-submission-and-deadlines) below.
+
+**Recovery evidence:** authenticated replay agrees, or the proof completes and
+L1 confirms the required correction/removal. An alert disappearing after a
+restart does not establish either. See the
+[manual recovery procedure](https://github.com/Anastasia-Labs/midgard/blob/main/docs/fault-proofs/manual-recovery-runbook.md).
+
+## Forced admission divergence
+
+**Trigger:** the `ForcedAdmissionDivergence` error event or an increase in
+`forced_admission_divergence_total`, tagged by `refusal_code`. The node observed
+an L1-admitted forced order which its local admission screen refuses.
+
+Preserve the order id, refusal code, original transaction material, deployed
+profile and node revision. Escalate the disagreement to the node/contract
+maintainer. Ingestion and classification continue and the node stays ready;
+this alert is not an instruction to discard the order or reset its state.
+
+The `forced_admission_divergence:<orderIdHex>:<refusalCode>` readiness details
+hold only the latest eight distinct observations in this process. They are not
+an active incident list. Eviction or restart does not resolve an incident.
+
+**Recovery evidence:** the maintainer reconciles the exact order against the
+on-chain rule and local screen, and its authentic classification completes.
+Retain the incident until that disposition is recorded.
+
+## Follower refusals
+
+**Trigger:** a named L1 readiness hold, including `l1_follower_catching_up`,
+`l1_follower_waiting`, `l1_follower_apply_stuck`, `l1_node_config_failed`, or a
+store/history intervention. Node `/healthz` can remain live while `/readyz`
+refuses service.
+
+Check the local Cardano node's network and synchronization, socket access,
+configured origin, and follower cursor. Fix missing configuration or transient
+transport/database availability, then let the same follower replay. Distinguish
+reported degradations such as `l1_event_undecodable` or a prune-floor lag from
+readiness holds; preserve the refused event details even if readiness is true.
+
+`rollback_beyond_k`, `intersection_outside_history`, `store_integrity` and
+`origin_mismatch` need explicit operator intervention. Do not delete the node's
+durable state to clear them. An authorized follower-specific recovery must
+follow its documented origin/replay procedure and the repository's
+[state reset rules](https://github.com/Anastasia-Labs/midgard/blob/main/docs/agents/state-reset.md).
+
+**Recovery evidence:** the follower reaches the required chain point, the
+projection/recompute completes, and the named hold clears with the original
+deployment identity intact. Escalate an integrity intervention with its exact
+reason and cursor before choosing a recovery action.
+
+## Stuck settlements
+
+**Trigger:** node readiness details contain `settlement_jobs_stuck` or
+`settlement_reconcile_stuck`. These describe delayed jobs and do not by
+themselves stop admission. A repeated worker crash instead raises
+`settlement_worker_failing` and holds readiness.
+
+1. Inspect `withdrawal-status`, `payout-status` and `reserve-utxos` for the
+   affected order. Confirm that its block has matured and the event is settled;
+   a maturity wait is not a failed payout.
+2. Record the job kind, event id, phase, last error and any pending transaction
+   hash. Reconcile a pending attempt on L1 before submitting another.
+3. Restore the reported dependency or required funding and let the settlement
+   worker retry from its journal. For an explicitly operated payout, follow
+   [reserve and payout](/docs/operators/node/reserve-payout) in order.
+
+**Recovery evidence:** the same job advances to its authenticated terminal
+state and the user receives the expected payout or refund. Clearing counters,
+restarting a worker or manually editing a job phase does not prove payment.
+
+## Proof submission and deadlines
+
+**Trigger:** `proof_submission_failure` or `maturity_deadline_risk` in watcher
+`activeAlerts`. Inspect `/v1/status`, `/v1/metrics` and the alert and
+proof-step diagnostic pages, following `nextCursor` until the relevant records
+are collected.
+
+Fault proofs and data-availability challenges are permissionless: any funded
+watcher submits under the deployed profile. The watcher independently reads
+authenticated L1 and public DA, then builds and submits each proof step through
+its journaled workflow. A failed step is retried from that journal.
+
+1. Record the header, objective, proof step, last error and any pending
+   transaction hash. Reconcile a pending transaction on L1 before another
+   attempt.
+2. Check the watcher wallet's funding and collateral, the L1 follower position
+   and the provider's health. Restore the missing dependency and let the same
+   workflow retry.
+3. With `maturity_deadline_risk`, escalate immediately: the challenged header's
+   maturity deadline bounds the time left. For an availability Open, a
+   challenger can also use `availability-challenge open` with the deployed
+   manifest, persistent journal, header hash and funded wallet described in the
+   [availability command reference](https://github.com/Anastasia-Labs/midgard/blob/main/demo/midgard-node/docs/availability-challenge-commands.md).
+
+**Recovery evidence:** the watcher observes the proof's removal or correction,
+or the header leaves the queue for an authenticated reason, and the alert
+clears. A missed deadline must be reported explicitly; it is not a successful
+submission.

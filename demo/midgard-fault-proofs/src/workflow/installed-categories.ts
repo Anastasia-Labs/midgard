@@ -9,11 +9,7 @@ import {
  * validators are unchanged.
  */
 export const UNINSTALLED_FRAUD_PROOF_CATEGORIES = Object.freeze([
-  "unusedRedeemer",
-  "missingScriptSource",
   "unusedScriptWitness",
-  "scriptIntegrityHashMismatch",
-  "receivePurposeLanguage",
   "executionNativeScriptInvalid",
   "executionSourceScriptDecoding",
   "distinctAssetAccumulationLimit",

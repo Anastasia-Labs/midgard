@@ -189,7 +189,12 @@ export {
   buildMissingScriptSourceFaultProofContracts,
   type BuildMissingScriptSourceFaultProofContractsParams,
   MISSING_SCRIPT_SOURCE_FAULT_PROOF_TITLES,
+  MISSING_SCRIPT_SOURCE_ROLE_ORDER,
+  type MissingScriptSourceChain,
   type MissingScriptSourceFaultProofContracts,
+  type MissingScriptSourceRole,
+  type MissingScriptSourceRoles,
+  missingScriptSourceRoles,
 } from "./families/missing-script-source.js";
 export {
   buildMissingSignatureFaultProofContracts,
@@ -260,8 +265,14 @@ export {
   buildReceivePurposeLanguageChain,
   buildReceivePurposeLanguageFaultProofContracts,
   type BuildReceivePurposeLanguageFaultProofContractsParams,
+  checkReceivePurposeLanguageRoleOrder,
   RECEIVE_PURPOSE_LANGUAGE_FAULT_PROOF_TITLES,
+  RECEIVE_PURPOSE_LANGUAGE_ROLE_ORDER,
+  type ReceivePurposeLanguageChain,
   type ReceivePurposeLanguageFaultProofContracts,
+  type ReceivePurposeLanguageRole,
+  type ReceivePurposeLanguageRoles,
+  receivePurposeLanguageRoles,
 } from "./families/receive-purpose-language.js";
 export {
   buildRedeemerCanonicityChain,
@@ -287,8 +298,14 @@ export {
   buildScriptIntegrityHashMismatchChain,
   buildScriptIntegrityHashMismatchFaultProofContracts,
   type BuildScriptIntegrityHashMismatchFaultProofContractsParams,
+  checkScriptIntegrityHashMismatchRoleOrder,
   SCRIPT_INTEGRITY_HASH_MISMATCH_FAULT_PROOF_TITLES,
+  SCRIPT_INTEGRITY_HASH_MISMATCH_ROLE_ORDER,
+  type ScriptIntegrityHashMismatchChain,
   type ScriptIntegrityHashMismatchFaultProofContracts,
+  type ScriptIntegrityHashMismatchRole,
+  type ScriptIntegrityHashMismatchRoles,
+  scriptIntegrityHashMismatchRoles,
 } from "./families/script-integrity-hash-mismatch.js";
 export {
   buildScriptIntegrityHashMissingFaultProofContracts,
@@ -324,7 +341,12 @@ export {
   buildUnusedRedeemerFaultProofContracts,
   type BuildUnusedRedeemerFaultProofContractsParams,
   UNUSED_REDEEMER_FAULT_PROOF_TITLES,
+  UNUSED_REDEEMER_ROLE_ORDER,
+  type UnusedRedeemerChain,
   type UnusedRedeemerFaultProofContracts,
+  type UnusedRedeemerRole,
+  type UnusedRedeemerRoles,
+  unusedRedeemerRoles,
 } from "./families/unused-redeemer.js";
 export {
   buildUnusedScriptWitnessChain,
@@ -384,12 +406,6 @@ export {
   ZERO_INPUT_FAULT_PROOF_TITLES,
   type ZeroInputFaultProofContracts,
 } from "./families/zero-input.js";
-export {
-  buildMissingRedeemerClaimContracts,
-  buildMissingRedeemerFamilyEntry,
-  MISSING_REDEEMER_CLAIM_TITLES,
-  type MissingRedeemerClaimContracts,
-} from "./missing-redeemer-claim.js";
 export {
   buildScriptDecodeValidator,
   SCRIPT_DECODE_STAKER_CLASS_NAMES,

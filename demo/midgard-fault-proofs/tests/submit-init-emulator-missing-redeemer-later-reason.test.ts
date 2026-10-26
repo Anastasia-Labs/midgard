@@ -112,7 +112,7 @@ describe("missing-redeemer genuine-Init rows under a later recorded reason", () 
     // The recorded reason precedes the purpose phase: the terminal returns
     // false and no fraud-proof token can mint.
     await expectOnchainRefusal(() => run.terminal(false), {
-      refusedBy: "fraud_proofs/missing_redeemer/step_05",
+      refusedBy: "fraud_proofs/direct_script_derivation/claim_terminal",
       check: /^Validator returned false$/u,
     });
     await expect(

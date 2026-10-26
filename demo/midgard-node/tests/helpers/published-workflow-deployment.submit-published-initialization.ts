@@ -16,12 +16,11 @@ import {
   resolveEarlyValidityRetry,
 } from "../../src/transactions/utils.js";
 
-// The user accepted the hard limit without reserve for these five roles only.
+// The user accepted the hard limit without reserve for these four roles only.
 export const hardLimitAcceptedContracts = new Set<string>([
   "fraudProofValueNotPreservedStep02",
   "fraudProofResolvedOutputNonCanonicalStep04",
   "fraudProofExecutionSourceScriptDecodingStep02",
-  "fraudProofReceivePurposeLanguageStep02",
   "fraudProofExecutionNativeScriptInvalidStep02",
 ]);
 

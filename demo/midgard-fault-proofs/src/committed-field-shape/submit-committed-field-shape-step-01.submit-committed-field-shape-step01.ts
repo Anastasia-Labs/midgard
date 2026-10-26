@@ -3,7 +3,6 @@ import {
   type CommittedFieldClaim,
   committedFieldShapeEvidenceFromCommittedField,
   CommittedFieldShapeStep01SpendRedeemer,
-  CommittedFieldShapeStep02Datum,
   type CommittedFieldShapeStep02State,
   type FieldCarriage,
   HUB_ORACLE_ASSET_NAME,
@@ -48,7 +47,6 @@ import {
 } from "../runtime.js";
 import {
   PHAS_MEMBERSHIP_WITHDRAW_TITLE,
-  requireInitialStepDatum,
   requireNativeTxMatchesCompactCbor,
   selectFeeInput,
   type SubmitStep01TxInclusion,
@@ -64,6 +62,7 @@ import {
   workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary.js";
 import type { CommittedFieldShapeContracts } from "./contracts.js";
+import { deriveCommittedFieldShapeNextOutput } from "./derive-committed-field-shape-next-output.js";
 import type { PreparedCommittedFieldShape } from "./prepare-committed-field-shape.js";
 import {
   committedFieldShapeClaimDetails,
@@ -77,9 +76,11 @@ import {
 } from "./submit-common.js";
 
 /**
- * Authenticates one committed slot and forwards the on-chain-derived verdict.
- * Every prepared member is re-derived here; a stale or edited plan cannot be
- * converted into a transaction contradicting the validator.
+ * Authenticates one committed slot and walks one batch of its envelope: the
+ * thread returns to step 01 while items remain and moves to step 02 with the
+ * on-chain-derived verdict. Every prepared member is re-derived here; a stale or
+ * edited plan cannot be converted into a transaction contradicting the
+ * validator.
  */
 export const submitCommittedFieldShapeStep01 = async ({
   lucid,
@@ -131,7 +132,6 @@ export const submitCommittedFieldShapeStep01 = async ({
       stepIndex: 0,
       threadOutRef,
     });
-  requireInitialStepDatum({ threadUtxo, signer });
   const [stateQueueBlockUtxo, hubOracleUtxo] = await Promise.all([
     fetchUtxoByOutRef({
       lucid,
@@ -277,13 +277,27 @@ export const submitCommittedFieldShapeStep01 = async ({
       : {
           WitnessFieldClaim: { ...prepared.claim.WitnessFieldClaim, carriage },
         };
-  const step02Datum = Data.to(
-    { fraud_prover: signer.paymentKeyHash, data: derivedState },
-    CommittedFieldShapeStep02Datum,
-  );
+  const nextOutput = deriveCommittedFieldShapeNextOutput({
+    threadUtxo,
+    signer,
+    contracts,
+    badTxId: evidence.badTxId,
+    fieldIndex,
+    committedPreimage: preimage,
+  });
+  if (
+    nextOutput.step02State !== null &&
+    (nextOutput.step02State.bad_tx_id !== derivedState.bad_tx_id ||
+      nextOutput.step02State.field_index !== derivedState.field_index ||
+      nextOutput.step02State.verdict !== derivedState.verdict)
+  ) {
+    throw committedFieldShapeSubmitError(
+      "the walk's final step-02 state differs from the verdict over the whole field.",
+    );
+  }
   const outputMatches = computationThreadOutputPredicate({
-    address: contracts.steps[1].spendingScriptAddress,
-    datum: step02Datum,
+    address: nextOutput.address,
+    datum: nextOutput.datum,
     unit: threadToken.unit,
   });
   let resolvedLayout:
@@ -404,8 +418,8 @@ export const submitCommittedFieldShapeStep01 = async ({
       );
   const paid = withCarriage.pay
     .ToContract(
-      contracts.steps[1].spendingScriptAddress,
-      { kind: "inline", value: step02Datum },
+      nextOutput.address,
+      { kind: "inline", value: nextOutput.datum },
       threadAssets,
     )
     .addSignerKey(signer.paymentKeyHash);
@@ -459,9 +473,10 @@ export const submitCommittedFieldShapeStep01 = async ({
     nextThreadOutRef: `${txHash}#${resolvedLayout.outputIndex.toString()}`,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
     computationThreadUnit: threadToken.unit,
-    secondStepAddress: contracts.steps[1].spendingScriptAddress,
+    nextStepAddress: nextOutput.address,
+    complete: nextOutput.complete,
     evidence,
-    step02State: derivedState,
+    step02State: nextOutput.step02State,
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),
     proofCarriage: carriedByChunks ? "published-chunks" : "redeemer",

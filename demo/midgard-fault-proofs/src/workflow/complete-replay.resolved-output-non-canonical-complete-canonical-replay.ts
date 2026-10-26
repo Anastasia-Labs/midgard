@@ -9,21 +9,25 @@ import { detectMinAdaForcedReplay } from "../min-ada/forced.js";
 import { detectMinFeeForcedReplay } from "../min-fee-forced.js";
 import { detectMintDeclaredAssetLimitForcedReplay } from "../mint-declared-asset-limit/replay.js";
 import { detectMissingRedeemerReplay } from "../missing-redeemer/replay.js";
+import { detectMissingScriptSourceReplay } from "../missing-script-source/replay.js";
 import { detectNativeScriptDecodingReplay } from "../native-script-decoding/replay.js";
 import { detectNativeScriptInvalidForcedReplay } from "../native-script-invalid/forced.js";
 import { detectObserversForbiddenForcedReplay } from "../observers-forbidden-on-untagged-network/replay.js";
 import { detectOutputReferenceScriptDecodingCanonicalViolations } from "../output-reference-script-decoding/output-reference-script-decoding.canonical-findings.js";
 import { detectProtectedOutputSignerMissingCompleteReplay } from "../protected-output-signer-missing/protected-output-signer-missing.js";
 import { protectedOutputSignerEvidenceIdentity } from "../protected-output-signer-missing/workflow.js";
+import { detectReceivePurposeLanguageReplay } from "../receive-purpose-language/replay.js";
 import {
   deriveResolvedOutputPriorLedgerReplay,
   detectResolvedOutputNonCanonicalCompleteReplay,
   resolvedOutputEvidenceIdentity,
 } from "../resolved-output-non-canonical/resolved-output-non-canonical.js";
+import { detectScriptIntegrityHashMismatchReplay } from "../script-integrity-hash-mismatch/replay.js";
 import { detectScriptIntegrityHashMissingFromCanonicalEvidence } from "../script-integrity-hash-missing/replay.js";
 import { detectSpendInputSignerMissingCompleteReplay } from "../spend-input-signer-missing/spend-input-signer-missing.js";
 import { spendInputSignerWorkflowEvidenceIdentity } from "../spend-input-signer-missing/workflow.js";
 import { detectTransactionOutputNonCanonicalCompleteReplay } from "../transaction-output-non-canonical/workflow.js";
+import { detectUnusedRedeemerReplay } from "../unused-redeemer/replay.js";
 import { detectWitnessScriptDecodingCompleteReplay } from "../witness-script-decoding/workflow.js";
 import { completeCanonicalReplayPredecessorLedger } from "./complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
@@ -131,6 +135,68 @@ export const MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY = completeReplayer(
       }),
     }),
 );
+
+/** Complete missing-script-source replay: script purposes of admitted
+ * transactions, forced `ScriptSourceMissing` and `RedeemerMissing`
+ * rejections, and forced rejections whose reason names no purpose. */
+export const MISSING_SCRIPT_SOURCE_COMPLETE_CANONICAL_REPLAY = completeReplayer(
+  ["missingScriptSource"],
+  async (evidence, context) =>
+    await detectMissingScriptSourceReplay({
+      block: evidence,
+      predecessor: completeCanonicalReplayPredecessorLedger({
+        evidence,
+        context,
+      }),
+    }),
+);
+
+/** Complete unused-redeemer replay: admitted transactions with a redeemer,
+ * forced `UnusedRedeemer` rejections, and forced rejections with a redeemer
+ * recorded at or after the unused audit. */
+export const UNUSED_REDEEMER_COMPLETE_CANONICAL_REPLAY = completeReplayer(
+  ["unusedRedeemer"],
+  async (evidence, context) =>
+    await detectUnusedRedeemerReplay({
+      block: evidence,
+      predecessor: completeCanonicalReplayPredecessorLedger({
+        evidence,
+        context,
+      }),
+    }),
+);
+
+/** Complete receive-purpose-language replay: admitted transactions with a
+ * redeemer, and forced rejections recording
+ * `ReceivePurposePlutusV3Forbidden`. */
+export const RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY =
+  completeReplayer(
+    ["receivePurposeLanguage"],
+    async (evidence, context) =>
+      await detectReceivePurposeLanguageReplay({
+        block: evidence,
+        predecessor: completeCanonicalReplayPredecessorLedger({
+          evidence,
+          context,
+        }),
+      }),
+  );
+
+/** Complete script-integrity-hash-mismatch replay: admitted transactions,
+ * forced rejections recording the mismatch, and forced rejections whose
+ * reason ranks after the script-integrity phase. */
+export const SCRIPT_INTEGRITY_HASH_MISMATCH_COMPLETE_CANONICAL_REPLAY =
+  completeReplayer(
+    ["scriptIntegrityHashMismatch"],
+    async (evidence, context) =>
+      await detectScriptIntegrityHashMismatchReplay({
+        block: evidence,
+        predecessor: completeCanonicalReplayPredecessorLedger({
+          evidence,
+          context,
+        }),
+      }),
+  );
 
 export const NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY = completeReplayer(
   ["nativeScriptInvalid"],
