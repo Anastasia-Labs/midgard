@@ -10,7 +10,6 @@ import {
  */
 export const UNINSTALLED_FRAUD_PROOF_CATEGORIES = Object.freeze([
   "unusedScriptWitness",
-  "receivePurposeLanguage",
   "executionNativeScriptInvalid",
   "executionSourceScriptDecoding",
   "distinctAssetAccumulationLimit",

@@ -239,11 +239,23 @@ describe("fault-proof contract builder", () => {
         ["withdrawnReferenceInput[2]", "withdrawnInput[2]"],
         // Both convict from the same final ordered-collection comparison.
         ["mintDeclaredAssetLimit[3]", "observerOrderInvalid[3]"],
-        // The unused-witness families share their terminal award step.
-        ["unusedScriptWitness[5]", "unusedRedeemer[8]"],
-        // Both walk the shared direct-derivation all-purposes scan.
-        ["missingRedeemer[5]", "scriptIntegrityHashMismatch[5]"],
-        ["missingRedeemer[6]", "scriptIntegrityHashMismatch[6]"],
+        // The direct families share the source authenticate and map stages.
+        ...[5, 6].map((step) => [
+          `receivePurposeLanguage[${step}]`,
+          `missingScriptSource[${step}]`,
+          `missingRedeemer[${step}]`,
+          `unusedRedeemer[${step}]`,
+          `scriptIntegrityHashMismatch[${step}]`,
+        ]),
+        // The families that convict through the shared claim custody share
+        // it through to the claim terminal.
+        ...[24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 36].map((step, index) => [
+          `missingScriptSource[${step}]`,
+          `missingRedeemer[${step + 2}]`,
+          `unusedRedeemer[${index + 14}]`,
+        ]),
+        ["missingScriptSource[34]", "missingRedeemer[36]"],
+        ["missingScriptSource[35]", "missingRedeemer[37]"],
       ].sort(),
     );
   }, 120_000);

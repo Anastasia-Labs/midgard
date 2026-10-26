@@ -64,6 +64,7 @@ export * from "./prepare-zero-input.js";
 export * from "./proof-fit/van-rossem.js";
 export * from "./protected-output-signer-missing/index.js";
 export * from "./publish-proof-chunks.js";
+export * from "./receive-purpose-language/index.js";
 export * from "./redeemer-canonicity/index.js";
 export * from "./redeemer-item-data.js";
 export * from "./redeemer-item-plan.js";

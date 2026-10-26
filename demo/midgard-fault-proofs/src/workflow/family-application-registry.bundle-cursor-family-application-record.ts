@@ -48,6 +48,13 @@ import {
   runOrResumeManifestBoundNativeScriptInvalidWorkflow,
 } from "../native-script-invalid/workflow.js";
 import {
+  createManifestBoundReceivePurposeLanguageWorkflow,
+  type ManifestBoundReceivePurposeLanguageWorkflow,
+  RECEIVE_PURPOSE_LANGUAGE_FAMILY_DEFINITION,
+  runOrResumeManifestBoundReceivePurposeLanguageWorkflow,
+} from "../receive-purpose-language/workflow.js";
+import type { ManifestBoundReceivePurposeLanguageWorkflowConfig } from "../receive-purpose-language/workflow.transaction-port.js";
+import {
   createManifestBoundResolvedOutputNonCanonicalWorkflow,
   executeManifestBoundResolvedOutputNonCanonicalWorkflow,
   type ManifestBoundResolvedOutputNonCanonicalWorkflow,
@@ -283,6 +290,17 @@ export const UNUSED_REDEEMER_FAMILY_APPLICATION_RECORD =
     requires: ["replayContext"],
     constructWorkflow: createManifestBoundUnusedRedeemerWorkflow,
     execute: runOrResumeManifestBoundUnusedRedeemerWorkflow,
+  });
+
+export const RECEIVE_PURPOSE_LANGUAGE_FAMILY_APPLICATION_RECORD =
+  bundleCursorFamilyApplicationRecord<
+    "receivePurposeLanguage",
+    ManifestBoundReceivePurposeLanguageWorkflowConfig,
+    ManifestBoundReceivePurposeLanguageWorkflow
+  >(RECEIVE_PURPOSE_LANGUAGE_FAMILY_DEFINITION, {
+    requires: ["replayContext"],
+    constructWorkflow: createManifestBoundReceivePurposeLanguageWorkflow,
+    execute: runOrResumeManifestBoundReceivePurposeLanguageWorkflow,
   });
 
 export const MIN_ADA_FAMILY_APPLICATION_RECORD =
