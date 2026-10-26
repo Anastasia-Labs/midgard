@@ -102,8 +102,30 @@ export const CommittedFieldClaim = asDataType<CommittedFieldClaim>(
   CommittedFieldClaimSchema,
 );
 
+/**
+ * Mirrors `midgard/fraud_proofs/canonical_decodability/step_01.WalkState`: the
+ * walk between two step-01 transactions, `remaining` items still to read from
+ * byte `offset` of field `field_index` of `bad_tx_id`. A fresh thread carries
+ * no state.
+ */
+export const CanonicalDecodabilityWalkStateSchema = Data.Object({
+  bad_tx_id: H32Schema,
+  field_index: Data.Integer(),
+  remaining: Data.Integer(),
+  offset: Data.Integer(),
+});
+
+export type CanonicalDecodabilityWalkState = Data.Static<
+  typeof CanonicalDecodabilityWalkStateSchema
+>;
+
+export const CanonicalDecodabilityWalkState =
+  asDataType<CanonicalDecodabilityWalkState>(
+    CanonicalDecodabilityWalkStateSchema,
+  );
+
 export const CanonicalDecodabilityStep01DatumSchema = faultProofStepDatumSchema(
-  Data.Any(),
+  CanonicalDecodabilityWalkStateSchema,
 );
 
 export type CanonicalDecodabilityStep01Datum = Data.Static<
