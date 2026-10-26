@@ -5,11 +5,17 @@
  * the script-witness and redeemer fields are filled to their caps. The
  * observed receive purpose is the last ordinal, so the receive route, the
  * source lookup and the claimed redeemer scan walk their whole fields.
- * Committed as accepted it convicts; the same transaction committed with the
- * node's own forced verdict, which rejects it before its purposes, is
- * refused at the terminal after the same observed walk.
+ * Committed as accepted it convicts. The refusal polarity is fixture-only:
+ * the same transaction committed with the node's own forced verdict, which
+ * rejects it before its purposes, is refused at the terminal after the same
+ * observed walk, but the forced admission screen never admits it (it spends
+ * nothing and carries redeemers and Plutus witnesses), and no admissible
+ * forced transaction fills the witness and redeemer fields.
  */
-import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core";
+import {
+  MIDGARD_CONSENSUS_LIMITS,
+  screenMidgardForcedTxAdmission,
+} from "@al-ft/midgard-core";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -152,7 +158,7 @@ describe("receive-purpose-language consensus-maximum receive shape", () => {
     );
   }, 3_600_000);
 
-  it("refuses the same transaction under the node's own forced verdict", async () => {
+  it("fixture-only: refuses the same transaction under the node's own forced verdict, which the admission screen never admits", async () => {
     const dimensions = maximumShape();
     const shape = shapeOf(dimensions);
     const verdict = await machineForcedVerdict(shape);
@@ -160,6 +166,11 @@ describe("receive-purpose-language consensus-maximum receive shape", () => {
     expect(verdict).toStrictEqual({
       ForcedTxInvalid: { reason: "EmptyInputs" },
     });
+    expect(
+      screenMidgardForcedTxAdmission(
+        buildMissingRedeemerSubject(shape).nativeTx,
+      ),
+    ).not.toBeNull();
     const harness = await makeReceivePurposeLanguageHarness();
     const scenario = await setupMissingRedeemerScenario({
       harness,

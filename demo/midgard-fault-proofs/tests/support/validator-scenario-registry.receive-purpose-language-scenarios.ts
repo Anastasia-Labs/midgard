@@ -3,7 +3,7 @@ import type { ValidatorScenarioPair } from "./validator-scenario-registry.valida
 const RPL_FORGED_SUCCESSOR =
   "demo/midgard-fault-proofs/tests/submit-init-emulator-receive-purpose-language-forged-successor.test.ts";
 const RPL_ACCEPTED_ROUTE =
-  "refuses a forged successor at every role of the accepted forbidden-execution route";
+  "refuses a forged successor at every role of an accepted PlutusV3 receive execution beside spent and referenced inputs";
 const rplForgedSuccessor: ValidatorScenarioPair = {
   passing: [{ file: RPL_FORGED_SUCCESSOR, test: RPL_ACCEPTED_ROUTE }],
   failing: [{ file: RPL_FORGED_SUCCESSOR, test: RPL_ACCEPTED_ROUTE }],

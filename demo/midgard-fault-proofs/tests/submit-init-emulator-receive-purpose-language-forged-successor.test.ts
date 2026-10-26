@@ -1,28 +1,33 @@
 /**
- * `receivePurposeLanguage` custody refuses a forged successor at every role past
- * source exhaustion: from a genuine Init and step-01, the binding and source
- * prefix advances honestly; each later planned transition is first built
- * with the thread paying another planned state of the same thread, and the
- * spending role's validator must refuse it; the honest transition then
- * advances the thread.
+ * `receivePurposeLanguage` custody refuses a forged successor at every role:
+ * from a genuine Init, step-01, each planned transition and the terminal are
+ * first built paying another state than the honest one, and the spending
+ * role's validator must refuse each before the honest transaction advances
+ * the thread. The scenarios together visit every role of the family: an
+ * accepted PlutusV3 receive execution beside spent and referenced inputs
+ * walks the whole source prefix, the receive route, the family lookup and the
+ * claimed redeemer scan; forced transactions the admission screen accepts
+ * reach the family entry's contradiction and the receive route's lookup.
  */
-import { type UTxO } from "@lucid-evolution/lucid";
-import { describe, expect, it } from "vitest";
+import { screenMidgardForcedTxAdmission } from "@al-ft/midgard-core";
+import * as SDK from "@al-ft/midgard-sdk";
+import { afterAll, describe, expect, it } from "vitest";
 
+import type { DirectPurposeRole } from "../src/direct-purpose-family/index.js";
 import {
-  buildDirectPurposeTransition,
-  type DirectPurposeRole,
-  submitDirectPurposeTransition,
-} from "../src/direct-purpose-family/index.js";
-import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+  prepareReceivePurposeLanguageProof,
+  RECEIVE_PURPOSE_LANGUAGE_FAMILY,
+} from "../src/receive-purpose-language/index.js";
+import { forgeEveryDirectPurposeRole } from "./support/direct-purpose-forged-successor.js";
 import {
+  buildMissingRedeemerSubject,
   honestForcedObserverShape,
-  type MissingRedeemerSubjectShape,
+  missingRedeemerLedgerEntries,
   plutusScript,
   setupMissingRedeemerScenario,
 } from "./support/missing-redeemer-emulator.subject.js";
 import {
-  driveReceivePurposeLanguageThread,
+  forcedReceiving,
   makeReceivePurposeLanguageHarness,
   publishReceivePurposeLanguageRoles,
   receivePurposeLanguageVerdict,
@@ -30,8 +35,41 @@ import {
 
 type Scenario = Parameters<typeof setupMissingRedeemerScenario>[0];
 
-/** The shared binding and source prefix, which locates its own successor. */
-const PREFIX = new Set<DirectPurposeRole>([
+/** Every role a scenario of this file refused a forgery at. */
+const covered = new Set<DirectPurposeRole>();
+
+/** Forges then advances every role of the scenario's thread and convicts;
+ * returns the roles that refused a forgery. */
+const forgeEveryRole = async (
+  shape: Scenario["shape"],
+  source: Scenario["source"],
+): Promise<ReadonlySet<DirectPurposeRole>> => {
+  if (source.kind === "forced")
+    expect(
+      screenMidgardForcedTxAdmission(
+        buildMissingRedeemerSubject(shape).nativeTx,
+      ),
+    ).toBeNull();
+  const harness = await makeReceivePurposeLanguageHarness();
+  const references = await publishReceivePurposeLanguageRoles(harness);
+  const scenario = await setupMissingRedeemerScenario({
+    harness,
+    shape,
+    source,
+  });
+  const refused = await forgeEveryDirectPurposeRole({
+    harness,
+    family: RECEIVE_PURPOSE_LANGUAGE_FAMILY,
+    scenario,
+    references,
+    prepare: prepareReceivePurposeLanguageProof,
+  });
+  for (const role of refused) covered.add(role);
+  return new Set(refused);
+};
+
+/** The binding and source prefix of a subject with inputs and witnesses. */
+const SOURCE = [
   "bindEvent",
   "bindPreState",
   "sourceStart",
@@ -42,98 +80,72 @@ const PREFIX = new Set<DirectPurposeRole>([
   "sourceGrammar",
   "sourceWitnesses",
   "sourceFinish",
-]);
+] as const satisfies readonly DirectPurposeRole[];
 
-/** Forges then advances every transition past the prefix; returns the
- * roles that refused a forgery. */
-const forgeEveryRole = async (
-  shape: Scenario["shape"],
-  source: Scenario["source"],
-): Promise<readonly DirectPurposeRole[]> => {
-  const harness = await makeReceivePurposeLanguageHarness();
-  const references = await publishReceivePurposeLanguageRoles(harness);
-  const scenario = await setupMissingRedeemerScenario({
-    harness,
-    shape,
-    source,
-  });
-  const run = await driveReceivePurposeLanguageThread({
-    harness,
-    scenario,
-    references,
-    transitions: () => [],
-  });
-  const planned = run.prepared.transitions;
-  let thread: UTxO = run.thread;
-  const refused: DirectPurposeRole[] = [];
-  for (const [index, transition] of planned.entries()) {
-    if (PREFIX.has(transition.role)) {
-      thread = (
-        await submitDirectPurposeTransition(run.custody, thread, transition)
-      ).thread;
-      continue;
-    }
-    // The nearest later planned state that differs from the honest one.
-    const forged = [...planned.slice(index + 1), ...planned.slice(0, index)]
-      .map(({ datum }) => datum)
-      .find((datum) => datum !== transition.datum);
-    if (forged === undefined)
-      throw new Error(`${transition.label}: no distinct planned state`);
-    const built = await buildDirectPurposeTransition(
-      run.custody,
-      thread,
-      transition,
-      { datum: forged },
-    );
-    await expectOnchainRefusal(() => built.complete());
-    thread = (
-      await submitDirectPurposeTransition(run.custody, thread, transition)
-    ).thread;
-    refused.push(transition.role);
-  }
-  return refused;
-};
-
-/** The family entry's observation through the shared receive route. */
-const RECEIVE = [
+/** Step-01, the family's entry and the terminal. */
+const ENDS = [
+  "step01",
   "familyEntry",
+  "terminal",
+] as const satisfies readonly DirectPurposeRole[];
+
+/** The shared receive route to one ordinal and the family lookup. */
+const RECEIVE = [
   "receiveStart",
   "receiveGrammar",
   "receiveOutputs",
   "receiveFinish",
   "receiveDeclaration",
   "sourceLookup",
-] as const;
+] as const satisfies readonly DirectPurposeRole[];
 
-const receiving = (redeemer: boolean, witness = true) =>
-  ({
-    observers: [],
-    receives: [{ script: plutusScript(3), redeemer, witness }],
-  }) satisfies MissingRedeemerSubjectShape;
+const roles = (...groups: readonly (readonly DirectPurposeRole[])[]) =>
+  new Set<DirectPurposeRole>(groups.flat());
 
 describe("receive-purpose-language forged successor refusal", () => {
-  it("refuses a forged successor at every role of the accepted forbidden-execution route", async () => {
-    const refused = await forgeEveryRole(receiving(true), { kind: "normal" });
-    expect(new Set(refused)).toStrictEqual(
-      new Set<DirectPurposeRole>([
-        ...RECEIVE,
+  afterAll(() => {
+    expect(covered).toStrictEqual(
+      new Set(SDK.RECEIVE_PURPOSE_LANGUAGE_ROLE_ORDER),
+    );
+  });
+
+  it("refuses a forged successor at every role of an accepted PlutusV3 receive execution beside spent and referenced inputs", async () => {
+    const refused = await forgeEveryRole(
+      {
+        observers: [],
+        receives: [{ script: plutusScript(3), redeemer: true }],
+        spend: missingRedeemerLedgerEntries(0x41, [null]),
+        reference: missingRedeemerLedgerEntries(0x51, [null]),
+      },
+      { kind: "normal" },
+    );
+    expect(refused).toStrictEqual(
+      roles(SOURCE, ENDS, RECEIVE, [
         "claimedRedeemerGrammar",
         "claimedRedeemerScan",
       ]),
     );
   }, 2_400_000);
 
-  it("refuses a forged successor at the family entry of the forced contradiction route", async () => {
+  it("refuses a forged successor at every role of the forced contradiction route", async () => {
     const refused = await forgeEveryRole(honestForcedObserverShape(5), {
       kind: "forced",
       verdict: receivePurposeLanguageVerdict(2n, 0n),
     });
-    expect(refused).toStrictEqual(["familyEntry"]);
+    expect(refused).toStrictEqual(roles(SOURCE, ENDS));
   }, 2_400_000);
 
   it.each([
-    ["an ordinal past the last receive purpose", receiving(false), 1n],
-    ["a receive purpose with no source", receiving(false, false), 0n],
+    [
+      "an ordinal past the last receive purpose",
+      forcedReceiving(plutusScript(4)),
+      1n,
+    ],
+    [
+      "a receive purpose with no source",
+      forcedReceiving(plutusScript(4), { sourced: false }),
+      0n,
+    ],
   ] as const)(
     "refuses a forged successor at every role of the forced route to %s",
     async (_label, shape, ordinal) => {
@@ -141,9 +153,7 @@ describe("receive-purpose-language forged successor refusal", () => {
         kind: "forced",
         verdict: receivePurposeLanguageVerdict(3n, ordinal),
       });
-      expect(new Set(refused)).toStrictEqual(
-        new Set<DirectPurposeRole>(RECEIVE),
-      );
+      expect(refused).toStrictEqual(roles(SOURCE, ENDS, RECEIVE));
     },
     2_400_000,
   );

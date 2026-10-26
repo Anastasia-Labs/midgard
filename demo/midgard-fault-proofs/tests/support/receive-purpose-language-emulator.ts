@@ -16,7 +16,12 @@ import {
   publishDirectPurposeRoles,
   type RoleReference,
 } from "./direct-purpose-emulator.js";
-import type { MissingRedeemerScenario } from "./missing-redeemer-emulator.subject.js";
+import {
+  honestForcedObserverShape,
+  missingRedeemerLedgerEntries,
+  type MissingRedeemerScenario,
+  type MissingRedeemerSubjectShape,
+} from "./missing-redeemer-emulator.subject.js";
 import {
   makeFaultProofEmulatorHarness,
   registerChunkedVerifyRewardAccount,
@@ -113,3 +118,22 @@ export const receivePurposeLanguageVerdict = (
 export const receiveCoordinate = (
   index: bigint,
 ): SDK.DirectPurposeCoordinate => ({ kind: 3n, index });
+
+/** A forced transaction the admission screen accepts: the honest signed
+ * spend beside one receive purpose paying `script`, with no redeemer. A
+ * Plutus `script` is never carried as a witness: `sourced` puts it in a
+ * reference input, and without it the purpose has no source. A native
+ * `script` is carried as its witness. */
+export const forcedReceiving = (
+  script: MissingRedeemerSubjectShape["observers"][number]["script"],
+  { sourced = true }: { readonly sourced?: boolean } = {},
+): MissingRedeemerSubjectShape => {
+  const native = script.language === "NativeCardano";
+  return {
+    ...honestForcedObserverShape(5),
+    observers: [],
+    receives: [{ script, witness: native, redeemer: false }],
+    reference:
+      sourced && !native ? missingRedeemerLedgerEntries(0x31, [script]) : [],
+  };
+};

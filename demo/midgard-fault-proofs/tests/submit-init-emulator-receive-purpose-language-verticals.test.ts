@@ -2,7 +2,9 @@
  * `receivePurposeLanguage` emulator verticals from a genuine Init: an
  * accepted transaction executing a PlutusV3 receive purpose with a redeemer
  * convicts and its block is removed; a forced rejection recording
- * `ReceivePurposePlutusV3Forbidden` convicts at every coordinate where that
+ * `ReceivePurposePlutusV3Forbidden` of a transaction the forced admission
+ * screen accepts (a signed spend, no redeemer, every Plutus source in a
+ * reference input) convicts at every coordinate where that
  * execution does not exist (a non-receive coordinate, an ordinal past the
  * last receive purpose, an absent source, a non-PlutusV3 source, a PlutusV3
  * source no redeemer reaches); an accepted transaction's non-PlutusV3
@@ -10,7 +12,10 @@
  * redeemers, gives the prover nothing and the terminal refuses the observed
  * route to its PlutusV3 receive.
  */
-import { outRefLabel } from "@al-ft/midgard-core";
+import {
+  outRefLabel,
+  screenMidgardForcedTxAdmission,
+} from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
@@ -20,6 +25,7 @@ import {
   requireConvictingReceivePurposeLanguageProof,
 } from "../src/receive-purpose-language/index.js";
 import {
+  buildMissingRedeemerSubject,
   honestForcedObserverShape,
   type MissingRedeemerSubjectShape,
   nativeScript,
@@ -28,6 +34,7 @@ import {
 } from "./support/missing-redeemer-emulator.subject.js";
 import {
   driveReceivePurposeLanguageThread,
+  forcedReceiving,
   makeReceivePurposeLanguageHarness,
   publishReceivePurposeLanguageRoles,
   receiveCoordinate,
@@ -97,35 +104,40 @@ describe("receive-purpose-language genuine-Init verticals", () => {
     ],
     [
       "an ordinal past the last receive purpose",
-      receiving(plutusScript(4), { redeemer: false }),
+      forcedReceiving(plutusScript(4)),
       receivePurposeLanguageVerdict(3n, 1n),
       "ImpossiblePurpose",
       receiveCoordinate(1n),
     ],
     [
       "a receive purpose with no source",
-      receiving(plutusScript(4), { redeemer: false, witness: false }),
+      forcedReceiving(plutusScript(4), { sourced: false }),
       receivePurposeLanguageVerdict(3n, 0n),
       "SourceAbsent",
       receiveCoordinate(0n),
     ],
     [
       "a receive purpose with a native source",
-      receiving(nativeScript(7n), { redeemer: false }),
+      forcedReceiving(nativeScript(7n)),
       receivePurposeLanguageVerdict(3n, 0n),
       "SourcePresent",
       receiveCoordinate(0n),
     ],
     [
       "a PlutusV3 receive purpose no redeemer reaches",
-      receiving(plutusScript(4), { redeemer: false }),
+      forcedReceiving(plutusScript(4)),
       receivePurposeLanguageVerdict(3n, 0n),
       "RedeemerAbsent",
       receiveCoordinate(0n),
     ],
   ] as const)(
-    "R-F: convicts a forced rejection recording the arm at %s",
+    "R-F: convicts an admissible forced transaction's rejection recording the arm at %s",
     async (label, shape, verdict, claim, coordinate) => {
+      expect(
+        screenMidgardForcedTxAdmission(
+          buildMissingRedeemerSubject(shape).nativeTx,
+        ),
+      ).toBeNull();
       const harness = await makeReceivePurposeLanguageHarness();
       const scenario = await setupMissingRedeemerScenario({
         harness,
@@ -174,10 +186,16 @@ describe("receive-purpose-language genuine-Init verticals", () => {
   }, 1_200_000);
 
   it("A-F: an admitted forced transaction carries no redeemer; the prover finds nothing and the terminal refuses the observed PlutusV3 receive", async () => {
+    const shape = forcedReceiving(plutusScript(4));
+    expect(
+      screenMidgardForcedTxAdmission(
+        buildMissingRedeemerSubject(shape).nativeTx,
+      ),
+    ).toBeNull();
     const harness = await makeReceivePurposeLanguageHarness();
     const scenario = await setupMissingRedeemerScenario({
       harness,
-      shape: receiving(plutusScript(4), { redeemer: false }),
+      shape,
       source: { kind: "forced", verdict: "ForcedTxValid" },
     });
     expect(scenario.material.fields[8]).toHaveLength(0);
