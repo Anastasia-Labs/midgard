@@ -423,15 +423,15 @@ export const VALIDATOR_SCENARIOS: Readonly<
     missingRedeemerForgedSuccessor(MR_OBSERVER),
   "fraud_proofs/missing_redeemer/step_04.main":
     missingRedeemerForgedSuccessor(MR_OBSERVER),
-  "fraud_proofs/missing_redeemer/claim_start.main":
+  "fraud_proofs/direct_script_derivation/claim_start.main":
     missingRedeemerForgedSuccessor(MR_OBSERVER),
-  "fraud_proofs/missing_redeemer/claim_adjudicate.main":
+  "fraud_proofs/direct_script_derivation/claim_adjudicate.main":
     missingRedeemerForgedSuccessor(MR_OBSERVER),
-  "fraud_proofs/missing_redeemer/claimed_redeemer_grammar.main":
+  "fraud_proofs/direct_script_derivation/claimed_redeemer_grammar.main":
     missingRedeemerForgedSuccessor(MR_CLAIMED),
-  "fraud_proofs/missing_redeemer/claimed_redeemer_scan.main":
+  "fraud_proofs/direct_script_derivation/claimed_redeemer_scan.main":
     missingRedeemerForgedSuccessor(MR_CLAIMED),
-  "fraud_proofs/missing_redeemer/step_05.main": {
+  "fraud_proofs/direct_script_derivation/claim_terminal.main": {
     passing: [
       {
         file: MR_VERTICALS,

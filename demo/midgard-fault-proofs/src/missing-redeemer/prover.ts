@@ -108,7 +108,7 @@ export type MissingRedeemerProofPlan = {
   readonly plan: ReturnType<typeof missingRedeemerFieldPlans>;
   /** Every custody transition from `bindEvent` to the terminal's input. */
   readonly transitions: readonly MissingRedeemerTransition[];
-  readonly final: SDK.MissingRedeemerFinalState;
+  readonly final: SDK.DirectClaimFinalState;
   readonly convicts: boolean;
 };
 

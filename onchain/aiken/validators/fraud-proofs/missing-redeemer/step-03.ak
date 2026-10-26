@@ -4,7 +4,7 @@ use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/direct_script_derivation/cursor
-use midgard/fraud_proofs/missing_redeemer/rule
+use midgard/fraud_proofs/direct_script_derivation/redeemer_scan as rule
 use midgard/fraud_proofs/missing_redeemer/step_03.{Datum, SpendRedeemer}
 
 validator main(

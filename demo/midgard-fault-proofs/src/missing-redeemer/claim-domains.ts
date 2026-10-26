@@ -29,16 +29,16 @@ export type MissingRedeemerClaimDomain = {
 const factOf = (
   coordinate: Coordinate,
   purpose: SDK.DirectPurpose | null,
-): SDK.MissingRedeemerClaimedPurposeFact =>
+): SDK.DirectClaimedPurposeFact =>
   purpose === null
     ? { ImpossiblePurpose: { coordinate } }
     : { ExistingPurpose: { purpose } };
 
 const spendDomain = async (
   inputs: RouteInputs,
-  context: SDK.MissingRedeemerClaimContext,
+  context: SDK.DirectClaimContext,
   coordinate: Coordinate,
-  adjudicate: (fact: SDK.MissingRedeemerClaimedPurposeFact) => string,
+  adjudicate: (fact: SDK.DirectClaimedPurposeFact) => string,
 ): Promise<MissingRedeemerClaimDomain> => {
   const { material, prover } = inputs;
   const spend = await missingRedeemerSpendEvidence(inputs, coordinate.index);
@@ -60,7 +60,7 @@ const spendDomain = async (
                   { SpendOutOfRange: { ...indices, opening: open(0) } },
                 ],
               },
-              SDK.MissingRedeemerClaimStartRedeemer,
+              SDK.DirectClaimStartRedeemer,
             ),
         },
       ],
@@ -73,7 +73,7 @@ const spendDomain = async (
     readonly cursor: SDK.DirectFieldCursor;
     readonly rank: bigint;
     readonly complete: boolean;
-  }): SDK.MissingRedeemerClaimSpendState => ({
+  }): SDK.DirectClaimSpendState => ({
     context,
     source_index: inputs.evidence.index,
     cursor: progress.cursor,
@@ -85,8 +85,8 @@ const spendDomain = async (
     rank: progress.rank,
     complete: progress.complete,
   });
-  const datum = (value: SDK.MissingRedeemerClaimSpendState) =>
-    stepDatum(prover, value, SDK.MissingRedeemerClaimSpendDatum);
+  const datum = (value: SDK.DirectClaimSpendState) =>
+    stepDatum(prover, value, SDK.DirectClaimSpendDatum);
   const rank = spendRankPass(inputs, {
     label: "claim spend scan",
     role: "claimSpendScan",
@@ -95,10 +95,7 @@ const spendDomain = async (
     state,
     datum,
     redeemer: (args) =>
-      Data.to(
-        { Continue: [{ Scan: { args } }] },
-        SDK.MissingRedeemerClaimSpendRedeemer,
-      ),
+      Data.to({ Continue: [{ Scan: { args } }] }, SDK.DirectClaimSpendRedeemer),
   });
   if (rank.final.rank !== coordinate.index)
     throw new Error("missing-redeemer: claimed spend rank differs");
@@ -109,12 +106,12 @@ const spendDomain = async (
         label: "claim spend",
         role: "claimStart",
         next: "claimSpendStart",
-        datum: stepDatum(prover, context, SDK.MissingRedeemerClaimStartDatum),
+        datum: stepDatum(prover, context, SDK.DirectClaimStartDatum),
         fields: [],
         redeemer: ({ indices }) =>
           Data.to(
             { Continue: [{ Spend: indices }] },
-            SDK.MissingRedeemerClaimStartRedeemer,
+            SDK.DirectClaimStartRedeemer,
           ),
       },
       {
@@ -138,7 +135,7 @@ const spendDomain = async (
                 },
               ],
             },
-            SDK.MissingRedeemerClaimSpendOpenRedeemer,
+            SDK.DirectClaimSpendOpenRedeemer,
           ),
       },
       ...rank.transitions,
@@ -151,7 +148,7 @@ const spendDomain = async (
         redeemer: ({ indices }) =>
           Data.to(
             { Continue: [{ Finish: indices }] },
-            SDK.MissingRedeemerClaimSpendRedeemer,
+            SDK.DirectClaimSpendRedeemer,
           ),
       },
     ],
@@ -160,9 +157,9 @@ const spendDomain = async (
 
 const mintDomain = (
   inputs: RouteInputs,
-  context: SDK.MissingRedeemerClaimContext,
+  context: SDK.DirectClaimContext,
   coordinate: Coordinate,
-  adjudicate: (fact: SDK.MissingRedeemerClaimedPurposeFact) => string,
+  adjudicate: (fact: SDK.DirectClaimedPurposeFact) => string,
 ): MissingRedeemerClaimDomain => {
   const { prover } = inputs;
   const plan = inputs.plan(5);
@@ -174,17 +171,14 @@ const mintDomain = (
       stepDatum(
         prover,
         { context, work: { source_index: inputs.evidence.index, scan } },
-        SDK.MissingRedeemerClaimMintDatum,
+        SDK.DirectClaimMintDatum,
       ),
     grammarRedeemer: (args) =>
-      Data.to(
-        { Continue: [args] },
-        SDK.MissingRedeemerClaimMintGrammarRedeemer,
-      ),
+      Data.to({ Continue: [args] }, SDK.DirectClaimMintGrammarRedeemer),
     scanRedeemer: (args) =>
       Data.to(
         { Continue: [{ Scan: { args } }] },
-        SDK.MissingRedeemerClaimMintScanRedeemer,
+        SDK.DirectClaimMintScanRedeemer,
       ),
   });
   const purpose = pass.state.selected;
@@ -200,7 +194,7 @@ const mintDomain = (
         redeemer: ({ indices, open }) =>
           Data.to(
             { Continue: [{ Mint: { ...indices, opening: open(5) } }] },
-            SDK.MissingRedeemerClaimStartRedeemer,
+            SDK.DirectClaimStartRedeemer,
           ),
       },
       ...pass.transitions,
@@ -228,7 +222,7 @@ const mintDomain = (
                 },
               ],
             },
-            SDK.MissingRedeemerClaimMintScanRedeemer,
+            SDK.DirectClaimMintScanRedeemer,
           ),
       },
     ],
@@ -237,16 +231,16 @@ const mintDomain = (
 
 const receiveDomain = async (
   inputs: RouteInputs,
-  context: SDK.MissingRedeemerClaimContext,
+  context: SDK.DirectClaimContext,
   coordinate: Coordinate,
-  adjudicate: (fact: SDK.MissingRedeemerClaimedPurposeFact) => string,
+  adjudicate: (fact: SDK.DirectClaimedPurposeFact) => string,
 ): Promise<MissingRedeemerClaimDomain> => {
   const { prover } = inputs;
   const outputDatum = (scan: SDK.DirectReceiveOutputState) =>
     stepDatum(
       prover,
       { context, target_ordinal: coordinate.index, scan },
-      SDK.MissingRedeemerClaimReceiveOutputDatum,
+      SDK.DirectClaimReceiveOutputDatum,
     );
   const outputs = await receiveOutputsPass(inputs, {
     label: "claim receive",
@@ -254,10 +248,7 @@ const receiveDomain = async (
     outputs: "claimReceiveOutputs",
     datum: outputDatum,
     grammarRedeemer: (args) =>
-      Data.to(
-        { Continue: [args] },
-        SDK.MissingRedeemerClaimReceiveGrammarRedeemer,
-      ),
+      Data.to({ Continue: [args] }, SDK.DirectClaimReceiveGrammarRedeemer),
     scanRedeemer: ({ indices, witnesses, ...rest }) =>
       Data.to(
         {
@@ -265,7 +256,7 @@ const receiveDomain = async (
             { Scan: { ...indices, ...rest, witnesses: [...witnesses] } },
           ],
         },
-        SDK.MissingRedeemerClaimReceiveOutputRedeemer,
+        SDK.DirectClaimReceiveOutputRedeemer,
       ),
   });
   const declaration = declarationPass(
@@ -279,12 +270,12 @@ const receiveDomain = async (
         stepDatum(
           prover,
           { context, scan },
-          SDK.MissingRedeemerClaimReceiveDeclarationDatum,
+          SDK.DirectClaimReceiveDeclarationDatum,
         ),
       scanRedeemer: (indices, entries) =>
         Data.to(
           { Continue: [{ Scan: { ...indices, entries: [...entries] } }] },
-          SDK.MissingRedeemerClaimReceiveDeclarationRedeemer,
+          SDK.DirectClaimReceiveDeclarationRedeemer,
         ),
     },
   );
@@ -301,7 +292,7 @@ const receiveDomain = async (
         redeemer: ({ indices, open }) =>
           Data.to(
             { Continue: [{ Receive: { ...indices, opening: open(2) } }] },
-            SDK.MissingRedeemerClaimStartRedeemer,
+            SDK.DirectClaimStartRedeemer,
           ),
       },
       ...outputs.transitions,
@@ -314,7 +305,7 @@ const receiveDomain = async (
         redeemer: ({ indices }) =>
           Data.to(
             { Continue: [{ Finish: indices }] },
-            SDK.MissingRedeemerClaimReceiveOutputRedeemer,
+            SDK.DirectClaimReceiveOutputRedeemer,
           ),
       },
       {
@@ -334,7 +325,7 @@ const receiveDomain = async (
                 },
               ],
             },
-            SDK.MissingRedeemerClaimReceiveFinishRedeemer,
+            SDK.DirectClaimReceiveFinishRedeemer,
           ),
       },
       ...declaration.transitions,
@@ -347,7 +338,7 @@ const receiveDomain = async (
         redeemer: ({ indices }) =>
           Data.to(
             { Continue: [{ Finish: indices }] },
-            SDK.MissingRedeemerClaimReceiveDeclarationRedeemer,
+            SDK.DirectClaimReceiveDeclarationRedeemer,
           ),
       },
     ],
@@ -357,7 +348,7 @@ const receiveDomain = async (
 const observeDomain = (
   inputs: RouteInputs,
   coordinate: Coordinate,
-  adjudicate: (fact: SDK.MissingRedeemerClaimedPurposeFact) => string,
+  adjudicate: (fact: SDK.DirectClaimedPurposeFact) => string,
 ): MissingRedeemerClaimDomain => {
   const purpose = directPurposeAt(inputs.material, coordinate);
   return {
@@ -372,7 +363,7 @@ const observeDomain = (
         redeemer: ({ indices, open }) =>
           Data.to(
             { Continue: [{ Observe: { ...indices, opening: open(3) } }] },
-            SDK.MissingRedeemerClaimStartRedeemer,
+            SDK.DirectClaimStartRedeemer,
           ),
       },
     ],
@@ -383,14 +374,14 @@ const observeDomain = (
  * observed one, by purpose kind. */
 export const missingRedeemerClaimDomain = (
   inputs: RouteInputs,
-  context: SDK.MissingRedeemerClaimContext,
+  context: SDK.DirectClaimContext,
   coordinate: Coordinate,
 ): Promise<MissingRedeemerClaimDomain> | MissingRedeemerClaimDomain => {
-  const adjudicate = (purpose: SDK.MissingRedeemerClaimedPurposeFact) =>
+  const adjudicate = (purpose: SDK.DirectClaimedPurposeFact) =>
     stepDatum(
       inputs.prover,
       { context, purpose },
-      SDK.MissingRedeemerAdjudicateDatum,
+      SDK.DirectClaimAdjudicateDatum,
     );
   if (coordinate.kind === 0n)
     return spendDomain(inputs, context, coordinate, adjudicate);

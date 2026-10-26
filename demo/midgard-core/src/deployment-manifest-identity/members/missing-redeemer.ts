@@ -291,7 +291,8 @@ export const missingRedeemerMembers = defineDeploymentFamily(
       publicationPosition: 274,
       referenceRolePosition: 507,
       commands: [],
-      validatorTitle: "fraud_proofs/missing_redeemer/claim_start.main.spend",
+      validatorTitle:
+        "fraud_proofs/direct_script_derivation/claim_start.main.spend",
       familyPaths: [["steps", "26"]],
     },
     fraudProofMissingRedeemerClaimSpendStart: {
@@ -302,7 +303,7 @@ export const missingRedeemerMembers = defineDeploymentFamily(
       referenceRolePosition: 508,
       commands: [],
       validatorTitle:
-        "fraud_proofs/missing_redeemer/claim_spend_start.main.spend",
+        "fraud_proofs/direct_script_derivation/claim_spend_start.main.spend",
       familyPaths: [["steps", "27"]],
     },
     fraudProofMissingRedeemerClaimSpendScan: {
@@ -313,7 +314,7 @@ export const missingRedeemerMembers = defineDeploymentFamily(
       referenceRolePosition: 509,
       commands: [],
       validatorTitle:
-        "fraud_proofs/missing_redeemer/claim_spend_scan.main.spend",
+        "fraud_proofs/direct_script_derivation/claim_spend_scan.main.spend",
       familyPaths: [["steps", "28"]],
     },
     fraudProofMissingRedeemerClaimMintGrammar: {
@@ -324,7 +325,7 @@ export const missingRedeemerMembers = defineDeploymentFamily(
       referenceRolePosition: 510,
       commands: [],
       validatorTitle:
-        "fraud_proofs/missing_redeemer/claim_mint_grammar.main.spend",
+        "fraud_proofs/direct_script_derivation/claim_mint_grammar.main.spend",
       familyPaths: [["steps", "29"]],
     },
     fraudProofMissingRedeemerClaimMintScan: {
@@ -335,7 +336,7 @@ export const missingRedeemerMembers = defineDeploymentFamily(
       referenceRolePosition: 511,
       commands: [],
       validatorTitle:
-        "fraud_proofs/missing_redeemer/claim_mint_scan.main.spend",
+        "fraud_proofs/direct_script_derivation/claim_mint_scan.main.spend",
       familyPaths: [["steps", "30"]],
     },
     fraudProofMissingRedeemerClaimReceiveGrammar: {
@@ -346,7 +347,7 @@ export const missingRedeemerMembers = defineDeploymentFamily(
       referenceRolePosition: 512,
       commands: [],
       validatorTitle:
-        "fraud_proofs/missing_redeemer/claim_receive_grammar.main.spend",
+        "fraud_proofs/direct_script_derivation/claim_receive_grammar.main.spend",
       familyPaths: [["steps", "31"]],
     },
     fraudProofMissingRedeemerClaimReceiveOutputs: {
@@ -357,7 +358,7 @@ export const missingRedeemerMembers = defineDeploymentFamily(
       referenceRolePosition: 513,
       commands: [],
       validatorTitle:
-        "fraud_proofs/missing_redeemer/claim_receive_outputs.main.spend",
+        "fraud_proofs/direct_script_derivation/claim_receive_outputs.main.spend",
       familyPaths: [["steps", "32"]],
     },
     fraudProofMissingRedeemerClaimReceiveFinish: {
@@ -368,7 +369,7 @@ export const missingRedeemerMembers = defineDeploymentFamily(
       referenceRolePosition: 514,
       commands: [],
       validatorTitle:
-        "fraud_proofs/missing_redeemer/claim_receive_finish.main.spend",
+        "fraud_proofs/direct_script_derivation/claim_receive_finish.main.spend",
       familyPaths: [["steps", "33"]],
     },
     fraudProofMissingRedeemerClaimReceiveDeclaration: {
@@ -380,7 +381,7 @@ export const missingRedeemerMembers = defineDeploymentFamily(
       referenceRolePosition: 515,
       commands: [],
       validatorTitle:
-        "fraud_proofs/missing_redeemer/claim_receive_declaration.main.spend",
+        "fraud_proofs/direct_script_derivation/claim_receive_declaration.main.spend",
       familyPaths: [["steps", "34"]],
     },
     fraudProofMissingRedeemerClaimAdjudicate: {
@@ -391,7 +392,7 @@ export const missingRedeemerMembers = defineDeploymentFamily(
       referenceRolePosition: 516,
       commands: [],
       validatorTitle:
-        "fraud_proofs/missing_redeemer/claim_adjudicate.main.spend",
+        "fraud_proofs/direct_script_derivation/claim_adjudicate.main.spend",
       familyPaths: [["steps", "35"]],
     },
     fraudProofMissingRedeemerClaimedRedeemerGrammar: {
@@ -402,7 +403,7 @@ export const missingRedeemerMembers = defineDeploymentFamily(
       referenceRolePosition: 517,
       commands: [],
       validatorTitle:
-        "fraud_proofs/missing_redeemer/claimed_redeemer_grammar.main.spend",
+        "fraud_proofs/direct_script_derivation/claimed_redeemer_grammar.main.spend",
       familyPaths: [["steps", "36"]],
     },
     fraudProofMissingRedeemerClaimedRedeemerScan: {
@@ -413,7 +414,7 @@ export const missingRedeemerMembers = defineDeploymentFamily(
       referenceRolePosition: 518,
       commands: [],
       validatorTitle:
-        "fraud_proofs/missing_redeemer/claimed_redeemer_scan.main.spend",
+        "fraud_proofs/direct_script_derivation/claimed_redeemer_scan.main.spend",
       familyPaths: [["steps", "37"]],
     },
     fraudProofMissingRedeemerStep05: {
@@ -423,7 +424,8 @@ export const missingRedeemerMembers = defineDeploymentFamily(
       publicationPosition: 286,
       referenceRolePosition: 519,
       commands: [],
-      validatorTitle: "fraud_proofs/missing_redeemer/step_05.main.spend",
+      validatorTitle:
+        "fraud_proofs/direct_script_derivation/claim_terminal.main.spend",
       familyPaths: [["steps", "38"]],
     },
   },

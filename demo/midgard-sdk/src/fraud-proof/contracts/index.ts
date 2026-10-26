@@ -385,12 +385,6 @@ export {
   type ZeroInputFaultProofContracts,
 } from "./families/zero-input.js";
 export {
-  buildMissingRedeemerClaimContracts,
-  buildMissingRedeemerFamilyEntry,
-  MISSING_REDEEMER_CLAIM_TITLES,
-  type MissingRedeemerClaimContracts,
-} from "./missing-redeemer-claim.js";
-export {
   buildScriptDecodeValidator,
   SCRIPT_DECODE_STAKER_CLASS_NAMES,
   SCRIPT_DECODE_STAKER_MEMBERS,

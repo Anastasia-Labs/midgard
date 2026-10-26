@@ -48,8 +48,8 @@ export const pointerScan = (
     readonly authenticated: SDK.DirectSourceSelection;
     readonly grammar: "observedGrammar" | "claimedRedeemerGrammar";
     readonly scan: "observedScan" | "claimedRedeemerScan";
-    readonly datum: (state: SDK.MissingRedeemerScanState) => string;
-    readonly finish: (decision: SDK.MissingRedeemerDecisionState) => {
+    readonly datum: (state: SDK.DirectRedeemerScanState) => string;
+    readonly finish: (decision: SDK.DirectRedeemerDecisionState) => {
       readonly next: MissingRedeemerTransition["next"];
       readonly datum: string;
     };
@@ -61,7 +61,7 @@ export const pointerScan = (
   const count = plan(8).items.length;
   const match = directRedeemerAt(material.fields[8]!, coordinate);
   const out: MissingRedeemerTransition[] = [];
-  let state: SDK.MissingRedeemerScanState = {
+  let state: SDK.DirectRedeemerScanState = {
     authenticated,
     scan: {
       cursor: plan(8).position("Certifying", 0).cursor,
@@ -137,7 +137,7 @@ export const pointerScan = (
         ),
     });
   }
-  const decision: SDK.MissingRedeemerDecisionState = {
+  const decision: SDK.DirectRedeemerDecisionState = {
     authenticated,
     redeemer_missing: !state.scan.found,
   };

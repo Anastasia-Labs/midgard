@@ -51,13 +51,14 @@ export const missingRedeemerObservedRoute = async (
     scan: "observedScan",
     datum: (state) => stepDatum(prover, state, SDK.MissingRedeemerScanDatum),
     finish: (decision) => {
-      const context: SDK.MissingRedeemerClaimContext = {
+      const context: SDK.DirectClaimContext = {
         bound: boundIndex(inputs),
         observed: decision,
+        target: "LeafPurpose",
       };
       return {
         next: "claimStart",
-        datum: stepDatum(prover, context, SDK.MissingRedeemerClaimStartDatum),
+        datum: stepDatum(prover, context, SDK.DirectClaimStartDatum),
       };
     },
   });
@@ -110,7 +111,8 @@ export const missingRedeemerObservedRoute = async (
     context: {
       bound: boundIndex(inputs),
       observed: scan.decision,
-    } satisfies SDK.MissingRedeemerClaimContext,
+      target: "LeafPurpose",
+    } satisfies SDK.DirectClaimContext,
   };
 };
 
@@ -119,20 +121,20 @@ export const missingRedeemerClaimEntry = (
   inputs: RouteInputs,
 ): {
   readonly transition: MissingRedeemerTransition;
-  readonly context: SDK.MissingRedeemerClaimContext;
+  readonly context: SDK.DirectClaimContext;
 } => {
-  const context = { bound: boundIndex(inputs), observed: null };
+  const context: SDK.DirectClaimContext = {
+    bound: boundIndex(inputs),
+    observed: null,
+    target: "LeafPurpose",
+  };
   return {
     context,
     transition: {
       label: "entry claim",
       role: "familyEntry",
       next: "claimStart",
-      datum: stepDatum(
-        inputs.prover,
-        context,
-        SDK.MissingRedeemerClaimStartDatum,
-      ),
+      datum: stepDatum(inputs.prover, context, SDK.DirectClaimStartDatum),
       fields: [],
       redeemer: ({ indices }) =>
         Data.to(
@@ -147,21 +149,21 @@ export const missingRedeemerClaimEntry = (
  * observed coordinate, or a distinct coordinate of any purpose kind. */
 export const missingRedeemerClaimRoute = async (
   inputs: RouteInputs,
-  context: SDK.MissingRedeemerClaimContext,
+  context: SDK.DirectClaimContext,
 ): Promise<{
   readonly transitions: readonly MissingRedeemerTransition[];
-  readonly final: SDK.MissingRedeemerFinalState;
+  readonly final: SDK.DirectClaimFinalState;
 }> => {
   const { material, evidence, prover } = inputs;
   const coordinate = missingRedeemerLeafCoordinate(material);
   const observed = context.observed;
-  const finalDatum = (final: SDK.MissingRedeemerFinalState) =>
-    stepDatum(prover, final, SDK.MissingRedeemerFinalDatum);
-  const adjudicateDatum = (purpose: SDK.MissingRedeemerClaimedPurposeFact) =>
-    stepDatum(prover, { context, purpose }, SDK.MissingRedeemerAdjudicateDatum);
+  const finalDatum = (final: SDK.DirectClaimFinalState) =>
+    stepDatum(prover, final, SDK.DirectClaimFinalDatum);
+  const adjudicateDatum = (purpose: SDK.DirectClaimedPurposeFact) =>
+    stepDatum(prover, { context, purpose }, SDK.DirectClaimAdjudicateDatum);
   const resolve = (
-    purpose: SDK.MissingRedeemerClaimedPurposeFact,
-    claim: SDK.MissingRedeemerClaimedPredicateFact,
+    purpose: SDK.DirectClaimedPurposeFact,
+    claim: SDK.DirectClaimedPredicateFact,
   ) => {
     const final = { context, claim };
     return {
@@ -175,13 +177,13 @@ export const missingRedeemerClaimRoute = async (
         redeemer: ({ indices }) =>
           Data.to(
             { Continue: [{ Resolve: indices }] },
-            SDK.MissingRedeemerAdjudicateRedeemer,
+            SDK.DirectClaimAdjudicateRedeemer,
           ),
       } satisfies MissingRedeemerTransition,
       purpose,
     };
   };
-  const startComplete = (purpose: SDK.MissingRedeemerClaimedPurposeFact) =>
+  const startComplete = (purpose: SDK.DirectClaimedPurposeFact) =>
     ({
       label: "claim complete",
       role: "claimStart",
@@ -191,7 +193,7 @@ export const missingRedeemerClaimRoute = async (
       redeemer: ({ indices }) =>
         Data.to(
           { Continue: [{ Complete: indices }] },
-          SDK.MissingRedeemerClaimStartRedeemer,
+          SDK.DirectClaimStartRedeemer,
         ),
     }) satisfies MissingRedeemerTransition;
   if (coordinate === null) {
@@ -246,7 +248,7 @@ export const missingRedeemerClaimRoute = async (
     source,
   };
   if (source === null || source.language_tag === 0n) {
-    const final: SDK.MissingRedeemerFinalState = {
+    const final: SDK.DirectClaimFinalState = {
       context,
       claim:
         source === null
@@ -265,7 +267,7 @@ export const missingRedeemerClaimRoute = async (
           redeemer: ({ indices }) =>
             Data.to(
               { Continue: [{ Lookup: { ...indices, source, proof } }] },
-              SDK.MissingRedeemerAdjudicateRedeemer,
+              SDK.DirectClaimAdjudicateRedeemer,
             ),
         },
       ],
@@ -276,18 +278,14 @@ export const missingRedeemerClaimRoute = async (
     throw new Error(
       `missing-redeemer: source language ${source.language_tag.toString()} has no adjudication route`,
     );
-  let final: SDK.MissingRedeemerFinalState | undefined;
+  let final: SDK.DirectClaimFinalState | undefined;
   const scan = pointerScan(inputs, {
     label: "claimed",
     authenticated: selection,
     grammar: "claimedRedeemerGrammar",
     scan: "claimedRedeemerScan",
     datum: (state) =>
-      stepDatum(
-        prover,
-        { context, scan: state },
-        SDK.MissingRedeemerClaimedScanDatum,
-      ),
+      stepDatum(prover, { context, scan: state }, SDK.DirectClaimedScanDatum),
     finish: (decision) => {
       final = {
         context,
@@ -316,7 +314,7 @@ export const missingRedeemerClaimRoute = async (
                 },
               ],
             },
-            SDK.MissingRedeemerAdjudicateRedeemer,
+            SDK.DirectClaimAdjudicateRedeemer,
           ),
       },
       ...scan.transitions,
@@ -351,7 +349,7 @@ export const missingRedeemerLeafAdmits = (
 /** Off-chain twin of `adjudicate.convicts_v1` over the shapes this prover
  * builds; any other shape fails closed. */
 export const missingRedeemerConvicts = (
-  final: SDK.MissingRedeemerFinalState,
+  final: SDK.DirectClaimFinalState,
 ): boolean => {
   const { context, claim } = final;
   if (context.bound.bound.subject.rejection_reason === null) {

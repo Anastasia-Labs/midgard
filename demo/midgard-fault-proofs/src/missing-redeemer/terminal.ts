@@ -76,7 +76,7 @@ export const submitMissingRedeemerTerminal = async ({
   const state = requireLinearFaultStepState({
     threadUtxo,
     signer,
-    schema: SDK.MissingRedeemerFinalDatum,
+    schema: SDK.DirectClaimFinalDatum,
     family: MISSING_REDEEMER_CATEGORY_LABEL,
     stepIndex: TERMINAL_INDEX,
   });
@@ -125,7 +125,7 @@ export const submitMissingRedeemerTerminal = async ({
           },
         ],
       },
-      SDK.MissingRedeemerFinalizeRedeemer,
+      SDK.DirectClaimFinalizeRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
   const burn = ((ctx) => {

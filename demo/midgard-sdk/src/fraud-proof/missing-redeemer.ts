@@ -1,10 +1,11 @@
-/** Direct missing-redeemer observed-route wire (`missing-redeemer/rule.ak`,
- * `missing-redeemer/step-0*.ak`). Constructor and field order is wire format. */
+/** Direct missing-redeemer wire: step-01, the family entry and the observed
+ * route (`missing-redeemer/entry.ak`, `missing-redeemer/step-0*.ak`).
+ * Constructor and field order is wire format. */
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
+import { DirectRedeemerScanStateSchema } from "./direct-claim.js";
 import {
-  DirectPointerStateSchema,
   DirectProgressArgsSchema,
   DirectScanActionSchema,
   DirectSourceSelectionSchema,
@@ -24,19 +25,6 @@ export const MissingRedeemerStartArgsSchema = Data.Object({
   output_index: Data.Integer(),
   opening: FieldOpeningSchema,
 });
-export const MissingRedeemerScanStateSchema = Data.Object({
-  authenticated: DirectSourceSelectionSchema,
-  scan: DirectPointerStateSchema,
-});
-export const MissingRedeemerDecisionStateSchema = Data.Object({
-  authenticated: DirectSourceSelectionSchema,
-  redeemer_missing: Data.Boolean(),
-});
-export const MissingRedeemerFinalizeArgsSchema = Data.Object({
-  input_index: Data.Integer(),
-  output_index: Data.Integer(),
-  fraud_proof_mint_redeemer_index: Data.Integer(),
-});
 export type MissingRedeemerStep01Args = Data.Static<
   typeof MissingRedeemerStep01ArgsSchema
 >;
@@ -49,22 +37,6 @@ export type MissingRedeemerStartArgs = Data.Static<
 export const MissingRedeemerStartArgs = asDataType<MissingRedeemerStartArgs>(
   MissingRedeemerStartArgsSchema,
 );
-export type MissingRedeemerScanState = Data.Static<
-  typeof MissingRedeemerScanStateSchema
->;
-export const MissingRedeemerScanState = asDataType<MissingRedeemerScanState>(
-  MissingRedeemerScanStateSchema,
-);
-export type MissingRedeemerDecisionState = Data.Static<
-  typeof MissingRedeemerDecisionStateSchema
->;
-export const MissingRedeemerDecisionState =
-  asDataType<MissingRedeemerDecisionState>(MissingRedeemerDecisionStateSchema);
-export type MissingRedeemerFinalizeArgs = Data.Static<
-  typeof MissingRedeemerFinalizeArgsSchema
->;
-export const MissingRedeemerFinalizeArgs =
-  asDataType<MissingRedeemerFinalizeArgs>(MissingRedeemerFinalizeArgsSchema);
 
 export const MissingRedeemerStep01RedeemerSchema = faultProofStepRedeemerSchema(
   MissingRedeemerStep01ArgsSchema,
@@ -97,7 +69,7 @@ export const MissingRedeemerStartRedeemer =
   asDataType<MissingRedeemerStartRedeemer>(MissingRedeemerStartRedeemerSchema);
 
 export const MissingRedeemerScanDatumSchema = faultProofStepDatumSchema(
-  MissingRedeemerScanStateSchema,
+  DirectRedeemerScanStateSchema,
 );
 export type MissingRedeemerScanDatum = Data.Static<
   typeof MissingRedeemerScanDatumSchema
@@ -125,12 +97,24 @@ export type MissingRedeemerScanRedeemer = Data.Static<
 export const MissingRedeemerScanRedeemer =
   asDataType<MissingRedeemerScanRedeemer>(MissingRedeemerScanRedeemerSchema);
 
-export const MissingRedeemerFinalizeRedeemerSchema =
-  faultProofStepRedeemerSchema(MissingRedeemerFinalizeArgsSchema);
-export type MissingRedeemerFinalizeRedeemer = Data.Static<
-  typeof MissingRedeemerFinalizeRedeemerSchema
+const indices = { input_index: Data.Integer(), output_index: Data.Integer() };
+
+/** 0 Observe, 1 Claim. */
+export const MissingRedeemerEntryActionSchema = Data.Enum([
+  Data.Object({ Observe: Data.Object(indices) }),
+  Data.Object({ Claim: Data.Object(indices) }),
+]);
+export type MissingRedeemerEntryAction = Data.Static<
+  typeof MissingRedeemerEntryActionSchema
 >;
-export const MissingRedeemerFinalizeRedeemer =
-  asDataType<MissingRedeemerFinalizeRedeemer>(
-    MissingRedeemerFinalizeRedeemerSchema,
-  );
+export const MissingRedeemerEntryAction =
+  asDataType<MissingRedeemerEntryAction>(MissingRedeemerEntryActionSchema);
+
+export const MissingRedeemerEntryRedeemerSchema = faultProofStepRedeemerSchema(
+  MissingRedeemerEntryActionSchema,
+);
+export type MissingRedeemerEntryRedeemer = Data.Static<
+  typeof MissingRedeemerEntryRedeemerSchema
+>;
+export const MissingRedeemerEntryRedeemer =
+  asDataType<MissingRedeemerEntryRedeemer>(MissingRedeemerEntryRedeemerSchema);
