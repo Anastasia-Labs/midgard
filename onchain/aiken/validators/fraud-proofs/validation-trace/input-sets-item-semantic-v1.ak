@@ -6,7 +6,7 @@ use midgard/fraud_proofs/common.{cancel}
 use midgard/native_tx_field_access_v1.{FieldCarriageV1}
 use midgard/validation_machine/input_sets.{verify_input_sets_item_semantics_v1}
 use midgard/validation_machine/machine_types.{
-  TransactionFieldChunkWitness, ValidationOneStepWitnessV1,
+  TransactionFieldItemWitness, ValidationOneStepWitnessV1,
 }
 use midgard/validation_machine_field_door_v1.{MachineFieldDoorV1}
 use midgard/validation_semantic_v1.{Datum, continue_winning}
@@ -17,8 +17,6 @@ pub type ActionV1 {
     input_index: Int,
     output_index: Int,
     transition: ValidationOneStepWitnessV1,
-    field_index: Int,
-    item_index: Int,
     carriage: FieldCarriageV1,
   }
 }
@@ -47,19 +45,8 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(VerifyItem {
-        input_index,
-        output_index,
-        transition,
-        field_index,
-        item_index,
-        carriage,
-      }) -> {
-        let auxiliary = TransactionFieldChunkWitness {
-          field_index,
-          item_index,
-          carriage,
-        }
+      ct.Continue(VerifyItem { input_index, output_index, transition, carriage }) -> {
+        let auxiliary = TransactionFieldItemWitness { carriage }
         let auxiliary_data: Data = auxiliary
         let door = MachineFieldDoorV1 {
           reference_inputs: tx.reference_inputs,
@@ -78,8 +65,6 @@ validator main(
             datum |> semantic_pre_state,
             transition,
             door,
-            field_index,
-            item_index,
             carriage,
           ),
           own_out_ref,

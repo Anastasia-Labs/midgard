@@ -36,26 +36,16 @@ fn asset_witnesses() -> List<value.LedgerOutputValueWitnessV1> {
   let wide = ledger_output_commitment_v1.asset_leaf_hash(policy(), #"0102", 7)
   [
     value.LedgerOutputValueAsset {
-      asset_index: 1,
       policy_id: policy(),
       asset_name: #"aa",
       quantity: 5,
       siblings: [wide],
-      previous: None,
     },
     value.LedgerOutputValueAsset {
-      asset_index: 0,
       policy_id: policy(),
       asset_name: #"0102",
       quantity: 7,
       siblings: [narrow],
-      previous: Some(
-        value.LedgerOutputValueHeadV1 {
-          asset_name: #"aa",
-          quantity: 5,
-          tail: cek_data_v1.empty_data_pair_summary_v1(),
-        },
-      ),
     },
     value.LedgerOutputValueNoWitness,
     value.LedgerOutputValueNoWitness,
@@ -222,14 +212,12 @@ test summary_verifier_refuses_an_unfinished_value_fold() fail {
       asset_output,
       [
         value.LedgerOutputValueAsset {
-          asset_index: 1,
           policy_id: policy(),
           asset_name: #"aa",
           quantity: 5,
           siblings: [
             ledger_output_commitment_v1.asset_leaf_hash(policy(), #"0102", 7),
           ],
-          previous: None,
         },
       ],
       0,

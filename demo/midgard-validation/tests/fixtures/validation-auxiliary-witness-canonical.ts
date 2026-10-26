@@ -4,10 +4,7 @@ type Auxiliary = NonNullable<ValidationMachineWorkWitness["auxiliary"]>;
 
 const bytes = (hex: string): Buffer => Buffer.from(hex, "hex");
 const hash = (byte: number): Buffer => Buffer.alloc(32, byte);
-const emptyFrontier = {
-  count: 0,
-  peaks: [],
-} as const;
+const emptyFrontier = { count: 0, peaks: [] } as const;
 const chunkProof = {
   version: 1,
   fieldIndex: 0,
@@ -125,7 +122,7 @@ const valueMutation = {
   preAssetRoot: hash(0x18),
   postAssetRoot: hash(0x19),
   proofCbor: bytes("80"),
-  postSeenAssetCount: 1,
+  postAssetEntryCount: 1,
   postNonzeroAssetCount: 1,
 } as const;
 
@@ -178,6 +175,7 @@ export const canonicalValidationAuxiliaryWitnesses = [
     auxiliary({
       kind: "scheduledLedgerLookup",
       sourceKind: "spend",
+      itemIndex: 1,
       key: bytes("03"),
       nextScheduleHash: hash(0x20),
       value: bytes("04"),
@@ -190,6 +188,7 @@ export const canonicalValidationAuxiliaryWitnesses = [
     auxiliary({
       kind: "scheduledLedgerLookup",
       sourceKind: "reference",
+      itemIndex: 2,
       key: bytes("05"),
       nextScheduleHash: hash(0x21),
       value: null,
@@ -202,9 +201,12 @@ export const canonicalValidationAuxiliaryWitnesses = [
     auxiliary({
       kind: "resolvedInputReplay",
       sourceKind: "spend",
+      itemIndex: 3,
       key: bytes("06"),
       nextScheduleHash: hash(0x22),
       value: bytes("07"),
+      proofCbor: bytes("80"),
+      siblings: [hash(0x32)],
     }),
   ],
   [
@@ -310,8 +312,6 @@ export const canonicalValidationAuxiliaryWitnesses = [
     16,
     auxiliary({
       kind: "cekMintContextItem",
-      previous: null,
-      mintIndex: 0,
       policyId: bytes("11"),
       assetName: bytes("12"),
       quantity: 1n,
@@ -335,7 +335,6 @@ export const canonicalValidationAuxiliaryWitnesses = [
       executionLanguageTag: 3,
       sourceLeaf: hash(0x2c),
       executionSiblings: [],
-      itemFrontierRoot: hash(0x2d),
     }),
   ],
   [
@@ -391,6 +390,7 @@ export const canonicalValidationAuxiliaryWitnesses = [
     auxiliary({
       kind: "valueInputAsset",
       sourceKind: "spend",
+      itemIndex: 4,
       key: bytes("16"),
       nextScheduleHash: hash(0x2c),
       descriptorCbor: bytes("17"),

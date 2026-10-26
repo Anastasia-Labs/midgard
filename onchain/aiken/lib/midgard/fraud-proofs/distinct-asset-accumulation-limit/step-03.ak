@@ -1,10 +1,10 @@
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/distinct_asset_accumulation_limit/rule.{FoldStateV1}
-use midgard/validation_machine/machine_types.{ValueAssetMutationWitnessV1}
 use midgard/validation_merkle_v1.{FrontierPeak}
 
 pub type InputEvidenceV1 {
   source_kind: Int,
+  item_index: Int,
   key: ByteArray,
   next_schedule_hash: ByteArray,
   descriptor_cbor: ByteArray,
@@ -14,7 +14,6 @@ pub type InputEvidenceV1 {
   quantity: Int,
   asset_peaks: List<FrontierPeak>,
   asset_siblings: List<ByteArray>,
-  mutation: ValueAssetMutationWitnessV1,
 }
 
 pub type ActionV1 {

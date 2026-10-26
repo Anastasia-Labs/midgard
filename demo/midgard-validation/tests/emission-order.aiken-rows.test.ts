@@ -5,6 +5,8 @@ import type { MidgardRejectionReasonV1 } from "@al-ft/midgard-core/validation-tr
 import { describe, expect, it } from "vitest";
 
 import type { DeterministicValidationMachineTrace } from "../src/index.js";
+import { ASSET_ENTRY_ROWS } from "./emission-order.asset-entries.rows.js";
+import { countedStepVector } from "./emission-order.counted-steps.js";
 import {
   BAD_OUTPUT_CONTROL,
   FORCED_OUTPUT_ROWS,
@@ -31,11 +33,16 @@ import {
  * `emission-order-rows.test.ak`, where the Aiken machine checks it through the
  * one-step dispatcher: the step verifies, it stops at the phase the trace
  * names, and its successor is the row's rejection (or acceptance). Rows run in
- * the order (b), (c), (d), (a), (e), then the forced rows. The bundle
+ * the order (b), (c), (d), (a), (e), the forced rows, then (f). The bundle
  * controls, the native limit refusals and the forced wide output have no
  * vector here; nor do the rows refused with an undecodable Plutus reference
  * script: the machine has no successor for that refusal, so it has no trace
  * (the script-decode family proves it).
+ *
+ * A row's counted steps (steps inside its ValueAndMint walk) are exported
+ * with their successor's work witness: on chain each step verifies, its
+ * successor is that witness, and the witness's value accumulator holds the
+ * step's asset entry count, the count the trace's successor holds.
  *
  * Set `MIDGARD_WRITE_EMISSION_ORDER_ROWS=1` to rewrite that file; otherwise
  * this suite fails when the checked-in vectors are stale.
@@ -63,6 +70,7 @@ const ROWS: readonly Row[] = [
   BAD_OUTPUT_CONTROL,
   ...FORCED_OUTPUT_ROWS,
   UNDECODABLE_PLUTUS_REF_ROW,
+  ...ASSET_ENTRY_ROWS,
 ].filter((row) => !notProvableByTrace(row));
 
 const AIKEN_ROWS_PATH = fileURLToPath(
@@ -79,6 +87,11 @@ type Exported = {
   readonly name: string;
   readonly reason: MidgardRejectionReasonV1 | null;
   readonly vector: ReturnType<typeof stoppingStepVector>;
+  readonly counted: readonly {
+    readonly name: string;
+    readonly entryCount: number;
+    readonly vector: ReturnType<typeof countedStepVector>;
+  }[];
 };
 
 /** The reason a row's on-chain test asserts; see the header. */
@@ -159,6 +172,7 @@ const renderAikenRows = (rows: readonly Exported[]) => {
     "use midgard/validation_machine/shared.{",
     "  rejected_successor_is_exact, unset_reason_coordinate,",
     "}",
+    "use midgard/validation_machine/witness.{value_and_mint_control_from_witness}",
     "use midgard/validation_machine_tests/constants.{test_l1_slot_config}",
     "use midgard/validation_machine_tests/fixtures_phase_a.{inline_field_door}",
     "use midgard/validation_trace_v1.{ValidationMachineStateV1, ValidationPhase}",
@@ -225,6 +239,30 @@ const renderAikenRows = (rows: readonly Exported[]) => {
     "  }",
     "}",
     "",
+    "/// A step inside a row's ValueAndMint walk, and its successor's work witness.",
+    "type CountedStep {",
+    "  step: StoppingStep,",
+    "  successor_work: ByteArray,",
+    "}",
+    "",
+    "/// The step verifies, its successor's work witness is `successor_work`, and",
+    "/// that witness's value accumulator holds `entry_count` asset entries.",
+    "fn counts(counted: CountedStep, entry_count: Int) -> Bool {",
+    "  let Pair(pre, evidence) = decode(counted.step)",
+    "  let post = evidence.transition.claimed_successor",
+    "  let control = value_and_mint_control_from_witness(counted.successor_work)",
+    "  and {",
+    "    verifies(counted.step, pre, evidence),",
+    "    post.phase == validation_trace_v1.ValueAndMint,",
+    "    post.work_root == validation_trace_v1.hash_work_witness(",
+    "      validation_trace_v1.ValueAndMint,",
+    "      pre.program_counter + 1,",
+    "      counted.successor_work,",
+    "    ),",
+    "    control.value_accumulator.asset_entry_count == entry_count,",
+    "  }",
+    "}",
+    "",
   ];
   for (const row of rows) {
     const { phase, pre, transition, auxiliary } = row.vector;
@@ -251,6 +289,28 @@ const renderAikenRows = (rows: readonly Exported[]) => {
       );
     }
     lines.push("}", "");
+    for (const counted of row.counted) {
+      const name = `${row.name}_${counted.name}`;
+      const { phase, pre, transition, auxiliary, successorWork } =
+        counted.vector;
+      lines.push(
+        `const ${name}: CountedStep =`,
+        "  CountedStep {",
+        "    step: StoppingStep {",
+        `      phase: ${phaseConstructor(phase)},`,
+        `      pre: #"${pre}",`,
+        `      transition: #"${transition}",`,
+        `      auxiliary: #"${auxiliary}",`,
+        "    },",
+        `    successor_work: #"${successorWork}",`,
+        "  }",
+        "",
+        `test ${name}_counts_on_chain() {`,
+        `  counts(${name}, ${counted.entryCount.toString()})`,
+        "}",
+        "",
+      );
+    }
   }
   return lines.join("\n");
 };
@@ -267,6 +327,11 @@ describe("emission order on chain: the one-step verdict at each row's stopping s
         name: row.name,
         reason: rowReason(row, trace),
         vector: stoppingStepVector(trace),
+        counted: (row.countedSteps ?? []).map((step) => ({
+          name: step.name,
+          entryCount: step.entryCount,
+          vector: countedStepVector(trace, step),
+        })),
       });
     },
     180_000,

@@ -10,7 +10,6 @@ use midgard/bounded_item_v1
 use midgard/ledger_output_proof_raw as raw
 use midgard/ledger_output_proof_stages as stages
 use midgard/ledger_output_proof_v1 as proof
-use midgard/ledger_output_value_v1 as value
 use midgard/native_script_scan_v1
 
 /// The shared step action's claims, read straight out of the dispatcher's
@@ -235,16 +234,13 @@ pub fn value_witness(data: Data) -> proof.LedgerOutputProofWitnessV1 {
     proof.LedgerOutputProofNoWitness
   } else {
     expect tag == 2
-    expect [index, policy, asset, amount, path, head] = fields
+    expect [policy, asset, amount, path] = fields
     expect siblings: List<ByteArray> = path
-    expect previous: Option<value.LedgerOutputValueHeadV1> = head
     proof.LedgerOutputProofValue {
-      asset_index: builtin.un_i_data(index),
       policy_id: builtin.un_b_data(policy),
       asset_name: builtin.un_b_data(asset),
       quantity: builtin.un_i_data(amount),
       siblings,
-      previous,
     }
   }
 }

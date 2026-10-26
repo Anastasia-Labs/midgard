@@ -34,7 +34,7 @@ export const valueAndMintKind = (
     decodeSingleCbor(witness.cbor),
     "value_and_mint_control",
   );
-  if (control.length !== 12) {
+  if (control.length !== 11) {
     throw new Error("value_and_mint_control has an invalid field count");
   }
   const nativeControl = asArray(
@@ -43,7 +43,7 @@ export const valueAndMintKind = (
     ),
     "value_and_mint_control.native_control",
   );
-  if (nativeControl.length !== 26) {
+  if (nativeControl.length !== 25) {
     throw new Error(
       "value_and_mint_control native control has an invalid field count",
     );
@@ -59,7 +59,7 @@ export const valueAndMintKind = (
       return "replayBegin";
     case 2: {
       const remainingScheduleEmpty = asBytes(
-        control[7],
+        control[6],
         "value_and_mint_control.replay_remaining_schedule_hash",
       ).equals(emptyMidgardInputResolutionSchedule());
       if (remainingScheduleEmpty) {
@@ -73,29 +73,29 @@ export const valueAndMintKind = (
     }
     case 3: {
       const outputCursor = asBigInt(
-        control[8],
+        control[7],
         "value_and_mint_control.output_cursor",
       );
       const outputCount = asBigInt(
-        nativeControl[16],
+        nativeControl[15],
         "value_and_mint_control.native_control.output_count",
       );
       if (outputCursor === outputCount) {
         return "outputFinish";
       }
       const outputAssetCursor = asBigInt(
-        control[9],
+        control[8],
         "value_and_mint_control.output_asset_cursor",
       );
       return outputAssetCursor === 0n ? "outputDescriptor" : "outputAsset";
     }
     case 4: {
       const mintCursor = asBigInt(
-        control[10],
+        control[9],
         "value_and_mint_control.mint_cursor",
       );
       const mintCount = asBigInt(
-        nativeControl[19],
+        nativeControl[18],
         "value_and_mint_control.native_control.mint_count",
       );
       return mintCursor === mintCount ? "mintFinish" : "mintAsset";

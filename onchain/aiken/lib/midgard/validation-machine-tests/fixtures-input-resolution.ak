@@ -38,7 +38,6 @@ pub fn signatures_handoff_with_claimed_result(result: Int) -> Bool {
     0,
     0,
     #"",
-    #"",
     signer_frontier,
     -1,
   )
@@ -108,14 +107,7 @@ pub fn resolve_inputs_authenticated_membership_step(step_to_verify: Int) -> Bool
     ..base,
     body: MidgardTransactionBody { ..base.body, inputs: [input] },
   }
-  let accumulator = vm_witness.initial_resolution_accumulator()
-  let Pair(pre, work_witness_cbor) = resolve_inputs_step_fixture(
-    tx,
-    root,
-    1,
-    accumulator,
-    8,
-  )
+  let Pair(pre, work_witness_cbor) = resolve_inputs_step_fixture(tx, root, 1, 8)
   let proof_source = submitted_source(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
   let empty_schedule_hash = vm_witness.empty_resolution_schedule_hash()
@@ -125,6 +117,7 @@ pub fn resolve_inputs_authenticated_membership_step(step_to_verify: Int) -> Bool
   )
   let pending_initial = vm_machine_types.ResolveInputOutputProofV1 {
     source_kind: 0,
+    item_index: 0,
     key,
     next_schedule_hash: empty_schedule_hash,
     descriptor_cbor,
@@ -136,7 +129,6 @@ pub fn resolve_inputs_authenticated_membership_step(step_to_verify: Int) -> Bool
     proof_source.field_preimage_lengths_cbor,
     validation_context_cbor,
     1,
-    accumulator,
     vm_witness.transaction_resolution_schedule_hash(
       tx.body.inputs,
       tx.body.reference_inputs,
@@ -168,7 +160,6 @@ pub fn resolve_inputs_authenticated_membership_step(step_to_verify: Int) -> Bool
     proof_source.field_preimage_lengths_cbor,
     validation_context_cbor,
     1,
-    accumulator,
     vm_witness.transaction_resolution_schedule_hash(
       tx.body.inputs,
       tx.body.reference_inputs,
@@ -200,7 +191,6 @@ pub fn resolve_inputs_authenticated_membership_step(step_to_verify: Int) -> Bool
     proof_source.field_preimage_lengths_cbor,
     validation_context_cbor,
     1,
-    accumulator,
     vm_witness.transaction_resolution_schedule_hash(
       tx.body.inputs,
       tx.body.reference_inputs,
@@ -221,19 +211,12 @@ pub fn resolve_inputs_authenticated_membership_step(step_to_verify: Int) -> Bool
       finalize_pre_cbor,
     ),
   }
-  let next_accumulator = vm_witness.resolved_input_accumulator_successor(
-    accumulator,
-    0,
-    key,
-    descriptor_cbor,
-  )
   let finalize_post_cbor = vm_witness.encode_resolve_inputs_witness(
     proof_source.compact_cbor,
     proof_source.witness_set_compact_cbor,
     proof_source.field_preimage_lengths_cbor,
     validation_context_cbor,
     2,
-    next_accumulator,
     empty_schedule_hash,
     signer_frontier.count,
     signer_frontier_commitment,
@@ -259,6 +242,7 @@ pub fn resolve_inputs_authenticated_membership_step(step_to_verify: Int) -> Bool
         work_witness_cbor,
         claimed_successor: begin_post,
       },
+      0,
       0,
       key,
       empty_schedule_hash,

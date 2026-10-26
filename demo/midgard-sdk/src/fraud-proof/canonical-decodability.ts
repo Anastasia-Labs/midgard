@@ -35,6 +35,11 @@ import "../native-tx-field-access.js";
 import "./native.js";
 import "./canonical-decodability.walk-midgard-envelope-items.js";
 import "./canonical-decodability.canonical-decodability-evidence-from-committed-field.js";
+import "./canonical-decodability.advance-canonical-decodability-walk.js";
+export {
+  advanceCanonicalDecodabilityWalk,
+  type CanonicalDecodabilityWalkTransition,
+} from "./canonical-decodability.advance-canonical-decodability-walk.js";
 export {
   BodyFieldClaimSchema,
   BodyFieldClaimV1,
@@ -58,6 +63,8 @@ export {
   CanonicalDecodabilityStepCancelSchema,
   CanonicalDecodabilityTxInclusionArgs,
   CanonicalDecodabilityTxInclusionArgsSchema,
+  CanonicalDecodabilityWalkState,
+  CanonicalDecodabilityWalkStateSchema,
   CommittedFieldClaim,
   CommittedFieldClaimSchema,
   WitnessFieldClaimSchema,
@@ -68,6 +75,7 @@ export {
   type CanonicalDecodabilityEvidence,
   isCanonicalDecodabilityViolation,
   MIDGARD_COMMITTED_FIELD_COUNT,
+  MIDGARD_ENVELOPE_BATCH_ITEMS,
   MIDGARD_ENVELOPE_VERDICT_CODE_COUNT,
   MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL,
   MIDGARD_ENVELOPE_VERDICT_MISSING_ARRAY_HEADER,
@@ -81,7 +89,11 @@ export {
   MIDGARD_ENVELOPE_VERDICT_TRUNCATED_ARRAY_HEADER,
   MIDGARD_ENVELOPE_VERDICT_TRUNCATED_ITEM_HEADER,
   MIDGARD_ENVELOPE_VERDICT_TRUNCATED_ITEM_PAYLOAD,
+  midgardEnvelopeArrayHead,
+  midgardEnvelopeFirstBatch,
+  midgardEnvelopeItemsBatch,
   midgardEnvelopeVerdict,
+  type MidgardEnvelopeWalk,
   miscountedMidgardFieldPreimage,
 } from "./canonical-decodability.walk-midgard-envelope-items.js";
 

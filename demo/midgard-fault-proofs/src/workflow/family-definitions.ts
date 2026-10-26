@@ -19,6 +19,7 @@ import { TRANSACTION_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION } from "../transacti
 import { TRANSITION_TRACE_FAMILY_DEFINITION } from "../transition-trace/workflow.js";
 import { WITHDRAWAL_MISTAG_FAMILY_DEFINITION } from "../withdrawal-mistag/workflow.js";
 import { WITNESS_SCRIPT_DECODING_FAMILY_DEFINITION } from "../witness-script-decoding/workflow.js";
+import { CANONICAL_DECODABILITY_FAMILY_DEFINITION } from "./canonical-decodability.js";
 import { LINEAR_FAMILY_DEFINITIONS } from "./linear-family-definitions.js";
 
 /**
@@ -27,6 +28,7 @@ import { LINEAR_FAMILY_DEFINITIONS } from "./linear-family-definitions.js";
  * table-driven assembly test checks each key against its definition.
  */
 type CursorFamilyDefinitions = Readonly<{
+  canonicalDecodability: typeof CANONICAL_DECODABILITY_FAMILY_DEFINITION;
   witnessScriptDecoding: typeof WITNESS_SCRIPT_DECODING_FAMILY_DEFINITION;
   transactionOutputNonCanonical: typeof TRANSACTION_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION;
   resolvedOutputNonCanonical: typeof RESOLVED_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION;
@@ -52,6 +54,7 @@ type CursorFamilyDefinitions = Readonly<{
 
 export const CURSOR_FAMILY_DEFINITIONS: CursorFamilyDefinitions = Object.freeze(
   {
+    canonicalDecodability: CANONICAL_DECODABILITY_FAMILY_DEFINITION,
     witnessScriptDecoding: WITNESS_SCRIPT_DECODING_FAMILY_DEFINITION,
     transactionOutputNonCanonical:
       TRANSACTION_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION,

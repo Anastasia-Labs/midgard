@@ -115,7 +115,6 @@ pub fn value_output_descriptor_fixture_at(
     replay_cursor: 0,
     replay_asset_cursor: 0,
     replay_value_hash: zero,
-    replay_accumulator: vm_witness.initial_resolution_accumulator(),
     replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     output_cursor: 0,
     output_asset_cursor: 0,
@@ -123,7 +122,7 @@ pub fn value_output_descriptor_fixture_at(
     value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       lovelace_delta: 0,
       asset_root: null_hash,
-      seen_asset_count: 0,
+      asset_entry_count: 0,
       nonzero_asset_count: 0,
     },
   }
@@ -144,7 +143,7 @@ pub fn value_output_descriptor_fixture_at(
     value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       lovelace_delta: -output_lovelace,
       asset_root: singleton_root(unit, cbor.serialise(-7)),
-      seen_asset_count: 1,
+      asset_entry_count: 1,
       nonzero_asset_count: 1,
     },
   }
@@ -286,6 +285,9 @@ pub fn target_snapshot_min_fee_step_is_provable(
           0,
           0,
           0,
+          #"",
+          -1,
+          -1,
           #"",
           vm_witness.empty_resolution_schedule_hash(),
         ),
@@ -486,7 +488,6 @@ pub fn conservation_mint_step_is_exact(
     replay_cursor: 0,
     replay_asset_cursor: 0,
     replay_value_hash: zero,
-    replay_accumulator: vm_witness.initial_resolution_accumulator(),
     replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     output_cursor: 0,
     output_asset_cursor: 0,
@@ -494,7 +495,7 @@ pub fn conservation_mint_step_is_exact(
     value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       lovelace_delta: 1,
       asset_root: singleton_root(unit, cbor.serialise(pre_asset_delta)),
-      seen_asset_count: 1,
+      asset_entry_count: 1,
       nonzero_asset_count: 1,
     },
   }
@@ -505,7 +506,7 @@ pub fn conservation_mint_step_is_exact(
     value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       lovelace_delta: 1,
       asset_root: singleton_root(unit, cbor.serialise(next_asset_delta)),
-      seen_asset_count: 1,
+      asset_entry_count: 2,
       nonzero_asset_count: if next_asset_delta == 0 {
         0
       } else {
@@ -582,7 +583,6 @@ pub fn conservation_final_step_is_provable(
     replay_cursor: 0,
     replay_asset_cursor: 0,
     replay_value_hash: zero,
-    replay_accumulator: vm_witness.initial_resolution_accumulator(),
     replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     output_cursor: 0,
     output_asset_cursor: 0,
@@ -590,7 +590,7 @@ pub fn conservation_final_step_is_provable(
     value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       lovelace_delta,
       asset_root: singleton_root(unit, cbor.serialise(asset_delta)),
-      seen_asset_count: 1,
+      asset_entry_count: 1,
       nonzero_asset_count: if asset_delta == 0 {
         0
       } else {
@@ -671,7 +671,6 @@ pub fn mint_authorization_step_is_provable(
     replay_cursor: 0,
     replay_asset_cursor: 0,
     replay_value_hash: zero,
-    replay_accumulator: vm_witness.initial_resolution_accumulator(),
     replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     output_cursor: 0,
     output_asset_cursor: 0,
@@ -679,7 +678,7 @@ pub fn mint_authorization_step_is_provable(
     value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       lovelace_delta: 0,
       asset_root: null_hash,
-      seen_asset_count: 0,
+      asset_entry_count: 0,
       nonzero_asset_count: 0,
     },
   }
@@ -690,7 +689,7 @@ pub fn mint_authorization_step_is_provable(
     value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       lovelace_delta: 0,
       asset_root: singleton_root(unit, cbor.serialise(quantity)),
-      seen_asset_count: 1,
+      asset_entry_count: 1,
       nonzero_asset_count: 1,
     },
   }

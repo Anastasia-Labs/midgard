@@ -42,6 +42,7 @@ export type ScriptPurposeProofEntry = {
 };
 export type ResolutionScheduleNode = {
   sourceKind: "spend" | "reference";
+  itemIndex: number;
   key: Buffer;
   nextScheduleHash: Buffer;
   scheduleHash: Buffer;
@@ -64,12 +65,13 @@ export type SignatureScanControl = {
   readonly requiredCount: number;
   readonly addressSeen: number;
   readonly requiredSeen: number;
-  readonly previousOrderKey: Buffer;
   readonly previousSignerHash: Buffer;
   readonly signerFrontier: MidgardValidationMerkleFrontier;
   /**
-   * Field-7 item index of the first address witness whose signature fails,
-   * or -1 while every scanned signature verifies.
+   * Field-7 position of the first address witness whose signature fails,
+   * or -1 while every scanned signature verifies. The cursor scans field 7 in
+   * physical order, so this is the AddressWitnessSignatureInvalid
+   * `witness_index`.
    */
   readonly firstInvalidWitnessIndex: number;
 };

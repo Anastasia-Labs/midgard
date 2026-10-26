@@ -85,6 +85,10 @@ import {
   projectMidgardMalformedNativeWitnessEnvelopeV1,
 } from "../ledger-tx.js";
 import { decodeMidgardRedeemers } from "../midgard-redeemers.js";
+import {
+  initialInputSetMergeControl,
+  inputSetMergeStep,
+} from "../phase-a.input-set-merge.js";
 import { validatePhaseASingle } from "../phase-a.js";
 import { runPhaseBValidationWithPatch } from "../phase-b.js";
 import { UNSET_REASON_COORDINATE } from "../rejection-reason.js";
@@ -97,7 +101,10 @@ import {
   MIDGARD_ADDRESS_WITNESSES_FIELD_INDEX,
   MIDGARD_SCRIPT_WITNESSES_FIELD_INDEX,
 } from "./canonical-field-item.js";
-import { oversizedCanonicalOutputIndex } from "./canonical-output-bound.js";
+import {
+  canonicalDecodeItemRefusal,
+  canonicalOrderedItemEncodedLength,
+} from "./canonical-field-order.js";
 import {
   encodeScriptDiscoveryControlCbor,
   encodeValidationControlList,
@@ -106,9 +113,7 @@ import {
 } from "./control-encoding.js";
 import { countedMachineFieldTrace } from "./field-carriage.js";
 import {
-  advanceMidgardResolvedInputsAccumulator,
   emptyMidgardInputResolutionSchedule,
-  initialMidgardResolvedInputsAccumulator,
   orderMidgardInputResolutionSchedule,
   prependMidgardInputResolutionSchedule,
 } from "./input-resolution.js";
@@ -398,10 +403,10 @@ export const prepareValidationTrace = (
       rejection !== null && rejectionPhase(rejection) === "canonicalDecode";
     if (
       stopsAtCanonicalDecode &&
-      oversizedCanonicalOutputIndex(
+      !canonicalDecodeItemRefusal(
         input.canonicalTransactionCbor,
         input.sourceKind,
-      ) === undefined
+      )
     ) {
       if (
         rejection.code === RejectCodes.InvalidFieldType ||
@@ -485,17 +490,13 @@ export const prepareValidationTrace = (
       MIDGARD_ADDRESS_WITNESSES_FIELD_INDEX,
     );
     const redeemerWitnessesCollection = machineFieldTrace(8);
-    const collections = {
-      spend: spendInputsCollection,
-      reference: referenceInputsCollection,
-    };
-    const inputSetScanItems = orderMidgardInputResolutionSchedule({
+    const resolutionItems = orderMidgardInputResolutionSchedule({
       spend: spendInputsCollection.items,
       reference: referenceInputsCollection.items,
       keyOf: (item) => item.bytes,
-    }).map((node) => ({ ...node, collection: collections[node.sourceKind] }));
-    const resolutionItems = inputSetScanItems.map(({ sourceKind, item }) => ({
+    }).map(({ sourceKind, itemIndex, item }) => ({
       sourceKind,
+      itemIndex,
       key: item.bytes,
     }));
     const resolutionScheduleNodes = new Array<ResolutionScheduleNode>(
@@ -507,6 +508,7 @@ export const prepareValidationTrace = (
       const nextScheduleHash = resolutionScheduleHash;
       resolutionScheduleHash = prependMidgardInputResolutionSchedule({
         sourceKind: item.sourceKind,
+        itemIndex: item.itemIndex,
         key: item.key,
         nextHash: nextScheduleHash,
       });
@@ -569,7 +571,10 @@ export const prepareValidationTrace = (
       readonly referenceCount: number;
       readonly spendSeen: number;
       readonly referenceSeen: number;
-      readonly previousKey: Buffer;
+      readonly lastKey: Uint8Array;
+      readonly lastField: number;
+      readonly lastItem: number;
+      readonly cachedOtherHead: Uint8Array;
       readonly resolutionScheduleHash: Buffer;
     }): Buffer =>
       encodeCbor([
@@ -581,7 +586,10 @@ export const prepareValidationTrace = (
         BigInt(control.referenceCount),
         BigInt(control.spendSeen),
         BigInt(control.referenceSeen),
-        control.previousKey,
+        Buffer.from(control.lastKey),
+        BigInt(control.lastField),
+        BigInt(control.lastItem),
+        Buffer.from(control.cachedOtherHead),
         control.resolutionScheduleHash,
       ]);
     const decodeAddressWitnessItem = (
@@ -621,22 +629,11 @@ export const prepareValidationTrace = (
       };
     };
     // Later semantic items remain unread after a canonical terminal; exact source bytes stay committed.
+    // Signatures reads field 7 in physical order: CanonicalDecode has refused
+    // it unless it is strictly ascending by (signer hash, item bytes).
     const addressWitnessScanItems = (
       stopsAtCanonicalDecode ? [] : addressWitnessesCollection.items
-    )
-      .map((item) => {
-        const decoded = decodeAddressWitnessItem(item.bytes);
-        return {
-          item,
-          decoded,
-          orderKey: Buffer.concat([
-            decoded.signerHash,
-            item.bytes,
-            encodeCbor(BigInt(item.itemIndex)),
-          ]),
-        };
-      })
-      .sort((left, right) => Buffer.compare(left.orderKey, right.orderKey));
+    ).map((item) => ({ item, decoded: decodeAddressWitnessItem(item.bytes) }));
     const canonicalSignerHashes = addressWitnessScanItems
       .map(({ decoded }) => decoded.signerHash)
       .sort(Buffer.compare)
@@ -775,7 +772,6 @@ export const prepareValidationTrace = (
         BigInt(control.requiredCount),
         BigInt(control.addressSeen),
         BigInt(control.requiredSeen),
-        control.previousOrderKey,
         control.previousSignerHash,
         BigInt(control.signerFrontier.count),
         encodeFrontierPeaks(control.signerFrontier),
@@ -787,7 +783,6 @@ export const prepareValidationTrace = (
       requiredCount: requiredSignersCollection.items.length === 0 ? 0 : -1,
       addressSeen: 0,
       requiredSeen: 0,
-      previousOrderKey: Buffer.alloc(0),
       previousSignerHash: Buffer.alloc(0),
       signerFrontier: emptyValidationFrontier,
       firstInvalidWitnessIndex: -1,
@@ -896,12 +891,10 @@ export const prepareValidationTrace = (
     const scriptDiscoveryControlCbor = encodeScriptDiscoveryControlCbor;
     const scriptSourcesWitnessCbor = (input: {
       readonly resolvedInputCount: number;
-      readonly resolvedInputsAccumulator: Buffer;
       readonly stage: number;
       readonly sourceFrontier: MidgardValidationMerkleFrontier;
       readonly redeemerFrontier: MidgardValidationMerkleFrontier;
       readonly replayCursor?: number;
-      readonly replayAccumulator?: Buffer;
       readonly replayRemainingScheduleHash?: Buffer;
       readonly spendIndex?: number;
       readonly purposeFrontier?: MidgardValidationMerkleFrontier;
@@ -954,7 +947,6 @@ export const prepareValidationTrace = (
         proofSource.fieldPreimageLengthsCbor,
         contextCbor,
         BigInt(input.resolvedInputCount),
-        input.resolvedInputsAccumulator,
         BigInt(signerFrontier.count),
         signerFrontierCommitment,
         encodeFrontierPeaks(resolvedItemFrontier),
@@ -964,7 +956,6 @@ export const prepareValidationTrace = (
         BigInt(input.redeemerFrontier.count),
         encodeFrontierPeaks(input.redeemerFrontier),
         BigInt(input.replayCursor ?? 0),
-        input.replayAccumulator ?? initialMidgardResolvedInputsAccumulator(),
         input.replayRemainingScheduleHash ??
           emptyMidgardInputResolutionSchedule(),
         BigInt(input.spendIndex ?? 0),
@@ -1287,9 +1278,10 @@ export const prepareValidationTrace = (
             itemCount = collection.items.length;
             encodedLength = canonicalCborArgumentHeaderSize(itemCount);
           }
-          const itemEncodedLength = canonicalFieldItemEncodedLength(
+          const itemEncodedLength = canonicalOrderedItemEncodedLength(
             field.fieldIndex,
-            item.bytes.length,
+            collection.items,
+            item.itemIndex,
           );
           if (itemEncodedLength === null) {
             if (
@@ -1365,24 +1357,23 @@ export const prepareValidationTrace = (
     }
 
     if (!stoppedAtRejection) {
-      let spendCount = spendInputsCollection.items.length === 0 ? 0 : -1;
-      let referenceCount =
-        referenceInputsCollection.items.length === 0 ? 0 : -1;
-      let spendSeen = 0;
-      let referenceSeen = 0;
-      let previousKey = Buffer.alloc(0);
+      const mergeFields = [
+        spendInputsCollection.items.map((item) => item.bytes),
+        referenceInputsCollection.items.map((item) => item.bytes),
+      ] as const;
+      const mergeCollections = [
+        spendInputsCollection,
+        referenceInputsCollection,
+      ] as const;
+      let mergeControl = initialInputSetMergeControl(mergeFields);
       let inputScheduleHash = emptyMidgardInputResolutionSchedule();
       const currentInputSetsWitness = (): Buffer =>
         inputSetsWitnessCbor({
-          spendCount,
-          referenceCount,
-          spendSeen,
-          referenceSeen,
-          previousKey,
+          ...mergeControl,
           resolutionScheduleHash: inputScheduleHash,
         });
 
-      if (spendCount === 0) {
+      if (mergeControl.spendCount === 0) {
         pushWitness("inputSets", currentInputSetsWitness());
         yield* requireRejection(
           "bounded input scan found no spend inputs",
@@ -1392,19 +1383,19 @@ export const prepareValidationTrace = (
         stopReason = "EmptyInputs";
         stoppedAtRejection = true;
       } else {
-        for (let index = inputSetScanItems.length - 1; index >= 0; index -= 1) {
-          const scan = inputSetScanItems[index]!;
-          const key = scan.item.bytes;
+        // The descending merge of fields 0 and 1 (`phase-a.input-set-merge.ts`):
+        // the control fixes the item each step opens, so the auxiliary is the
+        // opened field's carriage alone.
+        for (;;) {
+          const step = inputSetMergeStep(mergeControl, mergeFields);
+          const fieldIndex =
+            mergeCollections[step.opened.fieldIndex]!.fieldIndex;
           pushWitness("inputSets", currentInputSetsWitness(), {
-            kind: "transactionFieldChunk",
-            // `inputSets` is one of the two phases that read more than one slot
-            // — fields 0 and 1, alternating — so the index comes off the scan's
-            // own collection rather than a literal.
-            fieldIndex: scan.collection.fieldIndex,
-            itemIndex: scan.item.itemIndex,
-            fieldPreimage: fieldPreimage(scan.collection.fieldIndex),
+            kind: "transactionFieldItem",
+            fieldIndex,
+            fieldPreimage: fieldPreimage(fieldIndex),
           });
-          if (previousKey.length > 0 && key.equals(previousKey)) {
+          if (step.kind === "duplicate") {
             yield* requireRejection(
               "bounded input scan found a duplicate",
               "inputSets",
@@ -1421,40 +1412,19 @@ export const prepareValidationTrace = (
             stoppedAtRejection = true;
             break;
           }
-          if (previousKey.length > 0 && Buffer.compare(key, previousKey) >= 0) {
-            return yield* Effect.fail(
-              new Error("bounded input scan is not strictly descending"),
-            );
+          mergeControl = step.next;
+          if (step.kind === "consume") {
+            inputScheduleHash = prependMidgardInputResolutionSchedule({
+              sourceKind:
+                step.consumed.fieldIndex === 0 ? "spend" : "reference",
+              itemIndex: step.consumed.itemIndex,
+              key: Buffer.from(step.key),
+              nextHash: inputScheduleHash,
+            });
+            if (step.complete) break;
           }
-          if (scan.sourceKind === "spend") {
-            if (spendCount === -1) {
-              spendCount = scan.collection.items.length;
-            }
-            spendSeen += 1;
-          } else {
-            if (referenceCount === -1) {
-              referenceCount = scan.collection.items.length;
-            }
-            referenceSeen += 1;
-          }
-          previousKey = key;
-          inputScheduleHash = prependMidgardInputResolutionSchedule({
-            sourceKind: scan.sourceKind,
-            key,
-            nextHash: inputScheduleHash,
-          });
         }
         if (!stoppedAtRejection) {
-          if (spendCount <= 0 || referenceCount < 0) {
-            return yield* Effect.fail(
-              new Error("bounded input scan did not reveal both input counts"),
-            );
-          }
-          if (spendSeen !== spendCount || referenceSeen !== referenceCount) {
-            return yield* Effect.fail(
-              new Error("bounded input scan did not reveal every input"),
-            );
-          }
           if (!inputScheduleHash.equals(resolutionScheduleHash)) {
             return yield* Effect.fail(
               new Error(
@@ -1498,21 +1468,17 @@ export const prepareValidationTrace = (
           index += 1
         ) {
           const scan = addressWitnessScanItems[index]!;
-          pushSignatureWitness({
-            kind: "transactionFieldChunk",
-            fieldIndex: MIDGARD_ADDRESS_WITNESSES_FIELD_INDEX,
-            itemIndex: scan.item.itemIndex,
-            fieldPreimage: fieldPreimage(MIDGARD_ADDRESS_WITNESSES_FIELD_INDEX),
-          });
-          if (
-            signatureControl.previousOrderKey.length > 0 &&
-            Buffer.compare(signatureControl.previousOrderKey, scan.orderKey) >=
-              0
-          ) {
+          // The cursor opens the item at `addressSeen`.
+          if (scan.item.itemIndex !== signatureControl.addressSeen) {
             return yield* Effect.fail(
-              new Error("address-witness scan is not strictly ordered"),
+              new Error("address-witness scan left physical order"),
             );
           }
+          pushSignatureWitness({
+            kind: "transactionFieldItem",
+            fieldIndex: MIDGARD_ADDRESS_WITNESSES_FIELD_INDEX,
+            fieldPreimage: fieldPreimage(MIDGARD_ADDRESS_WITNESSES_FIELD_INDEX),
+          });
           const newSigner = !scan.decoded.signerHash.equals(
             signatureControl.previousSignerHash,
           );
@@ -1541,7 +1507,6 @@ export const prepareValidationTrace = (
                   stage: 1,
                   addressCount,
                   addressSeen,
-                  previousOrderKey: Buffer.alloc(0),
                   previousSignerHash: Buffer.alloc(0),
                   signerFrontier,
                   firstInvalidWitnessIndex:
@@ -1554,7 +1519,6 @@ export const prepareValidationTrace = (
                   ...signatureControl,
                   addressCount,
                   addressSeen,
-                  previousOrderKey: scan.orderKey,
                   previousSignerHash: scan.decoded.signerHash,
                   signerFrontier,
                   firstInvalidWitnessIndex:
@@ -2118,7 +2082,6 @@ export const prepareValidationTrace = (
           ),
         );
       }
-      let resolutionAccumulator = initialMidgardResolvedInputsAccumulator();
       let remainingScheduleHash = resolutionScheduleHash;
       let resolutionCursor = 0;
       const resolutionWitnessCbor = (
@@ -2136,7 +2099,6 @@ export const prepareValidationTrace = (
           proofSource.fieldPreimageLengthsCbor,
           contextCbor,
           BigInt(resolutionCursor),
-          resolutionAccumulator,
           remainingScheduleHash,
           BigInt(signerFrontier.count),
           signerFrontierCommitment,
@@ -2144,6 +2106,7 @@ export const prepareValidationTrace = (
             ? Buffer.from([0])
             : encodeCbor([
                 pending.node.sourceKind === "spend" ? 0n : 1n,
+                BigInt(pending.node.itemIndex),
                 pending.node.key,
                 pending.node.nextScheduleHash,
                 pending.descriptorCbor,
@@ -2182,6 +2145,7 @@ export const prepareValidationTrace = (
             pushWitness("resolveInputs", resolutionWitnessCbor(undefined), {
               kind: "scheduledLedgerLookup",
               sourceKind: item.sourceKind,
+              itemIndex: item.itemIndex,
               key: item.key,
               nextScheduleHash: item.nextScheduleHash,
               value: null,
@@ -2213,6 +2177,7 @@ export const prepareValidationTrace = (
           pushWitness("resolveInputs", resolutionWitnessCbor(undefined), {
             kind: "scheduledLedgerLookup",
             sourceKind: item.sourceKind,
+            itemIndex: item.itemIndex,
             key: item.key,
             nextScheduleHash: item.nextScheduleHash,
             value: descriptorCbor,
@@ -2291,12 +2256,6 @@ export const prepareValidationTrace = (
             break;
           }
 
-          resolutionAccumulator = advanceMidgardResolvedInputsAccumulator({
-            accumulator: resolutionAccumulator,
-            sourceKind: item.sourceKind,
-            key: item.key,
-            value: descriptorCbor,
-          });
           remainingScheduleHash = item.nextScheduleHash;
           resolutionCursor += 1;
         }
@@ -2312,7 +2271,6 @@ export const prepareValidationTrace = (
           pushWitness("resolveInputs", resolutionWitnessCbor(undefined));
           const scriptSourceControl = {
             resolvedInputCount: resolutionItems.length,
-            resolvedInputsAccumulator: resolutionAccumulator,
           };
           let authenticatedInlineSourceFrontier = emptyValidationFrontier;
           let inlineSourceTotalCount = 0;
@@ -2622,6 +2580,7 @@ export const prepareValidationTrace = (
                     authenticatedRedeemerFrontier,
                     hashMidgardRedeemerItemLeaf({
                       redeemerIndex: item.itemIndex,
+                      itemLength: item.bytes.length,
                       itemCommitment: item.commitment,
                     }),
                   );
@@ -2664,7 +2623,6 @@ export const prepareValidationTrace = (
                 }),
               );
               let replayCursor = 0;
-              let replayAccumulator = initialMidgardResolvedInputsAccumulator();
               let replayRemainingScheduleHash = resolutionScheduleHash;
               let replaySpendIndex = 0;
               let replaySourceFrontier = inlineScriptSourceFrontier;
@@ -2701,7 +2659,6 @@ export const prepareValidationTrace = (
                     sourceFrontier: replaySourceFrontier,
                     redeemerFrontier,
                     replayCursor,
-                    replayAccumulator,
                     replayRemainingScheduleHash,
                     spendIndex: replaySpendIndex,
                     purposeFrontier: replayPurposeFrontier,
@@ -2709,9 +2666,14 @@ export const prepareValidationTrace = (
                   {
                     kind: "resolvedInputReplay",
                     sourceKind: node.sourceKind,
+                    itemIndex: node.itemIndex,
                     key: node.key,
                     nextScheduleHash: node.nextScheduleHash,
                     value: descriptorCbor,
+                    // The prior-ledger membership proof the lookup step
+                    // carried for this node authenticates the replayed value.
+                    proofCbor: node.proofCbor,
+                    siblings: [],
                   },
                 );
                 if (!replayRemainingScheduleHash.equals(node.scheduleHash)) {
@@ -2805,12 +2767,6 @@ export const prepareValidationTrace = (
                     outputCbor: descriptorCbor,
                   }),
                 );
-                replayAccumulator = advanceMidgardResolvedInputsAccumulator({
-                  accumulator: replayAccumulator,
-                  sourceKind: node.sourceKind,
-                  key: node.key,
-                  value: descriptorCbor,
-                });
                 replayRemainingScheduleHash = node.nextScheduleHash;
                 replayCursor += 1;
               }
@@ -2822,7 +2778,6 @@ export const prepareValidationTrace = (
                   sourceFrontier: replaySourceFrontier,
                   redeemerFrontier,
                   replayCursor,
-                  replayAccumulator,
                   replayRemainingScheduleHash,
                   spendIndex: replaySpendIndex,
                   purposeFrontier: replayPurposeFrontier,
@@ -2837,7 +2792,6 @@ export const prepareValidationTrace = (
                   sourceFrontier: replaySourceFrontier,
                   redeemerFrontier,
                   replayCursor,
-                  replayAccumulator,
                   replayRemainingScheduleHash,
                   spendIndex: replaySpendIndex,
                   purposeFrontier: replayPurposeFrontier,
@@ -2856,27 +2810,19 @@ export const prepareValidationTrace = (
                     ),
                   );
                 }
-                // Stage 4 folds only the authenticated
-                // (field_index, item_index, item_length, item_commitment) tuple,
-                // all four of which the door *derives* from the authenticated
-                // preimage. The item bytes are still not revealed here, and the
-                // reason is unchanged: revealing them re-proves only that an
-                // authenticated commitment has a preimage — which canonicalDecode
-                // and the stage-5 output traversal already establish — while
-                // making the one-step evidence grow with output size and exceed
-                // the L1 envelope for legal 16,384-byte outputs (C21-STAGE4-GAP,
-                // Option A).
-                //
-                // What *has* changed is where the size now comes from. The
-                // carriage keeps this redeemer O(1) in output size only under
-                // tiers 2-3, where the preimage rides reference inputs
-                // (`onchain/aiken/lib/midgard/validation-machine/`).
-                // The step therefore carries the *plan input* — which field, which
-                // bytes — and the tier is resolved at evidence commitment, where a
-                // transaction exists to index reference inputs into (#600). Above
-                // §8.3's 14,336-byte tier-1 cap the resolution is genuinely tier 2
-                // or 3 and this evidence is O(1); below it, tier-1 `Inline`. The
-                // producer itself never refuses and never names a tier.
+                // Stage 4 folds only the authenticated (field_index, item_index,
+                // item_length, item_commitment) tuple, all derived by the door from the
+                // authenticated preimage. The item bytes are not revealed: that re-proves
+                // only that an authenticated commitment has a preimage (canonicalDecode and
+                // the stage-5 output traversal establish it) while growing the one-step
+                // evidence past the L1 envelope for legal 16,384-byte outputs
+                // (C21-STAGE4-GAP, Option A). The carriage keeps this redeemer O(1) in
+                // output size only under tiers 2-3, where the preimage rides reference
+                // inputs. The step carries the *plan input* (field and bytes); the tier is
+                // resolved at evidence commitment, where a transaction exists to index
+                // reference inputs into (#600): above §8.3's 14,336-byte tier-1 cap it is
+                // tier 2 or 3 and O(1), below it tier-1 `Inline`. The producer never
+                // refuses and never names a tier.
                 pushWitness("scriptSources", currentOutputCommitmentWitness(), {
                   kind: "transactionRedeemerItemBegin",
                   fieldIndex: 2,
@@ -2889,6 +2835,7 @@ export const prepareValidationTrace = (
                   authenticatedOutputFrontier,
                   hashMidgardOutputItemLeaf({
                     outputIndex: item.itemIndex,
+                    itemLength: item.bytes.length,
                     itemCommitment: item.commitment,
                   }),
                 );
@@ -2945,7 +2892,6 @@ export const prepareValidationTrace = (
                   sourceFrontier: replaySourceFrontier,
                   redeemerFrontier,
                   replayCursor,
-                  replayAccumulator,
                   replayRemainingScheduleHash,
                   spendIndex: replaySpendIndex,
                   purposeFrontier: replayPurposeFrontier,
@@ -3125,7 +3071,6 @@ export const prepareValidationTrace = (
                       sourceFrontier: replaySourceFrontier,
                       redeemerFrontier,
                       replayCursor,
-                      replayAccumulator,
                       replayRemainingScheduleHash,
                       spendIndex: replaySpendIndex,
                       purposeFrontier: mintPurposeFrontier,
@@ -3211,7 +3156,6 @@ export const prepareValidationTrace = (
                         sourceFrontier: replaySourceFrontier,
                         redeemerFrontier,
                         replayCursor,
-                        replayAccumulator,
                         replayRemainingScheduleHash,
                         spendIndex: replaySpendIndex,
                         purposeFrontier: mintPurposeFrontier,
@@ -3290,7 +3234,6 @@ export const prepareValidationTrace = (
                     sourceFrontier: replaySourceFrontier,
                     redeemerFrontier,
                     replayCursor,
-                    replayAccumulator,
                     replayRemainingScheduleHash,
                     spendIndex: replaySpendIndex,
                     purposeFrontier: mintPurposeFrontier,
@@ -3318,7 +3261,6 @@ export const prepareValidationTrace = (
                     sourceFrontier: replaySourceFrontier,
                     redeemerFrontier,
                     replayCursor,
-                    replayAccumulator,
                     replayRemainingScheduleHash,
                     spendIndex: replaySpendIndex,
                     purposeFrontier: observerPurposeFrontier,
@@ -3387,7 +3329,6 @@ export const prepareValidationTrace = (
                     sourceFrontier: replaySourceFrontier,
                     redeemerFrontier,
                     replayCursor,
-                    replayAccumulator,
                     replayRemainingScheduleHash,
                     spendIndex: replaySpendIndex,
                     purposeFrontier: allPurposeFrontier,
@@ -3479,7 +3420,6 @@ export const prepareValidationTrace = (
                       sourceFrontier: replaySourceFrontier,
                       redeemerFrontier,
                       replayCursor,
-                      replayAccumulator,
                       replayRemainingScheduleHash,
                       spendIndex: replaySpendIndex,
                       purposeFrontier: allPurposeFrontier,
@@ -3966,7 +3906,6 @@ export const prepareValidationTrace = (
                       proofSource.fieldPreimageLengthsCbor,
                       contextCbor,
                       BigInt(scriptSourceControl.resolvedInputCount),
-                      scriptSourceControl.resolvedInputsAccumulator,
                       BigInt(replaySpendIndex),
                       encodeFrontierPeaks(resolvedItemFrontier),
                       BigInt(signerFrontier.count),

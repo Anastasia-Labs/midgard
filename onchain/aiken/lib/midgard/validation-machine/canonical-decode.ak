@@ -1,5 +1,6 @@
 use aiken/builtin
 use midgard/cbor_deserialise
+use midgard/fixed_item_legality_v1
 use midgard/fraud_proofs/native_tx/compact.{
   decode_native_tx_field_preimage_lengths_v1, tx_proof_commitment_v1,
   verify_tx_proof_source_v1,
@@ -154,6 +155,39 @@ fn verify_canonical_decode_empty(
   }
 }
 
+/// Fields 0 and 1 ascend by item bytes, repeats allowed (`InputSets` reports
+/// them as `DuplicateInput`). Field 7 ascends strictly by
+/// `(blake2b_224(vkey), item bytes)`. All three are fixed stride, so item k-1
+/// is the same-length payload one stride before item k in the same
+/// authenticated preimage.
+pub fn canonical_item_order_is_valid(
+  item: field_door.MachineFieldItemV1,
+) -> Bool {
+  let field_index = item.field_index
+  if or {
+    item.item_index == 0,
+    and {
+      field_index != 0,
+      field_index != 1,
+      field_index != 7,
+    },
+  } {
+    True
+  } else {
+    let current = field_door.machine_field_item_bytes(item)
+    let previous = native_tx_field_access_v1.field_read_range(
+      item.view,
+      item.item_offset - native_tx_field_access_v1.field_stride(field_index),
+      item.item_length,
+    )
+    fixed_item_legality_v1.fixed_payload_follows_v1(
+      field_index,
+      previous,
+      current,
+    )
+  }
+}
+
 /// One chunk of one item of the field the `CanonicalDecode` phase is scanning.
 ///
 /// **The item is reached through §8's door and the machine's own walk position,
@@ -258,9 +292,12 @@ fn verify_canonical_decode_chunk(
         length_before_item,
       )
     } else {
-      when
+      let encoded_length = if canonical_item_order_is_valid(item) {
         transaction_field_item_encoded_length(control.field_index, item_length)
-      is {
+      } else {
+        None
+      }
+      when encoded_length is {
         None ->
           rejected_successor_is_exact(
             pre,
@@ -431,6 +468,7 @@ pub fn observe_canonical_decode_item_v1(
   CanonicalDecodeItemObservationV1 {
     item_count: field_door.machine_field_item_count(item),
     item_length: field_door.machine_field_item_length(item),
+    item_order_is_valid: canonical_item_order_is_valid(item),
   }
 }
 
@@ -508,12 +546,15 @@ pub fn verify_canonical_decode_item_observation_v1(
       source,
       observation,
     )
-  when
+  let encoded_length = if observation.item_order_is_valid {
     transaction_field_item_encoded_length(
       control.field_index,
       observation.item_length,
     )
-  is {
+  } else {
+    None
+  }
+  when encoded_length is {
     None ->
       CanonicalDecodeItemProofV1 {
         active_item_count,

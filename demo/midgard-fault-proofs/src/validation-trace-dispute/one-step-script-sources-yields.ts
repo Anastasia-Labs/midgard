@@ -88,7 +88,7 @@ const stageOf = (transitionCbor: string): number => {
     decodeSingleCbor(Buffer.from(work, "hex")),
     "script_sources_control",
   );
-  return Number(asBigInt(control[9], "script_sources_control.stage"));
+  return Number(asBigInt(control[8], "script_sources_control.stage"));
 };
 
 /**

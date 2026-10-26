@@ -46,7 +46,6 @@ const select = (purposeKind: bigint, languageTag: bigint) =>
         languageTag,
         "ef".repeat(32),
         [],
-        "12".repeat(32),
       ]),
     ),
     context: new Constr(0, [9n, languageTag]),
@@ -96,6 +95,7 @@ describe("validation-trace one-step CEK context redeemer select plan", () => {
         COMMITMENT,
         hashMidgardRedeemerItemLeaf({
           redeemerIndex: 1,
+          itemLength: 40,
           itemCommitment: Buffer.from(COMMITMENT, "hex"),
         }).toString("hex"),
         2n,
@@ -136,7 +136,7 @@ describe("validation-trace one-step CEK context redeemer select plan", () => {
       });
     expect(plan(new Constr(36, [control, "", "", []]))).toBeUndefined();
     for (const evidence of [
-      new Constr(18, Array<Data>(12).fill(0n)),
+      new Constr(18, Array<Data>(11).fill(0n)),
       new Constr(17, [control]),
     ])
       expect(() => plan(evidence)).toThrow(/neither a select nor a skip/u);

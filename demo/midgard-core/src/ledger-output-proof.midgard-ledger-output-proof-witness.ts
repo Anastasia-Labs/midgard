@@ -17,7 +17,6 @@ import { type MidgardLedgerOutputScanControl } from "./ledger-output-scan.js";
 import {
   encodeMidgardLedgerOutputValueControl,
   type MidgardLedgerOutputValueControl,
-  type MidgardLedgerOutputValueHead,
 } from "./ledger-output-value.js";
 import {
   encodeMidgardNativeScriptStructureControl,
@@ -89,12 +88,10 @@ export type MidgardLedgerOutputProofWitness =
     }
   | {
       readonly kind: "value";
-      readonly assetIndex: number;
       readonly policyId: Buffer;
       readonly assetName: Buffer;
       readonly quantity: bigint;
       readonly siblings: readonly Uint8Array[];
-      readonly previous: MidgardLedgerOutputValueHead | null;
     }
   | {
       readonly kind: "datum";

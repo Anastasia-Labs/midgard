@@ -42,7 +42,8 @@ export type ValidationMachineValueMutationStep = {
   readonly postAssetRoot: Buffer;
   /** Membership/non-membership witness for unit against preAssetRoot. */
   readonly proofCbor: Buffer;
-  readonly postSeenAssetCount: number;
+  /** Asset entries folded so far, this one included, repeated units too. */
+  readonly postAssetEntryCount: number;
   readonly postNonzeroAssetCount: number;
 };
 

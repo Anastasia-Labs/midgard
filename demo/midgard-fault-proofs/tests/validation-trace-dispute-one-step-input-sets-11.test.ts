@@ -12,7 +12,7 @@ const drive = phaseDrive({
   from: 11,
   phase: "inputSets",
   semantic: 1,
-  evidence: { fieldIndex: 0, itemIndex: 0 },
+  evidence: { fieldIndex: 0 },
   at: "inputSetsItemSemantic",
 });
 

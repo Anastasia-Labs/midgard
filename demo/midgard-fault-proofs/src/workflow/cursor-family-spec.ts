@@ -143,6 +143,20 @@ export const SCRIPT_INTEGRITY_HASH_MISMATCH_CURSOR_SPEC = Object.freeze({
   }),
 }) satisfies CursorFamilySpec<"scriptIntegrityHashMismatch">;
 
+/**
+ * `canonicalDecodability` walks the committed field one bounded batch per
+ * step-01 transaction, returning to step 01 while items remain and moving to
+ * step 02 with the verdict.
+ */
+export const CANONICAL_DECODABILITY_CURSOR_SPEC = Object.freeze({
+  category: "canonicalDecodability",
+  stepCount: 2,
+  successors: Object.freeze({
+    1: Object.freeze([1, 2] as const),
+    2: Object.freeze(["proof_token"] as const),
+  }),
+}) satisfies CursorFamilySpec<"canonicalDecodability">;
+
 export const CURSOR_FAMILY_SPECS = Object.freeze({
   nativeScriptDecoding: NATIVE_SCRIPT_DECODING_CURSOR_SPEC,
   withdrawalMistag: WITHDRAWAL_MISTAG_CURSOR_SPEC,
@@ -150,4 +164,5 @@ export const CURSOR_FAMILY_SPECS = Object.freeze({
   mintAuthorization: MINT_AUTHORIZATION_CURSOR_SPEC,
   missingRedeemer: MISSING_REDEEMER_CURSOR_SPEC,
   scriptIntegrityHashMismatch: SCRIPT_INTEGRITY_HASH_MISMATCH_CURSOR_SPEC,
+  canonicalDecodability: CANONICAL_DECODABILITY_CURSOR_SPEC,
 });

@@ -62,6 +62,7 @@ export const tracedRefusalInputs = [
   "demo/scripts/deployment-profile-aiken.mjs",
   "demo/scripts/deployment-profile-identity.mjs",
   "demo/scripts/deployment-profile-budgets.mjs",
+  "demo/scripts/deployment-profile-operator-economics.mjs",
   "demo/package.json",
   "demo/pnpm-lock.yaml",
   "demo/pnpm-workspace.yaml",

@@ -79,6 +79,13 @@ import {
   WITHDRAWAL_MISTAG_FAMILY_DEFINITION,
 } from "../withdrawal-mistag/workflow.js";
 import {
+  CANONICAL_DECODABILITY_FAMILY_DEFINITION,
+  createManifestBoundCanonicalDecodabilityWorkflow,
+  type ManifestBoundCanonicalDecodabilityWorkflow,
+  type ManifestBoundCanonicalDecodabilityWorkflowConfig,
+  runOrResumeManifestBoundCanonicalDecodabilityWorkflow,
+} from "./canonical-decodability.js";
+import {
   defineFamilyApplication,
   type FamilyApplicationRecord,
   type FamilyApplicationWorkflowIdentity,
@@ -160,11 +167,22 @@ const bundleCursorFamilyApplicationRecord = <
 };
 
 /**
- * The four cursor families without a decision digest on the plain and
+ * The five cursor families without a decision digest on the plain and
  * replay-context shapes. Each row names its exact config and workflow types
  * so the record's `bindConfig` result is what its `constructWorkflow`
  * consumes.
  */
+export const CANONICAL_DECODABILITY_FAMILY_APPLICATION_RECORD =
+  bundleCursorFamilyApplicationRecord<
+    "canonicalDecodability",
+    ManifestBoundCanonicalDecodabilityWorkflowConfig,
+    ManifestBoundCanonicalDecodabilityWorkflow
+  >(CANONICAL_DECODABILITY_FAMILY_DEFINITION, {
+    requires: [],
+    constructWorkflow: createManifestBoundCanonicalDecodabilityWorkflow,
+    execute: runOrResumeManifestBoundCanonicalDecodabilityWorkflow,
+  });
+
 export const NATIVE_SCRIPT_INVALID_FAMILY_APPLICATION_RECORD =
   bundleCursorFamilyApplicationRecord<
     "nativeScriptInvalid",

@@ -302,8 +302,8 @@ describe("W25 canonical rejection attribution and adversarial ordering", () => {
       ]),
     );
 
-    // Sixteen inputs fold 16,384 distinct assets, the bound; the output's
-    // one asset is a new unit, so the ValueAndMint walk crosses there.
+    // Sixteen inputs fold 16,384 asset entries, the bound; the output's one
+    // asset is entry 16,385, so the ValueAndMint walk crosses there.
     const distinctAssets = (start: number, count: number) => {
       const assets = new Map<string, Map<string, bigint>>();
       for (let unit = start; unit < start + count; unit += 1) {

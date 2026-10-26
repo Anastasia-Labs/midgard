@@ -1,4 +1,3 @@
-import { CANONICAL_DECODABILITY_FAMILY_DEFINITION } from "./canonical-decodability.js";
 import { COMMITTED_FIELD_SHAPE_FAMILY_DEFINITION } from "./committed-field-shape.js";
 import { DA_HASH_PREIMAGE_FAMILY_DEFINITION } from "./da-hash-preimage.js";
 import { DOUBLE_WITHDRAW_FAMILY_DEFINITION } from "./double-withdraw.js";
@@ -39,7 +38,6 @@ export const LINEAR_FAMILY_DEFINITIONS = Object.freeze({
   fabricatedDeposit: FABRICATED_DEPOSIT_FAMILY_DEFINITION,
   fabricatedWithdrawal: FABRICATED_WITHDRAWAL_FAMILY_DEFINITION,
   withdrawnReferenceInput: WITHDRAWN_REFERENCE_INPUT_FAMILY_DEFINITION,
-  canonicalDecodability: CANONICAL_DECODABILITY_FAMILY_DEFINITION,
   committedFieldShape: COMMITTED_FIELD_SHAPE_FAMILY_DEFINITION,
   minFee: MIN_FEE_FAMILY_DEFINITION,
   doubleWithdraw: DOUBLE_WITHDRAW_FAMILY_DEFINITION,

@@ -47,15 +47,17 @@ const funded = makeOutput(FUNDED_OUTPUT_LOVELACE);
 
 describe("phase A rejection subjects", () => {
   it("names both positions of a duplicated spend input", async () => {
+    // Spend inputs ascend, so a repeat sits next to its other copy. InputSets
+    // merges from the tail, so the later position is scanned first.
     const [a, b] = [outRefFromByte(0x31), outRefFromByte(0x32)];
     const rejection = await phaseARejection(
-      makeNativeTx({ spendInputs: [a, b, a] }),
+      makeNativeTx({ spendInputs: [a, b, b] }),
       RejectCodes.DuplicateInputInTx,
     );
     expect(rejection.subject).toStrictEqual({
       arm: "DuplicateInput",
-      first: { fieldIndex: 0n, itemIndex: 0n },
-      second: { fieldIndex: 0n, itemIndex: 2n },
+      first: { fieldIndex: 0n, itemIndex: 2n },
+      second: { fieldIndex: 0n, itemIndex: 1n },
     });
   });
 
@@ -67,13 +69,13 @@ describe("phase A rejection subjects", () => {
     );
     expect(rejection.subject).toStrictEqual({
       arm: "DuplicateInput",
-      first: { fieldIndex: 1n, itemIndex: 1n },
-      second: { fieldIndex: 1n, itemIndex: 2n },
+      first: { fieldIndex: 1n, itemIndex: 2n },
+      second: { fieldIndex: 1n, itemIndex: 1n },
     });
   });
 
   it("names the spend and the reference position of a shared out-ref", async () => {
-    const [a, b, c] = [0x36, 0x37, 0x38].map((byte) => outRefFromByte(byte));
+    const [a, b, c] = [0x36, 0x37, 0x35].map((byte) => outRefFromByte(byte));
     const rejection = await phaseARejection(
       makeNativeTx({ spendInputs: [a!, b!], referenceInputs: [c!, b!] }),
       RejectCodes.DuplicateInputInTx,
@@ -85,8 +87,39 @@ describe("phase A rejection subjects", () => {
     });
   });
 
+  it.each([
+    ["within the spend inputs", [0x38, 0x39, 0x39, 0x39], [], [0n, 3n, 0n, 2n]],
+    ["split across the fields", [0x38, 0x39, 0x39], [0x39], [0n, 2n, 1n, 0n]],
+  ] as const)(
+    "names the first two positions of a triple copy %s",
+    async (_name, spend, reference, [ff, fi, sf, si]) => {
+      // The positions the machine's merge reaches first (the Aiken rows
+      // `input_set_merge_rejects_*_triple*` in tests-input-set-merge.test.ak).
+      const rejection = await phaseARejection(
+        makeNativeTx({
+          spendInputs: spend.map((byte) => outRefFromByte(byte)),
+          referenceInputs: reference.map((byte) => outRefFromByte(byte)),
+        }),
+        RejectCodes.DuplicateInputInTx,
+      );
+      expect(rejection.subject).toStrictEqual({
+        arm: "DuplicateInput",
+        first: { fieldIndex: ff, itemIndex: fi },
+        second: { fieldIndex: sf, itemIndex: si },
+      });
+    },
+  );
+
   it("names the invalid address witness", async () => {
-    // Witness 0 signs the transaction id; witness 1 signs other bytes.
+    // Witness 0 signs the transaction id; witness 1 signs other bytes. Address
+    // witnesses ascend by signer hash, so witness 1's signer sorts later.
+    let laterKey = CML.PrivateKey.generate_ed25519();
+    while (
+      Buffer.from(laterKey.to_public().hash().to_raw_bytes()).compare(
+        Buffer.from(TEST_SIGNER_HASH, "hex"),
+      ) <= 0
+    )
+      laterKey = CML.PrivateKey.generate_ed25519();
     const base = makeNativeTx();
     const witness = (message: Buffer, key: CML.PrivateKey) =>
       Buffer.from(
@@ -101,7 +134,7 @@ describe("phase A rejection subjects", () => {
         ...base.tx.witnessSet,
         addrTxWitsPreimageCbor: encodeByteList([
           witness(base.txId, TEST_PRIVATE_KEY),
-          witness(Buffer.alloc(32, 0x7f), foreignKey),
+          witness(Buffer.alloc(32, 0x7f), laterKey),
         ]),
       },
     });
