@@ -1,4 +1,4 @@
-/** `missingRedeemer` step-01: the accepted door authenticates the native
+/** Direct purpose step-01: the accepted door authenticates the native
  * transaction's inclusion; the forced door authenticates the forced leaf
  * under the challenged header. Both pay the bound source to `bindEvent`. */
 import { computeHash28 } from "@al-ft/midgard-core";
@@ -29,14 +29,12 @@ import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/w
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
-import {
-  MISSING_REDEEMER_CATEGORY_LABEL,
-  type MissingRedeemerContracts,
-} from "./contracts.js";
+import type { DirectPurposeContracts, DirectPurposeFamily } from "./family.js";
 
 type Step01Common = {
+  readonly family: DirectPurposeFamily<unknown>;
   readonly lucid: LucidEvolution;
-  readonly contracts: MissingRedeemerContracts;
+  readonly contracts: DirectPurposeContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
@@ -47,7 +45,7 @@ type Step01Common = {
 };
 
 /** The datum step-01 pays to `bindEvent`: the bound source, owned by `prover`. */
-export const missingRedeemerStep01Datum = (
+export const directPurposeStep01Datum = (
   material: DirectScriptMaterial,
   prover: string,
 ) =>
@@ -61,7 +59,7 @@ const initialThread = async (common: Step01Common) => {
     lucid: common.lucid,
     contracts: common.contracts,
     categoryId: common.categoryId,
-    family: MISSING_REDEEMER_CATEGORY_LABEL,
+    family: common.family.label,
     stepIndex: 0,
     threadOutRef: common.threadOutRef,
   });
@@ -70,13 +68,11 @@ const initialThread = async (common: Step01Common) => {
     SDK.encodeHeaderCbor(common.material.sourceBound.header),
   ).toString("hex");
   if (threadToken.fraudulentHeaderHash !== headerHash)
-    throw new Error(
-      `${MISSING_REDEEMER_CATEGORY_LABEL}: thread disputes another header`,
-    );
+    throw new Error(`${common.family.label}: thread disputes another header`);
   return { threadUtxo, threadToken };
 };
 
-export const submitMissingRedeemerStep01Accepted = async ({
+export const submitDirectPurposeStep01Accepted = async ({
   blueprint,
   network,
   stateQueueBlockOutRef,
@@ -97,12 +93,10 @@ export const submitMissingRedeemerStep01Accepted = async ({
   if (
     material.bound.subject.source_kind !== SDK.PROOF_THREAD_SOURCE_KIND_ACCEPTED
   )
-    throw new Error(
-      `${MISSING_REDEEMER_CATEGORY_LABEL}: subject is not accepted`,
-    );
+    throw new Error(`${common.family.label}: subject is not accepted`);
   if (txInclusion.nativeTxId !== material.bound.subject.transaction_id)
     throw new Error(
-      `${MISSING_REDEEMER_CATEGORY_LABEL}: inclusion names another transaction`,
+      `${common.family.label}: inclusion names another transaction`,
     );
   const { threadUtxo, threadToken } = await initialThread(common);
   return await submitNativeTxBinding({
@@ -117,8 +111,8 @@ export const submitMissingRedeemerStep01Accepted = async ({
     stateQueueBlockOutRef,
     txInclusion,
     ...(publishedProofChunks === undefined ? {} : { publishedProofChunks }),
-    nextDatum: missingRedeemerStep01Datum(material, signer.paymentKeyHash),
-    spendRedeemerSchema: SDK.MissingRedeemerStep01Redeemer,
+    nextDatum: directPurposeStep01Datum(material, signer.paymentKeyHash),
+    spendRedeemerSchema: SDK.DirectStep01Redeemer,
     wrapInclusionCarriage: (inclusion) => ({
       source: { AcceptedSource: { inclusion } },
     }),
@@ -129,7 +123,7 @@ export const submitMissingRedeemerStep01Accepted = async ({
   });
 };
 
-export const submitMissingRedeemerStep01Forced = async ({
+export const submitDirectPurposeStep01Forced = async ({
   reconstruction,
   ...common
 }: Step01Common & {
@@ -143,15 +137,13 @@ export const submitMissingRedeemerStep01Forced = async ({
       SDK.PROOF_THREAD_SOURCE_KIND_FORCED ||
     !("ForcedTransactionEventKey" in eventKey)
   )
-    throw new Error(
-      `${MISSING_REDEEMER_CATEGORY_LABEL}: subject is not forced`,
-    );
+    throw new Error(`${common.family.label}: subject is not forced`);
   const { threadUtxo, threadToken } = await initialThread(common);
   signer.selectWallet(common.lucid);
   const stepReference = requireLinearFaultReferenceScript({
     utxo: common.referenceScriptUtxo,
     expectedScriptHash: contracts.steps[0].spendingScriptHash,
-    family: MISSING_REDEEMER_CATEGORY_LABEL,
+    family: common.family.label,
     stepIndex: 0,
   });
   const header = material.sourceBound.header;
@@ -160,9 +152,9 @@ export const submitMissingRedeemerStep01Forced = async ({
     eventKey,
   });
   const next = contracts.steps[1]!;
-  const nextDatum = missingRedeemerStep01Datum(material, signer.paymentKeyHash);
+  const nextDatum = directPurposeStep01Datum(material, signer.paymentKeyHash);
   let outputIndex: bigint | undefined;
-  const label = `${MISSING_REDEEMER_CATEGORY_LABEL} forced step-01`;
+  const label = `${common.family.label} forced step-01`;
   const redeemer = ((ctx) => {
     SDK.requireOwnSpendPurpose(ctx, threadUtxo, label);
     const inputIndex = SDK.requireInputIndex(ctx, threadUtxo, label);
@@ -190,7 +182,7 @@ export const submitMissingRedeemerStep01Forced = async ({
           },
         ],
       },
-      SDK.MissingRedeemerStep01Redeemer,
+      SDK.DirectStep01Redeemer,
     );
   }) satisfies BuildTxWithRedeemer;
   const txHash = await submitLinearFaultContinue({

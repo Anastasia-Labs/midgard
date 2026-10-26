@@ -7,7 +7,7 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace phase-A native Advance semantic",
       manifestPosition: 178,
-      publicationPosition: 481,
+      publicationPosition: 512,
       referenceRolePosition: 285,
       commands: [],
       validatorTitle:
@@ -21,7 +21,7 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace phase-A native Item semantic",
       manifestPosition: 179,
-      publicationPosition: 482,
+      publicationPosition: 513,
       referenceRolePosition: 286,
       commands: [],
       validatorTitle:
@@ -35,7 +35,7 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace phase-A native TokenHead semantic",
       manifestPosition: 180,
-      publicationPosition: 483,
+      publicationPosition: 514,
       referenceRolePosition: 287,
       commands: [],
       validatorTitle:
@@ -51,7 +51,7 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
         referenceRole:
           "V1 validation-trace phase-A native AllOrAnyContainerFramePayload semantic",
         manifestPosition: 181,
-        publicationPosition: 484,
+        publicationPosition: 515,
         referenceRolePosition: 288,
         commands: [],
         validatorTitle:
@@ -67,7 +67,7 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
         referenceRole:
           "V1 validation-trace phase-A native AllOrAnyEmptyContainerPayload semantic",
         manifestPosition: 182,
-        publicationPosition: 485,
+        publicationPosition: 516,
         referenceRolePosition: 289,
         commands: [],
         validatorTitle:
@@ -83,7 +83,7 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
         referenceRole:
           "V1 validation-trace phase-A native AtLeastContainerFramePayload semantic",
         manifestPosition: 183,
-        publicationPosition: 486,
+        publicationPosition: 517,
         referenceRolePosition: 290,
         commands: [],
         validatorTitle:
@@ -99,7 +99,7 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
         referenceRole:
           "V1 validation-trace phase-A native AtLeastEmptyContainerPayload semantic",
         manifestPosition: 184,
-        publicationPosition: 487,
+        publicationPosition: 518,
         referenceRolePosition: 291,
         commands: [],
         validatorTitle:
@@ -114,7 +114,7 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace phase-A native TimelockPayload semantic",
       manifestPosition: 185,
-      publicationPosition: 488,
+      publicationPosition: 519,
       referenceRolePosition: 292,
       commands: [],
       validatorTitle:
@@ -130,7 +130,7 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
         referenceRole:
           "V1 validation-trace phase-A native SignatureMembershipPayload semantic",
         manifestPosition: 186,
-        publicationPosition: 489,
+        publicationPosition: 520,
         referenceRolePosition: 293,
         commands: [],
         validatorTitle:
@@ -145,7 +145,7 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace phase-A native SignatureEmptyPayload semantic",
       manifestPosition: 187,
-      publicationPosition: 490,
+      publicationPosition: 521,
       referenceRolePosition: 294,
       commands: [],
       validatorTitle:
@@ -161,7 +161,7 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
         referenceRole:
           "V1 validation-trace phase-A native SignatureBelowFirstPayload semantic",
         manifestPosition: 188,
-        publicationPosition: 491,
+        publicationPosition: 522,
         referenceRolePosition: 295,
         commands: [],
         validatorTitle:
@@ -177,7 +177,7 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
         referenceRole:
           "V1 validation-trace phase-A native SignatureAboveLastPayload semantic",
         manifestPosition: 189,
-        publicationPosition: 492,
+        publicationPosition: 523,
         referenceRolePosition: 296,
         commands: [],
         validatorTitle:
@@ -192,7 +192,7 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace phase-A native SignatureBetweenPayload semantic",
       manifestPosition: 190,
-      publicationPosition: 493,
+      publicationPosition: 524,
       referenceRolePosition: 297,
       commands: [],
       validatorTitle:
@@ -206,7 +206,7 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace phase-A native Frame semantic",
       manifestPosition: 191,
-      publicationPosition: 494,
+      publicationPosition: 525,
       referenceRolePosition: 298,
       commands: [],
       validatorTitle:
@@ -221,7 +221,7 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace phase-A preconditions Finalize semantic",
       manifestPosition: 192,
-      publicationPosition: 495,
+      publicationPosition: 526,
       referenceRolePosition: 299,
       commands: [],
       validatorTitle:
@@ -235,7 +235,7 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace phase-A preconditions Item semantic",
       manifestPosition: 193,
-      publicationPosition: 496,
+      publicationPosition: 527,
       referenceRolePosition: 300,
       commands: [],
       validatorTitle:

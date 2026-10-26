@@ -6,7 +6,7 @@ export const validationTraceScriptSourcesSemanticsMembers =
       purpose: "spend",
       referenceRole: "V1 validation-trace script-sources NonOutput semantic",
       manifestPosition: 75,
-      publicationPosition: 386,
+      publicationPosition: 417,
       referenceRolePosition: 190,
       commands: [],
       validatorTitle:
@@ -21,7 +21,7 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources OutputProofBegin semantic",
       manifestPosition: 76,
-      publicationPosition: 387,
+      publicationPosition: 418,
       referenceRolePosition: 191,
       commands: [],
       validatorTitle:
@@ -36,7 +36,7 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources OutputProofStep semantic",
       manifestPosition: 77,
-      publicationPosition: 388,
+      publicationPosition: 419,
       referenceRolePosition: 192,
       commands: [],
       validatorTitle:
@@ -51,7 +51,7 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources OutputProofFinalize semantic",
       manifestPosition: 78,
-      publicationPosition: 389,
+      publicationPosition: 420,
       referenceRolePosition: 193,
       commands: [],
       validatorTitle:
@@ -66,7 +66,7 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources OutputProofFinish semantic",
       manifestPosition: 79,
-      publicationPosition: 390,
+      publicationPosition: 421,
       referenceRolePosition: 194,
       commands: [],
       validatorTitle:
@@ -81,7 +81,7 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageZeroBegin semantic",
       manifestPosition: 80,
-      publicationPosition: 391,
+      publicationPosition: 422,
       referenceRolePosition: 195,
       commands: [],
       validatorTitle:
@@ -96,7 +96,7 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageZeroFinish semantic",
       manifestPosition: 81,
-      publicationPosition: 392,
+      publicationPosition: 423,
       referenceRolePosition: 196,
       commands: [],
       validatorTitle:
@@ -111,7 +111,7 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageZeroHashBlock semantic",
       manifestPosition: 82,
-      publicationPosition: 393,
+      publicationPosition: 424,
       referenceRolePosition: 197,
       commands: [],
       validatorTitle:
@@ -126,7 +126,7 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageZeroHashAdvance semantic",
       manifestPosition: 83,
-      publicationPosition: 394,
+      publicationPosition: 425,
       referenceRolePosition: 198,
       commands: [],
       validatorTitle:
@@ -141,7 +141,7 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageZeroHashTerminal semantic",
       manifestPosition: 84,
-      publicationPosition: 395,
+      publicationPosition: 426,
       referenceRolePosition: 199,
       commands: [],
       validatorTitle:
@@ -156,7 +156,7 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageNineMismatch semantic",
       manifestPosition: 85,
-      publicationPosition: 396,
+      publicationPosition: 427,
       referenceRolePosition: 200,
       commands: [],
       validatorTitle:
@@ -171,7 +171,7 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageNineNativeMatch semantic",
       manifestPosition: 86,
-      publicationPosition: 397,
+      publicationPosition: 428,
       referenceRolePosition: 201,
       commands: [],
       validatorTitle:
@@ -186,7 +186,7 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageNineEffectfulMatch semantic",
       manifestPosition: 87,
-      publicationPosition: 398,
+      publicationPosition: 429,
       referenceRolePosition: 202,
       commands: [],
       validatorTitle:
@@ -201,7 +201,7 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageNineMissing semantic",
       manifestPosition: 88,
-      publicationPosition: 399,
+      publicationPosition: 430,
       referenceRolePosition: 203,
       commands: [],
       validatorTitle:
@@ -216,7 +216,7 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageOneFinish semantic",
       manifestPosition: 89,
-      publicationPosition: 400,
+      publicationPosition: 431,
       referenceRolePosition: 204,
       commands: [],
       validatorTitle:
@@ -231,7 +231,7 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageOneRedeemer semantic",
       manifestPosition: 90,
-      publicationPosition: 401,
+      publicationPosition: 432,
       referenceRolePosition: 205,
       commands: [],
       validatorTitle:
@@ -246,7 +246,7 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageElevenFinish semantic",
       manifestPosition: 91,
-      publicationPosition: 402,
+      publicationPosition: 433,
       referenceRolePosition: 206,
       commands: [],
       validatorTitle:
@@ -261,7 +261,7 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageElevenSource semantic",
       manifestPosition: 92,
-      publicationPosition: 403,
+      publicationPosition: 434,
       referenceRolePosition: 207,
       commands: [],
       validatorTitle:
@@ -276,7 +276,7 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageTwelveFinish semantic",
       manifestPosition: 93,
-      publicationPosition: 404,
+      publicationPosition: 435,
       referenceRolePosition: 208,
       commands: [],
       validatorTitle:
@@ -291,7 +291,7 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageTwelveRedeemer semantic",
       manifestPosition: 94,
-      publicationPosition: 405,
+      publicationPosition: 436,
       referenceRolePosition: 209,
       commands: [],
       validatorTitle:
@@ -306,7 +306,7 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageTenMissing semantic",
       manifestPosition: 95,
-      publicationPosition: 406,
+      publicationPosition: 437,
       referenceRolePosition: 210,
       commands: [],
       validatorTitle:
@@ -321,7 +321,7 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageTenMismatch semantic",
       manifestPosition: 96,
-      publicationPosition: 407,
+      publicationPosition: 438,
       referenceRolePosition: 211,
       commands: [],
       validatorTitle:
@@ -336,7 +336,7 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageTenMatch semantic",
       manifestPosition: 97,
-      publicationPosition: 408,
+      publicationPosition: 439,
       referenceRolePosition: 212,
       commands: [],
       validatorTitle:
@@ -351,7 +351,7 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageEightFinish semantic",
       manifestPosition: 98,
-      publicationPosition: 409,
+      publicationPosition: 440,
       referenceRolePosition: 213,
       commands: [],
       validatorTitle:
@@ -366,7 +366,7 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageEightPurpose semantic",
       manifestPosition: 99,
-      publicationPosition: 410,
+      publicationPosition: 441,
       referenceRolePosition: 214,
       commands: [],
       validatorTitle:
@@ -381,7 +381,7 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageSevenObserver semantic",
       manifestPosition: 100,
-      publicationPosition: 411,
+      publicationPosition: 442,
       referenceRolePosition: 215,
       commands: [],
       validatorTitle:
@@ -396,7 +396,7 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageSevenReceive semantic",
       manifestPosition: 101,
-      publicationPosition: 412,
+      publicationPosition: 443,
       referenceRolePosition: 216,
       commands: [],
       validatorTitle:
@@ -411,7 +411,7 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageSevenFinish semantic",
       manifestPosition: 102,
-      publicationPosition: 413,
+      publicationPosition: 444,
       referenceRolePosition: 217,
       commands: [],
       validatorTitle:

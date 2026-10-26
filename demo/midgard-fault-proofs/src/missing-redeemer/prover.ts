@@ -9,35 +9,35 @@
 import * as SDK from "@al-ft/midgard-sdk";
 
 import {
+  directPurposeClaimEntry,
+  directPurposeClaimRoute,
+  directPurposeLeafAdmits,
+  isRedeemerBearingLanguage,
+} from "../direct-purpose-family/claim-route.js";
+import {
+  directPurposeFieldPlans,
+  type DirectPurposeTransition,
+} from "../direct-purpose-family/custody.js";
+import type { DirectPurposeContracts } from "../direct-purpose-family/family.js";
+import {
+  directPurposeScriptPurposes,
+  directPurposeSpendDescriptorPresent,
+} from "../direct-purpose-family/script-purposes.js";
+import {
+  directPurposeBindTransitions,
+  type DirectPurposeSourceEvidence,
+  directPurposeSourceTransitions,
+} from "../direct-purpose-family/source-walk.js";
+import {
   buildDirectSourceIndexEvidence,
-  directPurposeAt,
-  directReceiveCredentials,
   directRedeemerAt,
-  directSpendInputAt,
 } from "../direct-script-derivation/index.js";
 import type { DirectScriptMaterial } from "../direct-script-derivation/material.js";
 import {
   MISSING_REDEEMER_CATEGORY_LABEL,
   missingRedeemerContractRoles,
-  type MissingRedeemerContracts,
 } from "./contracts.js";
-import {
-  missingRedeemerFieldPlans,
-  type MissingRedeemerTransition,
-} from "./custody.js";
-import {
-  isRedeemerBearingLanguage,
-  missingRedeemerClaimEntry,
-  missingRedeemerClaimRoute,
-  missingRedeemerConvicts,
-  missingRedeemerLeafAdmits,
-  missingRedeemerObservedRoute,
-} from "./routes.js";
-import {
-  missingRedeemerBindTransitions,
-  type MissingRedeemerSourceEvidence,
-  missingRedeemerSourceTransitions,
-} from "./source-walk.js";
+import { missingRedeemerObservedRoute } from "./routes.js";
 
 export class MissingRedeemerHonestLeaf extends Error {
   constructor(message: string) {
@@ -48,45 +48,11 @@ export class MissingRedeemerHonestLeaf extends Error {
 
 type Coordinate = SDK.DirectPurposeCoordinate;
 
-/** Whether the spend at canonical rank `index` has a predecessor descriptor;
- * without one no purpose or membership can be shown for it. */
-const spendDescriptorPresent = (
-  material: DirectScriptMaterial,
-  index: bigint,
-): boolean => {
-  const spend = directSpendInputAt(material, index);
-  return (
-    spend !== null &&
-    material.ledger.root.entries.some((entry) => entry.key.equals(spend.item))
-  );
-};
-
-const coordinates = (kind: bigint, count: number): Coordinate[] =>
-  Array.from({ length: count }, (_, index) => ({
-    kind,
-    index: BigInt(index),
-  }));
-
-/** Every script purpose the leaf carries, observers first, then mints,
- * receives and spends; key-locked spends and spends with no predecessor
- * descriptor carry none. */
-const missingRedeemerScriptPurposes = (
-  material: DirectScriptMaterial,
-): readonly SDK.DirectPurpose[] =>
-  [
-    ...coordinates(2n, material.fields[3]!.length),
-    ...coordinates(1n, material.fields[5]!.length),
-    ...coordinates(3n, directReceiveCredentials(material.fields[2]!).length),
-    ...coordinates(0n, material.fields[0]!.length).filter(({ index }) =>
-      spendDescriptorPresent(material, index),
-    ),
-  ].flatMap((coordinate) => directPurposeAt(material, coordinate) ?? []);
-
 /** Script purposes whose redeemer-bearing source has no redeemer. */
 export const missingRedeemerObservedCandidates = async (
   material: DirectScriptMaterial,
-  evidence: MissingRedeemerSourceEvidence,
-  purposes: readonly SDK.DirectPurpose[] = missingRedeemerScriptPurposes(
+  evidence: DirectPurposeSourceEvidence,
+  purposes: readonly SDK.DirectPurpose[] = directPurposeScriptPurposes(
     material,
   ),
 ): Promise<readonly Coordinate[]> => {
@@ -104,10 +70,10 @@ export const missingRedeemerObservedCandidates = async (
 };
 
 export type MissingRedeemerProofPlan = {
-  readonly evidence: MissingRedeemerSourceEvidence;
-  readonly plan: ReturnType<typeof missingRedeemerFieldPlans>;
+  readonly evidence: DirectPurposeSourceEvidence;
+  readonly plan: ReturnType<typeof directPurposeFieldPlans>;
   /** Every custody transition from `bindEvent` to the terminal's input. */
-  readonly transitions: readonly MissingRedeemerTransition[];
+  readonly transitions: readonly DirectPurposeTransition[];
   readonly final: SDK.DirectClaimFinalState;
   readonly convicts: boolean;
 };
@@ -119,7 +85,7 @@ export const prepareMissingRedeemerProof = async ({
   observed,
 }: {
   readonly material: DirectScriptMaterial;
-  readonly contracts: MissingRedeemerContracts;
+  readonly contracts: DirectPurposeContracts;
   readonly prover: string;
   /** Leaves whose reason names no purpose: the purpose to scan; the first
    * candidate otherwise. */
@@ -127,11 +93,11 @@ export const prepareMissingRedeemerProof = async ({
 }): Promise<MissingRedeemerProofPlan> => {
   const roles = missingRedeemerContractRoles(contracts);
   const evidence = await buildDirectSourceIndexEvidence(material);
-  const plan = missingRedeemerFieldPlans(material, prover);
+  const plan = directPurposeFieldPlans(material, prover);
   const inputs = { material, evidence, prover, plan };
   const source = [
-    ...missingRedeemerBindTransitions(material, prover),
-    ...missingRedeemerSourceTransitions({
+    ...directPurposeBindTransitions(material, prover),
+    ...directPurposeSourceTransitions({
       material,
       evidence,
       prover,
@@ -141,8 +107,8 @@ export const prepareMissingRedeemerProof = async ({
     }),
   ];
   const reason = material.bound.subject.rejection_reason;
-  let route: readonly MissingRedeemerTransition[];
-  let claim: Awaited<ReturnType<typeof missingRedeemerClaimRoute>>;
+  let route: readonly DirectPurposeTransition[];
+  let claim: Awaited<ReturnType<typeof directPurposeClaimRoute>>;
   if (reason === null || SDK.purposeCoordinateOfReason(reason) === null) {
     const coordinate =
       observed ??
@@ -155,15 +121,15 @@ export const prepareMissingRedeemerProof = async ({
       inputs,
       coordinate,
     );
-    claim = await missingRedeemerClaimRoute(inputs, observedRoute.context);
+    claim = await directPurposeClaimRoute(inputs, observedRoute.context);
     route = observedRoute.transitions;
   } else {
     if (typeof reason === "string" || !("RedeemerMissing" in reason))
       throw new Error(
         `${MISSING_REDEEMER_CATEGORY_LABEL}: the leaf reason is not RedeemerMissing`,
       );
-    const entry = missingRedeemerClaimEntry(inputs);
-    claim = await missingRedeemerClaimRoute(inputs, entry.context);
+    const entry = directPurposeClaimEntry(inputs);
+    claim = await directPurposeClaimRoute(inputs, entry.context);
     route = [entry.transition];
   }
   return {
@@ -171,7 +137,7 @@ export const prepareMissingRedeemerProof = async ({
     plan,
     transitions: [...source, ...route, ...claim.transitions],
     final: claim.final,
-    convicts: missingRedeemerConvicts(claim.final),
+    convicts: SDK.directClaimConvicts(claim.final),
   };
 };
 
@@ -203,12 +169,15 @@ export const missingRedeemerDetection = async (
 ): Promise<{ readonly observed: Coordinate | null } | null> => {
   const reason = material.bound.subject.rejection_reason;
   if (reason === null || SDK.purposeCoordinateOfReason(reason) === null) {
-    const purposes = missingRedeemerScriptPurposes(material);
+    const purposes = directPurposeScriptPurposes(material);
     // Such a reason is admitted at every purpose coordinate or at none.
     if (
       purposes.length === 0 ||
       (reason !== null &&
-        missingRedeemerLeafAdmits(material.bound, purposes[0]!.coordinate))
+        directPurposeLeafAdmits(material.bound, {
+          coordinate: purposes[0]!.coordinate,
+          subcheck: "RedeemerRequired",
+        }))
     )
       return null;
     const evidence = await buildDirectSourceIndexEvidence(material);
@@ -226,7 +195,7 @@ export const missingRedeemerDetection = async (
     SDK.purposeCoordinateIsValid(coordinate) &&
     coordinate.kind === 0n &&
     coordinate.index < BigInt(material.fields[0]!.length) &&
-    !spendDescriptorPresent(material, coordinate.index)
+    !directPurposeSpendDescriptorPresent(material, coordinate.index)
   )
     return null;
   const evidence = await buildDirectSourceIndexEvidence(material);
@@ -234,11 +203,11 @@ export const missingRedeemerDetection = async (
     material,
     evidence,
     prover: DETECTION_PROVER,
-    plan: missingRedeemerFieldPlans(material, DETECTION_PROVER),
+    plan: directPurposeFieldPlans(material, DETECTION_PROVER),
   };
-  const claim = await missingRedeemerClaimRoute(
+  const claim = await directPurposeClaimRoute(
     inputs,
-    missingRedeemerClaimEntry(inputs).context,
+    directPurposeClaimEntry(inputs).context,
   );
-  return missingRedeemerConvicts(claim.final) ? { observed: null } : null;
+  return SDK.directClaimConvicts(claim.final) ? { observed: null } : null;
 };

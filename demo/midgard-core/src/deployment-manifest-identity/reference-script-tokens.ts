@@ -670,12 +670,72 @@ export const DEPLOYMENT_MANIFEST_BASE_REFERENCE_TOKEN_NAMES = Object.freeze({
   "V1 fraud-proof unused-script-witness step-04": "V1FpUnusedScriptWitnessS04",
   "V1 fraud-proof unused-script-witness step-05": "V1FpUnusedScriptWitnessS05",
   "V1 fraud-proof unused-script-witness step-06": "V1FpUnusedScriptWitnessS06",
-  "V1 fraud-proof missing-script-source step-01": "V1FpMissingScriptSourceS01",
-  "V1 fraud-proof missing-script-source step-02": "V1FpMissingScriptSourceS02",
-  "V1 fraud-proof missing-script-source step-03": "V1FpMissingScriptSourceS03",
-  "V1 fraud-proof missing-script-source step-04": "V1FpMissingScriptSourceS04",
-  "V1 fraud-proof missing-script-source step-05": "V1FpMissingScriptSourceS05",
-  "V1 fraud-proof missing-script-source step-06": "V1FpMissingScriptSourceS06",
+  "V1 fraud-proof missing-script-source step-01": "V1FpMissingSrcS01",
+  "V1 fraud-proof missing-script-source bind-event": "V1FpMissingSrcBindEvent",
+  "V1 fraud-proof missing-script-source bind-pre-state":
+    "V1FpMissingSrcBindPreState",
+  "V1 fraud-proof missing-script-source source-start": "V1FpMissingSrcSrcStart",
+  "V1 fraud-proof missing-script-source source-resolved":
+    "V1FpMissingSrcSrcResolved",
+  "V1 fraud-proof missing-script-source source-authenticate":
+    "V1FpMissingSrcSrcAuth",
+  "V1 fraud-proof missing-script-source source-map": "V1FpMissingSrcSrcMap",
+  "V1 fraud-proof missing-script-source source-input-finish":
+    "V1FpMissingSrcSrcInputFinish",
+  "V1 fraud-proof missing-script-source source-grammar":
+    "V1FpMissingSrcSrcGrammar",
+  "V1 fraud-proof missing-script-source source-witnesses":
+    "V1FpMissingSrcSrcWitnesses",
+  "V1 fraud-proof missing-script-source source-finish":
+    "V1FpMissingSrcSrcFinish",
+  "V1 fraud-proof missing-script-source family-entry": "V1FpMissingSrcEntry",
+  "V1 fraud-proof missing-script-source purpose-select":
+    "V1FpMissingSrcPurposeSelect",
+  "V1 fraud-proof missing-script-source spend-select":
+    "V1FpMissingSrcSpendSelect",
+  "V1 fraud-proof missing-script-source spend-scan": "V1FpMissingSrcSpendScan",
+  "V1 fraud-proof missing-script-source mint-grammar":
+    "V1FpMissingSrcMintGrammar",
+  "V1 fraud-proof missing-script-source mint-scan": "V1FpMissingSrcMintScan",
+  "V1 fraud-proof missing-script-source receive-start":
+    "V1FpMissingSrcRecvStart",
+  "V1 fraud-proof missing-script-source receive-grammar":
+    "V1FpMissingSrcRecvGrammar",
+  "V1 fraud-proof missing-script-source receive-outputs":
+    "V1FpMissingSrcRecvOutputs",
+  "V1 fraud-proof missing-script-source receive-finish":
+    "V1FpMissingSrcRecvFinish",
+  "V1 fraud-proof missing-script-source receive-declaration":
+    "V1FpMissingSrcRecvDecl",
+  "V1 fraud-proof missing-script-source source-lookup":
+    "V1FpMissingSrcSrcLookup",
+  "V1 fraud-proof missing-script-source observed-decision":
+    "V1FpMissingSrcObserved",
+  "V1 fraud-proof missing-script-source claim-start":
+    "V1FpMissingSrcClaimStart",
+  "V1 fraud-proof missing-script-source claim-spend-start":
+    "V1FpMissingSrcClaimSpendStart",
+  "V1 fraud-proof missing-script-source claim-spend-scan":
+    "V1FpMissingSrcClaimSpend",
+  "V1 fraud-proof missing-script-source claim-mint-grammar":
+    "V1FpMissingSrcClaimMintGrammar",
+  "V1 fraud-proof missing-script-source claim-mint-scan":
+    "V1FpMissingSrcClaimMintScan",
+  "V1 fraud-proof missing-script-source claim-receive-grammar":
+    "V1FpMissingSrcClaimRecvGrammar",
+  "V1 fraud-proof missing-script-source claim-receive-outputs":
+    "V1FpMissingSrcClaimRecvOutputs",
+  "V1 fraud-proof missing-script-source claim-receive-finish":
+    "V1FpMissingSrcClaimRecvFinish",
+  "V1 fraud-proof missing-script-source claim-receive-declaration":
+    "V1FpMissingSrcClaimRecvDecl",
+  "V1 fraud-proof missing-script-source claim-adjudicate":
+    "V1FpMissingSrcAdjudicate",
+  "V1 fraud-proof missing-script-source claimed-redeemer-grammar":
+    "V1FpMissingSrcClaimedGrammar",
+  "V1 fraud-proof missing-script-source claimed-redeemer-scan":
+    "V1FpMissingSrcClaimedScan",
+  "V1 fraud-proof missing-script-source terminal": "V1FpMissingSrcTerminal",
   "V1 fraud-proof missing-redeemer step-01": "V1FpMissingRdmrS01",
   "V1 fraud-proof missing-redeemer bind-event": "V1FpMissingRdmrBindEvent",
   "V1 fraud-proof missing-redeemer bind-pre-state":

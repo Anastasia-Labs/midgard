@@ -189,7 +189,12 @@ export {
   buildMissingScriptSourceFaultProofContracts,
   type BuildMissingScriptSourceFaultProofContractsParams,
   MISSING_SCRIPT_SOURCE_FAULT_PROOF_TITLES,
+  MISSING_SCRIPT_SOURCE_ROLE_ORDER,
+  type MissingScriptSourceChain,
   type MissingScriptSourceFaultProofContracts,
+  type MissingScriptSourceRole,
+  type MissingScriptSourceRoles,
+  missingScriptSourceRoles,
 } from "./families/missing-script-source.js";
 export {
   buildMissingSignatureFaultProofContracts,

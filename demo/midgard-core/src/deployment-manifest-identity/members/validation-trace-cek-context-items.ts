@@ -6,8 +6,8 @@ export const validationTraceCekContextItemsMembers = defineDeploymentFamily(
     validationTraceDisputeCekContextItemEntry: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK context item entry",
-      manifestPosition: 497,
-      publicationPosition: 531,
+      manifestPosition: 528,
+      publicationPosition: 562,
       referenceRolePosition: 338,
       commands: [],
       validatorTitle:
@@ -20,8 +20,8 @@ export const validationTraceCekContextItemsMembers = defineDeploymentFamily(
     validationTraceDisputeCekContextItemSettlement: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK context item settlement",
-      manifestPosition: 498,
-      publicationPosition: 532,
+      manifestPosition: 529,
+      publicationPosition: 563,
       referenceRolePosition: 339,
       commands: [],
       validatorTitle:

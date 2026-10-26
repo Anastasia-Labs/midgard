@@ -16,7 +16,7 @@ export const invalidSignatureMembers = defineDeploymentFamily(
     fraudProofInvalidSignatureStep02: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof invalid-signature step-02",
-      manifestPosition: 462,
+      manifestPosition: 493,
       publicationPosition: 99,
       referenceRolePosition: 176,
       commands: [],

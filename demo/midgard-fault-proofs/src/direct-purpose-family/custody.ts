@@ -1,4 +1,4 @@
-/** One custody transition of the `missingRedeemer` thread: the role it spends,
+/** One custody transition of a direct purpose thread: the role it spends,
  * the role it pays, the exact next datum, the fields it opens and the
  * redeemer built against Lucid's completed layout. */
 import type * as SDK from "@al-ft/midgard-sdk";
@@ -6,15 +6,15 @@ import { Data, type RedeemerContext, type UTxO } from "@lucid-evolution/lucid";
 
 import { createDirectFieldPlan } from "../direct-script-derivation/index.js";
 import type { DirectScriptMaterial } from "../direct-script-derivation/material.js";
-import type { MissingRedeemerRole } from "./contracts.js";
+import type { DirectPurposeRole } from "./family.js";
 
-export type MissingRedeemerIndices = {
+export type DirectPurposeIndices = {
   readonly input_index: bigint;
   readonly output_index: bigint;
 };
 
-export type MissingRedeemerRedeemerArgs = {
-  readonly indices: MissingRedeemerIndices;
+export type DirectPurposeRedeemerArgs = {
+  readonly indices: DirectPurposeIndices;
   readonly open: (field: number) => SDK.FieldOpening;
   readonly ctx: RedeemerContext;
   readonly thread: UTxO;
@@ -23,30 +23,30 @@ export type MissingRedeemerRedeemerArgs = {
   readonly membershipRewardAddress: string;
 };
 
-export type MissingRedeemerTransition = {
+export type DirectPurposeTransition = {
   readonly label: string;
-  readonly role: MissingRedeemerRole;
-  readonly next: MissingRedeemerRole;
+  readonly role: DirectPurposeRole;
+  readonly next: DirectPurposeRole;
   readonly datum: string;
   readonly fields: readonly number[];
   /** A PHAS membership withdrawal rides the transaction. */
   readonly membership?: { readonly redeemer: string };
-  readonly redeemer: (args: MissingRedeemerRedeemerArgs) => string;
+  readonly redeemer: (args: DirectPurposeRedeemerArgs) => string;
 };
 
-export type MissingRedeemerFieldPlan = ReturnType<typeof createDirectFieldPlan>;
+export type DirectPurposeFieldPlan = ReturnType<typeof createDirectFieldPlan>;
 
 /** Every field a thread transition can open: the input, output, observer,
  * mint, witness and redeemer fields. */
-export const MISSING_REDEEMER_FIELDS: readonly number[] = [0, 1, 2, 3, 5, 6, 8];
+export const DIRECT_PURPOSE_FIELDS: readonly number[] = [0, 1, 2, 3, 5, 6, 8];
 
 /** Every field the thread opens, planned once from the bound source. */
-export const missingRedeemerFieldPlans = (
+export const directPurposeFieldPlans = (
   material: DirectScriptMaterial,
   prover: string,
-): ((field: number) => MissingRedeemerFieldPlan) => {
+): ((field: number) => DirectPurposeFieldPlan) => {
   const plans = new Map(
-    MISSING_REDEEMER_FIELDS.map((field) => [
+    DIRECT_PURPOSE_FIELDS.map((field) => [
       field,
       createDirectFieldPlan(material, field, prover),
     ]),
@@ -54,7 +54,7 @@ export const missingRedeemerFieldPlans = (
   return (field) => {
     const plan = plans.get(field);
     if (plan === undefined)
-      throw new Error(`missing-redeemer: field ${field.toString()} unplanned`);
+      throw new Error(`direct purpose: field ${field.toString()} unplanned`);
     return plan;
   };
 };
@@ -71,7 +71,7 @@ export const pages = (
   size: number,
 ): readonly (readonly [number, number])[] => {
   if (!Number.isSafeInteger(size) || size <= 0)
-    throw new Error("missing-redeemer: page size must be positive");
+    throw new Error("direct purpose: page size must be positive");
   const result: (readonly [number, number])[] = [];
   for (let start = 0; start < count; start += size)
     result.push([start, Math.min(size, count - start)]);
@@ -81,15 +81,12 @@ export const pages = (
 /** One bounded page's progress arguments at `start` of `phase`. */
 export const progressArgs =
   (
-    plan: MissingRedeemerFieldPlan,
+    plan: DirectPurposeFieldPlan,
     phase: "Certifying" | "Walking",
     start: number,
     budget: number,
   ) =>
-  ({
-    indices,
-    open,
-  }: Pick<MissingRedeemerRedeemerArgs, "indices" | "open">) => ({
+  ({ indices, open }: Pick<DirectPurposeRedeemerArgs, "indices" | "open">) => ({
     ...indices,
     opening: open(plan.fieldIndex),
     checkpoint_bytes: plan.position(phase, start).checkpointBytes,

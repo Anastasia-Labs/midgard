@@ -6,19 +6,20 @@ export const missingRedeemerMembers = defineDeploymentFamily(
     fraudProofMissingRedeemer: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-redeemer step-01",
-      manifestPosition: 375,
-      publicationPosition: 248,
-      referenceRolePosition: 481,
+      manifestPosition: 406,
+      publicationPosition: 279,
+      referenceRolePosition: 512,
       commands: [],
-      validatorTitle: "fraud_proofs/missing_redeemer/step_01.main.spend",
+      validatorTitle:
+        "fraud_proofs/direct_script_derivation/step_01.main.spend",
       familyPaths: [["firstStep"], ["steps", "0"]],
     },
     fraudProofMissingRedeemerBindEvent: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-redeemer bind-event",
-      manifestPosition: 376,
-      publicationPosition: 249,
-      referenceRolePosition: 482,
+      manifestPosition: 407,
+      publicationPosition: 280,
+      referenceRolePosition: 513,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/bind_event.main.spend",
@@ -27,9 +28,9 @@ export const missingRedeemerMembers = defineDeploymentFamily(
     fraudProofMissingRedeemerBindPreState: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-redeemer bind-pre-state",
-      manifestPosition: 377,
-      publicationPosition: 250,
-      referenceRolePosition: 483,
+      manifestPosition: 408,
+      publicationPosition: 281,
+      referenceRolePosition: 514,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/bind_pre_state.main.spend",
@@ -38,9 +39,9 @@ export const missingRedeemerMembers = defineDeploymentFamily(
     fraudProofMissingRedeemerSourceStart: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-redeemer source-start",
-      manifestPosition: 378,
-      publicationPosition: 251,
-      referenceRolePosition: 484,
+      manifestPosition: 409,
+      publicationPosition: 282,
+      referenceRolePosition: 515,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_start.main.spend",
@@ -49,9 +50,9 @@ export const missingRedeemerMembers = defineDeploymentFamily(
     fraudProofMissingRedeemerSourceResolved: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-redeemer source-resolved",
-      manifestPosition: 379,
-      publicationPosition: 252,
-      referenceRolePosition: 485,
+      manifestPosition: 410,
+      publicationPosition: 283,
+      referenceRolePosition: 516,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_resolved.main.spend",
@@ -60,9 +61,9 @@ export const missingRedeemerMembers = defineDeploymentFamily(
     fraudProofMissingRedeemerSourceAuthenticate: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-redeemer source-authenticate",
-      manifestPosition: 380,
-      publicationPosition: 253,
-      referenceRolePosition: 486,
+      manifestPosition: 411,
+      publicationPosition: 284,
+      referenceRolePosition: 517,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_authenticate.main.spend",
@@ -71,9 +72,9 @@ export const missingRedeemerMembers = defineDeploymentFamily(
     fraudProofMissingRedeemerSourceMap: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-redeemer source-map",
-      manifestPosition: 381,
-      publicationPosition: 254,
-      referenceRolePosition: 487,
+      manifestPosition: 412,
+      publicationPosition: 285,
+      referenceRolePosition: 518,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_map.main.spend",
@@ -82,9 +83,9 @@ export const missingRedeemerMembers = defineDeploymentFamily(
     fraudProofMissingRedeemerSourceInputFinish: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-redeemer source-input-finish",
-      manifestPosition: 382,
-      publicationPosition: 255,
-      referenceRolePosition: 488,
+      manifestPosition: 413,
+      publicationPosition: 286,
+      referenceRolePosition: 519,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_input_finish.main.spend",
@@ -93,9 +94,9 @@ export const missingRedeemerMembers = defineDeploymentFamily(
     fraudProofMissingRedeemerSourceGrammar: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-redeemer source-grammar",
-      manifestPosition: 383,
-      publicationPosition: 256,
-      referenceRolePosition: 489,
+      manifestPosition: 414,
+      publicationPosition: 287,
+      referenceRolePosition: 520,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_grammar.main.spend",
@@ -104,9 +105,9 @@ export const missingRedeemerMembers = defineDeploymentFamily(
     fraudProofMissingRedeemerSourceWitnesses: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-redeemer source-witnesses",
-      manifestPosition: 384,
-      publicationPosition: 257,
-      referenceRolePosition: 490,
+      manifestPosition: 415,
+      publicationPosition: 288,
+      referenceRolePosition: 521,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_witnesses.main.spend",
@@ -115,9 +116,9 @@ export const missingRedeemerMembers = defineDeploymentFamily(
     fraudProofMissingRedeemerSourceFinish: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-redeemer source-finish",
-      manifestPosition: 385,
-      publicationPosition: 258,
-      referenceRolePosition: 491,
+      manifestPosition: 416,
+      publicationPosition: 289,
+      referenceRolePosition: 522,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_finish.main.spend",
@@ -126,9 +127,9 @@ export const missingRedeemerMembers = defineDeploymentFamily(
     fraudProofMissingRedeemerFamilyEntry: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-redeemer family-entry",
-      manifestPosition: 386,
-      publicationPosition: 259,
-      referenceRolePosition: 492,
+      manifestPosition: 417,
+      publicationPosition: 290,
+      referenceRolePosition: 523,
       commands: [],
       validatorTitle: "fraud_proofs/missing_redeemer/family_entry.main.spend",
       familyPaths: [["steps", "11"]],
@@ -136,9 +137,9 @@ export const missingRedeemerMembers = defineDeploymentFamily(
     fraudProofMissingRedeemerPurposeSelect: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-redeemer purpose-select",
-      manifestPosition: 387,
-      publicationPosition: 260,
-      referenceRolePosition: 493,
+      manifestPosition: 418,
+      publicationPosition: 291,
+      referenceRolePosition: 524,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/purpose_select.main.spend",
@@ -147,9 +148,9 @@ export const missingRedeemerMembers = defineDeploymentFamily(
     fraudProofMissingRedeemerSpendSelect: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-redeemer spend-select",
-      manifestPosition: 388,
-      publicationPosition: 261,
-      referenceRolePosition: 494,
+      manifestPosition: 419,
+      publicationPosition: 292,
+      referenceRolePosition: 525,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/spend_select.main.spend",
@@ -158,9 +159,9 @@ export const missingRedeemerMembers = defineDeploymentFamily(
     fraudProofMissingRedeemerSpendScan: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-redeemer spend-scan",
-      manifestPosition: 389,
-      publicationPosition: 262,
-      referenceRolePosition: 495,
+      manifestPosition: 420,
+      publicationPosition: 293,
+      referenceRolePosition: 526,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/spend_scan.main.spend",
@@ -169,9 +170,9 @@ export const missingRedeemerMembers = defineDeploymentFamily(
     fraudProofMissingRedeemerMintGrammar: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-redeemer mint-grammar",
-      manifestPosition: 390,
-      publicationPosition: 263,
-      referenceRolePosition: 496,
+      manifestPosition: 421,
+      publicationPosition: 294,
+      referenceRolePosition: 527,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/mint_grammar.main.spend",
@@ -180,9 +181,9 @@ export const missingRedeemerMembers = defineDeploymentFamily(
     fraudProofMissingRedeemerMintScan: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-redeemer mint-scan",
-      manifestPosition: 391,
-      publicationPosition: 264,
-      referenceRolePosition: 497,
+      manifestPosition: 422,
+      publicationPosition: 295,
+      referenceRolePosition: 528,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/mint_scan.main.spend",
@@ -191,9 +192,9 @@ export const missingRedeemerMembers = defineDeploymentFamily(
     fraudProofMissingRedeemerReceiveStart: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-redeemer receive-start",
-      manifestPosition: 392,
-      publicationPosition: 265,
-      referenceRolePosition: 498,
+      manifestPosition: 423,
+      publicationPosition: 296,
+      referenceRolePosition: 529,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/receive_start.main.spend",
@@ -202,9 +203,9 @@ export const missingRedeemerMembers = defineDeploymentFamily(
     fraudProofMissingRedeemerReceiveGrammar: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-redeemer receive-grammar",
-      manifestPosition: 393,
-      publicationPosition: 266,
-      referenceRolePosition: 499,
+      manifestPosition: 424,
+      publicationPosition: 297,
+      referenceRolePosition: 530,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/receive_grammar.main.spend",
@@ -213,9 +214,9 @@ export const missingRedeemerMembers = defineDeploymentFamily(
     fraudProofMissingRedeemerReceiveOutputs: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-redeemer receive-outputs",
-      manifestPosition: 394,
-      publicationPosition: 267,
-      referenceRolePosition: 500,
+      manifestPosition: 425,
+      publicationPosition: 298,
+      referenceRolePosition: 531,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/receive_outputs.main.spend",
@@ -224,9 +225,9 @@ export const missingRedeemerMembers = defineDeploymentFamily(
     fraudProofMissingRedeemerReceiveFinish: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-redeemer receive-finish",
-      manifestPosition: 395,
-      publicationPosition: 268,
-      referenceRolePosition: 501,
+      manifestPosition: 426,
+      publicationPosition: 299,
+      referenceRolePosition: 532,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/receive_finish.main.spend",
@@ -235,9 +236,9 @@ export const missingRedeemerMembers = defineDeploymentFamily(
     fraudProofMissingRedeemerReceiveDeclaration: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-redeemer receive-declaration",
-      manifestPosition: 396,
-      publicationPosition: 269,
-      referenceRolePosition: 502,
+      manifestPosition: 427,
+      publicationPosition: 300,
+      referenceRolePosition: 533,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/receive_declaration.main.spend",
@@ -246,9 +247,9 @@ export const missingRedeemerMembers = defineDeploymentFamily(
     fraudProofMissingRedeemerSourceLookup: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-redeemer source-lookup",
-      manifestPosition: 397,
-      publicationPosition: 270,
-      referenceRolePosition: 503,
+      manifestPosition: 428,
+      publicationPosition: 301,
+      referenceRolePosition: 534,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_lookup.main.spend",
@@ -257,9 +258,9 @@ export const missingRedeemerMembers = defineDeploymentFamily(
     fraudProofMissingRedeemerStep02: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-redeemer step-02",
-      manifestPosition: 398,
-      publicationPosition: 271,
-      referenceRolePosition: 504,
+      manifestPosition: 429,
+      publicationPosition: 302,
+      referenceRolePosition: 535,
       commands: [],
       validatorTitle: "fraud_proofs/missing_redeemer/step_02.main.spend",
       familyPaths: [["steps", "23"]],
@@ -267,9 +268,9 @@ export const missingRedeemerMembers = defineDeploymentFamily(
     fraudProofMissingRedeemerStep03: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-redeemer step-03",
-      manifestPosition: 399,
-      publicationPosition: 272,
-      referenceRolePosition: 505,
+      manifestPosition: 430,
+      publicationPosition: 303,
+      referenceRolePosition: 536,
       commands: [],
       validatorTitle: "fraud_proofs/missing_redeemer/step_03.main.spend",
       familyPaths: [["steps", "24"]],
@@ -277,9 +278,9 @@ export const missingRedeemerMembers = defineDeploymentFamily(
     fraudProofMissingRedeemerStep04: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-redeemer step-04",
-      manifestPosition: 400,
-      publicationPosition: 273,
-      referenceRolePosition: 506,
+      manifestPosition: 431,
+      publicationPosition: 304,
+      referenceRolePosition: 537,
       commands: [],
       validatorTitle: "fraud_proofs/missing_redeemer/step_04.main.spend",
       familyPaths: [["steps", "25"]],
@@ -287,9 +288,9 @@ export const missingRedeemerMembers = defineDeploymentFamily(
     fraudProofMissingRedeemerClaimStart: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-redeemer claim-start",
-      manifestPosition: 401,
-      publicationPosition: 274,
-      referenceRolePosition: 507,
+      manifestPosition: 432,
+      publicationPosition: 305,
+      referenceRolePosition: 538,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/claim_start.main.spend",
@@ -298,9 +299,9 @@ export const missingRedeemerMembers = defineDeploymentFamily(
     fraudProofMissingRedeemerClaimSpendStart: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-redeemer claim-spend-start",
-      manifestPosition: 402,
-      publicationPosition: 275,
-      referenceRolePosition: 508,
+      manifestPosition: 433,
+      publicationPosition: 306,
+      referenceRolePosition: 539,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/claim_spend_start.main.spend",
@@ -309,9 +310,9 @@ export const missingRedeemerMembers = defineDeploymentFamily(
     fraudProofMissingRedeemerClaimSpendScan: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-redeemer claim-spend-scan",
-      manifestPosition: 403,
-      publicationPosition: 276,
-      referenceRolePosition: 509,
+      manifestPosition: 434,
+      publicationPosition: 307,
+      referenceRolePosition: 540,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/claim_spend_scan.main.spend",
@@ -320,9 +321,9 @@ export const missingRedeemerMembers = defineDeploymentFamily(
     fraudProofMissingRedeemerClaimMintGrammar: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-redeemer claim-mint-grammar",
-      manifestPosition: 404,
-      publicationPosition: 277,
-      referenceRolePosition: 510,
+      manifestPosition: 435,
+      publicationPosition: 308,
+      referenceRolePosition: 541,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/claim_mint_grammar.main.spend",
@@ -331,9 +332,9 @@ export const missingRedeemerMembers = defineDeploymentFamily(
     fraudProofMissingRedeemerClaimMintScan: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-redeemer claim-mint-scan",
-      manifestPosition: 405,
-      publicationPosition: 278,
-      referenceRolePosition: 511,
+      manifestPosition: 436,
+      publicationPosition: 309,
+      referenceRolePosition: 542,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/claim_mint_scan.main.spend",
@@ -342,9 +343,9 @@ export const missingRedeemerMembers = defineDeploymentFamily(
     fraudProofMissingRedeemerClaimReceiveGrammar: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-redeemer claim-receive-grammar",
-      manifestPosition: 406,
-      publicationPosition: 279,
-      referenceRolePosition: 512,
+      manifestPosition: 437,
+      publicationPosition: 310,
+      referenceRolePosition: 543,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/claim_receive_grammar.main.spend",
@@ -353,9 +354,9 @@ export const missingRedeemerMembers = defineDeploymentFamily(
     fraudProofMissingRedeemerClaimReceiveOutputs: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-redeemer claim-receive-outputs",
-      manifestPosition: 407,
-      publicationPosition: 280,
-      referenceRolePosition: 513,
+      manifestPosition: 438,
+      publicationPosition: 311,
+      referenceRolePosition: 544,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/claim_receive_outputs.main.spend",
@@ -364,9 +365,9 @@ export const missingRedeemerMembers = defineDeploymentFamily(
     fraudProofMissingRedeemerClaimReceiveFinish: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-redeemer claim-receive-finish",
-      manifestPosition: 408,
-      publicationPosition: 281,
-      referenceRolePosition: 514,
+      manifestPosition: 439,
+      publicationPosition: 312,
+      referenceRolePosition: 545,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/claim_receive_finish.main.spend",
@@ -376,9 +377,9 @@ export const missingRedeemerMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole:
         "V1 fraud-proof missing-redeemer claim-receive-declaration",
-      manifestPosition: 409,
-      publicationPosition: 282,
-      referenceRolePosition: 515,
+      manifestPosition: 440,
+      publicationPosition: 313,
+      referenceRolePosition: 546,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/claim_receive_declaration.main.spend",
@@ -387,9 +388,9 @@ export const missingRedeemerMembers = defineDeploymentFamily(
     fraudProofMissingRedeemerClaimAdjudicate: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-redeemer claim-adjudicate",
-      manifestPosition: 410,
-      publicationPosition: 283,
-      referenceRolePosition: 516,
+      manifestPosition: 441,
+      publicationPosition: 314,
+      referenceRolePosition: 547,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/claim_adjudicate.main.spend",
@@ -398,9 +399,9 @@ export const missingRedeemerMembers = defineDeploymentFamily(
     fraudProofMissingRedeemerClaimedRedeemerGrammar: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-redeemer claimed-redeemer-grammar",
-      manifestPosition: 411,
-      publicationPosition: 284,
-      referenceRolePosition: 517,
+      manifestPosition: 442,
+      publicationPosition: 315,
+      referenceRolePosition: 548,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/claimed_redeemer_grammar.main.spend",
@@ -409,9 +410,9 @@ export const missingRedeemerMembers = defineDeploymentFamily(
     fraudProofMissingRedeemerClaimedRedeemerScan: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-redeemer claimed-redeemer-scan",
-      manifestPosition: 412,
-      publicationPosition: 285,
-      referenceRolePosition: 518,
+      manifestPosition: 443,
+      publicationPosition: 316,
+      referenceRolePosition: 549,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/claimed_redeemer_scan.main.spend",
@@ -420,9 +421,9 @@ export const missingRedeemerMembers = defineDeploymentFamily(
     fraudProofMissingRedeemerStep05: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-redeemer step-05",
-      manifestPosition: 413,
-      publicationPosition: 286,
-      referenceRolePosition: 519,
+      manifestPosition: 444,
+      publicationPosition: 317,
+      referenceRolePosition: 550,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/claim_terminal.main.spend",

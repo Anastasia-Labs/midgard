@@ -5,10 +5,10 @@ use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{
   cancel, continue, pass_native_tx_to_next_step_carried,
 }
-use midgard/fraud_proofs/direct_script_derivation/types.{SourceBoundV1}
-use midgard/fraud_proofs/missing_redeemer/step_01.{
+use midgard/fraud_proofs/direct_script_derivation/step_01.{
   AcceptedSource, Args, Datum, ForcedSource, SpendRedeemer,
 }
+use midgard/fraud_proofs/direct_script_derivation/types.{SourceBoundV1}
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/fraud_proofs/source_carriage_v1
 

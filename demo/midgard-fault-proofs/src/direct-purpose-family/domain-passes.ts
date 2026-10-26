@@ -9,33 +9,28 @@ import {
   buildDirectReceiveEvidence,
   directSpendEvidence,
 } from "../direct-script-derivation/index.js";
-import type { MissingRedeemerRole } from "./contracts.js";
 import {
+  type DirectPurposeFieldPlan,
+  type DirectPurposeRedeemerArgs,
+  type DirectPurposeTransition,
   grammarPages,
-  type MissingRedeemerFieldPlan,
-  type MissingRedeemerRedeemerArgs,
-  type MissingRedeemerTransition,
   pages,
   progressArgs,
 } from "./custody.js";
-import {
-  MISSING_REDEEMER_SCAN_BATCH,
-  type RouteInputs,
-} from "./pointer-scan.js";
+import type { DirectPurposeRole } from "./family.js";
+import { DIRECT_PURPOSE_SCAN_BATCH, type RouteInputs } from "./pointer-scan.js";
 import { membershipRedeemer } from "./source-walk.js";
 
-type Role = MissingRedeemerRole;
-type Indices = MissingRedeemerRedeemerArgs["indices"];
-export type MissingRedeemerProgress = ReturnType<
-  ReturnType<typeof progressArgs>
->;
+type Role = DirectPurposeRole;
+type Indices = DirectPurposeRedeemerArgs["indices"];
+export type DirectPurposeProgress = ReturnType<ReturnType<typeof progressArgs>>;
 
 const batchOf = (inputs: RouteInputs) =>
-  inputs.batch ?? MISSING_REDEEMER_SCAN_BATCH;
+  inputs.batch ?? DIRECT_PURPOSE_SCAN_BATCH;
 
 /** Variable-field certification pages: the last page yields the walking
  * cursor at zero, complete only for an empty field. */
-const certifyPages = (plan: MissingRedeemerFieldPlan, batch: number) => {
+const certifyPages = (plan: DirectPurposeFieldPlan, batch: number) => {
   const count = plan.items.length;
   return grammarPages(count, batch).map(([start, budget]) => {
     const last = start + budget >= count;
@@ -60,7 +55,7 @@ const pagesFrom = (count: number, from: number, batch: number) =>
 
 /** The spent item at canonical rank `index` with its raw position, its
  * descriptor's ledger membership and that membership's withdrawal. */
-export const missingRedeemerSpendEvidence = async (
+export const directPurposeSpendEvidence = async (
   inputs: RouteInputs,
   index: bigint,
 ) => {
@@ -78,14 +73,14 @@ export const missingRedeemerSpendEvidence = async (
     carriage: ({
       ctx,
       membershipRewardAddress,
-    }: MissingRedeemerRedeemerArgs): SDK.MembershipCarriage => ({
+    }: DirectPurposeRedeemerArgs): SDK.MembershipCarriage => ({
       RedeemerCarriedMembership: {
         membership_proof: spend.proof,
         membership_proof_script_redeemer_index:
           SDK.requireWithdrawalRedeemerIndex(
             ctx,
             membershipRewardAddress,
-            "missing-redeemer spend membership",
+            "direct purpose spend membership",
           ),
       },
     }),
@@ -115,7 +110,7 @@ export const spendRankPass = <State>(
       readonly complete: boolean;
     }) => State;
     readonly datum: (state: State) => string;
-    readonly redeemer: (args: MissingRedeemerProgress) => string;
+    readonly redeemer: (args: DirectPurposeProgress) => string;
   },
 ) => {
   const plan = inputs.plan(0);
@@ -129,7 +124,7 @@ export const spendRankPass = <State>(
     ),
     complete: end === count,
   });
-  const transitions: MissingRedeemerTransition[] = pagesFrom(
+  const transitions: DirectPurposeTransition[] = pagesFrom(
     count,
     from,
     batchOf(inputs),
@@ -156,8 +151,8 @@ export const mintPass = (
     readonly grammar: Role;
     readonly scan: Role;
     readonly datum: (scan: SDK.DirectMintPurposeState) => string;
-    readonly grammarRedeemer: (args: MissingRedeemerProgress) => string;
-    readonly scanRedeemer: (args: MissingRedeemerProgress) => string;
+    readonly grammarRedeemer: (args: DirectPurposeProgress) => string;
+    readonly scanRedeemer: (args: DirectPurposeProgress) => string;
   },
 ) => {
   const plan = inputs.plan(5);
@@ -173,7 +168,7 @@ export const mintPass = (
     complete: false,
   };
   const initial = spec.datum(state);
-  const transitions: MissingRedeemerTransition[] = [];
+  const transitions: DirectPurposeTransition[] = [];
   for (const page of certifyPages(plan, batch)) {
     state = { ...state, cursor: page.cursor, complete: page.complete };
     const args = progressArgs(plan, "Certifying", page.start, page.budget);
@@ -218,7 +213,7 @@ export const mintPass = (
   return { initial, transitions, state };
 };
 
-export type MissingRedeemerOutputScanArgs = {
+export type DirectPurposeOutputScanArgs = {
   readonly indices: Indices;
   readonly opening: SDK.FieldOpening;
   readonly checkpoint_bytes: string;
@@ -234,8 +229,8 @@ export const receiveOutputsPass = async (
     readonly grammar: Role;
     readonly outputs: Role;
     readonly datum: (scan: SDK.DirectReceiveOutputState) => string;
-    readonly grammarRedeemer: (args: MissingRedeemerProgress) => string;
-    readonly scanRedeemer: (args: MissingRedeemerOutputScanArgs) => string;
+    readonly grammarRedeemer: (args: DirectPurposeProgress) => string;
+    readonly scanRedeemer: (args: DirectPurposeOutputScanArgs) => string;
   },
 ) => {
   const plan = inputs.plan(2);
@@ -250,7 +245,7 @@ export const receiveOutputsPass = async (
     complete: false,
   };
   const initial = spec.datum(state);
-  const transitions: MissingRedeemerTransition[] = [];
+  const transitions: DirectPurposeTransition[] = [];
   for (const page of certifyPages(plan, batch)) {
     state = { ...state, cursor: page.cursor, complete: page.complete };
     const args = progressArgs(plan, "Certifying", page.start, page.budget);
@@ -332,7 +327,7 @@ export const declarationPass = (
     selected: null,
   };
   let state = initialState;
-  const transitions: MissingRedeemerTransition[] = [];
+  const transitions: DirectPurposeTransition[] = [];
   for (const [start, budget] of pages(
     evidence.entries.length,
     batchOf(inputs),

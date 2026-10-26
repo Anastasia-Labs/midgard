@@ -1,5 +1,5 @@
-/** `missingRedeemer` terminal: the final state convicts, the computation
- * thread burns and the permanent fraud-proof token mints. */
+/** Direct purpose terminal: the final state convicts, the computation thread
+ * burns and the permanent fraud-proof token mints. */
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
@@ -31,15 +31,13 @@ import {
   workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary.js";
 import {
-  MISSING_REDEEMER_CATEGORY_LABEL,
-  type MissingRedeemerContracts,
-} from "./contracts.js";
-import { missingRedeemerConvicts } from "./routes.js";
+  type DirectPurposeContracts,
+  type DirectPurposeFamily,
+  directPurposeRoleIndex,
+} from "./family.js";
 
-const TERMINAL_INDEX = SDK.MISSING_REDEEMER_ROLE_ORDER.indexOf("terminal");
-const LABEL = `${MISSING_REDEEMER_CATEGORY_LABEL} terminal`;
-
-export const submitMissingRedeemerTerminal = async ({
+export const submitDirectPurposeTerminal = async <State>({
+  family,
   lucid,
   contracts,
   categoryId,
@@ -52,8 +50,9 @@ export const submitMissingRedeemerTerminal = async ({
   onSigned,
   requireConviction = true,
 }: {
+  readonly family: DirectPurposeFamily<State>;
   readonly lucid: LucidEvolution;
-  readonly contracts: MissingRedeemerContracts;
+  readonly contracts: DirectPurposeContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
@@ -65,29 +64,31 @@ export const submitMissingRedeemerTerminal = async ({
   /** False only to reach the validator with a non-convicting state. */
   readonly requireConviction?: boolean;
 }) => {
+  const terminalIndex = directPurposeRoleIndex(family, "terminal");
+  const label = `${family.label} terminal`;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
-    family: MISSING_REDEEMER_CATEGORY_LABEL,
-    stepIndex: TERMINAL_INDEX,
+    family: family.label,
+    stepIndex: terminalIndex,
     threadOutRef,
   });
   const state = requireLinearFaultStepState({
     threadUtxo,
     signer,
-    schema: SDK.DirectClaimFinalDatum,
-    family: MISSING_REDEEMER_CATEGORY_LABEL,
-    stepIndex: TERMINAL_INDEX,
+    schema: family.verdict.schema,
+    family: family.label,
+    stepIndex: terminalIndex,
   });
-  if (requireConviction && !missingRedeemerConvicts(state))
-    throw new Error(`${LABEL}: the final state does not convict`);
-  const step = contracts.steps[TERMINAL_INDEX]!;
+  if (requireConviction && !family.verdict.convicts(state))
+    throw new Error(`${label}: the final state does not convict`);
+  const step = contracts.steps[terminalIndex]!;
   const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: step.spendingScriptHash,
-    family: MISSING_REDEEMER_CATEGORY_LABEL,
-    stepIndex: TERMINAL_INDEX,
+    family: family.label,
+    stepIndex: terminalIndex,
   });
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
@@ -101,7 +102,7 @@ export const submitMissingRedeemerTerminal = async ({
   );
   let outputIndex: bigint | undefined;
   const spend = ((ctx) => {
-    SDK.requireOwnSpendPurpose(ctx, threadUtxo, LABEL);
+    SDK.requireOwnSpendPurpose(ctx, threadUtxo, label);
     outputIndex = SDK.requireUniqueOutputIndex(
       ctx.outputs,
       outputWithDatumAndUnitPredicate({
@@ -109,18 +110,18 @@ export const submitMissingRedeemerTerminal = async ({
         datum: fraudProofDatum,
         unit: fraudProofUnit,
       }),
-      `${LABEL} fraud-proof`,
+      `${label} fraud-proof`,
     );
     return Data.to(
       {
         Continue: [
           {
-            input_index: SDK.requireInputIndex(ctx, threadUtxo, LABEL),
+            input_index: SDK.requireInputIndex(ctx, threadUtxo, label),
             output_index: outputIndex,
             fraud_proof_mint_redeemer_index: SDK.requireMintRedeemerIndex(
               ctx,
               contracts.fraudProof.policyId,
-              `${LABEL} fraud-proof`,
+              `${label} fraud-proof`,
             ),
           },
         ],
@@ -132,7 +133,7 @@ export const submitMissingRedeemerTerminal = async ({
     SDK.requireOwnMintPurpose(
       ctx,
       contracts.computationThread.policyId,
-      `${LABEL} computation-thread burn`,
+      `${label} computation-thread burn`,
     );
     return Data.to(
       { Success: { burning_token_asset_name: threadToken.assetName } },
@@ -143,7 +144,7 @@ export const submitMissingRedeemerTerminal = async ({
     SDK.requireOwnMintPurpose(
       ctx,
       contracts.fraudProof.policyId,
-      `${LABEL} fraud-proof mint`,
+      `${label} fraud-proof mint`,
     );
     return Data.to(
       {
@@ -151,7 +152,7 @@ export const submitMissingRedeemerTerminal = async ({
         computation_thread_mint_redeemer_index: SDK.requireMintRedeemerIndex(
           ctx,
           contracts.computationThread.policyId,
-          `${LABEL} computation-thread burn`,
+          `${label} computation-thread burn`,
         ),
       },
       SDK.FraudProofTokenMintRedeemer,
@@ -160,12 +161,12 @@ export const submitMissingRedeemerTerminal = async ({
   const burnCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
-    label: `${LABEL} computation-thread burn`,
+    label: `${label} computation-thread burn`,
   });
   const mintCarriage = witnessMintingPolicyCarriage({
     script: contracts.fraudProof.mintingScript,
     referenceUtxo: witnessReferenceScripts?.fraudProofMint,
-    label: `${LABEL} fraud-proof mint`,
+    label: `${label} fraud-proof mint`,
   });
   const unsigned = await lucid
     .newTx()
@@ -186,7 +187,7 @@ export const submitMissingRedeemerTerminal = async ({
     ])
     .complete({ localUPLCEval: true });
   if (outputIndex === undefined)
-    throw new Error(`${LABEL}: completed layout unresolved`);
+    throw new Error(`${label}: completed layout unresolved`);
   const signed = await unsigned.sign.withWallet().complete();
   onSigned?.("terminal", signed);
   const expected = await reachFraudProofPreSubmitBoundary({
@@ -195,7 +196,7 @@ export const submitMissingRedeemerTerminal = async ({
       signed,
       candidates: [
         {
-          role: LABEL,
+          role: label,
           utxo: stepReference,
           expectedScript: step.spendingScript,
         },
@@ -216,7 +217,7 @@ export const submitMissingRedeemerTerminal = async ({
   const txHash = await signed.submit();
   if (txHash !== expected)
     throw new Error(
-      `${LABEL}: provider returned ${txHash}, expected ${expected}`,
+      `${label}: provider returned ${txHash}, expected ${expected}`,
     );
   if (awaitConfirmation)
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);

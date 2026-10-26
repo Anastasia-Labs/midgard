@@ -6,21 +6,21 @@ import { Data } from "@lucid-evolution/lucid";
 import { directRedeemerAt } from "../direct-script-derivation/index.js";
 import type { DirectScriptMaterial } from "../direct-script-derivation/material.js";
 import {
+  type DirectPurposeFieldPlan,
+  type DirectPurposeTransition,
   grammarPages,
-  type MissingRedeemerFieldPlan,
-  type MissingRedeemerTransition,
   pages,
 } from "./custody.js";
-import type { MissingRedeemerSourceEvidence } from "./source-walk.js";
+import type { DirectPurposeSourceEvidence } from "./source-walk.js";
 
 /** `rule.scan_batch`: field-8 items certified or walked per transaction. */
-export const MISSING_REDEEMER_SCAN_BATCH = 16;
+export const DIRECT_PURPOSE_SCAN_BATCH = 16;
 
 export type RouteInputs = {
   readonly material: DirectScriptMaterial;
-  readonly evidence: MissingRedeemerSourceEvidence;
+  readonly evidence: DirectPurposeSourceEvidence;
   readonly prover: string;
-  readonly plan: (field: number) => MissingRedeemerFieldPlan;
+  readonly plan: (field: number) => DirectPurposeFieldPlan;
   readonly batch?: number;
 };
 
@@ -50,17 +50,17 @@ export const pointerScan = (
     readonly scan: "observedScan" | "claimedRedeemerScan";
     readonly datum: (state: SDK.DirectRedeemerScanState) => string;
     readonly finish: (decision: SDK.DirectRedeemerDecisionState) => {
-      readonly next: MissingRedeemerTransition["next"];
+      readonly next: DirectPurposeTransition["next"];
       readonly datum: string;
     };
   },
 ) => {
   const { material, plan } = inputs;
-  const batch = inputs.batch ?? MISSING_REDEEMER_SCAN_BATCH;
+  const batch = inputs.batch ?? DIRECT_PURPOSE_SCAN_BATCH;
   const coordinate = authenticated.selection.coordinate;
   const count = plan(8).items.length;
   const match = directRedeemerAt(material.fields[8]!, coordinate);
-  const out: MissingRedeemerTransition[] = [];
+  const out: DirectPurposeTransition[] = [];
   let state: SDK.DirectRedeemerScanState = {
     authenticated,
     scan: {
@@ -73,7 +73,7 @@ export const pointerScan = (
   const initial = datum(state);
   const progress =
     (phase: "Certifying" | "Walking", start: number, budget: number) =>
-    ({ indices, open }: Parameters<MissingRedeemerTransition["redeemer"]>[0]) =>
+    ({ indices, open }: Parameters<DirectPurposeTransition["redeemer"]>[0]) =>
       ({
         ...indices,
         opening: open(8),

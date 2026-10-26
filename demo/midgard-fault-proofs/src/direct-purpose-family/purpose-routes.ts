@@ -6,14 +6,14 @@ import { Data } from "@lucid-evolution/lucid";
 
 import { directPurposeAt } from "../direct-script-derivation/index.js";
 import {
-  type MissingRedeemerIndices,
-  type MissingRedeemerTransition,
+  type DirectPurposeIndices,
+  type DirectPurposeTransition,
   stepDatum,
 } from "./custody.js";
 import {
   declarationPass,
+  directPurposeSpendEvidence,
   mintPass,
-  missingRedeemerSpendEvidence,
   receiveOutputsPass,
   spendRankPass,
 } from "./domain-passes.js";
@@ -21,16 +21,16 @@ import { boundIndex, type RouteInputs } from "./pointer-scan.js";
 
 type Coordinate = SDK.DirectPurposeCoordinate;
 
-type Indices = MissingRedeemerIndices;
+type Indices = DirectPurposeIndices;
 
 const finishToLookup = (
   inputs: RouteInputs,
   selection: SDK.DirectPurposeSelection,
   transition: Pick<
-    MissingRedeemerTransition,
+    DirectPurposeTransition,
     "label" | "role" | "fields" | "redeemer"
   >,
-): MissingRedeemerTransition => ({
+): DirectPurposeTransition => ({
   ...transition,
   next: "sourceLookup",
   datum: stepDatum(inputs.prover, selection, SDK.DirectSourceLookupDatum),
@@ -38,12 +38,9 @@ const finishToLookup = (
 
 const finishAction = (
   label: string,
-  role: MissingRedeemerTransition["role"],
+  role: DirectPurposeTransition["role"],
   encode: (indices: Indices) => string,
-): Pick<
-  MissingRedeemerTransition,
-  "label" | "role" | "fields" | "redeemer"
-> => ({
+): Pick<DirectPurposeTransition, "label" | "role" | "fields" | "redeemer"> => ({
   label,
   role,
   fields: [],
@@ -54,11 +51,11 @@ const spendSelection = async (
   inputs: RouteInputs,
   coordinate: Coordinate,
   purpose: SDK.DirectPurpose,
-): Promise<readonly MissingRedeemerTransition[]> => {
+): Promise<readonly DirectPurposeTransition[]> => {
   const { prover } = inputs;
-  const spend = await missingRedeemerSpendEvidence(inputs, coordinate.index);
+  const spend = await directPurposeSpendEvidence(inputs, coordinate.index);
   if (spend === null)
-    throw new Error("missing-redeemer: observed spend is absent");
+    throw new Error("direct purpose: observed spend is absent");
   const work = (progress: {
     readonly cursor: SDK.DirectFieldCursor;
     readonly rank: bigint;
@@ -84,7 +81,7 @@ const spendSelection = async (
       Data.to({ Continue: [{ Scan: { args } }] }, SDK.DirectSpendScanRedeemer),
   });
   if (rank.final.rank !== coordinate.index)
-    throw new Error("missing-redeemer: observed spend rank differs");
+    throw new Error("direct purpose: observed spend rank differs");
   return [
     {
       label: "observe spend select",
@@ -132,7 +129,7 @@ const spendSelection = async (
 const mintSelection = (
   inputs: RouteInputs,
   coordinate: Coordinate,
-): readonly MissingRedeemerTransition[] => {
+): readonly DirectPurposeTransition[] => {
   const { prover } = inputs;
   const pass = mintPass(inputs, coordinate.index, {
     label: "observed mint",
@@ -179,7 +176,7 @@ const mintSelection = (
 const receiveSelection = async (
   inputs: RouteInputs,
   coordinate: Coordinate,
-): Promise<readonly MissingRedeemerTransition[]> => {
+): Promise<readonly DirectPurposeTransition[]> => {
   const { prover } = inputs;
   const outputs = await receiveOutputsPass(inputs, {
     label: "observed receive",
@@ -289,17 +286,17 @@ const receiveSelection = async (
 
 /** Purpose-select through the kind's domain to the selection the source
  * lookup authenticates; the purpose must exist. */
-export const missingRedeemerObservedSelection = async (
+export const directPurposeObservedSelection = async (
   inputs: RouteInputs,
   coordinate: Coordinate,
 ): Promise<{
   readonly selection: SDK.DirectPurposeSelection;
   readonly purpose: SDK.DirectPurpose;
-  readonly transitions: readonly MissingRedeemerTransition[];
+  readonly transitions: readonly DirectPurposeTransition[];
 }> => {
   const purpose = directPurposeAt(inputs.material, coordinate);
   if (purpose === null)
-    throw new Error("missing-redeemer: observed purpose is absent");
+    throw new Error("direct purpose: observed purpose is absent");
   const selection: SDK.DirectPurposeSelection = {
     ...boundIndex(inputs),
     coordinate,

@@ -5,23 +5,20 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import { directPurposeAt } from "../direct-script-derivation/index.js";
-import { type MissingRedeemerTransition, stepDatum } from "./custody.js";
+import { type DirectPurposeTransition, stepDatum } from "./custody.js";
 import {
   declarationPass,
+  directPurposeSpendEvidence,
   mintPass,
-  missingRedeemerSpendEvidence,
   receiveOutputsPass,
   spendRankPass,
 } from "./domain-passes.js";
-import {
-  MISSING_REDEEMER_SCAN_BATCH,
-  type RouteInputs,
-} from "./pointer-scan.js";
+import { DIRECT_PURPOSE_SCAN_BATCH, type RouteInputs } from "./pointer-scan.js";
 
 type Coordinate = SDK.DirectPurposeCoordinate;
 
-export type MissingRedeemerClaimDomain = {
-  readonly transitions: readonly MissingRedeemerTransition[];
+export type DirectPurposeClaimDomain = {
+  readonly transitions: readonly DirectPurposeTransition[];
   /** The claimed purpose the domain proved, or null when it has none. */
   readonly purpose: SDK.DirectPurpose | null;
 };
@@ -39,9 +36,9 @@ const spendDomain = async (
   context: SDK.DirectClaimContext,
   coordinate: Coordinate,
   adjudicate: (fact: SDK.DirectClaimedPurposeFact) => string,
-): Promise<MissingRedeemerClaimDomain> => {
+): Promise<DirectPurposeClaimDomain> => {
   const { material, prover } = inputs;
-  const spend = await missingRedeemerSpendEvidence(inputs, coordinate.index);
+  const spend = await directPurposeSpendEvidence(inputs, coordinate.index);
   if (spend === null) {
     const fact = factOf(coordinate, null);
     return {
@@ -68,7 +65,7 @@ const spendDomain = async (
   }
   const purpose = directPurposeAt(material, coordinate);
   const count = inputs.plan(0).items.length;
-  const first = Math.min(inputs.batch ?? MISSING_REDEEMER_SCAN_BATCH, count);
+  const first = Math.min(inputs.batch ?? DIRECT_PURPOSE_SCAN_BATCH, count);
   const state = (progress: {
     readonly cursor: SDK.DirectFieldCursor;
     readonly rank: bigint;
@@ -98,7 +95,7 @@ const spendDomain = async (
       Data.to({ Continue: [{ Scan: { args } }] }, SDK.DirectClaimSpendRedeemer),
   });
   if (rank.final.rank !== coordinate.index)
-    throw new Error("missing-redeemer: claimed spend rank differs");
+    throw new Error("direct purpose: claimed spend rank differs");
   return {
     purpose,
     transitions: [
@@ -160,7 +157,7 @@ const mintDomain = (
   context: SDK.DirectClaimContext,
   coordinate: Coordinate,
   adjudicate: (fact: SDK.DirectClaimedPurposeFact) => string,
-): MissingRedeemerClaimDomain => {
+): DirectPurposeClaimDomain => {
   const { prover } = inputs;
   const plan = inputs.plan(5);
   const pass = mintPass(inputs, coordinate.index, {
@@ -234,7 +231,7 @@ const receiveDomain = async (
   context: SDK.DirectClaimContext,
   coordinate: Coordinate,
   adjudicate: (fact: SDK.DirectClaimedPurposeFact) => string,
-): Promise<MissingRedeemerClaimDomain> => {
+): Promise<DirectPurposeClaimDomain> => {
   const { prover } = inputs;
   const outputDatum = (scan: SDK.DirectReceiveOutputState) =>
     stepDatum(
@@ -349,7 +346,7 @@ const observeDomain = (
   inputs: RouteInputs,
   coordinate: Coordinate,
   adjudicate: (fact: SDK.DirectClaimedPurposeFact) => string,
-): MissingRedeemerClaimDomain => {
+): DirectPurposeClaimDomain => {
   const purpose = directPurposeAt(inputs.material, coordinate);
   return {
     purpose,
@@ -372,11 +369,11 @@ const observeDomain = (
 
 /** The claimed purpose domain for a valid coordinate distinct from the
  * observed one, by purpose kind. */
-export const missingRedeemerClaimDomain = (
+export const directPurposeClaimDomain = (
   inputs: RouteInputs,
   context: SDK.DirectClaimContext,
   coordinate: Coordinate,
-): Promise<MissingRedeemerClaimDomain> | MissingRedeemerClaimDomain => {
+): Promise<DirectPurposeClaimDomain> | DirectPurposeClaimDomain => {
   const adjudicate = (purpose: SDK.DirectClaimedPurposeFact) =>
     stepDatum(
       inputs.prover,

@@ -1,4 +1,4 @@
-/** Bind custody and the shared source walk of the `missingRedeemer` thread,
+/** Bind custody and the shared source walk of a direct purpose thread,
  * from the step-01 bound source to the family entry's bound source index. */
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
@@ -11,17 +11,17 @@ import {
 } from "../direct-script-derivation/index.js";
 import type { DirectScriptMaterial } from "../direct-script-derivation/material.js";
 import {
+  type DirectPurposeFieldPlan,
+  type DirectPurposeTransition,
   grammarPages,
-  type MissingRedeemerFieldPlan,
-  type MissingRedeemerTransition,
   pages,
   stepDatum,
 } from "./custody.js";
 
 /** Items authenticated, mapped or certified by one source-walk transaction. */
-export const MISSING_REDEEMER_SOURCE_BATCH = 8;
+export const DIRECT_PURPOSE_SOURCE_BATCH = 8;
 
-export type MissingRedeemerSourceEvidence = Awaited<
+export type DirectPurposeSourceEvidence = Awaited<
   ReturnType<typeof buildDirectSourceIndexEvidence>
 >;
 
@@ -39,10 +39,10 @@ export const membershipRedeemer = (
   ]);
 
 /** Event and transition bindings: each rides one PHAS membership withdrawal. */
-export const missingRedeemerBindTransitions = (
+export const directPurposeBindTransitions = (
   material: DirectScriptMaterial,
   prover: string,
-): readonly MissingRedeemerTransition[] => {
+): readonly DirectPurposeTransition[] => {
   const states = directBindingStates(material);
   return [
     {
@@ -98,24 +98,24 @@ export const missingRedeemerBindTransitions = (
 
 /** The input fields' resolved/authenticated/mapped pages, then the witness
  * field's grammar and source admissions, ending at the family entry. */
-export const missingRedeemerSourceTransitions = ({
+export const directPurposeSourceTransitions = ({
   material,
   evidence,
   prover,
   plan,
   resolvedScriptHash,
   witnessesScriptHash,
-  batch = MISSING_REDEEMER_SOURCE_BATCH,
+  batch = DIRECT_PURPOSE_SOURCE_BATCH,
 }: {
   readonly material: DirectScriptMaterial;
-  readonly evidence: MissingRedeemerSourceEvidence;
+  readonly evidence: DirectPurposeSourceEvidence;
   readonly prover: string;
-  readonly plan: (field: number) => MissingRedeemerFieldPlan;
+  readonly plan: (field: number) => DirectPurposeFieldPlan;
   readonly resolvedScriptHash: string;
   readonly witnessesScriptHash: string;
   readonly batch?: number;
-}): readonly MissingRedeemerTransition[] => {
-  const out: MissingRedeemerTransition[] = [];
+}): readonly DirectPurposeTransition[] => {
+  const out: DirectPurposeTransition[] = [];
   const scan = (data: SDK.DirectSourceScanState) =>
     stepDatum(prover, data, SDK.DirectSourceScanDatum);
   const steps = [...evidence.steps];
@@ -145,7 +145,7 @@ export const missingRedeemerSourceTransitions = ({
     const selected = inputs.filter((entry) => entry.fieldIndex === field);
     if (selected.length !== count)
       throw new Error(
-        `missing-redeemer: field ${field.toString()} source evidence differs`,
+        `direct purpose: field ${field.toString()} source evidence differs`,
       );
     for (const [start, budget] of pages(count, batch)) {
       const page = selected.slice(start, start + budget);
@@ -280,7 +280,7 @@ export const missingRedeemerSourceTransitions = ({
   }
   const witnessCount = plan(6).items.length;
   if (steps.length !== witnessCount)
-    throw new Error("missing-redeemer: witness source evidence differs");
+    throw new Error("direct purpose: witness source evidence differs");
   for (const [start, budget] of grammarPages(witnessCount, batch)) {
     const last = start + budget >= witnessCount;
     state = last
@@ -370,7 +370,7 @@ export const missingRedeemerSourceTransitions = ({
     state.source_index.root !== evidence.index.root ||
     state.source_index.count !== evidence.index.count
   )
-    throw new Error("missing-redeemer: walked source index differs");
+    throw new Error("direct purpose: walked source index differs");
   out.push({
     label: "witness exhausted",
     role: "sourceWitnesses",
@@ -423,7 +423,7 @@ const mapTransition = (
     readonly datum: string;
     readonly admissions: (SDK.DirectSourceAdmission | null)[];
   },
-): MissingRedeemerTransition => ({
+): DirectPurposeTransition => ({
   label: `${label} map ${start.toString()}`,
   role: "sourceMap",
   next,

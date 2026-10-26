@@ -1,4 +1,4 @@
-/** Submits one `missingRedeemer` custody transition: the thread moves from
+/** Submits one direct purpose custody transition: the thread moves from
  * its role to the next role with the exact next datum, the fields it opens
  * carried by reference, and a PHAS membership withdrawal where it binds. */
 import * as SDK from "@al-ft/midgard-sdk";
@@ -34,30 +34,31 @@ import {
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary.js";
-import {
-  MISSING_REDEEMER_CATEGORY_LABEL,
-  missingRedeemerContractRoles,
-  type MissingRedeemerContracts,
-  type MissingRedeemerRole,
-} from "./contracts.js";
 import type {
-  MissingRedeemerFieldPlan,
-  MissingRedeemerTransition,
+  DirectPurposeFieldPlan,
+  DirectPurposeTransition,
 } from "./custody.js";
+import {
+  type DirectPurposeContracts,
+  type DirectPurposeFamily,
+  type DirectPurposeRole,
+  directPurposeRoleValidator,
+} from "./family.js";
 
-export type MissingRedeemerCustody = {
+export type DirectPurposeCustody = {
+  readonly family: DirectPurposeFamily<unknown>;
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
   readonly network: Network;
-  readonly contracts: MissingRedeemerContracts;
+  readonly contracts: DirectPurposeContracts;
   readonly signer: ResolvedProverSigner;
   /** The thread's computation-thread unit. */
   readonly unit: string;
   /** Published reference script of each role the thread spends. */
-  readonly references: (role: MissingRedeemerRole) => UTxO;
+  readonly references: (role: DirectPurposeRole) => UTxO;
   /** Field-preimage carriage of each opened field; empty for inline tiers. */
   readonly carriage: (field: number) => readonly UTxO[];
-  readonly plan: (field: number) => MissingRedeemerFieldPlan;
+  readonly plan: (field: number) => DirectPurposeFieldPlan;
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
@@ -66,13 +67,13 @@ export type MissingRedeemerCustody = {
 };
 
 /** A deliberately different datum, redeemer or destination, for refusal rows. */
-export type MissingRedeemerTransitionOverride = {
+export type DirectPurposeTransitionOverride = {
   readonly datum?: string;
-  readonly redeemer?: MissingRedeemerTransition["redeemer"];
-  readonly next?: MissingRedeemerRole;
+  readonly redeemer?: DirectPurposeTransition["redeemer"];
+  readonly next?: DirectPurposeRole;
 };
 
-const phasMembership = (custody: MissingRedeemerCustody) => {
+const phasMembership = (custody: DirectPurposeCustody) => {
   const script: Script = {
     type: "PlutusV3",
     script: getCompiledScript(
@@ -87,18 +88,22 @@ const phasMembership = (custody: MissingRedeemerCustody) => {
 };
 
 /** The unbuilt transaction; `layout()` reads the completed output index. */
-export const buildMissingRedeemerTransition = async (
-  custody: MissingRedeemerCustody,
+export const buildDirectPurposeTransition = async (
+  custody: DirectPurposeCustody,
   thread: UTxO,
-  transition: MissingRedeemerTransition,
-  override: MissingRedeemerTransitionOverride = {},
+  transition: DirectPurposeTransition,
+  override: DirectPurposeTransitionOverride = {},
 ) => {
-  const roles = missingRedeemerContractRoles(custody.contracts);
-  const role = roles[transition.role];
-  const next = roles[override.next ?? transition.next];
+  const { family, contracts } = custody;
+  const role = directPurposeRoleValidator(family, contracts, transition.role);
+  const next = directPurposeRoleValidator(
+    family,
+    contracts,
+    override.next ?? transition.next,
+  );
   const datum = override.datum ?? transition.datum;
   const redeemer = override.redeemer ?? transition.redeemer;
-  const label = `${MISSING_REDEEMER_CATEGORY_LABEL} ${transition.label}`;
+  const label = `${family.label} ${transition.label}`;
   if (thread.address !== role.spendingScriptAddress)
     throw new Error(`${label}: thread is not at the ${transition.role} role`);
   const membership = phasMembership(custody);
@@ -202,16 +207,12 @@ export const buildMissingRedeemerTransition = async (
 };
 
 /** Submits one honest transition and returns the thread's next UTxO. */
-export const submitMissingRedeemerTransition = async (
-  custody: MissingRedeemerCustody,
+export const submitDirectPurposeTransition = async (
+  custody: DirectPurposeCustody,
   thread: UTxO,
-  transition: MissingRedeemerTransition,
+  transition: DirectPurposeTransition,
 ): Promise<{ readonly txHash: string; readonly thread: UTxO }> => {
-  const built = await buildMissingRedeemerTransition(
-    custody,
-    thread,
-    transition,
-  );
+  const built = await buildDirectPurposeTransition(custody, thread, transition);
   const signed = await (await built.complete()).sign.withWallet().complete();
   const outputIndex = built.outputIndex();
   if (outputIndex === undefined)
@@ -241,15 +242,15 @@ export const submitMissingRedeemerTransition = async (
 };
 
 /** Submits transitions in order; returns the thread at the last role. */
-export const submitMissingRedeemerTransitions = async (
-  custody: MissingRedeemerCustody,
+export const submitDirectPurposeTransitions = async (
+  custody: DirectPurposeCustody,
   thread: UTxO,
-  transitions: readonly MissingRedeemerTransition[],
+  transitions: readonly DirectPurposeTransition[],
 ): Promise<UTxO> => {
   let current = thread;
   for (const transition of transitions)
     current = (
-      await submitMissingRedeemerTransition(custody, current, transition)
+      await submitDirectPurposeTransition(custody, current, transition)
     ).thread;
   return current;
 };
