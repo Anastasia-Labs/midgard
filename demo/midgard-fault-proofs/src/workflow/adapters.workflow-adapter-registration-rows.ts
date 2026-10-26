@@ -277,7 +277,7 @@ export const workflowAdapterRegistrationRows = [
       "workflow/committed-field-shape.ts",
       "workflow/manifest-bound-family-assembly.ts",
       "workflow/runtime.ts#WORKFLOW_RUNNER_FACTORIES.committedFieldShape",
-      "workflow/linear-family-definitions.ts#LINEAR_FAMILY_DEFINITIONS.committedFieldShape",
+      "workflow/committed-field-shape.contracts.ts#COMMITTED_FIELD_SHAPE_FAMILY_DEFINITION",
       "committed-field-shape/submit-committed-field-shape-init.ts",
       "committed-field-shape/submit-committed-field-shape-step-01.ts..step-02.ts",
       "remove-fraudulent-block.ts",

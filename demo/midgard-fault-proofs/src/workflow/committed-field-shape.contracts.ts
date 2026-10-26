@@ -1,6 +1,6 @@
 import {
+  CommittedFieldShapeStep01Datum,
   CommittedFieldShapeStep02Datum,
-  FraudProofComputationThreadStepDatum,
 } from "@al-ft/midgard-sdk";
 
 import type { CommittedFieldShapeContracts } from "../committed-field-shape/contracts.js";
@@ -16,9 +16,10 @@ import {
   WITNESS_ROLES,
 } from "./committed-field-shape.create-bound-transaction-port.js";
 import { COMMITTED_FIELD_SHAPE_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
-import { defineLinearFamily } from "./family-definition.js";
+import { type CursorFamilyTransactionPort } from "./cursor-family-adapter.js";
+import { COMMITTED_FIELD_SHAPE_CURSOR_SPEC } from "./cursor-family-spec.js";
+import { defineFamily } from "./family-definition.js";
 import { createAuthenticatedFieldCarriagePrerequisitePort } from "./field-carriage-prerequisite.js";
-import { type LinearFamilyTransactionPort } from "./linear-family-adapter.js";
 import {
   assembleManifestBoundFamilyWorkflow,
   runOrResumeManifestBoundFamilyWorkflow,
@@ -75,17 +76,22 @@ const fieldCarriagePort = (context: AssemblyContext) =>
       fieldCarriageRequirementForAction(context, input),
   });
 
-export const COMMITTED_FIELD_SHAPE_FAMILY_DEFINITION = defineLinearFamily({
+export const COMMITTED_FIELD_SHAPE_FAMILY_DEFINITION = defineFamily({
   category: "committedFieldShape",
   stepDatumSchemas: [
-    FraudProofComputationThreadStepDatum,
+    CommittedFieldShapeStep01Datum,
     CommittedFieldShapeStep02Datum,
   ],
   witnessRoles: WITNESS_ROLES,
   fieldPreimageCertificate: true,
   replayer: () => COMMITTED_FIELD_SHAPE_COMPLETE_CANONICAL_REPLAY,
   adapter: {
-    kind: "linear",
+    kind: "cursor",
+    spec: COMMITTED_FIELD_SHAPE_CURSOR_SPEC,
+    stepContractNames: [
+      "fraudProofCommittedFieldShape",
+      "fraudProofCommittedFieldShapeStep02",
+    ],
     transactionPort: (context) =>
       createBoundTransactionPort({
         config: {
@@ -126,5 +132,5 @@ export const runOrResumeManifestBoundCommittedFieldShapeWorkflow =
 export const unsafeCreateCommittedFieldShapeTransactionPortForTest = (input: {
   readonly config: BoundCommittedFieldShapeTransactionsConfig;
   readonly builders: CommittedFieldShapeBuilderSet;
-}): LinearFamilyTransactionPort<"committedFieldShape"> =>
+}): CursorFamilyTransactionPort<"committedFieldShape"> =>
   createBoundTransactionPort(input);

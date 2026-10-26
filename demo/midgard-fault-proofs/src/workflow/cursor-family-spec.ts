@@ -122,6 +122,20 @@ export const CANONICAL_DECODABILITY_CURSOR_SPEC = Object.freeze({
   }),
 }) satisfies CursorFamilySpec<"canonicalDecodability">;
 
+/**
+ * `committedFieldShape` walks the committed field one bounded batch per
+ * step-01 transaction, returning to step 01 while items remain and moving to
+ * step 02 with the slot's shape verdict.
+ */
+export const COMMITTED_FIELD_SHAPE_CURSOR_SPEC = Object.freeze({
+  category: "committedFieldShape",
+  stepCount: 2,
+  successors: Object.freeze({
+    1: Object.freeze([1, 2] as const),
+    2: Object.freeze(["proof_token"] as const),
+  }),
+}) satisfies CursorFamilySpec<"committedFieldShape">;
+
 export const CURSOR_FAMILY_SPECS = Object.freeze({
   nativeScriptDecoding: NATIVE_SCRIPT_DECODING_CURSOR_SPEC,
   withdrawalMistag: WITHDRAWAL_MISTAG_CURSOR_SPEC,
@@ -129,4 +143,5 @@ export const CURSOR_FAMILY_SPECS = Object.freeze({
   mintAuthorization: MINT_AUTHORIZATION_CURSOR_SPEC,
   missingRedeemer: MISSING_REDEEMER_CURSOR_SPEC,
   canonicalDecodability: CANONICAL_DECODABILITY_CURSOR_SPEC,
+  committedFieldShape: COMMITTED_FIELD_SHAPE_CURSOR_SPEC,
 });

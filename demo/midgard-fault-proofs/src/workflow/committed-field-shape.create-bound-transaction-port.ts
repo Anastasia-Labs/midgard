@@ -29,13 +29,18 @@ import {
   fieldIndexFromClassification,
   record,
 } from "./committed-field-shape.parse-artifact.js";
+import {
+  CURSOR_FAMILY_TRANSACTION_PORT,
+  type CursorFamilyTransactionPort,
+} from "./cursor-family-adapter.js";
+import { CURSOR_FAMILY_ACTION } from "./cursor-family-state.js";
 import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
 import {
-  type LinearFamilyAssemblyContext,
+  type FamilyAssemblyContext,
+  type FamilyReferenceScripts,
   type LinearFamilyPrerequisiteInput,
-  type LinearFamilyReferenceScripts,
-  type ManifestBoundLinearFamilyWorkflow,
-  type ManifestBoundLinearFamilyWorkflowConfig,
+  type ManifestBoundFamilyWorkflow,
+  type ManifestBoundFamilyWorkflowConfig,
 } from "./family-definition.js";
 import {
   createRawCommittedFieldCarriagePlan,
@@ -43,10 +48,6 @@ import {
   type PreimageCarriageRequirement,
 } from "./field-carriage-prerequisite.js";
 import { normalizeJournalJson } from "./journal.js";
-import {
-  LINEAR_FAMILY_TRANSACTION_PORT,
-  type LinearFamilyTransactionPort,
-} from "./linear-family-adapter.js";
 import { type FraudProofWorkflowAction } from "./orchestrator.js";
 import {
   captureLocallyEvaluatedTransaction,
@@ -129,16 +130,18 @@ export const WITNESS_ROLES = [
 ] as const;
 
 export type CommittedFieldShapeWorkflowReferenceScripts =
-  LinearFamilyReferenceScripts<
+  FamilyReferenceScripts<
     "committedFieldShape",
     (typeof WITNESS_ROLES)[number],
-    true
+    true,
+    2
   >;
 
-export type AssemblyContext = LinearFamilyAssemblyContext<
+export type AssemblyContext = FamilyAssemblyContext<
   "committedFieldShape",
   (typeof WITNESS_ROLES)[number],
-  true
+  true,
+  2
 >;
 
 export type BoundCommittedFieldShapeTransactionsConfig = Readonly<{
@@ -177,7 +180,7 @@ const requiredAction = (
 ): Readonly<Record<string, unknown>> => {
   const input = record(action.input, "committed-field-shape workflow action");
   if (
-    input.schemaVersion !== "midgard-production-linear-family-action-v1" ||
+    input.schemaVersion !== CURSOR_FAMILY_ACTION ||
     input.category !== "committedFieldShape" ||
     typeof input.stage !== "string"
   ) {
@@ -203,8 +206,8 @@ export const createBoundTransactionPort = ({
 }: {
   readonly config: BoundCommittedFieldShapeTransactionsConfig;
   readonly builders: CommittedFieldShapeBuilderSet;
-}): LinearFamilyTransactionPort<"committedFieldShape"> => ({
-  portVersion: LINEAR_FAMILY_TRANSACTION_PORT,
+}): CursorFamilyTransactionPort<"committedFieldShape"> => ({
+  portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
   category: "committedFieldShape",
   prepare: async ({ evidence, classification }) =>
     await prepareArtifactFromEvidence({ evidence, classification }),
@@ -355,14 +358,15 @@ export const createBoundTransactionPort = ({
 });
 
 export type ManifestBoundCommittedFieldShapeWorkflowConfig =
-  ManifestBoundLinearFamilyWorkflowConfig<
+  ManifestBoundFamilyWorkflowConfig<
     "committedFieldShape",
     (typeof WITNESS_ROLES)[number],
-    true
+    true,
+    2
   >;
 
 export type ManifestBoundCommittedFieldShapeWorkflow =
-  ManifestBoundLinearFamilyWorkflow<"committedFieldShape", true>;
+  ManifestBoundFamilyWorkflow<"committedFieldShape", true, 2>;
 
 /** Step-01 carries the selected committed slot as raw bytes. */
 export const fieldCarriageRequirementForAction = async (
