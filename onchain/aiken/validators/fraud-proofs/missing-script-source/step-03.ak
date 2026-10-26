@@ -41,6 +41,7 @@ validator main(
           own_out_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
         expect Some(authenticated_trace) = input_state
         let expected: Data = authenticate_transaction_sources_v1(

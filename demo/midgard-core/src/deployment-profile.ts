@@ -179,16 +179,17 @@ export const deploymentFraudProofCatalogueCategories = (
   );
 };
 
-/** A stage-0 allow-list, keyed as the profile's `allow_lists`. */
-export type AllowListRole = "operators" | "fraud_provers" | "da_challengers";
+/**
+ * A stage-0 allow-list, keyed as the profile's `allow_lists`. Only operators
+ * are listed; fault provers and DA challengers are permissionless.
+ */
+export type AllowListRole = "operators";
 
 /** Admitted payment key hashes, or `null` to admit every key. */
 export type AllowList = readonly string[] | null;
 
 const ALLOW_LIST_ACTIONS: Readonly<Record<AllowListRole, string>> = {
   operators: "register as an operator",
-  fraud_provers: "initialise a fraud-proof computation thread",
-  da_challengers: "open a DA availability challenge",
 };
 
 /** The profile's list for `role`; the validators compile the same list. */

@@ -37,6 +37,7 @@ validator main(
           own_ref,
           tx.inputs,
           tx.outputs,
+          tx.extra_signatories,
         )
         expect Some(state) = input_state
         let Pair(initial, _) = rule.initial_scan_v1(

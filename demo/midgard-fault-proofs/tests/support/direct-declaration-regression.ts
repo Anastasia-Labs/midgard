@@ -148,8 +148,7 @@ export const driveDirectDeclarationRegression = async (
   });
   await run.accept(
     {
-      label:
-        "permissionless receive initialization from completed source receipt",
+      label: "receive initialization from completed source receipt",
       role: receive.start,
       destination: receive.grammar.spendingScriptAddress,
       datum: outputDatum(state),
@@ -159,12 +158,12 @@ export const driveDirectDeclarationRegression = async (
           SDK.DirectReceiveStartRedeemer,
         ),
     },
-    strangerLucid,
+    ownerLucid,
   );
   state = { ...state, cursor: plan.position("Walking", 0).cursor };
   await run.accept(
     {
-      label: "permissionless actual singleton grammar",
+      label: "actual singleton grammar",
       role: receive.grammar,
       destination: receive.outputs.spendingScriptAddress,
       datum: outputDatum(state),
@@ -184,7 +183,7 @@ export const driveDirectDeclarationRegression = async (
           SDK.DirectReceiveGrammarRedeemer,
         ),
     },
-    strangerLucid,
+    ownerLucid,
   );
   state = {
     ...state,
@@ -195,7 +194,7 @@ export const driveDirectDeclarationRegression = async (
   };
   await run.accept(
     {
-      label: "permissionless actual singleton credential H to zero",
+      label: "actual singleton credential H to zero",
       role: receive.outputs,
       destination: receive.outputs.spendingScriptAddress,
       datum: outputDatum(state),
@@ -216,11 +215,11 @@ export const driveDirectDeclarationRegression = async (
           SDK.DirectReceiveOutputRedeemer,
         ),
     },
-    strangerLucid,
+    ownerLucid,
   );
   await run.accept(
     {
-      label: "permissionless authentic exhaustion handoff",
+      label: "authentic exhaustion handoff",
       role: receive.outputs,
       destination: receive.finish.spendingScriptAddress,
       datum: outputDatum(state),
@@ -230,7 +229,7 @@ export const driveDirectDeclarationRegression = async (
           SDK.DirectReceiveOutputRedeemer,
         ),
     },
-    strangerLucid,
+    ownerLucid,
   );
   const declaration: SDK.DirectReceiveDeclarationState = {
     bound: material.bound,
@@ -306,33 +305,38 @@ export const driveDirectDeclarationRegression = async (
   });
   await run.refuse(scan(attack === "wrong-index"), strangerLucid);
   await run.accept(scan(false), ownerLucid);
-  await run.accept(
-    {
-      label: "unrelated key finishes honest sorted declaration",
-      role: receive.declaration,
-      destination: credentialToAddress(network, {
-        type: "Script",
-        hash: nextHash,
-      }),
-      datum: Data.to(
-        {
-          fraud_prover: prover,
-          data: {
-            bound: material.bound,
-            source_index: state.source_index,
-            coordinate: { kind: 3n, index: 0n },
-            purpose: advanced(false).selected!.purpose,
-          },
+  const finish = (label: string) => ({
+    label,
+    role: receive.declaration,
+    destination: credentialToAddress(network, {
+      type: "Script",
+      hash: nextHash,
+    }),
+    datum: Data.to(
+      {
+        fraud_prover: prover,
+        data: {
+          bound: material.bound,
+          source_index: state.source_index,
+          coordinate: { kind: 3n, index: 0n },
+          purpose: advanced(false).selected!.purpose,
         },
-        SDK.DirectPurposeSelectionDatum,
+      },
+      SDK.DirectPurposeSelectionDatum,
+    ),
+    redeemer: (indices: { input_index: bigint; output_index: bigint }) =>
+      Data.to(
+        { Continue: [{ Finish: indices }] },
+        SDK.DirectReceiveDeclarationRedeemer,
       ),
-      redeemer: (indices) =>
-        Data.to(
-          { Continue: [{ Finish: indices }] },
-          SDK.DirectReceiveDeclarationRedeemer,
-        ),
-    },
+  });
+  await run.refuse(
+    finish("unrelated key finishes honest sorted declaration"),
     strangerLucid,
+  );
+  await run.accept(
+    finish("owner finishes honest sorted declaration"),
+    ownerLucid,
   );
   console.log(
     "N6 actual declaration authorization",

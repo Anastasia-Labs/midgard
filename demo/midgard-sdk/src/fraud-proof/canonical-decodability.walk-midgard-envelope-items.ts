@@ -69,7 +69,32 @@ export const MIDGARD_ENVELOPE_VERDICT_NAMES = Object.freeze([
 // ## The verdict — a total function over arbitrary bytes
 
 /**
- * §5.1 grammaticality as a **verdict**, over any byte string at all.
+ * How many items one step-01 transaction reads. Byte-for-byte twin of
+ * `rule.ak`'s `envelope_batch_items`; the on-chain value is chosen by
+ * measurement and this one follows it.
+ */
+export const MIDGARD_ENVELOPE_BATCH_ITEMS = 1000;
+
+/**
+ * Where a §5.1 walk stands: finished with a verdict, or between two batches
+ * with `remaining` items still to read from byte `offset`. Twin of `rule.ak`'s
+ * `EnvelopeWalkV1`.
+ */
+export type MidgardEnvelopeWalk =
+  | Readonly<{ kind: "verdict"; verdict: number }>
+  | Readonly<{ kind: "items"; remaining: number; offset: number }>;
+
+const envelopeVerdict = (verdict: number): MidgardEnvelopeWalk =>
+  Object.freeze({ kind: "verdict", verdict });
+
+const envelopeItems = (
+  remaining: number,
+  offset: number,
+): MidgardEnvelopeWalk => Object.freeze({ kind: "items", remaining, offset });
+
+/**
+ * §5.1 grammaticality as a **verdict**, over any byte string at all: the array
+ * head, then every batch until one ends the walk.
  *
  * Total by construction and never throws: every index below is preceded by the
  * bound that makes it safe, and the bound's failure is a return value. A verdict
@@ -83,61 +108,105 @@ export const MIDGARD_ENVELOPE_VERDICT_NAMES = Object.freeze([
  * code.
  */
 export const midgardEnvelopeVerdict = (preimage: Uint8Array): number => {
+  let walk = midgardEnvelopeFirstBatch(preimage);
+  while (walk.kind === "items") {
+    walk = midgardEnvelopeItemsBatch(preimage, walk.remaining, walk.offset);
+  }
+  return walk.verdict;
+};
+
+/** The walk's first batch: the array head, then up to one batch of items. */
+export const midgardEnvelopeFirstBatch = (
+  preimage: Uint8Array,
+): MidgardEnvelopeWalk => {
+  const head = midgardEnvelopeArrayHead(preimage);
+  return head.kind === "items"
+    ? midgardEnvelopeItemsBatch(preimage, head.remaining, head.offset)
+    : head;
+};
+
+/** §5.1's `definite_array_header(N)`, read at offset 0. */
+export const midgardEnvelopeArrayHead = (
+  preimage: Uint8Array,
+): MidgardEnvelopeWalk => {
   const total = preimage.length;
   if (total === 0) {
-    return MIDGARD_ENVELOPE_VERDICT_MISSING_ARRAY_HEADER;
+    return envelopeVerdict(MIDGARD_ENVELOPE_VERDICT_MISSING_ARRAY_HEADER);
   }
   const tag = preimage[0]!;
   if (tag >= 0x80 && tag <= 0x97) {
-    return walkMidgardEnvelopeItems(preimage, total, 1, tag - 0x80);
+    return envelopeItems(tag - 0x80, 1);
   }
   if (tag === 0x98) {
     if (total < 2) {
-      return MIDGARD_ENVELOPE_VERDICT_TRUNCATED_ARRAY_HEADER;
+      return envelopeVerdict(MIDGARD_ENVELOPE_VERDICT_TRUNCATED_ARRAY_HEADER);
     }
     const count = preimage[1]!;
     return count < 24
-      ? MIDGARD_ENVELOPE_VERDICT_NON_MINIMAL_ARRAY_HEADER
-      : walkMidgardEnvelopeItems(preimage, total, 2, count);
+      ? envelopeVerdict(MIDGARD_ENVELOPE_VERDICT_NON_MINIMAL_ARRAY_HEADER)
+      : envelopeItems(count, 2);
   }
   if (tag === 0x99) {
     if (total < 3) {
-      return MIDGARD_ENVELOPE_VERDICT_TRUNCATED_ARRAY_HEADER;
+      return envelopeVerdict(MIDGARD_ENVELOPE_VERDICT_TRUNCATED_ARRAY_HEADER);
     }
     const count = preimage[1]! * 256 + preimage[2]!;
     return count <= 0xff
-      ? MIDGARD_ENVELOPE_VERDICT_NON_MINIMAL_ARRAY_HEADER
-      : walkMidgardEnvelopeItems(preimage, total, 3, count);
+      ? envelopeVerdict(MIDGARD_ENVELOPE_VERDICT_NON_MINIMAL_ARRAY_HEADER)
+      : envelopeItems(count, 3);
   }
-  return MIDGARD_ENVELOPE_VERDICT_NOT_AN_ARRAY_HEADER;
+  return envelopeVerdict(MIDGARD_ENVELOPE_VERDICT_NOT_AN_ARRAY_HEADER);
 };
 
 /**
- * Reads `remaining` enveloped items from `offset` and decides where they end.
- *
- * Iterative where the Aiken twin recurses, and that is the one shape difference
- * between them: Aiken's recursion is a tail call the compiler turns into a loop,
- * while JavaScript has no such guarantee and a 16,382-item field is inside
- * §5.4's byte bound. A verdict that threw `RangeError` on the largest committed
- * field the format admits would be the abort this family exists to remove,
- * reintroduced in the twin.
+ * Reads up to {@link MIDGARD_ENVELOPE_BATCH_ITEMS} of the `remaining` items
+ * from `offset` and says where the walk stands after them — exactly what one
+ * step-01 transaction decides. A batch that reads its full share and lands on
+ * the last byte with items still owed is the missing item header at once.
  */
-const walkMidgardEnvelopeItems = (
+export const midgardEnvelopeItemsBatch = (
   preimage: Uint8Array,
-  total: number,
+  remaining: number,
+  offset: number,
+): MidgardEnvelopeWalk => {
+  const total = preimage.length;
+  if (remaining > MIDGARD_ENVELOPE_BATCH_ITEMS) {
+    const reached = readMidgardEnvelopeItems(
+      preimage,
+      offset,
+      MIDGARD_ENVELOPE_BATCH_ITEMS,
+    );
+    if (reached.kind === "verdict") return reached;
+    return reached.offset < total
+      ? envelopeItems(remaining - MIDGARD_ENVELOPE_BATCH_ITEMS, reached.offset)
+      : envelopeVerdict(MIDGARD_ENVELOPE_VERDICT_MISSING_ITEM_HEADER);
+  }
+  const reached = readMidgardEnvelopeItems(preimage, offset, remaining);
+  if (reached.kind === "verdict") return reached;
+  return envelopeVerdict(
+    reached.offset === total
+      ? MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL
+      : MIDGARD_ENVELOPE_VERDICT_TRAILING_BYTES,
+  );
+};
+
+/**
+ * Reads `count` enveloped items from `offset`: the offset just past the last
+ * one, or the verdict that stopped the read.
+ *
+ * Iterative where the Aiken twin recurses: Aiken's recursion is a tail call the
+ * compiler turns into a loop, while JavaScript has no such guarantee.
+ */
+const readMidgardEnvelopeItems = (
+  preimage: Uint8Array,
   startOffset: number,
-  startRemaining: number,
-): number => {
+  count: number,
+): MidgardEnvelopeWalk => {
+  const total = preimage.length;
   let offset = startOffset;
-  let remaining = startRemaining;
-  for (;;) {
-    if (remaining <= 0) {
-      return offset === total
-        ? MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL
-        : MIDGARD_ENVELOPE_VERDICT_TRAILING_BYTES;
-    }
+  for (let read = 0; read < count; read += 1) {
     if (offset >= total) {
-      return MIDGARD_ENVELOPE_VERDICT_MISSING_ITEM_HEADER;
+      return envelopeVerdict(MIDGARD_ENVELOPE_VERDICT_MISSING_ITEM_HEADER);
     }
     const head = preimage[offset]!;
     let payloadOffset: number;
@@ -147,31 +216,35 @@ const walkMidgardEnvelopeItems = (
       length = head - 0x40;
     } else if (head === 0x58) {
       if (offset + 2 > total) {
-        return MIDGARD_ENVELOPE_VERDICT_TRUNCATED_ITEM_HEADER;
+        return envelopeVerdict(MIDGARD_ENVELOPE_VERDICT_TRUNCATED_ITEM_HEADER);
       }
       length = preimage[offset + 1]!;
       if (length < 24) {
-        return MIDGARD_ENVELOPE_VERDICT_NON_MINIMAL_ITEM_HEADER;
+        return envelopeVerdict(
+          MIDGARD_ENVELOPE_VERDICT_NON_MINIMAL_ITEM_HEADER,
+        );
       }
       payloadOffset = offset + 2;
     } else if (head === 0x59) {
       if (offset + 3 > total) {
-        return MIDGARD_ENVELOPE_VERDICT_TRUNCATED_ITEM_HEADER;
+        return envelopeVerdict(MIDGARD_ENVELOPE_VERDICT_TRUNCATED_ITEM_HEADER);
       }
       length = preimage[offset + 1]! * 256 + preimage[offset + 2]!;
       if (length <= 0xff) {
-        return MIDGARD_ENVELOPE_VERDICT_NON_MINIMAL_ITEM_HEADER;
+        return envelopeVerdict(
+          MIDGARD_ENVELOPE_VERDICT_NON_MINIMAL_ITEM_HEADER,
+        );
       }
       payloadOffset = offset + 3;
     } else {
-      return MIDGARD_ENVELOPE_VERDICT_NOT_AN_ITEM_HEADER;
+      return envelopeVerdict(MIDGARD_ENVELOPE_VERDICT_NOT_AN_ITEM_HEADER);
     }
     if (payloadOffset + length > total) {
-      return MIDGARD_ENVELOPE_VERDICT_TRUNCATED_ITEM_PAYLOAD;
+      return envelopeVerdict(MIDGARD_ENVELOPE_VERDICT_TRUNCATED_ITEM_PAYLOAD);
     }
     offset = payloadOffset + length;
-    remaining -= 1;
   }
+  return envelopeItems(0, offset);
 };
 
 /**

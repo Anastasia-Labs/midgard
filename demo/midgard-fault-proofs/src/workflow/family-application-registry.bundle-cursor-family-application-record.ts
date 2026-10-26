@@ -49,6 +49,13 @@ import {
   RESOLVED_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS,
 } from "../resolved-output-non-canonical/authenticated-workflow.js";
 import {
+  createManifestBoundScriptIntegrityHashMismatchWorkflow,
+  type ManifestBoundScriptIntegrityHashMismatchWorkflow,
+  runOrResumeManifestBoundScriptIntegrityHashMismatchWorkflow,
+  SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_DEFINITION,
+} from "../script-integrity-hash-mismatch/workflow.js";
+import type { ManifestBoundScriptIntegrityHashMismatchWorkflowConfig } from "../script-integrity-hash-mismatch/workflow.transaction-port.js";
+import {
   createManifestBoundSpendInputSignerMissingWorkflow,
   executeManifestBoundSpendInputSignerMissingWorkflow,
   type ManifestBoundSpendInputSignerMissingWorkflow,
@@ -71,6 +78,13 @@ import {
   runOrResumeManifestBoundWithdrawalMistagWorkflow,
   WITHDRAWAL_MISTAG_FAMILY_DEFINITION,
 } from "../withdrawal-mistag/workflow.js";
+import {
+  CANONICAL_DECODABILITY_FAMILY_DEFINITION,
+  createManifestBoundCanonicalDecodabilityWorkflow,
+  type ManifestBoundCanonicalDecodabilityWorkflow,
+  type ManifestBoundCanonicalDecodabilityWorkflowConfig,
+  runOrResumeManifestBoundCanonicalDecodabilityWorkflow,
+} from "./canonical-decodability.js";
 import {
   defineFamilyApplication,
   type FamilyApplicationRecord,
@@ -153,11 +167,22 @@ const bundleCursorFamilyApplicationRecord = <
 };
 
 /**
- * The four cursor families without a decision digest on the plain and
+ * The five cursor families without a decision digest on the plain and
  * replay-context shapes. Each row names its exact config and workflow types
  * so the record's `bindConfig` result is what its `constructWorkflow`
  * consumes.
  */
+export const CANONICAL_DECODABILITY_FAMILY_APPLICATION_RECORD =
+  bundleCursorFamilyApplicationRecord<
+    "canonicalDecodability",
+    ManifestBoundCanonicalDecodabilityWorkflowConfig,
+    ManifestBoundCanonicalDecodabilityWorkflow
+  >(CANONICAL_DECODABILITY_FAMILY_DEFINITION, {
+    requires: [],
+    constructWorkflow: createManifestBoundCanonicalDecodabilityWorkflow,
+    execute: runOrResumeManifestBoundCanonicalDecodabilityWorkflow,
+  });
+
 export const NATIVE_SCRIPT_INVALID_FAMILY_APPLICATION_RECORD =
   bundleCursorFamilyApplicationRecord<
     "nativeScriptInvalid",
@@ -211,6 +236,17 @@ export const MISSING_REDEEMER_FAMILY_APPLICATION_RECORD =
     requires: ["replayContext"],
     constructWorkflow: createManifestBoundMissingRedeemerWorkflow,
     execute: runOrResumeManifestBoundMissingRedeemerWorkflow,
+  });
+
+export const SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_APPLICATION_RECORD =
+  bundleCursorFamilyApplicationRecord<
+    "scriptIntegrityHashMismatch",
+    ManifestBoundScriptIntegrityHashMismatchWorkflowConfig,
+    ManifestBoundScriptIntegrityHashMismatchWorkflow
+  >(SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_DEFINITION, {
+    requires: ["replayContext"],
+    constructWorkflow: createManifestBoundScriptIntegrityHashMismatchWorkflow,
+    execute: runOrResumeManifestBoundScriptIntegrityHashMismatchWorkflow,
   });
 
 export const MIN_ADA_FAMILY_APPLICATION_RECORD =

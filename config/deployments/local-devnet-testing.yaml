@@ -78,8 +78,6 @@ protocol_treasury_native_script:
 allow_lists:
   # Testing admits every key.
   operators: null
-  fraud_provers: null
-  da_challengers: null
 # Testing deployments carry the whole fraud-proof catalogue except the Plutus
 # execution dispute (validationTraceDispute, 00000006). Its case needs block
 # maturity of at least 2 D_case + 1 = 21,560,001 ms here (D_case = 2 * 3,600,000

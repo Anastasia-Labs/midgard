@@ -18,9 +18,11 @@ pub type ActionV1 {
     output_index: Int,
     transition: ValidationOneStepWitnessV1,
     source_kind: Int,
+    item_index: Int,
     key: ByteArray,
     next_schedule_hash: ByteArray,
     value: ByteArray,
+    siblings: List<ByteArray>,
   }
 }
 
@@ -52,15 +54,20 @@ validator main(
         output_index,
         transition,
         source_kind,
+        item_index,
         key,
         next_schedule_hash,
         value,
+        siblings,
       }) -> {
         let auxiliary = ResolvedInputReplayWitness {
           source_kind,
+          item_index,
           key,
           next_schedule_hash,
           value,
+          proof: [],
+          siblings,
         }
         let auxiliary_data: Data = auxiliary
         continue_winning(
@@ -76,9 +83,11 @@ validator main(
             datum |> semantic_pre_state,
             transition,
             source_kind,
+            item_index,
             key,
             next_schedule_hash,
             value,
+            siblings,
           ),
           own_out_ref,
           tx,

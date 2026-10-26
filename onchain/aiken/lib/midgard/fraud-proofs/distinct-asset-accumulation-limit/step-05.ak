@@ -1,6 +1,5 @@
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/distinct_asset_accumulation_limit/rule.{FoldStateV1}
-use midgard/validation_machine/machine_types.{ValueAssetMutationWitnessV1}
 
 pub type MintEvidenceV1 {
   mint_index: Int,
@@ -8,7 +7,6 @@ pub type MintEvidenceV1 {
   asset_name: ByteArray,
   quantity: Int,
   siblings: List<ByteArray>,
-  mutation: ValueAssetMutationWitnessV1,
 }
 
 pub type ActionV1 {

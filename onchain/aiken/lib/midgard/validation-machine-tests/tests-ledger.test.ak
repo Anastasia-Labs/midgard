@@ -53,7 +53,6 @@ test value_and_mint_final_equation_is_enforced_on_l1() {
     replay_cursor: 0,
     replay_asset_cursor: 0,
     replay_value_hash: zero,
-    replay_accumulator: vm_witness.initial_resolution_accumulator(),
     replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     output_cursor: 0,
     output_asset_cursor: 0,
@@ -61,7 +60,7 @@ test value_and_mint_final_equation_is_enforced_on_l1() {
     value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       lovelace_delta: 0,
       asset_root: null_hash,
-      seen_asset_count: 0,
+      asset_entry_count: 0,
       nonzero_asset_count: 0,
     },
   }
@@ -97,7 +96,7 @@ test value_and_mint_final_equation_is_enforced_on_l1() {
     value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       lovelace_delta: 1,
       asset_root: null_hash,
-      seen_asset_count: 0,
+      asset_entry_count: 0,
       nonzero_asset_count: 0,
     },
   }
@@ -178,7 +177,6 @@ test value_and_mint_uses_authenticated_native_mint_frontier() {
     replay_cursor: 0,
     replay_asset_cursor: 0,
     replay_value_hash: zero,
-    replay_accumulator: vm_witness.initial_resolution_accumulator(),
     replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     output_cursor: 0,
     output_asset_cursor: 0,
@@ -186,7 +184,7 @@ test value_and_mint_uses_authenticated_native_mint_frontier() {
     value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       lovelace_delta: 0,
       asset_root: null_hash,
-      seen_asset_count: 0,
+      asset_entry_count: 0,
       nonzero_asset_count: 0,
     },
   }
@@ -284,7 +282,6 @@ test value_and_mint_replays_signed_burn_leaf_on_l1() {
     replay_cursor: 0,
     replay_asset_cursor: 0,
     replay_value_hash: zero,
-    replay_accumulator: vm_witness.initial_resolution_accumulator(),
     replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     output_cursor: 0,
     output_asset_cursor: 0,
@@ -292,7 +289,7 @@ test value_and_mint_replays_signed_burn_leaf_on_l1() {
     value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       lovelace_delta: 0,
       asset_root: singleton_root(unit, cbor.serialise(5)),
-      seen_asset_count: 1,
+      asset_entry_count: 1,
       nonzero_asset_count: 1,
     },
   }
@@ -316,7 +313,7 @@ test value_and_mint_replays_signed_burn_leaf_on_l1() {
     value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       lovelace_delta: 0,
       asset_root: singleton_root(unit, cbor.serialise(0)),
-      seen_asset_count: 1,
+      asset_entry_count: 2,
       nonzero_asset_count: 0,
     },
   }
@@ -817,7 +814,6 @@ test value_asset_output_instruction_evidence_is_bounded() {
     replay_cursor: 0,
     replay_asset_cursor: 0,
     replay_value_hash: zero,
-    replay_accumulator: vm_witness.initial_resolution_accumulator(),
     replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     output_cursor: 0,
     output_asset_cursor: 1,
@@ -825,7 +821,7 @@ test value_asset_output_instruction_evidence_is_bounded() {
     value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       lovelace_delta: 0,
       asset_root: h_a,
-      seen_asset_count: 127,
+      asset_entry_count: 127,
       nonzero_asset_count: 127,
     },
   }

@@ -54,6 +54,7 @@ validator main(
           own_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
         expect Some(State { bound }) = input_state
         let anchored = anchored_native_tx(

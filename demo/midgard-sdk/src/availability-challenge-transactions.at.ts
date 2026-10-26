@@ -1,4 +1,3 @@
-import { type AllowList } from "@al-ft/midgard-core/deployment-profile";
 import {
   type Assets,
   type BuildTxWithRedeemer,
@@ -125,12 +124,6 @@ export type OpenDaAvailabilityChallengeParams =
      * the validator as `da_challenge_window_ms_v1`).
      */
     readonly daChallengeWindowMs: bigint;
-    /**
-     * The DA challenger allow-list checked before building; the selected
-     * profile's by default. Another list only serves tests of the validator's
-     * own check.
-     */
-    readonly challengerAllowList?: AllowList;
   };
 
 export type PublishDaAvailabilityChunkParams =
@@ -204,8 +197,6 @@ export type DaAvailabilityTransactionErrorReason =
   | "completion-failed"
   /** The Apply transaction does not yield the attested commitment. */
   | "apply-commitment-unrecoverable"
-  /** The challenger's key is not on the deployment's DA challenger allow-list. */
-  | "challenger-not-allow-listed"
   /** The Open's challenger input is not the exact ADA-only opening coin. */
   | "challenger-funding-not-exact"
   /** A preparation amount or validity interval is malformed. */

@@ -40,6 +40,7 @@ use fraud_proofs/validation_trace/cek_context_mint_item as context_mint_item
 use fraud_proofs/validation_trace/cek_context_observer_authenticate as context_observer_authenticate
 use fraud_proofs/validation_trace/cek_context_observer_fold as context_observer_fold
 use fraud_proofs/validation_trace/cek_context_output as context_output
+use fraud_proofs/validation_trace/cek_context_redeemer_begin as context_redeemer_begin
 use fraud_proofs/validation_trace/cek_context_redeemer_select_authenticate as redeemer_select_authenticate
 use fraud_proofs/validation_trace/cek_context_redeemer_select_finish as redeemer_select_finish
 use fraud_proofs/validation_trace/cek_context_reference as context_reference
@@ -67,7 +68,6 @@ use midgard/cek_context_redeemer.{
 use midgard/cek_context_step as context_step
 use midgard/cek_data_v1
 use midgard/cek_machine_v1
-use midgard/cek_mint_order
 use midgard/cek_proof_v1
 use midgard/cek_selection_yield as selection_yield
 use midgard/cek_semantic_chain as core_chain
@@ -95,11 +95,11 @@ use midgard/script_sources_redeemer_normalization_v1.{
 use midgard/validation_machine/cek as cek_semantics
 use midgard/validation_machine/machine_types.{
   CekContextControlV1, CekCoreStepWitness, CekMintContextItemWitness,
-  CekMintHead, CekRedeemerContextControlV1, CekRedeemerContextSelectWitness,
+  CekRedeemerContextControlV1, CekRedeemerContextSelectWitness,
   CekRedeemerContextSkipWitness, CekWitnessControlV1, NativeExecutionScanWitness,
   NativeScriptsControlV1, NoAuxiliaryWitness, RedeemerItemStepWitness,
-  ValidationAuxiliaryWitnessV1, ValidationOneStepEvidenceV1,
-  ValidationOneStepWitnessV1,
+  RedeemerScanBeginWitness, ValidationAuxiliaryWitnessV1,
+  ValidationOneStepEvidenceV1, ValidationOneStepWitnessV1,
 }
 use midgard/validation_machine/one_step as vm_one_step
 use midgard/validation_machine/shared.{
@@ -222,7 +222,6 @@ fn empty_native_control(tx: MidgardTransaction) -> NativeScriptsControlV1 {
     field_preimage_lengths_cbor: proof_source.field_preimage_lengths_cbor,
     context_cbor: validation_context_cbor,
     resolved_input_count: 0,
-    resolved_inputs_accumulator: vm_witness.initial_resolution_accumulator(),
     spend_input_count: 0,
     resolved_item_peaks: validation_merkle_v1.empty_frontier(),
     signer_count: empty.count,
@@ -2856,7 +2855,7 @@ fn shaped_context_descriptor_handoff(
   )
   let original = context_staged_fixture(context_step_fixture())
   expect cek: CekWitnessControlV1 = original.bound.control
-  let leaf = script_proof_v1.redeemer_item_leaf_hash(0, commitment)
+  let leaf = script_proof_v1.redeemer_item_leaf_hash(0, 8, commitment)
   let native = NativeScriptsControlV1 {
     ..cek.control,
     redeemer_count: 1,
@@ -3119,6 +3118,7 @@ fn run_stage9_item_bind(
     active_scan_hash: redeemer_item.hash_control_v1(honest),
     active_redeemer_leaf: script_proof_v1.redeemer_item_leaf_hash(
       0,
+      honest.total_length,
       honest.item_commitment,
     ),
     purpose_bound: 1,
@@ -3231,7 +3231,7 @@ fn context_binding_wire(f: CekStepFixtureV1) -> Data {
 
 test bounded_context_binding_wire_matches_sdk() {
   let vector = context_binding_wire(context_step_fixture())
-  blake2b_256(cbor.serialise(vector)) == #"30bb2eb5db65017b978d06b36c850d0a49b318f2eaf3c799765af0a6a17791e4"
+  blake2b_256(cbor.serialise(vector)) == #"a66cdb35e3859293b52cab5d69f51a68e45a1ed5ad85a6e69f46707716063719"
 }
 
 test bounded_context_binding_wire_matches_sdk_for_a_normal_source() {
@@ -3245,90 +3245,18 @@ test bounded_context_binding_wire_matches_sdk_for_a_normal_source() {
       },
     },
   )
-  blake2b_256(cbor.serialise(vector)) == #"ee84d4e0fefe57c8a3c7ded9a5c63223de80e3fc899b008eb76191642b457c24"
-}
-
-fn ordered_mint_fixture() -> Pair<CekContextControlV1, CekMintHead> {
-  let previous = CekMintHead {
-    asset_name: #"ff",
-    quantity: 1,
-    tail: cek_data_v1.empty_data_pair_summary_v1(),
-  }
-  let original = context_staged_fixture(context_step_fixture()).context
-  Pair(
-    CekContextControlV1 {
-      ..original,
-      stage: 8,
-      mint_cursor: 1,
-      current_mint_policy: h_28_a,
-      current_mint_assets: prepend_mint_asset_summary(
-        previous.asset_name,
-        previous.quantity,
-        previous.tail,
-      ),
-    },
-    previous,
-  )
-}
-
-test context_mint_order_accepts_mixed_width_and_empty_names() {
-  let Pair(context, previous) = ordered_mint_fixture()
-  and {
-    cek_mint_order.order_is_valid(context, h_28_a, #"0000", Some(previous)),
-    cek_mint_order.order_is_valid(
-      context,
-      h_28_a,
-      #"0000000000000000000000000000000000000000000000000000000000000000",
-      Some(previous),
-    ),
-    cek_mint_order.order_is_valid(context, h_28_a, #"", Some(previous)),
-  }
-}
-
-test context_mint_order_refuses_duplicate_asset() {
-  let Pair(context, previous) = ordered_mint_fixture()
-  !cek_mint_order.order_is_valid(context, h_28_a, #"ff", Some(previous))
-}
-
-test context_mint_order_refuses_substituted_previous_head() {
-  let Pair(context, previous) = ordered_mint_fixture()
-  !cek_mint_order.order_is_valid(
-    context,
-    h_28_a,
-    #"00",
-    Some(CekMintHead { ..previous, asset_name: #"fe" }),
-  )
-}
-
-test context_mint_order_refuses_substituted_previous_tail() {
-  let Pair(context, previous) = ordered_mint_fixture()
-  !cek_mint_order.order_is_valid(
-    context,
-    h_28_a,
-    #"00",
-    Some(
-      CekMintHead {
-        ..previous,
-        tail: prepend_mint_asset_summary(#"01", 1, previous.tail),
-      },
-    ),
-  )
-}
-
-test context_mint_order_refuses_omitted_previous_head() fail {
-  let Pair(context, _) = ordered_mint_fixture()
-  expect cek_mint_order.order_is_valid(context, h_28_a, #"00", None)
+  blake2b_256(cbor.serialise(vector)) == #"6d4cd3dd905defae44264ee450434a3e80bbd7aad7966d7acd174a5f33ad65d1"
 }
 
 // ---------------------------------------------------------------------------
 // Stage 8: the mixed-width mint ordering closure at the deployed validator
 // ---------------------------------------------------------------------------
 //
-// Native CBOR authenticates mint assets in plain byte order, the order of the
-// execution context's mint map. The fold builds that map head-first, so it
-// walks the frontier descending: every item authenticates its own frontier
-// index, opens the map head the fold already committed, and is strictly
-// smaller than it.
+// Stage 6 appends the mint leaves in strictly ascending (policy id, asset
+// name) byte order, the order of the execution context's mint map. The fold
+// builds that map head-first, so step `mint_cursor` opens frontier leaf
+// `mint_count - 1 - mint_cursor`: the index is the control's, and each step
+// has one successor.
 
 fn mint_low_leaf() -> ByteArray {
   mint_asset_leaf_hash(h_28_a, #"00", 7)
@@ -3339,19 +3267,15 @@ fn mint_high_leaf() -> ByteArray {
 }
 
 fn mint_item_witness(
-  mint_index: Int,
   asset_name: ByteArray,
   quantity: Int,
   siblings: List<ByteArray>,
-  previous: Option<CekMintHead>,
 ) -> ValidationAuxiliaryWitnessV1 {
   CekMintContextItemWitness {
-    mint_index,
     policy_id: h_28_a,
     asset_name,
     quantity,
     siblings,
-    previous,
   }
 }
 
@@ -3424,14 +3348,6 @@ fn mint_stage_control(
   }
 }
 
-fn mint_head(asset_name: ByteArray, quantity: Int) -> CekMintHead {
-  CekMintHead {
-    asset_name,
-    quantity,
-    tail: cek_data_v1.empty_data_pair_summary_v1(),
-  }
-}
-
 fn mint_head_assets(
   asset_name: ByteArray,
   quantity: Int,
@@ -3450,13 +3366,7 @@ fn mint_item_fixture() -> CekStepFixtureV1 {
   mint_stage_fixture(
     1,
     assets,
-    mint_item_witness(
-      0,
-      #"00",
-      7,
-      [mint_high_leaf()],
-      Some(mint_head(#"ff", 1)),
-    ),
+    mint_item_witness(#"00", 7, [mint_high_leaf()]),
     CekContextControlV1 {
       ..mint_stage_control(1, assets),
       mint_cursor: 2,
@@ -3602,78 +3512,153 @@ test context_mint_item_validator_wins_the_permuted_membership_step() {
   }
 }
 
-test context_mint_item_refuses_an_out_of_range_membership_index() fail {
-  let f = mint_item_variant(
-    mint_item_witness(
-      2,
-      #"00",
-      7,
-      [mint_high_leaf()],
-      Some(mint_head(#"ff", 1)),
-    ),
+/// The stage-8 control before its first item.
+fn mint_pristine(staged: context_chain.ContextStaged) -> CekContextControlV1 {
+  CekContextControlV1 {
+    ..staged.context,
+    mint_cursor: 0,
+    current_mint_policy: #"",
+    current_mint_assets: cek_data_v1.empty_data_pair_summary_v1(),
+  }
+}
+
+/// The first step opens the last leaf, `#"ff"` at frontier index 1.
+test context_mint_item_opens_the_last_leaf_first() {
+  let staged = mint_item_staged(mint_item_fixture())
+  let auxiliary: Data = mint_item_witness(#"ff", 1, [mint_low_leaf()])
+  context_step.next_mint_item(mint_pristine(staged), staged.native, auxiliary) == CekContextControlV1 {
+    ..mint_pristine(staged),
+    mint_cursor: 1,
+    current_mint_policy: h_28_a,
+    current_mint_assets: mint_head_assets(#"ff", 1),
+  }
+}
+
+/// A first step that opens the lower leaf, skipping `#"ff"`, has no successor.
+test context_mint_item_refuses_a_lower_first_index() fail {
+  let staged = mint_item_staged(mint_item_fixture())
+  let auxiliary: Data = mint_item_witness(#"00", 7, [mint_high_leaf()])
+  let next = context_step.next_mint_item(
+    mint_pristine(staged),
+    staged.native,
+    auxiliary,
   )
+  next.mint_cursor == 1
+}
+
+/// The right item with the other leaf's path: membership at the derived
+/// index refuses it.
+test context_mint_item_refuses_a_foreign_membership_path() fail {
+  let f = mint_item_variant(mint_item_witness(#"00", 7, [mint_low_leaf()]))
   expect run_mint_item_hop(f, mint_item_claim_data(f, #"00", 7))
 }
 
-test context_mint_item_refuses_a_foreign_membership_index() fail {
-  let f = mint_item_variant(
-    mint_item_witness(1, #"00", 7, [mint_low_leaf()], Some(mint_head(#"ff", 1))),
+/// The whole stage-8 walk over two policies, `h_28_a` {`00`: 7, `ff`: 1} and
+/// `#"bb..bb"` {`01`: 2}: three item steps open leaves 2, 1 and 0, then the
+/// terminal step publishes the context's mint map. Every step of an honest
+/// walk has its successor, and the TypeScript fold
+/// (`cek-context.mint-item-step.test.ts`) reaches the same summary root.
+test context_mint_walk_over_two_policies_ends_in_the_mint_map() {
+  let h_28_b = #"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  let leaves = [
+    mint_low_leaf(),
+    mint_high_leaf(),
+    mint_asset_leaf_hash(h_28_b, #"01", 2),
+  ]
+  let frontier = validation_merkle_v1.build_frontier(leaves)
+  let staged = mint_item_staged(mint_item_fixture())
+  let native = context_step.NativeFacts {
+    ..staged.native,
+    mint_count: 3,
+    mint_peaks: frontier.peaks,
+  }
+  let item = fn(policy_id, asset_name, quantity, siblings) {
+    let auxiliary: Data = CekMintContextItemWitness {
+      policy_id,
+      asset_name,
+      quantity,
+      siblings,
+    }
+    auxiliary
+  }
+  let no_auxiliary: Data = NoAuxiliaryWitness
+  let first = context_step.next_mint_item(
+    mint_pristine(staged),
+    native,
+    item(h_28_b, #"01", 2, []),
   )
-  expect run_mint_item_hop(f, mint_item_claim_data(f, #"00", 7))
-}
-
-test context_mint_item_refuses_a_substituted_previous_head() fail {
-  let f = mint_item_variant(
-    mint_item_witness(
-      0,
-      #"00",
-      7,
-      [mint_high_leaf()],
-      Some(mint_head(#"fe", 1)),
-    ),
+  let second = context_step.next_mint_item(
+    first,
+    native,
+    item(h_28_a, #"ff", 1, [mint_low_leaf()]),
   )
-  expect run_mint_item_hop(f, mint_item_claim_data(f, #"00", 7))
-}
-
-test context_mint_item_refuses_a_substituted_previous_tail() fail {
-  let f = mint_item_variant(
-    mint_item_witness(
-      0,
-      #"00",
-      7,
-      [mint_high_leaf()],
-      Some(
-        CekMintHead { ..mint_head(#"ff", 1), tail: mint_head_assets(#"01", 1) },
+  let third = context_step.next_mint_item(
+    second,
+    native,
+    item(h_28_a, #"00", 7, [mint_high_leaf()]),
+  )
+  let done = context_step.next_mint_item(third, native, no_auxiliary)
+  let empty = cek_data_v1.empty_data_pair_summary_v1()
+  let policies = cek_data_v1.prepend_data_pair_summary_v1(
+    cek_data_v1.semantic_data_summary_v1(builtin.b_data(h_28_a)),
+    cek_data_v1.map_data_summary_v1(
+      prepend_mint_asset_summary(
+        #"00",
+        7,
+        prepend_mint_asset_summary(#"ff", 1, empty),
       ),
     ),
+    cek_data_v1.prepend_data_pair_summary_v1(
+      cek_data_v1.semantic_data_summary_v1(builtin.b_data(h_28_b)),
+      cek_data_v1.map_data_summary_v1(
+        prepend_mint_asset_summary(#"01", 2, empty),
+      ),
+      empty,
+    ),
   )
-  expect run_mint_item_hop(f, mint_item_claim_data(f, #"00", 7))
+  and {
+    done.stage == 9,
+    done.mint_cursor == 3,
+    done.mint_summary == cek_data_v1.map_data_summary_v1(policies),
+    done.mint_summary.root == mint_walk_two_policies_root,
+  }
 }
 
-test context_mint_item_refuses_an_omitted_previous_head() fail {
-  let f = mint_item_variant(
-    mint_item_witness(0, #"00", 7, [mint_high_leaf()], None),
+/// Opening the lower policy's leaf while the higher policy still has its
+/// leaf 2 unopened has no successor.
+test context_mint_walk_refuses_the_lower_policy_first() fail {
+  let h_28_b = #"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  let frontier = validation_merkle_v1.build_frontier(
+    [mint_low_leaf(), mint_high_leaf(), mint_asset_leaf_hash(h_28_b, #"01", 2)],
   )
-  expect run_mint_item_hop(f, mint_item_claim_data(f, #"00", 7))
+  let staged = mint_item_staged(mint_item_fixture())
+  let native = context_step.NativeFacts {
+    ..staged.native,
+    mint_count: 3,
+    mint_peaks: frontier.peaks,
+  }
+  let auxiliary: Data = mint_item_witness(#"ff", 1, [mint_low_leaf()])
+  context_step.next_mint_item(mint_pristine(staged), native, auxiliary).mint_cursor == 1
 }
+
+const mint_walk_two_policies_root =
+  #"eb30636005ea5bbb5a821dad0fb2af9df94c1cb5520da94cadeb15bbf72e3ebf"
 
 /// A repeated item: the fold re-authenticates the pair it already committed.
-/// Membership holds; strict ordering is what refuses it.
+/// That leaf is a member at index 1, not at the derived index 0.
 test context_mint_item_refuses_a_repeated_item() fail {
-  let f = mint_item_variant(
-    mint_item_witness(1, #"ff", 1, [mint_low_leaf()], Some(mint_head(#"ff", 1))),
-  )
+  let f = mint_item_variant(mint_item_witness(#"ff", 1, [mint_low_leaf()]))
   expect run_mint_item_hop(f, mint_item_claim_data(f, #"ff", 1))
 }
 
-/// The producer sorted ascending: every item is a real member and the head
-/// opening is exact, but the execution order is reversed.
+/// A producer that walks ascending: at cursor 1 the derived index is 0, so
+/// opening `#"ff"` (a member at index 1) is refused.
 test context_mint_item_refuses_an_ascending_execution_order() fail {
   let assets = mint_head_assets(#"00", 7)
   let f = mint_stage_fixture(
     1,
     assets,
-    mint_item_witness(1, #"ff", 1, [mint_low_leaf()], Some(mint_head(#"00", 7))),
+    mint_item_witness(#"ff", 1, [mint_low_leaf()]),
     CekContextControlV1 {
       ..mint_stage_control(1, assets),
       mint_cursor: 2,
@@ -3721,13 +3706,7 @@ test context_mint_item_refuses_an_item_past_the_authenticated_count() fail {
   let f = mint_stage_fixture(
     2,
     assets,
-    mint_item_witness(
-      0,
-      #"00",
-      7,
-      [mint_high_leaf()],
-      Some(mint_head(#"00", 7)),
-    ),
+    mint_item_witness(#"00", 7, [mint_high_leaf()]),
     CekContextControlV1 { ..mint_stage_control(2, assets), mint_cursor: 3 },
   )
   expect run_mint_item_hop(f, mint_item_claim_data(f, #"00", 7))
@@ -3768,30 +3747,6 @@ test context_mint_item_refuses_a_forged_successor_at_settlement() fail {
     )
 }
 
-test context_mint_order_refuses_policy_revisit_and_spurious_head() {
-  let Pair(context, previous) = ordered_mint_fixture()
-  and {
-    !cek_mint_order.order_is_valid(
-      context,
-      #"ffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-      #"00",
-      None,
-    ),
-    !cek_mint_order.order_is_valid(
-      context,
-      #"00000000000000000000000000000000000000000000000000000000",
-      #"00",
-      Some(previous),
-    ),
-    cek_mint_order.order_is_valid(
-      context,
-      #"00000000000000000000000000000000000000000000000000000000",
-      #"00",
-      None,
-    ),
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Redeemer ledger order in the split redeemer select
 // ---------------------------------------------------------------------------
@@ -3820,23 +3775,10 @@ fn redeemer_select_commitment(item_index: Int) -> ByteArray {
 }
 
 /// The item's chunk-frontier root; every item here fits one chunk.
-fn redeemer_select_item_root(item_index: Int) -> ByteArray {
-  let built = validation_merkle_v1.build_frontier(
-    [
-      bounded_item_v1.hash_chunk(
-        redeemer_item.redeemer_field_index,
-        item_index,
-        0,
-        redeemer_select_item(item_index),
-      ),
-    ],
-  )
-  validation_merkle_v1.frontier_commitment(built.count, built.peaks)
-}
-
 fn redeemer_select_leaf(item_index: Int) -> ByteArray {
   script_proof_v1.redeemer_item_leaf_hash(
     item_index,
+    bytearray.length(redeemer_select_item(item_index)),
     redeemer_select_commitment(item_index),
   )
 }
@@ -3946,7 +3888,6 @@ fn redeemer_select_auxiliary(
     execution_language_tag: 3,
     source_leaf: redeemer_select_source(named),
     execution_siblings: redeemer_select_siblings(False, named),
-    item_frontier_root: redeemer_select_item_root(item_index),
   }
   let auxiliary_data: Data = auxiliary
   auxiliary_data
@@ -5302,4 +5243,114 @@ test context_settle_seed_refuses_one_memory_less_than_the_startup_cost() fail {
 
 test context_settle_seed_refuses_a_free_start() fail {
   settle_context_seed(0, 0)
+}
+
+/// The stage-0 redeemer begin of the bounded context chain. The frontier
+/// commits the honest item length; the begin witness and its claimed
+/// successor both carry the honest length plus `length_delta`, so only the
+/// length-bearing redeemer leaf can tell them apart.
+fn run_context_redeemer_begin(length_delta: Int) -> Bool {
+  let bytes = #"8400004100820a14"
+  let commitment = bounded_item_v1.from_bytes(8, 0, bytes)
+  let length = bytearray.length(bytes) + length_delta
+  let honest_leaf = script_proof_v1.redeemer_item_leaf_hash(
+    0,
+    bytearray.length(bytes),
+    commitment,
+  )
+  let original = context_staged_fixture(context_step_fixture())
+  expect cek: CekWitnessControlV1 = original.bound.control
+  let native = NativeScriptsControlV1 {
+    ..cek.control,
+    redeemer_count: 1,
+    redeemer_peaks: validation_merkle_v1.build_frontier([honest_leaf]).peaks,
+  }
+  let context = CekContextControlV1 {
+    ..original.context,
+    stage: 0,
+    execution_memory_limit: 0,
+    execution_cpu_limit: 0,
+    observer_summary: vm_witness.empty_data_summary_v1(),
+    redeemer_leaf: honest_leaf,
+    redeemer_context_control_hash: #"",
+  }
+  let item_control = redeemer_item.initial_control_v1(
+    redeemer_item.mode_descriptor,
+    0,
+    1,
+    length,
+    commitment,
+    0,
+    0,
+  )
+  let next_context = CekContextControlV1 {
+    ..context,
+    redeemer_context_control_hash: redeemer_item.hash_control_v1(item_control),
+  }
+  let tx = empty_v1_transaction()
+  let Pair(pre, work_witness_cbor) = cek_state(
+    tx,
+    native,
+    vm_witness.encode_cek_context_control_v1(context),
+    0,
+    #"",
+    0,
+    0,
+    h_28_a,
+    47,
+    0,
+    0,
+  )
+  let Pair(post, _) = cek_state(
+    tx,
+    native,
+    vm_witness.encode_cek_context_control_v1(next_context),
+    0,
+    #"",
+    0,
+    0,
+    h_28_a,
+    48,
+    0,
+    0,
+  )
+  let auxiliary = RedeemerScanBeginWitness {
+    item_index: 0,
+    item_count: 1,
+    total_length: length,
+    item_commitment: commitment,
+    siblings: [],
+  }
+  let f = step_fixture(2, pre, work_witness_cbor, post, auxiliary, None)
+  let staged = context_staged_fixture(f)
+  let staged_data: Data = staged
+  let verified: Data = context_chain.ContextVerified {
+    staged: staged_data,
+    successor: context_chain.ContinueContext { next: next_context },
+  }
+  context_redeemer_begin.main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(staged),
+      },
+    ),
+    ct.Continue(context_chain_action(f)),
+    fixture.own_out_ref(),
+    prover_continue_tx(ct_asset, verified),
+  )
+}
+
+test bounded_context_redeemer_begin_accepts_the_committed_length() {
+  run_context_redeemer_begin(0)
+}
+
+test bounded_context_redeemer_begin_refuses_length_plus_one() fail {
+  run_context_redeemer_begin(1)
+}
+
+test bounded_context_redeemer_begin_refuses_length_minus_one() fail {
+  run_context_redeemer_begin(-1)
 }

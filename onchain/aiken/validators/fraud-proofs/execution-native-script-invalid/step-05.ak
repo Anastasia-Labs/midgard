@@ -65,6 +65,7 @@ validator main(
           own_out_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
         expect Some(state) = m_input_state_data
         let Pair(view, resumed) = resume_opened_field_walk(

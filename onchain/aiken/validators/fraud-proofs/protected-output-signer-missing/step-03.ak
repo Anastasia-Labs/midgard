@@ -54,6 +54,7 @@ validator main(
           own_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
         expect Some(protected) = prior
         let Pair(_view, checkpoint) = opened_field_walk(

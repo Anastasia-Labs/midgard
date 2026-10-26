@@ -5,6 +5,7 @@ import "./cek-data-tree.js";
 import "./plutus-data-narrowing.js";
 import "./script-context-proof.js";
 import "./cek-context.midgard-cek-context-control.js";
+import "./cek-context.mint-item-step.js";
 import "./cek-context.summarize-midgard-cek-context-parts.js";
 export {
   emptyMidgardCekDataSummary,
@@ -30,6 +31,13 @@ export {
   summarizeMidgardCekLucidData,
   validateMidgardCekObserverCollection,
 } from "./cek-context.midgard-cek-context-control.js";
+export {
+  advanceMidgardCekMintItem,
+  finalizeMidgardCekMint,
+  type MidgardCekMintAsset,
+  midgardCekMintItemIndex,
+  runMidgardCekMintFold,
+} from "./cek-context.mint-item-step.js";
 export {
   asMidgardCekListSummary,
   asMidgardCekMapSummary,

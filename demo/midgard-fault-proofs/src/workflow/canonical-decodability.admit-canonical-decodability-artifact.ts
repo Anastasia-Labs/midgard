@@ -27,7 +27,7 @@ import {
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
 } from "../step-support.js";
-import { type LinearFamilyAssemblyContext } from "./family-definition.js";
+import { type FamilyAssemblyContext } from "./family-definition.js";
 import { type JournalJsonObject, normalizeJournalJson } from "./journal.js";
 
 export type CanonicalDecodabilityArtifact = JournalJsonObject &
@@ -325,8 +325,9 @@ export const WITNESS_ROLES = [
   "chunkedVerifyWithdraw",
 ] as const;
 
-export type AssemblyContext = LinearFamilyAssemblyContext<
+export type AssemblyContext = FamilyAssemblyContext<
   "canonicalDecodability",
   (typeof WITNESS_ROLES)[number],
-  true
+  true,
+  2
 >;

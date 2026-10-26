@@ -47,6 +47,7 @@ validator main(
           own_out_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
         expect Some(state) = input_state
         // `advance_scan_v1` checks `state_is_authentic_v1(state)` for a

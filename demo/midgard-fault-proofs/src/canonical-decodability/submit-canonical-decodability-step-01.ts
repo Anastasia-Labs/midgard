@@ -1,8 +1,10 @@
-/** Bind a committed field, adjudicate its envelope, and forward the verdict. */
+/**
+ * Bind a committed field and walk one batch of its envelope: the thread returns
+ * to step 01 while items remain and moves to step 02 with the verdict.
+ */
 import { planMidgardFieldCarriage } from "@al-ft/midgard-core";
 import {
   CanonicalDecodabilityStep01SpendRedeemer,
-  CanonicalDecodabilityStep02Datum,
   commitCountedRootProgram,
   getHeaderFromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
@@ -50,7 +52,6 @@ import {
 } from "../runtime.js";
 import {
   PHAS_MEMBERSHIP_WITHDRAW_TITLE,
-  requireInitialStepDatum,
   requireNativeTxMatchesCompactCbor,
   selectFeeInput,
   type SubmitStep01TxInclusion,
@@ -66,6 +67,7 @@ import {
   workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary.js";
 import type { CanonicalDecodabilityContracts } from "./contracts.js";
+import { deriveCanonicalDecodabilityNextOutput } from "./derive-canonical-decodability-next-output.js";
 import { prepareCanonicalDecodability } from "./prepare-canonical-decodability.js";
 import {
   canonicalDecodabilityStepLabel,
@@ -86,10 +88,13 @@ export type SubmitCanonicalDecodabilityStep01Result = {
   readonly stateQueueBlockOutRef: string;
   readonly fraudulentHeaderHash: string;
   readonly computationThreadUnit: string;
-  readonly secondStepAddress: string;
+  /** Step 01 while the walk continues, step 02 once it has a verdict. */
+  readonly nextStepAddress: string;
+  readonly complete: boolean;
   readonly badTxId: string;
   readonly fieldIndex: number;
-  readonly verdict: number;
+  /** The walk's verdict; `null` while items remain. */
+  readonly verdict: number | null;
   readonly inputIndex: number;
   readonly outputIndex: number;
   readonly awaitedConfirmation: boolean;
@@ -150,7 +155,6 @@ export const submitCanonicalDecodabilityStep01 = async ({
       stepIndex: 0,
       threadOutRef,
     });
-  requireInitialStepDatum({ threadUtxo, signer });
   requireNativeTxMatchesCompactCbor(txInclusion);
   const stepReference = requireCanonicalDecodabilityReferenceScript({
     utxo: referenceScriptUtxo,
@@ -275,13 +279,17 @@ export const submitCanonicalDecodabilityStep01 = async ({
     committedPreimage,
     ...(witnessSet === undefined ? {} : { witnessSet }),
   });
-  const step02Datum = Data.to(
-    { fraud_prover: signer.paymentKeyHash, data: prepared.step02State },
-    CanonicalDecodabilityStep02Datum,
-  );
-  const step02OutputMatches = computationThreadOutputPredicate({
-    address: contracts.steps[1].spendingScriptAddress,
-    datum: step02Datum,
+  const nextOutput = deriveCanonicalDecodabilityNextOutput({
+    threadUtxo,
+    signer,
+    contracts,
+    badTxId: prepared.badTxId,
+    fieldIndex: prepared.fieldIndex,
+    committedPreimage,
+  });
+  const nextOutputMatches = computationThreadOutputPredicate({
+    address: nextOutput.address,
+    datum: nextOutput.datum,
     unit: threadToken.unit,
   });
   let resolvedLayout:
@@ -293,7 +301,7 @@ export const submitCanonicalDecodabilityStep01 = async ({
       inputIndex: requireInputIndex(ctx, threadUtxo, STEP_LABEL),
       outputIndex: requireUniqueOutputIndex(
         ctx.outputs,
-        step02OutputMatches,
+        nextOutputMatches,
         `${STEP_LABEL} output`,
       ),
     };
@@ -396,8 +404,8 @@ export const submitCanonicalDecodabilityStep01 = async ({
       );
   const paid = withCarriage.pay
     .ToContract(
-      contracts.steps[1].spendingScriptAddress,
-      { kind: "inline", value: step02Datum },
+      nextOutput.address,
+      { kind: "inline", value: nextOutput.datum },
       {
         lovelace: threadUtxo.assets.lovelace ?? 0n,
         [threadToken.unit]: 1n,
@@ -456,10 +464,11 @@ export const submitCanonicalDecodabilityStep01 = async ({
     stateQueueBlockOutRef,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
     computationThreadUnit: threadToken.unit,
-    secondStepAddress: contracts.steps[1].spendingScriptAddress,
+    nextStepAddress: nextOutput.address,
+    complete: nextOutput.complete,
     badTxId: prepared.badTxId,
     fieldIndex: prepared.fieldIndex,
-    verdict: prepared.evidence.verdict,
+    verdict: nextOutput.verdict,
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),
     awaitedConfirmation: awaitConfirmation,

@@ -1,7 +1,9 @@
 import {
+  CanonicalDecodabilityStep01Datum,
   CanonicalDecodabilityStep01SpendRedeemer,
   CanonicalDecodabilityStep02Datum,
   type CanonicalDecodabilityStep02State,
+  type CanonicalDecodabilityWalkState,
   type CommittedFieldClaim,
   HUB_ORACLE_ASSET_NAME,
   requireInputIndex,
@@ -38,7 +40,6 @@ import {
 } from "../../src/runtime.js";
 import {
   PHAS_MEMBERSHIP_WITHDRAW_TITLE,
-  requireInitialStepDatum,
   selectFeeInput,
   type SubmitStep01TxInclusion,
 } from "../../src/step-support.js";
@@ -49,7 +50,28 @@ import {
 } from "../../src/witness-reference-scripts.js";
 import { network } from "./submit-init-emulator-shared.js";
 
-/** Guard-bypassing step-01 builder used only for validator-negative tests. */
+/**
+ * The successor a raw step-01 transaction writes: the walk state back at step
+ * 01, or the verdict at step 02. `address` overrides the step's own address.
+ */
+export type CanonicalDecodabilityRawSuccessor =
+  | Readonly<{
+      step: 1;
+      state: CanonicalDecodabilityWalkState;
+      address?: string;
+    }>
+  | Readonly<{
+      step: 2;
+      state: CanonicalDecodabilityStep02State;
+      address?: string;
+    }>;
+
+/**
+ * Guard-bypassing step-01 builder used only for validator-positive twins and
+ * validator-negative tests: it writes whatever successor and claim it is
+ * given. The successor keeps the thread's recorded prover, so a stranger
+ * `signer` changes only who signs.
+ */
 export const submitCanonicalDecodabilityStep01Raw = async ({
   lucid,
   blueprint,
@@ -60,7 +82,8 @@ export const submitCanonicalDecodabilityStep01Raw = async ({
   stateQueueBlockOutRef,
   txInclusion,
   claim,
-  step02State,
+  successor,
+  carriageReferenceInputs = [],
   referenceScriptUtxo,
   witnessReferenceScripts,
 }: {
@@ -72,8 +95,16 @@ export const submitCanonicalDecodabilityStep01Raw = async ({
   readonly threadOutRef: string;
   readonly stateQueueBlockOutRef: string;
   readonly txInclusion: SubmitStep01TxInclusion;
-  readonly claim: CommittedFieldClaim;
-  readonly step02State: CanonicalDecodabilityStep02State;
+  /**
+   * The claim, or a function of the built transaction's reference inputs for
+   * a carriage whose indices name positions in them.
+   */
+  readonly claim:
+    | CommittedFieldClaim
+    | ((referenceInputs: readonly UTxO[]) => CommittedFieldClaim);
+  readonly successor: CanonicalDecodabilityRawSuccessor;
+  /** §8 chunk publications and certificate a certified claim reads. */
+  readonly carriageReferenceInputs?: readonly UTxO[];
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
 }): Promise<{ readonly txHash: string; readonly nextThreadOutRef: string }> => {
@@ -85,7 +116,13 @@ export const submitCanonicalDecodabilityStep01Raw = async ({
       stepIndex: 0,
       threadOutRef,
     });
-  requireInitialStepDatum({ threadUtxo, signer });
+  if (threadUtxo.datum == null) {
+    throw new Error("raw canonical step-01 thread has no inline datum");
+  }
+  const { fraud_prover } = Data.from(
+    threadUtxo.datum,
+    CanonicalDecodabilityStep01Datum,
+  );
   const [stateQueueUtxo, hubOracleUtxo] = await Promise.all([
     fetchUtxoByOutRef({
       lucid,
@@ -119,12 +156,21 @@ export const submitCanonicalDecodabilityStep01Raw = async ({
     referenceUtxo: witnessReferenceScripts.phasMembershipWithdraw,
     label: "raw canonical step-01 PHAS membership",
   });
-  const datum = Data.to(
-    { fraud_prover: signer.paymentKeyHash, data: step02State },
-    CanonicalDecodabilityStep02Datum,
-  );
+  const successorAddress =
+    successor.address ??
+    contracts.steps[successor.step - 1]!.spendingScriptAddress;
+  const datum =
+    successor.step === 1
+      ? Data.to(
+          { fraud_prover, data: successor.state },
+          CanonicalDecodabilityStep01Datum,
+        )
+      : Data.to(
+          { fraud_prover, data: successor.state },
+          CanonicalDecodabilityStep02Datum,
+        );
   const outputMatches = computationThreadOutputPredicate({
-    address: contracts.steps[1].spendingScriptAddress,
+    address: successorAddress,
     datum,
     unit: threadToken.unit,
   });
@@ -174,7 +220,8 @@ export const submitCanonicalDecodabilityStep01Raw = async ({
                 },
               ],
             },
-            claim,
+            claim:
+              typeof claim === "function" ? claim(ctx.referenceInputs) : claim,
           },
         ],
       },
@@ -188,6 +235,7 @@ export const submitCanonicalDecodabilityStep01Raw = async ({
     .readFrom([
       hubOracleUtxo,
       stateQueueUtxo,
+      ...carriageReferenceInputs,
       stepReference,
       ...phasCarriage.referenceInputs,
     ])
@@ -202,7 +250,7 @@ export const submitCanonicalDecodabilityStep01Raw = async ({
       }),
     )
     .pay.ToContract(
-      contracts.steps[1].spendingScriptAddress,
+      successorAddress,
       { kind: "inline", value: datum },
       {
         lovelace: threadUtxo.assets.lovelace ?? 0n,

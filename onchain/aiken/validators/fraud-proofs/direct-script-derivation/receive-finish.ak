@@ -1,4 +1,3 @@
-use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
@@ -30,7 +29,7 @@ validator main(
         )
       ct.Continue(args) -> {
         expect Some(step_datum) = datum
-        let _, _, fraud_prover, input_state, output_hash, output_state <- continue(
+        let _, _, _, input_state, output_hash, output_state <- continue(
           computation_thread_token_policy_id,
           step_datum,
           args.input_index,
@@ -38,6 +37,7 @@ validator main(
           own_out_ref,
           tx.inputs,
           tx.outputs,
+          tx.extra_signatories,
         )
         expect Some(state) = input_state
         let finished = receive.finish_outputs_v1(
@@ -47,11 +47,8 @@ validator main(
           tx.reference_inputs,
           field_preimage_certificate_policy_id,
         )
-        // Target choice and sorted declaration batches need their owner's
-        // signature. Deterministic grammar/output progress stays public.
         expect Some(index) = args.target_ordinal
         expect index >= 0
-        expect list.has(tx.extra_signatories, fraud_prover)
         let expected: Data = receive.initial_declaration_v1(
           finished,
           args.target_ordinal,

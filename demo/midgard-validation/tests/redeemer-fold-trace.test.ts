@@ -103,6 +103,7 @@ const selectExecutionLeaf = (select: Select): Buffer =>
     sourceLeaf: select.sourceLeaf,
     redeemerLeaf: hashMidgardRedeemerItemLeaf({
       redeemerIndex: select.itemIndex,
+      itemLength: select.totalLength,
       itemCommitment: select.itemCommitment,
     }),
   });

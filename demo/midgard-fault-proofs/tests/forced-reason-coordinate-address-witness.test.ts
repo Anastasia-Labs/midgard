@@ -1,7 +1,9 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
+  compareMidgardAddressWitnessItems,
   computeMidgardNativeTxId,
   deriveMidgardNativeTxWitnessSetCompact,
+  encodeMidgardAddressWitnessItem,
   encodeMidgardForcedTxCanonical,
   encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core";
@@ -41,7 +43,8 @@ import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-s
 /**
  * A forced AddressWitnessSignatureInvalid reason names a field-7 witness by
  * its position, and invalidSignature reopens exactly that witness. Witness 0
- * signs the transaction; witness 1 carries a signature that does not verify.
+ * signs the transaction; witness 1 carries a signature that does not verify,
+ * under a key whose signer hash sorts after witness 0's (field 7's order).
  * The verdict is the one the node's classifier writes, so the suite fails if
  * the writer and the proof disagree on how witnesses are counted: one position
  * early names a witness that verifies and convicts; the written position is
@@ -61,10 +64,21 @@ const withWitnesses = (addrTxWits: readonly SDK.MidgardAddressWitness[]) =>
   });
 const signedSubject = await (async (): Promise<InvalidSignatureSubject> => {
   const txId = computeMidgardNativeTxId(withWitnesses([])).toString("hex");
-  const addrTxWits = [
-    honestAddressWitness({ index: 0, txId }),
-    invalidAddressWitness(1),
-  ];
+  const honest = honestAddressWitness({ index: 0, txId });
+  const item = (witness: SDK.MidgardAddressWitness) =>
+    encodeMidgardAddressWitnessItem({
+      verificationKey: Buffer.from(witness.verification_key, "hex"),
+      signature: Buffer.from(witness.signature, "hex"),
+    });
+  let invalidKey = 1;
+  while (
+    compareMidgardAddressWitnessItems(
+      item(honest),
+      item(invalidAddressWitness(invalidKey)),
+    ) >= 0
+  )
+    invalidKey += 1;
+  const addrTxWits = [honest, invalidAddressWitness(invalidKey)];
   const nativeTx = withWitnesses(addrTxWits);
   const witnessSet = deriveMidgardNativeTxWitnessSetCompact(
     nativeTx.witnessSet,

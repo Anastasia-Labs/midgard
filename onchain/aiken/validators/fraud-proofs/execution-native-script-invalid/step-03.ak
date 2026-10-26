@@ -61,6 +61,7 @@ validator main(
           own_out_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
         expect Some(source) = m_input_state_data
         let compact = decode_tx_compact_view_v1(

@@ -2,12 +2,12 @@
 
 Status: Active
 
-Last reviewed: 2026-09-07 (source inventory and installation scope).
+Last reviewed: 2026-10-26 (source inventory and installation scope).
 
 ## Source inventory
 
-The 52 source catalogue categories and all 52 watcher installations are listed
-below. This is source coverage, not a claim that a particular network has these
+The 52 source catalogue categories are listed below, 45 of them with an
+installed watcher workflow. This is source coverage, not a claim that a particular network has these
 contracts deployed or that every acceptance suite passed on this revision.
 
 Category IDs come from `FRAUD_PROOF_CATALOGUE_CATEGORY_IDS` in
@@ -65,15 +65,15 @@ them when you edit it.
 | `00000025` | `observerOrderInvalid`                | Yes               |
 | `00000028` | `redeemerCanonicity`                  | Yes               |
 | `0000002a` | `outputReferenceScriptDecoding`       | Yes               |
-| `00000031` | `executionSourceScriptDecoding`       | Yes               |
-| `00000034` | `receivePurposeLanguage`              | Yes               |
-| `0000002f` | `unusedScriptWitness`                 | Yes               |
-| `0000002d` | `missingScriptSource`                 | Yes               |
+| `00000031` | `executionSourceScriptDecoding`       | No                |
+| `00000034` | `receivePurposeLanguage`              | No                |
+| `0000002f` | `unusedScriptWitness`                 | No                |
+| `0000002d` | `missingScriptSource`                 | No                |
 | `0000002e` | `missingRedeemer`                     | Yes               |
-| `00000030` | `unusedRedeemer`                      | Yes               |
-| `00000032` | `executionNativeScriptInvalid`        | Yes               |
+| `00000030` | `unusedRedeemer`                      | No                |
+| `00000032` | `executionNativeScriptInvalid`        | No                |
 | `00000033` | `scriptIntegrityHashMismatch`         | Yes               |
-| `00000035` | `distinctAssetAccumulationLimit`      | Yes               |
+| `00000035` | `distinctAssetAccumulationLimit`      | No                |
 | `00000036` | `mintItemNonCanonical`                | Yes               |
 
 Shared verifier directories, including `mpf-chunked-proof`, are not additional

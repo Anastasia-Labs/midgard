@@ -48,6 +48,7 @@ pub fn select_step_v1(
         own_ref,
         tx.inputs,
         tx.outputs,
+        tx.extra_signatories,
       )
       expect Some(SourceStateV1 { subject, header, compact }) = input_state
       let index = selected_index_v1(subject, field_index, selected_input_index)

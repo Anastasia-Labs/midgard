@@ -483,7 +483,7 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       missingRedeemer: repeatedFaultProofChain(zeroInput, 39),
       unusedRedeemer: repeatedFaultProofChain(zeroInput, 9),
       executionNativeScriptInvalid: repeatedFaultProofChain(zeroInput, 13),
-      scriptIntegrityHashMismatch: repeatedFaultProofChain(zeroInput, 5),
+      scriptIntegrityHashMismatch: repeatedFaultProofChain(zeroInput, 21),
       distinctAssetAccumulationLimit: repeatedFaultProofChain(zeroInput, 6),
     };
     const fraudProofs =

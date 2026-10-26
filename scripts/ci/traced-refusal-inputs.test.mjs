@@ -74,6 +74,7 @@ test("a pull request touching any input runs the check", () => {
     "demo/scripts/deployment-profile-aiken.mjs",
     "demo/scripts/deployment-profile-identity.mjs",
     "demo/scripts/deployment-profile-budgets.mjs",
+    "demo/scripts/deployment-profile-operator-economics.mjs",
     "demo/pnpm-lock.yaml",
     "demo/vendor/mpf-1.3.1-midgard.1.tgz",
   ]) {

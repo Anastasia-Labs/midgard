@@ -221,9 +221,10 @@
     "fraud_proofs/native_script_decoding/step_02/decoding_step_02_opens_a_normal_claim": {
       "test": "fraud_proofs/native_script_decoding/step_02/decoding_step_02_opens_a_normal_claim",
       "ceiling": {
-        "mem": 1512127,
-        "cpu": 766447574
-      }
+        "mem": 1538944,
+        "cpu": 776197166
+      },
+      "raisedBecause": "continuing a fault-proof thread requires its prover"
     },
     "fraud_proofs/native_script_decoding/step_02/decoding_step_02_opens_a_forced_acceptance": {
       "test": "fraud_proofs/native_script_decoding/step_02/decoding_step_02_opens_a_forced_acceptance",
@@ -480,19 +481,19 @@
       "test": "fraud_proofs/q1x_spend_input_cardinality.test/q1x_f6_no_input_step_02_at_one_spend_input",
       "minusControl": "q1x_f6_no_input_step_02_control_at_one_spend_input",
       "ceiling": {
-        "mem": 676812,
-        "cpu": 242158360
+        "mem": 685913,
+        "cpu": 245148241
       },
-      "raisedBecause": "The shared subject substrate's event-relative binding: the event door 93,627 mem / 48,205,617 cpu, the claimed-input reason and coordinate binding 10,194 / 4,092,881, the InputNotFound allowance 2,404 / 1,619,411, and the carried state shape 34,314 / 22,970,718, after the redundant work in each was removed."
+      "raisedBecause": "continuing a fault-proof thread requires its prover"
     },
     "fraud_proofs/q1x_spend_input_cardinality.test/q1x_f6_no_input_step_02_at_the_admissible_maximum - q1x_f6_no_input_step_02_control_at_the_admissible_maximum": {
       "test": "fraud_proofs/q1x_spend_input_cardinality.test/q1x_f6_no_input_step_02_at_the_admissible_maximum",
       "minusControl": "q1x_f6_no_input_step_02_control_at_the_admissible_maximum",
       "ceiling": {
-        "mem": 504020,
-        "cpu": 227627128
+        "mem": 513121,
+        "cpu": 230617009
       },
-      "raisedBecause": "The shared subject substrate's event-relative binding: the event door 93,627 mem / 48,205,617 cpu, the claimed-input reason and coordinate binding 10,194 / 4,092,881, the InputNotFound allowance 2,404 / 1,619,411, and the carried state shape 34,314 / 22,970,718, after the redundant work in each was removed."
+      "raisedBecause": "continuing a fault-proof thread requires its prover"
     },
     "fraud_proofs/q1x_spend_input_cardinality.test/q1x_f6_double_spend_step_04_at_one_spend_input - q1x_f6_double_spend_step_04_control_at_one_spend_input": {
       "test": "fraud_proofs/q1x_spend_input_cardinality.test/q1x_f6_double_spend_step_04_at_one_spend_input",
@@ -1899,6 +1900,22 @@
       "ceiling": {
         "mem": 10887993,
         "cpu": 5120879026
+      }
+    },
+    "fraud_proofs/canonical_decodability/step_01_walk.test/canonical_decodability_step_01_walk_first_step_at_the_worst_batch - canonical_decodability_step_01_walk_fixture_only_first_step_at_the_worst_batch": {
+      "test": "fraud_proofs/canonical_decodability/step_01_walk.test/canonical_decodability_step_01_walk_first_step_at_the_worst_batch",
+      "minusControl": "canonical_decodability_step_01_walk_fixture_only_first_step_at_the_worst_batch",
+      "ceiling": {
+        "mem": 8151021,
+        "cpu": 3329830810
+      }
+    },
+    "fraud_proofs/canonical_decodability/step_01_walk.test/canonical_decodability_step_01_walk_resumed_step_at_the_worst_batch - canonical_decodability_step_01_walk_fixture_only_resumed_step_at_the_worst_batch": {
+      "test": "fraud_proofs/canonical_decodability/step_01_walk.test/canonical_decodability_step_01_walk_resumed_step_at_the_worst_batch",
+      "minusControl": "canonical_decodability_step_01_walk_fixture_only_resumed_step_at_the_worst_batch",
+      "ceiling": {
+        "mem": 8142394,
+        "cpu": 3326956151
       }
     }
   },

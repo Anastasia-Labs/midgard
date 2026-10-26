@@ -49,6 +49,7 @@ validator main(
           own_out_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
         expect Some(state) = input_state
         let advanced = when action is {
@@ -64,7 +65,6 @@ validator main(
               evidence.quantity,
               evidence.asset_peaks,
               evidence.asset_siblings,
-              evidence.mutation,
             )
         }
         let expected: Data = advanced

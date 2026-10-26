@@ -7,7 +7,7 @@
 //// each covering only what its yield pins, in the terminal control; the thin
 //// terminal step carries no descriptor yields, requires the recorded role-0
 //// fact to commit exactly its descriptor bytes, and performs the
-//// input-signer-authorization arms and the accumulator successor itself. See
+//// input-signer-authorization arms and the control successor itself. See
 //// docs/fault-proofs/decisions/0004-checkpointed-ledger-output-facts.md
 //// Decision section.
 
@@ -32,7 +32,6 @@ use midgard/validation_machine/shared.{
   input_signer_authorization, rejected_successor_is_exact,
   unset_reason_coordinate,
 }
-use midgard/validation_machine/witness.{resolved_input_accumulator_successor}
 use midgard/validation_semantic_v1.{Datum, continue_winning}
 use midgard/validation_semantic_yield_v1
 use midgard/validation_trace_v1.{ResolveInputs, ValidationMachineStateV1}
@@ -270,12 +269,6 @@ fn membership_terminal_dispatch(
                 carrier.ResolveInputsControlRawV1 {
                   ..control,
                   cursor: control.cursor + 1,
-                  accumulator: resolved_input_accumulator_successor(
-                    control.accumulator,
-                    pending.source_kind,
-                    pending.key,
-                    descriptor_cbor,
-                  ),
                   remaining_schedule_hash: pending.next_schedule_hash,
                   pending_cbor: #"00",
                 },

@@ -98,14 +98,10 @@ protocol_treasury_native_script:
     - type: sig
       keyHash: "706c616365686f6c6465723a74726573000000000000000000000003"
 allow_lists:
-  # P1 curated keys (owner input I1, due 2026-10-23). The "placeholder:"
-  # keys below are stand-ins and must be replaced before release.
+  # P1 curated operators (owner input I1, due 2026-10-23). The "placeholder:"
+  # key below is a stand-in and must be replaced before release.
   operators:
     - "706c616365686f6c6465723a6f706572000000000000000000000001"
-  fraud_provers:
-    - "706c616365686f6c6465723a70726f76000000000000000000000001"
-  da_challengers:
-    - "706c616365686f6c6465723a64616368000000000000000000000001"
 # P1 carries no validation-trace states, so the families that read them are
 # left out of the fraud-proof catalogue (Computation-Thread Init refuses them).
 excluded_fraud_proof_categories:

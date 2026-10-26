@@ -1,4 +1,6 @@
-//// Traversal precedence for canonical, resolution and direct-purpose faults.
+//// Traversal precedence for canonical, resolution and direct-purpose faults,
+//// and for the later faults: the ScriptSources unused audits and the
+//// NativeScripts, ScriptIntegrity, Cek and ValueAndMint phases.
 //// Constructor tags and raw input ordinals are not traversal keys.
 
 use aiken/primitive/bytearray
@@ -462,5 +464,352 @@ pub fn leaf_admits_fault_v1(
       expect Some(network_context) = context
       leaf_admits_purpose_fault_v1(subject, network_context, position, claimed)
     }
+  }
+}
+
+// ── Later faults: after the direct purposes ─────────────────────────────
+//
+// Each later position names a fault an owning route proved under the leaf's
+// source. Its key is (phase, stage, coordinate, subcheck), the machine's
+// traversal order:
+//   - ScriptSources stage 11 audits inline witnesses by field-6 ordinal, then
+//     stage 12 audits redeemers by field-8 ordinal; both follow every purpose;
+//   - NativeScripts visits executions in purpose-cursor order, (kind, index);
+//     one execution's token scan precedes its evaluation;
+//   - ScriptIntegrity is transaction-global;
+//   - Cek visits executions in purpose-cursor order; one execution's
+//     selection precedes its run;
+//   - ValueAndMint folds inputs in schedule order, then each output (its
+//     minimum-Ada floor before its assets), then mint assets, then checks
+//     preservation.
+// A later position needs no claimed receipt: inside a phase the leaf's own
+// coordinate orders it directly.
+
+pub type UnusedAuditPositionV1 {
+  UnusedWitnessAudit { script_index: Int }
+  UnusedRedeemerAudit { redeemer_index: Int }
+}
+
+/// The token scan's three arms share one rank: which one trips first depends
+/// on a byte position the coordinate does not carry.
+pub type ExecutionSubcheckV1 {
+  NativeScriptScan
+  NativeScriptEvaluation
+}
+
+pub type ExecutionFaultPositionV1 {
+  coordinate: PurposeCoordinateV1,
+  subcheck: ExecutionSubcheckV1,
+}
+
+pub type CekSubcheckV1 {
+  ReceiveLanguage
+  ScriptRun
+}
+
+pub type CekFaultPositionV1 {
+  coordinate: PurposeCoordinateV1,
+  subcheck: CekSubcheckV1,
+}
+
+/// `input_index` is the input's position in the input-resolution schedule,
+/// reference inputs counted, as the value walk folds it; not its field-0
+/// ordinal.
+pub type ValueFaultPositionV1 {
+  InputAssetFault { input_index: Int, asset_index: Int }
+  OutputAssetFault { output_index: Int, asset_index: Int }
+  MintAssetFault { mint_index: Int }
+}
+
+pub type LaterFaultPositionV1 {
+  UnusedAuditFault(UnusedAuditPositionV1)
+  ExecutionFault(ExecutionFaultPositionV1)
+  ScriptIntegrityFault
+  CekFault(CekFaultPositionV1)
+  ValueFault(ValueFaultPositionV1)
+}
+
+pub fn later_fault_phase_v1(position: LaterFaultPositionV1) -> Int {
+  when position is {
+    UnusedAuditFault(_) -> 8
+    ExecutionFault(_) -> 9
+    ScriptIntegrityFault -> 10
+    CekFault(_) -> 11
+    ValueFault(_) -> 12
+  }
+}
+
+pub fn unused_audit_position_of_reason_v1(
+  r: reason.RejectionReasonV1,
+) -> Option<UnusedAuditPositionV1> {
+  when r is {
+    reason.UnusedScriptWitness { script_index } ->
+      Some(UnusedWitnessAudit { script_index })
+    reason.UnusedRedeemer { redeemer_index } ->
+      Some(UnusedRedeemerAudit { redeemer_index })
+    _ -> None
+  }
+}
+
+pub fn unused_audit_position_precedes_or_equals_v1(
+  left: UnusedAuditPositionV1,
+  right: UnusedAuditPositionV1,
+) -> Bool {
+  when Pair(left, right) is {
+    Pair(UnusedWitnessAudit { script_index: l },
+    UnusedWitnessAudit { script_index: r }) -> {
+      expect l >= 0 && r >= 0
+      l <= r
+    }
+    Pair(UnusedWitnessAudit { script_index: l },
+    UnusedRedeemerAudit { redeemer_index: r }) -> {
+      expect l >= 0 && r >= 0
+      True
+    }
+    Pair(UnusedRedeemerAudit { redeemer_index: l },
+    UnusedWitnessAudit { script_index: r }) -> {
+      expect l >= 0 && r >= 0
+      False
+    }
+    Pair(UnusedRedeemerAudit { redeemer_index: l },
+    UnusedRedeemerAudit { redeemer_index: r }) -> {
+      expect l >= 0 && r >= 0
+      l <= r
+    }
+  }
+}
+
+pub fn execution_position_of_reason_v1(
+  r: reason.RejectionReasonV1,
+) -> Option<ExecutionFaultPositionV1> {
+  when r is {
+    reason.ExecutionNativeScriptMalformed { purpose_kind, purpose_index } |
+    reason.ExecutionNativeScriptNodeLimit { purpose_kind, purpose_index } |
+    reason.ExecutionNativeScriptDepthLimit { purpose_kind, purpose_index } ->
+      Some(
+        ExecutionFaultPositionV1 {
+          coordinate: PurposeCoordinateV1 {
+            kind: purpose_kind,
+            index: purpose_index,
+          },
+          subcheck: NativeScriptScan,
+        },
+      )
+    reason.ExecutionNativeScriptFalse { purpose_kind, purpose_index } ->
+      Some(
+        ExecutionFaultPositionV1 {
+          coordinate: PurposeCoordinateV1 {
+            kind: purpose_kind,
+            index: purpose_index,
+          },
+          subcheck: NativeScriptEvaluation,
+        },
+      )
+    _ -> None
+  }
+}
+
+/// Lexicographic (kind, index); at one coordinate the caller's subcheck
+/// verdict decides.
+fn coordinate_precedes_or_equals_v1(
+  left: PurposeCoordinateV1,
+  right: PurposeCoordinateV1,
+  subcheck_precedes_or_equals: Bool,
+) -> Bool {
+  expect purpose_coordinate_is_valid_v1(left)
+  expect purpose_coordinate_is_valid_v1(right)
+  if left.kind != right.kind {
+    left.kind < right.kind
+  } else if left.index != right.index {
+    left.index < right.index
+  } else {
+    subcheck_precedes_or_equals
+  }
+}
+
+pub fn execution_position_precedes_or_equals_v1(
+  left: ExecutionFaultPositionV1,
+  right: ExecutionFaultPositionV1,
+) -> Bool {
+  coordinate_precedes_or_equals_v1(
+    left.coordinate,
+    right.coordinate,
+    left.subcheck == NativeScriptScan || right.subcheck == NativeScriptEvaluation,
+  )
+}
+
+pub fn cek_position_of_reason_v1(
+  r: reason.RejectionReasonV1,
+) -> Option<CekFaultPositionV1> {
+  when r is {
+    reason.ReceivePurposePlutusV3Forbidden { purpose_kind, purpose_index } ->
+      Some(
+        CekFaultPositionV1 {
+          coordinate: PurposeCoordinateV1 {
+            kind: purpose_kind,
+            index: purpose_index,
+          },
+          subcheck: ReceiveLanguage,
+        },
+      )
+    reason.PlutusExecutionFailed { purpose_kind, purpose_index } ->
+      Some(
+        CekFaultPositionV1 {
+          coordinate: PurposeCoordinateV1 {
+            kind: purpose_kind,
+            index: purpose_index,
+          },
+          subcheck: ScriptRun,
+        },
+      )
+    _ -> None
+  }
+}
+
+pub fn cek_position_precedes_or_equals_v1(
+  left: CekFaultPositionV1,
+  right: CekFaultPositionV1,
+) -> Bool {
+  coordinate_precedes_or_equals_v1(
+    left.coordinate,
+    right.coordinate,
+    left.subcheck == ReceiveLanguage || right.subcheck == ScriptRun,
+  )
+}
+
+/// (stage, major, minor) in ValueAndMint traversal order. Inside one output
+/// the minimum-Ada floor (minor -1) precedes every asset (minor >= 0).
+fn value_key_of_reason_v1(r: reason.RejectionReasonV1) -> (Int, Int, Int) {
+  when r is {
+    reason.InputAssetAccumulationLimit { input_index, asset_index } -> {
+      expect input_index >= 0 && asset_index >= 0
+      (0, input_index, asset_index)
+    }
+    reason.OutputBelowMinAda { output_index } -> {
+      expect output_index >= 0
+      (1, output_index, -1)
+    }
+    reason.OutputAssetAccumulationLimit { output_index, asset_index } -> {
+      expect output_index >= 0 && asset_index >= 0
+      (1, output_index, asset_index)
+    }
+    reason.MintAssetAccumulationLimit { mint_index } -> {
+      expect mint_index >= 0
+      (2, mint_index, 0)
+    }
+    reason.ValueNotPreserved -> (3, 0, 0)
+    _ -> fail
+  }
+}
+
+pub fn value_position_of_reason_v1(
+  r: reason.RejectionReasonV1,
+) -> Option<ValueFaultPositionV1> {
+  when r is {
+    reason.InputAssetAccumulationLimit { input_index, asset_index } ->
+      Some(InputAssetFault { input_index, asset_index })
+    reason.OutputAssetAccumulationLimit { output_index, asset_index } ->
+      Some(OutputAssetFault { output_index, asset_index })
+    reason.MintAssetAccumulationLimit { mint_index } ->
+      Some(MintAssetFault { mint_index })
+    _ -> None
+  }
+}
+
+fn value_key_of_position_v1(position: ValueFaultPositionV1) -> (Int, Int, Int) {
+  when position is {
+    InputAssetFault { input_index, asset_index } -> {
+      expect input_index >= 0 && asset_index >= 0
+      (0, input_index, asset_index)
+    }
+    OutputAssetFault { output_index, asset_index } -> {
+      expect output_index >= 0 && asset_index >= 0
+      (1, output_index, asset_index)
+    }
+    MintAssetFault { mint_index } -> {
+      expect mint_index >= 0
+      (2, mint_index, 0)
+    }
+  }
+}
+
+/// `r` must be a ValueAndMint (phase 12) reason.
+pub fn value_reason_precedes_or_equals_v1(
+  r: reason.RejectionReasonV1,
+  observed: ValueFaultPositionV1,
+) -> Bool {
+  let (ls, lm, ln) = value_key_of_reason_v1(r)
+  let (rs, rm, rn) = value_key_of_position_v1(observed)
+  if ls != rs {
+    ls < rs
+  } else if lm != rm {
+    lm < rm
+  } else {
+    ln <= rn
+  }
+}
+
+/// Whether `r` is at or before `observed` in the machine's traversal order.
+/// A ScriptSources reason other than an unused audit belongs to an earlier
+/// stage than either audit.
+pub fn reason_precedes_or_equals_later_fault_v1(
+  r: reason.RejectionReasonV1,
+  context: NetworkOrderContextV1,
+  observed: LaterFaultPositionV1,
+) -> Bool {
+  let phase = phase_of_reason_v1(r, context)
+  let observed_phase = later_fault_phase_v1(observed)
+  if phase != observed_phase {
+    phase < observed_phase
+  } else {
+    when observed is {
+      UnusedAuditFault(position) ->
+        when unused_audit_position_of_reason_v1(r) is {
+          Some(recorded) ->
+            unused_audit_position_precedes_or_equals_v1(recorded, position)
+          None -> True
+        }
+      ExecutionFault(position) -> {
+        expect Some(recorded) = execution_position_of_reason_v1(r)
+        execution_position_precedes_or_equals_v1(recorded, position)
+      }
+      ScriptIntegrityFault -> True
+      CekFault(position) -> {
+        expect Some(recorded) = cek_position_of_reason_v1(r)
+        cek_position_precedes_or_equals_v1(recorded, position)
+      }
+      ValueFault(position) -> value_reason_precedes_or_equals_v1(r, position)
+    }
+  }
+}
+
+pub fn later_fault_position_is_valid_v1(position: LaterFaultPositionV1) -> Bool {
+  when position is {
+    UnusedAuditFault(UnusedWitnessAudit { script_index: i }) |
+    UnusedAuditFault(UnusedRedeemerAudit { redeemer_index: i }) |
+    ValueFault(MintAssetFault { mint_index: i }) -> i >= 0
+    ExecutionFault(ExecutionFaultPositionV1 { coordinate: c, .. }) |
+    CekFault(CekFaultPositionV1 { coordinate: c, .. }) ->
+      purpose_coordinate_is_valid_v1(c)
+    ScriptIntegrityFault -> True
+    ValueFault(InputAssetFault { input_index: i, asset_index: a }) |
+    ValueFault(OutputAssetFault { output_index: i, asset_index: a }) ->
+      i >= 0 && a >= 0
+  }
+}
+
+/// The later-fault twin of `leaf_admits_fault_v1`, with the same contract:
+/// terminal callers negate it, so an accepted leaf admits nothing and a
+/// malformed coordinate on either side aborts, whatever the leaf's phase.
+pub fn leaf_admits_later_fault_v1(
+  subject: substrate.VerdictSubjectV1,
+  context: NetworkOrderContextV1,
+  observed: LaterFaultPositionV1,
+) -> Bool {
+  expect substrate.subject_is_canonical_v1(subject)
+  expect later_fault_position_is_valid_v1(observed)
+  when subject.rejection_reason is {
+    None -> False
+    Some(r) -> reason_precedes_or_equals_later_fault_v1(r, context, observed)
   }
 }

@@ -64,6 +64,7 @@ validator main(
           own_out_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
         expect Some(_) = m_input_state_data
         expect _shape = if output_script_hash == own_script_hash {

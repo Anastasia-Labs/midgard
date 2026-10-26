@@ -432,6 +432,7 @@ pub fn self_loop_l1_tx_v1(
   Transaction {
     ..placeholder,
     inputs: [fixture.ct_thread_input(asset_name)],
+    extra_signatories: [fixture.fraud_prover_key_hash],
     outputs: [
       transaction.Output {
         address: address.from_script(fixture.step_script_hash),

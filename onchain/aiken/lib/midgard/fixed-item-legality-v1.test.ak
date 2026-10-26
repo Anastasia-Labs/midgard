@@ -63,14 +63,6 @@ test fixed_input_accepts_repeat_for_duplicate_input_phase() {
   fixed_item_is_legal_v1(0, Some(input(8)), input(8))
 }
 
-test fixed_spend_input_accepts_descending_unique_order() {
-  fixed_item_is_legal_v1(0, Some(input(9)), input(8))
-}
-
-test fixed_reference_input_accepts_descending_unique_order() {
-  fixed_item_is_legal_v1(1, Some(input(9)), input(8))
-}
-
 test fixed_reference_input_accepts_repeat_for_duplicate_input_phase() {
   fixed_item_is_legal_v1(1, Some(input(8)), input(8))
 }
@@ -147,12 +139,12 @@ test fixed_witness_rejects_bad_signature_header_without_aborting() {
   )
 }
 
-test fixed_witness_accepts_exact_repeat() {
+test fixed_witness_rejects_exact_repeat() {
   let item = witness(key, signature)
-  fixed_item_is_legal_v1(7, Some(item), item)
+  !fixed_item_is_legal_v1(7, Some(item), item)
 }
 
-test fixed_witness_accepts_both_same_signer_signature_orders() {
+test fixed_witness_same_signer_uses_signature_bytes_as_tiebreak() {
   let low = witness(key, signature)
   let high = witness(
     key,
@@ -160,11 +152,11 @@ test fixed_witness_accepts_both_same_signer_signature_orders() {
   )
   and {
     fixed_item_is_legal_v1(7, Some(low), high),
-    fixed_item_is_legal_v1(7, Some(high), low),
+    !fixed_item_is_legal_v1(7, Some(high), low),
   }
 }
 
-test fixed_witness_accepts_descending_signer_hashes() {
+test fixed_witness_compares_signer_hash_before_vkey_bytes() {
   let other = bytearray.concat(#"01", bytearray.take(key, 31))
   let first = witness(key, signature)
   let second = witness(other, signature)
@@ -172,8 +164,19 @@ test fixed_witness_accepts_descending_signer_hashes() {
     // The signer hashes descend while the verification keys ascend.
     bytearray.compare(blake2b_224(key), blake2b_224(other)) == Greater,
     bytearray.compare(key, other) == Less,
-    fixed_item_is_legal_v1(7, Some(first), second),
+    !fixed_item_is_legal_v1(7, Some(first), second),
     fixed_item_is_legal_v1(7, Some(second), first),
+  }
+}
+
+test fixed_inputs_ascend_with_repeats_allowed() {
+  and {
+    fixed_item_is_legal_v1(0, Some(input(1)), input(2)),
+    fixed_item_is_legal_v1(0, Some(input(2)), input(2)),
+    !fixed_item_is_legal_v1(0, Some(input(2)), input(1)),
+    fixed_item_is_legal_v1(1, Some(input(1)), input(2)),
+    fixed_item_is_legal_v1(1, Some(input(2)), input(2)),
+    !fixed_item_is_legal_v1(1, Some(input(2)), input(1)),
   }
 }
 
@@ -222,13 +225,23 @@ test item_width_is_total_on_negative_and_unsupported_fields() {
   }
 }
 
-// A prior item remains shape evidence; removing ordering must not hide garbage.
+// A prior item remains shape evidence: each current item below follows the
+// well-formed prior, so only the prior's shape refuses it.
+fn after_low() -> ByteArray {
+  witness(key, bytearray.concat(#"ff", bytearray.take(signature, 63)))
+}
+
 test fixed_witness_rejects_a_bad_previous_wrapper() {
-  !fixed_item_is_legal_v1(
-    7,
-    Some(bytearray.concat(#"5864", bytearray.drop(witness(key, signature), 2))),
-    witness(key, signature),
-  )
+  and {
+    fixed_item_is_legal_v1(7, Some(witness(key, signature)), after_low()),
+    !fixed_item_is_legal_v1(
+      7,
+      Some(
+        bytearray.concat(#"5864", bytearray.drop(witness(key, signature), 2)),
+      ),
+      after_low(),
+    ),
+  }
 }
 
 test fixed_witness_rejects_a_bad_previous_signature_header() {
@@ -236,5 +249,5 @@ test fixed_witness_rejects_a_bad_previous_signature_header() {
     bytearray.take(witness(key, signature), 37),
     bytearray.concat(#"5841", signature),
   )
-  !fixed_item_is_legal_v1(7, Some(prior), witness(key, signature))
+  !fixed_item_is_legal_v1(7, Some(prior), after_low())
 }

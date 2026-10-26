@@ -94,6 +94,7 @@ validator main(
           own_out_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
         expect None = input_state
         let Pair(subject, verified) = substrate.open_forced_subject_v1(

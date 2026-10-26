@@ -708,8 +708,7 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
     const { outsiderLucid, outsiderSigner: outsider } = harness;
     const segment = plan.segments[0]!;
 
-    // Offchain plane, drive: the tooling refuses to sign for a thread it does
-    // not own.
+    // Offchain plane, drive: the tooling refuses a thread it does not own.
     await expect(
       submitNativeScriptDecodingStep03AdvanceOrCloseSegment({
         lucid: outsiderLucid,
@@ -738,9 +737,6 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
       }),
     ).rejects.toThrow(/native-script-decoding: signer does not own thread/u);
 
-    // On-chain plane, drive: the theft an adversary would actually attempt is
-    // re-datuming the thread to itself, which the shared `continue` helper
-    // forbids — the fraud prover may not change during a transition.
     const { threadUtxo, threadUnit, state } = await readStep03Thread(
       harness,
       bind.nextThreadOutRef,
@@ -751,11 +747,14 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
       itemIndex: Number(state.output_index),
       itemBytes: item,
     });
-    const rawScanAs = (fraudProver: string) =>
+    const bySigner = { lucid: outsiderLucid, signer: outsider };
+    const { proverLucid, proverSigner } = harness;
+    const proverSigned = { lucid: proverLucid, signer: proverSigner };
+    const rawScanAs = (fraudProver: string, by: typeof bySigner) =>
       submitRawDecodingStep({
-        lucid: outsiderLucid,
+        lucid: by.lucid,
         contracts: harness.decoding,
-        signer: outsider,
+        signer: by.signer,
         stepIndex: 4,
         threadUtxo,
         threadUnit,
@@ -789,11 +788,16 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
           ),
         referenceScriptUtxo: refs[4],
       });
-    // The theft: the continuation names the outsider.
-    const driveMessage = await expectOnchainRefusal(() =>
-      rawScanAs(outsider.paymentKeyHash),
-    );
-    expect(driveMessage.length).toBeGreaterThan(0);
+    // On-chain plane, drive: continuing requires the prover, whatever the
+    // continuation names, and the prover may not hand the thread over.
+    for (const [named, by] of [
+      [outsider.paymentKeyHash, bySigner],
+      [proverSigner.paymentKeyHash, bySigner],
+      [outsider.paymentKeyHash, proverSigned],
+    ] as const) {
+      const message = await expectOnchainRefusal(() => rawScanAs(named, by));
+      expect(message.length).toBeGreaterThan(0);
+    }
 
     // On-chain plane, cancel: the validator demands the named prover's
     // signature, which the outsider cannot produce.
@@ -817,15 +821,9 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
     const after = await readStep03Thread(harness, bind.nextThreadOutRef);
     expect(after.state.machine_state_hash).toBe(segment.controlBefore.hashHex);
 
-    // Control, isolating the refusals to the two checks named above. The same
-    // outsider-built, outsider-signed Scan lands the moment the continuation
-    // keeps naming the HONEST prover: paying somebody else's thread forward
-    // is permitted, taking it over is not. So the drive refusal is the shared
-    // `continue` helper's "fraud prover must not change", and the cancel
-    // refusal is the step's own demand for the named prover's signature —
-    // neither is the outsider merely being unable to build a transaction.
-    const controlTxHash = await rawScanAs(harness.proverSigner.paymentKeyHash);
-    const advanced = await readStep03Thread(harness, `${controlTxHash}#0`);
+    // Control: the same raw Scan lands when the prover signs and stays named.
+    const control = await rawScanAs(proverSigner.paymentKeyHash, proverSigned);
+    const advanced = await readStep03Thread(harness, `${control}#0`);
     expect(advanced.state.machine_state_hash).toBe(
       segment.controlAfter.hashHex,
     );

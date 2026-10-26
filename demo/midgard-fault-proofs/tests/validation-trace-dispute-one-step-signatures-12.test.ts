@@ -11,7 +11,7 @@ const drive = phaseDrive({
   from: 12,
   phase: "signatures",
   semantic: 1,
-  evidence: { fieldIndex: 7, itemIndex: 0 },
+  evidence: { fieldIndex: 7 },
   at: "signaturesAddressItemSemantic",
 });
 

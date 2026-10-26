@@ -288,7 +288,7 @@ fn receive_start(
       },
     ),
     fixture.own_out_ref(),
-    Transaction { ..tx, extra_signatories: [] },
+    tx,
   )
 }
 

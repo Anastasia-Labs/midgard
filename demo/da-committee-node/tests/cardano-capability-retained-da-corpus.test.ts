@@ -70,8 +70,9 @@ describe("Cardano capability corpus production DA admission", () => {
         expect(label).toBe("mixed-size-balanced");
         // DA framing is independent of script validity, so this diagnostic
         // row is refused by admission, at its first fault in machine phase
-        // order: its spend and reference inputs share an outref, and the
-        // input-set phase runs before the carried-script decoding phases.
+        // order: its spend inputs are not in canonical order (item 35 sorts
+        // before item 34), and canonical decoding runs before the input-set
+        // and carried-script decoding phases.
         const phaseA = await Effect.runPromise(
           runPhaseAValidation(
             [
@@ -95,9 +96,13 @@ describe("Cardano capability corpus production DA admission", () => {
         expect(phaseA.accepted).toEqual([]);
         expect(phaseA.rejected).toEqual([
           expect.objectContaining({
-            code: RejectCodes.DuplicateInputInTx,
-            consensusPhase: "inputSets",
-            subject: expect.objectContaining({ arm: "DuplicateInput" }),
+            code: RejectCodes.InvalidFieldType,
+            consensusPhase: "canonicalDecode",
+            subject: expect.objectContaining({
+              arm: "FieldItemWidthIllegal",
+              fieldIndex: 0n,
+              itemIndex: 35n,
+            }),
           }),
         ]);
         return;

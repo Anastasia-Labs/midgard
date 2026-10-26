@@ -37,6 +37,7 @@ validator main(
           own_out_ref,
           tx.inputs,
           tx.outputs,
+          tx.extra_signatories,
         )
         expect Some(source) = input_state
         let Pair(initial, _) = receive.initial_outputs_v1(

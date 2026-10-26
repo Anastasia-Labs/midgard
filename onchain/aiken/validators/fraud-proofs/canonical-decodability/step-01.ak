@@ -2,8 +2,16 @@
 ////
 //// Binds the disputed transaction to the block's committed `transactions_root`,
 //// authenticates the **committed** preimage of the accused field against §4's
-//// positionally-extracted commitment, and forwards the §5.1 verdict that
-//// step 02 adjudicates.
+//// positionally-extracted commitment, and takes one batch of the §5.1 walk
+//// over it: at most `envelope_batch_items` item heads per transaction.
+////
+//// A walk with items still owed continues at this script, carrying a
+//// `WalkState` (the transaction, the slot, the items owed and the byte the next
+//// batch starts at); a walk that has its verdict carries it to step 02. Every
+//// batch re-binds the transaction and re-authenticates the bytes, so the only
+//// thing one transaction hands the next is the cursor, and the cursor is
+//// derived, never chosen. That is what lets a field with more items than one
+//// transaction can read still reach a verdict.
 ////
 //// The bytes are the prover's to carry and the block's to own: whichever §8
 //// tier they arrive on, `authenticated_committed_preimage` hashes them against
@@ -21,17 +29,18 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/canonical_decodability/rule.{
-  BodyFieldClaim, CommittedFieldClaimV1, CommittedFieldVerdictV1,
-  WitnessFieldClaim, committed_field_verdict_v1, envelope_verdict_v1,
-  miscounted_field_preimage_v1, verdict_grammatical,
-  verdict_missing_array_header, verdict_missing_item_header,
+  BodyFieldClaim, CommittedFieldClaimV1, EnvelopeItems, EnvelopeVerdict,
+  WitnessFieldClaim, authenticated_claim_preimage_v1, envelope_first_batch_v1,
+  envelope_items_batch_v1, envelope_verdict_v1, miscounted_field_preimage_v1,
+  verdict_grammatical, verdict_missing_array_header, verdict_missing_item_header,
   verdict_non_minimal_item_header, verdict_trailing_bytes,
   verdict_truncated_item_payload,
 }
 use midgard/fraud_proofs/canonical_decodability/step_01.{
-  Args, Datum, SpendRedeemer,
+  Args, Datum, SpendRedeemer, WalkState,
 }
 use midgard/fraud_proofs/canonical_decodability/step_02
+use midgard/fraud_proofs/canonical_decodability/walk_fixture
 use midgard/fraud_proofs/common.{cancel, pass_native_tx_to_next_step_carried}
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_compact_cbor_v1}
@@ -70,12 +79,14 @@ validator main(
         //    run the native codec precondition: a leaf whose key is not its own
         //    id is that family's fault, not this one's, and the compact
         //    structure this step reads a field commitment out of only means
-        //    anything once the id derived from it is the committed key.
+        //    anything once the id derived from it is the committed key. Every
+        //    batch re-establishes it, so no batch trusts bytes an earlier
+        //    transaction read.
         let
-            _own_script_hash,
+            own_script_hash,
             _computation_thread_token_asset_name,
             _fraud_prover,
-            _m_input_state_data,
+            m_input_state,
             output_script_hash,
             output_state_data,
             _header,
@@ -94,28 +105,59 @@ validator main(
         // code 1 in this root is owned by `l2-tx-mistag`.
         expect verified.tx_compact.validity_code == Some(0)
 
-        // 2. The UTxO must be produced at the next step's script hash carrying
-        //    the exact accusation. Both members of it are derived here — the
-        //    field index from the claim whose bytes the door then held to that
-        //    slot's commitment, the verdict from the authenticated bytes
-        //    themselves — so step 02 adjudicates committed values only and a
-        //    fabricated verdict cannot be forwarded.
-        expect output_script_hash == step_02_validator_script_hash
-        let CommittedFieldVerdictV1 { field_index, verdict } = committed_field_verdict_v1(
+        // 2. The accused slot's committed bytes, held to §4's commitment.
+        let Pair(field_index, preimage) = authenticated_claim_preimage_v1(
           verified,
           claim,
           reference_inputs,
           field_preimage_certificate_policy_id,
         )
-        let expected_output_state: Data = step_02.State {
-          bad_tx_id,
-          field_index,
-          verdict,
-        }
-        expect output_state_data == expected_output_state
 
-        // Done.
-        True
+        // 3. One batch of §5.1's walk: from the array head on the thread's
+        //    first step, from where the previous batch stopped on every later
+        //    one. A resumed walk must be reading the same transaction's same
+        //    slot, so the bytes just authenticated are the bytes it started on.
+        let walk = when m_input_state is {
+          None -> envelope_first_batch_v1(preimage)
+          Some(WalkState {
+            bad_tx_id: walked_tx_id,
+            field_index: walked_field_index,
+            remaining,
+            offset,
+          }) -> {
+            expect walked_tx_id == bad_tx_id
+            expect walked_field_index == field_index
+            envelope_items_batch_v1(preimage, remaining, offset)
+          }
+        }
+
+        // 4. The successor is derived, never chosen: a walk with items still
+        //    owed continues at this script, and a finished walk carries its
+        //    verdict to step 02. Either way the state is the one this batch
+        //    computed from the authenticated bytes, so step 02 adjudicates a
+        //    committed value only and a fabricated verdict or cursor cannot be
+        //    forwarded.
+        when walk is {
+          EnvelopeItems { remaining, offset } -> {
+            expect output_script_hash == own_script_hash
+            let expected_output_state: Data = WalkState {
+              bad_tx_id,
+              field_index,
+              remaining,
+              offset,
+            }
+            output_state_data == expected_output_state
+          }
+          EnvelopeVerdict { verdict } -> {
+            expect output_script_hash == step_02_validator_script_hash
+            let expected_output_state: Data = step_02.State {
+              bad_tx_id,
+              field_index,
+              verdict,
+            }
+            output_state_data == expected_output_state
+          }
+        }
       }
     }
   }
@@ -131,12 +173,10 @@ validator main(
 // bytes the encoders would never produce, which is the shape §12.7 exists for
 // and which `committed_field_preimage_block_fixture_v1` is the only builder of.
 
-/// §2.5 slot 2 (outputs) — a variable-width body field.
-const outputs_field_index: Int = 2
+const outputs_field_index: Int = walk_fixture.outputs_field_index
 
-/// §2.5 slot 6 (script witnesses) — a witness-set field, reachable only once the
-/// supplied witness set re-derives to the committed `witness_set_hash`.
-const script_witnesses_field_index: Int = 6
+const script_witnesses_field_index: Int =
+  walk_fixture.script_witnesses_field_index
 
 /// A §5.1 envelope whose header declares one item while its body carries two:
 /// the walk finishes its declared items with bytes left over.
@@ -153,11 +193,7 @@ fn committed_block(
   field_index: Int,
   preimage: ByteArray,
 ) -> fixture.NativeBlockFixtureV1 {
-  fixture.committed_field_preimage_block_fixture_v1(
-    fixture.native_block_fixture_v1(fixture.valid_native_tx_v1()),
-    field_index,
-    preimage,
-  )
+  walk_fixture.committed_block(field_index, preimage)
 }
 
 fn body_claim(field_index: Int, preimage: ByteArray) -> CommittedFieldClaimV1 {
@@ -181,13 +217,7 @@ fn expected_state(
   field_index: Int,
   verdict: Int,
 ) -> Data {
-  let state: step_02.State = step_02.State {
-    bad_tx_id: block.tx_id,
-    field_index,
-    verdict,
-  }
-  let state_data: Data = state
-  state_data
+  walk_fixture.verdict_state_data(block, field_index, verdict)
 }
 
 fn run_step_01(
@@ -212,7 +242,7 @@ fn run_step_01_at(
     fixture.computation_thread_policy_id,
     fixture.hub_oracle_script_hash,
     fixture.test_certificate_policy_id,
-    Some(fixture.step_datum_without_state()),
+    Some(walk_fixture.fresh_step_datum()),
     ct.Continue(
       Args { inclusion: fixture.native_inclusion_carriage_v1(block), claim },
     ),
@@ -450,7 +480,7 @@ test canonical_decodability_step_01_binds_a_certified_carriage() {
     fixture.computation_thread_policy_id,
     fixture.hub_oracle_script_hash,
     fixture.test_certificate_policy_id,
-    Some(fixture.step_datum_without_state()),
+    Some(walk_fixture.fresh_step_datum()),
     ct.Continue(
       Args {
         inclusion: fixture.native_inclusion_carriage_v1(block),

@@ -14,7 +14,6 @@ import {
   type WatcherReleasedHeaderProof,
 } from "../indexers/authenticated-state-queue-observation.js";
 import type { WatcherNativeChainSyncPoint } from "../l1/native-chain-sync.exact-record.js";
-import type { WatcherPreparedOpen } from "../runtime/observe-and-prepare.js";
 import { type WatcherDaBondPoolObservation } from "./pool-observation.js";
 
 /** Queued headers merged or removed on L1 at release finality, by hash. */
@@ -131,8 +130,6 @@ export type WatcherAvailabilityStatus = Readonly<{
   poolReadFailure?: string;
   /** Withheld Attested headers whose Open deadline passed unchallenged. */
   missedOpenDeadlines?: readonly string[];
-  /** Due Opens prepared for an allow-listed challenger, not submitted. */
-  openPrepared?: readonly WatcherPreparedOpen[];
   /** Due Opens refused for lack of wallet capital in the last reconciliation. */
   openRefused?: readonly WatcherAvailabilityOpenRefusal[];
   /** Timeouts deferred for want of an authentic pool at the tip. */

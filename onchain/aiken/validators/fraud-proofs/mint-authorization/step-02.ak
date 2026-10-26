@@ -131,6 +131,7 @@ validator main(
           own_out_ref,
           tx.inputs,
           tx.outputs,
+          tx.extra_signatories,
         )
         expect Some(input_state) = maybe_state
         let bad_tx_id = when input_state is {

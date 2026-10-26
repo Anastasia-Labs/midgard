@@ -65,6 +65,7 @@ validator main(
           own_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
         expect Some(State { bound, witness_set_hash }) = prior
         let view = opened_field_view(

@@ -47,6 +47,7 @@ validator main(
           own_out_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
         expect Some(state) = input_state
         let scanned = advance_purposes(state, args.openings, args.item_budget)

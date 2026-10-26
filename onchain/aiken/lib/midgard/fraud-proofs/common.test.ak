@@ -64,6 +64,7 @@ fn run_continue(l1_tx: Transaction) -> Bool {
     fixture.own_out_ref(),
     l1_tx.inputs,
     l1_tx.outputs,
+    l1_tx.extra_signatories,
   )
   output_state_data == sample_state()
 }
@@ -74,6 +75,7 @@ fn run_continue(l1_tx: Transaction) -> Bool {
 /// destination, preserved prover, well-formed step state) continues.
 test common_continue_accepts_exact_thread_reproduction() {
   let asset_name = fixture.ct_token_asset_name(valid_block())
+  let l1_tx = fixture.continue_mid_step_l1_tx_v1(asset_name, sample_state())
   let
       own_script_hash,
       thread_asset_name,
@@ -87,8 +89,9 @@ test common_continue_accepts_exact_thread_reproduction() {
     0,
     0,
     fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(asset_name, sample_state()).inputs,
-    fixture.continue_mid_step_l1_tx_v1(asset_name, sample_state()).outputs,
+    l1_tx.inputs,
+    l1_tx.outputs,
+    l1_tx.extra_signatories,
   )
   expect own_script_hash == fixture.step_script_hash
   expect thread_asset_name == asset_name
@@ -96,6 +99,40 @@ test common_continue_accepts_exact_thread_reproduction() {
   expect None = m_input_state_data
   expect output_script_hash == fixture.next_step_script_hash
   output_state_data == sample_state()
+}
+
+/// Continuing a thread requires its prover: the exact reproduction above is
+/// refused once the prover's signature is removed.
+test common_continue_refuses_unsigned_continuation() fail {
+  let asset_name = fixture.ct_token_asset_name(valid_block())
+  run_continue(
+    Transaction {
+      ..fixture.continue_mid_step_l1_tx_v1(asset_name, sample_state()),
+      extra_signatories: [],
+    },
+  )
+}
+
+/// Another key's signature does not stand in for the prover's.
+test common_continue_refuses_continuation_signed_by_another_key() fail {
+  let asset_name = fixture.ct_token_asset_name(valid_block())
+  run_continue(
+    Transaction {
+      ..fixture.continue_mid_step_l1_tx_v1(asset_name, sample_state()),
+      extra_signatories: [other_policy],
+    },
+  )
+}
+
+/// The prover's signature is found among several signers.
+test common_continue_accepts_prover_among_other_signers() {
+  let asset_name = fixture.ct_token_asset_name(valid_block())
+  run_continue(
+    Transaction {
+      ..fixture.continue_mid_step_l1_tx_v1(asset_name, sample_state()),
+      extra_signatories: [other_policy, fixture.fraud_prover_key_hash],
+    },
+  )
 }
 
 /// Lifecycle/no-skip negative: a mid-step transition cannot emit the terminal
@@ -416,6 +453,27 @@ test common_native_binding_accepts_committed_transaction() {
   )
 }
 
+/// The shared native binding continues through the same prover check: the
+/// committed-transaction positive above is refused without the prover's
+/// signature.
+test common_native_binding_refuses_unsigned_continuation() fail {
+  let block = valid_block()
+  run_native_binding(
+    block,
+    fixture.native_inclusion_args_v1(block),
+    Transaction {
+      ..fixture.continue_step_l1_tx_v1(
+        block,
+        sample_state(),
+        block.transactions_phas_root,
+        block.tx_id,
+        block.source_cbor,
+      ),
+      extra_signatories: [],
+    },
+  )
+}
+
 /// Valid-block rejection (shared layer): a raw transactions root that the
 /// valid header's counted root does not commit cannot enter the machinery.
 test common_native_binding_rejects_forged_raw_root() fail {
@@ -659,6 +717,7 @@ fn fee_paying_move(paid: Int, fee: Int) -> Transaction {
       ),
     ],
     fee,
+    extra_signatories: [],
   }
 }
 
@@ -749,9 +808,10 @@ test trace_continue_refuses_two_input_skim() fail {
   )
 }
 
-/// The plain `continue` keeps `out >= in`: the same fee-paying move fails it.
+/// The plain `continue` keeps `out >= in`: the same fee-paying move fails it,
+/// even when the prover signs it.
 test plain_continue_refuses_the_fee_paying_move() fail {
-  run_continue(fee_paying_move(1, 300_000))
+  run_continue(signed_by_prover(fee_paying_move(1, 300_000)))
 }
 
 test trace_continue_accepts_prover_signed_prover_only_move() {

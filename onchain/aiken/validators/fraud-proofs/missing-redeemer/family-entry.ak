@@ -1,4 +1,3 @@
-use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
@@ -30,7 +29,7 @@ validator main(
       ct.Continue(action) -> {
         let Pair(input_index, output_index) = entry.indices_v1(action)
         expect Some(step_datum) = datum
-        let _, _, fraud_prover, input_state, output_hash, output_state <- continue(
+        let _, _, _, input_state, output_hash, output_state <- continue(
           thread_policy,
           step_datum,
           input_index,
@@ -38,11 +37,9 @@ validator main(
           own_ref,
           tx.inputs,
           tx.outputs,
+          tx.extra_signatories,
         )
         expect Some(state) = input_state
-        // The route is a free choice that would otherwise strand the owner's
-        // thread, so only the owner may make it.
-        expect list.has(tx.extra_signatories, fraud_prover)
         when action is {
           entry.Observe { .. } -> {
             let expected: Data = state

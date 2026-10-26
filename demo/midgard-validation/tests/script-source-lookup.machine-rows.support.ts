@@ -20,6 +20,7 @@ import {
   type DeterministicValidationMachineTrace,
   RejectCodes,
   runPhaseBValidationWithPatch,
+  validationMachineLedgerRoot,
 } from "../src/index.js";
 import {
   buildValidationOneStepArgument,
@@ -122,7 +123,11 @@ export const machineTrace = async (traceCase: TraceCase) => {
         operations: expectedLedgerOps,
       })
     : [];
-  const unchangedRoot = Buffer.alloc(32, 0x2e).toString("hex");
+  // A rejected trace leaves the ledger unchanged; its stage-3 replays still
+  // open each resolved input against this root.
+  const unchangedRoot = (await validationMachineLedgerRoot(entries)).toString(
+    "hex",
+  );
   return await Effect.runPromise(
     buildDeterministicValidationMachineTrace({
       l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,

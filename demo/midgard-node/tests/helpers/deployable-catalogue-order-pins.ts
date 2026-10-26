@@ -53,16 +53,22 @@
 // Collapsing its contiguous block back to the previous seven entries, with
 // their previous names and roles, reproduced every previous digest of every
 // generation, and each count is the previous count plus 32.
+//
+// They were re-derived once more when the script-integrity-hash-mismatch
+// family grew from its five step contracts and roles to the 21 of its direct
+// all-purposes walk. Collapsing its contiguous block back to the previous five
+// entries, with their previous names and roles, reproduced every previous
+// digest of every generation, and each count is the previous count plus 16.
 export const PRE_HISTORY_MANIFEST_ROLE_ORDER_DIGEST =
-  "5a7500fc66d04da4c575ee9e5346069dab1340508a4997961fc183928cc231b0";
+  "80742ab6cf31fd40aea73e6782e839e6ac141d4bfd9c8fd04377ff7810f30d54";
 export const PRE_HISTORY_REAL_PUBLICATION_ORDER_DIGEST =
-  "7424cbbf668217a143aa5fe4af23bfcd012474e60bb3f512aa620856b98d71bc";
+  "bbae78e9b664dcaac2af4d4ed2ee679806d8d54409ca9c90bb996f28fe89953f";
 export const PRE_HISTORY_REAL_COMMAND_ORDER_DIGEST =
-  "a3cfe1be86dca45a2d26fa84e3f5358d81e9b1d272253f49e41927a4624c53a7";
+  "6dbd81e03393cfe5e1e1c356a829c8837e9d11cfd20f643cce02960370f38bc0";
 export const PRE_HISTORY_PLACEHOLDER_PUBLICATION_ORDER_DIGEST =
-  "7424cbbf668217a143aa5fe4af23bfcd012474e60bb3f512aa620856b98d71bc";
+  "bbae78e9b664dcaac2af4d4ed2ee679806d8d54409ca9c90bb996f28fe89953f";
 export const PRE_HISTORY_PLACEHOLDER_COMMAND_ORDER_DIGEST =
-  "a3cfe1be86dca45a2d26fa84e3f5358d81e9b1d272253f49e41927a4624c53a7";
+  "6dbd81e03393cfe5e1e1c356a829c8837e9d11cfd20f643cce02960370f38bc0";
 
 // The history pins were derived only after projecting out exactly these six
 // entries reproduced every original order digest and the original 528/521
@@ -73,96 +79,96 @@ export const PRE_HISTORY_PLACEHOLDER_COMMAND_ORDER_DIGEST =
 // the older contract-name pins are dropped: the older role pins still fix
 // every published entry, and the current contract-name pin fixes the rest.
 export const PRE_POOL_MANIFEST_ROLE_ORDER_DIGEST =
-  "0c2de24d352525d83afa403900d34e7b61d72266e2abbb8064ebe1fd4d99180b";
+  "51764dc5e6e8a46390984f29ec05fb8c92a2b2f8160d473f4edfef8ff17180a2";
 export const PRE_POOL_REAL_PUBLICATION_ORDER_DIGEST =
-  "32d35213f7ff0193be0d46423f195d9a04846bdb45cd9938b934f403c4b83153";
+  "66f89333caf4c427ad6510483e909b9666d9db9aaa549a3087725d027b5f6e35";
 export const PRE_POOL_REAL_COMMAND_ORDER_DIGEST =
-  "8ed0a35d7824d11b48d6180cbb7840f1207f00ccc4922d1336b1a7c4a08ce534";
+  "73941306df085d6ee8326706cd49906f961ef24984b4f8cb401ed6357934918b";
 export const PRE_POOL_PLACEHOLDER_PUBLICATION_ORDER_DIGEST =
-  "32d35213f7ff0193be0d46423f195d9a04846bdb45cd9938b934f403c4b83153";
+  "66f89333caf4c427ad6510483e909b9666d9db9aaa549a3087725d027b5f6e35";
 export const PRE_POOL_PLACEHOLDER_COMMAND_ORDER_DIGEST =
-  "8ed0a35d7824d11b48d6180cbb7840f1207f00ccc4922d1336b1a7c4a08ce534";
+  "73941306df085d6ee8326706cd49906f961ef24984b4f8cb401ed6357934918b";
 
 // New pins are derived only after projecting out exactly the two pool entries
 // (with the retired bond yield restored) reproduces every pre-pool published
 // order digest and the pre-pool 534/527 counts.
 export const PRE_DATA_CANONICITY_MANIFEST_CONTRACT_ORDER_DIGEST =
-  "b3ac1f2db9be5078e75e3ff73df3efdf78ac6d9b86a4c6f08699dae3a3734882";
+  "fb25bed945f476846e4d794ad3329b7a8f02ce035ec35c27038d6b8040ca8a55";
 export const PRE_DATA_CANONICITY_MANIFEST_ROLE_ORDER_DIGEST =
-  "d60a454171e94f64676183519002f061a72c2bb462f85f8dcfa65d63475e0c2b";
+  "378d4153a559cb49711465ca16a21f390afb5f1ea23b8b33650318e3f2e71459";
 export const PRE_DATA_CANONICITY_REAL_PUBLICATION_ORDER_DIGEST =
-  "3cc68853caa422580614de3e90f1bfb88af79adc360f00df3e407384e219bfe7";
+  "20960b7cd41f12de360d516d04b2f8af9d1aa7436bef2e01217b21fcbb5d0cb2";
 export const PRE_DATA_CANONICITY_REAL_COMMAND_ORDER_DIGEST =
-  "94ee06f1f7aa7e3eea6d9b5134eeb16dcb19d36c6103d759f1a574aae1a6844b";
+  "b9bf777e0cffa9709739f70ead5b5295158470038fc9dca773deb9341b9b9334";
 export const PRE_DATA_CANONICITY_PLACEHOLDER_PUBLICATION_ORDER_DIGEST =
-  "3cc68853caa422580614de3e90f1bfb88af79adc360f00df3e407384e219bfe7";
+  "20960b7cd41f12de360d516d04b2f8af9d1aa7436bef2e01217b21fcbb5d0cb2";
 export const PRE_DATA_CANONICITY_PLACEHOLDER_COMMAND_ORDER_DIGEST =
-  "94ee06f1f7aa7e3eea6d9b5134eeb16dcb19d36c6103d759f1a574aae1a6844b";
+  "b9bf777e0cffa9709739f70ead5b5295158470038fc9dca773deb9341b9b9334";
 
 // Projecting out all four data-canonicity additions leaves 511/506 entries.
 // The retired escape-hatch manifest fields had two null roles; restoring them
 // reconstructs every earlier order pin without moving surviving entries.
 export const PRE_CASE_MANIFEST_CONTRACT_ORDER_DIGEST =
-  "a3277236d3532f9e6d0ed5af6411b6b9a68ef6af8a260fcbb0095277bbb4135a";
+  "d95972706c6d7ec4c384a24865e944a76e289d1a08b249a5860b1b015ab1710f";
 export const PRE_CASE_MANIFEST_ROLE_ORDER_DIGEST =
-  "7e494202f1ad4e8ab86cc1e073ca08df4f17e8ad3ac7c8d8034a8850747659a3";
+  "70fbb8a6b6fa67ee8ca5e546000fccaa2a2c4f509f1c49367fedaf0bc4bfaaba";
 export const PRE_CASE_REAL_PUBLICATION_ORDER_DIGEST =
-  "f9e77e6b1a3515debe7ad6f783270325c66609a85b23a535226557c9e7589e2b";
+  "0c60165c33402166b530602b2586291938e5ffb8d42055caa10937977cbb15ba";
 export const PRE_CASE_REAL_COMMAND_ORDER_DIGEST =
-  "8ba05f26c7f636fb41fdec7c22a745b222dd34a095eb0a63a3e8d87e214fe1e2";
+  "66468c23eb861f86dc302c563f5d23fe3e6f1c30f6fcce4bc4c8d13436c4bd84";
 export const PRE_CASE_PLACEHOLDER_PUBLICATION_ORDER_DIGEST =
-  "f9e77e6b1a3515debe7ad6f783270325c66609a85b23a535226557c9e7589e2b";
+  "0c60165c33402166b530602b2586291938e5ffb8d42055caa10937977cbb15ba";
 export const PRE_CASE_PLACEHOLDER_COMMAND_ORDER_DIGEST =
-  "8ba05f26c7f636fb41fdec7c22a745b222dd34a095eb0a63a3e8d87e214fe1e2";
+  "66468c23eb861f86dc302c563f5d23fe3e6f1c30f6fcce4bc4c8d13436c4bd84";
 
 // The validation case added six manifest entries, each a published role.
 // Projecting out exactly those entries reproduces every pre-case pin and the
 // pre-case 515/510 counts.
 export const PRE_CEK_RESOLVER_MANIFEST_CONTRACT_ORDER_DIGEST =
-  "4b59045c43835fdf066e7df27e25cafc9eccbbfb50fa7587f2ed4addddf18a91";
+  "4404dd0f7e5a656029ba8b3dc949f0da265adbfeea63d6cae5eee72396d18409";
 export const PRE_CEK_RESOLVER_MANIFEST_ROLE_ORDER_DIGEST =
-  "f7a24e50518de1065ed177f2fe3026b37641838e3a0b085531110b4ff9653177";
+  "b78f9fe2ebe9413e095a196ef432aeeddc1e26a7c590681ee3dfddf1218546ac";
 export const PRE_CEK_RESOLVER_REAL_PUBLICATION_ORDER_DIGEST =
-  "1603e45aae1d2f5a52e751236a2db8dff0e089ed7152c09595ebd057589c7a17";
+  "f022a1baf6a72a19285bbfb40bdb30f205cc4396cc94bdedf26bf35e100d15ff";
 export const PRE_CEK_RESOLVER_REAL_COMMAND_ORDER_DIGEST =
-  "81f2298d1124412c25cf1d9cb446379f820cca11b8c117c948c89eb0f7ea73a2";
+  "4098e66bfba08f86c5ccea426c5841a0525b8db99e63210431cbf87199bb7126";
 export const PRE_CEK_RESOLVER_PLACEHOLDER_PUBLICATION_ORDER_DIGEST =
-  "1603e45aae1d2f5a52e751236a2db8dff0e089ed7152c09595ebd057589c7a17";
+  "f022a1baf6a72a19285bbfb40bdb30f205cc4396cc94bdedf26bf35e100d15ff";
 export const PRE_CEK_RESOLVER_PLACEHOLDER_COMMAND_ORDER_DIGEST =
-  "81f2298d1124412c25cf1d9cb446379f820cca11b8c117c948c89eb0f7ea73a2";
+  "4098e66bfba08f86c5ccea426c5841a0525b8db99e63210431cbf87199bb7126";
 
 // The CEK phase's one-step resolver and its four semantic resolvers added
 // five manifest entries, each a published role. Projecting out exactly those
 // entries reproduces every pre-CEK-resolver pin and the 523/518 counts.
 export const PRE_PHASE_RESOLVER_MANIFEST_CONTRACT_ORDER_DIGEST =
-  "94f7110b779897ffbd9d1765f573de78cf264f598cc28ecba994c0507dd1c40c";
+  "de6cde8b13d63436d881d35e23da65cd8aa5a6f0d6e338e6ad258574fac80c46";
 export const PRE_PHASE_RESOLVER_MANIFEST_ROLE_ORDER_DIGEST =
-  "72184dc9b5bdf8bc9a25d40260f40cccc33211ced87fb4eee37129a8203db4a1";
+  "0e7e6fd67134333e2129fb914b1a37e11cdc16f55140f4a77afa2fd769761881";
 export const PRE_PHASE_RESOLVER_REAL_PUBLICATION_ORDER_DIGEST =
-  "d317bd73b92b3a5be369a035e8ee00c29b7403669c5d8a682199bb8cc281f233";
+  "82b156420c26a0bbdb475cd58d6f970ae5a589f94150ea89f9e6bb6a138b4686";
 export const PRE_PHASE_RESOLVER_REAL_COMMAND_ORDER_DIGEST =
-  "b6e13ea622b37a17a0354fbb243ef86bfbba89c90ff31f295b0f652b327d1393";
+  "b3142c3f686676eff563d5fbc81695ce08895d106fd8e4539a9312a4b2c7fb4a";
 export const PRE_PHASE_RESOLVER_PLACEHOLDER_PUBLICATION_ORDER_DIGEST =
-  "d317bd73b92b3a5be369a035e8ee00c29b7403669c5d8a682199bb8cc281f233";
+  "82b156420c26a0bbdb475cd58d6f970ae5a589f94150ea89f9e6bb6a138b4686";
 export const PRE_PHASE_RESOLVER_PLACEHOLDER_COMMAND_ORDER_DIGEST =
-  "b6e13ea622b37a17a0354fbb243ef86bfbba89c90ff31f295b0f652b327d1393";
+  "b3142c3f686676eff563d5fbc81695ce08895d106fd8e4539a9312a4b2c7fb4a";
 
 // The validation phases' one-step resolvers and their semantic resolvers add
 // manifest entries phase by phase, each a published role. Projecting out
 // exactly those entries reproduces every pre-phase-resolver pin and the
 // 528/523 counts.
 export const PRE_CEK_STAGED_MANIFEST_CONTRACT_ORDER_DIGEST =
-  "ffd0c329d5696dcf2af02c77f245ac18d9f7fcbad8029efebfbef369e55a42d1";
+  "9aa39bb037ca3784723b649e4816938f27b07998488ea73880e975538cb6251e";
 export const PRE_CEK_STAGED_MANIFEST_ROLE_ORDER_DIGEST =
-  "7c8f27c6624e1299c19525c2467b9e353fc7e8f4d0839637141facfde0611342";
+  "fa8052cd5d0f612c13ba0042107703c6996c386598c71007c5e2f559cabb94f2";
 export const PRE_CEK_STAGED_REAL_PUBLICATION_ORDER_DIGEST =
-  "213e7edfacb1c75c7b7a2974ad23d00edcd22439aa2e23dc22895b3e624de3e0";
+  "2c2fa6c10886f62b354b0dbe6cd631facf89f288ad4b15fa6d0c002346fc5f3e";
 export const PRE_CEK_STAGED_REAL_COMMAND_ORDER_DIGEST =
-  "0fda80050035c92d72b498f841f112d89f496be20a6e91725381339068ac4afe";
+  "e3add6cf26760a0559efe5b640bef1eca5899e13c9e8a9a62bb1918dfc76fe24";
 export const PRE_CEK_STAGED_PLACEHOLDER_PUBLICATION_ORDER_DIGEST =
-  "213e7edfacb1c75c7b7a2974ad23d00edcd22439aa2e23dc22895b3e624de3e0";
+  "2c2fa6c10886f62b354b0dbe6cd631facf89f288ad4b15fa6d0c002346fc5f3e";
 export const PRE_CEK_STAGED_PLACEHOLDER_COMMAND_ORDER_DIGEST =
-  "0fda80050035c92d72b498f841f112d89f496be20a6e91725381339068ac4afe";
+  "e3add6cf26760a0559efe5b640bef1eca5899e13c9e8a9a62bb1918dfc76fe24";
 
 // The CEK core's five staged-operand semantics steps, its staged failure hop,
 // its writeBits loop and its BLS12-381 uncompress failure arm add eight
@@ -170,14 +176,14 @@ export const PRE_CEK_STAGED_PLACEHOLDER_COMMAND_ORDER_DIGEST =
 // Projecting out exactly those entries reproduces every pre-staged pin and
 // the 576/571 counts.
 export const MANIFEST_CONTRACT_ORDER_DIGEST =
-  "4ca8e75ff747e21bed023ca46694add75a55a1a3a06d4e63ca7fc1d60fb8342f";
+  "c76991cfe45e4078e30d7b0ae76359e37236cd0a7b6970f14c7251f7e0214734";
 export const MANIFEST_ROLE_ORDER_DIGEST =
-  "fab1707b933798e26351cff868073a1a74aa6634f3c3af5a9df1341a1ecba7e8";
+  "5dd97108bd85c3e6d38d4cab6cfe5c5633f144be0e66f0972d17b6611d68d1f7";
 export const REAL_PUBLICATION_ORDER_DIGEST =
-  "90970baac6e704dc71429d1254468b3e63b5cbd5ee3296d131b8298fb9d00f4c";
+  "022ea54d65ded32057321823550115242c0701db55ac0a2b9249f0d285cf9fa9";
 export const REAL_COMMAND_ORDER_DIGEST =
-  "9cb2fd0e9bd7d8e0bf15ab4b478b6bc05876a91329c6e0dfaa47010d1f2a7015";
+  "d71dc59ee6a9025bfcd7242c91c976530faadd28f8af33f22ea5901c0be8c711";
 export const PLACEHOLDER_PUBLICATION_ORDER_DIGEST =
-  "90970baac6e704dc71429d1254468b3e63b5cbd5ee3296d131b8298fb9d00f4c";
+  "022ea54d65ded32057321823550115242c0701db55ac0a2b9249f0d285cf9fa9";
 export const PLACEHOLDER_COMMAND_ORDER_DIGEST =
-  "9cb2fd0e9bd7d8e0bf15ab4b478b6bc05876a91329c6e0dfaa47010d1f2a7015";
+  "d71dc59ee6a9025bfcd7242c91c976530faadd28f8af33f22ea5901c0be8c711";

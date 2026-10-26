@@ -6,7 +6,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     fraudProofMissingScriptSource: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-script-source step-01",
-      manifestPosition: 369,
+      manifestPosition: 385,
       publicationPosition: 242,
       referenceRolePosition: 475,
       commands: [],
@@ -16,7 +16,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     fraudProofMissingScriptSourceStep02: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-script-source step-02",
-      manifestPosition: 370,
+      manifestPosition: 386,
       publicationPosition: 243,
       referenceRolePosition: 476,
       commands: [],
@@ -26,7 +26,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     fraudProofMissingScriptSourceStep03: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-script-source step-03",
-      manifestPosition: 371,
+      manifestPosition: 387,
       publicationPosition: 244,
       referenceRolePosition: 477,
       commands: [],
@@ -36,7 +36,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     fraudProofMissingScriptSourceStep04: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-script-source step-04",
-      manifestPosition: 372,
+      manifestPosition: 388,
       publicationPosition: 245,
       referenceRolePosition: 478,
       commands: [],
@@ -46,7 +46,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     fraudProofMissingScriptSourceStep05: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-script-source step-05",
-      manifestPosition: 373,
+      manifestPosition: 389,
       publicationPosition: 246,
       referenceRolePosition: 479,
       commands: [],
@@ -56,7 +56,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     fraudProofMissingScriptSourceStep06: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-script-source step-06",
-      manifestPosition: 374,
+      manifestPosition: 390,
       publicationPosition: 247,
       referenceRolePosition: 480,
       commands: [],

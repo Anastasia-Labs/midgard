@@ -77,6 +77,7 @@ validator main(
           own_out_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
         expect None = input_state
         expect output_script_hash == forced_step_02_validator_script_hash

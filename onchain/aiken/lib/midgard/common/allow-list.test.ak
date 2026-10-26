@@ -1,4 +1,4 @@
-use midgard/common/allow_list.{admits, admitted_or}
+use midgard/common/allow_list.{admits}
 
 const listed = #"11111111111111111111111111111111111111111111111111111111"
 
@@ -18,12 +18,4 @@ test refuses_an_unlisted_key() {
 
 test refuses_every_key_under_an_empty_list() {
   !admits(Some([]), listed)
-}
-
-test admitted_or_signs_as_the_first_listed_key() {
-  and {
-    admitted_or(None, other) == other,
-    admitted_or(Some([listed, other]), other) == listed,
-    admits(Some([listed]), admitted_or(Some([listed]), other)),
-  }
 }

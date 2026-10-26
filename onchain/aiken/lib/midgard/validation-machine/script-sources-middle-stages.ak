@@ -1,3 +1,4 @@
+use aiken/merkle_patricia_forestry.{Proof}
 use aiken/primitive/bytearray
 use midgard/bounded_item_v1
 use midgard/fraud_proofs/native_tx/codec.{
@@ -15,6 +16,7 @@ use midgard/ledger_output_commitment_v1
 use midgard/ledger_output_proof_v1
 use midgard/ledger_output_v1
 use midgard/mint_order
+use midgard/mpf_proof_v1
 use midgard/native_tx_field_access_v1
 use midgard/rejection_reason_v1.{
   MintDeclaredAssetLimit, NetworkIdMismatch, OutputNonCanonical,
@@ -44,7 +46,6 @@ use midgard/validation_machine/shared.{
 use midgard/validation_machine/witness.{
   empty_receive_purpose_scan_control, empty_resolution_schedule_hash,
   encode_script_sources_witness, resolution_schedule_node_hash,
-  resolved_input_accumulator_successor,
 }
 use midgard/validation_machine_field_door_v1 as field_door
 use midgard/validation_merkle_v1
@@ -122,12 +123,24 @@ pub fn script_sources_replay_item(
   witness: ValidationOneStepWitnessV1,
   control: ScriptSourcesControlV1,
   source_kind: Int,
+  item_index: Int,
   key: ByteArray,
   next_schedule_hash: ByteArray,
   value: ByteArray,
+  proof: Proof,
 ) -> Bool {
-  let descriptor = ledger_output_commitment_v1.decode(value)
-  if resolution_schedule_node_hash(source_kind, key, next_schedule_hash) == control.replay_remaining_schedule_hash {
+  // The schedule node fixes (kind, key); the ledger proof fixes `value`, so
+  // every resolved-item leaf appended below is authenticated at its source.
+  if and {
+    resolution_schedule_node_hash(
+      source_kind,
+      item_index,
+      key,
+      next_schedule_hash,
+    ) == control.replay_remaining_schedule_hash,
+    mpf_proof_v1.has(pre.prior_ledger_root, key, value, proof),
+  } {
+    let descriptor = ledger_output_commitment_v1.decode(value)
     let next_sources = replay_source_frontier(control, key, descriptor)
     let next_purposes = replay_purpose_frontier(
       control,
@@ -151,7 +164,6 @@ pub fn script_sources_replay_item(
       control.field_preimage_lengths_cbor,
       control.context_cbor,
       control.resolved_input_count,
-      control.resolved_inputs_accumulator,
       control.signer_count,
       control.signer_frontier_commitment,
       next_resolved_item_peaks,
@@ -161,12 +173,6 @@ pub fn script_sources_replay_item(
       control.redeemer_count,
       control.redeemer_peaks,
       control.replay_cursor + 1,
-      resolved_input_accumulator_successor(
-        control.replay_accumulator,
-        source_kind,
-        key,
-        value,
-      ),
       next_schedule_hash,
       control.spend_index + if source_kind == 0 {
         1
@@ -212,7 +218,6 @@ pub fn script_sources_stage_three(
       control.field_preimage_lengths_cbor,
       control.context_cbor,
       control.resolved_input_count,
-      control.resolved_inputs_accumulator,
       control.signer_count,
       control.signer_frontier_commitment,
       control.resolved_item_peaks,
@@ -222,7 +227,6 @@ pub fn script_sources_stage_three(
       control.redeemer_count,
       control.redeemer_peaks,
       control.replay_cursor,
-      control.replay_accumulator,
       control.replay_remaining_schedule_hash,
       control.spend_index,
       control.purpose_count,
@@ -240,8 +244,6 @@ pub fn script_sources_stage_three(
     )
     and {
       auxiliary == NoAuxiliaryWitness,
-      control.replay_cursor == control.resolved_input_count,
-      control.replay_accumulator == control.resolved_inputs_accumulator,
       witness.claimed_successor.phase == validation_trace_v1.ScriptSources,
       witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
         validation_trace_v1.ScriptSources,
@@ -251,15 +253,25 @@ pub fn script_sources_stage_three(
     }
   } else {
     when auxiliary is {
-      ResolvedInputReplayWitness { source_kind, key, next_schedule_hash, value } ->
+      ResolvedInputReplayWitness {
+        source_kind,
+        item_index,
+        key,
+        next_schedule_hash,
+        value,
+        proof,
+        siblings: _,
+      } ->
         script_sources_replay_item(
           pre,
           witness,
           control,
           source_kind,
+          item_index,
           key,
           next_schedule_hash,
           value,
+          proof,
         )
       _ -> False
     }
@@ -368,6 +380,7 @@ pub fn script_sources_stage_four_with_successor(
             control.output_peaks,
             script_proof_v1.output_item_leaf_hash(
               control.output_count,
+              field_door.machine_field_item_length(item),
               field_door.machine_field_item_commitment(item),
             ),
           ),
@@ -438,13 +451,15 @@ pub fn script_sources_output_proof_begin(
   and {
     control.output_proof == None,
     output_index == control.output_cursor,
-    total_length > 0,
-    bytearray.length(item_commitment) == 32,
     validation_merkle_v1.verify_membership(
       control.output_count,
       control.output_peaks,
       output_index,
-      script_proof_v1.output_item_leaf_hash(output_index, item_commitment),
+      script_proof_v1.output_item_leaf_hash(
+        output_index,
+        total_length,
+        item_commitment,
+      ),
       siblings,
     ),
     script_sources_control_successor_is_exact(

@@ -2542,7 +2542,10 @@ Two steps, on the `da-hash-preimage` pattern (GOAL_SPEC.md Q44) and for its
 reason: the first binds committed evidence and derives, the second holds the
 derivation against the rule.
 
-**Step 01 — bind, authenticate, decide.**
+**Step 01 — bind, authenticate, walk one batch.** Step 01 runs once per
+batch of the walk: the thread's first transaction reads the array head and up
+to `B = 1000` items, and every later transaction reads up to `B` more from
+where the previous one stopped. Each transaction runs all four items below.
 
 1. The disputed transaction MUST be bound to the challenged block's committed
    `transactions_root` by the shared native inclusion path, including the
@@ -2557,9 +2560,19 @@ derivation against the rule.
    hashed against it. A prover supplying anything else **aborts** (§7.3),
    which is what makes the bytes that reach the verdict undeniably the
    committed preimage.
-3. `envelope_verdict` is taken over those bytes and `(tx_id, field_index,
-verdict)` is pinned into the computation thread. Every member is derived,
-   so a fabricated verdict or a re-addressed field index is not forwardable.
+3. One batch of `envelope_verdict`'s walk is taken over those bytes: from the
+   array head when the thread carries no state, and otherwise from the
+   `WalkState { bad_tx_id, field_index, remaining, offset }` the previous batch
+   left, which MUST name the same transaction and slot. A walk with items
+   still owed continues at step 01's own script with the derived
+   `WalkState`; a walk that has its verdict pins `(bad_tx_id, field_index,
+verdict)` into the thread at step 02's script. Every member of either
+   state is derived from the authenticated bytes, so a fabricated verdict, a
+   forged cursor or a re-addressed field index is not forwardable. A batch
+   that reads its full share, lands on the last byte and still owes items is
+   code 5 at once. Run to its end, the batched walk is exactly
+   `envelope_verdict`.
+4. Every batch is a `Continue` taken by the thread's fraud prover.
 
 **Step 02 — convict.** The proof finalizes when, and only when, the pinned
 state satisfies `0 ≤ field_index < 9`, `0 ≤ verdict < 11` and `verdict ≠ 0`.
@@ -2570,10 +2583,12 @@ under many spellings.
 
 Five further conditions are normative:
 
-- **No preimage bytes travel between the steps.** §12.1's witness minimality
+- **No preimage bytes travel to step 02.** §12.1's witness minimality
   holds for the same reason it holds for a fault statement: the bytes were
   authenticated in the transaction that read them, and re-supplying them
-  would be re-supplying a field the first transaction already paid for.
+  would be re-supplying a field step 01 already paid for. Between two batches
+  only the cursor travels; each batch re-binds the transaction and
+  re-authenticates the bytes it reads.
 - **The reading path MUST NOT be a view door.** Both §8.8 doors materialise a
   `FieldView` and therefore run §5.1's walk under `expect`; reaching the
   verdict through either would reproduce inside this family the stall it
@@ -2611,26 +2626,32 @@ Five further conditions are normative:
 
 #### Cost claims
 
-The required baseline is the `canonical_decodability/rule.test` entries of
+The required baseline is the `canonical_decodability/rule.test` and
+`canonical_decodability/step_01_walk.test` entries of
 [`script-budgets.json`](../../demo/midgard-core/src/script-budgets.json),
 judged by
 [`script-budgets.mjs`](../../onchain/aiken/scripts/script-budgets.mjs).
-It holds the controlled byte-cost and item-cost rows and the boundary-pair
-measurements at or under ceilings within GOAL_SPEC §3.3. Read current values
-from a fresh report rather than from a duplicate prose table.
+It holds the controlled byte-cost and item-cost rows, the boundary-pair
+measurements and the worst single batch, on the thread's first transaction
+and on a resumed one, at or under ceilings within GOAL_SPEC §3.3. Read current
+values from a fresh report rather than from a duplicate prose table.
 
-The envelope walk's item count is the limiting term. The largest admitted
-preimage can contain more items than the direct one-transaction adjudication
-can process within the basis. The byte limit alone does not close that gap;
-a bounded verdict continuation and maximum-shape lifecycle evidence are required.
-Extrapolation beyond a measured boundary must be identified as extrapolation,
-not reported as an executed maximum-shape test.
+The envelope walk's item count is the limiting term, and `B` bounds it per
+transaction. The worst batch is the costliest one a 32,768-byte field can
+present to a single step: `B` items at the two-byte head, with as many
+three-byte heads as the remaining bytes pay for. The largest legal item count,
+32,765 one-byte items under a three-byte head, takes 33 transactions; the
+emulator lifecycle runs that shape from Init to conviction and, for the honest
+field at the same size, to the step-02 refusal. Extrapolation beyond a
+measured boundary must be identified as extrapolation, not reported as an
+executed maximum-shape test.
 
 #### Guard coverage
 
 §9's conformance items 5 and 6 require every refusal on an operational path to
-be isolated by a vector or listed as a backstop. **Fifteen refusals: thirteen
-isolated, two backstops.**
+be isolated by a vector or listed as a backstop. **Twenty-five refusals:
+twenty-three isolated, two backstops.** Rows 16–25 are the walk's; each is
+isolated in `step-01-walk.test.ak` against a passing twin.
 
 | #   | refusal                                                                        | isolated by / backstop because                                                                                                                                                                  |
 | --- | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -2649,6 +2670,16 @@ isolated, two backstops.**
 | 13  | the witness set re-derives to the committed `witness_set_hash`                 | backstop: `field_door_prologue` asserts it for every door entry point and §8.8's own guard coverage isolates it; guards 4 and 5 fix which half a claim may name                                 |
 | 14  | §8.4's tier-3 partition (`total_length > K`, derived chunk count, chunk shape) | backstop: `certified_chunks` is shared with both view doors and §8.10's rows isolate it there; this family re-uses it unchanged                                                                 |
 | 15  | the derived accusation is produced at step 02's script                         | `canonical_decodability_step_01_rejects_a_foreign_next_step_hash`                                                                                                                               |
+| 16  | a walk with items still owed continues at step 01's own script                 | `canonical_decodability_step_01_walk_rejects_an_early_step_02`, `…_rejects_a_cursor_at_step_02`, `…_rejects_a_cursor_at_a_foreign_script`                                                       |
+| 17  | a finished walk leaves step 01                                                 | `canonical_decodability_step_01_walk_rejects_a_finished_walk_kept_here`                                                                                                                         |
+| 18  | the cursor's owed item count is the one the batch derived                      | `canonical_decodability_step_01_walk_rejects_a_forged_remaining_count`                                                                                                                          |
+| 19  | the cursor's resume offset is the one the batch derived                        | `canonical_decodability_step_01_walk_rejects_a_forged_resume_offset`                                                                                                                            |
+| 20  | the cursor names the slot that was opened                                      | `canonical_decodability_step_01_walk_rejects_a_forged_cursor_field`                                                                                                                             |
+| 21  | the cursor names the transaction that was opened                               | `canonical_decodability_step_01_walk_rejects_a_forged_cursor_transaction`                                                                                                                       |
+| 22  | a resumed batch forwards the verdict it earned                                 | `canonical_decodability_step_01_walk_rejects_a_fabricated_resumed_verdict`                                                                                                                      |
+| 23  | a cursor is resumed only over the slot it names                                | `canonical_decodability_step_01_walk_rejects_a_resume_at_another_field`                                                                                                                         |
+| 24  | a cursor is resumed only over the transaction it names                         | `canonical_decodability_step_01_walk_rejects_a_resume_of_another_transaction`                                                                                                                   |
+| 25  | a loop step is taken by the thread's fraud prover                              | `canonical_decodability_step_01_walk_rejects_a_stranger_on_a_loop_step`, with `…_prover_takes_a_loop_step` as its signed twin                                                                   |
 
 The verdict's own decision table is pinned separately and exhaustively:
 `canonical_decodability_verdict_table_is_exact` asserts one vector per code,

@@ -1,4 +1,3 @@
-use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
@@ -32,7 +31,7 @@ validator main(
       ct.Continue(action) -> {
         expect Some(step_datum) = datum
         let Pair(input_index, output_index) = door.indices(action)
-        let own_hash, _, fraud_prover, input_state, output_hash, output_state <- continue(
+        let own_hash, _, _, input_state, output_hash, output_state <- continue(
           computation_thread_token_policy_id,
           step_datum,
           input_index,
@@ -40,13 +39,11 @@ validator main(
           own_out_ref,
           tx.inputs,
           tx.outputs,
+          tx.extra_signatories,
         )
         expect Some(state) = input_state
         when action is {
           door.Scan { entries, .. } -> {
-            // Each proposed leaf is a free declaration choice until the final
-            // equality. Only its owner may commit that irreversible choice.
-            expect list.has(tx.extra_signatories, fraud_prover)
             let expected: Data = receive.advance_declaration_v1(state, entries)
             and {
               output_hash == own_hash,

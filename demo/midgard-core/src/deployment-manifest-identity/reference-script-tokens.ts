@@ -772,14 +772,46 @@ export const DEPLOYMENT_MANIFEST_BASE_REFERENCE_TOKEN_NAMES = Object.freeze({
     "V1FpExecNativeInvAccRef",
   "V1 fraud-proof script-integrity-hash-mismatch step-01":
     "V1FpIntegrityMismatchS01",
-  "V1 fraud-proof script-integrity-hash-mismatch step-02":
-    "V1FpIntegrityMismatchS02",
-  "V1 fraud-proof script-integrity-hash-mismatch step-03":
-    "V1FpIntegrityMismatchS03",
-  "V1 fraud-proof script-integrity-hash-mismatch step-04":
-    "V1FpIntegrityMismatchS04",
-  "V1 fraud-proof script-integrity-hash-mismatch step-05":
-    "V1FpIntegrityMismatchS05",
+  "V1 fraud-proof script-integrity-hash-mismatch bind-event":
+    "V1FpIntegrityBindEvent",
+  "V1 fraud-proof script-integrity-hash-mismatch bind-pre-state":
+    "V1FpIntegrityBindPreState",
+  "V1 fraud-proof script-integrity-hash-mismatch source-start":
+    "V1FpIntegritySrcStart",
+  "V1 fraud-proof script-integrity-hash-mismatch source-resolved":
+    "V1FpIntegritySrcResolved",
+  "V1 fraud-proof script-integrity-hash-mismatch source-authenticate":
+    "V1FpIntegritySrcAuth",
+  "V1 fraud-proof script-integrity-hash-mismatch source-map":
+    "V1FpIntegritySrcMap",
+  "V1 fraud-proof script-integrity-hash-mismatch source-input-finish":
+    "V1FpIntegritySrcInputFinish",
+  "V1 fraud-proof script-integrity-hash-mismatch source-grammar":
+    "V1FpIntegritySrcGrammar",
+  "V1 fraud-proof script-integrity-hash-mismatch source-witnesses":
+    "V1FpIntegritySrcWitnesses",
+  "V1 fraud-proof script-integrity-hash-mismatch source-finish":
+    "V1FpIntegritySrcFinish",
+  "V1 fraud-proof script-integrity-hash-mismatch family-entry":
+    "V1FpIntegrityEntry",
+  "V1 fraud-proof script-integrity-hash-mismatch all-purposes-spend":
+    "V1FpIntegrityApSpend",
+  "V1 fraud-proof script-integrity-hash-mismatch all-purposes-spend-resolve":
+    "V1FpIntegrityApSpendResolve",
+  "V1 fraud-proof script-integrity-hash-mismatch all-purposes-mint-grammar":
+    "V1FpIntegrityApMintGrammar",
+  "V1 fraud-proof script-integrity-hash-mismatch all-purposes-mint":
+    "V1FpIntegrityApMint",
+  "V1 fraud-proof script-integrity-hash-mismatch all-purposes-observe-open":
+    "V1FpIntegrityApObserveOpen",
+  "V1 fraud-proof script-integrity-hash-mismatch all-purposes-observe":
+    "V1FpIntegrityApObserve",
+  "V1 fraud-proof script-integrity-hash-mismatch all-purposes-receive-grammar":
+    "V1FpIntegrityApRecvGrammar",
+  "V1 fraud-proof script-integrity-hash-mismatch all-purposes-receive":
+    "V1FpIntegrityApRecv",
+  "V1 fraud-proof script-integrity-hash-mismatch terminal":
+    "V1FpIntegrityTerminal",
   "V1 fraud-proof distinct-asset-accumulation-limit step-01":
     "V1FpDistinctAssetLimitS01",
   "V1 fraud-proof distinct-asset-accumulation-limit step-02":

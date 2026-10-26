@@ -88,7 +88,7 @@ describe("canonical-decodability witness-field lifecycle", () => {
             },
           },
         },
-        step02State: prepared.step02State,
+        successor: { step: 2, state: prepared.step02State },
         referenceScriptUtxo: step01Ref,
         witnessReferenceScripts,
       }),
@@ -120,7 +120,7 @@ describe("canonical-decodability witness-field lifecycle", () => {
     });
     const secondStep = await expectSingleUtxoWithUnit(
       proverLucid,
-      step01.secondStepAddress,
+      step01.nextStepAddress,
       init.computationThreadUnit,
     );
     const step02 = await submitCanonicalDecodabilityStep02({

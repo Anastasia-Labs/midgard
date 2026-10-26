@@ -99,6 +99,7 @@ describe("canonical-decodability real-fault lifecycle", () => {
       witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     expect(step01.verdict).toBe(fixture.prepared.evidence.verdict);
+    expect(step01.complete).toBe(true);
     await expect(
       proverLucid.utxosAtWithUnit(
         init.firstStepAddress,
@@ -107,7 +108,7 @@ describe("canonical-decodability real-fault lifecycle", () => {
     ).resolves.toHaveLength(0);
     const secondStep = await expectSingleUtxoWithUnit(
       proverLucid,
-      step01.secondStepAddress,
+      step01.nextStepAddress,
       init.computationThreadUnit,
     );
     const paymentCredential = getAddressDetails(

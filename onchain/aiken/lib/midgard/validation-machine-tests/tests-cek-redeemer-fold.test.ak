@@ -156,18 +156,12 @@ fn item_commitment(fold: Fold, item: Int) -> ByteArray {
   bounded_item_v1.from_bytes(8, item, item_cbor(fold, item))
 }
 
-/// The item's chunk-frontier root. Every item here fits one chunk.
-fn item_frontier_root(fold: Fold, item: Int) -> ByteArray {
-  let bytes = item_cbor(fold, item)
-  expect bounded_item_v1.chunk_count(bytearray.length(bytes)) == 1
-  let built = validation_merkle_v1.build_frontier(
-    [bounded_item_v1.hash_chunk(8, item, 0, bytes)],
-  )
-  validation_merkle_v1.frontier_commitment(built.count, built.peaks)
-}
-
 fn redeemer_leaf(fold: Fold, item: Int) -> ByteArray {
-  script_proof_v1.redeemer_item_leaf_hash(item, item_commitment(fold, item))
+  script_proof_v1.redeemer_item_leaf_hash(
+    item,
+    bytearray.length(item_cbor(fold, item)),
+    item_commitment(fold, item),
+  )
 }
 
 fn purpose_leaf(execution: Execution) -> ByteArray {
@@ -232,7 +226,6 @@ fn select_witness(
     execution_language_tag: language_tag,
     source_leaf: execution.source_leaf,
     execution_siblings: execution_siblings(fold, at),
-    item_frontier_root: item_frontier_root(fold, item),
   }
 }
 

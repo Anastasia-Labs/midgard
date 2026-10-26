@@ -1,6 +1,6 @@
 import {
+  CanonicalDecodabilityStep01Datum,
   CanonicalDecodabilityStep02Datum,
-  FraudProofComputationThreadStepDatum,
 } from "@al-ft/midgard-sdk";
 
 import {
@@ -16,7 +16,8 @@ import {
   type ManifestBoundCanonicalDecodabilityWorkflowConfig,
 } from "./canonical-decodability.create-transaction-port.js";
 import { CANONICAL_DECODABILITY_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
-import { defineLinearFamily } from "./family-definition.js";
+import { CANONICAL_DECODABILITY_CURSOR_SPEC } from "./cursor-family-spec.js";
+import { defineFamily } from "./family-definition.js";
 import { createAuthenticatedFieldCarriagePrerequisitePort } from "./field-carriage-prerequisite.js";
 import {
   assembleManifestBoundFamilyWorkflow,
@@ -40,17 +41,22 @@ const fieldCarriagePort = (context: AssemblyContext) =>
       fieldCarriageRequirementForAction(context, input),
   });
 
-export const CANONICAL_DECODABILITY_FAMILY_DEFINITION = defineLinearFamily({
+export const CANONICAL_DECODABILITY_FAMILY_DEFINITION = defineFamily({
   category: "canonicalDecodability",
   stepDatumSchemas: [
-    FraudProofComputationThreadStepDatum,
+    CanonicalDecodabilityStep01Datum,
     CanonicalDecodabilityStep02Datum,
   ],
   witnessRoles: WITNESS_ROLES,
   fieldPreimageCertificate: true,
   replayer: () => CANONICAL_DECODABILITY_COMPLETE_CANONICAL_REPLAY,
   adapter: {
-    kind: "linear",
+    kind: "cursor",
+    spec: CANONICAL_DECODABILITY_CURSOR_SPEC,
+    stepContractNames: [
+      "fraudProofCanonicalDecodability",
+      "fraudProofCanonicalDecodabilityStep02",
+    ],
     transactionPort: (context) =>
       createTransactionPort({
         lucid: context.lucid,
