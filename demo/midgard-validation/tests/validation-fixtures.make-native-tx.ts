@@ -110,20 +110,20 @@ export const makeNativeTx = (opts: NativeTxOptions = {}): NativeTxFixture => {
         ? encodeByteList(opts.vkeyWitnesses(bodyHash))
         : encodeByteList(
             [
-            Buffer.from(
-              CML.make_vkey_witness(
-                CML.TransactionHash.from_raw_bytes(signedBodyHash),
-                opts.privateKey ?? TEST_PRIVATE_KEY,
-              ).to_cbor_bytes(),
-            ),
-            ...(opts.extraVkeyWitnessKeys ?? []).map((key) =>
               Buffer.from(
                 CML.make_vkey_witness(
-                  CML.TransactionHash.from_raw_bytes(bodyHash),
-                  key,
+                  CML.TransactionHash.from_raw_bytes(signedBodyHash),
+                  opts.privateKey ?? TEST_PRIVATE_KEY,
                 ).to_cbor_bytes(),
               ),
-            ),
+              ...(opts.extraVkeyWitnessKeys ?? []).map((key) =>
+                Buffer.from(
+                  CML.make_vkey_witness(
+                    CML.TransactionHash.from_raw_bytes(bodyHash),
+                    key,
+                  ).to_cbor_bytes(),
+                ),
+              ),
             ].sort(compareMidgardAddressWitnessItems),
           );
 

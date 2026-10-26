@@ -1,5 +1,4 @@
 use aiken/crypto.{blake2b_224, verify_ed25519_signature}
-use aiken/primitive/bytearray
 use midgard/fraud_proofs/native_tx/compact.{verify_tx_proof_source_v1}
 use midgard/fraud_proofs/native_tx/components.{
   decode_midgard_address_witness_cbor,

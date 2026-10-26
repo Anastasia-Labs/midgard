@@ -10,7 +10,6 @@ use midgard/bounded_item_v1
 use midgard/ledger_output_proof_raw as raw
 use midgard/ledger_output_proof_stages as stages
 use midgard/ledger_output_proof_v1 as proof
-use midgard/ledger_output_value_v1 as value
 use midgard/native_script_scan_v1
 
 /// The shared step action's claims, read straight out of the dispatcher's

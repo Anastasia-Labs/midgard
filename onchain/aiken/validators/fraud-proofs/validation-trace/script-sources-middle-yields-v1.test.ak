@@ -149,7 +149,6 @@ test stage_six_fold_asset_yield_refuses_another_evidence_constructor() fail {
   stage_six_fold_asset_with(39)
 }
 
-
 // ## Synthetic ledger proofs
 //
 // The library has no prover, so the root a proof opens is rebuilt by mirroring

@@ -1,10 +1,3 @@
-import {
-  type Data,
-  DataB,
-  DataI,
-  DataMap,
-  DataPair,
-} from "@harmoniclabs/plutus-data";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -15,6 +8,13 @@ import {
   runMidgardCekMintFold,
   summarizeMidgardCekData,
 } from "../src/cek-context.js";
+import {
+  type Data,
+  DataB,
+  DataI,
+  DataMap,
+  DataPair,
+} from "../src/uplc-data.js";
 
 // The vector of `context_mint_walk_over_two_policies_ends_in_the_mint_map`
 // (`onchain/aiken/validators/fraud-proofs/validation-trace/cek-split-v1.test.ak`):
@@ -42,7 +42,6 @@ const pristine = (): MidgardCekContextControl => ({
   ...initialMidgardCekContextControl({
     languageTag: 3,
     programTermRoot: Buffer.alloc(32, 0xaa),
-    programEnvelopeHash: Buffer.alloc(32, 0xdd),
     purposeKind: 1,
     purposeIndex: 0n,
     scriptHash: policyA,

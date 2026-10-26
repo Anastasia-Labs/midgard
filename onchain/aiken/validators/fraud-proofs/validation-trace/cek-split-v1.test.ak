@@ -3231,7 +3231,7 @@ fn context_binding_wire(f: CekStepFixtureV1) -> Data {
 
 test bounded_context_binding_wire_matches_sdk() {
   let vector = context_binding_wire(context_step_fixture())
-  blake2b_256(cbor.serialise(vector)) == #"30bb2eb5db65017b978d06b36c850d0a49b318f2eaf3c799765af0a6a17791e4"
+  blake2b_256(cbor.serialise(vector)) == #"a66cdb35e3859293b52cab5d69f51a68e45a1ed5ad85a6e69f46707716063719"
 }
 
 test bounded_context_binding_wire_matches_sdk_for_a_normal_source() {
@@ -3245,7 +3245,7 @@ test bounded_context_binding_wire_matches_sdk_for_a_normal_source() {
       },
     },
   )
-  blake2b_256(cbor.serialise(vector)) == #"ee84d4e0fefe57c8a3c7ded9a5c63223de80e3fc899b008eb76191642b457c24"
+  blake2b_256(cbor.serialise(vector)) == #"6d4cd3dd905defae44264ee450434a3e80bbd7aad7966d7acd174a5f33ad65d1"
 }
 
 // ---------------------------------------------------------------------------
@@ -5296,7 +5296,7 @@ fn run_context_redeemer_begin(length_delta: Int) -> Bool {
     #"",
     0,
     0,
-    h_b,
+    h_28_a,
     47,
     0,
     0,
@@ -5309,7 +5309,7 @@ fn run_context_redeemer_begin(length_delta: Int) -> Bool {
     #"",
     0,
     0,
-    h_b,
+    h_28_a,
     48,
     0,
     0,
@@ -5321,14 +5321,7 @@ fn run_context_redeemer_begin(length_delta: Int) -> Bool {
     item_commitment: commitment,
     siblings: [],
   }
-  let f = step_fixture(
-    2,
-    pre,
-    work_witness_cbor,
-    post,
-    auxiliary,
-    NoCekMaterial,
-  )
+  let f = step_fixture(2, pre, work_witness_cbor, post, auxiliary, None)
   let staged = context_staged_fixture(f)
   let staged_data: Data = staged
   let verified: Data = context_chain.ContextVerified {

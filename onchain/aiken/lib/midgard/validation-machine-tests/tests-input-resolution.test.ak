@@ -34,14 +34,13 @@ use midgard/validation_machine_tests/fixtures_input_resolution.{
 }
 use midgard/validation_machine_tests/fixtures_phase_a.{
   contains_non_native_script, duplicate_observer_field_carriage,
-  empty_v1_transaction, exact_rejection_post, initial_signatures_witness,
-  inline_field_carriage, inline_field_door, input_sets_pre,
-  input_sets_scan_witness, next_phase_a_native_state, one_step_evidence,
-  phase_a_native_scan_witness, phase_a_native_step_fixture,
-  phase_a_script_preconditions_fixture, resolve_inputs_step_fixture,
-  signatures_scan_witness, signatures_step_fixture, signer_frontier_for_tx,
-  singleton_field_item_chunk_proof, static_rules_step_fixture, submitted_source,
-  v1_plutus_script,
+  empty_v1_transaction, exact_rejection_post, inline_field_carriage,
+  inline_field_door, input_sets_pre, input_sets_scan_witness,
+  next_phase_a_native_state, one_step_evidence, phase_a_native_scan_witness,
+  phase_a_native_step_fixture, phase_a_script_preconditions_fixture,
+  resolve_inputs_step_fixture, signatures_scan_witness, signatures_step_fixture,
+  signer_frontier_for_tx, singleton_field_item_chunk_proof,
+  static_rules_step_fixture, submitted_source, v1_plutus_script,
 }
 use midgard/validation_merkle_v1
 use midgard/validation_trace_v1
@@ -432,7 +431,6 @@ fn required_signer_step(
     address_count,
     required_seen,
     #"",
-    #"",
     signer_frontier,
     first_invalid_witness_index,
   )
@@ -529,7 +527,7 @@ test signatures_completes_the_scan_on_a_present_last_required_signer() {
       proof,
       signatures_successor(
         pre,
-        signatures_scan_witness(tx, 2, 1, 1, 1, 1, #"", #"", frontier, -1),
+        signatures_scan_witness(tx, 2, 1, 1, 1, 1, #"", frontier, -1),
       ),
     ),
     !required_signer_item_holds(
@@ -538,7 +536,7 @@ test signatures_completes_the_scan_on_a_present_last_required_signer() {
       proof,
       signatures_successor(
         pre,
-        signatures_scan_witness(tx, 1, 1, 1, 1, 1, #"", #"", frontier, -1),
+        signatures_scan_witness(tx, 1, 1, 1, 1, 1, #"", frontier, -1),
       ),
     ),
   }
@@ -571,7 +569,7 @@ test signatures_rejects_an_invalid_address_signature_after_the_last_required_sig
       proof,
       signatures_successor(
         pre,
-        signatures_scan_witness(tx, 2, 1, 1, 1, 1, #"", #"", frontier, 0),
+        signatures_scan_witness(tx, 2, 1, 1, 1, 1, #"", frontier, 0),
       ),
     ),
   }
@@ -597,7 +595,7 @@ test signatures_refuses_a_required_signer_membership_under_other_peaks() {
     },
     signatures_successor(
       pre,
-      signatures_scan_witness(tx, 2, 1, 1, 1, 1, #"", #"", frontier, -1),
+      signatures_scan_witness(tx, 2, 1, 1, 1, 1, #"", frontier, -1),
     ),
   )
 }
@@ -1913,7 +1911,6 @@ fn signer_scan_step(
     address_seen,
     required_seen,
     #"",
-    #"",
     signer_frontier,
     first_invalid_witness_index,
   )
@@ -1949,7 +1946,7 @@ test signatures_required_first_of_two_present_continues_at_stage_one() {
       proof,
       signatures_successor(
         pre,
-        signatures_scan_witness(tx, 1, 1, 2, 1, 1, #"", #"", frontier, -1),
+        signatures_scan_witness(tx, 1, 1, 2, 1, 1, #"", frontier, -1),
       ),
     ),
     !required_signer_item_holds(
@@ -1958,7 +1955,7 @@ test signatures_required_first_of_two_present_continues_at_stage_one() {
       proof,
       signatures_successor(
         pre,
-        signatures_scan_witness(tx, 2, 1, 2, 1, 1, #"", #"", frontier, -1),
+        signatures_scan_witness(tx, 2, 1, 2, 1, 1, #"", frontier, -1),
       ),
     ),
   }
@@ -1982,7 +1979,7 @@ test signatures_required_invalid_address_signature_waits_for_the_last_required_s
       proof,
       signatures_successor(
         pre,
-        signatures_scan_witness(tx, 1, 1, 2, 1, 1, #"", #"", frontier, 0),
+        signatures_scan_witness(tx, 1, 1, 2, 1, 1, #"", frontier, 0),
       ),
     ),
     !required_signer_item_holds(

@@ -25,7 +25,7 @@ use midgard/validation_machine_tests/fixtures_phase_a.{
   cek_context_native_control_fixture, cek_state_fixture,
   empty_cek_context_control_fixture, empty_v1_transaction, inline_field_door,
   script_discovery_step_fixture, script_sources_output_step_fixture,
-  v1_program_envelope,
+  v1_plutus_script,
 }
 use midgard/validation_machine_tests/fixtures_script_sources.{
   canonical_output_commitment_output,
@@ -51,7 +51,7 @@ fn transaction() -> MidgardTransaction {
       script_tx_wits: [
         MidgardVersionedScript {
           language: PlutusV3Script,
-          script_bytes: v1_program_envelope(),
+          script_bytes: v1_plutus_script(),
         },
       ],
       redeemer_tx_wits: [redeemer()],
