@@ -50,6 +50,8 @@ export type CanonicalDecodabilityCommittedFieldFixture = {
   readonly fieldIndex: number;
   readonly committedPreimage: Buffer;
   readonly witnessSet?: NativeTxWitnessSetCompact;
+  /** The compact witness set §8.6's certificate binds, as hex. */
+  readonly witnessSetCompactCbor: string;
   readonly txInclusion: SubmitStep01TxInclusion;
   readonly prepared: ReturnType<typeof prepareCanonicalDecodability> | null;
 };
@@ -124,6 +126,7 @@ const buildCommittedFixture = async ({
     fieldIndex,
     committedPreimage,
     ...(witnessSet === undefined ? {} : { witnessSet }),
+    witnessSetCompactCbor: proofSource.witnessSetCompactCbor.toString("hex"),
     txInclusion,
     prepared,
   };
@@ -152,10 +155,17 @@ const proofSourceForCommittedField = ({
   };
 };
 
+/**
+ * An otherwise honest transaction whose outputs field commits
+ * `committedPreimage` — by default a short field declaring one item fewer
+ * than it carries. `grammatical` admits a field that convicts nothing.
+ */
 export const buildCanonicalDecodabilityBodyFixture = async ({
   grammatical = false,
+  committedPreimage: suppliedPreimage,
 }: {
   readonly grammatical?: boolean;
+  readonly committedPreimage?: Buffer;
 } = {}): Promise<CanonicalDecodabilityCommittedFieldFixture> => {
   const honest = makeNativeTx({
     spendInputCbors: [],
@@ -164,12 +174,14 @@ export const buildCanonicalDecodabilityBodyFixture = async ({
     outputByte: "62",
     witnessByte: "63",
   });
-  const committedPreimage = grammatical
-    ? Buffer.from(honest.body.outputsPreimageCbor)
-    : miscountedMidgardFieldPreimage(1, [
-        Buffer.from("aa", "hex"),
-        Buffer.from("bb", "hex"),
-      ]);
+  const committedPreimage =
+    suppliedPreimage ??
+    (grammatical
+      ? Buffer.from(honest.body.outputsPreimageCbor)
+      : miscountedMidgardFieldPreimage(1, [
+          Buffer.from("aa", "hex"),
+          Buffer.from("bb", "hex"),
+        ]));
   const compact: MidgardNativeTxCompact = {
     ...honest.compact,
     transactionBody: {
