@@ -2888,7 +2888,7 @@ evidence and derives, the second holds the derivation against the rule.
    walk with items still owed continues at step 01's own script with the
    derived `WalkState`; a walk that has its envelope verdict completes
    `field_shape_verdict` over the same bytes and pins
-   `(tx_id, field_index, verdict)` into the thread at step 02's script. Every
+   `(bad_tx_id, field_index, verdict)` into the thread at step 02's script. Every
    member of either state is derived from the authenticated bytes, so a
    fabricated verdict, a forged cursor or a re-addressed field index is not
    forwardable. The re-addressing refusal carries more weight here than in
