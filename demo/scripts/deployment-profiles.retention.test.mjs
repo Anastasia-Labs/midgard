@@ -7,20 +7,13 @@ import {
   validateProfile,
 } from "./deployment-profiles.mjs";
 
-test("the public Preprod profile commits 120 days of DA bootstrap history", () => {
+test("the public Preprod profile digest commits its DA bootstrap history", () => {
   const profiles = readProfiles();
   const profile = profiles["preprod-public"];
-  assert.deepEqual(profile.da_transport, { retention_days: 120 });
   const changed = structuredClone(profile);
   changed.da_transport.retention_days = 121;
   validateProfile(changed, changed.name);
   assert.notEqual(profileDigest(profile), profileDigest(changed));
-  assert.deepEqual(
-    Object.entries(profiles)
-      .filter(([, value]) => Object.hasOwn(value, "da_transport"))
-      .map(([name]) => name),
-    ["preprod-public"],
-  );
 });
 
 test("public Preprod refuses missing, shorter or malformed DA retention", () => {

@@ -12,7 +12,6 @@ import {
 } from "./lib/blueprint-stamp.mjs";
 
 import { validatePublicDaTransport } from "./deployment-profile-da.mjs";
-
 import {
   allowListConstants,
   daBondConstants,
