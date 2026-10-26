@@ -62,10 +62,10 @@ content. See [TQ-08](test-quality/tq-08-tautological-assertions.md) and
   direct DELETE call against its own fake. That particular assertion checks the
   fake's configured barrier, not PostgreSQL permissions. The surrounding store
   call is a separate check and must not be deleted with it.
-- The reverse-checkpoint encoding test in
-  `onchain/aiken/lib/midgard/fraud-proofs/unused-script-witness/rule.test.ak`
-  already compares with concrete schema-derived bytes. The old identical-call
-  finding is closed in the current source.
+- The old identical-call finding on the unused-script-witness
+  reverse-checkpoint encoding no longer applies: the family is now proved
+  directly from the transaction, and that encoding and its test module were
+  removed.
 
 ## 2. Hand-maintained constants that mirror current output
 
