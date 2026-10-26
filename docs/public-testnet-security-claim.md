@@ -1,8 +1,8 @@
 # P1 public testnet security claim
 
 P1 is the planned stage-0 public Preprod deployment of Midgard. It uses curated
-operators, allow-listed fault provers and DA challengers, and manual proof
-submission by the team. This document describes that limited security model;
+operators; fault provers and DA challengers are permissionless, and every
+watcher submits the proofs it finds with its own key. This document describes that limited security model;
 the release manifest and deployed profile identify an actual instance.
 
 ## Participation and trust
@@ -10,8 +10,8 @@ the release manifest and deployed profile identify an actual instance.
 Users can submit normal L2 transactions through the node API. Deposits,
 withdrawal requests and supported native-only forced transactions enter through
 L1. Normal L2 transactions can execute Plutus. The operator set is curated for
-P1, and only the listed keys can initiate the supported fraud proofs and
-availability challenges.
+P1. Any key can initiate the supported fraud proofs and availability
+challenges.
 
 Users rely on curated operators for block production and for correctness outside
 the enabled proof catalogue. A dishonest operator can commit some invalid states
@@ -20,11 +20,11 @@ transactions. A dishonest operator can also censor a valid forced transaction by
 assigning a rejection that P1 cannot challenge. These limitations prevent a
 general promise that users can always exit without operator cooperation.
 
-Allow-listed provers prepare and submit supported proofs using authenticated
-chain and payload evidence. Proof preparation does not establish that a proof
-has landed. An enabled proof can remove a block or slash a bond only when its
-on-chain checks accept the authenticated fault. Manual operation and sufficient
-L1 submission capacity are required.
+Any watcher prepares and submits supported proofs using authenticated chain and
+payload evidence. Proof preparation does not establish that a proof has landed.
+An enabled proof can remove a block or slash a bond only when its on-chain
+checks accept the authenticated fault; a proof against an honest block is
+refused. Sufficient L1 submission capacity is required.
 
 The DA committee attests availability and retains the exact payload. Its
 signature is not proof that the ledger transition is valid. Users rely on
@@ -63,7 +63,7 @@ with the release manifest.
 
 - Validation-trace states and the validation dispute game are unavailable.
   The excluded proof families remain outside P1 coverage.
-- Proof submission and re-drive after the safe-start deadline are manual.
+- Proof re-drive after the safe-start deadline is manual.
 - Strikes are permissionless and rotate operator shifts. They can still rotate
   shifts during catch-up and slow its progress. The public P1 ejection threshold
   is set out of reach, so strikes do not provide an operator ejection mechanism.

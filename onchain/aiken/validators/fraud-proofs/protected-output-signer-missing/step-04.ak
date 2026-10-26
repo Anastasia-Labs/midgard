@@ -134,6 +134,7 @@ validator main(
           own_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
         expect Some(state) = prior
         let protected = state.protected

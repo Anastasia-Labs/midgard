@@ -433,6 +433,7 @@ pub fn continue_step_l1_tx_v1(
     ..placeholder,
     validity_range: interval.between(21, 22),
     inputs: [fixture.ct_thread_input(asset_name)],
+    extra_signatories: [fixture.fraud_prover_key_hash],
     outputs: [fixture.next_step_output(asset_name, output_state_data)],
     reference_inputs,
   }

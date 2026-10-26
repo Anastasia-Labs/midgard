@@ -47,6 +47,7 @@ validator main(
           own_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
         expect Some(bound) = state
         let field_index = if bound.source_kind == 0 {

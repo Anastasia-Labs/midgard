@@ -14,7 +14,10 @@ import { Data, getAddressDetails } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import type { InvalidRangeContracts } from "../src/invalid-range/contracts.js";
-import { prepareInvalidRangeEvidence } from "../src/invalid-range/family.js";
+import {
+  invalidRangeEvidenceCloses,
+  prepareInvalidRangeEvidence,
+} from "../src/invalid-range/family.js";
 import {
   submitInvalidRangeStep01Forced,
   submitInvalidRangeStep02V1,
@@ -30,6 +33,7 @@ import {
 import { submitZeroInputCancel } from "../src/zero-input/submit-cancel.js";
 import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { commitSlotForBlockTime } from "./support/emulator/header-fixtures.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
@@ -41,124 +45,132 @@ import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-s
 
 const network = "Custom" as const;
 
-describe("invalidRange wrongful-rejection real lifecycle", () => {
-  it("runs every cancel/restart boundary, forced contradiction, permanent mint, and leased removal", async () => {
-    const harness = await makeFaultProofEmulatorHarness({
-      contractOptions: {
-        realInvalidRange: true,
-        alwaysFraudProofCatalogue: true,
-        alwaysStateQueue: true,
-      },
-    });
-    const chain = harness.contracts.fraudProofContracts.invalidRange;
-    const references = [
-      harness.faultProofReferenceScripts.fraudProofInvalidRange!.utxo,
-      harness.faultProofReferenceScripts.fraudProofInvalidRangeStep02!.utxo,
-    ] as const;
-    const contracts: InvalidRangeContracts = {
-      steps: chain.steps.map((step, index) => ({
-        ...step,
-        blueprintTitle:
-          index === 0
-            ? "fraud_proofs/invalid_range/step_01.main.spend"
-            : "fraud_proofs/invalid_range/step_02.main.spend",
-        referenceOutRef: `${references[index].txHash}#${references[index].outputIndex}`,
-      })) as unknown as InvalidRangeContracts["steps"],
-      computationThread: harness.contracts.computationThread,
-      fraudProof: harness.contracts.fraudProof,
-      hubOraclePolicyId: harness.contracts.hubOracle.policyId,
-      stateQueuePolicyId: harness.contracts.stateQueue.policyId,
-    };
-    const catalogue = await buildCatalogueDeploymentInfo(
-      harness.contracts.fraudProofs,
-    );
-    const category = catalogue.categories.invalidRange;
-    const credential = getAddressDetails(
-      await harness.funderLucid.wallet().address(),
-    ).paymentCredential;
-    if (credential?.type !== "Key") throw new Error("operator key absent");
-    const base = await buildInvalidForcedTransitionTraceFixture({
-      operatorVkey: credential.hash,
-      now:
-        alignUnixTimeToEmulatorSlotBoundary(
-          harness.funderLucid,
-          harness.emulator.now() + 120_000,
-        ) - 1,
-    });
-    // The block commits at its own L1 slot; the wrongly rejected transaction's
-    // validity interval contains that slot.
-    const committedSlot = commitSlotForBlockTime(
-      harness.contracts.l1SlotConfig,
-      base.header.endTime,
-    );
-    const invalid = materializeMidgardForcedTxFromCanonical(
-      makeNativeTx({
-        spendInputCbors: [],
-        fee: 0n,
-        validityIntervalStart: committedSlot - 5n,
-        validityIntervalEnd: committedSlot + 10n,
-      }),
-    );
-    const transactionId = computeMidgardNativeTxId(invalid).toString("hex");
-    const source = deriveMidgardForcedTxProofSource(invalid);
-    const leaf = {
-      tx_id: transactionId,
-      submitted_source: {
-        compact_cbor: source.compactCbor.toString("hex"),
-        witness_set_compact_cbor: source.witnessSetCompactCbor.toString("hex"),
-        field_preimage_lengths_cbor:
-          source.fieldPreimageLengthsCbor.toString("hex"),
-      },
-      verdict: {
-        ForcedTxInvalid: { reason: "ValidityIntervalExcludesBlockSlot" },
-      },
-    } as const;
-    const key = base.eventKey.ForcedTransactionEventKey.tx_order_id;
-    const keyBytes = Buffer.from(Data.to(key, OutputReference), "hex");
-    const valueBytes = Buffer.from(
-      Data.to(leaf as never, ForcedInclusionTxV1Schema as never),
-      "hex",
-    );
-    const root = await buildCountedRoot(ROOT_DOMAINS.forcedTransactionsV1, [
-      { key: keyBytes, value: valueBytes },
-    ]);
-    const store = new Store(undefined);
-    await store.ready();
-    const trie = new Trie(store);
-    await trie.insert(keyBytes, valueBytes);
-    const membershipProof = await trie.prove(keyBytes);
-    const membership = {
-      domain: root.domain,
-      root: root.root,
-      phas_root: root.phasRoot,
-      count: root.count,
-      key,
-      value: leaf,
-      proof: Data.from(membershipProof.toCBOR().toString("hex"), Proof),
-    };
-    const requestedHeader = {
-      ...base.header,
-      forcedTransactionsRoot: root.root,
-      forcedTransactionCount: 1n,
-    };
-    const setup = await submitSetupTx({
-      lucid: harness.funderLucid,
-      contracts: harness.contracts,
-      nonceUtxo: harness.nonceUtxo,
-      catalogue,
-      header: requestedHeader,
-    });
-    const header = setup.header;
-    const evidence = prepareInvalidRangeEvidence({
-      subject: forcedVerdictSubject({
-        transactionId,
-        sourceKey: key,
-        rejectionReason: "ValidityIntervalExcludesBlockSlot",
-      }),
-      blockSlot: header.blockSlot,
-      txBody: forcedTxFromCoreCompact(invalid.compact).body,
-    });
-    const admitted = admitNativeInclusionTwoStepArtifact({
+/**
+ * A block whose one forced transaction carries the given validity interval
+ * (in slots relative to the block's commit slot) and is recorded as rejected
+ * with ValidityIntervalExcludesBlockSlot, plus the invalidRange thread
+ * operations against it.
+ */
+const stageForcedRejection = async (interval: {
+  readonly fromCommitSlot: bigint;
+  readonly toCommitSlot: bigint;
+}) => {
+  const harness = await makeFaultProofEmulatorHarness({
+    contractOptions: {
+      realInvalidRange: true,
+      alwaysFraudProofCatalogue: true,
+      alwaysStateQueue: true,
+    },
+  });
+  const chain = harness.contracts.fraudProofContracts.invalidRange;
+  const references = [
+    harness.faultProofReferenceScripts.fraudProofInvalidRange!.utxo,
+    harness.faultProofReferenceScripts.fraudProofInvalidRangeStep02!.utxo,
+  ] as const;
+  const contracts: InvalidRangeContracts = {
+    steps: chain.steps.map((step, index) => ({
+      ...step,
+      blueprintTitle:
+        index === 0
+          ? "fraud_proofs/invalid_range/step_01.main.spend"
+          : "fraud_proofs/invalid_range/step_02.main.spend",
+      referenceOutRef: `${references[index].txHash}#${references[index].outputIndex}`,
+    })) as unknown as InvalidRangeContracts["steps"],
+    computationThread: harness.contracts.computationThread,
+    fraudProof: harness.contracts.fraudProof,
+    hubOraclePolicyId: harness.contracts.hubOracle.policyId,
+    stateQueuePolicyId: harness.contracts.stateQueue.policyId,
+  };
+  const catalogue = await buildCatalogueDeploymentInfo(
+    harness.contracts.fraudProofs,
+  );
+  const category = catalogue.categories.invalidRange;
+  const credential = getAddressDetails(
+    await harness.funderLucid.wallet().address(),
+  ).paymentCredential;
+  if (credential?.type !== "Key") throw new Error("operator key absent");
+  const base = await buildInvalidForcedTransitionTraceFixture({
+    operatorVkey: credential.hash,
+    now:
+      alignUnixTimeToEmulatorSlotBoundary(
+        harness.funderLucid,
+        harness.emulator.now() + 120_000,
+      ) - 1,
+  });
+  // The block commits at its own L1 slot.
+  const committedSlot = commitSlotForBlockTime(
+    harness.contracts.l1SlotConfig,
+    base.header.endTime,
+  );
+  const invalid = materializeMidgardForcedTxFromCanonical(
+    makeNativeTx({
+      spendInputCbors: [],
+      fee: 0n,
+      validityIntervalStart: committedSlot + interval.fromCommitSlot,
+      validityIntervalEnd: committedSlot + interval.toCommitSlot,
+    }),
+  );
+  const transactionId = computeMidgardNativeTxId(invalid).toString("hex");
+  const source = deriveMidgardForcedTxProofSource(invalid);
+  const leaf = {
+    tx_id: transactionId,
+    submitted_source: {
+      compact_cbor: source.compactCbor.toString("hex"),
+      witness_set_compact_cbor: source.witnessSetCompactCbor.toString("hex"),
+      field_preimage_lengths_cbor:
+        source.fieldPreimageLengthsCbor.toString("hex"),
+    },
+    verdict: {
+      ForcedTxInvalid: { reason: "ValidityIntervalExcludesBlockSlot" },
+    },
+  } as const;
+  const key = base.eventKey.ForcedTransactionEventKey.tx_order_id;
+  const keyBytes = Buffer.from(Data.to(key, OutputReference), "hex");
+  const valueBytes = Buffer.from(
+    Data.to(leaf as never, ForcedInclusionTxV1Schema as never),
+    "hex",
+  );
+  const root = await buildCountedRoot(ROOT_DOMAINS.forcedTransactionsV1, [
+    { key: keyBytes, value: valueBytes },
+  ]);
+  const store = new Store(undefined);
+  await store.ready();
+  const trie = new Trie(store);
+  await trie.insert(keyBytes, valueBytes);
+  const membershipProof = await trie.prove(keyBytes);
+  const membership = {
+    domain: root.domain,
+    root: root.root,
+    phas_root: root.phasRoot,
+    count: root.count,
+    key,
+    value: leaf,
+    proof: Data.from(membershipProof.toCBOR().toString("hex"), Proof),
+  };
+  const requestedHeader = {
+    ...base.header,
+    forcedTransactionsRoot: root.root,
+    forcedTransactionCount: 1n,
+  };
+  const setup = await submitSetupTx({
+    lucid: harness.funderLucid,
+    contracts: harness.contracts,
+    nonceUtxo: harness.nonceUtxo,
+    catalogue,
+    header: requestedHeader,
+  });
+  const header = setup.header;
+  const evidence = prepareInvalidRangeEvidence({
+    subject: forcedVerdictSubject({
+      transactionId,
+      sourceKey: key,
+      rejectionReason: "ValidityIntervalExcludesBlockSlot",
+    }),
+    blockSlot: header.blockSlot,
+    txBody: forcedTxFromCoreCompact(invalid.compact).body,
+  });
+  const admitArtifact = () =>
+    admitNativeInclusionTwoStepArtifact({
       schemaVersion: NATIVE_INCLUSION_TWO_STEP_ARTIFACT,
       category: "invalidRange",
       headerHash: setup.headerHash,
@@ -189,62 +201,94 @@ describe("invalidRange wrongful-rejection real lifecycle", () => {
         SDK.InvalidRangeForcedSourcePayloadSchema as never,
       ),
     });
-    expect(admitted.invalidRangeEvidence).toEqual(evidence);
-    const captures: Awaited<ReturnType<typeof captureEmulatorSubmission>>[] =
-      [];
-    const initialize = async () => {
-      const c = await captureEmulatorSubmission(harness.emulator, () =>
-        submitInit({
+  const captures: Awaited<ReturnType<typeof captureEmulatorSubmission>>[] = [];
+  const initialize = async () => {
+    const c = await captureEmulatorSubmission(harness.emulator, () =>
+      submitInit({
+        lucid: harness.proverLucid,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
+        blueprint: harness.realBlueprint,
+        deploymentInfo: buildRemovalDeploymentInfo(
+          harness.contracts,
+          catalogue,
+        ),
+        network,
+        signer: harness.proverSigner,
+        fraudCategory: "invalidRange",
+        fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+        awaitConfirmation: true,
+      }),
+    );
+    captures.push(c);
+    return `${c.result.txHash}#${c.result.firstStepOutputIndex}`;
+  };
+  const bind = async (threadOutRef: string) => {
+    const c = await captureEmulatorSubmission(harness.emulator, () =>
+      submitInvalidRangeStep01Forced({
+        lucid: harness.proverLucid,
+        contracts,
+        categoryId: category.categoryId,
+        signer: harness.proverSigner,
+        threadOutRef,
+        evidence,
+        forcedSource: {
+          header,
+          membership,
+        },
+        referenceScriptUtxo: references[0],
+      }),
+    );
+    captures.push(c);
+    return c.result.nextThreadOutRef;
+  };
+  const cancel = async (threadOutRef: string, step: 0 | 1) =>
+    captures.push(
+      await captureEmulatorSubmission(harness.emulator, () =>
+        submitZeroInputCancel({
           lucid: harness.proverLucid,
-          witnessReferenceScripts: harness.witnessReferenceScripts,
-          blueprint: harness.realBlueprint,
-          deploymentInfo: buildRemovalDeploymentInfo(
-            harness.contracts,
-            catalogue,
-          ),
-          network,
-          signer: harness.proverSigner,
-          fraudCategory: "invalidRange",
-          fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
-          awaitConfirmation: true,
-        }),
-      );
-      captures.push(c);
-      return `${c.result.txHash}#${c.result.firstStepOutputIndex}`;
-    };
-    const bind = async (threadOutRef: string) => {
-      const c = await captureEmulatorSubmission(harness.emulator, () =>
-        submitInvalidRangeStep01Forced({
-          lucid: harness.proverLucid,
-          contracts,
+          contracts: contracts as never,
           categoryId: category.categoryId,
           signer: harness.proverSigner,
           threadOutRef,
-          evidence,
-          forcedSource: {
-            header,
-            membership,
-          },
-          referenceScriptUtxo: references[0],
+          referenceScriptUtxo: references[step],
+          witnessReferenceScripts: harness.witnessReferenceScripts,
         }),
-      );
-      captures.push(c);
-      return c.result.nextThreadOutRef;
-    };
-    const cancel = async (threadOutRef: string, step: 0 | 1) =>
-      captures.push(
-        await captureEmulatorSubmission(harness.emulator, () =>
-          submitZeroInputCancel({
-            lucid: harness.proverLucid,
-            contracts: contracts as never,
-            categoryId: category.categoryId,
-            signer: harness.proverSigner,
-            threadOutRef,
-            referenceScriptUtxo: references[step],
-            witnessReferenceScripts: harness.witnessReferenceScripts,
-          }),
-        ),
-      );
+      ),
+    );
+  return {
+    harness,
+    contracts,
+    catalogue,
+    category,
+    setup,
+    evidence,
+    admitArtifact,
+    references,
+    captures,
+    initialize,
+    bind,
+    cancel,
+  };
+};
+
+describe("invalidRange wrongful-rejection real lifecycle", () => {
+  it("runs every cancel/restart boundary, forced contradiction, permanent mint, and leased removal", async () => {
+    // The wrongly rejected transaction's validity interval contains the slot.
+    const {
+      harness,
+      contracts,
+      catalogue,
+      category,
+      setup,
+      evidence,
+      admitArtifact,
+      references,
+      captures,
+      initialize,
+      bind,
+      cancel,
+    } = await stageForcedRejection({ fromCommitSlot: -5n, toCommitSlot: 10n });
+    expect(admitArtifact().invalidRangeEvidence).toEqual(evidence);
     await cancel(await initialize(), 0);
     await cancel(await bind(await initialize()), 1);
     const terminalOutRef = await bind(await initialize());
@@ -304,6 +348,47 @@ describe("invalidRange wrongful-rejection real lifecycle", () => {
     }
     console.info(
       `[invalid-range-forced-lifecycle] ${JSON.stringify(captures.map(({ measurement }) => ({ bytes: measurement.completeSignedBytes, memory: measurement.executionMemory.toString(), cpu: measurement.executionSteps.toString() })))}`,
+    );
+  }, 600_000);
+
+  it("refuses a contradiction of an honest rejection at the terminal range check", async () => {
+    // The interval starts after the commit slot, so the rejection is honest.
+    const staged = await stageForcedRejection({
+      fromCommitSlot: 5n,
+      toCommitSlot: 10n,
+    });
+    expect(invalidRangeEvidenceCloses(staged.evidence)).toBe(false);
+    expect(staged.admitArtifact).toThrow(/does not contradict rejection/u);
+    // Step 01 binds the authenticated interval into the thread state.
+    const terminalOutRef = await staged.bind(await staged.initialize());
+    // A prover that claims an interval containing the slot gets past the
+    // builder, and step 02 judges the bound interval instead.
+    const claimed = {
+      ...staged.evidence,
+      normalizedRange: {
+        ClosedRange: {
+          lower: staged.evidence.blockSlot - 5n,
+          upper: staged.evidence.blockSlot + 10n,
+        },
+      },
+    } as const;
+    expect(invalidRangeEvidenceCloses(claimed)).toBe(true);
+    await expectOnchainRefusal(
+      () =>
+        submitInvalidRangeStep02V1({
+          lucid: staged.harness.proverLucid,
+          contracts: staged.contracts,
+          categoryId: staged.category.categoryId,
+          signer: staged.harness.proverSigner,
+          threadOutRef: terminalOutRef,
+          evidence: claimed,
+          referenceScriptUtxo: staged.references[1],
+          witnessReferenceScripts: staged.harness.witnessReferenceScripts,
+        }),
+      {
+        refusedBy: "fraud_proofs/invalid_range/step_02",
+        check: /^expect rule\.terminal_contradiction_v1\(/u,
+      },
     );
   }, 600_000);
 });

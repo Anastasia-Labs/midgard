@@ -263,11 +263,11 @@ fn start_complete(changed: Int) {
     ),
     ct.Continue(start.Complete { input_index: 0, output_index: 0 }),
     fixture.own_out_ref(),
-    step_tx(output, [], changed == 3),
+    step_tx(output, [fixture.fraud_prover_key_hash], changed == 3),
   )
 }
 
-test claim_start_unsigned_deterministic_complete_is_valid() {
+test claim_start_deterministic_complete_is_valid() {
   start_complete(0)
 }
 
@@ -305,11 +305,11 @@ fn start_spend(changed: Bool) {
     ),
     ct.Continue(start.Spend { input_index: 0, output_index: 0 }),
     fixture.own_out_ref(),
-    step_tx(output, [], False),
+    step_tx(output, [fixture.fraud_prover_key_hash], False),
   )
 }
 
-test claim_start_hands_the_spend_context_over_without_a_signature() {
+test claim_start_hands_the_spend_context_over() {
   start_spend(False)
 }
 
@@ -372,7 +372,7 @@ fn start_observe_on_minting_tx(leaf_kind: Int) {
       },
     ),
     fixture.own_out_ref(),
-    step_tx(output, [], False),
+    step_tx(output, [fixture.fraud_prover_key_hash], False),
   )
 }
 
@@ -469,11 +469,11 @@ fn spend_finish(changed: Bool) {
     ),
     ct.Continue(workers.Finish { input_index: 0, output_index: 0 }),
     fixture.own_out_ref(),
-    step_tx(output, [], False),
+    step_tx(output, [fixture.fraud_prover_key_hash], False),
   )
 }
 
-test spend_completed_rank_finish_is_permissionless() {
+test spend_completed_rank_finish_is_valid() {
   spend_finish(False)
 }
 
@@ -539,11 +539,11 @@ fn mint_grammar(changed: Bool) {
     ),
     ct.Continue(args),
     fixture.own_out_ref(),
-    step_tx(output, [], False),
+    step_tx(output, [fixture.fraud_prover_key_hash], False),
   )
 }
 
-test mint_grammar_carries_exact_observed_state_without_owner_signature() {
+test mint_grammar_carries_exact_observed_state() {
   mint_grammar(False)
 }
 
@@ -582,11 +582,11 @@ fn mint_finish(changed: Bool) {
     ),
     ct.Continue(mint.Finish { args }),
     fixture.own_out_ref(),
-    step_tx(output, [], False),
+    step_tx(output, [fixture.fraud_prover_key_hash], False),
   )
 }
 
-test mint_empty_exhaustion_finish_is_permissionless() {
+test mint_empty_exhaustion_finish_is_valid() {
   mint_finish(False)
 }
 
@@ -652,11 +652,11 @@ fn receive_grammar(changed: Bool) {
     ),
     ct.Continue(args),
     fixture.own_out_ref(),
-    step_tx(output, [], False),
+    step_tx(output, [fixture.fraud_prover_key_hash], False),
   )
 }
 
-test receive_grammar_is_permissionless_and_preserves_the_observation() {
+test receive_grammar_preserves_the_observation() {
   receive_grammar(False)
 }
 
@@ -683,7 +683,7 @@ fn receive_outputs_handover(changed: Bool) {
     ),
     ct.Continue(receive_claim.Finish { input_index: 0, output_index: 0 }),
     fixture.own_out_ref(),
-    step_tx(output, [], False),
+    step_tx(output, [fixture.fraud_prover_key_hash], False),
   )
 }
 
@@ -729,7 +729,7 @@ fn receive_finish(changed: Bool) {
     ),
     ct.Continue(args),
     fixture.own_out_ref(),
-    step_tx(output, [], False),
+    step_tx(output, [fixture.fraud_prover_key_hash], False),
   )
 }
 
@@ -771,11 +771,11 @@ fn declaration_finish(changed: Bool) {
     ),
     ct.Continue(declaration.Finish { input_index: 0, output_index: 0 }),
     fixture.own_out_ref(),
-    step_tx(output, [], False),
+    step_tx(output, [fixture.fraud_prover_key_hash], False),
   )
 }
 
-test receive_empty_declaration_finishes_without_owner_signature() {
+test receive_empty_declaration_finishes() {
   declaration_finish(False)
 }
 

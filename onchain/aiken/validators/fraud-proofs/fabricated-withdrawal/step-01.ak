@@ -80,6 +80,7 @@ validator main(
           own_out_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
 
         // 2. The thread must belong to this family's catalogue category, and the

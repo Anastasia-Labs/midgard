@@ -193,7 +193,7 @@ export const interactiveTests = [
 
 /**
  * The test files the curated-emulator Vitest project runs, against a blueprint
- * compiled for `preprod-emulator-curated` (stage-0 allow-lists and the P1
+ * compiled for `preprod-emulator-curated` (the stage-0 operator allow-list and the P1
  * fraud-proof catalogue). No other project runs them.
  */
 export const curatedTests = ["./tests/curated-emulator-*.test.ts"];

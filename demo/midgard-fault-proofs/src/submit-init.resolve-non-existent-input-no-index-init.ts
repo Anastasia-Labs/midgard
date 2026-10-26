@@ -1,4 +1,3 @@
-import { type AllowList } from "@al-ft/midgard-core/deployment-profile";
 import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
 import { type FraudProofCatalogueCategoryDeploymentInfo } from "@al-ft/midgard-sdk";
 import {
@@ -222,12 +221,6 @@ export type SubmitResolvedInitParams = {
   /** Production workflow seam: invoked after local evaluation, before I/O. */
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
-  /**
-   * The fraud-prover allow-list checked before any read or build; the
-   * selected profile's by default. Another list only serves tests of the
-   * validator's own check.
-   */
-  readonly proverAllowList?: AllowList;
 };
 
 export type SubmitResolvedInitResult = {

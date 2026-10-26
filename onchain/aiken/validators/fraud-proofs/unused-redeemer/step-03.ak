@@ -34,6 +34,7 @@ validator main(step_04_hash: ScriptHash, thread_policy: PolicyId) {
           own_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
         expect Some(authenticated) = input_state
         let expected: Data = initial_reverse_scan_v1(authenticated)

@@ -1,4 +1,3 @@
-use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
@@ -27,7 +26,7 @@ validator main(claim_adjudicate_hash: ScriptHash, thread_policy: PolicyId) {
       ct.Continue(action) -> {
         let Pair(input_index, output_index) = declaration.indices(action)
         expect Some(step_datum) = datum
-        let own_hash, _, fraud_prover, input_state, output_hash, output_state <- continue(
+        let own_hash, _, _, input_state, output_hash, output_state <- continue(
           thread_policy,
           step_datum,
           input_index,
@@ -35,12 +34,11 @@ validator main(claim_adjudicate_hash: ScriptHash, thread_policy: PolicyId) {
           own_ref,
           tx.inputs,
           tx.outputs,
+          tx.extra_signatories,
         )
         expect Some(state) = input_state
         when action is {
           declaration.Scan { entries, .. } -> {
-            // Declaration leaves are a free choice until final root equality.
-            expect list.has(tx.extra_signatories, fraud_prover)
             let expected: Data = claim.advance_declaration_v1(state, entries)
             and {
               output_hash == own_hash,

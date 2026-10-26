@@ -140,6 +140,7 @@ validator main(
               own_out_ref,
               inputs,
               outputs,
+              tx.extra_signatories,
             )
             expect Some(state) = m_input_state_data
             let script_bytes = native_script_bytes(state, script_item_cbor)

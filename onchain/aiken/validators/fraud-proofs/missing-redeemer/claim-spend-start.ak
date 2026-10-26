@@ -1,4 +1,3 @@
-use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
@@ -40,7 +39,7 @@ validator main(
             }
           = action
         expect Some(step_datum) = datum
-        let _, _, fraud_prover, input_state, output_hash, output_state <- continue(
+        let _, _, _, input_state, output_hash, output_state <- continue(
           thread_policy,
           step_datum,
           input_index,
@@ -48,10 +47,9 @@ validator main(
           own_ref,
           tx.inputs,
           tx.outputs,
+          tx.extra_signatories,
         )
         expect Some(context) = input_state
-        // Raw position is a free choice until the completed rank scan.
-        expect list.has(tx.extra_signatories, fraud_prover)
         let expected: Data = claim.open_v1(
           context,
           raw_item_index,

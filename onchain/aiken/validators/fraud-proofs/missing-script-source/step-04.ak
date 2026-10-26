@@ -41,6 +41,7 @@ validator main(
           own_out_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
         expect Some(staged) = input_state
         let expected: Data = initial_scan_v1(

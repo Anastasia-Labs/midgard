@@ -8,8 +8,8 @@ See [SECURITY.md](../SECURITY.md) for private vulnerability reporting.
 ## System, assets and deployment boundary
 
 Midgard is an optimistic rollup on Cardano. P1 is the stage-0 Preprod deployment
-in Plan rev 4 Part A, with curated operators, allow-listed fraud provers and DA
-challengers, and manual proof submission. The proposed release profile is
+in Plan rev 4 Part A, with curated operators and permissionless fraud provers
+and DA challengers. The proposed release profile is
 `preprod-public`; an emulator or testing profile cannot establish public release
 readiness. An instance is identified by its approved genesis, authenticated
 manifest, profile digest, pinned blueprint and deployed script/reference UTxOs.
@@ -33,8 +33,8 @@ use is still reportable; no blanket dependency or trusted-role exclusion applies
 | --------------------------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Permissionless user               | Own transaction signatures and owned funds                             | Transaction CBOR, witnesses, datums, scripts, event shape, payload size and timing are adversarial; bounded total admission and truthful verdicts are required.                    |
 | Curated operator                  | Production liveness and verdicts outside enabled proof coverage        | Operator membership does not authenticate arbitrary roots, deposits, forced inputs, replay evidence or another deployment. Enabled proof and value-conservation rules still apply. |
-| Allow-listed fraud prover         | Manual diagnosis and timely proof submission by the team               | Only authenticated, correctly parameterized proof stages can slash or remove. An honest block must survive adversarial claims, including from a listed prover.                     |
-| Allow-listed DA challenger        | Opens and drives availability challenges                               | The role is trusted not to exploit documented P1 gaps or overwhelm L1 challenge capacity; signature, deployment, deadline, bond and subject rules still apply.                     |
+| Permissionless fraud prover       | Any key; every watcher submits the proofs it finds                     | Only authenticated, correctly parameterized proof stages can slash or remove. An honest block must survive adversarial claims from any key.                                        |
+| Permissionless DA challenger      | Any key that funds the challenger bond opens an availability challenge | The bond funds the committee's publication; signature, deployment, deadline, bond and subject rules apply.                                                                         |
 | DA committee                      | Publishes and retains the exact attested payload, and responds in time | An attestation is availability evidence, not ledger validity. Payload commitments, signer/threshold binding, peer identity, quotas and retention deadlines must be checked.        |
 | Node/watcher/follower processes   | Execute configured operations using durable local state                | Cross-process messages and native answers require identity/version/schema checks; crash/restart must preserve obligations and rollbacks must invalidate orphan evidence.           |
 | L1 Cardano chain                  | Canonical ledger and finality under the selected genesis parameters    | A provider response is an observation. Provider identity, canonicality, tip freshness and configured confirmation rules must hold before dependent actions.                        |
@@ -57,9 +57,9 @@ establish custody, access policy, backup/recovery and incident ownership.
 3. Only a valid proof of the authenticated fault may remove a block or slash a
    bond. Both a real faulty control and an honest adversarial control are needed
    in validation evidence.
-4. Allow-lists apply at registration, computation-thread Init and DA challenge
-   Open. No alternate builder, catalogue path or administrative interface may
-   bypass these entry points.
+4. The operator allow-list applies at registration. Computation-thread Init and
+   DA challenge Open are permissionless. No alternate builder, catalogue path or
+   administrative interface may bypass these entry points.
 5. DA acceptance binds exact payload bytes to the header. Read failure is not a
    negative verdict, and an attestation does not stand in for execution evidence.
 6. Durable replay/intent/settlement state survives restart and canonical rollback
@@ -125,7 +125,8 @@ commands or approve malicious software according to the compromised role. Report
 unexpected effects even if a trusted role is required. Deployment operations
 must establish key custody and incident handling. Restore procedures must
 preserve identity and durable obligations;
-changing fixed P1 allow-lists requires another deployment, not a runtime edit.
+changing the fixed P1 operator allow-list requires another deployment, not a
+runtime edit.
 
 A suspected active compromise should trigger private security contact, preservation
 of revision/profile/manifest/log/chain evidence, isolation of compromised runtime
@@ -136,8 +137,8 @@ R6 must establish the actual incident handlers, drills and alert delivery.
 
 ## P1 stage-0 limitations
 
-- Curated operators, allow-listed fraud provers and DA challengers; manual proof
-  submission, including manual re-drive after the safe-start deadline.
+- Curated operators; permissionless fraud provers and DA challengers. Proof
+  re-drive after the safe-start deadline is manual.
 - Native-only forced transactions. No reference-script outputs, Plutus witnesses,
   redeemers, auxiliary data or L2 validity upper bound; canonical and noncanonical inline datums
   remain permitted at L1 admission. Funds needing Plutus or

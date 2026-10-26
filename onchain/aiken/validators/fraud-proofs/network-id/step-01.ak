@@ -123,6 +123,7 @@ fn pass_forced_claim(
     own_out_ref,
     inputs,
     outputs,
+    tx.extra_signatories,
   )
   // The shared `continue` helper only admits a populated successor state, so
   // the forced door receives the claimed fault and re-authenticates it.

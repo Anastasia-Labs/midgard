@@ -38,6 +38,7 @@ validator main(step_03_hash: ScriptHash, thread_policy: PolicyId) {
           own_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
         expect Some(bound) = input_state
         let expected: Data = authenticate_integrity_v1(

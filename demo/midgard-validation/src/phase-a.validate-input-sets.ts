@@ -153,11 +153,6 @@ export const validateValidityInterval = (
 };
 
 /**
- * Reports the first invalid witness in field-7 order, which the Signatures
- * cursor scans: the node refused field 7 at decode unless it is strictly
- * ascending by (signer hash, item bytes).
- */
-/**
  * Reports the first address witness, in field-7 order, whose signature does
  * not verify by the ledger's own Ed25519 check; a failure of the check itself
  * is raised. The Signatures cursor scans field 7 in that order: the node

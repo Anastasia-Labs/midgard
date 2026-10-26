@@ -38,6 +38,7 @@ validator main(step_04_hash: ScriptHash, thread_policy: PolicyId) {
           own_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
         expect Some(authenticated) = input_state
         let expected: Data = initialize_language_fold_v1(authenticated)

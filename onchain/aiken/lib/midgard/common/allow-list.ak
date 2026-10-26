@@ -1,6 +1,6 @@
-//// Stage-0 allow-lists. A deployment either admits every key (`None`) or
-//// exactly the keys it lists; the lists are env constants, fixed for the
-//// deployment's life.
+//// The stage-0 operator allow-list. A deployment either admits every key
+//// (`None`) or exactly the keys it lists; the list is an env constant, fixed
+//// for the deployment's life.
 
 use aiken/collection/list
 use aiken/crypto.{VerificationKeyHash}
@@ -14,18 +14,5 @@ pub fn admits(
   when allow_list is {
     None -> True
     Some(keys) -> list.has(keys, key)
-  }
-}
-
-/// A key `allow_list` admits: `fallback` when every key is admitted, otherwise
-/// the first listed key. Fixtures use it to sign as an admitted party under
-/// whichever profile the tests compile against.
-pub fn admitted_or(
-  allow_list: Option<List<VerificationKeyHash>>,
-  fallback: VerificationKeyHash,
-) -> VerificationKeyHash {
-  when allow_list is {
-    Some([key, ..]) -> key
-    _ -> fallback
   }
 }

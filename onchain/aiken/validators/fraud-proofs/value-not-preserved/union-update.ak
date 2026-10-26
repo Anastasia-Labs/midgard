@@ -43,6 +43,7 @@ validator main(computation_thread_token_policy_id: PolicyId) {
           own_out_ref,
           tx.inputs,
           tx.outputs,
+          tx.extra_signatories,
         )
         expect Some(state) = input_state
         expect pending: PendingContribution = state.continuation

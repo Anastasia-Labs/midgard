@@ -40,6 +40,7 @@ pub fn pre_state_step_v1(
         own_ref,
         tx.inputs,
         tx.outputs,
+        tx.extra_signatories,
       )
       expect Some(state) = input_state
       let pre_state = substrate.subject_selected_event_pre_state_v1(

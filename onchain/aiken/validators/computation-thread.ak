@@ -9,8 +9,6 @@ use cardano/transaction.{
   InlineDatum, Input, Output, Redeemer, ScriptPurpose, Spend, Transaction,
   placeholder,
 }
-use env
-use midgard/common/allow_list
 use midgard/common/utils
 use midgard/computation_thread.{
   BurnForCancellation, Init, MintRedeemer, StepDatum, Success,
@@ -123,10 +121,9 @@ validator mint(
         //    prover, without any additional data.
         expect StepDatum { fraud_prover, data: None }: StepDatum<Data> = first_step_output_datum_data
 
-        // 9. Transaction must be signed by the specified fraud prover, and the
-        //    deployment's fraud-prover allow-list must admit it.
+        // 9. Transaction must be signed by the specified fraud prover. Any key
+        //    may prove.
         expect fraud_prover |> utils.has_signed(extra_signatories)
-        expect allow_list.admits(env.fraud_prover_allow_list, fraud_prover)
 
         // 10. The NFT in `first_step_output` must be the only asset minted in
         //     the transaction.
@@ -176,16 +173,10 @@ const test_catalogue_root =
 const test_other_policy =
   #"99999999999999999999999999999999999999999999999999999999"
 
-/// A prover the deployment's fraud-prover allow-list admits: the fixture's
-/// prover under a profile that admits every key.
-const test_prover =
-  allow_list.admitted_or(
-    env.fraud_prover_allow_list,
-    fixture.fraud_prover_key_hash,
-  )
+const test_prover = fixture.fraud_prover_key_hash
 
-/// A prover no profile lists.
-const unlisted_prover =
+/// A key no fixture or profile names.
+const arbitrary_prover =
   #"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
 
 fn test_block() -> fixture.NativeBlockFixtureV1 {
@@ -354,18 +345,25 @@ test ct_init_rejects_missing_prover_signature() fail {
   )
 }
 
-/// Allow-list negative: a prover the deployment does not list cannot start a
-/// thread, even when it signs. Under a profile that admits every prover there
-/// is nothing to refuse and the test passes at the `expect`; the default
-/// (mainnet) env lists its provers.
-test ct_init_rejects_unlisted_prover() fail {
-  expect Some(provers) = env.fraud_prover_allow_list
-  expect !list.has(provers, unlisted_prover)
+/// Any key that signs may start a thread as its prover.
+test ct_init_accepts_any_signing_prover() {
   happy_init(
     fixture.step_script_hash,
-    step_datum_data_for(unlisted_prover),
+    step_datum_data_for(arbitrary_prover),
     single_thread_mint(),
-    [unlisted_prover],
+    [arbitrary_prover],
+    standard_init_references(test_block()),
+    membership_attestation(fixture.step_script_hash),
+  )
+}
+
+/// The declared prover must be the key that signs, not merely some signer.
+test ct_init_rejects_prover_other_than_the_signer() fail {
+  happy_init(
+    fixture.step_script_hash,
+    step_datum_data_for(arbitrary_prover),
+    single_thread_mint(),
+    [test_prover],
     standard_init_references(test_block()),
     membership_attestation(fixture.step_script_hash),
   )

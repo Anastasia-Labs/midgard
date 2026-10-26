@@ -42,6 +42,7 @@ validator main(step_06_hash: ScriptHash, thread_policy: PolicyId) {
           own_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
         expect Some(state) = input_state
         let scanned = advance(state, args.openings, args.item_budget)

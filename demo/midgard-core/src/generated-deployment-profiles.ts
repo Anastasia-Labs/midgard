@@ -71,12 +71,6 @@ export const DEPLOYMENT_PROFILES = {
     },
     allow_lists: {
       operators: ["706c616365686f6c6465723a6f706572000000000000000000000001"],
-      fraud_provers: [
-        "706c616365686f6c6465723a70726f76000000000000000000000001",
-      ],
-      da_challengers: [
-        "706c616365686f6c6465723a64616368000000000000000000000001",
-      ],
     },
     excluded_fraud_proof_categories: [
       "validationTraceDispute",
@@ -166,19 +160,12 @@ export const DEPLOYMENT_PROFILES = {
         "041388eef29da389e7b9dac19509ef8ac95a398a9909991a4326d424",
         "4189f341bddd0c74ecb4f5a1ddae8653ee204be022fe530e2f65a6a6",
       ],
-      fraud_provers: [
-        "3fce32946bbc65915c9abecaac07b0b00b0ee85fce73d06a209e3e5f",
-      ],
-      da_challengers: [
-        "c3276ebd1e6886c2bdc4ef2ca4d084ed8da3901b6054d3c881eb1e81",
-      ],
     },
     excluded_fraud_proof_categories: [
       "executionSourceScriptDecoding",
       "receivePurposeLanguage",
       "unusedScriptWitness",
       "missingScriptSource",
-      "missingRedeemer",
       "unusedRedeemer",
       "executionNativeScriptInvalid",
       "scriptIntegrityHashMismatch",
@@ -257,8 +244,6 @@ export const DEPLOYMENT_PROFILES = {
     },
     allow_lists: {
       operators: null,
-      fraud_provers: null,
-      da_challengers: null,
     },
     excluded_fraud_proof_categories: ["validationTraceDispute"],
   },
@@ -334,8 +319,6 @@ export const DEPLOYMENT_PROFILES = {
     },
     allow_lists: {
       operators: null,
-      fraud_provers: null,
-      da_challengers: null,
     },
     excluded_fraud_proof_categories: ["validationTraceDispute"],
   },
@@ -411,8 +394,6 @@ export const DEPLOYMENT_PROFILES = {
     },
     allow_lists: {
       operators: null,
-      fraud_provers: null,
-      da_challengers: null,
     },
     excluded_fraud_proof_categories: [],
   },
@@ -488,19 +469,12 @@ export const DEPLOYMENT_PROFILES = {
     },
     allow_lists: {
       operators: ["8372d26e23e36568f931b8e3a418ca29dc545054f017548733c78198"],
-      fraud_provers: [
-        "d429435c9f332ef50d6fc8f5694bd256a36740da3d21e83aade0594f",
-      ],
-      da_challengers: [
-        "3bd3eb08b8fb0166ddaa1cbe99248f88d6a749387740a7e6e1548d9b",
-      ],
     },
     excluded_fraud_proof_categories: [
       "executionSourceScriptDecoding",
       "receivePurposeLanguage",
       "unusedScriptWitness",
       "missingScriptSource",
-      "missingRedeemer",
       "unusedRedeemer",
       "executionNativeScriptInvalid",
       "scriptIntegrityHashMismatch",
@@ -510,17 +484,17 @@ export const DEPLOYMENT_PROFILES = {
 } as const;
 
 export const DEPLOYMENT_PROFILE_DIGESTS = {
-  mainnet: "f61d6aa00bd30087f5ca661a4feef5ef3ac9dc10e680d945b0fbe7f8c28fbf22",
+  mainnet: "6539647bbd2a9a374c35fd43a1e121a116d8e15c1f5a919f5cb56bfb707c67b8",
   "preprod-public":
-    "88a0c900feb51bf250301928bcf2ed9baf90745ba6f935401cfd628f8f15c1c9",
+    "3129e626d114077849db910163532c74c6e19e394ea6dd31673b0f9ee1e73e29",
   "preprod-testing":
-    "03d291eb9b001aa7c569f9694f6434621f107e916fbf8f91fb8bb3bce2d460ed",
+    "0e133908fccfa06ad9fc9d5f91411ec298c0305ca5b9e79a38464d53dbe9d8a1",
   "local-devnet-testing":
-    "54c9f7d9c0b7f23ba0001b567997415c4d23e51790c164ff648fe700aa61619f",
+    "02e1097f78636e62eaa5c8cbc66fe85b6b5b9ae299c0b13d1d48d3836df8f15c",
   "preprod-emulator-testing":
-    "8512bdcd872dff0b54ac7703b61a839ccc4bce69f72f8200ea570063b042b273",
+    "f3ebccc8cad7beaf08a48f488a74e1e85ee961bdf625b0b3d1d8b23bbc334bac",
   "preprod-emulator-curated":
-    "3ece1bd1551e31ca2353715cbcfd501ba4fbd69652eca349ef7cbaeec87dfbc1",
+    "ef23af81fee96d338c45f1f57ea5927b17b1aee5211148468b97ee266d22ea96",
 } as const;
 
 export const DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE = {

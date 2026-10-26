@@ -168,6 +168,12 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
   try {
     const accounts = createPublishedWorkflowDeploymentAccounts();
     const availabilityAccount = generateEmulatorAccount({ lovelace: 0n });
+    // A fresh key with no deployment role proves and submits.
+    const proverAccount = generateEmulatorAccount({ lovelace: 0n });
+    const [prover, availability] = [proverAccount, availabilityAccount].map(
+      ({ seedPhrase: walletSeedPhrase }) =>
+        resolveProverSigner({ network: "Preprod", walletSeedPhrase }),
+    );
     const deployment = await stage("published deployment", () =>
       publishWorkflowDeployment({ accounts }),
     );
@@ -206,21 +212,13 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
       }),
     );
     await stage("prover wallet funding", async () => {
-      const proverAddress = resolveProverSigner({
-        network: "Preprod",
-        walletSeedPhrase: accounts.publisher.seedPhrase,
-      }).address;
-      const availabilityAddress = resolveProverSigner({
-        network: "Preprod",
-        walletSeedPhrase: availabilityAccount.seedPhrase,
-      }).address;
       const transfer = await deployment.publisherLucid
         .newTx()
-        .pay.ToAddress(proverAddress, { lovelace: 500_000_000n })
-        .pay.ToAddress(proverAddress, { lovelace: 500_000_000n })
-        .pay.ToAddress(proverAddress, { lovelace: 100_000_000n })
-        .pay.ToAddress(availabilityAddress, { lovelace: 40_000_000_000n })
-        .pay.ToAddress(availabilityAddress, { lovelace: 10_000_000n })
+        .pay.ToAddress(prover!.address, { lovelace: 500_000_000n })
+        .pay.ToAddress(prover!.address, { lovelace: 500_000_000n })
+        .pay.ToAddress(prover!.address, { lovelace: 100_000_000n })
+        .pay.ToAddress(availability!.address, { lovelace: 40_000_000_000n })
+        .pay.ToAddress(availability!.address, { lovelace: 10_000_000n })
         .complete();
       await deployment.publisherLucid.awaitTx(
         await (await transfer.sign.withWallet().complete()).submit(),
@@ -389,7 +387,7 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
       (hash) => provider.awaitTx(hash),
     );
     vi.stubEnv("MIDGARD_WATCHER_ROLLBACK_AUTHORITY_KEY", "17".repeat(32));
-    vi.stubEnv("MIDGARD_WATCHER_PROVER_KEY", accounts.publisher.seedPhrase);
+    vi.stubEnv("MIDGARD_WATCHER_PROVER_KEY", proverAccount.seedPhrase);
     vi.stubEnv("WATCHER_AVAILABILITY_KEY", availabilityAccount.seedPhrase);
     const watcherConfig = {
       ...native.watcherConfig,
@@ -680,6 +678,9 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
       expect(`${proofs[0]!.txHash}#${proofs[0]!.outputIndex}`).toBe(
         completion.proofToken.outRef,
       );
+      expect(
+        Data.from(proofs[0]!.datum!, SDK.FraudProofTokenDatum).fraud_prover,
+      ).toBe(prover!.paymentKeyHash);
       expect(
         Object.values(emulator.ledger).filter(
           ({ spent, utxo }) =>

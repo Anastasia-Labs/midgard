@@ -47,6 +47,7 @@ validator main(
           own_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
         expect Some(ReconstructionV1 { subject, descriptor_cbor, control }) = state
         let descriptor = ledger_output_commitment_v1.decode_canonical_schema(
