@@ -180,6 +180,17 @@ test canonical_decodability_walk_item_head_in_the_last_byte() {
   }
 }
 
+/// Item heads are read eight at a time. A run of eight that lands exactly on
+/// the last byte with items still owed is the missing item header, whether one
+/// item or many are owed and whether the run is the first or a later one.
+test canonical_decodability_walk_eight_items_end_on_the_last_byte_with_items_owed() {
+  and {
+    envelope_verdict_v1(#"894040404040404040") == verdict_missing_item_header,
+    envelope_verdict_v1(bytearray.concat(array_head(17), one_byte_run(16))) == verdict_missing_item_header,
+    envelope_verdict_v1(bytearray.concat(#"98ff", one_byte_run(8))) == verdict_missing_item_header,
+  }
+}
+
 // ---------------------------------------------------------------------------
 // The largest field
 // ---------------------------------------------------------------------------
@@ -355,22 +366,27 @@ test canonical_decodability_walk_agrees_with_a_plain_reading(
 }
 
 /// The same comparison behind an array head that declares the item count the
-/// body carries, so the fuzzer reaches the item walk rather than stopping at
-/// the head.
+/// body carries, or a few more, so the fuzzer reaches the item walk rather
+/// than stopping at the head.
 test canonical_decodability_walk_agrees_with_a_plain_reading_behind_a_head(
-  pieces via fuzz.list_between(
-    fuzz.one_of(
-      [
-        #"40", #"41aa", #"5818000000000000000000000000000000000000000000000000",
-        #"5817", #"58", #"59", #"590100", #"00", #"5a",
-      ],
+  pieces_and_extra via fuzz.both(
+    fuzz.list_between(
+      fuzz.one_of(
+        [
+          #"40", #"41aa",
+          #"5818000000000000000000000000000000000000000000000000", #"5817",
+          #"58", #"59", #"590100", #"00", #"5a",
+        ],
+      ),
+      0,
+      30,
     ),
-    0,
-    30,
+    fuzz.one_of([0, 1, 2, 9]),
   ),
 ) {
+  let (pieces, extra) = pieces_and_extra
   let preimage = bytearray.concat(
-    array_head(list.length(pieces)),
+    array_head(list.length(pieces) + extra),
     list.foldr(pieces, #"", bytearray.concat),
   )
   envelope_verdict_v1(preimage) == plain_envelope_verdict(preimage)
