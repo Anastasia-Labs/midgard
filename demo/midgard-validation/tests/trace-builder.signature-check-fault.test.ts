@@ -63,8 +63,8 @@ vi.mock(
 const keyHash = (key: CML.PrivateKey): Buffer =>
   Buffer.from(key.to_public().hash().to_raw_bytes());
 
-// The invalid witness comes first in the transaction; the valid one sorts
-// first by signer hash, so the builder checks it first.
+// The valid witness sorts first by signer hash, so it comes first in the
+// canonical witness list and the builder checks it before the invalid one.
 const invalidSigner = CML.PrivateKey.generate_ed25519();
 let validSigner = CML.PrivateKey.generate_ed25519();
 while (Buffer.compare(keyHash(validSigner), keyHash(invalidSigner)) >= 0)
@@ -85,8 +85,8 @@ const vkeyWitness = (key: CML.PrivateKey, message: Buffer): Buffer =>
 const transaction = makeNativeTx({
   version: 1n,
   vkeyWitnesses: (message) => [
-    vkeyWitness(invalidSigner, Buffer.alloc(32, 0x7f)),
     vkeyWitness(validSigner, message),
+    vkeyWitness(invalidSigner, Buffer.alloc(32, 0x7f)),
   ],
   spendInputs: [spent],
   outputs: [output],

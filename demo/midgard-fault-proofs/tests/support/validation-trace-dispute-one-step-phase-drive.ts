@@ -37,9 +37,14 @@ import { resolutionDrive } from "./validation-trace-dispute-one-step-resolution-
 /** `SignerMembershipProof`'s constructor among the signer-set proofs. */
 const SIGNER_MEMBERSHIP_PROOF = 1;
 
+/** `TransactionFieldItemWitness`'s constructor among the auxiliary
+ * witnesses. */
+const TRANSACTION_FIELD_ITEM_WITNESS = 28;
+
 /** The evidence a step's semantic resolver takes: none, the item
  * `itemIndex` of the field `fieldIndex` (by default whichever item our
- * trace reads at the step), whose preimage it carries inline, with the
+ * trace reads at the step; a step whose control fixes the item takes the
+ * field alone), whose preimage it carries inline, with the
  * yield `itemYield` its semantic resolver invokes beside it, at its
  * `yield_kind` `kind`, if any; or a required-signer item, whose field it
  * carries inline beside the proof that the signer signed; or our trace's
@@ -296,7 +301,9 @@ export const phaseDrive = ({
 
 /** The auxiliary evidence of the step after our trace's state `from`: none,
  * `TransactionFieldChunkWitness` over the preimage of the field our trace
- * reads at the step, carried `Inline`, or `RequiredSignerItemWitness` over
+ * reads at the step, carried `Inline` (`TransactionFieldItemWitness`, the
+ * carriage alone, where the step's control fixes the item), or
+ * `RequiredSignerItemWitness` over
  * the required-signer field carried `Inline` and the signer's membership
  * among the transaction's signers (`plan`'s own proof, whose kind is
  * checked). */
@@ -329,6 +336,13 @@ const expectedEvidence = async (
     return new Constr(2, [
       new Constr(0, [auxiliary.fieldPreimage.toString("hex")]),
       proof!,
+    ]);
+  }
+  if (auxiliary?.kind === "transactionFieldItem") {
+    expect(auxiliary.fieldIndex).toBe(evidence.fieldIndex);
+    expect(evidence.itemIndex).toBeUndefined();
+    return new Constr(TRANSACTION_FIELD_ITEM_WITNESS, [
+      new Constr(0, [auxiliary.fieldPreimage.toString("hex")]),
     ]);
   }
   if (auxiliary?.kind !== "transactionFieldChunk")

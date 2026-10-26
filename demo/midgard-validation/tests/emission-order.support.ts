@@ -154,6 +154,23 @@ const assertedReason = (
 const expectedReason = (expected: Expected["reason"]): unknown =>
   isPendingInputIndex(expected) ? expected.pendingInputIndex : expected;
 
+/**
+ * A ValueAndMint step inside a row's walk, picked by its coordinate: the
+ * replay of a reference input, or one asset entry of a spend input, an output
+ * or the mint. `entryCount` is the asset entries its successor's value
+ * accumulator holds; the trace's successor must hold exactly that many, and
+ * the on-chain row checks that the machine's successor does too.
+ */
+export type CountedStep = {
+  readonly name: string;
+  readonly at:
+    | { readonly referenceInput: number }
+    | { readonly spendInput: number; readonly asset: number }
+    | { readonly output: number; readonly asset: number }
+    | { readonly mint: number };
+  readonly entryCount: number;
+};
+
 export type Row = {
   readonly name: string;
   /** `refusal`: a fault class the machine stops on before the case's scan. */
@@ -175,6 +192,8 @@ export type Row = {
    */
   readonly source?: "forced";
   readonly expected: Expected | null;
+  /** Steps inside the walk whose successor's asset entry count is pinned. */
+  readonly countedSteps?: readonly CountedStep[];
 };
 
 /** Every multi-fault row has a single-fault control per fault. */
@@ -361,11 +380,11 @@ export const stoppingStep = (trace: DeterministicValidationMachineTrace) =>
     .reverse()
     .findIndex((witness) => witness.phase !== "terminal");
 
-/** The stopping step as on-chain one-step input, each part as CBOR hex. */
-export const stoppingStepVector = (
+/** A step as on-chain one-step input, each part as CBOR hex. */
+export const stepVector = (
   trace: DeterministicValidationMachineTrace,
+  stateIndex: number,
 ) => {
-  const stateIndex = stoppingStep(trace);
   const argument = buildValidationOneStepArgument({ trace, stateIndex });
   return {
     phase: trace.witnesses[stateIndex]!.phase,
@@ -376,6 +395,11 @@ export const stoppingStepVector = (
     auxiliary: argument.auxiliaryCbor.toString("hex"),
   };
 };
+
+/** The stopping step as on-chain one-step input, each part as CBOR hex. */
+export const stoppingStepVector = (
+  trace: DeterministicValidationMachineTrace,
+) => stepVector(trace, stoppingStep(trace));
 
 /** The producer's verdict; returns its reason. */
 export const expectProducerVerdict = async (row: Row) => {

@@ -37,24 +37,15 @@ export type MidgardLedgerOutputValueControl = {
 };
 
 /**
- * Opening of the current within-policy map head, so a step can prove its
- * asset name is strictly smaller than the previously folded one without the
- * control retaining more than the rolling summary. Mirrors the on-chain
- * `LedgerOutputValueHeadV1` (and the CEK mint `CekMintHead`).
+ * One asset step's opening of leaf `assetRemaining - 1` of the asset frontier.
+ * The control fixes the leaf, so the witness carries no index (on-chain
+ * `LedgerOutputValueAsset`).
  */
-export type MidgardLedgerOutputValueHead = {
-  readonly assetName: Buffer;
-  readonly quantity: bigint;
-  readonly tail: MidgardCekDataSequenceSummary;
-};
-
 export type MidgardLedgerOutputValueWitness = {
-  readonly assetIndex: number;
   readonly policyId: Buffer;
   readonly assetName: Buffer;
   readonly quantity: bigint;
   readonly siblings: readonly Uint8Array[];
-  readonly previous: MidgardLedgerOutputValueHead | null;
 };
 
 export type MidgardLedgerOutputValueTraceStep = {

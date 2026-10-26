@@ -17,7 +17,6 @@ export {
   isWellFormedMidgardLedgerOutputValueControl,
   MIDGARD_LEDGER_OUTPUT_VALUE_VERSION,
   type MidgardLedgerOutputValueControl,
-  type MidgardLedgerOutputValueHead,
   type MidgardLedgerOutputValueStage,
   MidgardLedgerOutputValueStages,
   type MidgardLedgerOutputValueTrace,

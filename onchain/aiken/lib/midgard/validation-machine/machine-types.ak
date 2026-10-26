@@ -109,6 +109,7 @@ pub type ValidationAuxiliaryWitnessV1 {
   NativeScriptFrameWitness { frame: native_script_scan_v1.NativeScriptFrameV1 }
   ScheduledLedgerMembershipWitness {
     source_kind: Int,
+    item_index: Int,
     key: ByteArray,
     next_schedule_hash: ByteArray,
     value: ByteArray,
@@ -117,15 +118,24 @@ pub type ValidationAuxiliaryWitnessV1 {
   }
   ScheduledLedgerNonMembershipWitness {
     source_kind: Int,
+    item_index: Int,
     key: ByteArray,
     next_schedule_hash: ByteArray,
     proof: Proof,
   }
+  /// One resolved input replayed at the control's `replay_cursor`. Each replay
+  /// authenticates `value` in its own step: ScriptSources stage 3 against
+  /// `prior_ledger_root` with `proof`, ValueAndMint against the
+  /// resolved-item frontier stage 3 built, at leaf `replay_cursor`, with
+  /// `siblings`. Each phase reads only its own field.
   ResolvedInputReplayWitness {
     source_kind: Int,
+    item_index: Int,
     key: ByteArray,
     next_schedule_hash: ByteArray,
     value: ByteArray,
+    proof: Proof,
+    siblings: List<ByteArray>,
   }
   ScriptPurposeScanWitness {
     purpose_kind: Int,
@@ -188,19 +198,19 @@ pub type ValidationAuxiliaryWitnessV1 {
     signer_hash: ByteArray,
     siblings: List<ByteArray>,
   }
+  /// Opens mint-frontier leaf `mint_count - 1 - mint_cursor`: the index is
+  /// the control's, not the witness's.
   CekMintContextItemWitness {
-    mint_index: Int,
     policy_id: ByteArray,
     asset_name: ByteArray,
     quantity: Int,
     siblings: List<ByteArray>,
-    previous: Option<CekMintHead>,
   }
   /// Selects the redeemer of the purpose just below the control's purpose
   /// bound. The execution leaf at that index names the purpose, its source
   /// and its redeemer item, so the item, the purpose and the frontier index
-  /// are all fixed by the pre-state. `item_frontier_root` opens the item
-  /// commitment far enough to fix `total_length`.
+  /// are all fixed by the pre-state. The redeemer leaf commits the item
+  /// length, so `total_length` is fixed the same way.
   CekRedeemerContextSelectWitness {
     control: CekRedeemerContextControlV1,
     item_index: Int,
@@ -213,7 +223,6 @@ pub type ValidationAuxiliaryWitnessV1 {
     execution_language_tag: Int,
     source_leaf: ByteArray,
     execution_siblings: List<ByteArray>,
-    item_frontier_root: ByteArray,
   }
   RedeemerItemStepWitness {
     redeemer_control: Option<CekRedeemerContextControlV1>,
@@ -233,6 +242,7 @@ pub type ValidationAuxiliaryWitnessV1 {
   CekContextSeedWitness { control: CekFinalContextControlV1 }
   ValueInputAssetWitness {
     source_kind: Int,
+    item_index: Int,
     key: ByteArray,
     next_schedule_hash: ByteArray,
     descriptor_cbor: ByteArray,
@@ -394,11 +404,13 @@ pub type ValidationProofItemDatumV1 {
 
 pub type ScheduledInputV1 {
   source_kind: Int,
+  item_index: Int,
   key: ByteArray,
 }
 
 pub type ResolveInputOutputProofV1 {
   source_kind: Int,
+  item_index: Int,
   key: ByteArray,
   next_schedule_hash: ByteArray,
   descriptor_cbor: ByteArray,
@@ -444,7 +456,8 @@ pub type CanonicalDecodeItemProofV1 {
 }
 
 /// What opening the item through §8's door established about it: the field's
-/// authenticated §5.2 item count and this item's §5.1 payload length.
+/// authenticated §5.2 item count, this item's §5.1 payload length, and whether
+/// it follows item k-1 in its field's order (`canonical_item_order_is_valid`).
 ///
 /// **It carries no proof, and it cannot.** Under the retired counted scheme this
 /// record held the prover's `ItemProofV1` and the item's `bounded_item_v1`
@@ -461,6 +474,7 @@ pub type CanonicalDecodeItemProofV1 {
 pub type CanonicalDecodeItemObservationV1 {
   item_count: Int,
   item_length: Int,
+  item_order_is_valid: Bool,
 }
 
 pub type ValidationContextV1 {
@@ -480,7 +494,15 @@ pub type InputSetsControlV1 {
   reference_count: Int,
   spend_seen: Int,
   reference_seen: Int,
-  previous_key: ByteArray,
+  /// The descending merge of fields 0 and 1 (`input_sets.ak`). `last_key` is
+  /// the item the scan consumed last and `(last_field, last_item)` its
+  /// position; `#""`, -1, -1 before the first. `cached_other_head` is the next
+  /// item of the field the step does not open, when it has been read and not
+  /// consumed; `#""` otherwise.
+  last_key: ByteArray,
+  last_field: Int,
+  last_item: Int,
+  cached_other_head: ByteArray,
   resolution_schedule_hash: ByteArray,
 }
 
@@ -495,7 +517,6 @@ pub type SignaturesControlV1 {
   required_count: Int,
   address_seen: Int,
   required_seen: Int,
-  previous_order_key: ByteArray,
   previous_signer_hash: ByteArray,
   signer_count: Int,
   signer_peaks: List<validation_merkle_v1.FrontierPeak>,
@@ -560,7 +581,6 @@ pub type ResolveInputsControlV1 {
   field_preimage_lengths_cbor: ByteArray,
   context_cbor: ByteArray,
   cursor: Int,
-  accumulator: ByteArray,
   remaining_schedule_hash: ByteArray,
   signer_count: Int,
   signer_frontier_commitment: ByteArray,
@@ -580,7 +600,6 @@ pub type ScriptSourcesControlV1 {
   field_preimage_lengths_cbor: ByteArray,
   context_cbor: ByteArray,
   resolved_input_count: Int,
-  resolved_inputs_accumulator: ByteArray,
   signer_count: Int,
   signer_frontier_commitment: ByteArray,
   resolved_item_peaks: List<validation_merkle_v1.FrontierPeak>,
@@ -590,7 +609,6 @@ pub type ScriptSourcesControlV1 {
   redeemer_count: Int,
   redeemer_peaks: List<validation_merkle_v1.FrontierPeak>,
   replay_cursor: Int,
-  replay_accumulator: ByteArray,
   replay_remaining_schedule_hash: ByteArray,
   spend_index: Int,
   purpose_count: Int,
@@ -667,7 +685,6 @@ pub type NativeScriptsControlV1 {
   field_preimage_lengths_cbor: ByteArray,
   context_cbor: ByteArray,
   resolved_input_count: Int,
-  resolved_inputs_accumulator: ByteArray,
   spend_input_count: Int,
   resolved_item_peaks: List<validation_merkle_v1.FrontierPeak>,
   signer_count: Int,
@@ -722,7 +739,7 @@ pub type CekContextControlV1 {
 pub type ValueAccumulatorV1 {
   lovelace_delta: Int,
   asset_root: ByteArray,
-  seen_asset_count: Int,
+  asset_entry_count: Int,
   nonzero_asset_count: Int,
 }
 
@@ -763,7 +780,6 @@ pub type ValueAndMintControlV1 {
   replay_cursor: Int,
   replay_asset_cursor: Int,
   replay_value_hash: ByteArray,
-  replay_accumulator: ByteArray,
   replay_remaining_schedule_hash: ByteArray,
   output_cursor: Int,
   output_asset_cursor: Int,
@@ -796,10 +812,4 @@ pub type CekWitnessControlV1 {
   /// `PlutusExecutionFailed` rejection names this key.
   purpose_kind: Int,
   purpose_index: Int,
-}
-
-pub type CekMintHead {
-  asset_name: ByteArray,
-  quantity: Int,
-  tail: cek_data_v1.DataSequenceSummaryV1,
 }

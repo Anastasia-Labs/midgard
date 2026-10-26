@@ -69,16 +69,16 @@ describe("canonical V1 validation tail controls", () => {
     ).toThrow(/arity/u);
   });
 
-  it("freezes V15 accumulator and 12-field value-and-mint control bytes", () => {
+  it("freezes V15 accumulator and 11-field value-and-mint control bytes", () => {
     const accumulator = decodeSingleCbor(valueAccumulatorCbor);
     const control = decodeSingleCbor(valueAndMintControlCbor);
     expect(Array.isArray(accumulator) ? accumulator.length : -1).toBe(4);
-    expect(Array.isArray(control) ? control.length : -1).toBe(12);
+    expect(Array.isArray(control) ? control.length : -1).toBe(11);
     expect(
       Array.isArray(control)
         ? (decodeSingleCbor(control[0] as Uint8Array) as unknown[]).length
         : -1,
-    ).toBe(26);
+    ).toBe(25);
     expect({
       valueAccumulatorCbor: valueAccumulatorCbor.toString("hex"),
       valueAndMintControlHash: digest(valueAndMintControlCbor),

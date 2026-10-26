@@ -9,9 +9,9 @@ export const validationTraceCekCoreStagedMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreStagedBytes: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core staged bytes",
-      manifestPosition: 591,
-      publicationPosition: 586,
-      referenceRolePosition: 586,
+      manifestPosition: 607,
+      publicationPosition: 602,
+      referenceRolePosition: 602,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_core_staged_bytes.main.spend",
@@ -20,9 +20,9 @@ export const validationTraceCekCoreStagedMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreStagedInteger: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core staged integer",
-      manifestPosition: 592,
-      publicationPosition: 587,
-      referenceRolePosition: 587,
+      manifestPosition: 608,
+      publicationPosition: 603,
+      referenceRolePosition: 603,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_core_staged_integer.main.spend",
@@ -32,9 +32,9 @@ export const validationTraceCekCoreStagedMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreStagedProduct: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core staged product",
-      manifestPosition: 593,
-      publicationPosition: 588,
-      referenceRolePosition: 588,
+      manifestPosition: 609,
+      publicationPosition: 604,
+      referenceRolePosition: 604,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_core_staged_product.main.spend",
@@ -45,9 +45,9 @@ export const validationTraceCekCoreStagedMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreSemanticSerialiseLoop: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core semantic serialise loop",
-      manifestPosition: 594,
-      publicationPosition: 589,
-      referenceRolePosition: 589,
+      manifestPosition: 610,
+      publicationPosition: 605,
+      referenceRolePosition: 605,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_core_semantic_serialise_loop.main.spend",
@@ -58,9 +58,9 @@ export const validationTraceCekCoreStagedMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreStagedFailure: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core staged failure",
-      manifestPosition: 595,
-      publicationPosition: 590,
-      referenceRolePosition: 590,
+      manifestPosition: 611,
+      publicationPosition: 606,
+      referenceRolePosition: 606,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_core_staged_failure.main.spend",
@@ -71,9 +71,9 @@ export const validationTraceCekCoreStagedMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreStagedConversion: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core staged conversion",
-      manifestPosition: 596,
-      publicationPosition: 591,
-      referenceRolePosition: 591,
+      manifestPosition: 612,
+      publicationPosition: 607,
+      referenceRolePosition: 607,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_core_staged_conversion.main.spend",
@@ -84,9 +84,9 @@ export const validationTraceCekCoreStagedMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreStagedWriteBitsLoop: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core staged write bits loop",
-      manifestPosition: 597,
-      publicationPosition: 592,
-      referenceRolePosition: 592,
+      manifestPosition: 613,
+      publicationPosition: 608,
+      referenceRolePosition: 608,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_core_staged_write_bits_loop.main.spend",

@@ -7,10 +7,10 @@
  * ours up to the state before the selection, and reveals from it; the
  * watcher bisects the thread and resolves it through the CEK resolver to the
  * selection resolver, every move and record under the funding permit it
- * mints each turn. The selection's hop needs more than the per-move cap: a
- * wallet holding exactly the terms' wallet-move reserve pays it whole, and
- * its successor keeps all of the thread's lovelace; the awarded thread then
- * closes into our case.
+ * mints each turn. With fees risen until the selection's hop is priced over
+ * the per-move cap, a wallet holding exactly the terms' wallet-move reserve
+ * pays it whole, and its successor keeps all of the thread's lovelace; with
+ * fees back, the awarded thread closes into our case.
  *
  * The category is not installed until its defender exists; this file
  * stands in for that install so the production classifier mints the
@@ -158,7 +158,7 @@ describe("validation-trace dispute one-step resolution through a CEK script sele
   });
 
   it(
-    "pays the selection's hop, priced over the cap, wholly from a wallet holding exactly the wallet-move reserve, its successor keeping all of the thread's lovelace, then closes the awarded thread into our case",
+    "pays the selection's hop, priced over the cap, wholly from a wallet holding exactly the wallet-move reserve, its successor keeping all of the thread's lovelace, then, with fees back, closes the awarded thread into our case",
     async () => {
       const { h } = scene;
       await playThreads({
@@ -169,8 +169,27 @@ describe("validation-trace dispute one-step resolution through a CEK script sele
         limit: 60,
       });
       const before = (await place())!.utxo;
+      // Fees rise until the selection's hop is priced over the per-move cap,
+      // and stay under the funding permit's ceiling at the fees the watcher
+      // read when it started.
+      const parameters = h.emulator.protocolParameters;
+      h.emulator.protocolParameters = { ...parameters, minFeeA: 50 };
+      try {
+        await topUpProver(h as never, 100n * ADA);
+        await drainProver(h as never, await dispute.walletMoveReserve());
+        // Until the hop lands, before any later move is built at these fees.
+        await playThreads({
+          scene,
+          runner: turns(),
+          sides: [side],
+          until: async () => (await place())?.holder !== "selection",
+          limit: 6,
+        });
+      } finally {
+        h.emulator.protocolParameters = parameters;
+      }
+      // Fees back: the awarded thread closes into our case.
       await topUpProver(h as never, 100n * ADA);
-      await drainProver(h as never, await dispute.walletMoveReserve());
       const { result, history } = await playThreads({
         scene,
         runner: turns(),

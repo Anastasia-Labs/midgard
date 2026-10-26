@@ -17,7 +17,7 @@ use midgard/validation_machine/shared.{
 }
 use midgard/validation_machine/witness.{
   encode_phase_a_script_preconditions_witness,
-  encode_resolve_inputs_initial_witness, initial_resolution_accumulator,
+  encode_resolve_inputs_initial_witness,
   phase_a_script_preconditions_control_from_witness,
   phase_a_script_preconditions_control_is_bound,
 }
@@ -107,7 +107,6 @@ fn phase_a_script_preconditions_finalize(
             control.field_preimage_lengths_cbor,
             control.context_cbor,
             0,
-            initial_resolution_accumulator(),
             control.resolution_schedule_hash,
             control.signer_count,
             control.signer_frontier_commitment,

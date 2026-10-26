@@ -19,6 +19,7 @@ export {
   midgardFixedFieldItemIsLegal,
 } from "./native-tx-field-item-legality.js";
 export * from "./native-tx-field-items.js";
+export * from "./native-tx-field-order.js";
 export * from "./output.js";
 export * from "./script-language-views.js";
 export * from "./value.js";

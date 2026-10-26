@@ -478,7 +478,6 @@ pub fn idle_value_and_mint_control(
     replay_cursor: 0,
     replay_asset_cursor: 0,
     replay_value_hash: zero,
-    replay_accumulator: vm_witness.initial_resolution_accumulator(),
     replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     output_cursor: 0,
     output_asset_cursor: 0,
@@ -486,7 +485,7 @@ pub fn idle_value_and_mint_control(
     value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       lovelace_delta: 0,
       asset_root: null_hash,
-      seen_asset_count: 0,
+      asset_entry_count: 0,
       nonzero_asset_count: 0,
     },
   }
@@ -585,14 +584,18 @@ pub fn single_replayed_input_native_control(
     ..empty_native_control_fixture(tx),
     resolved_input_count: 1,
     spend_input_count: 1,
-    resolved_item_peaks: validation_merkle_v1.build_frontier([h_a]).peaks,
-    resolved_inputs_accumulator: vm_witness.resolved_input_accumulator_successor(
-      vm_witness.initial_resolution_accumulator(),
-      0,
-      replayed_input_key,
-      descriptor_cbor,
-    ),
+    resolved_item_peaks: validation_merkle_v1.build_frontier(
+      [
+        script_proof_v1.resolved_context_item_leaf_hash(
+          0,
+          0,
+          replayed_input_key,
+          descriptor_cbor,
+        ),
+      ],
+    ).peaks,
     resolution_schedule_hash: vm_witness.resolution_schedule_node_hash(
+      0,
       0,
       replayed_input_key,
       vm_witness.empty_resolution_schedule_hash(),
@@ -656,7 +659,6 @@ pub fn value_and_mint_replay_input_kind_fixture() -> ValueAndMintKindFixtureV1 {
     vm_machine_types.ValueAndMintControlV1 {
       ..control,
       replay_cursor: 1,
-      replay_accumulator: native_control.resolved_inputs_accumulator,
       replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
       value_accumulator: vm_machine_types.ValueAccumulatorV1 {
         ..control.value_accumulator,
@@ -665,9 +667,12 @@ pub fn value_and_mint_replay_input_kind_fixture() -> ValueAndMintKindFixtureV1 {
     },
     vm_machine_types.ResolvedInputReplayWitness {
       source_kind: 0,
+      item_index: 0,
       key: replayed_input_key,
       next_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
       value: descriptor_cbor,
+      proof: [],
+      siblings: [],
     },
   )
 }
@@ -689,7 +694,7 @@ pub fn value_and_mint_replay_asset_kind_fixture() -> ValueAndMintKindFixtureV1 {
     value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       lovelace_delta: 3,
       asset_root: null_hash,
-      seen_asset_count: 0,
+      asset_entry_count: 0,
       nonzero_asset_count: 0,
     },
   }
@@ -702,17 +707,17 @@ pub fn value_and_mint_replay_asset_kind_fixture() -> ValueAndMintKindFixtureV1 {
       replay_cursor: 1,
       replay_asset_cursor: 0,
       replay_value_hash: zero,
-      replay_accumulator: native_control.resolved_inputs_accumulator,
       replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
       value_accumulator: vm_machine_types.ValueAccumulatorV1 {
         lovelace_delta: 3,
         asset_root: singleton_root(unit, cbor.serialise(7)),
-        seen_asset_count: 1,
+        asset_entry_count: 1,
         nonzero_asset_count: 1,
       },
     },
     vm_machine_types.ValueInputAssetWitness {
       source_kind: 0,
+      item_index: 0,
       key: replayed_input_key,
       next_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
       descriptor_cbor,
@@ -825,7 +830,7 @@ pub fn value_and_mint_mint_asset_kind_fixture() -> ValueAndMintKindFixtureV1 {
     value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       lovelace_delta: 0,
       asset_root: singleton_root(unit, cbor.serialise(5)),
-      seen_asset_count: 1,
+      asset_entry_count: 1,
       nonzero_asset_count: 1,
     },
   }
@@ -839,7 +844,7 @@ pub fn value_and_mint_mint_asset_kind_fixture() -> ValueAndMintKindFixtureV1 {
       value_accumulator: vm_machine_types.ValueAccumulatorV1 {
         lovelace_delta: 0,
         asset_root: singleton_root(unit, cbor.serialise(0)),
-        seen_asset_count: 1,
+        asset_entry_count: 2,
         nonzero_asset_count: 0,
       },
     },
@@ -939,23 +944,29 @@ pub fn value_and_mint_kind_route(
     expect
         vm_machine_types.ResolvedInputReplayWitness {
           source_kind,
+          item_index,
           key,
           next_schedule_hash,
           value,
+          proof: _,
+          siblings,
         }
       = auxiliary
     vm_value_and_mint.verify_value_and_mint_replay_input_semantics_v1(
       pre,
       witness,
       source_kind,
+      item_index,
       key,
       next_schedule_hash,
       value,
+      siblings,
     )
   } else if kind == 3 {
     expect
         vm_machine_types.ValueInputAssetWitness {
           source_kind,
+          item_index,
           key,
           next_schedule_hash,
           descriptor_cbor,
@@ -972,6 +983,7 @@ pub fn value_and_mint_kind_route(
       pre,
       witness,
       source_kind,
+      item_index,
       key,
       next_schedule_hash,
       descriptor_cbor,

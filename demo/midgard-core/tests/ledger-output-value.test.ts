@@ -206,6 +206,40 @@ describe("streamed ledger output Value V1", () => {
     ).toBeLessThan(16_384);
   });
 
+  // Same rows as `lower_first_index_is_refused`, `skipped_asset_is_refused`
+  // and `reopened_asset_is_refused` in ledger-output-value-v1.test.ak: the
+  // control fixes leaf `assetRemaining - 1`, so any other opening is refused.
+  it("opens only leaf assetRemaining - 1", () => {
+    const leaves = assets.map(hashMidgardLedgerOutputAssetLeaf);
+    const trace = buildMidgardLedgerOutputValueTrace({
+      assets,
+      lovelace: 8_000_000n,
+    });
+    const opening = (index: number, siblingsOf = index) => ({
+      policyId: assets[index]!.policyId,
+      assetName: assets[index]!.assetName,
+      quantity: assets[index]!.quantity,
+      siblings: buildMidgardValidationMerkleMembership(leaves, siblingsOf)
+        .siblings,
+    });
+    const step = (
+      control: (typeof trace.steps)[number]["control"],
+      index: number,
+    ) =>
+      advanceMidgardLedgerOutputValue({
+        control,
+        assetFrontier: trace.frontier,
+        lovelace: 8_000_000n,
+        witness: opening(index),
+      });
+    const afterLast = trace.steps[1]!.control;
+    expect(step(trace.initial, 2)).toStrictEqual(afterLast);
+    expect(step(trace.initial, 1)).toBeNull();
+    expect(step(afterLast, 1)).toStrictEqual(trace.steps[2]!.control);
+    expect(step(afterLast, 0)).toBeNull();
+    expect(step(afterLast, 2)).toBeNull();
+  });
+
   it("pins the terminal control and frontier inputs", () => {
     const trace = buildMidgardLedgerOutputValueTrace({
       assets,

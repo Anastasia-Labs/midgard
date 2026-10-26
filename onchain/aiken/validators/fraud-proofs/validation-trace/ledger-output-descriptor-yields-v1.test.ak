@@ -3,7 +3,7 @@
 //// `docs/fault-proofs/decisions/0004-checkpointed-ledger-output-facts.md`).
 ////
 //// The ScriptSources output-proof finalize dispatcher opens the stage-five
-//// frame, pins the terminal LOP control bytes to frame item 30, and runs the
+//// frame, pins the terminal LOP control bytes to frame item 28, and runs the
 //// chained fact attachment: each attachment step carries one canonical
 //// descriptor-yield group (`ledger-output-descriptor-*-yield.ak`, which read
 //// the dispatcher redeemer back through `unique_semantic_dispatch_v1` and
@@ -399,10 +399,10 @@ fn address_of(output: ByteArray) {
 // Stage-five ScriptSources frames and the one-step fixtures over them
 // ---------------------------------------------------------------------------
 
-/// A canonical 30-item stage-five ScriptSources witness: one committed output
+/// A canonical 28-item stage-five ScriptSources witness: one committed output
 /// (count 1), cursor as given, everything unrelated at its smallest honest
 /// shape. The finalize dispatcher's frame adds the terminal LOP control as
-/// extension item 30.
+/// extension item 28.
 fn base_witness_cbor(
   context_cbor: ByteArray,
   output_cursor: Int,
@@ -414,7 +414,6 @@ fn base_witness_cbor(
     #"80",
     context_cbor,
     0,
-    zero,
     0,
     merkle.frontier_commitment(0, []),
     [],
@@ -424,7 +423,6 @@ fn base_witness_cbor(
     0,
     [],
     0,
-    zero,
     zero,
     0,
     0,
@@ -1169,7 +1167,7 @@ test terminal_refuses_cross_output_facts() fail {
 }
 
 /// A stale control (the pre-attachment terminal without facts) does not match
-/// the frame's item-30 pin once the facts are recorded.
+/// the frame's item-28 pin once the facts are recorded.
 test terminal_refuses_stale_control() fail {
   let f = accepting_fixture(protected_script_datum_output)
   let stale_cbor = proof.encode_control_v1(

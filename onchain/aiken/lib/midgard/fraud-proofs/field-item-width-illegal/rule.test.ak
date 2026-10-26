@@ -153,20 +153,20 @@ fn ordered_item_control(field: Int, repeated: Bool, rejected: Bool) -> Bool {
   )
 }
 
-test fiwi_descending_spends_do_not_convict_accepted() {
-  !ordered_item_control(0, False, False)
+test fiwi_descending_spends_convict_accepted() {
+  ordered_item_control(0, False, False)
 }
 
-test fiwi_descending_spends_refute_exact_rejection() {
-  ordered_item_control(0, False, True)
+test fiwi_descending_spends_uphold_exact_rejection() {
+  !ordered_item_control(0, False, True)
 }
 
-test fiwi_descending_references_do_not_convict_accepted() {
-  !ordered_item_control(1, False, False)
+test fiwi_descending_references_convict_accepted() {
+  ordered_item_control(1, False, False)
 }
 
-test fiwi_descending_references_refute_exact_rejection() {
-  ordered_item_control(1, False, True)
+test fiwi_descending_references_uphold_exact_rejection() {
+  !ordered_item_control(1, False, True)
 }
 
 test fiwi_descending_signers_do_not_convict_accepted() {

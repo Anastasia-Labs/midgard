@@ -20,6 +20,7 @@ import {
   detectResolvedOutputNonCanonicalCompleteReplay,
   resolvedOutputEvidenceIdentity,
 } from "../resolved-output-non-canonical/resolved-output-non-canonical.js";
+import { detectScriptIntegrityHashMismatchReplay } from "../script-integrity-hash-mismatch/replay.js";
 import { detectScriptIntegrityHashMissingFromCanonicalEvidence } from "../script-integrity-hash-missing/replay.js";
 import { detectSpendInputSignerMissingCompleteReplay } from "../spend-input-signer-missing/spend-input-signer-missing.js";
 import { spendInputSignerWorkflowEvidenceIdentity } from "../spend-input-signer-missing/workflow.js";
@@ -131,6 +132,22 @@ export const MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY = completeReplayer(
       }),
     }),
 );
+
+/** Complete script-integrity-hash-mismatch replay: admitted transactions,
+ * forced rejections recording the mismatch, and forced rejections whose
+ * reason ranks after the script-integrity phase. */
+export const SCRIPT_INTEGRITY_HASH_MISMATCH_COMPLETE_CANONICAL_REPLAY =
+  completeReplayer(
+    ["scriptIntegrityHashMismatch"],
+    async (evidence, context) =>
+      await detectScriptIntegrityHashMismatchReplay({
+        block: evidence,
+        predecessor: completeCanonicalReplayPredecessorLedger({
+          evidence,
+          context,
+        }),
+      }),
+  );
 
 export const NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY = completeReplayer(
   ["nativeScriptInvalid"],

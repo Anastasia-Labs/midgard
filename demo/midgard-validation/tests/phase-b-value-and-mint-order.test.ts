@@ -17,14 +17,16 @@ import {
  * Phase B applies the ValueAndMint rules in the validation machine's order:
  * the whole input fold over the input-resolution schedule, then each output's
  * min-ADA check followed by that output's assets, then mint, then value
- * preservation. A distinct-asset crossing is the first asset that inserts a
- * new unit once the accumulator has seen the bound, and it names the
+ * preservation. The bound counts asset entries: every asset of every spend
+ * input's value, every asset of every output and every mint entry is one
+ * entry, whether or not the same unit was folded before. The crossing is the
+ * entry that would take the count past the bound, and it names the
  * coordinate `bind_coordinate_v1` binds.
  *
- * Sixteen spend inputs carry 1,024 distinct assets each, so the input fold
- * ends with exactly the bound seen. Units are numbered so canonical value
- * order is numeric order: unit n is name `n mod 1024` (two bytes) under
- * policy `n div 1024`.
+ * Sixteen spend inputs carry 1,024 assets each, so the input fold ends with
+ * exactly the bound counted. Units are numbered so canonical value order is
+ * numeric order: unit n is name `n mod 1024` (two bytes) under policy
+ * `n div 1024`.
  */
 
 const LIMIT = MIDGARD_CONSENSUS_LIMITS.maxDistinctAssetCount;
@@ -104,39 +106,14 @@ describe("phase B value-and-mint order", () => {
     });
   });
 
-  it("counts a unit whose running delta returned to zero as seen", async () => {
-    // Output 0 pays back every unit of spend 0, so their deltas return to
-    // zero; they still count. Output 1's first asset is new and crosses.
+  it("counts an output entry of a unit the inputs already carry", async () => {
+    // The inputs fold exactly the bound; output 0 pays back one unit spend 0
+    // carries. Its entry is the bound's successor, so it crosses.
     const rejection = await phaseBRejection(
       makePhaseBCandidate({
         spent: spends,
         referenceInputs: [reference],
-        outputs: [
-          holding(units(0, PER_INPUT), 100_000_000n),
-          holding(units(LIMIT + 1, 2)),
-        ],
-      }),
-      saturatingState(),
-      RejectCodes.AssetCount,
-    );
-    expect(rejection.subject).toStrictEqual({
-      arm: "OutputAssetAccumulationLimit",
-      index: 1n,
-      assetIndex: 0n,
-    });
-  });
-
-  it("names the output asset that crosses, after earlier seen assets", async () => {
-    // Output 0 carries three already-seen units, then two new ones: the
-    // first new one (asset 3) crosses.
-    const assets = units(0, 3);
-    for (const [policy, names] of units(LIMIT + 1, 2))
-      assets.set(policy, names);
-    const rejection = await phaseBRejection(
-      makePhaseBCandidate({
-        spent: spends,
-        referenceInputs: [reference],
-        outputs: [holding(assets)],
+        outputs: [holding(units(0, 1))],
       }),
       saturatingState(),
       RejectCodes.AssetCount,
@@ -144,7 +121,50 @@ describe("phase B value-and-mint order", () => {
     expect(rejection.subject).toStrictEqual({
       arm: "OutputAssetAccumulationLimit",
       index: 0n,
-      assetIndex: 3n,
+      assetIndex: 0n,
+    });
+  });
+
+  it("counts repeated input entries and crosses on a repeated one", async () => {
+    // Every spend carries the same 1,024 units: 1,024 distinct units, 16,384
+    // entries. A seventeenth spend repeats unit 0 and crosses at its first
+    // asset, schedule position 17 behind the reference input.
+    const repeated = spends.map(
+      (outRef) => [outRef, holding(units(0, PER_INPUT))] as const,
+    );
+    const crossing = outRefFromByte(0x40);
+    const rejection = await phaseBRejection(
+      makePhaseBCandidate({
+        spent: [...spends, crossing],
+        referenceInputs: [reference],
+        outputs: [holding(units(0, PER_INPUT), 100_000_000n)],
+      }),
+      [saturatingState()[0]!, ...repeated, [crossing, holding(units(0, 1))]],
+      RejectCodes.AssetCount,
+    );
+    expect(rejection.subject).toStrictEqual({
+      arm: "InputAssetAccumulationLimit",
+      index: 17n,
+      assetIndex: 0n,
+    });
+  });
+
+  it("names the output asset that crosses, after earlier entries", async () => {
+    // Fifteen spends fold 15,360 entries. Output 0 pays back 1,025 units the
+    // spends carry: its asset 1,023 is entry 16,384 and its asset 1,024
+    // crosses.
+    const rejection = await phaseBRejection(
+      makePhaseBCandidate({
+        spent: spends.slice(0, INPUTS - 1),
+        outputs: [holding(units(0, PER_INPUT + 1), 100_000_000n)],
+      }),
+      saturatingState().slice(1, INPUTS),
+      RejectCodes.AssetCount,
+    );
+    expect(rejection.subject).toStrictEqual({
+      arm: "OutputAssetAccumulationLimit",
+      index: 0n,
+      assetIndex: BigInt(PER_INPUT),
     });
   });
 
@@ -175,41 +195,34 @@ describe("phase B value-and-mint order", () => {
     });
   });
 
-  it("names the mint entry that crosses", async () => {
-    // Two always-true native policies. The last spend trades one of its
-    // numbered units for the lower policy's unit, so the fold still ends at
-    // the bound and that unit is seen. Outputs carry no assets; mint entry 0
-    // re-mints the seen unit and entry 1, under the higher policy, is new.
-    const [low, high] = [
-      passing,
-      nativeScriptWitness({
-        type: "any",
-        scripts: [{ type: "all", scripts: [] }],
-      }),
-    ].sort((left, right) =>
-      // Lowercase hex: code-unit order is the policy's byte order.
-      hashScriptWitness(left) < hashScriptWitness(right) ? -1 : 1,
+  it("names the mint entry that crosses, on a unit the inputs carry", async () => {
+    // The last spend carries 1,021 numbered units and the passing policy's
+    // units `aa` and `ab`, so the input fold ends one entry under the bound.
+    // Outputs carry no assets. Mint entry 0 burns one `aa` and takes the
+    // count to the bound; entry 1 burns one `ab` and crosses.
+    const lastAssets = units((INPUTS - 1) * PER_INPUT, PER_INPUT - 3);
+    lastAssets.set(
+      PASSING_POLICY,
+      new Map([
+        ["aa", 2n],
+        ["ab", 2n],
+      ]),
     );
-    const lowPolicy = hashScriptWitness(low!);
-    const highPolicy = hashScriptWitness(high!);
-    const lastAssets = units((INPUTS - 1) * PER_INPUT, PER_INPUT - 1);
-    lastAssets.set(lowPolicy, new Map([["aa", 1n]]));
     const state = saturatingState().slice(1);
     state[INPUTS - 1] = [spends[INPUTS - 1]!, holding(lastAssets)];
     const rejection = await phaseBRejection(
       makePhaseBCandidate({
         spent: spends,
         outputs: [funded],
-        scriptWitnesses: [low!, high!],
+        scriptWitnesses: [passing],
         mintPreimageCbor: makeMintPreimageCbor(
           new Map([
             [
-              Buffer.from(lowPolicy, "hex"),
-              new Map([[Buffer.from("aa", "hex"), 1n]]),
-            ],
-            [
-              Buffer.from(highPolicy, "hex"),
-              new Map([[Buffer.from("aa", "hex"), 1n]]),
+              Buffer.from(PASSING_POLICY, "hex"),
+              new Map([
+                [Buffer.from("aa", "hex"), -1n],
+                [Buffer.from("ab", "hex"), -1n],
+              ]),
             ],
           ]),
         ),

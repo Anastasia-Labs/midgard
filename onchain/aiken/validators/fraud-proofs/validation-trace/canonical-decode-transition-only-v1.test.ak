@@ -1283,6 +1283,30 @@ test observe_refuses_a_forged_observation() fail {
   )
 }
 
+/// The order verdict is the door's too: a flipped bit is refused.
+test observe_refuses_a_forged_order_verdict() fail {
+  let f = small_fixture()
+  let honest = honest_observation(f)
+  let forged: Data = staging.observe(
+    prepared_stage(f, f.base),
+    vm_machine_types.CanonicalDecodeItemObservationV1 {
+      ..honest,
+      item_order_is_valid: !honest.item_order_is_valid,
+    },
+  )
+  run_observe(
+    f,
+    f.base,
+    observe_validator.Observe {
+      input_index: 0,
+      output_index: 0,
+      carriage: field_access.Inline { preimage: f.field_preimage },
+    },
+    [],
+    forged,
+  )
+}
+
 /// The staged hand-off pin: the observation must leave under the proof
 /// verifier's script hash.
 test observe_refuses_a_wrong_output_script() fail {

@@ -220,18 +220,18 @@ export const scriptSourcesControlStatus = (
     decodeSingleCbor(witness.cbor),
     "script_sources_control",
   );
-  if (control.length !== 30 && control.length !== 31) {
+  if (control.length !== 28 && control.length !== 29) {
     throw new Error("script_sources_control has an invalid field count");
   }
-  const stage = Number(asBigInt(control[9], "script_sources_control.stage"));
+  const stage = Number(asBigInt(control[8], "script_sources_control.stage"));
   if (!Number.isSafeInteger(stage) || stage < 0) {
     throw new Error("script_sources_control stage is invalid");
   }
-  if (stage !== 0 || control.length === 30) {
+  if (stage !== 0 || control.length === 28) {
     return { stage, pendingHashStage: null };
   }
   const pendingCbor = asBytes(
-    control[30],
+    control[28],
     "script_sources_control.pending_source",
   );
   if (pendingCbor.length === 0) {
@@ -288,13 +288,13 @@ export const scriptSourcesDiscoveryCurrentScriptHash = (
     "script_sources_control",
   );
   if (
-    control.length !== 31 ||
-    asBigInt(control[9], "script_sources_control.stage") !== 9n
+    control.length !== 29 ||
+    asBigInt(control[8], "script_sources_control.stage") !== 9n
   ) {
     throw new Error("script_sources_control is not at discovery stage 9");
   }
   const discovery = asArray(
-    decodeSingleCbor(asBytes(control[30], "script_sources_control.discovery")),
+    decodeSingleCbor(asBytes(control[28], "script_sources_control.discovery")),
     "script_sources_discovery",
   );
   if (discovery.length !== 15) {

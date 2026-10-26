@@ -14,13 +14,26 @@ import {
   SIGNER_LEAF_DOMAIN,
 } from "./script-proof.hash-midgard-script-source-leaf.js";
 
+const assertItemLength = (itemLength: number, label: string): void => {
+  if (!Number.isSafeInteger(itemLength) || itemLength < 0) {
+    throw new Error(`${label} length must be a non-negative safe integer`);
+  }
+};
+
+/**
+ * The leaf commits the item length between the index and the commitment, so a
+ * begin step that declares a length is bound to the length the producer
+ * derived from the authenticated item.
+ */
 export const hashMidgardRedeemerItemLeaf = (input: {
   readonly redeemerIndex: number;
+  readonly itemLength: number;
   readonly itemCommitment: Uint8Array;
 }): Hash32 => {
   if (!Number.isSafeInteger(input.redeemerIndex) || input.redeemerIndex < 0) {
     throw new Error("redeemer item index must be a non-negative safe integer");
   }
+  assertItemLength(input.itemLength, "redeemer item");
   const itemCommitment = ensureHash32(
     input.itemCommitment,
     "redeemer item commitment",
@@ -29,6 +42,7 @@ export const hashMidgardRedeemerItemLeaf = (input: {
     Buffer.concat([
       REDEEMER_LEAF_DOMAIN,
       encodeCbor(BigInt(input.redeemerIndex)),
+      encodeCbor(BigInt(input.itemLength)),
       encodeCbor(itemCommitment),
     ]),
   );
@@ -45,6 +59,7 @@ export const hashMidgardRedeemerLeaf = (input: {
   });
   return hashMidgardRedeemerItemLeaf({
     redeemerIndex: input.redeemerIndex,
+    itemLength: input.canonicalRedeemerWitnessCbor.length,
     itemCommitment: item.commitment,
   });
 };
@@ -85,11 +100,13 @@ export const hashMidgardSignerLeaf = (signerHash: Uint8Array): Hash32 => {
 
 export const hashMidgardOutputItemLeaf = (input: {
   readonly outputIndex: number;
+  readonly itemLength: number;
   readonly itemCommitment: Uint8Array;
 }): Hash32 => {
   if (!Number.isSafeInteger(input.outputIndex) || input.outputIndex < 0) {
     throw new Error("output index must be a non-negative safe integer");
   }
+  assertItemLength(input.itemLength, "output item");
   const itemCommitment = ensureHash32(
     input.itemCommitment,
     "output item commitment",
@@ -98,6 +115,7 @@ export const hashMidgardOutputItemLeaf = (input: {
     Buffer.concat([
       OUTPUT_ITEM_LEAF_DOMAIN,
       encodeCbor(BigInt(input.outputIndex)),
+      encodeCbor(BigInt(input.itemLength)),
       encodeCbor(itemCommitment),
     ]),
   );
@@ -114,6 +132,7 @@ export const hashMidgardOutputLeaf = (input: {
   });
   return hashMidgardOutputItemLeaf({
     outputIndex: input.outputIndex,
+    itemLength: input.outputCbor.length,
     itemCommitment: item.commitment,
   });
 };

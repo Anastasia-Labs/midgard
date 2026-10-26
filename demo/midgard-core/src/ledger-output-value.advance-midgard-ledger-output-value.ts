@@ -17,12 +17,10 @@ import {
   initialMidgardLedgerOutputValueControl,
   isWellFormedMidgardLedgerOutputValueControl,
   type MidgardLedgerOutputValueControl,
-  type MidgardLedgerOutputValueHead,
   MidgardLedgerOutputValueStages,
   type MidgardLedgerOutputValueTrace,
   type MidgardLedgerOutputValueTraceStep,
   type MidgardLedgerOutputValueWitness,
-  sequencesEqual,
   summarizeBytes,
   summarizeInteger,
   UINT64_MAX,
@@ -32,47 +30,6 @@ import {
   type MidgardValidationMerkleFrontier,
   verifyMidgardValidationMerkleMembership,
 } from "./validation-merkle.js";
-
-/**
- * Strict descending execution order over independently authenticated source
- * indices, mirroring the on-chain `order_is_valid`. The native frontier and the
- * evaluated script context both order asset names as plain bytes, so an honest
- * traversal visits the source indices in reverse.
- */
-const orderIsValid = ({
-  control,
-  assetCount,
-  policyId,
-  assetName,
-  previous,
-}: {
-  readonly control: MidgardLedgerOutputValueControl;
-  readonly assetCount: number;
-  readonly policyId: Buffer;
-  readonly assetName: Buffer;
-  readonly previous: MidgardLedgerOutputValueHead | null;
-}): boolean => {
-  if (control.currentPolicy.length === 0) {
-    return previous === null && control.assetRemaining === assetCount;
-  }
-  if (policyId.equals(control.currentPolicy)) {
-    if (previous === null) return false;
-    return (
-      Buffer.compare(assetName, previous.assetName) < 0 &&
-      sequencesEqual(
-        prependMidgardCekDataPairSummary(
-          summarizeBytes(previous.assetName),
-          summarizeInteger(previous.quantity),
-          previous.tail,
-        ),
-        control.currentAssets,
-      )
-    );
-  }
-  return (
-    previous === null && Buffer.compare(policyId, control.currentPolicy) < 0
-  );
-};
 
 export const advanceMidgardLedgerOutputValue = ({
   control,
@@ -111,17 +68,6 @@ export const advanceMidgardLedgerOutputValue = ({
       ) {
         return null;
       }
-      if (
-        !orderIsValid({
-          control,
-          assetCount: assetFrontier.count,
-          policyId: witness.policyId,
-          assetName: witness.assetName,
-          previous: witness.previous,
-        })
-      ) {
-        return null;
-      }
       const leafHash = hashMidgardLedgerOutputAssetLeaf({
         policyId: witness.policyId,
         assetName: witness.assetName,
@@ -130,7 +76,9 @@ export const advanceMidgardLedgerOutputValue = ({
       if (
         !verifyMidgardValidationMerkleMembership({
           frontier: assetFrontier,
-          leafIndex: witness.assetIndex,
+          // The control fixes the leaf: the fold walks the frontier from its
+          // last leaf to its first (on-chain `asset_step`).
+          leafIndex: control.assetRemaining - 1,
           leafHash,
           siblings: witness.siblings.map((sibling) =>
             ensureHash32(sibling, "ledger_output_value_v1.sibling"),
@@ -211,35 +159,20 @@ export const buildMidgardLedgerOutputValueTrace = ({
   const steps: MidgardLedgerOutputValueTraceStep[] = [];
   let control = initial;
   // The frontier commits assets in plain byte order, the order of the
-  // evaluated script context map. Fold them in descending order so the
-  // prepending accumulator emits that ascending map.
-  const traversal = assets
-    .map((asset, assetIndex) => ({ asset, assetIndex }))
-    .reverse();
-  let lastHead: MidgardLedgerOutputValueHead | null = null;
-  for (const { asset, assetIndex } of traversal) {
+  // evaluated script context map. The fold opens leaf `assetRemaining - 1`
+  // each step, so it walks them in descending order and the prepending
+  // accumulator emits that ascending map.
+  for (let assetIndex = assets.length - 1; assetIndex >= 0; assetIndex -= 1) {
+    const asset = assets[assetIndex]!;
     const membership = buildMidgardValidationMerkleMembership(
       material.leaves,
       assetIndex,
     );
-    const policyId = Buffer.from(asset.policyId);
-    const samePolicy =
-      control.currentPolicy.length !== 0 &&
-      policyId.equals(control.currentPolicy);
     const witness: MidgardLedgerOutputValueWitness = {
-      assetIndex,
-      policyId,
+      policyId: Buffer.from(asset.policyId),
       assetName: Buffer.from(asset.assetName),
       quantity: asset.quantity,
       siblings: membership.siblings,
-      previous: samePolicy ? lastHead : null,
-    };
-    lastHead = {
-      assetName: Buffer.from(asset.assetName),
-      quantity: asset.quantity,
-      tail: samePolicy
-        ? control.currentAssets
-        : emptyMidgardCekDataPairSummary(),
     };
     const next = advanceMidgardLedgerOutputValue({
       control,

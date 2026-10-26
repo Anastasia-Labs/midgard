@@ -26,16 +26,16 @@ export const controlFromCarrier = (
 ): string => {
   const carrier = items(
     controlData(workCbor),
-    resolverIndex === 7 ? 11 : 31,
+    resolverIndex === 7 ? 10 : 29,
     "LOP carrier",
   );
-  if (resolverIndex === 8) return bytes(carrier[30], "output proof");
+  if (resolverIndex === 8) return bytes(carrier[28], "output proof");
   const pending = items(
-    controlData(bytes(carrier[9], "pending input")),
-    5,
+    controlData(bytes(carrier[8], "pending input")),
+    6,
     "pending input",
   );
-  return bytes(pending[4], "input output proof");
+  return bytes(pending[5], "input output proof");
 };
 
 /**

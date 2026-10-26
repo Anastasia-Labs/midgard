@@ -43,10 +43,9 @@ export type ValueAndMintRejection = {
  * 4. Stage 5, value preservation (`value_and_mint_stage_five`).
  *
  * Every asset step in 1-3 goes through `apply_value_asset_mutation`, which
- * rejects the first step that inserts a unit the accumulator has not seen once
- * `seen_asset_count` has reached `max_distinct_asset_count`. A unit counts as
- * seen from its first insertion, including after its running delta has
- * returned to zero. The coordinate is the one
+ * counts it as one entry in `asset_entry_count`, whether or not its unit was
+ * folded before, and rejects the first step reached once the count is
+ * `max_distinct_asset_count`. The coordinate is the one
  * `distinct-asset-accumulation-limit/rule.ak` `bind_coordinate_v1` binds: the
  * schedule position and asset position for the input fold (the machine's
  * `replay_cursor` and `replay_asset_cursor - 1`), the output index and asset
@@ -69,16 +68,15 @@ export const checkValueAndMint = (input: {
 }): ValueAndMintRejection | null => {
   const { candidate, spentValues } = input;
   const limit = MIDGARD_CONSENSUS_LIMITS.maxDistinctAssetCount;
-  const seen = new Set<string>();
-  /** True when folding `unit` would cross the distinct-asset bound. */
-  const crosses = (unit: string): boolean => {
-    if (seen.has(unit)) return false;
-    if (seen.size >= limit) return true;
-    seen.add(unit);
+  let entries = 0;
+  /** True when one more asset entry would cross the bound; counts it otherwise. */
+  const crosses = (): boolean => {
+    if (entries >= limit) return true;
+    entries += 1;
     return false;
   };
   const crossingDetail = (where: string): string =>
-    `${where} inserts a distinct asset after ${limit.toString()} have been seen`;
+    `${where} is an asset entry after ${limit.toString()} have been folded`;
 
   const schedule = orderMidgardInputResolutionSchedule({
     spend: [...input.spentOutRefs],
@@ -94,14 +92,9 @@ export const checkValueAndMint = (input: {
         `phase B value walk: spend input ${node.item} has no resolved value`,
       );
     }
-    const assets = midgardValueAssets(value);
-    for (let assetIndex = 0; assetIndex < assets.length; assetIndex += 1) {
-      const asset = assets[assetIndex]!;
-      if (
-        crosses(
-          asset.policyId.toString("hex") + asset.assetName.toString("hex"),
-        )
-      ) {
+    const assetCount = midgardValueAssets(value).length;
+    for (let assetIndex = 0; assetIndex < assetCount; assetIndex += 1) {
+      if (crosses()) {
         return {
           code: RejectCodes.AssetCount,
           detail: crossingDetail(
@@ -133,14 +126,9 @@ export const checkValueAndMint = (input: {
         subject: { arm: "OutputBelowMinAda", index: BigInt(index) },
       };
     }
-    const assets = midgardValueAssets(value);
-    for (let assetIndex = 0; assetIndex < assets.length; assetIndex += 1) {
-      const asset = assets[assetIndex]!;
-      if (
-        crosses(
-          asset.policyId.toString("hex") + asset.assetName.toString("hex"),
-        )
-      ) {
+    const assetCount = midgardValueAssets(value).length;
+    for (let assetIndex = 0; assetIndex < assetCount; assetIndex += 1) {
+      if (crosses()) {
         return {
           code: RejectCodes.AssetCount,
           detail: crossingDetail(
@@ -156,15 +144,9 @@ export const checkValueAndMint = (input: {
     }
   }
 
-  const mintAssets = candidate.ledgerTx.mint.assets;
-  for (let index = 0; index < mintAssets.length; index += 1) {
-    const asset = mintAssets[index]!;
-    if (
-      crosses(
-        Buffer.from(asset.policyId).toString("hex") +
-          Buffer.from(asset.assetName).toString("hex"),
-      )
-    ) {
+  const mintCount = candidate.ledgerTx.mint.assets.length;
+  for (let index = 0; index < mintCount; index += 1) {
+    if (crosses()) {
       return {
         code: RejectCodes.AssetCount,
         detail: crossingDetail(`mint[${index.toString()}]`),

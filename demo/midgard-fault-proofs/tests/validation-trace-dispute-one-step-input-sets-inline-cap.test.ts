@@ -11,10 +11,12 @@ describeInlineCap({
   phase: "inputSets",
   semantic: 1,
   at: "inputSetsItemSemantic",
-  // The input-sets walk reads the field's last item first.
-  evidence: (items) => ({ fieldIndex: 1, itemIndex: items - 1 }),
+  // The input-sets merge seeds from the spend field, then opens the
+  // reference field's last item; its control fixes the item, so the
+  // evidence names the field alone.
+  evidence: () => ({ fieldIndex: 1 }),
   limit: VALIDATION_TRACE_INPUT_SETS_INLINE_MAX_PREIMAGE_BYTES,
   itemBytes: 40,
-  stepOf: (items) => items + 10,
+  stepOf: (items) => items + 11,
   installs: (items) => ({ failingReferenceInputs: items }),
 });

@@ -236,6 +236,7 @@ export const NO_DIGEST_FAMILIES = [
   "validationTraceDispute",
   "valueNotPreserved",
   "missingRedeemer",
+  "scriptIntegrityHashMismatch",
 ];
 
 export const REPLAY_CONTEXT_FAMILIES = [
@@ -249,6 +250,7 @@ export const REPLAY_CONTEXT_FAMILIES = [
   "spendInputSignerMissing",
   "validationTraceDispute",
   "missingRedeemer",
+  "scriptIntegrityHashMismatch",
 ];
 
 /**

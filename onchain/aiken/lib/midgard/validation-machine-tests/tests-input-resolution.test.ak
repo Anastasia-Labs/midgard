@@ -34,14 +34,13 @@ use midgard/validation_machine_tests/fixtures_input_resolution.{
 }
 use midgard/validation_machine_tests/fixtures_phase_a.{
   contains_non_native_script, duplicate_observer_field_carriage,
-  empty_v1_transaction, exact_rejection_post, initial_signatures_witness,
-  inline_field_carriage, inline_field_door, input_sets_pre,
-  input_sets_scan_witness, next_phase_a_native_state, one_step_evidence,
-  phase_a_native_scan_witness, phase_a_native_step_fixture,
-  phase_a_script_preconditions_fixture, resolve_inputs_step_fixture,
-  signatures_scan_witness, signatures_step_fixture, signer_frontier_for_tx,
-  singleton_field_item_chunk_proof, static_rules_step_fixture, submitted_source,
-  v1_plutus_script,
+  empty_v1_transaction, exact_rejection_post, inline_field_carriage,
+  inline_field_door, input_sets_pre, input_sets_scan_witness,
+  next_phase_a_native_state, one_step_evidence, phase_a_native_scan_witness,
+  phase_a_native_step_fixture, phase_a_script_preconditions_fixture,
+  resolve_inputs_step_fixture, signatures_scan_witness, signatures_step_fixture,
+  signer_frontier_for_tx, singleton_field_item_chunk_proof,
+  static_rules_step_fixture, submitted_source, v1_plutus_script,
 }
 use midgard/validation_merkle_v1
 use midgard/validation_trace_v1
@@ -114,6 +113,9 @@ test input_sets_rejects_a_successor_in_the_wrong_phase() {
     0,
     0,
     #"",
+    -1,
+    -1,
+    #"",
     vm_witness.empty_resolution_schedule_hash(),
   )
   let input_pre = input_sets_pre(tx, 2, work_witness_cbor)
@@ -141,6 +143,9 @@ test input_sets_proves_an_empty_input_forced_transaction_is_an_exact_no_op() {
     0,
     0,
     #"",
+    -1,
+    -1,
+    #"",
     vm_witness.empty_resolution_schedule_hash(),
   )
   let input_pre = input_sets_pre(tx, 2, work_witness_cbor)
@@ -152,184 +157,6 @@ test input_sets_proves_an_empty_input_forced_transaction_is_an_exact_no_op() {
       claimed_successor: exact_rejection_post(input_pre, rejection_code),
     },
   )
-}
-
-test input_sets_accepts_bounded_disjoint_spend_and_reference_inputs() {
-  let spend_input = MidgardTxInput { tx_id: h_a, output_index: 0 }
-  let reference_input = MidgardTxInput { tx_id: h_b, output_index: 1 }
-  let spend_key = encode_midgard_tx_input(spend_input)
-  let reference_key = encode_midgard_tx_input(reference_input)
-  let base = empty_v1_transaction()
-  let tx = MidgardTransaction {
-    ..base,
-    body: MidgardTransactionBody {
-      ..base.body,
-      inputs: [spend_input],
-      reference_inputs: [reference_input],
-    },
-  }
-  let initial_schedule = vm_witness.empty_resolution_schedule_hash()
-  let first_schedule = vm_witness.resolution_schedule_node_hash(
-    1,
-    reference_key,
-    initial_schedule,
-  )
-  let full_schedule = vm_witness.resolution_schedule_node_hash(
-    0,
-    spend_key,
-    first_schedule,
-  )
-  let first_witness_cbor = input_sets_scan_witness(
-    tx,
-    -1,
-    -1,
-    0,
-    0,
-    #"",
-    initial_schedule,
-  )
-  let first_pre = input_sets_pre(tx, 2, first_witness_cbor)
-  let second_witness_cbor = input_sets_scan_witness(
-    tx,
-    -1,
-    1,
-    0,
-    1,
-    reference_key,
-    first_schedule,
-  )
-  let second_pre = validation_trace_v1.ValidationMachineStateV1 {
-    ..first_pre,
-    program_counter: 3,
-    work_root: validation_trace_v1.hash_work_witness(
-      validation_trace_v1.InputSets,
-      3,
-      second_witness_cbor,
-    ),
-  }
-  let reference_carriage = inline_field_carriage([reference_key])
-  let first_is_valid = vm_input_sets.verify_input_sets_item_semantics_v1(
-    first_pre,
-    vm_machine_types.ValidationOneStepWitnessV1 {
-      work_witness_cbor: first_witness_cbor,
-      claimed_successor: second_pre,
-    },
-    inline_field_door(),
-    1,
-    0,
-    reference_carriage,
-  )
-  let signatures_witness_cbor = initial_signatures_witness(tx)
-  let signatures_post = validation_trace_v1.ValidationMachineStateV1 {
-    ..second_pre,
-    phase: validation_trace_v1.Signatures,
-    program_counter: 4,
-    work_root: validation_trace_v1.hash_work_witness(
-      validation_trace_v1.Signatures,
-      4,
-      signatures_witness_cbor,
-    ),
-  }
-  let spend_carriage = inline_field_carriage([spend_key])
-  and {
-    first_is_valid,
-    vm_input_sets.verify_input_sets_item_semantics_v1(
-      second_pre,
-      vm_machine_types.ValidationOneStepWitnessV1 {
-        work_witness_cbor: second_witness_cbor,
-        claimed_successor: signatures_post,
-      },
-      inline_field_door(),
-      0,
-      0,
-      spend_carriage,
-    ),
-    full_schedule == vm_witness.transaction_resolution_schedule_hash(
-      tx.body.inputs,
-      tx.body.reference_inputs,
-    ),
-  }
-}
-
-test input_sets_proves_spend_reference_overlap_unilaterally() {
-  let input = MidgardTxInput { tx_id: h_a, output_index: 0 }
-  let key = encode_midgard_tx_input(input)
-  let base = empty_v1_transaction()
-  let tx = MidgardTransaction {
-    ..base,
-    body: MidgardTransactionBody {
-      ..base.body,
-      inputs: [input],
-      reference_inputs: [input],
-    },
-  }
-  let initial_schedule = vm_witness.empty_resolution_schedule_hash()
-  let first_schedule = vm_witness.resolution_schedule_node_hash(
-    1,
-    key,
-    initial_schedule,
-  )
-  let first_witness_cbor = input_sets_scan_witness(
-    tx,
-    -1,
-    -1,
-    0,
-    0,
-    #"",
-    initial_schedule,
-  )
-  let first_pre = input_sets_pre(tx, 2, first_witness_cbor)
-  let second_witness_cbor = input_sets_scan_witness(
-    tx,
-    -1,
-    1,
-    0,
-    1,
-    key,
-    first_schedule,
-  )
-  let second_pre = validation_trace_v1.ValidationMachineStateV1 {
-    ..first_pre,
-    program_counter: 3,
-    work_root: validation_trace_v1.hash_work_witness(
-      validation_trace_v1.InputSets,
-      3,
-      second_witness_cbor,
-    ),
-  }
-  let reference_carriage = inline_field_carriage([key])
-  let spend_carriage = inline_field_carriage([key])
-  let first_is_valid = vm_input_sets.verify_input_sets_item_semantics_v1(
-    first_pre,
-    vm_machine_types.ValidationOneStepWitnessV1 {
-      work_witness_cbor: first_witness_cbor,
-      claimed_successor: second_pre,
-    },
-    inline_field_door(),
-    1,
-    0,
-    reference_carriage,
-  )
-  let rejection_code = rejection_reason_v1.DuplicateInput {
-    first_field_index: -1,
-    first_item_index: -1,
-    second_field_index: -1,
-    second_item_index: -1,
-  }
-  and {
-    first_is_valid,
-    vm_input_sets.verify_input_sets_item_semantics_v1(
-      second_pre,
-      vm_machine_types.ValidationOneStepWitnessV1 {
-        work_witness_cbor: second_witness_cbor,
-        claimed_successor: exact_rejection_post(second_pre, rejection_code),
-      },
-      inline_field_door(),
-      0,
-      0,
-      spend_carriage,
-    ),
-  }
 }
 
 test input_sets_proves_a_malformed_validity_interval_after_the_final_item() {
@@ -365,6 +192,9 @@ fn input_sets_proves_a_malformed_validity_interval(
     0,
     0,
     #"",
+    -1,
+    -1,
+    #"",
     vm_witness.empty_resolution_schedule_hash(),
   )
   let pre = input_sets_pre(tx, 2, work_witness_cbor)
@@ -377,8 +207,6 @@ fn input_sets_proves_a_malformed_validity_interval(
       claimed_successor: exact_rejection_post(pre, rejection_code),
     },
     inline_field_door(),
-    0,
-    0,
     carriage,
   )
 }
@@ -403,7 +231,6 @@ test signatures_accepts_an_empty_required_signer_and_witness_set() {
     0,
     0,
     #"",
-    #"",
     signer_frontier,
     -1,
   )
@@ -423,7 +250,6 @@ test signatures_accepts_an_empty_required_signer_and_witness_set() {
     0,
     0,
     0,
-    #"",
     #"",
     signer_frontier,
     -1,
@@ -548,7 +374,6 @@ test signatures_proves_a_missing_required_signer_is_an_exact_no_op() {
     0,
     0,
     #"",
-    #"",
     signer_frontier,
     -1,
   )
@@ -605,7 +430,6 @@ fn required_signer_step(
     required_count,
     address_count,
     required_seen,
-    #"",
     #"",
     signer_frontier,
     first_invalid_witness_index,
@@ -703,7 +527,7 @@ test signatures_completes_the_scan_on_a_present_last_required_signer() {
       proof,
       signatures_successor(
         pre,
-        signatures_scan_witness(tx, 2, 1, 1, 1, 1, #"", #"", frontier, -1),
+        signatures_scan_witness(tx, 2, 1, 1, 1, 1, #"", frontier, -1),
       ),
     ),
     !required_signer_item_holds(
@@ -712,7 +536,7 @@ test signatures_completes_the_scan_on_a_present_last_required_signer() {
       proof,
       signatures_successor(
         pre,
-        signatures_scan_witness(tx, 1, 1, 1, 1, 1, #"", #"", frontier, -1),
+        signatures_scan_witness(tx, 1, 1, 1, 1, 1, #"", frontier, -1),
       ),
     ),
   }
@@ -745,7 +569,7 @@ test signatures_rejects_an_invalid_address_signature_after_the_last_required_sig
       proof,
       signatures_successor(
         pre,
-        signatures_scan_witness(tx, 2, 1, 1, 1, 1, #"", #"", frontier, 0),
+        signatures_scan_witness(tx, 2, 1, 1, 1, 1, #"", frontier, 0),
       ),
     ),
   }
@@ -771,7 +595,7 @@ test signatures_refuses_a_required_signer_membership_under_other_peaks() {
     },
     signatures_successor(
       pre,
-      signatures_scan_witness(tx, 2, 1, 1, 1, 1, #"", #"", frontier, -1),
+      signatures_scan_witness(tx, 2, 1, 1, 1, 1, #"", frontier, -1),
     ),
   )
 }
@@ -866,7 +690,6 @@ test signatures_proves_an_invalid_address_signature_is_an_exact_no_op() {
     1,
     0,
     #"",
-    #"",
     signer_frontier,
     0,
   )
@@ -891,8 +714,6 @@ test signatures_proves_an_invalid_address_signature_is_an_exact_no_op() {
         claimed_successor: required_pre,
       },
       inline_field_door(),
-      7,
-      0,
       carriage,
     ),
     vm_signatures.verify_signatures_advance_semantics_v1(
@@ -1410,7 +1231,6 @@ test phase_a_script_preconditions_advances_an_empty_bundle_to_resolution() {
         proof_source.field_preimage_lengths_cbor,
         validation_context_cbor,
         0,
-        vm_witness.initial_resolution_accumulator(),
         vm_witness.transaction_resolution_schedule_hash(
           tx.body.inputs,
           tx.body.reference_inputs,
@@ -1616,14 +1436,7 @@ fn resolve_inputs_passes_the_validity_check(
       validity_interval_end,
     },
   }
-  let accumulator = vm_witness.initial_resolution_accumulator()
-  let Pair(pre, work_witness_cbor) = resolve_inputs_step_fixture(
-    tx,
-    h_c,
-    0,
-    accumulator,
-    7,
-  )
+  let Pair(pre, work_witness_cbor) = resolve_inputs_step_fixture(tx, h_c, 0, 7)
   let proof_source = submitted_source(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
   let resolution_schedule_hash = vm_witness.transaction_resolution_schedule_hash(
@@ -1636,7 +1449,6 @@ fn resolve_inputs_passes_the_validity_check(
     proof_source.field_preimage_lengths_cbor,
     validation_context_cbor,
     1,
-    accumulator,
     resolution_schedule_hash,
     signer_frontier.count,
     validation_merkle_v1.frontier_commitment(
@@ -1671,7 +1483,7 @@ test resolve_inputs_begins_authenticated_membership_output() {
   resolve_inputs_authenticated_membership_step(0)
 }
 
-test resolve_inputs_empty_pending_witness_decodes_as_exact_array_11() {
+test resolve_inputs_empty_pending_witness_decodes_as_exact_array_10() {
   let input = MidgardTxInput { tx_id: h_a, output_index: 0 }
   let base = empty_v1_transaction()
   let tx = MidgardTransaction {
@@ -1682,15 +1494,14 @@ test resolve_inputs_empty_pending_witness_decodes_as_exact_array_11() {
     tx,
     null_hash,
     1,
-    vm_witness.initial_resolution_accumulator(),
     8,
   )
   expect Some(data) = cbor.deserialise(work_witness_cbor)
   let fields = builtin.un_list_data(data)
-  expect Some(pending_data) = list.at(fields, 9)
-  expect Some(schedule_data) = list.at(fields, 10)
+  expect Some(pending_data) = list.at(fields, 8)
+  expect Some(schedule_data) = list.at(fields, 9)
   and {
-    list.length(fields) == 11,
+    list.length(fields) == 10,
     builtin.un_b_data(pending_data) == #"00",
     builtin.un_b_data(schedule_data) == vm_witness.transaction_resolution_schedule_hash(
       tx.body.inputs,
@@ -1715,12 +1526,10 @@ test resolve_inputs_proves_non_membership_as_an_exact_no_op() {
     ..base,
     body: MidgardTransactionBody { ..base.body, inputs: [input] },
   }
-  let accumulator = vm_witness.initial_resolution_accumulator()
   let Pair(pre, work_witness_cbor) = resolve_inputs_step_fixture(
     tx,
     null_hash,
     1,
-    accumulator,
     8,
   )
   let rejection_code = rejection_reason_v1.InputNotFound {
@@ -1736,6 +1545,7 @@ test resolve_inputs_proves_non_membership_as_an_exact_no_op() {
       terminal,
       vm_machine_types.ScheduledLedgerNonMembershipWitness {
         source_kind: 0,
+        item_index: 0,
         key,
         next_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
         proof: [],
@@ -1770,14 +1580,7 @@ fn resolve_inputs_rejects_the_validity_interval_exactly(
       validity_interval_end,
     },
   }
-  let accumulator = vm_witness.initial_resolution_accumulator()
-  let Pair(pre, work_witness_cbor) = resolve_inputs_step_fixture(
-    tx,
-    h_c,
-    0,
-    accumulator,
-    7,
-  )
+  let Pair(pre, work_witness_cbor) = resolve_inputs_step_fixture(tx, h_c, 0, 7)
   let rejection_code = rejection_reason_v1.ValidityIntervalExcludesBlockSlot
   let terminal = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
@@ -1808,14 +1611,7 @@ fn resolve_inputs_rejects_the_validity_interval_exactly(
 
 test resolve_inputs_finalizes_into_script_source_resolution() {
   let tx = empty_v1_transaction()
-  let accumulator = vm_witness.initial_resolution_accumulator()
-  let Pair(pre, work_witness_cbor) = resolve_inputs_step_fixture(
-    tx,
-    h_c,
-    1,
-    accumulator,
-    8,
-  )
+  let Pair(pre, work_witness_cbor) = resolve_inputs_step_fixture(tx, h_c, 1, 8)
   let proof_source = submitted_source(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
   let post = validation_trace_v1.ValidationMachineStateV1 {
@@ -1831,7 +1627,6 @@ test resolve_inputs_finalizes_into_script_source_resolution() {
         proof_source.field_preimage_lengths_cbor,
         validation_context_cbor,
         0,
-        accumulator,
         signer_frontier.count,
         validation_merkle_v1.frontier_commitment(
           signer_frontier.count,
@@ -1844,7 +1639,6 @@ test resolve_inputs_finalizes_into_script_source_resolution() {
         0,
         validation_merkle_v1.empty_frontier(),
         0,
-        vm_witness.initial_resolution_accumulator(),
         vm_witness.empty_resolution_schedule_hash(),
         0,
         0,
@@ -1877,131 +1671,60 @@ test resolve_inputs_finalizes_into_script_source_resolution() {
   )
 }
 
-test signatures_refuses_an_alternative_authentic_first_choice() {
-  let base = empty_v1_transaction()
-  let first = MidgardAddressWitness {
-    verification_key: h_a,
-    signature: zero |> bytearray.concat(zero),
+/// The signer leaves of `addresses`, one per run of equal signers (field 7 is
+/// in (signer, bytes) order, so a signer's items are adjacent).
+fn cursor_signer_leaves(
+  addresses: List<MidgardAddressWitness>,
+  previous: ByteArray,
+) -> List<ByteArray> {
+  when addresses is {
+    [] -> []
+    [address, ..rest] -> {
+      let signer = blake2b_224(address.verification_key)
+      if signer == previous {
+        cursor_signer_leaves(rest, previous)
+      } else {
+        [
+          script_proof_v1.signer_leaf_hash(signer),
+          ..cursor_signer_leaves(rest, signer)
+        ]
+      }
+    }
   }
-  let second = MidgardAddressWitness {
-    verification_key: zero,
-    signature: zero |> bytearray.concat(zero),
-  }
-  let tx = MidgardTransaction {
-    ..base,
-    witness_set: MidgardTransactionWitnessSet {
-      ..base.witness_set,
-      addr_tx_wits: [first, second],
-    },
-  }
-  let Pair(pre, work_witness_cbor) = signatures_step_fixture(tx)
-  let bytes = encode_midgard_address_witness(second)
-  let signer_hash = blake2b_224(second.verification_key)
-  let frontier = validation_merkle_v1.build_frontier(
-    [script_proof_v1.signer_leaf_hash(signer_hash)],
-  )
-  let next = signatures_scan_witness(
-    tx,
-    0,
-    2,
-    0,
-    1,
-    0,
-    signer_hash
-      |> bytearray.concat(bytes)
-      |> bytearray.concat(cbor.serialise(1)),
-    signer_hash,
-    frontier,
-    1,
-  )
-  let post = validation_trace_v1.ValidationMachineStateV1 {
-    ..pre,
-    program_counter: pre.program_counter + 1,
-    work_root: validation_trace_v1.hash_work_witness(
-      validation_trace_v1.Signatures,
-      pre.program_counter + 1,
-      next,
-    ),
-  }
-  !vm_signatures.verify_signature_address_item_semantics_v1(
-    pre,
-    vm_machine_types.ValidationOneStepWitnessV1 {
-      work_witness_cbor,
-      claimed_successor: post,
-    },
-    inline_field_door(),
-    7,
-    1,
-    inline_field_carriage([encode_midgard_address_witness(first), bytes]),
+}
+
+/// One Signatures address step over field 7 = `addresses`, from the control
+/// after `seen` items to a claimed successor that consumed item `opened`.
+/// Every fixture signature is invalid, so the first invalid witness index is
+/// `pre_invalid` when set, else the consumed item's field-7 position.
+fn signatures_cursor_row(
+  addresses: List<MidgardAddressWitness>,
+  seen: Int,
+  pre_invalid: Int,
+  opened: Int,
+  post_invalid: Int,
+) -> Bool {
+  signatures_cursor_row_declaring(
+    addresses,
+    list.length(addresses),
+    seen,
+    pre_invalid,
+    opened,
+    post_invalid,
   )
 }
 
-test signatures_accepts_the_authentic_minimum_at_reordered_physical_index() {
+/// `signatures_cursor_row` from a control (when `seen > 0`) that declares
+/// `count` field-7 items, to the successor that declaration yields.
+fn signatures_cursor_row_declaring(
+  addresses: List<MidgardAddressWitness>,
+  count: Int,
+  seen: Int,
+  pre_invalid: Int,
+  opened: Int,
+  post_invalid: Int,
+) -> Bool {
   let base = empty_v1_transaction()
-  let first = MidgardAddressWitness {
-    verification_key: zero,
-    signature: zero |> bytearray.concat(zero),
-  }
-  let second = MidgardAddressWitness {
-    verification_key: h_a,
-    signature: zero |> bytearray.concat(zero),
-  }
-  let tx = MidgardTransaction {
-    ..base,
-    witness_set: MidgardTransactionWitnessSet {
-      ..base.witness_set,
-      addr_tx_wits: [first, second],
-    },
-  }
-  let Pair(pre, work_witness_cbor) = signatures_step_fixture(tx)
-  let bytes = encode_midgard_address_witness(second)
-  let signer_hash = blake2b_224(second.verification_key)
-  let frontier = validation_merkle_v1.build_frontier(
-    [script_proof_v1.signer_leaf_hash(signer_hash)],
-  )
-  let next = signatures_scan_witness(
-    tx,
-    0,
-    2,
-    0,
-    1,
-    0,
-    signer_hash
-      |> bytearray.concat(bytes)
-      |> bytearray.concat(cbor.serialise(1)),
-    signer_hash,
-    frontier,
-    1,
-  )
-  let post = validation_trace_v1.ValidationMachineStateV1 {
-    ..pre,
-    program_counter: pre.program_counter + 1,
-    work_root: validation_trace_v1.hash_work_witness(
-      validation_trace_v1.Signatures,
-      pre.program_counter + 1,
-      next,
-    ),
-  }
-  vm_signatures.verify_signature_address_item_semantics_v1(
-    pre,
-    vm_machine_types.ValidationOneStepWitnessV1 {
-      work_witness_cbor,
-      claimed_successor: post,
-    },
-    inline_field_door(),
-    7,
-    1,
-    inline_field_carriage([encode_midgard_address_witness(first), bytes]),
-  )
-}
-
-fn signatures_accepts_duplicate_index_boundary(count: Int, index: Int) -> Bool {
-  let base = empty_v1_transaction()
-  let address = MidgardAddressWitness {
-    verification_key: zero,
-    signature: zero |> bytearray.concat(zero),
-  }
-  let addresses = list.repeat(address, count)
   let tx = MidgardTransaction {
     ..base,
     witness_set: MidgardTransactionWitnessSet {
@@ -2009,25 +1732,28 @@ fn signatures_accepts_duplicate_index_boundary(count: Int, index: Int) -> Bool {
       addr_tx_wits: addresses,
     },
   }
-  let Pair(initial, _) = signatures_step_fixture(tx)
-  let bytes = encode_midgard_address_witness(address)
-  let signer_hash = blake2b_224(address.verification_key)
-  let prefix = signer_hash |> bytearray.concat(bytes)
-  let frontier = validation_merkle_v1.build_frontier(
-    [script_proof_v1.signer_leaf_hash(signer_hash)],
-  )
-  let work_witness_cbor = signatures_scan_witness(
-    tx,
-    0,
-    count,
-    0,
-    index,
-    0,
-    prefix |> bytearray.concat(cbor.serialise(index - 1)),
-    signer_hash,
-    frontier,
-    0,
-  )
+  let consumed = list.take(addresses, seen)
+  expect Some(opened_address) = list.at(addresses, opened)
+  let previous_signer = when list.last(consumed) is {
+    Some(address) -> blake2b_224(address.verification_key)
+    None -> #""
+  }
+  let Pair(initial, initial_witness_cbor) = signatures_step_fixture(tx)
+  let work_witness_cbor = if seen == 0 {
+    initial_witness_cbor
+  } else {
+    signatures_scan_witness(
+      tx,
+      0,
+      count,
+      0,
+      seen,
+      0,
+      previous_signer,
+      validation_merkle_v1.build_frontier(cursor_signer_leaves(consumed, #"")),
+      pre_invalid,
+    )
+  }
   let pre = validation_trace_v1.ValidationMachineStateV1 {
     ..initial,
     work_root: validation_trace_v1.hash_work_witness(
@@ -2036,17 +1762,27 @@ fn signatures_accepts_duplicate_index_boundary(count: Int, index: Int) -> Bool {
       work_witness_cbor,
     ),
   }
+  let next_consumed = list.concat(consumed, [opened_address])
   let next = signatures_scan_witness(
     tx,
-    0,
+    if seen + 1 == count {
+      1
+    } else {
+      0
+    },
     count,
     0,
-    index + 1,
+    seen + 1,
     0,
-    prefix |> bytearray.concat(cbor.serialise(index)),
-    signer_hash,
-    frontier,
-    0,
+    if seen + 1 == count {
+      #""
+    } else {
+      blake2b_224(opened_address.verification_key)
+    },
+    validation_merkle_v1.build_frontier(
+      cursor_signer_leaves(next_consumed, #""),
+    ),
+    post_invalid,
   )
   let post = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
@@ -2064,18 +1800,96 @@ fn signatures_accepts_duplicate_index_boundary(count: Int, index: Int) -> Bool {
       claimed_successor: post,
     },
     inline_field_door(),
-    7,
-    index,
     inline_field_carriage(list.map(addresses, encode_midgard_address_witness)),
   )
 }
 
-test signatures_preserves_duplicate_index_cbor_boundary_24() {
-  signatures_accepts_duplicate_index_boundary(318, 24)
+fn cursor_address(
+  key: ByteArray,
+  signature_head: ByteArray,
+) -> MidgardAddressWitness {
+  MidgardAddressWitness {
+    verification_key: key,
+    signature: signature_head |> bytearray.concat(zero),
+  }
 }
 
-test signatures_preserves_duplicate_index_cbor_boundary_256() {
-  signatures_accepts_duplicate_index_boundary(318, 256)
+// blake2b_224(h_a) < blake2b_224(zero), so [h_a key, zero key] is field 7 in
+// canonical order and [zero key, h_a key] is not.
+fn cursor_ascending_pair() -> List<MidgardAddressWitness> {
+  [cursor_address(h_a, zero), cursor_address(zero, zero)]
+}
+
+// One signer, three items in ascending signature bytes.
+fn cursor_one_signer_triple() -> List<MidgardAddressWitness> {
+  [
+    cursor_address(zero, zero),
+    cursor_address(zero, h_a),
+    cursor_address(zero, h_b),
+  ]
+}
+
+test signatures_cursor_order_premise() {
+  and {
+    bytearray.compare(blake2b_224(h_a), blake2b_224(zero)) == Less,
+    bytearray.compare(zero, h_a) == Less,
+    bytearray.compare(h_a, h_b) == Less,
+  }
+}
+
+test signatures_cursor_opens_the_item_at_address_seen() {
+  signatures_cursor_row(cursor_ascending_pair(), 0, -1, 0, 0)
+}
+
+test signatures_refuses_an_alternative_authentic_first_choice() {
+  !signatures_cursor_row(cursor_ascending_pair(), 0, -1, 1, 1)
+}
+
+// Before the cursor this successor was accepted: the step took the least
+// (signer, bytes) key wherever it sat in field 7. It is now refused, so field
+// 7's wire order is no longer the prover's choice.
+test signatures_refuses_the_least_key_at_a_later_physical_index() {
+  let reordered = [cursor_address(zero, zero), cursor_address(h_a, zero)]
+  !signatures_cursor_row(reordered, 0, -1, 1, 1)
+}
+
+test signatures_cursor_opens_a_middle_item_and_keeps_one_signer_leaf() {
+  signatures_cursor_row(cursor_one_signer_triple(), 1, 0, 1, 0)
+}
+
+// The skip successor names item 2 as the first invalid witness; the cursor
+// derives item 1, so only the successor naming item 1 verifies.
+test signatures_cursor_refuses_skipping_a_middle_item() {
+  and {
+    signatures_cursor_row(cursor_one_signer_triple(), 1, -1, 1, 1),
+    !signatures_cursor_row(cursor_one_signer_triple(), 1, -1, 2, 2),
+  }
+}
+
+test signatures_cursor_completes_on_the_last_item() {
+  signatures_cursor_row(cursor_one_signer_triple(), 2, 0, 2, 0)
+}
+
+// The address step does not re-check the declared count: a control that
+// declares no items, or a count other than field 7's, is refused by
+// `active_count > 0` and `item_count == active_count`.
+test signatures_cursor_refuses_a_declared_count_other_than_field_seven() {
+  and {
+    signatures_cursor_row_declaring(cursor_one_signer_triple(), 3, 1, 0, 1, 0),
+    !signatures_cursor_row_declaring(cursor_one_signer_triple(), 0, 1, 0, 1, 0),
+    !signatures_cursor_row_declaring(cursor_one_signer_triple(), 2, 1, 0, 1, 0),
+    !signatures_cursor_row_declaring(cursor_one_signer_triple(), 4, 1, 0, 1, 0),
+  }
+}
+
+// I10: the AddressWitnessSignatureInvalid witness_index is the field-7
+// position of the first invalid item the cursor reaches.
+test signatures_cursor_names_the_first_invalid_witness_by_position() {
+  and {
+    signatures_cursor_row(cursor_one_signer_triple(), 1, -1, 1, 1),
+    !signatures_cursor_row(cursor_one_signer_triple(), 1, -1, 1, 0),
+    !signatures_cursor_row(cursor_one_signer_triple(), 1, -1, 1, 2),
+  }
 }
 
 fn signer_scan_step(
@@ -2096,7 +1910,6 @@ fn signer_scan_step(
     required_count,
     address_seen,
     required_seen,
-    #"",
     #"",
     signer_frontier,
     first_invalid_witness_index,
@@ -2133,7 +1946,7 @@ test signatures_required_first_of_two_present_continues_at_stage_one() {
       proof,
       signatures_successor(
         pre,
-        signatures_scan_witness(tx, 1, 1, 2, 1, 1, #"", #"", frontier, -1),
+        signatures_scan_witness(tx, 1, 1, 2, 1, 1, #"", frontier, -1),
       ),
     ),
     !required_signer_item_holds(
@@ -2142,7 +1955,7 @@ test signatures_required_first_of_two_present_continues_at_stage_one() {
       proof,
       signatures_successor(
         pre,
-        signatures_scan_witness(tx, 2, 1, 2, 1, 1, #"", #"", frontier, -1),
+        signatures_scan_witness(tx, 2, 1, 2, 1, 1, #"", frontier, -1),
       ),
     ),
   }
@@ -2166,7 +1979,7 @@ test signatures_required_invalid_address_signature_waits_for_the_last_required_s
       proof,
       signatures_successor(
         pre,
-        signatures_scan_witness(tx, 1, 1, 2, 1, 1, #"", #"", frontier, 0),
+        signatures_scan_witness(tx, 1, 1, 2, 1, 1, #"", frontier, 0),
       ),
     ),
     !required_signer_item_holds(
