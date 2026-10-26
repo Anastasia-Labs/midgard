@@ -99,13 +99,16 @@ upstream diagnostic text; explicit testing/private profiles retain that text.
 
 Per-peer and global rates, concurrent requests and weighted bodies are bounded
 before parsing/evaluation. A rate refusal returns 429 with `E_HTTP_RATE_LIMITED`
-and `Retry-After` in seconds until a token is back; full capacity returns 503
-with `Retry-After: 5`. Classes, defaults and the `HTTP_RATE_LIMIT_*` variables
-are in the docs-site server HTTP API page; public profiles refuse
-`HTTP_RATE_LIMIT_ENABLED=false`.
+and `Retry-After` in seconds until every refusing bucket has a token again; full
+capacity returns 503 with `Retry-After: 5`. Health, readiness and admin routes
+have their own client table, concurrency budget and database connections, so
+public traffic cannot refuse them. Classes, defaults and the
+`HTTP_RATE_LIMIT_*` variables are in the docs-site server HTTP API page; public
+profiles refuse `HTTP_RATE_LIMIT_ENABLED=false`.
 Advisory evaluation never enters the production worker queue, and pools with fewer
-than two workers refuse it. Public reads use a separate four-connection database
-pool and fail-fast request quota, preserving production SQL pools. Pending
+than two workers refuse it. HTTP reads use a separate four-connection database
+pool with fail-fast request quotas, three permits for public reads and one for
+readiness and admin reads, preserving production SQL pools. Pending
 withdrawals whose derived canonical references are unknown hold UTXO reads with
 `E_PUBLIC_READ_MIGRATING`; a bounded follower-owned backfill preserves the original
 rows. An oversized stored reference holds ingestion for operator inspection;
