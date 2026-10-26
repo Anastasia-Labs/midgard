@@ -2,6 +2,7 @@ import {
   MIDGARD_RETENTION_WINDOW,
   RETENTION_MS_PER_DAY,
 } from "@al-ft/midgard-core";
+import { deploymentDaRetentionDays } from "@al-ft/midgard-core/da-transport";
 
 const DAY_IN_MILLIS = RETENTION_MS_PER_DAY;
 
@@ -12,12 +13,12 @@ const DAY_IN_MILLIS = RETENTION_MS_PER_DAY;
  * A node running a verified manifest never reads it: its housekeeping window
  * is the manifest's `da.transportProfile.retentionDays`
  * (`resolveHousekeepingRetentionDays`). DA payload availability follows
- * neither: a DA payload is kept until its block is past the challengeability
- * horizon or its header is removed from the state queue, and always while it
+ * the verified history window and challengeability horizon: a DA payload is
+ * kept until both have passed, or its header is finally removed from the queue,
+ * and always while it
  * is the L1 confirmed head or live in the L1 state queue.
  */
-export const MIN_DA_PAYLOAD_RETENTION_DAYS =
-  MIDGARD_RETENTION_WINDOW.retentionDays;
+export const MIN_DA_PAYLOAD_RETENTION_DAYS = deploymentDaRetentionDays();
 
 /** Shape check only. The window it is compared with is the deployment's,
  * which config load cannot see: `resolveHousekeepingRetentionDays` decides. */

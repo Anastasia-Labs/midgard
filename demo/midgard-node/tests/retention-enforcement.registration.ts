@@ -1,5 +1,9 @@
 import { RETENTION_MS_PER_DAY } from "@al-ft/midgard-core";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
+import {
+  computeDeploymentManifestId,
+  verifyFinalizedDeploymentManifest,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import { SqlClient } from "@effect/sql";
 import { Effect, Schedule } from "effect";
 import { beforeAll, describe, expect, it, vi } from "vitest";
@@ -10,7 +14,6 @@ import {
 } from "../src/commands/retention-check.js";
 import { DaPayloadsDB } from "../src/database/index.js";
 import * as MigrationRunner from "../src/database/migrations/runner.js";
-import { computeChallengeableCutoff } from "../src/database/retention-policy.js";
 import {
   retentionSweepAction,
   retentionSweeperFiber,
@@ -78,6 +81,67 @@ describe.skipIf(!dbEnabled)(
         ) as Effect.Effect<A, never, never>,
       );
 
+    it("the real sweep preserves 119-day merged history promised for 120 days", async () => {
+      const changed = {
+        ...deploymentManifest,
+        da: {
+          ...deploymentManifest.da,
+          transportProfile: {
+            ...deploymentManifest.da.transportProfile,
+            retentionDays: 120,
+          },
+        },
+      };
+      const manifest = verifyFinalizedDeploymentManifest({
+        ...changed,
+        manifestId: computeDeploymentManifestId(
+          Object.fromEntries(
+            Object.entries(changed).filter(([key]) => key !== "manifestId"),
+          ),
+        ),
+      });
+      const outcome = await run(
+        Effect.gen(function* () {
+          const expired = yield* seedPublished(
+            new Date(NOW.getTime() - 121 * RETENTION_MS_PER_DAY),
+            1,
+          );
+          const retained = yield* seedPublished(
+            new Date(NOW.getTime() - 119 * RETENTION_MS_PER_DAY),
+            2,
+          );
+          const latest = yield* seedPublished(NOW, 3);
+          yield* withSweepServices(
+            retentionSweepAction(
+              {
+                confirmedHeadHash: latest.headerHash,
+                liveQueueHeaderHashes: [],
+                finalThroughHeight: 1000,
+              },
+              NOW,
+            ),
+            undefined,
+            manifest,
+          );
+          return {
+            expired,
+            retained,
+            latest,
+            remaining: yield* remainingHashes,
+          };
+        }),
+      );
+      expect(outcome.remaining).not.toContain(
+        outcome.expired.headerHash.toString("hex"),
+      );
+      expect(outcome.remaining).toContain(
+        outcome.retained.headerHash.toString("hex"),
+      );
+      expect(outcome.remaining).toContain(
+        outcome.latest.headerHash.toString("hex"),
+      );
+    });
+
     it("releases a superseded merged header once a later merge is final, holding the newest", async () => {
       const old = new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY);
       const outcome = await run(
@@ -95,8 +159,8 @@ describe.skipIf(!dbEnabled)(
       expect(outcome.remaining).toEqual([outcome.later]);
     });
 
-    it("retains a block_end_time exactly at the horizon and prunes 1ms past it", async () => {
-      const cutoff = computeChallengeableCutoff(NOW);
+    it("retains block_time exactly at the promised history limit and prunes 1ms past it", async () => {
+      const cutoff = new Date(NOW.getTime() - 15 * RETENTION_MS_PER_DAY);
       const outcome = await run(
         Effect.gen(function* () {
           const atCutoff = yield* seedPayload("at-cutoff", cutoff, cutoff);
@@ -350,10 +414,10 @@ describe.skipIf(!dbEnabled)(
             new Date(NOW.getTime() - REQUIRED_RETENTION_MS + 5 * 60_000),
             NOW,
           );
-          // Past the horizon at L1 now as well: the sweep did run.
+          // Past both the challenge and promised history limits at L1 now: the sweep did run.
           yield* seedPayload(
             "fast-clock-pruned",
-            new Date(NOW.getTime() - REQUIRED_RETENTION_MS - 60_000),
+            new Date(NOW.getTime() - 15 * RETENTION_MS_PER_DAY - 60_000),
             NOW,
           );
           vi.useFakeTimers({ toFake: ["Date"] });

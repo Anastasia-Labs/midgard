@@ -2,6 +2,7 @@ import {
   MIDGARD_RETENTION_WINDOW,
   RETENTION_MS_PER_DAY,
 } from "@al-ft/midgard-core";
+import { deploymentDaRetentionDays } from "@al-ft/midgard-core/da-transport";
 import { heightAtDepth } from "@al-ft/midgard-l1-follower/heads";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
@@ -28,6 +29,7 @@ import { pruneFinalizedBeyondChallengeability } from "../database/pendingBlockFi
 import {
   computeChallengeableCutoff,
   computeHousekeepingCutoff,
+  computeRetentionCutoff,
   resolveHousekeepingRetentionDays,
   shouldPruneRetention,
 } from "../database/retention-policy.js";
@@ -73,7 +75,8 @@ const daPayloadRetentionDeadlineRemainingGauge = Metric.gauge(
  * empty table never looks like an emergency. With an L1 view, the confirmed
  * head's payload, live queue headers' payloads and finality-held payloads are
  * excluded: they are retained past the horizon by design, so their age is not
- * a deadline.
+ * a deadline. Payloads already past challengeability are left out too: a
+ * deployment's DA history window keeps them for replay, not for a challenge.
  */
 const publishDaPayloadRetentionDeadline = (
   now: Date,
@@ -96,7 +99,8 @@ const publishDaPayloadRetentionDeadline = (
           )}`;
     const rows = yield* sql<{
       readonly oldest_block_time: Date | null;
-    }>`SELECT MIN(block_time) AS oldest_block_time FROM da_payloads WHERE ${exempt}`;
+    }>`SELECT MIN(block_time) AS oldest_block_time FROM da_payloads WHERE ${exempt}
+      AND block_time >= ${computeChallengeableCutoff(now)}`;
     const oldest = rows[0]?.oldest_block_time ?? null;
     const remainingMs =
       oldest === null
@@ -180,7 +184,8 @@ export const fetchRetentionL1View: Effect.Effect<
 /**
  * One retention sweep.
  *
- * DA payloads are pruned on the consensus-derived challengeability horizon and
+ * DA payloads are kept through the verified deployment's DA history window,
+ * the consensus-derived challengeability horizon, and
  * the L1 exemption sets whenever an L1 view is available, regardless of
  * RETENTION_DAYS; then the final queue-terminal rows that name no retained
  * payload or journal (`pruneFinalQueueTerminals`). Housekeeping runs only while the window
@@ -221,6 +226,11 @@ export const retentionSweepAction = (
         : yield* Effect.either(
             DaPayloadsDB.pruneBeyondRetention({
               challengeableCutoff,
+              retentionCutoff: computeRetentionCutoff(
+                sweptAt,
+                deploymentIdentity.manifest?.da.transportProfile
+                  .retentionDays ?? deploymentDaRetentionDays(),
+              ),
               view,
               deploymentIdentityDigest,
             }),

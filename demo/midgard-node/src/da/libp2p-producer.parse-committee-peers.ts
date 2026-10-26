@@ -87,6 +87,7 @@ export type DaProducerPublicationManifest = {
   readonly localPrivateKeySource: string;
   readonly threshold: number;
   readonly requestTimeoutMs: number;
+  readonly retentionDays: number;
   readonly maxPayloadBytes: number;
   readonly maxInlineResponseBytes: number;
   readonly maxChunkBytes: number;
