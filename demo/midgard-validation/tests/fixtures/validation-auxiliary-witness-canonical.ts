@@ -122,7 +122,7 @@ const valueMutation = {
   preAssetRoot: hash(0x18),
   postAssetRoot: hash(0x19),
   proofCbor: bytes("80"),
-  postSeenAssetCount: 1,
+  postAssetEntryCount: 1,
   postNonzeroAssetCount: 1,
 } as const;
 

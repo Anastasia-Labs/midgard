@@ -28,7 +28,7 @@ const mutationStep = {
   preAssetRoot: fixtureBytes(0x32, 32),
   postAssetRoot: fixtureBytes(0x33, 32),
   proofCbor: bytes("80"),
-  postSeenAssetCount: 1,
+  postAssetEntryCount: 1,
   postNonzeroAssetCount: 1,
 } as const;
 

@@ -2117,7 +2117,7 @@ export const completeValidationTrace = (
                     },
                   );
                   if (
-                    mutationStep.postSeenAssetCount >
+                    mutationStep.postAssetEntryCount >
                     input.consensusProfile.limits.maxDistinctAssetCount
                   ) {
                     if (
@@ -2266,7 +2266,7 @@ export const completeValidationTrace = (
                     },
                   );
                   if (
-                    mutationStep.postSeenAssetCount >
+                    mutationStep.postAssetEntryCount >
                     input.consensusProfile.limits.maxDistinctAssetCount
                   ) {
                     if (
@@ -2346,7 +2346,7 @@ export const completeValidationTrace = (
                 );
               }
               if (
-                mutationStep.postSeenAssetCount >
+                mutationStep.postAssetEntryCount >
                 input.consensusProfile.limits.maxDistinctAssetCount
               ) {
                 if (

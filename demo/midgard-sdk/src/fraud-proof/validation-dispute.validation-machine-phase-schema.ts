@@ -10,7 +10,7 @@ import {
 export const ValueAccumulatorSchema = Data.Object({
   lovelace_delta: Data.Integer(),
   asset_root: Data.Bytes(),
-  seen_asset_count: Data.Integer(),
+  asset_entry_count: Data.Integer(),
   nonzero_asset_count: Data.Integer(),
 });
 
