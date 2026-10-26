@@ -140,6 +140,7 @@ export const buildCapture = async (
     .collectFrom([p.fee])
     .collectFrom([p.thread], redeemer)
     .readFrom(refs)
+    .addSignerKey(h.owner)
     .validFrom(Number(window.validFrom))
     .validTo(Number(window.validTo))
     .pay.ToContract(nextStep, { kind: "inline", value: datum }, p.thread.assets)
@@ -259,6 +260,7 @@ export const continueCaptured = async (
     .collectFrom(funding)
     .collectFrom([thread], redeemer)
     .readFrom([p.refs[1]!])
+    .addSignerKey(h.owner)
     .validFrom(Math.max(Number(p.headerEnd) + 1000, h.emulator.now() - 60_000))
     .validTo(h.emulator.now() + 40_000)
     .pay.ToContract(
