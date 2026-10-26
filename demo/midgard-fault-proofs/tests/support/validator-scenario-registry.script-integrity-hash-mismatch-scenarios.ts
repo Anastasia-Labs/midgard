@@ -6,13 +6,13 @@ const sihmForgedSuccessor: ValidatorScenarioPair = {
   passing: [
     {
       file: SIHM_FORGED_SUCCESSOR,
-      test: "refuses a forged successor at every walk role of an accepted transaction",
+      test: "refuses a forged successor at every role of an accepted transaction",
     },
   ],
   failing: [
     {
       file: SIHM_FORGED_SUCCESSOR,
-      test: "refuses a forged successor at every walk role of an accepted transaction",
+      test: "refuses a forged successor at every role of an accepted transaction",
     },
   ],
 };
