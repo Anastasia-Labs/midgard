@@ -84,3 +84,24 @@ export const compactedDividendFailure = (
   }
   return "failure";
 };
+
+/** scalarMul fails on a scalar outside [-2^4095, 2^4095 - 1]. */
+const BLS_SCALAR_BOUND = 2n ** 4_095n;
+
+/**
+ * Whether G1 or G2 scalarMul (56, 63) fails on its revealed scalar: outside
+ * [-2^4095, 2^4095 - 1] it fails whatever the point, so the point is read by
+ * its type alone (it may be compacted, and is not uncompressed), as the direct
+ * failure arm decides it.
+ */
+export const midgardCekScalarMulOutOfBound = (
+  tag: bigint,
+  arguments_: readonly MidgardCekDirectValueWitness[],
+): boolean => {
+  if (tag !== 56n && tag !== 63n) return false;
+  if (!directArgumentsMatchKinds(Number(tag), arguments_)) return false;
+  const [scalar] = arguments_;
+  if (scalar!.kind !== "constant") return false;
+  const value = directInteger(scalar!);
+  return value < -BLS_SCALAR_BOUND || value >= BLS_SCALAR_BOUND;
+};

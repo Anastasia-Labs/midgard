@@ -23,12 +23,9 @@ export const STEP_FIXED_SET_PINS: StepRowPins = {
     "seed 4028760881 builtin 51": { serialiseLoop: 1 },
     "seed 4028760883 builtin 51": { serialiseLoop: 1 },
     "seed 4028760884 builtin 51": { serialiseLoop: 1 },
-    "seed 4028761122 builtin 66": { blsInvalidPointPending: 1 },
-    "seed 4028761125 builtin 66": { blsInvalidPointPending: 1 },
   },
   totals: {
     nestedConstantCost: 1,
-    blsInvalidPointPending: 2,
     serialiseLoop: 5,
   },
 };

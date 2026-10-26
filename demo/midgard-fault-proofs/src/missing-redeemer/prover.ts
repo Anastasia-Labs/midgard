@@ -6,6 +6,10 @@
  * leaf whose reason names no purpose coordinate, through such a purpose when
  * the purpose phase does not admit its reason first; a rejected leaf whose
  * `RedeemerMissing` reason names any purpose coordinate. */
+import {
+  decodeMidgardMintPolicyItem,
+  decodeMidgardVersionedScriptEnvelope,
+} from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 
 import {
@@ -31,6 +35,7 @@ import {
 } from "../direct-purpose-family/source-walk.js";
 import {
   buildDirectSourceIndexEvidence,
+  directOutputAddress,
   directRedeemerAt,
 } from "../direct-script-derivation/index.js";
 import type { DirectScriptMaterial } from "../direct-script-derivation/material.js";
@@ -158,20 +163,46 @@ export const requireConvictingMissingRedeemerProof = async (
  * built against it is ever submitted, and conviction never reads it. */
 const DETECTION_PROVER = "00".repeat(28);
 
-/**
- * Whether the bound leaf convicts, without planning custody: an accepted leaf,
- * or a rejection whose reason names no purpose and is not admitted before a
- * purpose's missing redeemer, yields its first convicting purpose; a
- * `RedeemerMissing` rejection yields its claim verdict. Every other leaf, and
- * a claimed spend with no predecessor descriptor to show, is `null`.
- */
-export const missingRedeemerDetection = async (
+/** A mint item, output or script witness not in the shape the purpose walk,
+ * the claimed purpose's domain or the source index reads; a decoding or
+ * canonicality phase refuses it first. */
+class UnreadableItem extends Error {}
+
+/** `decode` over one committed item, refused as unreadable when it does not
+ * decode. */
+const readItem = <T>(decode: () => T): T => {
+  try {
+    return decode();
+  } catch (error) {
+    throw new UnreadableItem(
+      `${MISSING_REDEEMER_CATEGORY_LABEL}: ${String(error)}`,
+    );
+  }
+};
+
+/** Every script witness, as the source index reads it. */
+const readWitnesses = (material: DirectScriptMaterial): void => {
+  for (const item of material.fields[6]!)
+    readItem(() => decodeMidgardVersionedScriptEnvelope(item));
+};
+
+/** Every item the claim domain of a purpose of `kind` decodes: each mint
+ * policy for a mint, each output address for a receive. */
+const readClaimDomain = (material: DirectScriptMaterial, kind: bigint) => {
+  if (kind === 1n)
+    for (const item of material.fields[5]!)
+      readItem(() => decodeMidgardMintPolicyItem(item));
+  if (kind === 3n)
+    for (const item of material.fields[2]!)
+      readItem(() => directOutputAddress(item));
+};
+
+const detectMissingRedeemer = async (
   material: DirectScriptMaterial,
 ): Promise<{ readonly observed: Coordinate | null } | null> => {
-  if (!directPurposeInputDescriptorsPresent(material)) return null;
   const reason = material.bound.subject.rejection_reason;
   if (reason === null || SDK.purposeCoordinateOfReason(reason) === null) {
-    const purposes = directPurposeScriptPurposes(material);
+    const purposes = readItem(() => directPurposeScriptPurposes(material));
     // Such a reason is admitted at every purpose coordinate or at none.
     if (
       purposes.length === 0 ||
@@ -182,6 +213,7 @@ export const missingRedeemerDetection = async (
         }))
     )
       return null;
+    readWitnesses(material);
     const evidence = await buildDirectSourceIndexEvidence(material);
     const [coordinate] = await missingRedeemerObservedCandidates(
       material,
@@ -200,6 +232,9 @@ export const missingRedeemerDetection = async (
     !directPurposeSpendDescriptorPresent(material, coordinate.index)
   )
     return null;
+  readWitnesses(material);
+  if (coordinate !== null && SDK.purposeCoordinateIsValid(coordinate))
+    readClaimDomain(material, coordinate.kind);
   const evidence = await buildDirectSourceIndexEvidence(material);
   const inputs = {
     material,
@@ -212,4 +247,25 @@ export const missingRedeemerDetection = async (
     directPurposeClaimEntry(inputs).context,
   );
   return SDK.directClaimConvicts(claim.final) ? { observed: null } : null;
+};
+
+/**
+ * Whether the bound leaf convicts, without planning custody: an accepted leaf,
+ * or a rejection whose reason names no purpose and is not admitted before a
+ * purpose's missing redeemer, yields its first convicting purpose; a
+ * `RedeemerMissing` rejection yields its claim verdict. Every other leaf, a
+ * claimed spend with no predecessor descriptor to show, and a leaf whose mint
+ * item, output or script witness the walk or the claimed domain cannot read,
+ * is `null`.
+ */
+export const missingRedeemerDetection = async (
+  material: DirectScriptMaterial,
+): Promise<{ readonly observed: Coordinate | null } | null> => {
+  if (!directPurposeInputDescriptorsPresent(material)) return null;
+  try {
+    return await detectMissingRedeemer(material);
+  } catch (error) {
+    if (error instanceof UnreadableItem) return null;
+    throw error;
+  }
 };

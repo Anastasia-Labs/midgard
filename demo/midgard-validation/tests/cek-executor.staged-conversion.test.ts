@@ -1,13 +1,12 @@
 import { PLUTUS_V3_CANONICAL_COST_MODEL_VIEW } from "@al-ft/midgard-core";
-import { CEKConst } from "@harmoniclabs/plutus-machine";
 import * as UPLC from "@lucid-evolution/uplc";
 import { describe, expect, it } from "vitest";
 
 import type { MidgardCekDirectValueWitness } from "../src/cek-builtin.argument-kinds.js";
 import {
-  referenceConstantToDirectWitness,
+  builtinValueToDirectWitness,
   semanticizeMidgardCekDirectConstant,
-} from "../src/cek-builtin.evaluate-reference-builtin.js";
+} from "../src/cek-builtin.evaluate-direct-builtin.js";
 import { midgardCekDirectBuiltinBudget } from "../src/cek-builtin.selected-control-result.js";
 import type { MidgardCekBuiltinBudget } from "../src/cek-cost.js";
 import type { MidgardCekExecutionStep } from "../src/cek-executor.build-midgard-cek-execution-graph.js";
@@ -260,16 +259,16 @@ describe("byteStringToInteger over a staged input", () => {
   );
 });
 
-const presented = (value: CEKConst): MidgardCekDirectValueWitness =>
-  referenceConstantToDirectWitness(value, true);
+const presented = (value: UPLCConst): MidgardCekDirectValueWitness =>
+  builtinValueToDirectWitness(value, true);
 
 /** The failure witnesses for byteStringToInteger over `input`: the staged
  * failure hop's, reading the input's length from its committed argument,
  * and the direct failure arm's, carrying it inline. */
 const failureWitnesses = (bigEndian: boolean, input: Buffer) => {
   const arguments_ = [
-    presented(CEKConst.bool(bigEndian)),
-    presented(CEKConst.byteString(input)),
+    presented(UPLCConst.bool(bigEndian)),
+    presented(UPLCConst.byteString(input)),
   ];
   const committed = arguments_.map(semanticizeMidgardCekDirectConstant);
   return {
@@ -341,7 +340,7 @@ describe("a byteStringToInteger step has one provable result", () => {
   const conversionVerifies = (
     bigEndian: boolean,
     input: Buffer,
-    result: CEKConst,
+    result: UPLCConst,
   ): boolean => {
     const material = stageMidgardCekStagedBuiltinMaterial(
       {
@@ -354,8 +353,8 @@ describe("a byteStringToInteger step has one provable result", () => {
     return verifyMidgardCekStagedBuiltin(
       CONVERT,
       [
-        presented(CEKConst.bool(bigEndian)),
-        presented(CEKConst.byteString(input)),
+        presented(UPLCConst.bool(bigEndian)),
+        presented(UPLCConst.byteString(input)),
       ],
       presented(result),
       material,
@@ -372,11 +371,11 @@ describe("a byteStringToInteger step has one provable result", () => {
           `0x${(bigEndian ? bytes : Buffer.from(bytes).reverse()).toString("hex")}`,
         );
       expect(
-        conversionVerifies(bigEndian, input, CEKConst.int(value(input))),
+        conversionVerifies(bigEndian, input, UPLCConst.int(value(input))),
       ).toBe(true);
       const longer = Buffer.concat([input, Buffer.from([1])]);
       expect(
-        conversionVerifies(bigEndian, longer, CEKConst.int(value(longer))),
+        conversionVerifies(bigEndian, longer, UPLCConst.int(value(longer))),
       ).toBe(false);
     },
   );
@@ -387,14 +386,16 @@ describe("a byteStringToInteger step has one provable result", () => {
     const littleEndian = BigInt(
       `0x${Buffer.from(input).reverse().toString("hex")}`,
     );
-    expect(conversionVerifies(true, input, CEKConst.int(bigEndian))).toBe(true);
-    expect(conversionVerifies(false, input, CEKConst.int(littleEndian))).toBe(
+    expect(conversionVerifies(true, input, UPLCConst.int(bigEndian))).toBe(
       true,
     );
-    expect(conversionVerifies(false, input, CEKConst.int(bigEndian))).toBe(
+    expect(conversionVerifies(false, input, UPLCConst.int(littleEndian))).toBe(
+      true,
+    );
+    expect(conversionVerifies(false, input, UPLCConst.int(bigEndian))).toBe(
       false,
     );
-    expect(conversionVerifies(true, input, CEKConst.int(-bigEndian))).toBe(
+    expect(conversionVerifies(true, input, UPLCConst.int(-bigEndian))).toBe(
       false,
     );
   });

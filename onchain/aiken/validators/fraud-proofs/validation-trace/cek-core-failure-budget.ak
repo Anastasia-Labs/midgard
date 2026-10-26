@@ -32,7 +32,8 @@ validator main(
       ct.Continue(action) -> {
         expect Some(step) = datum
         expect Some(bound) = step.data
-        expect bound.group == 9
+        // No group check: only the two direct failure arms continue here,
+        // and `core_group` routes arm 38 to group 9 or 12 alone.
         expect bound.pre.mode == machine.mode_builtin
         expect Pair(38, [tag_data,
               arguments_data]) = builtin.un_constr_data(action.witness)

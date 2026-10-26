@@ -81,7 +81,7 @@ describe("daRetentionPruneDecisionV1", () => {
     });
   });
 
-  it("retains exactly at the challengeability horizon and prunes 1ms past it", () => {
+  it("retains through challengeability and the longer declared history window", () => {
     expect(decide(BLOCK_END + HORIZON)).toMatchObject({
       decision: "retain",
       reasonCode: "still_challengeable",
@@ -89,14 +89,17 @@ describe("daRetentionPruneDecisionV1", () => {
       remainingMs: 0,
     });
     expect(decide(BLOCK_END + HORIZON + 1)).toMatchObject({
-      decision: "prune",
-      reasonCode: "past_challengeability_horizon",
+      decision: "retain",
+      reasonCode: "within_deployment_retention",
       remainingMs: -1,
     });
+    expect(decide(BLOCK_END + 15 * RETENTION_MS_PER_DAY + 1).decision).toBe(
+      "prune",
+    );
   });
 
-  it("prunes past the horizon for every non-removed status, including unobserved", () => {
-    const now = BLOCK_END + HORIZON + 1;
+  it("prunes past both horizons for every non-removed status, including unobserved", () => {
+    const now = BLOCK_END + 15 * RETENTION_MS_PER_DAY + 1;
     for (const status of [
       "unattested",
       "attesting",
@@ -107,6 +110,21 @@ describe("daRetentionPruneDecisionV1", () => {
     ] as const) {
       expect(decide(now, status).decision).toBe("prune");
     }
+  });
+
+  it("keeps merged bootstrap history through its promised 120-day retention", () => {
+    const decidePublic = (days: number, extraMs = 0) =>
+      daRetentionPruneDecision({
+        nowMs: BLOCK_END + days * RETENTION_MS_PER_DAY + extraMs,
+        blockTimeMs: BLOCK_END,
+        headerStatus: "merged",
+        queueReference: "none",
+        terminalRecoveryFinal: true,
+        retentionDays: 120,
+      });
+    expect(decidePublic(119).decision).toBe("retain");
+    expect(decidePublic(120).decision).toBe("retain");
+    expect(decidePublic(120, 1).decision).toBe("prune");
   });
 
   it("reports the configured retain-until alongside the horizon", () => {
@@ -127,7 +145,7 @@ describe("daRetentionPruneDecisionV1", () => {
     );
   });
 
-  it("never retains more than the head, the live queue, and the horizon", () => {
+  it("never retains more than the head, the live queue, and the promised history", () => {
     // Deterministic xorshift PRNG: the package carries no property-test library.
     let seed = 0x9e3779b9;
     const next = (): number => {
@@ -170,7 +188,8 @@ describe("daRetentionPruneDecisionV1", () => {
         const headerStatus = statuses[
           Math.floor(next() * statuses.length)
         ] as never;
-        const inside = now <= blockTimeMs + HORIZON;
+        const inside =
+          now <= blockTimeMs + Math.max(HORIZON, 15 * RETENTION_MS_PER_DAY);
         const decision = daRetentionPruneDecision({
           nowMs: now,
           blockTimeMs,

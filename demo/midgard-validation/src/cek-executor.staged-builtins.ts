@@ -36,7 +36,6 @@ import {
   midgardCekCanonicalIntegerOf,
   parseMidgardCekCanonicalIntegerCbor,
 } from "@al-ft/midgard-core";
-import { CEKConst } from "@harmoniclabs/plutus-machine";
 
 import type {
   Bytes,
@@ -44,15 +43,12 @@ import type {
 } from "./cek-builtin.argument-kinds.js";
 import { midgardCekDivisionByZero } from "./cek-builtin.compacted-failures.js";
 import {
+  builtinValueToDirectWitness,
   evaluateMidgardCekBuiltinOnValues,
+  type MidgardCekDirectBuiltinApplication,
   midgardCekDirectBuiltinFits,
-  referenceConstantToDirectWitness,
   semanticizeMidgardCekDirectConstant,
-} from "./cek-builtin.evaluate-reference-builtin.js";
-import {
-  constantOfReferenceValue,
-  referenceValueOf,
-} from "./cek-builtin.reference-value.js";
+} from "./cek-builtin.evaluate-direct-builtin.js";
 import { encodeMidgardCekCanonicalConstant } from "./cek-constant.js";
 import type { MidgardCekBuiltinBudget } from "./cek-cost.js";
 import { commitMidgardCekDataTree } from "./cek-data-tree.js";
@@ -106,11 +102,12 @@ const failureOnly = (tag: bigint): boolean =>
 export const isMidgardCekStagedStep = (
   tag: bigint,
   arguments_: readonly MidgardCekDirectValueWitness[],
+  application?: MidgardCekDirectBuiltinApplication,
 ): boolean =>
   (midgardCekStagedBuiltinProves(tag) || tag === 51n || failureOnly(tag)) &&
   !midgardCekDivisionByZero(tag, arguments_) &&
   (arguments_.some((argument) => argument.kind !== "constant") ||
-    !midgardCekDirectBuiltinFits(tag, arguments_) ||
+    !midgardCekDirectBuiltinFits(tag, arguments_, application) ||
     (tag === 80n && midgardCekWriteBitsTakesLoop(arguments_)));
 
 const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
@@ -130,7 +127,7 @@ const operandOf = (
     return {
       type: "integer",
       bytes: cbor,
-      value: CEKConst.int(store.integer(dataRoot)),
+      value: UPLCConst.int(store.integer(dataRoot)),
       leaf: {
         kind: "integerLeaf",
         cborRoot: node.cborRoot,
@@ -151,8 +148,8 @@ const operandOf = (
       bytes,
       value:
         type.kind === "bytes"
-          ? CEKConst.byteString(bytes)
-          : referenceValueOf(UPLCConst.str(utf8.decode(bytes))),
+          ? UPLCConst.byteString(bytes)
+          : UPLCConst.str(utf8.decode(bytes)),
       leaf: {
         kind: "bytesLeaf",
         root: node.bytesRoot,
@@ -165,10 +162,12 @@ const operandOf = (
 
 /** A committed Boolean argument: byteStringToInteger's endianness, or the
  * padding of andByteString, orByteString and xorByteString. */
-const committedBoolean = (argument: MidgardCekDirectValueWitness): CEKConst => {
+const committedBoolean = (
+  argument: MidgardCekDirectValueWitness,
+): UPLCConst => {
   const committed = semanticizeMidgardCekDirectConstant(argument);
   const constant = [true, false]
-    .map((value) => CEKConst.bool(value))
+    .map((value) => UPLCConst.bool(value))
     .find(
       (value) =>
         committed.kind === "semanticConstant" &&
@@ -255,20 +254,22 @@ export const executeMidgardCekStagedBuiltin = (
     .map((argument, index) =>
       operandOf(store, roots[index + leading]!, argument),
     );
-  // The reference byteStringToInteger reverses a little-endian input in
-  // place, so each evaluation reads a copy of it.
-  const values = () =>
-    conversion
-      ? [
-          committedBoolean(arguments_[0]!),
-          CEKConst.byteString(Buffer.from(operands[0]!.bytes)),
-        ]
-      : [
-          ...arguments_.slice(0, leading).map(committedBoolean),
-          ...operands.map((operand) => operand.value),
-        ];
-  const evaluate = () =>
-    evaluateMidgardCekBuiltinOnValues(Number(tag), values());
+  // Evaluated at most once, and only when a failure check or the result
+  // reads it.
+  let evaluation: UPLCConst | "failure" | undefined;
+  const evaluate = (): UPLCConst | "failure" =>
+    (evaluation ??= evaluateMidgardCekBuiltinOnValues(
+      Number(tag),
+      conversion
+        ? [
+            committedBoolean(arguments_[0]!),
+            UPLCConst.byteString(operands[0]!.bytes),
+          ]
+        : [
+            ...arguments_.slice(0, leading).map(committedBoolean),
+            ...operands.map((operand) => operand.value),
+          ],
+    ));
   const failure = midgardCekStagedFailure(
     tag,
     arguments_,
@@ -315,8 +316,8 @@ export const executeMidgardCekStagedBuiltin = (
     if (tag === 5n || tag === 6n) {
       // The quotient of the division the remainder rounds as.
       const quotient = evaluateMidgardCekBuiltinOnValues(tag === 5n ? 4 : 3, [
-        CEKConst.int(a!),
-        CEKConst.int(b!),
+        UPLCConst.int(a!),
+        UPLCConst.int(b!),
       ]);
       if (quotient === "failure") {
         throw new Error("CEK staged builtin failure has no staged proof");
@@ -325,10 +326,8 @@ export const executeMidgardCekStagedBuiltin = (
     }
     sources.push(carried(cbor(result)));
   }
-  const canonical = encodeMidgardCekCanonicalConstant(
-    constantOfReferenceValue(evaluated),
-  );
-  const result = referenceConstantToDirectWitness(evaluated, true);
+  const canonical = encodeMidgardCekCanonicalConstant(evaluated);
+  const result = builtinValueToDirectWitness(evaluated, true);
   if (result.kind === "semanticConstant") {
     // Later steps read a large result through its semantic tree.
     store.installTree(

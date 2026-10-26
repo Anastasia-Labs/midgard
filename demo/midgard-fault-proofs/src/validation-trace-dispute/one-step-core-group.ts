@@ -35,6 +35,12 @@ export const cekCoreGroup = (
     case MODE.semanticBuiltin:
       return arm >= 33 && arm <= 35 ? 2 : undefined;
     case MODE.builtin: {
+      if (arm === 38)
+        return builtinTag === undefined
+          ? undefined
+          : builtinTag === 59n || builtinTag === 66n
+            ? 12
+            : 9;
       if (arm === 30)
         return builtinTag === undefined
           ? undefined
@@ -49,7 +55,6 @@ export const cekCoreGroup = (
         32: 6,
         36: 7,
         37: 8,
-        38: 9,
         39: 10,
       };
       return groups[arm];

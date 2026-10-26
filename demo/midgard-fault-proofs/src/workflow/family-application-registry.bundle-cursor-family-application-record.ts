@@ -1,4 +1,11 @@
 import {
+  createManifestBoundDistinctAssetAccumulationLimitWorkflow,
+  DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY_DEFINITION,
+  type ManifestBoundDistinctAssetAccumulationLimitWorkflow,
+  runOrResumeManifestBoundDistinctAssetAccumulationLimitWorkflow,
+} from "../distinct-asset-accumulation-limit/workflow.js";
+import type { ManifestBoundDistinctAssetAccumulationLimitWorkflowConfig } from "../distinct-asset-accumulation-limit/workflow.transaction-port.js";
+import {
   createManifestBoundMinAdaWorkflow,
   type ManifestBoundMinAdaWorkflow,
   type ManifestBoundMinAdaWorkflowConfig,
@@ -47,6 +54,13 @@ import {
   NATIVE_SCRIPT_INVALID_FAMILY_DEFINITION,
   runOrResumeManifestBoundNativeScriptInvalidWorkflow,
 } from "../native-script-invalid/workflow.js";
+import {
+  createManifestBoundReceivePurposeLanguageWorkflow,
+  type ManifestBoundReceivePurposeLanguageWorkflow,
+  RECEIVE_PURPOSE_LANGUAGE_FAMILY_DEFINITION,
+  runOrResumeManifestBoundReceivePurposeLanguageWorkflow,
+} from "../receive-purpose-language/workflow.js";
+import type { ManifestBoundReceivePurposeLanguageWorkflowConfig } from "../receive-purpose-language/workflow.transaction-port.js";
 import {
   createManifestBoundResolvedOutputNonCanonicalWorkflow,
   executeManifestBoundResolvedOutputNonCanonicalWorkflow,
@@ -281,6 +295,18 @@ export const SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_APPLICATION_RECORD =
     execute: runOrResumeManifestBoundScriptIntegrityHashMismatchWorkflow,
   });
 
+export const DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY_APPLICATION_RECORD =
+  bundleCursorFamilyApplicationRecord<
+    "distinctAssetAccumulationLimit",
+    ManifestBoundDistinctAssetAccumulationLimitWorkflowConfig,
+    ManifestBoundDistinctAssetAccumulationLimitWorkflow
+  >(DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY_DEFINITION, {
+    requires: ["replayContext"],
+    constructWorkflow:
+      createManifestBoundDistinctAssetAccumulationLimitWorkflow,
+    execute: runOrResumeManifestBoundDistinctAssetAccumulationLimitWorkflow,
+  });
+
 export const MISSING_SCRIPT_SOURCE_FAMILY_APPLICATION_RECORD =
   bundleCursorFamilyApplicationRecord<
     "missingScriptSource",
@@ -301,6 +327,17 @@ export const UNUSED_REDEEMER_FAMILY_APPLICATION_RECORD =
     requires: ["replayContext"],
     constructWorkflow: createManifestBoundUnusedRedeemerWorkflow,
     execute: runOrResumeManifestBoundUnusedRedeemerWorkflow,
+  });
+
+export const RECEIVE_PURPOSE_LANGUAGE_FAMILY_APPLICATION_RECORD =
+  bundleCursorFamilyApplicationRecord<
+    "receivePurposeLanguage",
+    ManifestBoundReceivePurposeLanguageWorkflowConfig,
+    ManifestBoundReceivePurposeLanguageWorkflow
+  >(RECEIVE_PURPOSE_LANGUAGE_FAMILY_DEFINITION, {
+    requires: ["replayContext"],
+    constructWorkflow: createManifestBoundReceivePurposeLanguageWorkflow,
+    execute: runOrResumeManifestBoundReceivePurposeLanguageWorkflow,
   });
 
 export const MIN_ADA_FAMILY_APPLICATION_RECORD =

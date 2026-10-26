@@ -8,7 +8,7 @@ export const RETENTION_MS_PER_DAY = 24 * 60 * 60 * 1000;
 /**
  * Closed set of L1 state-queue header statuses a store can record. Only
  * `removed` moves the retention decision; every other status is decided by the
- * queue references and the challengeability horizon alone.
+ * queue references, challengeability and promised history retention.
  */
 export const RETENTION_KNOWN_HEADER_STATUSES = Object.freeze([
   "unattested",

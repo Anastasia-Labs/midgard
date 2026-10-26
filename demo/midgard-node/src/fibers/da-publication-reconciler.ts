@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
 
-import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import { Effect, Metric, Option, Schedule } from "effect";
 
 import { readDaHardeningConfig } from "../da/hardening-config.js";
 import {
+  type DaProducerCommitteePeer,
   loadDaProducerPublicationManifestFromEnv,
   publishDaPayloadAnnouncementFromEnv,
   reconcileDaPayloadPeerFromEnv,
@@ -29,6 +29,62 @@ const daPublishReconcilerBacklogGauge = Metric.gauge(
   { description: "Incomplete durable DA peer publication rows" },
 );
 
+/**
+ * How far outbox seeding has reached. The reconciler fiber holds one across
+ * passes, so a restart begins from a fresh one, `{}`.
+ */
+export type DaPublicationSeedState = {
+  /** The peer set and retention window the last seed covered. */
+  key?: string;
+  /** Database time at which the last seed began. */
+  seededFrom?: Date;
+};
+
+/**
+ * A payload whose insert began up to this long before a seed and committed
+ * after it is still seeded by the next one.
+ */
+const SEED_OVERLAP_MS = 60 * 60 * 1_000;
+
+/**
+ * Seeds the peer publication and announcement outboxes. The first seed, and
+ * the first after the peer set or retention window changes, covers the whole
+ * retention window, so a new peer receives every retained payload; later
+ * seeds cover only payloads created since the last one began, less
+ * `SEED_OVERLAP_MS`.
+ */
+export const seedPublicationOutboxes = (
+  state: DaPublicationSeedState,
+  {
+    peers,
+    retentionDays,
+  }: {
+    readonly peers: readonly DaProducerCommitteePeer[];
+    readonly retentionDays: number;
+  },
+): Effect.Effect<void, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const key = JSON.stringify({
+      retentionDays,
+      peers: peers
+        .map(({ peerId, signerIndex }) => `${signerIndex.toString()}:${peerId}`)
+        .sort(),
+    });
+    const since =
+      state.key === key && state.seededFrom !== undefined
+        ? new Date(state.seededFrom.getTime() - SEED_OVERLAP_MS)
+        : undefined;
+    const startedAt = yield* DaPayloadPublicationsDB.databaseNow;
+    yield* DaPayloadPublicationsDB.seedRecentPayloads({
+      peers,
+      retentionDays,
+      ...(since === undefined ? {} : { since }),
+    });
+    yield* DaPayloadAnnouncementsDB.seedRecentPayloads(retentionDays, since);
+    state.key = key;
+    state.seededFrom = startedAt;
+  });
+
 export type DaPublicationReconcileSummary = {
   readonly configured: boolean;
   readonly claimed: number;
@@ -41,12 +97,16 @@ export const reconcileDaPublicationsOnce = ({
   limit = 100,
   leaseOwner = `${hostname()}:${process.pid.toString()}`,
   deploymentIdentityDigest,
+  seed = {},
 }: {
   readonly limit?: number;
   readonly leaseOwner?: string;
   /** Verified manifest ID; absent for a derived contract bundle, which
    * consults no removal (see `owedPayload` in `l1-queue-terminals`). */
   readonly deploymentIdentityDigest?: Buffer;
+  /** Seeding progress carried across passes; without one, every pass
+   * seeds the whole retention window. */
+  readonly seed?: DaPublicationSeedState;
 } = {}): Effect.Effect<
   DaPublicationReconcileSummary,
   DatabaseError,
@@ -71,7 +131,7 @@ export const reconcileDaPublicationsOnce = ({
         backlog: 0,
       };
     }
-    const retentionDays = DA_TRANSPORT_LIMITS.minimumRetentionDays;
+    const retentionDays = manifest.retentionDays;
     const hardeningConfig = readDaHardeningConfig();
     const concurrency = Math.max(
       1,
@@ -80,11 +140,10 @@ export const reconcileDaPublicationsOnce = ({
     const peerLeaseToken = randomUUID();
     // This scan closes the crash window after da_payloads commit but before
     // per-peer outbox rows are seeded, and also seeds newly added peers.
-    yield* DaPayloadPublicationsDB.seedRecentPayloads({
+    yield* seedPublicationOutboxes(seed, {
       peers: manifest.committeePeers,
       retentionDays,
     });
-    yield* DaPayloadAnnouncementsDB.seedRecentPayloads(retentionDays);
     const claimed = yield* DaPayloadPublicationsDB.claimDue({
       retentionDays,
       limit: concurrency,
@@ -269,8 +328,9 @@ export const daPublicationReconcilerFiber = (
     const deploymentIdentityDigest = deploymentIdentityDigestOf(
       yield* ContractDeploymentIdentity,
     );
+    const seed: DaPublicationSeedState = {};
     yield* Effect.repeat(
-      reconcileDaPublicationsOnce({ deploymentIdentityDigest }).pipe(
+      reconcileDaPublicationsOnce({ deploymentIdentityDigest, seed }).pipe(
         Effect.catchAllCause((cause) =>
           Effect.logWarning(
             `DA publication reconciler iteration failed; continuing: ${String(cause)}`,

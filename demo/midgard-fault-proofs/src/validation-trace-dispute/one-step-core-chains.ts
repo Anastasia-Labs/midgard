@@ -16,10 +16,10 @@
  * - group 6 (a map conversion's start): roots, budget, nodes; the roots
  *   write the compacted arguments and result, and the budget adds the
  *   builtin's budget;
- * - groups 7 to 10 (a semantic, BLS final, direct or type failure): two or
- *   three hops that write no facts; group 7's roots go on to the staged
- *   failure hop for a byte-string, string or integer builtin and to the
- *   material hop for the rest.
+ * - groups 7 to 10 and 12 (a semantic, BLS final, direct, type or BLS
+ *   uncompress failure): two or three hops that write no facts; group 7's
+ *   roots go on to the staged failure hop for a byte-string, string or
+ *   integer builtin and to the material hop for the rest.
  *
  * A staged builtin step (arm 31, semantics groups 7 and 8: a byte-string,
  * string or linear integer builtin whose operands do not fit the direct
@@ -152,6 +152,7 @@ const CHAINS = Object.freeze({
   9: ["failureKnown", "failureBudget"],
   10: ["typeFailureRoots", "typeFailureKinds"],
   11: ["caseConstant"],
+  12: ["failureBlsUncompress", "failureBudget"],
 } as const);
 
 export type CekCoreGroup = keyof typeof CHAINS;
@@ -181,9 +182,9 @@ export const isValidationTraceArmHolder = (
 ): holder is ValidationTraceArmHolder =>
   (CEK_CORE_ARM_HOLDERS as readonly string[]).includes(holder);
 
-/** The core groups whose arms are the builtin chains (3 to 10). */
+/** The core groups whose arms are the builtin chains (3 to 10 and 12). */
 export const isCekCoreBuiltinGroup = (group: CekCoreGroup): boolean =>
-  group >= 3 && group <= 10;
+  (group >= 3 && group <= 10) || group === 12;
 
 /** The arm holders of the builtin chains, which a deployment installs
  * apart from the single-hop arms. */

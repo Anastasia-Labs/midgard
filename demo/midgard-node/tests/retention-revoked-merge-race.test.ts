@@ -7,7 +7,10 @@ import { DaPayloadsDB } from "../src/database/index.js";
 import * as MigrationRunner from "../src/database/migrations/runner.js";
 import * as PendingBlockFinalizationsDB from "../src/database/pendingBlockFinalizations.js";
 import { pruneFinalizedBeyondChallengeability } from "../src/database/pendingBlockFinalizations.retrieve-finalized-missing-da-payloads.js";
-import { computeChallengeableCutoff } from "../src/database/retention-policy.js";
+import {
+  computeChallengeableCutoff,
+  computeRetentionCutoff,
+} from "../src/database/retention-policy.js";
 import { insertLiveQueueNode } from "./helpers/queue-terminal-rows.js";
 import { recordMergeJob } from "./history-retention-prune.fixtures.js";
 import { journalFixture } from "./local-mutation-job-abandonment.journal-fixture.js";
@@ -105,6 +108,7 @@ it.each(["pre-rollback", "restored"] as const)(
             yield* insertLiveQueueNode(seeded.headerHash);
             const deleted = yield* DaPayloadsDB.pruneBeyondRetention({
               challengeableCutoff: computeChallengeableCutoff(NOW),
+              retentionCutoff: computeRetentionCutoff(NOW, 15),
               view,
               deploymentIdentityDigest: identity(),
             });
@@ -160,6 +164,7 @@ it("does not hold an unrelated eligible payload for another header's live node",
           );
           const deleted = yield* DaPayloadsDB.pruneBeyondRetention({
             challengeableCutoff: computeChallengeableCutoff(NOW),
+            retentionCutoff: computeRetentionCutoff(NOW, 15),
             view: {
               confirmedHeadHash: deterministicFixtureBytes(
                 "unrelated-confirmed",

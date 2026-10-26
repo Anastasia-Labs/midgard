@@ -47,6 +47,7 @@ export const parseDaProducerPublicationManifest = (
     localPrivateKeySource: requiredLibp2pPrivateKeySource(env),
     threshold,
     requestTimeoutMs: daTransport.limits.request_timeout_ms,
+    retentionDays: daTransport.retention_days,
     maxPayloadBytes: daTransport.limits.max_payload_bytes,
     maxInlineResponseBytes: daTransport.limits.max_inline_response_bytes,
     maxChunkBytes: daTransport.limits.max_chunk_bytes,

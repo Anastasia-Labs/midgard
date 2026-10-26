@@ -2127,13 +2127,23 @@ fn verify_builtin_failure_step(
   arguments: List<cek_builtin_v1.ValueWitnessV1>,
 ) -> Bool {
   // The library derives the builtin value root from `arguments` and checks it
-  // against the pre-state focus (cek-builtin-v1.ak:3878-3886).
+  // against the pre-state focus. Uncompress (59, 66) is proved by the
+  // uncompress failure arm and every other builtin by the known failure arm,
+  // as `cek_semantic_chain.core_group` routes them.
   and {
-    cek_builtin_v1.verify_direct_builtin_failure_v1(
-      tag,
-      pre.focus_root,
-      arguments,
-    ),
+    if tag == 59 || tag == 66 {
+      cek_builtin_v1.verify_bls_uncompress_failure_v1(
+        tag,
+        pre.focus_root,
+        arguments,
+      )
+    } else {
+      cek_builtin_v1.verify_direct_builtin_failure_v1(
+        tag,
+        pre.focus_root,
+        arguments,
+      )
+    },
     builtin_failure_post_is_exact(pre, post, tag, arguments),
   }
 }

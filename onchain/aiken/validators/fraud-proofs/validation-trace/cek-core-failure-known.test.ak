@@ -147,3 +147,25 @@ test failure_known_write_bits_at_the_longest_input() {
 test failure_known_write_bits_fixture_only_at_the_longest_input() {
   built(longest_input_step())
 }
+
+/// Uncompress (59, 66) is the uncompress failure arm's: this arm refuses a G2
+/// uncompress failure that arm proves.
+test failure_known_refuses_an_uncompress_failure() fail {
+  spend(
+    known_failure_step(
+      66,
+      [
+        ConstantValue(
+          ConstantWitnessV1 {
+            type_cbor: #"9f01ff",
+            payload_cbor: cbor.serialise(
+              builtin.b_data(
+                #"8b55de6ec1c1b9c65236f5282637f7e67bf524d7e4187af733ef92700eeb1086f4549c5049937408f31ba2e532c0bd501587ca03a248d9ad945e56a3e3ef50f225a92648ed8a647d159479e20ff13c8ed21188535039c8fec81090af5bef34c3",
+              ),
+            ),
+          },
+        ),
+      ],
+    ),
+  )
+}
