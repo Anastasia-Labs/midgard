@@ -50,6 +50,8 @@ const replayers = {
   unusedRedeemer: FP.UNUSED_REDEEMER_COMPLETE_CANONICAL_REPLAY,
   scriptIntegrityHashMismatch:
     FP.SCRIPT_INTEGRITY_HASH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
+  distinctAssetAccumulationLimit:
+    FP.DISTINCT_ASSET_ACCUMULATION_LIMIT_COMPLETE_CANONICAL_REPLAY,
 };
 const runDirectory = process.env.MIDGARD_WATCHER_JOURNEY_RUN_DIR;
 const stagedPath =
@@ -218,7 +220,8 @@ it
       category === "missingRedeemer" ||
       category === "missingScriptSource" ||
       category === "unusedRedeemer" ||
-      category === "scriptIntegrityHashMismatch"
+      category === "scriptIntegrityHashMismatch" ||
+      category === "distinctAssetAccumulationLimit"
     ) {
       const context = FP.headerDecisionReplayContext(classification.decision);
       const replayer = replayers[category];
@@ -268,10 +271,18 @@ it
                         replayContext: context,
                       },
                     )
-                  : await FP.prepareScriptIntegrityHashMissingArtifact({
-                      evidence,
-                      classification: selected,
-                    });
+                  : category === "distinctAssetAccumulationLimit"
+                    ? await FP.prepareDistinctAssetAccumulationLimitWorkflowArtifact(
+                        {
+                          evidence,
+                          classification: selected,
+                          replayContext: context,
+                        },
+                      )
+                    : await FP.prepareScriptIntegrityHashMissingArtifact({
+                        evidence,
+                        classification: selected,
+                      });
       expect(artifact.headerHash).toBe(block.headerHash);
     }
     await verifyJourneyFixture({
@@ -291,6 +302,7 @@ it.each([
   "missingScriptSource",
   "unusedRedeemer",
   "scriptIntegrityHashMismatch",
+  "distinctAssetAccumulationLimit",
 ] as const)(
   "classifies the %s forced-claim fixture through the full catalogue and its honest successor as healthy",
   async (category) => {

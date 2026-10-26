@@ -6,8 +6,8 @@ Last reviewed: 2026-10-26 (source inventory and installation scope).
 
 ## Source inventory
 
-The 52 source catalogue categories and their 47 watcher installations are listed
-below. The five categories marked "No" are the uninstalled set in
+The 52 source catalogue categories and their 48 watcher installations are listed
+below. The four categories marked "No" are the uninstalled set in
 [`installed-categories.ts`](../../demo/midgard-fault-proofs/src/workflow/installed-categories.ts).
 This is source coverage, not a claim that a particular network has these
 contracts deployed or that every acceptance suite passed on this revision.
@@ -75,7 +75,7 @@ them when you edit it.
 | `00000030` | `unusedRedeemer`                      | Yes               |
 | `00000032` | `executionNativeScriptInvalid`        | No                |
 | `00000033` | `scriptIntegrityHashMismatch`         | Yes               |
-| `00000035` | `distinctAssetAccumulationLimit`      | No                |
+| `00000035` | `distinctAssetAccumulationLimit`      | Yes               |
 | `00000036` | `mintItemNonCanonical`                | Yes               |
 
 Shared verifier directories, including `mpf-chunked-proof`, are not additional

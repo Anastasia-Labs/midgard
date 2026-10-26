@@ -431,6 +431,7 @@ describe("production cursor-family authenticated state V1", () => {
       "missingScriptSource",
       "unusedRedeemer",
       "scriptIntegrityHashMismatch",
+      "distinctAssetAccumulationLimit",
       "canonicalDecodability",
     ]);
     for (const candidate of Object.values(CURSOR_FAMILY_SPECS)) {

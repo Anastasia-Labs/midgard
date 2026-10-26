@@ -10,6 +10,7 @@ import {
   buildCommittedFieldShapeFaultProofContracts,
   buildCorrectionLockValidator,
   buildDaHashPreimageFaultProofContracts,
+  buildDistinctAssetAccumulationLimitFaultProofContracts,
   buildDoubleSpendFaultProofContracts,
   buildDoubleWithdrawFaultProofContracts,
   buildFabricatedDepositFaultProofContracts,
@@ -79,6 +80,7 @@ import { expect } from "vitest";
 import { type CanonicalDecodabilityContracts } from "../../../src/canonical-decodability/contracts.js";
 import { type CommittedFieldShapeContracts } from "../../../src/committed-field-shape/contracts.js";
 import { type DirectPurposeContracts } from "../../../src/direct-purpose-family/family.js";
+import { type DistinctAssetAccumulationLimitContracts } from "../../../src/distinct-asset-accumulation-limit/contracts.js";
 import { type DoubleWithdrawContracts } from "../../../src/double-withdraw/contracts.js";
 import { type InputSetUniquenessContracts } from "../../../src/input-set-uniqueness/contracts.js";
 import { type L2TxMistagContracts } from "../../../src/l2-tx-mistag/contracts.js";
@@ -150,6 +152,7 @@ export const buildMinimalFaultProofContracts = async (
     realWitnessScriptDecoding = false,
     realScriptIntegrityHashMissing = false,
     realScriptIntegrityHashMismatch = false,
+    realDistinctAssetAccumulationLimit = false,
     realWithdrawnReferenceInput = false,
     realMinFee = false,
     realDoubleWithdraw = false,
@@ -207,6 +210,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly realWitnessScriptDecoding?: boolean;
     readonly realScriptIntegrityHashMissing?: boolean;
     readonly realScriptIntegrityHashMismatch?: boolean;
+    readonly realDistinctAssetAccumulationLimit?: boolean;
     readonly realWithdrawnReferenceInput?: boolean;
     readonly realMinFee?: boolean;
     readonly realDoubleWithdraw?: boolean;
@@ -256,6 +260,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly missingScriptSource?: DirectPurposeContracts;
     readonly unusedRedeemer?: DirectPurposeContracts;
     readonly scriptIntegrityHashMismatch?: ScriptIntegrityHashMismatchContracts;
+    readonly distinctAssetAccumulationLimit?: DistinctAssetAccumulationLimitContracts;
     readonly missingSignature?: MissingSignatureContracts;
     readonly nativeScriptInvalid?: NativeScriptInvalidContracts;
     readonly minAda?: MinAdaContracts;
@@ -550,6 +555,10 @@ export const buildMinimalFaultProofContracts = async (
     realScriptIntegrityHashMismatch,
     buildScriptIntegrityHashMismatchFaultProofContracts,
   );
+  const distinctAssetAccumulationLimitContracts = await buildFamilyContracts(
+    realDistinctAssetAccumulationLimit,
+    buildDistinctAssetAccumulationLimitFaultProofContracts,
+  );
   const missingSignatureContracts = await buildFamilyContracts(
     realMissingSignature,
     buildMissingSignatureFaultProofContracts,
@@ -824,6 +833,21 @@ export const buildMinimalFaultProofContracts = async (
           computationThread:
             scriptIntegrityHashMismatchContracts.computationThread,
           fraudProof: scriptIntegrityHashMismatchContracts.fraudProof,
+          hubOraclePolicyId: hubOracle.policyId,
+          stateQueuePolicyId: stateQueue.policyId,
+          fieldPreimageCertificatePolicyId,
+        };
+  const distinctAssetAccumulationLimit:
+    | DistinctAssetAccumulationLimitContracts
+    | undefined =
+    distinctAssetAccumulationLimitContracts === undefined
+      ? undefined
+      : {
+          steps: distinctAssetAccumulationLimitContracts
+            .distinctAssetAccumulationLimit.steps as never,
+          computationThread:
+            distinctAssetAccumulationLimitContracts.computationThread,
+          fraudProof: distinctAssetAccumulationLimitContracts.fraudProof,
           hubOraclePolicyId: hubOracle.policyId,
           stateQueuePolicyId: stateQueue.policyId,
           fieldPreimageCertificatePolicyId,
@@ -1125,7 +1149,9 @@ export const buildMinimalFaultProofContracts = async (
         ? withActiveOperators.fraudProofContracts.mintAuthorization
         : chainFromSteps(mintAuthorization.steps),
     distinctAssetAccumulationLimit:
-      withActiveOperators.fraudProofContracts.distinctAssetAccumulationLimit,
+      distinctAssetAccumulationLimit === undefined
+        ? withActiveOperators.fraudProofContracts.distinctAssetAccumulationLimit
+        : chainFromSteps(distinctAssetAccumulationLimit.steps),
     fieldItemWidthIllegal:
       fieldItemWidthIllegalContracts?.fieldItemWidthIllegal ??
       withActiveOperators.fraudProofContracts.fieldItemWidthIllegal,
@@ -1189,6 +1215,9 @@ export const buildMinimalFaultProofContracts = async (
     ...(scriptIntegrityHashMismatch === undefined
       ? {}
       : { scriptIntegrityHashMismatch }),
+    ...(distinctAssetAccumulationLimit === undefined
+      ? {}
+      : { distinctAssetAccumulationLimit }),
     ...(missingSignature === undefined ? {} : { missingSignature }),
     ...(nativeScriptInvalid === undefined ? {} : { nativeScriptInvalid }),
     ...(minAda === undefined ? {} : { minAda }),

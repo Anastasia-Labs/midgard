@@ -900,16 +900,28 @@ export const DEPLOYMENT_MANIFEST_BASE_REFERENCE_TOKEN_NAMES = Object.freeze({
     "V1FpIntegrityTerminal",
   "V1 fraud-proof distinct-asset-accumulation-limit step-01":
     "V1FpDistinctAssetLimitS01",
-  "V1 fraud-proof distinct-asset-accumulation-limit step-02":
-    "V1FpDistinctAssetLimitS02",
-  "V1 fraud-proof distinct-asset-accumulation-limit step-03":
-    "V1FpDistinctAssetLimitS03",
-  "V1 fraud-proof distinct-asset-accumulation-limit step-04":
-    "V1FpDistinctAssetLimitS04",
-  "V1 fraud-proof distinct-asset-accumulation-limit step-05":
-    "V1FpDistinctAssetLimitS05",
-  "V1 fraud-proof distinct-asset-accumulation-limit step-06":
-    "V1FpDistinctAssetLimitS06",
+  "V1 fraud-proof distinct-asset-accumulation-limit bind-event":
+    "V1FpDistinctAssetLimitBindEvent",
+  "V1 fraud-proof distinct-asset-accumulation-limit bind-pre-state":
+    "V1FpDistinctAssetLimitBindPre",
+  "V1 fraud-proof distinct-asset-accumulation-limit family-entry":
+    "V1FpDistinctAssetLimitEntry",
+  "V1 fraud-proof distinct-asset-accumulation-limit inputs":
+    "V1FpDistinctAssetLimitInputs",
+  "V1 fraud-proof distinct-asset-accumulation-limit inputs-resolve":
+    "V1FpDistinctAssetLimitInResolve",
+  "V1 fraud-proof distinct-asset-accumulation-limit input-rank":
+    "V1FpDistinctAssetLimitInRank",
+  "V1 fraud-proof distinct-asset-accumulation-limit outputs-grammar":
+    "V1FpDistinctAssetLimitOutGram",
+  "V1 fraud-proof distinct-asset-accumulation-limit outputs":
+    "V1FpDistinctAssetLimitOutputs",
+  "V1 fraud-proof distinct-asset-accumulation-limit mint-grammar":
+    "V1FpDistinctAssetLimitMintGram",
+  "V1 fraud-proof distinct-asset-accumulation-limit mint":
+    "V1FpDistinctAssetLimitMint",
+  "V1 fraud-proof distinct-asset-accumulation-limit terminal":
+    "V1FpDistinctAssetLimitTerminal",
   "availability-challenge spending": "AvailabilityChallengeSpend",
   "availability-challenge minting": "AvailabilityChallengeMint",
   "availability-challenge open withdrawal": "AvailabilityChallengeOpenYield",

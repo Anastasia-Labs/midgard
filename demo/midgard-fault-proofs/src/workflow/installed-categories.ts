@@ -13,7 +13,6 @@ export const UNINSTALLED_FRAUD_PROOF_CATEGORIES = Object.freeze([
   "receivePurposeLanguage",
   "executionNativeScriptInvalid",
   "executionSourceScriptDecoding",
-  "distinctAssetAccumulationLimit",
 ] as const satisfies readonly FraudProofCatalogueCategoryName[]);
 
 export type UninstalledFraudProofCategory =

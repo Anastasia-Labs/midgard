@@ -231,6 +231,33 @@ export const SCRIPT_INTEGRITY_HASH_MISMATCH_CURSOR_SPEC = Object.freeze({
 }) satisfies CursorFamilySpec<"scriptIntegrityHashMismatch">;
 
 /**
+ * `distinctAssetAccumulationLimit` binds the event and its pre-state, then
+ * folds asset entries: spent inputs alternate between taking and resolving
+ * pages, and a crossing input is ranked before the terminal; each variable
+ * field certifies before it is walked; an empty output field goes straight to
+ * the mint field's opening; a crossing output, a crossing mint policy, the
+ * exhausted mint field or an empty one ends at the terminal.
+ */
+export const DISTINCT_ASSET_ACCUMULATION_LIMIT_CURSOR_SPEC = Object.freeze({
+  category: "distinctAssetAccumulationLimit",
+  stepCount: 12,
+  successors: Object.freeze({
+    1: Object.freeze([2] as const),
+    2: Object.freeze([3] as const),
+    3: Object.freeze([4] as const),
+    4: Object.freeze([5, 8] as const),
+    5: Object.freeze([6] as const),
+    6: Object.freeze([5, 7, 8] as const),
+    7: Object.freeze([12] as const),
+    8: Object.freeze([8, 9, 10] as const),
+    9: Object.freeze([9, 10, 12] as const),
+    10: Object.freeze([10, 11, 12] as const),
+    11: Object.freeze([11, 12] as const),
+    12: Object.freeze(["proof_token"] as const),
+  }),
+}) satisfies CursorFamilySpec<"distinctAssetAccumulationLimit">;
+
+/**
  * `canonicalDecodability` walks the committed field one bounded batch per
  * step-01 transaction, returning to step 01 while items remain and moving to
  * step 02 with the verdict.
@@ -253,5 +280,6 @@ export const CURSOR_FAMILY_SPECS = Object.freeze({
   missingScriptSource: MISSING_SCRIPT_SOURCE_CURSOR_SPEC,
   unusedRedeemer: UNUSED_REDEEMER_CURSOR_SPEC,
   scriptIntegrityHashMismatch: SCRIPT_INTEGRITY_HASH_MISMATCH_CURSOR_SPEC,
+  distinctAssetAccumulationLimit: DISTINCT_ASSET_ACCUMULATION_LIMIT_CURSOR_SPEC,
   canonicalDecodability: CANONICAL_DECODABILITY_CURSOR_SPEC,
 });
