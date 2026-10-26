@@ -137,7 +137,9 @@ const payloadMatchesType = (
         const bytes = payload.bytes;
         return sameBytes(
           Buffer.from(
-            new TextDecoder("utf-8", { fatal: true }).decode(bytes),
+            new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(
+              bytes,
+            ),
             "utf8",
           ),
           bytes,

@@ -65,6 +65,7 @@ describe("validation-trace dispute funding terms from the signed deployment", ()
         "validationTraceDisputeCekCoreTypeFailureRoots",
         "validationTraceDisputeCekCoreTypeFailureKinds",
         "validationTraceDisputeCekCoreCaseConstant",
+        "validationTraceDisputeCekCoreFailureBlsUncompress",
         "validationTraceDisputeCekCoreSemanticPair",
         "validationTraceDisputeCekCoreSemanticListConstruct",
         "validationTraceDisputeCekCoreSemanticListSelect",

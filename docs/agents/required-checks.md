@@ -1131,6 +1131,33 @@ Golden channel cek-builtin-step-evidence (@al-ft/midgard-validation).
   - `demo/midgard-l1-follower/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
+### `golden:known-builtin-failure-conformance`
+
+Golden channel known-builtin-failure-conformance (@al-ft/midgard-validation).
+
+- Command: `pnpm --dir demo/midgard-validation run fixtures:known-builtin-failure-conformance:check`
+- Fix: `pnpm --dir demo/midgard-validation run fixtures:known-builtin-failure-conformance:sync`
+- Runs on:
+  - `demo/midgard-validation/scripts/generate-known-builtin-failure-conformance-goldens.mjs`
+  - `demo/midgard-validation/tests/fixtures/known-builtin-failure-conformance.arguments.mjs`
+  - `demo/midgard-validation/tests/fixtures/known-builtin-failure-conformance.cases.mjs`
+  - `demo/midgard-validation/tests/fixtures/known-builtin-failure-conformance.crypto-cases.mjs`
+  - `demo/midgard-validation/tests/fixtures/known-builtin-failure-conformance.generated.json`
+  - `onchain/aiken/lib/midgard/known-builtin-failure-conformance-golden.test.ak`
+  - `demo/lucid-midgard/src/**`
+  - `demo/midgard-core/src/**`
+  - `demo/midgard-fault-proofs/src/**`
+  - `demo/midgard-validation/src/**`
+  - `demo/midgard-node/src/**`
+  - `demo/midgard-node-tools/src/**`
+  - `demo/midgard-sdk/src/**`
+  - `demo/midgard-watcher/src/**`
+  - `demo/da-committee-node/src/**`
+  - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
+  - `demo/midgard-l1-follower/src/**`
+- Needs: `node-modules`, `aiken`, `core-dist`
+
 ### `golden:transition-trace-abi`
 
 Golden channel transition-trace-abi (midgard-node).

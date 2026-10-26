@@ -6,12 +6,12 @@ settings:
 
 overrides:
   '@aiken-lang/merkle-patricia-forestry': file:vendor/mpf-1.3.1-midgard.1.tgz
-  '@lucid-evolution/utils@0.2.3>@harmoniclabs/uplc': 2.0.7
-  '@lucid-evolution/utils@0.2.3>@harmoniclabs/plutus-data': 2.0.1
+  '@lucid-evolution/utils@0.2.4>@harmoniclabs/uplc': 2.0.7
+  '@lucid-evolution/utils@0.2.4>@harmoniclabs/plutus-data': 2.0.1
   libsodium-wrappers-sumo@0.7.15>libsodium-sumo: 0.7.15
 
 patchedDependencies:
-  '@lucid-evolution/utils@0.2.3': 73149416d552756c6593e20a600a2778a3148fe76a4607c07c0fa25561cf7dfa
+  '@lucid-evolution/utils@0.2.4': 73149416d552756c6593e20a600a2778a3148fe76a4607c07c0fa25561cf7dfa
   blake2b@2.1.4: 60bf56e2de63ded86d3f87168a61edeabc0fed189a9d3d020a4f334fd2bf2686
   postgres@3.4.9: ccfcb3f12ffaa2fb06c98d3b9ca3ed086a25a7f06856f83641923680bdd5ce13
 
@@ -98,8 +98,8 @@ importers:
         specifier: 11.0.22
         version: 11.0.22
       '@lucid-evolution/lucid':
-        specifier: 0.8.3
-        version: 0.8.3(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(fast-check@4.7.0)
+        specifier: 0.8.5
+        version: 0.8.5(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(fast-check@4.7.0)
       '@lucid-evolution/scalus-uplc':
         specifier: 0.2.2
         version: 0.2.2
@@ -199,8 +199,8 @@ importers:
         specifier: workspace:*
         version: link:../midgard-test-support
       '@lucid-evolution/lucid':
-        specifier: 0.8.3
-        version: 0.8.3(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(fast-check@3.23.2)
+        specifier: 0.8.5
+        version: 0.8.5(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(fast-check@3.23.2)
       '@types/node':
         specifier: ^22.17.0
         version: 22.19.17
@@ -232,8 +232,8 @@ importers:
         specifier: 6.0.11
         version: 6.0.11
       '@lucid-evolution/lucid':
-        specifier: 0.8.3
-        version: 0.8.3(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(fast-check@3.23.2)
+        specifier: 0.8.5
+        version: 0.8.5(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(fast-check@3.23.2)
       '@noble/hashes':
         specifier: ^2.0.1
         version: 2.2.0
@@ -290,8 +290,8 @@ importers:
         specifier: workspace:*
         version: link:../midgard-validation
       '@lucid-evolution/lucid':
-        specifier: 0.8.3
-        version: 0.8.3(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(fast-check@3.23.2)
+        specifier: 0.8.5
+        version: 0.8.5(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(fast-check@3.23.2)
       effect:
         specifier: ^3.14.22
         version: 3.21.2
@@ -309,8 +309,8 @@ importers:
         specifier: 0.2.2
         version: 0.2.2
       '@lucid-evolution/uplc':
-        specifier: 0.4.0
-        version: 0.4.0
+        specifier: 0.5.0
+        version: 0.5.0
       '@types/json-bigint':
         specifier: 1.0.4
         version: 1.0.4
@@ -345,8 +345,8 @@ importers:
         specifier: workspace:*
         version: link:../midgard-sdk
       '@lucid-evolution/lucid':
-        specifier: 0.8.3
-        version: 0.8.3(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(fast-check@4.7.0)
+        specifier: 0.8.5
+        version: 0.8.5(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(fast-check@4.7.0)
       '@noble/hashes':
         specifier: ^2.0.1
         version: 2.2.0
@@ -463,14 +463,14 @@ importers:
         specifier: 11.0.22
         version: 11.0.22
       '@lucid-evolution/lucid':
-        specifier: 0.8.3
-        version: 0.8.3(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(fast-check@4.7.0)
+        specifier: 0.8.5
+        version: 0.8.5(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(fast-check@4.7.0)
       '@lucid-evolution/scalus-uplc':
         specifier: 0.2.2
         version: 0.2.2
       '@lucid-evolution/uplc':
-        specifier: 0.4.0
-        version: 0.4.0
+        specifier: 0.5.0
+        version: 0.5.0
       '@multiformats/multiaddr':
         specifier: 13.0.3
         version: 13.0.3
@@ -644,14 +644,14 @@ importers:
         specifier: 11.0.22
         version: 11.0.22
       '@lucid-evolution/lucid':
-        specifier: 0.8.3
-        version: 0.8.3(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(fast-check@3.23.2)
+        specifier: 0.8.5
+        version: 0.8.5(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(fast-check@3.23.2)
       '@lucid-evolution/scalus-uplc':
         specifier: 0.2.2
         version: 0.2.2
       '@lucid-evolution/uplc':
-        specifier: 0.4.0
-        version: 0.4.0
+        specifier: 0.5.0
+        version: 0.5.0
       '@multiformats/multiaddr':
         specifier: 13.0.3
         version: 13.0.3
@@ -762,8 +762,8 @@ importers:
         specifier: ^0.3.1
         version: 0.3.1
       '@lucid-evolution/uplc':
-        specifier: 0.4.0
-        version: 0.4.0
+        specifier: 0.5.0
+        version: 0.5.0
       '@noble/hashes':
         specifier: ^2.0.1
         version: 2.2.0
@@ -778,8 +778,8 @@ importers:
         specifier: ^0.17.8
         version: 0.17.8(effect@3.21.2)(vitest@5.0.3(@opentelemetry/api@1.9.0)(@types/node@22.19.17)(vite@6.4.2(@types/node@22.19.17)(yaml@2.9.0)))
       '@lucid-evolution/lucid':
-        specifier: 0.8.3
-        version: 0.8.3(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(fast-check@3.23.2)
+        specifier: 0.8.5
+        version: 0.8.5(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(fast-check@3.23.2)
       '@sinclair/typebox':
         specifier: ^0.34.28
         version: 0.34.28
@@ -859,11 +859,11 @@ importers:
         specifier: 2.0.7
         version: 2.0.7(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(@harmoniclabs/plutus-data@2.0.1(@harmoniclabs/cbor@2.0.2))
       '@lucid-evolution/lucid':
-        specifier: 0.8.3
-        version: 0.8.3(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(fast-check@3.23.2)
+        specifier: 0.8.5
+        version: 0.8.5(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(fast-check@3.23.2)
       '@lucid-evolution/uplc':
-        specifier: 0.4.0
-        version: 0.4.0
+        specifier: 0.5.0
+        version: 0.5.0
       '@noble/curves':
         specifier: ^2.2.0
         version: 2.2.0
@@ -935,8 +935,8 @@ importers:
         specifier: 11.0.22
         version: 11.0.22
       '@lucid-evolution/lucid':
-        specifier: 0.8.3
-        version: 0.8.3(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(fast-check@3.23.2)
+        specifier: 0.8.5
+        version: 0.8.5(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(fast-check@3.23.2)
       '@lucid-evolution/scalus-uplc':
         specifier: 0.2.2
         version: 0.2.2
@@ -1522,14 +1522,14 @@ packages:
   '@lucid-evolution/crc8@0.1.8':
     resolution: {integrity: sha512-88+/S6n+sPgxYtG05rvbJDVb8MoFGzckkR3p26uGrzngYzlJGfxBWIzNhVwfI2mgINPo2C5lkZW3GYnfY0MjuA==}
 
-  '@lucid-evolution/lucid@0.8.3':
-    resolution: {integrity: sha512-qIpMfOEAtjXlNT37aAbm34ktyex1aQMh1PxECYlGgo9Ql11m8AawybA/l3OqHHUupC9MstaX4n50rfe519vfpg==}
+  '@lucid-evolution/lucid@0.8.5':
+    resolution: {integrity: sha512-LyszsU/SB0jeFEnrj5EG9RME8SGE/v/IQ6+5M/usnmLzZ6N2NOHRvAESQgNcpRFeYh42eL/AtPZO37nEkU5+LA==}
 
   '@lucid-evolution/plutus@0.2.2':
     resolution: {integrity: sha512-6ScwgfDkQ49a4n8YEqE0fVTOXF22ZXbq4fqkL8fIfQ6o9n+aFKut/CH7aMWxcjA2Y2yyiZPVdczB0pjlZAG8sA==}
 
-  '@lucid-evolution/provider@0.4.3':
-    resolution: {integrity: sha512-4b1YMzXsIIlaLxyTqUNnFNuHt4au4nSkWxx+N0bti7VUFufndfXWgAJEgDMsaUWsS5xI3AAS+nXRuZSyeZjI1A==}
+  '@lucid-evolution/provider@0.4.4':
+    resolution: {integrity: sha512-CLBNeMLcc9AGBg0DtXG+te4QBDl5jvXR0r1SqyLiXFGcE5RYGOVkklu6cchAypLs/ICmOfRhEiuPLWTmHz+zUQ==}
 
   '@lucid-evolution/scalus-uplc@0.2.2':
     resolution: {integrity: sha512-Y1HHMEyJgPvGSV1+Ki/iqTCARw3x6kIB1xwcBTSDma26uzWrOJQG5ug49K0JzkNiFmS8h/ol0xGzgizFQ0s7Vg==}
@@ -1537,17 +1537,17 @@ packages:
   '@lucid-evolution/sign_data@0.2.2':
     resolution: {integrity: sha512-LexofVHP0vTurTVV7QsgNRj/Va2TEphpp5DyH9DifEoSZUlhyiEmnH+KNXY9wCh5EkOrwp0Ht6aTK6W24V26gQ==}
 
-  '@lucid-evolution/tx-graph@0.1.3':
-    resolution: {integrity: sha512-uR4j/BhUbjOgp/neQRhD0h81ZoR6aHppDXdwp5hbLQGudRnxLkDF99+Iy4J9DsMvXemoYQmYMfdqSpnH3bwoZA==}
+  '@lucid-evolution/tx-graph@0.1.4':
+    resolution: {integrity: sha512-Cibje4RpxDxrd/OuN9R/j++3DrcUdE0lRo0bpn2mefb6KW6yR0Z7aV5Ktxkl9AhmK/YO6x9c4qCzqS6g8+S4Sg==}
 
-  '@lucid-evolution/uplc@0.4.0':
-    resolution: {integrity: sha512-ul0Caukqa8GZPGZAPVB6BNUqLu+/oQqtQvJjmJJa0g9ftoFLZvj+YlNviMnRIq7mholSe3paaIDI8cMeRbUdyA==}
+  '@lucid-evolution/uplc@0.5.0':
+    resolution: {integrity: sha512-crQ3AUpLLiHfnyiyWwduX7B2T/ifEJMEGfFLsM8Gkf6R+ycEFPI0ufyFy3g9XCs7OsqNHnOquhgst4DjEX0RtA==}
 
-  '@lucid-evolution/utils@0.2.3':
-    resolution: {integrity: sha512-8mdZnsWQtcGbphw27Fx0fCUSBTbriLvI+36/yV1s+L4ssDO/h3SHQMWAcocP9YInvDNNpIUy2sfiXcaj66Tabw==}
+  '@lucid-evolution/utils@0.2.4':
+    resolution: {integrity: sha512-XEiXVmeIzaeoKnYsEc3vQZrvTR58UM2k/cfli6Ov5QsixBhiwfKFdvTt5fyiwKy3D12lkszbPspLQcDaxMlfRw==}
 
-  '@lucid-evolution/wallet@0.4.3':
-    resolution: {integrity: sha512-lpPWsNktLBQG80l9u3gY+nen3+2hpi2PDOk6/v9fijZX6QPihFK3o2l4+DEeWQ9lizejqAS+QilPNV1g4IE8RQ==}
+  '@lucid-evolution/wallet@0.4.4':
+    resolution: {integrity: sha512-ydLa8XYN9Iga4JNSuEwAkAL1oI6DQwC9PrvlA1z4APzOcq99lHoY5RBq2qof/yM7sVMFrSttsPYCdTZkqjrwOA==}
 
   '@msgpackr-extract/msgpackr-extract-darwin-arm64@3.0.3':
     resolution: {integrity: sha512-QZHtlVgbAdy2zAqNA9Gu1UpIuI8Xvsd1v8ic6B2pZmeFnFcMWiPLfWXh7TVw4eGEZ/C9TH281KwhVoeQUKbyjw==}
@@ -4031,7 +4031,7 @@ snapshots:
 
   '@lucid-evolution/crc8@0.1.8': {}
 
-  '@lucid-evolution/lucid@0.8.3(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(fast-check@3.23.2)':
+  '@lucid-evolution/lucid@0.8.5(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(fast-check@3.23.2)':
     dependencies:
       '@effect/schema': 0.66.16(effect@3.21.2)(fast-check@3.23.2)
       '@emurgo/cardano-message-signing-nodejs': 1.1.0
@@ -4039,19 +4039,19 @@ snapshots:
       '@lucid-evolution/core-types': 0.5.2
       '@lucid-evolution/core-utils': 0.2.2
       '@lucid-evolution/plutus': 0.2.2
-      '@lucid-evolution/provider': 0.4.3(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)
+      '@lucid-evolution/provider': 0.4.4(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)
       '@lucid-evolution/sign_data': 0.2.2
-      '@lucid-evolution/tx-graph': 0.1.3(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)
-      '@lucid-evolution/uplc': 0.4.0
-      '@lucid-evolution/utils': 0.2.3(patch_hash=73149416d552756c6593e20a600a2778a3148fe76a4607c07c0fa25561cf7dfa)(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)
-      '@lucid-evolution/wallet': 0.4.3(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)
+      '@lucid-evolution/tx-graph': 0.1.4(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)
+      '@lucid-evolution/uplc': 0.5.0
+      '@lucid-evolution/utils': 0.2.4(patch_hash=73149416d552756c6593e20a600a2778a3148fe76a4607c07c0fa25561cf7dfa)(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)
+      '@lucid-evolution/wallet': 0.4.4(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)
       effect: 3.21.2
     transitivePeerDependencies:
       - '@harmoniclabs/cbor'
       - '@harmoniclabs/crypto'
       - fast-check
 
-  '@lucid-evolution/lucid@0.8.3(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(fast-check@4.7.0)':
+  '@lucid-evolution/lucid@0.8.5(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(fast-check@4.7.0)':
     dependencies:
       '@effect/schema': 0.66.16(effect@3.21.2)(fast-check@4.7.0)
       '@emurgo/cardano-message-signing-nodejs': 1.1.0
@@ -4059,12 +4059,12 @@ snapshots:
       '@lucid-evolution/core-types': 0.5.2
       '@lucid-evolution/core-utils': 0.2.2
       '@lucid-evolution/plutus': 0.2.2
-      '@lucid-evolution/provider': 0.4.3(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)
+      '@lucid-evolution/provider': 0.4.4(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)
       '@lucid-evolution/sign_data': 0.2.2
-      '@lucid-evolution/tx-graph': 0.1.3(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)
-      '@lucid-evolution/uplc': 0.4.0
-      '@lucid-evolution/utils': 0.2.3(patch_hash=73149416d552756c6593e20a600a2778a3148fe76a4607c07c0fa25561cf7dfa)(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)
-      '@lucid-evolution/wallet': 0.4.3(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)
+      '@lucid-evolution/tx-graph': 0.1.4(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)
+      '@lucid-evolution/uplc': 0.5.0
+      '@lucid-evolution/utils': 0.2.4(patch_hash=73149416d552756c6593e20a600a2778a3148fe76a4607c07c0fa25561cf7dfa)(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)
+      '@lucid-evolution/wallet': 0.4.4(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)
       effect: 3.21.2
     transitivePeerDependencies:
       - '@harmoniclabs/cbor'
@@ -4078,15 +4078,15 @@ snapshots:
       '@lucid-evolution/core-utils': 0.2.2
       '@sinclair/typebox': 0.32.35
 
-  '@lucid-evolution/provider@0.4.3(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)':
+  '@lucid-evolution/provider@0.4.4(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)':
     dependencies:
       '@effect/platform': 0.71.7(effect@3.21.2)
       '@effect/schema': 0.68.27(effect@3.21.2)
       '@lucid-evolution/cml': 0.1.2
       '@lucid-evolution/core-types': 0.5.2
       '@lucid-evolution/core-utils': 0.2.2
-      '@lucid-evolution/utils': 0.2.3(patch_hash=73149416d552756c6593e20a600a2778a3148fe76a4607c07c0fa25561cf7dfa)(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)
-      '@lucid-evolution/wallet': 0.4.3(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)
+      '@lucid-evolution/utils': 0.2.4(patch_hash=73149416d552756c6593e20a600a2778a3148fe76a4607c07c0fa25561cf7dfa)(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)
+      '@lucid-evolution/wallet': 0.4.4(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)
       effect: 3.21.2
     transitivePeerDependencies:
       - '@harmoniclabs/cbor'
@@ -4106,19 +4106,19 @@ snapshots:
       '@lucid-evolution/core-types': 0.5.2
       '@lucid-evolution/core-utils': 0.2.2
 
-  '@lucid-evolution/tx-graph@0.1.3(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)':
+  '@lucid-evolution/tx-graph@0.1.4(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)':
     dependencies:
       '@lucid-evolution/cml': 0.1.2
       '@lucid-evolution/core-types': 0.5.2
       '@lucid-evolution/core-utils': 0.2.2
-      '@lucid-evolution/utils': 0.2.3(patch_hash=73149416d552756c6593e20a600a2778a3148fe76a4607c07c0fa25561cf7dfa)(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)
+      '@lucid-evolution/utils': 0.2.4(patch_hash=73149416d552756c6593e20a600a2778a3148fe76a4607c07c0fa25561cf7dfa)(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)
     transitivePeerDependencies:
       - '@harmoniclabs/cbor'
       - '@harmoniclabs/crypto'
 
-  '@lucid-evolution/uplc@0.4.0': {}
+  '@lucid-evolution/uplc@0.5.0': {}
 
-  '@lucid-evolution/utils@0.2.3(patch_hash=73149416d552756c6593e20a600a2778a3148fe76a4607c07c0fa25561cf7dfa)(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)':
+  '@lucid-evolution/utils@0.2.4(patch_hash=73149416d552756c6593e20a600a2778a3148fe76a4607c07c0fa25561cf7dfa)(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)':
     dependencies:
       '@effect/schema': 0.68.27(effect@3.21.2)
       '@harmoniclabs/plutus-data': 2.0.1(@harmoniclabs/cbor@2.0.2)
@@ -4128,7 +4128,7 @@ snapshots:
       '@lucid-evolution/core-utils': 0.2.2
       '@lucid-evolution/crc8': 0.1.8
       '@lucid-evolution/plutus': 0.2.2
-      '@lucid-evolution/uplc': 0.4.0
+      '@lucid-evolution/uplc': 0.5.0
       '@scure/base': 1.2.6
       bip39: 3.1.0
       cbor-x: 1.6.4
@@ -4137,13 +4137,13 @@ snapshots:
       - '@harmoniclabs/cbor'
       - '@harmoniclabs/crypto'
 
-  '@lucid-evolution/wallet@0.4.3(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)':
+  '@lucid-evolution/wallet@0.4.4(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)':
     dependencies:
       '@lucid-evolution/cml': 0.1.2
       '@lucid-evolution/core-types': 0.5.2
       '@lucid-evolution/core-utils': 0.2.2
       '@lucid-evolution/sign_data': 0.2.2
-      '@lucid-evolution/utils': 0.2.3(patch_hash=73149416d552756c6593e20a600a2778a3148fe76a4607c07c0fa25561cf7dfa)(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)
+      '@lucid-evolution/utils': 0.2.4(patch_hash=73149416d552756c6593e20a600a2778a3148fe76a4607c07c0fa25561cf7dfa)(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)
       bip39: 3.1.0
     transitivePeerDependencies:
       - '@harmoniclabs/cbor'
