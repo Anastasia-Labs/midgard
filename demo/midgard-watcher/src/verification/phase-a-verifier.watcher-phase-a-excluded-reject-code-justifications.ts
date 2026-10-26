@@ -190,7 +190,7 @@ export const WATCHER_PHASE_A_EXCLUDED_REJECT_CODE_JUSTIFICATIONS =
     [RejectCodes.ValueNotPreserved]:
       "Phase B (W25): value preservation needs resolved input values.",
     [RejectCodes.AssetCount]:
-      "Phase B (W25): the distinct-asset bound counts the resolved input values' assets with the outputs and mint, in the validation machine's ValueAndMint order.",
+      "Phase B (W25): the asset entry bound counts every asset step of the validation machine's ValueAndMint walk as one entry, repeated units included: the resolved spend inputs' assets in schedule order, then the outputs', then the mint's.",
     [RejectCodes.PlutusScriptInvalid]:
       "Phase B (W25): script execution runs after inputs, references, and script sources are resolved.",
     [RejectCodes.PlutusEvaluationUnavailable]:
