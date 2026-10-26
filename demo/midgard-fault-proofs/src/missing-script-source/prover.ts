@@ -9,6 +9,7 @@
  * reason is refuted at its own coordinate; and a rejected leaf whose
  * `ScriptSourceMissing` or `RedeemerMissing` reason names a purpose after a
  * purpose whose script has no source. */
+import { decodeMidgardVersionedScriptEnvelope } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 
 import {
@@ -88,20 +89,39 @@ const claimedSpendUnshown = (material: DirectScriptMaterial): boolean => {
 const isSourceMissingReason = (reason: SDK.RejectionReason): boolean =>
   typeof reason === "object" && "ScriptSourceMissing" in reason;
 
+/** A mint item, output or script witness not in the shape the purpose walk
+ * or the source index reads; a decoding or canonicality phase refuses it
+ * first. */
+class UnreadableItem extends Error {}
+
+/** `decode` over one committed item, refused as unreadable when it does not
+ * decode. */
+const readItem = <T>(decode: () => T): T => {
+  try {
+    return decode();
+  } catch (error) {
+    throw new UnreadableItem(
+      `${MISSING_SCRIPT_SOURCE_CATEGORY_LABEL}: ${String(error)}`,
+    );
+  }
+};
+
 /** How a leaf is convicted: through the claimed-only entry (`null`), or
  * through the observed missing source at a coordinate. */
 type MissingScriptSourceRouteChoice = { readonly observed: Coordinate | null };
 
-/** The route that convicts the leaf, or `null` when none does. The claim
- * verdicts are decided without custody: the claim route is planned against
- * the observed context the observed decision would hand over. */
+/** The route that convicts the leaf, or `null` when none does; refused as
+ * unreadable when a mint item or output the purpose walk reads does not
+ * decode. The claim verdicts are decided without custody: the claim route is
+ * planned against the observed context the observed decision would hand
+ * over. */
 const chooseRoute = async (
   inputs: RouteInputs,
   observed?: Coordinate,
 ): Promise<MissingScriptSourceRouteChoice | null> => {
   const { material, evidence } = inputs;
   const reason = material.bound.subject.rejection_reason;
-  const purposes = directPurposeScriptPurposes(material);
+  const purposes = readItem(() => directPurposeScriptPurposes(material));
   if (reason === null || SDK.purposeCoordinateOfReason(reason) === null) {
     if (observed !== undefined) return { observed };
     // Such a reason is admitted at every purpose coordinate or at none.
@@ -251,18 +271,27 @@ const DETECTION_PROVER = "00".repeat(28);
 /**
  * Whether the bound leaf convicts, without planning custody: the observed
  * missing-source coordinate of the convicting route, `null` for the
- * claimed-only route, or `null` overall when no route convicts or a spent
- * or referenced input has no predecessor descriptor.
+ * claimed-only route, or `null` overall when no route convicts, a spent or
+ * referenced input has no predecessor descriptor, or a mint item, output or
+ * script witness the walk reads does not decode.
  */
 export const missingScriptSourceDetection = async (
   material: DirectScriptMaterial,
 ): Promise<MissingScriptSourceRouteChoice | null> => {
   if (!directPurposeInputDescriptorsPresent(material)) return null;
-  const evidence = await buildDirectSourceIndexEvidence(material);
-  return chooseRoute({
-    material,
-    evidence,
-    prover: DETECTION_PROVER,
-    plan: directPurposeFieldPlans(material, DETECTION_PROVER),
-  });
+  try {
+    // The source index reads every script witness.
+    for (const item of material.fields[6]!)
+      readItem(() => decodeMidgardVersionedScriptEnvelope(item));
+    const evidence = await buildDirectSourceIndexEvidence(material);
+    return await chooseRoute({
+      material,
+      evidence,
+      prover: DETECTION_PROVER,
+      plan: directPurposeFieldPlans(material, DETECTION_PROVER),
+    });
+  } catch (error) {
+    if (error instanceof UnreadableItem) return null;
+    throw error;
+  }
 };

@@ -9,6 +9,7 @@
  * reason is recorded after an earlier unused redeemer's audit. A forced
  * admission carries no redeemers, so an admitted forced leaf has none to
  * prove. */
+import { decodeMidgardVersionedScriptEnvelope } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 
 import { directPurposeClaimRoute } from "../direct-purpose-family/claim-route.js";
@@ -53,6 +54,22 @@ export class UnusedRedeemerHonestLeaf extends Error {
   }
 }
 
+/** A mint item, output or script witness not in the shape the walk or the
+ * source index reads; a decoding or canonicality phase refuses it first. */
+class UnreadableItem extends Error {}
+
+/** `decode` over one committed item, refused as unreadable when it does not
+ * decode. */
+const readItem = <T>(decode: () => T): T => {
+  try {
+    return decode();
+  } catch (error) {
+    throw new UnreadableItem(
+      `${UNUSED_REDEEMER_CATEGORY_LABEL}: ${String(error)}`,
+    );
+  }
+};
+
 /** The raw field-8 index a rejected leaf's `UnusedRedeemer` reason names. */
 export const unusedRedeemerLeafIndex = (
   material: DirectScriptMaterial,
@@ -69,7 +86,8 @@ export const unusedRedeemerLeafIndex = (
  * The terminal's final state for the redeemer at `redeemerIndex`, decided
  * without custody: the walk's repeat or range result, else the claimed
  * purpose's source lookup. `null` when the pointer names a spend whose
- * descriptor the bound source cannot show, so no claim verdict is reachable.
+ * descriptor the bound source cannot show, so no claim verdict is reachable;
+ * refused as unreadable when the claimed purpose's item does not decode.
  */
 export const unusedRedeemerFinalState = async (
   inputs: RouteInputs,
@@ -93,7 +111,7 @@ export const unusedRedeemerFinalState = async (
     !directPurposeSpendDescriptorPresent(material, coordinate.index)
   )
     return null;
-  const purpose = directPurposeAt(material, coordinate);
+  const purpose = readItem(() => directPurposeAt(material, coordinate));
   if (purpose === null)
     return { context, claim: { ImpossiblePurpose: { coordinate } } };
   const { selected: source } = await evidence.lookup(purpose.script_hash);
@@ -212,17 +230,26 @@ export const requireConvictingUnusedRedeemerProof = async (
 const DETECTION_PROVER = "00".repeat(28);
 
 /** The convicting redeemer, without planning custody; `null` when none
- * convicts, or when a spent or referenced input has no predecessor
- * descriptor and no walk completes. */
+ * convicts, when a spent or referenced input has no predecessor descriptor
+ * and no walk completes, or when a script witness or a walked purpose's
+ * mint item or output does not decode. */
 export const unusedRedeemerDetection = async (
   material: DirectScriptMaterial,
 ): Promise<UnusedRedeemerRouteChoice | null> => {
   if (!directPurposeInputDescriptorsPresent(material)) return null;
-  const evidence = await buildDirectSourceIndexEvidence(material);
-  return chooseRoute({
-    material,
-    evidence,
-    prover: DETECTION_PROVER,
-    plan: directPurposeFieldPlans(material, DETECTION_PROVER),
-  });
+  try {
+    // The source index reads every script witness.
+    for (const item of material.fields[6]!)
+      readItem(() => decodeMidgardVersionedScriptEnvelope(item));
+    const evidence = await buildDirectSourceIndexEvidence(material);
+    return await chooseRoute({
+      material,
+      evidence,
+      prover: DETECTION_PROVER,
+      plan: directPurposeFieldPlans(material, DETECTION_PROVER),
+    });
+  } catch (error) {
+    if (error instanceof UnreadableItem) return null;
+    throw error;
+  }
 };
