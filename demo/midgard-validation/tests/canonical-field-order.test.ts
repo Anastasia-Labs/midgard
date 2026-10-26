@@ -1,4 +1,8 @@
-import { hashMidgardValidationRejectionReasonV1 } from "@al-ft/midgard-core";
+import {
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  hashMidgardValidationRejectionReasonV1,
+  locateMidgardTransactionFieldItemFault,
+} from "@al-ft/midgard-core";
 import { decodeMidgardFieldPreimage } from "@al-ft/midgard-core/codec";
 import { encodeMidgardForcedTxCanonical } from "@al-ft/midgard-core/codec/forced";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
@@ -61,13 +65,20 @@ const orderRefusal = (fieldIndex: bigint) => ({
   itemIndex: 1n,
 });
 
+// FIWI's fixed-item legality names the same first refused item.
+const fiwiFault = (txCbor: Buffer) =>
+  locateMidgardTransactionFieldItemFault(
+    decodeMidgardNativeTxFullFromCanonicalCbor(txCbor),
+  );
+
 describe("CanonicalDecode field order at the node", () => {
   it("accepts ascending inputs and ascending address witnesses", async () => {
     expect(witnesses).toHaveLength(2);
     await expectSinglePhaseAAcceptance(signed);
-    await expectSinglePhaseAAcceptance(
-      makeNativeTx({ referenceInputs: [low, high] }),
-    );
+    const ascending = makeNativeTx({ referenceInputs: [low, high] });
+    await expectSinglePhaseAAcceptance(ascending);
+    expect(fiwiFault(signed.txCbor)).toBeNull();
+    expect(fiwiFault(ascending.txCbor)).toBeNull();
   });
 
   it.each([
@@ -76,11 +87,16 @@ describe("CanonicalDecode field order at the node", () => {
   ] as const)(
     "refuses descending %s at the second item",
     async (_name, fieldIndex, options) => {
+      const fixture = makeNativeTx({ outputs, ...options });
       const rejection = await expectSinglePhaseARejection(
-        makeNativeTx({ outputs, ...options }),
+        fixture,
         RejectCodes.InvalidFieldType,
       );
       expect(rejection.subject).toStrictEqual(orderRefusal(fieldIndex));
+      expect(fiwiFault(fixture.txCbor)).toEqual({
+        fieldIndex: Number(fieldIndex),
+        itemIndex: 1,
+      });
     },
   );
 
@@ -97,6 +113,10 @@ describe("CanonicalDecode field order at the node", () => {
         RejectCodes.InvalidFieldType,
       );
       expect(rejection.subject).toStrictEqual(orderRefusal(7n));
+      expect(fiwiFault(fixture.txCbor)).toEqual({
+        fieldIndex: 7,
+        itemIndex: 1,
+      });
     },
   );
 });

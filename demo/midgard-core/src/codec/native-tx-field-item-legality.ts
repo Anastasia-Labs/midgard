@@ -5,6 +5,7 @@ import {
   decodeMidgardFieldPreimage,
   midgardFieldStride,
 } from "./native-tx-field-access.decode-midgard-field-array-header-at.js";
+import { midgardFieldItemOrderIsValid } from "./native-tx-field-order.js";
 
 export type MidgardFieldItemFault = Readonly<{
   fieldIndex: number;
@@ -66,9 +67,12 @@ export const midgardFixedFieldItemIsLegal = (
   if (!fixedShapeIsLegal(fieldIndex, item)) return false;
   if (previous === null) return true;
   if (!fixedShapeIsLegal(fieldIndex, previous)) return false;
-  // All fixed fields preserve authored order. Signature execution sorts its
-  // logical work list; the committed witness list may be unordered or repeat.
-  return true;
+  // CanonicalDecode's order rule over the payloads after the two-byte wrapper.
+  return midgardFieldItemOrderIsValid(
+    fieldIndex,
+    previous.subarray(2),
+    item.subarray(2),
+  );
 };
 
 /** Inspect one exact committed field; its grammar failures remain typed. */

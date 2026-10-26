@@ -1,7 +1,6 @@
 use aiken/builtin
-use aiken/crypto.{blake2b_224}
-use aiken/primitive/bytearray
 use midgard/cbor_deserialise
+use midgard/fixed_item_legality_v1
 use midgard/fraud_proofs/native_tx/compact.{
   decode_native_tx_field_preimage_lengths_v1, tx_proof_commitment_v1,
   verify_tx_proof_source_v1,
@@ -181,20 +180,11 @@ pub fn canonical_item_order_is_valid(
       item.item_offset - native_tx_field_access_v1.field_stride(field_index),
       item.item_length,
     )
-    if field_index == 7 {
-      when
-        bytearray.compare(
-          blake2b_224(builtin.slice_bytearray(3, 32, previous)),
-          blake2b_224(builtin.slice_bytearray(3, 32, current)),
-        )
-      is {
-        Less -> True
-        Equal -> bytearray.compare(previous, current) == Less
-        Greater -> False
-      }
-    } else {
-      bytearray.compare(previous, current) != Greater
-    }
+    fixed_item_legality_v1.fixed_payload_follows_v1(
+      field_index,
+      previous,
+      current,
+    )
   }
 }
 

@@ -1,6 +1,7 @@
 use aiken/collection/list
 use aiken/crypto.{blake2b_224}
 use aiken/primitive/bytearray
+use midgard/fixed_item_legality_v1.{fixed_item_is_legal_v1}
 use midgard/fraud_proofs/native_tx/compact.{
   encode_native_tx_body_compact, native_tx_id_for_version,
 }
@@ -26,18 +27,11 @@ use midgard/validation_machine_tests/fixtures_phase_a.{
 }
 use midgard/validation_trace_v1 as vm_trace
 
-fn order_step(field_index: Int, mode: Int, reject: Bool) -> Bool {
-  order_step_via(field_index, mode, reject, False)
-}
-
-/// Modes: 0 sorted, 1 descending, 2 exact repeat; field 7 only: 3 one signer
-/// with ascending item bytes, 4 one signer with descending item bytes.
-fn order_step_via(
-  field_index: Int,
+/// The ordered lists a mode authors: spend/reference inputs and address
+/// witnesses (see `order_step_via` for the modes).
+fn order_lists(
   mode: Int,
-  reject: Bool,
-  chunk_route: Bool,
-) -> Bool {
+) -> Pair<List<MidgardTxInput>, List<MidgardAddressWitness>> {
   let first = MidgardTxInput { tx_id: h_a, output_index: 0 }
   let second = MidgardTxInput { tx_id: h_b, output_index: 0 }
   let inputs = if mode == 0 {
@@ -84,6 +78,23 @@ fn order_step_via(
   } else {
     [address_a, address_a]
   }
+  Pair(inputs, addresses)
+}
+
+fn order_step(field_index: Int, mode: Int, reject: Bool) -> Bool {
+  order_step_via(field_index, mode, reject, False)
+}
+
+/// Modes: 0 sorted, 1 descending, 2 exact repeat; field 7 only: 3 one signer
+/// with ascending item bytes, 4 one signer with descending item bytes.
+fn order_step_via(
+  field_index: Int,
+  mode: Int,
+  reject: Bool,
+  chunk_route: Bool,
+) -> Bool {
+  let first = MidgardTxInput { tx_id: h_a, output_index: 0 }
+  let Pair(inputs, addresses) = order_lists(mode)
   let base = empty_v1_transaction()
   let tx = MidgardTransaction {
     ..base,
@@ -314,4 +325,50 @@ test chunk_route_field_7_duplicate_refuses_acceptance() {
 
 test chunk_route_field_7_sorted_refuses_rejection() {
   !order_step_via(7, 0, True, True)
+}
+
+// Fixed-item legality (the FIWI predicate) and CanonicalDecode give one verdict
+// on the same physical pair.
+
+fn wrapped(item: ByteArray) -> ByteArray {
+  bytearray.push(bytearray.push(item, bytearray.length(item)), 0x58)
+}
+
+fn fixed_legality_matches_machine(field_index: Int, mode: Int) -> Bool {
+  let Pair(inputs, addresses) = order_lists(mode)
+  expect [previous,
+        current] = if field_index == 7 {
+    list.map(addresses, encode_midgard_address_witness)
+  } else {
+    list.map(inputs, encode_midgard_tx_input)
+  }
+  let legal = fixed_item_is_legal_v1(
+    field_index,
+    Some(wrapped(previous)),
+    wrapped(current),
+  )
+  and {
+    order_step(field_index, mode, !legal),
+    !order_step(field_index, mode, legal),
+  }
+}
+
+test fixed_legality_matches_machine_for_descending_witnesses() {
+  fixed_legality_matches_machine(7, 1)
+}
+
+test fixed_legality_matches_machine_for_a_repeated_witness() {
+  fixed_legality_matches_machine(7, 2)
+}
+
+test fixed_legality_matches_machine_for_descending_spend_inputs() {
+  fixed_legality_matches_machine(0, 1)
+}
+
+test fixed_legality_matches_machine_for_sorted_witnesses() {
+  fixed_legality_matches_machine(7, 0)
+}
+
+test fixed_legality_matches_machine_for_repeated_spend_inputs() {
+  fixed_legality_matches_machine(0, 2)
 }
