@@ -166,7 +166,6 @@ export const DEPLOYMENT_PROFILES = {
       "receivePurposeLanguage",
       "unusedScriptWitness",
       "missingScriptSource",
-      "missingRedeemer",
       "unusedRedeemer",
       "executionNativeScriptInvalid",
       "scriptIntegrityHashMismatch",
@@ -476,7 +475,6 @@ export const DEPLOYMENT_PROFILES = {
       "receivePurposeLanguage",
       "unusedScriptWitness",
       "missingScriptSource",
-      "missingRedeemer",
       "unusedRedeemer",
       "executionNativeScriptInvalid",
       "scriptIntegrityHashMismatch",
@@ -488,7 +486,7 @@ export const DEPLOYMENT_PROFILES = {
 export const DEPLOYMENT_PROFILE_DIGESTS = {
   mainnet: "6539647bbd2a9a374c35fd43a1e121a116d8e15c1f5a919f5cb56bfb707c67b8",
   "preprod-public":
-    "88e2a421243436e6f426100e4e08e3ded15183486a903c9003a55be84577d735",
+    "3129e626d114077849db910163532c74c6e19e394ea6dd31673b0f9ee1e73e29",
   "preprod-testing":
     "0e133908fccfa06ad9fc9d5f91411ec298c0305ca5b9e79a38464d53dbe9d8a1",
   "local-devnet-testing":
@@ -496,7 +494,7 @@ export const DEPLOYMENT_PROFILE_DIGESTS = {
   "preprod-emulator-testing":
     "f3ebccc8cad7beaf08a48f488a74e1e85ee961bdf625b0b3d1d8b23bbc334bac",
   "preprod-emulator-curated":
-    "eb933904fdcbd2e514f92273d094012ad0d4eb40ce6074c9af053c790527232a",
+    "ef23af81fee96d338c45f1f57ea5927b17b1aee5211148468b97ee266d22ea96",
 } as const;
 
 export const DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE = {

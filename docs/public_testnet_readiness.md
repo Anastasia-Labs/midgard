@@ -52,10 +52,12 @@ P1 has these limits, and the security claim (R1) must state each one:
   in P1; they move through normal L2 transactions.
 - The L1 order of a forced transaction carries a closed validity range of at
   most 10 minutes (A2).
-- DA payloads carry neither validation-trace states nor the UTxO set. The
-  nine fault-proof families that read validation-trace states are not in the P1
-  catalogue (`excluded_fraud_proof_categories` in
-  [`preprod-public.yaml`](../config/deployments/preprod-public.yaml)). The
+- DA payloads carry neither validation-trace states nor the UTxO set. Of the
+  nine fault-proof families that read validation-trace states, `missingRedeemer`
+  is rebuilt without them and is in the P1 catalogue (owner, 2026-10-25); the
+  other eight are not yet (`excluded_fraud_proof_categories` in
+  [`preprod-public.yaml`](../config/deployments/preprod-public.yaml)) and join
+  as each is rebuilt. The
   Plutus execution dispute (`validationTraceDispute`) is in it (owner,
   2026-10-21); `mainnet` still excludes it.
 - Every party derives ledger state by replaying blocks from genesis. Payloads
@@ -142,8 +144,8 @@ Every contract item merges before the 2026-10-26 freeze.
   must still document the operator-halt and fund-recovery assumptions.
 - **Unsupported scope.** Open. Mark the escape hatch and settlement claims
   unsupported in the public docs and the manifest.
-- **Published catalogue.** In progress. `preprod-public` excludes the
-  validation dispute game and nine families, and computation-thread
+- **Published catalogue.** In progress. `preprod-public` excludes eight
+  families not yet rebuilt without validation-trace states, and computation-thread
   initialization refuses an excluded category (C1). The claim and the manifest
   must list the enabled families.
 - **Threat model and disclosure policy.** In progress. Publish the trust model

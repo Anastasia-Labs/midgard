@@ -108,7 +108,6 @@ excluded_fraud_proof_categories:
   - receivePurposeLanguage
   - unusedScriptWitness
   - missingScriptSource
-  - missingRedeemer
   - unusedRedeemer
   - executionNativeScriptInvalid
   - scriptIntegrityHashMismatch

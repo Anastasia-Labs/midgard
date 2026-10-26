@@ -100,7 +100,6 @@ describe("deployment profile binding", () => {
     expect(excluded).toEqual(
       expect.arrayContaining([
         "unusedRedeemer",
-        "missingRedeemer",
         "missingScriptSource",
         "unusedScriptWitness",
         "scriptIntegrityHashMismatch",
@@ -110,7 +109,8 @@ describe("deployment profile binding", () => {
         "distinctAssetAccumulationLimit",
       ]),
     );
-    expect(excluded).toHaveLength(9);
+    expect(excluded).toHaveLength(8);
+    expect(curated).toContain("missingRedeemer");
     expect(
       DEPLOYMENT_PROFILES.mainnet.excluded_fraud_proof_categories,
     ).toContain("validationTraceDispute");
