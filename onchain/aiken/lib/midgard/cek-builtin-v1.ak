@@ -2,6 +2,7 @@ use aiken/builtin
 use aiken/cbor
 use aiken/collection/list
 use aiken/primitive/bytearray
+use midgard/bls12_381_point_v1
 use midgard/cbor_deserialise
 use midgard/cek_constant_v1
 use midgard/cek_cost_v1
@@ -3697,9 +3698,6 @@ pub fn secp256k1_public_key_is_valid_v1(tag: Int, key: ByteArray) -> Bool {
   }
 }
 
-const bls12_381_field_prime =
-  4002409555221667393417789825735904156556882819939007885332058136124031650490837864442687629129015664037894272559787
-
 fn bls_compressed_coordinate_v1(encoded: ByteArray, offset: Int) -> Int {
   let first = bytearray.at(encoded, offset)
   builtin.bytearray_to_integer(
@@ -3711,14 +3709,11 @@ fn bls_compressed_coordinate_v1(encoded: ByteArray, offset: Int) -> Int {
   )
 }
 
+/// The header of a full-length compressed encoding is invalid: not
+/// compressed, an infinity flag with a sort flag or a nonzero coordinate, or
+/// a coordinate not below p. `tag` is 59 or 66 and the length is already 48 or
+/// 96: `bls_uncompress_failure_v1` is the only caller.
 fn bls_uncompress_header_is_invalid_v1(tag: Int, encoded: ByteArray) -> Bool {
-  let expected_length = if tag == 59 {
-    48
-  } else {
-    expect tag == 66
-    96
-  }
-  expect bytearray.length(encoded) == expected_length
   let first = bytearray.at(encoded, 0)
   let compressed = first >= 128
   let infinity = first % 128 >= 64
@@ -3739,30 +3734,41 @@ fn bls_uncompress_header_is_invalid_v1(tag: Int, encoded: ByteArray) -> Bool {
       }
     } else {
       or {
-        first_coordinate >= bls12_381_field_prime,
-        second_coordinate >= bls12_381_field_prime,
+        first_coordinate >= bls12_381_point_v1.field_prime_v1(),
+        second_coordinate >= bls12_381_point_v1.field_prime_v1(),
       }
     },
   }
 }
 
-fn bls_g1_curve_encoding_is_invalid_v1(encoded: ByteArray) -> Bool {
-  expect bytearray.length(encoded) == 48
-  let first = bytearray.at(encoded, 0)
-  let infinity = first % 128 >= 64
-  if infinity {
+/// A well-formed compressed point that blst still refuses: off the curve, or
+/// outside the prime-order subgroup. The point at infinity is valid. `tag` is
+/// 59 (G1) or 66 (G2), the only arms that call it.
+fn bls_point_encoding_is_invalid_v1(tag: Int, encoded: ByteArray) -> Bool {
+  if bytearray.at(encoded, 0) % 128 >= 64 {
     False
+  } else if tag == 59 {
+    bls12_381_point_v1.g1_point_is_invalid_v1(
+      bls_compressed_coordinate_v1(encoded, 0),
+    )
   } else {
-    let x = bls_compressed_coordinate_v1(encoded, 0)
-    let y_squared = ( x * x * x + 4 ) % bls12_381_field_prime
-    and {
-      y_squared != 0,
-      modular_power_v1(
-        y_squared,
-        ( bls12_381_field_prime - 1 ) / 2,
-        bls12_381_field_prime,
-      ) != 1,
-    }
+    bls12_381_point_v1.g2_point_is_invalid_v1(
+      builtin.bytearray_to_integer(
+        True,
+        builtin.slice_bytearray(48, 48, encoded),
+      ),
+      bls_compressed_coordinate_v1(encoded, 0),
+    )
+  }
+}
+
+/// Uncompress fails on a full-length encoding exactly when its header is
+/// invalid or, the header being valid (`or` stops at the first True), its
+/// point is.
+fn bls_uncompress_encoding_is_invalid_v1(tag: Int, encoded: ByteArray) -> Bool {
+  or {
+    bls_uncompress_header_is_invalid_v1(tag, encoded),
+    bls_point_encoding_is_invalid_v1(tag, encoded),
   }
 }
 
@@ -3861,7 +3867,43 @@ fn malformed_signature_lengths_v1(
 /// two arms exclusive. The readers below fix the type of every position they
 /// read (`constant_type_v1` refuses opaque and Miller-loop values), so each
 /// arm checks only the positions its reader skips.
+/// The failure rule the two direct failure arms prove between them, as
+/// `cek_semantic_chain.core_group` routes arm 38: the uncompress failure arm
+/// (group 12) proves uncompress (59, 66), the known failure arm (group 9)
+/// every other builtin.
 pub fn known_builtin_failure_v1(
+  tag: Int,
+  arguments: List<ValueWitnessV1>,
+) -> Bool {
+  if tag == 59 || tag == 66 {
+    bls_uncompress_failure_v1(tag, arguments)
+  } else {
+    known_builtin_failure_except_uncompress_v1(tag, arguments)
+  }
+}
+
+/// Uncompress (59 G1, 66 G2) fails exactly when its encoding is not 48 (G1)
+/// or 96 (G2) bytes, or its header or its point is invalid. `tag` is 59 or 66:
+/// `core_group` routes only those to the uncompress failure arm.
+pub fn bls_uncompress_failure_v1(
+  tag: Int,
+  arguments: List<ValueWitnessV1>,
+) -> Bool {
+  expect [source] = arguments
+  let encoded = bytes_v1(source)
+  let expected_length = if tag == 59 {
+    48
+  } else {
+    96
+  }
+  if bytearray.length(encoded) != expected_length {
+    True
+  } else {
+    bls_uncompress_encoding_is_invalid_v1(tag, encoded)
+  }
+}
+
+fn known_builtin_failure_except_uncompress_v1(
   tag: Int,
   arguments: List<ValueWitnessV1>,
 ) -> Bool {
@@ -3958,36 +4000,6 @@ pub fn known_builtin_failure_v1(
       constant_type_v1(source) == point_type,
       !bls_scalar_in_bound_v1(value),
     }
-  } else if tag == 59 {
-    expect [source] = arguments
-    let encoded = bytes_v1(source)
-    or {
-      bytearray.length(encoded) != 48,
-      if bytearray.length(encoded) == 48 {
-        let header_invalid = bls_uncompress_header_is_invalid_v1(tag, encoded)
-        or {
-          header_invalid,
-          if !header_invalid {
-            bls_g1_curve_encoding_is_invalid_v1(encoded)
-          } else {
-            False
-          },
-        }
-      } else {
-        False
-      },
-    }
-  } else if tag == 66 {
-    expect [source] = arguments
-    let encoded = bytes_v1(source)
-    or {
-      bytearray.length(encoded) != 96,
-      if bytearray.length(encoded) == 96 {
-        bls_uncompress_header_is_invalid_v1(tag, encoded)
-      } else {
-        False
-      },
-    }
   } else if tag == 73 {
     integer_to_bytes_fails_v1(arguments)
   } else if tag == 79 {
@@ -4033,23 +4045,50 @@ pub fn known_builtin_failure_v1(
   }
 }
 
+/// The value root a direct failure witness commits to, with its argument
+/// count, once its revealed payload is within bounds.
+fn direct_failure_value_root_v1(
+  tag: Int,
+  arguments: List<ValueWitnessV1>,
+) -> Pair<ByteArray, Int> {
+  expect
+    revealed_argument_payload_bytes_v1(arguments) <= max_direct_builtin_revealed_payload_bytes
+  let Pair(arguments_root, arguments_count) = arguments_root_v1(arguments)
+  Pair(
+    cek_proof_v1.hash_builtin_value_v1(tag, 0, arguments_count, arguments_root),
+    arguments_count,
+  )
+}
+
+/// The known failure arm (group 9): every builtin but uncompress.
 pub fn verify_direct_builtin_failure_v1(
   tag: Int,
   builtin_value_root: ByteArray,
   arguments: List<ValueWitnessV1>,
 ) -> Bool {
-  expect
-    revealed_argument_payload_bytes_v1(arguments) <= max_direct_builtin_revealed_payload_bytes
-  let Pair(arguments_root, arguments_count) = arguments_root_v1(arguments)
+  let Pair(value_root, arguments_count) = direct_failure_value_root_v1(
+    tag,
+    arguments,
+  )
   and {
     arguments_count == cek_cost_v1.builtin_argument_count_v1(tag),
-    builtin_value_root == cek_proof_v1.hash_builtin_value_v1(
-      tag,
-      0,
-      arguments_count,
-      arguments_root,
-    ),
-    known_builtin_failure_v1(tag, arguments),
+    builtin_value_root == value_root,
+    known_builtin_failure_except_uncompress_v1(tag, arguments),
+  }
+}
+
+/// The uncompress failure arm (group 12). The argument count needs no arity
+/// check: `bls_uncompress_failure_v1` takes exactly one argument, the arity
+/// of both 59 and 66.
+pub fn verify_bls_uncompress_failure_v1(
+  tag: Int,
+  builtin_value_root: ByteArray,
+  arguments: List<ValueWitnessV1>,
+) -> Bool {
+  let Pair(value_root, _) = direct_failure_value_root_v1(tag, arguments)
+  and {
+    builtin_value_root == value_root,
+    bls_uncompress_failure_v1(tag, arguments),
   }
 }
 

@@ -65,6 +65,7 @@ export const UNMAPPED_VALIDATORS: readonly Readonly<{
       "fraud_proofs/validation_trace/cek_core_builtin_roots.main",
       "fraud_proofs/validation_trace/cek_core_direct_scalar.main",
       "fraud_proofs/validation_trace/cek_core_direct_structured.main",
+      "fraud_proofs/validation_trace/cek_core_failure_bls_uncompress.main",
       "fraud_proofs/validation_trace/cek_core_failure_budget.main",
       "fraud_proofs/validation_trace/cek_core_failure_known.main",
       "fraud_proofs/validation_trace/cek_core_map_start_budget.main",

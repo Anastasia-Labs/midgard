@@ -133,6 +133,7 @@ const ARMS_OF = {
   ],
   6: ["mapStartRoots", "mapStartBudget", "mapStartNodes"],
   9: ["failureKnown", "failureBudget"],
+  12: ["failureBlsUncompress", "failureBudget"],
 } as const satisfies Partial<Record<CekCoreGroup, readonly string[]>>;
 
 type DrivenGroup = keyof typeof ARMS_OF;

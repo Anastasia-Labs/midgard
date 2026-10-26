@@ -1126,7 +1126,7 @@ test tag_011_verdicts() {
         known: False,
       },
       Case {
-        id: 632,
+        id: 645,
         tag: 11,
         arguments: [
           constant(#"9f00ff", #"190100"),
@@ -1174,7 +1174,7 @@ test tag_011_case_0102_refused() fail {
 }
 
 // kind sweep: compacted argument 0
-test tag_011_case_0630_refused() fail {
+test tag_011_case_0643_refused() fail {
   known_builtin_failure_v1(
     11,
     [
@@ -1191,7 +1191,7 @@ test tag_011_case_0630_refused() fail {
 }
 
 // kind sweep: Miller-loop argument 1
-test tag_011_case_0631_refused() fail {
+test tag_011_case_0644_refused() fail {
   known_builtin_failure_v1(
     11,
     [
@@ -1527,7 +1527,7 @@ test tag_012_verdicts() {
         known: False,
       },
       Case {
-        id: 635,
+        id: 648,
         tag: 12,
         arguments: [
           constant(#"9f00ff", #"1b8000000000000000"),
@@ -1539,7 +1539,7 @@ test tag_012_verdicts() {
         known: True,
       },
       Case {
-        id: 636,
+        id: 649,
         tag: 12,
         arguments: [
           constant(#"9f00ff", #"1b8000000000000000"),
@@ -1555,7 +1555,7 @@ test tag_012_verdicts() {
         known: True,
       },
       Case {
-        id: 638,
+        id: 651,
         tag: 12,
         arguments: [
           constant(#"9f00ff", #"1b8000000000000000"),
@@ -1599,7 +1599,7 @@ test tag_012_case_0130_refused() fail {
 }
 
 // kind sweep: opaque argument 0
-test tag_012_case_0633_refused() fail {
+test tag_012_case_0646_refused() fail {
   known_builtin_failure_v1(
     12,
     [
@@ -1613,7 +1613,7 @@ test tag_012_case_0633_refused() fail {
 }
 
 // kind sweep: compacted argument 0
-test tag_012_case_0634_refused() fail {
+test tag_012_case_0647_refused() fail {
   known_builtin_failure_v1(
     12,
     [
@@ -1631,7 +1631,7 @@ test tag_012_case_0634_refused() fail {
 }
 
 // kind sweep: opaque argument 2
-test tag_012_case_0637_refused() fail {
+test tag_012_case_0650_refused() fail {
   known_builtin_failure_v1(
     12,
     [
@@ -1913,7 +1913,7 @@ test tag_014_case_0156_refused() fail {
 }
 
 // kind sweep: opaque argument 0
-test tag_014_case_0639_refused() fail {
+test tag_014_case_0652_refused() fail {
   known_builtin_failure_v1(
     14,
     [
@@ -1926,7 +1926,7 @@ test tag_014_case_0639_refused() fail {
 }
 
 // kind sweep: compacted argument 0
-test tag_014_case_0640_refused() fail {
+test tag_014_case_0653_refused() fail {
   known_builtin_failure_v1(
     14,
     [
@@ -1943,7 +1943,7 @@ test tag_014_case_0640_refused() fail {
 }
 
 // kind sweep: Miller-loop argument 1
-test tag_014_case_0641_refused() fail {
+test tag_014_case_0654_refused() fail {
   known_builtin_failure_v1(
     14,
     [
@@ -1956,7 +1956,7 @@ test tag_014_case_0641_refused() fail {
 }
 
 // kind sweep: compacted argument 1
-test tag_014_case_0642_refused() fail {
+test tag_014_case_0655_refused() fail {
   known_builtin_failure_v1(
     14,
     [
@@ -2327,7 +2327,7 @@ test tag_021_verdicts() {
         known: False,
       },
       Case {
-        id: 645,
+        id: 658,
         tag: 21,
         arguments: [
           constant(
@@ -2492,7 +2492,7 @@ test tag_021_case_0238_refused() fail {
 }
 
 // kind sweep: opaque argument 0
-test tag_021_case_0643_refused() fail {
+test tag_021_case_0656_refused() fail {
   known_builtin_failure_v1(
     21,
     [
@@ -2512,7 +2512,7 @@ test tag_021_case_0643_refused() fail {
 }
 
 // kind sweep: compacted argument 0
-test tag_021_case_0644_refused() fail {
+test tag_021_case_0657_refused() fail {
   known_builtin_failure_v1(
     21,
     [
@@ -2536,7 +2536,7 @@ test tag_021_case_0644_refused() fail {
 }
 
 // kind sweep: opaque argument 2
-test tag_021_case_0646_refused() fail {
+test tag_021_case_0659_refused() fail {
   known_builtin_failure_v1(
     21,
     [
@@ -2745,7 +2745,7 @@ test tag_025_case_0386_refused() fail {
 }
 
 // kind sweep: Miller-loop argument 0
-test tag_025_case_0647_refused() fail {
+test tag_025_case_0660_refused() fail {
   known_builtin_failure_v1(
     25,
     [
@@ -2819,7 +2819,7 @@ test tag_033_case_0164_refused() fail {
 }
 
 // kind sweep: opaque argument 0
-test tag_033_case_0648_refused() fail {
+test tag_033_case_0661_refused() fail {
   known_builtin_failure_v1(
     33,
     [
@@ -2831,7 +2831,7 @@ test tag_033_case_0648_refused() fail {
 }
 
 // kind sweep: Miller-loop argument 0
-test tag_033_case_0649_refused() fail {
+test tag_033_case_0662_refused() fail {
   known_builtin_failure_v1(
     33,
     [
@@ -2843,7 +2843,7 @@ test tag_033_case_0649_refused() fail {
 }
 
 // kind sweep: compacted argument 0
-test tag_033_case_0650_refused() fail {
+test tag_033_case_0663_refused() fail {
   known_builtin_failure_v1(
     33,
     [
@@ -2921,7 +2921,7 @@ test tag_034_case_0172_refused() fail {
 }
 
 // kind sweep: opaque argument 0
-test tag_034_case_0651_refused() fail {
+test tag_034_case_0664_refused() fail {
   known_builtin_failure_v1(
     34,
     [
@@ -2933,7 +2933,7 @@ test tag_034_case_0651_refused() fail {
 }
 
 // kind sweep: Miller-loop argument 0
-test tag_034_case_0652_refused() fail {
+test tag_034_case_0665_refused() fail {
   known_builtin_failure_v1(
     34,
     [
@@ -2945,7 +2945,7 @@ test tag_034_case_0652_refused() fail {
 }
 
 // kind sweep: compacted argument 0
-test tag_034_case_0653_refused() fail {
+test tag_034_case_0666_refused() fail {
   known_builtin_failure_v1(
     34,
     [
@@ -3027,7 +3027,7 @@ test tag_042_case_0180_refused() fail {
 }
 
 // kind sweep: opaque argument 0
-test tag_042_case_0654_refused() fail {
+test tag_042_case_0667_refused() fail {
   known_builtin_failure_v1(
     42,
     [
@@ -3039,7 +3039,7 @@ test tag_042_case_0654_refused() fail {
 }
 
 // kind sweep: Miller-loop argument 0
-test tag_042_case_0655_refused() fail {
+test tag_042_case_0668_refused() fail {
   known_builtin_failure_v1(
     42,
     [
@@ -3051,7 +3051,7 @@ test tag_042_case_0655_refused() fail {
 }
 
 // kind sweep: compacted argument 0
-test tag_042_case_0656_refused() fail {
+test tag_042_case_0669_refused() fail {
   known_builtin_failure_v1(
     42,
     [
@@ -3133,7 +3133,7 @@ test tag_043_case_0188_refused() fail {
 }
 
 // kind sweep: opaque argument 0
-test tag_043_case_0657_refused() fail {
+test tag_043_case_0670_refused() fail {
   known_builtin_failure_v1(
     43,
     [
@@ -3145,7 +3145,7 @@ test tag_043_case_0657_refused() fail {
 }
 
 // kind sweep: Miller-loop argument 0
-test tag_043_case_0658_refused() fail {
+test tag_043_case_0671_refused() fail {
   known_builtin_failure_v1(
     43,
     [
@@ -3157,7 +3157,7 @@ test tag_043_case_0658_refused() fail {
 }
 
 // kind sweep: compacted argument 0
-test tag_043_case_0659_refused() fail {
+test tag_043_case_0672_refused() fail {
   known_builtin_failure_v1(
     43,
     [
@@ -3239,7 +3239,7 @@ test tag_044_case_0196_refused() fail {
 }
 
 // kind sweep: opaque argument 0
-test tag_044_case_0660_refused() fail {
+test tag_044_case_0673_refused() fail {
   known_builtin_failure_v1(
     44,
     [
@@ -3251,7 +3251,7 @@ test tag_044_case_0660_refused() fail {
 }
 
 // kind sweep: Miller-loop argument 0
-test tag_044_case_0661_refused() fail {
+test tag_044_case_0674_refused() fail {
   known_builtin_failure_v1(
     44,
     [
@@ -3263,7 +3263,7 @@ test tag_044_case_0661_refused() fail {
 }
 
 // kind sweep: compacted argument 0
-test tag_044_case_0662_refused() fail {
+test tag_044_case_0675_refused() fail {
   known_builtin_failure_v1(
     44,
     [
@@ -3345,7 +3345,7 @@ test tag_045_case_0204_refused() fail {
 }
 
 // kind sweep: opaque argument 0
-test tag_045_case_0666_refused() fail {
+test tag_045_case_0679_refused() fail {
   known_builtin_failure_v1(
     45,
     [
@@ -3357,7 +3357,7 @@ test tag_045_case_0666_refused() fail {
 }
 
 // kind sweep: Miller-loop argument 0
-test tag_045_case_0667_refused() fail {
+test tag_045_case_0680_refused() fail {
   known_builtin_failure_v1(
     45,
     [
@@ -3369,7 +3369,7 @@ test tag_045_case_0667_refused() fail {
 }
 
 // kind sweep: compacted argument 0
-test tag_045_case_0668_refused() fail {
+test tag_045_case_0681_refused() fail {
   known_builtin_failure_v1(
     45,
     [
@@ -3451,7 +3451,7 @@ test tag_046_case_0212_refused() fail {
 }
 
 // kind sweep: opaque argument 0
-test tag_046_case_0663_refused() fail {
+test tag_046_case_0676_refused() fail {
   known_builtin_failure_v1(
     46,
     [
@@ -3463,7 +3463,7 @@ test tag_046_case_0663_refused() fail {
 }
 
 // kind sweep: Miller-loop argument 0
-test tag_046_case_0664_refused() fail {
+test tag_046_case_0677_refused() fail {
   known_builtin_failure_v1(
     46,
     [
@@ -3475,7 +3475,7 @@ test tag_046_case_0664_refused() fail {
 }
 
 // kind sweep: compacted argument 0
-test tag_046_case_0665_refused() fail {
+test tag_046_case_0678_refused() fail {
   known_builtin_failure_v1(
     46,
     [
@@ -4909,7 +4909,7 @@ test tag_052_verdicts() {
         known: True,
       },
       Case {
-        id: 671,
+        id: 684,
         tag: 52,
         arguments: [
           constant(
@@ -4927,7 +4927,7 @@ test tag_052_verdicts() {
         known: False,
       },
       Case {
-        id: 672,
+        id: 685,
         tag: 52,
         arguments: [
           constant(
@@ -5096,7 +5096,7 @@ test tag_052_case_0264_refused() fail {
 }
 
 // kind sweep: opaque argument 0
-test tag_052_case_0669_refused() fail {
+test tag_052_case_0682_refused() fail {
   known_builtin_failure_v1(
     52,
     [
@@ -5116,7 +5116,7 @@ test tag_052_case_0669_refused() fail {
 }
 
 // kind sweep: compacted argument 0
-test tag_052_case_0670_refused() fail {
+test tag_052_case_0683_refused() fail {
   known_builtin_failure_v1(
     52,
     [
@@ -5140,7 +5140,7 @@ test tag_052_case_0670_refused() fail {
 }
 
 // kind sweep: opaque argument 2
-test tag_052_case_0673_refused() fail {
+test tag_052_case_0686_refused() fail {
   known_builtin_failure_v1(
     52,
     [
@@ -5160,7 +5160,7 @@ test tag_052_case_0673_refused() fail {
 }
 
 // kind sweep: compacted argument 2
-test tag_052_case_0674_refused() fail {
+test tag_052_case_0687_refused() fail {
   known_builtin_failure_v1(
     52,
     [
@@ -5730,7 +5730,7 @@ test tag_053_verdicts() {
         known: True,
       },
       Case {
-        id: 677,
+        id: 690,
         tag: 53,
         arguments: [
           constant(
@@ -5895,7 +5895,7 @@ test tag_053_case_0290_refused() fail {
 }
 
 // kind sweep: opaque argument 0
-test tag_053_case_0675_refused() fail {
+test tag_053_case_0688_refused() fail {
   known_builtin_failure_v1(
     53,
     [
@@ -5912,7 +5912,7 @@ test tag_053_case_0675_refused() fail {
 }
 
 // kind sweep: compacted argument 0
-test tag_053_case_0676_refused() fail {
+test tag_053_case_0689_refused() fail {
   known_builtin_failure_v1(
     53,
     [
@@ -5933,7 +5933,7 @@ test tag_053_case_0676_refused() fail {
 }
 
 // kind sweep: opaque argument 2
-test tag_053_case_0678_refused() fail {
+test tag_053_case_0691_refused() fail {
   known_builtin_failure_v1(
     53,
     [
@@ -5950,7 +5950,7 @@ test tag_053_case_0678_refused() fail {
 }
 
 // kind sweep: compacted argument 2
-test tag_053_case_0679_refused() fail {
+test tag_053_case_0692_refused() fail {
   known_builtin_failure_v1(
     53,
     [
@@ -5974,212 +5974,212 @@ test tag_056_verdicts() {
   verdicts_hold(
     [
       Case {
-        id: 443,
-        tag: 56,
-        arguments: [
-          constant(
-            #"9f00ff",
-            #"c25f58407fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-          ),
-          constant(
-            #"9f09ff",
-            #"583097f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb",
-          ),
-        ],
-        known: False,
-      },
-      Case {
-        id: 444,
-        tag: 56,
-        arguments: [
-          constant(
-            #"9f00ff",
-            #"c25f58407fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-          ),
-          semantic(
-            #"9f09ff",
-            #"0707070707070707070707070707070707070707070707070707070707070707",
-            3,
-            1,
-            18,
-          ),
-        ],
-        known: False,
-      },
-      Case {
-        id: 445,
-        tag: 56,
-        arguments: [
-          constant(
-            #"9f00ff",
-            #"c25f584080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ff",
-          ),
-          constant(
-            #"9f09ff",
-            #"583097f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb",
-          ),
-        ],
-        known: True,
-      },
-      Case {
-        id: 446,
-        tag: 56,
-        arguments: [
-          constant(
-            #"9f00ff",
-            #"c25f584080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ff",
-          ),
-          semantic(
-            #"9f09ff",
-            #"0707070707070707070707070707070707070707070707070707070707070707",
-            3,
-            1,
-            18,
-          ),
-        ],
-        known: True,
-      },
-      Case {
-        id: 447,
-        tag: 56,
-        arguments: [
-          constant(
-            #"9f00ff",
-            #"c35f58407fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-          ),
-          constant(
-            #"9f09ff",
-            #"583097f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb",
-          ),
-        ],
-        known: False,
-      },
-      Case {
-        id: 448,
-        tag: 56,
-        arguments: [
-          constant(
-            #"9f00ff",
-            #"c35f58407fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-          ),
-          semantic(
-            #"9f09ff",
-            #"0707070707070707070707070707070707070707070707070707070707070707",
-            3,
-            1,
-            18,
-          ),
-        ],
-        known: False,
-      },
-      Case {
-        id: 449,
-        tag: 56,
-        arguments: [
-          constant(
-            #"9f00ff",
-            #"c35f584080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ff",
-          ),
-          constant(
-            #"9f09ff",
-            #"583097f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb",
-          ),
-        ],
-        known: True,
-      },
-      Case {
-        id: 450,
-        tag: 56,
-        arguments: [
-          constant(
-            #"9f00ff",
-            #"c35f584080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ff",
-          ),
-          semantic(
-            #"9f09ff",
-            #"0707070707070707070707070707070707070707070707070707070707070707",
-            3,
-            1,
-            18,
-          ),
-        ],
-        known: True,
-      },
-      Case {
-        id: 451,
-        tag: 56,
-        arguments: [
-          constant(#"9f00ff", #"00"),
-          constant(
-            #"9f09ff",
-            #"583097f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb",
-          ),
-        ],
-        known: False,
-      },
-      Case {
-        id: 452,
-        tag: 56,
-        arguments: [
-          constant(#"9f00ff", #"00"),
-          semantic(
-            #"9f09ff",
-            #"0707070707070707070707070707070707070707070707070707070707070707",
-            3,
-            1,
-            18,
-          ),
-        ],
-        known: False,
-      },
-      Case {
-        id: 453,
-        tag: 56,
-        arguments: [
-          constant(#"9f00ff", #"07"),
-          constant(
-            #"9f09ff",
-            #"583097f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb",
-          ),
-        ],
-        known: False,
-      },
-      Case {
-        id: 454,
-        tag: 56,
-        arguments: [
-          constant(#"9f00ff", #"07"),
-          semantic(
-            #"9f09ff",
-            #"0707070707070707070707070707070707070707070707070707070707070707",
-            3,
-            1,
-            18,
-          ),
-        ],
-        known: False,
-      },
-      Case {
-        id: 455,
-        tag: 56,
-        arguments: [
-          constant(
-            #"9f00ff",
-            #"c25f58400100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058320000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ff",
-          ),
-          constant(
-            #"9f09ff",
-            #"583097f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb",
-          ),
-        ],
-        known: True,
-      },
-      Case {
         id: 456,
         tag: 56,
         arguments: [
           constant(
             #"9f00ff",
+            #"c25f58407fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          ),
+          constant(
+            #"9f09ff",
+            #"583097f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb",
+          ),
+        ],
+        known: False,
+      },
+      Case {
+        id: 457,
+        tag: 56,
+        arguments: [
+          constant(
+            #"9f00ff",
+            #"c25f58407fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          ),
+          semantic(
+            #"9f09ff",
+            #"0707070707070707070707070707070707070707070707070707070707070707",
+            3,
+            1,
+            18,
+          ),
+        ],
+        known: False,
+      },
+      Case {
+        id: 458,
+        tag: 56,
+        arguments: [
+          constant(
+            #"9f00ff",
+            #"c25f584080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ff",
+          ),
+          constant(
+            #"9f09ff",
+            #"583097f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb",
+          ),
+        ],
+        known: True,
+      },
+      Case {
+        id: 459,
+        tag: 56,
+        arguments: [
+          constant(
+            #"9f00ff",
+            #"c25f584080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ff",
+          ),
+          semantic(
+            #"9f09ff",
+            #"0707070707070707070707070707070707070707070707070707070707070707",
+            3,
+            1,
+            18,
+          ),
+        ],
+        known: True,
+      },
+      Case {
+        id: 460,
+        tag: 56,
+        arguments: [
+          constant(
+            #"9f00ff",
+            #"c35f58407fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          ),
+          constant(
+            #"9f09ff",
+            #"583097f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb",
+          ),
+        ],
+        known: False,
+      },
+      Case {
+        id: 461,
+        tag: 56,
+        arguments: [
+          constant(
+            #"9f00ff",
+            #"c35f58407fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          ),
+          semantic(
+            #"9f09ff",
+            #"0707070707070707070707070707070707070707070707070707070707070707",
+            3,
+            1,
+            18,
+          ),
+        ],
+        known: False,
+      },
+      Case {
+        id: 462,
+        tag: 56,
+        arguments: [
+          constant(
+            #"9f00ff",
+            #"c35f584080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ff",
+          ),
+          constant(
+            #"9f09ff",
+            #"583097f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb",
+          ),
+        ],
+        known: True,
+      },
+      Case {
+        id: 463,
+        tag: 56,
+        arguments: [
+          constant(
+            #"9f00ff",
+            #"c35f584080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ff",
+          ),
+          semantic(
+            #"9f09ff",
+            #"0707070707070707070707070707070707070707070707070707070707070707",
+            3,
+            1,
+            18,
+          ),
+        ],
+        known: True,
+      },
+      Case {
+        id: 464,
+        tag: 56,
+        arguments: [
+          constant(#"9f00ff", #"00"),
+          constant(
+            #"9f09ff",
+            #"583097f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb",
+          ),
+        ],
+        known: False,
+      },
+      Case {
+        id: 465,
+        tag: 56,
+        arguments: [
+          constant(#"9f00ff", #"00"),
+          semantic(
+            #"9f09ff",
+            #"0707070707070707070707070707070707070707070707070707070707070707",
+            3,
+            1,
+            18,
+          ),
+        ],
+        known: False,
+      },
+      Case {
+        id: 466,
+        tag: 56,
+        arguments: [
+          constant(#"9f00ff", #"07"),
+          constant(
+            #"9f09ff",
+            #"583097f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb",
+          ),
+        ],
+        known: False,
+      },
+      Case {
+        id: 467,
+        tag: 56,
+        arguments: [
+          constant(#"9f00ff", #"07"),
+          semantic(
+            #"9f09ff",
+            #"0707070707070707070707070707070707070707070707070707070707070707",
+            3,
+            1,
+            18,
+          ),
+        ],
+        known: False,
+      },
+      Case {
+        id: 468,
+        tag: 56,
+        arguments: [
+          constant(
+            #"9f00ff",
+            #"c25f58400100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058320000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ff",
+          ),
+          constant(
+            #"9f09ff",
+            #"583097f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb",
+          ),
+        ],
+        known: True,
+      },
+      Case {
+        id: 469,
+        tag: 56,
+        arguments: [
+          constant(
+            #"9f00ff",
             #"c25f58400100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058320000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ff",
           ),
           semantic(
@@ -6193,7 +6193,7 @@ test tag_056_verdicts() {
         known: True,
       },
       Case {
-        id: 457,
+        id: 470,
         tag: 56,
         arguments: [
           constant(
@@ -6208,7 +6208,7 @@ test tag_056_verdicts() {
         known: False,
       },
       Case {
-        id: 458,
+        id: 471,
         tag: 56,
         arguments: [
           constant(
@@ -6223,7 +6223,7 @@ test tag_056_verdicts() {
         known: False,
       },
       Case {
-        id: 459,
+        id: 472,
         tag: 56,
         arguments: [
           constant(
@@ -6235,7 +6235,7 @@ test tag_056_verdicts() {
         known: False,
       },
       Case {
-        id: 683,
+        id: 696,
         tag: 56,
         arguments: [
           constant(
@@ -6257,7 +6257,7 @@ test tag_056_verdicts() {
 }
 
 // byte-string scalar
-test tag_056_case_0460_refused() fail {
+test tag_056_case_0473_refused() fail {
   known_builtin_failure_v1(
     56,
     [
@@ -6271,7 +6271,7 @@ test tag_056_case_0460_refused() fail {
 }
 
 // compacted scalar
-test tag_056_case_0461_refused() fail {
+test tag_056_case_0474_refused() fail {
   known_builtin_failure_v1(
     56,
     [
@@ -6291,7 +6291,7 @@ test tag_056_case_0461_refused() fail {
 }
 
 // one argument
-test tag_056_case_0462_refused() fail {
+test tag_056_case_0475_refused() fail {
   known_builtin_failure_v1(
     56,
     [
@@ -6304,7 +6304,7 @@ test tag_056_case_0462_refused() fail {
 }
 
 // three arguments
-test tag_056_case_0463_refused() fail {
+test tag_056_case_0476_refused() fail {
   known_builtin_failure_v1(
     56,
     [
@@ -6325,7 +6325,7 @@ test tag_056_case_0463_refused() fail {
 }
 
 // kind sweep: opaque argument 0
-test tag_056_case_0680_refused() fail {
+test tag_056_case_0693_refused() fail {
   known_builtin_failure_v1(
     56,
     [
@@ -6341,7 +6341,7 @@ test tag_056_case_0680_refused() fail {
 }
 
 // kind sweep: compacted argument 0
-test tag_056_case_0681_refused() fail {
+test tag_056_case_0694_refused() fail {
   known_builtin_failure_v1(
     56,
     [
@@ -6361,7 +6361,7 @@ test tag_056_case_0681_refused() fail {
 }
 
 // kind sweep: Miller-loop argument 1
-test tag_056_case_0682_refused() fail {
+test tag_056_case_0695_refused() fail {
   known_builtin_failure_v1(
     56,
     [
@@ -6493,7 +6493,7 @@ test tag_059_verdicts() {
             #"5830800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
           ),
         ],
-        known: False,
+        known: True,
       },
       Case {
         id: 398,
@@ -6537,7 +6537,7 @@ test tag_059_verdicts() {
             #"5830800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004",
           ),
         ],
-        known: False,
+        known: True,
       },
       Case {
         id: 402,
@@ -6548,7 +6548,7 @@ test tag_059_verdicts() {
             #"5830800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000005",
           ),
         ],
-        known: False,
+        known: True,
       },
       Case {
         id: 403,
@@ -6561,12 +6561,56 @@ test tag_059_verdicts() {
         ],
         known: True,
       },
+      Case {
+        id: 404,
+        tag: 59,
+        arguments: [
+          constant(
+            #"9f01ff",
+            #"583097f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb",
+          ),
+        ],
+        known: False,
+      },
+      Case {
+        id: 405,
+        tag: 59,
+        arguments: [
+          constant(
+            #"9f01ff",
+            #"5830b7f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb",
+          ),
+        ],
+        known: False,
+      },
+      Case {
+        id: 406,
+        tag: 59,
+        arguments: [
+          constant(
+            #"9f01ff",
+            #"5830af95b8218cbee2f4fa48e6b6f1df4e8ee46fee73c270dba395dad523d10c9b35295ccfc92cf0a9db8a065e16dafbfaad",
+          ),
+        ],
+        known: False,
+      },
+      Case {
+        id: 407,
+        tag: 59,
+        arguments: [
+          constant(
+            #"9f01ff",
+            #"58308a2b9fbe12d0fd644c1e951c5983f40ca78f18e62b3b55a1d8e62cddba3d8a3736719efc37f870af7f436c2671752974",
+          ),
+        ],
+        known: True,
+      },
     ],
   )
 }
 
 // compacted G1 encoding
-test tag_059_case_0404_refused() fail {
+test tag_059_case_0408_refused() fail {
   known_builtin_failure_v1(
     59,
     [
@@ -6582,12 +6626,12 @@ test tag_059_case_0404_refused() fail {
 }
 
 // integer G1 encoding
-test tag_059_case_0405_refused() fail {
+test tag_059_case_0409_refused() fail {
   known_builtin_failure_v1(59, [constant(#"9f00ff", #"01")]) || True
 }
 
 // kind sweep: opaque argument 0
-test tag_059_case_0688_refused() fail {
+test tag_059_case_0701_refused() fail {
   known_builtin_failure_v1(
     59,
     [
@@ -6599,7 +6643,7 @@ test tag_059_case_0688_refused() fail {
 }
 
 // kind sweep: Miller-loop argument 0
-test tag_059_case_0689_refused() fail {
+test tag_059_case_0702_refused() fail {
   known_builtin_failure_v1(
     59,
     [
@@ -6614,7 +6658,7 @@ test tag_060_verdicts() {
   verdicts_hold(
     [
       Case {
-        id: 421,
+        id: 434,
         tag: 60,
         arguments: [
           constant(#"9f01ff", #"43000000"),
@@ -6623,7 +6667,7 @@ test tag_060_verdicts() {
         known: False,
       },
       Case {
-        id: 422,
+        id: 435,
         tag: 60,
         arguments: [
           semantic(
@@ -6638,13 +6682,13 @@ test tag_060_verdicts() {
         known: False,
       },
       Case {
-        id: 423,
+        id: 436,
         tag: 60,
         arguments: [constant(#"9f02ff", #"416d"), constant(#"9f01ff", #"40")],
         known: False,
       },
       Case {
-        id: 424,
+        id: 437,
         tag: 60,
         arguments: [
           constant(#"9f01ff", #"43000000"),
@@ -6656,7 +6700,7 @@ test tag_060_verdicts() {
         known: False,
       },
       Case {
-        id: 425,
+        id: 438,
         tag: 60,
         arguments: [
           semantic(
@@ -6674,7 +6718,7 @@ test tag_060_verdicts() {
         known: False,
       },
       Case {
-        id: 426,
+        id: 439,
         tag: 60,
         arguments: [
           constant(#"9f02ff", #"416d"),
@@ -6686,7 +6730,7 @@ test tag_060_verdicts() {
         known: False,
       },
       Case {
-        id: 427,
+        id: 440,
         tag: 60,
         arguments: [
           constant(#"9f01ff", #"43000000"),
@@ -6698,7 +6742,7 @@ test tag_060_verdicts() {
         known: True,
       },
       Case {
-        id: 428,
+        id: 441,
         tag: 60,
         arguments: [
           semantic(
@@ -6716,7 +6760,7 @@ test tag_060_verdicts() {
         known: True,
       },
       Case {
-        id: 429,
+        id: 442,
         tag: 60,
         arguments: [
           constant(#"9f02ff", #"416d"),
@@ -6732,7 +6776,7 @@ test tag_060_verdicts() {
 }
 
 // compacted domain
-test tag_060_case_0430_refused() fail {
+test tag_060_case_0443_refused() fail {
   known_builtin_failure_v1(
     60,
     [
@@ -6749,7 +6793,7 @@ test tag_060_case_0430_refused() fail {
 }
 
 // opaque message, long domain
-test tag_060_case_0431_refused() fail {
+test tag_060_case_0444_refused() fail {
   known_builtin_failure_v1(
     60,
     [
@@ -6765,7 +6809,7 @@ test tag_060_case_0431_refused() fail {
 }
 
 // kind sweep: Miller-loop argument 1
-test tag_060_case_0690_refused() fail {
+test tag_060_case_0703_refused() fail {
   known_builtin_failure_v1(
     60,
     [
@@ -6781,212 +6825,212 @@ test tag_063_verdicts() {
   verdicts_hold(
     [
       Case {
-        id: 464,
-        tag: 63,
-        arguments: [
-          constant(
-            #"9f00ff",
-            #"c25f58407fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-          ),
-          constant(
-            #"9f0aff",
-            #"5f584093e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc510515820c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8ff",
-          ),
-        ],
-        known: False,
-      },
-      Case {
-        id: 465,
-        tag: 63,
-        arguments: [
-          constant(
-            #"9f00ff",
-            #"c25f58407fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-          ),
-          semantic(
-            #"9f0aff",
-            #"0707070707070707070707070707070707070707070707070707070707070707",
-            3,
-            1,
-            18,
-          ),
-        ],
-        known: False,
-      },
-      Case {
-        id: 466,
-        tag: 63,
-        arguments: [
-          constant(
-            #"9f00ff",
-            #"c25f584080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ff",
-          ),
-          constant(
-            #"9f0aff",
-            #"5f584093e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc510515820c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8ff",
-          ),
-        ],
-        known: True,
-      },
-      Case {
-        id: 467,
-        tag: 63,
-        arguments: [
-          constant(
-            #"9f00ff",
-            #"c25f584080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ff",
-          ),
-          semantic(
-            #"9f0aff",
-            #"0707070707070707070707070707070707070707070707070707070707070707",
-            3,
-            1,
-            18,
-          ),
-        ],
-        known: True,
-      },
-      Case {
-        id: 468,
-        tag: 63,
-        arguments: [
-          constant(
-            #"9f00ff",
-            #"c35f58407fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-          ),
-          constant(
-            #"9f0aff",
-            #"5f584093e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc510515820c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8ff",
-          ),
-        ],
-        known: False,
-      },
-      Case {
-        id: 469,
-        tag: 63,
-        arguments: [
-          constant(
-            #"9f00ff",
-            #"c35f58407fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-          ),
-          semantic(
-            #"9f0aff",
-            #"0707070707070707070707070707070707070707070707070707070707070707",
-            3,
-            1,
-            18,
-          ),
-        ],
-        known: False,
-      },
-      Case {
-        id: 470,
-        tag: 63,
-        arguments: [
-          constant(
-            #"9f00ff",
-            #"c35f584080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ff",
-          ),
-          constant(
-            #"9f0aff",
-            #"5f584093e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc510515820c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8ff",
-          ),
-        ],
-        known: True,
-      },
-      Case {
-        id: 471,
-        tag: 63,
-        arguments: [
-          constant(
-            #"9f00ff",
-            #"c35f584080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ff",
-          ),
-          semantic(
-            #"9f0aff",
-            #"0707070707070707070707070707070707070707070707070707070707070707",
-            3,
-            1,
-            18,
-          ),
-        ],
-        known: True,
-      },
-      Case {
-        id: 472,
-        tag: 63,
-        arguments: [
-          constant(#"9f00ff", #"00"),
-          constant(
-            #"9f0aff",
-            #"5f584093e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc510515820c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8ff",
-          ),
-        ],
-        known: False,
-      },
-      Case {
-        id: 473,
-        tag: 63,
-        arguments: [
-          constant(#"9f00ff", #"00"),
-          semantic(
-            #"9f0aff",
-            #"0707070707070707070707070707070707070707070707070707070707070707",
-            3,
-            1,
-            18,
-          ),
-        ],
-        known: False,
-      },
-      Case {
-        id: 474,
-        tag: 63,
-        arguments: [
-          constant(#"9f00ff", #"07"),
-          constant(
-            #"9f0aff",
-            #"5f584093e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc510515820c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8ff",
-          ),
-        ],
-        known: False,
-      },
-      Case {
-        id: 475,
-        tag: 63,
-        arguments: [
-          constant(#"9f00ff", #"07"),
-          semantic(
-            #"9f0aff",
-            #"0707070707070707070707070707070707070707070707070707070707070707",
-            3,
-            1,
-            18,
-          ),
-        ],
-        known: False,
-      },
-      Case {
-        id: 476,
-        tag: 63,
-        arguments: [
-          constant(
-            #"9f00ff",
-            #"c25f58400100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058320000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ff",
-          ),
-          constant(
-            #"9f0aff",
-            #"5f584093e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc510515820c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8ff",
-          ),
-        ],
-        known: True,
-      },
-      Case {
         id: 477,
         tag: 63,
         arguments: [
           constant(
             #"9f00ff",
+            #"c25f58407fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          ),
+          constant(
+            #"9f0aff",
+            #"5f584093e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc510515820c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8ff",
+          ),
+        ],
+        known: False,
+      },
+      Case {
+        id: 478,
+        tag: 63,
+        arguments: [
+          constant(
+            #"9f00ff",
+            #"c25f58407fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          ),
+          semantic(
+            #"9f0aff",
+            #"0707070707070707070707070707070707070707070707070707070707070707",
+            3,
+            1,
+            18,
+          ),
+        ],
+        known: False,
+      },
+      Case {
+        id: 479,
+        tag: 63,
+        arguments: [
+          constant(
+            #"9f00ff",
+            #"c25f584080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ff",
+          ),
+          constant(
+            #"9f0aff",
+            #"5f584093e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc510515820c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8ff",
+          ),
+        ],
+        known: True,
+      },
+      Case {
+        id: 480,
+        tag: 63,
+        arguments: [
+          constant(
+            #"9f00ff",
+            #"c25f584080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ff",
+          ),
+          semantic(
+            #"9f0aff",
+            #"0707070707070707070707070707070707070707070707070707070707070707",
+            3,
+            1,
+            18,
+          ),
+        ],
+        known: True,
+      },
+      Case {
+        id: 481,
+        tag: 63,
+        arguments: [
+          constant(
+            #"9f00ff",
+            #"c35f58407fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          ),
+          constant(
+            #"9f0aff",
+            #"5f584093e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc510515820c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8ff",
+          ),
+        ],
+        known: False,
+      },
+      Case {
+        id: 482,
+        tag: 63,
+        arguments: [
+          constant(
+            #"9f00ff",
+            #"c35f58407fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          ),
+          semantic(
+            #"9f0aff",
+            #"0707070707070707070707070707070707070707070707070707070707070707",
+            3,
+            1,
+            18,
+          ),
+        ],
+        known: False,
+      },
+      Case {
+        id: 483,
+        tag: 63,
+        arguments: [
+          constant(
+            #"9f00ff",
+            #"c35f584080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ff",
+          ),
+          constant(
+            #"9f0aff",
+            #"5f584093e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc510515820c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8ff",
+          ),
+        ],
+        known: True,
+      },
+      Case {
+        id: 484,
+        tag: 63,
+        arguments: [
+          constant(
+            #"9f00ff",
+            #"c35f584080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ff",
+          ),
+          semantic(
+            #"9f0aff",
+            #"0707070707070707070707070707070707070707070707070707070707070707",
+            3,
+            1,
+            18,
+          ),
+        ],
+        known: True,
+      },
+      Case {
+        id: 485,
+        tag: 63,
+        arguments: [
+          constant(#"9f00ff", #"00"),
+          constant(
+            #"9f0aff",
+            #"5f584093e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc510515820c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8ff",
+          ),
+        ],
+        known: False,
+      },
+      Case {
+        id: 486,
+        tag: 63,
+        arguments: [
+          constant(#"9f00ff", #"00"),
+          semantic(
+            #"9f0aff",
+            #"0707070707070707070707070707070707070707070707070707070707070707",
+            3,
+            1,
+            18,
+          ),
+        ],
+        known: False,
+      },
+      Case {
+        id: 487,
+        tag: 63,
+        arguments: [
+          constant(#"9f00ff", #"07"),
+          constant(
+            #"9f0aff",
+            #"5f584093e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc510515820c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8ff",
+          ),
+        ],
+        known: False,
+      },
+      Case {
+        id: 488,
+        tag: 63,
+        arguments: [
+          constant(#"9f00ff", #"07"),
+          semantic(
+            #"9f0aff",
+            #"0707070707070707070707070707070707070707070707070707070707070707",
+            3,
+            1,
+            18,
+          ),
+        ],
+        known: False,
+      },
+      Case {
+        id: 489,
+        tag: 63,
+        arguments: [
+          constant(
+            #"9f00ff",
+            #"c25f58400100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058320000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ff",
+          ),
+          constant(
+            #"9f0aff",
+            #"5f584093e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc510515820c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8ff",
+          ),
+        ],
+        known: True,
+      },
+      Case {
+        id: 490,
+        tag: 63,
+        arguments: [
+          constant(
+            #"9f00ff",
             #"c25f58400100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058320000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ff",
           ),
           semantic(
@@ -7000,7 +7044,7 @@ test tag_063_verdicts() {
         known: True,
       },
       Case {
-        id: 478,
+        id: 491,
         tag: 63,
         arguments: [
           constant(
@@ -7015,7 +7059,7 @@ test tag_063_verdicts() {
         known: False,
       },
       Case {
-        id: 479,
+        id: 492,
         tag: 63,
         arguments: [
           constant(
@@ -7030,7 +7074,7 @@ test tag_063_verdicts() {
         known: False,
       },
       Case {
-        id: 480,
+        id: 493,
         tag: 63,
         arguments: [
           constant(
@@ -7042,7 +7086,7 @@ test tag_063_verdicts() {
         known: False,
       },
       Case {
-        id: 687,
+        id: 700,
         tag: 63,
         arguments: [
           constant(
@@ -7064,7 +7108,7 @@ test tag_063_verdicts() {
 }
 
 // byte-string scalar
-test tag_063_case_0481_refused() fail {
+test tag_063_case_0494_refused() fail {
   known_builtin_failure_v1(
     63,
     [
@@ -7078,7 +7122,7 @@ test tag_063_case_0481_refused() fail {
 }
 
 // compacted scalar
-test tag_063_case_0482_refused() fail {
+test tag_063_case_0495_refused() fail {
   known_builtin_failure_v1(
     63,
     [
@@ -7098,7 +7142,7 @@ test tag_063_case_0482_refused() fail {
 }
 
 // one argument
-test tag_063_case_0483_refused() fail {
+test tag_063_case_0496_refused() fail {
   known_builtin_failure_v1(
     63,
     [
@@ -7111,7 +7155,7 @@ test tag_063_case_0483_refused() fail {
 }
 
 // three arguments
-test tag_063_case_0484_refused() fail {
+test tag_063_case_0497_refused() fail {
   known_builtin_failure_v1(
     63,
     [
@@ -7132,7 +7176,7 @@ test tag_063_case_0484_refused() fail {
 }
 
 // kind sweep: opaque argument 0
-test tag_063_case_0684_refused() fail {
+test tag_063_case_0697_refused() fail {
   known_builtin_failure_v1(
     63,
     [
@@ -7148,7 +7192,7 @@ test tag_063_case_0684_refused() fail {
 }
 
 // kind sweep: compacted argument 0
-test tag_063_case_0685_refused() fail {
+test tag_063_case_0698_refused() fail {
   known_builtin_failure_v1(
     63,
     [
@@ -7168,7 +7212,7 @@ test tag_063_case_0685_refused() fail {
 }
 
 // kind sweep: Miller-loop argument 1
-test tag_063_case_0686_refused() fail {
+test tag_063_case_0699_refused() fail {
   known_builtin_failure_v1(
     63,
     [
@@ -7187,13 +7231,13 @@ test tag_066_verdicts() {
   verdicts_hold(
     [
       Case {
-        id: 406,
+        id: 410,
         tag: 66,
         arguments: [constant(#"9f01ff", #"40")],
         known: True,
       },
       Case {
-        id: 407,
+        id: 411,
         tag: 66,
         arguments: [
           constant(
@@ -7204,7 +7248,7 @@ test tag_066_verdicts() {
         known: True,
       },
       Case {
-        id: 408,
+        id: 412,
         tag: 66,
         arguments: [
           constant(
@@ -7215,7 +7259,7 @@ test tag_066_verdicts() {
         known: True,
       },
       Case {
-        id: 409,
+        id: 413,
         tag: 66,
         arguments: [
           constant(
@@ -7226,7 +7270,7 @@ test tag_066_verdicts() {
         known: True,
       },
       Case {
-        id: 410,
+        id: 414,
         tag: 66,
         arguments: [
           constant(
@@ -7237,7 +7281,7 @@ test tag_066_verdicts() {
         known: True,
       },
       Case {
-        id: 411,
+        id: 415,
         tag: 66,
         arguments: [
           constant(
@@ -7248,7 +7292,7 @@ test tag_066_verdicts() {
         known: False,
       },
       Case {
-        id: 412,
+        id: 416,
         tag: 66,
         arguments: [
           constant(
@@ -7259,7 +7303,7 @@ test tag_066_verdicts() {
         known: True,
       },
       Case {
-        id: 413,
+        id: 417,
         tag: 66,
         arguments: [
           constant(
@@ -7270,7 +7314,7 @@ test tag_066_verdicts() {
         known: True,
       },
       Case {
-        id: 414,
+        id: 418,
         tag: 66,
         arguments: [
           constant(
@@ -7281,7 +7325,7 @@ test tag_066_verdicts() {
         known: True,
       },
       Case {
-        id: 415,
+        id: 419,
         tag: 66,
         arguments: [
           constant(
@@ -7292,7 +7336,7 @@ test tag_066_verdicts() {
         known: True,
       },
       Case {
-        id: 416,
+        id: 420,
         tag: 66,
         arguments: [
           constant(
@@ -7300,10 +7344,10 @@ test tag_066_verdicts() {
             #"5f58408000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000011a0111ea397fe69a4b1ba7b6434bacd7582064774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaaaff",
           ),
         ],
-        known: False,
+        known: True,
       },
       Case {
-        id: 417,
+        id: 421,
         tag: 66,
         arguments: [
           constant(
@@ -7311,10 +7355,10 @@ test tag_066_verdicts() {
             #"5f58409a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaaa0000000000000000000000000000000058200000000000000000000000000000000000000000000000000000000000000001ff",
           ),
         ],
-        known: False,
+        known: True,
       },
       Case {
-        id: 418,
+        id: 422,
         tag: 66,
         arguments: [
           constant(
@@ -7322,14 +7366,113 @@ test tag_066_verdicts() {
             #"5f58408000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000058200000000000000000000000000000000000000000000000000000000000000001ff",
           ),
         ],
+        known: True,
+      },
+      Case {
+        id: 423,
+        tag: 66,
+        arguments: [
+          constant(
+            #"9f01ff",
+            #"5f58408000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058200000000000000000000000000000000000000000000000000000000000000001ff",
+          ),
+        ],
+        known: True,
+      },
+      Case {
+        id: 424,
+        tag: 66,
+        arguments: [
+          constant(
+            #"9f01ff",
+            #"5f58408000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000058200000000000000000000000000000000000000000000000000000000000000002ff",
+          ),
+        ],
+        known: True,
+      },
+      Case {
+        id: 425,
+        tag: 66,
+        arguments: [
+          constant(
+            #"9f01ff",
+            #"5f584093e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc510515820c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8ff",
+          ),
+        ],
         known: False,
+      },
+      Case {
+        id: 426,
+        tag: 66,
+        arguments: [
+          constant(
+            #"9f01ff",
+            #"5f5840b3e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc510515820c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8ff",
+          ),
+        ],
+        known: False,
+      },
+      Case {
+        id: 427,
+        tag: 66,
+        arguments: [
+          constant(
+            #"9f01ff",
+            #"5f5840b068ad1be382009ac2dce123ec62dca8337d6b93b909b3ee52e31cb9e4098d1b56d596bf3c08166c7b46cb3aa85c23381380055ab9f1a87786f2508f3e4ce5ca5820a5abcdae0a80141ee8ccc3626311e0a53be5d873fa964fd85ad56771f2984579ff",
+          ),
+        ],
+        known: False,
+      },
+      Case {
+        id: 428,
+        tag: 66,
+        arguments: [
+          constant(
+            #"9f01ff",
+            #"5f58408b55de6ec1c1b9c65236f5282637f7e67bf524d7e4187af733ef92700eeb1086f4549c5049937408f31ba2e532c0bd501587ca03a248d9ad945e56a3e3ef50f2582025a92648ed8a647d159479e20ff13c8ed21188535039c8fec81090af5bef34c3ff",
+          ),
+        ],
+        known: True,
+      },
+      Case {
+        id: 429,
+        tag: 66,
+        arguments: [
+          constant(
+            #"9f01ff",
+            #"5f5840937f9ebde4497e13a660d4e184d974218b21d18c9d578ab770360ad3fe41a4217e4ac78c554e05bfd2fc02336b84d90505974a366247ac98e953e9afec7f10dd582012080a46e6f7dede942d6265721ee3c807009433d1bc69bf82d69569713244a7ff",
+          ),
+        ],
+        known: True,
+      },
+      Case {
+        id: 430,
+        tag: 66,
+        arguments: [
+          constant(
+            #"9f01ff",
+            #"5f58408000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020e31aad2f4b199f7f87e64336926483158202e55a89b142b798084e1ac133c07736855bf683690d5fa5f87e90a1b49384db0ff",
+          ),
+        ],
+        known: True,
+      },
+      Case {
+        id: 431,
+        tag: 66,
+        arguments: [
+          constant(
+            #"9f01ff",
+            #"5f5840800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000013012ee46c892815c3ee133c0eb6ce17085820f7aced12c82cb0a7404ad8ce28e77111a8fe9d10df4f22446c901e8f26165e6aff",
+          ),
+        ],
+        known: True,
       },
     ],
   )
 }
 
 // compacted G2 encoding
-test tag_066_case_0419_refused() fail {
+test tag_066_case_0432_refused() fail {
   known_builtin_failure_v1(
     66,
     [
@@ -7345,7 +7488,7 @@ test tag_066_case_0419_refused() fail {
 }
 
 // Miller-loop G2 encoding
-test tag_066_case_0420_refused() fail {
+test tag_066_case_0433_refused() fail {
   known_builtin_failure_v1(
     66,
     [
@@ -7357,7 +7500,7 @@ test tag_066_case_0420_refused() fail {
 }
 
 // kind sweep: opaque argument 0
-test tag_066_case_0691_refused() fail {
+test tag_066_case_0704_refused() fail {
   known_builtin_failure_v1(
     66,
     [
@@ -7372,7 +7515,7 @@ test tag_067_verdicts() {
   verdicts_hold(
     [
       Case {
-        id: 432,
+        id: 445,
         tag: 67,
         arguments: [
           constant(#"9f01ff", #"43000000"),
@@ -7381,7 +7524,7 @@ test tag_067_verdicts() {
         known: False,
       },
       Case {
-        id: 433,
+        id: 446,
         tag: 67,
         arguments: [
           semantic(
@@ -7396,13 +7539,13 @@ test tag_067_verdicts() {
         known: False,
       },
       Case {
-        id: 434,
+        id: 447,
         tag: 67,
         arguments: [constant(#"9f02ff", #"416d"), constant(#"9f01ff", #"40")],
         known: False,
       },
       Case {
-        id: 435,
+        id: 448,
         tag: 67,
         arguments: [
           constant(#"9f01ff", #"43000000"),
@@ -7414,7 +7557,7 @@ test tag_067_verdicts() {
         known: False,
       },
       Case {
-        id: 436,
+        id: 449,
         tag: 67,
         arguments: [
           semantic(
@@ -7432,7 +7575,7 @@ test tag_067_verdicts() {
         known: False,
       },
       Case {
-        id: 437,
+        id: 450,
         tag: 67,
         arguments: [
           constant(#"9f02ff", #"416d"),
@@ -7444,7 +7587,7 @@ test tag_067_verdicts() {
         known: False,
       },
       Case {
-        id: 438,
+        id: 451,
         tag: 67,
         arguments: [
           constant(#"9f01ff", #"43000000"),
@@ -7456,7 +7599,7 @@ test tag_067_verdicts() {
         known: True,
       },
       Case {
-        id: 439,
+        id: 452,
         tag: 67,
         arguments: [
           semantic(
@@ -7474,7 +7617,7 @@ test tag_067_verdicts() {
         known: True,
       },
       Case {
-        id: 440,
+        id: 453,
         tag: 67,
         arguments: [
           constant(#"9f02ff", #"416d"),
@@ -7490,7 +7633,7 @@ test tag_067_verdicts() {
 }
 
 // compacted domain
-test tag_067_case_0441_refused() fail {
+test tag_067_case_0454_refused() fail {
   known_builtin_failure_v1(
     67,
     [
@@ -7507,7 +7650,7 @@ test tag_067_case_0441_refused() fail {
 }
 
 // opaque message, long domain
-test tag_067_case_0442_refused() fail {
+test tag_067_case_0455_refused() fail {
   known_builtin_failure_v1(
     67,
     [
@@ -7523,7 +7666,7 @@ test tag_067_case_0442_refused() fail {
 }
 
 // kind sweep: Miller-loop argument 1
-test tag_067_case_0692_refused() fail {
+test tag_067_case_0705_refused() fail {
   known_builtin_failure_v1(
     67,
     [
@@ -7539,162 +7682,32 @@ test tag_073_verdicts() {
   verdicts_hold(
     [
       Case {
-        id: 485,
-        tag: 73,
-        arguments: [
-          constant(#"9f04ff", #"d87a80"),
-          constant(#"9f00ff", #"20"),
-          constant(#"9f00ff", #"20"),
-        ],
-        known: True,
-      },
-      Case {
-        id: 486,
-        tag: 73,
-        arguments: [
-          constant(#"9f04ff", #"d87a80"),
-          constant(#"9f00ff", #"20"),
-          constant(#"9f00ff", #"00"),
-        ],
-        known: True,
-      },
-      Case {
-        id: 487,
-        tag: 73,
-        arguments: [
-          constant(#"9f04ff", #"d87a80"),
-          constant(#"9f00ff", #"20"),
-          constant(#"9f00ff", #"18ff"),
-        ],
-        known: True,
-      },
-      Case {
-        id: 488,
-        tag: 73,
-        arguments: [
-          constant(#"9f04ff", #"d87a80"),
-          constant(#"9f00ff", #"20"),
-          constant(#"9f00ff", #"190100"),
-        ],
-        known: True,
-      },
-      Case {
-        id: 489,
-        tag: 73,
-        arguments: [
-          constant(#"9f04ff", #"d87a80"),
-          constant(#"9f00ff", #"20"),
-          constant(#"9f00ff", #"19ffff"),
-        ],
-        known: True,
-      },
-      Case {
-        id: 490,
-        tag: 73,
-        arguments: [
-          constant(#"9f04ff", #"d87a80"),
-          constant(#"9f00ff", #"20"),
-          constant(#"9f00ff", #"1a00010000"),
-        ],
-        known: True,
-      },
-      Case {
-        id: 491,
-        tag: 73,
-        arguments: [
-          constant(#"9f04ff", #"d87a80"),
-          constant(#"9f00ff", #"00"),
-          constant(#"9f00ff", #"20"),
-        ],
-        known: True,
-      },
-      Case {
-        id: 492,
-        tag: 73,
-        arguments: [
-          constant(#"9f04ff", #"d87a80"),
-          constant(#"9f00ff", #"00"),
-          constant(#"9f00ff", #"00"),
-        ],
-        known: False,
-      },
-      Case {
-        id: 493,
-        tag: 73,
-        arguments: [
-          constant(#"9f04ff", #"d87a80"),
-          constant(#"9f00ff", #"00"),
-          constant(#"9f00ff", #"18ff"),
-        ],
-        known: False,
-      },
-      Case {
-        id: 494,
-        tag: 73,
-        arguments: [
-          constant(#"9f04ff", #"d87a80"),
-          constant(#"9f00ff", #"00"),
-          constant(#"9f00ff", #"190100"),
-        ],
-        known: False,
-      },
-      Case {
-        id: 495,
-        tag: 73,
-        arguments: [
-          constant(#"9f04ff", #"d87a80"),
-          constant(#"9f00ff", #"00"),
-          constant(#"9f00ff", #"19ffff"),
-        ],
-        known: False,
-      },
-      Case {
-        id: 496,
-        tag: 73,
-        arguments: [
-          constant(#"9f04ff", #"d87a80"),
-          constant(#"9f00ff", #"00"),
-          constant(#"9f00ff", #"1a00010000"),
-        ],
-        known: False,
-      },
-      Case {
-        id: 497,
-        tag: 73,
-        arguments: [
-          constant(#"9f04ff", #"d87a80"),
-          constant(#"9f00ff", #"01"),
-          constant(#"9f00ff", #"20"),
-        ],
-        known: True,
-      },
-      Case {
         id: 498,
         tag: 73,
         arguments: [
           constant(#"9f04ff", #"d87a80"),
-          constant(#"9f00ff", #"01"),
-          constant(#"9f00ff", #"00"),
+          constant(#"9f00ff", #"20"),
+          constant(#"9f00ff", #"20"),
         ],
-        known: False,
+        known: True,
       },
       Case {
         id: 499,
         tag: 73,
         arguments: [
           constant(#"9f04ff", #"d87a80"),
-          constant(#"9f00ff", #"01"),
-          constant(#"9f00ff", #"18ff"),
+          constant(#"9f00ff", #"20"),
+          constant(#"9f00ff", #"00"),
         ],
-        known: False,
+        known: True,
       },
       Case {
         id: 500,
         tag: 73,
         arguments: [
           constant(#"9f04ff", #"d87a80"),
-          constant(#"9f00ff", #"01"),
-          constant(#"9f00ff", #"190100"),
+          constant(#"9f00ff", #"20"),
+          constant(#"9f00ff", #"18ff"),
         ],
         known: True,
       },
@@ -7703,8 +7716,8 @@ test tag_073_verdicts() {
         tag: 73,
         arguments: [
           constant(#"9f04ff", #"d87a80"),
-          constant(#"9f00ff", #"01"),
-          constant(#"9f00ff", #"19ffff"),
+          constant(#"9f00ff", #"20"),
+          constant(#"9f00ff", #"190100"),
         ],
         known: True,
       },
@@ -7713,8 +7726,8 @@ test tag_073_verdicts() {
         tag: 73,
         arguments: [
           constant(#"9f04ff", #"d87a80"),
-          constant(#"9f00ff", #"01"),
-          constant(#"9f00ff", #"1a00010000"),
+          constant(#"9f00ff", #"20"),
+          constant(#"9f00ff", #"19ffff"),
         ],
         known: True,
       },
@@ -7723,8 +7736,8 @@ test tag_073_verdicts() {
         tag: 73,
         arguments: [
           constant(#"9f04ff", #"d87a80"),
-          constant(#"9f00ff", #"02"),
           constant(#"9f00ff", #"20"),
+          constant(#"9f00ff", #"1a00010000"),
         ],
         known: True,
       },
@@ -7733,18 +7746,18 @@ test tag_073_verdicts() {
         tag: 73,
         arguments: [
           constant(#"9f04ff", #"d87a80"),
-          constant(#"9f00ff", #"02"),
           constant(#"9f00ff", #"00"),
+          constant(#"9f00ff", #"20"),
         ],
-        known: False,
+        known: True,
       },
       Case {
         id: 505,
         tag: 73,
         arguments: [
           constant(#"9f04ff", #"d87a80"),
-          constant(#"9f00ff", #"02"),
-          constant(#"9f00ff", #"18ff"),
+          constant(#"9f00ff", #"00"),
+          constant(#"9f00ff", #"00"),
         ],
         known: False,
       },
@@ -7753,8 +7766,8 @@ test tag_073_verdicts() {
         tag: 73,
         arguments: [
           constant(#"9f04ff", #"d87a80"),
-          constant(#"9f00ff", #"02"),
-          constant(#"9f00ff", #"190100"),
+          constant(#"9f00ff", #"00"),
+          constant(#"9f00ff", #"18ff"),
         ],
         known: False,
       },
@@ -7763,8 +7776,8 @@ test tag_073_verdicts() {
         tag: 73,
         arguments: [
           constant(#"9f04ff", #"d87a80"),
-          constant(#"9f00ff", #"02"),
-          constant(#"9f00ff", #"19ffff"),
+          constant(#"9f00ff", #"00"),
+          constant(#"9f00ff", #"190100"),
         ],
         known: False,
       },
@@ -7773,38 +7786,38 @@ test tag_073_verdicts() {
         tag: 73,
         arguments: [
           constant(#"9f04ff", #"d87a80"),
-          constant(#"9f00ff", #"02"),
-          constant(#"9f00ff", #"1a00010000"),
+          constant(#"9f00ff", #"00"),
+          constant(#"9f00ff", #"19ffff"),
         ],
-        known: True,
+        known: False,
       },
       Case {
         id: 509,
         tag: 73,
         arguments: [
           constant(#"9f04ff", #"d87a80"),
-          constant(#"9f00ff", #"192000"),
-          constant(#"9f00ff", #"20"),
+          constant(#"9f00ff", #"00"),
+          constant(#"9f00ff", #"1a00010000"),
         ],
-        known: True,
+        known: False,
       },
       Case {
         id: 510,
         tag: 73,
         arguments: [
           constant(#"9f04ff", #"d87a80"),
-          constant(#"9f00ff", #"192000"),
-          constant(#"9f00ff", #"00"),
+          constant(#"9f00ff", #"01"),
+          constant(#"9f00ff", #"20"),
         ],
-        known: False,
+        known: True,
       },
       Case {
         id: 511,
         tag: 73,
         arguments: [
           constant(#"9f04ff", #"d87a80"),
-          constant(#"9f00ff", #"192000"),
-          constant(#"9f00ff", #"18ff"),
+          constant(#"9f00ff", #"01"),
+          constant(#"9f00ff", #"00"),
         ],
         known: False,
       },
@@ -7813,13 +7826,143 @@ test tag_073_verdicts() {
         tag: 73,
         arguments: [
           constant(#"9f04ff", #"d87a80"),
+          constant(#"9f00ff", #"01"),
+          constant(#"9f00ff", #"18ff"),
+        ],
+        known: False,
+      },
+      Case {
+        id: 513,
+        tag: 73,
+        arguments: [
+          constant(#"9f04ff", #"d87a80"),
+          constant(#"9f00ff", #"01"),
+          constant(#"9f00ff", #"190100"),
+        ],
+        known: True,
+      },
+      Case {
+        id: 514,
+        tag: 73,
+        arguments: [
+          constant(#"9f04ff", #"d87a80"),
+          constant(#"9f00ff", #"01"),
+          constant(#"9f00ff", #"19ffff"),
+        ],
+        known: True,
+      },
+      Case {
+        id: 515,
+        tag: 73,
+        arguments: [
+          constant(#"9f04ff", #"d87a80"),
+          constant(#"9f00ff", #"01"),
+          constant(#"9f00ff", #"1a00010000"),
+        ],
+        known: True,
+      },
+      Case {
+        id: 516,
+        tag: 73,
+        arguments: [
+          constant(#"9f04ff", #"d87a80"),
+          constant(#"9f00ff", #"02"),
+          constant(#"9f00ff", #"20"),
+        ],
+        known: True,
+      },
+      Case {
+        id: 517,
+        tag: 73,
+        arguments: [
+          constant(#"9f04ff", #"d87a80"),
+          constant(#"9f00ff", #"02"),
+          constant(#"9f00ff", #"00"),
+        ],
+        known: False,
+      },
+      Case {
+        id: 518,
+        tag: 73,
+        arguments: [
+          constant(#"9f04ff", #"d87a80"),
+          constant(#"9f00ff", #"02"),
+          constant(#"9f00ff", #"18ff"),
+        ],
+        known: False,
+      },
+      Case {
+        id: 519,
+        tag: 73,
+        arguments: [
+          constant(#"9f04ff", #"d87a80"),
+          constant(#"9f00ff", #"02"),
+          constant(#"9f00ff", #"190100"),
+        ],
+        known: False,
+      },
+      Case {
+        id: 520,
+        tag: 73,
+        arguments: [
+          constant(#"9f04ff", #"d87a80"),
+          constant(#"9f00ff", #"02"),
+          constant(#"9f00ff", #"19ffff"),
+        ],
+        known: False,
+      },
+      Case {
+        id: 521,
+        tag: 73,
+        arguments: [
+          constant(#"9f04ff", #"d87a80"),
+          constant(#"9f00ff", #"02"),
+          constant(#"9f00ff", #"1a00010000"),
+        ],
+        known: True,
+      },
+      Case {
+        id: 522,
+        tag: 73,
+        arguments: [
+          constant(#"9f04ff", #"d87a80"),
+          constant(#"9f00ff", #"192000"),
+          constant(#"9f00ff", #"20"),
+        ],
+        known: True,
+      },
+      Case {
+        id: 523,
+        tag: 73,
+        arguments: [
+          constant(#"9f04ff", #"d87a80"),
+          constant(#"9f00ff", #"192000"),
+          constant(#"9f00ff", #"00"),
+        ],
+        known: False,
+      },
+      Case {
+        id: 524,
+        tag: 73,
+        arguments: [
+          constant(#"9f04ff", #"d87a80"),
+          constant(#"9f00ff", #"192000"),
+          constant(#"9f00ff", #"18ff"),
+        ],
+        known: False,
+      },
+      Case {
+        id: 525,
+        tag: 73,
+        arguments: [
+          constant(#"9f04ff", #"d87a80"),
           constant(#"9f00ff", #"192000"),
           constant(#"9f00ff", #"190100"),
         ],
         known: False,
       },
       Case {
-        id: 513,
+        id: 526,
         tag: 73,
         arguments: [
           constant(#"9f04ff", #"d87a80"),
@@ -7829,7 +7972,7 @@ test tag_073_verdicts() {
         known: False,
       },
       Case {
-        id: 514,
+        id: 527,
         tag: 73,
         arguments: [
           constant(#"9f04ff", #"d87a80"),
@@ -7839,7 +7982,7 @@ test tag_073_verdicts() {
         known: False,
       },
       Case {
-        id: 515,
+        id: 528,
         tag: 73,
         arguments: [
           constant(#"9f04ff", #"d87a80"),
@@ -7849,7 +7992,7 @@ test tag_073_verdicts() {
         known: True,
       },
       Case {
-        id: 516,
+        id: 529,
         tag: 73,
         arguments: [
           constant(#"9f04ff", #"d87a80"),
@@ -7859,7 +8002,7 @@ test tag_073_verdicts() {
         known: True,
       },
       Case {
-        id: 517,
+        id: 530,
         tag: 73,
         arguments: [
           constant(#"9f04ff", #"d87a80"),
@@ -7869,7 +8012,7 @@ test tag_073_verdicts() {
         known: True,
       },
       Case {
-        id: 518,
+        id: 531,
         tag: 73,
         arguments: [
           constant(#"9f04ff", #"d87a80"),
@@ -7879,7 +8022,7 @@ test tag_073_verdicts() {
         known: True,
       },
       Case {
-        id: 519,
+        id: 532,
         tag: 73,
         arguments: [
           constant(#"9f04ff", #"d87a80"),
@@ -7889,7 +8032,7 @@ test tag_073_verdicts() {
         known: True,
       },
       Case {
-        id: 520,
+        id: 533,
         tag: 73,
         arguments: [
           constant(#"9f04ff", #"d87a80"),
@@ -7899,7 +8042,7 @@ test tag_073_verdicts() {
         known: True,
       },
       Case {
-        id: 521,
+        id: 534,
         tag: 73,
         arguments: [
           constant(#"9f04ff", #"d87980"),
@@ -7912,7 +8055,7 @@ test tag_073_verdicts() {
         known: False,
       },
       Case {
-        id: 522,
+        id: 535,
         tag: 73,
         arguments: [
           constant(#"9f04ff", #"d87980"),
@@ -7925,7 +8068,7 @@ test tag_073_verdicts() {
         known: True,
       },
       Case {
-        id: 523,
+        id: 536,
         tag: 73,
         arguments: [
           constant(#"9f04ff", #"d87a80"),
@@ -7942,7 +8085,7 @@ test tag_073_verdicts() {
 }
 
 // integer endianness
-test tag_073_case_0524_refused() fail {
+test tag_073_case_0537_refused() fail {
   known_builtin_failure_v1(
     73,
     [
@@ -7954,7 +8097,7 @@ test tag_073_case_0524_refused() fail {
 }
 
 // boolean type, integer payload
-test tag_073_case_0525_refused() fail {
+test tag_073_case_0538_refused() fail {
   known_builtin_failure_v1(
     73,
     [
@@ -7966,7 +8109,7 @@ test tag_073_case_0525_refused() fail {
 }
 
 // boolean type, Constr 2 payload
-test tag_073_case_0526_refused() fail {
+test tag_073_case_0539_refused() fail {
   known_builtin_failure_v1(
     73,
     [
@@ -7978,7 +8121,7 @@ test tag_073_case_0526_refused() fail {
 }
 
 // byte-string size
-test tag_073_case_0527_refused() fail {
+test tag_073_case_0540_refused() fail {
   known_builtin_failure_v1(
     73,
     [
@@ -7990,7 +8133,7 @@ test tag_073_case_0527_refused() fail {
 }
 
 // byte-string value
-test tag_073_case_0528_refused() fail {
+test tag_073_case_0541_refused() fail {
   known_builtin_failure_v1(
     73,
     [
@@ -8002,7 +8145,7 @@ test tag_073_case_0528_refused() fail {
 }
 
 // compacted endianness
-test tag_073_case_0529_refused() fail {
+test tag_073_case_0542_refused() fail {
   known_builtin_failure_v1(
     73,
     [
@@ -8020,7 +8163,7 @@ test tag_073_case_0529_refused() fail {
 }
 
 // kind sweep: opaque argument 0
-test tag_073_case_0693_refused() fail {
+test tag_073_case_0706_refused() fail {
   known_builtin_failure_v1(
     73,
     [
@@ -8034,7 +8177,7 @@ test tag_073_case_0693_refused() fail {
 }
 
 // kind sweep: Miller-loop argument 1
-test tag_073_case_0694_refused() fail {
+test tag_073_case_0707_refused() fail {
   known_builtin_failure_v1(
     73,
     [
@@ -8048,7 +8191,7 @@ test tag_073_case_0694_refused() fail {
 }
 
 // kind sweep: compacted argument 1
-test tag_073_case_0695_refused() fail {
+test tag_073_case_0708_refused() fail {
   known_builtin_failure_v1(
     73,
     [
@@ -8066,7 +8209,7 @@ test tag_073_case_0695_refused() fail {
 }
 
 // kind sweep: opaque argument 2
-test tag_073_case_0696_refused() fail {
+test tag_073_case_0709_refused() fail {
   known_builtin_failure_v1(
     73,
     [
@@ -8080,7 +8223,7 @@ test tag_073_case_0696_refused() fail {
 }
 
 // kind sweep: compacted argument 2
-test tag_073_case_0697_refused() fail {
+test tag_073_case_0710_refused() fail {
   known_builtin_failure_v1(
     73,
     [
@@ -8101,31 +8244,31 @@ test tag_079_verdicts() {
   verdicts_hold(
     [
       Case {
-        id: 530,
+        id: 543,
         tag: 79,
         arguments: [constant(#"9f01ff", #"420102"), constant(#"9f00ff", #"20")],
         known: True,
       },
       Case {
-        id: 532,
+        id: 545,
         tag: 79,
         arguments: [constant(#"9f01ff", #"420102"), constant(#"9f00ff", #"00")],
         known: False,
       },
       Case {
-        id: 534,
+        id: 547,
         tag: 79,
         arguments: [constant(#"9f01ff", #"420102"), constant(#"9f00ff", #"0f")],
         known: False,
       },
       Case {
-        id: 536,
+        id: 549,
         tag: 79,
         arguments: [constant(#"9f01ff", #"420102"), constant(#"9f00ff", #"10")],
         known: True,
       },
       Case {
-        id: 538,
+        id: 551,
         tag: 79,
         arguments: [constant(#"9f01ff", #"40"), constant(#"9f00ff", #"00")],
         known: True,
@@ -8135,7 +8278,7 @@ test tag_079_verdicts() {
 }
 
 // read bit -1 of compacted bytes
-test tag_079_case_0531_refused() fail {
+test tag_079_case_0544_refused() fail {
   known_builtin_failure_v1(
     79,
     [
@@ -8152,7 +8295,7 @@ test tag_079_case_0531_refused() fail {
 }
 
 // read bit 0 of compacted bytes
-test tag_079_case_0533_refused() fail {
+test tag_079_case_0546_refused() fail {
   known_builtin_failure_v1(
     79,
     [
@@ -8169,7 +8312,7 @@ test tag_079_case_0533_refused() fail {
 }
 
 // read bit 15 of compacted bytes
-test tag_079_case_0535_refused() fail {
+test tag_079_case_0548_refused() fail {
   known_builtin_failure_v1(
     79,
     [
@@ -8186,7 +8329,7 @@ test tag_079_case_0535_refused() fail {
 }
 
 // read bit 16 of compacted bytes
-test tag_079_case_0537_refused() fail {
+test tag_079_case_0550_refused() fail {
   known_builtin_failure_v1(
     79,
     [
@@ -8203,7 +8346,7 @@ test tag_079_case_0537_refused() fail {
 }
 
 // kind sweep: opaque argument 0
-test tag_079_case_0698_refused() fail {
+test tag_079_case_0711_refused() fail {
   known_builtin_failure_v1(
     79,
     [
@@ -8216,7 +8359,7 @@ test tag_079_case_0698_refused() fail {
 }
 
 // kind sweep: compacted argument 0
-test tag_079_case_0699_refused() fail {
+test tag_079_case_0712_refused() fail {
   known_builtin_failure_v1(
     79,
     [
@@ -8233,7 +8376,7 @@ test tag_079_case_0699_refused() fail {
 }
 
 // kind sweep: Miller-loop argument 1
-test tag_079_case_0700_refused() fail {
+test tag_079_case_0713_refused() fail {
   known_builtin_failure_v1(
     79,
     [
@@ -8246,7 +8389,7 @@ test tag_079_case_0700_refused() fail {
 }
 
 // kind sweep: compacted argument 1
-test tag_079_case_0701_refused() fail {
+test tag_079_case_0714_refused() fail {
   known_builtin_failure_v1(
     79,
     [
@@ -8266,175 +8409,31 @@ test tag_080_verdicts() {
   verdicts_hold(
     [
       Case {
-        id: 539,
-        tag: 80,
-        arguments: [
-          constant(#"9f01ff", #"420102"),
-          constant(#"9f0500ff", #"80"),
-          constant(#"9f04ff", #"d87a80"),
-        ],
-        known: False,
-      },
-      Case {
-        id: 540,
-        tag: 80,
-        arguments: [
-          constant(#"9f01ff", #"420102"),
-          constant(#"9f0500ff", #"80"),
-          constant(#"9f00ff", #"01"),
-        ],
-        known: False,
-      },
-      Case {
-        id: 542,
-        tag: 80,
-        arguments: [
-          constant(#"9f01ff", #"420102"),
-          constant(#"9f0500ff", #"80"),
-          semantic(
-            #"9f04ff",
-            #"0707070707070707070707070707070707070707070707070707070707070707",
-            3,
-            1,
-            1,
-          ),
-        ],
-        known: False,
-      },
-      Case {
-        id: 543,
-        tag: 80,
-        arguments: [
-          constant(#"9f01ff", #"420102"),
-          constant(#"9f0500ff", #"9f000fff"),
-          constant(#"9f04ff", #"d87a80"),
-        ],
-        known: False,
-      },
-      Case {
-        id: 544,
-        tag: 80,
-        arguments: [
-          constant(#"9f01ff", #"420102"),
-          constant(#"9f0500ff", #"9f000fff"),
-          constant(#"9f00ff", #"01"),
-        ],
-        known: False,
-      },
-      Case {
-        id: 546,
-        tag: 80,
-        arguments: [
-          constant(#"9f01ff", #"420102"),
-          constant(#"9f0500ff", #"9f000fff"),
-          semantic(
-            #"9f04ff",
-            #"0707070707070707070707070707070707070707070707070707070707070707",
-            3,
-            1,
-            1,
-          ),
-        ],
-        known: False,
-      },
-      Case {
-        id: 547,
-        tag: 80,
-        arguments: [
-          constant(#"9f01ff", #"420102"),
-          constant(#"9f0500ff", #"9f10ff"),
-          constant(#"9f04ff", #"d87a80"),
-        ],
-        known: True,
-      },
-      Case {
-        id: 548,
-        tag: 80,
-        arguments: [
-          constant(#"9f01ff", #"420102"),
-          constant(#"9f0500ff", #"9f10ff"),
-          constant(#"9f00ff", #"01"),
-        ],
-        known: False,
-      },
-      Case {
-        id: 550,
-        tag: 80,
-        arguments: [
-          constant(#"9f01ff", #"420102"),
-          constant(#"9f0500ff", #"9f10ff"),
-          semantic(
-            #"9f04ff",
-            #"0707070707070707070707070707070707070707070707070707070707070707",
-            3,
-            1,
-            1,
-          ),
-        ],
-        known: True,
-      },
-      Case {
-        id: 551,
-        tag: 80,
-        arguments: [
-          constant(#"9f01ff", #"420102"),
-          constant(#"9f0500ff", #"9f20ff"),
-          constant(#"9f04ff", #"d87a80"),
-        ],
-        known: True,
-      },
-      Case {
         id: 552,
         tag: 80,
         arguments: [
           constant(#"9f01ff", #"420102"),
-          constant(#"9f0500ff", #"9f20ff"),
-          constant(#"9f00ff", #"01"),
+          constant(#"9f0500ff", #"80"),
+          constant(#"9f04ff", #"d87a80"),
         ],
         known: False,
       },
       Case {
-        id: 554,
+        id: 553,
         tag: 80,
         arguments: [
           constant(#"9f01ff", #"420102"),
-          constant(#"9f0500ff", #"9f20ff"),
-          semantic(
-            #"9f04ff",
-            #"0707070707070707070707070707070707070707070707070707070707070707",
-            3,
-            1,
-            1,
-          ),
+          constant(#"9f0500ff", #"80"),
+          constant(#"9f00ff", #"01"),
         ],
-        known: True,
+        known: False,
       },
       Case {
         id: 555,
         tag: 80,
         arguments: [
           constant(#"9f01ff", #"420102"),
-          constant(#"9f0500ff", #"9f001020ff"),
-          constant(#"9f04ff", #"d87a80"),
-        ],
-        known: True,
-      },
-      Case {
-        id: 556,
-        tag: 80,
-        arguments: [
-          constant(#"9f01ff", #"420102"),
-          constant(#"9f0500ff", #"9f001020ff"),
-          constant(#"9f00ff", #"01"),
-        ],
-        known: False,
-      },
-      Case {
-        id: 558,
-        tag: 80,
-        arguments: [
-          constant(#"9f01ff", #"420102"),
-          constant(#"9f0500ff", #"9f001020ff"),
+          constant(#"9f0500ff", #"80"),
           semantic(
             #"9f04ff",
             #"0707070707070707070707070707070707070707070707070707070707070707",
@@ -8443,15 +8442,41 @@ test tag_080_verdicts() {
             1,
           ),
         ],
-        known: True,
+        known: False,
+      },
+      Case {
+        id: 556,
+        tag: 80,
+        arguments: [
+          constant(#"9f01ff", #"420102"),
+          constant(#"9f0500ff", #"9f000fff"),
+          constant(#"9f04ff", #"d87a80"),
+        ],
+        known: False,
+      },
+      Case {
+        id: 557,
+        tag: 80,
+        arguments: [
+          constant(#"9f01ff", #"420102"),
+          constant(#"9f0500ff", #"9f000fff"),
+          constant(#"9f00ff", #"01"),
+        ],
+        known: False,
       },
       Case {
         id: 559,
         tag: 80,
         arguments: [
           constant(#"9f01ff", #"420102"),
-          constant(#"9f0508ff", #"9f10ff"),
-          constant(#"9f04ff", #"d87a80"),
+          constant(#"9f0500ff", #"9f000fff"),
+          semantic(
+            #"9f04ff",
+            #"0707070707070707070707070707070707070707070707070707070707070707",
+            3,
+            1,
+            1,
+          ),
         ],
         known: False,
       },
@@ -8460,13 +8485,131 @@ test tag_080_verdicts() {
         tag: 80,
         arguments: [
           constant(#"9f01ff", #"420102"),
+          constant(#"9f0500ff", #"9f10ff"),
+          constant(#"9f04ff", #"d87a80"),
+        ],
+        known: True,
+      },
+      Case {
+        id: 561,
+        tag: 80,
+        arguments: [
+          constant(#"9f01ff", #"420102"),
+          constant(#"9f0500ff", #"9f10ff"),
+          constant(#"9f00ff", #"01"),
+        ],
+        known: False,
+      },
+      Case {
+        id: 563,
+        tag: 80,
+        arguments: [
+          constant(#"9f01ff", #"420102"),
+          constant(#"9f0500ff", #"9f10ff"),
+          semantic(
+            #"9f04ff",
+            #"0707070707070707070707070707070707070707070707070707070707070707",
+            3,
+            1,
+            1,
+          ),
+        ],
+        known: True,
+      },
+      Case {
+        id: 564,
+        tag: 80,
+        arguments: [
+          constant(#"9f01ff", #"420102"),
+          constant(#"9f0500ff", #"9f20ff"),
+          constant(#"9f04ff", #"d87a80"),
+        ],
+        known: True,
+      },
+      Case {
+        id: 565,
+        tag: 80,
+        arguments: [
+          constant(#"9f01ff", #"420102"),
+          constant(#"9f0500ff", #"9f20ff"),
+          constant(#"9f00ff", #"01"),
+        ],
+        known: False,
+      },
+      Case {
+        id: 567,
+        tag: 80,
+        arguments: [
+          constant(#"9f01ff", #"420102"),
+          constant(#"9f0500ff", #"9f20ff"),
+          semantic(
+            #"9f04ff",
+            #"0707070707070707070707070707070707070707070707070707070707070707",
+            3,
+            1,
+            1,
+          ),
+        ],
+        known: True,
+      },
+      Case {
+        id: 568,
+        tag: 80,
+        arguments: [
+          constant(#"9f01ff", #"420102"),
+          constant(#"9f0500ff", #"9f001020ff"),
+          constant(#"9f04ff", #"d87a80"),
+        ],
+        known: True,
+      },
+      Case {
+        id: 569,
+        tag: 80,
+        arguments: [
+          constant(#"9f01ff", #"420102"),
+          constant(#"9f0500ff", #"9f001020ff"),
+          constant(#"9f00ff", #"01"),
+        ],
+        known: False,
+      },
+      Case {
+        id: 571,
+        tag: 80,
+        arguments: [
+          constant(#"9f01ff", #"420102"),
+          constant(#"9f0500ff", #"9f001020ff"),
+          semantic(
+            #"9f04ff",
+            #"0707070707070707070707070707070707070707070707070707070707070707",
+            3,
+            1,
+            1,
+          ),
+        ],
+        known: True,
+      },
+      Case {
+        id: 572,
+        tag: 80,
+        arguments: [
+          constant(#"9f01ff", #"420102"),
+          constant(#"9f0508ff", #"9f10ff"),
+          constant(#"9f04ff", #"d87a80"),
+        ],
+        known: False,
+      },
+      Case {
+        id: 573,
+        tag: 80,
+        arguments: [
+          constant(#"9f01ff", #"420102"),
           constant(#"9f0508ff", #"9f10ff"),
           constant(#"9f00ff", #"01"),
         ],
         known: False,
       },
       Case {
-        id: 562,
+        id: 575,
         tag: 80,
         arguments: [
           constant(#"9f01ff", #"420102"),
@@ -8482,7 +8625,7 @@ test tag_080_verdicts() {
         known: False,
       },
       Case {
-        id: 563,
+        id: 576,
         tag: 80,
         arguments: [
           constant(#"9f01ff", #"420102"),
@@ -8492,7 +8635,7 @@ test tag_080_verdicts() {
         known: False,
       },
       Case {
-        id: 564,
+        id: 577,
         tag: 80,
         arguments: [
           constant(#"9f01ff", #"420102"),
@@ -8502,7 +8645,7 @@ test tag_080_verdicts() {
         known: False,
       },
       Case {
-        id: 566,
+        id: 579,
         tag: 80,
         arguments: [
           constant(#"9f01ff", #"420102"),
@@ -8518,7 +8661,7 @@ test tag_080_verdicts() {
         known: False,
       },
       Case {
-        id: 575,
+        id: 588,
         tag: 80,
         arguments: [
           constant(
@@ -8531,7 +8674,7 @@ test tag_080_verdicts() {
         known: False,
       },
       Case {
-        id: 576,
+        id: 589,
         tag: 80,
         arguments: [
           constant(
@@ -8544,7 +8687,7 @@ test tag_080_verdicts() {
         known: True,
       },
       Case {
-        id: 577,
+        id: 590,
         tag: 80,
         arguments: [
           constant(
@@ -8557,7 +8700,7 @@ test tag_080_verdicts() {
         known: True,
       },
       Case {
-        id: 578,
+        id: 591,
         tag: 80,
         arguments: [
           constant(
@@ -8570,7 +8713,7 @@ test tag_080_verdicts() {
         known: True,
       },
       Case {
-        id: 579,
+        id: 592,
         tag: 80,
         arguments: [
           constant(#"9f01ff", #"40"),
@@ -8584,7 +8727,7 @@ test tag_080_verdicts() {
 }
 
 // write no indices into compacted bytes
-test tag_080_case_0541_refused() fail {
+test tag_080_case_0554_refused() fail {
   known_builtin_failure_v1(
     80,
     [
@@ -8602,7 +8745,7 @@ test tag_080_case_0541_refused() fail {
 }
 
 // write indices 0 and 15 into compacted bytes
-test tag_080_case_0545_refused() fail {
+test tag_080_case_0558_refused() fail {
   known_builtin_failure_v1(
     80,
     [
@@ -8620,7 +8763,7 @@ test tag_080_case_0545_refused() fail {
 }
 
 // write index 16 into compacted bytes
-test tag_080_case_0549_refused() fail {
+test tag_080_case_0562_refused() fail {
   known_builtin_failure_v1(
     80,
     [
@@ -8638,7 +8781,7 @@ test tag_080_case_0549_refused() fail {
 }
 
 // write index -1 into compacted bytes
-test tag_080_case_0553_refused() fail {
+test tag_080_case_0566_refused() fail {
   known_builtin_failure_v1(
     80,
     [
@@ -8656,7 +8799,7 @@ test tag_080_case_0553_refused() fail {
 }
 
 // write indices 0, 16, -1 into compacted bytes
-test tag_080_case_0557_refused() fail {
+test tag_080_case_0570_refused() fail {
   known_builtin_failure_v1(
     80,
     [
@@ -8674,7 +8817,7 @@ test tag_080_case_0557_refused() fail {
 }
 
 // write Data index list into compacted bytes
-test tag_080_case_0561_refused() fail {
+test tag_080_case_0574_refused() fail {
   known_builtin_failure_v1(
     80,
     [
@@ -8692,7 +8835,7 @@ test tag_080_case_0561_refused() fail {
 }
 
 // write byte-string index list into compacted bytes
-test tag_080_case_0565_refused() fail {
+test tag_080_case_0578_refused() fail {
   known_builtin_failure_v1(
     80,
     [
@@ -8710,7 +8853,7 @@ test tag_080_case_0565_refused() fail {
 }
 
 // write compacted index list
-test tag_080_case_0567_refused() fail {
+test tag_080_case_0580_refused() fail {
   known_builtin_failure_v1(
     80,
     [
@@ -8728,7 +8871,7 @@ test tag_080_case_0567_refused() fail {
 }
 
 // write compacted index list, integer bit
-test tag_080_case_0568_refused() fail {
+test tag_080_case_0581_refused() fail {
   known_builtin_failure_v1(
     80,
     [
@@ -8746,7 +8889,7 @@ test tag_080_case_0568_refused() fail {
 }
 
 // write compacted index list into compacted bytes
-test tag_080_case_0569_refused() fail {
+test tag_080_case_0582_refused() fail {
   known_builtin_failure_v1(
     80,
     [
@@ -8770,7 +8913,7 @@ test tag_080_case_0569_refused() fail {
 }
 
 // write compacted index list, compacted bit
-test tag_080_case_0570_refused() fail {
+test tag_080_case_0583_refused() fail {
   known_builtin_failure_v1(
     80,
     [
@@ -8794,7 +8937,7 @@ test tag_080_case_0570_refused() fail {
 }
 
 // write integer indices
-test tag_080_case_0571_refused() fail {
+test tag_080_case_0584_refused() fail {
   known_builtin_failure_v1(
     80,
     [
@@ -8806,7 +8949,7 @@ test tag_080_case_0571_refused() fail {
 }
 
 // write integer indices, integer bit
-test tag_080_case_0572_refused() fail {
+test tag_080_case_0585_refused() fail {
   known_builtin_failure_v1(
     80,
     [
@@ -8818,7 +8961,7 @@ test tag_080_case_0572_refused() fail {
 }
 
 // write integer indices into compacted bytes
-test tag_080_case_0573_refused() fail {
+test tag_080_case_0586_refused() fail {
   known_builtin_failure_v1(
     80,
     [
@@ -8836,7 +8979,7 @@ test tag_080_case_0573_refused() fail {
 }
 
 // write integer indices, compacted bit
-test tag_080_case_0574_refused() fail {
+test tag_080_case_0587_refused() fail {
   known_builtin_failure_v1(
     80,
     [
@@ -8854,7 +8997,7 @@ test tag_080_case_0574_refused() fail {
 }
 
 // kind sweep: opaque argument 0
-test tag_080_case_0702_refused() fail {
+test tag_080_case_0715_refused() fail {
   known_builtin_failure_v1(
     80,
     [
@@ -8868,7 +9011,7 @@ test tag_080_case_0702_refused() fail {
 }
 
 // kind sweep: compacted argument 0
-test tag_080_case_0703_refused() fail {
+test tag_080_case_0716_refused() fail {
   known_builtin_failure_v1(
     80,
     [
@@ -8886,7 +9029,7 @@ test tag_080_case_0703_refused() fail {
 }
 
 // kind sweep: Miller-loop argument 1
-test tag_080_case_0704_refused() fail {
+test tag_080_case_0717_refused() fail {
   known_builtin_failure_v1(
     80,
     [
@@ -8900,7 +9043,7 @@ test tag_080_case_0704_refused() fail {
 }
 
 // kind sweep: compacted argument 1
-test tag_080_case_0705_refused() fail {
+test tag_080_case_0718_refused() fail {
   known_builtin_failure_v1(
     80,
     [
@@ -8918,7 +9061,7 @@ test tag_080_case_0705_refused() fail {
 }
 
 // kind sweep: opaque argument 2
-test tag_080_case_0706_refused() fail {
+test tag_080_case_0719_refused() fail {
   known_builtin_failure_v1(
     80,
     [
@@ -8935,67 +9078,67 @@ test tag_081_verdicts() {
   verdicts_hold(
     [
       Case {
-        id: 580,
+        id: 593,
         tag: 81,
         arguments: [constant(#"9f00ff", #"20"), constant(#"9f00ff", #"20")],
         known: True,
       },
       Case {
-        id: 581,
+        id: 594,
         tag: 81,
         arguments: [constant(#"9f00ff", #"20"), constant(#"9f00ff", #"00")],
         known: True,
       },
       Case {
-        id: 582,
+        id: 595,
         tag: 81,
         arguments: [constant(#"9f00ff", #"20"), constant(#"9f00ff", #"18ff")],
         known: True,
       },
       Case {
-        id: 583,
+        id: 596,
         tag: 81,
         arguments: [constant(#"9f00ff", #"20"), constant(#"9f00ff", #"190100")],
         known: True,
       },
       Case {
-        id: 584,
+        id: 597,
         tag: 81,
         arguments: [constant(#"9f00ff", #"00"), constant(#"9f00ff", #"20")],
         known: True,
       },
       Case {
-        id: 585,
+        id: 598,
         tag: 81,
         arguments: [constant(#"9f00ff", #"00"), constant(#"9f00ff", #"00")],
         known: False,
       },
       Case {
-        id: 586,
+        id: 599,
         tag: 81,
         arguments: [constant(#"9f00ff", #"00"), constant(#"9f00ff", #"18ff")],
         known: False,
       },
       Case {
-        id: 587,
+        id: 600,
         tag: 81,
         arguments: [constant(#"9f00ff", #"00"), constant(#"9f00ff", #"190100")],
         known: True,
       },
       Case {
-        id: 588,
+        id: 601,
         tag: 81,
         arguments: [constant(#"9f00ff", #"192000"), constant(#"9f00ff", #"20")],
         known: True,
       },
       Case {
-        id: 589,
+        id: 602,
         tag: 81,
         arguments: [constant(#"9f00ff", #"192000"), constant(#"9f00ff", #"00")],
         known: False,
       },
       Case {
-        id: 590,
+        id: 603,
         tag: 81,
         arguments: [
           constant(#"9f00ff", #"192000"),
@@ -9004,7 +9147,7 @@ test tag_081_verdicts() {
         known: False,
       },
       Case {
-        id: 591,
+        id: 604,
         tag: 81,
         arguments: [
           constant(#"9f00ff", #"192000"),
@@ -9013,19 +9156,19 @@ test tag_081_verdicts() {
         known: True,
       },
       Case {
-        id: 592,
+        id: 605,
         tag: 81,
         arguments: [constant(#"9f00ff", #"192001"), constant(#"9f00ff", #"20")],
         known: True,
       },
       Case {
-        id: 593,
+        id: 606,
         tag: 81,
         arguments: [constant(#"9f00ff", #"192001"), constant(#"9f00ff", #"00")],
         known: True,
       },
       Case {
-        id: 594,
+        id: 607,
         tag: 81,
         arguments: [
           constant(#"9f00ff", #"192001"),
@@ -9034,7 +9177,7 @@ test tag_081_verdicts() {
         known: True,
       },
       Case {
-        id: 595,
+        id: 608,
         tag: 81,
         arguments: [
           constant(#"9f00ff", #"192001"),
@@ -9047,7 +9190,7 @@ test tag_081_verdicts() {
 }
 
 // replicate with a byte-string length
-test tag_081_case_0596_refused() fail {
+test tag_081_case_0609_refused() fail {
   known_builtin_failure_v1(
     81,
     [constant(#"9f01ff", #"4101"), constant(#"9f00ff", #"00")],
@@ -9055,7 +9198,7 @@ test tag_081_case_0596_refused() fail {
 }
 
 // replicate with a compacted byte
-test tag_081_case_0597_refused() fail {
+test tag_081_case_0610_refused() fail {
   known_builtin_failure_v1(
     81,
     [
@@ -9072,7 +9215,7 @@ test tag_081_case_0597_refused() fail {
 }
 
 // kind sweep: opaque argument 0
-test tag_081_case_0707_refused() fail {
+test tag_081_case_0720_refused() fail {
   known_builtin_failure_v1(
     81,
     [
@@ -9085,7 +9228,7 @@ test tag_081_case_0707_refused() fail {
 }
 
 // kind sweep: compacted argument 0
-test tag_081_case_0708_refused() fail {
+test tag_081_case_0721_refused() fail {
   known_builtin_failure_v1(
     81,
     [
@@ -9102,7 +9245,7 @@ test tag_081_case_0708_refused() fail {
 }
 
 // kind sweep: Miller-loop argument 1
-test tag_081_case_0709_refused() fail {
+test tag_081_case_0722_refused() fail {
   known_builtin_failure_v1(
     81,
     [
@@ -9115,7 +9258,7 @@ test tag_081_case_0709_refused() fail {
 }
 
 // kind sweep: compacted argument 1
-test tag_081_case_0710_refused() fail {
+test tag_081_case_0723_refused() fail {
   known_builtin_failure_v1(
     81,
     [
@@ -9135,7 +9278,7 @@ test tag_082_verdicts() {
   verdicts_hold(
     [
       Case {
-        id: 598,
+        id: 611,
         tag: 82,
         arguments: [
           constant(#"9f01ff", #"420102"),
@@ -9144,7 +9287,7 @@ test tag_082_verdicts() {
         known: True,
       },
       Case {
-        id: 599,
+        id: 612,
         tag: 82,
         arguments: [
           semantic(
@@ -9159,7 +9302,7 @@ test tag_082_verdicts() {
         known: True,
       },
       Case {
-        id: 600,
+        id: 613,
         tag: 82,
         arguments: [
           constant(#"9f02ff", #"4178"),
@@ -9168,7 +9311,7 @@ test tag_082_verdicts() {
         known: False,
       },
       Case {
-        id: 601,
+        id: 614,
         tag: 82,
         arguments: [
           constant(#"9f01ff", #"420102"),
@@ -9177,7 +9320,7 @@ test tag_082_verdicts() {
         known: False,
       },
       Case {
-        id: 602,
+        id: 615,
         tag: 82,
         arguments: [
           semantic(
@@ -9192,7 +9335,7 @@ test tag_082_verdicts() {
         known: False,
       },
       Case {
-        id: 603,
+        id: 616,
         tag: 82,
         arguments: [
           constant(#"9f02ff", #"4178"),
@@ -9201,13 +9344,13 @@ test tag_082_verdicts() {
         known: False,
       },
       Case {
-        id: 604,
+        id: 617,
         tag: 82,
         arguments: [constant(#"9f01ff", #"420102"), constant(#"9f00ff", #"00")],
         known: False,
       },
       Case {
-        id: 605,
+        id: 618,
         tag: 82,
         arguments: [
           semantic(
@@ -9222,13 +9365,13 @@ test tag_082_verdicts() {
         known: False,
       },
       Case {
-        id: 606,
+        id: 619,
         tag: 82,
         arguments: [constant(#"9f02ff", #"4178"), constant(#"9f00ff", #"00")],
         known: False,
       },
       Case {
-        id: 607,
+        id: 620,
         tag: 82,
         arguments: [
           constant(#"9f01ff", #"420102"),
@@ -9237,7 +9380,7 @@ test tag_082_verdicts() {
         known: False,
       },
       Case {
-        id: 608,
+        id: 621,
         tag: 82,
         arguments: [
           semantic(
@@ -9252,7 +9395,7 @@ test tag_082_verdicts() {
         known: False,
       },
       Case {
-        id: 609,
+        id: 622,
         tag: 82,
         arguments: [
           constant(#"9f02ff", #"4178"),
@@ -9261,7 +9404,7 @@ test tag_082_verdicts() {
         known: False,
       },
       Case {
-        id: 610,
+        id: 623,
         tag: 82,
         arguments: [
           constant(#"9f01ff", #"420102"),
@@ -9270,7 +9413,7 @@ test tag_082_verdicts() {
         known: True,
       },
       Case {
-        id: 611,
+        id: 624,
         tag: 82,
         arguments: [
           semantic(
@@ -9285,7 +9428,7 @@ test tag_082_verdicts() {
         known: True,
       },
       Case {
-        id: 612,
+        id: 625,
         tag: 82,
         arguments: [
           constant(#"9f02ff", #"4178"),
@@ -9294,7 +9437,7 @@ test tag_082_verdicts() {
         known: False,
       },
       Case {
-        id: 712,
+        id: 725,
         tag: 82,
         arguments: [
           semantic(
@@ -9313,7 +9456,7 @@ test tag_082_verdicts() {
 }
 
 // by a byte string
-test tag_082_case_0613_refused() fail {
+test tag_082_case_0626_refused() fail {
   known_builtin_failure_v1(
     82,
     [constant(#"9f01ff", #"4101"), constant(#"9f01ff", #"4101")],
@@ -9321,7 +9464,7 @@ test tag_082_case_0613_refused() fail {
 }
 
 // kind sweep: opaque argument 0
-test tag_082_case_0711_refused() fail {
+test tag_082_case_0724_refused() fail {
   known_builtin_failure_v1(
     82,
     [
@@ -9334,7 +9477,7 @@ test tag_082_case_0711_refused() fail {
 }
 
 // kind sweep: Miller-loop argument 1
-test tag_082_case_0713_refused() fail {
+test tag_082_case_0726_refused() fail {
   known_builtin_failure_v1(
     82,
     [
@@ -9347,7 +9490,7 @@ test tag_082_case_0713_refused() fail {
 }
 
 // kind sweep: compacted argument 1
-test tag_082_case_0714_refused() fail {
+test tag_082_case_0727_refused() fail {
   known_builtin_failure_v1(
     82,
     [
@@ -9367,7 +9510,7 @@ test tag_083_verdicts() {
   verdicts_hold(
     [
       Case {
-        id: 614,
+        id: 627,
         tag: 83,
         arguments: [
           constant(#"9f01ff", #"420102"),
@@ -9376,7 +9519,7 @@ test tag_083_verdicts() {
         known: True,
       },
       Case {
-        id: 615,
+        id: 628,
         tag: 83,
         arguments: [
           semantic(
@@ -9391,7 +9534,7 @@ test tag_083_verdicts() {
         known: True,
       },
       Case {
-        id: 616,
+        id: 629,
         tag: 83,
         arguments: [
           constant(#"9f02ff", #"4178"),
@@ -9400,7 +9543,7 @@ test tag_083_verdicts() {
         known: False,
       },
       Case {
-        id: 617,
+        id: 630,
         tag: 83,
         arguments: [
           constant(#"9f01ff", #"420102"),
@@ -9409,7 +9552,7 @@ test tag_083_verdicts() {
         known: False,
       },
       Case {
-        id: 618,
+        id: 631,
         tag: 83,
         arguments: [
           semantic(
@@ -9424,7 +9567,7 @@ test tag_083_verdicts() {
         known: False,
       },
       Case {
-        id: 619,
+        id: 632,
         tag: 83,
         arguments: [
           constant(#"9f02ff", #"4178"),
@@ -9433,13 +9576,13 @@ test tag_083_verdicts() {
         known: False,
       },
       Case {
-        id: 620,
+        id: 633,
         tag: 83,
         arguments: [constant(#"9f01ff", #"420102"), constant(#"9f00ff", #"00")],
         known: False,
       },
       Case {
-        id: 621,
+        id: 634,
         tag: 83,
         arguments: [
           semantic(
@@ -9454,13 +9597,13 @@ test tag_083_verdicts() {
         known: False,
       },
       Case {
-        id: 622,
+        id: 635,
         tag: 83,
         arguments: [constant(#"9f02ff", #"4178"), constant(#"9f00ff", #"00")],
         known: False,
       },
       Case {
-        id: 623,
+        id: 636,
         tag: 83,
         arguments: [
           constant(#"9f01ff", #"420102"),
@@ -9469,7 +9612,7 @@ test tag_083_verdicts() {
         known: False,
       },
       Case {
-        id: 624,
+        id: 637,
         tag: 83,
         arguments: [
           semantic(
@@ -9484,7 +9627,7 @@ test tag_083_verdicts() {
         known: False,
       },
       Case {
-        id: 625,
+        id: 638,
         tag: 83,
         arguments: [
           constant(#"9f02ff", #"4178"),
@@ -9493,7 +9636,7 @@ test tag_083_verdicts() {
         known: False,
       },
       Case {
-        id: 626,
+        id: 639,
         tag: 83,
         arguments: [
           constant(#"9f01ff", #"420102"),
@@ -9502,7 +9645,7 @@ test tag_083_verdicts() {
         known: True,
       },
       Case {
-        id: 627,
+        id: 640,
         tag: 83,
         arguments: [
           semantic(
@@ -9517,7 +9660,7 @@ test tag_083_verdicts() {
         known: True,
       },
       Case {
-        id: 628,
+        id: 641,
         tag: 83,
         arguments: [
           constant(#"9f02ff", #"4178"),
@@ -9526,7 +9669,7 @@ test tag_083_verdicts() {
         known: False,
       },
       Case {
-        id: 716,
+        id: 729,
         tag: 83,
         arguments: [
           semantic(
@@ -9545,7 +9688,7 @@ test tag_083_verdicts() {
 }
 
 // by a byte string
-test tag_083_case_0629_refused() fail {
+test tag_083_case_0642_refused() fail {
   known_builtin_failure_v1(
     83,
     [constant(#"9f01ff", #"4101"), constant(#"9f01ff", #"4101")],
@@ -9553,7 +9696,7 @@ test tag_083_case_0629_refused() fail {
 }
 
 // kind sweep: opaque argument 0
-test tag_083_case_0715_refused() fail {
+test tag_083_case_0728_refused() fail {
   known_builtin_failure_v1(
     83,
     [
@@ -9566,7 +9709,7 @@ test tag_083_case_0715_refused() fail {
 }
 
 // kind sweep: Miller-loop argument 1
-test tag_083_case_0717_refused() fail {
+test tag_083_case_0730_refused() fail {
   known_builtin_failure_v1(
     83,
     [
@@ -9579,7 +9722,7 @@ test tag_083_case_0717_refused() fail {
 }
 
 // kind sweep: compacted argument 1
-test tag_083_case_0718_refused() fail {
+test tag_083_case_0731_refused() fail {
   known_builtin_failure_v1(
     83,
     [
@@ -9599,19 +9742,19 @@ test tags_without_known_failures_verdicts() {
   verdicts_hold(
     [
       Case {
-        id: 719,
+        id: 732,
         tag: -1,
         arguments: [constant(#"9f00ff", #"01"), constant(#"9f00ff", #"00")],
         known: False,
       },
       Case {
-        id: 720,
+        id: 733,
         tag: 0,
         arguments: [constant(#"9f00ff", #"01"), constant(#"9f00ff", #"00")],
         known: False,
       },
       Case {
-        id: 756,
+        id: 769,
         tag: 0,
         arguments: [
           OpaqueValue(
@@ -9624,109 +9767,109 @@ test tags_without_known_failures_verdicts() {
         known: False,
       },
       Case {
-        id: 721,
+        id: 734,
         tag: 1,
         arguments: [constant(#"9f00ff", #"01"), constant(#"9f00ff", #"00")],
         known: False,
       },
       Case {
-        id: 722,
+        id: 735,
         tag: 2,
         arguments: [constant(#"9f00ff", #"01"), constant(#"9f00ff", #"00")],
         known: False,
       },
       Case {
-        id: 723,
+        id: 736,
         tag: 7,
         arguments: [constant(#"9f00ff", #"01"), constant(#"9f00ff", #"00")],
         known: False,
       },
       Case {
-        id: 724,
+        id: 737,
         tag: 8,
         arguments: [constant(#"9f00ff", #"01"), constant(#"9f00ff", #"00")],
         known: False,
       },
       Case {
-        id: 725,
+        id: 738,
         tag: 9,
         arguments: [constant(#"9f00ff", #"01"), constant(#"9f00ff", #"00")],
         known: False,
       },
       Case {
-        id: 726,
+        id: 739,
         tag: 10,
         arguments: [constant(#"9f00ff", #"01"), constant(#"9f00ff", #"00")],
         known: False,
       },
       Case {
-        id: 727,
+        id: 740,
         tag: 13,
         arguments: [constant(#"9f00ff", #"01"), constant(#"9f00ff", #"00")],
         known: False,
       },
       Case {
-        id: 728,
+        id: 741,
         tag: 15,
         arguments: [constant(#"9f00ff", #"01"), constant(#"9f00ff", #"00")],
         known: False,
       },
       Case {
-        id: 729,
+        id: 742,
         tag: 20,
         arguments: [constant(#"9f00ff", #"01"), constant(#"9f00ff", #"00")],
         known: False,
       },
       Case {
-        id: 730,
+        id: 743,
         tag: 22,
         arguments: [constant(#"9f00ff", #"01"), constant(#"9f00ff", #"00")],
         known: False,
       },
       Case {
-        id: 731,
+        id: 744,
         tag: 24,
         arguments: [constant(#"9f00ff", #"01"), constant(#"9f00ff", #"00")],
         known: False,
       },
       Case {
-        id: 732,
+        id: 745,
         tag: 26,
         arguments: [constant(#"9f00ff", #"01"), constant(#"9f00ff", #"00")],
         known: False,
       },
       Case {
-        id: 733,
+        id: 746,
         tag: 32,
         arguments: [constant(#"9f00ff", #"01"), constant(#"9f00ff", #"00")],
         known: False,
       },
       Case {
-        id: 755,
+        id: 768,
         tag: 32,
         arguments: [constant(#"9f00ff", #"01"), constant(#"9f0501ff", #"80")],
         known: False,
       },
       Case {
-        id: 734,
+        id: 747,
         tag: 35,
         arguments: [constant(#"9f00ff", #"01"), constant(#"9f00ff", #"00")],
         known: False,
       },
       Case {
-        id: 735,
+        id: 748,
         tag: 37,
         arguments: [constant(#"9f00ff", #"01"), constant(#"9f00ff", #"00")],
         known: False,
       },
       Case {
-        id: 753,
+        id: 766,
         tag: 37,
         arguments: [constant(#"9f00ff", #"20"), constant(#"9f0508ff", #"80")],
         known: False,
       },
       Case {
-        id: 754,
+        id: 767,
         tag: 37,
         arguments: [
           constant(#"9f00ff", #"c249010000000000000000"),
@@ -9735,103 +9878,103 @@ test tags_without_known_failures_verdicts() {
         known: False,
       },
       Case {
-        id: 736,
+        id: 749,
         tag: 41,
         arguments: [constant(#"9f00ff", #"01"), constant(#"9f00ff", #"00")],
         known: False,
       },
       Case {
-        id: 737,
+        id: 750,
         tag: 47,
         arguments: [constant(#"9f00ff", #"01"), constant(#"9f00ff", #"00")],
         known: False,
       },
       Case {
-        id: 738,
+        id: 751,
         tag: 51,
         arguments: [constant(#"9f00ff", #"01"), constant(#"9f00ff", #"00")],
         known: False,
       },
       Case {
-        id: 739,
+        id: 752,
         tag: 54,
         arguments: [constant(#"9f00ff", #"01"), constant(#"9f00ff", #"00")],
         known: False,
       },
       Case {
-        id: 740,
+        id: 753,
         tag: 58,
         arguments: [constant(#"9f00ff", #"01"), constant(#"9f00ff", #"00")],
         known: False,
       },
       Case {
-        id: 741,
+        id: 754,
         tag: 61,
         arguments: [constant(#"9f00ff", #"01"), constant(#"9f00ff", #"00")],
         known: False,
       },
       Case {
-        id: 742,
+        id: 755,
         tag: 65,
         arguments: [constant(#"9f00ff", #"01"), constant(#"9f00ff", #"00")],
         known: False,
       },
       Case {
-        id: 743,
+        id: 756,
         tag: 68,
         arguments: [constant(#"9f00ff", #"01"), constant(#"9f00ff", #"00")],
         known: False,
       },
       Case {
-        id: 744,
+        id: 757,
         tag: 70,
         arguments: [constant(#"9f00ff", #"01"), constant(#"9f00ff", #"00")],
         known: False,
       },
       Case {
-        id: 745,
+        id: 758,
         tag: 71,
         arguments: [constant(#"9f00ff", #"01"), constant(#"9f00ff", #"00")],
         known: False,
       },
       Case {
-        id: 746,
+        id: 759,
         tag: 72,
         arguments: [constant(#"9f00ff", #"01"), constant(#"9f00ff", #"00")],
         known: False,
       },
       Case {
-        id: 747,
+        id: 760,
         tag: 74,
         arguments: [constant(#"9f00ff", #"01"), constant(#"9f00ff", #"00")],
         known: False,
       },
       Case {
-        id: 748,
+        id: 761,
         tag: 78,
         arguments: [constant(#"9f00ff", #"01"), constant(#"9f00ff", #"00")],
         known: False,
       },
       Case {
-        id: 749,
+        id: 762,
         tag: 84,
         arguments: [constant(#"9f00ff", #"01"), constant(#"9f00ff", #"00")],
         known: False,
       },
       Case {
-        id: 750,
+        id: 763,
         tag: 86,
         arguments: [constant(#"9f00ff", #"01"), constant(#"9f00ff", #"00")],
         known: False,
       },
       Case {
-        id: 751,
+        id: 764,
         tag: 87,
         arguments: [constant(#"9f00ff", #"01"), constant(#"9f00ff", #"00")],
         known: False,
       },
       Case {
-        id: 752,
+        id: 765,
         tag: 100,
         arguments: [constant(#"9f00ff", #"01"), constant(#"9f00ff", #"00")],
         known: False,

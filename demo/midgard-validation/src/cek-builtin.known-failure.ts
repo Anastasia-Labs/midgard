@@ -11,6 +11,11 @@
  */
 import { type MidgardCekDirectValueWitness } from "./cek-builtin.argument-kinds.js";
 import {
+  BLS12_381_FIELD_PRIME,
+  blsG1PointIsInvalid,
+  blsG2PointIsInvalid,
+} from "./cek-builtin.bls-point-validity.js";
+import {
   decodeMidgardCekConstantTypeCbor,
   decodeMidgardCekConstantWitness,
   type MidgardCekConstantType,
@@ -24,13 +29,6 @@ import {
   DataMap,
 } from "./uplc-data.js";
 
-/**
- * G1/G2 uncompress (59, 66): builtins whose failures the direct failure arm
- * keeps admitting as before.
- */
-export const MIDGARD_CEK_BLS_FAILURES_PENDING_ON_L1: ReadonlySet<bigint> =
-  new Set([59n, 66n]);
-
 const INT64_MIN = -(2n ** 63n);
 const INT64_MAX = 2n ** 63n - 1n;
 
@@ -38,8 +36,6 @@ const SECP256K1_GROUP_ORDER =
   115792089237316195423570985008687907852837564279074904382605163141518161494337n;
 const SECP256K1_FIELD_PRIME =
   115792089237316195423570985008687907853269984665640564039457584007908834671663n;
-const BLS12_381_FIELD_PRIME =
-  4002409555221667393417789825735904156556882819939007885332058136124031650490837864442687629129015664037894272559787n;
 /** scalarMul fails on a scalar outside [-2^4095, 2^4095 - 1]. */
 const BLS_SCALAR_BOUND = 2n ** 4095n;
 
@@ -282,20 +278,18 @@ const blsUncompressHeaderIsInvalid = (
   );
 };
 
-/** `bls_g1_curve_encoding_is_invalid_v1`. */
-const blsG1CurveEncodingIsInvalid = (encoded: Uint8Array): boolean => {
-  if (encoded.length !== 48) refuse("BLS G1 encoding length");
+/** `bls_point_encoding_is_invalid_v1`: the point at infinity is valid. */
+const blsPointEncodingIsInvalid = (
+  tag: number,
+  encoded: Uint8Array,
+): boolean => {
   if (encoded[0]! % 128 >= 64) return false;
-  const x = blsCompressedCoordinate(encoded, 0);
-  const ySquared = (x * x * x + 4n) % BLS12_381_FIELD_PRIME;
-  return (
-    ySquared !== 0n &&
-    modularPower(
-      ySquared,
-      (BLS12_381_FIELD_PRIME - 1n) / 2n,
-      BLS12_381_FIELD_PRIME,
-    ) !== 1n
-  );
+  return tag === 59
+    ? blsG1PointIsInvalid(blsCompressedCoordinate(encoded, 0))
+    : blsG2PointIsInvalid(
+        bigEndian(encoded.subarray(48, 96)),
+        blsCompressedCoordinate(encoded, 0),
+      );
 };
 
 /** `unsigned_integer_byte_size_v1`. */
@@ -447,20 +441,13 @@ export const midgardCekKnownBuiltinFailure = (
       (value < -BLS_SCALAR_BOUND || value >= BLS_SCALAR_BOUND)
     );
   }
-  if (number === 59) {
+  if (number === 59 || number === 66) {
     const [source] = exactly(arguments_, 1);
     const encoded = bytes(source!);
-    if (encoded.length !== 48) return true;
+    if (encoded.length !== (number === 59 ? 48 : 96)) return true;
     return (
       blsUncompressHeaderIsInvalid(number, encoded) ||
-      blsG1CurveEncodingIsInvalid(encoded)
-    );
-  }
-  if (number === 66) {
-    const [source] = exactly(arguments_, 1);
-    const encoded = bytes(source!);
-    return (
-      encoded.length !== 96 || blsUncompressHeaderIsInvalid(number, encoded)
+      blsPointEncodingIsInvalid(number, encoded)
     );
   }
   if (number === 73) return integerToBytesFails(arguments_);

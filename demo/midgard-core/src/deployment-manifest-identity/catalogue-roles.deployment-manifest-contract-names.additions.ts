@@ -9,6 +9,7 @@ const DEPLOYMENT_MANIFEST_CONTRACT_NAME_ADDITIONS = [
   "validationTraceDisputeCekCoreStagedFailure",
   "validationTraceDisputeCekCoreStagedConversion",
   "validationTraceDisputeCekCoreStagedWriteBitsLoop",
+  "validationTraceDisputeCekCoreFailureBlsUncompress",
 ] as const;
 
 export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([

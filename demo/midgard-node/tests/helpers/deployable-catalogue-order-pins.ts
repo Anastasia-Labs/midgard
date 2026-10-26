@@ -164,19 +164,20 @@ export const PRE_CEK_STAGED_PLACEHOLDER_PUBLICATION_ORDER_DIGEST =
 export const PRE_CEK_STAGED_PLACEHOLDER_COMMAND_ORDER_DIGEST =
   "0fda80050035c92d72b498f841f112d89f496be20a6e91725381339068ac4afe";
 
-// The CEK core's five staged-operand semantics steps, its staged failure hop
-// and its writeBits loop add seven manifest entries, each a published role.
+// The CEK core's five staged-operand semantics steps, its staged failure hop,
+// its writeBits loop and its BLS12-381 uncompress failure arm add eight
+// manifest entries, each a published role.
 // Projecting out exactly those entries reproduces every pre-staged pin and
 // the 576/571 counts.
 export const MANIFEST_CONTRACT_ORDER_DIGEST =
-  "70735e6c7fccad30afc61762326eb48a765cf57b1b35a01cf0a7a6b073b4a931";
+  "4ca8e75ff747e21bed023ca46694add75a55a1a3a06d4e63ca7fc1d60fb8342f";
 export const MANIFEST_ROLE_ORDER_DIGEST =
-  "2b048bb6139830262aa9b4669586ae8562c487ba1b270b11c22305e321d946b2";
+  "fab1707b933798e26351cff868073a1a74aa6634f3c3af5a9df1341a1ecba7e8";
 export const REAL_PUBLICATION_ORDER_DIGEST =
-  "573552b0ad233159e6ae213c0862c00616fd5664787fd852486beeb2d2e8cb3b";
+  "90970baac6e704dc71429d1254468b3e63b5cbd5ee3296d131b8298fb9d00f4c";
 export const REAL_COMMAND_ORDER_DIGEST =
-  "d6804efe80155d8601781f3276a09f21934d43e0f88a748c274c123040990395";
+  "9cb2fd0e9bd7d8e0bf15ab4b478b6bc05876a91329c6e0dfaa47010d1f2a7015";
 export const PLACEHOLDER_PUBLICATION_ORDER_DIGEST =
-  "573552b0ad233159e6ae213c0862c00616fd5664787fd852486beeb2d2e8cb3b";
+  "90970baac6e704dc71429d1254468b3e63b5cbd5ee3296d131b8298fb9d00f4c";
 export const PLACEHOLDER_COMMAND_ORDER_DIGEST =
-  "d6804efe80155d8601781f3276a09f21934d43e0f88a748c274c123040990395";
+  "9cb2fd0e9bd7d8e0bf15ab4b478b6bc05876a91329c6e0dfaa47010d1f2a7015";

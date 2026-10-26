@@ -2,7 +2,8 @@
  * The signature, UTF-8 and BLS12-381 cases of the known builtin failure
  * conformance corpus: tags 21, 52 and 53 (key, message and signature
  * lengths, secp256k1 key validity, ECDSA scalar range), 25 (strict UTF-8),
- * 59 and 66 (compressed point headers, coordinates and the G1 curve check),
+ * 59 and 66 (compressed point headers, coordinates, the curve and the
+ * prime-order subgroup),
  * 60 and 67 (the hash-to-group domain length) and 56 and 63 (the scalarMul
  * scalar bound). See
  * `known-builtin-failure-conformance.cases.mjs`.
@@ -168,6 +169,31 @@ const g2 = (first, x1, x0) => {
   return bytes(encoded);
 };
 
+/** The encoding with its sort flag flipped: the negated point. */
+const flipSort = (encoded) => {
+  const flipped = Uint8Array.from(encoded);
+  flipped[0] = flipped[0] ^ 0x20;
+  return bytes(flipped);
+};
+const hex = (source) => bytes(Buffer.from(source, "hex"));
+
+// Compressed points, verdicts per @noble/curves (cross-checked in
+// tests/cek-builtin.v1-bls-point-validity.ts).
+const G1_FIVE_GENERATOR =
+  "af95b8218cbee2f4fa48e6b6f1df4e8ee46fee73c270dba395dad523d10c9b35295ccfc92cf0a9db8a065e16dafbfaad";
+const G1_OUTSIDE_SUBGROUP =
+  "8a2b9fbe12d0fd644c1e951c5983f40ca78f18e62b3b55a1d8e62cddba3d8a3736719efc37f870af7f436c2671752974";
+const G2_FIVE_GENERATOR =
+  "b068ad1be382009ac2dce123ec62dca8337d6b93b909b3ee52e31cb9e4098d1b56d596bf3c08166c7b46cb3aa85c23381380055ab9f1a87786f2508f3e4ce5caa5abcdae0a80141ee8ccc3626311e0a53be5d873fa964fd85ad56771f2984579";
+const G2_OFF_TWIST =
+  "8b55de6ec1c1b9c65236f5282637f7e67bf524d7e4187af733ef92700eeb1086f4549c5049937408f31ba2e532c0bd501587ca03a248d9ad945e56a3e3ef50f225a92648ed8a647d159479e20ff13c8ed21188535039c8fec81090af5bef34c3";
+const G2_OUTSIDE_SUBGROUP =
+  "937f9ebde4497e13a660d4e184d974218b21d18c9d578ab770360ad3fe41a4217e4ac78c554e05bfd2fc02336b84d90505974a366247ac98e953e9afec7f10dd12080a46e6f7dede942d6265721ee3c807009433d1bc69bf82d69569713244a7";
+const G2_ROOT_IN_FP =
+  "8000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020e31aad2f4b199f7f87e6433692648312e55a89b142b798084e1ac133c07736855bf683690d5fa5f87e90a1b49384db0";
+const G2_ROOT_IN_FP_U =
+  "800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000013012ee46c892815c3ee133c0eb6ce1708f7aced12c82cb0a7404ad8ce28e77111a8fe9d10df4f22446c901e8f26165e6a";
+
 /** G1/G2 uncompress (59, 66) and hash-to-group (60, 67). */
 const blsCases = (add) => {
   const p = BLS12_381_FIELD_PRIME;
@@ -188,6 +214,10 @@ const blsCases = (add) => {
     ["x=4", g1(0x80, 4n)],
     ["x=5", g1(0x80, 5n)],
     ["sort flag, x=1", g1(0xa0, 1n)],
+    ["generator", bytes(BLS12_381_G1_GENERATOR)],
+    ["generator, sort flag flipped", flipSort(BLS12_381_G1_GENERATOR)],
+    ["[5] generator", hex(G1_FIVE_GENERATOR)],
+    ["on the curve, outside G1", hex(G1_OUTSIDE_SUBGROUP)],
   ]) {
     add(59, `G1 ${name}`, [encoded]);
   }
@@ -207,6 +237,15 @@ const blsCases = (add) => {
     ["x0=p-1", g2(0x80, 1n, p - 1n)],
     ["x1=p-1", g2(0x80, p - 1n, 1n)],
     ["small coordinates", g2(0x80, 1n, 1n)],
+    ["x=1, off the twist", g2(0x80, 0n, 1n)],
+    ["x=2, on the twist, outside G2", g2(0x80, 0n, 2n)],
+    ["generator", bytes(BLS12_381_G2_GENERATOR)],
+    ["generator, sort flag flipped", flipSort(BLS12_381_G2_GENERATOR)],
+    ["[5] generator", hex(G2_FIVE_GENERATOR)],
+    ["off the twist", hex(G2_OFF_TWIST)],
+    ["on the twist, outside G2", hex(G2_OUTSIDE_SUBGROUP)],
+    ["y^2 in Fp, root in Fp", hex(G2_ROOT_IN_FP)],
+    ["y^2 in Fp, root in Fp u", hex(G2_ROOT_IN_FP_U)],
   ]) {
     add(66, `G2 ${name}`, [encoded]);
   }
