@@ -103,17 +103,33 @@ const oneEvaluationVerdict = (
     : MIDGARD_FIELD_SHAPE_VERDICT_WRONG_STRIDE;
 };
 
+/** A walk that has not reached its verdict within its step bound. */
+class WalkStepBoundExceeded extends Error {
+  constructor(declared: number, maxSteps: number) {
+    super(
+      `walk over ${String(declared)} declared items did not end within ${String(maxSteps)} steps`,
+    );
+    this.name = "WalkStepBoundExceeded";
+  }
+}
+
 describe("§12.8 batched walk", () => {
   const badTxId = "33".repeat(32);
   const spendInputs = 0;
   const outputs = 2;
   const batch = MIDGARD_ENVELOPE_BATCH_ITEMS;
 
-  /** Every transition one honest prover takes, first step to verdict. */
+  /**
+   * Every transition one honest prover takes, first step to verdict. A walk
+   * over `declared` items ends within ceil(declared / B) + 1 steps; one that
+   * has not is a walk that does not advance, and fails here by name.
+   */
   const walk = (fieldIndex: number, committedPreimage: Uint8Array) => {
+    const declared = midgardMinimalArrayHeader(committedPreimage)?.count ?? 0;
+    const maxSteps = Math.ceil(declared / batch) + 1;
     const transitions = [];
     let previous: CommittedFieldShapeWalkState | null = null;
-    for (;;) {
+    for (let step = 0; step < maxSteps; step += 1) {
       const next = advanceCommittedFieldShapeWalk({
         badTxId,
         fieldIndex,
@@ -124,6 +140,7 @@ describe("§12.8 batched walk", () => {
       if (next.kind === "verdict") return transitions;
       previous = next.state;
     }
+    throw new WalkStepBoundExceeded(declared, maxSteps);
   };
 
   const verdictOf = (fieldIndex: number, committedPreimage: Uint8Array) => {
