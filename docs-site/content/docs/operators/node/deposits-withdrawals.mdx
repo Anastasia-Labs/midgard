@@ -106,6 +106,25 @@ and status are CLI and background operations, not HTTP routes. See the
   ]}
 />
 
+## Report progress to the user
+
+For a deposit, distinguish L1 submission, observation, due-time projection and
+confirmed L2 assignment. A locally projected output is not yet a spendable
+balance. Keep the event id or L1 transaction hash and query `GET /deposit-status`
+until the assignment is confirmed; use the wallet's spendable UTxO query before
+spending it.
+
+For a withdrawal, keep the order id and inspect `withdrawal-status`. A valid
+classification precedes settlement, reserve funding and the final payout.
+Report an invalid classification as such; an L1 order submission is not a
+withdrawal payment. Check `payout-status` and the confirmed payout transaction
+before showing a completed withdrawal. A stalled phase follows the
+[settlement runbook](/docs/operators/node/operational-runbooks#stuck-settlements).
+
+For ordinary L2 transfers, use the
+[transaction status lifecycle](/docs/sdk/lucid-midgard/submission-observability).
+`accepted` and local `committed` are distinct from L1 confirmation and merge.
+
 ## Related
 
 - On-chain: [user-event validators](/docs/onchain/user-events)

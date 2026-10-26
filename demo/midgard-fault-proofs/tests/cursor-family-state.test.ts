@@ -433,6 +433,7 @@ describe("production cursor-family authenticated state V1", () => {
       "receivePurposeLanguage",
       "scriptIntegrityHashMismatch",
       "canonicalDecodability",
+      "committedFieldShape",
     ]);
     for (const candidate of Object.values(CURSOR_FAMILY_SPECS)) {
       expect(Object.isFrozen(candidate)).toBe(true);

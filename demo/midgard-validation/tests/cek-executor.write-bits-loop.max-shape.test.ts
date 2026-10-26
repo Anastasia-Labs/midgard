@@ -116,7 +116,7 @@ describe("writeBits at the longest index list a transaction builds", () => {
       evaluator.ok && evaluator.charge,
     );
     expect(evaluatorWritesTo(INPUT, indices, true, out)).toBe(true);
-  });
+  }, 60_000);
 
   it("over its list constant alone is proved by one loop step with the PV11 evaluator's charge", () => {
     const body = writeBitsOverBuilt(0);

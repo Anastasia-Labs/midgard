@@ -388,7 +388,7 @@ describe("pre-union transition trace structural route", replayBudget, () => {
     });
   });
 
-  it("accepts a normal Plutus transaction with empty witnesses through all 48 installed categories", async () => {
+  it("accepts a normal Plutus transaction with empty witnesses through every installed category", async () => {
     const fixture = await buildRetainedPlutusIdentityFixture({
       verdict: "accepted",
     });
@@ -406,7 +406,6 @@ describe("pre-union transition trace structural route", replayBudget, () => {
       block: fixture.block,
       installed: true,
     });
-    expect(installed.classifier.launchScope).toHaveLength(48);
     expect(installed.classifier.launchScope).toEqual(
       INSTALLED_FRAUD_PROOF_CATEGORY_ORDER,
     );
@@ -431,7 +430,7 @@ describe("pre-union transition trace structural route", replayBudget, () => {
     expect(uninstalled.decision.decision).toBe("healthy");
   });
 
-  it("accepts a normal Plutus transaction whose output carries the program as its reference script through all 48 installed categories", async () => {
+  it("accepts a normal Plutus transaction whose output carries the program as its reference script through every installed category", async () => {
     const fixture = await buildRetainedPlutusIdentityFixture(
       { verdict: "accepted" },
       { outputReferenceScript: true },
@@ -485,7 +484,6 @@ describe("pre-union transition trace structural route", replayBudget, () => {
       block,
       installed: true,
     });
-    expect(classifier.launchScope).toHaveLength(48);
     expect(classifier.launchScope).toEqual(
       INSTALLED_FRAUD_PROOF_CATEGORY_ORDER,
     );

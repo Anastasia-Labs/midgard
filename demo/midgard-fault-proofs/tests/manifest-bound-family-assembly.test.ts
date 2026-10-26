@@ -227,7 +227,7 @@ describe("manifest-bound family assembly", () => {
       categories.filter(
         (category) => FAMILY_DEFINITIONS[category].adapter.kind === "linear",
       ),
-    ).toHaveLength(17);
+    ).toHaveLength(16);
     expect(
       categories.filter(
         (category) => FAMILY_DEFINITIONS[category].adapter.kind === "cursor",

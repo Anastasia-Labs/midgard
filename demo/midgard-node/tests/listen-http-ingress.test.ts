@@ -97,7 +97,7 @@ describe("HTTP admission quotas and admin replay", () => {
     ).toBeUndefined();
   });
   it("bounds active work and bytes without queuing; releases are idempotent", () => {
-    const ingress = createHttpIngress(() => 0);
+    const ingress = createHttpIngress({ now: () => 0 });
     const first = ingress.reserve(
       "192.0.2.1",
       "write",
@@ -126,7 +126,7 @@ describe("HTTP admission quotas and admin replay", () => {
     expect(ingress.snapshot()).toMatchObject({ active: 0, inFlightBytes: 0 });
   });
   it("reserves a full protocol body for submission even while advisory bytes are full", () => {
-    const ingress = createHttpIngress(() => 0);
+    const ingress = createHttpIngress({ now: () => 0 });
     const advisory = ingress.reserve(
       "192.0.2.1",
       "evaluate",
@@ -153,7 +153,7 @@ describe("HTTP admission quotas and admin replay", () => {
   });
   it("does not allocate peers for global rate refusals and bounds accepted peer cardinality", () => {
     let now = 0;
-    const ingress = createHttpIngress(() => now);
+    const ingress = createHttpIngress({ now: () => now });
     for (let index = 0; index < 200; index += 1) {
       const result = ingress.reserve(`burst-${index}`, "read", 0);
       expect(result.accepted).toBe(true);
@@ -274,10 +274,9 @@ describe("HTTP admission quotas and admin replay", () => {
     });
     const handle = Effect.runSync(
       NodeHttpServer.makeHandler(
-        withHttpIngress(
-          handler,
-          createHttpIngress(() => 0),
-        ).pipe(Effect.provideService(NodeConfig, {} as never)),
+        withHttpIngress(handler, createHttpIngress({ now: () => 0 })).pipe(
+          Effect.provideService(NodeConfig, {} as never),
+        ),
       ),
     );
     const server = createServer(handle);
@@ -314,12 +313,12 @@ describe("HTTP admission quotas and admin replay", () => {
       expect(invoked).toBe(0);
       for (let index = 0; index < 30; index += 1)
         expect(
-          await call("/healthz", "GET", {
+          await call("/tx", "GET", {
             "x-forwarded-for": `192.0.2.${index + 1}`,
           }),
         ).toBe(200);
       expect(
-        await call("/healthz", "GET", { "x-forwarded-for": "198.51.100.1" }),
+        await call("/tx", "GET", { "x-forwarded-for": "198.51.100.1" }),
       ).toBe(429);
       expect(invoked).toBe(30);
     } finally {

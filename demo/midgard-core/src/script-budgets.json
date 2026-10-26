@@ -59,8 +59,8 @@
     "midgard/fraud_proofs/committed_field_shape/rule.test/committed_field_shape_verdict_at_two_hundred_fifty_items": {
       "test": "midgard/fraud_proofs/committed_field_shape/rule.test/committed_field_shape_verdict_at_two_hundred_fifty_items",
       "ceiling": {
-        "mem": 7288336,
-        "cpu": 2321168942
+        "mem": 5754024,
+        "cpu": 2222329263
       }
     },
     "midgard/fraud_proofs/committed_field_shape/rule.test/committed_field_shape_verdict_fixture_only_at_two_hundred_fifty_items": {
@@ -73,8 +73,8 @@
     "midgard/fraud_proofs/committed_field_shape/rule.test/committed_field_shape_verdict_at_five_hundred_items": {
       "test": "midgard/fraud_proofs/committed_field_shape/rule.test/committed_field_shape_verdict_at_five_hundred_items",
       "ceiling": {
-        "mem": 12676601,
-        "cpu": 3770699468
+        "mem": 9591941,
+        "cpu": 3568755506
       }
     },
     "midgard/fraud_proofs/committed_field_shape/rule.test/committed_field_shape_verdict_fixture_only_at_five_hundred_items": {
@@ -1892,6 +1892,22 @@
       "ceiling": {
         "mem": 8142394,
         "cpu": 3326956151
+      }
+    },
+    "fraud_proofs/committed_field_shape/step_01_walk.test/committed_field_shape_step_01_walk_first_step_at_the_worst_batch - committed_field_shape_step_01_walk_fixture_only_first_step_at_the_worst_batch": {
+      "test": "fraud_proofs/committed_field_shape/step_01_walk.test/committed_field_shape_step_01_walk_first_step_at_the_worst_batch",
+      "minusControl": "committed_field_shape_step_01_walk_fixture_only_first_step_at_the_worst_batch",
+      "ceiling": {
+        "mem": 8176066,
+        "cpu": 3337022080
+      }
+    },
+    "fraud_proofs/committed_field_shape/step_01_walk.test/committed_field_shape_step_01_walk_resumed_step_at_the_worst_batch - committed_field_shape_step_01_walk_fixture_only_resumed_step_at_the_worst_batch": {
+      "test": "fraud_proofs/committed_field_shape/step_01_walk.test/committed_field_shape_step_01_walk_resumed_step_at_the_worst_batch",
+      "minusControl": "committed_field_shape_step_01_walk_fixture_only_resumed_step_at_the_worst_batch",
+      "ceiling": {
+        "mem": 8167439,
+        "cpu": 3334147421
       }
     }
   },

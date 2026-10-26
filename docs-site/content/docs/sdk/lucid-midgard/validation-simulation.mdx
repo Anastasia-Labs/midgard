@@ -19,7 +19,34 @@ the state it was given.
 - Never as a substitute for observing
   [submitted status](/docs/sdk/lucid-midgard/submission-observability).
 
-## Two ways to invoke it
+## Evaluate missing script budgets
+
+`TxBuilder.evaluate(options?)` asks the provider's `evaluateTx` capability for
+budgets for redeemers whose `exUnits` are omitted, and returns the builder with
+those budgets filled. Use the returned builder. Redeemers with explicit budgets
+keep them; a builder with no missing budgets returns immediately. `complete()`
+also evaluates missing budgets automatically.
+
+```ts twoslash
+import type { TxBuilder } from "@al-ft/lucid-midgard";
+declare const builder: TxBuilder;
+// ---cut---
+const evaluated = await builder.evaluate();
+const tx = await evaluated.complete();
+```
+
+The builder rebalances and evaluates drafts until the declared budgets cover
+the evaluated costs, with a bounded number of rounds. Missing provider support,
+a mismatched response or failure to converge is an explicit error. The HTTP
+provider uses `POST /tx/evaluate`: script/input failures return `422`, while
+unavailable evaluation capacity returns `503` with `Retry-After`.
+
+Evaluation estimates script execution against the node's current state. It
+does not admit the transaction, check its final signatures or establish a
+successful submission. Complete, sign and submit the resulting transaction,
+then observe its status. Explicit local validation below is a separate check.
+
+## Two ways to invoke local validation
 
 `complete({ localValidation })` validates as part of completion and **fails the
 completion** when the shared validator rejects. The option accepts `"none"` (the

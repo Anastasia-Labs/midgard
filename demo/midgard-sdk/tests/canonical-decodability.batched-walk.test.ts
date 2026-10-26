@@ -18,6 +18,7 @@ import {
   MIDGARD_ENVELOPE_VERDICT_NOT_AN_ITEM_HEADER,
   miscountedMidgardFieldPreimage,
 } from "../src/fraud-proof/canonical-decodability.js";
+import { midgardMinimalArrayHeader } from "../src/fraud-proof/committed-field-shape.js";
 
 /**
  * §12.7 step 01 as a batched walk: one batch of item heads per transaction,
@@ -44,15 +45,31 @@ const golden = JSON.parse(
 
 const bytes = (hexValue: string) => Buffer.from(hexValue, "hex");
 
+/** A walk that has not reached its verdict within its step bound. */
+class WalkStepBoundExceeded extends Error {
+  constructor(declared: number, maxSteps: number) {
+    super(
+      `walk over ${String(declared)} declared items did not end within ${String(maxSteps)} steps`,
+    );
+    this.name = "WalkStepBoundExceeded";
+  }
+}
+
 describe("§12.7 batched walk", () => {
   const badTxId = "33".repeat(32);
   const fieldIndex = 2;
 
-  /** Every transition one honest prover takes, first step to verdict. */
+  /**
+   * Every transition one honest prover takes, first step to verdict. A walk
+   * over `declared` items ends within ceil(declared / B) + 1 steps; one that
+   * has not is a walk that does not advance, and fails here by name.
+   */
   const walk = (committedPreimage: Uint8Array) => {
+    const declared = midgardMinimalArrayHeader(committedPreimage)?.count ?? 0;
+    const maxSteps = Math.ceil(declared / MIDGARD_ENVELOPE_BATCH_ITEMS) + 1;
     const transitions = [];
     let previous: CanonicalDecodabilityWalkState | null = null;
-    for (;;) {
+    for (let step = 0; step < maxSteps; step += 1) {
       const next = advanceCanonicalDecodabilityWalk({
         badTxId,
         fieldIndex,
@@ -63,6 +80,7 @@ describe("§12.7 batched walk", () => {
       if (next.kind === "verdict") return transitions;
       previous = next.state;
     }
+    throw new WalkStepBoundExceeded(declared, maxSteps);
   };
 
   /** `declared` under a minimal head, then `present` one-byte items. */
