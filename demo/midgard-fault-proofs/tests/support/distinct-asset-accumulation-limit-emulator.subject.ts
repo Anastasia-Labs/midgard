@@ -115,6 +115,12 @@ export type DistinctAssetSubjectShape = {
   readonly outputs: readonly (readonly number[])[];
   /** Each mint policy's asset count. */
   readonly mint: readonly number[];
+  /** A populated predecessor ledger: the out-refs of the last spends, in
+   * spend order, and entries that only fill the ledger. */
+  readonly deep?: {
+    readonly spentOutRefs: readonly Buffer[];
+    readonly padding: readonly LedgerEntry[];
+  };
 };
 
 const outRef = (fill: number, outputIndex: number) =>
@@ -125,7 +131,10 @@ const OUTPUT_LOVELACE = 50_000_000n;
 
 export const spentEntries = (shape: DistinctAssetSubjectShape): LedgerEntry[] =>
   shape.inputs.map((entries, index) => ({
-    outRef: outRef(0x41, index),
+    outRef:
+      shape.deep?.spentOutRefs[
+        index - shape.inputs.length + shape.deep.spentOutRefs.length
+      ] ?? outRef(0x41, index),
     output: encodeMidgardTxOutput({
       address: SIGNER_ADDRESS,
       value: policiesValue(SPENT_LOVELACE, policiesOf(entries), 0x10 + index),
@@ -214,6 +223,7 @@ export const buildDistinctAssetSubject = (
 const predecessorEntries = (shape: DistinctAssetSubjectShape) => [
   ...spentEntries(shape),
   ...referenceEntries(shape),
+  ...(shape.deep?.padding ?? []),
 ];
 
 /** The verdict the node's forced classifier writes for the subject, against

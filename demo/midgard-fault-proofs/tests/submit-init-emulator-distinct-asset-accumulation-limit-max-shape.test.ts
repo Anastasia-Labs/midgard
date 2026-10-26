@@ -8,7 +8,9 @@
  * the terminal. A third shape crosses in the last of as many spends as the
  * field admits, the heaviest values last, with the reference-input field at
  * its cap below every spend, so the rank places the crossing past the last
- * reference input.
+ * reference input. A fourth runs the third with the heavy spends' out-refs
+ * deep in a populated ledger trie, so each resolve page opens proofs at
+ * production depth, and records the page size the fit chooses.
  */
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core";
 import { encodeMidgardValue } from "@al-ft/midgard-core/codec";
@@ -18,6 +20,13 @@ import {
   DistinctAssetAccumulationLimitHonestLeaf,
   requireConvictingDistinctAssetAccumulationLimitProof,
 } from "../src/distinct-asset-accumulation-limit/index.js";
+import { scriptDecodeLedgerLimits } from "../src/script-decode/record.js";
+import { pathStarts } from "./support/deep-ledger-trie.js";
+import {
+  DEEP_CLUSTER,
+  deepLedger,
+  HEAVY_SPEND_NONCES,
+} from "./support/distinct-asset-accumulation-limit-emulator.deep-ledger.js";
 import {
   DISTINCT_ASSET_ACCUMULATION_LIMIT_STEP_BOUNDS,
   driveDistinctAssetAccumulationLimitThread,
@@ -363,6 +372,77 @@ describe("distinct-asset-accumulation-limit consensus-maximum shape", () => {
       }),
     );
     expectWithinBounds(run.steps);
+    expect(outcome.fraudulentHeaderHash).toBe(scenario.setup.headerHash);
+    await expectSingleUtxoWithUnit(
+      harness.proverLucid,
+      harness.distinctAssetAccumulationLimit.fraudProof.spendingScriptAddress,
+      outcome.fraudProofUnit,
+    );
+  }, 3_600_000);
+
+  it("fits each inputs-resolve page with the heavy spends deep in a populated ledger", async () => {
+    const harness = await makeDistinctAssetAccumulationLimitHarness();
+    const references =
+      await publishDistinctAssetAccumulationLimitRoles(harness);
+    const { inputs: spends } = maximumShape();
+    const referenceCount = maximumReferences();
+    const crossing = inputCrossingShape(spends, referenceCount);
+    const heavySpends = crossing.shape.inputs.filter((count) => count > 1);
+    expect(heavySpends).toHaveLength(HEAVY_SPEND_NONCES.length);
+    const deep = deepLedger(spends - heavySpends.length);
+    for (const outRef of deep.spentOutRefs)
+      expect(pathStarts(outRef, DEEP_CLUSTER)).toBe(true);
+    const shape: DistinctAssetSubjectShape = { ...crossing.shape, deep };
+    expect(
+      buildDistinctAssetSubject(shape).body.spendInputsPreimageCbor.length,
+    ).toBeLessThanOrEqual(FIELD_CAP);
+    const scenario = await setupDistinctAssetScenario({
+      harness,
+      shape,
+      source: { kind: "normal" },
+    });
+    const run = await driveDistinctAssetAccumulationLimitThread({
+      harness,
+      scenario,
+      references,
+    });
+    expect(run.prepared.crossing).toStrictEqual({
+      kind: "input",
+      inputIndex: BigInt(spends - 1 + referenceCount),
+      assetIndex: crossing.assetIndex,
+    });
+    const outcome = await run.terminal();
+    const resolve = run.steps.filter(({ label }) =>
+      label.startsWith("inputs resolve "),
+    );
+    const peak = (key: "executionMemory" | "executionSteps") =>
+      resolve.reduce((best, step) =>
+        step.measurement[key] > best.measurement[key] ? step : best,
+      );
+    console.log(
+      "DAAL max-shape deep-ledger input crossing",
+      JSON.stringify({
+        spends,
+        references: referenceCount,
+        heavySpends: heavySpends.length,
+        cluster: DEEP_CLUSTER,
+        inputsResolve: pages(run.steps, "inputs resolve"),
+        peakMemory: stepTable([peak("executionMemory")])[0],
+        peakCpu: stepTable([peak("executionSteps")])[0],
+      }),
+    );
+    expectWithinBounds(run.steps);
+    // The fit keeps every page inside the 20% reserve below the ledger's
+    // limits.
+    const limits = scriptDecodeLedgerLimits(harness.proverLucid);
+    for (const { label, measurement } of resolve) {
+      expect(measurement.executionMemory * 5n, label).toBeLessThanOrEqual(
+        BigInt(limits.mem) * 4n,
+      );
+      expect(measurement.executionSteps * 5n, label).toBeLessThanOrEqual(
+        BigInt(limits.steps) * 4n,
+      );
+    }
     expect(outcome.fraudulentHeaderHash).toBe(scenario.setup.headerHash);
     await expectSingleUtxoWithUnit(
       harness.proverLucid,
