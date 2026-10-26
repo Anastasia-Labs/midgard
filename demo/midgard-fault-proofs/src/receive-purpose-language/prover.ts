@@ -17,7 +17,10 @@ import {
 } from "../direct-purpose-family/custody.js";
 import type { DirectPurposeContracts } from "../direct-purpose-family/family.js";
 import type { RouteInputs } from "../direct-purpose-family/pointer-scan.js";
-import { directPurposeScriptPurposes } from "../direct-purpose-family/script-purposes.js";
+import {
+  directPurposeInputDescriptorsPresent,
+  directPurposeScriptPurposes,
+} from "../direct-purpose-family/script-purposes.js";
 import {
   directPurposeBindTransitions,
   type DirectPurposeSourceEvidence,
@@ -207,6 +210,7 @@ const DETECTION_PROVER = "00".repeat(28);
 export const receivePurposeLanguageDetection = async (
   material: DirectScriptMaterial,
 ): Promise<{ readonly observed: Coordinate | null } | null> => {
+  if (!directPurposeInputDescriptorsPresent(material)) return null;
   const evidence = await buildDirectSourceIndexEvidence(material);
   if (!recordsReceiveLanguage(material)) {
     const [coordinate] = await convictingExecutions(material, evidence);
