@@ -223,6 +223,12 @@ describe("fault-proof contract builder", () => {
         stepOwners.set(step.spendingScriptHash, owners);
       });
     }
+    const DIRECT = [
+      "missingScriptSource",
+      "missingRedeemer",
+      "unusedRedeemer",
+      "scriptIntegrityHashMismatch",
+    ];
     expect(
       [...stepOwners.values()].filter((owners) => owners.length > 1).sort(),
     ).toEqual(
@@ -239,23 +245,21 @@ describe("fault-proof contract builder", () => {
         ["withdrawnReferenceInput[2]", "withdrawnInput[2]"],
         // Both convict from the same final ordered-collection comparison.
         ["mintDeclaredAssetLimit[3]", "observerOrderInvalid[3]"],
-        // The direct families share the source authenticate and map stages.
+        // receivePurposeLanguage and the DIRECT families share source
+        // authentication and map; the DIRECT families share the claim route
+        // (unusedRedeemer has no claimed-redeemer scan) and the terminal.
         ...[5, 6].map((step) => [
-          `receivePurposeLanguage[${step}]`,
-          `missingScriptSource[${step}]`,
-          `missingRedeemer[${step}]`,
-          `unusedRedeemer[${step}]`,
-          `scriptIntegrityHashMismatch[${step}]`,
+          `receivePurposeLanguage[${step.toString()}]`,
+          ...DIRECT.map((family) => `${family}[${step.toString()}]`),
         ]),
-        // The families that convict through the shared claim custody share
-        // it through to the claim terminal.
-        ...[24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 36].map((step, index) => [
-          `missingScriptSource[${step}]`,
-          `missingRedeemer[${step + 2}]`,
-          `unusedRedeemer[${index + 14}]`,
-        ]),
-        ["missingScriptSource[34]", "missingRedeemer[36]"],
-        ["missingScriptSource[35]", "missingRedeemer[37]"],
+        ...[
+          ...Array.from({ length: 12 }, (_, at) =>
+            [24 + at, 26 + at, 14 + at].slice(0, at < 10 ? 3 : 2),
+          ),
+          [36, 38, 24],
+        ].map((steps) =>
+          steps.map((step, at) => `${DIRECT[at]!}[${step.toString()}]`),
+        ),
       ].sort(),
     );
   }, 120_000);

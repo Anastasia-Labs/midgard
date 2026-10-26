@@ -26,6 +26,7 @@ import {
   type RouteInputs,
 } from "../direct-purpose-family/pointer-scan.js";
 import {
+  directPurposeInputDescriptorsPresent,
   directPurposeScriptPurposes,
   directPurposeSpendDescriptorPresent,
 } from "../direct-purpose-family/script-purposes.js";
@@ -250,11 +251,13 @@ const DETECTION_PROVER = "00".repeat(28);
 /**
  * Whether the bound leaf convicts, without planning custody: the observed
  * missing-source coordinate of the convicting route, `null` for the
- * claimed-only route, or `null` overall when no route convicts.
+ * claimed-only route, or `null` overall when no route convicts or a spent
+ * or referenced input has no predecessor descriptor.
  */
 export const missingScriptSourceDetection = async (
   material: DirectScriptMaterial,
 ): Promise<MissingScriptSourceRouteChoice | null> => {
+  if (!directPurposeInputDescriptorsPresent(material)) return null;
   const evidence = await buildDirectSourceIndexEvidence(material);
   return chooseRoute({
     material,

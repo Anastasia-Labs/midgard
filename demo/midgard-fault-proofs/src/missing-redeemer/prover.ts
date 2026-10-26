@@ -20,6 +20,7 @@ import {
 } from "../direct-purpose-family/custody.js";
 import type { DirectPurposeContracts } from "../direct-purpose-family/family.js";
 import {
+  directPurposeInputDescriptorsPresent,
   directPurposeScriptPurposes,
   directPurposeSpendDescriptorPresent,
 } from "../direct-purpose-family/script-purposes.js";
@@ -167,6 +168,7 @@ const DETECTION_PROVER = "00".repeat(28);
 export const missingRedeemerDetection = async (
   material: DirectScriptMaterial,
 ): Promise<{ readonly observed: Coordinate | null } | null> => {
+  if (!directPurposeInputDescriptorsPresent(material)) return null;
   const reason = material.bound.subject.rejection_reason;
   if (reason === null || SDK.purposeCoordinateOfReason(reason) === null) {
     const purposes = directPurposeScriptPurposes(material);

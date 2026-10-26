@@ -41,7 +41,7 @@ const MR_CLAIMED =
 const MSS_FORGED_SUCCESSOR =
   "demo/midgard-fault-proofs/tests/submit-init-emulator-missing-script-source-forged-successor.test.ts";
 const MSS_OBSERVER =
-  "refuses a forged successor at every role of the accepted observer route";
+  "refuses a forged successor at every role of an accepted sourceless observer beside spent and referenced inputs";
 const missingScriptSourceForgedSuccessor: ValidatorScenarioPair = {
   passing: [{ file: MSS_FORGED_SUCCESSOR, test: MSS_OBSERVER }],
   failing: [{ file: MSS_FORGED_SUCCESSOR, test: MSS_OBSERVER }],
@@ -49,7 +49,7 @@ const missingScriptSourceForgedSuccessor: ValidatorScenarioPair = {
 const UR_FORGED_SUCCESSOR =
   "demo/midgard-fault-proofs/tests/submit-init-emulator-unused-redeemer-forged-successor.test.ts";
 const UR_PURPOSELESS =
-  "refuses a forged successor at every role of the accepted purposeless-redeemer route";
+  "refuses a forged successor at every role of an accepted purposeless redeemer beside spent and referenced inputs";
 const unusedRedeemerForgedSuccessor: ValidatorScenarioPair = {
   passing: [{ file: UR_FORGED_SUCCESSOR, test: UR_PURPOSELESS }],
   failing: [{ file: UR_FORGED_SUCCESSOR, test: UR_PURPOSELESS }],

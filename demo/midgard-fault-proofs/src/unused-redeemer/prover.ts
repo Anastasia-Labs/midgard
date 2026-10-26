@@ -21,7 +21,10 @@ import {
   boundIndex,
   type RouteInputs,
 } from "../direct-purpose-family/pointer-scan.js";
-import { directPurposeSpendDescriptorPresent } from "../direct-purpose-family/script-purposes.js";
+import {
+  directPurposeInputDescriptorsPresent,
+  directPurposeSpendDescriptorPresent,
+} from "../direct-purpose-family/script-purposes.js";
 import {
   directPurposeBindTransitions,
   type DirectPurposeSourceEvidence,
@@ -209,10 +212,12 @@ export const requireConvictingUnusedRedeemerProof = async (
 const DETECTION_PROVER = "00".repeat(28);
 
 /** The convicting redeemer, without planning custody; `null` when none
- * convicts. */
+ * convicts, or when a spent or referenced input has no predecessor
+ * descriptor and no walk completes. */
 export const unusedRedeemerDetection = async (
   material: DirectScriptMaterial,
 ): Promise<UnusedRedeemerRouteChoice | null> => {
+  if (!directPurposeInputDescriptorsPresent(material)) return null;
   const evidence = await buildDirectSourceIndexEvidence(material);
   return chooseRoute({
     material,

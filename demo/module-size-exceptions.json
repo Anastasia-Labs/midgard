@@ -1081,8 +1081,8 @@
   },
   {
     "file": "midgard-sdk/tests/fault-proof.fault-proof-contract-builder.ts",
-    "max": 1286,
-    "reason": "Retained test registration “fault-proof contract builder” (1186 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. Direct committed-step expectations and canonical test encoding: fully applies the boundary award hash and game resolver-hash list in their declared parameter order. Recomputes expected bindings with the pinned WASM API in the shared independent test oracle, avoiding the legacy encoder CBOR-major incompatibility. Root combined integration preserves prior terminal/builtin behavior; cap records the resulting source count."
+    "max": 1290,
+    "reason": "Retained test registration “fault-proof contract builder” (1186 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. Direct committed-step expectations and canonical test encoding: fully applies the boundary award hash and game resolver-hash list in their declared parameter order. Recomputes expected bindings with the pinned WASM API in the shared independent test oracle, avoiding the legacy encoder CBOR-major incompatibility. Root combined integration preserves prior terminal/builtin behavior; cap records the resulting source count. The shared-owner list names receivePurposeLanguage beside the direct families at the shared source authentication and map steps; cap records the measured count."
   },
   {
     "file": "midgard-test-support/scripts/capture-l1-recordings.mjs",

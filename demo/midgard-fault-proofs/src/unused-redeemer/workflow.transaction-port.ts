@@ -9,11 +9,15 @@ import {
   type DirectPurposeRole,
   directPurposeRoleIndex,
 } from "../direct-purpose-family/family.js";
+import { fitDirectPurposeTransition } from "../direct-purpose-family/fit.js";
 import {
   submitDirectPurposeStep01Accepted,
   submitDirectPurposeStep01Forced,
 } from "../direct-purpose-family/step01.js";
-import { submitDirectPurposeTransition } from "../direct-purpose-family/submit.js";
+import {
+  type DirectPurposeCustody,
+  submitDirectPurposeTransition,
+} from "../direct-purpose-family/submit.js";
 import { submitDirectPurposeTerminal } from "../direct-purpose-family/terminal.js";
 import {
   resolveFaultProofFieldCarriagePublications,
@@ -251,9 +255,16 @@ export const createUnusedRedeemerTransactionPort = (
               return;
             }
             const thread = await threadAt(config.lucid, threadOutRef);
-            const transition = plan.transitionAt(role, thread.datum);
+            // A page that opens MPF proofs is sized to the transaction
+            // budget; the carriage covers every transaction of the page.
+            const opened = new Set(
+              (plan.paging.isPageStart(role, thread.datum)
+                ? plan.paging.page(role, thread.datum).transitions
+                : [plan.transitionAt(role, thread.datum)]
+              ).flatMap((transition) => transition.fields),
+            );
             const carriage = new Map<number, readonly UTxO[]>();
-            for (const field of transition.fields) {
+            for (const field of opened) {
               const opening = plan.proof.plan(field).openingPlan;
               if (opening.plan.tier === "Inline") continue;
               const published =
@@ -286,25 +297,28 @@ export const createUnusedRedeemerTransactionPort = (
                 ...(certificate === undefined ? [] : [certificate]),
               ]);
             }
-            await submitDirectPurposeTransition(
-              {
-                family: UNUSED_REDEEMER_FAMILY,
-                lucid: config.lucid,
-                blueprint: config.binding.blueprint,
-                network: config.binding.network,
-                contracts: config.contracts,
-                signer: config.signer,
-                unit: threadUnit(thread, config.contracts),
-                references: reference,
-                carriage: (field) => carriage.get(field) ?? [],
-                plan: plan.proof.plan,
-                witnessReferenceScripts: config.references.witnesses,
-                preSubmitBoundary,
-                awaitConfirmation: false,
-              },
+            const custody: DirectPurposeCustody = {
+              family: UNUSED_REDEEMER_FAMILY,
+              lucid: config.lucid,
+              blueprint: config.binding.blueprint,
+              network: config.binding.network,
+              contracts: config.contracts,
+              signer: config.signer,
+              unit: threadUnit(thread, config.contracts),
+              references: reference,
+              carriage: (field) => carriage.get(field) ?? [],
+              plan: plan.proof.plan,
+              witnessReferenceScripts: config.references.witnesses,
+              preSubmitBoundary,
+              awaitConfirmation: false,
+            };
+            const transition = await fitDirectPurposeTransition({
+              custody,
+              paging: plan.paging,
+              role,
               thread,
-              transition,
-            );
+            });
+            await submitDirectPurposeTransition(custody, thread, transition);
           },
         ),
       };
