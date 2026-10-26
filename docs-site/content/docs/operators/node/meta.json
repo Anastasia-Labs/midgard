@@ -6,6 +6,7 @@
     "cli-reference",
     "initialization-deployment",
     "operator-lifecycle",
+    "operational-runbooks",
     "database",
     "background-fibers",
     "deposits-withdrawals",
