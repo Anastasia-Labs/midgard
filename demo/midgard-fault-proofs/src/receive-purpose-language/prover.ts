@@ -9,6 +9,7 @@
  * purpose); an accepted leaf, or a rejected leaf whose reason does not
  * precede the execution, with a receive purpose whose PlutusV3 source a
  * redeemer reaches. */
+import { decodeMidgardVersionedScriptEnvelope } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 
 import {
@@ -28,6 +29,7 @@ import {
 } from "../direct-purpose-family/source-walk.js";
 import {
   buildDirectSourceIndexEvidence,
+  directReceiveCredentials,
   directRedeemerAt,
 } from "../direct-script-derivation/index.js";
 import type { DirectScriptMaterial } from "../direct-script-derivation/material.js";
@@ -52,6 +54,23 @@ type Coordinate = SDK.DirectPurposeCoordinate;
 
 const RECEIVE_KIND = 3n;
 
+/** A mint item, output or script witness not in the shape the purpose walk,
+ * the receive route or the source index reads; a decoding or canonicality
+ * phase refuses it first. */
+class UnreadableItem extends Error {}
+
+/** `decode` over one committed item, refused as unreadable when it does not
+ * decode. */
+const readItem = <T>(decode: () => T): T => {
+  try {
+    return decode();
+  } catch (error) {
+    throw new UnreadableItem(
+      `${RECEIVE_PURPOSE_LANGUAGE_CATEGORY_LABEL}: ${String(error)}`,
+    );
+  }
+};
+
 /** Whether the bound leaf records `ReceivePurposePlutusV3Forbidden`. */
 const recordsReceiveLanguage = (material: DirectScriptMaterial): boolean => {
   const reason = material.bound.subject.rejection_reason;
@@ -63,13 +82,14 @@ const recordsReceiveLanguage = (material: DirectScriptMaterial): boolean => {
 };
 
 /** Receive purposes whose source is PlutusV3 and a redeemer reaches, in
- * receive order: each execution the producer forbids. */
+ * receive order: each execution the producer forbids. Refused as unreadable
+ * when a mint item or output the purpose walk reads does not decode. */
 export const receivePurposeLanguageForbiddenExecutions = async (
   material: DirectScriptMaterial,
   evidence: DirectPurposeSourceEvidence,
 ): Promise<readonly Coordinate[]> => {
   const out: Coordinate[] = [];
-  for (const purpose of directPurposeScriptPurposes(material)) {
+  for (const purpose of readItem(() => directPurposeScriptPurposes(material))) {
     if (purpose.coordinate.kind !== RECEIVE_KIND) continue;
     const { selected } = await evidence.lookup(purpose.script_hash);
     if (
@@ -120,6 +140,8 @@ const familyRoute = async (
   if (recorded !== null && observed === undefined) {
     if (recorded.kind !== RECEIVE_KIND || recorded.index < 0n)
       return receivePurposeLanguageContradictionRoute(inputs);
+    // The receive route reads every output.
+    readItem(() => directReceiveCredentials(inputs.material.fields[2]!));
     const route = await receivePurposeLanguageReceiveRoute(
       inputs,
       recorded.index,
@@ -205,27 +227,36 @@ const DETECTION_PROVER = "00".repeat(28);
  * Whether the bound leaf convicts, without planning custody: a leaf
  * recording this arm yields its claim verdict (`observed: null`); any other
  * leaf yields its first forbidden execution its reason does not precede.
- * Every other leaf is `null`.
+ * Every other leaf, and a leaf whose script witness, or mint item or output
+ * the walk or the receive route reads, does not decode, is `null`.
  */
 export const receivePurposeLanguageDetection = async (
   material: DirectScriptMaterial,
 ): Promise<{ readonly observed: Coordinate | null } | null> => {
   if (!directPurposeInputDescriptorsPresent(material)) return null;
-  const evidence = await buildDirectSourceIndexEvidence(material);
-  if (!recordsReceiveLanguage(material)) {
-    const [coordinate] = await convictingExecutions(material, evidence);
-    return coordinate === undefined ? null : { observed: coordinate };
+  try {
+    // The source index reads every script witness.
+    for (const item of material.fields[6]!)
+      readItem(() => decodeMidgardVersionedScriptEnvelope(item));
+    const evidence = await buildDirectSourceIndexEvidence(material);
+    if (!recordsReceiveLanguage(material)) {
+      const [coordinate] = await convictingExecutions(material, evidence);
+      return coordinate === undefined ? null : { observed: coordinate };
+    }
+    const route = await familyRoute(
+      {
+        material,
+        evidence,
+        prover: DETECTION_PROVER,
+        plan: directPurposeFieldPlans(material, DETECTION_PROVER),
+      },
+      undefined,
+    );
+    return SDK.receivePurposeLanguageConvicts(route.final)
+      ? { observed: null }
+      : null;
+  } catch (error) {
+    if (error instanceof UnreadableItem) return null;
+    throw error;
   }
-  const route = await familyRoute(
-    {
-      material,
-      evidence,
-      prover: DETECTION_PROVER,
-      plan: directPurposeFieldPlans(material, DETECTION_PROVER),
-    },
-    undefined,
-  );
-  return SDK.receivePurposeLanguageConvicts(route.final)
-    ? { observed: null }
-    : null;
 };
