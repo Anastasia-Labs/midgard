@@ -26,9 +26,10 @@ Routes fall into two classes. Public routes need no credentials. Admin routes ar
 gated by `ADMIN_API_KEY` and require the key in the `x-midgard-admin-key` request
 header; a missing or wrong key is denied before the handler runs.
 
-"Public" here means unauthenticated, not safe to expose to the open internet. TLS,
-rate limiting, and ingress hardening are
-[readiness blockers](/docs/getting-started/status), not solved problems.
+"Public" here means unauthenticated, not safe to expose to the open internet. TLS
+and ingress hardening are
+[readiness blockers](/docs/getting-started/status), not solved problems. Every
+route is rate limited; see [Request rate limits](#request-rate-limits).
 
 <Callout type="warn" title="Always set ADMIN_API_KEY on shared nodes">
   `ADMIN_API_KEY` gates the admin-only HTTP surface (init, commit, merge, state
@@ -119,6 +120,51 @@ outputs support only absent or inline datums, never datum-hash outputs),
 `datumHash` / `datum` hex fields in the external wallet view. Funding-input
 `scriptRef` is rejected. The supplied funding UTxOs must be unique and belong
 to `fundingAddress`; the request accepts at most 128 funding inputs.
+
+## Request rate limits
+
+Every route passes a token-bucket limiter before the node reads the body, queries
+the database or evaluates scripts. Each client has one bucket per route class,
+and each public class also has one global bucket shared by all clients. A
+request over either bucket gets `429` with `Retry-After` set to the whole seconds
+until a token is back, and this body:
+
+```json
+{ "error": "Request rate exceeded", "error_code": "E_HTTP_RATE_LIMITED" }
+```
+
+| Class      | Routes                                   | Per client (burst, refill) | Global (burst, refill) |
+| ---------- | ---------------------------------------- | -------------------------- | ---------------------- |
+| `health`   | `GET /healthz`, `GET /readyz`            | 20, 5/s                    | none                   |
+| `admin`    | every admin route                        | 30, 10/s                   | none                   |
+| `read`     | the other `GET` routes and `POST /utxos` | 30, 10/s                   | 200, 100/s             |
+| `batch`    | `POST /tx-status`                        | 4, 1/s                     | 16, 4/s                |
+| `write`    | `POST /submit`, `POST /deposit/build`    | 4, 1/s                     | 16, 4/s                |
+| `evaluate` | `POST /tx/evaluate`                      | 2, 0.2/s                   | 8, 1/s                 |
+
+Health and admin routes have no global bucket and keep their clients in a table
+of their own, so a flood of public routes cannot refuse them.
+
+A client is its TCP peer address; IPv6 addresses share one bucket per /64. The
+node reads `X-Midgard-Client-IP` only when the TCP peer is listed in
+`HTTP_TRUSTED_PROXY_PEERS`, the private IPv4 addresses of a reverse proxy that
+overwrites that header. It never reads `X-Forwarded-For`.
+
+Each client table holds at most 8,192 entries. When it is full, entries idle
+for 60 seconds are evicted; a new client that still finds no room gets `429`
+with `Retry-After: 5` and the error `Peer quota capacity is full`. Concurrent
+requests and in-flight body bytes are capped separately; overflow answers `503`
+with `Retry-After: 5` and `E_HTTP_INGRESS_CAPACITY`.
+
+| Variable                                                                                             | Default         | Meaning                                                                                           |
+| ---------------------------------------------------------------------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------- |
+| `HTTP_RATE_LIMIT_ENABLED`                                                                            | `true`          | `false` turns rate refusals off for testing; `preprod-public` and `mainnet` nodes refuse to start |
+| `HTTP_RATE_LIMIT_HEALTH`, `HTTP_RATE_LIMIT_ADMIN`                                                    | the table above | `peerBurst,peerPerSecond`                                                                         |
+| `HTTP_RATE_LIMIT_READ`, `HTTP_RATE_LIMIT_BATCH`, `HTTP_RATE_LIMIT_WRITE`, `HTTP_RATE_LIMIT_EVALUATE` | the table above | `peerBurst,peerPerSecond,globalBurst,globalPerSecond`                                             |
+| `HTTP_TRUSTED_PROXY_PEERS`                                                                           | empty           | up to 8 private IPv4 proxy addresses allowed to set `X-Midgard-Client-IP`                         |
+
+Bursts are positive integers and refills positive numbers per second. The public
+ingress proxy applies its own per-IP and global limits in front of these.
 
 ## Admin routes
 

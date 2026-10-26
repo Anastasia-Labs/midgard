@@ -231,9 +231,10 @@ Every contract item merges before the 2026-10-26 freeze.
   `/commit`, `/merge`, `/stateQueue`, `/logBlocksDB` and `/logGlobals`.
 - **Request limits.** In progress. Bound request bodies, content types, per-IP
   and global rates, and pagination at the proxy and in the app, including
-  `/tx/evaluate`, and prove the bounds with a load test. Today `/tx/evaluate`
-  caps its concurrency and answers 503 with `Retry-After` when full; it has no
-  per-IP limit.
+  `/tx/evaluate`, and prove the bounds with a load test. The app now limits
+  every route per client (IPv6 by /64) and globally, with stricter classes for
+  `/tx/evaluate`, `/submit` and batch status and separate health and admin
+  classes; the load test is open.
 - **Log redaction.** Open. Public routes never log raw CBOR or request bodies.
   Test redaction of seeds, keys, credentials, transaction CBOR and addresses.
 

@@ -98,7 +98,11 @@ preserve authoritative rejection codes and identifiers while suppressing arbitra
 upstream diagnostic text; explicit testing/private profiles retain that text.
 
 Per-peer and global rates, concurrent requests and weighted bodies are bounded
-before parsing/evaluation. Overflow returns 429 or 503 with `Retry-After: 5`.
+before parsing/evaluation. A rate refusal returns 429 with `E_HTTP_RATE_LIMITED`
+and `Retry-After` in seconds until a token is back; full capacity returns 503
+with `Retry-After: 5`. Classes, defaults and the `HTTP_RATE_LIMIT_*` variables
+are in the docs-site server HTTP API page; public profiles refuse
+`HTTP_RATE_LIMIT_ENABLED=false`.
 Advisory evaluation never enters the production worker queue, and pools with fewer
 than two workers refuse it. Public reads use a separate four-connection database
 pool and fail-fast request quota, preserving production SQL pools. Pending
