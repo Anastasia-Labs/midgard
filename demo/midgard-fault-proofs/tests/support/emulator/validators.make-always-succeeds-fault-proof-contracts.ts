@@ -379,7 +379,7 @@ export const makeAlwaysSucceedsFaultProofContracts = (
     missingRedeemer: scaffoldChain(appendedFamilyFallback, 39),
     unusedRedeemer: scaffoldChain(appendedFamilyFallback, 25),
     scriptIntegrityHashMismatch: scaffoldChain(appendedFamilyFallback, 21),
-    distinctAssetAccumulationLimit: scaffoldChain(appendedFamilyFallback, 6),
+    distinctAssetAccumulationLimit: scaffoldChain(appendedFamilyFallback, 12),
   };
   return fraudProofContracts;
 };
