@@ -8,6 +8,7 @@ import {
   encodeMidgardNativeTxProofFieldLengths,
   encodeMidgardNativeTxWitnessSetCompact,
   encodeMidgardRedeemerWitnessItem,
+  MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
   type MidgardNativeTxCanonical,
@@ -113,8 +114,11 @@ export type CommittedFieldShapeScenarioKind =
   | "field-item-width-illegal"
   | "redeemer-canonicity"
   | "non-envelope"
-  | "max-wrong-stride"
-  | "max-honest";
+  | "max-honest"
+  | "two-batch-wrong-stride"
+  | "largest-wrong-stride"
+  | "largest-walked"
+  | "worst-batch-wrong-stride";
 
 /**
  * §5.4's slot-0 item count at the 32,768-byte aggregate field bound: an
@@ -122,18 +126,39 @@ export type CommittedFieldShapeScenarioKind =
  */
 export const MAX_SLOT0_ITEM_COUNT = 819;
 
-/**
- * Slot-0 items at the field bound. The convicting shape widens the last item
- * by five payload bytes so the field is exactly 32,768 bytes and off-stride;
- * the honest shape is the largest stride-correct slot-0 field.
- */
-const maxSlot0Items = (convicting: boolean): Buffer[] =>
+/** The largest stride-correct slot-0 field. */
+const maxSlot0Items = (): Buffer[] =>
   Array.from({ length: MAX_SLOT0_ITEM_COUNT }, (_, index) => {
-    const wide = convicting && index === MAX_SLOT0_ITEM_COUNT - 1;
-    const item = Buffer.alloc(wide ? 43 : 38, 0xa5);
+    const item = Buffer.alloc(38, 0xa5);
     item.writeUInt16BE(index, 0);
     return item;
   });
+
+/**
+ * The most items a committed field holds: 32,765 empty byte strings under
+ * `99 7ffd` fill §5.4's 32,768-byte bound exactly.
+ */
+export const LARGEST_ITEM_COUNT =
+  MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES - 3;
+
+const emptyItems = (count: number): Buffer[] =>
+  Array.from({ length: count }, () => Buffer.alloc(0));
+
+/**
+ * One batch of items, every one at the two-byte head or wider, with as many
+ * three-byte heads as the byte bound pays for: the costliest batch one step
+ * can be handed.
+ */
+const worstBatchItems = (): Buffer[] => {
+  const batch = SDK.MIDGARD_ENVELOPE_BATCH_ITEMS;
+  const threeByteCount = Math.floor(
+    (MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES - 3 - 26 * batch) / 233,
+  );
+  return [
+    ...Array.from({ length: threeByteCount }, () => Buffer.alloc(256)),
+    ...Array.from({ length: batch - threeByteCount }, () => Buffer.alloc(24)),
+  ];
+};
 
 export type CommittedFieldShapeScenario = {
   readonly kind: CommittedFieldShapeScenarioKind;
@@ -283,12 +308,34 @@ export const committedFieldShapeScenarioMaterial = (
       ),
     };
   }
+  if (kind === "largest-walked") {
+    // The same items at a slot whose items §5.3 walks rather than strides.
+    const fullTx = makeNativeTx({
+      spendInputCbors: [],
+      fee: 7n,
+      outputCbors: emptyItems(LARGEST_ITEM_COUNT),
+    });
+    return {
+      canonicalTx: fullTx,
+      fullTx,
+      compact: fullTx.compact,
+      l2TransactionSourceCbor: l2TransactionSourceCborV1(fullTx),
+      fieldIndex: 2,
+      committedPreimage: Buffer.from(fullTx.body.outputsPreimageCbor),
+    };
+  }
   const spendItems =
     kind === "wrong-stride"
       ? [Buffer.from("deadbeef", "hex")]
       : kind === "honest"
         ? [Buffer.alloc(38, 0xa5)]
-        : maxSlot0Items(kind === "max-wrong-stride");
+        : kind === "two-batch-wrong-stride"
+          ? emptyItems(SDK.MIDGARD_ENVELOPE_BATCH_ITEMS + 1)
+          : kind === "largest-wrong-stride"
+            ? emptyItems(LARGEST_ITEM_COUNT)
+            : kind === "worst-batch-wrong-stride"
+              ? worstBatchItems()
+              : maxSlot0Items();
   const fullTx = makeNativeTx({ spendInputCbors: spendItems, fee: 7n });
   return {
     canonicalTx: fullTx,
@@ -355,8 +402,10 @@ export const setupCommittedFieldShapeScenario = async ({
       transactionsRoot,
       l2TransactionCount: 1n,
       ...(kind === "redeemer-canonicity" ||
-      kind === "max-wrong-stride" ||
-      kind === "max-honest"
+      kind === "max-honest" ||
+      kind === "largest-wrong-stride" ||
+      kind === "largest-walked" ||
+      kind === "worst-batch-wrong-stride"
         ? { headerDurationMs: 60_000 }
         : {}),
     },

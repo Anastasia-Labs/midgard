@@ -29,10 +29,10 @@
 use aiken/collection/list
 use aiken/primitive/bytearray
 use midgard/fraud_proofs/canonical_decodability/rule.{
-  BodyFieldClaim, envelope_verdict_v1, verdict_grammatical,
+  BodyFieldClaim, authenticated_claim_preimage_v1, envelope_verdict_v1,
+  verdict_grammatical,
 } as canonical_decodability_rule
 use midgard/fraud_proofs/committed_field_shape/rule.{
-  CommittedFieldShapeVerdictV1, committed_field_shape_v1,
   committed_field_shape_verdict_v1, fixed_stride_field_indices_v1,
   is_committed_field_shape_violation_v1, shape_verdict_admissible,
   shape_verdict_code_count, shape_verdict_field_byte_bound,
@@ -542,18 +542,18 @@ fn committed_block(
 
 fn inline_verdict(field_index: Int, preimage: ByteArray) -> Int {
   let block = committed_block(field_index, preimage)
-  let CommittedFieldShapeVerdictV1 { verdict, .. } = committed_field_shape_v1(
+  let Pair(_, authenticated) = authenticated_claim_preimage_v1(
     verify_native_tx_compact_cbor_v1(block.tx_id, block.compact_cbor),
     BodyFieldClaim { field_index, carriage: Inline { preimage } },
     [],
     fixture.test_certificate_policy_id,
   )
-  verdict
+  committed_field_shape_verdict_v1(field_index, authenticated)
 }
 
 fn certified_verdict(field_index: Int, preimage: ByteArray) -> Int {
   let block = committed_block(field_index, preimage)
-  let CommittedFieldShapeVerdictV1 { verdict, .. } = committed_field_shape_v1(
+  let Pair(_, authenticated) = authenticated_claim_preimage_v1(
     verify_native_tx_compact_cbor_v1(block.tx_id, block.compact_cbor),
     BodyFieldClaim {
       field_index,
@@ -562,7 +562,7 @@ fn certified_verdict(field_index: Int, preimage: ByteArray) -> Int {
     fixture.certified_reference_inputs_v1(block.tx_id, field_index, preimage),
     fixture.test_certificate_policy_id,
   )
-  verdict
+  committed_field_shape_verdict_v1(field_index, authenticated)
 }
 
 /// **Measured row.** The byte term at §5.4's per-field bound: 32,768 committed
@@ -630,88 +630,6 @@ test committed_field_shape_verdict_fixture_only_at_five_hundred_items() {
   }
 }
 
-/// This family's single-transaction ceiling, **measured** rather than fitted
-/// (#580, 2026-08-15).
-///
-/// §12.8 and this ledger's note published "about 1,074 items" as this lane's
-/// own arithmetic — `(13,200,000 − 261,998) / 12,040.88`. The four selectors
-/// below replace that fit with a reading: same shape as the two cardinality
-/// rows, carried to the cardinality at which the rule's own share (row minus
-/// its fixture-only control) crosses GOAL_SPEC §3.3's 13,200,000-memory basis,
-/// bisected on the net memory axis with the pinned fork.
-///
-/// They are **not** ledger rows: a whole-test reading at this cardinality is
-/// about 24.1M mem, and a within-basis ledger records only rows whose raw
-/// reading fits the basis.
-///
-/// **#606 re-measurement, 2026-08-16 — the ceiling moved down to 1,074.** The
-/// E2 certificate repair's welded `field_hash` and its new door equality add
-/// **+9,200 memory / +1,472,000 cpu** to this family's own net at every
-/// cardinality — both ledger cardinality rows moved by exactly that with their
-/// fixture-only controls unmoved, so the marginal is untouched (12,024 mem/item
-/// across this boundary pair) and only the intercept rose. #580's margin at
-/// 1,075 was 3,762 memory units, which the constant consumes: 1,075 now nets
-/// **13,205,438** mem and is over the basis, while 1,074 nets **13,193,414**
-/// (margin 6,586).
-const measured_item_ceiling: Int = 1074
-
-const first_item_cardinality_over_the_basis: Int = 1075
-
-/// **Measured row.** The largest item cardinality this family adjudicates
-/// inside the §3.3 memory basis.
-test committed_field_shape_verdict_at_the_measured_item_ceiling() {
-  inline_verdict(
-    spend_inputs_field_index,
-    minimum_width_preimage(measured_item_ceiling),
-  ) == shape_verdict_wrong_stride
-}
-
-/// **Measured control** for the row above, on the cardinality rows' terms.
-test committed_field_shape_verdict_fixture_only_at_the_measured_item_ceiling() {
-  let preimage = minimum_width_preimage(measured_item_ceiling)
-  let block = committed_block(spend_inputs_field_index, preimage)
-  and {
-    bytearray.length(preimage) == 3 + measured_item_ceiling,
-    bytearray.length(block.compact_cbor) > 0,
-  }
-}
-
-/// **Measured row.** One item further — the first cardinality whose net exceeds
-/// the basis, which is what makes the ceiling a crossing rather than a bound.
-test committed_field_shape_verdict_at_the_first_item_over_the_basis() {
-  inline_verdict(
-    spend_inputs_field_index,
-    minimum_width_preimage(first_item_cardinality_over_the_basis),
-  ) == shape_verdict_wrong_stride
-}
-
-/// **Measured control** for the row above, on the same terms.
-test committed_field_shape_verdict_fixture_only_at_the_first_item_over_the_basis() {
-  let preimage = minimum_width_preimage(first_item_cardinality_over_the_basis)
-  let block = committed_block(spend_inputs_field_index, preimage)
-  and {
-    bytearray.length(preimage) == 3 + first_item_cardinality_over_the_basis,
-    bytearray.length(block.compact_cbor) > 0,
-  }
-}
-
-/// **Ceiling shape guard**: the two cardinalities are adjacent, both still fit
-/// tier 1 so the reading is the walk and not carriage, and both are grammatical
-/// envelopes convicted on §7.4 — the shape this family's per-item term is
-/// priced at.
-test committed_field_shape_measured_ceiling_shape_is_the_cardinality_rows_shape() {
-  let ceiling = minimum_width_preimage(measured_item_ceiling)
-  let over = minimum_width_preimage(first_item_cardinality_over_the_basis)
-  and {
-    first_item_cardinality_over_the_basis == measured_item_ceiling + 1,
-    measured_item_ceiling > upper_item_cardinality,
-    bytearray.length(ceiling) < chunk_bytes_k,
-    bytearray.length(over) < chunk_bytes_k,
-    envelope_verdict_v1(ceiling) == verdict_grammatical,
-    envelope_verdict_v1(over) == verdict_grammatical,
-  }
-}
-
 /// **Ledger shape guard.** Every property a re-take could quietly shrink,
 /// asserted where shrinking it turns this selector red before a cheaper row is
 /// pinned: the bound row really sits at §5.4's byte bound, really needs tier 3,
@@ -759,7 +677,7 @@ test committed_field_shape_verdict_refuses_substituted_certified_chunks() fail {
     #"ff",
   )
   let block = committed_block(spend_inputs_field_index, committed)
-  let CommittedFieldShapeVerdictV1 { verdict, .. } = committed_field_shape_v1(
+  let Pair(_, authenticated) = authenticated_claim_preimage_v1(
     verify_native_tx_compact_cbor_v1(block.tx_id, block.compact_cbor),
     BodyFieldClaim {
       field_index: spend_inputs_field_index,
@@ -772,5 +690,5 @@ test committed_field_shape_verdict_refuses_substituted_certified_chunks() fail {
     ),
     fixture.test_certificate_policy_id,
   )
-  verdict >= 0
+  committed_field_shape_verdict_v1(spend_inputs_field_index, authenticated) >= 0
 }

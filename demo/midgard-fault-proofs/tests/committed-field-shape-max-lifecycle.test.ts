@@ -1,48 +1,51 @@
 /**
- * committedFieldShape at the consensus field bound: a 32,768-byte committed
- * slot carried by §8.6 certified chunks, proven from Init through removal, and
- * the honest maximum commitment that no forwarded verdict can convict.
+ * committedFieldShape at the consensus field bound: 32,768-byte committed
+ * slots carried by §8.6 certified chunks and walked in batches. The largest
+ * off-stride slot is convicted from Init through removal; the same shape at a
+ * walked slot walks to verdict 0 and no forwarded verdict convicts it; the
+ * honest maximum stride-correct slot refuses a forwarded conviction; the
+ * costliest single batch fits one step.
  */
+import { MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES } from "@al-ft/midgard-core";
 import {
-  deriveMidgardNativeTxWitnessSetCompact,
-  encodeMidgardNativeTxWitnessSetCompact,
-  MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
-} from "@al-ft/midgard-core";
-import {
-  type CommittedFieldClaim,
+  advanceCommittedFieldShapeWalk,
+  CommittedFieldShapeStep01Datum,
   CommittedFieldShapeStep02Datum,
+  type CommittedFieldShapeWalkState,
   FraudProofTokenDatum,
+  MIDGARD_ENVELOPE_BATCH_ITEMS,
   MIDGARD_FIELD_SHAPE_VERDICT_ADMISSIBLE,
+  MIDGARD_FIELD_SHAPE_VERDICT_FIELD_BYTE_BOUND,
+  MIDGARD_FIELD_SHAPE_VERDICT_NOT_AN_ENVELOPE,
   MIDGARD_FIELD_SHAPE_VERDICT_WRONG_STRIDE,
   midgardCommittedFieldShapeVerdict,
 } from "@al-ft/midgard-sdk";
-import { Data, type UTxO } from "@lucid-evolution/lucid";
+import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { faultProofRawFieldCarriage } from "../src/field-opening.js";
 import {
   prepareCommittedFieldShapeFromCanonicalTx,
-  submitCommittedFieldShapeInit,
   submitCommittedFieldShapeStep01,
   submitCommittedFieldShapeStep02,
   submitRemoveFraudulentBlock,
 } from "../src/index.js";
+import { expectStageFit } from "./support/certified-committed-field.js";
 import {
-  type CertifiedCommittedField,
-  expectStageFit,
-  publishCertifiedCommittedField,
-} from "./support/certified-committed-field.js";
-import {
-  type CommittedFieldShapeEmulatorHarness,
-  type CommittedFieldShapeScenario,
+  type CommittedFieldShapeRawSuccessor,
   expectCommittedFieldShapeOnchainRefusal,
+  LARGEST_ITEM_COUNT,
   makeCommittedFieldShapeEmulatorHarness,
   MAX_SLOT0_ITEM_COUNT,
-  publishCommittedFieldShapeReferenceScripts,
-  setupCommittedFieldShapeScenario,
   submitRawCommittedFieldShapeStep01,
   submitRawCommittedFieldShapeStep02,
 } from "./support/committed-field-shape-emulator.js";
+import {
+  blockStays,
+  certifiedClaimFor,
+  LABEL,
+  openThread,
+  threadsAt,
+} from "./support/committed-field-shape-emulator.max-shape-thread.js";
 import {
   buildRemovalDeploymentInfo,
   captureEmulatorSubmission,
@@ -51,71 +54,15 @@ import {
   publishRemovalReferenceScripts,
 } from "./support/submit-init-emulator-shared.js";
 
-const LABEL = "committed-field-shape-max";
-
-const initThread = async (
-  harness: CommittedFieldShapeEmulatorHarness,
-  scenario: CommittedFieldShapeScenario,
-) =>
-  await captureEmulatorSubmission(harness.emulator, () =>
-    submitCommittedFieldShapeInit({
-      lucid: harness.proverLucid,
-      blueprint: harness.realBlueprint,
-      network,
-      contracts: harness.committedFieldShape,
-      category: harness.category,
-      catalogue: {
-        policyId: harness.contracts.fraudProofCatalogue.policyId,
-        spendingScriptAddress:
-          harness.contracts.fraudProofCatalogue.spendingScriptAddress,
-        root: harness.catalogue.root,
-      },
-      signer: harness.proverSigner,
-      fraudulentBlockOutRef: scenario.setup.fraudulentBlockOutRef,
-      witnessReferenceScripts: harness.witnessReferenceScripts,
-    }),
-  );
-
-const certifySlot0 = async (
-  harness: CommittedFieldShapeEmulatorHarness,
-  scenario: CommittedFieldShapeScenario,
-): Promise<CertifiedCommittedField> =>
-  await publishCertifiedCommittedField({
-    emulator: harness.emulator,
-    lucid: harness.proverLucid,
-    signer: harness.proverSigner,
-    certificate: harness.contracts.fieldPreimageCertificate,
-    nativeTxId: scenario.nativeTxId,
-    fieldIndex: 0,
-    preimage: scenario.committedPreimage,
-    compactCbor: scenario.compactCbor,
-    witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompact(
-      deriveMidgardNativeTxWitnessSetCompact(scenario.fullTx!.witnessSet),
-    ).toString("hex"),
-    label: LABEL,
-  });
-
-const threadsAt = async (
-  harness: CommittedFieldShapeEmulatorHarness,
-  stepIndex: 0 | 1,
-  unit: string,
-): Promise<number> =>
-  (
-    await harness.proverLucid.utxosAtWithUnit(
-      harness.committedFieldShape.steps[stepIndex].spendingScriptAddress,
-      unit,
-    )
-  ).length;
+const B = MIDGARD_ENVELOPE_BATCH_ITEMS;
 
 describe("committed-field-shape at the consensus field bound", () => {
-  it("convicts a 32,768-byte off-stride slot through certified carriage, mints proof and removes the block", async () => {
+  it("convicts the largest off-stride slot in batches, mints proof and removes the block", async () => {
     const harness = await makeCommittedFieldShapeEmulatorHarness();
-    const scenario = await setupCommittedFieldShapeScenario({
-      harness,
-      kind: "max-wrong-stride",
-    });
+    const { scenario, step01Ref, step02Ref, init, certified } =
+      await openThread(harness, "largest-wrong-stride");
     if (scenario.canonicalTx === null) {
-      throw new Error("maximum wrong-stride scenario must be canonical");
+      throw new Error("largest wrong-stride scenario must be canonical");
     }
     expect(scenario.fieldIndex).toBe(0);
     expect(scenario.committedPreimage).toHaveLength(
@@ -130,17 +77,6 @@ describe("committed-field-shape at the consensus field bound", () => {
       MIDGARD_FIELD_SHAPE_VERDICT_WRONG_STRIDE,
     );
 
-    const [step01Reference, step02Reference] =
-      await publishCommittedFieldShapeReferenceScripts({
-        lucid: harness.funderLucid,
-        contracts: harness.committedFieldShape,
-      });
-    const init = await initThread(harness, scenario);
-    expectStageFit(LABEL, "init", init.measurement);
-    const certified = await certifySlot0(harness, scenario);
-    expect(certified.plan.tier).toBe("Certified");
-    expect(certified.chunks.length).toBeGreaterThan(1);
-
     // A redeemer-carried claim cannot address a certified field.
     await expect(
       submitCommittedFieldShapeStep01({
@@ -150,44 +86,58 @@ describe("committed-field-shape at the consensus field bound", () => {
         categoryId: harness.category.categoryId,
         network,
         signer: harness.proverSigner,
-        threadOutRef: init.result.nextThreadOutRef,
+        threadOutRef: init.nextThreadOutRef,
         stateQueueBlockOutRef: scenario.setup.fraudulentBlockOutRef,
         txInclusion: scenario.inclusion,
         prepared,
-        referenceScriptUtxo: step01Reference,
+        referenceScriptUtxo: step01Ref,
         witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     ).rejects.toThrow();
 
-    const step01 = await captureEmulatorSubmission(harness.emulator, () =>
-      submitCommittedFieldShapeStep01({
-        lucid: harness.proverLucid,
-        blueprint: harness.realBlueprint,
-        contracts: harness.committedFieldShape,
-        categoryId: harness.category.categoryId,
-        network,
-        signer: harness.proverSigner,
-        threadOutRef: init.result.nextThreadOutRef,
-        stateQueueBlockOutRef: scenario.setup.fraudulentBlockOutRef,
-        txInclusion: scenario.inclusion,
-        prepared,
-        publishedFieldCarriageUtxos: certified.chunks,
-        fieldCertificateUtxo: certified.certificateUtxo,
-        referenceScriptUtxo: step01Reference,
-        witnessReferenceScripts: harness.witnessReferenceScripts,
-      }),
-    );
-    expectStageFit(LABEL, "step-01", step01.measurement);
-    expect(step01.measurement.referenceInputCount).toBeGreaterThanOrEqual(
-      certified.referenceInputs.length + 3,
-    );
-    const secondStep = await expectSingleUtxoWithUnit(
+    let threadOutRef = init.nextThreadOutRef;
+    const completions: boolean[] = [];
+    for (;;) {
+      const step = await captureEmulatorSubmission(harness.emulator, () =>
+        submitCommittedFieldShapeStep01({
+          lucid: harness.proverLucid,
+          blueprint: harness.realBlueprint,
+          contracts: harness.committedFieldShape,
+          categoryId: harness.category.categoryId,
+          network,
+          signer: harness.proverSigner,
+          threadOutRef,
+          stateQueueBlockOutRef: scenario.setup.fraudulentBlockOutRef,
+          txInclusion: scenario.inclusion,
+          prepared,
+          publishedFieldCarriageUtxos: certified.chunks,
+          fieldCertificateUtxo: certified.certificateUtxo,
+          referenceScriptUtxo: step01Ref,
+          witnessReferenceScripts: harness.witnessReferenceScripts,
+        }),
+      );
+      expectStageFit(
+        LABEL,
+        `step-01-${(completions.length + 1).toString()}`,
+        step.measurement,
+      );
+      expect(step.measurement.referenceInputCount).toBeGreaterThanOrEqual(
+        certified.referenceInputs.length + 3,
+      );
+      completions.push(step.result.complete);
+      expect(step.result.step02State === null).toBe(!step.result.complete);
+      threadOutRef = step.result.nextThreadOutRef;
+      if (step.result.complete) break;
+    }
+    expect(completions).toHaveLength(Math.ceil(LARGEST_ITEM_COUNT / B));
+    expect(completions.slice(0, -1).every((complete) => !complete)).toBe(true);
+    const verdictThread = await expectSingleUtxoWithUnit(
       harness.proverLucid,
       harness.committedFieldShape.steps[1].spendingScriptAddress,
-      init.result.computationThreadUnit,
+      init.computationThreadUnit,
     );
     expect(
-      Data.from(secondStep.datum!, CommittedFieldShapeStep02Datum),
+      Data.from(verdictThread.datum!, CommittedFieldShapeStep02Datum),
     ).toStrictEqual({
       fraud_prover: harness.proverSigner.paymentKeyHash,
       data: {
@@ -203,8 +153,8 @@ describe("committed-field-shape at the consensus field bound", () => {
         contracts: harness.committedFieldShape,
         categoryId: harness.category.categoryId,
         signer: harness.proverSigner,
-        threadOutRef: step01.result.nextThreadOutRef,
-        referenceScriptUtxo: step02Reference,
+        threadOutRef,
+        referenceScriptUtxo: step02Ref,
         witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     );
@@ -245,62 +195,167 @@ describe("committed-field-shape at the consensus field bound", () => {
     removal.measurements.forEach((measurement, index) =>
       expectStageFit(LABEL, `remove-${(index + 1).toString()}`, measurement),
     );
-    expect(removal.result.fraudCategoryId).toBe("00000012");
+    expect(removal.result.fraudCategoryId).toBe(harness.category.categoryId);
     await expect(
       harness.proverLucid.utxosAtWithUnit(
         harness.contracts.stateQueue.spendingScriptAddress,
         scenario.setup.stateQueueBlockUnit,
       ),
     ).resolves.toHaveLength(0);
-  }, 900_000);
+  }, 1_800_000);
 
-  it("refuses a convicting verdict forwarded against an honest maximum slot at the verdict check", async () => {
+  it("walks the same shape at a walked slot to verdict 0 and refuses every other verdict for it", async () => {
     const harness = await makeCommittedFieldShapeEmulatorHarness();
-    const scenario = await setupCommittedFieldShapeScenario({
-      harness,
-      kind: "max-honest",
-    });
-    // The largest stride-correct slot-0 field: 819 items of 40 bytes.
+    const { scenario, step01Ref, step02Ref, init, certified } =
+      await openThread(harness, "largest-walked");
+    expect(scenario.fieldIndex).toBe(2);
+    expect(scenario.committedPreimage).toHaveLength(
+      MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
+    );
+    expect(
+      midgardCommittedFieldShapeVerdict(2, scenario.committedPreimage),
+    ).toBe(MIDGARD_FIELD_SHAPE_VERDICT_ADMISSIBLE);
+    const unit = init.computationThreadUnit;
+    const claim = certifiedClaimFor(harness, scenario, certified);
+    const raw = (
+      threadOutRef: string,
+      successor: CommittedFieldShapeRawSuccessor,
+    ) =>
+      captureEmulatorSubmission(harness.emulator, () =>
+        submitRawCommittedFieldShapeStep01({
+          harness,
+          threadOutRef,
+          scenario,
+          claim,
+          successor,
+          referenceScriptUtxo: step01Ref,
+          carriageReferenceInputs: certified.referenceInputs,
+        }),
+      );
+    const subject = {
+      bad_tx_id: scenario.nativeTxId,
+      field_index: BigInt(scenario.fieldIndex),
+    };
+
+    let threadOutRef = init.nextThreadOutRef;
+    let previous: CommittedFieldShapeWalkState | null = null;
+    let steps = 0;
+    for (;;) {
+      const transition = advanceCommittedFieldShapeWalk({
+        badTxId: scenario.nativeTxId,
+        fieldIndex: scenario.fieldIndex,
+        committedPreimage: scenario.committedPreimage,
+        previous,
+      });
+      steps += 1;
+      if (transition.kind === "verdict") {
+        expect(transition.state.verdict).toBe(
+          BigInt(MIDGARD_FIELD_SHAPE_VERDICT_ADMISSIBLE),
+        );
+        // Every other code, forwarded from the last batch, is refused.
+        for (const forged of [
+          MIDGARD_FIELD_SHAPE_VERDICT_NOT_AN_ENVELOPE,
+          MIDGARD_FIELD_SHAPE_VERDICT_FIELD_BYTE_BOUND,
+          MIDGARD_FIELD_SHAPE_VERDICT_WRONG_STRIDE,
+        ]) {
+          await expectCommittedFieldShapeOnchainRefusal(() =>
+            raw(threadOutRef, {
+              step: 2,
+              state: { ...transition.state, verdict: BigInt(forged) },
+            }),
+          );
+        }
+        expect(await threadsAt(harness, 0, unit)).toBe(1);
+        expect(await threadsAt(harness, 1, unit)).toBe(0);
+        // The identical transaction forwarding the truthful verdict lands.
+        const truthful = await raw(threadOutRef, {
+          step: 2,
+          state: transition.state,
+        });
+        expectStageFit(
+          LABEL,
+          `honest-step-01-${steps.toString()}`,
+          truthful.measurement,
+        );
+        threadOutRef = truthful.result.nextThreadOutRef;
+        break;
+      }
+      if (previous === null) {
+        // Before any batch is read, a convicting verdict is refused too.
+        await expectCommittedFieldShapeOnchainRefusal(() =>
+          raw(threadOutRef, {
+            step: 2,
+            state: {
+              ...subject,
+              verdict: BigInt(MIDGARD_FIELD_SHAPE_VERDICT_FIELD_BYTE_BOUND),
+            },
+          }),
+        );
+      }
+      const step = await raw(threadOutRef, {
+        step: 1,
+        state: transition.state,
+      });
+      expectStageFit(
+        LABEL,
+        `honest-step-01-${steps.toString()}`,
+        step.measurement,
+      );
+      const thread = await expectSingleUtxoWithUnit(
+        harness.proverLucid,
+        harness.committedFieldShape.steps[0].spendingScriptAddress,
+        unit,
+      );
+      expect(
+        Data.from(thread.datum!, CommittedFieldShapeStep01Datum).data,
+      ).toStrictEqual(transition.state);
+      threadOutRef = step.result.nextThreadOutRef;
+      previous = transition.state;
+    }
+    expect(steps).toBe(Math.ceil(LARGEST_ITEM_COUNT / B));
+    expect(await threadsAt(harness, 0, unit)).toBe(0);
+    expect(await threadsAt(harness, 1, unit)).toBe(1);
+
+    // Verdict 0 finalizes nothing.
+    await expectCommittedFieldShapeOnchainRefusal(() =>
+      submitRawCommittedFieldShapeStep02({
+        harness,
+        threadOutRef,
+        referenceScriptUtxo: step02Ref,
+      }),
+    );
+    expect(await threadsAt(harness, 1, unit)).toBe(1);
+    await blockStays(harness, scenario);
+  }, 1_800_000);
+
+  it("refuses a convicting verdict forwarded against the honest maximum stride-correct slot", async () => {
+    const harness = await makeCommittedFieldShapeEmulatorHarness();
+    const { scenario, step01Ref, step02Ref, init, certified } =
+      await openThread(harness, "max-honest");
+    // The largest stride-correct slot-0 field: 819 items of 40 bytes, one
+    // batch.
     expect(scenario.committedPreimage).toHaveLength(
       3 + MAX_SLOT0_ITEM_COUNT * 40,
     );
     expect(
       midgardCommittedFieldShapeVerdict(0, scenario.committedPreimage),
     ).toBe(MIDGARD_FIELD_SHAPE_VERDICT_ADMISSIBLE);
-    const [step01Reference, step02Reference] =
-      await publishCommittedFieldShapeReferenceScripts({
-        lucid: harness.funderLucid,
-        contracts: harness.committedFieldShape,
-      });
-    const init = await initThread(harness, scenario);
-    const unit = init.result.computationThreadUnit;
-    const certified = await certifySlot0(harness, scenario);
-    const certifiedClaim = (
-      referenceInputs: readonly UTxO[],
-    ): CommittedFieldClaim => ({
-      BodyFieldClaim: {
-        field_index: 0n,
-        carriage: faultProofRawFieldCarriage({
-          plan: certified.plan,
-          referenceInputs,
-          certificatePolicyId:
-            harness.contracts.fieldPreimageCertificate.policyId,
-          label: LABEL,
-        }),
-      },
-    });
+    const unit = init.computationThreadUnit;
     const forward = (verdict: number) =>
       submitRawCommittedFieldShapeStep01({
         harness,
-        threadOutRef: init.result.nextThreadOutRef,
+        threadOutRef: init.nextThreadOutRef,
         scenario,
-        claim: certifiedClaim,
-        forwardedState: {
-          bad_tx_id: scenario.nativeTxId,
-          field_index: 0n,
-          verdict: BigInt(verdict),
+        claim: certifiedClaimFor(harness, scenario, certified),
+        successor: {
+          step: 2,
+          state: {
+            bad_tx_id: scenario.nativeTxId,
+            field_index: 0n,
+            verdict: BigInt(verdict),
+          },
         },
-        referenceScriptUtxo: step01Reference,
+        referenceScriptUtxo: step01Ref,
         carriageReferenceInputs: certified.referenceInputs,
       });
 
@@ -323,15 +378,54 @@ describe("committed-field-shape at the consensus field bound", () => {
       submitRawCommittedFieldShapeStep02({
         harness,
         threadOutRef: truthful.result.nextThreadOutRef,
-        referenceScriptUtxo: step02Reference,
+        referenceScriptUtxo: step02Ref,
       }),
     );
     expect(await threadsAt(harness, 1, unit)).toBe(1);
-    await expect(
-      harness.proverLucid.utxosAtWithUnit(
-        harness.contracts.stateQueue.spendingScriptAddress,
-        scenario.setup.stateQueueBlockUnit,
-      ),
-    ).resolves.toHaveLength(1);
+    await blockStays(harness, scenario);
+  }, 900_000);
+
+  it("decides the costliest single batch in one step under the transaction limits", async () => {
+    const harness = await makeCommittedFieldShapeEmulatorHarness();
+    const { scenario, step01Ref, init, certified } = await openThread(
+      harness,
+      "worst-batch-wrong-stride",
+    );
+    if (scenario.canonicalTx === null) {
+      throw new Error("worst-batch scenario must be canonical");
+    }
+    expect(scenario.committedPreimage.length).toBeLessThanOrEqual(
+      MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
+    );
+    const prepared = prepareCommittedFieldShapeFromCanonicalTx({
+      tx: scenario.canonicalTx,
+      fieldIndex: scenario.fieldIndex,
+    });
+    expect(prepared.evidence.verdict).toBe(
+      MIDGARD_FIELD_SHAPE_VERDICT_WRONG_STRIDE,
+    );
+    const step = await captureEmulatorSubmission(harness.emulator, () =>
+      submitCommittedFieldShapeStep01({
+        lucid: harness.proverLucid,
+        blueprint: harness.realBlueprint,
+        contracts: harness.committedFieldShape,
+        categoryId: harness.category.categoryId,
+        network,
+        signer: harness.proverSigner,
+        threadOutRef: init.nextThreadOutRef,
+        stateQueueBlockOutRef: scenario.setup.fraudulentBlockOutRef,
+        txInclusion: scenario.inclusion,
+        prepared,
+        publishedFieldCarriageUtxos: certified.chunks,
+        fieldCertificateUtxo: certified.certificateUtxo,
+        referenceScriptUtxo: step01Ref,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
+      }),
+    );
+    expectStageFit(LABEL, "worst-batch-step-01", step.measurement);
+    expect(step.result.complete).toBe(true);
+    expect(step.result.step02State?.verdict).toBe(
+      BigInt(MIDGARD_FIELD_SHAPE_VERDICT_WRONG_STRIDE),
+    );
   }, 900_000);
 });

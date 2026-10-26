@@ -311,14 +311,19 @@ These capabilities are built; R6 supplies their release evidence:
   provider lag, database saturation, disk and payout state. The node's
   `/readyz` names stuck settlement jobs in its details. Alert delivery is
   open.
-- **Runbooks.** Open. One runbook per alert, plus operator setup, deployment,
-  upgrade and recovery, and the user wallet, deposit, submit, status and
-  withdrawal flows.
-- **User and operator docs.** Open. Document deposits, withdrawals, the P1
-  forced-transaction limits with guidance on the missing validity upper bound,
-  `evaluate()`, the curated operator lifecycle and status transitions. The
-  [HTTP API page](../docs-site/content/docs/operators/node/server-http-api.mdx)
-  already documents `/tx/evaluate`.
+- **Runbooks.** In progress. The [operational runbooks](../docs-site/content/docs/operators/node/operational-runbooks.mdx)
+  cover commit lag, catch-up, replay-root mismatch, forced-admission divergence,
+  follower refusals, stuck settlements and proof submission deadlines.
+  Alert delivery, recovery drills and
+  release validation remain open.
+- **User and operator docs.** In progress. The docs describe
+  [deposit/withdrawal milestones](../docs-site/content/docs/operators/node/deposits-withdrawals.mdx),
+  [forced-transaction limits and the missing L2 upper bound](../docs-site/content/docs/sdk/midgard-sdk/user-events.mdx),
+  [`evaluate()`](../docs-site/content/docs/sdk/lucid-midgard/validation-simulation.mdx),
+  the [curated lifecycle](../docs-site/content/docs/operators/node/operator-lifecycle.mdx)
+  and [transaction status transitions](../docs-site/content/docs/sdk/lucid-midgard/submission-observability.mdx).
+  Check them against the final deployed revision and complete the release
+  journeys before closing R9.
 
 ### SDK and release artifacts (R10, R11)
 

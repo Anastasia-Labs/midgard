@@ -1,8 +1,10 @@
 import {
   type CommittedFieldClaim,
+  CommittedFieldShapeStep01Datum,
   CommittedFieldShapeStep01SpendRedeemer,
   CommittedFieldShapeStep02Datum,
   type CommittedFieldShapeStep02State,
+  type CommittedFieldShapeWalkState,
   HUB_ORACLE_ASSET_NAME,
   requireInputIndex,
   requireOwnSpendPurpose,
@@ -14,6 +16,7 @@ import {
   type BuildTxWithRedeemer,
   credentialToAddress,
   Data,
+  type LucidEvolution,
   type Script,
   scriptHashToCredential,
   toUnit,
@@ -28,11 +31,11 @@ import {
   parseOutRef,
   phasMembershipRewardAddress,
   requireSingletonUtxo,
+  type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
 } from "../../src/runtime.js";
 import {
   PHAS_MEMBERSHIP_WITHDRAW_TITLE,
-  requireInitialStepDatum,
   selectFeeInput,
 } from "../../src/step-support.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
@@ -67,17 +70,38 @@ export const fundCommittedFieldShapeOutsider = async (
 };
 
 /**
- * Raw step-01 with no evidence/verdict guard. Used only to prove the validator
- * itself refuses fabricated verdicts and uncommitted preimages.
+ * The successor a raw step-01 transaction writes: the walk state back at step
+ * 01, or the verdict at step 02. `address` overrides the step's own address.
+ */
+export type CommittedFieldShapeRawSuccessor =
+  | Readonly<{
+      step: 1;
+      state: CommittedFieldShapeWalkState;
+      address?: string;
+    }>
+  | Readonly<{
+      step: 2;
+      state: CommittedFieldShapeStep02State;
+      address?: string;
+    }>;
+
+/**
+ * Raw step-01 with no evidence/verdict guard: it writes whatever successor and
+ * claim it is given. Used for validator-positive twins and to prove the
+ * validator itself refuses fabricated successors and uncommitted preimages.
+ * The successor keeps the thread's recorded prover, so a stranger `signer`
+ * changes only who signs.
  */
 export const submitRawCommittedFieldShapeStep01 = async ({
   harness,
   threadOutRef,
   scenario,
   claim,
-  forwardedState,
+  successor,
   referenceScriptUtxo,
   carriageReferenceInputs = [],
+  signer = harness.proverSigner,
+  lucid = harness.proverLucid,
 }: {
   readonly harness: CommittedFieldShapeEmulatorHarness;
   readonly threadOutRef: string;
@@ -89,23 +113,31 @@ export const submitRawCommittedFieldShapeStep01 = async ({
   readonly claim:
     | CommittedFieldClaim
     | ((referenceInputs: readonly UTxO[]) => CommittedFieldClaim);
-  readonly forwardedState: CommittedFieldShapeStep02State;
+  readonly successor: CommittedFieldShapeRawSuccessor;
   readonly referenceScriptUtxo: UTxO;
   /** Published §8 field carriage (chunks and certificate) the claim reads. */
   readonly carriageReferenceInputs?: readonly UTxO[];
+  readonly signer?: ResolvedProverSigner;
+  readonly lucid?: LucidEvolution;
 }): Promise<{ readonly txHash: string; readonly nextThreadOutRef: string }> => {
   const { threadUtxo, threadToken } =
     await requireCommittedFieldShapeThreadUtxo({
-      lucid: harness.proverLucid,
+      lucid,
       contracts: harness.committedFieldShape,
       categoryId: harness.category.categoryId,
       stepIndex: 0,
       threadOutRef,
     });
-  requireInitialStepDatum({ threadUtxo, signer: harness.proverSigner });
+  if (threadUtxo.datum == null) {
+    throw new Error("raw committed-field-shape step-01 thread has no datum");
+  }
+  const { fraud_prover } = Data.from(
+    threadUtxo.datum,
+    CommittedFieldShapeStep01Datum,
+  );
   const [stateQueueBlockUtxo, hubOracleUtxo] = await Promise.all([
     fetchUtxoByOutRef({
-      lucid: harness.proverLucid,
+      lucid,
       outRef: parseOutRef(
         scenario.setup.fraudulentBlockOutRef,
         "raw committed-field-shape block",
@@ -113,7 +145,7 @@ export const submitRawCommittedFieldShapeStep01 = async ({
       label: "raw committed-field-shape block",
     }),
     requireSingletonUtxo({
-      lucid: harness.proverLucid,
+      lucid,
       address: credentialToAddress(
         network,
         scriptHashToCredential(harness.committedFieldShape.hubOraclePolicyId),
@@ -132,10 +164,8 @@ export const submitRawCommittedFieldShapeStep01 = async ({
   if (observedHeader !== threadToken.fraudulentHeaderHash) {
     throw new Error("raw step-01 scenario/thread header mismatch");
   }
-  harness.proverSigner.selectWallet(harness.proverLucid);
-  const feeInput = selectFeeInput(
-    await harness.proverLucid.wallet().getUtxos(),
-  );
+  signer.selectWallet(lucid);
+  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
   const phasScript: Script = {
     type: "PlutusV3",
     script: getCompiledScript(
@@ -149,16 +179,23 @@ export const submitRawCommittedFieldShapeStep01 = async ({
     referenceUtxo: harness.witnessReferenceScripts.phasMembershipWithdraw,
     label: "raw committed-field-shape PHAS membership",
   });
-  const step02Datum = Data.to(
-    {
-      fraud_prover: harness.proverSigner.paymentKeyHash,
-      data: forwardedState,
-    },
-    CommittedFieldShapeStep02Datum,
-  );
+  const successorAddress =
+    successor.address ??
+    harness.committedFieldShape.steps[successor.step - 1]!
+      .spendingScriptAddress;
+  const successorDatum =
+    successor.step === 1
+      ? Data.to(
+          { fraud_prover, data: successor.state },
+          CommittedFieldShapeStep01Datum,
+        )
+      : Data.to(
+          { fraud_prover, data: successor.state },
+          CommittedFieldShapeStep02Datum,
+        );
   const outputMatches = computationThreadOutputPredicate({
-    address: harness.committedFieldShape.steps[1].spendingScriptAddress,
-    datum: step02Datum,
+    address: successorAddress,
+    datum: successorDatum,
     unit: threadToken.unit,
   });
   const referenceInputs = [
@@ -228,7 +265,7 @@ export const submitRawCommittedFieldShapeStep01 = async ({
       CommittedFieldShapeStep01SpendRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const base = harness.proverLucid
+  const base = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], redeemer)
@@ -244,14 +281,14 @@ export const submitRawCommittedFieldShapeStep01 = async ({
       }),
     )
     .pay.ToContract(
-      harness.committedFieldShape.steps[1].spendingScriptAddress,
-      { kind: "inline", value: step02Datum },
+      successorAddress,
+      { kind: "inline", value: successorDatum },
       {
         lovelace: threadUtxo.assets.lovelace ?? 0n,
         [threadToken.unit]: 1n,
       },
     )
-    .addSignerKey(harness.proverSigner.paymentKeyHash);
+    .addSignerKey(signer.paymentKeyHash);
   const unsigned = await phasCarriage
     .attach(base)
     .complete({ localUPLCEval: true });
@@ -260,6 +297,6 @@ export const submitRawCommittedFieldShapeStep01 = async ({
   }
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();
-  await harness.proverLucid.awaitTx(txHash);
+  await lucid.awaitTx(txHash);
   return { txHash, nextThreadOutRef: `${txHash}#${outputIndex.toString()}` };
 };
