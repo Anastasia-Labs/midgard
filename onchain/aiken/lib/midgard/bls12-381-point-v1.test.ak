@@ -57,6 +57,27 @@ test g1_x_off_the_curve_is_invalid() {
   g1_point_is_invalid_v1(1)
 }
 
+test g1_x_off_the_curve_whose_candidate_root_squares_to_the_negated_rhs_is_invalid() {
+  // x^3 + 4 is not a square, and its candidate root squares to -(x^3 + 4).
+  and {
+    g1_point_is_invalid_v1(
+      g1_x(
+        #"95d698989e1fd767158b3be455ee17250ba1f0268a36a4a772132d47564c89399d3d20e54cc850d1e3be2cfd2588afd8",
+      ),
+    ),
+    g1_point_is_invalid_v1(
+      g1_x(
+        #"85e205f2f5ffed0a82ab845e29d7c7c4d6b3558179f872cd6272aa4007115f21f12c491a9dc1f2db45e1e7e17e8832f2",
+      ),
+    ),
+    g1_point_is_invalid_v1(
+      g1_x(
+        #"8a8ff69d381ffa7ddc911f5b34aafeb04f2720d4198b3e78e4ff5e08ff154d36e7a50d20af055b1bde8ecc0e0bee3ce5",
+      ),
+    ),
+  }
+}
+
 test g2_generator_and_a_multiple_are_valid() {
   and {
     !g2_invalid(

@@ -297,6 +297,27 @@ describe("V1 uncompress failures", () => {
     },
   );
 
+  it.each([
+    "95d698989e1fd767158b3be455ee17250ba1f0268a36a4a772132d47564c89399d3d20e54cc850d1e3be2cfd2588afd8",
+    "85e205f2f5ffed0a82ab845e29d7c7c4d6b3558179f872cd6272aa4007115f21f12c491a9dc1f2db45e1e7e17e8832f2",
+    "8a8ff69d381ffa7ddc911f5b34aafeb04f2720d4198b3e78e4ff5e08ff154d36e7a50d20af055b1bde8ecc0e0bee3ce5",
+  ])(
+    "G1 off-curve x whose candidate root squares to the negated right-hand side %s",
+    (hex) => {
+      const encoded = Uint8Array.from(Buffer.from(hex, "hex"));
+      const x = bigEndian(encoded) % 2n ** 381n;
+      const rhs = mod(x ** 3n + BLS12_381_G1_B);
+      const root = modPower(rhs, (p + 1n) / 4n);
+      expect(mod(root * root)).toBe(mod(-rhs));
+      expect(blsG1PointIsInvalid(x)).toBe(true);
+      expect(nobleRejects(59n, encoded)).toBe(true);
+      const { evaluation, proved } = verdict(59n, encoded);
+      expect(evaluation.kind).toBe("failure");
+      expect(evaluation.budget).toEqual(charge(59n));
+      expect(proved).toBe(true);
+    },
+  );
+
   it("proves arbitrary failing encodings and no valid one", () => {
     for (let index = 0; index < 8; index += 1) {
       const g1 = g1Encoding(fieldElement("verify-g1", index));

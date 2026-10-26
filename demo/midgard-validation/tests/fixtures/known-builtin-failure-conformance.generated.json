@@ -7905,6 +7905,45 @@
     {
       "case": 408,
       "tag": 59,
+      "name": "G1 off-curve x whose candidate root squares to the negated right-hand side 0",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "583095d698989e1fd767158b3be455ee17250ba1f0268a36a4a772132d47564c89399d3d20e54cc850d1e3be2cfd2588afd8"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 409,
+      "tag": 59,
+      "name": "G1 off-curve x whose candidate root squares to the negated right-hand side 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "583085e205f2f5ffed0a82ab845e29d7c7c4d6b3558179f872cd6272aa4007115f21f12c491a9dc1f2db45e1e7e17e8832f2"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 410,
+      "tag": 59,
+      "name": "G1 off-curve x whose candidate root squares to the negated right-hand side 2",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "58308a8ff69d381ffa7ddc911f5b34aafeb04f2720d4198b3e78e4ff5e08ff154d36e7a50d20af055b1bde8ecc0e0bee3ce5"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 411,
+      "tag": 59,
       "name": "compacted G1 encoding",
       "arguments": [
         {
@@ -7919,7 +7958,7 @@
       "verdict": "refused"
     },
     {
-      "case": 409,
+      "case": 412,
       "tag": 59,
       "name": "integer G1 encoding",
       "arguments": [
@@ -7932,7 +7971,7 @@
       "verdict": "refused"
     },
     {
-      "case": 410,
+      "case": 413,
       "tag": 66,
       "name": "G2 encoding 0 bytes",
       "arguments": [
@@ -7945,7 +7984,7 @@
       "verdict": "known"
     },
     {
-      "case": 411,
+      "case": 414,
       "tag": 66,
       "name": "G2 encoding 48 bytes",
       "arguments": [
@@ -7958,7 +7997,7 @@
       "verdict": "known"
     },
     {
-      "case": 412,
+      "case": 415,
       "tag": 66,
       "name": "G2 encoding 95 bytes",
       "arguments": [
@@ -7971,7 +8010,7 @@
       "verdict": "known"
     },
     {
-      "case": 413,
+      "case": 416,
       "tag": 66,
       "name": "G2 encoding 97 bytes",
       "arguments": [
@@ -7984,7 +8023,7 @@
       "verdict": "known"
     },
     {
-      "case": 414,
+      "case": 417,
       "tag": 66,
       "name": "G2 uncompressed",
       "arguments": [
@@ -7997,7 +8036,7 @@
       "verdict": "known"
     },
     {
-      "case": 415,
+      "case": 418,
       "tag": 66,
       "name": "G2 infinity",
       "arguments": [
@@ -8010,7 +8049,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 416,
+      "case": 419,
       "tag": 66,
       "name": "G2 infinity with nonzero x0",
       "arguments": [
@@ -8023,7 +8062,7 @@
       "verdict": "known"
     },
     {
-      "case": 417,
+      "case": 420,
       "tag": 66,
       "name": "G2 infinity with sort flag",
       "arguments": [
@@ -8036,7 +8075,7 @@
       "verdict": "known"
     },
     {
-      "case": 418,
+      "case": 421,
       "tag": 66,
       "name": "G2 x0=p",
       "arguments": [
@@ -8049,7 +8088,7 @@
       "verdict": "known"
     },
     {
-      "case": 419,
+      "case": 422,
       "tag": 66,
       "name": "G2 x1=p",
       "arguments": [
@@ -8062,7 +8101,7 @@
       "verdict": "known"
     },
     {
-      "case": 420,
+      "case": 423,
       "tag": 66,
       "name": "G2 x0=p-1",
       "arguments": [
@@ -8075,7 +8114,7 @@
       "verdict": "known"
     },
     {
-      "case": 421,
+      "case": 424,
       "tag": 66,
       "name": "G2 x1=p-1",
       "arguments": [
@@ -8088,7 +8127,7 @@
       "verdict": "known"
     },
     {
-      "case": 422,
+      "case": 425,
       "tag": 66,
       "name": "G2 small coordinates",
       "arguments": [
@@ -8101,7 +8140,7 @@
       "verdict": "known"
     },
     {
-      "case": 423,
+      "case": 426,
       "tag": 66,
       "name": "G2 x=1, off the twist",
       "arguments": [
@@ -8114,7 +8153,7 @@
       "verdict": "known"
     },
     {
-      "case": 424,
+      "case": 427,
       "tag": 66,
       "name": "G2 x=2, on the twist, outside G2",
       "arguments": [
@@ -8127,7 +8166,7 @@
       "verdict": "known"
     },
     {
-      "case": 425,
+      "case": 428,
       "tag": 66,
       "name": "G2 generator",
       "arguments": [
@@ -8140,7 +8179,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 426,
+      "case": 429,
       "tag": 66,
       "name": "G2 generator, sort flag flipped",
       "arguments": [
@@ -8153,7 +8192,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 427,
+      "case": 430,
       "tag": 66,
       "name": "G2 [5] generator",
       "arguments": [
@@ -8166,7 +8205,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 428,
+      "case": 431,
       "tag": 66,
       "name": "G2 off the twist",
       "arguments": [
@@ -8179,7 +8218,7 @@
       "verdict": "known"
     },
     {
-      "case": 429,
+      "case": 432,
       "tag": 66,
       "name": "G2 on the twist, outside G2",
       "arguments": [
@@ -8192,7 +8231,7 @@
       "verdict": "known"
     },
     {
-      "case": 430,
+      "case": 433,
       "tag": 66,
       "name": "G2 y^2 in Fp, root in Fp",
       "arguments": [
@@ -8205,7 +8244,7 @@
       "verdict": "known"
     },
     {
-      "case": 431,
+      "case": 434,
       "tag": 66,
       "name": "G2 y^2 in Fp, root in Fp u",
       "arguments": [
@@ -8218,7 +8257,7 @@
       "verdict": "known"
     },
     {
-      "case": 432,
+      "case": 435,
       "tag": 66,
       "name": "compacted G2 encoding",
       "arguments": [
@@ -8234,7 +8273,7 @@
       "verdict": "refused"
     },
     {
-      "case": 433,
+      "case": 436,
       "tag": 66,
       "name": "Miller-loop G2 encoding",
       "arguments": [
@@ -8246,7 +8285,7 @@
       "verdict": "refused"
     },
     {
-      "case": 434,
+      "case": 437,
       "tag": 60,
       "name": "domain 0 bytes",
       "arguments": [
@@ -8259,63 +8298,6 @@
           "kind": "constant",
           "type": "9f01ff",
           "payload": "40"
-        }
-      ],
-      "verdict": "not-known"
-    },
-    {
-      "case": 435,
-      "tag": 60,
-      "name": "domain 0 bytes, compacted message",
-      "arguments": [
-        {
-          "kind": "semanticConstant",
-          "type": "9f01ff",
-          "root": "0707070707070707070707070707070707070707070707070707070707070707",
-          "cborLength": "3",
-          "payloadMemory": "1",
-          "memory": "1"
-        },
-        {
-          "kind": "constant",
-          "type": "9f01ff",
-          "payload": "40"
-        }
-      ],
-      "verdict": "not-known"
-    },
-    {
-      "case": 436,
-      "tag": 60,
-      "name": "domain 0 bytes, string message",
-      "arguments": [
-        {
-          "kind": "constant",
-          "type": "9f02ff",
-          "payload": "416d"
-        },
-        {
-          "kind": "constant",
-          "type": "9f01ff",
-          "payload": "40"
-        }
-      ],
-      "verdict": "not-known"
-    },
-    {
-      "case": 437,
-      "tag": 60,
-      "name": "domain 255 bytes",
-      "arguments": [
-        {
-          "kind": "constant",
-          "type": "9f01ff",
-          "payload": "43000000"
-        },
-        {
-          "kind": "constant",
-          "type": "9f01ff",
-          "payload": "5f584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000583f000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ff"
         }
       ],
       "verdict": "not-known"
@@ -8323,6 +8305,63 @@
     {
       "case": 438,
       "tag": 60,
+      "name": "domain 0 bytes, compacted message",
+      "arguments": [
+        {
+          "kind": "semanticConstant",
+          "type": "9f01ff",
+          "root": "0707070707070707070707070707070707070707070707070707070707070707",
+          "cborLength": "3",
+          "payloadMemory": "1",
+          "memory": "1"
+        },
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "40"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 439,
+      "tag": 60,
+      "name": "domain 0 bytes, string message",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f02ff",
+          "payload": "416d"
+        },
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "40"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 440,
+      "tag": 60,
+      "name": "domain 255 bytes",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "43000000"
+        },
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "5f584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000583f000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ff"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 441,
+      "tag": 60,
       "name": "domain 255 bytes, compacted message",
       "arguments": [
         {
@@ -8342,7 +8381,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 439,
+      "case": 442,
       "tag": 60,
       "name": "domain 255 bytes, string message",
       "arguments": [
@@ -8360,7 +8399,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 440,
+      "case": 443,
       "tag": 60,
       "name": "domain 256 bytes",
       "arguments": [
@@ -8378,7 +8417,7 @@
       "verdict": "known"
     },
     {
-      "case": 441,
+      "case": 444,
       "tag": 60,
       "name": "domain 256 bytes, compacted message",
       "arguments": [
@@ -8399,7 +8438,7 @@
       "verdict": "known"
     },
     {
-      "case": 442,
+      "case": 445,
       "tag": 60,
       "name": "domain 256 bytes, string message",
       "arguments": [
@@ -8417,7 +8456,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 443,
+      "case": 446,
       "tag": 60,
       "name": "compacted domain",
       "arguments": [
@@ -8438,7 +8477,7 @@
       "verdict": "refused"
     },
     {
-      "case": 444,
+      "case": 447,
       "tag": 60,
       "name": "opaque message, long domain",
       "arguments": [
@@ -8455,7 +8494,7 @@
       "verdict": "refused"
     },
     {
-      "case": 445,
+      "case": 448,
       "tag": 67,
       "name": "domain 0 bytes",
       "arguments": [
@@ -8473,7 +8512,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 446,
+      "case": 449,
       "tag": 67,
       "name": "domain 0 bytes, compacted message",
       "arguments": [
@@ -8494,7 +8533,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 447,
+      "case": 450,
       "tag": 67,
       "name": "domain 0 bytes, string message",
       "arguments": [
@@ -8512,7 +8551,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 448,
+      "case": 451,
       "tag": 67,
       "name": "domain 255 bytes",
       "arguments": [
@@ -8530,7 +8569,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 449,
+      "case": 452,
       "tag": 67,
       "name": "domain 255 bytes, compacted message",
       "arguments": [
@@ -8551,7 +8590,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 450,
+      "case": 453,
       "tag": 67,
       "name": "domain 255 bytes, string message",
       "arguments": [
@@ -8569,7 +8608,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 451,
+      "case": 454,
       "tag": 67,
       "name": "domain 256 bytes",
       "arguments": [
@@ -8587,7 +8626,7 @@
       "verdict": "known"
     },
     {
-      "case": 452,
+      "case": 455,
       "tag": 67,
       "name": "domain 256 bytes, compacted message",
       "arguments": [
@@ -8608,7 +8647,7 @@
       "verdict": "known"
     },
     {
-      "case": 453,
+      "case": 456,
       "tag": 67,
       "name": "domain 256 bytes, string message",
       "arguments": [
@@ -8626,7 +8665,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 454,
+      "case": 457,
       "tag": 67,
       "name": "compacted domain",
       "arguments": [
@@ -8647,7 +8686,7 @@
       "verdict": "refused"
     },
     {
-      "case": 455,
+      "case": 458,
       "tag": 67,
       "name": "opaque message, long domain",
       "arguments": [
@@ -8664,7 +8703,7 @@
       "verdict": "refused"
     },
     {
-      "case": 456,
+      "case": 459,
       "tag": 56,
       "name": "scalar 2^4095 - 1",
       "arguments": [
@@ -8682,7 +8721,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 457,
+      "case": 460,
       "tag": 56,
       "name": "scalar 2^4095 - 1, compacted point",
       "arguments": [
@@ -8703,7 +8742,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 458,
+      "case": 461,
       "tag": 56,
       "name": "scalar 2^4095",
       "arguments": [
@@ -8721,7 +8760,7 @@
       "verdict": "known"
     },
     {
-      "case": 459,
+      "case": 462,
       "tag": 56,
       "name": "scalar 2^4095, compacted point",
       "arguments": [
@@ -8742,7 +8781,7 @@
       "verdict": "known"
     },
     {
-      "case": 460,
+      "case": 463,
       "tag": 56,
       "name": "scalar -2^4095",
       "arguments": [
@@ -8760,7 +8799,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 461,
+      "case": 464,
       "tag": 56,
       "name": "scalar -2^4095, compacted point",
       "arguments": [
@@ -8781,7 +8820,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 462,
+      "case": 465,
       "tag": 56,
       "name": "scalar -2^4095 - 1",
       "arguments": [
@@ -8799,7 +8838,7 @@
       "verdict": "known"
     },
     {
-      "case": 463,
+      "case": 466,
       "tag": 56,
       "name": "scalar -2^4095 - 1, compacted point",
       "arguments": [
@@ -8820,7 +8859,7 @@
       "verdict": "known"
     },
     {
-      "case": 464,
+      "case": 467,
       "tag": 56,
       "name": "scalar 0",
       "arguments": [
@@ -8838,7 +8877,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 465,
+      "case": 468,
       "tag": 56,
       "name": "scalar 0, compacted point",
       "arguments": [
@@ -8859,7 +8898,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 466,
+      "case": 469,
       "tag": 56,
       "name": "scalar 7",
       "arguments": [
@@ -8877,7 +8916,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 467,
+      "case": 470,
       "tag": 56,
       "name": "scalar 7, compacted point",
       "arguments": [
@@ -8898,7 +8937,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 468,
+      "case": 471,
       "tag": 56,
       "name": "scalar 2^5000",
       "arguments": [
@@ -8916,7 +8955,7 @@
       "verdict": "known"
     },
     {
-      "case": 469,
+      "case": 472,
       "tag": 56,
       "name": "scalar 2^5000, compacted point",
       "arguments": [
@@ -8937,7 +8976,7 @@
       "verdict": "known"
     },
     {
-      "case": 470,
+      "case": 473,
       "tag": 56,
       "name": "scalar 2^4095, point of the other group",
       "arguments": [
@@ -8955,7 +8994,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 471,
+      "case": 474,
       "tag": 56,
       "name": "scalar 2^4095, byte-string point",
       "arguments": [
@@ -8973,7 +9012,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 472,
+      "case": 475,
       "tag": 56,
       "name": "scalar 2^4095, integer point",
       "arguments": [
@@ -8991,7 +9030,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 473,
+      "case": 476,
       "tag": 56,
       "name": "byte-string scalar",
       "arguments": [
@@ -9009,7 +9048,7 @@
       "verdict": "refused"
     },
     {
-      "case": 474,
+      "case": 477,
       "tag": 56,
       "name": "compacted scalar",
       "arguments": [
@@ -9030,7 +9069,7 @@
       "verdict": "refused"
     },
     {
-      "case": 475,
+      "case": 478,
       "tag": 56,
       "name": "one argument",
       "arguments": [
@@ -9043,7 +9082,7 @@
       "verdict": "refused"
     },
     {
-      "case": 476,
+      "case": 479,
       "tag": 56,
       "name": "three arguments",
       "arguments": [
@@ -9066,7 +9105,7 @@
       "verdict": "refused"
     },
     {
-      "case": 477,
+      "case": 480,
       "tag": 63,
       "name": "scalar 2^4095 - 1",
       "arguments": [
@@ -9084,7 +9123,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 478,
+      "case": 481,
       "tag": 63,
       "name": "scalar 2^4095 - 1, compacted point",
       "arguments": [
@@ -9105,7 +9144,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 479,
+      "case": 482,
       "tag": 63,
       "name": "scalar 2^4095",
       "arguments": [
@@ -9123,7 +9162,7 @@
       "verdict": "known"
     },
     {
-      "case": 480,
+      "case": 483,
       "tag": 63,
       "name": "scalar 2^4095, compacted point",
       "arguments": [
@@ -9144,7 +9183,7 @@
       "verdict": "known"
     },
     {
-      "case": 481,
+      "case": 484,
       "tag": 63,
       "name": "scalar -2^4095",
       "arguments": [
@@ -9162,7 +9201,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 482,
+      "case": 485,
       "tag": 63,
       "name": "scalar -2^4095, compacted point",
       "arguments": [
@@ -9183,7 +9222,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 483,
+      "case": 486,
       "tag": 63,
       "name": "scalar -2^4095 - 1",
       "arguments": [
@@ -9201,7 +9240,7 @@
       "verdict": "known"
     },
     {
-      "case": 484,
+      "case": 487,
       "tag": 63,
       "name": "scalar -2^4095 - 1, compacted point",
       "arguments": [
@@ -9222,7 +9261,7 @@
       "verdict": "known"
     },
     {
-      "case": 485,
+      "case": 488,
       "tag": 63,
       "name": "scalar 0",
       "arguments": [
@@ -9240,7 +9279,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 486,
+      "case": 489,
       "tag": 63,
       "name": "scalar 0, compacted point",
       "arguments": [
@@ -9261,7 +9300,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 487,
+      "case": 490,
       "tag": 63,
       "name": "scalar 7",
       "arguments": [
@@ -9279,7 +9318,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 488,
+      "case": 491,
       "tag": 63,
       "name": "scalar 7, compacted point",
       "arguments": [
@@ -9300,7 +9339,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 489,
+      "case": 492,
       "tag": 63,
       "name": "scalar 2^5000",
       "arguments": [
@@ -9318,7 +9357,7 @@
       "verdict": "known"
     },
     {
-      "case": 490,
+      "case": 493,
       "tag": 63,
       "name": "scalar 2^5000, compacted point",
       "arguments": [
@@ -9339,7 +9378,7 @@
       "verdict": "known"
     },
     {
-      "case": 491,
+      "case": 494,
       "tag": 63,
       "name": "scalar 2^4095, point of the other group",
       "arguments": [
@@ -9357,7 +9396,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 492,
+      "case": 495,
       "tag": 63,
       "name": "scalar 2^4095, byte-string point",
       "arguments": [
@@ -9375,7 +9414,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 493,
+      "case": 496,
       "tag": 63,
       "name": "scalar 2^4095, integer point",
       "arguments": [
@@ -9393,7 +9432,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 494,
+      "case": 497,
       "tag": 63,
       "name": "byte-string scalar",
       "arguments": [
@@ -9411,7 +9450,7 @@
       "verdict": "refused"
     },
     {
-      "case": 495,
+      "case": 498,
       "tag": 63,
       "name": "compacted scalar",
       "arguments": [
@@ -9432,7 +9471,7 @@
       "verdict": "refused"
     },
     {
-      "case": 496,
+      "case": 499,
       "tag": 63,
       "name": "one argument",
       "arguments": [
@@ -9445,7 +9484,7 @@
       "verdict": "refused"
     },
     {
-      "case": 497,
+      "case": 500,
       "tag": 63,
       "name": "three arguments",
       "arguments": [
@@ -9468,7 +9507,7 @@
       "verdict": "refused"
     },
     {
-      "case": 498,
+      "case": 501,
       "tag": 73,
       "name": "size -1, value -1",
       "arguments": [
@@ -9491,7 +9530,7 @@
       "verdict": "known"
     },
     {
-      "case": 499,
+      "case": 502,
       "tag": 73,
       "name": "size -1, value 0",
       "arguments": [
@@ -9514,7 +9553,7 @@
       "verdict": "known"
     },
     {
-      "case": 500,
+      "case": 503,
       "tag": 73,
       "name": "size -1, value 255",
       "arguments": [
@@ -9537,7 +9576,7 @@
       "verdict": "known"
     },
     {
-      "case": 501,
+      "case": 504,
       "tag": 73,
       "name": "size -1, value 256",
       "arguments": [
@@ -9560,7 +9599,7 @@
       "verdict": "known"
     },
     {
-      "case": 502,
+      "case": 505,
       "tag": 73,
       "name": "size -1, value 65535",
       "arguments": [
@@ -9583,7 +9622,7 @@
       "verdict": "known"
     },
     {
-      "case": 503,
+      "case": 506,
       "tag": 73,
       "name": "size -1, value 65536",
       "arguments": [
@@ -9606,7 +9645,7 @@
       "verdict": "known"
     },
     {
-      "case": 504,
+      "case": 507,
       "tag": 73,
       "name": "size 0, value -1",
       "arguments": [
@@ -9629,7 +9668,7 @@
       "verdict": "known"
     },
     {
-      "case": 505,
+      "case": 508,
       "tag": 73,
       "name": "size 0, value 0",
       "arguments": [
@@ -9652,7 +9691,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 506,
+      "case": 509,
       "tag": 73,
       "name": "size 0, value 255",
       "arguments": [
@@ -9675,7 +9714,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 507,
+      "case": 510,
       "tag": 73,
       "name": "size 0, value 256",
       "arguments": [
@@ -9698,7 +9737,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 508,
+      "case": 511,
       "tag": 73,
       "name": "size 0, value 65535",
       "arguments": [
@@ -9721,7 +9760,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 509,
+      "case": 512,
       "tag": 73,
       "name": "size 0, value 65536",
       "arguments": [
@@ -9744,7 +9783,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 510,
+      "case": 513,
       "tag": 73,
       "name": "size 1, value -1",
       "arguments": [
@@ -9767,7 +9806,7 @@
       "verdict": "known"
     },
     {
-      "case": 511,
+      "case": 514,
       "tag": 73,
       "name": "size 1, value 0",
       "arguments": [
@@ -9790,7 +9829,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 512,
+      "case": 515,
       "tag": 73,
       "name": "size 1, value 255",
       "arguments": [
@@ -9813,7 +9852,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 513,
+      "case": 516,
       "tag": 73,
       "name": "size 1, value 256",
       "arguments": [
@@ -9836,7 +9875,7 @@
       "verdict": "known"
     },
     {
-      "case": 514,
+      "case": 517,
       "tag": 73,
       "name": "size 1, value 65535",
       "arguments": [
@@ -9859,7 +9898,7 @@
       "verdict": "known"
     },
     {
-      "case": 515,
+      "case": 518,
       "tag": 73,
       "name": "size 1, value 65536",
       "arguments": [
@@ -9882,7 +9921,7 @@
       "verdict": "known"
     },
     {
-      "case": 516,
+      "case": 519,
       "tag": 73,
       "name": "size 2, value -1",
       "arguments": [
@@ -9905,7 +9944,7 @@
       "verdict": "known"
     },
     {
-      "case": 517,
+      "case": 520,
       "tag": 73,
       "name": "size 2, value 0",
       "arguments": [
@@ -9928,7 +9967,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 518,
+      "case": 521,
       "tag": 73,
       "name": "size 2, value 255",
       "arguments": [
@@ -9951,7 +9990,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 519,
+      "case": 522,
       "tag": 73,
       "name": "size 2, value 256",
       "arguments": [
@@ -9974,7 +10013,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 520,
+      "case": 523,
       "tag": 73,
       "name": "size 2, value 65535",
       "arguments": [
@@ -9997,7 +10036,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 521,
+      "case": 524,
       "tag": 73,
       "name": "size 2, value 65536",
       "arguments": [
@@ -10020,7 +10059,7 @@
       "verdict": "known"
     },
     {
-      "case": 522,
+      "case": 525,
       "tag": 73,
       "name": "size 8192, value -1",
       "arguments": [
@@ -10043,7 +10082,7 @@
       "verdict": "known"
     },
     {
-      "case": 523,
+      "case": 526,
       "tag": 73,
       "name": "size 8192, value 0",
       "arguments": [
@@ -10066,7 +10105,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 524,
+      "case": 527,
       "tag": 73,
       "name": "size 8192, value 255",
       "arguments": [
@@ -10089,7 +10128,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 525,
+      "case": 528,
       "tag": 73,
       "name": "size 8192, value 256",
       "arguments": [
@@ -10112,7 +10151,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 526,
+      "case": 529,
       "tag": 73,
       "name": "size 8192, value 65535",
       "arguments": [
@@ -10135,7 +10174,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 527,
+      "case": 530,
       "tag": 73,
       "name": "size 8192, value 65536",
       "arguments": [
@@ -10158,7 +10197,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 528,
+      "case": 531,
       "tag": 73,
       "name": "size 8193, value -1",
       "arguments": [
@@ -10181,7 +10220,7 @@
       "verdict": "known"
     },
     {
-      "case": 529,
+      "case": 532,
       "tag": 73,
       "name": "size 8193, value 0",
       "arguments": [
@@ -10204,7 +10243,7 @@
       "verdict": "known"
     },
     {
-      "case": 530,
+      "case": 533,
       "tag": 73,
       "name": "size 8193, value 255",
       "arguments": [
@@ -10227,7 +10266,7 @@
       "verdict": "known"
     },
     {
-      "case": 531,
+      "case": 534,
       "tag": 73,
       "name": "size 8193, value 256",
       "arguments": [
@@ -10250,7 +10289,7 @@
       "verdict": "known"
     },
     {
-      "case": 532,
+      "case": 535,
       "tag": 73,
       "name": "size 8193, value 65535",
       "arguments": [
@@ -10273,7 +10312,7 @@
       "verdict": "known"
     },
     {
-      "case": 533,
+      "case": 536,
       "tag": 73,
       "name": "size 8193, value 65536",
       "arguments": [
@@ -10296,7 +10335,7 @@
       "verdict": "known"
     },
     {
-      "case": 534,
+      "case": 537,
       "tag": 73,
       "name": "size 0, value of 8192 bytes",
       "arguments": [
@@ -10319,7 +10358,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 535,
+      "case": 538,
       "tag": 73,
       "name": "size 0, value of 8193 bytes",
       "arguments": [
@@ -10342,7 +10381,7 @@
       "verdict": "known"
     },
     {
-      "case": 536,
+      "case": 539,
       "tag": 73,
       "name": "size 1, value of 1001 bytes",
       "arguments": [
@@ -10365,7 +10404,7 @@
       "verdict": "known"
     },
     {
-      "case": 537,
+      "case": 540,
       "tag": 73,
       "name": "integer endianness",
       "arguments": [
@@ -10388,7 +10427,7 @@
       "verdict": "refused"
     },
     {
-      "case": 538,
+      "case": 541,
       "tag": 73,
       "name": "boolean type, integer payload",
       "arguments": [
@@ -10411,7 +10450,7 @@
       "verdict": "refused"
     },
     {
-      "case": 539,
+      "case": 542,
       "tag": 73,
       "name": "boolean type, Constr 2 payload",
       "arguments": [
@@ -10434,7 +10473,7 @@
       "verdict": "refused"
     },
     {
-      "case": 540,
+      "case": 543,
       "tag": 73,
       "name": "byte-string size",
       "arguments": [
@@ -10457,7 +10496,7 @@
       "verdict": "refused"
     },
     {
-      "case": 541,
+      "case": 544,
       "tag": 73,
       "name": "byte-string value",
       "arguments": [
@@ -10480,7 +10519,7 @@
       "verdict": "refused"
     },
     {
-      "case": 542,
+      "case": 545,
       "tag": 73,
       "name": "compacted endianness",
       "arguments": [
@@ -10506,7 +10545,7 @@
       "verdict": "refused"
     },
     {
-      "case": 543,
+      "case": 546,
       "tag": 79,
       "name": "read bit -1",
       "arguments": [
@@ -10524,7 +10563,7 @@
       "verdict": "known"
     },
     {
-      "case": 544,
+      "case": 547,
       "tag": 79,
       "name": "read bit -1 of compacted bytes",
       "arguments": [
@@ -10545,7 +10584,7 @@
       "verdict": "refused"
     },
     {
-      "case": 545,
+      "case": 548,
       "tag": 79,
       "name": "read bit 0",
       "arguments": [
@@ -10563,7 +10602,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 546,
+      "case": 549,
       "tag": 79,
       "name": "read bit 0 of compacted bytes",
       "arguments": [
@@ -10584,7 +10623,7 @@
       "verdict": "refused"
     },
     {
-      "case": 547,
+      "case": 550,
       "tag": 79,
       "name": "read bit 15",
       "arguments": [
@@ -10602,7 +10641,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 548,
+      "case": 551,
       "tag": 79,
       "name": "read bit 15 of compacted bytes",
       "arguments": [
@@ -10623,7 +10662,7 @@
       "verdict": "refused"
     },
     {
-      "case": 549,
+      "case": 552,
       "tag": 79,
       "name": "read bit 16",
       "arguments": [
@@ -10641,7 +10680,7 @@
       "verdict": "known"
     },
     {
-      "case": 550,
+      "case": 553,
       "tag": 79,
       "name": "read bit 16 of compacted bytes",
       "arguments": [
@@ -10662,7 +10701,7 @@
       "verdict": "refused"
     },
     {
-      "case": 551,
+      "case": 554,
       "tag": 79,
       "name": "read bit 0 of empty bytes",
       "arguments": [
@@ -10680,7 +10719,7 @@
       "verdict": "known"
     },
     {
-      "case": 552,
+      "case": 555,
       "tag": 80,
       "name": "write no indices",
       "arguments": [
@@ -10703,7 +10742,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 553,
+      "case": 556,
       "tag": 80,
       "name": "write no indices, integer bit",
       "arguments": [
@@ -10726,7 +10765,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 554,
+      "case": 557,
       "tag": 80,
       "name": "write no indices into compacted bytes",
       "arguments": [
@@ -10752,7 +10791,7 @@
       "verdict": "refused"
     },
     {
-      "case": 555,
+      "case": 558,
       "tag": 80,
       "name": "write no indices, compacted bit",
       "arguments": [
@@ -10778,7 +10817,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 556,
+      "case": 559,
       "tag": 80,
       "name": "write indices 0 and 15",
       "arguments": [
@@ -10801,7 +10840,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 557,
+      "case": 560,
       "tag": 80,
       "name": "write indices 0 and 15, integer bit",
       "arguments": [
@@ -10824,7 +10863,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 558,
+      "case": 561,
       "tag": 80,
       "name": "write indices 0 and 15 into compacted bytes",
       "arguments": [
@@ -10850,7 +10889,7 @@
       "verdict": "refused"
     },
     {
-      "case": 559,
+      "case": 562,
       "tag": 80,
       "name": "write indices 0 and 15, compacted bit",
       "arguments": [
@@ -10876,7 +10915,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 560,
+      "case": 563,
       "tag": 80,
       "name": "write index 16",
       "arguments": [
@@ -10899,7 +10938,7 @@
       "verdict": "known"
     },
     {
-      "case": 561,
+      "case": 564,
       "tag": 80,
       "name": "write index 16, integer bit",
       "arguments": [
@@ -10922,7 +10961,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 562,
+      "case": 565,
       "tag": 80,
       "name": "write index 16 into compacted bytes",
       "arguments": [
@@ -10948,7 +10987,7 @@
       "verdict": "refused"
     },
     {
-      "case": 563,
+      "case": 566,
       "tag": 80,
       "name": "write index 16, compacted bit",
       "arguments": [
@@ -10974,7 +11013,7 @@
       "verdict": "known"
     },
     {
-      "case": 564,
+      "case": 567,
       "tag": 80,
       "name": "write index -1",
       "arguments": [
@@ -10997,7 +11036,7 @@
       "verdict": "known"
     },
     {
-      "case": 565,
+      "case": 568,
       "tag": 80,
       "name": "write index -1, integer bit",
       "arguments": [
@@ -11020,7 +11059,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 566,
+      "case": 569,
       "tag": 80,
       "name": "write index -1 into compacted bytes",
       "arguments": [
@@ -11046,7 +11085,7 @@
       "verdict": "refused"
     },
     {
-      "case": 567,
+      "case": 570,
       "tag": 80,
       "name": "write index -1, compacted bit",
       "arguments": [
@@ -11072,7 +11111,7 @@
       "verdict": "known"
     },
     {
-      "case": 568,
+      "case": 571,
       "tag": 80,
       "name": "write indices 0, 16, -1",
       "arguments": [
@@ -11095,7 +11134,7 @@
       "verdict": "known"
     },
     {
-      "case": 569,
+      "case": 572,
       "tag": 80,
       "name": "write indices 0, 16, -1, integer bit",
       "arguments": [
@@ -11118,7 +11157,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 570,
+      "case": 573,
       "tag": 80,
       "name": "write indices 0, 16, -1 into compacted bytes",
       "arguments": [
@@ -11144,7 +11183,7 @@
       "verdict": "refused"
     },
     {
-      "case": 571,
+      "case": 574,
       "tag": 80,
       "name": "write indices 0, 16, -1, compacted bit",
       "arguments": [
@@ -11170,7 +11209,7 @@
       "verdict": "known"
     },
     {
-      "case": 572,
+      "case": 575,
       "tag": 80,
       "name": "write Data index list",
       "arguments": [
@@ -11193,7 +11232,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 573,
+      "case": 576,
       "tag": 80,
       "name": "write Data index list, integer bit",
       "arguments": [
@@ -11216,7 +11255,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 574,
+      "case": 577,
       "tag": 80,
       "name": "write Data index list into compacted bytes",
       "arguments": [
@@ -11242,7 +11281,7 @@
       "verdict": "refused"
     },
     {
-      "case": 575,
+      "case": 578,
       "tag": 80,
       "name": "write Data index list, compacted bit",
       "arguments": [
@@ -11268,7 +11307,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 576,
+      "case": 579,
       "tag": 80,
       "name": "write byte-string index list",
       "arguments": [
@@ -11291,7 +11330,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 577,
+      "case": 580,
       "tag": 80,
       "name": "write byte-string index list, integer bit",
       "arguments": [
@@ -11314,7 +11353,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 578,
+      "case": 581,
       "tag": 80,
       "name": "write byte-string index list into compacted bytes",
       "arguments": [
@@ -11340,7 +11379,7 @@
       "verdict": "refused"
     },
     {
-      "case": 579,
+      "case": 582,
       "tag": 80,
       "name": "write byte-string index list, compacted bit",
       "arguments": [
@@ -11366,7 +11405,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 580,
+      "case": 583,
       "tag": 80,
       "name": "write compacted index list",
       "arguments": [
@@ -11392,7 +11431,7 @@
       "verdict": "refused"
     },
     {
-      "case": 581,
+      "case": 584,
       "tag": 80,
       "name": "write compacted index list, integer bit",
       "arguments": [
@@ -11418,7 +11457,7 @@
       "verdict": "refused"
     },
     {
-      "case": 582,
+      "case": 585,
       "tag": 80,
       "name": "write compacted index list into compacted bytes",
       "arguments": [
@@ -11447,7 +11486,7 @@
       "verdict": "refused"
     },
     {
-      "case": 583,
+      "case": 586,
       "tag": 80,
       "name": "write compacted index list, compacted bit",
       "arguments": [
@@ -11476,7 +11515,7 @@
       "verdict": "refused"
     },
     {
-      "case": 584,
+      "case": 587,
       "tag": 80,
       "name": "write integer indices",
       "arguments": [
@@ -11499,7 +11538,7 @@
       "verdict": "refused"
     },
     {
-      "case": 585,
+      "case": 588,
       "tag": 80,
       "name": "write integer indices, integer bit",
       "arguments": [
@@ -11522,7 +11561,7 @@
       "verdict": "refused"
     },
     {
-      "case": 586,
+      "case": 589,
       "tag": 80,
       "name": "write integer indices into compacted bytes",
       "arguments": [
@@ -11548,7 +11587,7 @@
       "verdict": "refused"
     },
     {
-      "case": 587,
+      "case": 590,
       "tag": 80,
       "name": "write integer indices, compacted bit",
       "arguments": [
@@ -11574,7 +11613,7 @@
       "verdict": "refused"
     },
     {
-      "case": 588,
+      "case": 591,
       "tag": 80,
       "name": "write index 0 into 4096 bytes",
       "arguments": [
@@ -11597,7 +11636,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 589,
+      "case": 592,
       "tag": 80,
       "name": "write index 32768 into 4096 bytes",
       "arguments": [
@@ -11620,7 +11659,7 @@
       "verdict": "known"
     },
     {
-      "case": 590,
+      "case": 593,
       "tag": 80,
       "name": "write index 0 into 4097 bytes",
       "arguments": [
@@ -11643,7 +11682,7 @@
       "verdict": "known"
     },
     {
-      "case": 591,
+      "case": 594,
       "tag": 80,
       "name": "write no indices into 4097 bytes",
       "arguments": [
@@ -11666,7 +11705,7 @@
       "verdict": "known"
     },
     {
-      "case": 592,
+      "case": 595,
       "tag": 80,
       "name": "write into empty bytes",
       "arguments": [
@@ -11689,7 +11728,7 @@
       "verdict": "known"
     },
     {
-      "case": 593,
+      "case": 596,
       "tag": 81,
       "name": "replicate -1 -1 times",
       "arguments": [
@@ -11707,7 +11746,7 @@
       "verdict": "known"
     },
     {
-      "case": 594,
+      "case": 597,
       "tag": 81,
       "name": "replicate 0 -1 times",
       "arguments": [
@@ -11725,7 +11764,7 @@
       "verdict": "known"
     },
     {
-      "case": 595,
+      "case": 598,
       "tag": 81,
       "name": "replicate 255 -1 times",
       "arguments": [
@@ -11743,7 +11782,7 @@
       "verdict": "known"
     },
     {
-      "case": 596,
+      "case": 599,
       "tag": 81,
       "name": "replicate 256 -1 times",
       "arguments": [
@@ -11761,7 +11800,7 @@
       "verdict": "known"
     },
     {
-      "case": 597,
+      "case": 600,
       "tag": 81,
       "name": "replicate -1 0 times",
       "arguments": [
@@ -11779,7 +11818,7 @@
       "verdict": "known"
     },
     {
-      "case": 598,
+      "case": 601,
       "tag": 81,
       "name": "replicate 0 0 times",
       "arguments": [
@@ -11797,7 +11836,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 599,
+      "case": 602,
       "tag": 81,
       "name": "replicate 255 0 times",
       "arguments": [
@@ -11815,7 +11854,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 600,
+      "case": 603,
       "tag": 81,
       "name": "replicate 256 0 times",
       "arguments": [
@@ -11833,7 +11872,7 @@
       "verdict": "known"
     },
     {
-      "case": 601,
+      "case": 604,
       "tag": 81,
       "name": "replicate -1 8192 times",
       "arguments": [
@@ -11851,7 +11890,7 @@
       "verdict": "known"
     },
     {
-      "case": 602,
+      "case": 605,
       "tag": 81,
       "name": "replicate 0 8192 times",
       "arguments": [
@@ -11869,7 +11908,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 603,
+      "case": 606,
       "tag": 81,
       "name": "replicate 255 8192 times",
       "arguments": [
@@ -11887,7 +11926,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 604,
+      "case": 607,
       "tag": 81,
       "name": "replicate 256 8192 times",
       "arguments": [
@@ -11905,7 +11944,7 @@
       "verdict": "known"
     },
     {
-      "case": 605,
+      "case": 608,
       "tag": 81,
       "name": "replicate -1 8193 times",
       "arguments": [
@@ -11923,7 +11962,7 @@
       "verdict": "known"
     },
     {
-      "case": 606,
+      "case": 609,
       "tag": 81,
       "name": "replicate 0 8193 times",
       "arguments": [
@@ -11941,7 +11980,7 @@
       "verdict": "known"
     },
     {
-      "case": 607,
+      "case": 610,
       "tag": 81,
       "name": "replicate 255 8193 times",
       "arguments": [
@@ -11959,7 +11998,7 @@
       "verdict": "known"
     },
     {
-      "case": 608,
+      "case": 611,
       "tag": 81,
       "name": "replicate 256 8193 times",
       "arguments": [
@@ -11977,7 +12016,7 @@
       "verdict": "known"
     },
     {
-      "case": 609,
+      "case": 612,
       "tag": 81,
       "name": "replicate with a byte-string length",
       "arguments": [
@@ -11995,7 +12034,7 @@
       "verdict": "refused"
     },
     {
-      "case": 610,
+      "case": 613,
       "tag": 81,
       "name": "replicate with a compacted byte",
       "arguments": [
@@ -12016,7 +12055,7 @@
       "verdict": "refused"
     },
     {
-      "case": 611,
+      "case": 614,
       "tag": 82,
       "name": "by -9223372036854775809",
       "arguments": [
@@ -12034,7 +12073,7 @@
       "verdict": "known"
     },
     {
-      "case": 612,
+      "case": 615,
       "tag": 82,
       "name": "compacted bytes by -9223372036854775809",
       "arguments": [
@@ -12055,7 +12094,7 @@
       "verdict": "known"
     },
     {
-      "case": 613,
+      "case": 616,
       "tag": 82,
       "name": "string by -9223372036854775809",
       "arguments": [
@@ -12068,63 +12107,6 @@
           "kind": "constant",
           "type": "9f00ff",
           "payload": "3b8000000000000000"
-        }
-      ],
-      "verdict": "not-known"
-    },
-    {
-      "case": 614,
-      "tag": 82,
-      "name": "by -9223372036854775808",
-      "arguments": [
-        {
-          "kind": "constant",
-          "type": "9f01ff",
-          "payload": "420102"
-        },
-        {
-          "kind": "constant",
-          "type": "9f00ff",
-          "payload": "3b7fffffffffffffff"
-        }
-      ],
-      "verdict": "not-known"
-    },
-    {
-      "case": 615,
-      "tag": 82,
-      "name": "compacted bytes by -9223372036854775808",
-      "arguments": [
-        {
-          "kind": "semanticConstant",
-          "type": "9f01ff",
-          "root": "0707070707070707070707070707070707070707070707070707070707070707",
-          "cborLength": "3",
-          "payloadMemory": "1",
-          "memory": "2"
-        },
-        {
-          "kind": "constant",
-          "type": "9f00ff",
-          "payload": "3b7fffffffffffffff"
-        }
-      ],
-      "verdict": "not-known"
-    },
-    {
-      "case": 616,
-      "tag": 82,
-      "name": "string by -9223372036854775808",
-      "arguments": [
-        {
-          "kind": "constant",
-          "type": "9f02ff",
-          "payload": "4178"
-        },
-        {
-          "kind": "constant",
-          "type": "9f00ff",
-          "payload": "3b7fffffffffffffff"
         }
       ],
       "verdict": "not-known"
@@ -12132,6 +12114,63 @@
     {
       "case": 617,
       "tag": 82,
+      "name": "by -9223372036854775808",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "420102"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "3b7fffffffffffffff"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 618,
+      "tag": 82,
+      "name": "compacted bytes by -9223372036854775808",
+      "arguments": [
+        {
+          "kind": "semanticConstant",
+          "type": "9f01ff",
+          "root": "0707070707070707070707070707070707070707070707070707070707070707",
+          "cborLength": "3",
+          "payloadMemory": "1",
+          "memory": "2"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "3b7fffffffffffffff"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 619,
+      "tag": 82,
+      "name": "string by -9223372036854775808",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f02ff",
+          "payload": "4178"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "3b7fffffffffffffff"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 620,
+      "tag": 82,
       "name": "by 0",
       "arguments": [
         {
@@ -12148,7 +12187,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 618,
+      "case": 621,
       "tag": 82,
       "name": "compacted bytes by 0",
       "arguments": [
@@ -12169,7 +12208,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 619,
+      "case": 622,
       "tag": 82,
       "name": "string by 0",
       "arguments": [
@@ -12187,7 +12226,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 620,
+      "case": 623,
       "tag": 82,
       "name": "by 9223372036854775807",
       "arguments": [
@@ -12205,7 +12244,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 621,
+      "case": 624,
       "tag": 82,
       "name": "compacted bytes by 9223372036854775807",
       "arguments": [
@@ -12226,7 +12265,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 622,
+      "case": 625,
       "tag": 82,
       "name": "string by 9223372036854775807",
       "arguments": [
@@ -12244,7 +12283,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 623,
+      "case": 626,
       "tag": 82,
       "name": "by 9223372036854775808",
       "arguments": [
@@ -12262,7 +12301,7 @@
       "verdict": "known"
     },
     {
-      "case": 624,
+      "case": 627,
       "tag": 82,
       "name": "compacted bytes by 9223372036854775808",
       "arguments": [
@@ -12283,7 +12322,7 @@
       "verdict": "known"
     },
     {
-      "case": 625,
+      "case": 628,
       "tag": 82,
       "name": "string by 9223372036854775808",
       "arguments": [
@@ -12301,7 +12340,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 626,
+      "case": 629,
       "tag": 82,
       "name": "by a byte string",
       "arguments": [
@@ -12319,7 +12358,7 @@
       "verdict": "refused"
     },
     {
-      "case": 627,
+      "case": 630,
       "tag": 83,
       "name": "by -9223372036854775809",
       "arguments": [
@@ -12337,7 +12376,7 @@
       "verdict": "known"
     },
     {
-      "case": 628,
+      "case": 631,
       "tag": 83,
       "name": "compacted bytes by -9223372036854775809",
       "arguments": [
@@ -12358,7 +12397,7 @@
       "verdict": "known"
     },
     {
-      "case": 629,
+      "case": 632,
       "tag": 83,
       "name": "string by -9223372036854775809",
       "arguments": [
@@ -12376,7 +12415,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 630,
+      "case": 633,
       "tag": 83,
       "name": "by -9223372036854775808",
       "arguments": [
@@ -12394,7 +12433,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 631,
+      "case": 634,
       "tag": 83,
       "name": "compacted bytes by -9223372036854775808",
       "arguments": [
@@ -12415,7 +12454,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 632,
+      "case": 635,
       "tag": 83,
       "name": "string by -9223372036854775808",
       "arguments": [
@@ -12433,7 +12472,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 633,
+      "case": 636,
       "tag": 83,
       "name": "by 0",
       "arguments": [
@@ -12451,7 +12490,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 634,
+      "case": 637,
       "tag": 83,
       "name": "compacted bytes by 0",
       "arguments": [
@@ -12472,7 +12511,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 635,
+      "case": 638,
       "tag": 83,
       "name": "string by 0",
       "arguments": [
@@ -12490,7 +12529,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 636,
+      "case": 639,
       "tag": 83,
       "name": "by 9223372036854775807",
       "arguments": [
@@ -12508,7 +12547,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 637,
+      "case": 640,
       "tag": 83,
       "name": "compacted bytes by 9223372036854775807",
       "arguments": [
@@ -12529,7 +12568,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 638,
+      "case": 641,
       "tag": 83,
       "name": "string by 9223372036854775807",
       "arguments": [
@@ -12547,7 +12586,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 639,
+      "case": 642,
       "tag": 83,
       "name": "by 9223372036854775808",
       "arguments": [
@@ -12565,7 +12604,7 @@
       "verdict": "known"
     },
     {
-      "case": 640,
+      "case": 643,
       "tag": 83,
       "name": "compacted bytes by 9223372036854775808",
       "arguments": [
@@ -12586,7 +12625,7 @@
       "verdict": "known"
     },
     {
-      "case": 641,
+      "case": 644,
       "tag": 83,
       "name": "string by 9223372036854775808",
       "arguments": [
@@ -12604,7 +12643,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 642,
+      "case": 645,
       "tag": 83,
       "name": "by a byte string",
       "arguments": [
@@ -12622,7 +12661,7 @@
       "verdict": "refused"
     },
     {
-      "case": 643,
+      "case": 646,
       "tag": 11,
       "name": "kind sweep: compacted argument 0",
       "arguments": [
@@ -12643,7 +12682,7 @@
       "verdict": "refused"
     },
     {
-      "case": 644,
+      "case": 647,
       "tag": 11,
       "name": "kind sweep: Miller-loop argument 1",
       "arguments": [
@@ -12660,7 +12699,7 @@
       "verdict": "refused"
     },
     {
-      "case": 645,
+      "case": 648,
       "tag": 11,
       "name": "kind sweep: compacted argument 1",
       "arguments": [
@@ -12681,7 +12720,7 @@
       "verdict": "known"
     },
     {
-      "case": 646,
+      "case": 649,
       "tag": 12,
       "name": "kind sweep: opaque argument 0",
       "arguments": [
@@ -12703,7 +12742,7 @@
       "verdict": "refused"
     },
     {
-      "case": 647,
+      "case": 650,
       "tag": 12,
       "name": "kind sweep: compacted argument 0",
       "arguments": [
@@ -12729,7 +12768,7 @@
       "verdict": "refused"
     },
     {
-      "case": 648,
+      "case": 651,
       "tag": 12,
       "name": "kind sweep: Miller-loop argument 1",
       "arguments": [
@@ -12751,7 +12790,7 @@
       "verdict": "known"
     },
     {
-      "case": 649,
+      "case": 652,
       "tag": 12,
       "name": "kind sweep: compacted argument 1",
       "arguments": [
@@ -12777,7 +12816,7 @@
       "verdict": "known"
     },
     {
-      "case": 650,
+      "case": 653,
       "tag": 12,
       "name": "kind sweep: opaque argument 2",
       "arguments": [
@@ -12799,7 +12838,7 @@
       "verdict": "refused"
     },
     {
-      "case": 651,
+      "case": 654,
       "tag": 12,
       "name": "kind sweep: compacted argument 2",
       "arguments": [
@@ -12825,7 +12864,7 @@
       "verdict": "known"
     },
     {
-      "case": 652,
+      "case": 655,
       "tag": 14,
       "name": "kind sweep: opaque argument 0",
       "arguments": [
@@ -12842,7 +12881,7 @@
       "verdict": "refused"
     },
     {
-      "case": 653,
+      "case": 656,
       "tag": 14,
       "name": "kind sweep: compacted argument 0",
       "arguments": [
@@ -12863,7 +12902,7 @@
       "verdict": "refused"
     },
     {
-      "case": 654,
+      "case": 657,
       "tag": 14,
       "name": "kind sweep: Miller-loop argument 1",
       "arguments": [
@@ -12880,7 +12919,7 @@
       "verdict": "refused"
     },
     {
-      "case": 655,
+      "case": 658,
       "tag": 14,
       "name": "kind sweep: compacted argument 1",
       "arguments": [
@@ -12901,7 +12940,7 @@
       "verdict": "refused"
     },
     {
-      "case": 656,
+      "case": 659,
       "tag": 21,
       "name": "kind sweep: opaque argument 0",
       "arguments": [
@@ -12923,7 +12962,7 @@
       "verdict": "refused"
     },
     {
-      "case": 657,
+      "case": 660,
       "tag": 21,
       "name": "kind sweep: compacted argument 0",
       "arguments": [
@@ -12949,7 +12988,7 @@
       "verdict": "refused"
     },
     {
-      "case": 658,
+      "case": 661,
       "tag": 21,
       "name": "kind sweep: Miller-loop argument 1",
       "arguments": [
@@ -12971,7 +13010,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 659,
+      "case": 662,
       "tag": 21,
       "name": "kind sweep: opaque argument 2",
       "arguments": [
@@ -12993,7 +13032,7 @@
       "verdict": "refused"
     },
     {
-      "case": 660,
+      "case": 663,
       "tag": 25,
       "name": "kind sweep: Miller-loop argument 0",
       "arguments": [
@@ -13005,48 +13044,8 @@
       "verdict": "refused"
     },
     {
-      "case": 661,
-      "tag": 33,
-      "name": "kind sweep: opaque argument 0",
-      "arguments": [
-        {
-          "kind": "opaque",
-          "root": "0909090909090909090909090909090909090909090909090909090909090909"
-        }
-      ],
-      "verdict": "refused"
-    },
-    {
-      "case": 662,
-      "tag": 33,
-      "name": "kind sweep: Miller-loop argument 0",
-      "arguments": [
-        {
-          "kind": "blsMillerLoop",
-          "root": "0505050505050505050505050505050505050505050505050505050505050505"
-        }
-      ],
-      "verdict": "refused"
-    },
-    {
-      "case": 663,
-      "tag": 33,
-      "name": "kind sweep: compacted argument 0",
-      "arguments": [
-        {
-          "kind": "semanticConstant",
-          "type": "9f0500ff",
-          "root": "0707070707070707070707070707070707070707070707070707070707070707",
-          "cborLength": "3",
-          "payloadMemory": "1",
-          "memory": "1"
-        }
-      ],
-      "verdict": "refused"
-    },
-    {
       "case": 664,
-      "tag": 34,
+      "tag": 33,
       "name": "kind sweep: opaque argument 0",
       "arguments": [
         {
@@ -13058,7 +13057,7 @@
     },
     {
       "case": 665,
-      "tag": 34,
+      "tag": 33,
       "name": "kind sweep: Miller-loop argument 0",
       "arguments": [
         {
@@ -13070,7 +13069,7 @@
     },
     {
       "case": 666,
-      "tag": 34,
+      "tag": 33,
       "name": "kind sweep: compacted argument 0",
       "arguments": [
         {
@@ -13086,7 +13085,7 @@
     },
     {
       "case": 667,
-      "tag": 42,
+      "tag": 34,
       "name": "kind sweep: opaque argument 0",
       "arguments": [
         {
@@ -13098,7 +13097,7 @@
     },
     {
       "case": 668,
-      "tag": 42,
+      "tag": 34,
       "name": "kind sweep: Miller-loop argument 0",
       "arguments": [
         {
@@ -13110,12 +13109,12 @@
     },
     {
       "case": 669,
-      "tag": 42,
+      "tag": 34,
       "name": "kind sweep: compacted argument 0",
       "arguments": [
         {
           "kind": "semanticConstant",
-          "type": "9f08ff",
+          "type": "9f0500ff",
           "root": "0707070707070707070707070707070707070707070707070707070707070707",
           "cborLength": "3",
           "payloadMemory": "1",
@@ -13126,7 +13125,7 @@
     },
     {
       "case": 670,
-      "tag": 43,
+      "tag": 42,
       "name": "kind sweep: opaque argument 0",
       "arguments": [
         {
@@ -13138,7 +13137,7 @@
     },
     {
       "case": 671,
-      "tag": 43,
+      "tag": 42,
       "name": "kind sweep: Miller-loop argument 0",
       "arguments": [
         {
@@ -13150,7 +13149,7 @@
     },
     {
       "case": 672,
-      "tag": 43,
+      "tag": 42,
       "name": "kind sweep: compacted argument 0",
       "arguments": [
         {
@@ -13166,7 +13165,7 @@
     },
     {
       "case": 673,
-      "tag": 44,
+      "tag": 43,
       "name": "kind sweep: opaque argument 0",
       "arguments": [
         {
@@ -13178,7 +13177,7 @@
     },
     {
       "case": 674,
-      "tag": 44,
+      "tag": 43,
       "name": "kind sweep: Miller-loop argument 0",
       "arguments": [
         {
@@ -13190,7 +13189,7 @@
     },
     {
       "case": 675,
-      "tag": 44,
+      "tag": 43,
       "name": "kind sweep: compacted argument 0",
       "arguments": [
         {
@@ -13206,7 +13205,7 @@
     },
     {
       "case": 676,
-      "tag": 46,
+      "tag": 44,
       "name": "kind sweep: opaque argument 0",
       "arguments": [
         {
@@ -13218,7 +13217,7 @@
     },
     {
       "case": 677,
-      "tag": 46,
+      "tag": 44,
       "name": "kind sweep: Miller-loop argument 0",
       "arguments": [
         {
@@ -13230,7 +13229,7 @@
     },
     {
       "case": 678,
-      "tag": 46,
+      "tag": 44,
       "name": "kind sweep: compacted argument 0",
       "arguments": [
         {
@@ -13246,7 +13245,7 @@
     },
     {
       "case": 679,
-      "tag": 45,
+      "tag": 46,
       "name": "kind sweep: opaque argument 0",
       "arguments": [
         {
@@ -13258,7 +13257,7 @@
     },
     {
       "case": 680,
-      "tag": 45,
+      "tag": 46,
       "name": "kind sweep: Miller-loop argument 0",
       "arguments": [
         {
@@ -13270,7 +13269,7 @@
     },
     {
       "case": 681,
-      "tag": 45,
+      "tag": 46,
       "name": "kind sweep: compacted argument 0",
       "arguments": [
         {
@@ -13286,6 +13285,46 @@
     },
     {
       "case": 682,
+      "tag": 45,
+      "name": "kind sweep: opaque argument 0",
+      "arguments": [
+        {
+          "kind": "opaque",
+          "root": "0909090909090909090909090909090909090909090909090909090909090909"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 683,
+      "tag": 45,
+      "name": "kind sweep: Miller-loop argument 0",
+      "arguments": [
+        {
+          "kind": "blsMillerLoop",
+          "root": "0505050505050505050505050505050505050505050505050505050505050505"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 684,
+      "tag": 45,
+      "name": "kind sweep: compacted argument 0",
+      "arguments": [
+        {
+          "kind": "semanticConstant",
+          "type": "9f08ff",
+          "root": "0707070707070707070707070707070707070707070707070707070707070707",
+          "cborLength": "3",
+          "payloadMemory": "1",
+          "memory": "1"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 685,
       "tag": 52,
       "name": "kind sweep: opaque argument 0",
       "arguments": [
@@ -13307,7 +13346,7 @@
       "verdict": "refused"
     },
     {
-      "case": 683,
+      "case": 686,
       "tag": 52,
       "name": "kind sweep: compacted argument 0",
       "arguments": [
@@ -13328,76 +13367,6 @@
           "kind": "constant",
           "type": "9f01ff",
           "payload": "584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
-        }
-      ],
-      "verdict": "refused"
-    },
-    {
-      "case": 684,
-      "tag": 52,
-      "name": "kind sweep: Miller-loop argument 1",
-      "arguments": [
-        {
-          "kind": "constant",
-          "type": "9f01ff",
-          "payload": "5821020202020202020202020202020202020202020202020202020202020202020202"
-        },
-        {
-          "kind": "blsMillerLoop",
-          "root": "0505050505050505050505050505050505050505050505050505050505050505"
-        },
-        {
-          "kind": "constant",
-          "type": "9f01ff",
-          "payload": "584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
-        }
-      ],
-      "verdict": "not-known"
-    },
-    {
-      "case": 685,
-      "tag": 52,
-      "name": "kind sweep: compacted argument 1",
-      "arguments": [
-        {
-          "kind": "constant",
-          "type": "9f01ff",
-          "payload": "5821020202020202020202020202020202020202020202020202020202020202020202"
-        },
-        {
-          "kind": "semanticConstant",
-          "type": "9f01ff",
-          "root": "0707070707070707070707070707070707070707070707070707070707070707",
-          "cborLength": "3",
-          "payloadMemory": "1",
-          "memory": "1"
-        },
-        {
-          "kind": "constant",
-          "type": "9f01ff",
-          "payload": "584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
-        }
-      ],
-      "verdict": "not-known"
-    },
-    {
-      "case": 686,
-      "tag": 52,
-      "name": "kind sweep: opaque argument 2",
-      "arguments": [
-        {
-          "kind": "constant",
-          "type": "9f01ff",
-          "payload": "5821020202020202020202020202020202020202020202020202020202020202020202"
-        },
-        {
-          "kind": "constant",
-          "type": "9f01ff",
-          "payload": "58200000000000000000000000000000000000000000000000000000000000000000"
-        },
-        {
-          "kind": "opaque",
-          "root": "0909090909090909090909090909090909090909090909090909090909090909"
         }
       ],
       "verdict": "refused"
@@ -13405,6 +13374,76 @@
     {
       "case": 687,
       "tag": 52,
+      "name": "kind sweep: Miller-loop argument 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "5821020202020202020202020202020202020202020202020202020202020202020202"
+        },
+        {
+          "kind": "blsMillerLoop",
+          "root": "0505050505050505050505050505050505050505050505050505050505050505"
+        },
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 688,
+      "tag": 52,
+      "name": "kind sweep: compacted argument 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "5821020202020202020202020202020202020202020202020202020202020202020202"
+        },
+        {
+          "kind": "semanticConstant",
+          "type": "9f01ff",
+          "root": "0707070707070707070707070707070707070707070707070707070707070707",
+          "cborLength": "3",
+          "payloadMemory": "1",
+          "memory": "1"
+        },
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 689,
+      "tag": 52,
+      "name": "kind sweep: opaque argument 2",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "5821020202020202020202020202020202020202020202020202020202020202020202"
+        },
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "58200000000000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "kind": "opaque",
+          "root": "0909090909090909090909090909090909090909090909090909090909090909"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 690,
+      "tag": 52,
       "name": "kind sweep: compacted argument 2",
       "arguments": [
         {
@@ -13429,7 +13468,7 @@
       "verdict": "refused"
     },
     {
-      "case": 688,
+      "case": 691,
       "tag": 53,
       "name": "kind sweep: opaque argument 0",
       "arguments": [
@@ -13451,7 +13490,7 @@
       "verdict": "refused"
     },
     {
-      "case": 689,
+      "case": 692,
       "tag": 53,
       "name": "kind sweep: compacted argument 0",
       "arguments": [
@@ -13477,7 +13516,7 @@
       "verdict": "refused"
     },
     {
-      "case": 690,
+      "case": 693,
       "tag": 53,
       "name": "kind sweep: Miller-loop argument 1",
       "arguments": [
@@ -13499,7 +13538,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 691,
+      "case": 694,
       "tag": 53,
       "name": "kind sweep: opaque argument 2",
       "arguments": [
@@ -13521,7 +13560,7 @@
       "verdict": "refused"
     },
     {
-      "case": 692,
+      "case": 695,
       "tag": 53,
       "name": "kind sweep: compacted argument 2",
       "arguments": [
@@ -13547,7 +13586,7 @@
       "verdict": "refused"
     },
     {
-      "case": 693,
+      "case": 696,
       "tag": 56,
       "name": "kind sweep: opaque argument 0",
       "arguments": [
@@ -13564,7 +13603,7 @@
       "verdict": "refused"
     },
     {
-      "case": 694,
+      "case": 697,
       "tag": 56,
       "name": "kind sweep: compacted argument 0",
       "arguments": [
@@ -13580,67 +13619,67 @@
           "kind": "constant",
           "type": "9f09ff",
           "payload": "583097f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb"
-        }
-      ],
-      "verdict": "refused"
-    },
-    {
-      "case": 695,
-      "tag": 56,
-      "name": "kind sweep: Miller-loop argument 1",
-      "arguments": [
-        {
-          "kind": "constant",
-          "type": "9f00ff",
-          "payload": "c25f584080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ff"
-        },
-        {
-          "kind": "blsMillerLoop",
-          "root": "0505050505050505050505050505050505050505050505050505050505050505"
-        }
-      ],
-      "verdict": "refused"
-    },
-    {
-      "case": 696,
-      "tag": 56,
-      "name": "kind sweep: compacted argument 1",
-      "arguments": [
-        {
-          "kind": "constant",
-          "type": "9f00ff",
-          "payload": "c25f584080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ff"
-        },
-        {
-          "kind": "semanticConstant",
-          "type": "9f09ff",
-          "root": "0707070707070707070707070707070707070707070707070707070707070707",
-          "cborLength": "3",
-          "payloadMemory": "1",
-          "memory": "1"
-        }
-      ],
-      "verdict": "known"
-    },
-    {
-      "case": 697,
-      "tag": 63,
-      "name": "kind sweep: opaque argument 0",
-      "arguments": [
-        {
-          "kind": "opaque",
-          "root": "0909090909090909090909090909090909090909090909090909090909090909"
-        },
-        {
-          "kind": "constant",
-          "type": "9f0aff",
-          "payload": "5f584093e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc510515820c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8ff"
         }
       ],
       "verdict": "refused"
     },
     {
       "case": 698,
+      "tag": 56,
+      "name": "kind sweep: Miller-loop argument 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "c25f584080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ff"
+        },
+        {
+          "kind": "blsMillerLoop",
+          "root": "0505050505050505050505050505050505050505050505050505050505050505"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 699,
+      "tag": 56,
+      "name": "kind sweep: compacted argument 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "c25f584080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ff"
+        },
+        {
+          "kind": "semanticConstant",
+          "type": "9f09ff",
+          "root": "0707070707070707070707070707070707070707070707070707070707070707",
+          "cborLength": "3",
+          "payloadMemory": "1",
+          "memory": "1"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 700,
+      "tag": 63,
+      "name": "kind sweep: opaque argument 0",
+      "arguments": [
+        {
+          "kind": "opaque",
+          "root": "0909090909090909090909090909090909090909090909090909090909090909"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0aff",
+          "payload": "5f584093e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc510515820c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8ff"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 701,
       "tag": 63,
       "name": "kind sweep: compacted argument 0",
       "arguments": [
@@ -13661,7 +13700,7 @@
       "verdict": "refused"
     },
     {
-      "case": 699,
+      "case": 702,
       "tag": 63,
       "name": "kind sweep: Miller-loop argument 1",
       "arguments": [
@@ -13678,7 +13717,7 @@
       "verdict": "refused"
     },
     {
-      "case": 700,
+      "case": 703,
       "tag": 63,
       "name": "kind sweep: compacted argument 1",
       "arguments": [
@@ -13699,7 +13738,7 @@
       "verdict": "known"
     },
     {
-      "case": 701,
+      "case": 704,
       "tag": 59,
       "name": "kind sweep: opaque argument 0",
       "arguments": [
@@ -13711,7 +13750,7 @@
       "verdict": "refused"
     },
     {
-      "case": 702,
+      "case": 705,
       "tag": 59,
       "name": "kind sweep: Miller-loop argument 0",
       "arguments": [
@@ -13723,7 +13762,7 @@
       "verdict": "refused"
     },
     {
-      "case": 703,
+      "case": 706,
       "tag": 60,
       "name": "kind sweep: Miller-loop argument 1",
       "arguments": [
@@ -13740,7 +13779,7 @@
       "verdict": "refused"
     },
     {
-      "case": 704,
+      "case": 707,
       "tag": 66,
       "name": "kind sweep: opaque argument 0",
       "arguments": [
@@ -13752,7 +13791,7 @@
       "verdict": "refused"
     },
     {
-      "case": 705,
+      "case": 708,
       "tag": 67,
       "name": "kind sweep: Miller-loop argument 1",
       "arguments": [
@@ -13769,7 +13808,7 @@
       "verdict": "refused"
     },
     {
-      "case": 706,
+      "case": 709,
       "tag": 73,
       "name": "kind sweep: opaque argument 0",
       "arguments": [
@@ -13791,7 +13830,7 @@
       "verdict": "refused"
     },
     {
-      "case": 707,
+      "case": 710,
       "tag": 73,
       "name": "kind sweep: Miller-loop argument 1",
       "arguments": [
@@ -13813,7 +13852,7 @@
       "verdict": "refused"
     },
     {
-      "case": 708,
+      "case": 711,
       "tag": 73,
       "name": "kind sweep: compacted argument 1",
       "arguments": [
@@ -13839,7 +13878,7 @@
       "verdict": "refused"
     },
     {
-      "case": 709,
+      "case": 712,
       "tag": 73,
       "name": "kind sweep: opaque argument 2",
       "arguments": [
@@ -13861,7 +13900,7 @@
       "verdict": "refused"
     },
     {
-      "case": 710,
+      "case": 713,
       "tag": 73,
       "name": "kind sweep: compacted argument 2",
       "arguments": [
@@ -13887,7 +13926,7 @@
       "verdict": "refused"
     },
     {
-      "case": 711,
+      "case": 714,
       "tag": 79,
       "name": "kind sweep: opaque argument 0",
       "arguments": [
@@ -13904,7 +13943,7 @@
       "verdict": "refused"
     },
     {
-      "case": 712,
+      "case": 715,
       "tag": 79,
       "name": "kind sweep: compacted argument 0",
       "arguments": [
@@ -13925,7 +13964,7 @@
       "verdict": "refused"
     },
     {
-      "case": 713,
+      "case": 716,
       "tag": 79,
       "name": "kind sweep: Miller-loop argument 1",
       "arguments": [
@@ -13942,7 +13981,7 @@
       "verdict": "refused"
     },
     {
-      "case": 714,
+      "case": 717,
       "tag": 79,
       "name": "kind sweep: compacted argument 1",
       "arguments": [
@@ -13958,76 +13997,6 @@
           "cborLength": "3",
           "payloadMemory": "1",
           "memory": "1"
-        }
-      ],
-      "verdict": "refused"
-    },
-    {
-      "case": 715,
-      "tag": 80,
-      "name": "kind sweep: opaque argument 0",
-      "arguments": [
-        {
-          "kind": "opaque",
-          "root": "0909090909090909090909090909090909090909090909090909090909090909"
-        },
-        {
-          "kind": "constant",
-          "type": "9f0500ff",
-          "payload": "9f10ff"
-        },
-        {
-          "kind": "constant",
-          "type": "9f04ff",
-          "payload": "d87a80"
-        }
-      ],
-      "verdict": "refused"
-    },
-    {
-      "case": 716,
-      "tag": 80,
-      "name": "kind sweep: compacted argument 0",
-      "arguments": [
-        {
-          "kind": "semanticConstant",
-          "type": "9f01ff",
-          "root": "0707070707070707070707070707070707070707070707070707070707070707",
-          "cborLength": "3",
-          "payloadMemory": "1",
-          "memory": "1"
-        },
-        {
-          "kind": "constant",
-          "type": "9f0500ff",
-          "payload": "9f10ff"
-        },
-        {
-          "kind": "constant",
-          "type": "9f04ff",
-          "payload": "d87a80"
-        }
-      ],
-      "verdict": "refused"
-    },
-    {
-      "case": 717,
-      "tag": 80,
-      "name": "kind sweep: Miller-loop argument 1",
-      "arguments": [
-        {
-          "kind": "constant",
-          "type": "9f01ff",
-          "payload": "420102"
-        },
-        {
-          "kind": "blsMillerLoop",
-          "root": "0505050505050505050505050505050505050505050505050505050505050505"
-        },
-        {
-          "kind": "constant",
-          "type": "9f04ff",
-          "payload": "d87a80"
         }
       ],
       "verdict": "refused"
@@ -14035,20 +14004,16 @@
     {
       "case": 718,
       "tag": 80,
-      "name": "kind sweep: compacted argument 1",
+      "name": "kind sweep: opaque argument 0",
       "arguments": [
         {
-          "kind": "constant",
-          "type": "9f01ff",
-          "payload": "420102"
+          "kind": "opaque",
+          "root": "0909090909090909090909090909090909090909090909090909090909090909"
         },
         {
-          "kind": "semanticConstant",
+          "kind": "constant",
           "type": "9f0500ff",
-          "root": "0707070707070707070707070707070707070707070707070707070707070707",
-          "cborLength": "3",
-          "payloadMemory": "1",
-          "memory": "1"
+          "payload": "9f10ff"
         },
         {
           "kind": "constant",
@@ -14060,6 +14025,80 @@
     },
     {
       "case": 719,
+      "tag": 80,
+      "name": "kind sweep: compacted argument 0",
+      "arguments": [
+        {
+          "kind": "semanticConstant",
+          "type": "9f01ff",
+          "root": "0707070707070707070707070707070707070707070707070707070707070707",
+          "cborLength": "3",
+          "payloadMemory": "1",
+          "memory": "1"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0500ff",
+          "payload": "9f10ff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f04ff",
+          "payload": "d87a80"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 720,
+      "tag": 80,
+      "name": "kind sweep: Miller-loop argument 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "420102"
+        },
+        {
+          "kind": "blsMillerLoop",
+          "root": "0505050505050505050505050505050505050505050505050505050505050505"
+        },
+        {
+          "kind": "constant",
+          "type": "9f04ff",
+          "payload": "d87a80"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 721,
+      "tag": 80,
+      "name": "kind sweep: compacted argument 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "420102"
+        },
+        {
+          "kind": "semanticConstant",
+          "type": "9f0500ff",
+          "root": "0707070707070707070707070707070707070707070707070707070707070707",
+          "cborLength": "3",
+          "payloadMemory": "1",
+          "memory": "1"
+        },
+        {
+          "kind": "constant",
+          "type": "9f04ff",
+          "payload": "d87a80"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 722,
       "tag": 80,
       "name": "kind sweep: opaque argument 2",
       "arguments": [
@@ -14081,7 +14120,7 @@
       "verdict": "refused"
     },
     {
-      "case": 720,
+      "case": 723,
       "tag": 81,
       "name": "kind sweep: opaque argument 0",
       "arguments": [
@@ -14098,7 +14137,7 @@
       "verdict": "refused"
     },
     {
-      "case": 721,
+      "case": 724,
       "tag": 81,
       "name": "kind sweep: compacted argument 0",
       "arguments": [
@@ -14119,7 +14158,7 @@
       "verdict": "refused"
     },
     {
-      "case": 722,
+      "case": 725,
       "tag": 81,
       "name": "kind sweep: Miller-loop argument 1",
       "arguments": [
@@ -14136,7 +14175,7 @@
       "verdict": "refused"
     },
     {
-      "case": 723,
+      "case": 726,
       "tag": 81,
       "name": "kind sweep: compacted argument 1",
       "arguments": [
@@ -14152,61 +14191,6 @@
           "cborLength": "3",
           "payloadMemory": "1",
           "memory": "1"
-        }
-      ],
-      "verdict": "refused"
-    },
-    {
-      "case": 724,
-      "tag": 82,
-      "name": "kind sweep: opaque argument 0",
-      "arguments": [
-        {
-          "kind": "opaque",
-          "root": "0909090909090909090909090909090909090909090909090909090909090909"
-        },
-        {
-          "kind": "constant",
-          "type": "9f00ff",
-          "payload": "1b8000000000000000"
-        }
-      ],
-      "verdict": "refused"
-    },
-    {
-      "case": 725,
-      "tag": 82,
-      "name": "kind sweep: compacted argument 0",
-      "arguments": [
-        {
-          "kind": "semanticConstant",
-          "type": "9f01ff",
-          "root": "0707070707070707070707070707070707070707070707070707070707070707",
-          "cborLength": "3",
-          "payloadMemory": "1",
-          "memory": "1"
-        },
-        {
-          "kind": "constant",
-          "type": "9f00ff",
-          "payload": "1b8000000000000000"
-        }
-      ],
-      "verdict": "known"
-    },
-    {
-      "case": 726,
-      "tag": 82,
-      "name": "kind sweep: Miller-loop argument 1",
-      "arguments": [
-        {
-          "kind": "constant",
-          "type": "9f01ff",
-          "payload": "420102"
-        },
-        {
-          "kind": "blsMillerLoop",
-          "root": "0505050505050505050505050505050505050505050505050505050505050505"
         }
       ],
       "verdict": "refused"
@@ -14214,6 +14198,61 @@
     {
       "case": 727,
       "tag": 82,
+      "name": "kind sweep: opaque argument 0",
+      "arguments": [
+        {
+          "kind": "opaque",
+          "root": "0909090909090909090909090909090909090909090909090909090909090909"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "1b8000000000000000"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 728,
+      "tag": 82,
+      "name": "kind sweep: compacted argument 0",
+      "arguments": [
+        {
+          "kind": "semanticConstant",
+          "type": "9f01ff",
+          "root": "0707070707070707070707070707070707070707070707070707070707070707",
+          "cborLength": "3",
+          "payloadMemory": "1",
+          "memory": "1"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "1b8000000000000000"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 729,
+      "tag": 82,
+      "name": "kind sweep: Miller-loop argument 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "420102"
+        },
+        {
+          "kind": "blsMillerLoop",
+          "root": "0505050505050505050505050505050505050505050505050505050505050505"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 730,
+      "tag": 82,
       "name": "kind sweep: compacted argument 1",
       "arguments": [
         {
@@ -14233,7 +14272,7 @@
       "verdict": "refused"
     },
     {
-      "case": 728,
+      "case": 731,
       "tag": 83,
       "name": "kind sweep: opaque argument 0",
       "arguments": [
@@ -14250,7 +14289,7 @@
       "verdict": "refused"
     },
     {
-      "case": 729,
+      "case": 732,
       "tag": 83,
       "name": "kind sweep: compacted argument 0",
       "arguments": [
@@ -14271,7 +14310,7 @@
       "verdict": "known"
     },
     {
-      "case": 730,
+      "case": 733,
       "tag": 83,
       "name": "kind sweep: Miller-loop argument 1",
       "arguments": [
@@ -14288,7 +14327,7 @@
       "verdict": "refused"
     },
     {
-      "case": 731,
+      "case": 734,
       "tag": 83,
       "name": "kind sweep: compacted argument 1",
       "arguments": [
@@ -14309,7 +14348,7 @@
       "verdict": "refused"
     },
     {
-      "case": 732,
+      "case": 735,
       "tag": -1,
       "name": "1 by 0",
       "arguments": [
@@ -14327,7 +14366,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 733,
+      "case": 736,
       "tag": 0,
       "name": "1 by 0",
       "arguments": [
@@ -14345,7 +14384,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 734,
+      "case": 737,
       "tag": 1,
       "name": "1 by 0",
       "arguments": [
@@ -14363,7 +14402,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 735,
+      "case": 738,
       "tag": 2,
       "name": "1 by 0",
       "arguments": [
@@ -14381,7 +14420,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 736,
+      "case": 739,
       "tag": 7,
       "name": "1 by 0",
       "arguments": [
@@ -14399,7 +14438,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 737,
+      "case": 740,
       "tag": 8,
       "name": "1 by 0",
       "arguments": [
@@ -14417,7 +14456,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 738,
+      "case": 741,
       "tag": 9,
       "name": "1 by 0",
       "arguments": [
@@ -14435,7 +14474,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 739,
+      "case": 742,
       "tag": 10,
       "name": "1 by 0",
       "arguments": [
@@ -14453,7 +14492,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 740,
+      "case": 743,
       "tag": 13,
       "name": "1 by 0",
       "arguments": [
@@ -14471,7 +14510,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 741,
+      "case": 744,
       "tag": 15,
       "name": "1 by 0",
       "arguments": [
@@ -14489,7 +14528,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 742,
+      "case": 745,
       "tag": 20,
       "name": "1 by 0",
       "arguments": [
@@ -14507,7 +14546,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 743,
+      "case": 746,
       "tag": 22,
       "name": "1 by 0",
       "arguments": [
@@ -14525,7 +14564,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 744,
+      "case": 747,
       "tag": 24,
       "name": "1 by 0",
       "arguments": [
@@ -14543,7 +14582,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 745,
+      "case": 748,
       "tag": 26,
       "name": "1 by 0",
       "arguments": [
@@ -14561,62 +14600,8 @@
       "verdict": "not-known"
     },
     {
-      "case": 746,
-      "tag": 32,
-      "name": "1 by 0",
-      "arguments": [
-        {
-          "kind": "constant",
-          "type": "9f00ff",
-          "payload": "01"
-        },
-        {
-          "kind": "constant",
-          "type": "9f00ff",
-          "payload": "00"
-        }
-      ],
-      "verdict": "not-known"
-    },
-    {
-      "case": 747,
-      "tag": 35,
-      "name": "1 by 0",
-      "arguments": [
-        {
-          "kind": "constant",
-          "type": "9f00ff",
-          "payload": "01"
-        },
-        {
-          "kind": "constant",
-          "type": "9f00ff",
-          "payload": "00"
-        }
-      ],
-      "verdict": "not-known"
-    },
-    {
-      "case": 748,
-      "tag": 37,
-      "name": "1 by 0",
-      "arguments": [
-        {
-          "kind": "constant",
-          "type": "9f00ff",
-          "payload": "01"
-        },
-        {
-          "kind": "constant",
-          "type": "9f00ff",
-          "payload": "00"
-        }
-      ],
-      "verdict": "not-known"
-    },
-    {
       "case": 749,
-      "tag": 41,
+      "tag": 32,
       "name": "1 by 0",
       "arguments": [
         {
@@ -14634,7 +14619,7 @@
     },
     {
       "case": 750,
-      "tag": 47,
+      "tag": 35,
       "name": "1 by 0",
       "arguments": [
         {
@@ -14652,7 +14637,7 @@
     },
     {
       "case": 751,
-      "tag": 51,
+      "tag": 37,
       "name": "1 by 0",
       "arguments": [
         {
@@ -14670,7 +14655,7 @@
     },
     {
       "case": 752,
-      "tag": 54,
+      "tag": 41,
       "name": "1 by 0",
       "arguments": [
         {
@@ -14688,7 +14673,7 @@
     },
     {
       "case": 753,
-      "tag": 58,
+      "tag": 47,
       "name": "1 by 0",
       "arguments": [
         {
@@ -14706,7 +14691,7 @@
     },
     {
       "case": 754,
-      "tag": 61,
+      "tag": 51,
       "name": "1 by 0",
       "arguments": [
         {
@@ -14724,7 +14709,7 @@
     },
     {
       "case": 755,
-      "tag": 65,
+      "tag": 54,
       "name": "1 by 0",
       "arguments": [
         {
@@ -14742,7 +14727,7 @@
     },
     {
       "case": 756,
-      "tag": 68,
+      "tag": 58,
       "name": "1 by 0",
       "arguments": [
         {
@@ -14760,7 +14745,7 @@
     },
     {
       "case": 757,
-      "tag": 70,
+      "tag": 61,
       "name": "1 by 0",
       "arguments": [
         {
@@ -14778,7 +14763,7 @@
     },
     {
       "case": 758,
-      "tag": 71,
+      "tag": 65,
       "name": "1 by 0",
       "arguments": [
         {
@@ -14796,7 +14781,7 @@
     },
     {
       "case": 759,
-      "tag": 72,
+      "tag": 68,
       "name": "1 by 0",
       "arguments": [
         {
@@ -14814,7 +14799,7 @@
     },
     {
       "case": 760,
-      "tag": 74,
+      "tag": 70,
       "name": "1 by 0",
       "arguments": [
         {
@@ -14832,7 +14817,7 @@
     },
     {
       "case": 761,
-      "tag": 78,
+      "tag": 71,
       "name": "1 by 0",
       "arguments": [
         {
@@ -14850,7 +14835,7 @@
     },
     {
       "case": 762,
-      "tag": 84,
+      "tag": 72,
       "name": "1 by 0",
       "arguments": [
         {
@@ -14868,7 +14853,7 @@
     },
     {
       "case": 763,
-      "tag": 86,
+      "tag": 74,
       "name": "1 by 0",
       "arguments": [
         {
@@ -14886,7 +14871,7 @@
     },
     {
       "case": 764,
-      "tag": 87,
+      "tag": 78,
       "name": "1 by 0",
       "arguments": [
         {
@@ -14904,7 +14889,7 @@
     },
     {
       "case": 765,
-      "tag": 100,
+      "tag": 84,
       "name": "1 by 0",
       "arguments": [
         {
@@ -14922,6 +14907,60 @@
     },
     {
       "case": 766,
+      "tag": 86,
+      "name": "1 by 0",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "01"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "00"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 767,
+      "tag": 87,
+      "name": "1 by 0",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "01"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "00"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 768,
+      "tag": 100,
+      "name": "1 by 0",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "01"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "00"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 769,
       "tag": 37,
       "name": "constrData index -1",
       "arguments": [
@@ -14939,7 +14978,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 767,
+      "case": 770,
       "tag": 37,
       "name": "constrData index 2^64",
       "arguments": [
@@ -14957,7 +14996,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 768,
+      "case": 771,
       "tag": 32,
       "name": "mkCons integer onto byte strings",
       "arguments": [
@@ -14975,7 +15014,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 769,
+      "case": 772,
       "tag": 0,
       "name": "opaque arguments",
       "arguments": [

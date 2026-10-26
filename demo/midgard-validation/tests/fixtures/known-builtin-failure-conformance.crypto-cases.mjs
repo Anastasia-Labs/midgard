@@ -183,6 +183,13 @@ const G1_FIVE_GENERATOR =
   "af95b8218cbee2f4fa48e6b6f1df4e8ee46fee73c270dba395dad523d10c9b35295ccfc92cf0a9db8a065e16dafbfaad";
 const G1_OUTSIDE_SUBGROUP =
   "8a2b9fbe12d0fd644c1e951c5983f40ca78f18e62b3b55a1d8e62cddba3d8a3736719efc37f870af7f436c2671752974";
+// Off the curve: x^3 + 4 is not a square, and its candidate root
+// (x^3 + 4)^((p + 1) / 4) squares to -(x^3 + 4).
+const G1_ROOT_SQUARES_TO_NEGATED_RHS = [
+  "95d698989e1fd767158b3be455ee17250ba1f0268a36a4a772132d47564c89399d3d20e54cc850d1e3be2cfd2588afd8",
+  "85e205f2f5ffed0a82ab845e29d7c7c4d6b3558179f872cd6272aa4007115f21f12c491a9dc1f2db45e1e7e17e8832f2",
+  "8a8ff69d381ffa7ddc911f5b34aafeb04f2720d4198b3e78e4ff5e08ff154d36e7a50d20af055b1bde8ecc0e0bee3ce5",
+];
 const G2_FIVE_GENERATOR =
   "b068ad1be382009ac2dce123ec62dca8337d6b93b909b3ee52e31cb9e4098d1b56d596bf3c08166c7b46cb3aa85c23381380055ab9f1a87786f2508f3e4ce5caa5abcdae0a80141ee8ccc3626311e0a53be5d873fa964fd85ad56771f2984579";
 const G2_OFF_TWIST =
@@ -220,6 +227,13 @@ const blsCases = (add) => {
     ["on the curve, outside G1", hex(G1_OUTSIDE_SUBGROUP)],
   ]) {
     add(59, `G1 ${name}`, [encoded]);
+  }
+  for (const [index, encoded] of G1_ROOT_SQUARES_TO_NEGATED_RHS.entries()) {
+    add(
+      59,
+      `G1 off-curve x whose candidate root squares to the negated right-hand side ${index}`,
+      [hex(encoded)],
+    );
   }
   add(59, "compacted G1 encoding", [semanticBytes(1)]);
   add(59, "integer G1 encoding", [int(1)]);
