@@ -51,6 +51,7 @@ const cycleOver = async (scanPageSize?: number) => {
   const cycle = await runRetentionCycle(
     store,
     scanPageSize === undefined ? OPTIONS : { ...OPTIONS, scanPageSize },
+    {},
   );
   return { cycle, retained: await retainedHeaderHashes(store) };
 };
@@ -93,10 +94,14 @@ describe("retention scan pages", () => {
     } finally {
       await client.end();
     }
-    const cycle = await runRetentionCycle(store, {
-      ...retentionOptions(),
-      scanPageSize: 1,
-    });
+    const cycle = await runRetentionCycle(
+      store,
+      {
+        ...retentionOptions(),
+        scanPageSize: 1,
+      },
+      {},
+    );
     expect(cycle.prune).toEqual({
       scanned: 2,
       prunedHeaderHashes: [expired],

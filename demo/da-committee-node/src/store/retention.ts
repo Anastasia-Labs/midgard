@@ -2,6 +2,7 @@ import {
   daRetentionPruneDecision,
   MIDGARD_RETENTION_WINDOW,
   retentionDeadlineAlert,
+  retentionDeadlineForBlock,
   type RetentionPruneDecision,
   type RetentionQueueReference,
 } from "@al-ft/midgard-core";
@@ -73,6 +74,8 @@ export type RetentionScanOptions = RetainedPayloadReleaseOptions & {
   readonly releaseHeader?: boolean;
   /** Payloads decided per page; defaults to `RETENTION_SCAN_PAGE_SIZE`. */
   readonly scanPageSize?: number;
+  /** Payloads decided per cycle; defaults to `RETENTION_CYCLE_ROW_BUDGET`. */
+  readonly cycleRowBudget?: number;
 };
 
 export const retentionQueueReference = (
@@ -318,7 +321,13 @@ export type RetentionDeadlineReport = {
   readonly scanned: number;
   readonly retained: number;
   readonly prunable: number;
+  /** Every alerting payload, counted; `entries` names only the nearest. */
   readonly alerting: number;
+  /**
+   * The alerting entries nearest their deadlines, at most
+   * `RETENTION_ALERT_ENTRY_LIMIT`, so a report's size never follows the
+   * retained set's.
+   */
   readonly entries: readonly RetentionDeadlineEntry[];
   /** Missing terminal authority retains bytes and requires another authenticated scan. */
   readonly recoveryProofUnavailable?: number;
@@ -364,6 +373,26 @@ export const retentionCycleOptions = (
   finalBlockTimeMs: view.finalBlockTimeMs,
 });
 
+/** Alerting entries a deadline report names: the nearest deadlines. */
+export const RETENTION_ALERT_ENTRY_LIMIT = 16;
+
+/** The alerting entries nearest their deadlines, at most the limit. */
+export const nearestAlertingEntries = (
+  entries: readonly RetentionDeadlineEntry[],
+): readonly RetentionDeadlineEntry[] =>
+  entries
+    .filter(({ alerting }) => alerting)
+    .sort(
+      (left, right) =>
+        left.challengeableUntilMs - right.challengeableUntilMs ||
+        (left.headerHash < right.headerHash
+          ? -1
+          : left.headerHash > right.headerHash
+            ? 1
+            : 0),
+    )
+    .slice(0, RETENTION_ALERT_ENTRY_LIMIT);
+
 export const retentionDeadlineReportFromCandidates = (
   candidates: readonly RetentionCandidate[],
   options: RetentionDeadlineOptions,
@@ -408,17 +437,23 @@ export const retentionDeadlineReportFromCandidates = (
   const prunable = candidates.filter(
     (candidate) => candidate.decision.decision === "prune",
   ).length;
+  // The retention period in force, as the decision itself applies it.
+  const { deployedRetentionMs } = retentionDeadlineForBlock({
+    blockTimeMs: 0,
+    retentionDays: options.retentionDays,
+  });
   return {
     nowMs: options.nowMs,
     requiredRetentionMs: MIDGARD_RETENTION_WINDOW.requiredRetentionMs,
-    deployedRetentionMs: MIDGARD_RETENTION_WINDOW.deployedRetentionMs,
-    marginMs: MIDGARD_RETENTION_WINDOW.marginMs,
+    deployedRetentionMs,
+    marginMs:
+      deployedRetentionMs - MIDGARD_RETENTION_WINDOW.requiredRetentionMs,
     alertThresholdMs: alertThresholdMs ?? null,
     scanned: candidates.length,
     retained: candidates.length - prunable,
     prunable,
     alerting: entries.filter((entry) => entry.alerting).length,
-    entries,
+    entries: nearestAlertingEntries(entries),
     ...(() => {
       const missing = candidates.filter(
         (candidate) =>

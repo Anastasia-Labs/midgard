@@ -1,13 +1,12 @@
 import type { CommitteeStore } from "../store.js";
 import {
+  nearestAlertingEntries,
   pageCandidates,
   pruneRetentionCandidates,
-  type RetentionCandidate,
   type RetentionDeadlineOptions,
   type RetentionDeadlineReport,
   retentionDeadlineReportFromCandidates,
   type RetentionPruneResult,
-  type RetentionScanOptions,
 } from "./retention.js";
 
 /**
@@ -17,35 +16,24 @@ import {
 const RETENTION_SCAN_PAGE_SIZE = 512;
 
 /**
- * The retention candidates of every retained payload, one page at a time.
- * A page holds retention metadata only, never the payload bytes.
+ * The most retained payloads one cycle decides. A cycle runs inside the
+ * committee tick, so its cost is bounded by this budget, never by the
+ * retained set: a larger set is swept over successive cycles, each one
+ * continuing where the last stopped.
  */
-async function* retentionCandidatePages(
-  store: CommitteeStore,
-  options: RetentionScanOptions,
-): AsyncGenerator<readonly RetentionCandidate[]> {
-  const limit = options.scanPageSize ?? RETENTION_SCAN_PAGE_SIZE;
-  let afterHeaderHash: string | undefined;
-  for (;;) {
-    const page = await store.listDaPayloadRetentionPage({
-      ...(afterHeaderHash === undefined ? {} : { afterHeaderHash }),
-      limit,
-    });
-    if (page.length > 0) yield await pageCandidates(store, page, options);
-    if (page.length < limit) return;
-    afterHeaderHash = page.at(-1)!.headerHash;
-  }
-}
+export const RETENTION_CYCLE_ROW_BUDGET = 2_048;
 
-/** Every retained payload's retention candidate. */
-export const retentionCandidates = async (
-  store: CommitteeStore,
-  options: RetentionScanOptions,
-): Promise<readonly RetentionCandidate[]> => {
-  const candidates: RetentionCandidate[] = [];
-  for await (const page of retentionCandidatePages(store, options))
-    candidates.push(...page);
-  return candidates;
+/**
+ * Where a sweep of the retained set stands between cycles; a fresh sweep is
+ * `{}`. Each cycle advances it.
+ */
+export type RetentionSweep = {
+  /** The last header hash decided; the next cycle continues after it. */
+  afterHeaderHash?: string;
+  /** The report over what the sweep in progress has decided so far. */
+  progress?: RetentionDeadlineReport;
+  /** The report of the last completed sweep. */
+  completed?: RetentionDeadlineReport;
 };
 
 const mergePruneResults = (
@@ -58,69 +46,96 @@ const mergePruneResults = (
   retained: results.reduce((total, { retained }) => total + retained, 0),
 });
 
-/** One report over the pages' reports; `empty` is the report of no page. */
+/**
+ * One report over `reports`, stamped with `empty`'s time and window: counts
+ * are summed and only the nearest alerting entries are kept.
+ */
 const mergeDeadlineReports = (
   empty: RetentionDeadlineReport,
-  pages: readonly RetentionDeadlineReport[],
+  reports: readonly RetentionDeadlineReport[],
 ): RetentionDeadlineReport => {
-  const sum = (count: (page: RetentionDeadlineReport) => number) =>
-    pages.reduce((total, page) => total + count(page), 0);
-  const missing = sum((page) => page.recoveryProofUnavailable ?? 0);
+  const sum = (count: (report: RetentionDeadlineReport) => number) =>
+    reports.reduce((total, report) => total + count(report), 0);
+  const missing = sum((report) => report.recoveryProofUnavailable ?? 0);
   return {
     ...empty,
-    scanned: sum((page) => page.scanned),
-    retained: sum((page) => page.retained),
-    prunable: sum((page) => page.prunable),
-    alerting: sum((page) => page.alerting),
-    entries: pages.flatMap(({ entries }) => [...entries]),
+    scanned: sum((report) => report.scanned),
+    retained: sum((report) => report.retained),
+    prunable: sum((report) => report.prunable),
+    alerting: sum((report) => report.alerting),
+    entries: nearestAlertingEntries(reports.flatMap(({ entries }) => entries)),
     ...(missing === 0 ? {} : { recoveryProofUnavailable: missing }),
   };
 };
 
 export type RetentionCycleResult = {
+  /**
+   * The report of the last completed sweep; while the first sweep is still
+   * in progress, the report over what it has decided so far.
+   */
   readonly deadlines: RetentionDeadlineReport;
+  /** Whether this cycle reached the end of the retained set. */
+  readonly sweepCompleted: boolean;
+  /** What this cycle decided and pruned. */
   readonly prune: RetentionPruneResult;
 };
 
-/** Reports each page of the retained set, then prunes it when `prune` is set. */
-const scanRetention = async (
+/**
+ * One non-overlapping production retention cycle: it continues `sweep`,
+ * deciding at most the cycle's row budget, each page reported before
+ * deletion.
+ */
+export const runRetentionCycle = async (
   store: CommitteeStore,
   options: RetentionDeadlineOptions,
-  prune: boolean,
+  sweep: RetentionSweep,
 ): Promise<RetentionCycleResult> => {
-  // Each page is reported and then pruned from one joined snapshot. Incoming
-  // DA writes may run concurrently with the committee node tick; a second
-  // scan could otherwise delete a record the report never named.
+  const budget = options.cycleRowBudget ?? RETENTION_CYCLE_ROW_BUDGET;
+  if (!Number.isSafeInteger(budget) || budget < 1)
+    throw new Error("retention cycle budget must be a positive safe integer");
+  const pageSize = options.scanPageSize ?? RETENTION_SCAN_PAGE_SIZE;
   const empty = retentionDeadlineReportFromCandidates([], options);
-  const pages: RetentionDeadlineReport[] = [];
   const prunes: RetentionPruneResult[] = [];
-  for await (const page of retentionCandidatePages(store, options)) {
-    pages.push(retentionDeadlineReportFromCandidates(page, options));
-    if (prune)
-      prunes.push(await pruneRetentionCandidates(store, page, options));
+  let decided = 0;
+  let sweepCompleted = false;
+  while (decided < budget) {
+    const limit = Math.min(pageSize, budget - decided);
+    const { afterHeaderHash } = sweep;
+    const page = await store.listDaPayloadRetentionPage({
+      ...(afterHeaderHash === undefined ? {} : { afterHeaderHash }),
+      limit,
+    });
+    if (page.length > 0) {
+      // Each page is reported and then pruned from one joined snapshot.
+      // Incoming DA writes may run concurrently with the committee node
+      // tick; a second scan could otherwise delete a record the report
+      // never named.
+      const candidates = await pageCandidates(store, page, options);
+      const report = retentionDeadlineReportFromCandidates(candidates, options);
+      prunes.push(await pruneRetentionCandidates(store, candidates, options));
+      sweep.progress = mergeDeadlineReports(empty, [
+        ...(sweep.progress === undefined ? [] : [sweep.progress]),
+        report,
+      ]);
+      sweep.afterHeaderHash = page.at(-1)!.headerHash;
+      decided += page.length;
+    }
+    if (page.length < limit) {
+      sweepCompleted = true;
+      break;
+    }
+  }
+  if (sweepCompleted) {
+    sweep.completed = mergeDeadlineReports(
+      empty,
+      sweep.progress === undefined ? [] : [sweep.progress],
+    );
+    sweep.progress = undefined;
+    sweep.afterHeaderHash = undefined;
   }
   return {
-    deadlines: mergeDeadlineReports(empty, pages),
+    deadlines: sweep.completed ?? sweep.progress ?? empty,
+    sweepCompleted,
     prune: mergePruneResults(prunes),
   };
 };
-
-/** Deletes every retained DA payload the core retention decision prunes. */
-export const pruneExpiredDaPayloads = async (
-  store: CommitteeStore,
-  options: RetentionScanOptions,
-): Promise<RetentionPruneResult> =>
-  (await scanRetention(store, options, true)).prune;
-
-/** Executable deadline report over the retained DA payload set. */
-export const retentionDeadlineReport = async (
-  store: CommitteeStore,
-  options: RetentionDeadlineOptions,
-): Promise<RetentionDeadlineReport> =>
-  (await scanRetention(store, options, false)).deadlines;
-
-/** One non-overlapping production retention cycle: report before deletion. */
-export const runRetentionCycle = (
-  store: CommitteeStore,
-  options: RetentionDeadlineOptions,
-): Promise<RetentionCycleResult> => scanRetention(store, options, true);

@@ -143,6 +143,7 @@ const harness = async (
     const { deadlines, prune } = await runRetentionCycle(
       store,
       retentionCycleOptions(config, view!, Date.now()),
+      {},
     );
     // Waiting for finality is normal: never a readiness failure.
     expect(retentionReadinessFromDeadlines(deadlines).status).toBe("ok");

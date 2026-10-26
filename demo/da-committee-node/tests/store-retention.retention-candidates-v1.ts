@@ -7,7 +7,7 @@ import {
   pruneExpiredDaPayloads,
   retentionCandidates,
   retentionDeadlineReport,
-} from "../src/store/retention.scan.js";
+} from "./helpers/retention-whole-set.js";
 import {
   hashOf,
   HEAD,

@@ -12,6 +12,7 @@ import "../src/store/retention.js";
 import "../src/store/retention.scan.js";
 import "./helpers.js";
 import "./store-retention.header-record.js";
+import "./store-retention.retention-budget.js";
 import "./store-retention.retention-candidates-v1.js";
 import "./store-retention.retention-deadline-report-v1.js";
 import "./store-retention.retention-holds.js";

@@ -257,6 +257,7 @@ describe.each(dialects)("signed-decision pruning (%s)", (_, open) => {
         const { prune } = await runRetentionCycle(
           store,
           retentionCycleOptions(config, service.latestL1View()!, Date.now()),
+          {},
         );
         expect(prune.prunedHeaderHashes).toContain(a.hash);
         expect(await store.getStateQueueHeader(a.hash)).toBeUndefined();
@@ -281,6 +282,7 @@ describe.each(dialects)("signed-decision pruning (%s)", (_, open) => {
         const { prune } = await runRetentionCycle(
           store,
           retentionCycleOptions(config, service.latestL1View()!, Date.now()),
+          {},
         );
         expect(prune.prunedHeaderHashes).toContain(a.hash);
         expect(await store.getStateQueueHeader(a.hash)).toMatchObject({

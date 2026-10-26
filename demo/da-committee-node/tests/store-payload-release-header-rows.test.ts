@@ -159,6 +159,7 @@ describe("the runtime retention cycle releasing a payload with only peer signatu
         },
         NOW,
       ),
+      {},
     );
 
   it("keeps the header row and the peer rows under promise adoption", async () => {
