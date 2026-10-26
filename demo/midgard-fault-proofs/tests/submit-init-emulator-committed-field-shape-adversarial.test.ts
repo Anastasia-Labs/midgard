@@ -237,7 +237,7 @@ describe("committed-field-shape adversarial prover and recovery", () => {
           threadOutRef: init.nextThreadOutRef,
           scenario,
           claim: honestPrepared.claim,
-          forwardedState: fabricated,
+          successor: { step: 2, state: fabricated },
           referenceScriptUtxo: refs[0],
         }),
     );
@@ -254,7 +254,7 @@ describe("committed-field-shape adversarial prover and recovery", () => {
             fieldIndex: 0,
             preimage: wrongPreimage,
           }),
-          forwardedState: fabricated,
+          successor: { step: 2, state: fabricated },
           referenceScriptUtxo: refs[0],
         }),
     );
@@ -291,7 +291,7 @@ describe("committed-field-shape adversarial prover and recovery", () => {
         fieldIndex: 2,
         preimage: scenario.committedPreimage,
       }),
-      forwardedState: state,
+      successor: { step: 2, state },
       referenceScriptUtxo: refs[0],
     });
     const atStep02 = await expectSingleUtxoWithUnit(
