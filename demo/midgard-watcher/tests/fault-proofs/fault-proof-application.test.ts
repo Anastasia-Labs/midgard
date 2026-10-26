@@ -71,7 +71,7 @@ describe("watcher production fault-proof application V1", () => {
       "transitionTrace",
     ]);
     expect(() =>
-      installedLaunchScope(["minAda", "unusedScriptWitness"]),
+      installedLaunchScope(["minAda", "receivePurposeLanguage"]),
     ).toThrow("launch scope names a category with no installed workflow");
   });
 
@@ -618,7 +618,7 @@ describe("watcher production fault-proof application V1", () => {
             "replayContext",
           ),
         );
-      expect(replayContextFamilies).toHaveLength(13);
+      expect(replayContextFamilies).toHaveLength(14);
       for (const category of replayContextFamilies) {
         await expect(applied(category)).rejects.toThrow(
           `${category} application requires replayContext, which the host did not supply`,

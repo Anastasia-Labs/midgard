@@ -580,9 +580,15 @@ export const workflowAdapterRegistrationRows = [
   {
     category: "unusedScriptWitness",
     status: "missing",
-    reason: "evidence_not_carried_by_da_payload",
-    existingSurface: [],
-    requiredClosure: daPayloadEvidenceClosure,
+    reason: "constrained_adapter_is_not_launch_scope_complete",
+    existingSurface: [
+      "unused-script-witness/replay.ts",
+      "unused-script-witness/artifact.ts",
+      "unused-script-witness/workflow.ts",
+      "workflow/family-application-registry.ts#UNUSED_SCRIPT_WITNESS_FAMILY_APPLICATION_RECORD",
+    ],
+    requiredClosure:
+      "install and exercise the manifest-bound unused-script-witness runner in a compiled application with its retained-DA runtime",
   },
   {
     category: "missingScriptSource",

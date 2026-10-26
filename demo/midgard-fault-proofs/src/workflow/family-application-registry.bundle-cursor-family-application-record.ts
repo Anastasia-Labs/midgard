@@ -86,6 +86,13 @@ import {
 } from "../unused-redeemer/workflow.js";
 import type { ManifestBoundUnusedRedeemerWorkflowConfig } from "../unused-redeemer/workflow.transaction-port.js";
 import {
+  createManifestBoundUnusedScriptWitnessWorkflow,
+  type ManifestBoundUnusedScriptWitnessWorkflow,
+  runOrResumeManifestBoundUnusedScriptWitnessWorkflow,
+  UNUSED_SCRIPT_WITNESS_FAMILY_DEFINITION,
+} from "../unused-script-witness/workflow.js";
+import type { ManifestBoundUnusedScriptWitnessWorkflowConfig } from "../unused-script-witness/workflow.transaction-port.js";
+import {
   createManifestBoundWithdrawalMistagWorkflow,
   type ManifestBoundWithdrawalMistagWorkflow,
   type ManifestBoundWithdrawalMistagWorkflowConfig,
@@ -279,6 +286,17 @@ export const SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_APPLICATION_RECORD =
     requires: ["replayContext"],
     constructWorkflow: createManifestBoundScriptIntegrityHashMismatchWorkflow,
     execute: runOrResumeManifestBoundScriptIntegrityHashMismatchWorkflow,
+  });
+
+export const UNUSED_SCRIPT_WITNESS_FAMILY_APPLICATION_RECORD =
+  bundleCursorFamilyApplicationRecord<
+    "unusedScriptWitness",
+    ManifestBoundUnusedScriptWitnessWorkflowConfig,
+    ManifestBoundUnusedScriptWitnessWorkflow
+  >(UNUSED_SCRIPT_WITNESS_FAMILY_DEFINITION, {
+    requires: ["replayContext"],
+    constructWorkflow: createManifestBoundUnusedScriptWitnessWorkflow,
+    execute: runOrResumeManifestBoundUnusedScriptWitnessWorkflow,
   });
 
 export const MISSING_SCRIPT_SOURCE_FAMILY_APPLICATION_RECORD =

@@ -431,6 +431,7 @@ describe("production cursor-family authenticated state V1", () => {
       "missingScriptSource",
       "unusedRedeemer",
       "scriptIntegrityHashMismatch",
+      "unusedScriptWitness",
       "canonicalDecodability",
       "committedFieldShape",
     ]);

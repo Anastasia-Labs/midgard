@@ -27,6 +27,7 @@ import { detectSpendInputSignerMissingCompleteReplay } from "../spend-input-sign
 import { spendInputSignerWorkflowEvidenceIdentity } from "../spend-input-signer-missing/workflow.js";
 import { detectTransactionOutputNonCanonicalCompleteReplay } from "../transaction-output-non-canonical/workflow.js";
 import { detectUnusedRedeemerReplay } from "../unused-redeemer/replay.js";
+import { detectUnusedScriptWitnessReplay } from "../unused-script-witness/replay.js";
 import { detectWitnessScriptDecodingCompleteReplay } from "../witness-script-decoding/workflow.js";
 import { completeCanonicalReplayPredecessorLedger } from "./complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
@@ -180,6 +181,21 @@ export const SCRIPT_INTEGRITY_HASH_MISMATCH_COMPLETE_CANONICAL_REPLAY =
         }),
       }),
   );
+
+/** Complete unused-script-witness replay: admitted transactions carrying a
+ * script witness, forced rejections recording an unused witness, and forced
+ * rejections whose reason ranks at or after the unused audit. */
+export const UNUSED_SCRIPT_WITNESS_COMPLETE_CANONICAL_REPLAY = completeReplayer(
+  ["unusedScriptWitness"],
+  async (evidence, context) =>
+    await detectUnusedScriptWitnessReplay({
+      block: evidence,
+      predecessor: completeCanonicalReplayPredecessorLedger({
+        evidence,
+        context,
+      }),
+    }),
+);
 
 export const NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY = completeReplayer(
   ["nativeScriptInvalid"],

@@ -245,10 +245,14 @@ describe("fault-proof contract builder", () => {
         ["withdrawnReferenceInput[2]", "withdrawnInput[2]"],
         // Both convict from the same final ordered-collection comparison.
         ["mintDeclaredAssetLimit[3]", "observerOrderInvalid[3]"],
-        // The DIRECT families share source authentication and map, the claim
-        // route (unusedRedeemer has no claimed-redeemer scan) and the terminal.
+        // DIRECT and unusedScriptWitness share source authentication and map;
+        // the first three share the claim route (minus a scan) and terminal.
+        ...[5, 6].map((step) =>
+          ["unusedScriptWitness", ...DIRECT].map(
+            (name) => `${name}[${step.toString()}]`,
+          ),
+        ),
         ...[
-          ...[5, 6].map((step) => [step, step, step, step]),
           ...Array.from({ length: 12 }, (_, at) =>
             [24 + at, 26 + at, 14 + at].slice(0, at < 10 ? 3 : 2),
           ),

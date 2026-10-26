@@ -239,6 +239,7 @@ export const NO_DIGEST_FAMILIES = [
   "missingScriptSource",
   "unusedRedeemer",
   "scriptIntegrityHashMismatch",
+  "unusedScriptWitness",
 ];
 
 export const REPLAY_CONTEXT_FAMILIES = [
@@ -255,6 +256,7 @@ export const REPLAY_CONTEXT_FAMILIES = [
   "missingScriptSource",
   "unusedRedeemer",
   "scriptIntegrityHashMismatch",
+  "unusedScriptWitness",
 ];
 
 /**

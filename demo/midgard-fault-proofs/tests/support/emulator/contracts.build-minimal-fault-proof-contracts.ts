@@ -49,6 +49,7 @@ import {
   buildTransitionTraceFaultProofContracts,
   buildTxOrderValidators,
   buildUnusedRedeemerFaultProofContracts,
+  buildUnusedScriptWitnessFaultProofContracts,
   buildValidationCaseContracts,
   buildValidationTraceDisputeFaultProofContracts,
   buildValueNotPreservedFaultProofContracts,
@@ -91,6 +92,7 @@ import { type NativeScriptInvalidContracts } from "../../../src/native-script-in
 import { type ScriptIntegrityHashMismatchContracts } from "../../../src/script-integrity-hash-mismatch/contracts.js";
 import { type FabricatedDepositContracts } from "../../../src/submit-fabricated-deposit-step-01.js";
 import { type FabricatedWithdrawalContracts } from "../../../src/submit-fabricated-withdrawal-step-01.js";
+import { type UnusedScriptWitnessContracts } from "../../../src/unused-script-witness/contracts.js";
 import { type ValueNotPreservedContracts } from "../../../src/value-not-preserved/contracts.js";
 import { type WithdrawalMistagContracts } from "../../../src/withdrawal-mistag/contracts.js";
 import { type WithdrawnInputContracts } from "../../../src/withdrawn-input/contracts.js";
@@ -103,6 +105,7 @@ import {
   network,
 } from "./blueprints.js";
 import { chainFromSteps } from "./contracts.chain-from-steps.js";
+import { buildOperatorDirectoryValidators } from "./contracts.operator-directory.js";
 import {
   makeAlwaysSucceedsContracts,
   makeAuthenticatedValidator,
@@ -150,6 +153,7 @@ export const buildMinimalFaultProofContracts = async (
     realWitnessScriptDecoding = false,
     realScriptIntegrityHashMissing = false,
     realScriptIntegrityHashMismatch = false,
+    realUnusedScriptWitness = false,
     realWithdrawnReferenceInput = false,
     realMinFee = false,
     realDoubleWithdraw = false,
@@ -207,6 +211,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly realWitnessScriptDecoding?: boolean;
     readonly realScriptIntegrityHashMissing?: boolean;
     readonly realScriptIntegrityHashMismatch?: boolean;
+    readonly realUnusedScriptWitness?: boolean;
     readonly realWithdrawnReferenceInput?: boolean;
     readonly realMinFee?: boolean;
     readonly realDoubleWithdraw?: boolean;
@@ -256,6 +261,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly missingScriptSource?: DirectPurposeContracts;
     readonly unusedRedeemer?: DirectPurposeContracts;
     readonly scriptIntegrityHashMismatch?: ScriptIntegrityHashMismatchContracts;
+    readonly unusedScriptWitness?: UnusedScriptWitnessContracts;
     readonly missingSignature?: MissingSignatureContracts;
     readonly nativeScriptInvalid?: NativeScriptInvalidContracts;
     readonly minAda?: MinAdaContracts;
@@ -355,75 +361,13 @@ export const buildMinimalFaultProofContracts = async (
   });
   const lostDefenseReceiptPolicyId = caseContracts.award.policyId;
 
-  const retiredOperatorsMinting = makeMintingValidator(
-    applyCompiledScript(
-      realBlueprint,
-      "operator_directory/retired_operators.mint.mint",
-      [hubOracle.policyId, lostDefenseReceiptPolicyId],
-    ),
-  );
-  const retiredOperators: AuthenticatedValidator = {
-    ...retiredOperatorsMinting,
-    ...makeSpendingValidator(
-      applyCompiledScript(
-        realBlueprint,
-        "operator_directory/retired_operators.spend.spend",
-        [retiredOperatorsMinting.policyId],
-      ),
-    ),
-  };
-  const withRetiredOperators = {
-    ...withCatalogue,
-    retiredOperators,
-  };
-
-  const registeredOperatorsMinting = makeMintingValidator(
-    applyCompiledScript(
-      realBlueprint,
-      "operator_directory/registered_operators.mint.mint",
-      [retiredOperators.policyId, hubOracle.policyId],
-    ),
-  );
-  const registeredOperators: AuthenticatedValidator = {
-    ...registeredOperatorsMinting,
-    ...makeSpendingValidator(
-      applyCompiledScript(
-        realBlueprint,
-        "operator_directory/registered_operators.spend.spend",
-        [registeredOperatorsMinting.policyId],
-      ),
-    ),
-  };
-  const withRegisteredOperators = {
-    ...withRetiredOperators,
-    registeredOperators,
-  };
-
-  const activeOperatorsMinting = makeMintingValidator(
-    applyCompiledScript(
-      realBlueprint,
-      "operator_directory/active_operators.mint.mint",
-      [
-        hubOracle.policyId,
-        registeredOperators.policyId,
-        retiredOperators.policyId,
-        lostDefenseReceiptPolicyId,
-      ],
-    ),
-  );
-  const activeOperators: AuthenticatedValidator = {
-    ...activeOperatorsMinting,
-    ...makeSpendingValidator(
-      applyCompiledScript(
-        realBlueprint,
-        "operator_directory/active_operators.spend.spend",
-        [activeOperatorsMinting.policyId, hubOracle.policyId],
-      ),
-    ),
-  };
   const withActiveOperators = {
-    ...withRegisteredOperators,
-    activeOperators,
+    ...withCatalogue,
+    ...buildOperatorDirectoryValidators({
+      realBlueprint,
+      hubOraclePolicyId: hubOracle.policyId,
+      lostDefenseReceiptPolicyId,
+    }),
   };
 
   // Every real family must share the double-spend family's fraud-proof policy:
@@ -549,6 +493,10 @@ export const buildMinimalFaultProofContracts = async (
   const scriptIntegrityHashMismatchContracts = await buildFamilyContracts(
     realScriptIntegrityHashMismatch,
     buildScriptIntegrityHashMismatchFaultProofContracts,
+  );
+  const unusedScriptWitnessContracts = await buildFamilyContracts(
+    realUnusedScriptWitness,
+    buildUnusedScriptWitnessFaultProofContracts,
   );
   const missingSignatureContracts = await buildFamilyContracts(
     realMissingSignature,
@@ -824,6 +772,18 @@ export const buildMinimalFaultProofContracts = async (
           computationThread:
             scriptIntegrityHashMismatchContracts.computationThread,
           fraudProof: scriptIntegrityHashMismatchContracts.fraudProof,
+          hubOraclePolicyId: hubOracle.policyId,
+          stateQueuePolicyId: stateQueue.policyId,
+          fieldPreimageCertificatePolicyId,
+        };
+  const unusedScriptWitness: UnusedScriptWitnessContracts | undefined =
+    unusedScriptWitnessContracts === undefined
+      ? undefined
+      : {
+          steps: unusedScriptWitnessContracts.unusedScriptWitness
+            .steps as never,
+          computationThread: unusedScriptWitnessContracts.computationThread,
+          fraudProof: unusedScriptWitnessContracts.fraudProof,
           hubOraclePolicyId: hubOracle.policyId,
           stateQueuePolicyId: stateQueue.policyId,
           fieldPreimageCertificatePolicyId,
@@ -1175,6 +1135,10 @@ export const buildMinimalFaultProofContracts = async (
       scriptIntegrityHashMismatch === undefined
         ? withActiveOperators.fraudProofContracts.scriptIntegrityHashMismatch
         : chainFromSteps(scriptIntegrityHashMismatch.steps),
+    unusedScriptWitness:
+      unusedScriptWitness === undefined
+        ? withActiveOperators.fraudProofContracts.unusedScriptWitness
+        : chainFromSteps(unusedScriptWitness.steps),
   };
 
   return {
@@ -1189,6 +1153,7 @@ export const buildMinimalFaultProofContracts = async (
     ...(scriptIntegrityHashMismatch === undefined
       ? {}
       : { scriptIntegrityHashMismatch }),
+    ...(unusedScriptWitness === undefined ? {} : { unusedScriptWitness }),
     ...(missingSignature === undefined ? {} : { missingSignature }),
     ...(nativeScriptInvalid === undefined ? {} : { nativeScriptInvalid }),
     ...(minAda === undefined ? {} : { minAda }),
