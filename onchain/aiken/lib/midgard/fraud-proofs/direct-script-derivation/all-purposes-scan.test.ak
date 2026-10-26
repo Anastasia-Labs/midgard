@@ -182,6 +182,52 @@ test probe_reached_stays_reached() {
   facts.probe_reached
 }
 
+// The same rows are pinned in
+// demo/midgard-sdk/tests/direct-all-purposes-scan.test.ts (twin table);
+// change both together.
+fn twin_facts(
+  executions: List<(ByteArray, Int)>,
+  probe: Option<ByteArray>,
+) -> scan.FactsV1 {
+  list.foldl(
+    executions,
+    scan.FactsV1 { language_bitmap: 0, probe, probe_reached: False },
+    fn(execution, facts) {
+      let (script_hash, language_tag) = execution
+      scan.admit_execution_v1(
+        facts,
+        scan.ExecutionV1 { script_hash, language_tag },
+      )
+    },
+  )
+}
+
+fn twin_row(
+  executions: List<(ByteArray, Int)>,
+  probe: Option<ByteArray>,
+  bitmap: Int,
+  reached: Bool,
+) -> Bool {
+  twin_facts(executions, probe) == scan.FactsV1 {
+    language_bitmap: bitmap,
+    probe,
+    probe_reached: reached,
+  }
+}
+
+test twin_table() {
+  and {
+    twin_row([], None, 0, False),
+    twin_row([(a, 0)], Some(a), 0, True),
+    twin_row([(a, 3)], None, 1, False),
+    twin_row([(a, 128)], Some(b), 2, False),
+    twin_row([(a, 3), (b, 128), (c, 3)], Some(c), 3, True),
+    twin_row([(a, 128), (a, 128)], Some(b), 2, False),
+    twin_row([(b, 0), (a, 3)], Some(b), 1, True),
+    twin_row([(c, 0), (c, 0)], None, 0, False),
+  }
+}
+
 // ## Source authentication
 
 test execution_with_another_hash_source_is_refused() fail {
