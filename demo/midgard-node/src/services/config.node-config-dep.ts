@@ -13,6 +13,7 @@ import {
 import { isStrictlyAscending, splitPackedHex } from "../da/local-signers.js";
 import { type ExUnitsBudget } from "../workers/utils/commit-block-planner.commit-scheduler-evidence-key.js";
 import { type ImportCheckConfig } from "./config.import-check.js";
+import { type HttpRateLimitPolicy } from "./http-rate-limits.js";
 import { type NativeLedgerSettings } from "./native-ledger.js";
 
 /**
@@ -151,6 +152,7 @@ export type NodeConfigDep = {
   RUN_GENESIS_ON_STARTUP: boolean;
   ADMIN_API_KEY: string;
   HTTP_TRUSTED_PROXY_PEERS: readonly string[];
+  HTTP_RATE_LIMITS: HttpRateLimitPolicy;
   MAX_DURABLE_ADMISSION_BACKLOG: number;
   MAX_DURABLE_ADMISSION_BACKLOG_BYTES: number;
   SUBMIT_INGRESS_MAX_CONCURRENCY: number;

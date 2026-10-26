@@ -15,6 +15,7 @@ import {
 import { isConnectionClassError } from "../provider-retry.js";
 import { ConfigError, NodeConfig, NodeConfigDep } from "./config.js";
 import { databaseUpstreamSocket } from "./database-upstream-socket.js";
+import { HTTP_READ_LANE_PERMITS } from "./http-resource-limits.js";
 import {
   DATABASE_CONNECTION_FAILED,
   DATABASE_UNREACHABLE,
@@ -228,12 +229,18 @@ const WorkerSqlClientLive: Layer.Layer<
   createPgLayerEffect("worker", (config) => config.POSTGRES_WORKER_POOL_SIZE),
 );
 
-/** Listen-only pool: public read traffic never borrows admission or batch connections. */
+/** Listen-only pool: HTTP reads never borrow admission or batch connections. */
+const HTTP_READ_POOL_SIZE =
+  HTTP_READ_LANE_PERMITS.public + HTTP_READ_LANE_PERMITS.operator;
 export const HttpReadSqlLive = Layer.effect(
   HttpReadSql,
   SqlClient.SqlClient,
 ).pipe(
-  Layer.provide(Layer.unwrapEffect(createPgLayerEffect("http-read", () => 4))),
+  Layer.provide(
+    Layer.unwrapEffect(
+      createPgLayerEffect("http-read", () => HTTP_READ_POOL_SIZE),
+    ),
+  ),
 );
 
 const BatchSqlAliasLive = Layer.effect(BatchSql, SqlClient.SqlClient);

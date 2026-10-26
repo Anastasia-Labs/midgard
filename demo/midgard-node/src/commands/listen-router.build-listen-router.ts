@@ -151,7 +151,7 @@ export const buildListenRouter = (
       HttpRouter.get(`/${HEALTH_ENDPOINT}`, getHealthHandler),
       HttpRouter.get(
         `/${READINESS_ENDPOINT}`,
-        withHttpReadSql(getReadinessHandler),
+        withHttpReadSql(getReadinessHandler, 2_000, "operator"),
       ),
       HttpRouter.get(
         `/${PIPELINE_STATUS_ENDPOINT}`,
@@ -200,12 +200,15 @@ export const buildListenRouter = (
         `/${STATE_QUEUE_ENDPOINT}`,
         withAdminAccess(
           STATE_QUEUE_ENDPOINT,
-          withHttpReadSql(getStateQueueHandler),
+          withHttpReadSql(getStateQueueHandler, 2_000, "operator"),
         ),
       ),
       HttpRouter.post(
         `/logBlocksDB`,
-        withAdminAccess("logBlocksDB", withHttpReadSql(getLogBlocksDBHandler)),
+        withAdminAccess(
+          "logBlocksDB",
+          withHttpReadSql(getLogBlocksDBHandler, 2_000, "operator"),
+        ),
       ),
       HttpRouter.post(
         `/logGlobals`,
@@ -215,7 +218,7 @@ export const buildListenRouter = (
         `/${OPERATOR_STATUS_ENDPOINT}`,
         withAdminAccess(
           OPERATOR_STATUS_ENDPOINT,
-          withHttpReadSql(getOperatorStatusHandler, 10_000),
+          withHttpReadSql(getOperatorStatusHandler, 10_000, "operator"),
         ),
       ),
       HttpRouter.post(
