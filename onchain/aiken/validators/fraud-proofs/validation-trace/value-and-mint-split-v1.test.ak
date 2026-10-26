@@ -65,10 +65,11 @@ use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/compact.{
   encode_native_tx_body_compact, native_tx_id_for_version,
 }
+use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_input}
 use midgard/fraud_proofs/native_tx/transaction.{midgard_transaction_to_compact}
 use midgard/fraud_proofs/native_tx/types.{
   MidgardTransaction, MidgardTransactionBody, MidgardTransactionWitnessSet,
-  TxIsValid, native_tx_version_v1,
+  MidgardTxInput, TxIsValid, native_tx_version_v1,
 }
 use midgard/fraud_proofs/thread_census_fixture_v1 as census
 use midgard/ledger_output_commitment_v1
@@ -510,6 +511,112 @@ fn replay_input_fixture_over(
       value: descriptor_cbor,
       proof: [],
       siblings,
+    },
+  )
+}
+
+/// A transaction with one spend input and one reference input. The spend key
+/// sorts first, so the resolution schedule visits the reference input at
+/// replay cursor 1.
+fn spend_and_reference_transaction() -> MidgardTransaction {
+  let tx = empty_v1_transaction()
+  MidgardTransaction {
+    ..tx,
+    body: MidgardTransactionBody {
+      ..tx.body,
+      inputs: [MidgardTxInput { tx_id: h_32_01, output_index: 0 }],
+      reference_inputs: [MidgardTxInput { tx_id: h_32_02, output_index: 0 }],
+    },
+  }
+}
+
+const h_32_01 =
+  #"0101010101010101010101010101010101010101010101010101010101010101"
+
+const h_32_02 =
+  #"0202020202020202020202020202020202020202020202020202020202020202"
+
+/// Kind 2 at replay cursor 1 of `spend_and_reference_transaction`, after the
+/// spend input has been replayed: the cursor sits at the reference input. The
+/// schedule names it as source kind 1; the resolved-item frontier holds it
+/// under `leaf_source_kind`. A reference input adds no value, so the
+/// successor only advances the cursor and the schedule.
+fn reference_replay_input_fixture(leaf_source_kind: Int) -> StepFixtureV1 {
+  let tx = spend_and_reference_transaction()
+  let spend_key = encode_midgard_tx_input(
+    MidgardTxInput { tx_id: h_32_01, output_index: 0 },
+  )
+  let reference_key = encode_midgard_tx_input(
+    MidgardTxInput { tx_id: h_32_02, output_index: 0 },
+  )
+  let spend_cbor = ledger_output_commitment_v1.encode(
+    descriptor_with_assets(0, 3),
+  )
+  let reference_cbor = ledger_output_commitment_v1.encode(
+    descriptor_with_assets(0, 5),
+  )
+  let native_control = NativeScriptsControlV1 {
+    ..empty_native_control(tx),
+    resolved_input_count: 2,
+    spend_input_count: 1,
+    resolved_item_peaks: validation_merkle_v1.build_frontier(
+      [
+        script_proof_v1.resolved_context_item_leaf_hash(
+          0,
+          0,
+          spend_key,
+          spend_cbor,
+        ),
+        script_proof_v1.resolved_context_item_leaf_hash(
+          leaf_source_kind,
+          1,
+          reference_key,
+          reference_cbor,
+        ),
+      ],
+    ).peaks,
+  }
+  let remaining = vm_witness.resolution_schedule_node_hash(
+    1,
+    0,
+    reference_key,
+    vm_witness.empty_resolution_schedule_hash(),
+  )
+  let idle = idle_control(native_control, 2)
+  let control = ValueAndMintControlV1 {
+    ..idle,
+    replay_schedule_hash: native_control.resolution_schedule_hash,
+    replay_cursor: 1,
+    replay_remaining_schedule_hash: remaining,
+    value_accumulator: ValueAccumulatorV1 {
+      ..idle.value_accumulator,
+      lovelace_delta: 3,
+    },
+  }
+  control_step(
+    2,
+    tx,
+    control,
+    ValueAndMintControlV1 {
+      ..control,
+      replay_cursor: 2,
+      replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
+    },
+    ResolvedInputReplayWitness {
+      source_kind: 1,
+      item_index: 0,
+      key: reference_key,
+      next_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
+      value: reference_cbor,
+      proof: [],
+      siblings: [
+        script_proof_v1.resolved_context_item_leaf_hash(
+          0,
+          0,
+          spend_key,
+          spend_cbor,
+        ),
+      ],
     },
   )
 }
@@ -1902,6 +2009,28 @@ test replay_input_validator_refuses_a_value_the_resolved_frontier_does_not_hold(
 
 test replay_input_validator_refuses_a_value_under_wrong_siblings() {
   !run_kind(2, replay_input_fixture_over(3, 3, [h_a]))
+}
+
+// At a reference input (source kind 1) the resolved leaf carries kind 1: the
+// step is accepted, and a leaf the frontier holds under kind 0 is refused even
+// though the schedule names the input as a reference input.
+
+test replay_input_validator_wins_a_reference_input_replay() {
+  let f = reference_replay_input_fixture(1)
+  and {
+    vm_one_step.verify_value_and_mint_one_step_v1(
+      f.pre,
+      ValidationOneStepEvidenceV1 {
+        transition: f.transition,
+        auxiliary: f.auxiliary,
+      },
+    ),
+    run_kind(2, f),
+  }
+}
+
+test replay_input_validator_refuses_a_reference_input_under_a_spend_leaf() {
+  !run_kind(2, reference_replay_input_fixture(0))
 }
 
 test replay_asset_validator_wins_a_single_asset_fold() {
