@@ -141,11 +141,9 @@ per family as each hand-rolled copy was found: `8788d768c`, `0c4001d77`
 
 Recurrence: 5.
 
-Latent twin: `bind_exact_item_v1` in
-`lib/midgard/fraud-proofs/execution-native-script-invalid/rule.ak:323` still
-parses the header by hand with no empty-payload arm. Today only its own tests
-call it; the execution-source-script-decoding step imports its own rule's
-copy. Any change that wires it into a validator reopens the defect.
+The direct rebuilds of execution-native-script-invalid and
+execution-source-script-decoding deleted their rule modules, and with them the
+last hand-rolled header parser that had no empty-payload arm.
 
 ## FP7. The scan window is authenticated at every stage
 
@@ -157,16 +155,12 @@ starts on. Authenticating only on some stages either admits an unauthenticated
 chunk or leaves honest segments unsubmittable.
 
 Enforced: `witness-script-decoding/step-03.ak:83-106`,
-`output-reference-script-decoding/step-05.ak:69-91`,
-`execution-source-script-decoding/step-04.ak:76-100` (under
+`output-reference-script-decoding/step-05.ak:69-91` (under
 `onchain/aiken/validators/fraud-proofs/`)
 `[aiken-test: midgard/fraud-proofs/witness-script-decoding/rule.test/]`
 (`refuses_a_substituted_item_chunk` `:148`),
 `[aiken-test: midgard/fraud-proofs/output-reference-script-decoding/rule.test/]`
-(`window_refuses_substituted_chunk_coordinate` `:315`),
-`[aiken-test: midgard/fraud-proofs/execution-source-script-decoding/rule.test/]`
-(`refuses_an_adjacent_chunk_for_a_single_chunk_item` `:332`,
-`refuses_a_substituted_source_item_chunk` `:352`).
+(`window_refuses_substituted_chunk_coordinate` `:315`).
 
 Provenance: `0c4001d77`, `8f62cb506`, `0023bba3c` — the same wave as FP6.
 Before it, the window was checked only on token stages, so a segment that
