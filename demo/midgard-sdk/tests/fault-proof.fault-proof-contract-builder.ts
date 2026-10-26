@@ -224,6 +224,7 @@ describe("fault-proof contract builder", () => {
       });
     }
     const DIRECT = [
+      "executionNativeScriptInvalid",
       "missingScriptSource",
       "missingRedeemer",
       "unusedRedeemer",
@@ -245,16 +246,15 @@ describe("fault-proof contract builder", () => {
         ["withdrawnReferenceInput[2]", "withdrawnInput[2]"],
         // Both convict from the same final ordered-collection comparison.
         ["mintDeclaredAssetLimit[3]", "observerOrderInvalid[3]"],
-        // The DIRECT families share source authentication and map, the claim
-        // route (unusedRedeemer has no claimed-redeemer scan) and the terminal.
+        // DIRECT shares source auth and map; DIRECT[1..3] claim and terminal.
+        ...[5, 6].map((s) => DIRECT.map((n) => `${n}[${s.toString()}]`)),
         ...[
-          ...[5, 6].map((step) => [step, step, step, step]),
           ...Array.from({ length: 12 }, (_, at) =>
             [24 + at, 26 + at, 14 + at].slice(0, at < 10 ? 3 : 2),
           ),
           [36, 38, 24],
         ].map((steps) =>
-          steps.map((step, at) => `${DIRECT[at]!}[${step.toString()}]`),
+          steps.map((step, at) => `${DIRECT[at + 1]!}[${step.toString()}]`),
         ),
       ].sort(),
     );

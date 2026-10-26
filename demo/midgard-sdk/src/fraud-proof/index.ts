@@ -29,6 +29,8 @@ export * from "./direct-source-workers.js";
 export * from "./double-spend.js";
 export * from "./double-withdraw.js";
 export * from "./evidence-source.js";
+export * from "./execution-native-script-invalid.js";
+export * from "./execution-source-script-decoding.js";
 export * from "./fabricated-deposit.js";
 export * from "./fabricated-withdrawal.js";
 export * from "./field-opening.js";

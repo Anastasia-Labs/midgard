@@ -1,4 +1,18 @@
 import {
+  createManifestBoundExecutionNativeScriptInvalidWorkflow,
+  EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_DEFINITION,
+  type ManifestBoundExecutionNativeScriptInvalidWorkflow,
+  runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflow,
+} from "../execution-native-script-invalid/workflow.js";
+import type { ManifestBoundExecutionNativeScriptInvalidWorkflowConfig } from "../execution-native-script-invalid/workflow.transaction-port.js";
+import {
+  createManifestBoundExecutionSourceScriptDecodingWorkflow,
+  EXECUTION_SOURCE_SCRIPT_DECODING_FAMILY_DEFINITION,
+  type ManifestBoundExecutionSourceScriptDecodingWorkflow,
+  runOrResumeManifestBoundExecutionSourceScriptDecodingWorkflow,
+} from "../execution-source-script-decoding/workflow.js";
+import type { ManifestBoundExecutionSourceScriptDecodingWorkflowConfig } from "../execution-source-script-decoding/workflow.transaction-port.js";
+import {
   createManifestBoundMinAdaWorkflow,
   type ManifestBoundMinAdaWorkflow,
   type ManifestBoundMinAdaWorkflowConfig,
@@ -279,6 +293,28 @@ export const SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_APPLICATION_RECORD =
     requires: ["replayContext"],
     constructWorkflow: createManifestBoundScriptIntegrityHashMismatchWorkflow,
     execute: runOrResumeManifestBoundScriptIntegrityHashMismatchWorkflow,
+  });
+
+export const EXECUTION_SOURCE_SCRIPT_DECODING_FAMILY_APPLICATION_RECORD =
+  bundleCursorFamilyApplicationRecord<
+    "executionSourceScriptDecoding",
+    ManifestBoundExecutionSourceScriptDecodingWorkflowConfig,
+    ManifestBoundExecutionSourceScriptDecodingWorkflow
+  >(EXECUTION_SOURCE_SCRIPT_DECODING_FAMILY_DEFINITION, {
+    requires: ["replayContext"],
+    constructWorkflow: createManifestBoundExecutionSourceScriptDecodingWorkflow,
+    execute: runOrResumeManifestBoundExecutionSourceScriptDecodingWorkflow,
+  });
+
+export const EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_APPLICATION_RECORD =
+  bundleCursorFamilyApplicationRecord<
+    "executionNativeScriptInvalid",
+    ManifestBoundExecutionNativeScriptInvalidWorkflowConfig,
+    ManifestBoundExecutionNativeScriptInvalidWorkflow
+  >(EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_DEFINITION, {
+    requires: ["replayContext"],
+    constructWorkflow: createManifestBoundExecutionNativeScriptInvalidWorkflow,
+    execute: runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflow,
   });
 
 export const MISSING_SCRIPT_SOURCE_FAMILY_APPLICATION_RECORD =

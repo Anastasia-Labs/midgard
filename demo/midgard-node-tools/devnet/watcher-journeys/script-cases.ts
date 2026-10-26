@@ -145,6 +145,12 @@ export const JOURNEY_SCRIPT_FORCED_REASONS = {
   },
   unusedRedeemer: { UnusedRedeemer: { redeemer_index: 0n } },
   scriptIntegrityHashMismatch: "ScriptIntegrityHashMismatch",
+  executionSourceScriptDecoding: {
+    ExecutionNativeScriptMalformed: { purpose_kind: 1n, purpose_index: 0n },
+  },
+  executionNativeScriptInvalid: {
+    ExecutionNativeScriptFalse: { purpose_kind: 1n, purpose_index: 0n },
+  },
 } satisfies Partial<
   Record<SDK.FraudProofCatalogueCategoryName, SDK.RejectionReason>
 >;
@@ -162,9 +168,12 @@ export const prepareJourneyScriptForcedTransaction = (input: {
 }) =>
   buildJourneyScriptTransaction({
     ...input,
-    variant: ["nativeScriptInvalid", "witnessScriptDecoding"].includes(
-      input.category,
-    )
+    variant: [
+      "nativeScriptInvalid",
+      "witnessScriptDecoding",
+      "executionSourceScriptDecoding",
+      "executionNativeScriptInvalid",
+    ].includes(input.category)
       ? "nativeMint"
       : "plutusMint",
   });

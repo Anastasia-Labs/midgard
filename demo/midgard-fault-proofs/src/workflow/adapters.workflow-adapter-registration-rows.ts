@@ -566,9 +566,15 @@ export const workflowAdapterRegistrationRows = [
   {
     category: "executionSourceScriptDecoding",
     status: "missing",
-    reason: "evidence_not_carried_by_da_payload",
-    existingSurface: [],
-    requiredClosure: daPayloadEvidenceClosure,
+    reason: "constrained_adapter_is_not_launch_scope_complete",
+    existingSurface: [
+      "execution-source-script-decoding/replay.ts",
+      "execution-source-script-decoding/artifact.ts",
+      "execution-source-script-decoding/workflow.ts",
+      "workflow/family-application-registry.ts#EXECUTION_SOURCE_SCRIPT_DECODING_FAMILY_APPLICATION_RECORD",
+    ],
+    requiredClosure:
+      "install and exercise the manifest-bound execution-source-script-decoding runner in a compiled application with its retained-DA runtime",
   },
   {
     category: "receivePurposeLanguage",
@@ -626,9 +632,15 @@ export const workflowAdapterRegistrationRows = [
   {
     category: "executionNativeScriptInvalid",
     status: "missing",
-    reason: "evidence_not_carried_by_da_payload",
-    existingSurface: [],
-    requiredClosure: daPayloadEvidenceClosure,
+    reason: "constrained_adapter_is_not_launch_scope_complete",
+    existingSurface: [
+      "execution-native-script-invalid/replay.ts",
+      "execution-native-script-invalid/artifact.ts",
+      "execution-native-script-invalid/workflow.ts",
+      "workflow/family-application-registry.ts#EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_APPLICATION_RECORD",
+    ],
+    requiredClosure:
+      "install and exercise the manifest-bound execution-native-script-invalid runner in a compiled application with its retained-DA runtime",
   },
   {
     category: "scriptIntegrityHashMismatch",

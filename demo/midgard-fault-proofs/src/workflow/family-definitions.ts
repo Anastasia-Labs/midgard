@@ -1,3 +1,5 @@
+import { EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_DEFINITION } from "../execution-native-script-invalid/workflow.js";
+import { EXECUTION_SOURCE_SCRIPT_DECODING_FAMILY_DEFINITION } from "../execution-source-script-decoding/workflow.js";
 import { FIELD_ITEM_WIDTH_ILLEGAL_FAMILY_DEFINITION } from "../field-item-width-illegal/workflow.js";
 import { FIELD_PREIMAGE_LENGTH_FAMILY_DEFINITION } from "../field-preimage-length-mismatch/authenticated-workflow.js";
 import { MIN_ADA_FAMILY_DEFINITION } from "../min-ada/workflow.js";
@@ -56,6 +58,8 @@ type CursorFamilyDefinitions = Readonly<{
   missingScriptSource: typeof MISSING_SCRIPT_SOURCE_FAMILY_DEFINITION;
   unusedRedeemer: typeof UNUSED_REDEEMER_FAMILY_DEFINITION;
   scriptIntegrityHashMismatch: typeof SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_DEFINITION;
+  executionSourceScriptDecoding: typeof EXECUTION_SOURCE_SCRIPT_DECODING_FAMILY_DEFINITION;
+  executionNativeScriptInvalid: typeof EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_DEFINITION;
 }>;
 
 export const CURSOR_FAMILY_DEFINITIONS: CursorFamilyDefinitions = Object.freeze(
@@ -89,6 +93,10 @@ export const CURSOR_FAMILY_DEFINITIONS: CursorFamilyDefinitions = Object.freeze(
     unusedRedeemer: UNUSED_REDEEMER_FAMILY_DEFINITION,
     scriptIntegrityHashMismatch:
       SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_DEFINITION,
+    executionSourceScriptDecoding:
+      EXECUTION_SOURCE_SCRIPT_DECODING_FAMILY_DEFINITION,
+    executionNativeScriptInvalid:
+      EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_DEFINITION,
   },
 );
 

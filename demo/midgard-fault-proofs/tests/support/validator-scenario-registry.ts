@@ -23,10 +23,16 @@
 import "./validator-scenario-registry.validator-scenarios.js";
 import "./validator-scenario-registry.validation-trace-scenarios.js";
 import "./validator-scenario-registry.script-integrity-hash-mismatch-scenarios.js";
+import "./validator-scenario-registry.execution-native-script-scenarios.js";
 import "./validator-scenario-registry.family-scenarios.js";
 import "./validator-scenario-registry.unmapped-validators.js";
 import "./validator-scenario-registry.unmapped-families.js";
 
+import {
+  EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_SCENARIOS,
+  EXECUTION_NATIVE_SCRIPT_SCENARIOS,
+  EXECUTION_SOURCE_SCRIPT_DECODING_FAMILY_SCENARIOS,
+} from "./validator-scenario-registry.execution-native-script-scenarios.js";
 import { FAMILY_SCENARIOS as SHARED_FAMILY_SCENARIOS } from "./validator-scenario-registry.family-scenarios.js";
 import {
   SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_SCENARIOS,
@@ -39,10 +45,15 @@ export const FAMILY_SCENARIOS: typeof SHARED_FAMILY_SCENARIOS = {
   ...SHARED_FAMILY_SCENARIOS,
   validationTraceDispute: VALIDATION_TRACE_DISPUTE_FAMILY_SCENARIOS,
   scriptIntegrityHashMismatch: SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_SCENARIOS,
+  executionNativeScriptInvalid:
+    EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_SCENARIOS,
+  executionSourceScriptDecoding:
+    EXECUTION_SOURCE_SCRIPT_DECODING_FAMILY_SCENARIOS,
 };
 export const VALIDATOR_SCENARIOS: typeof SHARED_VALIDATOR_SCENARIOS = {
   ...SHARED_VALIDATOR_SCENARIOS,
   ...SCRIPT_INTEGRITY_HASH_MISMATCH_SCENARIOS,
+  ...EXECUTION_NATIVE_SCRIPT_SCENARIOS,
 };
 export {
   UNMAPPED_FAMILIES,
