@@ -558,6 +558,47 @@ test next_field_cannot_open_before_the_previous_is_exhausted() fail {
   ).complete
 }
 
+// One of two spends walked: the cursor is still on the spend field, so only
+// the exhaustion check refuses opening the mint field.
+test next_field_cannot_open_mid_field() fail {
+  let tx = tx_of(two_spends())
+  let Pair(index, executions) = source_map([source_of(a, 3), source_of(b, 128)])
+  let state = scan.initial_v1(
+    BoundIndexV1 { bound: tx.bound, source_index: index },
+    None,
+    tx.spend_opening,
+    [],
+    policy,
+  )
+  let half = scan.resolve_spends_v1(
+    scan.take_spends_batch_v1(
+      state,
+      resume,
+      tx.spend_opening,
+      opened_checkpoint(tx.bound, spend_inputs_field_index, tx.spend_opening),
+      1,
+      [],
+      policy,
+    ),
+    list.take(
+      spend_witnesses(tx, [Some(at(executions, 0)), Some(at(executions, 1))]),
+      1,
+    ),
+  )
+  expect and {
+      !half.complete,
+      half.cursor.field_index == spend_inputs_field_index,
+    }
+  scan.open_next_v1(
+    half,
+    spend_inputs_field_index,
+    mint_field_index,
+    tx.mint_opening,
+    [],
+    policy,
+  ).cursor.field_index == mint_field_index
+}
+
 test next_field_cannot_skip_a_purpose_field() fail {
   let tx = tx_of(ShapeV1 { ..no_purposes(), spends: [] })
   let state = scan.initial_v1(
