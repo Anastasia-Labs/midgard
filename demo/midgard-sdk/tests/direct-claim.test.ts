@@ -145,6 +145,8 @@ const predicateFacts: ReadonlyArray<
   ["SourcePresent", { SourcePresent: { selection: selection() } }],
   ["RedeemerPresent", { RedeemerPresent: { decision: decision() } }],
   ["RedeemerAbsent", { RedeemerAbsent: { decision: decision() } }],
+  ["RedeemerRepeated", "RedeemerRepeated"],
+  ["RedeemerOutOfRange", "RedeemerOutOfRange"],
 ];
 
 const digest = (cbor: string): string =>
@@ -232,6 +234,14 @@ const expected: Readonly<Record<string, string>> = {
     "fb887f818181a2605be3168263543ed4ac4ef8c656d4229ec51f1cd9be7cdaf2",
   "FinalStateV1 RedeemerAbsent":
     "7e2a82c9c0ec9663855ee669ed38a2b41e1e2bbf239d5474bc138b9281e4235f",
+  "ClaimedPredicateFactV1 RedeemerRepeated":
+    "357ea89304163aa90e1bde5c87f453b082758b3268759b9d7ec41f8c7f971049",
+  "FinalStateV1 RedeemerRepeated":
+    "942d72395d02b3ad39aca29bdbf27a89c1dc83a694808610c53169712d2884c0",
+  "ClaimedPredicateFactV1 RedeemerOutOfRange":
+    "62d2d73944deff231e9342d43154cf80496c476c02d537cad87a05086d59fcbf",
+  "FinalStateV1 RedeemerOutOfRange":
+    "be39c7b76a2790785757866a9fff9513219d3404af8fd2c91752fb6156302901",
 };
 
 describe("direct claim wire twin", () => {

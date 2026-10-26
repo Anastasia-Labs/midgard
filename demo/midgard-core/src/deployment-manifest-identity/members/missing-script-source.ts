@@ -6,7 +6,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     fraudProofMissingScriptSource: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-script-source step-01",
-      manifestPosition: 369,
+      manifestPosition: 385,
       publicationPosition: 242,
       referenceRolePosition: 475,
       commands: [],
@@ -17,7 +17,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     fraudProofMissingScriptSourceBindEvent: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-script-source bind-event",
-      manifestPosition: 370,
+      manifestPosition: 386,
       publicationPosition: 243,
       referenceRolePosition: 476,
       commands: [],
@@ -28,7 +28,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     fraudProofMissingScriptSourceBindPreState: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-script-source bind-pre-state",
-      manifestPosition: 371,
+      manifestPosition: 387,
       publicationPosition: 244,
       referenceRolePosition: 477,
       commands: [],
@@ -39,7 +39,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     fraudProofMissingScriptSourceSourceStart: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-script-source source-start",
-      manifestPosition: 372,
+      manifestPosition: 388,
       publicationPosition: 245,
       referenceRolePosition: 478,
       commands: [],
@@ -50,7 +50,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     fraudProofMissingScriptSourceSourceResolved: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-script-source source-resolved",
-      manifestPosition: 373,
+      manifestPosition: 389,
       publicationPosition: 246,
       referenceRolePosition: 479,
       commands: [],
@@ -61,7 +61,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     fraudProofMissingScriptSourceSourceAuthenticate: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-script-source source-authenticate",
-      manifestPosition: 374,
+      manifestPosition: 390,
       publicationPosition: 247,
       referenceRolePosition: 480,
       commands: [],
@@ -72,7 +72,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     fraudProofMissingScriptSourceSourceMap: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-script-source source-map",
-      manifestPosition: 375,
+      manifestPosition: 391,
       publicationPosition: 248,
       referenceRolePosition: 481,
       commands: [],
@@ -83,7 +83,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     fraudProofMissingScriptSourceSourceInputFinish: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-script-source source-input-finish",
-      manifestPosition: 376,
+      manifestPosition: 392,
       publicationPosition: 249,
       referenceRolePosition: 482,
       commands: [],
@@ -94,7 +94,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     fraudProofMissingScriptSourceSourceGrammar: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-script-source source-grammar",
-      manifestPosition: 377,
+      manifestPosition: 393,
       publicationPosition: 250,
       referenceRolePosition: 483,
       commands: [],
@@ -105,7 +105,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     fraudProofMissingScriptSourceSourceWitnesses: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-script-source source-witnesses",
-      manifestPosition: 378,
+      manifestPosition: 394,
       publicationPosition: 251,
       referenceRolePosition: 484,
       commands: [],
@@ -116,7 +116,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     fraudProofMissingScriptSourceSourceFinish: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-script-source source-finish",
-      manifestPosition: 379,
+      manifestPosition: 395,
       publicationPosition: 252,
       referenceRolePosition: 485,
       commands: [],
@@ -127,7 +127,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     fraudProofMissingScriptSourceFamilyEntry: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-script-source family-entry",
-      manifestPosition: 380,
+      manifestPosition: 396,
       publicationPosition: 253,
       referenceRolePosition: 486,
       commands: [],
@@ -138,7 +138,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     fraudProofMissingScriptSourcePurposeSelect: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-script-source purpose-select",
-      manifestPosition: 381,
+      manifestPosition: 397,
       publicationPosition: 254,
       referenceRolePosition: 487,
       commands: [],
@@ -149,7 +149,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     fraudProofMissingScriptSourceSpendSelect: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-script-source spend-select",
-      manifestPosition: 382,
+      manifestPosition: 398,
       publicationPosition: 255,
       referenceRolePosition: 488,
       commands: [],
@@ -160,7 +160,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     fraudProofMissingScriptSourceSpendScan: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-script-source spend-scan",
-      manifestPosition: 383,
+      manifestPosition: 399,
       publicationPosition: 256,
       referenceRolePosition: 489,
       commands: [],
@@ -171,7 +171,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     fraudProofMissingScriptSourceMintGrammar: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-script-source mint-grammar",
-      manifestPosition: 384,
+      manifestPosition: 400,
       publicationPosition: 257,
       referenceRolePosition: 490,
       commands: [],
@@ -182,7 +182,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     fraudProofMissingScriptSourceMintScan: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-script-source mint-scan",
-      manifestPosition: 385,
+      manifestPosition: 401,
       publicationPosition: 258,
       referenceRolePosition: 491,
       commands: [],
@@ -193,7 +193,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     fraudProofMissingScriptSourceReceiveStart: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-script-source receive-start",
-      manifestPosition: 386,
+      manifestPosition: 402,
       publicationPosition: 259,
       referenceRolePosition: 492,
       commands: [],
@@ -204,7 +204,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     fraudProofMissingScriptSourceReceiveGrammar: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-script-source receive-grammar",
-      manifestPosition: 387,
+      manifestPosition: 403,
       publicationPosition: 260,
       referenceRolePosition: 493,
       commands: [],
@@ -215,7 +215,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     fraudProofMissingScriptSourceReceiveOutputs: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-script-source receive-outputs",
-      manifestPosition: 388,
+      manifestPosition: 404,
       publicationPosition: 261,
       referenceRolePosition: 494,
       commands: [],
@@ -226,7 +226,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     fraudProofMissingScriptSourceReceiveFinish: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-script-source receive-finish",
-      manifestPosition: 389,
+      manifestPosition: 405,
       publicationPosition: 262,
       referenceRolePosition: 495,
       commands: [],
@@ -237,7 +237,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     fraudProofMissingScriptSourceReceiveDeclaration: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-script-source receive-declaration",
-      manifestPosition: 390,
+      manifestPosition: 406,
       publicationPosition: 263,
       referenceRolePosition: 496,
       commands: [],
@@ -248,7 +248,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     fraudProofMissingScriptSourceSourceLookup: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-script-source source-lookup",
-      manifestPosition: 391,
+      manifestPosition: 407,
       publicationPosition: 264,
       referenceRolePosition: 497,
       commands: [],
@@ -259,7 +259,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     fraudProofMissingScriptSourceObservedDecision: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-script-source observed-decision",
-      manifestPosition: 392,
+      manifestPosition: 408,
       publicationPosition: 265,
       referenceRolePosition: 498,
       commands: [],
@@ -270,7 +270,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     fraudProofMissingScriptSourceClaimStart: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-script-source claim-start",
-      manifestPosition: 393,
+      manifestPosition: 409,
       publicationPosition: 266,
       referenceRolePosition: 499,
       commands: [],
@@ -281,7 +281,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     fraudProofMissingScriptSourceClaimSpendStart: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-script-source claim-spend-start",
-      manifestPosition: 394,
+      manifestPosition: 410,
       publicationPosition: 267,
       referenceRolePosition: 500,
       commands: [],
@@ -292,7 +292,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     fraudProofMissingScriptSourceClaimSpendScan: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-script-source claim-spend-scan",
-      manifestPosition: 395,
+      manifestPosition: 411,
       publicationPosition: 268,
       referenceRolePosition: 501,
       commands: [],
@@ -303,7 +303,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     fraudProofMissingScriptSourceClaimMintGrammar: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-script-source claim-mint-grammar",
-      manifestPosition: 396,
+      manifestPosition: 412,
       publicationPosition: 269,
       referenceRolePosition: 502,
       commands: [],
@@ -314,7 +314,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     fraudProofMissingScriptSourceClaimMintScan: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-script-source claim-mint-scan",
-      manifestPosition: 397,
+      manifestPosition: 413,
       publicationPosition: 270,
       referenceRolePosition: 503,
       commands: [],
@@ -326,7 +326,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole:
         "V1 fraud-proof missing-script-source claim-receive-grammar",
-      manifestPosition: 398,
+      manifestPosition: 414,
       publicationPosition: 271,
       referenceRolePosition: 504,
       commands: [],
@@ -338,7 +338,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole:
         "V1 fraud-proof missing-script-source claim-receive-outputs",
-      manifestPosition: 399,
+      manifestPosition: 415,
       publicationPosition: 272,
       referenceRolePosition: 505,
       commands: [],
@@ -350,7 +350,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole:
         "V1 fraud-proof missing-script-source claim-receive-finish",
-      manifestPosition: 400,
+      manifestPosition: 416,
       publicationPosition: 273,
       referenceRolePosition: 506,
       commands: [],
@@ -362,7 +362,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole:
         "V1 fraud-proof missing-script-source claim-receive-declaration",
-      manifestPosition: 401,
+      manifestPosition: 417,
       publicationPosition: 274,
       referenceRolePosition: 507,
       commands: [],
@@ -373,7 +373,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     fraudProofMissingScriptSourceClaimAdjudicate: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-script-source claim-adjudicate",
-      manifestPosition: 402,
+      manifestPosition: 418,
       publicationPosition: 275,
       referenceRolePosition: 508,
       commands: [],
@@ -385,7 +385,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole:
         "V1 fraud-proof missing-script-source claimed-redeemer-grammar",
-      manifestPosition: 403,
+      manifestPosition: 419,
       publicationPosition: 276,
       referenceRolePosition: 509,
       commands: [],
@@ -397,7 +397,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole:
         "V1 fraud-proof missing-script-source claimed-redeemer-scan",
-      manifestPosition: 404,
+      manifestPosition: 420,
       publicationPosition: 277,
       referenceRolePosition: 510,
       commands: [],
@@ -408,7 +408,7 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     fraudProofMissingScriptSourceTerminal: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-script-source terminal",
-      manifestPosition: 405,
+      manifestPosition: 421,
       publicationPosition: 278,
       referenceRolePosition: 511,
       commands: [],

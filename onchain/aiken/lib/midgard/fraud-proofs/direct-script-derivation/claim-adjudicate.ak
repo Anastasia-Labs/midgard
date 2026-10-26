@@ -1,9 +1,11 @@
-//// Adjudication shared by the direct purpose families whose leaf names a
-//// purpose (`missingRedeemer`, `missingScriptSource`). `claim-adjudicate`
-//// turns the leaf's reopened purpose into a predicate fact; the claimed
-//// field-8 roles finish a pointer scan; the terminal decides conviction from
-//// the final state alone. Every context here targets the leaf's own purpose:
-//// only those families' entries and observed routes create one.
+//// Adjudication shared by the direct purpose families (`missingRedeemer`,
+//// `missingScriptSource`, `unusedRedeemer`). `claim-adjudicate` turns the
+//// reopened purpose into a predicate fact; the claimed field-8 roles finish a
+//// pointer scan; the terminal decides conviction from the final state alone.
+//// A `LeafPurpose` context targets the leaf's own purpose and is created only
+//// by the first two families' entries and observed routes. A
+//// `RedeemerPointer` context is created only by the unused-redeemer field-8
+//// walk, which authenticated the redeemer's index and pointer.
 
 use aiken/merkle_patricia_forestry.{Proof}
 use cardano/assets.{PolicyId}
@@ -11,6 +13,7 @@ use cardano/transaction.{Input}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/direct_script_derivation/claim.{
   ClaimContextV1, ClaimedPredicateFactV1, ClaimedRedeemerScanV1, FinalStateV1,
+  LeafPurpose, RedeemerPointer,
 }
 use midgard/fraud_proofs/direct_script_derivation/claim_purpose.{
   ClaimPurposeStateV1,
@@ -27,7 +30,7 @@ use midgard/fraud_proofs/direct_script_derivation/types.{PurposeV1}
 use midgard/fraud_proofs/field_opening_v1.{FieldOpeningV1}
 use midgard/fraud_proofs/first_fault_v1.{
   NetworkOrderContextV1, PurposeFaultPositionV1, PurposeSubcheckV1,
-  RedeemerRequired, SourceRequired,
+  RedeemerRequired, SourceRequired, UnusedAuditFault, UnusedRedeemerAudit,
 } as first_fault
 use midgard/rejection_reason_v1 as reason
 
@@ -147,13 +150,36 @@ fn lookup_selection_v1(
   )
 }
 
+/// A redeemer pointer's purpose consumes the redeemer exactly when its source
+/// is present and not native; the producer requests a redeemer for every
+/// non-native source, and native is language 0.
 pub fn lookup_v1(
   state: ClaimPurposeStateV1,
   source: Option<SourceV1>,
   proof: Proof,
 ) -> FinalStateV1 {
   let selection = lookup_selection_v1(state, source, proof)
-  let fact = when leaf_reason_v1(state.context) is {
+  let fact = when state.context.target is {
+    RedeemerPointer { .. } ->
+      when selection.source is {
+        None -> claim.SourceAbsent { selection }
+        Some(present) ->
+          if present.language_tag == 0 {
+            claim.NativeSource { selection }
+          } else {
+            claim.SourcePresent { selection }
+          }
+      }
+    LeafPurpose -> leaf_lookup_fact_v1(state.context, selection)
+  }
+  FinalStateV1 { context: state.context, claim: fact }
+}
+
+fn leaf_lookup_fact_v1(
+  context: ClaimContextV1,
+  selection: SourceSelectionV1,
+) -> ClaimedPredicateFactV1 {
+  when leaf_reason_v1(context) is {
     reason.ScriptSourceMissing { .. } ->
       when selection.source is {
         None -> claim.SourceAbsent { selection }
@@ -169,7 +195,6 @@ pub fn lookup_v1(
       }
     _ -> fail
   }
-  FinalStateV1 { context: state.context, claim: fact }
 }
 
 pub fn lookup_scan_v1(
@@ -363,10 +388,63 @@ fn leaf_admits_observed_v1(
   }
 }
 
-/// Terminal conviction. An accepted leaf convicts on an observed purpose
-/// fault. A rejected leaf convicts when its own predicate is refuted, or when
-/// the observed purpose fault precedes its reason.
+/// Terminal conviction over the context's target.
 pub fn convicts_v1(state: FinalStateV1) -> Bool {
+  when state.context.target is {
+    LeafPurpose -> leaf_purpose_convicts_v1(state)
+    RedeemerPointer { redeemer_index, .. } ->
+      redeemer_pointer_convicts_v1(state, redeemer_index)
+  }
+}
+
+/// Whether the walked redeemer is one the producer leaves unused: a repeat of
+/// an earlier pointer, a pointer with no purpose, or a native purpose's
+/// pointer. `Some(False)`: a non-native purpose consumes it. `None`: the fact
+/// decides neither; a purpose without a source is a purpose fault, which
+/// precedes the audit and belongs to `missingScriptSource`, and an
+/// out-of-range index names no redeemer.
+fn redeemer_unused_v1(fact: ClaimedPredicateFactV1) -> Option<Bool> {
+  when fact is {
+    claim.RedeemerRepeated -> Some(True)
+    claim.ImpossiblePurpose { .. } -> Some(True)
+    claim.NativeSource { .. } -> Some(True)
+    claim.SourcePresent { .. } -> Some(False)
+    claim.SourceAbsent { .. } -> None
+    claim.RedeemerOutOfRange -> None
+    _ -> fail
+  }
+}
+
+/// A leaf naming this redeemer as unused is refuted when a non-native purpose
+/// consumes it or the field has no redeemer at its index. Any other leaf,
+/// accepted ones included, convicts on an unused redeemer whose audit
+/// position precedes the leaf's reason.
+fn redeemer_pointer_convicts_v1(
+  state: FinalStateV1,
+  redeemer_index: Int,
+) -> Bool {
+  let bound = state.context.bound.bound
+  let unused = redeemer_unused_v1(state.claim)
+  let names_this_redeemer = when bound.subject.rejection_reason is {
+    Some(reason.UnusedRedeemer { redeemer_index: leaf_index }) ->
+      leaf_index == redeemer_index
+    _ -> False
+  }
+  if names_this_redeemer {
+    unused == Some(False) || state.claim == claim.RedeemerOutOfRange
+  } else {
+    unused == Some(True) && !first_fault.leaf_admits_later_fault_v1(
+      bound.subject,
+      bound.network_order_context,
+      UnusedAuditFault(UnusedRedeemerAudit { redeemer_index }),
+    )
+  }
+}
+
+/// An accepted leaf convicts on an observed purpose fault. A rejected leaf
+/// convicts when its own predicate is refuted, or when the observed purpose
+/// fault precedes its reason.
+fn leaf_purpose_convicts_v1(state: FinalStateV1) -> Bool {
   let context = state.context
   let bound = context.bound.bound
   when bound.subject.rejection_reason is {

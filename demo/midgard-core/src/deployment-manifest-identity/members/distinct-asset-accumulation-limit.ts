@@ -6,9 +6,9 @@ export const distinctAssetAccumulationLimitMembers = defineDeploymentFamily(
     fraudProofDistinctAssetAccumulationLimit: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof distinct-asset-accumulation-limit step-01",
-      manifestPosition: 363,
-      publicationPosition: 345,
-      referenceRolePosition: 578,
+      manifestPosition: 379,
+      publicationPosition: 361,
+      referenceRolePosition: 594,
       commands: [],
       validatorTitle:
         "fraud_proofs/distinct_asset_accumulation_limit/step_01.main.spend",
@@ -17,9 +17,9 @@ export const distinctAssetAccumulationLimitMembers = defineDeploymentFamily(
     fraudProofDistinctAssetAccumulationLimitStep02: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof distinct-asset-accumulation-limit step-02",
-      manifestPosition: 364,
-      publicationPosition: 346,
-      referenceRolePosition: 579,
+      manifestPosition: 380,
+      publicationPosition: 362,
+      referenceRolePosition: 595,
       commands: [],
       validatorTitle:
         "fraud_proofs/distinct_asset_accumulation_limit/step_02.main.spend",
@@ -28,9 +28,9 @@ export const distinctAssetAccumulationLimitMembers = defineDeploymentFamily(
     fraudProofDistinctAssetAccumulationLimitStep03: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof distinct-asset-accumulation-limit step-03",
-      manifestPosition: 365,
-      publicationPosition: 347,
-      referenceRolePosition: 580,
+      manifestPosition: 381,
+      publicationPosition: 363,
+      referenceRolePosition: 596,
       commands: [],
       validatorTitle:
         "fraud_proofs/distinct_asset_accumulation_limit/step_03.main.spend",
@@ -39,9 +39,9 @@ export const distinctAssetAccumulationLimitMembers = defineDeploymentFamily(
     fraudProofDistinctAssetAccumulationLimitStep04: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof distinct-asset-accumulation-limit step-04",
-      manifestPosition: 366,
-      publicationPosition: 348,
-      referenceRolePosition: 581,
+      manifestPosition: 382,
+      publicationPosition: 364,
+      referenceRolePosition: 597,
       commands: [],
       validatorTitle:
         "fraud_proofs/distinct_asset_accumulation_limit/step_04.main.spend",
@@ -50,9 +50,9 @@ export const distinctAssetAccumulationLimitMembers = defineDeploymentFamily(
     fraudProofDistinctAssetAccumulationLimitStep05: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof distinct-asset-accumulation-limit step-05",
-      manifestPosition: 367,
-      publicationPosition: 349,
-      referenceRolePosition: 582,
+      manifestPosition: 383,
+      publicationPosition: 365,
+      referenceRolePosition: 598,
       commands: [],
       validatorTitle:
         "fraud_proofs/distinct_asset_accumulation_limit/step_05.main.spend",
@@ -61,9 +61,9 @@ export const distinctAssetAccumulationLimitMembers = defineDeploymentFamily(
     fraudProofDistinctAssetAccumulationLimitStep06: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof distinct-asset-accumulation-limit step-06",
-      manifestPosition: 368,
-      publicationPosition: 350,
-      referenceRolePosition: 583,
+      manifestPosition: 384,
+      publicationPosition: 366,
+      referenceRolePosition: 599,
       commands: [],
       validatorTitle:
         "fraud_proofs/distinct_asset_accumulation_limit/step_06.main.spend",

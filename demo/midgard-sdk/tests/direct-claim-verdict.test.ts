@@ -3,7 +3,10 @@
  * missing-source and missing-redeemer leaves: an accepted leaf convicts on
  * an observed missing source; a rejected leaf convicts when its own purpose
  * predicate is refuted, or when an observed missing source precedes its
- * reason, and never when the leaf's reason is at or before it.
+ * reason, and never when the leaf's reason is at or before it. Over an
+ * unused-redeemer walk's pointer: a leaf naming that redeemer is refuted when
+ * the redeemer is consumed or past the field; any other leaf convicts on an
+ * unused redeemer whose audit precedes its reason.
  */
 import { describe, expect, it } from "vitest";
 
@@ -110,10 +113,15 @@ const final = (
 
 const fact = (arm: string): DirectClaimedPredicateFact => {
   const selection = observer(bound(null), 0n, arm === "SourcePresent");
-  if (arm === "SourceAbsent" || arm === "SourcePresent")
+  if (
+    arm === "SourceAbsent" ||
+    arm === "SourcePresent" ||
+    arm === "NativeSource"
+  )
     return { [arm]: { selection } } as DirectClaimedPredicateFact;
   if (arm === "ImpossiblePurpose")
     return { ImpossiblePurpose: { coordinate: { kind: 9n, index: 0n } } };
+  if (arm === "RedeemerRepeated" || arm === "RedeemerOutOfRange") return arm;
   if (arm === "RedeemerAbsent" || arm === "RedeemerPresent")
     return {
       [arm]: {
@@ -230,6 +238,81 @@ describe("direct claim verdict over a missing script source", () => {
   it("refuses a redeemer fact on a missing-source leaf", () => {
     expect(() =>
       directClaimConvicts(final(ssm(0n), null, fact("RedeemerPresent"))),
+    ).toThrow(/not a fact of the leaf's predicate/u);
+  });
+});
+
+/** The terminal state of an unused-redeemer walk that names redeemer
+ * `index` and ends in `claim`, judged against `reason`'s leaf. */
+const pointerFinal = (
+  reason: RejectionReason | null,
+  index: bigint,
+  claim: DirectClaimedPredicateFact,
+): DirectClaimFinalState => ({
+  ...final(reason, null, claim),
+  context: {
+    ...final(reason, null, claim).context,
+    target: {
+      RedeemerPointer: {
+        redeemer_index: index,
+        coordinate: { kind: 2n, index: 0n },
+      },
+    },
+  },
+});
+
+const ur = (index: bigint): RejectionReason => ({
+  UnusedRedeemer: { redeemer_index: index },
+});
+
+describe("direct claim verdict over a redeemer pointer", () => {
+  it.each([
+    ["accepted, a repeated pointer", null, 0n, "RedeemerRepeated", true],
+    ["accepted, a native purpose", null, 0n, "NativeSource", true],
+    ["accepted, no purpose", null, 0n, "ImpossiblePurpose", true],
+    ["accepted, a consumed redeemer", null, 0n, "SourcePresent", false],
+    ["accepted, a purpose without a source", null, 0n, "SourceAbsent", false],
+    ["accepted, past the field", null, 0n, "RedeemerOutOfRange", false],
+    ["its own redeemer consumed", ur(1n), 1n, "SourcePresent", true],
+    ["its own redeemer past the field", ur(1n), 1n, "RedeemerOutOfRange", true],
+    ["its own redeemer repeated", ur(1n), 1n, "RedeemerRepeated", false],
+    ["its own redeemer native", ur(1n), 1n, "NativeSource", false],
+    ["its own redeemer without a source", ur(1n), 1n, "SourceAbsent", false],
+    ["an earlier redeemer unused", ur(1n), 0n, "RedeemerRepeated", true],
+    ["a later redeemer unused", ur(1n), 2n, "RedeemerRepeated", false],
+    ["an earlier redeemer consumed", ur(1n), 0n, "SourcePresent", false],
+    [
+      "an unused witness, any redeemer unused",
+      { UnusedScriptWitness: { script_index: 9n } },
+      0n,
+      "RedeemerRepeated",
+      false,
+    ],
+    ["a purpose reason, a redeemer unused", rm(0n), 0n, "NativeSource", false],
+    [
+      "a later phase, a redeemer unused",
+      "ScriptIntegrityHashMismatch",
+      4n,
+      "ImpossiblePurpose",
+      true,
+    ],
+  ] as const)("%s", (_label, reason, index, claim, convicts) => {
+    expect(
+      directClaimConvicts(
+        pointerFinal(reason as RejectionReason | null, index, fact(claim)),
+      ),
+    ).toBe(convicts);
+  });
+
+  it("refuses a redeemer decision on a pointer target", () => {
+    expect(() =>
+      directClaimConvicts(pointerFinal(null, 0n, fact("RedeemerAbsent"))),
+    ).toThrow(/not a redeemer-pointer fact/u);
+  });
+
+  it("refuses a walk fact on the leaf's own purpose", () => {
+    expect(() =>
+      directClaimConvicts(final(ssm(0n), null, "RedeemerRepeated")),
     ).toThrow(/not a fact of the leaf's predicate/u);
   });
 });

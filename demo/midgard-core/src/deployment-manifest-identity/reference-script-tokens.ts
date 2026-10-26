@@ -795,15 +795,41 @@ export const DEPLOYMENT_MANIFEST_BASE_REFERENCE_TOKEN_NAMES = Object.freeze({
   "V1 fraud-proof missing-redeemer claimed-redeemer-scan":
     "V1FpMissingRdmrClaimedScan",
   "V1 fraud-proof missing-redeemer step-05": "V1FpMissingRdmrS05",
-  "V1 fraud-proof unused-redeemer step-01": "V1FpUnusedRedeemerS01",
-  "V1 fraud-proof unused-redeemer step-02": "V1FpUnusedRedeemerS02",
-  "V1 fraud-proof unused-redeemer step-02a": "V1FpUnusedRedeemerS02a",
-  "V1 fraud-proof unused-redeemer step-02b": "V1FpUnusedRedeemerS02b",
-  "V1 fraud-proof unused-redeemer step-02c": "V1FpUnusedRedeemerS02c",
-  "V1 fraud-proof unused-redeemer step-03": "V1FpUnusedRedeemerS03",
-  "V1 fraud-proof unused-redeemer step-04": "V1FpUnusedRedeemerS04",
-  "V1 fraud-proof unused-redeemer step-05": "V1FpUnusedRedeemerS05",
-  "V1 fraud-proof unused-redeemer step-06": "V1FpUnusedRedeemerS06",
+  "V1 fraud-proof unused-redeemer step-01": "V1FpUnusedRdmrS01",
+  "V1 fraud-proof unused-redeemer bind-event": "V1FpUnusedRdmrBindEvent",
+  "V1 fraud-proof unused-redeemer bind-pre-state": "V1FpUnusedRdmrBindPreState",
+  "V1 fraud-proof unused-redeemer source-start": "V1FpUnusedRdmrSrcStart",
+  "V1 fraud-proof unused-redeemer source-resolved": "V1FpUnusedRdmrSrcResolved",
+  "V1 fraud-proof unused-redeemer source-authenticate": "V1FpUnusedRdmrSrcAuth",
+  "V1 fraud-proof unused-redeemer source-map": "V1FpUnusedRdmrSrcMap",
+  "V1 fraud-proof unused-redeemer source-input-finish":
+    "V1FpUnusedRdmrSrcInputFinish",
+  "V1 fraud-proof unused-redeemer source-grammar": "V1FpUnusedRdmrSrcGrammar",
+  "V1 fraud-proof unused-redeemer source-witnesses":
+    "V1FpUnusedRdmrSrcWitnesses",
+  "V1 fraud-proof unused-redeemer source-finish": "V1FpUnusedRdmrSrcFinish",
+  "V1 fraud-proof unused-redeemer family-entry": "V1FpUnusedRdmrEntry",
+  "V1 fraud-proof unused-redeemer redeemer-grammar":
+    "V1FpUnusedRdmrRdmrGrammar",
+  "V1 fraud-proof unused-redeemer redeemer-scan": "V1FpUnusedRdmrRdmrScan",
+  "V1 fraud-proof unused-redeemer claim-start": "V1FpUnusedRdmrClaimStart",
+  "V1 fraud-proof unused-redeemer claim-spend-start":
+    "V1FpUnusedRdmrClaimSpendStart",
+  "V1 fraud-proof unused-redeemer claim-spend-scan": "V1FpUnusedRdmrClaimSpend",
+  "V1 fraud-proof unused-redeemer claim-mint-grammar":
+    "V1FpUnusedRdmrClaimMintGrammar",
+  "V1 fraud-proof unused-redeemer claim-mint-scan":
+    "V1FpUnusedRdmrClaimMintScan",
+  "V1 fraud-proof unused-redeemer claim-receive-grammar":
+    "V1FpUnusedRdmrClaimRecvGrammar",
+  "V1 fraud-proof unused-redeemer claim-receive-outputs":
+    "V1FpUnusedRdmrClaimRecvOutputs",
+  "V1 fraud-proof unused-redeemer claim-receive-finish":
+    "V1FpUnusedRdmrClaimRecvFinish",
+  "V1 fraud-proof unused-redeemer claim-receive-declaration":
+    "V1FpUnusedRdmrClaimRecvDecl",
+  "V1 fraud-proof unused-redeemer claim-adjudicate": "V1FpUnusedRdmrAdjudicate",
+  "V1 fraud-proof unused-redeemer terminal": "V1FpUnusedRdmrTerminal",
   "V1 fraud-proof execution-native-script-invalid step-01":
     "V1FpExecNativeInvalidS01",
   "V1 fraud-proof execution-native-script-invalid step-02":

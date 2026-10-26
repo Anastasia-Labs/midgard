@@ -27,9 +27,12 @@ pub type ClaimContextV1 {
   target: ClaimTargetV1,
 }
 
-/// The authenticated predicate fact for the leaf's claimed reason:
+/// The authenticated predicate fact for the claimed target:
 /// 0 NotRequired, 1 ImpossiblePurpose, 2 SourceAbsent, 3 NativeSource,
-/// 4 SourcePresent, 5 RedeemerPresent, 6 RedeemerAbsent.
+/// 4 SourcePresent, 5 RedeemerPresent, 6 RedeemerAbsent, 7 RedeemerRepeated,
+/// 8 RedeemerOutOfRange. The last two are field-8 walk results for a
+/// `RedeemerPointer` target: an earlier redeemer carries the same pointer, or
+/// the field has no redeemer at the target index.
 pub type ClaimedPredicateFactV1 {
   NotRequired
   ImpossiblePurpose { coordinate: PurposeCoordinateV1 }
@@ -38,6 +41,8 @@ pub type ClaimedPredicateFactV1 {
   SourcePresent { selection: SourceSelectionV1 }
   RedeemerPresent { decision: DecisionStateV1 }
   RedeemerAbsent { decision: DecisionStateV1 }
+  RedeemerRepeated
+  RedeemerOutOfRange
 }
 
 /// Constr 0 [context, claim]. The terminal's only input.

@@ -8,9 +8,9 @@ export const validationTracePhaseResolversMembers = defineDeploymentFamily(
     validationTraceDisputeCompactBindingPrepare: {
       purpose: "spend",
       referenceRole: "V1 validation-trace compact-binding prepare",
-      manifestPosition: 606,
-      publicationPosition: 601,
-      referenceRolePosition: 601,
+      manifestPosition: 622,
+      publicationPosition: 617,
+      referenceRolePosition: 617,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/compact_binding_v1.main.spend",
@@ -23,9 +23,9 @@ export const validationTracePhaseResolversMembers = defineDeploymentFamily(
     validationTraceDisputeCompactBindingSemantic: {
       purpose: "spend",
       referenceRole: "V1 validation-trace compact-binding semantic",
-      manifestPosition: 607,
-      publicationPosition: 602,
-      referenceRolePosition: 602,
+      manifestPosition: 623,
+      publicationPosition: 618,
+      referenceRolePosition: 618,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/compact_binding_semantic_v1.main.spend",
@@ -37,9 +37,9 @@ export const validationTracePhaseResolversMembers = defineDeploymentFamily(
     validationTraceDisputeStaticLedgerRulesPrepare: {
       purpose: "spend",
       referenceRole: "V1 validation-trace static-ledger-rules prepare",
-      manifestPosition: 608,
-      publicationPosition: 603,
-      referenceRolePosition: 603,
+      manifestPosition: 624,
+      publicationPosition: 619,
+      referenceRolePosition: 619,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/static_ledger_rules_v1.main.spend",
@@ -52,9 +52,9 @@ export const validationTracePhaseResolversMembers = defineDeploymentFamily(
     validationTraceDisputeStaticLedgerRulesSemantic: {
       purpose: "spend",
       referenceRole: "V1 validation-trace static-ledger-rules semantic",
-      manifestPosition: 609,
-      publicationPosition: 604,
-      referenceRolePosition: 604,
+      manifestPosition: 625,
+      publicationPosition: 620,
+      referenceRolePosition: 620,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/static_ledger_rules_semantic_v1.main.spend",
@@ -66,9 +66,9 @@ export const validationTracePhaseResolversMembers = defineDeploymentFamily(
     validationTraceDisputeInputSetsPrepare: {
       purpose: "spend",
       referenceRole: "V1 validation-trace input-sets prepare",
-      manifestPosition: 610,
-      publicationPosition: 605,
-      referenceRolePosition: 605,
+      manifestPosition: 626,
+      publicationPosition: 621,
+      referenceRolePosition: 621,
       commands: [],
       validatorTitle: "fraud_proofs/validation_trace/input_sets_v1.main.spend",
       familyPaths: [
@@ -80,9 +80,9 @@ export const validationTracePhaseResolversMembers = defineDeploymentFamily(
     validationTraceDisputeInputSetsEmptySemantic: {
       purpose: "spend",
       referenceRole: "V1 validation-trace input-sets empty semantic",
-      manifestPosition: 611,
-      publicationPosition: 606,
-      referenceRolePosition: 606,
+      manifestPosition: 627,
+      publicationPosition: 622,
+      referenceRolePosition: 622,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/input_sets_empty_semantic_v1.main.spend",
@@ -94,9 +94,9 @@ export const validationTracePhaseResolversMembers = defineDeploymentFamily(
     validationTraceDisputeInputSetsItemSemantic: {
       purpose: "spend",
       referenceRole: "V1 validation-trace input-sets item semantic",
-      manifestPosition: 612,
-      publicationPosition: 607,
-      referenceRolePosition: 607,
+      manifestPosition: 628,
+      publicationPosition: 623,
+      referenceRolePosition: 623,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/input_sets_item_semantic_v1.main.spend",
@@ -108,9 +108,9 @@ export const validationTracePhaseResolversMembers = defineDeploymentFamily(
     validationTraceDisputeSignaturesPrepare: {
       purpose: "spend",
       referenceRole: "V1 validation-trace signatures prepare",
-      manifestPosition: 613,
-      publicationPosition: 608,
-      referenceRolePosition: 608,
+      manifestPosition: 629,
+      publicationPosition: 624,
+      referenceRolePosition: 624,
       commands: [],
       validatorTitle: "fraud_proofs/validation_trace/signatures_v1.main.spend",
       familyPaths: [
@@ -122,9 +122,9 @@ export const validationTracePhaseResolversMembers = defineDeploymentFamily(
     validationTraceDisputeSignaturesAdvanceSemantic: {
       purpose: "spend",
       referenceRole: "V1 validation-trace signatures advance semantic",
-      manifestPosition: 614,
-      publicationPosition: 609,
-      referenceRolePosition: 609,
+      manifestPosition: 630,
+      publicationPosition: 625,
+      referenceRolePosition: 625,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/signatures_advance_semantic_v1.main.spend",
@@ -136,9 +136,9 @@ export const validationTracePhaseResolversMembers = defineDeploymentFamily(
     validationTraceDisputeSignaturesAddressItemSemantic: {
       purpose: "spend",
       referenceRole: "V1 validation-trace signatures address item semantic",
-      manifestPosition: 615,
-      publicationPosition: 610,
-      referenceRolePosition: 610,
+      manifestPosition: 631,
+      publicationPosition: 626,
+      referenceRolePosition: 626,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/signatures_address_item_semantic_v1.main.spend",
@@ -150,9 +150,9 @@ export const validationTracePhaseResolversMembers = defineDeploymentFamily(
     validationTraceDisputeSignaturesRequiredItemSemantic: {
       purpose: "spend",
       referenceRole: "V1 validation-trace signatures required item semantic",
-      manifestPosition: 616,
-      publicationPosition: 611,
-      referenceRolePosition: 611,
+      manifestPosition: 632,
+      publicationPosition: 627,
+      referenceRolePosition: 627,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/signatures_required_item_semantic_v1.main.spend",
@@ -164,9 +164,9 @@ export const validationTracePhaseResolversMembers = defineDeploymentFamily(
     validationTraceDisputeSignaturesHandoffSemantic: {
       purpose: "spend",
       referenceRole: "V1 validation-trace signatures handoff semantic",
-      manifestPosition: 617,
-      publicationPosition: 612,
-      referenceRolePosition: 612,
+      manifestPosition: 633,
+      publicationPosition: 628,
+      referenceRolePosition: 628,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/signatures_handoff_semantic_v1.main.spend",
@@ -178,9 +178,9 @@ export const validationTracePhaseResolversMembers = defineDeploymentFamily(
     validationTraceDisputePhaseANativeScriptsPrepare: {
       purpose: "spend",
       referenceRole: "V1 validation-trace phase-A native scripts prepare",
-      manifestPosition: 618,
-      publicationPosition: 613,
-      referenceRolePosition: 613,
+      manifestPosition: 634,
+      publicationPosition: 629,
+      referenceRolePosition: 629,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/phase_a_native_scripts_v1.main.spend",
@@ -193,9 +193,9 @@ export const validationTracePhaseResolversMembers = defineDeploymentFamily(
     validationTraceDisputePhaseAScriptPreconditionsPrepare: {
       purpose: "spend",
       referenceRole: "V1 validation-trace phase-A script preconditions prepare",
-      manifestPosition: 619,
-      publicationPosition: 614,
-      referenceRolePosition: 614,
+      manifestPosition: 635,
+      publicationPosition: 630,
+      referenceRolePosition: 630,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/phase_a_script_preconditions_v1.main.spend",
@@ -208,9 +208,9 @@ export const validationTracePhaseResolversMembers = defineDeploymentFamily(
     validationTraceDisputeResolveInputsPrepare: {
       purpose: "spend",
       referenceRole: "V1 validation-trace resolve-inputs prepare",
-      manifestPosition: 620,
-      publicationPosition: 615,
-      referenceRolePosition: 615,
+      manifestPosition: 636,
+      publicationPosition: 631,
+      referenceRolePosition: 631,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/resolve_inputs_v1.main.spend",
@@ -223,9 +223,9 @@ export const validationTracePhaseResolversMembers = defineDeploymentFamily(
     validationTraceDisputeScriptSourcesPrepare: {
       purpose: "spend",
       referenceRole: "V1 validation-trace script-sources prepare",
-      manifestPosition: 621,
-      publicationPosition: 616,
-      referenceRolePosition: 616,
+      manifestPosition: 637,
+      publicationPosition: 632,
+      referenceRolePosition: 632,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_v1.main.spend",

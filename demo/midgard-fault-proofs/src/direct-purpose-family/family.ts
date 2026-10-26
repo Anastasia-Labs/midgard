@@ -8,7 +8,8 @@ import type { Script } from "@lucid-evolution/lucid";
 /** Every role name a direct purpose family can bind. */
 export type DirectPurposeRole =
   | SDK.MissingRedeemerRole
-  | SDK.MissingScriptSourceRole;
+  | SDK.MissingScriptSourceRole
+  | SDK.UnusedRedeemerRole;
 
 /** Resolved deployment of one direct purpose family. */
 export type DirectPurposeContracts = {

@@ -157,6 +157,44 @@ export const MISSING_SCRIPT_SOURCE_CURSOR_SPEC = Object.freeze({
   }),
 }) satisfies CursorFamilySpec<"missingScriptSource">;
 
+/**
+ * `unusedRedeemer` binds the same source as the other direct purpose
+ * families, then walks field 8 to one redeemer: the walk either decides alone
+ * (a repeated pointer, or an index past the field) or hands the pointer's
+ * purpose to the shared claim custody.
+ */
+export const UNUSED_REDEEMER_CURSOR_SPEC = Object.freeze({
+  category: "unusedRedeemer",
+  stepCount: 25,
+  successors: Object.freeze({
+    1: Object.freeze([2] as const),
+    2: Object.freeze([3] as const),
+    3: Object.freeze([4] as const),
+    4: Object.freeze([5] as const),
+    5: Object.freeze([6, 8] as const),
+    6: Object.freeze([7] as const),
+    7: Object.freeze([5, 10] as const),
+    8: Object.freeze([9, 5] as const),
+    9: Object.freeze([9, 10] as const),
+    10: Object.freeze([7, 11] as const),
+    11: Object.freeze([12] as const),
+    12: Object.freeze([13] as const),
+    13: Object.freeze([13, 14] as const),
+    14: Object.freeze([14, 15, 25] as const),
+    15: Object.freeze([16, 18, 20, 24] as const),
+    16: Object.freeze([17] as const),
+    17: Object.freeze([17, 24] as const),
+    18: Object.freeze([18, 19] as const),
+    19: Object.freeze([19, 24] as const),
+    20: Object.freeze([20, 21] as const),
+    21: Object.freeze([21, 22] as const),
+    22: Object.freeze([23] as const),
+    23: Object.freeze([23, 24] as const),
+    24: Object.freeze([25] as const),
+    25: Object.freeze(["proof_token"] as const),
+  }),
+}) satisfies CursorFamilySpec<"unusedRedeemer">;
+
 export const CURSOR_FAMILY_SPECS = Object.freeze({
   nativeScriptDecoding: NATIVE_SCRIPT_DECODING_CURSOR_SPEC,
   withdrawalMistag: WITHDRAWAL_MISTAG_CURSOR_SPEC,
@@ -164,4 +202,5 @@ export const CURSOR_FAMILY_SPECS = Object.freeze({
   mintAuthorization: MINT_AUTHORIZATION_CURSOR_SPEC,
   missingRedeemer: MISSING_REDEEMER_CURSOR_SPEC,
   missingScriptSource: MISSING_SCRIPT_SOURCE_CURSOR_SPEC,
+  unusedRedeemer: UNUSED_REDEEMER_CURSOR_SPEC,
 });

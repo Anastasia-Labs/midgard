@@ -329,7 +329,12 @@ export {
   buildUnusedRedeemerFaultProofContracts,
   type BuildUnusedRedeemerFaultProofContractsParams,
   UNUSED_REDEEMER_FAULT_PROOF_TITLES,
+  UNUSED_REDEEMER_ROLE_ORDER,
+  type UnusedRedeemerChain,
   type UnusedRedeemerFaultProofContracts,
+  type UnusedRedeemerRole,
+  type UnusedRedeemerRoles,
+  unusedRedeemerRoles,
 } from "./families/unused-redeemer.js";
 export {
   buildUnusedScriptWitnessChain,

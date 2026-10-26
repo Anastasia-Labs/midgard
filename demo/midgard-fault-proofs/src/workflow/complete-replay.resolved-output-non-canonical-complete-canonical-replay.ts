@@ -25,6 +25,7 @@ import { detectScriptIntegrityHashMissingFromCanonicalEvidence } from "../script
 import { detectSpendInputSignerMissingCompleteReplay } from "../spend-input-signer-missing/spend-input-signer-missing.js";
 import { spendInputSignerWorkflowEvidenceIdentity } from "../spend-input-signer-missing/workflow.js";
 import { detectTransactionOutputNonCanonicalCompleteReplay } from "../transaction-output-non-canonical/workflow.js";
+import { detectUnusedRedeemerReplay } from "../unused-redeemer/replay.js";
 import { detectWitnessScriptDecodingCompleteReplay } from "../witness-script-decoding/workflow.js";
 import { completeCanonicalReplayPredecessorLedger } from "./complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
@@ -140,6 +141,21 @@ export const MISSING_SCRIPT_SOURCE_COMPLETE_CANONICAL_REPLAY = completeReplayer(
   ["missingScriptSource"],
   async (evidence, context) =>
     await detectMissingScriptSourceReplay({
+      block: evidence,
+      predecessor: completeCanonicalReplayPredecessorLedger({
+        evidence,
+        context,
+      }),
+    }),
+);
+
+/** Complete unused-redeemer replay: admitted transactions with a redeemer,
+ * forced `UnusedRedeemer` rejections, and forced rejections with a redeemer
+ * recorded at or after the unused audit. */
+export const UNUSED_REDEEMER_COMPLETE_CANONICAL_REPLAY = completeReplayer(
+  ["unusedRedeemer"],
+  async (evidence, context) =>
+    await detectUnusedRedeemerReplay({
       block: evidence,
       predecessor: completeCanonicalReplayPredecessorLedger({
         evidence,

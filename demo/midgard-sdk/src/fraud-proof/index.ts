@@ -56,6 +56,7 @@ export * from "./reference-input-no-idx.js";
 export * from "./staging.js";
 export * from "./tokens.js";
 export * from "./transition-trace.js";
+export * from "./unused-redeemer.js";
 export * from "./validation-auxiliary-witness.js";
 export * from "./validation-dispute.js";
 export * from "./validation-proof-item.js";

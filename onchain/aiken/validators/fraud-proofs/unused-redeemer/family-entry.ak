@@ -3,13 +3,16 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
-use midgard/fraud_proofs/unused_redeemer/rule.{authenticate_item_tail_v1}
-use midgard/fraud_proofs/unused_redeemer/step_02c.{Datum, SpendRedeemer}
+use midgard/fraud_proofs/unused_redeemer/walk
 
-validator main(step_03_hash: ScriptHash, thread_policy: PolicyId) {
+validator main(
+  redeemer_grammar_hash: ScriptHash,
+  thread_policy: PolicyId,
+  certificate_policy: PolicyId,
+) {
   spend(
-    datum: Option<Datum>,
-    redeemer: SpendRedeemer,
+    datum: Option<walk.EntryDatum>,
+    redeemer: walk.EntryRedeemer,
     own_ref: OutputReference,
     tx: Transaction,
   ) {
@@ -24,7 +27,6 @@ validator main(step_03_hash: ScriptHash, thread_policy: PolicyId) {
           tx,
         )
       ct.Continue(args) -> {
-        let Transaction { inputs, outputs, .. } = tx
         expect Some(step_datum) = datum
         let _, _, _, input_state, output_hash, output_state <- continue(
           thread_policy,
@@ -32,18 +34,19 @@ validator main(step_03_hash: ScriptHash, thread_policy: PolicyId) {
           args.input_index,
           args.output_index,
           own_ref,
-          inputs,
-          outputs,
+          tx.inputs,
+          tx.outputs,
           tx.extra_signatories,
         )
-        expect Some(header) = input_state
-        let expected: Data = authenticate_item_tail_v1(
-          header,
-          args.chunk_proof,
-          args.next_chunk_proof,
+        expect Some(state) = input_state
+        let expected: Data = walk.open_v1(
+          state,
+          args,
+          tx.reference_inputs,
+          certificate_policy,
         )
         and {
-          output_hash == step_03_hash,
+          output_hash == redeemer_grammar_hash,
           output_state == expected,
         }
       }

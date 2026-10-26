@@ -99,7 +99,9 @@ export const DirectClaimPurposeState = asDataType<DirectClaimPurposeState>(
 );
 
 /** 0 NotRequired, 1 ImpossiblePurpose, 2 SourceAbsent, 3 NativeSource,
- * 4 SourcePresent, 5 RedeemerPresent, 6 RedeemerAbsent. */
+ * 4 SourcePresent, 5 RedeemerPresent, 6 RedeemerAbsent, 7 RedeemerRepeated,
+ * 8 RedeemerOutOfRange. The last two are field-8 walk results for a
+ * `RedeemerPointer` target. */
 export const DirectClaimedPredicateFactSchema = Data.Enum([
   Data.Literal("NotRequired"),
   Data.Object({
@@ -126,6 +128,8 @@ export const DirectClaimedPredicateFactSchema = Data.Enum([
       decision: DirectRedeemerDecisionStateSchema,
     }),
   }),
+  Data.Literal("RedeemerRepeated"),
+  Data.Literal("RedeemerOutOfRange"),
 ]);
 export type DirectClaimedPredicateFact = Data.Static<
   typeof DirectClaimedPredicateFactSchema

@@ -34,7 +34,10 @@ import {
   registerChunkedVerifyRewardAccount,
 } from "./submit-init-emulator-shared.js";
 
-export type DirectPurposeCategory = "missingRedeemer" | "missingScriptSource";
+export type DirectPurposeCategory =
+  | "missingRedeemer"
+  | "missingScriptSource"
+  | "unusedRedeemer";
 
 /** The emulator harness with one direct purpose family's real contracts. */
 export const makeDirectPurposeHarness = async (key: DirectPurposeCategory) => {
@@ -42,7 +45,9 @@ export const makeDirectPurposeHarness = async (key: DirectPurposeCategory) => {
     contractOptions: {
       ...(key === "missingRedeemer"
         ? { realMissingRedeemer: true }
-        : { realMissingScriptSource: true }),
+        : key === "missingScriptSource"
+          ? { realMissingScriptSource: true }
+          : { realUnusedRedeemer: true }),
       alwaysFraudProofCatalogue: true,
     },
     registerAdditionalRewardAccounts: registerChunkedVerifyRewardAccount,

@@ -1,6 +1,7 @@
-/** The claim custody route shared by the direct purpose families whose leaf
- * names a purpose: the claim-only entry, then claim start and adjudication
- * over the leaf's own purpose coordinate, ending at the terminal datum. */
+/** The claim custody route shared by the direct purpose families: the
+ * claim-only entry, then claim start and adjudication over the context's
+ * target coordinate (the leaf's own purpose, or a walked redeemer's pointer),
+ * ending at the terminal datum. */
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
@@ -81,8 +82,9 @@ const observedFact = (
 
 /** Claim start and adjudication: no coordinate, an invalid coordinate, the
  * observed coordinate, or a distinct coordinate of any purpose kind. A
- * missing-source leaf is decided by the source lookup alone; a
- * missing-redeemer leaf with a redeemer-bearing source also scans field 8. */
+ * missing-source leaf and a redeemer pointer are decided by the source lookup
+ * alone; a missing-redeemer leaf with a redeemer-bearing source also scans
+ * field 8. */
 export const directPurposeClaimRoute = async (
   inputs: RouteInputs,
   context: SDK.DirectClaimContext,
@@ -91,8 +93,13 @@ export const directPurposeClaimRoute = async (
   readonly final: SDK.DirectClaimFinalState;
 }> => {
   const { material, evidence, prover } = inputs;
+  const pointer =
+    context.target === "LeafPurpose" ? null : context.target.RedeemerPointer;
   const reason = material.bound.subject.rejection_reason;
-  const coordinate = directPurposeLeafCoordinate(material);
+  const coordinate =
+    pointer === null
+      ? directPurposeLeafCoordinate(material)
+      : pointer.coordinate;
   const observed = context.observed;
   const finalDatum = (final: SDK.DirectClaimFinalState) =>
     stepDatum(prover, final, SDK.DirectClaimFinalDatum);
@@ -133,7 +140,7 @@ export const directPurposeClaimRoute = async (
           SDK.DirectClaimStartRedeemer,
         ),
     }) satisfies DirectPurposeTransition;
-  if (reason === null || coordinate === null) {
+  if (coordinate === null) {
     const resolved = resolve("NotRequired", "NotRequired");
     return {
       transitions: [startComplete("NotRequired"), resolved.transition],
@@ -148,8 +155,12 @@ export const directPurposeClaimRoute = async (
       final: resolved.final,
     };
   }
-  const subcheck = SDK.purposeSubcheckOfReason(reason);
+  const subcheck =
+    pointer === null && reason !== null
+      ? SDK.purposeSubcheckOfReason(reason)
+      : null;
   if (
+    subcheck !== null &&
     observed !== null &&
     sameCoordinate(coordinate, observed.authenticated.selection.coordinate)
   ) {
@@ -181,7 +192,7 @@ export const directPurposeClaimRoute = async (
     source,
   };
   if (
-    subcheck === "SourceRequired" ||
+    subcheck !== "RedeemerRequired" ||
     source === null ||
     source.language_tag === 0n
   ) {
@@ -190,7 +201,8 @@ export const directPurposeClaimRoute = async (
       claim:
         source === null
           ? { SourceAbsent: { selection } }
-          : subcheck === "SourceRequired"
+          : subcheck === "SourceRequired" ||
+              (subcheck === null && source.language_tag !== 0n)
             ? { SourcePresent: { selection } }
             : { NativeSource: { selection } },
     };

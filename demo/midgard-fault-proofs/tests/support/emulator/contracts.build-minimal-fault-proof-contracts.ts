@@ -47,6 +47,7 @@ import {
   buildTransactionOutputNonCanonicalFaultProofContracts,
   buildTransitionTraceFaultProofContracts,
   buildTxOrderValidators,
+  buildUnusedRedeemerFaultProofContracts,
   buildValidationCaseContracts,
   buildValidationTraceDisputeFaultProofContracts,
   buildValueNotPreservedFaultProofContracts,
@@ -135,6 +136,7 @@ export const buildMinimalFaultProofContracts = async (
     realNativeScriptDecoding = false,
     realMissingRedeemer = false,
     realMissingScriptSource = false,
+    realUnusedRedeemer = false,
     realMissingSignature = false,
     realNativeScriptInvalid = false,
     realMinAda = false,
@@ -190,6 +192,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly realNativeScriptDecoding?: boolean;
     readonly realMissingRedeemer?: boolean;
     readonly realMissingScriptSource?: boolean;
+    readonly realUnusedRedeemer?: boolean;
     readonly realMissingSignature?: boolean;
     readonly realNativeScriptInvalid?: boolean;
     readonly realMinAda?: boolean;
@@ -247,6 +250,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly nativeScriptDecoding?: NativeScriptDecodingContracts;
     readonly missingRedeemer?: DirectPurposeContracts;
     readonly missingScriptSource?: DirectPurposeContracts;
+    readonly unusedRedeemer?: DirectPurposeContracts;
     readonly missingSignature?: MissingSignatureContracts;
     readonly nativeScriptInvalid?: NativeScriptInvalidContracts;
     readonly minAda?: MinAdaContracts;
@@ -533,6 +537,10 @@ export const buildMinimalFaultProofContracts = async (
     realMissingScriptSource,
     buildMissingScriptSourceFaultProofContracts,
   );
+  const unusedRedeemerContracts = await buildFamilyContracts(
+    realUnusedRedeemer,
+    buildUnusedRedeemerFaultProofContracts,
+  );
   const missingSignatureContracts = await buildFamilyContracts(
     realMissingSignature,
     buildMissingSignatureFaultProofContracts,
@@ -785,6 +793,17 @@ export const buildMinimalFaultProofContracts = async (
           stateQueuePolicyId: stateQueue.policyId,
           fieldPreimageCertificatePolicyId,
         };
+  const unusedRedeemer: DirectPurposeContracts | undefined =
+    unusedRedeemerContracts === undefined
+      ? undefined
+      : {
+          steps: unusedRedeemerContracts.unusedRedeemer.steps as never,
+          computationThread: unusedRedeemerContracts.computationThread,
+          fraudProof: unusedRedeemerContracts.fraudProof,
+          hubOraclePolicyId: hubOracle.policyId,
+          stateQueuePolicyId: stateQueue.policyId,
+          fieldPreimageCertificatePolicyId,
+        };
   const missingSignature: MissingSignatureContracts | undefined =
     missingSignatureContracts === undefined
       ? undefined
@@ -1010,6 +1029,10 @@ export const buildMinimalFaultProofContracts = async (
       missingScriptSource === undefined
         ? withActiveOperators.fraudProofContracts.missingScriptSource
         : chainFromSteps(missingScriptSource.steps),
+    unusedRedeemer:
+      unusedRedeemer === undefined
+        ? withActiveOperators.fraudProofContracts.unusedRedeemer
+        : chainFromSteps(unusedRedeemer.steps),
     missingSignature:
       missingSignature === undefined
         ? withActiveOperators.fraudProofContracts.missingSignature
@@ -1136,6 +1159,7 @@ export const buildMinimalFaultProofContracts = async (
     ...(nativeScriptDecoding === undefined ? {} : { nativeScriptDecoding }),
     ...(missingRedeemer === undefined ? {} : { missingRedeemer }),
     ...(missingScriptSource === undefined ? {} : { missingScriptSource }),
+    ...(unusedRedeemer === undefined ? {} : { unusedRedeemer }),
     ...(missingSignature === undefined ? {} : { missingSignature }),
     ...(nativeScriptInvalid === undefined ? {} : { nativeScriptInvalid }),
     ...(minAda === undefined ? {} : { minAda }),

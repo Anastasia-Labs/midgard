@@ -481,7 +481,7 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       unusedScriptWitness: repeatedFaultProofChain(zeroInput, 6),
       missingScriptSource: repeatedFaultProofChain(zeroInput, 37),
       missingRedeemer: repeatedFaultProofChain(zeroInput, 39),
-      unusedRedeemer: repeatedFaultProofChain(zeroInput, 9),
+      unusedRedeemer: repeatedFaultProofChain(zeroInput, 25),
       executionNativeScriptInvalid: repeatedFaultProofChain(zeroInput, 13),
       scriptIntegrityHashMismatch: repeatedFaultProofChain(zeroInput, 5),
       distinctAssetAccumulationLimit: repeatedFaultProofChain(zeroInput, 6),

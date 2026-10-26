@@ -3,13 +3,17 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
-use midgard/fraud_proofs/unused_redeemer/rule.{authenticate_control_v1}
-use midgard/fraud_proofs/unused_redeemer/step_02a.{Datum, SpendRedeemer}
+use midgard/fraud_proofs/direct_script_derivation/cursor
+use midgard/fraud_proofs/unused_redeemer/walk
 
-validator main(step_02b_hash: ScriptHash, thread_policy: PolicyId) {
+validator main(
+  redeemer_scan_hash: ScriptHash,
+  thread_policy: PolicyId,
+  certificate_policy: PolicyId,
+) {
   spend(
-    datum: Option<Datum>,
-    redeemer: SpendRedeemer,
+    datum: Option<walk.WalkDatum>,
+    redeemer: walk.GrammarRedeemer,
     own_ref: OutputReference,
     tx: Transaction,
   ) {
@@ -24,27 +28,31 @@ validator main(step_02b_hash: ScriptHash, thread_policy: PolicyId) {
           tx,
         )
       ct.Continue(args) -> {
-        let Transaction { inputs, outputs, .. } = tx
         expect Some(step_datum) = datum
-        let _, _, _, input_state, output_hash, output_state <- continue(
+        let own_hash, _, _, input_state, output_hash, output_state <- continue(
           thread_policy,
           step_datum,
           args.input_index,
           args.output_index,
           own_ref,
-          inputs,
-          outputs,
+          tx.inputs,
+          tx.outputs,
           tx.extra_signatories,
         )
-        expect Some(authenticated) = input_state
-        let expected: Data = authenticate_control_v1(
-          authenticated,
-          args.machine_state,
-          args.trace_proof,
-          args.control,
+        expect Some(state) = input_state
+        let advanced = walk.certify_v1(
+          state,
+          args,
+          tx.reference_inputs,
+          certificate_policy,
         )
+        let expected: Data = advanced
         and {
-          output_hash == step_02b_hash,
+          output_hash == if advanced.cursor.phase == cursor.Walking {
+            redeemer_scan_hash
+          } else {
+            own_hash
+          },
           output_state == expected,
         }
       }
