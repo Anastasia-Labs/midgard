@@ -6,10 +6,8 @@ import { expect, it } from "vitest";
 import { CommitteeService } from "../../src/committee-service.js";
 import { obligations } from "../../src/l1/follower/obligations.js";
 import { loadDaSigner, validateDaSignerMembership } from "../../src/signer.js";
-import {
-  retentionCycleOptions,
-  runRetentionCycle,
-} from "../../src/store/retention.js";
+import { retentionCycleOptions } from "../../src/store/retention.js";
+import { runRetentionCycle } from "../../src/store/retention.scan.js";
 import { bytesToHex } from "../../src/utils/hex.js";
 import {
   makeObservedNode,

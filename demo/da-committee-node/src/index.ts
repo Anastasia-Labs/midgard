@@ -36,8 +36,8 @@ import type { PostgresStoreInstanceLockEvents } from "./store/postgres.instance-
 import {
   retentionCycleOptions,
   type RetentionL1View,
-  runRetentionCycle,
 } from "./store/retention.js";
+import { runRetentionCycle } from "./store/retention.scan.js";
 import {
   createCommitteeTickRunner,
   l1ViewStaleMs,

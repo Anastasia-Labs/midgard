@@ -15,10 +15,8 @@ import type {
 } from "../../src/l1/follower/obligations.js";
 import { loadDaSigner, signDaAttestation } from "../../src/signer.js";
 import type { PostgresCommitteeStore } from "../../src/store/postgres.js";
-import {
-  retentionCycleOptions,
-  runRetentionCycle,
-} from "../../src/store/retention.js";
+import { retentionCycleOptions } from "../../src/store/retention.js";
+import { runRetentionCycle } from "../../src/store/retention.scan.js";
 import {
   commitmentFor,
   signatureRecord,

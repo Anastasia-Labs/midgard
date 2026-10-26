@@ -8,11 +8,11 @@ import { describe, expect, it } from "vitest";
 
 import { retentionReadinessFromDeadlines } from "../src/committee-service.js";
 import { LIBP2P_DA_MIN_RETENTION_DAYS } from "../src/config.js";
+import { retentionCycleOptions } from "../src/store/retention.js";
 import {
-  retentionCycleOptions,
   retentionDeadlineReport,
   runRetentionCycle,
-} from "../src/store/retention.js";
+} from "../src/store/retention.scan.js";
 import {
   FINGERPRINT,
   hashOf,

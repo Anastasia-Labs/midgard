@@ -71,6 +71,10 @@ import { readCommitteeL1PinTargets } from "./postgres.stored-l1-points.js";
 import * as capacity from "./promise-capacity-postgres.js";
 import { postgresPromiseResources } from "./promise-resource-usage.js";
 import { retainedPayloadPruneDecision } from "./retention.js";
+import {
+  listDaPayloadRetentionPage,
+  lockDaPayloadRetentionRecord,
+} from "./retention-postgres.js";
 import { type CommitteeRetirementCertificate } from "./retirement-certificate.js";
 import {
   type CommitteeRetirementBreachPoint,
@@ -579,14 +583,10 @@ export class PostgresCommitteeStore implements CommitteeStore {
     );
   }
 
-  async listDaPayloads(): Promise<readonly DaStoredPayloadRecord[]> {
-    return this.listParsedRecords(
-      "SELECT header_hash, record FROM committee_da_payloads ORDER BY header_hash",
-      [],
-      parseDaStoredPayloadRecord,
-      assertPayloadRowIdentity,
-    );
-  }
+  listDaPayloadRetentionPage = (args: {
+    readonly afterHeaderHash?: string;
+    readonly limit: number;
+  }) => listDaPayloadRetentionPage(this.pool, args);
   async deleteDaPayloadIfPrunable(
     request: RetainedPayloadPruneRequest,
   ): Promise<boolean> {
@@ -595,12 +595,9 @@ export class PostgresCommitteeStore implements CommitteeStore {
         return false;
       // Payload and header locks decide a concurrently written header here,
       // or hold its writer until this deletion decision commits.
-      const payload = await queryOne(
+      const payload = await lockDaPayloadRetentionRecord(
         client,
-        "SELECT header_hash, record FROM committee_da_payloads WHERE header_hash = $1 FOR UPDATE",
-        [request.headerHash],
-        parseDaStoredPayloadRecord,
-        assertPayloadRowIdentity,
+        request.headerHash,
       );
       const header =
         payload === undefined

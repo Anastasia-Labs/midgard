@@ -12,7 +12,7 @@ import type {
   DaStoredPayloadRecord,
   StateQueueHeaderRecord,
 } from "../domain.js";
-import type { CommitteeStore } from "../store.js";
+import type { CommitteeStore, DaPayloadRetentionRecord } from "../store.js";
 import { retentionBlockTimeMs } from "./retention.block-time.js";
 
 /**
@@ -71,6 +71,8 @@ export type RetentionScanOptions = RetainedPayloadReleaseOptions & {
   readonly nowMs: number;
   /** A released payload takes its header row; never under promise adoption. */
   readonly releaseHeader?: boolean;
+  /** Payloads decided per page; defaults to `RETENTION_SCAN_PAGE_SIZE`. */
+  readonly scanPageSize?: number;
 };
 
 export const retentionQueueReference = (
@@ -213,14 +215,14 @@ export const retainedPayloadPruneDecision = (
   });
 
 /**
- * Joins retained DA payloads to their state-queue headers and applies the core
- * retention decision to each pair.
+ * Joins one page of retained DA payloads to their state-queue headers and
+ * applies the core retention decision to each pair.
  */
-export const retentionCandidates = async (
+export const pageCandidates = async (
   store: CommitteeStore,
+  payloads: readonly DaPayloadRetentionRecord[],
   options: RetentionScanOptions,
 ): Promise<readonly RetentionCandidate[]> => {
-  const payloads = await store.listDaPayloads();
   const headers = await store.getStateQueueHeaders(
     payloads.map(({ headerHash }) => headerHash),
   );
@@ -228,7 +230,7 @@ export const retentionCandidates = async (
     headers.map((header) => [header.headerHash, header]),
   );
 
-  return payloads.map((payload: DaStoredPayloadRecord) => {
+  return payloads.map((payload) => {
     const header = headerByHash.get(payload.headerHash);
     const blockTimeMs = retentionBlockTimeMs(payload, header);
     const headerStatus = header?.status ?? "unobserved";
@@ -263,7 +265,7 @@ export type RetentionPruneResult = {
   readonly retained: number;
 };
 
-const pruneRetentionCandidates = async (
+export const pruneRetentionCandidates = async (
   store: CommitteeStore,
   candidates: readonly RetentionCandidate[],
   options: RetentionScanOptions,
@@ -294,15 +296,6 @@ const pruneRetentionCandidates = async (
     prunedHeaderHashes,
     retained: candidates.length - prunedHeaderHashes.length,
   };
-};
-
-/** Deletes every retained DA payload the core retention decision prunes. */
-export const pruneExpiredDaPayloads = async (
-  store: CommitteeStore,
-  options: RetentionScanOptions,
-): Promise<RetentionPruneResult> => {
-  const candidates = await retentionCandidates(store, options);
-  return pruneRetentionCandidates(store, candidates, options);
 };
 
 export type RetentionDeadlineEntry = {
@@ -371,7 +364,7 @@ export const retentionCycleOptions = (
   finalBlockTimeMs: view.finalBlockTimeMs,
 });
 
-const retentionDeadlineReportFromCandidates = (
+export const retentionDeadlineReportFromCandidates = (
   candidates: readonly RetentionCandidate[],
   options: RetentionDeadlineOptions,
 ): RetentionDeadlineReport => {
@@ -437,32 +430,4 @@ const retentionDeadlineReportFromCandidates = (
       return missing === 0 ? {} : { recoveryProofUnavailable: missing };
     })(),
   };
-};
-
-/** Executable deadline report over the retained DA payload set. */
-export const retentionDeadlineReport = async (
-  store: CommitteeStore,
-  options: RetentionDeadlineOptions,
-): Promise<RetentionDeadlineReport> => {
-  const candidates = await retentionCandidates(store, options);
-  return retentionDeadlineReportFromCandidates(candidates, options);
-};
-
-export type RetentionCycleResult = {
-  readonly deadlines: RetentionDeadlineReport;
-  readonly prune: RetentionPruneResult;
-};
-
-/** One non-overlapping production retention cycle: report before deletion. */
-export const runRetentionCycle = async (
-  store: CommitteeStore,
-  options: RetentionDeadlineOptions,
-): Promise<RetentionCycleResult> => {
-  // Use one joined snapshot for both reporting and deletion. Incoming DA writes
-  // may run concurrently with the committee node tick; a second scan could otherwise
-  // delete a record that was never present in the preceding report.
-  const candidates = await retentionCandidates(store, options);
-  const deadlines = retentionDeadlineReportFromCandidates(candidates, options);
-  const prune = await pruneRetentionCandidates(store, candidates, options);
-  return { deadlines, prune };
 };

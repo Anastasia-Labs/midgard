@@ -26,10 +26,8 @@ import {
   slotTimeMs,
 } from "../../src/l1/follower/obligations.js";
 import { committeeProjection } from "../../src/l1/follower/projection.js";
-import {
-  retentionCycleOptions,
-  runRetentionCycle,
-} from "../../src/store/retention.js";
+import { retentionCycleOptions } from "../../src/store/retention.js";
+import { runRetentionCycle } from "../../src/store/retention.scan.js";
 import { minimalConfig, tempDir } from "../helpers.js";
 import { openTestCommitteeStore } from "../helpers/committee-store.js";
 import { postgresTestDatabases } from "../helpers/postgres-database.js";

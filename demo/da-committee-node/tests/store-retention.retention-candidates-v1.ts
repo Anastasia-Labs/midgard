@@ -7,7 +7,7 @@ import {
   pruneExpiredDaPayloads,
   retentionCandidates,
   retentionDeadlineReport,
-} from "../src/store/retention.js";
+} from "../src/store/retention.scan.js";
 import {
   hashOf,
   HEAD,
@@ -18,6 +18,7 @@ import {
   PAST_RETENTION,
   payloadRecord,
   PROMISED_RETENTION_MS,
+  retainedHeaderHashes,
   retentionOptions,
   seed,
 } from "./store-retention.header-record.js";
@@ -291,9 +292,9 @@ describe("pruneExpiredDaPayloadsV1", () => {
       prunedHeaderHashes: [hashOf(10), hashOf(11)],
       retained: 3,
     });
-    expect(
-      (await store.listDaPayloads()).map(({ headerHash }) => headerHash),
-    ).toEqual([hashOf(12), HEAD, LIVE_A].sort());
+    expect(await retainedHeaderHashes(store)).toEqual(
+      [hashOf(12), HEAD, LIVE_A].sort(),
+    );
   });
 
   it("re-decides inside the store's write boundary against the caller's view", async () => {
@@ -356,9 +357,7 @@ describe("pruneExpiredDaPayloadsV1", () => {
       liveQueueHeaderHashes: new Set([hashOf(78), hashOf(77)]),
     };
     await pruneExpiredDaPayloads(store, { ...retentionOptions(), ...view });
-    const retained = (await store.listDaPayloads()).map(
-      ({ headerHash }) => headerHash,
-    );
+    const retained = await retainedHeaderHashes(store);
     const insideHorizon = entries.filter(
       (entry) =>
         NOW <= entry.endTimeMs + PROMISED_RETENTION_MS &&
