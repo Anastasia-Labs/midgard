@@ -21,18 +21,26 @@
  *   roots go on to the staged failure hop for a byte-string, string or
  *   integer builtin and to the material hop for the rest.
  *
- * A staged builtin step (arm 31, semantics groups 7 and 8: a byte-string,
- * string or linear integer builtin whose operands do not fit the direct
- * carriage bound) settles through the same group-5 chain, its last stage the
- * staged bytes or staged integer stage `midgardCekSemanticGroup` picks, with
- * the same facts. Its material names the staging outputs that hold its staged
+ * A staged builtin step (arm 31, semantics groups 7 to 9 and 11: a
+ * byte-string, string, integer or conversion builtin whose operands do not
+ * fit the direct carriage bound) settles through the same group-5 chain, its
+ * last stage the staged stage `midgardCekSemanticGroup` picks, with the same
+ * facts. Its material names the staging outputs that hold its staged
  * operands; those are read as reference inputs, so the driver stages the
  * operands, waits for their confirmation depth and fills the output
  * references in before the plan commits the step's evidence. The tag also
  * picks how the material decodes (`decodeCekCoreSemanticMaterial`). A tag
  * with no stage leaves the step unresolved, with its reason.
  * `cekCoreStagedSemanticStage` names the staged stage of each staged
- * semantics group (7, 8 and 11); the chain here drives groups 7 and 8. */
+ * semantics group (7, 8 and 11).
+ *
+ * The staged product (group 9), serialise (10, serialiseData) and writeBits
+ * (12) stages are loops (one-step-core-loops.ts): the chain visits the stage
+ * once per hop of its loop, each visit but the last writing the loop's facts
+ * and leaving the progress as it was. A serialiseData step reads R, its
+ * result's bytes, from staging outputs the driver stages as it stages a
+ * staged step's operands. */
+import type { MidgardCekStagedOutRef } from "@al-ft/midgard-core";
 import { SemanticBuiltinWitness, StagedMaterialV1 } from "@al-ft/midgard-sdk";
 import {
   hashMidgardCekDirectArguments,
@@ -46,9 +54,16 @@ import {
 } from "@al-ft/midgard-validation";
 import { Constr, Data } from "@lucid-evolution/lucid";
 
+import {
+  type CekCoreLoopHop,
+  cekCoreLoopHops,
+  isCekCoreLoopStage,
+} from "./one-step-core-loops.js";
+
 /** The semantic stage of group 5 each `semantic_group(tag)` selects, in its
- * order (cek-semantic-chain); groups 7 and 8 are the staged stages. A later
- * semantics group's stage is the next entry. */
+ * order (cek-semantic-chain): groups 7, 8 and 11 are the staged stages, and
+ * 9, 10 and 12 the loops. A later semantics group's stage is the next
+ * entry. */
 export const CEK_CORE_SEMANTIC_STAGES = Object.freeze([
   "semanticPair",
   "semanticListConstruct",
@@ -59,6 +74,10 @@ export const CEK_CORE_SEMANTIC_STAGES = Object.freeze([
   "semanticDataMisc",
   "stagedBytes",
   "stagedInteger",
+  "stagedProduct",
+  "semanticSerialiseLoop",
+  "stagedConversion",
+  "stagedWriteBitsLoop",
 ] as const);
 
 /** The staged failure hop, which group 7's roots take for a byte-string,
@@ -72,8 +91,8 @@ const stagedFailureTag = (tag: bigint): boolean =>
   tag < 26n || tag === 52n || tag === 53n || (tag >= 71n && tag <= 86n);
 
 /** The staged semantic stage of each staged `semantic_group(tag)`
- * (cek-semantic-chain; 7 and 8 are also `CEK_CORE_SEMANTIC_STAGES`
- * entries): the byte-string, string and signature builtins (7), the linear integer
+ * (cek-semantic-chain; each is also a `CEK_CORE_SEMANTIC_STAGES`
+ * entry): the byte-string, string and signature builtins (7), the linear integer
  * builtins (8), and integerToByteString, byteStringToInteger,
  * shiftByteString and rotateByteString (11). */
 export const CEK_CORE_STAGED_SEMANTIC_STAGES = Object.freeze({
@@ -119,12 +138,18 @@ const semanticMaterial: MaterialDecoder = (cborHex) =>
  * one decodes, one entry a group; any other group's is the semantic
  * witness. */
 const MATERIAL_DECODERS: Readonly<Partial<Record<number, MaterialDecoder>>> =
-  Object.freeze({ 7: stagedMaterial, 8: stagedMaterial });
+  Object.freeze({
+    7: stagedMaterial,
+    8: stagedMaterial,
+    9: stagedMaterial,
+    11: stagedMaterial,
+    12: stagedMaterial,
+  });
 
 /**
  * The material of an arm-31 step of builtin `tag`: a staged step's
- * `StagedMaterialV1` for a tag of semantics group 7 or 8, and the semantic
- * witness for any other semantics group. Both shapes are a constructor 0, so
+ * `StagedMaterialV1` for a tag of semantics group 7, 8, 9, 11 or 12, and
+ * the semantic witness for any other semantics group. Both shapes are a constructor 0, so
  * the tag picks the schema; throws for a tag no semantics group takes and for
  * material of the other shape.
  */
@@ -217,11 +242,14 @@ export const CEK_CORE_ARM_CONTRACT_NAMES = Object.freeze(
   ) as Record<ValidationTraceArmHolder, string>,
 );
 
-/** The hops of a core step's arm chain: the holders in order, and the
- * facts' CBOR each writes. */
+/** The hops of a core step's arm chain: the holders in order, a loop arm
+ * once per hop of its loop, and the facts' CBOR each writes; for each visit
+ * of a loop arm, its hop (one-step-core-loops.ts), and none for any other
+ * hop. */
 export type CekCoreArmHops = Readonly<{
   holders: readonly ValidationTraceArmHolder[];
   facts: readonly string[];
+  loops?: readonly (CekCoreLoopHop | undefined)[];
 }>;
 
 const NO_FACTS: Data = new Constr(0, []);
@@ -266,50 +294,90 @@ const keptAfter = (
   );
 };
 
+/** The builtin an arm-31 witness proves: its tag, or serialiseData's and
+ * writeBits' for the loops' own witnesses. */
+const semanticTag = (witness: MidgardCekCoreStepWitness): bigint => {
+  if (
+    witness.kind === "executeBuiltinSemantic" ||
+    witness.kind === "executeBuiltinStaged"
+  )
+    return witness.tag;
+  if (witness.kind === "executeBuiltinSerialise") return 51n;
+  if (witness.kind === "executeBuiltinWriteBits") return 80n;
+  throw new Error("a semantic builtin step has another witness");
+};
+
+/** Group 5's chain: roots, result, budget, then the stage, once per hop when
+ * it is a loop. */
+const semanticHops = (
+  witness: MidgardCekCoreStepWitness,
+  builtinRoot: Uint8Array,
+  runs: readonly MidgardCekStagedOutRef[] | undefined,
+): CekCoreArmHops => {
+  // A staged witness is taken here under any tag, as a semantic one is: one
+  // whose tag's semantics group is not a staged one is refused later, by
+  // the staged verifier (midgard-validation cek-staged-builtin.verify.ts),
+  // and our executor writes none (cek-executor.staged-builtins.ts).
+  const tag = semanticTag(witness);
+  const stage = midgardCekSemanticGroup(tag);
+  const semantic = stage === null ? undefined : CEK_CORE_SEMANTIC_STAGES[stage];
+  if (semantic === undefined)
+    throw new Error(`semantic builtin ${tag.toString()} has no semantic stage`);
+  if (!("arguments" in witness) || !("result" in witness))
+    throw new Error("a semantic builtin step has another witness");
+  const arguments_ = compacted(witness.arguments);
+  const result = semanticizeMidgardCekDirectConstant(witness.result);
+  const { root, count } = hashMidgardCekDirectArguments(arguments_);
+  const rootHex = Buffer.from(root).toString("hex");
+  const builtinHex = Buffer.from(builtinRoot).toString("hex");
+  const inner = new Constr(0, [
+    builtinRoots(arguments_, result, builtinRoot),
+    valuesData(arguments_),
+    valueData(result),
+  ]);
+  const before = keptAfter(3, [
+    new Constr(0, [rootHex, count, builtinHex, valuesData(arguments_)]),
+    inner,
+  ]);
+  if (!isCekCoreLoopStage(semantic))
+    return Object.freeze({
+      holders: Object.freeze([...CHAINS[5], semantic]),
+      facts: Object.freeze([...before, cbor(inner)]),
+    });
+  // Each hop but the last writes the loop's facts; the last restores the
+  // arm's own.
+  const loop = cekCoreLoopHops(semantic, witness, runs);
+  return Object.freeze({
+    holders: Object.freeze([
+      ...CHAINS[5],
+      ...loop.map((): ValidationTraceArmHolder => semantic),
+    ]),
+    facts: Object.freeze([
+      ...before,
+      ...loop.map(({ end, state }) =>
+        cbor(
+          state === null ? inner : new Constr(1, [inner, BigInt(end), state]),
+        ),
+      ),
+    ]),
+    loops: Object.freeze([...CHAINS[5].map(() => undefined), ...loop]),
+  });
+};
+
 /**
  * The hops of the core step of group `group` with the arm witness
- * `witness`, from the machine state whose focus is `builtinRoot`; throws
- * for a witness the group's chain does not take.
+ * `witness`, from the machine state whose focus is `builtinRoot`; a
+ * serialiseData step reads R from the staging outputs `runs` (one a run, in
+ * byte order) when given. Throws for a witness the group's chain does not
+ * take.
  */
 export const cekCoreArmHops = (
   group: CekCoreGroup,
   witness: MidgardCekCoreStepWitness,
   builtinRoot: Uint8Array,
+  runs?: readonly MidgardCekStagedOutRef[],
 ): CekCoreArmHops => {
-  if (group === 5) {
-    // A staged witness is taken here under any tag, as a semantic one is:
-    // one whose tag's semantics group is not 7 or 8 is refused later, by
-    // the staged verifier (midgard-validation cek-staged-builtin.verify.ts),
-    // and our executor writes none (cek-executor.staged-builtins.ts).
-    if (
-      witness.kind !== "executeBuiltinSemantic" &&
-      witness.kind !== "executeBuiltinStaged"
-    )
-      throw new Error("a semantic builtin step has another witness");
-    const stage = midgardCekSemanticGroup(witness.tag);
-    const semantic =
-      stage === null ? undefined : CEK_CORE_SEMANTIC_STAGES[stage];
-    if (semantic === undefined)
-      throw new Error(
-        `semantic builtin ${witness.tag.toString()} has no semantic stage`,
-      );
-    const arguments_ = compacted(witness.arguments);
-    const result = semanticizeMidgardCekDirectConstant(witness.result);
-    const { root, count } = hashMidgardCekDirectArguments(arguments_);
-    const rootHex = Buffer.from(root).toString("hex");
-    const builtinHex = Buffer.from(builtinRoot).toString("hex");
-    return Object.freeze({
-      holders: Object.freeze([...CHAINS[5], semantic]),
-      facts: keptAfter(4, [
-        new Constr(0, [rootHex, count, builtinHex, valuesData(arguments_)]),
-        new Constr(0, [
-          builtinRoots(arguments_, result, builtinRoot),
-          valuesData(arguments_),
-          valueData(result),
-        ]),
-      ]),
-    });
-  }
+  if (group === 5) return semanticHops(witness, builtinRoot, runs);
   if (group === 7) {
     if (
       witness.kind !== "executeBuiltinSemanticFailure" &&

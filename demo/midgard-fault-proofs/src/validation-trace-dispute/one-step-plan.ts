@@ -441,6 +441,7 @@ export const planValidationTraceOneStep = async ({
       group,
       auxiliary.step.witness,
       auxiliary.step.pre.focusRoot,
+      staged?.runs,
     );
   } catch (error) {
     return unsupported(

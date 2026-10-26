@@ -1,14 +1,22 @@
-/** A staged builtin step (arm 31, semantics groups 7 and 8) in our plan and
- * its hops. The step's material names the staging outputs that hold its
- * staged operands, and those names enter the step's evidence, so our plan
- * fills in the staging the driver made before it commits the evidence:
- * over a copy of our trace's window, the trace itself left as it was. The
- * hops from the PrepareSelected move through the arm chain read the staging
- * outputs as reference inputs, so the ledger takes the move that commits
- * the evidence only while the outputs it names are live; the settle reads
- * none. A step not staged yet is planned with its staged operands and no
- * outputs, and none of those hops is built for it. */
-import type { MidgardCekStagedOutRef } from "@al-ft/midgard-core";
+/** A staged builtin step (arm 31, semantics groups 7 to 9 and 11) in our
+ * plan and its hops. The step's material names the staging outputs that
+ * hold its staged operands, and those names enter the step's evidence, so
+ * our plan fills in the staging the driver made before it commits the
+ * evidence: over a copy of our trace's window, the trace itself left as it
+ * was. The hops from the PrepareSelected move through the arm chain read the
+ * staging outputs as reference inputs, so the ledger takes the move that
+ * commits the evidence only while the outputs it names are live; the settle
+ * reads none. A step not staged yet is planned with its staged operands and
+ * no outputs, and none of those hops is built for it.
+ *
+ * A serialiseData step (semantics group 10) is staged and read the same way:
+ * its one staged operand is R, its result's bytes, which its loop's hops
+ * read from the outputs R is staged on. Its evidence names none, so its
+ * window is our trace's own. */
+import {
+  compareMidgardCekStagedOutRefs,
+  type MidgardCekStagedOutRef,
+} from "@al-ft/midgard-core";
 import {
   type MidgardCekCoreStepWitness,
   type MidgardCekStagingResult,
@@ -29,11 +37,14 @@ export type ValidationTraceStagingLookup = (
   accepts?: (staging: MidgardCekStagingResult) => boolean,
 ) => Promise<MidgardCekStagingResult | undefined>;
 
-/** A staged step's staged operands and the staging outputs its evidence
- * names, in ledger order; undefined outputs while it is not staged. */
+/** A staged step's staged operands and the staging outputs its hops read,
+ * in ledger order, each once (for a staged builtin step, those its evidence
+ * names); undefined outputs while it is not staged. A serialiseData step
+ * also has the output each run of R is staged on, in byte order. */
 export type ValidationTraceStagedStep = Readonly<{
   operands: readonly Uint8Array[];
   refs: readonly MidgardCekStagedOutRef[] | undefined;
+  runs?: readonly MidgardCekStagedOutRef[];
 }>;
 
 /** A step witness whose operands past the direct carriage bound are
@@ -49,6 +60,37 @@ type StagedOperandWitness = Extract<
 const isStagedOperandWitness = (
   witness: MidgardCekCoreStepWitness,
 ): witness is StagedOperandWitness => witness.kind === "executeBuiltinStaged";
+
+/** The staging outputs of `staging`, in ledger order, each once. */
+const distinctOutputs = (
+  staging: MidgardCekStagingResult,
+): MidgardCekStagedOutRef[] =>
+  staging
+    .flat()
+    .sort(compareMidgardCekStagedOutRefs)
+    .filter(
+      (ref, at, all) =>
+        at === 0 || compareMidgardCekStagedOutRefs(all[at - 1]!, ref) !== 0,
+    );
+
+/** A serialiseData step's window, our trace's own, and its staging: R's
+ * runs on the outputs `staging` names. */
+const serialiseStaged = async (
+  trace: ValidationTraceSteps,
+  serialised: Uint8Array,
+  staging: ValidationTraceStagingLookup | undefined,
+) => {
+  const operands = [serialised];
+  const result = await staging?.(operands);
+  return {
+    trace,
+    staged: Object.freeze(
+      result === undefined
+        ? { operands, refs: undefined }
+        : { operands, refs: distinctOutputs(result), runs: result[0]! },
+    ),
+  };
+};
 
 /**
  * Our trace's window `trace` with the step from `stateIndex`, when it is a
@@ -71,6 +113,15 @@ export const stagedTraceOf = async (
 > => {
   const work = trace.witnesses[stateIndex];
   const auxiliary = work?.auxiliary;
+  if (
+    auxiliary?.kind === "cekCoreStep" &&
+    auxiliary.step.witness.kind === "executeBuiltinSerialise"
+  )
+    return await serialiseStaged(
+      trace,
+      auxiliary.step.witness.serialised,
+      staging,
+    );
   if (
     auxiliary?.kind !== "cekCoreStep" ||
     !isStagedOperandWitness(auxiliary.step.witness) ||

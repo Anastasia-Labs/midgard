@@ -4,14 +4,19 @@
  * next and from the last to the settle (VerifyArm), and from the settle to
  * the award (Settle). The binder writes the bound with progress 0 and no
  * facts; each arm carries it on with its progress one higher and the facts
- * one-step-core-chains.ts says it writes. */
+ * one-step-core-chains.ts says it writes. A loop arm is visited once per hop
+ * of its loop: each hop but the last re-outputs the thread to the arm with
+ * the progress as it was and the loop's facts, and the hop the thread stands
+ * at is the one that starts at the cursor those facts hold. */
 import {
   plutusConstrFieldCbor,
   replacePlutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
+import { Constr, Data } from "@lucid-evolution/lucid";
 
 import type { ValidationTraceHop } from "./one-step-builders.js";
 import {
+  type CekCoreArmHops,
   isValidationTraceArmHolder,
   type ValidationTraceArmHolder,
 } from "./one-step-core-chains.js";
@@ -122,18 +127,26 @@ export const cekCoreHop = ({
         ),
       proverOnly: false,
     };
-  const { holders, facts } = core.hops;
-  const index = holders.indexOf(holder);
-  if (index < 0)
+  const { holders, facts, loops } = core.hops;
+  const first = holders.indexOf(holder);
+  if (first < 0)
     throw new Error(
       `validation-trace ${holder} holds a thread whose CEK core step settles through other arms`,
     );
+  const index = visitOf(core.hops, holder, first, datum);
+  const loop = loops?.[index];
   // The arm carries the bound on with its progress one higher and the facts
-  // it writes, to the next arm or, past the last, to the settle.
+  // it writes, to the next arm or, past the last, to the settle; a loop's
+  // hop that does not end it, to the arm itself with the progress as it was.
+  const next = holders[index + 1] ?? "settle";
   return {
-    next: holders[index + 1] ?? "settle",
+    next,
     datum: replacePlutusConstrFieldCbor(
-      replacePlutusConstrFieldCbor(datum, PROGRESS, integer(index + 1)),
+      replacePlutusConstrFieldCbor(
+        datum,
+        PROGRESS,
+        integer(next === holder ? first : first + 1),
+      ),
       FACTS,
       facts[index]!,
     ),
@@ -143,8 +156,40 @@ export const cekCoreHop = ({
           integer(inputIndex),
           integer(outputIndex),
           core.armWitnessCbor,
+          ...(loop === undefined
+            ? []
+            : [
+                integer(BigInt(loop.end)),
+                ...(loop.hop === undefined ? [] : [Data.to(loop.hop)]),
+              ]),
         ]),
       ),
     proverOnly: true,
   };
+};
+
+/** The visit of `holder`, first visited at `first`, that the thread with
+ * datum `datum` stands at: for a loop arm, the hop that starts at the
+ * cursor the loop's facts hold, or the first hop when they hold none. */
+const visitOf = (
+  hops: CekCoreArmHops,
+  holder: ValidationTraceArmHolder,
+  first: number,
+  datum: string,
+): number => {
+  if (hops.holders[first + 1] !== holder) return first;
+  const facts = Data.from(plutusConstrFieldCbor(datum, FACTS));
+  if (!(facts instanceof Constr) || facts.index !== 1) return first;
+  const [, cursor] = facts.fields;
+  const index = hops.holders.findIndex(
+    (visited, at) =>
+      at > first &&
+      visited === holder &&
+      BigInt(hops.loops?.[at - 1]?.end ?? -1) === cursor,
+  );
+  if (index < 0)
+    throw new Error(
+      `validation-trace ${holder} holds a thread whose loop stands at a cursor our plan has no hop from`,
+    );
+  return index;
 };

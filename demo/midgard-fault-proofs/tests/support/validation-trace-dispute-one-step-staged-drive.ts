@@ -1,9 +1,10 @@
 /** The validation-trace dispute runner at a staged builtin step (arm 31,
- * semantics group 7), on the emulator: the failing transaction runs a script
- * whose trace takes one staged step, the successor's thread disputes it, and
- * the runner stages the step's operands at our staging address before the
- * PrepareSelected move, plays the thread through the binder, the group's
- * arm chain and the settle to the award
+ * semantics groups 7 to 12), on the emulator: the failing transaction runs a
+ * script whose trace takes one staged step, the successor's thread disputes
+ * it, and the runner stages the step's operands (a serialiseData step's
+ * result) at our staging address before the PrepareSelected move, plays the
+ * thread through the binder, the group's arm chain (a loop arm once per hop)
+ * and the settle to the award
  * (validation-trace-dispute-one-step-resolution-drive.ts), and spends the
  * staging outputs back once no thread needs them. */
 import { hashMidgardValidationMachineState } from "@al-ft/midgard-core";
@@ -13,6 +14,10 @@ import {
   planMidgardCekStaging,
 } from "@al-ft/midgard-sdk";
 import {
+  type MidgardCekCoreStepWitness,
+  midgardCekSemanticGroup,
+} from "@al-ft/midgard-validation";
+import {
   CML,
   coreToTxOutput,
   type Emulator,
@@ -20,6 +25,7 @@ import {
 } from "@lucid-evolution/lucid";
 
 import type { ValidationTraceClaimMaterial } from "../../src/validation-trace-dispute/claim-material.js";
+import type { ValidationTraceArmHolder } from "../../src/validation-trace-dispute/one-step-holders.js";
 import {
   planValidationTraceOneStep,
   type ValidationTraceCoreStepPlan,
@@ -56,6 +62,77 @@ export const STAGED_INTEGER_ARMS = [
   "semanticBudget",
   "stagedInteger",
 ] as const;
+
+/** A step of a staged semantics group: a staged builtin step, or a
+ * serialiseData or writeBits step its loop proves. */
+export type CoreStagedWitness = Extract<
+  MidgardCekCoreStepWitness,
+  {
+    readonly kind:
+      | "executeBuiltinStaged"
+      | "executeBuiltinSerialise"
+      | "executeBuiltinWriteBits";
+  }
+>;
+
+const isCoreStaged = (
+  witness: MidgardCekCoreStepWitness | undefined,
+): witness is CoreStagedWitness =>
+  witness?.kind === "executeBuiltinStaged" ||
+  witness?.kind === "executeBuiltinSerialise" ||
+  witness?.kind === "executeBuiltinWriteBits";
+
+/** The witness of the step from `index` of our trace, if it is a step of a
+ * staged semantics group. */
+const coreStagedWitnessAt = async (
+  material: ValidationTraceClaimMaterial,
+  index: number,
+): Promise<CoreStagedWitness | undefined> => {
+  const auxiliary = (await material.steps(index)).witnesses[index]?.auxiliary;
+  const witness =
+    auxiliary?.kind === "cekCoreStep" ? auxiliary.step.witness : undefined;
+  return isCoreStaged(witness) ? witness : undefined;
+};
+
+/** The semantics group of a staged semantics group's step. */
+const groupOf = (witness: CoreStagedWitness): number | null =>
+  midgardCekSemanticGroup(
+    witness.kind === "executeBuiltinSerialise"
+      ? 51n
+      : witness.kind === "executeBuiltinWriteBits"
+        ? 80n
+        : witness.tag,
+  );
+
+/** The last step of our trace in semantics group `group`. */
+export const lastStepOfGroup =
+  (group: number) =>
+  async (material: ValidationTraceClaimMaterial): Promise<number> => {
+    for (let index = Number(material.stepCount) - 1; index >= 0; index -= 1) {
+      const witness = await coreStagedWitnessAt(material, index);
+      if (witness !== undefined && groupOf(witness) === group) return index;
+    }
+    throw new Error(
+      `our trace has no step of semantics group ${group.toString()}`,
+    );
+  };
+
+/** The bytes the driver stages for a step: a staged step's operands, a
+ * serialiseData step's result, and none for a writeBits step. */
+const stagedBytesOf = (witness: CoreStagedWitness): readonly Uint8Array[] =>
+  witness.kind === "executeBuiltinStaged"
+    ? witness.stagedOperands
+    : witness.kind === "executeBuiltinSerialise"
+      ? [witness.serialised]
+      : [];
+
+/** The fit label of each arm of `arms`: a loop arm's by its hop. */
+export const armLabels = (arms: readonly ValidationTraceArmHolder[]) =>
+  arms.map((holder, index) =>
+    arms.indexOf(holder) === arms.lastIndexOf(holder)
+      ? `VerifyArm ${holder}`
+      : `VerifyArm ${holder} hop ${(index - arms.indexOf(holder) + 1).toString()}`,
+  );
 
 /** The staged witness of the step from `index` of our trace, if it is one. */
 const stagedWitnessAt = async (
@@ -141,8 +218,9 @@ export const landedSpenderOf = async (
 
 /**
  * The drive of the successor's thread through the staged step of the
- * failing script `hex`, run under `exUnits` when given, whose arm chain is
- * `arms`, set up with the thread standing at the PrepareSelected move's
+ * failing script `hex` after our trace's state `from` (by default the last
+ * staged builtin step), run under `exUnits` when given, whose arm chain is
+ * `arms`, a loop arm once per hop, set up with the thread standing at the PrepareSelected move's
  * holder; a move is final at release depth `releaseDepth` blocks under the
  * tip when given, else at the tip; with `withRemoval`, a case the challenger
  * won removes the block and completes.
@@ -150,25 +228,27 @@ export const landedSpenderOf = async (
 export const stagedDrive = ({
   hex = STAGED_SHA2_SCRIPT,
   exUnits,
+  from = lastStagedStep,
   arms = STAGED_BYTES_ARMS,
   releaseDepth,
   withRemoval = false,
 }: {
   readonly hex?: string;
   readonly exUnits?: readonly [bigint, bigint];
-  readonly arms?: typeof STAGED_BYTES_ARMS | typeof STAGED_INTEGER_ARMS;
+  readonly from?: (material: ValidationTraceClaimMaterial) => Promise<number>;
+  readonly arms?: readonly ValidationTraceArmHolder[];
   readonly releaseDepth?: number;
   readonly withRemoval?: boolean;
 } = {}) => {
   const drive = resolutionDrive({
     withRemoval,
-    from: lastStagedStep,
+    from,
     at: "prepare",
     path: ["prepare", "core", ...arms, "settle"],
     labels: [
       "PrepareSelected core",
       "VerifyCoreStep",
-      ...arms.map((holder) => `VerifyArm ${holder}`),
+      ...armLabels(arms),
       "Settle core",
     ],
     installs: {
@@ -178,11 +258,11 @@ export const stagedDrive = ({
       ...(releaseDepth === undefined ? {} : { releaseDepth }),
       // The operator's thread disputes the same step, so both threads read
       // the same staging.
-      operatorFrom: lastStagedStep,
+      operatorFrom: from,
     },
     planAt: async (dispute): Promise<ValidationTraceCoreStepPlan> => {
       const { material } = dispute;
-      const stateIndex = await lastStagedStep(material);
+      const stateIndex = await from(material);
       const planning = await planValidationTraceOneStep({
         material,
         stateIndex,
@@ -207,7 +287,12 @@ export const stagedDrive = ({
 
   const witness = async (): Promise<StagedWitness> => {
     const { material } = drive.dispute();
-    return (await stagedWitnessAt(material, await lastStagedStep(material)))!;
+    return (await stagedWitnessAt(material, await from(material)))!;
+  };
+
+  const stepWitness = async (): Promise<CoreStagedWitness> => {
+    const { material } = drive.dispute();
+    return (await coreStagedWitnessAt(material, await from(material)))!;
   };
 
   return {
@@ -218,9 +303,12 @@ export const stagedDrive = ({
     /** The witness of the staged step. */
     witness,
 
+    /** The witness of the step, of whichever staged semantics group. */
+    stepWitness,
+
     /** The runs our staging of the step stages, in order. */
     runs: async (): Promise<readonly MidgardCekStagingRun[]> =>
-      planMidgardCekStaging((await witness()).stagedOperands),
+      planMidgardCekStaging(stagedBytesOf(await stepWitness())),
 
     /** Our staging address. */
     stagingAddress: () => {
