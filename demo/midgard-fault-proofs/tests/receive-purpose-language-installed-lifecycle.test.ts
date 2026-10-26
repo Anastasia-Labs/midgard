@@ -2,15 +2,19 @@
  * The installed `receivePurposeLanguage` cursor actuator: complete replay
  * detects the fault, the port prepares a journaled artifact, and the cursor
  * adapter drives the thread from a genuine Init through its 21-role graph to
- * the proof token across an emulated restart after each broadcast; the block
- * is then removed. The node's own forced rejection of an admitted forced
- * transaction, which carries no redeemer, committed after the anchor that
- * carries its predecessor ledger, yields no detection.
+ * the proof token across an emulated restart after each broadcast, over a
+ * shallow and a deep predecessor ledger (every input five or more branches
+ * deep, each source page fitted to the transaction budget) and for a forced
+ * transaction the admission screen accepts; the block is then removed. The
+ * node's own forced rejection of an admitted forced transaction, which
+ * carries no redeemer, committed after the anchor that carries its
+ * predecessor ledger, yields no detection.
  */
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { screenMidgardForcedTxAdmission } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
@@ -41,16 +45,20 @@ import {
   journalJsonDigest,
 } from "../src/workflow/journal.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
+import { deepSourceInputs } from "./support/direct-purpose-deep-source.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import {
+  buildMissingRedeemerSubject,
   honestForcedObserverShape,
   machineForcedVerdict,
   missingRedeemerLedgerEntries,
+  type MissingRedeemerSubjectShape,
   plutusScript,
   redeemerMissingVerdict,
   setupMissingRedeemerScenario,
 } from "./support/missing-redeemer-emulator.subject.js";
 import {
+  forcedReceiving,
   makeReceivePurposeLanguageHarness,
   publishReceivePurposeLanguageRoles,
   type ReceivePurposeLanguageHarness,
@@ -109,7 +117,20 @@ const workflowReferences = async (
   };
 };
 
+/** An admissible forced transaction: a signed key-locked spend whose
+ * PlutusV3 receive is sourced from a reference input and which carries no
+ * redeemer. */
+const FORCED_SOURCED = forcedReceiving(plutusScript(4));
+
 describe("receivePurposeLanguage installed cursor actuator", () => {
+  it("commits a forced transaction the admission screen accepts", () => {
+    expect(
+      screenMidgardForcedTxAdmission(
+        buildMissingRedeemerSubject(FORCED_SOURCED).nativeTx,
+      ),
+    ).toBeNull();
+  });
+
   it.each([
     {
       name: "accepted PlutusV3 receive execution",
@@ -120,11 +141,17 @@ describe("receivePurposeLanguage installed cursor actuator", () => {
       source: { kind: "normal" as const },
     },
     {
-      name: "forced arm at a PlutusV3 receive no redeemer reaches",
+      name: "accepted PlutusV3 receive execution over a deep ledger",
       shape: {
         observers: [],
-        receives: [{ script: plutusScript(4), redeemer: false }],
+        receives: [{ script: plutusScript(1), witness: false, redeemer: true }],
+        ...deepSourceInputs(plutusScript(1)),
       },
+      source: { kind: "normal" as const },
+    },
+    {
+      name: "forced arm at a PlutusV3 receive no redeemer reaches",
+      shape: FORCED_SOURCED,
       source: {
         kind: "forced" as const,
         verdict: receivePurposeLanguageVerdict(3n, 0n),
@@ -141,6 +168,18 @@ describe("receivePurposeLanguage installed cursor actuator", () => {
       });
       const { setup } = scenario;
       const evidence = await blockEvidence(scenario);
+      // The predecessor ledger the subject's inputs resolve against.
+      const shape: MissingRedeemerSubjectShape = scenarioCase.shape;
+      const replayContext = {
+        predecessor: await admitCompleteCanonicalReplayPredecessor({
+          ledgerAt: singleLedgerAt(evidence.header.prevHeaderHash, [
+            ...(shape.spend ?? []),
+            ...(shape.reference ?? []),
+            ...(shape.padding ?? []),
+          ]),
+          currentEvidence: evidence,
+        }),
+      };
       const references = await workflowReferences(h);
       const binding = {
         definition: { headerHash: setup.headerHash },
@@ -156,11 +195,13 @@ describe("receivePurposeLanguage installed cursor actuator", () => {
         signer: h.proverSigner,
         contracts: h.receivePurposeLanguage,
         references,
+        replayContext,
         stateQueueMutationLeaseCoordinator: leaseCoordinator,
       });
       const decision =
         await RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY.replay(
           evidence,
+          replayContext,
         );
       const classification = await classifyCanonicalBlockViolations({
         evidence,
