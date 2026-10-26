@@ -4,7 +4,9 @@ import { Config } from "effect";
 
 import {
   DEFAULT_HTTP_RATE_LIMITS,
+  HTTP_PEER_MAX_ENTRIES,
   HTTP_RATE_CLASSES,
+  httpPublicKeysPerIdleWindow,
   type HttpRate,
   type HttpRateClass,
   type HttpRateClassPolicy,
@@ -83,7 +85,11 @@ const httpRateClassConfig = (kind: HttpRateClass) => {
   );
 };
 
-/** Testing profiles may disable rate refusals; public profiles refuse that before binding. */
+/**
+ * Testing profiles may disable rate refusals; public profiles refuse that
+ * before binding. Enabled global rates must keep the public client table from
+ * filling within one idle window, or new clients would be refused.
+ */
 export const httpRateLimitConfig = Config.all({
   enabled: Config.string("HTTP_RATE_LIMIT_ENABLED").pipe(
     Config.withDefault("true"),
@@ -99,7 +105,16 @@ export const httpRateLimitConfig = Config.all({
       HTTP_RATE_CLASSES.map((kind) => [kind, httpRateClassConfig(kind)]),
     ) as Record<HttpRateClass, Config.Config<HttpRateClassPolicy>>,
   ),
-}) satisfies Config.Config<HttpRateLimitPolicy>;
+}).pipe(
+  Config.mapAttempt((policy): HttpRateLimitPolicy => {
+    const keys = httpPublicKeysPerIdleWindow(policy);
+    if (policy.enabled && keys > HTTP_PEER_MAX_ENTRIES)
+      throw new Error(
+        `HTTP_RATE_LIMIT_READ, _BATCH, _WRITE and _EVALUATE global rates admit ${Math.ceil(keys).toString()} clients per 60 s; the client table holds ${HTTP_PEER_MAX_ENTRIES.toString()} (sum of globalBurst + 60 x globalPerSecond must not exceed it)`,
+      );
+    return policy;
+  }),
+) satisfies Config.Config<HttpRateLimitPolicy>;
 
 /** HTTP configuration is one component; preserve existing admin-key decoding. */
 export const httpIngressConfig = Config.all({

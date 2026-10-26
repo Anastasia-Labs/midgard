@@ -1,14 +1,14 @@
 import { isIP } from "node:net";
 
 import {
+  HTTP_PEER_IDLE_MS,
+  HTTP_PEER_MAX_ENTRIES,
   type HttpRate,
   type HttpRateClass,
   type HttpRateLimitPolicy,
 } from "../services/http-rate-limits.js";
 
-/** Each client table holds at most this many keys; idle keys are evicted first. */
-export const HTTP_PEER_MAX_ENTRIES = 8_192;
-const PEER_IDLE_MS = 60_000;
+export { HTTP_PEER_MAX_ENTRIES } from "../services/http-rate-limits.js";
 const TABLE_FULL_RETRY_AFTER_SECONDS = 5;
 
 type Bucket = { tokens: number; updatedAt: number };
@@ -52,18 +52,11 @@ const refusal = (
   retryAfterSeconds,
 });
 
-/** Refills the bucket and refuses with the whole seconds until one token is back. */
-const drawable = (
-  bucket: Bucket,
-  rate: HttpRate,
-  now: number,
-): HttpRateRefusal | undefined => {
+/** Refills the bucket; 0 when a token is available, else whole seconds until one is back. */
+const waitSeconds = (bucket: Bucket, rate: HttpRate, now: number): number => {
   refill(bucket, rate, now);
-  if (bucket.tokens >= 1) return undefined;
-  return refusal(
-    "Request rate exceeded",
-    Math.max(1, Math.ceil((1 - bucket.tokens) / rate.perSecond)),
-  );
+  if (bucket.tokens >= 1) return 0;
+  return Math.max(1, Math.ceil((1 - bucket.tokens) / rate.perSecond));
 };
 
 const ipv6Groups = (part: string): string[] =>
@@ -96,10 +89,21 @@ export const httpRateKey = (address: string): string => {
     .join(":")}::/64`;
 };
 
+/** Drops the least recently used key that has no request in flight. */
+const evictLeastRecent = (table: Map<string, HttpRatePeer>): boolean => {
+  for (const [entry, value] of table)
+    if (value.active === 0) {
+      table.delete(entry);
+      return true;
+    }
+  return false;
+};
+
 /**
  * Token buckets per client key and class, plus one global bucket per public
  * class. Health and admin clients live in their own table, so neither a public
- * flood nor an address spray against public routes can refuse them.
+ * flood nor an address spray against public routes can refuse them. Each
+ * table keeps its keys in least-recently-used order.
  */
 export const createHttpRateLimiter = (
   policy: HttpRateLimitPolicy,
@@ -124,28 +128,35 @@ export const createHttpRateLimiter = (
     now: number,
   ): HttpRateCheck => {
     const rates = policy.classes[kind];
-    const global = globals[kind];
-    if (policy.enabled && global !== undefined && rates.global !== undefined) {
-      const refused = drawable(global, rates.global, now);
-      if (refused !== undefined) return refused;
-    }
     const existing = tableFor(kind).get(key);
     const peer = existing ?? { active: 0, lastUsed: now, buckets: {} };
     if (policy.enabled) {
+      const global = globals[kind];
       const bucket = (peer.buckets[kind] ??= {
         tokens: rates.peer.burst,
         updatedAt: now,
       });
-      const refused = drawable(bucket, rates.peer, now);
-      if (refused !== undefined) return refused;
+      // Retry-After covers every refusing bucket, not only the first one.
+      const wait = Math.max(
+        global === undefined || rates.global === undefined
+          ? 0
+          : waitSeconds(global, rates.global, now),
+        waitSeconds(bucket, rates.peer, now),
+      );
+      if (wait > 0) return refusal("Request rate exceeded", wait);
     }
     return { accepted: true, peer, isNew: existing === undefined };
   };
 
   /**
-   * Records an accepted request. A new key evicts idle keys when its table is
-   * full and is refused if none is idle; active or recent keys are never
-   * evicted, so eviction cannot reset a client's quota.
+   * Records an accepted request. When a table is full, a new key needs room:
+   * - the enabled public table evicts only keys idle for the whole window, so
+   *   eviction cannot reset a public client's quota, and refuses otherwise;
+   *   the global rates keep it from filling (checked when config loads);
+   * - the health/admin table, and the public table with rate limits disabled,
+   *   evict the least recently used key, because losing such a quota costs
+   *   nothing and refusing the client is the harm.
+   * At most 72 requests are in flight, so an evictable key always exists.
    */
   const admit = (
     key: string,
@@ -154,19 +165,22 @@ export const createHttpRateLimiter = (
     now: number,
   ): HttpRateRefusal | undefined => {
     const table = tableFor(kind);
-    if (checked.isNew) {
-      if (table.size >= HTTP_PEER_MAX_ENTRIES)
+    if (checked.isNew && table.size >= HTTP_PEER_MAX_ENTRIES) {
+      if (table === publicPeers && policy.enabled) {
         for (const [entry, value] of table)
-          if (value.active === 0 && now - value.lastUsed >= PEER_IDLE_MS)
+          if (value.active === 0 && now - value.lastUsed >= HTTP_PEER_IDLE_MS)
             table.delete(entry);
+      } else evictLeastRecent(table);
       if (table.size >= HTTP_PEER_MAX_ENTRIES)
         return refusal(
           "Peer quota capacity is full",
           TABLE_FULL_RETRY_AFTER_SECONDS,
         );
-      table.set(key, checked.peer);
     }
-    // Refused requests neither allocate a key nor extend its idle lifetime.
+    // Re-inserting keeps the table in least-recently-used order. Refused
+    // requests neither allocate a key nor extend its idle lifetime.
+    table.delete(key);
+    table.set(key, checked.peer);
     checked.peer.lastUsed = now;
     if (policy.enabled) {
       checked.peer.buckets[kind]!.tokens -= 1;

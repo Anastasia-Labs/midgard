@@ -73,6 +73,15 @@ const capacityFull = {
   retryAfterSeconds: 5,
 } as const satisfies IngressReservation;
 
+/** Public requests in flight; health and admin requests do not count here. */
+const PUBLIC_ACTIVE_MAX = 64;
+/**
+ * Health and admin requests in flight. A budget of their own keeps them
+ * answering while public requests hold every public slot. Their bodies are
+ * JSON-sized (64 KiB at most), so they stay outside the public byte budget.
+ */
+const LIVENESS_ACTIVE_MAX = 8;
+
 /** Request rates, concurrent requests and in-flight bytes, checked before any body read. */
 export const createHttpIngress = ({
   now = () => performance.now(),
@@ -83,6 +92,7 @@ export const createHttpIngress = ({
 } = {}) => {
   const rates = createHttpRateLimiter(policy, now());
   let active = 0;
+  let livenessActive = 0;
   let inFlightBytes = 0;
   let advisoryBytes = 0;
   const reserve = (
@@ -93,22 +103,28 @@ export const createHttpIngress = ({
     const timestamp = now();
     const checked = rates.check(key, kind, timestamp);
     if (!checked.accepted) return checked;
+    const liveness = kind === "health" || kind === "admin";
     if (
       !Number.isSafeInteger(bytes) ||
       bytes < 0 ||
-      active >= 64 ||
-      inFlightBytes + bytes > 2 * MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes ||
-      (kind === "evaluate" &&
-        advisoryBytes + bytes > MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes) ||
-      checked.peer.active >= 4
+      checked.peer.active >= 4 ||
+      (liveness
+        ? livenessActive >= LIVENESS_ACTIVE_MAX
+        : active >= PUBLIC_ACTIVE_MAX ||
+          inFlightBytes + bytes >
+            2 * MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes ||
+          (kind === "evaluate" &&
+            advisoryBytes + bytes > MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes))
     )
       return capacityFull;
     const refused = rates.admit(key, kind, checked, timestamp);
     if (refused !== undefined) return refused;
     const peer = checked.peer;
+    const counted = liveness ? 0 : bytes;
     peer.active += 1;
-    active += 1;
-    inFlightBytes += bytes;
+    if (liveness) livenessActive += 1;
+    else active += 1;
+    inFlightBytes += counted;
     if (kind === "evaluate") advisoryBytes += bytes;
     let released = false;
     return {
@@ -117,8 +133,9 @@ export const createHttpIngress = ({
         if (released) return;
         released = true;
         peer.active -= 1;
-        active -= 1;
-        inFlightBytes -= bytes;
+        if (liveness) livenessActive -= 1;
+        else active -= 1;
+        inFlightBytes -= counted;
         if (kind === "evaluate") advisoryBytes -= bytes;
       },
     };
@@ -128,6 +145,7 @@ export const createHttpIngress = ({
     snapshot: () => ({
       ...rates.snapshot(),
       active,
+      livenessActive,
       inFlightBytes,
       advisoryBytes,
     }),
@@ -160,7 +178,10 @@ export const withHttpIngress = <E, R>(
     );
     if (identity === undefined)
       return yield* HttpServerResponse.json(
-        { error: "Socket peer identity is unavailable" },
+        {
+          error: "Socket peer identity is unavailable",
+          error_code: "E_HTTP_CLIENT_IDENTITY_UNAVAILABLE",
+        },
         { status: 503, headers: RETRY_AFTER },
       );
     if (Buffer.byteLength(request.url) > HTTP_QUERY_MAX_BYTES)

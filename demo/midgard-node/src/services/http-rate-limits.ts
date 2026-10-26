@@ -35,10 +35,29 @@ export type HttpRateLimitPolicy = {
   readonly classes: Readonly<Record<HttpRateClass, HttpRateClassPolicy>>;
 };
 
+/** Each client table holds at most this many keys. */
+export const HTTP_PEER_MAX_ENTRIES = 8_192;
+/** A key unused for this long may be evicted from the public table. */
+export const HTTP_PEER_IDLE_MS = 60_000;
+
 /**
- * Public-profile defaults. Accepted requests are what allocate client entries,
- * so the global buckets bound how many entries one idle window (60 s) can
- * create: 6,200 + 256 + 256 + 68 = 6,780, under the 8,192-entry table.
+ * The most public-table keys one idle window can create while the limiter is
+ * enabled: only accepted requests allocate keys, and each draws a global token.
+ */
+export const httpPublicKeysPerIdleWindow = (
+  policy: Pick<HttpRateLimitPolicy, "classes">,
+): number =>
+  Object.values(policy.classes).reduce(
+    (sum, { global }) =>
+      global === undefined
+        ? sum
+        : sum + global.burst + (global.perSecond * HTTP_PEER_IDLE_MS) / 1_000,
+    0,
+  );
+
+/**
+ * Public-profile defaults. The global buckets bound the keys one idle window
+ * can create: 6,200 + 256 + 256 + 68 = 6,780, within `HTTP_PEER_MAX_ENTRIES`.
  */
 export const DEFAULT_HTTP_RATE_LIMITS: HttpRateLimitPolicy = {
   enabled: true,
