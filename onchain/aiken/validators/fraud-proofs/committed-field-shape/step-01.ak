@@ -2,8 +2,17 @@
 ////
 //// Binds the disputed transaction to the block's committed `transactions_root`,
 //// authenticates the **committed** preimage of the accused field against §4's
-//// positionally-extracted commitment, and forwards the slot's §7.4/§5.4 shape
-//// verdict that step 02 adjudicates.
+//// positionally-extracted commitment, and takes one batch of §12.7's §5.1 walk
+//// over it: at most `envelope_batch_items` item heads per transaction.
+////
+//// A walk with items still owed continues at this script, carrying a
+//// `WalkState` (the transaction, the slot, the items owed and the byte the next
+//// batch starts at); the batch that ends the walk renders the slot's §7.4/§5.4
+//// shape verdict over the bytes and carries it to step 02. Every batch
+//// re-binds the transaction and re-authenticates the bytes, so the only thing
+//// one transaction hands the next is the cursor, and the cursor is derived,
+//// never chosen. That is what lets a field with more items than one
+//// transaction can read still reach a verdict.
 ////
 //// The bytes are the prover's to carry and the block's to own: whichever §8
 //// tier they arrive on, `authenticated_committed_preimage` hashes them against
@@ -25,21 +34,25 @@ use cardano/transaction.{
 }
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/canonical_decodability/rule.{
-  BodyFieldClaim, CommittedFieldClaimV1, WitnessFieldClaim,
+  BodyFieldClaim, CommittedFieldClaimV1, EnvelopeItems, EnvelopeVerdict,
+  WitnessFieldClaim, authenticated_claim_preimage_v1, envelope_first_batch_v1,
+  envelope_items_batch_v1,
 } as canonical_decodability_rule
 use midgard/fraud_proofs/committed_field_shape/rule.{
-  CommittedFieldShapeVerdictV1, committed_field_shape_v1,
   committed_field_shape_verdict_v1, shape_verdict_admissible,
-  shape_verdict_field_byte_bound, shape_verdict_not_an_envelope,
-  shape_verdict_wrong_stride, sized_field_envelope_v1,
+  shape_verdict_after_walk_v1, shape_verdict_field_byte_bound,
+  shape_verdict_not_an_envelope, shape_verdict_wrong_stride,
+  sized_field_envelope_v1,
 }
 use midgard/fraud_proofs/committed_field_shape/step_01.{
-  Args, Datum, SpendRedeemer,
+  Args, Datum, SpendRedeemer, WalkState,
 }
 use midgard/fraud_proofs/committed_field_shape/step_02
+use midgard/fraud_proofs/committed_field_shape/walk_fixture
 use midgard/fraud_proofs/common.{cancel, pass_native_tx_to_next_step_carried}
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_compact_cbor_v1}
+use midgard/fraud_proofs/native_tx/types as native_types
 use midgard/native_tx_field_access_v1.{
   Inline, RawUtxo, authenticated_whole_field_view, encode_field_preimage,
   max_transaction_aggregate_field_bytes,
@@ -76,12 +89,14 @@ validator main(
         //    §12.7's reason: a leaf whose key is not its own id is
         //    `da-hash-preimage`'s fault, not this one's, and the compact
         //    structure this step reads a field commitment out of only means
-        //    anything once the id derived from it is the committed key.
+        //    anything once the id derived from it is the committed key. Every
+        //    batch re-establishes it, so no batch trusts bytes an earlier
+        //    transaction read.
         let
-            _own_script_hash,
+            own_script_hash,
             _computation_thread_token_asset_name,
             _fraud_prover,
-            _m_input_state_data,
+            m_input_state,
             output_script_hash,
             output_state_data,
             _header,
@@ -99,28 +114,64 @@ validator main(
         // Shape faults are ordered after the normal-leaf mistag fault.
         expect verified.tx_compact.validity_code == Some(0)
 
-        // 2. The UTxO must be produced at the next step's script hash carrying
-        //    the exact accusation. Both members of it are derived here — the
-        //    field index from the claim whose bytes the door then held to that
-        //    slot's commitment, the verdict from the authenticated bytes at that
-        //    slot — so step 02 adjudicates committed values only and a fabricated
-        //    verdict cannot be forwarded.
-        expect output_script_hash == step_02_validator_script_hash
-        let CommittedFieldShapeVerdictV1 { field_index, verdict } = committed_field_shape_v1(
+        // 2. The accused slot's committed bytes, held to §4's commitment.
+        let Pair(field_index, preimage) = authenticated_claim_preimage_v1(
           verified,
           claim,
           reference_inputs,
           field_preimage_certificate_policy_id,
         )
-        let expected_output_state: Data = step_02.State {
-          bad_tx_id,
-          field_index,
-          verdict,
-        }
-        expect output_state_data == expected_output_state
 
-        // Done.
-        True
+        // 3. One batch of §5.1's walk: from the array head on the thread's
+        //    first step, from where the previous batch stopped on every later
+        //    one. A resumed walk must be reading the same transaction's same
+        //    slot, so the bytes just authenticated are the bytes it started on.
+        let walk = when m_input_state is {
+          None -> envelope_first_batch_v1(preimage)
+          Some(WalkState {
+            bad_tx_id: walked_tx_id,
+            field_index: walked_field_index,
+            remaining,
+            offset,
+          }) -> {
+            expect walked_tx_id == bad_tx_id
+            expect walked_field_index == field_index
+            envelope_items_batch_v1(preimage, remaining, offset)
+          }
+        }
+
+        // 4. The successor is derived, never chosen: a walk with items still
+        //    owed continues at this script, and the batch that ends the walk
+        //    renders the slot's shape verdict and carries it to step 02. Every
+        //    member of either state is computed here from the authenticated
+        //    bytes at the slot the claim named, so step 02 adjudicates
+        //    committed values only and a fabricated verdict or cursor cannot be
+        //    forwarded.
+        when walk is {
+          EnvelopeItems { remaining, offset } -> {
+            expect output_script_hash == own_script_hash
+            let expected_output_state: Data = WalkState {
+              bad_tx_id,
+              field_index,
+              remaining,
+              offset,
+            }
+            output_state_data == expected_output_state
+          }
+          EnvelopeVerdict { verdict: envelope_verdict } -> {
+            expect output_script_hash == step_02_validator_script_hash
+            let expected_output_state: Data = step_02.State {
+              bad_tx_id,
+              field_index,
+              verdict: shape_verdict_after_walk_v1(
+                field_index,
+                preimage,
+                envelope_verdict,
+              ),
+            }
+            output_state_data == expected_output_state
+          }
+        }
       }
     }
   }
@@ -247,7 +298,7 @@ fn run_step_01_at(
     fixture.computation_thread_policy_id,
     fixture.hub_oracle_script_hash,
     fixture.test_certificate_policy_id,
-    Some(fixture.step_datum_without_state()),
+    Some(walk_fixture.fresh_step_datum()),
     ct.Continue(
       Args { inclusion: fixture.native_inclusion_carriage_v1(block), claim },
     ),
@@ -538,6 +589,58 @@ test committed_field_shape_step_01_rejects_a_forged_transactions_root() fail {
   )
 }
 
+/// `committed_block` over the fixture transaction with its committed validity
+/// code set by `validity`, so the code is the only thing two selectors vary.
+fn committed_block_with_validity(
+  validity: native_types.MidgardTxValidity,
+  field_index: Int,
+  preimage: ByteArray,
+) -> fixture.NativeBlockFixtureV1 {
+  fixture.committed_field_preimage_block_fixture_v1(
+    fixture.native_block_fixture_v1(
+      native_types.MidgardTransaction {
+        ..fixture.valid_native_tx_v1(),
+        validity,
+      },
+    ),
+    field_index,
+    preimage,
+  )
+}
+
+/// A leaf committed with validity code 1 is not this family's to accuse: the
+/// same wrong-stride field the twin below binds is refused at step 01 once the
+/// leaf carries code 1.
+test committed_field_shape_step_01_rejects_a_leaf_with_validity_code_1() fail {
+  let preimage = wrong_stride_preimage()
+  let block = committed_block_with_validity(
+    native_types.TxIsInvalid,
+    spend_inputs_field_index,
+    preimage,
+  )
+  run_step_01(
+    block,
+    body_claim(spend_inputs_field_index, preimage),
+    expected_state(block, spend_inputs_field_index, shape_verdict_wrong_stride),
+  )
+}
+
+/// The code-0 twin of the refusal above: the same builder, field and bytes with
+/// validity code 0 bind.
+test committed_field_shape_step_01_binds_a_leaf_with_validity_code_0() {
+  let preimage = wrong_stride_preimage()
+  let block = committed_block_with_validity(
+    native_types.TxIsValid,
+    spend_inputs_field_index,
+    preimage,
+  )
+  run_step_01(
+    block,
+    body_claim(spend_inputs_field_index, preimage),
+    expected_state(block, spend_inputs_field_index, shape_verdict_wrong_stride),
+  )
+}
+
 // ## Tier-2 carriage (§8.2)
 //
 // A single nothing-but-bytes inline datum at an arbitrary address. Nothing about
@@ -578,7 +681,7 @@ test committed_field_shape_step_01_binds_a_raw_utxo_carriage() {
     fixture.computation_thread_policy_id,
     fixture.hub_oracle_script_hash,
     fixture.test_certificate_policy_id,
-    Some(fixture.step_datum_without_state()),
+    Some(walk_fixture.fresh_step_datum()),
     ct.Continue(
       Args {
         inclusion: fixture.native_inclusion_carriage_v1(block),
@@ -612,7 +715,7 @@ test committed_field_shape_step_01_rejects_a_substituted_raw_utxo_carriage() fai
     fixture.computation_thread_policy_id,
     fixture.hub_oracle_script_hash,
     fixture.test_certificate_policy_id,
-    Some(fixture.step_datum_without_state()),
+    Some(walk_fixture.fresh_step_datum()),
     ct.Continue(
       Args {
         inclusion: fixture.native_inclusion_carriage_v1(block),
@@ -655,7 +758,7 @@ test committed_field_shape_step_01_binds_a_certified_carriage() {
     fixture.computation_thread_policy_id,
     fixture.hub_oracle_script_hash,
     fixture.test_certificate_policy_id,
-    Some(fixture.step_datum_without_state()),
+    Some(walk_fixture.fresh_step_datum()),
     ct.Continue(
       Args {
         inclusion: fixture.native_inclusion_carriage_v1(block),

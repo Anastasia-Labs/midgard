@@ -22,6 +22,7 @@ import { UNUSED_REDEEMER_FAMILY_DEFINITION } from "../unused-redeemer/workflow.j
 import { WITHDRAWAL_MISTAG_FAMILY_DEFINITION } from "../withdrawal-mistag/workflow.js";
 import { WITNESS_SCRIPT_DECODING_FAMILY_DEFINITION } from "../witness-script-decoding/workflow.js";
 import { CANONICAL_DECODABILITY_FAMILY_DEFINITION } from "./canonical-decodability.js";
+import { COMMITTED_FIELD_SHAPE_FAMILY_DEFINITION } from "./committed-field-shape.js";
 import { LINEAR_FAMILY_DEFINITIONS } from "./linear-family-definitions.js";
 
 /**
@@ -31,6 +32,7 @@ import { LINEAR_FAMILY_DEFINITIONS } from "./linear-family-definitions.js";
  */
 type CursorFamilyDefinitions = Readonly<{
   canonicalDecodability: typeof CANONICAL_DECODABILITY_FAMILY_DEFINITION;
+  committedFieldShape: typeof COMMITTED_FIELD_SHAPE_FAMILY_DEFINITION;
   witnessScriptDecoding: typeof WITNESS_SCRIPT_DECODING_FAMILY_DEFINITION;
   transactionOutputNonCanonical: typeof TRANSACTION_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION;
   resolvedOutputNonCanonical: typeof RESOLVED_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION;
@@ -59,6 +61,7 @@ type CursorFamilyDefinitions = Readonly<{
 export const CURSOR_FAMILY_DEFINITIONS: CursorFamilyDefinitions = Object.freeze(
   {
     canonicalDecodability: CANONICAL_DECODABILITY_FAMILY_DEFINITION,
+    committedFieldShape: COMMITTED_FIELD_SHAPE_FAMILY_DEFINITION,
     witnessScriptDecoding: WITNESS_SCRIPT_DECODING_FAMILY_DEFINITION,
     transactionOutputNonCanonical:
       TRANSACTION_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION,

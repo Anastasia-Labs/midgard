@@ -23,9 +23,12 @@ export type SubmitCommittedFieldShapeStep01Result = {
   readonly nextThreadOutRef: string;
   readonly fraudulentHeaderHash: string;
   readonly computationThreadUnit: string;
-  readonly secondStepAddress: string;
+  /** Step 01 while the walk continues, step 02 once it has a verdict. */
+  readonly nextStepAddress: string;
+  readonly complete: boolean;
   readonly evidence: CommittedFieldShapeEvidence;
-  readonly step02State: CommittedFieldShapeStep02State;
+  /** The state step 02 receives; `null` while items remain. */
+  readonly step02State: CommittedFieldShapeStep02State | null;
   readonly inputIndex: number;
   readonly outputIndex: number;
   readonly proofCarriage: "redeemer" | "published-chunks";

@@ -14,6 +14,40 @@ The `user-events/` module builds the L1 transactions for the
 (Shared helpers live in `user-events/internals.ts`, re-exported via
 `user-events/index.ts`.)
 
+## Forced transactions in P1
+
+A forced transaction is submitted as an L1 transaction order. It has two
+different validity intervals:
+
+- The **L1 order** needs a closed interval of at most 600,000 ms (ten minutes).
+- The **enclosed L2 transaction** must omit its validity upper bound. Its lower
+  bound remains unrestricted. Do not copy the L1 expiry into the L2 body.
+
+The missing L2 upper bound lets a forced order remain valid while waiting for
+inclusion, including catch-up. A native script's `before`/`InvalidHereafter`
+branch cannot be satisfied by that interval. Use normal L2 submission for funds
+that require an expiry branch or a Plutus script; P1 forced inclusion does not
+provide an exit for those locks.
+
+The tx-order mint and shared `screenMidgardForcedTxAdmission` predicate require:
+
+| Material                      | P1 rule                                                                                                   |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Spend inputs                  | At least one; fixed-width input encoding.                                                                 |
+| Witness scripts and redeemers | Native witness scripts only; no redeemers.                                                                |
+| Output reference scripts      | Absent.                                                                                                   |
+| Inline datums                 | Allowed; their validity is classified through the normal proof rules.                                     |
+| Auxiliary data                | No auxiliary-data hash.                                                                                   |
+| Output values                 | Each encoded value is at most 5,000 bytes.                                                                |
+| Fixed-stride fields           | Spend/reference inputs, observers, signers and address witnesses use their canonical wrappers and widths. |
+| Mint                          | Well-formed entries, strictly ordered policies and asset names, non-zero quantities.                      |
+| Combined body shape           | A non-empty script-integrity hash and observers cannot be combined with network id 255.                   |
+
+Passing this screen establishes eligibility for the forced route. It does not
+prove sufficient funds, valid signatures, successful ledger execution or
+settlement. Observe the order's authenticated classification and settlement
+before reporting success.
+
 ## Related
 
 - On-chain: [user-event validators](/docs/onchain/user-events)

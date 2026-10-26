@@ -224,6 +224,7 @@ export const boundSentinels = (value: unknown, found = new Set<string>()) => {
  */
 export const NO_DIGEST_FAMILIES = [
   "canonicalDecodability",
+  "committedFieldShape",
   "nativeScriptInvalid",
   "nativeScriptDecoding",
   "mintAuthorization",

@@ -3,6 +3,7 @@ export * from "./catalogue.js";
 export * from "./cek-context.js";
 export * from "./cek-core.js";
 export * from "./cek-selection.js";
+export * from "./committed-field-shape.advance-committed-field-shape-walk.js";
 export * from "./committed-field-shape.js";
 export * from "./computation-threads.js";
 export * from "./contracts/direct-all-purposes.js";

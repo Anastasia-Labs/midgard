@@ -30,6 +30,29 @@ register ──► activate ──► retire ──► (unlock) ──► recove
 
 There is no rekey. A new key is a new operator: it registers a new bond.
 
+## Curated public-testnet participation
+
+P1 public Preprod admits only the operator keys in the deployed operator
+allow-list. Possessing a funded wallet does not authorize another key to
+register. The fixed P1 operator set has no rekey operation: a replacement key
+requires the program's next deployment, rather than changing a local config.
+
+Check `operator-status` before each lifecycle action. Registration locks a bond
+and waits for activation; activation makes the key eligible for shifts;
+retirement stops participation but leaves the bond locked until its reported
+unlock time. `bondRecoverable` and `bondRecoverableFrom` describe when recovery
+is permitted. Status `none` alone does not prove a previous payout or bond
+recovery; reconcile its recorded L1 transaction.
+
+The public profile differs from the short-lived testnet examples below:
+`preprod-public` requires a 100,000 ADA bond, with a 25,000 ADA slashing penalty,
+a 75,000 ADA fraud-prover reward and a 10,000 ADA inactivity penalty. Its
+1,000,000-strike threshold makes automatic ejection out of reach in P1;
+inactivity strikes hand over shifts. Use the actual deployment profile and
+manifest when calculating funding and waiting periods.
+
+For operational holds, see [Operational Runbooks](/docs/operators/node/operational-runbooks).
+
 ## Economics (testnet profile)
 
 All values come from the deployed protocol parameters
