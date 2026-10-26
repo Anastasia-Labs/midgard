@@ -67,12 +67,6 @@ export const plutusScript = (
   return { language, scriptBytes };
 };
 
-/** The accepting UPLC 1.1.0 program `(lam ctx [(lam _ ()) ctx])`. */
-export const acceptingPlutusScript: MidgardVersionedScript = {
-  language: "PlutusV3",
-  scriptBytes: encodeCbor(Buffer.from("0101002324980041", "hex")),
-};
-
 export const nativeScript = (slot: bigint): MidgardVersionedScript => ({
   language: "NativeCardano",
   scriptBytes: Buffer.alloc(0),
@@ -103,6 +97,8 @@ export type IntegritySubjectShape = MissingRedeemerPurposeShape & {
   /** Committed predecessor outputs; spent and referenced by the subject. */
   readonly spend?: readonly LedgerEntry[];
   readonly reference?: readonly LedgerEntry[];
+  /** Committed predecessor outputs the subject neither spends nor references. */
+  readonly padding?: readonly LedgerEntry[];
   readonly integrity: IntegrityHash;
   /** Signs the body with one address witness. */
   readonly signer?: CML.PrivateKey;
@@ -211,13 +207,14 @@ export const scriptLockedEntries = (
 
 const HONEST_SIGNER = CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 0x07));
 
-/** A forced transaction the admission screen accepts and phases before 10
- * pass: it spends one output its witness signs for, and its one observer is a
- * decodable Plutus V3 script carried as a witness with its redeemer. */
+/** A forced transaction L1 admission accepts (`forced_tx_is_admissible_v1`:
+ * a spend input, no redeemers, native-only script witnesses) and phases before
+ * 10 pass: it spends one key-locked output its one address witness signs for,
+ * and carries no script. It walks no language, so its expected hash is the
+ * absent one (`expectedHash()`); any other hash is a mismatch. */
 export const honestForcedShape = (
   integrity: IntegrityHash,
 ): IntegritySubjectShape => ({
-  observers: [{ script: acceptingPlutusScript, redeemer: true }],
   spend: missingRedeemerLedgerEntries(
     0x21,
     [null],
@@ -263,8 +260,14 @@ export const FORCED_ORDER_KEY: SDK.OutputReference = {
   outputIndex: 0n,
 };
 
+const predecessorEntries = (shape: IntegritySubjectShape) => [
+  ...(shape.spend ?? []),
+  ...(shape.reference ?? []),
+  ...(shape.padding ?? []),
+];
+
 const predecessorRoot = async (shape: IntegritySubjectShape) => {
-  const entries = [...(shape.spend ?? []), ...(shape.reference ?? [])];
+  const entries = predecessorEntries(shape);
   return entries.length === 0
     ? SDK.EMPTY_MERKLE_TREE_ROOT
     : await ledgerEntriesRoot(entries);
@@ -286,7 +289,7 @@ export const buildIntegrityBlock = async ({
   readonly prevHeaderHash?: string;
 }) => {
   const nativeTx = buildIntegritySubject(shape);
-  const entries = [...(shape.spend ?? []), ...(shape.reference ?? [])];
+  const entries = predecessorEntries(shape);
   const root = await predecessorRoot(shape);
   const predecessor =
     entries.length === 0

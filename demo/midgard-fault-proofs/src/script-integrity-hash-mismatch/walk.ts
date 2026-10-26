@@ -2,11 +2,7 @@
  * the family entry to the terminal's input: spends, mint policies, required
  * observers, then protected-script receive outputs, folding the language set
  * of every execution. */
-import {
-  decodeMidgardAddressBytes,
-  decodeMidgardLedgerOutputCommitment,
-  decodeMidgardMintPolicyItem,
-} from "@al-ft/midgard-core";
+import { decodeMidgardMintPolicyItem } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
@@ -16,17 +12,22 @@ import {
 } from "../direct-script-derivation/index.js";
 import { grammarPages, pages, stepDatum } from "../missing-redeemer/custody.js";
 import type { MissingRedeemerSourceEvidence } from "../missing-redeemer/source-walk.js";
-import { keyValuePhasMembershipProofs } from "../transition-trace/phas.js";
 import { SCRIPT_INTEGRITY_HASH_MISMATCH_CATEGORY_LABEL } from "./contracts.js";
 import type {
   ScriptIntegrityHashMismatchFieldPlan,
   ScriptIntegrityHashMismatchTransition,
 } from "./custody.js";
+import {
+  type Execution,
+  executionOf,
+  spendWitnesses,
+} from "./walk.executions.js";
 
 const LABEL = SCRIPT_INTEGRITY_HASH_MISMATCH_CATEGORY_LABEL;
 
-/** Items one walk transaction takes, per purpose kind and for grammar
- * certification. */
+/** The most items one walk transaction takes, per purpose kind and for
+ * grammar certification. A purpose page that exceeds one transaction's budget
+ * is taken smaller (`fitScriptIntegrityHashMismatchPage`). */
 export type ScriptIntegrityHashMismatchWalkBatch = Readonly<{
   spend: number;
   mint: number;
@@ -38,60 +39,52 @@ export type ScriptIntegrityHashMismatchWalkBatch = Readonly<{
 export const SCRIPT_INTEGRITY_HASH_MISMATCH_WALK_BATCH: ScriptIntegrityHashMismatchWalkBatch =
   Object.freeze({ spend: 8, mint: 8, observe: 8, receive: 8, grammar: 8 });
 
-type Execution = SDK.DirectAllPurposesExecutionWitness;
+/** The walk roles whose pages open MPF proofs, one or two per item. A spend
+ * page is taken here and resolved by `allPurposesSpendResolve`. */
+export type ScriptIntegrityHashMismatchPagedRole =
+  | "allPurposesSpend"
+  | "allPurposesMint"
+  | "allPurposesObserve"
+  | "allPurposesReceive";
 
-/** The selected source of `scriptHash` with its source-map proof. A purpose
- * whose script has no source cannot complete the walk. */
-const executionOf = async (
-  evidence: MissingRedeemerSourceEvidence,
-  scriptHash: string,
-): Promise<Execution> => {
-  const { selected, proof } = await evidence.lookup(scriptHash);
-  if (selected === null)
-    throw new Error(`${LABEL}: script ${scriptHash} has no source`);
-  return { source: selected, proof };
-};
+const PAGED = {
+  allPurposesSpend: { field: 0, batch: "spend" },
+  allPurposesMint: { field: 5, batch: "mint" },
+  allPurposesObserve: { field: 3, batch: "observe" },
+  allPurposesReceive: { field: 2, batch: "receive" },
+} as const;
 
-/** Each spent item's predecessor descriptor and ledger membership, in raw
- * field order, with the execution of a script-locked input. */
-const spendWitnesses = async (
-  material: DirectScriptMaterial,
-  evidence: MissingRedeemerSourceEvidence,
-): Promise<readonly SDK.DirectAllPurposesSpendWitness[]> => {
-  const descriptors = material.fields[0]!.map((item) => {
-    const entry = material.ledger.root.entries.find((candidate) =>
-      candidate.key.equals(item),
-    );
-    if (entry === undefined)
-      throw new Error(`${LABEL}: spent descriptor absent`);
-    return entry;
-  });
-  const proofs = await keyValuePhasMembershipProofs(
-    material.ledger.root,
-    descriptors,
-  );
-  return await Promise.all(
-    descriptors.map(async (entry, index) => {
-      const credential = decodeMidgardAddressBytes(
-        decodeMidgardLedgerOutputCommitment(entry.value).address,
-      ).paymentCredential;
-      return {
-        descriptor_cbor: entry.value.toString("hex"),
-        proof: proofs[index]!,
-        execution:
-          credential.kind === "Script"
-            ? await executionOf(evidence, credential.hash.toString("hex"))
-            : null,
-      };
-    }),
-  );
-};
+export const isScriptIntegrityHashMismatchPagedRole = (
+  role: string,
+): role is ScriptIntegrityHashMismatchPagedRole => Object.hasOwn(PAGED, role);
+
+/** One page of a paged role at the size taken: the take and its resolve for
+ * spends, one walk transaction otherwise. */
+export type ScriptIntegrityHashMismatchPage = Readonly<{
+  size: number;
+  transitions: readonly ScriptIntegrityHashMismatchTransition[];
+}>;
 
 /** The language and probe facts of a whole walk, as the terminal reads them;
  * native executions add no language. */
 export type ScriptIntegrityHashMismatchWalk = Readonly<{
+  /** The walk at the configured page sizes. */
   transitions: readonly ScriptIntegrityHashMismatchTransition[];
   final: SDK.DirectAllPurposesState;
+  /** The page continuing a thread that holds `datum` at `role`, of `size`
+   * items (the configured maximum by default), never more than remain. */
+  page: (
+    role: ScriptIntegrityHashMismatchPagedRole,
+    datum: string,
+    size?: number,
+  ) => ScriptIntegrityHashMismatchPage;
+  /** The transition continuing a thread that holds `datum` at a paged role,
+   * at the configured maximum, or the resolve of the take that wrote
+   * `datum`. */
+  transitionAt: (
+    role: ScriptIntegrityHashMismatchPagedRole | "allPurposesSpendResolve",
+    datum: string,
+  ) => ScriptIntegrityHashMismatchTransition;
 }>;
 
 export const scriptIntegrityHashMismatchWalkTransitions = async ({
@@ -113,58 +106,104 @@ export const scriptIntegrityHashMismatchWalkTransitions = async ({
   const out: ScriptIntegrityHashMismatchTransition[] = [];
   const walkDatum = (state: SDK.DirectAllPurposesState) =>
     stepDatum(prover, state, SDK.DirectAllPurposesDatum);
-  const admit = (
-    facts: SDK.DirectAllPurposesFacts,
+  const counts = (field: number) => plan(field).items.length;
+
+  const spends = await spendWitnesses(material, evidence);
+  const mints = await Promise.all(
+    material.fields[5]!.map(
+      async (item) =>
+        await executionOf(
+          evidence,
+          Buffer.from(decodeMidgardMintPolicyItem(item).policyId).toString(
+            "hex",
+          ),
+        ),
+    ),
+  );
+  const observers = await Promise.all(
+    material.fields[3]!.map(
+      async (item) => await executionOf(evidence, item.toString("hex")),
+    ),
+  );
+  const receives = await Promise.all(
+    material.fields[2]!.map(async (item) => {
+      const address = directOutputAddress(item);
+      return address.protected && address.paymentCredential.kind === "Script"
+        ? await executionOf(
+            evidence,
+            address.paymentCredential.hash.toString("hex"),
+          )
+        : null;
+    }),
+  );
+
+  // The facts before each item of each purpose field, in walk order (spends,
+  // mints, observers, receives); a field's facts start where the previous
+  // field's end.
+  const factsBefore = new Map<number, readonly SDK.DirectAllPurposesFacts[]>();
+  const fold = (
+    field: number,
+    start: SDK.DirectAllPurposesFacts,
     executions: readonly (Execution | null)[],
-  ) =>
-    executions.reduce(
-      (folded, execution) =>
+  ) => {
+    const folded = [start];
+    for (const execution of executions) {
+      const facts = folded.at(-1)!;
+      folded.push(
         execution === null
-          ? folded
-          : SDK.admitAllPurposesExecution(folded, {
+          ? facts
+          : SDK.admitAllPurposesExecution(facts, {
               scriptHash: execution.source.script_hash,
               languageTag: execution.source.language_tag,
             }),
-      facts,
-    );
-  const counts = (field: number) => plan(field).items.length;
-
-  // Spend field: fixed stride, walking from the entry.
-  let state: SDK.DirectAllPurposesState = {
-    cursor: plan(0).position("Walking", 0).cursor,
-    source_index: evidence.index,
-    facts: { language_bitmap: 0n, probe: null, probe_reached: false },
-    complete: counts(0) === 0,
+      );
+    }
+    factsBefore.set(field, folded);
+    return folded.at(-1)!;
   };
-  out.push({
-    label: "entry",
-    role: "familyEntry",
-    next: state.complete ? "allPurposesMintGrammar" : "allPurposesSpend",
-    datum: walkDatum(state),
-    fields: [0],
-    redeemer: ({ indices, open }) =>
-      Data.to(
-        { Continue: [{ ...indices, opening: open(0) }] },
-        SDK.ScriptIntegrityHashMismatchEntryRedeemer,
+  fold(
+    2,
+    fold(
+      3,
+      fold(
+        5,
+        fold(
+          0,
+          { language_bitmap: 0n, probe: null, probe_reached: false },
+          spends.map((witness) => witness.execution),
+        ),
+        mints,
       ),
+      observers,
+    ),
+    receives,
+  );
+
+  /** The walk state with the first `index` items of `field` walked. */
+  const walking = (
+    field: number,
+    index: number,
+  ): SDK.DirectAllPurposesState => ({
+    cursor: plan(field).position("Walking", index).cursor,
+    source_index: evidence.index,
+    facts: factsBefore.get(field)![index]!,
+    complete: index === counts(field),
   });
-  const spends = await spendWitnesses(material, evidence);
-  for (const [start, budget] of pages(counts(0), batch.spend)) {
-    const end = start + budget;
-    const taken = {
-      ...state,
-      cursor: plan(0).position("Walking", end).cursor,
-      complete: end === counts(0),
-    };
-    out.push({
-      label: `spend take ${start.toString()}`,
+
+  const take = (
+    start: number,
+    size: number,
+  ): ScriptIntegrityHashMismatchTransition => {
+    const end = start + size;
+    return {
+      label: `spend take ${start.toString()} (${size.toString()})`,
       role: "allPurposesSpend",
       next: "allPurposesSpendResolve",
       datum: stepDatum(
         prover,
         {
           resume_script_hash: spendScriptHash,
-          state: taken,
+          state: { ...walking(0, end), facts: walking(0, start).facts },
           pending: plan(0)
             .items.slice(start, end)
             .map((item) => item.toString("hex")),
@@ -181,23 +220,22 @@ export const scriptIntegrityHashMismatchWalkTransitions = async ({
                 opening: open(0),
                 checkpoint_bytes: plan(0).position("Walking", start)
                   .checkpointBytes,
-                count: BigInt(budget),
+                count: BigInt(size),
               },
             ],
           },
           SDK.DirectAllPurposesSpendTakeRedeemer,
         ),
-    });
-    const witnesses = spends.slice(start, end);
-    state = {
-      ...taken,
-      facts: admit(
-        taken.facts,
-        witnesses.map((witness) => witness.execution),
-      ),
     };
-    out.push({
-      label: `spend resolve ${start.toString()}`,
+  };
+  const resolve = (
+    start: number,
+    size: number,
+  ): ScriptIntegrityHashMismatchTransition => {
+    const state = walking(0, start + size);
+    const witnesses = spends.slice(start, start + size);
+    return {
+      label: `spend resolve ${start.toString()} (${size.toString()})`,
       role: "allPurposesSpendResolve",
       next: state.complete ? "allPurposesMintGrammar" : "allPurposesSpend",
       datum: walkDatum(state),
@@ -207,42 +245,115 @@ export const scriptIntegrityHashMismatchWalkTransitions = async ({
           { Continue: [{ ...indices, witnesses: [...witnesses] }] },
           SDK.DirectAllPurposesSpendResolveRedeemer,
         ),
-    });
-  }
-
-  // Mint field: variable, certified before it is walked.
-  state = {
-    ...state,
-    cursor: plan(5).position("Certifying", 0).cursor,
-    complete: false,
+    };
   };
+  const EXHAUSTED = {
+    allPurposesMint: "allPurposesObserveOpen",
+    allPurposesObserve: "allPurposesReceiveGrammar",
+    allPurposesReceive: "terminal",
+  } as const;
+  const walkPage = (
+    role: Exclude<ScriptIntegrityHashMismatchPagedRole, "allPurposesSpend">,
+    start: number,
+    size: number,
+  ): ScriptIntegrityHashMismatchTransition => {
+    const { field } = PAGED[role];
+    const state = walking(field, start + size);
+    const witnesses =
+      role === "allPurposesMint"
+        ? mints
+        : role === "allPurposesObserve"
+          ? observers
+          : receives;
+    const page = witnesses.slice(start, start + size);
+    return {
+      label: `field ${field.toString()} walk ${start.toString()} (${size.toString()})`,
+      role,
+      next: state.complete ? EXHAUSTED[role] : role,
+      datum: walkDatum(state),
+      fields: [field],
+      redeemer: ({ indices, open }) =>
+        Data.to(
+          {
+            Continue: [
+              {
+                ...indices,
+                opening: open(field),
+                checkpoint_bytes: plan(field).position("Walking", start)
+                  .checkpointBytes,
+                witnesses: [...page],
+              },
+            ],
+          } as never,
+          role === "allPurposesReceive"
+            ? SDK.DirectAllPurposesReceiveRedeemer
+            : SDK.DirectAllPurposesExecutionRedeemer,
+        ),
+    };
+  };
+  const pageAt = (
+    role: ScriptIntegrityHashMismatchPagedRole,
+    start: number,
+    size: number,
+  ): ScriptIntegrityHashMismatchPage => ({
+    size,
+    transitions:
+      role === "allPurposesSpend"
+        ? [take(start, size), resolve(start, size)]
+        : [walkPage(role, start, size)],
+  });
+  const walkPages = (role: ScriptIntegrityHashMismatchPagedRole) => {
+    const { field, batch: kind } = PAGED[role];
+    for (const [start, size] of pages(counts(field), batch[kind]))
+      out.push(...pageAt(role, start, size).transitions);
+  };
+
+  // Spend field: fixed stride, walking from the entry.
+  let state = walking(0, 0);
   out.push({
-    label: "mint open",
-    role: "allPurposesMintGrammar",
-    next: "allPurposesMintGrammar",
+    label: "entry",
+    role: "familyEntry",
+    next: state.complete ? "allPurposesMintGrammar" : "allPurposesSpend",
     datum: walkDatum(state),
-    fields: [5],
+    fields: [0],
     redeemer: ({ indices, open }) =>
       Data.to(
-        { Continue: [{ Open: { ...indices, opening: open(5) } }] },
-        SDK.DirectAllPurposesGrammarRedeemer,
+        { Continue: [{ ...indices, opening: open(0) }] },
+        SDK.ScriptIntegrityHashMismatchEntryRedeemer,
       ),
   });
+  walkPages("allPurposesSpend");
+
+  /** Certifies a variable field before it is walked. */
   const certify = (
     field: 5 | 2,
+    label: string,
     role: "allPurposesMintGrammar" | "allPurposesReceiveGrammar",
-    walking: ScriptIntegrityHashMismatchTransition["next"],
+    walkingRole: ScriptIntegrityHashMismatchTransition["next"],
     exhausted: ScriptIntegrityHashMismatchTransition["next"],
   ) => {
+    state = {
+      ...state,
+      cursor: plan(field).position("Certifying", 0).cursor,
+      complete: false,
+    };
+    out.push({
+      label,
+      role,
+      next: role,
+      datum: walkDatum(state),
+      fields: [field],
+      redeemer: ({ indices, open }) =>
+        Data.to(
+          { Continue: [{ Open: { ...indices, opening: open(field) } }] },
+          SDK.DirectAllPurposesGrammarRedeemer,
+        ),
+    });
     const count = counts(field);
     for (const [start, budget] of grammarPages(count, batch.grammar)) {
       const last = start + budget >= count;
       state = last
-        ? {
-            ...state,
-            cursor: plan(field).position("Walking", 0).cursor,
-            complete: count === 0,
-          }
+        ? walking(field, 0)
         : {
             ...state,
             cursor: plan(field).position("Certifying", start + budget).cursor,
@@ -250,7 +361,7 @@ export const scriptIntegrityHashMismatchWalkTransitions = async ({
       out.push({
         label: `field ${field.toString()} grammar ${start.toString()}`,
         role,
-        next: last ? (count === 0 ? exhausted : walking) : role,
+        next: last ? (count === 0 ? exhausted : walkingRole) : role,
         datum: walkDatum(state),
         fields: [field],
         redeemer: ({ indices, open }) =>
@@ -273,81 +384,20 @@ export const scriptIntegrityHashMismatchWalkTransitions = async ({
       });
     }
   };
+
+  // Mint field: variable, certified before it is walked.
+  state = walking(0, counts(0));
   certify(
     5,
+    "mint open",
     "allPurposesMintGrammar",
     "allPurposesMint",
     "allPurposesObserveOpen",
   );
-  const mints = await Promise.all(
-    material.fields[5]!.map(
-      async (item) =>
-        await executionOf(
-          evidence,
-          Buffer.from(decodeMidgardMintPolicyItem(item).policyId).toString(
-            "hex",
-          ),
-        ),
-    ),
-  );
-  const walkPages = <W>(
-    field: 5 | 3 | 2,
-    role: "allPurposesMint" | "allPurposesObserve" | "allPurposesReceive",
-    size: number,
-    witnesses: readonly W[],
-    exhausted: ScriptIntegrityHashMismatchTransition["next"],
-    redeemer: (args: Record<string, unknown>, page: readonly W[]) => string,
-    executions: (page: readonly W[]) => readonly (Execution | null)[],
-  ) => {
-    const count = counts(field);
-    for (const [start, budget] of pages(count, size)) {
-      const end = start + budget;
-      const page = witnesses.slice(start, end);
-      state = {
-        ...state,
-        cursor: plan(field).position("Walking", end).cursor,
-        facts: admit(state.facts, executions(page)),
-        complete: end === count,
-      };
-      out.push({
-        label: `field ${field.toString()} walk ${start.toString()}`,
-        role,
-        next: state.complete ? exhausted : role,
-        datum: walkDatum(state),
-        fields: [field],
-        redeemer: ({ indices, open }) =>
-          redeemer(
-            {
-              ...indices,
-              opening: open(field),
-              checkpoint_bytes: plan(field).position("Walking", start)
-                .checkpointBytes,
-            },
-            page,
-          ),
-      });
-    }
-  };
-  walkPages(
-    5,
-    "allPurposesMint",
-    batch.mint,
-    mints,
-    "allPurposesObserveOpen",
-    (args, page) =>
-      Data.to(
-        { Continue: [{ ...args, witnesses: [...page] }] } as never,
-        SDK.DirectAllPurposesExecutionRedeemer,
-      ),
-    (page) => page,
-  );
+  walkPages("allPurposesMint");
 
   // Required observers: fixed stride, walking from their opening.
-  state = {
-    ...state,
-    cursor: plan(3).position("Walking", 0).cursor,
-    complete: counts(3) === 0,
-  };
+  state = walking(3, 0);
   out.push({
     label: "observers open",
     role: "allPurposesObserveOpen",
@@ -360,73 +410,75 @@ export const scriptIntegrityHashMismatchWalkTransitions = async ({
         SDK.DirectAllPurposesOpenRedeemer,
       ),
   });
-  const observers = await Promise.all(
-    material.fields[3]!.map(
-      async (item) => await executionOf(evidence, item.toString("hex")),
-    ),
-  );
-  walkPages(
-    3,
-    "allPurposesObserve",
-    batch.observe,
-    observers,
-    "allPurposesReceiveGrammar",
-    (args, page) =>
-      Data.to(
-        { Continue: [{ ...args, witnesses: [...page] }] } as never,
-        SDK.DirectAllPurposesExecutionRedeemer,
-      ),
-    (page) => page,
-  );
+  walkPages("allPurposesObserve");
 
   // Receive outputs: variable, certified before they are walked.
-  state = {
-    ...state,
-    cursor: plan(2).position("Certifying", 0).cursor,
-    complete: false,
-  };
-  out.push({
-    label: "receive open",
-    role: "allPurposesReceiveGrammar",
-    next: "allPurposesReceiveGrammar",
-    datum: walkDatum(state),
-    fields: [2],
-    redeemer: ({ indices, open }) =>
-      Data.to(
-        { Continue: [{ Open: { ...indices, opening: open(2) } }] },
-        SDK.DirectAllPurposesGrammarRedeemer,
-      ),
-  });
-  certify(2, "allPurposesReceiveGrammar", "allPurposesReceive", "terminal");
-  const receives = await Promise.all(
-    material.fields[2]!.map(async (item) => {
-      const address = directOutputAddress(item);
-      return address.protected && address.paymentCredential.kind === "Script"
-        ? await executionOf(
-            evidence,
-            address.paymentCredential.hash.toString("hex"),
-          )
-        : null;
-    }),
-  );
-  walkPages(
+  state = walking(3, counts(3));
+  certify(
     2,
+    "receive open",
+    "allPurposesReceiveGrammar",
     "allPurposesReceive",
-    batch.receive,
-    receives,
     "terminal",
-    (args, page) =>
-      Data.to(
-        { Continue: [{ ...args, witnesses: [...page] }] } as never,
-        SDK.DirectAllPurposesReceiveRedeemer,
-      ),
-    (page) => page,
   );
-  if (
-    !state.complete ||
-    state.cursor.field_index !== 2n ||
-    out.at(-1)!.next !== "terminal"
-  )
+  walkPages("allPurposesReceive");
+  const final = walking(2, counts(2));
+  if (out.at(-1)!.next !== "terminal" || out.at(-1)!.datum !== walkDatum(final))
     throw new Error(`${LABEL}: the walk does not reach the terminal`);
-  return { transitions: out, final: state };
+
+  // A thread datum names its page by the walk checkpoint it holds.
+  const checkpoints = new Map<number, ReadonlyMap<string, number>>();
+  const walkedTo = (cursor: SDK.DirectFieldCursor, field: number): number => {
+    if (cursor.field_index !== BigInt(field) || cursor.phase !== "Walking")
+      throw new Error(
+        `${LABEL}: thread datum does not walk field ${field.toString()}`,
+      );
+    let index = checkpoints.get(field);
+    if (index === undefined) {
+      index = new Map(
+        Array.from({ length: counts(field) + 1 }, (_, at) => [
+          plan(field)
+            .position("Walking", at)
+            .cursor.checkpoint_hash.toLowerCase(),
+          at,
+        ]),
+      );
+      checkpoints.set(field, index);
+    }
+    const at = index.get(cursor.checkpoint_hash.toLowerCase());
+    if (at === undefined)
+      throw new Error(`${LABEL}: thread datum names no walk checkpoint`);
+    return at;
+  };
+  const same = (left: string, right: string) =>
+    left.toLowerCase() === right.toLowerCase();
+  const page: ScriptIntegrityHashMismatchWalk["page"] = (role, datum, size) => {
+    const { field, batch: kind } = PAGED[role];
+    const held = Data.from(datum, SDK.DirectAllPurposesDatum).data;
+    if (held === null) throw new Error(`${LABEL}: thread datum holds no walk`);
+    const start = walkedTo(held.cursor, field);
+    if (!same(walkDatum(walking(field, start)), datum))
+      throw new Error(`${LABEL}: thread datum differs from the planned walk`);
+    const taken = Math.min(size ?? batch[kind], counts(field) - start);
+    if (!Number.isSafeInteger(taken) || taken < 1)
+      throw new Error(`${LABEL}: a ${role} page takes at least one item`);
+    return pageAt(role, start, taken);
+  };
+  return {
+    transitions: out,
+    final,
+    page,
+    transitionAt: (role, datum) => {
+      if (role !== "allPurposesSpendResolve")
+        return page(role, datum).transitions[0]!;
+      const held = Data.from(datum, SDK.DirectAllPurposesPendingDatum).data;
+      if (held === null)
+        throw new Error(`${LABEL}: thread datum holds no pending spends`);
+      const size = held.pending.length;
+      const start = walkedTo(held.state.cursor, 0) - size;
+      if (size < 1 || start < 0 || !same(take(start, size).datum, datum))
+        throw new Error(`${LABEL}: thread datum differs from the planned take`);
+      return resolve(start, size);
+    },
+  };
 };

@@ -9,17 +9,22 @@ import {
   publishFaultProofFieldCarriage,
 } from "../../src/field-opening.js";
 import {
+  fitScriptIntegrityHashMismatchPage,
+  isScriptIntegrityHashMismatchPagedRole,
   prepareScriptIntegrityHashMismatchProof,
   SCRIPT_INTEGRITY_HASH_MISMATCH_FIELDS,
   scriptIntegrityHashMismatchContractRoles,
   type ScriptIntegrityHashMismatchCustody,
   type ScriptIntegrityHashMismatchProofPlan,
   type ScriptIntegrityHashMismatchRole,
+  scriptIntegrityHashMismatchStep01Datum,
+  scriptIntegrityHashMismatchTransitionAt,
   type ScriptIntegrityHashMismatchWalkBatch,
   submitScriptIntegrityHashMismatchInit,
   submitScriptIntegrityHashMismatchStep01Accepted,
   submitScriptIntegrityHashMismatchStep01Forced,
   submitScriptIntegrityHashMismatchTerminal,
+  submitScriptIntegrityHashMismatchTransition,
   submitScriptIntegrityHashMismatchTransitions,
 } from "../../src/script-integrity-hash-mismatch/index.js";
 import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
@@ -190,12 +195,52 @@ export type StepMeasurement = {
 
 /** Genuine Init, the source-appropriate step-01, and the planned custody up
  * to the terminal's input. Every thread transaction is measured. */
+/** Continues the thread role by role from the thread datum to the
+ * terminal's input, as the workflow does: each page that opens MPF proofs is
+ * sized to the transaction budget. */
+const continueToTerminal = async (
+  custody: ScriptIntegrityHashMismatchCustody,
+  prepared: ScriptIntegrityHashMismatchProofPlan,
+  start: UTxO,
+  scenario: IntegrityScenario,
+): Promise<UTxO> => {
+  const transitionAt = scriptIntegrityHashMismatchTransitionAt(
+    prepared,
+    scriptIntegrityHashMismatchStep01Datum(
+      scenario.material,
+      custody.signer.paymentKeyHash,
+    ),
+  );
+  let thread = start;
+  let role = prepared.transitions[0]!.role;
+  while (role !== "terminal") {
+    const transition = isScriptIntegrityHashMismatchPagedRole(role)
+      ? await fitScriptIntegrityHashMismatchPage({
+          custody,
+          walk: prepared.walk,
+          role,
+          thread,
+        })
+      : transitionAt(role, thread.datum!);
+    thread = (
+      await submitScriptIntegrityHashMismatchTransition(
+        custody,
+        thread,
+        transition,
+      )
+    ).thread;
+    role = transition.next;
+  }
+  return thread;
+};
+
 export const driveScriptIntegrityHashMismatchThread = async ({
   harness,
   scenario,
   references,
   batch,
   transitions,
+  beforeStep01,
 }: {
   readonly harness: ScriptIntegrityHashMismatchHarness;
   readonly scenario: IntegrityScenario;
@@ -208,6 +253,13 @@ export const driveScriptIntegrityHashMismatchThread = async ({
   readonly transitions?: (
     prepared: ScriptIntegrityHashMismatchProofPlan,
   ) => ScriptIntegrityHashMismatchProofPlan["transitions"];
+  /** Runs against the Init thread before step-01 spends it (e.g. a forged
+   * step-01 the validator must refuse). */
+  readonly beforeStep01?: (args: {
+    readonly thread: UTxO;
+    readonly unit: string;
+    readonly prepared: ScriptIntegrityHashMismatchProofPlan;
+  }) => Promise<void>;
 }) => {
   const { proverLucid, scriptIntegrityHashMismatch, proverSigner } = harness;
   const steps: StepMeasurement[] = [];
@@ -247,6 +299,18 @@ export const driveScriptIntegrityHashMismatchThread = async ({
     }),
   );
   steps.push({ label: "init", measurement: init.measurement });
+  if (beforeStep01 !== undefined) {
+    const [txHash, outputIndex] = init.result.nextThreadOutRef.split("#");
+    const [thread] = await proverLucid.utxosByOutRef([
+      { txHash: txHash!, outputIndex: Number(outputIndex) },
+    ]);
+    if (thread === undefined) throw new Error("Init thread output absent");
+    await beforeStep01({
+      thread,
+      unit: init.result.computationThreadUnit,
+      prepared,
+    });
+  }
   const common = {
     lucid: proverLucid,
     contracts: scriptIntegrityHashMismatch,
@@ -297,11 +361,14 @@ export const driveScriptIntegrityHashMismatchThread = async ({
     },
   ]);
   if (start === undefined) throw new Error("step-01 thread output absent");
-  const thread = await submitScriptIntegrityHashMismatchTransitions(
-    custody,
-    start,
-    transitions?.(prepared) ?? prepared.transitions,
-  );
+  const thread =
+    transitions === undefined
+      ? await continueToTerminal(custody, prepared, start, scenario)
+      : await submitScriptIntegrityHashMismatchTransitions(
+          custody,
+          start,
+          transitions(prepared),
+        );
   /** `at` is the terminal's input when the caller advanced the thread. */
   const terminal = (requireConviction = true, at: UTxO = thread) =>
     captureEmulatorSubmission(harness.emulator, () =>

@@ -26,6 +26,7 @@ import {
   type ScriptIntegrityHashMismatchProofPlan,
 } from "./prover.js";
 import { scriptIntegrityHashMismatchStep01Datum } from "./step01.js";
+import { isScriptIntegrityHashMismatchPagedRole } from "./walk.js";
 
 export type PlannedScriptIntegrityHashMismatchArtifact = Readonly<{
   admitted: AdmittedScriptIntegrityHashMismatchArtifact;
@@ -38,6 +39,36 @@ export type PlannedScriptIntegrityHashMismatchArtifact = Readonly<{
     datum: string,
   ) => ScriptIntegrityHashMismatchTransition;
 }>;
+
+/** The transition continuing a thread at `role` that holds `datum`: a paged
+ * walk role continues from the walk checkpoint its datum holds, at the
+ * configured page size; every other role continues as planned after the
+ * transition that wrote `datum` (`step01Datum` before the first). */
+export const scriptIntegrityHashMismatchTransitionAt =
+  (proof: ScriptIntegrityHashMismatchProofPlan, step01Datum: string) =>
+  (
+    role: ScriptIntegrityHashMismatchRole,
+    datum: string,
+  ): ScriptIntegrityHashMismatchTransition => {
+    if (
+      isScriptIntegrityHashMismatchPagedRole(role) ||
+      role === "allPurposesSpendResolve"
+    )
+      return proof.walk.transitionAt(role, datum);
+    const matches = proof.transitions.filter(
+      (transition, index) =>
+        transition.role === role &&
+        (index === 0
+          ? step01Datum
+          : proof.transitions[index - 1]!.datum
+        ).toLowerCase() === datum.toLowerCase(),
+    );
+    if (matches.length !== 1)
+      throw new Error(
+        `scriptIntegrityHashMismatch ${role} thread datum matches ${matches.length.toString()} planned transitions`,
+      );
+    return matches[0]!;
+  };
 
 const plan = async (
   artifact: JournalJsonObject,
@@ -65,21 +96,7 @@ const plan = async (
     admitted,
     proof,
     fieldsOf: (role) => [...(fields.get(role) ?? [])].sort((l, r) => l - r),
-    transitionAt: (role, datum) => {
-      const matches = proof.transitions.filter(
-        (transition, index) =>
-          transition.role === role &&
-          (index === 0
-            ? step01Datum
-            : proof.transitions[index - 1]!.datum
-          ).toLowerCase() === datum.toLowerCase(),
-      );
-      if (matches.length !== 1)
-        throw new Error(
-          `scriptIntegrityHashMismatch ${role} thread datum matches ${matches.length.toString()} planned transitions`,
-        );
-      return matches[0]!;
-    },
+    transitionAt: scriptIntegrityHashMismatchTransitionAt(proof, step01Datum),
   });
 };
 

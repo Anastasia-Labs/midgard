@@ -37,6 +37,7 @@ import {
   sharedSourceTransition,
 } from "./custody.js";
 import {
+  type ScriptIntegrityHashMismatchWalk,
   type ScriptIntegrityHashMismatchWalkBatch,
   scriptIntegrityHashMismatchWalkTransitions,
 } from "./walk.js";
@@ -138,6 +139,8 @@ export type ScriptIntegrityHashMismatchProofPlan = {
   readonly transitions: readonly ScriptIntegrityHashMismatchTransition[];
   /** The completed walk the terminal reads. */
   readonly final: SDK.DirectAllPurposesState;
+  /** The all-purposes walk, paged from any thread datum it holds. */
+  readonly walk: ScriptIntegrityHashMismatchWalk;
   readonly committed: string;
   readonly expected: string;
   readonly mismatch: boolean;
@@ -182,6 +185,7 @@ export const prepareScriptIntegrityHashMismatchProof = async ({
     plan,
     transitions: [...source, ...walk.transitions],
     final: walk.final,
+    walk,
     ...scriptIntegrityHashMismatchVerdict(
       material,
       walk.final.facts.language_bitmap,

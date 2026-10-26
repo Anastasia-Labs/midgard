@@ -1,6 +1,7 @@
 export * from "./artifact.js";
 export * from "./contracts.js";
 export * from "./custody.js";
+export * from "./fit.js";
 export * from "./init.js";
 export * from "./prover.js";
 export * from "./replay.js";

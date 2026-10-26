@@ -37,12 +37,17 @@ import type {
   ScriptIntegrityHashMismatchContracts,
   ScriptIntegrityHashMismatchRole,
 } from "./contracts.js";
+import { fitScriptIntegrityHashMismatchPage } from "./fit.js";
 import {
   submitScriptIntegrityHashMismatchStep01Accepted,
   submitScriptIntegrityHashMismatchStep01Forced,
 } from "./step01.js";
-import { submitScriptIntegrityHashMismatchTransition } from "./submit.js";
+import {
+  type ScriptIntegrityHashMismatchCustody,
+  submitScriptIntegrityHashMismatchTransition,
+} from "./submit.js";
 import { submitScriptIntegrityHashMismatchTerminal } from "./terminal.js";
+import { isScriptIntegrityHashMismatchPagedRole } from "./walk.js";
 import {
   planScriptIntegrityHashMismatchArtifact,
   scriptIntegrityHashMismatchSourceInclusion,
@@ -258,9 +263,9 @@ export const createScriptIntegrityHashMismatchTransactionPort = (
               return;
             }
             const thread = await threadAt(config.lucid, threadOutRef);
-            const transition = plan.transitionAt(role, thread.datum);
+            const continued = plan.transitionAt(role, thread.datum);
             const carriage = new Map<number, readonly UTxO[]>();
-            for (const field of transition.fields) {
+            for (const field of continued.fields) {
               const opening = plan.proof.plan(field).openingPlan;
               if (opening.plan.tier === "Inline") continue;
               const published =
@@ -293,21 +298,31 @@ export const createScriptIntegrityHashMismatchTransactionPort = (
                 ...(certificate === undefined ? [] : [certificate]),
               ]);
             }
+            const custody: ScriptIntegrityHashMismatchCustody = {
+              lucid: config.lucid,
+              blueprint: config.binding.blueprint,
+              network: config.binding.network,
+              contracts: config.contracts,
+              signer: config.signer,
+              unit: threadUnit(thread, config.contracts),
+              references: reference,
+              carriage: (field) => carriage.get(field) ?? [],
+              plan: plan.proof.plan,
+              witnessReferenceScripts: config.references.witnesses,
+              preSubmitBoundary,
+              awaitConfirmation: false,
+            };
+            // A page that opens MPF proofs is sized to the transaction budget.
+            const transition = isScriptIntegrityHashMismatchPagedRole(role)
+              ? await fitScriptIntegrityHashMismatchPage({
+                  custody,
+                  walk: plan.proof.walk,
+                  role,
+                  thread,
+                })
+              : continued;
             await submitScriptIntegrityHashMismatchTransition(
-              {
-                lucid: config.lucid,
-                blueprint: config.binding.blueprint,
-                network: config.binding.network,
-                contracts: config.contracts,
-                signer: config.signer,
-                unit: threadUnit(thread, config.contracts),
-                references: reference,
-                carriage: (field) => carriage.get(field) ?? [],
-                plan: plan.proof.plan,
-                witnessReferenceScripts: config.references.witnesses,
-                preSubmitBoundary,
-                awaitConfirmation: false,
-              },
+              custody,
               thread,
               transition,
             );
