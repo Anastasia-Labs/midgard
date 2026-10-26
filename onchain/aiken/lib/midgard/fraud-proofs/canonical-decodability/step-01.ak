@@ -2,8 +2,24 @@ use midgard/computation_thread as ct
 use midgard/fraud_proofs/canonical_decodability/rule.{CommittedFieldClaimV1}
 use midgard/fraud_proofs/common.{NativeTxInclusionCarriage}
 
+/// The thread state between two batches of one field's §5.1 walk: which
+/// transaction and slot are being read, how many items are still owed, and the
+/// byte the next batch starts at.
+///
+/// Only step 01 writes it, and only at its own address: the thread is minted
+/// with no state, and step 01 is the only script that produces one at step 01.
+/// So a `WalkState` a step reads is the one the previous batch derived from the
+/// same committed bytes, and the batch that resumes it re-authenticates those
+/// bytes and checks the slot and the transaction against it.
+pub type WalkState {
+  bad_tx_id: ByteArray,
+  field_index: Int,
+  remaining: Int,
+  offset: Int,
+}
+
 pub type Datum =
-  ct.StepDatum<Data>
+  ct.StepDatum<WalkState>
 
 /// The inclusion carriage every native family's step-01 takes, plus the one
 /// thing this family adds: **which** committed field is accused and how its
