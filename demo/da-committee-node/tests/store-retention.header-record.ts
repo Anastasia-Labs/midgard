@@ -153,4 +153,7 @@ export const LIVE_A = hashOf(201);
 
 export const LIVE_B = hashOf(202);
 
-export const PAST_HORIZON = NOW - REQUIRED_RETENTION_MS - 1;
+export const PROMISED_RETENTION_MS =
+  MIDGARD_RETENTION_WINDOW.deployedRetentionMs;
+
+export const PAST_RETENTION = NOW - PROMISED_RETENTION_MS - 1;

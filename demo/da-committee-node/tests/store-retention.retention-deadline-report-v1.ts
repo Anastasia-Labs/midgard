@@ -21,6 +21,7 @@ import {
   LIVE_B,
   NOW,
   openStore,
+  PROMISED_RETENTION_MS,
   REQUIRED_RETENTION_MS,
   retentionOptions,
   seed,
@@ -71,7 +72,7 @@ describe("retentionDeadlineReportV1", () => {
       (
         await runRetentionCycle(
           store,
-          retentionOptions(blockTimeMs + REQUIRED_RETENTION_MS + 1),
+          retentionOptions(blockTimeMs + PROMISED_RETENTION_MS + 1),
         )
       ).prune.prunedHeaderHashes,
     ).toEqual([headerHash]);
@@ -301,7 +302,7 @@ describe("runRetentionCycleV1", () => {
         },
         {
           headerHash: expired,
-          endTimeMs: NOW - REQUIRED_RETENTION_MS - 1,
+          endTimeMs: NOW - PROMISED_RETENTION_MS - 1,
           status: "attested",
         },
         { headerHash: removed, status: "removed" },
