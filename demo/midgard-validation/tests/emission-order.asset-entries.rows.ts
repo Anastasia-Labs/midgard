@@ -25,6 +25,11 @@ import {
  * native policy, quantity 1). Fifteen spends fold 15,360 entries and one
  * output paying the units back folds 1,024 more: exactly the bound. The
  * crossing rows add one entry in the input, output or mint fold.
+ *
+ * Each row also pins the entry count after steps inside its walk: the replay
+ * of a reference input holding the units, which counts none of them, and in
+ * each fold the step that takes the count to exactly the bound, which the
+ * machine must accept.
  */
 
 const LIMIT = MIDGARD_CONSENSUS_LIMITS.maxDistinctAssetCount;
@@ -35,16 +40,17 @@ const INPUT_LOVELACE = 10_000_000n;
 const nameHex = (name: number): string =>
   Buffer.from([name >> 8, name & 0xff]).toString("hex");
 
-/** The 1,024 units, unit `n` at `quantityOf(n)`. */
+/** The first `count` of the 1,024 units, unit `n` at `quantityOf(n)`. */
 const units = (
   quantityOf: (unit: number) => bigint,
+  count = UNITS,
 ): Map<string, Map<string, bigint>> =>
   new Map([
     [
       NATIVE_POLICY,
       new Map(
         Array.from(
-          { length: UNITS },
+          { length: count },
           (_, unit) => [nameHex(unit), quantityOf(unit)] as const,
         ),
       ),
@@ -67,6 +73,14 @@ const stateOf = (spends: readonly Buffer[]) =>
 const spends = spendsOf(SPENDS);
 const paidIn = INPUT_LOVELACE * BigInt(SPENDS);
 
+/**
+ * A reference input holding the 1,024 units. Its out-ref sorts between the
+ * eighth and the ninth spend, so the replay reaches it mid-walk, after 8,192
+ * input entries.
+ */
+const reference = outRefFromByte(0x27, 1n);
+const SPENDS_BEFORE_REFERENCE = 8;
+
 /** One output paying every unit and all the lovelace back: 1,024 entries. */
 const payBack = makeOutput(
   paidIn,
@@ -76,13 +90,30 @@ const payBack = makeOutput(
 
 export const ASSET_ENTRY_ROWS: readonly Row[] = [
   {
-    // 15,360 input entries and 1,024 output entries: exactly the bound.
+    // 15,360 input entries and 1,024 output entries: exactly the bound. The
+    // reference input's 1,024 units are no entries.
     name: "f_asset_entries_at_bound",
     kind: "accept",
     guard: true,
-    state: stateOf(spends),
-    tx: { spendInputs: spends, outputs: [payBack] },
+    state: [...stateOf(spends), [reference, holdingAll(INPUT_LOVELACE)]],
+    tx: {
+      spendInputs: spends,
+      referenceInputs: [reference],
+      outputs: [payBack],
+    },
     expected: null,
+    countedSteps: [
+      {
+        name: "reference_input",
+        at: { referenceInput: 0 },
+        entryCount: SPENDS_BEFORE_REFERENCE * UNITS,
+      },
+      {
+        name: "output_at_bound",
+        at: { output: 0, asset: UNITS - 1 },
+        entryCount: LIMIT,
+      },
+    ],
   },
   {
     // A sixteenth spend fills the bound in the input fold; a seventeenth
@@ -108,6 +139,14 @@ export const ASSET_ENTRY_ROWS: readonly Row[] = [
         InputAssetAccumulationLimit: { input_index: -1n, asset_index: 0n },
       },
     },
+    countedSteps: [
+      {
+        // The sixteenth spend's last unit.
+        name: "input_at_bound",
+        at: { spendInput: SPENDS, asset: UNITS - 1 },
+        entryCount: LIMIT,
+      },
+    ],
   },
   {
     // Output 0 fills the bound; output 1 pays back one unit 0 the inputs
@@ -139,8 +178,9 @@ export const ASSET_ENTRY_ROWS: readonly Row[] = [
     },
   },
   {
-    // The inputs and the output fill the bound; burning one unit 0 is the
-    // entry past it.
+    // The inputs and an output paying back every unit but the last fold one
+    // entry short of the bound. Burning one unit 0 fills it; burning the last
+    // unit is the entry past it.
     name: "f_asset_entries_mint_crossing",
     kind: "refusal",
     guard: false,
@@ -151,14 +191,17 @@ export const ASSET_ENTRY_ROWS: readonly Row[] = [
         makeOutput(
           paidIn,
           KEY_ADDRESS,
-          units((unit) => BigInt(unit === 0 ? SPENDS - 1 : SPENDS)),
+          units((unit) => BigInt(unit === 0 ? SPENDS - 1 : SPENDS), UNITS - 1),
         ),
       ],
       mintPreimageCbor: makeMintPreimageCbor(
         new Map([
           [
             Buffer.from(NATIVE_POLICY, "hex"),
-            new Map([[Buffer.from(nameHex(0), "hex"), -1n]]),
+            new Map([
+              [Buffer.from(nameHex(0), "hex"), -1n],
+              [Buffer.from(nameHex(UNITS - 1), "hex"), -BigInt(SPENDS)],
+            ]),
           ],
         ]),
       ),
@@ -166,7 +209,10 @@ export const ASSET_ENTRY_ROWS: readonly Row[] = [
     },
     expected: {
       code: RejectCodes.AssetCount,
-      reason: { MintAssetAccumulationLimit: { mint_index: 0n } },
+      reason: { MintAssetAccumulationLimit: { mint_index: 1n } },
     },
+    countedSteps: [
+      { name: "mint_at_bound", at: { mint: 0 }, entryCount: LIMIT },
+    ],
   },
 ];
