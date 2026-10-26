@@ -12,6 +12,7 @@ import { OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_DEFINITION } from "../output-re
 import { PROTECTED_OUTPUT_SIGNER_MISSING_FAMILY_DEFINITION } from "../protected-output-signer-missing/authenticated-workflow.js";
 import { REDEEMER_CANONICITY_FAMILY_DEFINITION } from "../redeemer-canonicity/runtime.js";
 import { RESOLVED_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION } from "../resolved-output-non-canonical/authenticated-workflow.js";
+import { SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_DEFINITION } from "../script-integrity-hash-mismatch/workflow.js";
 import { SCRIPT_INTEGRITY_HASH_MISSING_FAMILY_DEFINITION } from "../script-integrity-hash-missing/v1.js";
 import { SPEND_INPUT_SIGNER_MISSING_FAMILY_DEFINITION } from "../spend-input-signer-missing/authenticated-workflow.js";
 import { TRANSACTION_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION } from "../transaction-output-non-canonical/workflow.js";
@@ -46,6 +47,7 @@ type CursorFamilyDefinitions = Readonly<{
   scriptIntegrityHashMissing: typeof SCRIPT_INTEGRITY_HASH_MISSING_FAMILY_DEFINITION;
   withdrawalMistag: typeof WITHDRAWAL_MISTAG_FAMILY_DEFINITION;
   missingRedeemer: typeof MISSING_REDEEMER_FAMILY_DEFINITION;
+  scriptIntegrityHashMismatch: typeof SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_DEFINITION;
 }>;
 
 export const CURSOR_FAMILY_DEFINITIONS: CursorFamilyDefinitions = Object.freeze(
@@ -73,6 +75,8 @@ export const CURSOR_FAMILY_DEFINITIONS: CursorFamilyDefinitions = Object.freeze(
     scriptIntegrityHashMissing: SCRIPT_INTEGRITY_HASH_MISSING_FAMILY_DEFINITION,
     withdrawalMistag: WITHDRAWAL_MISTAG_FAMILY_DEFINITION,
     missingRedeemer: MISSING_REDEEMER_FAMILY_DEFINITION,
+    scriptIntegrityHashMismatch:
+      SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_DEFINITION,
   },
 );
 

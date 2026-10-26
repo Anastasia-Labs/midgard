@@ -8,9 +8,9 @@ export const validationTraceCekResolversMembers = defineDeploymentFamily(
     validationTraceDisputeCekPrepare: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK prepare",
-      manifestPosition: 570,
-      publicationPosition: 565,
-      referenceRolePosition: 565,
+      manifestPosition: 586,
+      publicationPosition: 581,
+      referenceRolePosition: 581,
       commands: [],
       validatorTitle: "fraud_proofs/validation_trace/cek_v1.main.spend",
       familyPaths: [
@@ -22,9 +22,9 @@ export const validationTraceCekResolversMembers = defineDeploymentFamily(
     validationTraceDisputeCekFinishSemantic: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK finish semantic",
-      manifestPosition: 571,
-      publicationPosition: 566,
-      referenceRolePosition: 566,
+      manifestPosition: 587,
+      publicationPosition: 582,
+      referenceRolePosition: 582,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_finish_semantic_v1.main.spend",
@@ -36,9 +36,9 @@ export const validationTraceCekResolversMembers = defineDeploymentFamily(
     validationTraceDisputeCekExecutionSelectionSemantic: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK execution selection semantic",
-      manifestPosition: 572,
-      publicationPosition: 567,
-      referenceRolePosition: 567,
+      manifestPosition: 588,
+      publicationPosition: 583,
+      referenceRolePosition: 583,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_execution_selection_semantic_v1.main.spend",
@@ -50,9 +50,9 @@ export const validationTraceCekResolversMembers = defineDeploymentFamily(
     validationTraceDisputeCekContextStepSemantic: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK context step semantic",
-      manifestPosition: 573,
-      publicationPosition: 568,
-      referenceRolePosition: 568,
+      manifestPosition: 589,
+      publicationPosition: 584,
+      referenceRolePosition: 584,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_step_semantic_v1.main.spend",
@@ -64,9 +64,9 @@ export const validationTraceCekResolversMembers = defineDeploymentFamily(
     validationTraceDisputeCekCoreStepSemantic: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK core step semantic",
-      manifestPosition: 574,
-      publicationPosition: 569,
-      referenceRolePosition: 569,
+      manifestPosition: 590,
+      publicationPosition: 585,
+      referenceRolePosition: 585,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_core_step_semantic_v1.main.spend",

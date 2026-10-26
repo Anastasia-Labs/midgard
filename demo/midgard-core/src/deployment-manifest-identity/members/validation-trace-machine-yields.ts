@@ -6,8 +6,8 @@ export const validationTraceMachineYieldsMembers = defineDeploymentFamily(
     validationTraceDisputeCekSelectionAuthenticateWithdraw: {
       purpose: "withdraw",
       referenceRole: "V1 validation-trace CEK selection authenticate yield",
-      manifestPosition: 532,
-      publicationPosition: 533,
+      manifestPosition: 548,
+      publicationPosition: 549,
       referenceRolePosition: 373,
       commands: [],
       validatorTitle:
@@ -17,8 +17,8 @@ export const validationTraceMachineYieldsMembers = defineDeploymentFamily(
     validationTraceDisputeCekSelectionSuccessorWithdraw: {
       purpose: "withdraw",
       referenceRole: "V1 validation-trace CEK selection successor yield",
-      manifestPosition: 533,
-      publicationPosition: 534,
+      manifestPosition: 549,
+      publicationPosition: 550,
       referenceRolePosition: 374,
       commands: [],
       validatorTitle:
@@ -28,8 +28,8 @@ export const validationTraceMachineYieldsMembers = defineDeploymentFamily(
     validationTraceDisputePhaseANativeItemNativeWithdraw: {
       purpose: "withdraw",
       referenceRole: "V1 validation-trace phase-A native item native yield",
-      manifestPosition: 534,
-      publicationPosition: 535,
+      manifestPosition: 550,
+      publicationPosition: 551,
       referenceRolePosition: 302,
       commands: [],
       validatorTitle:
@@ -39,8 +39,8 @@ export const validationTraceMachineYieldsMembers = defineDeploymentFamily(
     validationTraceDisputePhaseANativeItemForeignWithdraw: {
       purpose: "withdraw",
       referenceRole: "V1 validation-trace phase-A native item foreign yield",
-      manifestPosition: 535,
-      publicationPosition: 536,
+      manifestPosition: 551,
+      publicationPosition: 552,
       referenceRolePosition: 303,
       commands: [],
       validatorTitle:
@@ -50,8 +50,8 @@ export const validationTraceMachineYieldsMembers = defineDeploymentFamily(
     validationTraceDisputeValueAndMintAssetFoldWithdraw: {
       purpose: "withdraw",
       referenceRole: "V1 validation-trace value-and-mint asset-fold yield",
-      manifestPosition: 536,
-      publicationPosition: 537,
+      manifestPosition: 552,
+      publicationPosition: 553,
       referenceRolePosition: 301,
       commands: [],
       validatorTitle:
