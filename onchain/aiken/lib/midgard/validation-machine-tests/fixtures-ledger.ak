@@ -122,7 +122,7 @@ pub fn value_output_descriptor_fixture_at(
     value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       lovelace_delta: 0,
       asset_root: null_hash,
-      seen_asset_count: 0,
+      asset_entry_count: 0,
       nonzero_asset_count: 0,
     },
   }
@@ -143,7 +143,7 @@ pub fn value_output_descriptor_fixture_at(
     value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       lovelace_delta: -output_lovelace,
       asset_root: singleton_root(unit, cbor.serialise(-7)),
-      seen_asset_count: 1,
+      asset_entry_count: 1,
       nonzero_asset_count: 1,
     },
   }
@@ -495,7 +495,7 @@ pub fn conservation_mint_step_is_exact(
     value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       lovelace_delta: 1,
       asset_root: singleton_root(unit, cbor.serialise(pre_asset_delta)),
-      seen_asset_count: 1,
+      asset_entry_count: 1,
       nonzero_asset_count: 1,
     },
   }
@@ -506,7 +506,7 @@ pub fn conservation_mint_step_is_exact(
     value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       lovelace_delta: 1,
       asset_root: singleton_root(unit, cbor.serialise(next_asset_delta)),
-      seen_asset_count: 1,
+      asset_entry_count: 2,
       nonzero_asset_count: if next_asset_delta == 0 {
         0
       } else {
@@ -590,7 +590,7 @@ pub fn conservation_final_step_is_provable(
     value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       lovelace_delta,
       asset_root: singleton_root(unit, cbor.serialise(asset_delta)),
-      seen_asset_count: 1,
+      asset_entry_count: 1,
       nonzero_asset_count: if asset_delta == 0 {
         0
       } else {
@@ -678,7 +678,7 @@ pub fn mint_authorization_step_is_provable(
     value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       lovelace_delta: 0,
       asset_root: null_hash,
-      seen_asset_count: 0,
+      asset_entry_count: 0,
       nonzero_asset_count: 0,
     },
   }
@@ -689,7 +689,7 @@ pub fn mint_authorization_step_is_provable(
     value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       lovelace_delta: 0,
       asset_root: singleton_root(unit, cbor.serialise(quantity)),
-      seen_asset_count: 1,
+      asset_entry_count: 1,
       nonzero_asset_count: 1,
     },
   }

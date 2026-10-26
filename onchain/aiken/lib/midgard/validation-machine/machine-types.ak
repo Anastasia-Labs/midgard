@@ -739,7 +739,7 @@ pub type CekContextControlV1 {
 pub type ValueAccumulatorV1 {
   lovelace_delta: Int,
   asset_root: ByteArray,
-  seen_asset_count: Int,
+  asset_entry_count: Int,
   nonzero_asset_count: Int,
 }
 

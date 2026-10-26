@@ -236,7 +236,7 @@ fn idle_control(
     value_accumulator: ValueAccumulatorV1 {
       lovelace_delta: 0,
       asset_root: null_hash,
-      seen_asset_count: 0,
+      asset_entry_count: 0,
       nonzero_asset_count: 0,
     },
   }
@@ -532,7 +532,7 @@ fn replay_asset_fixture() -> StepFixtureV1 {
     value_accumulator: ValueAccumulatorV1 {
       lovelace_delta: 3,
       asset_root: null_hash,
-      seen_asset_count: 0,
+      asset_entry_count: 0,
       nonzero_asset_count: 0,
     },
   }
@@ -549,7 +549,7 @@ fn replay_asset_fixture() -> StepFixtureV1 {
       value_accumulator: ValueAccumulatorV1 {
         lovelace_delta: 3,
         asset_root: singleton_root(unit, cbor.serialise(7)),
-        seen_asset_count: 1,
+        asset_entry_count: 1,
         nonzero_asset_count: 1,
       },
     },
@@ -624,7 +624,7 @@ fn output_fold_at(output_lovelace: Int) -> OutputFoldV1 {
     value_accumulator: ValueAccumulatorV1 {
       lovelace_delta: -output_lovelace,
       asset_root: singleton_root(unit, cbor.serialise(-7)),
-      seen_asset_count: 1,
+      asset_entry_count: 1,
       nonzero_asset_count: 1,
     },
   }
@@ -753,7 +753,7 @@ fn mint_asset_fixture() -> StepFixtureV1 {
     value_accumulator: ValueAccumulatorV1 {
       lovelace_delta: 0,
       asset_root: singleton_root(unit, cbor.serialise(5)),
-      seen_asset_count: 1,
+      asset_entry_count: 1,
       nonzero_asset_count: 1,
     },
   }
@@ -767,7 +767,7 @@ fn mint_asset_fixture() -> StepFixtureV1 {
       value_accumulator: ValueAccumulatorV1 {
         lovelace_delta: 0,
         asset_root: singleton_root(unit, cbor.serialise(0)),
-        seen_asset_count: 1,
+        asset_entry_count: 2,
         nonzero_asset_count: 0,
       },
     },

@@ -65,13 +65,20 @@ fn update_value_asset_delta_root(
   }
 }
 
+/// One asset entry of the input, output or mint fold. Every entry counts
+/// toward `max_distinct_asset_count`, whether or not its unit was folded
+/// before, and the entry that would take the count past the bound is refused
+/// before its mutation witness is read. Below the bound the per-unit delta
+/// root and `nonzero_asset_count` carry value preservation.
 pub fn apply_value_asset_mutation(
   accumulator: ValueAccumulatorV1,
   unit: ByteArray,
   quantity_delta: Int,
   mutation: ValueAssetMutationWitnessV1,
 ) -> ValueAccumulatorUpdateV1 {
-  if or {
+  if accumulator.asset_entry_count >= ledger_output_v1.max_distinct_asset_count {
+    ValueAccumulatorAssetLimitExceeded
+  } else if or {
     bytearray.length(unit) < 28,
     bytearray.length(unit) > 60,
     quantity_delta == 0,
@@ -105,30 +112,17 @@ pub fn apply_value_asset_mutation(
         } else {
           accumulator.nonzero_asset_count
         }
-        if and {
-          !mutation.delta_was_present,
-          accumulator.seen_asset_count >= ledger_output_v1.max_distinct_asset_count,
-        } {
-          ValueAccumulatorAssetLimitExceeded
-        } else if or {
-          next_nonzero_count < 0,
-          next_nonzero_count > accumulator.seen_asset_count + if mutation.delta_was_present {
-            0
-          } else {
-            1
-          },
-        } {
+        // The upper side needs no check: the shared control guard holds
+        // `nonzero_asset_count <= asset_entry_count` on every pre-state, and
+        // one entry moves the nonzero count by at most one.
+        if next_nonzero_count < 0 {
           ValueAccumulatorMutationInvalid
         } else {
           ValueAccumulatorUpdated(
             ValueAccumulatorV1 {
               ..accumulator,
               asset_root: next_asset_root,
-              seen_asset_count: accumulator.seen_asset_count + if mutation.delta_was_present {
-                0
-              } else {
-                1
-              },
+              asset_entry_count: accumulator.asset_entry_count + 1,
               nonzero_asset_count: next_nonzero_count,
             },
           )
@@ -734,10 +728,10 @@ fn value_and_mint_verified_body_v1(
       control.output_asset_cursor >= 0,
       control.output_asset_cursor <= ledger_output_v1.max_distinct_asset_count,
       bytearray.length(control.value_accumulator.asset_root) == 32,
-      control.value_accumulator.seen_asset_count >= 0,
-      control.value_accumulator.seen_asset_count <= ledger_output_v1.max_distinct_asset_count,
+      control.value_accumulator.asset_entry_count >= 0,
+      control.value_accumulator.asset_entry_count <= ledger_output_v1.max_distinct_asset_count,
       control.value_accumulator.nonzero_asset_count >= 0,
-      control.value_accumulator.nonzero_asset_count <= control.value_accumulator.seen_asset_count,
+      control.value_accumulator.nonzero_asset_count <= control.value_accumulator.asset_entry_count,
       control.mint_cursor >= 0,
       control.mint_cursor <= native_control.mint_count,
       control.stage >= 0,

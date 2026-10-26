@@ -81,7 +81,7 @@ fn value_accumulator() -> vm_machine_types.ValueAccumulatorV1 {
   vm_machine_types.ValueAccumulatorV1 {
     lovelace_delta: 7,
     asset_root: h54,
-    seen_asset_count: 2,
+    asset_entry_count: 2,
     nonzero_asset_count: 1,
   }
 }

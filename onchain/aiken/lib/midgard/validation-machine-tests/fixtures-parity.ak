@@ -485,7 +485,7 @@ pub fn idle_value_and_mint_control(
     value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       lovelace_delta: 0,
       asset_root: null_hash,
-      seen_asset_count: 0,
+      asset_entry_count: 0,
       nonzero_asset_count: 0,
     },
   }
@@ -694,7 +694,7 @@ pub fn value_and_mint_replay_asset_kind_fixture() -> ValueAndMintKindFixtureV1 {
     value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       lovelace_delta: 3,
       asset_root: null_hash,
-      seen_asset_count: 0,
+      asset_entry_count: 0,
       nonzero_asset_count: 0,
     },
   }
@@ -711,7 +711,7 @@ pub fn value_and_mint_replay_asset_kind_fixture() -> ValueAndMintKindFixtureV1 {
       value_accumulator: vm_machine_types.ValueAccumulatorV1 {
         lovelace_delta: 3,
         asset_root: singleton_root(unit, cbor.serialise(7)),
-        seen_asset_count: 1,
+        asset_entry_count: 1,
         nonzero_asset_count: 1,
       },
     },
@@ -830,7 +830,7 @@ pub fn value_and_mint_mint_asset_kind_fixture() -> ValueAndMintKindFixtureV1 {
     value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       lovelace_delta: 0,
       asset_root: singleton_root(unit, cbor.serialise(5)),
-      seen_asset_count: 1,
+      asset_entry_count: 1,
       nonzero_asset_count: 1,
     },
   }
@@ -844,7 +844,7 @@ pub fn value_and_mint_mint_asset_kind_fixture() -> ValueAndMintKindFixtureV1 {
       value_accumulator: vm_machine_types.ValueAccumulatorV1 {
         lovelace_delta: 0,
         asset_root: singleton_root(unit, cbor.serialise(0)),
-        seen_asset_count: 1,
+        asset_entry_count: 2,
         nonzero_asset_count: 0,
       },
     },

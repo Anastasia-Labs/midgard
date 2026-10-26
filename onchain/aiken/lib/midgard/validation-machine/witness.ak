@@ -3646,7 +3646,7 @@ pub fn encode_value_accumulator_v1(accumulator: ValueAccumulatorV1) -> ByteArray
   #"84"
     |> bytearray.concat(cbor.serialise(accumulator.lovelace_delta))
     |> bytearray.concat(encode_definite_bytes(accumulator.asset_root))
-    |> bytearray.concat(cbor.serialise(accumulator.seen_asset_count))
+    |> bytearray.concat(cbor.serialise(accumulator.asset_entry_count))
     |> bytearray.concat(cbor.serialise(accumulator.nonzero_asset_count))
 }
 
@@ -3656,22 +3656,22 @@ fn value_accumulator_from_cbor(
   let data <- cbor_deserialise.expect_deserialise(accumulator_cbor)
   expect
       [
-        lovelace_data, asset_root_data, seen_asset_count_data,
+        lovelace_data, asset_root_data, asset_entry_count_data,
         nonzero_asset_count_data,
       ]
     = builtin.un_list_data(data)
   let accumulator = ValueAccumulatorV1 {
     lovelace_delta: builtin.un_i_data(lovelace_data),
     asset_root: builtin.un_b_data(asset_root_data),
-    seen_asset_count: builtin.un_i_data(seen_asset_count_data),
+    asset_entry_count: builtin.un_i_data(asset_entry_count_data),
     nonzero_asset_count: builtin.un_i_data(nonzero_asset_count_data),
   }
   expect bytearray.length(accumulator.asset_root) == 32
-  expect accumulator.seen_asset_count >= 0
+  expect accumulator.asset_entry_count >= 0
   expect
-    accumulator.seen_asset_count <= ledger_output_v1.max_distinct_asset_count
+    accumulator.asset_entry_count <= ledger_output_v1.max_distinct_asset_count
   expect accumulator.nonzero_asset_count >= 0
-  expect accumulator.nonzero_asset_count <= accumulator.seen_asset_count
+  expect accumulator.nonzero_asset_count <= accumulator.asset_entry_count
   expect encode_value_accumulator_v1(accumulator) == accumulator_cbor
   accumulator
 }
@@ -3740,7 +3740,7 @@ pub fn initial_value_accumulator() -> ValueAccumulatorV1 {
   ValueAccumulatorV1 {
     lovelace_delta: 0,
     asset_root: null_hash,
-    seen_asset_count: 0,
+    asset_entry_count: 0,
     nonzero_asset_count: 0,
   }
 }
