@@ -3,14 +3,19 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
-use midgard/fraud_proofs/script_integrity_hash_mismatch/rule.{
-  authenticate_integrity_v1,
-}
-use midgard/fraud_proofs/script_integrity_hash_mismatch/step_02.{
+use midgard/fraud_proofs/direct_script_derivation/all_purposes_scan as scan
+use midgard/fraud_proofs/script_integrity_hash_mismatch/entry.{
   Args, Datum, SpendRedeemer,
 }
 
-validator main(step_03_hash: ScriptHash, thread_policy: PolicyId) {
+/// Opens the all-purposes walk at the spend field. An empty spend field is
+/// complete at opening and goes straight to the mint field's grammar door.
+validator main(
+  spend_scan_hash: ScriptHash,
+  mint_grammar_hash: ScriptHash,
+  thread_policy: PolicyId,
+  certificate_policy: PolicyId,
+) {
   spend(
     datum: Option<Datum>,
     redeemer: SpendRedeemer,
@@ -27,30 +32,33 @@ validator main(step_03_hash: ScriptHash, thread_policy: PolicyId) {
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(args) -> {
-        let Transaction { inputs, outputs, .. } = tx
+      ct.Continue(Args { input_index, output_index, opening }) -> {
         expect Some(step_datum) = datum
         let _, _, _, input_state, output_hash, output_state <- continue(
           thread_policy,
           step_datum,
-          args.input_index,
-          args.output_index,
+          input_index,
+          output_index,
           own_ref,
-          inputs,
-          outputs,
+          tx.inputs,
+          tx.outputs,
           tx.extra_signatories,
         )
         expect Some(bound) = input_state
-        let expected: Data = authenticate_integrity_v1(
+        let opened = scan.initial_v1(
           bound,
-          args.trace_membership,
-          args.machine_state,
-          args.trace_proof,
-          args.control,
-          args.redeemer_witness_hash,
+          None,
+          opening,
+          tx.reference_inputs,
+          certificate_policy,
         )
+        let expected: Data = opened
         and {
-          output_hash == step_03_hash,
+          output_hash == if opened.complete {
+            mint_grammar_hash
+          } else {
+            spend_scan_hash
+          },
           output_state == expected,
         }
       }
