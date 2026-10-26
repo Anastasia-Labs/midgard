@@ -6,7 +6,10 @@
  * a transaction whose hash is the expected one convicts, as does one that
  * records a reason ranked after phase 10 for a transaction with a mismatch.
  */
-import { outRefLabel } from "@al-ft/midgard-core";
+import {
+  outRefLabel,
+  screenMidgardForcedTxAdmission,
+} from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
@@ -26,6 +29,7 @@ import {
   stepTable,
 } from "./support/script-integrity-hash-mismatch-emulator.js";
 import {
+  buildIntegritySubject,
   expectedHash,
   honestForcedShape,
   type IntegrityScenario,
@@ -82,13 +86,18 @@ const everyPurpose = (
   };
 };
 
-/** One Plutus V3 observer. */
-const oneObserver = (
+/** A forced subject L1 admission accepts: a native-only key spend
+ * (`honestForcedShape`). It walks no language, so the absent hash is the
+ * expected one and any other hash is a mismatch. */
+const admissibleForced = (
   integrity: IntegritySubjectShape["integrity"],
-): IntegritySubjectShape => ({
-  observers: [{ script: plutusScript(1), redeemer: true }],
-  integrity,
-});
+): IntegritySubjectShape => {
+  const shape = honestForcedShape(integrity);
+  expect(screenMidgardForcedTxAdmission(buildIntegritySubject(shape))).toBe(
+    null,
+  );
+  return shape;
+};
 
 const removeBlock = async (
   harness: ScriptIntegrityHashMismatchHarness,
@@ -183,17 +192,17 @@ describe("script-integrity-hash-mismatch genuine-Init verticals", () => {
 
   it("A-F: convicts a forced acceptance whose hash is not the expected one", async () => {
     const { run } = await convictAndCheck(
-      oneObserver(WRONG_HASH),
+      admissibleForced(WRONG_HASH),
       { kind: "forced", verdict: "ForcedTxValid" },
       "A-F",
     );
-    expect(run.prepared.final.facts.language_bitmap).toBe(1n);
+    expect(run.prepared.final.facts.language_bitmap).toBe(0n);
     expect(run.prepared.mismatch).toBe(true);
   }, 1_200_000);
 
   it("R-F: convicts a forced rejection recording this arm for the expected hash", async () => {
     const { run } = await convictAndCheck(
-      oneObserver(expectedHash("PlutusV3")),
+      admissibleForced(expectedHash()),
       rejectedFor("ScriptIntegrityHashMismatch"),
       "R-F false",
     );
@@ -202,7 +211,7 @@ describe("script-integrity-hash-mismatch genuine-Init verticals", () => {
 
   it("R-F: convicts a forced rejection recording a phase-12 reason for a mismatch", async () => {
     const { run } = await convictAndCheck(
-      oneObserver(WRONG_HASH),
+      admissibleForced(WRONG_HASH),
       rejectedFor("ValueNotPreserved"),
       "R-F later reason",
     );
@@ -218,16 +227,16 @@ describe("script-integrity-hash-mismatch genuine-Init verticals", () => {
     },
     {
       name: "an honest forced ScriptIntegrityHashMismatch rejection",
-      shape: async () => honestForcedShape(WRONG_HASH),
+      shape: async () => admissibleForced(WRONG_HASH),
       source: async (): Promise<IntegritySource> => ({
         kind: "forced",
-        verdict: await machineForcedVerdict(honestForcedShape(WRONG_HASH)),
+        verdict: await machineForcedVerdict(admissibleForced(WRONG_HASH)),
       }),
       mismatch: true,
     },
     {
       name: "a forced rejection recording a phase-6 reason for a mismatch",
-      shape: async () => oneObserver(WRONG_HASH),
+      shape: async () => admissibleForced(WRONG_HASH),
       source: async () => rejectedFor("ScriptIntegrityHashMissing"),
       mismatch: true,
     },
