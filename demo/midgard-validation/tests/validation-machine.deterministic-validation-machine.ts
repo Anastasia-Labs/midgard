@@ -22,13 +22,11 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  advanceMidgardResolvedInputsAccumulator,
   buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
   buildValidationOneStepArgument,
   type DeterministicValidationMachineTrace,
   encodeValidationAuxiliaryWitnessCbor,
-  initialMidgardResolvedInputsAccumulator,
   MidgardRedeemerTag,
   RejectCodes,
   validationSemanticResolverIndex,
@@ -175,13 +173,13 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       .filter((witness) => witness.phase === "resolveInputs")
       .map(decodeControl);
     const originalResolutionScheduleHash = Buffer.from(
-      resolveInputControls[0]![10] as Uint8Array,
+      resolveInputControls[0]![9] as Uint8Array,
     );
     expect(
       resolveInputControls.every(
         (control) =>
-          control.length === 11 &&
-          Buffer.from(control[10] as Uint8Array).equals(
+          control.length === 10 &&
+          Buffer.from(control[9] as Uint8Array).equals(
             originalResolutionScheduleHash,
           ),
       ),
@@ -191,8 +189,8 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         .map(decodeControl)
         .every(
           (control) =>
-            (control.length === 30 || control.length === 31) &&
-            Buffer.from(control[29] as Uint8Array).equals(
+            (control.length === 28 || control.length === 29) &&
+            Buffer.from(control[27] as Uint8Array).equals(
               originalResolutionScheduleHash,
             ),
         ),
@@ -203,8 +201,8 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     expect(
       nativeScriptControls.every(
         (control) =>
-          control.length === 26 &&
-          Buffer.from(control[25] as Uint8Array).equals(
+          control.length === 25 &&
+          Buffer.from(control[24] as Uint8Array).equals(
             originalResolutionScheduleHash,
           ),
       ),
@@ -235,15 +233,15 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     expect(
       valueAndMintWitnesses.every((witness) => {
         const valueControl = decodeControl(witness);
-        expect(valueControl).toHaveLength(12);
+        expect(valueControl).toHaveLength(11);
         const nestedNativeControl = decodeSingleCbor(
           valueControl[0] as Uint8Array,
         );
         expect(Array.isArray(nestedNativeControl)).toBe(true);
         const fields = nestedNativeControl as readonly unknown[];
         return (
-          fields.length === 26 &&
-          Buffer.from(fields[25] as Uint8Array).equals(
+          fields.length === 25 &&
+          Buffer.from(fields[24] as Uint8Array).equals(
             originalResolutionScheduleHash,
           )
         );
@@ -382,21 +380,6 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     },
     60_000,
   );
-
-  it("matches the L1 resolved-input accumulator vector", () => {
-    const initial = initialMidgardResolvedInputsAccumulator();
-    expect(initial.toString("hex")).toBe(
-      "07eb401e2f7e5de17444414ec48a5d9dca455dea72f4675cc2b08bf5b4e39979",
-    );
-    expect(
-      advanceMidgardResolvedInputsAccumulator({
-        accumulator: initial,
-        sourceKind: "spend",
-        key: Buffer.from("010203", "hex"),
-        value: Buffer.from("040506", "hex"),
-      }).toString("hex"),
-    ).toBe("97e2dbdabf1ac8b5046e02f46c8d081ade2d81296b174bf77b9b8c69bd59c9c0");
-  });
 
   it("emits the exact incremental context and CEK trace for PlutusV3", async () => {
     const spent = outRefFromByte(0x1d);
@@ -805,11 +788,11 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       trace.witnesses
         .filter((witness) => witness.phase === "inputSets")
         .map((witness) =>
-          witness.auxiliary?.kind === "transactionFieldChunk"
+          witness.auxiliary?.kind === "transactionFieldItem"
             ? witness.auxiliary.fieldIndex
             : null,
         ),
-    ).toEqual([1, 0]);
+    ).toEqual([0, 1, 0]);
     expect(
       trace.witnesses.some(
         (witness) =>
@@ -1499,7 +1482,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       trace.witnesses
         .filter((witness) => witness.phase === "signatures")
         .map((witness) => witness.auxiliary?.kind ?? null),
-    ).toEqual(["transactionFieldChunk", null]);
+    ).toEqual(["transactionFieldItem", null]);
     expect(
       validateBoundaryAbiAndCollectAuxiliaryKinds(trace).maxArgumentsBytes,
     ).toBeLessThan(16 * 1024);
@@ -1548,9 +1531,9 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     );
     expect(
       signatureWitnesses.map((witness) => witness.auxiliary?.kind ?? null),
-    ).toEqual(["transactionFieldChunk", "requiredSignerItem", null]);
+    ).toEqual(["transactionFieldItem", "requiredSignerItem", null]);
     expect(signatureWitnesses[0]?.auxiliary).toMatchObject({
-      kind: "transactionFieldChunk",
+      kind: "transactionFieldItem",
       ...expectedFieldPlanInput(transaction.txCbor, 7),
     });
     expect(
@@ -1597,9 +1580,9 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     );
     expect(
       signatureWitnesses.map((witness) => witness.auxiliary?.kind ?? null),
-    ).toEqual(["transactionFieldChunk", "requiredSignerItem"]);
+    ).toEqual(["transactionFieldItem", "requiredSignerItem"]);
     expect(signatureWitnesses[0]?.auxiliary).toMatchObject({
-      kind: "transactionFieldChunk",
+      kind: "transactionFieldItem",
       ...expectedFieldPlanInput(transaction.txCbor, 7),
     });
     expect(
@@ -1641,7 +1624,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       },
       rejectionCode: RejectCodes.DuplicateInputInTx,
       expectedInputSteps: 2,
-      expectedInputFieldIndexes: [1, 0],
+      expectedInputFieldIndexes: [0, 1],
     },
     {
       name: "malformed validity interval",
@@ -1690,7 +1673,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       expect(inputWitnesses).toHaveLength(expectedInputSteps);
       expect(
         inputWitnesses.map((witness) =>
-          witness.auxiliary?.kind === "transactionFieldChunk"
+          witness.auxiliary?.kind === "transactionFieldItem"
             ? witness.auxiliary.fieldIndex
             : null,
         ),

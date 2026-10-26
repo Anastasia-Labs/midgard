@@ -55,15 +55,15 @@ test script_proof_source_and_redeemer_vectors_are_stable() {
   and {
     script_proof_v1.versioned_script_hash(script) == #"8b8c11dcad0af38c40d742ed155b4c938acc5507a0ecbcfcea36496a",
     source_leaf == #"6b4984caceb70e0446b5d02a9b01068b7f409c76a54cf4e3b2b78f965b9eecc6",
-    redeemer_leaf == #"e42aed2342a26c9334ac80aea22c66b8f649cf6be5a5a4a70c6f33cbd8bda8ab",
+    redeemer_leaf == #"3ae5544f769176293c232c45b277a34a09282970ee41c72da05dbb16396465e0",
     purpose_leaf == #"24c90c22834ab9ec656bee1db27d5421515010ec4c6b8928a63f65aecb5e367b",
     script_proof_v1.execution_leaf_hash(
       3,
       purpose_leaf,
       source_leaf,
       redeemer_leaf,
-    ) == #"b5f8846e6888a5ebab1619bd6738ce3591323a63eb41fc06954729c5f4418d21",
-    script_proof_v1.output_leaf_hash(2, #"0102") == #"f9a3fa502da0ee4fe7048a78088ca4b89a72fe3aa0d313e12fbae7305e171727",
+    ) == #"2f4efb890c54da51efb472d74357445cd896f0488bd5eba1b67767defdf8706f",
+    script_proof_v1.output_leaf_hash(2, #"0102") == #"9d59194d31af9cdf05c20ceea8d4abd1024bdb05254ff340f5702df6786d2f86",
     script_proof_v1.output_descriptor_leaf_hash(2, #"820102") == #"7d1979d9a1af11ab5b13ceeb3ae750046f31ea6ed7776f99cb2d41b253e87fd4",
     script_proof_v1.context_item_leaf_hash(
       0,
@@ -126,6 +126,19 @@ test script_proof_source_and_redeemer_vectors_are_stable() {
           )
         |> bytearray.concat(#"1a00010000"),
     ),
+  }
+}
+
+test redeemer_and_output_item_leaves_commit_the_item_length() {
+  let c22 = #"2222222222222222222222222222222222222222222222222222222222222222"
+  let c33 = #"3333333333333333333333333333333333333333333333333333333333333333"
+  and {
+    script_proof_v1.redeemer_item_leaf_hash(1, 11, c22) == #"cd34746a5753b1bb6482027b62bcfbae878dd36d844c2a8f32bc1c7f8578ae76",
+    script_proof_v1.redeemer_item_leaf_hash(1, 12, c22) == #"6e4216c9dfc27679570eac18d26b1c4a846df21cd63a9292a87addebc7784fa0",
+    script_proof_v1.redeemer_item_leaf_hash(1, 13, c22) == #"bcf77738b9539c6f1e1d46400d1a3deff04afc7b58e213c60b0b12cdce2d6cd4",
+    script_proof_v1.output_item_leaf_hash(2, 1, c33) == #"1dcdc9af06d505101bcc33b05aba13b76fa3ba7c325cf424ccfb111f2f5a264b",
+    script_proof_v1.output_item_leaf_hash(2, 2, c33) == #"316409222864a51a6e1c1c122de63724bcf0c4f00ddedd1799688721d99e4509",
+    script_proof_v1.output_item_leaf_hash(2, 3, c33) == #"016116d6ca052045fb1f8fa7d2fd2bc9745401cd6bdad8443f5769169b50517b",
   }
 }
 

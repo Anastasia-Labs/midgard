@@ -11,13 +11,12 @@ use midgard/rejection_reason_v1.{
   DuplicateInput, EmptyInputs, ValidityIntervalMalformed,
 }
 use midgard/validation_machine/machine_types.{
-  InputSetsControlV1, NoAuxiliaryWitness, TransactionFieldChunkWitness,
+  InputSetsControlV1, NoAuxiliaryWitness, TransactionFieldItemWitness,
   ValidationAuxiliaryWitnessV1, ValidationOneStepWitnessV1,
 }
 use midgard/validation_machine/shared.{
   max_tx_size_derived_collection_item_count, rejected_successor_is_exact,
-  transaction_field_commitment, unset_reason_coordinate,
-  validity_interval_is_malformed,
+  unset_reason_coordinate, validity_interval_is_malformed,
 }
 use midgard/validation_machine/witness.{
   encode_input_sets_scan_witness, encode_signatures_scan_witness,
@@ -58,7 +57,10 @@ fn input_sets_item_successor_is_exact(
   reference_count: Int,
   spend_seen: Int,
   reference_seen: Int,
-  key: ByteArray,
+  last_key: ByteArray,
+  last_field: Int,
+  last_item: Int,
+  cached_other_head: ByteArray,
   resolution_schedule_hash: ByteArray,
 ) -> Bool {
   let complete = and {
@@ -102,7 +104,6 @@ fn input_sets_item_successor_is_exact(
             0,
             0,
             #"",
-            #"",
             0,
             [],
             -1,
@@ -125,7 +126,10 @@ fn input_sets_item_successor_is_exact(
           reference_count,
           spend_seen,
           reference_seen,
-          key,
+          last_key,
+          last_field,
+          last_item,
+          cached_other_head,
           resolution_schedule_hash,
         ),
       ),
@@ -133,21 +137,30 @@ fn input_sets_item_successor_is_exact(
   }
 }
 
-/// One §5.3 out-ref item of field 0 or field 1.
+/// One step of the descending merge of fields 0 and 1.
 ///
-/// The two fields are fixed-stride, so the door reaches the item by arithmetic
-/// and `field_index` is the only thing that says which of the two slots the step
-/// means — §4 gives the two commitments no domain separation, so this is checked
-/// against `{0, 1}` here and pinned to the successor's `source_kind` below.
-/// `item_index` is the prover's to choose: this phase scans in **descending
-/// out-ref key order**, not index order, which is what `previous_key` enforces.
+/// CanonicalDecode admits each field only in ascending item order, so the
+/// merge reads both from the tail: the next item of a field is
+/// `count - seen - 1`, which the door derives. The control fixes the field
+/// this step opens, so the witness carries only the carriage:
+///
+///   * before the first item, field 0, then field 1 when the scan cached
+///     field 0's head (the seed step below);
+///   * after that, the field consumed last while it has items left, else the
+///     other one.
+///
+/// `cached_other_head` is the other field's next item when it has been read
+/// and not consumed; it is `#""` when that field has nothing left, or when the
+/// field consumed last ran out (the other head is then read again). The step
+/// takes the larger of the opened item and the cached one (`#""` is below
+/// every item). Two equal heads, or a head equal to `last_key`, are a
+/// duplicate; otherwise the larger head is consumed and prepended to the
+/// resolution schedule, so the schedule ascends.
 fn verify_input_sets_item(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   control: InputSetsControlV1,
   door: field_door.MachineFieldDoorV1,
-  field_index: Int,
-  item_index: Int,
   carriage: native_tx_field_access_v1.FieldCarriageV1,
 ) -> Bool {
   let Pair(verified, witness_set) = verify_tx_proof_source_v1(
@@ -157,88 +170,100 @@ fn verify_input_sets_item(
     control.witness_set_compact_cbor,
     control.field_preimage_lengths_cbor,
   )
-  let source_kind = field_index
-  let expected_field_commitment = transaction_field_commitment(
-    verified.tx_compact,
-    witness_set,
-    field_index,
-  )
-  let prior_count = if field_index == 0 {
-    control.spend_count
+  let spend_count = control.spend_count
+  let reference_count = control.reference_count
+  let spend_seen = control.spend_seen
+  let reference_seen = control.reference_seen
+  let last_key = control.last_key
+  let cached_other_head = control.cached_other_head
+  let field = if last_key == #"" {
+    if cached_other_head == #"" {
+      0
+    } else {
+      1
+    }
+  } else if control.last_field == 0 {
+    if spend_seen < spend_count {
+      0
+    } else {
+      1
+    }
+  } else if reference_seen < reference_count {
+    1
   } else {
-    control.reference_count
+    0
   }
-  let item = field_door.open_machine_field_item(
+  let item = field_door.open_machine_fixed_field_tail_item(
     door,
     verified,
     witness_set,
-    field_index,
-    item_index,
+    field,
+    if field == 0 {
+      spend_seen
+    } else {
+      reference_seen
+    },
     carriage,
   )
-  let item_count = field_door.machine_field_item_count(item)
-  let active_count = if prior_count == -1 {
+  let item_count = field_door.machine_fixed_field_item_count(item)
+  let key = field_door.machine_fixed_field_item_bytes(item)
+  let prior_count = if field == 0 {
+    spend_count
+  } else {
+    reference_count
+  }
+  let next_spend_count = if field == 0 {
     item_count
   } else {
-    prior_count
+    spend_count
   }
-  let prior_seen = if field_index == 0 {
-    control.spend_seen
+  let next_reference_count = if field == 0 {
+    reference_count
   } else {
-    control.reference_seen
+    item_count
   }
-  let key = field_door.machine_field_item_bytes(item)
-  let input = decode_midgard_tx_input_cbor(key)
-  let next_schedule_hash = resolution_schedule_node_hash(
-    source_kind,
-    key,
-    control.resolution_schedule_hash,
-  )
-  let next_spend_count = if field_index == 0 {
-    active_count
+  let successor = fn(
+    next_spend_seen: Int,
+    next_reference_seen: Int,
+    next_last_key: ByteArray,
+    next_last_field: Int,
+    next_last_item: Int,
+    next_cached_other_head: ByteArray,
+    next_schedule_hash: ByteArray,
+  ) {
+    input_sets_item_successor_is_exact(
+      pre,
+      witness.claimed_successor,
+      control,
+      verified.tx_compact.body,
+      witness_set,
+      next_spend_count,
+      next_reference_count,
+      next_spend_seen,
+      next_reference_seen,
+      next_last_key,
+      next_last_field,
+      next_last_item,
+      next_cached_other_head,
+      next_schedule_hash,
+    )
+  }
+  let order = bytearray.compare(key, cached_other_head)
+  let consumed = if order == Greater {
+    key
   } else {
-    control.spend_count
-  }
-  let next_reference_count = if field_index == 1 {
-    active_count
-  } else {
-    control.reference_count
-  }
-  let next_spend_seen = if field_index == 0 {
-    control.spend_seen + 1
-  } else {
-    control.spend_seen
-  }
-  let next_reference_seen = if field_index == 1 {
-    control.reference_seen + 1
-  } else {
-    control.reference_seen
-  }
-  let duplicate = and {
-    bytearray.length(control.previous_key) > 0,
-    bytearray.compare(key, control.previous_key) == Equal,
-  }
-  let correctly_ordered = or {
-    control.previous_key == #"",
-    bytearray.compare(key, control.previous_key) == Less,
+    cached_other_head
   }
   and {
     input_sets_control_is_bound(pre, witness, control, verified),
-    control.spend_count != 0,
-    or {
-      field_index == 0,
-      field_index == 1,
-    },
-    expected_field_commitment != native_tx_field_access_v1.empty_field_commitment,
+    spend_count != 0,
     prior_count == -1 || prior_count == item_count,
-    active_count > 0,
-    active_count <= max_tx_size_derived_collection_item_count,
-    prior_seen < active_count,
-    item_count == active_count,
-    item_index >= 0,
-    item_index < active_count,
-    encode_midgard_tx_input(input) == key,
-    if duplicate {
+    item_count <= max_tx_size_derived_collection_item_count,
+    encode_midgard_tx_input(decode_midgard_tx_input_cbor(key)) == key,
+    if last_key == #"" && cached_other_head == #"" && reference_count != 0 {
+      // Seed: hold field 0's head and open field 1's next.
+      successor(0, 0, #"", -1, -1, key, control.resolution_schedule_hash)
+    } else if order == Equal || consumed == last_key {
       rejected_successor_is_exact(
         pre,
         witness.claimed_successor,
@@ -250,22 +275,47 @@ fn verify_input_sets_item(
         },
       )
     } else {
-      and {
-        correctly_ordered,
-        input_sets_item_successor_is_exact(
-          pre,
-          witness.claimed_successor,
-          control,
-          verified.tx_compact.body,
-          witness_set,
-          next_spend_count,
-          next_reference_count,
-          next_spend_seen,
-          next_reference_seen,
-          key,
-          next_schedule_hash,
-        ),
+      let consumed_field = if order == Greater {
+        field
+      } else {
+        1 - field
       }
+      let next_spend_seen = if consumed_field == 0 {
+        spend_seen + 1
+      } else {
+        spend_seen
+      }
+      let next_reference_seen = if consumed_field == 0 {
+        reference_seen
+      } else {
+        reference_seen + 1
+      }
+      let Pair(consumed_count, consumed_seen) = if consumed_field == 0 {
+        Pair(next_spend_count, next_spend_seen)
+      } else {
+        Pair(next_reference_count, next_reference_seen)
+      }
+      let consumed_item = consumed_count - consumed_seen
+      successor(
+        next_spend_seen,
+        next_reference_seen,
+        consumed,
+        consumed_field,
+        consumed_item,
+        if consumed_seen == consumed_count {
+          #""
+        } else if order == Greater {
+          cached_other_head
+        } else {
+          key
+        },
+        resolution_schedule_node_hash(
+          consumed_field,
+          consumed_item,
+          consumed,
+          control.resolution_schedule_hash,
+        ),
+      )
     },
   }
 }
@@ -285,8 +335,6 @@ pub fn verify_input_sets_item_semantics_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   door: field_door.MachineFieldDoorV1,
-  field_index: Int,
-  item_index: Int,
   carriage: native_tx_field_access_v1.FieldCarriageV1,
 ) -> Bool {
   verify_input_sets_item(
@@ -294,8 +342,6 @@ pub fn verify_input_sets_item_semantics_v1(
     witness,
     input_sets_control_from_witness(witness.work_witness_cbor),
     door,
-    field_index,
-    item_index,
     carriage,
   )
 }
@@ -309,16 +355,8 @@ pub fn verify_input_sets(
   let control = input_sets_control_from_witness(witness.work_witness_cbor)
   when auxiliary is {
     NoAuxiliaryWitness -> verify_input_sets_empty(pre, witness, control)
-    TransactionFieldChunkWitness { field_index, item_index, carriage } ->
-      verify_input_sets_item(
-        pre,
-        witness,
-        control,
-        door,
-        field_index,
-        item_index,
-        carriage,
-      )
+    TransactionFieldItemWitness { carriage } ->
+      verify_input_sets_item(pre, witness, control, door, carriage)
     _ -> False
   }
 }

@@ -235,16 +235,13 @@ pub fn value_witness(data: Data) -> proof.LedgerOutputProofWitnessV1 {
     proof.LedgerOutputProofNoWitness
   } else {
     expect tag == 2
-    expect [index, policy, asset, amount, path, head] = fields
+    expect [policy, asset, amount, path] = fields
     expect siblings: List<ByteArray> = path
-    expect previous: Option<value.LedgerOutputValueHeadV1> = head
     proof.LedgerOutputProofValue {
-      asset_index: builtin.un_i_data(index),
       policy_id: builtin.un_b_data(policy),
       asset_name: builtin.un_b_data(asset),
       quantity: builtin.un_i_data(amount),
       siblings,
-      previous,
     }
   }
 }

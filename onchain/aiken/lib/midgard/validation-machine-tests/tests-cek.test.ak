@@ -478,19 +478,6 @@ test script_integrity_is_recomputed_before_cek() {
   }
 }
 
-test resolved_input_accumulator_vector_is_stable() {
-  let initial = vm_witness.initial_resolution_accumulator()
-  and {
-    initial == #"07eb401e2f7e5de17444414ec48a5d9dca455dea72f4675cc2b08bf5b4e39979",
-    vm_witness.resolved_input_accumulator_successor(
-      initial,
-      0,
-      #"010203",
-      #"040506",
-    ) == #"97e2dbdabf1ac8b5046e02f46c8d081ade2d81296b174bf77b9b8c69bd59c9c0",
-  }
-}
-
 test mint_asset_leaf_vector_is_stable() {
   vm_shared.mint_asset_leaf_hash(
     #"11111111111111111111111111111111111111111111111111111111",
@@ -1091,12 +1078,6 @@ test cek_context_spend_item_uses_authenticated_descriptor_frontier() {
   let control = vm_machine_types.NativeScriptsControlV1 {
     ..empty_native_control_fixture(tx),
     resolved_input_count: 1,
-    resolved_inputs_accumulator: vm_witness.resolved_input_accumulator_successor(
-      vm_witness.initial_resolution_accumulator(),
-      0,
-      key,
-      descriptor_cbor,
-    ),
     spend_input_count: 1,
     resolved_item_peaks: resolved_frontier.peaks,
     purpose_count: 1,
@@ -1239,12 +1220,6 @@ test cek_context_reference_item_uses_authenticated_descriptor_frontier() {
   let control = vm_machine_types.NativeScriptsControlV1 {
     ..empty_native_control_fixture(tx),
     resolved_input_count: 1,
-    resolved_inputs_accumulator: vm_witness.resolved_input_accumulator_successor(
-      vm_witness.initial_resolution_accumulator(),
-      1,
-      key,
-      descriptor_cbor,
-    ),
     spend_input_count: 0,
     resolved_item_peaks: resolved_frontier.peaks,
     execution_cursor: 0,
@@ -1934,8 +1909,6 @@ test cek_context_mint_is_authenticated_and_folded_incrementally() {
       item_work_witness_cbor,
       item_post,
       vm_machine_types.CekMintContextItemWitness {
-        previous: None,
-        mint_index: 0,
         policy_id: h_28_a,
         asset_name: #"01",
         quantity: -5,
@@ -2229,12 +2202,6 @@ test cek_context_redeemer_map_selection_authenticates_purpose_and_redeemer() {
         execution_language_tag: 3,
         source_leaf: h_a,
         execution_siblings: [],
-        item_frontier_root: validation_merkle_v1.frontier_commitment(
-          1,
-          validation_merkle_v1.build_frontier(
-            [bounded_item_v1.hash_chunk(8, 0, 0, redeemer_item_cbor)],
-          ).peaks,
-        ),
       },
     ),
     inline_field_door(),
@@ -2976,8 +2943,6 @@ test cek_context_maximum_mint_authenticates_last_asset_membership() {
       work_witness_cbor,
       post,
       vm_machine_types.CekMintContextItemWitness {
-        previous: None,
-        mint_index: 127,
         policy_id: h_28_a,
         asset_name: last_asset,
         quantity: 1,

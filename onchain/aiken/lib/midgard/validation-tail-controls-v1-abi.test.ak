@@ -19,8 +19,6 @@ const h41 = #"4141414141414141414141414141414141414141414141414141414141414141"
 
 const h48 = #"4848484848484848484848484848484848484848484848484848484848484848"
 
-const h51 = #"5151515151515151515151515151515151515151515151515151515151515151"
-
 const h52 = #"5252525252525252525252525252525252525252525252525252525252525252"
 
 const h53 = #"5353535353535353535353535353535353535353535353535353535353535353"
@@ -30,8 +28,6 @@ const h54 = #"5454545454545454545454545454545454545454545454545454545454545454"
 const h55 = #"5555555555555555555555555555555555555555555555555555555555555555"
 
 const h56 = #"5656565656565656565656565656565656565656565656565656565656565656"
-
-const h57 = #"5757575757575757575757575757575757575757575757575757575757575757"
 
 const h58 = #"5858585858585858585858585858585858585858585858585858585858585858"
 
@@ -58,7 +54,6 @@ fn native_control() -> vm_machine_types.NativeScriptsControlV1 {
     field_preimage_lengths_cbor: #"03",
     context_cbor: #"04",
     resolved_input_count: 0,
-    resolved_inputs_accumulator: h51,
     spend_input_count: 0,
     resolved_item_peaks: [],
     signer_count: 0,
@@ -116,6 +111,7 @@ fn tail_auxiliaries() -> List<vm_machine_types.ValidationAuxiliaryWitnessV1> {
   [
     vm_machine_types.ValueInputAssetWitness {
       source_kind: 0,
+      item_index: 0,
       key: #"01",
       next_schedule_hash: h41,
       descriptor_cbor: #"80",
@@ -185,8 +181,8 @@ fn constructors_are_exact(
 test validation_tail_auxiliary_v1_typescript_corpus_is_exact() {
   let items = tail_auxiliaries()
   and {
-    constructors_are_exact(items, [24, 25, 26, 34, 35], [11, 9, 6, 3, 2]),
-    blake2b_256(cbor.serialise(items)) == #"3114ba14053a9ef071a2e5953f5d6006fff6bcf7e7482685f88a408e67d58e79",
+    constructors_are_exact(items, [24, 25, 26, 34, 35], [12, 9, 6, 3, 2]),
+    blake2b_256(cbor.serialise(items)) == #"4a3d01e5065a094a90d4a177fb691302dbc7858ce95aad746224b321a8b4efbc",
   }
 }
 
@@ -214,7 +210,6 @@ test value_accumulator_update_and_control_v1_abi_is_exact() {
     replay_cursor: 4,
     replay_asset_cursor: 5,
     replay_value_hash: h56,
-    replay_accumulator: h57,
     replay_remaining_schedule_hash: h58,
     output_cursor: 6,
     output_asset_cursor: 7,
@@ -230,10 +225,10 @@ test value_accumulator_update_and_control_v1_abi_is_exact() {
     list.length(asset_limit_fields) == 0,
     mutation_invalid_tag == 2,
     list.length(mutation_invalid_fields) == 0,
-    blake2b_256(control_cbor) == #"d30dfeaa4f1f3323bf2824a1051ef943fee27a31779e171678abe4c05ba2b2e0",
+    blake2b_256(control_cbor) == #"59968072f9e010668a5f061bcafe19f7748cf8c3048aa21ee9aff99ab096220a",
     when cbor.deserialise(control_cbor) is {
       None -> False
-      Some(data) -> list.length(builtin.un_list_data(data)) == 12
+      Some(data) -> list.length(builtin.un_list_data(data)) == 11
     },
   }
 }

@@ -23,10 +23,10 @@ const transition_cbor =
 const auxiliary_cbor = #"d87980"
 
 const field_chunk_auxiliary_cbor =
-  #"d87a9f0000d8799f58298158268258201111111111111111111111111111111111111111111111111111111111111111190000ffff"
+  #"d87a9f0600d8799f5f58408158808200587c8201958200581c93c191b1094746961f6f00fba27f3d8eff6a66490baf806d4e179fd88200581c93c191b1094746961f6f00fba27f3d8eff6a584066490baf806d4e179fd882018082018082018082018082018082018082018082018082018082018082018082018082018082018082018082018082018082018043820180ffffff"
 
 const field_chunk_preimage =
-  #"8158268258201111111111111111111111111111111111111111111111111111111111111111190000"
+  #"8158808200587c8201958200581c93c191b1094746961f6f00fba27f3d8eff6a66490baf806d4e179fd88200581c93c191b1094746961f6f00fba27f3d8eff6a66490baf806d4e179fd8820180820180820180820180820180820180820180820180820180820180820180820180820180820180820180820180820180820180820180"
 
 const raw_utxo_auxiliary_cbor = #"d87a9f0600d87a9f01ffff"
 
@@ -36,10 +36,10 @@ const evidence_hash =
   #"8181f9d92e24d9d17a81b37fab9ecfd2096f5323d4dee83cf1cc8f0d80bd80e8"
 
 const item_auxiliary_cbor =
-  #"d905159fd8799f58298158268258201111111111111111111111111111111111111111111111111111111111111111190000ffff"
+  #"d905159fd8799f5f58408158808200587c8201958200581c93c191b1094746961f6f00fba27f3d8eff6a66490baf806d4e179fd88200581c93c191b1094746961f6f00fba27f3d8eff6a584066490baf806d4e179fd882018082018082018082018082018082018082018082018082018082018082018082018082018082018082018082018082018082018043820180ffffff"
 
 const retired_item_evidence_hash =
-  #"43ae8060a54a0fbde5bb22f04d1eca0f59d469a6fdbe9064023987351004a15b"
+  #"8d8e35e66e9d146bd34036eeb3c12d8aa85251f34232b8a87f1eefb823263555"
 
 const script_discovery_control_cbor =
   #"8f010203000441aa41bb050341cc4106410741dd0881820941ee"
@@ -112,14 +112,14 @@ test typescript_generated_field_chunk_auxiliary_is_exact() {
       }
     = auxiliary
   and {
-    bytearray.length(field_chunk_auxiliary_cbor) == 53,
+    bytearray.length(field_chunk_auxiliary_cbor) == 148,
     bytearray.length(field_chunk_auxiliary_cbor) < 16_384,
-    field_index == 0,
+    field_index == 6,
     item_index == 0,
     carriage == Inline { preimage: field_chunk_preimage },
     // The carriage delivers the field's whole §5.1 preimage — what the door
     // hashes against the flat §4 commitment — not one item and an opening.
-    bytearray.length(field_chunk_preimage) == 41,
+    bytearray.length(field_chunk_preimage) == 131,
   }
 }
 
@@ -209,7 +209,7 @@ test typescript_generated_complete_item_commitment_is_transition_only() {
   expect Some(transition_data) = cbor.deserialise(transition_cbor)
   let no_auxiliary_data: Data = vm_machine_types.NoAuxiliaryWitness
   and {
-    bytearray.length(item_auxiliary_cbor) == 52,
+    bytearray.length(item_auxiliary_cbor) == 147,
     carriage == Inline { preimage: field_chunk_preimage },
     validation_resolution_v1.hash_one_step_evidence(
       transition_data,

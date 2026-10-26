@@ -196,7 +196,8 @@ export const CanonicalDecodeItemSource = asDataType<CanonicalDecodeItemSource>(
 
 /**
  * What opening the item through §8's door established about it: the field's
- * authenticated §5.2 item count and this item's §5.1 payload length.
+ * authenticated §5.2 item count, this item's §5.1 payload length, and whether
+ * it follows item k-1 in its field's order.
  *
  * #597, the TypeScript twin of #592's wire change. It used to carry the prover's
  * `collection_proof` beside a re-derived `item_commitment` — both artifacts of
@@ -208,6 +209,7 @@ export const CanonicalDecodeItemSource = asDataType<CanonicalDecodeItemSource>(
 export const CanonicalDecodeItemObservationSchema = Data.Object({
   item_count: Data.Integer(),
   item_length: Data.Integer(),
+  item_order_is_valid: Data.Boolean(),
 });
 
 export type CanonicalDecodeItemObservation = Data.Static<

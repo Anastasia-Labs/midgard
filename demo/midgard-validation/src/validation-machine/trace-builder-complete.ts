@@ -52,6 +52,7 @@ import {
   summarizeMidgardCekLucidData,
   validateMidgardCekObserverCollection,
 } from "../cek-context.js";
+import { runMidgardCekMintFold } from "../cek-context.mint-item-step.js";
 import {
   buildMidgardCekExecutionGraph,
   type MidgardCekExecutionStep,
@@ -71,20 +72,16 @@ import {
 } from "../rejection-reason.js";
 import {
   emptyMidgardCekDataListSummary,
-  emptyMidgardCekDataPairSummary,
   prependMidgardCekDataListSummary,
   prependMidgardCekDataPairSummary,
-  summarizeMidgardCekMapData,
   summarizeMidgardCekSmallConstrData,
 } from "../script-context-proof.js";
 import type { RejectCode } from "../types.js";
 import { RejectCodes } from "../types.js";
 import { outputCborMeetsMinAda } from "../value-accounting.js";
 import {
-  advanceMidgardResolvedInputsAccumulator,
   emptyMidgardInputResolutionSchedule,
   hash32,
-  initialMidgardResolvedInputsAccumulator,
 } from "./input-resolution.js";
 import {
   hashValidationMachineNativeScriptFrame,
@@ -138,6 +135,9 @@ export type CompletedValidationTrace = Pick<
   | "rejectionReason"
   | "ledgerOps"
 > & { readonly rejectionCodeHash: Buffer };
+
+/** A ValueAndMint replay carries no ledger proof: the empty CBOR list. */
+const emptyReplayProofCbor = Buffer.from([0x80]);
 
 export const completeValidationTrace = (
   context: Effect.Effect.Success<ReturnType<typeof prepareValidationTrace>>,
@@ -1414,40 +1414,20 @@ export const completeValidationTrace = (
                 ...contextControl,
                 stage: 8,
               };
-
-              // The mint frontier is in plain byte order, the order of the
-              // context's mint map; the fold below walks it descending.
-              const orderedMint = authenticatedMintAssets.map(
-                (asset, index) => ({ ...asset, index }),
-              );
-              let previousHead: {
-                assetName: Buffer;
-                quantity: bigint;
-                tail: ReturnType<typeof emptyMidgardCekDataPairSummary>;
-              } | null = null;
-              for (
-                let orderedIndex = orderedMint.length - 1;
-                orderedIndex >= 0;
-                orderedIndex--
-              ) {
-                const asset = orderedMint[orderedIndex]!;
-                const mintIndex = asset.index;
-                pushWitness(
-                  "cek",
-                  cekContextWitness({
-                    contextControl,
-                    executionCursor: executionIndex,
-                    completedCpu,
-                    completedMemory,
-                  }),
-                  {
+              const witnessAt = (control: typeof contextControl) =>
+                cekContextWitness({
+                  contextControl: control,
+                  executionCursor: executionIndex,
+                  completedCpu,
+                  completedMemory,
+                });
+              contextControl = runMidgardCekMintFold(
+                contextControl,
+                authenticatedMintAssets,
+                (pre, mintIndex) => {
+                  const asset = authenticatedMintAssets[mintIndex]!;
+                  pushWitness("cek", witnessAt(pre), {
                     kind: "cekMintContextItem",
-                    mintIndex,
-                    previous: contextControl.currentMintPolicy.equals(
-                      asset.policyId,
-                    )
-                      ? previousHead
-                      : null,
                     policyId: asset.policyId,
                     assetName: asset.assetName,
                     quantity: asset.quantity,
@@ -1455,79 +1435,10 @@ export const completeValidationTrace = (
                       authenticatedMintLeaves,
                       mintIndex,
                     ).siblings,
-                  },
-                );
-                previousHead = {
-                  assetName: asset.assetName,
-                  quantity: asset.quantity,
-                  tail: contextControl.currentMintPolicy.equals(asset.policyId)
-                    ? contextControl.currentMintAssets
-                    : emptyMidgardCekDataPairSummary(),
-                };
-                const nextAssetSummary = prependMidgardCekDataPairSummary(
-                  summarizeMidgardCekLucidData(asset.assetName.toString("hex")),
-                  summarizeMidgardCekLucidData(asset.quantity),
-                  contextControl.currentMintAssets,
-                );
-                if (
-                  contextControl.currentMintPolicy.length === 0 ||
-                  contextControl.currentMintPolicy.equals(asset.policyId)
-                ) {
-                  contextControl = {
-                    ...contextControl,
-                    mintCursor: contextControl.mintCursor + 1,
-                    currentMintPolicy: asset.policyId,
-                    currentMintAssets: nextAssetSummary,
-                  };
-                } else {
-                  const priorPolicy = prependMidgardCekDataPairSummary(
-                    summarizeMidgardCekLucidData(
-                      contextControl.currentMintPolicy.toString("hex"),
-                    ),
-                    summarizeMidgardCekMapData(
-                      contextControl.currentMintAssets,
-                    ),
-                    contextControl.mintPolicies,
-                  );
-                  contextControl = {
-                    ...contextControl,
-                    mintCursor: contextControl.mintCursor + 1,
-                    currentMintPolicy: asset.policyId,
-                    currentMintAssets: prependMidgardCekDataPairSummary(
-                      summarizeMidgardCekLucidData(
-                        asset.assetName.toString("hex"),
-                      ),
-                      summarizeMidgardCekLucidData(asset.quantity),
-                      emptyMidgardCekDataPairSummary(),
-                    ),
-                    mintPolicies: priorPolicy,
-                  };
-                }
-              }
-              pushWitness(
-                "cek",
-                cekContextWitness({
-                  contextControl,
-                  executionCursor: executionIndex,
-                  completedCpu,
-                  completedMemory,
-                }),
+                  });
+                },
+                (pre) => pushWitness("cek", witnessAt(pre)),
               );
-              const finalPolicies = prependMidgardCekDataPairSummary(
-                summarizeMidgardCekLucidData(
-                  contextControl.currentMintPolicy.toString("hex"),
-                ),
-                summarizeMidgardCekMapData(contextControl.currentMintAssets),
-                contextControl.mintPolicies,
-              );
-              contextControl = {
-                ...contextControl,
-                stage: 9,
-                currentMintPolicy: Buffer.alloc(0),
-                currentMintAssets: emptyMidgardCekDataPairSummary(),
-                mintPolicies: finalPolicies,
-                mintSummary: summarizeMidgardCekMapData(finalPolicies),
-              };
             }
             if (!sameSummary(contextControl.mintSummary, contextParts.mint)) {
               throw new Error(
@@ -1628,9 +1539,6 @@ export const completeValidationTrace = (
                   executionLanguageTag: execution.languageTag,
                   sourceLeaf: execution.source.leaf,
                   executionSiblings,
-                  itemFrontierRoot: commitMidgardValidationMerkleFrontier(
-                    item.frontier,
-                  ),
                 },
               );
               const semanticPurpose = descriptorOnly
@@ -2053,8 +1961,6 @@ export const completeValidationTrace = (
           let valueReplayCursor = 0;
           let valueReplayAssetCursor = 0;
           let valueReplayValueHash = Buffer.alloc(32);
-          let valueReplayAccumulator =
-            initialMidgardResolvedInputsAccumulator();
           let valueReplayRemainingScheduleHash =
             emptyMidgardInputResolutionSchedule();
           let valueOutputCursor = 0;
@@ -2065,7 +1971,6 @@ export const completeValidationTrace = (
             readonly stage: number;
             readonly replayScheduleHash: Buffer;
             readonly replayCursor?: number;
-            readonly replayAccumulator?: Buffer;
             readonly replayRemainingScheduleHash?: Buffer;
             readonly outputCursor?: number;
             readonly mintCursor?: number;
@@ -2077,7 +1982,6 @@ export const completeValidationTrace = (
               BigInt(input.replayCursor ?? valueReplayCursor),
               BigInt(valueReplayAssetCursor),
               valueReplayValueHash,
-              input.replayAccumulator ?? valueReplayAccumulator,
               input.replayRemainingScheduleHash ??
                 valueReplayRemainingScheduleHash,
               BigInt(input.outputCursor ?? valueOutputCursor),
@@ -2103,7 +2007,33 @@ export const completeValidationTrace = (
           );
 
           if (!stoppedAtRejection) {
-            for (const node of resolutionScheduleNodes) {
+            // The resolved-item frontier ScriptSources stage 3 built: each
+            // replay opens its own leaf in it.
+            const replayLeaves: Uint8Array[] = [];
+            for (const [itemIndex, node] of resolutionScheduleNodes.entries()) {
+              const descriptorCbor = ledgerDescriptorState.get(
+                node.key.toString("hex"),
+              );
+              if (descriptorCbor === undefined) {
+                return yield* Effect.fail(
+                  new Error(
+                    "value replay lost a previously authenticated ledger descriptor",
+                  ),
+                );
+              }
+              replayLeaves.push(
+                hashMidgardResolvedContextItemLeaf({
+                  sourceKind: node.sourceKind,
+                  itemIndex,
+                  key: node.key,
+                  outputCbor: descriptorCbor,
+                }),
+              );
+            }
+            for (const [
+              replayCursor,
+              node,
+            ] of resolutionScheduleNodes.entries()) {
               const outRefHex = node.key.toString("hex");
               const outputCbor = ledgerState.get(outRefHex);
               const descriptorCbor = ledgerDescriptorState.get(outRefHex);
@@ -2123,9 +2053,15 @@ export const completeValidationTrace = (
                 {
                   kind: "resolvedInputReplay",
                   sourceKind: node.sourceKind,
+                  itemIndex: node.itemIndex,
                   key: node.key,
                   nextScheduleHash: node.nextScheduleHash,
                   value: descriptorCbor,
+                  proofCbor: emptyReplayProofCbor,
+                  siblings: buildMidgardValidationMerkleMembership(
+                    replayLeaves,
+                    replayCursor,
+                  ).siblings,
                 },
               );
               const decodedValue = decodeMidgardTxOutput(outputCbor).value;
@@ -2164,6 +2100,7 @@ export const completeValidationTrace = (
                     {
                       kind: "valueInputAsset",
                       sourceKind: "spend",
+                      itemIndex: node.itemIndex,
                       key: node.key,
                       nextScheduleHash: node.nextScheduleHash,
                       descriptorCbor,
@@ -2214,12 +2151,6 @@ export const completeValidationTrace = (
               if (stoppedAtRejection) break;
               valueReplayAssetCursor = 0;
               valueReplayValueHash = Buffer.alloc(32);
-              valueReplayAccumulator = advanceMidgardResolvedInputsAccumulator({
-                accumulator: valueReplayAccumulator,
-                sourceKind: node.sourceKind,
-                key: node.key,
-                value: descriptorCbor,
-              });
               valueReplayRemainingScheduleHash = node.nextScheduleHash;
               valueReplayCursor += 1;
             }

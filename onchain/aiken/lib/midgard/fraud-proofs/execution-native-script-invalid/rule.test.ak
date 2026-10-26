@@ -143,7 +143,6 @@ fn control_for(
     field_preimage_lengths_cbor: #"",
     context_cbor: #"",
     resolved_input_count: 0,
-    resolved_inputs_accumulator: h32,
     spend_input_count: 0,
     resolved_item_peaks: [],
     signer_count: 0,

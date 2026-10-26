@@ -9,7 +9,6 @@ import {
   ledgerOutputProofWitnessData,
   redeemerControlData,
   resolvedFieldCarriageData,
-  sequenceSummaryData,
   signerProofData,
   txInfoAssemblyControlData,
 } from "./validation-machine-data.ledger-output-proof-witness-data.js";
@@ -70,6 +69,7 @@ export const validationAuxiliaryWitnessData = (
     case "scheduledLedgerLookup": {
       const fields = [
         sourceKind(auxiliary.sourceKind),
+        int(auxiliary.itemIndex),
         bytes(auxiliary.key),
         bytes(auxiliary.nextScheduleHash),
       ];
@@ -85,9 +85,12 @@ export const validationAuxiliaryWitnessData = (
     case "resolvedInputReplay":
       return new Constr(7, [
         sourceKind(auxiliary.sourceKind),
+        int(auxiliary.itemIndex),
         bytes(auxiliary.key),
         bytes(auxiliary.nextScheduleHash),
         bytes(auxiliary.value),
+        proofData(auxiliary.proofCbor),
+        byteList(auxiliary.siblings),
       ]);
     case "scriptPurposeScan":
       return new Constr(8, [
@@ -160,18 +163,10 @@ export const validationAuxiliaryWitnessData = (
       ]);
     case "cekMintContextItem":
       return new Constr(16, [
-        int(auxiliary.mintIndex),
         bytes(auxiliary.policyId),
         bytes(auxiliary.assetName),
         auxiliary.quantity,
         byteList(auxiliary.siblings),
-        option(auxiliary.previous, (head) =>
-          record([
-            bytes(head.assetName),
-            head.quantity,
-            sequenceSummaryData(head.tail),
-          ]),
-        ),
       ]);
     case "cekRedeemerContextSelect":
       return new Constr(17, [
@@ -186,7 +181,6 @@ export const validationAuxiliaryWitnessData = (
         int(auxiliary.executionLanguageTag),
         bytes(auxiliary.sourceLeaf),
         byteList(auxiliary.executionSiblings),
-        bytes(auxiliary.itemFrontierRoot),
       ]);
     case "redeemerItemStep":
       return new Constr(18, [
@@ -213,6 +207,7 @@ export const validationAuxiliaryWitnessData = (
     case "valueInputAsset":
       return new Constr(24, [
         sourceKind(auxiliary.sourceKind),
+        int(auxiliary.itemIndex),
         bytes(auxiliary.key),
         bytes(auxiliary.nextScheduleHash),
         bytes(auxiliary.descriptorCbor),

@@ -28,9 +28,7 @@ export {
   type ValidationMachineFieldCarriagePlanInput,
 } from "./field-carriage.js";
 export {
-  advanceMidgardResolvedInputsAccumulator,
   emptyMidgardInputResolutionSchedule,
-  initialMidgardResolvedInputsAccumulator,
   prependMidgardInputResolutionSchedule,
 } from "./input-resolution.js";
 export {

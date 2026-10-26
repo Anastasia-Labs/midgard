@@ -5,6 +5,7 @@ use midgard/validation_merkle_v1.{FrontierPeak}
 
 pub type InputEvidenceV1 {
   source_kind: Int,
+  item_index: Int,
   key: ByteArray,
   next_schedule_hash: ByteArray,
   descriptor_cbor: ByteArray,

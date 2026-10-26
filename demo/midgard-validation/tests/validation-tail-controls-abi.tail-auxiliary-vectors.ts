@@ -48,10 +48,11 @@ const auxiliary = (value: Auxiliary): Auxiliary => value;
 export const tailAuxiliaryVectors = [
   [
     24,
-    11,
+    12,
     auxiliary({
       kind: "valueInputAsset",
       sourceKind: "spend",
+      itemIndex: 0,
       key: bytes("01"),
       nextScheduleHash: fixtureBytes(0x41, 32),
       descriptorCbor: bytes("80"),
@@ -142,7 +143,6 @@ const nativeControlCbor = encodeCbor([
   bytes("03"),
   bytes("04"),
   0n,
-  fixtureBytes(0x51, 32),
   0n,
   [],
   0n,
@@ -179,7 +179,6 @@ export const valueAndMintControlCbor = encodeCbor([
   4n,
   5n,
   fixtureBytes(0x56, 32),
-  fixtureBytes(0x57, 32),
   fixtureBytes(0x58, 32),
   6n,
   7n,

@@ -1,4 +1,5 @@
 import {
+  compareMidgardAddressWitnessItems,
   computeMidgardNativeTxId,
   computeScriptIntegrityHashForLanguages,
   deriveMidgardNativeTxBodyCompact,
@@ -107,7 +108,8 @@ export const makeNativeTx = (opts: NativeTxOptions = {}): NativeTxFixture => {
       ? EMPTY_CBOR_LIST
       : opts.vkeyWitnesses !== undefined
         ? encodeByteList(opts.vkeyWitnesses(bodyHash))
-        : encodeByteList([
+        : encodeByteList(
+            [
             Buffer.from(
               CML.make_vkey_witness(
                 CML.TransactionHash.from_raw_bytes(signedBodyHash),
@@ -122,7 +124,8 @@ export const makeNativeTx = (opts: NativeTxOptions = {}): NativeTxFixture => {
                 ).to_cbor_bytes(),
               ),
             ),
-          ]);
+            ].sort(compareMidgardAddressWitnessItems),
+          );
 
   const witnessSet: MidgardNativeTxWitnessSetCanonical = {
     addrTxWitsPreimageCbor,

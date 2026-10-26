@@ -236,10 +236,11 @@ describe("replayOrder", () => {
   });
 
   it("reads a pending transaction's reference inputs from its bytes, and none from bytes that do not decode", () => {
-    expect(referencedOutRefs(reading([E0.outref, E1.outref]))).toEqual([
-      E0.outref,
-      E1.outref,
-    ]);
+    // The transaction carries field 1 ascending, whatever order it was given.
+    const referenced = [E0.outref, E1.outref];
+    expect(referencedOutRefs(reading(referenced))).toEqual(
+      [...referenced].sort(Buffer.compare),
+    );
     expect(referencedOutRefs(Buffer.from("a1".repeat(16), "hex"))).toEqual([]);
   });
 });

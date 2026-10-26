@@ -232,8 +232,9 @@ describe("independent validation event replay", () => {
       // by its script hash, and when the ledger-delta phase and the state's
       // ledger-delta root were removed, so acceptance follows multi-asset
       // accounting directly, when a carried Plutus script became its
-      // Cardano bytes, and when a constant's compute step began naming its
-      // value by root.
+      // Cardano bytes, when a constant's compute step began naming its
+      // value by root, and when each schedule node bound its input's field
+      // position and the resolved-input accumulators were removed.
       const expectedTraceHash =
         executionCount === 1
           ? "ae91a81e7342eb2824d6be0a51eddf929bfd95b02dec9fc2de2770e10bfdfd2b"

@@ -13,7 +13,6 @@ import {
 import { CoreStepEvidenceSchema } from "./validation-auxiliary-witness.core-step-witness-schema.js";
 import {
   ByteArrayListSchema,
-  DataSequenceSummarySchema,
   FrontierSchema,
 } from "./validation-auxiliary-witness.data-node-schema.js";
 import {
@@ -73,6 +72,7 @@ export const buildValidationAuxiliaryWitnessSchema = <
     Data.Object({
       ScheduledLedgerMembershipWitness: Data.Object({
         source_kind: Data.Integer(),
+        item_index: Data.Integer(),
         key: Data.Bytes(),
         next_schedule_hash: Data.Bytes(),
         value: Data.Bytes(),
@@ -83,6 +83,7 @@ export const buildValidationAuxiliaryWitnessSchema = <
     Data.Object({
       ScheduledLedgerNonMembershipWitness: Data.Object({
         source_kind: Data.Integer(),
+        item_index: Data.Integer(),
         key: Data.Bytes(),
         next_schedule_hash: Data.Bytes(),
         proof: ProofSchema,
@@ -91,9 +92,12 @@ export const buildValidationAuxiliaryWitnessSchema = <
     Data.Object({
       ResolvedInputReplayWitness: Data.Object({
         source_kind: Data.Integer(),
+        item_index: Data.Integer(),
         key: Data.Bytes(),
         next_schedule_hash: Data.Bytes(),
         value: Data.Bytes(),
+        proof: ProofSchema,
+        siblings: ByteArrayListSchema,
       }),
     }),
     Data.Object({
@@ -177,18 +181,10 @@ export const buildValidationAuxiliaryWitnessSchema = <
     }),
     Data.Object({
       CekMintContextItemWitness: Data.Object({
-        mint_index: Data.Integer(),
         policy_id: Data.Bytes(),
         asset_name: Data.Bytes(),
         quantity: Data.Integer(),
         siblings: ByteArrayListSchema,
-        previous: Data.Nullable(
-          Data.Object({
-            asset_name: Data.Bytes(),
-            quantity: Data.Integer(),
-            tail: DataSequenceSummarySchema,
-          }),
-        ),
       }),
     }),
     Data.Object({
@@ -204,7 +200,6 @@ export const buildValidationAuxiliaryWitnessSchema = <
         execution_language_tag: Data.Integer(),
         source_leaf: Data.Bytes(),
         execution_siblings: ByteArrayListSchema,
-        item_frontier_root: Data.Bytes(),
       }),
     }),
     Data.Object({
@@ -246,6 +241,7 @@ export const buildValidationAuxiliaryWitnessSchema = <
     Data.Object({
       ValueInputAssetWitness: Data.Object({
         source_kind: Data.Integer(),
+        item_index: Data.Integer(),
         key: Data.Bytes(),
         next_schedule_hash: Data.Bytes(),
         descriptor_cbor: Data.Bytes(),
