@@ -1,6 +1,7 @@
 import { encodeProofThreadForcedSourceKey } from "@al-ft/midgard-sdk";
 import { type VerdictSubject } from "@al-ft/midgard-sdk";
 
+import { detectDistinctAssetAccumulationLimitReplay } from "../distinct-asset-accumulation-limit/replay.js";
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { detectFieldItemWidthIllegalCompleteReplay } from "../field-item-width-illegal/workflow.js";
 import { detectFieldPreimageLengthCompleteReplay } from "../field-preimage-length-mismatch/evidence.js";
@@ -190,6 +191,21 @@ export const SCRIPT_INTEGRITY_HASH_MISMATCH_COMPLETE_CANONICAL_REPLAY =
     ["scriptIntegrityHashMismatch"],
     async (evidence, context) =>
       await detectScriptIntegrityHashMismatchReplay({
+        block: evidence,
+        predecessor: completeCanonicalReplayPredecessorLedger({
+          evidence,
+          context,
+        }),
+      }),
+  );
+
+/** Complete distinct-asset-accumulation-limit replay: admitted transactions
+ * and forced rejections whose reason ranks in or after the value phase. */
+export const DISTINCT_ASSET_ACCUMULATION_LIMIT_COMPLETE_CANONICAL_REPLAY =
+  completeReplayer(
+    ["distinctAssetAccumulationLimit"],
+    async (evidence, context) =>
+      await detectDistinctAssetAccumulationLimitReplay({
         block: evidence,
         predecessor: completeCanonicalReplayPredecessorLedger({
           evidence,

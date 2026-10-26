@@ -652,9 +652,15 @@ export const workflowAdapterRegistrationRows = [
   {
     category: "distinctAssetAccumulationLimit",
     status: "missing",
-    reason: "evidence_not_carried_by_da_payload",
-    existingSurface: [],
-    requiredClosure: daPayloadEvidenceClosure,
+    reason: "constrained_adapter_is_not_launch_scope_complete",
+    existingSurface: [
+      "distinct-asset-accumulation-limit/replay.ts",
+      "distinct-asset-accumulation-limit/artifact.ts",
+      "distinct-asset-accumulation-limit/workflow.ts",
+      "workflow/family-application-registry.ts#DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY_APPLICATION_RECORD",
+    ],
+    requiredClosure:
+      "install and exercise the manifest-bound distinct-asset-accumulation-limit runner in a compiled application with its retained-DA runtime",
   },
   {
     category: "mintItemNonCanonical",

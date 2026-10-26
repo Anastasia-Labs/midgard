@@ -75,7 +75,7 @@ them when you edit it.
 | `00000030` | `unusedRedeemer`                      | Yes               |
 | `00000032` | `executionNativeScriptInvalid`        | No                |
 | `00000033` | `scriptIntegrityHashMismatch`         | Yes               |
-| `00000035` | `distinctAssetAccumulationLimit`      | No                |
+| `00000035` | `distinctAssetAccumulationLimit`      | Yes               |
 | `00000036` | `mintItemNonCanonical`                | Yes               |
 
 Shared verifier directories, including `mpf-chunked-proof`, are not additional

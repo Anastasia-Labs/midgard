@@ -26,6 +26,7 @@ export * from "./direct-script-derivation-binding.js";
 export * from "./direct-script-derivation-source.js";
 export * from "./direct-source-index.js";
 export * from "./direct-source-workers.js";
+export * from "./distinct-asset-accumulation-limit.js";
 export * from "./double-spend.js";
 export * from "./double-withdraw.js";
 export * from "./evidence-source.js";

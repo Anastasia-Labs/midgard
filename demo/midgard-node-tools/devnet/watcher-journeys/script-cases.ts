@@ -148,6 +148,9 @@ export const JOURNEY_SCRIPT_FORCED_REASONS = {
     ReceivePurposePlutusV3Forbidden: { purpose_kind: 3n, purpose_index: 0n },
   },
   scriptIntegrityHashMismatch: "ScriptIntegrityHashMismatch",
+  distinctAssetAccumulationLimit: {
+    InputAssetAccumulationLimit: { input_index: 0n, asset_index: 0n },
+  },
 } satisfies Partial<
   Record<SDK.FraudProofCatalogueCategoryName, SDK.RejectionReason>
 >;

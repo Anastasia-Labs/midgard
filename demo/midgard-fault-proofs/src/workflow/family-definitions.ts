@@ -1,3 +1,4 @@
+import { DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY_DEFINITION } from "../distinct-asset-accumulation-limit/workflow.js";
 import { FIELD_ITEM_WIDTH_ILLEGAL_FAMILY_DEFINITION } from "../field-item-width-illegal/workflow.js";
 import { FIELD_PREIMAGE_LENGTH_FAMILY_DEFINITION } from "../field-preimage-length-mismatch/authenticated-workflow.js";
 import { MIN_ADA_FAMILY_DEFINITION } from "../min-ada/workflow.js";
@@ -58,6 +59,7 @@ type CursorFamilyDefinitions = Readonly<{
   unusedRedeemer: typeof UNUSED_REDEEMER_FAMILY_DEFINITION;
   receivePurposeLanguage: typeof RECEIVE_PURPOSE_LANGUAGE_FAMILY_DEFINITION;
   scriptIntegrityHashMismatch: typeof SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_DEFINITION;
+  distinctAssetAccumulationLimit: typeof DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY_DEFINITION;
 }>;
 
 export const CURSOR_FAMILY_DEFINITIONS: CursorFamilyDefinitions = Object.freeze(
@@ -92,6 +94,8 @@ export const CURSOR_FAMILY_DEFINITIONS: CursorFamilyDefinitions = Object.freeze(
     receivePurposeLanguage: RECEIVE_PURPOSE_LANGUAGE_FAMILY_DEFINITION,
     scriptIntegrityHashMismatch:
       SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_DEFINITION,
+    distinctAssetAccumulationLimit:
+      DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY_DEFINITION,
   },
 );
 
