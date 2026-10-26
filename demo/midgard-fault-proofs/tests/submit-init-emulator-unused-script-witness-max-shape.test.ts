@@ -6,7 +6,9 @@
  * The audited witness is the last one, so the witness walk crosses the whole
  * field. Over a deep predecessor ledger and source map an unused last
  * witness convicts; the same purposes with every witness used, field 6
- * filled by one large used script, are refused at the terminal.
+ * filled by one large used script, are refused at the terminal. One unused
+ * witness as large as field 6 admits, audited, convicts: the audit's single
+ * read decodes and hashes the largest item it can meet.
  */
 import {
   encodeMidgardSpendInputItem,
@@ -181,6 +183,15 @@ const honestMaximum = (dimensions: Dimensions) => {
   );
   return shapeOf(dimensions, [SPENT, received(size)]);
 };
+
+/** One purpose of each kind and, audited last, an unused Plutus V3 witness
+ * of `bytes` script bytes. */
+const withUnused = (bytes: number) =>
+  shapeOf(ONE, [
+    SPENT,
+    RECEIVED,
+    { language: "PlutusV3", scriptBytes: Buffer.alloc(bytes, 0x5c) },
+  ]);
 
 /**
  * The maximum shape over a deep predecessor ledger and a deep source map:
@@ -393,6 +404,42 @@ describe("unused-script-witness consensus-maximum shape", () => {
         ...summary(run.steps),
       }),
     );
+    expectWithinBounds(run.steps);
+    expect(outcome.fraudulentHeaderHash).toBe(scenario.setup.headerHash);
+    await expectSingleUtxoWithUnit(
+      harness.proverLucid,
+      harness.unusedScriptWitness.fraudProof.spendingScriptAddress,
+      outcome.fraudProofUnit,
+    );
+  }, 3_600_000);
+
+  it("convicts an unused witness as large as field 6 admits at the audited index", async () => {
+    const harness = await makeUnusedScriptWitnessHarness();
+    const references = await publishUnusedScriptWitnessRoles(harness);
+    const fits = (bytes: number) =>
+      fieldBytes(withUnused(bytes)).witnesses <= FIELD_CAP;
+    const size = largest(2, FIELD_CAP, fits);
+    const shape = withUnused(size);
+    const field6Bytes = fieldBytes(shape).witnesses;
+    expect(FIELD_CAP - field6Bytes).toBeLessThan(4);
+    const scriptIndex = BigInt(witnessCount(shape) - 1);
+    const scenario = await setupIntegrityScenario({
+      harness,
+      shape,
+      source: { kind: "normal" },
+    });
+    const run = await driveUnusedScriptWitnessThread({
+      harness,
+      scenario,
+      references,
+      scriptIndex,
+    });
+    expect(run.prepared).toMatchObject({ scriptIndex, unused: true });
+    expect(run.prepared.convicts).toBe(true);
+    const outcome = await run.terminal();
+    const audit = summary(auditSteps(run.steps));
+    const peak = { size, field6Bytes, audit, ...summary(run.steps) };
+    console.log("USW maximal audited witness", JSON.stringify(peak));
     expectWithinBounds(run.steps);
     expect(outcome.fraudulentHeaderHash).toBe(scenario.setup.headerHash);
     await expectSingleUtxoWithUnit(
