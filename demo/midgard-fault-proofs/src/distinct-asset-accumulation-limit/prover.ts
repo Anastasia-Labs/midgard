@@ -109,7 +109,8 @@ export const requireConvictingDistinctAssetAccumulationLimitProof = async (
 
 /** Whether the bound leaf convicts, without planning custody; `null` when it
  * does not, or when a spent input has no descriptor in the event pre-state
- * and an earlier phase is the first fault. */
+ * or an output or mint item is not in the shape the fold reads, and an
+ * earlier phase is the first fault. */
 export const distinctAssetAccumulationLimitDetection = (
   material: DirectScriptMaterial,
 ): { readonly crossing: SDK.ValueFaultPosition | null } | null => {

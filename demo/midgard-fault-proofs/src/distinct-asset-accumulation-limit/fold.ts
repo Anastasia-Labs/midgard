@@ -20,10 +20,16 @@ export type OutputResume = Readonly<{
   asset_index: bigint;
 }>;
 
+/** An output or mint item not in the shape the fold reads; the item
+ * grammar or canonicality phases refuse it first. */
+class UnreadableItem extends Error {}
+
 const byteAt = (item: Uint8Array, offset: number): number => {
   const value = item[offset];
   if (value === undefined)
-    throw new Error(`${LABEL}: item read past its end at ${offset.toString()}`);
+    throw new UnreadableItem(
+      `${LABEL}: item read past its end at ${offset.toString()}`,
+    );
   return value;
 };
 
@@ -33,7 +39,9 @@ const skipShortBytesAt = (item: Uint8Array, offset: number): number => {
   const head = byteAt(item, offset);
   if (head === 0x58) return offset + 2 + byteAt(item, offset + 1);
   if (head < 0x40 || head > 0x57)
-    throw new Error(`${LABEL}: no short byte string at ${offset.toString()}`);
+    throw new UnreadableItem(
+      `${LABEL}: no short byte string at ${offset.toString()}`,
+    );
   return offset + 1 + head - 0x40;
 };
 
@@ -42,7 +50,9 @@ const skipUintAt = (item: Uint8Array, offset: number): number => {
   if (head <= 23) return offset + 1;
   const width = { 24: 1, 25: 2, 26: 4, 27: 8 }[head];
   if (width === undefined)
-    throw new Error(`${LABEL}: no unsigned integer at ${offset.toString()}`);
+    throw new UnreadableItem(
+      `${LABEL}: no unsigned integer at ${offset.toString()}`,
+    );
   return offset + 1 + width;
 };
 
@@ -56,7 +66,9 @@ export const definiteMapHeaderAt = (
   if (tag >= 0xa0 && tag <= 0xb7) return [offset + 1, tag - 0xa0];
   const width = { 0xb8: 1, 0xb9: 2, 0xba: 4 }[tag];
   if (width === undefined)
-    throw new Error(`${LABEL}: no definite map header at ${offset.toString()}`);
+    throw new UnreadableItem(
+      `${LABEL}: no definite map header at ${offset.toString()}`,
+    );
   let count = 0;
   for (let at = 1; at <= width; at += 1)
     count = count * 256 + byteAt(item, offset + at);
@@ -145,7 +157,7 @@ export const outputPolicySizes = (item: Uint8Array): readonly bigint[] => {
   while (resume.policies_remaining > 0n) {
     const outcome = countOutput(item, resume, 0n, 1n);
     if (outcome.kind === "crosses")
-      throw new Error(`${LABEL}: an output holds more than the bound`);
+      throw new UnreadableItem(`${LABEL}: an output holds more than the bound`);
     if (outcome.kind === "counted") {
       sizes.push(outcome.entryCount);
       return sizes;
@@ -162,9 +174,9 @@ export const outputPolicySizes = (item: Uint8Array): readonly bigint[] => {
  * 28-byte policy and its asset map. */
 export const mintDeclaredCount = (item: Uint8Array): bigint => {
   if (byteAt(item, 0) !== 0x82 || byteAt(item, 1) !== 0x58)
-    throw new Error(`${LABEL}: mint item is not a policy pair`);
+    throw new UnreadableItem(`${LABEL}: mint item is not a policy pair`);
   if (byteAt(item, 2) !== 28)
-    throw new Error(`${LABEL}: mint policy is not 28 bytes`);
+    throw new UnreadableItem(`${LABEL}: mint policy is not 28 bytes`);
   return BigInt(definiteMapHeaderAt(item, 31)[1]);
 };
 
@@ -193,8 +205,9 @@ export const inputScheduleIndex = (
 };
 
 /** The entry units of the bound transaction, in the producer's order;
- * `null` when a spent input has no descriptor in the event pre-state, which
- * makes an earlier phase the first fault. */
+ * `null` when a spent input has no descriptor in the event pre-state, or an
+ * output or mint item is not in the shape the fold reads; either makes an
+ * earlier phase the first fault. */
 export const distinctAssetUnits = (
   material: DirectScriptMaterial,
 ): SDK.DistinctAssetUnits | null => {
@@ -209,9 +222,14 @@ export const distinctAssetUnits = (
       ),
     });
   }
-  return {
-    inputs,
-    outputs: material.fields[2]!.map(outputPolicySizes),
-    mint: material.fields[5]!.map(mintDeclaredCount),
-  };
+  try {
+    return {
+      inputs,
+      outputs: material.fields[2]!.map(outputPolicySizes),
+      mint: material.fields[5]!.map(mintDeclaredCount),
+    };
+  } catch (error) {
+    if (error instanceof UnreadableItem) return null;
+    throw error;
+  }
 };
