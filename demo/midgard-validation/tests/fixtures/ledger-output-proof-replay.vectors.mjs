@@ -233,6 +233,19 @@ export const LONG_ASSET_NAME_ROWS = [
   },
 ];
 
+/** Outputs of long asset names one byte over the 5,000-byte value cap: the
+ * scan refuses them after `acceptedSteps` steps, and so does the builder. */
+export const LONG_ASSET_NAME_REFUSAL_ROWS = [
+  {
+    id: "long_asset_names_value_over_the_cap",
+    label: "a 5001-byte value of long asset names",
+    datumHex: "00",
+    assets: longNameAssets(256n),
+    total: 5_038,
+    acceptedSteps: 144,
+  },
+];
+
 const hash = (bytes) => Buffer.from(blake2b(bytes, { dkLen: 32 }));
 
 const rowOutput = (row, twins) =>
@@ -417,8 +430,8 @@ export const ledgerOutputProofReplayVector = (row, family, twins) => {
   };
 };
 
-/** Every claim of `row` that `vector` does not exhibit, as a sentence. */
-export const ledgerOutputProofReplayClaimProblems = (row, vector) => {
+/** A `claim` check of `row` and the `problems` it found, as sentences. */
+const claims = (row) => {
   const problems = [];
   const claim = (name, expected, actual) => {
     if (JSON.stringify(expected) !== JSON.stringify(actual)) {
@@ -427,6 +440,12 @@ export const ledgerOutputProofReplayClaimProblems = (row, vector) => {
       );
     }
   };
+  return { problems, claim };
+};
+
+/** Every claim of `row` that `vector` does not exhibit, as a sentence. */
+export const ledgerOutputProofReplayClaimProblems = (row, vector) => {
+  const { problems, claim } = claims(row);
   if (row.total !== undefined)
     claim("output length", row.total, vector.outputLength);
   claim("step count", row.steps, vector.steps);
@@ -434,6 +453,42 @@ export const ledgerOutputProofReplayClaimProblems = (row, vector) => {
   if (row.attaches !== undefined)
     claim("attach shapes", row.attaches, vector.attaches);
   claim("exact terminal", true, vector.exactTerminal);
+  return problems;
+};
+
+/** What the twins produce for a refusal `row`: its output, the scan steps
+ * before the refused one, that control's hash, and the builder's refusal. */
+export const ledgerOutputProofRefusalVector = (row, twins) => {
+  const output = rowOutput(row, twins);
+  const { steps, refusal } = twins.traceMidgardLedgerOutputScan(output);
+  let proofRefused = false;
+  try {
+    twins.buildMidgardLedgerOutputProofTrace({
+      outputIndex: 0,
+      outputCbor: output,
+    });
+  } catch {
+    proofRefused = true;
+  }
+  const refused =
+    refusal && twins.encodeMidgardLedgerOutputScanControl(refusal.control);
+  return {
+    id: row.id,
+    outputCborHex: output.toString("hex"),
+    outputLength: output.length,
+    acceptedSteps: steps.length,
+    refusedControlHash: refused && hash(refused).toString("hex"),
+    proofRefused,
+  };
+};
+
+/** Every claim of refusal `row` that `vector` does not exhibit. */
+export const ledgerOutputProofRefusalClaimProblems = (row, vector) => {
+  const { problems, claim } = claims(row);
+  claim("output length", row.total, vector.outputLength);
+  claim("scan refuses a step", true, vector.refusedControlHash !== null);
+  claim("accepted step count", row.acceptedSteps, vector.acceptedSteps);
+  claim("proof refused", true, vector.proofRefused);
   return problems;
 };
 

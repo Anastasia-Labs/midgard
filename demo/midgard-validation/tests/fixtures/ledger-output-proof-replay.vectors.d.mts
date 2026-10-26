@@ -13,10 +13,12 @@
 import type {
   buildMidgardLedgerOutputProofTrace,
   encodeMidgardLedgerOutputProofControl,
+  encodeMidgardLedgerOutputScanControl,
   isExactMidgardLedgerOutputProofTerminal,
   MidgardLedgerOutputProofStages,
   MidgardLedgerOutputProofWitness,
   nextMidgardCekDataTraverseSpan,
+  traceMidgardLedgerOutputScan,
 } from "@al-ft/midgard-core";
 import type {
   decodeMidgardDatum,
@@ -68,6 +70,31 @@ export type LedgerOutputProofReplayVectorV1 = {
   readonly plannerClaimsCborHex: string;
 };
 
+/** One refusal row: an output the output scan refuses, and the step count
+ * before it does. */
+export type LedgerOutputProofRefusalRowV1 = {
+  readonly id: string;
+  readonly label: string;
+  readonly datumHex: string;
+  readonly assets: {
+    readonly policyHex: string;
+    readonly entries: readonly (readonly [string, bigint])[];
+  };
+  readonly total: number;
+  readonly acceptedSteps: number;
+};
+
+/** What the twins produce for one refusal row, as the generated fixture
+ * holds it. */
+export type LedgerOutputProofRefusalVectorV1 = {
+  readonly id: string;
+  readonly outputCborHex: string;
+  readonly outputLength: number;
+  readonly acceptedSteps: number;
+  readonly refusedControlHash: string | null;
+  readonly proofRefused: boolean;
+};
+
 /** The package functions a vector is computed with. */
 export type LedgerOutputProofReplayTwinsV1 = {
   readonly buildMidgardLedgerOutputProofTrace: typeof buildMidgardLedgerOutputProofTrace;
@@ -78,6 +105,7 @@ export type LedgerOutputProofReplayTwinsV1 = {
     readonly roleIndex: number;
   }) => { readonly claimedScalar: Data };
   readonly encodeMidgardLedgerOutputProofControl: typeof encodeMidgardLedgerOutputProofControl;
+  readonly encodeMidgardLedgerOutputScanControl: typeof encodeMidgardLedgerOutputScanControl;
   readonly encodeMidgardTxOutput: typeof encodeMidgardTxOutput;
   readonly isExactMidgardLedgerOutputProofTerminal: typeof isExactMidgardLedgerOutputProofTerminal;
   /** `ledgerOutputProofDatumRoleIndex` of `@al-ft/midgard-fault-proofs`. */
@@ -88,6 +116,7 @@ export type LedgerOutputProofReplayTwinsV1 = {
   readonly MidgardLedgerOutputProofStages: typeof MidgardLedgerOutputProofStages;
   readonly nextMidgardCekDataTraverseSpan: typeof nextMidgardCekDataTraverseSpan;
   readonly plutusDataToCborHex: typeof plutusDataToCborHex;
+  readonly traceMidgardLedgerOutputScan: typeof traceMidgardLedgerOutputScan;
   readonly witnessData: (
     witness: MidgardLedgerOutputProofWitness,
   ) => Constr<unknown>;
@@ -98,6 +127,8 @@ export declare const EMPTY_FIELD_ROWS: readonly LedgerOutputProofReplayRowV1[];
 export declare const DATUM_SCALAR_ROWS: readonly LedgerOutputProofReplayRowV1[];
 
 export declare const LONG_ASSET_NAME_ROWS: readonly LedgerOutputProofReplayRowV1[];
+
+export declare const LONG_ASSET_NAME_REFUSAL_ROWS: readonly LedgerOutputProofRefusalRowV1[];
 
 export declare const LEDGER_OUTPUT_PROOF_REPLAY_ROWS: readonly {
   readonly row: LedgerOutputProofReplayRowV1;
@@ -113,4 +144,14 @@ export declare const ledgerOutputProofReplayVector: (
 export declare const ledgerOutputProofReplayClaimProblems: (
   row: LedgerOutputProofReplayRowV1,
   vector: LedgerOutputProofReplayVectorV1,
+) => string[];
+
+export declare const ledgerOutputProofRefusalVector: (
+  row: LedgerOutputProofRefusalRowV1,
+  twins: LedgerOutputProofReplayTwinsV1,
+) => LedgerOutputProofRefusalVectorV1;
+
+export declare const ledgerOutputProofRefusalClaimProblems: (
+  row: LedgerOutputProofRefusalRowV1,
+  vector: LedgerOutputProofRefusalVectorV1,
 ) => string[];

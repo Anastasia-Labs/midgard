@@ -18,7 +18,10 @@ describe("ledger output proofs with span attaches inside a datum scalar", () => 
       "DATUM_SCALAR_ROWS",
       "EMPTY_FIELD_ROWS",
       "LEDGER_OUTPUT_PROOF_REPLAY_ROWS",
+      "LONG_ASSET_NAME_REFUSAL_ROWS",
       "LONG_ASSET_NAME_ROWS",
+      "ledgerOutputProofRefusalClaimProblems",
+      "ledgerOutputProofRefusalVector",
       "ledgerOutputProofReplayClaimProblems",
       "ledgerOutputProofReplayVector",
     ]);
@@ -27,6 +30,9 @@ describe("ledger output proofs with span attaches inside a datum scalar", () => 
         id: row.id,
         family,
       })),
+    );
+    expect(replayGolden.refusals.map(({ id }) => id)).toEqual(
+      vectors.LONG_ASSET_NAME_REFUSAL_ROWS.map(({ id }) => id),
     );
   });
 
