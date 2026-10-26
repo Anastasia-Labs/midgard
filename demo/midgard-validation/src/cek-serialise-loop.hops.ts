@@ -272,12 +272,18 @@ const hopRuns = (
   readonly order: number[];
   readonly referenceInputs: MidgardCekStagedReferenceInput[];
 } => {
-  const sorted = [...runIndices].sort((left, right) =>
-    compareMidgardCekStagedOutRefs(loop.refs[left]!, loop.refs[right]!),
-  );
+  // Runs alike may be staged on one output, which a transaction reads once:
+  // the output is named once and the indices of such runs name it.
+  const compare = (left: number, right: number) =>
+    compareMidgardCekStagedOutRefs(loop.refs[left]!, loop.refs[right]!);
+  const sorted = [...runIndices]
+    .sort(compare)
+    .filter((index, at, all) => at === 0 || compare(all[at - 1]!, index) !== 0);
   return {
     refs: sorted.map((index) => loop.refs[index]!),
-    order: runIndices.map((index) => sorted.indexOf(index)),
+    order: runIndices.map((index) =>
+      sorted.findIndex((kept) => compare(kept, index) === 0),
+    ),
     referenceInputs: sorted.map((index) => ({
       outRef: loop.refs[index]!,
       chunks: loop.runs[index]!,

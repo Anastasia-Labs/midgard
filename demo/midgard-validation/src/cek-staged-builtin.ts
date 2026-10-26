@@ -31,6 +31,11 @@ export {
   planMidgardCekStagedProductHop,
 } from "./cek-staged-product.hops.js";
 export {
+  type MidgardCekStagedProductState,
+  midgardCekStagedProductStateData,
+  midgardCekStagedProductStates,
+} from "./cek-staged-product.state.js";
+export {
   type MidgardCekStagedIntegerReader,
   midgardCekStagedSourceCount,
   verifyMidgardCekStagedProduct,
