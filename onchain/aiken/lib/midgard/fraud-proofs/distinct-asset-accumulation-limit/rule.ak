@@ -5,15 +5,12 @@ use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/ledger_output_commitment_v1
 use midgard/ledger_output_v1
 use midgard/ledger_state
-use midgard/mpf_proof_v1
 use midgard/rejection_reason_v1.{
   InputAssetAccumulationLimit, MintAssetAccumulationLimit,
   OutputAssetAccumulationLimit,
 }
 use midgard/transition_trace
-use midgard/validation_machine/machine_types.{
-  ValueAndMintControlV1, ValueAssetMutationWitnessV1,
-}
+use midgard/validation_machine/machine_types.{ValueAndMintControlV1}
 use midgard/validation_machine/shared.{mint_asset_leaf_hash}
 use midgard/validation_machine/witness.{
   encode_value_and_mint_control_v1, resolution_schedule_node_hash,
@@ -111,10 +108,10 @@ pub fn initialize_accumulator_v1(
   expect and {
       control.stage == bound.coordinate.fold + 2,
       bytearray.length(control.value_accumulator.asset_root) == 32,
-      control.value_accumulator.seen_asset_count >= 0,
-      control.value_accumulator.seen_asset_count <= ledger_output_v1.max_distinct_asset_count,
+      control.value_accumulator.asset_entry_count >= 0,
+      control.value_accumulator.asset_entry_count <= ledger_output_v1.max_distinct_asset_count,
       control.value_accumulator.nonzero_asset_count >= 0,
-      control.value_accumulator.nonzero_asset_count <= control.value_accumulator.seen_asset_count,
+      control.value_accumulator.nonzero_asset_count <= control.value_accumulator.asset_entry_count,
       when bound.coordinate.fold is {
         0 -> and {
             control.replay_cursor >= 0,
@@ -219,37 +216,10 @@ fn trace_pre_is_authenticated(
   }
 }
 
-fn mutation_fault(
-  control: ValueAndMintControlV1,
-  unit: ByteArray,
-  quantity: Int,
-  mutation: ValueAssetMutationWitnessV1,
-) -> Bool {
-  expect and {
-      bytearray.length(unit) >= 28,
-      bytearray.length(unit) <= 60,
-      quantity != 0,
-      mpf_proof_v1.proof_has_at_most_steps(mutation.delta_proof, 16),
-    }
-  if mutation.delta_was_present {
-    expect Some(_) = mpf_proof_v1.update_root(
-      control.value_accumulator.asset_root,
-      unit,
-      cbor.serialise(mutation.old_delta),
-      cbor.serialise(mutation.old_delta + quantity),
-      mutation.delta_proof,
-    )
-    False
-  } else {
-    expect mutation.old_delta == 0
-    expect Some(_) = mpf_proof_v1.insert_root(
-      control.value_accumulator.asset_root,
-      unit,
-      cbor.serialise(quantity),
-      mutation.delta_proof,
-    )
-    control.value_accumulator.seen_asset_count >= ledger_output_v1.max_distinct_asset_count
-  }
+/// The machine checks the entry bound before it reads a mutation witness, so
+/// the decisive fault at an authenticated step is the count compare alone.
+fn entry_limit_fault(control: ValueAndMintControlV1) -> Bool {
+  control.value_accumulator.asset_entry_count >= ledger_output_v1.max_distinct_asset_count
 }
 
 fn finish(state: FoldStateV1, fold: Int, fault: Bool) -> FoldStateV1 {
@@ -272,7 +242,6 @@ pub fn authenticate_input_fold_v1(
   quantity: Int,
   asset_peaks: List<FrontierPeak>,
   asset_siblings: List<ByteArray>,
-  mutation: ValueAssetMutationWitnessV1,
 ) -> FoldStateV1 {
   expect Some(control) = state.control
   expect and {
@@ -300,16 +269,7 @@ pub fn authenticate_input_fold_v1(
       asset_peaks,
       asset_siblings,
     )
-  finish(
-    state,
-    input_fold,
-    mutation_fault(
-      control,
-      bytearray.concat(policy_id, asset_name),
-      quantity,
-      mutation,
-    ),
-  )
+  finish(state, input_fold, entry_limit_fault(control))
 }
 
 pub fn authenticate_output_fold_v1(
@@ -322,7 +282,6 @@ pub fn authenticate_output_fold_v1(
   quantity: Int,
   asset_peaks: List<FrontierPeak>,
   asset_siblings: List<ByteArray>,
-  mutation: ValueAssetMutationWitnessV1,
 ) -> FoldStateV1 {
   expect Some(control) = state.control
   expect and {
@@ -344,16 +303,7 @@ pub fn authenticate_output_fold_v1(
       asset_peaks,
       asset_siblings,
     )
-  finish(
-    state,
-    output_fold,
-    mutation_fault(
-      control,
-      bytearray.concat(policy_id, asset_name),
-      0 - quantity,
-      mutation,
-    ),
-  )
+  finish(state, output_fold, entry_limit_fault(control))
 }
 
 pub fn authenticate_mint_fold_v1(
@@ -363,7 +313,6 @@ pub fn authenticate_mint_fold_v1(
   asset_name: ByteArray,
   quantity: Int,
   siblings: List<ByteArray>,
-  mutation: ValueAssetMutationWitnessV1,
 ) -> FoldStateV1 {
   expect Some(control) = state.control
   expect and {
@@ -378,16 +327,7 @@ pub fn authenticate_mint_fold_v1(
         siblings,
       ),
     }
-  finish(
-    state,
-    mint_fold,
-    mutation_fault(
-      control,
-      bytearray.concat(policy_id, asset_name),
-      quantity,
-      mutation,
-    ),
-  )
+  finish(state, mint_fold, entry_limit_fault(control))
 }
 
 pub fn terminal_contradiction_v1(state: FoldStateV1) -> Bool {

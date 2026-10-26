@@ -64,7 +64,6 @@ validator main(
               evidence.quantity,
               evidence.asset_peaks,
               evidence.asset_siblings,
-              evidence.mutation,
             )
         }
         let expected: Data = advanced
