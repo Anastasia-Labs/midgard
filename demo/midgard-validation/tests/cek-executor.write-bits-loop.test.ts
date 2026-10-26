@@ -2,15 +2,13 @@ import {
   MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
   type MidgardCekMachineState,
 } from "@al-ft/midgard-core";
-import { CEKConst } from "@harmoniclabs/plutus-machine";
 import { describe, expect, it } from "vitest";
 
 import {
-  referenceConstantToDirectWitness,
+  builtinValueToDirectWitness,
   semanticizeMidgardCekDirectConstant,
-} from "../src/cek-builtin.evaluate-reference-builtin.js";
+} from "../src/cek-builtin.evaluate-direct-builtin.js";
 import { hashMidgardCekDirectValueWitness } from "../src/cek-builtin.js";
-import { referenceValueOf } from "../src/cek-builtin.reference-value.js";
 import { midgardCekWriteBitsTakesLoop } from "../src/cek-executor.write-bits-builtin.js";
 import {
   errorSuccessor,
@@ -18,6 +16,7 @@ import {
 } from "../src/cek-machine.midgard-cek-builtin-argument-count.js";
 import { MidgardCekErrorCodes } from "../src/cek-machine.midgard-cek-core-step-witness.js";
 import { verifyMidgardCekCoreStep } from "../src/cek-machine.verify-builtin.js";
+import { UPLCConst } from "../src/uplc-constant.js";
 import { run } from "./helpers/cek-staged-route-terms.js";
 import {
   compactedArguments,
@@ -98,11 +97,11 @@ describe("writeBits over a long index list", () => {
   it("presented inline takes the loop past 64 indices", () => {
     const presented = (count: number, compacted: boolean) =>
       [
-        CEKConst.byteString(pattern(64)),
-        referenceValueOf(indicesConstant(spread(count, 64))),
-        CEKConst.bool(true),
+        UPLCConst.byteString(pattern(64)),
+        indicesConstant(spread(count, 64)),
+        UPLCConst.bool(true),
       ].map((value) => {
-        const witness = referenceConstantToDirectWitness(value, true);
+        const witness = builtinValueToDirectWitness(value, true);
         return compacted
           ? semanticizeMidgardCekDirectConstant(witness)
           : witness;

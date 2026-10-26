@@ -5,6 +5,7 @@ import {
 } from "@al-ft/midgard-core";
 import * as UPLC from "@lucid-evolution/uplc";
 
+import { MIDGARD_PLUTUS_PROTOCOL_MAJOR_VERSION } from "./cek-builtin.pinned-evaluator.js";
 import { storedFlatProgramBytes } from "./cek-program.unwrap-canonical-cbor-byte-string.js";
 import type { MidgardCekScriptRun } from "./phase-b.evaluate-cek-script.js";
 import { MidgardUplcCapabilityError } from "./plutus-script-evaluator.capability-error.js";
@@ -110,7 +111,7 @@ export const evaluateStoredMidgardPlutusScript = (
       decoded.flatBytes,
       [run.contextCbor],
       3,
-      11,
+      MIDGARD_PLUTUS_PROTOCOL_MAJOR_VERSION,
       BigInt64Array.from(PLUTUS_V3_CANONICAL_COST_MODEL_VIEW.map(BigInt)),
       budget.cpu,
       budget.memory,

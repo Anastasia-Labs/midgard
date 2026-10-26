@@ -5,7 +5,10 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import { DaPayloadsDB } from "../src/database/index.js";
 import * as MigrationRunner from "../src/database/migrations/runner.js";
-import { computeChallengeableCutoff } from "../src/database/retention-policy.js";
+import {
+  computeChallengeableCutoff,
+  computeRetentionCutoff,
+} from "../src/database/retention-policy.js";
 import {
   deploymentManifest,
   NOW,
@@ -38,6 +41,7 @@ const old = () => new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY);
 const pruneAt = (finalThroughHeight: number) =>
   DaPayloadsDB.pruneBeyondRetention({
     challengeableCutoff: computeChallengeableCutoff(NOW),
+    retentionCutoff: computeRetentionCutoff(NOW, 15),
     view: {
       confirmedHeadHash: deterministicFixtureBytes("terminal-finality", 28),
       liveQueueHeaderHashes: [],

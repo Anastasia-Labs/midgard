@@ -80,6 +80,9 @@ export const CEK_CORE_STAGE_TITLES = {
   blsBudget: deployedTitle("validationTraceDisputeCekCoreBlsBudget"),
   failureBudget: deployedTitle("validationTraceDisputeCekCoreFailureBudget"),
   failureKnown: deployedTitle("validationTraceDisputeCekCoreFailureKnown"),
+  failureBlsUncompress: deployedTitle(
+    "validationTraceDisputeCekCoreFailureBlsUncompress",
+  ),
   typeFailureKinds: deployedTitle(
     "validationTraceDisputeCekCoreTypeFailureKinds",
   ),
@@ -100,6 +103,7 @@ export const CEK_CORE_ARM_HOP_COUNTS = [
   2n,
   2n,
   1n,
+  2n,
 ] as const;
 export const buildCekCoreStages = (
   blueprint: FaultProofBlueprint,
@@ -212,6 +216,10 @@ export const buildCekCoreStages = (
     failureBudget.spendingScriptHash,
     ctPolicy,
   ]);
+  const failureBlsUncompress = build("failureBlsUncompress", [
+    failureBudget.spendingScriptHash,
+    ctPolicy,
+  ]);
   const typeFailureRoots = build("typeFailureRoots", [
     typeFailureKinds.spendingScriptHash,
     ctPolicy,
@@ -255,6 +263,7 @@ export const buildCekCoreStages = (
     blsRoots,
     failureBudget,
     failureKnown,
+    failureBlsUncompress,
     typeFailureKinds,
     typeFailureRoots,
   };
@@ -274,6 +283,7 @@ export const cekCoreEntryHashes = (stages: CekCoreStages) =>
     stages.failureKnown,
     stages.typeFailureRoots,
     stages.caseConstant,
+    stages.failureBlsUncompress,
   ].map((stage) => stage.spendingScriptHash);
 
 export const CEK_CORE_STAGE_REFERENCES = {
@@ -428,6 +438,10 @@ export const CEK_CORE_STAGE_REFERENCES = {
   failureKnown: {
     deployment: "validationTraceDisputeCekCoreFailureKnown",
     role: "V1 validation-trace CEK core failure known",
+  },
+  failureBlsUncompress: {
+    deployment: "validationTraceDisputeCekCoreFailureBlsUncompress",
+    role: "V1 validation-trace CEK core failure bls uncompress",
   },
   typeFailureKinds: {
     deployment: "validationTraceDisputeCekCoreTypeFailureKinds",

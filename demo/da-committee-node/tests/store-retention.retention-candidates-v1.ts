@@ -7,7 +7,7 @@ import {
   pruneExpiredDaPayloads,
   retentionCandidates,
   retentionDeadlineReport,
-} from "../src/store/retention.js";
+} from "./helpers/retention-whole-set.js";
 import {
   hashOf,
   HEAD,
@@ -15,9 +15,10 @@ import {
   LIVE_B,
   NOW,
   openStore,
-  PAST_HORIZON,
+  PAST_RETENTION,
   payloadRecord,
-  REQUIRED_RETENTION_MS,
+  PROMISED_RETENTION_MS,
+  retainedHeaderHashes,
   retentionOptions,
   seed,
 } from "./store-retention.header-record.js";
@@ -42,8 +43,8 @@ describe("retentionCandidatesV1", () => {
   it("retains headers live in the L1 queue past the horizon", async () => {
     const store = await openStore();
     await seed(store, [
-      { headerHash: LIVE_A, endTimeMs: PAST_HORIZON, status: "attested" },
-      { headerHash: LIVE_B, withoutHeader: true, fetchedAtMs: PAST_HORIZON },
+      { headerHash: LIVE_A, endTimeMs: PAST_RETENTION, status: "attested" },
+      { headerHash: LIVE_B, withoutHeader: true, fetchedAtMs: PAST_RETENTION },
     ]);
     const candidates = await retentionCandidates(store, retentionOptions());
     expect(candidates.map((candidate) => candidate.decision)).toEqual([
@@ -68,15 +69,19 @@ describe("retentionCandidatesV1", () => {
     });
   });
 
-  it("prunes any status once the horizon has strictly passed, not at it", async () => {
+  it("prunes any status once promised retention has strictly passed, not at it", async () => {
     const store = await openStore();
     await seed(store, [
-      { headerHash: hashOf(2), endTimeMs: PAST_HORIZON, status: "merged" },
-      { headerHash: hashOf(3), endTimeMs: PAST_HORIZON, status: "attested" },
-      { headerHash: hashOf(4), endTimeMs: PAST_HORIZON, status: "conflicted" },
+      { headerHash: hashOf(2), endTimeMs: PAST_RETENTION, status: "merged" },
+      { headerHash: hashOf(3), endTimeMs: PAST_RETENTION, status: "attested" },
+      {
+        headerHash: hashOf(4),
+        endTimeMs: PAST_RETENTION,
+        status: "conflicted",
+      },
       {
         headerHash: hashOf(5),
-        endTimeMs: NOW - REQUIRED_RETENTION_MS,
+        endTimeMs: NOW - PROMISED_RETENTION_MS,
         status: "merged",
       },
     ]);
@@ -87,14 +92,42 @@ describe("retentionCandidatesV1", () => {
       "past_challengeability_horizon",
       "past_challengeability_horizon",
       "past_challengeability_horizon",
-      "still_challengeable",
+      "within_deployment_retention",
     ]);
+  });
+
+  it("keeps a merged public payload through day 120 and releases it strictly after", async () => {
+    const store = await openStore();
+    const headerHash = hashOf(16);
+    const blockTimeMs = NOW - 120 * RETENTION_MS_PER_DAY;
+    await seed(store, [
+      {
+        headerHash,
+        endTimeMs: blockTimeMs - 1_000,
+        blockTimeMs,
+        status: "merged",
+      },
+    ]);
+    const options = { ...retentionOptions(), retentionDays: 120 };
+    expect(
+      (await retentionCandidates(store, options))[0]?.decision.reasonCode,
+    ).toBe("within_deployment_retention");
+    expect(
+      await store.deleteDaPayloadIfPrunable({ ...options, headerHash }),
+    ).toBe(false);
+    expect(
+      await store.deleteDaPayloadIfPrunable({
+        ...options,
+        headerHash,
+        finalBlockTimeMs: NOW + 1,
+      }),
+    ).toBe(true);
   });
 
   it("retains evidence by refusing a known header whose authenticated commit clock is missing", async () => {
     const store = await openStore();
     const headerHash = hashOf(15);
-    await seed(store, [{ headerHash, endTimeMs: PAST_HORIZON }]);
+    await seed(store, [{ headerHash, endTimeMs: PAST_RETENTION }]);
     const header = (await store.getStateQueueHeader(headerHash))!;
     const { rawStateQueueDatumCbor: _datum, ...withoutClock } = header;
     await store.upsertStateQueueHeader(withoutClock);
@@ -108,7 +141,11 @@ describe("retentionCandidatesV1", () => {
     const store = await openStore();
     await seed(store, [
       { headerHash: hashOf(6), withoutHeader: true, fetchedAtMs: NOW },
-      { headerHash: hashOf(7), withoutHeader: true, fetchedAtMs: PAST_HORIZON },
+      {
+        headerHash: hashOf(7),
+        withoutHeader: true,
+        fetchedAtMs: PAST_RETENTION,
+      },
     ]);
     const candidates = await retentionCandidates(store, retentionOptions());
     expect(candidates).toMatchObject([
@@ -119,7 +156,7 @@ describe("retentionCandidatesV1", () => {
       },
       {
         headerStatus: "unobserved",
-        blockTimeMs: PAST_HORIZON,
+        blockTimeMs: PAST_RETENTION,
         decision: {
           decision: "prune",
           reasonCode: "past_challengeability_horizon",
@@ -131,7 +168,11 @@ describe("retentionCandidatesV1", () => {
   it("releases nothing while no block is final, whatever the wall clock reads", async () => {
     const store = await openStore();
     await seed(store, [
-      { headerHash: hashOf(9), withoutHeader: true, fetchedAtMs: PAST_HORIZON },
+      {
+        headerHash: hashOf(9),
+        withoutHeader: true,
+        fetchedAtMs: PAST_RETENTION,
+      },
     ]);
     const candidates = await retentionCandidates(store, {
       ...retentionOptions(),
@@ -175,7 +216,7 @@ describe("retentionCandidatesV1", () => {
     await seed(store, [
       {
         headerHash: hashOf(8),
-        endTimeMs: PAST_HORIZON,
+        endTimeMs: PAST_RETENTION,
         status: "merged",
         deploymentFingerprint: "ee".repeat(32),
       },
@@ -199,7 +240,7 @@ describe("terminal recovery payload retirement", () => {
     const store = await openStore();
     const headerHash = hashOf(14);
     await seed(store, [
-      { headerHash, endTimeMs: PAST_HORIZON, status: "removed" },
+      { headerHash, endTimeMs: PAST_RETENTION, status: "removed" },
     ]);
     const header = (await store.getStateQueueHeader(headerHash))!;
     const request = { ...retentionOptions(), headerHash };
@@ -239,9 +280,9 @@ describe("pruneExpiredDaPayloadsV1", () => {
   it("deletes exactly the prunable payloads and keeps the exempt ones", async () => {
     const store = await openStore();
     await seed(store, [
-      { headerHash: HEAD, endTimeMs: PAST_HORIZON, status: "merged" },
-      { headerHash: LIVE_A, endTimeMs: PAST_HORIZON, status: "attested" },
-      { headerHash: hashOf(10), endTimeMs: PAST_HORIZON, status: "merged" },
+      { headerHash: HEAD, endTimeMs: PAST_RETENTION, status: "merged" },
+      { headerHash: LIVE_A, endTimeMs: PAST_RETENTION, status: "attested" },
+      { headerHash: hashOf(10), endTimeMs: PAST_RETENTION, status: "merged" },
       { headerHash: hashOf(11), status: "removed" },
       { headerHash: hashOf(12), status: "attested" },
     ]);
@@ -251,15 +292,15 @@ describe("pruneExpiredDaPayloadsV1", () => {
       prunedHeaderHashes: [hashOf(10), hashOf(11)],
       retained: 3,
     });
-    expect(
-      (await store.listDaPayloads()).map(({ headerHash }) => headerHash),
-    ).toEqual([hashOf(12), HEAD, LIVE_A].sort());
+    expect(await retainedHeaderHashes(store)).toEqual(
+      [hashOf(12), HEAD, LIVE_A].sort(),
+    );
   });
 
   it("re-decides inside the store's write boundary against the caller's view", async () => {
     const store = await openStore();
     await seed(store, [
-      { headerHash: hashOf(13), endTimeMs: PAST_HORIZON, status: "merged" },
+      { headerHash: hashOf(13), endTimeMs: PAST_RETENTION, status: "merged" },
     ]);
     const request = {
       headerHash: hashOf(13),
@@ -284,7 +325,7 @@ describe("pruneExpiredDaPayloadsV1", () => {
     expect(
       await store.deleteDaPayloadIfPrunable({
         ...request,
-        finalBlockTimeMs: NOW - 2 * RETENTION_MS_PER_DAY,
+        finalBlockTimeMs: NOW - PROMISED_RETENTION_MS,
       }),
     ).toBe(false);
     expect(await store.getDaPayload(hashOf(13))).toBeDefined();
@@ -316,12 +357,10 @@ describe("pruneExpiredDaPayloadsV1", () => {
       liveQueueHeaderHashes: new Set([hashOf(78), hashOf(77)]),
     };
     await pruneExpiredDaPayloads(store, { ...retentionOptions(), ...view });
-    const retained = (await store.listDaPayloads()).map(
-      ({ headerHash }) => headerHash,
-    );
+    const retained = await retainedHeaderHashes(store);
     const insideHorizon = entries.filter(
       (entry) =>
-        NOW <= entry.endTimeMs + REQUIRED_RETENTION_MS &&
+        NOW <= entry.endTimeMs + PROMISED_RETENTION_MS &&
         (entry.withoutHeader || entry.status !== "removed"),
     );
     expect(retained.length).toBeLessThanOrEqual(1 + 2 + insideHorizon.length);

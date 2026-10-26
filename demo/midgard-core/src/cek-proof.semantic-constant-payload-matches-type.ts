@@ -47,7 +47,10 @@ export const semanticConstantPayloadMatchesType = (
     if (typeof value !== "string") return false;
     try {
       const bytes = Buffer.from(value, "hex");
-      const decoded = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+      const decoded = new TextDecoder("utf-8", {
+        fatal: true,
+        ignoreBOM: true,
+      }).decode(bytes);
       return Buffer.from(decoded, "utf8").equals(bytes);
     } catch {
       return false;

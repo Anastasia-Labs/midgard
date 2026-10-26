@@ -73,7 +73,7 @@ export const midgardCekConstantTypeKey = (
 const isUtf8 = (bytes: Buffer): boolean => {
   try {
     return Buffer.from(
-      new TextDecoder("utf-8", { fatal: true }).decode(bytes),
+      new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes),
       "utf8",
     ).equals(bytes);
   } catch {

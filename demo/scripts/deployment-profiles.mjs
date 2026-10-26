@@ -11,6 +11,7 @@ import {
   buildRecordPath,
 } from "./lib/blueprint-stamp.mjs";
 
+import { validatePublicDaTransport } from "./deployment-profile-da.mjs";
 import {
   allowListConstants,
   daBondConstants,
@@ -198,6 +199,7 @@ export const validateProfile = (profile, name) => {
       "protocol_treasury_native_script",
       "allow_lists",
       "excluded_fraud_proof_categories",
+      ...(name === "preprod-public" ? ["da_transport"] : []),
     ],
     "profile",
   );
@@ -209,6 +211,7 @@ export const validateProfile = (profile, name) => {
   ) {
     throw new Error(`Profile name/network must match ${name}`);
   }
+  validatePublicDaTransport(profile);
   exactKeys(profile.l1_finality, l1FinalityKeys, "l1_finality");
   positiveIntegers(
     profile.l1_finality,
@@ -520,7 +523,7 @@ export const generateProfiles = async (selected, check = false) => {
     `export const SELECTED_DEPLOYMENT_PROFILE_DIGEST = DEPLOYMENT_PROFILE_DIGESTS[${JSON.stringify(selected)}];\n` +
     `const freezeNativeScript = (script: object): void => {\n  for (const child of Object.values(script) as unknown[]) if (typeof child === "object" && child !== null) freezeNativeScript(child);\n  Object.freeze(script);\n};\n` +
     `for (const profile of Object.values(DEPLOYMENT_PROFILES)) {\n` +
-    `  Object.freeze(profile.l1_finality);\n  Object.freeze(profile.timing);\n  Object.freeze(profile.da_bond);\n  Object.freeze(profile.limits);\n  Object.freeze(profile.economics);\n  freezeNativeScript(profile.protocol_treasury_native_script);\n  for (const keys of Object.values(profile.allow_lists)) if (keys !== null) Object.freeze(keys);\n  Object.freeze(profile.allow_lists);\n  Object.freeze(profile.excluded_fraud_proof_categories);\n  Object.freeze(profile);\n}\n` +
+    `  if ("da_transport" in profile) Object.freeze(profile.da_transport);\n  Object.freeze(profile.l1_finality);\n  Object.freeze(profile.timing);\n  Object.freeze(profile.da_bond);\n  Object.freeze(profile.limits);\n  Object.freeze(profile.economics);\n  freezeNativeScript(profile.protocol_treasury_native_script);\n  for (const keys of Object.values(profile.allow_lists)) if (keys !== null) Object.freeze(keys);\n  Object.freeze(profile.allow_lists);\n  Object.freeze(profile.excluded_fraud_proof_categories);\n  Object.freeze(profile);\n}\n` +
     `Object.freeze(DEPLOYMENT_PROFILES);\nObject.freeze(DEPLOYMENT_PROFILE_DIGESTS);\n` +
     `for (const economics of Object.values(DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE)) Object.freeze(economics);\n` +
     `Object.freeze(DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE);\n`;

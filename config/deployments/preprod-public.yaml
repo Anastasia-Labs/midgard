@@ -46,6 +46,9 @@ timing:
   # 480,000 + max(259,200,000, 604,800,000) + 172,800,000. Maturity
   # dominates, so the 24 h window leaves the delay unchanged.
   da_bond_withdraw_delay_ms: 778080000
+da_transport:
+  # P1 participants bootstrap by replaying retained inputs from empty genesis.
+  retention_days: 120
 da_bond:
   da_bond_lovelace: 100000000000
   da_slash_penalty_lovelace: 25000000000

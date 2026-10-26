@@ -29,7 +29,6 @@ import {
   midgardCekFlatRoot,
   prependMidgardCekDataListSummary,
 } from "@al-ft/midgard-core";
-import { CEKConst } from "@harmoniclabs/plutus-machine";
 import { Constr, type Data } from "@lucid-evolution/lucid";
 
 import type { MidgardCekDirectValueWitness } from "./cek-builtin.argument-kinds.js";
@@ -41,6 +40,7 @@ import {
   compactValue,
   sameCompacted,
 } from "./cek-staged-builtin.verify.js";
+import { UPLCConst } from "./uplc-constant.js";
 
 /** Protocol version 11 fails writeBits on an input over 4,096 bytes. */
 export const MIDGARD_CEK_WRITE_BITS_MAX_INPUT = 4_096;
@@ -242,8 +242,8 @@ const opens = (
   end === cursor + hop.items.length &&
   same(midgardCekWriteBitsOpened(hop.items, hop.tail).root, root);
 
-const TRUE = compactValue(CEKConst.bool(true));
-const FALSE = compactValue(CEKConst.bool(false));
+const TRUE = compactValue(UPLCConst.bool(true));
+const FALSE = compactValue(UPLCConst.bool(false));
 
 const rejected = (reason: string) => ({ kind: "rejected", reason }) as const;
 

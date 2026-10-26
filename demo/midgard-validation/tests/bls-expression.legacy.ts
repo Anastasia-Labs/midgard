@@ -10,11 +10,7 @@ import {
   type MidgardCekDirectValueWitness,
   sameBytes,
 } from "../src/cek-builtin.argument-kinds.js";
-import {
-  directConstantToReferenceValue,
-  referenceConstantToDirectWitness,
-  runPinnedReferenceBuiltin,
-} from "../src/cek-builtin.evaluate-reference-builtin.js";
+import { builtinValueToDirectWitness } from "../src/cek-builtin.evaluate-direct-builtin.js";
 import { midgardCekDirectBuiltinBudget } from "../src/cek-builtin.selected-control-result.js";
 import type {
   MidgardCekBlsExpressionWitness,
@@ -24,6 +20,11 @@ import {
   decodeMidgardCekConstantWitness,
   hashMidgardCekConstantWitness,
 } from "../src/cek-constant.js";
+import { UPLCConst } from "../src/uplc-constant.js";
+import {
+  harmonicBlsPoint,
+  runHarmonicReferenceBuiltin,
+} from "./helpers/harmonic-reference-builtin.js";
 
 type EvaluatedBlsExpression = {
   readonly root: Bytes;
@@ -41,9 +42,9 @@ const evaluateBlsExpression = (
     if (g1Decoded.type.kind !== "blsG1" || g2Decoded.type.kind !== "blsG2") {
       throw new Error("BLS expression leaf requires G1 and G2 constants");
     }
-    const g1 = directConstantToReferenceValue(expression.g1);
-    const g2 = directConstantToReferenceValue(expression.g2);
-    const value = runPinnedReferenceBuiltin(68, [g1, g2]);
+    const g1 = harmonicBlsPoint(expression.g1);
+    const g2 = harmonicBlsPoint(expression.g2);
+    const value = runHarmonicReferenceBuiltin(68, [g1, g2]);
     if (value instanceof CEKError) {
       throw new Error("reference evaluator rejected a BLS expression leaf");
     }
@@ -60,7 +61,7 @@ const evaluateBlsExpression = (
   }
   const left = evaluateBlsExpression(expression.left);
   const right = evaluateBlsExpression(expression.right);
-  const value = runPinnedReferenceBuiltin(69, [left.value, right.value]);
+  const value = runHarmonicReferenceBuiltin(69, [left.value, right.value]);
   if (value instanceof CEKError) {
     throw new Error("reference evaluator rejected a BLS expression product");
   }
@@ -98,7 +99,7 @@ export const legacyEvaluateMidgardCekBlsFinal = (
       "BLS finalVerify expression exceeds the ten-leaf L1 proof reserve",
     );
   }
-  const result = runPinnedReferenceBuiltin(70, [left.value, right.value]);
+  const result = runHarmonicReferenceBuiltin(70, [left.value, right.value]);
   if (result instanceof CEKError) {
     throw new Error("reference evaluator rejected BLS finalVerify");
   }
@@ -109,7 +110,10 @@ export const legacyEvaluateMidgardCekBlsFinal = (
   return Object.freeze({
     leftRoot: left.root,
     rightRoot: right.root,
-    result: referenceConstantToDirectWitness(result, false),
+    result: builtinValueToDirectWitness(
+      UPLCConst.bool(result.value as boolean),
+      false,
+    ),
     budget: midgardCekDirectBuiltinBudget(70n, arguments_),
   });
 };

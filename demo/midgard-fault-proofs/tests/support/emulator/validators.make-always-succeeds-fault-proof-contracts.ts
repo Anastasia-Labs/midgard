@@ -234,6 +234,7 @@ export const makeAlwaysSucceedsFaultProofContracts = (
         blsRoots: alwaysValidationTraceDispute,
         failureBudget: alwaysValidationTraceDispute,
         failureKnown: alwaysValidationTraceDispute,
+        failureBlsUncompress: alwaysValidationTraceDispute,
         typeFailureKinds: alwaysValidationTraceDispute,
         typeFailureRoots: alwaysValidationTraceDispute,
       },

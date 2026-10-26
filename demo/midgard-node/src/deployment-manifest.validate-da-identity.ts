@@ -3,6 +3,7 @@ import {
   DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
   DA_TRANSPORT_LIMITS,
   DA_TRANSPORT_PROTOCOL_VERSION,
+  deploymentDaRetentionDays,
 } from "@al-ft/midgard-core/da-transport";
 import {
   SELECTED_DEPLOYMENT_PROFILE,
@@ -131,9 +132,9 @@ export const validateDaIdentity = (
     transportProfile.retentionDays,
     "da.transportProfile.retentionDays",
   );
-  if (retentionDays < DA_TRANSPORT_LIMITS.minimumRetentionDays) {
+  if (retentionDays < deploymentDaRetentionDays()) {
     throw new Error(
-      `Deployment manifest da.transportProfile.retentionDays must be at least ${DA_TRANSPORT_LIMITS.minimumRetentionDays.toString()}`,
+      `Deployment manifest da.transportProfile.retentionDays must be at least ${deploymentDaRetentionDays().toString()}`,
     );
   }
 };

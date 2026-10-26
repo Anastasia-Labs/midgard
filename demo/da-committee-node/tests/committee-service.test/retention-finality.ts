@@ -6,10 +6,8 @@ import { expect, it } from "vitest";
 import { CommitteeService } from "../../src/committee-service.js";
 import { obligations } from "../../src/l1/follower/obligations.js";
 import { loadDaSigner, validateDaSignerMembership } from "../../src/signer.js";
-import {
-  retentionCycleOptions,
-  runRetentionCycle,
-} from "../../src/store/retention.js";
+import { retentionCycleOptions } from "../../src/store/retention.js";
+import { runRetentionCycle } from "../../src/store/retention.scan.js";
 import { bytesToHex } from "../../src/utils/hex.js";
 import {
   makeObservedNode,
@@ -22,6 +20,7 @@ import {
   FAKE_L1_PARAMETERS,
   fakeL1Source,
 } from ".././helpers/fake-l1-source.js";
+import { retentionCandidates } from "../helpers/retention-whole-set.js";
 import { openTestCommitteeStore } from "./fixtures.js";
 
 const ATTESTED: SDK.DaAvailabilityStateQueueStatus = {
@@ -125,13 +124,13 @@ export const registerRetentionFinalityTests = () => {
       endTimeMs + 1,
       endTimeMs + MIDGARD_RETENTION_WINDOW.requiredRetentionMs + 1,
     ]) {
-      const { deadlines, prune } = await runRetentionCycle(
-        store,
-        retentionCycleOptions(config, view, nowMs),
-      );
+      const options = retentionCycleOptions(config, view, nowMs);
+      const { prune } = await runRetentionCycle(store, options, {});
       expect(prune.prunedHeaderHashes).toEqual([]);
       expect(
-        deadlines.entries.find((entry) => entry.headerHash === headerHash),
+        (await retentionCandidates(store, options)).find(
+          (candidate) => candidate.headerHash === headerHash,
+        )?.decision,
       ).toMatchObject({ reasonCode: "live_queue_header" });
       expect(await store.getDaPayload(headerHash)).toBeDefined();
     }

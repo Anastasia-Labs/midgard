@@ -6,10 +6,6 @@ import { FOLLOWER_TRANSIENT_EXHAUSTED } from "@al-ft/midgard-l1-follower";
 
 import { createCommitteeApiServer } from "./api/server.js";
 import { createAvailabilityResponseLoop } from "./availability-response-loop.js";
-import {
-  type CommitteeRetentionReadinessSnapshot,
-  retentionReadinessFromDeadlines,
-} from "./committee-service.js";
 import { loadCommitteeConfig, type LoadedCommitteeConfig } from "./config.js";
 import { committeeFailureExit } from "./config-refusal-exit.js";
 import { l1SubmitterWalletPreflightFromConfig } from "./coordinator/factory.js";
@@ -26,6 +22,7 @@ import {
   type CommitteeNodeLocalSetup,
   openCommitteeNodeRuntime,
 } from "./node-runtime.js";
+import { createRetentionRunner } from "./retention-runner.js";
 import {
   loadDaSigner,
   validateDaCommittee,
@@ -33,11 +30,6 @@ import {
 } from "./signer.js";
 import { listenStartingServer, retryStartup, startOrHold } from "./startup.js";
 import type { PostgresStoreInstanceLockEvents } from "./store/postgres.instance-lock.js";
-import {
-  retentionCycleOptions,
-  type RetentionL1View,
-  runRetentionCycle,
-} from "./store/retention.js";
 import {
   createCommitteeTickRunner,
   l1ViewStaleMs,
@@ -186,59 +178,19 @@ const main = async (): Promise<void> => {
       })
     : undefined;
 
-  let retentionReadiness: CommitteeRetentionReadinessSnapshot =
-    runtime.startupCompactionFailure === undefined
-      ? {
-          status: "not_checked",
-          scanned: 0,
-          retained: 0,
-          prunable: 0,
-          alerting: 0,
-        }
-      : {
-          status: "failed",
-          checkedAt: new Date().toISOString(),
-          scanned: 0,
-          retained: 0,
-          prunable: 0,
-          alerting: 0,
-          error: runtime.startupCompactionFailure,
-        };
   /** Retirement holds (degraded detail) and the follower's pin failures. */
   const retentionDetail = () => ({
     holds: availabilityRuntime?.retirementHolds?.() ?? [],
     pinFailures: runtime.l1Retention?.reasons() ?? [],
   });
-  const runRetention = async (view: RetentionL1View): Promise<void> => {
-    // The exemption sets come from the L1 view the poller accepted this tick.
-    const options = retentionCycleOptions(config, view, Date.now());
-    try {
-      await availabilityRuntime?.compactRetainedPromises?.();
-      const { deadlines, prune } = await runRetentionCycle(store, options);
-      retentionReadiness = retentionReadinessFromDeadlines(deadlines);
-      if (prune.prunedHeaderHashes.length > 0) {
-        process.stdout.write(
-          `${JSON.stringify({ event: "da_retention_pruned", ...prune })}\n`,
-        );
-      }
-      if (deadlines.alerting > 0) {
-        process.stderr.write(
-          `${JSON.stringify({ event: "da_retention_deadline_alert", report: deadlines })}\n`,
-        );
-      }
-    } catch (error) {
-      retentionReadiness = {
-        status: "failed",
-        checkedAt: new Date(options.nowMs).toISOString(),
-        scanned: 0,
-        retained: 0,
-        prunable: 0,
-        alerting: 0,
-        error: error instanceof Error ? error.message : String(error),
-      };
-      throw error;
-    }
-  };
+  const retention = createRetentionRunner({
+    store,
+    config,
+    compactRetainedPromises: async () =>
+      availabilityRuntime?.compactRetainedPromises?.(),
+    once,
+    startupCompactionFailure: runtime.startupCompactionFailure,
+  });
 
   // Assigned after the tick runner is built; shutdown closes whichever of
   // these exist by then.
@@ -264,12 +216,10 @@ const main = async (): Promise<void> => {
     // The responder runs on its own interval; a scan only nudges it.
     runAvailabilityResponse: responseLoop.nudge,
     ...runtime.daBondPool.tickRunnerDeps(runtime.onChainCoordinator),
-    runRetention,
+    runRetention: retention.run,
     latestL1View: () => service.latestL1View(),
     latestL1ProgressAtMs: () => service.latestL1ProgressAtMs(),
-    setRetentionReadiness: (update) => {
-      retentionReadiness = update(retentionReadiness);
-    },
+    setRetentionReadiness: retention.update,
     l1ViewFatalMs: config.l1ViewFatalMs,
     l1ViewStaleMs: l1ViewStaleMs(config),
     startedAtMs,
@@ -305,7 +255,7 @@ const main = async (): Promise<void> => {
         : { l1SubmitterPreflight: preflight.snapshot() }),
       l1SubmitterFunding: runtime.submitterFunding(),
       ...runtime.daBondPool.readiness(),
-      retention: { ...retentionReadiness, ...retentionDetail() },
+      retention: { ...retention.readiness(), ...retentionDetail() },
     });
     const liveness = tickRunner.liveness();
     const reasons = [

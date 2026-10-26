@@ -458,6 +458,41 @@ test step_refuses_a_result_that_is_not_well_formed() {
   }
 }
 
+/// Runs every step from `control` over the whole output: `None` when the scan
+/// reaches the exact terminal, otherwise the cursor of the refused step.
+fn refused_at(
+  control: ledger_output_scan_v1.LedgerOutputScanControlV1,
+  output: ByteArray,
+) -> Option<Int> {
+  let total_length = bytearray.length(output)
+  if and {
+    control.stage == ledger_output_scan_v1.stage_optional_field,
+    control.cursor == total_length,
+  } {
+    when ledger_output_scan_v1.finish_v1(control, total_length) is {
+      Some(terminal) ->
+        if ledger_output_scan_v1.terminal_is_exact_v1(terminal, total_length) {
+          None
+        } else {
+          Some(control.cursor)
+        }
+      None -> Some(control.cursor)
+    }
+  } else {
+    when
+      ledger_output_scan_v1.step_v1(
+        control,
+        total_length,
+        output,
+        control.cursor,
+      )
+    is {
+      Some(next) -> refused_at(next, output)
+      None -> Some(control.cursor)
+    }
+  }
+}
+
 // The Cardano value cap. `ledger_output_value_size_fixture_v1` spells values
 // of 5,000 and 5,001 bytes with long asset names inside a two-entry output,
 // so the value runs across the 4,095-byte chunk boundary.
@@ -509,6 +544,44 @@ fn scan_output_from(
       }
     }
   }
+}
+
+/// Two policies, `..0001` then `..0002`, the first holding names `01` and
+/// `02`: distinct and ascending throughout.
+const distinct_ascending_output =
+  #"a200581d604747474747474747474747474747474747474747474747474747474701821a001e8480a2581c11111111111111111111111111111111111111111111111111110001a2410101410202581c11111111111111111111111111111111111111111111111111110002a1410201"
+
+test distinct_ascending_policies_and_names_reach_the_terminal() {
+  refused_at(
+    ledger_output_scan_v1.initial_control_v1(),
+    distinct_ascending_output,
+  ) == None
+}
+
+/// The second policy id repeats the first: refused at the second policy
+/// header, byte 75.
+test refuses_a_repeated_policy_id() {
+  refused_at(
+    ledger_output_scan_v1.initial_control_v1(),
+    #"a200581d604747474747474747474747474747474747474747474747474747474701821a001e8480a2581c11111111111111111111111111111111111111111111111111110001a1410101581c11111111111111111111111111111111111111111111111111110001a1410201",
+  ) == Some(75)
+}
+
+/// The policy ids descend: refused at the second policy header, byte 75.
+test refuses_descending_policy_ids() {
+  refused_at(
+    ledger_output_scan_v1.initial_control_v1(),
+    #"a200581d604747474747474747474747474747474747474747474747474747474701821a001e8480a2581c11111111111111111111111111111111111111111111111111110002a1410101581c11111111111111111111111111111111111111111111111111110001a1410201",
+  ) == Some(75)
+}
+
+/// The second name under one policy repeats the first: refused at the second
+/// asset, byte 75.
+test refuses_a_repeated_asset_name() {
+  refused_at(
+    ledger_output_scan_v1.initial_control_v1(),
+    #"a200581d604747474747474747474747474747474747474747474747474747474701821a001e8480a1581c11111111111111111111111111111111111111111111111111110001a2410101410102",
+  ) == Some(75)
 }
 
 test scan_accepts_a_value_of_5000_bytes_across_the_chunk_boundary() {

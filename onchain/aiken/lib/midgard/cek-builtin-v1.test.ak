@@ -366,7 +366,7 @@ test malformed_bls_g1_compression_header_failure_is_paid() {
     ),
   ]
   and {
-    cek_builtin_v1.verify_direct_builtin_failure_v1(
+    cek_builtin_v1.verify_bls_uncompress_failure_v1(
       59,
       builtin_root(59, arguments),
       arguments,
@@ -385,7 +385,7 @@ test malformed_bls_g2_compression_header_failure_is_paid() {
     ),
   ]
   and {
-    cek_builtin_v1.verify_direct_builtin_failure_v1(
+    cek_builtin_v1.verify_bls_uncompress_failure_v1(
       66,
       builtin_root(66, arguments),
       arguments,
@@ -404,7 +404,7 @@ test off_curve_bls_g1_encoding_has_a_bounded_paid_failure_proof() {
     ),
   ]
   and {
-    cek_builtin_v1.verify_direct_builtin_failure_v1(
+    cek_builtin_v1.verify_bls_uncompress_failure_v1(
       59,
       builtin_root(59, arguments),
       arguments,
@@ -422,10 +422,70 @@ test canonical_bls_infinity_encoding_is_not_a_failure() fail {
       #"5830c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
     ),
   ]
-  cek_builtin_v1.verify_direct_builtin_failure_v1(
+  cek_builtin_v1.verify_bls_uncompress_failure_v1(
     59,
     builtin_root(59, arguments),
     arguments,
+  )
+}
+
+fn uncompress_failure_is_proved(tag: Int, encoded: ByteArray) -> Bool {
+  let arguments = [bytes(cbor.serialise(builtin.b_data(encoded)))]
+  and {
+    cek_builtin_v1.verify_bls_uncompress_failure_v1(
+      tag,
+      builtin_root(tag, arguments),
+      arguments,
+    ),
+    cek_builtin_v1.authenticated_builtin_failure_budget(tag, arguments) == cek_builtin_v1.direct_builtin_budget_v1(
+      tag,
+      arguments,
+    ),
+  }
+}
+
+test bls_g1_point_outside_the_subgroup_has_a_paid_failure_proof() {
+  // x = 4 is on the curve; its point is outside G1.
+  uncompress_failure_is_proved(
+    59,
+    #"800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004",
+  )
+}
+
+test bls_g2_x_off_the_twist_has_a_paid_failure_proof() {
+  // x = 1 is not the x of a twist point.
+  uncompress_failure_is_proved(
+    66,
+    #"800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001",
+  )
+}
+
+test bls_g2_point_outside_the_subgroup_has_a_paid_failure_proof() {
+  // x = 2 is on the twist; its point is outside G2.
+  uncompress_failure_is_proved(
+    66,
+    #"800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002",
+  )
+}
+
+test bls_g1_generator_is_not_an_uncompress_failure() fail {
+  uncompress_failure_is_proved(
+    59,
+    #"97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb",
+  )
+}
+
+test bls_g2_generator_is_not_an_uncompress_failure() fail {
+  uncompress_failure_is_proved(
+    66,
+    #"93e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8",
+  )
+}
+
+test canonical_bls_g2_infinity_encoding_is_not_a_failure() fail {
+  uncompress_failure_is_proved(
+    66,
+    builtin.cons_bytearray(192, builtin.replicate_byte(95, 0)),
   )
 }
 
@@ -2940,6 +3000,61 @@ test scalar_mul_success_certifies_in_bound_scalars() {
     scalar_mul_succeeds(56, -7),
     scalar_mul_succeeds(63, 7),
     scalar_mul_succeeds(63, -7),
+  }
+}
+
+fn scalar_mul_arguments(
+  tag: Int,
+  scalar: Int,
+) -> List<cek_builtin_v1.ValueWitnessV1> {
+  let point = if tag == 56 {
+    g1_generator()
+  } else {
+    g2_generator()
+  }
+  [
+    integer(cbor.serialise(builtin.i_data(scalar))),
+    cek_builtin_v1.ConstantValue(point),
+  ]
+}
+
+fn scalar_mul_failure_is_proved(tag: Int, scalar: Int) -> Bool {
+  let arguments = scalar_mul_arguments(tag, scalar)
+  cek_builtin_v1.verify_direct_builtin_failure_v1(
+    tag,
+    builtin_root(tag, arguments),
+    arguments,
+  )
+}
+
+// Cardano charges scalarMul before its scalar bound check fails; the
+// TypeScript twin pins the same charges
+// (cek-builtin.v1-direct-builtin-execution.ts).
+test scalar_mul_failure_outside_the_scalar_bound_is_paid() {
+  let bound = power_of_two_4095()
+  and {
+    scalar_mul_failure_is_proved(56, bound),
+    scalar_mul_failure_is_proved(56, -bound - 1),
+    scalar_mul_failure_is_proved(63, bound),
+    scalar_mul_failure_is_proved(63, -bound - 1),
+    cek_builtin_v1.authenticated_builtin_failure_budget(
+      56,
+      scalar_mul_arguments(56, bound),
+    ) == cek_cost_v1.BuiltinBudgetV1 { cpu: 77000558, memory: 18 },
+    cek_builtin_v1.authenticated_builtin_failure_budget(
+      63,
+      scalar_mul_arguments(63, -bound - 1),
+    ) == cek_cost_v1.BuiltinBudgetV1 { cpu: 159920450, memory: 36 },
+  }
+}
+
+test scalar_mul_inside_the_scalar_bound_is_not_a_failure() {
+  let bound = power_of_two_4095()
+  and {
+    !scalar_mul_failure_is_proved(56, bound - 1),
+    !scalar_mul_failure_is_proved(56, -bound),
+    !scalar_mul_failure_is_proved(63, bound - 1),
+    !scalar_mul_failure_is_proved(63, -bound),
   }
 }
 

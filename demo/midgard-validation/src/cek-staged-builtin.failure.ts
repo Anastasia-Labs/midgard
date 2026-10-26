@@ -30,11 +30,10 @@ import {
   collectMidgardCekStagedRuns,
   type MidgardCekStagedReferenceInput,
 } from "@al-ft/midgard-core";
-import { CEKConst } from "@harmoniclabs/plutus-machine";
 import { schnorr } from "@noble/curves/secp256k1.js";
 
 import type { MidgardCekDirectValueWitness } from "./cek-builtin.argument-kinds.js";
-import { referenceConstantToDirectWitness } from "./cek-builtin.evaluate-reference-builtin.js";
+import { builtinValueToDirectWitness } from "./cek-builtin.evaluate-direct-builtin.js";
 import { midgardCekDirectBuiltinBudget } from "./cek-builtin.selected-control-result.js";
 import type { MidgardCekBuiltinBudget } from "./cek-cost.js";
 import type {
@@ -51,6 +50,7 @@ import {
   sameCompacted,
   scalarOperands,
 } from "./cek-staged-builtin.verify.js";
+import { UPLCConst } from "./uplc-constant.js";
 
 const MAX_BOUNDED_BYTES_WORDS = 8_192n;
 const MAX_BOUNDED_INTEGER_WORDS = 4_096n;
@@ -94,7 +94,7 @@ const failureInputs = (
 ): ArmInputs => ({
   tag: 0,
   arguments: [],
-  result: compactValue(CEKConst.bool(false)),
+  result: compactValue(UPLCConst.bool(false)),
   runs: collectMidgardCekStagedRuns(referenceInputs, material.runs.refs),
   operands: material.runs.operands,
 });
@@ -144,7 +144,7 @@ const oneWordInteger = (
   const committed = compacted(value);
   if (
     committed.memory !== 1n ||
-    !sameCompacted(compactValue(CEKConst.int(integer)), committed)
+    !sameCompacted(compactValue(UPLCConst.int(integer)), committed)
   ) {
     return refuse("integer leaf");
   }
@@ -309,7 +309,7 @@ export const verifyMidgardCekStagedBuiltinFailure = (
 };
 
 const BYTES_TYPE = Buffer.from("9f01ff", "hex");
-const INTEGER_TYPE = compactValue(CEKConst.int(0n)).typeCbor;
+const INTEGER_TYPE = compactValue(UPLCConst.int(0n)).typeCbor;
 
 /** Whether `key` is an x-only BIP-340 key: x below p and on the curve. */
 export const schnorrKeyIsValid = (key: Uint8Array): boolean => {
@@ -393,8 +393,11 @@ const integerToBytesCharge = (
     return refuse("argument count");
   }
   if (
-    !sameCompacted(compacted(endianness!), compactValue(CEKConst.bool(true))) &&
-    !sameCompacted(compacted(endianness!), compactValue(CEKConst.bool(false)))
+    !sameCompacted(
+      compacted(endianness!),
+      compactValue(UPLCConst.bool(true)),
+    ) &&
+    !sameCompacted(compacted(endianness!), compactValue(UPLCConst.bool(false)))
   ) {
     return refuse("endianness type");
   }
@@ -408,7 +411,7 @@ const integerToBytesCharge = (
   }
   return midgardCekDirectBuiltinBudget(73n, [
     endianness!,
-    referenceConstantToDirectWitness(CEKConst.int(value)),
+    builtinValueToDirectWitness(UPLCConst.int(value)),
     input!,
   ]);
 };
@@ -429,7 +432,7 @@ const dividendOverZero = (
     dividend!.kind !== "semanticConstant" ||
     dividend!.witness.memory !== MAX_BOUNDED_INTEGER_WORDS ||
     divisor!.kind !== "semanticConstant" ||
-    !sameCompacted(divisor!.witness, compactValue(CEKConst.int(0n)))
+    !sameCompacted(divisor!.witness, compactValue(UPLCConst.int(0n)))
   ) {
     return null;
   }

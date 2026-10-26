@@ -1,13 +1,12 @@
 import { midgardCekFlatRoot } from "@al-ft/midgard-core";
-import { CEKConst } from "@harmoniclabs/plutus-machine";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { describe, expect, it } from "vitest";
 
 import type { MidgardCekDirectValueWitness } from "../src/cek-builtin.argument-kinds.js";
 import {
+  builtinValueToDirectWitness,
   evaluateMidgardCekBuiltinOnValues,
-  referenceConstantToDirectWitness,
-} from "../src/cek-builtin.evaluate-reference-builtin.js";
+} from "../src/cek-builtin.evaluate-direct-builtin.js";
 import type { MidgardCekExecutionStep } from "../src/cek-executor.build-midgard-cek-execution-graph.js";
 import type { MidgardCekCoreStepWitness } from "../src/cek-machine.js";
 import { errorSuccessor } from "../src/cek-machine.midgard-cek-builtin-argument-count.js";
@@ -287,11 +286,11 @@ describe("shiftByteString and rotateByteString over staged inputs", () => {
 
 // ## The staged step's relation
 
-const presented = (value: CEKConst): MidgardCekDirectValueWitness =>
-  referenceConstantToDirectWitness(value, true);
+const presented = (value: UPLCConst): MidgardCekDirectValueWitness =>
+  builtinValueToDirectWitness(value, true);
 
-const byteString = (value: Buffer): CEKConst =>
-  CEKConst.byteString(new DataB(value).bytes as never);
+const byteString = (value: Buffer): UPLCConst =>
+  UPLCConst.byteString(new DataB(value).bytes);
 
 /** Whether the staged conversion step accepts `result` for builtin `tag`
  * over the staged `input` by `amount`. */
@@ -315,7 +314,7 @@ const shiftVerifies = (
   );
   return verifyMidgardCekStagedBuiltin(
     tag,
-    [byteString(input), CEKConst.int(amount)].map(presented),
+    [byteString(input), UPLCConst.int(amount)].map(presented),
     result,
     material,
     midgardCekStagedReferenceInputs(material, [input]),
@@ -326,7 +325,7 @@ const shiftVerifies = (
 const shifted = (tag: bigint, input: Buffer, amount: bigint): Buffer => {
   const evaluated = evaluateMidgardCekBuiltinOnValues(Number(tag), [
     byteString(input),
-    CEKConst.int(amount),
+    UPLCConst.int(amount),
   ]);
   if (evaluated === "failure") throw new Error("builtin failed");
   return Buffer.from(evaluated.value as Uint8Array);

@@ -3,15 +3,18 @@ import {
   MIDGARD_RETENTION_WINDOW,
   requireRetentionAlertThresholdMs,
   retentionDeadlineAlert,
+  retentionDeadlineForBlock,
   type RetentionHeaderStatus,
   type RetentionPruneReasonCode,
   type RetentionQueueReference,
 } from "@al-ft/midgard-core";
+import { deploymentDaRetentionDays } from "@al-ft/midgard-core/da-transport";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
 import { fetchRetentionL1View } from "../fibers/retention-sweeper.js";
 import { newestTerminalOutcome } from "../l1-queue-terminals/index.js";
+import { ContractDeploymentIdentity } from "../services/index.js";
 import { parseNonNegativeIntegerOption } from "./cli-options.js";
 
 /**
@@ -55,7 +58,10 @@ export type RetentionCheckInput = {
    * No default: when absent, no record raises a deadline alert.
    */
   readonly alertThresholdMs?: number;
-  /** Deployed retention in whole days; defaults to the derived 15. */
+  /**
+   * Deployed retention in whole days; defaults to the selected deployment
+   * profile's.
+   */
   readonly retentionDays?: number;
   readonly expectedDeploymentFingerprint?: string;
 };
@@ -101,8 +107,11 @@ export const evaluateRetentionCheck = (
   ) {
     throw new Error("alertThresholdMs must be a non-negative safe integer");
   }
-  const retentionDays =
-    input.retentionDays ?? MIDGARD_RETENTION_WINDOW.retentionDays;
+  const retentionDays = input.retentionDays ?? deploymentDaRetentionDays();
+  const { deployedRetentionMs } = retentionDeadlineForBlock({
+    blockTimeMs: 0,
+    retentionDays,
+  });
 
   const alerts: RetentionCheckFinding[] = [];
   const reasons: string[] = [];
@@ -164,8 +173,9 @@ export const evaluateRetentionCheck = (
     ok: alerts.length === 0,
     alertThresholdMs: alertThresholdMs ?? null,
     requiredRetentionMs: MIDGARD_RETENTION_WINDOW.requiredRetentionMs,
-    deployedRetentionMs: MIDGARD_RETENTION_WINDOW.deployedRetentionMs,
-    marginMs: MIDGARD_RETENTION_WINDOW.marginMs,
+    deployedRetentionMs,
+    marginMs:
+      deployedRetentionMs - MIDGARD_RETENTION_WINDOW.requiredRetentionMs,
     checked: input.records.length,
     stillChallengeable,
     alerts,
@@ -201,6 +211,7 @@ export const retentionCheckExitCode = (result: RetentionCheckResult): number =>
 export const retentionCheckProgram = (alertThresholdMs?: number) =>
   Effect.gen(function* () {
     const view = yield* fetchRetentionL1View;
+    const deploymentIdentity = yield* ContractDeploymentIdentity;
     const sql = yield* SqlClient.SqlClient;
     const rows = yield* sql<{
       readonly header_hash: Buffer;
@@ -217,6 +228,9 @@ export const retentionCheckProgram = (alertThresholdMs?: number) =>
     return evaluateRetentionCheck({
       nowMillis: Date.now(),
       alertThresholdMs,
+      retentionDays:
+        deploymentIdentity.manifest?.da.transportProfile.retentionDays ??
+        deploymentDaRetentionDays(),
       records: rows.map((row) => {
         const headerHash = row.header_hash.toString("hex");
         return {

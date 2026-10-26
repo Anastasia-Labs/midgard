@@ -17,11 +17,11 @@ import {
   type CardanoMlResult,
 } from "./cek-builtin.cardano-exact-bls.js";
 import {
-  directConstantToReferenceValue,
+  builtinValueToDirectWitness,
+  directConstantToBuiltinValue,
   evaluateMidgardCekDirectBuiltin,
-  referenceConstantToDirectWitness,
-} from "./cek-builtin.evaluate-reference-builtin.js";
-import { referenceValueOf } from "./cek-builtin.reference-value.js";
+} from "./cek-builtin.evaluate-direct-builtin.js";
+import { midgardCekKnownBuiltinFailure } from "./cek-builtin.known-failure.js";
 import {
   hashMidgardCekDirectArguments,
   hashMidgardCekDirectValueWitness,
@@ -111,6 +111,9 @@ export const verifyMidgardCekDirectBuiltinFailure = (
     // A known failure applies only to well-typed arguments; an ill-typed
     // application fails through the type-failure arm instead.
     if (!directArgumentsMatchKinds(Number(tag), arguments_)) return false;
+    // Only the failures the L1 direct failure arm proves are this arm's; any
+    // other failure belongs to another arm.
+    if (!midgardCekKnownBuiltinFailure(tag, arguments_)) return false;
     return evaluateMidgardCekDirectBuiltin(tag, arguments_).kind === "failure";
   } catch {
     return false;
@@ -145,8 +148,8 @@ const evaluateBlsLeaf = (
     throw new Error("BLS expression leaf requires G1 and G2 constants");
   }
   // Both points must uncompress under the L1 rule before the loop runs.
-  directConstantToReferenceValue(expression.g1);
-  directConstantToReferenceValue(expression.g2);
+  directConstantToBuiltinValue(expression.g1);
+  directConstantToBuiltinValue(expression.g2);
   if (
     !(g1Decoded.payload instanceof DataB) ||
     !(g2Decoded.payload instanceof DataB)
@@ -267,9 +270,7 @@ export const evaluateMidgardCekBlsFinal = (
       "BLS finalVerify expression exceeds the ten-leaf L1 proof reserve",
     );
   }
-  const result = referenceValueOf(
-    UPLCConst.bool(cardanoBlsFinalVerify(left.value, right.value)),
-  );
+  const result = UPLCConst.bool(cardanoBlsFinalVerify(left.value, right.value));
   const arguments_: readonly MidgardCekDirectValueWitness[] = [
     { kind: "blsMillerLoop", expressionRoot: left.root },
     { kind: "blsMillerLoop", expressionRoot: right.root },
@@ -277,7 +278,7 @@ export const evaluateMidgardCekBlsFinal = (
   return Object.freeze({
     leftRoot: left.root,
     rightRoot: right.root,
-    result: referenceConstantToDirectWitness(result, false),
+    result: builtinValueToDirectWitness(result, false),
     budget: midgardCekDirectBuiltinBudget(70n, arguments_),
   });
 };

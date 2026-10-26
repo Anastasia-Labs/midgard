@@ -9,6 +9,8 @@
  */
 export const interactiveTests = [
   "./tests/submit-init-emulator-transition-trace-final-deep-deposit.test.ts",
+  // Thousands of chained step-03 scans: longer than a 900 s maturity.
+  "./tests/transaction-output-non-canonical-duplicate-asset-max-shape.test.ts",
   "./tests/validation-trace-dispute-bisection.test.ts",
   "./tests/validation-trace-dispute-conviction.test.ts",
   "./tests/validation-trace-dispute-defender-moves.test.ts",
@@ -181,6 +183,7 @@ export const interactiveTests = [
   "./tests/validation-trace-dispute-funded.test.ts",
   "./tests/validation-trace-dispute-installed-lifecycle.test.ts",
   "./tests/validation-trace-dispute-lookalikes.test.ts",
+  "./tests/validation-trace-dispute-max-shape-cek-builtin-bls-uncompress.test.ts",
   "./tests/validation-trace-dispute-max-shape-cek-builtin-failure.test.ts",
   "./tests/validation-trace-dispute-max-shape-cek-builtin-semantic.test.ts",
   "./tests/validation-trace-dispute-max-shape-copy.test.ts",
