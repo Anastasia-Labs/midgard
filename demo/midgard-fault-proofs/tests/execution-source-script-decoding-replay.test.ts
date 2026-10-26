@@ -2,12 +2,12 @@
  * The installed execution-source-script-decoding replay. A forced rejection
  * recording any native script decoding arm at an execution purpose is
  * detected; the node's own rejection, a forced acceptance and an accepted
- * transaction are left alone. A transaction whose source inputs have no
- * predecessor descriptor gives no detection and the block's replay
- * completes, while a union with the input-existence family still convicts an
- * accepted transaction spending such an input. A rejection whose output or
- * mint item does not decode is still detected: the terminal reads the
- * recorded reason alone.
+ * transaction are left alone. The terminal reads the recorded reason alone,
+ * so a rejection recording a decoding arm is detected even when its inputs
+ * have no predecessor descriptor, alone and beside the input-existence
+ * family, which still convicts an accepted transaction spending such an
+ * input. A rejection whose output or mint item does not decode is still
+ * detected.
  */
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
@@ -125,14 +125,14 @@ describe("executionSourceScriptDecoding replay over inputs with no predecessor d
     ]);
 
   it.each(ARMS)(
-    "declines a rejection recording %s and the block's replay completes",
-    async (arm) => {
+    "detects a rejection recording %s and the block's replay completes",
+    async (arm, id) => {
       await expect(
         replayUnder(ESSD, recording(arm), SHAPE, []),
-      ).resolves.toEqual([]);
+      ).resolves.toEqual([`${id}:1:0`]);
       await expect(
         replayUnder(UNION(), recording(arm), SHAPE, []),
-      ).resolves.toEqual([]);
+      ).resolves.toEqual([id]);
     },
   );
 

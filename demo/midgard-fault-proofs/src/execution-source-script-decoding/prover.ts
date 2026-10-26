@@ -6,7 +6,6 @@
 import * as SDK from "@al-ft/midgard-sdk";
 
 import type { DirectPurposeTransition } from "../direct-purpose-family/custody.js";
-import { directPurposeInputDescriptorsPresent } from "../direct-purpose-family/script-purposes.js";
 import { directPurposeBindTransitions } from "../direct-purpose-family/source-walk.js";
 import { directBindingStates } from "../direct-script-derivation/index.js";
 import type { DirectScriptMaterial } from "../direct-script-derivation/material.js";
@@ -56,15 +55,14 @@ export const requireConvictingExecutionSourceScriptDecodingProof = (
 };
 
 /**
- * Whether the bound leaf convicts: `null` when it does not, when a spent or
- * referenced input has no predecessor descriptor (the input families own that
- * leaf), or when its subject is not in the shape the terminal reads.
+ * Whether the bound leaf convicts: `null` when it does not, or when its
+ * subject is not in the shape the terminal reads. The terminal reads the
+ * recorded reason alone, so no input descriptor is consulted.
  */
 export const executionSourceScriptDecodingDetection = (
   material: DirectScriptMaterial,
 ): { readonly reason: SDK.RejectionReason } | null => {
   try {
-    if (!directPurposeInputDescriptorsPresent(material)) return null;
     const { subject } = directBindingStates(material).selected;
     return subject.rejection_reason !== null &&
       SDK.executionSourceScriptDecodingSubjectConvicts(subject)

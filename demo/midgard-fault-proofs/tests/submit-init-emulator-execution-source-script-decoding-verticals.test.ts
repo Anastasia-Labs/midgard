@@ -2,8 +2,10 @@
  * `executionSourceScriptDecoding` emulator verticals from a genuine Init. A
  * forced rejection recording any of the three native script decoding arms
  * convicts, and its block is removed: the execution phase decodes no native
- * script, so no transaction can earn those arms. A leaf recording any other
- * verdict reaches the terminal, which returns false.
+ * script, so no transaction can earn those arms. The terminal reads the
+ * recorded arm alone, so a rejection whose inputs have no predecessor
+ * descriptor convicts too. A leaf recording any other verdict reaches the
+ * terminal, which returns false.
  */
 import { outRefLabel } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -156,6 +158,35 @@ describe("execution-source-script-decoding genuine-Init verticals", () => {
     },
     1_200_000,
   );
+
+  it("R-F: convicts a forced rejection recording ExecutionNativeScriptMalformed over inputs with no predecessor descriptor", async () => {
+    const harness = await makeExecutionSourceScriptDecodingHarness();
+    const references = await publishExecutionSourceScriptDecodingRoles(harness);
+    const scenario = await setupMissingRedeemerScenario({
+      harness,
+      shape: SHAPE,
+      source: rejected({ ExecutionNativeScriptMalformed: coordinate }),
+      ledger: [],
+    });
+    expect(scenario.block.header.prevUtxosRoot).toBe(
+      SDK.EMPTY_MERKLE_TREE_ROOT,
+    );
+    const run = await driveExecutionSourceScriptDecodingThread({
+      harness,
+      scenario,
+      references,
+    });
+    expect(run.prepared.convicts).toBe(true);
+    const outcome = await run.terminal();
+    expectWithinBounds(run.steps);
+    expect(outcome.fraudulentHeaderHash).toBe(scenario.setup.headerHash);
+    const token = await expectSingleUtxoWithUnit(
+      harness.proverLucid,
+      harness.essd.fraudProof.spendingScriptAddress,
+      outcome.fraudProofUnit,
+    );
+    expect(outRefLabel(token)).toBe(outcome.fraudProofOutRef);
+  }, 1_200_000);
 
   it.each([
     {
