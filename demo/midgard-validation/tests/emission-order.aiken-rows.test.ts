@@ -5,6 +5,7 @@ import type { MidgardRejectionReasonV1 } from "@al-ft/midgard-core/validation-tr
 import { describe, expect, it } from "vitest";
 
 import type { DeterministicValidationMachineTrace } from "../src/index.js";
+import { ASSET_ENTRY_ROWS } from "./emission-order.asset-entries.rows.js";
 import {
   BAD_OUTPUT_CONTROL,
   FORCED_OUTPUT_ROWS,
@@ -31,7 +32,7 @@ import {
  * `emission-order-rows.test.ak`, where the Aiken machine checks it through the
  * one-step dispatcher: the step verifies, it stops at the phase the trace
  * names, and its successor is the row's rejection (or acceptance). Rows run in
- * the order (b), (c), (d), (a), (e), then the forced rows. The bundle
+ * the order (b), (c), (d), (a), (e), the forced rows, then (f). The bundle
  * controls, the native limit refusals and the forced wide output have no
  * vector here; nor do the rows refused with an undecodable Plutus reference
  * script: the machine has no successor for that refusal, so it has no trace
@@ -63,6 +64,7 @@ const ROWS: readonly Row[] = [
   BAD_OUTPUT_CONTROL,
   ...FORCED_OUTPUT_ROWS,
   UNDECODABLE_PLUTUS_REF_ROW,
+  ...ASSET_ENTRY_ROWS,
 ].filter((row) => !notProvableByTrace(row));
 
 const AIKEN_ROWS_PATH = fileURLToPath(
