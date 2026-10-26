@@ -14,7 +14,7 @@ export type MidgardCekBuiltinBudget = {
 };
 
 const MIN_BUILTIN_TAG = 0;
-const MAX_BUILTIN_TAG = 86;
+const MAX_BUILTIN_TAG = 100;
 
 type Sizes = readonly bigint[];
 type CostFunction = (sizes: Sizes) => bigint;
@@ -75,6 +75,40 @@ const constYOrLinearZ =
   ([, y, z]) =>
     y === 0n ? quote + slope * z! : y!;
 
+/** Cardano's `CostingInteger` saturates at the largest signed 64-bit integer. */
+const MAX_COST = (1n << 63n) - 1n;
+const saturated =
+  (cost: CostFunction): CostFunction =>
+  (sizes) =>
+    min(cost(sizes), MAX_COST);
+
+/**
+ * expModInteger's cpu over (base, exponent, modulus) sizes: `c00 + c11 * y *
+ * z + c12 * y * z * z`, half as much again when the base is larger than the
+ * modulus.
+ */
+const expModCpu =
+  (c00: bigint, c11: bigint, c12: bigint): CostFunction =>
+  ([x, y, z]) => {
+    const cost = c00 + c11 * y! * z! + c12 * y! * z! * z!;
+    return x! > z! ? cost + cost / 2n : cost;
+  };
+/** `c00 + c10 * x + c01 * y + c11 * x * y`. */
+const interactionXY =
+  (c00: bigint, c10: bigint, c01: bigint, c11: bigint): CostFunction =>
+  ([x, y]) =>
+    c00 + c10 * x! + c01 * y! + c11 * x! * y!;
+/** `constant` below the diagonal, `quote + x * xSlope + y * ySlope` on and above it. */
+const constBelowOrLinearXY =
+  (
+    constantCost: bigint,
+    quote: bigint,
+    xSlope: bigint,
+    ySlope: bigint,
+  ): CostFunction =>
+  ([x, y]) =>
+    x! < y! ? constantCost : quote + x! * xSlope + y! * ySlope;
+
 /**
  * Plutus V3 variant E: divideInteger and modInteger cost the quadratic over
  * (larger, smaller) sizes on both sides of the diagonal; quotientInteger and
@@ -96,7 +130,7 @@ const divisionCpu =
     );
   };
 
-/** `[arity, cpu, memory]` for each builtin tag, 0 to 86. */
+/** `[arity, cpu, memory]` for each builtin tag, 0 to 100. */
 const COSTS: readonly (readonly [number, CostFunction, CostFunction])[] = [
   /* 0 addInteger */ [2, linearMax(100788n, 420n), linearMax(1n, 1n)],
   /* 1 subtractInteger */ [2, linearMax(100788n, 420n), linearMax(1n, 1n)],
@@ -249,6 +283,63 @@ const COSTS: readonly (readonly [number, CostFunction, CostFunction])[] = [
   /* 84 countSetBits */ [1, linearIn(0, 107490n, 3298n), constant(1n)],
   /* 85 findFirstSetBit */ [1, linearIn(0, 106057n, 655n), constant(1n)],
   /* 86 ripemd_160 */ [1, linearIn(0, 1964219n, 24520n), constant(3n)],
+  // Protocol version 11. Each size is as cardano-node measures it for that
+  // builtin (see `midgardCekDirectBuiltinCostSizes`); a size the cost
+  // functions ignore is 0.
+  /* 87 expModInteger */ [
+    3,
+    saturated(expModCpu(607153n, 231697n, 53144n)),
+    saturated(linearIn(2, 0n, 1n)),
+  ],
+  /* 88 dropList */ [2, saturated(linearIn(0, 116711n, 1957n)), constant(4n)],
+  /* 89 lengthOfArray */ [1, constant(231883n), constant(10n)],
+  /* 90 listToArray */ [
+    1,
+    saturated(linearIn(0, 1000n, 24838n)),
+    saturated(linearIn(0, 7n, 1n)),
+  ],
+  /* 91 indexArray */ [2, constant(232010n), constant(32n)],
+  /* 92 bls12_381_G1_multiScalarMul */ [
+    2,
+    saturated(linearIn(0, 321837444n, 25087669n)),
+    constant(18n),
+  ],
+  /* 93 bls12_381_G2_multiScalarMul */ [
+    2,
+    saturated(linearIn(0, 617887431n, 67302824n)),
+    constant(36n),
+  ],
+  /* 94 insertCoin */ [
+    4,
+    saturated(linearIn(3, 356924n, 18413n)),
+    saturated(linearIn(3, 45n, 21n)),
+  ],
+  /* 95 lookupCoin */ [3, saturated(linearIn(2, 219951n, 9444n)), constant(1n)],
+  /* 96 unionValue */ [
+    2,
+    saturated(interactionXY(1000n, 172116n, 183150n, 6n)),
+    saturated(linearAdd(24n, 21n)),
+  ],
+  /* 97 valueContains */ [
+    2,
+    saturated(constBelowOrLinearXY(213283n, 618401n, 1998n, 28258n)),
+    constant(1n),
+  ],
+  /* 98 valueData */ [
+    1,
+    saturated(linearIn(0, 1000n, 38159n)),
+    saturated(linearIn(0, 2n, 22n)),
+  ],
+  /* 99 unValueData */ [
+    1,
+    saturated(quadraticIn(0, 1000n, 95933n, 1n)),
+    saturated(linearIn(0, 1n, 11n)),
+  ],
+  /* 100 scaleValue */ [
+    2,
+    saturated(linearIn(1, 1000n, 277577n)),
+    saturated(linearIn(1, 12n, 21n)),
+  ],
 ];
 
 /**

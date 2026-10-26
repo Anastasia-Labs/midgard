@@ -8,9 +8,11 @@
  * (Copyright Harmonic Laboratories, Apache License 2.0,
  * https://github.com/HarmonicLabs/uplc). Changes: iterative; the version is
  * written as three Naturals (upstream writes three bytes, which differs above
- * 127); array and Value constants, which have no Midgard form, are refused.
+ * 127); array and Value constants (a Value given as its canonical
+ * `valueData` map) are written as the uplc crate writes them.
  */
 import { encodeMidgardCekPlutusData } from "./plutus-data-iterative.encode.js";
+import { type Data, DataB, DataI, DataMap } from "./uplc-data.js";
 
 /** Constant type tags as Flat spells them (`DefaultUni`). */
 const T = {
@@ -23,6 +25,8 @@ const T = {
   pair: 6,
   apply: 7,
   data: 8,
+  array: 12,
+  value: 13,
 } as const;
 
 /** A term as the encoder reads it: its Flat tag and fields. */
@@ -149,6 +153,7 @@ const LEAF_TAGS: ReadonlySet<number> = new Set([
   T.unit,
   T.bool,
   T.data,
+  T.value,
   9,
   10,
   11,
@@ -161,16 +166,18 @@ const typeLength = (type: readonly number[], start: number): number => {
   while (open > 0) {
     const tag = type[index];
     if (tag === undefined) throw new Error("incomplete constant type");
-    open += (tag === T.pair ? 2 : tag === T.list ? 1 : 0) - 1;
+    open +=
+      (tag === T.pair ? 2 : tag === T.list || tag === T.array ? 1 : 0) - 1;
     index += 1;
   }
   return index - start;
 };
 
-/** Flat's type tags: `list` and `pair` applied with tag 7. */
+/** Flat's type tags: `list`, `array` and `pair` applied with tag 7. */
 const wireType = (type: readonly number[]): number[] => {
   const tag = type[0];
-  if (tag === T.list) return [T.apply, T.list, ...wireType(type.slice(1))];
+  if (tag === T.list || tag === T.array)
+    return [T.apply, tag, ...wireType(type.slice(1))];
   if (tag === T.pair) {
     const firstLength = typeLength(type, 1);
     return [
@@ -190,6 +197,32 @@ const UTF8 = new TextEncoder();
 
 type DataValue = Parameters<typeof encodeMidgardCekPlutusData>[0];
 
+/**
+ * A Value from its canonical `valueData` map: each currency after a 1 bit,
+ * its key, then each token after a 1 bit with its name and quantity, a 0 bit
+ * closing each token list and the currency list.
+ */
+const writeLedgerValue = (
+  writer: FlatWriter,
+  value: DataMap<Data, Data>,
+): void => {
+  if (!(value instanceof DataMap)) throw new Error("Value is not a DataMap");
+  writer.list(value.map, ({ fst: currency, snd: tokens }) => {
+    if (!(currency instanceof DataB) || !(tokens instanceof DataMap))
+      throw new Error("Value entry is not a currency and token map");
+    writer.byteString(currency.bytes);
+    writer.list(
+      (tokens as DataMap<Data, Data>).map,
+      ({ fst: token, snd: quantity }) => {
+        if (!(token instanceof DataB) || !(quantity instanceof DataI))
+          throw new Error("Value token is not a name and quantity");
+        writer.byteString(token.bytes);
+        writer.integer(quantity.int);
+      },
+    );
+  });
+};
+
 /** A constant's value. Recursion follows the type only. */
 const writeValue = (
   writer: FlatWriter,
@@ -207,7 +240,8 @@ const writeValue = (
       return;
     case T.bool:
       return writer.bit(value ? 1 : 0);
-    case T.list: {
+    case T.list:
+    case T.array: {
       const element = type.slice(1);
       return writer.list(value as readonly unknown[], (item) =>
         writeValue(writer, element, item),
@@ -222,6 +256,8 @@ const writeValue = (
     }
     case T.data:
       return writer.byteString(encodeMidgardCekPlutusData(value as DataValue));
+    case T.value:
+      return writeLedgerValue(writer, value as DataMap<Data, Data>);
     default:
       throw new Error(`constant type tag ${String(type[0])} has no Flat value`);
   }

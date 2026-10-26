@@ -9,7 +9,7 @@ import {
   MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT,
   MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
   MIDGARD_CEK_EMPTY_SEQUENCE_ROOT,
-  MIDGARD_CEK_MAX_RESOLVED_BUILTIN_TAG,
+  MIDGARD_CEK_MAX_BUILTIN_TAG,
   midgardBlake2b,
   type MidgardCekMachineState,
   type MidgardCekValueNode,
@@ -242,22 +242,33 @@ export const environmentSummaryMatches = (
 };
 
 export const midgardCekBuiltinForceCount = (tag: bigint): bigint => {
-  if (tag < 0n || tag > MIDGARD_CEK_MAX_RESOLVED_BUILTIN_TAG) {
+  if (tag < 0n || tag > MIDGARD_CEK_MAX_BUILTIN_TAG) {
     throw new RangeError("CEK builtin tag is outside the V1 table");
   }
   if (tag === 29n || tag === 30n || tag === 31n) return 2n;
-  if (tag === 26n || tag === 27n || tag === 28n || (tag >= 32n && tag <= 36n)) {
+  if (
+    tag === 26n ||
+    tag === 27n ||
+    tag === 28n ||
+    (tag >= 32n && tag <= 36n) ||
+    (tag >= 88n && tag <= 91n)
+  ) {
     return 1n;
   }
   return 0n;
 };
 
 export const midgardCekBuiltinArgumentCount = (tag: bigint): bigint => {
-  if (tag < 0n || tag > MIDGARD_CEK_MAX_RESOLVED_BUILTIN_TAG) {
+  if (tag < 0n || tag > MIDGARD_CEK_MAX_BUILTIN_TAG) {
     throw new RangeError("CEK builtin tag is outside the V1 table");
   }
   if (tag === 36n) return 6n;
-  if ([12n, 21n, 26n, 31n, 52n, 53n, 73n, 75n, 76n, 77n, 80n].includes(tag)) {
+  if (tag === 94n) return 4n;
+  if (
+    [12n, 21n, 26n, 31n, 52n, 53n, 73n, 75n, 76n, 77n, 80n, 87n, 95n].includes(
+      tag,
+    )
+  ) {
     return 3n;
   }
   if (
@@ -291,6 +302,13 @@ export const midgardCekBuiltinArgumentCount = (tag: bigint): bigint => {
       81n,
       82n,
       83n,
+      88n,
+      91n,
+      92n,
+      93n,
+      96n,
+      97n,
+      100n,
     ].includes(tag)
   ) {
     return 2n;

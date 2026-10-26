@@ -1,6 +1,6 @@
 import {
   hashMidgardCekBlsExpressionNode,
-  MIDGARD_CEK_MAX_RESOLVED_BUILTIN_TAG,
+  MIDGARD_CEK_MAX_BUILTIN_TAG,
 } from "@al-ft/midgard-core";
 
 import {
@@ -23,6 +23,10 @@ import {
   evaluatePinnedBuiltin,
   runPinnedBuiltin,
 } from "./cek-builtin.pinned-evaluator.js";
+import {
+  evaluateMidgardCekPv11SequenceBuiltin,
+  midgardCekPv11FailureIsCharged,
+} from "./cek-builtin.pv11.js";
 import {
   directByteLength,
   directInteger,
@@ -226,6 +230,8 @@ const evaluateDirectBuiltinResult = (
 ): MidgardCekDirectValueWitness | "failure" => {
   const control = selectedControlResult(tag, arguments_);
   if (control !== null) return control;
+  const sequence = evaluateMidgardCekPv11SequenceBuiltin(tag, arguments_);
+  if (sequence !== null) return sequence;
   if (midgardCekDivisionByZero(tag, arguments_)) return "failure";
   if (midgardCekScalarMulOutOfBound(tag, arguments_)) return "failure";
   if (tag === 68n) {
@@ -329,6 +335,7 @@ const directFailureIsCharged = (
 ): boolean =>
   // Cardano charges scalarMul (56, 63) before its scalar bound check fails.
   [3n, 4n, 5n, 6n, 21n, 52n, 53n, 56n, 60n, 63n, 67n].includes(tag) ||
+  midgardCekPv11FailureIsCharged(tag, arguments_) ||
   // Cardano's machine refuses an out-of-range width before charging.
   (tag === 73n &&
     directInteger(arguments_[1]!) >= 0n &&
@@ -398,7 +405,7 @@ export const evaluateMidgardCekDirectBuiltin = (
 ): MidgardCekDirectBuiltinEvaluation => {
   if (
     tag < 0n ||
-    tag > MIDGARD_CEK_MAX_RESOLVED_BUILTIN_TAG ||
+    tag > MIDGARD_CEK_MAX_BUILTIN_TAG ||
     BigInt(arguments_.length) !== midgardCekBuiltinArgumentCount(tag)
   ) {
     throw new Error("V1 builtin has an invalid tag or arity");

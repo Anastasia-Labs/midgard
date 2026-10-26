@@ -1,6 +1,7 @@
 import { MIDGARD_CEK_MAX_SOURCE_CONSTANT_PAYLOAD_BYTES } from "@al-ft/midgard-core";
 import { encodeCborBytes } from "@al-ft/midgard-core/codec/cbor";
 
+import { isMidgardCekCanonicalValueData } from "./cek-constant.value.js";
 import {
   type ConstType,
   ConstTyTag,
@@ -108,10 +109,18 @@ const parseTypeAt = (
         type: { kind: "blsMillerLoopResult" },
         nextOffset: offset + 1,
       };
-    // No term constant holds an array or a Value: the Flat reader reads one
-    // as an error term (`readConstant`'s `outsideProfile`).
+    // No program constant holds an array or a Value (the Flat reader reads
+    // one as an error term, `readConstant`'s `outsideProfile`); the PV 11
+    // builtins build them at run time.
+    case ConstTyTag.array: {
+      const element = parseTypeAt(tags, offset + 1);
+      return {
+        type: { kind: "array", element: element.type },
+        nextOffset: element.nextOffset,
+      };
+    }
     case ConstTyTag.value:
-    case ConstTyTag.array:
+      return { type: { kind: "value" }, nextOffset: offset + 1 };
     default:
       throw new Error("V1 constant has an unknown type tag");
   }
@@ -198,10 +207,20 @@ export const semanticData = (
         "V1 source programs cannot contain encoded BLS constants",
       );
     case "array":
-    case "value":
-      throw new Error(
-        "V1 Value and array constants enter through the PV 11 flat decoder",
+      if (!Array.isArray(value)) {
+        throw new Error("V1 array constant has an invalid value");
+      }
+      return new DataList(
+        (value as readonly ConstValue[]).map((item) =>
+          semanticData(type.element, item),
+        ),
       );
+    case "value":
+      // A Value is held as its canonical `valueData` map.
+      if (!isData(value) || !isMidgardCekCanonicalValueData(value)) {
+        throw new Error("V1 Value constant has an invalid value");
+      }
+      return value;
   }
 };
 

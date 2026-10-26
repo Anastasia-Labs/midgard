@@ -7,7 +7,7 @@
 import type { CardanoFlatReader } from "./cek-program.cardano-flat.reader.js";
 import { plutusDataFirstItemFromCborIterative } from "./plutus-data-iterative.decode.js";
 import { type ConstType, ConstTyTag, UPLCConst } from "./uplc-constant.js";
-import { type Data } from "./uplc-data.js";
+import { type Data, DataB, DataI, DataMap, DataPair } from "./uplc-data.js";
 import { ErrorUPLC, type UPLCTerm } from "./uplc-term.js";
 
 /** `mbHeader` at protocol version 11 (Versions.hs:397-401). */
@@ -136,8 +136,9 @@ const constType = (type: ValueType): ConstType => {
       // Only as the element type of an empty list.
       return [type.tag];
     case "array":
+      return [ConstTyTag.array, ...constType(type.element)];
     case "value":
-      throw new Error(`no constant type for ${type.kind}`);
+      return [ConstTyTag.value];
   }
 };
 
@@ -184,15 +185,21 @@ const valueKey = (reader: CardanoFlatReader): Uint8Array => {
 
 /**
  * `Value`'s Flat decode (Value.hs:229-238) and `buildValueWith` (Value.hs:
- * 692-757). Its value has no harmonic form; the profile refuses it later.
+ * 692-757), as its canonical `valueData` map. A program constant that holds
+ * one is outside the profile, which refuses it later.
  */
-const skipLedgerValue = (reader: CardanoFlatReader): void => {
+const readLedgerValue = (reader: CardanoFlatReader): DataMap<Data, Data> => {
   const start = reader.bitOffset;
-  const currencies: { key: Uint8Array; tokens: Uint8Array[] }[] = [];
+  const currencies: {
+    key: Uint8Array;
+    tokens: Uint8Array[];
+    quantities: bigint[];
+  }[] = [];
   let zeroQuantity = false;
   while (reader.bit()) {
     const key = valueKey(reader);
     const tokens: Uint8Array[] = [];
+    const quantities: bigint[] = [];
     while (reader.bit()) {
       tokens.push(valueKey(reader));
       const quantityStart = reader.bitOffset;
@@ -204,8 +211,9 @@ const skipLedgerValue = (reader: CardanoFlatReader): void => {
           quantityStart,
         );
       if (quantity === 0n) zeroQuantity = true;
+      quantities.push(quantity);
     }
-    currencies.push({ key, tokens });
+    currencies.push({ key, tokens, quantities });
   }
   const ascending = (keys: readonly Uint8Array[]): boolean =>
     keys.every(
@@ -221,6 +229,20 @@ const skipLedgerValue = (reader: CardanoFlatReader): void => {
       "Value keys not strictly ascending, an empty inner map, or a zero quantity",
       start,
     );
+  return new DataMap(
+    currencies.map(
+      ({ key, tokens, quantities }) =>
+        new DataPair(
+          new DataB(key),
+          new DataMap(
+            tokens.map(
+              (token, index) =>
+                new DataPair(new DataB(token), new DataI(quantities[index]!)),
+            ),
+          ),
+        ),
+    ),
+  );
 };
 
 /**
@@ -270,8 +292,7 @@ const readValue = (reader: CardanoFlatReader, type: ValueType): unknown => {
         "BLS12-381 values have no Flat decoding",
       );
     case "value":
-      skipLedgerValue(reader);
-      return undefined;
+      return readLedgerValue(reader);
     case "list":
     case "array": {
       const elements: unknown[] = [];
@@ -324,4 +345,23 @@ export const readConstant = (reader: CardanoFlatReader): DecodedConstant => {
       outsideProfile: "array or Value constant",
     };
   return { term: new UPLCConst(constType(type), value as never) };
+};
+
+/**
+ * Reads a constant term's type and value as `readConstant` does, but keeps
+ * an array or a Value: the form of a builtin's result, which no program
+ * constant takes.
+ */
+export const readResultConstant = (reader: CardanoFlatReader): UPLCConst => {
+  const start = reader.bitOffset;
+  const tags: number[] = [];
+  while (reader.bit()) tags.push(reader.bits(4));
+  const type = parseType(tags);
+  if (type === undefined || tags.length > MAX_CONSTANT_TYPE_TAGS)
+    return reader.refuse(
+      "badConstantType",
+      `type tags [${tags.join(",")}] do not spell a star type`,
+      start,
+    );
+  return new UPLCConst(constType(type), readValue(reader, type) as never);
 };

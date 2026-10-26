@@ -7,13 +7,14 @@
  * Values cross as Flat `(program 1.1.0 (con …))` constants, written and read
  * by Midgard's own Flat codec. Flat has no BLS12-381 points, so a G1 or G2
  * value is held as its compressed point bytes, which is how it crosses; a
- * list of points crosses as their bytes one after the other.
+ * list or an array of points crosses as their bytes one after the other.
  */
 import * as UPLC from "@lucid-evolution/uplc";
 
 import { midgardCekBuiltinArgumentCount } from "./cek-machine.midgard-cek-builtin-argument-count.js";
-import { decodeCardanoFlatProgramOrThrow } from "./cek-program.cardano-flat.decode.js";
+import { readResultConstant } from "./cek-program.cardano-flat.constant.js";
 import { encodeCardanoFlatProgram } from "./cek-program.cardano-flat.encode.js";
+import { CardanoFlatReader } from "./cek-program.cardano-flat.reader.js";
 import { constT, ConstTyTag, UPLCConst } from "./uplc-constant.js";
 
 /** The protocol version whose Plutus semantics Midgard follows. */
@@ -26,20 +27,25 @@ const KIND = Object.freeze({
   g2: 2,
   g1List: 3,
   g2List: 4,
+  g1Array: 5,
+  g2Array: 6,
 } as const);
 
 const G1_BYTES = 48;
 const G2_BYTES = 96;
 
-/** How a point type crosses, alone and as a list's element. */
-const POINTS = new Map<number, { alone: number; list: number; size: number }>([
+/** How a point type crosses, alone and as a list's or an array's element. */
+const POINTS = new Map<
+  number,
+  { alone: number; list: number; array: number; size: number }
+>([
   [
     ConstTyTag.bls12_381_G1_element,
-    { alone: KIND.g1, list: KIND.g1List, size: G1_BYTES },
+    { alone: KIND.g1, list: KIND.g1List, array: KIND.g1Array, size: G1_BYTES },
   ],
   [
     ConstTyTag.bls12_381_G2_element,
-    { alone: KIND.g2, list: KIND.g2List, size: G2_BYTES },
+    { alone: KIND.g2, list: KIND.g2List, array: KIND.g2Array, size: G2_BYTES },
   ],
 ]);
 
@@ -57,12 +63,18 @@ const encodeArgument = (
   const point = POINTS.get(head);
   if (point !== undefined)
     return { bytes: pointBytes(constant.value, point.size), kind: point.alone };
-  const listed = head === ConstTyTag.list ? POINTS.get(element!) : undefined;
+  const listed =
+    head === ConstTyTag.list || head === ConstTyTag.array
+      ? POINTS.get(element!)
+      : undefined;
   if (listed !== undefined && constant.type.length === 2) {
     const points = (constant.value as readonly unknown[]).map((item) =>
       pointBytes(item, listed.size),
     );
-    return { bytes: Buffer.concat(points), kind: listed.list };
+    return {
+      bytes: Buffer.concat(points),
+      kind: head === ConstTyTag.list ? listed.list : listed.array,
+    };
   }
   return {
     bytes: encodeCardanoFlatProgram({
@@ -82,15 +94,29 @@ const splitPoints = (bytes: Uint8Array, size: number): Uint8Array[] => {
   return points;
 };
 
+/**
+ * A result `(program 1.1.0 (con …))`: the version, the constant term tag,
+ * then the constant, which may be an array or a Value.
+ */
+const decodeResultConstant = (bytes: Uint8Array): UPLCConst => {
+  const reader = new CardanoFlatReader(bytes);
+  if (
+    reader.natural() !== 1n ||
+    reader.natural() !== 1n ||
+    reader.natural() !== 0n ||
+    reader.bits(4) !== 4
+  )
+    throw new Error("pinned evaluator returned a non-constant value");
+  const constant = readResultConstant(reader);
+  reader.finish();
+  return constant;
+};
+
 /** The constant a result's bytes and kind stand for. */
 const decodeResult = (bytes: Uint8Array, kind: number): UPLCConst => {
   switch (kind) {
-    case KIND.flat: {
-      const { body } = decodeCardanoFlatProgramOrThrow(bytes);
-      if (!(body instanceof UPLCConst))
-        throw new Error("pinned evaluator returned a non-constant value");
-      return body;
-    }
+    case KIND.flat:
+      return decodeResultConstant(bytes);
     case KIND.g1:
       return new UPLCConst(constT.bls12_381_G1_element, bytes.slice());
     case KIND.g2:
@@ -105,15 +131,38 @@ const decodeResult = (bytes: Uint8Array, kind: number): UPLCConst => {
         constT.listOf(constT.bls12_381_G2_element),
         splitPoints(bytes, G2_BYTES),
       );
+    case KIND.g1Array:
+      return new UPLCConst(
+        [ConstTyTag.array, ConstTyTag.bls12_381_G1_element],
+        splitPoints(bytes, G1_BYTES),
+      );
+    case KIND.g2Array:
+      return new UPLCConst(
+        [ConstTyTag.array, ConstTyTag.bls12_381_G2_element],
+        splitPoints(bytes, G2_BYTES),
+      );
     default:
       throw new Error(`pinned evaluator returned a value of kind ${kind}`);
   }
 };
 
 /** What the pinned evaluator gives for one saturated builtin application. */
-export type MidgardCekPinnedBuiltinResult =
+export type MidgardCekPinnedBuiltinResult = (
   | { readonly kind: "value"; readonly value: UPLCConst }
-  | { readonly kind: "failure"; readonly message: string };
+  | {
+      readonly kind: "failure";
+      readonly message: string;
+      /** Whether the builtin failed after it was costed. */
+      readonly charged: boolean;
+    }
+) & {
+  /**
+   * The builtin's charge under Plutus' default Plutus V3 cost model at
+   * protocol version 11, without the machine's step costs; zero when it
+   * failed before it was costed.
+   */
+  readonly budget: { readonly cpu: bigint; readonly memory: bigint };
+};
 
 /**
  * Evaluates Cardano's builtin `tag` (Flat numbering) on `arguments_`, which
@@ -142,12 +191,19 @@ export const evaluatePinnedBuiltin = (
     MIDGARD_PLUTUS_PROTOCOL_MAJOR_VERSION,
   );
   try {
+    const budget = { cpu: result.cpu, memory: result.mem };
     if (result.ok)
       return {
         kind: "value",
         value: decodeResult(result.result, result.result_kind),
+        budget,
       };
-    return { kind: "failure", message: result.error };
+    return {
+      kind: "failure",
+      message: result.error,
+      charged: result.error_kind === 3,
+      budget,
+    };
   } finally {
     result.free();
   }

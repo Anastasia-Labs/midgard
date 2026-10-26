@@ -66,19 +66,22 @@ describe("PV 11 builtin tags", () => {
     }
   });
 
-  it("steps a resolved builtin and certifies no step for tags 87-100", () => {
-    expect(
-      verifyMidgardCekCoreStep(
-        computeBuiltin(86n),
-        state("return", builtinValue(86n, 0n), 0n, 16_000n, 100n),
-        { kind: "computeBuiltin", tag: 86n },
-      ),
-    ).toBe(true);
-    for (const tag of [87n, 88n, 94n, 100n]) {
+  it("steps tags 87-100 to their builtin value, forced as Cardano requires", () => {
+    const forces = (tag: bigint): bigint =>
+      tag >= 88n && tag <= 91n ? 1n : 0n;
+    for (let tag = 87n; tag <= 100n; tag += 1n) {
       const pre = computeBuiltin(tag);
+      const step = { kind: "computeBuiltin", tag } as const;
+      expect(
+        verifyMidgardCekCoreStep(
+          pre,
+          state("return", builtinValue(tag, forces(tag)), 0n, 16_000n, 100n),
+          step,
+        ),
+      ).toBe(true);
       for (const claimed of [
+        state("return", builtinValue(tag, 1n - forces(tag)), 0n, 16_000n, 100n),
         state("return", builtinValue(86n, 0n), 0n, 16_000n, 100n),
-        state("return", builtinValue(86n, 1n), 0n, 16_000n, 100n),
         state(
           "haltError",
           hashMidgardCekTermNode({ kind: "error" }),
@@ -87,14 +90,9 @@ describe("PV 11 builtin tags", () => {
           0n,
         ),
       ]) {
-        expect(
-          verifyMidgardCekCoreStep(pre, claimed, {
-            kind: "computeBuiltin",
-            tag,
-          }),
-        ).toBe(false);
+        expect(verifyMidgardCekCoreStep(pre, claimed, step)).toBe(false);
       }
-      expect(() => builtinValue(tag, 0n)).toThrow(/between 0 and 86/u);
     }
+    expect(() => builtinValue(101n, 0n)).toThrow(/between 0 and 100/u);
   });
 });

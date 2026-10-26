@@ -9,7 +9,7 @@ import { bls12_381 } from "@noble/curves/bls12-381.js";
 import { ed25519 } from "@noble/curves/ed25519.js";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 
-export const CEK_BUILTIN_CARDANO_MAX_TAG = 86;
+export const CEK_BUILTIN_CARDANO_MAX_TAG = 100;
 
 /** mulberry32, seeded per tag. */
 export const makeRng = (seed) => {

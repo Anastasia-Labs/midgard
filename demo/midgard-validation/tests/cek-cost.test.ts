@@ -69,7 +69,7 @@ describe("V1 pinned Plutus V3 builtin costs", () => {
   );
 
   it("fails closed on unknown tags, wrong arity, or negative sizes", () => {
-    expect(() => computeMidgardCekBuiltinBudget(87, [1n])).toThrow(
+    expect(() => computeMidgardCekBuiltinBudget(101, [1n])).toThrow(
       /outside Plutus V3/u,
     );
     expect(() => computeMidgardCekBuiltinBudget(0, [1n])).toThrow(

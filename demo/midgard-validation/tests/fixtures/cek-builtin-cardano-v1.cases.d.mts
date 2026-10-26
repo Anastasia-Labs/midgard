@@ -22,7 +22,9 @@ export type CekBuiltinArgumentType =
   | "g1"
   | "g2"
   | "ml"
+  | "value"
   | { readonly list: CekBuiltinArgumentType }
+  | { readonly array: CekBuiltinArgumentType }
   | {
       readonly pair: readonly [CekBuiltinArgumentType, CekBuiltinArgumentType];
     };
