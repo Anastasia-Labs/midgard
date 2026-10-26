@@ -333,12 +333,14 @@ describe("unused-script-witness forged successor refusal", () => {
   }, 2_400_000);
 
   it("refuses a forged successor at every role of a forced acceptance", async () => {
-    // An admissible forced subject (a native-only key spend) with one native
-    // observer and an unused native witness; it mints nothing and has no
-    // outputs, so the mint and receive walks are never entered.
+    // An admissible forced subject (a native-only key spend) with a native
+    // observer, a native mint policy, a protected receive to a native script
+    // and an unused native witness, so every walk page is entered.
     const shape = {
       ...admissibleForcedWith([holdingNativeScript(2)]),
       observers: [{ script: nativeScript(5n), redeemer: false }],
+      mints: [{ script: nativeScript(6n), redeemer: false }],
+      receives: [{ script: nativeScript(7n), redeemer: false }],
     };
     expect(screenMidgardForcedTxAdmission(buildIntegritySubject(shape))).toBe(
       null,
@@ -347,12 +349,6 @@ describe("unused-script-witness forged successor refusal", () => {
       kind: "forced",
       verdict: "ForcedTxValid",
     });
-    expect(new Set(refused)).toStrictEqual(
-      new Set(
-        [...EVERY_ROLE].filter(
-          (role) => role !== "allPurposesMint" && role !== "allPurposesReceive",
-        ),
-      ),
-    );
+    expect(new Set(refused)).toStrictEqual(EVERY_ROLE);
   }, 2_400_000);
 });
