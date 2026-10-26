@@ -241,6 +241,9 @@ describe("fault-proof contract builder", () => {
         ["mintDeclaredAssetLimit[3]", "observerOrderInvalid[3]"],
         // The unused-witness families share their terminal award step.
         ["unusedScriptWitness[5]", "unusedRedeemer[8]"],
+        // Both walk the shared direct-derivation all-purposes scan.
+        ["missingRedeemer[5]", "scriptIntegrityHashMismatch[5]"],
+        ["missingRedeemer[6]", "scriptIntegrityHashMismatch[6]"],
       ].sort(),
     );
   }, 120_000);
