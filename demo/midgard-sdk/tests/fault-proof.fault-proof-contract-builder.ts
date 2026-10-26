@@ -223,6 +223,12 @@ describe("fault-proof contract builder", () => {
         stepOwners.set(step.spendingScriptHash, owners);
       });
     }
+    const DIRECT = [
+      "missingScriptSource",
+      "missingRedeemer",
+      "unusedRedeemer",
+      "scriptIntegrityHashMismatch",
+    ];
     expect(
       [...stepOwners.values()].filter((owners) => owners.length > 1).sort(),
     ).toEqual(
@@ -239,11 +245,17 @@ describe("fault-proof contract builder", () => {
         ["withdrawnReferenceInput[2]", "withdrawnInput[2]"],
         // Both convict from the same final ordered-collection comparison.
         ["mintDeclaredAssetLimit[3]", "observerOrderInvalid[3]"],
-        // The unused-witness families share their terminal award step.
-        ["unusedScriptWitness[5]", "unusedRedeemer[8]"],
-        // Both walk the shared direct-derivation all-purposes scan.
-        ["missingRedeemer[5]", "scriptIntegrityHashMismatch[5]"],
-        ["missingRedeemer[6]", "scriptIntegrityHashMismatch[6]"],
+        // The DIRECT families share source authentication and map, the claim
+        // route (unusedRedeemer has no claimed-redeemer scan) and the terminal.
+        ...[
+          ...[5, 6].map((step) => [step, step, step, step]),
+          ...Array.from({ length: 12 }, (_, at) =>
+            [24 + at, 26 + at, 14 + at].slice(0, at < 10 ? 3 : 2),
+          ),
+          [36, 38, 24],
+        ].map((steps) =>
+          steps.map((step, at) => `${DIRECT[at]!}[${step.toString()}]`),
+        ),
       ].sort(),
     );
   }, 120_000);
