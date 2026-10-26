@@ -243,6 +243,9 @@ export const stagedDrive = ({
   const drive = resolutionDrive({
     withRemoval,
     from,
+    // The operator's thread disputes the same step, so it resolves it too
+    // and reads the same staging until it settles.
+    operatorResolves: true,
     at: "prepare",
     path: ["prepare", "core", ...arms, "settle"],
     labels: [

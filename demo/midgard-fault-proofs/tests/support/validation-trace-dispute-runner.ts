@@ -175,13 +175,23 @@ export const makeRunner = (
     adapters: [options.wrap?.(adapter) ?? adapter],
     launchScope: ["validationTraceDispute"],
   });
+  // A block's detections are its complete replay, the same every run.
+  const detections = new WeakMap<Block, ReturnType<typeof detectOn>>();
+  const detectionsOf = (block: Block) => {
+    let detected = detections.get(block);
+    if (detected === undefined) {
+      detected = detectOn(block);
+      detections.set(block, detected);
+    }
+    return detected;
+  };
   return {
     journal,
     runOnce: async (block) => {
       const result = await runFraudProofWorkflow({
         deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
         evidence: block.evidence,
-        detections: await detectOn(block),
+        detections: await detectionsOf(block),
         ...(block.context === undefined
           ? {}
           : { replayContext: block.context }),
@@ -192,6 +202,10 @@ export const makeRunner = (
         now: () => new Date(h.emulator.now()),
       });
       h.emulator.awaitBlock(1);
+      // A run on the emulator is microtasks only. Lucid's wasm objects are
+      // freed by their finalizers, and the memory reserve's collector runs on
+      // a timer; both run only between tasks, so each run ends on one.
+      await new Promise((resolve) => setImmediate(resolve));
       return result;
     },
   };

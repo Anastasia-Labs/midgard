@@ -11,7 +11,7 @@
  * which stamps it TxIsInvalid, starts no workflow and signs nothing: a
  * correct post state is not convicted. */
 import { CML, coreToTxOutput } from "@lucid-evolution/lucid";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import type { ValidationTraceArmHolder } from "../../src/validation-trace-dispute/one-step-holders.js";
 import { honestBlock } from "./validation-trace-dispute-max-shape-case.js";
@@ -70,6 +70,9 @@ export const loopCase = ({
     from: lastStepOfGroup(group),
     arms,
     ...(exUnits === undefined ? {} : { exUnits }),
+    // The case may close before every staging output is spent back: the
+    // block's removal then goes first, and the spend backs follow it.
+    withRemoval: true,
   });
   const staging = stagedBytes.length > 0;
 
@@ -83,6 +86,7 @@ export const loopCase = ({
 
   describe("a wrong post state is convicted", () => {
     beforeAll(drive.setUp, 3_600_000);
+    afterAll(() => drive.dispute()?.recorder?.restore());
 
     it(`moves the thread from the PrepareSelected move through the binder, the group-${group.toString()} chain, its stage ${hops.toString()} times, and the settle to the award within the transaction limits, each hop through the last arm reading every staging output and the settle none, and closes it`, async () => {
       const witness = await drive.stepWitness();
@@ -132,12 +136,21 @@ export const loopCase = ({
     if (staging)
       it("spends each staging output back to our wallet by our key once the thread has settled", async () => {
         const live = await stagings();
-        await drive.play(async () => {
-          for (const outRef of live)
-            if ((await drive.live(outRef)) !== undefined) return false;
-          return true;
-        }, 60);
         const { scene } = drive.dispute();
+        // The removal dates its validity window from the application clock,
+        // which on the emulator is the emulator's.
+        const clock = vi
+          .spyOn(Date, "now")
+          .mockImplementation(() => scene.h.emulator.now());
+        try {
+          await drive.play(async () => {
+            for (const outRef of live)
+              if ((await drive.live(outRef)) !== undefined) return false;
+            return true;
+          }, 60);
+        } finally {
+          clock.mockRestore();
+        }
         const reclaims = await Promise.all(live.map(drive.spenderOf));
         expect(reclaims.every((txHash) => txHash !== undefined)).toBe(true);
         for (const txHash of reclaims as string[]) {

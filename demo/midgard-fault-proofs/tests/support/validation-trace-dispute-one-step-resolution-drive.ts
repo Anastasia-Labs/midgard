@@ -77,6 +77,7 @@ export const resolutionDrive = <
   installs,
   withRemoval = false,
   minFeeA,
+  operatorResolves = false,
   planAt,
 }: {
   readonly from: NonNullable<
@@ -108,6 +109,9 @@ export const resolutionDrive = <
   /** The ledger's per-byte fee while the resolution plays, when raised so
    * its largest moves are priced over the per-move cap. */
   readonly minFeeA?: number;
+  /** Whether the operator's thread disputes the same step and resolves it
+   * to an award of its own, so the play waits for its close too. */
+  readonly operatorResolves?: boolean;
   readonly planAt: (
     dispute: TwoThreadCase,
     holder: Holder,
@@ -331,14 +335,16 @@ export const resolutionDrive = <
             runner,
             sides: [a, b],
             // Over a failing transaction of its own, our other thread's trace
-            // parts from ours at a step of another phase, and it waits there.
+            // parts from ours at a step of another phase, and it waits there,
+            // unless it disputes the same step and resolves it too.
             until: async () =>
-              (installs.failingRedeemerData !== undefined ||
-                installs.failingReferenceInputs !== undefined ||
-                installs.failingSigners !== undefined ||
-                installs.failingScript !== undefined ||
-                installs.failingNativeSpend !== undefined ||
-                installs.failingNativeMint !== undefined ||
+              ((!operatorResolves &&
+                (installs.failingRedeemerData !== undefined ||
+                  installs.failingReferenceInputs !== undefined ||
+                  installs.failingSigners !== undefined ||
+                  installs.failingScript !== undefined ||
+                  installs.failingNativeSpend !== undefined ||
+                  installs.failingNativeMint !== undefined)) ||
                 (await threadClosed(dispute, a.unit))) &&
               (await threadClosed(dispute, b.unit)),
             limit: 40 + 2 * path.length,
