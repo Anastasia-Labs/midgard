@@ -167,6 +167,42 @@ describe("fault decision bridge past the challengeability horizon", () => {
     expect(observability.api.metrics().unverifiedHeaders.pastHorizon).toBe("0");
   });
 
+  // A deployment's DA history window can outlast the horizon, so a store
+  // still holding the payload says nothing about challengeability: the skip
+  // turns on the header's own horizon alone, strictly after it.
+  it.each([
+    ["1 ms inside the horizon", HORIZON - 1n, "failed", "0"],
+    ["exactly at the horizon", HORIZON, "failed", "0"],
+    ["1 ms past the horizon", PAST, "unverified_past_horizon", "1"],
+  ] as const)(
+    "decides the skip of a gone payload %s on the clock alone",
+    async (_label, nowMs, outcome, pastHorizon) => {
+      const current = observation([header("01")], "Idle", [ATTESTED]);
+      const [gone] = current.finalizedHeaders;
+      const observability = operations();
+      failedFetch(observability, gone!.headerHash);
+      const failure = unavailable(gone!.headerHash);
+      const h = harness({
+        current,
+        categoryByHeader: { [gone!.headerHash]: "transitionTrace" },
+        operationsSink: observability.sink,
+        nowMs: () => nowMs,
+        classifyOverride: () => {
+          throw failure;
+        },
+      });
+      const run = h.bridge.reconcileAndDispatch(current);
+      if (outcome === "failed") await expect(run).rejects.toBe(failure);
+      else expect((await run).target).toBeNull();
+      expect(outcomes(observability)).toEqual([
+        { headerHash: gone!.headerHash, outcome },
+      ]);
+      expect(observability.api.metrics().unverifiedHeaders.pastHorizon).toBe(
+        pastHorizon,
+      );
+    },
+  );
+
   it("skips a past-horizon header even when a source did not answer, and still targets a later in-window fault", async () => {
     // After downtime longer than maturity the oldest payload is pruned: two
     // peers answer not_found, a third is down. Waiting on that peer would
