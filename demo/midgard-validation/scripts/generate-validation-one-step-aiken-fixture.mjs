@@ -300,12 +300,10 @@ const highIndex = lowIndex + 1;
 // #597 AC4. The four §8-door constructors are the half of #592's wire change no
 // blueprint gate can measure: `ValidationAuxiliaryWitnessV1` reaches a recursive
 // Aiken definition through its CEK arm, so `sdk-aiken-schema-parity` cannot
-// normalize it (see the note at its `ABI_MAPPINGS`). Publishing one *emitted*
-// `transactionFieldChunk` auxiliary here checks the two language halves against
-// each other — this producer's bytes against the Aiken decoder and the Aiken
-// constructor's own field names — rather than either half against a frozen
-// blueprint that agrees with neither. A small native-script spend emits one
-// (Phase A, field 6); InputSets and Signatures emit item auxiliaries only.
+// normalize it (see the note at its `ABI_MAPPINGS`). One *emitted*
+// `transactionFieldChunk` auxiliary (a native-script spend's field 6) checks
+// this producer's bytes against the Aiken decoder and its constructor's field
+// names, rather than either half against a frozen blueprint.
 const fieldChunkTrace = await buildTraceForScriptItem(128);
 const fieldChunkIndex = fieldChunkTrace.witnesses.findIndex(
   (witness) => witness.auxiliary?.kind === "transactionFieldChunk",

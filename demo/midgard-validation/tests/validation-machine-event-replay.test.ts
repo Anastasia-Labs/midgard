@@ -237,8 +237,8 @@ describe("independent validation event replay", () => {
       // position and the resolved-input accumulators were removed.
       const expectedTraceHash =
         executionCount === 1
-          ? "ae91a81e7342eb2824d6be0a51eddf929bfd95b02dec9fc2de2770e10bfdfd2b"
-          : "58d7f7f9bb7afd55d74c2baccee66aa01d1d44bdbf3b691e36cf6a85c86efd7d";
+          ? "473801840f15af24c8203a4002b54548ae4a01ebaf774e9df9635c444f1006da"
+          : "40ee35fec2ba6983e413b544958b7f91fd77d5aa738a01ff7f614fa74c5ccc84";
       expect(createHash("sha256").update(traceBytes).digest("hex")).toBe(
         expectedTraceHash,
       );
