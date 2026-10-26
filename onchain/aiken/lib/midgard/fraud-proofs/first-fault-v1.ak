@@ -512,6 +512,9 @@ pub type CekFaultPositionV1 {
   subcheck: CekSubcheckV1,
 }
 
+/// `input_index` is the input's position in the input-resolution schedule,
+/// reference inputs counted, as the value walk folds it; not its field-0
+/// ordinal.
 pub type ValueFaultPositionV1 {
   InputAssetFault { input_index: Int, asset_index: Int }
   OutputAssetFault { output_index: Int, asset_index: Int }

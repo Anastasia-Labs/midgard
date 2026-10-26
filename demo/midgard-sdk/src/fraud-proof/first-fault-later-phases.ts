@@ -44,6 +44,11 @@ export type CekFaultPosition = Readonly<{
   subcheck: CekSubcheck;
 }>;
 
+/**
+ * `inputIndex` is the input's position in the input-resolution schedule,
+ * reference inputs counted, as the value walk folds it; not its field-0
+ * ordinal.
+ */
 export type ValueFaultPosition =
   | Readonly<{ kind: "input"; inputIndex: bigint; assetIndex: bigint }>
   | Readonly<{ kind: "output"; outputIndex: bigint; assetIndex: bigint }>
@@ -347,8 +352,16 @@ export const laterFaultPositionIsValid = (
         : position.position.kind === "redeemer" &&
             isIndex(position.position.redeemerIndex);
     case "execution":
+      return (
+        ["NativeScriptScan", "NativeScriptEvaluation"].includes(
+          position.position.subcheck,
+        ) && purposeCoordinateIsValid(position.position.coordinate)
+      );
     case "cek":
-      return purposeCoordinateIsValid(position.position.coordinate);
+      return (
+        ["ReceiveLanguage", "ScriptRun"].includes(position.position.subcheck) &&
+        purposeCoordinateIsValid(position.position.coordinate)
+      );
     case "scriptIntegrity":
       return true;
     case "value": {

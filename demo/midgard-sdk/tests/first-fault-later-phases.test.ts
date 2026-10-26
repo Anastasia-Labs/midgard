@@ -391,6 +391,29 @@ describe("first-fault later phases", () => {
       expect(() => admits("ValueNotPreserved", redeemer(-1n))).toThrow(
         "invalid later-fault position",
       );
+      const bogus = (position: LaterFaultPosition, subcheck: string) =>
+        ({
+          ...position,
+          position: {
+            ...(position as { position: object }).position,
+            subcheck,
+          },
+        }) as LaterFaultPosition;
+      for (const observed of [
+        bogus(scan(0n, 0n), "ScriptRun"),
+        bogus(run(0n, 0n), "NativeScriptScan"),
+      ]) {
+        expect(() => admits("ValueNotPreserved", observed)).toThrow(
+          "invalid later-fault position",
+        );
+        expect(() =>
+          leafAdmitsLaterFault(
+            acceptedVerdictSubject("11".repeat(32)),
+            context,
+            observed,
+          ),
+        ).toThrow("invalid later-fault position");
+      }
     });
   });
 });
