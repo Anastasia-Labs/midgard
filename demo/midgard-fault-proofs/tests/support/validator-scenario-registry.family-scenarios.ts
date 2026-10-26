@@ -173,6 +173,20 @@ export const FAMILY_SCENARIOS: Readonly<
       },
     ],
   },
+  unusedRedeemer: {
+    passing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-unused-redeemer-verticals.test.ts",
+        test: "A-N: convicts an accepted transaction carrying a redeemer with no purpose and removes its block",
+      },
+    ],
+    failing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-unused-redeemer-verticals.test.ts",
+        test: "refuses the walk to an honest transaction's consumed redeemer",
+      },
+    ],
+  },
   withdrawnReferenceInput: {
     passing: [
       {

@@ -6,8 +6,8 @@ Last reviewed: 2026-10-26 (source inventory and installation scope).
 
 ## Source inventory
 
-The 52 source catalogue categories and their 45 watcher installations are listed
-below. The seven categories marked "No" are the uninstalled set in
+The 52 source catalogue categories and their 46 watcher installations are listed
+below. The six categories marked "No" are the uninstalled set in
 [`installed-categories.ts`](../../demo/midgard-fault-proofs/src/workflow/installed-categories.ts).
 This is source coverage, not a claim that a particular network has these
 contracts deployed or that every acceptance suite passed on this revision.
@@ -72,7 +72,7 @@ them when you edit it.
 | `0000002f` | `unusedScriptWitness`                 | No                |
 | `0000002d` | `missingScriptSource`                 | Yes               |
 | `0000002e` | `missingRedeemer`                     | Yes               |
-| `00000030` | `unusedRedeemer`                      | No                |
+| `00000030` | `unusedRedeemer`                      | Yes               |
 | `00000032` | `executionNativeScriptInvalid`        | No                |
 | `00000033` | `scriptIntegrityHashMismatch`         | No                |
 | `00000035` | `distinctAssetAccumulationLimit`      | No                |

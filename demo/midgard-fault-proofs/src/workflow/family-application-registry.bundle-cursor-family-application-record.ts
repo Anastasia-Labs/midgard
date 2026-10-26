@@ -72,6 +72,13 @@ import {
   TRANSITION_TRACE_FAMILY_DEFINITION,
 } from "../transition-trace/workflow.js";
 import {
+  createManifestBoundUnusedRedeemerWorkflow,
+  type ManifestBoundUnusedRedeemerWorkflow,
+  runOrResumeManifestBoundUnusedRedeemerWorkflow,
+  UNUSED_REDEEMER_FAMILY_DEFINITION,
+} from "../unused-redeemer/workflow.js";
+import type { ManifestBoundUnusedRedeemerWorkflowConfig } from "../unused-redeemer/workflow.transaction-port.js";
+import {
   createManifestBoundWithdrawalMistagWorkflow,
   type ManifestBoundWithdrawalMistagWorkflow,
   type ManifestBoundWithdrawalMistagWorkflowConfig,
@@ -229,6 +236,17 @@ export const MISSING_SCRIPT_SOURCE_FAMILY_APPLICATION_RECORD =
     requires: ["replayContext"],
     constructWorkflow: createManifestBoundMissingScriptSourceWorkflow,
     execute: runOrResumeManifestBoundMissingScriptSourceWorkflow,
+  });
+
+export const UNUSED_REDEEMER_FAMILY_APPLICATION_RECORD =
+  bundleCursorFamilyApplicationRecord<
+    "unusedRedeemer",
+    ManifestBoundUnusedRedeemerWorkflowConfig,
+    ManifestBoundUnusedRedeemerWorkflow
+  >(UNUSED_REDEEMER_FAMILY_DEFINITION, {
+    requires: ["replayContext"],
+    constructWorkflow: createManifestBoundUnusedRedeemerWorkflow,
+    execute: runOrResumeManifestBoundUnusedRedeemerWorkflow,
   });
 
 export const MIN_ADA_FAMILY_APPLICATION_RECORD =

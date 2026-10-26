@@ -46,6 +46,14 @@ const missingScriptSourceForgedSuccessor: ValidatorScenarioPair = {
   passing: [{ file: MSS_FORGED_SUCCESSOR, test: MSS_OBSERVER }],
   failing: [{ file: MSS_FORGED_SUCCESSOR, test: MSS_OBSERVER }],
 };
+const UR_FORGED_SUCCESSOR =
+  "demo/midgard-fault-proofs/tests/submit-init-emulator-unused-redeemer-forged-successor.test.ts";
+const UR_PURPOSELESS =
+  "refuses a forged successor at every role of the accepted purposeless-redeemer route";
+const unusedRedeemerForgedSuccessor: ValidatorScenarioPair = {
+  passing: [{ file: UR_FORGED_SUCCESSOR, test: UR_PURPOSELESS }],
+  failing: [{ file: UR_FORGED_SUCCESSOR, test: UR_PURPOSELESS }],
+};
 const MR_VERTICALS =
   "demo/midgard-fault-proofs/tests/submit-init-emulator-missing-redeemer-verticals.test.ts";
 const streamedReplayStep = (failing: string): ValidatorScenarioPair => ({
@@ -429,6 +437,12 @@ export const VALIDATOR_SCENARIOS: Readonly<
     missingScriptSourceForgedSuccessor,
   "fraud_proofs/missing_script_source/observed_decision.main":
     missingScriptSourceForgedSuccessor,
+  "fraud_proofs/unused_redeemer/family_entry.main":
+    unusedRedeemerForgedSuccessor,
+  "fraud_proofs/unused_redeemer/redeemer_grammar.main":
+    unusedRedeemerForgedSuccessor,
+  "fraud_proofs/unused_redeemer/redeemer_scan.main":
+    unusedRedeemerForgedSuccessor,
   "fraud_proofs/missing_redeemer/step_02.main":
     missingRedeemerForgedSuccessor(MR_OBSERVER),
   "fraud_proofs/missing_redeemer/step_03.main":

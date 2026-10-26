@@ -235,6 +235,7 @@ export const NO_DIGEST_FAMILIES = [
   "valueNotPreserved",
   "missingRedeemer",
   "missingScriptSource",
+  "unusedRedeemer",
 ];
 
 export const REPLAY_CONTEXT_FAMILIES = [
@@ -249,6 +250,7 @@ export const REPLAY_CONTEXT_FAMILIES = [
   "validationTraceDispute",
   "missingRedeemer",
   "missingScriptSource",
+  "unusedRedeemer",
 ];
 
 /**

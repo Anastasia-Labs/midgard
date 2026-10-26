@@ -70,9 +70,9 @@ describe("watcher production fault-proof application V1", () => {
       "minAda",
       "transitionTrace",
     ]);
-    expect(() => installedLaunchScope(["minAda", "unusedRedeemer"])).toThrow(
-      "launch scope names a category with no installed workflow",
-    );
+    expect(() =>
+      installedLaunchScope(["minAda", "unusedScriptWitness"]),
+    ).toThrow("launch scope names a category with no installed workflow");
   });
 
   it("installs every runner with an empty signed funding bundle while funding requests stay gated", async () => {
@@ -618,7 +618,7 @@ describe("watcher production fault-proof application V1", () => {
             "replayContext",
           ),
         );
-      expect(replayContextFamilies).toHaveLength(11);
+      expect(replayContextFamilies).toHaveLength(12);
       for (const category of replayContextFamilies) {
         await expect(applied(category)).rejects.toThrow(
           `${category} application requires replayContext, which the host did not supply`,

@@ -17,6 +17,7 @@ import { SCRIPT_INTEGRITY_HASH_MISSING_FAMILY_DEFINITION } from "../script-integ
 import { SPEND_INPUT_SIGNER_MISSING_FAMILY_DEFINITION } from "../spend-input-signer-missing/authenticated-workflow.js";
 import { TRANSACTION_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION } from "../transaction-output-non-canonical/workflow.js";
 import { TRANSITION_TRACE_FAMILY_DEFINITION } from "../transition-trace/workflow.js";
+import { UNUSED_REDEEMER_FAMILY_DEFINITION } from "../unused-redeemer/workflow.js";
 import { WITHDRAWAL_MISTAG_FAMILY_DEFINITION } from "../withdrawal-mistag/workflow.js";
 import { WITNESS_SCRIPT_DECODING_FAMILY_DEFINITION } from "../witness-script-decoding/workflow.js";
 import { LINEAR_FAMILY_DEFINITIONS } from "./linear-family-definitions.js";
@@ -48,6 +49,7 @@ type CursorFamilyDefinitions = Readonly<{
   withdrawalMistag: typeof WITHDRAWAL_MISTAG_FAMILY_DEFINITION;
   missingRedeemer: typeof MISSING_REDEEMER_FAMILY_DEFINITION;
   missingScriptSource: typeof MISSING_SCRIPT_SOURCE_FAMILY_DEFINITION;
+  unusedRedeemer: typeof UNUSED_REDEEMER_FAMILY_DEFINITION;
 }>;
 
 export const CURSOR_FAMILY_DEFINITIONS: CursorFamilyDefinitions = Object.freeze(
@@ -76,6 +78,7 @@ export const CURSOR_FAMILY_DEFINITIONS: CursorFamilyDefinitions = Object.freeze(
     withdrawalMistag: WITHDRAWAL_MISTAG_FAMILY_DEFINITION,
     missingRedeemer: MISSING_REDEEMER_FAMILY_DEFINITION,
     missingScriptSource: MISSING_SCRIPT_SOURCE_FAMILY_DEFINITION,
+    unusedRedeemer: UNUSED_REDEEMER_FAMILY_DEFINITION,
   },
 );
 

@@ -231,8 +231,8 @@
   },
   {
     "file": "midgard-fault-proofs/src/workflow/adapters.workflow-adapter-registration-rows.ts",
-    "max": 649,
-    "reason": "workflowAdapterRegistrationRows: a single declarative catalogue/map keeps its complete role-to-entry relationship reviewable. Independent helpers were extracted; fragmenting the literal adds assembly indirection without a new concern. Installing the direct missing-script-source family rewrites its row; cap raised to the measured count."
+    "max": 655,
+    "reason": "workflowAdapterRegistrationRows: a single declarative catalogue/map keeps its complete role-to-entry relationship reviewable. Independent helpers were extracted; fragmenting the literal adds assembly indirection without a new concern. Installing the direct missing-script-source and unused-redeemer families rewrites their rows; cap raised to the measured count."
   },
   {
     "file": "midgard-fault-proofs/src/workflow/double-spend-adapter.create-double-spend-constrained-workflow-adapter.ts",
@@ -481,8 +481,8 @@
   },
   {
     "file": "midgard-fault-proofs/tests/support/validator-scenario-registry.family-scenarios.ts",
-    "max": 540,
-    "reason": "FAMILY_SCENARIOS: a single declarative catalogue/map keeps its complete role-to-entry relationship reviewable. Independent helpers were extracted; fragmenting the literal adds assembly indirection without a new concern. Installing the direct missing-script-source family adds its scenario entry; cap raised to the measured count."
+    "max": 554,
+    "reason": "FAMILY_SCENARIOS: a single declarative catalogue/map keeps its complete role-to-entry relationship reviewable. Independent helpers were extracted; fragmenting the literal adds assembly indirection without a new concern. Installing the direct missing-script-source and unused-redeemer families adds their scenario entries; cap raised to the measured count."
   },
   {
     "file": "midgard-fault-proofs/tests/support/validator-scenario-registry.unmapped-validators.ts",
@@ -491,8 +491,8 @@
   },
   {
     "file": "midgard-fault-proofs/tests/support/validator-scenario-registry.validator-scenarios.ts",
-    "max": 511,
-    "reason": "VALIDATOR_SCENARIOS: a single declarative catalogue/map keeps its complete validator-to-scenario relationship reviewable. Independent helpers were extracted; fragmenting the literal adds assembly indirection without a new concern."
+    "max": 525,
+    "reason": "VALIDATOR_SCENARIOS: a single declarative catalogue/map keeps its complete validator-to-scenario relationship reviewable. Independent helpers were extracted; fragmenting the literal adds assembly indirection without a new concern. Installing the direct unused-redeemer family maps its three validators; cap raised to the measured count."
   },
   {
     "file": "midgard-fault-proofs/tests/support/value-conservation-lifecycle-cases.ts",

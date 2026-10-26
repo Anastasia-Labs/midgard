@@ -52,6 +52,7 @@ export const JOURNEY_FIXTURE_OWNERS = {
   validationTraceDispute: "script",
   missingRedeemer: "script",
   missingScriptSource: "script",
+  unusedRedeemer: "script",
   doubleSpend: "history",
   nonExistentInput: "history",
   nonExistentInputNoIndex: "history",
