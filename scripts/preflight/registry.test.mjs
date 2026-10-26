@@ -294,6 +294,7 @@ test("workflow, agent-doc and tooling edits select their owners' checks", () => 
 test("a FULL_RUN path selects every check; the tracked blueprint selects nothing", () => {
   for (const path of [
     "demo/scripts/deployment-profile-aiken.mjs",
+    "demo/scripts/deployment-profile-da.mjs",
     "demo/scripts/deployment-profile-budgets.mjs",
     "demo/scripts/deployment-profile-operator-economics.mjs",
     "demo/scripts/package-tasks.mjs",
@@ -588,6 +589,7 @@ test("workspace lint and its helper tests cover source, rules, and baseline move
         "--test",
         "demo/scripts/lib/*.test.mjs",
         "demo/scripts/deployment-profiles.test.mjs",
+        "demo/scripts/deployment-profiles.retention.test.mjs",
         "demo/scripts/interactive-emulator.test.mjs",
       ],
     ],

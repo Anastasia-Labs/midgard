@@ -115,6 +115,9 @@ export const DEPLOYMENT_PROFILES = {
       da_slash_grace_ms: 172800000,
       da_bond_withdraw_delay_ms: 778080000,
     },
+    da_transport: {
+      retention_days: 120,
+    },
     da_bond: {
       da_bond_lovelace: 100000000000,
       da_slash_penalty_lovelace: 25000000000,
@@ -486,7 +489,7 @@ export const DEPLOYMENT_PROFILES = {
 export const DEPLOYMENT_PROFILE_DIGESTS = {
   mainnet: "6539647bbd2a9a374c35fd43a1e121a116d8e15c1f5a919f5cb56bfb707c67b8",
   "preprod-public":
-    "3129e626d114077849db910163532c74c6e19e394ea6dd31673b0f9ee1e73e29",
+    "2bba4cd51cb4fad8f768fe6b4c19dc4f1e2feec58a65b9258783cfcb273d4753",
   "preprod-testing":
     "0e133908fccfa06ad9fc9d5f91411ec298c0305ca5b9e79a38464d53dbe9d8a1",
   "local-devnet-testing":
@@ -543,6 +546,7 @@ const freezeNativeScript = (script: object): void => {
   Object.freeze(script);
 };
 for (const profile of Object.values(DEPLOYMENT_PROFILES)) {
+  if ("da_transport" in profile) Object.freeze(profile.da_transport);
   Object.freeze(profile.l1_finality);
   Object.freeze(profile.timing);
   Object.freeze(profile.da_bond);
