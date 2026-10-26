@@ -2649,8 +2649,8 @@ executed maximum-shape test.
 #### Guard coverage
 
 §9's conformance items 5 and 6 require every refusal on an operational path to
-be isolated by a vector or listed as a backstop. **Twenty-five refusals:
-twenty-three isolated, two backstops.** Rows 16–25 are the walk's; each is
+be isolated by a vector or listed as a backstop. **Twenty-six refusals:
+twenty-four isolated, two backstops.** Rows 16–25 are the walk's; each is
 isolated in `step-01-walk.test.ak` against a passing twin.
 
 | #   | refusal                                                                        | isolated by / backstop because                                                                                                                                                                  |
@@ -2680,6 +2680,7 @@ isolated in `step-01-walk.test.ak` against a passing twin.
 | 23  | a cursor is resumed only over the slot it names                                | `canonical_decodability_step_01_walk_rejects_a_resume_at_another_field`                                                                                                                         |
 | 24  | a cursor is resumed only over the transaction it names                         | `canonical_decodability_step_01_walk_rejects_a_resume_of_another_transaction`                                                                                                                   |
 | 25  | a loop step is taken by the thread's fraud prover                              | `canonical_decodability_step_01_walk_rejects_a_stranger_on_a_loop_step`, with `…_prover_takes_a_loop_step` as its signed twin                                                                   |
+| 26  | the disputed leaf carries validity code 0                                      | `canonical_decodability_step_01_rejects_a_leaf_with_validity_code_1`, with `…_binds_a_leaf_with_validity_code_0` as its passing twin                                                            |
 
 The verdict's own decision table is pinned separately and exhaustively:
 `canonical_decodability_verdict_table_is_exact` asserts one vector per code,
@@ -2998,8 +2999,8 @@ extrapolation, not reported as an executed maximum-shape test.
 #### Guard coverage
 
 §9's conformance items 5 and 6 require every refusal on an operational path to
-be isolated by a vector or listed as a backstop. **Twenty-six refusals:
-twenty-four isolated, two backstops.** Rows 17–26 are the walk's; each is
+be isolated by a vector or listed as a backstop. **Twenty-seven refusals:
+twenty-five isolated, two backstops.** Rows 17–26 are the walk's; each is
 isolated in `step-01-walk.test.ak` against a passing twin.
 
 | #   | refusal                                                                        | isolated by / backstop because                                                                                                                                                                                                                                       |
@@ -3030,6 +3031,7 @@ isolated in `step-01-walk.test.ak` against a passing twin.
 | 24  | a cursor is resumed only over the slot it names                                | `committed_field_shape_step_01_walk_rejects_a_resume_at_another_field`                                                                                                                                                                                               |
 | 25  | a cursor is resumed only over the transaction it names                         | `committed_field_shape_step_01_walk_rejects_a_resume_of_another_transaction`                                                                                                                                                                                         |
 | 26  | a loop step is taken by the thread's fraud prover                              | `committed_field_shape_step_01_walk_rejects_a_stranger_on_a_loop_step`, with `…_prover_takes_a_loop_step` as its signed twin                                                                                                                                         |
+| 27  | the disputed leaf carries validity code 0                                      | `committed_field_shape_step_01_rejects_a_leaf_with_validity_code_1`, with `…_binds_a_leaf_with_validity_code_0` as its passing twin                                                                                                                                  |
 
 The verdict's own decision table is pinned separately and exhaustively:
 `committed_field_shape_verdict_table_is_exact` asserts one vector per code,

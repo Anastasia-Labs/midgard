@@ -52,6 +52,7 @@ use midgard/fraud_proofs/committed_field_shape/walk_fixture
 use midgard/fraud_proofs/common.{cancel, pass_native_tx_to_next_step_carried}
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_compact_cbor_v1}
+use midgard/fraud_proofs/native_tx/types as native_types
 use midgard/native_tx_field_access_v1.{
   Inline, RawUtxo, authenticated_whole_field_view, encode_field_preimage,
   max_transaction_aggregate_field_bytes,
@@ -585,6 +586,58 @@ test committed_field_shape_step_01_rejects_a_forged_transactions_root() fail {
       spend_inputs_field_index,
       shape_verdict_wrong_stride,
     ),
+  )
+}
+
+/// `committed_block` over the fixture transaction with its committed validity
+/// code set by `validity`, so the code is the only thing two selectors vary.
+fn committed_block_with_validity(
+  validity: native_types.MidgardTxValidity,
+  field_index: Int,
+  preimage: ByteArray,
+) -> fixture.NativeBlockFixtureV1 {
+  fixture.committed_field_preimage_block_fixture_v1(
+    fixture.native_block_fixture_v1(
+      native_types.MidgardTransaction {
+        ..fixture.valid_native_tx_v1(),
+        validity,
+      },
+    ),
+    field_index,
+    preimage,
+  )
+}
+
+/// A leaf committed with validity code 1 is not this family's to accuse: the
+/// same wrong-stride field the twin below binds is refused at step 01 once the
+/// leaf carries code 1.
+test committed_field_shape_step_01_rejects_a_leaf_with_validity_code_1() fail {
+  let preimage = wrong_stride_preimage()
+  let block = committed_block_with_validity(
+    native_types.TxIsInvalid,
+    spend_inputs_field_index,
+    preimage,
+  )
+  run_step_01(
+    block,
+    body_claim(spend_inputs_field_index, preimage),
+    expected_state(block, spend_inputs_field_index, shape_verdict_wrong_stride),
+  )
+}
+
+/// The code-0 twin of the refusal above: the same builder, field and bytes with
+/// validity code 0 bind.
+test committed_field_shape_step_01_binds_a_leaf_with_validity_code_0() {
+  let preimage = wrong_stride_preimage()
+  let block = committed_block_with_validity(
+    native_types.TxIsValid,
+    spend_inputs_field_index,
+    preimage,
+  )
+  run_step_01(
+    block,
+    body_claim(spend_inputs_field_index, preimage),
+    expected_state(block, spend_inputs_field_index, shape_verdict_wrong_stride),
   )
 }
 
