@@ -4,36 +4,45 @@
  * byte cap admits, and the script-witness and redeemer fields are filled to
  * their caps. The observer at the last coordinate has no source, so the
  * purpose selection and the source lookup walk their whole fields. Committed
- * as accepted it convicts; the same transaction committed with the node's
- * own forced verdict, which rejects it before its purposes, is refused at
- * the terminal after the same observed walk.
+ * as accepted it convicts. The same shape with the last observer witnessed,
+ * committed as accepted, is honest: the prover finds no route, and the
+ * observed route through the last observer, claiming its source absent, is
+ * refused at the source lookup after the same source walk and selection.
  */
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
+  buildDirectPurposeTransition,
+  directPurposeBindTransitions,
+  directPurposeFieldPlans,
+  type DirectPurposeSourceEvidence,
+  directPurposeSourceTransitions,
+} from "../src/direct-purpose-family/index.js";
+import { buildDirectSourceIndexEvidence } from "../src/direct-script-derivation/index.js";
+import {
+  MISSING_SCRIPT_SOURCE_FAMILY,
+  missingScriptSourceContractRoles,
   MissingScriptSourceHonestLeaf,
+  missingScriptSourceObservedRoute,
   requireConvictingMissingScriptSourceProof,
 } from "../src/missing-script-source/index.js";
+import { driveDirectPurposeThread } from "./support/direct-purpose-emulator.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
   buildMissingRedeemerSubject,
-  machineForcedVerdict,
   type MissingRedeemerSubjectShape,
   plutusScript,
   setupMissingRedeemerScenario,
 } from "./support/missing-redeemer-emulator.subject.js";
 import {
-  driveMissingScriptSourceThread,
   makeMissingScriptSourceHarness,
   publishMissingScriptSourceRoles,
   type StepMeasurement,
   stepTable,
 } from "./support/missing-script-source-emulator.js";
-import {
-  convictAndCheck,
-  expectTerminalRefusal,
-} from "./support/missing-script-source-emulator.rows.js";
+import { convictAndCheck } from "./support/missing-script-source-emulator.rows.js";
 
 const FIELD_CAP = MIDGARD_CONSENSUS_LIMITS.maxTransactionAggregateFieldBytes;
 
@@ -53,17 +62,19 @@ const largest = (low: number, fits: (value: number) => boolean): number => {
   return value;
 };
 
-/** Every observer has a redeemer; every observer but the one at the last
- * coordinate carries its script as a witness. */
-const shapeOf = ({
-  count,
-  scriptBytes,
-  dataBytes,
-}: {
+type Dimensions = {
   readonly count: number;
   readonly scriptBytes: number;
   readonly dataBytes: number;
-}): MissingRedeemerSubjectShape => {
+};
+
+/** Every observer has a redeemer; every observer but the one at the last
+ * coordinate carries its script as a witness, and that one too when
+ * `lastWitnessed`. */
+const shapeOf = (
+  { count, scriptBytes, dataBytes }: Dimensions,
+  lastWitnessed = false,
+): MissingRedeemerSubjectShape => {
   const scripts = Array.from({ length: count }, (_, seed) =>
     plutusScript(seed + 1, scriptBytes),
   );
@@ -74,7 +85,7 @@ const shapeOf = ({
   return {
     observers: scripts.map((script, position) => ({
       script,
-      witness: order[position] !== last,
+      witness: lastWitnessed || order[position] !== last,
       redeemer: true,
     })),
     redeemerData: () => Buffer.from(Data.to("ab".repeat(dataBytes)), "hex"),
@@ -83,27 +94,42 @@ const shapeOf = ({
 
 /** Observer count at the field-7 cap, then the largest uniform script and
  * redeemer-data sizes that keep fields 6 and 8 within their caps. */
-const maximumShape = () => {
+const maximumShape = (lastWitnessed = false): Dimensions => {
   const count = largest(
     1,
     (value) =>
-      fieldBytes(shapeOf({ count: value, scriptBytes: 2, dataBytes: 0 }))
-        .observers <= FIELD_CAP,
+      fieldBytes(
+        shapeOf({ count: value, scriptBytes: 2, dataBytes: 0 }, lastWitnessed),
+      ).observers <= FIELD_CAP,
   );
   const scriptBytes = largest(
     2,
     (value) =>
-      fieldBytes(shapeOf({ count, scriptBytes: value, dataBytes: 0 }))
-        .witnesses <= FIELD_CAP,
+      fieldBytes(
+        shapeOf({ count, scriptBytes: value, dataBytes: 0 }, lastWitnessed),
+      ).witnesses <= FIELD_CAP,
   );
   const dataBytes = largest(
     0,
     (value) =>
-      fieldBytes(shapeOf({ count, scriptBytes, dataBytes: value })).redeemers <=
-      FIELD_CAP,
+      fieldBytes(
+        shapeOf({ count, scriptBytes, dataBytes: value }, lastWitnessed),
+      ).redeemers <= FIELD_CAP,
   );
   return { count, scriptBytes, dataBytes };
 };
+
+/** Source evidence that reports every script's source absent while keeping
+ * the source index's own proof, which shows the source present. */
+const claimingAbsent = (
+  evidence: DirectPurposeSourceEvidence,
+): DirectPurposeSourceEvidence => ({
+  ...evidence,
+  lookup: async (hash) => ({
+    ...(await evidence.lookup(hash)),
+    selected: null,
+  }),
+});
 
 const summary = (steps: readonly StepMeasurement[]) => {
   const table = stepTable(steps);
@@ -160,19 +186,19 @@ describe("missing-script-source consensus-maximum observer shape", () => {
     );
   }, 3_600_000);
 
-  it("refuses the same transaction under the node's own forced verdict", async () => {
-    const dimensions = maximumShape();
-    const shape = shapeOf(dimensions);
-    const verdict = await machineForcedVerdict(shape);
-    // The subject spends nothing: the node rejects it before its purposes.
-    expect(verdict).toStrictEqual({
-      ForcedTxInvalid: { reason: "EmptyInputs" },
-    });
+  it("refuses the same shape with the last observer witnessed", async () => {
+    const dimensions = maximumShape(true);
+    const shape = shapeOf(dimensions, true);
+    const at = fieldBytes(shape);
+    expect(at.observers).toBeLessThanOrEqual(FIELD_CAP);
+    expect(at.witnesses).toBeLessThanOrEqual(FIELD_CAP);
+    expect(at.redeemers).toBeLessThanOrEqual(FIELD_CAP);
+    expect(dimensions.count).toBe(maximumShape().count);
     const harness = await makeMissingScriptSourceHarness();
     const scenario = await setupMissingRedeemerScenario({
       harness,
       shape,
-      source: { kind: "forced", verdict },
+      source: { kind: "normal" },
     });
     await expect(
       requireConvictingMissingScriptSourceProof({
@@ -182,23 +208,55 @@ describe("missing-script-source consensus-maximum observer shape", () => {
       }),
     ).rejects.toThrow(MissingScriptSourceHonestLeaf);
     const references = await publishMissingScriptSourceRoles(harness);
-    // The prover finds no route; the observed route is forced through the
-    // last observer's missing source to show the terminal refuse it.
+    // The prover finds no route; the observed route is planned through the
+    // last observer as if its source were absent, up to the source lookup.
     const last = { kind: 2n, index: BigInt(dimensions.count - 1) };
-    const run = await driveMissingScriptSourceThread({
+    const run = await driveDirectPurposeThread({
       harness,
+      family: MISSING_SCRIPT_SOURCE_FAMILY,
       scenario,
       references,
-      observed: last,
+      prepare: async ({ material, contracts, prover }) => {
+        const roles = missingScriptSourceContractRoles(contracts);
+        const evidence = await buildDirectSourceIndexEvidence(material);
+        const plan = directPurposeFieldPlans(material, prover);
+        const route = await missingScriptSourceObservedRoute(
+          { material, evidence: claimingAbsent(evidence), prover, plan },
+          last,
+        );
+        const at = route.transitions.findIndex(
+          ({ role }) => role === "sourceLookup",
+        );
+        return {
+          plan,
+          lookup: route.transitions[at]!,
+          // The thread is driven up to the lookup.
+          transitions: [
+            ...directPurposeBindTransitions(material, prover),
+            ...directPurposeSourceTransitions({
+              material,
+              evidence,
+              prover,
+              plan,
+              resolvedScriptHash: roles.sourceResolved.spendingScriptHash,
+              witnessesScriptHash: roles.sourceWitnesses.spendingScriptHash,
+            }),
+            ...route.transitions.slice(0, at),
+          ],
+        };
+      },
     });
-    expect(run.prepared.final.claim).toBe("NotRequired");
-    expect(
-      run.prepared.final.context.observed?.authenticated.selection.coordinate,
-    ).toStrictEqual(last);
+    const { lookup } = run.prepared;
+    expect(lookup.label).toBe("observe lookup");
+    expect(run.thread.datum).toBe(run.prepared.transitions.at(-1)!.datum);
     console.log(
       "MSS max-shape honest",
       JSON.stringify({ dimensions, ...summary(run.steps) }),
     );
-    await expectTerminalRefusal(harness, run);
+    await expectOnchainRefusal(async () =>
+      (
+        await buildDirectPurposeTransition(run.custody, run.thread, lookup)
+      ).complete(),
+    );
   }, 3_600_000);
 });
