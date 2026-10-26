@@ -2,6 +2,15 @@ import { isIP } from "node:net";
 
 import { Config } from "effect";
 
+import {
+  DEFAULT_HTTP_RATE_LIMITS,
+  HTTP_RATE_CLASSES,
+  type HttpRate,
+  type HttpRateClass,
+  type HttpRateClassPolicy,
+  type HttpRateLimitPolicy,
+} from "./http-rate-limits.js";
+
 /** A small explicit private proxy set; unset means socket identity, never header trust. */
 export const httpTrustedProxyPeersConfig = Config.string(
   "HTTP_TRUSTED_PROXY_PEERS",
@@ -30,8 +39,71 @@ export const httpTrustedProxyPeersConfig = Config.string(
   }),
 );
 
+const parseRate = (
+  name: string,
+  burst: string,
+  perSecond: string,
+): HttpRate => {
+  const rate = { burst: Number(burst), perSecond: Number(perSecond) };
+  if (
+    !/^[0-9]+$/u.test(burst) ||
+    !Number.isSafeInteger(rate.burst) ||
+    rate.burst < 1 ||
+    !/^[0-9]+(\.[0-9]+)?$/u.test(perSecond) ||
+    !Number.isFinite(rate.perSecond) ||
+    rate.perSecond <= 0
+  )
+    throw new Error(
+      `${name} needs a positive integer burst and a positive per-second refill`,
+    );
+  return rate;
+};
+
+/**
+ * `HTTP_RATE_LIMIT_<CLASS>` overrides one class: `peerBurst,peerPerSecond` for
+ * HEALTH and ADMIN, and `peerBurst,peerPerSecond,globalBurst,globalPerSecond`
+ * for READ, BATCH, WRITE and EVALUATE. Unset keeps the default.
+ */
+const httpRateClassConfig = (kind: HttpRateClass) => {
+  const name = `HTTP_RATE_LIMIT_${kind.toUpperCase()}`;
+  const fallback = DEFAULT_HTTP_RATE_LIMITS.classes[kind];
+  return Config.string(name).pipe(
+    Config.withDefault(""),
+    Config.mapAttempt((input): HttpRateClassPolicy => {
+      if (input.trim().length === 0) return fallback;
+      const fields = input.split(",").map((field) => field.trim());
+      const expected = fallback.global === undefined ? 2 : 4;
+      if (fields.length !== expected)
+        throw new Error(`${name} needs ${expected.toString()} numbers`);
+      const peer = parseRate(name, fields[0]!, fields[1]!);
+      return expected === 2
+        ? { peer }
+        : { peer, global: parseRate(name, fields[2]!, fields[3]!) };
+    }),
+  );
+};
+
+/** Testing profiles may disable rate refusals; public profiles refuse that before binding. */
+export const httpRateLimitConfig = Config.all({
+  enabled: Config.string("HTTP_RATE_LIMIT_ENABLED").pipe(
+    Config.withDefault("true"),
+    Config.mapAttempt((input) => {
+      const value = input.trim().toLowerCase();
+      if (value !== "true" && value !== "false")
+        throw new Error("HTTP_RATE_LIMIT_ENABLED must be true or false");
+      return value === "true";
+    }),
+  ),
+  classes: Config.all(
+    Object.fromEntries(
+      HTTP_RATE_CLASSES.map((kind) => [kind, httpRateClassConfig(kind)]),
+    ) as Record<HttpRateClass, Config.Config<HttpRateClassPolicy>>,
+  ),
+}) satisfies Config.Config<HttpRateLimitPolicy>;
+
 /** HTTP configuration is one component; preserve existing admin-key decoding. */
 export const httpIngressConfig = Config.all({
   ADMIN_API_KEY: Config.string("ADMIN_API_KEY").pipe(Config.withDefault("")),
   HTTP_TRUSTED_PROXY_PEERS: httpTrustedProxyPeersConfig,
+  HTTP_RATE_LIMITS: httpRateLimitConfig,
 });
