@@ -1,10 +1,11 @@
 use midgard/fraud_proofs/all_purposes_scan_fixture_v1.{policy, spent_input}
 use midgard/fraud_proofs/distinct_asset_accumulation_limit/fixture.{
-  PagesV1, ShapeV1, derive, derive_paged, one_page, output_of, rank_of, tx_of,
+  PagesV1, ShapeV1, TxV1, derive, derive_paged, one_page, output_of, rank_of,
+  spent_descriptor, tx_of,
 }
 use midgard/fraud_proofs/distinct_asset_accumulation_limit/fold.{
-  Admitted, Crosses, OutputCounted, OutputPaused, RankV1, TerminalV1,
-  admit_entries_v1, count_output_v1, output_value_start_v1, rank_v1,
+  Admitted, Crosses, InputWitnessV1, OutputCounted, OutputPaused, RankV1,
+  TerminalV1, admit_entries_v1, count_output_v1, output_value_start_v1, rank_v1,
 }
 use midgard/fraud_proofs/first_fault_v1.{
   InputAssetFault, MintAssetFault, OutputAssetFault, ValueFaultPositionV1,
@@ -78,6 +79,26 @@ test inputs_crossing_is_the_same_in_single_input_pages() {
   crossing_paged(spends([16_000, 385]), PagesV1 { ..one_page, inputs: 1 }) == Some(
     InputAssetFault { input_index: 1, asset_index: 384 },
   )
+}
+
+// ## The counted descriptor is the one the event pre-root holds
+
+test a_raised_asset_count_on_the_committed_descriptor_is_refused() fail {
+  let tx = tx_of(spends([1]))
+  expect [honest] = tx.witnesses
+  let raised = InputWitnessV1 {
+    ..honest,
+    descriptor_cbor: spent_descriptor(0, 16_385),
+  }
+  derive(TxV1 { ..tx, witnesses: [raised] }).crossing == Some(
+    InputAssetFault { input_index: 0, asset_index: 16_384 },
+  )
+}
+
+test another_out_refs_descriptor_and_proof_are_refused() fail {
+  let tx = tx_of(spends([1, 5]))
+  expect [first, second] = tx.witnesses
+  derive(TxV1 { ..tx, witnesses: [second, first] }).crossing == None
 }
 
 // ## The input arm's coordinate is the schedule position
