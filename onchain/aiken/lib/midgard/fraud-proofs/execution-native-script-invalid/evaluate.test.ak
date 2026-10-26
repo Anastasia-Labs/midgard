@@ -356,6 +356,22 @@ test absence_with_an_upper_neighbour_below_the_key_is_refused() fail {
   )
 }
 
+test absence_with_a_lower_neighbour_equal_to_the_key_is_refused() fail {
+  // k_c is the last signer; naming it as its own lower neighbour hides it.
+  fails(
+    sig(k_c),
+    [SignerAbsent { position: 3, below: Some(witness_c()), above: None }],
+  )
+}
+
+test absence_with_a_lower_neighbour_above_the_key_is_refused() fail {
+  // k_c is a real signer at position 2, but it orders above k_b.
+  fails(
+    sig(k_b),
+    [SignerAbsent { position: 3, below: Some(witness_c()), above: None }],
+  )
+}
+
 // ## Timelock leaves against the validity interval
 
 fn interval(payload: ByteArray, interval_start: Int, interval_end: Int) -> Bool {
