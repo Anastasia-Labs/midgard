@@ -2562,10 +2562,10 @@ where the previous one stopped. Each transaction runs all four items below.
    committed preimage.
 3. One batch of `envelope_verdict`'s walk is taken over those bytes: from the
    array head when the thread carries no state, and otherwise from the
-   `WalkState { tx_id, field_index, remaining, offset }` the previous batch
+   `WalkState { bad_tx_id, field_index, remaining, offset }` the previous batch
    left, which MUST name the same transaction and slot. A walk with items
    still owed continues at step 01's own script with the derived
-   `WalkState`; a walk that has its verdict pins `(tx_id, field_index,
+   `WalkState`; a walk that has its verdict pins `(bad_tx_id, field_index,
 verdict)` into the thread at step 02's script. Every member of either
    state is derived from the authenticated bytes, so a fabricated verdict, a
    forged cursor or a re-addressed field index is not forwardable. A batch
