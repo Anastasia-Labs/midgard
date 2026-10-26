@@ -14,6 +14,7 @@ import {
   type DirectPurposeRedeemerArgs,
   type DirectPurposeTransition,
   grammarPages,
+  pagedRunTransitions,
   pages,
   progressArgs,
 } from "./custody.js";
@@ -258,38 +259,50 @@ export const receiveOutputsPass = async (
       redeemer: (redeemerArgs) => spec.grammarRedeemer(args(redeemerArgs)),
     });
   }
-  for (const [start, budget] of pages(count, batch)) {
-    const end = start + budget;
-    state = {
-      ...state,
-      cursor: plan.position("Walking", end).cursor,
-      credential_root: evidence.outputRoots[end]!,
-      credential_count: BigInt(
-        evidence.witnesses
-          .slice(0, end)
-          .filter(
-            (witness) =>
-              typeof witness === "object" && "FirstCredential" in witness,
-          ).length,
-      ),
-      complete: end === count,
-    };
-    const witnesses = evidence.witnesses.slice(start, end);
-    transitions.push({
-      label: `${spec.label} outputs ${start.toString()}`,
+  const opened = state;
+  const stateAt = (position: number): SDK.DirectReceiveOutputState => ({
+    ...opened,
+    cursor: plan.position("Walking", position).cursor,
+    credential_root: evidence.outputRoots[position]!,
+    credential_count: BigInt(
+      evidence.witnesses
+        .slice(0, position)
+        .filter(
+          (witness) =>
+            typeof witness === "object" && "FirstCredential" in witness,
+        ).length,
+    ),
+    complete: position === count,
+  });
+  transitions.push(
+    ...pagedRunTransitions({
       role: spec.outputs,
-      next: spec.outputs,
-      datum: spec.datum(state),
-      fields: [2],
-      redeemer: ({ indices, open }) =>
-        spec.scanRedeemer({
-          indices,
-          opening: open(2),
-          checkpoint_bytes: plan.position("Walking", start).checkpointBytes,
-          witnesses,
-        }),
-    });
-  }
+      count,
+      batch,
+      datumAt: (start) => spec.datum(stateAt(start)),
+      page: (start, budget) => {
+        const witnesses = evidence.witnesses.slice(start, start + budget);
+        return [
+          {
+            label: `${spec.label} outputs ${start.toString()}`,
+            role: spec.outputs,
+            next: spec.outputs,
+            datum: spec.datum(stateAt(start + budget)),
+            fields: [2],
+            redeemer: ({ indices, open }) =>
+              spec.scanRedeemer({
+                indices,
+                opening: open(2),
+                checkpoint_bytes: plan.position("Walking", start)
+                  .checkpointBytes,
+                witnesses,
+              }),
+          },
+        ];
+      },
+    }),
+  );
+  state = stateAt(count);
   return {
     initial,
     transitions,
@@ -326,40 +339,46 @@ export const declarationPass = (
     target_ordinal: target,
     selected: null,
   };
-  let state = initialState;
-  const transitions: DirectPurposeTransition[] = [];
-  for (const [start, budget] of pages(
-    evidence.entries.length,
-    batchOf(inputs),
-  )) {
-    const end = start + budget;
-    const entries = evidence.entries.slice(start, end);
-    const chosen = evidence.entries[Number(target)];
-    state = {
-      ...state,
-      declared_root: evidence.declarationRoots[end]!,
-      declared_count: BigInt(end),
-      previous_credential: entries.at(-1)!.script_hash,
-      selected:
-        chosen !== undefined && target >= BigInt(start) && target < BigInt(end)
-          ? {
-              purpose: {
-                coordinate: { kind: 3n, index: target },
-                script_hash: chosen.script_hash,
-                subject: chosen.script_hash,
-              },
-              first_output_index: chosen.first_output_index,
-            }
-          : state.selected,
-    };
-    transitions.push({
-      label: `${spec.label} declaration ${start.toString()}`,
-      role: spec.role,
-      next: spec.role,
-      datum: spec.datum(state),
-      fields: [],
-      redeemer: ({ indices }) => spec.scanRedeemer(indices, entries),
-    });
-  }
+  const count = evidence.entries.length;
+  const chosen = evidence.entries[Number(target)];
+  const stateAt = (position: number): SDK.DirectReceiveDeclarationState => ({
+    ...initialState,
+    declared_root: evidence.declarationRoots[position]!,
+    declared_count: BigInt(position),
+    previous_credential:
+      position === 0 ? "" : evidence.entries[position - 1]!.script_hash,
+    selected:
+      chosen !== undefined && target < BigInt(position)
+        ? {
+            purpose: {
+              coordinate: { kind: 3n, index: target },
+              script_hash: chosen.script_hash,
+              subject: chosen.script_hash,
+            },
+            first_output_index: chosen.first_output_index,
+          }
+        : null,
+  });
+  const transitions = pagedRunTransitions({
+    role: spec.role,
+    count,
+    batch: batchOf(inputs),
+    datumAt: (start) => spec.datum(stateAt(start)),
+    page: (start, budget) => [
+      {
+        label: `${spec.label} declaration ${start.toString()}`,
+        role: spec.role,
+        next: spec.role,
+        datum: spec.datum(stateAt(start + budget)),
+        fields: [],
+        redeemer: ({ indices }) =>
+          spec.scanRedeemer(
+            indices,
+            evidence.entries.slice(start, start + budget),
+          ),
+      },
+    ],
+  });
+  const state = stateAt(count);
   return { initial: spec.datum(initialState), transitions, state };
 };

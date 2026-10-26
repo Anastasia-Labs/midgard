@@ -4,9 +4,11 @@
  * each a distinct Reward pointer with the smallest redeemer data, and none
  * names a purpose. The proof walks to the last redeemer, so grammar
  * certification and the pointer walk cover the whole field. Committed as
- * accepted it convicts; the same transaction committed with the node's own
- * forced verdict, which rejects it before the unused audit, is refused at
- * the terminal after the same walk.
+ * accepted it convicts. The honest row is a fixture: an honest accepted
+ * shape consumes every redeemer, and the forced admission screen refuses a
+ * transaction carrying redeemers, so the same transaction is committed
+ * directly with the node's own forced verdict, which rejects it before the
+ * unused audit; it is refused at the terminal after the same walk.
  */
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core";
 import { Data } from "@lucid-evolution/lucid";
@@ -106,7 +108,7 @@ describe("unused-redeemer consensus-maximum redeemer shape", () => {
     );
   }, 3_600_000);
 
-  it("refuses the same transaction under the node's own forced verdict", async () => {
+  it("fixture-only: refuses the same transaction committed directly under the node's own forced verdict", async () => {
     const count = maximumCount();
     const shape = shapeOf(count);
     const verdict = await machineForcedVerdict(shape);

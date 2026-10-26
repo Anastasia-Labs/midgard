@@ -44,6 +44,7 @@ use midgard/fraud_proofs/canonical_decodability/walk_fixture
 use midgard/fraud_proofs/common.{cancel, pass_native_tx_to_next_step_carried}
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_compact_cbor_v1}
+use midgard/fraud_proofs/native_tx/types as native_types
 use midgard/native_tx_field_access_v1.{
   Inline, authenticated_whole_field_view, encode_field_preimage,
 }
@@ -447,6 +448,58 @@ test canonical_decodability_step_01_rejects_a_forged_transactions_root() fail {
     claimed_block,
     body_claim(outputs_field_index, preimage),
     expected_state(claimed_block, outputs_field_index, verdict_trailing_bytes),
+  )
+}
+
+/// `committed_block` over the fixture transaction with its committed validity
+/// code set by `validity`, so the code is the only thing two selectors vary.
+fn committed_block_with_validity(
+  validity: native_types.MidgardTxValidity,
+  field_index: Int,
+  preimage: ByteArray,
+) -> fixture.NativeBlockFixtureV1 {
+  fixture.committed_field_preimage_block_fixture_v1(
+    fixture.native_block_fixture_v1(
+      native_types.MidgardTransaction {
+        ..fixture.valid_native_tx_v1(),
+        validity,
+      },
+    ),
+    field_index,
+    preimage,
+  )
+}
+
+/// A leaf committed with validity code 1 is not this family's to accuse: the
+/// same miscounted field the twin below binds is refused at step 01 once the
+/// leaf carries code 1.
+test canonical_decodability_step_01_rejects_a_leaf_with_validity_code_1() fail {
+  let preimage = miscounted_preimage()
+  let block = committed_block_with_validity(
+    native_types.TxIsInvalid,
+    outputs_field_index,
+    preimage,
+  )
+  run_step_01(
+    block,
+    body_claim(outputs_field_index, preimage),
+    expected_state(block, outputs_field_index, verdict_trailing_bytes),
+  )
+}
+
+/// The code-0 twin of the refusal above: the same builder, field and bytes with
+/// validity code 0 bind.
+test canonical_decodability_step_01_binds_a_leaf_with_validity_code_0() {
+  let preimage = miscounted_preimage()
+  let block = committed_block_with_validity(
+    native_types.TxIsValid,
+    outputs_field_index,
+    preimage,
+  )
+  run_step_01(
+    block,
+    body_claim(outputs_field_index, preimage),
+    expected_state(block, outputs_field_index, verdict_trailing_bytes),
   )
 }
 

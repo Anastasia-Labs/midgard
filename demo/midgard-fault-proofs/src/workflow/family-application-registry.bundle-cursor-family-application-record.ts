@@ -107,6 +107,13 @@ import {
   runOrResumeManifestBoundCanonicalDecodabilityWorkflow,
 } from "./canonical-decodability.js";
 import {
+  COMMITTED_FIELD_SHAPE_FAMILY_DEFINITION,
+  createManifestBoundCommittedFieldShapeWorkflow,
+  type ManifestBoundCommittedFieldShapeWorkflow,
+  type ManifestBoundCommittedFieldShapeWorkflowConfig,
+  runOrResumeManifestBoundCommittedFieldShapeWorkflow,
+} from "./committed-field-shape.js";
+import {
   defineFamilyApplication,
   type FamilyApplicationRecord,
   type FamilyApplicationWorkflowIdentity,
@@ -188,7 +195,7 @@ const bundleCursorFamilyApplicationRecord = <
 };
 
 /**
- * The five cursor families without a decision digest on the plain and
+ * The six cursor families without a decision digest on the plain and
  * replay-context shapes. Each row names its exact config and workflow types
  * so the record's `bindConfig` result is what its `constructWorkflow`
  * consumes.
@@ -202,6 +209,17 @@ export const CANONICAL_DECODABILITY_FAMILY_APPLICATION_RECORD =
     requires: [],
     constructWorkflow: createManifestBoundCanonicalDecodabilityWorkflow,
     execute: runOrResumeManifestBoundCanonicalDecodabilityWorkflow,
+  });
+
+export const COMMITTED_FIELD_SHAPE_FAMILY_APPLICATION_RECORD =
+  bundleCursorFamilyApplicationRecord<
+    "committedFieldShape",
+    ManifestBoundCommittedFieldShapeWorkflowConfig,
+    ManifestBoundCommittedFieldShapeWorkflow
+  >(COMMITTED_FIELD_SHAPE_FAMILY_DEFINITION, {
+    requires: [],
+    constructWorkflow: createManifestBoundCommittedFieldShapeWorkflow,
+    execute: runOrResumeManifestBoundCommittedFieldShapeWorkflow,
   });
 
 export const NATIVE_SCRIPT_INVALID_FAMILY_APPLICATION_RECORD =

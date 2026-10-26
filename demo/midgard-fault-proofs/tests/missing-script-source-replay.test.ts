@@ -14,7 +14,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
-import { singleLedgerAt } from "../src/ledger-at.js";
+import { type LedgerEntry, singleLedgerAt } from "../src/ledger-at.js";
 import {
   admitCompleteCanonicalReplayPredecessor,
   MISSING_SCRIPT_SOURCE_COMPLETE_CANONICAL_REPLAY,
@@ -68,10 +68,16 @@ const rejected = (reason: SDK.RejectionReason): SDK.OperatorVerdict => ({
 const replayUnder = async (
   verdict: SDK.OperatorVerdict,
   shape: MissingRedeemerSubjectShape = SOURCELESS,
+  /** The predecessor ledger; every spent and referenced entry by default. */
+  ledger: readonly LedgerEntry[] = [
+    ...(shape.spend ?? []),
+    ...(shape.reference ?? []),
+  ],
 ) => {
   const built = await buildMissingRedeemerBlock({
     shape,
     source: { kind: "forced", verdict },
+    ledger,
   });
   const evidence = await canonicalBlockEvidenceFromVerifiedPayload({
     observation: authenticatedHeaderObservation({
@@ -85,10 +91,7 @@ const replayUnder = async (
     evidence,
     {
       predecessor: await admitCompleteCanonicalReplayPredecessor({
-        ledgerAt: singleLedgerAt(evidence.header.prevHeaderHash, [
-          ...(shape.spend ?? []),
-          ...(shape.reference ?? []),
-        ]),
+        ledgerAt: singleLedgerAt(evidence.header.prevHeaderHash, ledger),
         currentEvidence: evidence,
       }),
     },
@@ -118,6 +121,27 @@ describe("missingScriptSource honest forced rejection", () => {
     await expect(replayUnder("ForcedTxValid")).resolves.toEqual([
       "script-source-missing:1:0:2:0",
     ]);
+  });
+});
+
+describe("missingScriptSource over an input with no predecessor descriptor", () => {
+  // The sourceless observer committed as admitted, alongside an unresolved
+  // input: the input families convict the leaf, and no source index can be
+  // built for it.
+  it.each([
+    ["spent", { ...SOURCELESS, reference: [] }, []],
+    [
+      "referenced",
+      {
+        ...SOURCELESS,
+        reference: missingRedeemerLedgerEntries(0x53, [null]),
+      },
+      SOURCELESS.spend ?? [],
+    ],
+  ] as const)("leaves alone a %s input", async (_label, shape, ledger) => {
+    await expect(replayUnder("ForcedTxValid", shape, ledger)).resolves.toEqual(
+      [],
+    );
   });
 });
 

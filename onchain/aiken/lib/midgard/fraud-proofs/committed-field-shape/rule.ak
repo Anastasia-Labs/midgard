@@ -55,25 +55,18 @@
 //// It must not reach the verdict through code that aborts. Both view doors
 //// materialise a `FieldViewV1` and therefore run the very `expect`s under
 //// accusation; calling either would reproduce the stall inside the family built
-//// to end it. `authenticated_committed_preimage` — §12.7's non-aborting reader,
-//// reused unchanged — is the only door entry point this module uses.
+//// to end it. Step 01 reads the bytes through §12.7's non-aborting reader,
+//// `authenticated_claim_preimage_v1`, reused unchanged, and this module reads no
+//// door at all: it decides over bytes it is handed.
 
 use aiken/collection/list
 use aiken/primitive/bytearray
-use cardano/assets.{PolicyId}
-use cardano/transaction.{Input}
 use midgard/fraud_proofs/canonical_decodability/rule.{
-  BodyFieldClaim, CommittedFieldClaimV1, WitnessFieldClaim, envelope_verdict_v1,
-  verdict_grammatical,
-}
-use midgard/fraud_proofs/field_opening_v1.{first_witness_set_field_index}
-use midgard/fraud_proofs/native_tx/types.{
-  NativeTxWitnessSetCompact, VerifiedTxSourceView,
+  envelope_verdict_v1, verdict_grammatical,
 }
 use midgard/native_tx_field_access_v1.{
-  FieldCarriageV1, authenticated_committed_preimage, encode_field_preimage,
-  field_count, field_stride, max_transaction_aggregate_field_bytes,
-  walk_derived_stride,
+  encode_field_preimage, field_count, field_stride,
+  max_transaction_aggregate_field_bytes, walk_derived_stride,
 }
 
 // ---------------------------------------------------------------------------
@@ -135,9 +128,9 @@ pub const shape_verdict_code_count: Int = 4
 /// is this function's index bound. The two arguments have different owners: the
 /// preimage is the *operator's* and an abort on it is the stall under
 /// adjudication, while the index is the *prover's* and §7.3 says an abort is the
-/// correct answer to a prover supplying something outside the format. Every
-/// caller reaches this function through `authenticated_committed_preimage`,
-/// which bounds the index in `field_door_prologue` before a byte is read.
+/// correct answer to a prover supplying something outside the format. Step 01
+/// reaches it through `authenticated_claim_preimage_v1`, which bounds the index
+/// in `field_door_prologue` before a byte is read.
 ///
 /// **The order of the three questions is `whole_view`'s order**, and that is a
 /// §12.1 obligation rather than a style choice. A committed field must have one
@@ -169,13 +162,40 @@ pub fn committed_field_shape_verdict_v1(
   field_index: Int,
   preimage: ByteArray,
 ) -> Int {
+  shape_verdict_after_walk_v1(
+    field_index,
+    preimage,
+    envelope_verdict_v1(preimage),
+  )
+}
+
+/// Slot `field_index`'s shape verdict over `preimage`, once §12.7's §5.1 walk
+/// over the same bytes has ended with `envelope_verdict`.
+///
+/// This is the half of the verdict that is not the walk, split out because step
+/// 01 takes the walk one batch per transaction (`envelope_first_batch_v1`, then
+/// `envelope_items_batch_v1` from each cursor) and asks this question only of
+/// the batch that ends it. `committed_field_shape_verdict_v1` is this function
+/// applied to the walk run to its end in one evaluation, so a field reaches the
+/// same verdict whether it is walked in one transaction or in many.
+///
+/// Only a grammatical envelope is asked the slot's questions. The array header
+/// is re-read rather than carried: the walk's cursor counts the items still
+/// owed, not the items declared, and `minimal_array_header_v1` of a preimage
+/// the walk called grammatical is always `Some` — the `None` arm is the total
+/// answer to an input this function is never handed, not a second verdict.
+pub fn shape_verdict_after_walk_v1(
+  field_index: Int,
+  preimage: ByteArray,
+  envelope_verdict: Int,
+) -> Int {
   let stride = field_stride(field_index)
-  when minimal_array_header_v1(preimage) is {
-    None -> shape_verdict_not_an_envelope
-    Some(Pair(header_len, count)) ->
-      if envelope_verdict_v1(preimage) != verdict_grammatical {
-        shape_verdict_not_an_envelope
-      } else {
+  if envelope_verdict != verdict_grammatical {
+    shape_verdict_not_an_envelope
+  } else {
+    when minimal_array_header_v1(preimage) is {
+      None -> shape_verdict_not_an_envelope
+      Some(Pair(header_len, count)) -> {
         let total_length = bytearray.length(preimage)
         if total_length > max_transaction_aggregate_field_bytes {
           shape_verdict_field_byte_bound
@@ -187,6 +207,7 @@ pub fn committed_field_shape_verdict_v1(
           shape_verdict_wrong_stride
         }
       }
+    }
   }
 }
 
@@ -245,116 +266,8 @@ fn minimal_array_header_v1(preimage: ByteArray) -> Option<Pair<Int, Int>> {
 }
 
 // ---------------------------------------------------------------------------
-// The claim, and the verdict over an authenticated field
+// The adjudication
 // ---------------------------------------------------------------------------
-
-/// The evidence one step-01 derives and pins into the computation thread: the
-/// slot accused and the shape verdict its committed bytes earned there.
-pub type CommittedFieldShapeVerdictV1 {
-  field_index: Int,
-  verdict: Int,
-}
-
-/// The witness set handed to the door for a body field.
-///
-/// The door short-circuits before looking at it for `field_index < 6`, so the
-/// unread value is constructed *here* rather than taken from the claim — there
-/// is no argument for a prover to fill, and nothing can ride in under a member
-/// the door will not read. Same idiom, same reason, as §12.7's.
-fn unread_witness_set() -> NativeTxWitnessSetCompact {
-  NativeTxWitnessSetCompact {
-    addr_tx_wits_hash: #"",
-    script_tx_wits_hash: #"",
-    redeemer_tx_wits_hash: #"",
-  }
-}
-
-/// Authenticate the claimed slot's committed preimage against §4's commitment
-/// and render slot-`i`'s shape verdict over it.
-///
-/// **`CommittedFieldClaimV1` is §12.7's type, reused rather than re-declared.**
-/// The accusation two sibling fault kinds make is the same accusation — which of
-/// §2.5's nine slots, and how that slot's committed bytes reach the step — and
-/// §6.1's one-spelling rule applies to a wire type as much as to a scalar: a
-/// second structurally identical claim would be a second spelling of one
-/// accusation, would double the surface #579's regeneration has to publish, and
-/// would let the two families' body/witness split drift apart. What is *not*
-/// shared is the verdict and the state it travels in: those code spaces differ,
-/// and a §12.7 state must never satisfy this family's adjudication.
-///
-/// `verified` is the compact structure the block's counted `transactions_root`
-/// committed — a family step-01 holds it already authenticated from
-/// `pass_native_tx_to_next_step`, which is what makes the trailing
-/// `witness_set_hash` inside it a *committed* value rather than the prover's.
-///
-/// The §2.5 half the claim was written for is asserted against the half its
-/// index lives in, before any byte is read. Both directions are refused: a body
-/// claim at a witness-set index would hand the door the placeholder above as if
-/// it were the transaction's witness set, and a witness claim at a body index
-/// would carry one the door discards.
-pub fn committed_field_shape_v1(
-  verified: VerifiedTxSourceView,
-  claim: CommittedFieldClaimV1,
-  reference_inputs: List<Input>,
-  certificate_policy_id: PolicyId,
-) -> CommittedFieldShapeVerdictV1 {
-  when claim is {
-    BodyFieldClaim { field_index, carriage } -> {
-      expect field_index < first_witness_set_field_index
-      CommittedFieldShapeVerdictV1 {
-        field_index,
-        verdict: authenticated_field_shape_verdict(
-          verified,
-          unread_witness_set(),
-          field_index,
-          carriage,
-          reference_inputs,
-          certificate_policy_id,
-        ),
-      }
-    }
-    WitnessFieldClaim { field_index, witness_set, carriage } -> {
-      expect field_index >= first_witness_set_field_index
-      CommittedFieldShapeVerdictV1 {
-        field_index,
-        verdict: authenticated_field_shape_verdict(
-          verified,
-          witness_set,
-          field_index,
-          carriage,
-          reference_inputs,
-          certificate_policy_id,
-        ),
-      }
-    }
-  }
-}
-
-/// Authenticate then decide, in that order and in one place: the door hashes the
-/// carried bytes against §4's positionally-extracted commitment and the verdict
-/// is taken over what it returns, at the slot the claim named. Written once so
-/// neither claim arm can drift into deciding over bytes the other arm would have
-/// authenticated differently.
-fn authenticated_field_shape_verdict(
-  verified: VerifiedTxSourceView,
-  witness_set: NativeTxWitnessSetCompact,
-  field_index: Int,
-  carriage: FieldCarriageV1,
-  reference_inputs: List<Input>,
-  certificate_policy_id: PolicyId,
-) -> Int {
-  committed_field_shape_verdict_v1(
-    field_index,
-    authenticated_committed_preimage(
-      verified,
-      witness_set,
-      field_index,
-      carriage,
-      reference_inputs,
-      certificate_policy_id,
-    ),
-  )
-}
 
 /// The adjudicated violation predicate, stated over the two values step-01 pins
 /// into the computation thread.

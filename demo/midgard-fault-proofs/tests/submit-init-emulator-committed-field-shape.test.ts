@@ -102,6 +102,11 @@ describe("committed-field-shape emulator lifecycle", () => {
       step01Capture.measurement.referenceInputCount,
     ).toBeGreaterThanOrEqual(3);
     expect(step01.proofCarriage).toBe("redeemer");
+    // A one-item field is a single batch: the step that reads it decides it.
+    expect(step01.complete).toBe(true);
+    expect(step01.nextStepAddress).toBe(
+      harness.committedFieldShape.steps[1].spendingScriptAddress,
+    );
     expect(step01.step02State).toStrictEqual({
       bad_tx_id: scenario.nativeTxId,
       field_index: 0n,

@@ -3,7 +3,8 @@
  * transaction carrying a redeemer with no purpose, a native purpose's
  * pointer, or a repeated pointer convicts and its block is removed; a forced
  * rejection naming an UnusedRedeemer the transaction does not carry
- * convicts; the walk to an honest transaction's consumed redeemer is refused;
+ * convicts, as does a Spend pointer at a key-locked input; the walk to an
+ * honest transaction's consumed observer or Spend redeemer is refused;
  * and an admitted forced transaction, which carries no redeemers, gives the
  * prover nothing and the terminal refuses the walk past its empty field.
  */
@@ -165,6 +166,65 @@ describe("unused-redeemer genuine-Init verticals", () => {
     });
     expect(run.prepared.final.claim).toHaveProperty("SourcePresent");
     await expectTerminalRefusal(harness, run);
+  }, 1_200_000);
+
+  it("refuses the walk to an honest transaction's consumed Spend redeemer", async () => {
+    const harness = await makeUnusedRedeemerHarness();
+    const scenario = await setupMissingRedeemerScenario({
+      harness,
+      shape: {
+        observers: [],
+        spend: missingRedeemerLedgerEntries(
+          0x44,
+          [null],
+          scriptAddress(plutusScript(9)),
+        ),
+        witnesses: [plutusScript(9)],
+        spendRedeemers: [0n],
+      },
+      source: { kind: "normal" },
+    });
+    await expect(
+      requireConvictingUnusedRedeemerProof({
+        material: scenario.material,
+        contracts: harness.unusedRedeemer,
+        prover: harness.proverSigner.paymentKeyHash,
+      }),
+    ).rejects.toThrow(UnusedRedeemerHonestLeaf);
+    const references = await publishUnusedRedeemerRoles(harness);
+    const run = await driveUnusedRedeemerThread({
+      harness,
+      scenario,
+      references,
+      redeemerIndex: 0n,
+    });
+    // The pointer's spend coordinate is the one the claim opens.
+    expect(run.prepared.transitions.map(({ role }) => role)).toContain(
+      "claimSpendScan",
+    );
+    expect(run.prepared.final.claim).toHaveProperty("SourcePresent");
+    await expectTerminalRefusal(harness, run);
+  }, 1_200_000);
+
+  it("A-N: convicts an accepted transaction's Spend pointer at a key-locked input", async () => {
+    const harness = await makeUnusedRedeemerHarness();
+    const scenario = await setupMissingRedeemerScenario({
+      harness,
+      shape: {
+        observers: [],
+        spend: missingRedeemerLedgerEntries(0x45, [null]),
+        spendRedeemers: [0n],
+      },
+      source: { kind: "normal" },
+    });
+    const { run } = await convictAndCheck(harness, scenario, "A-N key spend");
+    expect(run.prepared.redeemerIndex).toBe(0n);
+    expect(run.prepared.transitions.map(({ role }) => role)).toContain(
+      "claimSpendScan",
+    );
+    expect(run.prepared.final.claim).toStrictEqual({
+      ImpossiblePurpose: { coordinate: { kind: 0n, index: 0n } },
+    });
   }, 1_200_000);
 
   it("A-F: an admitted forced transaction carries no redeemer; the prover finds nothing and the terminal refuses the walk", async () => {

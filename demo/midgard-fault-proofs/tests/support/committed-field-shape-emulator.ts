@@ -20,12 +20,14 @@ export {
   type CommittedFieldShapeScenario,
   type CommittedFieldShapeScenarioKind,
   committedFieldShapeScenarioMaterial,
+  LARGEST_ITEM_COUNT,
   makeCommittedFieldShapeEmulatorHarness,
   MAX_SLOT0_ITEM_COUNT,
   publishCommittedFieldShapeReferenceScripts,
   setupCommittedFieldShapeScenario,
 } from "./committed-field-shape-emulator.committed-field-shape-scenario-material.js";
 export {
+  type CommittedFieldShapeRawSuccessor,
   fundCommittedFieldShapeOutsider,
   submitRawCommittedFieldShapeStep01,
 } from "./committed-field-shape-emulator.submit-raw-committed-field-shape-step01.js";

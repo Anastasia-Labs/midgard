@@ -15,7 +15,7 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
-import { singleLedgerAt } from "../src/ledger-at.js";
+import { type LedgerEntry, singleLedgerAt } from "../src/ledger-at.js";
 import {
   admitCompleteCanonicalReplayPredecessor,
   UNUSED_REDEEMER_COMPLETE_CANONICAL_REPLAY,
@@ -105,8 +105,13 @@ const rejected = (reason: SDK.RejectionReason): SDK.OperatorVerdict => ({
 const replayUnder = async (
   source: MissingRedeemerSource,
   shape: MissingRedeemerSubjectShape,
+  /** The predecessor ledger; every spent and referenced entry by default. */
+  ledger: readonly LedgerEntry[] = [
+    ...(shape.spend ?? []),
+    ...(shape.reference ?? []),
+  ],
 ) => {
-  const built = await buildMissingRedeemerBlock({ shape, source });
+  const built = await buildMissingRedeemerBlock({ shape, source, ledger });
   const evidence = await canonicalBlockEvidenceFromVerifiedPayload({
     observation: authenticatedHeaderObservation({
       header: built.block.header,
@@ -115,10 +120,9 @@ const replayUnder = async (
     payloadEnvelopeCbor: built.block.reconstruction.payloadEnvelopeCbor,
     daProvenance,
   });
-  const ledger = [...(shape.spend ?? []), ...(shape.reference ?? [])];
   const decision = await UNUSED_REDEEMER_COMPLETE_CANONICAL_REPLAY.replay(
     evidence,
-    ledger.length === 0
+    (shape.spend ?? []).length + (shape.reference ?? []).length === 0
       ? {}
       : {
           predecessor: await admitCompleteCanonicalReplayPredecessor({
@@ -148,6 +152,20 @@ describe("unusedRedeemer replay over accepted transactions", () => {
     ["a repeated pointer", REPEATED, "unused-redeemer:0:0:1"],
   ] as const)("detects %s", async (_label, shape, id) => {
     await expect(replayUnder({ kind: "normal" }, shape)).resolves.toEqual([id]);
+  });
+});
+
+describe("unusedRedeemer replay over an input with no predecessor descriptor", () => {
+  // A redeemer with no purpose alongside an unresolved input: the input
+  // families convict the leaf, and no source index can be built for it.
+  it.each([
+    ["spent", { spend: missingRedeemerLedgerEntries(0x51, [null]) }],
+    ["referenced", { reference: missingRedeemerLedgerEntries(0x52, [null]) }],
+  ] as const)("leaves alone a %s input", async (_label, inputs) => {
+    const shape = { ...PURPOSELESS, ...inputs };
+    await expect(replayUnder({ kind: "normal" }, shape, [])).resolves.toEqual(
+      [],
+    );
   });
 });
 

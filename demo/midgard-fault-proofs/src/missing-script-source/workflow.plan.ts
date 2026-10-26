@@ -3,11 +3,14 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import type { DirectPurposeTransition } from "../direct-purpose-family/custody.js";
 import type {
   DirectPurposeContracts,
   DirectPurposeRole,
 } from "../direct-purpose-family/family.js";
+import {
+  type DirectPurposePaging,
+  directPurposePaging,
+} from "../direct-purpose-family/paging.js";
 import { directPurposeStep01Datum } from "../direct-purpose-family/step01.js";
 import {
   nativeTxFromCoreCompact,
@@ -32,11 +35,10 @@ export type PlannedMissingScriptSourceArtifact = Readonly<{
   proof: MissingScriptSourceProofPlan;
   /** Every field a transition spending `role` opens. */
   fieldsOf: (role: DirectPurposeRole) => readonly number[];
-  /** The one planned transition spending `role` from a thread holding `datum`. */
-  transitionAt: (
-    role: DirectPurposeRole,
-    datum: string,
-  ) => DirectPurposeTransition;
+  /** The custody re-paged at any page size; `transitionAt` names the one
+   * transition spending `role` from a thread holding `datum`. */
+  paging: DirectPurposePaging;
+  transitionAt: DirectPurposePaging["transitionAt"];
 }>;
 
 const plan = async (
@@ -57,26 +59,17 @@ const plan = async (
     for (const field of transition.fields) opened.add(field);
     fields.set(transition.role, opened);
   }
-  const step01Datum = directPurposeStep01Datum(admitted.material, prover);
+  const paging = directPurposePaging({
+    label: "missingScriptSource",
+    transitions: proof.transitions,
+    first: directPurposeStep01Datum(admitted.material, prover),
+  });
   return Object.freeze({
     admitted,
     proof,
     fieldsOf: (role) => [...(fields.get(role) ?? [])].sort((l, r) => l - r),
-    transitionAt: (role, datum) => {
-      const matches = proof.transitions.filter(
-        (transition, index) =>
-          transition.role === role &&
-          (index === 0
-            ? step01Datum
-            : proof.transitions[index - 1]!.datum
-          ).toLowerCase() === datum.toLowerCase(),
-      );
-      if (matches.length !== 1)
-        throw new Error(
-          `missingScriptSource ${role} thread datum matches ${matches.length.toString()} planned transitions`,
-        );
-      return matches[0]!;
-    },
+    paging,
+    transitionAt: paging.transitionAt,
   });
 };
 

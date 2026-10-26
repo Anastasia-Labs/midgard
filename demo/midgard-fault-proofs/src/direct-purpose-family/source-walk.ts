@@ -14,7 +14,7 @@ import {
   type DirectPurposeFieldPlan,
   type DirectPurposeTransition,
   grammarPages,
-  pages,
+  pagedRunTransitions,
   stepDatum,
 } from "./custody.js";
 
@@ -140,21 +140,22 @@ export const directPurposeSourceTransitions = ({
         SDK.DirectSourceStartRedeemer,
       ),
   });
-  for (const field of [0, 1]) {
-    const count = plan(field).items.length;
-    const selected = inputs.filter((entry) => entry.fieldIndex === field);
-    if (selected.length !== count)
-      throw new Error(
-        `direct purpose: field ${field.toString()} source evidence differs`,
-      );
-    for (const [start, budget] of pages(count, batch)) {
-      const page = selected.slice(start, start + budget);
-      const advanced = {
-        ...state,
-        cursor: plan(field).position("Walking", start + budget).cursor,
-        complete: start + budget === count,
-      };
-      out.push({
+  /** One page of input field `field`: resolve the page's out-refs,
+   * authenticate their ledger descriptors, map their sources. */
+  const inputPage = (
+    field: number,
+    start: number,
+    budget: number,
+    selected: typeof inputs,
+    stateAt: (position: number) => SDK.DirectSourceScanState,
+  ): readonly DirectPurposeTransition[] => {
+    const page = selected.slice(start, start + budget);
+    const advanced = {
+      ...stateAt(start + budget),
+      source_index: stateAt(start).source_index,
+    };
+    return [
+      {
         label: `field ${field.toString()} resolve ${start.toString()}`,
         role: "sourceResolved",
         next: "sourceAuthenticate",
@@ -190,8 +191,8 @@ export const directPurposeSourceTransitions = ({
             },
             SDK.DirectSourceResolveRedeemer,
           ),
-      });
-      out.push({
+      },
+      {
         label: `field ${field.toString()} authenticate ${start.toString()}`,
         role: "sourceAuthenticate",
         next: "sourceMap",
@@ -216,21 +217,40 @@ export const directPurposeSourceTransitions = ({
             },
             SDK.DirectSourceAuthenticateRedeemer,
           ),
-      });
-      state = {
-        ...advanced,
-        source_index:
-          [...page].reverse().find((entry) => entry.step !== null)?.step
-            ?.after ?? state.source_index,
-      };
-      out.push(
-        mapTransition(`field ${field.toString()}`, start, {
-          next: "sourceResolved",
-          datum: scan(state),
-          admissions: page.map((entry) => entry.step?.admission ?? null),
-        }),
+      },
+      mapTransition(`field ${field.toString()}`, start, {
+        next: "sourceResolved",
+        datum: scan(stateAt(start + budget)),
+        admissions: page.map((entry) => entry.step?.admission ?? null),
+      }),
+    ];
+  };
+  for (const field of [0, 1]) {
+    const count = plan(field).items.length;
+    const selected = inputs.filter((entry) => entry.fieldIndex === field);
+    if (selected.length !== count)
+      throw new Error(
+        `direct purpose: field ${field.toString()} source evidence differs`,
       );
-    }
+    const indexAt = [state.source_index];
+    for (const entry of selected)
+      indexAt.push(entry.step?.after ?? indexAt.at(-1)!);
+    const stateAt = (position: number): SDK.DirectSourceScanState => ({
+      cursor: plan(field).position("Walking", position).cursor,
+      source_index: indexAt[position]!,
+      complete: position === count,
+    });
+    out.push(
+      ...pagedRunTransitions({
+        role: "sourceResolved",
+        count,
+        batch,
+        datumAt: (start) => scan(stateAt(start)),
+        page: (start, budget) =>
+          inputPage(field, start, budget, selected, stateAt),
+      }),
+    );
+    state = stateAt(count);
     const resumed = state;
     out.push({
       label: `field ${field.toString()} exhausted`,
@@ -316,56 +336,72 @@ export const directPurposeSourceTransitions = ({
         ),
     });
   }
-  for (const [start, budget] of pages(witnessCount, batch)) {
-    const page = steps.slice(start, start + budget);
-    const advanced = {
-      ...state,
-      cursor: plan(6).position("Walking", start + budget).cursor,
-      complete: start + budget === witnessCount,
-    };
-    out.push({
-      label: `witness scan ${start.toString()}`,
+  const witnessIndexAt = [
+    state.source_index,
+    ...steps.map((entry) => entry.after),
+  ];
+  const witnessStateAt = (position: number): SDK.DirectSourceScanState => ({
+    cursor: plan(6).position("Walking", position).cursor,
+    source_index: witnessIndexAt[position]!,
+    complete: position === witnessCount,
+  });
+  out.push(
+    ...pagedRunTransitions({
       role: "sourceWitnesses",
-      next: "sourceMap",
-      datum: stepDatum(
-        prover,
-        {
-          resume_script_hash: witnessesScriptHash,
-          pending: {
-            advanced,
-            candidates: page.map((entry) => entry.candidate.descriptor),
-          },
-        },
-        SDK.DirectSourcePendingDatum,
-      ),
-      fields: [6],
-      redeemer: ({ indices, open }) =>
-        Data.to(
+      count: witnessCount,
+      batch,
+      datumAt: (start) => scan(witnessStateAt(start)),
+      page: (start, budget): readonly DirectPurposeTransition[] => {
+        const advanced = {
+          ...witnessStateAt(start + budget),
+          source_index: witnessStateAt(start).source_index,
+        };
+        const page = steps.slice(start, start + budget);
+        return [
           {
-            Continue: [
+            label: `witness scan ${start.toString()}`,
+            role: "sourceWitnesses",
+            next: "sourceMap",
+            datum: stepDatum(
+              prover,
               {
-                WitnessScan: {
-                  ...indices,
-                  opening: open(6),
-                  checkpoint: plan(6).position("Walking", start)
-                    .checkpointBytes,
-                  budget: BigInt(budget),
+                resume_script_hash: witnessesScriptHash,
+                pending: {
+                  advanced,
+                  candidates: page.map((entry) => entry.candidate.descriptor),
                 },
               },
-            ],
+              SDK.DirectSourcePendingDatum,
+            ),
+            fields: [6],
+            redeemer: ({ indices, open }) =>
+              Data.to(
+                {
+                  Continue: [
+                    {
+                      WitnessScan: {
+                        ...indices,
+                        opening: open(6),
+                        checkpoint: plan(6).position("Walking", start)
+                          .checkpointBytes,
+                        budget: BigInt(budget),
+                      },
+                    },
+                  ],
+                },
+                SDK.DirectSourceWitnessRedeemer,
+              ),
           },
-          SDK.DirectSourceWitnessRedeemer,
-        ),
-    });
-    state = { ...advanced, source_index: page[page.length - 1]!.after };
-    out.push(
-      mapTransition("witness", start, {
-        next: "sourceWitnesses",
-        datum: scan(state),
-        admissions: page.map((entry) => entry.admission),
-      }),
-    );
-  }
+          mapTransition("witness", start, {
+            next: "sourceWitnesses",
+            datum: scan(witnessStateAt(start + budget)),
+            admissions: page.map((entry) => entry.admission),
+          }),
+        ];
+      },
+    }),
+  );
+  state = witnessStateAt(witnessCount);
   if (
     state.source_index.root !== evidence.index.root ||
     state.source_index.count !== evidence.index.count

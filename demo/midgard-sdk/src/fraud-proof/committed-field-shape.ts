@@ -178,15 +178,36 @@ export const midgardMinimalArrayHeader = (
 export const midgardCommittedFieldShapeVerdict = (
   fieldIndex: number,
   preimage: Uint8Array,
+): number =>
+  midgardShapeVerdictAfterWalk(
+    fieldIndex,
+    preimage,
+    midgardEnvelopeVerdict(preimage),
+  );
+
+/**
+ * Slot `fieldIndex`'s shape verdict over `preimage`, once §12.7's §5.1 walk over
+ * the same bytes has ended with `envelopeVerdict` — twin of `rule.ak`'s
+ * `shape_verdict_after_walk_v1`.
+ *
+ * Step 01 takes the walk one batch per transaction and asks this question only
+ * of the batch that ends it; {@link midgardCommittedFieldShapeVerdict} is this
+ * function over the walk run to its end, so a field reaches the same verdict
+ * whether it is walked in one transaction or in many. The array header is
+ * re-read rather than carried, because the walk's cursor counts the items still
+ * owed, not the items declared.
+ */
+export const midgardShapeVerdictAfterWalk = (
+  fieldIndex: number,
+  preimage: Uint8Array,
+  envelopeVerdict: number,
 ): number => {
   const stride = midgardFieldStride(fieldIndex);
-  const header = midgardMinimalArrayHeader(preimage);
-  if (header === undefined) {
+  if (envelopeVerdict !== MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL) {
     return MIDGARD_FIELD_SHAPE_VERDICT_NOT_AN_ENVELOPE;
   }
-  if (
-    midgardEnvelopeVerdict(preimage) !== MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL
-  ) {
+  const header = midgardMinimalArrayHeader(preimage);
+  if (header === undefined) {
     return MIDGARD_FIELD_SHAPE_VERDICT_NOT_AN_ENVELOPE;
   }
   const totalLength = preimage.length;
@@ -311,6 +332,25 @@ export const committedFieldShapeEvidenceFromCommittedField = ({
 // ## On-chain schemas (positional agreement with the Aiken step modules)
 
 /**
+ * Mirrors `midgard/fraud_proofs/committed_field_shape/step_01.WalkState`: the
+ * walk between two step-01 transactions, `remaining` items still to read from
+ * byte `offset` of field `field_index` of `bad_tx_id`. A fresh thread carries
+ * no state. Structurally identical to §12.7's cursor and deliberately a
+ * separate schema, for the reason the step-02 state gives below.
+ */
+export const CommittedFieldShapeWalkStateSchema = Data.Object({
+  bad_tx_id: H32Schema,
+  field_index: Data.Integer(),
+  remaining: Data.Integer(),
+  offset: Data.Integer(),
+});
+export type CommittedFieldShapeWalkState = Data.Static<
+  typeof CommittedFieldShapeWalkStateSchema
+>;
+export const CommittedFieldShapeWalkState =
+  asDataType<CommittedFieldShapeWalkState>(CommittedFieldShapeWalkStateSchema);
+
+/**
  * **The claim is §12.7's `CommittedFieldClaimV1`, used rather than
  * re-declared.**
  *
@@ -323,7 +363,7 @@ export const committedFieldShapeEvidenceFromCommittedField = ({
  * What is *not* shared is the verdict code space and the state it travels in.
  */
 export const CommittedFieldShapeStep01DatumSchema = faultProofStepDatumSchema(
-  Data.Any(),
+  CommittedFieldShapeWalkStateSchema,
 );
 export type CommittedFieldShapeStep01Datum = Data.Static<
   typeof CommittedFieldShapeStep01DatumSchema
@@ -421,8 +461,9 @@ export type CommittedFieldShapeStepCancel = FaultProofStepCancel;
 export const CommittedFieldShapeStepCancel = FaultProofStepCancel;
 
 /**
- * Builds the step-02 state exactly as the on-chain step-01 validator derives it,
- * so an off-chain builder and the L1 verifier cannot drift.
+ * The step-02 state the on-chain step-01 validator derives once the walk over
+ * the evidence's bytes has ended — the same value
+ * `advanceCommittedFieldShapeWalk` reaches on the walk's last step.
  */
 export const committedFieldShapeStep02StateFromEvidence = (
   evidence: CommittedFieldShapeEvidence,

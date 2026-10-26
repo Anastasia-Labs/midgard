@@ -63,7 +63,7 @@ const terminal = (
 describe("production linear family authenticated state machine V1", () => {
   it("recovers a changed header reference only while the exact computation step remains current", async () => {
     const initial = linearFamilyObservation({
-      category: "committedFieldShape",
+      category: "minFee",
       headerHash,
       provenance,
       stage: {
@@ -75,7 +75,7 @@ describe("production linear family authenticated state machine V1", () => {
     });
     if (initial.kind !== "action_required") throw new Error("missing step");
     const input = {
-      category: "committedFieldShape",
+      category: "minFee",
       headerHash,
       provenance,
       action: initial.action,
@@ -122,14 +122,14 @@ describe("production linear family authenticated state machine V1", () => {
 
   it("reconciles signed init after DA apply recreates the same header at another outref", async () => {
     const initial = linearFamilyObservation({
-      category: "committedFieldShape",
+      category: "minFee",
       headerHash,
       provenance,
       stage: { kind: "not_started", stateQueueBlockOutRef: outRef("10") },
     });
     if (initial.kind !== "action_required") throw new Error("missing init");
     const input = {
-      category: "committedFieldShape",
+      category: "minFee",
       headerHash,
       provenance,
       action: initial.action,

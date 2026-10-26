@@ -25,6 +25,20 @@ export const directPurposeSpendDescriptorPresent = (
   );
 };
 
+/** Whether every spent and referenced input has a predecessor descriptor;
+ * a leaf with an unresolved one is convicted by the input families, and no
+ * source index can be built for it. */
+export const directPurposeInputDescriptorsPresent = (
+  material: DirectScriptMaterial,
+): boolean => {
+  const keys = new Set(
+    material.ledger.root.entries.map((entry) => entry.key.toString("hex")),
+  );
+  return [...material.fields[0]!, ...material.fields[1]!].every((key) =>
+    keys.has(key.toString("hex")),
+  );
+};
+
 const coordinates = (kind: bigint, count: number): Coordinate[] =>
   Array.from({ length: count }, (_, index) => ({
     kind,
