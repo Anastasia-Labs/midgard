@@ -5,6 +5,7 @@ import {
   decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeMidgardTxOutput,
   encodeMidgardSpendInputItem,
+  traceMidgardLedgerOutputScan,
 } from "@al-ft/midgard-core";
 import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -42,6 +43,14 @@ import { ConservationClaim } from "./union-schemas.js";
 export const VALUE_NOT_PRESERVED_VIOLATION = "value-not-preserved";
 export const VALUE_NOT_PRESERVED_REJECTION_VIOLATION =
   "value-not-preserved-wrongful-rejection";
+
+/** An output the ledger-output scan refuses has no ledger descriptor, and
+ * the on-chain conservation fold cannot read it; the output canonicality
+ * finding at that event proves it. */
+const outputsScanRefused = (outputsPreimageCbor: Uint8Array): boolean =>
+  decodeMidgardFieldPreimage(outputsPreimageCbor).some(
+    (output) => traceMidgardLedgerOutputScan(output).refusal !== null,
+  );
 
 const eventLedger = async (
   block: CanonicalBlockEvidence,
@@ -112,6 +121,12 @@ const eventLedger = async (
             ? decodeMidgardForcedTxFullFromCanonicalCbor
             : decodeMidgardNativeTxFullFromCanonicalCbor
         )(event.entry.fullTransactionCbor);
+        if (outputsScanRefused(transaction.body.outputsPreimageCbor))
+          throw replayPrerequisiteFailure(
+            block.headerHash,
+            step.event_key,
+            "representable_field_shape",
+          );
         for (const input of decodeMidgardFieldPreimage(
           transaction.body.spendInputsPreimageCbor,
         ))
@@ -187,9 +202,14 @@ export const prepareValueConservationArtifact = async ({
     : decodeMidgardNativeTxFullFromCanonicalCbor(source.fullTransactionCbor);
   if ("validity" in transaction && transaction.validity !== "TxIsValid")
     return null;
-  // A mint item outside the field-5 grammar has no conservation meaning;
-  // the direct mint-item proof owns that transaction.
-  if (!forced && transactionHasNonCanonicalMintItem(source.fullTransactionCbor))
+  // A mint item outside the field-5 grammar, or an output the ledger-output
+  // scan refuses, has no conservation meaning; the direct mint-item or output
+  // canonicality proof owns that transaction.
+  if (
+    !forced &&
+    (transactionHasNonCanonicalMintItem(source.fullTransactionCbor) ||
+      outputsScanRefused(transaction.body.outputsPreimageCbor))
+  )
     throw replayPrerequisiteFailure(
       block.headerHash,
       eventKey,
