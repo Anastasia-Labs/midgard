@@ -77,6 +77,7 @@ pub fn bind_source_v1(
         own_ref,
         tx.inputs,
         tx.outputs,
+        tx.extra_signatories,
       )
       expect None = input_state
       let subject = substrate.open_subject_v1(

@@ -59,6 +59,7 @@ validator main(
           own_out_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
         expect output_script_hash == step_03_validator_script_hash
         expect Some(PendingForced) = input_state

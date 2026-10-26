@@ -165,12 +165,6 @@ export type AvailabilityFixtureOptions = {
         readonly datum?: SDK.DaBondPoolDatum;
       };
   /**
-   * The challenger's payment signing key (bech32). Default: a fresh key. A
-   * deployment whose DA-challenger allow-list admits only listed keys needs a
-   * listed one.
-   */
-  readonly challengerPrivateKey?: string;
-  /**
    * The DA availability parameters the contracts are applied with. Default:
    * `TEST_AVAILABILITY_PARAMETERS`. The collateral coins and the default pool
    * follow them.

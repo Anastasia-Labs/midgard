@@ -51,6 +51,7 @@ validator main(
           own_out_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
         expect Some(state) = input_state
         expect output_script_hash == step_03_validator_script_hash

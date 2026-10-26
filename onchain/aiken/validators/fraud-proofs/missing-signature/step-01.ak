@@ -45,6 +45,7 @@ validator main(
           own_out_ref,
           tx.inputs,
           tx.outputs,
+          tx.extra_signatories,
         )
         expect None = input_state
         let marker: Data = 1

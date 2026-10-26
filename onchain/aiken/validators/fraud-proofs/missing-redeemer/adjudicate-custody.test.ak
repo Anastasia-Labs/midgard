@@ -290,11 +290,11 @@ fn adjudicate_run(
     step_datum(state),
     ct.Continue(action),
     fixture.own_out_ref(),
-    step_tx(output, [], False),
+    step_tx(output, [fixture.fraud_prover_key_hash], False),
   )
 }
 
-test adjudicate_resolve_is_permissionless_and_exact() {
+test adjudicate_resolve_is_exact() {
   let state = ClaimPurposeStateV1 {
     ..reopened([]),
     purpose: claim_purpose.ImpossiblePurpose {
@@ -350,7 +350,7 @@ test adjudicate_lookup_scan_hands_the_scan_to_the_claimed_grammar() {
       step_datum(state),
       ct.Continue(action),
       fixture.own_out_ref(),
-      step_tx(expected, [], False),
+      step_tx(expected, [fixture.fraud_prover_key_hash], False),
     ),
     !adjudicate_run(state, action, expected),
   }
@@ -424,7 +424,7 @@ fn grammar_run(
     step_datum(initial),
     ct.Continue(args),
     fixture.own_out_ref(),
-    step_tx(expected, [], same),
+    step_tx(expected, [fixture.fraud_prover_key_hash], same),
   )
 }
 
@@ -463,7 +463,7 @@ fn scan_finish(state: ClaimedRedeemerScanV1, output: Data) -> Bool {
     step_datum(state),
     ct.Continue(adjudicate.Finish { input_index: 0, output_index: 0 }),
     fixture.own_out_ref(),
-    step_tx(output, [], False),
+    step_tx(output, [fixture.fraud_prover_key_hash], False),
   )
 }
 
@@ -520,7 +520,7 @@ test claimed_scan_walk_finds_the_present_redeemer() {
       step_datum(ready),
       ct.Continue(adjudicate.Scan { args }),
       fixture.own_out_ref(),
-      step_tx(walked, [], True),
+      step_tx(walked, [fixture.fraud_prover_key_hash], True),
     ),
     scan_finish(walked, adjudicate.claimed_decision_v1(walked)),
     when adjudicate.claimed_decision_v1(walked).claim is {

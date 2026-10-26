@@ -81,6 +81,7 @@ validator main(
           own_out_ref,
           tx.inputs,
           tx.outputs,
+          tx.extra_signatories,
         )
         expect Some(state) = m_input_state_data
         // Both continuations authenticate the same thread and field. Sharing

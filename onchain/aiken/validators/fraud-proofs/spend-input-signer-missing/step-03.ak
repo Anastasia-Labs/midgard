@@ -57,6 +57,7 @@ validator main(
           own_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
         expect Some(authenticated) = state
         let Pair(view, checkpoint) = opened_field_walk(

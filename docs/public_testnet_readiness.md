@@ -33,14 +33,14 @@ do not close a gate.
 ## The P1 model
 
 P1 launches the way other optimistic rollups launched their first public
-networks: curated block producers, allow-listed challengers and a planned
+networks: curated block producers, permissionless challengers and a planned
 regenesis.
 
 | Role                    | P1             | Enforcement                                                                             |
 | ----------------------- | -------------- | --------------------------------------------------------------------------------------- |
 | Operators               | Curated        | Operator allow-list, checked at registration                                            |
-| Fault-proof provers     | Allow-listed   | Prover allow-list, checked when a proof's computation thread is initialized             |
-| DA availability callers | Allow-listed   | DA challenger allow-list, checked when an availability challenge opens                  |
+| Fault-proof provers     | Permissionless | Any signing key initializes a proof's computation thread                                |
+| DA availability callers | Permissionless | Any key that posts the challenger bond opens an availability challenge                  |
 | Users                   | Permissionless | L2 transactions (including Plutus), deposits, withdrawals and native-only forced orders |
 
 P1 has these limits, and the security claim (R1) must state each one:
@@ -52,19 +52,20 @@ P1 has these limits, and the security claim (R1) must state each one:
   in P1; they move through normal L2 transactions.
 - The L1 order of a forced transaction carries a closed validity range of at
   most 10 minutes (A2).
-- DA payloads carry neither validation-trace states nor the UTxO set. The
-  nine fault-proof families that read validation-trace states are not in the P1
-  catalogue (`excluded_fraud_proof_categories` in
-  [`preprod-public.yaml`](../config/deployments/preprod-public.yaml)). The
+- DA payloads carry neither validation-trace states nor the UTxO set. Of the
+  nine fault-proof families that read validation-trace states, `missingRedeemer`
+  is rebuilt without them and is in the P1 catalogue (owner, 2026-10-25); the
+  other eight are not yet (`excluded_fraud_proof_categories` in
+  [`preprod-public.yaml`](../config/deployments/preprod-public.yaml)) and join
+  as each is rebuilt. The
   Plutus execution dispute (`validationTraceDispute`) is in it (owner,
   2026-10-21); `mainnet` still excludes it.
 - Every party derives ledger state by replaying blocks from genesis. Payloads
   are retained for 120 days, and P1 has no state snapshot.
 - Inactivity strikes skip an operator's shift but never eject the operator.
-- Proof submission is manual. A watcher detects a fault and prepares the proof;
-  an allow-listed key submits it.
-- The allow-lists are fixed for P1's life. A new operator, or an operator's new
-  key, waits for P2.
+- Every watcher submits the proofs it finds with its own key.
+- The operator allow-list is fixed for P1's life. A new operator, or an
+  operator's new key, waits for P2.
 - The escape hatch and settlement claims are not supported.
 - L2 Plutus budgets use Midgard's P1 cost accounting. The node's
   `POST /tx/evaluate` returns the budget a transaction needs.
@@ -101,16 +102,16 @@ this order and nowhere else:
 
 Every contract item merges before the 2026-10-26 freeze.
 
-| Item                                                                      | Status      | Pointer and remaining work                                                                                                                                                                                                |
-| ------------------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Forced-transaction admission at the tx-order mint (A1)                    | Done        | Merge `b06aca902`. `forced_tx_is_admissible_v1` in `onchain/aiken/lib/midgard/user-events/tx-order-v1.ak`; the SDK and node share `screenMidgardForcedTxAdmission` and a golden corpus with Aiken                         |
-| Closed 10-minute validity range on tx orders (A2)                         | In progress | Not committed. No profile carries `max_event_validity_range_ms` yet                                                                                                                                                       |
-| Allow-lists, P1 catalogue, P1 parameters and manual proof submission (C1) | Done        | Merges `63e24132e`, `bf82caf27`; keys `d07f2fda7`. Curated emulator tests in both polarities. A listed prover submits through its own watcher; a listed DA challenger uses `availability-challenge open` (watcher README) |
-| Long-gap catch-up after an all-operator outage (C2)                       | In progress | Commit time in the state-queue node merged (`19faf4948`); retention clocks merged (`fa0435b97`). Two follow-ups on `p1/c2a-onchain` are not merged. The remaining commit-clock readers and the catch-up planner are open  |
-| No empty blocks (C3)                                                      | In progress | `6419a5fb2` and `39cde8b6d` on `p1/c2a-onchain`, not merged. The matching block-planner change is open                                                                                                                    |
-| Asset names compare as plain bytes (C5)                                   | Done        | `51ec22412`, `113fa9369`                                                                                                                                                                                                  |
-| Datum canonicity fault proof (DC)                                         | Done        | Merges `78943b3c9`, `a81655e75`                                                                                                                                                                                           |
-| Minimum-ADA and network-id routes for accepted forced transactions        | In progress | `b742bb756`, `f0ddcfa5b`, `a40099c60` on `p1/pm-post-modes`, not merged; watcher workflow wiring open                                                                                                                     |
+| Item                                                               | Status      | Pointer and remaining work                                                                                                                                                                                               |
+| ------------------------------------------------------------------ | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Forced-transaction admission at the tx-order mint (A1)             | Done        | Merge `b06aca902`. `forced_tx_is_admissible_v1` in `onchain/aiken/lib/midgard/user-events/tx-order-v1.ak`; the SDK and node share `screenMidgardForcedTxAdmission` and a golden corpus with Aiken                        |
+| Closed 10-minute validity range on tx orders (A2)                  | In progress | Not committed. No profile carries `max_event_validity_range_ms` yet                                                                                                                                                      |
+| Operator allow-list, P1 catalogue and P1 parameters (C1)           | Done        | Merges `63e24132e`, `bf82caf27`; keys `d07f2fda7`. Curated emulator tests in both polarities. Provers and DA challengers are permissionless (PL)                                                                         |
+| Long-gap catch-up after an all-operator outage (C2)                | In progress | Commit time in the state-queue node merged (`19faf4948`); retention clocks merged (`fa0435b97`). Two follow-ups on `p1/c2a-onchain` are not merged. The remaining commit-clock readers and the catch-up planner are open |
+| No empty blocks (C3)                                               | In progress | `6419a5fb2` and `39cde8b6d` on `p1/c2a-onchain`, not merged. The matching block-planner change is open                                                                                                                   |
+| Asset names compare as plain bytes (C5)                            | Done        | `51ec22412`, `113fa9369`                                                                                                                                                                                                 |
+| Datum canonicity fault proof (DC)                                  | Done        | Merges `78943b3c9`, `a81655e75`                                                                                                                                                                                          |
+| Minimum-ADA and network-id routes for accepted forced transactions | In progress | `b742bb756`, `f0ddcfa5b`, `a40099c60` on `p1/pm-post-modes`, not merged; watcher workflow wiring open                                                                                                                    |
 
 ### Node, SDK, committee and watcher
 
@@ -136,14 +137,15 @@ Every contract item merges before the 2026-10-26 freeze.
   the P2 sunset and regenesis notice. The owner ruled a two-stage launch on
   2026-10-12, so P1 does not accept the full canonical V1 surface; the claim
   states what P1 disables instead. A draft exists and awaits review.
-- **Curated operators.** In progress. The allow-lists are enforced on-chain at
-  operator registration, computation-thread initialization and availability
-  challenge Open, and off-chain by the SDK, node and watcher (C1). The claim
+- **Curated operators.** In progress. The operator allow-list is enforced
+  on-chain at operator registration and off-chain by the SDK and node (C1).
+  Computation-thread initialization and availability challenge Open are
+  permissionless (PL). The claim
   must still document the operator-halt and fund-recovery assumptions.
 - **Unsupported scope.** Open. Mark the escape hatch and settlement claims
   unsupported in the public docs and the manifest.
-- **Published catalogue.** In progress. `preprod-public` excludes the
-  validation dispute game and nine families, and computation-thread
+- **Published catalogue.** In progress. `preprod-public` excludes eight
+  families not yet rebuilt without validation-trace states, and computation-thread
   initialization refuses an excluded category (C1). The claim and the manifest
   must list the enabled families.
 - **Threat model and disclosure policy.** In progress. Publish the trust model
@@ -169,18 +171,18 @@ Every contract item merges before the 2026-10-26 freeze.
   non-null record from the deploy tooling: address, outref, script hash, CBOR
   hash, lovelace and publisher transaction.
 - **Parameter review.** In progress. Publish every P1 parameter with its
-  rationale: allow-lists, excluded families, event validity range, maturity,
+  rationale: the operator allow-list, excluded families, event validity range, maturity,
   negligence timeout, shift length, `max_inactivity_strikes`,
   `registration_ms`, the block ex-units budget and bonds. Release tooling must
   refuse placeholder keys and unexplained zero economics.
   - Set in `preprod-public`: `registration_ms` 30,000;
-    `max_inactivity_strikes` 1,000,000; the allow-lists; the excluded families.
+    `max_inactivity_strikes` 1,000,000; the operator allow-list; the excluded families.
   - Open: the 10-minute event validity range (A2); 120-day payload retention
     (DS); the block ex-units budget, which defaults to 33,000,000 memory and
     20,000,000,000 steps (`demo/midgard-node/src/services/config.block-ex-units-budget.ts`)
     and is to be re-measured on an idle machine; the owner's confirmation of
     the public operator and DA bond figures.
-  - The `mainnet` profile still carries placeholder allow-list keys. It is not
+  - The `mainnet` profile still carries a placeholder operator key. It is not
     a P1 target.
 - **Pooled DA bond.** Done ([decision record](midgard/decisions/da-committee-bond-pool.md),
   #686–#691). An attestation applies only while one bonded pool holds at least
@@ -304,9 +306,8 @@ These capabilities are built; R6 supplies their release evidence:
 
 - **Alerts.** In progress. Page on commit lag, catch-up mode, a watcher
   replay-root mismatch, forced-admission divergence, follower refusals, stuck
-  settlements and prepared proofs, and expose readiness, worker staleness,
-  admission depth, provider lag, database saturation, disk and payout state.
-  The watcher raises `prepared_proof_awaiting_submission`, and the node's
+  settlements, and expose readiness, worker staleness, admission depth,
+  provider lag, database saturation, disk and payout state. The node's
   `/readyz` names stuck settlement jobs in its details. Alert delivery is
   open.
 - **Runbooks.** Open. One runbook per alert, plus operator setup, deployment,

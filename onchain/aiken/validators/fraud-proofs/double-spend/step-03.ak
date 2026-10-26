@@ -65,6 +65,7 @@ validator main(
           own_out_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
 
         expect Some(State { verified_tx1_id, verified_tx2_id }) = m_input_state_data
@@ -161,6 +162,7 @@ fn run_step_03(
     ..transaction.placeholder,
     inputs: [fixture.ct_thread_input(asset_name)],
     outputs: [fixture.next_step_output(asset_name, expected_output_state)],
+    extra_signatories: [fixture.fraud_prover_key_hash],
   }
   main.spend(
     fixture.next_step_script_hash,

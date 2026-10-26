@@ -1,4 +1,3 @@
-import { requireAllowListed } from "@al-ft/midgard-core/deployment-profile";
 import {
   FRAUD_PROOF_CATALOGUE_ASSET_NAME,
   FraudProofComputationThreadRedeemer,
@@ -68,7 +67,6 @@ export const submitResolvedInit = async ({
   preSubmitBoundary,
   awaitConfirmation = true,
   referenceScriptRoles = STANDARD_INIT_REFERENCE_SCRIPT_ROLES,
-  proverAllowList,
 }: SubmitResolvedInitParams & {
   /** Family label used in error messages. */
   readonly label: string;
@@ -78,7 +76,6 @@ export const submitResolvedInit = async ({
     readonly phasMembershipWithdraw: string;
   };
 }): Promise<SubmitResolvedInitResult> => {
-  requireAllowListed("fraud_provers", signer.paymentKeyHash, proverAllowList);
   const firstStep = contracts.steps[0];
   const fraudulentBlockOutRefParsed = parseOutRef(
     fraudulentBlockOutRef,

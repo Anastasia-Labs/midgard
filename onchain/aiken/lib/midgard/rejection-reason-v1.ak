@@ -177,7 +177,8 @@ pub type RejectionReasonV1 {
 
   // ── ValueAndMint ───────────────────────────────────────────────────
   /// Distinct-asset accumulator overflow while folding an input asset.
-  /// input_index: field-0 ordinal; asset_index: 0-based in that output's
+  /// input_index: position in the input-resolution schedule, reference
+  /// inputs counted; asset_index: 0-based in that input's resolved output's
   /// canonical asset order.
   InputAssetAccumulationLimit { input_index: Int, asset_index: Int }
   /// Same crossing at an own-output asset.

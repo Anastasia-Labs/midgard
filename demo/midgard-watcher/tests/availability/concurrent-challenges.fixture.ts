@@ -331,7 +331,7 @@ export const runtime = (
   manifestId = DEPLOYMENT,
   extra: Pick<
     Parameters<typeof createWatcherAvailabilityRuntime>[0],
-    "onDaBondPool" | "onDaBondPoolReadFailure" | "onOpensPrepared"
+    "onDaBondPool" | "onDaBondPoolReadFailure"
   > = {
     onDaBondPool: () => undefined,
     onDaBondPoolReadFailure: () => undefined,

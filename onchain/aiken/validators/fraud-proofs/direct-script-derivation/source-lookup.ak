@@ -35,6 +35,7 @@ validator main(
           own_out_ref,
           tx.inputs,
           tx.outputs,
+          tx.extra_signatories,
         )
         expect Some(state) = input_state
         let expected: Data = door.lookup_v1(state, args.source, args.proof)

@@ -43,6 +43,7 @@ validator main(step_04_hash: ScriptHash, thread_policy: PolicyId) {
           own_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
         expect Some(authenticated) = state
         expect

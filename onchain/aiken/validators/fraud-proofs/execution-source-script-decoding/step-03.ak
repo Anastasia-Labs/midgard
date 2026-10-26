@@ -41,6 +41,7 @@ validator main(
           own_out_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
         expect Some(source) = input_state
         let expected: Data = bind_exact_item_v1(

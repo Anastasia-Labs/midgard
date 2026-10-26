@@ -66,6 +66,7 @@ validator main(
           own_out_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
 
         expect Some(input_state) = m_input_state_data

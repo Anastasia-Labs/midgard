@@ -46,6 +46,7 @@ validator main(
           own_out_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
         expect Some(Bound { bound }) = input_state
         let Pair(view, start) = opened_field_walk(

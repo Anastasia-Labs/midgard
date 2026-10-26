@@ -36,6 +36,7 @@ validator main(
           own_ref,
           tx.inputs,
           tx.outputs,
+          tx.extra_signatories,
         )
         expect Some(state) = input_state
         let expected: Data = claim.finish_outputs_v1(

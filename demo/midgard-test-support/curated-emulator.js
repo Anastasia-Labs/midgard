@@ -4,8 +4,8 @@ import { fileURLToPath } from "node:url";
 import { emulatorProfileBlueprint } from "./interactive-emulator.js";
 
 /**
- * `preprod-emulator-curated`: the interactive emulator profile with stage-0
- * allow-lists and the P1 fraud-proof catalogue. Its Vitest project runs the
+ * `preprod-emulator-curated`: the interactive emulator profile with the stage-0
+ * operator allow-list and the P1 fraud-proof catalogue. Its Vitest project runs the
  * curated-deployment journeys against a blueprint compiled for it.
  */
 const curated = emulatorProfileBlueprint(

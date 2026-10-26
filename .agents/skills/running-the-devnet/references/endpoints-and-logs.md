@@ -769,7 +769,7 @@ fault-proof execution holds and the L1 follower's reasons are listed by hand
   commands) when it does not clear.
 - `active_alert`: a non-informational alert is active (`activeAlerts` in
   `/v1/status`); a DA fetch failure counts only for 180 s unless repeated.
-  The DA bond pool, rollback and prepared-proof alerts never hold readiness.
+  The DA bond pool and rollback alerts never hold readiness.
 - `journal_integrity`, `journal_unavailable`, `journal_busy`,
   `journal_capacity`, `journal_decision_missing`: the watcher's fault-proof
   journals refused a record, could not be opened, met a lock, reached the

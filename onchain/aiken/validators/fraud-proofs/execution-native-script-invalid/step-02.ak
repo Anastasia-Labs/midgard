@@ -41,6 +41,7 @@ validator main(
           own_out_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
         expect Some(bound) = input_state
         let source = authenticate_execution_source_v1(

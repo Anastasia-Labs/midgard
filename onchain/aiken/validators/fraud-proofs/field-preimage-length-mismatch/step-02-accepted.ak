@@ -47,6 +47,7 @@ validator main(
           own_out_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
         expect output_script_hash == step_03_validator_script_hash
         expect Some(BoundSource { subject, source_cbor }) = input_state

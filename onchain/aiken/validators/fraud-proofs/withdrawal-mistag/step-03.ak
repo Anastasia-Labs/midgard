@@ -41,6 +41,7 @@ validator main(
           own_out_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
         expect Some(input_state) = input_state_data
         let expected_state = step_03.classify_ledger_evidence_v1(

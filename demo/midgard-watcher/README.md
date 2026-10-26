@@ -374,50 +374,12 @@ holds back a challenge action. `daBondPool` keeps the last good readout, whose
 good read sets it back to `null`. Funding, top-up and the owner-quorum withdrawal are operator commands; see
 [DA bond pool commands](../midgard-node/docs/da-bond-commands.md).
 
-A deployment whose profile lists fraud provers or DA challengers
-(`allow_lists`) refuses a Computation-Thread Init or an availability Open
-signed by any other key. The watcher checks its two payment keys against the
-compiled profile at startup, and `/v1/metrics` reports the result as
-`submissionModes: {faultProofs, availability}`, each `submit` or
-`observe_and_prepare` (`null` when not reported). A key in
-`observe_and_prepare` still observes, classifies and proves, but submits
-nothing the list would refuse: each admitted fault-proof objective, and each
-due Open, is written as a prepared-proof bundle under
-`<storage.path>.prepared-proofs/` (owner-only JSON,
-`midgard-watcher-prepared-proof-v1`, naming the objective and the observing
-key, never evidence) and raises the `prepared_proof_awaiting_submission`
-alert, one per objective or header. The objective stays pending on each
-observation. Its bundle and alert go once it is settled (a listed prover's
-proof removed the header, or the header left the queue) or, for an Open, once
-it is no longer due. The alert is informational: the watcher stays ready.
-Other availability steps (Settle, Close, Timeout, prune) are not
-allow-listed and run as usual. An observer reads neither wallet to prepare,
-so an unfunded key keeps it ready.
-
-Acting on a prepared proof is an allow-listed key's job. The bundle and the
-alert trigger it; they are not an input, and no command submits a bundle:
-
-- Fault proofs: a listed prover runs its own watcher configured with its
-  listed prover key (its `submissionModes.faultProofs` reads `submit`). That
-  watcher detects and proves the same fault from authenticated L1 and public
-  DA. Once its proof removes the header, the observer's bundle and alert
-  clear.
-- Availability Opens: a listed challenger opens the header the bundle names
-  before `openDeadlineEpochMs`, with the node's command (flags and funding in
-  [availability challenge commands](../midgard-node/docs/availability-challenge-commands.md)):
-
-  ```sh
-  node dist/index.js availability-challenge open \
-    --manifest /var/lib/midgard/contract-deployment-info.json \
-    --journal /var/lib/midgard/availability/actor.sqlite \
-    --header-hash "$BUNDLE_HEADER_HASH" \
-    --wallet-seed-env LISTED_CHALLENGER_SEED \
-    --collateral-out-ref <hash#index> \
-    --funding-out-ref <hash#index>
-  ```
-
-  It refuses a key the profile's DA challenger list omits before it builds
-  anything.
+Fault proofs and DA availability challenges are permissionless: no profile
+lists fault provers or DA challengers, and the validators admit any key that
+signs and funds its own Computation-Thread Init or availability Open. The
+watcher detects, proves and submits every admitted fault-proof objective with
+its prover key, and opens every due availability challenge with its
+availability key.
 
 `$.l1.source` names one source, `local_node`: the Cardano node the L1
 follower reads over its socket. `$.l1.finality` holds only `depth`. The

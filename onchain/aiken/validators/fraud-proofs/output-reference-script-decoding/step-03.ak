@@ -38,6 +38,7 @@ validator main(step_04_hash: ScriptHash, computation_thread_policy: PolicyId) {
           own_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
         expect Some(state) = input_state
         let advanced = advance_output_scan_v1(state, window)

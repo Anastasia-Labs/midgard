@@ -27,6 +27,7 @@ export * from "./field-opening.js";
 export * from "./field-preimage-carriage.js";
 export * from "./field-preimage-length-mismatch.js";
 export * from "./first-fault.js";
+export * from "./first-fault-later-phases.js";
 export * from "./input-existence.js";
 export * from "./input-no-idx.js";
 export * from "./input-set-uniqueness.js";

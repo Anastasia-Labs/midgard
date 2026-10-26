@@ -386,6 +386,7 @@ fn final_tx(
   let chunks = chunk_inputs(post_root)
   Transaction {
     ..transaction.placeholder,
+    extra_signatories: [fraud_prover],
     inputs: [
       Input {
         output_reference: thread_out_ref(),
@@ -445,6 +446,7 @@ fn routes(post_root: ByteArray) -> Bool {
   let unrouted: route_v1.Datum = ct.StepDatum { fraud_prover, data: None }
   let tx = Transaction {
     ..transaction.placeholder,
+    extra_signatories: [fraud_prover],
     inputs: [
       Input {
         output_reference: thread_out_ref(),
@@ -498,6 +500,7 @@ fn binds(post_root: ByteArray) -> Bool {
   let input_datum: Data = step_datum(Some(state))
   let tx = Transaction {
     ..transaction.placeholder,
+    extra_signatories: [fraud_prover],
     inputs: [
       Input {
         output_reference: thread_out_ref(),

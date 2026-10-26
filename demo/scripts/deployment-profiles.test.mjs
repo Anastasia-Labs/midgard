@@ -872,22 +872,21 @@ test("public profiles leave confirmation depth plus two validity ranges between 
   }
 });
 
-test("production profiles list their allow-listed keys; testing profiles admit every key", () => {
+test("production profiles list their operators; testing profiles admit every key", () => {
   const profiles = readProfiles();
-  const lists = ["operators", "fraud_provers", "da_challengers"];
+  for (const profile of Object.values(profiles))
+    assert.deepEqual(Object.keys(profile.allow_lists), ["operators"]);
   for (const name of ["mainnet", "preprod-public"]) {
-    for (const list of lists) {
-      const keys = profiles[name].allow_lists[list];
-      assert.ok(keys.length > 0);
-      // Mainnet remains undeployed; P1 public keys must be real release inputs.
-      assert.ok(
-        keys.every((key) =>
-          name === "preprod-public"
-            ? !isAllowListPlaceholderKey(key)
-            : isAllowListPlaceholderKey(key),
-        ),
-      );
-    }
+    const keys = profiles[name].allow_lists.operators;
+    assert.ok(keys.length > 0);
+    // Mainnet remains undeployed; P1 public keys must be real release inputs.
+    assert.ok(
+      keys.every((key) =>
+        name === "preprod-public"
+          ? !isAllowListPlaceholderKey(key)
+          : isAllowListPlaceholderKey(key),
+      ),
+    );
     const profile = structuredClone(profiles[name]);
     profile.allow_lists.operators = null;
     assert.throws(
@@ -900,8 +899,7 @@ test("production profiles list their allow-listed keys; testing profiles admit e
     "local-devnet-testing",
     "preprod-emulator-testing",
   ])
-    for (const list of lists)
-      assert.equal(profiles[name].allow_lists[list], null);
+    assert.equal(profiles[name].allow_lists.operators, null);
   assert.equal(
     Buffer.from(ALLOW_LIST_PLACEHOLDER_KEY_PREFIX, "hex").toString("ascii"),
     "placeholder:",
@@ -918,43 +916,47 @@ test("allow-list keys are distinct 28-byte lowercase hex, never empty", () => {
     ["ab", /28-byte lowercase hex/u],
   ]) {
     const profile = structuredClone(readProfiles()["preprod-testing"]);
-    profile.allow_lists.fraud_provers = keys;
+    profile.allow_lists.operators = keys;
     assert.throws(() => validateProfile(profile, "preprod-testing"), message);
   }
   const profile = structuredClone(readProfiles()["preprod-testing"]);
-  profile.allow_lists.fraud_provers = [key("ab"), key("cd")];
+  profile.allow_lists.operators = [key("ab"), key("cd")];
   validateProfile(profile, "preprod-testing");
-  delete profile.allow_lists.da_challengers;
+  for (const role of ["fraud_provers", "da_challengers"]) {
+    const listed = structuredClone(profile);
+    listed.allow_lists[role] = [key("ef")];
+    assert.throws(
+      () => validateProfile(listed, "preprod-testing"),
+      /allow_lists must contain exactly/u,
+    );
+  }
+  delete profile.allow_lists.operators;
   assert.throws(
     () => validateProfile(profile, "preprod-testing"),
     /allow_lists must contain exactly/u,
   );
 });
 
-test("allow-lists render as Option<List<ByteArray>> env constants in the layout aiken fmt gives", () => {
+test("the operator allow-list renders as an Option<List<ByteArray>> env constant in the layout aiken fmt gives", () => {
   const profile = structuredClone(readProfiles()["preprod-testing"]);
   const one = "ab".repeat(28);
   const two = "cd".repeat(28);
   profile.allow_lists.operators = [one];
-  profile.allow_lists.fraud_provers = [one, two];
-  const rendered = renderAiken(profile, "");
   assert.match(
-    rendered,
+    renderAiken(profile, ""),
     new RegExp(
       `pub const operator_allow_list: Option<List<ByteArray>> =\\n  Some\\(\\[#"${one}"\\]\\)\\n`,
       "u",
     ),
   );
+  profile.allow_lists.operators = [one, two];
+  const rendered = renderAiken(profile, "");
   assert.ok(
     rendered.includes(
-      `pub const fraud_prover_allow_list: Option<List<ByteArray>> =\n  Some(\n    [\n      #"${one}",\n      #"${two}",\n    ],\n  )\n`,
+      `pub const operator_allow_list: Option<List<ByteArray>> =\n  Some(\n    [\n      #"${one}",\n      #"${two}",\n    ],\n  )\n`,
     ),
   );
-  assert.ok(
-    rendered.includes(
-      "pub const da_challenger_allow_list: Option<List<ByteArray>> = None\n",
-    ),
-  );
+  assert.equal(rendered.match(/_allow_list:/gu)?.length, 1);
 });
 
 test("the profile digest keeps list order and shape", () => {
@@ -998,7 +1000,7 @@ test("excluded fraud-proof categories are distinct catalogue names", () => {
   );
 });
 
-test("the curated emulator profile is the emulator profile with allow-lists and the P1 catalogue", () => {
+test("the curated emulator profile is the emulator profile with an operator list and the P1 catalogue", () => {
   const profiles = readProfiles();
   const strip = ({
     name: _name,

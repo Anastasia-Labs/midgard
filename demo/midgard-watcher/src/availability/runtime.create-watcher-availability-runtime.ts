@@ -13,7 +13,6 @@ import {
   type WatcherAuthenticatedStateQueueObservation,
 } from "../indexers/authenticated-state-queue-observation.js";
 import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
-import type { WatcherPreparedOpen } from "../runtime/observe-and-prepare.js";
 import {
   loadWatcherSecretText,
   type WatcherProcessConfig,
@@ -96,12 +95,6 @@ export const createWatcherAvailabilityRuntime = async (input: {
    * production passes `watcherDaBondPoolReadFailureReporter`.
    */
   onDaBondPoolReadFailure: (error: string) => void;
-  /**
-   * Set when the availability key is not on the DA challenger allow-list:
-   * the watcher builds no Open and hands every due Open here instead, once
-   * per actuating reconciliation (an empty list clears them).
-   */
-  onOpensPrepared?: (opens: readonly WatcherPreparedOpen[]) => void;
 }): Promise<WatcherAvailabilityRuntime> => {
   const lucid = await Lucid(input.l1.provider, input.identity.network, {
     evaluator: createScalusEvaluator(),
@@ -530,7 +523,6 @@ export const createWatcherAvailabilityRuntime = async (input: {
           WatcherAvailabilityStatus,
           | "missedOpenDeadlines"
           | "openRefused"
-          | "openPrepared"
           | "timeoutsDeferred"
           | "workflowRefused"
           | "workflowReleased"
@@ -558,21 +550,6 @@ export const createWatcherAvailabilityRuntime = async (input: {
             ? { phase: "ready", pendingHeaders: [...pending], ...alerts }
             : { ...unresolvedReport, ...alerts };
         if (!actuate || unresolved !== undefined) return;
-        const prepared =
-          input.onOpensPrepared === undefined
-            ? []
-            : ordered
-                .filter(({ action }) => action.action === "open")
-                .map(({ snapshot: { headerHash } }) =>
-                  Object.freeze({
-                    headerHash,
-                    openDeadlineEpochMs:
-                      opens.get(headerHash)?.scope.deadlineEpochMs ?? null,
-                  }),
-                );
-        input.onOpensPrepared?.(prepared);
-        if (prepared.length > 0)
-          alerts = { ...alerts, openPrepared: Object.freeze(prepared) };
         // The journal keeps one workflow per header and admits every header of
         // this deployment. A step it refuses, or an Open the wallet cannot
         // fund, must not starve a live challenge's own settle, close or
@@ -584,9 +561,7 @@ export const createWatcherAvailabilityRuntime = async (input: {
         >();
         const { selected, openRefused, timeoutsDeferred } =
           await buildAdmittedWatcherAvailabilityOperation(
-            input.onOpensPrepared === undefined
-              ? ordered
-              : ordered.filter(({ action }) => action.action !== "open"),
+            ordered,
             (headerHash, action) => {
               const detail = watcherAvailabilityWorkflowRefusal(journal, {
                 actor,

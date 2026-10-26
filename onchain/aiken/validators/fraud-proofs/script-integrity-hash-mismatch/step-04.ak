@@ -38,6 +38,7 @@ validator main(step_05_hash: ScriptHash, thread_policy: PolicyId) {
           own_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
         expect Some(state) = input_state
         let next = fold_next_language_v1(state)

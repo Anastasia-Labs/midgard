@@ -767,7 +767,10 @@ fn close_tx(
     outputs,
     mint,
     fee,
-    validity_range: interval.between(lower, lower + 60_000),
+    validity_range: interval.between(
+      lower,
+      lower + validation_dispute_v1.dispute_max_validity_range_milliseconds,
+    ),
     redeemers: [Pair(Spend(case_out_ref()), redeemer)],
   }
 }
@@ -1858,7 +1861,7 @@ test defend_at_the_end_of_the_defender_clock_is_accepted() {
       root,
       proof.state_hash,
       lower,
-      lower + 60_000,
+      lower + validation_dispute_v1.dispute_max_validity_range_milliseconds,
     ),
   )
   defends(
@@ -1867,7 +1870,10 @@ test defend_at_the_end_of_the_defender_clock_is_accepted() {
     with_output(
       Transaction {
         ..tx,
-        validity_range: interval.between(lower, lower + 60_000),
+        validity_range: interval.between(
+          lower,
+          lower + validation_dispute_v1.dispute_max_validity_range_milliseconds,
+        ),
       },
       1,
       thread_output(datum, validation_case_v1.thread_floor_lovelace),
@@ -1883,7 +1889,10 @@ test defend_after_the_defender_clock_is_refused() fail {
     defend_of(running()),
     Transaction {
       ..tx,
-      validity_range: interval.between(lower, lower + 60_000),
+      validity_range: interval.between(
+        lower,
+        lower + validation_dispute_v1.dispute_max_validity_range_milliseconds,
+      ),
     },
   )
 }
@@ -2441,7 +2450,10 @@ fn thread_close_tx(
     outputs,
     mint,
     fee,
-    validity_range: interval.between(lower, lower + 60_000),
+    validity_range: interval.between(
+      lower,
+      lower + validation_dispute_v1.dispute_max_validity_range_milliseconds,
+    ),
     redeemers: [Pair(Spend(case_out_ref()), redeemer)],
   }
 }

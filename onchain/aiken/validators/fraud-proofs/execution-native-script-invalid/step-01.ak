@@ -83,6 +83,7 @@ validator main(
           own_out_ref,
           inputs,
           outputs,
+          tx.extra_signatories,
         )
         let Pair(subject, _) = substrate.open_forced_subject_v1(
           thread_asset_name,

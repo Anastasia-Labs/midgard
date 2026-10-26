@@ -48,6 +48,7 @@ validator main(
           own_out_ref,
           tx.inputs,
           tx.outputs,
+          tx.extra_signatories,
         )
         expect Some(state) = input_state
         expect scan: OutputScan = state.continuation

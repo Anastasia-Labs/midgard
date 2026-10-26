@@ -1,14 +1,9 @@
 import {
   type AllowList,
-  AllowListRefusal,
   SELECTED_DEPLOYMENT_PROFILE,
 } from "@al-ft/midgard-core/deployment-profile";
+import { FRAUD_PROOF_CATALOGUE_CATEGORY_IDS } from "@al-ft/midgard-sdk";
 import {
-  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
-  FraudProofComputationThreadStepDatum,
-} from "@al-ft/midgard-sdk";
-import {
-  Data,
   generateSeedPhrase,
   Lucid,
   paymentCredentialOf,
@@ -22,19 +17,22 @@ import {
 } from "midgard-node/transactions/register-active-operator";
 import { describe, expect, it } from "vitest";
 
-import { resolveProverSigner } from "../src/index.js";
 import { submitResolvedInit } from "../src/submit-init.js";
 import {
   CURATED_EMULATOR_SEEDS,
   curatedKeyHash,
 } from "./support/curated-emulator.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+import { buildProvedDoubleSpendFixture } from "./support/submit-init-emulator-fixtures.build-proved-double-spend-fixture.js";
 import { buildProvedFixtureDeploymentContext } from "./support/submit-init-emulator-fixtures.deployment-context.js";
 import { EMULATOR_HEADER_CLOCK_HEADROOM_MS } from "./support/submit-init-emulator-fixtures.instrument-lucid-for-removal.js";
 import {
+  expectRemovedFraudProofState,
+  submitRemovalForFixture,
+} from "./support/submit-init-emulator-fixtures.setup-fraudulent-block.js";
+import {
   alignUnixTimeToEmulatorSlotBoundary,
   emulatorAccountFromSeed,
-  expectSingleUtxoWithUnit,
   makeHeader,
   network,
   onboardEmulatorOperator,
@@ -62,35 +60,18 @@ const fundedWallet = async (context: DeploymentContext, seedPhrase: string) => {
   return lucid;
 };
 
-/** A prover signer whose enterprise address the funder pays. */
-const fundedProver = async (context: DeploymentContext, seedPhrase: string) => {
-  const signer = resolveProverSigner({ network, walletSeedPhrase: seedPhrase });
-  const funding = await context.funderLucid
-    .newTx()
-    .pay.ToAddress(signer.address, { lovelace: 3_000_000_000n })
-    .complete();
-  await context.funderLucid.awaitTx(
-    await (await funding.sign.withWallet().complete()).submit(),
-  );
-  const lucid = await Lucid(context.emulator, "Custom");
-  signer.selectWallet(lucid);
-  return { signer, lucid };
-};
-
-describe("preprod-emulator-curated allow-lists and catalogue", () => {
-  it("selects the curated profile, whose lists admit exactly the seeded keys", () => {
+describe("preprod-emulator-curated operator allow-list and catalogue", () => {
+  it("selects the curated profile, whose only list admits exactly the seeded operator", () => {
     expect(SELECTED_DEPLOYMENT_PROFILE.name).toBe("preprod-emulator-curated");
     expect(SELECTED_DEPLOYMENT_PROFILE.allow_lists).toEqual({
       operators: [curatedKeyHash(CURATED_EMULATOR_SEEDS.operator)],
-      fraud_provers: [curatedKeyHash(CURATED_EMULATOR_SEEDS.fraudProver)],
-      da_challengers: [curatedKeyHash(CURATED_EMULATOR_SEEDS.daChallenger)],
     });
   });
 
-  it("registers only a listed operator, and initialises a thread only for a listed prover and a catalogued family", async () => {
+  it("registers only a listed operator, and refuses a thread for a family the catalogue excludes", async () => {
     const context = await buildProvedFixtureDeploymentContext(0n, false, {
       funder: CURATED_EMULATOR_SEEDS.operator,
-      prover: CURATED_EMULATOR_SEEDS.fraudProver,
+      prover: generateSeedPhrase(),
     });
     const { realBlueprint, emulator, funderLucid, contracts, catalogue } =
       context;
@@ -179,81 +160,48 @@ describe("preprod-emulator-curated allow-lists and catalogue", () => {
         contracts.fraudProofCatalogue.spendingScriptAddress,
       root: catalogue.root,
     };
-    const init = (
-      prover: Awaited<ReturnType<typeof fundedProver>>,
-      category: typeof doubleSpend,
-      firstStep: Parameters<typeof initContracts>[0],
-      proverAllowList?: AllowList,
-    ) =>
-      submitResolvedInit({
-        proverAllowList,
-        lucid: prover.lucid,
-        blueprint: realBlueprint,
-        network,
-        label: "curated init",
-        contracts: initContracts(firstStep),
-        category,
-        catalogue: catalogueReference,
-        signer: prover.signer,
-        fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
-        witnessReferenceScripts,
-        awaitConfirmation: true,
-      });
-    const doubleSpendFirstStep =
-      contracts.fraudProofContracts.doubleSpend.steps[0]!;
-
-    // Thread init, negative: a prover the list omits, refused before any
-    // read and, past that check, by the validator.
-    const outsiderProver = await fundedProver(context, generateSeedPhrase());
-    await expect(
-      init(outsiderProver, doubleSpend, doubleSpendFirstStep),
-    ).rejects.toBeInstanceOf(AllowListRefusal);
-    await expectOnchainRefusal(() =>
-      init(outsiderProver, doubleSpend, doubleSpendFirstStep, null),
-    );
-
     // Thread init, negative: a family the curated catalogue leaves out has no
-    // membership proof; the listed prover claims it with another category's.
+    // membership proof; the prover claims it with another category's.
     expect(
       SELECTED_DEPLOYMENT_PROFILE.excluded_fraud_proof_categories,
     ).toContain("unusedRedeemer");
     expect(catalogue.categories.unusedRedeemer).toBeUndefined();
-    const listedProver = {
-      signer: context.proverSigner,
-      lucid: context.proverLucid,
-    };
-    expect(listedProver.signer.paymentKeyHash).toBe(
-      curatedKeyHash(CURATED_EMULATOR_SEEDS.fraudProver),
-    );
     const excluded = contracts.fraudProofs.unusedRedeemer;
     await expectOnchainRefusal(() =>
-      init(
-        listedProver,
-        {
+      submitResolvedInit({
+        lucid: context.proverLucid,
+        blueprint: realBlueprint,
+        network,
+        label: "curated init",
+        contracts: initContracts(excluded),
+        category: {
           categoryId: FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.unusedRedeemer,
           scriptHash: excluded.spendingScriptHash,
           membershipProofCbor: doubleSpend.membershipProofCbor,
         },
-        excluded,
-      ),
+        catalogue: catalogueReference,
+        signer: context.proverSigner,
+        fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+        witnessReferenceScripts,
+        awaitConfirmation: true,
+      }),
     );
+  }, 600_000);
 
-    // Thread init, positive: the listed prover and a catalogued family.
-    const initialised = await init(
-      listedProver,
-      doubleSpend,
-      doubleSpendFirstStep,
-    );
-    const firstStep = await expectSingleUtxoWithUnit(
-      context.proverLucid,
-      initialised.firstStepAddress,
-      initialised.computationThreadUnit,
-    );
-    expect(
-      Data.from(firstStep.datum!, FraudProofComputationThreadStepDatum),
-    ).toEqual({
-      fraud_prover: curatedKeyHash(CURATED_EMULATOR_SEEDS.fraudProver),
-      data: null,
+  it("initialises a thread for a key no profile names, and its double-spend proof convicts", async () => {
+    const fixture = await buildProvedDoubleSpendFixture({
+      seeds: {
+        funder: CURATED_EMULATOR_SEEDS.operator,
+        prover: generateSeedPhrase(),
+      },
     });
+    expect(
+      Object.values(SELECTED_DEPLOYMENT_PROFILE.allow_lists).flat(),
+    ).not.toContain(fixture.proverPaymentKeyHash);
+    const removal = await submitRemovalForFixture(fixture);
+    expect(removal.transactions.map((tx) => tx.removedHeaderHash)).toEqual([
+      fixture.headerHash,
+    ]);
+    await expectRemovedFraudProofState(fixture);
   }, 600_000);
 });
