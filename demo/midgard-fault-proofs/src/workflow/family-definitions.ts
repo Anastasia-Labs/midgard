@@ -12,6 +12,7 @@ import { OBSERVER_ORDER_INVALID_FAMILY_DEFINITION } from "../observer-order-inva
 import { OBSERVERS_FORBIDDEN_FAMILY_DEFINITION } from "../observers-forbidden-on-untagged-network/v1.js";
 import { OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_DEFINITION } from "../output-reference-script-decoding/authenticated-workflow.js";
 import { PROTECTED_OUTPUT_SIGNER_MISSING_FAMILY_DEFINITION } from "../protected-output-signer-missing/authenticated-workflow.js";
+import { RECEIVE_PURPOSE_LANGUAGE_FAMILY_DEFINITION } from "../receive-purpose-language/workflow.js";
 import { REDEEMER_CANONICITY_FAMILY_DEFINITION } from "../redeemer-canonicity/runtime.js";
 import { RESOLVED_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION } from "../resolved-output-non-canonical/authenticated-workflow.js";
 import { SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_DEFINITION } from "../script-integrity-hash-mismatch/workflow.js";
@@ -56,6 +57,7 @@ type CursorFamilyDefinitions = Readonly<{
   missingRedeemer: typeof MISSING_REDEEMER_FAMILY_DEFINITION;
   missingScriptSource: typeof MISSING_SCRIPT_SOURCE_FAMILY_DEFINITION;
   unusedRedeemer: typeof UNUSED_REDEEMER_FAMILY_DEFINITION;
+  receivePurposeLanguage: typeof RECEIVE_PURPOSE_LANGUAGE_FAMILY_DEFINITION;
   scriptIntegrityHashMismatch: typeof SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_DEFINITION;
   distinctAssetAccumulationLimit: typeof DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY_DEFINITION;
 }>;
@@ -89,6 +91,7 @@ export const CURSOR_FAMILY_DEFINITIONS: CursorFamilyDefinitions = Object.freeze(
     missingRedeemer: MISSING_REDEEMER_FAMILY_DEFINITION,
     missingScriptSource: MISSING_SCRIPT_SOURCE_FAMILY_DEFINITION,
     unusedRedeemer: UNUSED_REDEEMER_FAMILY_DEFINITION,
+    receivePurposeLanguage: RECEIVE_PURPOSE_LANGUAGE_FAMILY_DEFINITION,
     scriptIntegrityHashMismatch:
       SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_DEFINITION,
     distinctAssetAccumulationLimit:

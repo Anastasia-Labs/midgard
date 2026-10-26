@@ -79,9 +79,9 @@ export const distinctAssetAccumulationLimitMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole:
         "V1 fraud-proof distinct-asset-accumulation-limit input-rank",
-      manifestPosition: 661,
-      publicationPosition: 656,
-      referenceRolePosition: 656,
+      manifestPosition: 679,
+      publicationPosition: 674,
+      referenceRolePosition: 674,
       commands: [],
       validatorTitle:
         "fraud_proofs/distinct_asset_accumulation_limit/input_rank.main.spend",
@@ -91,9 +91,9 @@ export const distinctAssetAccumulationLimitMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole:
         "V1 fraud-proof distinct-asset-accumulation-limit outputs-grammar",
-      manifestPosition: 662,
-      publicationPosition: 657,
-      referenceRolePosition: 657,
+      manifestPosition: 680,
+      publicationPosition: 675,
+      referenceRolePosition: 675,
       commands: [],
       validatorTitle:
         "fraud_proofs/distinct_asset_accumulation_limit/outputs_grammar.main.spend",
@@ -102,9 +102,9 @@ export const distinctAssetAccumulationLimitMembers = defineDeploymentFamily(
     fraudProofDistinctAssetAccumulationLimitOutputs: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof distinct-asset-accumulation-limit outputs",
-      manifestPosition: 663,
-      publicationPosition: 658,
-      referenceRolePosition: 658,
+      manifestPosition: 681,
+      publicationPosition: 676,
+      referenceRolePosition: 676,
       commands: [],
       validatorTitle:
         "fraud_proofs/distinct_asset_accumulation_limit/outputs.main.spend",
@@ -114,9 +114,9 @@ export const distinctAssetAccumulationLimitMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole:
         "V1 fraud-proof distinct-asset-accumulation-limit mint-grammar",
-      manifestPosition: 664,
-      publicationPosition: 659,
-      referenceRolePosition: 659,
+      manifestPosition: 682,
+      publicationPosition: 677,
+      referenceRolePosition: 677,
       commands: [],
       validatorTitle:
         "fraud_proofs/distinct_asset_accumulation_limit/mint_grammar.main.spend",
@@ -125,9 +125,9 @@ export const distinctAssetAccumulationLimitMembers = defineDeploymentFamily(
     fraudProofDistinctAssetAccumulationLimitMint: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof distinct-asset-accumulation-limit mint",
-      manifestPosition: 665,
-      publicationPosition: 660,
-      referenceRolePosition: 660,
+      manifestPosition: 683,
+      publicationPosition: 678,
+      referenceRolePosition: 678,
       commands: [],
       validatorTitle:
         "fraud_proofs/distinct_asset_accumulation_limit/mint.main.spend",
@@ -137,9 +137,9 @@ export const distinctAssetAccumulationLimitMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole:
         "V1 fraud-proof distinct-asset-accumulation-limit terminal",
-      manifestPosition: 666,
-      publicationPosition: 661,
-      referenceRolePosition: 661,
+      manifestPosition: 684,
+      publicationPosition: 679,
+      referenceRolePosition: 679,
       commands: [],
       validatorTitle:
         "fraud_proofs/distinct_asset_accumulation_limit/terminal.main.spend",

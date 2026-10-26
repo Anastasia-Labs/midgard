@@ -661,9 +661,45 @@ export const DEPLOYMENT_MANIFEST_BASE_REFERENCE_TOKEN_NAMES = Object.freeze({
   "V1 fraud-proof redeemer-canonicity step-02": "V1FpRedeemerCanonS02",
   "V1 fraud-proof redeemer-canonicity step-02 data": "V1FpRedeemerCanonS02Data",
   "V1 fraud-proof redeemer-canonicity step-03": "V1FpRedeemerCanonS03",
-  "V1 fraud-proof receive-purpose-language step-01": "V1FpReceivePurposeS01",
-  "V1 fraud-proof receive-purpose-language step-02": "V1FpReceivePurposeS02",
-  "V1 fraud-proof receive-purpose-language step-03": "V1FpReceivePurposeS03",
+  "V1 fraud-proof receive-purpose-language step-01": "V1FpRecvPurposeS01",
+  "V1 fraud-proof receive-purpose-language bind-event":
+    "V1FpRecvPurposeBindEvent",
+  "V1 fraud-proof receive-purpose-language bind-pre-state":
+    "V1FpRecvPurposeBindPreState",
+  "V1 fraud-proof receive-purpose-language source-start":
+    "V1FpRecvPurposeSrcStart",
+  "V1 fraud-proof receive-purpose-language source-resolved":
+    "V1FpRecvPurposeSrcResolved",
+  "V1 fraud-proof receive-purpose-language source-authenticate":
+    "V1FpRecvPurposeSrcAuth",
+  "V1 fraud-proof receive-purpose-language source-map": "V1FpRecvPurposeSrcMap",
+  "V1 fraud-proof receive-purpose-language source-input-finish":
+    "V1FpRecvPurposeSrcInputFinish",
+  "V1 fraud-proof receive-purpose-language source-grammar":
+    "V1FpRecvPurposeSrcGrammar",
+  "V1 fraud-proof receive-purpose-language source-witnesses":
+    "V1FpRecvPurposeSrcWitnesses",
+  "V1 fraud-proof receive-purpose-language source-finish":
+    "V1FpRecvPurposeSrcFinish",
+  "V1 fraud-proof receive-purpose-language family-entry":
+    "V1FpRecvPurposeEntry",
+  "V1 fraud-proof receive-purpose-language receive-start":
+    "V1FpRecvPurposeRecvStart",
+  "V1 fraud-proof receive-purpose-language receive-grammar":
+    "V1FpRecvPurposeRecvGrammar",
+  "V1 fraud-proof receive-purpose-language receive-outputs":
+    "V1FpRecvPurposeRecvOutputs",
+  "V1 fraud-proof receive-purpose-language receive-finish":
+    "V1FpRecvPurposeRecvFinish",
+  "V1 fraud-proof receive-purpose-language receive-declaration":
+    "V1FpRecvPurposeRecvDecl",
+  "V1 fraud-proof receive-purpose-language source-lookup":
+    "V1FpRecvPurposeSrcLookup",
+  "V1 fraud-proof receive-purpose-language claimed-redeemer-grammar":
+    "V1FpRecvPurposeClaimedGrammar",
+  "V1 fraud-proof receive-purpose-language claimed-redeemer-scan":
+    "V1FpRecvPurposeClaimedScan",
+  "V1 fraud-proof receive-purpose-language terminal": "V1FpRecvPurposeTerminal",
   "V1 fraud-proof unused-script-witness step-01": "V1FpUnusedScriptWitnessS01",
   "V1 fraud-proof unused-script-witness step-02": "V1FpUnusedScriptWitnessS02",
   "V1 fraud-proof unused-script-witness step-03": "V1FpUnusedScriptWitnessS03",

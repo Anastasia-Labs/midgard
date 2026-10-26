@@ -18,6 +18,7 @@ import {
   HttpReadSql,
   HttpReadSqlLive,
 } from "../src/services/database.js";
+import { HTTP_READ_LANE_PERMITS } from "../src/services/http-resource-limits.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 // This regression needs real sockets and independently named PostgreSQL pools:
@@ -73,7 +74,7 @@ describe("public HTTP database capacity", () => {
           yield* Effect.promise(() => once(server, "listening"));
           const endpoint = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
           const controllers = Array.from(
-            { length: 4 },
+            { length: HTTP_READ_LANE_PERMITS.public },
             () => new AbortController(),
           );
           const pending = controllers.map((controller) =>
@@ -91,7 +92,7 @@ describe("public HTTP database capacity", () => {
               );
             }),
           );
-          yield* awaitCount(4);
+          yield* awaitCount(HTTP_READ_LANE_PERMITS.public);
           const started = performance.now();
           const overflow = yield* Effect.promise(() =>
             Promise.all(
@@ -117,7 +118,9 @@ describe("public HTTP database capacity", () => {
             ),
           ).toBe(true);
           expect(performance.now() - started).toBeLessThan(2_000);
-          expect((yield* countReaders)[0]!.count).toBe(4);
+          expect((yield* countReaders)[0]!.count).toBe(
+            HTTP_READ_LANE_PERMITS.public,
+          );
           const txId = createHash("sha256")
             .update("r7-public-read-admission-progress")
             .digest();
@@ -149,6 +152,107 @@ describe("public HTTP database capacity", () => {
           expect(yield* Effect.promise(() => recovered.json())).toEqual({
             application_name: "midgard-node-http-read",
           });
+        }).pipe(Effect.provide(HttpReadSqlLive), Effect.scoped),
+      ),
+    );
+  }, 20_000);
+
+  it("keeps a separate operator lane for readiness and admin reads in both directions", async () => {
+    await Effect.runPromise(
+      provideDatabaseLayers(
+        Effect.gen(function* () {
+          const observer = yield* SqlClient.SqlClient;
+          const readSql = yield* HttpReadSql;
+          const awaitCount = (expected: number) =>
+            Effect.gen(function* () {
+              while (
+                (yield* observer<{
+                  count: number;
+                }>`SELECT COUNT(*)::int AS count FROM pg_stat_activity
+        WHERE datname = current_database() AND application_name = 'midgard-node-http-read'
+          AND state = 'active' AND wait_event = 'PgSleep'`)[0]!.count !==
+                expected
+              )
+                yield* Effect.sleep(10);
+            }).pipe(
+              Effect.timeoutFail({
+                duration: 5_000,
+                onTimeout: () =>
+                  new Error(`HTTP read pool did not reach ${expected} queries`),
+              }),
+            );
+          const delayed = Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            yield* sql`SELECT pg_sleep(20)`;
+            return yield* HttpServerResponse.json({ ok: true });
+          });
+          const fast = Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            yield* sql`SELECT 1`;
+            return yield* HttpServerResponse.json({ ok: true });
+          });
+          const route = HttpRouter.empty.pipe(
+            HttpRouter.get("/public-slow", withHttpReadSql(delayed, 30_000)),
+            HttpRouter.get("/public", withHttpReadSql(fast)),
+            HttpRouter.get(
+              "/operator-slow",
+              withHttpReadSql(delayed, 30_000, "operator"),
+            ),
+            HttpRouter.get(
+              "/operator",
+              withHttpReadSql(fast, 2_000, "operator"),
+            ),
+            Effect.provideService(HttpReadSql, readSql),
+          );
+          const server = createServer(yield* NodeHttpServer.makeHandler(route));
+          server.listen(0, "127.0.0.1");
+          yield* Effect.promise(() => once(server, "listening"));
+          const endpoint = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+          const held: { abort: AbortController; done: Promise<unknown> }[] = [];
+          const hold = (path: string, count: number) =>
+            Array.from({ length: count }, () => {
+              const abort = new AbortController();
+              const entry = {
+                abort,
+                done: fetch(`${endpoint}${path}`, {
+                  signal: abort.signal,
+                }).catch(() => undefined),
+              };
+              held.push(entry);
+              return entry;
+            });
+          const status = (path: string) =>
+            Effect.promise(() =>
+              fetch(`${endpoint}${path}`, {
+                signal: AbortSignal.timeout(2_000),
+              }).then((response) => response.status),
+            );
+          yield* Effect.addFinalizer(() =>
+            Effect.promise(async () => {
+              held.forEach((entry) => entry.abort.abort());
+              await Promise.all(held.map((entry) => entry.done));
+              server.closeAllConnections();
+              await new Promise<void>((resolve) =>
+                server.close(() => resolve()),
+              );
+            }),
+          );
+          const { public: publicPermits, operator: operatorPermits } =
+            HTTP_READ_LANE_PERMITS;
+          const publicHolds = hold("/public-slow", publicPermits);
+          yield* awaitCount(publicPermits);
+          expect(yield* status("/public")).toBe(503);
+          expect(yield* status("/operator")).toBe(200);
+          hold("/operator-slow", operatorPermits);
+          yield* awaitCount(publicPermits + operatorPermits);
+          expect(yield* status("/operator")).toBe(503);
+          publicHolds.forEach((entry) => entry.abort.abort());
+          yield* Effect.promise(() =>
+            Promise.all(publicHolds.map((entry) => entry.done)),
+          );
+          yield* awaitCount(operatorPermits);
+          expect(yield* status("/public")).toBe(200);
+          expect(yield* status("/operator")).toBe(503);
         }).pipe(Effect.provide(HttpReadSqlLive), Effect.scoped),
       ),
     );

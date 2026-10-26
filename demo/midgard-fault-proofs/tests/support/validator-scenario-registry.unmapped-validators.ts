@@ -381,8 +381,6 @@ export const UNMAPPED_VALIDATORS: readonly Readonly<{
       "fraud_proofs/protected_output_signer_missing/step_03.main",
       "fraud_proofs/protected_output_signer_missing/step_04.main",
       "fraud_proofs/protected_output_signer_missing/step_05.main",
-      "fraud_proofs/receive_purpose_language/step_01.main",
-      "fraud_proofs/receive_purpose_language/step_03.main",
       "fraud_proofs/redeemer_canonicity/step_01.main",
       "fraud_proofs/redeemer_canonicity/step_02.main",
       "fraud_proofs/redeemer_canonicity/step_03.main",
@@ -537,7 +535,6 @@ export const UNMAPPED_VALIDATORS: readonly Readonly<{
     reason:
       "validators of the trace-relative families not installed off-chain in this release (UNINSTALLED_FRAUD_PROOF_CATEGORIES), whose scenarios read per-transaction validation trace states from the DA payload, which no longer carries them, and the validation-trace dispute's stage validators, which its dispute suites drive rather than a per-validator scenario; the validators stay deployed.",
     validators: [
-      "fraud_proofs/receive_purpose_language/step_02.main",
       "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_envelope_v1.main",
       "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_execution_settlement_v1.main",
       "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_invalid_data_executor.main",

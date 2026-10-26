@@ -17,6 +17,7 @@ import { detectObserversForbiddenForcedReplay } from "../observers-forbidden-on-
 import { detectOutputReferenceScriptDecodingCanonicalViolations } from "../output-reference-script-decoding/output-reference-script-decoding.canonical-findings.js";
 import { detectProtectedOutputSignerMissingCompleteReplay } from "../protected-output-signer-missing/protected-output-signer-missing.js";
 import { protectedOutputSignerEvidenceIdentity } from "../protected-output-signer-missing/workflow.js";
+import { detectReceivePurposeLanguageReplay } from "../receive-purpose-language/replay.js";
 import {
   deriveResolvedOutputPriorLedgerReplay,
   detectResolvedOutputNonCanonicalCompleteReplay,
@@ -165,6 +166,22 @@ export const UNUSED_REDEEMER_COMPLETE_CANONICAL_REPLAY = completeReplayer(
       }),
     }),
 );
+
+/** Complete receive-purpose-language replay: admitted transactions with a
+ * redeemer, and forced rejections recording
+ * `ReceivePurposePlutusV3Forbidden`. */
+export const RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY =
+  completeReplayer(
+    ["receivePurposeLanguage"],
+    async (evidence, context) =>
+      await detectReceivePurposeLanguageReplay({
+        block: evidence,
+        predecessor: completeCanonicalReplayPredecessorLedger({
+          evidence,
+          context,
+        }),
+      }),
+  );
 
 /** Complete script-integrity-hash-mismatch replay: admitted transactions,
  * forced rejections recording the mismatch, and forced rejections whose

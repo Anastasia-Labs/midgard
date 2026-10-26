@@ -300,6 +300,8 @@ export const publicHttpTransport = (
     );
   if (!isPublicDeploymentProfile(profile.name))
     return { createServer: createHttpServer, hostname: "0.0.0.0" };
+  if (config.HTTP_RATE_LIMITS?.enabled === false)
+    return fail("public deployments cannot disable HTTP rate limits");
   if (env.MIDGARD_DOTENV_MODE !== "disabled")
     return fail("public deployments require disabled checkout dotenv loading");
   if (
