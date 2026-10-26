@@ -428,7 +428,11 @@ describe("production cursor-family authenticated state V1", () => {
       "valueNotPreserved",
       "mintAuthorization",
       "missingRedeemer",
+      "missingScriptSource",
+      "unusedRedeemer",
+      "receivePurposeLanguage",
       "scriptIntegrityHashMismatch",
+      "distinctAssetAccumulationLimit",
       "canonicalDecodability",
       "committedFieldShape",
     ]);

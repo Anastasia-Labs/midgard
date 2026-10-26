@@ -16,16 +16,17 @@ import {
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 
+import { directPurposeInputDescriptorsPresent } from "../direct-purpose-family/script-purposes.js";
+import {
+  directPurposeBindTransitions,
+  type DirectPurposeSourceEvidence,
+  directPurposeSourceTransitions,
+} from "../direct-purpose-family/source-walk.js";
 import {
   buildDirectSourceIndexEvidence,
   directOutputAddress,
   type DirectScriptMaterial,
 } from "../direct-script-derivation/index.js";
-import {
-  missingRedeemerBindTransitions,
-  type MissingRedeemerSourceEvidence,
-  missingRedeemerSourceTransitions,
-} from "../missing-redeemer/source-walk.js";
 import {
   SCRIPT_INTEGRITY_HASH_MISMATCH_CATEGORY_LABEL,
   scriptIntegrityHashMismatchContractRoles,
@@ -116,7 +117,7 @@ const purposeScriptHashes = (
  * purpose's script has no source, so no walk completes. */
 const walkedLanguageBitmap = (
   material: DirectScriptMaterial,
-  evidence: MissingRedeemerSourceEvidence,
+  evidence: DirectPurposeSourceEvidence,
 ): bigint | null => {
   const hashes = purposeScriptHashes(material);
   if (hashes === null) return null;
@@ -133,7 +134,7 @@ const walkedLanguageBitmap = (
 };
 
 export type ScriptIntegrityHashMismatchProofPlan = {
-  readonly evidence: MissingRedeemerSourceEvidence;
+  readonly evidence: DirectPurposeSourceEvidence;
   readonly plan: ReturnType<typeof scriptIntegrityHashMismatchFieldPlans>;
   /** Every custody transition from `bindEvent` to the terminal's input. */
   readonly transitions: readonly ScriptIntegrityHashMismatchTransition[];
@@ -162,8 +163,8 @@ export const prepareScriptIntegrityHashMismatchProof = async ({
   const evidence = await buildDirectSourceIndexEvidence(material);
   const plan = scriptIntegrityHashMismatchFieldPlans(material, prover);
   const source = [
-    ...missingRedeemerBindTransitions(material, prover),
-    ...missingRedeemerSourceTransitions({
+    ...directPurposeBindTransitions(material, prover),
+    ...directPurposeSourceTransitions({
       material,
       evidence,
       prover,
@@ -208,27 +209,13 @@ export const requireConvictingScriptIntegrityHashMismatchProof = async (
   return prepared;
 };
 
-/** Whether every spent and referenced input has a predecessor descriptor;
- * a leaf with an unresolved one is convicted by the input families, and no
- * source index can be built for it. */
-const spentAndReferencedDescriptorsPresent = (
-  material: DirectScriptMaterial,
-): boolean => {
-  const keys = new Set(
-    material.ledger.root.entries.map((entry) => entry.key.toString("hex")),
-  );
-  return [...material.fields[0]!, ...material.fields[1]!].every((key) =>
-    keys.has(key.toString("hex")),
-  );
-};
-
 /** Whether the bound leaf convicts, without planning custody; `null` when it
  * does not, or when a purpose's script or spent descriptor is absent and no
  * walk completes. */
 export const scriptIntegrityHashMismatchDetection = async (
   material: DirectScriptMaterial,
 ): Promise<{ readonly mismatch: boolean } | null> => {
-  if (!spentAndReferencedDescriptorsPresent(material)) return null;
+  if (!directPurposeInputDescriptorsPresent(material)) return null;
   const evidence = await buildDirectSourceIndexEvidence(material);
   const bitmap = walkedLanguageBitmap(material, evidence);
   if (bitmap === null) return null;

@@ -159,6 +159,34 @@ export const FAMILY_SCENARIOS: Readonly<
       },
     ],
   },
+  missingScriptSource: {
+    passing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-missing-script-source-verticals.test.ts",
+        test: "A-N: convicts an accepted transaction whose required observer has no source and removes its block",
+      },
+    ],
+    failing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-missing-script-source-verticals.test.ts",
+        test: "R-F: refuses the node's own ScriptSourceMissing rejection",
+      },
+    ],
+  },
+  unusedRedeemer: {
+    passing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-unused-redeemer-verticals.test.ts",
+        test: "A-N: convicts an accepted transaction carrying a redeemer with no purpose and removes its block",
+      },
+    ],
+    failing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-unused-redeemer-verticals.test.ts",
+        test: "refuses the walk to an honest transaction's consumed redeemer",
+      },
+    ],
+  },
   withdrawnReferenceInput: {
     passing: [
       {

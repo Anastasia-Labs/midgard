@@ -5,6 +5,21 @@ import * as SDK from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import {
+  type DirectPurposeContracts,
+  type DirectPurposeRole,
+  directPurposeRoleIndex,
+} from "../direct-purpose-family/family.js";
+import { fitDirectPurposeTransition } from "../direct-purpose-family/fit.js";
+import {
+  submitDirectPurposeStep01Accepted,
+  submitDirectPurposeStep01Forced,
+} from "../direct-purpose-family/step01.js";
+import {
+  type DirectPurposeCustody,
+  submitDirectPurposeTransition,
+} from "../direct-purpose-family/submit.js";
+import { submitDirectPurposeTerminal } from "../direct-purpose-family/terminal.js";
+import {
   resolveFaultProofFieldCarriagePublications,
   resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening.js";
@@ -33,16 +48,7 @@ import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prer
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import { prepareMissingRedeemerWorkflowArtifact } from "./artifact.js";
-import type {
-  MissingRedeemerContracts,
-  MissingRedeemerRole,
-} from "./contracts.js";
-import {
-  submitMissingRedeemerStep01Accepted,
-  submitMissingRedeemerStep01Forced,
-} from "./step01.js";
-import { submitMissingRedeemerTransition } from "./submit.js";
-import { submitMissingRedeemerTerminal } from "./terminal.js";
+import { MISSING_REDEEMER_FAMILY } from "./contracts.js";
 import {
   missingRedeemerSourceInclusion,
   planMissingRedeemerArtifact,
@@ -62,7 +68,7 @@ export type MissingRedeemerWorkflowReferenceScripts = Readonly<{
 }>;
 
 /** The step a role occupies (1-based). */
-export const missingRedeemerRoleAt = (step: number): MissingRedeemerRole => {
+export const missingRedeemerRoleAt = (step: number): DirectPurposeRole => {
   const role = SDK.MISSING_REDEEMER_ROLE_ORDER[step - 1];
   if (role === undefined)
     throw new Error(`missingRedeemer has no step ${step.toString()}`);
@@ -73,7 +79,7 @@ export const missingRedeemerRoleAt = (step: number): MissingRedeemerRole => {
 export const missingRedeemerWorkflowContracts = (
   binding: FraudProofWorkflowDeploymentBinding<"missingRedeemer">,
   certificate: FieldPreimageCertificateBinding,
-): MissingRedeemerContracts => {
+): DirectPurposeContracts => {
   const resolved = binding.resolvedContracts;
   const chain = resolved.contracts.missingRedeemer;
   if (chain === undefined || resolved.stateQueuePolicyId === undefined)
@@ -98,7 +104,7 @@ type BoundConfig = Readonly<{
   binding: FraudProofWorkflowDeploymentBinding<"missingRedeemer">;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  contracts: MissingRedeemerContracts;
+  contracts: DirectPurposeContracts;
   references: MissingRedeemerWorkflowReferenceScripts;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
@@ -115,9 +121,11 @@ const threadAt = async (lucid: LucidEvolution, threadOutRef: string) => {
 export const createMissingRedeemerTransactionPort = (
   config: BoundConfig,
 ): CursorFamilyTransactionPort<"missingRedeemer"> => {
-  const reference = (role: MissingRedeemerRole) => {
+  const reference = (role: DirectPurposeRole) => {
     const utxo =
-      config.references.steps[SDK.MISSING_REDEEMER_ROLE_ORDER.indexOf(role)];
+      config.references.steps[
+        directPurposeRoleIndex(MISSING_REDEEMER_FAMILY, role)
+      ];
     if (utxo === undefined)
       throw new Error(`missingRedeemer ${role} reference absent`);
     return utxo;
@@ -197,6 +205,7 @@ export const createMissingRedeemerTransactionPort = (
             const role = missingRedeemerRoleAt(step);
             const threadOutRef = cursorStringField(input, "threadOutRef");
             const common = {
+              family: MISSING_REDEEMER_FAMILY,
               lucid: config.lucid,
               contracts: config.contracts,
               categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -208,7 +217,7 @@ export const createMissingRedeemerTransactionPort = (
             };
             if (role === "step01") {
               if (admitted.coordinate.sourceKind === 1) {
-                await submitMissingRedeemerStep01Forced({
+                await submitDirectPurposeStep01Forced({
                   ...common,
                   material: admitted.material,
                   reconstruction: admitted.current,
@@ -221,7 +230,7 @@ export const createMissingRedeemerTransactionPort = (
                 address: config.signer.address,
                 proofCbor: inclusion.txMembershipProofCbor,
               });
-              await submitMissingRedeemerStep01Accepted({
+              await submitDirectPurposeStep01Accepted({
                 ...common,
                 material: admitted.material,
                 blueprint: config.binding.blueprint,
@@ -239,16 +248,23 @@ export const createMissingRedeemerTransactionPort = (
               return;
             }
             if (role === "terminal") {
-              await submitMissingRedeemerTerminal({
+              await submitDirectPurposeTerminal({
                 ...common,
                 witnessReferenceScripts: config.references.witnesses,
               });
               return;
             }
             const thread = await threadAt(config.lucid, threadOutRef);
-            const transition = plan.transitionAt(role, thread.datum);
+            // A page that opens MPF proofs is sized to the transaction
+            // budget; the carriage covers every transaction of the page.
+            const opened = new Set(
+              (plan.paging.isPageStart(role, thread.datum)
+                ? plan.paging.page(role, thread.datum).transitions
+                : [plan.transitionAt(role, thread.datum)]
+              ).flatMap((transition) => transition.fields),
+            );
             const carriage = new Map<number, readonly UTxO[]>();
-            for (const field of transition.fields) {
+            for (const field of opened) {
               const opening = plan.proof.plan(field).openingPlan;
               if (opening.plan.tier === "Inline") continue;
               const published =
@@ -281,24 +297,28 @@ export const createMissingRedeemerTransactionPort = (
                 ...(certificate === undefined ? [] : [certificate]),
               ]);
             }
-            await submitMissingRedeemerTransition(
-              {
-                lucid: config.lucid,
-                blueprint: config.binding.blueprint,
-                network: config.binding.network,
-                contracts: config.contracts,
-                signer: config.signer,
-                unit: threadUnit(thread, config.contracts),
-                references: reference,
-                carriage: (field) => carriage.get(field) ?? [],
-                plan: plan.proof.plan,
-                witnessReferenceScripts: config.references.witnesses,
-                preSubmitBoundary,
-                awaitConfirmation: false,
-              },
+            const custody: DirectPurposeCustody = {
+              family: MISSING_REDEEMER_FAMILY,
+              lucid: config.lucid,
+              blueprint: config.binding.blueprint,
+              network: config.binding.network,
+              contracts: config.contracts,
+              signer: config.signer,
+              unit: threadUnit(thread, config.contracts),
+              references: reference,
+              carriage: (field) => carriage.get(field) ?? [],
+              plan: plan.proof.plan,
+              witnessReferenceScripts: config.references.witnesses,
+              preSubmitBoundary,
+              awaitConfirmation: false,
+            };
+            const transition = await fitDirectPurposeTransition({
+              custody,
+              paging: plan.paging,
+              role,
               thread,
-              transition,
-            );
+            });
+            await submitDirectPurposeTransition(custody, thread, transition);
           },
         ),
       };
@@ -307,7 +327,7 @@ export const createMissingRedeemerTransactionPort = (
 };
 
 /** The thread's one computation-thread token. */
-const threadUnit = (thread: UTxO, contracts: MissingRedeemerContracts) => {
+const threadUnit = (thread: UTxO, contracts: DirectPurposeContracts) => {
   const units = Object.keys(thread.assets).filter((unit) =>
     unit.startsWith(contracts.computationThread.policyId),
   );

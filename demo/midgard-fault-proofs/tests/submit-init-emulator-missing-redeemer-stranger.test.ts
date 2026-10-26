@@ -21,15 +21,16 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { faultProofFieldOpening } from "../src/field-opening.js";
 import {
-  missingRedeemerContractRoles,
-  type MissingRedeemerRole,
-  type MissingRedeemerTransition,
-  submitMissingRedeemerInit,
-  submitMissingRedeemerStep01Forced,
-  submitMissingRedeemerTransition,
-} from "../src/missing-redeemer/index.js";
+  type DirectPurposeRole,
+  directPurposeRoleValidator,
+  type DirectPurposeTransition,
+  submitDirectPurposeInit,
+  submitDirectPurposeStep01Forced,
+  submitDirectPurposeTransition,
+} from "../src/direct-purpose-family/index.js";
+import { faultProofFieldOpening } from "../src/field-opening.js";
+import { MISSING_REDEEMER_FAMILY } from "../src/missing-redeemer/index.js";
 import {
   getCompiledScript,
   phasMembershipRewardAddress,
@@ -99,7 +100,7 @@ const scene = async () => {
   expect(strangerSigner.paymentKeyHash).not.toBe(
     harness.proverSigner.paymentKeyHash,
   );
-  const reference = (role: MissingRedeemerRole) => {
+  const reference = (role: DirectPurposeRole) => {
     const found = references.get(role);
     if (found === undefined) throw new Error(`${role} reference absent`);
     return found.utxo;
@@ -166,7 +167,7 @@ const strangerStep01 = async (s: Scene, thread: UTxO, unit: string) => {
           },
         ],
       },
-      SDK.MissingRedeemerStep01Redeemer,
+      SDK.DirectStep01Redeemer,
     )) satisfies BuildTxWithRedeemer;
   const tx = await strangerLucid
     .newTx()
@@ -194,11 +195,15 @@ const strangerTransition = async (
   s: Scene,
   run: Run,
   thread: UTxO,
-  transition: MissingRedeemerTransition,
+  transition: DirectPurposeTransition,
 ) => {
   const { harness, strangerLucid, strangerSigner } = s;
   const contracts = harness.missingRedeemer;
-  const next = missingRedeemerContractRoles(contracts)[transition.next];
+  const next = directPurposeRoleValidator(
+    MISSING_REDEEMER_FAMILY,
+    contracts,
+    transition.next,
+  );
   const membershipScript: Script = {
     type: "PlutusV3",
     script: getCompiledScript(
@@ -275,7 +280,8 @@ describe("missing-redeemer steps refuse a party other than the thread's prover",
   it("refuses a stranger's forced step-01, then takes the prover's", async () => {
     const s = await scene();
     const { harness, scenario } = s;
-    const init = await submitMissingRedeemerInit({
+    const init = await submitDirectPurposeInit({
+      family: MISSING_REDEEMER_FAMILY,
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       network,
@@ -297,7 +303,7 @@ describe("missing-redeemer steps refuse a party other than the thread's prover",
     expect(outRefLabel(thread)).toBe(init.nextThreadOutRef);
 
     await expectOnchainRefusal(() => strangerStep01(s, thread, unit), {
-      refusedBy: "fraud_proofs/missing_redeemer/step_01",
+      refusedBy: "fraud_proofs/direct_script_derivation/step_01",
       check: /fraud_prover \|> has_signed\(extra_signatories\)/u,
     });
 
@@ -305,7 +311,8 @@ describe("missing-redeemer steps refuse a party other than the thread's prover",
     expect(outRefLabel(await threadAt(s, firstStep, unit))).toBe(
       outRefLabel(thread),
     );
-    const step01 = await submitMissingRedeemerStep01Forced({
+    const step01 = await submitDirectPurposeStep01Forced({
+      family: MISSING_REDEEMER_FAMILY,
       lucid: harness.proverLucid,
       contracts: harness.missingRedeemer,
       categoryId: harness.category.categoryId,
@@ -326,7 +333,7 @@ describe("missing-redeemer steps refuse a party other than the thread's prover",
   it("refuses a stranger's family-entry and claim-adjudicate steps, then convicts with the prover's", async () => {
     const s = await scene();
     const { harness } = s;
-    const contested = new Set<MissingRedeemerRole>([
+    const contested = new Set<DirectPurposeRole>([
       "familyEntry",
       "claimAdjudicate",
     ]);
@@ -343,7 +350,7 @@ describe("missing-redeemer steps refuse a party other than the thread's prover",
     ).toHaveLength(contested.size);
 
     let thread: UTxO = run.thread;
-    const refused: MissingRedeemerRole[] = [];
+    const refused: DirectPurposeRole[] = [];
     for (const transition of planned) {
       if (contested.has(transition.role)) {
         const before = outRefLabel(thread);
@@ -355,7 +362,8 @@ describe("missing-redeemer steps refuse a party other than the thread's prover",
                 check: /fraud_prover \|> has_signed\(extra_signatories\)/u,
               }
             : {
-                refusedBy: "fraud_proofs/missing_redeemer/claim_adjudicate",
+                refusedBy:
+                  "fraud_proofs/direct_script_derivation/claim_adjudicate",
                 check: /fraud_prover \|> has_signed\(extra_signatories\)/u,
               },
         );
@@ -365,7 +373,7 @@ describe("missing-redeemer steps refuse a party other than the thread's prover",
         refused.push(transition.role);
       }
       thread = (
-        await submitMissingRedeemerTransition(run.custody, thread, transition)
+        await submitDirectPurposeTransition(run.custody, thread, transition)
       ).thread;
     }
     expect(refused).toStrictEqual(["familyEntry", "claimAdjudicate"]);

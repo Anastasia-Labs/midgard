@@ -46,8 +46,13 @@ const replayers = {
     FP.OUTPUT_REFERENCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
   redeemerCanonicity: FP.REDEEMER_CANONICITY_COMPLETE_CANONICAL_REPLAY,
   missingRedeemer: FP.MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY,
+  missingScriptSource: FP.MISSING_SCRIPT_SOURCE_COMPLETE_CANONICAL_REPLAY,
+  unusedRedeemer: FP.UNUSED_REDEEMER_COMPLETE_CANONICAL_REPLAY,
+  receivePurposeLanguage: FP.RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY,
   scriptIntegrityHashMismatch:
     FP.SCRIPT_INTEGRITY_HASH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
+  distinctAssetAccumulationLimit:
+    FP.DISTINCT_ASSET_ACCUMULATION_LIMIT_COMPLETE_CANONICAL_REPLAY,
 };
 const runDirectory = process.env.MIDGARD_WATCHER_JOURNEY_RUN_DIR;
 const stagedPath =
@@ -214,7 +219,11 @@ it
       category === "nativeScriptDecoding" ||
       category === "scriptIntegrityHashMissing" ||
       category === "missingRedeemer" ||
-      category === "scriptIntegrityHashMismatch"
+      category === "missingScriptSource" ||
+      category === "unusedRedeemer" ||
+      category === "receivePurposeLanguage" ||
+      category === "scriptIntegrityHashMismatch" ||
+      category === "distinctAssetAccumulationLimit"
     ) {
       const context = FP.headerDecisionReplayContext(classification.decision);
       const replayer = replayers[category];
@@ -244,16 +253,44 @@ it
                 classification: selected,
                 replayContext: context,
               })
-            : category === "scriptIntegrityHashMismatch"
-              ? await FP.prepareScriptIntegrityHashMismatchWorkflowArtifact({
+            : category === "missingScriptSource"
+              ? await FP.prepareMissingScriptSourceWorkflowArtifact({
                   evidence,
                   classification: selected,
                   replayContext: context,
                 })
-              : await FP.prepareScriptIntegrityHashMissingArtifact({
-                  evidence,
-                  classification: selected,
-                });
+              : category === "unusedRedeemer"
+                ? await FP.prepareUnusedRedeemerWorkflowArtifact({
+                    evidence,
+                    classification: selected,
+                    replayContext: context,
+                  })
+                : category === "receivePurposeLanguage"
+                  ? await FP.prepareReceivePurposeLanguageWorkflowArtifact({
+                      evidence,
+                      classification: selected,
+                      replayContext: context,
+                    })
+                  : category === "scriptIntegrityHashMismatch"
+                    ? await FP.prepareScriptIntegrityHashMismatchWorkflowArtifact(
+                        {
+                          evidence,
+                          classification: selected,
+                          replayContext: context,
+                        },
+                      )
+                    : category === "distinctAssetAccumulationLimit"
+                      ? await FP.prepareDistinctAssetAccumulationLimitWorkflowArtifact(
+                          {
+                            evidence,
+                            classification: selected,
+                            replayContext: context,
+                          },
+                        )
+                      : await FP.prepareScriptIntegrityHashMissingArtifact({
+                          evidence,
+                          classification: selected,
+                        });
       expect(artifact.headerHash).toBe(block.headerHash);
     }
     await verifyJourneyFixture({
@@ -268,7 +305,14 @@ it
   60000,
 );
 
-it.each(["missingRedeemer", "scriptIntegrityHashMismatch"] as const)(
+it.each([
+  "missingRedeemer",
+  "missingScriptSource",
+  "unusedRedeemer",
+  "receivePurposeLanguage",
+  "scriptIntegrityHashMismatch",
+  "distinctAssetAccumulationLimit",
+] as const)(
   "classifies the %s forced-claim fixture through the full catalogue and its honest successor as healthy",
   async (category) => {
     const account = generateEmulatorAccount({ lovelace: 100_000_000n });

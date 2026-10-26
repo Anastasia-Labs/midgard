@@ -661,21 +661,117 @@ export const DEPLOYMENT_MANIFEST_BASE_REFERENCE_TOKEN_NAMES = Object.freeze({
   "V1 fraud-proof redeemer-canonicity step-02": "V1FpRedeemerCanonS02",
   "V1 fraud-proof redeemer-canonicity step-02 data": "V1FpRedeemerCanonS02Data",
   "V1 fraud-proof redeemer-canonicity step-03": "V1FpRedeemerCanonS03",
-  "V1 fraud-proof receive-purpose-language step-01": "V1FpReceivePurposeS01",
-  "V1 fraud-proof receive-purpose-language step-02": "V1FpReceivePurposeS02",
-  "V1 fraud-proof receive-purpose-language step-03": "V1FpReceivePurposeS03",
+  "V1 fraud-proof receive-purpose-language step-01": "V1FpRecvPurposeS01",
+  "V1 fraud-proof receive-purpose-language bind-event":
+    "V1FpRecvPurposeBindEvent",
+  "V1 fraud-proof receive-purpose-language bind-pre-state":
+    "V1FpRecvPurposeBindPreState",
+  "V1 fraud-proof receive-purpose-language source-start":
+    "V1FpRecvPurposeSrcStart",
+  "V1 fraud-proof receive-purpose-language source-resolved":
+    "V1FpRecvPurposeSrcResolved",
+  "V1 fraud-proof receive-purpose-language source-authenticate":
+    "V1FpRecvPurposeSrcAuth",
+  "V1 fraud-proof receive-purpose-language source-map": "V1FpRecvPurposeSrcMap",
+  "V1 fraud-proof receive-purpose-language source-input-finish":
+    "V1FpRecvPurposeSrcInputFinish",
+  "V1 fraud-proof receive-purpose-language source-grammar":
+    "V1FpRecvPurposeSrcGrammar",
+  "V1 fraud-proof receive-purpose-language source-witnesses":
+    "V1FpRecvPurposeSrcWitnesses",
+  "V1 fraud-proof receive-purpose-language source-finish":
+    "V1FpRecvPurposeSrcFinish",
+  "V1 fraud-proof receive-purpose-language family-entry":
+    "V1FpRecvPurposeEntry",
+  "V1 fraud-proof receive-purpose-language receive-start":
+    "V1FpRecvPurposeRecvStart",
+  "V1 fraud-proof receive-purpose-language receive-grammar":
+    "V1FpRecvPurposeRecvGrammar",
+  "V1 fraud-proof receive-purpose-language receive-outputs":
+    "V1FpRecvPurposeRecvOutputs",
+  "V1 fraud-proof receive-purpose-language receive-finish":
+    "V1FpRecvPurposeRecvFinish",
+  "V1 fraud-proof receive-purpose-language receive-declaration":
+    "V1FpRecvPurposeRecvDecl",
+  "V1 fraud-proof receive-purpose-language source-lookup":
+    "V1FpRecvPurposeSrcLookup",
+  "V1 fraud-proof receive-purpose-language claimed-redeemer-grammar":
+    "V1FpRecvPurposeClaimedGrammar",
+  "V1 fraud-proof receive-purpose-language claimed-redeemer-scan":
+    "V1FpRecvPurposeClaimedScan",
+  "V1 fraud-proof receive-purpose-language terminal": "V1FpRecvPurposeTerminal",
   "V1 fraud-proof unused-script-witness step-01": "V1FpUnusedScriptWitnessS01",
   "V1 fraud-proof unused-script-witness step-02": "V1FpUnusedScriptWitnessS02",
   "V1 fraud-proof unused-script-witness step-03": "V1FpUnusedScriptWitnessS03",
   "V1 fraud-proof unused-script-witness step-04": "V1FpUnusedScriptWitnessS04",
   "V1 fraud-proof unused-script-witness step-05": "V1FpUnusedScriptWitnessS05",
   "V1 fraud-proof unused-script-witness step-06": "V1FpUnusedScriptWitnessS06",
-  "V1 fraud-proof missing-script-source step-01": "V1FpMissingScriptSourceS01",
-  "V1 fraud-proof missing-script-source step-02": "V1FpMissingScriptSourceS02",
-  "V1 fraud-proof missing-script-source step-03": "V1FpMissingScriptSourceS03",
-  "V1 fraud-proof missing-script-source step-04": "V1FpMissingScriptSourceS04",
-  "V1 fraud-proof missing-script-source step-05": "V1FpMissingScriptSourceS05",
-  "V1 fraud-proof missing-script-source step-06": "V1FpMissingScriptSourceS06",
+  "V1 fraud-proof missing-script-source step-01": "V1FpMissingSrcS01",
+  "V1 fraud-proof missing-script-source bind-event": "V1FpMissingSrcBindEvent",
+  "V1 fraud-proof missing-script-source bind-pre-state":
+    "V1FpMissingSrcBindPreState",
+  "V1 fraud-proof missing-script-source source-start": "V1FpMissingSrcSrcStart",
+  "V1 fraud-proof missing-script-source source-resolved":
+    "V1FpMissingSrcSrcResolved",
+  "V1 fraud-proof missing-script-source source-authenticate":
+    "V1FpMissingSrcSrcAuth",
+  "V1 fraud-proof missing-script-source source-map": "V1FpMissingSrcSrcMap",
+  "V1 fraud-proof missing-script-source source-input-finish":
+    "V1FpMissingSrcSrcInputFinish",
+  "V1 fraud-proof missing-script-source source-grammar":
+    "V1FpMissingSrcSrcGrammar",
+  "V1 fraud-proof missing-script-source source-witnesses":
+    "V1FpMissingSrcSrcWitnesses",
+  "V1 fraud-proof missing-script-source source-finish":
+    "V1FpMissingSrcSrcFinish",
+  "V1 fraud-proof missing-script-source family-entry": "V1FpMissingSrcEntry",
+  "V1 fraud-proof missing-script-source purpose-select":
+    "V1FpMissingSrcPurposeSelect",
+  "V1 fraud-proof missing-script-source spend-select":
+    "V1FpMissingSrcSpendSelect",
+  "V1 fraud-proof missing-script-source spend-scan": "V1FpMissingSrcSpendScan",
+  "V1 fraud-proof missing-script-source mint-grammar":
+    "V1FpMissingSrcMintGrammar",
+  "V1 fraud-proof missing-script-source mint-scan": "V1FpMissingSrcMintScan",
+  "V1 fraud-proof missing-script-source receive-start":
+    "V1FpMissingSrcRecvStart",
+  "V1 fraud-proof missing-script-source receive-grammar":
+    "V1FpMissingSrcRecvGrammar",
+  "V1 fraud-proof missing-script-source receive-outputs":
+    "V1FpMissingSrcRecvOutputs",
+  "V1 fraud-proof missing-script-source receive-finish":
+    "V1FpMissingSrcRecvFinish",
+  "V1 fraud-proof missing-script-source receive-declaration":
+    "V1FpMissingSrcRecvDecl",
+  "V1 fraud-proof missing-script-source source-lookup":
+    "V1FpMissingSrcSrcLookup",
+  "V1 fraud-proof missing-script-source observed-decision":
+    "V1FpMissingSrcObserved",
+  "V1 fraud-proof missing-script-source claim-start":
+    "V1FpMissingSrcClaimStart",
+  "V1 fraud-proof missing-script-source claim-spend-start":
+    "V1FpMissingSrcClaimSpendStart",
+  "V1 fraud-proof missing-script-source claim-spend-scan":
+    "V1FpMissingSrcClaimSpend",
+  "V1 fraud-proof missing-script-source claim-mint-grammar":
+    "V1FpMissingSrcClaimMintGrammar",
+  "V1 fraud-proof missing-script-source claim-mint-scan":
+    "V1FpMissingSrcClaimMintScan",
+  "V1 fraud-proof missing-script-source claim-receive-grammar":
+    "V1FpMissingSrcClaimRecvGrammar",
+  "V1 fraud-proof missing-script-source claim-receive-outputs":
+    "V1FpMissingSrcClaimRecvOutputs",
+  "V1 fraud-proof missing-script-source claim-receive-finish":
+    "V1FpMissingSrcClaimRecvFinish",
+  "V1 fraud-proof missing-script-source claim-receive-declaration":
+    "V1FpMissingSrcClaimRecvDecl",
+  "V1 fraud-proof missing-script-source claim-adjudicate":
+    "V1FpMissingSrcAdjudicate",
+  "V1 fraud-proof missing-script-source claimed-redeemer-grammar":
+    "V1FpMissingSrcClaimedGrammar",
+  "V1 fraud-proof missing-script-source claimed-redeemer-scan":
+    "V1FpMissingSrcClaimedScan",
+  "V1 fraud-proof missing-script-source terminal": "V1FpMissingSrcTerminal",
   "V1 fraud-proof missing-redeemer step-01": "V1FpMissingRdmrS01",
   "V1 fraud-proof missing-redeemer bind-event": "V1FpMissingRdmrBindEvent",
   "V1 fraud-proof missing-redeemer bind-pre-state":
@@ -735,15 +831,41 @@ export const DEPLOYMENT_MANIFEST_BASE_REFERENCE_TOKEN_NAMES = Object.freeze({
   "V1 fraud-proof missing-redeemer claimed-redeemer-scan":
     "V1FpMissingRdmrClaimedScan",
   "V1 fraud-proof missing-redeemer step-05": "V1FpMissingRdmrS05",
-  "V1 fraud-proof unused-redeemer step-01": "V1FpUnusedRedeemerS01",
-  "V1 fraud-proof unused-redeemer step-02": "V1FpUnusedRedeemerS02",
-  "V1 fraud-proof unused-redeemer step-02a": "V1FpUnusedRedeemerS02a",
-  "V1 fraud-proof unused-redeemer step-02b": "V1FpUnusedRedeemerS02b",
-  "V1 fraud-proof unused-redeemer step-02c": "V1FpUnusedRedeemerS02c",
-  "V1 fraud-proof unused-redeemer step-03": "V1FpUnusedRedeemerS03",
-  "V1 fraud-proof unused-redeemer step-04": "V1FpUnusedRedeemerS04",
-  "V1 fraud-proof unused-redeemer step-05": "V1FpUnusedRedeemerS05",
-  "V1 fraud-proof unused-redeemer step-06": "V1FpUnusedRedeemerS06",
+  "V1 fraud-proof unused-redeemer step-01": "V1FpUnusedRdmrS01",
+  "V1 fraud-proof unused-redeemer bind-event": "V1FpUnusedRdmrBindEvent",
+  "V1 fraud-proof unused-redeemer bind-pre-state": "V1FpUnusedRdmrBindPreState",
+  "V1 fraud-proof unused-redeemer source-start": "V1FpUnusedRdmrSrcStart",
+  "V1 fraud-proof unused-redeemer source-resolved": "V1FpUnusedRdmrSrcResolved",
+  "V1 fraud-proof unused-redeemer source-authenticate": "V1FpUnusedRdmrSrcAuth",
+  "V1 fraud-proof unused-redeemer source-map": "V1FpUnusedRdmrSrcMap",
+  "V1 fraud-proof unused-redeemer source-input-finish":
+    "V1FpUnusedRdmrSrcInputFinish",
+  "V1 fraud-proof unused-redeemer source-grammar": "V1FpUnusedRdmrSrcGrammar",
+  "V1 fraud-proof unused-redeemer source-witnesses":
+    "V1FpUnusedRdmrSrcWitnesses",
+  "V1 fraud-proof unused-redeemer source-finish": "V1FpUnusedRdmrSrcFinish",
+  "V1 fraud-proof unused-redeemer family-entry": "V1FpUnusedRdmrEntry",
+  "V1 fraud-proof unused-redeemer redeemer-grammar":
+    "V1FpUnusedRdmrRdmrGrammar",
+  "V1 fraud-proof unused-redeemer redeemer-scan": "V1FpUnusedRdmrRdmrScan",
+  "V1 fraud-proof unused-redeemer claim-start": "V1FpUnusedRdmrClaimStart",
+  "V1 fraud-proof unused-redeemer claim-spend-start":
+    "V1FpUnusedRdmrClaimSpendStart",
+  "V1 fraud-proof unused-redeemer claim-spend-scan": "V1FpUnusedRdmrClaimSpend",
+  "V1 fraud-proof unused-redeemer claim-mint-grammar":
+    "V1FpUnusedRdmrClaimMintGrammar",
+  "V1 fraud-proof unused-redeemer claim-mint-scan":
+    "V1FpUnusedRdmrClaimMintScan",
+  "V1 fraud-proof unused-redeemer claim-receive-grammar":
+    "V1FpUnusedRdmrClaimRecvGrammar",
+  "V1 fraud-proof unused-redeemer claim-receive-outputs":
+    "V1FpUnusedRdmrClaimRecvOutputs",
+  "V1 fraud-proof unused-redeemer claim-receive-finish":
+    "V1FpUnusedRdmrClaimRecvFinish",
+  "V1 fraud-proof unused-redeemer claim-receive-declaration":
+    "V1FpUnusedRdmrClaimRecvDecl",
+  "V1 fraud-proof unused-redeemer claim-adjudicate": "V1FpUnusedRdmrAdjudicate",
+  "V1 fraud-proof unused-redeemer terminal": "V1FpUnusedRdmrTerminal",
   "V1 fraud-proof execution-native-script-invalid step-01":
     "V1FpExecNativeInvalidS01",
   "V1 fraud-proof execution-native-script-invalid step-02":
@@ -814,16 +936,28 @@ export const DEPLOYMENT_MANIFEST_BASE_REFERENCE_TOKEN_NAMES = Object.freeze({
     "V1FpIntegrityTerminal",
   "V1 fraud-proof distinct-asset-accumulation-limit step-01":
     "V1FpDistinctAssetLimitS01",
-  "V1 fraud-proof distinct-asset-accumulation-limit step-02":
-    "V1FpDistinctAssetLimitS02",
-  "V1 fraud-proof distinct-asset-accumulation-limit step-03":
-    "V1FpDistinctAssetLimitS03",
-  "V1 fraud-proof distinct-asset-accumulation-limit step-04":
-    "V1FpDistinctAssetLimitS04",
-  "V1 fraud-proof distinct-asset-accumulation-limit step-05":
-    "V1FpDistinctAssetLimitS05",
-  "V1 fraud-proof distinct-asset-accumulation-limit step-06":
-    "V1FpDistinctAssetLimitS06",
+  "V1 fraud-proof distinct-asset-accumulation-limit bind-event":
+    "V1FpDistinctAssetLimitBindEvent",
+  "V1 fraud-proof distinct-asset-accumulation-limit bind-pre-state":
+    "V1FpDistinctAssetLimitBindPre",
+  "V1 fraud-proof distinct-asset-accumulation-limit family-entry":
+    "V1FpDistinctAssetLimitEntry",
+  "V1 fraud-proof distinct-asset-accumulation-limit inputs":
+    "V1FpDistinctAssetLimitInputs",
+  "V1 fraud-proof distinct-asset-accumulation-limit inputs-resolve":
+    "V1FpDistinctAssetLimitInResolve",
+  "V1 fraud-proof distinct-asset-accumulation-limit input-rank":
+    "V1FpDistinctAssetLimitInRank",
+  "V1 fraud-proof distinct-asset-accumulation-limit outputs-grammar":
+    "V1FpDistinctAssetLimitOutGram",
+  "V1 fraud-proof distinct-asset-accumulation-limit outputs":
+    "V1FpDistinctAssetLimitOutputs",
+  "V1 fraud-proof distinct-asset-accumulation-limit mint-grammar":
+    "V1FpDistinctAssetLimitMintGram",
+  "V1 fraud-proof distinct-asset-accumulation-limit mint":
+    "V1FpDistinctAssetLimitMint",
+  "V1 fraud-proof distinct-asset-accumulation-limit terminal":
+    "V1FpDistinctAssetLimitTerminal",
   "availability-challenge spending": "AvailabilityChallengeSpend",
   "availability-challenge minting": "AvailabilityChallengeMint",
   "availability-challenge open withdrawal": "AvailabilityChallengeOpenYield",

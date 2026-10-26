@@ -10,6 +10,7 @@ import {
   buildCommittedFieldShapeFaultProofContracts,
   buildCorrectionLockValidator,
   buildDaHashPreimageFaultProofContracts,
+  buildDistinctAssetAccumulationLimitFaultProofContracts,
   buildDoubleSpendFaultProofContracts,
   buildDoubleWithdrawFaultProofContracts,
   buildFabricatedDepositFaultProofContracts,
@@ -28,6 +29,7 @@ import {
   buildMintDeclaredAssetLimitFaultProofContracts,
   buildMintItemNonCanonicalFaultProofContracts,
   buildMissingRedeemerFaultProofContracts,
+  buildMissingScriptSourceFaultProofContracts,
   buildMissingSignatureFaultProofContracts,
   buildNativeScriptDecodingFaultProofContracts,
   buildNativeScriptInvalidFaultProofContracts,
@@ -37,6 +39,7 @@ import {
   buildObserversForbiddenOnUntaggedNetworkFaultProofContracts,
   buildOutputReferenceScriptDecodingFaultProofContracts,
   buildProtectedOutputSignerMissingFaultProofContracts,
+  buildReceivePurposeLanguageFaultProofContracts,
   buildRedeemerCanonicityFaultProofContracts,
   buildReferenceInputNoIdxFaultProofContracts,
   buildResolvedOutputNonCanonicalFaultProofContracts,
@@ -47,6 +50,7 @@ import {
   buildTransactionOutputNonCanonicalFaultProofContracts,
   buildTransitionTraceFaultProofContracts,
   buildTxOrderValidators,
+  buildUnusedRedeemerFaultProofContracts,
   buildValidationCaseContracts,
   buildValidationTraceDisputeFaultProofContracts,
   buildValueNotPreservedFaultProofContracts,
@@ -76,13 +80,14 @@ import { expect } from "vitest";
 
 import { type CanonicalDecodabilityContracts } from "../../../src/canonical-decodability/contracts.js";
 import { type CommittedFieldShapeContracts } from "../../../src/committed-field-shape/contracts.js";
+import { type DirectPurposeContracts } from "../../../src/direct-purpose-family/family.js";
+import { type DistinctAssetAccumulationLimitContracts } from "../../../src/distinct-asset-accumulation-limit/contracts.js";
 import { type DoubleWithdrawContracts } from "../../../src/double-withdraw/contracts.js";
 import { type InputSetUniquenessContracts } from "../../../src/input-set-uniqueness/contracts.js";
 import { type L2TxMistagContracts } from "../../../src/l2-tx-mistag/contracts.js";
 import { type MinAdaContracts } from "../../../src/min-ada/contracts.js";
 import { type MinFeeContracts } from "../../../src/min-fee-contracts.js";
 import { type MintAuthorizationContracts } from "../../../src/mint-authorization/contracts.js";
-import { type MissingRedeemerContracts } from "../../../src/missing-redeemer/contracts.js";
 import { type MissingSignatureContracts } from "../../../src/missing-signature/contracts.js";
 import { type NativeScriptDecodingContracts } from "../../../src/native-script-decoding/contracts.js";
 import { type NativeScriptInvalidContracts } from "../../../src/native-script-invalid/contracts.js";
@@ -135,6 +140,9 @@ export const buildMinimalFaultProofContracts = async (
     realValidationTraceDispute = false,
     realNativeScriptDecoding = false,
     realMissingRedeemer = false,
+    realMissingScriptSource = false,
+    realUnusedRedeemer = false,
+    realReceivePurposeLanguage = false,
     realMissingSignature = false,
     realNativeScriptInvalid = false,
     realMinAda = false,
@@ -146,6 +154,7 @@ export const buildMinimalFaultProofContracts = async (
     realWitnessScriptDecoding = false,
     realScriptIntegrityHashMissing = false,
     realScriptIntegrityHashMismatch = false,
+    realDistinctAssetAccumulationLimit = false,
     realWithdrawnReferenceInput = false,
     realMinFee = false,
     realDoubleWithdraw = false,
@@ -190,6 +199,9 @@ export const buildMinimalFaultProofContracts = async (
     readonly realValidationTraceDispute?: boolean;
     readonly realNativeScriptDecoding?: boolean;
     readonly realMissingRedeemer?: boolean;
+    readonly realMissingScriptSource?: boolean;
+    readonly realUnusedRedeemer?: boolean;
+    readonly realReceivePurposeLanguage?: boolean;
     readonly realMissingSignature?: boolean;
     readonly realNativeScriptInvalid?: boolean;
     readonly realMinAda?: boolean;
@@ -201,6 +213,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly realWitnessScriptDecoding?: boolean;
     readonly realScriptIntegrityHashMissing?: boolean;
     readonly realScriptIntegrityHashMismatch?: boolean;
+    readonly realDistinctAssetAccumulationLimit?: boolean;
     readonly realWithdrawnReferenceInput?: boolean;
     readonly realMinFee?: boolean;
     readonly realDoubleWithdraw?: boolean;
@@ -246,8 +259,12 @@ export const buildMinimalFaultProofContracts = async (
     readonly fabricatedDeposit?: FabricatedDepositContracts;
     readonly fabricatedWithdrawal?: FabricatedWithdrawalContracts;
     readonly nativeScriptDecoding?: NativeScriptDecodingContracts;
-    readonly missingRedeemer?: MissingRedeemerContracts;
+    readonly missingRedeemer?: DirectPurposeContracts;
+    readonly missingScriptSource?: DirectPurposeContracts;
+    readonly unusedRedeemer?: DirectPurposeContracts;
+    readonly receivePurposeLanguage?: DirectPurposeContracts;
     readonly scriptIntegrityHashMismatch?: ScriptIntegrityHashMismatchContracts;
+    readonly distinctAssetAccumulationLimit?: DistinctAssetAccumulationLimitContracts;
     readonly missingSignature?: MissingSignatureContracts;
     readonly nativeScriptInvalid?: NativeScriptInvalidContracts;
     readonly minAda?: MinAdaContracts;
@@ -530,9 +547,25 @@ export const buildMinimalFaultProofContracts = async (
     realMissingRedeemer,
     buildMissingRedeemerFaultProofContracts,
   );
+  const missingScriptSourceContracts = await buildFamilyContracts(
+    realMissingScriptSource,
+    buildMissingScriptSourceFaultProofContracts,
+  );
+  const unusedRedeemerContracts = await buildFamilyContracts(
+    realUnusedRedeemer,
+    buildUnusedRedeemerFaultProofContracts,
+  );
+  const receivePurposeLanguageContracts = await buildFamilyContracts(
+    realReceivePurposeLanguage,
+    buildReceivePurposeLanguageFaultProofContracts,
+  );
   const scriptIntegrityHashMismatchContracts = await buildFamilyContracts(
     realScriptIntegrityHashMismatch,
     buildScriptIntegrityHashMismatchFaultProofContracts,
+  );
+  const distinctAssetAccumulationLimitContracts = await buildFamilyContracts(
+    realDistinctAssetAccumulationLimit,
+    buildDistinctAssetAccumulationLimitFaultProofContracts,
   );
   const missingSignatureContracts = await buildFamilyContracts(
     realMissingSignature,
@@ -763,13 +796,48 @@ export const buildMinimalFaultProofContracts = async (
           stateQueuePolicyId: stateQueue.policyId,
           fieldPreimageCertificatePolicyId,
         };
-  const missingRedeemer: MissingRedeemerContracts | undefined =
+  const missingRedeemer: DirectPurposeContracts | undefined =
     missingRedeemerContracts === undefined
       ? undefined
       : {
           steps: missingRedeemerContracts.missingRedeemer.steps as never,
           computationThread: missingRedeemerContracts.computationThread,
           fraudProof: missingRedeemerContracts.fraudProof,
+          hubOraclePolicyId: hubOracle.policyId,
+          stateQueuePolicyId: stateQueue.policyId,
+          fieldPreimageCertificatePolicyId,
+        };
+  const missingScriptSource: DirectPurposeContracts | undefined =
+    missingScriptSourceContracts === undefined
+      ? undefined
+      : {
+          steps: missingScriptSourceContracts.missingScriptSource
+            .steps as never,
+          computationThread: missingScriptSourceContracts.computationThread,
+          fraudProof: missingScriptSourceContracts.fraudProof,
+          hubOraclePolicyId: hubOracle.policyId,
+          stateQueuePolicyId: stateQueue.policyId,
+          fieldPreimageCertificatePolicyId,
+        };
+  const unusedRedeemer: DirectPurposeContracts | undefined =
+    unusedRedeemerContracts === undefined
+      ? undefined
+      : {
+          steps: unusedRedeemerContracts.unusedRedeemer.steps as never,
+          computationThread: unusedRedeemerContracts.computationThread,
+          fraudProof: unusedRedeemerContracts.fraudProof,
+          hubOraclePolicyId: hubOracle.policyId,
+          stateQueuePolicyId: stateQueue.policyId,
+          fieldPreimageCertificatePolicyId,
+        };
+  const receivePurposeLanguage: DirectPurposeContracts | undefined =
+    receivePurposeLanguageContracts === undefined
+      ? undefined
+      : {
+          steps: receivePurposeLanguageContracts.receivePurposeLanguage
+            .steps as never,
+          computationThread: receivePurposeLanguageContracts.computationThread,
+          fraudProof: receivePurposeLanguageContracts.fraudProof,
           hubOraclePolicyId: hubOracle.policyId,
           stateQueuePolicyId: stateQueue.policyId,
           fieldPreimageCertificatePolicyId,
@@ -785,6 +853,21 @@ export const buildMinimalFaultProofContracts = async (
           computationThread:
             scriptIntegrityHashMismatchContracts.computationThread,
           fraudProof: scriptIntegrityHashMismatchContracts.fraudProof,
+          hubOraclePolicyId: hubOracle.policyId,
+          stateQueuePolicyId: stateQueue.policyId,
+          fieldPreimageCertificatePolicyId,
+        };
+  const distinctAssetAccumulationLimit:
+    | DistinctAssetAccumulationLimitContracts
+    | undefined =
+    distinctAssetAccumulationLimitContracts === undefined
+      ? undefined
+      : {
+          steps: distinctAssetAccumulationLimitContracts
+            .distinctAssetAccumulationLimit.steps as never,
+          computationThread:
+            distinctAssetAccumulationLimitContracts.computationThread,
+          fraudProof: distinctAssetAccumulationLimitContracts.fraudProof,
           hubOraclePolicyId: hubOracle.policyId,
           stateQueuePolicyId: stateQueue.policyId,
           fieldPreimageCertificatePolicyId,
@@ -1010,6 +1093,18 @@ export const buildMinimalFaultProofContracts = async (
       missingRedeemer === undefined
         ? withActiveOperators.fraudProofContracts.missingRedeemer
         : chainFromSteps(missingRedeemer.steps),
+    missingScriptSource:
+      missingScriptSource === undefined
+        ? withActiveOperators.fraudProofContracts.missingScriptSource
+        : chainFromSteps(missingScriptSource.steps),
+    unusedRedeemer:
+      unusedRedeemer === undefined
+        ? withActiveOperators.fraudProofContracts.unusedRedeemer
+        : chainFromSteps(unusedRedeemer.steps),
+    receivePurposeLanguage:
+      receivePurposeLanguage === undefined
+        ? withActiveOperators.fraudProofContracts.receivePurposeLanguage
+        : chainFromSteps(receivePurposeLanguage.steps),
     missingSignature:
       missingSignature === undefined
         ? withActiveOperators.fraudProofContracts.missingSignature
@@ -1078,7 +1173,9 @@ export const buildMinimalFaultProofContracts = async (
         ? withActiveOperators.fraudProofContracts.mintAuthorization
         : chainFromSteps(mintAuthorization.steps),
     distinctAssetAccumulationLimit:
-      withActiveOperators.fraudProofContracts.distinctAssetAccumulationLimit,
+      distinctAssetAccumulationLimit === undefined
+        ? withActiveOperators.fraudProofContracts.distinctAssetAccumulationLimit
+        : chainFromSteps(distinctAssetAccumulationLimit.steps),
     fieldItemWidthIllegal:
       fieldItemWidthIllegalContracts?.fieldItemWidthIllegal ??
       withActiveOperators.fraudProofContracts.fieldItemWidthIllegal,
@@ -1137,9 +1234,15 @@ export const buildMinimalFaultProofContracts = async (
     ...(fabricatedWithdrawal === undefined ? {} : { fabricatedWithdrawal }),
     ...(nativeScriptDecoding === undefined ? {} : { nativeScriptDecoding }),
     ...(missingRedeemer === undefined ? {} : { missingRedeemer }),
+    ...(missingScriptSource === undefined ? {} : { missingScriptSource }),
+    ...(unusedRedeemer === undefined ? {} : { unusedRedeemer }),
+    ...(receivePurposeLanguage === undefined ? {} : { receivePurposeLanguage }),
     ...(scriptIntegrityHashMismatch === undefined
       ? {}
       : { scriptIntegrityHashMismatch }),
+    ...(distinctAssetAccumulationLimit === undefined
+      ? {}
+      : { distinctAssetAccumulationLimit }),
     ...(missingSignature === undefined ? {} : { missingSignature }),
     ...(nativeScriptInvalid === undefined ? {} : { nativeScriptInvalid }),
     ...(minAda === undefined ? {} : { minAda }),

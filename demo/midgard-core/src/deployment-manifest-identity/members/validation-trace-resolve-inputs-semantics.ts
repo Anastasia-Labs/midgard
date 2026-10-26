@@ -6,7 +6,7 @@ export const validationTraceResolveInputsSemanticsMembers =
       purpose: "spend",
       referenceRole: "V1 validation-trace resolve-inputs Initial semantic",
       manifestPosition: 69,
-      publicationPosition: 396,
+      publicationPosition: 443,
       referenceRolePosition: 184,
       commands: [],
       validatorTitle:
@@ -20,7 +20,7 @@ export const validationTraceResolveInputsSemanticsMembers =
       purpose: "spend",
       referenceRole: "V1 validation-trace resolve-inputs Finish semantic",
       manifestPosition: 70,
-      publicationPosition: 397,
+      publicationPosition: 444,
       referenceRolePosition: 185,
       commands: [],
       validatorTitle:
@@ -35,7 +35,7 @@ export const validationTraceResolveInputsSemanticsMembers =
       referenceRole:
         "V1 validation-trace resolve-inputs MembershipBegin semantic",
       manifestPosition: 71,
-      publicationPosition: 398,
+      publicationPosition: 445,
       referenceRolePosition: 186,
       commands: [],
       validatorTitle:
@@ -50,7 +50,7 @@ export const validationTraceResolveInputsSemanticsMembers =
       referenceRole:
         "V1 validation-trace resolve-inputs MembershipStep semantic",
       manifestPosition: 72,
-      publicationPosition: 399,
+      publicationPosition: 446,
       referenceRolePosition: 187,
       commands: [],
       validatorTitle:
@@ -65,7 +65,7 @@ export const validationTraceResolveInputsSemanticsMembers =
       referenceRole:
         "V1 validation-trace resolve-inputs MembershipFinalize semantic",
       manifestPosition: 73,
-      publicationPosition: 400,
+      publicationPosition: 447,
       referenceRolePosition: 188,
       commands: [],
       validatorTitle:
@@ -80,7 +80,7 @@ export const validationTraceResolveInputsSemanticsMembers =
       referenceRole:
         "V1 validation-trace resolve-inputs NonMembership semantic",
       manifestPosition: 74,
-      publicationPosition: 401,
+      publicationPosition: 448,
       referenceRolePosition: 189,
       commands: [],
       validatorTitle:

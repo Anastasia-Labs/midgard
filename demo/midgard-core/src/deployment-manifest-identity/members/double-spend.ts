@@ -14,7 +14,7 @@ export const doubleSpendMembers = defineDeploymentFamily("doubleSpend", {
   fraudProofDoubleSpendStep02: {
     purpose: "spend",
     referenceRole: "V1 fraud-proof double-spend step-02",
-    manifestPosition: 460,
+    manifestPosition: 507,
     publicationPosition: 73,
     referenceRolePosition: 150,
     commands: [],
@@ -24,7 +24,7 @@ export const doubleSpendMembers = defineDeploymentFamily("doubleSpend", {
   fraudProofDoubleSpendStep03: {
     purpose: "spend",
     referenceRole: "V1 fraud-proof double-spend step-03",
-    manifestPosition: 461,
+    manifestPosition: 508,
     publicationPosition: 74,
     referenceRolePosition: 151,
     commands: [],
@@ -34,7 +34,7 @@ export const doubleSpendMembers = defineDeploymentFamily("doubleSpend", {
   fraudProofDoubleSpendStep04: {
     purpose: "spend",
     referenceRole: "V1 fraud-proof double-spend step-04",
-    manifestPosition: 462,
+    manifestPosition: 509,
     publicationPosition: 75,
     referenceRolePosition: 152,
     commands: [],
