@@ -3781,17 +3781,18 @@ fn ecdsa_signature_scalar_overflows_v1(signature: ByteArray) -> Bool {
 }
 
 /// Variant E fails a BLS12-381 scalarMul whose scalar is outside
-/// [-2^4095, 2^4095 - 1]. The bound is built at run time, not stored as a
-/// 512-byte literal: 0x80 then 511 zero bytes, read big-endian, is 2^4095.
+/// [-2^4095, 2^4095 - 1]. That range is exactly the scalars s with
+/// quotient(2s + 1, 2^4096) == 0, since quotient truncates toward zero, so a
+/// single 2^4096 bound covers both ends. The bound is built from 0x01 and 512
+/// zero bytes read big-endian; the compiler folds it to one integer literal.
 pub fn bls_scalar_in_bound_v1(scalar: Int) -> Bool {
-  let bound = builtin.bytearray_to_integer(
-    True,
-    builtin.cons_bytearray(128, builtin.replicate_byte(511, 0)),
-  )
-  and {
-    scalar >= -bound,
-    scalar < bound,
-  }
+  builtin.quotient_integer(
+    2 * scalar + 1,
+    builtin.bytearray_to_integer(
+      True,
+      builtin.cons_bytearray(1, builtin.replicate_byte(512, 0)),
+    ),
+  ) == 0
 }
 
 fn outside_int64_v1(value: Int) -> Bool {
