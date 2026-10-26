@@ -32,6 +32,7 @@ import {
   type NodeConfigDep,
   seedPhraseAddress,
 } from "../src/services/config.node-config-dep.js";
+import { DEFAULT_HTTP_RATE_LIMITS } from "../src/services/http-rate-limits.js";
 import { ValidationWorkerError } from "../src/services/validation-pool.js";
 
 const directory = mkdtempSync(join(tmpdir(), "midgard-r7-tls-"));
@@ -139,6 +140,17 @@ describe("public HTTP local preflight and TLS", () => {
         testOnlyReleaseVerifier,
       }),
     ).toThrow("E_PUBLIC_HTTP_CONFIG");
+  });
+  it("refuses a public deployment that disables HTTP rate limits", () => {
+    expect(() =>
+      publicHttpTransport(
+        {
+          ...config,
+          HTTP_RATE_LIMITS: { ...DEFAULT_HTTP_RATE_LIMITS, enabled: false },
+        },
+        { env, profile, testOnlyReleaseVerifier },
+      ),
+    ).toThrow("public deployments cannot disable HTTP rate limits");
   });
   it("calls the real default release verifier before constructing the listener", () => {
     mount();

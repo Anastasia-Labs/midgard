@@ -318,6 +318,11 @@ export const renderPublicOperatorCompose = (env) => {
   };
 };
 
+/**
+ * Health, readiness and admin routes get a per-IP zone of their own and no
+ * global zone, so a public flood that drains the global zone cannot refuse
+ * them; a location's own limit_req replaces the server-level ones.
+ */
 export const renderPublicIngress = (env) => {
   const hostname = publicApiHostname(env);
   return `pid /tmp/nginx.pid;
@@ -343,6 +348,7 @@ http {
   access_log /dev/stdout public;
   limit_req_zone $binary_remote_addr zone=per_ip:1m rate=10r/s;
   limit_req_zone $server_name zone=global:64k rate=100r/s;
+  limit_req_zone $binary_remote_addr zone=liveness_ip:1m rate=10r/s;
   limit_conn_zone $binary_remote_addr zone=connections:1m;
   server {
     listen 8443 ssl;
@@ -384,6 +390,7 @@ http {
     proxy_ssl_protocols TLSv1.3;
     location = /submit { client_max_body_size 64m; proxy_pass https://node:3000; }
     location = /tx/evaluate { client_max_body_size 64m; proxy_pass https://node:3000; }
+    location ~ ^/(healthz|readyz|init|commit|merge|stateQueue|logBlocksDB|logGlobals|operator/status|admin/session)$ { limit_req zone=liveness_ip burst=30 nodelay; proxy_pass https://node:3000; }
     location / { proxy_pass https://node:3000; }
   }
 }
