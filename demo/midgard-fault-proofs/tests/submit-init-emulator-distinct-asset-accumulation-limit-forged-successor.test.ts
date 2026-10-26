@@ -339,17 +339,24 @@ describe("distinct-asset-accumulation-limit forged successor refusal", () => {
   }, 2_400_000);
 
   it("refuses a forged successor at every role of a forced rejection", async () => {
-    expect(
-      screenMidgardForcedTxAdmission(buildDistinctAssetSubject(INPUT_CROSSING)),
-    ).toBe(null);
-    const refused = await forgeEveryRole(
+    for (const shape of [INPUT_CROSSING, MINT_CROSSING])
+      expect(
+        screenMidgardForcedTxAdmission(buildDistinctAssetSubject(shape)),
+      ).toBe(null);
+    const mint = await forgeEveryRole(
+      MINT_CROSSING,
+      rejectedFor("ValueNotPreserved"),
+    );
+    expect(mint).not.toContain("inputRank");
+    const input = await forgeEveryRole(
       INPUT_CROSSING,
       rejectedFor("ValueNotPreserved"),
     );
-    expect(new Set(refused)).toStrictEqual(
+    expect(new Set(input)).toStrictEqual(
       new Set(
         [...EVERY_ROLE].filter((role) => !OUTPUT_AND_MINT_ROLES.includes(role)),
       ),
     );
+    expect(new Set([...mint, ...input])).toStrictEqual(EVERY_ROLE);
   }, 2_400_000);
 });
