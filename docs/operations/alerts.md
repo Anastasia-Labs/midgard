@@ -54,7 +54,9 @@ persists after the named dependency has recovered.
 ### MidgardCommitPlanningCatchUp
 
 **Meaning.** For 30 minutes the commit planner has selected catch-up plans
-(`midgard_commit_planning_catch_up` is 1): the L1 event backlog (deposits,
+(`midgard_commit_planning_catch_up` is 1; it reads 0 while the commit pipeline
+is idle or once the last plan is older than the age limit `/readyz` applies to
+it): the L1 event backlog (deposits,
 withdrawals, forced orders) exceeds one block, so each block commits a
 window of events that stops short of the block time and includes no ordinary
 L2 transactions until the backlog clears.
@@ -99,6 +101,9 @@ refusal code and deployment manifest.
 - `l1_event_identity_conflict`: an event whose public id has a local row
   under another admission. It is a follower hold until a chain change lifts
   it.
+
+Both read 0 while the follower is not running; `/readyz` then names the
+follower's own state.
 
 **First checks.** `l1Follower.readiness` in `GET /readyz`, and the node log
 line `event refused (<reason>): ...` for each event.
@@ -251,6 +256,7 @@ names why:
 | `fault_proof_resubmission_required`   | The next action needs a fresh submission after the latest safe start passed | See escalation                               |
 | `fault_proof_start_deadline_passed`   | The objective's latest safe start passed before it signed any attempt       | Its header leaving the finalized state queue |
 | `prover_funding_orphaned_reservation` | A reservation no workflow will drive holds attempts not yet retired         | Its attempts retired past release finality   |
+| `fault_proof_l1_refused:<reason>`     | The L1 source refused a read the proof needs (for example pruned history)   | The next run whose reads the source answers  |
 
 **First checks.** `l1Readiness` and `supervisor.journalDecisionMissing` in
 `GET /v1/status` give each held objective as `<category>/<headerHash>` with
@@ -264,7 +270,9 @@ deadline-bound ones clears by itself.
 `fault_proof_start_deadline_passed` at once: no command at this release grants
 fresh submission authority to an objective whose safe start has passed.
 Another independent challenger can still prove the same fault while the
-challenge window is open (proving is permissionless).
+challenge window is open (proving is permissionless). Escalate a
+`fault_proof_l1_refused:<reason>` hold that persists across observations:
+history the L1 source has pruned does not come back.
 
 ### MidgardWatcherProofDeadline
 

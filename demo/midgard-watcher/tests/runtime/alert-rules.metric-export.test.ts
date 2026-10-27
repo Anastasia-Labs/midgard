@@ -9,6 +9,7 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
 import { WATCHER_FAULT_PROOF_CONTINUATION_STALLED } from "../../src/fault-proofs/fault-proof-continuation-stall.js";
+import { WATCHER_FAULT_PROOF_L1_REFUSED } from "../../src/fault-proofs/fault-proof-execution-holds.js";
 import { WATCHER_PROVER_FUNDING_UNAVAILABLE } from "../../src/fault-proofs/fault-proof-funding-hold.js";
 import { WATCHER_FAULT_PROOF_QUARANTINED } from "../../src/fault-proofs/fault-proof-quarantine.js";
 import { WATCHER_FAULT_PROOF_RESUBMISSION_REQUIRED } from "../../src/fault-proofs/fault-proof-resubmission-hold.js";
@@ -22,6 +23,7 @@ import {
   L1_EVENT_REFUSALS_UNREADABLE,
   L1_USER_EVENT_REFUSED,
 } from "../../src/l1-follower/event-refusals.js";
+import type { RawReadRefusal } from "../../src/l1-follower/raw-reads.types.js";
 import {
   createWatcherOperationsObservability,
   WATCHER_ALERT_CODES,
@@ -37,6 +39,10 @@ const PROOF_HOLD_REASONS = [
   WATCHER_FAULT_PROOF_QUARANTINED,
   WATCHER_PROVER_FUNDING_UNAVAILABLE,
 ];
+/** An objective held on a refused L1 read, named
+ * `<WATCHER_FAULT_PROOF_L1_REFUSED>:<refusal reason>`: a rule matches the
+ * family with this pattern. */
+const PROOF_L1_REFUSED = `${WATCHER_FAULT_PROOF_L1_REFUSED}:.*`;
 const L1_REASONS = [L1_USER_EVENT_REFUSED];
 
 /** The label values the watcher names, per family and label. */
@@ -53,11 +59,12 @@ const NAMED: Readonly<
       ...WATCHER_OPERATIONS_READINESS_REASONS,
       WATCHER_PROVER_FUNDING_ORPHANED_RESERVATION,
       ...PROOF_HOLD_REASONS,
+      PROOF_L1_REFUSED,
       ...L1_REASONS,
     ],
   },
   midgard_watcher_l1_readiness: {
-    reason: [...PROOF_HOLD_REASONS, ...L1_REASONS],
+    reason: [...PROOF_HOLD_REASONS, PROOF_L1_REFUSED, ...L1_REASONS],
   },
   midgard_watcher_l1_degradation: {
     reason: [L1_USER_EVENT_REFUSED, L1_EVENT_REFUSALS_UNREADABLE],
@@ -114,5 +121,27 @@ describe("the watcher's alert rules", () => {
           expect(named, `${alert}: ${metric}{${label}}`).toContain(value);
       }
     }
+  });
+
+  it("page every fault-proof hold the execution names", async () => {
+    const selectors = alertRuleSelectors(
+      await readFile(new URL("../../alert-rules.yml", import.meta.url), "utf8"),
+    );
+    const proofHeld = selectors.find(
+      ({ alert }) => alert === "MidgardWatcherProofHeld",
+    );
+    const matcher = proofHeld?.matchers.find(
+      ({ label, operator }) => label === "reason" && operator === "=~",
+    );
+    expect(matcher).toBeDefined();
+    // Prometheus anchors a regex matcher at both ends.
+    const pages = new RegExp(`^(?:${matcher!.values.join("|")})$`, "u");
+    const refusal: RawReadRefusal = "point_beyond_retention";
+    for (const reason of [
+      ...PROOF_HOLD_REASONS,
+      WATCHER_PROVER_FUNDING_ORPHANED_RESERVATION,
+      `${WATCHER_FAULT_PROOF_L1_REFUSED}:${refusal}`,
+    ])
+      expect(reason, `MidgardWatcherProofHeld pages ${reason}`).toMatch(pages);
   });
 });

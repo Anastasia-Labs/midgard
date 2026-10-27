@@ -12,6 +12,7 @@ import {
 } from "../src/l1-events/driver.js";
 import { Globals } from "../src/services/globals.js";
 import {
+  L1_NODE_CONFIG_FAILED,
   type L1FollowerHandle,
   startingStatus,
 } from "../src/services/l1-follower.readiness.js";
@@ -29,6 +30,16 @@ import {
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 const deploymentId = "a7".repeat(32);
+
+/** The node's default `READINESS_MAX_HEARTBEAT_AGE_MS`, which `/readyz`
+ * applies to a selected plan. */
+const PLAN_MAX_AGE_MS = 120_000;
+
+/** A plan selected just now, inside the readiness age limit. */
+const freshSelection = (mode: "normal" | "catch_up") => ({
+  ...commitPlanningSelection(mode),
+  observedAtMs: Date.now(),
+});
 
 const refusal = (
   reason: EventRefusal["reason"],
@@ -93,7 +104,7 @@ const run = <A>(
       Effect.gen(function* () {
         yield* resetApplicationTables;
         return yield* body(
-          sampleAlertSignals.pipe(
+          sampleAlertSignals(PLAN_MAX_AGE_MS).pipe(
             Effect.zipRight(Effect.promise(() => exporter.scrape())),
           ),
         );
@@ -116,7 +127,7 @@ describe("alert signal metrics", () => {
         yield* Ref.set(globals.COMMIT_PIPELINE_IDLE, false);
         yield* applyCommitPlanningNotice(
           globals,
-          makeCommitPlanningNotice(commitPlanningSelection("catch_up")),
+          makeCommitPlanningNotice(freshSelection("catch_up")),
         );
         const catchingUp = yield* sampleAndScrape;
         expect(sampleValue(catchingUp, "midgard_local_block_end_time_ms")).toBe(
@@ -130,7 +141,7 @@ describe("alert signal metrics", () => {
         // Back in normal mode the gauge clears.
         yield* applyCommitPlanningNotice(
           globals,
-          makeCommitPlanningNotice(commitPlanningSelection("normal")),
+          makeCommitPlanningNotice(freshSelection("normal")),
         );
         yield* Ref.set(
           globals.LATEST_LOCAL_BLOCK_END_TIME_MS,
@@ -157,6 +168,40 @@ describe("alert signal metrics", () => {
             "midgard_commit_planning_catch_up",
           ),
         ).toBe(0);
+      }),
+    );
+  });
+
+  it("reports catch-up only while the pipeline has work and the plan is current", async () => {
+    await run((sampleAndScrape) =>
+      Effect.gen(function* () {
+        const globals = yield* Globals;
+        const catchUp = () =>
+          Effect.map(sampleAndScrape, (scrape) =>
+            sampleValue(scrape, "midgard_commit_planning_catch_up"),
+          );
+        yield* Ref.set(globals.COMMIT_PIPELINE_IDLE, false);
+        yield* applyCommitPlanningNotice(
+          globals,
+          makeCommitPlanningNotice(freshSelection("catch_up")),
+        );
+        expect(yield* catchUp()).toBe(1);
+
+        // The backlog is committed and the pipeline goes idle: no plan runs,
+        // so the last catch-up plan no longer describes the node.
+        yield* Ref.set(globals.COMMIT_PIPELINE_IDLE, true);
+        expect(yield* catchUp()).toBe(0);
+
+        // Work returns while the catch-up plan is still current.
+        yield* Ref.set(globals.COMMIT_PIPELINE_IDLE, false);
+        expect(yield* catchUp()).toBe(1);
+
+        // A catch-up plan older than readiness's age limit asserts nothing.
+        yield* applyCommitPlanningNotice(
+          globals,
+          makeCommitPlanningNotice(commitPlanningSelection("catch_up")),
+        );
+        expect(yield* catchUp()).toBe(0);
       }),
     );
   });
@@ -196,6 +241,30 @@ describe("alert signal metrics", () => {
         ).toBe(0);
         expect(
           sampleValue(cleared, "midgard_l1_event_refusals", {
+            reason: EVENT_IDENTITY_CONFLICT,
+          }),
+        ).toBe(0);
+
+        // A follower that stops running has no driver view: its last
+        // refusals no longer describe the node.
+        yield* Ref.set(
+          globals.L1_FOLLOWER,
+          runningFollower([refusal(EVENT_UNDECODABLE, "03")], 2),
+        );
+        yield* sampleAndScrape;
+        yield* Ref.set(globals.L1_FOLLOWER, {
+          kind: "failed",
+          reason: L1_NODE_CONFIG_FAILED,
+          detail: "node config refused",
+        });
+        const stopped = yield* sampleAndScrape;
+        expect(
+          sampleValue(stopped, "midgard_l1_event_refusals", {
+            reason: EVENT_UNDECODABLE,
+          }),
+        ).toBe(0);
+        expect(
+          sampleValue(stopped, "midgard_l1_event_refusals", {
             reason: EVENT_IDENTITY_CONFLICT,
           }),
         ).toBe(0);

@@ -58,7 +58,7 @@ const exportedFamilies = () =>
           makeCommitPlanningNotice(commitPlanningSelection("normal")),
         );
         yield* Ref.set(globals.L1_FOLLOWER, runningFollower());
-        yield* sampleAlertSignals;
+        yield* sampleAlertSignals(120_000);
         // Reading the production counter registers its series, unchanged.
         yield* Metric.value(
           Metric.tagged(

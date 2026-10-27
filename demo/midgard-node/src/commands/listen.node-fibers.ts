@@ -163,7 +163,10 @@ export const nodeFibers = ({
     ? monitorMempoolFiber(mkSchedule(1000))
     : Effect.void,
   alertSignals: withMonitoring
-    ? alertSignalsFiber(mkSchedule(ALERT_SIGNALS_SAMPLE_INTERVAL_MS))
+    ? alertSignalsFiber(
+        mkSchedule(ALERT_SIGNALS_SAMPLE_INTERVAL_MS),
+        nodeConfig.READINESS_MAX_HEARTBEAT_AGE_MS,
+      )
     : Effect.void,
   txQueueProcessor: txQueueProcessorFiber(
     mkSchedule(nodeConfig.TX_QUEUE_POLL_INTERVAL_MS),

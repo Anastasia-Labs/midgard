@@ -173,6 +173,17 @@ export const applyCommitPlanningNotice = (
     );
   });
 
+/** How old a selected plan is: from the earlier of the worker's observation
+ * and the parent's receipt. Readiness expires a plan past its age limit. */
+export const commitPlanningAgeMs = (
+  snapshot: CommitPlanningSnapshot,
+  nowMs: number,
+): number =>
+  Math.max(
+    0,
+    nowMs - Math.min(snapshot.selection.observedAtMs, snapshot.receivedAtMs),
+  );
+
 /** Exact current view/epoch matching intentionally invalidates a prior plan
  * after forward advancement as well as rollback/recompute. A stale plan is
  * retained as historical diagnostic evidence with no active mode assertion. */
@@ -194,10 +205,7 @@ export const commitPlanningReadiness = (input: {
     };
   const s = snapshot.selection;
   const gate = input.gate;
-  const ageMs = Math.max(
-    0,
-    input.nowMs - Math.min(s.observedAtMs, snapshot.receivedAtMs),
-  );
+  const ageMs = commitPlanningAgeMs(snapshot, input.nowMs);
   const current = gate?.applied;
   const sameView =
     current !== undefined &&

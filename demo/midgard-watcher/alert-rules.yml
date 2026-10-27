@@ -1,8 +1,9 @@
 # Alert rules for a Midgard watcher. The watcher serves `/metrics` (Prometheus
-# text) on its loopback operations endpoint (`--operations-listen`), so the
-# Prometheus that loads this file runs on the watcher's host. Each alert's
-# runbook section is in docs/operations/alerts.md (the anchor is the alert
-# name in lower case). The `for` durations and windows are starting values.
+# text) on its loopback operations endpoint (`operationsEndpoint` in the
+# watcher process configuration), so the Prometheus that loads this file runs
+# on the watcher's host. Each alert's runbook section is in
+# docs/operations/alerts.md (the anchor is the alert name in lower case). The
+# `for` durations and windows are starting values.
 groups:
   - name: midgard-watcher
     rules:
@@ -57,7 +58,7 @@ groups:
 
       - alert: MidgardWatcherProofHeld
         expr: >-
-          midgard_watcher_readiness_reason{reason=~"fault_proof_resubmission_required|fault_proof_continuation_stalled|fault_proof_objective_quarantined|prover_funding_unavailable|fault_proof_start_deadline_passed|prover_funding_orphaned_reservation"} > 0
+          midgard_watcher_readiness_reason{reason=~"fault_proof_resubmission_required|fault_proof_continuation_stalled|fault_proof_objective_quarantined|prover_funding_unavailable|fault_proof_start_deadline_passed|prover_funding_orphaned_reservation|fault_proof_l1_refused:.*"} > 0
         labels:
           severity: critical
         annotations:

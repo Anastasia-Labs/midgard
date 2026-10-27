@@ -22,6 +22,10 @@ const causeOf = <T>(
   return undefined;
 };
 
+/** The readiness reason of an objective held on a refused L1 read is
+ * `<this>:<refusal reason>`. */
+export const WATCHER_FAULT_PROOF_L1_REFUSED = "fault_proof_l1_refused";
+
 /** The refused L1 read `error` is or wraps, if any. */
 export const l1RefusalOf = (
   error: unknown,

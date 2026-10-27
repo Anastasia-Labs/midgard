@@ -1,6 +1,6 @@
 import { SqlClient } from "@effect/sql/SqlClient";
 import type { SqlError } from "@effect/sql/SqlError";
-import { Cause, Effect, Metric, Ref, Schedule } from "effect";
+import { Cause, Clock, Effect, Metric, Ref, Schedule } from "effect";
 
 import * as SettlementJournal from "../database/settlement.js";
 import {
@@ -10,6 +10,7 @@ import {
 import { Globals } from "../services/globals.js";
 import { ContractDeploymentIdentity } from "../services/midgard-contracts.js";
 import { SETTLEMENT_JOB_FAILURE_CAP } from "../services/settlement-retry.js";
+import { commitPlanningAgeMs } from "../workers/commit-planning-notice.js";
 
 /**
  * Gauges the alert rules (`demo/midgard-node/alert-rules.yml`) read for state
@@ -34,7 +35,7 @@ const commitPlanningCatchUpGauge = Metric.gauge(
   "midgard_commit_planning_catch_up",
   {
     description:
-      "1 when the last selected commit plan was in catch-up mode, 0 when it was normal",
+      "1 when the last selected commit plan is in catch-up mode, the commit pipeline has work and the plan is within the readiness age limit; 0 otherwise",
     bigint: true,
   },
 );
@@ -65,31 +66,41 @@ export const ALERT_SIGNALS_SAMPLE_INTERVAL_MS = 5_000;
 
 const flag = (value: boolean) => Effect.succeed(value ? 1n : 0n);
 
-/** The in-memory signals: frontier, pipeline, planning mode, follower. */
-const sampleInMemorySignals = Effect.gen(function* () {
-  const globals = yield* Globals;
-  yield* localBlockEndTimeGauge(
-    Effect.succeed(yield* Ref.get(globals.LATEST_LOCAL_BLOCK_END_TIME_MS)),
-  );
-  yield* commitPipelineIdleGauge(
-    flag(yield* Ref.get(globals.COMMIT_PIPELINE_IDLE)),
-  );
-  // A new planning attempt clears the plan; the gauge keeps the mode of the
-  // last plan selected until the next one.
-  const planning = yield* Ref.get(globals.COMMIT_PLANNING);
-  if (planning !== null)
-    yield* commitPlanningCatchUpGauge(
-      flag(planning.selection.mode === "catch_up"),
+/**
+ * The in-memory signals: frontier, pipeline, planning mode, follower.
+ * `planMaxAgeMs` is the age past which `/readyz` expires a selected plan.
+ */
+const sampleInMemorySignals = (planMaxAgeMs: number) =>
+  Effect.gen(function* () {
+    const globals = yield* Globals;
+    yield* localBlockEndTimeGauge(
+      Effect.succeed(yield* Ref.get(globals.LATEST_LOCAL_BLOCK_END_TIME_MS)),
     );
-  // Without a running follower there is no driver view to count; readiness
-  // names the follower's own state.
-  const follower = yield* Ref.get(globals.L1_FOLLOWER);
-  if (follower.kind === "running") {
-    const conflicts = follower
-      .holds()
-      .filter(({ reason }) => reason === EVENT_IDENTITY_CONFLICT).length;
+    const idle = yield* Ref.get(globals.COMMIT_PIPELINE_IDLE);
+    yield* commitPipelineIdleGauge(flag(idle));
+    // An idle pipeline plans nothing, and readiness gives an expired plan no
+    // active mode, so neither reports catch-up. A new planning attempt clears
+    // the plan; while it runs the gauge keeps the last plan's mode.
+    const planning = yield* Ref.get(globals.COMMIT_PLANNING);
+    if (idle) yield* commitPlanningCatchUpGauge(flag(false));
+    else if (planning !== null)
+      yield* commitPlanningCatchUpGauge(
+        flag(
+          planning.selection.mode === "catch_up" &&
+            commitPlanningAgeMs(planning, yield* Clock.currentTimeMillis) <=
+              planMaxAgeMs,
+        ),
+      );
+    // Without a running follower there is no driver view, so no refusals;
+    // readiness names the follower's own state.
+    const follower = yield* Ref.get(globals.L1_FOLLOWER);
+    const running = follower.kind === "running" ? follower : undefined;
+    const conflicts =
+      running
+        ?.holds()
+        .filter(({ reason }) => reason === EVENT_IDENTITY_CONFLICT).length ?? 0;
     for (const [reason, count] of [
-      [EVENT_UNDECODABLE, follower.refused?.().length ?? 0],
+      [EVENT_UNDECODABLE, running?.refused?.().length ?? 0],
       [EVENT_IDENTITY_CONFLICT, conflicts],
     ] as const)
       yield* Metric.tagged(
@@ -97,12 +108,11 @@ const sampleInMemorySignals = Effect.gen(function* () {
         "reason",
         reason,
       )(Effect.succeed(BigInt(count)));
-  }
-  const settlement = yield* Ref.get(globals.SETTLEMENT_HEALTH);
-  yield* settlementReconcileStuckGauge(
-    flag(settlement.reconcileStuck !== undefined),
-  );
-});
+    const settlement = yield* Ref.get(globals.SETTLEMENT_HEALTH);
+    yield* settlementReconcileStuckGauge(
+      flag(settlement.reconcileStuck !== undefined),
+    );
+  });
 
 /** Stuck settlement jobs, read as `/readyz` reads them. */
 const sampleSettlementJobs: Effect.Effect<
@@ -122,11 +132,13 @@ const sampleSettlementJobs: Effect.Effect<
 });
 
 /** Publishes every alert signal once. */
-export const sampleAlertSignals: Effect.Effect<
+export const sampleAlertSignals = (
+  planMaxAgeMs: number,
+): Effect.Effect<
   void,
   SqlError,
   Globals | SqlClient | ContractDeploymentIdentity
-> = Effect.zipRight(sampleInMemorySignals, sampleSettlementJobs);
+> => Effect.zipRight(sampleInMemorySignals(planMaxAgeMs), sampleSettlementJobs);
 
 /**
  * Repeats `sampleAlertSignals` on `schedule`. A failed sample is logged and
@@ -135,6 +147,7 @@ export const sampleAlertSignals: Effect.Effect<
  */
 export const alertSignalsFiber = (
   schedule: Schedule.Schedule<number>,
+  planMaxAgeMs: number,
 ): Effect.Effect<
   void,
   never,
@@ -143,7 +156,7 @@ export const alertSignalsFiber = (
   Effect.gen(function* () {
     yield* Effect.logInfo("Alert signal sampler fiber started.");
     yield* Effect.repeat(
-      sampleInMemorySignals.pipe(
+      sampleInMemorySignals(planMaxAgeMs).pipe(
         Effect.zipRight(sampleSettlementJobs),
         Effect.withSpan("alert-signals-fiber"),
         Effect.catchAllCause((cause) =>
