@@ -259,14 +259,16 @@ describe.each(clockHolds)("monotonic %s hold", (_scope, hold) => {
               finished = false;
             const start = performance.now();
             const exit = yield* Effect.exit(
+              // The 200 ms budget leaves the pre-extension sleep room for a
+              // loaded runner; the work then outlives that budget.
               hold(
                 globals,
-                20,
+                200,
                 Effect.gen(function* () {
                   started();
                   yield* Effect.sleep(10);
-                  granted = yield* extendL1ControlPlaneHold(100);
-                  yield* Effect.sleep(50);
+                  granted = yield* extendL1ControlPlaneHold(1000);
+                  yield* Effect.sleep(300);
                   finished = true;
                 }),
               ),
@@ -281,9 +283,9 @@ describe.each(clockHolds)("monotonic %s hold", (_scope, hold) => {
         ),
       );
       expect(Exit.isSuccess(result.exit)).toBe(true);
-      expect(result.granted).toBe(100);
+      expect(result.granted).toBe(1000);
       expect(result.finished).toBe(true);
-      expect(result.elapsed).toBeGreaterThanOrEqual(45);
+      expect(result.elapsed).toBeGreaterThanOrEqual(300);
     },
   );
 });
