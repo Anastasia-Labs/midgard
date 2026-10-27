@@ -230,8 +230,9 @@ describe("validation-trace dispute runner: an evaluator failure holds, then the 
       bounty_claimant: h.proverSigner.paymentKeyHash,
     });
 
-    // A resumed run rebuilds the journaled claim to check it; a rebuild that
-    // fails without a result holds the run the same way, journaling nothing.
+    // A restarted watcher's resumed run rebuilds the journaled claim to check
+    // it; a rebuild that fails without a result holds the run the same way,
+    // journaling nothing.
     injected.openFaults.push(
       new ScriptEvaluationIndeterminateError(
         Buffer.from(txId, "hex"),
@@ -239,7 +240,8 @@ describe("validation-trace dispute runner: an evaluator failure holds, then the 
         { cause: new RangeError("Array buffer allocation failed") },
       ),
     );
-    const resumed = await runner.runOnce(scene.failing);
+    const restarted = makeRunner(scene, { journal: runner.journal });
+    const resumed = await restarted.runOnce(scene.failing);
     expect(resumed).toMatchObject({
       kind: "pending",
       resumeOnObservation: true,

@@ -175,13 +175,19 @@ export const makeRunner = (
     adapters: [options.wrap?.(adapter) ?? adapter],
     launchScope: ["validationTraceDispute"],
   });
-  // A block's detections are its complete replay, the same every run.
+  // A block's detections are its complete replay, the same every run once it
+  // decides. A replay that does not decide (one held on the evaluator) is not
+  // kept, so the next run replays the block again.
   const detections = new WeakMap<Block, ReturnType<typeof detectOn>>();
   const detectionsOf = (block: Block) => {
     let detected = detections.get(block);
     if (detected === undefined) {
-      detected = detectOn(block);
-      detections.set(block, detected);
+      const replay = detectOn(block);
+      detections.set(block, replay);
+      replay.catch(() => {
+        if (detections.get(block) === replay) detections.delete(block);
+      });
+      detected = replay;
     }
     return detected;
   };

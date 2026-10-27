@@ -197,6 +197,7 @@ export const interactiveTests = [
   "./tests/validation-trace-dispute-open.test.ts",
   "./tests/validation-trace-dispute-replay-hold-runner.test.ts",
   "./tests/validation-trace-dispute-runner.test.ts",
+  "./tests/validation-trace-dispute-validated-artifact.test.ts",
   "./tests/validation-trace-dispute-waiting.test.ts",
 ];
 

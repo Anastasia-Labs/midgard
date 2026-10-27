@@ -392,9 +392,10 @@ export const resolutionDrive = <
     feeOf: (label: string) =>
       CML.Transaction.from_cbor_hex(reported.get(label)!).body().fee(),
 
-    /** Each move's fee is paid by its thread when it fits under the cap, and
-     * by our wallet when it does not; every move the runner landed fits the
-     * move the wallet-move reserve is priced at. */
+    /** Each move's fee is paid by its thread when it fits under the cap and
+     * the thread can pay the cap (what it keeps then still holds the ledger
+     * minimum for its successor), and by our wallet otherwise; every move
+     * the runner landed fits the move the wallet-move reserve is priced at. */
     pays: async () => {
       await expectWithinWalletMoveShape(
         dispute.scene,
@@ -402,6 +403,8 @@ export const resolutionDrive = <
           .map(({ hash }) => hash)
           .filter((hash) => dispute.scene.l1.signedCbors.has(hash)),
       );
+      const { coinsPerUtxoByte } =
+        dispute.scene.h.proverLucid.config().protocolParameters!;
       for (const move of moves) {
         const body = bodyOf(move.hash);
         const fee = body.fee();
@@ -411,12 +414,12 @@ export const resolutionDrive = <
           .get(Number(index))
           .amount()
           .coin();
-        const kept = body
-          .outputs()
-          .get(threadOutput(move.cbor)!)
-          .amount()
-          .coin();
-        if (fee > VALIDATION_TRACE_MOVE_FEE_CAP_LOVELACE) {
+        const successor = body.outputs().get(threadOutput(move.cbor)!);
+        const kept = successor.amount().coin();
+        const paysCap =
+          thread - VALIDATION_TRACE_MOVE_FEE_CAP_LOVELACE >=
+          CML.min_ada_required(successor, BigInt(coinsPerUtxoByte));
+        if (fee > VALIDATION_TRACE_MOVE_FEE_CAP_LOVELACE || !paysCap) {
           expect(body.inputs().len()).toBeGreaterThan(1);
           expect(kept).toBe(thread);
         } else {

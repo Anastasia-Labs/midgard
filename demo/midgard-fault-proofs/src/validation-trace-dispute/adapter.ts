@@ -52,10 +52,7 @@ import { validationTraceCaseOrigin } from "./case-origin.js";
 import { validationTraceCaseReads } from "./case-reads.js";
 import type { ValidationTraceClaimMaterial } from "./claim-material.js";
 import { captureValidationTraceClose } from "./close.js";
-import {
-  prepareValidationTraceArtifact,
-  validateValidationTraceArtifact,
-} from "./detected-claim.js";
+import { prepareValidationTraceArtifact } from "./detected-claim.js";
 import { captureValidationTraceLostDefenseSlash } from "./lost-defense-slash.js";
 import {
   dueValidationTraceLostDefenseSlash,
@@ -86,6 +83,7 @@ import {
   captureValidationTraceVerifySource,
   type ValidationTraceDisputeDeployment,
 } from "./transactions.js";
+import { validationTraceArtifactCheck } from "./validated-artifact.js";
 import {
   validationTraceCaseOpenReason,
   validationTraceDefenseDeadlineMs,
@@ -154,6 +152,11 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
   const claimHeld = heldClaimBuildAlarm({ lucid, deployment, now });
   // Each block's claim material, as its saved artifact was last validated.
   const materials = new Map<string, ValidationTraceClaimMaterial>();
+  const artifactCheck = validationTraceArtifactCheck({
+    l1SlotConfig,
+    materials,
+    held: claimHeld,
+  });
   const materialOf = (headerHash: string) => materials.get(headerHash);
   const own = { lucid, signer, deployment };
   const removalStage = createValidationTraceRemoval({ ...own, removal });
@@ -407,22 +410,12 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
         context: replayContext,
         classification,
         l1SlotConfig,
-        onMaterial: (material) => materials.set(evidence.headerHash, material),
+        onMaterial: (material) => {
+          artifactCheck.prepared(evidence.headerHash);
+          materials.set(evidence.headerHash, material);
+        },
       }).catch(claimHeld(evidence.headerHash)),
-    validatePreparedArtifact: async ({
-      evidence,
-      replayContext,
-      classification,
-      artifact,
-    }) =>
-      await validateValidationTraceArtifact({
-        evidence,
-        context: replayContext,
-        classification,
-        artifact,
-        l1SlotConfig,
-        onMaterial: (material) => materials.set(evidence.headerHash, material),
-      }).catch(claimHeld(evidence.headerHash)),
+    validatePreparedArtifact: artifactCheck.check,
     observe,
     preflight: async (context) => {
       const { action, workflowId } = context;
