@@ -62,6 +62,15 @@ const wait = async (condition: () => boolean) => {
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
 };
+/** Whether the kernel holds `child` stopped (state T in /proc/<pid>/stat). */
+const stopped = (child: ChildProcess) => {
+  try {
+    const stat = readFileSync(`/proc/${child.pid}/stat`, "utf8");
+    return stat.slice(stat.lastIndexOf(")") + 2).startsWith("T");
+  } catch {
+    return false;
+  }
+};
 const kill = async (child: ChildProcess) => {
   if (child.exitCode !== null || child.signalCode !== null) return;
   const ended = once(child, "exit");
@@ -89,6 +98,9 @@ it("permits one owner when two Node controllers encounter the same dead lock rec
   for (let index = 0; index < names.length; index++) {
     const name = names[index]!;
     if (!value.marked(name, "read")) continue;
+    // A reader marks "read" and then stops itself: a SIGCONT sent between the
+    // two is lost and leaves it stopped for good.
+    await wait(() => stopped(contenders[index]!));
     contenders[index]!.kill("SIGCONT");
     await wait(
       () => value.marked(name, "owned") || value.marked(name, "refused"),
