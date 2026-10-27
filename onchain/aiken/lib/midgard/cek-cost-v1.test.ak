@@ -90,7 +90,7 @@ test invalid_arity_fails_closed() fail {
 }
 
 test unknown_tag_fails_closed() fail {
-  cek_cost_v1.builtin_budget_v1(87, [1]).cpu == 0
+  cek_cost_v1.builtin_budget_v1(101, [1]).cpu == 0
 }
 
 test division_budget_is_the_division_row() {
@@ -165,4 +165,12 @@ test write_bits_budget_is_the_builtin_row() {
 
 test write_bits_budget_refuses_two_sizes() fail {
   cek_cost_v1.write_bits_budget_v1([1, 1]).cpu > 0
+}
+
+test pv10_budget_refuses_a_pv11_tag() fail {
+  cek_cost_v1.pv10_builtin_budget_v1(87, [1, 1, 1]).cpu >= 0
+}
+
+test pv10_argument_count_refuses_a_pv11_tag() fail {
+  cek_cost_v1.pv10_argument_count_v1(100) >= 0
 }

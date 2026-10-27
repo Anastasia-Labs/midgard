@@ -267,8 +267,9 @@ export const midgardConstantTypeToTags = (
     case "blsMillerLoopResult":
       return [ConstTyTag.bls12_381_MlResult];
     case "array":
+      return [ConstTyTag.array, ...midgardConstantTypeToTags(type.element)];
     case "value":
-      throw new Error("Harmonic numbers Value and array types differently");
+      return [ConstTyTag.value];
   }
 };
 

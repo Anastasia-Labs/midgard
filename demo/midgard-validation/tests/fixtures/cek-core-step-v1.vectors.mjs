@@ -49,6 +49,7 @@ import {
 import { caseConstantPrograms } from "./cek-core-step-v1.case-constant.mjs";
 import { CEK_CONSTR_DATA_INDEX_REFUSALS } from "./cek-core-step-v1.constr-data-vectors.mjs";
 export { CEK_CONSTR_DATA_INDEX_PROGRAMS } from "./cek-core-step-v1.constr-data-vectors.mjs";
+import { pv11Programs } from "./cek-core-step-v1.pv11.mjs";
 
 /** `(program 1.1.0 term)` as canonical Flat bytes, the V1 script payload. */
 export const compileMidgardCekGoldenProgram = (term, encodeProgram) =>
@@ -409,6 +410,7 @@ export const CEK_CORE_STEP_PROGRAMS = [
     maxSteps: 64,
     executionBudget: { cpu: 100_000n, memory: 1_000n },
   },
+  ...pv11Programs(EMPTY_CONTEXT),
 ];
 
 /**

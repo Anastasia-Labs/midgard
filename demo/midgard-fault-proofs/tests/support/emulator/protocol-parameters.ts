@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 
+import { PLUTUS_V3_CANONICAL_COST_MODEL_VIEW } from "@al-ft/midgard-core";
 import {
   type CostModels,
   PROTOCOL_PARAMETERS_DEFAULT,
@@ -174,9 +175,37 @@ export const loadDiagnosticCardanoParameterOverrides =
     };
   };
 
+/**
+ * `costModels` with the Plutus V3 entries it lacks taken from the canonical
+ * view. Lucid's default Plutus V3 model stops before the protocol version 11
+ * builtins (entries 297 to 349), which would leave a validator that calls
+ * one unaffordable; with them it is costed as on mainnet.
+ */
+const withCanonicalPlutusV3Tail = (costModels: CostModels): CostModels => ({
+  ...costModels,
+  PlutusV3: [
+    ...costModels.PlutusV3,
+    ...PLUTUS_V3_CANONICAL_COST_MODEL_VIEW.slice(costModels.PlutusV3.length),
+  ],
+});
+
+const diagnosticOverrides = loadDiagnosticCardanoParameterOverrides();
+
+/**
+ * The protocol version our wallet's evaluator runs scripts at: mainnet's,
+ * whose Plutus V3 builtins include the protocol version 11 ones, as the
+ * emulator's ledger already does. Left unset, the evaluator refuses a
+ * validator that calls one.
+ */
+const PROTOCOL_MAJOR_VERSION = 11;
+
 export const EMULATOR_PROTOCOL_PARAMETERS = {
   ...PROTOCOL_PARAMETERS_DEFAULT,
-  ...loadDiagnosticCardanoParameterOverrides(),
+  protocolMajorVersion: PROTOCOL_MAJOR_VERSION,
+  ...diagnosticOverrides,
+  costModels: withCanonicalPlutusV3Tail(
+    diagnosticOverrides.costModels ?? PROTOCOL_PARAMETERS_DEFAULT.costModels,
+  ),
   ...VAN_ROSSEM_TRANSACTION_LIMITS,
   maxCollateralInputs: 3,
 } as const;

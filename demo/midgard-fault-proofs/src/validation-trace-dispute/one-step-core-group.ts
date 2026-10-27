@@ -40,16 +40,20 @@ export const cekCoreGroup = (
           ? undefined
           : builtinTag === 59n || builtinTag === 66n
             ? 12
-            : 9;
+            : builtinTag > 86n
+              ? 14
+              : 9;
       if (arm === 30)
         return builtinTag === undefined
           ? undefined
-          : builtinTag >= 29n &&
-              builtinTag <= 69n &&
-              builtinTag !== 52n &&
-              builtinTag !== 53n
-            ? 4
-            : 3;
+          : builtinTag > 86n
+            ? 13
+            : builtinTag >= 29n &&
+                builtinTag <= 69n &&
+                builtinTag !== 52n &&
+                builtinTag !== 53n
+              ? 4
+              : 3;
       const groups: Readonly<Record<number, number>> = {
         31: 5,
         32: 6,

@@ -378,8 +378,16 @@ pub fn hash_state_v1(state: MachineStateV1) -> ByteArray {
 
 pub fn builtin_force_count(tag: Int) -> Int {
   expect tag >= 0
-  expect tag <= cek_proof_v1.max_resolved_builtin_tag
-  if or {
+  expect tag <= cek_proof_v1.max_builtin_tag
+  if tag > 86 {
+    // dropList, lengthOfArray, listToArray and indexArray take one type
+    // argument; the other PV 11 builtins none.
+    if tag >= 88 && tag <= 91 {
+      1
+    } else {
+      0
+    }
+  } else if or {
     tag == 29,
     tag == 30,
     tag == 31,
@@ -403,8 +411,10 @@ pub fn builtin_force_count(tag: Int) -> Int {
 
 pub fn builtin_argument_count(tag: Int) -> Int {
   expect tag >= 0
-  expect tag <= cek_proof_v1.max_resolved_builtin_tag
-  if tag == 36 {
+  expect tag <= cek_proof_v1.max_builtin_tag
+  if tag > 86 {
+    cek_cost_v1.pv11_argument_count_v1(tag)
+  } else if tag == 36 {
     6
   } else if or {
     tag == 12,
@@ -1924,7 +1934,11 @@ fn verify_builtin_direct_step(
     arguments_count,
     arguments_root,
   )
-  let budget = cek_builtin_v1.direct_builtin_budget_v1(tag, arguments)
+  let budget = if tag > 86 {
+    cek_builtin_v1.pv11_direct_budget_v1(tag, arguments)
+  } else {
+    cek_builtin_v1.direct_builtin_budget_v1(tag, arguments)
+  }
   and {
     arguments_count == builtin_argument_count(tag),
     pre.focus_root == builtin_root,
@@ -2128,11 +2142,18 @@ fn verify_builtin_failure_step(
 ) -> Bool {
   // The library derives the builtin value root from `arguments` and checks it
   // against the pre-state focus. Uncompress (59, 66) is proved by the
-  // uncompress failure arm and every other builtin by the known failure arm,
-  // as `cek_semantic_chain.core_group` routes them.
+  // uncompress failure arm, the builtins 87 to 100 by the protocol version 11
+  // failure arm and every other builtin by the known failure arm, as
+  // `cek_semantic_chain.core_group` routes them.
   and {
     if tag == 59 || tag == 66 {
       cek_builtin_v1.verify_bls_uncompress_failure_v1(
+        tag,
+        pre.focus_root,
+        arguments,
+      )
+    } else if tag > 86 {
+      cek_builtin_v1.verify_pv11_builtin_failure_v1(
         tag,
         pre.focus_root,
         arguments,
@@ -2156,10 +2177,11 @@ fn builtin_failure_post_is_exact(
   tag: Int,
   arguments: List<cek_builtin_v1.ValueWitnessV1>,
 ) -> Bool {
-  let budget = cek_builtin_v1.authenticated_builtin_failure_budget(
-    tag,
-    arguments,
-  )
+  let budget = if tag > 86 {
+    cek_builtin_v1.pv11_failure_budget_v1(tag, arguments)
+  } else {
+    cek_builtin_v1.authenticated_builtin_failure_budget(tag, arguments)
+  }
   post == exact_state(
     pre,
     mode_halt_error,

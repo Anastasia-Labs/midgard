@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 
 import {
   hashMidgardCekBlsExpressionNode,
-  MIDGARD_CEK_MAX_RESOLVED_BUILTIN_TAG,
+  MIDGARD_CEK_MAX_BUILTIN_TAG,
 } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
@@ -21,13 +21,14 @@ import {
 } from "../src/cek-builtin.js";
 import {
   decodeMidgardCekConstantWitness,
+  encodeMidgardCekConstantTypeCbor,
   encodeMidgardCekPlutusData,
   hashMidgardCekConstantWitness,
   type MidgardCekConstantType,
   type MidgardCekConstantWitness,
   midgardCekConstantWitnessFromUplc,
 } from "../src/cek-constant.js";
-import { UPLCConst } from "../src/uplc-constant.js";
+import { ConstTyTag, UPLCConst } from "../src/uplc-constant.js";
 import {
   type Data,
   DataB,
@@ -48,7 +49,9 @@ type FixtureType =
   | "g1"
   | "g2"
   | "ml"
+  | "value"
   | { readonly list: FixtureType }
+  | { readonly array: FixtureType }
   | { readonly pair: readonly [FixtureType, FixtureType] };
 
 type FixtureData =
@@ -106,8 +109,43 @@ const toData = (value: FixtureData): Data => {
   return new DataConstr(BigInt(value.c), value.f.map(toData));
 };
 
+type FixtureValue = readonly (readonly [
+  string,
+  readonly (readonly [string, string])[],
+])[];
+
+/** A Value as its canonical valueData map. */
+const valueMap = (v: FixtureValue): DataMap<Data, Data> =>
+  new DataMap(
+    v.map(
+      ([policy, tokens]) =>
+        new DataPair(
+          new DataB(fromHex(policy)),
+          new DataMap(
+            tokens.map(
+              ([token, quantity]) =>
+                new DataPair(
+                  new DataB(fromHex(token)),
+                  new DataI(BigInt(quantity)),
+                ),
+            ),
+          ),
+        ),
+    ),
+  ) as DataMap<Data, Data>;
+
 const uplcConstant = (ty: FixtureType, v: unknown): UPLCConst => {
   if (typeof ty === "object") {
+    if ("array" in ty) {
+      const items = (v as readonly unknown[]).map((item) =>
+        uplcConstant(ty.array, item),
+      );
+      const element = uplcConstant(ty.array, sampleValue(ty.array)).type;
+      return new UPLCConst(
+        [ConstTyTag.array, ...element],
+        items.map((item) => item.value) as never,
+      );
+    }
     if ("list" in ty) {
       const items = (v as readonly unknown[]).map((item) =>
         uplcConstant(ty.list, item),
@@ -135,6 +173,8 @@ const uplcConstant = (ty: FixtureType, v: unknown): UPLCConst => {
       return UPLCConst.bool(v as boolean);
     case "data":
       return UPLCConst.data(toData(v as FixtureData));
+    case "value":
+      return new UPLCConst([ConstTyTag.value], valueMap(v as FixtureValue));
     case "g1":
     case "g2":
     case "ml":
@@ -145,7 +185,7 @@ const uplcConstant = (ty: FixtureType, v: unknown): UPLCConst => {
 // A value of the type, used only to read the element type of an empty list.
 const sampleValue = (ty: FixtureType): unknown => {
   if (typeof ty === "object") {
-    return "list" in ty
+    return "list" in ty || "array" in ty
       ? []
       : [sampleValue(ty.pair[0]), sampleValue(ty.pair[1])];
   }
@@ -156,7 +196,8 @@ const sampleValue = (ty: FixtureType): unknown => {
     unit: null,
     bool: false,
     data: { i: "0" },
-  }[ty as "int" | "bs" | "str" | "unit" | "bool" | "data"];
+    value: [],
+  }[ty as "int" | "bs" | "str" | "unit" | "bool" | "data" | "value"];
 };
 
 const blsWitness = (ty: "g1" | "g2", v: string): MidgardCekConstantWitness => ({
@@ -164,12 +205,34 @@ const blsWitness = (ty: "g1" | "g2", v: string): MidgardCekConstantWitness => ({
   payloadCbor: Buffer.from(encodeMidgardCekPlutusData(new DataB(fromHex(v)))),
 });
 
+/** A list or array of points: no UPLC constant holds one, so built directly. */
+const pointSequenceWitness = (
+  ty: FixtureType,
+  v: unknown,
+): MidgardCekConstantWitness | null => {
+  if (typeof ty !== "object" || "pair" in ty) return null;
+  const element = "list" in ty ? ty.list : ty.array;
+  if (element !== "g1" && element !== "g2") return null;
+  return {
+    typeCbor: encodeMidgardCekConstantTypeCbor({
+      kind: "list" in ty ? "list" : "array",
+      element: { kind: element === "g1" ? "blsG1" : "blsG2" },
+    }),
+    payloadCbor: encodeMidgardCekPlutusData(
+      new DataList(
+        (v as readonly string[]).map((point) => new DataB(fromHex(point))),
+      ),
+    ),
+  };
+};
+
 const constantWitness = (
   argument: FixtureArgument,
 ): MidgardCekConstantWitness =>
   argument.ty === "g1" || argument.ty === "g2"
     ? blsWitness(argument.ty, argument.v as string)
-    : midgardCekConstantWitnessFromUplc(uplcConstant(argument.ty, argument.v));
+    : (pointSequenceWitness(argument.ty, argument.v) ??
+      midgardCekConstantWitnessFromUplc(uplcConstant(argument.ty, argument.v)));
 
 const blsExpression = (value: FixtureMl): MidgardCekBlsExpressionWitness =>
   "loop" in value
@@ -219,11 +282,12 @@ const fixtureType = (type: MidgardCekConstantType): FixtureType => {
       return { list: fixtureType(type.element) };
     case "pair":
       return { pair: [fixtureType(type.first), fixtureType(type.second)] };
+    case "array":
+      return { array: fixtureType(type.element) };
+    case "value":
+      return "value";
     case "blsMillerLoopResult":
       throw new Error("a Miller loop result is never a builtin's value");
-    case "array":
-    case "value":
-      throw new Error("this golden set has no Value or array results");
   }
 };
 
@@ -248,9 +312,20 @@ const fixtureValue = (type: MidgardCekConstantType, payload: Data): unknown => {
         cbor: Buffer.from(encodeMidgardCekPlutusData(payload)).toString("hex"),
       };
     case "list":
+    case "array":
       return (payload as DataList).list.map((item) =>
         fixtureValue(type.element, item),
       );
+    case "value":
+      return (payload as DataMap<Data, Data>).map.map(({ fst, snd }) => [
+        Buffer.from((fst as DataB).bytes).toString("hex"),
+        (snd as DataMap<Data, Data>).map.map(
+          ({ fst: token, snd: quantity }) => [
+            Buffer.from((token as DataB).bytes).toString("hex"),
+            (quantity as DataI).int.toString(10),
+          ],
+        ),
+      ]);
     case "pair": {
       const [first, second] = (payload as DataConstr).fields;
       return [
@@ -260,9 +335,6 @@ const fixtureValue = (type: MidgardCekConstantType, payload: Data): unknown => {
     }
     case "blsMillerLoopResult":
       throw new Error("a Miller loop result is never a builtin's value");
-    case "array":
-    case "value":
-      throw new Error("this golden set has no Value or array results");
   }
 };
 
@@ -313,7 +385,7 @@ describe("V1 CEK builtin golden channel", () => {
     if (reachedThroughFinalVerify.includes('"mul"')) covered.add(69);
     expect([...covered].sort((a, b) => a - b)).toEqual(
       Array.from(
-        { length: Number(MIDGARD_CEK_MAX_RESOLVED_BUILTIN_TAG) + 1 },
+        { length: Number(MIDGARD_CEK_MAX_BUILTIN_TAG) + 1 },
         (_, tag) => tag,
       ),
     );

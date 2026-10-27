@@ -2565,3 +2565,431 @@ test budget_86_ripemd_160() {
     },
   }
 }
+
+// expModInteger
+test budget_87_exp_mod_integer() {
+  and {
+    cek_cost_v1.builtin_budget_v1(87, [1, 1, 1]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 891994,
+      memory: 1,
+    },
+    cek_cost_v1.builtin_budget_v1(87, [1, 2, 3]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 2953927,
+      memory: 3,
+    },
+    cek_cost_v1.builtin_budget_v1(87, [3, 2, 1]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 1765252,
+      memory: 1,
+    },
+    cek_cost_v1.builtin_budget_v1(87, [2, 3, 1]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 2192514,
+      memory: 1,
+    },
+    cek_cost_v1.builtin_budget_v1(87, [5, 0, 9]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 607153,
+      memory: 9,
+    },
+    cek_cost_v1.builtin_budget_v1(87, [5, 9, 0]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 910729,
+      memory: 0,
+    },
+    cek_cost_v1.builtin_budget_v1(87, [0, 4, 4]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 7715521,
+      memory: 4,
+    },
+    cek_cost_v1.builtin_budget_v1(87, [100, 37, 64]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 12905017705,
+      memory: 64,
+    },
+  }
+}
+
+// dropList
+test budget_88_drop_list() {
+  and {
+    cek_cost_v1.builtin_budget_v1(88, [0, 3]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 116711,
+      memory: 4,
+    },
+    cek_cost_v1.builtin_budget_v1(88, [3, 0]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 122582,
+      memory: 4,
+    },
+    cek_cost_v1.builtin_budget_v1(88, [1, 1]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 118668,
+      memory: 4,
+    },
+    cek_cost_v1.builtin_budget_v1(88, [2, 10]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 120625,
+      memory: 4,
+    },
+    cek_cost_v1.builtin_budget_v1(88, [10, 2]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 136281,
+      memory: 4,
+    },
+    cek_cost_v1.builtin_budget_v1(88, [7, 7]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 130410,
+      memory: 4,
+    },
+    cek_cost_v1.builtin_budget_v1(88, [100, 37]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 312411,
+      memory: 4,
+    },
+    cek_cost_v1.builtin_budget_v1(88, [9223372036854775807, 0]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 9223372036854775807,
+      memory: 4,
+    },
+  }
+}
+
+// lengthOfArray
+test budget_89_length_of_array() {
+  and {
+    cek_cost_v1.builtin_budget_v1(89, [0]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 231883,
+      memory: 10,
+    },
+    cek_cost_v1.builtin_budget_v1(89, [1]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 231883,
+      memory: 10,
+    },
+    cek_cost_v1.builtin_budget_v1(89, [7]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 231883,
+      memory: 10,
+    },
+    cek_cost_v1.builtin_budget_v1(89, [100]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 231883,
+      memory: 10,
+    },
+  }
+}
+
+// listToArray
+test budget_90_list_to_array() {
+  and {
+    cek_cost_v1.builtin_budget_v1(90, [0]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 1000,
+      memory: 7,
+    },
+    cek_cost_v1.builtin_budget_v1(90, [1]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 25838,
+      memory: 8,
+    },
+    cek_cost_v1.builtin_budget_v1(90, [7]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 174866,
+      memory: 14,
+    },
+    cek_cost_v1.builtin_budget_v1(90, [100]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 2484800,
+      memory: 107,
+    },
+  }
+}
+
+// indexArray
+test budget_91_index_array() {
+  and {
+    cek_cost_v1.builtin_budget_v1(91, [0, 3]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 232010,
+      memory: 32,
+    },
+    cek_cost_v1.builtin_budget_v1(91, [3, 0]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 232010,
+      memory: 32,
+    },
+    cek_cost_v1.builtin_budget_v1(91, [1, 1]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 232010,
+      memory: 32,
+    },
+    cek_cost_v1.builtin_budget_v1(91, [2, 10]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 232010,
+      memory: 32,
+    },
+    cek_cost_v1.builtin_budget_v1(91, [10, 2]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 232010,
+      memory: 32,
+    },
+    cek_cost_v1.builtin_budget_v1(91, [7, 7]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 232010,
+      memory: 32,
+    },
+    cek_cost_v1.builtin_budget_v1(91, [100, 37]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 232010,
+      memory: 32,
+    },
+  }
+}
+
+// bls12_381_G1_multiScalarMul
+test budget_92_bls12_381_g1_multi_scalar_mul() {
+  and {
+    cek_cost_v1.builtin_budget_v1(92, [0, 3]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 321837444,
+      memory: 18,
+    },
+    cek_cost_v1.builtin_budget_v1(92, [3, 0]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 397100451,
+      memory: 18,
+    },
+    cek_cost_v1.builtin_budget_v1(92, [1, 1]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 346925113,
+      memory: 18,
+    },
+    cek_cost_v1.builtin_budget_v1(92, [2, 10]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 372012782,
+      memory: 18,
+    },
+    cek_cost_v1.builtin_budget_v1(92, [10, 2]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 572714134,
+      memory: 18,
+    },
+    cek_cost_v1.builtin_budget_v1(92, [7, 7]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 497451127,
+      memory: 18,
+    },
+    cek_cost_v1.builtin_budget_v1(92, [100, 37]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 2830604344,
+      memory: 18,
+    },
+  }
+}
+
+// bls12_381_G2_multiScalarMul
+test budget_93_bls12_381_g2_multi_scalar_mul() {
+  and {
+    cek_cost_v1.builtin_budget_v1(93, [0, 3]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 617887431,
+      memory: 36,
+    },
+    cek_cost_v1.builtin_budget_v1(93, [3, 0]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 819795903,
+      memory: 36,
+    },
+    cek_cost_v1.builtin_budget_v1(93, [1, 1]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 685190255,
+      memory: 36,
+    },
+    cek_cost_v1.builtin_budget_v1(93, [2, 10]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 752493079,
+      memory: 36,
+    },
+    cek_cost_v1.builtin_budget_v1(93, [10, 2]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 1290915671,
+      memory: 36,
+    },
+    cek_cost_v1.builtin_budget_v1(93, [7, 7]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 1089007199,
+      memory: 36,
+    },
+    cek_cost_v1.builtin_budget_v1(93, [100, 37]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 7348169831,
+      memory: 36,
+    },
+  }
+}
+
+// insertCoin
+test budget_94_insert_coin() {
+  and {
+    cek_cost_v1.builtin_budget_v1(94, [0, 0, 0, 0]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 356924,
+      memory: 45,
+    },
+    cek_cost_v1.builtin_budget_v1(94, [0, 0, 0, 1]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 375337,
+      memory: 66,
+    },
+    cek_cost_v1.builtin_budget_v1(94, [1, 2, 3, 5]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 448989,
+      memory: 150,
+    },
+    cek_cost_v1.builtin_budget_v1(94, [0, 0, 0, 100]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 2198224,
+      memory: 2145,
+    },
+  }
+}
+
+// lookupCoin
+test budget_95_lookup_coin() {
+  and {
+    cek_cost_v1.builtin_budget_v1(95, [1, 1, 1]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 229395,
+      memory: 1,
+    },
+    cek_cost_v1.builtin_budget_v1(95, [1, 2, 3]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 248283,
+      memory: 1,
+    },
+    cek_cost_v1.builtin_budget_v1(95, [3, 2, 1]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 229395,
+      memory: 1,
+    },
+    cek_cost_v1.builtin_budget_v1(95, [2, 3, 1]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 229395,
+      memory: 1,
+    },
+    cek_cost_v1.builtin_budget_v1(95, [5, 0, 9]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 304947,
+      memory: 1,
+    },
+    cek_cost_v1.builtin_budget_v1(95, [5, 9, 0]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 219951,
+      memory: 1,
+    },
+    cek_cost_v1.builtin_budget_v1(95, [0, 4, 4]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 257727,
+      memory: 1,
+    },
+    cek_cost_v1.builtin_budget_v1(95, [100, 37, 64]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 824367,
+      memory: 1,
+    },
+  }
+}
+
+// unionValue
+test budget_96_union_value() {
+  and {
+    cek_cost_v1.builtin_budget_v1(96, [0, 3]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 550450,
+      memory: 87,
+    },
+    cek_cost_v1.builtin_budget_v1(96, [3, 0]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 517348,
+      memory: 87,
+    },
+    cek_cost_v1.builtin_budget_v1(96, [1, 1]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 356272,
+      memory: 66,
+    },
+    cek_cost_v1.builtin_budget_v1(96, [2, 10]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 2176852,
+      memory: 276,
+    },
+    cek_cost_v1.builtin_budget_v1(96, [10, 2]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 2088580,
+      memory: 276,
+    },
+    cek_cost_v1.builtin_budget_v1(96, [7, 7]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 2488156,
+      memory: 318,
+    },
+    cek_cost_v1.builtin_budget_v1(96, [100, 37]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 24011350,
+      memory: 2901,
+    },
+  }
+}
+
+// valueContains
+test budget_97_value_contains() {
+  and {
+    cek_cost_v1.builtin_budget_v1(97, [0, 3]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 213283,
+      memory: 1,
+    },
+    cek_cost_v1.builtin_budget_v1(97, [3, 0]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 624395,
+      memory: 1,
+    },
+    cek_cost_v1.builtin_budget_v1(97, [1, 1]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 648657,
+      memory: 1,
+    },
+    cek_cost_v1.builtin_budget_v1(97, [2, 10]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 213283,
+      memory: 1,
+    },
+    cek_cost_v1.builtin_budget_v1(97, [10, 2]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 694897,
+      memory: 1,
+    },
+    cek_cost_v1.builtin_budget_v1(97, [7, 7]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 830193,
+      memory: 1,
+    },
+    cek_cost_v1.builtin_budget_v1(97, [100, 37]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 1863747,
+      memory: 1,
+    },
+  }
+}
+
+// valueData
+test budget_98_value_data() {
+  and {
+    cek_cost_v1.builtin_budget_v1(98, [0]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 1000,
+      memory: 2,
+    },
+    cek_cost_v1.builtin_budget_v1(98, [1]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 39159,
+      memory: 24,
+    },
+    cek_cost_v1.builtin_budget_v1(98, [7]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 268113,
+      memory: 156,
+    },
+    cek_cost_v1.builtin_budget_v1(98, [100]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 3816900,
+      memory: 2202,
+    },
+  }
+}
+
+// unValueData
+test budget_99_un_value_data() {
+  and {
+    cek_cost_v1.builtin_budget_v1(99, [0]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 1000,
+      memory: 1,
+    },
+    cek_cost_v1.builtin_budget_v1(99, [1]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 96934,
+      memory: 12,
+    },
+    cek_cost_v1.builtin_budget_v1(99, [7]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 672580,
+      memory: 78,
+    },
+    cek_cost_v1.builtin_budget_v1(99, [100]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 9604300,
+      memory: 1101,
+    },
+  }
+}
+
+// scaleValue
+test budget_100_scale_value() {
+  and {
+    cek_cost_v1.builtin_budget_v1(100, [0, 3]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 833731,
+      memory: 75,
+    },
+    cek_cost_v1.builtin_budget_v1(100, [3, 0]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 1000,
+      memory: 12,
+    },
+    cek_cost_v1.builtin_budget_v1(100, [1, 1]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 278577,
+      memory: 33,
+    },
+    cek_cost_v1.builtin_budget_v1(100, [2, 10]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 2776770,
+      memory: 222,
+    },
+    cek_cost_v1.builtin_budget_v1(100, [10, 2]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 556154,
+      memory: 54,
+    },
+    cek_cost_v1.builtin_budget_v1(100, [7, 7]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 1944039,
+      memory: 159,
+    },
+    cek_cost_v1.builtin_budget_v1(100, [100, 37]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 10271349,
+      memory: 789,
+    },
+  }
+}

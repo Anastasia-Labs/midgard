@@ -2,7 +2,7 @@
 
 /**
  * Produces the `cek-builtin-cardano-v1` golden vectors: the outcome of every
- * Plutus V3 builtin tag over the argument mix of
+ * Plutus V3 builtin tag, protocol version 11's included, over the argument mix of
  * `tests/fixtures/cek-builtin-cardano-v1.cases.mjs`, as the pinned Aiken
  * fork's UPLC evaluator (`aiken uplc eval`) computes it. The evaluator
  * implements Cardano's builtin semantics with the same native libraries the
@@ -67,13 +67,14 @@ const TYPE_NAMES = {
   data: "data",
   g1: "bls12_381_G1_element",
   g2: "bls12_381_G2_element",
+  value: "value",
 };
 
 const typeText = (ty) => {
   if (typeof ty === "object") {
-    return "list" in ty
-      ? `(list ${typeText(ty.list)})`
-      : `(pair ${typeText(ty.pair[0])} ${typeText(ty.pair[1])})`;
+    if ("list" in ty) return `(list ${typeText(ty.list)})`;
+    if ("array" in ty) return `(array ${typeText(ty.array)})`;
+    return `(pair ${typeText(ty.pair[0])} ${typeText(ty.pair[1])})`;
   }
   return TYPE_NAMES[ty];
 };
@@ -104,8 +105,9 @@ const stringText = (value) =>
 // inside a list or pair.
 const valueText = (ty, value, nested = false) => {
   if (typeof ty === "object") {
-    if ("list" in ty) {
-      return `[${value.map((item) => valueText(ty.list, item, true)).join(", ")}]`;
+    if ("list" in ty || "array" in ty) {
+      const element = "list" in ty ? ty.list : ty.array;
+      return `[${value.map((item) => valueText(element, item, true)).join(", ")}]`;
     }
     return `(${valueText(ty.pair[0], value[0], true)}, ${valueText(ty.pair[1], value[1], true)})`;
   }
@@ -125,6 +127,13 @@ const valueText = (ty, value, nested = false) => {
     case "g1":
     case "g2":
       return `0x${value}`;
+    case "value":
+      return `[${value
+        .map(
+          ([policy, tokens]) =>
+            `(#${policy}, [${tokens.map(([token, quantity]) => `(#${token}, ${quantity})`).join(", ")}])`,
+        )
+        .join(", ")}]`;
     default:
       throw new Error(`no literal for ${JSON.stringify(ty)}`);
   }
@@ -235,7 +244,9 @@ const readType = (cursor) => {
     const ty =
       head === "list"
         ? { list: readType(cursor) }
-        : { pair: [readType(cursor), readType(cursor)] };
+        : head === "array"
+          ? { array: readType(cursor) }
+          : { pair: [readType(cursor), readType(cursor)] };
     expect(cursor, ")");
     return ty;
   }
@@ -327,10 +338,30 @@ const serialiseData = (data) => {
   return { cbor: word(cursor).slice(1) };
 };
 
+/** A printed Value: `[(#policy, [(#token, quantity), ...]), ...]`. */
+const readLedgerValue = (cursor) =>
+  readItems(cursor, (entry) => {
+    expect(entry, "(");
+    const policy = word(entry).slice(1);
+    expect(entry, ",");
+    const tokens = readItems(entry, (inner) => {
+      expect(inner, "(");
+      const token = word(inner).slice(1);
+      expect(inner, ",");
+      const quantity = word(inner);
+      expect(inner, ")");
+      return [token, quantity];
+    });
+    expect(entry, ")");
+    return [policy, tokens];
+  });
+
 const readValue = (cursor, ty) => {
   if (typeof ty === "object") {
-    if ("list" in ty)
-      return readItems(cursor, (inner) => readValue(inner, ty.list));
+    if ("list" in ty || "array" in ty) {
+      const element = "list" in ty ? ty.list : ty.array;
+      return readItems(cursor, (inner) => readValue(inner, element));
+    }
     expect(cursor, "(");
     const first = readValue(cursor, ty.pair[0]);
     expect(cursor, ",");
@@ -354,6 +385,8 @@ const readValue = (cursor, ty) => {
       return word(cursor) === "True";
     case "data":
       return serialiseData(readData(cursor));
+    case "value":
+      return readLedgerValue(cursor);
     default:
       return word(cursor).slice(2);
   }

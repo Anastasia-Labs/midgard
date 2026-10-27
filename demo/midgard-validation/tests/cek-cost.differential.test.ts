@@ -148,7 +148,7 @@ describe("the builtin cost twin charges what the replaced costing charged", () =
   it("for refused tags, sizes and argument counts", () => {
     const cases: [number, bigint[]][] = [
       [-1, [1n]],
-      [87, [1n]],
+      [101, [1n]],
       [1.5, [1n, 1n]],
       [0, [1n]],
       [0, [-1n, 1n]],

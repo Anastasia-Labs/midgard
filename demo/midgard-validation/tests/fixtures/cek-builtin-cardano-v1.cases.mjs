@@ -7,11 +7,12 @@
  *
  * Argument encoding (JSON):
  *   ty: "int" | "bs" | "str" | "unit" | "bool" | "data" | "g1" | "g2" | "ml"
- *       | { list: ty } | { pair: [ty, ty] }
+ *       | "value" | { list: ty } | { array: ty } | { pair: [ty, ty] }
  *   int: decimal string; bs, g1, g2: hex (points compressed); str: string;
  *   unit: null; bool: boolean; list: array; pair: [first, second];
  *   data: { i: decimal } | { b: hex } | { l: [data] } | { m: [[data, data]] }
  *         | { c: decimal, f: [data] };
+ *   value, array: see `cek-builtin-cardano-v1.pv11.mjs`;
  *   ml: { loop: [g1 hex, g2 hex] } | { mul: [ml, ml] }  (a Miller-loop
  *       expression; tags 68 and 69 are reached only inside finalVerify's
  *       arguments because their result has no literal form).
@@ -45,6 +46,10 @@ import {
   strArg,
 } from "./cek-builtin-cardano-v1.arguments.mjs";
 import { EDGES } from "./cek-builtin-cardano-v1.edges.mjs";
+import {
+  PV11_EDGES,
+  pv11RandomArguments,
+} from "./cek-builtin-cardano-v1.pv11.mjs";
 
 /* ---------- per-tag random arguments ---------- */
 
@@ -65,6 +70,7 @@ export const randomArguments = (tag, rng) => {
   if (tag <= 9) {
     return [integer(), rng.chance(0.15) ? int(0n) : integer()];
   }
+  if (tag >= 87) return pv11RandomArguments(tag, rng);
   switch (tag) {
     case 10:
       return [bytes(), bytes()];
@@ -236,7 +242,7 @@ export const randomArguments = (tag, rng) => {
 };
 
 /** The fixed edge vectors of `tag`, as `{ note, args, ... }`. */
-export const edgeCases = (tag) => EDGES[tag]?.() ?? [];
+export const edgeCases = (tag) => (EDGES[tag] ?? PV11_EDGES[tag])?.() ?? [];
 
 const RANDOM_CASES = (tag) => {
   if (tag === 68 || tag === 69) return 0;

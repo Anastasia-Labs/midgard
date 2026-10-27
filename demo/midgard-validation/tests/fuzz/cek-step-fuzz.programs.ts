@@ -84,9 +84,9 @@ export const toData = (value: CekBuiltinData): Data => {
 
 const sampleValue = (ty: CekBuiltinArgumentType): unknown => {
   if (typeof ty === "object") {
-    return "list" in ty
-      ? []
-      : [sampleValue(ty.pair[0]), sampleValue(ty.pair[1])];
+    return "pair" in ty
+      ? [sampleValue(ty.pair[0]), sampleValue(ty.pair[1])]
+      : [];
   }
   // eslint-disable-next-line @typescript-eslint/switch-exhaustiveness-check
   switch (ty) {
@@ -117,6 +117,8 @@ const uplcConstant = (
         items.map((item) => item.value) as never,
       );
     }
+    // The fuzz draws tags 0 to 86, which take no array.
+    if (!("pair" in ty)) throw new Error("no fuzz constant for an array");
     const [first, second] = value as readonly [unknown, unknown];
     const left = uplcConstant(ty.pair[0], first);
     const right = uplcConstant(ty.pair[1], second);

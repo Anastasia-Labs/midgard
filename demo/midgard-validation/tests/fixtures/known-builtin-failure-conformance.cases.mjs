@@ -53,12 +53,19 @@ import {
   unit,
 } from "./known-builtin-failure-conformance.arguments.mjs";
 import { cryptoCases } from "./known-builtin-failure-conformance.crypto-cases.mjs";
+import {
+  PV11_KIND_SWEEP_BASES,
+  PV11_KNOWN_BUILTIN_FAILURE_TAGS,
+  pv11Cases,
+} from "./known-builtin-failure-conformance.pv11-cases.mjs";
 
 /** The tags `known_builtin_failure_v1` can answer true for. */
-export const KNOWN_BUILTIN_FAILURE_TAGS = Object.freeze([
-  3, 4, 5, 6, 11, 12, 14, 21, 25, 33, 34, 42, 43, 44, 45, 46, 52, 53, 56, 59,
-  60, 63, 66, 67, 73, 79, 80, 81, 82, 83,
-]);
+export const KNOWN_BUILTIN_FAILURE_TAGS = Object.freeze(
+  [
+    3, 4, 5, 6, 11, 12, 14, 21, 25, 33, 34, 42, 43, 44, 45, 46, 52, 53, 56, 59,
+    60, 63, 66, 67, 73, 79, 80, 81, 82, 83,
+  ].concat(PV11_KNOWN_BUILTIN_FAILURE_TAGS),
+);
 
 export const VERDICTS = Object.freeze(["known", "not-known", "refused"]);
 
@@ -356,8 +363,8 @@ const KIND_SWEEP_BASES = [
   [83, [bytes([1, 2]), int(INT64_MAX + 1n)]],
 ];
 
-const kindSweepCases = (add) => {
-  for (const [tag, base] of KIND_SWEEP_BASES) {
+const kindSweepCases = (add, bases) => {
+  for (const [tag, base] of bases) {
     base.forEach((argument, position) => {
       const replace = (value) =>
         base.map((other, index) => (index === position ? value : other));
@@ -393,7 +400,7 @@ const kindSweepCases = (add) => {
 const outsideCases = (add) => {
   for (const tag of [
     -1, 0, 1, 2, 7, 8, 9, 10, 13, 15, 20, 22, 24, 26, 32, 35, 37, 41, 47, 51,
-    54, 58, 61, 65, 68, 70, 71, 72, 74, 78, 84, 86, 87, 100,
+    54, 58, 61, 65, 68, 70, 71, 72, 74, 78, 84, 86, 88, 95, 101,
   ]) {
     add(tag, "1 by 0", [int(1), int(0)]);
   }
@@ -429,8 +436,10 @@ export const knownBuiltinFailureConformanceCases = () => {
   cryptoCases(add);
   integerToBytesCases(add);
   bitCases(add);
-  kindSweepCases(add);
+  kindSweepCases(add, KIND_SWEEP_BASES);
   outsideCases(add);
+  pv11Cases(add);
+  kindSweepCases(add, PV11_KIND_SWEEP_BASES);
   return cases;
 };
 

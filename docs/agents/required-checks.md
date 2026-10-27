@@ -799,6 +799,7 @@ Golden channel cek-core-step-v1 (@al-ft/midgard-validation).
   - `demo/midgard-validation/tests/fixtures/cek-core-step-v1.case-constant.mjs`
   - `demo/midgard-validation/tests/fixtures/cek-core-step-v1.constr-data-vectors.mjs`
   - `demo/midgard-validation/tests/fixtures/cek-core-step-v1.generated.json`
+  - `demo/midgard-validation/tests/fixtures/cek-core-step-v1.pv11.mjs`
   - `demo/midgard-validation/tests/fixtures/cek-core-step-v1.vectors.mjs`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/add-integer.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/apply-constant.test.ak`
@@ -832,6 +833,17 @@ Golden channel cek-core-step-v1 (@al-ft/midgard-validation).
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/map-round-trip.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/nonconstant-halt.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/omega-budget-exceeded.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/pv11-exp-mod-integer-failure.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/pv11-exp-mod-integer.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/pv11-index-array-failure.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/pv11-index-array-int64-max-plus-one.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/pv11-index-array-int64-max.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/pv11-index-array-int64-min-minus-one.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/pv11-index-array-int64-min.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/pv11-index-array-outside-int64.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/pv11-list-and-array.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/pv11-value-arithmetic.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/pv11-value-contains.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/schnorr-message-17-bytes.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/un-constr-wrong-variant.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/un-map-wrong-variant-constant.test.ak`
@@ -1094,6 +1106,7 @@ Golden channel cek-builtin-cardano-v1 (@al-ft/midgard-validation).
   - `demo/midgard-validation/tests/fixtures/cek-builtin-cardano-v1.cases.mjs`
   - `demo/midgard-validation/tests/fixtures/cek-builtin-cardano-v1.edges.mjs`
   - `demo/midgard-validation/tests/fixtures/cek-builtin-cardano-v1.generated.json`
+  - `demo/midgard-validation/tests/fixtures/cek-builtin-cardano-v1.pv11.mjs`
   - `scripts/lib/aiken.mjs`
   - `demo/lucid-midgard/src/**`
   - `demo/midgard-core/src/**`
@@ -1146,6 +1159,7 @@ Golden channel known-builtin-failure-conformance (@al-ft/midgard-validation).
   - `demo/midgard-validation/tests/fixtures/known-builtin-failure-conformance.cases.mjs`
   - `demo/midgard-validation/tests/fixtures/known-builtin-failure-conformance.crypto-cases.mjs`
   - `demo/midgard-validation/tests/fixtures/known-builtin-failure-conformance.generated.json`
+  - `demo/midgard-validation/tests/fixtures/known-builtin-failure-conformance.pv11-cases.mjs`
   - `onchain/aiken/lib/midgard/known-builtin-failure-conformance-golden.test.ak`
   - `demo/lucid-midgard/src/**`
   - `demo/midgard-core/src/**`

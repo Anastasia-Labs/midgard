@@ -3,7 +3,7 @@ import {
   hashMidgardCekValueNode,
   MIDGARD_CEK_BLS_ML_RESULT_MEMORY,
   MIDGARD_CEK_EMPTY_SEQUENCE_ROOT,
-  MIDGARD_CEK_MAX_RESOLVED_BUILTIN_TAG,
+  MIDGARD_CEK_MAX_BUILTIN_TAG,
 } from "@al-ft/midgard-core";
 
 import {
@@ -18,6 +18,10 @@ import {
   mkConsIsWellTyped,
   sameBytes,
 } from "./cek-builtin.argument-kinds.js";
+import {
+  isMidgardCekPv11BuiltinTag,
+  midgardCekPv11BuiltinCostSizes,
+} from "./cek-builtin.pv11.js";
 import {
   decodeMidgardCekConstantWitness,
   hashMidgardCekConstantWitness,
@@ -43,7 +47,7 @@ export const midgardCekBuiltinArgumentsFailKinds = (
   try {
     if (
       tag < 0n ||
-      tag > MIDGARD_CEK_MAX_RESOLVED_BUILTIN_TAG ||
+      tag > MIDGARD_CEK_MAX_BUILTIN_TAG ||
       tag > BigInt(Number.MAX_SAFE_INTEGER)
     ) {
       return false;
@@ -255,6 +259,9 @@ export const midgardCekDirectBuiltinCostSizes = (
   arguments_: readonly MidgardCekDirectValueWitness[],
   memoryOf?: MidgardCekRevealedConstantMemory,
 ): readonly bigint[] => {
+  if (isMidgardCekPv11BuiltinTag(tag)) {
+    return Object.freeze(midgardCekPv11BuiltinCostSizes(tag, arguments_));
+  }
   if (tag === 26n) {
     if (arguments_.length !== 3) {
       throw new Error("ifThenElse requires three arguments");
@@ -355,7 +362,7 @@ export const midgardCekDirectBuiltinBudget = (
 ): MidgardCekBuiltinBudget => {
   if (
     tag < 0n ||
-    tag > MIDGARD_CEK_MAX_RESOLVED_BUILTIN_TAG ||
+    tag > MIDGARD_CEK_MAX_BUILTIN_TAG ||
     tag > BigInt(Number.MAX_SAFE_INTEGER)
   ) {
     throw new Error("V1 builtin tag is outside Plutus V3");

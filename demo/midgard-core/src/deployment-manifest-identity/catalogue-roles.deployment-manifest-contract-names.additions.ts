@@ -16,6 +16,9 @@ const DEPLOYMENT_MANIFEST_CONTRACT_NAME_ADDITIONS = [
   "fraudProofDistinctAssetAccumulationLimitMint",
   "fraudProofDistinctAssetAccumulationLimitTerminal",
   "validationTraceDisputeCekCoreFailureBlsUncompress",
+  "validationTraceDisputeCekCorePv11Roots",
+  "validationTraceDisputeCekCorePv11Budget",
+  "validationTraceDisputeCekCorePv11Semantics",
 ] as const;
 
 export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([

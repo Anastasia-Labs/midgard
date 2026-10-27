@@ -1120,6 +1120,11 @@
     "reason": "Retained test registration “canonical V1 Cardano Data breadth boundaries” (867 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
+    "file": "midgard-validation/tests/fixtures/cek-core-step-v1.vectors.mjs",
+    "max": 502,
+    "reason": "Declarative table of V1 CEK core-step golden programs shared by the TS generator, the TS goldens suite and the Aiken goldens. Program families already live in sibling modules (case-constant, constr-data, pv11); the remaining lines are the shared core program list plus one import and one spread per sibling module. Measured at the PV11 87-100 and constrData Word64 integration."
+  },
+  {
     "file": "midgard-validation/tests/fixtures/validation-auxiliary-witness-canonical.ts",
     "max": 533,
     "reason": "This canonical fixture is imported directly as .ts by the auxiliary-witness golden CLI under Node strip-types. Retain its self-contained source boundary: .js facet imports have no corresponding source JavaScript, and changing the loader or fixture import contract is outside a pure module move. Combined F1/RLO source measured at integration."

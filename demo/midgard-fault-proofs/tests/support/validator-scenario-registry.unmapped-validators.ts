@@ -71,6 +71,8 @@ export const UNMAPPED_VALIDATORS: readonly Readonly<{
       "fraud_proofs/validation_trace/cek_core_map_start_budget.main",
       "fraud_proofs/validation_trace/cek_core_map_start_nodes.main",
       "fraud_proofs/validation_trace/cek_core_map_start_roots.main",
+      "fraud_proofs/validation_trace/cek_core_pv11_budget.main",
+      "fraud_proofs/validation_trace/cek_core_pv11_semantics.main",
       "fraud_proofs/validation_trace/cek_core_semantic_choose.main",
       "fraud_proofs/validation_trace/cek_core_semantic_data_construct.main",
       "fraud_proofs/validation_trace/cek_core_semantic_data_misc.main",

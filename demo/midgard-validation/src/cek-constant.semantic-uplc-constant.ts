@@ -32,6 +32,7 @@ import {
 import {
   constT,
   type ConstType,
+  ConstTyTag,
   type ConstValue,
   UPLCConst,
 } from "./uplc-constant.js";
@@ -72,15 +73,18 @@ const semanticUplcConstant = (
       }
       return UPLCConst.bool(payload.constr === 1n);
     }
-    case "list": {
+    case "list":
+    case "array": {
       if (!(payload instanceof DataList)) {
-        throw new Error("V1 list payload is not DataList");
+        throw new Error(`V1 ${type.kind} payload is not DataList`);
       }
       const elementType = midgardConstantTypeToTags(type.element);
-      return UPLCConst.listOf(elementType)(
-        payload.list.map(
-          (item) => semanticUplcConstant(type.element, item).value,
-        ) as never,
+      return new UPLCConst(
+        [
+          type.kind === "list" ? ConstTyTag.list : ConstTyTag.array,
+          ...elementType,
+        ],
+        payload.list.map((item) => elementValue(type.element, item)) as never,
       );
     }
     case "pair": {
@@ -107,12 +111,23 @@ const semanticUplcConstant = (
       throw new Error(
         "V1 BLS constants require their dedicated runtime proof nodes",
       );
-    case "array":
     case "value":
-      throw new Error(
-        "V1 Value and array constants are evaluated by the PV 11 semantic layer",
-      );
+      return new UPLCConst([ConstTyTag.value], payload);
   }
+};
+
+/**
+ * A list or array element's value. A G1 or G2 element is its compressed
+ * point, which is how the pinned evaluator takes a list or array of points.
+ */
+const elementValue = (type: MidgardCekConstantType, payload: Data): unknown => {
+  if (type.kind === "blsG1" || type.kind === "blsG2") {
+    if (!(payload instanceof DataB)) {
+      throw new Error("V1 BLS element payload is not DataB");
+    }
+    return payload.bytes;
+  }
+  return semanticUplcConstant(type, payload).value;
 };
 
 /**

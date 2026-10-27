@@ -12,6 +12,9 @@ const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAME_ADDITIONS = {
   "V1 validation-trace CEK core staged write bits loop":
     "V1VtCekCoreStaWriBitLoo",
   "V1 validation-trace CEK core failure bls uncompress": "V1VtCekCoreFaiBlsUnc",
+  "V1 validation-trace CEK core pv11 roots": "V1VtCekCorePv1Roo",
+  "V1 validation-trace CEK core pv11 budget": "V1VtCekCorePv1Bud",
+  "V1 validation-trace CEK core pv11 semantics": "V1VtCekCorePv1Sem",
 } as const;
 
 export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({

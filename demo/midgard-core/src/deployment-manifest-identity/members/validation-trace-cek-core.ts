@@ -379,5 +379,38 @@ export const validationTraceCekCoreMembers = defineDeploymentFamily(
         "fraud_proofs/validation_trace/cek_core_failure_bls_uncompress.main.spend",
       familyPaths: [["cekCoreStages", "failureBlsUncompress"]],
     },
+    validationTraceDisputeCekCorePv11Roots: {
+      purpose: "spend",
+      referenceRole: "V1 validation-trace CEK core pv11 roots",
+      manifestPosition: 717,
+      publicationPosition: 712,
+      referenceRolePosition: 712,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/validation_trace/cek_core_builtin_roots.main.spend",
+      familyPaths: [["cekCoreStages", "pv11Roots"]],
+    },
+    validationTraceDisputeCekCorePv11Budget: {
+      purpose: "spend",
+      referenceRole: "V1 validation-trace CEK core pv11 budget",
+      manifestPosition: 718,
+      publicationPosition: 713,
+      referenceRolePosition: 713,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/validation_trace/cek_core_pv11_budget.main.spend",
+      familyPaths: [["cekCoreStages", "pv11Budget"]],
+    },
+    validationTraceDisputeCekCorePv11Semantics: {
+      purpose: "spend",
+      referenceRole: "V1 validation-trace CEK core pv11 semantics",
+      manifestPosition: 719,
+      publicationPosition: 714,
+      referenceRolePosition: 714,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/validation_trace/cek_core_pv11_semantics.main.spend",
+      familyPaths: [["cekCoreStages", "pv11Semantics"]],
+    },
   },
 );
