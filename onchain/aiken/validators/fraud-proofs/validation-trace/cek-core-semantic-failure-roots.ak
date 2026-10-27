@@ -44,7 +44,7 @@ validator main(
         expect arguments: List<builtin_witness.ValueWitnessV1> = arguments_data
         expect bound.arm == 36
         let Pair(root, count) = builtin_witness.arguments_root_v1(arguments)
-        expect count == cost.builtin_argument_count_v1(tag)
+        expect count == cost.pv10_argument_count_v1(tag)
         expect
           bound.pre.focus_root == proof.hash_builtin_value_v1(
             tag,

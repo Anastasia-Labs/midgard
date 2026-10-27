@@ -102,7 +102,11 @@ pub fn core_group(mode: Int, witness: Data) -> Int {
       30 -> {
         expect [tag_data, _, _] = fields
         expect tag: Int = tag_data
-        if tag >= 29 && tag <= 69 && tag != 52 && tag != 53 {
+        if tag > 86 {
+          // The protocol version 11 builtins (87 to 100) succeed in their
+          // own arms, which carry their costing and semantics.
+          13
+        } else if tag >= 29 && tag <= 69 && tag != 52 && tag != 53 {
           4
         } else {
           3
@@ -114,11 +118,14 @@ pub fn core_group(mode: Int, witness: Data) -> Int {
       37 -> 8
       38 -> {
         // Uncompress (59, 66) fails in its own arm, which carries the point
-        // checks; every other direct failure is the known failure arm's.
+        // checks, and the protocol version 11 builtins (87 to 100) in theirs;
+        // every other direct failure is the known failure arm's.
         expect [tag_data, _] = fields
         expect tag: Int = tag_data
         if tag == 59 || tag == 66 {
           12
+        } else if tag > 86 {
+          14
         } else {
           9
         }

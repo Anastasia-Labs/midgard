@@ -1,13 +1,13 @@
-//// The direct failure route (arm 38, group 9) for the protocol version 11
-//// builtins (87 to 100): the known-failure and failure-budget hops, each
-//// beside the same step built without its spend. Each failure is read at
-//// the largest shape both hops prove inside one L1 transaction's budget, at
-//// the next shape up on the known-failure hop, and at its consensus
-//// maximum: the direct bound (9,215 revealed bytes) for the list, array,
-//// Value and multi-scalar failures, the 128-word modulus for expModInteger
-//// with no inverse, whose greatest-common-divisor walk is longest over
-//// consecutive Fibonacci numbers. A step no hop proves inside the budget
-//// resolves for the defender.
+//// The failure route (arm 38, core group 14) of the protocol version 11
+//// builtins (87 to 100): the budget hop and the semantics hop, which proves
+//// the known failure, each beside the same step built without its spend.
+//// Each failure is read at the largest shape both hops prove inside one L1
+//// transaction's budget, at the next shape up on the semantics hop, and at
+//// its consensus maximum: the direct bound (9,215 revealed bytes) for the
+//// list, array, Value and multi-scalar failures, the 128-word modulus for
+//// expModInteger with no inverse, whose greatest-common-divisor walk is
+//// longest over consecutive Fibonacci numbers. A step no hop proves inside
+//// the budget resolves for the defender.
 
 use aiken/builtin
 use aiken/cbor
@@ -15,6 +15,8 @@ use aiken/crypto.{blake2b_256}
 use cardano/transaction.{Transaction}
 use fraud_proofs/validation_trace/cek_core_failure_budget as failure_budget
 use fraud_proofs/validation_trace/cek_core_failure_known as failure_known
+use fraud_proofs/validation_trace/cek_core_pv11_budget as pv11_budget
+use fraud_proofs/validation_trace/cek_core_pv11_semantics as pv11_semantics
 use midgard/cek_builtin_v1.{ConstantValue, ValueWitnessV1}
 use midgard/cek_constant_v1.{
   ArrayConstant, BlsG1Constant, BlsG2Constant, ByteStringConstant,
@@ -36,8 +38,18 @@ type FailureStep {
 }
 
 /// The arm 38 step proving that builtin `tag` fails over `arguments`, at hop
-/// `progress` (0 known failure, 1 budget).
+/// `progress` (0 budget, 1 known failure).
 fn failure_step(
+  tag: Int,
+  arguments: List<ValueWitnessV1>,
+  progress: Int,
+) -> FailureStep {
+  failure_step_in(14, tag, arguments, progress)
+}
+
+/// `failure_step` bound to core group `group`.
+fn failure_step_in(
+  group: Int,
   tag: Int,
   arguments: List<ValueWitnessV1>,
   progress: Int,
@@ -45,10 +57,11 @@ fn failure_step(
   let arguments_data: Data = arguments
   let witness = builtin.constr_data(38, [builtin.i_data(tag), arguments_data])
   let Pair(arguments_root, count) = cek_builtin_v1.arguments_root_v1(arguments)
-  let budget = cek_builtin_v1.authenticated_builtin_failure_budget(
-    tag,
-    arguments,
-  )
+  let budget = if tag > 86 {
+    cek_builtin_v1.pv11_failure_budget_v1(tag, arguments)
+  } else {
+    cek_builtin_v1.authenticated_builtin_failure_budget(tag, arguments)
+  }
   let state = machine.MachineStateV1 {
     mode: machine.mode_builtin,
     execution_index: 0,
@@ -79,7 +92,7 @@ fn failure_step(
     ),
     witness_hash: blake2b_256(cbor.serialise(witness)),
     arm: 38,
-    group: 9,
+    group,
     progress,
     facts: builtin.constr_data(0, []),
   }
@@ -102,7 +115,7 @@ fn failure_step(
 }
 
 fn known(step: FailureStep) -> Bool {
-  failure_known.main.spend(
+  pv11_semantics.main.spend(
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
     step.datum,
@@ -113,7 +126,7 @@ fn known(step: FailureStep) -> Bool {
 }
 
 fn charged(step: FailureStep) -> Bool {
-  failure_budget.main.spend(
+  pv11_budget.main.spend(
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
     step.datum,
@@ -245,33 +258,33 @@ fn no_inverse_step(index: Int, progress: Int) -> FailureStep {
   failure_step(87, [int(2 * previous), int(-1), int(2 * current)], progress)
 }
 
-test exp_mod_no_inverse_known_at_55_words() {
-  known(no_inverse_step(5069, 0))
-}
-
-test exp_mod_no_inverse_budget_at_55_words() {
-  charged(no_inverse_step(5069, 1))
-}
-
-test exp_mod_no_inverse_fixture_only_at_55_words() {
-  built(no_inverse_step(5069, 0))
-}
-
 test exp_mod_no_inverse_known_at_56_words() {
-  known(no_inverse_step(5161, 0))
+  known(no_inverse_step(5161, 1))
+}
+
+test exp_mod_no_inverse_budget_at_56_words() {
+  charged(no_inverse_step(5161, 0))
 }
 
 test exp_mod_no_inverse_fixture_only_at_56_words() {
   built(no_inverse_step(5161, 0))
 }
 
+test exp_mod_no_inverse_known_at_57_words() {
+  known(no_inverse_step(5253, 1))
+}
+
+test exp_mod_no_inverse_fixture_only_at_57_words() {
+  built(no_inverse_step(5253, 0))
+}
+
 /// Index 11,798 gives the largest such modulus under 2^8191, 128 words.
 test exp_mod_no_inverse_known_at_128_words() {
-  known(no_inverse_step(11798, 0))
+  known(no_inverse_step(11798, 1))
 }
 
 test exp_mod_no_inverse_budget_at_128_words() {
-  charged(no_inverse_step(11798, 1))
+  charged(no_inverse_step(11798, 0))
 }
 
 test exp_mod_no_inverse_fixture_only_at_128_words() {
@@ -297,11 +310,11 @@ fn index_array_step(count: Int, progress: Int) -> FailureStep {
 }
 
 test index_array_known_at_70_items() {
-  known(index_array_step(70, 0))
+  known(index_array_step(70, 1))
 }
 
 test index_array_budget_at_70_items() {
-  charged(index_array_step(70, 1))
+  charged(index_array_step(70, 0))
 }
 
 test index_array_fixture_only_at_70_items() {
@@ -309,7 +322,7 @@ test index_array_fixture_only_at_70_items() {
 }
 
 test index_array_known_at_71_items() {
-  known(index_array_step(71, 0))
+  known(index_array_step(71, 1))
 }
 
 test index_array_fixture_only_at_71_items() {
@@ -317,11 +330,11 @@ test index_array_fixture_only_at_71_items() {
 }
 
 test index_array_known_at_the_direct_bound() {
-  known(index_array_step(9210, 0))
+  known(index_array_step(9210, 1))
 }
 
 test index_array_budget_at_the_direct_bound() {
-  charged(index_array_step(9210, 1))
+  charged(index_array_step(9210, 0))
 }
 
 test index_array_fixture_only_at_the_direct_bound() {
@@ -386,11 +399,11 @@ fn g1_msm_step(count: Int, progress: Int) -> FailureStep {
 }
 
 test g1_msm_known_at_60_scalars() {
-  known(g1_msm_step(60, 0))
+  known(g1_msm_step(60, 1))
 }
 
 test g1_msm_budget_at_60_scalars() {
-  charged(g1_msm_step(60, 1))
+  charged(g1_msm_step(60, 0))
 }
 
 test g1_msm_fixture_only_at_60_scalars() {
@@ -398,7 +411,7 @@ test g1_msm_fixture_only_at_60_scalars() {
 }
 
 test g1_msm_known_at_61_scalars() {
-  known(g1_msm_step(61, 0))
+  known(g1_msm_step(61, 1))
 }
 
 test g1_msm_fixture_only_at_61_scalars() {
@@ -406,11 +419,11 @@ test g1_msm_fixture_only_at_61_scalars() {
 }
 
 test g1_msm_known_at_the_direct_bound() {
-  known(g1_msm_step(8630, 0))
+  known(g1_msm_step(8630, 1))
 }
 
 test g1_msm_budget_at_the_direct_bound() {
-  charged(g1_msm_step(8630, 1))
+  charged(g1_msm_step(8630, 0))
 }
 
 test g1_msm_fixture_only_at_the_direct_bound() {
@@ -423,11 +436,11 @@ fn g2_msm_step(count: Int, progress: Int) -> FailureStep {
 }
 
 test g2_msm_known_at_60_scalars() {
-  known(g2_msm_step(60, 0))
+  known(g2_msm_step(60, 1))
 }
 
 test g2_msm_budget_at_60_scalars() {
-  charged(g2_msm_step(60, 1))
+  charged(g2_msm_step(60, 0))
 }
 
 test g2_msm_fixture_only_at_60_scalars() {
@@ -435,7 +448,7 @@ test g2_msm_fixture_only_at_60_scalars() {
 }
 
 test g2_msm_known_at_61_scalars() {
-  known(g2_msm_step(61, 0))
+  known(g2_msm_step(61, 1))
 }
 
 test g2_msm_fixture_only_at_61_scalars() {
@@ -443,11 +456,11 @@ test g2_msm_fixture_only_at_61_scalars() {
 }
 
 test g2_msm_known_at_the_direct_bound() {
-  known(g2_msm_step(8578, 0))
+  known(g2_msm_step(8578, 1))
 }
 
 test g2_msm_budget_at_the_direct_bound() {
-  charged(g2_msm_step(8578, 1))
+  charged(g2_msm_step(8578, 0))
 }
 
 test g2_msm_fixture_only_at_the_direct_bound() {
@@ -472,11 +485,11 @@ fn insert_coin_step(count: Int, progress: Int) -> FailureStep {
 }
 
 test insert_coin_known_at_31_coins() {
-  known(insert_coin_step(31, 0))
+  known(insert_coin_step(31, 1))
 }
 
 test insert_coin_budget_at_31_coins() {
-  charged(insert_coin_step(31, 1))
+  charged(insert_coin_step(31, 0))
 }
 
 test insert_coin_fixture_only_at_31_coins() {
@@ -484,7 +497,7 @@ test insert_coin_fixture_only_at_31_coins() {
 }
 
 test insert_coin_known_at_32_coins() {
-  known(insert_coin_step(32, 0))
+  known(insert_coin_step(32, 1))
 }
 
 test insert_coin_fixture_only_at_32_coins() {
@@ -492,11 +505,11 @@ test insert_coin_fixture_only_at_32_coins() {
 }
 
 test insert_coin_known_at_the_direct_bound() {
-  known(insert_coin_step(3000, 0))
+  known(insert_coin_step(3000, 1))
 }
 
 test insert_coin_budget_at_the_direct_bound() {
-  charged(insert_coin_step(3000, 1))
+  charged(insert_coin_step(3000, 0))
 }
 
 test insert_coin_fixture_only_at_the_direct_bound() {
@@ -513,11 +526,11 @@ fn union_value_step(count: Int, progress: Int) -> FailureStep {
 }
 
 test union_value_known_at_15_coins() {
-  known(union_value_step(15, 0))
+  known(union_value_step(15, 1))
 }
 
 test union_value_budget_at_15_coins() {
-  charged(union_value_step(15, 1))
+  charged(union_value_step(15, 0))
 }
 
 test union_value_fixture_only_at_15_coins() {
@@ -525,7 +538,7 @@ test union_value_fixture_only_at_15_coins() {
 }
 
 test union_value_known_at_16_coins() {
-  known(union_value_step(16, 0))
+  known(union_value_step(16, 1))
 }
 
 test union_value_fixture_only_at_16_coins() {
@@ -533,11 +546,11 @@ test union_value_fixture_only_at_16_coins() {
 }
 
 test union_value_known_at_the_direct_bound() {
-  known(union_value_step(1500, 0))
+  known(union_value_step(1500, 1))
 }
 
 test union_value_budget_at_the_direct_bound() {
-  charged(union_value_step(1500, 1))
+  charged(union_value_step(1500, 0))
 }
 
 test union_value_fixture_only_at_the_direct_bound() {
@@ -558,11 +571,11 @@ fn value_contains_step(count: Int, progress: Int) -> FailureStep {
 }
 
 test value_contains_known_at_15_coins() {
-  known(value_contains_step(15, 0))
+  known(value_contains_step(15, 1))
 }
 
 test value_contains_budget_at_15_coins() {
-  charged(value_contains_step(15, 1))
+  charged(value_contains_step(15, 0))
 }
 
 test value_contains_fixture_only_at_15_coins() {
@@ -570,7 +583,7 @@ test value_contains_fixture_only_at_15_coins() {
 }
 
 test value_contains_known_at_16_coins() {
-  known(value_contains_step(16, 0))
+  known(value_contains_step(16, 1))
 }
 
 test value_contains_fixture_only_at_16_coins() {
@@ -578,11 +591,11 @@ test value_contains_fixture_only_at_16_coins() {
 }
 
 test value_contains_known_at_the_direct_bound() {
-  known(value_contains_step(1500, 0))
+  known(value_contains_step(1500, 1))
 }
 
 test value_contains_budget_at_the_direct_bound() {
-  charged(value_contains_step(1500, 1))
+  charged(value_contains_step(1500, 0))
 }
 
 test value_contains_fixture_only_at_the_direct_bound() {
@@ -599,32 +612,32 @@ fn un_value_data_step(count: Int, progress: Int) -> FailureStep {
   )
 }
 
-test un_value_data_known_at_36_coins() {
-  known(un_value_data_step(36, 0))
-}
-
-test un_value_data_budget_at_36_coins() {
-  charged(un_value_data_step(36, 1))
-}
-
-test un_value_data_fixture_only_at_36_coins() {
-  built(un_value_data_step(36, 0))
-}
-
 test un_value_data_known_at_37_coins() {
-  known(un_value_data_step(37, 0))
+  known(un_value_data_step(37, 1))
+}
+
+test un_value_data_budget_at_37_coins() {
+  charged(un_value_data_step(37, 0))
 }
 
 test un_value_data_fixture_only_at_37_coins() {
   built(un_value_data_step(37, 0))
 }
 
+test un_value_data_known_at_38_coins() {
+  known(un_value_data_step(38, 1))
+}
+
+test un_value_data_fixture_only_at_38_coins() {
+  built(un_value_data_step(38, 0))
+}
+
 test un_value_data_known_at_the_direct_bound() {
-  known(un_value_data_step(3000, 0))
+  known(un_value_data_step(3000, 1))
 }
 
 test un_value_data_budget_at_the_direct_bound() {
-  charged(un_value_data_step(3000, 1))
+  charged(un_value_data_step(3000, 0))
 }
 
 test un_value_data_fixture_only_at_the_direct_bound() {
@@ -647,11 +660,11 @@ fn scale_value_step(count: Int, progress: Int) -> FailureStep {
 }
 
 test scale_value_known_at_32_coins() {
-  known(scale_value_step(32, 0))
+  known(scale_value_step(32, 1))
 }
 
 test scale_value_budget_at_32_coins() {
-  charged(scale_value_step(32, 1))
+  charged(scale_value_step(32, 0))
 }
 
 test scale_value_fixture_only_at_32_coins() {
@@ -659,7 +672,7 @@ test scale_value_fixture_only_at_32_coins() {
 }
 
 test scale_value_known_at_33_coins() {
-  known(scale_value_step(33, 0))
+  known(scale_value_step(33, 1))
 }
 
 test scale_value_fixture_only_at_33_coins() {
@@ -667,13 +680,91 @@ test scale_value_fixture_only_at_33_coins() {
 }
 
 test scale_value_known_at_the_direct_bound() {
-  known(scale_value_step(3000, 0))
+  known(scale_value_step(3000, 1))
 }
 
 test scale_value_budget_at_the_direct_bound() {
-  charged(scale_value_step(3000, 1))
+  charged(scale_value_step(3000, 0))
 }
 
 test scale_value_fixture_only_at_the_direct_bound() {
   built(scale_value_step(3000, 0))
+}
+
+// ## One route
+
+// A protocol version 11 failure is proved in core group 14 alone. The known
+// failure arm of group 9 refuses its tag (beside a division by zero both
+// group 9 arms prove), and the protocol version 11 arms refuse any other
+// group.
+
+fn known_v3(step: FailureStep) -> Bool {
+  failure_known.main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    step.datum,
+    step.redeemer,
+    fixture.own_out_ref(),
+    step.transaction,
+  )
+}
+
+fn charged_v3(step: FailureStep) -> Bool {
+  failure_budget.main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    step.datum,
+    step.redeemer,
+    fixture.own_out_ref(),
+    step.transaction,
+  )
+}
+
+fn divide_by_zero_step(group: Int, progress: Int) -> FailureStep {
+  failure_step_in(group, 4, [int(1), int(0)], progress)
+}
+
+fn small_index_array_step(group: Int, progress: Int) -> FailureStep {
+  failure_step_in(
+    group,
+    91,
+    [
+      constant(
+        ArrayConstant { element: IntegerConstant },
+        builtin.list_data(small_int_items(0, 3)),
+      ),
+      int(3),
+    ],
+    progress,
+  )
+}
+
+test known_arms_prove_a_division_by_zero() {
+  and {
+    known_v3(divide_by_zero_step(9, 0)),
+    charged_v3(divide_by_zero_step(9, 1)),
+  }
+}
+
+test pv11_arms_prove_a_small_index_array_failure() {
+  and {
+    charged(small_index_array_step(14, 0)),
+    known(small_index_array_step(14, 1)),
+  }
+}
+
+test known_failure_refuses_a_pv11_failure() fail {
+  known_v3(small_index_array_step(9, 0))
+}
+
+test pv11_budget_refuses_group_9() fail {
+  charged(small_index_array_step(9, 0))
+}
+
+test pv11_semantics_refuses_group_9() fail {
+  known(small_index_array_step(9, 1))
+}
+
+test pv11_semantics_refuses_a_division_by_zero() fail {
+  known(divide_by_zero_step(14, 1))
 }

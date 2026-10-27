@@ -32,8 +32,10 @@ validator main(
       ct.Continue(action) -> {
         expect Some(step) = datum
         expect Some(bound) = step.data
-        // No group check: only the two direct failure arms continue here,
-        // and `core_group` routes arm 38 to group 9 or 12 alone.
+        // No group check: only the known and uncompress failure arms (groups
+        // 9 and 12) continue here. The protocol version 11 failures (group
+        // 14) settle through their own budget arm, and the known failure arm
+        // refuses their tags.
         expect bound.pre.mode == machine.mode_builtin
         expect Pair(38, [tag_data,
               arguments_data]) = builtin.un_constr_data(action.witness)

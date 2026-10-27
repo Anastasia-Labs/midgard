@@ -296,8 +296,6 @@ pub fn builtin_cost_sizes_v1(
   } else if tag == 82 || tag == 83 {
     expect [source, amount] = arguments
     [value_memory_size_v1(source), literal_cost_size_v1(integer_v1(amount))]
-  } else if tag > 86 {
-    pv11_cost_sizes_v1(tag, arguments)
   } else {
     standard_cost_sizes_v1(arguments)
   }
@@ -404,10 +402,10 @@ pub fn staged_builtin_budget_v1(
 ) -> cek_cost_v1.BuiltinBudgetV1 {
   if tag == 82 || tag == 83 {
     expect [source, _] = arguments
-    cek_cost_v1.builtin_budget_v1(tag, [value_memory_size_v1(source), 0])
+    cek_cost_v1.pv10_builtin_budget_v1(tag, [value_memory_size_v1(source), 0])
   } else if tag == 73 {
     expect [endianness, _, input] = arguments
-    cek_cost_v1.builtin_budget_v1(
+    cek_cost_v1.pv10_builtin_budget_v1(
       tag,
       [
         value_memory_size_v1(endianness),
@@ -420,11 +418,42 @@ pub fn staged_builtin_budget_v1(
   }
 }
 
+/// The charge of a direct success of builtin `tag` (0 to 86); it refuses any
+/// later tag.
 pub fn direct_builtin_budget_v1(
   tag: Int,
   arguments: List<ValueWitnessV1>,
 ) -> cek_cost_v1.BuiltinBudgetV1 {
-  cek_cost_v1.builtin_budget_v1(tag, builtin_cost_sizes_v1(tag, arguments))
+  cek_cost_v1.pv10_builtin_budget_v1(tag, builtin_cost_sizes_v1(tag, arguments))
+}
+
+/// The charge of protocol version 11 builtin `tag` (87 to 100) over
+/// `arguments`, success or charged failure alike.
+pub fn pv11_direct_budget_v1(
+  tag: Int,
+  arguments: List<ValueWitnessV1>,
+) -> cek_cost_v1.BuiltinBudgetV1 {
+  cek_cost_v1.pv11_builtin_budget_v1(tag, pv11_cost_sizes_v1(tag, arguments))
+}
+
+/// The charge of a failing protocol version 11 builtin `tag` (87 to 100).
+/// Cardano refuses an indexArray (91) index outside the signed 64-bit range
+/// before costing, so that failure is charged nothing; it charges every other
+/// failure in full.
+pub fn pv11_failure_budget_v1(
+  tag: Int,
+  arguments: List<ValueWitnessV1>,
+) -> cek_cost_v1.BuiltinBudgetV1 {
+  if tag == 91 {
+    expect [_, index] = arguments
+    if outside_int64_v1(integer_v1(index)) {
+      cek_cost_v1.BuiltinBudgetV1 { cpu: 0, memory: 0 }
+    } else {
+      pv11_direct_budget_v1(tag, arguments)
+    }
+  } else {
+    pv11_direct_budget_v1(tag, arguments)
+  }
 }
 
 fn constant_witness_v1(
@@ -4242,16 +4271,19 @@ fn malformed_signature_lengths_v1(
 /// two arms exclusive. The readers below fix the type of every position they
 /// read (`constant_type_v1` refuses opaque and Miller-loop values), so each
 /// arm checks only the positions its reader skips.
-/// The failure rule the two direct failure arms prove between them, as
+/// The failure rule the three direct failure arms prove between them, as
 /// `cek_semantic_chain.core_group` routes arm 38: the uncompress failure arm
-/// (group 12) proves uncompress (59, 66), the known failure arm (group 9)
-/// every other builtin.
+/// (group 12) proves uncompress (59, 66), the protocol version 11 failure arm
+/// (group 14) the builtins 87 to 100, the known failure arm (group 9) every
+/// other builtin.
 pub fn known_builtin_failure_v1(
   tag: Int,
   arguments: List<ValueWitnessV1>,
 ) -> Bool {
   if tag == 59 || tag == 66 {
     bls_uncompress_failure_v1(tag, arguments)
+  } else if tag >= 87 {
+    pv11_builtin_failure_v1(tag, arguments)
   } else {
     known_builtin_failure_except_uncompress_v1(tag, arguments)
   }
@@ -4415,8 +4447,6 @@ fn known_builtin_failure_except_uncompress_v1(
       constant_type_v1(source) == cek_constant_v1.ByteStringConstant,
       outside_int64_v1(integer_v1(amount)),
     }
-  } else if tag >= 87 {
-    pv11_builtin_failure_v1(tag, arguments)
   } else {
     False
   }
@@ -4595,7 +4625,7 @@ fn direct_failure_value_root_v1(
   )
 }
 
-/// The known failure arm (group 9): every builtin but uncompress.
+/// The known failure arm (group 9): every builtin through 86 but uncompress.
 pub fn verify_direct_builtin_failure_v1(
   tag: Int,
   builtin_value_root: ByteArray,
@@ -4606,9 +4636,27 @@ pub fn verify_direct_builtin_failure_v1(
     arguments,
   )
   and {
-    arguments_count == cek_cost_v1.builtin_argument_count_v1(tag),
+    arguments_count == cek_cost_v1.pv10_argument_count_v1(tag),
     builtin_value_root == value_root,
     known_builtin_failure_except_uncompress_v1(tag, arguments),
+  }
+}
+
+/// The protocol version 11 failure arm (core group 14): builtin `tag` (87 to
+/// 100, the tags `core_group` routes there) fails over `arguments`.
+pub fn verify_pv11_builtin_failure_v1(
+  tag: Int,
+  builtin_value_root: ByteArray,
+  arguments: List<ValueWitnessV1>,
+) -> Bool {
+  let Pair(value_root, arguments_count) = direct_failure_value_root_v1(
+    tag,
+    arguments,
+  )
+  and {
+    arguments_count == cek_cost_v1.pv11_argument_count_v1(tag),
+    builtin_value_root == value_root,
+    pv11_builtin_failure_v1(tag, arguments),
   }
 }
 
@@ -4652,11 +4700,24 @@ pub fn verify_direct_scalar_semantics(
     verify_control_v1(tag, arguments, result)
   } else if tag >= 71 && tag <= 86 {
     verify_v3_bytes_v1(tag, arguments, result)
-  } else if tag >= 87 && tag <= 100 {
-    verify_pv11_v1(tag, arguments, result)
   } else {
     False
   }
+}
+
+/// The protocol version 11 semantics arm (core group 13): builtin `tag`
+/// (87 to 100, the tags `core_group` routes there) over `arguments` returns
+/// `result`.
+pub fn verify_pv11_semantics_v1(
+  tag: Int,
+  arguments: List<ValueWitnessV1>,
+  result: ValueWitnessV1,
+) -> Bool {
+  expect
+    revealed_argument_payload_bytes_v1(arguments) + revealed_constant_payload_bytes_v1(
+      result,
+    ) <= max_direct_builtin_revealed_payload_bytes
+  verify_pv11_v1(tag, arguments, result)
 }
 
 pub fn verify_direct_structured_semantics(
@@ -4934,14 +4995,8 @@ pub fn authenticated_builtin_failure_budget(
     expect [_, width, _] = arguments
     let width_value = integer_v1(width)
     width_value >= 0 && width_value <= 8192
-  } else if tag == 91 {
-    // Cardano refuses an indexArray index outside the signed 64-bit range
-    // before costing; it charges any other failing protocol version 11
-    // builtin.
-    expect [_, index] = arguments
-    !outside_int64_v1(integer_v1(index))
   } else {
-    tag >= 87
+    False
   }
   // Cardano charges scalarMul (56, 63) before its scalar bound check fails.
   if or {

@@ -1,4 +1,4 @@
-//// The direct success route (arm 30, group 3) for the protocol version 11
+//// The success route (arm 30, core group 13) of the protocol version 11
 //// builtins (87 to 100): the roots, budget and semantics hops, each beside
 //// the same step built without its spend. Each builtin is read at the
 //// largest shape every hop proves inside one L1 transaction's budget, at
@@ -15,6 +15,8 @@ use cardano/transaction.{Transaction}
 use fraud_proofs/validation_trace/cek_core_builtin_budget as builtin_budget
 use fraud_proofs/validation_trace/cek_core_builtin_roots as builtin_roots
 use fraud_proofs/validation_trace/cek_core_direct_scalar as direct_scalar
+use fraud_proofs/validation_trace/cek_core_pv11_budget as pv11_budget
+use fraud_proofs/validation_trace/cek_core_pv11_semantics as pv11_semantics
 use midgard/cek_builtin_v1.{ConstantValue, ValueWitnessV1}
 use midgard/cek_constant_v1.{
   ArrayConstant, BlsG1Constant, BlsG2Constant, BooleanConstant,
@@ -44,6 +46,17 @@ fn direct_step(
   result: ValueWitnessV1,
   progress: Int,
 ) -> DirectStep {
+  direct_step_in(13, tag, arguments, result, progress)
+}
+
+/// `direct_step` bound to core group `group`.
+fn direct_step_in(
+  group: Int,
+  tag: Int,
+  arguments: List<ValueWitnessV1>,
+  result: ValueWitnessV1,
+  progress: Int,
+) -> DirectStep {
   let arguments_data: Data = arguments
   let result_data: Data = result
   let witness = builtin.constr_data(
@@ -66,7 +79,11 @@ fn direct_step(
     builtin_root,
     result_root,
   }
-  let budget = cek_builtin_v1.direct_builtin_budget_v1(tag, arguments)
+  let budget = if tag > 86 {
+    cek_builtin_v1.pv11_direct_budget_v1(tag, arguments)
+  } else {
+    cek_builtin_v1.direct_builtin_budget_v1(tag, arguments)
+  }
   let state = machine.MachineStateV1 {
     mode: machine.mode_builtin,
     execution_index: 0,
@@ -92,7 +109,7 @@ fn direct_step(
     ),
     witness_hash: blake2b_256(cbor.serialise(witness)),
     arm: 30,
-    group: 3,
+    group,
     progress,
     facts: roots,
   }
@@ -126,8 +143,8 @@ fn roots(step: DirectStep) -> Bool {
 }
 
 fn budget(step: DirectStep) -> Bool {
-  builtin_budget.main.spend(
-    [fixture.next_step_script_hash],
+  pv11_budget.main.spend(
+    fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
     step.datum,
     step.redeemer,
@@ -137,7 +154,7 @@ fn budget(step: DirectStep) -> Bool {
 }
 
 fn semantics(step: DirectStep) -> Bool {
-  direct_scalar.main.spend(
+  pv11_semantics.main.spend(
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
     step.datum,
@@ -1155,4 +1172,75 @@ test scale_value_semantics_at_the_direct_bound() {
 
 test scale_value_fixture_only_at_the_direct_bound() {
   built(scale_value_step(1500, 2))
+}
+
+// ## One route
+
+// A protocol version 11 success is proved in core group 13 alone. The scalar
+// arms of group 3 refuse its tag (beside an addInteger step both prove), and
+// the protocol version 11 arms refuse any other group.
+
+fn scalar_budget(step: DirectStep) -> Bool {
+  builtin_budget.main.spend(
+    [fixture.next_step_script_hash],
+    fixture.computation_thread_policy_id,
+    step.datum,
+    step.redeemer,
+    fixture.own_out_ref(),
+    step.transaction,
+  )
+}
+
+fn scalar_semantics(step: DirectStep) -> Bool {
+  direct_scalar.main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    step.datum,
+    step.redeemer,
+    fixture.own_out_ref(),
+    step.transaction,
+  )
+}
+
+fn add_integer_step(group: Int, progress: Int) -> DirectStep {
+  direct_step_in(group, 0, [int(2), int(3)], int(5), progress)
+}
+
+fn small_exp_mod_step(group: Int, progress: Int) -> DirectStep {
+  direct_step_in(group, 87, [int(3), int(5), int(7)], int(5), progress)
+}
+
+test scalar_arms_prove_add_integer() {
+  and {
+    scalar_budget(add_integer_step(3, 1)),
+    scalar_semantics(add_integer_step(3, 2)),
+  }
+}
+
+test pv11_arms_prove_a_small_exp_mod() {
+  and {
+    roots(small_exp_mod_step(13, 0)),
+    budget(small_exp_mod_step(13, 1)),
+    semantics(small_exp_mod_step(13, 2)),
+  }
+}
+
+test scalar_budget_refuses_a_pv11_success() fail {
+  scalar_budget(small_exp_mod_step(3, 1))
+}
+
+test scalar_semantics_refuses_a_pv11_success() fail {
+  scalar_semantics(small_exp_mod_step(3, 2))
+}
+
+test pv11_budget_refuses_group_3() fail {
+  budget(small_exp_mod_step(3, 1))
+}
+
+test pv11_semantics_refuses_group_3() fail {
+  semantics(small_exp_mod_step(3, 2))
+}
+
+test pv11_budget_refuses_add_integer() fail {
+  budget(add_integer_step(13, 1))
 }

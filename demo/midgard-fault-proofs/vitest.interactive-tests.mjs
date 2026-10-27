@@ -182,6 +182,8 @@ export const interactiveTests = [
   "./tests/validation-trace-dispute-installed-lifecycle.test.ts",
   "./tests/validation-trace-dispute-lookalikes.test.ts",
   "./tests/validation-trace-dispute-max-shape-cek-builtin-bls-uncompress.test.ts",
+  "./tests/validation-trace-dispute-max-shape-cek-builtin-exp-mod-failure.test.ts",
+  "./tests/validation-trace-dispute-max-shape-cek-builtin-exp-mod.test.ts",
   "./tests/validation-trace-dispute-max-shape-cek-builtin-failure.test.ts",
   "./tests/validation-trace-dispute-max-shape-cek-builtin-semantic.test.ts",
   "./tests/validation-trace-dispute-max-shape-copy.test.ts",

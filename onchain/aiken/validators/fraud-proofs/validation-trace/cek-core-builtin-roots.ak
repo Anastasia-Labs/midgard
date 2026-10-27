@@ -35,7 +35,7 @@ validator main(
         expect Some(bound) = step.data
         expect
           if bound.arm == 30 {
-            bound.group == 3 || bound.group == 4
+            bound.group == 3 || bound.group == 4 || bound.group == 13
           } else {
             bound.group == 5
           }

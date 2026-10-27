@@ -1938,43 +1938,43 @@
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/drop_list_budget_at_80_items",
       "minusControl": "drop_list_fixture_only_at_80_items",
       "ceiling": {
-        "mem": 589650,
-        "cpu": 221446125
+        "mem": 459180,
+        "cpu": 182649242
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/drop_list_budget_at_the_direct_bound - drop_list_fixture_only_at_the_direct_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/drop_list_budget_at_the_direct_bound",
       "minusControl": "drop_list_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 595201,
-        "cpu": 480086103
+        "mem": 464731,
+        "cpu": 441289220
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/drop_list_roots_at_80_items - drop_list_fixture_only_at_80_items": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/drop_list_roots_at_80_items",
       "minusControl": "drop_list_fixture_only_at_80_items",
       "ceiling": {
-        "mem": 13200000,
-        "cpu": 6025004470
+        "mem": 13198000,
+        "cpu": 6024974396
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/drop_list_roots_at_81_items - drop_list_fixture_only_at_81_items": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/drop_list_roots_at_81_items",
       "minusControl": "drop_list_fixture_only_at_81_items",
       "ceiling": {
-        "mem": 13352260,
-        "cpu": 6094673542
+        "mem": 13349399,
+        "cpu": 6094643468
       },
       "aboveBasis": {
-        "why": "one size past the largest dropList success step the roots hop proves in one L1 transaction (80 items): it costs 100.2% of the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
+        "why": "one size past the largest dropList success step the roots hop proves in one L1 transaction (80 items): it costs 100.1% of the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/drop_list_roots_at_the_direct_bound - drop_list_fixture_only_at_the_direct_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/drop_list_roots_at_the_direct_bound",
       "minusControl": "drop_list_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 1395023666,
-        "cpu": 642151956788
+        "mem": 1395020603,
+        "cpu": 642151894394
       },
       "aboveBasis": {
         "why": "the dropList success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the roots hop costs 104.6x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
@@ -1984,16 +1984,16 @@
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/drop_list_semantics_at_80_items",
       "minusControl": "drop_list_fixture_only_at_80_items",
       "ceiling": {
-        "mem": 3179255,
-        "cpu": 1051985654
+        "mem": 3132120,
+        "cpu": 1039787018
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/drop_list_semantics_at_the_direct_bound - drop_list_fixture_only_at_the_direct_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/drop_list_semantics_at_the_direct_bound",
       "minusControl": "drop_list_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 275419160,
-        "cpu": 89170102321
+        "mem": 275371620,
+        "cpu": 89157839045
       },
       "aboveBasis": {
         "why": "the dropList success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the semantics hop costs 20.7x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
@@ -2003,16 +2003,16 @@
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/exp_mod_budget_at_50_words",
       "minusControl": "exp_mod_fixture_only_at_50_words",
       "ceiling": {
-        "mem": 1246909,
-        "cpu": 523986271
+        "mem": 1115339,
+        "cpu": 484586300
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/exp_mod_budget_at_8_words_under_a_wide_modulus - exp_mod_fixture_only_at_8_words_under_a_wide_modulus": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/exp_mod_budget_at_8_words_under_a_wide_modulus",
       "minusControl": "exp_mod_fixture_only_at_8_words_under_a_wide_modulus",
       "ceiling": {
-        "mem": 1592753,
-        "cpu": 829213442
+        "mem": 1461790,
+        "cpu": 789910430
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/exp_mod_roots_at_50_words - exp_mod_fixture_only_at_50_words": {
@@ -2035,8 +2035,8 @@
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/exp_mod_semantics_at_11_words_under_a_wide_modulus",
       "minusControl": "exp_mod_fixture_only_at_11_words_under_a_wide_modulus",
       "ceiling": {
-        "mem": 1519739,
-        "cpu": 10784885554
+        "mem": 1475129,
+        "cpu": 10773090918
       },
       "aboveBasis": {
         "why": "the largest expModInteger step one L2 transaction's budget admits (11 words under a wide modulus): the semantics hop costs 1.3x the CPU basis, so the step does not fit one L1 transaction and resolves for the defender."
@@ -2046,46 +2046,46 @@
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/exp_mod_semantics_at_43_words_under_a_wide_base",
       "minusControl": "exp_mod_fixture_only_at_43_words_under_a_wide_base",
       "ceiling": {
-        "mem": 1357631,
-        "cpu": 7694189040
+        "mem": 1313223,
+        "cpu": 7682426724
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/exp_mod_semantics_at_44_words_under_a_wide_base - exp_mod_fixture_only_at_44_words_under_a_wide_base": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/exp_mod_semantics_at_44_words_under_a_wide_base",
       "minusControl": "exp_mod_fixture_only_at_44_words_under_a_wide_base",
       "ceiling": {
-        "mem": 1357659,
-        "cpu": 8183909359
+        "mem": 1313250,
+        "cpu": 8172147043
       },
       "aboveBasis": {
-        "why": "one size past the largest expModInteger success step the semantics hop proves in one L1 transaction (43 words under a wide base): it costs 101.3% of the CPU basis, so the step does not fit one L1 transaction and resolves for the defender."
+        "why": "one size past the largest expModInteger success step the semantics hop proves in one L1 transaction (43 words under a wide base): it costs 101.1% of the CPU basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/exp_mod_semantics_at_50_words - exp_mod_fixture_only_at_50_words": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/exp_mod_semantics_at_50_words",
       "minusControl": "exp_mod_fixture_only_at_50_words",
       "ceiling": {
-        "mem": 1297038,
-        "cpu": 7867510528
+        "mem": 1252428,
+        "cpu": 7855715893
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/exp_mod_semantics_at_51_words - exp_mod_fixture_only_at_51_words": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/exp_mod_semantics_at_51_words",
       "minusControl": "exp_mod_fixture_only_at_51_words",
       "ceiling": {
-        "mem": 1262455,
-        "cpu": 8299160051
+        "mem": 1217844,
+        "cpu": 8287365415
       },
       "aboveBasis": {
-        "why": "one size past the largest expModInteger success step the semantics hop proves in one L1 transaction (50 words): it costs 102.7% of the CPU basis, so the step does not fit one L1 transaction and resolves for the defender."
+        "why": "one size past the largest expModInteger success step the semantics hop proves in one L1 transaction (50 words): it costs 102.6% of the CPU basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/exp_mod_semantics_at_55_words - exp_mod_fixture_only_at_55_words": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/exp_mod_semantics_at_55_words",
       "minusControl": "exp_mod_fixture_only_at_55_words",
       "ceiling": {
-        "mem": 1262605,
-        "cpu": 10220259065
+        "mem": 1217994,
+        "cpu": 10208464430
       },
       "aboveBasis": {
         "why": "the largest expModInteger step one L2 transaction's budget admits (55 words): the semantics hop costs 1.3x the CPU basis, so the step does not fit one L1 transaction and resolves for the defender."
@@ -2095,7 +2095,7 @@
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/exp_mod_semantics_at_8_words_under_a_wide_modulus",
       "minusControl": "exp_mod_fixture_only_at_8_words_under_a_wide_modulus",
       "ceiling": {
-        "mem": 1502832,
+        "mem": 1458221,
         "cpu": 8000000000
       }
     },
@@ -2103,8 +2103,8 @@
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/exp_mod_semantics_at_9_words_under_a_wide_modulus",
       "minusControl": "exp_mod_fixture_only_at_9_words_under_a_wide_modulus",
       "ceiling": {
-        "mem": 1529613,
-        "cpu": 8966473995
+        "mem": 1485002,
+        "cpu": 8954679359
       },
       "aboveBasis": {
         "why": "one size past the largest expModInteger success step the semantics hop proves in one L1 transaction (8 words under a wide modulus): it costs 1.1x the CPU basis, so the step does not fit one L1 transaction and resolves for the defender."
@@ -2114,40 +2114,40 @@
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/g1_msm_budget_at_37_points",
       "minusControl": "g1_msm_fixture_only_at_37_points",
       "ceiling": {
-        "mem": 1745136,
-        "cpu": 640553085
+        "mem": 1007618,
+        "cpu": 410489337
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/g1_msm_budget_at_80_scalars_over_one_point - g1_msm_fixture_only_at_80_scalars_over_one_point": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/g1_msm_budget_at_80_scalars_over_one_point",
       "minusControl": "g1_msm_fixture_only_at_80_scalars_over_one_point",
       "ceiling": {
-        "mem": 3041812,
-        "cpu": 1007628676
+        "mem": 1694084,
+        "cpu": 582243491
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/g1_msm_budget_at_the_direct_bound - g1_msm_fixture_only_at_the_direct_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/g1_msm_budget_at_the_direct_bound",
       "minusControl": "g1_msm_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 5925076,
-        "cpu": 2200891228
+        "mem": 3225142,
+        "cpu": 1334244399
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/g1_msm_roots_at_37_points - g1_msm_fixture_only_at_37_points": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/g1_msm_roots_at_37_points",
       "minusControl": "g1_msm_fixture_only_at_37_points",
       "ceiling": {
-        "mem": 13123907,
-        "cpu": 6058735818
+        "mem": 13121046,
+        "cpu": 6058705744
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/g1_msm_roots_at_38_points - g1_msm_fixture_only_at_38_points": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/g1_msm_roots_at_38_points",
       "minusControl": "g1_msm_fixture_only_at_38_points",
       "ceiling": {
-        "mem": 13452335,
-        "cpu": 6211733613
+        "mem": 13449474,
+        "cpu": 6211703540
       },
       "aboveBasis": {
         "why": "one size past the largest G1 multi-scalar multiplication success step the roots hop proves in one L1 transaction (37 points): it costs 100.9% of the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
@@ -2158,15 +2158,15 @@
       "minusControl": "g1_msm_fixture_only_at_80_scalars_over_one_point",
       "ceiling": {
         "mem": 13200000,
-        "cpu": 6054235371
+        "cpu": 6054205297
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/g1_msm_roots_at_81_scalars_over_one_point - g1_msm_fixture_only_at_81_scalars_over_one_point": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/g1_msm_roots_at_81_scalars_over_one_point",
       "minusControl": "g1_msm_fixture_only_at_81_scalars_over_one_point",
       "ceiling": {
-        "mem": 13412419,
-        "cpu": 6123912882
+        "mem": 13409557,
+        "cpu": 6123882809
       },
       "aboveBasis": {
         "why": "one size past the largest G1 multi-scalar multiplication success step the roots hop proves in one L1 transaction (80 scalars over one point): it costs 100.6% of the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
@@ -2176,8 +2176,8 @@
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/g1_msm_roots_at_the_direct_bound",
       "minusControl": "g1_msm_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 59760756,
-        "cpu": 27795466695
+        "mem": 59757895,
+        "cpu": 27795436621
       },
       "aboveBasis": {
         "why": "the G1 multi-scalar multiplication success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the roots hop costs 4.5x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
@@ -2187,24 +2187,24 @@
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/g1_msm_semantics_at_37_points",
       "minusControl": "g1_msm_fixture_only_at_37_points",
       "ceiling": {
-        "mem": 4532605,
-        "cpu": 6887970920
+        "mem": 4485772,
+        "cpu": 6875820765
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/g1_msm_semantics_at_80_scalars_over_one_point - g1_msm_fixture_only_at_80_scalars_over_one_point": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/g1_msm_semantics_at_80_scalars_over_one_point",
       "minusControl": "g1_msm_fixture_only_at_80_scalars_over_one_point",
       "ceiling": {
-        "mem": 3674359,
-        "cpu": 3653605745
+        "mem": 3627527,
+        "cpu": 3641455589
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/g1_msm_semantics_at_the_direct_bound - g1_msm_fixture_only_at_the_direct_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/g1_msm_semantics_at_the_direct_bound",
       "minusControl": "g1_msm_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 18655853,
-        "cpu": 30918081267
+        "mem": 18609020,
+        "cpu": 30905931111
       },
       "aboveBasis": {
         "why": "the G1 multi-scalar multiplication success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the semantics hop costs 3.8x the CPU basis, so the step does not fit one L1 transaction and resolves for the defender."
@@ -2214,32 +2214,32 @@
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/g2_msm_budget_at_26_points",
       "minusControl": "g2_msm_fixture_only_at_26_points",
       "ceiling": {
-        "mem": 1413112,
-        "cpu": 557852702
+        "mem": 826094,
+        "cpu": 376676776
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/g2_msm_budget_at_80_scalars_over_one_point - g2_msm_fixture_only_at_80_scalars_over_one_point": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/g2_msm_budget_at_80_scalars_over_one_point",
       "minusControl": "g2_msm_fixture_only_at_80_scalars_over_one_point",
       "ceiling": {
-        "mem": 3043357,
-        "cpu": 1010862806
+        "mem": 1694110,
+        "cpu": 585052698
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/g2_msm_budget_at_the_direct_bound - g2_msm_fixture_only_at_the_direct_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/g2_msm_budget_at_the_direct_bound",
       "minusControl": "g2_msm_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 3213924,
-        "cpu": 1325633009
+        "mem": 1770076,
+        "cpu": 866512347
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/g2_msm_roots_at_26_points - g2_msm_fixture_only_at_26_points": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/g2_msm_roots_at_26_points",
       "minusControl": "g2_msm_fixture_only_at_26_points",
       "ceiling": {
-        "mem": 10086600,
-        "cpu": 4664078696
+        "mem": 10083738,
+        "cpu": 4664048623
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/g2_msm_roots_at_80_scalars_over_one_point - g2_msm_fixture_only_at_80_scalars_over_one_point": {
@@ -2247,15 +2247,15 @@
       "minusControl": "g2_msm_fixture_only_at_80_scalars_over_one_point",
       "ceiling": {
         "mem": 13200000,
-        "cpu": 6074778302
+        "cpu": 6074748229
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/g2_msm_roots_at_81_scalars_over_one_point - g2_msm_fixture_only_at_81_scalars_over_one_point": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/g2_msm_roots_at_81_scalars_over_one_point",
       "minusControl": "g2_msm_fixture_only_at_81_scalars_over_one_point",
       "ceiling": {
-        "mem": 13456715,
-        "cpu": 6144455814
+        "mem": 13453854,
+        "cpu": 6144425740
       },
       "aboveBasis": {
         "why": "one size past the largest G2 multi-scalar multiplication success step the roots hop proves in one L1 transaction (80 scalars over one point): it costs 100.9% of the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
@@ -2265,8 +2265,8 @@
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/g2_msm_roots_at_the_direct_bound",
       "minusControl": "g2_msm_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 31766318,
-        "cpu": 14820891939
+        "mem": 31763457,
+        "cpu": 14820861865
       },
       "aboveBasis": {
         "why": "the G2 multi-scalar multiplication success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the roots hop costs 2.4x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
@@ -2276,35 +2276,35 @@
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/g2_msm_semantics_at_26_points",
       "minusControl": "g2_msm_fixture_only_at_26_points",
       "ceiling": {
-        "mem": 4470440,
-        "cpu": 7959008874
+        "mem": 4423608,
+        "cpu": 7946858718
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/g2_msm_semantics_at_27_points - g2_msm_fixture_only_at_27_points": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/g2_msm_semantics_at_27_points",
       "minusControl": "g2_msm_fixture_only_at_27_points",
       "ceiling": {
-        "mem": 4608705,
-        "cpu": 8229189498
+        "mem": 4561873,
+        "cpu": 8217039343
       },
       "aboveBasis": {
-        "why": "one size past the largest G2 multi-scalar multiplication success step the semantics hop proves in one L1 transaction (26 points): it costs 101.8% of the CPU basis, so the step does not fit one L1 transaction and resolves for the defender."
+        "why": "one size past the largest G2 multi-scalar multiplication success step the semantics hop proves in one L1 transaction (26 points): it costs 101.7% of the CPU basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/g2_msm_semantics_at_80_scalars_over_one_point - g2_msm_fixture_only_at_80_scalars_over_one_point": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/g2_msm_semantics_at_80_scalars_over_one_point",
       "minusControl": "g2_msm_fixture_only_at_80_scalars_over_one_point",
       "ceiling": {
-        "mem": 3736118,
-        "cpu": 7431064619
+        "mem": 3689285,
+        "cpu": 7418914463
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/g2_msm_semantics_at_the_direct_bound - g2_msm_fixture_only_at_the_direct_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/g2_msm_semantics_at_the_direct_bound",
       "minusControl": "g2_msm_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 13042854,
-        "cpu": 24709035198
+        "mem": 12996021,
+        "cpu": 24696885043
       },
       "aboveBasis": {
         "why": "the G2 multi-scalar multiplication success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the semantics hop costs 3.1x the CPU basis, so the step does not fit one L1 transaction and resolves for the defender."
@@ -2314,16 +2314,16 @@
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/index_array_budget_at_86_items",
       "minusControl": "index_array_fixture_only_at_86_items",
       "ceiling": {
-        "mem": 459030,
-        "cpu": 176983626
+        "mem": 327955,
+        "cpu": 138089782
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/index_array_budget_at_the_direct_bound - index_array_fixture_only_at_the_direct_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/index_array_budget_at_the_direct_bound",
       "minusControl": "index_array_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 461335,
-        "cpu": 432731430
+        "mem": 330259,
+        "cpu": 393837587
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/index_array_roots_at_86_items - index_array_fixture_only_at_86_items": {
@@ -2331,15 +2331,15 @@
       "minusControl": "index_array_fixture_only_at_86_items",
       "ceiling": {
         "mem": 13200000,
-        "cpu": 6199112008
+        "cpu": 6199081934
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/index_array_roots_at_87_items - index_array_fixture_only_at_87_items": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/index_array_roots_at_87_items",
       "minusControl": "index_array_fixture_only_at_87_items",
       "ceiling": {
-        "mem": 13374579,
-        "cpu": 6267072109
+        "mem": 13371718,
+        "cpu": 6267042036
       },
       "aboveBasis": {
         "why": "one size past the largest indexArray success step the roots hop proves in one L1 transaction (86 items): it costs 100.3% of the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
@@ -2349,8 +2349,8 @@
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/index_array_roots_at_the_direct_bound",
       "minusControl": "index_array_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 1320421377,
-        "cpu": 624490244830
+        "mem": 1320418314,
+        "cpu": 624490182437
       },
       "aboveBasis": {
         "why": "the indexArray success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the roots hop costs 99.0x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
@@ -2360,16 +2360,16 @@
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/index_array_semantics_at_86_items",
       "minusControl": "index_array_fixture_only_at_86_items",
       "ceiling": {
-        "mem": 3176540,
-        "cpu": 1049996253
+        "mem": 3130112,
+        "cpu": 1037910737
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/index_array_semantics_at_the_direct_bound - index_array_fixture_only_at_the_direct_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/index_array_semantics_at_the_direct_bound",
       "minusControl": "index_array_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 259024806,
-        "cpu": 83712875962
+        "mem": 258977973,
+        "cpu": 83700725806
       },
       "aboveBasis": {
         "why": "the indexArray success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the semantics hop costs 19.4x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
@@ -2379,19 +2379,19 @@
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/insert_coin_budget_at_21_coins",
       "minusControl": "insert_coin_fixture_only_at_21_coins",
       "ceiling": {
-        "mem": 2721740,
-        "cpu": 874836328
+        "mem": 1530129,
+        "cpu": 514507005
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/insert_coin_budget_at_the_direct_bound - insert_coin_fixture_only_at_the_direct_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/insert_coin_budget_at_the_direct_bound",
       "minusControl": "insert_coin_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 135852846,
-        "cpu": 41923771403
+        "mem": 70038757,
+        "cpu": 21705848921
       },
       "aboveBasis": {
-        "why": "the insertCoin success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the budget hop costs 10.2x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
+        "why": "the insertCoin success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the budget hop costs 5.3x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/insert_coin_roots_at_21_coins - insert_coin_fixture_only_at_21_coins": {
@@ -2428,35 +2428,35 @@
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/insert_coin_semantics_at_21_coins",
       "minusControl": "insert_coin_fixture_only_at_21_coins",
       "ceiling": {
-        "mem": 4105926,
-        "cpu": 1318659207
+        "mem": 4100504,
+        "cpu": 1313134652
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/insert_coin_semantics_at_the_direct_bound - insert_coin_fixture_only_at_the_direct_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/insert_coin_semantics_at_the_direct_bound",
       "minusControl": "insert_coin_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 202901709,
-        "cpu": 62774041326
+        "mem": 202860735,
+        "cpu": 62762828451
       },
       "aboveBasis": {
-        "why": "the insertCoin success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the semantics hop costs 15.0x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
+        "why": "the insertCoin success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the semantics hop costs 15.2x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/length_of_array_budget_at_88_items - length_of_array_fixture_only_at_88_items": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/length_of_array_budget_at_88_items",
       "minusControl": "length_of_array_fixture_only_at_88_items",
       "ceiling": {
-        "mem": 428992,
-        "cpu": 164417473
+        "mem": 306098,
+        "cpu": 127874303
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/length_of_array_budget_at_the_direct_bound - length_of_array_fixture_only_at_the_direct_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/length_of_array_budget_at_the_direct_bound",
       "minusControl": "length_of_array_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 431295,
-        "cpu": 419949833
+        "mem": 308401,
+        "cpu": 383406662
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/length_of_array_roots_at_88_items - length_of_array_fixture_only_at_88_items": {
@@ -2471,7 +2471,7 @@
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/length_of_array_roots_at_89_items",
       "minusControl": "length_of_array_fixture_only_at_89_items",
       "ceiling": {
-        "mem": 13462626,
+        "mem": 13462396,
         "cpu": 6317963432
       },
       "aboveBasis": {
@@ -2482,7 +2482,7 @@
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/length_of_array_roots_at_the_direct_bound",
       "minusControl": "length_of_array_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 1320366140,
+        "mem": 1320365707,
         "cpu": 624473391573
       },
       "aboveBasis": {
@@ -2493,45 +2493,45 @@
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/length_of_array_semantics_at_88_items",
       "minusControl": "length_of_array_fixture_only_at_88_items",
       "ceiling": {
-        "mem": 3235059,
-        "cpu": 1064321091
+        "mem": 3188731,
+        "cpu": 1052251736
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/length_of_array_semantics_at_the_direct_bound - length_of_array_fixture_only_at_the_direct_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/length_of_array_semantics_at_the_direct_bound",
       "minusControl": "length_of_array_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 275324000,
-        "cpu": 89114577764
+        "mem": 275277470,
+        "cpu": 89102476088
       },
       "aboveBasis": {
-        "why": "the lengthOfArray success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the semantics hop costs 20.7x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
+        "why": "the lengthOfArray success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the semantics hop costs 20.6x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/list_to_array_budget_at_42_items - list_to_array_fixture_only_at_42_items": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/list_to_array_budget_at_42_items",
       "minusControl": "list_to_array_fixture_only_at_42_items",
       "ceiling": {
-        "mem": 1873509,
-        "cpu": 624803268
+        "mem": 1069676,
+        "cpu": 374324720
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/list_to_array_budget_at_the_direct_bound - list_to_array_fixture_only_at_the_direct_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/list_to_array_budget_at_the_direct_bound",
       "minusControl": "list_to_array_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 137977873,
-        "cpu": 44796217777
+        "mem": 73192430,
+        "cpu": 23942428511
       },
       "aboveBasis": {
-        "why": "the listToArray success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the budget hop costs 10.3x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
+        "why": "the listToArray success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the budget hop costs 5.5x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/list_to_array_roots_at_42_items - list_to_array_fixture_only_at_42_items": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/list_to_array_roots_at_42_items",
       "minusControl": "list_to_array_fixture_only_at_42_items",
       "ceiling": {
-        "mem": 13125842,
+        "mem": 13124499,
         "cpu": 6071943272
       }
     },
@@ -2539,7 +2539,7 @@
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/list_to_array_roots_at_43_items",
       "minusControl": "list_to_array_fixture_only_at_43_items",
       "ceiling": {
-        "mem": 13420526,
+        "mem": 13419183,
         "cpu": 6209365363
       },
       "aboveBasis": {
@@ -2550,7 +2550,7 @@
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/list_to_array_roots_at_the_direct_bound",
       "minusControl": "list_to_array_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 1357769690,
+        "mem": 1357768346,
         "cpu": 633346083038
       },
       "aboveBasis": {
@@ -2561,16 +2561,16 @@
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/list_to_array_semantics_at_42_items",
       "minusControl": "list_to_array_fixture_only_at_42_items",
       "ceiling": {
-        "mem": 2393379,
-        "cpu": 797156510
+        "mem": 2347153,
+        "cpu": 785103315
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/list_to_array_semantics_at_the_direct_bound - list_to_array_fixture_only_at_the_direct_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/list_to_array_semantics_at_the_direct_bound",
       "minusControl": "list_to_array_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 194340513,
-        "cpu": 63491223550
+        "mem": 194294286,
+        "cpu": 63479170355
       },
       "aboveBasis": {
         "why": "the listToArray success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the semantics hop costs 14.6x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
@@ -2580,19 +2580,19 @@
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/lookup_coin_budget_at_45_coins",
       "minusControl": "lookup_coin_fixture_only_at_45_coins",
       "ceiling": {
-        "mem": 4878112,
-        "cpu": 1529640178
+        "mem": 2627763,
+        "cpu": 844990372
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/lookup_coin_budget_at_the_direct_bound - lookup_coin_fixture_only_at_the_direct_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/lookup_coin_budget_at_the_direct_bound",
       "minusControl": "lookup_coin_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 272181344,
-        "cpu": 83523882696
+        "mem": 140156611,
+        "cpu": 43048530847
       },
       "aboveBasis": {
-        "why": "the lookupCoin success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the budget hop costs 20.4x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
+        "why": "the lookupCoin success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the budget hop costs 10.5x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/lookup_coin_roots_at_45_coins - lookup_coin_fixture_only_at_45_coins": {
@@ -2618,7 +2618,7 @@
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/lookup_coin_roots_at_the_direct_bound",
       "minusControl": "lookup_coin_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 799227987,
+        "mem": 799227356,
         "cpu": 371575206416
       },
       "aboveBasis": {
@@ -2629,35 +2629,35 @@
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/lookup_coin_semantics_at_45_coins",
       "minusControl": "lookup_coin_fixture_only_at_45_coins",
       "ceiling": {
-        "mem": 5070897,
-        "cpu": 1597773097
+        "mem": 5026590,
+        "cpu": 1586026942
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/lookup_coin_semantics_at_the_direct_bound - lookup_coin_fixture_only_at_the_direct_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/lookup_coin_semantics_at_the_direct_bound",
       "minusControl": "lookup_coin_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 270120614,
-        "cpu": 83095531145
+        "mem": 270078528,
+        "cpu": 83084140509
       },
       "aboveBasis": {
-        "why": "the lookupCoin success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the semantics hop costs 20.0x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
+        "why": "the lookupCoin success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the semantics hop costs 20.3x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/scale_value_budget_at_22_coins - scale_value_fixture_only_at_22_coins": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/scale_value_budget_at_22_coins",
       "minusControl": "scale_value_fixture_only_at_22_coins",
       "ceiling": {
-        "mem": 1648813,
-        "cpu": 539206483
+        "mem": 1528196,
+        "cpu": 505905489
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/scale_value_budget_at_the_direct_bound - scale_value_fixture_only_at_the_direct_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/scale_value_budget_at_the_direct_bound",
       "minusControl": "scale_value_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 70080741,
-        "cpu": 21710997703
+        "mem": 69963006,
+        "cpu": 21674882881
       },
       "aboveBasis": {
         "why": "the scaleValue success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the budget hop costs 5.2x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
@@ -2667,27 +2667,27 @@
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/scale_value_roots_at_22_coins",
       "minusControl": "scale_value_fixture_only_at_22_coins",
       "ceiling": {
-        "mem": 13143850,
-        "cpu": 6044644586
+        "mem": 13140988,
+        "cpu": 6044614512
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/scale_value_roots_at_23_coins - scale_value_fixture_only_at_23_coins": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/scale_value_roots_at_23_coins",
       "minusControl": "scale_value_fixture_only_at_23_coins",
       "ceiling": {
-        "mem": 13673661,
-        "cpu": 6290860816
+        "mem": 13670800,
+        "cpu": 6290830742
       },
       "aboveBasis": {
-        "why": "one size past the largest scaleValue success step the roots hop proves in one L1 transaction (22 coins): it costs 102.6% of the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
+        "why": "one size past the largest scaleValue success step the roots hop proves in one L1 transaction (22 coins): it costs 102.5% of the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/scale_value_roots_at_the_direct_bound - scale_value_fixture_only_at_the_direct_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/scale_value_roots_at_the_direct_bound",
       "minusControl": "scale_value_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 799034134,
-        "cpu": 371489185055
+        "mem": 799029252,
+        "cpu": 371488831781
       },
       "aboveBasis": {
         "why": "the scaleValue success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the roots hop costs 59.9x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
@@ -2697,8 +2697,8 @@
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/scale_value_semantics_at_22_coins",
       "minusControl": "scale_value_fixture_only_at_22_coins",
       "ceiling": {
-        "mem": 3855385,
-        "cpu": 1233928094
+        "mem": 3839862,
+        "cpu": 1226787539
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/scale_value_semantics_at_the_direct_bound - scale_value_fixture_only_at_the_direct_bound": {
@@ -2709,42 +2709,42 @@
         "cpu": 62926905365
       },
       "aboveBasis": {
-        "why": "the scaleValue success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the semantics hop costs 15.1x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
+        "why": "the scaleValue success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the semantics hop costs 15.2x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/un_value_data_budget_at_22_coins - un_value_data_fixture_only_at_22_coins": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/un_value_data_budget_at_22_coins",
       "minusControl": "un_value_data_fixture_only_at_22_coins",
       "ceiling": {
-        "mem": 2258048,
-        "cpu": 717675316
+        "mem": 1278838,
+        "cpu": 440370302
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/un_value_data_budget_at_the_direct_bound - un_value_data_fixture_only_at_the_direct_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/un_value_data_budget_at_the_direct_bound",
       "minusControl": "un_value_data_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 106299216,
-        "cpu": 32598385442
+        "mem": 56323859,
+        "cpu": 18433143135
       },
       "aboveBasis": {
-        "why": "the unValueData success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the budget hop costs 8.0x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
+        "why": "the unValueData success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the budget hop costs 4.2x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/un_value_data_roots_at_22_coins - un_value_data_fixture_only_at_22_coins": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/un_value_data_roots_at_22_coins",
       "minusControl": "un_value_data_fixture_only_at_22_coins",
       "ceiling": {
-        "mem": 12847650,
-        "cpu": 5927550204
+        "mem": 12844789,
+        "cpu": 5927520131
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/un_value_data_roots_at_23_coins - un_value_data_fixture_only_at_23_coins": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/un_value_data_roots_at_23_coins",
       "minusControl": "un_value_data_fixture_only_at_23_coins",
       "ceiling": {
-        "mem": 13373706,
-        "cpu": 6172532802
+        "mem": 13370845,
+        "cpu": 6172502728
       },
       "aboveBasis": {
         "why": "one size past the largest unValueData success step the roots hop proves in one L1 transaction (22 coins): it costs 100.3% of the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
@@ -2754,8 +2754,8 @@
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/un_value_data_roots_at_the_direct_bound",
       "minusControl": "un_value_data_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 793156195,
-        "cpu": 369525148501
+        "mem": 793151314,
+        "cpu": 369524795227
       },
       "aboveBasis": {
         "why": "the unValueData success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the roots hop costs 59.5x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
@@ -2765,54 +2765,54 @@
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/un_value_data_semantics_at_22_coins",
       "minusControl": "un_value_data_fixture_only_at_22_coins",
       "ceiling": {
-        "mem": 2876247,
-        "cpu": 933277584
+        "mem": 2831838,
+        "cpu": 921515268
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/un_value_data_semantics_at_the_direct_bound - un_value_data_fixture_only_at_the_direct_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/un_value_data_semantics_at_the_direct_bound",
       "minusControl": "un_value_data_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 147381938,
-        "cpu": 47025464128
+        "mem": 147339347,
+        "cpu": 47013992693
       },
       "aboveBasis": {
-        "why": "the unValueData success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the semantics hop costs 10.9x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
+        "why": "the unValueData success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the semantics hop costs 11.1x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/union_value_budget_at_14_coins - union_value_fixture_only_at_14_coins": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/union_value_budget_at_14_coins",
       "minusControl": "union_value_fixture_only_at_14_coins",
       "ceiling": {
-        "mem": 2094456,
-        "cpu": 675260051
+        "mem": 1977393,
+        "cpu": 636884947
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/union_value_budget_at_the_direct_bound - union_value_fixture_only_at_the_direct_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/union_value_budget_at_the_direct_bound",
       "minusControl": "union_value_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 93559112,
-        "cpu": 28852313234
+        "mem": 93443397,
+        "cpu": 28816521613
       },
       "aboveBasis": {
-        "why": "the unionValue success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the budget hop costs 6.9x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
+        "why": "the unionValue success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the budget hop costs 7.0x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/union_value_roots_at_14_coins - union_value_fixture_only_at_14_coins": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/union_value_roots_at_14_coins",
       "minusControl": "union_value_fixture_only_at_14_coins",
       "ceiling": {
-        "mem": 12935343,
-        "cpu": 5934415539
+        "mem": 12932482,
+        "cpu": 5934385465
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/union_value_roots_at_15_coins - union_value_fixture_only_at_15_coins": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/union_value_roots_at_15_coins",
       "minusControl": "union_value_fixture_only_at_15_coins",
       "ceiling": {
-        "mem": 13730061,
-        "cpu": 6303748315
+        "mem": 13727199,
+        "cpu": 6303718241
       },
       "aboveBasis": {
         "why": "one size past the largest unionValue success step the roots hop proves in one L1 transaction (14 coins): it costs 103.0% of the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
@@ -2822,8 +2822,8 @@
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/union_value_roots_at_the_direct_bound",
       "minusControl": "union_value_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 799075146,
-        "cpu": 371498830379
+        "mem": 799070466,
+        "cpu": 371498509425
       },
       "aboveBasis": {
         "why": "the unionValue success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the roots hop costs 59.9x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
@@ -2833,8 +2833,8 @@
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/union_value_semantics_at_14_coins",
       "minusControl": "union_value_fixture_only_at_14_coins",
       "ceiling": {
-        "mem": 4212503,
-        "cpu": 1335114165
+        "mem": 4201930,
+        "cpu": 1328765449
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/union_value_semantics_at_the_direct_bound - union_value_fixture_only_at_the_direct_bound": {
@@ -2845,42 +2845,42 @@
         "cpu": 69552246771
       },
       "aboveBasis": {
-        "why": "the unionValue success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the semantics hop costs 16.7x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
+        "why": "the unionValue success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the semantics hop costs 16.9x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/value_contains_budget_at_22_coins - value_contains_fixture_only_at_22_coins": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/value_contains_budget_at_22_coins",
       "minusControl": "value_contains_fixture_only_at_22_coins",
       "ceiling": {
-        "mem": 2824164,
-        "cpu": 898306371
+        "mem": 2713564,
+        "cpu": 860965507
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/value_contains_budget_at_the_direct_bound - value_contains_fixture_only_at_the_direct_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/value_contains_budget_at_the_direct_bound",
       "minusControl": "value_contains_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 140296387,
-        "cpu": 43080975516
+        "mem": 140182085,
+        "cpu": 43045410134
       },
       "aboveBasis": {
-        "why": "the valueContains success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the budget hop costs 10.4x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
+        "why": "the valueContains success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the budget hop costs 10.5x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/value_contains_roots_at_22_coins - value_contains_fixture_only_at_22_coins": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/value_contains_roots_at_22_coins",
       "minusControl": "value_contains_fixture_only_at_22_coins",
       "ceiling": {
-        "mem": 13192215,
-        "cpu": 6060295790
+        "mem": 13189354,
+        "cpu": 6060265716
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/value_contains_roots_at_23_coins - value_contains_fixture_only_at_23_coins": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/value_contains_roots_at_23_coins",
       "minusControl": "value_contains_fixture_only_at_23_coins",
       "ceiling": {
-        "mem": 13722027,
-        "cpu": 6306520460
+        "mem": 13719166,
+        "cpu": 6306490386
       },
       "aboveBasis": {
         "why": "one size past the largest valueContains success step the roots hop proves in one L1 transaction (22 coins): it costs 102.9% of the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
@@ -2890,8 +2890,8 @@
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/value_contains_roots_at_the_direct_bound",
       "minusControl": "value_contains_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 799082499,
-        "cpu": 371504836259
+        "mem": 799077618,
+        "cpu": 371504482985
       },
       "aboveBasis": {
         "why": "the valueContains success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the roots hop costs 59.9x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
@@ -2901,8 +2901,8 @@
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/value_contains_semantics_at_22_coins",
       "minusControl": "value_contains_fixture_only_at_22_coins",
       "ceiling": {
-        "mem": 4960686,
-        "cpu": 1558672790
+        "mem": 4955466,
+        "cpu": 1553180555
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/value_contains_semantics_at_the_direct_bound - value_contains_fixture_only_at_the_direct_bound": {
@@ -2913,23 +2913,23 @@
         "cpu": 82689602248
       },
       "aboveBasis": {
-        "why": "the valueContains success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the semantics hop costs 20.1x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
+        "why": "the valueContains success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the semantics hop costs 20.3x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/value_data_budget_at_22_coins - value_data_fixture_only_at_22_coins": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/value_data_budget_at_22_coins",
       "minusControl": "value_data_fixture_only_at_22_coins",
       "ceiling": {
-        "mem": 1623514,
-        "cpu": 530430267
+        "mem": 1506077,
+        "cpu": 495093451
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/value_data_budget_at_the_direct_bound - value_data_fixture_only_at_the_direct_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/value_data_budget_at_the_direct_bound",
       "minusControl": "value_data_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 70053475,
-        "cpu": 21698631980
+        "mem": 69940887,
+        "cpu": 21664070843
       },
       "aboveBasis": {
         "why": "the valueData success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the budget hop costs 5.2x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
@@ -2939,7 +2939,7 @@
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/value_data_roots_at_22_coins",
       "minusControl": "value_data_fixture_only_at_22_coins",
       "ceiling": {
-        "mem": 12847245,
+        "mem": 12844789,
         "cpu": 5927432708
       }
     },
@@ -2947,7 +2947,7 @@
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/value_data_roots_at_23_coins",
       "minusControl": "value_data_fixture_only_at_23_coins",
       "ceiling": {
-        "mem": 13373301,
+        "mem": 13370845,
         "cpu": 6172415305
       },
       "aboveBasis": {
@@ -2958,8 +2958,8 @@
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/value_data_roots_at_the_direct_bound",
       "minusControl": "value_data_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 793155790,
-        "cpu": 369525031005
+        "mem": 793151314,
+        "cpu": 369524795227
       },
       "aboveBasis": {
         "why": "the valueData success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the roots hop costs 59.5x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
@@ -2969,103 +2969,103 @@
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/value_data_semantics_at_22_coins",
       "minusControl": "value_data_fixture_only_at_22_coins",
       "ceiling": {
-        "mem": 3274951,
-        "cpu": 1042803088
+        "mem": 3258721,
+        "cpu": 1035549412
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/value_data_semantics_at_the_direct_bound - value_data_fixture_only_at_the_direct_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/value_data_semantics_at_the_direct_bound",
       "minusControl": "value_data_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 174780949,
-        "cpu": 54345981880
+        "mem": 174738863,
+        "cpu": 54334591244
       },
       "aboveBasis": {
-        "why": "the valueData success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the semantics hop costs 13.0x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
+        "why": "the valueData success step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the semantics hop costs 13.1x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/exp_mod_no_inverse_budget_at_128_words - exp_mod_no_inverse_fixture_only_at_128_words": {
       "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/exp_mod_no_inverse_budget_at_128_words",
       "minusControl": "exp_mod_no_inverse_fixture_only_at_128_words",
       "ceiling": {
-        "mem": 1482416,
-        "cpu": 755529655
+        "mem": 1422602,
+        "cpu": 736969847
       }
     },
-    "fraud_proofs/validation_trace/cek_core_failure_pv11.test/exp_mod_no_inverse_budget_at_55_words - exp_mod_no_inverse_fixture_only_at_55_words": {
-      "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/exp_mod_no_inverse_budget_at_55_words",
-      "minusControl": "exp_mod_no_inverse_fixture_only_at_55_words",
+    "fraud_proofs/validation_trace/cek_core_failure_pv11.test/exp_mod_no_inverse_budget_at_56_words - exp_mod_no_inverse_fixture_only_at_56_words": {
+      "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/exp_mod_no_inverse_budget_at_56_words",
+      "minusControl": "exp_mod_no_inverse_fixture_only_at_56_words",
       "ceiling": {
-        "mem": 1000989,
-        "cpu": 410625834
+        "mem": 938678,
+        "cpu": 394163569
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/exp_mod_no_inverse_known_at_128_words - exp_mod_no_inverse_fixture_only_at_128_words": {
       "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/exp_mod_no_inverse_known_at_128_words",
       "minusControl": "exp_mod_no_inverse_fixture_only_at_128_words",
       "ceiling": {
-        "mem": 29170894,
-        "cpu": 23432582627
+        "mem": 29111369,
+        "cpu": 23429016226
       },
       "aboveBasis": {
-        "why": "the expModInteger with no inverse failure at its consensus maximum, a 128-word modulus over the longest greatest-common-divisor walk: the known-failure hop costs 2.9x the CPU basis, so the step does not fit one L1 transaction and resolves for the defender."
-      }
-    },
-    "fraud_proofs/validation_trace/cek_core_failure_pv11.test/exp_mod_no_inverse_known_at_55_words - exp_mod_no_inverse_fixture_only_at_55_words": {
-      "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/exp_mod_no_inverse_known_at_55_words",
-      "minusControl": "exp_mod_no_inverse_fixture_only_at_55_words",
-      "ceiling": {
-        "mem": 13135365,
-        "cpu": 5905154004
+        "why": "the expModInteger with no inverse failure at its consensus maximum, a 128-word modulus over the longest greatest-common-divisor walk: the semantics hop costs 2.9x the CPU basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/exp_mod_no_inverse_known_at_56_words - exp_mod_no_inverse_fixture_only_at_56_words": {
       "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/exp_mod_no_inverse_known_at_56_words",
       "minusControl": "exp_mod_no_inverse_fixture_only_at_56_words",
       "ceiling": {
-        "mem": 13345456,
-        "cpu": 6048357459
+        "mem": 13200000,
+        "cpu": 6046536338
+      }
+    },
+    "fraud_proofs/validation_trace/cek_core_failure_pv11.test/exp_mod_no_inverse_known_at_57_words - exp_mod_no_inverse_fixture_only_at_57_words": {
+      "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/exp_mod_no_inverse_known_at_57_words",
+      "minusControl": "exp_mod_no_inverse_fixture_only_at_57_words",
+      "ceiling": {
+        "mem": 13581443,
+        "cpu": 6209533492
       },
       "aboveBasis": {
-        "why": "one size past the largest expModInteger with no inverse failure step the known-failure hop proves in one L1 transaction (55 words): it costs 100.1% of the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
+        "why": "one size past the largest expModInteger with no inverse failure step the semantics hop proves in one L1 transaction (56 words): it costs 101.9% of the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/g1_msm_budget_at_60_scalars - g1_msm_fixture_only_at_60_scalars": {
       "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/g1_msm_budget_at_60_scalars",
       "minusControl": "g1_msm_fixture_only_at_60_scalars",
       "ceiling": {
-        "mem": 2539529,
-        "cpu": 883710764
+        "mem": 1445912,
+        "cpu": 524661538
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/g1_msm_budget_at_the_direct_bound - g1_msm_fixture_only_at_the_direct_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/g1_msm_budget_at_the_direct_bound",
       "minusControl": "g1_msm_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 258161825,
-        "cpu": 83604408703
+        "mem": 136901125,
+        "cpu": 44549235767
       },
       "aboveBasis": {
-        "why": "the G1 multi-scalar multiplication failure step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the budget hop costs 19.4x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
+        "why": "the G1 multi-scalar multiplication failure step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the budget hop costs 10.3x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/g1_msm_known_at_60_scalars - g1_msm_fixture_only_at_60_scalars": {
       "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/g1_msm_known_at_60_scalars",
       "minusControl": "g1_msm_fixture_only_at_60_scalars",
       "ceiling": {
-        "mem": 13200000,
-        "cpu": 5746682479
+        "mem": 13194126,
+        "cpu": 5738597184
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/g1_msm_known_at_61_scalars - g1_msm_fixture_only_at_61_scalars": {
       "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/g1_msm_known_at_61_scalars",
       "minusControl": "g1_msm_fixture_only_at_61_scalars",
       "ceiling": {
-        "mem": 13415014,
-        "cpu": 5826934491
+        "mem": 13378655,
+        "cpu": 5818897677
       },
       "aboveBasis": {
-        "why": "one size past the largest G1 multi-scalar multiplication failure step the known-failure hop proves in one L1 transaction (60 scalars): it costs 100.6% of the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
+        "why": "one size past the largest G1 multi-scalar multiplication failure step the semantics hop proves in one L1 transaction (60 scalars): it costs 100.3% of the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/g1_msm_known_at_the_direct_bound - g1_msm_fixture_only_at_the_direct_bound": {
@@ -3076,26 +3076,26 @@
         "cpu": 693746773798
       },
       "aboveBasis": {
-        "why": "the G1 multi-scalar multiplication failure step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the known-failure hop costs 119.4x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
+        "why": "the G1 multi-scalar multiplication failure step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the semantics hop costs 119.6x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/g2_msm_budget_at_60_scalars - g2_msm_fixture_only_at_60_scalars": {
       "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/g2_msm_budget_at_60_scalars",
       "minusControl": "g2_msm_fixture_only_at_60_scalars",
       "ceiling": {
-        "mem": 2541062,
-        "cpu": 885593146
+        "mem": 1446330,
+        "cpu": 526130782
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/g2_msm_budget_at_the_direct_bound - g2_msm_fixture_only_at_the_direct_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/g2_msm_budget_at_the_direct_bound",
       "minusControl": "g2_msm_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 256612323,
-        "cpu": 83104257906
+        "mem": 136079643,
+        "cpu": 44283467490
       },
       "aboveBasis": {
-        "why": "the G2 multi-scalar multiplication failure step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the budget hop costs 19.2x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
+        "why": "the G2 multi-scalar multiplication failure step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the budget hop costs 10.2x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/g2_msm_known_at_60_scalars - g2_msm_fixture_only_at_60_scalars": {
@@ -3103,18 +3103,18 @@
       "minusControl": "g2_msm_fixture_only_at_60_scalars",
       "ceiling": {
         "mem": 13200000,
-        "cpu": 5770974321
+        "cpu": 5762533507
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/g2_msm_known_at_61_scalars - g2_msm_fixture_only_at_61_scalars": {
       "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/g2_msm_known_at_61_scalars",
       "minusControl": "g2_msm_fixture_only_at_61_scalars",
       "ceiling": {
-        "mem": 13479761,
-        "cpu": 5851226333
+        "mem": 13441180,
+        "cpu": 5842833999
       },
       "aboveBasis": {
-        "why": "one size past the largest G2 multi-scalar multiplication failure step the known-failure hop proves in one L1 transaction (60 scalars): it costs 101.1% of the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
+        "why": "one size past the largest G2 multi-scalar multiplication failure step the semantics hop proves in one L1 transaction (60 scalars): it costs 100.8% of the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/g2_msm_known_at_the_direct_bound - g2_msm_fixture_only_at_the_direct_bound": {
@@ -3125,110 +3125,110 @@
         "cpu": 689596392043
       },
       "aboveBasis": {
-        "why": "the G2 multi-scalar multiplication failure step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the known-failure hop costs 118.7x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
+        "why": "the G2 multi-scalar multiplication failure step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the semantics hop costs 118.9x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/index_array_budget_at_70_items - index_array_fixture_only_at_70_items": {
       "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/index_array_budget_at_70_items",
       "minusControl": "index_array_fixture_only_at_70_items",
       "ceiling": {
-        "mem": 509101,
-        "cpu": 190769501
+        "mem": 438062,
+        "cpu": 170792801
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/index_array_budget_at_the_direct_bound - index_array_fixture_only_at_the_direct_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/index_array_budget_at_the_direct_bound",
       "minusControl": "index_array_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 514656,
-        "cpu": 449848809
+        "mem": 443617,
+        "cpu": 429872109
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/index_array_known_at_70_items - index_array_fixture_only_at_70_items": {
       "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/index_array_known_at_70_items",
       "minusControl": "index_array_fixture_only_at_70_items",
       "ceiling": {
-        "mem": 13200000,
-        "cpu": 5837832796
+        "mem": 13199423,
+        "cpu": 5825491991
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/index_array_known_at_71_items - index_array_fixture_only_at_71_items": {
       "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/index_array_known_at_71_items",
       "minusControl": "index_array_fixture_only_at_71_items",
       "ceiling": {
-        "mem": 13415067,
-        "cpu": 5915417372
+        "mem": 13372537,
+        "cpu": 5903076567
       },
       "aboveBasis": {
-        "why": "one size past the largest indexArray failure step the known-failure hop proves in one L1 transaction (70 items): it costs 100.6% of the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
+        "why": "one size past the largest indexArray failure step the semantics hop proves in one L1 transaction (70 items): it costs 100.3% of the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/index_array_known_at_the_direct_bound - index_array_fixture_only_at_the_direct_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/index_array_known_at_the_direct_bound",
       "minusControl": "index_array_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 1595492024,
-        "cpu": 713250314261
+        "mem": 1595450100,
+        "cpu": 713238070416
       },
       "aboveBasis": {
-        "why": "the indexArray failure step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the known-failure hop costs 119.7x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
+        "why": "the indexArray failure step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the semantics hop costs 119.7x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/insert_coin_budget_at_31_coins - insert_coin_fixture_only_at_31_coins": {
       "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/insert_coin_budget_at_31_coins",
       "minusControl": "insert_coin_fixture_only_at_31_coins",
       "ceiling": {
-        "mem": 3550078,
-        "cpu": 1121164456
+        "mem": 1988321,
+        "cpu": 646382985
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/insert_coin_budget_at_the_direct_bound - insert_coin_fixture_only_at_the_direct_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/insert_coin_budget_at_the_direct_bound",
       "minusControl": "insert_coin_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 272115153,
-        "cpu": 83502656901
+        "mem": 141375665,
+        "cpu": 43242967719
       },
       "aboveBasis": {
-        "why": "the insertCoin failure step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the budget hop costs 20.4x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
+        "why": "the insertCoin failure step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the budget hop costs 10.6x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/insert_coin_known_at_31_coins - insert_coin_fixture_only_at_31_coins": {
       "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/insert_coin_known_at_31_coins",
       "minusControl": "insert_coin_fixture_only_at_31_coins",
       "ceiling": {
-        "mem": 13200000,
-        "cpu": 5509358823
+        "mem": 13106783,
+        "cpu": 5489332535
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/insert_coin_known_at_32_coins - insert_coin_fixture_only_at_32_coins": {
       "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/insert_coin_known_at_32_coins",
       "minusControl": "insert_coin_fixture_only_at_32_coins",
       "ceiling": {
-        "mem": 13561993,
-        "cpu": 5659935690
+        "mem": 13459887,
+        "cpu": 5639586202
       },
       "aboveBasis": {
-        "why": "one size past the largest insertCoin failure step the known-failure hop proves in one L1 transaction (31 coins): it costs 101.7% of the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
+        "why": "one size past the largest insertCoin failure step the semantics hop proves in one L1 transaction (31 coins): it costs 101.0% of the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/insert_coin_known_at_the_direct_bound - insert_coin_fixture_only_at_the_direct_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/insert_coin_known_at_the_direct_bound",
       "minusControl": "insert_coin_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 1072020015,
-        "cpu": 453984315559
+        "mem": 1065919949,
+        "cpu": 453007684451
       },
       "aboveBasis": {
-        "why": "the insertCoin failure step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the known-failure hop costs 80.4x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
+        "why": "the insertCoin failure step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the semantics hop costs 80.0x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/scale_value_budget_at_32_coins - scale_value_fixture_only_at_32_coins": {
       "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/scale_value_budget_at_32_coins",
       "minusControl": "scale_value_fixture_only_at_32_coins",
       "ceiling": {
-        "mem": 2047419,
-        "cpu": 655472044
+        "mem": 2005616,
+        "cpu": 643688265
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/scale_value_budget_at_the_direct_bound - scale_value_fixture_only_at_the_direct_bound": {
@@ -3239,94 +3239,94 @@
         "cpu": 43034490007
       },
       "aboveBasis": {
-        "why": "the scaleValue failure step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the budget hop costs 10.4x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
+        "why": "the scaleValue failure step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the budget hop costs 10.6x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/scale_value_known_at_32_coins - scale_value_fixture_only_at_32_coins": {
       "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/scale_value_known_at_32_coins",
       "minusControl": "scale_value_fixture_only_at_32_coins",
       "ceiling": {
-        "mem": 13125940,
-        "cpu": 5464358405
+        "mem": 13011738,
+        "cpu": 5440512105
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/scale_value_known_at_33_coins - scale_value_fixture_only_at_33_coins": {
       "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/scale_value_known_at_33_coins",
       "minusControl": "scale_value_fixture_only_at_33_coins",
       "ceiling": {
-        "mem": 13487860,
-        "cpu": 5616735682
+        "mem": 13371637,
+        "cpu": 5592566182
       },
       "aboveBasis": {
-        "why": "one size past the largest scaleValue failure step the known-failure hop proves in one L1 transaction (32 coins): it costs 101.2% of the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
+        "why": "one size past the largest scaleValue failure step the semantics hop proves in one L1 transaction (32 coins): it costs 100.3% of the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/scale_value_known_at_the_direct_bound - scale_value_fixture_only_at_the_direct_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/scale_value_known_at_the_direct_bound",
       "minusControl": "scale_value_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 1091830086,
-        "cpu": 459793073558
+        "mem": 1085696082,
+        "cpu": 458806058938
       },
       "aboveBasis": {
-        "why": "the scaleValue failure step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the known-failure hop costs 81.9x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
+        "why": "the scaleValue failure step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the semantics hop costs 81.4x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
-    "fraud_proofs/validation_trace/cek_core_failure_pv11.test/un_value_data_budget_at_36_coins - un_value_data_fixture_only_at_36_coins": {
-      "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/un_value_data_budget_at_36_coins",
-      "minusControl": "un_value_data_fixture_only_at_36_coins",
+    "fraud_proofs/validation_trace/cek_core_failure_pv11.test/un_value_data_budget_at_37_coins - un_value_data_fixture_only_at_37_coins": {
+      "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/un_value_data_budget_at_37_coins",
+      "minusControl": "un_value_data_fixture_only_at_37_coins",
       "ceiling": {
-        "mem": 3174417,
-        "cpu": 987651623
+        "mem": 1833309,
+        "cpu": 610407679
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/un_value_data_budget_at_the_direct_bound - un_value_data_fixture_only_at_the_direct_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/un_value_data_budget_at_the_direct_bound",
       "minusControl": "un_value_data_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 213120363,
-        "cpu": 64896901525
+        "mem": 114043068,
+        "cpu": 36738366556
       },
       "aboveBasis": {
-        "why": "the unValueData failure step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the budget hop costs 16.0x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
-      }
-    },
-    "fraud_proofs/validation_trace/cek_core_failure_pv11.test/un_value_data_known_at_36_coins - un_value_data_fixture_only_at_36_coins": {
-      "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/un_value_data_known_at_36_coins",
-      "minusControl": "un_value_data_fixture_only_at_36_coins",
-      "ceiling": {
-        "mem": 13075327,
-        "cpu": 5599939010
+        "why": "the unValueData failure step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the budget hop costs 8.6x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/un_value_data_known_at_37_coins - un_value_data_fixture_only_at_37_coins": {
       "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/un_value_data_known_at_37_coins",
       "minusControl": "un_value_data_fixture_only_at_37_coins",
       "ceiling": {
-        "mem": 13408446,
-        "cpu": 5744108697
+        "mem": 13200000,
+        "cpu": 5719738812
+      }
+    },
+    "fraud_proofs/validation_trace/cek_core_failure_pv11.test/un_value_data_known_at_38_coins - un_value_data_fixture_only_at_38_coins": {
+      "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/un_value_data_known_at_38_coins",
+      "minusControl": "un_value_data_fixture_only_at_38_coins",
+      "ceiling": {
+        "mem": 13619067,
+        "cpu": 5863369514
       },
       "aboveBasis": {
-        "why": "one size past the largest unValueData failure step the known-failure hop proves in one L1 transaction (36 coins): it costs 100.6% of the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
+        "why": "one size past the largest unValueData failure step the semantics hop proves in one L1 transaction (37 coins): it costs 102.2% of the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/un_value_data_known_at_the_direct_bound - un_value_data_fixture_only_at_the_direct_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/un_value_data_known_at_the_direct_bound",
       "minusControl": "un_value_data_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 1004630962,
-        "cpu": 434254681007
+        "mem": 998503005,
+        "cpu": 433269114322
       },
       "aboveBasis": {
-        "why": "the unValueData failure step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the known-failure hop costs 75.4x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
+        "why": "the unValueData failure step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the semantics hop costs 74.9x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/union_value_budget_at_15_coins - union_value_fixture_only_at_15_coins": {
       "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/union_value_budget_at_15_coins",
       "minusControl": "union_value_fixture_only_at_15_coins",
       "ceiling": {
-        "mem": 2146955,
-        "cpu": 685666827
+        "mem": 2102253,
+        "cpu": 668175990
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/union_value_budget_at_the_direct_bound - union_value_fixture_only_at_the_direct_bound": {
@@ -3337,45 +3337,45 @@
         "cpu": 43066682185
       },
       "aboveBasis": {
-        "why": "the unionValue failure step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the budget hop costs 10.4x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
+        "why": "the unionValue failure step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the budget hop costs 10.6x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/union_value_known_at_15_coins - union_value_fixture_only_at_15_coins": {
       "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/union_value_known_at_15_coins",
       "minusControl": "union_value_fixture_only_at_15_coins",
       "ceiling": {
-        "mem": 12874575,
-        "cpu": 5346686104
+        "mem": 12762456,
+        "cpu": 5323199407
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/union_value_known_at_16_coins - union_value_fixture_only_at_16_coins": {
       "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/union_value_known_at_16_coins",
       "minusControl": "union_value_fixture_only_at_16_coins",
       "ceiling": {
-        "mem": 13594988,
-        "cpu": 5651081541
+        "mem": 13478830,
+        "cpu": 5626948444
       },
       "aboveBasis": {
-        "why": "one size past the largest unionValue failure step the known-failure hop proves in one L1 transaction (15 coins): it costs 102.0% of the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
+        "why": "one size past the largest unionValue failure step the semantics hop proves in one L1 transaction (15 coins): it costs 101.1% of the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/union_value_known_at_the_direct_bound - union_value_fixture_only_at_the_direct_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/union_value_known_at_the_direct_bound",
       "minusControl": "union_value_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 1082584359,
-        "cpu": 457843524960
+        "mem": 1076450620,
+        "cpu": 456856579063
       },
       "aboveBasis": {
-        "why": "the unionValue failure step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the known-failure hop costs 81.2x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
+        "why": "the unionValue failure step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the semantics hop costs 80.7x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/value_contains_budget_at_15_coins - value_contains_fixture_only_at_15_coins": {
       "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/value_contains_budget_at_15_coins",
       "minusControl": "value_contains_fixture_only_at_15_coins",
       "ceiling": {
-        "mem": 2107732,
-        "cpu": 671257498
+        "mem": 2060807,
+        "cpu": 653358285
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/value_contains_budget_at_the_direct_bound - value_contains_fixture_only_at_the_direct_bound": {
@@ -3386,37 +3386,37 @@
         "cpu": 43051643166
       },
       "aboveBasis": {
-        "why": "the valueContains failure step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the budget hop costs 10.4x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
+        "why": "the valueContains failure step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the budget hop costs 10.6x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/value_contains_known_at_15_coins - value_contains_fixture_only_at_15_coins": {
       "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/value_contains_known_at_15_coins",
       "minusControl": "value_contains_fixture_only_at_15_coins",
       "ceiling": {
-        "mem": 12814239,
-        "cpu": 5316370962
+        "mem": 12709887,
+        "cpu": 5294915974
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/value_contains_known_at_16_coins - value_contains_fixture_only_at_16_coins": {
       "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/value_contains_known_at_16_coins",
       "minusControl": "value_contains_fixture_only_at_16_coins",
       "ceiling": {
-        "mem": 13534436,
-        "cpu": 5620537530
+        "mem": 13426044,
+        "cpu": 5598436142
       },
       "aboveBasis": {
-        "why": "one size past the largest valueContains failure step the known-failure hop proves in one L1 transaction (15 coins): it costs 101.5% of the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
+        "why": "one size past the largest valueContains failure step the semantics hop proves in one L1 transaction (15 coins): it costs 100.7% of the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/value_contains_known_at_the_direct_bound - value_contains_fixture_only_at_the_direct_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/value_contains_known_at_the_direct_bound",
       "minusControl": "value_contains_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 1086429723,
-        "cpu": 458282633739
+        "mem": 1080303751,
+        "cpu": 457297719551
       },
       "aboveBasis": {
-        "why": "the valueContains failure step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the known-failure hop costs 81.5x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
+        "why": "the valueContains failure step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the semantics hop costs 81.0x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
     }
   },

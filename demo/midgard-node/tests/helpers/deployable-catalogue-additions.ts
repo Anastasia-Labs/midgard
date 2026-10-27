@@ -269,7 +269,8 @@ export const phaseResolverRoles = new Set<string>(
 // string builtins, the linear integer builtins, multiplyInteger and the
 // division builtins, the serialise loop for serialiseData and
 // byteStringToInteger; the failure hop of the byte-string, string,
-// signature and integer builtins; and the BLS12-381 uncompress failure arm.
+// signature and integer builtins; the BLS12-381 uncompress failure arm; and
+// the protocol version 11 builtins' roots, budget and semantics arms.
 const CEK_STAGED_CATALOGUE_ADDITIONS = [
   {
     contract: "validationTraceDisputeCekCoreStagedBytes",
@@ -302,6 +303,18 @@ const CEK_STAGED_CATALOGUE_ADDITIONS = [
   {
     contract: "validationTraceDisputeCekCoreFailureBlsUncompress",
     role: "V1 validation-trace CEK core failure bls uncompress",
+  },
+  {
+    contract: "validationTraceDisputeCekCorePv11Roots",
+    role: "V1 validation-trace CEK core pv11 roots",
+  },
+  {
+    contract: "validationTraceDisputeCekCorePv11Budget",
+    role: "V1 validation-trace CEK core pv11 budget",
+  },
+  {
+    contract: "validationTraceDisputeCekCorePv11Semantics",
+    role: "V1 validation-trace CEK core pv11 semantics",
   },
 ] as const;
 

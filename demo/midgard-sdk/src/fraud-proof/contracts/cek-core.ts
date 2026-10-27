@@ -89,6 +89,9 @@ export const CEK_CORE_STAGE_TITLES = {
   typeFailureRoots: deployedTitle(
     "validationTraceDisputeCekCoreTypeFailureRoots",
   ),
+  pv11Roots: deployedTitle("validationTraceDisputeCekCorePv11Roots"),
+  pv11Budget: deployedTitle("validationTraceDisputeCekCorePv11Budget"),
+  pv11Semantics: deployedTitle("validationTraceDisputeCekCorePv11Semantics"),
 } as const;
 export const CEK_CORE_ARM_HOP_COUNTS = [
   1n,
@@ -103,6 +106,8 @@ export const CEK_CORE_ARM_HOP_COUNTS = [
   2n,
   2n,
   1n,
+  2n,
+  3n,
   2n,
 ] as const;
 export const buildCekCoreStages = (
@@ -154,6 +159,7 @@ export const buildCekCoreStages = (
   const blsFinal = terminal("blsFinal");
   const failureBudget = terminal("failureBudget");
   const typeFailureKinds = terminal("typeFailureKinds");
+  const pv11Semantics = terminal("pv11Semantics");
   const directScalarBudget = build("directScalarBudget", [
     [directScalar.spendingScriptHash],
     ctPolicy,
@@ -224,6 +230,14 @@ export const buildCekCoreStages = (
     typeFailureKinds.spendingScriptHash,
     ctPolicy,
   ]);
+  const pv11Budget = build("pv11Budget", [
+    pv11Semantics.spendingScriptHash,
+    ctPolicy,
+  ]);
+  const pv11Roots = build("pv11Roots", [
+    pv11Budget.spendingScriptHash,
+    ctPolicy,
+  ]);
   return {
     settle,
     compute,
@@ -266,6 +280,9 @@ export const buildCekCoreStages = (
     failureBlsUncompress,
     typeFailureKinds,
     typeFailureRoots,
+    pv11Roots,
+    pv11Budget,
+    pv11Semantics,
   };
 };
 export type CekCoreStages = ReturnType<typeof buildCekCoreStages>;
@@ -284,6 +301,8 @@ export const cekCoreEntryHashes = (stages: CekCoreStages) =>
     stages.typeFailureRoots,
     stages.caseConstant,
     stages.failureBlsUncompress,
+    stages.pv11Roots,
+    stages.pv11Budget,
   ].map((stage) => stage.spendingScriptHash);
 
 export const CEK_CORE_STAGE_REFERENCES = {
@@ -450,5 +469,17 @@ export const CEK_CORE_STAGE_REFERENCES = {
   typeFailureRoots: {
     deployment: "validationTraceDisputeCekCoreTypeFailureRoots",
     role: "V1 validation-trace CEK core type failure roots",
+  },
+  pv11Roots: {
+    deployment: "validationTraceDisputeCekCorePv11Roots",
+    role: "V1 validation-trace CEK core pv11 roots",
+  },
+  pv11Budget: {
+    deployment: "validationTraceDisputeCekCorePv11Budget",
+    role: "V1 validation-trace CEK core pv11 budget",
+  },
+  pv11Semantics: {
+    deployment: "validationTraceDisputeCekCorePv11Semantics",
+    role: "V1 validation-trace CEK core pv11 semantics",
   },
 } as const;

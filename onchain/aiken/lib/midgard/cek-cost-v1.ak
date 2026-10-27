@@ -213,15 +213,28 @@ pub fn write_bits_budget_v1(sizes: List<Int>) -> BuiltinBudgetV1 {
 
 /// The argument count of protocol version 11 builtin `tag` (87 to 100), one
 /// byte per tag from 87; a tag past 100 indexes outside the table and fails.
-fn pv11_argument_count_v1(tag: Int) -> Int {
+pub fn pv11_argument_count_v1(tag: Int) -> Int {
   builtin.index_bytearray(#"0302010102020204030202010102", tag - 87)
 }
 
+/// The argument count of builtin `tag` (0 to 100): the whole catalogue, for
+/// the arms every builtin reaches (the roots and type failure hops).
 pub fn builtin_argument_count_v1(tag: Int) -> Int {
-  expect tag >= 0
   if tag > 86 {
     pv11_argument_count_v1(tag)
-  } else if tag == 36 {
+  } else {
+    pv10_argument_count_v1(tag)
+  }
+}
+
+/// The argument count of builtin `tag` (0 to 86), every builtin before
+/// protocol version 11; it refuses any later tag.
+pub fn pv10_argument_count_v1(tag: Int) -> Int {
+  expect and {
+      tag >= 0,
+      tag <= 86,
+    }
+  if tag == 36 {
     6
   } else if or {
     tag == 12,
@@ -564,7 +577,7 @@ fn memory_cost_v1(tag: Int, sizes: List<Int>) -> Int {
     tag >= 28,
     tag <= 46,
   } {
-    expect list.length(sizes) == builtin_argument_count_v1(tag)
+    expect list.length(sizes) == pv10_argument_count_v1(tag)
     32
   } else if tag == 47 {
     expect [_, _] = sizes
@@ -573,7 +586,7 @@ fn memory_cost_v1(tag: Int, sizes: List<Int>) -> Int {
     tag >= 48,
     tag <= 50,
   } {
-    expect list.length(sizes) == builtin_argument_count_v1(tag)
+    expect list.length(sizes) == pv10_argument_count_v1(tag)
     32
   } else if tag == 51 {
     linear1(0, 2, one(sizes))
@@ -587,7 +600,7 @@ fn memory_cost_v1(tag: Int, sizes: List<Int>) -> Int {
     tag >= 54,
     tag <= 56,
   } {
-    expect list.length(sizes) == builtin_argument_count_v1(tag)
+    expect list.length(sizes) == pv10_argument_count_v1(tag)
     18
   } else if tag == 57 {
     expect [_, _] = sizes
@@ -605,7 +618,7 @@ fn memory_cost_v1(tag: Int, sizes: List<Int>) -> Int {
     tag >= 61,
     tag <= 63,
   } {
-    expect list.length(sizes) == builtin_argument_count_v1(tag)
+    expect list.length(sizes) == pv10_argument_count_v1(tag)
     36
   } else if tag == 64 {
     expect [_, _] = sizes
@@ -696,10 +709,13 @@ fn saturated(cost: Int) -> Int {
 const pv11_cost_rows_v1: ByteArray =
   #"00000003e80000950f00021600000003e8000176bd01010b01000003e800043c49000c15000001c7e7000007a500040000000389cb00000000000a0000000003e8000061060007010000038a4a0000000000200000132ed984017eceb50012000024d436c70402f5a8002400030005723c000047ed002d150200035b2f000024e4000100"
 
-/// The budget of protocol version 11 builtin `tag` (87 to 100). Each size is
-/// as Cardano measures it for that builtin (`builtin_cost_sizes_v1`); a size
-/// no cost function of the builtin reads is 0.
-fn pv11_budget_v1(tag: Int, sizes: List<Int>) -> BuiltinBudgetV1 {
+/// The budget of protocol version 11 builtin `tag` (87 to 100), charged by
+/// the protocol version 11 budget arm alone. Each size is as Cardano measures
+/// it for that builtin (`cek_builtin_v1.pv11_direct_budget_v1`); a size no
+/// cost function of the builtin reads is 0. It checks neither the tag nor
+/// the sizes: `core_group` sends only tags 87 to 100 to that arm, and the
+/// roots or failure hop of the same step proves the argument count.
+pub fn pv11_builtin_budget_v1(tag: Int, sizes: List<Int>) -> BuiltinBudgetV1 {
   let Pair(cpu, memory) = if tag == 87 {
     // expModInteger over (base, exponent, modulus) words: half as much
     // again when the base is larger than the modulus.
@@ -747,21 +763,38 @@ fn pv11_budget_v1(tag: Int, sizes: List<Int>) -> BuiltinBudgetV1 {
   BuiltinBudgetV1 { cpu: saturated(cpu), memory: saturated(memory) }
 }
 
+/// The budget of builtin `tag` (0 to 100): the whole catalogue, for the CEK
+/// machine model and its goldens. The core arms charge through
+/// `pv10_builtin_budget_v1` or `pv11_builtin_budget_v1`.
 pub fn builtin_budget_v1(
   tag: Int,
   cost_argument_sizes: List<Int>,
 ) -> BuiltinBudgetV1 {
-  // builtin_argument_count_v1 rejects a negative tag.
+  if tag > 86 {
+    expect and {
+        list.length(cost_argument_sizes) == builtin_argument_count_v1(tag),
+        list.all(cost_argument_sizes, fn(size) { size >= 0 }),
+      }
+    pv11_builtin_budget_v1(tag, cost_argument_sizes)
+  } else {
+    pv10_builtin_budget_v1(tag, cost_argument_sizes)
+  }
+}
+
+/// The budget of builtin `tag` (0 to 86), every builtin before protocol
+/// version 11. It refuses any later tag, which the protocol version 11 arms
+/// alone charge.
+pub fn pv10_builtin_budget_v1(
+  tag: Int,
+  cost_argument_sizes: List<Int>,
+) -> BuiltinBudgetV1 {
+  // pv10_argument_count_v1 refuses a tag outside 0 to 86.
   expect and {
-      list.length(cost_argument_sizes) == builtin_argument_count_v1(tag),
+      list.length(cost_argument_sizes) == pv10_argument_count_v1(tag),
       list.all(cost_argument_sizes, fn(size) { size >= 0 }),
     }
-  if tag > 86 {
-    pv11_budget_v1(tag, cost_argument_sizes)
-  } else {
-    BuiltinBudgetV1 {
-      cpu: cpu_cost_v1(tag, cost_argument_sizes),
-      memory: memory_cost_v1(tag, cost_argument_sizes),
-    }
+  BuiltinBudgetV1 {
+    cpu: cpu_cost_v1(tag, cost_argument_sizes),
+    memory: memory_cost_v1(tag, cost_argument_sizes),
   }
 }

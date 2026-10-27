@@ -350,22 +350,22 @@ test un_value_data_cannot_prove_a_zero_quantity() fail {
 test pv11_charge_on_the_sizes_cardano_measures() {
   and {
     // dropList is charged on the count's magnitude, saturated at 2^63 - 1.
-    cek_builtin_v1.direct_builtin_budget_v1(
+    cek_builtin_v1.pv11_direct_budget_v1(
       88,
       [int(-9223372036854775809), ints([5])],
     ) == BuiltinBudgetV1 { cpu: 9223372036854775807, memory: 4 },
     // insertCoin on a Value of one currency of one token: depth 2.
-    cek_builtin_v1.direct_builtin_budget_v1(
+    cek_builtin_v1.pv11_direct_budget_v1(
       94,
       [bytes(policy), bytes(token), int(1), value(one_token(token, 1))],
     ) == BuiltinBudgetV1 { cpu: 393750, memory: 87 },
     // unValueData on five Data nodes.
-    cek_builtin_v1.direct_builtin_budget_v1(
+    cek_builtin_v1.pv11_direct_budget_v1(
       99,
       [constant(DataConstant, one_token(token, 1))],
     ) == BuiltinBudgetV1 { cpu: 480690, memory: 56 },
     // listToArray on the list's length.
-    cek_builtin_v1.direct_builtin_budget_v1(90, [ints([5, 6, 7])]) == BuiltinBudgetV1 {
+    cek_builtin_v1.pv11_direct_budget_v1(90, [ints([5, 6, 7])]) == BuiltinBudgetV1 {
       cpu: 75514,
       memory: 10,
     },
@@ -428,12 +428,12 @@ test pv11_failures_are_known_and_charged() {
   let past_the_end = [int_array([5, 6, 7]), int(3)]
   and {
     cek_builtin_v1.known_builtin_failure_v1(87, missing_inverse),
-    cek_builtin_v1.authenticated_builtin_failure_budget(87, missing_inverse) == cek_builtin_v1.direct_builtin_budget_v1(
+    cek_builtin_v1.pv11_failure_budget_v1(87, missing_inverse) == cek_builtin_v1.pv11_direct_budget_v1(
       87,
       missing_inverse,
     ),
     cek_builtin_v1.known_builtin_failure_v1(91, past_the_end),
-    cek_builtin_v1.authenticated_builtin_failure_budget(91, past_the_end) == cek_builtin_v1.direct_builtin_budget_v1(
+    cek_builtin_v1.pv11_failure_budget_v1(91, past_the_end) == cek_builtin_v1.pv11_direct_budget_v1(
       91,
       past_the_end,
     ),
@@ -444,7 +444,7 @@ test index_array_outside_64_bits_fails_uncharged() {
   let arguments = [int_array([5, 6, 7]), int(18446744073709551616)]
   and {
     cek_builtin_v1.known_builtin_failure_v1(91, arguments),
-    cek_builtin_v1.authenticated_builtin_failure_budget(91, arguments) == BuiltinBudgetV1 {
+    cek_builtin_v1.pv11_failure_budget_v1(91, arguments) == BuiltinBudgetV1 {
       cpu: 0,
       memory: 0,
     },
