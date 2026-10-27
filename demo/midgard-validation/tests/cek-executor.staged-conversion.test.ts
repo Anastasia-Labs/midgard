@@ -160,44 +160,24 @@ describe("byteStringToInteger over a staged input", () => {
       const verdict = run(body, "verdict");
       const proof = run(body, "proof");
       if (size <= LONGEST) {
-        // The run accepts with the evaluator's budget, and every staged step
-        // verifies.
+        // The run accepts with the evaluator's budget.
         expect(verdict.result.kind).toBe("accepted");
         expect(proof.result).toEqual(verdict.result);
-        for (const staged_ of steps(proof, "executeBuiltinStaged")) {
-          expect(
-            verifyMidgardCekCoreStep(
-              staged_.pre,
-              staged_.post,
-              staged(staged_, 9),
-            ),
-          ).toBe(true);
-        }
       } else {
-        // The evaluator ends the run past the budget; the proof-mode run
-        // stops at the step that takes it past, its total over the budget.
+        // From 49,785 bytes the evaluator ends the run past the budget, as
+        // on L1; the proof-mode run stops at the step that takes it past,
+        // its total over the budget.
         expect(verdict.result.kind).toBe("script_invalid");
         expectPastBudget(proof);
       }
-      // The conversion is proved whether or not its charge fits the budget.
-      const step = lastConversion(proof)!;
-      expect(
-        verifyMidgardCekCoreStep(step.pre, step.post, staged(step, 9)),
-      ).toBe(true);
-    },
-  );
-
-  it.each(ORDERS)(
-    "%s ends the run past the budget from 49,785 bytes, as on L1",
-    (_, bigEndian) => {
-      const within = conversion(bigEndian, built(LONGEST, 3));
-      const past = conversion(bigEndian, built(LONGEST + 1, 3));
-      expect(run(within, "verdict").result).toEqual(
-        run(within, "proof").result,
-      );
-      expect(run(within, "verdict").result.kind).toBe("accepted");
-      expect(run(past, "verdict").result.kind).toBe("script_invalid");
-      expectPastBudget(run(past, "proof"));
+      // Every staged step verifies, the last of them the conversion, which
+      // is proved whether or not its charge fits the budget.
+      expect(lastConversion(proof)).not.toBeNull();
+      for (const step of steps(proof, "executeBuiltinStaged")) {
+        expect(
+          verifyMidgardCekCoreStep(step.pre, step.post, staged(step, 9)),
+        ).toBe(true);
+      }
     },
   );
 

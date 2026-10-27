@@ -60,6 +60,9 @@ export interface FlatProgram {
   readonly body: FlatTerm;
 }
 
+/** Naturals up to this bound are written by shifting. */
+const SHIFTED_NATURAL_MAX = (1n << 112n) - 1n;
+
 /** Bits, most significant first, into a growing byte buffer. */
 class FlatWriter {
   private buffer = new Uint8Array(256);
@@ -101,13 +104,31 @@ class FlatWriter {
   /** 7-bit groups, least significant first, each after a "more" bit. */
   natural(value: bigint): void {
     if (value < 0n) throw new Error("Flat natural must not be negative");
-    let rest = value;
-    do {
-      const group = Number(rest & 0x7fn);
-      rest >>= 7n;
-      this.bit(rest > 0n ? 1 : 0);
-      this.bits(group, 7);
-    } while (rest > 0n);
+    if (value <= SHIFTED_NATURAL_MAX) {
+      let rest = value;
+      do {
+        const group = Number(rest & 0x7fn);
+        rest >>= 7n;
+        this.bit(rest > 0n ? 1 : 0);
+        this.bits(group, 7);
+      } while (rest > 0n);
+      return;
+    }
+    // Shifting a bigint per group is quadratic in its length; read the
+    // groups from its bytes, least significant first, instead.
+    const hex = value.toString(16);
+    const bytes = Buffer.from(hex.length % 2 === 0 ? hex : `0${hex}`, "hex");
+    bytes.reverse();
+    const bitLength =
+      (hex.length - 1) * 4 + parseInt(hex[0]!, 16).toString(2).length;
+    const groups = Math.ceil(bitLength / 7);
+    for (let group = 0; group < groups; group += 1) {
+      const offset = group * 7;
+      const at = offset >> 3;
+      const window = bytes[at]! | ((bytes[at + 1] ?? 0) << 8);
+      this.bit(group < groups - 1 ? 1 : 0);
+      this.bits((window >> (offset & 7)) & 0x7f, 7);
+    }
   }
 
   /** ZigZag, then a Natural. */

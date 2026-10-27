@@ -111,7 +111,7 @@ export const workflowRuntimeFundingMaximumFee = (
  * per-move cap at today's prices.
  */
 export const VALIDATION_DISPUTE_WALLET_MOVE = Object.freeze({
-  referenceScriptBytes: 34_659n,
+  referenceScriptBytes: 34_693n,
 });
 
 /**
