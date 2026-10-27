@@ -2,6 +2,8 @@ import { Duration, Effect, Schedule } from "effect";
 
 import {
   admissionBacklogGaugeFiber,
+  ALERT_SIGNALS_SAMPLE_INTERVAL_MS,
+  alertSignalsFiber,
   attestationTimeoutCorrectionFiber,
   blockCommitmentFiber,
   blockConfirmationFiber,
@@ -159,6 +161,9 @@ export const nodeFibers = ({
   ),
   monitorMempool: withMonitoring
     ? monitorMempoolFiber(mkSchedule(1000))
+    : Effect.void,
+  alertSignals: withMonitoring
+    ? alertSignalsFiber(mkSchedule(ALERT_SIGNALS_SAMPLE_INTERVAL_MS))
     : Effect.void,
   txQueueProcessor: txQueueProcessorFiber(
     mkSchedule(nodeConfig.TX_QUEUE_POLL_INTERVAL_MS),

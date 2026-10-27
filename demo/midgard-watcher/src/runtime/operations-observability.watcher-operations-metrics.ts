@@ -1,5 +1,6 @@
 import type { WatcherDaBondPoolObservation } from "../availability/pool-observation.js";
 import type { WatcherFaultProofSupervisor } from "../fault-proofs/fault-proof-supervisor.js";
+import type { WatcherReplayRefusalsStatus } from "../fault-proofs/replay-refusals.js";
 import {
   WATCHER_STATE_QUEUE_REMOVAL_KINDS,
   type WatcherStateQueueRemovalKind,
@@ -239,6 +240,12 @@ export type WatcherOperationsStatus = Readonly<{
    * keeps the last good readout, whose `observedAtMs` shows its age.
    */
   daBondPoolReadFailure: WatcherOperationsDaBondPoolReadFailure | null;
+  /**
+   * The replayed ledger's refusals: the confirmed head's root mismatch while
+   * it lasts (alert `root_mismatch`), totals per phase and kind, and the
+   * latest distinct ones. Reported only: they add no readiness reason.
+   */
+  replayRefusals: WatcherReplayRefusalsStatus;
 }>;
 
 export type WatcherOperationsMetrics = Readonly<{

@@ -3,6 +3,10 @@ import {
   isWatcherJournalUnavailableError,
 } from "../fault-proofs/watcher-journal-database.js";
 import { jsonResponse } from "./operations-observability.http-response.js";
+import {
+  WATCHER_PROMETHEUS_CONTENT_TYPE,
+  watcherPrometheusText,
+} from "./operations-observability.prometheus-text.js";
 import type {
   WatcherOperationsApi,
   WatcherOperationsDiagnosticKind,
@@ -39,6 +43,16 @@ export const handleWatcherOperationsHttpRequest = async (
     }
     if (url.pathname === "/v1/metrics" && url.search === "") {
       return jsonResponse(200, api.metrics());
+    }
+    if (url.pathname === "/metrics" && url.search === "") {
+      return new Response(watcherPrometheusText(api.status(), api.metrics()), {
+        status: 200,
+        headers: Object.freeze({
+          "content-type": WATCHER_PROMETHEUS_CONTENT_TYPE,
+          "cache-control": "no-store",
+          "x-content-type-options": "nosniff",
+        }),
+      });
     }
     if (url.pathname === "/v1/diagnostics") {
       const keys = [...url.searchParams.keys()];

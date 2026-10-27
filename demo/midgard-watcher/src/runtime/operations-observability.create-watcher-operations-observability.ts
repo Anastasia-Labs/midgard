@@ -1,4 +1,5 @@
 import type { WatcherFaultProofSupervisor } from "../fault-proofs/fault-proof-supervisor.js";
+import { NO_WATCHER_REPLAY_REFUSALS } from "../fault-proofs/replay-refusals.js";
 import { watcherDecisionHoldReason } from "../fault-proofs/watcher-decision-hold.js";
 import type { WatcherRetainedDaTransportStatus } from "../storage/retained-da-runtime.js";
 import {
@@ -59,6 +60,7 @@ export const createWatcherOperationsObservability = (input: {
     count: number;
     detail: string;
   }>[];
+  readonly replayRefusals?: () => WatcherOperationsStatus["replayRefusals"];
   readonly nowMs?: () => bigint;
   readonly monotonicNowMs?: () => number;
   readonly l1FreshnessMaximumAgeMs?: number;
@@ -361,6 +363,7 @@ export const createWatcherOperationsObservability = (input: {
       activeAlerts: active,
       daBondPool: latestDaBondPool,
       daBondPoolReadFailure: latestDaBondPoolReadFailure,
+      replayRefusals: input.replayRefusals?.() ?? NO_WATCHER_REPLAY_REFUSALS,
     });
   };
 
