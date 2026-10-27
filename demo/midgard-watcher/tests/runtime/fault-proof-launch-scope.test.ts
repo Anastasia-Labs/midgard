@@ -1,14 +1,10 @@
 import { FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import {
-  WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
-  WATCHER_MISSING_WORKFLOW_CATEGORIES,
-} from "../../src/fault-proofs/fault-proof-application.js";
+import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/fault-proof-application.js";
 import { assertWatcherFaultProofLaunchScope } from "../../src/runtime/watcher-runtime.js";
 
 const INSTALLED = [...WATCHER_INSTALLED_WORKFLOW_CATEGORIES];
-const UNINSTALLED = WATCHER_MISSING_WORKFLOW_CATEGORIES[0]!;
 
 describe("production fault-proof launch scope", () => {
   it("admits the scope startup actually hands it", () => {
@@ -21,11 +17,12 @@ describe("production fault-proof launch scope", () => {
     ).not.toThrow();
   });
 
-  it("is narrower than the catalogue while some families have no workflow", () => {
-    expect(WATCHER_MISSING_WORKFLOW_CATEGORIES.length).toBeGreaterThan(0);
-    expect(INSTALLED.length).toBeLessThan(
-      FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length,
-    );
+  it("admits the full catalogue once every family has a workflow", () => {
+    expect(() =>
+      assertWatcherFaultProofLaunchScope([
+        ...FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
+      ]),
+    ).not.toThrow();
   });
 
   const rejected = [
@@ -40,14 +37,6 @@ describe("production fault-proof launch scope", () => {
     {
       name: "two categories in swapped order",
       scope: [INSTALLED[1]!, INSTALLED[0]!, ...INSTALLED.slice(2)],
-    },
-    {
-      name: "the installed set extended with an uninstalled catalogue category",
-      scope: [...INSTALLED, UNINSTALLED],
-    },
-    {
-      name: "the full catalogue",
-      scope: [...FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER],
     },
     {
       name: "an installed-length scope substituting a foreign family",

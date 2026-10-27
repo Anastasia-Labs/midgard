@@ -1118,7 +1118,7 @@
     {
       "id": "transition-trace-abi",
       "kind": "golden",
-      "summary": "Transition-trace ABI JSON golden (emitted by the SDK encoder through a vitest emit mode) plus the Aiken golden that decodes it.",
+      "summary": "Transition-trace ABI JSON golden (emitted by the SDK encoder through a vitest emit mode) plus the Aiken golden that decodes it. It also rebinds the ValidationTraceDescriptorV1 fixture's bytes into lib/midgard/validation-trace-v1.test.ak, which decodes them field by field.",
       "generators": [
         "demo/midgard-node/scripts/generate-transition-trace-abi-fixture.mjs"
       ],
@@ -1127,10 +1127,14 @@
         "demo/midgard-node:fixtures:transition-trace-abi:check"
       ],
       "producers": ["demo/midgard-sdk"],
-      "inputs": ["demo/midgard-node/tests/sdk-abi-fixtures.test.ts"],
+      "inputs": [
+        "@golden-channel",
+        "demo/midgard-node/tests/sdk-abi-fixtures.test.ts"
+      ],
       "outputs": [
         "demo/midgard-node/tests/fixtures/transition-trace-abi.json",
-        "onchain/aiken/validators/fraud-proofs/transition-trace/abi-v1-golden.test.ak"
+        "onchain/aiken/validators/fraud-proofs/transition-trace/abi-v1-golden.test.ak",
+        "onchain/aiken/lib/midgard/validation-trace-v1.test.ak"
       ],
       "aikenImportsOfOutputs": true,
       "sync": {

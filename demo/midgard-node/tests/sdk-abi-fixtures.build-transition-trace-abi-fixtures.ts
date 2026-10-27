@@ -420,6 +420,24 @@ export const buildTransitionTraceAbiFixtures = (): Record<
       value: daPayloadBodyFixture,
       schema: SDK.DaPayloadBody,
     },
+    // The descriptor the node commits as Plutus Data. Fields of one type all
+    // differ, so the Aiken test that decodes these bytes field by field
+    // (lib/midgard/validation-trace-v1.test.ak) fails if either side reorders
+    // them; Rejected is constructor 2, which pins the verdict's index too.
+    ValidationTraceDescriptorV1: {
+      schemaName: "ValidationTraceDescriptor",
+      value: {
+        schema_version: 1n,
+        machine_version: 2n,
+        trace_root: "a1".repeat(32),
+        step_count: 7n,
+        initial_state_hash: "b2".repeat(32),
+        terminal_state_hash: "c3".repeat(32),
+        verdict: "Rejected",
+        rejection_code_hash: "d4".repeat(32),
+      } satisfies SDK.ValidationTraceDescriptor,
+      schema: SDK.ValidationTraceDescriptor,
+    },
     TransitionTraceRouteSpendRedeemerCancel: {
       schemaName: "TransitionTraceRouteSpendRedeemer",
       value: {

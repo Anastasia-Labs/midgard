@@ -56,6 +56,12 @@
       "byteLength": 502,
       "sha256": "03a0558e36ce88fa90928697cb6c1d82f7e5dc42f220f29ab8390f696fd3a30b"
     },
+    "ValidationTraceDescriptorV1": {
+      "schema": "ValidationTraceDescriptor",
+      "cborHex": "d8799f01025820a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1075820b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b25820c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3d87b805820d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4ff",
+      "byteLength": 146,
+      "sha256": "b20be6dc621a785961938cc63052a071cf85935b89c91896c703be98ab8ae834"
+    },
     "TransitionTraceRouteSpendRedeemerCancel": {
       "schema": "TransitionTraceRouteSpendRedeemer",
       "cborHex": "d8799f0001ff",
