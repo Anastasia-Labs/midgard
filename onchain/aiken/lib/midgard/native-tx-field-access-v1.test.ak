@@ -1103,6 +1103,42 @@ test tier_three_total_length_inconsistency_is_refused() fail {
   ) >= 0
 }
 
+/// The straddle preimage carried as two chunks whose boundary sits at `first`
+/// bytes, under a certificate that is honest about those chunks: real length,
+/// real digests, real field hash. With `first == chunk_bytes_k` this is the
+/// carriage `straddle_view` opens.
+fn straddle_view_split_at(first: Int) -> FieldViewV1 {
+  let preimage = straddle_preimage()
+  let chunk_0 = bytearray.take(preimage, first)
+  let chunk_1 = bytearray.drop(preimage, first)
+  view_of(
+    3,
+    preimage,
+    Certified { cert_ref_input_index: 0, chunk_ref_input_indices: [1, 2] },
+    [
+      certificate_for(0, 3, preimage, [chunk_0, chunk_1]),
+      input_of(1, key_output(builtin.b_data(chunk_0))),
+      input_of(2, key_output(builtin.b_data(chunk_1))),
+    ],
+  )
+}
+
+test tier_three_split_at_k_opens() {
+  field_item_count(straddle_view_split_at(chunk_bytes_k)) == straddle_item_count
+}
+
+/// A non-last chunk one byte short of `K`. The chunks still reconstruct the
+/// committed bytes and the count of chunks is unchanged; only the chunk size
+/// differs from the honest carriage above.
+test tier_three_non_last_chunk_one_byte_short_is_refused() fail {
+  field_item_count(straddle_view_split_at(chunk_bytes_k - 1)) >= 0
+}
+
+/// A non-last chunk one byte over `K`, under the same conditions.
+test tier_three_non_last_chunk_one_byte_long_is_refused() fail {
+  field_item_count(straddle_view_split_at(chunk_bytes_k + 1)) >= 0
+}
+
 // ---------------------------------------------------------------------------
 // Watcher recompute (§4)
 // ---------------------------------------------------------------------------
