@@ -80,15 +80,27 @@ export {
   buildExecutionNativeScriptInvalidChain,
   buildExecutionNativeScriptInvalidFaultProofContracts,
   type BuildExecutionNativeScriptInvalidFaultProofContractsParams,
+  checkExecutionNativeScriptInvalidRoleOrder,
   EXECUTION_NATIVE_SCRIPT_INVALID_FAULT_PROOF_TITLES,
+  EXECUTION_NATIVE_SCRIPT_INVALID_ROLE_ORDER,
+  type ExecutionNativeScriptInvalidChain,
   type ExecutionNativeScriptInvalidFaultProofContracts,
+  type ExecutionNativeScriptInvalidRole,
+  type ExecutionNativeScriptInvalidRoles,
+  executionNativeScriptInvalidRoles,
 } from "./families/execution-native-script-invalid.js";
 export {
   buildExecutionSourceScriptDecodingChain,
   buildExecutionSourceScriptDecodingFaultProofContracts,
   type BuildExecutionSourceScriptDecodingFaultProofContractsParams,
+  checkExecutionSourceScriptDecodingRoleOrder,
   EXECUTION_SOURCE_SCRIPT_DECODING_FAULT_PROOF_TITLES,
+  EXECUTION_SOURCE_SCRIPT_DECODING_ROLE_ORDER,
+  type ExecutionSourceScriptDecodingChain,
   type ExecutionSourceScriptDecodingFaultProofContracts,
+  type ExecutionSourceScriptDecodingRole,
+  type ExecutionSourceScriptDecodingRoles,
+  executionSourceScriptDecodingRoles,
 } from "./families/execution-source-script-decoding.js";
 export {
   buildFabricatedDepositFaultProofContracts,

@@ -11,52 +11,31 @@ export const executionSourceScriptDecodingMembers = defineDeploymentFamily(
       referenceRolePosition: 453,
       commands: [],
       validatorTitle:
-        "fraud_proofs/execution_source_script_decoding/step_01.main.spend",
+        "fraud_proofs/direct_script_derivation/step_01.main.spend",
       familyPaths: [["firstStep"], ["steps", "0"]],
     },
-    fraudProofExecutionSourceScriptDecodingStep02: {
+    fraudProofExecutionSourceScriptDecodingBindEvent: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof execution-source-script-decoding step-02",
+      referenceRole:
+        "V1 fraud-proof execution-source-script-decoding bind-event",
       manifestPosition: 323,
       publicationPosition: 229,
       referenceRolePosition: 454,
       commands: [],
       validatorTitle:
-        "fraud_proofs/execution_source_script_decoding/step_02.main.spend",
+        "fraud_proofs/direct_script_derivation/bind_event.main.spend",
       familyPaths: [["steps", "1"]],
     },
-    fraudProofExecutionSourceScriptDecodingStep03: {
+    fraudProofExecutionSourceScriptDecodingTerminal: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof execution-source-script-decoding step-03",
+      referenceRole: "V1 fraud-proof execution-source-script-decoding terminal",
       manifestPosition: 324,
       publicationPosition: 230,
       referenceRolePosition: 455,
       commands: [],
       validatorTitle:
-        "fraud_proofs/execution_source_script_decoding/step_03.main.spend",
+        "fraud_proofs/execution_source_script_decoding/terminal.main.spend",
       familyPaths: [["steps", "2"]],
-    },
-    fraudProofExecutionSourceScriptDecodingStep04: {
-      purpose: "spend",
-      referenceRole: "V1 fraud-proof execution-source-script-decoding step-04",
-      manifestPosition: 325,
-      publicationPosition: 231,
-      referenceRolePosition: 456,
-      commands: [],
-      validatorTitle:
-        "fraud_proofs/execution_source_script_decoding/step_04.main.spend",
-      familyPaths: [["steps", "3"]],
-    },
-    fraudProofExecutionSourceScriptDecodingStep05: {
-      purpose: "spend",
-      referenceRole: "V1 fraud-proof execution-source-script-decoding step-05",
-      manifestPosition: 326,
-      publicationPosition: 232,
-      referenceRolePosition: 457,
-      commands: [],
-      validatorTitle:
-        "fraud_proofs/execution_source_script_decoding/step_05.main.spend",
-      familyPaths: [["steps", "4"]],
     },
   },
 );

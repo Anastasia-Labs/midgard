@@ -197,8 +197,8 @@ describe("generic journey timing for families without an audited plan", () => {
     // Two finality windows plus build and RPC for one dependent transaction.
     expect(timing.transactionAllowanceMs).toBe(1_350_000);
     expect(timing.transactionAllowanceMs).toBe(audited.transactionAllowanceMs);
-    expect(timing.correctionTimeoutMs).toBe(24 * 1_350_000);
-    expect(timing.journeyTimeoutMs).toBe(42_360_000 + registrationMs);
+    expect(timing.correctionTimeoutMs).toBe(32 * 1_350_000);
+    expect(timing.journeyTimeoutMs).toBe(53_160_000 + registrationMs);
     expect(timing.journeyTimeoutMs).toBeGreaterThan(audited.journeyTimeoutMs);
     expect(timing.allowances).toEqual(audited.allowances);
   });

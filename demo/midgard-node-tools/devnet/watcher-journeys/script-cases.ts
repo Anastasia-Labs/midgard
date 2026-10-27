@@ -148,6 +148,12 @@ export const JOURNEY_SCRIPT_FORCED_REASONS = {
     ReceivePurposePlutusV3Forbidden: { purpose_kind: 3n, purpose_index: 0n },
   },
   scriptIntegrityHashMismatch: "ScriptIntegrityHashMismatch",
+  executionSourceScriptDecoding: {
+    ExecutionNativeScriptMalformed: { purpose_kind: 1n, purpose_index: 0n },
+  },
+  executionNativeScriptInvalid: {
+    ExecutionNativeScriptFalse: { purpose_kind: 1n, purpose_index: 0n },
+  },
   distinctAssetAccumulationLimit: {
     InputAssetAccumulationLimit: { input_index: 0n, asset_index: 0n },
   },
@@ -169,9 +175,12 @@ export const prepareJourneyScriptForcedTransaction = (input: {
 }) =>
   buildJourneyScriptTransaction({
     ...input,
-    variant: ["nativeScriptInvalid", "witnessScriptDecoding"].includes(
-      input.category,
-    )
+    variant: [
+      "nativeScriptInvalid",
+      "witnessScriptDecoding",
+      "executionSourceScriptDecoding",
+      "executionNativeScriptInvalid",
+    ].includes(input.category)
       ? "nativeMint"
       : "plutusMint",
   });

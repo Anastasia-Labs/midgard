@@ -64,6 +64,7 @@ import "./family-application-registry.linear-family-application-record.js";
 import "./family-application-registry.decision-digest-cursor-family-application-record.js";
 import "./family-application-registry.authenticated-certificate-family-application-record.js";
 import "./family-application-registry.bundle-cursor-family-application-record.js";
+import "./family-application-registry.direct-walk-family-application-record.js";
 import "./family-application-registry.value-not-preserved-family-application-record.js";
 import "./family-application-registry.validation-trace-dispute-family-application-record.js";
 import "./family-application-registry.family-application-registry.js";
@@ -76,21 +77,16 @@ export {
   WITNESS_SCRIPT_DECODING_FAMILY_APPLICATION_RECORD,
 } from "./family-application-registry.authenticated-certificate-family-application-record.js";
 export {
-  DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY_APPLICATION_RECORD,
   MIN_ADA_FAMILY_APPLICATION_RECORD,
   MINT_AUTHORIZATION_FAMILY_APPLICATION_RECORD,
   MINT_ITEM_NON_CANONICAL_FAMILY_APPLICATION_RECORD,
   MISSING_REDEEMER_FAMILY_APPLICATION_RECORD,
-  MISSING_SCRIPT_SOURCE_FAMILY_APPLICATION_RECORD,
   NATIVE_SCRIPT_DECODING_FAMILY_APPLICATION_RECORD,
   NATIVE_SCRIPT_INVALID_FAMILY_APPLICATION_RECORD,
-  RECEIVE_PURPOSE_LANGUAGE_FAMILY_APPLICATION_RECORD,
   RESOLVED_OUTPUT_NON_CANONICAL_FAMILY_APPLICATION_RECORD,
   SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_APPLICATION_RECORD,
   SPEND_INPUT_SIGNER_MISSING_FAMILY_APPLICATION_RECORD,
   TRANSITION_TRACE_FAMILY_APPLICATION_RECORD,
-  UNUSED_REDEEMER_FAMILY_APPLICATION_RECORD,
-  UNUSED_SCRIPT_WITNESS_FAMILY_APPLICATION_RECORD,
   WITHDRAWAL_MISTAG_FAMILY_APPLICATION_RECORD,
 } from "./family-application-registry.bundle-cursor-family-application-record.js";
 export {
@@ -100,6 +96,15 @@ export {
   REDEEMER_CANONICITY_FAMILY_APPLICATION_RECORD,
   SCRIPT_INTEGRITY_HASH_MISSING_FAMILY_APPLICATION_RECORD,
 } from "./family-application-registry.decision-digest-cursor-family-application-record.js";
+export {
+  DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY_APPLICATION_RECORD,
+  EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_APPLICATION_RECORD,
+  EXECUTION_SOURCE_SCRIPT_DECODING_FAMILY_APPLICATION_RECORD,
+  MISSING_SCRIPT_SOURCE_FAMILY_APPLICATION_RECORD,
+  RECEIVE_PURPOSE_LANGUAGE_FAMILY_APPLICATION_RECORD,
+  UNUSED_REDEEMER_FAMILY_APPLICATION_RECORD,
+  UNUSED_SCRIPT_WITNESS_FAMILY_APPLICATION_RECORD,
+} from "./family-application-registry.direct-walk-family-application-record.js";
 export { FAMILY_APPLICATION_REGISTRY } from "./family-application-registry.family-application-registry.js";
 export { DOUBLE_SPEND_FAMILY_APPLICATION_RECORD } from "./family-application-registry.linear-family-application-record.js";
 export { VALIDATION_TRACE_DISPUTE_FAMILY_APPLICATION_RECORD } from "./family-application-registry.validation-trace-dispute-family-application-record.js";

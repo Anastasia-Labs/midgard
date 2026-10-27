@@ -6,6 +6,8 @@ export * from "./direct-purpose-family/index.js";
 export * from "./direct-script-derivation/index.js";
 export * from "./distinct-asset-accumulation-limit/index.js";
 export * from "./evidence/index.js";
+export * from "./execution-native-script-invalid/index.js";
+export * from "./execution-source-script-decoding/index.js";
 export * from "./field-item-width-illegal/index.js";
 export * from "./field-preimage-length-mismatch/index.js";
 export * from "./funding/plain-funding-output.js";

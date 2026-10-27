@@ -279,6 +279,7 @@ export const setupMissingRedeemerScenario = async ({
   harness,
   shape,
   source,
+  ledger,
 }: {
   readonly harness: {
     readonly funderLucid: SetupFraudulentBlockArgs["funderLucid"];
@@ -289,12 +290,16 @@ export const setupMissingRedeemerScenario = async ({
   };
   readonly shape: MissingRedeemerSubjectShape;
   readonly source: MissingRedeemerSource;
+  /** The predecessor ledger; every spent, referenced and padding entry when
+   * absent. */
+  readonly ledger?: readonly LedgerEntry[];
 }) => {
-  const root = await predecessorRoot(shape);
+  const root = await predecessorRoot(shape, ledger);
   if (root === SDK.EMPTY_MERKLE_TREE_ROOT) {
     const built = await buildMissingRedeemerBlock({
       shape,
       source,
+      ...(ledger === undefined ? {} : { ledger }),
       operatorVkey: await funderPaymentKeyHash(harness.funderLucid),
       startTime: BigInt(
         alignUnixTimeToEmulatorSlotBoundary(
@@ -332,6 +337,7 @@ export const setupMissingRedeemerScenario = async ({
   const built = await buildMissingRedeemerBlock({
     shape,
     source,
+    ...(ledger === undefined ? {} : { ledger }),
     operatorVkey: anchor.header.operatorVkey,
     startTime: BigInt(
       emulatorSuccessorHeaderStart({

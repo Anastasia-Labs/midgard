@@ -1,4 +1,6 @@
 import { DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY_DEFINITION } from "../distinct-asset-accumulation-limit/workflow.js";
+import { EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_DEFINITION } from "../execution-native-script-invalid/workflow.js";
+import { EXECUTION_SOURCE_SCRIPT_DECODING_FAMILY_DEFINITION } from "../execution-source-script-decoding/workflow.js";
 import { FIELD_ITEM_WIDTH_ILLEGAL_FAMILY_DEFINITION } from "../field-item-width-illegal/workflow.js";
 import { FIELD_PREIMAGE_LENGTH_FAMILY_DEFINITION } from "../field-preimage-length-mismatch/authenticated-workflow.js";
 import { MIN_ADA_FAMILY_DEFINITION } from "../min-ada/workflow.js";
@@ -60,6 +62,8 @@ type CursorFamilyDefinitions = Readonly<{
   unusedRedeemer: typeof UNUSED_REDEEMER_FAMILY_DEFINITION;
   receivePurposeLanguage: typeof RECEIVE_PURPOSE_LANGUAGE_FAMILY_DEFINITION;
   scriptIntegrityHashMismatch: typeof SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_DEFINITION;
+  executionSourceScriptDecoding: typeof EXECUTION_SOURCE_SCRIPT_DECODING_FAMILY_DEFINITION;
+  executionNativeScriptInvalid: typeof EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_DEFINITION;
   distinctAssetAccumulationLimit: typeof DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY_DEFINITION;
   unusedScriptWitness: typeof UNUSED_SCRIPT_WITNESS_FAMILY_DEFINITION;
 }>;
@@ -96,6 +100,10 @@ export const CURSOR_FAMILY_DEFINITIONS: CursorFamilyDefinitions = Object.freeze(
     receivePurposeLanguage: RECEIVE_PURPOSE_LANGUAGE_FAMILY_DEFINITION,
     scriptIntegrityHashMismatch:
       SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_DEFINITION,
+    executionSourceScriptDecoding:
+      EXECUTION_SOURCE_SCRIPT_DECODING_FAMILY_DEFINITION,
+    executionNativeScriptInvalid:
+      EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_DEFINITION,
     distinctAssetAccumulationLimit:
       DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY_DEFINITION,
     unusedScriptWitness: UNUSED_SCRIPT_WITNESS_FAMILY_DEFINITION,
