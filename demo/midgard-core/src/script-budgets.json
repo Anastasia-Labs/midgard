@@ -1716,6 +1716,30 @@
         "cpu": 2794592966
       }
     },
+    "fraud_proofs/validation_trace/cek_core_failure_bls_uncompress.test/failure_bls_uncompress_g1_outside_the_subgroup - failure_bls_uncompress_g1_fixture_only_outside_the_subgroup": {
+      "test": "fraud_proofs/validation_trace/cek_core_failure_bls_uncompress.test/failure_bls_uncompress_g1_outside_the_subgroup",
+      "minusControl": "failure_bls_uncompress_g1_fixture_only_outside_the_subgroup",
+      "ceiling": {
+        "mem": 4986619,
+        "cpu": 1924186412
+      }
+    },
+    "fraud_proofs/validation_trace/cek_core_failure_bls_uncompress.test/failure_bls_uncompress_g2_off_the_twist - failure_bls_uncompress_g2_fixture_only_off_the_twist": {
+      "test": "fraud_proofs/validation_trace/cek_core_failure_bls_uncompress.test/failure_bls_uncompress_g2_off_the_twist",
+      "minusControl": "failure_bls_uncompress_g2_fixture_only_off_the_twist",
+      "ceiling": {
+        "mem": 2715260,
+        "cpu": 1019408307
+      }
+    },
+    "fraud_proofs/validation_trace/cek_core_failure_bls_uncompress.test/failure_bls_uncompress_g2_outside_the_subgroup - failure_bls_uncompress_g2_fixture_only_outside_the_subgroup": {
+      "test": "fraud_proofs/validation_trace/cek_core_failure_bls_uncompress.test/failure_bls_uncompress_g2_outside_the_subgroup",
+      "minusControl": "failure_bls_uncompress_g2_fixture_only_outside_the_subgroup",
+      "ceiling": {
+        "mem": 8047748,
+        "cpu": 3077268864
+      }
+    },
     "fraud_proofs/validation_trace/cek_core_staged_failure.test/staged_failure_decode_at_the_byte_string_bound - staged_failure_decode_fixture_only_at_the_byte_string_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_staged_failure.test/staged_failure_decode_at_the_byte_string_bound",
       "minusControl": "staged_failure_decode_fixture_only_at_the_byte_string_bound",

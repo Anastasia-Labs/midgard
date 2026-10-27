@@ -1,6 +1,7 @@
 import { encodeProofThreadForcedSourceKey } from "@al-ft/midgard-sdk";
 import { type VerdictSubject } from "@al-ft/midgard-sdk";
 
+import { detectDistinctAssetAccumulationLimitReplay } from "../distinct-asset-accumulation-limit/replay.js";
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { detectFieldItemWidthIllegalCompleteReplay } from "../field-item-width-illegal/workflow.js";
 import { detectFieldPreimageLengthCompleteReplay } from "../field-preimage-length-mismatch/evidence.js";
@@ -16,6 +17,7 @@ import { detectObserversForbiddenForcedReplay } from "../observers-forbidden-on-
 import { detectOutputReferenceScriptDecodingCanonicalViolations } from "../output-reference-script-decoding/output-reference-script-decoding.canonical-findings.js";
 import { detectProtectedOutputSignerMissingCompleteReplay } from "../protected-output-signer-missing/protected-output-signer-missing.js";
 import { protectedOutputSignerEvidenceIdentity } from "../protected-output-signer-missing/workflow.js";
+import { detectReceivePurposeLanguageReplay } from "../receive-purpose-language/replay.js";
 import {
   deriveResolvedOutputPriorLedgerReplay,
   detectResolvedOutputNonCanonicalCompleteReplay,
@@ -166,6 +168,22 @@ export const UNUSED_REDEEMER_COMPLETE_CANONICAL_REPLAY = completeReplayer(
     }),
 );
 
+/** Complete receive-purpose-language replay: admitted transactions with a
+ * redeemer, and forced rejections recording
+ * `ReceivePurposePlutusV3Forbidden`. */
+export const RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY =
+  completeReplayer(
+    ["receivePurposeLanguage"],
+    async (evidence, context) =>
+      await detectReceivePurposeLanguageReplay({
+        block: evidence,
+        predecessor: completeCanonicalReplayPredecessorLedger({
+          evidence,
+          context,
+        }),
+      }),
+  );
+
 /** Complete script-integrity-hash-mismatch replay: admitted transactions,
  * forced rejections recording the mismatch, and forced rejections whose
  * reason ranks after the script-integrity phase. */
@@ -182,6 +200,20 @@ export const SCRIPT_INTEGRITY_HASH_MISMATCH_COMPLETE_CANONICAL_REPLAY =
       }),
   );
 
+/** Complete distinct-asset-accumulation-limit replay: admitted transactions
+ * and forced rejections whose reason ranks in or after the value phase. */
+export const DISTINCT_ASSET_ACCUMULATION_LIMIT_COMPLETE_CANONICAL_REPLAY =
+  completeReplayer(
+    ["distinctAssetAccumulationLimit"],
+    async (evidence, context) =>
+      await detectDistinctAssetAccumulationLimitReplay({
+        block: evidence,
+        predecessor: completeCanonicalReplayPredecessorLedger({
+          evidence,
+          context,
+        }),
+      }),
+  );
 /** Complete unused-script-witness replay: admitted transactions carrying a
  * script witness, forced rejections recording an unused witness, and forced
  * rejections whose reason ranks at or after the unused audit. */

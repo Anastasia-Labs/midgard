@@ -14,6 +14,7 @@ export {
   type CommitteeDeploymentRecord,
   type CommitteeStore,
   type CommitteeStoreReadinessCounts,
+  type DaPayloadRetentionRecord,
   DecisionEffectInFlightError,
   type DecisionOutboxRecord,
   type DecisionOutboxStatus,

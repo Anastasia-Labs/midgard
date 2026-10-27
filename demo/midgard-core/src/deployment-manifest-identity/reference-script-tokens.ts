@@ -661,9 +661,45 @@ export const DEPLOYMENT_MANIFEST_BASE_REFERENCE_TOKEN_NAMES = Object.freeze({
   "V1 fraud-proof redeemer-canonicity step-02": "V1FpRedeemerCanonS02",
   "V1 fraud-proof redeemer-canonicity step-02 data": "V1FpRedeemerCanonS02Data",
   "V1 fraud-proof redeemer-canonicity step-03": "V1FpRedeemerCanonS03",
-  "V1 fraud-proof receive-purpose-language step-01": "V1FpReceivePurposeS01",
-  "V1 fraud-proof receive-purpose-language step-02": "V1FpReceivePurposeS02",
-  "V1 fraud-proof receive-purpose-language step-03": "V1FpReceivePurposeS03",
+  "V1 fraud-proof receive-purpose-language step-01": "V1FpRecvPurposeS01",
+  "V1 fraud-proof receive-purpose-language bind-event":
+    "V1FpRecvPurposeBindEvent",
+  "V1 fraud-proof receive-purpose-language bind-pre-state":
+    "V1FpRecvPurposeBindPreState",
+  "V1 fraud-proof receive-purpose-language source-start":
+    "V1FpRecvPurposeSrcStart",
+  "V1 fraud-proof receive-purpose-language source-resolved":
+    "V1FpRecvPurposeSrcResolved",
+  "V1 fraud-proof receive-purpose-language source-authenticate":
+    "V1FpRecvPurposeSrcAuth",
+  "V1 fraud-proof receive-purpose-language source-map": "V1FpRecvPurposeSrcMap",
+  "V1 fraud-proof receive-purpose-language source-input-finish":
+    "V1FpRecvPurposeSrcInputFinish",
+  "V1 fraud-proof receive-purpose-language source-grammar":
+    "V1FpRecvPurposeSrcGrammar",
+  "V1 fraud-proof receive-purpose-language source-witnesses":
+    "V1FpRecvPurposeSrcWitnesses",
+  "V1 fraud-proof receive-purpose-language source-finish":
+    "V1FpRecvPurposeSrcFinish",
+  "V1 fraud-proof receive-purpose-language family-entry":
+    "V1FpRecvPurposeEntry",
+  "V1 fraud-proof receive-purpose-language receive-start":
+    "V1FpRecvPurposeRecvStart",
+  "V1 fraud-proof receive-purpose-language receive-grammar":
+    "V1FpRecvPurposeRecvGrammar",
+  "V1 fraud-proof receive-purpose-language receive-outputs":
+    "V1FpRecvPurposeRecvOutputs",
+  "V1 fraud-proof receive-purpose-language receive-finish":
+    "V1FpRecvPurposeRecvFinish",
+  "V1 fraud-proof receive-purpose-language receive-declaration":
+    "V1FpRecvPurposeRecvDecl",
+  "V1 fraud-proof receive-purpose-language source-lookup":
+    "V1FpRecvPurposeSrcLookup",
+  "V1 fraud-proof receive-purpose-language claimed-redeemer-grammar":
+    "V1FpRecvPurposeClaimedGrammar",
+  "V1 fraud-proof receive-purpose-language claimed-redeemer-scan":
+    "V1FpRecvPurposeClaimedScan",
+  "V1 fraud-proof receive-purpose-language terminal": "V1FpRecvPurposeTerminal",
   "V1 fraud-proof unused-script-witness step-01": "V1FpUnusedScriptWitnessS01",
   "V1 fraud-proof unused-script-witness bind-event": "V1FpUnusedWitBindEvent",
   "V1 fraud-proof unused-script-witness bind-pre-state":
@@ -936,16 +972,28 @@ export const DEPLOYMENT_MANIFEST_BASE_REFERENCE_TOKEN_NAMES = Object.freeze({
     "V1FpIntegrityTerminal",
   "V1 fraud-proof distinct-asset-accumulation-limit step-01":
     "V1FpDistinctAssetLimitS01",
-  "V1 fraud-proof distinct-asset-accumulation-limit step-02":
-    "V1FpDistinctAssetLimitS02",
-  "V1 fraud-proof distinct-asset-accumulation-limit step-03":
-    "V1FpDistinctAssetLimitS03",
-  "V1 fraud-proof distinct-asset-accumulation-limit step-04":
-    "V1FpDistinctAssetLimitS04",
-  "V1 fraud-proof distinct-asset-accumulation-limit step-05":
-    "V1FpDistinctAssetLimitS05",
-  "V1 fraud-proof distinct-asset-accumulation-limit step-06":
-    "V1FpDistinctAssetLimitS06",
+  "V1 fraud-proof distinct-asset-accumulation-limit bind-event":
+    "V1FpDistinctAssetLimitBindEvent",
+  "V1 fraud-proof distinct-asset-accumulation-limit bind-pre-state":
+    "V1FpDistinctAssetLimitBindPre",
+  "V1 fraud-proof distinct-asset-accumulation-limit family-entry":
+    "V1FpDistinctAssetLimitEntry",
+  "V1 fraud-proof distinct-asset-accumulation-limit inputs":
+    "V1FpDistinctAssetLimitInputs",
+  "V1 fraud-proof distinct-asset-accumulation-limit inputs-resolve":
+    "V1FpDistinctAssetLimitInResolve",
+  "V1 fraud-proof distinct-asset-accumulation-limit input-rank":
+    "V1FpDistinctAssetLimitInRank",
+  "V1 fraud-proof distinct-asset-accumulation-limit outputs-grammar":
+    "V1FpDistinctAssetLimitOutGram",
+  "V1 fraud-proof distinct-asset-accumulation-limit outputs":
+    "V1FpDistinctAssetLimitOutputs",
+  "V1 fraud-proof distinct-asset-accumulation-limit mint-grammar":
+    "V1FpDistinctAssetLimitMintGram",
+  "V1 fraud-proof distinct-asset-accumulation-limit mint":
+    "V1FpDistinctAssetLimitMint",
+  "V1 fraud-proof distinct-asset-accumulation-limit terminal":
+    "V1FpDistinctAssetLimitTerminal",
   "availability-challenge spending": "AvailabilityChallengeSpend",
   "availability-challenge minting": "AvailabilityChallengeMint",
   "availability-challenge open withdrawal": "AvailabilityChallengeOpenYield",

@@ -23,12 +23,22 @@
 import "./validator-scenario-registry.validator-scenarios.js";
 import "./validator-scenario-registry.validation-trace-scenarios.js";
 import "./validator-scenario-registry.script-integrity-hash-mismatch-scenarios.js";
+import "./validator-scenario-registry.receive-purpose-language-scenarios.js";
+import "./validator-scenario-registry.distinct-asset-accumulation-limit-scenarios.js";
 import "./validator-scenario-registry.unused-script-witness-scenarios.js";
 import "./validator-scenario-registry.family-scenarios.js";
 import "./validator-scenario-registry.unmapped-validators.js";
 import "./validator-scenario-registry.unmapped-families.js";
 
+import {
+  DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY_SCENARIOS,
+  DISTINCT_ASSET_ACCUMULATION_LIMIT_SCENARIOS,
+} from "./validator-scenario-registry.distinct-asset-accumulation-limit-scenarios.js";
 import { FAMILY_SCENARIOS as SHARED_FAMILY_SCENARIOS } from "./validator-scenario-registry.family-scenarios.js";
+import {
+  RECEIVE_PURPOSE_LANGUAGE_FAMILY_SCENARIOS,
+  RECEIVE_PURPOSE_LANGUAGE_SCENARIOS,
+} from "./validator-scenario-registry.receive-purpose-language-scenarios.js";
 import {
   SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_SCENARIOS,
   SCRIPT_INTEGRITY_HASH_MISMATCH_SCENARIOS,
@@ -44,11 +54,16 @@ export const FAMILY_SCENARIOS: typeof SHARED_FAMILY_SCENARIOS = {
   ...SHARED_FAMILY_SCENARIOS,
   validationTraceDispute: VALIDATION_TRACE_DISPUTE_FAMILY_SCENARIOS,
   scriptIntegrityHashMismatch: SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_SCENARIOS,
+  receivePurposeLanguage: RECEIVE_PURPOSE_LANGUAGE_FAMILY_SCENARIOS,
+  distinctAssetAccumulationLimit:
+    DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY_SCENARIOS,
   unusedScriptWitness: UNUSED_SCRIPT_WITNESS_FAMILY_SCENARIOS,
 };
 export const VALIDATOR_SCENARIOS: typeof SHARED_VALIDATOR_SCENARIOS = {
   ...SHARED_VALIDATOR_SCENARIOS,
   ...SCRIPT_INTEGRITY_HASH_MISMATCH_SCENARIOS,
+  ...RECEIVE_PURPOSE_LANGUAGE_SCENARIOS,
+  ...DISTINCT_ASSET_ACCUMULATION_LIMIT_SCENARIOS,
   ...UNUSED_SCRIPT_WITNESS_SCENARIOS,
 };
 export {

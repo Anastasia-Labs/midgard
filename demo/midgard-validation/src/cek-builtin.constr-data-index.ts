@@ -1,7 +1,7 @@
 import { type MidgardCekDataNode } from "@al-ft/midgard-core";
 
 import { type MidgardCekDirectValueWitness } from "./cek-builtin.argument-kinds.js";
-import { semanticizeMidgardCekDirectConstant } from "./cek-builtin.evaluate-reference-builtin.js";
+import { semanticizeMidgardCekDirectConstant } from "./cek-builtin.evaluate-direct-builtin.js";
 import { encodeMidgardCekDataTreeInteger } from "./cek-data-tree.js";
 import { type MidgardCekCoreStepWitness } from "./cek-machine.midgard-cek-core-step-witness.js";
 

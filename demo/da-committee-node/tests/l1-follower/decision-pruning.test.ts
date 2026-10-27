@@ -1,5 +1,6 @@
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import { depth, type FactStore, isFinal } from "@al-ft/midgard-l1-follower";
+import { SIM_ORIGIN } from "@al-ft/midgard-l1-follower/testing";
 import { afterAll, describe, expect, it } from "vitest";
 
 import {
@@ -14,10 +15,8 @@ import type {
 } from "../../src/l1/follower/obligations.js";
 import { loadDaSigner, signDaAttestation } from "../../src/signer.js";
 import type { PostgresCommitteeStore } from "../../src/store/postgres.js";
-import {
-  retentionCycleOptions,
-  runRetentionCycle,
-} from "../../src/store/retention.js";
+import { retentionCycleOptions } from "../../src/store/retention.js";
+import { runRetentionCycle } from "../../src/store/retention.scan.js";
 import {
   commitmentFor,
   signatureRecord,
@@ -47,10 +46,11 @@ afterAll(async () => {
   await databases.dropAll();
 }, 120_000);
 
-/** One slot spans a challengeability horizon, so a payload can be released. */
+/** One slot spans a promised retention period, so a payload can be released. */
 const SLOT_TIME: SlotTime = {
   ...SIM_SLOT_TIME,
-  slotLength: MIDGARD_RETENTION_WINDOW.requiredRetentionMs,
+  zeroSlot: SIM_ORIGIN.point.slot,
+  slotLength: MIDGARD_RETENTION_WINDOW.deployedRetentionMs,
 };
 
 const ADOPTION: NonNullable<CommitteeConfig["availabilityPromiseAdoption"]> = {
@@ -257,6 +257,7 @@ describe.each(dialects)("signed-decision pruning (%s)", (_, open) => {
         const { prune } = await runRetentionCycle(
           store,
           retentionCycleOptions(config, service.latestL1View()!, Date.now()),
+          {},
         );
         expect(prune.prunedHeaderHashes).toContain(a.hash);
         expect(await store.getStateQueueHeader(a.hash)).toBeUndefined();
@@ -281,6 +282,7 @@ describe.each(dialects)("signed-decision pruning (%s)", (_, open) => {
         const { prune } = await runRetentionCycle(
           store,
           retentionCycleOptions(config, service.latestL1View()!, Date.now()),
+          {},
         );
         expect(prune.prunedHeaderHashes).toContain(a.hash);
         expect(await store.getStateQueueHeader(a.hash)).toMatchObject({

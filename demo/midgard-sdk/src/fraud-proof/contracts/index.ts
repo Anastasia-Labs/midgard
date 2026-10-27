@@ -55,8 +55,14 @@ export {
   buildDistinctAssetAccumulationLimitChain,
   buildDistinctAssetAccumulationLimitFaultProofContracts,
   type BuildDistinctAssetAccumulationLimitFaultProofContractsParams,
+  checkDistinctAssetAccumulationLimitRoleOrder,
   DISTINCT_ASSET_ACCUMULATION_LIMIT_FAULT_PROOF_TITLES,
+  DISTINCT_ASSET_ACCUMULATION_LIMIT_ROLE_ORDER,
+  type DistinctAssetAccumulationLimitChain,
   type DistinctAssetAccumulationLimitFaultProofContracts,
+  type DistinctAssetAccumulationLimitRole,
+  type DistinctAssetAccumulationLimitRoles,
+  distinctAssetAccumulationLimitRoles,
 } from "./families/distinct-asset-accumulation-limit.js";
 export {
   buildDoubleSpendFaultProofContracts,
@@ -265,8 +271,14 @@ export {
   buildReceivePurposeLanguageChain,
   buildReceivePurposeLanguageFaultProofContracts,
   type BuildReceivePurposeLanguageFaultProofContractsParams,
+  checkReceivePurposeLanguageRoleOrder,
   RECEIVE_PURPOSE_LANGUAGE_FAULT_PROOF_TITLES,
+  RECEIVE_PURPOSE_LANGUAGE_ROLE_ORDER,
+  type ReceivePurposeLanguageChain,
   type ReceivePurposeLanguageFaultProofContracts,
+  type ReceivePurposeLanguageRole,
+  type ReceivePurposeLanguageRoles,
+  receivePurposeLanguageRoles,
 } from "./families/receive-purpose-language.js";
 export {
   buildRedeemerCanonicityChain,

@@ -111,6 +111,7 @@ pre-push hook. It blocks the push only on a failed check. Skip it once with
 - `demo/scripts/deployment-profiles.mjs`
 - `demo/scripts/deployment-profile-aiken.mjs`
 - `demo/scripts/deployment-profile-identity.mjs`
+- `demo/scripts/deployment-profile-da.mjs`
 - `demo/scripts/deployment-profile-budgets.mjs`
 - `demo/scripts/deployment-profile-operator-economics.mjs`
 - `demo/flake.lock`
@@ -285,7 +286,7 @@ Workspace ESLint rules and their reasoned baseline.
 
 Workspace helper, ESLint plugin, deployment-profile and interactive-emulator cache self-tests.
 
-- Command: `node --test "demo/scripts/lib/*.test.mjs" demo/scripts/deployment-profiles.test.mjs demo/scripts/interactive-emulator.test.mjs`
+- Command: `node --test "demo/scripts/lib/*.test.mjs" demo/scripts/deployment-profiles.test.mjs demo/scripts/deployment-profiles.retention.test.mjs demo/scripts/interactive-emulator.test.mjs`
 - Runs on: `demo/scripts/**`, `demo/eslint.config.mjs`, `.github/workflows/repo-tools-ci.yml`, `config/deployments/**`, `demo/midgard-test-support/interactive-emulator.js`, `demo/midgard-fault-proofs/scripts/traced-blueprint.mjs`, `demo/midgard-core/src/generated-deployment-profiles.ts`, `onchain/aiken/env/*.ak`, `demo/flake.lock`, `demo/module-size-exceptions.json` and every file it caps
 - Needs: `node-modules`
 
@@ -1130,6 +1131,33 @@ Golden channel cek-builtin-step-evidence (@al-ft/midgard-validation).
   - `demo/midgard-l1-follower/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
+### `golden:known-builtin-failure-conformance`
+
+Golden channel known-builtin-failure-conformance (@al-ft/midgard-validation).
+
+- Command: `pnpm --dir demo/midgard-validation run fixtures:known-builtin-failure-conformance:check`
+- Fix: `pnpm --dir demo/midgard-validation run fixtures:known-builtin-failure-conformance:sync`
+- Runs on:
+  - `demo/midgard-validation/scripts/generate-known-builtin-failure-conformance-goldens.mjs`
+  - `demo/midgard-validation/tests/fixtures/known-builtin-failure-conformance.arguments.mjs`
+  - `demo/midgard-validation/tests/fixtures/known-builtin-failure-conformance.cases.mjs`
+  - `demo/midgard-validation/tests/fixtures/known-builtin-failure-conformance.crypto-cases.mjs`
+  - `demo/midgard-validation/tests/fixtures/known-builtin-failure-conformance.generated.json`
+  - `onchain/aiken/lib/midgard/known-builtin-failure-conformance-golden.test.ak`
+  - `demo/lucid-midgard/src/**`
+  - `demo/midgard-core/src/**`
+  - `demo/midgard-fault-proofs/src/**`
+  - `demo/midgard-validation/src/**`
+  - `demo/midgard-node/src/**`
+  - `demo/midgard-node-tools/src/**`
+  - `demo/midgard-sdk/src/**`
+  - `demo/midgard-watcher/src/**`
+  - `demo/da-committee-node/src/**`
+  - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
+  - `demo/midgard-l1-follower/src/**`
+- Needs: `node-modules`, `aiken`, `core-dist`
+
 ### `golden:transition-trace-abi`
 
 Golden channel transition-trace-abi (midgard-node).
@@ -1275,6 +1303,7 @@ Golden channel da-bond-pool-v1 (@al-ft/midgard-sdk).
   - `demo/midgard-sdk/tests/fixtures/da-bond-pool-v1.generated.json`
   - `demo/scripts/deployment-profile-aiken.mjs`
   - `demo/scripts/deployment-profile-budgets.mjs`
+  - `demo/scripts/deployment-profile-da.mjs`
   - `demo/scripts/deployment-profile-identity.mjs`
   - `demo/scripts/deployment-profile-operator-economics.mjs`
   - `demo/scripts/deployment-profiles.mjs`

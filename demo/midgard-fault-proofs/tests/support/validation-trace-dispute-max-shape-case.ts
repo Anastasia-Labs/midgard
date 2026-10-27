@@ -97,9 +97,12 @@ export const TIMEOUT = 3_600_000;
  *
  * - semantic: `[(lam _ [(lam _ (error)) [(builtin unMapData) (Map [])]])
  *   [(builtin iData) 5]]`, a semantic builtin and a map conversion's start;
- * - failure: `[(builtin divideInteger) 1 0]`, a direct builtin's failure.
+ * - failure: `[(builtin divideInteger) 1 0]`, a direct builtin's failure;
+ * - blsUncompress: `[(builtin bls12_381_G2_uncompress) #937f..44a7]`, a
+ *   direct builtin's failure at the arm's costliest shape: a G2 point on the
+ *   twist, outside G2, whose y^2 has a u part.
  *
- * Both traces take the countdown's direct scalar builtin steps.
+ * Every trace takes the countdown's direct scalar builtin steps.
  */
 export const LONGEST_FAILING_BUILTIN_SCRIPTS = Object.freeze({
   semantic: plutusV3ScriptWitness(
@@ -114,6 +117,14 @@ export const LONGEST_FAILING_BUILTIN_SCRIPTS = Object.freeze({
     encodeCbor(
       Buffer.from(
         "01010023233706900124000666464600446600400400246004466004004002444a666ae68cdc380124000200226600666e040092002001482d94120001",
+        "hex",
+      ),
+    ),
+  ),
+  blsUncompress: plutusV3ScriptWitness(
+    encodeCbor(
+      Buffer.from(
+        "010100232378491160937f9ebde4497e13a660d4e184d974218b21d18c9d578ab770360ad3fe41a4217e4ac78c554e05bfd2fc02336b84d90505974a366247ac98e953e9afec7f10dd12080a46e6f7dede942d6265721ee3c807009433d1bc69bf82d69569713244a7003332323002233002002001230022330020020012225333573466e1c00920001001133003337020049001000a416ca0900001",
         "hex",
       ),
     ),
@@ -133,6 +144,7 @@ const ARMS_OF = {
   ],
   6: ["mapStartRoots", "mapStartBudget", "mapStartNodes"],
   9: ["failureKnown", "failureBudget"],
+  12: ["failureBlsUncompress", "failureBudget"],
 } as const satisfies Partial<Record<CekCoreGroup, readonly string[]>>;
 
 type DrivenGroup = keyof typeof ARMS_OF;

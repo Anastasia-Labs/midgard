@@ -573,9 +573,15 @@ export const workflowAdapterRegistrationRows = [
   {
     category: "receivePurposeLanguage",
     status: "missing",
-    reason: "evidence_not_carried_by_da_payload",
-    existingSurface: [],
-    requiredClosure: daPayloadEvidenceClosure,
+    reason: "constrained_adapter_is_not_launch_scope_complete",
+    existingSurface: [
+      "receive-purpose-language/replay.ts",
+      "receive-purpose-language/artifact.ts",
+      "receive-purpose-language/workflow.ts",
+      "workflow/family-application-registry.ts#RECEIVE_PURPOSE_LANGUAGE_FAMILY_APPLICATION_RECORD",
+    ],
+    requiredClosure:
+      "install and exercise the manifest-bound receive-purpose-language runner in a compiled application with its retained-DA runtime",
   },
   {
     category: "unusedScriptWitness",
@@ -652,9 +658,15 @@ export const workflowAdapterRegistrationRows = [
   {
     category: "distinctAssetAccumulationLimit",
     status: "missing",
-    reason: "evidence_not_carried_by_da_payload",
-    existingSurface: [],
-    requiredClosure: daPayloadEvidenceClosure,
+    reason: "constrained_adapter_is_not_launch_scope_complete",
+    existingSurface: [
+      "distinct-asset-accumulation-limit/replay.ts",
+      "distinct-asset-accumulation-limit/artifact.ts",
+      "distinct-asset-accumulation-limit/workflow.ts",
+      "workflow/family-application-registry.ts#DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY_APPLICATION_RECORD",
+    ],
+    requiredClosure:
+      "install and exercise the manifest-bound distinct-asset-accumulation-limit runner in a compiled application with its retained-DA runtime",
   },
   {
     category: "mintItemNonCanonical",

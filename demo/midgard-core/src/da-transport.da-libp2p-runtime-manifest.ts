@@ -1,5 +1,7 @@
 import { MIDGARD_CONSENSUS_LIMITS } from "./consensus-profile.js";
 import { DA_PAYLOAD_INNER_SCHEMA_VERSION } from "./da-payload-envelope.js";
+import type { DeploymentProfile } from "./deployment-profile.js";
+import { SELECTED_DEPLOYMENT_PROFILE } from "./generated-deployment-profiles.js";
 
 export const DA_TRANSPORT_PROTOCOL_VERSION = 1 as const;
 
@@ -47,6 +49,14 @@ export const DA_TRANSPORT_LIMITS = {
   requestTimeoutMs: 15_000,
   minimumRetentionDays: 15,
 } as const;
+
+/** The history period promised by the selected deployment for DA bootstrap. */
+export const deploymentDaRetentionDays = (
+  profile: DeploymentProfile = SELECTED_DEPLOYMENT_PROFILE,
+): number =>
+  "da_transport" in profile
+    ? profile.da_transport.retention_days
+    : DA_TRANSPORT_LIMITS.minimumRetentionDays;
 
 export const DA_ON_CHAIN_ATTESTATION_DOMAIN = "MidgardDAAttestationV1";
 

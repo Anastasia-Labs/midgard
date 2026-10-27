@@ -35,6 +35,7 @@ const manifest: DaProducerPublicationManifest = {
   localPrivateKeySource: "seed:" + "ef".repeat(32),
   threshold: 1,
   requestTimeoutMs: 100,
+  retentionDays: 15,
   maxPayloadBytes: 16 * 1024 * 1024,
   maxInlineResponseBytes: 1024 * 1024,
   maxChunkBytes: 64 * 1024,

@@ -5,7 +5,10 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
 import { DaPayloadsDB } from "../src/database/index.js";
-import { computeChallengeableCutoff } from "../src/database/retention-policy.js";
+import {
+  computeChallengeableCutoff,
+  computeRetentionCutoff,
+} from "../src/database/retention-policy.js";
 import {
   ContractDeploymentIdentity,
   Globals,
@@ -112,6 +115,7 @@ export const prune = (
 ) =>
   DaPayloadsDB.pruneBeyondRetention({
     challengeableCutoff: computeChallengeableCutoff(NOW),
+    retentionCutoff: computeRetentionCutoff(NOW, 15),
     view: options.view ?? {
       ...unrelatedView,
       finalThroughHeight: FINAL_THROUGH,
@@ -134,6 +138,7 @@ export const remainingHashes = Effect.gen(function* () {
 export const withSweepServices = <A, E, R>(
   effect: Effect.Effect<A, E, R>,
   retentionDays: number | undefined,
+  manifest = deploymentManifest,
 ) =>
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfig;
@@ -146,9 +151,9 @@ export const withSweepServices = <A, E, R>(
         ContractDeploymentIdentity,
         ContractDeploymentIdentity.make({
           kind: "manifest",
-          manifestId: deploymentManifest.manifestId,
+          manifestId: manifest.manifestId,
           consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-          manifest: deploymentManifest,
+          manifest,
         }),
       ),
       Effect.provide(Globals.Default),

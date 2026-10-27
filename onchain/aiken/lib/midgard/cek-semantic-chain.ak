@@ -112,7 +112,17 @@ pub fn core_group(mode: Int, witness: Data) -> Int {
       32 -> 6
       36 -> 7
       37 -> 8
-      38 -> 9
+      38 -> {
+        // Uncompress (59, 66) fails in its own arm, which carries the point
+        // checks; every other direct failure is the known failure arm's.
+        expect [tag_data, _] = fields
+        expect tag: Int = tag_data
+        if tag == 59 || tag == 66 {
+          12
+        } else {
+          9
+        }
+      }
       39 -> 10
       _ -> fail
     }

@@ -48,8 +48,11 @@ const replayers = {
   missingRedeemer: FP.MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY,
   missingScriptSource: FP.MISSING_SCRIPT_SOURCE_COMPLETE_CANONICAL_REPLAY,
   unusedRedeemer: FP.UNUSED_REDEEMER_COMPLETE_CANONICAL_REPLAY,
+  receivePurposeLanguage: FP.RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY,
   scriptIntegrityHashMismatch:
     FP.SCRIPT_INTEGRITY_HASH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
+  distinctAssetAccumulationLimit:
+    FP.DISTINCT_ASSET_ACCUMULATION_LIMIT_COMPLETE_CANONICAL_REPLAY,
   unusedScriptWitness: FP.UNUSED_SCRIPT_WITNESS_COMPLETE_CANONICAL_REPLAY,
 };
 const runDirectory = process.env.MIDGARD_WATCHER_JOURNEY_RUN_DIR;
@@ -219,7 +222,9 @@ it
       category === "missingRedeemer" ||
       category === "missingScriptSource" ||
       category === "unusedRedeemer" ||
+      category === "receivePurposeLanguage" ||
       category === "scriptIntegrityHashMismatch" ||
+      category === "distinctAssetAccumulationLimit" ||
       category === "unusedScriptWitness"
     ) {
       const context = FP.headerDecisionReplayContext(classification.decision);
@@ -262,24 +267,38 @@ it
                     classification: selected,
                     replayContext: context,
                   })
-                : category === "scriptIntegrityHashMismatch"
-                  ? await FP.prepareScriptIntegrityHashMismatchWorkflowArtifact(
-                      {
-                        evidence,
-                        classification: selected,
-                        replayContext: context,
-                      },
-                    )
-                  : category === "unusedScriptWitness"
-                    ? await FP.prepareUnusedScriptWitnessWorkflowArtifact({
-                        evidence,
-                        classification: selected,
-                        replayContext: context,
-                      })
-                    : await FP.prepareScriptIntegrityHashMissingArtifact({
-                        evidence,
-                        classification: selected,
-                      });
+                : category === "receivePurposeLanguage"
+                  ? await FP.prepareReceivePurposeLanguageWorkflowArtifact({
+                      evidence,
+                      classification: selected,
+                      replayContext: context,
+                    })
+                  : category === "scriptIntegrityHashMismatch"
+                    ? await FP.prepareScriptIntegrityHashMismatchWorkflowArtifact(
+                        {
+                          evidence,
+                          classification: selected,
+                          replayContext: context,
+                        },
+                      )
+                    : category === "distinctAssetAccumulationLimit"
+                      ? await FP.prepareDistinctAssetAccumulationLimitWorkflowArtifact(
+                          {
+                            evidence,
+                            classification: selected,
+                            replayContext: context,
+                          },
+                        )
+                      : category === "unusedScriptWitness"
+                        ? await FP.prepareUnusedScriptWitnessWorkflowArtifact({
+                            evidence,
+                            classification: selected,
+                            replayContext: context,
+                          })
+                        : await FP.prepareScriptIntegrityHashMissingArtifact({
+                            evidence,
+                            classification: selected,
+                          });
       expect(artifact.headerHash).toBe(block.headerHash);
     }
     await verifyJourneyFixture({
@@ -298,7 +317,9 @@ it.each([
   "missingRedeemer",
   "missingScriptSource",
   "unusedRedeemer",
+  "receivePurposeLanguage",
   "scriptIntegrityHashMismatch",
+  "distinctAssetAccumulationLimit",
   "unusedScriptWitness",
 ] as const)(
   "classifies the %s forced-claim fixture through the full catalogue and its honest successor as healthy",

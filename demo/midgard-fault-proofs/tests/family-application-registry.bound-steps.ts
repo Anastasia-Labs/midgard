@@ -238,7 +238,9 @@ export const NO_DIGEST_FAMILIES = [
   "missingRedeemer",
   "missingScriptSource",
   "unusedRedeemer",
+  "receivePurposeLanguage",
   "scriptIntegrityHashMismatch",
+  "distinctAssetAccumulationLimit",
   "unusedScriptWitness",
 ];
 
@@ -255,7 +257,9 @@ export const REPLAY_CONTEXT_FAMILIES = [
   "missingRedeemer",
   "missingScriptSource",
   "unusedRedeemer",
+  "receivePurposeLanguage",
   "scriptIntegrityHashMismatch",
+  "distinctAssetAccumulationLimit",
   "unusedScriptWitness",
 ];
 

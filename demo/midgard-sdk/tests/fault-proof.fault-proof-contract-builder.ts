@@ -245,11 +245,11 @@ describe("fault-proof contract builder", () => {
         ["withdrawnReferenceInput[2]", "withdrawnInput[2]"],
         // Both convict from the same final ordered-collection comparison.
         ["mintDeclaredAssetLimit[3]", "observerOrderInvalid[3]"],
-        // DIRECT and unusedScriptWitness share source authentication and map;
-        // the first three share the claim route (minus a scan) and terminal.
+        // receivePurposeLanguage, unusedScriptWitness and DIRECT share source
+        // authentication and map (DIRECT also shares claim route and terminal).
         ...[5, 6].map((step) =>
-          ["unusedScriptWitness", ...DIRECT].map(
-            (name) => `${name}[${step.toString()}]`,
+          ["receivePurposeLanguage", "unusedScriptWitness", ...DIRECT].map(
+            (family) => `${family}[${step.toString()}]`,
           ),
         ),
         ...[

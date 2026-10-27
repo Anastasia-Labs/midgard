@@ -28,6 +28,12 @@ import type {
   CommitteeRetirementSnapshot,
 } from "./store/retirement-model.js";
 
+/** What a retained payload's release is decided on: never its bytes. */
+export type DaPayloadRetentionRecord = Pick<
+  DaStoredPayloadRecord,
+  "headerHash" | "fetchedAt" | "deploymentFingerprint"
+>;
+
 export type RetainedPayloadPruneRequest = {
   readonly headerHash: string;
   /** The release clock of the caller's view: its latest final block's time. */
@@ -338,8 +344,15 @@ export interface CommitteeStore {
   ): Promise<StateQueueHeaderRecord | undefined>;
   saveDaPayload(record: DaPayloadRecord): Promise<DaPayloadRecord>;
   getDaPayload(headerHash: string): Promise<DaPayloadRecord | undefined>;
-  /** Q54 retention enforcement: full retained DA payload set. */
-  listDaPayloads(): Promise<readonly DaStoredPayloadRecord[]>;
+  /**
+   * Q54 retention enforcement: up to `limit` retained DA payloads after
+   * `afterHeaderHash`, in header-hash order, as the metadata their release is
+   * decided on. Never the payload bytes.
+   */
+  listDaPayloadRetentionPage(args: {
+    readonly afterHeaderHash?: string;
+    readonly limit: number;
+  }): Promise<readonly DaPayloadRetentionRecord[]>;
   /**
    * Removes one retained DA payload only if the core retention decision,
    * re-evaluated inside the store's write boundary, still prunes it.

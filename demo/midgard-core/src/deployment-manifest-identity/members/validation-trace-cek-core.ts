@@ -366,5 +366,18 @@ export const validationTraceCekCoreMembers = defineDeploymentFamily(
         "fraud_proofs/validation_trace/cek_core_type_failure_roots.main.spend",
       familyPaths: [["cekCoreStages", "typeFailureRoots"]],
     },
+    /** The BLS12-381 uncompress failure arm (core group 12), appended after
+     * every earlier member. */
+    validationTraceDisputeCekCoreFailureBlsUncompress: {
+      purpose: "spend",
+      referenceRole: "V1 validation-trace CEK core failure bls uncompress",
+      manifestPosition: 685,
+      publicationPosition: 680,
+      referenceRolePosition: 680,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/validation_trace/cek_core_failure_bls_uncompress.main.spend",
+      familyPaths: [["cekCoreStages", "failureBlsUncompress"]],
+    },
   },
 );

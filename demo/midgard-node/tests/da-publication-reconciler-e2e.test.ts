@@ -158,6 +158,7 @@ describe.skipIf(!enabled)("joined DA publication reconciler E2E", () => {
       localPrivateKeySource: producerSeed,
       threshold: 2,
       requestTimeoutMs: DA_TRANSPORT_LIMITS.requestTimeoutMs,
+      retentionDays: 15,
       maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
       maxInlineResponseBytes: DA_TRANSPORT_LIMITS.maxInlineResponseBytes,
       maxChunkBytes: DA_TRANSPORT_LIMITS.maxChunkBytes,

@@ -26,10 +26,8 @@ import {
   slotTimeMs,
 } from "../../src/l1/follower/obligations.js";
 import { committeeProjection } from "../../src/l1/follower/projection.js";
-import {
-  retentionCycleOptions,
-  runRetentionCycle,
-} from "../../src/store/retention.js";
+import { retentionCycleOptions } from "../../src/store/retention.js";
+import { runRetentionCycle } from "../../src/store/retention.scan.js";
 import { minimalConfig, tempDir } from "../helpers.js";
 import { openTestCommitteeStore } from "../helpers/committee-store.js";
 import { postgresTestDatabases } from "../helpers/postgres-database.js";
@@ -46,7 +44,7 @@ import { SIM_DEPTHS, SIM_QUEUE, SIM_SLOT_TIME } from "./queue-sim.js";
  * A header is committed, attested and merged within k blocks of the tip,
  * and a later header merges after it as the confirmed head: none of it is
  * final, and the wall clock is long past the first header's
- * challengeability horizon. A rollback at depth cd + 1 then takes the
+ * promised retention period. A rollback at depth cd + 1 then takes the
  * merges back. Nothing may have been released, and the header and payload
  * are still served. Once the merges land again and the chain re-extends
  * past k, the payload is released, exactly once.
@@ -54,9 +52,13 @@ import { SIM_DEPTHS, SIM_QUEUE, SIM_SLOT_TIME } from "./queue-sim.js";
 
 const K = SIM_DEPTHS.securityParameter;
 const CD = SIM_DEPTHS.confirmationDepth;
-const HORIZON_MS = MIDGARD_RETENTION_WINDOW.requiredRetentionMs;
-/** One slot spans a whole challengeability horizon, so a few blocks pass it. */
-const SLOT_TIME: SlotTime = { ...SIM_SLOT_TIME, slotLength: HORIZON_MS };
+const HORIZON_MS = MIDGARD_RETENTION_WINDOW.deployedRetentionMs;
+/** One slot spans a whole promised retention period, so a few blocks pass it. */
+const SLOT_TIME: SlotTime = {
+  ...SIM_SLOT_TIME,
+  zeroSlot: SIM_ORIGIN.point.slot,
+  slotLength: HORIZON_MS,
+};
 
 const projection = committeeProjection(SIM_QUEUE);
 const databases = postgresTestDatabases("midgard_test_c3_payload_release");
@@ -141,6 +143,7 @@ const harness = async (
     const { deadlines, prune } = await runRetentionCycle(
       store,
       retentionCycleOptions(config, view!, Date.now()),
+      {},
     );
     // Waiting for finality is normal: never a readiness failure.
     expect(retentionReadinessFromDeadlines(deadlines).status).toBe("ok");
@@ -236,9 +239,10 @@ describe.each([
   );
 });
 
-/** Eight slots span a challengeability horizon: the clock, not an exemption, decides. */
+/** Eight slots span a promised retention period: the clock, not an exemption, decides. */
 const SHORT_SLOT_TIME: SlotTime = {
   ...SIM_SLOT_TIME,
+  zeroSlot: SIM_ORIGIN.point.slot,
   slotLength: HORIZON_MS / 8,
 };
 

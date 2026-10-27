@@ -3,12 +3,11 @@
  * `Builtins.hs`), and the one translation to `@harmoniclabs/uplc`'s numbers.
  *
  * Midgard's machine, its material and every tag-keyed table use Cardano's
- * numbers. The reference library numbers six BLS builtins differently
+ * numbers. HarmonicLabs' library numbers six BLS builtins differently
  * (hashToGroup, compress, uncompress where Cardano has compress, uncompress,
- * hashToGroup), so a call into its evaluator or cost model goes through
+ * hashToGroup), so a golden generator or test calling into it goes through
  * `harmonicBuiltinTag`. Every other tag is the same in both.
  */
-import type { UPLCBuiltinTag } from "@harmoniclabs/uplc";
 
 /** Cardano's flat tags for the BLS builtins the two numberings disagree on. */
 export const MIDGARD_CEK_CARDANO_BLS_TAGS = Object.freeze({
@@ -29,6 +28,6 @@ const CARDANO_TO_HARMONIC: ReadonlyMap<number, number> = new Map([
   [MIDGARD_CEK_CARDANO_BLS_TAGS.g2HashToGroup, 65],
 ]);
 
-/** The reference library's tag for Cardano's builtin `cardanoTag`. */
-export const harmonicBuiltinTag = (cardanoTag: number): UPLCBuiltinTag =>
-  (CARDANO_TO_HARMONIC.get(cardanoTag) ?? cardanoTag) as UPLCBuiltinTag;
+/** HarmonicLabs' tag for Cardano's builtin `cardanoTag`. */
+export const harmonicBuiltinTag = (cardanoTag: number): number =>
+  CARDANO_TO_HARMONIC.get(cardanoTag) ?? cardanoTag;

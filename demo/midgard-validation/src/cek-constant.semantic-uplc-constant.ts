@@ -59,7 +59,9 @@ const semanticUplcConstant = (
         throw new Error("V1 string payload is not DataB");
       }
       return UPLCConst.str(
-        new TextDecoder("utf-8", { fatal: true }).decode(payload.bytes),
+        new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(
+          payload.bytes,
+        ),
       );
     }
     case "unit":
@@ -114,7 +116,7 @@ const semanticUplcConstant = (
 };
 
 /**
- * Reconstructs the UPLC constant consumed by the pinned reference evaluator
+ * Reconstructs the UPLC constant consumed by the pinned evaluator
  * from the canonical semantic witness checked on L1.
  */
 export const midgardCekConstantWitnessToUplc = (
@@ -125,7 +127,7 @@ export const midgardCekConstantWitnessToUplc = (
 };
 
 /**
- * Converts a reference-evaluator constant back into the canonical L1
+ * Converts a pinned-evaluator constant back into the canonical L1
  * witness. The ordinary witness decoder remains authoritative for the direct
  * one-step payload bound.
  */

@@ -72,12 +72,26 @@ export const seedForPayload = (
     ),
   );
 
+/** The database's clock, the one `da_payloads.created_at` is stamped by. */
+export const databaseNow: Effect.Effect<Date, DatabaseError, Database> =
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const [{ now }] = yield* sql<{ now: Date }>`SELECT NOW() AS now`;
+    return now;
+  }).pipe(sqlErrorToDatabaseError(tableName, "Failed to read database time"));
+
+/**
+ * Seeds a pending row per peer for every payload within the retention window;
+ * with `since`, only for payloads created at or after it.
+ */
 export const seedRecentPayloads = ({
   peers,
   retentionDays,
+  since,
 }: {
   readonly peers: readonly DaProducerCommitteePeer[];
   readonly retentionDays: number;
+  readonly since?: Date;
 }): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
@@ -101,6 +115,7 @@ export const seedRecentPayloads = ({
           NOW()
         FROM da_payloads payload
         WHERE payload.created_at >= NOW() - (${retentionDays} * INTERVAL '1 day')
+          ${since === undefined ? sql`` : sql`AND payload.created_at >= ${since}`}
         ON CONFLICT (header_hash, peer_id) DO NOTHING
       `,
       { concurrency: 1, discard: true },

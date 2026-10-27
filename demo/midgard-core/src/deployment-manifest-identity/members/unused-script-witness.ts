@@ -72,9 +72,9 @@ export const unusedScriptWitnessMembers = defineDeploymentFamily(
     fraudProofUnusedScriptWitnessSourceMap: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof unused-script-witness source-map",
-      manifestPosition: 661,
-      publicationPosition: 656,
-      referenceRolePosition: 656,
+      manifestPosition: 686,
+      publicationPosition: 681,
+      referenceRolePosition: 681,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_map.main.spend",
@@ -83,9 +83,9 @@ export const unusedScriptWitnessMembers = defineDeploymentFamily(
     fraudProofUnusedScriptWitnessSourceInputFinish: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof unused-script-witness source-input-finish",
-      manifestPosition: 662,
-      publicationPosition: 657,
-      referenceRolePosition: 657,
+      manifestPosition: 687,
+      publicationPosition: 682,
+      referenceRolePosition: 682,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_input_finish.main.spend",
@@ -94,9 +94,9 @@ export const unusedScriptWitnessMembers = defineDeploymentFamily(
     fraudProofUnusedScriptWitnessSourceGrammar: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof unused-script-witness source-grammar",
-      manifestPosition: 663,
-      publicationPosition: 658,
-      referenceRolePosition: 658,
+      manifestPosition: 688,
+      publicationPosition: 683,
+      referenceRolePosition: 683,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_grammar.main.spend",
@@ -105,9 +105,9 @@ export const unusedScriptWitnessMembers = defineDeploymentFamily(
     fraudProofUnusedScriptWitnessSourceWitnesses: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof unused-script-witness source-witnesses",
-      manifestPosition: 664,
-      publicationPosition: 659,
-      referenceRolePosition: 659,
+      manifestPosition: 689,
+      publicationPosition: 684,
+      referenceRolePosition: 684,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_witnesses.main.spend",
@@ -116,9 +116,9 @@ export const unusedScriptWitnessMembers = defineDeploymentFamily(
     fraudProofUnusedScriptWitnessSourceFinish: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof unused-script-witness source-finish",
-      manifestPosition: 665,
-      publicationPosition: 660,
-      referenceRolePosition: 660,
+      manifestPosition: 690,
+      publicationPosition: 685,
+      referenceRolePosition: 685,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_finish.main.spend",
@@ -127,9 +127,9 @@ export const unusedScriptWitnessMembers = defineDeploymentFamily(
     fraudProofUnusedScriptWitnessFamilyEntry: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof unused-script-witness family-entry",
-      manifestPosition: 666,
-      publicationPosition: 661,
-      referenceRolePosition: 661,
+      manifestPosition: 691,
+      publicationPosition: 686,
+      referenceRolePosition: 686,
       commands: [],
       validatorTitle:
         "fraud_proofs/unused_script_witness/family_entry.main.spend",
@@ -138,9 +138,9 @@ export const unusedScriptWitnessMembers = defineDeploymentFamily(
     fraudProofUnusedScriptWitnessAllPurposesSpend: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof unused-script-witness all-purposes-spend",
-      manifestPosition: 667,
-      publicationPosition: 662,
-      referenceRolePosition: 662,
+      manifestPosition: 692,
+      publicationPosition: 687,
+      referenceRolePosition: 687,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/all_purposes_spend.main.spend",
@@ -150,9 +150,9 @@ export const unusedScriptWitnessMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole:
         "V1 fraud-proof unused-script-witness all-purposes-spend-resolve",
-      manifestPosition: 668,
-      publicationPosition: 663,
-      referenceRolePosition: 663,
+      manifestPosition: 693,
+      publicationPosition: 688,
+      referenceRolePosition: 688,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/all_purposes_spend_resolve.main.spend",
@@ -162,9 +162,9 @@ export const unusedScriptWitnessMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole:
         "V1 fraud-proof unused-script-witness all-purposes-mint-grammar",
-      manifestPosition: 669,
-      publicationPosition: 664,
-      referenceRolePosition: 664,
+      manifestPosition: 694,
+      publicationPosition: 689,
+      referenceRolePosition: 689,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/all_purposes_mint_grammar.main.spend",
@@ -173,9 +173,9 @@ export const unusedScriptWitnessMembers = defineDeploymentFamily(
     fraudProofUnusedScriptWitnessAllPurposesMint: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof unused-script-witness all-purposes-mint",
-      manifestPosition: 670,
-      publicationPosition: 665,
-      referenceRolePosition: 665,
+      manifestPosition: 695,
+      publicationPosition: 690,
+      referenceRolePosition: 690,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/all_purposes_mint.main.spend",
@@ -185,9 +185,9 @@ export const unusedScriptWitnessMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole:
         "V1 fraud-proof unused-script-witness all-purposes-observe-open",
-      manifestPosition: 671,
-      publicationPosition: 666,
-      referenceRolePosition: 666,
+      manifestPosition: 696,
+      publicationPosition: 691,
+      referenceRolePosition: 691,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/all_purposes_observe_open.main.spend",
@@ -197,9 +197,9 @@ export const unusedScriptWitnessMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole:
         "V1 fraud-proof unused-script-witness all-purposes-observe",
-      manifestPosition: 672,
-      publicationPosition: 667,
-      referenceRolePosition: 667,
+      manifestPosition: 697,
+      publicationPosition: 692,
+      referenceRolePosition: 692,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/all_purposes_observe.main.spend",
@@ -209,9 +209,9 @@ export const unusedScriptWitnessMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole:
         "V1 fraud-proof unused-script-witness all-purposes-receive-grammar",
-      manifestPosition: 673,
-      publicationPosition: 668,
-      referenceRolePosition: 668,
+      manifestPosition: 698,
+      publicationPosition: 693,
+      referenceRolePosition: 693,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/all_purposes_receive_grammar.main.spend",
@@ -221,9 +221,9 @@ export const unusedScriptWitnessMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole:
         "V1 fraud-proof unused-script-witness all-purposes-receive",
-      manifestPosition: 674,
-      publicationPosition: 669,
-      referenceRolePosition: 669,
+      manifestPosition: 699,
+      publicationPosition: 694,
+      referenceRolePosition: 694,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/all_purposes_receive.main.spend",
@@ -232,9 +232,9 @@ export const unusedScriptWitnessMembers = defineDeploymentFamily(
     fraudProofUnusedScriptWitnessWitnessEntry: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof unused-script-witness witness-entry",
-      manifestPosition: 675,
-      publicationPosition: 670,
-      referenceRolePosition: 670,
+      manifestPosition: 700,
+      publicationPosition: 695,
+      referenceRolePosition: 695,
       commands: [],
       validatorTitle:
         "fraud_proofs/unused_script_witness/witness_entry.main.spend",
@@ -243,9 +243,9 @@ export const unusedScriptWitnessMembers = defineDeploymentFamily(
     fraudProofUnusedScriptWitnessWitnessGrammar: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof unused-script-witness witness-grammar",
-      manifestPosition: 676,
-      publicationPosition: 671,
-      referenceRolePosition: 671,
+      manifestPosition: 701,
+      publicationPosition: 696,
+      referenceRolePosition: 696,
       commands: [],
       validatorTitle:
         "fraud_proofs/unused_script_witness/witness_grammar.main.spend",
@@ -254,9 +254,9 @@ export const unusedScriptWitnessMembers = defineDeploymentFamily(
     fraudProofUnusedScriptWitnessWitnessScan: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof unused-script-witness witness-scan",
-      manifestPosition: 677,
-      publicationPosition: 672,
-      referenceRolePosition: 672,
+      manifestPosition: 702,
+      publicationPosition: 697,
+      referenceRolePosition: 697,
       commands: [],
       validatorTitle:
         "fraud_proofs/unused_script_witness/witness_scan.main.spend",
@@ -265,9 +265,9 @@ export const unusedScriptWitnessMembers = defineDeploymentFamily(
     fraudProofUnusedScriptWitnessTerminal: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof unused-script-witness terminal",
-      manifestPosition: 678,
-      publicationPosition: 673,
-      referenceRolePosition: 673,
+      manifestPosition: 703,
+      publicationPosition: 698,
+      referenceRolePosition: 698,
       commands: [],
       validatorTitle: "fraud_proofs/unused_script_witness/terminal.main.spend",
       familyPaths: [["steps", "23"]],

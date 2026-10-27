@@ -2,14 +2,13 @@ import {
   midgardCekFlatRoot,
   type MidgardCekMachineState,
 } from "@al-ft/midgard-core";
-import { CEKConst } from "@harmoniclabs/plutus-machine";
 import { describe, expect, it } from "vitest";
 
 import {
+  builtinValueToDirectWitness,
   evaluateMidgardCekBuiltinOnValues,
-  referenceConstantToDirectWitness,
   semanticizeMidgardCekDirectConstant,
-} from "../src/cek-builtin.evaluate-reference-builtin.js";
+} from "../src/cek-builtin.evaluate-direct-builtin.js";
 import type { MidgardCekExecutionStep } from "../src/cek-executor.build-midgard-cek-execution-graph.js";
 import {
   midgardCekStagedFailure,
@@ -66,7 +65,7 @@ const bytesOperand = (length: number): MidgardCekStagedOperand => {
   return {
     type: "bytes",
     bytes: value,
-    value: CEKConst.byteString(value),
+    value: UPLCConst.byteString(value),
     leaf: {
       kind: "bytesLeaf",
       root: midgardCekFlatRoot(value),
@@ -263,7 +262,7 @@ describe("staged failure steps of the integer builtins", () => {
     if (witness.kind !== "executeBuiltinStagedFailure") throw new Error("kind");
     const revealed = [
       witness.arguments[0]!,
-      referenceConstantToDirectWitness(CEKConst.int(-1n)),
+      builtinValueToDirectWitness(UPLCConst.int(-1n)),
     ];
     expect(
       verifies({ ...step, witness: { ...witness, arguments: revealed } }),
