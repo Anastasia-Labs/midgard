@@ -64,10 +64,14 @@ is a readiness failure.
 
 ## 3. Detect and prosecute
 
-The production watcher is the normal entry point. It obtains the challenged
-HeaderV1 from authenticated L1 state, retrieves retained evidence through the
-public DA protocols, records the classifier decision, reserves funding, and
-runs or resumes the manifest-bound category workflow.
+Proving is permissionless: any signing key may initialize a proof's
+computation thread, so any party running a watcher can challenge. The
+production watcher is the normal entry point, and it submits every proof
+transaction itself. It obtains the challenged HeaderV1 from authenticated L1
+state, retrieves retained evidence through the public DA protocols, records
+the classifier decision, reserves funding, and runs or resumes the
+manifest-bound category workflow. A normal challenge needs no operator
+command.
 
 Operations status reports `retained_da_transport_failed` when the shared
 retained-DA transport failed to start. That start builds the local libp2p node
@@ -106,6 +110,29 @@ success flag. Verify:
 5. the watcher has no unfinished mutation, funding, or reconciliation job.
 
 Completion: all five observations agree at a final chain point.
+
+## 5. When a proof does not land
+
+The watcher's alert rules page on a proof that does not land:
+`MidgardWatcherProofSubmissionFailure`, `MidgardWatcherProofHeld` and
+`MidgardWatcherProofDeadline`. Their sections in
+[`docs/operations/alerts.md`](../operations/alerts.md) name the readiness
+reason behind each page and what clears it.
+
+The watcher retries submission by itself: a held objective resumes on the
+next observation once its cause (prover wallet funds, the L1 provider,
+retained-DA reachability) is fixed, and a restart with the same journals
+resumes every objective from its journaled checkpoint. That restart is the
+manual fallback; it follows
+[`manual-recovery-runbook.md`](manual-recovery-runbook.md). There is no
+standalone submission command that bypasses the watcher's decision and
+funding permits. An objective held as `fault_proof_resubmission_required` or
+`fault_proof_start_deadline_passed` cannot be resumed by this watcher;
+escalate it while the challenge window is open, since another independent
+challenger can still prove the same fault.
+
+Completion: the objective's alert and readiness reason clear, and section 4
+verifies the outcome.
 
 ## Recovery branch
 

@@ -143,7 +143,6 @@ const observedReasons: ReadonlySet<string> = new Set([
   "duplicate_key",
   "follower_authority_changed",
   "follower_recomputing",
-  "forced_order_admission_stopped",
   "forced_order_carriage_pending",
   "forced_order_ingestion_failed",
   "intent_bytes_mismatch",

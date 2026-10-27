@@ -645,14 +645,10 @@ export const DEPLOYMENT_MANIFEST_BASE_REFERENCE_TOKEN_NAMES = Object.freeze({
     "V1FpOutputRefDecodeS06",
   "V1 fraud-proof execution-source-script-decoding step-01":
     "V1FpExecSourceDecodeS01",
-  "V1 fraud-proof execution-source-script-decoding step-02":
-    "V1FpExecSourceDecodeS02",
-  "V1 fraud-proof execution-source-script-decoding step-03":
-    "V1FpExecSourceDecodeS03",
-  "V1 fraud-proof execution-source-script-decoding step-04":
-    "V1FpExecSourceDecodeS04",
-  "V1 fraud-proof execution-source-script-decoding step-05":
-    "V1FpExecSourceDecodeS05",
+  "V1 fraud-proof execution-source-script-decoding bind-event":
+    "V1FpExecSourceDecodeBindEvent",
+  "V1 fraud-proof execution-source-script-decoding terminal":
+    "V1FpExecSourceDecodeTerminal",
   "V1 fraud-proof observer-order-invalid step-01": "V1FpObserverOrderS01",
   "V1 fraud-proof observer-order-invalid step-02": "V1FpObserverOrderS02",
   "V1 fraud-proof observer-order-invalid step-03": "V1FpObserverOrderS03",
@@ -701,11 +697,47 @@ export const DEPLOYMENT_MANIFEST_BASE_REFERENCE_TOKEN_NAMES = Object.freeze({
     "V1FpRecvPurposeClaimedScan",
   "V1 fraud-proof receive-purpose-language terminal": "V1FpRecvPurposeTerminal",
   "V1 fraud-proof unused-script-witness step-01": "V1FpUnusedScriptWitnessS01",
-  "V1 fraud-proof unused-script-witness step-02": "V1FpUnusedScriptWitnessS02",
-  "V1 fraud-proof unused-script-witness step-03": "V1FpUnusedScriptWitnessS03",
-  "V1 fraud-proof unused-script-witness step-04": "V1FpUnusedScriptWitnessS04",
-  "V1 fraud-proof unused-script-witness step-05": "V1FpUnusedScriptWitnessS05",
-  "V1 fraud-proof unused-script-witness step-06": "V1FpUnusedScriptWitnessS06",
+  "V1 fraud-proof unused-script-witness bind-event": "V1FpUnusedWitBindEvent",
+  "V1 fraud-proof unused-script-witness bind-pre-state":
+    "V1FpUnusedWitBindPreState",
+  "V1 fraud-proof unused-script-witness source-start": "V1FpUnusedWitSrcStart",
+  "V1 fraud-proof unused-script-witness source-resolved":
+    "V1FpUnusedWitSrcResolved",
+  "V1 fraud-proof unused-script-witness source-authenticate":
+    "V1FpUnusedWitSrcAuth",
+  "V1 fraud-proof unused-script-witness source-map": "V1FpUnusedWitSrcMap",
+  "V1 fraud-proof unused-script-witness source-input-finish":
+    "V1FpUnusedWitSrcInputFinish",
+  "V1 fraud-proof unused-script-witness source-grammar":
+    "V1FpUnusedWitSrcGrammar",
+  "V1 fraud-proof unused-script-witness source-witnesses":
+    "V1FpUnusedWitSrcWitnesses",
+  "V1 fraud-proof unused-script-witness source-finish":
+    "V1FpUnusedWitSrcFinish",
+  "V1 fraud-proof unused-script-witness family-entry": "V1FpUnusedWitEntry",
+  "V1 fraud-proof unused-script-witness all-purposes-spend":
+    "V1FpUnusedWitApSpend",
+  "V1 fraud-proof unused-script-witness all-purposes-spend-resolve":
+    "V1FpUnusedWitApSpendResolve",
+  "V1 fraud-proof unused-script-witness all-purposes-mint-grammar":
+    "V1FpUnusedWitApMintGrammar",
+  "V1 fraud-proof unused-script-witness all-purposes-mint":
+    "V1FpUnusedWitApMint",
+  "V1 fraud-proof unused-script-witness all-purposes-observe-open":
+    "V1FpUnusedWitApObserveOpen",
+  "V1 fraud-proof unused-script-witness all-purposes-observe":
+    "V1FpUnusedWitApObserve",
+  "V1 fraud-proof unused-script-witness all-purposes-receive-grammar":
+    "V1FpUnusedWitApRecvGrammar",
+  "V1 fraud-proof unused-script-witness all-purposes-receive":
+    "V1FpUnusedWitApRecv",
+  "V1 fraud-proof unused-script-witness witness-entry":
+    "V1FpUnusedWitWitnessEntry",
+  "V1 fraud-proof unused-script-witness witness-grammar":
+    "V1FpUnusedWitWitnessGrammar",
+  "V1 fraud-proof unused-script-witness witness-scan":
+    "V1FpUnusedWitWitnessScan",
+  "V1 fraud-proof unused-script-witness terminal": "V1FpUnusedWitTerminal",
   "V1 fraud-proof missing-script-source step-01": "V1FpMissingSrcS01",
   "V1 fraud-proof missing-script-source bind-event": "V1FpMissingSrcBindEvent",
   "V1 fraud-proof missing-script-source bind-pre-state":
@@ -868,30 +900,60 @@ export const DEPLOYMENT_MANIFEST_BASE_REFERENCE_TOKEN_NAMES = Object.freeze({
   "V1 fraud-proof unused-redeemer terminal": "V1FpUnusedRdmrTerminal",
   "V1 fraud-proof execution-native-script-invalid step-01":
     "V1FpExecNativeInvalidS01",
-  "V1 fraud-proof execution-native-script-invalid step-02":
-    "V1FpExecNativeInvalidS02",
-  "V1 fraud-proof execution-native-script-invalid step-03":
-    "V1FpExecNativeInvalidS03",
-  "V1 fraud-proof execution-native-script-invalid step-04":
-    "V1FpExecNativeInvalidS04",
-  "V1 fraud-proof execution-native-script-invalid step-05":
-    "V1FpExecNativeInvalidS05",
-  "V1 fraud-proof execution-native-script-invalid step-06":
-    "V1FpExecNativeInvalidS06",
-  "V1 fraud-proof execution-native-script-invalid accepted-reconstruction-init":
-    "V1FpExecNativeInvAccInit",
-  "V1 fraud-proof execution-native-script-invalid accepted-spend-prefix":
-    "V1FpExecNativeInvAccSpend",
-  "V1 fraud-proof execution-native-script-invalid accepted-mint-prefix":
-    "V1FpExecNativeInvAccMint",
-  "V1 fraud-proof execution-native-script-invalid accepted-observer-prefix":
-    "V1FpExecNativeInvAccObserver",
-  "V1 fraud-proof execution-native-script-invalid accepted-receive-prefix":
-    "V1FpExecNativeInvAccReceive",
-  "V1 fraud-proof execution-native-script-invalid accepted-inline-source":
-    "V1FpExecNativeInvAccInline",
-  "V1 fraud-proof execution-native-script-invalid accepted-reference-source":
-    "V1FpExecNativeInvAccRef",
+  "V1 fraud-proof execution-native-script-invalid bind-event":
+    "V1FpExecNativeInvBindEvent",
+  "V1 fraud-proof execution-native-script-invalid bind-pre-state":
+    "V1FpExecNativeInvBindPreState",
+  "V1 fraud-proof execution-native-script-invalid source-start":
+    "V1FpExecNativeInvSrcStart",
+  "V1 fraud-proof execution-native-script-invalid source-resolved":
+    "V1FpExecNativeInvSrcResolved",
+  "V1 fraud-proof execution-native-script-invalid source-authenticate":
+    "V1FpExecNativeInvSrcAuth",
+  "V1 fraud-proof execution-native-script-invalid source-map":
+    "V1FpExecNativeInvSrcMap",
+  "V1 fraud-proof execution-native-script-invalid source-input-finish":
+    "V1FpExecNativeInvSrcInputFinish",
+  "V1 fraud-proof execution-native-script-invalid source-grammar":
+    "V1FpExecNativeInvSrcGrammar",
+  "V1 fraud-proof execution-native-script-invalid source-witnesses":
+    "V1FpExecNativeInvSrcWitnesses",
+  "V1 fraud-proof execution-native-script-invalid source-finish":
+    "V1FpExecNativeInvSrcFinish",
+  "V1 fraud-proof execution-native-script-invalid family-entry":
+    "V1FpExecNativeInvEntry",
+  "V1 fraud-proof execution-native-script-invalid purpose-select":
+    "V1FpExecNativeInvPurposeSelect",
+  "V1 fraud-proof execution-native-script-invalid spend-select":
+    "V1FpExecNativeInvSpendSelect",
+  "V1 fraud-proof execution-native-script-invalid spend-scan":
+    "V1FpExecNativeInvSpendScan",
+  "V1 fraud-proof execution-native-script-invalid mint-grammar":
+    "V1FpExecNativeInvMintGrammar",
+  "V1 fraud-proof execution-native-script-invalid mint-scan":
+    "V1FpExecNativeInvMintScan",
+  "V1 fraud-proof execution-native-script-invalid receive-start":
+    "V1FpExecNativeInvRecvStart",
+  "V1 fraud-proof execution-native-script-invalid receive-grammar":
+    "V1FpExecNativeInvRecvGrammar",
+  "V1 fraud-proof execution-native-script-invalid receive-outputs":
+    "V1FpExecNativeInvRecvOutputs",
+  "V1 fraud-proof execution-native-script-invalid receive-finish":
+    "V1FpExecNativeInvRecvFinish",
+  "V1 fraud-proof execution-native-script-invalid receive-declaration":
+    "V1FpExecNativeInvRecvDecl",
+  "V1 fraud-proof execution-native-script-invalid source-lookup":
+    "V1FpExecNativeInvLookup",
+  "V1 fraud-proof execution-native-script-invalid signers":
+    "V1FpExecNativeInvSigners",
+  "V1 fraud-proof execution-native-script-invalid evaluate":
+    "V1FpExecNativeInvEvaluate",
+  "V1 fraud-proof execution-native-script-invalid spend-key":
+    "V1FpExecNativeInvSpendKey",
+  "V1 fraud-proof execution-native-script-invalid spend-rank":
+    "V1FpExecNativeInvSpendRank",
+  "V1 fraud-proof execution-native-script-invalid terminal":
+    "V1FpExecNativeInvTerminal",
   "V1 fraud-proof script-integrity-hash-mismatch step-01":
     "V1FpIntegrityMismatchS01",
   "V1 fraud-proof script-integrity-hash-mismatch bind-event":

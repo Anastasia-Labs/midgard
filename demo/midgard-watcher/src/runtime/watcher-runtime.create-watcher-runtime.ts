@@ -318,7 +318,9 @@ export const startWatcherRuntime = async (
         faultProofApplication.retainedDaTransportStatus,
       l1Readiness: () => [...l1.read(), ...execution.readiness()],
       l1Degradations: l1.degradations,
+      replayRefusals: replay.refusals.status,
     });
+    replay.refusals.attach(operations.sink);
     retainedDaOperationsBinding = bindWatcherRetainedDaOperations({
       deploymentIdentity,
       sink: operations.sink,

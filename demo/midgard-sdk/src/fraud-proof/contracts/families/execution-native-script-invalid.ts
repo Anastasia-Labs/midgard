@@ -1,4 +1,8 @@
-import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  type DeploymentContract,
+  deploymentFamilyStepNames,
+  deploymentValidatorTitle as deployedTitle,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Effect } from "effect";
 
 import {
@@ -6,6 +10,10 @@ import {
   MintingValidator,
   SpendingValidator,
 } from "../../../common.js";
+import { buildDirectBindingContracts } from "../direct-binding.js";
+import { DIRECT_PURPOSE_TITLES } from "../direct-purpose.js";
+import { buildDirectReceiveContracts } from "../direct-receive.js";
+import { buildDirectSourceContracts } from "../direct-source.js";
 import type { CertifiedFaultProofChainInputs } from "../shared.js";
 import {
   buildFaultProofSpendingStep,
@@ -18,60 +26,130 @@ import {
 
 export const EXECUTION_NATIVE_SCRIPT_INVALID_FAULT_PROOF_TITLES = {
   step01: deployedTitle("fraudProofExecutionNativeScriptInvalid"),
-  acceptedReconstructionInit: deployedTitle(
-    "fraudProofExecutionNativeScriptInvalidAcceptedReconstructionInit",
+  familyEntry: deployedTitle(
+    "fraudProofExecutionNativeScriptInvalidFamilyEntry",
   ),
-  acceptedSpendPrefix: deployedTitle(
-    "fraudProofExecutionNativeScriptInvalidAcceptedSpendPrefix",
+  sourceLookup: deployedTitle(
+    "fraudProofExecutionNativeScriptInvalidSourceLookup",
   ),
-  acceptedMintPrefix: deployedTitle(
-    "fraudProofExecutionNativeScriptInvalidAcceptedMintPrefix",
-  ),
-  acceptedObserverPrefix: deployedTitle(
-    "fraudProofExecutionNativeScriptInvalidAcceptedObserverPrefix",
-  ),
-  acceptedReceivePrefix: deployedTitle(
-    "fraudProofExecutionNativeScriptInvalidAcceptedReceivePrefix",
-  ),
-  acceptedInlineSource: deployedTitle(
-    "fraudProofExecutionNativeScriptInvalidAcceptedInlineSource",
-  ),
-  acceptedReferenceSource: deployedTitle(
-    "fraudProofExecutionNativeScriptInvalidAcceptedReferenceSource",
-  ),
-  step02: deployedTitle("fraudProofExecutionNativeScriptInvalidStep02"),
-  step03: deployedTitle("fraudProofExecutionNativeScriptInvalidStep03"),
-  step04: deployedTitle("fraudProofExecutionNativeScriptInvalidStep04"),
-  step05: deployedTitle("fraudProofExecutionNativeScriptInvalidStep05"),
-  step06: deployedTitle("fraudProofExecutionNativeScriptInvalidStep06"),
+  signers: deployedTitle("fraudProofExecutionNativeScriptInvalidSigners"),
+  evaluate: deployedTitle("fraudProofExecutionNativeScriptInvalidEvaluate"),
+  spendKey: deployedTitle("fraudProofExecutionNativeScriptInvalidSpendKey"),
+  spendRank: deployedTitle("fraudProofExecutionNativeScriptInvalidSpendRank"),
+  terminal: deployedTitle("fraudProofExecutionNativeScriptInvalidTerminal"),
 } as const;
+
+/** Each spending role bound once to its deployment member, in deployment step
+ * order. Off-chain code reads named roles through
+ * `executionNativeScriptInvalidRoles`, so a manifest-restored chain carries
+ * them. */
+const EXECUTION_NATIVE_SCRIPT_INVALID_ROLE_MEMBERS = [
+  ["step01", "fraudProofExecutionNativeScriptInvalid"],
+  ["bindEvent", "fraudProofExecutionNativeScriptInvalidBindEvent"],
+  ["bindPreState", "fraudProofExecutionNativeScriptInvalidBindPreState"],
+  ["sourceStart", "fraudProofExecutionNativeScriptInvalidSourceStart"],
+  ["sourceResolved", "fraudProofExecutionNativeScriptInvalidSourceResolved"],
+  [
+    "sourceAuthenticate",
+    "fraudProofExecutionNativeScriptInvalidSourceAuthenticate",
+  ],
+  ["sourceMap", "fraudProofExecutionNativeScriptInvalidSourceMap"],
+  [
+    "sourceInputFinish",
+    "fraudProofExecutionNativeScriptInvalidSourceInputFinish",
+  ],
+  ["sourceGrammar", "fraudProofExecutionNativeScriptInvalidSourceGrammar"],
+  ["sourceWitnesses", "fraudProofExecutionNativeScriptInvalidSourceWitnesses"],
+  ["sourceFinish", "fraudProofExecutionNativeScriptInvalidSourceFinish"],
+  ["familyEntry", "fraudProofExecutionNativeScriptInvalidFamilyEntry"],
+  ["purposeSelect", "fraudProofExecutionNativeScriptInvalidPurposeSelect"],
+  ["spendSelect", "fraudProofExecutionNativeScriptInvalidSpendSelect"],
+  ["spendScan", "fraudProofExecutionNativeScriptInvalidSpendScan"],
+  ["mintGrammar", "fraudProofExecutionNativeScriptInvalidMintGrammar"],
+  ["mintScan", "fraudProofExecutionNativeScriptInvalidMintScan"],
+  ["receiveStart", "fraudProofExecutionNativeScriptInvalidReceiveStart"],
+  ["receiveGrammar", "fraudProofExecutionNativeScriptInvalidReceiveGrammar"],
+  ["receiveOutputs", "fraudProofExecutionNativeScriptInvalidReceiveOutputs"],
+  ["receiveFinish", "fraudProofExecutionNativeScriptInvalidReceiveFinish"],
+  [
+    "receiveDeclaration",
+    "fraudProofExecutionNativeScriptInvalidReceiveDeclaration",
+  ],
+  ["sourceLookup", "fraudProofExecutionNativeScriptInvalidSourceLookup"],
+  ["signers", "fraudProofExecutionNativeScriptInvalidSigners"],
+  ["evaluate", "fraudProofExecutionNativeScriptInvalidEvaluate"],
+  ["spendKey", "fraudProofExecutionNativeScriptInvalidSpendKey"],
+  ["spendRank", "fraudProofExecutionNativeScriptInvalidSpendRank"],
+  ["terminal", "fraudProofExecutionNativeScriptInvalidTerminal"],
+] as const satisfies readonly (readonly [string, DeploymentContract])[];
+
+export type ExecutionNativeScriptInvalidRole =
+  (typeof EXECUTION_NATIVE_SCRIPT_INVALID_ROLE_MEMBERS)[number][0];
+
+export const EXECUTION_NATIVE_SCRIPT_INVALID_ROLE_ORDER: readonly ExecutionNativeScriptInvalidRole[] =
+  Object.freeze(
+    EXECUTION_NATIVE_SCRIPT_INVALID_ROLE_MEMBERS.map(([role]) => role),
+  );
+
+/** Refuses, by role name, a role whose member the given manifest step order
+ * places at another step of the `executionNativeScriptInvalid` family. */
+export const checkExecutionNativeScriptInvalidRoleOrder = (
+  steps: readonly DeploymentContract[],
+): void => {
+  if (steps.length !== EXECUTION_NATIVE_SCRIPT_INVALID_ROLE_MEMBERS.length)
+    throw new Error(
+      `execution-native-script-invalid has ${EXECUTION_NATIVE_SCRIPT_INVALID_ROLE_MEMBERS.length} roles; the manifest has ${steps.length} steps`,
+    );
+  EXECUTION_NATIVE_SCRIPT_INVALID_ROLE_MEMBERS.forEach(
+    ([role, member], index) => {
+      if (steps[index] !== member)
+        throw new Error(
+          `execution-native-script-invalid role ${role} is ${member}, but manifest step ${index} is ${String(steps[index])}`,
+        );
+    },
+  );
+};
+
+export type ExecutionNativeScriptInvalidChain = FraudProofChain;
+
+export type ExecutionNativeScriptInvalidRoles = Readonly<
+  Record<ExecutionNativeScriptInvalidRole, SpendingValidator>
+>;
+
+/** Named roles of a built or manifest-restored chain. */
+export const executionNativeScriptInvalidRoles = (
+  chain: FraudProofChain,
+): ExecutionNativeScriptInvalidRoles => {
+  checkExecutionNativeScriptInvalidRoleOrder(
+    deploymentFamilyStepNames("executionNativeScriptInvalid"),
+  );
+  if (chain.steps.length !== EXECUTION_NATIVE_SCRIPT_INVALID_ROLE_ORDER.length)
+    throw new Error(
+      `execution-native-script-invalid chain has ${chain.steps.length} steps; expected ${EXECUTION_NATIVE_SCRIPT_INVALID_ROLE_ORDER.length}`,
+    );
+  return Object.freeze(
+    Object.fromEntries(
+      EXECUTION_NATIVE_SCRIPT_INVALID_ROLE_ORDER.map((role, index) => [
+        role,
+        chain.steps[index]!,
+      ]),
+    ) as Record<ExecutionNativeScriptInvalidRole, SpendingValidator>,
+  );
+};
 
 export type ExecutionNativeScriptInvalidFaultProofContracts = {
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
   readonly fieldPreimageCertificate: MintingValidator;
-  readonly executionNativeScriptInvalid: FraudProofChain & {
-    readonly steps: readonly [
-      SpendingValidator,
-      SpendingValidator,
-      SpendingValidator,
-      SpendingValidator,
-      SpendingValidator,
-      SpendingValidator,
-      SpendingValidator,
-      SpendingValidator,
-      SpendingValidator,
-      SpendingValidator,
-      SpendingValidator,
-      SpendingValidator,
-      SpendingValidator,
-    ];
-  };
+  readonly executionNativeScriptInvalid: ExecutionNativeScriptInvalidChain;
 };
 
 export type BuildExecutionNativeScriptInvalidFaultProofContractsParams =
   BuildFaultProofContractsParams;
 
+/** Builds the shared bind and source graph, the family entry, the shared
+ * purpose route ending at the family lookup, the paged signer and native
+ * evaluation roles, the key-spend rank and the terminal decision. */
 export const buildExecutionNativeScriptInvalidChain = ({
   blueprint,
   network,
@@ -86,148 +164,165 @@ export const buildExecutionNativeScriptInvalidChain = ({
 > =>
   Effect.gen(function* () {
     const context = { blueprint, network };
-    const step06 = yield* buildFaultProofSpendingStep(
-      context,
-      EXECUTION_NATIVE_SCRIPT_INVALID_FAULT_PROOF_TITLES.step06,
+    const computationThreadPolicyId = computationThread.policyId;
+    const certified = [
+      computationThreadPolicyId,
+      fieldPreimageCertificatePolicyId,
+    ] as const;
+    const titles = EXECUTION_NATIVE_SCRIPT_INVALID_FAULT_PROOF_TITLES;
+    const step = (
+      title: string,
+      params: Parameters<typeof buildFaultProofSpendingStep>[2],
+      role: string,
+    ) =>
+      buildFaultProofSpendingStep(
+        context,
+        title,
+        params,
+        `Failed to build execution-native-script-invalid ${role}`,
+      );
+    const terminal = yield* step(
+      titles.terminal,
       [
-        computationThread.policyId,
         fraudProof.policyId,
         fraudProofTokenAddressData,
+        computationThreadPolicyId,
       ],
-      "Failed to build execution-native-script-invalid step 06",
+      "terminal",
     );
-    const step05 = yield* buildFaultProofSpendingStep(
-      context,
-      EXECUTION_NATIVE_SCRIPT_INVALID_FAULT_PROOF_TITLES.step05,
+    const evaluate = yield* step(
+      titles.evaluate,
+      [terminal.spendingScriptHash, computationThreadPolicyId],
+      "evaluation",
+    );
+    const signers = yield* step(
+      titles.signers,
+      [evaluate.spendingScriptHash, ...certified],
+      "signer frontier",
+    );
+    const sourceLookup = yield* step(
+      titles.sourceLookup,
       [
-        step06.spendingScriptHash,
-        computationThread.policyId,
-        fieldPreimageCertificatePolicyId,
+        signers.spendingScriptHash,
+        terminal.spendingScriptHash,
+        computationThreadPolicyId,
       ],
-      "Failed to build execution-native-script-invalid step 05",
+      "source lookup",
     );
-    const step04 = yield* buildFaultProofSpendingStep(
-      context,
-      EXECUTION_NATIVE_SCRIPT_INVALID_FAULT_PROOF_TITLES.step04,
+    const spendRank = yield* step(
+      titles.spendRank,
+      [terminal.spendingScriptHash, ...certified],
+      "key-spend rank",
+    );
+    const spendKey = yield* step(
+      titles.spendKey,
+      [spendRank.spendingScriptHash, ...certified],
+      "key-spend opening",
+    );
+    const receive = yield* buildDirectReceiveContracts({
+      blueprint,
+      network,
+      computationThreadPolicyId,
+      fieldPreimageCertificatePolicyId,
+      nextStepScriptHash: sourceLookup.spendingScriptHash,
+    });
+    const spendScan = yield* step(
+      DIRECT_PURPOSE_TITLES.spendScan,
+      [sourceLookup.spendingScriptHash, ...certified],
+      "spend pointer rank",
+    );
+    const spendSelect = yield* step(
+      DIRECT_PURPOSE_TITLES.spendSelect,
+      [spendScan.spendingScriptHash, ...certified],
+      "spend selection",
+    );
+    const mintScan = yield* step(
+      DIRECT_PURPOSE_TITLES.mintScan,
+      [sourceLookup.spendingScriptHash, ...certified],
+      "mint selection",
+    );
+    const mintGrammar = yield* step(
+      DIRECT_PURPOSE_TITLES.mintGrammar,
+      [mintScan.spendingScriptHash, ...certified],
+      "mint grammar",
+    );
+    const purposeSelect = yield* step(
+      DIRECT_PURPOSE_TITLES.select,
       [
-        step05.spendingScriptHash,
-        computationThread.policyId,
-        fraudProof.policyId,
-        fraudProofTokenAddressData,
-        fieldPreimageCertificatePolicyId,
+        sourceLookup.spendingScriptHash,
+        spendSelect.spendingScriptHash,
+        mintGrammar.spendingScriptHash,
+        receive.start.spendingScriptHash,
+        ...certified,
       ],
-      "Failed to build execution-native-script-invalid step 04",
+      "purpose selection",
     );
-    const step03 = yield* buildFaultProofSpendingStep(
-      context,
-      EXECUTION_NATIVE_SCRIPT_INVALID_FAULT_PROOF_TITLES.step03,
-      [step04.spendingScriptHash, computationThread.policyId],
-      "Failed to build execution-native-script-invalid step 03",
-    );
-    const step02 = yield* buildFaultProofSpendingStep(
-      context,
-      EXECUTION_NATIVE_SCRIPT_INVALID_FAULT_PROOF_TITLES.step02,
-      [step03.spendingScriptHash, computationThread.policyId],
-      "Failed to build execution-native-script-invalid step 02",
-    );
-    const acceptedReferenceSource = yield* buildFaultProofSpendingStep(
-      context,
-      EXECUTION_NATIVE_SCRIPT_INVALID_FAULT_PROOF_TITLES.acceptedReferenceSource,
+    const familyEntry = yield* step(
+      titles.familyEntry,
       [
-        step03.spendingScriptHash,
-        computationThread.policyId,
-        fieldPreimageCertificatePolicyId,
+        purposeSelect.spendingScriptHash,
+        spendKey.spendingScriptHash,
+        terminal.spendingScriptHash,
+        ...certified,
       ],
-      "Failed to build execution-native-script-invalid accepted reference source",
+      "family entry",
     );
-    const acceptedInlineSource = yield* buildFaultProofSpendingStep(
-      context,
-      EXECUTION_NATIVE_SCRIPT_INVALID_FAULT_PROOF_TITLES.acceptedInlineSource,
+    const source = yield* buildDirectSourceContracts({
+      blueprint,
+      network,
+      computationThreadPolicyId,
+      fieldPreimageCertificatePolicyId,
+      nextStepScriptHash: familyEntry.spendingScriptHash,
+    });
+    const binding = yield* buildDirectBindingContracts({
+      blueprint,
+      network,
+      computationThreadPolicyId,
+      nextStepScriptHash: source.start.spendingScriptHash,
+    });
+    const step01 = yield* step(
+      titles.step01,
       [
-        acceptedReferenceSource.spendingScriptHash,
-        computationThread.policyId,
-        fieldPreimageCertificatePolicyId,
-      ],
-      "Failed to build execution-native-script-invalid accepted inline source",
-    );
-    const acceptedReceivePrefix = yield* buildFaultProofSpendingStep(
-      context,
-      EXECUTION_NATIVE_SCRIPT_INVALID_FAULT_PROOF_TITLES.acceptedReceivePrefix,
-      [
-        acceptedInlineSource.spendingScriptHash,
-        computationThread.policyId,
-        fieldPreimageCertificatePolicyId,
-      ],
-      "Failed to build execution-native-script-invalid accepted receive prefix",
-    );
-    const acceptedObserverPrefix = yield* buildFaultProofSpendingStep(
-      context,
-      EXECUTION_NATIVE_SCRIPT_INVALID_FAULT_PROOF_TITLES.acceptedObserverPrefix,
-      [
-        acceptedReceivePrefix.spendingScriptHash,
-        acceptedInlineSource.spendingScriptHash,
-        computationThread.policyId,
-        fieldPreimageCertificatePolicyId,
-      ],
-      "Failed to build execution-native-script-invalid accepted observer prefix",
-    );
-    const acceptedMintPrefix = yield* buildFaultProofSpendingStep(
-      context,
-      EXECUTION_NATIVE_SCRIPT_INVALID_FAULT_PROOF_TITLES.acceptedMintPrefix,
-      [
-        acceptedObserverPrefix.spendingScriptHash,
-        acceptedInlineSource.spendingScriptHash,
-        computationThread.policyId,
-        fieldPreimageCertificatePolicyId,
-      ],
-      "Failed to build execution-native-script-invalid accepted mint prefix",
-    );
-    const acceptedSpendPrefix = yield* buildFaultProofSpendingStep(
-      context,
-      EXECUTION_NATIVE_SCRIPT_INVALID_FAULT_PROOF_TITLES.acceptedSpendPrefix,
-      [
-        acceptedMintPrefix.spendingScriptHash,
-        acceptedInlineSource.spendingScriptHash,
-        computationThread.policyId,
-        fieldPreimageCertificatePolicyId,
-      ],
-      "Failed to build execution-native-script-invalid accepted spend prefix",
-    );
-    const acceptedReconstructionInit = yield* buildFaultProofSpendingStep(
-      context,
-      EXECUTION_NATIVE_SCRIPT_INVALID_FAULT_PROOF_TITLES.acceptedReconstructionInit,
-      [acceptedSpendPrefix.spendingScriptHash, computationThread.policyId],
-      "Failed to build execution-native-script-invalid accepted reconstruction init",
-    );
-    const step01 = yield* buildFaultProofSpendingStep(
-      context,
-      EXECUTION_NATIVE_SCRIPT_INVALID_FAULT_PROOF_TITLES.step01,
-      [
-        acceptedReconstructionInit.spendingScriptHash,
-        step02.spendingScriptHash,
-        computationThread.policyId,
+        binding.event.spendingScriptHash,
+        computationThreadPolicyId,
         hubOraclePolicyId,
       ],
-      "Failed to build execution-native-script-invalid step 01",
+      "step 01",
     );
-    return {
-      firstStep: step01,
-      steps: [
-        step01,
-        step02,
-        step03,
-        step04,
-        step05,
-        step06,
-        acceptedReconstructionInit,
-        acceptedSpendPrefix,
-        acceptedMintPrefix,
-        acceptedObserverPrefix,
-        acceptedReceivePrefix,
-        acceptedInlineSource,
-        acceptedReferenceSource,
-      ],
-    };
+    const steps: [SpendingValidator, ...SpendingValidator[]] = [
+      step01,
+      binding.event,
+      binding.preState,
+      source.start,
+      source.resolved,
+      source.authenticate,
+      source.map,
+      source.inputFinish,
+      source.grammar,
+      source.witnesses,
+      source.finish,
+      familyEntry,
+      purposeSelect,
+      spendSelect,
+      spendScan,
+      mintGrammar,
+      mintScan,
+      receive.start,
+      receive.grammar,
+      receive.outputs,
+      receive.finish,
+      receive.declaration,
+      sourceLookup,
+      signers,
+      evaluate,
+      spendKey,
+      spendRank,
+      terminal,
+    ];
+    const chain = { firstStep: step01, steps };
+    // Fails closed when this order, the role names and the manifest drift apart.
+    executionNativeScriptInvalidRoles(chain);
+    return chain;
   });
 
 export const buildExecutionNativeScriptInvalidFaultProofContracts = (

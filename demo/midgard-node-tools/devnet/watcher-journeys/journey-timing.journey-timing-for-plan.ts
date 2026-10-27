@@ -24,16 +24,17 @@ export const TRANSITION_TRACE_JOURNEY_PLAN = Object.freeze({
 
 /**
  * Finite bound for every automatic family without an audited plan. The largest
- * installed proof chain (executionNativeScriptInvalid: init, thirteen steps,
- * removal, and its publications) stays well under this bound; a family that
- * needs more must publish an audited plan like transitionTrace instead of
- * widening the bound. The correction stage additionally fails as soon as the
- * workflow journal stops making durable progress for one transaction
- * allowance, so this bound only caps a family that keeps progressing.
+ * installed automatic proof chain (executionNativeScriptInvalid's per-purpose
+ * routes: 20 to 30 dependent transactions from init through the terminal,
+ * plus the removal) stays under this bound; a family that needs more must
+ * publish an audited plan like transitionTrace instead of widening the bound.
+ * The correction stage additionally fails as soon as the workflow journal
+ * stops making durable progress for one transaction allowance, so this bound
+ * only caps a family that keeps progressing.
  */
 export const GENERIC_JOURNEY_PLAN = Object.freeze({
   category: "generic",
-  dependentTransactions: 24,
+  dependentTransactions: 32,
   // Registration, activation, appointment, and honest commitment.
   successorTransactions: 4,
 });

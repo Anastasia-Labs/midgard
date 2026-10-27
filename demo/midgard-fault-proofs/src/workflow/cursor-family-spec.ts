@@ -265,6 +265,61 @@ export const SCRIPT_INTEGRITY_HASH_MISMATCH_CURSOR_SPEC = Object.freeze({
 }) satisfies CursorFamilySpec<"scriptIntegrityHashMismatch">;
 
 /**
+ * `executionSourceScriptDecoding` binds the leaf at step 01, selects its
+ * event, and decides at the terminal from the recorded reason alone.
+ */
+export const EXECUTION_SOURCE_SCRIPT_DECODING_CURSOR_SPEC = Object.freeze({
+  category: "executionSourceScriptDecoding",
+  stepCount: 3,
+  successors: Object.freeze({
+    1: Object.freeze([2] as const),
+    2: Object.freeze([3] as const),
+    3: Object.freeze(["proof_token"] as const),
+  }),
+}) satisfies CursorFamilySpec<"executionSourceScriptDecoding">;
+
+/**
+ * `executionNativeScriptInvalid` walks the shared bind, source and purpose
+ * graph to the source lookup. The family entry either takes the purpose
+ * route, decides alone over the recorded coordinate, or ranks a key-locked
+ * spend; a native source is evaluated after its signer frontier is built.
+ */
+export const EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC = Object.freeze({
+  category: "executionNativeScriptInvalid",
+  stepCount: 28,
+  successors: Object.freeze({
+    1: Object.freeze([2] as const),
+    2: Object.freeze([3] as const),
+    3: Object.freeze([4] as const),
+    4: Object.freeze([5] as const),
+    5: Object.freeze([6, 8] as const),
+    6: Object.freeze([7] as const),
+    7: Object.freeze([5, 10] as const),
+    8: Object.freeze([9, 5] as const),
+    9: Object.freeze([9, 10] as const),
+    10: Object.freeze([7, 11] as const),
+    11: Object.freeze([12] as const),
+    12: Object.freeze([13, 26, 28] as const),
+    13: Object.freeze([14, 16, 18, 23] as const),
+    14: Object.freeze([15] as const),
+    15: Object.freeze([15, 23] as const),
+    16: Object.freeze([16, 17] as const),
+    17: Object.freeze([17, 23] as const),
+    18: Object.freeze([19] as const),
+    19: Object.freeze([19, 20] as const),
+    20: Object.freeze([20, 21] as const),
+    21: Object.freeze([22] as const),
+    22: Object.freeze([22, 23] as const),
+    23: Object.freeze([24, 28] as const),
+    24: Object.freeze([24, 25] as const),
+    25: Object.freeze([25, 28] as const),
+    26: Object.freeze([27] as const),
+    27: Object.freeze([27, 28] as const),
+    28: Object.freeze(["proof_token"] as const),
+  }),
+}) satisfies CursorFamilySpec<"executionNativeScriptInvalid">;
+
+/**
  * `distinctAssetAccumulationLimit` binds the event and its pre-state, then
  * folds asset entries: spent inputs alternate between taking and resolving
  * pages, and a crossing input is ranked before the terminal; each variable
@@ -290,6 +345,44 @@ export const DISTINCT_ASSET_ACCUMULATION_LIMIT_CURSOR_SPEC = Object.freeze({
     12: Object.freeze(["proof_token"] as const),
   }),
 }) satisfies CursorFamilySpec<"distinctAssetAccumulationLimit">;
+
+/**
+ * `unusedScriptWitness` walks the shared bind and source graph and the
+ * all-purposes walk as `scriptIntegrityHashMismatch` does, except that the
+ * exhausted receive field opens the witness field: its grammar certifies
+ * before the walk steps to the audited witness, and the walk ends at the
+ * terminal once it reads that witness or exhausts the field.
+ */
+export const UNUSED_SCRIPT_WITNESS_CURSOR_SPEC = Object.freeze({
+  category: "unusedScriptWitness",
+  stepCount: 24,
+  successors: Object.freeze({
+    1: Object.freeze([2] as const),
+    2: Object.freeze([3] as const),
+    3: Object.freeze([4] as const),
+    4: Object.freeze([5] as const),
+    5: Object.freeze([6, 8] as const),
+    6: Object.freeze([7] as const),
+    7: Object.freeze([5, 10] as const),
+    8: Object.freeze([9, 5] as const),
+    9: Object.freeze([9, 10] as const),
+    10: Object.freeze([7, 11] as const),
+    11: Object.freeze([12] as const),
+    12: Object.freeze([13, 15] as const),
+    13: Object.freeze([14] as const),
+    14: Object.freeze([13, 15] as const),
+    15: Object.freeze([15, 16, 17] as const),
+    16: Object.freeze([16, 17] as const),
+    17: Object.freeze([18, 19] as const),
+    18: Object.freeze([18, 19] as const),
+    19: Object.freeze([19, 20, 21] as const),
+    20: Object.freeze([20, 21] as const),
+    21: Object.freeze([22] as const),
+    22: Object.freeze([22, 23] as const),
+    23: Object.freeze([23, 24] as const),
+    24: Object.freeze(["proof_token"] as const),
+  }),
+}) satisfies CursorFamilySpec<"unusedScriptWitness">;
 
 /**
  * `canonicalDecodability` walks the committed field one bounded batch per
@@ -329,7 +422,10 @@ export const CURSOR_FAMILY_SPECS = Object.freeze({
   unusedRedeemer: UNUSED_REDEEMER_CURSOR_SPEC,
   receivePurposeLanguage: RECEIVE_PURPOSE_LANGUAGE_CURSOR_SPEC,
   scriptIntegrityHashMismatch: SCRIPT_INTEGRITY_HASH_MISMATCH_CURSOR_SPEC,
+  executionSourceScriptDecoding: EXECUTION_SOURCE_SCRIPT_DECODING_CURSOR_SPEC,
+  executionNativeScriptInvalid: EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC,
   distinctAssetAccumulationLimit: DISTINCT_ASSET_ACCUMULATION_LIMIT_CURSOR_SPEC,
+  unusedScriptWitness: UNUSED_SCRIPT_WITNESS_CURSOR_SPEC,
   canonicalDecodability: CANONICAL_DECODABILITY_CURSOR_SPEC,
   committedFieldShape: COMMITTED_FIELD_SHAPE_CURSOR_SPEC,
 });

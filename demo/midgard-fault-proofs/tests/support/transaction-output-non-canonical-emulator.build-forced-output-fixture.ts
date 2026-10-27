@@ -44,9 +44,10 @@ import {
 
 /**
  * A block whose single forced transaction carries `outputCbor` at output 0 and
- * was rejected for `OutputNonCanonical { output_index }`; the retained DA is
- * reconstructed so the forced leaf, its membership proof and the transaction
- * preimage all come from the committed payload.
+ * was rejected for `OutputNonCanonical { output_index }`, or accepted when
+ * `accepted` is set; the retained DA is reconstructed so the forced leaf, its
+ * membership proof and the transaction preimage all come from the committed
+ * payload.
  *
  * `transaction` replaces the filler transaction whole. The filler's
  * placeholder address witness is not a decodable item, so the node would
@@ -57,11 +58,14 @@ export const buildForcedOutputFixture = async ({
   operatorVkey,
   now,
   outputIndex = 0n,
+  accepted = false,
   ...shape
 }: {
   readonly operatorVkey: string;
   readonly now: number;
   readonly outputIndex?: bigint;
+  /** Commit the leaf as `ForcedTxValid` instead of the rejection. */
+  readonly accepted?: boolean;
 } & (
   | { readonly outputCbor: Buffer }
   | { readonly transaction: MidgardNativeTxFull }
@@ -94,9 +98,9 @@ export const buildForcedOutputFixture = async ({
   const source = deriveMidgardForcedTxProofSource(
     materializeMidgardForcedTxFromCanonical(nativeTx),
   );
-  const rejectionReason = {
-    OutputNonCanonical: { output_index: outputIndex },
-  } as const;
+  const rejectionReason = accepted
+    ? null
+    : ({ OutputNonCanonical: { output_index: outputIndex } } as const);
   const transaction = {
     tx_id: computeMidgardNativeTxId(nativeTx).toString("hex"),
     submitted_source: {
@@ -105,8 +109,11 @@ export const buildForcedOutputFixture = async ({
       field_preimage_lengths_cbor:
         source.fieldPreimageLengthsCbor.toString("hex"),
     },
-    verdict: { ForcedTxInvalid: { reason: rejectionReason } },
-  } as const;
+    verdict:
+      rejectionReason === null
+        ? ("ForcedTxValid" as const)
+        : { ForcedTxInvalid: { reason: rejectionReason } },
+  };
   const forcedEntries = [
     transitionTraceDaEntry({
       key: txOrderId,

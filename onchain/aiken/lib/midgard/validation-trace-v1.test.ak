@@ -16,6 +16,13 @@ const expected_trace_root =
 const expected_descriptor_cbor =
   #"8801015820434f72181d374538569f6b5ac8ae5c587a993cf00a9fda7330333b5fb4ddb9d7015820fae79f2d6059b1b07f78119d37a1a6a8004db1fb66faa5224f99a5581c2eb104582009090909090909090909090909090909090909090909090909090909090909090258200808080808080808080808080808080808080808080808080808080808080808"
 
+// Plutus Data the TypeScript SDK emits for the ValidationTraceDescriptorV1
+// fixture of demo/midgard-node/tests/fixtures/transition-trace-abi.json.
+// Rebound by demo/midgard-node/scripts/generate-transition-trace-abi-fixture.mjs;
+// do not edit.
+const typescript_descriptor_data_cbor =
+  #"d8799f01025820a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1075820b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b25820c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3d87b805820d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4ff"
+
 fn fixture_state() -> validation_trace_v1.ValidationMachineStateV1 {
   validation_trace_v1.ValidationMachineStateV1 {
     machine_version: validation_trace_v1.machine_version,
@@ -60,6 +67,24 @@ test matches_typescript_descriptor_encoding() {
   and {
     validation_trace_v1.descriptor_is_well_formed(fixture_descriptor()),
     validation_trace_v1.encode_descriptor(fixture_descriptor()) == expected_descriptor_cbor,
+  }
+}
+
+// The node commits descriptors as Plutus Data built from the SDK schema, and
+// on-chain code decodes that Data. Comparing every field catches two fields of
+// one type in a different order, which decoding into the type alone accepts.
+test decodes_typescript_descriptor_data_field_by_field() {
+  expect Some(data) = cbor.deserialise(typescript_descriptor_data_cbor)
+  expect descriptor: validation_trace_v1.ValidationTraceDescriptorV1 = data
+  and {
+    descriptor.schema_version == 1,
+    descriptor.machine_version == 2,
+    descriptor.trace_root == #"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    descriptor.step_count == 7,
+    descriptor.initial_state_hash == #"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+    descriptor.terminal_state_hash == #"c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+    descriptor.verdict == validation_trace_v1.Rejected,
+    descriptor.rejection_code_hash == #"d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4",
   }
 }
 

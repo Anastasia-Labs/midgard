@@ -104,6 +104,7 @@ export const makeSignedEffectfulTransaction = (
   spendInput: Buffer,
   output: Buffer,
   {
+    additionalSpendInputs = [],
     referenceInputs = [],
     additionalOutputs = [],
     networkId = MIDGARD_NATIVE_NETWORK_ID_NONE,
@@ -111,6 +112,8 @@ export const makeSignedEffectfulTransaction = (
     validityIntervalStart = MIDGARD_POSIX_TIME_NONE,
     validityIntervalEnd = MIDGARD_POSIX_TIME_NONE,
   }: {
+    /** Further spend inputs, after `spendInput` in canonical order. */
+    readonly additionalSpendInputs?: readonly Buffer[];
     readonly referenceInputs?: readonly Buffer[];
     readonly additionalOutputs?: readonly Buffer[];
     readonly networkId?: bigint;
@@ -124,7 +127,10 @@ export const makeSignedEffectfulTransaction = (
   readonly canonicalCbor: Buffer;
 } => {
   const body: MidgardNativeTxBodyCanonical = {
-    spendInputsPreimageCbor: encodeByteList([spendInput]),
+    spendInputsPreimageCbor: encodeByteList([
+      spendInput,
+      ...additionalSpendInputs,
+    ]),
     referenceInputsPreimageCbor:
       referenceInputs.length === 0
         ? EMPTY_CBOR_LIST

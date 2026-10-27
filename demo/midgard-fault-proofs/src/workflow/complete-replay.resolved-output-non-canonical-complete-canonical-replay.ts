@@ -3,6 +3,8 @@ import { type VerdictSubject } from "@al-ft/midgard-sdk";
 
 import { detectDistinctAssetAccumulationLimitReplay } from "../distinct-asset-accumulation-limit/replay.js";
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { detectExecutionNativeScriptInvalidReplay } from "../execution-native-script-invalid/replay.js";
+import { detectExecutionSourceScriptDecodingReplay } from "../execution-source-script-decoding/replay.js";
 import { detectFieldItemWidthIllegalCompleteReplay } from "../field-item-width-illegal/workflow.js";
 import { detectFieldPreimageLengthCompleteReplay } from "../field-preimage-length-mismatch/evidence.js";
 import { detectInvalidSignatureWrongfulRejections } from "../invalid-signature/wrongful-rejection.js";
@@ -29,6 +31,7 @@ import { detectSpendInputSignerMissingCompleteReplay } from "../spend-input-sign
 import { spendInputSignerWorkflowEvidenceIdentity } from "../spend-input-signer-missing/workflow.js";
 import { detectTransactionOutputNonCanonicalCompleteReplay } from "../transaction-output-non-canonical/workflow.js";
 import { detectUnusedRedeemerReplay } from "../unused-redeemer/replay.js";
+import { detectUnusedScriptWitnessReplay } from "../unused-script-witness/replay.js";
 import { detectWitnessScriptDecodingCompleteReplay } from "../witness-script-decoding/workflow.js";
 import { completeCanonicalReplayPredecessorLedger } from "./complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
@@ -199,6 +202,37 @@ export const SCRIPT_INTEGRITY_HASH_MISMATCH_COMPLETE_CANONICAL_REPLAY =
       }),
   );
 
+/** Complete execution-source-script-decoding replay: forced rejections
+ * recording a native script decoding reason. */
+export const EXECUTION_SOURCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY =
+  completeReplayer(
+    ["executionSourceScriptDecoding"],
+    async (evidence, context) =>
+      await detectExecutionSourceScriptDecodingReplay({
+        block: evidence,
+        predecessor: completeCanonicalReplayPredecessorLedger({
+          evidence,
+          context,
+        }),
+      }),
+  );
+
+/** Complete execution-native-script-invalid replay: admitted transactions
+ * with a script purpose, forced `ExecutionNativeScriptFalse` rejections, and
+ * forced rejections whose reason ranks at or after the execution phase. */
+export const EXECUTION_NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY =
+  completeReplayer(
+    ["executionNativeScriptInvalid"],
+    async (evidence, context) =>
+      await detectExecutionNativeScriptInvalidReplay({
+        block: evidence,
+        predecessor: completeCanonicalReplayPredecessorLedger({
+          evidence,
+          context,
+        }),
+      }),
+  );
+
 /** Complete distinct-asset-accumulation-limit replay: admitted transactions
  * and forced rejections whose reason ranks in or after the value phase. */
 export const DISTINCT_ASSET_ACCUMULATION_LIMIT_COMPLETE_CANONICAL_REPLAY =
@@ -213,6 +247,20 @@ export const DISTINCT_ASSET_ACCUMULATION_LIMIT_COMPLETE_CANONICAL_REPLAY =
         }),
       }),
   );
+/** Complete unused-script-witness replay: admitted transactions carrying a
+ * script witness, forced rejections recording an unused witness, and forced
+ * rejections whose reason ranks at or after the unused audit. */
+export const UNUSED_SCRIPT_WITNESS_COMPLETE_CANONICAL_REPLAY = completeReplayer(
+  ["unusedScriptWitness"],
+  async (evidence, context) =>
+    await detectUnusedScriptWitnessReplay({
+      block: evidence,
+      predecessor: completeCanonicalReplayPredecessorLedger({
+        evidence,
+        context,
+      }),
+    }),
+);
 
 export const NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY = completeReplayer(
   ["nativeScriptInvalid"],

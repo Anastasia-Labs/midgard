@@ -4,9 +4,11 @@ import { fileURLToPath } from "node:url";
 import {
   buildMidgardLedgerOutputProofTrace,
   encodeMidgardLedgerOutputProofControl,
+  encodeMidgardLedgerOutputScanControl,
   isExactMidgardLedgerOutputProofTerminal,
   MidgardLedgerOutputProofStages,
   nextMidgardCekDataTraverseSpan,
+  traceMidgardLedgerOutputScan,
 } from "@al-ft/midgard-core";
 import {
   decodeMidgardDatum,
@@ -36,6 +38,7 @@ type ReplayGolden = {
   readonly rows: readonly (vectors.LedgerOutputProofReplayVectorV1 & {
     readonly family: vectors.LedgerOutputProofReplayFamilyV1;
   })[];
+  readonly refusals: readonly vectors.LedgerOutputProofRefusalVectorV1[];
 };
 
 export const replayGolden = JSON.parse(
@@ -55,12 +58,14 @@ const twins: vectors.LedgerOutputProofReplayTwinsV1 = {
   decodeMidgardDatum,
   deriveLedgerOutputProofStepClaims,
   encodeMidgardLedgerOutputProofControl,
+  encodeMidgardLedgerOutputScanControl,
   encodeMidgardTxOutput,
   isExactMidgardLedgerOutputProofTerminal,
   ledgerOutputProofDatumRoleIndex,
   MidgardLedgerOutputProofStages,
   nextMidgardCekDataTraverseSpan,
   plutusDataToCborHex,
+  traceMidgardLedgerOutputScan,
   witnessData: ledgerOutputProofWitnessData,
 };
 
@@ -76,5 +81,21 @@ export const expectReplayVector = (
   expect(vectors.ledgerOutputProofReplayClaimProblems(row, vector)).toEqual([]);
   expect({ family, ...vector }).toEqual(
     replayGolden.rows.find((entry) => entry.id === row.id),
+  );
+};
+
+/**
+ * Drives refusal `row` through `src/`: the row's claims hold, and the vector
+ * is exactly the row's refusal entry of the generated fixture.
+ */
+export const expectRefusalVector = (
+  row: vectors.LedgerOutputProofRefusalRowV1,
+): void => {
+  const vector = vectors.ledgerOutputProofRefusalVector(row, twins);
+  expect(vectors.ledgerOutputProofRefusalClaimProblems(row, vector)).toEqual(
+    [],
+  );
+  expect(vector).toEqual(
+    replayGolden.refusals.find((entry) => entry.id === row.id),
   );
 };

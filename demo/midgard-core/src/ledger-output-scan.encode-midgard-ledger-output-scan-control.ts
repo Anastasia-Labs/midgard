@@ -5,6 +5,7 @@ import {
   readCborMapHeader,
   readCborUnsigned,
 } from "./codec/cbor.js";
+import { MIDGARD_CARDANO_MAX_VALUE_CBOR_BYTES } from "./ledger-output-commitment.exact-reference-script.js";
 import { type MidgardLedgerOutputAsset } from "./ledger-output-commitment.js";
 import {
   emptyMidgardValidationMerkleFrontier,
@@ -147,8 +148,15 @@ export const encodeMidgardLedgerOutputScanControl = (
   if (control.lovelace < 0n) {
     throw new Error("Invalid V1 ledger output scan lovelace");
   }
+  // The size only grows from step to step, so the step whose result crosses
+  // the cap is refused, wherever in the output it falls.
+  assertSafeControlInteger({
+    value: control.cardanoValueSize,
+    field: "Cardano Value size",
+    minimum: 0,
+    maximum: MIDGARD_CARDANO_MAX_VALUE_CBOR_BYTES,
+  });
   for (const [field, value] of [
-    ["Cardano Value size", control.cardanoValueSize],
     ["policy remaining", control.policyRemaining],
     ["asset remaining", control.assetRemaining],
     ["policy asset cursor", control.policyAssetCursor],

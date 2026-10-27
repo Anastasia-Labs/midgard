@@ -12,6 +12,7 @@ criteria, and evidence that support those guides.
 | Deployment tuple, compiled limits, and release obligations | [Consensus profile](consensus-profile-v1.md)                 |
 | Public deployment acceptance                               | [Public-testnet readiness](public_testnet_readiness.md)      |
 | Proof coverage and verification evidence                   | [Fault-proof guide](fault-proofs/README.md)                  |
+| Node and watcher alerts and their runbooks                 | [Operations alerts](operations/alerts.md)                    |
 | Protocol and SDK decisions                                 | [Protocol ADRs](midgard/decisions/)                          |
 | Fault-proof decisions                                      | [Fault-proof ADRs](fault-proofs/decisions/README.md)         |
 | Remaining canonical implementation and proof acceptance    | [Canonical execution specification](exec-plans/GOAL_SPEC.md) |

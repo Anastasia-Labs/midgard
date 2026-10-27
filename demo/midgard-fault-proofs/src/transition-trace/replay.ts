@@ -3,6 +3,7 @@ import {
   decodeMidgardForcedTxFullFromCanonicalCbor,
   decodeMidgardNativeTxFullFromCanonicalCbor,
   encodeMidgardSpendInputItem,
+  traceMidgardLedgerOutputScan,
 } from "@al-ft/midgard-core";
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -141,6 +142,21 @@ export const deriveTransitionTraceReplayEvidence = async ({
             : decodeMidgardNativeTxFullFromCanonicalCbor(
                 source.entry.fullTransactionCbor,
               );
+        const outputs = decodeMidgardFieldPreimage(
+          full.body.outputsPreimageCbor,
+        );
+        // An output the ledger-output scan refuses has no ledger descriptor;
+        // the output canonicality finding at this event proves it.
+        if (
+          outputs.some(
+            (output) => traceMidgardLedgerOutputScan(output).refusal !== null,
+          )
+        )
+          throw replayPrerequisiteFailure(
+            current.headerHash,
+            step.event_key,
+            "representable_field_shape",
+          );
         const spentUtxos: SDK.LedgerDeleteWitness[] = [];
         const producedUtxos: SDK.LedgerInsertWitness[] = [];
         for (const key of decodeMidgardFieldPreimage(
@@ -158,9 +174,7 @@ export const deriveTransitionTraceReplayEvidence = async ({
           source.phase === "L2Transaction"
             ? source.entry.txId
             : source.entry.value.tx_id;
-        for (const [outputIndex, output] of decodeMidgardFieldPreimage(
-          full.body.outputsPreimageCbor,
-        ).entries())
+        for (const [outputIndex, output] of outputs.entries())
           producedUtxos.push(
             await ledger.insert(
               encodeMidgardSpendInputItem({

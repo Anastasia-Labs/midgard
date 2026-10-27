@@ -334,9 +334,9 @@ between static decoding and execution adjudication.
   ([lines 178–186](../../onchain/aiken/lib/midgard/fraud-proofs/witness-script-decoding/rule.ak#L178-L186)).
 - Output-reference-script decoding does the same
   ([lines 322–329](../../onchain/aiken/lib/midgard/fraud-proofs/output-reference-script-decoding/rule.ak#L322-L329)).
-- Execution-source binding checks language tag `0` and basic lengths, but not the
-  canonical program-envelope decoder
-  ([lines 205–250](../../onchain/aiken/lib/midgard/fraud-proofs/execution-source-script-decoding/rule.ak#L205-L250)).
+- Execution-source script decoding decodes no source bytes; it convicts only a
+  leaf that records a malformed, node-limit or depth-limit native-script arm
+  ([lines 36–45](../../onchain/aiken/lib/midgard/fraud-proofs/execution-source-script-decoding/terminal.ak#L36-L45)).
 
 ### Recommended fix
 
@@ -434,6 +434,8 @@ infer that broader trust from a DA signature.
 Severity: **Medium**  
 Status: **Ownership decision required**  
 Confidence: **High**
+
+On-chain side closed: the ledger-output scan refuses an output Value over 5,000 bytes, so `transactionOutputNonCanonical` and `resolvedOutputNonCanonical` convict it under their existing arms; off-chain, the watcher selects the `transactionOutputNonCanonical` finding for an accepted transaction with such an output.
 
 ### Summary
 

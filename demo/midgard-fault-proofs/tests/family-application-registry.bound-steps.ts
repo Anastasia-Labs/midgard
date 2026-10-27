@@ -240,7 +240,10 @@ export const NO_DIGEST_FAMILIES = [
   "unusedRedeemer",
   "receivePurposeLanguage",
   "scriptIntegrityHashMismatch",
+  "executionSourceScriptDecoding",
+  "executionNativeScriptInvalid",
   "distinctAssetAccumulationLimit",
+  "unusedScriptWitness",
 ];
 
 export const REPLAY_CONTEXT_FAMILIES = [
@@ -258,7 +261,10 @@ export const REPLAY_CONTEXT_FAMILIES = [
   "unusedRedeemer",
   "receivePurposeLanguage",
   "scriptIntegrityHashMismatch",
+  "executionSourceScriptDecoding",
+  "executionNativeScriptInvalid",
   "distinctAssetAccumulationLimit",
+  "unusedScriptWitness",
 ];
 
 /**

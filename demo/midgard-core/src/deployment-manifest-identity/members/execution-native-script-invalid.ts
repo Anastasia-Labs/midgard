@@ -6,152 +6,332 @@ export const executionNativeScriptInvalidMembers = defineDeploymentFamily(
     fraudProofExecutionNativeScriptInvalid: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof execution-native-script-invalid step-01",
+      manifestPosition: 325,
+      publicationPosition: 231,
+      referenceRolePosition: 456,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/direct_script_derivation/step_01.main.spend",
+      familyPaths: [["firstStep"], ["steps", "0"]],
+    },
+    fraudProofExecutionNativeScriptInvalidBindEvent: {
+      purpose: "spend",
+      referenceRole:
+        "V1 fraud-proof execution-native-script-invalid bind-event",
+      manifestPosition: 326,
+      publicationPosition: 232,
+      referenceRolePosition: 457,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/direct_script_derivation/bind_event.main.spend",
+      familyPaths: [["steps", "1"]],
+    },
+    fraudProofExecutionNativeScriptInvalidBindPreState: {
+      purpose: "spend",
+      referenceRole:
+        "V1 fraud-proof execution-native-script-invalid bind-pre-state",
       manifestPosition: 361,
       publicationPosition: 343,
       referenceRolePosition: 576,
       commands: [],
       validatorTitle:
-        "fraud_proofs/execution_native_script_invalid/step_01.main.spend",
-      familyPaths: [["firstStep"], ["steps", "0"]],
+        "fraud_proofs/direct_script_derivation/bind_pre_state.main.spend",
+      familyPaths: [["steps", "2"]],
     },
-    fraudProofExecutionNativeScriptInvalidStep02: {
+    fraudProofExecutionNativeScriptInvalidSourceStart: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof execution-native-script-invalid step-02",
+      referenceRole:
+        "V1 fraud-proof execution-native-script-invalid source-start",
       manifestPosition: 362,
       publicationPosition: 344,
       referenceRolePosition: 577,
       commands: [],
       validatorTitle:
-        "fraud_proofs/execution_native_script_invalid/step_02.main.spend",
-      familyPaths: [["steps", "1"]],
+        "fraud_proofs/direct_script_derivation/source_start.main.spend",
+      familyPaths: [["steps", "3"]],
     },
-    fraudProofExecutionNativeScriptInvalidStep03: {
+    fraudProofExecutionNativeScriptInvalidSourceResolved: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof execution-native-script-invalid step-03",
+      referenceRole:
+        "V1 fraud-proof execution-native-script-invalid source-resolved",
       manifestPosition: 363,
       publicationPosition: 345,
       referenceRolePosition: 578,
       commands: [],
       validatorTitle:
-        "fraud_proofs/execution_native_script_invalid/step_03.main.spend",
-      familyPaths: [["steps", "2"]],
+        "fraud_proofs/direct_script_derivation/source_resolved.main.spend",
+      familyPaths: [["steps", "4"]],
     },
-    fraudProofExecutionNativeScriptInvalidStep04: {
+    fraudProofExecutionNativeScriptInvalidSourceAuthenticate: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof execution-native-script-invalid step-04",
+      referenceRole:
+        "V1 fraud-proof execution-native-script-invalid source-authenticate",
       manifestPosition: 364,
       publicationPosition: 346,
       referenceRolePosition: 579,
       commands: [],
       validatorTitle:
-        "fraud_proofs/execution_native_script_invalid/step_04.main.spend",
-      familyPaths: [["steps", "3"]],
+        "fraud_proofs/direct_script_derivation/source_authenticate.main.spend",
+      familyPaths: [["steps", "5"]],
     },
-    fraudProofExecutionNativeScriptInvalidStep05: {
+    fraudProofExecutionNativeScriptInvalidSourceMap: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof execution-native-script-invalid step-05",
+      referenceRole:
+        "V1 fraud-proof execution-native-script-invalid source-map",
       manifestPosition: 365,
       publicationPosition: 347,
       referenceRolePosition: 580,
       commands: [],
       validatorTitle:
-        "fraud_proofs/execution_native_script_invalid/step_05.main.spend",
-      familyPaths: [["steps", "4"]],
+        "fraud_proofs/direct_script_derivation/source_map.main.spend",
+      familyPaths: [["steps", "6"]],
     },
-    fraudProofExecutionNativeScriptInvalidStep06: {
+    fraudProofExecutionNativeScriptInvalidSourceInputFinish: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof execution-native-script-invalid step-06",
+      referenceRole:
+        "V1 fraud-proof execution-native-script-invalid source-input-finish",
       manifestPosition: 366,
       publicationPosition: 348,
       referenceRolePosition: 581,
       commands: [],
       validatorTitle:
-        "fraud_proofs/execution_native_script_invalid/step_06.main.spend",
-      familyPaths: [["steps", "5"]],
+        "fraud_proofs/direct_script_derivation/source_input_finish.main.spend",
+      familyPaths: [["steps", "7"]],
     },
-    fraudProofExecutionNativeScriptInvalidAcceptedReconstructionInit: {
+    fraudProofExecutionNativeScriptInvalidSourceGrammar: {
       purpose: "spend",
       referenceRole:
-        "V1 fraud-proof execution-native-script-invalid accepted-reconstruction-init",
+        "V1 fraud-proof execution-native-script-invalid source-grammar",
       manifestPosition: 367,
       publicationPosition: 349,
       referenceRolePosition: 582,
       commands: [],
       validatorTitle:
-        "fraud_proofs/execution_native_script_invalid/accepted_reconstruction_init.main.spend",
-      familyPaths: [["steps", "6"]],
+        "fraud_proofs/direct_script_derivation/source_grammar.main.spend",
+      familyPaths: [["steps", "8"]],
     },
-    fraudProofExecutionNativeScriptInvalidAcceptedSpendPrefix: {
+    fraudProofExecutionNativeScriptInvalidSourceWitnesses: {
       purpose: "spend",
       referenceRole:
-        "V1 fraud-proof execution-native-script-invalid accepted-spend-prefix",
+        "V1 fraud-proof execution-native-script-invalid source-witnesses",
       manifestPosition: 368,
       publicationPosition: 350,
       referenceRolePosition: 583,
       commands: [],
       validatorTitle:
-        "fraud_proofs/execution_native_script_invalid/accepted_spend_prefix.main.spend",
-      familyPaths: [["steps", "7"]],
+        "fraud_proofs/direct_script_derivation/source_witnesses.main.spend",
+      familyPaths: [["steps", "9"]],
     },
-    fraudProofExecutionNativeScriptInvalidAcceptedMintPrefix: {
+    fraudProofExecutionNativeScriptInvalidSourceFinish: {
       purpose: "spend",
       referenceRole:
-        "V1 fraud-proof execution-native-script-invalid accepted-mint-prefix",
+        "V1 fraud-proof execution-native-script-invalid source-finish",
       manifestPosition: 369,
       publicationPosition: 351,
       referenceRolePosition: 584,
       commands: [],
       validatorTitle:
-        "fraud_proofs/execution_native_script_invalid/accepted_mint_prefix.main.spend",
-      familyPaths: [["steps", "8"]],
+        "fraud_proofs/direct_script_derivation/source_finish.main.spend",
+      familyPaths: [["steps", "10"]],
     },
-    fraudProofExecutionNativeScriptInvalidAcceptedObserverPrefix: {
+    fraudProofExecutionNativeScriptInvalidFamilyEntry: {
       purpose: "spend",
       referenceRole:
-        "V1 fraud-proof execution-native-script-invalid accepted-observer-prefix",
+        "V1 fraud-proof execution-native-script-invalid family-entry",
       manifestPosition: 370,
       publicationPosition: 352,
       referenceRolePosition: 585,
       commands: [],
       validatorTitle:
-        "fraud_proofs/execution_native_script_invalid/accepted_observer_prefix.main.spend",
-      familyPaths: [["steps", "9"]],
+        "fraud_proofs/execution_native_script_invalid/family_entry.main.spend",
+      familyPaths: [["steps", "11"]],
     },
-    fraudProofExecutionNativeScriptInvalidAcceptedReceivePrefix: {
+    fraudProofExecutionNativeScriptInvalidPurposeSelect: {
       purpose: "spend",
       referenceRole:
-        "V1 fraud-proof execution-native-script-invalid accepted-receive-prefix",
+        "V1 fraud-proof execution-native-script-invalid purpose-select",
       manifestPosition: 371,
       publicationPosition: 353,
       referenceRolePosition: 586,
       commands: [],
       validatorTitle:
-        "fraud_proofs/execution_native_script_invalid/accepted_receive_prefix.main.spend",
-      familyPaths: [["steps", "10"]],
+        "fraud_proofs/direct_script_derivation/purpose_select.main.spend",
+      familyPaths: [["steps", "12"]],
     },
-    fraudProofExecutionNativeScriptInvalidAcceptedInlineSource: {
+    fraudProofExecutionNativeScriptInvalidSpendSelect: {
       purpose: "spend",
       referenceRole:
-        "V1 fraud-proof execution-native-script-invalid accepted-inline-source",
+        "V1 fraud-proof execution-native-script-invalid spend-select",
       manifestPosition: 372,
       publicationPosition: 354,
       referenceRolePosition: 587,
       commands: [],
       validatorTitle:
-        "fraud_proofs/execution_native_script_invalid/accepted_inline_source.main.spend",
-      familyPaths: [["steps", "11"]],
+        "fraud_proofs/direct_script_derivation/spend_select.main.spend",
+      familyPaths: [["steps", "13"]],
     },
-    fraudProofExecutionNativeScriptInvalidAcceptedReferenceSource: {
+    fraudProofExecutionNativeScriptInvalidSpendScan: {
       purpose: "spend",
       referenceRole:
-        "V1 fraud-proof execution-native-script-invalid accepted-reference-source",
+        "V1 fraud-proof execution-native-script-invalid spend-scan",
       manifestPosition: 373,
       publicationPosition: 355,
       referenceRolePosition: 588,
       commands: [],
       validatorTitle:
-        "fraud_proofs/execution_native_script_invalid/accepted_reference_source.main.spend",
-      familyPaths: [["steps", "12"]],
+        "fraud_proofs/direct_script_derivation/spend_scan.main.spend",
+      familyPaths: [["steps", "14"]],
+    },
+    fraudProofExecutionNativeScriptInvalidMintGrammar: {
+      purpose: "spend",
+      referenceRole:
+        "V1 fraud-proof execution-native-script-invalid mint-grammar",
+      manifestPosition: 704,
+      publicationPosition: 699,
+      referenceRolePosition: 699,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/direct_script_derivation/mint_grammar.main.spend",
+      familyPaths: [["steps", "15"]],
+    },
+    fraudProofExecutionNativeScriptInvalidMintScan: {
+      purpose: "spend",
+      referenceRole: "V1 fraud-proof execution-native-script-invalid mint-scan",
+      manifestPosition: 705,
+      publicationPosition: 700,
+      referenceRolePosition: 700,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/direct_script_derivation/mint_scan.main.spend",
+      familyPaths: [["steps", "16"]],
+    },
+    fraudProofExecutionNativeScriptInvalidReceiveStart: {
+      purpose: "spend",
+      referenceRole:
+        "V1 fraud-proof execution-native-script-invalid receive-start",
+      manifestPosition: 706,
+      publicationPosition: 701,
+      referenceRolePosition: 701,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/direct_script_derivation/receive_start.main.spend",
+      familyPaths: [["steps", "17"]],
+    },
+    fraudProofExecutionNativeScriptInvalidReceiveGrammar: {
+      purpose: "spend",
+      referenceRole:
+        "V1 fraud-proof execution-native-script-invalid receive-grammar",
+      manifestPosition: 707,
+      publicationPosition: 702,
+      referenceRolePosition: 702,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/direct_script_derivation/receive_grammar.main.spend",
+      familyPaths: [["steps", "18"]],
+    },
+    fraudProofExecutionNativeScriptInvalidReceiveOutputs: {
+      purpose: "spend",
+      referenceRole:
+        "V1 fraud-proof execution-native-script-invalid receive-outputs",
+      manifestPosition: 708,
+      publicationPosition: 703,
+      referenceRolePosition: 703,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/direct_script_derivation/receive_outputs.main.spend",
+      familyPaths: [["steps", "19"]],
+    },
+    fraudProofExecutionNativeScriptInvalidReceiveFinish: {
+      purpose: "spend",
+      referenceRole:
+        "V1 fraud-proof execution-native-script-invalid receive-finish",
+      manifestPosition: 709,
+      publicationPosition: 704,
+      referenceRolePosition: 704,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/direct_script_derivation/receive_finish.main.spend",
+      familyPaths: [["steps", "20"]],
+    },
+    fraudProofExecutionNativeScriptInvalidReceiveDeclaration: {
+      purpose: "spend",
+      referenceRole:
+        "V1 fraud-proof execution-native-script-invalid receive-declaration",
+      manifestPosition: 710,
+      publicationPosition: 705,
+      referenceRolePosition: 705,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/direct_script_derivation/receive_declaration.main.spend",
+      familyPaths: [["steps", "21"]],
+    },
+    fraudProofExecutionNativeScriptInvalidSourceLookup: {
+      purpose: "spend",
+      referenceRole:
+        "V1 fraud-proof execution-native-script-invalid source-lookup",
+      manifestPosition: 711,
+      publicationPosition: 706,
+      referenceRolePosition: 706,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/execution_native_script_invalid/lookup.main.spend",
+      familyPaths: [["steps", "22"]],
+    },
+    fraudProofExecutionNativeScriptInvalidSigners: {
+      purpose: "spend",
+      referenceRole: "V1 fraud-proof execution-native-script-invalid signers",
+      manifestPosition: 712,
+      publicationPosition: 707,
+      referenceRolePosition: 707,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/execution_native_script_invalid/signers.main.spend",
+      familyPaths: [["steps", "23"]],
+    },
+    fraudProofExecutionNativeScriptInvalidEvaluate: {
+      purpose: "spend",
+      referenceRole: "V1 fraud-proof execution-native-script-invalid evaluate",
+      manifestPosition: 713,
+      publicationPosition: 708,
+      referenceRolePosition: 708,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/execution_native_script_invalid/evaluate.main.spend",
+      familyPaths: [["steps", "24"]],
+    },
+    fraudProofExecutionNativeScriptInvalidSpendKey: {
+      purpose: "spend",
+      referenceRole: "V1 fraud-proof execution-native-script-invalid spend-key",
+      manifestPosition: 714,
+      publicationPosition: 709,
+      referenceRolePosition: 709,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/execution_native_script_invalid/spend_key.main.spend",
+      familyPaths: [["steps", "25"]],
+    },
+    fraudProofExecutionNativeScriptInvalidSpendRank: {
+      purpose: "spend",
+      referenceRole:
+        "V1 fraud-proof execution-native-script-invalid spend-rank",
+      manifestPosition: 715,
+      publicationPosition: 710,
+      referenceRolePosition: 710,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/execution_native_script_invalid/spend_rank.main.spend",
+      familyPaths: [["steps", "26"]],
+    },
+    fraudProofExecutionNativeScriptInvalidTerminal: {
+      purpose: "spend",
+      referenceRole: "V1 fraud-proof execution-native-script-invalid terminal",
+      manifestPosition: 716,
+      publicationPosition: 711,
+      referenceRolePosition: 711,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/execution_native_script_invalid/terminal.main.spend",
+      familyPaths: [["steps", "27"]],
     },
   },
 );

@@ -51,8 +51,13 @@ const replayers = {
   receivePurposeLanguage: FP.RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY,
   scriptIntegrityHashMismatch:
     FP.SCRIPT_INTEGRITY_HASH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
+  executionSourceScriptDecoding:
+    FP.EXECUTION_SOURCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
+  executionNativeScriptInvalid:
+    FP.EXECUTION_NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY,
   distinctAssetAccumulationLimit:
     FP.DISTINCT_ASSET_ACCUMULATION_LIMIT_COMPLETE_CANONICAL_REPLAY,
+  unusedScriptWitness: FP.UNUSED_SCRIPT_WITNESS_COMPLETE_CANONICAL_REPLAY,
 };
 const runDirectory = process.env.MIDGARD_WATCHER_JOURNEY_RUN_DIR;
 const stagedPath =
@@ -223,7 +228,10 @@ it
       category === "unusedRedeemer" ||
       category === "receivePurposeLanguage" ||
       category === "scriptIntegrityHashMismatch" ||
-      category === "distinctAssetAccumulationLimit"
+      category === "executionSourceScriptDecoding" ||
+      category === "executionNativeScriptInvalid" ||
+      category === "distinctAssetAccumulationLimit" ||
+      category === "unusedScriptWitness"
     ) {
       const context = FP.headerDecisionReplayContext(classification.decision);
       const replayer = replayers[category];
@@ -279,18 +287,41 @@ it
                           replayContext: context,
                         },
                       )
-                    : category === "distinctAssetAccumulationLimit"
-                      ? await FP.prepareDistinctAssetAccumulationLimitWorkflowArtifact(
+                    : category === "executionSourceScriptDecoding"
+                      ? await FP.prepareExecutionSourceScriptDecodingWorkflowArtifact(
                           {
                             evidence,
                             classification: selected,
                             replayContext: context,
                           },
                         )
-                      : await FP.prepareScriptIntegrityHashMissingArtifact({
-                          evidence,
-                          classification: selected,
-                        });
+                      : category === "executionNativeScriptInvalid"
+                        ? await FP.prepareExecutionNativeScriptInvalidWorkflowArtifact(
+                            {
+                              evidence,
+                              classification: selected,
+                              replayContext: context,
+                            },
+                          )
+                        : category === "distinctAssetAccumulationLimit"
+                          ? await FP.prepareDistinctAssetAccumulationLimitWorkflowArtifact(
+                              {
+                                evidence,
+                                classification: selected,
+                                replayContext: context,
+                              },
+                            )
+                          : category === "unusedScriptWitness"
+                            ? await FP.prepareUnusedScriptWitnessWorkflowArtifact(
+                                {
+                                  evidence,
+                                  classification: selected,
+                                  replayContext: context,
+                                },
+                              )
+                            : await FP.prepareScriptIntegrityHashMissingArtifact(
+                                { evidence, classification: selected },
+                              );
       expect(artifact.headerHash).toBe(block.headerHash);
     }
     await verifyJourneyFixture({
@@ -311,7 +342,10 @@ it.each([
   "unusedRedeemer",
   "receivePurposeLanguage",
   "scriptIntegrityHashMismatch",
+  "executionSourceScriptDecoding",
+  "executionNativeScriptInvalid",
   "distinctAssetAccumulationLimit",
+  "unusedScriptWitness",
 ] as const)(
   "classifies the %s forced-claim fixture through the full catalogue and its honest successor as healthy",
   async (category) => {

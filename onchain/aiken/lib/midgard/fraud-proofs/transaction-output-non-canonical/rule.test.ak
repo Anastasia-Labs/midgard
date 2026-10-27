@@ -226,3 +226,76 @@ test successor_follows_outcome_until_the_terminal_transition() {
     rule.state_is_well_formed_v1(terminal),
   }
 }
+
+/// The value repeats its policy id `..0001`.
+const repeated_policy_output =
+  #"a200581d604747474747474747474747474747474747474747474747474747474701821a001e8480a2581c11111111111111111111111111111111111111111111111111110001a1410101581c11111111111111111111111111111111111111111111111111110001a1410201"
+
+/// The value repeats asset name `01` under one policy.
+const repeated_asset_name_output =
+  #"a200581d604747474747474747474747474747474747474747474747474747474701821a001e8480a1581c11111111111111111111111111111111111111111111111111110001a2410101410102"
+
+/// The twin with distinct ascending policies and names.
+const distinct_ascending_output =
+  #"a200581d604747474747474747474747474747474747474747474747474747474701821a001e8480a2581c11111111111111111111111111111111111111111111111111110001a2410101410202581c11111111111111111111111111111111111111111111111111110002a1410201"
+
+fn scan_whole(
+  subject: substrate.VerdictSubjectV1,
+  output: ByteArray,
+) -> rule.OutputScanStateV1 {
+  scan_until(
+    rule.initial_scan_v1(rule.bind_output_v1(subject, 0), output),
+    output,
+    16,
+  )
+}
+
+/// Each row first pins the terminal outcome, so no row passes on a scan that
+/// stopped short of its terminal.
+test accepted_repeated_policy_id_convicts() {
+  let state = scan_whole(accepted(), repeated_policy_output)
+  and {
+    state.outcome == rule.outcome_non_canonical,
+    rule.terminal_contradiction_v1(state),
+  }
+}
+
+test accepted_repeated_asset_name_convicts() {
+  let state = scan_whole(accepted(), repeated_asset_name_output)
+  and {
+    state.outcome == rule.outcome_non_canonical,
+    rule.terminal_contradiction_v1(state),
+  }
+}
+
+test honest_accepted_distinct_ascending_value_refuses() {
+  let state = scan_whole(accepted(), distinct_ascending_output)
+  and {
+    state.outcome == rule.outcome_canonical,
+    !rule.terminal_contradiction_v1(state),
+  }
+}
+
+test honest_forced_repeated_policy_id_refuses() {
+  let state = scan_whole(rejected(0), repeated_policy_output)
+  and {
+    state.outcome == rule.outcome_non_canonical,
+    !rule.terminal_contradiction_v1(state),
+  }
+}
+
+test honest_forced_repeated_asset_name_refuses() {
+  let state = scan_whole(rejected(0), repeated_asset_name_output)
+  and {
+    state.outcome == rule.outcome_non_canonical,
+    !rule.terminal_contradiction_v1(state),
+  }
+}
+
+test forced_distinct_ascending_value_convicts() {
+  let state = scan_whole(rejected(0), distinct_ascending_output)
+  and {
+    state.outcome == rule.outcome_canonical,
+    rule.terminal_contradiction_v1(state),
+  }
+}
