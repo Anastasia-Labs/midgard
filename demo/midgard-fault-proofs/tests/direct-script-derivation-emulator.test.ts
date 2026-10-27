@@ -31,6 +31,8 @@ import {
 import { driveDirectReceiveLifecycle } from "./support/direct-receive-lifecycle.js";
 import { maximumDirectReceiveOutputs } from "./support/direct-receive-max-fixture.js";
 import { driveDirectSourceLifecycle } from "./support/direct-source-lifecycle.js";
+import { prepareDirectSourceResourceFixture } from "./support/direct-source-resource-fixture.js";
+import { measureDirectSourceResourcePath } from "./support/direct-source-resource-measurement.js";
 import { nativeDecodingFixture } from "./support/native-script-decoding-retained.js";
 import {
   EMULATOR_PROTOCOL_PARAMETERS,
@@ -434,6 +436,31 @@ it("executes source field-authentication-map custody in ordinary eight-item batc
     ),
   );
 }, 300_000);
+
+it("source batch serviceability drains 100 genuine descriptors with budget1", async () => {
+  const fixture = await prepareDirectSourceResourceFixture();
+  const result = await measureDirectSourceResourcePath(fixture, 1);
+  const json = JSON.stringify(result, (_, value: unknown) =>
+    typeof value === "bigint" ? value.toString() : value,
+  );
+  console.log("N6 F2 accepted-selection resource measurement", json);
+  expect(result.protocol).toEqual({
+    maxTxSize: 16_384,
+    maxTxExMem: "16500000",
+    maxTxExSteps: "10000000000",
+  });
+  expect(result.outcome, `F2 budget1: ${json}`).toBe("serviceable");
+  expect(result.processed).toBe(100);
+  expect(result.finalState.complete).toBe(true);
+  expect(result.finalState.source_index).toEqual(fixture.evidence.index);
+  expect(result.finalState.source_index.count).toBe(100n);
+  const accepted = result.attempts.filter(
+    (attempt) => attempt.status === "accepted",
+  );
+  expect(accepted).toHaveLength(301);
+  for (const attempt of accepted)
+    expect(attempt.signed?.withinLedger).toBe(true);
+}, 900_000);
 
 it.each(["Base", "Enterprise"] as const)(
   "executes certified maximum source field with %s wallet without shrinking admission",

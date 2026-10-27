@@ -3,6 +3,7 @@ import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-confi
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
+import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.js";
 import {
   evaluateMidgardCekVerdict,
   evaluateMidgardTxRedeemers,
@@ -12,9 +13,14 @@ import {
   runPhaseBValidationWithPatch,
 } from "../src/index.js";
 import {
+  CEK_CONSTR_DATA_INDEX_PROGRAMS,
+  compileMidgardCekGoldenProgram,
+} from "./fixtures/cek-core-step-v1.vectors.mjs";
+import {
   EVALUATE_DRAFT_SLOT as SLOT,
   EVALUATE_DRAFT_SPENT,
   makeEvaluateDraft as draft,
+  makeEvaluateProgramDraft,
 } from "./phase-b.evaluate-tx-redeemers.fixture.js";
 
 // The evaluate path must report exactly the budget Phase B spends once the
@@ -135,6 +141,37 @@ describe("evaluateMidgardTxRedeemers", () => {
     expect(calls).toBe(1);
     expect(pooled).toEqual(await evaluate(tx));
   });
+
+  it.each([
+    ["zero", true],
+    ["maximum", true],
+    ["overflow", false],
+    ["negative", false],
+  ] as const)(
+    "pins the constrData %s index verdict",
+    async (boundary, accepts) => {
+      const definition = CEK_CONSTR_DATA_INDEX_PROGRAMS.find(
+        (program) => program.label === `constr_data_index_${boundary}`,
+      );
+      if (definition === undefined)
+        throw new Error(`missing ${boundary} program`);
+      const scriptFlat = compileMidgardCekGoldenProgram(
+        definition.term(),
+        encodeMidgardCekCardanoFlatProgram,
+      );
+      const checked = await phaseB(
+        makeEvaluateProgramDraft([20_000n, 5_000_000n], scriptFlat),
+      );
+      expect(checked.result.accepted).toHaveLength(accepts ? 1 : 0);
+      expect(checked.result.rejected).toHaveLength(accepts ? 0 : 1);
+      if (!accepts) {
+        expect(checked.result.rejected[0]?.code).toBe(
+          RejectCodes.PlutusScriptInvalid,
+        );
+        expect(checked.spent).toMatchObject([{ kind: "script_invalid" }]);
+      }
+    },
+  );
 
   it("reports a failing script", async () => {
     const evaluation = await evaluate(draft([0n, 0n], true));

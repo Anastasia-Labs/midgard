@@ -15,7 +15,11 @@
  * `executeMidgardCekStructuralProgram`, and for every emitted step writes the
  * exact `CoreStepEvidenceV1` CBOR from `encodeMidgardCekCoreStepDataCbor`
  * together with the `hashMidgardCekMachineState` of its pre- and post-states.
- * Every value is written to two places:
+ * A boundary program may request `pinBuiltinStep`: its complete trace is
+ * checked in TS, but only that builtin transition is emitted. This lets the
+ * Word64 refusal be pinned independently of the pre-en5 decoder's inability
+ * to prove the prefix's bignum constant. Existing programs emit every step.
+ * Every selected value is written to two places:
  *
  *   * `tests/fixtures/cek-core-step-v1.generated.json` — recomputed by
  *     `tests/cek-core-step-goldens.test.ts`, which re-runs the builder on the
@@ -144,8 +148,40 @@ const buildProgramVector = (definition) => {
     throw new Error(`${definition.label}: the trace emitted no steps`);
   }
 
-  let expectedPre = hashMidgardCekMachineState(execution.initialState);
-  const steps = execution.steps.map((step, index) => {
+  if (definition.pinBuiltinStep !== undefined) {
+    for (const [index, step] of execution.steps.entries()) {
+      if (!verifyMidgardCekCoreStep(step.pre, step.post, step.witness)) {
+        throw new Error(
+          `${definition.label}: full trace step ${index} (${step.witness.kind}) fails the TypeScript verifier`,
+        );
+      }
+    }
+  }
+  const selectedSteps =
+    definition.pinBuiltinStep === undefined
+      ? execution.steps
+      : execution.steps.filter(
+          (step) =>
+            (step.witness.kind === "executeBuiltinSemantic" ||
+              step.witness.kind === "executeBuiltinSemanticFailure") &&
+            step.witness.tag === definition.pinBuiltinStep,
+        );
+  if (definition.pinBuiltinStep !== undefined && selectedSteps.length !== 1) {
+    throw new Error(
+      `${definition.label}: expected exactly one builtin boundary step`,
+    );
+  }
+  const initialState =
+    definition.pinBuiltinStep === undefined
+      ? execution.initialState
+      : selectedSteps[0].pre;
+  const terminalState =
+    definition.pinBuiltinStep === undefined
+      ? execution.terminalState
+      : selectedSteps.at(-1).post;
+  let expectedPre = hashMidgardCekMachineState(initialState);
+  const steps = selectedSteps.map((step) => {
+    const index = execution.steps.indexOf(step);
     const preHash = hashMidgardCekMachineState(step.pre);
     const postHash = hashMidgardCekMachineState(step.post);
     if (!preHash.equals(expectedPre)) {
@@ -167,14 +203,15 @@ const buildProgramVector = (definition) => {
       evidenceCbor: hex(encodeMidgardCekCoreStepDataCbor(step)),
     };
   });
-  const terminalStateHash = hashMidgardCekMachineState(execution.terminalState);
+  const terminalStateHash = hashMidgardCekMachineState(terminalState);
   if (!terminalStateHash.equals(expectedPre)) {
     throw new Error(`${definition.label}: terminal state is not the last post`);
   }
 
   const negatives = CEK_CORE_STEP_TWISTS.map((twist) => {
-    const stepIndex = twist.select(execution.steps);
-    const twisted = twist.apply(execution.steps[stepIndex]);
+    const selectedStep = selectedSteps[twist.select(selectedSteps)];
+    const stepIndex = execution.steps.indexOf(selectedStep);
+    const twisted = twist.apply(selectedStep);
     if (verifyMidgardCekCoreStep(twisted.pre, twisted.post, twisted.witness)) {
       throw new Error(
         `${definition.label}: twist ${twist.label} of step ${stepIndex} still verifies`,
@@ -192,6 +229,9 @@ const buildProgramVector = (definition) => {
     label: definition.label,
     note: definition.note,
     maxSteps: definition.maxSteps,
+    ...(definition.pinBuiltinStep === undefined
+      ? {}
+      : { pinBuiltinStep: definition.pinBuiltinStep.toString(10) }),
     ...(definition.executionBudget === undefined
       ? {}
       : {
@@ -211,12 +251,15 @@ const buildProgramVector = (definition) => {
     termRoot: hex(program.termRoot),
     root: hex(graph.root),
     contextValueRoot: hex(graph.contextValueRoot),
-    initialState: stateJson(execution.initialState),
-    initialStateHash: hex(hashMidgardCekMachineState(execution.initialState)),
+    initialState: stateJson(initialState),
+    initialStateHash: hex(hashMidgardCekMachineState(initialState)),
     steps,
-    terminalState: stateJson(execution.terminalState),
+    terminalState: stateJson(terminalState),
     terminalStateHash: hex(terminalStateHash),
-    stopReason: execution.stopReason,
+    stopReason:
+      definition.pinBuiltinStep === undefined
+        ? execution.stopReason
+        : "selectedBuiltinStep",
     negatives,
   };
 };

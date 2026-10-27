@@ -47,6 +47,8 @@ import {
 } from "@harmoniclabs/uplc";
 
 import { caseConstantPrograms } from "./cek-core-step-v1.case-constant.mjs";
+import { CEK_CONSTR_DATA_INDEX_REFUSALS } from "./cek-core-step-v1.constr-data-vectors.mjs";
+export { CEK_CONSTR_DATA_INDEX_PROGRAMS } from "./cek-core-step-v1.constr-data-vectors.mjs";
 
 /** `(program 1.1.0 term)` as canonical Flat bytes, the V1 script payload. */
 export const compileMidgardCekGoldenProgram = (term, encodeProgram) =>
@@ -298,6 +300,7 @@ export const CEK_CORE_STEP_PROGRAMS = [
     context: EMPTY_CONTEXT,
     maxSteps: 64,
   },
+  ...CEK_CONSTR_DATA_INDEX_REFUSALS,
   {
     label: "schnorr_message_17_bytes",
     note: "executeBuiltinDirect on verifySchnorrSecp256k1Signature over a 17-byte message",

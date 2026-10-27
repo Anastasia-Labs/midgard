@@ -46,6 +46,7 @@ export const createDirectReceiveStepper = ({
     bytes: number;
     memory: string;
     cpu: string;
+    transactionHash: string;
   }[] = [];
   const step = async (
     label: string,
@@ -122,6 +123,7 @@ export const createDirectReceiveStepper = ({
       bytes: measured.completeSignedBytes,
       memory: measured.executionMemory.toString(),
       cpu: measured.executionSteps.toString(),
+      transactionHash: signed.toHash(),
     });
     const hash = await signed.submit();
     await lucid.awaitTx(hash);

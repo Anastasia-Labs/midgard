@@ -683,6 +683,56 @@ test certification_rejects_a_total_length_above_the_aggregate_cap() fail {
   )
 }
 
+/// Certification at the aggregate cap over three chunks whose first boundary
+/// sits at `first` bytes and second at `first + K`, against a transaction that
+/// genuinely committed the preimage, with the real length and real digests.
+/// With `first == chunk_bytes_k` this is the honest §8.4 split.
+fn certify_cap_split_at(first: Int) -> Bool {
+  let preimage = marked_bytes(#"07", max_transaction_aggregate_field_bytes)
+  let chunks = [
+    preimage |> bytearray.take(first),
+    preimage |> bytearray.drop(first) |> bytearray.take(chunk_bytes_k),
+    preimage |> bytearray.drop(first + chunk_bytes_k),
+  ]
+  let body = NativeTxBodyCompact {
+    ..nine_field_body(),
+    spend_inputs_hash: field_commitment(preimage),
+  }
+  let witness_set_compact_cbor = encode_native_tx_witness_set_compact(
+    nine_field_witness_set(),
+  )
+  verify_field_preimage_certificate_v1(
+    0,
+    FieldPreimageCertificateV1 {
+      owner: owner_hash,
+      tx_id: tx_id_of(body),
+      field_index: 0,
+      field_hash: field_commitment(preimage),
+      total_length: max_transaction_aggregate_field_bytes,
+      chunk_digests: list.map(chunks, blake2b_256),
+    },
+    compact_cbor_of(body, witness_set_compact_cbor),
+    witness_set_compact_cbor,
+    chunks,
+  )
+}
+
+test certification_accepts_the_cap_split_at_k() {
+  certify_cap_split_at(chunk_bytes_k)
+}
+
+/// A non-last chunk one byte short of `K`. The chunks still reconstruct the
+/// committed bytes and the chunk count is unchanged; only the chunk size
+/// differs from the honest split above.
+test certification_rejects_a_non_last_chunk_one_byte_short() fail {
+  certify_cap_split_at(chunk_bytes_k - 1)
+}
+
+/// A non-last chunk one byte over `K`, under the same conditions.
+test certification_rejects_a_non_last_chunk_one_byte_long() fail {
+  certify_cap_split_at(chunk_bytes_k + 1)
+}
+
 /// The `owner` is the one certificate field nothing proves — it is the minter's
 /// own choice of min-Ada reclaim authority (§8.6). What is checked is that it
 /// could be one: a payment key hash is 28 bytes, and anything else names an
