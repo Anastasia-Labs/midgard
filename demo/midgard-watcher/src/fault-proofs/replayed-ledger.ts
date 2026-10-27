@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 
@@ -11,6 +12,7 @@ import {
   isRetainedDaPayloadUnavailableError,
   type LedgerAt,
   type LedgerCheckpointStore,
+  type ReplayedLedgerRefusal,
   type RetainedDaPayloadSource,
   type RetainedPayloadReleases,
   retainedPayloadReplaySource,
@@ -27,6 +29,10 @@ import {
 } from "../runtime/deployment-identity.js";
 import type { WatcherDecisionReadiness } from "../runtime/watcher-runtime.decision-driver.js";
 import { replayLocalFaultHolds } from "./replay-local-fault-bound.js";
+import type {
+  WatcherReplayRefusalPhase,
+  WatcherReplayRefusals,
+} from "./replay-refusals.js";
 
 export type WatcherReplayedLedger = Readonly<{
   ledgerAt(
@@ -63,20 +69,36 @@ export const createWatcherReplayedLedger = (
     unsafeCheckpointStoreForTest?: LedgerCheckpointStore;
     /** The local-fault holds' clock, in ms (default `Date.now`). */
     nowMs?: () => number;
+    /** Where the keeper's refusals are recorded (`replay-refusals.ts`). */
+    refusals?: WatcherReplayRefusals;
   }>,
 ): WatcherReplayedLedger => {
   const checkpoints =
     input.unsafeCheckpointStoreForTest ??
     fileLedgerCheckpointStore(input.checkpointPath);
+  // A refusal met while moving the checkpoint to the confirmed head runs in
+  // that advance's async context; any other is a classification's replay.
+  const phase = new AsyncLocalStorage<WatcherReplayRefusalPhase>();
+  const refusals = input.refusals;
+  const onRefusal =
+    refusals === undefined
+      ? undefined
+      : (refusal: ReplayedLedgerRefusal) =>
+          refusals.record(refusal, phase.getStore() ?? "classification");
+  const create = () =>
+    createReplayedLedger({
+      checkpoints,
+      ...(onRefusal === undefined ? {} : { onRefusal }),
+    });
   let epoch = input.follower.epoch();
-  let keeper = createReplayedLedger({ checkpoints });
+  let keeper = create();
   let restoredKeeper: typeof keeper | undefined;
   // L1 event IDs do not bind every admission byte. A rewind fences the
   // ephemeral derivations; only the stable root-checked file survives it.
   const currentKeeper = () => {
     if (epoch !== input.follower.epoch()) {
       epoch = input.follower.epoch();
-      keeper = createReplayedLedger({ checkpoints });
+      keeper = create();
     }
     return keeper;
   };
@@ -132,8 +154,11 @@ export const createWatcherReplayedLedger = (
         const waiting = localFaults.pass()(head.headerHash);
         if (waiting !== undefined) return [waiting];
         const activeKeeper = currentKeeper();
+        const confirmedHead = head;
         if (restoredKeeper !== activeKeeper) {
-          await activeKeeper.restore(head);
+          await phase.run("confirmed", () =>
+            activeKeeper.restore(confirmedHead),
+          );
           restoredKeeper = activeKeeper;
         }
         await mkdir(dirname(input.checkpointPath), {
@@ -144,7 +169,9 @@ export const createWatcherReplayedLedger = (
           throw new FraudProofL1CheckpointChangedError(
             "replay checkpoint changed during restore",
           );
-        const durable = await activeKeeper.advance(head, source(sources));
+        const durable = await phase.run("confirmed", () =>
+          activeKeeper.advance(confirmedHead, source(sources)),
+        );
         if (!confirmed.current())
           throw new FraudProofL1CheckpointChangedError(
             "replay checkpoint changed during persistence",
@@ -157,6 +184,7 @@ export const createWatcherReplayedLedger = (
             },
           ];
         localFaults.progressed(head.headerHash);
+        refusals?.progressed();
         input.follower.checkpointDurable(confirmed.state.endTime);
         return [];
       } catch (error) {

@@ -5,6 +5,7 @@ import {
   MAX_EVENT_VALIDITY_RANGE_LENGTH_MS,
 } from "@al-ft/midgard-sdk";
 
+import { createWatcherReplayRefusals } from "../fault-proofs/replay-refusals.js";
 import {
   createWatcherReplayedLedger,
   watcherReplayAvailabilityAuthority,
@@ -69,6 +70,9 @@ export const createWatcherRuntimeReplayHost = (
         observationAuthority:
           watcherDeploymentProtocolScriptAuthority(deploymentIdentity),
       });
+      // Created before the operations sink exists: it raises the
+      // `root_mismatch` alert once the runtime attaches the sink.
+      const refusals = createWatcherReplayRefusals();
       const keeper = createWatcherReplayedLedger({
         follower: source,
         l1SlotConfig,
@@ -78,8 +82,9 @@ export const createWatcherRuntimeReplayHost = (
         ),
         availabilityAuthority:
           watcherReplayAvailabilityAuthority(deploymentIdentity),
+        refusals,
       });
-      return { userEvents, keeper, close: () => source.close() };
+      return { userEvents, keeper, refusals, close: () => source.close() };
     },
   };
 };

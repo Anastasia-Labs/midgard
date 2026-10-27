@@ -2,7 +2,9 @@
 
 Use this branch after interruption, ambiguous submission, rollback, retained-DA
 failure, or watcher readiness loss. Recovery attaches to the same deployment;
-it does not reset local or on-chain state.
+it does not reset local or on-chain state. The watcher alerts that lead here,
+and the checks to run before freezing anything, are in
+[`docs/operations/alerts.md`](../operations/alerts.md).
 
 ## 1. Freeze actuation
 
@@ -42,6 +44,10 @@ at terminal verification.
 
 The manual `resume-workflow` CLI is diagnostic unless invoked through the
 application owner that supplies the admitted permits and runtime registry.
+Submission stays automatic after the restart: the resumed watcher signs and
+submits the next action itself. Use `workflow-readiness` (see the
+[challenger runbook](challenger-runbook.md#3-detect-and-prosecute)) to
+inspect a workflow without submitting.
 
 Completion: the resumed journal advances without duplicating a confirmed
 transaction or acquiring an unfenced mutation lease.
@@ -60,6 +66,12 @@ transaction or acquiring an unfenced mutation lease.
 - Concurrent challenger win: verify the target is already removed and the bond
   paid, release this workflow's reservation, and reconcile as an idempotent
   terminal result.
+- An objective held as `fault_proof_resubmission_required` or
+  `fault_proof_start_deadline_passed`: its latest safe start has passed and
+  the watcher holds reconciliation-only authority, so a restart does not
+  resubmit it. Preserve the journals and escalate while the challenge window
+  is open; proving is permissionless, so another challenger can still prove
+  the fault.
 - Reference-script or deployment mismatch: stop. Repair by deploying a coherent
   identity; never substitute a locally rebuilt hash into an existing manifest.
 

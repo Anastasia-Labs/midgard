@@ -30,6 +30,7 @@ import * as stall from "./fault-proof-continuation-stall.js";
 import {
   holdWatcherFaultProofOnReplay,
   l1RefusalOf,
+  WATCHER_FAULT_PROOF_L1_REFUSED,
 } from "./fault-proof-execution-holds.js";
 import { holdWatcherFaultProofOnFunding } from "./fault-proof-funding-hold.js";
 import type { WatcherProofObjective } from "./fault-proof-objective-journal.js";
@@ -249,7 +250,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
   ): Readonly<{ kind: "pending"; reason: string }> | undefined => {
     const refusal = l1RefusalOf(error);
     if (refusal === undefined) return undefined;
-    const reason = `fault_proof_l1_refused:${refusal.reason}`;
+    const reason = `${WATCHER_FAULT_PROOF_L1_REFUSED}:${refusal.reason}`;
     holds.set(objectiveOf(job), {
       reason,
       detail: `${objectiveOf(job)}: ${refusal.detail}`,
