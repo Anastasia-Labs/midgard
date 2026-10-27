@@ -74,6 +74,9 @@ export class CardanoFlatRefusal extends Error {
 
 const WORD64_GROUPS = 10;
 
+/** Naturals of at most this many 7-bit groups are read by shifting. */
+const SHIFTED_GROUPS = 16;
+
 export class CardanoFlatReader {
   private position = 0;
   private readonly bitLength: number;
@@ -129,10 +132,29 @@ export class CardanoFlatReader {
       groups.push(tagged & 0x7f);
       if (tagged < 0x80) break;
     }
-    let value = 0n;
-    for (let index = groups.length - 1; index >= 0; index -= 1)
-      value = (value << 7n) | BigInt(groups[index]!);
-    return value;
+    if (groups.length <= SHIFTED_GROUPS) {
+      let value = 0n;
+      for (let index = groups.length - 1; index >= 0; index -= 1)
+        value = (value << 7n) | BigInt(groups[index]!);
+      return value;
+    }
+    // Shifting a bigint per group is quadratic in its length; pack the
+    // groups into bytes and read them as one hexadecimal number instead.
+    const bytes = new Uint8Array(Math.ceil((groups.length * 7) / 8));
+    let pending = 0;
+    let pendingBits = 0;
+    let index = bytes.length;
+    for (const group of groups) {
+      pending |= group << pendingBits;
+      pendingBits += 7;
+      if (pendingBits >= 8) {
+        bytes[--index] = pending & 0xff;
+        pending >>>= 8;
+        pendingBits -= 8;
+      }
+    }
+    if (pendingBits > 0) bytes[--index] = pending;
+    return BigInt(`0x${Buffer.from(bytes).toString("hex")}`);
   }
 
   /** `dInteger` (Strict.hs:113-114): zig-zag over a natural. */
