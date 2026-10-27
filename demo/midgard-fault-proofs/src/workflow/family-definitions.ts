@@ -21,6 +21,7 @@ import { SPEND_INPUT_SIGNER_MISSING_FAMILY_DEFINITION } from "../spend-input-sig
 import { TRANSACTION_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION } from "../transaction-output-non-canonical/workflow.js";
 import { TRANSITION_TRACE_FAMILY_DEFINITION } from "../transition-trace/workflow.js";
 import { UNUSED_REDEEMER_FAMILY_DEFINITION } from "../unused-redeemer/workflow.js";
+import { UNUSED_SCRIPT_WITNESS_FAMILY_DEFINITION } from "../unused-script-witness/workflow.js";
 import { WITHDRAWAL_MISTAG_FAMILY_DEFINITION } from "../withdrawal-mistag/workflow.js";
 import { WITNESS_SCRIPT_DECODING_FAMILY_DEFINITION } from "../witness-script-decoding/workflow.js";
 import { CANONICAL_DECODABILITY_FAMILY_DEFINITION } from "./canonical-decodability.js";
@@ -60,6 +61,7 @@ type CursorFamilyDefinitions = Readonly<{
   receivePurposeLanguage: typeof RECEIVE_PURPOSE_LANGUAGE_FAMILY_DEFINITION;
   scriptIntegrityHashMismatch: typeof SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_DEFINITION;
   distinctAssetAccumulationLimit: typeof DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY_DEFINITION;
+  unusedScriptWitness: typeof UNUSED_SCRIPT_WITNESS_FAMILY_DEFINITION;
 }>;
 
 export const CURSOR_FAMILY_DEFINITIONS: CursorFamilyDefinitions = Object.freeze(
@@ -96,6 +98,7 @@ export const CURSOR_FAMILY_DEFINITIONS: CursorFamilyDefinitions = Object.freeze(
       SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_DEFINITION,
     distinctAssetAccumulationLimit:
       DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY_DEFINITION,
+    unusedScriptWitness: UNUSED_SCRIPT_WITNESS_FAMILY_DEFINITION,
   },
 );
 

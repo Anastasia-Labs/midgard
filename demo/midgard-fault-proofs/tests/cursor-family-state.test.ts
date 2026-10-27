@@ -433,6 +433,7 @@ describe("production cursor-family authenticated state V1", () => {
       "receivePurposeLanguage",
       "scriptIntegrityHashMismatch",
       "distinctAssetAccumulationLimit",
+      "unusedScriptWitness",
       "canonicalDecodability",
       "committedFieldShape",
     ]);

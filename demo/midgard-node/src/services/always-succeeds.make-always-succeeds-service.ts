@@ -478,7 +478,7 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       observerOrderInvalid: repeatedFaultProofChain(zeroInput, 4),
       redeemerCanonicity: repeatedFaultProofChain(zeroInput, 4),
       receivePurposeLanguage: repeatedFaultProofChain(zeroInput, 21),
-      unusedScriptWitness: repeatedFaultProofChain(zeroInput, 6),
+      unusedScriptWitness: repeatedFaultProofChain(zeroInput, 24),
       missingScriptSource: repeatedFaultProofChain(zeroInput, 37),
       missingRedeemer: repeatedFaultProofChain(zeroInput, 39),
       unusedRedeemer: repeatedFaultProofChain(zeroInput, 25),

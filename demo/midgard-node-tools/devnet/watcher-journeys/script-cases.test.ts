@@ -53,6 +53,7 @@ const replayers = {
     FP.SCRIPT_INTEGRITY_HASH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
   distinctAssetAccumulationLimit:
     FP.DISTINCT_ASSET_ACCUMULATION_LIMIT_COMPLETE_CANONICAL_REPLAY,
+  unusedScriptWitness: FP.UNUSED_SCRIPT_WITNESS_COMPLETE_CANONICAL_REPLAY,
 };
 const runDirectory = process.env.MIDGARD_WATCHER_JOURNEY_RUN_DIR;
 const stagedPath =
@@ -223,7 +224,8 @@ it
       category === "unusedRedeemer" ||
       category === "receivePurposeLanguage" ||
       category === "scriptIntegrityHashMismatch" ||
-      category === "distinctAssetAccumulationLimit"
+      category === "distinctAssetAccumulationLimit" ||
+      category === "unusedScriptWitness"
     ) {
       const context = FP.headerDecisionReplayContext(classification.decision);
       const replayer = replayers[category];
@@ -287,10 +289,16 @@ it
                             replayContext: context,
                           },
                         )
-                      : await FP.prepareScriptIntegrityHashMissingArtifact({
-                          evidence,
-                          classification: selected,
-                        });
+                      : category === "unusedScriptWitness"
+                        ? await FP.prepareUnusedScriptWitnessWorkflowArtifact({
+                            evidence,
+                            classification: selected,
+                            replayContext: context,
+                          })
+                        : await FP.prepareScriptIntegrityHashMissingArtifact({
+                            evidence,
+                            classification: selected,
+                          });
       expect(artifact.headerHash).toBe(block.headerHash);
     }
     await verifyJourneyFixture({
@@ -312,6 +320,7 @@ it.each([
   "receivePurposeLanguage",
   "scriptIntegrityHashMismatch",
   "distinctAssetAccumulationLimit",
+  "unusedScriptWitness",
 ] as const)(
   "classifies the %s forced-claim fixture through the full catalogue and its honest successor as healthy",
   async (category) => {

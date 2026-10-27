@@ -56,6 +56,7 @@ export const JOURNEY_FIXTURE_OWNERS = {
   receivePurposeLanguage: "script",
   scriptIntegrityHashMismatch: "script",
   distinctAssetAccumulationLimit: "script",
+  unusedScriptWitness: "script",
   doubleSpend: "history",
   nonExistentInput: "history",
   nonExistentInputNoIndex: "history",

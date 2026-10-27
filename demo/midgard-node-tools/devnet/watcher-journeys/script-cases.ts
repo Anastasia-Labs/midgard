@@ -151,6 +151,7 @@ export const JOURNEY_SCRIPT_FORCED_REASONS = {
   distinctAssetAccumulationLimit: {
     InputAssetAccumulationLimit: { input_index: 0n, asset_index: 0n },
   },
+  unusedScriptWitness: { UnusedScriptWitness: { script_index: 0n } },
 } satisfies Partial<
   Record<SDK.FraudProofCatalogueCategoryName, SDK.RejectionReason>
 >;

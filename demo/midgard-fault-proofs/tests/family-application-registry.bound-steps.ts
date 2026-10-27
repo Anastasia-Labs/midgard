@@ -241,6 +241,7 @@ export const NO_DIGEST_FAMILIES = [
   "receivePurposeLanguage",
   "scriptIntegrityHashMismatch",
   "distinctAssetAccumulationLimit",
+  "unusedScriptWitness",
 ];
 
 export const REPLAY_CONTEXT_FAMILIES = [
@@ -259,6 +260,7 @@ export const REPLAY_CONTEXT_FAMILIES = [
   "receivePurposeLanguage",
   "scriptIntegrityHashMismatch",
   "distinctAssetAccumulationLimit",
+  "unusedScriptWitness",
 ];
 
 /**

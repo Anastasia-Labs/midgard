@@ -358,8 +358,14 @@ export {
   buildUnusedScriptWitnessChain,
   buildUnusedScriptWitnessFaultProofContracts,
   type BuildUnusedScriptWitnessFaultProofContractsParams,
+  checkUnusedScriptWitnessRoleOrder,
   UNUSED_SCRIPT_WITNESS_FAULT_PROOF_TITLES,
+  UNUSED_SCRIPT_WITNESS_ROLE_ORDER,
+  type UnusedScriptWitnessChain,
   type UnusedScriptWitnessFaultProofContracts,
+  type UnusedScriptWitnessRole,
+  type UnusedScriptWitnessRoles,
+  unusedScriptWitnessRoles,
 } from "./families/unused-script-witness.js";
 export { canonicalValidationTraceReferenceScripts } from "./families/validation-trace-dispute.canonical-references.js";
 export {

@@ -375,7 +375,7 @@ export const makeAlwaysSucceedsFaultProofContracts = (
     observerOrderInvalid: scaffoldChain(appendedFamilyFallback, 4),
     redeemerCanonicity: scaffoldChain(appendedFamilyFallback, 4),
     receivePurposeLanguage: scaffoldChain(appendedFamilyFallback, 21),
-    unusedScriptWitness: scaffoldChain(appendedFamilyFallback, 6),
+    unusedScriptWitness: scaffoldChain(appendedFamilyFallback, 24),
     missingScriptSource: scaffoldChain(appendedFamilyFallback, 37),
     missingRedeemer: scaffoldChain(appendedFamilyFallback, 39),
     unusedRedeemer: scaffoldChain(appendedFamilyFallback, 25),

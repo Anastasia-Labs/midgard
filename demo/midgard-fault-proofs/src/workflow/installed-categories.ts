@@ -9,7 +9,6 @@ import {
  * validators are unchanged.
  */
 export const UNINSTALLED_FRAUD_PROOF_CATEGORIES = Object.freeze([
-  "unusedScriptWitness",
   "executionNativeScriptInvalid",
   "executionSourceScriptDecoding",
 ] as const satisfies readonly FraudProofCatalogueCategoryName[]);

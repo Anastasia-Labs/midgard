@@ -69,7 +69,7 @@ them when you edit it.
 | `0000002a` | `outputReferenceScriptDecoding`       | Yes               |
 | `00000031` | `executionSourceScriptDecoding`       | No                |
 | `00000034` | `receivePurposeLanguage`              | Yes               |
-| `0000002f` | `unusedScriptWitness`                 | No                |
+| `0000002f` | `unusedScriptWitness`                 | Yes               |
 | `0000002d` | `missingScriptSource`                 | Yes               |
 | `0000002e` | `missingRedeemer`                     | Yes               |
 | `00000030` | `unusedRedeemer`                      | Yes               |

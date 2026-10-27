@@ -111,6 +111,7 @@ export * from "./testing/complete-lifecycle.js";
 export * from "./transaction-output-non-canonical/index.js";
 export * from "./transition-trace/index.js";
 export * from "./unused-redeemer/index.js";
+export * from "./unused-script-witness/index.js";
 export * from "./validation-cek-selection.js";
 export * from "./validation-trace-dispute/defender.js";
 export { VALIDATION_TRACE_ONE_STEP_CONTRACT_NAMES } from "./validation-trace-dispute/one-step-holders.js";
