@@ -1938,16 +1938,16 @@
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/drop_list_budget_at_80_items",
       "minusControl": "drop_list_fixture_only_at_80_items",
       "ceiling": {
-        "mem": 579846,
-        "cpu": 213086520
+        "mem": 589650,
+        "cpu": 221446125
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/drop_list_budget_at_the_direct_bound - drop_list_fixture_only_at_the_direct_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/drop_list_budget_at_the_direct_bound",
       "minusControl": "drop_list_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 585800,
-        "cpu": 471791138
+        "mem": 595201,
+        "cpu": 480086103
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/drop_list_roots_at_80_items - drop_list_fixture_only_at_80_items": {
@@ -2314,16 +2314,16 @@
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/index_array_budget_at_86_items",
       "minusControl": "index_array_fixture_only_at_86_items",
       "ceiling": {
-        "mem": 446654,
-        "cpu": 168178174
+        "mem": 459030,
+        "cpu": 176983626
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/index_array_budget_at_the_direct_bound - index_array_fixture_only_at_the_direct_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/index_array_budget_at_the_direct_bound",
       "minusControl": "index_array_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 448959,
-        "cpu": 423925978
+        "mem": 461335,
+        "cpu": 432731430
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/index_array_roots_at_86_items - index_array_fixture_only_at_86_items": {
@@ -2447,16 +2447,16 @@
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/length_of_array_budget_at_88_items",
       "minusControl": "length_of_array_fixture_only_at_88_items",
       "ceiling": {
-        "mem": 413616,
-        "cpu": 154561534
+        "mem": 428992,
+        "cpu": 164417473
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/length_of_array_budget_at_the_direct_bound - length_of_array_fixture_only_at_the_direct_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_direct_pv11.test/length_of_array_budget_at_the_direct_bound",
       "minusControl": "length_of_array_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 415918,
-        "cpu": 410093893
+        "mem": 431295,
+        "cpu": 419949833
       }
     },
     "fraud_proofs/validation_trace/cek_core_direct_pv11.test/length_of_array_roots_at_88_items - length_of_array_fixture_only_at_88_items": {
@@ -3132,16 +3132,16 @@
       "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/index_array_budget_at_70_items",
       "minusControl": "index_array_fixture_only_at_70_items",
       "ceiling": {
-        "mem": 496725,
-        "cpu": 181964050
+        "mem": 509101,
+        "cpu": 190769501
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/index_array_budget_at_the_direct_bound - index_array_fixture_only_at_the_direct_bound": {
       "test": "fraud_proofs/validation_trace/cek_core_failure_pv11.test/index_array_budget_at_the_direct_bound",
       "minusControl": "index_array_fixture_only_at_the_direct_bound",
       "ceiling": {
-        "mem": 502684,
-        "cpu": 441107997
+        "mem": 514656,
+        "cpu": 449848809
       }
     },
     "fraud_proofs/validation_trace/cek_core_failure_pv11.test/index_array_known_at_70_items - index_array_fixture_only_at_70_items": {

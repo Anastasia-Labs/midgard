@@ -1,3 +1,4 @@
+use aiken/builtin
 use aiken/collection/list
 
 /// Exact Plutus V3 builtin budget under the canonical V1 pinned cost model.
@@ -687,6 +688,28 @@ fn saturated(cost: Int) -> Int {
   min(cost, 9223372036854775807)
 }
 
+/// The cost rows of the protocol version 11 builtins 88 to 100 other than
+/// unionValue (96) and valueContains (97), twelve big-endian bytes per tag
+/// from 88: the index of the one size Cardano charges (1 byte), cpu quote (4),
+/// cpu slope (4), cpu square (1), memory quote (1) and memory slope (1), so
+/// cpu = quote + slope * s + square * s * s and memory = quote + slope * s.
+///
+///  88 dropList: 0, 116711, 1957, 0, 4, 0
+///  89 lengthOfArray: 0, 231883, 0, 0, 10, 0
+///  90 listToArray: 0, 1000, 24838, 0, 7, 1
+///  91 indexArray: 0, 232010, 0, 0, 32, 0
+///  92 bls12_381_G1_multiScalarMul: 0, 321837444, 25087669, 0, 18, 0
+///  93 bls12_381_G2_multiScalarMul: 0, 617887431, 67302824, 0, 36, 0
+///  94 insertCoin: 3, 356924, 18413, 0, 45, 21
+///  95 lookupCoin: 2, 219951, 9444, 0, 1, 0
+///  96 (unused): zeros
+///  97 (unused): zeros
+///  98 valueData: 0, 1000, 38159, 0, 2, 22
+///  99 unValueData: 0, 1000, 95933, 1, 1, 11
+/// 100 scaleValue: 1, 1000, 277577, 0, 12, 21
+const pv11_cost_rows_v1: ByteArray =
+  #"000001c7e7000007a500040000000389cb00000000000a0000000003e8000061060007010000038a4a0000000000200000132ed984017eceb50012000024d436c70402f5a8002400030005723c000047ed002d150200035b2f000024e400010000000000000000000000000000000000000000000000000000000003e80000950f00021600000003e8000176bd01010b01000003e800043c49000c15"
+
 /// The budget of protocol version 11 builtin `tag` (87 to 100). Each size is
 /// as Cardano measures it for that builtin (`builtin_cost_sizes_v1`); a size
 /// no cost function of the builtin reads is 0.
@@ -704,26 +727,6 @@ fn pv11_budget_v1(tag: Int, sizes: List<Int>) -> BuiltinBudgetV1 {
       },
       z,
     )
-  } else if tag == 88 {
-    Pair(linear2_x(116711, 1957, sizes), 4)
-  } else if tag == 89 {
-    expect [_] = sizes
-    Pair(231883, 10)
-  } else if tag == 90 {
-    let x = one(sizes)
-    Pair(linear1(1000, 24838, x), linear1(7, 1, x))
-  } else if tag == 91 {
-    expect [_, _] = sizes
-    Pair(232010, 32)
-  } else if tag == 92 {
-    Pair(linear2_x(321837444, 25087669, sizes), 18)
-  } else if tag == 93 {
-    Pair(linear2_x(617887431, 67302824, sizes), 36)
-  } else if tag == 94 {
-    expect [_, _, _, depth] = sizes
-    Pair(linear1(356924, 18413, depth), linear1(45, 21, depth))
-  } else if tag == 95 {
-    Pair(linear3_z(219951, 9444, sizes), 1)
   } else if tag == 96 {
     let Pair(x, y) = two(sizes)
     Pair(1000 + 172116 * x + 183150 * y + 6 * x * y, linear2_add(24, 21, sizes))
@@ -737,15 +740,19 @@ fn pv11_budget_v1(tag: Int, sizes: List<Int>) -> BuiltinBudgetV1 {
       },
       1,
     )
-  } else if tag == 98 {
-    let x = one(sizes)
-    Pair(linear1(1000, 38159, x), linear1(2, 22, x))
-  } else if tag == 99 {
-    let x = one(sizes)
-    Pair(1000 + 95933 * x + x * x, linear1(1, 11, x))
   } else {
-    expect tag == 100
-    Pair(linear2_y(1000, 277577, sizes), linear2_y(12, 21, sizes))
+    let row = builtin.slice_bytearray(12 * ( tag - 88 ), 12, pv11_cost_rows_v1)
+    let field = fn(start, width) {
+      builtin.bytearray_to_integer(
+        True,
+        builtin.slice_bytearray(start, width, row),
+      )
+    }
+    let size = builtin.head_list(list.drop(sizes, field(0, 1)))
+    Pair(
+      field(1, 4) + size * ( field(5, 4) + size * field(9, 1) ),
+      field(10, 1) + size * field(11, 1),
+    )
   }
   BuiltinBudgetV1 { cpu: saturated(cpu), memory: saturated(memory) }
 }
@@ -754,18 +761,14 @@ pub fn builtin_budget_v1(
   tag: Int,
   cost_argument_sizes: List<Int>,
 ) -> BuiltinBudgetV1 {
+  // builtin_argument_count_v1 rejects a negative tag.
+  expect and {
+      list.length(cost_argument_sizes) == builtin_argument_count_v1(tag),
+      list.all(cost_argument_sizes, fn(size) { size >= 0 }),
+    }
   if tag > 86 {
-    expect and {
-        list.length(cost_argument_sizes) == builtin_argument_count_v1(tag),
-        list.all(cost_argument_sizes, fn(size) { size >= 0 }),
-      }
     pv11_budget_v1(tag, cost_argument_sizes)
   } else {
-    expect and {
-        tag >= 0,
-        list.length(cost_argument_sizes) == builtin_argument_count_v1(tag),
-        list.all(cost_argument_sizes, fn(size) { size >= 0 }),
-      }
     BuiltinBudgetV1 {
       cpu: cpu_cost_v1(tag, cost_argument_sizes),
       memory: memory_cost_v1(tag, cost_argument_sizes),

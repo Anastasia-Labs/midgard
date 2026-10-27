@@ -315,47 +315,43 @@ fn bit_length_v1(size: Int) -> Int {
 /// Cardano's `ValueMaxDepth`: the bit length of the number of currencies
 /// plus that of the largest token map.
 fn value_max_depth_v1(value: ValueWitnessV1) -> Int {
-  let currencies = value_payload_v1(value)
-  let Pair(count, largest) = list.foldl(
-    currencies,
-    Pair(0, 0),
-    fn(currency, totals) {
-      let Pair(count, largest) = totals
-      let tokens = list.length(builtin.un_map_data(currency.2nd))
-      Pair(
-        count + 1,
+  let currencies = builtin.un_map_data(constant_payload_v1(value))
+  bit_length_v1(list.length(currencies)) + bit_length_v1(
+    list.foldl(
+      currencies,
+      0,
+      fn(currency, largest) {
+        let tokens = list.length(builtin.un_map_data(currency.2nd))
         if tokens > largest {
           tokens
         } else {
           largest
-        },
-      )
-    },
-  )
-  bit_length_v1(count) + bit_length_v1(largest)
-}
-
-fn data_list_node_count_v1(items: List<Data>) -> Int {
-  list.foldl(items, 0, fn(item, total) { total + data_node_count_v1(item) })
-}
-
-/// Cardano's Data node count: one for every constructor, map, list, integer
-/// and byte string, counting both sides of each map entry.
-fn data_node_count_v1(data: Data) -> Int {
-  if data_is_constr(data) {
-    1 + data_list_node_count_v1(builtin.un_constr_data(data).2nd)
-  } else if data_is_map(data) {
-    1 + list.foldl(
-      builtin.un_map_data(data),
-      0,
-      fn(entry, total) {
-        total + data_node_count_v1(entry.1st) + data_node_count_v1(entry.2nd)
+        }
       },
-    )
-  } else if data_is_list(data) {
-    1 + data_list_node_count_v1(builtin.un_list_data(data))
-  } else {
-    1
+    ),
+  )
+}
+
+/// Cardano's Data node count summed over `items`: one for every constructor,
+/// map, list, integer and byte string, counting both sides of each map entry.
+fn data_node_count_v1(items: List<Data>) -> Int {
+  when items is {
+    [] -> 0
+    [data, ..rest] ->
+      1 + data_node_count_v1(rest) + builtin.choose_data(
+        data,
+        data_node_count_v1(builtin.un_constr_data(data).2nd),
+        data_node_count_v1(
+          list.foldr(
+            builtin.un_map_data(data),
+            [],
+            fn(entry, flat) { [entry.1st, entry.2nd, ..flat] },
+          ),
+        ),
+        data_node_count_v1(builtin.un_list_data(data)),
+        0,
+        0,
+      )
   }
 }
 
@@ -371,12 +367,12 @@ fn pv11_cost_sizes_v1(tag: Int, arguments: List<ValueWitnessV1>) -> List<Int> {
     [0]
   } else if tag == 90 {
     expect [source] = arguments
-    [list.length(list_payload_v1(source).2nd)]
+    [list.length(builtin.un_list_data(constant_payload_v1(source)))]
   } else if tag == 91 {
     [0, 0]
   } else if tag == 92 || tag == 93 {
     expect [scalars, _] = arguments
-    [list.length(list_payload_v1(scalars).2nd), 0]
+    [list.length(builtin.un_list_data(constant_payload_v1(scalars))), 0]
   } else if tag == 94 {
     expect [_, _, _, value] = arguments
     [0, 0, 0, value_max_depth_v1(value)]
@@ -385,7 +381,7 @@ fn pv11_cost_sizes_v1(tag: Int, arguments: List<ValueWitnessV1>) -> List<Int> {
     [0, 0, value_max_depth_v1(value)]
   } else if tag == 99 {
     expect [source] = arguments
-    [data_node_count_v1(data_payload_v1(source))]
+    [data_node_count_v1([constant_payload_v1(source)])]
   } else if tag == 100 {
     expect [_, value] = arguments
     [0, value_memory_size_v1(value)]
@@ -4158,19 +4154,26 @@ fn ecdsa_signature_scalar_overflows_v1(signature: ByteArray) -> Bool {
   }
 }
 
+/// 256^n, read big-endian from 0x01 and n zero bytes at run time: a literal
+/// bound would sit in the script at its full width.
+fn power_of_256_v1(n: Int) -> Int {
+  builtin.bytearray_to_integer(
+    True,
+    builtin.cons_bytearray(1, builtin.replicate_byte(n, 0)),
+  )
+}
+
+/// Whether `value` is outside [-bound / 2, bound / 2 - 1] for a power-of-two
+/// `bound`: exactly when quotient(2 * value + 1, bound) != 0, since quotient
+/// truncates toward zero, so one bound covers both ends.
+fn outside_signed_bound_v1(value: Int, bound: Int) -> Bool {
+  builtin.quotient_integer(2 * value + 1, bound) != 0
+}
+
 /// Variant E fails a BLS12-381 scalarMul whose scalar is outside
-/// [-2^4095, 2^4095 - 1]. That range is exactly the scalars s with
-/// quotient(2s + 1, 2^4096) == 0, since quotient truncates toward zero, so a
-/// single 2^4096 bound covers both ends. The bound is built from 0x01 and 512
-/// zero bytes read big-endian; the compiler folds it to one integer literal.
+/// [-2^4095, 2^4095 - 1].
 pub fn bls_scalar_in_bound_v1(scalar: Int) -> Bool {
-  builtin.quotient_integer(
-    2 * scalar + 1,
-    builtin.bytearray_to_integer(
-      True,
-      builtin.cons_bytearray(1, builtin.replicate_byte(512, 0)),
-    ),
-  ) == 0
+  !outside_signed_bound_v1(scalar, power_of_256_v1(512))
 }
 
 fn outside_int64_v1(value: Int) -> Bool {
@@ -4419,20 +4422,6 @@ fn known_builtin_failure_except_uncompress_v1(
   }
 }
 
-/// Whether `value` is outside expModInteger's operand range
-/// [-2^8191, 2^8191 - 1]: exactly the values v with
-/// quotient(2v + 1, 2^8192) != 0, as for `bls_scalar_in_bound_v1`. The bound
-/// is built from 0x01 and 1,024 zero bytes read big-endian.
-fn exp_mod_operand_out_of_bound_v1(value: Int) -> Bool {
-  builtin.quotient_integer(
-    2 * value + 1,
-    builtin.bytearray_to_integer(
-      True,
-      builtin.cons_bytearray(1, builtin.replicate_byte(1024, 0)),
-    ),
-  ) != 0
-}
-
 fn greatest_common_divisor_v1(left: Int, right: Int) -> Int {
   if right == 0 {
     left
@@ -4475,19 +4464,21 @@ fn any_value_entry_v1(
 /// The Plutus-defined failures of the protocol version 11 builtins (87 to
 /// 100), each read on revealed constants of the builtin's types. dropList,
 /// lengthOfArray, listToArray and lookupCoin never fail; valueData fails only
-/// past 40,000 entries, which no direct payload holds. Every argument is read
-/// (through a tuple, which evaluates each element) before any is tested, as
-/// Cardano unlifts them all before the builtin runs: a failure is never
-/// proven over an argument of the wrong kind.
+/// past 40,000 entries, which no direct payload holds. Cardano unlifts every
+/// argument before the builtin runs, so each arm reads every argument before
+/// it returns: through a binding used more than once or under a function
+/// (bound strictly), through a list built ahead of the condition that
+/// decides, or through the first condition evaluated. A failure is never
+/// proven, nor refuted, over an argument of the wrong kind.
 fn pv11_builtin_failure_v1(tag: Int, arguments: List<ValueWitnessV1>) -> Bool {
   if tag == 87 {
     expect [base_value, exponent_value, modulus_value] = arguments
-    let (base, exponent, modulus) = (
-      integer_v1(base_value),
-      integer_v1(exponent_value),
-      integer_v1(modulus_value),
-    )
-    if modulus <= 0 || exp_mod_operand_out_of_bound_v1(modulus) {
+    let base = integer_v1(base_value)
+    let exponent = integer_v1(exponent_value)
+    let modulus = integer_v1(modulus_value)
+    // Operands are bounded to [-2^8191, 2^8191 - 1].
+    let bound = power_of_256_v1(1024)
+    if modulus <= 0 || outside_signed_bound_v1(modulus, bound) {
       True
     } else if modulus == 1 {
       False
@@ -4495,8 +4486,8 @@ fn pv11_builtin_failure_v1(tag: Int, arguments: List<ValueWitnessV1>) -> Bool {
       // A base of zero under a negative exponent has no inverse either:
       // its greatest common divisor with the modulus is the modulus.
       or {
-        exp_mod_operand_out_of_bound_v1(base),
-        exp_mod_operand_out_of_bound_v1(exponent),
+        outside_signed_bound_v1(base, bound),
+        outside_signed_bound_v1(exponent, bound),
         and {
           exponent < 0,
           greatest_common_divisor_v1(
@@ -4508,54 +4499,53 @@ fn pv11_builtin_failure_v1(tag: Int, arguments: List<ValueWitnessV1>) -> Bool {
     }
   } else if tag == 91 {
     expect [source, index_value] = arguments
-    let (items, index) = (array_payload_v1(source).2nd, integer_v1(index_value))
-    index < 0 || index >= list.length(items)
+    let index = integer_v1(index_value)
+    index >= list.length(array_payload_v1(source).2nd) || index < 0
   } else if tag == 92 || tag == 93 {
     // Every scalar is bounded, past the points too.
     expect [scalars, points] = arguments
-    let (Pair(scalar_type, scalar_items), Pair(point_type, _)) = (
-      list_payload_v1(scalars),
-      list_payload_v1(points),
-    )
+    let Pair(scalar_type, scalar_items) = list_payload_v1(scalars)
+    let bound = power_of_256_v1(512)
     and {
-      scalar_type == cek_constant_v1.IntegerConstant,
-      point_type == if tag == 92 {
-        cek_constant_v1.BlsG1Constant
-      } else {
-        cek_constant_v1.BlsG2Constant
-      },
+      [scalar_type, list_payload_v1(points).1st] == [
+        cek_constant_v1.IntegerConstant,
+        if tag == 92 {
+          cek_constant_v1.BlsG1Constant
+        } else {
+          cek_constant_v1.BlsG2Constant
+        },
+      ],
       list.any(
         scalar_items,
-        fn(scalar) { !bls_scalar_in_bound_v1(builtin.un_i_data(scalar)) },
+        fn(scalar) { outside_signed_bound_v1(builtin.un_i_data(scalar), bound) },
       ),
     }
   } else if tag == 94 {
     // Deleting a coin (a zero quantity) never fails.
-    expect [currency_value, token_value, quantity_value, value] = arguments
-    let (currency, token, quantity, _) = (
-      bytes_v1(currency_value),
-      bytes_v1(token_value),
-      integer_v1(quantity_value),
-      value_payload_v1(value),
-    )
+    expect [currency, token, quantity_value, value] = arguments
+    let quantity = integer_v1(quantity_value)
+    // The Value is unlifted too, though no Value fails the insertion.
+    expect list.length(value_payload_v1(value)) >= 0
     and {
-      quantity != 0,
       or {
-        bytearray.length(currency) > cek_constant_v1.max_value_key_bytes,
-        bytearray.length(token) > cek_constant_v1.max_value_key_bytes,
+        list.any(
+          [bytes_v1(currency), bytes_v1(token)],
+          fn(key) {
+            bytearray.length(key) > cek_constant_v1.max_value_key_bytes
+          },
+        ),
         quantity_out_of_bound_v1(quantity),
       },
+      quantity != 0,
     }
   } else if tag == 96 {
     // Only a coin both Values hold can sum out of range.
     expect [left, right] = arguments
-    let (left_currencies, right_currencies) = (
-      value_payload_v1(left),
-      value_payload_v1(right),
+    let right_value = builtin.un_value_data(
+      builtin.map_data(value_payload_v1(right)),
     )
-    let right_value = builtin.un_value_data(builtin.map_data(right_currencies))
     any_value_entry_v1(
-      left_currencies,
+      value_payload_v1(left),
       fn(currency, token, quantity) {
         quantity_out_of_bound_v1(
           quantity + builtin.lookup_value(currency, token, right_value),
@@ -4564,26 +4554,23 @@ fn pv11_builtin_failure_v1(tag: Int, arguments: List<ValueWitnessV1>) -> Bool {
     )
   } else if tag == 97 {
     expect [left, right] = arguments
-    let (left_currencies, right_currencies) = (
-      value_payload_v1(left),
-      value_payload_v1(right),
+    list.any(
+      [value_payload_v1(left), value_payload_v1(right)],
+      fn(currencies) {
+        any_value_entry_v1(
+          currencies,
+          fn(_currency, _token, quantity) { quantity < 0 },
+        )
+      },
     )
-    let negative = fn(_currency, _token, quantity) { quantity < 0 }
-    or {
-      any_value_entry_v1(left_currencies, negative),
-      any_value_entry_v1(right_currencies, negative),
-    }
   } else if tag == 99 {
     expect [source] = arguments
     !cek_constant_v1.value_data_is_canonical_v1(data_payload_v1(source))
   } else if tag == 100 {
     expect [scalar_value, value] = arguments
-    let (scalar, currencies) = (
-      integer_v1(scalar_value),
-      value_payload_v1(value),
-    )
+    let scalar = integer_v1(scalar_value)
     any_value_entry_v1(
-      currencies,
+      value_payload_v1(value),
       fn(_currency, _token, quantity) {
         quantity_out_of_bound_v1(scalar * quantity)
       },
