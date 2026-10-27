@@ -1,3 +1,4 @@
+import { DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY_DEFINITION } from "../distinct-asset-accumulation-limit/workflow.js";
 import { EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_DEFINITION } from "../execution-native-script-invalid/workflow.js";
 import { EXECUTION_SOURCE_SCRIPT_DECODING_FAMILY_DEFINITION } from "../execution-source-script-decoding/workflow.js";
 import { FIELD_ITEM_WIDTH_ILLEGAL_FAMILY_DEFINITION } from "../field-item-width-illegal/workflow.js";
@@ -13,6 +14,7 @@ import { OBSERVER_ORDER_INVALID_FAMILY_DEFINITION } from "../observer-order-inva
 import { OBSERVERS_FORBIDDEN_FAMILY_DEFINITION } from "../observers-forbidden-on-untagged-network/v1.js";
 import { OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_DEFINITION } from "../output-reference-script-decoding/authenticated-workflow.js";
 import { PROTECTED_OUTPUT_SIGNER_MISSING_FAMILY_DEFINITION } from "../protected-output-signer-missing/authenticated-workflow.js";
+import { RECEIVE_PURPOSE_LANGUAGE_FAMILY_DEFINITION } from "../receive-purpose-language/workflow.js";
 import { REDEEMER_CANONICITY_FAMILY_DEFINITION } from "../redeemer-canonicity/runtime.js";
 import { RESOLVED_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION } from "../resolved-output-non-canonical/authenticated-workflow.js";
 import { SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_DEFINITION } from "../script-integrity-hash-mismatch/workflow.js";
@@ -21,6 +23,7 @@ import { SPEND_INPUT_SIGNER_MISSING_FAMILY_DEFINITION } from "../spend-input-sig
 import { TRANSACTION_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION } from "../transaction-output-non-canonical/workflow.js";
 import { TRANSITION_TRACE_FAMILY_DEFINITION } from "../transition-trace/workflow.js";
 import { UNUSED_REDEEMER_FAMILY_DEFINITION } from "../unused-redeemer/workflow.js";
+import { UNUSED_SCRIPT_WITNESS_FAMILY_DEFINITION } from "../unused-script-witness/workflow.js";
 import { WITHDRAWAL_MISTAG_FAMILY_DEFINITION } from "../withdrawal-mistag/workflow.js";
 import { WITNESS_SCRIPT_DECODING_FAMILY_DEFINITION } from "../witness-script-decoding/workflow.js";
 import { CANONICAL_DECODABILITY_FAMILY_DEFINITION } from "./canonical-decodability.js";
@@ -57,9 +60,12 @@ type CursorFamilyDefinitions = Readonly<{
   missingRedeemer: typeof MISSING_REDEEMER_FAMILY_DEFINITION;
   missingScriptSource: typeof MISSING_SCRIPT_SOURCE_FAMILY_DEFINITION;
   unusedRedeemer: typeof UNUSED_REDEEMER_FAMILY_DEFINITION;
+  receivePurposeLanguage: typeof RECEIVE_PURPOSE_LANGUAGE_FAMILY_DEFINITION;
   scriptIntegrityHashMismatch: typeof SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_DEFINITION;
   executionSourceScriptDecoding: typeof EXECUTION_SOURCE_SCRIPT_DECODING_FAMILY_DEFINITION;
   executionNativeScriptInvalid: typeof EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_DEFINITION;
+  distinctAssetAccumulationLimit: typeof DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY_DEFINITION;
+  unusedScriptWitness: typeof UNUSED_SCRIPT_WITNESS_FAMILY_DEFINITION;
 }>;
 
 export const CURSOR_FAMILY_DEFINITIONS: CursorFamilyDefinitions = Object.freeze(
@@ -91,12 +97,16 @@ export const CURSOR_FAMILY_DEFINITIONS: CursorFamilyDefinitions = Object.freeze(
     missingRedeemer: MISSING_REDEEMER_FAMILY_DEFINITION,
     missingScriptSource: MISSING_SCRIPT_SOURCE_FAMILY_DEFINITION,
     unusedRedeemer: UNUSED_REDEEMER_FAMILY_DEFINITION,
+    receivePurposeLanguage: RECEIVE_PURPOSE_LANGUAGE_FAMILY_DEFINITION,
     scriptIntegrityHashMismatch:
       SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_DEFINITION,
     executionSourceScriptDecoding:
       EXECUTION_SOURCE_SCRIPT_DECODING_FAMILY_DEFINITION,
     executionNativeScriptInvalid:
       EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_DEFINITION,
+    distinctAssetAccumulationLimit:
+      DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY_DEFINITION,
+    unusedScriptWitness: UNUSED_SCRIPT_WITNESS_FAMILY_DEFINITION,
   },
 );
 

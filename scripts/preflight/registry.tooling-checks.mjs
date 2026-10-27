@@ -23,6 +23,7 @@ const isGeneratedArtifact = (path) =>
 // demo/scripts/lib, and the files outside demo/scripts/** they read.
 const DEMO_SCRIPT_TESTS = [
   "demo/scripts/deployment-profiles.test.mjs",
+  "demo/scripts/deployment-profiles.retention.test.mjs",
   "demo/scripts/interactive-emulator.test.mjs",
 ];
 const DEMO_SCRIPT_TEST_INPUTS = [

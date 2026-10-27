@@ -144,6 +144,9 @@ export const JOURNEY_SCRIPT_FORCED_REASONS = {
     ScriptSourceMissing: { purpose_kind: 1n, purpose_index: 0n },
   },
   unusedRedeemer: { UnusedRedeemer: { redeemer_index: 0n } },
+  receivePurposeLanguage: {
+    ReceivePurposePlutusV3Forbidden: { purpose_kind: 3n, purpose_index: 0n },
+  },
   scriptIntegrityHashMismatch: "ScriptIntegrityHashMismatch",
   executionSourceScriptDecoding: {
     ExecutionNativeScriptMalformed: { purpose_kind: 1n, purpose_index: 0n },
@@ -151,6 +154,10 @@ export const JOURNEY_SCRIPT_FORCED_REASONS = {
   executionNativeScriptInvalid: {
     ExecutionNativeScriptFalse: { purpose_kind: 1n, purpose_index: 0n },
   },
+  distinctAssetAccumulationLimit: {
+    InputAssetAccumulationLimit: { input_index: 0n, asset_index: 0n },
+  },
+  unusedScriptWitness: { UnusedScriptWitness: { script_index: 0n } },
 } satisfies Partial<
   Record<SDK.FraudProofCatalogueCategoryName, SDK.RejectionReason>
 >;

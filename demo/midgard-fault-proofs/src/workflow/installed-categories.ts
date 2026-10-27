@@ -8,11 +8,9 @@ import {
  * workflow registration row records why it is missing. Their on-chain
  * validators are unchanged.
  */
-export const UNINSTALLED_FRAUD_PROOF_CATEGORIES = Object.freeze([
-  "unusedScriptWitness",
-  "receivePurposeLanguage",
-  "distinctAssetAccumulationLimit",
-] as const satisfies readonly FraudProofCatalogueCategoryName[]);
+export const UNINSTALLED_FRAUD_PROOF_CATEGORIES = Object.freeze(
+  [] as const satisfies readonly FraudProofCatalogueCategoryName[],
+);
 
 export type UninstalledFraudProofCategory =
   (typeof UNINSTALLED_FRAUD_PROOF_CATEGORIES)[number];

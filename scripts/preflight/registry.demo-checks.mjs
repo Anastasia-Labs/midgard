@@ -32,6 +32,7 @@ export const FULL_RUN = [
   `${DEMO}/scripts/deployment-profiles.mjs`,
   `${DEMO}/scripts/deployment-profile-aiken.mjs`,
   `${DEMO}/scripts/deployment-profile-identity.mjs`,
+  `${DEMO}/scripts/deployment-profile-da.mjs`,
   `${DEMO}/scripts/deployment-profile-budgets.mjs`,
   `${DEMO}/scripts/deployment-profile-operator-economics.mjs`,
   // The compiler: demo/flake.lock pins the aiken every check runs.

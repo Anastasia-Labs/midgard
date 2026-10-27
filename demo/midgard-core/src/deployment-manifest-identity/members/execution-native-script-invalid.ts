@@ -186,9 +186,9 @@ export const executionNativeScriptInvalidMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole:
         "V1 fraud-proof execution-native-script-invalid mint-grammar",
-      manifestPosition: 661,
-      publicationPosition: 656,
-      referenceRolePosition: 656,
+      manifestPosition: 704,
+      publicationPosition: 699,
+      referenceRolePosition: 699,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/mint_grammar.main.spend",
@@ -197,9 +197,9 @@ export const executionNativeScriptInvalidMembers = defineDeploymentFamily(
     fraudProofExecutionNativeScriptInvalidMintScan: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof execution-native-script-invalid mint-scan",
-      manifestPosition: 662,
-      publicationPosition: 657,
-      referenceRolePosition: 657,
+      manifestPosition: 705,
+      publicationPosition: 700,
+      referenceRolePosition: 700,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/mint_scan.main.spend",
@@ -209,9 +209,9 @@ export const executionNativeScriptInvalidMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole:
         "V1 fraud-proof execution-native-script-invalid receive-start",
-      manifestPosition: 663,
-      publicationPosition: 658,
-      referenceRolePosition: 658,
+      manifestPosition: 706,
+      publicationPosition: 701,
+      referenceRolePosition: 701,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/receive_start.main.spend",
@@ -221,9 +221,9 @@ export const executionNativeScriptInvalidMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole:
         "V1 fraud-proof execution-native-script-invalid receive-grammar",
-      manifestPosition: 664,
-      publicationPosition: 659,
-      referenceRolePosition: 659,
+      manifestPosition: 707,
+      publicationPosition: 702,
+      referenceRolePosition: 702,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/receive_grammar.main.spend",
@@ -233,9 +233,9 @@ export const executionNativeScriptInvalidMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole:
         "V1 fraud-proof execution-native-script-invalid receive-outputs",
-      manifestPosition: 665,
-      publicationPosition: 660,
-      referenceRolePosition: 660,
+      manifestPosition: 708,
+      publicationPosition: 703,
+      referenceRolePosition: 703,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/receive_outputs.main.spend",
@@ -245,9 +245,9 @@ export const executionNativeScriptInvalidMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole:
         "V1 fraud-proof execution-native-script-invalid receive-finish",
-      manifestPosition: 666,
-      publicationPosition: 661,
-      referenceRolePosition: 661,
+      manifestPosition: 709,
+      publicationPosition: 704,
+      referenceRolePosition: 704,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/receive_finish.main.spend",
@@ -257,9 +257,9 @@ export const executionNativeScriptInvalidMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole:
         "V1 fraud-proof execution-native-script-invalid receive-declaration",
-      manifestPosition: 667,
-      publicationPosition: 662,
-      referenceRolePosition: 662,
+      manifestPosition: 710,
+      publicationPosition: 705,
+      referenceRolePosition: 705,
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/receive_declaration.main.spend",
@@ -269,9 +269,9 @@ export const executionNativeScriptInvalidMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole:
         "V1 fraud-proof execution-native-script-invalid source-lookup",
-      manifestPosition: 668,
-      publicationPosition: 663,
-      referenceRolePosition: 663,
+      manifestPosition: 711,
+      publicationPosition: 706,
+      referenceRolePosition: 706,
       commands: [],
       validatorTitle:
         "fraud_proofs/execution_native_script_invalid/lookup.main.spend",
@@ -280,9 +280,9 @@ export const executionNativeScriptInvalidMembers = defineDeploymentFamily(
     fraudProofExecutionNativeScriptInvalidSigners: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof execution-native-script-invalid signers",
-      manifestPosition: 669,
-      publicationPosition: 664,
-      referenceRolePosition: 664,
+      manifestPosition: 712,
+      publicationPosition: 707,
+      referenceRolePosition: 707,
       commands: [],
       validatorTitle:
         "fraud_proofs/execution_native_script_invalid/signers.main.spend",
@@ -291,9 +291,9 @@ export const executionNativeScriptInvalidMembers = defineDeploymentFamily(
     fraudProofExecutionNativeScriptInvalidEvaluate: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof execution-native-script-invalid evaluate",
-      manifestPosition: 670,
-      publicationPosition: 665,
-      referenceRolePosition: 665,
+      manifestPosition: 713,
+      publicationPosition: 708,
+      referenceRolePosition: 708,
       commands: [],
       validatorTitle:
         "fraud_proofs/execution_native_script_invalid/evaluate.main.spend",
@@ -302,9 +302,9 @@ export const executionNativeScriptInvalidMembers = defineDeploymentFamily(
     fraudProofExecutionNativeScriptInvalidSpendKey: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof execution-native-script-invalid spend-key",
-      manifestPosition: 671,
-      publicationPosition: 666,
-      referenceRolePosition: 666,
+      manifestPosition: 714,
+      publicationPosition: 709,
+      referenceRolePosition: 709,
       commands: [],
       validatorTitle:
         "fraud_proofs/execution_native_script_invalid/spend_key.main.spend",
@@ -314,9 +314,9 @@ export const executionNativeScriptInvalidMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole:
         "V1 fraud-proof execution-native-script-invalid spend-rank",
-      manifestPosition: 672,
-      publicationPosition: 667,
-      referenceRolePosition: 667,
+      manifestPosition: 715,
+      publicationPosition: 710,
+      referenceRolePosition: 710,
       commands: [],
       validatorTitle:
         "fraud_proofs/execution_native_script_invalid/spend_rank.main.spend",
@@ -325,9 +325,9 @@ export const executionNativeScriptInvalidMembers = defineDeploymentFamily(
     fraudProofExecutionNativeScriptInvalidTerminal: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof execution-native-script-invalid terminal",
-      manifestPosition: 673,
-      publicationPosition: 668,
-      referenceRolePosition: 668,
+      manifestPosition: 716,
+      publicationPosition: 711,
+      referenceRolePosition: 711,
       commands: [],
       validatorTitle:
         "fraud_proofs/execution_native_script_invalid/terminal.main.spend",

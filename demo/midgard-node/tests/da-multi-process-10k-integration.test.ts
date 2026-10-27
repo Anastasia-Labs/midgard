@@ -241,6 +241,7 @@ describe("real separate-process canonical V1 DA publication", () => {
         localPrivateKeySource: producerSeed,
         threshold: THRESHOLD,
         requestTimeoutMs: DA_TRANSPORT_LIMITS.requestTimeoutMs,
+        retentionDays: 15,
         maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
         maxInlineResponseBytes: DA_TRANSPORT_LIMITS.maxInlineResponseBytes,
         maxChunkBytes: DA_TRANSPORT_LIMITS.maxChunkBytes,

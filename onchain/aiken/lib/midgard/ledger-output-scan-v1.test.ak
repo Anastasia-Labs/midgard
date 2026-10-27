@@ -1,6 +1,7 @@
 use aiken/builtin
 use aiken/primitive/bytearray
 use midgard/ledger_output_scan_v1
+use midgard/ledger_output_value_size_fixture_v1 as fixture
 
 const address = #"6011111111111111111111111111111111111111111111111111111111"
 
@@ -454,5 +455,178 @@ test step_refuses_a_result_that_is_not_well_formed() {
     ledger_output_scan_v1.control_is_well_formed(control),
     ledger_output_scan_v1.step_well_formed_v1(control, 3, window, 0) == None,
     ledger_output_scan_v1.step_v1(control, 3, window, 0) == None,
+  }
+}
+
+/// Runs every step from `control` over the whole output: `None` when the scan
+/// reaches the exact terminal, otherwise the cursor of the refused step.
+fn refused_at(
+  control: ledger_output_scan_v1.LedgerOutputScanControlV1,
+  output: ByteArray,
+) -> Option<Int> {
+  let total_length = bytearray.length(output)
+  if and {
+    control.stage == ledger_output_scan_v1.stage_optional_field,
+    control.cursor == total_length,
+  } {
+    when ledger_output_scan_v1.finish_v1(control, total_length) is {
+      Some(terminal) ->
+        if ledger_output_scan_v1.terminal_is_exact_v1(terminal, total_length) {
+          None
+        } else {
+          Some(control.cursor)
+        }
+      None -> Some(control.cursor)
+    }
+  } else {
+    when
+      ledger_output_scan_v1.step_v1(
+        control,
+        total_length,
+        output,
+        control.cursor,
+      )
+    is {
+      Some(next) -> refused_at(next, output)
+      None -> Some(control.cursor)
+    }
+  }
+}
+
+// The Cardano value cap. `ledger_output_value_size_fixture_v1` spells values
+// of 5,000 and 5,001 bytes with long asset names inside a two-entry output,
+// so the value runs across the 4,095-byte chunk boundary.
+
+/// Scans `output` from the initial control; each step reads the chunk that
+/// holds the cursor and, at a token stage, the chunk after it. Returns the
+/// last control the scan reached and whether it is the exact terminal.
+fn scan_output(
+  output: ByteArray,
+) -> (ledger_output_scan_v1.LedgerOutputScanControlV1, Bool) {
+  scan_output_from(
+    ledger_output_scan_v1.initial_control_v1(),
+    output,
+    bytearray.length(output) + 32,
+  )
+}
+
+fn scan_output_from(
+  control: ledger_output_scan_v1.LedgerOutputScanControlV1,
+  output: ByteArray,
+  fuel: Int,
+) -> (ledger_output_scan_v1.LedgerOutputScanControlV1, Bool) {
+  expect fuel > 0
+  let total_length = bytearray.length(output)
+  when ledger_output_scan_v1.finish_v1(control, total_length) is {
+    Some(terminal) ->
+      (
+        terminal,
+        ledger_output_scan_v1.terminal_is_exact_v1(terminal, total_length),
+      )
+    None -> {
+      let chunk_start = control.cursor - control.cursor % 4095
+      let span = if control.stage <= ledger_output_scan_v1.stage_optional_field {
+        8190
+      } else {
+        4095
+      }
+      let window = bytearray.slice(output, chunk_start, chunk_start + span - 1)
+      when
+        ledger_output_scan_v1.step_v1(
+          control,
+          total_length,
+          window,
+          control.cursor - chunk_start,
+        )
+      is {
+        None -> (control, False)
+        Some(next) -> scan_output_from(next, output, fuel - 1)
+      }
+    }
+  }
+}
+
+/// Two policies, `..0001` then `..0002`, the first holding names `01` and
+/// `02`: distinct and ascending throughout.
+const distinct_ascending_output =
+  #"a200581d604747474747474747474747474747474747474747474747474747474701821a001e8480a2581c11111111111111111111111111111111111111111111111111110001a2410101410202581c11111111111111111111111111111111111111111111111111110002a1410201"
+
+test distinct_ascending_policies_and_names_reach_the_terminal() {
+  refused_at(
+    ledger_output_scan_v1.initial_control_v1(),
+    distinct_ascending_output,
+  ) == None
+}
+
+/// The second policy id repeats the first: refused at the second policy
+/// header, byte 75.
+test refuses_a_repeated_policy_id() {
+  refused_at(
+    ledger_output_scan_v1.initial_control_v1(),
+    #"a200581d604747474747474747474747474747474747474747474747474747474701821a001e8480a2581c11111111111111111111111111111111111111111111111111110001a1410101581c11111111111111111111111111111111111111111111111111110001a1410201",
+  ) == Some(75)
+}
+
+/// The policy ids descend: refused at the second policy header, byte 75.
+test refuses_descending_policy_ids() {
+  refused_at(
+    ledger_output_scan_v1.initial_control_v1(),
+    #"a200581d604747474747474747474747474747474747474747474747474747474701821a001e8480a2581c11111111111111111111111111111111111111111111111111110002a1410101581c11111111111111111111111111111111111111111111111111110001a1410201",
+  ) == Some(75)
+}
+
+/// The second name under one policy repeats the first: refused at the second
+/// asset, byte 75.
+test refuses_a_repeated_asset_name() {
+  refused_at(
+    ledger_output_scan_v1.initial_control_v1(),
+    #"a200581d604747474747474747474747474747474747474747474747474747474701821a001e8480a1581c11111111111111111111111111111111111111111111111111110001a2410101410102",
+  ) == Some(75)
+}
+
+test scan_accepts_a_value_of_5000_bytes_across_the_chunk_boundary() {
+  let value = fixture.long_name_value(fixture.quantity_at_cap)
+  let output = fixture.long_name_output(fixture.quantity_at_cap)
+  let (terminal, exact) = scan_output(output)
+  and {
+    bytearray.length(value) == 5000,
+    bytearray.length(output) - bytearray.length(value) < 4095,
+    bytearray.length(output) > 4095,
+    exact,
+    terminal.cardano_value_size == 5000,
+    terminal.asset_count == 142,
+  }
+}
+
+test scan_refuses_a_value_of_5001_bytes_past_the_chunk_boundary() {
+  let value = fixture.long_name_value(fixture.quantity_over_cap)
+  let output = fixture.long_name_output(fixture.quantity_over_cap)
+  let (last, exact) = scan_output(output)
+  and {
+    bytearray.length(value) == 5001,
+    !exact,
+    // The refusal is the last asset, in the second chunk: every earlier
+    // token, including the ones read across the chunk boundary, advanced.
+    last.stage == ledger_output_scan_v1.stage_asset,
+    last.asset_remaining == 1,
+    last.asset_count == 141,
+    last.cursor > 4095,
+    last.cardano_value_size == 4974,
+  }
+}
+
+test control_cardano_value_size_is_well_formed_up_to_the_cap() {
+  let control = terminal_control()
+  let sized = fn(size) {
+    ledger_output_scan_v1.LedgerOutputScanControlV1 {
+      ..control,
+      cardano_value_size: size,
+    }
+  }
+  and {
+    ledger_output_scan_v1.control_is_well_formed(sized(5000)),
+    ledger_output_scan_v1.terminal_is_exact_v1(sized(5000), 11249),
+    !ledger_output_scan_v1.control_is_well_formed(sized(5001)),
+    !ledger_output_scan_v1.terminal_is_exact_v1(sized(5001), 11249),
   }
 }

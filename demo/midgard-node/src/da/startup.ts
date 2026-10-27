@@ -69,6 +69,20 @@ export const assertDaDeploymentIdentityCompatible = (
   }
 };
 
+/** The advertised history window is exactly the verified deployment promise. */
+const assertDaRetentionCompatible = (
+  runtimeRetentionDays: number,
+  identity: ContractDeploymentIdentityValue,
+): void => {
+  const declared = identity.manifest?.da.transportProfile.retentionDays;
+  if (declared === undefined || runtimeRetentionDays !== declared)
+    throw new DatabaseInitializationError({
+      message:
+        "DA runtime retention does not match the verified deployment manifest",
+      cause: `runtime_retention_days=${String(runtimeRetentionDays)},manifest_retention_days=${String(declared)}`,
+    });
+};
+
 export type DaHardeningStartupPreflight = {
   readonly envelopeMode: "identity" | "zstd";
   readonly manifest: Awaited<
@@ -106,6 +120,11 @@ export const prepareDaHardeningStartup = Effect.gen(function* () {
         manifest.contractDeploymentManifestId,
         contractIdentity,
       ),
+    catch: (cause) => cause as DatabaseInitializationError,
+  });
+  yield* Effect.try({
+    try: () =>
+      assertDaRetentionCompatible(manifest.retentionDays, contractIdentity),
     catch: (cause) => cause as DatabaseInitializationError,
   });
   return { envelopeMode, manifest } satisfies DaHardeningStartupPreflight;

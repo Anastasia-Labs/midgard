@@ -1,6 +1,7 @@
 import { encodeProofThreadForcedSourceKey } from "@al-ft/midgard-sdk";
 import { type VerdictSubject } from "@al-ft/midgard-sdk";
 
+import { detectDistinctAssetAccumulationLimitReplay } from "../distinct-asset-accumulation-limit/replay.js";
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { detectExecutionNativeScriptInvalidReplay } from "../execution-native-script-invalid/replay.js";
 import { detectExecutionSourceScriptDecodingReplay } from "../execution-source-script-decoding/replay.js";
@@ -18,6 +19,7 @@ import { detectObserversForbiddenForcedReplay } from "../observers-forbidden-on-
 import { detectOutputReferenceScriptDecodingCanonicalViolations } from "../output-reference-script-decoding/output-reference-script-decoding.canonical-findings.js";
 import { detectProtectedOutputSignerMissingCompleteReplay } from "../protected-output-signer-missing/protected-output-signer-missing.js";
 import { protectedOutputSignerEvidenceIdentity } from "../protected-output-signer-missing/workflow.js";
+import { detectReceivePurposeLanguageReplay } from "../receive-purpose-language/replay.js";
 import {
   deriveResolvedOutputPriorLedgerReplay,
   detectResolvedOutputNonCanonicalCompleteReplay,
@@ -29,6 +31,7 @@ import { detectSpendInputSignerMissingCompleteReplay } from "../spend-input-sign
 import { spendInputSignerWorkflowEvidenceIdentity } from "../spend-input-signer-missing/workflow.js";
 import { detectTransactionOutputNonCanonicalCompleteReplay } from "../transaction-output-non-canonical/workflow.js";
 import { detectUnusedRedeemerReplay } from "../unused-redeemer/replay.js";
+import { detectUnusedScriptWitnessReplay } from "../unused-script-witness/replay.js";
 import { detectWitnessScriptDecodingCompleteReplay } from "../witness-script-decoding/workflow.js";
 import { completeCanonicalReplayPredecessorLedger } from "./complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
@@ -167,6 +170,22 @@ export const UNUSED_REDEEMER_COMPLETE_CANONICAL_REPLAY = completeReplayer(
     }),
 );
 
+/** Complete receive-purpose-language replay: admitted transactions with a
+ * redeemer, and forced rejections recording
+ * `ReceivePurposePlutusV3Forbidden`. */
+export const RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY =
+  completeReplayer(
+    ["receivePurposeLanguage"],
+    async (evidence, context) =>
+      await detectReceivePurposeLanguageReplay({
+        block: evidence,
+        predecessor: completeCanonicalReplayPredecessorLedger({
+          evidence,
+          context,
+        }),
+      }),
+  );
+
 /** Complete script-integrity-hash-mismatch replay: admitted transactions,
  * forced rejections recording the mismatch, and forced rejections whose
  * reason ranks after the script-integrity phase. */
@@ -213,6 +232,35 @@ export const EXECUTION_NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY =
         }),
       }),
   );
+
+/** Complete distinct-asset-accumulation-limit replay: admitted transactions
+ * and forced rejections whose reason ranks in or after the value phase. */
+export const DISTINCT_ASSET_ACCUMULATION_LIMIT_COMPLETE_CANONICAL_REPLAY =
+  completeReplayer(
+    ["distinctAssetAccumulationLimit"],
+    async (evidence, context) =>
+      await detectDistinctAssetAccumulationLimitReplay({
+        block: evidence,
+        predecessor: completeCanonicalReplayPredecessorLedger({
+          evidence,
+          context,
+        }),
+      }),
+  );
+/** Complete unused-script-witness replay: admitted transactions carrying a
+ * script witness, forced rejections recording an unused witness, and forced
+ * rejections whose reason ranks at or after the unused audit. */
+export const UNUSED_SCRIPT_WITNESS_COMPLETE_CANONICAL_REPLAY = completeReplayer(
+  ["unusedScriptWitness"],
+  async (evidence, context) =>
+    await detectUnusedScriptWitnessReplay({
+      block: evidence,
+      predecessor: completeCanonicalReplayPredecessorLedger({
+        evidence,
+        context,
+      }),
+    }),
+);
 
 export const NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY = completeReplayer(
   ["nativeScriptInvalid"],

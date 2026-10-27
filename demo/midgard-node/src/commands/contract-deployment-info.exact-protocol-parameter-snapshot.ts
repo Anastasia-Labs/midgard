@@ -3,12 +3,12 @@ import {
   DA_TRANSPORT_LIMITS,
   DA_TRANSPORT_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/da-transport";
+import { deploymentDaRetentionDays } from "@al-ft/midgard-core/da-transport";
 import {
   type DeploymentManifest,
   type DeploymentManifestCardanoProtocolParameters,
   deriveDeploymentManifestCardanoProtocolParametersFromLedger,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core/retention-window";
 import { GENESIS_HEADER_HASH } from "@al-ft/midgard-sdk";
 import { type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -113,7 +113,7 @@ export const deploymentDaTransportProfile = (
   envelopeEncoding: nodeConfig.MIDGARD_DA_PAYLOAD_ENVELOPE,
   zstdLevel: nodeConfig.MIDGARD_DA_ZSTD_LEVEL,
   limits: DA_TRANSPORT_LIMITS,
-  retentionDays: MIDGARD_RETENTION_WINDOW.retentionDays,
+  retentionDays: deploymentDaRetentionDays(),
 });
 
 export const buildDeploymentManifestIdentityContextProgram: Effect.Effect<

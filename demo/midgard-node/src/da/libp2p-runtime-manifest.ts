@@ -226,7 +226,8 @@ export const generateDaLibp2pRuntimeManifest = async (
         max_streams_per_peer: DA_TRANSPORT_LIMITS.maxStreamsPerPeer,
         request_timeout_ms: DA_TRANSPORT_LIMITS.requestTimeoutMs,
       },
-      retention_days: DA_TRANSPORT_LIMITS.minimumRetentionDays,
+      retention_days:
+        deploymentIdentity.manifest.da.transportProfile.retentionDays,
     },
     public_retained_da: {
       profile: "public-retained-da-v1",

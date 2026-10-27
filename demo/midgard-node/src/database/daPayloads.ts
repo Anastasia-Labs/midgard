@@ -316,13 +316,15 @@ export const finalityHeldPayload = (
  * Retention prune (GOAL_SPEC 9.4 / Q54), the SQL form of the core
  * `daRetentionPruneDecision`.
  *
- * Challengeability age or a removal permits deletion only once the removal
+ * Both challengeability and promised history age, or a removal, permit
+ * deletion only once the removal
  * is final, and never for the confirmed head, the live queue, a header held
  * for finality (`finalityHeldPayload`, re-read in the DELETE statement) or a
  * journal still read by recovery.
  */
 export const pruneBeyondRetention = (args: {
   readonly challengeableCutoff: Date;
+  readonly retentionCutoff: Date;
   readonly view: RetentionL1View;
   readonly deploymentIdentityDigest: Buffer | undefined;
 }): Effect.Effect<number, DatabaseError, Database> =>
@@ -340,7 +342,8 @@ export const pruneBeyondRetention = (args: {
       Effect.gen(function* () {
         const rows = yield* sql<{ readonly header_hash: Buffer }>`
       DELETE FROM ${sql(tableName)}
-      WHERE (${sql(Columns.BLOCK_TIME)} < ${args.challengeableCutoff} OR ${removed})
+      WHERE ((${sql(Columns.BLOCK_TIME)} < ${args.challengeableCutoff}
+          AND ${sql(Columns.BLOCK_TIME)} < ${args.retentionCutoff}) OR ${removed})
         AND NOT ${sql.in(Columns.HEADER_HASH, exempt)}
         AND NOT ${finalityHeldPayload(sql, args.deploymentIdentityDigest, `${tableName}.${Columns.HEADER_HASH}`, args.view.finalThroughHeight)}
         AND NOT ${args.deploymentIdentityDigest === undefined ? sql`FALSE` : recoveryRelevantJournal(sql, Columns.HEADER_HASH)}

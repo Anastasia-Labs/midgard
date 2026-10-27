@@ -9,10 +9,12 @@ on:
       - "demo/scripts/deployment-profiles.mjs"
       - "demo/scripts/deployment-profile-aiken.mjs"
       - "demo/scripts/deployment-profile-identity.mjs"
+      - "demo/scripts/deployment-profile-da.mjs"
       - "demo/scripts/deployment-profile-budgets.mjs"
       - "demo/scripts/deployment-profile-operator-economics.mjs"
       - "demo/scripts/deployment-profiles.test.mjs"
       - "demo/scripts/package-tasks.mjs"
+      - "demo/scripts/deployment-profiles.retention.test.mjs"
       - "demo/midgard-core/src/generated-deployment-profiles.ts"
       - "demo/midgard-core/src/script-budgets.json"
       - "demo/midgard-core/src/script-budgets.ts"
@@ -32,10 +34,12 @@ on:
       - "demo/scripts/deployment-profiles.mjs"
       - "demo/scripts/deployment-profile-aiken.mjs"
       - "demo/scripts/deployment-profile-identity.mjs"
+      - "demo/scripts/deployment-profile-da.mjs"
       - "demo/scripts/deployment-profile-budgets.mjs"
       - "demo/scripts/deployment-profile-operator-economics.mjs"
       - "demo/scripts/deployment-profiles.test.mjs"
       - "demo/scripts/package-tasks.mjs"
+      - "demo/scripts/deployment-profiles.retention.test.mjs"
       - "demo/midgard-core/src/generated-deployment-profiles.ts"
       - "demo/midgard-core/src/script-budgets.json"
       - "demo/midgard-core/src/script-budgets.ts"
@@ -99,7 +103,7 @@ jobs:
       - name: Check deployment profiles
         run: |
           pnpm --dir demo deployment:check preprod-testing
-          node --test demo/scripts/deployment-profiles.test.mjs
+          node --test demo/scripts/deployment-profiles.test.mjs demo/scripts/deployment-profiles.retention.test.mjs
 
   # The gates that prove the other gates can fail. They run the pinned
   # compiler on tiny throwaway projects and finish quickly, so they run in their

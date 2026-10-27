@@ -7,10 +7,8 @@ import {
 } from "../src/config.js";
 import { loadDaSigner, signDaAttestation } from "../src/signer.js";
 import type { PostgresCommitteeStore } from "../src/store/postgres.js";
-import {
-  retentionCycleOptions,
-  runRetentionCycle,
-} from "../src/store/retention.js";
+import { retentionCycleOptions } from "../src/store/retention.js";
+import { runRetentionCycle } from "../src/store/retention.scan.js";
 import {
   openTestCommitteeStore,
   saveHealthyL1SourceState,
@@ -161,6 +159,7 @@ describe("the runtime retention cycle releasing a payload with only peer signatu
         },
         NOW,
       ),
+      {},
     );
 
   it("keeps the header row and the peer rows under promise adoption", async () => {

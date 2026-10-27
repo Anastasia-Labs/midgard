@@ -196,6 +196,40 @@ export const UNUSED_REDEEMER_CURSOR_SPEC = Object.freeze({
 }) satisfies CursorFamilySpec<"unusedRedeemer">;
 
 /**
+ * `receivePurposeLanguage` binds the same source as the other direct purpose
+ * families. Its entry either pays the terminal a contradiction or walks the
+ * shared receive route to one receive ordinal; the family lookup then decides
+ * alone or opens the shared claimed field-8 scan.
+ */
+export const RECEIVE_PURPOSE_LANGUAGE_CURSOR_SPEC = Object.freeze({
+  category: "receivePurposeLanguage",
+  stepCount: 21,
+  successors: Object.freeze({
+    1: Object.freeze([2] as const),
+    2: Object.freeze([3] as const),
+    3: Object.freeze([4] as const),
+    4: Object.freeze([5] as const),
+    5: Object.freeze([6, 8] as const),
+    6: Object.freeze([7] as const),
+    7: Object.freeze([5, 10] as const),
+    8: Object.freeze([9, 5] as const),
+    9: Object.freeze([9, 10] as const),
+    10: Object.freeze([7, 11] as const),
+    11: Object.freeze([12] as const),
+    12: Object.freeze([13, 21] as const),
+    13: Object.freeze([14] as const),
+    14: Object.freeze([14, 15] as const),
+    15: Object.freeze([15, 16] as const),
+    16: Object.freeze([17] as const),
+    17: Object.freeze([17, 18] as const),
+    18: Object.freeze([19, 21] as const),
+    19: Object.freeze([19, 20] as const),
+    20: Object.freeze([20, 21] as const),
+    21: Object.freeze(["proof_token"] as const),
+  }),
+}) satisfies CursorFamilySpec<"receivePurposeLanguage">;
+
+/**
  * `scriptIntegrityHashMismatch` walks the shared bind and source graph, then
  * the all-purposes walk: spends alternate between taking and resolving pages;
  * each variable field certifies before it is walked; an empty field goes
@@ -286,6 +320,71 @@ export const EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC = Object.freeze({
 }) satisfies CursorFamilySpec<"executionNativeScriptInvalid">;
 
 /**
+ * `distinctAssetAccumulationLimit` binds the event and its pre-state, then
+ * folds asset entries: spent inputs alternate between taking and resolving
+ * pages, and a crossing input is ranked before the terminal; each variable
+ * field certifies before it is walked; an empty output field goes straight to
+ * the mint field's opening; a crossing output, a crossing mint policy, the
+ * exhausted mint field or an empty one ends at the terminal.
+ */
+export const DISTINCT_ASSET_ACCUMULATION_LIMIT_CURSOR_SPEC = Object.freeze({
+  category: "distinctAssetAccumulationLimit",
+  stepCount: 12,
+  successors: Object.freeze({
+    1: Object.freeze([2] as const),
+    2: Object.freeze([3] as const),
+    3: Object.freeze([4] as const),
+    4: Object.freeze([5, 8] as const),
+    5: Object.freeze([6] as const),
+    6: Object.freeze([5, 7, 8] as const),
+    7: Object.freeze([12] as const),
+    8: Object.freeze([8, 9, 10] as const),
+    9: Object.freeze([9, 10, 12] as const),
+    10: Object.freeze([10, 11, 12] as const),
+    11: Object.freeze([11, 12] as const),
+    12: Object.freeze(["proof_token"] as const),
+  }),
+}) satisfies CursorFamilySpec<"distinctAssetAccumulationLimit">;
+
+/**
+ * `unusedScriptWitness` walks the shared bind and source graph and the
+ * all-purposes walk as `scriptIntegrityHashMismatch` does, except that the
+ * exhausted receive field opens the witness field: its grammar certifies
+ * before the walk steps to the audited witness, and the walk ends at the
+ * terminal once it reads that witness or exhausts the field.
+ */
+export const UNUSED_SCRIPT_WITNESS_CURSOR_SPEC = Object.freeze({
+  category: "unusedScriptWitness",
+  stepCount: 24,
+  successors: Object.freeze({
+    1: Object.freeze([2] as const),
+    2: Object.freeze([3] as const),
+    3: Object.freeze([4] as const),
+    4: Object.freeze([5] as const),
+    5: Object.freeze([6, 8] as const),
+    6: Object.freeze([7] as const),
+    7: Object.freeze([5, 10] as const),
+    8: Object.freeze([9, 5] as const),
+    9: Object.freeze([9, 10] as const),
+    10: Object.freeze([7, 11] as const),
+    11: Object.freeze([12] as const),
+    12: Object.freeze([13, 15] as const),
+    13: Object.freeze([14] as const),
+    14: Object.freeze([13, 15] as const),
+    15: Object.freeze([15, 16, 17] as const),
+    16: Object.freeze([16, 17] as const),
+    17: Object.freeze([18, 19] as const),
+    18: Object.freeze([18, 19] as const),
+    19: Object.freeze([19, 20, 21] as const),
+    20: Object.freeze([20, 21] as const),
+    21: Object.freeze([22] as const),
+    22: Object.freeze([22, 23] as const),
+    23: Object.freeze([23, 24] as const),
+    24: Object.freeze(["proof_token"] as const),
+  }),
+}) satisfies CursorFamilySpec<"unusedScriptWitness">;
+
+/**
  * `canonicalDecodability` walks the committed field one bounded batch per
  * step-01 transaction, returning to step 01 while items remain and moving to
  * step 02 with the verdict.
@@ -321,9 +420,12 @@ export const CURSOR_FAMILY_SPECS = Object.freeze({
   missingRedeemer: MISSING_REDEEMER_CURSOR_SPEC,
   missingScriptSource: MISSING_SCRIPT_SOURCE_CURSOR_SPEC,
   unusedRedeemer: UNUSED_REDEEMER_CURSOR_SPEC,
+  receivePurposeLanguage: RECEIVE_PURPOSE_LANGUAGE_CURSOR_SPEC,
   scriptIntegrityHashMismatch: SCRIPT_INTEGRITY_HASH_MISMATCH_CURSOR_SPEC,
   executionSourceScriptDecoding: EXECUTION_SOURCE_SCRIPT_DECODING_CURSOR_SPEC,
   executionNativeScriptInvalid: EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC,
+  distinctAssetAccumulationLimit: DISTINCT_ASSET_ACCUMULATION_LIMIT_CURSOR_SPEC,
+  unusedScriptWitness: UNUSED_SCRIPT_WITNESS_CURSOR_SPEC,
   canonicalDecodability: CANONICAL_DECODABILITY_CURSOR_SPEC,
   committedFieldShape: COMMITTED_FIELD_SHAPE_CURSOR_SPEC,
 });

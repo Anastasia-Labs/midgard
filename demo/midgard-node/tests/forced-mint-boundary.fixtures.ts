@@ -22,6 +22,10 @@ import {
 import type * as SDK from "@al-ft/midgard-sdk";
 
 import {
+  LONG_ASSET_NAME_LOVELACE,
+  longAssetNameValue,
+} from "../../midgard-fault-proofs/tests/support/long-asset-name-value.js";
+import {
   canonicalTransaction,
   makeOutput,
   TEST_ADDRESS,
@@ -134,6 +138,20 @@ export const MINT_REFUSED = [
               ],
             ]),
           },
+        }),
+      ]),
+  ],
+  [
+    "a 5,001-byte output value",
+    "outputs_are_admissible(outputs)",
+    () =>
+      withOutputs([
+        encodeMidgardTxOutput({
+          address: TEST_ADDRESS,
+          value: longAssetNameValue({
+            lovelace: LONG_ASSET_NAME_LOVELACE,
+            tailQuantity: 256n,
+          }),
         }),
       ]),
   ],

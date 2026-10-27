@@ -1,13 +1,11 @@
 import { PLUTUS_V3_CANONICAL_COST_MODEL_VIEW } from "@al-ft/midgard-core";
-import { CEKConst } from "@harmoniclabs/plutus-machine";
 import * as UPLC from "@lucid-evolution/uplc";
 
 import type { MidgardCekDirectValueWitness } from "../../src/cek-builtin.argument-kinds.js";
 import {
-  referenceConstantToDirectWitness,
+  builtinValueToDirectWitness,
   semanticizeMidgardCekDirectConstant,
-} from "../../src/cek-builtin.evaluate-reference-builtin.js";
-import { referenceValueOf } from "../../src/cek-builtin.reference-value.js";
+} from "../../src/cek-builtin.evaluate-direct-builtin.js";
 import type { MidgardCekBuiltinBudget } from "../../src/cek-cost.js";
 import type { MidgardCekExecutionStep } from "../../src/cek-executor.build-midgard-cek-execution-graph.js";
 import { encodeMidgardCekCardanoFlatProgram } from "../../src/cek-program.cardano-flat.js";
@@ -55,12 +53,12 @@ export const compactedArguments = (
   set: boolean,
 ): MidgardCekDirectValueWitness[] =>
   [
-    CEKConst.byteString(Buffer.from(input)),
-    referenceValueOf(indicesConstant(indices)),
-    CEKConst.bool(set),
+    UPLCConst.byteString(Buffer.from(input)),
+    indicesConstant(indices),
+    UPLCConst.bool(set),
   ].map((value) =>
     semanticizeMidgardCekDirectConstant(
-      referenceConstantToDirectWitness(value, true),
+      builtinValueToDirectWitness(value, true),
     ),
   );
 
@@ -69,10 +67,7 @@ export const compactedBytes = (
   bytes: Uint8Array,
 ): MidgardCekDirectValueWitness =>
   semanticizeMidgardCekDirectConstant(
-    referenceConstantToDirectWitness(
-      CEKConst.byteString(Buffer.from(bytes)),
-      true,
-    ),
+    builtinValueToDirectWitness(UPLCConst.byteString(Buffer.from(bytes)), true),
   );
 
 const CONTEXT = Buffer.from("d87980", "hex");

@@ -145,11 +145,6 @@ export const buildBlueprintDeploymentRegistry = (
         "fraud_proofs/observer_order_invalid/step_04.main.spend",
       ],
       [
-        "fraudProofUnusedScriptWitnessStep06",
-        "spend",
-        "fraud_proofs/unused_script_witness/step_06.main.spend",
-      ],
-      [
         "fraudProofNonExistentInputStep03",
         "spend",
         "fraud_proofs/no_input/step_03.main.spend",

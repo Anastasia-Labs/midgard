@@ -31,14 +31,13 @@
  *   uncharged as at the direct failure arm, its indices unread.
  */
 import { MIDGARD_CEK_STAGED_CHUNK_BYTES } from "@al-ft/midgard-core";
-import { CEKConst } from "@harmoniclabs/plutus-machine";
 
 import type { MidgardCekDirectValueWitness } from "./cek-builtin.argument-kinds.js";
 import {
+  builtinValueToDirectWitness,
   evaluateMidgardCekDirectBuiltin,
-  referenceConstantToDirectWitness,
   semanticizeMidgardCekDirectConstant,
-} from "./cek-builtin.evaluate-reference-builtin.js";
+} from "./cek-builtin.evaluate-direct-builtin.js";
 import type { MidgardCekBuiltinBudget } from "./cek-cost.js";
 import type { MidgardCekCoreStepWitness } from "./cek-machine.js";
 import {
@@ -52,13 +51,14 @@ import {
   stageMidgardCekStagedBuiltinMaterial,
 } from "./cek-staged-builtin.material.js";
 import { scalarOperands } from "./cek-staged-builtin.verify.js";
+import { UPLCConst } from "./uplc-constant.js";
 
 /** A staged step's argument, read from the semantic store. */
 export type MidgardCekStagedOperand = {
   readonly type: "integer" | "bytes" | "string";
   /** A byte string's or string's bytes, or an integer's canonical CBOR. */
   readonly bytes: Buffer;
-  readonly value: CEKConst;
+  readonly value: UPLCConst;
   readonly leaf: MidgardCekStagedOperandSource;
 };
 
@@ -255,7 +255,7 @@ const classify = (
     ];
     if (number === 79) {
       // Inside the machine integers, an index outside the bits fails after
-      // costing, as the reference evaluator also decides.
+      // costing, as the pinned evaluator also decides.
       return value < 0n || value >= BigInt(bytes!.bytes.length) * 8n
         ? staged(sources, inInt64)
         : null;
@@ -304,7 +304,7 @@ const classify = (
         tag,
         arguments: [
           ...integers.map((value) =>
-            referenceConstantToDirectWitness(CEKConst.int(value)),
+            builtinValueToDirectWitness(UPLCConst.int(value)),
           ),
           semanticizeMidgardCekDirectConstant(arguments_.at(-1)!),
         ],
@@ -363,7 +363,7 @@ export type MidgardCekStagedFailure = {
  * The failure of staged builtin `tag` over `arguments_` (presented) and their
  * `operands`, or null when it does not fail on a bound or on its operands'
  * content. `evaluatedFailure` is called for a content failure, which the
- * reference evaluator must agree with. Throws for a failure its arm would not
+ * pinned evaluator must agree with. Throws for a failure its arm would not
  * accept.
  */
 export const midgardCekStagedFailure = (

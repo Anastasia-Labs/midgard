@@ -5,13 +5,13 @@ import {
   type MidgardCekMachineState,
   parseMidgardCekCanonicalIntegerCbor,
 } from "@al-ft/midgard-core";
-import { CEKConst } from "@harmoniclabs/plutus-machine";
 
 import type { MidgardCekDirectValueWitness } from "../../src/cek-builtin.argument-kinds.js";
-import { referenceConstantToDirectWitness } from "../../src/cek-builtin.evaluate-reference-builtin.js";
+import { builtinValueToDirectWitness } from "../../src/cek-builtin.evaluate-direct-builtin.js";
 import { hashMidgardCekDirectArguments } from "../../src/cek-builtin.selected-control-result.js";
 import type { MidgardCekStagedOperand } from "../../src/cek-executor.staged-failure.js";
 import { encodeMidgardCekPlutusData } from "../../src/plutus-data-iterative.encode.js";
+import { UPLCConst } from "../../src/uplc-constant.js";
 import { DataI } from "../../src/uplc-data.js";
 import { call, int, run } from "./cek-staged-route-terms.js";
 import { builtin } from "./uplc-builtins.js";
@@ -24,7 +24,7 @@ export const integerOperand = (value: bigint): MidgardCekStagedOperand => {
   return {
     type: "integer",
     bytes: cbor,
-    value: CEKConst.int(value),
+    value: UPLCConst.int(value),
     leaf: {
       kind: "integerLeaf",
       cborRoot: midgardCekFlatRoot(cbor),
@@ -40,7 +40,7 @@ export const integerOperand = (value: bigint): MidgardCekStagedOperand => {
 export const bytesOperand = (bytes: Uint8Array): MidgardCekStagedOperand => ({
   type: "bytes",
   bytes: Buffer.from(bytes),
-  value: CEKConst.byteString(Buffer.from(bytes)),
+  value: UPLCConst.byteString(Buffer.from(bytes)),
   leaf: {
     kind: "bytesLeaf",
     root: midgardCekFlatRoot(Buffer.from(bytes)),
@@ -52,7 +52,7 @@ export const bytesOperand = (bytes: Uint8Array): MidgardCekStagedOperand => ({
 export const presented = (
   operand: MidgardCekStagedOperand,
 ): MidgardCekDirectValueWitness =>
-  referenceConstantToDirectWitness(operand.value, true);
+  builtinValueToDirectWitness(operand.value, true);
 
 const BASE: MidgardCekMachineState = (() => {
   const steps = run(call(builtin("addInteger"), int(1n), int(2n)), "proof")

@@ -1,8 +1,7 @@
-import { CEKConst } from "@harmoniclabs/plutus-machine";
 import { describe, expect, it } from "vitest";
 
 import type { MidgardCekDirectValueWitness } from "../src/cek-builtin.argument-kinds.js";
-import { referenceConstantToDirectWitness } from "../src/cek-builtin.evaluate-reference-builtin.js";
+import { builtinValueToDirectWitness } from "../src/cek-builtin.evaluate-direct-builtin.js";
 import { midgardCekDirectBuiltinBudget } from "../src/cek-builtin.selected-control-result.js";
 import type { MidgardCekExecutionStep } from "../src/cek-executor.build-midgard-cek-execution-graph.js";
 import type { MidgardCekCoreStepWitness } from "../src/cek-machine.js";
@@ -253,21 +252,21 @@ describe("the bitwise builtins over staged operands", () => {
   });
 });
 
-const presented = (value: CEKConst): MidgardCekDirectValueWitness =>
-  referenceConstantToDirectWitness(value, true);
+const presented = (value: UPLCConst): MidgardCekDirectValueWitness =>
+  builtinValueToDirectWitness(value, true);
 
-const byteString = (value: Buffer): CEKConst =>
-  CEKConst.byteString(new DataB(value).bytes as never);
+const byteString = (value: Buffer): UPLCConst =>
+  UPLCConst.byteString(new DataB(value).bytes);
 
 /** Whether the staged bytes step accepts `result` for builtin `tag` over the
  * committed `leading` arguments, the byte-string `operands` (staged past
  * 4,095 bytes) and the revealed `index`. */
 const bitwiseVerifies = (
   tag: bigint,
-  leading: readonly CEKConst[],
+  leading: readonly UPLCConst[],
   operands: readonly Buffer[],
   index: bigint | null,
-  result: CEKConst,
+  result: UPLCConst,
 ): boolean => {
   const stagedOperands = operands.filter((operand) => operand.length > 4_095);
   const sources: MidgardCekStagedOperandSource[] = operands.map((operand) =>
@@ -286,7 +285,7 @@ const bitwiseVerifies = (
     [
       ...leading,
       ...operands.map(byteString),
-      ...(index === null ? [] : [CEKConst.int(index)]),
+      ...(index === null ? [] : [UPLCConst.int(index)]),
     ].map(presented),
     presented(result),
     material,
@@ -352,7 +351,7 @@ describe("the staged bytes step proves the bitwise builtins' results", () => {
       for (const padding of [true, false]) {
         const result = logical(tag, padding, left, right);
         const other = logical(tag, !padding, left, right);
-        const pad = CEKConst.bool(padding);
+        const pad = UPLCConst.bool(padding);
         expect(
           bitwiseVerifies(tag, [pad], [left, right], null, byteString(result)),
         ).toBe(true);
@@ -368,7 +367,7 @@ describe("the staged bytes step proves the bitwise builtins' results", () => {
     expect(
       bitwiseVerifies(
         AND,
-        [CEKConst.int(1n)],
+        [UPLCConst.int(1n)],
         [right, right],
         null,
         byteString(result),
@@ -381,7 +380,7 @@ describe("the staged bytes step proves the bitwise builtins' results", () => {
     expect(
       bitwiseVerifies(
         XOR,
-        [CEKConst.bool(true)],
+        [UPLCConst.bool(true)],
         [longer, right],
         null,
         byteString(logical(XOR, true, longer, right)),
@@ -409,7 +408,7 @@ describe("the staged bytes step proves the bitwise builtins' results", () => {
           [],
           [left],
           BigInt(index),
-          CEKConst.bool(bit),
+          UPLCConst.bool(bit),
         ),
       ).toBe(true);
       expect(
@@ -418,7 +417,7 @@ describe("the staged bytes step proves the bitwise builtins' results", () => {
           [],
           [left],
           BigInt(index),
-          CEKConst.bool(!bit),
+          UPLCConst.bool(!bit),
         ),
       ).toBe(false);
     }
@@ -428,7 +427,7 @@ describe("the staged bytes step proves the bitwise builtins' results", () => {
     for (const index of [-1n, 65_536n * 8n]) {
       for (const bit of [true, false]) {
         expect(
-          bitwiseVerifies(READ_BIT, [], [left], index, CEKConst.bool(bit)),
+          bitwiseVerifies(READ_BIT, [], [left], index, UPLCConst.bool(bit)),
         ).toBe(false);
       }
     }
@@ -449,7 +448,7 @@ describe("the staged bytes step proves the bitwise builtins' results", () => {
           [],
           [operand],
           null,
-          CEKConst.int(count),
+          UPLCConst.int(count),
         ),
       ).toBe(true);
       expect(
@@ -458,7 +457,7 @@ describe("the staged bytes step proves the bitwise builtins' results", () => {
           [],
           [operand],
           null,
-          CEKConst.int(count + 1n),
+          UPLCConst.int(count + 1n),
         ),
       ).toBe(false);
       expect(
@@ -467,7 +466,7 @@ describe("the staged bytes step proves the bitwise builtins' results", () => {
           [],
           [operand],
           null,
-          CEKConst.int(first),
+          UPLCConst.int(first),
         ),
       ).toBe(true);
       expect(
@@ -476,7 +475,7 @@ describe("the staged bytes step proves the bitwise builtins' results", () => {
           [],
           [operand],
           null,
-          CEKConst.int(first + 1n),
+          UPLCConst.int(first + 1n),
         ),
       ).toBe(false);
     }
