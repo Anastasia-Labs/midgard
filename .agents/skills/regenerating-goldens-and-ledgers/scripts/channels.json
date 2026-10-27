@@ -561,7 +561,8 @@
       "producers": ["demo/midgard-validation"],
       "inputs": [
         "@golden-channel",
-        "demo/midgard-validation/tests/fixtures/cek-core-step-v1.vectors.mjs"
+        "demo/midgard-validation/tests/fixtures/cek-core-step-v1.vectors.mjs",
+        "demo/midgard-validation/tests/fixtures/cek-core-step-v1.constr-data-vectors.mjs"
       ],
       "outputs": [
         "demo/midgard-validation/tests/fixtures/cek-core-step-v1.generated.json",

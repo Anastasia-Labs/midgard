@@ -64,6 +64,7 @@ type GoldenProgram = {
   readonly label: string;
   readonly note: string;
   readonly maxSteps: number;
+  readonly pinBuiltinStep?: string;
   readonly executionBudget?: { readonly cpu: string; readonly memory: string };
   readonly scriptFlat: string;
   readonly contextCbor: string;
@@ -137,11 +138,31 @@ const recompute = (definition: vectors.CekCoreStepProgramV1): Recomputed => {
     maxSteps: definition.maxSteps,
     executionBudget: definition.executionBudget,
   });
+  const selectedSteps =
+    definition.pinBuiltinStep === undefined
+      ? execution.steps
+      : execution.steps.filter(
+          (step) =>
+            (step.witness.kind === "executeBuiltinSemantic" ||
+              step.witness.kind === "executeBuiltinSemanticFailure") &&
+            step.witness.tag === definition.pinBuiltinStep,
+        );
+  const initialState =
+    definition.pinBuiltinStep === undefined
+      ? execution.initialState
+      : selectedSteps[0]!.pre;
+  const terminalState =
+    definition.pinBuiltinStep === undefined
+      ? execution.terminalState
+      : selectedSteps.at(-1)!.post;
   return {
     execution,
     vector: {
       label: definition.label,
       maxSteps: definition.maxSteps,
+      ...(definition.pinBuiltinStep === undefined
+        ? {}
+        : { pinBuiltinStep: definition.pinBuiltinStep.toString(10) }),
       ...(definition.executionBudget === undefined
         ? {}
         : {
@@ -156,28 +177,30 @@ const recompute = (definition: vectors.CekCoreStepProgramV1): Recomputed => {
       termRoot: hex(program.termRoot),
       root: hex(graph.root),
       contextValueRoot: hex(graph.contextValueRoot),
-      initialState: stateJson(execution.initialState),
-      initialStateHash: hex(hashMidgardCekMachineState(execution.initialState)),
-      steps: execution.steps.map((step, index) => ({
-        index,
+      initialState: stateJson(initialState),
+      initialStateHash: hex(hashMidgardCekMachineState(initialState)),
+      steps: selectedSteps.map((step) => ({
+        index: execution.steps.indexOf(step),
         kind: step.witness.kind,
         preHash: hex(hashMidgardCekMachineState(step.pre)),
         postHash: hex(hashMidgardCekMachineState(step.post)),
         evidenceCbor: hex(encodeMidgardCekCoreStepDataCbor(step)),
       })),
-      terminalState: stateJson(execution.terminalState),
-      terminalStateHash: hex(
-        hashMidgardCekMachineState(execution.terminalState),
-      ),
-      stopReason: execution.stopReason,
+      terminalState: stateJson(terminalState),
+      terminalStateHash: hex(hashMidgardCekMachineState(terminalState)),
+      stopReason:
+        definition.pinBuiltinStep === undefined
+          ? execution.stopReason
+          : "selectedBuiltinStep",
     },
   };
 };
 
 const definitionFor = (label: string): vectors.CekCoreStepProgramV1 => {
-  const definition = vectors.CEK_CORE_STEP_PROGRAMS.find(
-    (candidate) => candidate.label === label,
-  );
+  const definition = [
+    ...vectors.CEK_CORE_STEP_PROGRAMS,
+    ...vectors.CEK_CONSTR_DATA_INDEX_PROGRAMS,
+  ].find((candidate) => candidate.label === label);
   if (definition === undefined) {
     throw new Error(`fixture program ${label} has no shared definition`);
   }
@@ -191,6 +214,7 @@ describe("V1 CEK core-step golden vectors", () => {
     // check about it directly.
     expect(Object.keys(vectors).sort()).toEqual(
       [
+        "CEK_CONSTR_DATA_INDEX_PROGRAMS",
         "CEK_CORE_STEP_PROGRAMS",
         "CEK_CORE_STEP_TWISTS",
         "CEK_CORE_STEP_WITNESS_KINDS",
@@ -241,12 +265,50 @@ describe("V1 CEK core-step golden vectors", () => {
     }
   });
 
+  it.each([
+    ["zero", true],
+    ["maximum", true],
+    ["overflow", false],
+    ["negative", false],
+  ] as const)("pins constrData %s through the machine", (boundary, accepts) => {
+    const definition = definitionFor(`constr_data_index_${boundary}`);
+    const { execution, vector } = recompute(definition);
+    expect(execution.stopReason).toBe("halted");
+    expect(execution.terminalState.mode).toBe(
+      accepts ? "haltSuccess" : "haltError",
+    );
+    expect(vector.steps).toHaveLength(1);
+    const step = execution.steps[vector.steps[0]!.index]!;
+    expect(step.witness.kind).toBe(
+      accepts ? "executeBuiltinSemantic" : "executeBuiltinSemanticFailure",
+    );
+    expect(verifyMidgardCekCoreStep(step.pre, step.post, step.witness)).toBe(
+      true,
+    );
+    if (!accepts) {
+      expect(step.post.auxiliary).toBe(7n); // BuiltinFailure
+      expect(step.post.cpu - step.pre.cpu).toBe(0n);
+      expect(step.post.memory - step.pre.memory).toBe(0n);
+      for (const chargedPost of [
+        { ...step.post, cpu: step.post.cpu + 1n },
+        { ...step.post, memory: step.post.memory + 1n },
+      ]) {
+        expect(
+          verifyMidgardCekCoreStep(step.pre, chargedPost, step.witness),
+        ).toBe(false);
+      }
+    }
+  });
+
   for (const fixtureProgram of golden.programs) {
     describe(fixtureProgram.label, () => {
       const definition = definitionFor(fixtureProgram.label);
-      const { execution, vector } = recompute(definition);
+      let computed: Recomputed | undefined;
+      const resultForTest = (): Recomputed =>
+        (computed ??= recompute(definition));
 
       it("recomputes every emitted vector byte-for-byte", () => {
+        const { execution, vector } = resultForTest();
         const {
           note: _note,
           negatives: _negatives,
@@ -271,6 +333,7 @@ describe("V1 CEK core-step golden vectors", () => {
       });
 
       it("is accepted step by step by the TypeScript verifier", () => {
+        const { execution } = resultForTest();
         for (const step of execution.steps) {
           expect(
             verifyMidgardCekCoreStep(step.pre, step.post, step.witness),
@@ -279,6 +342,7 @@ describe("V1 CEK core-step golden vectors", () => {
       });
 
       it("rejects every pinned negative twist", () => {
+        const { execution, vector } = resultForTest();
         expect(
           fixtureProgram.negatives.map((negative) => negative.twist),
         ).toEqual(vectors.CEK_CORE_STEP_TWISTS.map((twist) => twist.label));
@@ -286,9 +350,13 @@ describe("V1 CEK core-step golden vectors", () => {
           const pinned = fixtureProgram.negatives.find(
             (negative) => negative.twist === twist.label,
           );
-          const stepIndex = twist.select(execution.steps);
+          const selectedSteps = vector.steps.map(
+            (step) => execution.steps[step.index]!,
+          );
           const step: MidgardCekExecutionStep | undefined =
-            execution.steps[stepIndex];
+            selectedSteps[twist.select(selectedSteps)];
+          const stepIndex =
+            step === undefined ? -1 : execution.steps.indexOf(step);
           expect(step).toBeDefined();
           if (step === undefined || pinned === undefined) {
             continue;

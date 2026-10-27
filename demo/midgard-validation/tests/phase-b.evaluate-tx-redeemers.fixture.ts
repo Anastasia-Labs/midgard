@@ -79,7 +79,15 @@ export const makeEvaluateDraft = (
   exUnits: readonly [bigint, bigint],
   fails = false,
 ) => {
-  const program = buildCekProgramFromRawFlat(contextTagIsZero(fails));
+  return makeEvaluateProgramDraft(exUnits, contextTagIsZero(fails));
+};
+
+/** A draft with the caller's complete Flat program as its spending script. */
+export const makeEvaluateProgramDraft = (
+  exUnits: readonly [bigint, bigint],
+  scriptFlat: Uint8Array,
+) => {
+  const program = buildCekProgramFromRawFlat(scriptFlat);
   const script = plutusV3ScriptWitness(program.scriptBytes);
   const spent = EVALUATE_DRAFT_SPENT;
   const spentOutput = encodeMidgardTxOutput({

@@ -35,11 +35,15 @@ export type CekCoreStepProgramV1 = {
   readonly term: () => UPLCTerm;
   readonly context: () => Data;
   readonly maxSteps: number;
+  /** Pin this builtin transition; the TS verdict still runs the full program. */
+  readonly pinBuiltinStep?: bigint;
   readonly executionBudget?: {
     readonly cpu: bigint;
     readonly memory: bigint;
   };
 };
+
+export declare const CEK_CONSTR_DATA_INDEX_PROGRAMS: readonly CekCoreStepProgramV1[];
 
 export declare const CEK_CORE_STEP_PROGRAMS: readonly CekCoreStepProgramV1[];
 

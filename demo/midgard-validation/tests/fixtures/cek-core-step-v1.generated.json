@@ -23,6 +23,8 @@
     "onchain/aiken/lib/midgard/cek-core-step-goldens/if-then-else.test.ak",
     "onchain/aiken/lib/midgard/cek-core-step-goldens/builtin-type-failure.test.ak",
     "onchain/aiken/lib/midgard/cek-core-step-goldens/builtin-failure.test.ak",
+    "onchain/aiken/lib/midgard/cek-core-step-goldens/constr-data-index-overflow.test.ak",
+    "onchain/aiken/lib/midgard/cek-core-step-goldens/constr-data-index-negative.test.ak",
     "onchain/aiken/lib/midgard/cek-core-step-goldens/schnorr-message-17-bytes.test.ak",
     "onchain/aiken/lib/midgard/cek-core-step-goldens/apply-constant.test.ak",
     "onchain/aiken/lib/midgard/cek-core-step-goldens/force-constant.test.ak",
@@ -3221,6 +3223,130 @@
           "stepIndex": 0,
           "kind": "computeApplication",
           "evidenceCbor": "d8799fd8799f00005820b7f90715ba6b5dc4c361256700e3704bab7af547502518156b2b0e1397f3c0c658200b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a7582053163c160dcec15695dabe0bccf6afc7f0e12db206392865db2feb0497ac838b0018641864ffd8799f01005820ed119c22d51db717ca68c049cfe638dd7d35a201c6557e1a2a11c9c5d5dde49f58200b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a75820c949b868cb1ce3bfa75afbf232c6a49414a4eb7104a774ed8727a4f6020d602000193ee418c8ffd87d9f5820ed119c22d51db717ca68c049cfe638dd7d35a201c6557e1a2a11c9c5d5dde49f582030d94658ba573b1899e81d9b4a331a87ecdba4247ee4c0900c2ccc95b2f1f9ebffff"
+        }
+      ]
+    },
+    {
+      "label": "constr_data_index_overflow",
+      "note": "constrData refuses an index above Word64 without a builtin charge; only the builtin step is pinned",
+      "maxSteps": 64,
+      "pinBuiltinStep": "37",
+      "scriptFlat": "010100232498cdd2a410101010101010101000897ae001",
+      "contextCbor": "d87980",
+      "uplcVersion": [
+        "1",
+        "1",
+        "0"
+      ],
+      "termRoot": "234a138d60265f912f9469f4f15d1e44e42d10981b2e664c0801b010ab4afaee",
+      "root": "01b5d86b4e10d5eb07ad480fd9cadfb86ef8501db3583f855f49ee345c01a509",
+      "contextValueRoot": "2fdea9c423cf4307f98d4a2c6079d1313105e5f7697b297e811d14345cdea3bb",
+      "initialState": {
+        "mode": "builtin",
+        "executionIndex": "0",
+        "focusRoot": "8a5d56cbc37c1bff593ee933fc6a9e78cd18be61e4901dffb1a2b7de14780e7c",
+        "environmentRoot": "0b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a7",
+        "continuationRoot": "03e7c1aa2a03f3ffffc5dceebf03fd999d6779478d1ee9d437b298892981db9d",
+        "auxiliary": "0",
+        "cpu": "160100",
+        "memory": "1100"
+      },
+      "initialStateHash": "b6ca3fb480d2c11788eb4b0f8da285c5e226303b8316b2c76e1e20c9ce6964fa",
+      "steps": [
+        {
+          "index": 17,
+          "kind": "executeBuiltinSemanticFailure",
+          "preHash": "b6ca3fb480d2c11788eb4b0f8da285c5e226303b8316b2c76e1e20c9ce6964fa",
+          "postHash": "f738fb0ec11ba4c90ba1ac4e8a46fc17de60ac09fef8d85922ca812810ec8cd6",
+          "evidenceCbor": "d8799fd8799f030058208a5d56cbc37c1bff593ee933fc6a9e78cd18be61e4901dffb1a2b7de14780e7c58200b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a7582003e7c1aa2a03f3ffffc5dceebf03fd999d6779478d1ee9d437b298892981db9d001a0002716419044cffd8799f050058204c623a62d6dedf81bb74b1cf56f0b3e8ec85ed24ffb0b821b2d796c4f85a5d3d58200b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a7582053163c160dcec15695dabe0bccf6afc7f0e12db206392865db2feb0497ac838b071a0002716419044cffd9051d9f18259fd87a9f439f00ffd8799f58206e65f67a86abb1c9ed214756c902d6d1aee44a6196b36cdc311390875a97b94f0b06ff02ffd87a9f449f0508ffd8799f582040789c0e0bcfa83d22dbad06c2fd2bcbcabef4fad15df776b3f25250f05119980104ff00ffffd8799f9fd87d9f58205a974c0866db76034389d9d4621a3f2eb18556ada072216c6d6b4a46aeb0ae280b06ffff808080ffffff"
+        }
+      ],
+      "terminalState": {
+        "mode": "haltError",
+        "executionIndex": "0",
+        "focusRoot": "4c623a62d6dedf81bb74b1cf56f0b3e8ec85ed24ffb0b821b2d796c4f85a5d3d",
+        "environmentRoot": "0b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a7",
+        "continuationRoot": "53163c160dcec15695dabe0bccf6afc7f0e12db206392865db2feb0497ac838b",
+        "auxiliary": "7",
+        "cpu": "160100",
+        "memory": "1100"
+      },
+      "terminalStateHash": "f738fb0ec11ba4c90ba1ac4e8a46fc17de60ac09fef8d85922ca812810ec8cd6",
+      "stopReason": "selectedBuiltinStep",
+      "negatives": [
+        {
+          "twist": "post_cpu_minus_one",
+          "stepIndex": 17,
+          "kind": "executeBuiltinSemanticFailure",
+          "evidenceCbor": "d8799fd8799f030058208a5d56cbc37c1bff593ee933fc6a9e78cd18be61e4901dffb1a2b7de14780e7c58200b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a7582003e7c1aa2a03f3ffffc5dceebf03fd999d6779478d1ee9d437b298892981db9d001a0002716419044cffd8799f050058204c623a62d6dedf81bb74b1cf56f0b3e8ec85ed24ffb0b821b2d796c4f85a5d3d58200b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a7582053163c160dcec15695dabe0bccf6afc7f0e12db206392865db2feb0497ac838b071a0002716319044cffd9051d9f18259fd87a9f439f00ffd8799f58206e65f67a86abb1c9ed214756c902d6d1aee44a6196b36cdc311390875a97b94f0b06ff02ffd87a9f449f0508ffd8799f582040789c0e0bcfa83d22dbad06c2fd2bcbcabef4fad15df776b3f25250f05119980104ff00ffffd8799f9fd87d9f58205a974c0866db76034389d9d4621a3f2eb18556ada072216c6d6b4a46aeb0ae280b06ffff808080ffffff"
+        },
+        {
+          "twist": "post_mode_flipped",
+          "stepIndex": 17,
+          "kind": "executeBuiltinSemanticFailure",
+          "evidenceCbor": "d8799fd8799f030058208a5d56cbc37c1bff593ee933fc6a9e78cd18be61e4901dffb1a2b7de14780e7c58200b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a7582003e7c1aa2a03f3ffffc5dceebf03fd999d6779478d1ee9d437b298892981db9d001a0002716419044cffd8799f000058204c623a62d6dedf81bb74b1cf56f0b3e8ec85ed24ffb0b821b2d796c4f85a5d3d58200b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a7582053163c160dcec15695dabe0bccf6afc7f0e12db206392865db2feb0497ac838b071a0002716419044cffd9051d9f18259fd87a9f439f00ffd8799f58206e65f67a86abb1c9ed214756c902d6d1aee44a6196b36cdc311390875a97b94f0b06ff02ffd87a9f449f0508ffd8799f582040789c0e0bcfa83d22dbad06c2fd2bcbcabef4fad15df776b3f25250f05119980104ff00ffffd8799f9fd87d9f58205a974c0866db76034389d9d4621a3f2eb18556ada072216c6d6b4a46aeb0ae280b06ffff808080ffffff"
+        }
+      ]
+    },
+    {
+      "label": "constr_data_index_negative",
+      "note": "constrData refuses a negative index without a builtin charge; only the builtin step is pinned",
+      "maxSteps": 64,
+      "pinBuiltinStep": "37",
+      "scriptFlat": "010100232498cdd2a400297ae001",
+      "contextCbor": "d87980",
+      "uplcVersion": [
+        "1",
+        "1",
+        "0"
+      ],
+      "termRoot": "ced2f9eee79357d6698fe8a4a289eab58a69b26fa5186abcd894f3ff4f029321",
+      "root": "0329b9aaf2d81ca7c9dff3c6a5999fcb7a464dba60b73bba164ce3022b1569e9",
+      "contextValueRoot": "2fdea9c423cf4307f98d4a2c6079d1313105e5f7697b297e811d14345cdea3bb",
+      "initialState": {
+        "mode": "builtin",
+        "executionIndex": "0",
+        "focusRoot": "ce3fa5e6c10ac5d6a9d3542b2ab348183c12d3fea264269a2e879b8dc5ee9d60",
+        "environmentRoot": "0b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a7",
+        "continuationRoot": "03e7c1aa2a03f3ffffc5dceebf03fd999d6779478d1ee9d437b298892981db9d",
+        "auxiliary": "0",
+        "cpu": "160100",
+        "memory": "1100"
+      },
+      "initialStateHash": "6b50875d2cdf792e5abaa5e1c8a7744fdb500ca63e6dbbca6f0ed5e527daac7b",
+      "steps": [
+        {
+          "index": 17,
+          "kind": "executeBuiltinSemanticFailure",
+          "preHash": "6b50875d2cdf792e5abaa5e1c8a7744fdb500ca63e6dbbca6f0ed5e527daac7b",
+          "postHash": "f738fb0ec11ba4c90ba1ac4e8a46fc17de60ac09fef8d85922ca812810ec8cd6",
+          "evidenceCbor": "d8799fd8799f03005820ce3fa5e6c10ac5d6a9d3542b2ab348183c12d3fea264269a2e879b8dc5ee9d6058200b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a7582003e7c1aa2a03f3ffffc5dceebf03fd999d6779478d1ee9d437b298892981db9d001a0002716419044cffd8799f050058204c623a62d6dedf81bb74b1cf56f0b3e8ec85ed24ffb0b821b2d796c4f85a5d3d58200b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a7582053163c160dcec15695dabe0bccf6afc7f0e12db206392865db2feb0497ac838b071a0002716419044cffd9051d9f18259fd87a9f439f00ffd8799f5820045b6d8572fcb30c6ac06398f3dda84638c1f44e43df6acce9ec954870dfdc370105ff01ffd87a9f449f0508ffd8799f582040789c0e0bcfa83d22dbad06c2fd2bcbcabef4fad15df776b3f25250f05119980104ff00ffffd8799f9fd87d9f5820e727db15461df0c95814206c4df3ca7397b8bdeab92da97eb2e87141dd3cd1780105ffff80809f4120ffffffff"
+        }
+      ],
+      "terminalState": {
+        "mode": "haltError",
+        "executionIndex": "0",
+        "focusRoot": "4c623a62d6dedf81bb74b1cf56f0b3e8ec85ed24ffb0b821b2d796c4f85a5d3d",
+        "environmentRoot": "0b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a7",
+        "continuationRoot": "53163c160dcec15695dabe0bccf6afc7f0e12db206392865db2feb0497ac838b",
+        "auxiliary": "7",
+        "cpu": "160100",
+        "memory": "1100"
+      },
+      "terminalStateHash": "f738fb0ec11ba4c90ba1ac4e8a46fc17de60ac09fef8d85922ca812810ec8cd6",
+      "stopReason": "selectedBuiltinStep",
+      "negatives": [
+        {
+          "twist": "post_cpu_minus_one",
+          "stepIndex": 17,
+          "kind": "executeBuiltinSemanticFailure",
+          "evidenceCbor": "d8799fd8799f03005820ce3fa5e6c10ac5d6a9d3542b2ab348183c12d3fea264269a2e879b8dc5ee9d6058200b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a7582003e7c1aa2a03f3ffffc5dceebf03fd999d6779478d1ee9d437b298892981db9d001a0002716419044cffd8799f050058204c623a62d6dedf81bb74b1cf56f0b3e8ec85ed24ffb0b821b2d796c4f85a5d3d58200b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a7582053163c160dcec15695dabe0bccf6afc7f0e12db206392865db2feb0497ac838b071a0002716319044cffd9051d9f18259fd87a9f439f00ffd8799f5820045b6d8572fcb30c6ac06398f3dda84638c1f44e43df6acce9ec954870dfdc370105ff01ffd87a9f449f0508ffd8799f582040789c0e0bcfa83d22dbad06c2fd2bcbcabef4fad15df776b3f25250f05119980104ff00ffffd8799f9fd87d9f5820e727db15461df0c95814206c4df3ca7397b8bdeab92da97eb2e87141dd3cd1780105ffff80809f4120ffffffff"
+        },
+        {
+          "twist": "post_mode_flipped",
+          "stepIndex": 17,
+          "kind": "executeBuiltinSemanticFailure",
+          "evidenceCbor": "d8799fd8799f03005820ce3fa5e6c10ac5d6a9d3542b2ab348183c12d3fea264269a2e879b8dc5ee9d6058200b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a7582003e7c1aa2a03f3ffffc5dceebf03fd999d6779478d1ee9d437b298892981db9d001a0002716419044cffd8799f000058204c623a62d6dedf81bb74b1cf56f0b3e8ec85ed24ffb0b821b2d796c4f85a5d3d58200b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a7582053163c160dcec15695dabe0bccf6afc7f0e12db206392865db2feb0497ac838b071a0002716419044cffd9051d9f18259fd87a9f439f00ffd8799f5820045b6d8572fcb30c6ac06398f3dda84638c1f44e43df6acce9ec954870dfdc370105ff01ffd87a9f449f0508ffd8799f582040789c0e0bcfa83d22dbad06c2fd2bcbcabef4fad15df776b3f25250f05119980104ff00ffffd8799f9fd87d9f5820e727db15461df0c95814206c4df3ca7397b8bdeab92da97eb2e87141dd3cd1780105ffff80809f4120ffffffff"
         }
       ]
     },

@@ -797,6 +797,7 @@ Golden channel cek-core-step-v1 (@al-ft/midgard-validation).
   - `demo/midgard-validation/src/cek-data.ts`
   - `demo/midgard-validation/src/cek-executor.ts`
   - `demo/midgard-validation/tests/fixtures/cek-core-step-v1.case-constant.mjs`
+  - `demo/midgard-validation/tests/fixtures/cek-core-step-v1.constr-data-vectors.mjs`
   - `demo/midgard-validation/tests/fixtures/cek-core-step-v1.generated.json`
   - `demo/midgard-validation/tests/fixtures/cek-core-step-v1.vectors.mjs`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/add-integer.test.ak`
@@ -817,6 +818,8 @@ Golden channel cek-core-step-v1 (@al-ft/midgard-validation).
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/case-constr-lambda.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/case-scrutinee-invalid.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/case-value-invalid.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/constr-data-index-negative.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/constr-data-index-overflow.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/explicit-error.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/force-constant.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/force-delay.test.ak`
