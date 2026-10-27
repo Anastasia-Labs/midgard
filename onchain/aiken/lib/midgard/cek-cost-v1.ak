@@ -211,23 +211,10 @@ pub fn write_bits_budget_v1(sizes: List<Int>) -> BuiltinBudgetV1 {
   }
 }
 
-/// The argument count of protocol version 11 builtin `tag` (87 to 100).
+/// The argument count of protocol version 11 builtin `tag` (87 to 100), one
+/// byte per tag from 87; a tag past 100 indexes outside the table and fails.
 fn pv11_argument_count_v1(tag: Int) -> Int {
-  expect tag <= 100
-  if tag == 94 {
-    4
-  } else if tag == 87 || tag == 95 {
-    3
-  } else if or {
-    tag == 89,
-    tag == 90,
-    tag == 98,
-    tag == 99,
-  } {
-    1
-  } else {
-    2
-  }
+  builtin.index_bytearray(#"0302010102020204030202010102", tag - 87)
 }
 
 pub fn builtin_argument_count_v1(tag: Int) -> Int {
@@ -689,11 +676,15 @@ fn saturated(cost: Int) -> Int {
 }
 
 /// The cost rows of the protocol version 11 builtins 88 to 100 other than
-/// unionValue (96) and valueContains (97), twelve big-endian bytes per tag
-/// from 88: the index of the one size Cardano charges (1 byte), cpu quote (4),
-/// cpu slope (4), cpu square (1), memory quote (1) and memory slope (1), so
+/// unionValue (96) and valueContains (97), twelve big-endian bytes per tag,
+/// the row of `tag` at (tag + 6) % 13 (98 to 100 first, then 88 to 95): the
+/// index of the one size Cardano charges (1 byte), cpu quote (4), cpu slope
+/// (4), cpu square (1), memory quote (1) and memory slope (1), so
 /// cpu = quote + slope * s + square * s * s and memory = quote + slope * s.
 ///
+///  98 valueData: 0, 1000, 38159, 0, 2, 22
+///  99 unValueData: 0, 1000, 95933, 1, 1, 11
+/// 100 scaleValue: 1, 1000, 277577, 0, 12, 21
 ///  88 dropList: 0, 116711, 1957, 0, 4, 0
 ///  89 lengthOfArray: 0, 231883, 0, 0, 10, 0
 ///  90 listToArray: 0, 1000, 24838, 0, 7, 1
@@ -702,13 +693,8 @@ fn saturated(cost: Int) -> Int {
 ///  93 bls12_381_G2_multiScalarMul: 0, 617887431, 67302824, 0, 36, 0
 ///  94 insertCoin: 3, 356924, 18413, 0, 45, 21
 ///  95 lookupCoin: 2, 219951, 9444, 0, 1, 0
-///  96 (unused): zeros
-///  97 (unused): zeros
-///  98 valueData: 0, 1000, 38159, 0, 2, 22
-///  99 unValueData: 0, 1000, 95933, 1, 1, 11
-/// 100 scaleValue: 1, 1000, 277577, 0, 12, 21
 const pv11_cost_rows_v1: ByteArray =
-  #"000001c7e7000007a500040000000389cb00000000000a0000000003e8000061060007010000038a4a0000000000200000132ed984017eceb50012000024d436c70402f5a8002400030005723c000047ed002d150200035b2f000024e400010000000000000000000000000000000000000000000000000000000003e80000950f00021600000003e8000176bd01010b01000003e800043c49000c15"
+  #"00000003e80000950f00021600000003e8000176bd01010b01000003e800043c49000c15000001c7e7000007a500040000000389cb00000000000a0000000003e8000061060007010000038a4a0000000000200000132ed984017eceb50012000024d436c70402f5a8002400030005723c000047ed002d150200035b2f000024e4000100"
 
 /// The budget of protocol version 11 builtin `tag` (87 to 100). Each size is
 /// as Cardano measures it for that builtin (`builtin_cost_sizes_v1`); a size
@@ -741,7 +727,11 @@ fn pv11_budget_v1(tag: Int, sizes: List<Int>) -> BuiltinBudgetV1 {
       1,
     )
   } else {
-    let row = builtin.slice_bytearray(12 * ( tag - 88 ), 12, pv11_cost_rows_v1)
+    let row = builtin.slice_bytearray(
+      12 * ( ( tag + 6 ) % 13 ),
+      12,
+      pv11_cost_rows_v1,
+    )
     let field = fn(start, width) {
       builtin.bytearray_to_integer(
         True,
