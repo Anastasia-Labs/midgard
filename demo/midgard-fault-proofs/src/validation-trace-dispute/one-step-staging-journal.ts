@@ -78,6 +78,16 @@ export type ValidationTraceResolveReader = Readonly<{
   }>[];
 }>;
 
+/** Each resolve move's reader, by the journaled intent it was decoded
+ * from. A runner reads the readers every run, and a long dispute confirms
+ * hundreds of resolve moves (a writeBits loop of 839 hops confirms one per
+ * hop on each thread): decoding every one of them again each run made the
+ * work quadratic and buried the worker under CML values awaiting their
+ * finalizers, until it spent nearly all its time in GC. Journal stores hand
+ * back the same entry objects each run, and a reader depends on nothing but
+ * its intent, so each is decoded once. */
+const decodedReaders = new WeakMap<Intent, ValidationTraceResolveReader>();
+
 /** Each confirmed resolve move of the journal. */
 export const validationTraceResolveReaders = (
   entries: readonly FraudProofWorkflowJournalEntry[],
@@ -85,6 +95,8 @@ export const validationTraceResolveReaders = (
   confirmedIntents(entries, VALIDATION_TRACE_DISPUTE_ACTION)
     .filter(({ actionInput }) => actionInput.stage === "resolve")
     .map((intent) => {
+      const known = decodedReaders.get(intent);
+      if (known !== undefined) return known;
       const signed = recordedValidationTraceMoveBytes({
         value: intent.durableRecovery,
         txHash: intent.txHash,
@@ -95,7 +107,7 @@ export const validationTraceResolveReaders = (
       for (let index = 0; index < (references?.len() ?? 0); index += 1)
         reads.add(outRefLabel(references!.get(index)));
       const outputs = body.outputs();
-      return Object.freeze({
+      const reader = Object.freeze({
         txHash: intent.txHash,
         signed,
         reads,
@@ -104,6 +116,8 @@ export const validationTraceResolveReaders = (
           return { address, assets };
         }),
       });
+      decodedReaders.set(intent, reader);
+      return reader;
     });
 
 /** A staging output our confirmed staging transaction left. */
