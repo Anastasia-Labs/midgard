@@ -611,7 +611,7 @@ test("golden output manifests select every split Aiken artifact", () => {
   const outputs = channel.triggers.filter((path) =>
     path.startsWith("onchain/aiken/lib/midgard/cek-core-step-goldens/"),
   );
-  assert.equal(outputs.length, 36);
+  assert.equal(outputs.length, 47);
   for (const path of outputs) {
     assert.ok(existsSync(resolve(root, path)), path);
     assert.ok(selectedIds([path]).includes(channel.id), path);

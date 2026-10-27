@@ -163,7 +163,14 @@ const execute = (
     constantWitnesses: graph.constantWitnesses,
     maxSteps: definition.maxSteps,
     executionBudget: definition.executionBudget,
-  }).steps;
+  }).steps.filter(
+    // A pinned boundary program's golden keeps only its named builtin step.
+    (step) =>
+      definition.pinBuiltinStep === undefined ||
+      ((step.witness.kind === "executeBuiltinSemantic" ||
+        step.witness.kind === "executeBuiltinSemanticFailure") &&
+        step.witness.tag === definition.pinBuiltinStep),
+  );
 };
 
 const witnessConstructor = (evidenceCbor: string): bigint => {
