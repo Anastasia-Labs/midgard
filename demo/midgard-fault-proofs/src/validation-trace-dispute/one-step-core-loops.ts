@@ -146,6 +146,29 @@ const writeBitsHops = (
   });
 };
 
+/** The hops already planned for a witness, by the loop arm and the staging
+ * outputs they read. The runner plans its thread again on every run, and
+ * planning walks the whole loop (a writeBits step over the longest index list
+ * takes 839 hops), so each run re-planning it made a thread's resolution
+ * quadratic in its hops; the hops are a function of the witness and the
+ * outputs alone. */
+const plannedHops = new WeakMap<
+  MidgardCekCoreStepWitness,
+  Map<string, readonly CekCoreLoopHop[]>
+>();
+
+const hopsKey = (
+  stage: CekCoreLoopStage,
+  runs: readonly MidgardCekStagedOutRef[] | undefined,
+): string =>
+  [
+    stage,
+    ...(runs ?? []).map(
+      ({ transactionId, outputIndex }) =>
+        `${Buffer.from(transactionId).toString("hex")}#${outputIndex.toString()}`,
+    ),
+  ].join(" ");
+
 /**
  * The hops of the loop arm `stage` over the step with witness `witness`; the
  * serialise loop reads R from the staging outputs `runs` when given. Throws
@@ -156,11 +179,18 @@ export const cekCoreLoopHops = (
   stage: CekCoreLoopStage,
   witness: MidgardCekCoreStepWitness,
   runs?: readonly MidgardCekStagedOutRef[],
-): readonly CekCoreLoopHop[] =>
-  Object.freeze(
+): readonly CekCoreLoopHop[] => {
+  const key = hopsKey(stage, runs);
+  const known = plannedHops.get(witness)?.get(key);
+  if (known !== undefined) return known;
+  const hops = Object.freeze(
     stage === "stagedProduct"
       ? productHops(witness)
       : stage === "semanticSerialiseLoop"
         ? serialiseHops(witness, runs)
         : writeBitsHops(witness),
   );
+  const byKey = plannedHops.get(witness) ?? new Map();
+  plannedHops.set(witness, byKey.set(key, hops));
+  return hops;
+};
