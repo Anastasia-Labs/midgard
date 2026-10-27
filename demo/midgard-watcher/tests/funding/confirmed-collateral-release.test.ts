@@ -46,15 +46,37 @@ const setup = async () => {
     };
   };
   const other = competitorFor(collateral, `${"ab".repeat(32)}#0`);
-  return { fixture, collateral, funding, change, peer, competitorFor, other };
+  // The store lists every reservation, the peer's among them, by id.
+  const own = async () =>
+    (await fixture.records()).find(
+      ({ reservationId }) => reservationId === fixture.plan.reservationId,
+    )!;
+  return {
+    fixture,
+    collateral,
+    funding,
+    change,
+    peer,
+    competitorFor,
+    other,
+    own,
+  };
 };
 
 it("releases a confirmed proof's collateral lease at confirmation so another reservation can use it", async () => {
-  const { fixture, collateral, funding, change, peer, competitorFor, other } =
-    await setup();
+  const {
+    fixture,
+    collateral,
+    funding,
+    change,
+    peer,
+    competitorFor,
+    other,
+    own,
+  } = await setup();
   try {
     // Pending: the signed attempt's collateral is leased.
-    expect((await fixture.records())[0]!.activeInputs).toContainEqual(
+    expect((await own()).activeInputs).toContainEqual(
       expect.objectContaining({ outRef: collateral, role: "collateral" }),
     );
     await expect(peer.store.reserve(other)).rejects.toThrow("already reserved");
@@ -67,9 +89,9 @@ it("releases a confirmed proof's collateral lease at confirmation so another res
       actionId: "init",
       txHash: fixture.transactionHash,
     });
-    const [record] = await fixture.records();
-    expect(record!.pendingTransition).toBeNull();
-    expect(record!.activeInputs.map(({ outRef }) => outRef)).not.toContain(
+    const record = await own();
+    expect(record.pendingTransition).toBeNull();
+    expect(record.activeInputs.map(({ outRef }) => outRef)).not.toContain(
       collateral,
     );
     const reserved = await peer.store.readReservedOutRefs({});
@@ -88,7 +110,7 @@ it("releases a confirmed proof's collateral lease at confirmation so another res
       journal,
       action: { actionId: "next", input: { actionKind: "step-one" } },
     });
-    const nextCollateral = (await fixture.records())[0]!.activeInputs.filter(
+    const nextCollateral = (await own()).activeInputs.filter(
       ({ role }) => role === "collateral",
     );
     expect(nextCollateral).toHaveLength(1);
@@ -106,7 +128,8 @@ it("releases a confirmed proof's collateral lease at confirmation so another res
 });
 
 it("rebroadcasts the identical bytes after a rollback while another reservation holds the collateral lease", async () => {
-  const { fixture, collateral, funding, change, peer, other } = await setup();
+  const { fixture, collateral, funding, change, peer, other, own } =
+    await setup();
   try {
     const journal = await fixture.recover();
     await fixture.run(journal);
@@ -136,12 +159,12 @@ it("rebroadcasts the identical bytes after a rollback while another reservation 
     );
 
     // Reclaiming collateral another reservation holds is refused at the store.
-    const [before] = await fixture.records();
+    const before = await own();
     await expect(
       fixture.store.reobserveTransition!({
         journal: [],
         plan: fixture.plan,
-        expectedRevision: before!.revision,
+        expectedRevision: before.revision,
         transactionHash: fixture.transactionHash,
         inputs: fixture.plan.inputs,
       }),
@@ -173,11 +196,11 @@ it("rebroadcasts the identical bytes after a rollback while another reservation 
     );
     expect(result).toMatchObject({ kind: "pending" });
     expect(rebroadcast).toEqual([fixture.signedTransactionCborHex]);
-    const [record] = await fixture.records();
-    expect(record!.pendingTransition?.transactionHash).toBe(
+    const record = await own();
+    expect(record.pendingTransition?.transactionHash).toBe(
       fixture.transactionHash,
     );
-    const active = record!.activeInputs.map(({ outRef }) => outRef);
+    const active = record.activeInputs.map(({ outRef }) => outRef);
     expect(active).toContain(funding);
     expect(active).not.toContain(collateral);
     expect(
