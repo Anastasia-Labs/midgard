@@ -104,6 +104,15 @@ test ascending_policy_does_not_convict() {
   )
 }
 
+/// The third name repeats the second; the twin takes the next name instead.
+test repeated_asset_name_convicts() {
+  verdict(bytearray.concat(prefix, #"a3410101410201410201"), #"")
+}
+
+test distinct_asset_names_do_not_convict() {
+  !verdict(bytearray.concat(prefix, #"a3410101410201410301"), #"")
+}
+
 test empty_item_belongs_to_width_family() fail {
   expect _ = rule.initial_scan_v1(rule.bind_item_v1(accepted(), 0), #"", #"")
 }

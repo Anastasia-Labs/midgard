@@ -122,6 +122,9 @@ pub fn control_is_well_formed(control: LedgerOutputScanControlV1) -> Bool {
     },
     control.lovelace >= 0,
     control.cardano_value_size >= 0,
+    // The size only grows from step to step, so a step whose result crosses
+    // the cap is refused, wherever in the output it falls.
+    control.cardano_value_size <= ledger_output_commitment_v1.max_cardano_value_cbor_bytes,
     control.policy_remaining >= 0,
     control.asset_remaining >= 0,
     control.policy_asset_cursor >= 0,

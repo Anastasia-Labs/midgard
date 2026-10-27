@@ -21,6 +21,10 @@
  *     place by name, where the typed and split on-chain steps replay each
  *     witness list to the pinned terminal control.
  *
+ * For every refusal row it also writes the step count and refused scan
+ * control at which the TypeScript output scan refuses the output; the Aiken
+ * test scans the same output and refuses it at the same step and control.
+ *
  * A row whose producer no longer exhibits the row's hand-written claims (step
  * count, empty-span steps, attach shapes, output length) is refused rather
  * than emitted.
@@ -40,9 +44,11 @@ import { fileURLToPath } from "node:url";
 import {
   buildMidgardLedgerOutputProofTrace,
   encodeMidgardLedgerOutputProofControl,
+  encodeMidgardLedgerOutputScanControl,
   isExactMidgardLedgerOutputProofTerminal,
   MidgardLedgerOutputProofStages,
   nextMidgardCekDataTraverseSpan,
+  traceMidgardLedgerOutputScan,
 } from "@al-ft/midgard-core";
 import {
   decodeMidgardDatum,
@@ -69,6 +75,9 @@ import {
 // by `--check`.
 import {
   LEDGER_OUTPUT_PROOF_REPLAY_ROWS,
+  LONG_ASSET_NAME_REFUSAL_ROWS,
+  ledgerOutputProofRefusalClaimProblems,
+  ledgerOutputProofRefusalVector,
   ledgerOutputProofReplayClaimProblems,
   ledgerOutputProofReplayVector,
 } from "../tests/fixtures/ledger-output-proof-replay.vectors.mjs";
@@ -101,12 +110,14 @@ const twins = {
   decodeMidgardDatum,
   deriveLedgerOutputProofStepClaims,
   encodeMidgardLedgerOutputProofControl,
+  encodeMidgardLedgerOutputScanControl,
   encodeMidgardTxOutput,
   isExactMidgardLedgerOutputProofTerminal,
   ledgerOutputProofDatumRoleIndex,
   MidgardLedgerOutputProofStages,
   nextMidgardCekDataTraverseSpan,
   plutusDataToCborHex,
+  traceMidgardLedgerOutputScan,
   witnessData,
 };
 
@@ -121,25 +132,48 @@ const vectors = LEDGER_OUTPUT_PROOF_REPLAY_ROWS.map(({ row, family }) => {
   return { family, vector };
 });
 
+const refusals = LONG_ASSET_NAME_REFUSAL_ROWS.map((row) => {
+  const vector = ledgerOutputProofRefusalVector(row, twins);
+  const problems = ledgerOutputProofRefusalClaimProblems(row, vector);
+  if (problems.length > 0) {
+    throw new Error(
+      `the producer no longer exhibits a refusal row's claims:\n${problems.join("\n")}`,
+    );
+  }
+  return vector;
+});
+
 const golden = {
   generator:
     "demo/midgard-validation/scripts/generate-ledger-output-proof-replay-goldens.mjs",
   aikenModule,
   rows: vectors.map(({ family, vector }) => ({ family, ...vector })),
+  refusals,
 };
 
 /**
  * The Aiken constants of one row: its witness list, terminal control hash and
- * planner scalar claims, and for an empty-field row also its output (a datum-scalar row's output is
- * built in the Aiken test from its structure).
+ * planner scalar claims, and for an empty-field or long-asset-name row also
+ * its output (a datum-scalar row's output is built in the Aiken test from its
+ * structure).
  */
 const rowConstants = ({ family, vector }) => ({
-  ...(family === "emptyField"
+  ...(family === "emptyField" || family === "longAssetNames"
     ? { [`${vector.id}_output`]: bytes(vector.outputCborHex) }
     : {}),
   [`${vector.id}_witnesses`]: bytes(vector.witnessesCborHex),
   [`${vector.id}_terminal_hash`]: bytes(vector.terminalHash),
   [`${vector.id}_planner_claims`]: bytes(vector.plannerClaimsCborHex),
+});
+
+/**
+ * The Aiken constants of one refusal row: its output, the number of steps the
+ * scan accepts and the hash of the control whose next step it refuses.
+ */
+const refusalConstants = (vector) => ({
+  [`${vector.id}_output`]: bytes(vector.outputCborHex),
+  [`${vector.id}_accepted_steps`]: vector.acceptedSteps,
+  [`${vector.id}_refused_control_hash`]: bytes(vector.refusedControlHash),
 });
 
 writeOrCheck(generatedJsonPath, `${JSON.stringify(golden, null, 2)}\n`);
@@ -148,6 +182,10 @@ writeOrCheck(
   aikenPath,
   rebindAikenConstants({
     source: readFileSync(aikenPath, "utf8"),
-    constants: Object.assign({}, ...vectors.map(rowConstants)),
+    constants: Object.assign(
+      {},
+      ...vectors.map(rowConstants),
+      ...refusals.map(refusalConstants),
+    ),
   }),
 );
