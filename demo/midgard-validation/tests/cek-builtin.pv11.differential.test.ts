@@ -5,6 +5,7 @@ import {
   builtinValueToDirectWitness,
   evaluateMidgardCekDirectBuiltin,
 } from "../src/cek-builtin.evaluate-direct-builtin.js";
+import { midgardCekKnownBuiltinFailure } from "../src/cek-builtin.known-failure.js";
 import { evaluatePinnedBuiltin } from "../src/cek-builtin.pinned-evaluator.js";
 import {
   decodeMidgardCekConstantWitness,
@@ -33,6 +34,7 @@ import { app, force, lam } from "./helpers/cek-uplc-terms.js";
  * evaluator's own charge for the application (its default Plutus V3 cost
  * model) and, for every application a program can spell, against what a
  * program evaluated under Midgard's pinned cost model is charged for it.
+ * Every failure is one the direct failure arm proves, and no success is.
  */
 
 const POINT_TYPES = new Map<number, MidgardCekConstantType>([
@@ -168,13 +170,17 @@ describe("PV 11 builtins against the pinned reference evaluator", () => {
     "%s: outcome, result and charge",
     (_name, pv11Case) => {
       const reference = evaluatePinnedBuiltin(pv11Case.tag, pv11Case.arguments);
+      const witnesses = pv11Case.arguments.map(witnessOf);
       const proof = evaluateMidgardCekDirectBuiltin(
         BigInt(pv11Case.tag),
-        pv11Case.arguments.map(witnessOf),
+        witnesses,
       );
       expect(proof.kind).toBe(
         reference.kind === "value" ? "success" : "failure",
       );
+      expect(
+        midgardCekKnownBuiltinFailure(BigInt(pv11Case.tag), witnesses),
+      ).toBe(reference.kind !== "value");
       if (reference.kind === "value" && proof.kind === "success")
         expect(show(resultValue(proof.result))).toBe(show(reference.value));
       const charged = reference.kind === "value" || reference.charged;

@@ -14925,7 +14925,7 @@
     },
     {
       "case": 767,
-      "tag": 87,
+      "tag": 88,
       "name": "1 by 0",
       "arguments": [
         {
@@ -14943,7 +14943,7 @@
     },
     {
       "case": 768,
-      "tag": 100,
+      "tag": 95,
       "name": "1 by 0",
       "arguments": [
         {
@@ -14961,6 +14961,24 @@
     },
     {
       "case": 769,
+      "tag": 101,
+      "name": "1 by 0",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "01"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "00"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 770,
       "tag": 37,
       "name": "constrData index -1",
       "arguments": [
@@ -14978,7 +14996,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 770,
+      "case": 771,
       "tag": 37,
       "name": "constrData index 2^64",
       "arguments": [
@@ -14996,7 +15014,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 771,
+      "case": 772,
       "tag": 32,
       "name": "mkCons integer onto byte strings",
       "arguments": [
@@ -15014,7 +15032,7 @@
       "verdict": "not-known"
     },
     {
-      "case": 772,
+      "case": 773,
       "tag": 0,
       "name": "opaque arguments",
       "arguments": [
@@ -15028,6 +15046,3357 @@
         }
       ],
       "verdict": "not-known"
+    },
+    {
+      "case": 774,
+      "tag": 87,
+      "name": "small",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "03"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "05"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "07"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 775,
+      "tag": 87,
+      "name": "modulus 0",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "03"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "05"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "00"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 776,
+      "tag": 87,
+      "name": "modulus -7",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "03"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "05"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "26"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 777,
+      "tag": 87,
+      "name": "modulus 1, base 2^8191",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "c25f584080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "20"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "01"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 778,
+      "tag": 87,
+      "name": "modulus 2^8191 - 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "03"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "05"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "c25f58407fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 779,
+      "tag": 87,
+      "name": "modulus 2^8191",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "03"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "05"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "c25f584080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ff"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 780,
+      "tag": 87,
+      "name": "base 2^8191 - 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "c25f58407fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "03"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "1a000f4243"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 781,
+      "tag": 87,
+      "name": "base 2^8191",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "c25f584080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "03"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "1a000f4243"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 782,
+      "tag": 87,
+      "name": "base -2^8191",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "c35f58407fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "03"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "1a000f4243"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 783,
+      "tag": 87,
+      "name": "base -2^8191 - 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "c35f584080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "03"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "1a000f4243"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 784,
+      "tag": 87,
+      "name": "exponent 2^8191 - 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "02"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "c25f58407fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "1a000f4243"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 785,
+      "tag": 87,
+      "name": "exponent 2^8191",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "02"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "c25f584080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "1a000f4243"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 786,
+      "tag": 87,
+      "name": "exponent -2^8191",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "03"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "c35f58407fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "07"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 787,
+      "tag": 87,
+      "name": "exponent -2^8191 - 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "03"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "c35f584080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "07"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 788,
+      "tag": 87,
+      "name": "zero base, zero exponent",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "00"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "00"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "0d"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 789,
+      "tag": 87,
+      "name": "zero base, exponent -1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "00"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "20"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "0d"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 790,
+      "tag": 87,
+      "name": "inverse of 3 mod 7",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "03"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "20"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "07"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 791,
+      "tag": 87,
+      "name": "inverse of -3 mod 7",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "22"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "21"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "07"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 792,
+      "tag": 87,
+      "name": "no inverse of 2 mod 4",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "02"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "20"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "04"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 793,
+      "tag": 87,
+      "name": "no inverse of 6 mod 9",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "06"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "22"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "09"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 794,
+      "tag": 87,
+      "name": "no inverse of 15 mod 2^64 + 5",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "c249010000000000000014"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "20"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "c249010000000000000005"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 795,
+      "tag": 87,
+      "name": "byte-string base",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "4103"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "05"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "07"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 796,
+      "tag": 87,
+      "name": "two arguments",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "03"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "05"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 797,
+      "tag": 91,
+      "name": "index -18446744073709551616",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0c00ff",
+          "payload": "9f050607ff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "3bffffffffffffffff"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 798,
+      "tag": 91,
+      "name": "index -1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0c00ff",
+          "payload": "9f050607ff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "20"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 799,
+      "tag": 91,
+      "name": "index 0",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0c00ff",
+          "payload": "9f050607ff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "00"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 800,
+      "tag": 91,
+      "name": "index 2",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0c00ff",
+          "payload": "9f050607ff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "02"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 801,
+      "tag": 91,
+      "name": "index 3",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0c00ff",
+          "payload": "9f050607ff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "03"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 802,
+      "tag": 91,
+      "name": "index 18446744073709551616",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0c00ff",
+          "payload": "9f050607ff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "c249010000000000000000"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 803,
+      "tag": 91,
+      "name": "index 0 of the empty array",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0c00ff",
+          "payload": "80"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "00"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 804,
+      "tag": 91,
+      "name": "index 0 of a G1 array",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0c09ff",
+          "payload": "9f583097f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bbff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "00"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 805,
+      "tag": 91,
+      "name": "index into a list",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0500ff",
+          "payload": "9f050607ff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "00"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 806,
+      "tag": 91,
+      "name": "byte-string index",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0c00ff",
+          "payload": "9f050607ff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "4100"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 807,
+      "tag": 92,
+      "name": "no scalars",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0500ff",
+          "payload": "80"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0509ff",
+          "payload": "80"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 808,
+      "tag": 92,
+      "name": "scalars without points",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0500ff",
+          "payload": "9f0102ff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0509ff",
+          "payload": "80"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 809,
+      "tag": 92,
+      "name": "scalar 2^4095 - 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0500ff",
+          "payload": "9fc25f58407fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0509ff",
+          "payload": "9f583097f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bbff"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 810,
+      "tag": 92,
+      "name": "scalar 2^4095",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0500ff",
+          "payload": "9fc25f584080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ffff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0509ff",
+          "payload": "9f583097f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bbff"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 811,
+      "tag": 92,
+      "name": "scalar -2^4095",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0500ff",
+          "payload": "9fc35f58407fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0509ff",
+          "payload": "9f583097f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bbff"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 812,
+      "tag": 92,
+      "name": "scalar -2^4095 - 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0500ff",
+          "payload": "9fc35f584080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ffff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0509ff",
+          "payload": "9f583097f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bbff"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 813,
+      "tag": 92,
+      "name": "out-of-bound scalar past the points",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0500ff",
+          "payload": "9f01c25f584080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ffff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0509ff",
+          "payload": "9f583097f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bbff"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 814,
+      "tag": 92,
+      "name": "out-of-bound scalar without points",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0500ff",
+          "payload": "9fc25f584080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ffff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0509ff",
+          "payload": "80"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 815,
+      "tag": 92,
+      "name": "points of the other group",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0500ff",
+          "payload": "9fc25f584080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ffff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f050aff",
+          "payload": "9f5f584093e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc510515820c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8ffff"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 816,
+      "tag": 92,
+      "name": "byte-string scalars",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0501ff",
+          "payload": "9f4101ff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0509ff",
+          "payload": "9f583097f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bbff"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 817,
+      "tag": 92,
+      "name": "an integer for the scalars",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "01"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0509ff",
+          "payload": "9f583097f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bbff"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 818,
+      "tag": 93,
+      "name": "no scalars",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0500ff",
+          "payload": "80"
+        },
+        {
+          "kind": "constant",
+          "type": "9f050aff",
+          "payload": "80"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 819,
+      "tag": 93,
+      "name": "scalars without points",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0500ff",
+          "payload": "9f0102ff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f050aff",
+          "payload": "80"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 820,
+      "tag": 93,
+      "name": "scalar 2^4095 - 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0500ff",
+          "payload": "9fc25f58407fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f050aff",
+          "payload": "9f5f584093e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc510515820c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8ffff"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 821,
+      "tag": 93,
+      "name": "scalar 2^4095",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0500ff",
+          "payload": "9fc25f584080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ffff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f050aff",
+          "payload": "9f5f584093e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc510515820c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8ffff"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 822,
+      "tag": 93,
+      "name": "scalar -2^4095",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0500ff",
+          "payload": "9fc35f58407fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f050aff",
+          "payload": "9f5f584093e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc510515820c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8ffff"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 823,
+      "tag": 93,
+      "name": "scalar -2^4095 - 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0500ff",
+          "payload": "9fc35f584080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ffff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f050aff",
+          "payload": "9f5f584093e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc510515820c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8ffff"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 824,
+      "tag": 93,
+      "name": "out-of-bound scalar past the points",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0500ff",
+          "payload": "9f01c25f584080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ffff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f050aff",
+          "payload": "9f5f584093e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc510515820c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8ffff"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 825,
+      "tag": 93,
+      "name": "out-of-bound scalar without points",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0500ff",
+          "payload": "9fc25f584080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ffff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f050aff",
+          "payload": "80"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 826,
+      "tag": 93,
+      "name": "points of the other group",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0500ff",
+          "payload": "9fc25f584080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ffff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0509ff",
+          "payload": "9f583097f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bbff"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 827,
+      "tag": 93,
+      "name": "byte-string scalars",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0501ff",
+          "payload": "9f4101ff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f050aff",
+          "payload": "9f5f584093e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc510515820c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8ffff"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 828,
+      "tag": 93,
+      "name": "an integer for the scalars",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "01"
+        },
+        {
+          "kind": "constant",
+          "type": "9f050aff",
+          "payload": "9f5f584093e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc510515820c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8ffff"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 829,
+      "tag": 94,
+      "name": "32-byte keys",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "58200000000000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "58200000000000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "01"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a0"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 830,
+      "tag": 94,
+      "name": "33-byte currency",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "5821000000000000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "58200000000000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "01"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a0"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 831,
+      "tag": 94,
+      "name": "33-byte token",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "58200000000000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "5821000000000000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "01"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a0"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 832,
+      "tag": 94,
+      "name": "33-byte currency, quantity 0",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "5821000000000000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "4100"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "00"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbb01"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 833,
+      "tag": 94,
+      "name": "quantity 2^127 - 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "44bbbbbbbb"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "c2507fffffffffffffffffffffffffffffff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a0"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 834,
+      "tag": 94,
+      "name": "quantity 2^127",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "44bbbbbbbb"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "c25080000000000000000000000000000000"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a0"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 835,
+      "tag": 94,
+      "name": "quantity -2^127",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "44bbbbbbbb"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "c3507fffffffffffffffffffffffffffffff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a0"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 836,
+      "tag": 94,
+      "name": "quantity -2^127 - 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "44bbbbbbbb"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "c35080000000000000000000000000000000"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbb01"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 837,
+      "tag": 94,
+      "name": "delete the only coin",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "44bbbbbbbb"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "00"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbb01"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 838,
+      "tag": 94,
+      "name": "an integer for the value",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "4100"
+        },
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "4100"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "01"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "01"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 839,
+      "tag": 96,
+      "name": "sum 2^127 - 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbbc2507fffffffffffffffffffffffffffffff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a0"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 840,
+      "tag": 96,
+      "name": "sum 2^127",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbbc2507fffffffffffffffffffffffffffffff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbb01"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 841,
+      "tag": 96,
+      "name": "sum -2^127",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbbc3507ffffffffffffffffffffffffffffffe"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbb20"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 842,
+      "tag": 96,
+      "name": "sum -2^127 - 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbbc3507fffffffffffffffffffffffffffffff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbb20"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 843,
+      "tag": 96,
+      "name": "sum cancels",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbb01"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbb20"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 844,
+      "tag": 96,
+      "name": "disjoint coins at the bound",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbbc2507fffffffffffffffffffffffffffffff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144ccccccccc2507fffffffffffffffffffffffffffffff"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 845,
+      "tag": 97,
+      "name": "contains itself",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbb01"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbb01"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 846,
+      "tag": 97,
+      "name": "empty contains empty",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a0"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a0"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 847,
+      "tag": 97,
+      "name": "does not contain more",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbb01"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbb02"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 848,
+      "tag": 97,
+      "name": "negative left",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbb20"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a0"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 849,
+      "tag": 97,
+      "name": "negative right",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbb01"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbb20"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 850,
+      "tag": 96,
+      "name": "data for the right value",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbb01"
+        },
+        {
+          "kind": "constant",
+          "type": "9f08ff",
+          "payload": "a0"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 851,
+      "tag": 97,
+      "name": "an integer for the left value",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "01"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a0"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 852,
+      "tag": 100,
+      "name": "2^127 - 1 times one",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "c2507fffffffffffffffffffffffffffffff"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbb01"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 853,
+      "tag": 100,
+      "name": "2 times 2^127 - 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "02"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbbc2507fffffffffffffffffffffffffffffff"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 854,
+      "tag": 100,
+      "name": "-1 times -2^127",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "20"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbbc3507fffffffffffffffffffffffffffffff"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 855,
+      "tag": 100,
+      "name": "-1 times 2^127 - 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "20"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbbc2507fffffffffffffffffffffffffffffff"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 856,
+      "tag": 100,
+      "name": "0 times 2^127 - 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "00"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbbc2507fffffffffffffffffffffffffffffff"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 857,
+      "tag": 100,
+      "name": "2^64 times the empty value",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "c249010000000000000000"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a0"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 858,
+      "tag": 100,
+      "name": "a byte-string scalar",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "4102"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbb01"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 859,
+      "tag": 99,
+      "name": "canonical",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f08ff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbb01"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 860,
+      "tag": 99,
+      "name": "empty",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f08ff",
+          "payload": "a0"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 861,
+      "tag": 99,
+      "name": "32-byte keys",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f08ff",
+          "payload": "a158200000000000000000000000000000000000000000000000000000000000000000a15820000000000000000000000000000000000000000000000000000000000000000001"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 862,
+      "tag": 99,
+      "name": "33-byte policy",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f08ff",
+          "payload": "a15821000000000000000000000000000000000000000000000000000000000000000000a144bbbbbbbb01"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 863,
+      "tag": 99,
+      "name": "33-byte token",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f08ff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1582100000000000000000000000000000000000000000000000000000000000000000001"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 864,
+      "tag": 99,
+      "name": "quantity 2^127 - 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f08ff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbbc2507fffffffffffffffffffffffffffffff"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 865,
+      "tag": 99,
+      "name": "quantity 2^127",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f08ff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbbc25080000000000000000000000000000000"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 866,
+      "tag": 99,
+      "name": "quantity -2^127 - 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f08ff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbbc35080000000000000000000000000000000"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 867,
+      "tag": 99,
+      "name": "zero quantity",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f08ff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbb00"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 868,
+      "tag": 99,
+      "name": "empty token map",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f08ff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 869,
+      "tag": 99,
+      "name": "unsorted currencies",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f08ff",
+          "payload": "a24102a144bbbbbbbb014101a144bbbbbbbb01"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 870,
+      "tag": 99,
+      "name": "repeated token",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f08ff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa244bbbbbbbb0144bbbbbbbb02"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 871,
+      "tag": 99,
+      "name": "integer currency",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f08ff",
+          "payload": "a101a0"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 872,
+      "tag": 99,
+      "name": "a list",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f08ff",
+          "payload": "80"
+        }
+      ],
+      "verdict": "known"
+    },
+    {
+      "case": 873,
+      "tag": 99,
+      "name": "a Value for the data",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbb01"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 874,
+      "tag": 88,
+      "name": "drop 5 of one",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "05"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0500ff",
+          "payload": "9f01ff"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 875,
+      "tag": 89,
+      "name": "length of three",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0c00ff",
+          "payload": "9f010203ff"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 876,
+      "tag": 90,
+      "name": "list of three to an array",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0500ff",
+          "payload": "9f010203ff"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 877,
+      "tag": 95,
+      "name": "look up an absent coin",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "5821000000000000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "4100"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbb01"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 878,
+      "tag": 98,
+      "name": "data of one coin",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbb01"
+        }
+      ],
+      "verdict": "not-known"
+    },
+    {
+      "case": 879,
+      "tag": 87,
+      "name": "kind sweep: opaque argument 0",
+      "arguments": [
+        {
+          "kind": "opaque",
+          "root": "0909090909090909090909090909090909090909090909090909090909090909"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "05"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "00"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 880,
+      "tag": 87,
+      "name": "kind sweep: compacted argument 0",
+      "arguments": [
+        {
+          "kind": "semanticConstant",
+          "type": "9f00ff",
+          "root": "0707070707070707070707070707070707070707070707070707070707070707",
+          "cborLength": "3",
+          "payloadMemory": "1",
+          "memory": "1"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "05"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "00"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 881,
+      "tag": 87,
+      "name": "kind sweep: Miller-loop argument 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "03"
+        },
+        {
+          "kind": "blsMillerLoop",
+          "root": "0505050505050505050505050505050505050505050505050505050505050505"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "00"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 882,
+      "tag": 87,
+      "name": "kind sweep: compacted argument 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "03"
+        },
+        {
+          "kind": "semanticConstant",
+          "type": "9f00ff",
+          "root": "0707070707070707070707070707070707070707070707070707070707070707",
+          "cborLength": "3",
+          "payloadMemory": "1",
+          "memory": "1"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "00"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 883,
+      "tag": 87,
+      "name": "kind sweep: opaque argument 2",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "03"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "05"
+        },
+        {
+          "kind": "opaque",
+          "root": "0909090909090909090909090909090909090909090909090909090909090909"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 884,
+      "tag": 87,
+      "name": "kind sweep: compacted argument 2",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "03"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "05"
+        },
+        {
+          "kind": "semanticConstant",
+          "type": "9f00ff",
+          "root": "0707070707070707070707070707070707070707070707070707070707070707",
+          "cborLength": "3",
+          "payloadMemory": "1",
+          "memory": "1"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 885,
+      "tag": 91,
+      "name": "kind sweep: opaque argument 0",
+      "arguments": [
+        {
+          "kind": "opaque",
+          "root": "0909090909090909090909090909090909090909090909090909090909090909"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "03"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 886,
+      "tag": 91,
+      "name": "kind sweep: compacted argument 0",
+      "arguments": [
+        {
+          "kind": "semanticConstant",
+          "type": "9f0c00ff",
+          "root": "0707070707070707070707070707070707070707070707070707070707070707",
+          "cborLength": "3",
+          "payloadMemory": "1",
+          "memory": "1"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "03"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 887,
+      "tag": 91,
+      "name": "kind sweep: Miller-loop argument 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0c00ff",
+          "payload": "9f050607ff"
+        },
+        {
+          "kind": "blsMillerLoop",
+          "root": "0505050505050505050505050505050505050505050505050505050505050505"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 888,
+      "tag": 91,
+      "name": "kind sweep: compacted argument 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0c00ff",
+          "payload": "9f050607ff"
+        },
+        {
+          "kind": "semanticConstant",
+          "type": "9f00ff",
+          "root": "0707070707070707070707070707070707070707070707070707070707070707",
+          "cborLength": "3",
+          "payloadMemory": "1",
+          "memory": "1"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 889,
+      "tag": 91,
+      "name": "kind sweep: opaque argument 0",
+      "arguments": [
+        {
+          "kind": "opaque",
+          "root": "0909090909090909090909090909090909090909090909090909090909090909"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "20"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 890,
+      "tag": 91,
+      "name": "kind sweep: compacted argument 0",
+      "arguments": [
+        {
+          "kind": "semanticConstant",
+          "type": "9f0c00ff",
+          "root": "0707070707070707070707070707070707070707070707070707070707070707",
+          "cborLength": "3",
+          "payloadMemory": "1",
+          "memory": "1"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "20"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 891,
+      "tag": 92,
+      "name": "kind sweep: opaque argument 0",
+      "arguments": [
+        {
+          "kind": "opaque",
+          "root": "0909090909090909090909090909090909090909090909090909090909090909"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0509ff",
+          "payload": "9f583097f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bbff"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 892,
+      "tag": 92,
+      "name": "kind sweep: compacted argument 0",
+      "arguments": [
+        {
+          "kind": "semanticConstant",
+          "type": "9f0500ff",
+          "root": "0707070707070707070707070707070707070707070707070707070707070707",
+          "cborLength": "3",
+          "payloadMemory": "1",
+          "memory": "1"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0509ff",
+          "payload": "9f583097f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bbff"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 893,
+      "tag": 92,
+      "name": "kind sweep: Miller-loop argument 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0500ff",
+          "payload": "9fc25f584080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ffff"
+        },
+        {
+          "kind": "blsMillerLoop",
+          "root": "0505050505050505050505050505050505050505050505050505050505050505"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 894,
+      "tag": 92,
+      "name": "kind sweep: compacted argument 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0500ff",
+          "payload": "9fc25f584080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ffff"
+        },
+        {
+          "kind": "semanticConstant",
+          "type": "9f0509ff",
+          "root": "0707070707070707070707070707070707070707070707070707070707070707",
+          "cborLength": "3",
+          "payloadMemory": "1",
+          "memory": "1"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 895,
+      "tag": 92,
+      "name": "kind sweep: compacted argument 0",
+      "arguments": [
+        {
+          "kind": "semanticConstant",
+          "type": "9f0501ff",
+          "root": "0707070707070707070707070707070707070707070707070707070707070707",
+          "cborLength": "3",
+          "payloadMemory": "1",
+          "memory": "1"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0509ff",
+          "payload": "9f583097f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bbff"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 896,
+      "tag": 92,
+      "name": "kind sweep: Miller-loop argument 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0501ff",
+          "payload": "9f4101ff"
+        },
+        {
+          "kind": "blsMillerLoop",
+          "root": "0505050505050505050505050505050505050505050505050505050505050505"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 897,
+      "tag": 92,
+      "name": "kind sweep: compacted argument 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0501ff",
+          "payload": "9f4101ff"
+        },
+        {
+          "kind": "semanticConstant",
+          "type": "9f0509ff",
+          "root": "0707070707070707070707070707070707070707070707070707070707070707",
+          "cborLength": "3",
+          "payloadMemory": "1",
+          "memory": "1"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 898,
+      "tag": 93,
+      "name": "kind sweep: opaque argument 0",
+      "arguments": [
+        {
+          "kind": "opaque",
+          "root": "0909090909090909090909090909090909090909090909090909090909090909"
+        },
+        {
+          "kind": "constant",
+          "type": "9f050aff",
+          "payload": "9f5f584093e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc510515820c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8ffff"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 899,
+      "tag": 93,
+      "name": "kind sweep: compacted argument 0",
+      "arguments": [
+        {
+          "kind": "semanticConstant",
+          "type": "9f0500ff",
+          "root": "0707070707070707070707070707070707070707070707070707070707070707",
+          "cborLength": "3",
+          "payloadMemory": "1",
+          "memory": "1"
+        },
+        {
+          "kind": "constant",
+          "type": "9f050aff",
+          "payload": "9f5f584093e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc510515820c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8ffff"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 900,
+      "tag": 93,
+      "name": "kind sweep: Miller-loop argument 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0500ff",
+          "payload": "9fc25f584080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ffff"
+        },
+        {
+          "kind": "blsMillerLoop",
+          "root": "0505050505050505050505050505050505050505050505050505050505050505"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 901,
+      "tag": 93,
+      "name": "kind sweep: compacted argument 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0500ff",
+          "payload": "9fc25f584080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ffff"
+        },
+        {
+          "kind": "semanticConstant",
+          "type": "9f050aff",
+          "root": "0707070707070707070707070707070707070707070707070707070707070707",
+          "cborLength": "3",
+          "payloadMemory": "1",
+          "memory": "1"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 902,
+      "tag": 93,
+      "name": "kind sweep: compacted argument 0",
+      "arguments": [
+        {
+          "kind": "semanticConstant",
+          "type": "9f0501ff",
+          "root": "0707070707070707070707070707070707070707070707070707070707070707",
+          "cborLength": "3",
+          "payloadMemory": "1",
+          "memory": "1"
+        },
+        {
+          "kind": "constant",
+          "type": "9f050aff",
+          "payload": "9f5f584093e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc510515820c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8ffff"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 903,
+      "tag": 93,
+      "name": "kind sweep: Miller-loop argument 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0501ff",
+          "payload": "9f4101ff"
+        },
+        {
+          "kind": "blsMillerLoop",
+          "root": "0505050505050505050505050505050505050505050505050505050505050505"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 904,
+      "tag": 93,
+      "name": "kind sweep: compacted argument 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0501ff",
+          "payload": "9f4101ff"
+        },
+        {
+          "kind": "semanticConstant",
+          "type": "9f050aff",
+          "root": "0707070707070707070707070707070707070707070707070707070707070707",
+          "cborLength": "3",
+          "payloadMemory": "1",
+          "memory": "1"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 905,
+      "tag": 94,
+      "name": "kind sweep: opaque argument 0",
+      "arguments": [
+        {
+          "kind": "opaque",
+          "root": "0909090909090909090909090909090909090909090909090909090909090909"
+        },
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "4100"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "01"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a0"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 906,
+      "tag": 94,
+      "name": "kind sweep: compacted argument 0",
+      "arguments": [
+        {
+          "kind": "semanticConstant",
+          "type": "9f01ff",
+          "root": "0707070707070707070707070707070707070707070707070707070707070707",
+          "cborLength": "3",
+          "payloadMemory": "1",
+          "memory": "1"
+        },
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "4100"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "01"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a0"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 907,
+      "tag": 94,
+      "name": "kind sweep: Miller-loop argument 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "5821000000000000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "kind": "blsMillerLoop",
+          "root": "0505050505050505050505050505050505050505050505050505050505050505"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "01"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a0"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 908,
+      "tag": 94,
+      "name": "kind sweep: compacted argument 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "5821000000000000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "kind": "semanticConstant",
+          "type": "9f01ff",
+          "root": "0707070707070707070707070707070707070707070707070707070707070707",
+          "cborLength": "3",
+          "payloadMemory": "1",
+          "memory": "1"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "01"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a0"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 909,
+      "tag": 94,
+      "name": "kind sweep: opaque argument 2",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "5821000000000000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "4100"
+        },
+        {
+          "kind": "opaque",
+          "root": "0909090909090909090909090909090909090909090909090909090909090909"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a0"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 910,
+      "tag": 94,
+      "name": "kind sweep: compacted argument 2",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "5821000000000000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "4100"
+        },
+        {
+          "kind": "semanticConstant",
+          "type": "9f00ff",
+          "root": "0707070707070707070707070707070707070707070707070707070707070707",
+          "cborLength": "3",
+          "payloadMemory": "1",
+          "memory": "1"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a0"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 911,
+      "tag": 94,
+      "name": "kind sweep: Miller-loop argument 3",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "5821000000000000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "4100"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "01"
+        },
+        {
+          "kind": "blsMillerLoop",
+          "root": "0505050505050505050505050505050505050505050505050505050505050505"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 912,
+      "tag": 94,
+      "name": "kind sweep: compacted argument 3",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "5821000000000000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "4100"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "01"
+        },
+        {
+          "kind": "semanticConstant",
+          "type": "9f0dff",
+          "root": "0707070707070707070707070707070707070707070707070707070707070707",
+          "cborLength": "3",
+          "payloadMemory": "1",
+          "memory": "1"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 913,
+      "tag": 94,
+      "name": "kind sweep: opaque argument 0",
+      "arguments": [
+        {
+          "kind": "opaque",
+          "root": "0909090909090909090909090909090909090909090909090909090909090909"
+        },
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "4100"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "00"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a0"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 914,
+      "tag": 94,
+      "name": "kind sweep: compacted argument 0",
+      "arguments": [
+        {
+          "kind": "semanticConstant",
+          "type": "9f01ff",
+          "root": "0707070707070707070707070707070707070707070707070707070707070707",
+          "cborLength": "3",
+          "payloadMemory": "1",
+          "memory": "1"
+        },
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "4100"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "00"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a0"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 915,
+      "tag": 94,
+      "name": "kind sweep: Miller-loop argument 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "4100"
+        },
+        {
+          "kind": "blsMillerLoop",
+          "root": "0505050505050505050505050505050505050505050505050505050505050505"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "00"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a0"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 916,
+      "tag": 94,
+      "name": "kind sweep: compacted argument 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "4100"
+        },
+        {
+          "kind": "semanticConstant",
+          "type": "9f01ff",
+          "root": "0707070707070707070707070707070707070707070707070707070707070707",
+          "cborLength": "3",
+          "payloadMemory": "1",
+          "memory": "1"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "00"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a0"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 917,
+      "tag": 94,
+      "name": "kind sweep: opaque argument 2",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "4100"
+        },
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "4100"
+        },
+        {
+          "kind": "opaque",
+          "root": "0909090909090909090909090909090909090909090909090909090909090909"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a0"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 918,
+      "tag": 94,
+      "name": "kind sweep: compacted argument 2",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "4100"
+        },
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "4100"
+        },
+        {
+          "kind": "semanticConstant",
+          "type": "9f00ff",
+          "root": "0707070707070707070707070707070707070707070707070707070707070707",
+          "cborLength": "3",
+          "payloadMemory": "1",
+          "memory": "1"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a0"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 919,
+      "tag": 94,
+      "name": "kind sweep: Miller-loop argument 3",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "4100"
+        },
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "4100"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "00"
+        },
+        {
+          "kind": "blsMillerLoop",
+          "root": "0505050505050505050505050505050505050505050505050505050505050505"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 920,
+      "tag": 94,
+      "name": "kind sweep: compacted argument 3",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "4100"
+        },
+        {
+          "kind": "constant",
+          "type": "9f01ff",
+          "payload": "4100"
+        },
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "00"
+        },
+        {
+          "kind": "semanticConstant",
+          "type": "9f0dff",
+          "root": "0707070707070707070707070707070707070707070707070707070707070707",
+          "cborLength": "3",
+          "payloadMemory": "1",
+          "memory": "1"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 921,
+      "tag": 96,
+      "name": "kind sweep: opaque argument 0",
+      "arguments": [
+        {
+          "kind": "opaque",
+          "root": "0909090909090909090909090909090909090909090909090909090909090909"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbb01"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 922,
+      "tag": 96,
+      "name": "kind sweep: compacted argument 0",
+      "arguments": [
+        {
+          "kind": "semanticConstant",
+          "type": "9f0dff",
+          "root": "0707070707070707070707070707070707070707070707070707070707070707",
+          "cborLength": "3",
+          "payloadMemory": "1",
+          "memory": "1"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbb01"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 923,
+      "tag": 96,
+      "name": "kind sweep: Miller-loop argument 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbbc2507fffffffffffffffffffffffffffffff"
+        },
+        {
+          "kind": "blsMillerLoop",
+          "root": "0505050505050505050505050505050505050505050505050505050505050505"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 924,
+      "tag": 96,
+      "name": "kind sweep: compacted argument 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbbc2507fffffffffffffffffffffffffffffff"
+        },
+        {
+          "kind": "semanticConstant",
+          "type": "9f0dff",
+          "root": "0707070707070707070707070707070707070707070707070707070707070707",
+          "cborLength": "3",
+          "payloadMemory": "1",
+          "memory": "1"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 925,
+      "tag": 96,
+      "name": "kind sweep: Miller-loop argument 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a0"
+        },
+        {
+          "kind": "blsMillerLoop",
+          "root": "0505050505050505050505050505050505050505050505050505050505050505"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 926,
+      "tag": 96,
+      "name": "kind sweep: compacted argument 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a0"
+        },
+        {
+          "kind": "semanticConstant",
+          "type": "9f0dff",
+          "root": "0707070707070707070707070707070707070707070707070707070707070707",
+          "cborLength": "3",
+          "payloadMemory": "1",
+          "memory": "1"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 927,
+      "tag": 97,
+      "name": "kind sweep: opaque argument 0",
+      "arguments": [
+        {
+          "kind": "opaque",
+          "root": "0909090909090909090909090909090909090909090909090909090909090909"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a0"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 928,
+      "tag": 97,
+      "name": "kind sweep: compacted argument 0",
+      "arguments": [
+        {
+          "kind": "semanticConstant",
+          "type": "9f0dff",
+          "root": "0707070707070707070707070707070707070707070707070707070707070707",
+          "cborLength": "3",
+          "payloadMemory": "1",
+          "memory": "1"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a0"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 929,
+      "tag": 97,
+      "name": "kind sweep: Miller-loop argument 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbb20"
+        },
+        {
+          "kind": "blsMillerLoop",
+          "root": "0505050505050505050505050505050505050505050505050505050505050505"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 930,
+      "tag": 97,
+      "name": "kind sweep: compacted argument 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbb20"
+        },
+        {
+          "kind": "semanticConstant",
+          "type": "9f0dff",
+          "root": "0707070707070707070707070707070707070707070707070707070707070707",
+          "cborLength": "3",
+          "payloadMemory": "1",
+          "memory": "1"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 931,
+      "tag": 99,
+      "name": "kind sweep: opaque argument 0",
+      "arguments": [
+        {
+          "kind": "opaque",
+          "root": "0909090909090909090909090909090909090909090909090909090909090909"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 932,
+      "tag": 99,
+      "name": "kind sweep: Miller-loop argument 0",
+      "arguments": [
+        {
+          "kind": "blsMillerLoop",
+          "root": "0505050505050505050505050505050505050505050505050505050505050505"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 933,
+      "tag": 99,
+      "name": "kind sweep: compacted argument 0",
+      "arguments": [
+        {
+          "kind": "semanticConstant",
+          "type": "9f08ff",
+          "root": "0707070707070707070707070707070707070707070707070707070707070707",
+          "cborLength": "3",
+          "payloadMemory": "1",
+          "memory": "1"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 934,
+      "tag": 100,
+      "name": "kind sweep: opaque argument 0",
+      "arguments": [
+        {
+          "kind": "opaque",
+          "root": "0909090909090909090909090909090909090909090909090909090909090909"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbbc2507fffffffffffffffffffffffffffffff"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 935,
+      "tag": 100,
+      "name": "kind sweep: compacted argument 0",
+      "arguments": [
+        {
+          "kind": "semanticConstant",
+          "type": "9f00ff",
+          "root": "0707070707070707070707070707070707070707070707070707070707070707",
+          "cborLength": "3",
+          "payloadMemory": "1",
+          "memory": "1"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa144bbbbbbbbc2507fffffffffffffffffffffffffffffff"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 936,
+      "tag": 100,
+      "name": "kind sweep: Miller-loop argument 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "02"
+        },
+        {
+          "kind": "blsMillerLoop",
+          "root": "0505050505050505050505050505050505050505050505050505050505050505"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 937,
+      "tag": 100,
+      "name": "kind sweep: compacted argument 1",
+      "arguments": [
+        {
+          "kind": "constant",
+          "type": "9f00ff",
+          "payload": "02"
+        },
+        {
+          "kind": "semanticConstant",
+          "type": "9f0dff",
+          "root": "0707070707070707070707070707070707070707070707070707070707070707",
+          "cborLength": "3",
+          "payloadMemory": "1",
+          "memory": "1"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 938,
+      "tag": 100,
+      "name": "kind sweep: opaque argument 0",
+      "arguments": [
+        {
+          "kind": "opaque",
+          "root": "0909090909090909090909090909090909090909090909090909090909090909"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a0"
+        }
+      ],
+      "verdict": "refused"
+    },
+    {
+      "case": 939,
+      "tag": 100,
+      "name": "kind sweep: compacted argument 0",
+      "arguments": [
+        {
+          "kind": "semanticConstant",
+          "type": "9f00ff",
+          "root": "0707070707070707070707070707070707070707070707070707070707070707",
+          "cborLength": "3",
+          "payloadMemory": "1",
+          "memory": "1"
+        },
+        {
+          "kind": "constant",
+          "type": "9f0dff",
+          "payload": "a0"
+        }
+      ],
+      "verdict": "refused"
     }
   ]
 }

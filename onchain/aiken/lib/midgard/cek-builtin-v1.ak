@@ -361,27 +361,21 @@ fn data_node_count_v1(data: Data) -> Int {
 
 /// The sizes Cardano costs protocol version 11 builtin `tag` (87 to 100) on;
 /// a size no cost function of the builtin reads is 0. expModInteger,
-/// unionValue, valueContains and valueData cost their arguments' memory.
+/// unionValue, valueContains and valueData cost their arguments' memory. The
+/// arguments' kinds are the semantics hop's and the failure arm's to check.
 fn pv11_cost_sizes_v1(tag: Int, arguments: List<ValueWitnessV1>) -> List<Int> {
   if tag == 88 {
-    expect [count, source] = arguments
-    let _ = list_payload_v1(source)
+    expect [count, _] = arguments
     [literal_cost_size_v1(integer_v1(count)), 0]
   } else if tag == 89 {
-    expect [source] = arguments
-    let _ = array_payload_v1(source)
     [0]
   } else if tag == 90 {
     expect [source] = arguments
     [list.length(list_payload_v1(source).2nd)]
   } else if tag == 91 {
-    expect [source, index] = arguments
-    let _ = array_payload_v1(source)
-    let _ = integer_v1(index)
     [0, 0]
   } else if tag == 92 || tag == 93 {
-    expect [scalars, points] = arguments
-    let _ = list_payload_v1(points)
+    expect [scalars, _] = arguments
     [list.length(list_payload_v1(scalars).2nd), 0]
   } else if tag == 94 {
     expect [_, _, _, value] = arguments
@@ -393,8 +387,7 @@ fn pv11_cost_sizes_v1(tag: Int, arguments: List<ValueWitnessV1>) -> List<Int> {
     expect [source] = arguments
     [data_node_count_v1(data_payload_v1(source))]
   } else if tag == 100 {
-    expect [scalar, value] = arguments
-    let _ = integer_v1(scalar)
+    expect [_, value] = arguments
     [0, value_memory_size_v1(value)]
   } else {
     standard_cost_sizes_v1(arguments)
@@ -4419,6 +4412,182 @@ fn known_builtin_failure_except_uncompress_v1(
       constant_type_v1(source) == cek_constant_v1.ByteStringConstant,
       outside_int64_v1(integer_v1(amount)),
     }
+  } else if tag >= 87 {
+    pv11_builtin_failure_v1(tag, arguments)
+  } else {
+    False
+  }
+}
+
+/// Whether `value` is outside expModInteger's operand range
+/// [-2^8191, 2^8191 - 1]: exactly the values v with
+/// quotient(2v + 1, 2^8192) != 0, as for `bls_scalar_in_bound_v1`. The bound
+/// is built from 0x01 and 1,024 zero bytes read big-endian.
+fn exp_mod_operand_out_of_bound_v1(value: Int) -> Bool {
+  builtin.quotient_integer(
+    2 * value + 1,
+    builtin.bytearray_to_integer(
+      True,
+      builtin.cons_bytearray(1, builtin.replicate_byte(1024, 0)),
+    ),
+  ) != 0
+}
+
+fn greatest_common_divisor_v1(left: Int, right: Int) -> Int {
+  if right == 0 {
+    left
+  } else {
+    greatest_common_divisor_v1(right, builtin.remainder_integer(left, right))
+  }
+}
+
+fn quantity_out_of_bound_v1(quantity: Int) -> Bool {
+  or {
+    quantity < cek_constant_v1.min_value_quantity,
+    quantity > cek_constant_v1.max_value_quantity,
+  }
+}
+
+/// Whether any quantity of `currencies` (a Value payload) satisfies
+/// `predicate`, which takes the currency symbol, token name and quantity.
+fn any_value_entry_v1(
+  currencies: Pairs<Data, Data>,
+  predicate: fn(ByteArray, ByteArray, Int) -> Bool,
+) -> Bool {
+  list.any(
+    currencies,
+    fn(currency) {
+      let symbol = builtin.un_b_data(currency.1st)
+      list.any(
+        builtin.un_map_data(currency.2nd),
+        fn(token) {
+          predicate(
+            symbol,
+            builtin.un_b_data(token.1st),
+            builtin.un_i_data(token.2nd),
+          )
+        },
+      )
+    },
+  )
+}
+
+/// The Plutus-defined failures of the protocol version 11 builtins (87 to
+/// 100), each read on revealed constants of the builtin's types. dropList,
+/// lengthOfArray, listToArray and lookupCoin never fail; valueData fails only
+/// past 40,000 entries, which no direct payload holds. Every argument is read
+/// (through a tuple, which evaluates each element) before any is tested, as
+/// Cardano unlifts them all before the builtin runs: a failure is never
+/// proven over an argument of the wrong kind.
+fn pv11_builtin_failure_v1(tag: Int, arguments: List<ValueWitnessV1>) -> Bool {
+  if tag == 87 {
+    expect [base_value, exponent_value, modulus_value] = arguments
+    let (base, exponent, modulus) = (
+      integer_v1(base_value),
+      integer_v1(exponent_value),
+      integer_v1(modulus_value),
+    )
+    if modulus <= 0 || exp_mod_operand_out_of_bound_v1(modulus) {
+      True
+    } else if modulus == 1 {
+      False
+    } else {
+      // A base of zero under a negative exponent has no inverse either:
+      // its greatest common divisor with the modulus is the modulus.
+      or {
+        exp_mod_operand_out_of_bound_v1(base),
+        exp_mod_operand_out_of_bound_v1(exponent),
+        and {
+          exponent < 0,
+          greatest_common_divisor_v1(
+            modulus,
+            builtin.mod_integer(base, modulus),
+          ) != 1,
+        },
+      }
+    }
+  } else if tag == 91 {
+    expect [source, index_value] = arguments
+    let (items, index) = (array_payload_v1(source).2nd, integer_v1(index_value))
+    index < 0 || index >= list.length(items)
+  } else if tag == 92 || tag == 93 {
+    // Every scalar is bounded, past the points too.
+    expect [scalars, points] = arguments
+    let (Pair(scalar_type, scalar_items), Pair(point_type, _)) = (
+      list_payload_v1(scalars),
+      list_payload_v1(points),
+    )
+    and {
+      scalar_type == cek_constant_v1.IntegerConstant,
+      point_type == if tag == 92 {
+        cek_constant_v1.BlsG1Constant
+      } else {
+        cek_constant_v1.BlsG2Constant
+      },
+      list.any(
+        scalar_items,
+        fn(scalar) { !bls_scalar_in_bound_v1(builtin.un_i_data(scalar)) },
+      ),
+    }
+  } else if tag == 94 {
+    // Deleting a coin (a zero quantity) never fails.
+    expect [currency_value, token_value, quantity_value, value] = arguments
+    let (currency, token, quantity, _) = (
+      bytes_v1(currency_value),
+      bytes_v1(token_value),
+      integer_v1(quantity_value),
+      value_payload_v1(value),
+    )
+    and {
+      quantity != 0,
+      or {
+        bytearray.length(currency) > cek_constant_v1.max_value_key_bytes,
+        bytearray.length(token) > cek_constant_v1.max_value_key_bytes,
+        quantity_out_of_bound_v1(quantity),
+      },
+    }
+  } else if tag == 96 {
+    // Only a coin both Values hold can sum out of range.
+    expect [left, right] = arguments
+    let (left_currencies, right_currencies) = (
+      value_payload_v1(left),
+      value_payload_v1(right),
+    )
+    let right_value = builtin.un_value_data(builtin.map_data(right_currencies))
+    any_value_entry_v1(
+      left_currencies,
+      fn(currency, token, quantity) {
+        quantity_out_of_bound_v1(
+          quantity + builtin.lookup_value(currency, token, right_value),
+        )
+      },
+    )
+  } else if tag == 97 {
+    expect [left, right] = arguments
+    let (left_currencies, right_currencies) = (
+      value_payload_v1(left),
+      value_payload_v1(right),
+    )
+    let negative = fn(_currency, _token, quantity) { quantity < 0 }
+    or {
+      any_value_entry_v1(left_currencies, negative),
+      any_value_entry_v1(right_currencies, negative),
+    }
+  } else if tag == 99 {
+    expect [source] = arguments
+    !cek_constant_v1.value_data_is_canonical_v1(data_payload_v1(source))
+  } else if tag == 100 {
+    expect [scalar_value, value] = arguments
+    let (scalar, currencies) = (
+      integer_v1(scalar_value),
+      value_payload_v1(value),
+    )
+    any_value_entry_v1(
+      currencies,
+      fn(_currency, _token, quantity) {
+        quantity_out_of_bound_v1(scalar * quantity)
+      },
+    )
   } else {
     False
   }
@@ -4778,8 +4947,14 @@ pub fn authenticated_builtin_failure_budget(
     expect [_, width, _] = arguments
     let width_value = integer_v1(width)
     width_value >= 0 && width_value <= 8192
+  } else if tag == 91 {
+    // Cardano refuses an indexArray index outside the signed 64-bit range
+    // before costing; it charges any other failing protocol version 11
+    // builtin.
+    expect [_, index] = arguments
+    !outside_int64_v1(integer_v1(index))
   } else {
-    False
+    tag >= 87
   }
   // Cardano charges scalarMul (56, 63) before its scalar bound check fails.
   if or {

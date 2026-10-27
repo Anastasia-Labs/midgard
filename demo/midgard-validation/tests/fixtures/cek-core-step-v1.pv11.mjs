@@ -121,4 +121,26 @@ export const pv11Programs = (context) => [
     context,
     maxSteps: 128,
   },
+  {
+    label: "pv11_exp_mod_integer_failure",
+    note: "executeBuiltinFailure on expModInteger with no inverse, charged",
+    term: () => new Lambda(apply(builtin(87), int(2n), int(-1n), int(4n))),
+    context,
+    maxSteps: 64,
+  },
+  {
+    label: "pv11_index_array_failure",
+    note: "executeBuiltinFailure on indexArray past the end, charged",
+    term: () => new Lambda(apply(builtin(91, 1), array(5n, 6n, 7n), int(3n))),
+    context,
+    maxSteps: 64,
+  },
+  {
+    label: "pv11_index_array_outside_int64",
+    note: "executeBuiltinFailure on indexArray at 2^64, uncharged",
+    term: () =>
+      new Lambda(apply(builtin(91, 1), array(5n, 6n, 7n), int(2n ** 64n))),
+    context,
+    maxSteps: 64,
+  },
 ];

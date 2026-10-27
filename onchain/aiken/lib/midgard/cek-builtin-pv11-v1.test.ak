@@ -1,6 +1,7 @@
 //// The protocol version 11 builtins (tags 87 to 100) on the direct route:
 //// each success proven, each wrong result refused, each application Cardano
-//// refuses unprovable as a success, the charge and the argument kinds.
+//// refuses unprovable as a success, the charge, the argument kinds, and the
+//// failures the direct failure arm proves with what Cardano charges for them.
 
 use aiken/builtin
 use aiken/cbor
@@ -419,5 +420,48 @@ test pv11_argument_kinds() {
       ],
     ),
     !cek_builtin_v1.builtin_arguments_are_well_typed_v1(91, [scalars, an_int]),
+  }
+}
+
+test pv11_failures_are_known_and_charged() {
+  let missing_inverse = [int(2), int(-1), int(4)]
+  let past_the_end = [int_array([5, 6, 7]), int(3)]
+  and {
+    cek_builtin_v1.known_builtin_failure_v1(87, missing_inverse),
+    cek_builtin_v1.authenticated_builtin_failure_budget(87, missing_inverse) == cek_builtin_v1.direct_builtin_budget_v1(
+      87,
+      missing_inverse,
+    ),
+    cek_builtin_v1.known_builtin_failure_v1(91, past_the_end),
+    cek_builtin_v1.authenticated_builtin_failure_budget(91, past_the_end) == cek_builtin_v1.direct_builtin_budget_v1(
+      91,
+      past_the_end,
+    ),
+  }
+}
+
+test index_array_outside_64_bits_fails_uncharged() {
+  let arguments = [int_array([5, 6, 7]), int(18446744073709551616)]
+  and {
+    cek_builtin_v1.known_builtin_failure_v1(91, arguments),
+    cek_builtin_v1.authenticated_builtin_failure_budget(91, arguments) == BuiltinBudgetV1 {
+      cpu: 0,
+      memory: 0,
+    },
+  }
+}
+
+test pv11_successes_are_not_known_failures() {
+  let an_inverse = [int(3), int(-5), int(1000003)]
+  let the_last_item = [int_array([5, 6, 7]), int(2)]
+  and {
+    !cek_builtin_v1.known_builtin_failure_v1(87, an_inverse),
+    !cek_builtin_v1.known_builtin_failure_v1(87, [int(2), int(-1), int(1)]),
+    !cek_builtin_v1.known_builtin_failure_v1(91, the_last_item),
+    !cek_builtin_v1.known_builtin_failure_v1(88, [int(9), ints([5])]),
+    !cek_builtin_v1.known_builtin_failure_v1(
+      94,
+      [bytes(#"00"), bytes(token), int(0), value(one_token(token, 1))],
+    ),
   }
 }

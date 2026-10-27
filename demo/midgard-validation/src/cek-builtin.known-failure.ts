@@ -5,9 +5,10 @@
  * staged failure arm) or not at all, so the direct failure verifier requires
  * it as L1 does.
  *
- * Each reader below throws where its Aiken reader fails the script, and each
- * arm reads its arguments in the Aiken order, with `and`/`or` short-circuiting
- * as Aiken's do, so a throw stands exactly where L1 refuses.
+ * Each reader (cek-builtin.known-failure.readers.ts) throws where its Aiken
+ * reader fails the script, and each arm reads its arguments in the Aiken
+ * order, with `and`/`or` short-circuiting as Aiken's do, so a throw stands
+ * exactly where L1 refuses.
  */
 import { type MidgardCekDirectValueWitness } from "./cek-builtin.argument-kinds.js";
 import {
@@ -15,11 +16,20 @@ import {
   blsG1PointIsInvalid,
   blsG2PointIsInvalid,
 } from "./cek-builtin.bls-point-validity.js";
+import { midgardCekKnownPv11BuiltinFailure } from "./cek-builtin.known-failure.pv11.js";
 import {
-  decodeMidgardCekConstantTypeCbor,
-  decodeMidgardCekConstantWitness,
-  type MidgardCekConstantType,
-} from "./cek-constant.js";
+  boolean,
+  bytes,
+  dataPayload,
+  exactly,
+  INT64_MAX,
+  integer,
+  isInlineBytes,
+  isType,
+  listPayload,
+  outsideInt64,
+  refuse,
+} from "./cek-builtin.known-failure.readers.js";
 import {
   type Data,
   DataB,
@@ -29,102 +39,12 @@ import {
   DataMap,
 } from "./uplc-data.js";
 
-const INT64_MIN = -(2n ** 63n);
-const INT64_MAX = 2n ** 63n - 1n;
-
 const SECP256K1_GROUP_ORDER =
   115792089237316195423570985008687907852837564279074904382605163141518161494337n;
 const SECP256K1_FIELD_PRIME =
   115792089237316195423570985008687907853269984665640564039457584007908834671663n;
 /** scalarMul fails on a scalar outside [-2^4095, 2^4095 - 1]. */
 const BLS_SCALAR_BOUND = 2n ** 4095n;
-
-const refuse = (message: string): never => {
-  throw new Error(`V1 known builtin failure: ${message}`);
-};
-
-/** `constant_type_v1`: a revealed or compacted constant's type. */
-const constantType = (
-  value: MidgardCekDirectValueWitness,
-): MidgardCekConstantType =>
-  value.kind === "constant"
-    ? decodeMidgardCekConstantWitness(value.witness).type
-    : value.kind === "semanticConstant"
-      ? decodeMidgardCekConstantTypeCbor(value.witness.typeCbor)
-      : refuse("expected constant value");
-
-/** `constant_payload_v1`: a revealed constant's payload. */
-const constantPayload = (value: MidgardCekDirectValueWitness): Data =>
-  value.kind === "constant"
-    ? decodeMidgardCekConstantWitness(value.witness).payload
-    : refuse("expected revealed constant");
-
-const isType = (
-  value: MidgardCekDirectValueWitness,
-  kind: MidgardCekConstantType["kind"],
-): boolean => constantType(value).kind === kind;
-
-/** `integer_v1`. */
-const integer = (value: MidgardCekDirectValueWitness): bigint => {
-  if (!isType(value, "integer")) refuse("expected integer");
-  const payload = constantPayload(value);
-  return payload instanceof DataI ? payload.int : refuse("integer payload");
-};
-
-/** `bytes_v1`. */
-const bytes = (value: MidgardCekDirectValueWitness): Uint8Array => {
-  if (!isType(value, "bytes")) refuse("expected byte string");
-  const payload = constantPayload(value);
-  return payload instanceof DataB ? payload.bytes : refuse("bytes payload");
-};
-
-/** `boolean_v1`. */
-const boolean = (value: MidgardCekDirectValueWitness): boolean => {
-  if (!isType(value, "boolean")) refuse("expected boolean");
-  const payload = constantPayload(value);
-  if (
-    !(payload instanceof DataConstr) ||
-    payload.fields.length !== 0 ||
-    (payload.constr !== 0n && payload.constr !== 1n)
-  ) {
-    return refuse("boolean payload");
-  }
-  return payload.constr === 1n;
-};
-
-/** `list_payload_v1`: a list constant's element type and items. */
-const listPayload = (
-  value: MidgardCekDirectValueWitness,
-): readonly [MidgardCekConstantType, readonly Data[]] => {
-  const type = constantType(value);
-  if (type.kind !== "list") return refuse("expected list");
-  const payload = constantPayload(value);
-  return payload instanceof DataList
-    ? [type.element, payload.list]
-    : refuse("list payload");
-};
-
-/** `data_payload_v1`. */
-const dataPayload = (value: MidgardCekDirectValueWitness): Data => {
-  if (!isType(value, "data")) refuse("expected data");
-  return constantPayload(value);
-};
-
-/** `is_inline_bytes_v1`: an inline byte-string constant. */
-const isInlineBytes = (value: MidgardCekDirectValueWitness): boolean =>
-  value.kind === "constant" &&
-  isType(value, "bytes") &&
-  constantPayload(value) instanceof DataB;
-
-/** `expect [..] = arguments`: exactly `count` arguments. */
-const exactly = (
-  arguments_: readonly MidgardCekDirectValueWitness[],
-  count: number,
-): readonly MidgardCekDirectValueWitness[] =>
-  arguments_.length === count ? arguments_ : refuse("argument count");
-
-const outsideInt64 = (value: bigint): boolean =>
-  value < INT64_MIN || value > INT64_MAX;
 
 /** `builtin.bytearray_to_integer(True, ..)`: big-endian, unsigned. */
 const bigEndian = (source: Uint8Array): bigint => {
@@ -380,7 +300,8 @@ export const midgardCekKnownBuiltinFailure = (
   tag: bigint,
   arguments_: readonly MidgardCekDirectValueWitness[],
 ): boolean => {
-  if (tag < 0n || tag > 86n) return false;
+  if (tag >= 87n) return midgardCekKnownPv11BuiltinFailure(tag, arguments_);
+  if (tag < 0n) return false;
   const number = Number(tag);
   if (number >= 3 && number <= 6) {
     const [dividend, divisor] = exactly(arguments_, 2);
