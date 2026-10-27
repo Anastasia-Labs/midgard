@@ -143,4 +143,17 @@ export const pv11Programs = (context) => [
     context,
     maxSteps: 64,
   },
+  ...[
+    ["int64_max", "2^63 - 1, charged", 2n ** 63n - 1n],
+    ["int64_max_plus_one", "2^63, uncharged", 2n ** 63n],
+    ["int64_min", "-2^63, charged", -(2n ** 63n)],
+    ["int64_min_minus_one", "-2^63 - 1, uncharged", -(2n ** 63n) - 1n],
+  ].map(([suffix, at, index]) => ({
+    label: `pv11_index_array_${suffix}`,
+    note: `executeBuiltinFailure on indexArray at ${at}`,
+    term: () =>
+      new Lambda(apply(builtin(91, 1), array(5n, 6n, 7n), int(index))),
+    context,
+    maxSteps: 64,
+  })),
 ];

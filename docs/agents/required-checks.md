@@ -833,6 +833,10 @@ Golden channel cek-core-step-v1 (@al-ft/midgard-validation).
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/pv11-exp-mod-integer-failure.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/pv11-exp-mod-integer.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/pv11-index-array-failure.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/pv11-index-array-int64-max-plus-one.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/pv11-index-array-int64-max.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/pv11-index-array-int64-min-minus-one.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/pv11-index-array-int64-min.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/pv11-index-array-outside-int64.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/pv11-list-and-array.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/pv11-value-arithmetic.test.ak`

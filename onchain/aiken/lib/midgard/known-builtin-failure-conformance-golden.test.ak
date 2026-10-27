@@ -10042,7 +10042,7 @@ test tag_087_case_0796_refused() fail {
 }
 
 // kind sweep: opaque argument 0
-test tag_087_case_0879_refused() fail {
+test tag_087_case_0883_refused() fail {
   known_builtin_failure_v1(
     87,
     [
@@ -10056,7 +10056,7 @@ test tag_087_case_0879_refused() fail {
 }
 
 // kind sweep: compacted argument 0
-test tag_087_case_0880_refused() fail {
+test tag_087_case_0884_refused() fail {
   known_builtin_failure_v1(
     87,
     [
@@ -10074,7 +10074,7 @@ test tag_087_case_0880_refused() fail {
 }
 
 // kind sweep: Miller-loop argument 1
-test tag_087_case_0881_refused() fail {
+test tag_087_case_0885_refused() fail {
   known_builtin_failure_v1(
     87,
     [
@@ -10088,7 +10088,7 @@ test tag_087_case_0881_refused() fail {
 }
 
 // kind sweep: compacted argument 1
-test tag_087_case_0882_refused() fail {
+test tag_087_case_0886_refused() fail {
   known_builtin_failure_v1(
     87,
     [
@@ -10106,7 +10106,7 @@ test tag_087_case_0882_refused() fail {
 }
 
 // kind sweep: opaque argument 2
-test tag_087_case_0883_refused() fail {
+test tag_087_case_0887_refused() fail {
   known_builtin_failure_v1(
     87,
     [
@@ -10120,7 +10120,7 @@ test tag_087_case_0883_refused() fail {
 }
 
 // kind sweep: compacted argument 2
-test tag_087_case_0884_refused() fail {
+test tag_087_case_0888_refused() fail {
   known_builtin_failure_v1(
     87,
     [
@@ -10154,7 +10154,7 @@ test tag_091_verdicts() {
         tag: 91,
         arguments: [
           constant(#"9f0c00ff", #"9f050607ff"),
-          constant(#"9f00ff", #"20"),
+          constant(#"9f00ff", #"3b8000000000000000"),
         ],
         known: True,
       },
@@ -10163,12 +10163,30 @@ test tag_091_verdicts() {
         tag: 91,
         arguments: [
           constant(#"9f0c00ff", #"9f050607ff"),
+          constant(#"9f00ff", #"3b7fffffffffffffff"),
+        ],
+        known: True,
+      },
+      Case {
+        id: 800,
+        tag: 91,
+        arguments: [
+          constant(#"9f0c00ff", #"9f050607ff"),
+          constant(#"9f00ff", #"20"),
+        ],
+        known: True,
+      },
+      Case {
+        id: 801,
+        tag: 91,
+        arguments: [
+          constant(#"9f0c00ff", #"9f050607ff"),
           constant(#"9f00ff", #"00"),
         ],
         known: False,
       },
       Case {
-        id: 800,
+        id: 802,
         tag: 91,
         arguments: [
           constant(#"9f0c00ff", #"9f050607ff"),
@@ -10177,7 +10195,7 @@ test tag_091_verdicts() {
         known: False,
       },
       Case {
-        id: 801,
+        id: 803,
         tag: 91,
         arguments: [
           constant(#"9f0c00ff", #"9f050607ff"),
@@ -10186,7 +10204,25 @@ test tag_091_verdicts() {
         known: True,
       },
       Case {
-        id: 802,
+        id: 804,
+        tag: 91,
+        arguments: [
+          constant(#"9f0c00ff", #"9f050607ff"),
+          constant(#"9f00ff", #"1b7fffffffffffffff"),
+        ],
+        known: True,
+      },
+      Case {
+        id: 805,
+        tag: 91,
+        arguments: [
+          constant(#"9f0c00ff", #"9f050607ff"),
+          constant(#"9f00ff", #"1b8000000000000000"),
+        ],
+        known: True,
+      },
+      Case {
+        id: 806,
         tag: 91,
         arguments: [
           constant(#"9f0c00ff", #"9f050607ff"),
@@ -10195,13 +10231,13 @@ test tag_091_verdicts() {
         known: True,
       },
       Case {
-        id: 803,
+        id: 807,
         tag: 91,
         arguments: [constant(#"9f0c00ff", #"80"), constant(#"9f00ff", #"00")],
         known: True,
       },
       Case {
-        id: 804,
+        id: 808,
         tag: 91,
         arguments: [
           constant(
@@ -10217,7 +10253,7 @@ test tag_091_verdicts() {
 }
 
 // index into a list
-test tag_091_case_0805_refused() fail {
+test tag_091_case_0809_refused() fail {
   known_builtin_failure_v1(
     91,
     [constant(#"9f0500ff", #"9f050607ff"), constant(#"9f00ff", #"00")],
@@ -10225,7 +10261,7 @@ test tag_091_case_0805_refused() fail {
 }
 
 // byte-string index
-test tag_091_case_0806_refused() fail {
+test tag_091_case_0810_refused() fail {
   known_builtin_failure_v1(
     91,
     [constant(#"9f0c00ff", #"9f050607ff"), constant(#"9f01ff", #"4100")],
@@ -10233,7 +10269,7 @@ test tag_091_case_0806_refused() fail {
 }
 
 // kind sweep: opaque argument 0
-test tag_091_case_0885_refused() fail {
+test tag_091_case_0889_refused() fail {
   known_builtin_failure_v1(
     91,
     [
@@ -10246,7 +10282,7 @@ test tag_091_case_0885_refused() fail {
 }
 
 // kind sweep: compacted argument 0
-test tag_091_case_0886_refused() fail {
+test tag_091_case_0890_refused() fail {
   known_builtin_failure_v1(
     91,
     [
@@ -10263,7 +10299,7 @@ test tag_091_case_0886_refused() fail {
 }
 
 // kind sweep: Miller-loop argument 1
-test tag_091_case_0887_refused() fail {
+test tag_091_case_0891_refused() fail {
   known_builtin_failure_v1(
     91,
     [
@@ -10276,7 +10312,7 @@ test tag_091_case_0887_refused() fail {
 }
 
 // kind sweep: compacted argument 1
-test tag_091_case_0888_refused() fail {
+test tag_091_case_0892_refused() fail {
   known_builtin_failure_v1(
     91,
     [
@@ -10293,7 +10329,7 @@ test tag_091_case_0888_refused() fail {
 }
 
 // kind sweep: opaque argument 0
-test tag_091_case_0889_refused() fail {
+test tag_091_case_0893_refused() fail {
   known_builtin_failure_v1(
     91,
     [
@@ -10306,7 +10342,7 @@ test tag_091_case_0889_refused() fail {
 }
 
 // kind sweep: compacted argument 0
-test tag_091_case_0890_refused() fail {
+test tag_091_case_0894_refused() fail {
   known_builtin_failure_v1(
     91,
     [
@@ -10326,13 +10362,13 @@ test tag_092_verdicts() {
   verdicts_hold(
     [
       Case {
-        id: 807,
+        id: 811,
         tag: 92,
         arguments: [constant(#"9f0500ff", #"80"), constant(#"9f0509ff", #"80")],
         known: False,
       },
       Case {
-        id: 808,
+        id: 812,
         tag: 92,
         arguments: [
           constant(#"9f0500ff", #"9f0102ff"),
@@ -10341,7 +10377,7 @@ test tag_092_verdicts() {
         known: False,
       },
       Case {
-        id: 809,
+        id: 813,
         tag: 92,
         arguments: [
           constant(
@@ -10356,7 +10392,7 @@ test tag_092_verdicts() {
         known: False,
       },
       Case {
-        id: 810,
+        id: 814,
         tag: 92,
         arguments: [
           constant(
@@ -10371,7 +10407,7 @@ test tag_092_verdicts() {
         known: True,
       },
       Case {
-        id: 811,
+        id: 815,
         tag: 92,
         arguments: [
           constant(
@@ -10386,7 +10422,7 @@ test tag_092_verdicts() {
         known: False,
       },
       Case {
-        id: 812,
+        id: 816,
         tag: 92,
         arguments: [
           constant(
@@ -10401,7 +10437,7 @@ test tag_092_verdicts() {
         known: True,
       },
       Case {
-        id: 813,
+        id: 817,
         tag: 92,
         arguments: [
           constant(
@@ -10416,7 +10452,7 @@ test tag_092_verdicts() {
         known: True,
       },
       Case {
-        id: 814,
+        id: 818,
         tag: 92,
         arguments: [
           constant(
@@ -10428,7 +10464,7 @@ test tag_092_verdicts() {
         known: True,
       },
       Case {
-        id: 815,
+        id: 819,
         tag: 92,
         arguments: [
           constant(
@@ -10443,7 +10479,7 @@ test tag_092_verdicts() {
         known: False,
       },
       Case {
-        id: 816,
+        id: 820,
         tag: 92,
         arguments: [
           constant(#"9f0501ff", #"9f4101ff"),
@@ -10459,7 +10495,7 @@ test tag_092_verdicts() {
 }
 
 // an integer for the scalars
-test tag_092_case_0817_refused() fail {
+test tag_092_case_0821_refused() fail {
   known_builtin_failure_v1(
     92,
     [
@@ -10473,7 +10509,7 @@ test tag_092_case_0817_refused() fail {
 }
 
 // kind sweep: opaque argument 0
-test tag_092_case_0891_refused() fail {
+test tag_092_case_0895_refused() fail {
   known_builtin_failure_v1(
     92,
     [
@@ -10489,7 +10525,7 @@ test tag_092_case_0891_refused() fail {
 }
 
 // kind sweep: compacted argument 0
-test tag_092_case_0892_refused() fail {
+test tag_092_case_0896_refused() fail {
   known_builtin_failure_v1(
     92,
     [
@@ -10509,7 +10545,7 @@ test tag_092_case_0892_refused() fail {
 }
 
 // kind sweep: Miller-loop argument 1
-test tag_092_case_0893_refused() fail {
+test tag_092_case_0897_refused() fail {
   known_builtin_failure_v1(
     92,
     [
@@ -10525,7 +10561,7 @@ test tag_092_case_0893_refused() fail {
 }
 
 // kind sweep: compacted argument 1
-test tag_092_case_0894_refused() fail {
+test tag_092_case_0898_refused() fail {
   known_builtin_failure_v1(
     92,
     [
@@ -10545,7 +10581,7 @@ test tag_092_case_0894_refused() fail {
 }
 
 // kind sweep: compacted argument 0
-test tag_092_case_0895_refused() fail {
+test tag_092_case_0899_refused() fail {
   known_builtin_failure_v1(
     92,
     [
@@ -10565,7 +10601,7 @@ test tag_092_case_0895_refused() fail {
 }
 
 // kind sweep: Miller-loop argument 1
-test tag_092_case_0896_refused() fail {
+test tag_092_case_0900_refused() fail {
   known_builtin_failure_v1(
     92,
     [
@@ -10578,7 +10614,7 @@ test tag_092_case_0896_refused() fail {
 }
 
 // kind sweep: compacted argument 1
-test tag_092_case_0897_refused() fail {
+test tag_092_case_0901_refused() fail {
   known_builtin_failure_v1(
     92,
     [
@@ -10598,13 +10634,13 @@ test tag_093_verdicts() {
   verdicts_hold(
     [
       Case {
-        id: 818,
+        id: 822,
         tag: 93,
         arguments: [constant(#"9f0500ff", #"80"), constant(#"9f050aff", #"80")],
         known: False,
       },
       Case {
-        id: 819,
+        id: 823,
         tag: 93,
         arguments: [
           constant(#"9f0500ff", #"9f0102ff"),
@@ -10613,7 +10649,7 @@ test tag_093_verdicts() {
         known: False,
       },
       Case {
-        id: 820,
+        id: 824,
         tag: 93,
         arguments: [
           constant(
@@ -10628,7 +10664,7 @@ test tag_093_verdicts() {
         known: False,
       },
       Case {
-        id: 821,
+        id: 825,
         tag: 93,
         arguments: [
           constant(
@@ -10643,7 +10679,7 @@ test tag_093_verdicts() {
         known: True,
       },
       Case {
-        id: 822,
+        id: 826,
         tag: 93,
         arguments: [
           constant(
@@ -10658,7 +10694,7 @@ test tag_093_verdicts() {
         known: False,
       },
       Case {
-        id: 823,
+        id: 827,
         tag: 93,
         arguments: [
           constant(
@@ -10673,7 +10709,7 @@ test tag_093_verdicts() {
         known: True,
       },
       Case {
-        id: 824,
+        id: 828,
         tag: 93,
         arguments: [
           constant(
@@ -10688,7 +10724,7 @@ test tag_093_verdicts() {
         known: True,
       },
       Case {
-        id: 825,
+        id: 829,
         tag: 93,
         arguments: [
           constant(
@@ -10700,7 +10736,7 @@ test tag_093_verdicts() {
         known: True,
       },
       Case {
-        id: 826,
+        id: 830,
         tag: 93,
         arguments: [
           constant(
@@ -10715,7 +10751,7 @@ test tag_093_verdicts() {
         known: False,
       },
       Case {
-        id: 827,
+        id: 831,
         tag: 93,
         arguments: [
           constant(#"9f0501ff", #"9f4101ff"),
@@ -10731,7 +10767,7 @@ test tag_093_verdicts() {
 }
 
 // an integer for the scalars
-test tag_093_case_0828_refused() fail {
+test tag_093_case_0832_refused() fail {
   known_builtin_failure_v1(
     93,
     [
@@ -10745,7 +10781,7 @@ test tag_093_case_0828_refused() fail {
 }
 
 // kind sweep: opaque argument 0
-test tag_093_case_0898_refused() fail {
+test tag_093_case_0902_refused() fail {
   known_builtin_failure_v1(
     93,
     [
@@ -10761,7 +10797,7 @@ test tag_093_case_0898_refused() fail {
 }
 
 // kind sweep: compacted argument 0
-test tag_093_case_0899_refused() fail {
+test tag_093_case_0903_refused() fail {
   known_builtin_failure_v1(
     93,
     [
@@ -10781,7 +10817,7 @@ test tag_093_case_0899_refused() fail {
 }
 
 // kind sweep: Miller-loop argument 1
-test tag_093_case_0900_refused() fail {
+test tag_093_case_0904_refused() fail {
   known_builtin_failure_v1(
     93,
     [
@@ -10797,7 +10833,7 @@ test tag_093_case_0900_refused() fail {
 }
 
 // kind sweep: compacted argument 1
-test tag_093_case_0901_refused() fail {
+test tag_093_case_0905_refused() fail {
   known_builtin_failure_v1(
     93,
     [
@@ -10817,7 +10853,7 @@ test tag_093_case_0901_refused() fail {
 }
 
 // kind sweep: compacted argument 0
-test tag_093_case_0902_refused() fail {
+test tag_093_case_0906_refused() fail {
   known_builtin_failure_v1(
     93,
     [
@@ -10837,7 +10873,7 @@ test tag_093_case_0902_refused() fail {
 }
 
 // kind sweep: Miller-loop argument 1
-test tag_093_case_0903_refused() fail {
+test tag_093_case_0907_refused() fail {
   known_builtin_failure_v1(
     93,
     [
@@ -10850,7 +10886,7 @@ test tag_093_case_0903_refused() fail {
 }
 
 // kind sweep: compacted argument 1
-test tag_093_case_0904_refused() fail {
+test tag_093_case_0908_refused() fail {
   known_builtin_failure_v1(
     93,
     [
@@ -10870,7 +10906,7 @@ test tag_094_verdicts() {
   verdicts_hold(
     [
       Case {
-        id: 829,
+        id: 833,
         tag: 94,
         arguments: [
           constant(
@@ -10887,7 +10923,7 @@ test tag_094_verdicts() {
         known: False,
       },
       Case {
-        id: 830,
+        id: 834,
         tag: 94,
         arguments: [
           constant(
@@ -10904,7 +10940,7 @@ test tag_094_verdicts() {
         known: True,
       },
       Case {
-        id: 831,
+        id: 835,
         tag: 94,
         arguments: [
           constant(
@@ -10921,7 +10957,7 @@ test tag_094_verdicts() {
         known: True,
       },
       Case {
-        id: 832,
+        id: 836,
         tag: 94,
         arguments: [
           constant(
@@ -10938,7 +10974,7 @@ test tag_094_verdicts() {
         known: False,
       },
       Case {
-        id: 833,
+        id: 837,
         tag: 94,
         arguments: [
           constant(
@@ -10952,7 +10988,7 @@ test tag_094_verdicts() {
         known: False,
       },
       Case {
-        id: 834,
+        id: 838,
         tag: 94,
         arguments: [
           constant(
@@ -10966,7 +11002,7 @@ test tag_094_verdicts() {
         known: True,
       },
       Case {
-        id: 835,
+        id: 839,
         tag: 94,
         arguments: [
           constant(
@@ -10980,7 +11016,7 @@ test tag_094_verdicts() {
         known: False,
       },
       Case {
-        id: 836,
+        id: 840,
         tag: 94,
         arguments: [
           constant(
@@ -10997,7 +11033,7 @@ test tag_094_verdicts() {
         known: True,
       },
       Case {
-        id: 837,
+        id: 841,
         tag: 94,
         arguments: [
           constant(
@@ -11018,7 +11054,7 @@ test tag_094_verdicts() {
 }
 
 // an integer for the value
-test tag_094_case_0838_refused() fail {
+test tag_094_case_0842_refused() fail {
   known_builtin_failure_v1(
     94,
     [
@@ -11031,7 +11067,7 @@ test tag_094_case_0838_refused() fail {
 }
 
 // kind sweep: opaque argument 0
-test tag_094_case_0905_refused() fail {
+test tag_094_case_0909_refused() fail {
   known_builtin_failure_v1(
     94,
     [
@@ -11046,7 +11082,7 @@ test tag_094_case_0905_refused() fail {
 }
 
 // kind sweep: compacted argument 0
-test tag_094_case_0906_refused() fail {
+test tag_094_case_0910_refused() fail {
   known_builtin_failure_v1(
     94,
     [
@@ -11065,7 +11101,7 @@ test tag_094_case_0906_refused() fail {
 }
 
 // kind sweep: Miller-loop argument 1
-test tag_094_case_0907_refused() fail {
+test tag_094_case_0911_refused() fail {
   known_builtin_failure_v1(
     94,
     [
@@ -11083,7 +11119,7 @@ test tag_094_case_0907_refused() fail {
 }
 
 // kind sweep: compacted argument 1
-test tag_094_case_0908_refused() fail {
+test tag_094_case_0912_refused() fail {
   known_builtin_failure_v1(
     94,
     [
@@ -11105,7 +11141,7 @@ test tag_094_case_0908_refused() fail {
 }
 
 // kind sweep: opaque argument 2
-test tag_094_case_0909_refused() fail {
+test tag_094_case_0913_refused() fail {
   known_builtin_failure_v1(
     94,
     [
@@ -11123,7 +11159,7 @@ test tag_094_case_0909_refused() fail {
 }
 
 // kind sweep: compacted argument 2
-test tag_094_case_0910_refused() fail {
+test tag_094_case_0914_refused() fail {
   known_builtin_failure_v1(
     94,
     [
@@ -11145,7 +11181,7 @@ test tag_094_case_0910_refused() fail {
 }
 
 // kind sweep: Miller-loop argument 3
-test tag_094_case_0911_refused() fail {
+test tag_094_case_0915_refused() fail {
   known_builtin_failure_v1(
     94,
     [
@@ -11163,7 +11199,7 @@ test tag_094_case_0911_refused() fail {
 }
 
 // kind sweep: compacted argument 3
-test tag_094_case_0912_refused() fail {
+test tag_094_case_0916_refused() fail {
   known_builtin_failure_v1(
     94,
     [
@@ -11185,7 +11221,7 @@ test tag_094_case_0912_refused() fail {
 }
 
 // kind sweep: opaque argument 0
-test tag_094_case_0913_refused() fail {
+test tag_094_case_0917_refused() fail {
   known_builtin_failure_v1(
     94,
     [
@@ -11200,7 +11236,7 @@ test tag_094_case_0913_refused() fail {
 }
 
 // kind sweep: compacted argument 0
-test tag_094_case_0914_refused() fail {
+test tag_094_case_0918_refused() fail {
   known_builtin_failure_v1(
     94,
     [
@@ -11219,7 +11255,7 @@ test tag_094_case_0914_refused() fail {
 }
 
 // kind sweep: Miller-loop argument 1
-test tag_094_case_0915_refused() fail {
+test tag_094_case_0919_refused() fail {
   known_builtin_failure_v1(
     94,
     [
@@ -11234,7 +11270,7 @@ test tag_094_case_0915_refused() fail {
 }
 
 // kind sweep: compacted argument 1
-test tag_094_case_0916_refused() fail {
+test tag_094_case_0920_refused() fail {
   known_builtin_failure_v1(
     94,
     [
@@ -11253,7 +11289,7 @@ test tag_094_case_0916_refused() fail {
 }
 
 // kind sweep: opaque argument 2
-test tag_094_case_0917_refused() fail {
+test tag_094_case_0921_refused() fail {
   known_builtin_failure_v1(
     94,
     [
@@ -11268,7 +11304,7 @@ test tag_094_case_0917_refused() fail {
 }
 
 // kind sweep: compacted argument 2
-test tag_094_case_0918_refused() fail {
+test tag_094_case_0922_refused() fail {
   known_builtin_failure_v1(
     94,
     [
@@ -11287,7 +11323,7 @@ test tag_094_case_0918_refused() fail {
 }
 
 // kind sweep: Miller-loop argument 3
-test tag_094_case_0919_refused() fail {
+test tag_094_case_0923_refused() fail {
   known_builtin_failure_v1(
     94,
     [
@@ -11302,7 +11338,7 @@ test tag_094_case_0919_refused() fail {
 }
 
 // kind sweep: compacted argument 3
-test tag_094_case_0920_refused() fail {
+test tag_094_case_0924_refused() fail {
   known_builtin_failure_v1(
     94,
     [
@@ -11324,7 +11360,7 @@ test tag_096_verdicts() {
   verdicts_hold(
     [
       Case {
-        id: 839,
+        id: 843,
         tag: 96,
         arguments: [
           constant(
@@ -11336,7 +11372,7 @@ test tag_096_verdicts() {
         known: False,
       },
       Case {
-        id: 840,
+        id: 844,
         tag: 96,
         arguments: [
           constant(
@@ -11351,7 +11387,7 @@ test tag_096_verdicts() {
         known: True,
       },
       Case {
-        id: 841,
+        id: 845,
         tag: 96,
         arguments: [
           constant(
@@ -11366,7 +11402,7 @@ test tag_096_verdicts() {
         known: False,
       },
       Case {
-        id: 842,
+        id: 846,
         tag: 96,
         arguments: [
           constant(
@@ -11381,7 +11417,7 @@ test tag_096_verdicts() {
         known: True,
       },
       Case {
-        id: 843,
+        id: 847,
         tag: 96,
         arguments: [
           constant(
@@ -11396,7 +11432,7 @@ test tag_096_verdicts() {
         known: False,
       },
       Case {
-        id: 844,
+        id: 848,
         tag: 96,
         arguments: [
           constant(
@@ -11415,7 +11451,7 @@ test tag_096_verdicts() {
 }
 
 // data for the right value
-test tag_096_case_0850_refused() fail {
+test tag_096_case_0854_refused() fail {
   known_builtin_failure_v1(
     96,
     [
@@ -11429,7 +11465,7 @@ test tag_096_case_0850_refused() fail {
 }
 
 // kind sweep: opaque argument 0
-test tag_096_case_0921_refused() fail {
+test tag_096_case_0925_refused() fail {
   known_builtin_failure_v1(
     96,
     [
@@ -11445,7 +11481,7 @@ test tag_096_case_0921_refused() fail {
 }
 
 // kind sweep: compacted argument 0
-test tag_096_case_0922_refused() fail {
+test tag_096_case_0926_refused() fail {
   known_builtin_failure_v1(
     96,
     [
@@ -11465,7 +11501,7 @@ test tag_096_case_0922_refused() fail {
 }
 
 // kind sweep: Miller-loop argument 1
-test tag_096_case_0923_refused() fail {
+test tag_096_case_0927_refused() fail {
   known_builtin_failure_v1(
     96,
     [
@@ -11481,7 +11517,7 @@ test tag_096_case_0923_refused() fail {
 }
 
 // kind sweep: compacted argument 1
-test tag_096_case_0924_refused() fail {
+test tag_096_case_0928_refused() fail {
   known_builtin_failure_v1(
     96,
     [
@@ -11501,7 +11537,7 @@ test tag_096_case_0924_refused() fail {
 }
 
 // kind sweep: Miller-loop argument 1
-test tag_096_case_0925_refused() fail {
+test tag_096_case_0929_refused() fail {
   known_builtin_failure_v1(
     96,
     [
@@ -11514,7 +11550,7 @@ test tag_096_case_0925_refused() fail {
 }
 
 // kind sweep: compacted argument 1
-test tag_096_case_0926_refused() fail {
+test tag_096_case_0930_refused() fail {
   known_builtin_failure_v1(
     96,
     [
@@ -11534,7 +11570,7 @@ test tag_097_verdicts() {
   verdicts_hold(
     [
       Case {
-        id: 845,
+        id: 849,
         tag: 97,
         arguments: [
           constant(
@@ -11549,13 +11585,13 @@ test tag_097_verdicts() {
         known: False,
       },
       Case {
-        id: 846,
+        id: 850,
         tag: 97,
         arguments: [constant(#"9f0dff", #"a0"), constant(#"9f0dff", #"a0")],
         known: False,
       },
       Case {
-        id: 847,
+        id: 851,
         tag: 97,
         arguments: [
           constant(
@@ -11570,7 +11606,7 @@ test tag_097_verdicts() {
         known: False,
       },
       Case {
-        id: 848,
+        id: 852,
         tag: 97,
         arguments: [
           constant(
@@ -11582,7 +11618,7 @@ test tag_097_verdicts() {
         known: True,
       },
       Case {
-        id: 849,
+        id: 853,
         tag: 97,
         arguments: [
           constant(
@@ -11601,7 +11637,7 @@ test tag_097_verdicts() {
 }
 
 // an integer for the left value
-test tag_097_case_0851_refused() fail {
+test tag_097_case_0855_refused() fail {
   known_builtin_failure_v1(
     97,
     [constant(#"9f00ff", #"01"), constant(#"9f0dff", #"a0")],
@@ -11609,7 +11645,7 @@ test tag_097_case_0851_refused() fail {
 }
 
 // kind sweep: opaque argument 0
-test tag_097_case_0927_refused() fail {
+test tag_097_case_0931_refused() fail {
   known_builtin_failure_v1(
     97,
     [
@@ -11622,7 +11658,7 @@ test tag_097_case_0927_refused() fail {
 }
 
 // kind sweep: compacted argument 0
-test tag_097_case_0928_refused() fail {
+test tag_097_case_0932_refused() fail {
   known_builtin_failure_v1(
     97,
     [
@@ -11639,7 +11675,7 @@ test tag_097_case_0928_refused() fail {
 }
 
 // kind sweep: Miller-loop argument 1
-test tag_097_case_0929_refused() fail {
+test tag_097_case_0933_refused() fail {
   known_builtin_failure_v1(
     97,
     [
@@ -11655,7 +11691,7 @@ test tag_097_case_0929_refused() fail {
 }
 
 // kind sweep: compacted argument 1
-test tag_097_case_0930_refused() fail {
+test tag_097_case_0934_refused() fail {
   known_builtin_failure_v1(
     97,
     [
@@ -11678,7 +11714,7 @@ test tag_099_verdicts() {
   verdicts_hold(
     [
       Case {
-        id: 859,
+        id: 863,
         tag: 99,
         arguments: [
           constant(
@@ -11689,13 +11725,13 @@ test tag_099_verdicts() {
         known: False,
       },
       Case {
-        id: 860,
+        id: 864,
         tag: 99,
         arguments: [constant(#"9f08ff", #"a0")],
         known: False,
       },
       Case {
-        id: 861,
+        id: 865,
         tag: 99,
         arguments: [
           constant(
@@ -11706,7 +11742,7 @@ test tag_099_verdicts() {
         known: False,
       },
       Case {
-        id: 862,
+        id: 866,
         tag: 99,
         arguments: [
           constant(
@@ -11717,7 +11753,7 @@ test tag_099_verdicts() {
         known: True,
       },
       Case {
-        id: 863,
+        id: 867,
         tag: 99,
         arguments: [
           constant(
@@ -11728,7 +11764,7 @@ test tag_099_verdicts() {
         known: True,
       },
       Case {
-        id: 864,
+        id: 868,
         tag: 99,
         arguments: [
           constant(
@@ -11739,7 +11775,7 @@ test tag_099_verdicts() {
         known: False,
       },
       Case {
-        id: 865,
+        id: 869,
         tag: 99,
         arguments: [
           constant(
@@ -11750,7 +11786,7 @@ test tag_099_verdicts() {
         known: True,
       },
       Case {
-        id: 866,
+        id: 870,
         tag: 99,
         arguments: [
           constant(
@@ -11761,7 +11797,7 @@ test tag_099_verdicts() {
         known: True,
       },
       Case {
-        id: 867,
+        id: 871,
         tag: 99,
         arguments: [
           constant(
@@ -11772,7 +11808,7 @@ test tag_099_verdicts() {
         known: True,
       },
       Case {
-        id: 868,
+        id: 872,
         tag: 99,
         arguments: [
           constant(
@@ -11783,7 +11819,7 @@ test tag_099_verdicts() {
         known: True,
       },
       Case {
-        id: 869,
+        id: 873,
         tag: 99,
         arguments: [
           constant(#"9f08ff", #"a24102a144bbbbbbbb014101a144bbbbbbbb01"),
@@ -11791,7 +11827,7 @@ test tag_099_verdicts() {
         known: True,
       },
       Case {
-        id: 870,
+        id: 874,
         tag: 99,
         arguments: [
           constant(
@@ -11802,13 +11838,13 @@ test tag_099_verdicts() {
         known: True,
       },
       Case {
-        id: 871,
+        id: 875,
         tag: 99,
         arguments: [constant(#"9f08ff", #"a101a0")],
         known: True,
       },
       Case {
-        id: 872,
+        id: 876,
         tag: 99,
         arguments: [constant(#"9f08ff", #"80")],
         known: True,
@@ -11818,7 +11854,7 @@ test tag_099_verdicts() {
 }
 
 // a Value for the data
-test tag_099_case_0873_refused() fail {
+test tag_099_case_0877_refused() fail {
   known_builtin_failure_v1(
     99,
     [
@@ -11831,7 +11867,7 @@ test tag_099_case_0873_refused() fail {
 }
 
 // kind sweep: opaque argument 0
-test tag_099_case_0931_refused() fail {
+test tag_099_case_0935_refused() fail {
   known_builtin_failure_v1(
     99,
     [
@@ -11843,7 +11879,7 @@ test tag_099_case_0931_refused() fail {
 }
 
 // kind sweep: Miller-loop argument 0
-test tag_099_case_0932_refused() fail {
+test tag_099_case_0936_refused() fail {
   known_builtin_failure_v1(
     99,
     [
@@ -11855,7 +11891,7 @@ test tag_099_case_0932_refused() fail {
 }
 
 // kind sweep: compacted argument 0
-test tag_099_case_0933_refused() fail {
+test tag_099_case_0937_refused() fail {
   known_builtin_failure_v1(
     99,
     [
@@ -11874,7 +11910,7 @@ test tag_100_verdicts() {
   verdicts_hold(
     [
       Case {
-        id: 852,
+        id: 856,
         tag: 100,
         arguments: [
           constant(#"9f00ff", #"c2507fffffffffffffffffffffffffffffff"),
@@ -11886,7 +11922,7 @@ test tag_100_verdicts() {
         known: False,
       },
       Case {
-        id: 853,
+        id: 857,
         tag: 100,
         arguments: [
           constant(#"9f00ff", #"02"),
@@ -11898,7 +11934,7 @@ test tag_100_verdicts() {
         known: True,
       },
       Case {
-        id: 854,
+        id: 858,
         tag: 100,
         arguments: [
           constant(#"9f00ff", #"20"),
@@ -11910,7 +11946,7 @@ test tag_100_verdicts() {
         known: True,
       },
       Case {
-        id: 855,
+        id: 859,
         tag: 100,
         arguments: [
           constant(#"9f00ff", #"20"),
@@ -11922,7 +11958,7 @@ test tag_100_verdicts() {
         known: False,
       },
       Case {
-        id: 856,
+        id: 860,
         tag: 100,
         arguments: [
           constant(#"9f00ff", #"00"),
@@ -11934,7 +11970,7 @@ test tag_100_verdicts() {
         known: False,
       },
       Case {
-        id: 857,
+        id: 861,
         tag: 100,
         arguments: [
           constant(#"9f00ff", #"c249010000000000000000"),
@@ -11947,7 +11983,7 @@ test tag_100_verdicts() {
 }
 
 // a byte-string scalar
-test tag_100_case_0858_refused() fail {
+test tag_100_case_0862_refused() fail {
   known_builtin_failure_v1(
     100,
     [
@@ -11961,7 +11997,7 @@ test tag_100_case_0858_refused() fail {
 }
 
 // kind sweep: opaque argument 0
-test tag_100_case_0934_refused() fail {
+test tag_100_case_0938_refused() fail {
   known_builtin_failure_v1(
     100,
     [
@@ -11977,7 +12013,7 @@ test tag_100_case_0934_refused() fail {
 }
 
 // kind sweep: compacted argument 0
-test tag_100_case_0935_refused() fail {
+test tag_100_case_0939_refused() fail {
   known_builtin_failure_v1(
     100,
     [
@@ -11997,7 +12033,7 @@ test tag_100_case_0935_refused() fail {
 }
 
 // kind sweep: Miller-loop argument 1
-test tag_100_case_0936_refused() fail {
+test tag_100_case_0940_refused() fail {
   known_builtin_failure_v1(
     100,
     [
@@ -12010,7 +12046,7 @@ test tag_100_case_0936_refused() fail {
 }
 
 // kind sweep: compacted argument 1
-test tag_100_case_0937_refused() fail {
+test tag_100_case_0941_refused() fail {
   known_builtin_failure_v1(
     100,
     [
@@ -12027,7 +12063,7 @@ test tag_100_case_0937_refused() fail {
 }
 
 // kind sweep: opaque argument 0
-test tag_100_case_0938_refused() fail {
+test tag_100_case_0942_refused() fail {
   known_builtin_failure_v1(
     100,
     [
@@ -12040,7 +12076,7 @@ test tag_100_case_0938_refused() fail {
 }
 
 // kind sweep: compacted argument 0
-test tag_100_case_0939_refused() fail {
+test tag_100_case_0943_refused() fail {
   known_builtin_failure_v1(
     100,
     [
@@ -12292,7 +12328,7 @@ test tags_without_known_failures_verdicts() {
         known: False,
       },
       Case {
-        id: 874,
+        id: 878,
         tag: 88,
         arguments: [
           constant(#"9f00ff", #"05"),
@@ -12301,13 +12337,13 @@ test tags_without_known_failures_verdicts() {
         known: False,
       },
       Case {
-        id: 875,
+        id: 879,
         tag: 89,
         arguments: [constant(#"9f0c00ff", #"9f010203ff")],
         known: False,
       },
       Case {
-        id: 876,
+        id: 880,
         tag: 90,
         arguments: [constant(#"9f0500ff", #"9f010203ff")],
         known: False,
@@ -12319,7 +12355,7 @@ test tags_without_known_failures_verdicts() {
         known: False,
       },
       Case {
-        id: 877,
+        id: 881,
         tag: 95,
         arguments: [
           constant(
@@ -12335,7 +12371,7 @@ test tags_without_known_failures_verdicts() {
         known: False,
       },
       Case {
-        id: 878,
+        id: 882,
         tag: 98,
         arguments: [
           constant(

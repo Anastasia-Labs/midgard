@@ -26,6 +26,9 @@ const EXP_MOD_MIN = -(1n << 8191n);
 const MSM_MAX = (1n << 4095n) - 1n;
 const MSM_MIN = -(1n << 4095n);
 const BIG = 1n << 64n;
+/** The signed 64-bit range an indexArray index must be in to be charged. */
+const INT64_MAX = (1n << 63n) - 1n;
+const INT64_MIN = -(1n << 63n);
 
 /** Points of each group, hashed to the curve by the pinned evaluator. */
 const points = (tag: number, count: number): readonly Uint8Array[] =>
@@ -161,7 +164,18 @@ const arrayCases = (
     const length = BigInt((array.value as readonly unknown[]).length);
     return [
       { name: `lengthOfArray of ${name}`, tag: 89, arguments: [array] },
-      ...[-BIG, -1n, 0n, length - 1n, length, BIG].map((index) => ({
+      ...[
+        -BIG,
+        INT64_MIN - 1n,
+        INT64_MIN,
+        -1n,
+        0n,
+        length - 1n,
+        length,
+        INT64_MAX,
+        INT64_MAX + 1n,
+        BIG,
+      ].map((index) => ({
         name: `indexArray ${index} of ${name}`,
         tag: 91,
         arguments: [array, int(index)],

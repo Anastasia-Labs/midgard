@@ -116,7 +116,18 @@ const expModCases = (add) => {
 
 const indexArrayCases = (add) => {
   const array = intArray([5, 6, 7]);
-  for (const index of [-(2n ** 64n), -1n, 0n, 2n, 3n, 2n ** 64n]) {
+  for (const index of [
+    -(2n ** 64n),
+    -(2n ** 63n) - 1n,
+    -(2n ** 63n),
+    -1n,
+    0n,
+    2n,
+    3n,
+    2n ** 63n - 1n,
+    2n ** 63n,
+    2n ** 64n,
+  ]) {
     add(91, `index ${index}`, [array, int(index)]);
   }
   add(91, "index 0 of the empty array", [intArray([]), int(0)]);
