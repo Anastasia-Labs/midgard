@@ -40,7 +40,7 @@ import { withRealEventHistoryForTest } from "./helpers/event-history.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
 /** The manifest and publication lengths before the staged-operand additions. */
-const PRE_CEK_STAGED_LENGTHS = [592, 587] as const;
+const PRE_CEK_STAGED_LENGTHS = [681, 676] as const;
 
 const orderDigest = (value: unknown): string =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -204,7 +204,7 @@ describe("deployable-script catalogue", () => {
     expectOrdersWithout([real, placeholder], {
       contracts: [phaseResolverContracts],
       roles: [phaseResolverRoles],
-      lengths: [576, 571],
+      lengths: [665, 660],
       pins: {
         manifestContract:
           orderPins.PRE_PHASE_RESOLVER_MANIFEST_CONTRACT_ORDER_DIGEST,
@@ -224,7 +224,7 @@ describe("deployable-script catalogue", () => {
     expectOrdersWithout([real, placeholder], {
       contracts: [phaseResolverContracts, cekResolverContracts],
       roles: [phaseResolverRoles, cekResolverRoles],
-      lengths: [571, 566],
+      lengths: [660, 655],
       pins: {
         manifestContract:
           orderPins.PRE_CEK_RESOLVER_MANIFEST_CONTRACT_ORDER_DIGEST,
@@ -244,7 +244,7 @@ describe("deployable-script catalogue", () => {
     expectOrdersWithout([real, placeholder], {
       contracts: [phaseResolverContracts, cekResolverContracts, caseContracts],
       roles: [phaseResolverRoles, cekResolverRoles, caseRoles],
-      lengths: [565, 560],
+      lengths: [654, 649],
       pins: {
         manifestContract: orderPins.PRE_CASE_MANIFEST_CONTRACT_ORDER_DIGEST,
         manifestRole: orderPins.PRE_CASE_MANIFEST_ROLE_ORDER_DIGEST,
@@ -271,7 +271,7 @@ describe("deployable-script catalogue", () => {
         caseRoles,
         dataCanonicityRoles,
       ],
-      lengths: [561, 556],
+      lengths: [650, 645],
       pins: {
         manifestContract:
           orderPins.PRE_DATA_CANONICITY_MANIFEST_CONTRACT_ORDER_DIGEST,
@@ -305,7 +305,7 @@ describe("deployable-script catalogue", () => {
         caseRoles,
         dataCanonicityRoles,
       ],
-      lengths: [554, 549],
+      lengths: [643, 638],
       restoreRetiredBond: true,
       pins: {
         manifestRole: orderPins.PRE_HISTORY_MANIFEST_ROLE_ORDER_DIGEST,
@@ -335,7 +335,7 @@ describe("deployable-script catalogue", () => {
         caseRoles,
         dataCanonicityRoles,
       ],
-      lengths: [560, 555],
+      lengths: [649, 644],
       restoreRetiredBond: true,
       pins: {
         manifestRole: orderPins.PRE_POOL_MANIFEST_ROLE_ORDER_DIGEST,

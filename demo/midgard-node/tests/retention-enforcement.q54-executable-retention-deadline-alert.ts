@@ -90,6 +90,18 @@ describe("Q54 executable retention deadline alert", () => {
     );
   });
 
+  it("reports the retention period in force, not the derived minimum", () => {
+    const result = evaluateRetentionCheck({
+      nowMillis: NOW.getTime(),
+      retentionDays: 120,
+      records: [],
+    });
+    expect(result.deployedRetentionMs).toBe(120 * RETENTION_MS_PER_DAY);
+    expect(result.marginMs).toBe(
+      120 * RETENTION_MS_PER_DAY - REQUIRED_RETENTION_MS,
+    );
+  });
+
   it("alerts at zero remaining headroom but not at one millisecond", () => {
     const at = (remainingMs: number) =>
       evaluateRetentionCheck({

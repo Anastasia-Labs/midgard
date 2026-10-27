@@ -7,8 +7,8 @@ import {
 } from "@al-ft/midgard-core";
 import type * as SDK from "@al-ft/midgard-sdk";
 
+import type { DirectPurposeSourceEvidence } from "../direct-purpose-family/source-walk.js";
 import type { DirectScriptMaterial } from "../direct-script-derivation/index.js";
-import type { MissingRedeemerSourceEvidence } from "../missing-redeemer/source-walk.js";
 import { keyValuePhasMembershipProofs } from "../transition-trace/phas.js";
 import { SCRIPT_INTEGRITY_HASH_MISMATCH_CATEGORY_LABEL as LABEL } from "./contracts.js";
 
@@ -17,7 +17,7 @@ export type Execution = SDK.DirectAllPurposesExecutionWitness;
 /** The selected source of `scriptHash` with its source-map proof. A purpose
  * whose script has no source cannot complete the walk. */
 export const executionOf = async (
-  evidence: MissingRedeemerSourceEvidence,
+  evidence: DirectPurposeSourceEvidence,
   scriptHash: string,
 ): Promise<Execution> => {
   const { selected, proof } = await evidence.lookup(scriptHash);
@@ -30,7 +30,7 @@ export const executionOf = async (
  * field order, with the execution of a script-locked input. */
 export const spendWitnesses = async (
   material: DirectScriptMaterial,
-  evidence: MissingRedeemerSourceEvidence,
+  evidence: DirectPurposeSourceEvidence,
 ): Promise<readonly SDK.DirectAllPurposesSpendWitness[]> => {
   const descriptors = material.fields[0]!.map((item) => {
     const entry = material.ledger.root.entries.find((candidate) =>

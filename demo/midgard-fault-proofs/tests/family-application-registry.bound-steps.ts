@@ -236,7 +236,12 @@ export const NO_DIGEST_FAMILIES = [
   "validationTraceDispute",
   "valueNotPreserved",
   "missingRedeemer",
+  "missingScriptSource",
+  "unusedRedeemer",
+  "receivePurposeLanguage",
   "scriptIntegrityHashMismatch",
+  "distinctAssetAccumulationLimit",
+  "unusedScriptWitness",
 ];
 
 export const REPLAY_CONTEXT_FAMILIES = [
@@ -250,7 +255,12 @@ export const REPLAY_CONTEXT_FAMILIES = [
   "spendInputSignerMissing",
   "validationTraceDispute",
   "missingRedeemer",
+  "missingScriptSource",
+  "unusedRedeemer",
+  "receivePurposeLanguage",
   "scriptIntegrityHashMismatch",
+  "distinctAssetAccumulationLimit",
+  "unusedScriptWitness",
 ];
 
 /**

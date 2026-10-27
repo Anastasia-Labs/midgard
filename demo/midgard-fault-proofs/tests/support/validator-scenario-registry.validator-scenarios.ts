@@ -38,6 +38,22 @@ const MR_OBSERVER =
   "refuses a forged successor at every role of the accepted observer route";
 const MR_CLAIMED =
   "refuses a forged successor at every role of the forced claimed-redeemer route";
+const MSS_FORGED_SUCCESSOR =
+  "demo/midgard-fault-proofs/tests/submit-init-emulator-missing-script-source-forged-successor.test.ts";
+const MSS_OBSERVER =
+  "refuses a forged successor at every role of an accepted sourceless observer beside spent and referenced inputs";
+const missingScriptSourceForgedSuccessor: ValidatorScenarioPair = {
+  passing: [{ file: MSS_FORGED_SUCCESSOR, test: MSS_OBSERVER }],
+  failing: [{ file: MSS_FORGED_SUCCESSOR, test: MSS_OBSERVER }],
+};
+const UR_FORGED_SUCCESSOR =
+  "demo/midgard-fault-proofs/tests/submit-init-emulator-unused-redeemer-forged-successor.test.ts";
+const UR_PURPOSELESS =
+  "refuses a forged successor at every role of an accepted purposeless redeemer beside spent and referenced inputs";
+const unusedRedeemerForgedSuccessor: ValidatorScenarioPair = {
+  passing: [{ file: UR_FORGED_SUCCESSOR, test: UR_PURPOSELESS }],
+  failing: [{ file: UR_FORGED_SUCCESSOR, test: UR_PURPOSELESS }],
+};
 const MR_VERTICALS =
   "demo/midgard-fault-proofs/tests/submit-init-emulator-missing-redeemer-verticals.test.ts";
 const streamedReplayStep = (failing: string): ValidatorScenarioPair => ({
@@ -417,21 +433,31 @@ export const VALIDATOR_SCENARIOS: Readonly<
     missingRedeemerForgedSuccessor(MR_OBSERVER),
   "fraud_proofs/missing_redeemer/family_entry.main":
     missingRedeemerForgedSuccessor(MR_OBSERVER),
+  "fraud_proofs/missing_script_source/family_entry.main":
+    missingScriptSourceForgedSuccessor,
+  "fraud_proofs/missing_script_source/observed_decision.main":
+    missingScriptSourceForgedSuccessor,
+  "fraud_proofs/unused_redeemer/family_entry.main":
+    unusedRedeemerForgedSuccessor,
+  "fraud_proofs/unused_redeemer/redeemer_grammar.main":
+    unusedRedeemerForgedSuccessor,
+  "fraud_proofs/unused_redeemer/redeemer_scan.main":
+    unusedRedeemerForgedSuccessor,
   "fraud_proofs/missing_redeemer/step_02.main":
     missingRedeemerForgedSuccessor(MR_OBSERVER),
   "fraud_proofs/missing_redeemer/step_03.main":
     missingRedeemerForgedSuccessor(MR_OBSERVER),
   "fraud_proofs/missing_redeemer/step_04.main":
     missingRedeemerForgedSuccessor(MR_OBSERVER),
-  "fraud_proofs/missing_redeemer/claim_start.main":
+  "fraud_proofs/direct_script_derivation/claim_start.main":
     missingRedeemerForgedSuccessor(MR_OBSERVER),
-  "fraud_proofs/missing_redeemer/claim_adjudicate.main":
+  "fraud_proofs/direct_script_derivation/claim_adjudicate.main":
     missingRedeemerForgedSuccessor(MR_OBSERVER),
-  "fraud_proofs/missing_redeemer/claimed_redeemer_grammar.main":
+  "fraud_proofs/direct_script_derivation/claimed_redeemer_grammar.main":
     missingRedeemerForgedSuccessor(MR_CLAIMED),
-  "fraud_proofs/missing_redeemer/claimed_redeemer_scan.main":
+  "fraud_proofs/direct_script_derivation/claimed_redeemer_scan.main":
     missingRedeemerForgedSuccessor(MR_CLAIMED),
-  "fraud_proofs/missing_redeemer/step_05.main": {
+  "fraud_proofs/direct_script_derivation/claim_terminal.main": {
     passing: [
       {
         file: MR_VERTICALS,

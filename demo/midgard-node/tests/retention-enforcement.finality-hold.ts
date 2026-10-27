@@ -191,6 +191,21 @@ describe.skipIf(!dbEnabled)("DA payload retention held to L1 finality", () => {
     expect(deleted).toBe(2);
   });
 
+  it("leaves retained history past challengeability out of the deadline gauge", async () => {
+    const fresh = new Date(
+      NOW.getTime() - MIDGARD_RETENTION_WINDOW.requiredRetentionMs / 2,
+    );
+    const remainingMs = await run(
+      Effect.gen(function* () {
+        yield* seedPayload("history", OLD, OLD);
+        yield* seedPayload("current", fresh, fresh);
+        yield* withSweepServices(retentionSweepAction(undefined, NOW), 0);
+        return (yield* Metric.value(deadlineGauge)).value;
+      }),
+    );
+    expect(remainingMs).toBe(MIDGARD_RETENTION_WINDOW.requiredRetentionMs / 2);
+  });
+
   it("leaves held payloads out of the retention deadline", async () => {
     const freshEnd = new Date(
       NOW.getTime() - MIDGARD_RETENTION_WINDOW.requiredRetentionMs / 2,

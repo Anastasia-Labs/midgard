@@ -203,7 +203,7 @@ describe("missing-redeemer purpose-route emulator rows", () => {
     expect(run.prepared.final.claim).toHaveProperty("RedeemerAbsent");
     expectWithinBounds(run.steps);
     await expectOnchainRefusal(() => run.terminal(false), {
-      refusedBy: "fraud_proofs/missing_redeemer/step_05",
+      refusedBy: "fraud_proofs/direct_script_derivation/claim_terminal",
       check: /^Validator returned false$/u,
     });
     await expect(

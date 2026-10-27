@@ -24,10 +24,10 @@ step-04 module and `tier_three_variable_width_field_cannot_be_walked` in
 the second exercises `open_certified`. Their boundary claims require review,
 not an automatic demand that both call a whole transaction validator.
 
-`unused-script-witness/rule.test.ak` now compares
-`reverse_checkpoint_encoding_golden_vector` with a literal byte vector. The
-old character-identical comparison recommendation is already closed in current
-source; do not reimplement it.
+The old character-identical comparison recommendation for the
+unused-script-witness reverse-checkpoint encoding no longer applies: the family
+is now proved directly from the transaction, and that encoding and its test
+module were removed. Do not reimplement it.
 
 ## Proposed work
 

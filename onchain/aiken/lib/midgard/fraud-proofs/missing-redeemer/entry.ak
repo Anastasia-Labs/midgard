@@ -3,8 +3,10 @@
 //// actual arm is RedeemerMissing, the claimed-only route.
 
 use midgard/computation_thread as ct
+use midgard/fraud_proofs/direct_script_derivation/claim.{
+  ClaimContextV1, LeafPurpose,
+}
 use midgard/fraud_proofs/direct_script_derivation/source_scan.{BoundIndexV1}
-use midgard/fraud_proofs/missing_redeemer/claim.{ClaimContextV1}
 use midgard/rejection_reason_v1.{RedeemerMissing}
 
 pub type ActionV1 {
@@ -29,5 +31,5 @@ pub fn indices_v1(action: ActionV1) -> Pair<Int, Int> {
 /// door, so it is canonical; a reason is present only on a rejected leaf.
 pub fn claim_context_v1(bound: BoundIndexV1) -> ClaimContextV1 {
   expect Some(RedeemerMissing { .. }) = bound.bound.subject.rejection_reason
-  ClaimContextV1 { bound, observed: None }
+  ClaimContextV1 { bound, observed: None, target: LeafPurpose }
 }

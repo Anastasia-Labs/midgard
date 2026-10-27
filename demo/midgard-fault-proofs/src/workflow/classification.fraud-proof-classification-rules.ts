@@ -291,11 +291,7 @@ export const FRAUD_PROOF_CLASSIFICATION_RULES = Object.freeze([
   },
   {
     category: "distinctAssetAccumulationLimit",
-    violationIds: [
-      "input-asset-accumulation-limit",
-      "output-asset-accumulation-limit",
-      "mint-asset-accumulation-limit",
-    ],
+    violationIds: ["distinct-asset-accumulation-limit"],
   },
   {
     category: "mintItemNonCanonical",

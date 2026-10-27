@@ -7,11 +7,15 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
+  grammarPages,
+  pages,
+  stepDatum,
+} from "../direct-purpose-family/custody.js";
+import type { DirectPurposeSourceEvidence } from "../direct-purpose-family/source-walk.js";
+import {
   directOutputAddress,
   type DirectScriptMaterial,
 } from "../direct-script-derivation/index.js";
-import { grammarPages, pages, stepDatum } from "../missing-redeemer/custody.js";
-import type { MissingRedeemerSourceEvidence } from "../missing-redeemer/source-walk.js";
 import { SCRIPT_INTEGRITY_HASH_MISMATCH_CATEGORY_LABEL } from "./contracts.js";
 import type {
   ScriptIntegrityHashMismatchFieldPlan,
@@ -96,7 +100,7 @@ export const scriptIntegrityHashMismatchWalkTransitions = async ({
   batch = SCRIPT_INTEGRITY_HASH_MISMATCH_WALK_BATCH,
 }: {
   readonly material: DirectScriptMaterial;
-  readonly evidence: MissingRedeemerSourceEvidence;
+  readonly evidence: DirectPurposeSourceEvidence;
   readonly prover: string;
   readonly plan: (field: number) => ScriptIntegrityHashMismatchFieldPlan;
   /** The spend walk's own hash, recorded as the resume hash of each take. */

@@ -236,7 +236,7 @@ describe("missing-redeemer consensus-maximum observer shape", () => {
     );
     expectWithinBounds(run.steps);
     await expectOnchainRefusal(() => run.terminal(false), {
-      refusedBy: "fraud_proofs/missing_redeemer/step_05",
+      refusedBy: "fraud_proofs/direct_script_derivation/claim_terminal",
       check: /^Validator returned false$/u,
     });
   }, 3_600_000);

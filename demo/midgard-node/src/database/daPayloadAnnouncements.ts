@@ -39,8 +39,13 @@ export const seedForPayload = (
     sqlErrorToDatabaseError(tableName, "Failed to seed DA announcement outbox"),
   );
 
+/**
+ * Seeds an announcement row for every payload within the retention window;
+ * with `since`, only for payloads created at or after it.
+ */
 export const seedRecentPayloads = (
   retentionDays: number,
+  since?: Date,
 ): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
@@ -51,6 +56,7 @@ export const seedRecentPayloads = (
       SELECT payload.header_hash, 'pending', 0, NOW()
       FROM da_payloads payload
       WHERE payload.created_at >= NOW() - (${retentionDays} * INTERVAL '1 day')
+        ${since === undefined ? sql`` : sql`AND payload.created_at >= ${since}`}
       ON CONFLICT (header_hash) DO NOTHING
     `;
   }).pipe(

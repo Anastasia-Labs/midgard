@@ -477,14 +477,14 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       executionSourceScriptDecoding: repeatedFaultProofChain(zeroInput, 5),
       observerOrderInvalid: repeatedFaultProofChain(zeroInput, 4),
       redeemerCanonicity: repeatedFaultProofChain(zeroInput, 4),
-      receivePurposeLanguage: repeatedFaultProofChain(zeroInput, 3),
-      unusedScriptWitness: repeatedFaultProofChain(zeroInput, 6),
-      missingScriptSource: repeatedFaultProofChain(zeroInput, 6),
+      receivePurposeLanguage: repeatedFaultProofChain(zeroInput, 21),
+      unusedScriptWitness: repeatedFaultProofChain(zeroInput, 24),
+      missingScriptSource: repeatedFaultProofChain(zeroInput, 37),
       missingRedeemer: repeatedFaultProofChain(zeroInput, 39),
-      unusedRedeemer: repeatedFaultProofChain(zeroInput, 9),
+      unusedRedeemer: repeatedFaultProofChain(zeroInput, 25),
       executionNativeScriptInvalid: repeatedFaultProofChain(zeroInput, 13),
       scriptIntegrityHashMismatch: repeatedFaultProofChain(zeroInput, 21),
-      distinctAssetAccumulationLimit: repeatedFaultProofChain(zeroInput, 6),
+      distinctAssetAccumulationLimit: repeatedFaultProofChain(zeroInput, 12),
     };
     const fraudProofs =
       SDK.fraudProofContractsToFirstSteps(fraudProofContracts);

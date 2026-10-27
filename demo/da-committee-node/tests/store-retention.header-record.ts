@@ -153,4 +153,15 @@ export const LIVE_A = hashOf(201);
 
 export const LIVE_B = hashOf(202);
 
-export const PAST_HORIZON = NOW - REQUIRED_RETENTION_MS - 1;
+export const PROMISED_RETENTION_MS =
+  MIDGARD_RETENTION_WINDOW.deployedRetentionMs;
+
+export const PAST_RETENTION = NOW - PROMISED_RETENTION_MS - 1;
+
+/** The header hashes of every retained DA payload, in header-hash order. */
+export const retainedHeaderHashes = async (
+  store: CommitteeStore,
+): Promise<readonly string[]> =>
+  (await store.listDaPayloadRetentionPage({ limit: 10_000 })).map(
+    ({ headerHash }) => headerHash,
+  );

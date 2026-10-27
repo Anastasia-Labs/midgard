@@ -1,8 +1,10 @@
 /**
  * A foreign block's import, and an import check's rebuild, give the event
- * loop a turn between their transactions and between their runs: a timer
- * keeps firing while they work, so the longest stretch without one is
- * about one transaction's (one run's) work, not the whole import's.
+ * loop a turn between their transactions and between their runs. The
+ * import's turns are counted: an immediate queued while it works runs once
+ * per transaction. The rebuild's are timed: a timer keeps firing while it
+ * works, so the longest stretch without one is about one run's work, not
+ * the whole rebuild's.
  */
 import { evaluateMidgardCekVerdict } from "@al-ft/midgard-validation";
 import { Effect } from "effect";
@@ -56,6 +58,25 @@ const steadiest = async <A>(work: () => Promise<A>, attempts: number) => {
   return best;
 };
 
+/**
+ * Runs `work` while an immediate re-queues itself. Each turn of the event
+ * loop runs it once, so the count is the turns `work` gave.
+ */
+const turnsDuring = async <A>(work: () => Promise<A>) => {
+  let turns = 0;
+  const turn = () => {
+    turns += 1;
+    pending = setImmediate(turn);
+  };
+  let pending = setImmediate(turn);
+  try {
+    const value = await work();
+    return { value, turns };
+  } finally {
+    clearImmediate(pending);
+  }
+};
+
 /** `count` outputs locked by an accepting script, from `byte` on. */
 const funded = (byte: number, count: number): LedgerEntry[] =>
   Array.from({ length: count }, (_, index) => fundedBy(byte + index, "accept"));
@@ -81,10 +102,9 @@ describe("foreign import and import checks keep the event loop turning", () => {
         next: "accept" as const,
       })),
     );
-    const run = await timed(() => block.imported());
+    const run = await turnsDuring(() => block.imported());
     expect(run.value._tag).toBe("Right");
-    const perTransaction = run.total / UNITS;
-    expect(run.longest).toBeLessThan(STRETCH_UNITS * perTransaction);
+    expect(run.turns).toBeGreaterThanOrEqual(UNITS);
   });
 
   it("gives the event loop a turn between a check's runs, with an evaluator that answers at once", async () => {

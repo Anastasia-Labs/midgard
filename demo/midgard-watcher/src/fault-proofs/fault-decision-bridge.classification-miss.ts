@@ -1,4 +1,4 @@
-import { daRetentionPruneDecision } from "@al-ft/midgard-core";
+import { retentionDeadlineForBlock } from "@al-ft/midgard-core";
 import {
   isFraudProofL1WaitError,
   isReplayLocalFault,
@@ -71,26 +71,24 @@ export type WatcherClassificationWarning = Readonly<
 >;
 
 /**
- * The header's challengeability horizon, from its node's block_time and the
- * DA store's own prune rule. `past_challengeability_horizon` is the reason
- * the committee drops a payload that is not held for another reason, so this
- * asks that same rule about this header alone.
+ * The header's challengeability horizon, from its node's block_time. The DA
+ * store may retain a payload past this horizon (a deployment can promise a
+ * longer history window), so the store's prune reason cannot say whether the
+ * header is still challengeable: only the horizon itself does. The watcher
+ * skips an unavailable payload only once `nowMs` is strictly past it.
  */
 const challengeability = (
   header: WatcherStateQueueHeaderObservation,
   nowMs: bigint,
 ) => {
-  const decision = daRetentionPruneDecision({
-    nowMs: Number(nowMs),
+  const { challengeableUntilMs } = retentionDeadlineForBlock({
     blockTimeMs: Number(
       Data.from(header.stateQueueNodeCborHex, StateQueueNode).block_time,
     ),
-    headerStatus: "unobserved",
-    queueReference: "none",
   });
   return {
-    past: decision.reasonCode === "past_challengeability_horizon",
-    challengeableUntilMs: decision.challengeableUntilMs,
+    past: nowMs > BigInt(challengeableUntilMs),
+    challengeableUntilMs,
   };
 };
 

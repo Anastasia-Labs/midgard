@@ -9,6 +9,8 @@
  */
 export const interactiveTests = [
   "./tests/submit-init-emulator-transition-trace-final-deep-deposit.test.ts",
+  // Thousands of chained step-03 scans: longer than a 900 s maturity.
+  "./tests/transaction-output-non-canonical-duplicate-asset-max-shape.test.ts",
   "./tests/validation-trace-dispute-bisection.test.ts",
   "./tests/validation-trace-dispute-conviction.test.ts",
   "./tests/validation-trace-dispute-defender-moves.test.ts",

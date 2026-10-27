@@ -111,6 +111,7 @@ pre-push hook. It blocks the push only on a failed check. Skip it once with
 - `demo/scripts/deployment-profiles.mjs`
 - `demo/scripts/deployment-profile-aiken.mjs`
 - `demo/scripts/deployment-profile-identity.mjs`
+- `demo/scripts/deployment-profile-da.mjs`
 - `demo/scripts/deployment-profile-budgets.mjs`
 - `demo/scripts/deployment-profile-operator-economics.mjs`
 - `demo/flake.lock`
@@ -285,7 +286,7 @@ Workspace ESLint rules and their reasoned baseline.
 
 Workspace helper, ESLint plugin, deployment-profile and interactive-emulator cache self-tests.
 
-- Command: `node --test "demo/scripts/lib/*.test.mjs" demo/scripts/deployment-profiles.test.mjs demo/scripts/interactive-emulator.test.mjs`
+- Command: `node --test "demo/scripts/lib/*.test.mjs" demo/scripts/deployment-profiles.test.mjs demo/scripts/deployment-profiles.retention.test.mjs demo/scripts/interactive-emulator.test.mjs`
 - Runs on: `demo/scripts/**`, `demo/eslint.config.mjs`, `.github/workflows/repo-tools-ci.yml`, `config/deployments/**`, `demo/midgard-test-support/interactive-emulator.js`, `demo/midgard-fault-proofs/scripts/traced-blueprint.mjs`, `demo/midgard-core/src/generated-deployment-profiles.ts`, `onchain/aiken/env/*.ak`, `demo/flake.lock`, `demo/module-size-exceptions.json` and every file it caps
 - Needs: `node-modules`
 
@@ -1302,6 +1303,7 @@ Golden channel da-bond-pool-v1 (@al-ft/midgard-sdk).
   - `demo/midgard-sdk/tests/fixtures/da-bond-pool-v1.generated.json`
   - `demo/scripts/deployment-profile-aiken.mjs`
   - `demo/scripts/deployment-profile-budgets.mjs`
+  - `demo/scripts/deployment-profile-da.mjs`
   - `demo/scripts/deployment-profile-identity.mjs`
   - `demo/scripts/deployment-profile-operator-economics.mjs`
   - `demo/scripts/deployment-profiles.mjs`

@@ -9,7 +9,7 @@
 import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
-import { singleLedgerAt } from "../src/ledger-at.js";
+import { type LedgerEntry, singleLedgerAt } from "../src/ledger-at.js";
 import {
   admitCompleteCanonicalReplayPredecessor,
   MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY,
@@ -37,8 +37,13 @@ const daProvenance = {
 const replay = async (
   shape: MissingRedeemerSubjectShape,
   source: MissingRedeemerSource,
+  /** The predecessor ledger; every spent and referenced entry by default. */
+  ledger: readonly LedgerEntry[] = [
+    ...(shape.spend ?? []),
+    ...(shape.reference ?? []),
+  ],
 ) => {
-  const built = await buildMissingRedeemerBlock({ shape, source });
+  const built = await buildMissingRedeemerBlock({ shape, source, ledger });
   const evidence = await canonicalBlockEvidenceFromVerifiedPayload({
     observation: authenticatedHeaderObservation({
       header: built.block.header,
@@ -51,10 +56,7 @@ const replay = async (
     evidence,
     {
       predecessor: await admitCompleteCanonicalReplayPredecessor({
-        ledgerAt: singleLedgerAt(evidence.header.prevHeaderHash, [
-          ...(shape.spend ?? []),
-          ...(shape.reference ?? []),
-        ]),
+        ledgerAt: singleLedgerAt(evidence.header.prevHeaderHash, ledger),
         currentEvidence: evidence,
       }),
     },
@@ -162,5 +164,25 @@ describe("missing-redeemer rejection naming a purpose the transaction lacks", ()
     await expect(
       replay(honestForcedObserverShape(5), forced(kind, 0n)),
     ).resolves.toEqual([CLAIM]);
+  });
+});
+
+describe("missing-redeemer replay over an input with no predecessor descriptor", () => {
+  // A purpose missing its redeemer alongside an unresolved input: the input
+  // families convict the leaf, and no source index can be built for it.
+  it.each([
+    ["spent", 0x51, "spend"],
+    ["referenced", 0x52, "reference"],
+  ] as const)("leaves alone a %s input", async (_label, seed, field) => {
+    const shape = referenceMint(false);
+    const unresolved = missingRedeemerLedgerEntries(seed, [null]);
+    const resolved = [...(shape.spend ?? []), ...(shape.reference ?? [])];
+    await expect(
+      replay(
+        { ...shape, [field]: [...(shape[field] ?? []), ...unresolved] },
+        admitted,
+        resolved,
+      ),
+    ).resolves.toEqual([]);
   });
 });

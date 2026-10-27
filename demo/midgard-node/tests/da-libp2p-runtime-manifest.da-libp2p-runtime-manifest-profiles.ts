@@ -1,14 +1,24 @@
-import { mkdtemp, readdir, readFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
+import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { Effect } from "effect";
+import { describe, expect, it, vi } from "vitest";
 
+import { readFinalizedDeploymentIdentity } from "../src/commands/contract-deployment-info.js";
 import { parseDaProducerPublicationManifest } from "../src/da/libp2p-producer.js";
 import {
   generateDaLibp2pRuntimeManifest,
   writeDaLibp2pRuntimeManifest,
 } from "../src/da/libp2p-runtime-manifest.js";
+import { prepareDaHardeningStartup } from "../src/da/startup.js";
+import {
+  ContractDeploymentIdentity,
+  NodeConfig,
+  type NodeConfigDep,
+} from "../src/services/index.js";
 import {
   COMMITTEE_KEY,
   DA_VKEY,
@@ -90,6 +100,92 @@ describe("DA libp2p runtime manifest profiles", () => {
     });
 
     expect(JSON.stringify(manifest)).toContain("/dns4/committee-a/tcp/39001/");
+  });
+
+  it.each(["producer", "committee"] as const)(
+    "emits the verified 120-day retention for the %s runtime",
+    async (target) => {
+      const deploymentInfo = await writeFinalizedDeploymentInfo((manifest) => {
+        const da = manifest.da as Record<string, unknown>;
+        (da.transportProfile as Record<string, unknown>).retentionDays = 120;
+      });
+      const manifest = await generateDaLibp2pRuntimeManifest({
+        target,
+        profile: "host",
+        contractDeploymentInfoPath: deploymentInfo.path,
+        network: "Preprod",
+        producerPrivateKeySource: PRODUCER_KEY,
+        publicRetainedDaPrivateKeySource: PUBLIC_RETAINED_DA_KEY,
+        threshold: 1,
+        ...(target === "committee" ? { localSignerIndex: 0 } : {}),
+        committeeMembers: [
+          {
+            signerIndex: 0,
+            daVkey: DA_VKEY,
+            libp2pPrivateKeySource: COMMITTEE_KEY,
+            roles: ["committee", "retrieval"],
+          },
+        ],
+      });
+      expect(manifest.da_transport.retention_days).toBe(120);
+    },
+  );
+
+  it("refuses a shorter advertised DA retention before node startup", async () => {
+    const deploymentInfo = await writeFinalizedDeploymentInfo((manifest) => {
+      const da = manifest.da as Record<string, unknown>;
+      (da.transportProfile as Record<string, unknown>).retentionDays = 120;
+    });
+    const manifest = await generateDaLibp2pRuntimeManifest({
+      target: "producer",
+      profile: "host",
+      contractDeploymentInfoPath: deploymentInfo.path,
+      network: "Preprod",
+      producerPrivateKeySource: PRODUCER_KEY,
+      publicRetainedDaPrivateKeySource: PUBLIC_RETAINED_DA_KEY,
+      threshold: 1,
+      committeeMembers: [
+        {
+          signerIndex: 0,
+          daVkey: DA_VKEY,
+          libp2pPrivateKeySource: COMMITTEE_KEY,
+          roles: ["committee", "retrieval"],
+        },
+      ],
+    });
+    const path = `${deploymentInfo.path}.runtime.json`;
+    await writeFile(
+      path,
+      JSON.stringify({
+        ...manifest,
+        da_transport: { ...manifest.da_transport, retention_days: 119 },
+      }),
+    );
+    const identity = readFinalizedDeploymentIdentity(deploymentInfo.path);
+    vi.stubEnv("MIDGARD_DEPLOYMENT_MANIFEST_PATH", path);
+    vi.stubEnv("DA_LIBP2P_PRIVATE_KEY_SOURCE", PRODUCER_KEY);
+    try {
+      const startup = Effect.runPromise(
+        prepareDaHardeningStartup.pipe(
+          Effect.provideService(NodeConfig, {
+            MIDGARD_DA_PAYLOAD_ENVELOPE: "identity",
+          } as NodeConfigDep),
+          Effect.provideService(
+            ContractDeploymentIdentity,
+            new ContractDeploymentIdentity({
+              kind: "manifest",
+              manifestId: identity.manifestId,
+              deploymentMarker: makeDeploymentMarker(identity.manifestId),
+              manifest: identity.manifest,
+              consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+            }),
+          ),
+        ),
+      );
+      await expect(startup).rejects.toThrow();
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("persists the exact runtime manifest atomically", async () => {

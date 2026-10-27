@@ -4,9 +4,9 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import type { RedeemerContext, UTxO } from "@lucid-evolution/lucid";
 
+import type { DirectPurposeTransition } from "../direct-purpose-family/custody.js";
 import { createDirectFieldPlan } from "../direct-script-derivation/index.js";
 import type { DirectScriptMaterial } from "../direct-script-derivation/material.js";
-import type { MissingRedeemerTransition } from "../missing-redeemer/custody.js";
 import {
   SCRIPT_INTEGRITY_HASH_MISMATCH_CATEGORY_LABEL,
   type ScriptIntegrityHashMismatchRole,
@@ -75,7 +75,7 @@ const isRole = (role: string): role is ScriptIntegrityHashMismatchRole =>
 /** The shared bind and source custody transitions, which carry the same role
  * names in both families. */
 export const sharedSourceTransition = (
-  transition: MissingRedeemerTransition,
+  transition: DirectPurposeTransition,
 ): ScriptIntegrityHashMismatchTransition => {
   const { role, next } = transition;
   if (!isRole(role) || !isRole(next))

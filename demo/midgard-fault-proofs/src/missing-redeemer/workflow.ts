@@ -1,6 +1,7 @@
 /** The `missingRedeemer` family definition and its manifest-bound runner. */
 import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk";
 
+import { DIRECT_PURPOSE_FIELDS } from "../direct-purpose-family/custody.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import type { CompleteCanonicalReplayContext } from "../workflow/complete-replay.js";
 import { MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
@@ -29,7 +30,6 @@ import {
   runFraudProofWorkflowFromRetainedDa,
 } from "../workflow/orchestrator.js";
 import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-finality-policy.js";
-import { MISSING_REDEEMER_FIELDS } from "./custody.js";
 import {
   missingRedeemerSourceInclusion,
   planMissingRedeemerArtifact,
@@ -214,7 +214,7 @@ export const MISSING_REDEEMER_FAMILY_DEFINITION = defineFamily({
         ),
       }),
   },
-  fieldCarriage: MISSING_REDEEMER_FIELDS.map(fieldCarriage),
+  fieldCarriage: DIRECT_PURPOSE_FIELDS.map(fieldCarriage),
   proofChunk: async (context, input) => {
     if (input.action.input.stage !== "step_01") return null;
     const { admitted } = await planned(context, input);

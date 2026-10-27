@@ -45,8 +45,8 @@ export type ValueAndMintRejection = {
  * Every asset step in 1-3 goes through `apply_value_asset_mutation`, which
  * counts it as one entry in `asset_entry_count`, whether or not its unit was
  * folded before, and rejects the first step reached once the count is
- * `max_distinct_asset_count`. The coordinate is the one
- * `distinct-asset-accumulation-limit/rule.ak` `bind_coordinate_v1` binds: the
+ * `max_distinct_asset_count`. The coordinate is the one the direct fold
+ * (`distinct-asset-accumulation-limit/fold.ak`) computes: the
  * schedule position and asset position for the input fold (the machine's
  * `replay_cursor` and `replay_asset_cursor - 1`), the output index and asset
  * position for outputs, and the mint index for mint.

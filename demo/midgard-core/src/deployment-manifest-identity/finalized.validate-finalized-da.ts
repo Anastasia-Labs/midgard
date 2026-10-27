@@ -8,6 +8,7 @@ import {
   DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
   DA_TRANSPORT_LIMITS,
   DA_TRANSPORT_PROTOCOL_VERSION,
+  deploymentDaRetentionDays,
 } from ".././da-transport.js";
 import {
   MIDGARD_RETENTION_WINDOW,
@@ -119,9 +120,9 @@ export const validateFinalizedDa = (value: unknown): void => {
     1,
   );
   // Existing >= 15-day transport-profile floor: never weakened.
-  if (retentionDays < DA_TRANSPORT_LIMITS.minimumRetentionDays) {
+  if (retentionDays < deploymentDaRetentionDays()) {
     throw new Error(
-      "Deployment manifest da.transportProfile.retentionDays is too short",
+      `Deployment manifest da.transportProfile.retentionDays must be at least ${String(deploymentDaRetentionDays())} for the compiled deployment profile`,
     );
   }
   // Q54: additionally bind the window to the derived challengeability horizon

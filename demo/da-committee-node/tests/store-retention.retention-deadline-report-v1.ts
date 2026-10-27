@@ -8,11 +8,12 @@ import { describe, expect, it } from "vitest";
 
 import { retentionReadinessFromDeadlines } from "../src/committee-service.js";
 import { LIBP2P_DA_MIN_RETENTION_DAYS } from "../src/config.js";
+import { retentionCycleOptions } from "../src/store/retention.js";
+import { runRetentionCycle } from "../src/store/retention.scan.js";
 import {
-  retentionCycleOptions,
+  retentionCandidates,
   retentionDeadlineReport,
-  runRetentionCycle,
-} from "../src/store/retention.js";
+} from "./helpers/retention-whole-set.js";
 import {
   FINGERPRINT,
   hashOf,
@@ -21,6 +22,7 @@ import {
   LIVE_B,
   NOW,
   openStore,
+  PROMISED_RETENTION_MS,
   REQUIRED_RETENTION_MS,
   retentionOptions,
   seed,
@@ -43,10 +45,14 @@ describe("retentionDeadlineReportV1", () => {
         status: "attested",
       },
     ]);
-    const cycle = await runRetentionCycle(store, {
-      ...retentionOptions(),
-      alertThresholdMs: THRESHOLD_MS,
-    });
+    const cycle = await runRetentionCycle(
+      store,
+      {
+        ...retentionOptions(),
+        alertThresholdMs: THRESHOLD_MS,
+      },
+      {},
+    );
     expect(cycle.prune.prunedHeaderHashes).toEqual([]);
     expect(await store.getDaPayload(headerHash)).toBeDefined();
     expect(cycle.deadlines.entries).toEqual([
@@ -64,6 +70,7 @@ describe("retentionDeadlineReportV1", () => {
         await runRetentionCycle(
           store,
           retentionOptions(blockTimeMs + REQUIRED_RETENTION_MS),
+          {},
         )
       ).prune.prunedHeaderHashes,
     ).toEqual([]);
@@ -71,7 +78,8 @@ describe("retentionDeadlineReportV1", () => {
       (
         await runRetentionCycle(
           store,
-          retentionOptions(blockTimeMs + REQUIRED_RETENTION_MS + 1),
+          retentionOptions(blockTimeMs + PROMISED_RETENTION_MS + 1),
+          {},
         )
       ).prune.prunedHeaderHashes,
     ).toEqual([headerHash]);
@@ -88,12 +96,12 @@ describe("retentionDeadlineReportV1", () => {
     ]);
     const report = await retentionDeadlineReport(store, retentionOptions());
     expect(report.alertThresholdMs).toBeNull();
-    expect(report.entries[0]).toMatchObject({
+    const [candidate] = await retentionCandidates(store, retentionOptions());
+    expect(candidate?.decision).toMatchObject({
       reasonCode: "still_challengeable",
       remainingMs: 1,
-      headroomMs: null,
-      alerting: false,
     });
+    expect(report.entries).toEqual([]);
     expect(report.alerting).toBe(0);
     expect(retentionReadinessFromDeadlines(report)).toMatchObject({
       status: "ok",
@@ -134,6 +142,7 @@ describe("retentionDeadlineReportV1", () => {
           },
           NOW,
         ),
+        {},
       );
       expect(prune.prunedHeaderHashes).toEqual([]);
       expect(deadlines.alertThresholdMs).toBe(threshold ?? null);
@@ -178,6 +187,20 @@ describe("retentionDeadlineReportV1", () => {
     });
   });
 
+  it("reports the retention period in force, not the derived minimum", async () => {
+    const store = await openStore();
+    await seed(store, [{ headerHash: hashOf(40), status: "attested" }]);
+    const { deadlines } = await runRetentionCycle(
+      store,
+      { ...retentionOptions(), retentionDays: 120 },
+      {},
+    );
+    expect(deadlines.deployedRetentionMs).toBe(120 * RETENTION_MS_PER_DAY);
+    expect(deadlines.marginMs).toBe(
+      120 * RETENTION_MS_PER_DAY - MIDGARD_RETENTION_WINDOW.requiredRetentionMs,
+    );
+  });
+
   it("does not alert one millisecond above the threshold", async () => {
     const store = await openStore();
     await seed(store, [
@@ -191,7 +214,7 @@ describe("retentionDeadlineReportV1", () => {
       ...retentionOptions(),
       alertThresholdMs: THRESHOLD_MS,
     });
-    expect(report.entries[0]).toMatchObject({ headroomMs: 1, alerting: false });
+    expect(report.entries).toEqual([]);
     expect(report.alerting).toBe(0);
     expect(retentionReadinessFromDeadlines(report).status).toBe("ok");
   });
@@ -199,14 +222,14 @@ describe("retentionDeadlineReportV1", () => {
   it("never alerts on a record that is not still challengeable", async () => {
     const store = await openStore();
     await seed(store, [{ headerHash: hashOf(44), status: "removed" }]);
-    const report = await retentionDeadlineReport(store, {
+    const options = {
       ...retentionOptions(),
       alertThresholdMs: REQUIRED_RETENTION_MS,
-    });
-    expect(report.entries[0]).toMatchObject({
-      reasonCode: "removed_header",
-      alerting: false,
-    });
+    };
+    const report = await retentionDeadlineReport(store, options);
+    const [candidate] = await retentionCandidates(store, options);
+    expect(candidate?.decision.reasonCode).toBe("removed_header");
+    expect(report.entries).toEqual([]);
     expect(report.alerting).toBe(0);
   });
 
@@ -219,34 +242,36 @@ describe("retentionDeadlineReportV1", () => {
         status: "attested",
       },
     ]);
-    const report = await retentionDeadlineReport(store, {
+    const options = {
       ...retentionOptions(NOW + 1),
       finalBlockTimeMs: NOW,
       alertThresholdMs: THRESHOLD_MS,
-    });
-    expect(report.entries[0]).toMatchObject({
-      reasonCode: "still_challengeable",
-      remainingMs: -1,
-      alerting: false,
-    });
+    };
+    const report = await retentionDeadlineReport(store, options);
+    const [candidate] = await retentionCandidates(store, options);
+    expect(candidate?.decision.reasonCode).toBe("still_challengeable");
+    expect(report.entries).toEqual([]);
     expect(report.alerting).toBe(0);
   });
 
   it("computes a deadline for a payload with no header row from its receipt time", async () => {
     const store = await openStore();
     await seed(store, [{ headerHash: hashOf(42), withoutHeader: true }]);
+    // A threshold of the whole horizon alerts from receipt, naming the entry.
     const report = await retentionDeadlineReport(store, {
       ...retentionOptions(),
-      alertThresholdMs: THRESHOLD_MS,
+      alertThresholdMs: REQUIRED_RETENTION_MS,
     });
-    expect(report.entries[0]).toEqual({
-      headerHash: hashOf(42),
-      reasonCode: "still_challengeable",
-      challengeableUntilMs: NOW + REQUIRED_RETENTION_MS,
-      remainingMs: REQUIRED_RETENTION_MS,
-      headroomMs: REQUIRED_RETENTION_MS - THRESHOLD_MS,
-      alerting: false,
-    });
+    expect(report.entries).toEqual([
+      {
+        headerHash: hashOf(42),
+        reasonCode: "still_challengeable",
+        challengeableUntilMs: NOW + REQUIRED_RETENTION_MS,
+        remainingMs: REQUIRED_RETENTION_MS,
+        headroomMs: 0,
+        alerting: true,
+      },
+    ]);
   });
 
   it("rejects malformed alert thresholds", async () => {
@@ -268,7 +293,7 @@ describe("runRetentionCycleV1", () => {
     const headerHash = hashOf(43);
     await seed(store, [{ headerHash, status: "removed" }]);
 
-    const cycle = await runRetentionCycle(store, retentionOptions());
+    const cycle = await runRetentionCycle(store, retentionOptions(), {});
     expect(cycle.deadlines).toMatchObject({
       scanned: 1,
       retained: 0,
@@ -301,16 +326,20 @@ describe("runRetentionCycleV1", () => {
         },
         {
           headerHash: expired,
-          endTimeMs: NOW - REQUIRED_RETENTION_MS - 1,
+          endTimeMs: NOW - PROMISED_RETENTION_MS - 1,
           status: "attested",
         },
         { headerHash: removed, status: "removed" },
       ]);
 
-      const cycle = await runRetentionCycle(store, {
-        ...retentionOptions(),
-        ...(alertThresholdMs === undefined ? {} : { alertThresholdMs }),
-      });
+      const cycle = await runRetentionCycle(
+        store,
+        {
+          ...retentionOptions(),
+          ...(alertThresholdMs === undefined ? {} : { alertThresholdMs }),
+        },
+        {},
+      );
       expect([...cycle.prune.prunedHeaderHashes].sort()).toEqual(
         [expired, removed].sort(),
       );
@@ -352,10 +381,9 @@ describe("runRetentionCycleV1", () => {
       },
     });
 
-    const cycle = await runRetentionCycle(wrapped, retentionOptions());
-    expect(cycle.deadlines.entries.map(({ headerHash }) => headerHash)).toEqual(
-      [reported],
-    );
+    const cycle = await runRetentionCycle(wrapped, retentionOptions(), {});
+    // The report counted the reported payload alone.
+    expect(cycle.deadlines.scanned).toBe(1);
     expect(cycle.prune.prunedHeaderHashes).toEqual([reported]);
     expect(await store.getDaPayload(concurrent)).toBeDefined();
   });
