@@ -14,6 +14,7 @@ import { NodeHttpServer } from "@effect/platform-node";
 import { SqlClient } from "@effect/sql";
 import type { SlotConfig } from "@lucid-evolution/lucid";
 import { Effect, Ref } from "effect";
+import { vi } from "vitest";
 
 import { buildListenRouter } from "../src/commands/listen-router.js";
 import { NodeConfig } from "../src/services/config.js";
@@ -187,6 +188,17 @@ export const readyz = ({
                 observedAtMs: Date.now() - observation.agoMs,
                 successKind: "exact",
               }),
+            );
+          // A forced probe's own success is read back under a 1 ms evidence
+          // bound, so the request runs at one instant: on a stalled runner
+          // the real clock moves on between the probe's completion and the
+          // handler's read of it.
+          if (forceProviderProbe)
+            yield* Effect.acquireRelease(
+              Effect.sync(() =>
+                vi.useFakeTimers({ toFake: ["Date"], now: Date.now() }),
+              ),
+              () => Effect.sync(() => vi.useRealTimers()),
             );
           yield* Ref.set(
             globals.NATIVE_MPF_OWNER,
