@@ -2,7 +2,9 @@
  * check on: equal for two separately built values that hold the same data,
  * whatever order their keys were set in, and different for any change to the
  * data, down to one byte, one UTF-16 code unit, a number's kind or an
- * object's kind; a value that is not data has none. */
+ * object's kind; a value that is not data (a function, a symbol key, a cycle,
+ * a class instance, a boxed primitive, a bare array buffer or a sparse array)
+ * has none. */
 import { describe, expect, it } from "vitest";
 
 import { validationInputsDigest } from "../src/validation-trace-dispute/validation-inputs-digest.js";
@@ -64,5 +66,32 @@ describe("validation inputs digest", () => {
     expect(() => validationInputsDigest(cyclic)).toThrow(
       "a cyclic value has no content digest",
     );
+  });
+
+  it.each([
+    ["an array buffer", () => new ArrayBuffer(1)],
+    [
+      "a class instance",
+      () =>
+        new (class Held {
+          readonly #value = 1;
+          get value() {
+            return this.#value;
+          }
+        })(),
+    ],
+    ["a boxed number", () => new Number(1)],
+  ])("has no digest for %s", (_, value) => {
+    expect(() => validationInputsDigest({ value: value() })).toThrow(
+      "has no content digest",
+    );
+  });
+
+  it("has no digest for a sparse array, so a hole never matches an undefined", () => {
+    // eslint-disable-next-line no-sparse-arrays -- the hole is the case.
+    expect(() => validationInputsDigest([1, , 3])).toThrow(
+      "a sparse array has no content digest",
+    );
+    expect(() => validationInputsDigest([1, undefined, 3])).not.toThrow();
   });
 });

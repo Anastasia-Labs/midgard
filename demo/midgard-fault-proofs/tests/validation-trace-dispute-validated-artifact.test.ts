@@ -1,9 +1,10 @@
 /** The validation-trace dispute's check of its saved artifact on a resumed
  * run, on the emulator: the artifact the block's claim prepared passes, and
  * passes again; once it has passed, the same artifact with one byte changed,
- * and the same artifact under another replay context for the same block,
- * are each checked in full and refused, and the prepared artifact under its
- * own inputs still passes after them. */
+ * the same artifact under another replay context for the same block, under a
+ * copy of its predecessor authority that was never admitted, and under a
+ * classification that does not detect its event, are each refused, and the
+ * prepared artifact under its own inputs still passes after them. */
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { classifyCanonicalBlockViolations } from "../src/workflow/classification.js";
@@ -85,6 +86,36 @@ describe("a saved validation-trace artifact checked again", () => {
       validate({ ...inputs, replayContext: scene.passing.context }),
     ).rejects.toThrow(
       "complete replay predecessor was not admitted for this challenged header",
+    );
+    await validate(inputs);
+  });
+
+  it("refuses an unadmitted copy of the admitted predecessor authority, after the artifact has passed", async () => {
+    await validate(inputs);
+    const context = inputs.replayContext!;
+    await expect(
+      validate({
+        ...inputs,
+        replayContext: {
+          ...context,
+          predecessor: { ...context.predecessor! },
+        },
+      }),
+    ).rejects.toThrow(
+      "complete replay predecessor was not admitted for this challenged header",
+    );
+    await validate(inputs);
+  });
+
+  it("refuses the artifact under a classification that does not detect its event, after it has passed", async () => {
+    await validate(inputs);
+    await expect(
+      validate({
+        ...inputs,
+        classification: { ...inputs.classification, detections: [] },
+      }),
+    ).rejects.toThrow(
+      "validation-trace artifact differs from this evidence's replay",
     );
     await validate(inputs);
   });

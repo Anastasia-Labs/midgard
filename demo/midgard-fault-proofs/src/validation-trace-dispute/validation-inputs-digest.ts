@@ -4,7 +4,9 @@
  * boolean, null and undefined in the same place, the same bytes in each byte
  * view, and the same keys on each object, array, map and set, each tagged
  * with its kind and, for an object, its constructor's name. A value that is
- * not data (a function, a symbol, a cycle) has no digest. */
+ * not data (a function, a symbol, a cycle, a sparse array, or an object that
+ * is none of a plain object, an array, a map, a set, a date or a byte view)
+ * has no digest. */
 import { createHash, type Hash } from "node:crypto";
 
 const update = (hash: Hash, tag: string, text: string) => {
@@ -57,21 +59,28 @@ export const validationInputsDigest = (value: unknown): string => {
       );
       hash.update(`b${bytes.length.toString()}:`);
       hash.update(bytes);
-    } else if (Array.isArray(item)) {
-      hash.update(`a${item.length.toString()}:`);
-      for (const element of item as readonly unknown[]) walk(element);
-    } else if (item instanceof Map) {
-      hash.update(`m${item.size.toString()}:`);
-      for (const [key, element] of item as ReadonlyMap<unknown, unknown>) {
+    } else if (kind === Array.prototype) {
+      const elements = item as readonly unknown[];
+      hash.update(`a${elements.length.toString()}:`);
+      for (let index = 0; index < elements.length; index += 1) {
+        if (!(index in elements))
+          throw new Error("a sparse array has no content digest");
+        walk(elements[index]);
+      }
+    } else if (kind === Map.prototype) {
+      const entries = item as ReadonlyMap<unknown, unknown>;
+      hash.update(`m${entries.size.toString()}:`);
+      for (const [key, element] of entries) {
         walk(key);
         walk(element);
       }
-    } else if (item instanceof Set) {
-      hash.update(`e${item.size.toString()}:`);
-      for (const element of item as ReadonlySet<unknown>) walk(element);
-    } else if (item instanceof Date) {
-      update(hash, "d", String(item.getTime()));
-    } else {
+    } else if (kind === Set.prototype) {
+      const elements = item as ReadonlySet<unknown>;
+      hash.update(`e${elements.size.toString()}:`);
+      for (const element of elements) walk(element);
+    } else if (kind === Date.prototype) {
+      update(hash, "d", String((item as Date).getTime()));
+    } else if (kind === Object.prototype || kind === null) {
       if (Object.getOwnPropertySymbols(item).length > 0)
         throw new Error("a symbol-keyed object has no content digest");
       const keys = Object.keys(item).sort();
@@ -80,6 +89,10 @@ export const validationInputsDigest = (value: unknown): string => {
         update(hash, "k", key);
         walk((item as Readonly<Record<string, unknown>>)[key]);
       }
+    } else {
+      throw new Error(
+        `a ${kind.constructor?.name ?? "foreign"} object has no content digest`,
+      );
     }
     open.delete(item);
   };

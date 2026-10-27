@@ -2,14 +2,17 @@
  * resumed run's replay (detected-claim.ts). A check that passed is kept for
  * its block, by the digest of its inputs (validation-inputs-digest.ts): the
  * evidence, the replay context, the classification and the artifact. The
- * check is a function of those inputs alone, so the same inputs pass again
- * without running it again, and the block's claim material, with the step
+ * check is a function of that content and of the predecessor authority's
+ * admission, which is by identity, not content: inputs with the same content
+ * pass again once their predecessor authority is itself admitted, without
+ * running the check again, and the block's claim material, with the step
  * windows it has read since, is kept rather than rebuilt by a fresh
  * re-execution of the whole trace. Any other inputs, and inputs that are not
  * plain data, are checked in full; a check that fails forgets the block's
  * last pass. One pass is kept per block, beside the block's material. */
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 
+import { requireReplayPredecessorLedger } from "../workflow/complete-replay.replay-context-identity.js";
 import type { FraudProofFamilyWorkflowAdapter } from "../workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
 import type { ValidationTraceClaimMaterial } from "./claim-material.js";
 import { validateValidationTraceArtifact } from "./detected-claim.js";
@@ -57,8 +60,12 @@ export const validationTraceArtifactCheck = ({
         inputs !== undefined &&
         passed.get(headerHash) === inputs &&
         materials.has(headerHash)
-      )
+      ) {
+        // The digest sees the authority's fields, not which object was
+        // admitted: a copy of an admitted authority is refused here.
+        requireReplayPredecessorLedger({ evidence, context: replayContext });
         return;
+      }
       passed.delete(headerHash);
       let material: ValidationTraceClaimMaterial | undefined;
       await validateValidationTraceArtifact({
