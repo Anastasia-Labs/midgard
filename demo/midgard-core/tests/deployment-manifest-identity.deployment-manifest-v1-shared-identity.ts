@@ -153,42 +153,30 @@ describe("DeploymentManifestV1 shared identity", () => {
       }
     }
 
+    // Step 01, the shared bind and source walk, the shared purpose route, the
+    // source lookup, the paged evaluation, the key-spend rank and the terminal.
+    const executionNativeScriptInvalidRoles = (
+      "bind-event bind-pre-state source-start source-resolved " +
+      "source-authenticate source-map source-input-finish source-grammar " +
+      "source-witnesses source-finish family-entry purpose-select " +
+      "spend-select spend-scan mint-grammar mint-scan receive-start " +
+      "receive-grammar receive-outputs receive-finish receive-declaration " +
+      "source-lookup signers evaluate spend-key spend-rank terminal"
+    ).split(" ");
     const executionNativeScriptInvalidContracts = [
       ["step-01", "fraudProofExecutionNativeScriptInvalid"],
-      ["step-02", "fraudProofExecutionNativeScriptInvalidStep02"],
-      ["step-03", "fraudProofExecutionNativeScriptInvalidStep03"],
-      ["step-04", "fraudProofExecutionNativeScriptInvalidStep04"],
-      ["step-05", "fraudProofExecutionNativeScriptInvalidStep05"],
-      ["step-06", "fraudProofExecutionNativeScriptInvalidStep06"],
-      [
-        "accepted-reconstruction-init",
-        "fraudProofExecutionNativeScriptInvalidAcceptedReconstructionInit",
-      ],
-      [
-        "accepted-spend-prefix",
-        "fraudProofExecutionNativeScriptInvalidAcceptedSpendPrefix",
-      ],
-      [
-        "accepted-mint-prefix",
-        "fraudProofExecutionNativeScriptInvalidAcceptedMintPrefix",
-      ],
-      [
-        "accepted-observer-prefix",
-        "fraudProofExecutionNativeScriptInvalidAcceptedObserverPrefix",
-      ],
-      [
-        "accepted-receive-prefix",
-        "fraudProofExecutionNativeScriptInvalidAcceptedReceivePrefix",
-      ],
-      [
-        "accepted-inline-source",
-        "fraudProofExecutionNativeScriptInvalidAcceptedInlineSource",
-      ],
-      [
-        "accepted-reference-source",
-        "fraudProofExecutionNativeScriptInvalidAcceptedReferenceSource",
-      ],
+      ...executionNativeScriptInvalidRoles.map(
+        (role) =>
+          [
+            role,
+            `fraudProofExecutionNativeScriptInvalid${role
+              .split("-")
+              .map((word) => word[0]!.toUpperCase() + word.slice(1))
+              .join("")}`,
+          ] as const,
+      ),
     ] as const;
+    expect(executionNativeScriptInvalidContracts).toHaveLength(28);
     for (const [
       roleSuffix,
       contractName,

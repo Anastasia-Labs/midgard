@@ -3,6 +3,8 @@ import { type VerdictSubject } from "@al-ft/midgard-sdk";
 
 import { detectDistinctAssetAccumulationLimitReplay } from "../distinct-asset-accumulation-limit/replay.js";
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { detectExecutionNativeScriptInvalidReplay } from "../execution-native-script-invalid/replay.js";
+import { detectExecutionSourceScriptDecodingReplay } from "../execution-source-script-decoding/replay.js";
 import { detectFieldItemWidthIllegalCompleteReplay } from "../field-item-width-illegal/workflow.js";
 import { detectFieldPreimageLengthCompleteReplay } from "../field-preimage-length-mismatch/evidence.js";
 import { detectInvalidSignatureWrongfulRejections } from "../invalid-signature/wrongful-rejection.js";
@@ -192,6 +194,37 @@ export const SCRIPT_INTEGRITY_HASH_MISMATCH_COMPLETE_CANONICAL_REPLAY =
     ["scriptIntegrityHashMismatch"],
     async (evidence, context) =>
       await detectScriptIntegrityHashMismatchReplay({
+        block: evidence,
+        predecessor: completeCanonicalReplayPredecessorLedger({
+          evidence,
+          context,
+        }),
+      }),
+  );
+
+/** Complete execution-source-script-decoding replay: forced rejections
+ * recording a native script decoding reason. */
+export const EXECUTION_SOURCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY =
+  completeReplayer(
+    ["executionSourceScriptDecoding"],
+    async (evidence, context) =>
+      await detectExecutionSourceScriptDecodingReplay({
+        block: evidence,
+        predecessor: completeCanonicalReplayPredecessorLedger({
+          evidence,
+          context,
+        }),
+      }),
+  );
+
+/** Complete execution-native-script-invalid replay: admitted transactions
+ * with a script purpose, forced `ExecutionNativeScriptFalse` rejections, and
+ * forced rejections whose reason ranks at or after the execution phase. */
+export const EXECUTION_NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY =
+  completeReplayer(
+    ["executionNativeScriptInvalid"],
+    async (evidence, context) =>
+      await detectExecutionNativeScriptInvalidReplay({
         block: evidence,
         predecessor: completeCanonicalReplayPredecessorLedger({
           evidence,

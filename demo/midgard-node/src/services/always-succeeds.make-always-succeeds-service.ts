@@ -474,7 +474,7 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
         2,
       ),
       outputReferenceScriptDecoding: repeatedFaultProofChain(zeroInput, 6),
-      executionSourceScriptDecoding: repeatedFaultProofChain(zeroInput, 5),
+      executionSourceScriptDecoding: repeatedFaultProofChain(zeroInput, 3),
       observerOrderInvalid: repeatedFaultProofChain(zeroInput, 4),
       redeemerCanonicity: repeatedFaultProofChain(zeroInput, 4),
       receivePurposeLanguage: repeatedFaultProofChain(zeroInput, 21),
@@ -482,7 +482,7 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       missingScriptSource: repeatedFaultProofChain(zeroInput, 37),
       missingRedeemer: repeatedFaultProofChain(zeroInput, 39),
       unusedRedeemer: repeatedFaultProofChain(zeroInput, 25),
-      executionNativeScriptInvalid: repeatedFaultProofChain(zeroInput, 13),
+      executionNativeScriptInvalid: repeatedFaultProofChain(zeroInput, 28),
       scriptIntegrityHashMismatch: repeatedFaultProofChain(zeroInput, 21),
       distinctAssetAccumulationLimit: repeatedFaultProofChain(zeroInput, 12),
     };

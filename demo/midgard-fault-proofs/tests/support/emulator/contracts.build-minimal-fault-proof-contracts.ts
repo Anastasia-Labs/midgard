@@ -13,6 +13,8 @@ import {
   buildDistinctAssetAccumulationLimitFaultProofContracts,
   buildDoubleSpendFaultProofContracts,
   buildDoubleWithdrawFaultProofContracts,
+  buildExecutionNativeScriptInvalidFaultProofContracts,
+  buildExecutionSourceScriptDecodingFaultProofContracts,
   buildFabricatedDepositFaultProofContracts,
   buildFabricatedWithdrawalFaultProofContracts,
   buildFieldItemWidthIllegalFaultProofContracts,
@@ -84,6 +86,7 @@ import { type CommittedFieldShapeContracts } from "../../../src/committed-field-
 import { type DirectPurposeContracts } from "../../../src/direct-purpose-family/family.js";
 import { type DistinctAssetAccumulationLimitContracts } from "../../../src/distinct-asset-accumulation-limit/contracts.js";
 import { type DoubleWithdrawContracts } from "../../../src/double-withdraw/contracts.js";
+import { type ExecutionNativeScriptInvalidContracts } from "../../../src/execution-native-script-invalid/contracts.js";
 import { type InputSetUniquenessContracts } from "../../../src/input-set-uniqueness/contracts.js";
 import { type L2TxMistagContracts } from "../../../src/l2-tx-mistag/contracts.js";
 import { type MinAdaContracts } from "../../../src/min-ada/contracts.js";
@@ -179,6 +182,8 @@ export const buildMinimalFaultProofContracts = async (
     realObserversForbiddenOnUntaggedNetwork = false,
     realObserverOrderInvalid = false,
     realOutputReferenceScriptDecoding = false,
+    realExecutionSourceScriptDecoding = false,
+    realExecutionNativeScriptInvalid = false,
     alwaysFraudProofCatalogue = false,
     alwaysStateQueue = false,
     referenceScriptAuthPolicyId,
@@ -239,6 +244,8 @@ export const buildMinimalFaultProofContracts = async (
     readonly realObserversForbiddenOnUntaggedNetwork?: boolean;
     readonly realObserverOrderInvalid?: boolean;
     readonly realOutputReferenceScriptDecoding?: boolean;
+    readonly realExecutionSourceScriptDecoding?: boolean;
+    readonly realExecutionNativeScriptInvalid?: boolean;
     readonly alwaysFraudProofCatalogue?: boolean;
     /**
      * Test-only admission bypass for faults whose malformed header is rejected
@@ -285,6 +292,8 @@ export const buildMinimalFaultProofContracts = async (
     readonly inputSetUniqueness?: InputSetUniquenessContracts;
     readonly valueNotPreserved?: ValueNotPreservedContracts;
     readonly mintAuthorization?: MintAuthorizationContracts;
+    readonly executionSourceScriptDecoding?: DirectPurposeContracts;
+    readonly executionNativeScriptInvalid?: ExecutionNativeScriptInvalidContracts;
   }
 > => {
   // This integration test proves the real active-operators slashing and
@@ -627,6 +636,14 @@ export const buildMinimalFaultProofContracts = async (
     realOutputReferenceScriptDecoding,
     buildOutputReferenceScriptDecodingFaultProofContracts,
   );
+  const executionSourceScriptDecodingContracts = await buildFamilyContracts(
+    realExecutionSourceScriptDecoding,
+    buildExecutionSourceScriptDecodingFaultProofContracts,
+  );
+  const executionNativeScriptInvalidContracts = await buildFamilyContracts(
+    realExecutionNativeScriptInvalid,
+    buildExecutionNativeScriptInvalidFaultProofContracts,
+  );
   const activeOperatorsAddressData = await Effect.runPromise(
     addressDataFromBech32(
       withActiveOperators.activeOperators.spendingScriptAddress,
@@ -744,52 +761,39 @@ export const buildMinimalFaultProofContracts = async (
           stateQueuePolicyId: stateQueue.policyId,
           fieldPreimageCertificatePolicyId,
         };
-  const missingRedeemer: DirectPurposeContracts | undefined =
-    missingRedeemerContracts === undefined
+  // Every direct purpose family reads the same record shape.
+  const directRecord = (
+    built: { readonly steps: readonly unknown[] } | undefined,
+    shared:
+      | Pick<DirectPurposeContracts, "computationThread" | "fraudProof">
+      | undefined,
+  ): DirectPurposeContracts | undefined =>
+    built === undefined || shared === undefined
       ? undefined
       : {
-          steps: missingRedeemerContracts.missingRedeemer.steps as never,
-          computationThread: missingRedeemerContracts.computationThread,
-          fraudProof: missingRedeemerContracts.fraudProof,
+          steps: built.steps as never,
+          computationThread: shared.computationThread,
+          fraudProof: shared.fraudProof,
           hubOraclePolicyId: hubOracle.policyId,
           stateQueuePolicyId: stateQueue.policyId,
           fieldPreimageCertificatePolicyId,
         };
-  const missingScriptSource: DirectPurposeContracts | undefined =
-    missingScriptSourceContracts === undefined
-      ? undefined
-      : {
-          steps: missingScriptSourceContracts.missingScriptSource
-            .steps as never,
-          computationThread: missingScriptSourceContracts.computationThread,
-          fraudProof: missingScriptSourceContracts.fraudProof,
-          hubOraclePolicyId: hubOracle.policyId,
-          stateQueuePolicyId: stateQueue.policyId,
-          fieldPreimageCertificatePolicyId,
-        };
-  const unusedRedeemer: DirectPurposeContracts | undefined =
-    unusedRedeemerContracts === undefined
-      ? undefined
-      : {
-          steps: unusedRedeemerContracts.unusedRedeemer.steps as never,
-          computationThread: unusedRedeemerContracts.computationThread,
-          fraudProof: unusedRedeemerContracts.fraudProof,
-          hubOraclePolicyId: hubOracle.policyId,
-          stateQueuePolicyId: stateQueue.policyId,
-          fieldPreimageCertificatePolicyId,
-        };
-  const receivePurposeLanguage: DirectPurposeContracts | undefined =
-    receivePurposeLanguageContracts === undefined
-      ? undefined
-      : {
-          steps: receivePurposeLanguageContracts.receivePurposeLanguage
-            .steps as never,
-          computationThread: receivePurposeLanguageContracts.computationThread,
-          fraudProof: receivePurposeLanguageContracts.fraudProof,
-          hubOraclePolicyId: hubOracle.policyId,
-          stateQueuePolicyId: stateQueue.policyId,
-          fieldPreimageCertificatePolicyId,
-        };
+  const missingRedeemer = directRecord(
+    missingRedeemerContracts?.missingRedeemer,
+    missingRedeemerContracts,
+  );
+  const missingScriptSource = directRecord(
+    missingScriptSourceContracts?.missingScriptSource,
+    missingScriptSourceContracts,
+  );
+  const unusedRedeemer = directRecord(
+    unusedRedeemerContracts?.unusedRedeemer,
+    unusedRedeemerContracts,
+  );
+  const receivePurposeLanguage = directRecord(
+    receivePurposeLanguageContracts?.receivePurposeLanguage,
+    receivePurposeLanguageContracts,
+  );
   const scriptIntegrityHashMismatch:
     | ScriptIntegrityHashMismatchContracts
     | undefined =
@@ -986,6 +990,14 @@ export const buildMinimalFaultProofContracts = async (
           stateQueuePolicyId: productionStateQueue.policyId,
           fieldPreimageCertificatePolicyId,
         };
+  const executionSourceScriptDecoding = directRecord(
+    executionSourceScriptDecodingContracts?.executionSourceScriptDecoding,
+    executionSourceScriptDecodingContracts,
+  );
+  const executionNativeScriptInvalid = directRecord(
+    executionNativeScriptInvalidContracts?.executionNativeScriptInvalid,
+    executionNativeScriptInvalidContracts,
+  );
   const fabricatedWithdrawal: FabricatedWithdrawalContracts | undefined =
     fabricatedWithdrawalContracts === undefined
       ? undefined
@@ -1180,7 +1192,13 @@ export const buildMinimalFaultProofContracts = async (
       outputReferenceScriptDecodingContracts?.outputReferenceScriptDecoding ??
       withActiveOperators.fraudProofContracts.outputReferenceScriptDecoding,
     executionSourceScriptDecoding:
-      withActiveOperators.fraudProofContracts.executionSourceScriptDecoding,
+      executionSourceScriptDecoding === undefined
+        ? withActiveOperators.fraudProofContracts.executionSourceScriptDecoding
+        : chainFromSteps(executionSourceScriptDecoding.steps),
+    executionNativeScriptInvalid:
+      executionNativeScriptInvalid === undefined
+        ? withActiveOperators.fraudProofContracts.executionNativeScriptInvalid
+        : chainFromSteps(executionNativeScriptInvalid.steps),
     scriptIntegrityHashMismatch:
       scriptIntegrityHashMismatch === undefined
         ? withActiveOperators.fraudProofContracts.scriptIntegrityHashMismatch
@@ -1224,6 +1242,12 @@ export const buildMinimalFaultProofContracts = async (
     ...(inputSetUniqueness === undefined ? {} : { inputSetUniqueness }),
     ...(valueNotPreserved === undefined ? {} : { valueNotPreserved }),
     ...(mintAuthorization === undefined ? {} : { mintAuthorization }),
+    ...(executionSourceScriptDecoding === undefined
+      ? {}
+      : { executionSourceScriptDecoding }),
+    ...(executionNativeScriptInvalid === undefined
+      ? {}
+      : { executionNativeScriptInvalid }),
     ...(validationTraceDisputeContracts === undefined
       ? {}
       : {
