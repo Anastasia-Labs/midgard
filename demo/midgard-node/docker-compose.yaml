@@ -126,6 +126,7 @@ services:
       - --enable-feature=native-histograms
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
       - prometheus-data:/prometheus
     logging: *default-logging
     networks:

@@ -1,0 +1,73 @@
+# Alert rules for a Midgard watcher. The watcher serves `/metrics` (Prometheus
+# text) on its loopback operations endpoint (`--operations-listen`), so the
+# Prometheus that loads this file runs on the watcher's host. Each alert's
+# runbook section is in docs/operations/alerts.md (the anchor is the alert
+# name in lower case). The `for` durations and windows are starting values.
+groups:
+  - name: midgard-watcher
+    rules:
+      - alert: MidgardWatcherReplayRootMismatch
+        # The replayed ledger does not open the root of the L1 confirmed
+        # state; the watcher holds its checkpoint until it does.
+        expr: midgard_watcher_active_alerts{code="root_mismatch"} > 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Watcher {{ $labels.instance }} cannot replay the confirmed state's root"
+          runbook: "docs/operations/alerts.md#midgardwatcherreplayrootmismatch"
+
+      - alert: MidgardWatcherConfirmedReplayRefused
+        expr: >-
+          increase(midgard_watcher_replay_refusals_total{phase="confirmed",kind="replay-refused"}[30m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "Watcher {{ $labels.instance }} refused to replay a block on the way to the confirmed state"
+          runbook: "docs/operations/alerts.md#midgardwatcherconfirmedreplayrefused"
+
+      - alert: MidgardWatcherBlockReplayMismatch
+        # A committed block whose replay does not open its root: the
+        # fault-proof path should follow.
+        expr: >-
+          increase(midgard_watcher_replay_refusals_total{phase="classification"}[30m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "Watcher {{ $labels.instance }} found a block whose replay is refused ({{ $labels.kind }})"
+          runbook: "docs/operations/alerts.md#midgardwatcherblockreplaymismatch"
+
+      - alert: MidgardWatcherL1EventRefusals
+        expr: >-
+          midgard_watcher_l1_degradation{reason=~"l1_user_event_refused|l1_event_refusals_unreadable"} > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Watcher {{ $labels.instance }} follower refuses L1 user events ({{ $labels.reason }})"
+          runbook: "docs/operations/alerts.md#midgardwatcherl1eventrefusals"
+
+      - alert: MidgardWatcherProofSubmissionFailure
+        expr: midgard_watcher_active_alerts{code="proof_submission_failure"} > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "Watcher {{ $labels.instance }} could not land a fault proof"
+          runbook: "docs/operations/alerts.md#midgardwatcherproofsubmissionfailure"
+
+      - alert: MidgardWatcherProofHeld
+        expr: >-
+          midgard_watcher_readiness_reason{reason=~"fault_proof_resubmission_required|fault_proof_continuation_stalled|fault_proof_objective_quarantined|prover_funding_unavailable|fault_proof_start_deadline_passed|prover_funding_orphaned_reservation"} > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "Watcher {{ $labels.instance }} holds a fault proof ({{ $labels.reason }})"
+          runbook: "docs/operations/alerts.md#midgardwatcherproofheld"
+
+      - alert: MidgardWatcherProofDeadline
+        expr: midgard_watcher_readiness_reason{reason=~"deadline_at_risk|deadline_unsafe"} > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "Watcher {{ $labels.instance }} fault-proof deadline is at risk ({{ $labels.reason }})"
+          runbook: "docs/operations/alerts.md#midgardwatcherproofdeadline"

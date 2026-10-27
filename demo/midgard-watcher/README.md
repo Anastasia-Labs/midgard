@@ -79,7 +79,11 @@ own; among them `l1_user_event_refused` counts, by reason, the user orders the
 follower refused to admit within k and names the newest. Every such order was
 admitted by the on-chain observer, so a refusal is a disagreement between the
 node's decoder and the chain, and `/readyz` also names it until it is k deep
-and pruned. The
+and pruned. `GET /metrics` serves readiness, the L1 readiness and
+degradation counts, active alerts and replayed-ledger refusals in the
+Prometheus text format for the rules in
+[`alert-rules.yml`](alert-rules.yml) (runbooks in
+[`docs/operations/alerts.md`](../../docs/operations/alerts.md)). The
 operations endpoint is loopback and currently has no application bearer gate;
 keep it internal. An alive process does not establish watcher readiness. A held runtime must remain visible for diagnosis
 without admitting proof or availability work. Readiness must come from a live

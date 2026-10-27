@@ -1,0 +1,63 @@
+# Alert rules for a Midgard node started with `listen --with-monitoring`.
+# `prometheus.yml` loads this file. Each alert's runbook section is in
+# docs/operations/alerts.md (the anchor is the alert name in lower case).
+# The `for` durations and thresholds are starting values; tune them to the
+# deployment's block cadence.
+groups:
+  - name: midgard-node
+    rules:
+      - alert: MidgardCommitLag
+        # Work is waiting, but the local block frontier has not moved for
+        # ten minutes.
+        expr: >-
+          (time() * 1000 - midgard_local_block_end_time_ms) > 600000
+          and midgard_local_block_end_time_ms > 0
+          and midgard_commit_pipeline_idle == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Node {{ $labels.instance }} has not advanced its block frontier while work is pending"
+          runbook: "docs/operations/alerts.md#midgardcommitlag"
+
+      - alert: MidgardCommitPlanningCatchUp
+        expr: midgard_commit_planning_catch_up == 1
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Node {{ $labels.instance }} has planned commits in catch-up mode for 30 minutes"
+          runbook: "docs/operations/alerts.md#midgardcommitplanningcatchup"
+
+      - alert: MidgardForcedAdmissionDivergence
+        expr: increase(forced_admission_divergence_total[30m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "Node {{ $labels.instance }} refused a chain-admitted forced order ({{ $labels.refusal_code }})"
+          runbook: "docs/operations/alerts.md#midgardforcedadmissiondivergence"
+
+      - alert: MidgardL1EventRefusals
+        expr: midgard_l1_event_refusals > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Node {{ $labels.instance }} follower leaves L1 events out ({{ $labels.reason }})"
+          runbook: "docs/operations/alerts.md#midgardl1eventrefusals"
+
+      - alert: MidgardSettlementJobsStuck
+        expr: midgard_settlement_jobs_stuck > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "Node {{ $labels.instance }} has settlement jobs at the retry cap"
+          runbook: "docs/operations/alerts.md#midgardsettlementjobsstuck"
+
+      - alert: MidgardSettlementReconcileStuck
+        expr: midgard_settlement_reconcile_stuck > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "Node {{ $labels.instance }} cannot reconcile a settlement attempt; new settlement work is blocked"
+          runbook: "docs/operations/alerts.md#midgardsettlementreconcilestuck"
