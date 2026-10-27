@@ -39,6 +39,24 @@ export const latestSubmissionIntent = (
       > => event.kind === "submission_intent" && event.actionId === actionId,
     );
 
+type SubmissionIntent = Extract<
+  FraudProofWorkflowJournalEvent,
+  { readonly kind: "submission_intent" }
+>;
+
+/** The latest submission intent of every action `entries` holds, by action,
+ * read in one pass: a reader that wants the intent of each of a journal's
+ * actions would otherwise scan the journal once per action, and a long
+ * dispute's journal holds thousands. */
+export const latestSubmissionIntents = (
+  entries: readonly FraudProofWorkflowJournalEntry[],
+): ReadonlyMap<string, SubmissionIntent> => {
+  const latest = new Map<string, SubmissionIntent>();
+  for (const { event } of entries)
+    if (event.kind === "submission_intent") latest.set(event.actionId, event);
+  return latest;
+};
+
 /**
  * Whether a pending reconciliation of `actionId` at `txHash` is what the
  * journal last recorded (diagnostic stalls aside): reconciling the same

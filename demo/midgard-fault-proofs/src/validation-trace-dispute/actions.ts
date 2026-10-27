@@ -23,7 +23,7 @@ import type {
   FraudProofWorkflowJournalEntry,
   JournalJsonObject,
 } from "../workflow/journal.js";
-import { latestSubmissionIntent } from "../workflow/orchestrator.fraud-proof-workflow-run-result.js";
+import { latestSubmissionIntents } from "../workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import type { FraudProofWorkflowAction } from "../workflow/orchestrator.js";
 import { claimOwnOutputs } from "../workflow/own-outputs.js";
 import { inspectSignedWorkflowTransaction } from "../workflow/signed-transaction-reconciliation.js";
@@ -323,10 +323,11 @@ export const confirmedValidationTraceStages = (
       latest.set(event.actionId, entry);
     }
   }
+  const intents = latestSubmissionIntents(entries);
   const confirmed: ConfirmedValidationTraceStage[] = [];
   for (const [actionId, entry] of latest) {
     if (entry.event.kind !== "confirmed") continue;
-    const intent = latestSubmissionIntent(entries, actionId);
+    const intent = intents.get(actionId);
     if (
       intent === undefined ||
       intent.txHash !== entry.event.txHash ||

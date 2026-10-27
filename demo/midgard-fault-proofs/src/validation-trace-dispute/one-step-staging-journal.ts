@@ -11,7 +11,7 @@ import type {
   FraudProofWorkflowJournalEntry,
   FraudProofWorkflowJournalEvent,
 } from "../workflow/journal.js";
-import { latestSubmissionIntent } from "../workflow/orchestrator.fraud-proof-workflow-run-result.js";
+import { latestSubmissionIntents } from "../workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import {
   recordedValidationTraceMoveBytes,
   VALIDATION_TRACE_DISPUTE_ACTION,
@@ -38,10 +38,11 @@ const confirmedWithTimes = (
   entries: readonly FraudProofWorkflowJournalEntry[],
   schemaVersion: string,
 ): readonly Readonly<{ intent: Intent; confirmedAt: string }>[] => {
+  const intents = latestSubmissionIntents(entries);
   const confirmed = new Map<string, { intent: Intent; confirmedAt: string }>();
   for (const { event, recordedAt } of entries) {
     if (event.kind !== "confirmed") continue;
-    const intent = latestSubmissionIntent(entries, event.actionId);
+    const intent = intents.get(event.actionId);
     if (
       intent === undefined ||
       intent.txHash !== event.txHash ||
