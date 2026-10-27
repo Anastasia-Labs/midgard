@@ -8,6 +8,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
   Data,
+  type Emulator,
   fromText,
   generateEmulatorAccount,
   Lucid,
@@ -17,7 +18,7 @@ import {
   validatorToAddress,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { buildRecordCompletedFraudByReferenceTx } from "../src/submit/record-completed-fraud.js";
 import { setupCompletedFraudQueue } from "./support/completed-fraud-queue-harness.js";
@@ -304,11 +305,47 @@ describe("record a finalized fraud proof by reference", () => {
   });
 });
 
+/** The emulator's chain state: its UTxO set, mempool, history and clock. */
+const chainStateOf = ({
+  ledger,
+  mempool,
+  chain,
+  datumTable,
+  transactionHistory,
+  blockHeight,
+  slot,
+  time,
+  treasury,
+}: Emulator) =>
+  structuredClone({
+    ledger,
+    mempool,
+    chain,
+    datumTable,
+    transactionHistory,
+    blockHeight,
+    slot,
+    time,
+    treasury,
+  });
+
 describe("token-only finalize front-run", () => {
+  // One proof chain serves both arms: each arm starts from a copy of the
+  // chain state the proof's last step left, so neither sees the other's
+  // record or merge.
+  let fixture: Awaited<ReturnType<typeof buildProvedDoubleSpendFixture>>;
+  let proved: ReturnType<typeof chainStateOf>;
+  beforeAll(async () => {
+    fixture = await buildProvedDoubleSpendFixture();
+    proved = chainStateOf(fixture.emulator);
+  });
+  beforeEach(() => {
+    Object.assign(fixture.emulator, structuredClone(proved));
+  });
+
   it.each([true, false])(
     "recorded by reference=%s: merge at maturity is refused only when recorded",
     async (recorded) => {
-      const fixture = await buildProvedDoubleSpendFixture();
       const { contracts, emulator, funderLucid } = fixture;
       const unit = toUnit(
         contracts.stateQueue.policyId,
