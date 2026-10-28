@@ -59,18 +59,25 @@ export const buildUnsignedDepositTxWithMetadataProgram = (
   | SDK.LucidError
   | SDK.Bech32DeserializationError
   | SDK.HashingError
-  | SDK.InvalidUtxoError
   | SubmitDepositError
 > =>
   SDK.buildUnsignedDepositTxWithMetadataProgram(lucid, contracts, config).pipe(
-    Effect.catchTag("UserEventBuildError", (error) =>
-      Effect.fail(
-        new SubmitDepositError({
-          message: error.message,
-          cause: error.cause,
-        }),
-      ),
-    ),
+    Effect.catchTags({
+      UserEventBuildError: (error) =>
+        Effect.fail(
+          new SubmitDepositError({
+            message: error.message,
+            cause: error.cause,
+          }),
+        ),
+      InvalidUtxoError: (error) =>
+        Effect.fail(
+          new SubmitDepositError({
+            message: error.message,
+            cause: error,
+          }),
+        ),
+    }),
   );
 
 const sortedAssetEntries = (assets: Assets): [string, string][] =>
