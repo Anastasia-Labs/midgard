@@ -82,7 +82,8 @@ export type CatalogueExtraCategory = {
 /**
  * The fixture's catalogue type. Every category is typed present so family
  * suites read their own entry directly; under a profile that excludes
- * categories (`preprod-emulator-curated`) an excluded entry is absent.
+ * categories (the live testing profiles leave out `validationTraceDispute`)
+ * an excluded entry is absent.
  */
 export type CatalogueFixtureDeploymentInfo =
   FraudProofCatalogueDeploymentInfo & {

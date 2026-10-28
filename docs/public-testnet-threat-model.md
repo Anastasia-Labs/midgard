@@ -150,8 +150,8 @@ establish alert delivery, incident ownership and drills.
   remain permitted at L1 admission. Funds needing Plutus or
   a native script expiry branch have no forced exit in P1.
 - DA payloads carry no validation-trace states. The nine trace-relative
-  families prove their faults directly; the public profile enables
-  `missingRedeemer` and excludes the other eight. Plutus verdicts are
+  families prove their faults directly, and the public profile enables all
+  nine; it excludes no category. Plutus verdicts are
   challengeable through the interactive dispute game (`validationTraceDispute`)
   for every execution step that fits in a single L1 transaction. Faults in
   excluded categories, wrong verdicts that depend on a step that does not fit,

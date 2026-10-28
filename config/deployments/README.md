@@ -149,15 +149,15 @@ journey files belong in `interactiveTests` in the fault-proof Vitest config.
 ### Curated emulator tests
 
 `preprod-emulator-curated` is `preprod-emulator-testing` with the stage-0
-operator allow-list and the `preprod-public` catalogue exclusions. The list names
-one key derived from a fixed test seed (`tests/support/curated-emulator.ts` in
-`midgard-fault-proofs`). The fault-proof `curated-emulator` Vitest project
+operator allow-list and the `preprod-public` catalogue, which holds every
+category. The list names one key derived from a fixed test seed
+(`tests/support/curated-emulator.ts` in `midgard-fault-proofs`). The fault-proof `curated-emulator` Vitest project
 selects it the same way and caches its blueprint at
 `onchain/aiken/build/curated-emulator/plutus.json`; build it directly with
 `node demo/midgard-test-support/curated-emulator.js`. The project's journeys
 register a listed and an unlisted operator, initialise a computation thread and
-open a DA challenge with keys no profile names, and claim a family the catalogue
-excludes.
+open a DA challenge with keys no profile names, and claim a family with another
+category's catalogue membership proof.
 New curated journey files belong in `curatedTests` in the fault-proof Vitest
 config.
 

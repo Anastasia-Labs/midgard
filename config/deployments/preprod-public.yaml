@@ -101,17 +101,9 @@ allow_lists:
   operators:
     - "041388eef29da389e7b9dac19509ef8ac95a398a9909991a4326d424"
     - "4189f341bddd0c74ecb4f5a1ddae8653ee204be022fe530e2f65a6a6"
-# The Plutus execution dispute (validationTraceDispute, 00000006) is in the
-# catalogue at launch (owner, 2026-10-21). The families below have no
-# installed off-chain workflow yet (UNINSTALLED_FRAUD_PROOF_CATEGORIES in
-# midgard-fault-proofs), so they are left out of the fraud-proof catalogue
-# and Computation-Thread Init refuses them.
-excluded_fraud_proof_categories:
-  - executionSourceScriptDecoding
-  - receivePurposeLanguage
-  - unusedScriptWitness
-  - missingScriptSource
-  - unusedRedeemer
-  - executionNativeScriptInvalid
-  - scriptIntegrityHashMismatch
-  - distinctAssetAccumulationLimit
+# Every fraud-proof category is in the catalogue: the Plutus execution
+# dispute (validationTraceDispute, 00000006) since launch (owner, 2026-10-21)
+# and the nine trace-relative families, each rebuilt to prove its fault from
+# the committed transaction and installed off-chain (owner, 2026-10-25: each
+# joins once rebuilt).
+excluded_fraud_proof_categories: []

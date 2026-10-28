@@ -69,10 +69,10 @@ deployment's finality and timing rules, the enabled catalogue, retained evidence
 and successful L1 submission. They do not supply proof coverage for every
 invalid state. The nine trace-relative fault-proof families prove their
 faults directly from the committed transaction, without validation-trace
-states. The current `preprod-public` profile enables one of them,
-`missingRedeemer`, and still excludes the other eight; it also enables the
-Plutus dispute game, `validationTraceDispute`. The catalogue and excluded
-categories of an instance are published with its release manifest.
+states. The current `preprod-public` profile enables all nine and the Plutus
+dispute game, `validationTraceDispute`, and excludes no category. The catalogue
+and excluded categories of an instance are published with its release
+manifest.
 
 ## Other P1 limitations
 

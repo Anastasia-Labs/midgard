@@ -151,7 +151,7 @@ wrong Plutus verdict that depends on an execution step too large to prove in a
 single L1 transaction. Other Plutus verdicts are challengeable through the
 interactive validation dispute game. DA payloads carry no validation-trace
 states; the nine families that once read them prove their faults directly, and
-the public profile currently enables one of them. Watchers submit proofs
+the public profile enables all nine. Watchers submit proofs
 automatically but do not start a proof after its latest safe start. Strikes
 rotate shifts; the public profile sets the ejection threshold out of reach for
 P1 operation.

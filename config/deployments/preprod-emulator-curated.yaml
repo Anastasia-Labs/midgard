@@ -85,16 +85,6 @@ allow_lists:
   # seed (midgard-fault-proofs tests/support/curated-emulator.ts).
   operators:
     - "8372d26e23e36568f931b8e3a418ca29dc545054f017548733c78198"
-# The preprod-public catalogue: the Plutus execution dispute
-# (validationTraceDispute, 00000006) is in it, and the families below, which
-# have no installed off-chain workflow yet, are left out
-# (Computation-Thread Init refuses them).
-excluded_fraud_proof_categories:
-  - executionSourceScriptDecoding
-  - receivePurposeLanguage
-  - unusedScriptWitness
-  - missingScriptSource
-  - unusedRedeemer
-  - executionNativeScriptInvalid
-  - scriptIntegrityHashMismatch
-  - distinctAssetAccumulationLimit
+# The preprod-public catalogue: every category, the Plutus execution dispute
+# (validationTraceDispute, 00000006) among them.
+excluded_fraud_proof_categories: []

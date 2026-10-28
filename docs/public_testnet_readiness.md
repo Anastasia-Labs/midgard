@@ -52,15 +52,13 @@ P1 has these limits, and the security claim (R1) must state each one:
   in P1; they move through normal L2 transactions.
 - The L1 order of a forced transaction carries a closed validity range of at
   most 10 minutes (A2).
-- DA payloads carry neither validation-trace states nor the UTxO set. Of the
-  nine fault-proof families that read validation-trace states, `missingRedeemer`
-  is rebuilt without them and is in the P1 catalogue (owner, 2026-10-25); the
-  other eight are rebuilt and installed but still listed in
-  `excluded_fraud_proof_categories` in
-  [`preprod-public.yaml`](../config/deployments/preprod-public.yaml), although
-  the owner ruled that each joins once rebuilt (2026-10-25). The
-  Plutus execution dispute (`validationTraceDispute`) is in it (owner,
-  2026-10-21); `mainnet` still excludes it.
+- DA payloads carry neither validation-trace states nor the UTxO set. The
+  nine fault-proof families that read validation-trace states are rebuilt
+  without them, installed, and all in the P1 catalogue (owner, 2026-10-25:
+  each joins once rebuilt); `excluded_fraud_proof_categories` in
+  [`preprod-public.yaml`](../config/deployments/preprod-public.yaml) is empty.
+  The Plutus execution dispute (`validationTraceDispute`) is in the catalogue
+  too (owner, 2026-10-21); `mainnet` still excludes it.
 - Every party derives ledger state by replaying blocks from genesis. Payloads
   are retained for 120 days, and P1 has no state snapshot.
 - Inactivity strikes skip an operator's shift but never eject the operator.
@@ -145,10 +143,10 @@ Every contract item merges before the 2026-10-26 freeze.
   must still document the operator-halt and fund-recovery assumptions.
 - **Unsupported scope.** Open. Mark the escape hatch and settlement claims
   unsupported in the public docs and the manifest.
-- **Published catalogue.** In progress. `preprod-public` excludes eight
-  rebuilt trace-relative families it has not yet enabled, and computation-thread
-  initialization refuses an excluded category (C1). The claim and the manifest
-  must list the enabled families.
+- **Published catalogue.** In progress. `preprod-public` enables every
+  category and excludes none; computation-thread initialization refuses a
+  category the catalogue does not hold (C1). The claim and the manifest must
+  list the enabled families.
 - **Threat model and disclosure policy.** In progress. Publish the trust model
   per role, the threat model (runtime, APIs, key and admin compromise, L1
   provider compromise, spam, operational denial of service, incident
@@ -177,7 +175,8 @@ Every contract item merges before the 2026-10-26 freeze.
   `registration_ms`, the block ex-units budget and bonds. Release tooling must
   refuse placeholder keys and unexplained zero economics.
   - Set in `preprod-public`: `registration_ms` 30,000;
-    `max_inactivity_strikes` 1,000,000; the operator allow-list; the excluded families.
+    `max_inactivity_strikes` 1,000,000; the operator allow-list; no excluded
+    fraud-proof category.
   - Open: the 10-minute event validity range (A2); 120-day payload retention
     (DS); the block ex-units budget, which defaults to 33,000,000 memory and
     20,000,000,000 steps (`demo/midgard-node/src/services/config.block-ex-units-budget.ts`)

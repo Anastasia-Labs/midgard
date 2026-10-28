@@ -94,43 +94,26 @@ describe("deployment profile binding", () => {
     const curated = deploymentFraudProofCatalogueCategories(
       DEPLOYMENT_PROFILES["preprod-public"],
     );
-    const excluded = DEPLOYMENT_PROFILES["preprod-public"]
-      .excluded_fraud_proof_categories as readonly string[];
-    expect(excluded).not.toContain("validationTraceDispute");
-    expect(excluded).toEqual(
-      expect.arrayContaining([
-        "unusedRedeemer",
-        "missingScriptSource",
-        "unusedScriptWitness",
-        "scriptIntegrityHashMismatch",
-        "receivePurposeLanguage",
-        "executionNativeScriptInvalid",
-        "executionSourceScriptDecoding",
-        "distinctAssetAccumulationLimit",
-      ]),
-    );
-    expect(excluded).toHaveLength(8);
-    expect(curated).toContain("missingRedeemer");
+    // The public catalogue is the whole catalogue: the execution dispute and
+    // the nine trace-relative families are all in it.
+    expect(curated).toEqual([
+      ...DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
+    ]);
     expect(
       DEPLOYMENT_PROFILES.mainnet.excluded_fraud_proof_categories,
     ).toContain("validationTraceDispute");
-    expect(curated).toEqual(
-      DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.filter(
-        (category) => !excluded.includes(category),
-      ),
-    );
     for (const name of ["preprod-testing", "local-devnet-testing"] as const)
       expect(DEPLOYMENT_PROFILES[name].excluded_fraud_proof_categories).toEqual(
         ["validationTraceDispute"],
       );
-    expect(
-      DEPLOYMENT_PROFILES["preprod-emulator-testing"]
-        .excluded_fraud_proof_categories,
-    ).toEqual([]);
-    expect(
-      DEPLOYMENT_PROFILES["preprod-emulator-curated"]
-        .excluded_fraud_proof_categories,
-    ).toEqual(excluded);
+    for (const name of [
+      "preprod-public",
+      "preprod-emulator-testing",
+      "preprod-emulator-curated",
+    ] as const)
+      expect(DEPLOYMENT_PROFILES[name].excluded_fraud_proof_categories).toEqual(
+        [],
+      );
   });
 });
 

@@ -68,7 +68,7 @@ describe("preprod-emulator-curated operator allow-list and catalogue", () => {
     });
   });
 
-  it("registers only a listed operator, and refuses a thread for a family the catalogue excludes", async () => {
+  it("registers only a listed operator, and refuses a thread claimed with another category's catalogue membership proof", async () => {
     const context = await buildProvedFixtureDeploymentContext(0n, false, {
       funder: CURATED_EMULATOR_SEEDS.operator,
       prover: generateSeedPhrase(),
@@ -160,23 +160,30 @@ describe("preprod-emulator-curated operator allow-list and catalogue", () => {
         contracts.fraudProofCatalogue.spendingScriptAddress,
       root: catalogue.root,
     };
-    // Thread init, negative: a family the curated catalogue leaves out has no
-    // membership proof; the prover claims it with another category's.
-    expect(
-      SELECTED_DEPLOYMENT_PROFILE.excluded_fraud_proof_categories,
-    ).toContain("unusedRedeemer");
-    expect(catalogue.categories.unusedRedeemer).toBeUndefined();
-    const excluded = contracts.fraudProofs.unusedRedeemer;
+    // Thread init, negative: the curated catalogue, like the public one,
+    // holds every category. A family's thread opens only with that family's
+    // own membership proof; the prover claims a catalogued family, with its
+    // own category ID and first-step hash, under another category's proof.
+    // An excluded category, having no proof of its own, is refused the same
+    // way.
+    expect(SELECTED_DEPLOYMENT_PROFILE.excluded_fraud_proof_categories).toEqual(
+      [],
+    );
+    const claimed = contracts.fraudProofs.unusedRedeemer;
+    expect(catalogue.categories.unusedRedeemer).toMatchObject({
+      categoryId: FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.unusedRedeemer,
+      scriptHash: claimed.spendingScriptHash,
+    });
     await expectOnchainRefusal(() =>
       submitResolvedInit({
         lucid: context.proverLucid,
         blueprint: realBlueprint,
         network,
         label: "curated init",
-        contracts: initContracts(excluded),
+        contracts: initContracts(claimed),
         category: {
           categoryId: FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.unusedRedeemer,
-          scriptHash: excluded.spendingScriptHash,
+          scriptHash: claimed.spendingScriptHash,
           membershipProofCbor: doubleSpend.membershipProofCbor,
         },
         catalogue: catalogueReference,
