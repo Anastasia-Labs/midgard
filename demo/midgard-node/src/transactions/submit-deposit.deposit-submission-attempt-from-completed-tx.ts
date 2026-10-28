@@ -59,6 +59,7 @@ export const buildUnsignedDepositTxWithMetadataProgram = (
   | SDK.LucidError
   | SDK.Bech32DeserializationError
   | SDK.HashingError
+  | SDK.InvalidUtxoError
   | SubmitDepositError
 > =>
   SDK.buildUnsignedDepositTxWithMetadataProgram(lucid, contracts, config).pipe(
