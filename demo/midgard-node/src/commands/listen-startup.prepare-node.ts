@@ -3,9 +3,7 @@
  * first published follower view, run by the follower-change driver's first
  * recompute under the driver's write capability (`makeDriverRecompute`).
  *
- * It records the deployment whose settlement jobs the node enqueues (a
- * database bound to another deployment is refused), seeds
- * the commit base from the landed state queue, restores retained
+ * It seeds the commit base from the landed state queue, restores retained
  * script pins, hydrates the pending block finalization, releases the
  * previous node process's leases, checks the mutation jobs, and backfills
  * missing DA payloads (a backfill error is logged and skipped). The native
@@ -20,8 +18,6 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { Effect } from "effect";
 
-import * as NodeDeployment from "../database/node-deployment.js";
-import { ContractDeploymentIdentity } from "../services/midgard-contracts.js";
 import { backfillMissingDaPayloadsFromFinalizedJournals } from "../workers/commit-block-header/da-payload-backfill.js";
 import { landedStateQueueStartupReasons } from "./listen-startup.await-landed-state-queue.js";
 import {
@@ -55,9 +51,6 @@ export const prepareNodeOnStartup = Effect.gen(function* () {
         `the landed state queue is not ready: ${waiting.join(", ")}`,
       ),
     );
-  const { manifestId } = yield* ContractDeploymentIdentity;
-  if (manifestId !== undefined)
-    yield* step("deployment record", NodeDeployment.record(manifestId));
   yield* step(
     "state-queue boundary seed",
     seedLatestLocalBlockBoundaryOnStartup,

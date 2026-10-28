@@ -1,11 +1,14 @@
 /**
  * The deployment this node's database serves (`node_deployment`): the
  * manifest id whose settlement jobs the enqueue trigger keys, recorded by
- * the startup preparation before the driver's first view.
+ * the startup's database initialization, under the instance lock and before
+ * any other startup step writes (`listen-startup.initialize-database.ts`).
  *
  * The first record binds the database to that deployment. A later start
  * under another manifest id is refused: the database holds another
  * deployment's state, so the node needs a fresh database, never a rebind.
+ * A start without a deployment manifest (contracts derived from the
+ * blueprint) has no manifest id, so it records nothing and is not checked.
  */
 import { SqlClient } from "@effect/sql";
 import { Data, Effect } from "effect";
@@ -31,8 +34,10 @@ export class NodeDeploymentMismatch extends Data.TaggedError(
 export const record = (deploymentId: string) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    // One row either way: the inserted one, or the record already there
-    // (the statement's snapshot does not see its own insert).
+    // One row: the inserted one, or the record already there (the
+    // statement's snapshot does not see its own insert). None when another
+    // session's insert committed after this statement's snapshot: the
+    // conflict waited for it, so a second read sees it.
     const rows = yield* sql<{ deployment_id: string }>`
       WITH inserted AS (
         INSERT INTO node_deployment (singleton, deployment_id)
@@ -43,7 +48,17 @@ export const record = (deploymentId: string) =>
       SELECT deployment_id FROM inserted
       UNION ALL
       SELECT deployment_id FROM node_deployment WHERE singleton`;
-    return rows[0]?.deployment_id;
+    const recorded =
+      rows[0]?.deployment_id ??
+      (yield* sql<{
+        deployment_id: string;
+      }>`SELECT deployment_id FROM node_deployment WHERE singleton`)[0]
+        ?.deployment_id;
+    if (recorded === undefined)
+      return yield* Effect.fail(
+        new Error("No deployment record after recording one"),
+      );
+    return recorded;
   }).pipe(
     Effect.mapError(
       (cause) =>
@@ -54,7 +69,7 @@ export const record = (deploymentId: string) =>
         }),
     ),
     Effect.flatMap((recorded) =>
-      recorded === undefined || recorded === deploymentId
+      recorded === deploymentId
         ? Effect.void
         : Effect.fail(
             new NodeDeploymentMismatch({
