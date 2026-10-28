@@ -12,9 +12,10 @@ a deployment profile: both `preprod-public` and `preprod-testing` use `Preprod`.
 | `preprod-emulator-testing` | `Preprod`       | Bounded testing; emulator only |
 | `preprod-emulator-curated` | `Preprod`       | Bounded testing; emulator only |
 
-The public profiles retain the existing testnet timing values, including seven-day
-block maturity and a one-hour operator shift. `preprod-public` activates a registered operator after 30 seconds;
-`mainnet` still carries the earlier 30 millisecond registration interval.
+The public profiles retain the existing testnet timing values, including
+seven-day block maturity and a one-hour operator shift. `preprod-public`
+activates a registered operator after 30 seconds; `mainnet` still carries the
+earlier 30 millisecond registration interval.
 Mainnet's former 30 millisecond operator shift is replaced by the one-hour shift
 used off chain. Testing economics remain explicit; selecting a test network does
 not select them. [Public-testnet parameters](../../docs/public-testnet-parameters.md)
