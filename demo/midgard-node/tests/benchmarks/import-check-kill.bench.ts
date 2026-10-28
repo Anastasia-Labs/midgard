@@ -22,18 +22,20 @@
  * `BENCH_IMPORT_CHECK_MINIMAL_RUNS` sets the minimal-run sample (20,000).
  */
 import { encodeCbor } from "@al-ft/midgard-core";
-import { type MidgardCekVerdictRequest } from "@al-ft/midgard-validation";
+import {
+  encodeMidgardCekCardanoFlatProgram,
+  type MidgardCekVerdictRequest,
+} from "@al-ft/midgard-validation";
 import {
   Application,
   Builtin,
   Lambda,
-  UPLCBuiltinTag,
+  midgardCekBuiltinTagOfName,
   UPLCConst,
-  UPLCEncoder,
   UPLCProgram,
   type UPLCTerm,
   UPLCVar,
-} from "@harmoniclabs/uplc";
+} from "@al-ft/midgard-validation/uplc";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -77,7 +79,7 @@ const withProgram = (
   return {
     ...base,
     scriptBytes: encodeCbor(
-      Buffer.from(UPLCEncoder.compile(new UPLCProgram([1, 1, 0], body))),
+      encodeMidgardCekCardanoFlatProgram(new UPLCProgram([1, 1, 0], body)),
     ),
     scriptLanguage: "PlutusV3",
     executionBudget: { cpu, memory: 10n ** 12n },
@@ -91,7 +93,10 @@ const loop = new Lambda(new Application(omega, omega));
 const hashChain = (depth: number) => {
   let term: UPLCTerm = UPLCConst.byteString(new Uint8Array(32));
   for (let index = 0; index < depth; index += 1)
-    term = new Application(new Builtin(UPLCBuiltinTag.sha2_256), term);
+    term = new Application(
+      new Builtin(midgardCekBuiltinTagOfName("sha2_256")),
+      term,
+    );
   return new Lambda(
     new Application(new Lambda(new UPLCVar(1)), term),
   ) as UPLCTerm;

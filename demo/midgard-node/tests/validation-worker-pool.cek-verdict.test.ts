@@ -1,5 +1,6 @@
 import { encodeCborBytes } from "@al-ft/midgard-core/codec/cbor";
 import {
+  encodeMidgardCekCardanoFlatProgram,
   evaluateMidgardCekVerdict,
   type MidgardCekVerdictRequest,
 } from "@al-ft/midgard-validation";
@@ -10,11 +11,10 @@ import {
   ErrorUPLC,
   Lambda,
   UPLCConst,
-  UPLCEncoder,
   UPLCProgram,
   type UPLCTerm,
   UPLCVar,
-} from "@harmoniclabs/uplc";
+} from "@al-ft/midgard-validation/uplc";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -35,7 +35,7 @@ const request = (
   executionBudget?: { readonly cpu: bigint; readonly memory: bigint },
 ): MidgardCekVerdictRequest => {
   const scriptBytes = encodeCborBytes(
-    UPLCEncoder.compile(new UPLCProgram([1, 1, 0], body)),
+    encodeMidgardCekCardanoFlatProgram(new UPLCProgram([1, 1, 0], body)),
   );
   return {
     scriptBytes,

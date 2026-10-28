@@ -24,9 +24,10 @@ multiline or helper-based assertions before reporting totals.
 - `not.toEqual(arrayContaining([a,b,c,d]))` rejects the complete conjunction,
   not every forbidden member individually. Confirm the intended exclusion
   contract before strengthening it.
-- `harmonic-uplc-contract-eval.test.ts` checks a `CEKConst` result. Determine
-  the expected value/type and evaluator success semantics; a returned boolean
-  `False` is not universally synonymous with a ledger script failure.
+- `real-minting-policy-eval.test.ts` checks only the evaluator's success
+  flag. Determine the expected value/type and evaluator success semantics; a
+  returned boolean `False` is not universally synonymous with a ledger script
+  failure.
 - `scalus-add-signatures-eval.test.ts` currently has one scenario that awaits
   a real builder with local UPLC and rethrows failure. Completion without an
   exception is already a test oracle despite zero `expect()` calls. Add

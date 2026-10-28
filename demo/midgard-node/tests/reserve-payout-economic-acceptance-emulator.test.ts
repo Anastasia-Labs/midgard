@@ -3,7 +3,6 @@ import "node:fs";
 import "node:path";
 import "node:util";
 import "@al-ft/midgard-core/plutus-data-cbor";
-import "@harmoniclabs/cbor";
 import "@lucid-evolution/lucid";
 import "@lucid-evolution/uplc";
 import "vitest";

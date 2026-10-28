@@ -1,9 +1,10 @@
+import { PLUTUS_V3_CANONICAL_COST_MODEL_VIEW } from "@al-ft/midgard-core";
+import { readCborBytes } from "@al-ft/midgard-core/codec/cbor";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
-import { dataFromCbor } from "@harmoniclabs/plutus-data";
-import { CEKConst, Machine } from "@harmoniclabs/plutus-machine";
-import { Application, parseUPLC, UPLCConst } from "@harmoniclabs/uplc";
+import type { MidgardUplcEvalProgram } from "@al-ft/midgard-validation";
 import { Constr, Data, fromHex } from "@lucid-evolution/lucid";
+import { eval_program_raw } from "@lucid-evolution/uplc";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -57,39 +58,66 @@ const mintingScriptContext = (
     new Constr(0, [policyId]),
   ]);
 
-const dataConst = (value: any) =>
-  UPLCConst.data(dataFromCbor(fromHex(Data.to(value)) as Uint8Array));
+/** The Flat program inside a script's CBOR byte-string wrapping. */
+const flatProgram = (scriptCborHex: string): Uint8Array => {
+  let bytes: Uint8Array = fromHex(scriptCborHex);
+  // A Flat program starts with its version's major, a CBOR unsigned integer.
+  while (bytes[0]! >> 5 === 2) {
+    const { value, nextOffset } = readCborBytes(bytes, 0, "script");
+    if (nextOffset !== bytes.length)
+      throw new Error("script CBOR has bytes after its byte string");
+    bytes = value;
+  }
+  return bytes;
+};
 
+/**
+ * Whether the pinned Plutus V3 evaluator (aiken's, the ledger's protocol
+ * version 11 semantics) runs the script applied to the script context to a
+ * result. An Aiken `mint` handler that answers `False` compiles to an
+ * `error`, so a refusal is a failed evaluation. The budget is far past a
+ * transaction's, since only the verdict is under test.
+ */
 const evaluateScriptContext = (
   ourScriptCborHex: string,
   scriptContextConstr: Constr<unknown>,
-) => {
-  const uplc = parseUPLC(fromHex(ourScriptCborHex), "cbor").body;
-  const applied = new Application(uplc, dataConst(scriptContextConstr));
-  return Machine.eval(applied).result;
+): boolean => {
+  const evaluate = eval_program_raw as MidgardUplcEvalProgram;
+  const result = evaluate(
+    flatProgram(ourScriptCborHex),
+    [fromHex(Data.to(scriptContextConstr as Data))],
+    3,
+    11,
+    BigInt64Array.from(PLUTUS_V3_CANONICAL_COST_MODEL_VIEW.map(BigInt)),
+    1_000_000_000_000n,
+    1_000_000_000n,
+    false,
+  );
+  try {
+    return result.ok;
+  } finally {
+    result.free();
+  }
 };
 
-/** The validator returned a value: the compiled `and { .. }` held. */
+/** The validator ran to a result: the compiled `and { .. }` held. */
 const expectScriptContextAccepted = (
   ourScriptCborHex: string,
   scriptContextConstr: Constr<unknown>,
 ) => {
-  expect(
-    evaluateScriptContext(ourScriptCborHex, scriptContextConstr),
-  ).toBeInstanceOf(CEKConst);
+  expect(evaluateScriptContext(ourScriptCborHex, scriptContextConstr)).toBe(
+    true,
+  );
 };
 
-/**
- * The validator errored: an Aiken `mint` handler that answers `False` compiles
- * to an `error`, so a refusal is observable as a non-constant CEK result.
- */
+/** The validator errored: the minting policy refused the context. */
 const expectScriptContextRefused = (
   ourScriptCborHex: string,
   scriptContextConstr: Constr<unknown>,
 ) => {
-  expect(
-    evaluateScriptContext(ourScriptCborHex, scriptContextConstr),
-  ).not.toBeInstanceOf(CEKConst);
+  expect(evaluateScriptContext(ourScriptCborHex, scriptContextConstr)).toBe(
+    false,
+  );
 };
 
 const loadRealContracts = () =>
@@ -115,38 +143,13 @@ const loadRealContracts = () =>
     }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
   );
 
-describe("@harmoniclabs/uplc evaluation against real Midgard contracts", () => {
-  // SKIPPED because @harmoniclabs/plutus-machine cannot evaluate this policy
-  // correctly — the Midgard validator is fine, its evaluator is not.
-  //
-  // `hub-oracle.ak`'s `hub_mint_set_is_exact` now requires the policy's token
-  // dict to be EXACTLY correction-lock and hub-oracle at one shared quantity
-  // (the mint set below, in ascending asset-name order, which is what
-  // `dict.to_pairs` yields and what `incompleteHubOracleInitTxProgram`
-  // actually mints). Reading a quantity out of that two-entry dict makes the
-  // compiled `quantity_of` walk it with `lessThanEqualsByteString`, and
-  // `@harmoniclabs/plutus-machine`'s implementation of that builtin is wrong:
-  //
-  //   BnCEK.prototype.lessThanByteString:
-  //     if (aBytes.length < bBytes.length) return CEKConst.bool(true);
-  //
-  // It orders by LENGTH first, where Plutus orders lexicographically. So the
-  // machine answers `true` to both "MIDGARD_HUB_ORACLE" (18 bytes) <=
-  // "MIDGARD_CORRECTION_LOCK" (23 bytes) AND its converse — not a total order
-  // at all. The dict walk therefore stops at the first key, reports quantity 0 for
-  // the hub-oracle NFT, and `hub_mint_set_is_exact` compares the real dict
-  // against a zero-quantity expectation and fails. The single-token mint this
-  // test used before the exact-set rule never compared two different-length
-  // names, which is why the bug only surfaces now. The defect is present in
-  // every published version through 3.0.3, so bumping the pin does not fix it.
-  //
-  // The claim this test was making is not lost: the same policy is evaluated
-  // against a real ledger script context, by the real evaluator, in
-  // `tests/initialization-emulator.test.ts` > "builds the hub-oracle mint
-  // fragment in isolation" (`complete({ localUPLCEval: true })`), which passes
-  // with exactly this two-token mint. Re-enable this case (drop the `.skip`,
-  // change nothing else) once the upstream builtin is fixed.
-  it.skip("evaluates the real hub-oracle minting policy with a ledger-shaped script context", async () => {
+describe("Plutus V3 evaluation of real Midgard minting policies", () => {
+  // `hub-oracle.ak`'s `hub_mint_set_is_exact` requires the policy's token dict
+  // to be EXACTLY correction-lock and hub-oracle at one shared quantity (in
+  // ascending asset-name order, which is what `dict.to_pairs` yields).
+  // Reading a quantity out of that two-entry dict walks it with
+  // `lessThanEqualsByteString` over names of different lengths.
+  it("evaluates the real hub-oracle minting policy with a ledger-shaped script context", async () => {
     const contracts = await loadRealContracts();
     const hubOracleMint = new Map([
       [

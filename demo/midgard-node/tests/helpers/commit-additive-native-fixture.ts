@@ -10,13 +10,13 @@ import {
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
+import { encodeMidgardCekCardanoFlatProgram } from "@al-ft/midgard-validation";
 import {
   Delay,
   ErrorUPLC,
-  UPLCEncoder,
   UPLCProgram,
   type UPLCTerm,
-} from "@harmoniclabs/uplc";
+} from "@al-ft/midgard-validation/uplc";
 import {
   CML,
   Data,
@@ -58,7 +58,7 @@ export const delayProgram = (nodes: number): Buffer => {
   let term: UPLCTerm = new ErrorUPLC();
   for (let i = 1; i < nodes; i += 1) term = new Delay(term);
   return encodeCbor(
-    Buffer.from(UPLCEncoder.compile(new UPLCProgram([1, 1, 0], term))),
+    encodeMidgardCekCardanoFlatProgram(new UPLCProgram([1, 1, 0], term)),
   );
 };
 

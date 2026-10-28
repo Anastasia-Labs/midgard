@@ -14,6 +14,7 @@ import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-confi
 import { forcedVerdictForRejection } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
+  encodeMidgardCekCardanoFlatProgram,
   type MidgardCekVerdictRequest,
   MidgardRedeemerTag,
   placeholderValidationTraceDescriptorV1,
@@ -36,11 +37,10 @@ import {
   ErrorUPLC,
   Lambda,
   UPLCConst,
-  UPLCEncoder,
   UPLCProgram,
   type UPLCTerm,
   UPLCVar,
-} from "@harmoniclabs/uplc";
+} from "@al-ft/midgard-validation/uplc";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -93,7 +93,9 @@ const term = (body: ScriptBody): UPLCTerm =>
 export const scriptOf = (body: ScriptBody) => {
   const witness = plutusV3ScriptWitness(
     encodeCbor(
-      Buffer.from(UPLCEncoder.compile(new UPLCProgram([1, 1, 0], term(body)))),
+      encodeMidgardCekCardanoFlatProgram(
+        new UPLCProgram([1, 1, 0], term(body)),
+      ),
     ),
   );
   const hash = hashScriptWitness(witness);

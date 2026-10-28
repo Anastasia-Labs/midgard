@@ -3,6 +3,7 @@ import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
+  encodeMidgardCekCardanoFlatProgram,
   MidgardRedeemerTag,
   placeholderValidationTraceDescriptorV1,
   replayValidationVerdictEvent,
@@ -23,10 +24,9 @@ import {
   Application,
   Lambda,
   UPLCConst,
-  UPLCEncoder,
   UPLCProgram,
   UPLCVar,
-} from "@harmoniclabs/uplc";
+} from "@al-ft/midgard-validation/uplc";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -72,14 +72,10 @@ const signedTransfer = () => {
  */
 const plutusSpend = () => {
   const scriptBytes = encodeCbor(
-    Buffer.from(
-      UPLCEncoder.compile(
-        new UPLCProgram(
-          [1, 1, 0],
-          new Lambda(
-            new Application(new Lambda(UPLCConst.unit), new UPLCVar(0)),
-          ),
-        ),
+    encodeMidgardCekCardanoFlatProgram(
+      new UPLCProgram(
+        [1, 1, 0],
+        new Lambda(new Application(new Lambda(UPLCConst.unit), new UPLCVar(0))),
       ),
     ),
   );
