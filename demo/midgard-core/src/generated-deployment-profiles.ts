@@ -164,16 +164,7 @@ export const DEPLOYMENT_PROFILES = {
         "4189f341bddd0c74ecb4f5a1ddae8653ee204be022fe530e2f65a6a6",
       ],
     },
-    excluded_fraud_proof_categories: [
-      "executionSourceScriptDecoding",
-      "receivePurposeLanguage",
-      "unusedScriptWitness",
-      "missingScriptSource",
-      "unusedRedeemer",
-      "executionNativeScriptInvalid",
-      "scriptIntegrityHashMismatch",
-      "distinctAssetAccumulationLimit",
-    ],
+    excluded_fraud_proof_categories: [],
   },
   "preprod-testing": {
     name: "preprod-testing",
@@ -473,23 +464,14 @@ export const DEPLOYMENT_PROFILES = {
     allow_lists: {
       operators: ["8372d26e23e36568f931b8e3a418ca29dc545054f017548733c78198"],
     },
-    excluded_fraud_proof_categories: [
-      "executionSourceScriptDecoding",
-      "receivePurposeLanguage",
-      "unusedScriptWitness",
-      "missingScriptSource",
-      "unusedRedeemer",
-      "executionNativeScriptInvalid",
-      "scriptIntegrityHashMismatch",
-      "distinctAssetAccumulationLimit",
-    ],
+    excluded_fraud_proof_categories: [],
   },
 } as const;
 
 export const DEPLOYMENT_PROFILE_DIGESTS = {
   mainnet: "6539647bbd2a9a374c35fd43a1e121a116d8e15c1f5a919f5cb56bfb707c67b8",
   "preprod-public":
-    "2bba4cd51cb4fad8f768fe6b4c19dc4f1e2feec58a65b9258783cfcb273d4753",
+    "5b72d335815a623cb8b796a656f2e03d0bc81c1b9ce4cd939da15c2998edc11d",
   "preprod-testing":
     "0e133908fccfa06ad9fc9d5f91411ec298c0305ca5b9e79a38464d53dbe9d8a1",
   "local-devnet-testing":
@@ -497,7 +479,7 @@ export const DEPLOYMENT_PROFILE_DIGESTS = {
   "preprod-emulator-testing":
     "f3ebccc8cad7beaf08a48f488a74e1e85ee961bdf625b0b3d1d8b23bbc334bac",
   "preprod-emulator-curated":
-    "ef23af81fee96d338c45f1f57ea5927b17b1aee5211148468b97ee266d22ea96",
+    "588251b3248830574e7d3e36e33792de98c490a5047690c2a0acf329872f310c",
 } as const;
 
 export const DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE = {

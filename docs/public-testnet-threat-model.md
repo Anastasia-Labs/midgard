@@ -78,14 +78,17 @@ Admin/operational interfaces and committee/watcher diagnostic APIs form distinct
 boundaries. Required public deployment controls are TLS ingress, protected
 internal infrastructure, bounded bodies/queries/pages, request and byte quotas,
 slow-request deadlines, bounded concurrency/queues and redacted errors/logs.
-These are release requirements, not assertions that all are deployed today.
+These are release requirements; this document does not establish that a
+candidate deployment meets each of them.
 
 Submission currently reserves count and byte-weighted ingress permits and checks
 bounded bodies, envelope/media type and durable backlog. `/tx/evaluate` shares
 the bounded body reader and limits concurrency relative to the validation pool;
-it returns advisory P1 budgets and must not consume the capacity needed for
-admission. Concurrency bounds do not prove per-source rate limits, proxy limits,
-slow-client handling or load-test throughput. R7 still owes measured evidence.
+it returns advisory budgets and must not consume the capacity needed for
+admission. Each route class has a per-client and a global request-rate limit
+(health and admin routes have per-client limits only), and a public profile
+refuses to start with rate limits disabled. These bounds do not establish proxy
+limits, slow-client handling or load-test throughput.
 
 Read amplification can arise from address scans, large outref batches, repeated
 missing-object lookups, full payload retrieval, predecessor chains, log/status
@@ -132,36 +135,44 @@ A suspected active compromise should trigger private security contact, preservat
 of revision/profile/manifest/log/chain evidence, isolation of compromised runtime
 credentials, suspension of the affected operation and a reviewed recovery plan.
 No universal protocol pause or unilateral on-chain reversal is assumed. Retained
-DA must not be deleted and durable stores must not be reset during triage. R8 and
-R6 must establish the actual incident handlers, drills and alert delivery.
+DA must not be deleted and durable stores must not be reset during triage. The
+node and watcher ship alert rules with runbooks; each deployment must still
+establish alert delivery, incident ownership and drills.
 
 ## P1 stage-0 limitations
 
-- Curated operators; permissionless fraud provers and DA challengers. Proof
-  re-drive after the safe-start deadline is manual.
+- Curated operators, fixed for P1's life; permissionless fraud provers and DA
+  challengers. Watchers submit the proofs they find automatically. A watcher
+  does not start a proof after its latest safe start; it holds the objective
+  visibly, and no command at this release re-drives it.
 - Native-only forced transactions. No reference-script outputs, Plutus witnesses,
   redeemers, auxiliary data or L2 validity upper bound; canonical and noncanonical inline datums
   remain permitted at L1 admission. Funds needing Plutus or
   a native script expiry branch have no forced exit in P1.
-- No validation-trace states. Kind 2/source-v1, the dispute game and ten excluded
-  catalogue categories are unavailable. Wrong Plutus verdicts, fabricated forced
-  transactions and the stated censorship hole retain curated-operator trust.
+- DA payloads carry no validation-trace states. The nine trace-relative
+  families prove their faults directly, and the public profile enables all
+  nine; it excludes no category. Plutus verdicts are
+  challengeable through the interactive dispute game (`validationTraceDispute`)
+  for every execution step that fits in a single L1 transaction. Faults in
+  excluded categories, wrong verdicts that depend on a step that does not fit,
+  fabricated forced transactions and the stated censorship hole retain
+  curated-operator trust.
 - Strikes are permissionless and rotate operator shifts. They can still rotate
   shifts during catch-up and slow its progress. The public P1 ejection threshold
   is set out of reach, so strikes do not provide an operator ejection mechanism.
 - No authenticated bootstrap snapshot is supplied. New parties must replay
   from genesis and join while the required payload history is available. The
-  public deployment is required to configure and maintain 120-day payload
-  retention; its authenticated manifest and release acceptance establish the
-  actual instance's configuration and retrieval behavior.
+  public profile configures 120-day payload retention; its authenticated
+  manifest and release acceptance establish the actual instance's
+  configuration and retrieval behavior.
 - The public profile uses seven-day block maturity. Event processing and maturity
   mean an L1 withdrawal request is not an immediate payout. An unsigned withdrawal
   order can block an output reference (issue #819).
-- P1 byte-based Plutus cost accounting differs from Cardano-exact word accounting.
-- The interim 9,215-byte Data caps, 2^512 integer refusal, native-script-from-only-
-  reference-input refusal, and legacy rejection-code format remain until P2.
+- Rejections committed for forced transactions carry typed rejection reasons;
+  the node's transaction status API reports its own diagnostic rejection codes.
 - Escape hatch and settlement claims are unsupported. Split cadence, hourly
-  commitments, further DA trim and permissionless/full proof coverage are P2.
+  commitments, further DA trim, permissionless operators and full proof
+  coverage are P2.
 - P2 requires a separately announced regenesis; a future date is a plan, not a
   guarantee that this candidate is deployed or complete.
 

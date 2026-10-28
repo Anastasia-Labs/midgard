@@ -370,6 +370,8 @@
     "build": "node ../../scripts/contrib.mjs build --package @al-ft/midgard-core",
     "docs:consensus-profile-v1:check": "pnpm run build && node scripts/sync-consensus-profile-doc-v1.mjs --check",
     "docs:consensus-profile-v1:sync": "pnpm run build && node scripts/sync-consensus-profile-doc-v1.mjs",
+    "docs:public-testnet-parameters:check": "node scripts/sync-public-testnet-parameters-doc.mjs --check",
+    "docs:public-testnet-parameters:sync": "node scripts/sync-public-testnet-parameters-doc.mjs",
     "fixtures:native-tx-field-access-v1:check": "pnpm run build && node scripts/generate-native-tx-field-access-v1-goldens.mjs --check",
     "fixtures:native-tx-field-access-v1:sync": "pnpm run build && node scripts/generate-native-tx-field-access-v1-goldens.mjs",
     "fixtures:native-tx-field-items-v1:check": "pnpm run build && node scripts/generate-native-tx-field-items-v1-goldens.mjs --check",

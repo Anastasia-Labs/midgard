@@ -17,16 +17,10 @@ describe("curated deployment fraud-proof catalogue", () => {
     const curated = deploymentFraudProofCatalogueCategories(
       DEPLOYMENT_PROFILES["preprod-public"],
     );
-    // The execution dispute is in the public catalogue; the families with no
-    // installed off-chain workflow are not.
+    // The public catalogue carries the execution dispute and every family.
     expect(curated).toContain("validationTraceDispute");
-    expect(curated).not.toContain("unusedRedeemer");
+    expect(curated).toContain("unusedRedeemer");
     expect(curated).toContain("doubleSpend");
-    const excludedFamily = (verdict: string) =>
-      new RegExp(
-        `\\.(${DEPLOYMENT_PROFILES["preprod-public"].excluded_fraud_proof_categories.join("|")}) is ${verdict}`,
-        "u",
-      );
     const curatedCatalogue = await buildCatalogueFixture(curated);
     expect(
       verifyDeploymentManifestFraudProofCatalogueIdentity(
@@ -34,13 +28,15 @@ describe("curated deployment fraud-proof catalogue", () => {
         curated,
       ),
     ).toEqual(curatedCatalogue);
-    // A catalogue carrying an excluded family is not the deployment's.
+    // A catalogue missing a category the profile installs is not the
+    // deployment's: the selected testing profile's catalogue lacks the
+    // execution dispute.
     expect(() =>
       verifyDeploymentManifestFraudProofCatalogueIdentity(
         catalogueFixture(),
         curated,
       ),
-    ).toThrow(excludedFamily("unexpected"));
+    ).toThrow(/\.validationTraceDispute is required/u);
     // The selected 900 s testing profile excludes the execution dispute,
     // which the public catalogue carries.
     expect(() =>

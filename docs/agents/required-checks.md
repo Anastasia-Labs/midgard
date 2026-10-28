@@ -488,6 +488,21 @@ Generated document consensus-profile-v1 matches its producer.
   - `demo/l1-node-transport/src/**`
 - Needs: `node-modules`
 
+### `docs:public-testnet-parameters`
+
+Generated document public-testnet-parameters matches its producer.
+
+- Command: `pnpm --dir demo/midgard-core run docs:public-testnet-parameters:check`
+- Fix: `pnpm --dir demo/midgard-core run docs:public-testnet-parameters:sync`
+- Runs on:
+  - `demo/midgard-core/scripts/sync-public-testnet-parameters-doc.mjs`
+  - `config/deployments/preprod-public.yaml`
+  - `docs/public-testnet-parameters.md`
+  - `demo/midgard-core/src/**`
+  - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
+- Needs: `node-modules`
+
 ### `golden:native-tx-field-access-v1`
 
 Golden channel native-tx-field-access-v1 (@al-ft/midgard-core).

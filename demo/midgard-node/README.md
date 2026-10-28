@@ -69,7 +69,8 @@ It is responsible for:
   The payload of the L1 confirmed head and the payload of every header live in
   the L1 state queue are never deleted. Housekeeping follows a window derived
   from the verified deployment manifest's `da.transportProfile.retentionDays`
-  (15 days today) when `RETENTION_DAYS` is unset. An explicit `RETENTION_DAYS`
+  (120 days on `preprod-public`; 15 days on a profile that sets none) when
+  `RETENTION_DAYS` is unset. An explicit `RETENTION_DAYS`
   shorter than that window refuses startup, a longer one is honoured, and `0`
   keeps the housekeeping tables forever. The window never reaches inside the
   DA challengeability horizon. It prunes `tx_rejections`, `address_history`
