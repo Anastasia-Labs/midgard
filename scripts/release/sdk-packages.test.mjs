@@ -14,7 +14,7 @@ import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { vendoredSourceNotice } from "./pack-files.mjs";
+import { vendoredSourceNotice } from "../../demo/scripts/lib/vendored-imports.mjs";
 import {
   checkPublishSet,
   forbiddenPackedPath,
@@ -280,7 +280,8 @@ test("finds private key material in packed files", () => {
 });
 
 // A workspace package whose `#vendored` import names the installed
-// `dependency`, and the tarball root a correct pack of it extracts to.
+// `dependency` for sources and its built copy otherwise, and the tarball root
+// a correct pack of it extracts to.
 const vendoredFixture = (dependency = "@x/vendored") => {
   const base = mkdtempSync(join(tmpdir(), "sdk-packages-vendored-"));
   const installed = join(base, "store", dependency);
@@ -304,9 +305,17 @@ const vendoredFixture = (dependency = "@x/vendored") => {
     recursive: true,
   });
   symlinkSync(installed, join(workspace, "node_modules", dependency), "dir");
+  const packedImport = {
+    types: `./${directory}/dist/index.d.ts`,
+    import: `./${directory}/dist/index.js`,
+  };
   writeFileSync(
     join(workspace, "package.json"),
-    JSON.stringify({ imports: { "#vendored": dependency } }),
+    JSON.stringify({
+      imports: {
+        "#vendored": { "midgard-source": dependency, ...packedImport },
+      },
+    }),
   );
   const packed = join(base, "packed");
   cpSync(installed, join(packed, directory), { recursive: true });
@@ -315,12 +324,7 @@ const vendoredFixture = (dependency = "@x/vendored") => {
     writeFileSync(join(packed, directory, "SOURCE.md"), notice);
   const manifest = {
     ...cleanManifest(),
-    imports: {
-      "#vendored": {
-        types: `./${directory}/dist/index.d.ts`,
-        import: `./${directory}/dist/index.js`,
-      },
-    },
+    imports: { "#vendored": packedImport },
     dependencies: { hash: "^2.1.4" },
   };
   return { workspace, packed, manifest };
@@ -357,6 +361,21 @@ test("a vendored package import needs its export map and its dependencies", () =
     ),
     ["vendored @x/vendored is not in the tarball"],
   );
+});
+
+test("built and deployed copies resolve the vendored package import too", () => {
+  const { workspace, packed, manifest } = vendoredFixture();
+  const sourceOnly = {
+    imports: { "#vendored": { "midgard-source": "@x/vendored" } },
+  };
+  writeFileSync(join(workspace, "package.json"), JSON.stringify(sourceOnly));
+  const declared = JSON.stringify({
+    "midgard-source": "@x/vendored",
+    ...manifest.imports["#vendored"],
+  });
+  assert.deepEqual(vendoredImportProblems(packed, manifest, workspace), [
+    `workspace imports #vendored does not resolve the vendored @x/vendored outside the midgard-source condition; declare it as ${declared}`,
+  ]);
 });
 
 test("the vendored Merkle Patricia Forestry ships its source notice", () => {
@@ -446,27 +465,29 @@ test("the type probe reports an @types/node it cannot link", () => {
   ]);
 });
 
-test("a failed pack leaves no licence or vendored copy in the package", () => {
+test("a failed pack leaves no licence in the package and keeps its built vendored copy", () => {
   const root = mkdtempSync(join(tmpdir(), "sdk-packages-failed-pack-"));
   const packFiles = join(repositoryRoot, "scripts/release/pack-files.mjs");
   const { packageManager } = JSON.parse(
     readFileSync(join(repositoryRoot, "demo/package.json"), "utf8"),
   );
-  const installed = join(root, "store/@x/vendored");
-  mkdirSync(installed, { recursive: true });
-  writeFileSync(join(installed, "package.json"), '{"name":"@x/vendored"}\n');
   const packageDir = join(root, "demo/midgard-core");
   mkdirSync(join(packageDir, "dist"), { recursive: true });
-  mkdirSync(join(packageDir, "node_modules/@x"), { recursive: true });
-  symlinkSync(installed, join(packageDir, "node_modules/@x/vendored"), "dir");
   writeFileSync(join(packageDir, "dist/index.js"), "export {};\n");
+  mkdirSync(join(packageDir, "vendor/vendored"), { recursive: true });
+  writeFileSync(join(packageDir, "vendor/vendored/index.js"), "export {};\n");
   writeFileSync(
     join(packageDir, "package.json"),
     JSON.stringify({
       name: "@al-ft/midgard-core",
       version: "0.1.0",
       packageManager,
-      imports: { "#vendored": "@x/vendored" },
+      imports: {
+        "#vendored": {
+          "midgard-source": "@x/vendored",
+          import: "./vendor/vendored/index.js",
+        },
+      },
       scripts: {
         prepack: `node ${JSON.stringify(packFiles)} copy && node -e "process.exit(1)"`,
         postpack: `node ${JSON.stringify(packFiles)} remove`,
@@ -478,7 +499,7 @@ test("a failed pack leaves no licence or vendored copy in the package", () => {
     /pnpm pack .*failed/u,
   );
   assert.equal(existsSync(join(packageDir, "LICENSE")), false);
-  assert.equal(existsSync(join(packageDir, "vendor")), false);
+  assert.ok(existsSync(join(packageDir, "vendor/vendored/index.js")));
 });
 
 const writePackage = (installRoot, name, manifest, files) => {

@@ -8,6 +8,7 @@ import {
   inputIdentity,
   json,
   packageByName,
+  buildOutputIdentity,
   outputIdentity,
   runtimeBuildClosure,
   sha256,
@@ -260,7 +261,7 @@ export const runAcceptance = async (
             const artifacts = runtimeBuildClosure(root, pkg.name).map(
               (entry) => ({
                 name: entry.name,
-                outputs: outputIdentity(root, `${entry.directory}/dist`),
+                outputs: buildOutputIdentity(root, entry),
               }),
             );
             const step = await runProcess({
@@ -286,10 +287,8 @@ export const runAcceptance = async (
               artifacts.some(
                 (entry) =>
                   entry.outputs.sha256 !==
-                  outputIdentity(
-                    root,
-                    `${packageByName(root, entry.name).directory}/dist`,
-                  ).sha256,
+                  buildOutputIdentity(root, packageByName(root, entry.name))
+                    .sha256,
               )
             ) {
               receipt.status = "failed";

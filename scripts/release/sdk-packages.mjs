@@ -4,9 +4,9 @@
 // published dependencies, every export must be the registry form of its
 // workspace export (publishConfig) and resolve to a shipped file, each tarball
 // must carry the LICENSE and any vendored package import byte for byte with
-// its source notice (see pack-files.mjs), no test, fixture or secret may ride
-// along, and every export must load by package name through ESM import,
-// CommonJS require and NodeNext types.
+// its source notice (see demo/scripts/lib/vendored-imports.mjs), no test,
+// fixture or secret may ride along, and every export must load by package
+// name through ESM import, CommonJS require and NodeNext types.
 // Nothing here publishes; the checked tarballs and their hashes are the input
 // to the manual publish steps in docs/deployment-release-tooling.md.
 import { spawnSync } from "node:child_process";
@@ -24,12 +24,12 @@ import { createRequire } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  removePackFiles,
   SOURCE_NOTICE,
   vendoredCopyDifferences,
   vendoredImports,
   vendoredSourceNotice,
-} from "./pack-files.mjs";
+} from "../../demo/scripts/lib/vendored-imports.mjs";
+import { removePackFiles } from "./pack-files.mjs";
 
 export const PUBLISH_SET = Object.freeze([
   { name: "@al-ft/midgard-core", dir: "demo/midgard-core" },
@@ -274,17 +274,19 @@ const rebased = (node, directory) =>
         : node;
 
 /**
- * Problems with the vendored package imports (see pack-files.mjs) of the
- * workspace package in `workspaceDir`, packed and extracted to `packageRoot`
- * with `manifest`: the tarball must carry the installed package byte for
- * byte with its source notice, if it needs one, the packed `imports` entry
- * must be that package's own export map under its vendored directory, and
- * every dependency of the vendored package must be a dependency of the
- * published one.
+ * Problems with the vendored package imports (see
+ * demo/scripts/lib/vendored-imports.mjs) of the workspace package in
+ * `workspaceDir`, packed and extracted to `packageRoot` with `manifest`: the
+ * tarball must carry the installed package byte for byte with its source
+ * notice, if it needs one, the packed `imports` entry must be that package's
+ * own export map under its vendored directory, the workspace entry must be
+ * the same map behind the `midgard-source` condition (built and deployed
+ * copies resolve it), and every dependency of the vendored package must be a
+ * dependency of the published one.
  */
 export const vendoredImportProblems = (packageRoot, manifest, workspaceDir) =>
   vendoredImports(workspaceDir).flatMap(
-    ({ specifier, dependency, installed, directory }) => {
+    ({ specifier, target, dependency, installed, directory }) => {
       if (installed === undefined)
         return [`vendored ${dependency} is not installed in the workspace`];
       const problems = [];
@@ -303,6 +305,11 @@ export const vendoredImportProblems = (packageRoot, manifest, workspaceDir) =>
       )
         problems.push(
           `imports ${specifier} is not the export map of the vendored ${dependency}; publish it as ${JSON.stringify(expected)}`,
+        );
+      const workspaceExpected = { [SOURCE_CONDITION]: dependency, ...expected };
+      if (JSON.stringify(target) !== JSON.stringify(workspaceExpected))
+        problems.push(
+          `workspace imports ${specifier} does not resolve the vendored ${dependency} outside the ${SOURCE_CONDITION} condition; declare it as ${JSON.stringify(workspaceExpected)}`,
         );
       const copy = join(packageRoot, directory);
       if (!existsSync(copy))

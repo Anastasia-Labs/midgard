@@ -39,6 +39,7 @@ export const imageBlocks = (plan) => ({
     .join("\n"),
   sources: [
     "COPY scripts/package-tasks.mjs ./scripts/package-tasks.mjs",
+    "COPY scripts/lib/vendored-imports.mjs ./scripts/lib/vendored-imports.mjs",
     ...plan.sources.map((path) => `COPY ${path} ./${path}`),
   ].join("\n"),
   builds: plan.builds

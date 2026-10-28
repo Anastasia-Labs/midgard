@@ -1,4 +1,7 @@
-import { packageBuildTask } from "../../demo/scripts/package-tasks.mjs";
+import {
+  packageBuildTask,
+  packageOutputDirectories,
+} from "../../demo/scripts/package-tasks.mjs";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import {
@@ -87,14 +90,26 @@ const packageOutputs = new Set([
   ".architecture-f-wasm",
   "deploymentInfo",
 ]);
+// The further outputs a package's build declares (validation's vendor/),
+// which are outputs there even where the name is a source directory
+// elsewhere (demo/vendor).
+const declaredOutputs = (directory) =>
+  scoped(`declared-outputs\0${directory}`, () => {
+    const outputs = json(resolve(directory, "package.json")).midgardTasks?.build
+      ?.outputs;
+    return Array.isArray(outputs) ? outputs : [];
+  });
 // Output ownership comes from the containing project, never a basename in a
 // source tree: src/build and lib/target are legitimate inputs.
 const excludedInput = (directory, name, source) => {
   if (managed.has(name)) return true;
   if (source) return false;
+  if (
+    existsSync(resolve(directory, "package.json")) &&
+    (packageOutputs.has(name) || declaredOutputs(directory).includes(name))
+  )
+    return true;
   return (
-    (packageOutputs.has(name) &&
-      existsSync(resolve(directory, "package.json"))) ||
     (name === "target" && existsSync(resolve(directory, "Cargo.toml"))) ||
     (name === "build" && existsSync(resolve(directory, "aiken.toml")))
   );
@@ -411,7 +426,7 @@ export const compiledDependencies = (root, name) => {
     )
     .map((pkg) => ({
       name: pkg.name,
-      outputs: outputIdentity(root, `${pkg.directory}/dist`),
+      outputs: buildOutputIdentity(root, pkg),
     }));
 };
 
@@ -545,11 +560,16 @@ export const nameChangedInputs = (changed) =>
       : []),
   ].join(", ");
 
-export const outputIdentity = (root, directory) =>
-  scoped(`output\0${root}\0${directory}`, () =>
-    uncachedOutputIdentity(root, directory),
+// The identity of the files under one output directory, or under several
+// taken together.
+export const outputIdentity = (root, directories) =>
+  scoped(`output\0${root}\0${[directories].flat().join("\0")}`, () =>
+    uncachedOutputIdentity(root, [directories].flat()),
   );
-const uncachedOutputIdentity = (root, directory) => {
+// Everything a package's build writes (packageOutputDirectories).
+export const buildOutputIdentity = (root, pkg) =>
+  outputIdentity(root, packageOutputDirectories(pkg));
+const uncachedOutputIdentity = (root, directories) => {
   // A native owner may share dist with its package's JavaScript build, but
   // has its own binary receipt. Other packages' directories named native
   // remain compiled outputs.
@@ -565,11 +585,15 @@ const uncachedOutputIdentity = (root, directory) => {
   );
   return hashFiles(
     root,
-    filesUnder(resolve(root, directory), { outputs: true }).filter(
-      (path) =>
-        !nativeOutputs.some((output) => path === output) &&
-        !path.endsWith(".contrib-build-v1.json") &&
-        !path.endsWith(".contrib-native-v1.json"),
-    ),
+    directories
+      .flatMap((directory) =>
+        filesUnder(resolve(root, directory), { outputs: true }),
+      )
+      .filter(
+        (path) =>
+          !nativeOutputs.some((output) => path === output) &&
+          !path.endsWith(".contrib-build-v1.json") &&
+          !path.endsWith(".contrib-native-v1.json"),
+      ),
   );
 };
