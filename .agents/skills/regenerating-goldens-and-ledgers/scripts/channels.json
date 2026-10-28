@@ -1279,6 +1279,31 @@
       }
     },
     {
+      "id": "public-testnet-parameters-doc",
+      "kind": "doc",
+      "summary": "The generated table of docs/public-testnet-parameters.md, rendered from the preprod-public deployment profile.",
+      "generators": [
+        "demo/midgard-core/scripts/sync-public-testnet-parameters-doc.mjs"
+      ],
+      "packageScripts": [
+        "demo/midgard-core:docs:public-testnet-parameters:sync",
+        "demo/midgard-core:docs:public-testnet-parameters:check"
+      ],
+      "producers": [],
+      "inputs": ["config/deployments/preprod-public.yaml"],
+      "outputs": ["docs/public-testnet-parameters.md"],
+      "sync": {
+        "run": "pnpm --dir demo/midgard-core run docs:public-testnet-parameters:sync"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-core run docs:public-testnet-parameters:check"
+      },
+      "ci": {
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Check public testnet parameter table"
+      }
+    },
+    {
       "id": "required-checks-doc",
       "kind": "doc",
       "summary": "docs/agents/required-checks.md, rendered from the preflight check registry.",
