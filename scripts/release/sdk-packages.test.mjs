@@ -1,16 +1,22 @@
 import assert from "node:assert/strict";
 import {
   cpSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
+  rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 
+import { vendoredSourceNotice } from "./pack-files.mjs";
 import {
+  checkPublishSet,
   forbiddenPackedPath,
   loadableSpecifiers,
   loadFailures,
@@ -19,9 +25,15 @@ import {
   parseArguments,
   publishedExport,
   publishedExports,
+  typesCheck,
   unpublishableSpecifier,
   vendoredImportProblems,
 } from "./sdk-packages.mjs";
+
+const repositoryRoot = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "../..",
+);
 
 const publishNames = new Set(["@al-ft/a", "@al-ft/b"]);
 const workspaceExports = () => ({
@@ -268,15 +280,16 @@ test("finds private key material in packed files", () => {
 });
 
 // A workspace package whose `#vendored` import names the installed
-// @x/vendored, and the tarball root a correct pack of it extracts to.
-const vendoredFixture = () => {
+// `dependency`, and the tarball root a correct pack of it extracts to.
+const vendoredFixture = (dependency = "@x/vendored") => {
   const base = mkdtempSync(join(tmpdir(), "sdk-packages-vendored-"));
-  const installed = join(base, "store/@x/vendored");
+  const installed = join(base, "store", dependency);
+  const directory = `vendor/${dependency.split("/").pop()}`;
   mkdirSync(join(installed, "dist"), { recursive: true });
   writeFileSync(
     join(installed, "package.json"),
     JSON.stringify({
-      name: "@x/vendored",
+      name: dependency,
       type: "module",
       exports: {
         ".": { types: "./dist/index.d.ts", import: "./dist/index.js" },
@@ -287,20 +300,25 @@ const vendoredFixture = () => {
   writeFileSync(join(installed, "dist/index.js"), "export const root = 1;\n");
   writeFileSync(join(installed, "dist/index.d.ts"), "export const root: 1;\n");
   const workspace = join(base, "workspace");
-  mkdirSync(join(workspace, "node_modules/@x"), { recursive: true });
-  symlinkSync(installed, join(workspace, "node_modules/@x/vendored"), "dir");
+  mkdirSync(join(workspace, "node_modules", dependency, ".."), {
+    recursive: true,
+  });
+  symlinkSync(installed, join(workspace, "node_modules", dependency), "dir");
   writeFileSync(
     join(workspace, "package.json"),
-    JSON.stringify({ imports: { "#vendored": "@x/vendored" } }),
+    JSON.stringify({ imports: { "#vendored": dependency } }),
   );
   const packed = join(base, "packed");
-  cpSync(installed, join(packed, "vendor/vendored"), { recursive: true });
+  cpSync(installed, join(packed, directory), { recursive: true });
+  const notice = vendoredSourceNotice(dependency);
+  if (notice !== undefined)
+    writeFileSync(join(packed, directory, "SOURCE.md"), notice);
   const manifest = {
     ...cleanManifest(),
     imports: {
       "#vendored": {
-        types: "./vendor/vendored/dist/index.d.ts",
-        import: "./vendor/vendored/dist/index.js",
+        types: `./${directory}/dist/index.d.ts`,
+        import: `./${directory}/dist/index.js`,
       },
     },
     dependencies: { hash: "^2.1.4" },
@@ -339,6 +357,128 @@ test("a vendored package import needs its export map and its dependencies", () =
     ),
     ["vendored @x/vendored is not in the tarball"],
   );
+});
+
+test("the vendored Merkle Patricia Forestry ships its source notice", () => {
+  const { workspace, packed, manifest } = vendoredFixture(
+    "@aiken-lang/merkle-patricia-forestry",
+  );
+  assert.deepEqual(vendoredImportProblems(packed, manifest, workspace), []);
+  writeFileSync(
+    join(packed, "vendor/merkle-patricia-forestry/SOURCE.md"),
+    "# Source\n",
+  );
+  const problem =
+    "vendor/merkle-patricia-forestry/SOURCE.md is missing or is not the source notice of the vendored @aiken-lang/merkle-patricia-forestry";
+  assert.deepEqual(vendoredImportProblems(packed, manifest, workspace), [
+    problem,
+  ]);
+  rmSync(join(packed, "vendor/merkle-patricia-forestry/SOURCE.md"));
+  assert.deepEqual(vendoredImportProblems(packed, manifest, workspace), [
+    problem,
+  ]);
+});
+
+// A repository root whose SDK package has `tsc` as its TypeScript 5.8
+// compiler and, unless `typesNode` is false, an installed @types/node.
+const typesFixture = (tsc, { typesNode = true } = {}) => {
+  const root = mkdtempSync(join(tmpdir(), "sdk-packages-types-"));
+  const sdk = join(root, "demo/midgard-sdk");
+  mkdirSync(join(sdk, "node_modules/typescript-5-8/bin"), { recursive: true });
+  writeFileSync(join(sdk, "package.json"), '{"name":"@al-ft/midgard-sdk"}\n');
+  writeFileSync(join(sdk, "node_modules/typescript-5-8/bin/tsc"), tsc);
+  if (typesNode)
+    mkdirSync(join(sdk, "node_modules/@types/node"), { recursive: true });
+  const installRoot = join(root, "install");
+  mkdirSync(join(installRoot, "node_modules"), { recursive: true });
+  return { root, installRoot };
+};
+
+const fakeTsc = (stdout, status) =>
+  `process.stdout.write(${JSON.stringify(stdout)});\nprocess.exitCode = ${status};\n`;
+
+test("the type probe reports a compiler failure that names no error", () => {
+  const { root, installRoot } = typesFixture(
+    fakeTsc("tsc ran out of memory\n", 134),
+  );
+  assert.deepEqual(typesCheck(root, installRoot, []), [
+    "types: tsc exited 134 without reporting an error; output tail:\ntsc ran out of memory",
+  ]);
+});
+
+test("the type probe reports errors in the probe, the publish set and no file, not third-party ones", () => {
+  const { root, installRoot } = typesFixture(
+    fakeTsc(
+      [
+        "error TS2688: Cannot find type definition file for 'node'.",
+        "cjs.cts(1,1): error TS1479: The current file is a CommonJS module.",
+        "../node_modules/@al-ft/midgard-sdk/dist/index.d.cts(2,3): error TS2304: Cannot find name 'x'.",
+        "../node_modules/@al-ft/midgard-validation/vendor/merkle-patricia-forestry/dist/trie.d.ts(99,16): error TS2304: Cannot find name 'bool'.",
+        "../node_modules/effect/dist/index.d.ts(1,1): error TS2304: Cannot find name 'y'.",
+        "",
+      ].join("\n"),
+      2,
+    ),
+  );
+  assert.deepEqual(typesCheck(root, installRoot, []), [
+    "types: error TS2688: Cannot find type definition file for 'node'.",
+    "types: cjs.cts(1,1): error TS1479: The current file is a CommonJS module.",
+    "types: ../node_modules/@al-ft/midgard-sdk/dist/index.d.cts(2,3): error TS2304: Cannot find name 'x'.",
+  ]);
+  const thirdPartyOnly = typesFixture(
+    fakeTsc(
+      "../node_modules/effect/dist/index.d.ts(1,1): error TS2304: Cannot find name 'y'.\n",
+      2,
+    ),
+  );
+  assert.deepEqual(
+    typesCheck(thirdPartyOnly.root, thirdPartyOnly.installRoot, []),
+    [],
+  );
+});
+
+test("the type probe reports an @types/node it cannot link", () => {
+  const { root, installRoot } = typesFixture(fakeTsc("", 0), {
+    typesNode: false,
+  });
+  assert.deepEqual(typesCheck(root, installRoot, []), [
+    "types: dependency @types/node is not installed in the workspace",
+  ]);
+});
+
+test("a failed pack leaves no licence or vendored copy in the package", () => {
+  const root = mkdtempSync(join(tmpdir(), "sdk-packages-failed-pack-"));
+  const packFiles = join(repositoryRoot, "scripts/release/pack-files.mjs");
+  const { packageManager } = JSON.parse(
+    readFileSync(join(repositoryRoot, "demo/package.json"), "utf8"),
+  );
+  const installed = join(root, "store/@x/vendored");
+  mkdirSync(installed, { recursive: true });
+  writeFileSync(join(installed, "package.json"), '{"name":"@x/vendored"}\n');
+  const packageDir = join(root, "demo/midgard-core");
+  mkdirSync(join(packageDir, "dist"), { recursive: true });
+  mkdirSync(join(packageDir, "node_modules/@x"), { recursive: true });
+  symlinkSync(installed, join(packageDir, "node_modules/@x/vendored"), "dir");
+  writeFileSync(join(packageDir, "dist/index.js"), "export {};\n");
+  writeFileSync(
+    join(packageDir, "package.json"),
+    JSON.stringify({
+      name: "@al-ft/midgard-core",
+      version: "0.1.0",
+      packageManager,
+      imports: { "#vendored": "@x/vendored" },
+      scripts: {
+        prepack: `node ${JSON.stringify(packFiles)} copy && node -e "process.exit(1)"`,
+        postpack: `node ${JSON.stringify(packFiles)} remove`,
+      },
+    }),
+  );
+  assert.throws(
+    () => checkPublishSet({ root, output: join(root, "check") }),
+    /pnpm pack .*failed/u,
+  );
+  assert.equal(existsSync(join(packageDir, "LICENSE")), false);
+  assert.equal(existsSync(join(packageDir, "vendor")), false);
 });
 
 const writePackage = (installRoot, name, manifest, files) => {

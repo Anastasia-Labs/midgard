@@ -3,10 +3,10 @@
 // tarballs before anything is published: the packed manifest must name only
 // published dependencies, every export must be the registry form of its
 // workspace export (publishConfig) and resolve to a shipped file, each tarball
-// must carry the LICENSE and any vendored package import byte for byte (see
-// pack-files.mjs), no test, fixture or secret may ride along, and every export
-// must load by package name through ESM import, CommonJS require and NodeNext
-// types.
+// must carry the LICENSE and any vendored package import byte for byte with
+// its source notice (see pack-files.mjs), no test, fixture or secret may ride
+// along, and every export must load by package name through ESM import,
+// CommonJS require and NodeNext types.
 // Nothing here publishes; the checked tarballs and their hashes are the input
 // to the manual publish steps in docs/deployment-release-tooling.md.
 import { spawnSync } from "node:child_process";
@@ -23,7 +23,13 @@ import {
 import { createRequire } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { treeDifferences, vendoredImports } from "./pack-files.mjs";
+import {
+  removePackFiles,
+  SOURCE_NOTICE,
+  vendoredCopyDifferences,
+  vendoredImports,
+  vendoredSourceNotice,
+} from "./pack-files.mjs";
 
 export const PUBLISH_SET = Object.freeze([
   { name: "@al-ft/midgard-core", dir: "demo/midgard-core" },
@@ -271,9 +277,10 @@ const rebased = (node, directory) =>
  * Problems with the vendored package imports (see pack-files.mjs) of the
  * workspace package in `workspaceDir`, packed and extracted to `packageRoot`
  * with `manifest`: the tarball must carry the installed package byte for
- * byte, the packed `imports` entry must be that package's own export map
- * under its vendored directory, and every dependency of the vendored package
- * must be a dependency of the published one.
+ * byte with its source notice, if it needs one, the packed `imports` entry
+ * must be that package's own export map under its vendored directory, and
+ * every dependency of the vendored package must be a dependency of the
+ * published one.
  */
 export const vendoredImportProblems = (packageRoot, manifest, workspaceDir) =>
   vendoredImports(workspaceDir).flatMap(
@@ -301,9 +308,11 @@ export const vendoredImportProblems = (packageRoot, manifest, workspaceDir) =>
       if (!existsSync(copy))
         problems.push(`vendored ${dependency} is not in the tarball`);
       else
-        for (const file of treeDifferences(installed, copy))
+        for (const file of vendoredCopyDifferences(installed, copy, dependency))
           problems.push(
-            `${directory}/${file} differs from the installed ${dependency}`,
+            file === SOURCE_NOTICE && vendoredSourceNotice(dependency)
+              ? `${directory}/${SOURCE_NOTICE} is missing or is not the source notice of the vendored ${dependency}`
+              : `${directory}/${file} differs from the installed ${dependency}`,
           );
       for (const name of Object.keys(vendored.dependencies ?? {}))
         if (manifest.dependencies?.[name] === undefined)
@@ -395,11 +404,26 @@ const linkDependency = (installModules, packageDir, dependency, problems) => {
   symlinkSync(realpathSync(source), link, "dir");
 };
 
-const typesCheck = (root, installRoot, packages) => {
-  const requireFromSdk = createRequire(
-    join(root, "demo/midgard-sdk/package.json"),
+const OUTPUT_TAIL_LINES = 20;
+
+/**
+ * Type-checks every typed export of `packages`, installed under
+ * `installRoot`, by package name from an ES module and a CommonJS module,
+ * with the TypeScript 5.8 compiler and `@types/node` of the SDK workspace
+ * package under `root`. Returns the problems, each prefixed `types:`.
+ */
+export const typesCheck = (root, installRoot, packages) => {
+  const sdkDir = join(root, "demo/midgard-sdk");
+  const tsc = createRequire(join(sdkDir, "package.json")).resolve(
+    "typescript-5-8/bin/tsc",
   );
-  const tsc = requireFromSdk.resolve("typescript/bin/tsc");
+  const problems = [];
+  linkDependency(
+    join(installRoot, "node_modules"),
+    sdkDir,
+    "@types/node",
+    problems,
+  );
   const probe = join(installRoot, "types-probe");
   mkdirSync(probe);
   const specifiers = packages.flatMap(({ name, manifest }) =>
@@ -445,20 +469,38 @@ const typesCheck = (root, installRoot, packages) => {
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
   });
-  // Third-party declarations are their owners' concern, a vendored copy's as
-  // much as an installed one's; only errors in the probe files or in the
-  // publish set's own declarations are ours.
-  return result.status === 0
-    ? []
-    : result.stdout
-        .split("\n")
+  if (result.status !== 0) {
+    // Third-party declarations are their owners' concern, a vendored copy's as
+    // much as an installed one's; only errors in the probe files, in the
+    // publish set's own declarations or in no file (the compiler's own
+    // inputs) are ours. A failure that printed no error at all (a crash) is
+    // reported as tsc printed it.
+    const errors = (result.stdout ?? "")
+      .split("\n")
+      .filter((line) => /error TS[0-9]+/u.test(line));
+    problems.push(
+      ...errors
         .filter(
           (line) =>
-            /error TS[0-9]+/u.test(line) &&
-            /^(?:esm\.mts|cjs\.cts|\.\.\/node_modules\/@al-ft\/)/u.test(line) &&
-            !/^\.\.\/node_modules\/@al-ft\/[^/]+\/vendor\//u.test(line),
+            /^(?:error TS|esm\.mts|cjs\.cts|\.\.\/node_modules\/@al-ft\/)/u.test(
+              line,
+            ) && !/^\.\.\/node_modules\/@al-ft\/[^/]+\/vendor\//u.test(line),
         )
-        .map((line) => `types: ${line.trim()}`);
+        .map((line) => line.trim()),
+    );
+    if (errors.length === 0) {
+      const tail =
+        `${result.stdout ?? ""}\n${result.stderr ?? ""}\n${result.error?.message ?? ""}`
+          .split("\n")
+          .map((line) => line.trimEnd())
+          .filter((line) => line !== "")
+          .slice(-OUTPUT_TAIL_LINES);
+      problems.push(
+        `tsc exited ${result.status ?? result.signal} without reporting an error; output tail:\n${tail.join("\n")}`,
+      );
+    }
+  }
+  return problems.map((problem) => `types: ${problem}`);
 };
 
 /** Packs, extracts and checks the publish set into the new `output` directory. */
@@ -481,10 +523,16 @@ export const checkPublishSet = ({ root, output, types = true }) => {
     if (!existsSync(join(packageDir, "dist")))
       throw new Error(`${name} is not built; build it before packing`);
     const before = new Set(readdirSync(tarballs));
-    run(
-      ["corepack", "pnpm", "pack", "--pack-destination", tarballs],
-      packageDir,
-    );
+    // pnpm skips `postpack` when the pack fails, so the files `prepack` put
+    // into the package are removed here whatever happens.
+    try {
+      run(
+        ["corepack", "pnpm", "pack", "--pack-destination", tarballs],
+        packageDir,
+      );
+    } finally {
+      removePackFiles(packageDir);
+    }
     const [tarball] = readdirSync(tarballs).filter((file) => !before.has(file));
     const tarballPath = join(tarballs, tarball);
     const extracted = join(installModules, name);
@@ -529,12 +577,6 @@ export const checkPublishSet = ({ root, output, types = true }) => {
             dependency,
             pkg.problems,
           );
-  linkDependency(
-    installModules,
-    join(root, "demo/midgard-sdk"),
-    "@types/node",
-    [],
-  );
   for (const pkg of packages)
     for (const mode of ["import", "require"])
       pkg.problems.push(

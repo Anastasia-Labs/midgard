@@ -119,9 +119,20 @@ release candidate; these steps are prepared and have not been run.
    installed from [the vendored tarball](../demo/vendor/README.md); for the pack
    the script copies the installed package to `vendor/merkle-patricia-forestry/`,
    where validation's published `imports` entry points, so the registry package
-   runs the vendored code beside its MPL-2.0 licence. The check compares that
-   copy byte for byte with the installed package and requires its dependencies
-   in validation's own.
+   runs the vendored code beside its MPL-2.0 licence, and writes a `SOURCE.md`
+   there that names where the modified source is. Validation's licence is
+   therefore `Apache-2.0 AND MPL-2.0`. The check compares that copy byte for
+   byte with the installed package, requires the `SOURCE.md`, and requires the
+   copy's dependencies in validation's own. Validation lists the package only
+   as a dev dependency, so any workspace app that loads validation at runtime
+   must declare `@aiken-lang/merkle-patricia-forestry` in its own
+   `dependencies`. Registry consumers get the unpatched `blake2b`: the output
+   is identical; only speed differs.
+
+   The published packages need Node.js 22.12.0 or newer (their `engines`
+   field), the lowest version CI-tested with `require(esm)` on by default, and
+   TypeScript 5.8 or newer for CommonJS consumers. The type check runs
+   TypeScript 5.8 from the SDK's `typescript-5-8` dev dependency.
 
 4. Publish exactly the checked tarballs, in dependency order: core, validation,
    SDK, then lucid-midgard. Compare each digest with the receipt first;

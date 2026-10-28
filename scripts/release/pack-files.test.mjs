@@ -16,22 +16,31 @@ import {
   copyPackFiles,
   removePackFiles,
   treeDifferences,
+  vendoredSourceNotice,
 } from "./pack-files.mjs";
 
 const repositoryLicense = readFileSync(
   resolve(dirname(fileURLToPath(import.meta.url)), "../../LICENSE"),
 );
 
-// A package whose `#vendored` import names its installed @x/vendored.
-const packageFixture = (imports = { "#vendored": "@x/vendored" }) => {
+// A package whose `#vendored` import names its installed `dependency`.
+const packageFixture = (
+  imports = { "#vendored": "@x/vendored" },
+  dependency = "@x/vendored",
+) => {
   const base = mkdtempSync(join(tmpdir(), "pack-files-"));
-  const installed = join(base, "store/@x/vendored");
+  const installed = join(base, "store", dependency);
   mkdirSync(join(installed, "dist"), { recursive: true });
-  writeFileSync(join(installed, "package.json"), '{"name":"@x/vendored"}\n');
+  writeFileSync(
+    join(installed, "package.json"),
+    JSON.stringify({ name: dependency }),
+  );
   writeFileSync(join(installed, "dist/index.js"), "export const root = 1;\n");
   const packageDir = join(base, "package");
-  mkdirSync(join(packageDir, "node_modules/@x"), { recursive: true });
-  symlinkSync(installed, join(packageDir, "node_modules/@x/vendored"), "dir");
+  mkdirSync(join(packageDir, "node_modules", dependency, ".."), {
+    recursive: true,
+  });
+  symlinkSync(installed, join(packageDir, "node_modules", dependency), "dir");
   writeFileSync(join(packageDir, "package.json"), JSON.stringify({ imports }));
   return { installed, packageDir };
 };
@@ -50,6 +59,35 @@ test("copies the licence and each vendored import for the pack, then removes the
   removePackFiles(packageDir);
   assert.equal(existsSync(join(packageDir, "LICENSE")), false);
   assert.equal(existsSync(join(packageDir, "vendor")), false);
+});
+
+test("the vendored Merkle Patricia Forestry gets its source notice for the pack", () => {
+  const dependency = "@aiken-lang/merkle-patricia-forestry";
+  const { installed, packageDir } = packageFixture(
+    { "#merkle-patricia-forestry": dependency },
+    dependency,
+  );
+  const copy = join(packageDir, "vendor/merkle-patricia-forestry");
+  copyPackFiles(packageDir);
+  const notice = readFileSync(join(copy, "SOURCE.md"), "utf8");
+  assert.equal(notice, vendoredSourceNotice(dependency));
+  assert.match(
+    notice,
+    /https:\/\/github\.com\/Anastasia-Labs\/midgard\/tree\/main\/demo\/vendor\/mpf-source/u,
+  );
+  assert.match(notice, /MPL-2\.0/u);
+  assert.deepEqual(treeDifferences(installed, copy), ["SOURCE.md"]);
+  copyPackFiles(packageDir);
+  removePackFiles(packageDir);
+  assert.equal(existsSync(join(packageDir, "vendor")), false);
+
+  copyPackFiles(packageDir);
+  writeFileSync(join(copy, "SOURCE.md"), "another notice\n");
+  removePackFiles(packageDir);
+  assert.equal(
+    readFileSync(join(copy, "SOURCE.md"), "utf8"),
+    "another notice\n",
+  );
 });
 
 test("a package without vendored imports gets only the licence", () => {

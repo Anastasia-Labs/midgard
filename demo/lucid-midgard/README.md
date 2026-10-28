@@ -4,6 +4,10 @@ Midgard-native L2 transaction builder primitives inspired by lucid-evolution.
 The library builds and signs Midgard native canonical transaction bytes; it does
 not build or submit Cardano transactions.
 
+## Requirements
+
+Node.js 22.12.0 or newer, and TypeScript 5.8 or newer for CommonJS consumers.
+
 ## Quickstart
 
 ```ts

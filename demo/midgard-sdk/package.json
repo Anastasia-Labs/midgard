@@ -67,6 +67,9 @@
     "url": "git+https://github.com/Anastasia-Labs/midgard.git",
     "directory": "demo/midgard-sdk"
   },
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "devDependencies": {
     "@aiken-lang/merkle-patricia-forestry": "github:Anastasia-Labs/merkle-patricia-forestry#b139785f7c118854f9824c26cc443e2df95cb50e&path:/off-chain",
     "@al-ft/midgard-test-support": "workspace:*",
@@ -84,6 +87,7 @@
     "ts-node": "^10.9.2",
     "tsup": "^8.4.0",
     "typescript": "^5.7.3",
+    "typescript-5-8": "npm:typescript@5.8.3",
     "vitest": "5.0.3"
   },
   "directories": {

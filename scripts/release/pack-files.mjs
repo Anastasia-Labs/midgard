@@ -10,6 +10,8 @@
 //   installs from the patched tarball in vendor/). The installed package is
 //   copied verbatim to `vendor/<name>/`, where the entry's `publishConfig`
 //   form points, so the registry package runs exactly the vendored code.
+//   A vendored package under a licence that requires it gets a `SOURCE.md`
+//   beside it that says where its modified source is.
 //
 // A LICENSE or vendored copy that differs from what `copy` would write is
 // never replaced or deleted.
@@ -21,6 +23,7 @@ import {
   realpathSync,
   rmSync,
   statSync,
+  writeFileSync,
 } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -54,6 +57,40 @@ export const treeDifferences = (left, right) => {
         !rightFiles.has(file) ||
         !readFileSync(join(left, file)).equals(readFileSync(join(right, file))),
     );
+};
+
+/** The notice file `copy` writes beside a vendored package that needs one. */
+export const SOURCE_NOTICE = "SOURCE.md";
+
+const SOURCE_NOTICES = {
+  "@aiken-lang/merkle-patricia-forestry": `# Source
+
+This directory is a modified copy of \`@aiken-lang/merkle-patricia-forestry\`.
+The modified source is at
+https://github.com/Anastasia-Labs/midgard/tree/main/demo/vendor/mpf-source.
+The files in this directory are under the Mozilla Public License 2.0
+(MPL-2.0); see LICENSE.
+`,
+};
+
+/** The `SOURCE.md` text for the vendored `dependency`, or undefined. */
+export const vendoredSourceNotice = (dependency) => SOURCE_NOTICES[dependency];
+
+/**
+ * Paths under the vendored copy `copy` of `dependency`, installed at
+ * `installed`, that are not what `copy` would write: the installed package
+ * byte for byte plus its source notice, if it has one.
+ */
+export const vendoredCopyDifferences = (installed, copy, dependency) => {
+  const notice = vendoredSourceNotice(dependency);
+  if (notice === undefined) return treeDifferences(installed, copy);
+  const differences = treeDifferences(installed, copy).filter(
+    (file) => file !== SOURCE_NOTICE,
+  );
+  const noticePath = join(copy, SOURCE_NOTICE);
+  return existsSync(noticePath) && readFileSync(noticePath, "utf8") === notice
+    ? differences
+    : [...differences, SOURCE_NOTICE];
 };
 
 /** Where `copy` puts the package an `imports` entry names. */
@@ -99,9 +136,14 @@ export const copyPackFiles = (packageDir) => {
     if (installed === undefined)
       throw new Error(`${dependency} is not installed in ${packageDir}`);
     const target = join(packageDir, directory);
-    if (!existsSync(target))
+    if (!existsSync(target)) {
       cpSync(installed, target, { recursive: true, dereference: true });
-    else if (treeDifferences(installed, target).length > 0)
+      const notice = vendoredSourceNotice(dependency);
+      if (notice !== undefined)
+        writeFileSync(join(target, SOURCE_NOTICE), notice);
+    } else if (
+      vendoredCopyDifferences(installed, target, dependency).length > 0
+    )
       throw new Error(`${target} differs from the installed ${dependency}`);
   }
 };
@@ -110,12 +152,14 @@ export const copyPackFiles = (packageDir) => {
 export const removePackFiles = (packageDir) => {
   const license = join(packageDir, "LICENSE");
   if (existsSync(license) && sameAsRepository(license)) rmSync(license);
-  for (const { installed, directory } of vendoredImports(packageDir)) {
+  for (const { dependency, installed, directory } of vendoredImports(
+    packageDir,
+  )) {
     const target = join(packageDir, directory);
     if (
       installed !== undefined &&
       existsSync(target) &&
-      treeDifferences(installed, target).length === 0
+      vendoredCopyDifferences(installed, target, dependency).length === 0
     ) {
       rmSync(target, { recursive: true });
       const parent = dirname(target);

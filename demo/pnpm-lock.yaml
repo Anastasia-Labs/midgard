@@ -813,6 +813,9 @@ importers:
       typescript:
         specifier: ^5.7.3
         version: 5.7.3
+      typescript-5-8:
+        specifier: npm:typescript@5.8.3
+        version: typescript@5.8.3
       vitest:
         specifier: 5.0.3
         version: 5.0.3(@opentelemetry/api@1.9.0)(@types/node@22.19.17)(vite@6.4.2(@types/node@22.19.17)(yaml@2.9.0))
@@ -3224,6 +3227,11 @@ packages:
 
   typescript@5.7.3:
     resolution: {integrity: sha512-84MVSjMEHP+FQRPy3pX9sTVV/INIex71s9TL2Gm5FG/WG1SqXeKyZ0k7/blY/4FdOzI12CBy1vGc4og/eus0fw==}
+    engines: {node: '>=14.17'}
+    hasBin: true
+
+  typescript@5.8.3:
+    resolution: {integrity: sha512-p1diW6TqL9L07nNxvRMM7hMMw4c5XOo/1ibL4aAIGmSAt9slTE1Xgw5KWuof2uTOvCg9BY7ZRi+GaF+7sfgPeQ==}
     engines: {node: '>=14.17'}
     hasBin: true
 
@@ -5777,6 +5785,8 @@ snapshots:
       - supports-color
 
   typescript@5.7.3: {}
+
+  typescript@5.8.3: {}
 
   uint8-varint@2.0.5:
     dependencies:

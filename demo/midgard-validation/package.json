@@ -443,11 +443,14 @@
     "validation"
   ],
   "author": "Anastasia Labs",
-  "license": "Apache-2.0",
+  "license": "Apache-2.0 AND MPL-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Anastasia-Labs/midgard.git",
     "directory": "demo/midgard-validation"
+  },
+  "engines": {
+    "node": ">=22.12.0"
   },
   "dependencies": {
     "@al-ft/midgard-core": "workspace:*",
