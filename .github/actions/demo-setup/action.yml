@@ -74,6 +74,13 @@ runs:
         else
           pnpm --dir demo install --frozen-lockfile
         fi
+    # The contrib recipes launch pnpm through corepack, which downloads the
+    # pinned pnpm on first use; the action above installs pnpm on its own, so
+    # that download would otherwise land inside a recipe's bounded version
+    # check. Fetch it here, once, with no bound.
+    - name: Fetch corepack's pinned pnpm
+      shell: bash
+      run: cd demo && corepack pnpm --version
     - name: Pinned Aiken
       if: inputs.aiken == 'true' || inputs.blueprint == 'true' || inputs.interactive-blueprint == 'true' || inputs.traced-blueprints == 'true'
       uses: ./.github/actions/aiken
