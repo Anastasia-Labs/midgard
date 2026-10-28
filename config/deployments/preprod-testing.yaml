@@ -12,7 +12,6 @@ l1_finality:
   slot_length_ms: 1000
 timing:
   block_maturity_ms: 900000
-  dispute_response_window_ms: 60000
   # Validation-trace chess clock (pd-design §6.3). Each side's cumulative budget C,
   # the longest dispute-move validity range L_d, and the resolution allowance R.
   # PROJECTED: provisional values until the deployment checks fix them.

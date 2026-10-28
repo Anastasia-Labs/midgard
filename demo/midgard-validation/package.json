@@ -161,7 +161,12 @@
     }
   },
   "imports": {
-    "#merkle-patricia-forestry": "@aiken-lang/merkle-patricia-forestry"
+    "#merkle-patricia-forestry": {
+      "midgard-source": "@aiken-lang/merkle-patricia-forestry",
+      "types": "./vendor/merkle-patricia-forestry/dist/index.d.ts",
+      "import": "./vendor/merkle-patricia-forestry/dist/index.js",
+      "require": "./vendor/merkle-patricia-forestry/dist/index.cjs"
+    }
   },
   "publishConfig": {
     "exports": {
@@ -395,7 +400,7 @@
     }
   },
   "scripts": {
-    "clean": "rimraf dist",
+    "clean": "rimraf dist vendor",
     "build": "node ../../scripts/contrib.mjs build --package @al-ft/midgard-validation",
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix",
@@ -486,6 +491,12 @@
       "steps": [
         {
           "command": [
+            "node",
+            "../scripts/lib/vendored-imports.mjs"
+          ]
+        },
+        {
+          "command": [
             "tsup",
             "src/index.ts",
             "src/cek-builtin.ts",
@@ -522,7 +533,8 @@
         }
       ],
       "outputs": [
-        "dist"
+        "dist",
+        "vendor"
       ],
       "prerequisites": [
         {

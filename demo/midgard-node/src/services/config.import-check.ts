@@ -1,4 +1,8 @@
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
+import {
+  type DeploymentProfileName,
+  SELECTED_DEPLOYMENT_PROFILE,
+} from "@al-ft/midgard-core/deployment-profile";
 import { Config } from "effect";
 
 import { boundedValidationInteger } from "./config.node-config-dep.js";
@@ -51,8 +55,10 @@ import { boundedValidationInteger } from "./config.node-config-dep.js";
  * admission is idle (a warning is logged).
  *
  * `openerMarginMs` is the time a challenge opener needs before an entry's
- * deadline: its two transactions, each within the dispute response window
- * (the default). `unverified_near_deadline` fires when the backlog's
+ * deadline, the on-chain case open deadline `block_end + M/2`
+ * (`../import-check/deadline.ts`), to land its Init, Open and VerifySource
+ * transactions (default `OPENER_MARGIN_MS_BY_PROFILE` for the compiled
+ * profile; no profile parameter bounds it). `unverified_near_deadline` fires when the backlog's
  * projected completion of the unrun entries runs past a deadline minus this
  * margin, over the pool's clamped backlog share (with none, at every
  * deadline). Faulted entries are not projected: each already raised
@@ -68,6 +74,18 @@ export type ImportCheckConfig = Readonly<{
   openerMarginMs: number;
 }>;
 
+// Room before the case open deadline (block_end + M/2) for an opener's Init,
+// Open and VerifySource to land; the values are the pre-removal per-profile
+// margins (twice the former dispute response window).
+const OPENER_MARGIN_MS_BY_PROFILE = {
+  mainnet: 600_000,
+  "preprod-public": 600_000,
+  "preprod-testing": 120_000,
+  "local-devnet-testing": 120_000,
+  "preprod-emulator-testing": 120_000,
+  "preprod-emulator-curated": 120_000,
+} as const satisfies Record<DeploymentProfileName, number>;
+
 const HALF_MATURITY_MS = Math.floor(
   MIDGARD_CONSENSUS_PROFILE.limits.blockMaturityMs / 2,
 );
@@ -79,8 +97,7 @@ export const DEFAULT_IMPORT_CHECK_CONFIG: ImportCheckConfig = {
   blockCapMs: 20_000,
   negativeCacheTtlMs: HALF_MATURITY_MS,
   backlogWorkers: 1,
-  openerMarginMs:
-    2 * MIDGARD_CONSENSUS_PROFILE.limits.validationDisputeResponseWindowMs,
+  openerMarginMs: OPENER_MARGIN_MS_BY_PROFILE[SELECTED_DEPLOYMENT_PROFILE.name],
 };
 
 export const importCheckConfig: Config.Config<ImportCheckConfig> = Config.all({

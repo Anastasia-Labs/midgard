@@ -240,7 +240,6 @@ export type DeploymentManifest = {
   >;
   readonly validationDispute: {
     readonly version: number;
-    readonly responseWindowMs: number;
     readonly maxBisectionRounds: number;
     readonly maturityMs: number;
   };

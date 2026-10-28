@@ -766,6 +766,34 @@ test("computed CLI paths execute newly prepared and stale rebuilt outputs", asyn
   );
 });
 
+test("a prerequisite that builds several output directories passes when none of them change", async (t) => {
+  // midgard-validation emits dist and vendor; the post-run check once hashed
+  // only dist against a stamp of both, so every run failed with "artifacts
+  // changed during test".
+  const { root, env } = workspace(
+    t,
+    {
+      command: ["vitest", "run"],
+      prerequisites: [{ kind: "build", package: "example" }],
+    },
+    { "a.test.ts": "" },
+  );
+  const manifest = resolve(root, "demo/example/package.json");
+  const pkg = JSON.parse(readFileSync(manifest, "utf8"));
+  pkg.midgardTasks.build = {
+    steps: [{ command: ["node", "scripts/build.mjs"] }],
+    outputs: ["dist", "vendor"],
+  };
+  atomicJson(manifest, pkg);
+  mkdirSync(resolve(root, "demo/example/scripts"));
+  writeFileSync(
+    resolve(root, "demo/example/scripts/build.mjs"),
+    'import {mkdirSync,writeFileSync} from "node:fs"; for (const d of ["dist","vendor"]) { mkdirSync(d,{recursive:true}); writeFileSync(d + "/index.js", "export {};\\n"); }\n',
+  );
+  const receipt = await runTests(root, "example", { env });
+  assert.equal(receipt.status, "passed", receipt.reason ?? receipt.reportError);
+});
+
 test("task argv preserves shell characters and environment append values literally", (t) => {
   const root = fixture(t);
   const script = resolve(root, "echo.mjs");
@@ -833,9 +861,7 @@ test("guarded evidence stays incomplete for selected skips and todos and fails m
 test("ordinary package scripts preserve Vitest selectors, reporters, CI environment and native exit status", (t) => {
   const root = realpathSync(fixture(t));
   const cwd = resolve(root, "demo/example");
-  const vitest = realpathSync(
-    resolve(repository, "demo/node_modules/vitest"),
-  );
+  const vitest = realpathSync(resolve(repository, "demo/node_modules/vitest"));
   mkdirSync(resolve(cwd, "node_modules"));
   symlinkSync(vitest, resolve(cwd, "node_modules/vitest"));
   const manifest = resolve(cwd, "package.json");

@@ -36,14 +36,16 @@ At an interval of one transition, L1 authenticates both claimed post-state
 memberships and executes the validation-machine instruction from the agreed
 pre-state. Only a challenger win may finalize the computation thread into a
 fraud-proof token. Failure by the operator to make its required move before
-the deadline also selects the challenger. Dispute version 1 fixes a
-(300{,}000)-millisecond response window and 32 bisection rounds. The exact
-canonical V1 block maturity is seven days ((604{,}800{,}000) milliseconds), while
-the response schedule's derived minimum with a two-times reserve is
-(39{,}600{,}000) milliseconds. Opening rejects a challenge begun too late to
-finish before maturity. The deployment manifest must bind the exact dispute
-validator, response schedule, and seven-day maturity; any mismatch is
-unsupported.
+the deadline also selects the challenger. Dispute version 1 fixes 32
+bisection rounds. The exact canonical V1 block maturity is seven days
+((604{,}800{,}000) milliseconds). A case runs for at most two side clocks, two
+maximum validity ranges for each of its 67 charged moves (twice the rounds plus
+three), and the resolution allowance: (210{,}480{,}000) milliseconds on the
+public profiles. The least block maturity that leaves a case its post-game
+allowance is twice that plus one, (420{,}960{,}001) milliseconds. Opening
+rejects a challenge begun too late to finish before maturity. The deployment
+manifest must bind the dispute version, \code{maxBisectionRounds}, and the
+seven-day maturity; any mismatch is unsupported.
 
 Unknown or missing source fragments, languages, term tags, builtin tags,
 purposes, versions, integrity hashes, cost-model digests, or machine

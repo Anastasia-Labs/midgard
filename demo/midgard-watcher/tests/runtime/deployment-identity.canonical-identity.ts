@@ -220,8 +220,6 @@ export const canonicalIdentity = (): MutableRecord => {
     ),
     validationDispute: {
       version: MIDGARD_CONSENSUS_PROFILE.validationDisputeVersion,
-      responseWindowMs:
-        MIDGARD_CONSENSUS_PROFILE.limits.validationDisputeResponseWindowMs,
       maxBisectionRounds:
         MIDGARD_CONSENSUS_PROFILE.limits.maxValidationBisectionRounds,
       maturityMs: MIDGARD_CONSENSUS_PROFILE.limits.blockMaturityMs,

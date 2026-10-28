@@ -312,6 +312,17 @@ describe("V1 deployment manifest", () => {
     ).toThrow(/canonical V1 maturity/u);
   });
 
+  it("rejects a dispute schedule that carries the removed response window", () => {
+    const { manifestId: _manifestId, ...identity } = canonicalManifest();
+    const validationDispute = {
+      ...identity.validationDispute,
+      responseWindowMs: 300_000,
+    };
+    expect(() =>
+      parseDeploymentManifestValue(withId({ ...identity, validationDispute })),
+    ).toThrow(/validationDispute\.responseWindowMs is unexpected/u);
+  });
+
   it("rejects noncanonical release finality even with a recomputed identity", () => {
     const { manifestId: _manifestId, ...identity } = canonicalManifest();
     for (const l1Finality of [

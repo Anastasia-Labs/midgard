@@ -73,8 +73,8 @@ all generated from `config/deployments/*.yaml` and
 
 Checked with `diff` on 2026-09-26. The template part (script-hash pins, the
 user-events witness prefix, fixed constants) is identical in every env; what
-differs is the profile block: timing (block maturity, response window, shift
-and registration durations, DA attestation and response windows), economics
+differs is the profile block: timing (block maturity, shift and registration
+durations, DA attestation and response windows), economics
 (bond, slashing penalties, prover reward) and limits. For example
 `block_maturity_duration_v1` under `testnet` is `timing.block_maturity_ms` in
 `config/deployments/preprod-testing.yaml`, and `604_800_000` under the default

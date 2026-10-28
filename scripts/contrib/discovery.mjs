@@ -8,7 +8,7 @@ import {
   inputIdentity,
   atomicJson,
   runtimeBuildClosure,
-  outputIdentity,
+  buildOutputIdentity,
 } from "./files.mjs";
 import { realpathSync } from "node:fs";
 import { withResource } from "./resources.mjs";
@@ -109,10 +109,7 @@ export const checkBoundaries = async (
           ({ name, outputs }) =>
             checkBuild(root, name).status !== "fresh" ||
             outputs.sha256 !==
-              outputIdentity(
-                root,
-                `${packageByName(root, name).directory}/dist`,
-              ).sha256,
+              buildOutputIdentity(root, packageByName(root, name)).sha256,
         )
       ) {
         receipt.status = "failed";

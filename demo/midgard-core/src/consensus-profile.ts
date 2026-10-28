@@ -222,8 +222,6 @@ const MAX_REQUIRED_OBSERVER_COUNT = MAX_TX_SIZE_DERIVED_COLLECTION_ITEM_COUNT;
 // exactly as for `maxDistinctAssetCount` below.
 const TARGET_COINS_PER_UTXO_BYTE =
   SELECTED_DEPLOYMENT_PROFILE.limits.coins_per_utxo_byte;
-const VALIDATION_DISPUTE_RESPONSE_WINDOW_MS =
-  SELECTED_DEPLOYMENT_PROFILE.timing.dispute_response_window_ms;
 const MAX_VALIDATION_BISECTION_ROUNDS =
   SELECTED_DEPLOYMENT_PROFILE.limits.max_bisection_rounds;
 const PROOF_BLOCK_MATURITY_MS =
@@ -335,7 +333,6 @@ export const MIDGARD_CONSENSUS_LIMITS = Object.freeze({
   maxLedgerOperationCount: 40_000,
   maxValidationMachineStepCount: 0xffff_ffff,
   maxValidationBisectionRounds: MAX_VALIDATION_BISECTION_ROUNDS,
-  validationDisputeResponseWindowMs: VALIDATION_DISPUTE_RESPONSE_WINDOW_MS,
   minValidationDisputeMaturityMs: MIN_VALIDATION_DISPUTE_MATURITY_MS,
   blockMaturityMs: PROOF_BLOCK_MATURITY_MS,
   maxCanonicalTransactionBytesPerBlock: 16 * 1024 * 1024,

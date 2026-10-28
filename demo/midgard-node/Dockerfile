@@ -67,6 +67,7 @@ RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
 FROM workspace AS build
 # BEGIN GENERATED sources
 COPY scripts/package-tasks.mjs ./scripts/package-tasks.mjs
+COPY scripts/lib/vendored-imports.mjs ./scripts/lib/vendored-imports.mjs
 COPY l1-node-transport ./l1-node-transport
 COPY midgard-core ./midgard-core
 COPY midgard-validation ./midgard-validation

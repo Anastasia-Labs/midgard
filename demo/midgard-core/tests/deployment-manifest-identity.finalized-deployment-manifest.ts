@@ -97,6 +97,15 @@ describe("finalized deployment manifest", () => {
       /contracts\.escapeHatchSpend is unexpected/,
     ],
     [
+      "removed dispute response window",
+      (manifest: ReturnType<typeof finalizedManifest>) => {
+        Object.assign(manifest.validationDispute, {
+          responseWindowMs: 300_000,
+        });
+      },
+      /validationDispute\.responseWindowMs is unexpected/,
+    ],
+    [
       "reference publication",
       (manifest: ReturnType<typeof finalizedManifest>) => {
         manifest.referenceScripts["hub-oracle minting"].status = "pending";

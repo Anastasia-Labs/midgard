@@ -158,14 +158,12 @@ export const validateValidationDispute = (
 ): void => {
   requireExactKeys(
     candidate,
-    ["version", "responseWindowMs", "maxBisectionRounds", "maturityMs"],
+    ["version", "maxBisectionRounds", "maturityMs"],
     [],
     "validationDispute",
   );
   if (
     candidate.version !== MIDGARD_CONSENSUS_PROFILE.validationDisputeVersion ||
-    candidate.responseWindowMs !==
-      MIDGARD_CONSENSUS_PROFILE.limits.validationDisputeResponseWindowMs ||
     candidate.maxBisectionRounds !==
       MIDGARD_CONSENSUS_PROFILE.limits.maxValidationBisectionRounds
   ) {

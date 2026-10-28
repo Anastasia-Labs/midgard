@@ -1,5 +1,7 @@
 **/node_modules
 **/dist
+# Validation's build writes its vendored package copies, as it does dist.
+midgard-validation/vendor
 **/coverage
 **/target
 **/*.tgz

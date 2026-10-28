@@ -38,8 +38,6 @@ pub const user_events_witness_script_prefix: ByteArray =
 
 pub const block_maturity_duration_v1: Int = 604_800_000
 
-pub const response_window_milliseconds: Int = 300_000
-
 pub const dispute_side_clock_milliseconds: Int = 86_400_000
 
 pub const dispute_max_validity_range_milliseconds: Int = 120_000

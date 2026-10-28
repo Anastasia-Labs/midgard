@@ -17,7 +17,6 @@ timing:
   # transition-trace thread needs 6,308 L1 blocks (252,320,000 ms at twice the
   # mean interval).
   block_maturity_ms: 259200000
-  dispute_response_window_ms: 60000
   # Validation-trace chess clock (pd-design §6.3). Each side's cumulative budget C,
   # the longest dispute-move validity range L_d, and the resolution allowance R.
   # PROJECTED: provisional values until the deployment checks fix them.

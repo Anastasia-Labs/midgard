@@ -19,7 +19,7 @@ import {
   packageByName,
   buildClosure,
   sha256,
-  outputIdentity,
+  buildOutputIdentity,
   hashFiles,
 } from "./files.mjs";
 import { runProcess } from "./process.mjs";
@@ -452,8 +452,7 @@ export const runTests = async (
     ({ name, stamp }) =>
       checkBuild(root, name).status !== "fresh" ||
       stamp.outputs.sha256 !==
-        outputIdentity(root, `${packageByName(root, name).directory}/dist`)
-          .sha256,
+        buildOutputIdentity(root, packageByName(root, name)).sha256,
   );
   if (changedArtifacts.length)
     fail(
