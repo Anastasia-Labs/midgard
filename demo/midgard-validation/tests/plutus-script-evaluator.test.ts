@@ -10,6 +10,7 @@ import {
   type UPLCTerm,
   UPLCVar,
 } from "@harmoniclabs/uplc";
+import { apply_params_to_script } from "@lucid-evolution/uplc";
 import { describe, expect, it } from "vitest";
 
 import { storedFlatProgramBytes } from "../src/cek-program.unwrap-canonical-cbor-byte-string.js";
@@ -104,6 +105,22 @@ describe("the PV11 evaluator", () => {
     ["an open term", script(new UPLCVar(0))],
   ])("fails %s before running it", (_, scriptBytes) => {
     expectInvalid(evaluate(scriptBytes), "phase-two class");
+  });
+
+  it("a shallow evaluation after a trapping one still gets its verdict", () => {
+    // Parameters nested 100,001 lists deep: applying them to any script
+    // exhausts the wasm stack of the evaluator's package.
+    const deepParameters = Buffer.from("81".repeat(100_001) + "00", "hex");
+    const anyScript = Buffer.from("4e4d01000033222220051200120011", "hex");
+    // The first call can exhaust the JavaScript stack instead; a later one
+    // then traps.
+    for (let call = 0; call < 3; call += 1)
+      expect(() =>
+        // eslint-disable-next-line midgard/apply-params-through-blueprint -- The call only has to trap the evaluator's package; it never returns a script.
+        apply_params_to_script(deepParameters, anyScript),
+      ).toThrow();
+
+    expect(evaluate(script(new Lambda(UPLCConst.unit))).kind).toBe("accepted");
   });
 });
 

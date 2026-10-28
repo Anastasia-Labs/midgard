@@ -1,6 +1,6 @@
 # Dependency patches
 
-`@lucid-evolution__utils@0.2.4.patch` goes with the workspace overrides that
+`@lucid-evolution__utils@0.2.6.patch` goes with the workspace overrides that
 resolve `@lucid-evolution/utils`' `@harmoniclabs/uplc` and
 `@harmoniclabs/plutus-data` to the 2.x versions the rest of the workspace
 uses, instead of the 1.x versions utils declares. UPLC 2 `encodeUPLC` returns
