@@ -499,7 +499,6 @@ Generated document public-testnet-parameters matches its producer.
   - `docs/public-testnet-parameters.md`
   - `demo/midgard-core/src/**`
   - `demo/midgard-test-support/src/**`
-  - `demo/l1-node-transport/src/**`
 - Needs: `node-modules`
 
 ### `golden:native-tx-field-access-v1`
