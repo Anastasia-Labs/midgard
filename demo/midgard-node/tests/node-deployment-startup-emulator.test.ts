@@ -6,8 +6,6 @@
  * initialization, then the follower and the driver with the startup
  * preparation).
  */
-import "./helpers/follower-emulator-installed.js";
-
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { expect, it } from "vitest";
