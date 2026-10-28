@@ -80,3 +80,38 @@ identity against external roots, the mounted finalized manifest and provenance,
 and explicit expected source and role-image identities. Missing provenance,
 untrusted signers, signature/digest changes, and configuration mismatches are
 refused before binding a public listener.
+
+## SDK package publish
+
+The npm publish set is `@al-ft/midgard-core`, `@al-ft/midgard-validation`,
+`@al-ft/midgard-sdk` and `@al-ft/lucid-midgard`. The owner publishes them at a
+release candidate; these steps are prepared and have not been run.
+
+1. Set one exact version in all four `package.json` files on the release commit.
+2. Build the four packages from a clean install.
+3. Check the publish set:
+
+   ```sh
+   node scripts/release/sdk-packages.mjs --root /absolute/repository \
+     --output /absolute/new-check-directory
+   ```
+
+   The check packs each package, refuses workspace, file, link, git and URL
+   dependency specifiers, dependencies on unpublished workspace packages, tests,
+   fixtures and key material in a tarball, and exports that do not resolve. It
+   installs the tarballs together, imports and requires every export by package
+   name, and type-checks both module modes. It exits nonzero and lists each
+   problem until the set is publishable. Each run writes `receipt.json` with
+   the tarball SHA-256 digests; publish only from a receipt whose status is
+   `passed`.
+
+4. Publish exactly the checked tarballs, in dependency order: core, validation,
+   SDK, then lucid-midgard. Compare each digest with the receipt first;
+   repacking does not reproduce identical bytes.
+
+   ```sh
+   npm publish /absolute/new-check-directory/tarballs/<tarball>.tgz --access public
+   ```
+
+5. Install the published versions into an empty project and import each package
+   by name before announcing the release.

@@ -401,7 +401,12 @@
     "codec"
   ],
   "author": "Anastasia Labs",
-  "license": "ISC",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Anastasia-Labs/midgard.git",
+    "directory": "demo/midgard-core"
+  },
   "dependencies": {
     "@al-ft/l1-node-transport": "workspace:*",
     "@libp2p/crypto": "5.1.20",
