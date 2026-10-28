@@ -55,10 +55,7 @@ transaction or acquiring an unfenced mutation lease.
 ## 5. Escalation cases
 
 - Missing retained data after an authenticated attestation: retain all local
-  evidence and keep readiness failed. The current availability-challenge
-  script cannot be published within the 16,384-byte L1 envelope, so no current
-  manifest may authenticate that capability; do not attempt or claim this
-  recovery path until the validator is redesigned and redeployed.
+  evidence and keep readiness failed while the availability challenge runs.
 - L1 rollback: rewind to the last common chain point, invalidate observations
   above it, and let the watcher replay before resubmission.
 - Provider disagreement: preserve both raw responses and wait for the required

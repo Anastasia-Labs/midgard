@@ -67,8 +67,21 @@ readiness.
 The initial public testnet, P1, uses curated operators and permissionless fault
 provers and DA challengers. Users can submit normal
 L2 transactions, deposits, withdrawals, and native-only forced transactions.
-Forced transactions allow inline datums and refuse reference scripts, Plutus
-witnesses, redeemers, auxiliary data, and an L2 validity upper bound.
+Forced transactions allow inline datums and refuse output reference scripts,
+Plutus witnesses, redeemers, auxiliary data, and an L2 validity upper bound.
+
+### Out of scope
+
+- Testing the safe harbor excludes: other people's data, keys or funds, social
+  engineering, interrupting a public service or chain, and other parties'
+  infrastructure.
+- A vulnerability in a third-party service or dependency that does not arise
+  from Midgard's integration or use of it. Report it to its maintainer.
+- Legacy and reference code that no deployment runs, unless a deployed
+  component reaches it.
+- A documented P1 limitation in itself (see [P1 limitations](#p1-limitations)).
+  A new bypass, loss, freeze, honest-operator conviction or liveness failure
+  remains in scope.
 
 ## Trust boundaries
 
@@ -131,23 +144,27 @@ branch has passed the corresponding startup, load, redaction or incident drills.
 
 ## P1 limitations
 
-P1 does not provide permissionless fault-proof coverage of every invalid state.
-Curated operator trust remains necessary for Plutus verdicts, fabricated forced
-transactions, the documented censorship hole and the excluded proof categories.
-The validation dispute game and validation-trace states are unavailable. Proof
-submission and re-drive are manual. Strikes rotate shifts; the public profile
-sets the ejection threshold out of reach for P1 operation.
+P1 does not provide fault-proof coverage of every invalid state. Curated
+operator trust remains necessary for fabricated forced transactions, the
+documented censorship hole, the proof categories the profile excludes, and a
+wrong Plutus verdict that depends on an execution step too large to prove in a
+single L1 transaction. Other Plutus verdicts are challengeable through the
+interactive validation dispute game. DA payloads carry no validation-trace
+states; the nine families that once read them prove their faults directly, and
+the public profile currently enables one of them. Watchers submit proofs
+automatically but do not start a proof after its latest safe start. Strikes
+rotate shifts; the public profile sets the ejection threshold out of reach for
+P1 operation.
 
 A forced exit cannot execute Plutus or satisfy a native script's expiry branch.
 Escape hatch and settlement claims are unsupported. There is no bootstrap state
 snapshot; joining parties replay from genesis using payloads retained for 120
 days and must join while that history is available.
 
-P1 cost accounting differs from Cardano-exact word accounting. The interim
-9,215-byte Data cap, the 2^512 integer refusal, the refusal of normal native
-scripts available only from reference inputs, and the legacy rejection-code
-format remain. Split cadence, hourly commitments, further DA trim and full
-permissionless proof coverage are later work that requires a regenesis.
+The node's transaction status API reports its own diagnostic rejection codes,
+not the typed rejection reasons committed for forced transactions. Split cadence, hourly
+commitments, further DA trim, permissionless operators and full proof coverage
+are later work that requires a regenesis.
 
 These limits do not exclude unexpected authorization bypasses, loss of funds,
 honest-operator conviction, or user-triggerable liveness failures from reporting.

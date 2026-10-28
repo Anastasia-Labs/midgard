@@ -55,9 +55,10 @@ P1 has these limits, and the security claim (R1) must state each one:
 - DA payloads carry neither validation-trace states nor the UTxO set. Of the
   nine fault-proof families that read validation-trace states, `missingRedeemer`
   is rebuilt without them and is in the P1 catalogue (owner, 2026-10-25); the
-  other eight are not yet (`excluded_fraud_proof_categories` in
-  [`preprod-public.yaml`](../config/deployments/preprod-public.yaml)) and join
-  as each is rebuilt. The
+  other eight are rebuilt and installed but still listed in
+  `excluded_fraud_proof_categories` in
+  [`preprod-public.yaml`](../config/deployments/preprod-public.yaml), although
+  the owner ruled that each joins once rebuilt (2026-10-25). The
   Plutus execution dispute (`validationTraceDispute`) is in it (owner,
   2026-10-21); `mainnet` still excludes it.
 - Every party derives ledger state by replaying blocks from genesis. Payloads
@@ -67,11 +68,11 @@ P1 has these limits, and the security claim (R1) must state each one:
 - The operator allow-list is fixed for P1's life. A new operator, or an
   operator's new key, waits for P2.
 - The escape hatch and settlement claims are not supported.
-- L2 Plutus budgets use Midgard's P1 cost accounting. The node's
-  `POST /tx/evaluate` returns the budget a transaction needs.
-- Some node limits stay until P2: the Plutus Data size caps, the refusal of
-  very large datum integers, and the refusal of native scripts supplied only
-  through a reference input.
+- L2 Plutus budgets follow Cardano's protocol-version-11 rules with the pinned
+  PlutusV3 cost model. The node's `POST /tx/evaluate` returns the budget a
+  transaction needs.
+- The Plutus dispute game proves every execution step that fits in one L1
+  transaction; a step that does not fit is documented as unprovable.
 
 ## Schedule
 
@@ -145,7 +146,7 @@ Every contract item merges before the 2026-10-26 freeze.
 - **Unsupported scope.** Open. Mark the escape hatch and settlement claims
   unsupported in the public docs and the manifest.
 - **Published catalogue.** In progress. `preprod-public` excludes eight
-  families not yet rebuilt without validation-trace states, and computation-thread
+  rebuilt trace-relative families it has not yet enabled, and computation-thread
   initialization refuses an excluded category (C1). The claim and the manifest
   must list the enabled families.
 - **Threat model and disclosure policy.** In progress. Publish the trust model
