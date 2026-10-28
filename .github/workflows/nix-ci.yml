@@ -23,6 +23,7 @@ on:
       - "demo/pnpm-lock.yaml"
       - "demo/pnpm-workspace.yaml"
       - "demo/scripts/package-tasks.mjs"
+      - "demo/scripts/lib/vendored-imports.mjs"
       - "demo/patches/**"
       - "demo/vendor/**"
       - "demo/l1-node-transport/native/**"

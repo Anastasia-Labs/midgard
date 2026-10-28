@@ -15,6 +15,7 @@ on:
       - "demo/lucid-midgard/**"
       - "demo/midgard-core/**"
       - "demo/scripts/package-tasks.mjs"
+      - "demo/scripts/lib/vendored-imports.mjs"
       - "demo/package.json"
       - "demo/pnpm-lock.yaml"
       - "demo/pnpm-workspace.yaml"
@@ -32,6 +33,7 @@ on:
       - "demo/lucid-midgard/**"
       - "demo/midgard-core/**"
       - "demo/scripts/package-tasks.mjs"
+      - "demo/scripts/lib/vendored-imports.mjs"
       - "demo/package.json"
       - "demo/pnpm-lock.yaml"
       - "demo/pnpm-workspace.yaml"
@@ -63,6 +65,11 @@ jobs:
           package_json_file: demo/package.json
       - name: Install demo workspace dependencies
         run: pnpm --dir demo install --frozen-lockfile
+      # The SDK builds run contrib recipes that launch pnpm through corepack,
+      # which downloads the pinned pnpm on first use; fetch it once here so
+      # that download stays out of a recipe's bounded version check.
+      - name: Fetch corepack's pinned pnpm
+        run: cd demo && corepack pnpm --version
 
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:

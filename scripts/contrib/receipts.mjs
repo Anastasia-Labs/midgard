@@ -9,6 +9,7 @@ import {
   inputIdentity,
   json,
   nameChangedInputs,
+  buildOutputIdentity,
   outputIdentity,
   packageByName,
   sha256,
@@ -200,8 +201,7 @@ export const verifyReceipt = (root, path) => {
     const pkg = packageByName(root, artifact.name);
     if (
       !artifact.outputs ||
-      artifact.outputs.sha256 !==
-        outputIdentity(root, `${pkg.directory}/dist`).sha256
+      artifact.outputs.sha256 !== buildOutputIdentity(root, pkg).sha256
     )
       throw new Error(`receipt artifact changed: ${artifact.name}`);
   }

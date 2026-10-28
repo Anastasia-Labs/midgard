@@ -95,8 +95,21 @@ export const packageTasks = (pkg) => {
     task.steps.forEach((step, index) =>
       command(pkg, step, `build.steps[${index}]`),
     );
-    if (JSON.stringify(task.outputs) !== '["dist"]')
-      fail(pkg, 'build.outputs must be ["dist"]');
+    // dist holds the build stamp; any other output is a further top-level
+    // directory the build writes and owns (validation's vendor/).
+    if (
+      !Array.isArray(task.outputs) ||
+      task.outputs[0] !== "dist" ||
+      new Set(task.outputs).size !== task.outputs.length ||
+      task.outputs.some(
+        (output) =>
+          typeof output !== "string" || !/^[a-z][a-z0-9-]*$/u.test(output),
+      )
+    )
+      fail(
+        pkg,
+        'build.outputs must be "dist" then any other top-level directories the build writes',
+      );
     prerequisites(pkg, task.prerequisites, "build");
   }
   if (tasks.test !== undefined) {
@@ -131,6 +144,12 @@ export const packageTasks = (pkg) => {
   return tasks;
 };
 export const packageBuildTask = (pkg) => packageTasks(pkg).build;
+// The repository paths of what a package's build writes: dist, and any
+// further outputs its build declares.
+export const packageOutputDirectories = (pkg) =>
+  (packageBuildTask(pkg)?.outputs ?? ["dist"]).map(
+    (output) => `${pkg.directory}/${output}`,
+  );
 export const packageTestTask = (pkg) => packageTasks(pkg).test;
 export const taskEnvironment = (step, env = process.env) => ({
   ...env,

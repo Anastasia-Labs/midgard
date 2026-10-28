@@ -25,10 +25,10 @@ import {
 } from "./build-inputs.mjs";
 import {
   atomicJson,
+  buildOutputIdentity,
   compiledDependencies,
   inputIdentity,
   json,
-  outputIdentity,
   packageByName,
   buildClosure,
   withIdentityScope,
@@ -88,8 +88,7 @@ export const checkBuild = (root, name, { env = process.env } = {}) =>
       )
         throw new Error("build environment changed");
       if (
-        stamp.outputs.sha256 !==
-          outputIdentity(root, `${pkg.directory}/dist`).sha256 ||
+        stamp.outputs.sha256 !== buildOutputIdentity(root, pkg).sha256 ||
         Object.keys(stamp.outputs.files).length === 0
       )
         throw new Error("compiled artifact contents changed or are empty");
@@ -266,7 +265,7 @@ export const buildPackage = async (
             after,
             steps,
           });
-          const outputs = outputIdentity(root, `${pkg.directory}/dist`);
+          const outputs = buildOutputIdentity(root, pkg);
           receipt.artifacts = [{ name: pkg.name, outputs }, ...dependencies];
           const unstamped =
             receipt.exitCode === 0

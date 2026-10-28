@@ -56,8 +56,12 @@ const scratchCheckout = (t) => {
     "demo/package.json",
     "demo/pnpm-lock.yaml",
     "demo/pnpm-workspace.yaml",
-  ])
+    // midgard-validation's build writes its vendored imports with it.
+    "demo/scripts/lib/vendored-imports.mjs",
+  ]) {
+    mkdirSync(resolve(scratch, path, ".."), { recursive: true });
     cpSync(resolve(checkout, path), resolve(scratch, path));
+  }
   // midgard-core inlines l1-node-transport's sources through the
   // `midgard-source` condition, so its build needs that package too.
   for (const name of [
@@ -69,7 +73,9 @@ const scratchCheckout = (t) => {
       recursive: true,
       verbatimSymlinks: true,
       filter: (source) =>
-        !source.startsWith(resolve(checkout, "demo", name, "dist")),
+        !["dist", "vendor"].some((output) =>
+          source.startsWith(resolve(checkout, "demo", name, output)),
+        ),
     });
   mirrorInstall(scratch);
   return scratch;
@@ -230,6 +236,20 @@ test(
       rebuilt(await build(validation));
       assert.equal(checkBuild(root, core).status, "fresh");
     });
+
+    await t.test(
+      "a missing output the build declares besides dist rebuilds",
+      async () => {
+        const validation = "@al-ft/midgard-validation";
+        const vendor = resolve(root, "demo/midgard-validation/vendor");
+        skipped(await build(validation));
+        rmSync(vendor, { recursive: true });
+        assert.match(checkBuild(root, validation).reason, /contents changed/u);
+        rebuilt(await build(validation));
+        assert.ok(existsSync(resolve(vendor, "merkle-patricia-forestry")));
+        skipped(await build(validation));
+      },
+    );
 
     await t.test("a variable the recipe names rebinds the dist", async () => {
       const path = resolve(root, "demo/midgard-core/package.json");

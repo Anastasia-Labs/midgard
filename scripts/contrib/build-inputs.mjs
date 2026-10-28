@@ -1,4 +1,7 @@
-import { packageBuildTask } from "../../demo/scripts/package-tasks.mjs";
+import {
+  packageBuildTask,
+  packageOutputDirectories,
+} from "../../demo/scripts/package-tasks.mjs";
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { basename, dirname, relative, resolve, sep } from "node:path";
@@ -685,9 +688,11 @@ export const unboundReads = (root, name, records, { dependencies }) => {
   const base = realRoot(root);
   const { recipe } = recipeFacts(root, name);
   const emitted = [
-    self.directory,
-    ...dependencies.map((entry) => packageByName(root, entry.name).directory),
-  ].map((directory) => resolve(base, directory, "dist"));
+    self,
+    ...dependencies.map((entry) => packageByName(root, entry.name)),
+  ]
+    .flatMap(packageOutputDirectories)
+    .map((directory) => resolve(base, directory));
   const reasons = [];
   const written = new Set();
   const processes = new Map();

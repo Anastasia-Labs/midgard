@@ -1,4 +1,7 @@
-import { packageBuildTask } from "../../demo/scripts/package-tasks.mjs";
+import {
+  packageBuildTask,
+  packageOutputDirectories,
+} from "../../demo/scripts/package-tasks.mjs";
 import { execFileSync } from "node:child_process";
 import {
   cpSync,
@@ -26,7 +29,7 @@ import {
   nameChangedInputs,
   packageByName,
   packageClosure,
-  outputIdentity,
+  buildOutputIdentity,
   workspacePackages,
   sourceInput,
 } from "./files.mjs";
@@ -218,17 +221,15 @@ export const runArtifact = async (
         }
         return packages.map((entry) => ({
           name: entry.name,
-          outputs: outputIdentity(checkout, `${entry.directory}/dist`),
+          outputs: buildOutputIdentity(checkout, entry),
         }));
       };
       const unchangedArtifacts = (checkout, snapshot) =>
         snapshot.every(
           (entry) =>
             entry.outputs.sha256 ===
-            outputIdentity(
-              checkout,
-              `${packageByName(checkout, entry.name).directory}/dist`,
-            ).sha256,
+            buildOutputIdentity(checkout, packageByName(checkout, entry.name))
+              .sha256,
         );
       const testExecutions = [];
       const sourceSnapshot = (checkout) =>
@@ -306,15 +307,18 @@ export const runArtifact = async (
             const retainedRoot = resolve(directory, "compiled-inputs");
             for (const entry of scratchArtifacts) {
               const pkg = packageByName(scratch, entry.name);
-              cpSync(
-                resolve(scratch, pkg.directory, "dist"),
-                resolve(retainedRoot, pkg.directory, "dist"),
-                { recursive: true },
-              );
+              const directories = packageOutputDirectories(pkg);
+              for (const output of directories)
+                if (existsSync(resolve(scratch, output)))
+                  cpSync(
+                    resolve(scratch, output),
+                    resolve(retainedRoot, output),
+                    { recursive: true },
+                  );
               retainedArtifacts.push({
                 ...entry,
                 root: retainedRoot,
-                directory: `${pkg.directory}/dist`,
+                directory: directories,
                 inputs: inputIdentity(scratch, entry.name),
               });
             }
