@@ -161,7 +161,7 @@ export const enumCode = <T extends NumericEnumTable>(
       String(label),
     );
   }
-  return code;
+  return code!;
 };
 
 export const enumLabel = <T extends NumericEnumTable>(

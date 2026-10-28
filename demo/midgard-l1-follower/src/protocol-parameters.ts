@@ -1,7 +1,8 @@
 import { CborTag, type CborValue, decodeCbor } from "@al-ft/l1-node-transport";
-
-import { parseDeploymentManifestCardanoProtocolParameters } from "./protocol-parameters.js";
-import { type DeploymentManifestCardanoProtocolParameters } from "./types.js";
+import {
+  type DeploymentManifestCardanoProtocolParameters,
+  parseDeploymentManifestCardanoProtocolParameters,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 
 /**
  * The manifest's protocol-parameter snapshot of the node's current Conway

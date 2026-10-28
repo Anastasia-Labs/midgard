@@ -65,7 +65,7 @@ const compareSortKeys = (left: Uint8Array, right: Uint8Array): number => {
     if (left[i] === right[i]) {
       continue;
     }
-    return right[i] === undefined || left[i] > right[i] ? 1 : -1;
+    return right[i] === undefined || left[i]! > right[i]! ? 1 : -1;
   }
   return 0;
 };
@@ -210,7 +210,7 @@ const tokenizeMapSubtree = (
   }
   const stack: TokenFrame[] = [rootFrame];
   for (;;) {
-    const frame = stack[stack.length - 1];
+    const frame = stack[stack.length - 1]!;
     const child = nextTokenChild(frame);
     let completed: TokenNode | undefined;
     if (child.done) {

@@ -7,7 +7,7 @@
  * validation-machine trace for one transaction.
  */
 
-import "@aiken-lang/merkle-patricia-forestry";
+import "#merkle-patricia-forestry";
 import "@al-ft/midgard-core";
 import "@al-ft/midgard-core/codec";
 import "@al-ft/midgard-core/codec/cbor";

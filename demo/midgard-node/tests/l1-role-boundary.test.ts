@@ -25,7 +25,7 @@ const demo = join(packageRoot, "..");
 /** Tool-side L1 modules no role graph may hold. */
 const TOOL_L1_MODULES = [
   /\/midgard-node\/src\/l1-external\//u,
-  /\/midgard-core\/src\/native-ledger-kupmios\.ts$/u,
+  /\/midgard-l1-follower\/src\/native-ledger-kupmios\.ts$/u,
   /\/midgard-core\/src\/ogmios-slot-query\.ts$/u,
   /\/midgard-node\/src\/commands\/(?:l1-command-access|l1-tool-adapter|cli-runtime)\.ts$/u,
 ];

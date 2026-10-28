@@ -19,7 +19,7 @@ import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { formatL1Origin, type L1Origin } from "@al-ft/midgard-core/l1-origin";
-import type { NativeLedgerNetwork } from "@al-ft/midgard-core/native-reward-account";
+import type { NativeLedgerNetwork } from "@al-ft/midgard-l1-follower/native-reward-account";
 import { Data, Duration, Effect, type Scope } from "effect";
 
 import {

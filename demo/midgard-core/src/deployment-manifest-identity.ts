@@ -42,12 +42,6 @@ export {
 } from "./deployment-manifest-identity/marker.js";
 export * from "./deployment-manifest-identity/members.js";
 export { parseDeploymentManifestCardanoProtocolParameters } from "./deployment-manifest-identity/protocol-parameters.js";
-export {
-  CONWAY_MAXIMUM_REFERENCE_SCRIPTS_SIZE_BYTES,
-  CONWAY_REFERENCE_SCRIPT_FEE_MULTIPLIER,
-  CONWAY_REFERENCE_SCRIPT_FEE_TIER_BYTES,
-  deriveDeploymentManifestCardanoProtocolParametersFromLedger,
-} from "./deployment-manifest-identity/protocol-parameters.ledger.js";
 export { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE } from "./deployment-manifest-identity/reference-script-contracts.js";
 export { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES } from "./deployment-manifest-identity/reference-script-tokens.additions.js";
 export {

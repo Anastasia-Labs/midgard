@@ -8,7 +8,7 @@
  * way waiting does not fix, the state is `l1_node_config_failed` and the read
  * stops.
  */
-import type { NativeLedgerNetwork } from "@al-ft/midgard-core/native-reward-account";
+import type { NativeLedgerNetwork } from "@al-ft/midgard-l1-follower/native-reward-account";
 import {
   Cause,
   Duration,

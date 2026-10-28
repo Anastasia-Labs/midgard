@@ -8,6 +8,10 @@ Midgard TypeScript library for building operator and watcher transactions. Each
 transaction family has a reference page in the
 [documentation site](../../docs-site/content/docs/sdk/midgard-sdk).
 
+## Requirements
+
+Node.js 22.12.0 or newer, and TypeScript 5.8 or newer for CommonJS consumers.
+
 ## How to use
 
 1. Use the Node.js and pnpm versions declared in `demo/package.json`. If your

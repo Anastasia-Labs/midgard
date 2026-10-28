@@ -36,8 +36,13 @@ export const SCRIPT_BUDGET_BASIS: ScriptExecutionUnits = Object.freeze({
   cpu: 8_000_000_000,
 });
 
-export type ScriptBudgetName = keyof typeof table.budgets;
+// Declarations name the table through this binding, which declaration emit
+// spells out as a type; naming the JSON module there would leak its contents
+// into the bundled declarations as JavaScript.
+const budgets = table.budgets;
+
+export type ScriptBudgetName = keyof typeof budgets;
 
 /** The ceiling of one budget. A name the table lacks does not typecheck. */
 export const scriptBudget = (name: ScriptBudgetName): ScriptExecutionUnits =>
-  table.budgets[name].ceiling;
+  budgets[name].ceiling;

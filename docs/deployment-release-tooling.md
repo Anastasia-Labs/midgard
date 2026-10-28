@@ -98,12 +98,41 @@ release candidate; these steps are prepared and have not been run.
 
    The check packs each package, refuses workspace, file, link, git and URL
    dependency specifiers, dependencies on unpublished workspace packages, tests,
-   fixtures and key material in a tarball, and exports that do not resolve. It
+   fixtures, key material and hidden files (such as the local build stamps in
+   `dist/`) in a tarball, and exports that do not resolve. It
    installs the tarballs together, imports and requires every export by package
    name, and type-checks both module modes. It exits nonzero and lists each
    problem until the set is publishable. Each run writes `receipt.json` with
    the tarball SHA-256 digests; publish only from a receipt whose status is
    `passed`.
+
+   Each package's `publishConfig` holds the registry form of its `exports`:
+   the workspace-only `midgard-source` condition and test-only exports are
+   dropped, and each `require` target gets the `.d.cts` declarations the build
+   emits beside it. The check refuses a packed export that is not the registry
+   form of its workspace export, so change the two together. Core publishes
+   no `imports`: its build inlines the `src` files they name. A package's
+   `prepack` and `postpack` run [pack-files.mjs](../scripts/release/pack-files.mjs),
+   which puts the repository `LICENSE` in the package only while it is packed.
+   Validation imports its Merkle Patricia Forestry as
+   `#merkle-patricia-forestry`. In the workspace that names the package
+   installed from [the vendored tarball](../demo/vendor/README.md); for the pack
+   the script copies the installed package to `vendor/merkle-patricia-forestry/`,
+   where validation's published `imports` entry points, so the registry package
+   runs the vendored code beside its MPL-2.0 licence, and writes a `SOURCE.md`
+   there that names where the modified source is. Validation's licence is
+   therefore `Apache-2.0 AND MPL-2.0`. The check compares that copy byte for
+   byte with the installed package, requires the `SOURCE.md`, and requires the
+   copy's dependencies in validation's own. Validation lists the package only
+   as a dev dependency, so any workspace app that loads validation at runtime
+   must declare `@aiken-lang/merkle-patricia-forestry` in its own
+   `dependencies`. Registry consumers get the unpatched `blake2b`: the output
+   is identical; only speed differs.
+
+   The published packages need Node.js 22.12.0 or newer (their `engines`
+   field), the lowest version CI-tested with `require(esm)` on by default, and
+   TypeScript 5.8 or newer for CommonJS consumers. The type check runs
+   TypeScript 5.8 from the SDK's `typescript-5-8` dev dependency.
 
 4. Publish exactly the checked tarballs, in dependency order: core, validation,
    SDK, then lucid-midgard. Compare each digest with the receipt first;

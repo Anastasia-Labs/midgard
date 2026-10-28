@@ -4,7 +4,7 @@ import {
   TransportTimeoutError,
   TransportUnavailableError,
 } from "@al-ft/l1-node-transport";
-import { deriveDeploymentManifestCardanoProtocolParametersFromLedger } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { deriveDeploymentManifestCardanoProtocolParametersFromLedger } from "@al-ft/midgard-l1-follower/protocol-parameters";
 import { describe, expect, it, vi } from "vitest";
 
 import {

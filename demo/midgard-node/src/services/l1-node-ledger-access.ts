@@ -20,7 +20,7 @@ import {
   sharedL1NodeTransport,
   type TransportReadiness,
 } from "@al-ft/l1-node-transport";
-import type { NativeLedgerNetwork } from "@al-ft/midgard-core/native-reward-account";
+import type { NativeLedgerNetwork } from "@al-ft/midgard-l1-follower/native-reward-account";
 import {
   fromTransportError,
   type LedgerPointStatus,

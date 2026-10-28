@@ -14,7 +14,7 @@ export const err = (message: string, detail?: string): MidgardTxCodecError =>
 export const compareBytes = (left: Uint8Array, right: Uint8Array): number => {
   const limit = Math.min(left.length, right.length);
   for (let i = 0; i < limit; i += 1) {
-    const diff = left[i] - right[i];
+    const diff = left[i]! - right[i]!;
     if (diff !== 0) {
       return diff;
     }
@@ -49,7 +49,7 @@ export const readArgument = (
   if (offset >= bytes.length) {
     throw err("Unexpected end of CBOR", `offset=${offset}`);
   }
-  const initial = bytes[offset];
+  const initial = bytes[offset]!;
   const major = initial >> 5;
   const additional = initial & 0x1f;
 
@@ -79,7 +79,7 @@ export const readArgument = (
 
   let value = 0n;
   for (let i = 0; i < byteLength; i += 1) {
-    value = (value << 8n) | BigInt(bytes[offset + 1 + i]);
+    value = (value << 8n) | BigInt(bytes[offset + 1 + i]!);
   }
 
   if (

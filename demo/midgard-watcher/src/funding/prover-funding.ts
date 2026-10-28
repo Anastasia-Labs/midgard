@@ -3,8 +3,8 @@ import type { DatabaseSync } from "node:sqlite";
 import {
   computeDeploymentManifestJsonDigest,
   type DeploymentManifestCardanoProtocolParameters,
-  deriveDeploymentManifestCardanoProtocolParametersFromLedger,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { deriveDeploymentManifestCardanoProtocolParametersFromLedger } from "@al-ft/midgard-l1-follower/protocol-parameters";
 
 import { isWatcherL1TransientFailure } from "../l1/transient-failure.js";
 import {
