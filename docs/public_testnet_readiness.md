@@ -105,7 +105,7 @@ Every contract item merges before the 2026-10-26 freeze.
 | Item                                                               | Status      | Pointer and remaining work                                                                                                                                                                                               |
 | ------------------------------------------------------------------ | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Forced-transaction admission at the tx-order mint (A1)             | Done        | Merge `b06aca902`. `forced_tx_is_admissible_v1` in `onchain/aiken/lib/midgard/user-events/tx-order-v1.ak`; the SDK and node share `screenMidgardForcedTxAdmission` and a golden corpus with Aiken                        |
-| Closed 10-minute validity range on tx orders (A2)                  | In progress | Not committed. No profile carries `max_event_validity_range_ms` yet                                                                                                                                                      |
+| Closed 10-minute validity range on tx orders (A2)                  | Done        | `faee6e018`. The tx-order mint requires a closed L1 validity range of at most `max_event_validity_range_ms` (10 minutes on every profile)                                                                                |
 | Operator allow-list, P1 catalogue and P1 parameters (C1)           | Done        | Merges `63e24132e`, `bf82caf27`; keys `d07f2fda7`. Curated emulator tests in both polarities. Provers and DA challengers are permissionless (PL)                                                                         |
 | Long-gap catch-up after an all-operator outage (C2)                | In progress | Commit time in the state-queue node merged (`19faf4948`); retention clocks merged (`fa0435b97`). Two follow-ups on `p1/c2a-onchain` are not merged. The remaining commit-clock readers and the catch-up planner are open |
 | No empty blocks (C3)                                               | In progress | `6419a5fb2` and `39cde8b6d` on `p1/c2a-onchain`, not merged. The matching block-planner change is open                                                                                                                   |
@@ -170,28 +170,33 @@ Every contract item merges before the 2026-10-26 freeze.
 - **Reference-script records.** Open. Every required reference script has a
   non-null record from the deploy tooling: address, outref, script hash, CBOR
   hash, lovelace and publisher transaction.
-- **Parameter review.** In progress. Publish every P1 parameter with its
-  rationale: the operator allow-list, excluded families, event validity range, maturity,
-  negligence timeout, shift length, `max_inactivity_strikes`,
-  `registration_ms`, the block ex-units budget and bonds. Release tooling must
-  refuse placeholder keys and unexplained zero economics.
-  - Set in `preprod-public`: `registration_ms` 30,000;
-    `max_inactivity_strikes` 1,000,000; the operator allow-list; the excluded families.
-  - Open: the 10-minute event validity range (A2); 120-day payload retention
-    (DS); the block ex-units budget, which defaults to 33,000,000 memory and
+- **Parameter review.** In progress. [Public-testnet parameters](public-testnet-parameters.md)
+  lists every `preprod-public` value with its unit, profile line and rationale,
+  generated from the profile and checked in CI, and the values set outside the
+  profile: the block ex-units budget, HTTP rate limits, the challenger bond and
+  DA fee caps. Release tooling must refuse placeholder keys and unexplained
+  zero economics.
+  - Settled: the 10-minute event validity range (A2, `faee6e018`); 120-day
+    payload retention (`91538258f`); the public operator and DA bond figures
+    (owner, 2026-10-22).
+  - Open: the owner's confirmation of the DA slash grace and pool floor; the
+    block ex-units budget, which defaults to 33,000,000 memory and
     20,000,000,000 steps (`demo/midgard-node/src/services/config.block-ex-units-budget.ts`)
-    and is to be re-measured on an idle machine; the owner's confirmation of
-    the public operator and DA bond figures.
+    and is to be re-measured on an idle machine; the remaining items on the
+    parameter page.
   - The `mainnet` profile still carries a placeholder operator key. It is not
     a P1 target.
 - **Pooled DA bond.** Done ([decision record](midgard/decisions/da-committee-bond-pool.md),
   #686–#691). An attestation applies only while one bonded pool holds at least
   one DA bond of backing; an availability timeout slashes the pool. Its public
   figures are part of the parameter review.
-- **Store identity.** Open. Bind every Postgres, MPF and DA store to the
-  deployment with a marker holding the network, one-shot outref, policy ids,
-  manifest hash and schema version. A missing or mismatched identity fails
-  before serving. Wiping local state requires a fresh on-chain deployment.
+- **Store identity.** In progress. The node's Postgres database records the
+  deployment it serves on first start and refuses to start under another
+  deployment's manifest; the L1 follower store refuses another origin. Open:
+  bind every Postgres, MPF and DA store to the deployment with a marker
+  holding the network, one-shot outref, policy ids, manifest hash and schema
+  version. A missing or mismatched identity fails before serving. Wiping local
+  state requires a fresh on-chain deployment.
 - **Fee and collateral.** Open. Audit fee and collateral selection across
   protocol transactions: pure-ADA inputs owned by the intended wallet, above
   configured minimums, never protocol or reference-script UTxOs. Fix only what
