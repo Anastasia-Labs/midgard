@@ -13,6 +13,7 @@ import {
   AddressSchema,
   Bech32DeserializationError,
   HashingError,
+  InvalidUtxoError,
   LucidError,
   makeReturn,
   MidgardValidators,
@@ -327,6 +328,7 @@ export const unsignedWithdrawalTxProgram = (
   | LucidError
   | Bech32DeserializationError
   | HashingError
+  | InvalidUtxoError
   | UserEventBuildError
 > =>
   buildUnsignedWithdrawalTxWithMetadataProgram(lucid, contracts, config).pipe(

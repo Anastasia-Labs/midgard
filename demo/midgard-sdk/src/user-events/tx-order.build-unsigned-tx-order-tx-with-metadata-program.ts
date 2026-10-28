@@ -10,6 +10,7 @@ import { Effect } from "effect";
 import {
   Bech32DeserializationError,
   HashingError,
+  InvalidUtxoError,
   LucidError,
   makeReturn,
   MidgardValidators,
@@ -17,6 +18,10 @@ import {
   outputReferenceFromUTxO,
 } from "../common.js";
 import { HubOracleError } from "../hub-oracle.js";
+import {
+  requireWellFormedUtxo,
+  requireWellFormedUtxos,
+} from "../utxo-validation.js";
 import {
   buildCompletedUserEventMintTxProgram,
   encodeUserEventWitnessMintOrBurnRedeemer,
@@ -65,9 +70,21 @@ export const buildUnsignedTxOrderTxWithMetadataProgram = (
   | LucidError
   | Bech32DeserializationError
   | HashingError
+  | InvalidUtxoError
   | UserEventBuildError
 > =>
   Effect.gen(function* () {
+    // Caller-supplied outputs are screened before anything reads them, so a
+    // malformed one is refused by the config field it came from.
+    yield* requireWellFormedUtxo("nonceInput", config.nonceInput);
+    yield* requireWellFormedUtxos(
+      "carriageReferenceInputs",
+      config.carriageReferenceInputs,
+    );
+    yield* requireWellFormedUtxo(
+      "referenceScripts.txOrderMinting",
+      config.referenceScripts?.txOrderMinting,
+    );
     const submittedTxCbor = yield* Effect.try({
       try: () => {
         if (

@@ -15,6 +15,10 @@ import {
   emptyWalletInputsRefusal,
 } from "../tx-completion.js";
 import {
+  requireWellFormedUtxo,
+  requireWellFormedUtxos,
+} from "../utxo-validation.js";
+import {
   EVENT_HISTORY_MAX_PROTECTION_TIME,
   type EventHistoryNode,
   type EventHistoryRecipe,
@@ -64,6 +68,19 @@ export const historyUserBuildError = (cause: unknown): UserEventBuildError =>
     cause,
   });
 
+/** The config field each history kind takes its minting script reference from. */
+const SCRIPT_REFERENCE_ROLE = {
+  Deposit: "referenceScripts.depositMinting",
+  Withdrawal: "referenceScripts.withdrawalMinting",
+} as const satisfies Record<EventHistoryRecipe["kind"], string>;
+
+/**
+ * Every UTxO the user builders take from the caller or the provider is
+ * screened here, before contracts or Lucid's builder see it: a malformed one
+ * is refused as `InvalidUtxoError` naming its config field (or `wallet[i]`
+ * for the selected wallet's provider view) instead of failing later inside
+ * coin selection or serialization.
+ */
 export const prepareUserHistoryContextProgram = (
   lucid: LucidEvolution,
   contracts: UserHistoryContracts,
@@ -83,6 +100,17 @@ export const prepareUserHistoryContextProgram = (
           cause: EMPTY_WALLET_INPUTS_CAUSE,
         }),
       );
+    yield* requireWellFormedUtxos("walletInputs", options.walletInputs);
+    yield* requireWellFormedUtxo("externalData", options.externalData);
+    yield* requireWellFormedUtxo(SCRIPT_REFERENCE_ROLE[kind], scriptReference);
+    const availableInputs =
+      options.walletInputs ??
+      (yield* Effect.tryPromise({
+        try: () => lucid.wallet().getUtxos(),
+        catch: historyUserBuildError,
+      }));
+    if (options.walletInputs === undefined)
+      yield* requireWellFormedUtxos("wallet", availableInputs);
     const prepared = yield* Effect.tryPromise({
       try: async () => {
         const pair = requireEventHistoryContracts(contracts);
@@ -120,9 +148,7 @@ export const prepareUserHistoryContextProgram = (
           (credential.type === "Key"
             ? { PublicKeyCredential: [credential.hash] }
             : { ScriptCredential: [credential.hash] });
-        const walletInputs = (
-          options.walletInputs ?? (await lucid.wallet().getUtxos())
-        )
+        const walletInputs = availableInputs
           .filter(
             (input) =>
               input.datum == null &&

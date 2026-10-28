@@ -54,3 +54,18 @@ export class UnauthenticUtxoError extends EffectData.TaggedError(
 export class UnspecifiedNetworkError extends EffectData.TaggedError(
   "UnspecifiedNetworkError",
 )<GenericErrorFields> {}
+
+/**
+ * A caller- or provider-supplied UTxO that is not a well-formed ledger output.
+ * `role` names where it came from (a config field such as `walletInputs[2]`,
+ * or `wallet[0]` for the selected wallet's provider view) and `outRef` its
+ * `<txHash>#<outputIndex>` when those two fields are readable.
+ */
+export class InvalidUtxoError extends EffectData.TaggedError(
+  "InvalidUtxoError",
+)<
+  GenericErrorFields & {
+    readonly role: string;
+    readonly outRef: string | null;
+  }
+> {}

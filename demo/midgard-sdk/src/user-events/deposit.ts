@@ -13,6 +13,7 @@ import {
   addressDataFromBech32,
   Bech32DeserializationError,
   HashingError,
+  InvalidUtxoError,
   LucidError,
   makeReturn,
   MidgardValidators,
@@ -293,6 +294,7 @@ export const unsignedDepositTxProgram = (
   | LucidError
   | Bech32DeserializationError
   | HashingError
+  | InvalidUtxoError
   | UserEventBuildError
 > =>
   buildUnsignedDepositTxWithMetadataProgram(lucid, contracts, config).pipe(

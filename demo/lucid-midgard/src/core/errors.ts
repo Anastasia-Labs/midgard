@@ -24,9 +24,25 @@ export class LucidMidgardError extends Error {
 }
 
 export class BuilderInvariantError extends LucidMidgardError {
-  constructor(message: string, detail: string | null = null) {
-    super(message, detail, "BUILDER_INVARIANT");
+  constructor(
+    message: string,
+    detail: string | null = null,
+    code = "BUILDER_INVARIANT",
+  ) {
+    super(message, detail, code);
     this.name = "BuilderInvariantError";
+  }
+}
+
+/**
+ * A UTxO handed to a builder (by the caller or as a provider wallet coin) that
+ * is malformed or disagrees with its own output CBOR. It stays a
+ * `BuilderInvariantError` so existing handlers keep catching it.
+ */
+export class InvalidUtxoError extends BuilderInvariantError {
+  constructor(message: string, detail: string | null = null) {
+    super(message, detail, "INVALID_UTXO");
+    this.name = "InvalidUtxoError";
   }
 }
 
