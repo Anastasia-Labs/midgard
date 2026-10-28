@@ -1,6 +1,6 @@
 import { RETENTION_MS_PER_DAY } from "@al-ft/midgard-core";
 import { Client } from "pg";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import type { StateQueueHeaderStatus } from "../src/domain.js";
 import { runRetentionCycle } from "../src/store/retention.scan.js";
@@ -57,8 +57,12 @@ const cycleOver = async (scanPageSize?: number) => {
 };
 
 describe("retention scan pages", () => {
-  it("keeps and prunes a many-payload store exactly as one page does", async () => {
-    const whole = await cycleOver();
+  let whole: Awaited<ReturnType<typeof cycleOver>>;
+  beforeAll(async () => {
+    whole = await cycleOver();
+  });
+
+  it("keeps and prunes a many-payload store in one page", () => {
     expect(whole.cycle.prune.scanned).toBe(ENTRIES.length);
     expect(whole.cycle.prune.prunedHeaderHashes.length).toBeGreaterThan(0);
     expect(whole.retained.length).toBeGreaterThan(0);
@@ -66,13 +70,17 @@ describe("retention scan pages", () => {
     expect(
       [...whole.cycle.prune.prunedHeaderHashes, ...whole.retained].sort(),
     ).toEqual(ENTRIES.map(({ headerHash }) => headerHash).sort());
-    // 7 leaves a short last page; 6 and 1 end on a full page and an empty one.
-    for (const scanPageSize of [7, 6, 1]) {
+  });
+
+  // 7 leaves a short last page; 6 and 1 end on a full page and an empty one.
+  it.each([7, 6, 1])(
+    "keeps and prunes it exactly as one page does with %i-row pages",
+    async (scanPageSize) => {
       const paged = await cycleOver(scanPageSize);
       expect(paged.cycle).toEqual(whole.cycle);
       expect(paged.retained).toEqual(whole.retained);
-    }
-  });
+    },
+  );
 
   it("decides and prunes on retention metadata without reading payload bytes", async () => {
     const database = await testStoreDatabase();
