@@ -3,7 +3,8 @@
  * first published follower view, run by the follower-change driver's first
  * recompute under the driver's write capability (`makeDriverRecompute`).
  *
- * It records the deployment whose settlement jobs the node enqueues, seeds
+ * It records the deployment whose settlement jobs the node enqueues (a
+ * database bound to another deployment is refused), seeds
  * the commit base from the landed state queue, restores retained
  * script pins, hydrates the pending block finalization, releases the
  * previous node process's leases, checks the mutation jobs, and backfills

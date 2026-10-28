@@ -13,10 +13,13 @@ a deployment profile: both `preprod-public` and `preprod-testing` use `Preprod`.
 | `preprod-emulator-curated` | `Preprod`       | Bounded testing; emulator only |
 
 The public profiles retain the existing testnet timing values, including seven-day
-block maturity, a five-minute dispute response window, a one-hour operator shift,
-and the existing **30 millisecond** registration interval. Mainnet's former
-30 millisecond operator shift is replaced by the one-hour shift used off chain.
-Testing economics remain explicit; selecting a test network does not select them.
+block maturity, a five-minute dispute response window and a one-hour operator
+shift. `preprod-public` activates a registered operator after 30 seconds;
+`mainnet` still carries the earlier 30 millisecond registration interval.
+Mainnet's former 30 millisecond operator shift is replaced by the one-hour shift
+used off chain. Testing economics remain explicit; selecting a test network does
+not select them. [Public-testnet parameters](../../docs/public-testnet-parameters.md)
+lists every `preprod-public` value with its unit, profile line and rationale.
 
 Every profile allows twenty minutes for a deposit, withdrawal or transaction
 order to be included before an operator can be struck for inactivity. A strike
@@ -254,8 +257,9 @@ comment and the [economics record](../../docs/midgard/decisions/0002-canonical-v
 §2.6 carry its measurement. An availability challenge must open before the
 block's end time plus the challenge window. The withdrawal delay separates the
 two steps of a committee withdrawal, and the timeout slash has the slash grace
-to land. The owner set the public challenge window to 24 hours (2026-10-15);
-the other public figures await owner confirmation.
+to land. The owner set the public challenge window to 24 hours (2026-10-15) and
+approved the public bond, slash penalty and minimum top-up (2026-10-22); the
+slash grace and pool floor await owner confirmation.
 
 Validation requires:
 

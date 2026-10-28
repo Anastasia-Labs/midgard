@@ -212,7 +212,7 @@ The settlement remainder helper and unrelated SDK penalty constants are not
 economics authorities. An F04-approved profile must not be described as deployed or
 economics-complete without the corresponding acceptance evidence.
 
-### 2.6 DA committee bond pool (values ACCEPTED for testing; public figures awaiting owner confirmation)
+### 2.6 DA committee bond pool (values ACCEPTED for testing; public bond, slash and top-up owner-approved; public grace and floor awaiting owner confirmation)
 
 The DA committee backs every block it attests from one pooled bond
 ([decision record](da-committee-bond-pool.md)). The deployment profiles carry
@@ -223,16 +223,16 @@ bond is not part of this table: it stays a deploy-time manifest value and alone
 must exceed the reserve-coverage floor (the DA bond is no longer forced equal
 to it).
 
-| Parameter                     | Public (mainnet, preprod-public)                       | Testing (preprod-testing, local-devnet-testing) |
-| ----------------------------- | ------------------------------------------------------ | ----------------------------------------------- |
-| `da_bond_lovelace`            | 100,000 ADA — awaiting owner confirmation              | 500 tADA                                        |
-| `da_slash_penalty_lovelace`   | 25,000 ADA (75,000 ADA reward) — awaiting confirmation | 100 tADA (400 tADA reward)                      |
-| `da_bond_min_top_up_lovelace` | 1,000 ADA — awaiting owner confirmation                | 5 tADA                                          |
-| `da_bond_pool_floor_lovelace` | 5 ADA — awaiting owner confirmation                    | 5 tADA                                          |
-| `challenge_record_lovelace`   | 27 ADA (measured, below)                               | 27 tADA (measured, below)                       |
-| `da_challenge_window_ms`      | 86,400,000 (24 h) — owner, 2026-10-15                  | 720,000 (12 min)                                |
-| `da_slash_grace_ms`           | 172,800,000 (2 d) — awaiting owner confirmation        | 300,000 (5 min)                                 |
-| `da_bond_withdraw_delay_ms`   | 778,080,000 (9 d 8 min) — awaiting owner confirmation  | 2,380,000 (39 min 40 s)                         |
+| Parameter                     | Public (mainnet, preprod-public)                      | Testing (preprod-testing, local-devnet-testing) |
+| ----------------------------- | ----------------------------------------------------- | ----------------------------------------------- |
+| `da_bond_lovelace`            | 100,000 ADA — owner, 2026-10-22                       | 500 tADA                                        |
+| `da_slash_penalty_lovelace`   | 25,000 ADA (75,000 ADA reward) — owner, 2026-10-22    | 100 tADA (400 tADA reward)                      |
+| `da_bond_min_top_up_lovelace` | 1,000 ADA — owner, 2026-10-22                         | 5 tADA                                          |
+| `da_bond_pool_floor_lovelace` | 5 ADA — awaiting owner confirmation                   | 5 tADA                                          |
+| `challenge_record_lovelace`   | 27 ADA (measured, below)                              | 27 tADA (measured, below)                       |
+| `da_challenge_window_ms`      | 86,400,000 (24 h) — owner, 2026-10-15                 | 720,000 (12 min)                                |
+| `da_slash_grace_ms`           | 172,800,000 (2 d) — awaiting owner confirmation       | 300,000 (5 min)                                 |
+| `da_bond_withdraw_delay_ms`   | 778,080,000 (9 d 8 min) — awaiting owner confirmation | 2,380,000 (39 min 40 s)                         |
 
 Relations, enforced by profile validation and pinned per profile by
 `onchain/aiken/lib/midgard/da-bond-profile.test.ak` (run under every profile in
@@ -304,7 +304,7 @@ availability script's enterprise address, at `coins_per_utxo_byte` 4,310:
 | DA slash grace (`da_slash_grace_ms`)                             | 172,800,000 ms (2 d) public — awaiting owner confirmation; 300,000 ms (5 min) testing                                                                                                                                      | Time the challenger has to land the timeout slash once it is possible: after the response deadline or, when later, once the challenged block is the queue head (its predecessors merge at maturity).                                                                                                                                                                                                                           |
 | DA bond withdrawal delay (`da_bond_withdraw_delay_ms`)           | 778,080,000 ms (9 d 8 min) public — awaiting owner confirmation; 2,380,000 ms (39 min 40 s) testing                                                                                                                        | Between BeginWithdraw and CompleteWithdraw; covers the latest possible slash of any block the pool still backs, including the head-only removal amendment (§2.6).                                                                                                                                                                                                                                                              |
 | `da_attestation_timeout` (Q61)                                   | 3,600,000 ms (1 h)                                                                                                                                                                                                         | Bounds how long a pending commitment may remain unattested. Timeout removal discards its dependent suffix at any queue position while preserving the earlier prefix. It does not slash (D-L1 recommendation).                                                                                                                                                                                                                  |
-| DA retention (`RETENTION_DAYS`, `minimumRetentionDays`)          | 15 days                                                                                                                                                                                                                    | ≥ maturity (7 d) + worst-case proof time + margin; matches `LIBP2P_DA_MIN_RETENTION_DAYS = 15`.                                                                                                                                                                                                                                                                                                                                |
+| DA retention (`RETENTION_DAYS`, `minimumRetentionDays`)          | 15 days minimum; `preprod-public` declares 120 days (`da_transport.retention_days`)                                                                                                                                        | ≥ maturity (7 d) + worst-case proof time + margin; matches `LIBP2P_DA_MIN_RETENTION_DAYS = 15`. P1 parties replay retained payloads from genesis, so the public profile retains 120 days.                                                                                                                                                                                                                                      |
 
 ## 4. DA-governor floors (Q63, ACCEPTED)
 
@@ -368,7 +368,7 @@ short: a 10-minute attestation timeout, 12- and 14-minute response windows, a
 withdrawal delay. With those deadlines, journal-resumable parallel drills
 (C83/Q57 single-execution rule) and 30-block finality, the complete
 C83–C87 sweep is planned ≤ 48 h. The public figures (1 h attestation timeout
-and small response window, 2-day full response window and slash grace, 3-day
+and small response window, 2-day full response window and slash grace, 1-day
 challenge window, 9-day withdrawal delay) are not drilled inside this window.
 Any value change that breaks this bound or a §3.3 threshold reopens this record.
 

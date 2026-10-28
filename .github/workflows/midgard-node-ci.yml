@@ -16,6 +16,7 @@ on:
       - "onchain/aiken/**"
       - "config/deployments/**"
       - "docs/consensus-profile-v1.md"
+      - "docs/public-testnet-parameters.md"
       - "docs/spec/**"
       - "scripts/ci/**"
       - "scripts/lib/worktree-identity.mjs"
@@ -46,6 +47,7 @@ on:
       - "onchain/aiken/**"
       - "config/deployments/**"
       - "docs/consensus-profile-v1.md"
+      - "docs/public-testnet-parameters.md"
       - "docs/spec/**"
       - "scripts/ci/**"
       - "scripts/lib/worktree-identity.mjs"
@@ -331,6 +333,9 @@ jobs:
       - name: Check canonical V1 profile documentation
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run docs:consensus-profile-v1
+      - name: Check public testnet parameter table
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run docs:public-testnet-parameters
       # Both artifacts of the native-V1 field-access golden channel — the JSON
       # fixture and the generated Aiken module — are regenerated from the
       # TypeScript twin, never hand-edited. Without this gate an edited
