@@ -426,18 +426,6 @@ importers:
       '@effect/sql-pg':
         specifier: ^0.35.1
         version: 0.35.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.80.21(effect@3.21.2))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
-      '@harmoniclabs/cbor':
-        specifier: 2.0.2
-        version: 2.0.2
-      '@harmoniclabs/plutus-data':
-        specifier: 2.0.1
-        version: 2.0.1(@harmoniclabs/cbor@2.0.2)
-      '@harmoniclabs/plutus-machine':
-        specifier: 3.0.3
-        version: 3.0.3(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/plutus-data@2.0.1(@harmoniclabs/cbor@2.0.2))(@harmoniclabs/uplc@2.0.7(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(@harmoniclabs/plutus-data@2.0.1(@harmoniclabs/cbor@2.0.2)))
-      '@harmoniclabs/uplc':
-        specifier: 2.0.7
-        version: 2.0.7(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(@harmoniclabs/plutus-data@2.0.1(@harmoniclabs/cbor@2.0.2))
       '@libp2p/bootstrap':
         specifier: 12.0.25
         version: 12.0.25
@@ -840,21 +828,6 @@ importers:
       '@al-ft/midgard-core':
         specifier: workspace:*
         version: link:../midgard-core
-      '@harmoniclabs/cardano-costmodels-ts':
-        specifier: 1.6.1
-        version: 1.6.1
-      '@harmoniclabs/cbor':
-        specifier: 2.0.2
-        version: 2.0.2
-      '@harmoniclabs/plutus-data':
-        specifier: 2.0.1
-        version: 2.0.1(@harmoniclabs/cbor@2.0.2)
-      '@harmoniclabs/plutus-machine':
-        specifier: 3.0.3
-        version: 3.0.3(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/plutus-data@2.0.1(@harmoniclabs/cbor@2.0.2))(@harmoniclabs/uplc@2.0.7(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(@harmoniclabs/plutus-data@2.0.1(@harmoniclabs/cbor@2.0.2)))
-      '@harmoniclabs/uplc':
-        specifier: 2.0.7
-        version: 2.0.7(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(@harmoniclabs/plutus-data@2.0.1(@harmoniclabs/cbor@2.0.2))
       '@lucid-evolution/lucid':
         specifier: 0.8.7
         version: 0.8.7(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(fast-check@3.23.2)
@@ -1373,9 +1346,6 @@ packages:
   '@harmoniclabs/bitstream@1.0.0':
     resolution: {integrity: sha512-Ed/I46IuCiytE5QiMmmUo9kPJcypM7OuUqoRaAXUALL5C6LKLpT6kYE1qeuhLkx2/WvkHT18jcOX6jhM/nmqoA==}
 
-  '@harmoniclabs/cardano-costmodels-ts@1.6.1':
-    resolution: {integrity: sha512-rbkhdCXbG2C8RgQxWAgAAIrOEQCGr6qVk8IzF4aVjVqrcXDPmaWFVqCpHk3GjX8D9NVj277TfEEav3gIR2hMFQ==}
-
   '@harmoniclabs/cbor@2.0.2':
     resolution: {integrity: sha512-D4rWOZqux7YScgXwBLoTomB7YkBsjOh+JLJZcIxauZn9UAio0yLORBfN1kblmQ1Ta32hZMQ+H0hJ08CPYWfY4A==}
 
@@ -1389,13 +1359,6 @@ packages:
     resolution: {integrity: sha512-JOU1SgcFdss9cTR4fifpoqXIIiimv837OC4jX0yRzT97ACxOVNFy7DvqfG2ur5k50+RzGdF3qYtEaV8dbTJ2Qw==}
     peerDependencies:
       '@harmoniclabs/cbor': ^2.0.1
-
-  '@harmoniclabs/plutus-machine@3.0.3':
-    resolution: {integrity: sha512-G/nU8H+om2H2c2nqRtXba1K8Q5TrezwXSP1LwjOAfyr9weQqFRfdmrIe0zC0RJKiMMi/KwMISj1cDYqdrqlU/w==}
-    peerDependencies:
-      '@harmoniclabs/cbor': ^2.0.1
-      '@harmoniclabs/plutus-data': ^2.0.1
-      '@harmoniclabs/uplc': ^2.0.6
 
   '@harmoniclabs/uint8array-utils@1.0.4':
     resolution: {integrity: sha512-Z454prSbX4geXGHyjjcn9vm6u9NsD3VJykv8f8yE1VjIXSPitaLPEnm8u2+B+GMp1chYlLilOq+kW4OvJ6y28A==}
@@ -1598,17 +1561,9 @@ packages:
     resolution: {integrity: sha512-Z6pjIZ/8IJcCGzb2S/0Px5J81yij85xASuk1teLNeg75bfT07MV3a/O2Mtn1I2se43k3lkVEcFaR10N4cgQcZA==}
     engines: {node: '>= 20.19.0'}
 
-  '@noble/curves@1.9.7':
-    resolution: {integrity: sha512-gbKGcRUYIjA3/zCCNaWDciTMFI0dCkvou3TL8Zmy5Nc7sJ47a0jtOeZoTaMxkuqRo9cRhjOdZJXegxYE5FN/xw==}
-    engines: {node: ^14.21.3 || >=16}
-
   '@noble/curves@2.2.0':
     resolution: {integrity: sha512-T/BoHgFXirb0ENSPBquzX0rcjXeM6Lo892a2jlYJkqk83LqZx0l1Of7DzlKJ6jkpvMrkHSnAcgb5JegL8SeIkQ==}
     engines: {node: '>= 20.19.0'}
-
-  '@noble/hashes@1.7.2':
-    resolution: {integrity: sha512-biZ0NUSxyjLLqo6KxEJ1b+C2NAx0wtDoFvCaXHGgUkeHzf3Xc1xKumFKREuT7f7DARNZ/slvYUwFG6B0f2b6hQ==}
-    engines: {node: ^14.21.3 || >=16}
 
   '@noble/hashes@1.8.0':
     resolution: {integrity: sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A==}
@@ -3748,12 +3703,6 @@ snapshots:
     dependencies:
       '@harmoniclabs/uint8array-utils': 1.0.4
 
-  '@harmoniclabs/cardano-costmodels-ts@1.6.1':
-    dependencies:
-      '@harmoniclabs/cbor': 2.0.2
-      '@harmoniclabs/obj-utils': 1.0.0
-      '@harmoniclabs/uint8array-utils': 1.0.4
-
   '@harmoniclabs/cbor@2.0.2':
     dependencies:
       '@harmoniclabs/obj-utils': 1.0.0
@@ -3772,19 +3721,6 @@ snapshots:
       '@harmoniclabs/crypto': 0.3.1
       '@harmoniclabs/obj-utils': 1.0.0
       '@harmoniclabs/uint8array-utils': 1.0.4
-
-  '@harmoniclabs/plutus-machine@3.0.3(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/plutus-data@2.0.1(@harmoniclabs/cbor@2.0.2))(@harmoniclabs/uplc@2.0.7(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(@harmoniclabs/plutus-data@2.0.1(@harmoniclabs/cbor@2.0.2)))':
-    dependencies:
-      '@harmoniclabs/bigint-utils': 1.0.0
-      '@harmoniclabs/cardano-costmodels-ts': 1.6.1
-      '@harmoniclabs/cbor': 2.0.2
-      '@harmoniclabs/crypto': 0.3.1
-      '@harmoniclabs/obj-utils': 1.0.0
-      '@harmoniclabs/plutus-data': 2.0.1(@harmoniclabs/cbor@2.0.2)
-      '@harmoniclabs/uint8array-utils': 1.0.4
-      '@harmoniclabs/uplc': 2.0.7(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(@harmoniclabs/plutus-data@2.0.1(@harmoniclabs/cbor@2.0.2))
-      '@noble/curves': 1.9.7
-      '@noble/hashes': 1.7.2
 
   '@harmoniclabs/uint8array-utils@1.0.4': {}
 
@@ -4204,15 +4140,9 @@ snapshots:
 
   '@noble/ciphers@2.2.0': {}
 
-  '@noble/curves@1.9.7':
-    dependencies:
-      '@noble/hashes': 1.8.0
-
   '@noble/curves@2.2.0':
     dependencies:
       '@noble/hashes': 2.2.0
-
-  '@noble/hashes@1.7.2': {}
 
   '@noble/hashes@1.8.0': {}
 

@@ -18,9 +18,6 @@ const routes = [
   "midgard-validation",
 ];
 const sdkRequire = createRequire(join(workspace, "midgard-sdk/package.json"));
-const validationRequire = createRequire(
-  join(workspace, "midgard-validation/package.json"),
-);
 const wasm = sdkRequire("@lucid-evolution/uplc") as {
   apply_params_to_script: (
     params: Uint8Array,
@@ -66,7 +63,7 @@ const expectedApplication = (
 };
 
 describe.each(routes)("installed Lucid parameterization from %s", (route) => {
-  it("shares modern Harmonic data, crypto, and CBOR instances with validation", () => {
+  it("shares modern Harmonic data, crypto, and CBOR instances with the SDK", () => {
     const packageRequire = createRequire(
       join(workspace, route, "package.json"),
     );
@@ -84,10 +81,6 @@ describe.each(routes)("installed Lucid parameterization from %s", (route) => {
     expect(versionOf(dataEntry)).toMatch(/^2\./);
     expect(versionOf(uplcRequire.resolve("@harmoniclabs/cbor"))).toMatch(
       /^2\./,
-    );
-    expect(uplcEntry).toBe(validationRequire.resolve("@harmoniclabs/uplc"));
-    expect(dataEntry).toBe(
-      validationRequire.resolve("@harmoniclabs/plutus-data"),
     );
     expect(uplcRequire.resolve("@harmoniclabs/plutus-data")).toBe(dataEntry);
     expect(uplcRequire.resolve("@harmoniclabs/cbor")).toBe(
