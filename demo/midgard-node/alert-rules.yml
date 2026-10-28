@@ -61,3 +61,28 @@ groups:
         annotations:
           summary: "Node {{ $labels.instance }} cannot reconcile a settlement attempt; new settlement work is blocked"
           runbook: "docs/operations/alerts.md#midgardsettlementreconcilestuck"
+
+      - alert: MidgardMergeFailures
+        # Merge attempts keep failing (build, wallet funding or a refused
+        # candidate check); one failure that the next attempt clears does not
+        # page.
+        expr: rate(merge_failure_count_total[5m]) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Node {{ $labels.instance }} has failed merge attempts for 10 minutes"
+          runbook: "docs/operations/alerts.md#midgardmergefailures"
+
+      - alert: MidgardWalletBalanceLow
+        # A role wallet's plain-ADA balance is below what that role needs;
+        # the node exports the requirement beside the balance, so the
+        # threshold follows the code. Roles with no requirement have no
+        # midgard_wallet_required_lovelace series and never fire.
+        expr: midgard_wallet_plain_lovelace < midgard_wallet_required_lovelace
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Node {{ $labels.instance }} {{ $labels.role }} wallet holds less plain ADA than it needs"
+          runbook: "docs/operations/alerts.md#midgardwalletbalancelow"

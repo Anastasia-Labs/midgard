@@ -14,6 +14,7 @@ import {
   monitorMempoolFiber,
   mpfPayloadAuditFiber,
   nativeMpfOwnerSupervisorFiber,
+  nodeRoleWallets,
   operatorWatchdogFiber,
   retentionSweeperFiber,
   txQueueProcessorFiber,
@@ -166,6 +167,7 @@ export const nodeFibers = ({
     ? alertSignalsFiber(
         mkSchedule(ALERT_SIGNALS_SAMPLE_INTERVAL_MS),
         nodeConfig.READINESS_MAX_HEARTBEAT_AGE_MS,
+        nodeRoleWallets(nodeConfig),
       )
     : Effect.void,
   txQueueProcessor: txQueueProcessorFiber(

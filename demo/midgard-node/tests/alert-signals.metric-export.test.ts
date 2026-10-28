@@ -1,16 +1,31 @@
 import "./utils.js";
 
 import { SqlClient } from "@effect/sql";
-import { Effect, Ref } from "effect";
+import {
+  generateSeedPhrase,
+  type LucidEvolution,
+  type UTxO,
+} from "@lucid-evolution/lucid";
+import { Effect, Layer, Ref } from "effect";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { sampleAlertSignals } from "../src/fibers/alert-signals.js";
+import {
+  LUCID_DEFAULT_COLLATERAL_LOVELACE,
+  nodeRoleWallets,
+  OPERATOR_WALLET_REQUIRED_LOVELACE,
+  sampleWalletBalances,
+} from "../src/fibers/alert-signals.wallet-balances.js";
 import {
   EVENT_IDENTITY_CONFLICT,
   EVENT_UNDECODABLE,
   type EventRefusal,
 } from "../src/l1-events/driver.js";
 import { Globals } from "../src/services/globals.js";
+import {
+  IntentJournal,
+  IntentJournalWithoutFollower,
+} from "../src/services/intent-journal.js";
 import {
   L1_NODE_CONFIG_FAILED,
   type L1FollowerHandle,
@@ -314,5 +329,160 @@ describe("alert signal metrics", () => {
         ).toBe(0);
       }),
     );
+  });
+});
+
+/** A role wallet's output: plain ADA unless `extra` adds a datum or script. */
+const output = (
+  address: string,
+  index: number,
+  assets: UTxO["assets"],
+  extra: Partial<UTxO> = {},
+): UTxO => ({
+  txHash: "ab".repeat(32),
+  outputIndex: index,
+  address,
+  assets,
+  datum: null,
+  datumHash: null,
+  scriptRef: null,
+  ...extra,
+});
+
+describe("wallet balance metrics", () => {
+  const wallets = nodeRoleWallets({
+    NETWORK: "Preprod",
+    L1_OPERATOR_SEED_PHRASE: generateSeedPhrase(),
+    L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: generateSeedPhrase(),
+    L1_SETTLEMENT_SEED_PHRASE: generateSeedPhrase(),
+    L1_REFERENCE_SCRIPT_SEED_PHRASE: generateSeedPhrase(),
+  });
+  const addressOf = (role: string) =>
+    wallets.find((wallet) => wallet.role === role)!.address;
+
+  /** The outputs each address's view holds; the journal reads them. */
+  const views = new Map<string, readonly UTxO[]>();
+  const journal = Layer.succeed(IntentJournal, {
+    ...Effect.runSync(
+      Effect.provide(IntentJournal, IntentJournalWithoutFollower),
+    ),
+    walletView: (_lucid, address) =>
+      Effect.succeed({
+        address,
+        source: "follower" as const,
+        utxos: views.get(address) ?? [],
+        predictedBy: new Map<string, string>(),
+        held: new Set<string>(),
+      }),
+  });
+  const sampleAndScrape = () =>
+    Effect.runPromise(
+      sampleWalletBalances({} as LucidEvolution, wallets).pipe(
+        Effect.provide(journal),
+      ),
+    ).then(() => exporter.scrape());
+
+  /** `MidgardWalletBalanceLow`'s condition for `role` on one scrape. */
+  const lowBalanceFires = (scrape: string, role: string): boolean => {
+    const required = sampleValue(scrape, "midgard_wallet_required_lovelace", {
+      role,
+    });
+    const plain = sampleValue(scrape, "midgard_wallet_plain_lovelace", {
+      role,
+    });
+    return required !== undefined && plain !== undefined && plain < required;
+  };
+
+  it("exports each role wallet's plain-ADA balance and requirement, and the low-balance condition holds only below it", async () => {
+    const operator = addressOf("operator");
+    const settlement = addressOf("settlement");
+    // The operator is one lovelace short in plain ADA; its token-bearing,
+    // datum-carrying and script-carrying outputs do not count.
+    views.set(operator, [
+      output(operator, 0, {
+        lovelace: OPERATOR_WALLET_REQUIRED_LOVELACE - 1n,
+      }),
+      output(operator, 1, {
+        lovelace: 500_000_000n,
+        ["cd".repeat(28) + "01"]: 1n,
+      }),
+      output(operator, 2, { lovelace: 500_000_000n }, { datum: "d87980" }),
+      output(
+        operator,
+        3,
+        { lovelace: 500_000_000n },
+        {
+          scriptRef: {
+            type: "PlutusV3",
+            script: "4e4d01000033222220051200120011",
+          },
+        },
+      ),
+    ]);
+    // The merge wallet holds exactly its collateral; settlement nothing.
+    views.set(addressOf("merge"), [
+      output(addressOf("merge"), 0, {
+        lovelace: LUCID_DEFAULT_COLLATERAL_LOVELACE,
+      }),
+    ]);
+    views.set(addressOf("reference_script"), []);
+    views.set(addressOf("defense_pocket"), [
+      output(addressOf("defense_pocket"), 0, { lovelace: 1_000_000n }),
+    ]);
+
+    const low = await sampleAndScrape();
+    expect(
+      sampleValue(low, "midgard_wallet_plain_lovelace", { role: "operator" }),
+    ).toBe(Number(OPERATOR_WALLET_REQUIRED_LOVELACE - 1n));
+    expect(
+      sampleValue(low, "midgard_wallet_required_lovelace", {
+        role: "operator",
+      }),
+    ).toBe(Number(OPERATOR_WALLET_REQUIRED_LOVELACE));
+    expect(
+      sampleValue(low, "midgard_wallet_required_lovelace", { role: "merge" }),
+    ).toBe(Number(LUCID_DEFAULT_COLLATERAL_LOVELACE));
+    expect(
+      sampleValue(low, "midgard_wallet_plain_lovelace", {
+        role: "settlement",
+      }),
+    ).toBe(0);
+    expect(
+      sampleValue(low, "midgard_wallet_plain_lovelace", {
+        role: "defense_pocket",
+      }),
+    ).toBe(1_000_000);
+    expect(lowBalanceFires(low, "operator")).toBe(true);
+    expect(lowBalanceFires(low, "settlement")).toBe(true);
+    expect(lowBalanceFires(low, "merge")).toBe(false);
+    // The reference-script wallet and the pocket have no requirement of
+    // their own: an empty or small balance never fires.
+    for (const role of ["reference_script", "defense_pocket"]) {
+      expect(
+        sampleValue(low, "midgard_wallet_required_lovelace", { role }),
+      ).toBeUndefined();
+      expect(lowBalanceFires(low, role)).toBe(false);
+    }
+
+    // Topped up, the condition clears.
+    views.set(operator, [
+      output(operator, 0, { lovelace: OPERATOR_WALLET_REQUIRED_LOVELACE }),
+    ]);
+    views.set(settlement, [output(settlement, 0, { lovelace: 20_000_000n })]);
+    const funded = await sampleAndScrape();
+    for (const role of ["operator", "merge", "settlement"])
+      expect(lowBalanceFires(funded, role), role).toBe(false);
+  });
+
+  it("names no settlement wallet when none is configured", () => {
+    expect(
+      nodeRoleWallets({
+        NETWORK: "Preprod",
+        L1_OPERATOR_SEED_PHRASE: generateSeedPhrase(),
+        L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: generateSeedPhrase(),
+        L1_SETTLEMENT_SEED_PHRASE: "",
+        L1_REFERENCE_SCRIPT_SEED_PHRASE: generateSeedPhrase(),
+      }).map(({ role }) => role),
+    ).toEqual(["operator", "merge", "reference_script", "defense_pocket"]);
   });
 });

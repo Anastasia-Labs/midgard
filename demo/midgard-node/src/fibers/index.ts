@@ -3,6 +3,7 @@
  */
 export * from "./admission-backlog-gauge.js";
 export * from "./alert-signals.js";
+export * from "./alert-signals.wallet-balances.js";
 export * from "./attestation-timeout-correction.js";
 export * from "./block-commitment.js";
 export * from "./block-confirmation.js";
