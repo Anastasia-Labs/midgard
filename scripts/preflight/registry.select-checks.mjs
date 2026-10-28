@@ -10,6 +10,7 @@ import {
   demoChecks,
   FULL_RUN,
   scriptBudgetCheck,
+  validatorPublicationSizeCheck,
   VERIFICATION_ONLY,
 } from "./registry.demo-checks.mjs";
 import {
@@ -49,6 +50,7 @@ export const buildRegistry = (root) => {
     ...goldenChecks(root, packages, ciText),
     focused,
     blueprint,
+    validatorPublicationSizeCheck(ciText),
     txFuzzReferenceCheck(packages),
     ...independent.filter((check) => check.id !== "tx-preparation:sdk"),
     scriptBudgetCheck(root, index, ciText),

@@ -633,6 +633,13 @@ jobs:
           prebuild: lucid-midgard
       - name: Build and test Midgard core DA transport
         run: pnpm --dir demo/midgard-core run build && pnpm --dir demo/midgard-core test
+      # Each validator is published as a reference script in a transaction of
+      # its own, so every compiled script in the blueprint the `blueprint` job
+      # built must fit the smallest L1 maxTxSize the core profile supports.
+      # The gate reads that limit from the core build above.
+      - name: Hold every compiled validator to the L1 publication limit
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run validator-publication-size
       - name: Typecheck core and shared test support
         if: ${{ !cancelled() }}
         run: pnpm --dir demo/midgard-core run typecheck && pnpm --dir demo/midgard-test-support run typecheck

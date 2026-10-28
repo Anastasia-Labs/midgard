@@ -1372,6 +1372,18 @@ Blueprint rebuild into a temporary file (never the tracked plutus.json).
   - `onchain/aiken/**/*.ak`
 - Needs: `aiken`
 
+### `validator-publication-size`
+
+Compiled validators within the L1 reference-script publication limit.
+
+- Command: `node --test demo/scripts/check-validator-publication-sizes.test.mjs && node demo/scripts/check-validator-publication-sizes.mjs`
+- Runs on:
+  - `onchain/aiken/**/*.ak`
+  - `demo/scripts/check-validator-publication-sizes.mjs`
+  - `demo/scripts/check-validator-publication-sizes.test.mjs`
+  - `demo/midgard-core/src/consensus-profile.ts`
+- Needs: `node-modules`, `blueprint`, `core-dist`
+
 ### `tx-fuzz-reference`
 
 Transaction differential with the pinned aiken reference leg.

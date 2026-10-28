@@ -216,6 +216,39 @@ export const aikenChecks = (root, index) => {
   ];
 };
 
+// Every compiled validator in the stamped blueprint at or under the L1
+// publication limit, which the gate reads from the built midgard-core. Its
+// test first feeds it blueprints over and at the limit.
+const PUBLICATION_SIZE_GATE = `${DEMO}/scripts/check-validator-publication-sizes.mjs`;
+const PUBLICATION_SIZE_TEST = `${DEMO}/scripts/check-validator-publication-sizes.test.mjs`;
+
+export const validatorPublicationSizeCheck = (ciText) => {
+  const id = "validator-publication-size";
+  const gated = workflowRunsCheck(ciText, id);
+  const steps = [
+    step(node("--test", PUBLICATION_SIZE_TEST)),
+    step(node(PUBLICATION_SIZE_GATE)),
+  ];
+  return {
+    id,
+    title:
+      "Compiled validators within the L1 reference-script publication limit",
+    triggers: [
+      `${AIKEN_PROJECT}/**/*.ak`,
+      PUBLICATION_SIZE_GATE,
+      PUBLICATION_SIZE_TEST,
+      `${DEMO}/midgard-core/src/consensus-profile.ts`,
+    ],
+    capabilities: ["node-modules", "blueprint", "core-dist"],
+    warnOnly: !gated,
+    warnReason: gated
+      ? undefined
+      : "no workflow runs the publication size gate, so a red verdict does not block",
+    display: steps.map(formatCommand).join(" && "),
+    plan: () => steps,
+  };
+};
+
 // One check for every script budget. A change to the table or the judge runs
 // the whole table; a change to Aiken source runs the budgets of every module
 // whose compiled code can depend on it.
