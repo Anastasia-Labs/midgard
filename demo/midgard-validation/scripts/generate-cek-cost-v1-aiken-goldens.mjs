@@ -8,8 +8,8 @@
  * The expected budgets come from `computeMidgardCekBuiltinBudget`, the
  * TypeScript twin of `cek-cost-v1.ak`, whose coefficients are those of
  * midgard-core's pinned 350-entry Plutus V3 cost vector
- * (`PLUTUS_V3_CANONICAL_COST_MODEL_VIEW`; `tests/cek-cost.differential.test.ts`
- * holds the twin to the costing that vector gives). The size points are chosen so
+ * (`PLUTUS_V3_CANONICAL_COST_MODEL_VIEW`; `tests/cek-cost.parameter-names.test.ts`
+ * holds the twin to that vector by parameter name). The size points are chosen so
  * that every parameter of every cost model moves the result: an intercept and
  * a slope, both sides of a diagonal, equal and unequal sizes, a zero literal
  * and a non-zero one. Changing any single on-chain cost parameter therefore
@@ -32,12 +32,11 @@ import {
   goldenChannelEmitter,
   parseGoldenChannelArguments,
 } from "@al-ft/midgard-core/scripts/golden-channel.mjs";
-import { PartialBuiltin } from "@harmoniclabs/plutus-machine";
-import { builtinTagToString } from "@harmoniclabs/uplc";
 
 import {
   computeMidgardCekBuiltinBudget,
-  harmonicBuiltinTag,
+  midgardCekBuiltinArgumentCount,
+  midgardCekBuiltinName,
 } from "../dist/index.js";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
@@ -62,24 +61,6 @@ if (
 }
 
 const MAX_BUILTIN_TAG = 100;
-
-/** The protocol version 11 builtins, which the reference library predates. */
-const PV11_BUILTINS = new Map([
-  [87, ["expModInteger", 3]],
-  [88, ["dropList", 2]],
-  [89, ["lengthOfArray", 1]],
-  [90, ["listToArray", 1]],
-  [91, ["indexArray", 2]],
-  [92, ["bls12_381_G1_multiScalarMul", 2]],
-  [93, ["bls12_381_G2_multiScalarMul", 2]],
-  [94, ["insertCoin", 4]],
-  [95, ["lookupCoin", 3]],
-  [96, ["unionValue", 2]],
-  [97, ["valueContains", 2]],
-  [98, ["valueData", 1]],
-  [99, ["unValueData", 1]],
-  [100, ["scaleValue", 2]],
-]);
 
 const MAX_SIGNED_64 = "9223372036854775807";
 
@@ -138,15 +119,10 @@ const snakeCase = (name) =>
     .replace(/[^A-Za-z0-9]+/gu, "_")
     .toLowerCase();
 
-const nameAndArity = (tag) => {
-  const pv11 = PV11_BUILTINS.get(tag);
-  if (pv11 !== undefined) return pv11;
-  const harmonicTag = harmonicBuiltinTag(tag);
-  return [
-    builtinTagToString(harmonicTag),
-    PartialBuiltin.getNRequiredArgsFor(harmonicTag),
-  ];
-};
+const nameAndArity = (tag) => [
+  midgardCekBuiltinName(tag),
+  Number(midgardCekBuiltinArgumentCount(BigInt(tag))),
+];
 
 const renderTest = (tag) => {
   const [name, arity] = nameAndArity(tag);

@@ -35,19 +35,19 @@ import {
   hex,
   parseGoldenChannelArguments,
 } from "@al-ft/midgard-core/scripts/golden-channel.mjs";
-import { DataB } from "@harmoniclabs/plutus-data";
+import { Data } from "@lucid-evolution/lucid";
+
+import * as api from "../dist/index.js";
 import {
   Application,
   Builtin,
   constT,
+  DataB,
   Lambda,
+  midgardCekBuiltinTagOfName,
   UPLCConst,
-  UPLCEncoder,
   UPLCProgram,
-} from "@harmoniclabs/uplc";
-import { Data } from "@lucid-evolution/lucid";
-
-import * as api from "../dist/index.js";
+} from "../dist/uplc.js";
 import { steps } from "../tests/fixtures/cek-write-bits-loop-v1.vectors.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
@@ -84,7 +84,7 @@ const witnessOf = (step) => {
       step.indices.map((index) => UPLCConst.int(index).value),
     ),
     UPLCConst.bool(step.set),
-  ].reduce(apply, Builtin.writeBits);
+  ].reduce(apply, new Builtin(midgardCekBuiltinTagOfName("writeBits")));
   // `(\_. ()) body` under the script's context lambda.
   const program = new UPLCProgram(
     [1, 1, 0],
@@ -92,7 +92,7 @@ const witnessOf = (step) => {
   );
   const outcome = api.evaluateMidgardCekScript(
     {
-      scriptBytes: encodeCbor(Buffer.from(UPLCEncoder.compile(program))),
+      scriptBytes: encodeCbor(api.encodeMidgardCekCardanoFlatProgram(program)),
       scriptLanguage: "PlutusV3",
       contextCbor: Buffer.from("d87980", "hex"),
       executionIndex: 0n,

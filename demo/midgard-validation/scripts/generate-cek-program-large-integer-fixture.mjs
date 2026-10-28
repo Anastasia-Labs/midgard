@@ -24,18 +24,19 @@ import {
   goldenChannelEmitter,
   parseGoldenChannelArguments,
 } from "@al-ft/midgard-core/scripts/golden-channel.mjs";
-import {
-  Application,
-  Builtin,
-  Lambda,
-  UPLCConst,
-  UPLCProgram,
-} from "@harmoniclabs/uplc";
 
 import {
   buildMidgardCanonicalCekProgram,
   encodeMidgardCekCardanoFlatProgram,
 } from "../dist/index.js";
+import {
+  Application,
+  Builtin,
+  Lambda,
+  midgardCekBuiltinTagOfName,
+  UPLCConst,
+  UPLCProgram,
+} from "../dist/uplc.js";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(scriptDirectory, "..");
@@ -53,7 +54,10 @@ const flat = encodeMidgardCekCardanoFlatProgram(
       new Application(
         new Lambda(UPLCConst.unit),
         new Application(
-          new Application(Builtin.addInteger, UPLCConst.int(1n << 512n)),
+          new Application(
+            new Builtin(midgardCekBuiltinTagOfName("addInteger")),
+            UPLCConst.int(1n << 512n),
+          ),
           UPLCConst.int(1),
         ),
       ),

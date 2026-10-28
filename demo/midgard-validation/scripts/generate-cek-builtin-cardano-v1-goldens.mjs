@@ -35,9 +35,11 @@ import {
   goldenChannelEmitter,
   parseGoldenChannelArguments,
 } from "@al-ft/midgard-core/scripts/golden-channel.mjs";
-import { builtinTagToString, getNRequiredForces } from "@harmoniclabs/uplc";
 
-import { harmonicBuiltinTag } from "../dist/index.js";
+import {
+  midgardCekBuiltinForceCount,
+  midgardCekBuiltinName,
+} from "../dist/index.js";
 import { buildCekBuiltinCardanoCases } from "../tests/fixtures/cek-builtin-cardano-v1.cases.mjs";
 import { aikenBinary } from "../../../scripts/lib/aiken.mjs";
 
@@ -149,11 +151,11 @@ const argumentTerm = (argument) =>
     ? mlTerm(argument.v)
     : `(con ${typeText(argument.ty)} ${valueText(argument.ty, argument.v)})`;
 
-// `tag` is Cardano's flat number; the library names builtins by its own.
+// `tag` is Cardano's flat number; aiken's textual syntax names the builtin.
 const programText = (tag, args) => {
-  const named = harmonicBuiltinTag(tag);
-  let head = `(builtin ${builtinTagToString(named)})`;
-  for (let force = 0; force < getNRequiredForces(named); force++) {
+  let head = `(builtin ${midgardCekBuiltinName(tag)})`;
+  const forces = midgardCekBuiltinForceCount(BigInt(tag));
+  for (let force = 0n; force < forces; force++) {
     head = `(force ${head})`;
   }
   const body = args.reduce(
