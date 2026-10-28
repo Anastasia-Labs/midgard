@@ -37,6 +37,8 @@ export default tseslint.config(
       "**/.architecture-f-wasm/**",
       "**/.probe-dist/**",
       "**/.tmp/**",
+      // The build's verbatim copy of a vendored package.
+      "midgard-validation/vendor/**",
       // Rule fixtures hold deliberate violations; the plugin's own test
       // lints them.
       "scripts/lib/eslint-plugin-midgard/fixtures/**",
