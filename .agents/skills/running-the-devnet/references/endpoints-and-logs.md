@@ -169,6 +169,13 @@ deadline:
 - `database_schema_incompatible` (a `failedReason`): the database's schema
   is not the one this binary runs on (not migrated, unversioned, a ledger or
   shape mismatch). Run `migrate`, or point the node at the right database.
+- `startup_failed` in the `database_initialization` stage, the log naming
+  `This database serves deployment <recorded>, not the configured deployment
+<configured>`: the database is bound to the deployment whose manifest id it
+  recorded first, and the node was started under another manifest. Nothing
+  is retried or written; the node stays up, unready. Point the node at a
+  fresh database for this deployment (or back at the recorded deployment's
+  manifest); never edit the record.
 - `protocol_deployment_status_unavailable`: the protocol deployment status
   read failed on the L1 provider. Check the L1 node and the follower.
 - `reward_account_status_unavailable`: the availability-challenge reward

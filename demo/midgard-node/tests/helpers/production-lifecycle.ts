@@ -15,7 +15,12 @@
  * - `restartRuntime` stops every service of the running generation and
  *   starts the next on the same database and emulator, as a node restart
  *   does: a fresh driver's first view runs the recompute and the startup
- *   preparation again.
+ *   preparation again. With `manifestId`, the next generation starts under
+ *   that deployment manifest id instead.
+ *
+ * Each generation first runs the node's database initialization
+ * (`initializeNodeDatabase`), before it follows the chain or starts the
+ * driver, as `runNode` does.
  *
  * The deployment, the receipts of every transaction confirmed on it and the
  * emulator come from `openPublishedLifecycle`.
@@ -24,6 +29,7 @@ import { SqlClient } from "@effect/sql";
 import { Effect, Exit, Layer, ManagedRuntime, Ref, Scope } from "effect";
 import { expect, vi } from "vitest";
 
+import { initializeNodeDatabase } from "../../src/commands/listen-startup.initialize-database.js";
 import { prepareNodeOnStartup } from "../../src/commands/listen-startup.prepare-node.js";
 import { MempoolLedgerDB } from "../../src/database/index.js";
 import type { DriverHold } from "../../src/l1-events/driver.js";
@@ -125,7 +131,13 @@ export const openProductionLifecycle = async (
    * it cannot follow (its receipts are the chain before it). */
   let observing = true;
 
-  const startRuntime = async (globals: Globals, generation: number) => {
+  const startRuntime = async (
+    globals: Globals,
+    generation: number,
+    manifestId?: string,
+  ) => {
+    const generationIdentity =
+      manifestId === undefined ? identity : { ...identity, manifestId };
     const services = Layer.mergeAll(
       Layer.succeed(NodeConfig, nodeConfig),
       Layer.succeed(Globals, globals),
@@ -149,7 +161,7 @@ export const openProductionLifecycle = async (
       ),
       Layer.succeed(
         ContractDeploymentIdentity,
-        ContractDeploymentIdentity.make(identity),
+        ContractDeploymentIdentity.make(generationIdentity),
       ),
       Database.layer,
     );
@@ -173,6 +185,12 @@ export const openProductionLifecycle = async (
           yield* resetApplicationTables;
         }),
       );
+    }
+    try {
+      await runtime.runPromise(initializeNodeDatabase);
+    } catch (error) {
+      await runtime.dispose();
+      throw error;
     }
     const scope = await runtime.runPromise(Scope.make());
     // The follower follows the emulator while the generation runs: P1 and
@@ -391,9 +409,12 @@ export const openProductionLifecycle = async (
     },
     restartRuntime: async ({
       afterStop,
+      manifestId,
     }: {
       /** Observe retained storage only after every old service has closed. */
       readonly afterStop?: () => Promise<void>;
+      /** The deployment manifest id the next generation starts under. */
+      readonly manifestId?: string;
     } = {}) => {
       if (restarting)
         throw new Error("Fixture runtime restart was already requested");
@@ -406,6 +427,7 @@ export const openProductionLifecycle = async (
         current = await startRuntime(
           await makeGlobalsService(),
           stoppedGenerations.length,
+          manifestId,
         );
         restarting = false;
         return current.handle;

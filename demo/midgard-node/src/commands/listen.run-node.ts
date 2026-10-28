@@ -12,7 +12,8 @@ import {
   prepareDaHardeningStartup,
   runDaIdentityGatedStartupSequence,
 } from "../da/startup.js";
-import { DaPayloadsDB, InitDB } from "../database/index.js";
+import { DaPayloadsDB } from "../database/index.js";
+import type { NodeDeploymentMismatch } from "../database/node-deployment.js";
 import { DatabaseError } from "../database/utils/common.js";
 import { assertPhase1AcceptCrashCheckpointConfiguration } from "../e2e/phase1-accept-crash-checkpoint.js";
 import {
@@ -58,6 +59,7 @@ import { buildListenRouter } from "./listen-router.js";
 import { awaitFollowerViewOnStartup } from "./listen-startup.await-follower-view.js";
 import { awaitLandedStateQueueOnStartup } from "./listen-startup.await-landed-state-queue.js";
 import { awaitLedgerSignatureVerifierOnStartup } from "./listen-startup.await-ledger-signature-verifier.js";
+import { initializeNodeDatabase } from "./listen-startup.initialize-database.js";
 import { ensureProtocolInitializedOnStartup } from "./listen-startup.js";
 import { prepareNodeOnStartup } from "./listen-startup.prepare-node.js";
 import { shouldRunGenesisOnStartup } from "./startup-policy.js";
@@ -77,6 +79,7 @@ export const runNode = (
   | ConfigError
   | DatabaseError
   | DatabaseInitializationError
+  | NodeDeploymentMismatch
   | StartupStepFailedError
   | import("../services/validation-pool.js").ValidationWorkerError,
   | NodeConfig
@@ -155,10 +158,19 @@ export const runNode = (
           logStartupFailure("Startup DA identity preflight failed"),
         ),
       ),
+      // The schema gate, then the deployment record: a database bound to
+      // another deployment fails startup here, before anything below
+      // publishes, follows or writes under the configured deployment.
       initializeDatabase: startup
         .setStage("database_initialization")
         .pipe(
-          Effect.zipRight(InitDB.program.pipe(Effect.provide(Database.layer))),
+          Effect.zipRight(
+            initializeNodeDatabase.pipe(Effect.provide(Database.layer)),
+          ),
+          Effect.tapErrorTag(
+            "NodeDeploymentMismatch",
+            logStartupFailure("Startup database initialization failed"),
+          ),
         ),
       // Protocol initialization runs before the follower starts: nothing
       // would reconcile its intents, so it submits unjournaled and awaits
