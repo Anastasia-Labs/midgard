@@ -146,8 +146,7 @@ branch has passed the corresponding startup, load, redaction or incident drills.
 
 P1 does not provide fault-proof coverage of every invalid state. Curated
 operator trust remains necessary for fabricated forced transactions, the
-documented censorship hole, the proof categories the profile excludes, and a
-wrong Plutus verdict that depends on an execution step too large to prove in a
+documented censorship hole, and a wrong Plutus verdict that depends on an execution step too large to prove in a
 single L1 transaction. Other Plutus verdicts are challengeable through the
 interactive validation dispute game. DA payloads carry no validation-trace
 states; the nine families that once read them prove their faults directly, and

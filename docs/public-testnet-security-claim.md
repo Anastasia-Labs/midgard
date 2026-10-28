@@ -16,8 +16,8 @@ Any key can initiate the enabled fraud proofs and availability challenges.
 
 Users rely on curated operators for block production and for correctness outside
 the enabled proof catalogue. A dishonest operator can commit some invalid states
-that P1 cannot prove, including fabricated forced transactions and faults in the
-categories the profile excludes. A dishonest operator can also censor a valid
+that P1 cannot prove, including fabricated forced transactions and a wrong
+Plutus verdict that depends on a step too large to prove on L1. A dishonest operator can also censor a valid
 forced transaction by assigning a rejection that P1 cannot challenge. These
 limitations prevent a general promise that users can always exit without
 operator cooperation.
