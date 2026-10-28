@@ -219,7 +219,7 @@ Verdict key:
 
 | Role | Canonical source today | Other L1 reads | Store |
 |---|---|---|---|
-| Node | Ogmios ChainSync journal, for the deposit and withdrawal lists only (`demo/midgard-node/src/l1-event-history-chain.ts`, `demo/midgard-node/src/l1-event-history-source.ts`) | Kupo/Ogmios through Lucid `Kupmios`, 51 non-test files reference Kupo; reward accounts through the Go binary over LSQ (`demo/midgard-node/src/services/native-ledger.ts:72-85`, one `execFile` per query at `demo/midgard-core/src/native-reward-account.ts:293`) | Postgres; LevelDB MPF; native MPF owner child |
+| Node | Ogmios ChainSync journal, for the deposit and withdrawal lists only (`demo/midgard-node/src/l1-event-history-chain.ts`, `demo/midgard-node/src/l1-event-history-source.ts`) | Kupo/Ogmios through Lucid `Kupmios`, 51 non-test files reference Kupo; reward accounts through the Go binary over LSQ (`demo/midgard-node/src/services/native-ledger.ts:72-85`, one `execFile` per query at `demo/midgard-l1-follower/src/native-reward-account.ts:293`) | Postgres; LevelDB MPF; native MPF owner child |
 | Watcher | N2C ChainSync through the Go sidecar, one intersection point per process (`demo/midgard-watcher/native-chain-sync/main.go:180-186`), so a restart walks the candidates with one process each (`demo/midgard-watcher/src/l1/native-chain-sync.start-watcher-native-chain-sync-with-retry.ts:127-173`) | Kupo `/checkpoints` and an Ogmios block read **for every streamed block**, cross-checked (`demo/midgard-watcher/src/l1/local-kupmios-native-observation.ts:254-437`, Kupo-lag poll every 2 s); one Ogmios session per `readBlock` (`demo/midgard-fault-proofs/src/workflow/local-kupmios-http-ogmios-source.*`, 4,014 lines); exact-point queries run as sessions of one persistent helper process, each session with its own node connection (`demo/midgard-watcher/src/l1/native-chain-sync.exact-point-service.ts`; updated at 17fdffd9b) | `node:sqlite` singleton snapshot with CAS (`demo/midgard-watcher/src/storage/sqlite-record-store.ts:57-79`); HMAC'd one-file-per-record journals |
 | Committee | Ogmios ChainSync cursor (`demo/da-committee-node/src/l1/provider.local-node-chain-authority.ts`), JSONL event journal (`demo/da-committee-node/src/l1/provider.file-chain-sync-cursor-store.ts`, 398 lines) | Kupo `fetchSpend` per queue node and one Ogmios WebSocket per tx during replay (§3.4 CC1) | JSON file plus SQLite mutex plus instance lock (`demo/da-committee-node/src/store.json-file-*.ts`, 1,178 lines; updated at 17fdffd9b), or Postgres (`demo/da-committee-node/src/store/postgres.postgres-committee-store.ts`, 1,067 lines) |
 
@@ -251,7 +251,7 @@ Verdict key:
     `demo/midgard-core/src/ogmios-slot.ts:155-206`), and so does Ogmios submit. Evaluation is
     already local.
   - Reward-account queries move from one `execFile` per query
-    (`demo/midgard-core/src/native-reward-account.ts:293`) to the long-lived sidecar's LSQ.
+    (`demo/midgard-l1-follower/src/native-reward-account.ts:293`) to the long-lived sidecar's LSQ.
 - **Watcher.**
   - The sidecar is already N2C and already streams raw blocks. What it needs
     is multi-point intersection, pipelining, one long-lived process, and the

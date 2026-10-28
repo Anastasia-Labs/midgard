@@ -1,4 +1,4 @@
-import { NATIVE_CHAIN_SYNC_SCHEMA_VERSION } from "@al-ft/midgard-core/native-reward-account";
+import { NATIVE_CHAIN_SYNC_SCHEMA_VERSION } from "@al-ft/midgard-l1-follower/native-reward-account";
 
 import { type WatcherConfig } from "../runtime/config.js";
 

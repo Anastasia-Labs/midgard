@@ -2,7 +2,6 @@
  * Ledger entries, ledger operations, and the mutation steps that replay them against the trie.
  */
 
-import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
   buildMidgardMpfDeletionOpening,
   buildMidgardMpfProofFoldTrace,
@@ -10,6 +9,8 @@ import {
   type MidgardMpfProofFoldTrace,
   parseMidgardMpfProofJson,
 } from "@al-ft/midgard-core";
+
+import { Store, Trie } from "#merkle-patricia-forestry";
 
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "../ledger-output-descriptor.js";
 import { type CanonicalTransitionEffect } from "../transition-effect.js";

@@ -12,6 +12,7 @@
   },
   "files": [
     "dist",
+    "!dist/.*",
     "scripts/golden-channel.mjs"
   ],
   "exports": {
@@ -334,18 +335,6 @@
       "import": "./dist/ogmios-json-rpc-error.js",
       "require": "./dist/ogmios-json-rpc-error.cjs"
     },
-    "./native-ledger-kupmios": {
-      "midgard-source": "./src/native-ledger-kupmios.ts",
-      "types": "./dist/native-ledger-kupmios.d.ts",
-      "import": "./dist/native-ledger-kupmios.js",
-      "require": "./dist/native-ledger-kupmios.cjs"
-    },
-    "./native-reward-account": {
-      "midgard-source": "./src/native-reward-account.ts",
-      "types": "./dist/native-reward-account.d.ts",
-      "import": "./dist/native-reward-account.js",
-      "require": "./dist/native-reward-account.cjs"
-    },
     "./availability-operation-journal-inventory": {
       "midgard-source": "./src/availability-operation-journal-inventory.ts",
       "types": "./dist/availability-operation-journal-inventory.d.ts",
@@ -364,6 +353,572 @@
       "import": "./dist/deployment-release.js",
       "require": "./dist/deployment-release.cjs"
     }
+  },
+  "publishConfig": {
+    "exports": {
+      "./commit-lease-owner": {
+        "import": {
+          "types": "./dist/commit-lease-owner.d.ts",
+          "default": "./dist/commit-lease-owner.js"
+        },
+        "require": {
+          "types": "./dist/commit-lease-owner.d.cts",
+          "default": "./dist/commit-lease-owner.cjs"
+        }
+      },
+      "./deployment-profile": {
+        "import": {
+          "types": "./dist/deployment-profile.d.ts",
+          "default": "./dist/deployment-profile.js"
+        },
+        "require": {
+          "types": "./dist/deployment-profile.d.cts",
+          "default": "./dist/deployment-profile.cjs"
+        }
+      },
+      ".": {
+        "import": {
+          "types": "./dist/index.d.ts",
+          "default": "./dist/index.js"
+        },
+        "require": {
+          "types": "./dist/index.d.cts",
+          "default": "./dist/index.cjs"
+        }
+      },
+      "./assets": {
+        "import": {
+          "types": "./dist/assets.d.ts",
+          "default": "./dist/assets.js"
+        },
+        "require": {
+          "types": "./dist/assets.d.cts",
+          "default": "./dist/assets.cjs"
+        }
+      },
+      "./error-format": {
+        "import": {
+          "types": "./dist/error-format.d.ts",
+          "default": "./dist/error-format.js"
+        },
+        "require": {
+          "types": "./dist/error-format.d.cts",
+          "default": "./dist/error-format.cjs"
+        }
+      },
+      "./canonical-json": {
+        "import": {
+          "types": "./dist/canonical-json.d.ts",
+          "default": "./dist/canonical-json.js"
+        },
+        "require": {
+          "types": "./dist/canonical-json.d.cts",
+          "default": "./dist/canonical-json.cjs"
+        }
+      },
+      "./hex": {
+        "import": {
+          "types": "./dist/hex.d.ts",
+          "default": "./dist/hex.js"
+        },
+        "require": {
+          "types": "./dist/hex.d.cts",
+          "default": "./dist/hex.cjs"
+        }
+      },
+      "./lucid-data": {
+        "import": {
+          "types": "./dist/lucid-data.d.ts",
+          "default": "./dist/lucid-data.js"
+        },
+        "require": {
+          "types": "./dist/lucid-data.d.cts",
+          "default": "./dist/lucid-data.cjs"
+        }
+      },
+      "./narrowing": {
+        "import": {
+          "types": "./dist/narrowing.d.ts",
+          "default": "./dist/narrowing.js"
+        },
+        "require": {
+          "types": "./dist/narrowing.d.cts",
+          "default": "./dist/narrowing.cjs"
+        }
+      },
+      "./l1-origin": {
+        "import": {
+          "types": "./dist/l1-origin.d.ts",
+          "default": "./dist/l1-origin.js"
+        },
+        "require": {
+          "types": "./dist/l1-origin.d.cts",
+          "default": "./dist/l1-origin.cjs"
+        }
+      },
+      "./l1-slot-config": {
+        "import": {
+          "types": "./dist/l1-slot-config.d.ts",
+          "default": "./dist/l1-slot-config.js"
+        },
+        "require": {
+          "types": "./dist/l1-slot-config.d.cts",
+          "default": "./dist/l1-slot-config.cjs"
+        }
+      },
+      "./out-ref": {
+        "import": {
+          "types": "./dist/out-ref.d.ts",
+          "default": "./dist/out-ref.js"
+        },
+        "require": {
+          "types": "./dist/out-ref.d.cts",
+          "default": "./dist/out-ref.cjs"
+        }
+      },
+      "./plutus-data-cbor": {
+        "import": {
+          "types": "./dist/plutus-data-cbor.d.ts",
+          "default": "./dist/plutus-data-cbor.js"
+        },
+        "require": {
+          "types": "./dist/plutus-data-cbor.d.cts",
+          "default": "./dist/plutus-data-cbor.cjs"
+        }
+      },
+      "./plutus-data-lucid-iterative": {
+        "import": {
+          "types": "./dist/plutus-data-lucid-iterative.d.ts",
+          "default": "./dist/plutus-data-lucid-iterative.js"
+        },
+        "require": {
+          "types": "./dist/plutus-data-lucid-iterative.d.cts",
+          "default": "./dist/plutus-data-lucid-iterative.cjs"
+        }
+      },
+      "./codec": {
+        "import": {
+          "types": "./dist/codec/index.d.ts",
+          "default": "./dist/codec/index.js"
+        },
+        "require": {
+          "types": "./dist/codec/index.d.cts",
+          "default": "./dist/codec/index.cjs"
+        }
+      },
+      "./validation-trace": {
+        "import": {
+          "types": "./dist/validation-trace.d.ts",
+          "default": "./dist/validation-trace.js"
+        },
+        "require": {
+          "types": "./dist/validation-trace.d.cts",
+          "default": "./dist/validation-trace.cjs"
+        }
+      },
+      "./validation-dispute": {
+        "import": {
+          "types": "./dist/validation-dispute.d.ts",
+          "default": "./dist/validation-dispute.js"
+        },
+        "require": {
+          "types": "./dist/validation-dispute.d.cts",
+          "default": "./dist/validation-dispute.cjs"
+        }
+      },
+      "./script-proof": {
+        "import": {
+          "types": "./dist/script-proof.d.ts",
+          "default": "./dist/script-proof.js"
+        },
+        "require": {
+          "types": "./dist/script-proof.d.cts",
+          "default": "./dist/script-proof.cjs"
+        }
+      },
+      "./cek-proof": {
+        "import": {
+          "types": "./dist/cek-proof.d.ts",
+          "default": "./dist/cek-proof.js"
+        },
+        "require": {
+          "types": "./dist/cek-proof.d.cts",
+          "default": "./dist/cek-proof.cjs"
+        }
+      },
+      "./cek-semantic": {
+        "import": {
+          "types": "./dist/cek-semantic.d.ts",
+          "default": "./dist/cek-semantic.js"
+        },
+        "require": {
+          "types": "./dist/cek-semantic.d.cts",
+          "default": "./dist/cek-semantic.cjs"
+        }
+      },
+      "./codec/cbor": {
+        "import": {
+          "types": "./dist/codec/cbor.d.ts",
+          "default": "./dist/codec/cbor.js"
+        },
+        "require": {
+          "types": "./dist/codec/cbor.d.cts",
+          "default": "./dist/codec/cbor.cjs"
+        }
+      },
+      "./da-transport": {
+        "import": {
+          "types": "./dist/da-transport.d.ts",
+          "default": "./dist/da-transport.js"
+        },
+        "require": {
+          "types": "./dist/da-transport.d.cts",
+          "default": "./dist/da-transport.cjs"
+        }
+      },
+      "./da-stream-codec": {
+        "import": {
+          "types": "./dist/da-stream-codec.d.ts",
+          "default": "./dist/da-stream-codec.js"
+        },
+        "require": {
+          "types": "./dist/da-stream-codec.d.cts",
+          "default": "./dist/da-stream-codec.cjs"
+        }
+      },
+      "./da-compression": {
+        "import": {
+          "types": "./dist/da-compression.d.ts",
+          "default": "./dist/da-compression.js"
+        },
+        "require": {
+          "types": "./dist/da-compression.d.cts",
+          "default": "./dist/da-compression.cjs"
+        }
+      },
+      "./da-payload-envelope": {
+        "import": {
+          "types": "./dist/da-payload-envelope.d.ts",
+          "default": "./dist/da-payload-envelope.js"
+        },
+        "require": {
+          "types": "./dist/da-payload-envelope.d.cts",
+          "default": "./dist/da-payload-envelope.cjs"
+        }
+      },
+      "./da-payload-sizing": {
+        "import": {
+          "types": "./dist/da-payload-sizing.d.ts",
+          "default": "./dist/da-payload-sizing.js"
+        },
+        "require": {
+          "types": "./dist/da-payload-sizing.d.cts",
+          "default": "./dist/da-payload-sizing.cjs"
+        }
+      },
+      "./da-request-deadline": {
+        "import": {
+          "types": "./dist/da-request-deadline.d.ts",
+          "default": "./dist/da-request-deadline.js"
+        },
+        "require": {
+          "types": "./dist/da-request-deadline.d.cts",
+          "default": "./dist/da-request-deadline.cjs"
+        }
+      },
+      "./codec/address": {
+        "import": {
+          "types": "./dist/codec/address.d.ts",
+          "default": "./dist/codec/address.js"
+        },
+        "require": {
+          "types": "./dist/codec/address.d.cts",
+          "default": "./dist/codec/address.cjs"
+        }
+      },
+      "./codec/datum": {
+        "import": {
+          "types": "./dist/codec/datum.d.ts",
+          "default": "./dist/codec/datum.js"
+        },
+        "require": {
+          "types": "./dist/codec/datum.d.cts",
+          "default": "./dist/codec/datum.cjs"
+        }
+      },
+      "./codec/errors": {
+        "import": {
+          "types": "./dist/codec/errors.d.ts",
+          "default": "./dist/codec/errors.js"
+        },
+        "require": {
+          "types": "./dist/codec/errors.d.cts",
+          "default": "./dist/codec/errors.cjs"
+        }
+      },
+      "./codec/hash": {
+        "import": {
+          "types": "./dist/codec/hash.d.ts",
+          "default": "./dist/codec/hash.js"
+        },
+        "require": {
+          "types": "./dist/codec/hash.d.cts",
+          "default": "./dist/codec/hash.cjs"
+        }
+      },
+      "./codec/forced": {
+        "import": {
+          "types": "./dist/codec/forced.d.ts",
+          "default": "./dist/codec/forced.js"
+        },
+        "require": {
+          "types": "./dist/codec/forced.d.cts",
+          "default": "./dist/codec/forced.cjs"
+        }
+      },
+      "./codec/native": {
+        "import": {
+          "types": "./dist/codec/native.d.ts",
+          "default": "./dist/codec/native.js"
+        },
+        "require": {
+          "types": "./dist/codec/native.d.cts",
+          "default": "./dist/codec/native.cjs"
+        }
+      },
+      "./codec/native-constants": {
+        "import": {
+          "types": "./dist/codec/native-constants.d.ts",
+          "default": "./dist/codec/native-constants.js"
+        },
+        "require": {
+          "types": "./dist/codec/native-constants.d.cts",
+          "default": "./dist/codec/native-constants.cjs"
+        }
+      },
+      "./codec/native-script": {
+        "import": {
+          "types": "./dist/codec/native-script.d.ts",
+          "default": "./dist/codec/native-script.js"
+        },
+        "require": {
+          "types": "./dist/codec/native-script.d.cts",
+          "default": "./dist/codec/native-script.cjs"
+        }
+      },
+      "./codec/output": {
+        "import": {
+          "types": "./dist/codec/output.d.ts",
+          "default": "./dist/codec/output.js"
+        },
+        "require": {
+          "types": "./dist/codec/output.d.cts",
+          "default": "./dist/codec/output.cjs"
+        }
+      },
+      "./codec/script-language-views": {
+        "import": {
+          "types": "./dist/codec/script-language-views.d.ts",
+          "default": "./dist/codec/script-language-views.js"
+        },
+        "require": {
+          "types": "./dist/codec/script-language-views.d.cts",
+          "default": "./dist/codec/script-language-views.cjs"
+        }
+      },
+      "./codec/value": {
+        "import": {
+          "types": "./dist/codec/value.d.ts",
+          "default": "./dist/codec/value.js"
+        },
+        "require": {
+          "types": "./dist/codec/value.d.cts",
+          "default": "./dist/codec/value.cjs"
+        }
+      },
+      "./codec/versioned-script": {
+        "import": {
+          "types": "./dist/codec/versioned-script.d.ts",
+          "default": "./dist/codec/versioned-script.js"
+        },
+        "require": {
+          "types": "./dist/codec/versioned-script.d.cts",
+          "default": "./dist/codec/versioned-script.cjs"
+        }
+      },
+      "./scripts/golden-channel.mjs": "./scripts/golden-channel.mjs",
+      "./consensus-profile": {
+        "import": {
+          "types": "./dist/consensus-profile.d.ts",
+          "default": "./dist/consensus-profile.js"
+        },
+        "require": {
+          "types": "./dist/consensus-profile.d.cts",
+          "default": "./dist/consensus-profile.cjs"
+        }
+      },
+      "./capability-parity": {
+        "import": {
+          "types": "./dist/capability-parity.d.ts",
+          "default": "./dist/capability-parity.js"
+        },
+        "require": {
+          "types": "./dist/capability-parity.d.cts",
+          "default": "./dist/capability-parity.cjs"
+        }
+      },
+      "./consensus-validation": {
+        "import": {
+          "types": "./dist/consensus-validation.d.ts",
+          "default": "./dist/consensus-validation.js"
+        },
+        "require": {
+          "types": "./dist/consensus-validation.d.cts",
+          "default": "./dist/consensus-validation.cjs"
+        }
+      },
+      "./da-libp2p-identity": {
+        "import": {
+          "types": "./dist/da-libp2p-identity.d.ts",
+          "default": "./dist/da-libp2p-identity.js"
+        },
+        "require": {
+          "types": "./dist/da-libp2p-identity.d.cts",
+          "default": "./dist/da-libp2p-identity.cjs"
+        }
+      },
+      "./mpf-proof-fold": {
+        "import": {
+          "types": "./dist/mpf-proof-fold.d.ts",
+          "default": "./dist/mpf-proof-fold.js"
+        },
+        "require": {
+          "types": "./dist/mpf-proof-fold.d.cts",
+          "default": "./dist/mpf-proof-fold.cjs"
+        }
+      },
+      "./retention-window": {
+        "import": {
+          "types": "./dist/retention-window.d.ts",
+          "default": "./dist/retention-window.js"
+        },
+        "require": {
+          "types": "./dist/retention-window.d.cts",
+          "default": "./dist/retention-window.cjs"
+        }
+      },
+      "./deployment-manifest-identity": {
+        "import": {
+          "types": "./dist/deployment-manifest-identity.d.ts",
+          "default": "./dist/deployment-manifest-identity.js"
+        },
+        "require": {
+          "types": "./dist/deployment-manifest-identity.d.cts",
+          "default": "./dist/deployment-manifest-identity.cjs"
+        }
+      },
+      "./codec/native-tx-carriage": {
+        "import": {
+          "types": "./dist/codec/native-tx-carriage.d.ts",
+          "default": "./dist/codec/native-tx-carriage.js"
+        },
+        "require": {
+          "types": "./dist/codec/native-tx-carriage.d.cts",
+          "default": "./dist/codec/native-tx-carriage.cjs"
+        }
+      },
+      "./codec/native-tx-field-access": {
+        "import": {
+          "types": "./dist/codec/native-tx-field-access.d.ts",
+          "default": "./dist/codec/native-tx-field-access.js"
+        },
+        "require": {
+          "types": "./dist/codec/native-tx-field-access.d.cts",
+          "default": "./dist/codec/native-tx-field-access.cjs"
+        }
+      },
+      "./availability-operation-journal": {
+        "import": {
+          "types": "./dist/availability-operation-journal.d.ts",
+          "default": "./dist/availability-operation-journal.js"
+        },
+        "require": {
+          "types": "./dist/availability-operation-journal.d.cts",
+          "default": "./dist/availability-operation-journal.cjs"
+        }
+      },
+      "./runtime-config": {
+        "import": {
+          "types": "./dist/runtime-config.d.ts",
+          "default": "./dist/runtime-config.js"
+        },
+        "require": {
+          "types": "./dist/runtime-config.d.cts",
+          "default": "./dist/runtime-config.cjs"
+        }
+      },
+      "./ogmios-slot": {
+        "import": {
+          "types": "./dist/ogmios-slot.d.ts",
+          "default": "./dist/ogmios-slot.js"
+        },
+        "require": {
+          "types": "./dist/ogmios-slot.d.cts",
+          "default": "./dist/ogmios-slot.cjs"
+        }
+      },
+      "./ogmios-slot-query": {
+        "import": {
+          "types": "./dist/ogmios-slot-query.d.ts",
+          "default": "./dist/ogmios-slot-query.js"
+        },
+        "require": {
+          "types": "./dist/ogmios-slot-query.d.cts",
+          "default": "./dist/ogmios-slot-query.cjs"
+        }
+      },
+      "./ogmios-json-rpc-error": {
+        "import": {
+          "types": "./dist/ogmios-json-rpc-error.d.ts",
+          "default": "./dist/ogmios-json-rpc-error.js"
+        },
+        "require": {
+          "types": "./dist/ogmios-json-rpc-error.d.cts",
+          "default": "./dist/ogmios-json-rpc-error.cjs"
+        }
+      },
+      "./availability-operation-journal-inventory": {
+        "import": {
+          "types": "./dist/availability-operation-journal-inventory.d.ts",
+          "default": "./dist/availability-operation-journal-inventory.js"
+        },
+        "require": {
+          "types": "./dist/availability-operation-journal-inventory.d.cts",
+          "default": "./dist/availability-operation-journal-inventory.cjs"
+        }
+      },
+      "./sqlite-process-mutex": {
+        "import": {
+          "types": "./dist/sqlite-process-mutex.d.ts",
+          "default": "./dist/sqlite-process-mutex.js"
+        },
+        "require": {
+          "types": "./dist/sqlite-process-mutex.d.cts",
+          "default": "./dist/sqlite-process-mutex.cjs"
+        }
+      },
+      "./deployment-release": {
+        "import": {
+          "types": "./dist/deployment-release.d.ts",
+          "default": "./dist/deployment-release.js"
+        },
+        "require": {
+          "types": "./dist/deployment-release.d.cts",
+          "default": "./dist/deployment-release.cjs"
+        }
+      }
+    },
+    "imports": {}
   },
   "scripts": {
     "clean": "rimraf dist",
@@ -392,7 +947,9 @@
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",
     "test": "node ../scripts/package-test.mjs",
-    "build:contrib-raw": "node ../scripts/package-tasks.mjs build"
+    "build:contrib-raw": "node ../scripts/package-tasks.mjs build",
+    "prepack": "node ../../scripts/release/pack-files.mjs copy",
+    "postpack": "node ../../scripts/release/pack-files.mjs remove"
   },
   "keywords": [
     "cardano",
@@ -408,7 +965,6 @@
     "directory": "demo/midgard-core"
   },
   "dependencies": {
-    "@al-ft/l1-node-transport": "workspace:*",
     "@libp2p/crypto": "5.1.20",
     "@libp2p/interface": "3.2.4",
     "@libp2p/peer-id": "6.0.11",
@@ -441,8 +997,6 @@
             "src/runtime-config.ts",
             "src/availability-operation-journal.ts",
             "src/availability-operation-journal-inventory.ts",
-            "src/native-reward-account.ts",
-            "src/native-ledger-kupmios.ts",
             "src/ogmios-slot.ts",
             "src/ogmios-slot-query.ts",
             "src/ogmios-json-rpc-error.ts",

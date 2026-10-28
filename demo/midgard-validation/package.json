@@ -7,7 +7,9 @@
   "types": "./dist/index.d.ts",
   "type": "module",
   "files": [
-    "dist"
+    "dist",
+    "!dist/.*",
+    "vendor"
   ],
   "exports": {
     "./tests/validation-fixtures": {
@@ -148,10 +150,245 @@
     "./uplc": {
       "midgard-source": "./src/uplc.ts",
       "types": "./dist/uplc.d.ts",
-      "import": "./dist/uplc.js"
+      "import": "./dist/uplc.js",
+      "require": "./dist/uplc.cjs"
     },
     "./tests/forced-native-first-fault-fixture": {
       "midgard-source": "./tests/forced-native-first-fault.fixture.ts"
+    }
+  },
+  "imports": {
+    "#merkle-patricia-forestry": "@aiken-lang/merkle-patricia-forestry"
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "import": {
+          "types": "./dist/index.d.ts",
+          "default": "./dist/index.js"
+        },
+        "require": {
+          "types": "./dist/index.d.cts",
+          "default": "./dist/index.cjs"
+        }
+      },
+      "./ledger": {
+        "import": {
+          "types": "./dist/ledger.d.ts",
+          "default": "./dist/ledger.js"
+        },
+        "require": {
+          "types": "./dist/ledger.d.cts",
+          "default": "./dist/ledger.cjs"
+        }
+      },
+      "./ledger-tx": {
+        "import": {
+          "types": "./dist/ledger-tx.d.ts",
+          "default": "./dist/ledger-tx.js"
+        },
+        "require": {
+          "types": "./dist/ledger-tx.d.cts",
+          "default": "./dist/ledger-tx.cjs"
+        }
+      },
+      "./ledger-tx/codec": {
+        "import": {
+          "types": "./dist/ledger-tx/codec.d.ts",
+          "default": "./dist/ledger-tx/codec.js"
+        },
+        "require": {
+          "types": "./dist/ledger-tx/codec.d.cts",
+          "default": "./dist/ledger-tx/codec.cjs"
+        }
+      },
+      "./ledger-tx/types": {
+        "import": {
+          "types": "./dist/ledger-tx/types.d.ts",
+          "default": "./dist/ledger-tx/types.js"
+        },
+        "require": {
+          "types": "./dist/ledger-tx/types.d.cts",
+          "default": "./dist/ledger-tx/types.cjs"
+        }
+      },
+      "./cek-program": {
+        "import": {
+          "types": "./dist/cek-program.d.ts",
+          "default": "./dist/cek-program.js"
+        },
+        "require": {
+          "types": "./dist/cek-program.d.cts",
+          "default": "./dist/cek-program.cjs"
+        }
+      },
+      "./cek-machine": {
+        "import": {
+          "types": "./dist/cek-machine.d.ts",
+          "default": "./dist/cek-machine.js"
+        },
+        "require": {
+          "types": "./dist/cek-machine.d.cts",
+          "default": "./dist/cek-machine.cjs"
+        }
+      },
+      "./cek-executor": {
+        "import": {
+          "types": "./dist/cek-executor.d.ts",
+          "default": "./dist/cek-executor.js"
+        },
+        "require": {
+          "types": "./dist/cek-executor.d.cts",
+          "default": "./dist/cek-executor.cjs"
+        }
+      },
+      "./cek-builtin": {
+        "import": {
+          "types": "./dist/cek-builtin.d.ts",
+          "default": "./dist/cek-builtin.js"
+        },
+        "require": {
+          "types": "./dist/cek-builtin.d.cts",
+          "default": "./dist/cek-builtin.cjs"
+        }
+      },
+      "./cek-data": {
+        "import": {
+          "types": "./dist/cek-data.d.ts",
+          "default": "./dist/cek-data.js"
+        },
+        "require": {
+          "types": "./dist/cek-data.d.cts",
+          "default": "./dist/cek-data.cjs"
+        }
+      },
+      "./cek-data-tree": {
+        "import": {
+          "types": "./dist/cek-data-tree.d.ts",
+          "default": "./dist/cek-data-tree.js"
+        },
+        "require": {
+          "types": "./dist/cek-data-tree.d.cts",
+          "default": "./dist/cek-data-tree.cjs"
+        }
+      },
+      "./cek-constant": {
+        "import": {
+          "types": "./dist/cek-constant.d.ts",
+          "default": "./dist/cek-constant.js"
+        },
+        "require": {
+          "types": "./dist/cek-constant.d.cts",
+          "default": "./dist/cek-constant.cjs"
+        }
+      },
+      "./midgard-redeemers": {
+        "import": {
+          "types": "./dist/midgard-redeemers.d.ts",
+          "default": "./dist/midgard-redeemers.js"
+        },
+        "require": {
+          "types": "./dist/midgard-redeemers.d.cts",
+          "default": "./dist/midgard-redeemers.cjs"
+        }
+      },
+      "./phase-a": {
+        "import": {
+          "types": "./dist/phase-a.d.ts",
+          "default": "./dist/phase-a.js"
+        },
+        "require": {
+          "types": "./dist/phase-a.d.cts",
+          "default": "./dist/phase-a.cjs"
+        }
+      },
+      "./phase-b": {
+        "import": {
+          "types": "./dist/phase-b.d.ts",
+          "default": "./dist/phase-b.js"
+        },
+        "require": {
+          "types": "./dist/phase-b.d.cts",
+          "default": "./dist/phase-b.cjs"
+        }
+      },
+      "./plutus-data": {
+        "import": {
+          "types": "./dist/plutus-data.d.ts",
+          "default": "./dist/plutus-data.js"
+        },
+        "require": {
+          "types": "./dist/plutus-data.d.cts",
+          "default": "./dist/plutus-data.cjs"
+        }
+      },
+      "./script-context": {
+        "import": {
+          "types": "./dist/script-context.d.ts",
+          "default": "./dist/script-context.js"
+        },
+        "require": {
+          "types": "./dist/script-context.d.cts",
+          "default": "./dist/script-context.cjs"
+        }
+      },
+      "./script-context-proof": {
+        "import": {
+          "types": "./dist/script-context-proof.d.ts",
+          "default": "./dist/script-context-proof.js"
+        },
+        "require": {
+          "types": "./dist/script-context-proof.d.cts",
+          "default": "./dist/script-context-proof.cjs"
+        }
+      },
+      "./script-source": {
+        "import": {
+          "types": "./dist/script-source.d.ts",
+          "default": "./dist/script-source.js"
+        },
+        "require": {
+          "types": "./dist/script-source.d.cts",
+          "default": "./dist/script-source.cjs"
+        }
+      },
+      "./tx-out-ref": {
+        "import": {
+          "types": "./dist/tx-out-ref.d.ts",
+          "default": "./dist/tx-out-ref.js"
+        },
+        "require": {
+          "types": "./dist/tx-out-ref.d.cts",
+          "default": "./dist/tx-out-ref.cjs"
+        }
+      },
+      "./types": {
+        "import": {
+          "types": "./dist/types.d.ts",
+          "default": "./dist/types.js"
+        },
+        "require": {
+          "types": "./dist/types.d.cts",
+          "default": "./dist/types.cjs"
+        }
+      },
+      "./uplc": {
+        "import": {
+          "types": "./dist/uplc.d.ts",
+          "default": "./dist/uplc.js"
+        },
+        "require": {
+          "types": "./dist/uplc.d.cts",
+          "default": "./dist/uplc.cjs"
+        }
+      }
+    },
+    "imports": {
+      "#merkle-patricia-forestry": {
+        "types": "./vendor/merkle-patricia-forestry/dist/index.d.ts",
+        "import": "./vendor/merkle-patricia-forestry/dist/index.js",
+        "require": "./vendor/merkle-patricia-forestry/dist/index.cjs"
+      }
     }
   },
   "scripts": {
@@ -195,7 +432,9 @@
     "test": "node ../scripts/package-test.mjs",
     "bench": "vitest run --config vitest.bench.config.ts",
     "test:cardano-capability-p2:data-breadth": "NODE_OPTIONS=--max-old-space-size=4096 node scripts/verify-goal-cardano-capability-p2-data-breadth.mjs",
-    "build:contrib-raw": "node ../scripts/package-tasks.mjs build"
+    "build:contrib-raw": "node ../scripts/package-tasks.mjs build",
+    "prepack": "node ../../scripts/release/pack-files.mjs copy",
+    "postpack": "node ../../scripts/release/pack-files.mjs remove"
   },
   "keywords": [
     "cardano",
@@ -211,7 +450,6 @@
     "directory": "demo/midgard-validation"
   },
   "dependencies": {
-    "@aiken-lang/merkle-patricia-forestry": "github:Anastasia-Labs/merkle-patricia-forestry#b139785f7c118854f9824c26cc443e2df95cb50e&path:/off-chain",
     "@al-ft/midgard-core": "workspace:*",
     "@harmoniclabs/cardano-costmodels-ts": "1.6.1",
     "@harmoniclabs/cbor": "2.0.2",
@@ -222,9 +460,12 @@
     "@lucid-evolution/uplc": "0.5.0",
     "@noble/curves": "^2.2.0",
     "@noble/hashes": "^2.0.1",
-    "effect": "^3.14.22"
+    "blake2b": "^2.1.4",
+    "effect": "^3.14.22",
+    "level": "^8.0.1"
   },
   "devDependencies": {
+    "@aiken-lang/merkle-patricia-forestry": "github:Anastasia-Labs/merkle-patricia-forestry#b139785f7c118854f9824c26cc443e2df95cb50e&path:/off-chain",
     "@al-ft/midgard-fault-proofs": "workspace:*",
     "@al-ft/midgard-sdk": "workspace:*",
     "@al-ft/midgard-test-support": "workspace:*",
@@ -265,6 +506,8 @@
             "src/uplc.ts",
             "src/validation-dispute-evidence.ts",
             "src/validation-machine/index.ts",
+            "--external",
+            "#merkle-patricia-forestry",
             "--format",
             "esm,cjs",
             "--dts",

@@ -3,7 +3,7 @@ import { isAbsolute, normalize } from "node:path";
 import {
   type NativeLedgerNetwork,
   readNativeLedgerGenesis,
-} from "@al-ft/midgard-core/native-reward-account";
+} from "@al-ft/midgard-l1-follower/native-reward-account";
 
 /**
  * The local node the node's L1 reads and submissions go through: its socket,

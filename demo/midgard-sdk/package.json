@@ -12,9 +12,24 @@
       "require": "./dist/index.cjs"
     }
   },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "import": {
+          "types": "./dist/index.d.ts",
+          "default": "./dist/index.js"
+        },
+        "require": {
+          "types": "./dist/index.d.cts",
+          "default": "./dist/index.cjs"
+        }
+      }
+    }
+  },
   "type": "module",
   "files": [
-    "dist"
+    "dist",
+    "!dist/.*"
   ],
   "scripts": {
     "clean": "rimraf dist",
@@ -40,7 +55,9 @@
     "format-check": "prettier --check \"**/*.{ts,tsx,md}\"",
     "ts-node": "ts-node",
     "test": "node ../scripts/package-test.mjs",
-    "build:contrib-raw": "node ../scripts/package-tasks.mjs build"
+    "build:contrib-raw": "node ../scripts/package-tasks.mjs build",
+    "prepack": "node ../../scripts/release/pack-files.mjs copy",
+    "postpack": "node ../../scripts/release/pack-files.mjs remove"
   },
   "keywords": [],
   "author": "Anastasia Labs",
@@ -52,7 +69,6 @@
   },
   "devDependencies": {
     "@aiken-lang/merkle-patricia-forestry": "github:Anastasia-Labs/merkle-patricia-forestry#b139785f7c118854f9824c26cc443e2df95cb50e&path:/off-chain",
-    "@al-ft/midgard-core": "workspace:*",
     "@al-ft/midgard-test-support": "workspace:*",
     "@effect/vitest": "^0.17.8",
     "@lucid-evolution/lucid": "0.8.5",
