@@ -43,8 +43,13 @@
     "build:contrib-raw": "node ../scripts/package-tasks.mjs build"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "author": "Anastasia Labs",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Anastasia-Labs/midgard.git",
+    "directory": "demo/midgard-sdk"
+  },
   "devDependencies": {
     "@aiken-lang/merkle-patricia-forestry": "github:Anastasia-Labs/merkle-patricia-forestry#b139785f7c118854f9824c26cc443e2df95cb50e&path:/off-chain",
     "@al-ft/midgard-core": "workspace:*",

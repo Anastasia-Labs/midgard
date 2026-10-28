@@ -11,7 +11,7 @@ import {
   cloneScripts,
   cloneUtxo,
 } from "./builder/state.js";
-import { BuilderInvariantError } from "./core/errors.js";
+import { BuilderInvariantError, InvalidUtxoError } from "./core/errors.js";
 import { normalizeOutRef, outRefLabel } from "./core/out-ref.js";
 import {
   decodeMidgardTxOutput,
@@ -201,7 +201,7 @@ const scriptHex = (
       allowEmpty: true,
     });
   } catch {
-    throw new BuilderInvariantError("UTxO scriptRef script must be hex");
+    throw new InvalidUtxoError("UTxO scriptRef script must be hex");
   }
 };
 
@@ -223,24 +223,43 @@ const scriptRefsCompatible = (
   );
 };
 
+const errorDetail = (cause: unknown): string =>
+  cause instanceof Error ? cause.message : String(cause);
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+/**
+ * Checks a builder-bound UTxO against its own output CBOR and returns its
+ * canonical form; anything malformed is refused as `InvalidUtxoError`.
+ */
 export const normalizeUtxo = (utxo: MidgardUtxo): MidgardUtxo => {
-  const normalized = normalizeOutRef(utxo);
-  const outRefCbor = utxoOutRefCbor(utxo);
+  if (!isRecord(utxo) || !isRecord(utxo.output)) {
+    throw new InvalidUtxoError("Invalid UTxO: not a UTxO object");
+  }
+  let normalized: ReturnType<typeof normalizeOutRef>;
+  let outRefCbor: Buffer;
+  try {
+    normalized = normalizeOutRef(utxo);
+    outRefCbor = utxoOutRefCbor(utxo);
+  } catch (cause) {
+    throw new InvalidUtxoError(
+      "Invalid UTxO output reference",
+      errorDetail(cause),
+    );
+  }
 
   let decodedOutput: ReturnType<typeof decodeMidgardTxOutput>;
   try {
     decodedOutput = decodeMidgardTxOutput(utxoOutputCbor(utxo));
   } catch (cause) {
-    throw new BuilderInvariantError(
-      "Invalid UTxO outputCbor",
-      cause instanceof Error ? cause.message : String(cause),
-    );
+    throw new InvalidUtxoError("Invalid UTxO outputCbor", errorDetail(cause));
   }
   if (utxo.output.address !== decodedOutput.address) {
-    throw new BuilderInvariantError("UTxO address does not match output CBOR");
+    throw new InvalidUtxoError("UTxO address does not match output CBOR");
   }
   if (!assetsEqual(utxo.output.assets, decodedOutput.assets)) {
-    throw new BuilderInvariantError("UTxO assets do not match output CBOR");
+    throw new InvalidUtxoError("UTxO assets do not match output CBOR");
   }
   const datum = hasDefinedProperty(utxo.output, "datum")
     ? utxo.output.datum
@@ -250,15 +269,13 @@ export const normalizeUtxo = (utxo: MidgardUtxo): MidgardUtxo => {
     datum !== undefined &&
     JSON.stringify(datum) !== JSON.stringify(decodedDatum ?? null)
   ) {
-    throw new BuilderInvariantError("UTxO datum does not match output CBOR");
+    throw new InvalidUtxoError("UTxO datum does not match output CBOR");
   }
   const scriptRef = hasDefinedProperty(utxo.output, "scriptRef")
     ? utxo.output.scriptRef
     : undefined;
   if (!scriptRefsCompatible(scriptRef, decodedOutput.txOutput.scriptRef)) {
-    throw new BuilderInvariantError(
-      "UTxO scriptRef does not match output CBOR",
-    );
+    throw new InvalidUtxoError("UTxO scriptRef does not match output CBOR");
   }
 
   return {
@@ -289,7 +306,7 @@ export const normalizeWalletInputUtxos = (
     assertAddressNetwork(utxoAddress(normalized), expectedNetworkId);
     const label = outRefLabel(normalized);
     if (seen.has(label)) {
-      throw new BuilderInvariantError(`Duplicate ${source} UTxO outref`, label);
+      throw new InvalidUtxoError(`Duplicate ${source} UTxO outref`, label);
     }
     seen.add(label);
     return normalized;

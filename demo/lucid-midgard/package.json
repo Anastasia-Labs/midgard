@@ -38,7 +38,12 @@
     "transaction-builder"
   ],
   "author": "Anastasia Labs",
-  "license": "ISC",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Anastasia-Labs/midgard.git",
+    "directory": "demo/lucid-midgard"
+  },
   "dependencies": {
     "@al-ft/midgard-core": "workspace:*",
     "@al-ft/midgard-validation": "workspace:*",
