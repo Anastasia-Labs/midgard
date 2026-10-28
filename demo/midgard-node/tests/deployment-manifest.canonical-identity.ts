@@ -286,8 +286,6 @@ export const canonicalIdentity = (): Omit<DeploymentManifest, "manifestId"> => {
     },
     validationDispute: {
       version: MIDGARD_CONSENSUS_PROFILE.validationDisputeVersion,
-      responseWindowMs:
-        MIDGARD_CONSENSUS_PROFILE.limits.validationDisputeResponseWindowMs,
       maxBisectionRounds:
         MIDGARD_CONSENSUS_PROFILE.limits.maxValidationBisectionRounds,
       maturityMs: MIDGARD_CONSENSUS_PROFILE.limits.blockMaturityMs,

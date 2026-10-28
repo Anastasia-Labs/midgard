@@ -453,7 +453,7 @@ families, and the profile digest cannot drift from source.
 
 <!-- BEGIN MIDGARD_CONSENSUS_PROFILE_V1_GENERATED: do not edit -->
 
-Profile digest: `31a8ef883056b85276d8c7b88c77ee50162c5ae7aa8e0a6635a9526c145199ca`
+Profile digest: `b29382cbcca5d2ddfe316ba13c01ed66176027180190c97b38e86e013ccea492`
 
 ```json
 {
@@ -533,8 +533,7 @@ Profile digest: `31a8ef883056b85276d8c7b88c77ee50162c5ae7aa8e0a6635a9526c145199c
     "minSupportedL1MaxTxMemoryUnits": 16500000,
     "minSupportedTransactionExecutionCpuUnits": 10000000000,
     "minSupportedTransactionExecutionMemoryUnits": 16500000,
-    "minValidationDisputeMaturityMs": 21560001,
-    "validationDisputeResponseWindowMs": 60000
+    "minValidationDisputeMaturityMs": 21560001
   },
   "mpfProofSchemaVersion": 2,
   "nativeTransactionProofSourceVersion": 1,
