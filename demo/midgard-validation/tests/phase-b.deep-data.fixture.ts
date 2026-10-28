@@ -3,10 +3,11 @@ import {
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
-import { Builtin, ErrorUPLC, UPLCConst } from "@harmoniclabs/uplc";
 import { blake2b } from "@noble/hashes/blake2.js";
 
 import { MidgardRedeemerTag } from "../src/index.js";
+import { UPLCConst } from "../src/uplc-constant.js";
+import { ErrorUPLC } from "../src/uplc-term.js";
 import {
   app,
   headList,
@@ -74,11 +75,15 @@ export const deepDefiniteArrayData = (depth: number): Buffer =>
 
 /** Compares the whole script context with itself, then returns unit. */
 export const walkingProgram = () =>
-  plutusProgram(app(lam(UPLCConst.unit), app(Builtin.equalsData, v(0), v(0))));
+  plutusProgram(
+    app(lam(UPLCConst.unit), app(builtin("equalsData"), v(0), v(0))),
+  );
 
 /** Compares the whole script context with itself, then fails. */
 export const walkingFailingProgram = () =>
-  plutusProgram(app(lam(new ErrorUPLC()), app(Builtin.equalsData, v(0), v(0))));
+  plutusProgram(
+    app(lam(new ErrorUPLC()), app(builtin("equalsData"), v(0), v(0))),
+  );
 
 type Program = ReturnType<typeof walkingProgram>;
 

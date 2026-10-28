@@ -5,8 +5,16 @@
  * are UPLC terms only; their constants come from the package's `uplc` entry.
  */
 
-import { constT, DataB, UPLCConst } from "@al-ft/midgard-validation/uplc";
-import { Case, Constr, ErrorUPLC, Lambda, UPLCVar } from "@harmoniclabs/uplc";
+import {
+  Case,
+  Constr,
+  constT,
+  DataB,
+  ErrorUPLC,
+  Lambda,
+  UPLCConst,
+  UPLCVar,
+} from "@al-ft/midgard-validation/uplc";
 
 /** The programs, each applied to `context`. */
 export const caseConstantPrograms = (context) => [

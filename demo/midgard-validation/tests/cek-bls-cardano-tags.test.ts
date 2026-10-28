@@ -1,15 +1,3 @@
-import {
-  Application,
-  Builtin,
-  Delay,
-  ErrorUPLC,
-  Force,
-  Lambda,
-  UPLCBuiltinTag,
-  UPLCConst,
-  UPLCProgram,
-  type UPLCTerm,
-} from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
 import { MIDGARD_CEK_CARDANO_BLS_TAGS as TAG } from "../src/cek-builtin.cardano-tags.js";
@@ -18,6 +6,18 @@ import {
   executeMidgardCekStructuralProgram,
 } from "../src/cek-executor.js";
 import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.js";
+import { UPLCConst } from "../src/uplc-constant.js";
+import {
+  Application,
+  Builtin,
+  Delay,
+  ErrorUPLC,
+  Force,
+  Lambda,
+  UPLCProgram,
+  type UPLCTerm,
+} from "../src/uplc-term.js";
+import { builtin as named } from "./helpers/uplc-builtins.js";
 import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 
 // SH-2: scripts name the BLS builtins by Cardano's flat tags (Plutus
@@ -25,10 +25,10 @@ import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.j
 // hashToGroup points are RFC 9380 hash_to_curve of "midgard" under the BLS
 // signature suites' DSTs, computed independently of the machine.
 const hex = (value: string): UPLCTerm =>
-  UPLCConst.byteString(Buffer.from(value, "hex") as never);
+  UPLCConst.byteString(Buffer.from(value, "hex"));
 const ascii = (value: string): UPLCTerm =>
-  UPLCConst.byteString(Buffer.from(value, "ascii") as never);
-const builtin = (tag: number): UPLCTerm => new Builtin(tag as UPLCBuiltinTag);
+  UPLCConst.byteString(Buffer.from(value, "ascii"));
+const builtin = (tag: number): UPLCTerm => new Builtin(tag);
 const app = (f: UPLCTerm, ...args: UPLCTerm[]): UPLCTerm =>
   args.reduce<UPLCTerm>((acc, arg) => new Application(acc, arg), f);
 
@@ -49,12 +49,8 @@ const assertEqualBytes = (actual: UPLCTerm, expected: string): Buffer =>
       new Lambda(
         new Force(
           app(
-            new Force(new Builtin(UPLCBuiltinTag.ifThenElse)),
-            app(
-              new Builtin(UPLCBuiltinTag.equalsByteString),
-              actual,
-              hex(expected),
-            ),
+            new Force(named("ifThenElse")),
+            app(named("equalsByteString"), actual, hex(expected)),
             new Delay(UPLCConst.unit),
             new Delay(new ErrorUPLC()),
           ),

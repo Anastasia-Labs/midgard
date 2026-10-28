@@ -1,7 +1,7 @@
 import { MIDGARD_CEK_MAX_SOURCE_CONSTANT_PAYLOAD_BYTES } from "@al-ft/midgard-core";
-import { getNRequiredForces } from "@harmoniclabs/uplc";
 
 import { encodeMidgardCekPlutusData } from "../../src/cek-constant.js";
+import { midgardCekBuiltinForceCount } from "../../src/cek-machine.js";
 import { UPLCConst } from "../../src/uplc-constant.js";
 import {
   type Data,
@@ -149,7 +149,8 @@ export const builtinCall = (
   args: readonly UPLCTerm[],
 ): UPLCTerm => {
   let term: UPLCTerm = new Builtin(tag);
-  for (let index = 0; index < getNRequiredForces(tag); index += 1) {
+  const forces = midgardCekBuiltinForceCount(BigInt(tag));
+  for (let index = 0n; index < forces; index += 1n) {
     term = force(term);
   }
   return app(term, ...args);

@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 
 import { hashMidgardCekMachineState } from "@al-ft/midgard-core";
-import { constT, UPLCConst } from "@harmoniclabs/uplc";
 
 import { encodeMidgardCekCoreStepDataCbor } from "../../src/cek-data.js";
 import {
@@ -9,6 +8,7 @@ import {
   type MidgardCekStructuralExecution,
   type MidgardCekStructuralVerdict,
 } from "../../src/cek-executor.js";
+import { constT, UPLCConst } from "../../src/uplc-constant.js";
 import { type UPLCTerm } from "../../src/uplc-term.js";
 import {
   MIDGARD_CEK_ADVERSARIAL_SHAPES,

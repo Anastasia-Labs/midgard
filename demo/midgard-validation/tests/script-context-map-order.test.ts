@@ -6,25 +6,16 @@ import {
   protectMidgardAddress,
 } from "@al-ft/midgard-core/codec";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import {
-  Application,
-  Builtin,
-  Delay,
-  ErrorUPLC,
-  Force,
-  getNRequiredForces,
-  Lambda,
-  UPLCBuiltinTag,
-  UPLCConst,
-  UPLCEncoder,
-  UPLCProgram,
-  type UPLCTerm,
-  UPLCVar,
-} from "@harmoniclabs/uplc";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
+import {
+  type MidgardCekBuiltinName,
+  midgardCekBuiltinTagOfName,
+} from "../src/cek-builtin.cardano-tags.js";
+import { midgardCekBuiltinForceCount } from "../src/cek-machine.js";
+import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
 import {
   buildMidgardScriptContext,
   buildPlutusV3ScriptContext,
@@ -36,6 +27,18 @@ import {
   runPhaseBValidationWithPatch,
   scriptContextTxOutData,
 } from "../src/index.js";
+import { UPLCConst } from "../src/uplc-constant.js";
+import {
+  Application,
+  Builtin,
+  Delay,
+  ErrorUPLC,
+  Force,
+  Lambda,
+  UPLCProgram,
+  type UPLCTerm,
+  UPLCVar,
+} from "../src/uplc-term.js";
 import { buildDeterministicValidationMachineTrace } from "./helpers/trace-commit-golden.js";
 import {
   orderingView,
@@ -70,9 +73,14 @@ const DUPLICATE_KEY_MAP = "a241ff0141ff02";
 
 const EX_UNITS = [5_000_000n, 1_000_000_000n] as const;
 
-const builtin = (tag: UPLCBuiltinTag): UPLCTerm => {
+const builtin = (name: MidgardCekBuiltinName): UPLCTerm => {
+  const tag = midgardCekBuiltinTagOfName(name);
   let term: UPLCTerm = new Builtin(tag);
-  for (let force = 0; force < getNRequiredForces(tag); force += 1) {
+  for (
+    let force = 0n;
+    force < midgardCekBuiltinForceCount(BigInt(tag));
+    force += 1n
+  ) {
     term = new Force(term);
   }
   return term;
@@ -80,31 +88,25 @@ const builtin = (tag: UPLCBuiltinTag): UPLCTerm => {
 const apply = (fn: UPLCTerm, ...args: UPLCTerm[]): UPLCTerm =>
   args.reduce<UPLCTerm>((term, arg) => new Application(term, arg), fn);
 const constrFields = (data: UPLCTerm): UPLCTerm =>
-  apply(
-    builtin(UPLCBuiltinTag.sndPair),
-    apply(builtin(UPLCBuiltinTag.unConstrData), data),
-  );
+  apply(builtin("sndPair"), apply(builtin("unConstrData"), data));
 const nth = (list: UPLCTerm, index: number): UPLCTerm => {
   let rest = list;
   for (let step = 0; step < index; step += 1) {
-    rest = apply(builtin(UPLCBuiltinTag.tailList), rest);
+    rest = apply(builtin("tailList"), rest);
   }
-  return apply(builtin(UPLCBuiltinTag.headList), rest);
+  return apply(builtin("headList"), rest);
 };
 const firstKey = (map: UPLCTerm): UPLCTerm =>
   apply(
-    builtin(UPLCBuiltinTag.fstPair),
-    apply(
-      builtin(UPLCBuiltinTag.headList),
-      apply(builtin(UPLCBuiltinTag.unMapData), map),
-    ),
+    builtin("fstPair"),
+    apply(builtin("headList"), apply(builtin("unMapData"), map)),
   );
 /** Succeeds when `condition` holds and fails otherwise. */
 const guard = (condition: UPLCTerm): UPLCTerm =>
   new Lambda(
     new Force(
       apply(
-        builtin(UPLCBuiltinTag.ifThenElse),
+        builtin("ifThenElse"),
         condition,
         new Delay(UPLCConst.unit),
         new Delay(new ErrorUPLC()),
@@ -112,7 +114,9 @@ const guard = (condition: UPLCTerm): UPLCTerm =>
     ),
   );
 const flat = (body: UPLCTerm): Buffer =>
-  Buffer.from(UPLCEncoder.compile(new UPLCProgram([1, 1, 0], body)));
+  Buffer.from(
+    encodeMidgardCekCardanoFlatProgram(new UPLCProgram([1, 1, 0], body)),
+  );
 
 const context = new UPLCVar(0);
 
@@ -121,10 +125,10 @@ const firstKeyIsTwoBytes = (map: UPLCTerm): Buffer =>
   flat(
     guard(
       apply(
-        builtin(UPLCBuiltinTag.equalsInteger),
+        builtin("equalsInteger"),
         apply(
-          builtin(UPLCBuiltinTag.lengthOfByteString),
-          apply(builtin(UPLCBuiltinTag.unBData), firstKey(map)),
+          builtin("lengthOfByteString"),
+          apply(builtin("unBData"), firstKey(map)),
         ),
         UPLCConst.int(2),
       ),
@@ -143,9 +147,9 @@ const firstOutputDatumKeyIsTwoBytes = firstKeyIsTwoBytes(
       nth(
         constrFields(
           apply(
-            builtin(UPLCBuiltinTag.headList),
+            builtin("headList"),
             apply(
-              builtin(UPLCBuiltinTag.unListData),
+              builtin("unListData"),
               nth(constrFields(nth(constrFields(context), 0)), 2),
             ),
           ),
@@ -162,11 +166,11 @@ const firstRedeemerPurposeIs = (tag: number): Buffer =>
   flat(
     guard(
       apply(
-        builtin(UPLCBuiltinTag.equalsInteger),
+        builtin("equalsInteger"),
         apply(
-          builtin(UPLCBuiltinTag.fstPair),
+          builtin("fstPair"),
           apply(
-            builtin(UPLCBuiltinTag.unConstrData),
+            builtin("unConstrData"),
             firstKey(nth(constrFields(nth(constrFields(context), 0)), 9)),
           ),
         ),

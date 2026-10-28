@@ -10,11 +10,11 @@ import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import type { MidgardRejectionReasonV1 } from "@al-ft/midgard-core/validation-trace";
 import { EventKey } from "@al-ft/midgard-sdk";
-import { Lambda, UPLCEncoder, UPLCProgram, UPLCVar } from "@harmoniclabs/uplc";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { Cause, Effect, Exit } from "effect";
 import { expect } from "vitest";
 
+import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
 import {
   buildDeterministicValidationMachineTrace,
   buildValidationMachineLedgerInsertOp,
@@ -30,6 +30,7 @@ import {
   validationTransactionCommitmentV1,
 } from "../src/index.js";
 import type { RejectCode } from "../src/types.js";
+import { Lambda, UPLCProgram, UPLCVar } from "../src/uplc-term.js";
 import {
   buildValidationOneStepArgument,
   validationMachineStateData,
@@ -77,7 +78,7 @@ export const keySpent = outRefFromByte(0x81);
 export const plutus = plutusV3ScriptWitness(
   encodeCbor(
     Buffer.from(
-      UPLCEncoder.compile(
+      encodeMidgardCekCardanoFlatProgram(
         new UPLCProgram([1, 1, 0], new Lambda(new UPLCVar(0))),
       ),
     ),

@@ -1,15 +1,11 @@
 import { encodeCbor } from "@al-ft/midgard-core";
-import {
-  Lambda,
-  UPLCConst,
-  UPLCEncoder,
-  UPLCProgram,
-  UPLCVar,
-} from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
+import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
 import { evaluateMidgardCekScript } from "../src/phase-b.evaluate-cek-script.js";
 import { MidgardUplcCapabilityError } from "../src/plutus-script-evaluator.capability-error.js";
+import { UPLCConst } from "../src/uplc-constant.js";
+import { Lambda, UPLCProgram, UPLCVar } from "../src/uplc-term.js";
 
 const run = (scriptBytes: Buffer) => ({
   scriptBytes,
@@ -25,7 +21,7 @@ describe("CEK selection phase-two boundary", () => {
     (phase2Class) => {
       const bytes = encodeCbor(
         Buffer.from(
-          UPLCEncoder.compile(
+          encodeMidgardCekCardanoFlatProgram(
             new UPLCProgram(
               phase2Class === 5 ? [2, 0, 0] : [1, 1, 0],
               new UPLCVar(0),
@@ -48,7 +44,7 @@ describe("CEK selection phase-two boundary", () => {
   it("class zero continues into a real local structural execution", () => {
     const script = encodeCbor(
       Buffer.from(
-        UPLCEncoder.compile(
+        encodeMidgardCekCardanoFlatProgram(
           new UPLCProgram([1, 1, 0], new Lambda(UPLCConst.unit)),
         ),
       ),

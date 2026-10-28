@@ -1,12 +1,3 @@
-import {
-  Case,
-  Constr,
-  ErrorUPLC,
-  Lambda,
-  UPLCConst,
-  UPLCProgram,
-  type UPLCTerm,
-} from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -15,6 +6,15 @@ import {
 } from "../src/cek-executor.js";
 import { verifyMidgardCekCoreStep } from "../src/cek-machine.js";
 import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
+import { UPLCConst } from "../src/uplc-constant.js";
+import {
+  Case,
+  Constr,
+  ErrorUPLC,
+  Lambda,
+  UPLCProgram,
+  type UPLCTerm,
+} from "../src/uplc-term.js";
 import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 
 /** `\ctx -> case (constr tag []) [error, .., unit, .., error]`. */

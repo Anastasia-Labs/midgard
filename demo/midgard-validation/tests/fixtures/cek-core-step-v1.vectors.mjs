@@ -12,7 +12,7 @@
  *
  * This module holds **UPLC terms, script contexts and twist definitions
  * only**. From the package it imports only the `uplc` entry, Midgard's
- * constant and Data classes, which resolves to `src/` under vitest and to
+ * term, constant and Data classes, which resolves to `src/` under vitest and to
  * `dist/` on bare `node`, so either side loads it without deciding which
  * build of the CEK is under test. The UPLC terms are built exactly as
  * `tests/cek-executor.test.ts` builds them, and compiled as
@@ -25,31 +25,33 @@
  */
 
 import {
+  Application,
+  Builtin,
+  Case,
+  Constr,
   constT,
   DataB,
   DataConstr,
   DataI,
   DataList,
   DataMap,
-  UPLCConst,
-} from "@al-ft/midgard-validation/uplc";
-import {
-  Application,
-  Builtin,
-  Case,
-  Constr,
   Delay,
   ErrorUPLC,
   Force,
   Lambda,
+  midgardCekBuiltinTagOfName,
+  UPLCConst,
   UPLCProgram,
   UPLCVar,
-} from "@harmoniclabs/uplc";
+} from "@al-ft/midgard-validation/uplc";
 
 import { caseConstantPrograms } from "./cek-core-step-v1.case-constant.mjs";
 import { CEK_CONSTR_DATA_INDEX_REFUSALS } from "./cek-core-step-v1.constr-data-vectors.mjs";
 export { CEK_CONSTR_DATA_INDEX_PROGRAMS } from "./cek-core-step-v1.constr-data-vectors.mjs";
 import { pv11Programs } from "./cek-core-step-v1.pv11.mjs";
+
+/** A builtin term by its textual name. */
+const builtin = (name) => new Builtin(midgardCekBuiltinTagOfName(name));
 
 /** `(program 1.1.0 term)` as canonical Flat bytes, the V1 script payload. */
 export const compileMidgardCekGoldenProgram = (term, encodeProgram) =>
@@ -84,8 +86,8 @@ const narrowMap = () =>
 const mapRoundTrip = (source) =>
   new Lambda(
     new Application(
-      Builtin.mapData,
-      new Application(Builtin.unMapData, source),
+      builtin("mapData"),
+      new Application(builtin("unMapData"), source),
     ),
   );
 
@@ -109,15 +111,13 @@ const g2Compressed = () =>
     ).bytes,
   );
 
-// Cardano's flat tags (Plutus `Builtins.hs`): 59 is G1 uncompress and 66 is
-// G2 uncompress. The library's enum numbers these two differently.
-const g1Uncompress = () => new Builtin(59);
-const g2Uncompress = () => new Builtin(66);
+const g1Uncompress = () => builtin("bls12_381_G1_uncompress");
+const g2Uncompress = () => builtin("bls12_381_G2_uncompress");
 
 const millerLoop = () =>
   new Application(
     new Application(
-      Builtin.bls12_381_millerLoop,
+      builtin("bls12_381_millerLoop"),
       new Application(g1Uncompress(), g1Compressed()),
     ),
     new Application(g2Uncompress(), g2Compressed()),
@@ -138,7 +138,7 @@ const schnorrVerify17ByteMessage = () =>
         term,
         UPLCConst.byteString(new DataB(Buffer.from(argument, "hex")).bytes),
       ),
-    Builtin.verifySchnorrSecp256k1Signature,
+    builtin("verifySchnorrSecp256k1Signature"),
   );
 
 const selfApplication = () =>
@@ -211,7 +211,7 @@ export const CEK_CORE_STEP_PROGRAMS = [
     term: () =>
       new Lambda(
         new Case(new Constr(0n, [UPLCConst.int(1), UPLCConst.int(2)]), [
-          Builtin.addInteger,
+          builtin("addInteger"),
         ]),
       ),
     context: EMPTY_CONTEXT,
@@ -249,7 +249,7 @@ export const CEK_CORE_STEP_PROGRAMS = [
     term: () =>
       new Lambda(
         new Application(
-          new Application(Builtin.addInteger, UPLCConst.int(41)),
+          new Application(builtin("addInteger"), UPLCConst.int(41)),
           UPLCConst.int(1),
         ),
       ),
@@ -264,7 +264,7 @@ export const CEK_CORE_STEP_PROGRAMS = [
         new Application(
           new Application(
             new Application(
-              new Force(Builtin.ifThenElse),
+              new Force(builtin("ifThenElse")),
               UPLCConst.bool(true),
             ),
             UPLCConst.int(1),
@@ -281,7 +281,7 @@ export const CEK_CORE_STEP_PROGRAMS = [
     term: () =>
       new Lambda(
         new Application(
-          new Application(Builtin.addInteger, new UPLCVar(0)),
+          new Application(builtin("addInteger"), new UPLCVar(0)),
           UPLCConst.int(1),
         ),
       ),
@@ -294,7 +294,7 @@ export const CEK_CORE_STEP_PROGRAMS = [
     term: () =>
       new Lambda(
         new Application(
-          new Application(Builtin.quotientInteger, UPLCConst.int(1)),
+          new Application(builtin("quotientInteger"), UPLCConst.int(1)),
           UPLCConst.int(0),
         ),
       ),
@@ -329,7 +329,7 @@ export const CEK_CORE_STEP_PROGRAMS = [
     term: () =>
       new Lambda(
         new Application(
-          new Force(Builtin.headList),
+          new Force(builtin("headList")),
           UPLCConst.listOf(constT.listOf(constT.int))([[1n, 2n], [3n]]),
         ),
       ),
@@ -340,7 +340,7 @@ export const CEK_CORE_STEP_PROGRAMS = [
     label: "un_constr_wrong_variant",
     note: "executeBuiltinSemanticFailure on a map where a constr is required",
     term: () =>
-      new Lambda(new Application(Builtin.unConstrData, new UPLCVar(0))),
+      new Lambda(new Application(builtin("unConstrData"), new UPLCVar(0))),
     context: () =>
       new DataMap([
         { fst: new DataI(1n), snd: new DataB(Buffer.from([0x71])) },
@@ -381,7 +381,7 @@ export const CEK_CORE_STEP_PROGRAMS = [
     term: () =>
       new Lambda(
         new Application(
-          Builtin.unMapData,
+          builtin("unMapData"),
           UPLCConst.data(new DataList([new DataI(1n)])),
         ),
       ),
@@ -394,7 +394,7 @@ export const CEK_CORE_STEP_PROGRAMS = [
     term: () =>
       new Lambda(
         new Application(
-          new Application(Builtin.bls12_381_finalVerify, millerLoop()),
+          new Application(builtin("bls12_381_finalVerify"), millerLoop()),
           millerLoop(),
         ),
       ),

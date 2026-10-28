@@ -2,24 +2,27 @@ import {
   encodeMidgardTxOutput,
   protectMidgardAddress,
 } from "@al-ft/midgard-core/codec";
+import { CML } from "@lucid-evolution/lucid";
+
+import {
+  type MidgardCekBuiltinName,
+  midgardCekBuiltinTagOfName,
+} from "../src/cek-builtin.cardano-tags.js";
+import { midgardCekBuiltinForceCount } from "../src/cek-machine.js";
+import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
+import { MidgardRedeemerTag } from "../src/index.js";
+import { UPLCConst } from "../src/uplc-constant.js";
 import {
   Application,
   Builtin,
   Delay,
   ErrorUPLC,
   Force,
-  getNRequiredForces,
   Lambda,
-  UPLCBuiltinTag,
-  UPLCConst,
-  UPLCEncoder,
   UPLCProgram,
   type UPLCTerm,
   UPLCVar,
-} from "@harmoniclabs/uplc";
-import { CML } from "@lucid-evolution/lucid";
-
-import { MidgardRedeemerTag } from "../src/index.js";
+} from "../src/uplc-term.js";
 import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 import {
   FUNDED_OUTPUT_LOVELACE,
@@ -31,9 +34,14 @@ import {
   plutusV3ScriptWitness,
 } from "./validation-fixtures.js";
 
-const builtin = (tag: UPLCBuiltinTag): UPLCTerm => {
+const builtin = (name: MidgardCekBuiltinName): UPLCTerm => {
+  const tag = midgardCekBuiltinTagOfName(name);
   let term: UPLCTerm = new Builtin(tag);
-  for (let force = 0; force < getNRequiredForces(tag); force += 1) {
+  for (
+    let force = 0n;
+    force < midgardCekBuiltinForceCount(BigInt(tag));
+    force += 1n
+  ) {
     term = new Force(term);
   }
   return term;
@@ -45,17 +53,17 @@ const apply = (fn: UPLCTerm, ...args: UPLCTerm[]): UPLCTerm =>
 const contextTagIsZero = (fails: boolean) => {
   const context = new UPLCVar(0);
   const tag = apply(
-    builtin(UPLCBuiltinTag.fstPair),
-    apply(builtin(UPLCBuiltinTag.unConstrData), context),
+    builtin("fstPair"),
+    apply(builtin("unConstrData"), context),
   );
   const body = new Lambda(
     new Force(
       apply(
-        builtin(UPLCBuiltinTag.ifThenElse),
+        builtin("ifThenElse"),
         apply(
-          builtin(UPLCBuiltinTag.equalsInteger),
+          builtin("equalsInteger"),
           apply(
-            builtin(UPLCBuiltinTag.multiplyInteger),
+            builtin("multiplyInteger"),
             tag,
             UPLCConst.int(fails ? 1n : 0n),
           ),
@@ -66,7 +74,9 @@ const contextTagIsZero = (fails: boolean) => {
       ),
     ),
   );
-  return Buffer.from(UPLCEncoder.compile(new UPLCProgram([1, 1, 0], body)));
+  return Buffer.from(
+    encodeMidgardCekCardanoFlatProgram(new UPLCProgram([1, 1, 0], body)),
+  );
 };
 
 /** The draft's validity lower bound. */

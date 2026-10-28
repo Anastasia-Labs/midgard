@@ -3,7 +3,7 @@
  * the TypeScript twin of `onchain/aiken/lib/midgard/cek-cost-v1.ak`: the same
  * cost function shapes and coefficients, tag by tag. The coefficients are the
  * pinned model's (`PLUTUS_V3_CANONICAL_COST_MODEL_VIEW`), which
- * `tests/cek-cost.differential.test.ts` checks;
+ * `tests/cek-cost.parameter-names.test.ts` checks by parameter name;
  * `scripts/generate-cek-cost-v1-aiken-goldens.mjs` holds the Aiken twin to
  * these budgets.
  */

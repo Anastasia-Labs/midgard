@@ -78,6 +78,19 @@ describe("V1 pinned Plutus V3 builtin costs", () => {
     expect(() => computeMidgardCekBuiltinBudget(18, [-1n])).toThrow(
       /must be non-negative/u,
     );
+    for (const tag of [-1, 1.5])
+      expect(() => computeMidgardCekBuiltinBudget(tag, [1n, 1n])).toThrow(
+        "V1 builtin tag is outside Plutus V3",
+      );
+    expect(() => computeMidgardCekBuiltinBudget(0, [-1n, 1n])).toThrow(
+      "V1 builtin cost size must be non-negative",
+    );
+    expect(() =>
+      computeMidgardCekBuiltinBudget(36, [0n, 0n, 0n, 0n, 0n]),
+    ).toThrow("V1 builtin 36 requires 6 cost sizes");
+    expect(() => computeMidgardCekBuiltinBudget(86, [])).toThrow(
+      "V1 builtin 86 requires 1 cost sizes",
+    );
   });
 
   it("sizes integers and byte strings in 64-bit words, as cardano-node does", () => {

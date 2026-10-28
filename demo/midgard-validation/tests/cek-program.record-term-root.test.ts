@@ -1,20 +1,15 @@
 import { readFileSync } from "node:fs";
 
 import { encodeCbor } from "@al-ft/midgard-core";
-import { type Data, DataB, DataI, DataList } from "@harmoniclabs/plutus-data";
-import {
-  Application,
-  constT,
-  Lambda,
-  UPLCConst,
-  UPLCEncoder,
-  UPLCProgram,
-} from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
+import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
 import { CardanoFlatRefusal } from "../src/cek-program.cardano-flat.reader.js";
 import { buildMidgardCanonicalCekProgram } from "../src/cek-program.js";
 import { scriptDecodeRecordOfScript } from "../src/script-decode.step-walk.js";
+import { constT, UPLCConst } from "../src/uplc-constant.js";
+import { type Data, DataB, DataI, DataList } from "../src/uplc-data.js";
+import { Application, Lambda, UPLCProgram } from "../src/uplc-term.js";
 import { scriptDecodeStepScripts } from "./fixtures/script-decode-step-v1.vectors.mjs";
 
 /**
@@ -102,7 +97,7 @@ describe("the dispute program is the decode record's program", () => {
 const holding = (constant: UPLCConst): Buffer =>
   encodeCbor(
     Buffer.from(
-      UPLCEncoder.compile(
+      encodeMidgardCekCardanoFlatProgram(
         new UPLCProgram(
           [1, 1, 0],
           new Lambda(new Application(new Lambda(UPLCConst.unit), constant)),

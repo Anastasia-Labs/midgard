@@ -1,21 +1,21 @@
 import { readFileSync } from "node:fs";
 
 import { encodeCbor } from "@al-ft/midgard-core";
-import {
-  ErrorUPLC,
-  Lambda,
-  UPLCConst,
-  UPLCEncoder,
-  UPLCProgram,
-  type UPLCTerm,
-  UPLCVar,
-} from "@harmoniclabs/uplc";
 import { apply_params_to_script } from "@lucid-evolution/uplc";
 import { describe, expect, it } from "vitest";
 
+import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
 import { storedFlatProgramBytes } from "../src/cek-program.unwrap-canonical-cbor-byte-string.js";
 import { evaluateStoredMidgardPlutusScript } from "../src/plutus-script-evaluator.js";
 import { scriptDecodeRecordOfScript } from "../src/script-decode.step-walk.js";
+import { UPLCConst } from "../src/uplc-constant.js";
+import {
+  ErrorUPLC,
+  Lambda,
+  UPLCProgram,
+  type UPLCTerm,
+  UPLCVar,
+} from "../src/uplc-term.js";
 import { scriptDecodeStepScripts } from "./fixtures/script-decode-step-v1.vectors.mjs";
 
 /**
@@ -29,7 +29,11 @@ const script = (
   term: UPLCTerm,
   version: [number, number, number] = [1, 1, 0],
 ): Buffer =>
-  encodeCbor(Buffer.from(UPLCEncoder.compile(new UPLCProgram(version, term))));
+  encodeCbor(
+    Buffer.from(
+      encodeMidgardCekCardanoFlatProgram(new UPLCProgram(version, term)),
+    ),
+  );
 
 const evaluate = (
   scriptBytes: Buffer,

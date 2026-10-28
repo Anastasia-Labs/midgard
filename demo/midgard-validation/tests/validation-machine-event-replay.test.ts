@@ -7,19 +7,12 @@ import {
 } from "@al-ft/midgard-core/codec/forced";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { EventKey } from "@al-ft/midgard-sdk";
-import {
-  Application,
-  Lambda,
-  UPLCConst,
-  UPLCEncoder,
-  UPLCProgram,
-  UPLCVar,
-} from "@harmoniclabs/uplc";
 import { Data } from "@lucid-evolution/lucid";
 import { Cause, Effect, Exit } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import * as cekExecutor from "../src/cek-executor.execute-midgard-cek-structural-program.js";
+import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
 import {
   applyUTxOStatePatch,
   DirectValidationTraceUnavailable,
@@ -30,6 +23,8 @@ import {
   type ValidationMachineLedgerEntry,
   validationMachineLedgerRoot,
 } from "../src/index.js";
+import { UPLCConst } from "../src/uplc-constant.js";
+import { Application, Lambda, UPLCProgram, UPLCVar } from "../src/uplc-term.js";
 import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 import {
   FUNDED_OUTPUT_LOVELACE,
@@ -164,7 +159,7 @@ describe("independent validation event replay", () => {
       // Same accepting unit program as the existing validation-machine suite.
       const program = buildCekProgramFromRawFlat(
         Buffer.from(
-          UPLCEncoder.compile(
+          encodeMidgardCekCardanoFlatProgram(
             new UPLCProgram(
               [1, 1, 0],
               new Lambda(
@@ -359,7 +354,7 @@ describe("independent validation event replay", () => {
     const dataHex = "d8799f01ff";
     const program = buildCekProgramFromRawFlat(
       Buffer.from(
-        UPLCEncoder.compile(
+        encodeMidgardCekCardanoFlatProgram(
           new UPLCProgram(
             [1, 1, 0],
             new Lambda(

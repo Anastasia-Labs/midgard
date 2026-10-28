@@ -151,7 +151,7 @@ const honest: readonly (readonly [string, UPLCTerm, bigint])[] = [
   ],
   [
     "lessThanEqualsInteger of 5,000-byte integers",
-    call(builtin("lessThanEqualInteger"), int(-wide(5_000)), int(wide(5_000))),
+    call(builtin("lessThanEqualsInteger"), int(-wide(5_000)), int(wide(5_000))),
     LESS_THAN_EQUALS_INTEGER,
   ],
 ];

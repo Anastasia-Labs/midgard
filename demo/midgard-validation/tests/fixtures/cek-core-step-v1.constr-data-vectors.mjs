@@ -6,8 +6,17 @@
  * only the two semantic failure transitions join the core-step golden set.
  */
 
-import { constT, DataConstr, UPLCConst } from "@al-ft/midgard-validation/uplc";
-import { Application, Builtin, Lambda } from "@harmoniclabs/uplc";
+import {
+  Application,
+  Builtin,
+  constT,
+  DataConstr,
+  Lambda,
+  midgardCekBuiltinTagOfName,
+  UPLCConst,
+} from "@al-ft/midgard-validation/uplc";
+
+const builtin = (name) => new Builtin(midgardCekBuiltinTagOfName(name));
 
 const EMPTY_CONTEXT = () => new DataConstr(0n, []);
 
@@ -21,7 +30,7 @@ export const CEK_CONSTR_DATA_INDEX_PROGRAMS = [
         new Application(
           new Lambda(UPLCConst.unit),
           new Application(
-            new Application(Builtin.constrData, UPLCConst.int(0n)),
+            new Application(builtin("constrData"), UPLCConst.int(0n)),
             UPLCConst.listOf(constT.data)([]),
           ),
         ),
@@ -39,7 +48,7 @@ export const CEK_CONSTR_DATA_INDEX_PROGRAMS = [
           new Lambda(UPLCConst.unit),
           new Application(
             new Application(
-              Builtin.constrData,
+              builtin("constrData"),
               UPLCConst.int((1n << 64n) - 1n),
             ),
             UPLCConst.listOf(constT.data)([]),
@@ -58,7 +67,7 @@ export const CEK_CONSTR_DATA_INDEX_PROGRAMS = [
         new Application(
           new Lambda(UPLCConst.unit),
           new Application(
-            new Application(Builtin.constrData, UPLCConst.int(1n << 64n)),
+            new Application(builtin("constrData"), UPLCConst.int(1n << 64n)),
             UPLCConst.listOf(constT.data)([]),
           ),
         ),
@@ -75,7 +84,7 @@ export const CEK_CONSTR_DATA_INDEX_PROGRAMS = [
         new Application(
           new Lambda(UPLCConst.unit),
           new Application(
-            new Application(Builtin.constrData, UPLCConst.int(-1n)),
+            new Application(builtin("constrData"), UPLCConst.int(-1n)),
             UPLCConst.listOf(constT.data)([]),
           ),
         ),

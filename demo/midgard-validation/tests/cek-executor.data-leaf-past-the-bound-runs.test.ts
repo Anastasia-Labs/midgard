@@ -1,13 +1,4 @@
 import { encodeCbor } from "@al-ft/midgard-core";
-import { DataI as GenericDataI } from "@harmoniclabs/plutus-data";
-import {
-  Application as GenericApplication,
-  Builtin as GenericBuiltin,
-  Lambda as GenericLambda,
-  UPLCConst as GenericUPLCConst,
-  UPLCEncoder,
-  UPLCProgram as GenericUPLCProgram,
-} from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
 import type { MidgardCekExecutionStep } from "../src/cek-executor.build-midgard-cek-execution-graph.js";
@@ -33,6 +24,7 @@ import {
   lam,
   MIDGARD_CEK_TX_BUDGET,
 } from "./helpers/cek-uplc-terms.js";
+import { spelledDataFlat } from "./helpers/flat-data-spelling.js";
 import { builtin } from "./helpers/uplc-builtins.js";
 
 /**
@@ -323,21 +315,21 @@ describe("an integer leaf past 64 magnitude bytes in a script's Flat", () => {
   });
 
   it("is refused at decoding when its magnitude is one definite string", () => {
-    // The generic encoder spells the magnitude as one definite byte string;
-    // it writes the same program as `program(body)` in its own classes.
-    const generic = new GenericUPLCProgram(
-      [1, 1, 0],
-      new GenericLambda(
-        new GenericApplication(
-          new GenericLambda(GenericUPLCConst.unit),
-          new GenericApplication(
-            GenericBuiltin.unIData,
-            GenericUPLCConst.data(new GenericDataI(LONG_INTEGER)),
-          ),
-        ),
-      ),
+    // `program(body)` with the magnitude spelled as one definite byte
+    // string: tag 2, then a byte string with a two-byte length.
+    const digits = LONG_INTEGER.toString(16);
+    const magnitude = Buffer.from(
+      digits.padStart(digits.length + 1, "0"),
+      "hex",
     );
-    const flat = Buffer.from(UPLCEncoder.compile(generic));
+    const length = Buffer.alloc(2);
+    length.writeUInt16BE(magnitude.length);
+    const definite = Buffer.concat([
+      Buffer.from([0xc2, 0x59]),
+      length,
+      magnitude,
+    ]);
+    const flat = spelledDataFlat(program(body), [definite]);
     expect(flat.includes(Buffer.from([0xc2, 0x59]))).toBe(true);
     expect(decodeCardanoFlatProgram(flat).ok).toBe(false);
     // Phase one refuses the transaction; no evaluation reaches a verdict.

@@ -13,16 +13,11 @@ import {
 } from "@al-ft/midgard-core/codec/forced";
 import { screenMidgardForcedTxAdmission } from "@al-ft/midgard-core/consensus-validation";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import {
-  Lambda,
-  UPLCConst,
-  UPLCEncoder,
-  UPLCProgram,
-} from "@harmoniclabs/uplc";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { beforeAll, describe, expect, it } from "vitest";
 
+import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
 import {
   MidgardRedeemerTag,
   RejectCodes,
@@ -30,6 +25,8 @@ import {
   validatePhaseASingle,
 } from "../src/index.js";
 import type { QueuedTx } from "../src/types.js";
+import { UPLCConst } from "../src/uplc-constant.js";
+import { Lambda, UPLCProgram } from "../src/uplc-term.js";
 import {
   FUNDED_OUTPUT_LOVELACE,
   hashScriptWitness,
@@ -57,7 +54,7 @@ beforeAll(() => ledgerEd25519SignatureReady());
 const script = plutusV3ScriptWitness(
   encodeCbor(
     Buffer.from(
-      UPLCEncoder.compile(
+      encodeMidgardCekCardanoFlatProgram(
         new UPLCProgram([1, 1, 0], new Lambda(UPLCConst.unit)),
       ),
     ),

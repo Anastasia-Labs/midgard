@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 
 import { hashMidgardCekMachineState } from "@al-ft/midgard-core";
-import { constT, type ConstType, UPLCConst } from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
 import { midgardCekDirectBuiltinFits } from "../src/cek-builtin.evaluate-direct-builtin.js";
@@ -15,6 +14,7 @@ import {
   type MidgardCekStructuralExecution,
 } from "../src/cek-executor.js";
 import { verifyMidgardCekCoreStep } from "../src/cek-machine.js";
+import { constT, type ConstType, UPLCConst } from "../src/uplc-constant.js";
 import {
   DIRECT_BOUND,
   I,

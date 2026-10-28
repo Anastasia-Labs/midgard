@@ -16,8 +16,11 @@ export {
   presentMidgardCekDirectArgument,
 } from "./cek-builtin.argument-kinds.js";
 export {
-  harmonicBuiltinTag,
+  MIDGARD_CEK_BUILTIN_NAMES,
   MIDGARD_CEK_CARDANO_BLS_TAGS,
+  type MidgardCekBuiltinName,
+  midgardCekBuiltinName,
+  midgardCekBuiltinTagOfName,
 } from "./cek-builtin.cardano-tags.js";
 export {
   evaluateMidgardCekDirectBuiltin,

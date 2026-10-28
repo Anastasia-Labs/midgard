@@ -1,14 +1,9 @@
 import { readdirSync, readFileSync } from "node:fs";
 
-import {
-  type ConstType,
-  ConstTyTag,
-  UPLCEncoder,
-  type UPLCProgram as ReferenceUPLCProgram,
-} from "@harmoniclabs/uplc";
+import { encodeCbor } from "@al-ft/midgard-core";
+import { apply_params_to_script } from "@lucid-evolution/uplc";
 import { describe, expect, it } from "vitest";
 
-import { encodeMidgardCekPlutusData } from "../src/cek-constant.js";
 import {
   encodeCardanoFlatProgram,
   type FlatProgram,
@@ -19,7 +14,6 @@ import {
 } from "../src/cek-program.cardano-flat.js";
 import { storedFlatProgramBytes } from "../src/cek-program.unwrap-canonical-cbor-byte-string.js";
 import { UPLCConst } from "../src/uplc-constant.js";
-import { isData } from "../src/uplc-data.js";
 import {
   Application,
   ErrorUPLC,
@@ -41,30 +35,24 @@ import {
 import { builtin } from "./helpers/uplc-builtins.js";
 
 /**
- * The owned Flat encoder against HarmonicLabs' `UPLCEncoder` with the Data
- * override production used: byte-identical over every program the fixtures,
- * corpora and vector tables hold.
+ * The owned Flat encoder against the uplc crate's, run by the pinned aiken
+ * evaluator wasm: the crate reads the owned bytes and writes the program
+ * again (applying no parameters), and must write the same bytes. The crate
+ * keeps a Data constant's CBOR spelling as it read it, so this checks the
+ * Flat framing; the Data CBOR is `encodeMidgardCekPlutusData`'s, checked by
+ * the Data tests. The owned Cardano-exact reader must also read the bytes
+ * back as the program written, so they mean that program and no other.
  */
-class HarmonicCardanoFlatEncoder extends UPLCEncoder {
-  override encodeConstValue(type: ConstType, value: unknown): void {
-    if (type[0] === ConstTyTag.data) {
-      if (!isData(value))
-        throw new Error("Flat Data constant contains invalid Data");
-      this.encodeByteString(encodeMidgardCekPlutusData(value));
-      return;
-    }
-    super.encodeConstValue(type, value);
-  }
-}
-
-const harmonic = (program: FlatProgram): string =>
-  Buffer.from(
-    new HarmonicCardanoFlatEncoder().compile(
-      program as unknown as ReferenceUPLCProgram,
-    ),
-  ).toString("hex");
 const owned = (program: FlatProgram): string =>
   Buffer.from(encodeCardanoFlatProgram(program)).toString("hex");
+const aiken = (program: FlatProgram): string =>
+  storedFlatProgramBytes(
+    // eslint-disable-next-line midgard/apply-params-through-blueprint -- No parameters: the crate only reads and rewrites the program as the encoder oracle.
+    apply_params_to_script(
+      Uint8Array.of(0x80),
+      encodeCbor(encodeCardanoFlatProgram(program)),
+    ),
+  ).toString("hex");
 
 const v110 = (term: UPLCTerm): UPLCProgram => new UPLCProgram([1, 1, 0], term);
 
@@ -116,14 +104,31 @@ const jsonFixtures = fixtureDirectories.flatMap((directory) =>
     .map((name) => new URL(name, directory)),
 );
 
-const expectIdentical = (programs: readonly FlatProgram[]): void => {
-  const differing = programs.filter(
-    (program) => owned(program) !== harmonic(program),
-  );
-  expect(differing.map((program) => harmonic(program))).toEqual([]);
+/** `value` with byte arrays as hex: a Buffer and a Uint8Array compare equal. */
+const plain = (value: unknown): unknown => {
+  if (value instanceof Uint8Array) return Buffer.from(value).toString("hex");
+  if (Array.isArray(value)) return value.map(plain);
+  if (value !== null && typeof value === "object")
+    return Object.fromEntries(
+      Object.entries(value).map(([key, field]) => [key, plain(field)]),
+    );
+  return value;
 };
 
-describe("the owned Flat encoder writes HarmonicLabs' bytes", () => {
+const expectIdentical = (programs: readonly FlatProgram[]): void => {
+  const differing = programs.filter(
+    (program) => owned(program) !== aiken(program),
+  );
+  expect(differing.map((program) => aiken(program))).toEqual([]);
+  for (const program of programs)
+    expect(
+      plain(
+        decodeMidgardCekCardanoFlatProgram(encodeCardanoFlatProgram(program)),
+      ),
+    ).toEqual(plain(program));
+};
+
+describe("the owned Flat encoder writes the uplc crate's bytes", () => {
   it("for every program in the JSON fixtures and the fuzz corpus", () => {
     const strings = new Set<string>();
     for (const url of jsonFixtures)

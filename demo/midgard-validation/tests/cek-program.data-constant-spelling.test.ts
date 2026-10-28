@@ -1,10 +1,4 @@
 import { hashMidgardCekMachineState } from "@al-ft/midgard-core";
-import {
-  type ConstType,
-  ConstTyTag,
-  UPLCEncoder,
-  type UPLCProgram as ReferenceUPLCProgram,
-} from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
 import { decodeMidgardCekConstantWitness } from "../src/cek-constant.js";
@@ -36,6 +30,7 @@ import {
   DATA_DECODER_ACCEPTED,
   DATA_DECODER_REFUSED,
 } from "./cek-program.data-constant-spelling.vectors.js";
+import { spelledDataFlat } from "./helpers/flat-data-spelling.js";
 import { builtin } from "./helpers/uplc-builtins.js";
 import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 
@@ -51,28 +46,8 @@ const hex = (bytes: Uint8Array): string => Buffer.from(bytes).toString("hex");
 const bytes = (value: string): Buffer => Buffer.from(value, "hex");
 
 /** Writes `(program 1.1.0 term)` with each Data constant spelled as given. */
-class SpelledFlatEncoder extends UPLCEncoder {
-  constructor(private readonly spellings: Uint8Array[]) {
-    super();
-  }
-
-  override encodeConstValue(type: ConstType, value: unknown): void {
-    if (type[0] === ConstTyTag.data) {
-      const spelling = this.spellings.shift();
-      if (spelling === undefined) throw new Error("missing Data spelling");
-      this.encodeByteString(spelling);
-      return;
-    }
-    super.encodeConstValue(type, value);
-  }
-}
-
 const spelledFlat = (term: UPLCTerm, spellings: readonly string[]): Buffer =>
-  Buffer.from(
-    new SpelledFlatEncoder(spellings.map(bytes)).compile(
-      new UPLCProgram([1, 1, 0], term) as unknown as ReferenceUPLCProgram,
-    ),
-  );
+  spelledDataFlat(new UPLCProgram([1, 1, 0], term), spellings.map(bytes));
 
 const canonicalFlat = (term: UPLCTerm): Buffer =>
   encodeMidgardCekCardanoFlatProgram(new UPLCProgram([1, 1, 0], term));

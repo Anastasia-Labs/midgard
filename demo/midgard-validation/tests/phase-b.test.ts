@@ -1,15 +1,8 @@
 import { encodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
-import {
-  Application,
-  Lambda,
-  UPLCConst,
-  UPLCEncoder,
-  UPLCProgram,
-  UPLCVar,
-} from "@harmoniclabs/uplc";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
+import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
 import {
   applyUTxOStatePatch,
   buildConflictComponents,
@@ -18,6 +11,8 @@ import {
 } from "../src/index.js";
 import { MidgardRedeemerTag } from "../src/midgard-redeemers.js";
 import type { PhaseBResultWithPatch } from "../src/phase-b.js";
+import { UPLCConst } from "../src/uplc-constant.js";
+import { Application, Lambda, UPLCProgram, UPLCVar } from "../src/uplc-term.js";
 import {
   outputCborMeetsMinAda,
   outputCborMinAdaLovelace,
@@ -723,7 +718,7 @@ describe("phase B validation", () => {
     const spent = outRefFromByte(0x6d);
     const program = buildCekProgramFromRawFlat(
       Buffer.from(
-        UPLCEncoder.compile(
+        encodeMidgardCekCardanoFlatProgram(
           new UPLCProgram(
             [1, 1, 0],
             new Lambda(
@@ -761,7 +756,7 @@ describe("phase B validation", () => {
     );
     const program = buildCekProgramFromRawFlat(
       Buffer.from(
-        UPLCEncoder.compile(
+        encodeMidgardCekCardanoFlatProgram(
           new UPLCProgram(
             [1, 1, 0],
             new Application(selfApplication, selfApplication),

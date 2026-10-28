@@ -2,10 +2,6 @@ import {
   encodeMidgardCekDataNode,
   MIDGARD_CEK_BLOB_CHUNK_BYTES,
 } from "@al-ft/midgard-core";
-import {
-  dataFromCbor,
-  DataI as ReferenceDataI,
-} from "@harmoniclabs/plutus-data";
 import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -47,11 +43,17 @@ describe("V1 semantic Data commitment", () => {
     expect(
       encodeMidgardCekPlutusData(new DataI(negativeBignum)).toString("hex"),
     ).toBe("c349010000000000000000");
-    const decodedNegative = dataFromCbor(
+    const decodedNegative = CML.PlutusData.from_cbor_bytes(
       encodeMidgardCekPlutusData(new DataI(negativeBignum)),
     );
-    expect(decodedNegative).toBeInstanceOf(ReferenceDataI);
-    expect((decodedNegative as ReferenceDataI).int).toBe(negativeBignum);
+    const decodedInteger = decodedNegative.as_integer();
+    try {
+      expect(decodedInteger).toBeDefined();
+      expect(BigInt(decodedInteger!.to_str())).toBe(negativeBignum);
+    } finally {
+      decodedInteger?.free();
+      decodedNegative.free();
+    }
 
     const hugeMagnitude = (1n << 2_048n) - 1n;
     const positive = encodeMidgardCekPlutusData(new DataI(hugeMagnitude));

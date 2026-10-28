@@ -9,20 +9,15 @@ import {
   type MidgardVersionedScript,
 } from "@al-ft/midgard-core";
 import { parseExactAikenDataCbor } from "@al-ft/midgard-fault-proofs";
-import {
-  Application,
-  Lambda,
-  UPLCConst,
-  UPLCEncoder,
-  UPLCProgram,
-  UPLCVar,
-} from "@harmoniclabs/uplc";
 
+import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
 import {
   buildValidationOneStepArgument,
   type DeterministicValidationMachineTrace,
   encodeValidationBoundaryEvidenceCbor,
 } from "../src/index.js";
+import { UPLCConst } from "../src/uplc-constant.js";
+import { Application, Lambda, UPLCProgram, UPLCVar } from "../src/uplc-term.js";
 import { decodeRecordResolverOf } from "./helpers/cek-decode-record-resolver.js";
 import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 import {
@@ -137,7 +132,7 @@ export const context = {
 export const buildAcceptingUnitProgram = () =>
   buildCekProgramFromRawFlat(
     Buffer.from(
-      UPLCEncoder.compile(
+      encodeMidgardCekCardanoFlatProgram(
         new UPLCProgram(
           [1, 1, 0],
           new Lambda(
@@ -154,7 +149,7 @@ export const buildNonterminatingSelfApplicationProgram = () => {
   );
   return buildCekProgramFromRawFlat(
     Buffer.from(
-      UPLCEncoder.compile(
+      encodeMidgardCekCardanoFlatProgram(
         new UPLCProgram(
           [1, 1, 0],
           new Application(selfApplication, selfApplication),

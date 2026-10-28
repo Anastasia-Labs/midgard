@@ -1,11 +1,12 @@
 import { encodeCbor, MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import { Lambda, UPLCEncoder, UPLCProgram, UPLCVar } from "@harmoniclabs/uplc";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
+import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
 import { RejectCodes } from "../src/index.js";
 import { MidgardRedeemerTag } from "../src/midgard-redeemers.js";
+import { Lambda, UPLCProgram, UPLCVar } from "../src/uplc-term.js";
 import { buildDeterministicValidationMachineTrace } from "./helpers/trace-commit-golden.js";
 import {
   expectSinglePhaseBRejection,
@@ -35,7 +36,7 @@ describe("phase B validation", () => {
     // script integrity hash, so the transaction reaches that audit.
     const program = buildCekProgramFromRawFlat(
       Buffer.from(
-        UPLCEncoder.compile(
+        encodeMidgardCekCardanoFlatProgram(
           new UPLCProgram([1, 1, 0], new Lambda(new UPLCVar(0))),
         ),
       ),

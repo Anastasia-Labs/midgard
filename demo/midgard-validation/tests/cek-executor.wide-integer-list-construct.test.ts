@@ -1,8 +1,9 @@
 import { hashMidgardCekMachineState } from "@al-ft/midgard-core";
-import { Builtin, constT, ErrorUPLC, UPLCConst } from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
 import { verifyMidgardCekCoreStep } from "../src/cek-machine.js";
+import { constT, UPLCConst } from "../src/uplc-constant.js";
+import { ErrorUPLC } from "../src/uplc-term.js";
 import { program } from "./helpers/cek-differential-builders.js";
 import {
   app,
@@ -13,6 +14,7 @@ import {
   runMidgardCekProgram,
   tailList,
 } from "./helpers/cek-uplc-terms.js";
+import { builtin } from "./helpers/uplc-builtins.js";
 
 // mkCons over `list<int>` with an integer of 2^64 or more, at the head or in
 // the tail. Such an integer is a CBOR bignum in its committed form. The script
@@ -36,7 +38,7 @@ const readBack = (
     label,
     ifThenElse(
       app(
-        Builtin.equalsInteger,
+        builtin("equalsInteger"),
         headList(readsTail ? tailList(list) : list),
         int(expected),
       ),

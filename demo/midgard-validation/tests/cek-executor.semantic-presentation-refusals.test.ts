@@ -1,5 +1,4 @@
 import { hashMidgardCekValueNode } from "@al-ft/midgard-core";
-import { UPLCConst } from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -11,6 +10,7 @@ import {
 import { encodeMidgardCekCanonicalConstant } from "../src/cek-constant.js";
 import { verifyMidgardCekCoreStep } from "../src/cek-machine.js";
 import { pairDataSummary } from "../src/cek-machine.verify-semantic-builtin-control.js";
+import { UPLCConst } from "../src/uplc-constant.js";
 import {
   semanticStep,
   type SemanticStepWitness,

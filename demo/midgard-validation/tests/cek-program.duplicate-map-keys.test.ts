@@ -1,7 +1,5 @@
 import { verifyMidgardCekProgramMaterial } from "@al-ft/midgard-core";
 import { encodeCbor } from "@al-ft/midgard-core";
-import { dataFromCbor } from "@harmoniclabs/plutus-data";
-import { UPLCConst, UPLCEncoder, UPLCProgram } from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
 import { encodeMidgardCekPlutusData } from "../src/cek-constant.js";
@@ -24,6 +22,8 @@ const DUPLICATE_KEY_MAP_ROOT =
   "aef1afbc4af14bed532f136ec0e9db7d1f297752cbe935c6af79d0f49b0817e5";
 // UPLC 1.1.0, Data constant tag, five-byte definite map, Flat terminator.
 const DUPLICATE_KEY_MAP_FLAT = "0101004c0105a2010201030001";
+// The same program with the map spelled indefinite (`bf ... ff`, six bytes).
+const DUPLICATE_KEY_MAP_INDEFINITE_FLAT = "0101004c0106bf01020103ff0001";
 
 describe("a CEK Data constant with a duplicate map key", () => {
   it("commits every entry to the on-chain root", () => {
@@ -60,15 +60,7 @@ describe("a CEK Data constant with a duplicate map key", () => {
   });
 
   it("preserves distinct stored spellings with the same local material root", () => {
-    const source = Buffer.from(
-      UPLCEncoder.compile(
-        new UPLCProgram(
-          [1, 1, 0],
-          UPLCConst.data(dataFromCbor(DUPLICATE_KEY_MAP_CBOR)),
-        ),
-      ),
-    );
-    expect(source.toString("hex")).toBe("0101004c0106bf01020103ff0001");
+    const source = Buffer.from(DUPLICATE_KEY_MAP_INDEFINITE_FLAT, "hex");
     const build = (flat: Buffer) =>
       buildMidgardCanonicalScriptArtifact({
         language: "PlutusV3",

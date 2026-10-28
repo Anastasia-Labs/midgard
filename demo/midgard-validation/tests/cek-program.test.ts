@@ -12,40 +12,40 @@ import {
   type MidgardCekTermNode,
   verifyMidgardCekProgramMaterial,
 } from "@al-ft/midgard-core";
-import {
-  Application,
-  Builtin,
-  Case,
-  Constr,
-  Delay,
-  ErrorUPLC,
-  Force,
-  Lambda,
-  UPLCConst,
-  UPLCEncoder,
-  UPLCProgram,
-  UPLCVar,
-} from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
+import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
 import {
   buildMidgardCanonicalCekProgram,
   buildMidgardCanonicalScriptArtifact,
 } from "../src/cek-program.js";
 import { evaluateMidgardCekScript } from "../src/phase-b.evaluate-cek-script.js";
 import { scriptDecodeRecordOfScript } from "../src/script-decode.step-walk.js";
+import { UPLCConst } from "../src/uplc-constant.js";
+import {
+  Application,
+  Case,
+  Constr,
+  Delay,
+  ErrorUPLC,
+  Force,
+  Lambda,
+  UPLCProgram,
+  UPLCVar,
+} from "../src/uplc-term.js";
 import { deepFlatProgram } from "./cek-program.deep-flat.fixture.js";
+import { builtin } from "./helpers/uplc-builtins.js";
 import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 
 const compile = (version: readonly [number, number, number]): Buffer =>
   Buffer.from(
-    UPLCEncoder.compile(
+    encodeMidgardCekCardanoFlatProgram(
       new UPLCProgram(
         [version[0], version[1], version[2]],
         new Application(
           new Lambda(
             new Application(
-              new Application(Builtin.addInteger, new UPLCVar(0)),
+              new Application(builtin("addInteger"), new UPLCVar(0)),
               UPLCConst.int(1),
             ),
           ),
@@ -62,7 +62,9 @@ describe("local Flat dispute material", () => {
       [new Lambda(new UPLCVar(1)), new Force(new Delay(new ErrorUPLC()))],
     );
     const program = buildCekProgramFromRawFlat(
-      Buffer.from(UPLCEncoder.compile(new UPLCProgram([1, 1, 0], body))),
+      Buffer.from(
+        encodeMidgardCekCardanoFlatProgram(new UPLCProgram([1, 1, 0], body)),
+      ),
     );
     const expected: [string, Uint8Array, Uint8Array][] = [];
     const term = (node: MidgardCekTermNode) => {
@@ -221,7 +223,9 @@ describe("local Flat dispute material", () => {
     expect(v110.uplcVersion).toEqual([1n, 1n, 0n]);
     expect(v100.termRoot).toEqual(v110.termRoot);
     const constrUnder100 = Buffer.from(
-      UPLCEncoder.compile(new UPLCProgram([1, 0, 0], new Constr(0, []))),
+      encodeMidgardCekCardanoFlatProgram(
+        new UPLCProgram([1, 0, 0], new Constr(0, [])),
+      ),
     );
     expect(() => buildCekProgramFromRawFlat(constrUnder100)).toThrow(
       /refused script|constrOrCaseBeforeV110/u,
@@ -229,7 +233,9 @@ describe("local Flat dispute material", () => {
     expect(
       buildCekProgramFromRawFlat(
         Buffer.from(
-          UPLCEncoder.compile(new UPLCProgram([1, 1, 0], new Constr(0, []))),
+          encodeMidgardCekCardanoFlatProgram(
+            new UPLCProgram([1, 1, 0], new Constr(0, [])),
+          ),
         ),
       ).uplcVersion,
     ).toEqual([1n, 1n, 0n]);
@@ -246,7 +252,7 @@ describe("local Flat dispute material", () => {
       );
     }
     const raw = Buffer.from(
-      UPLCEncoder.compile(
+      encodeMidgardCekCardanoFlatProgram(
         new UPLCProgram([1, 1, 0], UPLCConst.str("x".repeat(7_000))),
       ),
     );
@@ -272,11 +278,13 @@ describe("local Flat dispute material", () => {
             UPLCConst.unit,
           ),
         ),
-        Builtin.ifThenElse,
+        builtin("ifThenElse"),
       ),
     );
     const scriptBytes = encodeCbor(
-      Buffer.from(UPLCEncoder.compile(new UPLCProgram([1, 1, 0], body))),
+      Buffer.from(
+        encodeMidgardCekCardanoFlatProgram(new UPLCProgram([1, 1, 0], body)),
+      ),
     );
     const record = scriptDecodeRecordOfScript(3, scriptBytes);
     expect(record).toMatchObject({ k: "decoded", phase2Class: 0 });
@@ -309,7 +317,9 @@ describe("local Flat dispute material", () => {
       verifyMidgardCekProgramMaterial(program.termRoot, mutated),
     ).toThrow();
     const unrelated = buildCekProgramFromRawFlat(
-      UPLCEncoder.compile(new UPLCProgram([1, 1, 0], new ErrorUPLC())),
+      encodeMidgardCekCardanoFlatProgram(
+        new UPLCProgram([1, 1, 0], new ErrorUPLC()),
+      ),
     );
     const all = new Map(
       [...material, ...unrelated.material.values()].map((entry) => [

@@ -6,25 +6,16 @@ import {
   type L1SlotConfig,
   NAMED_NETWORK_L1_SLOT_CONFIGS,
 } from "@al-ft/midgard-core/l1-slot-config";
-import {
-  Application,
-  Builtin,
-  Delay,
-  ErrorUPLC,
-  Force,
-  getNRequiredForces,
-  Lambda,
-  UPLCBuiltinTag,
-  UPLCConst,
-  UPLCEncoder,
-  UPLCProgram,
-  type UPLCTerm,
-  UPLCVar,
-} from "@harmoniclabs/uplc";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
+import {
+  type MidgardCekBuiltinName,
+  midgardCekBuiltinTagOfName,
+} from "../src/cek-builtin.cardano-tags.js";
+import { midgardCekBuiltinForceCount } from "../src/cek-machine.js";
+import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
 import {
   evaluateMidgardCekVerdict,
   type MidgardCekVerdictRequest,
@@ -33,6 +24,18 @@ import {
   RejectCodes,
   runPhaseBValidationWithPatch,
 } from "../src/index.js";
+import { UPLCConst } from "../src/uplc-constant.js";
+import {
+  Application,
+  Builtin,
+  Delay,
+  ErrorUPLC,
+  Force,
+  Lambda,
+  UPLCProgram,
+  type UPLCTerm,
+  UPLCVar,
+} from "../src/uplc-term.js";
 import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 import {
   FUNDED_OUTPUT_LOVELACE,
@@ -49,9 +52,14 @@ import {
 // lower bound slot falls at or after that instant, and must not pass over a
 // context that carries the committed slot numbers themselves.
 
-const builtin = (tag: UPLCBuiltinTag): UPLCTerm => {
+const builtin = (name: MidgardCekBuiltinName): UPLCTerm => {
+  const tag = midgardCekBuiltinTagOfName(name);
   let term: UPLCTerm = new Builtin(tag);
-  for (let force = 0; force < getNRequiredForces(tag); force += 1) {
+  for (
+    let force = 0n;
+    force < midgardCekBuiltinForceCount(BigInt(tag));
+    force += 1n
+  ) {
     term = new Force(term);
   }
   return term;
@@ -59,14 +67,11 @@ const builtin = (tag: UPLCBuiltinTag): UPLCTerm => {
 const apply = (fn: UPLCTerm, ...args: UPLCTerm[]): UPLCTerm =>
   args.reduce<UPLCTerm>((term, arg) => new Application(term, arg), fn);
 const firstField = (data: UPLCTerm, index = 0): UPLCTerm => {
-  let rest = apply(
-    builtin(UPLCBuiltinTag.sndPair),
-    apply(builtin(UPLCBuiltinTag.unConstrData), data),
-  );
+  let rest = apply(builtin("sndPair"), apply(builtin("unConstrData"), data));
   for (let step = 0; step < index; step += 1) {
-    rest = apply(builtin(UPLCBuiltinTag.tailList), rest);
+    rest = apply(builtin("tailList"), rest);
   }
-  return apply(builtin(UPLCBuiltinTag.headList), rest);
+  return apply(builtin("headList"), rest);
 };
 
 const LOWER_BOUND_SLOT = 200_000n;
@@ -81,15 +86,15 @@ const LOCK_POSIX_MS = 1_655_883_200_000n;
 const lockedAfterPosixInstant = (() => {
   const context = new UPLCVar(0);
   const lowerTime = apply(
-    builtin(UPLCBuiltinTag.unIData),
+    builtin("unIData"),
     firstField(firstField(firstField(firstField(firstField(context), 7)))),
   );
   const body = new Lambda(
     new Force(
       apply(
-        builtin(UPLCBuiltinTag.ifThenElse),
+        builtin("ifThenElse"),
         apply(
-          builtin(UPLCBuiltinTag.lessThanEqualInteger),
+          builtin("lessThanEqualsInteger"),
           UPLCConst.int(LOCK_POSIX_MS),
           lowerTime,
         ),
@@ -98,7 +103,9 @@ const lockedAfterPosixInstant = (() => {
       ),
     ),
   );
-  return Buffer.from(UPLCEncoder.compile(new UPLCProgram([1, 1, 0], body)));
+  return Buffer.from(
+    encodeMidgardCekCardanoFlatProgram(new UPLCProgram([1, 1, 0], body)),
+  );
 })();
 
 const verdict = async (

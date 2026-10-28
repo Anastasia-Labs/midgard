@@ -5,8 +5,8 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
+import { readCborBytes } from "@al-ft/midgard-core/codec/cbor";
 import { memoizeForRun } from "@al-ft/midgard-test-support/run-shared-fixtures";
-import { DataB, dataFromCbor } from "@harmoniclabs/plutus-data";
 
 import {
   app,
@@ -101,11 +101,19 @@ const exportFunction = async (name: string): Promise<Uint8Array> => {
     );
   }
   const exported = JSON.parse(stdout) as { readonly compiledCode: string };
-  const wrapped = dataFromCbor(exported.compiledCode);
-  if (!(wrapped instanceof DataB)) {
+  const cbor = Buffer.from(exported.compiledCode, "hex");
+  let wrapped: { readonly value: Buffer; readonly nextOffset: number };
+  try {
+    wrapped = readCborBytes(cbor, 0);
+  } catch (cause) {
+    throw new Error(`the export of ${name} is not a CBOR byte string`, {
+      cause,
+    });
+  }
+  if (wrapped.nextOffset !== cbor.length) {
     throw new Error(`the export of ${name} is not a CBOR byte string`);
   }
-  return Uint8Array.from(wrapped.bytes);
+  return Uint8Array.from(wrapped.value);
 };
 
 /**

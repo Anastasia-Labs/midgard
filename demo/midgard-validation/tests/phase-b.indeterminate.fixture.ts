@@ -1,5 +1,3 @@
-import { UPLCConst } from "@harmoniclabs/uplc";
-
 import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
 import {
   MidgardRedeemerTag,
@@ -7,6 +5,7 @@ import {
   RejectCodes,
   type ValidationMachineReplayInput,
 } from "../src/index.js";
+import { UPLCConst } from "../src/uplc-constant.js";
 import { ErrorUPLC, UPLCProgram, type UPLCTerm } from "../src/uplc-term.js";
 import { app, lam, seq, v } from "./helpers/cek-uplc-terms.js";
 import { MIDGARD_TX_EX_UNITS_CAP } from "./helpers/plutus-spend-input.js";

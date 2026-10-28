@@ -1,10 +1,3 @@
-import {
-  constT,
-  type ConstType,
-  ConstTyTag,
-  UPLCConst as Constant,
-  type UPLCConst,
-} from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -15,6 +8,13 @@ import {
   midgardCekConstantWitnessToUplc,
   parseMidgardCekConstantType,
 } from "../src/cek-constant.js";
+import {
+  constT,
+  type ConstType,
+  ConstTyTag,
+  UPLCConst as Constant,
+  type UPLCConst,
+} from "../src/uplc-constant.js";
 
 const hex = (bytes: Uint8Array): string => Buffer.from(bytes).toString("hex");
 

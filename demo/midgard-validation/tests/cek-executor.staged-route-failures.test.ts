@@ -311,7 +311,7 @@ describe("the PV11 evaluator on the integer range", () => {
           ["addInteger", builtin("addInteger")],
           ["subtractInteger", builtin("subtractInteger")],
           ["lessThanInteger", builtin("lessThanInteger")],
-          ["lessThanEqualsInteger", builtin("lessThanEqualInteger")],
+          ["lessThanEqualsInteger", builtin("lessThanEqualsInteger")],
         ] as const
       ).map(
         ([name, builtin]) =>

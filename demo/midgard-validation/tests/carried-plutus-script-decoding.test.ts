@@ -9,16 +9,10 @@ import {
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
-import {
-  Lambda,
-  UPLCConst,
-  UPLCEncoder,
-  UPLCProgram,
-  UPLCVar,
-} from "@harmoniclabs/uplc";
 import { Effect } from "effect";
 import { beforeAll, describe, expect, it } from "vitest";
 
+import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
 import {
   REJECT_SOURCE_KIND_REFERENCE,
   RejectCodes,
@@ -27,6 +21,8 @@ import {
 } from "../src/index.js";
 import { resolveRejectionReason } from "../src/rejection-reason.js";
 import type { QueuedTx } from "../src/types.js";
+import { UPLCConst } from "../src/uplc-constant.js";
+import { Lambda, UPLCProgram, UPLCVar } from "../src/uplc-term.js";
 import { phaseBConfig, preState, runPhaseB } from "./phase-b.harness.js";
 import { scriptAddressBytes } from "./reject-subject.support.js";
 import {
@@ -58,7 +54,7 @@ const flat = (value: number): MidgardVersionedScript => ({
   language: "PlutusV3",
   scriptBytes: encodeCbor(
     Buffer.from(
-      UPLCEncoder.compile(
+      encodeMidgardCekCardanoFlatProgram(
         new UPLCProgram([1, 1, 0], new Lambda(UPLCConst.int(value))),
       ),
     ),
@@ -230,7 +226,7 @@ describe("carried Plutus scripts are Cardano bytes", () => {
         language: "PlutusV3",
         scriptBytes: encodeCbor(
           Buffer.from(
-            UPLCEncoder.compile(
+            encodeMidgardCekCardanoFlatProgram(
               new UPLCProgram(
                 phase2Class === 5 ? [2, 0, 0] : [1, 1, 0],
                 new UPLCVar(0),
