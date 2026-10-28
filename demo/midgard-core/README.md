@@ -9,6 +9,10 @@ and DA committee service. Change codec semantics here first and verify them
 through the shared conformance tests; pre-launch legacy codec compatibility is
 not a package goal.
 
+## Requirements
+
+Node.js 22.12.0 or newer, and TypeScript 5.8 or newer for CommonJS consumers.
+
 ## Deployment manifests
 
 `@al-ft/midgard-core/deployment-manifest-identity` owns the complete

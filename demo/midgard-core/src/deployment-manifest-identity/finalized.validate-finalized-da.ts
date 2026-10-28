@@ -193,7 +193,7 @@ export const verifyReferenceScriptPublicationAuthority = (input: {
     script.scripts.length === 2 &&
     signature?.type === "sig" &&
     script.scripts[1]?.type === "before";
-  const deadline = signed ? script.scripts[1] : script;
+  const deadline = signed ? script.scripts[1]! : script;
   if (deadline.type !== "before") {
     throw new Error(
       "Deployment manifest reference-script authority must be an exact publisher signature AND expiry policy, or a historical time-only policy",

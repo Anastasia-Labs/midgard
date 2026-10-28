@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 // Packs the npm publish set exactly as `pnpm publish` would and checks the
 // tarballs before anything is published: the packed manifest must name only
-// published dependencies, every export must resolve to a shipped file, no
-// test, fixture or secret may ride along, and every export must load by
-// package name through ESM import, CommonJS require and NodeNext types.
+// published dependencies, every export must be the registry form of its
+// workspace export (publishConfig) and resolve to a shipped file, each tarball
+// must carry the LICENSE and any vendored package import byte for byte with
+// its source notice (see pack-files.mjs), no test, fixture or secret may ride
+// along, and every export must load by package name through ESM import,
+// CommonJS require and NodeNext types.
 // Nothing here publishes; the checked tarballs and their hashes are the input
 // to the manual publish steps in docs/deployment-release-tooling.md.
 import { spawnSync } from "node:child_process";
@@ -20,6 +23,13 @@ import {
 import { createRequire } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  removePackFiles,
+  SOURCE_NOTICE,
+  vendoredCopyDifferences,
+  vendoredImports,
+  vendoredSourceNotice,
+} from "./pack-files.mjs";
 
 export const PUBLISH_SET = Object.freeze([
   { name: "@al-ft/midgard-core", dir: "demo/midgard-core" },
@@ -56,15 +66,18 @@ export const unpublishableSpecifier = (specifier) => {
   return null;
 };
 
-/** Flattens an `exports` map into one entry per subpath and condition chain. */
-export const exportEntries = (exportsField) => {
-  if (exportsField === undefined) return [];
+const subpathMap = (exportsField) => {
+  if (exportsField === undefined) return {};
   const isSubpathMap =
     typeof exportsField === "object" &&
     exportsField !== null &&
     Object.keys(exportsField).every((key) => key.startsWith("."));
-  const map = isSubpathMap ? exportsField : { ".": exportsField };
-  return Object.entries(map).map(([subpath, value]) => {
+  return isSubpathMap ? exportsField : { ".": exportsField };
+};
+
+/** Flattens an `exports` map into one entry per subpath and condition chain. */
+export const exportEntries = (exportsField) =>
+  Object.entries(subpathMap(exportsField)).map(([subpath, value]) => {
     const targets = [];
     const walk = (node, conditions) => {
       if (typeof node === "string") targets.push({ conditions, target: node });
@@ -77,7 +90,6 @@ export const exportEntries = (exportsField) => {
     walk(value, []);
     return { subpath, targets };
   });
-};
 
 /** Targets a consumer can reach: everything not behind the source condition. */
 export const publishedTargets = (entry) =>
@@ -95,6 +107,7 @@ export const forbiddenPackedPath = (path) => {
     return "test file";
   if (/(?:^|\/)\.env(?:\.|$)/u.test(path) || /(?:^|\/)\.npmrc$/u.test(path))
     return "environment or registry credentials file";
+  if (/(?:^|\/)\.[^/]+$/u.test(path)) return "hidden file";
   if (/\.(?:pem|skey|key|p12|pfx)$/iu.test(path)) return "key file";
   return null;
 };
@@ -116,19 +129,60 @@ export const secretContentReason = (text) => {
   return null;
 };
 
+/** The registry form of one workspace `exports` entry, or undefined when it
+ * resolves only under the source condition. The source condition is dropped
+ * and `types` moves under each runtime condition, so a CommonJS consumer
+ * reads the `.d.cts` declarations the build emits beside each `.cjs` file. */
+export const publishedExport = (value) => {
+  if (value === null || typeof value !== "object" || Array.isArray(value))
+    return value;
+  const { [SOURCE_CONDITION]: _source, types, ...runtime } = value;
+  if (Object.keys(runtime).length === 0) return undefined;
+  if (types === undefined) return runtime;
+  return Object.fromEntries(
+    Object.entries(runtime).map(([condition, target]) => [
+      condition,
+      typeof target === "string"
+        ? {
+            types:
+              condition === "require"
+                ? types.replace(/\.d\.ts$/u, ".d.cts")
+                : types,
+            default: target,
+          }
+        : target,
+    ]),
+  );
+};
+
+/** The registry form of a workspace `exports` map (`publishConfig.exports`). */
+export const publishedExports = (exportsField) =>
+  Object.fromEntries(
+    Object.entries(subpathMap(exportsField))
+      .map(([subpath, value]) => [subpath, publishedExport(value)])
+      .filter(([, value]) => value !== undefined),
+  );
+
 /**
  * Problems a registry consumer would hit with this packed manifest and file
- * list; `warnings` are workspace-only fields that are inert for consumers.
+ * list. With `workspaceExports`, every packed export must be the registry
+ * form of the workspace export of the same subpath.
  */
-export const packedManifestProblems = (manifest, files, publishNames) => {
+export const packedManifestProblems = (
+  manifest,
+  files,
+  publishNames,
+  workspaceExports,
+) => {
   const problems = [];
-  const warnings = [];
   const shipped = new Set(files);
   if (manifest.private === true) problems.push("package is private");
   if (!EXACT_VERSION.test(manifest.version ?? ""))
     problems.push(`version ${manifest.version} is not an exact version`);
   if (typeof manifest.license !== "string" || manifest.license === "")
     problems.push("license is missing");
+  if (!files.some((file) => /^LICEN[CS]E(?:\.[a-z]+)?$/iu.test(file)))
+    problems.push("LICENSE file is not in the tarball");
   if (manifest.repository === undefined) problems.push("repository is missing");
   for (const field of DEPENDENCY_FIELDS)
     for (const [name, specifier] of Object.entries(manifest[field] ?? {})) {
@@ -147,33 +201,45 @@ export const packedManifestProblems = (manifest, files, publishNames) => {
       problems.push(`${field} ${manifest[field]} is not in the tarball`);
   const entries = exportEntries(manifest.exports);
   if (entries.length === 0) problems.push("exports map is missing");
-  let sourceConditioned = 0;
   for (const entry of entries) {
     const reachable = publishedTargets(entry);
     if (reachable.length === 0)
       problems.push(
         `export ${entry.subpath} resolves only under the ${SOURCE_CONDITION} condition`,
       );
+    else if (reachable.length !== entry.targets.length)
+      problems.push(
+        `export ${entry.subpath} keeps the workspace-only ${SOURCE_CONDITION} condition`,
+      );
     for (const { conditions, target } of reachable)
       if (!shipped.has(stripDot(target)))
         problems.push(
           `export ${entry.subpath} [${conditions.join(">") || "default"}] -> ${target} is not in the tarball`,
         );
-    if (entry.targets.length !== reachable.length) sourceConditioned += 1;
   }
-  if (sourceConditioned > 0)
-    warnings.push(
-      `${sourceConditioned} of ${entries.length} exports keep the workspace-only ${SOURCE_CONDITION} condition`,
-    );
+  if (workspaceExports !== undefined) {
+    const expected = publishedExports(workspaceExports);
+    const packed = manifest.exports ?? {};
+    for (const subpath of new Set([
+      ...Object.keys(expected),
+      ...Object.keys(packed),
+    ]))
+      if (JSON.stringify(packed[subpath]) !== JSON.stringify(expected[subpath]))
+        problems.push(
+          expected[subpath] === undefined
+            ? `export ${subpath} has no workspace export`
+            : `export ${subpath} is not the registry form of its workspace export; publish it as ${JSON.stringify(expected[subpath])}`,
+        );
+  }
   for (const [specifier, target] of Object.entries(manifest.imports ?? {}))
     for (const { target: path } of exportEntries(target)[0]?.targets ?? [])
       if (!shipped.has(stripDot(path)))
-        warnings.push(`imports ${specifier} -> ${path} is not in the tarball`);
+        problems.push(`imports ${specifier} -> ${path} is not in the tarball`);
   for (const file of files) {
     const reason = forbiddenPackedPath(file);
     if (reason !== null) problems.push(`${file} is a ${reason}`);
   }
-  return { problems, warnings };
+  return problems;
 };
 
 const listFiles = (root, base = root) =>
@@ -192,6 +258,70 @@ export const packedSecretProblems = (packageRoot) =>
     );
     return reason === null ? [] : [`${file} contains a ${reason}`];
   });
+
+const rebased = (node, directory) =>
+  typeof node === "string"
+    ? `./${directory}/${stripDot(node)}`
+    : Array.isArray(node)
+      ? node.map((item) => rebased(item, directory))
+      : node !== null && typeof node === "object"
+        ? Object.fromEntries(
+            Object.entries(node).map(([key, value]) => [
+              key,
+              rebased(value, directory),
+            ]),
+          )
+        : node;
+
+/**
+ * Problems with the vendored package imports (see pack-files.mjs) of the
+ * workspace package in `workspaceDir`, packed and extracted to `packageRoot`
+ * with `manifest`: the tarball must carry the installed package byte for
+ * byte with its source notice, if it needs one, the packed `imports` entry
+ * must be that package's own export map under its vendored directory, and
+ * every dependency of the vendored package must be a dependency of the
+ * published one.
+ */
+export const vendoredImportProblems = (packageRoot, manifest, workspaceDir) =>
+  vendoredImports(workspaceDir).flatMap(
+    ({ specifier, dependency, installed, directory }) => {
+      if (installed === undefined)
+        return [`vendored ${dependency} is not installed in the workspace`];
+      const problems = [];
+      const vendored = JSON.parse(
+        readFileSync(join(installed, "package.json"), "utf8"),
+      );
+      const expected = rebased(
+        exportEntries(vendored.exports).length > 0
+          ? subpathMap(vendored.exports)["."]
+          : (vendored.main ?? "./index.js"),
+        directory,
+      );
+      if (
+        JSON.stringify(manifest.imports?.[specifier]) !==
+        JSON.stringify(expected)
+      )
+        problems.push(
+          `imports ${specifier} is not the export map of the vendored ${dependency}; publish it as ${JSON.stringify(expected)}`,
+        );
+      const copy = join(packageRoot, directory);
+      if (!existsSync(copy))
+        problems.push(`vendored ${dependency} is not in the tarball`);
+      else
+        for (const file of vendoredCopyDifferences(installed, copy, dependency))
+          problems.push(
+            file === SOURCE_NOTICE && vendoredSourceNotice(dependency)
+              ? `${directory}/${SOURCE_NOTICE} is missing or is not the source notice of the vendored ${dependency}`
+              : `${directory}/${file} differs from the installed ${dependency}`,
+          );
+      for (const name of Object.keys(vendored.dependencies ?? {}))
+        if (manifest.dependencies?.[name] === undefined)
+          problems.push(
+            `vendored ${dependency} needs ${name}, which is not a dependency`,
+          );
+      return problems;
+    },
+  );
 
 const loadScript = (mode, specifiers) =>
   mode === "import"
@@ -239,10 +369,9 @@ export const loadableSpecifiers = (name, manifest, mode) =>
         ({ conditions, target }) =>
           !target.endsWith(".d.ts") &&
           !target.endsWith(".d.cts") &&
-          (conditions.length === 0 ||
-            conditions.includes(mode) ||
-            conditions.includes("default") ||
-            conditions.includes("node")),
+          conditions.every((condition) =>
+            [mode, "default", "node"].includes(condition),
+          ),
       ),
     )
     .map((entry) =>
@@ -275,11 +404,26 @@ const linkDependency = (installModules, packageDir, dependency, problems) => {
   symlinkSync(realpathSync(source), link, "dir");
 };
 
-const typesCheck = (root, installRoot, packages) => {
-  const requireFromSdk = createRequire(
-    join(root, "demo/midgard-sdk/package.json"),
+const OUTPUT_TAIL_LINES = 20;
+
+/**
+ * Type-checks every typed export of `packages`, installed under
+ * `installRoot`, by package name from an ES module and a CommonJS module,
+ * with the TypeScript 5.8 compiler and `@types/node` of the SDK workspace
+ * package under `root`. Returns the problems, each prefixed `types:`.
+ */
+export const typesCheck = (root, installRoot, packages) => {
+  const sdkDir = join(root, "demo/midgard-sdk");
+  const tsc = createRequire(join(sdkDir, "package.json")).resolve(
+    "typescript-5-8/bin/tsc",
   );
-  const tsc = requireFromSdk.resolve("typescript/bin/tsc");
+  const problems = [];
+  linkDependency(
+    join(installRoot, "node_modules"),
+    sdkDir,
+    "@types/node",
+    problems,
+  );
   const probe = join(installRoot, "types-probe");
   mkdirSync(probe);
   const specifiers = packages.flatMap(({ name, manifest }) =>
@@ -325,18 +469,38 @@ const typesCheck = (root, installRoot, packages) => {
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
   });
-  // Third-party declarations are their owners' concern; only errors in the
-  // probe files or in the publish set's own declarations are ours.
-  return result.status === 0
-    ? []
-    : result.stdout
-        .split("\n")
+  if (result.status !== 0) {
+    // Third-party declarations are their owners' concern, a vendored copy's as
+    // much as an installed one's; only errors in the probe files, in the
+    // publish set's own declarations or in no file (the compiler's own
+    // inputs) are ours. A failure that printed no error at all (a crash) is
+    // reported as tsc printed it.
+    const errors = (result.stdout ?? "")
+      .split("\n")
+      .filter((line) => /error TS[0-9]+/u.test(line));
+    problems.push(
+      ...errors
         .filter(
           (line) =>
-            /error TS[0-9]+/u.test(line) &&
-            /^(?:esm\.mts|cjs\.cts|\.\.\/node_modules\/@al-ft\/)/u.test(line),
+            /^(?:error TS|esm\.mts|cjs\.cts|\.\.\/node_modules\/@al-ft\/)/u.test(
+              line,
+            ) && !/^\.\.\/node_modules\/@al-ft\/[^/]+\/vendor\//u.test(line),
         )
-        .map((line) => `types: ${line.trim()}`);
+        .map((line) => line.trim()),
+    );
+    if (errors.length === 0) {
+      const tail =
+        `${result.stdout ?? ""}\n${result.stderr ?? ""}\n${result.error?.message ?? ""}`
+          .split("\n")
+          .map((line) => line.trimEnd())
+          .filter((line) => line !== "")
+          .slice(-OUTPUT_TAIL_LINES);
+      problems.push(
+        `tsc exited ${result.status ?? result.signal} without reporting an error; output tail:\n${tail.join("\n")}`,
+      );
+    }
+  }
+  return problems.map((problem) => `types: ${problem}`);
 };
 
 /** Packs, extracts and checks the publish set into the new `output` directory. */
@@ -359,10 +523,16 @@ export const checkPublishSet = ({ root, output, types = true }) => {
     if (!existsSync(join(packageDir, "dist")))
       throw new Error(`${name} is not built; build it before packing`);
     const before = new Set(readdirSync(tarballs));
-    run(
-      ["corepack", "pnpm", "pack", "--pack-destination", tarballs],
-      packageDir,
-    );
+    // pnpm skips `postpack` when the pack fails, so the files `prepack` put
+    // into the package are removed here whatever happens.
+    try {
+      run(
+        ["corepack", "pnpm", "pack", "--pack-destination", tarballs],
+        packageDir,
+      );
+    } finally {
+      removePackFiles(packageDir);
+    }
     const [tarball] = readdirSync(tarballs).filter((file) => !before.has(file));
     const tarballPath = join(tarballs, tarball);
     const extracted = join(installModules, name);
@@ -372,8 +542,19 @@ export const checkPublishSet = ({ root, output, types = true }) => {
       readFileSync(join(extracted, "package.json"), "utf8"),
     );
     const files = listFiles(extracted);
-    const checked = packedManifestProblems(manifest, files, publishNames);
-    problems.push(...checked.problems, ...packedSecretProblems(extracted));
+    const workspaceManifest = JSON.parse(
+      readFileSync(join(packageDir, "package.json"), "utf8"),
+    );
+    problems.push(
+      ...packedManifestProblems(
+        manifest,
+        files,
+        publishNames,
+        workspaceManifest.exports,
+      ),
+      ...packedSecretProblems(extracted),
+      ...vendoredImportProblems(extracted, manifest, packageDir),
+    );
     return {
       name,
       dir,
@@ -384,7 +565,6 @@ export const checkPublishSet = ({ root, output, types = true }) => {
       sha256: sha256(readFileSync(tarballPath)),
       fileCount: files.length,
       problems,
-      warnings: checked.warnings,
     };
   });
   for (const pkg of packages)
@@ -397,12 +577,6 @@ export const checkPublishSet = ({ root, output, types = true }) => {
             dependency,
             pkg.problems,
           );
-  linkDependency(
-    installModules,
-    join(root, "demo/midgard-sdk"),
-    "@types/node",
-    [],
-  );
   for (const pkg of packages)
     for (const mode of ["import", "require"])
       pkg.problems.push(
@@ -465,7 +639,6 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     for (const pkg of report.packages) {
       console.log(`${pkg.name}@${pkg.version} ${pkg.sha256} ${pkg.tarball}`);
       for (const problem of pkg.problems) console.log(`  problem: ${problem}`);
-      for (const warning of pkg.warnings) console.log(`  warning: ${warning}`);
     }
     for (const problem of report.types.problems ?? [])
       console.log(`  ${problem}`);

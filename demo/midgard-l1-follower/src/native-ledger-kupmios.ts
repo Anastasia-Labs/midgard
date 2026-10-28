@@ -1,6 +1,6 @@
 /**
  * A Kupmios provider whose reward-account state comes from the local node's
- * ledger (tools only: the prover CLI, journeys, SDK users). Role processes
+ * ledger (tools only: the prover CLI and the devnet journeys). Role processes
  * read L1 through the follower and never import this module (the role
  * boundary test pins it).
  */

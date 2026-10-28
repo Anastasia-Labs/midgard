@@ -42,6 +42,21 @@
       "midgard-source": "./src/events/index.ts",
       "types": "./dist/events/index.d.ts",
       "import": "./dist/events/index.js"
+    },
+    "./native-reward-account": {
+      "midgard-source": "./src/native-reward-account.ts",
+      "types": "./dist/native-reward-account.d.ts",
+      "import": "./dist/native-reward-account.js"
+    },
+    "./native-ledger-kupmios": {
+      "midgard-source": "./src/native-ledger-kupmios.ts",
+      "types": "./dist/native-ledger-kupmios.d.ts",
+      "import": "./dist/native-ledger-kupmios.js"
+    },
+    "./protocol-parameters": {
+      "midgard-source": "./src/protocol-parameters.ts",
+      "types": "./dist/protocol-parameters.d.ts",
+      "import": "./dist/protocol-parameters.js"
     }
   },
   "scripts": {
@@ -90,6 +105,9 @@
             "src/testing/index.ts",
             "src/provider/index.ts",
             "src/events/index.ts",
+            "src/native-reward-account.ts",
+            "src/native-ledger-kupmios.ts",
+            "src/protocol-parameters.ts",
             "--format",
             "esm",
             "--dts",

@@ -32,3 +32,5 @@ demo/midgard-node/docs/tasks/MPF_MIGRATION_D_ACCEPTANCE_TESTS.md
 /docs/DOCUMENTATION_AUDIT_*.md
 /MIDGARD_PR_*_DIFFERENTIAL_REVIEW_*.md
 onchain/aiken/plutus.json.deployment.json
+# Validation's vendored package copy exists only while it is packed.
+/demo/midgard-validation/vendor/

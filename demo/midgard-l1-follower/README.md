@@ -34,7 +34,20 @@ fork simulator (`./testing`). The live chain-sync client itself
 (`@al-ft/l1-node-transport`), the decode pool and the role wiring live
 elsewhere. The library entry points never open a connection to a Cardano
 node: the origin gate and `find-origin` (below) read the chain through a
-caller-supplied `L1NodeTransport`. Only the `find-origin` CLI opens one.
+caller-supplied `L1NodeTransport`. Only the `find-origin` CLI and the
+reward-account reader below open one.
+
+Three subpaths read the node's ledger for the node, the watcher and the tools,
+and stay out of the main entry point:
+
+- `./native-reward-account`: a reward account's registration, rewards and
+  delegation, queried over the process's shared node transport
+  (`queryNativeRewardAccount`), and the node-config genesis identity that
+  query is bound to;
+- `./native-ledger-kupmios`: `NativeLedgerKupmios`, the tool-side Kupmios
+  provider whose reward-account reads go to that query;
+- `./protocol-parameters`: the deployment manifest's protocol-parameter
+  snapshot derived from the raw Conway `protocol_params` answer.
 
 ## Usage
 

@@ -2,9 +2,10 @@
  * The value accumulator and the value mutation steps derived from Midgard values.
  */
 
-import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { encodeCbor, type MidgardLedgerOutputAsset } from "@al-ft/midgard-core";
 import { type MidgardValue } from "@al-ft/midgard-core/codec";
+
+import { Store, Trie } from "#merkle-patricia-forestry";
 
 import {
   exactTrieRoot,

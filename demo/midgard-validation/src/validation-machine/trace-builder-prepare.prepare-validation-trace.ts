@@ -1,4 +1,3 @@
-import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
   appendMidgardValidationMerkleLeaf,
   attachMidgardLedgerOutputProofFacts,
@@ -74,6 +73,8 @@ import {
 } from "@al-ft/midgard-core/codec/forced";
 import { type MidgardRejectionReasonV1 } from "@al-ft/midgard-core/validation-trace";
 import { Effect } from "effect";
+
+import { Store, Trie } from "#merkle-patricia-forestry";
 
 import { awaitLedgerEd25519SignatureReady } from "../ledger-ed25519-ready.js";
 import {
