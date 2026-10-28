@@ -397,7 +397,7 @@
     }
   },
   "scripts": {
-    "clean": "rimraf dist",
+    "clean": "rimraf dist vendor",
     "build": "node ../../scripts/contrib.mjs build --package @al-ft/midgard-validation",
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix",

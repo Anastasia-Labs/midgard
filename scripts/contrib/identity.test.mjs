@@ -1034,6 +1034,21 @@ test("only reads the stamp binds may produce a stamped dist", (t) => {
     ]),
     [],
   );
+  // Every declared output directory is emitted, not only dist: a later
+  // step may read what an earlier one wrote to vendor/.
+  editPackage(root, "example", (pkg) => {
+    pkg.midgardTasks.build.outputs = ["dist", "vendor"];
+  });
+  mkdirSync(at("demo/example/vendor"));
+  writeFileSync(at("demo/example/vendor/index.js"), "");
+  assert.deepEqual(
+    reasons([
+      ["process", at("demo/example/scripts/digest.mjs"), 8],
+      ["load", at("demo/example/scripts/digest.mjs"), 8],
+      ["read", at("demo/example/vendor/index.js"), 8],
+    ]),
+    [],
+  );
 });
 
 test("a node_modules above the checkout is named, never deleted", (t) => {
