@@ -113,6 +113,29 @@ line `event refused (<reason>): ...` for each event.
 **Escalate** any `l1_event_undecodable` (a decoder disagrees with the chain),
 and an `l1_event_identity_conflict` that survives past L1 finality.
 
+### MidgardMergeFailures
+
+**Meaning.** For ten minutes the node's merge attempts have kept failing
+(`merge_failure_count` keeps rising). The counter counts an attempt that could
+not read or fund from the merge wallet, failed its merge build, or refused the
+oldest block's candidate check. Blocks still commit, but the state queue grows
+and nothing reaches the confirmed state. A failed submission or confirmation
+is not counted here; it shows in the log as `Submit tx error` or
+`Confirm tx error`.
+
+**First checks.** The node log around each attempt: an `E_MERGE_` code names
+a refused candidate check or build; `No operator wallet inputs available to
+fund state_queue merge tx` and `Failed to read the merge wallet view` name the
+merge wallet. Read `midgard_wallet_plain_lovelace{role="merge"}` too (see
+[MidgardWalletBalanceLow](#midgardwalletbalancelow)).
+
+**Action.** Fund the merge wallet when it is empty, and restore the L1
+provider or Postgres when the log names one. The next merge attempt picks the
+change up.
+
+**Escalate** any `E_MERGE_` code, and failures that continue once the merge
+wallet holds funds and the provider answers.
+
 ### MidgardSettlementJobsStuck
 
 **Meaning.** One or more settlement jobs reached the retry cap of consecutive
@@ -144,6 +167,41 @@ an L1 explorer or the node's own provider.
 within five minutes of the provider answering.
 
 **Escalate** when the provider answers but the reconcile keeps failing.
+
+### MidgardWalletBalanceLow
+
+**Meaning.** A node role wallet holds less plain ADA (outputs with no token,
+datum or script reference) than its transactions need for five minutes. The
+`role` label names the wallet; the balance is
+`midgard_wallet_plain_lovelace` and the requirement
+`midgard_wallet_required_lovelace`. Both are read from the wallet view the
+node builds its transactions from, every five seconds.
+
+| `role`             | Requirement                                                                                                                                                                                      | Short of it                                             |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------- |
+| `operator`         | The defense reserve [validation-trace-defense.md](../../demo/midgard-node/docs/validation-trace-defense.md) asks for (2 × 82.4 + 5 + 10 ADA) plus one commit's 5 ADA block node, about 184.8 ADA | Commits, or a validation-trace Defend, cannot be funded |
+| `merge`            | No requirement of its own; the 5 ADA collateral a merge presents (the collateral floor)                                                                                                          | Merges fail; see MidgardMergeFailures                   |
+| `settlement`       | No requirement of its own; the 5 ADA collateral a settlement transaction presents (the collateral floor). Exported only when the node has a settlement wallet                                    | Settlement jobs fail; see MidgardSettlementJobsStuck    |
+| `reference_script` | None: publication tops it up from the operator wallet                                                                                                                                            | No rule                                                 |
+| `defense_pocket`   | None: an empty pocket is its normal state, and a Defend pays it its collateral output                                                                                                            | No rule                                                 |
+
+The `reference_script` and `defense_pocket` balances are exported for reading
+only; the rule never fires for them.
+
+**First checks.**
+
+```bash
+curl -s "$NODE/readyz"
+```
+
+A wallet that cannot fund pending work also shows there (for example
+`validation-trace-defense-underfunded` with its shortfall).
+
+**Action.** Send plain ADA to the named role's wallet. The alert clears on the
+first sample after the funds land in the wallet view.
+
+**Escalate** when the balance keeps falling after a top-up with no matching
+commits, merges, settlements or Defends in the node log.
 
 ## Watcher alerts
 

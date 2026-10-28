@@ -27,7 +27,6 @@ import {
   TxSignError,
   TxSubmitError,
 } from "../utils.js";
-import { readSelectedWalletView } from "../utils.wallet-view.js";
 import {
   DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING,
   mergeSubmitValidityEvidence,
@@ -61,6 +60,10 @@ import {
   mergeLocalFinalizationFailureCounter,
   type MergeOptions,
 } from "./merge-to-confirmed-state.landed-unfinalized-merges.js";
+import {
+  readMergeWalletView,
+  requireMergeWalletInputs,
+} from "./merge-to-confirmed-state.merge-wallet.js";
 
 /**
  * Build and submit the merge transaction.
@@ -361,20 +364,11 @@ export const buildAndSubmitMergeTx = (
         "state-queue merge withdrawal",
       );
 
-      const operatorWalletView = yield* readSelectedWalletView(lucid).pipe(
-        Effect.mapError(
-          (cause) =>
-            new SDK.StateQueueError({
-              message: `Failed to read the merge wallet view: ${cause.message}`,
-              cause,
-            }),
-        ),
-      );
+      const operatorWalletView = yield* readMergeWalletView(lucid);
       const inFlight = ownMergeInFlightSkip(operatorWalletView.held, candidate);
       if (inFlight !== undefined) return yield* inFlight;
-      const presetWalletInputs = yield* SDK.requireOperatorWalletInputs(
+      const presetWalletInputs = yield* requireMergeWalletInputs(
         operatorWalletView.utxos,
-        "state_queue merge tx",
       );
       yield* Effect.logInfo(
         `🔸 Using ${presetWalletInputs.length.toString()} operator wallet view input(s) for merge tx (source=${operatorWalletView.source}, held=${operatorWalletView.held.size.toString()}).`,

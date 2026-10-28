@@ -8,15 +8,22 @@ import {
   EVENT_UNDECODABLE,
 } from "../l1-events/driver.js";
 import { Globals } from "../services/globals.js";
+import type { IntentJournal } from "../services/intent-journal.js";
+import { Lucid } from "../services/lucid.js";
 import { ContractDeploymentIdentity } from "../services/midgard-contracts.js";
 import { SETTLEMENT_JOB_FAILURE_CAP } from "../services/settlement-retry.js";
 import { commitPlanningAgeMs } from "../workers/commit-planning-notice.js";
+import {
+  type RoleWallet,
+  sampleWalletBalances,
+} from "./alert-signals.wallet-balances.js";
 
 /**
  * Gauges the alert rules (`demo/midgard-node/alert-rules.yml`) read for state
  * the node otherwise reports only on `/readyz`: the local block frontier and
  * whether the commit pipeline has work (commit lag), the last planning mode
- * (catch-up), the follower's event refusals, and stuck settlement work. One
+ * (catch-up), the follower's event refusals, and stuck settlement work; and
+ * the role wallets' balances (`alert-signals.wallet-balances.ts`). One
  * sampler publishes them under `listen --with-monitoring`; it reads, never
  * changes, the state it reports.
  */
@@ -141,23 +148,27 @@ export const sampleAlertSignals = (
 > => Effect.zipRight(sampleInMemorySignals(planMaxAgeMs), sampleSettlementJobs);
 
 /**
- * Repeats `sampleAlertSignals` on `schedule`. A failed sample is logged and
- * the next one runs: a database outage leaves the settlement gauge at its
- * last value while the in-memory gauges keep updating.
+ * Repeats `sampleAlertSignals` and the role wallets' balances on `schedule`.
+ * A failed sample is logged and the next one runs: a database outage leaves
+ * the settlement and wallet gauges at their last values while the in-memory
+ * gauges keep updating.
  */
 export const alertSignalsFiber = (
   schedule: Schedule.Schedule<number>,
   planMaxAgeMs: number,
+  wallets: readonly RoleWallet[],
 ): Effect.Effect<
   void,
   never,
-  Globals | SqlClient | ContractDeploymentIdentity
+  Globals | SqlClient | ContractDeploymentIdentity | Lucid | IntentJournal
 > =>
   Effect.gen(function* () {
     yield* Effect.logInfo("Alert signal sampler fiber started.");
+    const { api: lucid } = yield* Lucid;
     yield* Effect.repeat(
       sampleInMemorySignals(planMaxAgeMs).pipe(
         Effect.zipRight(sampleSettlementJobs),
+        Effect.zipRight(sampleWalletBalances(lucid, wallets)),
         Effect.withSpan("alert-signals-fiber"),
         Effect.catchAllCause((cause) =>
           Cause.isInterruptedOnly(cause)
