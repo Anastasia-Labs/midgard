@@ -27,6 +27,16 @@ const workspacePackageBoundary = {
     "Import workspace packages by name (for example @al-ft/midgard-core/hex), never through ../<package>/src or ../<package>/dist. Add a workspace dependency and an exports entry if one is missing.",
 };
 
+// Midgard and Lucid no longer depend on any @harmoniclabs package: Plutus
+// Data, constants, terms and the Flat encoder are owned in midgard-validation
+// (`@al-ft/midgard-validation/uplc`), builtins evaluate through the pinned
+// aiken wasm, and Lucid applies parameters through the same wasm.
+const harmonicLabsPackages = {
+  group: ["@harmoniclabs/*"],
+  message:
+    "@harmoniclabs packages are not dependencies of this workspace. Use the owned UPLC values and Flat encoder in @al-ft/midgard-validation/uplc, the iterative Plutus Data codecs (@al-ft/midgard-core/plutus-data-lucid-iterative, midgard-validation plutus-data-iterative.*), or the pinned @lucid-evolution/uplc wasm.",
+};
+
 export default tseslint.config(
   {
     ignores: [
@@ -65,7 +75,7 @@ export default tseslint.config(
       ],
       "no-restricted-imports": [
         "error",
-        { patterns: [workspacePackageBoundary] },
+        { patterns: [workspacePackageBoundary, harmonicLabsPackages] },
       ],
     },
   },
@@ -196,6 +206,7 @@ export default tseslint.config(
         {
           patterns: [
             workspacePackageBoundary,
+            harmonicLabsPackages,
             {
               group: ["@/*"],
               message:
@@ -269,6 +280,7 @@ export default tseslint.config(
         {
           patterns: [
             workspacePackageBoundary,
+            harmonicLabsPackages,
             {
               group: [
                 "midgard-node",
@@ -297,6 +309,7 @@ export default tseslint.config(
         {
           patterns: [
             workspacePackageBoundary,
+            harmonicLabsPackages,
             {
               group: ["@/*"],
               message:

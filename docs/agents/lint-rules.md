@@ -88,20 +88,20 @@ every stale site and adds none (`--check` only reports).
 - **Read, build and write Plutus Data without recursion in production
   source** (`src/` of midgard-core, -validation, -node, -sdk, -watcher and
   -fault-proofs). The carriers admit Data nested thousands of levels deep, and
-  a recursive walk overflows the stack. Flagged: the recursive
-  `@harmoniclabs/plutus-data` functions (`dataFromCbor`, `dataToCbor`, their
-  `Obj` forms, `eqData`, `cloneData`, `dataFromJson`, `dataToJson`);
-  `@harmoniclabs/plutus-machine` names other than `BnCEK`, `CEKConst`,
-  `CEKError`, `ExBudget`, `PartialBuiltin` and `costModelV3ToBuiltinCosts`;
-  `Cbor` from `@harmoniclabs/cbor`; `cborg`; and Lucid `Data.from` /
-  `Data.to` in midgard-core and midgard-validation. Use
+  a recursive walk overflows the stack. Flagged: `cborg`, and Lucid
+  `Data.from` / `Data.to` in midgard-core and midgard-validation. Use
   `plutusDataFromCborIterative` and `encodeMidgardCekPlutusData` in
   midgard-validation, and
   `@al-ft/midgard-core/plutus-data-lucid-iterative` for Lucid-shaped values.
   The baselined Lucid encoders take repository-built values of bounded depth.
-  Blind spot: `.toString()`, `.toJson()` and `.clone()` on a harmonic value,
-  and a hand-written recursive walk, are not seen.
+  Blind spot: a hand-written recursive walk is not seen.
   [eslint: midgard/no-recursive-plutus-data]
+- **Do not import `@harmoniclabs/*`** anywhere in the workspace. Neither
+  Midgard nor Lucid depends on those packages: Plutus Data, constants, terms
+  and the Flat encoder are owned in `@al-ft/midgard-validation/uplc`, and
+  builtins and parameter application run through the pinned
+  `@lucid-evolution/uplc` wasm. Blind spot: a `require` or
+  `createRequire(...)` call is not seen. [eslint: no-restricted-imports]
 - **Count L1 depth only in the heads module**
   (`demo/midgard-l1-follower/src/heads.ts`, plan §9): the tip is depth 1,
   `safe` is depth ≥ cd (liveness only), `final` is depth > k. Use `depth`,

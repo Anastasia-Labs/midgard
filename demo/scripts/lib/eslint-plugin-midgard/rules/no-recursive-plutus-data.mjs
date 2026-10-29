@@ -8,18 +8,15 @@
 // its own iterative functions (midgard-core `plutus-data-lucid-iterative`,
 // midgard-validation `plutus-data-iterative.*`), and this rule bans the
 // recursive library entry points in the production source trees:
-//   - the recursive `@harmoniclabs/plutus-data` functions (`dataFromCbor`,
-//     `dataToCbor`, their `Obj` forms, `eqData`, `cloneData`, the JSON pair);
-//   - `@harmoniclabs/plutus-machine` names other than the pinned reference
-//     evaluator's (`Machine` evaluates over recursive Data);
-//   - `Cbor` from `@harmoniclabs/cbor` (`Cbor.parse` / `Cbor.encode`);
 //   - `cborg`;
 //   - Lucid's `Data.from` / `Data.to` in midgard-validation and midgard-core,
 //     where bounded encoders of repository-built values are baselined with a
 //     reason each.
-// The rule is syntactic: it cannot see `.toString()`, `.toJson()` or
-// `.clone()` called on a harmonic Data value, nor a recursive walk written by
-// hand. docs/agents/lint-rules.md lists these blind spots.
+// The recursive @harmoniclabs codecs this rule used to single out are no
+// longer dependencies; `no-restricted-imports` in eslint.config.mjs refuses
+// every @harmoniclabs import. The rule is syntactic: it cannot see a
+// recursive walk written by hand. docs/agents/lint-rules.md lists the blind
+// spots.
 
 import { defineRule } from "../baseline.mjs";
 import { staticName, unwrap } from "../ast.mjs";
@@ -35,28 +32,6 @@ export const PRODUCTION_SOURCE_TREES = [
 
 const LUCID_DATA_TREES = ["midgard-core/src/", "midgard-validation/src/"];
 
-const RECURSIVE_HARMONIC_DATA = new Set([
-  "cloneData",
-  "dataFromCbor",
-  "dataFromCborObj",
-  "dataFromJson",
-  "dataToCbor",
-  "dataToCborObj",
-  "dataToJson",
-  "eqData",
-]);
-
-const REFERENCE_EVALUATOR_NAMES = new Set([
-  "BnCEK",
-  "CEKConst",
-  "CEKError",
-  "ExBudget",
-  // Scalar bigint cost functions do not traverse Plutus Data.
-  "Linear3InY",
-  "PartialBuiltin",
-  "costModelV3ToBuiltinCosts",
-]);
-
 const importedName = (specifier) =>
   specifier.type === "ImportSpecifier"
     ? staticName(specifier.imported, false)
@@ -71,12 +46,6 @@ export default defineRule({
     },
     schema: [],
     messages: {
-      recursiveHarmonic:
-        "`{{name}}` from @harmoniclabs/plutus-data walks Data recursively and overflows the stack on deep values that the carriers admit. Fix: decode with `plutusDataFromCborIterative` (midgard-validation/src/plutus-data-iterative.decode.ts) and encode with `encodeMidgardCekPlutusData` (plutus-data-iterative.encode.ts); compare or copy with an explicit-stack walk.",
-      machine:
-        "`{{name}}` from @harmoniclabs/plutus-machine is outside the pinned reference evaluator; `Machine` evaluates over recursive Data. Fix: evaluate through the structural CEK executor (cek-executor.ts); only BnCEK, CEKConst, CEKError, ExBudget, Linear3InY, PartialBuiltin and costModelV3ToBuiltinCosts may be imported.",
-      harmonicCbor:
-        "`Cbor` from @harmoniclabs/cbor parses and encodes recursively. Fix: use the iterative readers in midgard-core (`plutus-data-lucid-iterative`) or midgard-validation (`plutus-data-iterative.decode.ts`).",
       cborg:
         "`cborg` decodes and encodes recursively. Fix: use the repository's iterative CBOR readers and writers in midgard-core.",
       lucidData:
@@ -102,29 +71,6 @@ export default defineRule({
           }
           const name = importedName(specifier);
           if (
-            source === "@harmoniclabs/plutus-data" &&
-            RECURSIVE_HARMONIC_DATA.has(name)
-          ) {
-            report({
-              node: specifier,
-              messageId: "recursiveHarmonic",
-              data: { name },
-            });
-          } else if (
-            source === "@harmoniclabs/plutus-machine" &&
-            !REFERENCE_EVALUATOR_NAMES.has(name)
-          ) {
-            report({
-              node: specifier,
-              messageId: "machine",
-              data: { name: name ?? specifier.local.name },
-            });
-          } else if (
-            source === "@harmoniclabs/cbor" &&
-            (name === "Cbor" || specifier.type !== "ImportSpecifier")
-          ) {
-            report({ node: specifier, messageId: "harmonicCbor" });
-          } else if (
             lucidTree &&
             source.startsWith("@lucid-evolution/") &&
             name === "Data"
