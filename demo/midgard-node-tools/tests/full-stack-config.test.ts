@@ -316,4 +316,27 @@ describe("preprod-testing keeps its own inputs", () => {
       "A preprod-testing node serves plain HTTP",
     );
   });
+  it("accepts a WebSocket endpoint", async () => {
+    const value = await fixture();
+    value.config.endpoint = "ws://127.0.0.1:3000";
+    await value.writeConfig();
+    await expect(loadStackConfig(value.path)).resolves.toBeDefined();
+  });
+});
+
+describe("the compiled deployment profile", () => {
+  it("refuses a preprod-public environment in this preprod-testing build, naming the rebuild", async () => {
+    const value = await fixture();
+    value.env.MIDGARD_DEPLOYMENT_PROFILE = "preprod-public";
+    await writeFile(value.config.envFile, value.envText());
+    for (const command of [
+      () => loadStackConfig(value.path),
+      () => runStackController({ config: value.path, check: true }),
+    ])
+      await expect(command()).rejects.toThrow(
+        "This checkout is compiled for preprod-testing, but " +
+          `${value.config.envFile} sets MIDGARD_DEPLOYMENT_PROFILE=preprod-public; ` +
+          "build that profile first: node demo/scripts/deployment-profiles.mjs generate preprod-public && pnpm --dir demo/midgard-node-tools run build",
+      );
+  });
 });

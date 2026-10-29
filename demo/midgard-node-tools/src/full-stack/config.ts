@@ -4,6 +4,7 @@ import { access, readFile } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import { promisify } from "node:util";
 
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import { parse } from "dotenv";
 
 import { checkStackEnvironment, stackIntentDigest } from "./preflight.js";
@@ -246,7 +247,11 @@ export function parseStackConfig(value: unknown): StackConfig {
     envFile: path("envFile"),
     runDirectory: path("runDirectory"),
     // A preprod-public node serves HTTPS on the loopback port as well.
-    endpoint: localUrl(text(input.endpoint, "endpoint"), ["http:", "https:"]),
+    endpoint: localUrl(text(input.endpoint, "endpoint"), [
+      "http:",
+      "ws:",
+      "https:",
+    ]),
     timeoutMs: positive(input.timeoutMs, "timeoutMs"),
     wallets,
     da: {
@@ -303,6 +308,12 @@ export async function loadStackConfig(path: string) {
     throw new Error(
       "Require Preprod with the preprod-testing or preprod-public profile and RUN_GENESIS_ON_STARTUP=false",
     );
+  // The node, deploy and journey commands run the profile this checkout compiled.
+  const compiled: string = SELECTED_DEPLOYMENT_PROFILE.name;
+  if (compiled !== env.MIDGARD_DEPLOYMENT_PROFILE)
+    throw new Error(
+      `This checkout is compiled for ${compiled}, but ${config.envFile} sets MIDGARD_DEPLOYMENT_PROFILE=${env.MIDGARD_DEPLOYMENT_PROFILE}; build that profile first: node demo/scripts/deployment-profiles.mjs generate ${env.MIDGARD_DEPLOYMENT_PROFILE} && pnpm --dir demo/midgard-node-tools run build`,
+    );
   // A public node needs every public input before anything is built or spent.
   if (env.MIDGARD_DEPLOYMENT_PROFILE === "preprod-public")
     await checkPublicInputs(config, env);
@@ -310,7 +321,7 @@ export async function loadStackConfig(path: string) {
     throw new Error(
       "The public section belongs only to a preprod-public stack; remove it for preprod-testing",
     );
-  else if (new URL(config.endpoint).protocol !== "http:")
+  else if (new URL(config.endpoint).protocol === "https:")
     throw new Error(
       "A preprod-testing node serves plain HTTP; use an http:// endpoint",
     );
