@@ -82,9 +82,10 @@ by `docs/agents/state-reset.md`. [review]
 - Pass `--config` as an absolute path, and keep the same configuration file
   for attach and resume. A changed identity field stops the run.
   [runtime: runStackController]
-- The configuration must name Preprod, the `preprod-testing` profile,
-  `RUN_GENESIS_ON_STARTUP=false`, the exact L2 fees, and a Postgres host port
-  other than 5433 and 55433; setup refuses anything else.
+- The configuration must name Preprod, the `preprod-testing` or
+  `preprod-public` profile, `RUN_GENESIS_ON_STARTUP=false`, the exact L2 fees,
+  and a Postgres host port other than 5433 and 55433; setup refuses anything
+  else. A `preprod-public` run also needs the `public` section.
   [runtime: loadStackConfig]
 - Never wipe local durable state, the run directory or service volumes under a
   deployment. [review]

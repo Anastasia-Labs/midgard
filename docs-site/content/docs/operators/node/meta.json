@@ -13,6 +13,7 @@
     "reserve-payout",
     "compatibility-rules",
     "benchmarks",
-    "e2e-testing-flow"
+    "e2e-testing-flow",
+    "preprod-public-deploy"
   ]
 }

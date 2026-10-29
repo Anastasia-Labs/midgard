@@ -27,7 +27,8 @@ need several hours to download and synchronize the Preprod snapshots.
 Copy `config/preprod-stack.example.json` and replace its absolute paths. This
 file contains names of secret environment variables, never their values. It
 uses the existing operator stack's `.env`, provider data, deployment directory
-and Docker volumes. Set `NETWORK=Preprod`, `MIDGARD_DEPLOYMENT_PROFILE=preprod-testing`,
+and Docker volumes. Set `NETWORK=Preprod`, `MIDGARD_DEPLOYMENT_PROFILE=preprod-testing`
+(or `preprod-public`, below),
 `RUN_GENESIS_ON_STARTUP=false`, and the exact L2
 `MIN_FEE_A`/`MIN_FEE_B`. Keep the operator deployment profile settings from
 `demo/midgard-node/.env.example`. Define all wallet and DA secret variables named
@@ -113,6 +114,21 @@ measurements in the same release input file and rerun to resume against that
 deployment. The signing key and program commitments remain fixed. Once signed,
 the saved authority binds the measured bundle digest and rejects replacements. The example above describes the input shape;
 replace its illustrative values with release artifacts before running.
+
+With `MIDGARD_DEPLOYMENT_PROFILE=preprod-public`, copy
+`config/preprod-public-stack.example.json` instead. Its `endpoint` is
+`https://` and its `public` section names the private node configuration file
+(the six node secrets, mode 0600), the TLS certificate, key and CA for
+`MIDGARD_PUBLIC_API_ORIGIN`, the release trust roots, the release directory
+and the optional ingress port. The `.env` then holds the release revision and
+the digest-pinned images, but none of the node secrets and none of the public
+file paths; the stack derives those. `--check` refuses a missing or wrong
+public input before anything is built or spent. The node runs from
+`MIDGARD_PUBLIC_NODE_IMAGE` over HTTPS, and the run stops before the services
+until the release is signed for the deployment it finalized; rerunning resumes
+without repeating any transaction. The operator procedure, including wallet
+funding, is
+[preprod-public-deploy](../../../docs-site/content/docs/operators/node/preprod-public-deploy.mdx).
 
 `--check` runs every check that needs no build, network or service, and
 starts nothing and spends nothing: the configuration fields and absolute paths,
