@@ -9,6 +9,7 @@ import { deriveL1Origin } from "../l1-origin.js";
 import type { StackConfig } from "./config.js";
 import { writeDurableJson } from "./journal.js";
 import { hostL1Node } from "./native-ledger.js";
+import { NODE_TLS_CA_ENV, NODE_TLS_SERVERNAME_ENV } from "./node-tls.js";
 
 /** Build tools see only the host toolchain; stack commands also see the stack environment. */
 export type CommandScope = "stack" | "host";
@@ -28,6 +29,10 @@ const HOST_KEYS = [
   "CARGO_HOME",
   "RUSTUP_HOME",
 ];
+
+/** The role images every Compose command of a preprod-public stack runs. */
+export const publicRolesPath = (config: StackConfig) =>
+  join(config.runDirectory, "public-roles.json");
 
 export class StackProcesses {
   /** The operator's own `L1_ORIGIN` from the stack env file, before any restore. */
@@ -107,6 +112,16 @@ export class StackProcesses {
         this.config.runDirectory,
         "deployment-run-state.json",
       ),
+      // Node commands reach a preprod-public node over HTTPS on loopback.
+      ...(this.config.public === undefined
+        ? {}
+        : {
+            NODE_OPTIONS: `--import=${new URL("./node-tls-preload.js", import.meta.url).href}`,
+            [NODE_TLS_CA_ENV]: this.config.public.tlsCaFile,
+            [NODE_TLS_SERVERNAME_ENV]: new URL(
+              this.env.MIDGARD_PUBLIC_API_ORIGIN!,
+            ).hostname,
+          }),
       ...overrides,
     });
   }
@@ -153,6 +168,10 @@ export class StackProcesses {
       "docker-compose.yaml",
       "-f",
       "docker-compose.kupmios.yaml",
+      // A preprod-public stack runs the release's digest-pinned role images.
+      ...(this.config.public === undefined
+        ? []
+        : ["-f", publicRolesPath(this.config)]),
       ...(extraFile ? ["-f", extraFile] : []),
       ...args,
     ]);

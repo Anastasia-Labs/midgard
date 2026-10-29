@@ -1,3 +1,4 @@
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import { normalizeHex } from "@al-ft/midgard-core/hex";
 import { Effect } from "effect";
 
@@ -12,6 +13,7 @@ import {
   type ResolvedWalletSeedPhrase,
   resolveWalletSeedPhrase,
 } from "./commands/command-utils.js";
+import { isPublicDeploymentProfile } from "./commands/listen-public-http.js";
 import {
   parseMerkleRootOption,
   parseOptionalEndTimeMs,
@@ -158,7 +160,7 @@ program
     runCliEffect(mainEffect);
   });
 
-program
+const submitDepositCommand = program
   .command("submit-deposit")
   .description(
     "Submit an L1 deposit to the Midgard deposit contract using the selected signer wallet",
@@ -180,7 +182,14 @@ program
     "--wallet-seed-phrase-env <envVar>",
     "Environment variable containing the seed phrase for the wallet that should sign the deposit transaction",
     "L1_OPERATOR_SEED_PHRASE",
-  )
+  );
+// A public profile signs only with a seed from a private mounted file.
+if (isPublicDeploymentProfile(SELECTED_DEPLOYMENT_PROFILE.name))
+  submitDepositCommand.option(
+    "--wallet-seed-phrase-file <path>",
+    "Private mounted BIP-39 file for the deposit signer",
+  );
+submitDepositCommand
   .argument(
     "[assetSpecs...]",
     "Optional additional assets in policyId.assetName:amount form (hex policy/asset name, integer amount)",
@@ -194,12 +203,19 @@ program
         readonly l2Datum?: string;
         readonly lovelace: string;
         readonly walletSeedPhraseEnv: string;
+        readonly walletSeedPhraseFile?: string;
       },
     ) => {
       let depositConfig: SubmitDeposit.SubmitDepositConfig;
       let resolvedWalletSeedPhrase: ResolvedWalletSeedPhrase;
       try {
-        const { l2Address, l2Datum, lovelace, walletSeedPhraseEnv } = options;
+        const {
+          l2Address,
+          l2Datum,
+          lovelace,
+          walletSeedPhraseEnv,
+          walletSeedPhraseFile,
+        } = options;
         depositConfig = SubmitDeposit.parseSubmitDepositConfig({
           l2Address,
           l2Datum,
@@ -208,6 +224,7 @@ program
         });
         resolvedWalletSeedPhrase = resolveWalletSeedPhrase({
           walletSeedPhraseEnv,
+          walletSeedPhraseFile,
         });
       } catch (error) {
         failCli("submit-deposit", error);

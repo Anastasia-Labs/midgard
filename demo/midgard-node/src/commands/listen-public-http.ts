@@ -278,41 +278,23 @@ export type HttpListenerTransport = {
   readonly hostname: string;
 };
 
-/** Resolve and authenticate local public settings before acquiring any listener or provider. */
-export const publicHttpTransport = (
-  config: NodeConfigDep,
-  {
-    env = process.env,
-    profile = SELECTED_DEPLOYMENT_PROFILE,
-    testOnlyReleaseVerifier,
-  }: {
-    readonly env?: NodeJS.ProcessEnv;
-    readonly profile?: PublicHttpProfile;
-    readonly testOnlyReleaseVerifier?: (env: NodeJS.ProcessEnv) => void;
-  } = {},
-): HttpListenerTransport => {
-  if (
-    testOnlyReleaseVerifier !== undefined &&
-    (isPublicDeploymentProfile(SELECTED_DEPLOYMENT_PROFILE.name) ||
-      profile === SELECTED_DEPLOYMENT_PROFILE)
-  )
-    return fail(
-      "test release dependencies are unavailable in the compiled public runtime",
-    );
-  if (!isPublicDeploymentProfile(profile.name))
-    return { createServer: createHttpServer, hostname: "0.0.0.0" };
-  if (config.HTTP_RATE_LIMITS?.enabled === false)
-    return fail("public deployments cannot disable HTTP rate limits");
-  if (env.MIDGARD_DOTENV_MODE !== "disabled")
-    return fail("public deployments require disabled checkout dotenv loading");
-  if (
-    env.MIDGARD_CONFIG_MODE !== undefined &&
-    env.MIDGARD_CONFIG_MODE !== "enabled"
-  )
-    return fail("public mounted configuration loading cannot be disabled");
-  readMountedHttpFile(env.MIDGARD_CONFIG_FILE, true);
+/** The secrets a public node reads only from its private mounted configuration. */
+export const PUBLIC_NODE_SECRET_NAMES = [
+  "ADMIN_API_KEY",
+  "POSTGRES_PASSWORD",
+  "L1_OPERATOR_SEED_PHRASE",
+  "L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX",
+  "L1_REFERENCE_SCRIPT_SEED_PHRASE",
+  "L1_SETTLEMENT_SEED_PHRASE",
+] as const;
+
+/** Reads the private mounted configuration, which must hold every public node secret. */
+export const loadPublicMountedConfig = (
+  path: string | undefined,
+): NodeJS.ProcessEnv => {
+  readMountedHttpFile(path, true);
   const fileEnv: NodeJS.ProcessEnv = {
-    MIDGARD_CONFIG_FILE: env.MIDGARD_CONFIG_FILE,
+    MIDGARD_CONFIG_FILE: path,
     MIDGARD_DOTENV_MODE: "disabled",
   };
   try {
@@ -320,42 +302,38 @@ export const publicHttpTransport = (
   } catch {
     return fail("mounted public configuration is invalid (contents redacted)");
   }
-  const secretNames = [
-    "ADMIN_API_KEY",
-    "POSTGRES_PASSWORD",
-    "L1_OPERATOR_SEED_PHRASE",
-    "L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX",
-    "L1_REFERENCE_SCRIPT_SEED_PHRASE",
-    "L1_SETTLEMENT_SEED_PHRASE",
-  ] as const;
-  for (const name of secretNames) {
-    if (fileEnv[name] === undefined || fileEnv[name] !== config[name])
+  for (const name of PUBLIC_NODE_SECRET_NAMES)
+    if (fileEnv[name] === undefined)
       return fail(`public ${name} must come from the mounted configuration`);
-  }
-  if (
-    !/^[0-9a-f]{64,128}$/u.test(config.ADMIN_API_KEY) ||
-    /^(.)\1+$/u.test(config.ADMIN_API_KEY)
-  )
+  return fileEnv;
+};
+
+/** The admin key and database password a public node accepts. */
+export const assertPublicCredentials = (
+  adminApiKey: string,
+  postgresPassword: string,
+): void => {
+  if (!/^[0-9a-f]{64,128}$/u.test(adminApiKey) || /^(.)\1+$/u.test(adminApiKey))
     return fail(
       "admin credentials require a random 32-byte or stronger hex key",
     );
   if (
-    config.POSTGRES_PASSWORD.length < 24 ||
-    /^(postgres|password|changeme|admin)/iu.test(config.POSTGRES_PASSWORD) ||
-    /^(.)\1+$/u.test(config.POSTGRES_PASSWORD)
+    postgresPassword.length < 24 ||
+    /^(postgres|password|changeme|admin)/iu.test(postgresPassword) ||
+    /^(.)\1+$/u.test(postgresPassword)
   )
     return fail("database credentials must be nondefault and strong");
-  if (
-    fileEnv.L1_USER_SEED_PHRASE !== undefined ||
-    env.L1_USER_SEED_PHRASE !== undefined
-  )
-    return fail("the public operator cannot hold a user wallet seed");
-  for (const name of [
-    "L1_OPERATOR_SEED_PHRASE",
-    "L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX",
-  ] as const) {
+};
+
+/** The operator and merge wallets must be key wallets on the profile's allow-list. */
+export const assertPublicOperatorWallets = (
+  seedPhrases: readonly string[],
+  network: NodeConfigDep["NETWORK"],
+  profile: PublicHttpProfile,
+): void => {
+  for (const seedPhrase of seedPhrases) {
     const credential = getAddressDetails(
-      seedPhraseAddress(config[name], config.NETWORK),
+      seedPhraseAddress(seedPhrase, network),
     ).paymentCredential;
     if (
       credential?.type !== "Key" ||
@@ -364,15 +342,10 @@ export const publicHttpTransport = (
     )
       return fail("operator wallet must match the compiled public allow-list");
   }
-  if (
-    config.RUN_GENESIS_ON_STARTUP ||
-    config.VALIDATION_WORKER_POOL_SIZE < 2 ||
-    config.DEPLOYMENT_ECONOMICS_PROFILE !== profile.economics.profile ||
-    profile.economics.requiredBondLovelace <= 0
-  )
-    return fail(
-      "public runtime requires strict economics, empty genesis and reserved validation capacity",
-    );
+};
+
+/** The exact source revision and the digest-pinned role images of the release. */
+export const assertPublicReleaseIdentity = (env: NodeJS.ProcessEnv): void => {
   if (!/^[0-9a-f]{40}$/u.test(env.MIDGARD_PUBLIC_RELEASE_REVISION ?? ""))
     return fail("an exact public release revision is required");
   for (const name of [
@@ -383,14 +356,12 @@ export const publicHttpTransport = (
     if (!/^[-a-zA-Z0-9._/:]+@sha256:[0-9a-f]{64}$/u.test(env[name] ?? ""))
       return fail(`${name} must be digest-pinned`);
   }
-  if (env.MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH === undefined)
-    return fail("the deployed contract identity must be mounted explicitly");
-  readMountedHttpFile(
-    env.MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH,
-    false,
-    PUBLIC_RELEASE_INPUT_LIMITS.contractDeploymentInfo,
-  );
-  (testOnlyReleaseVerifier ?? authenticatePublicHttpRelease)(env);
+};
+
+/** The HTTPS origin and a current TLSv1.3 certificate and key that cover it. */
+export const loadPublicTls = (
+  env: NodeJS.ProcessEnv,
+): { readonly cert: Buffer; readonly key: Buffer } => {
   let origin: URL;
   try {
     origin = new URL(env.MIDGARD_PUBLIC_API_ORIGIN ?? "");
@@ -427,6 +398,79 @@ export const publicHttpTransport = (
       "TLS certificate and private key must match the public origin (contents redacted)",
     );
   }
+  return { cert, key };
+};
+
+/** Resolve and authenticate local public settings before acquiring any listener or provider. */
+export const publicHttpTransport = (
+  config: NodeConfigDep,
+  {
+    env = process.env,
+    profile = SELECTED_DEPLOYMENT_PROFILE,
+    testOnlyReleaseVerifier,
+  }: {
+    readonly env?: NodeJS.ProcessEnv;
+    readonly profile?: PublicHttpProfile;
+    readonly testOnlyReleaseVerifier?: (env: NodeJS.ProcessEnv) => void;
+  } = {},
+): HttpListenerTransport => {
+  if (
+    testOnlyReleaseVerifier !== undefined &&
+    (isPublicDeploymentProfile(SELECTED_DEPLOYMENT_PROFILE.name) ||
+      profile === SELECTED_DEPLOYMENT_PROFILE)
+  )
+    return fail(
+      "test release dependencies are unavailable in the compiled public runtime",
+    );
+  if (!isPublicDeploymentProfile(profile.name))
+    return { createServer: createHttpServer, hostname: "0.0.0.0" };
+  if (config.HTTP_RATE_LIMITS?.enabled === false)
+    return fail("public deployments cannot disable HTTP rate limits");
+  if (env.MIDGARD_DOTENV_MODE !== "disabled")
+    return fail("public deployments require disabled checkout dotenv loading");
+  if (
+    env.MIDGARD_CONFIG_MODE !== undefined &&
+    env.MIDGARD_CONFIG_MODE !== "enabled"
+  )
+    return fail("public mounted configuration loading cannot be disabled");
+  const fileEnv = loadPublicMountedConfig(env.MIDGARD_CONFIG_FILE);
+  for (const name of PUBLIC_NODE_SECRET_NAMES) {
+    if (fileEnv[name] !== config[name])
+      return fail(`public ${name} must come from the mounted configuration`);
+  }
+  assertPublicCredentials(config.ADMIN_API_KEY, config.POSTGRES_PASSWORD);
+  if (
+    fileEnv.L1_USER_SEED_PHRASE !== undefined ||
+    env.L1_USER_SEED_PHRASE !== undefined
+  )
+    return fail("the public operator cannot hold a user wallet seed");
+  assertPublicOperatorWallets(
+    [
+      config.L1_OPERATOR_SEED_PHRASE,
+      config.L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX,
+    ],
+    config.NETWORK,
+    profile,
+  );
+  if (
+    config.RUN_GENESIS_ON_STARTUP ||
+    config.VALIDATION_WORKER_POOL_SIZE < 2 ||
+    config.DEPLOYMENT_ECONOMICS_PROFILE !== profile.economics.profile ||
+    profile.economics.requiredBondLovelace <= 0
+  )
+    return fail(
+      "public runtime requires strict economics, empty genesis and reserved validation capacity",
+    );
+  assertPublicReleaseIdentity(env);
+  if (env.MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH === undefined)
+    return fail("the deployed contract identity must be mounted explicitly");
+  readMountedHttpFile(
+    env.MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH,
+    false,
+    PUBLIC_RELEASE_INPUT_LIMITS.contractDeploymentInfo,
+  );
+  (testOnlyReleaseVerifier ?? authenticatePublicHttpRelease)(env);
+  const { cert, key } = loadPublicTls(env);
   return {
     hostname: "0.0.0.0",
     createServer: () => {

@@ -9,6 +9,8 @@ export default defineConfig({
     "funding-measurements": "src/funding-measurements.ts",
     "devnet-stack": "src/devnet-stack.ts",
     "corpus-chain-builder": "src/workers/corpus-chain-builder.ts",
+    // Loaded with `node --import` by node commands run against a public node.
+    "node-tls-preload": "src/node-tls-preload.ts",
   },
   format: ["esm"],
   // Self-contained bundles, one per entry: the worker is spawned by path and

@@ -25,6 +25,7 @@ export async function runStackController(options: {
     console.log(
       JSON.stringify({
         network: "Preprod",
+        profile: env.MIDGARD_DEPLOYMENT_PROFILE,
         nodeRoot: config.nodeRoot,
         runDirectory: config.runDirectory,
         cycles: config.journey.cycles,
@@ -51,6 +52,12 @@ export async function runStackController(options: {
       "This node directory already belongs to another stack configuration; preserve its deployment and records",
     );
   const processes = new StackProcesses(config, env);
+  // The controller's own readiness and ledger reads reach a public node over HTTPS.
+  if (config.public !== undefined) {
+    const { trustNodeTls } = await import("./node-tls.js");
+    const { publicOriginHost } = await import("./public-node.js");
+    trustNodeTls(config.public.tlsCaFile, publicOriginHost(env));
+  }
   const { prepareStackPrerequisites } = await import("./prerequisites.js");
   console.log("prerequisites: running");
   const prerequisites = await prepareStackPrerequisites(processes);

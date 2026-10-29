@@ -5,7 +5,7 @@ authenticated release inputs and TLS before opening the API socket. Explicit dev
 profiles retain their local HTTP behavior. Public mode cannot disable configuration
 loading or read secrets from a dotenv file.
 
-`MIDGARD_CONFIG_FILE` must name an absolute, private regular JSON file. The operator,
+`MIDGARD_CONFIG_FILE` must name an absolute, private regular YAML or JSON file. The operator,
 merge, settlement and reference publisher seeds, admin key and database password
 are mounted values in that configuration. Public wallet commands use
 `--wallet-seed-phrase-file` (or `--seed-phrase-file` for address derivation), never a
@@ -114,23 +114,30 @@ withdrawals whose derived canonical references are unknown hold UTXO reads with
 rows. An oversized stored reference holds ingestion for operator inspection;
 archived corruption has no eventual-completion guarantee.
 
-## Existing full-stack composition
+## Full-stack composition
 
-`scripts/public-operator-compose.mjs compose ABSOLUTE_OUTPUT_PATH` renders a
-**public HTTP overlay**, and `ingress ABSOLUTE_OUTPUT_PATH` renders its nginx
-configuration. Both create a new private output file and refuse mutable role
-images/configuration mismatches. The overlay has no complete chain or DA stack.
-The existing full-stack harness must supply its authenticated
-`producer-container-committee-host` producer manifest at `/app/stack/producer.json`,
-private authenticated DA transport and reachable existing host-network committee
-peers. It must also supply the actual Cardano socket at `/ipc/node.socket` with
-verified UID/GID access, read-only Cardano configuration at
-`/cardano-config/config.json`, and pinned native L1 transport from the public image
-or the existing explicit mount. No Docker socket belongs in this overlay.
+The `e2e-stack` command deploys and runs a preprod-public node when its `.env`
+names `MIDGARD_DEPLOYMENT_PROFILE=preprod-public` and its stack configuration has
+a `public` section. The operator steps are in the docs-site page
+`operators/node/preprod-public-deploy`. The stack:
 
-Only ingress TLS is published. Rendering ports, resource limits or release strings
-does not prove full-stack readiness, load headroom, block production under load,
-or live Preprod acceptance; those gates run on the final composed release.
+- runs the release's digest-pinned node, migration and Postgres images, as the
+  host user that owns the private files;
+- writes the node's secrets and DA identity to a private generated
+  `MIDGARD_CONFIG_FILE` in its run directory, keeps them out of the container
+  environment, and mounts the TLS, trust-root and release files;
+- gives the node the Cardano socket at `/ipc/node.socket`, its configuration
+  at `/cardano-config/config.json` and the image's own L1 transport binary;
+- authenticates the release before it starts the node, and stops with the
+  files to sign when it does not verify yet.
+
+`public.ingressHostPort` adds the optional TLS ingress, configured by
+`scripts/public-ingress.mjs`: a digest-pinned nginx on its own network that
+forwards to the node over verified TLS. The node then trusts only the ingress
+address in `HTTP_TRUSTED_PROXY_PEERS`. No Docker socket is mounted.
+
+A started stack does not prove load headroom, block production under load or
+live Preprod acceptance; those gates run on the final composed release.
 
 The separate explicit framing gate uses retained genuine constructor measurements:
 

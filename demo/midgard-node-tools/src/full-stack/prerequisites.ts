@@ -40,10 +40,12 @@ export async function prepareStackPrerequisites(processes: StackProcesses) {
       "host",
     ),
   );
+  // Every package below compiles the profile the stack environment names.
+  const profile = processes.env.MIDGARD_DEPLOYMENT_PROFILE!;
   await processes.command(
     "contracts-build",
     "pnpm",
-    ["deployment:build", "preprod-testing"],
+    ["deployment:build", profile],
     {},
     workspace,
     "host",
@@ -95,6 +97,11 @@ export async function prepareStackPrerequisites(processes: StackProcesses) {
     .update(await readFile(owner))
     .digest("hex");
   configureHostNativeLedger(processes);
+  // Every Compose command of a preprod-public stack names its role images.
+  if (processes.config.public !== undefined) {
+    const { preparePublicImages } = await import("./public-runtime.js");
+    await preparePublicImages(processes);
+  }
   await processes.compose("base-compose-check", ["config", "--quiet"]);
   const { readReleaseInput, releasePaths } = await import("./release.js");
   const { loadWatcherSecretText, decodeWatcherAuthenticationKey32 } =
@@ -133,5 +140,5 @@ export async function prepareStackPrerequisites(processes: StackProcesses) {
       throw new Error("Fresh setup needs watcher release inputs");
     await readReleaseInput(processes.config.watcher.releaseInput);
   }
-  return { profile: "preprod-testing", inputsChecked: true };
+  return { profile, inputsChecked: true };
 }

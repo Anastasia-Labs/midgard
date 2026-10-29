@@ -1,3 +1,4 @@
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
@@ -58,6 +59,21 @@ export const nodeLedger = (endpoint: string): JourneyLedger => ({
       submitNativeTransferTx(endpoint, signedTxCbor, txId, 30_000),
     ),
 });
+/**
+ * The wallet arguments of a signing node command. A preprod-public node
+ * command takes its seed only from a private file, written in the run
+ * directory; a testing one names the stack variable that holds it.
+ */
+async function walletSeedArguments(processes: StackProcesses, role: string) {
+  const { config, env } = processes;
+  const seedEnv = config.wallets[role]!.seedEnv;
+  if (config.public === undefined) return ["--wallet-seed-phrase-env", seedEnv];
+  const directory = join(config.runDirectory, "wallets");
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  const file = join(directory, `${role}.seed`);
+  await writeFile(file, env[seedEnv]!, { mode: 0o600 });
+  return ["--wallet-seed-phrase-file", file];
+}
 const lovelaceOf = (utxos: NodeUtxos) =>
   utxos.reduce((sum, utxo) => sum + (utxo.assets.lovelace ?? 0n), 0n);
 
@@ -148,8 +164,7 @@ export function journeySteps(
           "submit-deposit",
           "--submission-id",
           `${run.runId}:${prefix}:deposit`,
-          "--wallet-seed-phrase-env",
-          config.wallets.user!.seedEnv,
+          ...(await walletSeedArguments(processes, "user")),
           "--l2-address",
           user.address,
           "--lovelace",
@@ -343,8 +358,7 @@ export function journeySteps(
           "submit-withdrawal",
           "--submission-id",
           `${run.runId}:${prefix}:withdrawal`,
-          "--wallet-seed-phrase-env",
-          config.wallets.recipient!.seedEnv,
+          ...(await walletSeedArguments(processes, "recipient")),
           "--l2-out-ref",
           intent.l2OutRef,
           "--l1-address",

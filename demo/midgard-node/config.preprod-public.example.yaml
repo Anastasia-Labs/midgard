@@ -9,6 +9,11 @@
 # out: put them only in the private copy, never in this example. Paths are the
 # container paths of the public node image; change them to match your mounts.
 #
+# Under the full-stack command (e2e-stack), the stack's public.nodeConfigFile
+# holds only the six secrets below; every other setting here goes in the node
+# .env, except the file paths, the manifest id and HTTP_TRUSTED_PROXY_PEERS,
+# which the stack sets. See the docs-site page operators/node/preprod-public-deploy.
+#
 # The node reads and submits L1 only through the local Cardano node. Remote L1
 # provider settings (L1_ACCESS, L1_PROVIDER, L1_KUPO_URL, L1_OGMIOS_URL,
 # L1_BLOCKFROST_URL, L1_BLOCKFROST_PROJECT_ID) are refused at start.
@@ -43,9 +48,8 @@ RUN_GENESIS_ON_STARTUP: "false"
 # POSTGRES_PASSWORD: "<database password>"
 
 # --- API listener and database (required) --------------------------------------
-# scripts/public-operator-compose.mjs refuses any other value for these six:
-# its isolated network runs the database as `postgres` and the ingress at
-# 10.91.7.2.
+# The full-stack command (e2e-stack) runs the database as `postgres` and its
+# optional TLS ingress at 10.91.7.2, and sets these in the node environment.
 PORT: "3000"
 POSTGRES_HOST: "postgres"
 POSTGRES_PORT: "5432"

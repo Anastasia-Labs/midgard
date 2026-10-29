@@ -12,6 +12,13 @@ import { stackPaths } from "./deployment.js";
 import { readJsonIfPresent, writeDurableJson } from "./journal.js";
 import { containerNativeLedger } from "./native-ledger.js";
 import { getJson, poll, type StackProcesses } from "./process.js";
+import {
+  publicNodeEnvironment,
+  publicNodeServices,
+  publicReleaseStep,
+  publicRuntimeInputs,
+  writePublicNodeConfig,
+} from "./public-runtime.js";
 import { committeeIsReady, stackIsReady } from "./readiness.js";
 import { storageIdentityStep } from "./storage.js";
 import { generateWatcherServices } from "./watcher-services.js";
@@ -22,6 +29,8 @@ type RuntimeConfiguration = {
   compose: string;
   operationsEndpoint: string;
   committeeServices: string[];
+  /** A preprod-public stack's extra services, such as its TLS ingress. */
+  publicServices?: string[];
 };
 export const runtimeConfigurationPath = (processes: StackProcesses) =>
   join(processes.config.runDirectory, "runtime.json");
@@ -53,6 +62,7 @@ export async function runtimeInputDigest(processes: StackProcesses) {
     config.watcher.composeEnvFile,
     config.watcher.processTemplate,
     ...(config.watcher.releaseInput ? [config.watcher.releaseInput] : []),
+    ...publicRuntimeInputs(config),
   ]) {
     const bytes = await readFile(path).catch((error: NodeJS.ErrnoException) => {
       if (error.code === "ENOENT") return Buffer.from("absent");
@@ -205,27 +215,41 @@ export function runtimeSteps(processes: StackProcesses): StackStep[] {
         // The services step writes node.env once, with the owner pin of the image it built.
         const nodeEnvFile = [{ path: nodeEnvPath, required: false }];
         const compose = join(da.directory, "compose.json");
+        // A preprod-public node runs its release image with mounted secrets and TLS.
+        const publicNode =
+          processes.config.public === undefined
+            ? undefined
+            : await publicNodeServices(processes, {
+                servicesDirectory: da.directory,
+                envFile: nodeEnvFile,
+                producer: da.producer,
+              });
         await writeDurableJson(compose, {
           services: {
             ...da.services,
             ...watcher.services,
-            "midgard-node": {
-              env_file: nodeEnvFile,
-              volumes: [
-                `${da.producer}:/app/stack/producer.json:ro`,
-                ...nativeLedger.volumes,
-              ],
-            },
-            "midgard-node-migrate": {
-              env_file: nodeEnvFile,
-              volumes: nativeLedger.volumes,
-            },
+            ...(publicNode?.services ?? {
+              "midgard-node": {
+                env_file: nodeEnvFile,
+                volumes: [
+                  `${da.producer}:/app/stack/producer.json:ro`,
+                  ...nativeLedger.volumes,
+                ],
+              },
+              "midgard-node-migrate": {
+                env_file: nodeEnvFile,
+                volumes: nativeLedger.volumes,
+              },
+            }),
           },
           volumes: {
             "da-postgres-data": {},
             ...da.volumes,
             ...watcher.volumes,
           },
+          ...(publicNode === undefined
+            ? {}
+            : { networks: publicNode.networks }),
         });
         await processes.compose(
           "compose-validate",
@@ -239,6 +263,9 @@ export function runtimeSteps(processes: StackProcesses): StackStep[] {
           committeeServices: processes.config.da.members.map(
             (_, index) => `da-committee-${index}`,
           ),
+          ...(publicNode === undefined
+            ? {}
+            : { publicServices: publicNode.startServices }),
         };
         await writeDurableJson(
           runtimeConfigurationPath(processes),
@@ -249,6 +276,10 @@ export function runtimeSteps(processes: StackProcesses): StackStep[] {
       },
     },
     storageIdentityStep(processes),
+    // A preprod-public node starts only with a release signed for this deployment.
+    ...(processes.config.public === undefined
+      ? []
+      : [publicReleaseStep(processes)]),
     {
       id: "services",
       reconcile: async (record) => {
@@ -279,17 +310,21 @@ export function runtimeSteps(processes: StackProcesses): StackStep[] {
       },
       execute: async () => {
         const runtime = await readRuntimeConfiguration(processes);
+        const isPublic = processes.config.public !== undefined;
+        // A preprod-public node runs the release image the prerequisites pulled.
         await processes.compose(
           "services-build",
           [
             "build",
-            "midgard-node",
-            "midgard-node-migrate",
+            ...(isPublic ? [] : ["midgard-node", "midgard-node-migrate"]),
             "da-committee-0",
             "watcher",
           ],
           runtime.compose,
         );
+        // The pin below runs the node container, which mounts this file.
+        if (isPublic)
+          await writePublicNodeConfig(processes, servicesDirectory(processes));
         // Pin the actual owner in the built image, never copy a hash from another checkout.
         const pin = (await processes.compose(
           "native-owner-pin",
@@ -307,9 +342,10 @@ export function runtimeSteps(processes: StackProcesses): StackStep[] {
         )) as { sha: string };
         if (!/^[0-9a-f]{64}$/.test(pin.sha))
           throw new Error("Invalid native owner image pin");
+        const nodeEnv = nodeEnvironment(processes, pin.sha);
         await writePrivateEnv(
           join(servicesDirectory(processes), "node.env"),
-          nodeEnvironment(processes, pin.sha),
+          isPublic ? await publicNodeEnvironment(processes, nodeEnv) : nodeEnv,
         );
         await processes.compose(
           "da-database-start",
@@ -419,7 +455,13 @@ export function runtimeSteps(processes: StackProcesses): StackStep[] {
         );
         await processes.compose(
           "runtime-start",
-          ["up", "-d", "midgard-node", "watcher"],
+          [
+            "up",
+            "-d",
+            "midgard-node",
+            "watcher",
+            ...(runtime.publicServices ?? []),
+          ],
           runtime.compose,
         );
         return {

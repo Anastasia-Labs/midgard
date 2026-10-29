@@ -7,6 +7,11 @@ import { promisify } from "node:util";
 import { parse } from "dotenv";
 
 import { checkStackEnvironment, stackIntentDigest } from "./preflight.js";
+import {
+  checkPublicInputs,
+  parsePublicStackInputs,
+  type PublicStackInputs,
+} from "./public-node.js";
 
 export type StackConfig = {
   nodeRoot: string;
@@ -41,6 +46,8 @@ export type StackConfig = {
     transferLovelace: string;
     cycles: number;
   };
+  /** The preprod-public node's inputs; absent for preprod-testing. */
+  public?: PublicStackInputs;
 };
 
 function record(value: unknown, label: string): Record<string, unknown> {
@@ -76,10 +83,13 @@ function envName(value: unknown): string {
     throw new Error("Invalid environment variable name");
   return name;
 }
-export function localUrl(value: string): string {
+export function localUrl(
+  value: string,
+  protocols: readonly string[] = ["http:", "ws:"],
+): string {
   const url = new URL(value);
   if (
-    !["http:", "ws:"].includes(url.protocol) ||
+    !protocols.includes(url.protocol) ||
     !["127.0.0.1", "localhost", "[::1]"].includes(url.hostname) ||
     url.username ||
     url.password
@@ -90,19 +100,26 @@ export function localUrl(value: string): string {
   return value.replace(/\/$/, "");
 }
 export function parseStackConfig(value: unknown): StackConfig {
+  const fields = [
+    "nodeRoot",
+    "envFile",
+    "runDirectory",
+    "endpoint",
+    "timeoutMs",
+    "wallets",
+    "da",
+    "watcher",
+    "journey",
+  ];
+  // Only a preprod-public stack has the optional public section.
   const input = exact(
     value,
-    [
-      "nodeRoot",
-      "envFile",
-      "runDirectory",
-      "endpoint",
-      "timeoutMs",
-      "wallets",
-      "da",
-      "watcher",
-      "journey",
-    ],
+    Object.prototype.hasOwnProperty.call(
+      record(value, "stack configuration"),
+      "public",
+    )
+      ? [...fields, "public"]
+      : fields,
     "stack configuration",
   );
   const path = (key: string) => {
@@ -228,7 +245,8 @@ export function parseStackConfig(value: unknown): StackConfig {
     nodeRoot: path("nodeRoot"),
     envFile: path("envFile"),
     runDirectory: path("runDirectory"),
-    endpoint: localUrl(text(input.endpoint, "endpoint")),
+    // A preprod-public node serves HTTPS on the loopback port as well.
+    endpoint: localUrl(text(input.endpoint, "endpoint"), ["http:", "https:"]),
     timeoutMs: positive(input.timeoutMs, "timeoutMs"),
     wallets,
     da: {
@@ -246,8 +264,14 @@ export function parseStackConfig(value: unknown): StackConfig {
       transferLovelace,
       cycles: positive(journey.cycles, "cycles"),
     },
+    ...(input.public === undefined
+      ? {}
+      : { public: parsePublicStackInputs(input.public) }),
   };
 }
+
+/** The deployment profiles the stack deploys, each compiled by its own build. */
+const STACK_PROFILES = ["preprod-testing", "preprod-public"];
 
 export async function loadStackConfig(path: string) {
   const config = parseStackConfig(JSON.parse(await readFile(path, "utf8")));
@@ -273,11 +297,22 @@ export async function loadStackConfig(path: string) {
     throw new Error("Node endpoint does not match Compose host port");
   if (
     env.NETWORK !== "Preprod" ||
-    env.MIDGARD_DEPLOYMENT_PROFILE !== "preprod-testing" ||
+    !STACK_PROFILES.includes(env.MIDGARD_DEPLOYMENT_PROFILE ?? "") ||
     env.RUN_GENESIS_ON_STARTUP !== "false"
   )
     throw new Error(
-      "Require Preprod with preprod-testing profile and RUN_GENESIS_ON_STARTUP=false",
+      "Require Preprod with the preprod-testing or preprod-public profile and RUN_GENESIS_ON_STARTUP=false",
+    );
+  // A public node needs every public input before anything is built or spent.
+  if (env.MIDGARD_DEPLOYMENT_PROFILE === "preprod-public")
+    await checkPublicInputs(config, env);
+  else if (config.public !== undefined)
+    throw new Error(
+      "The public section belongs only to a preprod-public stack; remove it for preprod-testing",
+    );
+  else if (new URL(config.endpoint).protocol !== "http:")
+    throw new Error(
+      "A preprod-testing node serves plain HTTP; use an http:// endpoint",
     );
   for (const key of ["MIN_FEE_A", "MIN_FEE_B"])
     if (!/^[0-9]+$/.test(env[key] ?? ""))

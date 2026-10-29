@@ -1,10 +1,6 @@
-import { generateKeyPairSync } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 
-import { paymentCredentialOf, walletFromSeed } from "@lucid-evolution/lucid";
 import { entropyToMnemonic } from "bip39";
 import { parse } from "dotenv";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -12,121 +8,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { configureStackCommittee } from "../src/full-stack/committee.js";
 import { loadStackConfig, parseStackConfig } from "../src/full-stack/config.js";
 import { runStackController } from "../src/full-stack/controller.js";
+import {
+  configFixture as fixture,
+  removeConfigFixtures,
+} from "./full-stack-config.fixtures.js";
 
-const operatorCompose = fileURLToPath(
-  new URL("../../midgard-node/scripts/operator-compose.mjs", import.meta.url),
-);
-const directories: string[] = [];
-afterEach(async () => {
-  await Promise.all(
-    directories
-      .splice(0)
-      .map((path) => rm(path, { recursive: true, force: true })),
-  );
-});
-async function fixture() {
-  const directory = await mkdtemp(join(tmpdir(), "midgard-stack-config-"));
-  directories.push(directory);
-  const sample = JSON.parse(
-    await readFile(
-      new URL("../config/preprod-stack.example.json", import.meta.url),
-      "utf8",
-    ),
-  );
-  sample.nodeRoot = directory;
-  sample.envFile = join(directory, ".env");
-  sample.runDirectory = join(directory, "logs/run");
-  await mkdir(join(directory, "scripts"));
-  // The wrapper prints no derived overrides in the main checkout.
-  await writeFile(
-    join(directory, "scripts/operator-compose.sh"),
-    "#!/bin/sh\nexit 0\n",
-  );
-  await writeFile(
-    join(directory, "scripts/operator-compose.mjs"),
-    `export { OPERATOR_HOST_PORTS } from ${JSON.stringify(operatorCompose)};\n`,
-  );
-  for (const key of Object.keys(sample.watcher))
-    if (key !== "configDirectory" && key !== "releaseDirectory")
-      sample.watcher[key] = join(directory, key);
-  sample.watcher.configDirectory = join(directory, "logs/run/watcher");
-  sample.watcher.releaseDirectory = join(directory, "logs/run/release");
-  await writeFile(sample.watcher.processTemplate, "{}");
-  const secretNames = [
-    "WATCHER_ROLLBACK_KEY_FILE",
-    "WATCHER_PROVER_KEY_FILE",
-    "WATCHER_AVAILABILITY_KEY_FILE",
-  ];
-  const secretFiles = Object.fromEntries(
-    secretNames.map((key, index) => [key, join(directory, `secret-${index}`)]),
-  );
-  for (const path of Object.values(secretFiles))
-    await writeFile(path, "a".repeat(64));
-  await writeFile(
-    sample.watcher.composeEnvFile,
-    Object.entries(secretFiles)
-      .map(([key, path]) => `${key}=${path}`)
-      .join("\n"),
-  );
-  const signingKeyFile = join(directory, "signer.pem");
-  const privateKey = generateKeyPairSync("ed25519").privateKey;
-  await writeFile(
-    signingKeyFile,
-    privateKey.export({ format: "pem", type: "pkcs8" }),
-  );
-  const release = {
-    signingKeyFile,
-    programCommitments: { program: "a".repeat(64) },
-    fundingProfiles: [] as unknown[],
-  };
-  await writeFile(sample.watcher.releaseInput, JSON.stringify(release));
-  const config = parseStackConfig(sample);
-  const env: Record<string, string> = {
-    NETWORK: "Preprod",
-    MIDGARD_DEPLOYMENT_PROFILE: "preprod-testing",
-    RUN_GENESIS_ON_STARTUP: "false",
-    MIN_FEE_A: "10",
-    MIN_FEE_B: "10",
-    DA_THRESHOLD: "2",
-    MIDGARD_POSTGRES_HOST_PORT: "25433",
-  };
-  for (const [index, wallet] of Object.values(config.wallets).entries())
-    env[wallet.seedEnv] = entropyToMnemonic(
-      index.toString(16).padStart(32, "0"),
-    );
-  for (const [index, member] of config.da.members.entries())
-    env[member.seedEnv] = entropyToMnemonic(
-      (index + 10).toString(16).padStart(32, "0"),
-    );
-  env.DA_OWNERS_HEX = ["operator", "reference"]
-    .map(
-      (role) =>
-        paymentCredentialOf(
-          walletFromSeed(env[config.wallets[role]!.seedEnv]!, {
-            network: "Preprod",
-          }).address,
-        ).hash,
-    )
-    .sort()
-    .join("");
-  for (const [index, key] of [
-    config.da.producerTransportEnv,
-    config.da.retainedTransportEnv,
-    ...config.da.members.map((member) => member.transportEnv),
-  ].entries())
-    env[key] = `seed:${(index + 1).toString(16).padStart(64, "0")}`;
-  env[config.da.databasePasswordEnv] = "writer-test-password";
-  env[config.da.readerPasswordEnv] = "reader-test-password";
-  const envText = () =>
-    Object.entries(env)
-      .map(([key, value]) => `${key}=${value}`)
-      .join("\n");
-  await writeFile(config.envFile, envText());
-  const path = join(directory, "stack.json");
-  const writeConfig = () => writeFile(path, JSON.stringify(config));
-  await writeConfig();
-  return { config, directory, env, envText, path, release, writeConfig };
-}
+afterEach(removeConfigFixtures);
 
 describe("stack intent", () => {
   it("binds deployment identity", async () => {
@@ -400,4 +287,33 @@ describe("--check", () => {
     expect(
       runStackController({ config: "stack.json", check: true }),
     ).rejects.toThrow("--config must be an absolute path"));
+});
+
+describe("preprod-testing keeps its own inputs", () => {
+  it("refuses a public section", async () => {
+    const value = await fixture();
+    value.config.public = parseStackConfig(
+      JSON.parse(
+        await readFile(
+          new URL(
+            "../config/preprod-public-stack.example.json",
+            import.meta.url,
+          ),
+          "utf8",
+        ),
+      ),
+    ).public;
+    await value.writeConfig();
+    await expect(loadStackConfig(value.path)).rejects.toThrow(
+      "The public section belongs only to a preprod-public stack",
+    );
+  });
+  it("refuses an HTTPS endpoint", async () => {
+    const value = await fixture();
+    value.config.endpoint = "https://127.0.0.1:3000";
+    await value.writeConfig();
+    await expect(loadStackConfig(value.path)).rejects.toThrow(
+      "A preprod-testing node serves plain HTTP",
+    );
+  });
 });
