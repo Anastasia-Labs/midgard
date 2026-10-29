@@ -4,7 +4,6 @@ import { join, resolve } from "node:path";
 
 import { parse } from "dotenv";
 
-import { readJsonIfPresent } from "./journal.js";
 import {
   configureHostNativeLedger,
   nativeLedgerPaths,
@@ -103,7 +102,7 @@ export async function prepareStackPrerequisites(processes: StackProcesses) {
     await preparePublicImages(processes);
   }
   await processes.compose("base-compose-check", ["config", "--quiet"]);
-  const { readReleaseInput, releasePaths } = await import("./release.js");
+  const { checkFreshReleaseInput } = await import("./release.js");
   const { loadWatcherSecretText, decodeWatcherAuthenticationKey32 } =
     await import("midgard-watcher");
   decodeWatcherAuthenticationKey32(
@@ -134,11 +133,6 @@ export async function prepareStackPrerequisites(processes: StackProcesses) {
     )
       throw new Error(`Watcher ${role} secret differs from its funded wallet`);
   }
-  const paths = await releasePaths(processes);
-  if ((await readJsonIfPresent(paths.authority)) === undefined) {
-    if (!processes.config.watcher.releaseInput)
-      throw new Error("Fresh setup needs watcher release inputs");
-    await readReleaseInput(processes.config.watcher.releaseInput);
-  }
+  await checkFreshReleaseInput(processes);
   return { profile, inputsChecked: true };
 }

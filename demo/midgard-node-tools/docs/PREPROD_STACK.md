@@ -126,10 +126,15 @@ classification, the release directory and the optional ingress port. The `.env` 
 the digest-pinned images, but none of the node secrets and none of the public
 file paths; the stack derives those. `--check` refuses a missing or wrong
 public input before anything is built or spent. The node runs from
-`MIDGARD_PUBLIC_NODE_IMAGE` over HTTPS. Once the deployment is final, the
-stack signs the public release for it into the release directory with the
-release input's signing key, by the same code as `sign-deployment-release`;
-rerunning verifies that release and never signs again. The operator procedure, including wallet
+`MIDGARD_PUBLIC_NODE_IMAGE` over HTTPS. The release input also names a
+`provenanceFile`, the release provenance without
+`evidence.parameterRegistryDigest`; `--check` checks its other fields against
+the `.env` and the compiled profile. Once the deployment is final, the stack
+completes the provenance with the digest of the parameter registry the
+deployment wrote, once, into the run directory, and signs the public release
+for it into the release directory with the release input's signing key, by
+the same code as `sign-deployment-release`; the watcher release uses the same
+completed provenance. Rerunning verifies that release and never signs again. The operator procedure, including wallet
 funding, is
 [preprod-public-deploy](../../../docs-site/content/docs/operators/node/preprod-public-deploy.mdx).
 

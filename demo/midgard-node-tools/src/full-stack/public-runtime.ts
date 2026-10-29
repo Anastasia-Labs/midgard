@@ -23,6 +23,7 @@ import { nativeLedgerPaths } from "./native-ledger.js";
 import { publicRolesPath, type StackProcesses } from "./process.js";
 import { INGRESS_SUBNET, publicOriginHost } from "./public-node.js";
 import {
+  completePublicReleaseInput,
   proverFundingKeyHash,
   readReleaseInput,
   stackBlueprintPath,
@@ -240,15 +241,12 @@ export function publicReleaseStep(processes: StackProcesses): StackStep {
     execute: async () => {
       if ((await lstat(directory).catch(() => undefined)) !== undefined)
         return reopenPublicRelease(processes);
-      const releaseInput = processes.config.watcher.releaseInput!;
+      // The operator's provenance, completed with this deployment's registry.
+      const releaseInput = await completePublicReleaseInput(processes);
       // The release's classification comes from its registry; the
       // reference-script deployment already used the operator's.
       const { deploymentParameterRegistry } =
         await readReleaseInput(releaseInput);
-      if (deploymentParameterRegistry === undefined)
-        throw new Error(
-          `The release input ${releaseInput} names no parameterRegistryFile; a public release signs this deployment's parameter registry`,
-        );
       if (
         !sameJson(
           classificationOf(deploymentParameterRegistry),
@@ -256,7 +254,7 @@ export function publicReleaseStep(processes: StackProcesses): StackStep {
         )
       )
         throw new Error(
-          `The release input's parameter registry classifies the unused validators differently from public.blueprintClassificationFile ${processes.config.public!.blueprintClassificationFile}, which the reference-script deployment used`,
+          `This deployment's parameter registry classifies the unused validators differently from public.blueprintClassificationFile ${processes.config.public!.blueprintClassificationFile}, which the reference-script deployment used`,
         );
       await signDeploymentRelease({
         releaseInput,

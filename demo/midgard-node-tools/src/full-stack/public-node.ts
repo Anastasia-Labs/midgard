@@ -6,7 +6,11 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { connect, createServer } from "node:tls";
 import { promisify } from "node:util";
 
-import { DEPLOYMENT_PROFILES } from "@al-ft/midgard-core/deployment-profile";
+import {
+  DEPLOYMENT_PROFILES,
+  SELECTED_DEPLOYMENT_PROFILE,
+  SELECTED_DEPLOYMENT_PROFILE_DIGEST,
+} from "@al-ft/midgard-core/deployment-profile";
 import {
   assertPublicCredentials,
   assertPublicOperatorWallets,
@@ -22,6 +26,7 @@ import { resolveValidationWorkerPoolSize } from "midgard-node/services/config.no
 
 import { SIGNED_RELEASE_FILES } from "../sign-deployment-release.js";
 import type { StackConfig } from "./config.js";
+import { readOperatorProvenance, stackRegistryPath } from "./release.js";
 
 /** The preprod-public node's inputs, the stack configuration's `public` section. */
 export type PublicStackInputs = {
@@ -173,6 +178,65 @@ async function assertSignerIsTrusted(config: StackConfig, roots: unknown[]) {
     throw new Error(
       `public.trustRootsFile does not list the public key of the release signing key ${signingKeyFile}`,
     );
+}
+
+/**
+ * The release provenance the operator supplies for the public release, read
+ * before the deployment exists: everything but its parameter registry
+ * digest, which the stack writes from the registry its deployment produces.
+ * Its blueprint hash is checked once the blueprint is built (prerequisites).
+ */
+async function assertOperatorProvenance(
+  config: StackConfig,
+  env: Record<string, string>,
+) {
+  const { provenanceFile, parameterRegistryFile } = JSON.parse(
+    await readFile(config.watcher.releaseInput!, "utf8"),
+  ) as { provenanceFile?: unknown; parameterRegistryFile?: unknown };
+  if (typeof provenanceFile !== "string" || !isAbsolute(provenanceFile))
+    throw new Error(
+      "A preprod-public release input names its release provenance as an absolute provenanceFile",
+    );
+  const registry = stackRegistryPath(config);
+  if (parameterRegistryFile !== undefined && parameterRegistryFile !== registry)
+    throw new Error(
+      `A preprod-public release signs the parameter registry its deployment writes; leave parameterRegistryFile out or set it to ${registry}`,
+    );
+  const { provenance } = await readOperatorProvenance(provenanceFile);
+  const expected: [string, string | undefined, string, string][] = [
+    [
+      "sourceRevision",
+      provenance.sourceRevision,
+      env.MIDGARD_PUBLIC_RELEASE_REVISION!,
+      "MIDGARD_PUBLIC_RELEASE_REVISION",
+    ],
+    [
+      "deploymentProfileName",
+      provenance.deploymentProfileName,
+      SELECTED_DEPLOYMENT_PROFILE.name,
+      "the compiled profile",
+    ],
+    [
+      "deploymentProfileDigest",
+      provenance.deploymentProfileDigest,
+      SELECTED_DEPLOYMENT_PROFILE_DIGEST,
+      "the compiled profile",
+    ],
+    ...(["node", "postgres", "ingress"] as const).map(
+      (role) =>
+        [
+          `roleImages.${role}`,
+          provenance.roleImages[role],
+          env[`MIDGARD_PUBLIC_${role.toUpperCase()}_IMAGE`]!,
+          `MIDGARD_PUBLIC_${role.toUpperCase()}_IMAGE`,
+        ] as [string, string | undefined, string, string],
+    ),
+  ];
+  for (const [field, actual, wanted, source] of expected)
+    if (actual !== wanted)
+      throw new Error(
+        `Release provenance ${provenanceFile} has ${field} ${String(actual)}, but ${source} is ${wanted}`,
+      );
 }
 
 /** A database directory left by a container that ran as another user. */
@@ -380,6 +444,7 @@ export async function checkPublicInputs(
     return value as unknown[];
   });
   await assertSignerIsTrusted(config, roots);
+  await assertOperatorProvenance(config, env);
   await assertReleaseDirectory(inputs.releaseDirectory);
   await assertNodeDatabaseOwner(config.nodeRoot);
   const classification = inputs.blueprintClassificationFile;

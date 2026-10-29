@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import { PUBLIC_NODE_SECRET_NAMES } from "midgard-node/commands/listen-public-http";
 import { makeGenuineDeploymentRegistryForTest } from "midgard-node/tests/helpers/deployment-parameter-registry";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -25,6 +26,14 @@ import {
   preparePublicImages,
   publicPostgresPasswordPath,
 } from "../src/full-stack/public-runtime.js";
+import {
+  checkFreshReleaseInput,
+  completedProvenancePath,
+  completePublicReleaseInput,
+  prepareStackRelease,
+  releasePaths,
+  stackRegistryPath,
+} from "../src/full-stack/release.js";
 import { runtimeInputDigest, runtimeSteps } from "../src/full-stack/runtime.js";
 import {
   classificationOf,
@@ -40,6 +49,12 @@ import {
 // preprod-public profile against a blueprint built for it.
 
 const nodeRoot = fileURLToPath(new URL("../../midgard-node", import.meta.url));
+const exampleTemplate = fileURLToPath(
+  new URL(
+    "../../midgard-watcher/watcher-process.example.json",
+    import.meta.url,
+  ),
+);
 
 let fixture: Awaited<ReturnType<typeof makeGenuineDeploymentRegistryForTest>>;
 let directory: string;
@@ -62,11 +77,21 @@ const ROLE_IMAGES = {
  * A preprod-public stack whose deployment is final: the blueprint above the
  * node directory, the finalized manifest in it, the node's secrets in the
  * stack environment as phase 1 leaves them, and a release input naming the
- * signing key, the provenance and the deployment's parameter registry.
+ * signing key and the operator's provenance, which leaves out the parameter
+ * registry digest the stack completes.
  */
 async function publicStack(name: string, ingressHostPort: number | null) {
   const checkout = join(directory, name);
+  // The example watcher process, following at the compiled profile's depth.
+  const template = JSON.parse(await readFile(exampleTemplate, "utf8"));
+  template.watcherConfig.l1.finality.depth =
+    SELECTED_DEPLOYMENT_PROFILE.l1_finality.confirmation_depth;
+  await mkdir(checkout, { recursive: true });
+  const processTemplate = join(checkout, "watcher-process.json");
+  await writeFile(processTemplate, JSON.stringify(template));
   const { config } = await stackFixture((sample) => {
+    sample.watcher.processTemplate = processTemplate;
+    sample.watcher.releaseDirectory = join(checkout, "watcher-release");
     sample.watcher.releaseInput = join(checkout, "release-input.json");
     sample.da.members = sample.da.members.slice(0, 1);
     sample.timeoutMs = 1;
@@ -101,37 +126,35 @@ async function publicStack(name: string, ingressHostPort: number | null) {
       },
     ]),
   );
-  await writeFile(file("parameters.json"), JSON.stringify(fixture.retained));
-  await writeFile(
-    file("provenance.json"),
-    JSON.stringify({
-      schemaVersion: "midgard-deployment-release-provenance-v1",
-      sourceRevision: SOURCE_REVISION,
-      deploymentProfileName: fixture.manifest.deploymentProfile.name,
-      deploymentProfileDigest: fixture.manifest.deploymentProfileDigest,
-      blueprintHash: fixture.manifest.artifacts.blueprintHash,
-      aikenSourceHash: "11".repeat(32),
-      compiler: {
-        forkRepository: "https://github.com/example/aiken",
-        forkRevision: "b2".repeat(20),
-        cargoLockHash: "22".repeat(32),
-      },
-      roleImages: ROLE_IMAGES,
-      evidence: {
-        independentBlueprintRebuildDigest: "33".repeat(32),
-        frozenBuildDigest: "44".repeat(32),
-        parameterRegistryDigest: computeDeploymentManifestJsonDigest(
-          fixture.retained,
-        ),
-      },
-    }),
-  );
+  // The parameter registry the deployment step wrote beside the manifest.
+  await writeFile(stackRegistryPath(config), JSON.stringify(fixture.retained));
+  // The operator supplies every provenance field but the registry digest.
+  const provenance = {
+    schemaVersion: "midgard-deployment-release-provenance-v1",
+    sourceRevision: SOURCE_REVISION,
+    deploymentProfileName: fixture.manifest.deploymentProfile.name,
+    deploymentProfileDigest: fixture.manifest.deploymentProfileDigest,
+    blueprintHash: fixture.manifest.artifacts.blueprintHash,
+    aikenSourceHash: "11".repeat(32),
+    compiler: {
+      forkRepository: "https://github.com/example/aiken",
+      forkRevision: "b2".repeat(20),
+      cargoLockHash: "22".repeat(32),
+    },
+    roleImages: ROLE_IMAGES,
+    evidence: {
+      independentBlueprintRebuildDigest: "33".repeat(32),
+      frozenBuildDigest: "44".repeat(32),
+    } as Record<string, string>,
+  };
+  const writeProvenance = (value: unknown) =>
+    writeFile(file("provenance.json"), JSON.stringify(value));
+  await writeProvenance(provenance);
   await writeFile(
     config.watcher.releaseInput!,
     JSON.stringify({
       signingKeyFile: file("signer.pem"),
       provenanceFile: file("provenance.json"),
-      parameterRegistryFile: file("parameters.json"),
       programCommitments: {},
       fundingProfiles: [],
     }),
@@ -178,6 +201,8 @@ async function publicStack(name: string, ingressHostPort: number | null) {
     services: services!,
     releaseDirectory: config.public.releaseDirectory,
     classification: file("blueprint-classification.json"),
+    provenance,
+    writeProvenance,
   };
 }
 
@@ -224,6 +249,90 @@ describe("public-release step", () => {
     });
     await expect(stack.release.execute(undefined)).resolves.toEqual(signed);
     expect(await readFile(authority, "utf8")).toBe(before);
+  });
+
+  it("passes a fresh stack's release input before its deployment writes the registry", async () => {
+    const stack = await publicStack("fresh", null);
+    await rm(stackRegistryPath(stack.processes.config));
+    await expect(
+      checkFreshReleaseInput(stack.processes),
+    ).resolves.toBeUndefined();
+    // A provenance for another blueprint is refused before anything is spent.
+    await stack.writeProvenance({
+      ...stack.provenance,
+      blueprintHash: "88".repeat(32),
+    });
+    await expect(checkFreshReleaseInput(stack.processes)).rejects.toThrow(
+      `has blueprintHash ${"88".repeat(32)}, but the blueprint this stack built`,
+    );
+  });
+
+  it("completes the provenance with the deployed registry's digest once; a resume reuses it", async () => {
+    const stack = await publicStack("completed", null);
+    await stack.release.execute(undefined);
+    const path = completedProvenancePath(stack.processes.config);
+    // The operator's fields, and the digest of the registry the deployment wrote.
+    const digest = computeDeploymentManifestJsonDigest(fixture.retained);
+    const completed = JSON.parse(await readFile(path, "utf8")) as unknown;
+    expect(completed).toEqual({
+      ...stack.provenance,
+      evidence: {
+        ...stack.provenance.evidence,
+        parameterRegistryDigest: digest,
+      },
+    });
+    // The signed release carries exactly the completed provenance.
+    expect(
+      JSON.parse(
+        await readFile(
+          join(stack.releaseDirectory, SIGNED_RELEASE_FILES.provenance),
+          "utf8",
+        ),
+      ),
+    ).toEqual(completed);
+    // A resume, and the watcher release signed after it, reuse the same file.
+    const before = await readFile(path, "utf8");
+    await expect(stack.release.execute(undefined)).resolves.toBeDefined();
+    await prepareStackRelease(stack.processes);
+    expect(await readFile(path, "utf8")).toBe(before);
+    // Both sign the same release: the same key over the same completed inputs.
+    const watcher = await releasePaths(stack.processes);
+    expect(JSON.parse(await readFile(watcher.provenance, "utf8"))).toEqual(
+      completed,
+    );
+    expect(await readFile(watcher.authority, "utf8")).toBe(
+      await readFile(
+        join(stack.releaseDirectory, SIGNED_RELEASE_FILES.authority),
+        "utf8",
+      ),
+    );
+    // Completed from a provenance the operator then edited, it is never rewritten.
+    await stack.writeProvenance({
+      ...stack.provenance,
+      aikenSourceHash: "99".repeat(32),
+    });
+    await expect(completePublicReleaseInput(stack.processes)).rejects.toThrow(
+      `${path} holds the provenance this stack completed earlier`,
+    );
+    expect(await readFile(path, "utf8")).toBe(before);
+  });
+
+  it("keeps a supplied registry digest that matches the deployment and refuses one that differs", async () => {
+    const stack = await publicStack("supplied-digest", null);
+    const withDigest = (parameterRegistryDigest: string) =>
+      stack.writeProvenance({
+        ...stack.provenance,
+        evidence: { ...stack.provenance.evidence, parameterRegistryDigest },
+      });
+    await withDigest("77".repeat(32));
+    await expect(stack.release.execute(undefined)).rejects.toThrow(
+      `has evidence.parameterRegistryDigest ${"77".repeat(32)}, but this deployment's parameter registry`,
+    );
+    expect(await exists(stack.releaseDirectory)).toBe(false);
+    await withDigest(computeDeploymentManifestJsonDigest(fixture.retained));
+    await expect(stack.release.execute(undefined)).resolves.toMatchObject({
+      manifestId: fixture.manifest.manifestId,
+    });
   });
 
   it("refuses a partly written release directory, naming it", async () => {

@@ -111,7 +111,11 @@ The release input is the full-stack one above (its shape is in
 [PREPROD_STACK.md](../demo/midgard-node-tools/docs/PREPROD_STACK.md)):
 `signingKeyFile` names the Ed25519 PKCS#8 PEM key file, never the key itself.
 A public profile also needs `provenanceFile` and `parameterRegistryFile`, the
-deploy tool's `<manifest-path>.blueprint-registry.json`. Supplied funding
+deploy tool's `<manifest-path>.blueprint-registry.json`, and a provenance whose
+`evidence.parameterRegistryDigest` is that registry's digest. A preprod-public
+full stack takes the operator's provenance without that digest and writes the
+completed provenance and release input into its run directory once the
+deployment exists. Supplied funding
 profiles also need `--funding-payment-key-hash` of the prover funding wallet.
 `programCommitments` may be `{}`: the command derives the one commitment every
 release binds, `computation-thread-policy-v1`, the SHA-256 of

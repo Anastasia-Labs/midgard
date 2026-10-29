@@ -128,6 +128,12 @@ refuses, naming the input, when one of these is wrong:
 - the certificate does not cover the origin, or the CA does not verify it;
 - the trust roots or the blueprint classification are missing or malformed,
   or the trust roots do not list the release signing key;
+- the release input names no `provenanceFile`, or names a
+  `parameterRegistryFile` other than the stack's registry path; the
+  provenance is malformed (for example a compiler fork repository that is
+  not an `https://` URL), or its source revision, profile name or digest, or
+  node, Postgres or ingress image differs from the `.env` and the compiled
+  profile;
 - `releaseDirectory` has no parent directory, or exists but does not hold a
   complete signed release;
 - `demo/midgard-node/db` belongs to another user (the refusal prints the
@@ -147,13 +153,27 @@ release input that `watcher.releaseInput` names holds:
 
 - `signingKeyFile`: the Ed25519 release signing key, whose public key
   `trustRootsFile` lists;
-- `provenanceFile`: the release provenance, naming the source revision and
-  the three images of the `.env`;
-- `parameterRegistryFile`: the deployment parameter registry
-  (`demo/midgard-node/deploymentInfo/contract-deployment-info.json.blueprint-registry.json`),
-  whose classification of the unused validators must equal
-  `blueprintClassificationFile`; and
-- `programCommitments` and `fundingProfiles`, as for the watcher release.
+- `provenanceFile`: the release provenance you supply up front: the source
+  revision, profile name and digest, blueprint hash, Aiken source hash,
+  compiler fork, the three images of the `.env`, and the rebuild and frozen
+  build evidence digests. Leave out `evidence.parameterRegistryDigest`: the
+  registry does not exist before `initialize`, and the stack writes its
+  digest. A supplied digest must equal the deployed registry's;
+- `programCommitments` and `fundingProfiles`, as for the watcher release; and
+- optionally `parameterRegistryFile`, which may only name the registry the
+  deployment writes,
+  `demo/midgard-node/deploymentInfo/contract-deployment-info.json.blueprint-registry.json`.
+
+Phase 1 checks every provenance field it can before the run builds or spends
+anything; the prerequisites check its blueprint hash against the blueprint
+they build. Once the deployment has written its parameter registry, the
+`public-release` step completes the provenance with that registry's digest
+and writes it once, as `release-provenance.json` in the run directory, with
+`release-input.json` beside it: your release input, naming the completed
+provenance and the deployment's registry. Both the public release and the
+watcher release are signed from this completed input. A resume reuses the
+completed provenance and stops if your provenance no longer completes to the
+same file.
 
 The step refuses, before signing anything, when the registry classifies the
 unused validators differently from `blueprintClassificationFile`. When
@@ -163,7 +183,10 @@ deployment, it stops and names the folder; move the folder aside and rerun.
 To sign out of band instead, for example on a separate signing machine, run
 the release signing command and place its output at `releaseDirectory`
 before the run reaches `public-release`; the stack verifies it as it
-verifies its own:
+verifies its own. Sign with a release input whose provenance carries the
+deployed registry's digest and whose `parameterRegistryFile` names that
+registry, such as the completed `release-input.json` once the deployment
+exists:
 
 ```bash
 node demo/midgard-node-tools/dist/index.js sign-deployment-release \
