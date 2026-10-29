@@ -115,18 +115,21 @@ deployment. The signing key and program commitments remain fixed. Once signed,
 the saved authority binds the measured bundle digest and rejects replacements. The example above describes the input shape;
 replace its illustrative values with release artifacts before running.
 
-With `MIDGARD_DEPLOYMENT_PROFILE=preprod-public`, copy
-`config/preprod-public-stack.example.json` instead. Its `endpoint` is
+With `MIDGARD_DEPLOYMENT_PROFILE=preprod-public`, first build the checkout for
+that profile (`node demo/scripts/deployment-profiles.mjs generate preprod-public && pnpm --dir demo/midgard-node-tools run build`;
+the stack refuses a `.env` naming another profile than the compiled one), then
+copy `config/preprod-public-stack.example.json` instead. Its `endpoint` is
 `https://` and its `public` section names the private node configuration file
 (the six node secrets, mode 0600), the TLS certificate, key and CA for
-`MIDGARD_PUBLIC_API_ORIGIN`, the release trust roots, the release directory
-and the optional ingress port. The `.env` then holds the release revision and
+`MIDGARD_PUBLIC_API_ORIGIN`, the release trust roots, the blueprint
+classification, the release directory and the optional ingress port. The `.env` then holds the release revision and
 the digest-pinned images, but none of the node secrets and none of the public
 file paths; the stack derives those. `--check` refuses a missing or wrong
 public input before anything is built or spent. The node runs from
-`MIDGARD_PUBLIC_NODE_IMAGE` over HTTPS, and the run stops before the services
-until the release is signed for the deployment it finalized; rerunning resumes
-without repeating any transaction. The operator procedure, including wallet
+`MIDGARD_PUBLIC_NODE_IMAGE` over HTTPS. Once the deployment is final, the
+stack signs the public release for it into the release directory with the
+release input's signing key, by the same code as `sign-deployment-release`;
+rerunning verifies that release and never signs again. The operator procedure, including wallet
 funding, is
 [preprod-public-deploy](../../../docs-site/content/docs/operators/node/preprod-public-deploy.mdx).
 

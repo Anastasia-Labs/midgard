@@ -1,6 +1,6 @@
 ---
 title: "Preprod-Public Deployment"
-description: "Deploy and run the preprod-public profile end to end with e2e-stack: inputs, the command sequence, the release-signing stop, and the funding each wallet needs."
+description: "Deploy and run the preprod-public profile end to end with e2e-stack: inputs, the command sequence, release signing, and the funding each wallet needs."
 ---
 
 A preprod-public deployment uses the same one-command flow as the
@@ -8,7 +8,7 @@ A preprod-public deployment uses the same one-command flow as the
 in `midgard-node-tools`. The deployment profile in the node `.env` selects the
 mode. With `MIDGARD_DEPLOYMENT_PROFILE=preprod-public`, the stack builds the
 `preprod-public` contracts, runs the node from the digest-pinned release image
-over HTTPS, and starts the node only after the release is signed for the
+over HTTPS, and starts the node only after it has signed the release for the
 deployment it just made. With `preprod-testing`, the stack runs exactly as
 before.
 
@@ -21,6 +21,16 @@ before.
 ## Inputs
 
 <Steps>
+  <Step>
+    **A preprod-public build** of the checkout. The stack runs the profile the
+    tools were compiled for and refuses a `.env` that names another, so build
+    it first:
+
+    ```bash
+    node demo/scripts/deployment-profiles.mjs generate preprod-public && pnpm --dir demo/midgard-node-tools run build
+    ```
+
+  </Step>
   <Step>
     **Toolchain**: the same as the [end-to-end testing
     flow](/docs/operators/node/e2e-testing-flow#prerequisites), plus access to
@@ -45,7 +55,8 @@ before.
     **Stack configuration**: copy
     `demo/midgard-node-tools/config/preprod-public-stack.example.json`. Its
     `endpoint` is the node's `https://` loopback address. Its `public` section
-    names the public inputs, described below.
+    names the public inputs, described below. Its `watcher.releaseInput` names
+    the release input, described in [Signing the release](#signing-the-release).
   </Step>
   <Step>
     **Watcher**: the process template
@@ -58,15 +69,16 @@ before.
 
 ### The `public` section
 
-| Field              | What it holds                                                                                                                                                                                                                                                                                         |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `nodeConfigFile`   | Private file (mode 0600, YAML or JSON) holding exactly the six node secrets: `L1_OPERATOR_SEED_PHRASE`, `L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX`, `L1_REFERENCE_SCRIPT_SEED_PHRASE`, `L1_SETTLEMENT_SEED_PHRASE`, `ADMIN_API_KEY`, `POSTGRES_PASSWORD`. Any other key is refused; put it in the `.env`. |
-| `tlsCertFile`      | Certificate for the host of `MIDGARD_PUBLIC_API_ORIGIN`.                                                                                                                                                                                                                                              |
-| `tlsKeyFile`       | Its private key, mode 0600.                                                                                                                                                                                                                                                                           |
-| `tlsCaFile`        | The CA that issued the certificate. The stack and its health checks reach the node on loopback with this CA, checking the origin's host name.                                                                                                                                                         |
-| `trustRootsFile`   | JSON list of one to sixteen external Ed25519 release trust roots.                                                                                                                                                                                                                                     |
-| `releaseDirectory` | Before the deployment: `blueprint-classification.json`, which the reference-script deployment needs. After it: the signed `release-authority.json` and `release-provenance.json`.                                                                                                                     |
-| `ingressHostPort`  | Host port of the optional TLS ingress, or `null` to run without it.                                                                                                                                                                                                                                   |
+| Field                         | What it holds                                                                                                                                                                                                                                                                                                       |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `nodeConfigFile`              | Private file (mode 0600, owned by you, YAML or JSON) holding exactly the six node secrets: `L1_OPERATOR_SEED_PHRASE`, `L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX`, `L1_REFERENCE_SCRIPT_SEED_PHRASE`, `L1_SETTLEMENT_SEED_PHRASE`, `ADMIN_API_KEY`, `POSTGRES_PASSWORD`. Any other key is refused; put it in the `.env`. |
+| `tlsCertFile`                 | Certificate for the host of `MIDGARD_PUBLIC_API_ORIGIN`.                                                                                                                                                                                                                                                            |
+| `tlsKeyFile`                  | Its private key, mode 0600, owned by you.                                                                                                                                                                                                                                                                           |
+| `tlsCaFile`                   | The CA that issued the certificate. The stack and its health checks reach the node on loopback with this CA, checking the origin's host name.                                                                                                                                                                       |
+| `trustRootsFile`              | JSON list of one to sixteen external Ed25519 release trust roots. It must list the public key of the release input's signing key.                                                                                                                                                                                   |
+| `blueprintClassificationFile` | `blueprint-classification.json`: the classification of the blueprint's unused validators, which the reference-script deployment uses. The signed release must classify them the same way.                                                                                                                           |
+| `releaseDirectory`            | Where the stack writes the signed public release. Its parent must exist; the directory itself must not, or must hold a complete release signed before.                                                                                                                                                              |
+| `ingressHostPort`             | Host port of the optional TLS ingress, or `null` to run without it.                                                                                                                                                                                                                                                 |
 
 Keep `nodeConfigFile`, `tlsKeyFile` and `releaseDirectory` outside the
 checkout, or under `demo/midgard-node/logs/`, so they never enter a Docker
@@ -94,9 +106,9 @@ confirms it against Cardano and the saved records and never repeats it.
 | `references`            | Publishes the reference scripts.                                                                                                                                                                  |
 | `initialize`            | Migrates the database and initializes the deployment, writing the finalized manifest.                                                                                                             |
 | `operator`              | Registers and activates the operator.                                                                                                                                                             |
-| `runtime-configuration` | Generates the node, DA committee, retained DA and watcher services.                                                                                                                               |
+| `public-release`        | preprod-public only: signs the public release for this deployment into `releaseDirectory` (see below). A rerun verifies the signed release and never signs again.                                 |
+| `runtime-configuration` | Generates the node, DA committee, retained DA and watcher services, binding the signed release files.                                                                                             |
 | `storage-identity`      | Checks the local storage belongs to this deployment.                                                                                                                                              |
-| `public-release`        | Checks the signed release for this deployment. Stops if it is missing (see below).                                                                                                                |
 | `services`              | Starts the node, DA committee, retained DA and watcher, and waits until each is ready.                                                                                                            |
 | `cycle-N-*`             | The acceptance journey: deposit, transfer and withdrawal per cycle, with payout.                                                                                                                  |
 
@@ -105,41 +117,78 @@ confirms it against Cardano and the saved records and never repeats it.
 `--check`, and every full run before any build, checks every public input. It
 refuses, naming the input, when one of these is wrong:
 
+- the checkout is compiled for another profile than the `.env` names (the
+  refusal prints the build command above);
 - the `public` section, or the `https://` endpoint, is missing;
 - a node secret, a stack-derived setting or `L1_USER_SEED_PHRASE` is in the `.env`;
-- the node configuration file or TLS key is missing, a link, or readable by others;
+- the node configuration file or TLS key is missing, a link, readable by
+  others, or owned by another user;
 - the admin key or Postgres password is weak;
 - the release revision is not exact, or an image is not digest-pinned;
 - the certificate does not cover the origin, or the CA does not verify it;
-- the trust roots or the blueprint classification are missing or malformed;
+- the trust roots or the blueprint classification are missing or malformed,
+  or the trust roots do not list the release signing key;
+- `releaseDirectory` has no parent directory, or exists but does not hold a
+  complete signed release;
+- `demo/midgard-node/db` belongs to another user (the refusal prints the
+  `chown` command);
 - `VALIDATION_WORKER_POOL_SIZE` is below 2, or HTTP rate limits are disabled;
-- the ingress port collides with a node or DA port; or
+- the ingress port collides with a node or DA port, or a Docker network
+  already uses the ingress subnet `10.91.7.0/28`; or
 - the operator or merge wallet is not on the compiled operator allow-list.
 
 ### Signing the release
 
 The release signs the manifest this deployment finalizes, so it cannot exist
-before `initialize`. On the first run, the `public-release` step stops with
-**Sign the release now**. The message lists:
+before `initialize`. The stack signs it itself in the `public-release` step,
+with the same code as the `sign-deployment-release` command, into
+`releaseDirectory`, and then opens the written release as the node does. The
+release input that `watcher.releaseInput` names holds:
 
-- the files to produce, `release-authority.json` and `release-provenance.json`
-  in `releaseDirectory`; and
-- what they sign: the finalized manifest (`demo/midgard-node/deploymentInfo/contract-deployment-info.json`)
-  and its manifest id, the deployment parameter registry next to it
-  (`contract-deployment-info.json.blueprint-registry.json`), the blueprint
-  classification, the source revision and the three images, with a key listed
-  in `trustRootsFile`.
+- `signingKeyFile`: the Ed25519 release signing key, whose public key
+  `trustRootsFile` lists;
+- `provenanceFile`: the release provenance, naming the source revision and
+  the three images of the `.env`;
+- `parameterRegistryFile`: the deployment parameter registry
+  (`demo/midgard-node/deploymentInfo/contract-deployment-info.json.blueprint-registry.json`),
+  whose classification of the unused validators must equal
+  `blueprintClassificationFile`; and
+- `programCommitments` and `fundingProfiles`, as for the watcher release.
 
-Produce them with the release signing command (R3), then rerun the same
-`e2e-stack` command. The rerun confirms the on-chain steps without repeating
-them, verifies the release and starts the services.
+The step refuses, before signing anything, when the registry classifies the
+unused validators differently from `blueprintClassificationFile`. When
+`releaseDirectory` already holds a release that does not match this
+deployment, it stops and names the folder; move the folder aside and rerun.
+
+To sign out of band instead, for example on a separate signing machine, run
+the release signing command and place its output at `releaseDirectory`
+before the run reaches `public-release`; the stack verifies it as it
+verifies its own:
+
+```bash
+node demo/midgard-node-tools/dist/index.js sign-deployment-release \
+  --release-input /absolute/release-input.json \
+  --deployment-info /absolute/contract-deployment-info.json \
+  --blueprint /absolute/plutus.json \
+  --output /absolute/public-release \
+  --funding-payment-key-hash <prover funding wallet payment key hash>
+```
 
 ### Optional ingress
 
 With `ingressHostPort` set, the stack adds the TLS ingress from the release
 ingress image, rendered by `demo/midgard-node/scripts/public-ingress.mjs`. It
 publishes the node at that host port and the node trusts its forwarded client
-addresses. With `null`, only the node's loopback HTTPS port is exposed.
+addresses. The ingress network uses the fixed subnet `10.91.7.0/28`.
+
+### Host ports and the Postgres password
+
+The node API listens on every host interface only without the ingress; with
+it, the API binds to `127.0.0.1` and the ingress is the public port. The
+metrics port, the DA port (the stack's own committee dials the node there)
+and Postgres always bind to `127.0.0.1`. The Postgres container reads its
+password from a mode 0600 file in the run directory
+(`POSTGRES_PASSWORD_FILE`), never from its environment.
 
 ## Watcher process configuration
 
@@ -170,17 +219,18 @@ Figures come from `config/deployments/preprod-public.yaml` (profile keys) or
 the node's DA availability settings, which the manifest binds. Every wallet
 also needs fees and a plain output of at least 5 ADA for collateral.
 
-| Wallet                                                     | Needs                                                                                                                        | From                                                                                                                                                                                            |
-| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Operator (`L1_OPERATOR_SEED_PHRASE`, on the allow-list)    | 200,005 ADA, plus the init outputs' min-ADA and fees. The public stack example sets its `minimumLovelace` to 200,010 ADA.    | Init funds the DA bond pool with `da_bond.da_bond_pool_floor_lovelace` (5 ADA) + `da_bond.da_bond_lovelace` (100,000 ADA); the operator bond is `economics.requiredBondLovelace` (100,000 ADA). |
-| A second operator, from the other allow-listed wallet      | 100,000 ADA, if registered.                                                                                                  | `economics.requiredBondLovelace`                                                                                                                                                                |
-| Merge (`L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX`), settlement | Fees only.                                                                                                                   | Working capital.                                                                                                                                                                                |
-| Reference publisher (`L1_REFERENCE_SCRIPT_SEED_PHRASE`)    | The sum, over the published scripts, of (160 + output bytes) × 4,310 lovelace, plus fees. Depends on the built script sizes. | `limits.coins_per_utxo_byte`                                                                                                                                                                    |
-| Prover (watcher)                                           | Per validation-trace dispute: a 10,000 ADA bond, a 5 ADA collateral floor and a 2 ADA proof output.                          | `MIDGARD_DA_AVAILABILITY_CHALLENGER_BOND_LOVELACE`, `economics.proverCollateralFloorLovelace`, `limits.fraud_proof_output_lovelace`                                                             |
-| Availability challenger (watcher)                          | Per challenge: a 10,000 ADA bond, a 27 ADA challenge record and up to 1.2 ADA of timeout fee.                                | `MIDGARD_DA_AVAILABILITY_CHALLENGER_BOND_LOVELACE`, `da_bond.challenge_record_lovelace`, `MIDGARD_DA_AVAILABILITY_MAX_TIMEOUT_FEE_LOVELACE`                                                     |
-| DA submitter                                               | Attestation fees and collateral.                                                                                             | `DA_L1_MIN_PLAIN_ADA_LOVELACE`, `DA_L1_MIN_COLLATERAL_LOVELACE`                                                                                                                                 |
-| Any wallet topping up the DA bond pool                     | At least 1,000 ADA per top-up. A slash removes 25,000 ADA from the pool.                                                     | `da_bond.da_bond_min_top_up_lovelace`, `da_bond.da_slash_penalty_lovelace`                                                                                                                      |
-| Journey user                                               | Each deposit plus 5 ADA of fee headroom.                                                                                     | Stack `journey.depositLovelace` × `journey.cycles`                                                                                                                                              |
+| Wallet                                                     | Needs                                                                                                                                                                                                  | From                                                                                                                                                                                            |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Operator (`L1_OPERATOR_SEED_PHRASE`, on the allow-list)    | 200,005 ADA, plus the init outputs' min-ADA and fees. The public stack example sets its `minimumLovelace` to 200,010 ADA.                                                                              | Init funds the DA bond pool with `da_bond.da_bond_pool_floor_lovelace` (5 ADA) + `da_bond.da_bond_lovelace` (100,000 ADA); the operator bond is `economics.requiredBondLovelace` (100,000 ADA). |
+| A second operator, from the other allow-listed wallet      | 100,000 ADA, if registered.                                                                                                                                                                            | `economics.requiredBondLovelace`                                                                                                                                                                |
+| Merge (`L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX`), settlement | Fees only.                                                                                                                                                                                             | Working capital.                                                                                                                                                                                |
+| Reference publisher (`L1_REFERENCE_SCRIPT_SEED_PHRASE`)    | The sum, over the published scripts, of (160 + output bytes) × 4,310 lovelace, plus fees. Depends on the built script sizes.                                                                           | `limits.coins_per_utxo_byte`                                                                                                                                                                    |
+| Prover (watcher)                                           | Per validation-trace dispute: a 10,000 ADA bond, a 5 ADA collateral floor and a 2 ADA proof output, plus fees. The public stack example sets its `minimumLovelace` to 10,010 ADA.                      | `MIDGARD_DA_AVAILABILITY_CHALLENGER_BOND_LOVELACE`, `economics.proverCollateralFloorLovelace`, `limits.fraud_proof_output_lovelace`                                                             |
+| Availability challenger (watcher)                          | Per challenge: a 10,000 ADA bond, a 27 ADA challenge record, up to 1.2 ADA of timeout fee and a 5 ADA collateral output, plus fees. The public stack example sets its `minimumLovelace` to 10,040 ADA. | `MIDGARD_DA_AVAILABILITY_CHALLENGER_BOND_LOVELACE`, `da_bond.challenge_record_lovelace`, `MIDGARD_DA_AVAILABILITY_MAX_TIMEOUT_FEE_LOVELACE`                                                     |
+| DA submitter                                               | Attestation fees and collateral.                                                                                                                                                                       | `DA_L1_MIN_PLAIN_ADA_LOVELACE`, `DA_L1_MIN_COLLATERAL_LOVELACE`                                                                                                                                 |
+| Any wallet topping up the DA bond pool                     | At least 1,000 ADA per top-up. A slash removes 25,000 ADA from the pool.                                                                                                                               | `da_bond.da_bond_min_top_up_lovelace`, `da_bond.da_slash_penalty_lovelace`                                                                                                                      |
+| Journey user (`STACK_USER_SEED`)                           | Every deposit plus 10 ADA for fees: `journey.depositLovelace` × `journey.cycles` + 10 ADA; the stack refuses a smaller `minimumLovelace`. Each deposit also checks 5 ADA of fee headroom.              | Stack `journey` settings                                                                                                                                                                        |
+| Journey recipient (`STACK_RECIPIENT_SEED`)                 | Per cycle, the withdrawal order's locked ADA and its fee; the order's ADA returns with the payout. The example sets 100 ADA.                                                                           | The withdrawal order quote                                                                                                                                                                      |
 
 The prover and availability bonds are needed only to act on a dispute; the
 acceptance journey opens none.
@@ -193,9 +243,9 @@ Before a run, the owner supplies, by name:
   `MIDGARD_PUBLIC_RELEASE_REVISION`, `MIDGARD_PUBLIC_NODE_IMAGE`,
   `MIDGARD_PUBLIC_POSTGRES_IMAGE`, `MIDGARD_PUBLIC_INGRESS_IMAGE`.
 - **Public files**: `tlsCertFile`, `tlsKeyFile`, `tlsCaFile`,
-  `trustRootsFile`, and `blueprint-classification.json` in
-  `releaseDirectory`; after `initialize`, the signed
-  `release-authority.json` and `release-provenance.json`.
+  `trustRootsFile` and `blueprintClassificationFile`.
+- **Release input**: the release signing key (listed in `trustRootsFile`)
+  and the release provenance; the stack signs the release itself.
 - **Secrets** in `nodeConfigFile`: `L1_OPERATOR_SEED_PHRASE` and
   `L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX` (on the operator allow-list),
   `L1_REFERENCE_SCRIPT_SEED_PHRASE`, `L1_SETTLEMENT_SEED_PHRASE`,

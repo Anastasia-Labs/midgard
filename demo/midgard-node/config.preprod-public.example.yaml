@@ -69,11 +69,11 @@ MIDGARD_PUBLIC_API_ORIGIN: "https://midgard.example.org"
 MIDGARD_PUBLIC_TLS_CERT_FILE: "/run/public/tls-cert.pem"
 MIDGARD_PUBLIC_TLS_KEY_FILE: "/run/secrets/tls-key.pem"
 # Signed release identity and the external Ed25519 trust roots that verify it.
-MIDGARD_PUBLIC_RELEASE_AUTHORITY_FILE: "/run/public/release-authority.json"
+MIDGARD_PUBLIC_RELEASE_AUTHORITY_FILE: "/run/public/deployment-authority.json"
 MIDGARD_PUBLIC_RELEASE_TRUST_ROOTS_FILE: "/run/public/release-trust-roots.json"
 # Release provenance and finalized manifest covered by that signature.
 MIDGARD_PUBLIC_RELEASE_PROVENANCE_FILE: "/run/public/release-provenance.json"
-MIDGARD_PUBLIC_FINALIZED_MANIFEST_FILE: "/run/public/finalized-manifest.json"
+MIDGARD_PUBLIC_FINALIZED_MANIFEST_FILE: "/run/public/deployment-manifest.json"
 # Retained deployment parameters bound by the provenance, and the explicit
 # unused-validator classification that must match them.
 MIDGARD_DEPLOYMENT_PARAMETER_REGISTRY_FILE: "/run/public/deployment-parameters.json"
