@@ -55,6 +55,8 @@ export const preparePeerConsumer = (root, pkg, consumer) => {
         packages: ["."],
         patchedDependencies: config.patchedDependencies,
         overrides: config.overrides,
+        minimumReleaseAge: config.minimumReleaseAge,
+        minimumReleaseAgeExclude: config.minimumReleaseAgeExclude,
       }),
     );
     for (const patch of Object.values(config.patchedDependencies ?? {})) {
