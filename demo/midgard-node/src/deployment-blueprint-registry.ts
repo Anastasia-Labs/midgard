@@ -3,7 +3,10 @@ import { readFileSync } from "node:fs";
 import { isAbsolute } from "node:path";
 
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
+import {
+  isProductionDeploymentProfileName,
+  SELECTED_DEPLOYMENT_PROFILE,
+} from "@al-ft/midgard-core/deployment-profile";
 import { releaseRecord } from "@al-ft/midgard-core/deployment-release";
 import * as SDK from "@al-ft/midgard-sdk";
 import { applyDoubleCborEncoding } from "@lucid-evolution/lucid";
@@ -19,7 +22,7 @@ import {
 export const publicDeploymentBlueprintRegistry = (
   scripts: readonly DeployableScript[],
 ) => {
-  if (!["preprod-public", "mainnet"].includes(SELECTED_DEPLOYMENT_PROFILE.name))
+  if (!isProductionDeploymentProfileName(SELECTED_DEPLOYMENT_PROFILE.name))
     return undefined;
   const path = process.env.MIDGARD_BLUEPRINT_CLASSIFICATION_FILE;
   if (path === undefined || !isAbsolute(path))

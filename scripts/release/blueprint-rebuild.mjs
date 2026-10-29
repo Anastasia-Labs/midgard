@@ -11,6 +11,7 @@ import {
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { productionProfileNames } from "../../demo/scripts/deployment-profiles.mjs";
 import { runProcess } from "../contrib/process.mjs";
 import { withResource } from "../contrib/resources.mjs";
 
@@ -89,14 +90,14 @@ export const parseBlueprintRebuildArguments = (args) => {
       args[index + 1].startsWith("--")
     )
       throw new Error(
-        "Usage: blueprint-rebuild.mjs --root DIR --revision FULL_SHA --profile preprod-public|mainnet --release-blueprint FILE --output NEW_DIRECTORY",
+        `Usage: blueprint-rebuild.mjs --root DIR --revision FULL_SHA --profile ${productionProfileNames.join("|")} --release-blueprint FILE --output NEW_DIRECTORY`,
       );
     values[key] = args[index + 1];
   }
   if (
     allowed.size !== Object.keys(values).length ||
     !/^[0-9a-f]{40}$/u.test(values["--revision"]) ||
-    !["preprod-public", "mainnet"].includes(values["--profile"])
+    !productionProfileNames.includes(values["--profile"])
   )
     throw new Error(
       "A frozen full source revision and public profile are required",

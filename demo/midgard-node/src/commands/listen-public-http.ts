@@ -8,6 +8,7 @@ import { createSecureContext } from "node:tls";
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   type DeploymentProfile,
+  isProductionDeploymentProfileName,
   SELECTED_DEPLOYMENT_PROFILE,
 } from "@al-ft/midgard-core/deployment-profile";
 import {
@@ -38,7 +39,7 @@ export const PUBLIC_RELEASE_JSON_MAX_BYTES =
   PUBLIC_RELEASE_INPUT_LIMITS.parameterRegistry;
 
 export const isPublicDeploymentProfile = (name: string): boolean =>
-  name === "mainnet" || name === "preprod-public";
+  isProductionDeploymentProfileName(name);
 export class PublicHttpConfigError extends Error {
   constructor(readonly reason: string) {
     super(`E_PUBLIC_HTTP_CONFIG: ${reason}`);

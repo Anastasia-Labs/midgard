@@ -80,6 +80,7 @@ export type ImportCheckConfig = Readonly<{
 const OPENER_MARGIN_MS_BY_PROFILE = {
   mainnet: 600_000,
   "preprod-public": 600_000,
+  "preprod-rehearsal": 600_000,
   "preprod-testing": 120_000,
   "local-devnet-testing": 120_000,
   "preprod-emulator-testing": 120_000,

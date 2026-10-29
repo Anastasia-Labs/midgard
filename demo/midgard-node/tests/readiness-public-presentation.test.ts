@@ -168,7 +168,7 @@ describe("public readiness database diagnostics", () => {
     expect(publicReadinessPresentation(body, "preprod-testing")).toBe(body);
   });
 
-  it.each(["mainnet", "preprod-public"])(
+  it.each(["mainnet", "preprod-public", "preprod-rehearsal"])(
     "redacts arbitrary provider diagnostics in %s while retaining controlled SQL reasons",
     (profile) => {
       const secret =
@@ -327,7 +327,7 @@ it("shows the landed-block holds that stop the follower as their typed reasons",
   );
 });
 
-it.each(["mainnet", "preprod-public"])(
+it.each(["mainnet", "preprod-public", "preprod-rehearsal"])(
   "shows a census reason code by name in %s while its details stay redacted",
   (profile) => {
     const arbitrary = "upstream provider text c2VjcmV0LXJlYWRpbmVzcw==";

@@ -33,6 +33,7 @@ const makeFixture = async (t) => {
     "demo/scripts/deployment-profiles.mjs",
     "demo/scripts/deployment-profile-aiken.mjs",
     "demo/scripts/deployment-profile-da.mjs",
+    "demo/scripts/deployment-profile-names.mjs",
     "demo/scripts/deployment-profile-identity.mjs",
     "demo/scripts/deployment-profile-budgets.mjs",
     "demo/scripts/deployment-profile-operator-economics.mjs",

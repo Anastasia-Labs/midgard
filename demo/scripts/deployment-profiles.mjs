@@ -13,6 +13,19 @@ import {
 
 import { validatePublicDaTransport } from "./deployment-profile-da.mjs";
 import {
+  boundedEconomicsProfileNames,
+  emulatorOnlyProfileNames,
+  networks,
+  productionProfileNames,
+  profileNames,
+  retainedDaProfileNames,
+} from "./deployment-profile-names.mjs";
+export {
+  emulatorOnlyProfileNames,
+  productionProfileNames,
+  profileNames,
+} from "./deployment-profile-names.mjs";
+import {
   allowListConstants,
   daBondConstants,
   economicsConstants,
@@ -72,28 +85,6 @@ export {
 } from "./deployment-profile-budgets.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-export const profileNames = [
-  "mainnet",
-  "preprod-public",
-  "preprod-testing",
-  "local-devnet-testing",
-  "preprod-emulator-testing",
-  "preprod-emulator-curated",
-];
-const networks = [
-  "Mainnet",
-  "Preprod",
-  "Preprod",
-  "Custom",
-  "Preprod",
-  "Preprod",
-];
-// Generated and compiled for the interactive Vitest projects only; never the
-// checkout's selected deployment, and never built as the default blueprint.
-export const emulatorOnlyProfileNames = [
-  "preprod-emulator-testing",
-  "preprod-emulator-curated",
-];
 // Stand-in keys until the owner supplies the real ones: the ASCII prefix
 // "placeholder:" marks them. Nothing yet marks a profile for release, so no
 // check refuses them; a release gate must.
@@ -176,7 +167,6 @@ const positiveIntegers = (value, keys, field) => {
 // active_slot_coeff is a decimal string, because the deployment identity's
 // canonical JSON admits only safe-integer numbers; it becomes a rational
 // ("0.05" is 5/100) and every comparison is BigInt, never a float division.
-export const productionProfileNames = ["mainnet", "preprod-public"];
 const l1FinalityKeys = [
   "confirmation_depth",
   "commit_event_depth",
@@ -199,7 +189,7 @@ export const validateProfile = (profile, name) => {
       "protocol_treasury_native_script",
       "allow_lists",
       "excluded_fraud_proof_categories",
-      ...(name === "preprod-public" ? ["da_transport"] : []),
+      ...(retainedDaProfileNames.includes(name) ? ["da_transport"] : []),
     ],
     "profile",
   );
@@ -248,11 +238,9 @@ export const validateProfile = (profile, name) => {
     Object.keys(economicsConstants),
     "economics",
   );
-  // Emulator-only profiles are test deployments: bounded economics.
-  const expectedEconomics =
-    name.endsWith("testing") || emulatorOnlyProfileNames.includes(name)
-      ? "bounded-acceptance-v1"
-      : "public-preprod-launch-v1";
+  const expectedEconomics = boundedEconomicsProfileNames.includes(name)
+    ? "bounded-acceptance-v1"
+    : "public-preprod-launch-v1";
   if (profile.economics.profile !== expectedEconomics)
     throw new Error(`economics.profile must equal ${expectedEconomics}`);
   validateAllowLists(profile.allow_lists, name);
@@ -516,6 +504,8 @@ export const generateProfiles = async (selected, check = false) => {
     `export const DEPLOYMENT_PROFILES = ${JSON.stringify(profiles, null, 2)} as const;\n\n` +
     `export const DEPLOYMENT_PROFILE_DIGESTS = ${JSON.stringify(Object.fromEntries(Object.entries(profiles).map(([name, profile]) => [name, profileDigest(profile)])), null, 2)} as const;\n\n` +
     `export const DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE = ${JSON.stringify(economics, null, 2)} as const;\n\n` +
+    `/** The profiles deployed as public releases (\`productionProfileNames\`). */\n` +
+    `export const PRODUCTION_DEPLOYMENT_PROFILE_NAMES = ${JSON.stringify(productionProfileNames)} as const;\n\n` +
     `/** The least span from planning a commit to its TTL (\`deployment-profiles.mjs\`). */\n` +
     `export const COMMIT_TTL_FUTURE_BUFFER_MS = ${COMMIT_TTL_FUTURE_BUFFER_MS};\n\n` +
     renderTemplateExports(template) +
@@ -526,7 +516,7 @@ export const generateProfiles = async (selected, check = false) => {
     `  if ("da_transport" in profile) Object.freeze(profile.da_transport);\n  Object.freeze(profile.l1_finality);\n  Object.freeze(profile.timing);\n  Object.freeze(profile.da_bond);\n  Object.freeze(profile.limits);\n  Object.freeze(profile.economics);\n  freezeNativeScript(profile.protocol_treasury_native_script);\n  for (const keys of Object.values(profile.allow_lists)) if (keys !== null) Object.freeze(keys);\n  Object.freeze(profile.allow_lists);\n  Object.freeze(profile.excluded_fraud_proof_categories);\n  Object.freeze(profile);\n}\n` +
     `Object.freeze(DEPLOYMENT_PROFILES);\nObject.freeze(DEPLOYMENT_PROFILE_DIGESTS);\n` +
     `for (const economics of Object.values(DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE)) Object.freeze(economics);\n` +
-    `Object.freeze(DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE);\n`;
+    `Object.freeze(DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE);\nObject.freeze(PRODUCTION_DEPLOYMENT_PROFILE_NAMES);\n`;
   for (const [path, content] of Object.entries(outputs)) {
     const formatted = path.endsWith(".ts")
       ? await format(content, { parser: "typescript" })

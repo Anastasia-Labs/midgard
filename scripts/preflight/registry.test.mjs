@@ -295,6 +295,7 @@ test("a FULL_RUN path selects every check; the tracked blueprint selects nothing
   for (const path of [
     "demo/scripts/deployment-profile-aiken.mjs",
     "demo/scripts/deployment-profile-da.mjs",
+    "demo/scripts/deployment-profile-names.mjs",
     "demo/scripts/deployment-profile-budgets.mjs",
     "demo/scripts/deployment-profile-operator-economics.mjs",
     "demo/scripts/package-tasks.mjs",

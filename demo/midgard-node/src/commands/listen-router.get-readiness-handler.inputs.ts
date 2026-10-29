@@ -1,4 +1,7 @@
-import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
+import {
+  isProductionDeploymentProfileName,
+  SELECTED_DEPLOYMENT_PROFILE,
+} from "@al-ft/midgard-core/deployment-profile";
 import { SqlClient } from "@effect/sql/SqlClient";
 import { Effect } from "effect";
 
@@ -84,7 +87,7 @@ export const readinessDatabaseError = (
   error: unknown,
   profileName: string = SELECTED_DEPLOYMENT_PROFILE.name,
 ): string => {
-  if (profileName === "mainnet" || profileName === "preprod-public") {
+  if (isProductionDeploymentProfileName(profileName)) {
     let current = error;
     for (let depth = 0; depth < 4; depth += 1) {
       if (typeof current !== "object" || current === null) break;

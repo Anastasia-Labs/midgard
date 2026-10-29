@@ -10,7 +10,10 @@ import {
   parseDeploymentManifestEconomics,
   verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { deploymentFraudProofCatalogueCategories } from "@al-ft/midgard-core/deployment-profile";
+import {
+  deploymentFraudProofCatalogueCategories,
+  isProductionDeploymentProfileName,
+} from "@al-ft/midgard-core/deployment-profile";
 import { parseDeploymentReleaseProvenance } from "@al-ft/midgard-core/deployment-release";
 import { computeFraudProofReleaseEconomicsPolicyDigest } from "@al-ft/midgard-fault-proofs";
 
@@ -119,9 +122,9 @@ export const authorWatcherDeploymentRelease = async ({
   const manifest = verifyFinalizedDeploymentManifest(manifestValue);
   if (signingKey.asymmetricKeyType !== "ed25519")
     throw new Error("Release signing key must be ed25519");
-  const publicProfile =
-    manifest.deploymentProfile.name === "preprod-public" ||
-    manifest.deploymentProfile.name === "mainnet";
+  const publicProfile = isProductionDeploymentProfileName(
+    manifest.deploymentProfile.name,
+  );
   if (publicProfile && releaseProvenance === undefined)
     throw new Error("Public release requires source and image provenance");
   const provenance =

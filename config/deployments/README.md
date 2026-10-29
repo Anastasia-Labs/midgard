@@ -7,10 +7,23 @@ a deployment profile: both `preprod-public` and `preprod-testing` use `Preprod`.
 | -------------------------- | --------------- | ------------------------------ |
 | `mainnet`                  | `Mainnet`       | Public                         |
 | `preprod-public`           | `Preprod`       | Public                         |
+| `preprod-rehearsal`        | `Preprod`       | Bounded testing                |
 | `preprod-testing`          | `Preprod`       | Bounded testing                |
 | `local-devnet-testing`     | `Custom`        | Bounded testing                |
 | `preprod-emulator-testing` | `Preprod`       | Bounded testing; emulator only |
 | `preprod-emulator-curated` | `Preprod`       | Bounded testing; emulator only |
+
+`preprod-rehearsal` rehearses the public deployment on Preprod before it
+launches (owner, 2026-10-29). Every value equals `preprod-public`'s, including
+block maturity, every DA window, grace and withdrawal delay, the operator
+allow-list, the catalogue and the DA retention, except the economics: its
+`economics` section and its `da_bond` amounts are `preprod-testing`'s, under
+the same `bounded-acceptance-v1` schedule identifier. Validation and the
+runtime treat it as a public profile in every other respect: production
+commit-event depth, a listed operator allow-list, the public timing rules,
+release provenance and the validator-classification file, TLS-only public HTTP
+and public diagnostic redaction. The profile tests compare it field by field
+against both source profiles, so a change to either one must be carried into it.
 
 The public profiles retain the existing testnet timing values, including
 seven-day block maturity and a one-hour operator shift. `preprod-public`
@@ -114,7 +127,7 @@ exact rational (`"0.05"` is 5/100) and compares in integers. With W =
   planned, the view's tip is d blocks above A and the next block has not
   arrived, so now is at most 3(d + 1)·slot/f after A; the cap reaches the
   floor whenever the bound holds.
-- On `mainnet` and `preprod-public`: W − L ≥ 3d·slot/f, so a due event is d
+- On `mainnet`, `preprod-public` and `preprod-rehearsal`: W − L ≥ 3d·slot/f, so a due event is d
   blocks deep when the commit that includes it lands.
 
 Each profile uses the largest d all bounds admit:
@@ -123,6 +136,7 @@ Each profile uses the largest d all bounds admit:
 | -------------------------- | ------------------- | ------------ | ------------------- | -------------------- | ---- |
 | `mainnet`                  | 2,180 − 1 = 2,179   | 130,049,000  | 2,167 − 1 = 2,166   | 2,160 (tight)        | 2160 |
 | `preprod-public`           | 42 − 1 = 41         | 1,769,000    | 29 − 1 = 28         | 22                   | 22   |
+| `preprod-rehearsal`        | 42 − 1 = 41         | 1,769,000    | 29 − 1 = 28         | 22                   | 22   |
 | `preprod-testing`          | 17 − 1 = 16         | 269,000      | 4 − 1 = 3           | —                    | 3    |
 | `local-devnet-testing`     | 17 − 1 = 16         | 269,000      | 4 − 1 = 3           | —                    | 3    |
 | `preprod-emulator-testing` | 22 − 1 = 21         | 569,000      | 9 − 1 = 8           | —                    | 8    |
@@ -356,7 +370,7 @@ node --test demo/scripts/deployment-profiles.test.mjs
 The checkout's generated off-chain selection is `preprod-testing`. Production
 builds must explicitly select their deployment. `env/default.ak` is generated
 from mainnet; `env/testnet.ak` remains a generated development alias for
-preprod-testing. The five named environments are generated too. Do not edit
+preprod-testing. Every named environment is generated too. Do not edit
 generated environments or `demo/midgard-core/src/generated-deployment-profiles.ts`.
 `env.ak.template` holds only constants that do not vary by deployment.
 

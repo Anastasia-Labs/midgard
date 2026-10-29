@@ -4,7 +4,10 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { profileDigest } from "../../demo/scripts/deployment-profiles.mjs";
+import {
+  productionProfileNames,
+  profileDigest,
+} from "../../demo/scripts/deployment-profiles.mjs";
 import {
   blueprintHash,
   blueprintSourceHash,
@@ -13,7 +16,7 @@ import {
 export const verifyPublicImageInputs = ({ root, profile, revision }) => {
   if (
     !/^[0-9a-f]{40}$/u.test(revision) ||
-    !["preprod-public", "mainnet"].includes(profile)
+    !productionProfileNames.includes(profile)
   )
     throw new Error(
       "Public image requires a full source revision and actual public profile selection",

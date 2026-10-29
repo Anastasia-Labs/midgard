@@ -5,6 +5,7 @@ import {
 } from "./deployment-manifest-identity/catalogue-roles.js";
 import {
   DEPLOYMENT_PROFILES,
+  PRODUCTION_DEPLOYMENT_PROFILE_NAMES,
   SELECTED_DEPLOYMENT_PROFILE,
   SELECTED_DEPLOYMENT_PROFILE_DIGEST,
 } from "./generated-deployment-profiles.js";
@@ -14,6 +15,15 @@ export * from "./generated-deployment-profiles.js";
 export type DeploymentProfileName = keyof typeof DEPLOYMENT_PROFILES;
 export type DeploymentProfile =
   (typeof DEPLOYMENT_PROFILES)[DeploymentProfileName];
+
+/** A profile deployed as a public release: provenance, redaction, public HTTP. */
+export type ProductionDeploymentProfileName =
+  (typeof PRODUCTION_DEPLOYMENT_PROFILE_NAMES)[number];
+
+export const isProductionDeploymentProfileName = (
+  name: string,
+): name is ProductionDeploymentProfileName =>
+  (PRODUCTION_DEPLOYMENT_PROFILE_NAMES as readonly string[]).includes(name);
 
 export const requireSelectedDeploymentProfile = (name: string | undefined) => {
   if (name !== SELECTED_DEPLOYMENT_PROFILE.name) {

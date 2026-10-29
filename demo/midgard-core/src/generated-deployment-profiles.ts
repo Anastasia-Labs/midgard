@@ -164,6 +164,86 @@ export const DEPLOYMENT_PROFILES = {
     },
     excluded_fraud_proof_categories: [],
   },
+  "preprod-rehearsal": {
+    name: "preprod-rehearsal",
+    network: "Preprod",
+    l1_finality: {
+      confirmation_depth: 30,
+      commit_event_depth: 22,
+      security_parameter: 2160,
+      active_slot_coeff: "0.05",
+      slot_length_ms: 1000,
+    },
+    timing: {
+      block_maturity_ms: 604800000,
+      dispute_side_clock_ms: 86400000,
+      dispute_max_validity_range_ms: 120000,
+      dispute_resolution_allowance_ms: 21600000,
+      operator_shift_ms: 3600000,
+      registration_ms: 30000,
+      event_wait_ms: 1800000,
+      user_events_negligence_timeout_ms: 1200000,
+      new_shift_inactivity_grace_period_ms: 480000,
+      max_validity_range_ms: 480000,
+      max_event_validity_range_ms: 600000,
+      da_attestation_timeout_ms: 3600000,
+      da_small_response_window_ms: 3600000,
+      da_full_response_window_ms: 172800000,
+      da_challenge_window_ms: 86400000,
+      da_slash_grace_ms: 172800000,
+      da_bond_withdraw_delay_ms: 778080000,
+    },
+    da_transport: {
+      retention_days: 120,
+    },
+    da_bond: {
+      da_bond_lovelace: 500000000,
+      da_slash_penalty_lovelace: 100000000,
+      da_bond_min_top_up_lovelace: 5000000,
+      da_bond_pool_floor_lovelace: 5000000,
+      challenge_record_lovelace: 27000000,
+    },
+    limits: {
+      max_bisection_rounds: 32,
+      max_inactivity_strikes: 1000000,
+      coins_per_utxo_byte: 4310,
+      max_dispute_move_fee_lovelace: 1200000,
+      fraud_proof_output_lovelace: 2000000,
+    },
+    economics: {
+      profile: "bounded-acceptance-v1",
+      requiredBondLovelace: 900000000,
+      slashingPenaltyLovelace: 500000000,
+      inactivitySlashingPenaltyLovelace: 100000000,
+      fraudProverRewardLovelace: 400000000,
+      proverCollateralFloorLovelace: 5000000,
+    },
+    protocol_treasury_native_script: {
+      type: "atLeast",
+      required: 2,
+      scripts: [
+        {
+          type: "sig",
+          keyHash: "f1fb1abc10fc4d90b367c7f994b87aeeb4db60fa8a42ee43a159256c",
+        },
+        {
+          type: "sig",
+          keyHash: "9ac54f4b18dcdbaeb981b9acbb4e79b590315eb508a08b3a50509cb9",
+        },
+        {
+          type: "sig",
+          keyHash: "65a0683b5ca28e4a8fed2b5a443210741faad5ed43802d20fd329a53",
+        },
+      ],
+    },
+    allow_lists: {
+      operators: [
+        "041388eef29da389e7b9dac19509ef8ac95a398a9909991a4326d424",
+        "4189f341bddd0c74ecb4f5a1ddae8653ee204be022fe530e2f65a6a6",
+      ],
+    },
+    excluded_fraud_proof_categories: [],
+  },
   "preprod-testing": {
     name: "preprod-testing",
     network: "Preprod",
@@ -466,6 +546,8 @@ export const DEPLOYMENT_PROFILE_DIGESTS = {
   mainnet: "46c79b131d3b47f1c550bb2ed2df086c4f5e8ffa7751d172ef12d635a8e5ed4b",
   "preprod-public":
     "e313ff89349b7bd0a4396db26ba852fe8f4261595be08dbaad353b95abc46d0b",
+  "preprod-rehearsal":
+    "33b03a4e8f9a48ce21dd45699c4641aebfd976e4586ccf4693e19bc3e30c3346",
   "preprod-testing":
     "eb9e2fed4434ee58df122bb07b52e239f22cef0b561ab1e757ef1027e5675316",
   "local-devnet-testing":
@@ -494,6 +576,13 @@ export const DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE = {
     proverCollateralFloorLovelace: 5000000,
   },
 } as const;
+
+/** The profiles deployed as public releases (`productionProfileNames`). */
+export const PRODUCTION_DEPLOYMENT_PROFILE_NAMES = [
+  "mainnet",
+  "preprod-public",
+  "preprod-rehearsal",
+] as const;
 
 /** The least span from planning a commit to its TTL (`deployment-profiles.mjs`). */
 export const COMMIT_TTL_FUTURE_BUFFER_MS = 30000;
@@ -540,3 +629,4 @@ Object.freeze(DEPLOYMENT_PROFILE_DIGESTS);
 for (const economics of Object.values(DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE))
   Object.freeze(economics);
 Object.freeze(DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE);
+Object.freeze(PRODUCTION_DEPLOYMENT_PROFILE_NAMES);

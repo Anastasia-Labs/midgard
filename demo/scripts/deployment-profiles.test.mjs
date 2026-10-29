@@ -1,4 +1,5 @@
 import "./deployment-profile-operator-economics.test-cases.mjs";
+import "./deployment-profiles.rehearsal.test-cases.mjs";
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -344,6 +345,7 @@ test("every DA response window covers the minimum response budget, and the bound
   const expected = {
     mainnet: 1_440_000,
     "preprod-public": 1_440_000,
+    "preprod-rehearsal": 1_440_000,
     "preprod-testing": 640_000,
     "local-devnet-testing": 640_000,
     "preprod-emulator-testing": 360_000,
@@ -509,7 +511,7 @@ test("every profile gives a successor's covering commit one maximum validity ran
 test("public profiles wait out the validity range plus confirmation depth before requiring an event; testing profiles are exempt", () => {
   const profiles = readProfiles();
   // 480 s maximum validity range + 30 blocks × 20 s × 2, derived by hand.
-  for (const name of ["mainnet", "preprod-public"]) {
+  for (const name of publicProfiles) {
     const profile = structuredClone(profiles[name]);
     // A shallow commit-event depth keeps its own bounds out of the way.
     profile.l1_finality.commit_event_depth = 0;
@@ -615,16 +617,17 @@ test("every profile carries the pooled DA bond amounts and timing, rendered into
     da_bond_withdraw_delay_ms: "da_bond_withdraw_delay_ms_v1",
   };
   for (const [name, profile] of Object.entries(profiles)) {
-    const want = emulatorOnlyProfileNames.includes(name)
-      ? {
-          da_bond: expected.testing.da_bond,
-          timing: {
+    const bounded = profile.economics.profile === "bounded-acceptance-v1";
+    const want = {
+      da_bond: expected[bounded ? "testing" : "public"].da_bond,
+      timing: emulatorOnlyProfileNames.includes(name)
+        ? {
             da_challenge_window_ms: 1_800_000,
             da_slash_grace_ms: 300_000,
             da_bond_withdraw_delay_ms: 259_980_000,
-          },
-        }
-      : expected[publicProfiles.includes(name) ? "public" : "testing"];
+          }
+        : expected[publicProfiles.includes(name) ? "public" : "testing"].timing,
+    };
     assert.deepEqual(profile.da_bond, want.da_bond);
     const rendered = renderAiken(profile, "");
     for (const [key, value] of Object.entries({
@@ -871,16 +874,13 @@ test("production profiles list their operators; testing profiles admit every key
   const profiles = readProfiles();
   for (const profile of Object.values(profiles))
     assert.deepEqual(Object.keys(profile.allow_lists), ["operators"]);
-  for (const name of ["mainnet", "preprod-public"]) {
+  for (const name of publicProfiles) {
     const keys = profiles[name].allow_lists.operators;
     assert.ok(keys.length > 0);
     // Mainnet remains undeployed; P1 public keys must be real release inputs.
+    const placeholder = name === "mainnet";
     assert.ok(
-      keys.every((key) =>
-        name === "preprod-public"
-          ? !isAllowListPlaceholderKey(key)
-          : isAllowListPlaceholderKey(key),
-      ),
+      keys.every((key) => isAllowListPlaceholderKey(key) === placeholder),
     );
     const profile = structuredClone(profiles[name]);
     profile.allow_lists.operators = null;

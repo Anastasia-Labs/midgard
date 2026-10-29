@@ -1,4 +1,7 @@
-import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
+import {
+  isProductionDeploymentProfileName,
+  SELECTED_DEPLOYMENT_PROFILE,
+} from "@al-ft/midgard-core/deployment-profile";
 
 const REDACTED = "[redacted]";
 const DIAGNOSTIC_REDACTED = "E_READINESS_DIAGNOSTIC_REDACTED";
@@ -294,8 +297,7 @@ export const publicReadinessPresentation = (
   profileName: string = SELECTED_DEPLOYMENT_PROFILE.name,
   env: NodeJS.ProcessEnv = process.env,
 ): Readonly<Record<string, unknown>> => {
-  if (profileName !== "mainnet" && profileName !== "preprod-public")
-    return input;
+  if (!isProductionDeploymentProfileName(profileName)) return input;
   const secrets = Object.entries(env)
     .filter(
       ([name, value]) =>

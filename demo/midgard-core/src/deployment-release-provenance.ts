@@ -1,4 +1,8 @@
 import {
+  isProductionDeploymentProfileName,
+  type ProductionDeploymentProfileName,
+} from "./deployment-profile.js";
+import {
   RELEASE_HEX_32,
   releaseFail,
   releaseRecord,
@@ -15,7 +19,7 @@ export const RELEASE_IMAGE_REFERENCE =
 export type DeploymentReleaseProvenance = Readonly<{
   schemaVersion: typeof DEPLOYMENT_RELEASE_PROVENANCE_SCHEMA_VERSION;
   sourceRevision: string;
-  deploymentProfileName: "preprod-public" | "mainnet";
+  deploymentProfileName: ProductionDeploymentProfileName;
   deploymentProfileDigest: string;
   blueprintHash: string;
   aikenSourceHash: string;
@@ -50,11 +54,11 @@ export const parseDeploymentReleaseProvenance = (
   ]);
   if (record.schemaVersion !== DEPLOYMENT_RELEASE_PROVENANCE_SCHEMA_VERSION)
     releaseFail("invalid_field", `${path}.schemaVersion`);
-  if (
-    record.deploymentProfileName !== "preprod-public" &&
-    record.deploymentProfileName !== "mainnet"
-  )
-    releaseFail("invalid_field", `${path}.deploymentProfileName`);
+  const deploymentProfileName: ProductionDeploymentProfileName =
+    typeof record.deploymentProfileName === "string" &&
+    isProductionDeploymentProfileName(record.deploymentProfileName)
+      ? record.deploymentProfileName
+      : releaseFail("invalid_field", `${path}.deploymentProfileName`);
   const compiler = releaseRecord(record.compiler, `${path}.compiler`, [
     "forkRepository",
     "forkRevision",
@@ -72,9 +76,7 @@ export const parseDeploymentReleaseProvenance = (
       `${path}.sourceRevision`,
       RELEASE_REVISION,
     ),
-    deploymentProfileName: record.deploymentProfileName as
-      | "preprod-public"
-      | "mainnet",
+    deploymentProfileName,
     deploymentProfileDigest: releaseString(
       record.deploymentProfileDigest,
       `${path}.deploymentProfileDigest`,

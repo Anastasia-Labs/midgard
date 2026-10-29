@@ -1,7 +1,7 @@
 # Public HTTP operator configuration
 
-The compiled `preprod-public` and `mainnet` profiles require authenticated release
-inputs and TLS before opening the API socket. Explicit development/testing
+The compiled `preprod-public`, `preprod-rehearsal` and `mainnet` profiles require
+authenticated release inputs and TLS before opening the API socket. Explicit development/testing
 profiles retain their local HTTP behavior. Public mode cannot disable configuration
 loading or read secrets from a dotenv file.
 

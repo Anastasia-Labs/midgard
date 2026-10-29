@@ -8,10 +8,13 @@ import {
   AllowListRefusal,
   assertValidationDisputeFitsProfile,
   daBondManifestAmounts,
+  DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
+  DEPLOYMENT_PROFILE_DIGESTS,
   DEPLOYMENT_PROFILES,
   deploymentAllowList,
   deploymentFraudProofCatalogueCategories,
   type DeploymentProfile,
+  isProductionDeploymentProfileName,
   minValidationDisputeMaturityMs,
   requireAllowListed,
   requireSelectedDeploymentProfile,
@@ -232,5 +235,56 @@ describe("deployment allow-lists", () => {
     expect(() => requireAllowListed("operators", unlisted, [])).toThrow(
       /not on the deployment's operators allow-list/u,
     );
+  });
+});
+
+describe("preprod-rehearsal", () => {
+  const rehearsal = DEPLOYMENT_PROFILES["preprod-rehearsal"];
+  const publicProfile = DEPLOYMENT_PROFILES["preprod-public"];
+  const testing = DEPLOYMENT_PROFILES["preprod-testing"];
+
+  it("round-trips the YAML profile and its digest through generation", async () => {
+    const script = (await import(
+      new URL("../../scripts/deployment-profiles.mjs", import.meta.url).href
+    )) as {
+      readProfiles: () => Record<string, unknown>;
+      profileDigest: (profile: unknown) => string;
+    };
+    const loaded = script.readProfiles()["preprod-rehearsal"];
+    expect(rehearsal).toEqual(loaded);
+    expect(DEPLOYMENT_PROFILE_DIGESTS["preprod-rehearsal"]).toBe(
+      script.profileDigest(loaded),
+    );
+  });
+
+  it("carries preprod-public's timing and preprod-testing's economics", () => {
+    expect(rehearsal.network).toBe(publicProfile.network);
+    expect(rehearsal.l1_finality).toEqual(publicProfile.l1_finality);
+    expect(rehearsal.timing).toEqual(publicProfile.timing);
+    expect(rehearsal.limits).toEqual(publicProfile.limits);
+    expect(rehearsal.allow_lists).toEqual(publicProfile.allow_lists);
+    expect(rehearsal.da_transport).toEqual(publicProfile.da_transport);
+    expect(deploymentFraudProofCatalogueCategories(rehearsal)).toEqual(
+      deploymentFraudProofCatalogueCategories(publicProfile),
+    );
+    expect(rehearsal.economics).toEqual(testing.economics);
+    expect(daBondManifestAmounts(rehearsal)).toEqual(
+      daBondManifestAmounts(testing),
+    );
+    expect(
+      DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE[rehearsal.economics.profile],
+    ).toEqual(testing.economics);
+    expect(() =>
+      assertValidationDisputeFitsProfile(rehearsal.name, rehearsal),
+    ).not.toThrow();
+  });
+
+  it("is classed as a public release, as preprod-public is", () => {
+    const production = Object.keys(DEPLOYMENT_PROFILES).filter(
+      isProductionDeploymentProfileName,
+    );
+    expect(production).toContain("preprod-rehearsal");
+    expect(production).toContain("preprod-public");
+    expect(production).not.toContain("preprod-testing");
   });
 });

@@ -149,6 +149,13 @@ describe("public release provenance framing", () => {
     const value = provenance();
     expect(parseDeploymentReleaseProvenance(value)).toEqual(value);
   });
+  it("frames the Preprod rehearsal as a public release", () => {
+    const value = {
+      ...provenance(),
+      deploymentProfileName: "preprod-rehearsal",
+    };
+    expect(parseDeploymentReleaseProvenance(value)).toEqual(value);
+  });
   it.each([
     [
       "mutable image",

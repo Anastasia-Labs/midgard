@@ -1,6 +1,12 @@
 import { daBondWithdrawDelayFloorMs } from "./deployment-profiles.mjs";
 
-export const publicProfiles = ["mainnet", "preprod-public"];
+// Public timing and the public validation rules; preprod-rehearsal differs
+// from preprod-public only in its (bounded) economics.
+export const publicProfiles = [
+  "mainnet",
+  "preprod-public",
+  "preprod-rehearsal",
+];
 export const testingProfiles = ["preprod-testing", "local-devnet-testing"];
 // Moves the withdrawal delay onto its enforced floor, so a test can vary one
 // timing input without also tripping the delay relation.

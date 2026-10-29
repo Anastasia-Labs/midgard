@@ -27,8 +27,8 @@ gated by `ADMIN_API_KEY` and require the key in the `x-midgard-admin-key` reques
 header; a missing or wrong key is denied before the handler runs. Admin
 mutations also need a signed session; see [Admin routes](#admin-routes).
 
-"Public" here means unauthenticated. The `preprod-public` and `mainnet` profiles
-serve only TLS 1.3 and refuse to start without a certificate for
+"Public" here means unauthenticated. The `preprod-public`, `preprod-rehearsal`
+and `mainnet` profiles serve only TLS 1.3 and refuse to start without a certificate for
 `MIDGARD_PUBLIC_API_ORIGIN`; development and testing profiles serve plain HTTP
 for local use. Remaining public-deployment work is listed under
 [readiness blockers](/docs/getting-started/status). Every route is rate limited;
@@ -169,12 +169,12 @@ bytes; health and admin requests at 8 in flight; each client at 4 in flight per
 table. Overflow answers `503` with `Retry-After: 5` and
 `E_HTTP_INGRESS_CAPACITY`.
 
-| Variable                                                                                             | Default         | Meaning                                                                                           |
-| ---------------------------------------------------------------------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------- |
-| `HTTP_RATE_LIMIT_ENABLED`                                                                            | `true`          | `false` turns rate refusals off for testing; `preprod-public` and `mainnet` nodes refuse to start |
-| `HTTP_RATE_LIMIT_HEALTH`, `HTTP_RATE_LIMIT_ADMIN`                                                    | the table above | `peerBurst,peerPerSecond`                                                                         |
-| `HTTP_RATE_LIMIT_READ`, `HTTP_RATE_LIMIT_BATCH`, `HTTP_RATE_LIMIT_WRITE`, `HTTP_RATE_LIMIT_EVALUATE` | the table above | `peerBurst,peerPerSecond,globalBurst,globalPerSecond`                                             |
-| `HTTP_TRUSTED_PROXY_PEERS`                                                                           | empty           | up to 8 private IPv4 proxy addresses allowed to set `X-Midgard-Client-IP`                         |
+| Variable                                                                                             | Default         | Meaning                                                                                         |
+| ---------------------------------------------------------------------------------------------------- | --------------- | ----------------------------------------------------------------------------------------------- |
+| `HTTP_RATE_LIMIT_ENABLED`                                                                            | `true`          | `false` turns rate refusals off for testing; nodes on the public profiles above refuse to start |
+| `HTTP_RATE_LIMIT_HEALTH`, `HTTP_RATE_LIMIT_ADMIN`                                                    | the table above | `peerBurst,peerPerSecond`                                                                       |
+| `HTTP_RATE_LIMIT_READ`, `HTTP_RATE_LIMIT_BATCH`, `HTTP_RATE_LIMIT_WRITE`, `HTTP_RATE_LIMIT_EVALUATE` | the table above | `peerBurst,peerPerSecond,globalBurst,globalPerSecond`                                           |
+| `HTTP_TRUSTED_PROXY_PEERS`                                                                           | empty           | up to 8 private IPv4 proxy addresses allowed to set `X-Midgard-Client-IP`                       |
 
 Bursts are positive integers and refills positive numbers per second. The public
 ingress proxy applies its own per-IP and global limits in front of these; its
