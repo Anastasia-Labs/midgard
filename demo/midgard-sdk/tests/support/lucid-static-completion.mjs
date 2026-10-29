@@ -4,6 +4,19 @@ import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import {
+  apply,
+  builtin,
+  bytestring,
+  delay,
+  encodeFlatProgram,
+  force,
+  integer,
+  lambda,
+  unit,
+  variable,
+} from "./flat-program.mjs";
+
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 const require = createRequire(import.meta.url);
 const lucidRequirePath = require.resolve("@lucid-evolution/lucid");
@@ -178,44 +191,32 @@ try {
   );
   report.staticSubmitted = true;
   // Real UPLC fixture: succeeds in both branches, charging more work above a fee threshold.
-  const U = lucidRequire("@harmoniclabs/uplc");
-  const app = (f, ...xs) => xs.reduce((f, x) => new U.Application(f, x), f);
-  // The encoder writes the AST as given, so each polymorphic builtin carries
-  // its type-instantiation forces explicitly.
-  const bi = (name, forces = 0) => {
-    let term = new U.Builtin(U.UPLCBuiltinTag[name]);
-    for (let force = 0; force < forces; force += 1) term = new U.Force(term);
-    return term;
-  };
-  const fields = (x) => app(bi("sndPair", 2), app(bi("unConstrData"), x));
+  const fields = (x) =>
+    apply(builtin("sndPair", 2), apply(builtin("unConstrData"), x));
   const nth = (x, n) => {
-    while (n--) x = app(bi("tailList", 1), x);
-    return app(bi("headList", 1), x);
+    while (n--) x = apply(builtin("tailList", 1), x);
+    return apply(builtin("headList", 1), x);
   };
   const work = (n) => {
-    let x = U.UPLCConst.byteString(Buffer.from("ab".repeat(32), "hex"));
-    while (n--) x = app(bi("sha2_256"), x);
-    return app(new U.Lambda(U.UPLCConst.unit), x);
+    let x = bytestring(Buffer.from("ab".repeat(32), "hex"));
+    while (n--) x = apply(builtin("sha2_256"), x);
+    return apply(lambda(unit), x);
   };
   const feeScript = (threshold) => {
-    const fee = app(
-      bi("unIData"),
-      nth(fields(nth(fields(new U.UPLCVar(0)), 0)), 3),
+    const fee = apply(
+      builtin("unIData"),
+      nth(fields(nth(fields(variable(1)), 0)), 3),
     );
-    const choice = app(
-      bi("ifThenElse", 1),
-      app(bi("lessThanInteger"), fee, U.UPLCConst.int(threshold)),
-      new U.Delay(work(64)),
-      new U.Delay(work(256)),
-    );
-    const program = new U.UPLCProgram(
-      [1, 1, 0],
-      new U.Lambda(new U.Force(choice)),
+    const choice = apply(
+      builtin("ifThenElse", 1),
+      apply(builtin("lessThanInteger"), fee, integer(threshold)),
+      delay(work(64)),
+      delay(work(256)),
     );
     return {
       type: "PlutusV3",
       script: applyDoubleCborEncoding(
-        Buffer.from(U.compileUPLC(program)).toString("hex"),
+        Buffer.from(encodeFlatProgram(lambda(force(choice)))).toString("hex"),
       ),
     };
   };
