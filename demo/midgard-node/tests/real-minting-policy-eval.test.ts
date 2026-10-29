@@ -72,16 +72,23 @@ const flatProgram = (scriptCborHex: string): Uint8Array => {
 };
 
 /**
- * Whether the pinned Plutus V3 evaluator (aiken's, the ledger's protocol
- * version 11 semantics) runs the script applied to the script context to a
- * result. An Aiken `mint` handler that answers `False` compiles to an
- * `error`, so a refusal is a failed evaluation. The budget is far past a
- * transaction's, since only the verdict is under test.
+ * `EvalProgramResult.error_kind` of a program that failed other than by
+ * exhausting its budget or returning a non-unit value. The uplc package
+ * documents the code but exports no constant for it.
+ */
+const EVAL_FAILED = 2;
+
+/**
+ * The pinned Plutus V3 evaluator's (aiken's, the ledger's protocol version 11
+ * semantics) verdict on the script applied to the script context. `ok` holds
+ * only when a V3 script returns unit; an Aiken `mint` handler that answers
+ * `False` compiles to an `error`, so a refusal is a failed evaluation. The
+ * budget is far past a transaction's, since only the verdict is under test.
  */
 const evaluateScriptContext = (
   ourScriptCborHex: string,
   scriptContextConstr: Constr<unknown>,
-): boolean => {
+): { readonly ok: boolean; readonly errorKind: number } => {
   const evaluate = eval_program_raw as MidgardUplcEvalProgram;
   const result = evaluate(
     flatProgram(ourScriptCborHex),
@@ -94,7 +101,7 @@ const evaluateScriptContext = (
     false,
   );
   try {
-    return result.ok;
+    return { ok: result.ok, errorKind: result.error_kind };
   } finally {
     result.free();
   }
@@ -105,19 +112,24 @@ const expectScriptContextAccepted = (
   ourScriptCborHex: string,
   scriptContextConstr: Constr<unknown>,
 ) => {
-  expect(evaluateScriptContext(ourScriptCborHex, scriptContextConstr)).toBe(
-    true,
-  );
+  expect(evaluateScriptContext(ourScriptCborHex, scriptContextConstr)).toEqual({
+    ok: true,
+    errorKind: 0,
+  });
 };
 
-/** The validator errored: the minting policy refused the context. */
+/**
+ * The validator errored within budget: the minting policy refused the
+ * context, rather than running out of budget or returning a non-unit value.
+ */
 const expectScriptContextRefused = (
   ourScriptCborHex: string,
   scriptContextConstr: Constr<unknown>,
 ) => {
-  expect(evaluateScriptContext(ourScriptCborHex, scriptContextConstr)).toBe(
-    false,
-  );
+  expect(evaluateScriptContext(ourScriptCborHex, scriptContextConstr)).toEqual({
+    ok: false,
+    errorKind: EVAL_FAILED,
+  });
 };
 
 const loadRealContracts = () =>

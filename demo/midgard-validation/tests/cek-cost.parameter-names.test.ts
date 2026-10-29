@@ -201,12 +201,30 @@ const BUILTINS: readonly (readonly [string, number, Shape, Shape])[] = [
   ["Ripemd_160", 1, linearInX, constant],
 ];
 
-const PROBES = [0n, 1n, 2n, 3n, 5n, 8n, 70n, 1000n] as const;
+const PROBES = [
+  0n,
+  1n,
+  2n,
+  3n,
+  5n,
+  8n,
+  64n,
+  65n,
+  70n,
+  1000n,
+  1n << 20n,
+] as const;
 
-/** Every size vector of the arity over the probes, up to three arguments. */
+/**
+ * Every size vector of the arity over the probes, up to three arguments;
+ * above that, each probe as every argument's size, plus 1, 2, 3, ... in turn.
+ */
 const sizeGrid = (arity: number): readonly Sizes[] => {
   if (arity > 3) {
-    return PROBES.map((size) => Array.from({ length: arity }, () => size));
+    return [
+      ...PROBES.map((size) => Array.from({ length: arity }, () => size)),
+      Array.from({ length: arity }, (_, index) => BigInt(index + 1)),
+    ];
   }
   let grid: Sizes[] = [[]];
   for (let argument = 0; argument < arity; argument += 1) {

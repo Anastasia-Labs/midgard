@@ -285,9 +285,13 @@ export const evaluationContext = async (
   }
   expect(memory).toBeLessThanOrEqual(parameters.maxTxExMem);
   expect(steps).toBeLessThanOrEqual(parameters.maxTxExSteps);
-  // Establish that the mutation serializer itself preserves the usable script
-  // context, including ordered duplicate datum pairs, before testing changes.
-  expect(evaluate(withOutputs(signedCbor, new Map()))).toEqual(positive);
+  // Replacing every output with its own CML re-encoding, the path each
+  // mutation takes, must leave the script context usable, so a mutated
+  // transaction's refusal comes from the mutation and not the re-encoding.
+  const outputs = CML.Transaction.from_cbor_hex(signedCbor).body().outputs();
+  const identity = new Map<number, CML.TransactionOutput>();
+  for (let i = 0; i < outputs.len(); i++) identity.set(i, outputs.get(i));
+  expect(evaluate(withOutputs(signedCbor, identity))).toEqual(positive);
   return {
     evaluate,
     evidence: {

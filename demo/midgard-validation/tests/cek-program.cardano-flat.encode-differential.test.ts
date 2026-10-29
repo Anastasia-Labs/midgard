@@ -38,10 +38,14 @@ import { builtin } from "./helpers/uplc-builtins.js";
  * The owned Flat encoder against the uplc crate's, run by the pinned aiken
  * evaluator wasm: the crate reads the owned bytes and writes the program
  * again (applying no parameters), and must write the same bytes. The crate
- * keeps a Data constant's CBOR spelling as it read it, so this checks the
- * Flat framing; the Data CBOR is `encodeMidgardCekPlutusData`'s, checked by
- * the Data tests. The owned Cardano-exact reader must also read the bytes
- * back as the program written, so they mean that program and no other.
+ * normalises what it reads, a Data constant's CBOR included (`1801` becomes
+ * `01`, an indefinite-length tag 102 outer array becomes definite), so equal
+ * bytes prove the owned output is already in the crate's canonical form and a
+ * non-minimal spelling is caught. The owned Cardano-exact reader must also
+ * read the bytes back as the program written. Which bytes a program maps to
+ * is anchored by the reader's hand-written vector tables
+ * (`cek-program.cardano-flat.vectors.ts`); a bug the owned encoder and reader
+ * share symmetrically is not caught here.
  */
 const owned = (program: FlatProgram): string =>
   Buffer.from(encodeCardanoFlatProgram(program)).toString("hex");

@@ -24,10 +24,10 @@ multiline or helper-based assertions before reporting totals.
 - `not.toEqual(arrayContaining([a,b,c,d]))` rejects the complete conjunction,
   not every forbidden member individually. Confirm the intended exclusion
   contract before strengthening it.
-- `real-minting-policy-eval.test.ts` checks only the evaluator's success
-  flag. Determine the expected value/type and evaluator success semantics; a
-  returned boolean `False` is not universally synonymous with a ledger script
-  failure.
+- `real-minting-policy-eval.test.ts` settled: for Plutus V3 the evaluator's
+  `ok` holds only when the script returns unit (a returned `False` is a
+  failure, `error_kind` 3), and refusal cases also assert `error_kind` 2, a
+  failure within budget.
 - `scalus-add-signatures-eval.test.ts` currently has one scenario that awaits
   a real builder with local UPLC and rethrows failure. Completion without an
   exception is already a test oracle despite zero `expect()` calls. Add
