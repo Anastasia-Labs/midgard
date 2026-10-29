@@ -361,3 +361,8 @@ export {
   curatedEmulatorSetup,
   curatedEmulatorPlugin,
 } from "./curated-emulator.js";
+export {
+  preprodPublicBlueprint,
+  preprodPublicSetup,
+  preprodPublicPlugin,
+} from "./preprod-public-profile.js";

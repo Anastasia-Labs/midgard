@@ -45,6 +45,13 @@ export declare const curatedEmulatorPlugin: () => {
   transform(code: string, id: string): { code: string; map: null } | null;
 };
 
+export declare const preprodPublicBlueprint: string;
+export declare const preprodPublicSetup: string;
+export declare const preprodPublicPlugin: () => {
+  name: string;
+  transform(code: string, id: string): { code: string; map: null } | null;
+};
+
 export declare const workspaceBundleProjects: <
   Project extends {
     readonly extends?: true | string;

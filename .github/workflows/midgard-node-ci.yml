@@ -170,7 +170,8 @@ jobs:
   # The blueprints only test runs read, built here once rather than in every
   # shard that reads them: the interactive-emulator one that the fault-proof,
   # watcher and node suites' interactive project stamps for itself, the
-  # curated-emulator one the fault-proof suite's curated project stamps, and
+  # curated-emulator one the fault-proof suite's curated project stamps, the
+  # preprod-public one the node tools' public release project stamps, and
   # the two verbose-traced ones the traced-refusal step swaps modules out of.
   # Each is built by the same code the suites would otherwise run, with its
   # build record beside it. The consumers set MIDGARD_REQUIRE_PREBUILT_BLUEPRINTS,
@@ -197,6 +198,11 @@ jobs:
           - blueprint: curated-emulator
             build: node demo/midgard-test-support/curated-emulator.js
             directory: onchain/aiken/build/curated-emulator
+            record: plutus.json.deployment.json
+            traced: false
+          - blueprint: preprod-public
+            build: node demo/midgard-test-support/preprod-public-profile.js
+            directory: onchain/aiken/build/preprod-public
             record: plutus.json.deployment.json
             traced: false
           - blueprint: traced-preprod-testing
@@ -1207,7 +1213,7 @@ jobs:
   # Its eslint pass is the workspace-wide one in the `lint` job.
   midgard-node-tools:
     name: midgard-node-tools
-    needs: [aiken-fork, blueprint]
+    needs: [aiken-fork, blueprint, test-blueprints]
     runs-on: ubuntu-latest
     timeout-minutes: 60
     services:
@@ -1226,9 +1232,12 @@ jobs:
           --health-retries 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      # The preprod-public blueprint is the one the public release project
+      # (sign-deployment-release.public.test.ts) signs against.
       - uses: ./.github/actions/demo-setup
         with:
           blueprint: "true"
+          preprod-public-blueprint: "true"
           prebuild: lucid-midgard midgard-core midgard-sdk midgard-validation midgard-fault-proofs midgard-watcher midgard-node
       - name: Typecheck, build, and test Midgard node tools
         run: |

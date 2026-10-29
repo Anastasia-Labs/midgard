@@ -26,6 +26,12 @@ inputs:
       MIDGARD_REQUIRE_PREBUILT_BLUEPRINTS=1, so the suites' setup fails on a
       stale copy instead of rebuilding it. Implies "aiken".
     default: "false"
+  preprod-public-blueprint:
+    description: >-
+      "true" restores the preprod-public test blueprint and its build record
+      from the run's `test-blueprint-preprod-public` artifact under the same
+      MIDGARD_REQUIRE_PREBUILT_BLUEPRINTS=1. Implies "aiken".
+    default: "false"
   traced-blueprints:
     description: >-
       "true" restores both verbose-traced blueprints the traced-refusal step
@@ -82,7 +88,7 @@ runs:
       shell: bash
       run: cd demo && corepack pnpm --version
     - name: Pinned Aiken
-      if: inputs.aiken == 'true' || inputs.blueprint == 'true' || inputs.interactive-blueprint == 'true' || inputs.traced-blueprints == 'true'
+      if: inputs.aiken == 'true' || inputs.blueprint == 'true' || inputs.interactive-blueprint == 'true' || inputs.preprod-public-blueprint == 'true' || inputs.traced-blueprints == 'true'
       uses: ./.github/actions/aiken
     - name: Download the testnet blueprint and its build record
       if: inputs.blueprint == 'true'
@@ -102,6 +108,12 @@ runs:
       with:
         name: test-blueprint-curated-emulator
         path: onchain/aiken/build/curated-emulator
+    - name: Download the preprod-public blueprint and its build record
+      if: inputs.preprod-public-blueprint == 'true'
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      with:
+        name: test-blueprint-preprod-public
+        path: onchain/aiken/build/preprod-public
     - name: Download the traced preprod-testing blueprint and its build record
       if: inputs.traced-blueprints == 'true'
       uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -117,7 +129,7 @@ runs:
     # The suites never rebuild what an earlier job built: a restored copy that
     # does not match the checkout fails them.
     - name: Forbid rebuilding the restored test blueprints
-      if: inputs.interactive-blueprint == 'true' || inputs.traced-blueprints == 'true'
+      if: inputs.interactive-blueprint == 'true' || inputs.preprod-public-blueprint == 'true' || inputs.traced-blueprints == 'true'
       shell: bash
       run: echo "MIDGARD_REQUIRE_PREBUILT_BLUEPRINTS=1" >> "$GITHUB_ENV"
     - name: Build prerequisite workspace packages

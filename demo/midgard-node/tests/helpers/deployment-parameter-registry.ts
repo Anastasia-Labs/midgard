@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import {
   DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
@@ -18,7 +20,8 @@ import {
   buildDeploymentManifest,
   deploymentDaTransportProfile,
 } from "../../src/commands/contract-deployment-info.js";
-import { manifestDeployableScripts } from "../../src/deployable-scripts.js";
+import { isPublicDeploymentProfile } from "../../src/commands/listen-public-http.js";
+import { loadPhasMembershipWithdrawalScript } from "../../src/phas-membership.js";
 import {
   cachedRealBlueprint,
   loadRealBlueprint,
@@ -29,6 +32,32 @@ import {
   testReferenceScriptAuthPolicy,
 } from "../contract-deployment-info.validator-hashes-by-path.js";
 import { loadRealMidgardContractsForTest } from "./real-midgard-contracts.js";
+
+/**
+ * A public profile's deployment tooling reads the unused-validator census
+ * from MIDGARD_BLUEPRINT_CLASSIFICATION_FILE; mount this probe's census there
+ * while the manifest is built. Other profiles need none.
+ */
+const withPublicClassification = async <T>(
+  classifications: Readonly<Record<string, string>>,
+  build: () => Promise<T>,
+): Promise<T> => {
+  if (!isPublicDeploymentProfile(SELECTED_DEPLOYMENT_PROFILE.name))
+    return build();
+  const directory = mkdtempSync(join(tmpdir(), "midgard-classification-"));
+  const path = join(directory, "blueprint-classification.json");
+  writeFileSync(path, JSON.stringify(classifications));
+  const previous = process.env.MIDGARD_BLUEPRINT_CLASSIFICATION_FILE;
+  process.env.MIDGARD_BLUEPRINT_CLASSIFICATION_FILE = path;
+  try {
+    return await build();
+  } finally {
+    if (previous === undefined)
+      delete process.env.MIDGARD_BLUEPRINT_CLASSIFICATION_FILE;
+    else process.env.MIDGARD_BLUEPRINT_CLASSIFICATION_FILE = previous;
+    rmSync(directory, { recursive: true, force: true });
+  }
+};
 
 /** Genuine current applied scripts/parameters; publication references remain
  * deterministic codec fixtures, never evidence of a live deployment. */
@@ -48,7 +77,11 @@ export const makeGenuineDeploymentRegistryForTest = async (published?: {
       },
     ));
   const blueprint = await Effect.runPromise(loadRealBlueprint());
-  const scripts = manifestDeployableScripts(contracts).map((entry) => {
+  // The members alone: a public profile's deployment tooling also checks them
+  // against the census below, which this probe has not built yet.
+  const scripts = SDK.manifestDeploymentScripts(contracts, {
+    phasMembership: loadPhasMembershipWithdrawalScript,
+  }).map((entry) => {
     if (entry.script.type !== "PlutusV3" && entry.script.type !== "Native")
       throw new Error("Unexpected script language in real registry");
     return {
@@ -117,36 +150,38 @@ export const makeGenuineDeploymentRegistryForTest = async (published?: {
   const blueprintJson = readFileSync(cachedRealBlueprint.path, "utf8");
   const manifest =
     published?.manifest ??
-    buildDeploymentManifest(
-      await Effect.runPromise(
-        buildFinalizedContractDeploymentInfo(
-          contracts,
-          testReferenceScriptAuthPolicy(
-            contracts.referenceScriptAuth.policyId,
-            contracts.referenceScriptAuth.mintingScriptCBOR,
+    (await withPublicClassification(classifications, async () =>
+      buildDeploymentManifest(
+        await Effect.runPromise(
+          buildFinalizedContractDeploymentInfo(
+            contracts,
+            testReferenceScriptAuthPolicy(
+              contracts.referenceScriptAuth.policyId,
+              contracts.referenceScriptAuth.mintingScriptCBOR,
+            ),
           ),
         ),
+        {
+          ...TEST_FINALIZED_MANIFEST_BUILD_CONTEXT,
+          economics:
+            DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE[
+              SELECTED_DEPLOYMENT_PROFILE.economics.profile
+            ],
+          da: {
+            ...TEST_FINALIZED_MANIFEST_BUILD_CONTEXT.da,
+            transportProfile: deploymentDaTransportProfile({
+              MIDGARD_DA_PAYLOAD_ENVELOPE: "identity",
+              MIDGARD_DA_ZSTD_LEVEL: 3,
+            }),
+          },
+          artifacts: {
+            blueprintHash: createHash("sha256")
+              .update(blueprintJson)
+              .digest("hex"),
+          },
+        },
       ),
-      {
-        ...TEST_FINALIZED_MANIFEST_BUILD_CONTEXT,
-        economics:
-          DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE[
-            SELECTED_DEPLOYMENT_PROFILE.economics.profile
-          ],
-        da: {
-          ...TEST_FINALIZED_MANIFEST_BUILD_CONTEXT.da,
-          transportProfile: deploymentDaTransportProfile({
-            MIDGARD_DA_PAYLOAD_ENVELOPE: "identity",
-            MIDGARD_DA_ZSTD_LEVEL: 3,
-          }),
-        },
-        artifacts: {
-          blueprintHash: createHash("sha256")
-            .update(blueprintJson)
-            .digest("hex"),
-        },
-      },
-    );
+    ));
   const retained = {
     schemaVersion: "midgard-deployment-parameter-registry-v1",
     manifestId: manifest.manifestId,

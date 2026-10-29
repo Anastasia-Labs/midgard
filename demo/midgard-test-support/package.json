@@ -86,6 +86,7 @@
     "run-shared-fixtures-setup.js",
     "interactive-emulator.js",
     "curated-emulator.js",
+    "preprod-public-profile.js",
     "database-identity.js",
     "database-identity.d.ts",
     "duration-shards.js",
