@@ -1,0 +1,143 @@
+# Operator node on the preprod-public profile: the private configuration the
+# node reads from MIDGARD_CONFIG_FILE. Copy it to a private path (chmod 600,
+# a regular file, not a symlink). Values are strings: quote numbers and
+# booleans too. A value set in the process environment wins over this file.
+#
+# A public profile refuses checkout dotenv files (run with
+# MIDGARD_DOTENV_MODE=disabled) and refuses to start the API unless the
+# secrets below come from this mounted file. Secret settings are commented
+# out: put them only in the private copy, never in this example. Paths are the
+# container paths of the public node image; change them to match your mounts.
+#
+# The node reads and submits L1 only through the local Cardano node. Remote L1
+# provider settings (L1_ACCESS, L1_PROVIDER, L1_KUPO_URL, L1_OGMIOS_URL,
+# L1_BLOCKFROST_URL, L1_BLOCKFROST_PROJECT_ID) are refused at start.
+
+# --- Network and profile (required) ------------------------------------------
+# Must name the profile the node was built with (deployment:build
+# preprod-public) and that profile's network.
+MIDGARD_DEPLOYMENT_PROFILE: "preprod-public"
+NETWORK: "Preprod"
+# The public runtime refuses runtime genesis.
+RUN_GENESIS_ON_STARTUP: "false"
+
+# --- Wallets (required secrets) ------------------------------------------------
+# Four distinct wallets; config load refuses two roles that derive the same
+# payment key. The operator and merge wallets must be on the profile's
+# operator allow-list (allow_lists.operators). Wallet commands on a public
+# profile take seeds only from private files (--wallet-seed-phrase-file).
+# Operator wallet: hub-oracle nonce, init, operator bond and block commits.
+# L1_OPERATOR_SEED_PHRASE: "<24-word mnemonic>"
+# Merge wallet.
+# L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: "<24-word mnemonic>"
+# Settlement worker's fee and collateral wallet.
+# L1_SETTLEMENT_SEED_PHRASE: "<24-word mnemonic>"
+# Reference-script publisher. Its address holds the published scripts unless
+# L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS names another address.
+# L1_REFERENCE_SCRIPT_SEED_PHRASE: "<24-word mnemonic>"
+
+# --- API and database credentials (required secrets) ---------------------------
+# Admin key: 32 to 64 random bytes as lowercase hex (64 to 128 characters).
+# ADMIN_API_KEY: "<64 hex characters>"
+# At least 24 characters, not a default such as "postgres".
+# POSTGRES_PASSWORD: "<database password>"
+
+# --- API listener and database (required) --------------------------------------
+# scripts/public-operator-compose.mjs refuses any other value for these six:
+# its isolated network runs the database as `postgres` and the ingress at
+# 10.91.7.2.
+PORT: "3000"
+POSTGRES_HOST: "postgres"
+POSTGRES_PORT: "5432"
+POSTGRES_USER: "midgard"
+POSTGRES_DB: "midgard"
+# Private IPv4 address of the TLS ingress allowed to set X-Midgard-Client-IP.
+# Empty keys every request by its socket address.
+HTTP_TRUSTED_PROXY_PEERS: "10.91.7.2"
+# The public runtime refuses fewer than 2 validation workers.
+VALIDATION_WORKER_POOL_SIZE: "4"
+
+# --- Public release identity (required) -----------------------------------------
+# The API does not open until the signed release verifies against these.
+# HTTPS origin the API serves; the TLS certificate must cover its hostname.
+MIDGARD_PUBLIC_API_ORIGIN: "https://midgard.example.org"
+# TLS certificate and key for that origin (TLSv1.3). The key file is private.
+MIDGARD_PUBLIC_TLS_CERT_FILE: "/run/public/tls-cert.pem"
+MIDGARD_PUBLIC_TLS_KEY_FILE: "/run/secrets/tls-key.pem"
+# Signed release identity and the external Ed25519 trust roots that verify it.
+MIDGARD_PUBLIC_RELEASE_AUTHORITY_FILE: "/run/public/release-authority.json"
+MIDGARD_PUBLIC_RELEASE_TRUST_ROOTS_FILE: "/run/public/release-trust-roots.json"
+# Release provenance and finalized manifest covered by that signature.
+MIDGARD_PUBLIC_RELEASE_PROVENANCE_FILE: "/run/public/release-provenance.json"
+MIDGARD_PUBLIC_FINALIZED_MANIFEST_FILE: "/run/public/finalized-manifest.json"
+# Retained deployment parameters bound by the provenance, and the explicit
+# unused-validator classification that must match them.
+MIDGARD_DEPLOYMENT_PARAMETER_REGISTRY_FILE: "/run/public/deployment-parameters.json"
+MIDGARD_BLUEPRINT_CLASSIFICATION_FILE: "/run/public/blueprint-classification.json"
+# The finalized manifest id (64 hex) and the full 40-hex source revision the
+# release was built from.
+MIDGARD_PUBLIC_MANIFEST_ID: "<64 hex characters>"
+MIDGARD_PUBLIC_RELEASE_REVISION: "<40 hex characters>"
+# Digest-pinned role images, as signed in the release.
+MIDGARD_PUBLIC_NODE_IMAGE: "<registry>/midgard-node@sha256:<64 hex>"
+MIDGARD_PUBLIC_POSTGRES_IMAGE: "<registry>/postgres@sha256:<64 hex>"
+MIDGARD_PUBLIC_INGRESS_IMAGE: "<registry>/nginx@sha256:<64 hex>"
+
+# --- Deployment (required) -----------------------------------------------------
+# Finalized contract deployment manifest written by `init`.
+MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH: "/run/public/deployment-info.json"
+# The node's libp2p DA producer manifest.
+MIDGARD_DEPLOYMENT_MANIFEST_PATH: "/app/stack/producer.json"
+# Persistent libp2p identity matching the producer manifest's peer id
+# (`seed:<32-byte hex>`); a secret:
+# DA_LIBP2P_PRIVATE_KEY_SOURCE: "seed:<64 hex characters>"
+# The hub-oracle one-shot output that prepare-hub-oracle-one-shot-nonce
+# created. Leave unset until that step has run (e2e-stack sets them itself).
+# HUB_ORACLE_ONE_SHOT_TX_HASH: "<64 hex characters>"
+# HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: "0"
+
+# --- Local Cardano node (required) ---------------------------------------------
+# Without these the node stays up but reports l1_follower_unconfigured.
+L1_NODE_SOCKET_PATH: "/ipc/node.socket"
+L1_NODE_CONFIG_PATH: "/cardano-config/config.json"
+L1_NODE_TRANSPORT_BINARY_PATH: "/usr/local/bin/midgard-l1-node-transport"
+
+# --- Native ledger owner (required) --------------------------------------------
+# The image ships the owner and its SHA-256 at /app/native; copy the hash from
+# /app/native/architecture-g-owner.sha256 of the pinned node image.
+MPF_NATIVE_OWNER_BINARY_PATH: "/app/native/architecture-g-owner"
+MPF_NATIVE_OWNER_BINARY_SHA256: "<64 hex characters>"
+MPF_NATIVE_OWNER_SIDECAR_PATH: "db/midgard-ledger-mpf-architecture-g.sidecar"
+
+# --- L2 fees (required) --------------------------------------------------------
+# Linear L2 fee: MIN_FEE_A per byte plus MIN_FEE_B. Every operator of the
+# deployment must use the same values.
+MIN_FEE_A: "<lovelace per byte>"
+MIN_FEE_B: "<lovelace>"
+
+# --- Fresh deployment only (required before reference-script publication) ------
+# Read when deriving and publishing the scripts and at init; afterwards the
+# finalized manifest carries them and a changed value is refused.
+# DA governance: packed 32-byte committee verification keys and 28-byte owner
+# payment key hashes, hex, sorted ascending without duplicates, at least 2
+# entries each. DA_THRESHOLD defaults to the governed floor ceil(2n/3).
+DA_COMMITTEE_HEX: "<n x 64 hex characters>"
+DA_OWNERS_HEX: "<m x 56 hex characters>"
+# DA availability-challenge identity (bound into the manifest). The
+# challenger bond is also the validation-trace dispute bond a prover posts.
+MIDGARD_DA_AVAILABILITY_CHUNK_BYTE_LENGTH: "14020"
+MIDGARD_DA_AVAILABILITY_TRANCHE_BYTE_LENGTH: "4194304"
+MIDGARD_DA_AVAILABILITY_MAX_TRANCHE_COUNT: "16"
+MIDGARD_DA_AVAILABILITY_CHALLENGER_BOND_LOVELACE: "10000000000"
+MIDGARD_DA_AVAILABILITY_MAX_OPEN_FEE_LOVELACE: "500000"
+MIDGARD_DA_AVAILABILITY_MAX_PUBLICATION_FEE_LOVELACE: "500000"
+MIDGARD_DA_AVAILABILITY_MAX_SETTLEMENT_FEE_LOVELACE: "500000"
+MIDGARD_DA_AVAILABILITY_MAX_CLOSE_FEE_LOVELACE: "1000000"
+MIDGARD_DA_AVAILABILITY_MAX_TIMEOUT_FEE_LOVELACE: "1200000"
+# Event-history payload bounds and protection duration. No defaults: use
+# measured values (inline bytes at most the maximum payload bytes, at most
+# 1024 payload Data nodes; the duration in milliseconds).
+MIDGARD_EVENT_HISTORY_INLINE_LIMIT_BYTES: "<bytes>"
+MIDGARD_EVENT_HISTORY_MAX_PAYLOAD_BYTES: "<bytes>"
+MIDGARD_EVENT_HISTORY_MAX_PAYLOAD_NODES: "<count>"
+MIDGARD_EVENT_HISTORY_PROTECTION_DURATION_MS: "<milliseconds>"

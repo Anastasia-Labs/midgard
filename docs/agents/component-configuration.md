@@ -29,7 +29,10 @@ Fund L2 wallets through authenticated deposits. Legacy testnet genesis wallet
 seeds create no runtime balances; isolated fixtures supply their own inputs.
 
 Templates are in each package as `config.example.yaml`; the public reader has
-`public-retained-da.config.example.yaml`. Copy a template to the private path,
+`public-retained-da.config.example.yaml`. The node and the DA committee also
+have `config.preprod-public.example.yaml`, listing every setting the
+preprod-public profile requires; the watcher's `watcher-process.example.json`
+already has the preprod-public shape. Copy a template to the private path,
 remove the empty `{}` mapping when adding settings, and use mode `0600`.
 Private `demo/**/config.yaml` files and `.env.bak-*` backups are git-ignored.
 Do not put real credentials in examples, tracked files, command arguments or logs.
