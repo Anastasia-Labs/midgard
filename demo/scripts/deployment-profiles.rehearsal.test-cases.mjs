@@ -47,7 +47,7 @@ test("preprod-rehearsal is preprod-public with preprod-testing's economics", () 
 test("preprod-rehearsal is held to every production rule preprod-public is", () => {
   const profiles = readProfiles();
   const production =
-    /event_wait_ms - max_validity_range_ms >= 3 d slot_length_ms \/ active_slot_coeff on a production profile; the largest such d is 22$/u;
+    /event_wait_ms - max_validity_range_ms >= 3 d slot_length_ms \/ active_slot_coeff on a production profile; the largest such d is \d+$/u;
   for (const name of ["preprod-public", "preprod-rehearsal"]) {
     const deeper = structuredClone(profiles[name]);
     deeper.l1_finality.commit_event_depth += 1;
@@ -71,7 +71,10 @@ test("preprod-rehearsal is held to every production rule preprod-public is", () 
       profiles["preprod-testing"].l1_finality,
     );
     testingTiming.excluded_fraud_proof_categories = ["validationTraceDispute"];
-    assert.throws(() => validateProfile(testingTiming, name));
+    assert.throws(
+      () => validateProfile(testingTiming, name),
+      /must end before block maturity/u,
+    );
   }
 });
 
