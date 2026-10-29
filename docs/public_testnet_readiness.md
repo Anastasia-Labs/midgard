@@ -161,8 +161,10 @@ Every contract item merges before the 2026-10-26 freeze.
   revision, compiler, flags, `aiken.lock`, blueprint, script hashes, protocol
   parameters and rule bundle.
 - **Signed manifest.** Open. Publish a manifest with script hashes and
-  parameters, signed by one release key, and say how anyone verifies it. No
-  manifest-signing tooling exists yet.
+  parameters, signed by one release key, and say how anyone verifies it. The
+  signing command exists (`sign-deployment-release`,
+  [deployment-release-tooling.md](deployment-release-tooling.md)); no release
+  has been signed with it yet.
 - **Script registry.** Open. The deploy tooling classifies every validator as
   deployed, excluded or internal and fails on an unclassified one. Every
   enabled proof family has its full step chain and parameter links.

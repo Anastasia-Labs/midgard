@@ -81,6 +81,48 @@ and explicit expected source and role-image identities. Missing provenance,
 untrusted signers, signature/digest changes, and configuration mismatches are
 refused before binding a public listener.
 
+## Signing a release
+
+One command signs a finalized deployment with the release key and writes, into
+a new directory, every file public listen and the watcher verify. Build the
+tools for the deployment's profile: the manifest verifiers admit only the
+compiled profile.
+
+```sh
+node demo/midgard-node-tools/dist/index.js sign-deployment-release \
+  --release-input /absolute/release-input.json \
+  --deployment-info /absolute/contract-deployment-info.json \
+  --blueprint /absolute/plutus.json \
+  --output /absolute/new-release-directory
+```
+
+The release input is the full-stack one above (its shape is in
+[PREPROD_STACK.md](../demo/midgard-node-tools/docs/PREPROD_STACK.md)):
+`signingKeyFile` names the Ed25519 PKCS#8 PEM key file, never the key itself.
+A public profile also needs `provenanceFile` and `parameterRegistryFile`, the
+deploy tool's `<manifest-path>.blueprint-registry.json`. Supplied funding
+profiles also need `--funding-payment-key-hash` of the prover funding wallet.
+The watcher's release authoring writes the files and reopens them, then the
+command checks the signed identity with the shared release verifier against the
+written trust roots. It prints the manifest id (`MIDGARD_PUBLIC_MANIFEST_ID`)
+and the trust-root id. An existing output directory is refused.
+
+| File                            | Node public listen                           | Watcher process config                        |
+| ------------------------------- | -------------------------------------------- | --------------------------------------------- |
+| `deployment-authority.json`     | `MIDGARD_PUBLIC_RELEASE_AUTHORITY_FILE`      | `deploymentAuthorityPath`                     |
+| `release-trust-roots.json`      | `MIDGARD_PUBLIC_RELEASE_TRUST_ROOTS_FILE`    |                                               |
+| `deployment-manifest.json`      | `MIDGARD_PUBLIC_FINALIZED_MANIFEST_FILE`     | `faultProofInfrastructure.manifestPath`       |
+| `contract-deployment-info.json` | `MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH`      | `faultProofInfrastructure.deploymentInfoPath` |
+| `release-provenance.json`       | `MIDGARD_PUBLIC_RELEASE_PROVENANCE_FILE`     |                                               |
+| `deployment-parameters.json`    | `MIDGARD_DEPLOYMENT_PARAMETER_REGISTRY_FILE` |                                               |
+| `blueprint-classification.json` | `MIDGARD_BLUEPRINT_CLASSIFICATION_FILE`      |                                               |
+| `rule-bundle.json`              |                                              | `ruleBundlePath`                              |
+| `funding-profiles.json`         |                                              | `fundingProfileBundlePath`                    |
+| `plutus.json`                   |                                              | `faultProofInfrastructure.blueprintPath`      |
+
+Publish `release-trust-roots.json` through a channel separate from the release
+files: the roots inside an authority file never establish trust.
+
 ## SDK package publish
 
 The npm publish set is `@al-ft/midgard-core`, `@al-ft/midgard-validation`,

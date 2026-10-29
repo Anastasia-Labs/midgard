@@ -123,6 +123,50 @@ program
   });
 
 program
+  .command("sign-deployment-release")
+  .description(
+    "Sign a finalized deployment into a new release directory: the signed authority, its trust roots and every file public listen and the watcher verify",
+  )
+  .requiredOption(
+    "--release-input <file>",
+    "Absolute path of the release input JSON naming the ed25519 PEM signing key file",
+  )
+  .requiredOption(
+    "--deployment-info <file>",
+    "Absolute path of the finalized contract deployment info (the deployment manifest)",
+  )
+  .requiredOption(
+    "--blueprint <file>",
+    "Absolute path of the plutus.json the deployment was built from",
+  )
+  .requiredOption(
+    "--output <directory>",
+    "Absolute path of a new directory for the signed release",
+  )
+  .option(
+    "--funding-payment-key-hash <hex>",
+    "Payment key hash of the prover funding wallet; required when the release input supplies funding profiles",
+  )
+  .action(
+    async (options: {
+      releaseInput: string;
+      deploymentInfo: string;
+      blueprint: string;
+      output: string;
+      fundingPaymentKeyHash?: string;
+    }) => {
+      try {
+        const { signDeploymentRelease } = await import(
+          "./sign-deployment-release.js"
+        );
+        writeJson(await signDeploymentRelease(options));
+      } catch (error) {
+        failCli("sign-deployment-release", error);
+      }
+    },
+  );
+
+program
   .command("e2e-stack")
   .description(
     "Set up or resume the persistent local-provider Preprod stack and verify wallet journeys",
