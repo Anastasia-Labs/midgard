@@ -21,6 +21,7 @@ import {
 import { deploymentFraudProofCatalogueCategories } from "@al-ft/midgard-core/deployment-profile";
 import type { WatcherDeploymentIdentityPolicy } from "midgard-watcher";
 
+import { deploymentProgramCommitments } from "../release-program-commitments.js";
 import { writeDurableFile, writeOnceFile } from "./durable.js";
 import type { Layout } from "./layout.js";
 
@@ -72,21 +73,6 @@ const trustRootKey = (path: string): KeyObject => {
   if (key.asymmetricKeyType !== "ed25519")
     throw new Error(`${path} is not an ed25519 key`);
   return key;
-};
-
-/**
- * The one proof-program commitment the watcher binds: the computation-thread
- * policy, committed exactly as the watcher journeys do.
- */
-const programCommitments = (manifest: DeploymentManifest) => {
-  const policyId = manifest.contracts.computationThreadMint?.scriptHash;
-  if (policyId === undefined)
-    throw new Error("the deployment has no computation-thread policy");
-  return {
-    "computation-thread-policy-v1": createHash("sha256")
-      .update(JSON.stringify({ computationThreadPolicyId: policyId }))
-      .digest("hex"),
-  };
 };
 
 const identityPolicy = (
@@ -171,7 +157,7 @@ export const ensureWatcherReleaseBundle = async (
     throw new Error(
       `${layout.blueprint} is not the blueprint the deployment was built from`,
     );
-  const commitments = programCommitments(manifest);
+  const commitments = deploymentProgramCommitments(manifest);
   const fundingBundle = watcher.createWatcherWorkflowFundingProfileBundle({
     profiles: [],
   });

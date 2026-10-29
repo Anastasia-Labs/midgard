@@ -3,6 +3,9 @@ import { fileURLToPath } from "node:url";
 import {
   isolatedForksPool,
   midgardSourceEnvironments,
+  preprodPublicBlueprint,
+  preprodPublicPlugin,
+  preprodPublicSetup,
   rawSqlLoaderPlugin,
   workspaceBundleProjects,
 } from "@al-ft/midgard-test-support/vitest";
@@ -27,6 +30,10 @@ process.env.MIDGARD_TEST_DATABASE_PREFIX ??=
 
 const bail = parsePositiveInteger(process.env.MIDGARD_NODE_TEST_BAIL);
 
+// Signs a public release and opens it as public listen does, so it compiles
+// the preprod-public profile against a blueprint built for it.
+const preprodPublicTests = ["./tests/sign-deployment-release.public.test.ts"];
+
 export default defineConfig({
   plugins: [rawSqlLoaderPlugin()],
   test: {
@@ -34,23 +41,40 @@ export default defineConfig({
     reporters: [["default", { summary: false }]],
     // Workspace packages load from a per-run source bundle; files that need
     // them module-by-module run in `midgard-node-tools:source`.
-    projects: workspaceBundleProjects(
+    projects: [
+      ...workspaceBundleProjects(
+        {
+          extends: true,
+          test: {
+            name: "midgard-node-tools",
+            // On the project, so the bundle serves the midgard-node helpers it
+            // imports (see `workspaceBundleProjects`).
+            globalSetup: ["./tests/global-setup.ts"],
+            include: ["./tests/**/*.test.ts"],
+            exclude: [
+              ...configDefaults.exclude,
+              "./tests/phase4-journal-kill-recovery-summary-verifier.test.mjs",
+              ...preprodPublicTests,
+            ],
+          },
+        },
+        { packageDirectory: fileURLToPath(new URL(".", import.meta.url)) },
+      ),
+      // Not bundled: its plugin rewrites a midgard-core module.
       {
         extends: true,
+        plugins: [preprodPublicPlugin()],
         test: {
-          name: "midgard-node-tools",
-          // On the project, so the bundle serves the midgard-node helpers it
-          // imports (see `workspaceBundleProjects`).
-          globalSetup: ["./tests/global-setup.ts"],
-          include: ["./tests/**/*.test.ts"],
-          exclude: [
-            ...configDefaults.exclude,
-            "./tests/phase4-journal-kill-recovery-summary-verifier.test.mjs",
-          ],
+          name: "preprod-public-release",
+          include: preprodPublicTests,
+          globalSetup: [preprodPublicSetup],
+          env: {
+            MIDGARD_DEPLOYMENT_PROFILE: "preprod-public",
+            MIDGARD_REAL_BLUEPRINT_PATH: preprodPublicBlueprint,
+          },
         },
       },
-      { packageDirectory: fileURLToPath(new URL(".", import.meta.url)) },
-    ),
+    ],
     testTimeout: 420_000,
     ...(bail === undefined ? {} : { bail }),
     environment: "node",

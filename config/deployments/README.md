@@ -164,6 +164,15 @@ category's catalogue membership proof.
 New curated journey files belong in `curatedTests` in the fault-proof Vitest
 config.
 
+### Public release signing test
+
+The node tools' `preprod-public-release` Vitest project selects `preprod-public`
+the same way and caches its blueprint at
+`onchain/aiken/build/preprod-public/plutus.json`; build it directly with
+`node demo/midgard-test-support/preprod-public-profile.js`. Its one file signs a
+release with `sign-deployment-release` and opens it with public listen's release
+check.
+
 ### Live testing profiles
 
 `preprod-testing` and `local-devnet-testing` use fifteen-minute block maturity,

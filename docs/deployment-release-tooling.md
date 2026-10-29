@@ -86,7 +86,18 @@ refused before binding a public listener.
 One command signs a finalized deployment with the release key and writes, into
 a new directory, every file public listen and the watcher verify. Build the
 tools for the deployment's profile: the manifest verifiers admit only the
-compiled profile.
+compiled profile, and a default build compiles `preprod-testing`. Select the
+profile, then rebuild the tools (the build rebuilds the packages it imports):
+
+```sh
+node demo/scripts/deployment-profiles.mjs generate preprod-public
+pnpm --dir demo/midgard-node-tools run build
+```
+
+This is the profile generation the Docker `public-final` targets run inside
+their image builds; those images do not carry this command. Generation
+rewrites the checkout's selected profile, so sign from a release checkout
+rather than a development one.
 
 ```sh
 node demo/midgard-node-tools/dist/index.js sign-deployment-release \
@@ -102,10 +113,20 @@ The release input is the full-stack one above (its shape is in
 A public profile also needs `provenanceFile` and `parameterRegistryFile`, the
 deploy tool's `<manifest-path>.blueprint-registry.json`. Supplied funding
 profiles also need `--funding-payment-key-hash` of the prover funding wallet.
+`programCommitments` may be `{}`: the command derives the one commitment every
+release binds, `computation-thread-policy-v1`, the SHA-256 of
+`{"computationThreadPolicyId":"<policy id>"}` with the manifest's
+`contracts.computationThreadMint.scriptHash`, and refuses a supplied value that
+differs from it.
 The watcher's release authoring writes the files and reopens them, then the
 command checks the signed identity with the shared release verifier against the
-written trust roots. It prints the manifest id (`MIDGARD_PUBLIC_MANIFEST_ID`)
-and the trust-root id. An existing output directory is refused.
+written trust roots. A public release is then opened exactly as public listen
+opens it, with the provenance's source revision and node, Postgres and ingress
+images as the expected identities, so provenance that public listen would
+refuse, such as one without an ingress image, is refused here. It prints the
+manifest id (`MIDGARD_PUBLIC_MANIFEST_ID`) and the trust-root id. An existing
+output directory is refused; a refused release leaves no output directory, so
+the same command can be rerun once the input is corrected.
 
 | File                            | Node public listen                           | Watcher process config                        |
 | ------------------------------- | -------------------------------------------- | --------------------------------------------- |
@@ -121,7 +142,9 @@ and the trust-root id. An existing output directory is refused.
 | `plutus.json`                   |                                              | `faultProofInfrastructure.blueprintPath`      |
 
 Publish `release-trust-roots.json` through a channel separate from the release
-files: the roots inside an authority file never establish trust.
+files: public listen trusts only the roots in that file, never the roots inside
+an authority file. The watcher has no external root input; it verifies the
+authority against the `trustRoots` embedded in it.
 
 ## SDK package publish
 

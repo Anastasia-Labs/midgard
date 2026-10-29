@@ -1,11 +1,20 @@
-import { mkdir, readdir, readFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 
-import { verifySignedDeploymentRelease } from "@al-ft/midgard-core/deployment-release";
+import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  type DeploymentReleaseProvenance,
+  verifySignedDeploymentRelease,
+} from "@al-ft/midgard-core/deployment-release";
+import { authenticatePublicHttpRelease } from "midgard-node/commands/listen-public-http";
 import { writeTextFileAtomicNoReplace } from "midgard-node/files/atomic-write";
 import { authorWatcherDeploymentRelease } from "midgard-watcher";
 
 import { readReleaseInput } from "./full-stack/release.js";
+import {
+  COMPUTATION_THREAD_POLICY_COMMITMENT,
+  deploymentProgramCommitments,
+} from "./release-program-commitments.js";
 
 /** File names in the output directory; the operator mounts each where its reader expects it. */
 export const SIGNED_RELEASE_FILES = {
@@ -49,12 +58,66 @@ const classificationOf = (registry: unknown) => {
 };
 
 /**
+ * The release input's program commitments with the computation-thread
+ * commitment derived from the manifest; a supplied value that differs from the
+ * derivation is refused, never signed.
+ */
+const releaseProgramCommitments = (
+  supplied: Readonly<Record<string, string>>,
+  manifest: Parameters<typeof deploymentProgramCommitments>[0],
+) => {
+  const derived = deploymentProgramCommitments(manifest);
+  const value = supplied[COMPUTATION_THREAD_POLICY_COMMITMENT];
+  if (
+    value !== undefined &&
+    value !== derived[COMPUTATION_THREAD_POLICY_COMMITMENT]
+  )
+    throw new Error(
+      `programCommitments.${COMPUTATION_THREAD_POLICY_COMMITMENT} differs from the deployment's computation-thread policy`,
+    );
+  return { ...supplied, ...derived };
+};
+
+/**
+ * Opens the written release the way public listen does, with the identities
+ * an operator configures for it: the manifest id and the provenance's source
+ * revision and node, Postgres and ingress images.
+ */
+const authenticateAsPublicListen = (
+  path: (name: keyof typeof SIGNED_RELEASE_FILES) => string,
+  manifestId: string,
+  provenance: DeploymentReleaseProvenance,
+) => {
+  try {
+    authenticatePublicHttpRelease({
+      MIDGARD_PUBLIC_RELEASE_AUTHORITY_FILE: path("authority"),
+      MIDGARD_PUBLIC_RELEASE_TRUST_ROOTS_FILE: path("trustRoots"),
+      MIDGARD_PUBLIC_RELEASE_PROVENANCE_FILE: path("provenance"),
+      MIDGARD_PUBLIC_FINALIZED_MANIFEST_FILE: path("manifest"),
+      MIDGARD_DEPLOYMENT_PARAMETER_REGISTRY_FILE: path("parameterRegistry"),
+      MIDGARD_BLUEPRINT_CLASSIFICATION_FILE: path("classification"),
+      MIDGARD_PUBLIC_MANIFEST_ID: manifestId,
+      MIDGARD_PUBLIC_RELEASE_REVISION: provenance.sourceRevision,
+      MIDGARD_PUBLIC_NODE_IMAGE: provenance.roleImages.node,
+      MIDGARD_PUBLIC_POSTGRES_IMAGE: provenance.roleImages.postgres,
+      MIDGARD_PUBLIC_INGRESS_IMAGE: provenance.roleImages.ingress,
+    });
+  } catch (error) {
+    throw new Error(
+      `Public listen refuses the signed release: ${(error as Error).message}`,
+    );
+  }
+};
+
+/**
  * Signs one deployment release into a new directory with the release key the
  * release input names: the signed authority, its trust roots, the watcher's
  * rule and funding bundles, and the manifest, blueprint, provenance and
  * parameter registry they bind. The watcher's own release authoring writes and
  * reopens the bundle; the result is then checked with the node's shared
- * release verifier against the written trust roots.
+ * release verifier against the written trust roots, and a public release is
+ * opened as public listen opens it. A refused release leaves no directory
+ * behind.
  */
 export const signDeploymentRelease = async (options: {
   readonly releaseInput: string;
@@ -79,6 +142,10 @@ export const signDeploymentRelease = async (options: {
       "utf8",
     ),
   );
+  const programCommitments = releaseProgramCommitments(
+    input.programCommitments,
+    verifyFinalizedDeploymentManifest(manifest),
+  );
   const blueprintJson = await readFile(
     absolute("--blueprint", options.blueprint),
   );
@@ -88,55 +155,67 @@ export const signDeploymentRelease = async (options: {
     join(output, SIGNED_RELEASE_FILES[name]);
   const write = (target: string, contents: string | Uint8Array) =>
     writeTextFileAtomicNoReplace(target, contents, { mode: 0o644 });
-  const { authority } = await authorWatcherDeploymentRelease({
-    manifest,
-    blueprintJson,
-    programCommitments: input.programCommitments,
-    ...(releaseProvenance === undefined ? {} : { releaseProvenance }),
-    ...(deploymentParameterRegistry === undefined
-      ? {}
-      : { deploymentParameterRegistry }),
-    fundingProfiles: input.fundingProfiles,
-    fundingPaymentKeyHash: options.fundingPaymentKeyHash ?? "",
-    signingKey: key,
-    paths: {
-      authority: path("authority"),
-      rules: path("rules"),
-      funding: path("funding"),
-      manifest: path("manifest"),
-      blueprint: path("blueprint"),
-      deploymentInfo: path("deploymentInfo"),
-      ...(releaseProvenance === undefined
-        ? {}
-        : { provenance: path("provenance") }),
+  try {
+    const { authority } = await authorWatcherDeploymentRelease({
+      manifest,
+      blueprintJson,
+      programCommitments,
+      ...(releaseProvenance === undefined ? {} : { releaseProvenance }),
       ...(deploymentParameterRegistry === undefined
         ? {}
-        : { parameterRegistry: path("parameterRegistry") }),
-    },
-    existingAuthority: "refuse",
-    writer: { replace: write, create: write },
-  });
-  await write(path("trustRoots"), json(authority.trustRoots));
-  if (deploymentParameterRegistry !== undefined)
-    await write(
-      path("classification"),
-      json(
-        classificationOf(
-          JSON.parse(await readFile(path("parameterRegistry"), "utf8")),
+        : { deploymentParameterRegistry }),
+      fundingProfiles: input.fundingProfiles,
+      fundingPaymentKeyHash: options.fundingPaymentKeyHash ?? "",
+      signingKey: key,
+      paths: {
+        authority: path("authority"),
+        rules: path("rules"),
+        funding: path("funding"),
+        manifest: path("manifest"),
+        blueprint: path("blueprint"),
+        deploymentInfo: path("deploymentInfo"),
+        ...(releaseProvenance === undefined
+          ? {}
+          : { provenance: path("provenance") }),
+        ...(deploymentParameterRegistry === undefined
+          ? {}
+          : { parameterRegistry: path("parameterRegistry") }),
+      },
+      existingAuthority: "refuse",
+      writer: { replace: write, create: write },
+    });
+    await write(path("trustRoots"), json(authority.trustRoots));
+    if (deploymentParameterRegistry !== undefined)
+      await write(
+        path("classification"),
+        json(
+          classificationOf(
+            JSON.parse(await readFile(path("parameterRegistry"), "utf8")),
+          ),
         ),
-      ),
-    );
-  const release = verifySignedDeploymentRelease({
-    signedIdentity: authority.signedIdentity,
-    trustRoots: JSON.parse(
-      await readFile(path("trustRoots"), "utf8"),
-    ) as Parameters<typeof verifySignedDeploymentRelease>[0]["trustRoots"],
-  });
-  return {
-    manifestId: release.manifest.manifestId,
-    trustRootId: release.trustRootId,
-    deploymentProfile: release.manifest.deploymentProfile.name,
-    output,
-    files: (await readdir(output)).sort(),
-  };
+      );
+    const release = verifySignedDeploymentRelease({
+      signedIdentity: authority.signedIdentity,
+      trustRoots: JSON.parse(
+        await readFile(path("trustRoots"), "utf8"),
+      ) as Parameters<typeof verifySignedDeploymentRelease>[0]["trustRoots"],
+    });
+    if (releaseProvenance !== undefined)
+      authenticateAsPublicListen(
+        path,
+        release.manifest.manifestId,
+        releaseProvenance,
+      );
+    return {
+      manifestId: release.manifest.manifestId,
+      trustRootId: release.trustRootId,
+      deploymentProfile: release.manifest.deploymentProfile.name,
+      output,
+      files: (await readdir(output)).sort(),
+    };
+  } catch (error) {
+    // Everything inside was written by this call, into a directory it created.
+    await rm(output, { recursive: true, force: true });
+    throw error;
+  }
 };
