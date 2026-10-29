@@ -86,7 +86,9 @@ export const readMountedHttpFile = (
     if (count === 0 || count > maxBytes)
       return fail("mounted file exceeds its content limit");
     return buffer.subarray(0, count);
-  } catch {
+  } catch (error) {
+    // A refusal above names what the operator must fix; keep it.
+    if (error instanceof PublicHttpConfigError) throw error;
     return fail(
       "mounted file is missing, unreadable or invalid (contents redacted)",
     );

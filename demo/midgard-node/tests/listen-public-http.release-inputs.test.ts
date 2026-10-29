@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   PUBLIC_RELEASE_JSON_MAX_BYTES,
+  PublicHttpConfigError,
   readMountedHttpFile,
   verifyMountedPublicRegistry,
 } from "../src/commands/listen-public-http.js";
@@ -98,6 +99,40 @@ describe("mounted public release inputs", () => {
     expect(() =>
       verifyMountedPublicRegistry(registry, classification, expected),
     ).toThrow("validator classification is invalid");
+  });
+  it("tells the operator why a mounted file is refused, never its contents", () => {
+    const directory = mkdtempSync(join(tmpdir(), "midgard-mounted-refusal-"));
+    const path = join(directory, "mounted-secret");
+    const contents = "mounted-secret-contents";
+    try {
+      writeFileSync(path, contents, { mode: 0o644 });
+      chmodSync(path, 0o644);
+      const refusal = (read: () => unknown) => {
+        try {
+          read();
+        } catch (error) {
+          expect(error).toBeInstanceOf(PublicHttpConfigError);
+          expect((error as Error).message).not.toContain(contents);
+          return (error as PublicHttpConfigError).reason;
+        }
+        throw new Error("the mounted file was accepted");
+      };
+      expect(refusal(() => readMountedHttpFile(path, true))).toBe(
+        "mounted secret files require private permissions and bounded nonempty content",
+      );
+      chmodSync(path, 0o600);
+      expect(readMountedHttpFile(path, true).toString("utf8")).toBe(contents);
+      expect(refusal(() => readMountedHttpFile(path, true, 4))).toBe(
+        "mounted secret files require private permissions and bounded nonempty content",
+      );
+      expect(
+        refusal(() => readMountedHttpFile(join(directory, "absent"), true)),
+      ).toBe(
+        "mounted file is missing, unreadable or invalid (contents redacted)",
+      );
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
   it("keeps the separate release and private-file byte bounds at the accepted and adjacent refused boundaries", () => {
     const directory = mkdtempSync(join(tmpdir(), "midgard-r7-mounted-bound-"));
