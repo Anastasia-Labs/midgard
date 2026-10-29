@@ -32,7 +32,7 @@ const HOST_KEYS = [
 
 /** The role images every Compose command of a preprod-public stack runs. */
 export const publicRolesPath = (config: StackConfig) =>
-  join(config.runDirectory, "public-roles.json");
+  join(config.runDirectory, "public-roles.yaml");
 
 export class StackProcesses {
   /** The operator's own `L1_ORIGIN` from the stack env file, before any restore. */

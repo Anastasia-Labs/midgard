@@ -1,28 +1,39 @@
 import { constants } from "node:fs";
-import { access, mkdir, writeFile } from "node:fs/promises";
+import { access, lstat, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { canonicalJson } from "@al-ft/midgard-core/canonical-json";
 import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   authenticatePublicHttpRelease,
   PUBLIC_NODE_SECRET_NAMES,
 } from "midgard-node/commands/listen-public-http";
+import { writeTextFileAtomic } from "midgard-node/files/atomic-write";
 
+import {
+  classificationOf,
+  signDeploymentRelease,
+  SIGNED_RELEASE_FILES,
+} from "../sign-deployment-release.js";
 import type { StackConfig } from "./config.js";
 import { stackPaths } from "./deployment.js";
-import { readJsonIfPresent, writeDurableJson } from "./journal.js";
+import { readJsonIfPresent } from "./journal.js";
 import { nativeLedgerPaths } from "./native-ledger.js";
 import { publicRolesPath, type StackProcesses } from "./process.js";
-import { PUBLIC_RELEASE_FILES, publicOriginHost } from "./public-node.js";
+import { INGRESS_SUBNET, publicOriginHost } from "./public-node.js";
+import {
+  proverFundingKeyHash,
+  readReleaseInput,
+  stackBlueprintPath,
+} from "./release.js";
 import type { StackStep } from "./workflow.js";
 
-/** The ingress network: the node trusts the ingress address to name clients. */
-const INGRESS_SUBNET = "10.91.7.0/28";
+/** Addresses on the ingress network (INGRESS_SUBNET). */
 const INGRESS_ADDRESS = "10.91.7.2";
 const NODE_INGRESS_ADDRESS = "10.91.7.3";
 
-/** Where the public node container reads its private and release files. */
+/** Where the public node and Postgres containers read their private and release files. */
 const CONTAINER = {
   config: "/run/secrets/node-config.json",
   tlsCert: "/run/public/tls-cert.pem",
@@ -31,14 +42,90 @@ const CONTAINER = {
   trustRoots: "/run/public/release-trust-roots.json",
   release: "/run/public/release",
   transport: "/usr/local/bin/midgard-l1-node-transport",
+  postgresPassword: "/run/secrets/postgres-password",
 };
 
 /** The public node's container user: the host user, which owns its private files. */
 const hostUser = () => `${process.getuid!()}:${process.getgid!()}`;
 
+/** A value Compose replaces instead of merging with the base file's (`!override`). */
+const OVERRIDE = Symbol("override");
+type Overridden = { [OVERRIDE]: unknown };
+const override = (value: unknown): Overridden => ({ [OVERRIDE]: value });
+
+/** YAML flow style: JSON, plus the Compose merge tag JSON cannot carry. */
+function composeYaml(value: unknown): string {
+  if (value !== null && typeof value === "object" && OVERRIDE in value)
+    return `!override ${composeYaml((value as Overridden)[OVERRIDE])}`;
+  if (Array.isArray(value)) return `[${value.map(composeYaml).join(", ")}]`;
+  if (value !== null && typeof value === "object")
+    return `{${Object.entries(value)
+      .map(([key, item]) => `${JSON.stringify(key)}: ${composeYaml(item)}`)
+      .join(", ")}}`;
+  return JSON.stringify(value);
+}
+
+/** The Postgres password file the public Postgres container reads, in the run directory. */
+export const publicPostgresPasswordPath = (config: StackConfig) =>
+  join(config.runDirectory, "postgres-password");
+
 /**
- * Pulls the release's digest-pinned images and pins the node, its migration
- * and Postgres to them, before any service starts.
+ * The public stack's Compose overlay on the base files: the release's
+ * digest-pinned role images, the node and its migration as the host user,
+ * host ports bound to loopback, and Postgres reading its password from a
+ * private file rather than its environment. The node API stays on every
+ * interface only without the TLS ingress, which otherwise is its public port;
+ * the DA port serves the stack's own committee, which dials the loopback.
+ */
+export async function writePublicRoles(processes: StackProcesses) {
+  const { env, config } = processes;
+  const loopback = "127.0.0.1:";
+  const api = config.public!.ingressHostPort === null ? "" : loopback;
+  const node = {
+    image: env.MIDGARD_PUBLIC_NODE_IMAGE!,
+    pull_policy: "missing",
+    user: hostUser(),
+    cap_drop: ["ALL"],
+    security_opt: ["no-new-privileges:true"],
+  };
+  const password = publicPostgresPasswordPath(config);
+  await writeTextFileAtomic(password, env.POSTGRES_PASSWORD!, { mode: 0o600 });
+  await writeTextFileAtomic(
+    publicRolesPath(config),
+    `${composeYaml({
+      services: {
+        "midgard-node": {
+          ...node,
+          ports: override([
+            `${api}\${MIDGARD_NODE_API_HOST_PORT:-\${PORT:-3000}}:\${PORT:-3000}`,
+            `${loopback}\${MIDGARD_NODE_METRICS_HOST_PORT:-9464}:9464`,
+            `${loopback}\${MIDGARD_NODE_DA_HOST_PORT:-39002}:39002`,
+          ]),
+        },
+        "midgard-node-migrate": node,
+        postgres: {
+          image: env.MIDGARD_PUBLIC_POSTGRES_IMAGE!,
+          pull_policy: "missing",
+          ports: override([
+            `${loopback}\${MIDGARD_POSTGRES_HOST_PORT:-5433}:5432`,
+          ]),
+          environment: override({
+            POSTGRES_USER: "${POSTGRES_USER}",
+            POSTGRES_DB: "${POSTGRES_DB}",
+            POSTGRES_PASSWORD_FILE: CONTAINER.postgresPassword,
+            PGDATA: "/var/lib/postgresql/data/pgdata",
+          }),
+          volumes: [`${password}:${CONTAINER.postgresPassword}:ro`],
+        },
+      },
+    })}\n`,
+    { mode: 0o644 },
+  );
+}
+
+/**
+ * Pulls the release's digest-pinned images and writes the overlay that pins
+ * the node, its migration and Postgres to them, before any service starts.
  */
 export async function preparePublicImages(processes: StackProcesses) {
   const { env, config } = processes;
@@ -58,114 +145,127 @@ export async function preparePublicImages(processes: StackProcesses) {
       config.nodeRoot,
       "host",
     );
-  const node = {
-    image: env.MIDGARD_PUBLIC_NODE_IMAGE!,
-    pull_policy: "missing",
-    user: hostUser(),
-    cap_drop: ["ALL"],
-    security_opt: ["no-new-privileges:true"],
-  };
-  await writeDurableJson(publicRolesPath(processes.config), {
-    services: {
-      "midgard-node": node,
-      "midgard-node-migrate": node,
-      postgres: {
-        image: env.MIDGARD_PUBLIC_POSTGRES_IMAGE!,
-        pull_policy: "missing",
-      },
-    },
-  });
+  await writePublicRoles(processes);
 }
 
-const releaseFile = (processes: StackProcesses, name: string) =>
-  join(processes.config.public!.releaseDirectory, name);
+const releaseFile = (
+  processes: StackProcesses,
+  name: keyof typeof SIGNED_RELEASE_FILES,
+) =>
+  join(processes.config.public!.releaseDirectory, SIGNED_RELEASE_FILES[name]);
 
-/** The deployment's finalized manifest and the parameter registry its deployment wrote. */
-function finalizedDeployment(processes: StackProcesses) {
-  const manifest = stackPaths(processes).manifest;
-  return { manifest, registry: `${manifest}.blueprint-registry.json` };
-}
+const sameJson = (left: unknown, right: unknown) =>
+  canonicalJson(left, "classification") ===
+  canonicalJson(right, "classification");
 
-/** The node's release check, run on the host against the files the container mounts. */
+/** The classification the reference-script deployment used, from phase 1. */
+const deployedClassification = async (processes: StackProcesses) =>
+  JSON.parse(
+    await readFile(
+      processes.config.public!.blueprintClassificationFile,
+      "utf8",
+    ),
+  ) as unknown;
+
+/**
+ * Opens the public release as the node does, against the operator's trust
+ * roots, for the manifest this deployment finalized, and with the
+ * classification its reference-script deployment used.
+ */
 async function verifyPublicRelease(processes: StackProcesses) {
-  const { manifest, registry } = finalizedDeployment(processes);
   const { manifestId } = verifyFinalizedDeploymentManifest(
-    await readJsonIfPresent(manifest),
+    await readJsonIfPresent(stackPaths(processes).manifest),
   );
   authenticatePublicHttpRelease({
     ...processes.env,
-    MIDGARD_PUBLIC_RELEASE_AUTHORITY_FILE: releaseFile(
-      processes,
-      PUBLIC_RELEASE_FILES.authority,
-    ),
+    MIDGARD_PUBLIC_RELEASE_AUTHORITY_FILE: releaseFile(processes, "authority"),
     MIDGARD_PUBLIC_RELEASE_PROVENANCE_FILE: releaseFile(
       processes,
-      PUBLIC_RELEASE_FILES.provenance,
+      "provenance",
     ),
     MIDGARD_PUBLIC_RELEASE_TRUST_ROOTS_FILE:
       processes.config.public!.trustRootsFile,
-    MIDGARD_PUBLIC_FINALIZED_MANIFEST_FILE: manifest,
+    MIDGARD_PUBLIC_FINALIZED_MANIFEST_FILE: releaseFile(processes, "manifest"),
     MIDGARD_PUBLIC_MANIFEST_ID: manifestId,
-    MIDGARD_DEPLOYMENT_PARAMETER_REGISTRY_FILE: registry,
+    MIDGARD_DEPLOYMENT_PARAMETER_REGISTRY_FILE: releaseFile(
+      processes,
+      "parameterRegistry",
+    ),
     MIDGARD_BLUEPRINT_CLASSIFICATION_FILE: releaseFile(
       processes,
-      PUBLIC_RELEASE_FILES.classification,
+      "classification",
     ),
   });
+  if (
+    !sameJson(
+      JSON.parse(
+        await readFile(releaseFile(processes, "classification"), "utf8"),
+      ),
+      await deployedClassification(processes),
+    )
+  )
+    throw new Error(
+      "its blueprint classification differs from public.blueprintClassificationFile",
+    );
   return { manifestId };
 }
 
+/** Reopens an existing public release; never signs over one. */
+async function reopenPublicRelease(processes: StackProcesses) {
+  const directory = processes.config.public!.releaseDirectory;
+  try {
+    return await verifyPublicRelease(processes);
+  } catch (error) {
+    throw new Error(
+      `public.releaseDirectory ${directory} holds a release this deployment cannot use (${(error as Error).message}); move it aside so the stack signs a new one`,
+    );
+  }
+}
+
 /**
- * Phase 2, just before the services start: the release signature over the
- * manifest this deployment finalized. Until it verifies, the run stops here
- * and says what to sign; a rerun confirms the earlier steps from their saved
- * state and chain observations, so no transaction is repeated.
+ * Phase 2, once the deployment is final: the stack signs the public release
+ * for it into public.releaseDirectory with the release input's signing key,
+ * through the same code as the release signing command, which also opens
+ * the written release as public listen does. A resume reopens and verifies
+ * the release already there and never signs again.
  */
 export function publicReleaseStep(processes: StackProcesses): StackStep {
+  const directory = processes.config.public!.releaseDirectory;
   return {
     id: "public-release",
-    reconcile: async () => {
-      try {
-        return {
-          status: "complete",
-          data: await verifyPublicRelease(processes),
-        };
-      } catch {
-        return { status: "retry" };
-      }
-    },
+    reconcile: async () =>
+      (await lstat(directory).catch(() => undefined)) === undefined
+        ? { status: "retry" }
+        : { status: "complete", data: await reopenPublicRelease(processes) },
     execute: async () => {
-      const { manifest, registry } = finalizedDeployment(processes);
-      const { manifestId } = verifyFinalizedDeploymentManifest(
-        await readJsonIfPresent(manifest),
-      );
-      let reason: string;
-      try {
-        await verifyPublicRelease(processes);
-        return { manifestId };
-      } catch (error) {
-        reason = (error as Error).message;
-      }
-      const { env } = processes;
-      throw new Error(
-        [
-          "Sign the release now: the deployment is on chain, and the public node starts only with a release signed for it.",
-          `Release check: ${reason}`,
-          "Produce with the release signing command (R3):",
-          `  ${releaseFile(processes, PUBLIC_RELEASE_FILES.authority)}`,
-          `  ${releaseFile(processes, PUBLIC_RELEASE_FILES.provenance)}`,
-          "signing:",
-          `  finalized manifest ${manifest} (manifest id ${manifestId})`,
-          `  deployment parameter registry ${registry}`,
-          `  blueprint classification ${releaseFile(processes, PUBLIC_RELEASE_FILES.classification)}`,
-          `  source revision ${env.MIDGARD_PUBLIC_RELEASE_REVISION}`,
-          `  node image ${env.MIDGARD_PUBLIC_NODE_IMAGE}`,
-          `  postgres image ${env.MIDGARD_PUBLIC_POSTGRES_IMAGE}`,
-          `  ingress image ${env.MIDGARD_PUBLIC_INGRESS_IMAGE}`,
-          `with a key listed in ${processes.config.public!.trustRootsFile}.`,
-          "Then rerun the same e2e-stack command; confirmed on-chain steps are not repeated.",
-        ].join("\n"),
-      );
+      if ((await lstat(directory).catch(() => undefined)) !== undefined)
+        return reopenPublicRelease(processes);
+      const releaseInput = processes.config.watcher.releaseInput!;
+      // The release's classification comes from its registry; the
+      // reference-script deployment already used the operator's.
+      const { deploymentParameterRegistry } =
+        await readReleaseInput(releaseInput);
+      if (deploymentParameterRegistry === undefined)
+        throw new Error(
+          `The release input ${releaseInput} names no parameterRegistryFile; a public release signs this deployment's parameter registry`,
+        );
+      if (
+        !sameJson(
+          classificationOf(deploymentParameterRegistry),
+          await deployedClassification(processes),
+        )
+      )
+        throw new Error(
+          `The release input's parameter registry classifies the unused validators differently from public.blueprintClassificationFile ${processes.config.public!.blueprintClassificationFile}, which the reference-script deployment used`,
+        );
+      await signDeploymentRelease({
+        releaseInput,
+        deploymentInfo: stackPaths(processes).manifest,
+        blueprint: stackBlueprintPath(processes.config),
+        output: directory,
+        fundingPaymentKeyHash: proverFundingKeyHash(processes),
+      });
+      return reopenPublicRelease(processes);
     },
   };
 }
@@ -226,12 +326,11 @@ export async function publicNodeEnvironment(
     MIDGARD_PUBLIC_TLS_CERT_FILE: CONTAINER.tlsCert,
     MIDGARD_PUBLIC_TLS_KEY_FILE: CONTAINER.tlsKey,
     MIDGARD_PUBLIC_RELEASE_TRUST_ROOTS_FILE: CONTAINER.trustRoots,
-    MIDGARD_PUBLIC_RELEASE_AUTHORITY_FILE: `${CONTAINER.release}/${PUBLIC_RELEASE_FILES.authority}`,
-    MIDGARD_PUBLIC_RELEASE_PROVENANCE_FILE: `${CONTAINER.release}/${PUBLIC_RELEASE_FILES.provenance}`,
-    MIDGARD_BLUEPRINT_CLASSIFICATION_FILE: `${CONTAINER.release}/${PUBLIC_RELEASE_FILES.classification}`,
-    MIDGARD_PUBLIC_FINALIZED_MANIFEST_FILE:
-      nodeEnv.MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH!,
-    MIDGARD_DEPLOYMENT_PARAMETER_REGISTRY_FILE: `${nodeEnv.MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH!}.blueprint-registry.json`,
+    MIDGARD_PUBLIC_RELEASE_AUTHORITY_FILE: `${CONTAINER.release}/${SIGNED_RELEASE_FILES.authority}`,
+    MIDGARD_PUBLIC_RELEASE_PROVENANCE_FILE: `${CONTAINER.release}/${SIGNED_RELEASE_FILES.provenance}`,
+    MIDGARD_BLUEPRINT_CLASSIFICATION_FILE: `${CONTAINER.release}/${SIGNED_RELEASE_FILES.classification}`,
+    MIDGARD_PUBLIC_FINALIZED_MANIFEST_FILE: `${CONTAINER.release}/${SIGNED_RELEASE_FILES.manifest}`,
+    MIDGARD_DEPLOYMENT_PARAMETER_REGISTRY_FILE: `${CONTAINER.release}/${SIGNED_RELEASE_FILES.parameterRegistry}`,
     MIDGARD_PUBLIC_MANIFEST_ID: manifestId,
     // The release image carries its own pinned L1 transport.
     L1_NODE_TRANSPORT_BINARY_PATH: CONTAINER.transport,
@@ -247,7 +346,7 @@ type PublicIngressModule = {
 
 /**
  * The public node's Compose services: the release image (from
- * public-roles.json), its private and release mounts, an HTTPS health check
+ * public-roles.yaml), its private and release mounts, an HTTPS health check
  * and, when configured, the TLS ingress in front of it.
  */
 export async function publicNodeServices(
@@ -340,7 +439,8 @@ export const publicRuntimeInputs = (config: StackConfig) =>
         config.public.tlsKeyFile,
         config.public.tlsCaFile,
         config.public.trustRootsFile,
-        ...Object.values(PUBLIC_RELEASE_FILES).map((name) =>
+        config.public.blueprintClassificationFile,
+        ...Object.values(SIGNED_RELEASE_FILES).map((name) =>
           join(config.public!.releaseDirectory, name),
         ),
       ];

@@ -35,11 +35,11 @@
     },
     "prover": {
       "seedEnv": "STACK_PROVER_SEED",
-      "minimumLovelace": "3000000000"
+      "minimumLovelace": "10010000000"
     },
     "availability": {
       "seedEnv": "STACK_AVAILABILITY_SEED",
-      "minimumLovelace": "1000000000"
+      "minimumLovelace": "10040000000"
     }
   },
   "da": {
@@ -83,6 +83,7 @@
     "tlsKeyFile": "/absolute/path/to/private/tls/node-key.pem",
     "tlsCaFile": "/absolute/path/to/private/tls/ca.pem",
     "trustRootsFile": "/absolute/path/to/private/release-trust-roots.json",
+    "blueprintClassificationFile": "/absolute/path/to/private/blueprint-classification.json",
     "releaseDirectory": "/absolute/path/to/private/public-release",
     "ingressHostPort": null
   }

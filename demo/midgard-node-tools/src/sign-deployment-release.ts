@@ -11,10 +11,7 @@ import { writeTextFileAtomicNoReplace } from "midgard-node/files/atomic-write";
 import { authorWatcherDeploymentRelease } from "midgard-watcher";
 
 import { readReleaseInput } from "./full-stack/release.js";
-import {
-  COMPUTATION_THREAD_POLICY_COMMITMENT,
-  deploymentProgramCommitments,
-} from "./release-program-commitments.js";
+import { releaseProgramCommitments } from "./release-program-commitments.js";
 
 /** File names in the output directory; the operator mounts each where its reader expects it. */
 export const SIGNED_RELEASE_FILES = {
@@ -38,7 +35,7 @@ const absolute = (label: string, path: string) => {
 };
 
 /** The unused-validator reasons the signed registry carries, as the node's classification file. */
-const classificationOf = (registry: unknown) => {
+export const classificationOf = (registry: unknown) => {
   const validators = (
     registry as {
       deployment: {
@@ -55,27 +52,6 @@ const classificationOf = (registry: unknown) => {
       .filter((validator) => validator.disposition === "not_deployed")
       .map((validator) => [validator.title, validator.reason]),
   );
-};
-
-/**
- * The release input's program commitments with the computation-thread
- * commitment derived from the manifest; a supplied value that differs from the
- * derivation is refused, never signed.
- */
-const releaseProgramCommitments = (
-  supplied: Readonly<Record<string, string>>,
-  manifest: Parameters<typeof deploymentProgramCommitments>[0],
-) => {
-  const derived = deploymentProgramCommitments(manifest);
-  const value = supplied[COMPUTATION_THREAD_POLICY_COMMITMENT];
-  if (
-    value !== undefined &&
-    value !== derived[COMPUTATION_THREAD_POLICY_COMMITMENT]
-  )
-    throw new Error(
-      `programCommitments.${COMPUTATION_THREAD_POLICY_COMMITMENT} differs from the deployment's computation-thread policy`,
-    );
-  return { ...supplied, ...derived };
 };
 
 /**

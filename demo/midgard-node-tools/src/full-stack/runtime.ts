@@ -181,6 +181,11 @@ export async function confirmRuntimeReadiness(processes: StackProcesses) {
 
 export function runtimeSteps(processes: StackProcesses): StackStep[] {
   return [
+    // A preprod-public node starts only with a release signed for this
+    // deployment; the runtime configuration binds the signed files.
+    ...(processes.config.public === undefined
+      ? []
+      : [publicReleaseStep(processes)]),
     {
       id: "runtime-configuration",
       // Generation also reads inputs the intent does not bind, such as ports and
@@ -276,10 +281,6 @@ export function runtimeSteps(processes: StackProcesses): StackStep[] {
       },
     },
     storageIdentityStep(processes),
-    // A preprod-public node starts only with a release signed for this deployment.
-    ...(processes.config.public === undefined
-      ? []
-      : [publicReleaseStep(processes)]),
     {
       id: "services",
       reconcile: async (record) => {

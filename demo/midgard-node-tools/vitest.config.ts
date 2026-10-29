@@ -30,9 +30,46 @@ process.env.MIDGARD_TEST_DATABASE_PREFIX ??=
 
 const bail = parsePositiveInteger(process.env.MIDGARD_NODE_TEST_BAIL);
 
-// Signs a public release and opens it as public listen does, so it compiles
-// the preprod-public profile against a blueprint built for it.
-const preprodPublicTests = ["./tests/sign-deployment-release.public.test.ts"];
+// Sign a public release and open it as public listen does, or run the node
+// command line a public build compiles, so they compile the preprod-public
+// profile against a blueprint built for it.
+const preprodPublicTests = [
+  "./tests/sign-deployment-release.public.test.ts",
+  "./tests/full-stack-public-release.test.ts",
+  "./tests/public-submit-deposit.test.ts",
+];
+// Load a preprod-public stack configuration, which needs only the compiled
+// profile, with the fixture's wallets on its operator allow-list.
+const preprodPublicStackTests = ["./tests/full-stack-public-config.test.ts"];
+
+/**
+ * Adds the stack configuration fixture's operator and merge wallets (seeds
+ * from entropy 0 and 1, full-stack-config.fixtures.ts) to the preprod-public
+ * operator allow-list, before the generated module freezes its profiles, so
+ * a fixture can pass every public input check.
+ */
+const fixtureOperatorsPlugin = () => ({
+  name: "midgard-fixture-public-operators",
+  transform(code: string, id: string) {
+    if (!id.endsWith("/demo/midgard-core/src/generated-deployment-profiles.ts"))
+      return null;
+    const anchor = "for (const profile of Object.values(DEPLOYMENT_PROFILES))";
+    if (!code.includes(anchor))
+      throw new Error("Missing the generated profile freeze");
+    return {
+      code: code.replace(
+        anchor,
+        `DEPLOYMENT_PROFILES["preprod-public"].allow_lists.operators.push(${JSON.stringify(
+          [
+            "0fdc780023d8be7c9ff3a6bdc0d8d3b263bd0cc12448c40948efbf42",
+            "fa6407a107929f517bbd7ac465b7654809bc5b0f55c4bc7dac09b5e0",
+          ],
+        ).slice(1, -1)});\n${anchor}`,
+      ),
+      map: null,
+    };
+  },
+});
 
 export default defineConfig({
   plugins: [rawSqlLoaderPlugin()],
@@ -55,6 +92,7 @@ export default defineConfig({
               ...configDefaults.exclude,
               "./tests/phase4-journal-kill-recovery-summary-verifier.test.mjs",
               ...preprodPublicTests,
+              ...preprodPublicStackTests,
             ],
           },
         },
@@ -72,6 +110,16 @@ export default defineConfig({
             MIDGARD_DEPLOYMENT_PROFILE: "preprod-public",
             MIDGARD_REAL_BLUEPRINT_PATH: preprodPublicBlueprint,
           },
+        },
+      },
+      // Not bundled: its plugins rewrite a midgard-core module.
+      {
+        extends: true,
+        plugins: [preprodPublicPlugin(), fixtureOperatorsPlugin()],
+        test: {
+          name: "preprod-public-stack",
+          include: preprodPublicStackTests,
+          env: { MIDGARD_DEPLOYMENT_PROFILE: "preprod-public" },
         },
       },
     ],

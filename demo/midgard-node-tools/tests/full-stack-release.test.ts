@@ -1,99 +1,133 @@
 import { generateKeyPairSync } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-import { FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "@al-ft/midgard-sdk";
-import { authorWatcherDeploymentRelease } from "midgard-watcher";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
+import { makeGenuineDeploymentRegistryForTest } from "midgard-node/tests/helpers/deployment-parameter-registry";
+import { afterAll, beforeAll, expect, it } from "vitest";
 
-import { prepareStackRelease } from "../src/full-stack/release.js";
+import {
+  prepareStackRelease,
+  proverFundingKeyHash,
+} from "../src/full-stack/release.js";
+import {
+  signDeploymentRelease,
+  SIGNED_RELEASE_FILES,
+} from "../src/sign-deployment-release.js";
 import {
   RecordingProcesses,
-  removeStackFixtures,
   stackEnvironment,
   stackFixture,
 } from "./full-stack-fixtures.js";
 
-// The watcher's release authoring has its own tests; here only its use is checked.
-vi.mock("midgard-watcher", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("midgard-watcher")>()),
-  authorWatcherDeploymentRelease: vi.fn(),
-  createWatcherWorkflowFundingProfileBundle: vi.fn(() => ({})),
-  parseWatcherProcessConfig: vi.fn(() => ({
-    deploymentAuthorityPath: "/etc/midgard/bundles/deployment-authority.json",
-    ruleBundlePath: "/etc/midgard/bundles/rules.json",
-    fundingProfileBundlePath: "/etc/midgard/bundles/funding-profiles.json",
-    faultProofInfrastructure: {
-      manifestPath: "/etc/midgard/bundles/deployment-manifest.json",
-      blueprintPath: "/etc/midgard/bundles/plutus.json",
-      deploymentInfoPath: "/etc/midgard/bundles/contract-deployment-info.json",
-    },
-  })),
-}));
-const author = vi.mocked(authorWatcherDeploymentRelease);
+const exampleTemplate = fileURLToPath(
+  new URL(
+    "../../midgard-watcher/watcher-process.example.json",
+    import.meta.url,
+  ),
+);
 
-beforeEach(() => author.mockReset());
-afterEach(removeStackFixtures);
+let fixture: Awaited<ReturnType<typeof makeGenuineDeploymentRegistryForTest>>;
+let directory: string;
+beforeAll(async () => {
+  fixture = await makeGenuineDeploymentRegistryForTest();
+  directory = await mkdtemp(join(tmpdir(), "midgard-stack-release-"));
+}, 300_000);
+afterAll(() => rm(directory, { recursive: true, force: true }));
 
-const PROGRAMS = { "computation-thread-policy-v1": "cd".repeat(32) };
-
-/** A stack whose release directory already holds a signed authority. */
-async function stackWithSavedAuthority() {
-  const { directory, config } = await stackFixture((sample, root) => {
-    sample.watcher.releaseDirectory = join(root, "release");
-    sample.watcher.releaseInput = join(root, "release-input.json");
+/**
+ * A stack checkout whose deployment is final: the blueprint above the node
+ * directory, the finalized manifest in it, and a release input that leaves
+ * every program commitment to the derivation.
+ */
+async function finalizedStack(name: string) {
+  const checkout = join(directory, name);
+  // The example watcher process, following at the compiled profile's depth.
+  const template = JSON.parse(await readFile(exampleTemplate, "utf8"));
+  template.watcherConfig.l1.finality.depth =
+    SELECTED_DEPLOYMENT_PROFILE.l1_finality.confirmation_depth;
+  const processTemplate = join(directory, `${name}-watcher-process.json`);
+  await writeFile(processTemplate, JSON.stringify(template));
+  const { config } = await stackFixture((sample) => {
+    sample.watcher.processTemplate = processTemplate;
+    sample.watcher.releaseDirectory = join(checkout, "release");
+    sample.watcher.releaseInput = join(checkout, "release-input.json");
   });
-  // The node root sits two levels below the checkout that holds the blueprint.
-  config.nodeRoot = join(directory, "demo/midgard-node");
-  await mkdir(join(directory, "onchain/aiken"), { recursive: true });
-  await writeFile(join(directory, "onchain/aiken/plutus.json"), "{}");
-  await mkdir(config.watcher.releaseDirectory);
-  await writeFile(
-    join(config.watcher.releaseDirectory, "deployment-authority.json"),
-    "{}",
+  config.nodeRoot = join(checkout, "demo/midgard-node");
+  const blueprint = join(checkout, "onchain/aiken/plutus.json");
+  const manifest = join(
+    config.nodeRoot,
+    "deploymentInfo/contract-deployment-info.json",
   );
-  const signingKeyFile = join(directory, "release.key");
-  await writeFile(
-    signingKeyFile,
-    generateKeyPairSync("ed25519").privateKey.export({
-      format: "pem",
-      type: "pkcs8",
-    }),
-  );
-  await writeFile(
-    config.watcher.releaseInput!,
-    JSON.stringify({
+  await mkdir(join(checkout, "onchain/aiken"), { recursive: true });
+  await mkdir(join(config.nodeRoot, "deploymentInfo"), { recursive: true });
+  await writeFile(blueprint, fixture.blueprintJson);
+  await writeFile(manifest, JSON.stringify(fixture.manifest));
+  let signers = 0;
+  const writeInput = async () => {
+    signers += 1;
+    const signingKeyFile = join(checkout, `signer-${signers}.pem`);
+    await writeFile(
       signingKeyFile,
-      programCommitments: PROGRAMS,
-      fundingProfiles: FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((category) => ({
-        scope: { kind: "fraud_proof_category", category },
-      })),
-    }),
-  );
-  return new RecordingProcesses(config, stackEnvironment(config));
+      generateKeyPairSync("ed25519").privateKey.export({
+        format: "pem",
+        type: "pkcs8",
+      }),
+      { mode: 0o600 },
+    );
+    await writeFile(
+      config.watcher.releaseInput!,
+      JSON.stringify({
+        signingKeyFile,
+        programCommitments: {},
+        fundingProfiles: [],
+      }),
+    );
+  };
+  await writeInput();
+  const processes = new RecordingProcesses(config, stackEnvironment(config));
+  return { checkout, blueprint, manifest, processes, writeInput };
 }
 
-it("reopens a saved release through the watcher's authoring, refusing any other signer", async () => {
-  const processes = await stackWithSavedAuthority();
-  author.mockRejectedValueOnce(
-    new Error(
-      "Saved watcher authority differs from the requested deployment or release",
-    ),
-  );
-  await expect(prepareStackRelease(processes)).rejects.toThrow(
-    "Saved watcher authority differs",
-  );
-  expect(author).toHaveBeenCalledExactlyOnceWith(
-    expect.objectContaining({
-      existingAuthority: "refuse",
-      programCommitments: PROGRAMS,
-      blueprintJson: Buffer.from("{}"),
-      paths: expect.objectContaining({
-        authority: join(
-          processes.config.watcher.releaseDirectory,
-          "deployment-authority.json",
+it("signs the same watcher release as the release signing command from the same input", async () => {
+  const stack = await finalizedStack("same-release");
+  await prepareStackRelease(stack.processes);
+  const standalone = join(stack.checkout, "standalone");
+  await signDeploymentRelease({
+    releaseInput: stack.processes.config.watcher.releaseInput!,
+    deploymentInfo: stack.manifest,
+    blueprint: stack.blueprint,
+    output: standalone,
+    fundingPaymentKeyHash: proverFundingKeyHash(stack.processes),
+  });
+  for (const name of ["authority", "rules", "funding"] as const)
+    expect(
+      await readFile(
+        join(
+          stack.processes.config.watcher.releaseDirectory,
+          SIGNED_RELEASE_FILES[name],
         ),
-      }),
-    }),
+        "utf8",
+      ),
+    ).toBe(
+      await readFile(join(standalone, SIGNED_RELEASE_FILES[name]), "utf8"),
+    );
+});
+
+it("reopens its saved release for the same signer and refuses another", async () => {
+  const stack = await finalizedStack("reopen");
+  const authority = join(
+    stack.processes.config.watcher.releaseDirectory,
+    SIGNED_RELEASE_FILES.authority,
   );
+  await prepareStackRelease(stack.processes);
+  const signed = await readFile(authority, "utf8");
+  await expect(prepareStackRelease(stack.processes)).resolves.toBeDefined();
+  await stack.writeInput();
+  await expect(prepareStackRelease(stack.processes)).rejects.toThrow(
+    "not the configured signing key",
+  );
+  expect(await readFile(authority, "utf8")).toBe(signed);
 });

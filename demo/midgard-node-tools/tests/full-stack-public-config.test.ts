@@ -1,10 +1,18 @@
 import { execFileSync } from "node:child_process";
-import { generateKeyPairSync, randomBytes } from "node:crypto";
+import {
+  createHash,
+  createPrivateKey,
+  createPublicKey,
+  generateKeyPairSync,
+  type KeyObject,
+  randomBytes,
+} from "node:crypto";
 import {
   chmod,
   copyFile,
   mkdir,
   mkdtemp,
+  readFile,
   rm,
   writeFile,
 } from "node:fs/promises";
@@ -16,11 +24,14 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { loadStackConfig } from "../src/full-stack/config.js";
 import { runStackController } from "../src/full-stack/controller.js";
+import { SIGNED_RELEASE_FILES } from "../src/sign-deployment-release.js";
 import {
   configFixture as fixture,
   removeConfigFixtures,
 } from "./full-stack-config.fixtures.js";
 
+// Runs in the `preprod-public-stack` project: this build compiles the
+// preprod-public profile, with the fixture's wallets on its allow-list.
 afterEach(removeConfigFixtures);
 
 /** A CA and a certificate it issued for the public origin, made once. */
@@ -100,8 +111,9 @@ async function publicFixture() {
   const { config, directory, env } = value;
   // Private inputs live outside the Docker build context, as the stack requires.
   const root = join(directory, "logs/public");
+  // The stack signs the release here; it does not exist before the first run.
   const release = join(root, "release");
-  await mkdir(release, { recursive: true });
+  await mkdir(root, { recursive: true });
   const file = (name: string) => join(root, name);
   for (const name of ["node.pem", "node.key", "ca.pem", "other-ca.pem"])
     await copyFile(join(tls.directory, name), file(name));
@@ -123,19 +135,26 @@ async function publicFixture() {
       { mode },
     ).then(() => chmod(file("node-secrets.yaml"), mode));
   await writeSecrets(secrets);
-  const { publicKey } = generateKeyPairSync("ed25519");
-  await writeFile(
-    file("trust-roots.json"),
-    JSON.stringify([
-      {
-        trustRootId: "release-root",
-        publicKeySpkiDerHex: publicKey
-          .export({ format: "der", type: "spki" })
-          .toString("hex"),
-      },
-    ]),
+  const writeTrustRoots = (keys: KeyObject[]) =>
+    writeFile(
+      file("trust-roots.json"),
+      JSON.stringify(
+        keys.map((key) => {
+          const der = key.export({ format: "der", type: "spki" });
+          return {
+            trustRootId: createHash("sha256").update(der).digest("hex"),
+            publicKeySpkiDerHex: der.toString("hex"),
+          };
+        }),
+      ),
+    );
+  // The release signing key the stack signs with, and another trusted key.
+  const signer = createPublicKey(
+    createPrivateKey(await readFile(value.release.signingKeyFile)),
   );
-  await writeFile(join(release, "blueprint-classification.json"), "{}");
+  const other = generateKeyPairSync("ed25519").publicKey;
+  await writeTrustRoots([other, signer]);
+  await writeFile(file("blueprint-classification.json"), "{}");
   Object.assign(env, {
     MIDGARD_DEPLOYMENT_PROFILE: "preprod-public",
     MIDGARD_PUBLIC_API_ORIGIN: `https://${tls.host}`,
@@ -151,10 +170,11 @@ async function publicFixture() {
     tlsKeyFile: file("node.key"),
     tlsCaFile: file("ca.pem"),
     trustRootsFile: file("trust-roots.json"),
+    blueprintClassificationFile: file("blueprint-classification.json"),
     releaseDirectory: release,
     ingressHostPort: null,
   };
-  return { ...value, root, secrets, writeSecrets };
+  return { ...value, root, secrets, writeSecrets, writeTrustRoots, other };
 }
 
 type PublicFixture = Awaited<ReturnType<typeof publicFixture>>;
@@ -302,15 +322,32 @@ describe("preprod-public inputs refused before any build or spend", () => {
       "public.trustRootsFile",
     ],
     [
+      "trust roots without the release signing key",
+      ({ other, writeTrustRoots }) => writeTrustRoots([other]),
+      "public.trustRootsFile does not list the public key of the release signing key",
+    ],
+    [
+      "a release directory whose parent is missing",
+      ({ config, root }) => {
+        config.public!.releaseDirectory = join(root, "absent/release");
+      },
+      "The parent of public.releaseDirectory",
+    ],
+    [
+      "a partly written release directory",
+      async ({ config }) => {
+        await mkdir(config.public!.releaseDirectory);
+        await writeFile(
+          join(config.public!.releaseDirectory, "deployment-authority.json"),
+          "{}",
+        );
+      },
+      "exists but is not a complete signed release",
+    ],
+    [
       "a missing blueprint classification",
-      ({ config }) =>
-        rm(
-          join(
-            config.public!.releaseDirectory,
-            "blueprint-classification.json",
-          ),
-        ),
-      "blueprint-classification.json",
+      ({ config }) => rm(config.public!.blueprintClassificationFile),
+      "public.blueprintClassificationFile",
     ],
     [
       "a single validation worker",
@@ -337,8 +374,20 @@ describe("preprod-public inputs refused before any build or spend", () => {
       // Every input above is present and valid in the fixture, so this last
       // check is reached only when all of them passed.
       "an operator wallet outside the compiled allow-list",
-      () => {},
+      ({ secrets, writeSecrets }) =>
+        writeSecrets({
+          ...secrets,
+          L1_OPERATOR_SEED_PHRASE: entropyToMnemonic("30".repeat(16)),
+        }),
       "operator wallet must match the compiled public allow-list",
+    ],
+    [
+      "a preprod-testing environment in this preprod-public build",
+      ({ config, env }) => {
+        delete config.public;
+        env.MIDGARD_DEPLOYMENT_PROFILE = "preprod-testing";
+      },
+      "This checkout is compiled for preprod-public",
     ],
   ];
   it.each(rows)("refuses %s", async (_, mutate, message) => {
@@ -347,6 +396,21 @@ describe("preprod-public inputs refused before any build or spend", () => {
     await writeFile(value.config.envFile, value.envText());
     await value.writeConfig();
     await expect(loadStackConfig(value.path)).rejects.toThrow(message);
+  });
+  it("accepts a complete public input, with or without a signed release", async () => {
+    const value = await publicFixture();
+    await writeFile(value.config.envFile, value.envText());
+    await value.writeConfig();
+    const loaded = await loadStackConfig(value.path);
+    // The node secrets reach the host deployment commands from the private file.
+    expect(loaded.env.ADMIN_API_KEY).toBe(value.secrets.ADMIN_API_KEY);
+    // A complete earlier signing is reopened by the public-release step.
+    await mkdir(value.config.public!.releaseDirectory);
+    for (const name of Object.values(SIGNED_RELEASE_FILES))
+      await writeFile(join(value.config.public!.releaseDirectory, name), "{}");
+    value.config.public!.ingressHostPort = 18443;
+    await value.writeConfig();
+    await expect(loadStackConfig(value.path)).resolves.toBeDefined();
   });
   it("refuses the same input with --check", async () => {
     const value = await publicFixture();

@@ -18,6 +18,8 @@ import {
   type WatcherWorkflowFundingProfileBody,
 } from "midgard-watcher";
 
+import { releaseProgramCommitments } from "../release-program-commitments.js";
+import type { StackConfig } from "./config.js";
 import { stackPaths } from "./deployment.js";
 import { readJsonIfPresent } from "./journal.js";
 import type { StackProcesses } from "./process.js";
@@ -70,6 +72,16 @@ export async function readReleaseInput(path: string) {
     throw new Error("Release parameter registry file is missing");
   return { input, key, releaseProvenance, deploymentParameterRegistry };
 }
+/** The blueprint the stack built and deployed, in the checkout above the node directory. */
+export const stackBlueprintPath = (config: StackConfig) =>
+  resolve(config.nodeRoot, "../../onchain/aiken/plutus.json");
+/** The payment key hash of the prover wallet, which funds the watcher's proofs. */
+export const proverFundingKeyHash = (processes: StackProcesses) =>
+  paymentCredentialOf(
+    walletFromSeed(processes.env[processes.config.wallets.prover!.seedEnv]!, {
+      network: "Preprod",
+    }).address,
+  ).hash;
 export async function releasePaths(processes: StackProcesses) {
   const template = parseWatcherProcessConfig(
     await readJsonIfPresent(processes.config.watcher.processTemplate),
@@ -132,23 +144,22 @@ export async function prepareStackRelease(processes: StackProcesses) {
   }
   const { input, key, releaseProvenance, deploymentParameterRegistry } =
     await readReleaseInput(processes.config.watcher.releaseInput);
+  const manifest = await readJsonIfPresent(stackPaths(processes).manifest);
   // A saved authority is reopened only when it attests exactly this release.
   const { deploymentAuthority } = await authorWatcherDeploymentRelease({
-    manifest: await readJsonIfPresent(stackPaths(processes).manifest),
-    blueprintJson: await readFile(
-      resolve(processes.config.nodeRoot, "../../onchain/aiken/plutus.json"),
+    manifest,
+    blueprintJson: await readFile(stackBlueprintPath(processes.config)),
+    // The derivation the release signing command signs, so both sign the same release.
+    programCommitments: releaseProgramCommitments(
+      input.programCommitments,
+      verifyFinalizedDeploymentManifest(manifest),
     ),
-    programCommitments: input.programCommitments,
     ...(releaseProvenance === undefined ? {} : { releaseProvenance }),
     ...(deploymentParameterRegistry === undefined
       ? {}
       : { deploymentParameterRegistry }),
     fundingProfiles: input.fundingProfiles,
-    fundingPaymentKeyHash: paymentCredentialOf(
-      walletFromSeed(processes.env[processes.config.wallets.prover!.seedEnv]!, {
-        network: "Preprod",
-      }).address,
-    ).hash,
+    fundingPaymentKeyHash: proverFundingKeyHash(processes),
     signingKey: key,
     paths,
     existingAuthority: "refuse",
