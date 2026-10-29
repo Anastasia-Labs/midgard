@@ -462,8 +462,8 @@
   },
   "dependencies": {
     "@al-ft/midgard-core": "workspace:*",
-    "@lucid-evolution/lucid": "0.8.7",
-    "@lucid-evolution/uplc": "0.5.2",
+    "@lucid-evolution/lucid": "0.8.9",
+    "@lucid-evolution/uplc": "0.5.3",
     "@noble/curves": "^2.2.0",
     "@noble/hashes": "^2.0.1",
     "blake2b": "^2.1.4",

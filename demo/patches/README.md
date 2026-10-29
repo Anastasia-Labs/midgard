@@ -1,16 +1,6 @@
 # Dependency patches
 
-`@lucid-evolution__utils@0.2.6.patch` goes with the workspace overrides that
-resolve `@lucid-evolution/utils`' `@harmoniclabs/uplc` and
-`@harmoniclabs/plutus-data` to the 2.x versions the rest of the workspace
-uses, instead of the 1.x versions utils declares. UPLC 2 `encodeUPLC` returns
-the encoded bytes directly, so the patch drops the 1.x `.toBuffer().buffer`
-wrapper from `applyParamsToScript` in both published module formats.
-`midgard-core/tests/lucid-parameterization-resolution.test.ts` compares the
-parameterized script bytes and hashes with Aiken's. Drop the patch and both
-overrides together once a utils release depends on UPLC 2.
-
-The existing `blake2b@2.1.4.patch` remains independently managed.
+`blake2b@2.1.4.patch` is managed independently.
 
 `postgres@3.4.9.patch` applies the unreleased upstream fix for a reserved
 connection waiter that never settles (porsager/postgres#1195, fixed by the open

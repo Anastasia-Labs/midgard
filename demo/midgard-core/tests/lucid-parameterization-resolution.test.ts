@@ -31,15 +31,46 @@ const scripts = JSON.parse(
   ),
 ) as { validators: { title: string; compiledCode: string }[] };
 const compiledCode = scripts.validators[0]!.compiledCode;
-const versionOf = (entry: string): string => {
-  const metadata = JSON.parse(
-    readFileSync(join(dirname(entry), "../package.json"), "utf8"),
-  ) as { version: string };
-  return metadata.version;
+const manifestOf = (entry: string) =>
+  JSON.parse(readFileSync(join(dirname(entry), "../package.json"), "utf8")) as {
+    dependencies?: Record<string, string>;
+  };
+
+// Every @harmoniclabs package the workspace or Lucid has depended on.
+const HARMONIC_PACKAGES = [
+  "bigint-utils",
+  "bitstream",
+  "bytestring",
+  "cardano-costmodels-ts",
+  "cbor",
+  "crypto",
+  "obj-utils",
+  "pair",
+  "plutus-data",
+  "plutus-machine",
+  "uint8array-utils",
+  "uplc",
+].map((name) => `@harmoniclabs/${name}`);
+
+// Where `name` resolves from `context`, or undefined when it is not installed
+// there. A package that is installed but refuses the bare specifier still
+// counts as resolving.
+const resolution = (
+  context: NodeJS.Require,
+  name: string,
+): string | undefined => {
+  try {
+    return context.resolve(name);
+  } catch (error) {
+    const code = (error as { code?: unknown }).code;
+    return code === "MODULE_NOT_FOUND"
+      ? undefined
+      : `unresolvable (${String(code)})`;
+  }
 };
 
 // The independent oracle uses Aiken's Rust UPLC compiler, the same primitive
-// the SDK's guarded blueprint parameterizer uses, rather than Harmonic UPLC.
+// the SDK's guarded blueprint parameterizer uses.
 const expectedApplication = (
   lucid: typeof Lucid,
   params: Lucid.Data[],
@@ -63,35 +94,30 @@ const expectedApplication = (
 };
 
 describe.each(routes)("installed Lucid parameterization from %s", (route) => {
-  it("shares modern Harmonic data, crypto, and CBOR instances with the SDK", () => {
+  it("resolves no @harmoniclabs package from the package, Lucid or Lucid's own packages", () => {
     const packageRequire = createRequire(
       join(workspace, route, "package.json"),
     );
-    const lucidRequire = createRequire(
-      packageRequire.resolve("@lucid-evolution/lucid"),
+    const lucidEntry = packageRequire.resolve("@lucid-evolution/lucid");
+    const lucidRequire = createRequire(lucidEntry);
+    const lucidDependencies = Object.keys(
+      manifestOf(lucidEntry).dependencies ?? {},
+    ).filter((name) => name.startsWith("@lucid-evolution/"));
+    expect(lucidDependencies).toContain("@lucid-evolution/utils");
+    const contexts = [
+      packageRequire,
+      lucidRequire,
+      ...lucidDependencies.map((name) =>
+        createRequire(lucidRequire.resolve(name)),
+      ),
+    ];
+    const resolved = contexts.flatMap((context) =>
+      HARMONIC_PACKAGES.flatMap((name) => {
+        const found = resolution(context, name);
+        return found === undefined ? [] : [`${name} -> ${found}`];
+      }),
     );
-    const utilsRequire = createRequire(
-      lucidRequire.resolve("@lucid-evolution/utils"),
-    );
-    const uplcEntry = utilsRequire.resolve("@harmoniclabs/uplc");
-    const dataEntry = utilsRequire.resolve("@harmoniclabs/plutus-data");
-    const uplcRequire = createRequire(uplcEntry);
-    const dataRequire = createRequire(dataEntry);
-    expect(versionOf(uplcEntry)).toMatch(/^2\./);
-    expect(versionOf(dataEntry)).toMatch(/^2\./);
-    expect(versionOf(uplcRequire.resolve("@harmoniclabs/cbor"))).toMatch(
-      /^2\./,
-    );
-    expect(uplcRequire.resolve("@harmoniclabs/plutus-data")).toBe(dataEntry);
-    expect(uplcRequire.resolve("@harmoniclabs/cbor")).toBe(
-      dataRequire.resolve("@harmoniclabs/cbor"),
-    );
-    expect(uplcRequire.resolve("@harmoniclabs/cbor")).toBe(
-      sdkRequire.resolve("@harmoniclabs/cbor"),
-    );
-    expect(uplcRequire.resolve("@harmoniclabs/crypto")).toBe(
-      sdkRequire.resolve("@harmoniclabs/crypto"),
-    );
+    expect(resolved).toEqual([]);
   });
 
   it.each(["cjs", "esm"])(
