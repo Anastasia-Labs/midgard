@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { chmod, mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
@@ -60,19 +60,32 @@ export const nodeLedger = (endpoint: string): JourneyLedger => ({
     ),
 });
 /**
- * The wallet arguments of a signing node command. A preprod-public node
- * command takes its seed only from a private file, written in the run
- * directory; a testing one names the stack variable that holds it.
+ * Runs a signing node command with its wallet arguments. A preprod-public
+ * node command takes its seed only from a private file: a new one in the run
+ * directory, which only the host user can read and which is deleted when the
+ * command ends. A testing one names the stack variable that holds the seed.
  */
-async function walletSeedArguments(processes: StackProcesses, role: string) {
+async function withWalletSeed<T>(
+  processes: StackProcesses,
+  role: string,
+  run: (walletArguments: string[]) => Promise<T>,
+) {
   const { config, env } = processes;
   const seedEnv = config.wallets[role]!.seedEnv;
-  if (config.public === undefined) return ["--wallet-seed-phrase-env", seedEnv];
+  if (config.public === undefined)
+    return run(["--wallet-seed-phrase-env", seedEnv]);
   const directory = join(config.runDirectory, "wallets");
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const file = join(directory, `${role}.seed`);
-  await writeFile(file, env[seedEnv]!, { mode: 0o600 });
-  return ["--wallet-seed-phrase-file", file];
+  // One an interrupted run left behind is replaced, never written through.
+  await rm(file, { force: true });
+  await writeFile(file, env[seedEnv]!, { flag: "wx", mode: 0o600 });
+  await chmod(file, 0o600);
+  try {
+    return await run(["--wallet-seed-phrase-file", file]);
+  } finally {
+    await rm(file, { force: true });
+  }
 }
 const lovelaceOf = (utxos: NodeUtxos) =>
   utxos.reduce((sum, utxo) => sum + (utxo.assets.lovelace ?? 0n), 0n);
@@ -160,16 +173,18 @@ export function journeySteps(
         }
         const run = await journal();
         await assertHostDatabaseIsStackDatabase(processes);
-        const receipt = await processes.node(`${prefix}-deposit-submit`, [
-          "submit-deposit",
-          "--submission-id",
-          `${run.runId}:${prefix}:deposit`,
-          ...(await walletSeedArguments(processes, "user")),
-          "--l2-address",
-          user.address,
-          "--lovelace",
-          config.journey.depositLovelace,
-        ]);
+        const receipt = await withWalletSeed(processes, "user", (wallet) =>
+          processes.node(`${prefix}-deposit-submit`, [
+            "submit-deposit",
+            "--submission-id",
+            `${run.runId}:${prefix}:deposit`,
+            ...wallet,
+            "--l2-address",
+            user.address,
+            "--lovelace",
+            config.journey.depositLovelace,
+          ]),
+        );
         await writeDurableJson(file("deposit"), receipt);
         return receipt;
       },
@@ -354,18 +369,20 @@ export function journeySteps(
         }
         const run = await journal();
         await assertHostDatabaseIsStackDatabase(processes);
-        const receipt = await processes.node(`${prefix}-withdrawal-submit`, [
-          "submit-withdrawal",
-          "--submission-id",
-          `${run.runId}:${prefix}:withdrawal`,
-          ...(await walletSeedArguments(processes, "recipient")),
-          "--l2-out-ref",
-          intent.l2OutRef,
-          "--l1-address",
-          intent.address,
-          "--endpoint",
-          config.endpoint,
-        ]);
+        const receipt = await withWalletSeed(processes, "recipient", (wallet) =>
+          processes.node(`${prefix}-withdrawal-submit`, [
+            "submit-withdrawal",
+            "--submission-id",
+            `${run.runId}:${prefix}:withdrawal`,
+            ...wallet,
+            "--l2-out-ref",
+            intent.l2OutRef,
+            "--l1-address",
+            intent.address,
+            "--endpoint",
+            config.endpoint,
+          ]),
+        );
         await writeDurableJson(file("withdrawal"), receipt);
         return receipt;
       },

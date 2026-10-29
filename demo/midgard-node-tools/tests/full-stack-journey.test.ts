@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { access, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { assetsToValue, CML, walletFromSeed } from "@lucid-evolution/lucid";
@@ -24,6 +24,7 @@ import {
 } from "../src/full-stack/payout-body.js";
 import { runStackWorkflow } from "../src/full-stack/workflow.js";
 import {
+  type RecordedCall,
   RecordingProcesses,
   removeStackFixtures,
   stackEnvironment,
@@ -313,6 +314,55 @@ describe("wallet journey resume", () => {
     await expect(transfer.reconcile(undefined)).rejects.toThrow(
       "Transfer rejected: E_TEST",
     );
+  });
+  it("gives a public deposit a private seed file that is gone when the command ends", async () => {
+    const value = await journey();
+    // A preprod-public stack signs with seeds from files, never the environment.
+    const root = value.config.runDirectory;
+    value.config.public = {
+      nodeConfigFile: join(root, "node-secrets.yaml"),
+      tlsCertFile: join(root, "node.pem"),
+      tlsKeyFile: join(root, "node.key"),
+      tlsCaFile: join(root, "ca.pem"),
+      trustRootsFile: join(root, "trust-roots.json"),
+      blueprintClassificationFile: join(root, "classification.json"),
+      releaseDirectory: join(root, "release"),
+      ingressHostPort: null,
+    };
+    value.processes.env.MIDGARD_PUBLIC_API_ORIGIN = "https://node.example.test";
+    await runStackWorkflow(value.context, []);
+    const deposit = value.byId("cycle-0-deposit");
+    value.processes.responses["cycle-0-deposit-funds"] = {
+      totals: { lovelace: "1000000000" },
+    };
+    value.processes.responses["storage-identity"] = { id: "7" };
+    value.processes.responses["host-database-identity"] = "7";
+    const seen: { file: string; mode: number; seed: string }[] = [];
+    let fail = true;
+    value.processes.responses["cycle-0-deposit-submit"] = async (
+      call: RecordedCall,
+    ) => {
+      expect(call.args).not.toContain("--wallet-seed-phrase-env");
+      const file =
+        call.args[call.args.indexOf("--wallet-seed-phrase-file") + 1]!;
+      seen.push({
+        file,
+        mode: (await stat(file)).mode & 0o777,
+        seed: await readFile(file, "utf8"),
+      });
+      if (fail) throw new Error("submit failed");
+      return { txHash: "d".repeat(64) };
+    };
+    await expect(deposit.execute(undefined)).rejects.toThrow("submit failed");
+    fail = false;
+    await deposit.execute(undefined);
+    const seed = value.processes.env[value.config.wallets.user!.seedEnv]!;
+    expect(seen).toHaveLength(2);
+    for (const { file, mode, seed: written } of seen) {
+      expect(mode).toBe(0o600);
+      expect(written).toBe(seed);
+      await expect(access(file)).rejects.toThrow("ENOENT");
+    }
   });
   it("checks the user's L1 funds before the first deposit is sent", async () => {
     const value = await journey();
