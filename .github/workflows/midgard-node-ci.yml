@@ -1268,6 +1268,7 @@ jobs:
             watcher-journeys/history-events.test.ts \
             watcher-journeys/journey-ledger.test.ts \
             watcher-journeys/journey-lucid.test.ts \
+            watcher-journeys/journey-network.test.ts \
             watcher-journeys/journey-replay-lifetime.test.ts \
             watcher-journeys/journey-session.test.ts \
             watcher-journeys/journey-timing.test.ts \

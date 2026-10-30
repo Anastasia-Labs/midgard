@@ -27,6 +27,7 @@ import {
   checkedJourneyConstruction,
   journeyLedgerPairs,
 } from "./journey-ledger.js";
+import { journeyNetwork } from "./journey-network.js";
 
 export const buildJourneyWithdrawalEvent = async (
   input: HistoryEventBlockInput & {
@@ -179,8 +180,9 @@ export const buildJourneyWithdrawnTransaction = async (
     ([key]) => key === withdrawn.toString("hex"),
   );
   const owner = CML.PrivateKey.from_bech32(
-    walletFromSeed(input.ledgerOwnerSeedPhrase, { network: "Custom" })
-      .paymentKey,
+    walletFromSeed(input.ledgerOwnerSeedPhrase, {
+      network: journeyNetwork().network,
+    }).paymentKey,
   )
     .to_public()
     .hash()
@@ -215,8 +217,9 @@ export const buildJourneyWithdrawnTransaction = async (
       "Withdrawn-input journey requires an honestly valid staged withdrawal",
     );
   const key = CML.PrivateKey.from_bech32(
-    walletFromSeed(input.ledgerOwnerSeedPhrase, { network: "Custom" })
-      .paymentKey,
+    walletFromSeed(input.ledgerOwnerSeedPhrase, {
+      network: journeyNetwork().network,
+    }).paymentKey,
   );
   const selected =
     !input.honest && input.category === "withdrawnInput"

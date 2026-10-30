@@ -18,6 +18,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { CML, Data, walletFromSeed } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { journeyNetwork } from "./journey-network.js";
 import {
   buildJourneyTransactionControl,
   type JourneyTransactionInput,
@@ -76,7 +77,7 @@ export const buildJourneyTransactionSourceFault = async (
     deriveMidgardNativeTxCompact(body, original.witnessSet, validity),
   ).toString("hex");
   const wallet = walletFromSeed(input.ledgerOwnerSeedPhrase, {
-    network: "Custom",
+    network: journeyNetwork().network,
   });
   const key = CML.PrivateKey.from_bech32(wallet.paymentKey);
   const witnessSet = {

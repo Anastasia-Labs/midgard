@@ -29,6 +29,7 @@ import {
   verifyJourneyCorrectedScheduler,
   verifyJourneyCorrectedTail,
 } from "./correction.verify-journey-corrected-scheduler.js";
+import { journeyNetwork } from "./journey-network.js";
 import type { loadJourneyContext } from "./live-context.js";
 import type { startJourneyNativeRecorder } from "./native-recorder.js";
 
@@ -202,7 +203,7 @@ export const verifyJourneyCorrection = async ({
       BigInt(economics.slashingPenaltyLovelace),
     );
     const proverAddress = resolveProverSigner({
-      network: "Custom",
+      network: journeyNetwork().network,
       walletSeedPhrase: accounts.publisher.seedPhrase,
     }).address;
     expect(reward.output.address().to_bech32()).toBe(proverAddress);

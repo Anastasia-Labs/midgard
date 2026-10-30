@@ -33,6 +33,7 @@ import {
   journeyWithdrawalBody,
   type StagedHistoryEvent,
 } from "./history-events.js";
+import { journeyNetwork } from "./journey-network.js";
 import {
   createPreparedJourneyFixture,
   decodeJourneyRetainedBlock,
@@ -243,7 +244,8 @@ const publishEvent = async (
 /** The retained ledger output owner, derived from its actual seed phrase. */
 export const journeyLedgerOwnerKey = (seedPhrase: string) =>
   CML.PrivateKey.from_bech32(
-    walletFromSeed(seedPhrase, { network: "Custom" }).paymentKey,
+    walletFromSeed(seedPhrase, { network: journeyNetwork().network })
+      .paymentKey,
   );
 
 const ownerKey = (input: JourneyFaultPreparationInput) =>
@@ -328,7 +330,7 @@ export const journeyDepositEventRequest = (input: {
   ownerKey: CML.PrivateKey;
 }): JourneyEventPublicationRequest => {
   const { deployment } = input;
-  const address = credentialToAddress("Custom", {
+  const address = credentialToAddress(journeyNetwork().network, {
     type: "Key",
     hash: input.ownerKey.to_public().hash().to_hex(),
   });

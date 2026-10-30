@@ -16,6 +16,7 @@ import {
   checkedJourneyConstruction,
   type JourneyLedgerPredecessor,
 } from "./journey-ledger.js";
+import { journeyNetwork } from "./journey-network.js";
 
 type Mutation = (input: {
   spendInput: Buffer;
@@ -97,7 +98,7 @@ const buildJourneyTransaction = async (
 ) => {
   const ledgerEntries = input.predecessor.ledger.entries;
   const wallet = walletFromSeed(input.ledgerOwnerSeedPhrase, {
-    network: "Custom",
+    network: journeyNetwork().network,
   });
   const key = CML.PrivateKey.from_bech32(wallet.paymentKey);
   const ownerHash = Buffer.from(key.to_public().hash().to_raw_bytes());

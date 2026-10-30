@@ -6,6 +6,8 @@ import type {
 import { type L1Access, l1AccessOfProvider } from "midgard-node/l1-access";
 import { openKupmiosAccess } from "midgard-node/l1-external/kupmios-access";
 
+import { journeyNetwork } from "./journey-network.js";
+
 /** Where a journey Lucid runs: the devnet's Kupo, Ogmios and slot mapping. */
 export type JourneyLucidNetwork = {
   readonly kupoUrl: string;
@@ -28,20 +30,20 @@ export const journeyL1Access = (
 ): L1Access =>
   l1AccessOfProvider(provider) ??
   openKupmiosAccess({
-    network: "Custom",
+    network: journeyNetwork().network,
     kupoUrl,
     ogmiosUrl,
     provider,
     slotConfig,
   });
 
-/** A live journey Lucid on the isolated devnet, over the harness access. */
+/** A live journey Lucid on the journey's network, over the harness access. */
 export const journeyLucid = async (
   provider: Provider,
   network: JourneyLucidNetwork,
   evaluator?: LucidOptions["evaluator"],
 ): Promise<LucidEvolution> =>
   await journeyL1Access(provider, network).lucid(
-    "Custom",
+    journeyNetwork().network,
     evaluator === undefined ? {} : { evaluator },
   );

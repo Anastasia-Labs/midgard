@@ -12,6 +12,7 @@ import {
 
 import { readJourneyArtifact, writeJourneyArtifact } from "./artifacts.js";
 import type { JourneyFixture } from "./fixture.js";
+import { journeyDaSignerConfig, journeyNetwork } from "./journey-network.js";
 import { verifyTransitionTraceJourneyOutputPlan } from "./journey-timing.js";
 import { JOURNEY_ACTION_DEPTH } from "./live-context.js";
 
@@ -26,11 +27,7 @@ export const transitionTraceJourneyFixture: JourneyFixture = {
       : undefined;
     const { deployment, accounts } = context;
     const staged = await stagePublishedDepositTrace(deployment, {
-      daSignerConfig: {
-        NETWORK: "Custom",
-        L1_OPERATOR_SEED_PHRASE: accounts.operator.seedPhrase,
-        DA_COSIGNER_SEED_PHRASE: accounts.cosigner.seedPhrase,
-      },
+      daSignerConfig: journeyDaSignerConfig(accounts),
       onStage,
       resume,
       onCheckpoint: (checkpoint) =>
@@ -45,7 +42,7 @@ export const transitionTraceJourneyFixture: JourneyFixture = {
       staged.checkpoint.depositMetadata,
     );
     const projected = deriveCanonicalOriginalDepositTransitionEffect({
-      configuredNetwork: "Custom",
+      configuredNetwork: journeyNetwork().network,
       eventId: deposit.event.id,
       l2Address: deposit.event.info.l2_address,
       l2NetworkId: deposit.event.info.l2_network_id,

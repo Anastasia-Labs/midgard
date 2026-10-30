@@ -21,6 +21,7 @@ import type * as SDK from "@al-ft/midgard-sdk";
 import { CML, walletFromSeed } from "@lucid-evolution/lucid";
 
 import type { JourneyLedgerPredecessor } from "./journey-ledger.js";
+import { journeyNetwork } from "./journey-network.js";
 
 /** `(lam ctx [(lam _ ()) ctx])`: a Plutus V3 script must return Unit. */
 const unitScriptBytes = encodeCbor(Buffer.from("0101002324980041", "hex"));
@@ -37,7 +38,7 @@ export const buildJourneyScriptTransaction = (input: {
   fee?: bigint;
 }) => {
   const wallet = walletFromSeed(input.ledgerOwnerSeedPhrase, {
-    network: "Custom",
+    network: journeyNetwork().network,
   });
   const key = CML.PrivateKey.from_bech32(wallet.paymentKey);
   const owner = Buffer.from(key.to_public().hash().to_raw_bytes());

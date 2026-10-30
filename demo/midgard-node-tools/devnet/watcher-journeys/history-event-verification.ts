@@ -16,6 +16,7 @@ import { unsafeCreateTransitionTraceEventAuthorityFromRawForTest } from "@al-ft/
 import { bindJourneyEventAuthorities } from "./event-history-bindings.js";
 import type { VerifiableJourneyBlock } from "./fixture-verification.js";
 import type { LocalHistoryEventStage } from "./history-event-local-staging.js";
+import { journeyNetwork } from "./journey-network.js";
 
 /** Depth of the shallowest recorded transaction; one still pending is 0 deep. */
 const recordedDepth = async ({
@@ -110,7 +111,7 @@ export const classifyLocalHistoryEventFixture = async (input: {
     createCatalogueCompleteCanonicalReplay({
       lucid: deployment.operatorLucid,
       l1SlotConfig: parseContractDeploymentL1SlotConfig(deployment.manifest),
-      network: "Custom",
+      network: journeyNetwork().network,
       hubOraclePolicyId,
       minimumConfirmationDepth: policy.confirmationDepth,
       owner: input.stage.operatorVkey,

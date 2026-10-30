@@ -7,6 +7,7 @@ import {
 } from "midgard-watcher";
 
 import type { JourneyContext } from "./fixture.js";
+import { journeyNetwork } from "./journey-network.js";
 
 const CATCH_UP_TIMEOUT_MS = 10 * 60_000;
 
@@ -62,11 +63,11 @@ export const journeyFollowedScripts = (
 
 /** The run's devnet node, as the journey reaches it. */
 export const journeyFollowerNode = (
-  context: Pick<JourneyContext, "runDirectory" | "customNetwork">,
+  context: Pick<JourneyContext, "runDirectory">,
 ): FollowerInput["node"] => ({
   binaryPath: join(context.runDirectory, "work/midgard-l1-node-transport"),
   socketPath: join(context.runDirectory, "cardano/ipc/node.socket"),
-  networkMagic: context.customNetwork.networkMagic,
+  networkMagic: journeyNetwork().magic,
   // The bound the journey session configures for the run watcher's l1.
   requestTimeoutMs: 30_000,
 });

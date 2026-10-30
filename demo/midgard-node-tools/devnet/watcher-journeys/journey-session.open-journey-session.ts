@@ -22,6 +22,7 @@ import {
   DEVNET_WATCHER_LIMITS,
 } from "../../src/watcher-config.js";
 import { writeJourneyArtifact } from "./artifacts.js";
+import { journeyNetwork } from "./journey-network.js";
 import {
   ensureJourneyWatcherSecrets,
   journeyWatcherKeySources,
@@ -139,7 +140,7 @@ export const openJourneySession = async (runDirectory: string) => {
         node: {
           socketPath: nativeQuery.watcherConfig.l1.source.chainSync.socketPath,
           binaryPath: nativeQuery.binaryPath,
-          networkMagic: context.customNetwork.networkMagic,
+          networkMagic: journeyNetwork().magic,
         },
         nonceTxHash: deployment.manifest.hubOracleOneShot.txHash,
         recorded: recordedOrigin,
@@ -149,10 +150,10 @@ export const openJourneySession = async (runDirectory: string) => {
       { WATCHER_CONFIG_SCHEMA_VERSION, parseWatcherConfig },
       {
         mode: "acceptance",
-        network: {
-          targetNetwork: "Custom",
-          customNetwork: context.customNetwork,
-        },
+        network:
+          journeyNetwork().network === "Custom"
+            ? { targetNetwork: "Custom", customNetwork: context.customNetwork }
+            : { targetNetwork: journeyNetwork().network },
         source: nativeQuery.watcherConfig.l1.source,
         origin,
         finalityDepth: JOURNEY_FINALITY_DEPTH,
@@ -189,7 +190,7 @@ export const openJourneySession = async (runDirectory: string) => {
       binaryPath: nativeQuery.binaryPath,
       directory,
       checkpointDirectory: directory,
-      networkMagic: context.customNetwork.networkMagic,
+      networkMagic: journeyNetwork().magic,
     });
     cleanup.push(replayedLedger.close);
     // Inclusion comes from the recorder's canonical chain; the local node's
@@ -215,11 +216,11 @@ export const openJourneySession = async (runDirectory: string) => {
       const fundingPath = join(runtimeDirectory, "actor-funding.txt");
       if (existsSync(fundingPath)) return;
       const prover = resolveProverSigner({
-        network: "Custom",
+        network: journeyNetwork().network,
         walletSeedPhrase: accounts.publisher.seedPhrase,
       }).address;
       const availability = resolveProverSigner({
-        network: "Custom",
+        network: journeyNetwork().network,
         walletSeedPhrase: accounts.availability.seedPhrase,
       }).address;
       const publisherAddress = await deployment.publisherLucid

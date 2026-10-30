@@ -11,6 +11,7 @@ import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 import type { publishWorkflowDeploymentOnChain } from "midgard-node/tests/helpers/published-workflow-deployment";
 
 import { journeyLucid } from "./journey-lucid.js";
+import { assertJourneyNetwork, journeyNetwork } from "./journey-network.js";
 import { postOgmiosQuery, readOgmiosTipSlot } from "./ledger-tip.js";
 import { createLiveWorkflowChain } from "./live-chain.js";
 import { JourneyLocalKupmios } from "./local-kupmios.js";
@@ -63,7 +64,7 @@ export const loadJourneyContext = async (runDirectory: string) => {
     join(runDirectory, "genesis/shelley-genesis.json"),
   );
   const genesis = JSON.parse(genesisBytes.toString("utf8"));
-  if (genesis.networkMagic !== 424242 || genesis.networkId !== "Testnet")
+  if (genesis.networkId !== "Testnet")
     throw new Error("Journey requires its isolated devnet genesis");
   const customNetwork = {
     networkMagic: genesis.networkMagic as number,
@@ -102,14 +103,16 @@ export const loadJourneyContext = async (runDirectory: string) => {
         : value,
   );
   const verified = verifyFinalizedDeploymentManifest(persisted.manifest);
+  assertJourneyNetwork(journeyNetwork(), {
+    manifestNetwork: verified.network,
+    manifestProfileDigest: verified.deploymentProfileDigest,
+    handshakeMagic: customNetwork.networkMagic,
+  });
   if (
-    verified.network !== "Custom" ||
     createHash("sha256").update(persisted.blueprintJson).digest("hex") !==
-      persisted.manifest.artifacts.blueprintHash
+    persisted.manifest.artifacts.blueprintHash
   ) {
-    throw new Error(
-      "Stored deployment differs from its frozen blueprint or network",
-    );
+    throw new Error("Stored deployment differs from its frozen blueprint");
   }
   const references = new Map(persisted.references);
   for (const receipt of persisted.receipts) {

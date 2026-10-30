@@ -34,6 +34,7 @@ import {
   captureStagedHistoryEvent,
   type StagedHistoryEvent,
 } from "./history-events.js";
+import { journeyDaSignerConfig } from "./journey-network.js";
 
 /** A published event together with the inclusion time its datum authenticates. */
 export type StagedLocalHistoryEvent = StagedHistoryEvent & {
@@ -232,11 +233,7 @@ export const openLocalHistoryEventStage =
           blockActor = await createPublishedWatcherBlockActor({
             deployment,
             lucid,
-            daSignerConfig: {
-              NETWORK: "Custom",
-              L1_OPERATOR_SEED_PHRASE: accounts.operator.seedPhrase,
-              DA_COSIGNER_SEED_PHRASE: accounts.cosigner.seedPhrase,
-            },
+            daSignerConfig: journeyDaSignerConfig(accounts),
           });
           await blockActor.onboardOperator();
         }

@@ -27,6 +27,7 @@ import type {
   StagedJourney,
 } from "./fixture.js";
 import { journeyBlockBuilder } from "./journey-ledger.js";
+import { journeyDaSignerConfig } from "./journey-network.js";
 import { readKupoUnitConsumptions } from "./kupo-consumption.js";
 import { JOURNEY_ACTION_DEPTH } from "./live-context.js";
 import { reconcileSignedCommit } from "./signed-commit-reconciliation.js";
@@ -63,11 +64,7 @@ export async function stageJourney(
   const fingerprint = deployment.manifest.manifestId;
   const checkpointPath = join(directory, "staged.json");
   const headPath = join(context.runDirectory, "work/journeys/head.json");
-  const daSignerConfig = {
-    NETWORK: "Custom" as const,
-    L1_OPERATOR_SEED_PHRASE: accounts.operator.seedPhrase,
-    DA_COSIGNER_SEED_PHRASE: accounts.cosigner.seedPhrase,
-  };
+  const daSignerConfig = journeyDaSignerConfig(accounts);
   const headerUnit = (hash: string) =>
     toUnit(
       contracts.stateQueue.policyId,

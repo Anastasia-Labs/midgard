@@ -22,6 +22,7 @@ import {
   checkedJourneyConstruction,
   type JourneyLedgerPredecessor,
 } from "./journey-ledger.js";
+import { journeyNetwork } from "./journey-network.js";
 
 export const JOURNEY_HISTORY_TRANSACTION_CATEGORIES = [
   "doubleSpend",
@@ -198,8 +199,9 @@ export const buildJourneyHistoryTransaction = async (
   input: HistoryTransactionInput,
 ) => {
   const key = CML.PrivateKey.from_bech32(
-    walletFromSeed(input.ledgerOwnerSeedPhrase, { network: "Custom" })
-      .paymentKey,
+    walletFromSeed(input.ledgerOwnerSeedPhrase, {
+      network: journeyNetwork().network,
+    }).paymentKey,
   );
   const spent = ownedHistoryLedgerEntries(
     input.predecessor,

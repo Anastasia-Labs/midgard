@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { journeyNetwork } from "./journey-network.js";
 import type { JourneyNativeNodeQuery } from "./local-kupmios.js";
 
 export const journeyNativeNodeQuery = async (
@@ -11,7 +12,8 @@ export const journeyNativeNodeQuery = async (
     join(runDirectory, "genesis/shelley-genesis.json"),
   );
   const genesis = JSON.parse(bytes.toString("utf8"));
-  if (genesis.networkMagic !== 424242 || genesis.networkId !== "Testnet")
+  const { network, magic } = journeyNetwork();
+  if (genesis.networkMagic !== magic || genesis.networkId !== "Testnet")
     throw new Error(
       "Journey native query requires its isolated devnet genesis",
     );
@@ -19,7 +21,7 @@ export const journeyNativeNodeQuery = async (
     binaryPath: join(runDirectory, "work/midgard-l1-node-transport"),
     timeoutMs: 10_000,
     watcherConfig: {
-      targetNetwork: "Custom",
+      targetNetwork: network,
       customNetwork: {
         networkMagic: genesis.networkMagic,
         slotConfig: {
