@@ -1259,6 +1259,7 @@ jobs:
             watcher-journeys/artifacts.test.ts \
             watcher-journeys/attached-journey-session.test.ts \
             watcher-journeys/catalogue.test.ts \
+            watcher-journeys/committee-acceptance.test.ts \
             watcher-journeys/correction-recovery.test.ts \
             watcher-journeys/correction.test.ts \
             watcher-journeys/deployment-source.test.ts \
