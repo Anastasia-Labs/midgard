@@ -35,6 +35,8 @@ const stackEnv = {
   [JOURNEY_DEPLOYMENT_ENV.mode]: "stack",
   [JOURNEY_DEPLOYMENT_ENV.stackConfig]: "/srv/stack/preprod-stack.json",
   [JOURNEY_DEPLOYMENT_ENV.stackRunId]: "drill-1",
+  [JOURNEY_DEPLOYMENT_ENV.operator2ComposeProject]: "midgard-node-op2",
+  [JOURNEY_DEPLOYMENT_ENV.operator2Endpoint]: "http://127.0.0.1:3100",
 };
 
 describe("journey deployment source", () => {
@@ -73,19 +75,38 @@ describe("journey deployment source", () => {
     }
   });
 
-  it("selects a stack by its absolute configuration file and run id", () => {
+  it("selects a stack by its absolute configuration file, run id and operator-2 node", () => {
     expect(selectJourneyDeploymentSource(stackEnv)).toMatchObject({
       mode: "stack",
       configPath: stackEnv[JOURNEY_DEPLOYMENT_ENV.stackConfig],
       runId: stackEnv[JOURNEY_DEPLOYMENT_ENV.stackRunId],
+      operator2: {
+        composeProject: "midgard-node-op2",
+        endpoint: "http://127.0.0.1:3100",
+      },
     });
   });
 
-  it("refuses a stack without an absolute configuration file or a run id", () => {
+  it("refuses a stack without an absolute configuration file, a run id or operator-2's node", () => {
     for (const env of [
       { ...stackEnv, [JOURNEY_DEPLOYMENT_ENV.stackConfig]: "" },
       { ...stackEnv, [JOURNEY_DEPLOYMENT_ENV.stackConfig]: "stack.json" },
       { ...stackEnv, [JOURNEY_DEPLOYMENT_ENV.stackRunId]: "" },
+      { ...stackEnv, [JOURNEY_DEPLOYMENT_ENV.operator2ComposeProject]: "" },
+      {
+        ...stackEnv,
+        [JOURNEY_DEPLOYMENT_ENV.operator2ComposeProject]: "Op2 --file x",
+      },
+      { ...stackEnv, [JOURNEY_DEPLOYMENT_ENV.operator2Endpoint]: "" },
+      {
+        ...stackEnv,
+        [JOURNEY_DEPLOYMENT_ENV.operator2Endpoint]: "127.0.0.1:3100",
+      },
+      {
+        ...stackEnv,
+        [JOURNEY_DEPLOYMENT_ENV.operator2Endpoint]:
+          "http://127.0.0.1:3100/readyz",
+      },
     ])
       expect(() => selectJourneyDeploymentSource(env)).toThrow(/Stack mode/u);
   });
@@ -100,6 +121,8 @@ describe("journey deployment source", () => {
     for (const name of [
       JOURNEY_DEPLOYMENT_ENV.stackConfig,
       JOURNEY_DEPLOYMENT_ENV.stackRunId,
+      JOURNEY_DEPLOYMENT_ENV.operator2ComposeProject,
+      JOURNEY_DEPLOYMENT_ENV.operator2Endpoint,
     ])
       expect(() =>
         selectJourneyDeploymentSource({

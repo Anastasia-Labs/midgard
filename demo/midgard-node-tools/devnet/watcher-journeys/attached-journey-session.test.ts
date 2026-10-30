@@ -20,6 +20,7 @@ import {
   captureJourneyWorkflowBaseline,
   openAttachedJourneySession,
 } from "./journey-session.js";
+import type { OperatorNodeControl } from "./operator-pause.js";
 import type { StackJourneyContext } from "./stack-context.js";
 import {
   WATCHER_CONTAINER_PROCESS_CONFIG_PATH,
@@ -117,12 +118,14 @@ const runningStackWatcher = async (status: Record<string, unknown>) => {
       manifest: { manifestId: fingerprint },
       blueprintPath: join(root, "plutus.json"),
     },
+    stackConfig: { endpoint: "http://127.0.0.1:3000" },
     watcher: {
       composeProject: "midgard-node-drill",
       processConfigPath,
       operationsEndpoint,
     },
   } as unknown as StackJourneyContext;
+  const operator2 = stoppableOperatorNode();
   return {
     root,
     storePath,
@@ -130,8 +133,49 @@ const runningStackWatcher = async (status: Record<string, unknown>) => {
     context,
     served,
     requests,
+    operator2,
     exec: watcherContainer(processConfigPath),
+    /** How the journey opens a session on this stack, with operator-2's node. */
+    options: (exec = watcherContainer(processConfigPath)) => ({
+      exec,
+      operator2: {
+        composeProject: "midgard-node-op2",
+        endpoint: "http://127.0.0.1:3100",
+      },
+      operator2Control: operator2.control,
+    }),
   };
+};
+
+/** Operator-2's node as its Compose service: stop and start flip it. */
+const stoppableOperatorNode = () => {
+  const calls: string[] = [];
+  let running = true;
+  const control: OperatorNodeControl = {
+    name: "midgard-node-op2/midgard-node",
+    stop: () => {
+      calls.push("stop");
+      running = false;
+      return Promise.resolve();
+    },
+    start: () => {
+      calls.push("start");
+      running = true;
+      return Promise.resolve();
+    },
+    runningServices: () => Promise.resolve(running ? ["midgard-node"] : []),
+    readReadiness: () =>
+      Promise.resolve(
+        running
+          ? {
+              reachable: true,
+              httpStatus: 200,
+              body: { ready: true, reasons: [] },
+            }
+          : { reachable: false },
+      ),
+  };
+  return { control, calls, running: () => running };
 };
 
 const liveStatus = () => ({
@@ -145,9 +189,10 @@ const liveStatus = () => ({
 describe("attached journey session", () => {
   it("attaches to the stack's watcher and starts nothing of its own", async () => {
     const stack = await runningStackWatcher(liveStatus());
-    const session = await openAttachedJourneySession(stack.context, {
-      exec: stack.exec,
-    });
+    const session = await openAttachedJourneySession(
+      stack.context,
+      stack.options(),
+    );
     try {
       expect(session.mode).toBe("attached");
       expect(session.directory.startsWith(stack.runDirectory)).toBe(true);
@@ -204,9 +249,10 @@ describe("attached journey session", () => {
         0,
       );
     workflows.close();
-    const session = await openAttachedJourneySession(stack.context, {
-      exec: stack.exec,
-    });
+    const session = await openAttachedJourneySession(
+      stack.context,
+      stack.options(),
+    );
     try {
       const baseline = await session.captureWorkflowBaseline("doubleSpend");
       expect(baseline.get(headerHash)).toHaveLength(1);
@@ -238,7 +284,7 @@ describe("attached journey session", () => {
     ] as const) {
       const stack = await runningStackWatcher(status);
       await expect(
-        openAttachedJourneySession(stack.context, { exec: stack.exec }),
+        openAttachedJourneySession(stack.context, stack.options()),
       ).rejects.toThrow(refusal);
     }
     const stack = await runningStackWatcher(liveStatus());
@@ -248,7 +294,7 @@ describe("attached journey session", () => {
         .map((server) => new Promise((resolve) => server.close(resolve))),
     );
     await expect(
-      openAttachedJourneySession(stack.context, { exec: stack.exec }),
+      openAttachedJourneySession(stack.context, stack.options()),
     ).rejects.toThrow();
   });
 
@@ -266,15 +312,58 @@ describe("attached journey session", () => {
     );
     const otherWatcher = watcherContainer(foreign);
     await expect(
-      openAttachedJourneySession(stack.context, { exec: otherWatcher }),
+      openAttachedJourneySession(stack.context, stack.options(otherWatcher)),
     ).rejects.toThrow(/another process configuration/u);
+  });
+
+  it("holds operator-2's node and starts it again when the run ends", async () => {
+    const stack = await runningStackWatcher(liveStatus());
+    const session = await openAttachedJourneySession(
+      stack.context,
+      stack.options(),
+    );
+    expect(stack.operator2.calls).toEqual([]);
+    await session.operator2.hold();
+    await session.operator2.assertStopped();
+    expect(stack.operator2.running()).toBe(false);
+    await session.close();
+    expect(stack.operator2.running()).toBe(true);
+    expect(stack.operator2.calls).toEqual(["stop", "start"]);
+  });
+
+  it("refuses to pause this stack's own node as operator-2", async () => {
+    const stack = await runningStackWatcher(liveStatus());
+    for (const [operator2, refusal] of [
+      [
+        {
+          composeProject: "midgard-node-drill",
+          endpoint: "http://127.0.0.1:3100",
+        },
+        /Compose project is this stack's own project/u,
+      ],
+      [
+        {
+          composeProject: "midgard-node-op2",
+          endpoint: "http://127.0.0.1:3000/",
+        },
+        /endpoint is this stack's own node endpoint/u,
+      ],
+    ] as const)
+      await expect(
+        openAttachedJourneySession(stack.context, {
+          ...stack.options(),
+          operator2,
+        }),
+      ).rejects.toThrow(refusal);
+    expect(stack.operator2.calls).toEqual([]);
   });
 
   it("closes when the watcher stops serving this deployment, and stays closed", async () => {
     const stack = await runningStackWatcher(liveStatus());
-    const session = await openAttachedJourneySession(stack.context, {
-      exec: stack.exec,
-    });
+    const session = await openAttachedJourneySession(
+      stack.context,
+      stack.options(),
+    );
     stack.served.status = { ...liveStatus(), liveness: "stopping" };
     await expect(session.assertHealthy()).rejects.toThrow(/not live/u);
     const served = stack.requests.length;

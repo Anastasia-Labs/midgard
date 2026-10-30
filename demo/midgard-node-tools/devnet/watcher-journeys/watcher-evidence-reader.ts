@@ -91,7 +91,7 @@ export type WatcherEvidenceExec = (input: {
 }) => Promise<string>;
 
 /** A Compose environment that addresses services by project name alone. */
-const projectOnlyEnvironment = (): NodeJS.ProcessEnv =>
+export const projectOnlyEnvironment = (): NodeJS.ProcessEnv =>
   Object.fromEntries(
     Object.entries(process.env).filter(
       ([name]) => !name.startsWith("COMPOSE_"),

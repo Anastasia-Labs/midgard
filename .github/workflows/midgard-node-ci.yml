@@ -1281,6 +1281,7 @@ jobs:
             watcher-journeys/local-kupmios.test.ts \
             watcher-journeys/native-recorder.test.ts \
             watcher-journeys/operations.test.ts \
+            watcher-journeys/operator-pause.test.ts \
             watcher-journeys/process.test.ts \
             watcher-journeys/prover-address-isolation.test.ts \
             watcher-journeys/public-da-preflight.test.ts \

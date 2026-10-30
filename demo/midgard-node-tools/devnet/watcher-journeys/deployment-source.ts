@@ -17,7 +17,25 @@ export const JOURNEY_DEPLOYMENT_ENV = Object.freeze({
   stackConfig: "MIDGARD_WATCHER_JOURNEY_STACK_CONFIG",
   /** Stack mode: the name of this drill run, kept across restarts to resume it. */
   stackRunId: "MIDGARD_WATCHER_JOURNEY_STACK_RUN_ID",
+  /** Stack mode: the Compose project of operator-2's node, which the drill stops. */
+  operator2ComposeProject: "MIDGARD_WATCHER_JOURNEY_OPERATOR2_COMPOSE_PROJECT",
+  /** Stack mode: operator-2's node HTTP endpoint, whose `/readyz` proves it stopped. */
+  operator2Endpoint: "MIDGARD_WATCHER_JOURNEY_OPERATOR2_ENDPOINT",
 } as const);
+
+/** Stack mode's own variables, which devnet mode refuses. */
+const STACK_ONLY_ENV = [
+  JOURNEY_DEPLOYMENT_ENV.stackConfig,
+  JOURNEY_DEPLOYMENT_ENV.stackRunId,
+  JOURNEY_DEPLOYMENT_ENV.operator2ComposeProject,
+  JOURNEY_DEPLOYMENT_ENV.operator2Endpoint,
+] as const;
+
+/** Operator-2's node, a second stack instance the drill pauses while it signs as operator-2. */
+export type JourneyOperator2Node = Readonly<{
+  composeProject: string;
+  endpoint: string;
+}>;
 
 /**
  * Where a journey's deployment comes from.
@@ -36,6 +54,7 @@ export type JourneyDeploymentSource =
       mode: "stack";
       configPath: string;
       runId: string;
+      operator2: JourneyOperator2Node;
       open: () => Promise<StackJourneyContext>;
     }>;
 
@@ -57,10 +76,7 @@ export const selectJourneyDeploymentSource = (
   const configPath = env[JOURNEY_DEPLOYMENT_ENV.stackConfig];
   const runId = env[JOURNEY_DEPLOYMENT_ENV.stackRunId];
   if (mode === "devnet") {
-    for (const name of [
-      JOURNEY_DEPLOYMENT_ENV.stackConfig,
-      JOURNEY_DEPLOYMENT_ENV.stackRunId,
-    ])
+    for (const name of STACK_ONLY_ENV)
       if (set(env[name]))
         throw new Error(`${name} applies only to the stack deployment mode`);
     if (runDirectory === undefined) return undefined;
@@ -83,10 +99,21 @@ export const selectJourneyDeploymentSource = (
       throw new Error(
         `Stack mode requires ${JOURNEY_DEPLOYMENT_ENV.stackRunId}`,
       );
+    const composeProject = env[JOURNEY_DEPLOYMENT_ENV.operator2ComposeProject];
+    if (!set(composeProject) || !/^[a-z0-9][a-z0-9_-]*$/u.test(composeProject))
+      throw new Error(
+        `Stack mode requires ${JOURNEY_DEPLOYMENT_ENV.operator2ComposeProject}, a Compose project name`,
+      );
+    const endpoint = env[JOURNEY_DEPLOYMENT_ENV.operator2Endpoint];
+    if (!set(endpoint) || !/^https?:\/\/[^/]+\/?$/u.test(endpoint))
+      throw new Error(
+        `Stack mode requires ${JOURNEY_DEPLOYMENT_ENV.operator2Endpoint}, an http(s) origin`,
+      );
     return Object.freeze({
       mode,
       configPath,
       runId,
+      operator2: Object.freeze({ composeProject, endpoint }),
       open: () => openStackJourneyContext(configPath, runId),
     });
   }

@@ -46,9 +46,11 @@ for (const fixture of fixtures) {
       const activeSession = await (session ??=
         source!.mode === "devnet"
           ? openJourneySession(source!.runDirectory)
-          : source!
-              .open()
-              .then((context) => openAttachedJourneySession(context)));
+          : source!.open().then((context) =>
+              openAttachedJourneySession(context, {
+                operator2: source!.operator2,
+              }),
+            ));
       if (activeSession.mode === "attached")
         throw new Error(
           "The journey runner does not drive an attached stack watcher yet",

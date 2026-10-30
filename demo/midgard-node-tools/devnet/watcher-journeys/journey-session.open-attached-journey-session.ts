@@ -4,9 +4,15 @@ import {
   watcherDeploymentReleaseFinalityAuthority,
 } from "midgard-watcher";
 
+import type { JourneyOperator2Node } from "./deployment-source.js";
 import { captureJourneyWorkflowBaseline } from "./journey-session.capture-journey-workflow-baseline.js";
 import { openJourneySessionCore } from "./journey-session.open-journey-session-core.js";
 import { readJourneyOperations } from "./operations.js";
+import {
+  composeOperatorNodeControl,
+  createOperatorPause,
+  type OperatorNodeControl,
+} from "./operator-pause.js";
 import type { StackJourneyContext } from "./stack-context.js";
 import { openStackJourneyReplayedLedger } from "./stack-replayed-ledger.js";
 import {
@@ -52,18 +58,47 @@ export const assertAttachedWatcherStatus = (
 /**
  * A journey session attached to a running e2e-stack's own watcher. It starts
  * no retained DA, no watcher configuration or process, no native recorder
- * and no prover funding. Health and readiness come from the stack watcher's
- * `/v1/status`; decision and workflow evidence from its journals, read
- * inside its container (`exec`, by default `docker compose exec`). Staging
- * reads ledgers from the stack's own replay, opened on its first read.
+ * and no prover funding. It holds operator-2's node while the drill signs as
+ * operator-2, and starts it again when it closes. Health and readiness come
+ * from the stack watcher's `/v1/status`; decision and workflow evidence from
+ * its journals, read inside its container (`exec`, by default
+ * `docker compose exec`). Staging reads ledgers from the stack's own replay,
+ * opened on its first read.
  */
 export const openAttachedJourneySession = async (
   context: StackJourneyContext,
-  options: Readonly<{ exec?: WatcherEvidenceExec }> = {},
+  options: Readonly<{
+    /** Operator-2's node, the second stack instance the drill pauses. */
+    operator2: JourneyOperator2Node;
+    exec?: WatcherEvidenceExec;
+    /** Operator-2's node control, by default `docker compose` on its project. */
+    operator2Control?: OperatorNodeControl;
+  }>,
 ) => {
-  const { directory, isClosed, close, stage, onClose } =
+  const { directory, onClose, isClosed, close, stage } =
     await openJourneySessionCore(context.runDirectory);
   try {
+    // Pausing our own stack's node instead of operator-2's would stop the
+    // honest successor; refuse a project or endpoint that is ours.
+    if (options.operator2.composeProject === context.watcher.composeProject)
+      throw new Error(
+        "Operator-2's Compose project is this stack's own project; refusing to pause our node",
+      );
+    if (
+      new URL(options.operator2.endpoint).origin ===
+      new URL(context.stackConfig.endpoint).origin
+    )
+      throw new Error(
+        "Operator-2's endpoint is this stack's own node endpoint; refusing to pause our node",
+      );
+    const operator2 = createOperatorPause(
+      options.operator2Control ?? composeOperatorNodeControl(options.operator2),
+    );
+    // A run that ends with operator-2 still held starts it again; only a
+    // completed run proves its liveness (`operator2.resume`).
+    onClose(operator2.release);
+    // Closes run in reverse order and each runs even if a later one throws,
+    // so operator-2 is started again whatever the ledger close does.
     const replayedLedger = openStackJourneyReplayedLedger(context, directory);
     onClose(replayedLedger.close);
     const deploymentFingerprint = context.deployment.manifest.manifestId;
@@ -137,6 +172,8 @@ export const openAttachedJourneySession = async (
       ledgerAt: replayedLedger.ledgerAt,
       watcher,
       evidence,
+      /** The drill's hold on operator-2's node; see `operator-pause.ts`. */
+      operator2,
       captureWorkflowBaseline: (category: FraudProofCatalogueCategoryName) =>
         captureJourneyWorkflowBaseline(evidence, category),
       assertHealthy,

@@ -13,11 +13,14 @@ export const isJourneyOperationsConnectionRefused = (
   return isJourneyOperationsConnectionRefused(cause.cause);
 };
 
+/** How long a restarted journey service may take to answer again. */
+export const JOURNEY_RESTART_TIMEOUT_MS = 1_800_000;
+
 /** Only an authorized restart may wait for its operations listener to return. */
 export const waitForRestartedJourneyOperations = async <T>({
   readStatus,
   requireLive,
-  timeoutMs = 1_800_000,
+  timeoutMs = JOURNEY_RESTART_TIMEOUT_MS,
 }: {
   readStatus(): Promise<T>;
   requireLive(): void;
