@@ -26,7 +26,6 @@ type PersistedDeployment = Omit<
   references: [string, UTxO][];
 };
 
-/** Reopen run-owned artifacts and real providers after a stopped journey. */
 /**
  * L1 depth the journey watcher requires before a block is finalized. Finality
  * anchors evidence: the finalized audit anchor of a completed workflow, its
@@ -46,6 +45,36 @@ export const JOURNEY_FINALITY_DEPTH =
  */
 export const JOURNEY_ACTION_DEPTH = 1;
 
+/**
+ * The workflow chain a journey drives: the Lucid's slot clock, the node's tip
+ * and block height through Ogmios.
+ */
+export const journeyWorkflowChain = ({
+  lucid,
+  slotLength,
+  ogmiosUrl,
+}: Readonly<{
+  lucid: Parameters<typeof createLiveWorkflowChain>[0]["lucid"];
+  slotLength: number;
+  ogmiosUrl: string;
+}>): Deployment["chain"] => ({
+  ...createLiveWorkflowChain({
+    lucid,
+    slotLength,
+    readTipSlot: () => readOgmiosTipSlot(ogmiosUrl),
+  }),
+  blockHeight: async () => {
+    const result = await postOgmiosQuery(ogmiosUrl, "queryNetwork/blockHeight");
+    if (typeof result !== "number" || !Number.isSafeInteger(result))
+      throw new Error("Ogmios did not report a block height");
+    return result;
+  },
+});
+
+/**
+ * The devnet deployment source: reopens a journey run directory's own
+ * deployment and real providers, also after a stopped journey.
+ */
 export const loadJourneyContext = async (runDirectory: string) => {
   if (!isAbsolute(runDirectory))
     throw new Error("Journey run directory must be absolute");
@@ -144,22 +173,11 @@ export const loadJourneyContext = async (runDirectory: string) => {
     references,
     operatorLucid,
     publisherLucid,
-    chain: {
-      ...createLiveWorkflowChain({
-        lucid: operatorLucid,
-        slotLength: customNetwork.slotConfig.slotLength,
-        readTipSlot: () => readOgmiosTipSlot(ogmiosUrl),
-      }),
-      blockHeight: async () => {
-        const result = await postOgmiosQuery(
-          ogmiosUrl,
-          "queryNetwork/blockHeight",
-        );
-        if (typeof result !== "number" || !Number.isSafeInteger(result))
-          throw new Error("Ogmios did not report a block height");
-        return result;
-      },
-    },
+    chain: journeyWorkflowChain({
+      lucid: operatorLucid,
+      slotLength: customNetwork.slotConfig.slotLength,
+      ogmiosUrl,
+    }),
   };
   return {
     runDirectory,

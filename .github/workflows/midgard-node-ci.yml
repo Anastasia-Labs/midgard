@@ -1260,6 +1260,7 @@ jobs:
             watcher-journeys/catalogue.test.ts \
             watcher-journeys/correction-recovery.test.ts \
             watcher-journeys/correction.test.ts \
+            watcher-journeys/deployment-source.test.ts \
             watcher-journeys/error-chain.test.ts \
             watcher-journeys/forced-order-recovery.test.ts \
             watcher-journeys/forced-order.test.ts \
@@ -1288,6 +1289,7 @@ jobs:
             watcher-journeys/script-validation-trace-case.test.ts \
             watcher-journeys/signed-commit-reconciliation.test.ts \
             watcher-journeys/signed-transaction-recovery.test.ts \
+            watcher-journeys/stack-context.test.ts \
             watcher-journeys/stage-timing.test.ts \
             watcher-journeys/staged-checkpoint.test.ts \
             watcher-journeys/staging-recovery.test.ts \
