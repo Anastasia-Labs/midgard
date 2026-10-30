@@ -170,6 +170,25 @@ describe("journey verified-header evidence", () => {
     expect(restarted.paths[0]).toMatch(/&cursor=0$/u);
   });
 
+  it("rereads from the start every time when it cannot see the watcher's process", async () => {
+    // A stack's own watcher: the journey reads its operations endpoint only,
+    // so a restart that renumbers its diagnostics is never seen.
+    let current = watcher();
+    const headers = createJourneyVerifiedHeaders(
+      { operations: (path) => current.operations(path) },
+      directory,
+    );
+    current.record(block("d4"), "verified");
+    current.record(block("d5"), "verified");
+    expect(await headers.collect([PREDECESSOR])).toBeUndefined();
+    current = watcher();
+    current.record(PREDECESSOR, "verified");
+    expect(await headers.collect([PREDECESSOR])).toHaveLength(1);
+    expect(current.paths).toEqual([
+      "/v1/diagnostics?kind=verification&limit=100&cursor=0",
+    ]);
+  });
+
   it("resumes from the records an earlier attempt retained", async () => {
     const earlier = watcher();
     const first = createJourneyVerifiedHeaders(earlier, directory);

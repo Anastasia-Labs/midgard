@@ -79,12 +79,14 @@ export const readJourneySuccessorPredecessor = async (
  * run. A restarted watcher numbers its diagnostics from one again, so a new
  * process id restarts the cursor. It never re-verifies a header it decided in
  * an earlier process, so a resumed journey starts from the verified records an
- * earlier attempt retained; each is still bound to its block's payload.
+ * earlier attempt retained; each is still bound to its block's payload. A
+ * watcher the journey does not run (`observe` absent: a stack's own) may
+ * restart unseen, so every read pages its diagnostics from the start.
  */
 export const createJourneyVerifiedHeaders = (
   watcher: {
     operations(path: string): Promise<unknown>;
-    observe(): { pid: number | null };
+    observe?(): { pid: number | null };
   },
   directory: string,
 ) => {
@@ -103,8 +105,8 @@ export const createJourneyVerifiedHeaders = (
         if (record.outcome === "verified" && record.headerHash !== undefined)
           decided.set(record.headerHash, record);
     retained = true;
-    const current = watcher.observe().pid;
-    if (current !== processId) {
+    const current = watcher.observe?.().pid;
+    if (current === undefined || current !== processId) {
       processId = current;
       cursor = "0";
     }

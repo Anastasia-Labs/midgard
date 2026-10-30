@@ -1269,6 +1269,8 @@ jobs:
             watcher-journeys/forced-submission.test.ts \
             watcher-journeys/history-event-cases.test.ts \
             watcher-journeys/history-events.test.ts \
+            watcher-journeys/honest-successor.observables.test.ts \
+            watcher-journeys/honest-successor.test.ts \
             watcher-journeys/journey-ledger.test.ts \
             watcher-journeys/journey-lucid.test.ts \
             watcher-journeys/journey-network.test.ts \
