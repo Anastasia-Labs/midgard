@@ -322,6 +322,22 @@ describe("preprod-testing keeps its own inputs", () => {
     await value.writeConfig();
     await expect(loadStackConfig(value.path)).resolves.toBeDefined();
   });
+  it("loads the fast-timer twin beside the default stack, on its own host ports", async () => {
+    const main = await fixture();
+    const twin = await fixture("preprod-testing-twin-stack.example.json");
+    // The twin's .env publishes the node API on the port its endpoint names.
+    twin.env.MIDGARD_NODE_API_HOST_PORT = new URL(twin.config.endpoint).port;
+    await writeFile(twin.config.envFile, twin.envText());
+    const loaded = await loadStackConfig(twin.path);
+    expect(loaded.config.public).toBeUndefined();
+    const ports = ({ config }: typeof main) => [
+      new URL(config.endpoint).port || "80",
+      ...Object.values(config.da.ports).map(String),
+    ];
+    expect(ports(twin).filter((port) => ports(main).includes(port))).toEqual(
+      [],
+    );
+  });
 });
 
 describe("the compiled deployment profile", () => {

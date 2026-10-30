@@ -117,6 +117,59 @@ the cause (funding, configuration, a provider, or simply waiting for Cardano),
 and rerun the same command. Do not wipe the run directory, volumes or local
 databases, and do not run deployment or wallet commands by hand around it.
 
+## Fast-timer twin
+
+The `preprod-rehearsal` deployment runs public timings, so its payouts, bond
+unlocks and DA-bond withdraw take days. A second deployment on
+`preprod-testing` (15-minute block maturity, a DA-bond withdraw delay of about 40 minutes)
+proves the same three paths in hours. Run it from its own linked worktree built
+for `preprod-testing`, so it has its own Compose project, storage and host
+ports, with a configuration copied from
+`demo/midgard-node-tools/config/preprod-testing-twin-stack.example.json`
+(`cycles: 1`, endpoint and DA ports clear of the default example's). Set
+`MIDGARD_NODE_API_HOST_PORT` in its `.env` to the endpoint's port.
+
+1. **Withdrawal payout.** Run `e2e-stack` with the twin configuration until it
+   passes. Its single cycle ends with the withdrawal paid to the exact L1
+   destination.
+2. **Operator bond and DA bond.** Only after the run passes, run each command
+   in the twin's node container, from its `demo/midgard-node`:
+
+   ```bash
+   twin() {
+     bash scripts/operator-compose.sh --env-file .env \
+       -f docker-compose.yaml -f docker-compose.kupmios.yaml \
+       -f <runDirectory>/services/compose.json \
+       exec midgard-node node dist/index.js "$@"
+   }
+   M=deploymentInfo/contract-deployment-info.json
+   # Begin the DA-bond withdraw first: attestations pause from here on.
+   twin da-bond withdraw begin --manifest $M --fee-address <owner address> \
+     --signers <owner key hashes> --build-unsigned deploymentInfo/begin.unsigned.json
+   twin da-bond witness deploymentInfo/begin.unsigned.json --key-env <owner seed variable> \
+     --out deploymentInfo/owner-a.witness.json
+   twin da-bond assemble --manifest $M deploymentInfo/begin.unsigned.json \
+     deploymentInfo/owner-a.witness.json ...
+   twin retire-operator
+   # After unlockAt (da-bond status) and bondRecoverableFrom (operator-status):
+   twin da-bond withdraw complete --manifest $M --fee-address <owner address> \
+     --signers <owner key hashes> --amount <backing> --to <address> \
+     --build-unsigned deploymentInfo/complete.unsigned.json
+   # witness and assemble deploymentInfo/complete.unsigned.json as above
+   twin recover-operator-bond
+   twin operator-status
+   twin da-bond status
+   ```
+
+   Every owner listed in `--signers`, and the fee payer, witnesses. The
+   container holds the node `.env` secrets but not the `STACK_` ones; witness
+   with a `STACK_` key on the host instead, where `witness` is offline and the
+   mounted `deploymentInfo/` holds the same files. The
+   last two commands show the operator at `none` and the pool `bonded` with
+   the withdrawn backing gone. The [DA bond commands](/docs/operators/node/cli-reference#da-bond-pool)
+   and [Operator Lifecycle](/docs/operators/node/operator-lifecycle) give each
+   command's output and refusals.
+
 ## Related
 
 - [Preprod-Public Deployment](/docs/operators/node/preprod-public-deploy) for the public profile.
