@@ -1,5 +1,6 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { Cause, Runtime } from "effect";
+import type { DaLocalSignerConfig } from "midgard-node/da/local-signers";
 import type { publishWorkflowDeploymentOnChain } from "midgard-node/tests/helpers/published-workflow-deployment";
 
 import {
@@ -10,6 +11,29 @@ import {
 export type PublishedWatcherDeployment = Awaited<
   ReturnType<typeof publishWorkflowDeploymentOnChain>
 >;
+
+/**
+ * What the block actor reads of a deployment: the one it published itself,
+ * or an attached stack's with the same contracts, chain and references.
+ */
+export type PublishedWatcherActorDeployment = Pick<
+  PublishedWatcherDeployment,
+  "manifest" | "contracts" | "chain" | "references" | "publisherLucid"
+>;
+
+/**
+ * The actor signs DA attestations only as a committee whose keys it holds.
+ * An attached stack's own committee attests, so its actor holds none.
+ */
+export const requireDaSignerConfig = (
+  config: DaLocalSignerConfig | undefined,
+): DaLocalSignerConfig => {
+  if (config === undefined)
+    throw new Error(
+      "This block actor holds no DA committee keys; the deployment's own committee attests its blocks",
+    );
+  return config;
+};
 
 export type PublishedWatcherBlock = {
   header: SDK.Header;

@@ -15,6 +15,7 @@ import type { JourneyFixture } from "./fixture.js";
 import { journeyDaSignerConfig, journeyNetwork } from "./journey-network.js";
 import { verifyTransitionTraceJourneyOutputPlan } from "./journey-timing.js";
 import { JOURNEY_ACTION_DEPTH } from "./live-context.js";
+import { isStackJourneyContext } from "./stack-da-publication.js";
 
 /**
  * The deposit-trace journey. By default it starts from the confirmed state,
@@ -28,6 +29,10 @@ export const createTransitionTraceJourneyFixture = ({
 }): JourneyFixture => ({
   category: "transitionTrace",
   async stage({ context, ledgerAt, directory, retain, onStage }) {
+    if (isStackJourneyContext(context))
+      throw new Error(
+        "The transition-trace journey does not stage on an attached stack yet",
+      );
     const checkpointPath = join(directory, "staged.json");
     const resume = existsSync(checkpointPath)
       ? await readJourneyArtifact<PublishedDepositTraceCheckpoint>(

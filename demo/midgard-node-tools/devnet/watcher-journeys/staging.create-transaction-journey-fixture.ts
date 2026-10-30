@@ -29,5 +29,5 @@ export const createPreparedJourneyFixture = (
   ) => Promise<JourneyPreparedFault>,
 ): JourneyFixture => ({
   category,
-  stage: (input) => stageJourney(input, { prepare }),
+  stage: (input) => stageJourney(input, { category, prepare }),
 });

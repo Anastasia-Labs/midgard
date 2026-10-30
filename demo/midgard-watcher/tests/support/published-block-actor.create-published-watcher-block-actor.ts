@@ -37,8 +37,9 @@ import {
   type PublishedDaAttestOptions,
   PublishedTransactionExpiredError,
   PublishedTransactionSubmissionError,
+  type PublishedWatcherActorDeployment,
   type PublishedWatcherBlock,
-  type PublishedWatcherDeployment,
+  requireDaSignerConfig,
 } from "./published-block-actor.is-unanswered-submission.js";
 import { verifyPublishedDaAttestationReceipt } from "./published-da-attestation-receipt.js";
 import {
@@ -58,9 +59,10 @@ export const createPublishedWatcherBlockActor = async ({
   readHeaderConsumptions,
   onStage = () => {},
 }: {
-  deployment: PublishedWatcherDeployment;
+  deployment: PublishedWatcherActorDeployment;
   lucid: LucidEvolution;
-  daSignerConfig: DaLocalSignerConfig;
+  /** The committee keys `attest` signs with; absent where a committee attests. */
+  daSignerConfig?: DaLocalSignerConfig;
   readConfirmedTransaction?: (txHash: string) => Promise<{ cbor: string }>;
   /** Indexed spends of outputs carrying a unit; hints the reconciliation authenticates. */
   readHeaderConsumptions?: (
@@ -520,6 +522,7 @@ export const createPublishedWatcherBlockActor = async ({
       onSubmitted,
     }: PublishedDaAttestOptions = {},
   ): Promise<PublishedDaAttestationOutcome> => {
+    const signerConfig = requireDaSignerConfig(daSignerConfig);
     const records: PublishedDaTransactionRecord[] = [...submitted];
     const stateQueueUnit = toUnit(
       contracts.stateQueue.policyId,
@@ -749,7 +752,7 @@ export const createPublishedWatcherBlockActor = async ({
     const message = SDK.daAvailabilityAttestationMessage(
       availabilityCommitment,
     );
-    const witnesses = daLocalSigners(daSignerConfig).map((signer) => {
+    const witnesses = daLocalSigners(signerConfig).map((signer) => {
       const signerIndex = committeeSignerIndex(
         daParamsDatum.committee,
         signer.verificationKeyHex,

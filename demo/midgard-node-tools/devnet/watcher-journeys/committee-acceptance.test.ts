@@ -46,6 +46,7 @@ import {
   JOURNEY_SCRIPT_FORCED_CATEGORIES,
 } from "./script-cases.js";
 import { buildJourneyValidationTraceFault } from "./script-validation-trace-case.js";
+import { stackDaExpectation } from "./stack-da-publication.js";
 import {
   buildJourneyTransactionControl,
   buildJourneyTransactionFault,
@@ -419,6 +420,24 @@ describe("honest DA committee over the journey fault payloads", () => {
     expect(
       JOURNEY_FIXTURE_CANDIDATES.map(({ category }) => category).sort(),
     ).toEqual(Object.keys(COMMITTEE_ACCEPTANCE).sort());
+  });
+
+  it("is what an attached stack's drill expects of its committee: attestation exactly when it signs", () => {
+    expect(
+      Object.fromEntries(
+        Object.keys(COMMITTEE_ACCEPTANCE).map((category) => [
+          category,
+          stackDaExpectation(category as JourneyCategory),
+        ]),
+      ),
+    ).toEqual(
+      Object.fromEntries(
+        Object.entries(COMMITTEE_ACCEPTANCE).map(([category, verdict]) => [
+          category,
+          verdict === "accepted" ? "attestation" : "refusal",
+        ]),
+      ),
+    );
   });
 
   it("signs an honest block built on the same predecessor", async () => {

@@ -10,7 +10,11 @@ import { makeWatcherDeploymentAuthorityFixture } from "midgard-watcher/tests/sup
 import { beforeEach, expect, it, vi } from "vitest";
 
 import { readJourneyArtifact } from "./artifacts.js";
-import { verifyJourneyPublicDa } from "./public-da-preflight.js";
+import {
+  fetchJourneyPublicDaPayload,
+  type OpenJourneyPublicDaRuntime,
+  verifyJourneyPublicDa,
+} from "./public-da-preflight.js";
 
 const mocked = vi.hoisted(() => ({
   create: vi.fn(),
@@ -178,5 +182,90 @@ it.each(["different bytes", "different peer", "transport failure"])(
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
+  },
+);
+
+/**
+ * Public DA as an attached stack serves it: each peer answers from a script
+ * of answers, one per ask with the last repeating; the clock is the pause.
+ */
+const servingAfter = (
+  answers: readonly ("missing" | "served")[],
+  servingPeerIds: readonly string[] = [peerId],
+) => {
+  const asked: string[] = [];
+  let closed = 0;
+  let round = 0;
+  const openRuntime = (async () => ({
+    deploymentFingerprint: deploymentIdentity.manifestId,
+    sources: servingPeerIds.map((sourcePeerId) => ({
+      fetchPayloadByHeaderHash: async (headerHash: string) => {
+        asked.push(sourcePeerId);
+        return answers[Math.min(round, answers.length - 1)] === "served" &&
+          sourcePeerId === servingPeerIds.at(-1)
+          ? {
+              ok: true,
+              sourcePeerId,
+              payloadEnvelopeCbor:
+                headerHash === current.headerHash
+                  ? current.payloadEnvelopeCbor
+                  : predecessor.payloadEnvelopeCbor,
+            }
+          : { ok: false, attempts: [{ status: "not_found" }] };
+      },
+    })),
+    close: async () => {
+      closed += 1;
+    },
+  })) as unknown as OpenJourneyPublicDaRuntime;
+  let clock = 0;
+  const availability = {
+    waitMs: 10_000,
+    now: () => clock,
+    pause: async () => {
+      clock += 2_000;
+      round += 1;
+    },
+  };
+  return { openRuntime, availability, asked, closed: () => closed };
+};
+
+it("waits while public DA trails the stack's attestation, then returns the bytes a peer serves", async () => {
+  const peers = ["12D3KooWFirstPeerWithoutTheCopy", peerId];
+  const da = servingAfter(["missing", "missing", "served"], peers);
+  await expect(
+    fetchJourneyPublicDaPayload({
+      watcherConfig,
+      deploymentIdentity,
+      headerHash: current.headerHash,
+      availability: da.availability,
+      openRuntime: da.openRuntime,
+    }),
+  ).resolves.toEqual({
+    payloadEnvelopeCbor: current.payloadEnvelopeCbor,
+    sourcePeerId: peerId,
+  });
+  expect(da.asked).toEqual([...peers, ...peers, ...peers]);
+  expect(da.closed()).toBe(1);
+});
+
+it.each([
+  ["once the availability wait ends", true, 6],
+  ["at the first answer without one", false, 1],
+])(
+  "fails naming the header when no peer serves it, %s",
+  async (_, waits, asks) => {
+    const da = servingAfter(["missing"]);
+    await expect(
+      fetchJourneyPublicDaPayload({
+        watcherConfig,
+        deploymentIdentity,
+        headerHash: current.headerHash,
+        ...(waits ? { availability: da.availability } : {}),
+        openRuntime: da.openRuntime,
+      }),
+    ).rejects.toThrow(`Public DA serves no payload for ${current.headerHash}`);
+    expect(da.asked).toHaveLength(asks);
+    expect(da.closed()).toBe(1);
   },
 );

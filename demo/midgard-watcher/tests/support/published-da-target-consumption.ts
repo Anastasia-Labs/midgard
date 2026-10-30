@@ -87,25 +87,33 @@ const authenticatedTransaction = (
   return transaction;
 };
 
+/** The authenticated removal of a header's state queue node. */
+export type PublishedHeaderRemoval = {
+  readonly removalTxHash: string;
+  readonly removedStateQueueOutRef: string;
+  /** The consumed node output, as the transaction that created it carried it. */
+  readonly removedOutput: UTxO;
+  /** The removing transaction's validity lower bound slot, when it has one. */
+  readonly validFromSlot: bigint | undefined;
+  /** The referenced fraud-proof output for this header, when it is a fraud correction. */
+  readonly fraudProof: UTxO | undefined;
+};
+
 /**
- * Reconcile a state queue target that disappeared while its DA attestation
- * was in progress. The only acceptable consumption is a fraud correction of
- * this exact header: the authenticated spender burns the header unit,
- * references a fraud-proof token for this header, and consumed an output
- * that actually carried this header. Every DA transaction already submitted
- * is preserved with its authenticated disposition so the orphaned bond and
- * the lost apply are visible rather than silently forgotten.
+ * Authenticate the latest indexed consumption of a header's state queue node
+ * as its removal: the consumed output carried this header, and the spender
+ * burns its unit and continues no output carrying it. Whether the removal
+ * references a fraud-proof token minted for this header is reported, not
+ * required, because an unattested header's timeout removal never does.
  */
-export const reconcilePublishedDaTargetConsumption = async (input: {
+export const authenticatePublishedHeaderRemoval = async (input: {
   readonly headerHash: string;
   readonly stateQueueAddress: string;
   readonly stateQueuePolicyId: string;
   readonly fraudProofPolicyId: string;
   readonly consumptions: readonly PublishedHeaderConsumption[];
-  readonly attestationOutputs: readonly UTxO[];
-  readonly submitted: readonly PublishedDaTransactionRecord[];
   readConfirmedTransaction(txHash: string): Promise<{ cbor: string }>;
-}): Promise<PublishedDaTargetCorrection> => {
+}): Promise<PublishedHeaderRemoval> => {
   const stateQueueAssetName =
     SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + input.headerHash;
   const stateQueueUnit = input.stateQueuePolicyId + stateQueueAssetName;
@@ -194,9 +202,42 @@ export const reconcilePublishedDaTargetConsumption = async (input: {
           ),
       ),
   );
+  return {
+    removalTxHash: latest.spentByTxHash,
+    removedStateQueueOutRef: removedOutRef,
+    removedOutput,
+    validFromSlot: removal.body().validity_interval_start(),
+    fraudProof,
+  };
+};
+
+/**
+ * Reconcile a state queue target that disappeared while its DA attestation
+ * was in progress. The only acceptable consumption is a fraud correction of
+ * this exact header: the authenticated spender burns the header unit,
+ * references a fraud-proof token for this header, and consumed an output
+ * that actually carried this header. Every DA transaction already submitted
+ * is preserved with its authenticated disposition so the orphaned bond and
+ * the lost apply are visible rather than silently forgotten.
+ */
+export const reconcilePublishedDaTargetConsumption = async (input: {
+  readonly headerHash: string;
+  readonly stateQueueAddress: string;
+  readonly stateQueuePolicyId: string;
+  readonly fraudProofPolicyId: string;
+  readonly consumptions: readonly PublishedHeaderConsumption[];
+  readonly attestationOutputs: readonly UTxO[];
+  readonly submitted: readonly PublishedDaTransactionRecord[];
+  readConfirmedTransaction(txHash: string): Promise<{ cbor: string }>;
+}): Promise<PublishedDaTargetCorrection> => {
+  const {
+    removalTxHash,
+    removedStateQueueOutRef: removedOutRef,
+    fraudProof,
+  } = await authenticatePublishedHeaderRemoval(input);
   if (fraudProof === undefined)
     throw new Error(
-      `Removal ${latest.spentByTxHash} of header ${input.headerHash} referenced no fraud proof for it`,
+      `Removal ${removalTxHash} of header ${input.headerHash} referenced no fraud proof for it`,
     );
 
   if (input.attestationOutputs.length > 1)
@@ -236,7 +277,7 @@ export const reconcilePublishedDaTargetConsumption = async (input: {
             return {
               ...record,
               disposition: "absent",
-              reason: `removal ${latest.spentByTxHash} spent its state queue input ${removedOutRef}`,
+              reason: `removal ${removalTxHash} spent its state queue input ${removedOutRef}`,
             };
           return {
             ...record,
@@ -251,7 +292,7 @@ export const reconcilePublishedDaTargetConsumption = async (input: {
   return {
     kind: "corrected",
     headerHash: input.headerHash,
-    removalTxHash: latest.spentByTxHash,
+    removalTxHash,
     removedStateQueueOutRef: removedOutRef,
     fraudProofOutRef: outRefLabel(fraudProof),
     submittedDaTransactions,

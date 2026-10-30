@@ -1,10 +1,11 @@
 import type { InstalledFraudProofCategory } from "@al-ft/midgard-fault-proofs";
 import type { LedgerAt } from "@al-ft/midgard-fault-proofs";
 import type * as SDK from "@al-ft/midgard-sdk";
-import type { PublishedDaAttestationOutcome } from "midgard-watcher/tests/support/published-block-actor";
 
 import type { loadJourneyContext } from "./live-context.js";
 import type { SignedCommitReconciliationPorts } from "./signed-commit-reconciliation.js";
+import type { StackJourneyContext } from "./stack-context.js";
+import type { StackDaOutcome } from "./stack-da-publication.js";
 
 /** A category with an installed off-chain workflow. */
 export type JourneyCategory = InstalledFraudProofCategory;
@@ -33,9 +34,10 @@ export type StagedJourney = {
    * How the fault's DA attestation ended. A watcher racing staging may correct
    * the fault before DA apply; that authenticated correction is a complete
    * staging outcome, and the journey continues to observe it rather than
-   * failing on the missing target.
+   * failing on the missing target. On an attached stack a fault whose payload
+   * the committee refuses ends aged out instead: removed unattested.
    */
-  target: PublishedDaAttestationOutcome;
+  target: StackDaOutcome;
   commitHonestSuccessor(options: {
     beforeCommit(block: JourneyBlock): Promise<void>;
     resume?: JourneySuccessorCheckpoint;
@@ -44,7 +46,8 @@ export type StagedJourney = {
 };
 
 export type JourneyFixtureStage = {
-  context: JourneyContext;
+  /** A devnet journey's own context, or an attached stack's. */
+  context: JourneyContext | StackJourneyContext;
   /** Independently replayed state addressed by its admitted L1 header hash. */
   ledgerAt: LedgerAt;
   directory: string;

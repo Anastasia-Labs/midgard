@@ -1,16 +1,105 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { inspect } from "node:util";
 
+import { retainedDaPayloadHeaderVerifier } from "@al-ft/midgard-fault-proofs";
 import {
   createWatcherRetainedDaRuntime,
+  parseWatcherProcessConfig,
   type VerifiedWatcherDeploymentIdentity,
   type WatcherConfig,
 } from "midgard-watcher";
 
 import { writeJourneyArtifact } from "./artifacts.js";
 import type { JourneyBlock } from "./fixture.js";
+
+/** Opens the watcher's production retained-DA runtime. */
+export type OpenJourneyPublicDaRuntime = typeof createWatcherRetainedDaRuntime;
+
+/**
+ * How long a fetch keeps asking while public DA does not serve a payload yet.
+ * A committee's retained copy can trail its L1 apply, so an attached stack
+ * waits; without one, a single answer decides.
+ */
+export type JourneyPublicDaAvailability = Readonly<{
+  waitMs: number;
+  now?: () => number;
+  pause?: () => Promise<void>;
+}>;
+
+/** Asks until an answer serves the payload or the availability wait ends. */
+const fetchUntilServed = async <Answer extends { readonly ok: boolean }>(
+  fetch: () => Promise<Answer>,
+  availability: JourneyPublicDaAvailability | undefined,
+): Promise<Answer> => {
+  const now = availability?.now ?? (() => performance.now());
+  const pause = availability?.pause ?? (() => delay(2_000));
+  const deadline = now() + (availability?.waitMs ?? 0);
+  for (;;) {
+    const answer = await fetch();
+    if (answer.ok || now() >= deadline) return answer;
+    await pause();
+  }
+};
+
+/** The DA peers and limits of the stack watcher, from its process configuration. */
+export const readStackJourneyWatcherConfig = async (
+  processConfigPath: string,
+): Promise<WatcherConfig> =>
+  parseWatcherProcessConfig(
+    JSON.parse(await readFile(processConfigPath, "utf8")),
+  ).watcherConfig;
+
+/**
+ * The payload public DA serves for a header, checked to commit to that
+ * header, from the first configured peer that serves it.
+ */
+export const fetchJourneyPublicDaPayload = async (input: {
+  watcherConfig: WatcherConfig;
+  deploymentIdentity: VerifiedWatcherDeploymentIdentity;
+  headerHash: string;
+  availability?: JourneyPublicDaAvailability;
+  openRuntime?: OpenJourneyPublicDaRuntime;
+}): Promise<{ payloadEnvelopeCbor: Buffer; sourcePeerId: string }> => {
+  const runtime = await (input.openRuntime ?? createWatcherRetainedDaRuntime)({
+    watcherConfig: input.watcherConfig,
+    deploymentIdentity: input.deploymentIdentity,
+  });
+  try {
+    if (runtime.sources.length === 0)
+      throw new Error("Public DA has no configured peer");
+    const verifyPayload = retainedDaPayloadHeaderVerifier(input.headerHash);
+    const answer = await fetchUntilServed(async () => {
+      const failures: unknown[] = [];
+      for (const source of runtime.sources) {
+        const result = await source.fetchPayloadByHeaderHash(input.headerHash, {
+          verifyPayload,
+        });
+        if (result.ok)
+          return {
+            ok: true as const,
+            payloadEnvelopeCbor: Buffer.from(result.payloadEnvelopeCbor),
+            sourcePeerId: result.sourcePeerId,
+          };
+        failures.push(result);
+      }
+      return { ok: false as const, failures };
+    }, input.availability);
+    if (!answer.ok)
+      throw new Error(
+        `Public DA serves no payload for ${input.headerHash}: ${JSON.stringify(answer.failures)}`,
+      );
+    return {
+      payloadEnvelopeCbor: answer.payloadEnvelopeCbor,
+      sourcePeerId: answer.sourcePeerId,
+    };
+  } finally {
+    await runtime.close();
+  }
+};
 
 /** Fetch the exact staged bytes through the same production DA runtime as the watcher. */
 export const verifyJourneyPublicDa = async (input: {

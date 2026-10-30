@@ -10,7 +10,6 @@ import {
 import { Effect } from "effect";
 import {
   createPublishedWatcherBlockActor,
-  type PublishedDaAttestationOutcome,
   PublishedTransactionExpiredError,
   PublishedTransactionSubmissionError,
 } from "midgard-watcher/tests/support/published-block-actor";
@@ -31,6 +30,12 @@ import { journeyDaSignerConfig } from "./journey-network.js";
 import { readKupoUnitConsumptions } from "./kupo-consumption.js";
 import { JOURNEY_ACTION_DEPTH } from "./live-context.js";
 import { reconcileSignedCommit } from "./signed-commit-reconciliation.js";
+import {
+  isStackJourneyContext,
+  stackDaExpectation,
+  type StackDaOutcome,
+} from "./stack-da-publication.js";
+import { stackJourneyDa } from "./stack-journey-da.js";
 import {
   classifyStagedCheckpoint,
   supersededCheckpointArchivePath,
@@ -64,7 +69,18 @@ export async function stageJourney(
   const fingerprint = deployment.manifest.manifestId;
   const checkpointPath = join(directory, "staged.json");
   const headPath = join(context.runDirectory, "work/journeys/head.json");
-  const daSignerConfig = journeyDaSignerConfig(accounts);
+  // An attached stack's own committee attests: the drill publishes payloads
+  // as operator-2's node would. A devnet journey signs as its committee.
+  const mode = isStackJourneyContext(context)
+    ? {
+        kind: "stack" as const,
+        da: stackJourneyDa(context, { readConfirmedTransaction, onStage }),
+      }
+    : {
+        kind: "devnet" as const,
+        deployment: context.deployment,
+        daSignerConfig: journeyDaSignerConfig(context.accounts),
+      };
   const headerUnit = (hash: string) =>
     toUnit(
       contracts.stateQueue.policyId,
@@ -236,6 +252,8 @@ export async function stageJourney(
 
   let predecessor: JourneySuccessor;
   if (resume !== undefined) predecessor = resume.predecessor;
+  else if (mode.kind === "stack")
+    predecessor = await mode.da.readAttestedTail();
   else if (existsSync(headPath)) {
     const head = await readJourneyArtifact<{
       deploymentFingerprint: string;
@@ -249,8 +267,8 @@ export async function stageJourney(
     // tail immediately before constructing its inputs below.
   } else {
     const initialPath = join(directory, "honest-deposit.json");
-    const initial = await stagePublishedDepositTrace(deployment, {
-      daSignerConfig,
+    const initial = await stagePublishedDepositTrace(mode.deployment, {
+      daSignerConfig: mode.daSignerConfig,
       honest: true,
       onStage,
       resume: existsSync(initialPath)
@@ -297,7 +315,7 @@ export async function stageJourney(
   const actor = await createPublishedWatcherBlockActor({
     deployment,
     lucid: maliciousLucid,
-    daSignerConfig,
+    ...(mode.kind === "devnet" ? { daSignerConfig: mode.daSignerConfig } : {}),
     readConfirmedTransaction,
     readHeaderConsumptions,
     onStage,
@@ -413,10 +431,18 @@ export async function stageJourney(
         await writeJourneyArtifact(historyPath, history);
       }
       await retain(history.block, history.commitTxHash);
-      const historyAttested = await actor.attest({
-        ...history.block,
-        payloadEnvelopeCbor: Buffer.from(history.block.payloadEnvelopeCbor),
-      });
+      const historyAttested =
+        mode.kind === "stack"
+          ? await mode.da.publish(history.block, "attestation", [
+              historyPath,
+              checkpointPath,
+            ])
+          : await actor.attest({
+              ...history.block,
+              payloadEnvelopeCbor: Buffer.from(
+                history.block.payloadEnvelopeCbor,
+              ),
+            });
       if (historyAttested.kind !== "attested")
         throw new Error(
           `History block ${history.block.headerHash} was corrected by ${historyAttested.removalTxHash} before its DA attestation applied`,
@@ -552,37 +578,44 @@ export async function stageJourney(
   // transaction it signed is persisted before submission so a resumed run
   // reconciles the same set rather than rebonding or forgetting it.
   // A saved correction is provenance, not authority after a possible rollback.
-  const target: PublishedDaAttestationOutcome = await actor.attest(
-    {
-      ...current,
-      payloadEnvelopeCbor: Buffer.from(current.payloadEnvelopeCbor),
-    },
-    {
-      submitted: checkpoint.daTransactions ?? [],
-      reconcileSubmitted: async (record) => ({
-        kind:
-          (await reconcileCommit(
-            maliciousLucid,
-            `DA ${record.step}`,
-            record,
-          )) === undefined
-            ? "retired"
-            : "included",
-      }),
-      onSubmitted: async (record) => {
-        checkpoint.daTransactions = [
-          ...(checkpoint.daTransactions ?? []),
-          record,
-        ];
-        await writeJourneyArtifact(checkpointPath, checkpoint);
-      },
-    },
-  );
-  if (target.kind === "corrected") {
+  const target: StackDaOutcome =
+    mode.kind === "stack"
+      ? await mode.da.publish(current, stackDaExpectation(task.category), [
+          checkpointPath,
+        ])
+      : await actor.attest(
+          {
+            ...current,
+            payloadEnvelopeCbor: Buffer.from(current.payloadEnvelopeCbor),
+          },
+          {
+            submitted: checkpoint.daTransactions ?? [],
+            reconcileSubmitted: async (record) => ({
+              kind:
+                (await reconcileCommit(
+                  maliciousLucid,
+                  `DA ${record.step}`,
+                  record,
+                )) === undefined
+                  ? "retired"
+                  : "included",
+            }),
+            onSubmitted: async (record) => {
+              checkpoint.daTransactions = [
+                ...(checkpoint.daTransactions ?? []),
+                record,
+              ];
+              await writeJourneyArtifact(checkpointPath, checkpoint);
+            },
+          },
+        );
+  if (target.kind !== "attested") {
     checkpoint.target = target;
     await writeJourneyArtifact(checkpointPath, checkpoint);
     onStage(
-      `fault ${current.headerHash} corrected by ${target.removalTxHash} before DA apply; ${target.submittedDaTransactions.length.toString()} submitted DA transaction(s) reconciled`,
+      target.kind === "agedOut"
+        ? `fault ${current.headerHash} refused by the DA committee and removed unattested by ${target.removalTxHash}`
+        : `fault ${current.headerHash} corrected by ${target.removalTxHash} before DA apply; ${target.submittedDaTransactions.length.toString()} submitted DA transaction(s) reconciled`,
     );
   } else if (checkpoint.target !== undefined) {
     delete checkpoint.target;
@@ -594,6 +627,10 @@ export async function stageJourney(
     current,
     target,
     async commitHonestSuccessor({ beforeCommit }) {
+      if (mode.kind === "stack")
+        throw new Error(
+          "On an attached stack its own node commits the honest successor",
+        );
       if ((await headerOutput(current.headerHash)) !== undefined)
         throw new Error("Honest successor requires confirmed correction first");
       const successorPath = join(directory, "prepared-successor.json");
@@ -632,7 +669,7 @@ export async function stageJourney(
       const successorActor = await createPublishedWatcherBlockActor({
         deployment,
         lucid: successorLucid,
-        daSignerConfig,
+        daSignerConfig: mode.daSignerConfig,
         readConfirmedTransaction,
         readHeaderConsumptions,
         onStage,

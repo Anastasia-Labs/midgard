@@ -109,6 +109,7 @@ export const transaction = (body: {
   referenceInputs?: readonly { txHash: string; outputIndex: number }[];
   burn?: bigint;
   valid?: boolean;
+  validFromSlot?: bigint;
 }) => {
   const outputs = CML.TransactionOutputList.new();
   for (const output of body.outputs ?? [])
@@ -120,6 +121,8 @@ export const transaction = (body: {
   );
   if (body.referenceInputs !== undefined)
     core.set_reference_inputs(inputList(body.referenceInputs));
+  if (body.validFromSlot !== undefined)
+    core.set_validity_interval_start(body.validFromSlot);
   if (body.burn !== undefined) {
     const mint = CML.Mint.new();
     mint.set(

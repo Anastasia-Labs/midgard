@@ -13,9 +13,11 @@ import type {
 
 import type {
   JourneyBlock,
+  JourneyCategory,
   JourneyFixtureStage,
   JourneySuccessor,
 } from "./fixture.js";
+import type { StackDaAgedOut } from "./stack-da-publication.js";
 
 export type JourneyRetainedBlock = JourneyBlock & {
   payload: SDK.DaPayload;
@@ -56,8 +58,11 @@ export type StagingCheckpoint = {
   signedCommit?: { txHash: string; signedCbor: string };
   /** DA transactions signed for the fault, recorded before each submission. */
   daTransactions?: PublishedDaTransactionRecord[];
-  /** The fault's authenticated correction when it consumed the target before DA apply. */
-  target?: PublishedDaTargetCorrection;
+  /**
+   * The fault's authenticated correction when it consumed the target before
+   * DA apply, or on an attached stack its removal after the committee refused it.
+   */
+  target?: PublishedDaTargetCorrection | StackDaAgedOut;
 };
 
 export const decodeJourneyRetainedBlock = async (
@@ -83,5 +88,7 @@ export const decodeJourneyRetainedBlock = async (
 };
 
 export type FaultPreparation = {
+  /** The family staged; on an attached stack it decides the committee's expected answer. */
+  category: JourneyCategory;
   prepare(input: JourneyFaultPreparationInput): Promise<JourneyPreparedFault>;
 };

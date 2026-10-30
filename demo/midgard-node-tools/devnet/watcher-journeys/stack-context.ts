@@ -56,6 +56,10 @@ import {
   journeyNetwork,
 } from "./journey-network.js";
 import { journeyWorkflowChain } from "./live-context.js";
+import {
+  readStackDaProducerManifest,
+  stackDaProducerManifestPath,
+} from "./stack-da-publication.js";
 
 /**
  * The stack's node `.env` names of the drill's own keys. Their values are
@@ -72,6 +76,13 @@ export const STACK_JOURNEY_SEED_ENV = Object.freeze({
 } as const);
 
 export type StackJourneyRole = keyof typeof STACK_JOURNEY_SEED_ENV;
+
+/**
+ * The stack node `.env` name of operator-2's DA producer libp2p key source:
+ * the producer identity the committee admits for operator-2's node, which the
+ * drill publishes its payloads as. Its value is a secret.
+ */
+export const STACK_JOURNEY_DA_PRODUCER_KEY_ENV = "STACK_OPERATOR2_DA_TRANSPORT";
 
 const RUN_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u;
 
@@ -430,6 +441,17 @@ export const openStackJourneyContext = async (
   );
   operatorLucid.selectWallet.fromSeed(accounts.operator.seedPhrase);
   publisherLucid.selectWallet.fromSeed(accounts.funding.seedPhrase);
+  const daProducerManifest = await readStackDaProducerManifest({
+    manifestPath: stackDaProducerManifestPath(config.runDirectory),
+    operatorKey: {
+      name: STACK_JOURNEY_DA_PRODUCER_KEY_ENV,
+      source: requiredSeed(env, STACK_JOURNEY_DA_PRODUCER_KEY_ENV),
+    },
+    honestProducerKey: {
+      name: config.da.producerTransportEnv,
+      source: requiredSeed(env, config.da.producerTransportEnv),
+    },
+  });
   await mkdir(layout.directory, { recursive: true, mode: 0o700 });
   return {
     mode: "stack" as const,
@@ -446,6 +468,8 @@ export const openStackJourneyContext = async (
     ogmiosUrl: layout.ogmiosUrl,
     provider,
     accounts,
+    /** Operator-2's DA producer publication to the stack's committee. */
+    daProducer: Object.freeze({ manifest: daProducerManifest }),
     deployment: {
       manifest,
       contracts,
