@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, readdirSync, readFileSync } from "node:fs";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -31,6 +31,7 @@ import {
   WATCHER_FAILED_CLOSED_EXIT_CODE,
   WATCHER_RESTART_LIMIT,
 } from "./journey-session.capture-journey-workflow-baseline.js";
+import { openJourneySessionCore } from "./journey-session.open-journey-session-core.js";
 import { JOURNEY_FINALITY_DEPTH, loadJourneyContext } from "./live-context.js";
 import { journeyNativeNodeQuery } from "./native-node.js";
 import { startJourneyNativeRecorder } from "./native-recorder.js";
@@ -44,7 +45,6 @@ import { openJourneyReplayedLedger } from "./replayed-ledger.js";
 import { startJourneyRetainedDa } from "./retained-da.js";
 import type { SignedCommitAttempt } from "./signed-commit-reconciliation.js";
 import { readSignedTransactionRecovery } from "./signed-transaction-recovery.js";
-import { measureJourneyStage } from "./stage-timing.js";
 import { verifyJourneyWorkflowBindings } from "./workflow-binding-preflight.js";
 
 /** One immutable deployment and service lifetime, explicitly owned by its suite. */
@@ -52,34 +52,8 @@ export const openJourneySession = async (runDirectory: string) => {
   const context = await loadJourneyContext(runDirectory);
   const { deployment, provider, accounts, runEnv } = context;
   const runtimeDirectory = join(context.runDirectory, "work/journeys/runtime");
-  const sessionsDirectory = join(
-    context.runDirectory,
-    "work/journeys/sessions",
-  );
-  await mkdir(sessionsDirectory, { recursive: true, mode: 0o700 });
-  const directory = await mkdtemp(join(sessionsDirectory, "session-"));
-  const cleanup: (() => Promise<void>)[] = [];
-  let closed = false;
-  let closePromise: Promise<void> | undefined;
-  const close = () =>
-    (closePromise ??= (async () => {
-      closed = true;
-      const failures: unknown[] = [];
-      for (const stop of cleanup.reverse()) {
-        try {
-          await stop();
-        } catch (cause) {
-          failures.push(cause);
-        }
-      }
-      if (failures.length > 0)
-        throw new AggregateError(
-          failures,
-          "Could not close watcher journey session",
-        );
-    })());
-  const stage = <T>(name: string, action: () => Promise<T>) =>
-    measureJourneyStage(directory, name, action);
+  const { directory, onClose, isClosed, close, stage } =
+    await openJourneySessionCore(context.runDirectory);
   try {
     const publishedAuthority = await stage("signed deployment authority", () =>
       createPublishedWatcherDeploymentAuthority({
@@ -121,7 +95,7 @@ export const openJourneySession = async (runDirectory: string) => {
       runEnv,
       deploymentFingerprint: deployment.manifest.manifestId,
     });
-    cleanup.push(retainedDa.close);
+    onClose(retainedDa.close);
     const {
       rollback: rollbackKey,
       prover: proverKey,
@@ -182,7 +156,7 @@ export const openJourneySession = async (runDirectory: string) => {
         binaryPath: nativeQuery.binaryPath,
       }),
     );
-    cleanup.push(native.close);
+    onClose(native.close);
     const replayedLedger = await openJourneyReplayedLedger({
       authority: authority.deploymentAuthority,
       blueprintPath: authority.blueprintPath,
@@ -192,11 +166,11 @@ export const openJourneySession = async (runDirectory: string) => {
       checkpointDirectory: directory,
       networkMagic: journeyNetwork().magic,
     });
-    cleanup.push(replayedLedger.close);
+    onClose(replayedLedger.close);
     // Inclusion comes from the recorder's canonical chain; the local node's
     // ledger settles expiry and spent inputs.
     const readSignedCommitRecovery = (attempt: SignedCommitAttempt) => {
-      if (closed) throw new Error("Journey session is closed");
+      if (isClosed()) throw new Error("Journey session is closed");
       return readSignedTransactionRecovery({
         ogmiosUrl: context.ogmiosUrl,
         timeoutMs: watcherConfig.l1.requestTimeoutMs,
@@ -341,7 +315,7 @@ export const openJourneySession = async (runDirectory: string) => {
         directory,
       };
       let watcher = launchJourneyWatcherProcess(watcherLaunch);
-      cleanup.push(() => watcher.close());
+      onClose(() => watcher.close());
       // The watcher fails closed on transient conditions (local node
       // disconnects, retained-DA fetches) and exits 70. Its
       // journal makes a restart resume the same workflow, so relaunch a bounded
@@ -350,7 +324,7 @@ export const openJourneySession = async (runDirectory: string) => {
       let watcherRestarts = 0;
       let restartPending = false;
       const requireLive = () => {
-        if (closed) throw new Error("Watcher journey session is closed");
+        if (isClosed()) throw new Error("Watcher journey session is closed");
         native.assertHealthy();
         const observed = watcher.observe();
         if (
@@ -433,7 +407,7 @@ export const openJourneySession = async (runDirectory: string) => {
     };
     let started: ReturnType<typeof launch> | undefined;
     const assertHealthy = async () => {
-      if (closed) throw new Error("Watcher journey session is closed");
+      if (isClosed()) throw new Error("Watcher journey session is closed");
       try {
         native.assertHealthy();
         if (started !== undefined) {
@@ -454,6 +428,7 @@ export const openJourneySession = async (runDirectory: string) => {
       }));
     };
     return {
+      mode: "devnet" as const,
       context,
       directory,
       runtimeDirectory,

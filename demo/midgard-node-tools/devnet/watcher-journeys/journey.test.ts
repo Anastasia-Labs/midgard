@@ -3,7 +3,12 @@ import { afterAll, it } from "vitest";
 import { selectJourneyFixtures } from "./catalogue.js";
 import { selectJourneyDeploymentSource } from "./deployment-source.js";
 import { runAutonomousWatcherJourney } from "./journey-runner.js";
-import { type JourneySession, openJourneySession } from "./journey-session.js";
+import {
+  type AttachedJourneySession,
+  type JourneySession,
+  openAttachedJourneySession,
+  openJourneySession,
+} from "./journey-session.js";
 import { readJourneyExecutionTiming } from "./journey-timing.js";
 import { JOURNEY_ACTION_DEPTH } from "./live-context.js";
 
@@ -16,7 +21,7 @@ const fixtures = selectJourneyFixtures(
   process.env.MIDGARD_WATCHER_JOURNEY_CATEGORIES,
 );
 
-let session: Promise<JourneySession> | undefined;
+let session: Promise<JourneySession | AttachedJourneySession> | undefined;
 afterAll(async () => {
   const opened = await session?.catch(() => undefined);
   await opened?.close();
@@ -38,11 +43,17 @@ for (const fixture of fixtures) {
   it.skipIf(source === undefined)(
     `automatically proves '${fixture.category}', corrects exact economics, and processes an honest successor`,
     async () => {
-      if (runDirectory === undefined)
-        throw new Error("Stack mode needs the attached-watcher session");
       const activeSession = await (session ??=
-        openJourneySession(runDirectory));
-      await runAutonomousWatcherJourney(runDirectory, fixture, {
+        source!.mode === "devnet"
+          ? openJourneySession(source!.runDirectory)
+          : source!
+              .open()
+              .then((context) => openAttachedJourneySession(context)));
+      if (activeSession.mode === "attached")
+        throw new Error(
+          "The journey runner does not drive an attached stack watcher yet",
+        );
+      await runAutonomousWatcherJourney(runDirectory!, fixture, {
         session: activeSession,
         waitForAnchors: fixture === fixtures.at(-1),
       });

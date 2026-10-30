@@ -1,6 +1,13 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile } from "node:fs/promises";
-import { dirname, isAbsolute, join, normalize, resolve } from "node:path";
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  normalize,
+  resolve,
+} from "node:path";
 
 import {
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
@@ -39,6 +46,7 @@ import {
   releasePaths,
   verifyStackRelease,
 } from "../../src/full-stack/release.js";
+import { readRuntimeConfiguration } from "../../src/full-stack/runtime.js";
 import { deriveStackWallets } from "../../src/full-stack/wallets.js";
 import { journeyLucid } from "./journey-lucid.js";
 import {
@@ -84,9 +92,34 @@ const requiredSeed = (
 };
 
 /**
+ * The Compose project the stack's services run in: the `COMPOSE_PROJECT_NAME`
+ * the operator Compose wrapper or the env file sets, else Compose's own
+ * default, the node directory's name normalized.
+ */
+export const stackComposeProject = (
+  nodeRoot: string,
+  env: Readonly<Record<string, string | undefined>>,
+): string => {
+  const given = env.COMPOSE_PROJECT_NAME;
+  const project =
+    given !== undefined && given !== ""
+      ? given
+      : basename(resolve(nodeRoot))
+          .toLowerCase()
+          .replace(/[^a-z0-9_-]/gu, "")
+          .replace(/^[_-]+/u, "");
+  if (!/^[a-z0-9][a-z0-9_-]*$/u.test(project))
+    throw new Error(
+      `Stack Compose project ${JSON.stringify(project)} is not a Compose project name`,
+    );
+  return project;
+};
+
+/**
  * Where a stack-mode journey finds everything it reads, from the stack's own
  * configuration and environment: the files the e2e-stack writes, its L1
- * endpoints and local node, the watcher's prover address, and the drill's
+ * endpoints and local node, the watcher's Compose project, process
+ * configuration and prover address, and the drill's
  * wallets (addresses and key hashes only, never their seeds). The journey's
  * own directory is `<runDirectory>/fault-journeys/<runId>`, off `/tmp`.
  */
@@ -149,6 +182,13 @@ export const resolveStackJourneyLayout = (
       nodeConfigPath: join(
         nativeLedgerPaths(processes).directory,
         "config.json",
+      ),
+    }),
+    watcher: Object.freeze({
+      composeProject: stackComposeProject(config.nodeRoot, env),
+      processConfigPath: join(
+        config.watcher.configDirectory,
+        "watcher-process.json",
       ),
     }),
     proverAddress,
@@ -295,6 +335,7 @@ export const openStackJourneyContext = async (
   const processes = new StackProcesses(config, env);
   const layout = resolveStackJourneyLayout(processes, runId);
   const release = await verifyStackRelease(processes);
+  const { operationsEndpoint } = await readRuntimeConfiguration(processes);
   const network = journeyNetwork();
   const genesis = await readNativeLedgerGenesis({
     network: network.network,
@@ -375,6 +416,8 @@ export const openStackJourneyContext = async (
     layout,
     stackConfig: config,
     release,
+    /** The stack's own watcher, which the journey attaches to and never runs. */
+    watcher: Object.freeze({ ...layout.watcher, operationsEndpoint }),
     customNetwork: { networkMagic: genesis.networkMagic, slotConfig },
     genesisIdentitySha256: genesis.genesisIdentitySha256,
     kupoUrl: layout.kupoUrl,

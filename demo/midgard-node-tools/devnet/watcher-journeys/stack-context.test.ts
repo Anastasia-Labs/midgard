@@ -31,6 +31,7 @@ import {
   resolveStackJourneyLayout,
   resolveStackJourneyReferences,
   STACK_JOURNEY_SEED_ENV,
+  stackComposeProject,
   type StackJourneyRole,
 } from "./stack-context.js";
 
@@ -113,6 +114,38 @@ describe("stack journey layout", () => {
       expect(() => resolveStackJourneyLayout(processes, runId)).toThrow(
         /run id/u,
       );
+  });
+
+  it("attaches to the watcher in the stack's own Compose project, with its mounted configuration", async () => {
+    const { config, env } = await recordedStack();
+    const named = resolveStackJourneyLayout(
+      new StackProcesses(config, {
+        ...env,
+        COMPOSE_PROJECT_NAME: "midgard-node-0a1b2c",
+      }),
+      "drill",
+    );
+    expect(named.watcher).toEqual({
+      composeProject: "midgard-node-0a1b2c",
+      processConfigPath: join(
+        config.watcher.configDirectory,
+        "watcher-process.json",
+      ),
+    });
+    // Without a name, Compose names the project after the node directory.
+    expect(stackComposeProject("/srv/Midgard Node.v2", {})).toBe(
+      "midgardnodev2",
+    );
+    expect(stackComposeProject("/srv/_midgard-node", {})).toBe("midgard-node");
+    for (const project of ["Midgard", "-midgard", "midgard node"])
+      expect(() =>
+        stackComposeProject("/srv/midgard-node", {
+          COMPOSE_PROJECT_NAME: project,
+        }),
+      ).toThrow(/Compose project/u);
+    expect(() => stackComposeProject("/srv/___", {})).toThrow(
+      /Compose project/u,
+    );
   });
 
   it("refuses a missing drill key by its name and never echoes a secret", async () => {

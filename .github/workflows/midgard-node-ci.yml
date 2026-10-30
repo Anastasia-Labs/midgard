@@ -1257,6 +1257,7 @@ jobs:
             --config vitest.watcher-journeys.config.ts \
             devnet/watcher-journeys/da-bond-pool- \
             watcher-journeys/artifacts.test.ts \
+            watcher-journeys/attached-journey-session.test.ts \
             watcher-journeys/catalogue.test.ts \
             watcher-journeys/correction-recovery.test.ts \
             watcher-journeys/correction.test.ts \
@@ -1295,7 +1296,8 @@ jobs:
             watcher-journeys/staging-recovery.test.ts \
             watcher-journeys/staging.decode-journey-retained-block.test.ts \
             watcher-journeys/transaction-cases.test.ts \
-            watcher-journeys/verified-headers.test.ts
+            watcher-journeys/verified-headers.test.ts \
+            watcher-journeys/watcher-evidence-reader.test.ts
 
   da-e2e:
     name: Canonical V1 retained multi-peer DA paths
