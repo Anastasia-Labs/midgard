@@ -87,6 +87,7 @@
     "interactive-emulator.js",
     "curated-emulator.js",
     "preprod-public-profile.js",
+    "preprod-rehearsal-profile.js",
     "database-identity.js",
     "database-identity.d.ts",
     "duration-shards.js",

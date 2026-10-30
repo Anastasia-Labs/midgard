@@ -4,7 +4,11 @@ import { access, readFile } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import { promisify } from "node:util";
 
-import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
+import {
+  DEPLOYMENT_PROFILES,
+  isProductionDeploymentProfileName,
+  SELECTED_DEPLOYMENT_PROFILE,
+} from "@al-ft/midgard-core/deployment-profile";
 import { parse } from "dotenv";
 
 import { checkStackEnvironment, stackIntentDigest } from "./preflight.js";
@@ -47,7 +51,7 @@ export type StackConfig = {
     transferLovelace: string;
     cycles: number;
   };
-  /** The preprod-public node's inputs; absent for preprod-testing. */
+  /** A production profile's public node inputs; absent for preprod-testing. */
   public?: PublicStackInputs;
 };
 
@@ -112,7 +116,7 @@ export function parseStackConfig(value: unknown): StackConfig {
     "watcher",
     "journey",
   ];
-  // Only a preprod-public stack has the optional public section.
+  // Only a production-profile stack has the optional public section.
   const input = exact(
     value,
     Object.prototype.hasOwnProperty.call(
@@ -246,7 +250,7 @@ export function parseStackConfig(value: unknown): StackConfig {
     nodeRoot: path("nodeRoot"),
     envFile: path("envFile"),
     runDirectory: path("runDirectory"),
-    // A preprod-public node serves HTTPS on the loopback port as well.
+    // A production-profile node serves HTTPS on the loopback port as well.
     endpoint: localUrl(text(input.endpoint, "endpoint"), [
       "http:",
       "ws:",
@@ -275,8 +279,19 @@ export function parseStackConfig(value: unknown): StackConfig {
   };
 }
 
+/**
+ * The Preprod production profiles, which run the public route: a release
+ * image over HTTPS with a signed release and the compiled operator allow-list.
+ */
+const PUBLIC_STACK_PROFILES = Object.values(DEPLOYMENT_PROFILES)
+  .filter(
+    (profile) =>
+      profile.network === "Preprod" &&
+      isProductionDeploymentProfileName(profile.name),
+  )
+  .map((profile) => profile.name as string);
 /** The deployment profiles the stack deploys, each compiled by its own build. */
-const STACK_PROFILES = ["preprod-testing", "preprod-public"];
+const STACK_PROFILES = ["preprod-testing", ...PUBLIC_STACK_PROFILES];
 
 export async function loadStackConfig(path: string) {
   const config = parseStackConfig(JSON.parse(await readFile(path, "utf8")));
@@ -306,7 +321,7 @@ export async function loadStackConfig(path: string) {
     env.RUN_GENESIS_ON_STARTUP !== "false"
   )
     throw new Error(
-      "Require Preprod with the preprod-testing or preprod-public profile and RUN_GENESIS_ON_STARTUP=false",
+      `Require Preprod with one of the profiles ${STACK_PROFILES.join(", ")} and RUN_GENESIS_ON_STARTUP=false`,
     );
   // The node, deploy and journey commands run the profile this checkout compiled.
   const compiled: string = SELECTED_DEPLOYMENT_PROFILE.name;
@@ -315,11 +330,11 @@ export async function loadStackConfig(path: string) {
       `This checkout is compiled for ${compiled}, but ${config.envFile} sets MIDGARD_DEPLOYMENT_PROFILE=${env.MIDGARD_DEPLOYMENT_PROFILE}; build that profile first: node demo/scripts/deployment-profiles.mjs generate ${env.MIDGARD_DEPLOYMENT_PROFILE} && pnpm --dir demo/midgard-node-tools run build`,
     );
   // A public node needs every public input before anything is built or spent.
-  if (env.MIDGARD_DEPLOYMENT_PROFILE === "preprod-public")
+  if (PUBLIC_STACK_PROFILES.includes(compiled))
     await checkPublicInputs(config, env);
   else if (config.public !== undefined)
     throw new Error(
-      "The public section belongs only to a preprod-public stack; remove it for preprod-testing",
+      `The public section belongs only to a public stack (${PUBLIC_STACK_PROFILES.join(" or ")}); remove it for ${compiled}`,
     );
   else if (new URL(config.endpoint).protocol === "https:")
     throw new Error(

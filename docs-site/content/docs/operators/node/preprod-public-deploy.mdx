@@ -12,6 +12,11 @@ over HTTPS, and starts the node only after it has signed the release for the
 deployment it just made. With `preprod-testing`, the stack runs exactly as
 before.
 
+The `preprod-rehearsal` profile takes the same public route as
+`preprod-public`, against its own compiled operator allow-list: build it and
+set `MIDGARD_DEPLOYMENT_PROFILE=preprod-rehearsal` wherever this page says
+`preprod-public`.
+
 <Callout type="warn" title="Spends real Preprod funds">
   A fresh run publishes the reference scripts, initializes the deployment and
   bonds the operator on Preprod. Run `--check` first. It starts nothing and
@@ -106,7 +111,7 @@ confirms it against Cardano and the saved records and never repeats it.
 | `references`            | Publishes the reference scripts.                                                                                                                                                                  |
 | `initialize`            | Migrates the database and initializes the deployment, writing the finalized manifest.                                                                                                             |
 | `operator`              | Registers and activates the operator.                                                                                                                                                             |
-| `public-release`        | preprod-public only: signs the public release for this deployment into `releaseDirectory` (see below). A rerun verifies the signed release and never signs again.                                 |
+| `public-release`        | public stacks only: signs the public release for this deployment into `releaseDirectory` (see below). A rerun verifies the signed release and never signs again.                                  |
 | `runtime-configuration` | Generates the node, DA committee, retained DA and watcher services, binding the signed release files.                                                                                             |
 | `storage-identity`      | Checks the local storage belongs to this deployment.                                                                                                                                              |
 | `services`              | Starts the node, DA committee, retained DA and watcher, and waits until each is ready.                                                                                                            |

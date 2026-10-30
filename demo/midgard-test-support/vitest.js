@@ -366,3 +366,4 @@ export {
   preprodPublicSetup,
   preprodPublicPlugin,
 } from "./preprod-public-profile.js";
+export { preprodRehearsalPlugin } from "./preprod-rehearsal-profile.js";

@@ -52,6 +52,11 @@ export declare const preprodPublicPlugin: () => {
   transform(code: string, id: string): { code: string; map: null } | null;
 };
 
+export declare const preprodRehearsalPlugin: () => {
+  name: string;
+  transform(code: string, id: string): { code: string; map: null } | null;
+};
+
 export declare const workspaceBundleProjects: <
   Project extends {
     readonly extends?: true | string;

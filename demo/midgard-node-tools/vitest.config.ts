@@ -6,6 +6,7 @@ import {
   preprodPublicBlueprint,
   preprodPublicPlugin,
   preprodPublicSetup,
+  preprodRehearsalPlugin,
   rawSqlLoaderPlugin,
   workspaceBundleProjects,
 } from "@al-ft/midgard-test-support/vitest";
@@ -42,14 +43,18 @@ const preprodPublicTests = [
 // Load a preprod-public stack configuration, which needs only the compiled
 // profile, with the fixture's wallets on its operator allow-list.
 const preprodPublicStackTests = ["./tests/full-stack-public-config.test.ts"];
+// The same for the preprod-rehearsal profile, which takes the public route.
+const preprodRehearsalStackTests = [
+  "./tests/full-stack-rehearsal-config.test.ts",
+];
 
 /**
  * Adds the stack configuration fixture's operator and merge wallets (seeds
- * from entropy 0 and 1, full-stack-config.fixtures.ts) to the preprod-public
- * operator allow-list, before the generated module freezes its profiles, so
- * a fixture can pass every public input check.
+ * from entropy 0 and 1, full-stack-config.fixtures.ts) to one production
+ * profile's operator allow-list, before the generated module freezes its
+ * profiles, so a fixture can pass every public input check.
  */
-const fixtureOperatorsPlugin = () => ({
+const fixtureOperatorsPlugin = (profile: string) => ({
   name: "midgard-fixture-public-operators",
   transform(code: string, id: string) {
     if (!id.endsWith("/demo/midgard-core/src/generated-deployment-profiles.ts"))
@@ -60,7 +65,7 @@ const fixtureOperatorsPlugin = () => ({
     return {
       code: code.replace(
         anchor,
-        `DEPLOYMENT_PROFILES["preprod-public"].allow_lists.operators.push(${JSON.stringify(
+        `DEPLOYMENT_PROFILES[${JSON.stringify(profile)}].allow_lists.operators.push(${JSON.stringify(
           [
             "0fdc780023d8be7c9ff3a6bdc0d8d3b263bd0cc12448c40948efbf42",
             "fa6407a107929f517bbd7ac465b7654809bc5b0f55c4bc7dac09b5e0",
@@ -94,6 +99,7 @@ export default defineConfig({
               "./tests/phase4-journal-kill-recovery-summary-verifier.test.mjs",
               ...preprodPublicTests,
               ...preprodPublicStackTests,
+              ...preprodRehearsalStackTests,
             ],
           },
         },
@@ -116,11 +122,27 @@ export default defineConfig({
       // Not bundled: its plugins rewrite a midgard-core module.
       {
         extends: true,
-        plugins: [preprodPublicPlugin(), fixtureOperatorsPlugin()],
+        plugins: [
+          preprodPublicPlugin(),
+          fixtureOperatorsPlugin("preprod-public"),
+        ],
         test: {
           name: "preprod-public-stack",
           include: preprodPublicStackTests,
           env: { MIDGARD_DEPLOYMENT_PROFILE: "preprod-public" },
+        },
+      },
+      // Not bundled: its plugins rewrite a midgard-core module.
+      {
+        extends: true,
+        plugins: [
+          preprodRehearsalPlugin(),
+          fixtureOperatorsPlugin("preprod-rehearsal"),
+        ],
+        test: {
+          name: "preprod-rehearsal-stack",
+          include: preprodRehearsalStackTests,
+          env: { MIDGARD_DEPLOYMENT_PROFILE: "preprod-rehearsal" },
         },
       },
     ],

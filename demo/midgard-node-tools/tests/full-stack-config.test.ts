@@ -305,7 +305,7 @@ describe("preprod-testing keeps its own inputs", () => {
     ).public;
     await value.writeConfig();
     await expect(loadStackConfig(value.path)).rejects.toThrow(
-      "The public section belongs only to a preprod-public stack",
+      "The public section belongs only to a public stack",
     );
   });
   it("refuses an HTTPS endpoint", async () => {

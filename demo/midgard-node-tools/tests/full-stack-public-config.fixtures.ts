@@ -95,9 +95,10 @@ const PUBLIC_SECRETS = [
 ];
 
 /**
- * A preprod-public stack whose inputs are all present and well formed; only
- * its operator wallet is not on the compiled allow-list, so loading reaches
- * that last check exactly when every earlier input passed.
+ * A stack for the compiled production profile whose public inputs are all
+ * present and well formed. The project puts its operator and merge wallets on
+ * the compiled allow-list, the last check, so loading passes only when every
+ * earlier input did.
  */
 export async function publicFixture() {
   const value = await fixture("preprod-public-stack.example.json");
@@ -149,7 +150,7 @@ export async function publicFixture() {
   await writeTrustRoots([other, signer]);
   await writeFile(file("blueprint-classification.json"), "{}");
   Object.assign(env, {
-    MIDGARD_DEPLOYMENT_PROFILE: "preprod-public",
+    MIDGARD_DEPLOYMENT_PROFILE: SELECTED_DEPLOYMENT_PROFILE.name,
     MIDGARD_PUBLIC_API_ORIGIN: `https://${tls.host}`,
     MIDGARD_PUBLIC_RELEASE_REVISION: "a".repeat(40),
     VALIDATION_WORKER_POOL_SIZE: "4",

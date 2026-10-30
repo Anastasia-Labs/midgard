@@ -7,7 +7,6 @@ import { connect, createServer } from "node:tls";
 import { promisify } from "node:util";
 
 import {
-  DEPLOYMENT_PROFILES,
   SELECTED_DEPLOYMENT_PROFILE,
   SELECTED_DEPLOYMENT_PROFILE_DIGEST,
 } from "@al-ft/midgard-core/deployment-profile";
@@ -28,7 +27,7 @@ import { SIGNED_RELEASE_FILES } from "../sign-deployment-release.js";
 import type { StackConfig } from "./config.js";
 import { readOperatorProvenance, stackRegistryPath } from "./release.js";
 
-/** The preprod-public node's inputs, the stack configuration's `public` section. */
+/** A production profile's public node inputs, the stack configuration's `public` section. */
 export type PublicStackInputs = {
   /** Private file (0600, YAML or JSON) holding exactly the node's six secrets. */
   nodeConfigFile: string;
@@ -156,7 +155,7 @@ async function assertReleaseDirectory(directory: string) {
 async function assertSignerIsTrusted(config: StackConfig, roots: unknown[]) {
   if (!config.watcher.releaseInput)
     throw new Error(
-      "A preprod-public stack signs its release with watcher.releaseInput; set it",
+      `A ${SELECTED_DEPLOYMENT_PROFILE.name} stack signs its release with watcher.releaseInput; set it`,
     );
   const { signingKeyFile } = JSON.parse(
     await readFile(config.watcher.releaseInput, "utf8"),
@@ -195,12 +194,12 @@ async function assertOperatorProvenance(
   ) as { provenanceFile?: unknown; parameterRegistryFile?: unknown };
   if (typeof provenanceFile !== "string" || !isAbsolute(provenanceFile))
     throw new Error(
-      "A preprod-public release input names its release provenance as an absolute provenanceFile",
+      `A ${SELECTED_DEPLOYMENT_PROFILE.name} release input names its release provenance as an absolute provenanceFile`,
     );
   const registry = stackRegistryPath(config);
   if (parameterRegistryFile !== undefined && parameterRegistryFile !== registry)
     throw new Error(
-      `A preprod-public release signs the parameter registry its deployment writes; leave parameterRegistryFile out or set it to ${registry}`,
+      `A ${SELECTED_DEPLOYMENT_PROFILE.name} release signs the parameter registry its deployment writes; leave parameterRegistryFile out or set it to ${registry}`,
     );
   const { provenance } = await readOperatorProvenance(provenanceFile);
   const expected: [string, string | undefined, string, string][] = [
@@ -366,11 +365,11 @@ export async function checkPublicInputs(
   const inputs = config.public;
   if (inputs === undefined)
     throw new Error(
-      `A preprod-public stack needs the public section: ${[...PATH_KEYS, "ingressHostPort"].join(", ")}`,
+      `A ${SELECTED_DEPLOYMENT_PROFILE.name} stack needs the public section: ${[...PATH_KEYS, "ingressHostPort"].join(", ")}`,
     );
   if (new URL(config.endpoint).protocol !== "https:")
     throw new Error(
-      "A preprod-public node serves HTTPS; use an https:// loopback endpoint",
+      `A ${SELECTED_DEPLOYMENT_PROFILE.name} node serves HTTPS; use an https:// loopback endpoint`,
     );
   for (const name of PUBLIC_NODE_SECRET_NAMES)
     if (name in env)
@@ -380,11 +379,11 @@ export async function checkPublicInputs(
   for (const name of STACK_DERIVED_SETTINGS)
     if (name in env)
       throw new Error(
-        `The stack sets ${name} for a preprod-public node; remove it from ${config.envFile}`,
+        `The stack sets ${name} for a ${SELECTED_DEPLOYMENT_PROFILE.name} node; remove it from ${config.envFile}`,
       );
   if ("L1_USER_SEED_PHRASE" in env)
     throw new Error(
-      "A preprod-public operator cannot hold L1_USER_SEED_PHRASE; remove it",
+      `A ${SELECTED_DEPLOYMENT_PROFILE.name} operator cannot hold L1_USER_SEED_PHRASE; remove it`,
     );
   const context = resolve(config.nodeRoot, "..");
   const ignored = join(config.nodeRoot, "logs");
@@ -468,10 +467,12 @@ export async function checkPublicInputs(
     ) < 2
   )
     throw new Error(
-      "A preprod-public node needs VALIDATION_WORKER_POOL_SIZE of at least 2",
+      `A ${SELECTED_DEPLOYMENT_PROFILE.name} node needs VALIDATION_WORKER_POOL_SIZE of at least 2`,
     );
   if (env.HTTP_RATE_LIMIT_ENABLED?.trim().toLowerCase() === "false")
-    throw new Error("A preprod-public node cannot disable HTTP rate limits");
+    throw new Error(
+      `A ${SELECTED_DEPLOYMENT_PROFILE.name} node cannot disable HTTP rate limits`,
+    );
   if (inputs.ingressHostPort !== null) {
     const taken = [
       Number(new URL(config.endpoint).port),
@@ -492,8 +493,8 @@ export async function checkPublicInputs(
   refuse("public.nodeConfigFile", () =>
     assertPublicOperatorWallets(
       [env.L1_OPERATOR_SEED_PHRASE!, env.L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX!],
-      "Preprod",
-      DEPLOYMENT_PROFILES["preprod-public"] as unknown as PublicHttpProfile,
+      SELECTED_DEPLOYMENT_PROFILE.network,
+      SELECTED_DEPLOYMENT_PROFILE as unknown as PublicHttpProfile,
     ),
   );
 }
