@@ -51,6 +51,21 @@ it("stages the transition trace after a live queue tail", async () => {
     honest: true,
   });
 
+  // A tail ledger that does not replay to the committed root, or none at
+  // all, is refused before anything is committed.
+  await expect(
+    stagePublishedDepositTrace(deployment, {
+      daSignerConfig,
+      liveTail: { ledgerAt: async () => tail.predecessor.postLedgerEntries },
+    }),
+  ).rejects.toThrow(/differs from the predecessor root/u);
+  await expect(
+    stagePublishedDepositTrace(deployment, {
+      daSignerConfig,
+      liveTail: { ledgerAt: async () => undefined },
+    }),
+  ).rejects.toThrow(/has no independently replayed ledger/u);
+
   const staged = await stagePublishedDepositTrace(deployment, {
     daSignerConfig,
     liveTail: {
