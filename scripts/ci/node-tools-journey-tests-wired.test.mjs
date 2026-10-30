@@ -4,9 +4,11 @@
 // list would never run unless all of its tests skip without a journey run
 // directory. So each `devnet/watcher-journeys/**/*.test.{ts,mjs}` is either
 // matched by a path the step names (vitest takes each as a substring of the
-// file path), or devnet-gated: it reads `MIDGARD_WATCHER_JOURNEY_RUN_DIR` and
-// every test it declares sits behind `skipIf`/`runIf`, on the test itself or
-// on a top-level `describe`. The check reads the files; it runs none of them.
+// file path), or devnet-gated: its code (comments aside) reads
+// `MIDGARD_WATCHER_JOURNEY_RUN_DIR` or selects its deployment with
+// `selectJourneyDeploymentSource`, and every test it declares sits behind
+// `skipIf`/`runIf`, on the test itself or on a top-level `describe`. The check
+// reads the files; it runs none of them.
 
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -22,6 +24,7 @@ const WORKFLOW = ".github/workflows/midgard-node-ci.yml";
 const JOB = "midgard-node-tools";
 const STEP = "Test the watcher journeys that need no devnet";
 const RUN_DIR = "MIDGARD_WATCHER_JOURNEY_RUN_DIR";
+const SELECT_SOURCE = /\bselectJourneyDeploymentSource\s*\(/u;
 
 const loadYaml = () => {
   try {
@@ -97,9 +100,21 @@ export const allTestsGated = (source) => {
   return tests > 0;
 };
 
-/** Whether the file needs a devnet: it reads the run directory and gates every test. */
-export const devnetGated = (source) =>
-  source.includes(RUN_DIR) && allTestsGated(source);
+/** `source` without its block comments and whole-line `//` comments. */
+const withoutComments = (source) =>
+  source.replace(/\/\*[\s\S]*?\*\//gu, "").replace(/^\s*\/\/.*$/gmu, "");
+
+/**
+ * Whether the file needs a devnet: its code reads the run directory, or
+ * selects its deployment (devnet or stack) from the environment, and it gates
+ * every test.
+ */
+export const devnetGated = (source) => {
+  const code = withoutComments(source);
+  return (
+    (code.includes(RUN_DIR) || SELECT_SOURCE.test(code)) && allTestsGated(code)
+  );
+};
 
 /** Each journey test file neither listed in the step nor devnet-gated. */
 export const unwiredJourneyTests = (root, run) => {
@@ -171,8 +186,19 @@ test("gating is read from the test chain and a gated top-level describe", () => 
   ];
   for (const body of ungated)
     assert.equal(devnetGated(env + body), false, body);
-  // A gated file that never reads the run directory is not devnet-gated.
+  // A gated file that never reads the run directory is not devnet-gated,
+  // whatever its comments say.
   assert.equal(devnetGated(gated[0]), false);
+  for (const comment of [`// Reads ${RUN_DIR}.\n`, `/* ${RUN_DIR} */\n`])
+    assert.equal(devnetGated(comment + gated[0]), false, comment);
+  // Selecting the deployment source reads the run directory in devnet mode.
+  const selected =
+    "const source = selectJourneyDeploymentSource(process.env);\n";
+  assert.equal(
+    devnetGated(selected + 'it.skipIf(source === undefined)("a", () => {});'),
+    true,
+  );
+  assert.equal(devnetGated(selected + 'it("a", () => {});'), false);
   // A file with no test is not gated: it proves nothing either way.
   assert.equal(devnetGated(env), false);
 });

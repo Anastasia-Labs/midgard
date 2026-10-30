@@ -147,6 +147,18 @@ type WorkflowRow = { header_hash: string; workflow_id: string; body: string };
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
+/** A workflow row's journaled entry, or `undefined` when it is not a JSON object. */
+const parseWorkflowRowBody = (
+  body: string,
+): Record<string, unknown> | undefined => {
+  try {
+    const entry: unknown = JSON.parse(body);
+    return isRecord(entry) ? entry : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
 const DECISIONS = new Set(["healthy", "unprovable", "fault_detected"]);
 
 /** What a journey reads from its watcher's journals, wherever they live. */
@@ -162,8 +174,9 @@ export type JourneyWatcherEvidence = Readonly<{
 /**
  * Reads a running watcher's decision and workflow journals through `exec`.
  * Every answer must come from the watcher whose mounted process configuration
- * is byte-for-byte the host's `hostProcessConfigPath`, and every decision must
- * belong to `deploymentFingerprint`.
+ * is byte-for-byte the host's `hostProcessConfigPath`, and every decision and
+ * workflow row must belong to `deploymentFingerprint`; each row's entry must
+ * name its own workflow, the category read and its row's header.
  */
 export const createWatcherEvidenceReader = (input: {
   exec: WatcherEvidenceExec;
@@ -245,6 +258,23 @@ export const createWatcherEvidenceReader = (input: {
           workflow_id: workflowId,
           body,
         } = row as WorkflowRow;
+        const entry = parseWorkflowRowBody(body);
+        if (
+          entry?.workflowId !== workflowId ||
+          !isRecord(entry.identity) ||
+          entry.identity.category !== category ||
+          !isRecord(entry.identity.target) ||
+          entry.identity.target.headerHash !== header
+        )
+          throw new Error(
+            "The stack watcher returned a malformed workflow row",
+          );
+        if (
+          entry.identity.deploymentFingerprint !== input.deploymentFingerprint
+        )
+          throw new Error(
+            "The stack watcher returned a workflow row outside this deployment",
+          );
         const known = workflows.get(header);
         if (known !== undefined && known !== workflowId)
           throw new Error(
@@ -252,7 +282,7 @@ export const createWatcherEvidenceReader = (input: {
           );
         workflows.set(header, workflowId);
         const entries = byHeader.get(header) ?? [];
-        entries.push(JSON.parse(body) as FraudProofWorkflowJournalEntry);
+        entries.push(entry as unknown as FraudProofWorkflowJournalEntry);
         byHeader.set(header, entries);
       }
       return byHeader;

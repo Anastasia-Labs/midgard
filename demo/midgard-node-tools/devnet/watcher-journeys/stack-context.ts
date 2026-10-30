@@ -24,6 +24,7 @@ import {
   readNativeLedgerGenesis,
 } from "@al-ft/midgard-l1-follower/native-reward-account";
 import {
+  type Network,
   type OutRef,
   paymentCredentialOf,
   SLOT_CONFIG_NETWORK,
@@ -92,6 +93,25 @@ const requiredSeed = (
 };
 
 /**
+ * The wallet of the seed phrase `env[name]` holds. A malformed phrase is
+ * refused by its variable's name alone, never by the parser's error.
+ */
+const requiredSeedWallet = (
+  env: Readonly<Record<string, string>>,
+  name: string,
+  network: Network,
+): Readonly<{ seedPhrase: string; address: string }> => {
+  const seedPhrase = requiredSeed(env, name);
+  let address: string;
+  try {
+    address = walletFromSeed(seedPhrase, { network }).address;
+  } catch {
+    throw new Error(`${name} is not a valid seed phrase`);
+  }
+  return { seedPhrase, address };
+};
+
+/**
  * The Compose project the stack's services run in: the `COMPOSE_PROJECT_NAME`
  * the operator Compose wrapper or the env file sets, else Compose's own
  * default, the node directory's name normalized.
@@ -143,9 +163,7 @@ export const resolveStackJourneyLayout = (
   const wallets = Object.fromEntries(
     (Object.keys(STACK_JOURNEY_SEED_ENV) as StackJourneyRole[]).map((role) => {
       const seedEnv = STACK_JOURNEY_SEED_ENV[role];
-      const address = walletFromSeed(requiredSeed(env, seedEnv), {
-        network,
-      }).address;
+      const { address } = requiredSeedWallet(env, seedEnv, network);
       return [role, { seedEnv, address, keyHash: keyHashOf(address) }];
     }),
   ) as Record<
@@ -391,7 +409,11 @@ export const openStackJourneyContext = async (
     (Object.keys(STACK_JOURNEY_SEED_ENV) as StackJourneyRole[]).map((role) => [
       role,
       {
-        seedPhrase: requiredSeed(env, layout.wallets[role].seedEnv),
+        seedPhrase: requiredSeedWallet(
+          env,
+          layout.wallets[role].seedEnv,
+          network.network,
+        ).seedPhrase,
         address: layout.wallets[role].address,
       },
     ]),

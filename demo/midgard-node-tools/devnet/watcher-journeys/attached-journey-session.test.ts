@@ -218,16 +218,28 @@ describe("attached journey session", () => {
     }
   });
 
-  it("refuses a watcher of another deployment, a watcher that is not live, or none", async () => {
-    for (const status of [
-      { ...liveStatus(), deploymentFingerprint: "cd".repeat(32) },
-      { ...liveStatus(), liveness: "blocked" },
-      { liveness: "live" },
-    ]) {
+  it("refuses a watcher of another deployment, a watcher still starting or not live, or none", async () => {
+    // A starting watcher's status, as it serves one before binding a deployment.
+    const starting = {
+      observedAtMs: "1",
+      liveness: "live",
+      readiness: "not_ready",
+      readinessReasons: ["startup:l1_follower"],
+      l1Readiness: [],
+      startup: { stage: "l1_follower", outcome: "started" },
+    };
+    for (const [status, refusal] of [
+      [
+        { ...liveStatus(), deploymentFingerprint: "cd".repeat(32) },
+        /serves another deployment/u,
+      ],
+      [starting, /still starting and not attached to a deployment/u],
+      [{ ...liveStatus(), liveness: "blocked" }, /not live: blocked/u],
+    ] as const) {
       const stack = await runningStackWatcher(status);
       await expect(
         openAttachedJourneySession(stack.context, { exec: stack.exec }),
-      ).rejects.toThrow(/another deployment|not live/u);
+      ).rejects.toThrow(refusal);
     }
     const stack = await runningStackWatcher(liveStatus());
     await Promise.all(

@@ -24,14 +24,20 @@ type AttachedWatcherStatus = Readonly<{
 
 /**
  * An attached watcher's `/v1/status` when it serves this deployment and is
- * live; refuses another deployment's watcher and a stopping or blocked one.
+ * live; refuses a watcher still starting, another deployment's watcher and a
+ * stopping or blocked one.
  */
 export const assertAttachedWatcherStatus = (
   status: unknown,
   deploymentFingerprint: string,
 ): AttachedWatcherStatus => {
   const value = status as Partial<AttachedWatcherStatus> | null | undefined;
-  if (value?.deploymentFingerprint !== deploymentFingerprint)
+  // A starting watcher serves `/v1/status` before it has bound a deployment.
+  if (value?.deploymentFingerprint === undefined)
+    throw new Error(
+      `The stack watcher is still starting and not attached to a deployment (${JSON.stringify(value?.readinessReasons ?? [])})`,
+    );
+  if (value.deploymentFingerprint !== deploymentFingerprint)
     throw new Error(
       "The stack watcher's operations endpoint serves another deployment",
     );

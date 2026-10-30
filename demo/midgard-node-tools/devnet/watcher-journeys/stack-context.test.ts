@@ -162,6 +162,24 @@ describe("stack journey layout", () => {
     }
   });
 
+  it("refuses a malformed drill key by its name and never echoes a secret", async () => {
+    for (const role of roles) {
+      const { config, env } = await recordedStack();
+      const name = STACK_JOURNEY_SEED_ENV[role];
+      const malformed = { ...env, [name]: "abandon ".repeat(24).trim() };
+      const error = refusal(() =>
+        resolveStackJourneyLayout(
+          new StackProcesses(config, malformed),
+          "drill",
+        ),
+      );
+      expect(error.message).toBe(`${name} is not a valid seed phrase`);
+      expect(error.cause).toBeUndefined();
+      for (const secret of secretsOf(malformed))
+        expect(error.message).not.toContain(secret);
+    }
+  });
+
   it("refuses a drill key shared with a stack wallet or another drill wallet", async () => {
     const { config, env } = await recordedStack();
     const sharedWithStack = {
