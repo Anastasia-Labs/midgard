@@ -16,9 +16,18 @@ import { journeyDaSignerConfig, journeyNetwork } from "./journey-network.js";
 import { verifyTransitionTraceJourneyOutputPlan } from "./journey-timing.js";
 import { JOURNEY_ACTION_DEPTH } from "./live-context.js";
 
-export const transitionTraceJourneyFixture: JourneyFixture = {
+/**
+ * The deposit-trace journey. By default it starts from the confirmed state,
+ * removing abandoned headers first; with `liveTail` it appends after the
+ * queue's current tail, whose ledger the journey's replay supplies.
+ */
+export const createTransitionTraceJourneyFixture = ({
+  liveTail,
+}: {
+  liveTail: boolean;
+}): JourneyFixture => ({
   category: "transitionTrace",
-  async stage({ context, directory, retain, onStage }) {
+  async stage({ context, ledgerAt, directory, retain, onStage }) {
     const checkpointPath = join(directory, "staged.json");
     const resume = existsSync(checkpointPath)
       ? await readJourneyArtifact<PublishedDepositTraceCheckpoint>(
@@ -36,6 +45,7 @@ export const transitionTraceJourneyFixture: JourneyFixture = {
       // The watcher observes the queue at its action depth, so the abandoned
       // header removal only has to be that deep before the watcher starts.
       finalityDepth: JOURNEY_ACTION_DEPTH,
+      ...(liveTail ? { liveTail: { ledgerAt } } : {}),
     });
     const deposit = readPublishedDepositHistory(
       staged.checkpoint.depositHistory,
@@ -77,4 +87,7 @@ export const transitionTraceJourneyFixture: JourneyFixture = {
       target: { kind: "attested", txHash: staged.commits[1]! },
     };
   },
-};
+});
+
+export const transitionTraceJourneyFixture =
+  createTransitionTraceJourneyFixture({ liveTail: false });

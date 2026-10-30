@@ -52,6 +52,7 @@ const interactiveTests = [
   "./tests/fault-proofs/follower-validation-dispute-journey.test.ts",
   "./tests/fault-proofs/follower-validation-source-award-journey.test.ts",
   "./tests/fault-proofs/fault-decision-bridge-deferral-backoff.test.ts",
+  "./tests/fault-proofs/published-deposit-trace-live-tail.test.ts",
 ];
 
 export default defineConfig({

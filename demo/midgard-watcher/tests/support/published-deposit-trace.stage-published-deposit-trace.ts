@@ -45,6 +45,10 @@ import {
   type PublishedSuccessorCheckpoint,
   SUCCESSOR_HEADER_INTERVAL_MS,
 } from "./published-deposit-trace.published-deposit-trace-checkpoint.js";
+import {
+  type PublishedDepositTraceLiveTail,
+  publishedDepositTraceQueue,
+} from "./published-deposit-trace.queue-tail.js";
 
 /** Publish an ordinary deposit and retain the existing deposit-trace fixture. */
 export const stagePublishedDepositTrace = async (
@@ -57,6 +61,7 @@ export const stagePublishedDepositTrace = async (
     onCheckpoint = async () => {},
     timeoutCorrectionJournalPath,
     finalityDepth,
+    liveTail,
   }: {
     daSignerConfig: DaLocalSignerConfig;
     honest?: boolean;
@@ -69,6 +74,8 @@ export const stagePublishedDepositTrace = async (
     timeoutCorrectionJournalPath?: string;
     /** Blocks a removal must be buried under before the watcher may start. */
     finalityDepth?: number;
+    /** Absent, abandoned headers are removed and the trace starts at the confirmed state. */
+    liveTail?: PublishedDepositTraceLiveTail;
   },
 ) => {
   if (resume !== undefined) {
@@ -109,13 +116,8 @@ export const stagePublishedDepositTrace = async (
     contracts.stateQueue.policyId,
     SDK.STATE_QUEUE_ROOT_ASSET_NAME,
   );
-  const root = await one(contracts.stateQueue.spendingScriptAddress, rootUnit);
-  const rootDatum = await Effect.runPromise(
-    SDK.getLinkedListNodeViewFromUTxO(root),
-  );
-  const genesis = await Effect.runPromise(
-    SDK.getConfirmedStateFromStateQueueDatum(rootDatum),
-  );
+  const { nodeUnit, readQueueEnds, ledgerPairs, readBase, readAppendPoint } =
+    publishedDepositTraceQueue({ contracts, lucid: () => lucid, liveTail });
   const publisher = deployment.publisherLucid;
   let actor = await createPublishedWatcherBlockActor({
     deployment,
@@ -238,6 +240,7 @@ export const stagePublishedDepositTrace = async (
     const order = await readMatchingDeposit(history, metadata);
     return buildPublishedDepositBlock({
       predecessor: empty,
+      predecessorPriorLedger: await ledgerPairs(empty.header.prevHeaderHash),
       priorDeposits: preparedPriorDeposits,
       operatorVkey,
       endTime,
@@ -247,16 +250,18 @@ export const stagePublishedDepositTrace = async (
     });
   };
   const prepare = async () => {
-    await removeAbandonedHeaders();
+    // A live tail is extended as it stands; nothing on it is removed.
+    if (liveTail === undefined) await removeAbandonedHeaders();
+    const base = await readBase();
     // Validate the ledger before publishing another transaction.
     await depositEventsRetainedBlock({
       operatorVkey,
-      startTime: genesis.data.endTime,
-      endTime: genesis.data.endTime + 1n,
+      startTime: base.endTime,
+      endTime: base.endTime + 1n,
       blockSlot: BigInt(lucid.currentSlot()),
-      prevHeaderHash: genesis.data.headerHash,
-      prevUtxosRoot: genesis.data.utxoRoot,
-      priorLedger: [],
+      prevHeaderHash: base.headerHash,
+      prevUtxosRoot: base.utxoRoot,
+      priorLedger: base.ledger,
       events: [],
     });
     const { priorOrders, priorDeposits } = await preparePredecessorDeposits({
@@ -264,13 +269,15 @@ export const stagePublishedDepositTrace = async (
       lucid,
       operatorVkey,
       onStage,
+      // The live tail already absorbed every deposit due by its end.
+      ...(liveTail === undefined ? {} : { dueAfter: base.endTime }),
     });
     await onboardOperator();
     // The successor registers only after correction. A registration that
     // matures while proof construction runs prevents the last-operator rewind.
-    // Genesis itself closes a real protocol interval. Faster onboarding must
-    // not let the first header end before that confirmed-state cutoff.
-    await chain.awaitLedgerTime(Number(genesis.data.endTime) + 1);
+    // The base itself closes a real protocol interval. Faster onboarding must
+    // not let the first header end before that cutoff.
+    await chain.awaitLedgerTime(Number(base.endTime) + 1);
     // Retained deposits of a stopped run become eligible at their own
     // inclusion times; the honest predecessor must close after every one.
     const latestPriorInclusion = Math.max(
@@ -326,7 +333,7 @@ export const stagePublishedDepositTrace = async (
     for (const prior of priorDeposits) {
       if (
         !(
-          genesis.data.endTime < BigInt(prior.metadata.inclusionTime) &&
+          base.endTime < BigInt(prior.metadata.inclusionTime) &&
           BigInt(prior.metadata.inclusionTime) <= emptyEnd
         )
       )
@@ -336,12 +343,12 @@ export const stagePublishedDepositTrace = async (
     }
     const empty = await depositEventsRetainedBlock({
       operatorVkey,
-      startTime: genesis.data.endTime,
+      startTime: base.endTime,
       endTime: emptyEnd,
       blockSlot: BigInt(lucid.unixTimeToSlot(Number(emptyEnd))),
-      prevHeaderHash: genesis.data.headerHash,
-      prevUtxosRoot: genesis.data.utxoRoot,
-      priorLedger: [],
+      prevHeaderHash: base.headerHash,
+      prevUtxosRoot: base.utxoRoot,
+      priorLedger: base.ledger,
       events: priorOrders.map((order) => ({
         event: order.event,
         originalAssets: order.originalAssets,
@@ -473,9 +480,7 @@ export const stagePublishedDepositTrace = async (
   };
   await activateDanglingSuccessorRegistration();
   // Abandoned-header removal continues the root in a new output.
-  let anchor = await one(contracts.stateQueue.spendingScriptAddress, rootUnit);
-  let head: UTxO | undefined;
-  let headUnit: string | undefined;
+  let { anchor, head } = await readAppendPoint();
   const commits: string[] = [...prepared.commits];
   const checkpoint: PublishedDepositTraceCheckpoint = {
     predecessor: empty,
@@ -501,16 +506,17 @@ export const stagePublishedDepositTrace = async (
     commits.push(txHash);
     anchor = await one(
       contracts.stateQueue.spendingScriptAddress,
-      toUnit(
-        contracts.stateQueue.policyId,
-        SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + block.headerHash,
-      ),
+      nodeUnit(block.headerHash),
     );
-    headUnit ??= toUnit(
-      contracts.stateQueue.policyId,
-      SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + block.headerHash,
+    head = (await readQueueEnds()).first?.utxo;
+  };
+  /** Continue after the honest predecessor's current queue output. */
+  const anchorAtPredecessor = async () => {
+    anchor = await one(
+      contracts.stateQueue.spendingScriptAddress,
+      nodeUnit(empty.headerHash),
     );
-    head = await one(contracts.stateQueue.spendingScriptAddress, headUnit);
+    head = (await readQueueEnds()).first?.utxo;
   };
   const attest = async (block: PublishedWatcherBlock) => {
     const outcome = await actor.attest(block);
@@ -546,28 +552,19 @@ export const stagePublishedDepositTrace = async (
           checkpoint.depositMetadata = depositMetadata;
           checkpoint.priorDeposits = again.priorDeposits;
           preparedPriorDeposits = again.priorDeposits;
-          anchor = await one(
-            contracts.stateQueue.spendingScriptAddress,
-            rootUnit,
-          );
+          ({ anchor, head } = await readAppendPoint());
         }
       }
       await onCheckpoint(checkpoint);
     } else if (commits.length === 1) {
-      headUnit = toUnit(
-        contracts.stateQueue.policyId,
-        SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + empty.headerHash,
-      );
-      anchor = await one(contracts.stateQueue.spendingScriptAddress, headUnit);
-      head = anchor;
+      await anchorAtPredecessor();
     }
     if (commits.length === 1) {
       // The event wait can outlast an unattested head's append deadline.
       // Authenticate the predecessor's DA before waiting for the deposit,
       // then use the continued queue output produced by that attestation.
       await attest(empty);
-      anchor = await one(contracts.stateQueue.spendingScriptAddress, headUnit!);
-      head = anchor;
+      await anchorAtPredecessor();
       await chain.awaitLedgerTime(depositMetadata.inclusionTime);
       for (;;) {
         try {
@@ -653,11 +650,7 @@ export const stagePublishedDepositTrace = async (
         resumedBlock === undefined
           ? undefined
           : await headerOutput(resumedBlock.headerHash);
-      headUnit = toUnit(
-        contracts.stateQueue.policyId,
-        SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + empty.headerHash,
-      );
-      anchor = await one(contracts.stateQueue.spendingScriptAddress, headUnit);
+      await anchorAtPredecessor();
       const predecessorDatum = await Effect.runPromise(
         SDK.getLinkedListNodeViewFromUTxO(anchor),
       );
@@ -746,6 +739,9 @@ export const stagePublishedDepositTrace = async (
           );
         const built = await buildPublishedDepositBlock({
           predecessor: empty,
+          predecessorPriorLedger: await ledgerPairs(
+            empty.header.prevHeaderHash,
+          ),
           priorDeposits: checkpoint.priorDeposits,
           operatorVkey,
           endTime,
@@ -767,11 +763,7 @@ export const stagePublishedDepositTrace = async (
         // Removal spent the predecessor to update its link and replaced the
         // lock. Refetch both through the ordinary commit path before
         // constructing inputs.
-        anchor = await one(
-          contracts.stateQueue.spendingScriptAddress,
-          headUnit,
-        );
-        head = anchor;
+        await anchorAtPredecessor();
         await beforeCommit(block);
         const checkpoint = successorCheckpoint;
         try {
@@ -791,12 +783,9 @@ export const stagePublishedDepositTrace = async (
       commits.push(txHash);
       anchor = await one(
         contracts.stateQueue.spendingScriptAddress,
-        toUnit(
-          contracts.stateQueue.policyId,
-          SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + block.headerHash,
-        ),
+        nodeUnit(block.headerHash),
       );
-      head = anchor;
+      head = (await readQueueEnds()).first?.utxo;
       successorCheckpoint.commitTxHash = txHash;
       await onSuccessorCheckpoint(successorCheckpoint);
       await attest(block);

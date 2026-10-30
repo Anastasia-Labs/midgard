@@ -25,10 +25,12 @@ export const preparePredecessorDeposits = async (input: {
   lucid: LucidEvolution;
   operatorVkey: string;
   onStage: (name: string) => void;
+  /** Keep only deposits due after this time; earlier ones are absorbed. */
+  dueAfter?: bigint;
 }) => {
   const { contracts, chain, references } = input.deployment;
-  const read = () =>
-    Effect.runPromise(
+  const read = async () => {
+    const orders = await Effect.runPromise(
       SDK.fetchDepositUTxOsProgram(
         input.lucid,
         SDK.eventHistoryDeploymentFromContracts(
@@ -36,6 +38,11 @@ export const preparePredecessorDeposits = async (input: {
         ),
       ),
     );
+    const { dueAfter } = input;
+    return dueAfter === undefined
+      ? orders
+      : orders.filter((order) => order.facts.inclusion_time > dueAfter);
+  };
   let priorOrders = await read();
   if (priorOrders.length === 0) {
     const reference = references.get("depositMint");
@@ -93,6 +100,8 @@ export const preparePredecessorDeposits = async (input: {
 export const publishedPredecessorLedger = async (
   predecessor: PublishedDepositTraceCheckpoint["predecessor"],
   priorDeposits: PublishedDepositTraceCheckpoint["priorDeposits"],
+  /** The ledger the predecessor extends; its own header root checks it. */
+  priorLedger: readonly SDK.DaPayloadEntry[] = [],
 ): Promise<readonly SDK.DaPayloadEntry[]> => {
   if (priorDeposits === undefined || priorDeposits.length === 0)
     throw new Error(
@@ -106,7 +115,7 @@ export const publishedPredecessorLedger = async (
     blockSlot: header.blockSlot,
     prevHeaderHash: header.prevHeaderHash,
     prevUtxosRoot: header.prevUtxosRoot,
-    priorLedger: [],
+    priorLedger,
     events: priorDeposits.map((prior) => ({
       ...readPublishedDepositHistory(prior.history, prior.metadata),
       honest: true,
@@ -125,6 +134,8 @@ export const publishedPredecessorLedger = async (
 /** Build a later deposit block from that exact reconstructed predecessor. */
 export const buildPublishedDepositBlock = async (input: {
   predecessor: PublishedDepositTraceCheckpoint["predecessor"];
+  /** The ledger the predecessor extends; empty for the confirmed genesis. */
+  predecessorPriorLedger?: readonly SDK.DaPayloadEntry[];
   priorDeposits: PublishedDepositTraceCheckpoint["priorDeposits"];
   event: SDK.DepositUTxO;
   operatorVkey: string;
@@ -139,6 +150,7 @@ export const buildPublishedDepositBlock = async (input: {
     priorLedger: await publishedPredecessorLedger(
       input.predecessor,
       input.priorDeposits,
+      input.predecessorPriorLedger,
     ),
     startTime: input.predecessor.header.endTime,
     endTime: input.endTime,
