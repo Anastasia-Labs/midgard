@@ -16,11 +16,14 @@ import { journeyDaSignerConfig, journeyNetwork } from "./journey-network.js";
 import { verifyTransitionTraceJourneyOutputPlan } from "./journey-timing.js";
 import { JOURNEY_ACTION_DEPTH } from "./live-context.js";
 import { isStackJourneyContext } from "./stack-da-publication.js";
+import { stackJourneyDa } from "./stack-journey-da.js";
 
 /**
  * The deposit-trace journey. By default it starts from the confirmed state,
  * removing abandoned headers first; with `liveTail` it appends after the
- * queue's current tail, whose ledger the journey's replay supplies.
+ * queue's current tail, whose ledger the journey's replay supplies. On an
+ * attached stack it always extends the live tail, signing as operator-2 and
+ * publishing through the stack's own committee.
  */
 export const createTransitionTraceJourneyFixture = ({
   liveTail,
@@ -28,20 +31,32 @@ export const createTransitionTraceJourneyFixture = ({
   liveTail: boolean;
 }): JourneyFixture => ({
   category: "transitionTrace",
-  async stage({ context, ledgerAt, directory, retain, onStage }) {
-    if (isStackJourneyContext(context))
-      throw new Error(
-        "The transition-trace journey does not stage on an attached stack yet",
-      );
+  async stage({
+    context,
+    ledgerAt,
+    directory,
+    retain,
+    readConfirmedTransaction,
+    onStage,
+  }) {
     const checkpointPath = join(directory, "staged.json");
     const resume = existsSync(checkpointPath)
       ? await readJourneyArtifact<PublishedDepositTraceCheckpoint>(
           checkpointPath,
         )
       : undefined;
-    const { deployment, accounts } = context;
-    const staged = await stagePublishedDepositTrace(deployment, {
-      daSignerConfig: journeyDaSignerConfig(accounts),
+    const stack = isStackJourneyContext(context)
+      ? stackJourneyDa(context, { readConfirmedTransaction, onStage })
+      : undefined;
+    const staged = await stagePublishedDepositTrace(context.deployment, {
+      ...(isStackJourneyContext(context)
+        ? {
+            attachedStack: {
+              attest: (block) =>
+                stack!.publish(block, "attestation", [checkpointPath]),
+            },
+          }
+        : { daSignerConfig: journeyDaSignerConfig(context.accounts) }),
       onStage,
       resume,
       onCheckpoint: (checkpoint) =>
@@ -50,7 +65,8 @@ export const createTransitionTraceJourneyFixture = ({
       // The watcher observes the queue at its action depth, so the abandoned
       // header removal only has to be that deep before the watcher starts.
       finalityDepth: JOURNEY_ACTION_DEPTH,
-      ...(liveTail ? { liveTail: { ledgerAt } } : {}),
+      // Nothing on an attached stack's queue is the drill's to remove.
+      ...(liveTail || stack !== undefined ? { liveTail: { ledgerAt } } : {}),
     });
     const deposit = readPublishedDepositHistory(
       staged.checkpoint.depositHistory,

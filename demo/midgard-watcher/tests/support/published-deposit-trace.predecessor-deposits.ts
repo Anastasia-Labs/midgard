@@ -21,7 +21,7 @@ import type {
 
 /** C3's first predecessor contains real authenticated admission material, including on a fresh deployment. */
 export const preparePredecessorDeposits = async (input: {
-  deployment: Published;
+  deployment: Pick<Published, "contracts" | "chain" | "references">;
   lucid: LucidEvolution;
   operatorVkey: string;
   onStage: (name: string) => void;

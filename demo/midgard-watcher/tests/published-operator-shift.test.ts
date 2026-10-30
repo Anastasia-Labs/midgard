@@ -156,6 +156,26 @@ describe("an operator sharing the scheduler", () => {
     expect(l1.refreshes).toHaveLength(1);
   });
 
+  it("refuses work that no single shift can cover", async () => {
+    const reads: string[] = [];
+    await expect(
+      awaitOperatorShift(OPERATOR_2, Number(SHIFT_MS) + 1, {
+        readAppointment: async () => {
+          reads.push("read");
+          if (reads.length > 200)
+            throw new Error("read the scheduler without end");
+          return { operator: OPERATOR_2, startTime: 0n };
+        },
+        refresh: async () => ({ kind: "aligned" }),
+        now: () => 0,
+        awaitLedgerTime: async () => {},
+        shiftDurationMs: SHIFT_MS,
+        onStage: () => {},
+      }),
+    ).rejects.toThrow(/shift covers/u);
+    expect(reads).toEqual([]);
+  });
+
   it("fails when the scheduler does not move for two whole shifts", async () => {
     const l1 = scheduler(
       { operator: OUR_NODE, startTime: 0n },

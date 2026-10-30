@@ -48,14 +48,19 @@ const sameAppointment = (
  * others must before it commits: another operator's shift is waited out,
  * then the scheduler is refreshed into this operator's shift through the
  * node's own alignment. A refresh that loses a race to another operator's
- * refresh waits again; any other refresh failure, or an appointment that
- * does not move for two whole shifts, is a hard failure.
+ * refresh waits again; any other refresh failure, an appointment that does
+ * not move for two whole shifts, or work longer than a shift, is a hard
+ * failure.
  */
 export const awaitOperatorShift = async (
   operator: string,
   coverMs: number,
   ports: OperatorShiftPorts,
 ): Promise<void> => {
+  if (BigInt(coverMs) > ports.shiftDurationMs)
+    throw new Error(
+      `No ${ports.shiftDurationMs.toString()} ms shift covers operator ${operator}'s ${coverMs.toString()} ms of work`,
+    );
   let appointment = await ports.readAppointment();
   let unchangedSince = ports.now();
   for (;;) {

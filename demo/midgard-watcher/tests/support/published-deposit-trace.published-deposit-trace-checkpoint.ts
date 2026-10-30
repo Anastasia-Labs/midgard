@@ -11,6 +11,21 @@ export type Published = Awaited<
   ReturnType<typeof publishWorkflowDeploymentOnChain>
 >;
 
+/**
+ * What a deposit trace reads of its deployment: one the journey published,
+ * or an attached stack's, whose queue the trace never removes headers from.
+ */
+export type PublishedDepositTraceDeployment = Pick<
+  Published,
+  | "manifest"
+  | "contracts"
+  | "chain"
+  | "references"
+  | "operatorLucid"
+  | "publisherLucid"
+> &
+  Partial<Pick<Published, "deploymentInfo">>;
+
 export type PublishedDepositTraceCheckpoint = {
   predecessor: Awaited<ReturnType<typeof depositEventsRetainedBlock>>;
   current: Awaited<ReturnType<typeof depositEventsRetainedBlock>>;

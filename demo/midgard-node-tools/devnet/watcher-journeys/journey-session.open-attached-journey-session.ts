@@ -8,6 +8,7 @@ import { captureJourneyWorkflowBaseline } from "./journey-session.capture-journe
 import { openJourneySessionCore } from "./journey-session.open-journey-session-core.js";
 import { readJourneyOperations } from "./operations.js";
 import type { StackJourneyContext } from "./stack-context.js";
+import { openStackJourneyReplayedLedger } from "./stack-replayed-ledger.js";
 import {
   composeWatcherEvidenceExec,
   createWatcherEvidenceReader,
@@ -50,19 +51,21 @@ export const assertAttachedWatcherStatus = (
 
 /**
  * A journey session attached to a running e2e-stack's own watcher. It starts
- * nothing: no retained DA, no watcher configuration or process, no native
- * recorder and no prover funding. Health and readiness come from the stack
- * watcher's `/v1/status`; decision and workflow evidence from its journals,
- * read inside its container (`exec`, by default `docker compose exec`).
+ * no retained DA, no watcher configuration or process, no native recorder
+ * and no prover funding. Health and readiness come from the stack watcher's
+ * `/v1/status`; decision and workflow evidence from its journals, read
+ * inside its container (`exec`, by default `docker compose exec`). Staging
+ * reads ledgers from the stack's own replay, opened on its first read.
  */
 export const openAttachedJourneySession = async (
   context: StackJourneyContext,
   options: Readonly<{ exec?: WatcherEvidenceExec }> = {},
 ) => {
-  const { directory, isClosed, close, stage } = await openJourneySessionCore(
-    context.runDirectory,
-  );
+  const { directory, isClosed, close, stage, onClose } =
+    await openJourneySessionCore(context.runDirectory);
   try {
+    const replayedLedger = openStackJourneyReplayedLedger(context, directory);
+    onClose(replayedLedger.close);
     const deploymentFingerprint = context.deployment.manifest.manifestId;
     const deploymentIdentity = context.release.deploymentIdentity;
     if (deploymentIdentity.manifestId !== deploymentFingerprint)
@@ -131,6 +134,7 @@ export const openAttachedJourneySession = async (
         blueprintPath: context.deployment.blueprintPath,
       }),
       releaseFinality,
+      ledgerAt: replayedLedger.ledgerAt,
       watcher,
       evidence,
       captureWorkflowBaseline: (category: FraudProofCatalogueCategoryName) =>

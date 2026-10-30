@@ -40,8 +40,8 @@ import {
 import {
   DEPOSIT_BLOCK_INTERVAL_MS,
   EMPTY_PREDECESSOR_INTERVAL_MS,
-  type Published,
   type PublishedDepositTraceCheckpoint,
+  type PublishedDepositTraceDeployment,
   type PublishedSuccessorCheckpoint,
   SUCCESSOR_HEADER_INTERVAL_MS,
 } from "./published-deposit-trace.published-deposit-trace-checkpoint.js";
@@ -50,11 +50,27 @@ import {
   publishedDepositTraceQueue,
 } from "./published-deposit-trace.queue-tail.js";
 
+/** The DA path of a trace staged on an attached stack. */
+export type PublishedDepositTraceAttachedStack = Readonly<{
+  /** Follow a committed block's payload to the stack committee's answer. */
+  attest(block: PublishedWatcherBlock): Promise<{ readonly kind: string }>;
+}>;
+
+/**
+ * The ledger time an attached stack's trace commits within, from its base
+ * read: the deposit's admission range and event wait, then its block.
+ */
+const ATTACHED_TRACE_SPAN_MS =
+  Number(SDK.MAX_EVENT_VALIDITY_RANGE_LENGTH_MS) +
+  SDK.EVENT_WAIT_DURATION_MS +
+  DEPOSIT_BLOCK_INTERVAL_MS;
+
 /** Publish an ordinary deposit and retain the existing deposit-trace fixture. */
 export const stagePublishedDepositTrace = async (
-  deployment: Published,
+  deployment: PublishedDepositTraceDeployment,
   {
     daSignerConfig,
+    attachedStack,
     honest = false,
     onStage = () => {},
     resume,
@@ -63,7 +79,14 @@ export const stagePublishedDepositTrace = async (
     finalityDepth,
     liveTail,
   }: {
-    daSignerConfig: DaLocalSignerConfig;
+    /** The journey's own committee signers; absent on an attached stack. */
+    daSignerConfig?: DaLocalSignerConfig;
+    /**
+     * An attached stack, whose own committee attests the trace's blocks and
+     * whose scheduler the operator shares with the stack's node. The trace
+     * then extends its live tail within one shift of the operator's.
+     */
+    attachedStack?: PublishedDepositTraceAttachedStack;
     honest?: boolean;
     onStage?: (name: string) => void;
     resume?: PublishedDepositTraceCheckpoint;
@@ -78,6 +101,24 @@ export const stagePublishedDepositTrace = async (
     liveTail?: PublishedDepositTraceLiveTail;
   },
 ) => {
+  if ((daSignerConfig === undefined) === (attachedStack === undefined))
+    throw new Error(
+      "A deposit trace is attested by its own committee or an attached stack's",
+    );
+  if (attachedStack !== undefined && liveTail === undefined)
+    throw new Error("An attached stack's deposit trace extends its live tail");
+  const ownDeploymentInfo = () => {
+    if (deployment.deploymentInfo === undefined)
+      throw new Error("Only a journey's own deployment removes its headers");
+    return deployment.deploymentInfo;
+  };
+  const ownCommittee = () => {
+    if (daSignerConfig === undefined)
+      throw new Error(
+        "An attached stack's own node builds its honest successor",
+      );
+    return daSignerConfig;
+  };
   if (resume !== undefined) {
     const retained = readPublishedDepositHistory(
       resume.depositHistory,
@@ -122,7 +163,9 @@ export const stagePublishedDepositTrace = async (
   let actor = await createPublishedWatcherBlockActor({
     deployment,
     lucid,
-    daSignerConfig,
+    ...(attachedStack === undefined
+      ? { daSignerConfig }
+      : { sharedScheduler: { coverMs: ATTACHED_TRACE_SPAN_MS } }),
     onStage,
   });
   const onboardOperator = () => actor.onboardOperator();
@@ -165,8 +208,8 @@ export const stagePublishedDepositTrace = async (
       if (liveRoot.next === "Empty") return;
       const result = await submitUnattestedTimeoutCorrection({
         lucid,
-        deploymentInfo: deployment.deploymentInfo,
-        network: daSignerConfig.NETWORK,
+        deploymentInfo: ownDeploymentInfo(),
+        network: ownCommittee().NETWORK,
         signer: {
           source: "journey-operator-wallet",
           address,
@@ -252,6 +295,9 @@ export const stagePublishedDepositTrace = async (
   const prepare = async () => {
     // A live tail is extended as it stands; nothing on it is removed.
     if (liveTail === undefined) await removeAbandonedHeaders();
+    // On an attached stack the tail is read within the operator's own shift,
+    // where the stack's node appends nothing after it.
+    if (attachedStack !== undefined) await onboardOperator();
     const base = await readBase();
     // Validate the ledger before publishing another transaction.
     await depositEventsRetainedBlock({
@@ -272,7 +318,7 @@ export const stagePublishedDepositTrace = async (
       // The live tail already absorbed every deposit due by its end.
       ...(liveTail === undefined ? {} : { dueAfter: base.endTime }),
     });
-    await onboardOperator();
+    if (attachedStack === undefined) await onboardOperator();
     // The successor registers only after correction. A registration that
     // matures while proof construction runs prevents the last-operator rewind.
     // The base itself closes a real protocol interval. Faster onboarding must
@@ -519,7 +565,7 @@ export const stagePublishedDepositTrace = async (
     head = (await readQueueEnds()).first?.utxo;
   };
   const attest = async (block: PublishedWatcherBlock) => {
-    const outcome = await actor.attest(block);
+    const outcome = await (attachedStack ?? actor).attest(block);
     if (outcome.kind !== "attested")
       throw new Error(
         `Deposit trace block ${block.headerHash} was corrected before its DA attestation applied`,
@@ -610,6 +656,7 @@ export const stagePublishedDepositTrace = async (
     onCheckpoint?: (checkpoint: PublishedSuccessorCheckpoint) => Promise<void>;
   }> = {}) =>
     (honestSuccessor ??= (async () => {
+      const successorDaSignerConfig = ownCommittee();
       const fraudulentUnit = toUnit(
         contracts.stateQueue.policyId,
         SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + deposited.headerHash,
@@ -677,7 +724,7 @@ export const stagePublishedDepositTrace = async (
       actor = await createPublishedWatcherBlockActor({
         deployment,
         lucid,
-        daSignerConfig,
+        daSignerConfig: successorDaSignerConfig,
         onStage,
       });
       // Register and activate only after correction. A pending eligible

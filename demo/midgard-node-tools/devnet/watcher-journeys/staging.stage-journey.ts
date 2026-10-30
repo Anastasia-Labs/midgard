@@ -36,6 +36,7 @@ import {
   type StackDaOutcome,
 } from "./stack-da-publication.js";
 import { stackJourneyDa } from "./stack-journey-da.js";
+import { fundStackLedgerOwner } from "./stack-ledger-owner.js";
 import {
   classifyStagedCheckpoint,
   supersededCheckpointArchivePath,
@@ -64,22 +65,27 @@ export async function stageJourney(
 ): Promise<StagedJourney> {
   const decodeRetained = (block: JourneyBlock) =>
     decodeJourneyRetainedBlock(block, ledgerAt);
-  const { deployment, accounts, provider } = context;
+  const { deployment, provider } = context;
   const { contracts, chain } = deployment;
   const fingerprint = deployment.manifest.manifestId;
   const checkpointPath = join(directory, "staged.json");
   const headPath = join(context.runDirectory, "work/journeys/head.json");
   // An attached stack's own committee attests: the drill publishes payloads
-  // as operator-2's node would. A devnet journey signs as its committee.
+  // as operator-2's node would, and its faults spend the outputs of the
+  // drill's own L2 ledger owner. A devnet journey signs as its committee and
+  // spends its operator's outputs.
   const mode = isStackJourneyContext(context)
     ? {
         kind: "stack" as const,
         da: stackJourneyDa(context, { readConfirmedTransaction, onStage }),
+        context,
+        ledgerOwnerSeedPhrase: context.accounts.ledgerOwner.seedPhrase,
       }
     : {
         kind: "devnet" as const,
         deployment: context.deployment,
         daSignerConfig: journeyDaSignerConfig(context.accounts),
+        ledgerOwnerSeedPhrase: context.accounts.operator.seedPhrase,
       };
   const headerUnit = (hash: string) =>
     toUnit(
@@ -273,6 +279,11 @@ export async function stageJourney(
   let predecessor: JourneySuccessor;
   if (resume !== undefined) predecessor = resume.predecessor;
   else if (mode.kind === "stack") {
+    const { da } = mode;
+    await fundStackLedgerOwner(mode.context, {
+      readAttestedTail: async () => decodeRetained(await da.readAttestedTail()),
+      onStage,
+    });
     await stackActor!.onboardOperator();
     predecessor = await mode.da.readAttestedTail();
   } else if (existsSync(headPath)) {
@@ -363,7 +374,7 @@ export async function stageJourney(
           deploymentFingerprint: fingerprint,
           block: await build({
             predecessor: retainedPredecessor,
-            ledgerOwnerSeedPhrase: accounts.operator.seedPhrase,
+            ledgerOwnerSeedPhrase: mode.ledgerOwnerSeedPhrase,
             operatorVkey: maliciousKey,
             endTime,
             blockSlot: BigInt(maliciousLucid.unixTimeToSlot(Number(endTime))),
@@ -397,7 +408,7 @@ export async function stageJourney(
               const endTime = BigInt(chain.now() + 59_999);
               history.block = await build({
                 predecessor: retainedPredecessor,
-                ledgerOwnerSeedPhrase: accounts.operator.seedPhrase,
+                ledgerOwnerSeedPhrase: mode.ledgerOwnerSeedPhrase,
                 operatorVkey: maliciousKey,
                 endTime,
                 blockSlot: BigInt(
@@ -431,7 +442,7 @@ export async function stageJourney(
               const endTime = BigInt(chain.now() + 59_999);
               history.block = await build({
                 predecessor: retainedPredecessor,
-                ledgerOwnerSeedPhrase: accounts.operator.seedPhrase,
+                ledgerOwnerSeedPhrase: mode.ledgerOwnerSeedPhrase,
                 operatorVkey: maliciousKey,
                 endTime,
                 blockSlot: BigInt(
@@ -488,7 +499,7 @@ export async function stageJourney(
     readSignedCommitRecovery,
     onStage,
     predecessor: retainedPredecessor,
-    ledgerOwnerSeedPhrase: accounts.operator.seedPhrase,
+    ledgerOwnerSeedPhrase: mode.ledgerOwnerSeedPhrase,
     commitHistoryBlock,
   };
   const prepared = await task.prepare(preparationInput);
@@ -503,7 +514,7 @@ export async function stageJourney(
     const faultEndTime = BigInt(chain.now() + 59_999);
     return prepared.buildFault({
       predecessor: retainedPredecessor,
-      ledgerOwnerSeedPhrase: accounts.operator.seedPhrase,
+      ledgerOwnerSeedPhrase: mode.ledgerOwnerSeedPhrase,
       operatorVkey: maliciousKey,
       endTime: faultEndTime,
       blockSlot: BigInt(maliciousLucid.unixTimeToSlot(Number(faultEndTime))),
@@ -686,7 +697,7 @@ export async function stageJourney(
         const endTime = BigInt(chain.now() + 59_999);
         const successorInput: JourneyFaultBuildInput = {
           predecessor: successorRetainedPredecessor,
-          ledgerOwnerSeedPhrase: accounts.operator.seedPhrase,
+          ledgerOwnerSeedPhrase: mode.ledgerOwnerSeedPhrase,
           operatorVkey: successorActor.operatorVkey,
           endTime,
           blockSlot: BigInt(successorLucid.unixTimeToSlot(Number(endTime))),
