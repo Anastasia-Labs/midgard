@@ -67,14 +67,13 @@ export const readMountedHttpFile = (
   try {
     fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
     const stat = fstatSync(fd);
-    if (
-      !stat.isFile() ||
-      stat.size === 0 ||
-      stat.size > maxBytes ||
-      (secret && (stat.mode & 0o077) !== 0)
-    )
+    if (!stat.isFile() || stat.size === 0 || stat.size > maxBytes)
       return fail(
-        "mounted secret files require private permissions and bounded nonempty content",
+        "mounted file must be a nonempty regular file within its size limit",
+      );
+    if (secret && (stat.mode & 0o077) !== 0)
+      return fail(
+        "mounted secret file grants group or other access; make it mode 0600",
       );
     const buffer = Buffer.alloc(maxBytes + 1);
     let count = 0;
@@ -101,10 +100,9 @@ const mountedReleaseJson = (
   path: string | undefined,
   maxBytes: number,
 ): unknown => {
+  const bytes = readMountedHttpFile(path, false, maxBytes);
   try {
-    return JSON.parse(
-      readMountedHttpFile(path, false, maxBytes).toString("utf8"),
-    ) as unknown;
+    return JSON.parse(bytes.toString("utf8")) as unknown;
   } catch {
     return fail("mounted public release JSON is invalid (contents redacted)");
   }

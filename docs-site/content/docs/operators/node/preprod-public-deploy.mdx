@@ -180,22 +180,48 @@ unused validators differently from `blueprintClassificationFile`. When
 `releaseDirectory` already holds a release that does not match this
 deployment, it stops and names the folder; move the folder aside and rerun.
 
-To sign out of band instead, for example on a separate signing machine, run
-the release signing command and place its output at `releaseDirectory`
-before the run reaches `public-release`; the stack verifies it as it
-verifies its own. Sign with a release input whose provenance carries the
-deployed registry's digest and whose `parameterRegistryFile` names that
-registry, such as the completed `release-input.json` once the deployment
-exists:
+To sign the public release out of band instead, for example on a separate
+signing machine:
 
-```bash
-node demo/midgard-node-tools/dist/index.js sign-deployment-release \
-  --release-input /absolute/release-input.json \
-  --deployment-info /absolute/contract-deployment-info.json \
-  --blueprint /absolute/plutus.json \
-  --output /absolute/public-release \
-  --funding-payment-key-hash <prover funding wallet payment key hash>
-```
+1. Keep `signingKeyFile` on the stack host. Phase 1 reads it and checks its
+   public key against `trustRootsFile`, and the stack signs the watcher
+   release with it.
+2. Run the stack until it prints `operator: confirmed`, then stop it. The
+   deployment and its parameter registry now exist; a rerun resumes after
+   the confirmed steps.
+3. Compute the registry's digest from the repository root:
+
+   ```bash
+   cd demo/midgard-node-tools && node --input-type=module -e '
+   import { readFileSync } from "node:fs";
+   import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
+   console.log(computeDeploymentManifestJsonDigest(JSON.parse(readFileSync(process.argv[1], "utf8"))));
+   ' /absolute/path/to/midgard/demo/midgard-node/deploymentInfo/contract-deployment-info.json.blueprint-registry.json
+   ```
+
+4. Add it as `evidence.parameterRegistryDigest` to the provenance file that
+   your release input's `provenanceFile` names. The stack keeps a supplied
+   digest that matches the registry.
+5. On the signing machine, sign with that provenance, the registry, the
+   deployment's `contract-deployment-info.json` and the built blueprint, and
+   copy the output to `releaseDirectory`:
+
+   ```bash
+   node demo/midgard-node-tools/dist/index.js sign-deployment-release \
+     --release-input /absolute/signing-release-input.json \
+     --deployment-info /absolute/contract-deployment-info.json \
+     --blueprint /absolute/plutus.json \
+     --output /absolute/public-release \
+     --funding-payment-key-hash <prover funding wallet payment key hash>
+   ```
+
+   That release input names the signing machine's key, whose public key
+   `trustRootsFile` must list, the provenance with the digest, and the
+   registry as `parameterRegistryFile`.
+
+6. Rerun the stack. The `public-release` step verifies the placed release as
+   it verifies its own, and refuses it unless its `release-provenance.json`
+   equals the provenance the stack completed.
 
 ### Optional ingress
 

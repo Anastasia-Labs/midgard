@@ -36,6 +36,7 @@ const bail = parsePositiveInteger(process.env.MIDGARD_NODE_TEST_BAIL);
 const preprodPublicTests = [
   "./tests/sign-deployment-release.public.test.ts",
   "./tests/full-stack-public-release.test.ts",
+  "./tests/full-stack-public-node-containers.test.ts",
   "./tests/public-submit-deposit.test.ts",
 ];
 // Load a preprod-public stack configuration, which needs only the compiled

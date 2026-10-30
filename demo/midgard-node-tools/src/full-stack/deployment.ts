@@ -21,7 +21,7 @@ import {
 import { deriveStackWallets } from "./wallets.js";
 import type { StackStep } from "./workflow.js";
 
-export function stackPaths(processes: StackProcesses) {
+export function stackPaths(processes: Pick<StackProcesses, "config">) {
   return {
     manifest: join(
       processes.config.nodeRoot,

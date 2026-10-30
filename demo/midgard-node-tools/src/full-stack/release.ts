@@ -129,10 +129,7 @@ export async function readOperatorProvenance(path: string) {
 }
 /** The parameter registry the deployment step writes beside the finalized manifest. */
 export const stackRegistryPath = (config: StackConfig) =>
-  join(
-    config.nodeRoot,
-    "deploymentInfo/contract-deployment-info.json.blueprint-registry.json",
-  );
+  `${stackPaths({ config }).manifest}.blueprint-registry.json`;
 /** The operator's provenance, completed with this deployment's registry digest. */
 export const completedProvenancePath = (config: StackConfig) =>
   join(config.runDirectory, "release-provenance.json");
@@ -199,19 +196,20 @@ export async function completePublicReleaseInput(processes: StackProcesses) {
 }
 /**
  * Prerequisites, before anything is spent: a fresh setup's release input.
- * A public stack's deployment does not exist yet, so its provenance is read
- * without the parameter registry digest and checked against the blueprint
- * just built.
+ * A public stack's provenance is checked against the blueprint just built on
+ * every run, a resumed one too: it is read without the parameter registry
+ * digest, which may not exist yet.
  */
 export async function checkFreshReleaseInput(processes: StackProcesses) {
-  const paths = await releasePaths(processes);
-  if ((await readJsonIfPresent(paths.authority)) !== undefined) return;
   const path = processes.config.watcher.releaseInput;
-  if (!path) throw new Error("Fresh setup needs watcher release inputs");
   if (processes.config.public === undefined) {
+    const paths = await releasePaths(processes);
+    if ((await readJsonIfPresent(paths.authority)) !== undefined) return;
+    if (!path) throw new Error("Fresh setup needs watcher release inputs");
     await readReleaseInput(path);
     return;
   }
+  if (!path) throw new Error("A public stack needs watcher release inputs");
   const { input } = await readReleaseInput(path, { beforeDeployment: true });
   const { provenance } = await readOperatorProvenance(input.provenanceFile!);
   const blueprint = stackBlueprintPath(processes.config);

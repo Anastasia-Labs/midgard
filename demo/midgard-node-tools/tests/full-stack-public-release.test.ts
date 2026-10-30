@@ -1,216 +1,40 @@
-import { execFile } from "node:child_process";
-import { createHash, generateKeyPairSync, randomBytes } from "node:crypto";
-import {
-  access,
-  mkdir,
-  mkdtemp,
-  readdir,
-  readFile,
-  rm,
-  stat,
-  writeFile,
-} from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { generateKeyPairSync } from "node:crypto";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
 
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
-import { PUBLIC_NODE_SECRET_NAMES } from "midgard-node/commands/listen-public-http";
-import { makeGenuineDeploymentRegistryForTest } from "midgard-node/tests/helpers/deployment-parameter-registry";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { publicRolesPath } from "../src/full-stack/process.js";
-import {
-  preparePublicImages,
-  publicPostgresPasswordPath,
-} from "../src/full-stack/public-runtime.js";
+import { stackPaths } from "../src/full-stack/deployment.js";
 import {
   checkFreshReleaseInput,
   completedProvenancePath,
   completePublicReleaseInput,
   prepareStackRelease,
+  proverFundingKeyHash,
   releasePaths,
+  stackBlueprintPath,
   stackRegistryPath,
 } from "../src/full-stack/release.js";
-import { runtimeInputDigest, runtimeSteps } from "../src/full-stack/runtime.js";
 import {
-  classificationOf,
+  signDeploymentRelease,
   SIGNED_RELEASE_FILES,
 } from "../src/sign-deployment-release.js";
 import {
-  RecordingProcesses,
-  stackEnvironment,
-  stackFixture,
-} from "./full-stack-fixtures.js";
+  createPublicReleaseFixture,
+  exists,
+  publicStack,
+  removePublicReleaseFixture,
+} from "./full-stack-public-release.fixtures.js";
 
 // Runs in the `preprod-public-release` project, which compiles the
 // preprod-public profile against a blueprint built for it.
 
-const nodeRoot = fileURLToPath(new URL("../../midgard-node", import.meta.url));
-const exampleTemplate = fileURLToPath(
-  new URL(
-    "../../midgard-watcher/watcher-process.example.json",
-    import.meta.url,
-  ),
-);
-
-let fixture: Awaited<ReturnType<typeof makeGenuineDeploymentRegistryForTest>>;
-let directory: string;
+let fixture: Awaited<ReturnType<typeof createPublicReleaseFixture>>;
 beforeAll(async () => {
-  fixture = await makeGenuineDeploymentRegistryForTest();
-  directory = await mkdtemp(join(tmpdir(), "midgard-stack-public-release-"));
+  fixture = await createPublicReleaseFixture();
 }, 300_000);
-afterAll(() => rm(directory, { recursive: true, force: true }));
-
-const SOURCE_REVISION = "a1".repeat(20);
-const image = (name: string, byte: string) =>
-  `registry.example/midgard/${name}@sha256:${byte.repeat(32)}`;
-const ROLE_IMAGES = {
-  node: image("node", "01"),
-  postgres: image("postgres", "02"),
-  ingress: image("ingress", "03"),
-};
-
-/**
- * A preprod-public stack whose deployment is final: the blueprint above the
- * node directory, the finalized manifest in it, the node's secrets in the
- * stack environment as phase 1 leaves them, and a release input naming the
- * signing key and the operator's provenance, which leaves out the parameter
- * registry digest the stack completes.
- */
-async function publicStack(name: string, ingressHostPort: number | null) {
-  const checkout = join(directory, name);
-  // The example watcher process, following at the compiled profile's depth.
-  const template = JSON.parse(await readFile(exampleTemplate, "utf8"));
-  template.watcherConfig.l1.finality.depth =
-    SELECTED_DEPLOYMENT_PROFILE.l1_finality.confirmation_depth;
-  await mkdir(checkout, { recursive: true });
-  const processTemplate = join(checkout, "watcher-process.json");
-  await writeFile(processTemplate, JSON.stringify(template));
-  const { config } = await stackFixture((sample) => {
-    sample.watcher.processTemplate = processTemplate;
-    sample.watcher.releaseDirectory = join(checkout, "watcher-release");
-    sample.watcher.releaseInput = join(checkout, "release-input.json");
-    sample.da.members = sample.da.members.slice(0, 1);
-    sample.timeoutMs = 1;
-  });
-  config.nodeRoot = join(checkout, "demo/midgard-node");
-  config.runDirectory = join(checkout, "run");
-  const file = (path: string) => join(checkout, "private", path);
-  await mkdir(join(checkout, "private"), { recursive: true });
-  await mkdir(join(checkout, "onchain/aiken"), { recursive: true });
-  await mkdir(join(config.nodeRoot, "deploymentInfo"), { recursive: true });
-  await writeFile(
-    join(checkout, "onchain/aiken/plutus.json"),
-    fixture.blueprintJson,
-  );
-  await writeFile(
-    join(config.nodeRoot, "deploymentInfo/contract-deployment-info.json"),
-    JSON.stringify(fixture.manifest),
-  );
-  const signer = generateKeyPairSync("ed25519");
-  const der = signer.publicKey.export({ format: "der", type: "spki" });
-  await writeFile(
-    file("signer.pem"),
-    signer.privateKey.export({ format: "pem", type: "pkcs8" }),
-    { mode: 0o600 },
-  );
-  await writeFile(
-    file("trust-roots.json"),
-    JSON.stringify([
-      {
-        trustRootId: createHash("sha256").update(der).digest("hex"),
-        publicKeySpkiDerHex: der.toString("hex"),
-      },
-    ]),
-  );
-  // The parameter registry the deployment step wrote beside the manifest.
-  await writeFile(stackRegistryPath(config), JSON.stringify(fixture.retained));
-  // The operator supplies every provenance field but the registry digest.
-  const provenance = {
-    schemaVersion: "midgard-deployment-release-provenance-v1",
-    sourceRevision: SOURCE_REVISION,
-    deploymentProfileName: fixture.manifest.deploymentProfile.name,
-    deploymentProfileDigest: fixture.manifest.deploymentProfileDigest,
-    blueprintHash: fixture.manifest.artifacts.blueprintHash,
-    aikenSourceHash: "11".repeat(32),
-    compiler: {
-      forkRepository: "https://github.com/example/aiken",
-      forkRevision: "b2".repeat(20),
-      cargoLockHash: "22".repeat(32),
-    },
-    roleImages: ROLE_IMAGES,
-    evidence: {
-      independentBlueprintRebuildDigest: "33".repeat(32),
-      frozenBuildDigest: "44".repeat(32),
-    } as Record<string, string>,
-  };
-  const writeProvenance = (value: unknown) =>
-    writeFile(file("provenance.json"), JSON.stringify(value));
-  await writeProvenance(provenance);
-  await writeFile(
-    config.watcher.releaseInput!,
-    JSON.stringify({
-      signingKeyFile: file("signer.pem"),
-      provenanceFile: file("provenance.json"),
-      programCommitments: {},
-      fundingProfiles: [],
-    }),
-  );
-  // The classification the reference-script deployment used.
-  await writeFile(
-    file("blueprint-classification.json"),
-    JSON.stringify(classificationOf(fixture.retained)),
-  );
-  config.public = {
-    nodeConfigFile: file("node-secrets.yaml"),
-    tlsCertFile: file("node.pem"),
-    tlsKeyFile: file("node.key"),
-    tlsCaFile: file("ca.pem"),
-    trustRootsFile: file("trust-roots.json"),
-    blueprintClassificationFile: file("blueprint-classification.json"),
-    releaseDirectory: file("release"),
-    ingressHostPort,
-  };
-  const env: Record<string, string> = {
-    ...stackEnvironment(config),
-    MIDGARD_DEPLOYMENT_PROFILE: "preprod-public",
-    MIDGARD_PUBLIC_API_ORIGIN: "https://node.example.test",
-    MIDGARD_PUBLIC_RELEASE_REVISION: SOURCE_REVISION,
-    MIDGARD_PUBLIC_NODE_IMAGE: ROLE_IMAGES.node,
-    MIDGARD_PUBLIC_POSTGRES_IMAGE: ROLE_IMAGES.postgres,
-    MIDGARD_PUBLIC_INGRESS_IMAGE: ROLE_IMAGES.ingress,
-    POSTGRES_USER: "midgard",
-    POSTGRES_DB: "midgard",
-    // What the deployment steps restore before the services run.
-    HUB_ORACLE_ONE_SHOT_TX_HASH: "ab".repeat(32),
-    HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: "0",
-    L1_ORIGIN: `7.${"cd".repeat(32)}`,
-  };
-  // Phase 1 moves the node's secrets from its private file into the stack environment.
-  for (const secret of PUBLIC_NODE_SECRET_NAMES)
-    env[secret] ??= randomBytes(24).toString("base64url");
-  const processes = new RecordingProcesses(config, env);
-  const [release, configuration, , services] = runtimeSteps(processes);
-  return {
-    processes,
-    release: release!,
-    configuration: configuration!,
-    services: services!,
-    releaseDirectory: config.public.releaseDirectory,
-    classification: file("blueprint-classification.json"),
-    provenance,
-    writeProvenance,
-  };
-}
-
-const exists = (path: string) =>
-  access(path).then(
-    () => true,
-    () => false,
-  );
+afterAll(removePublicReleaseFixture);
 
 describe("public-release step", () => {
   it("signs the public release once; a resume reopens it and never signs again", async () => {
@@ -265,6 +89,116 @@ describe("public-release step", () => {
     await expect(checkFreshReleaseInput(stack.processes)).rejects.toThrow(
       `has blueprintHash ${"88".repeat(32)}, but the blueprint this stack built`,
     );
+  });
+
+  it("checks a public provenance's blueprint hash on every run, not only before the first release", async () => {
+    const stack = await publicStack("blueprint-every-run", null);
+    await stack.release.execute(undefined);
+    await prepareStackRelease(stack.processes);
+    await expect(
+      checkFreshReleaseInput(stack.processes),
+    ).resolves.toBeUndefined();
+    // A resumed run whose provenance names another blueprint is refused before it builds on it.
+    await stack.writeProvenance({
+      ...stack.provenance,
+      blueprintHash: "88".repeat(32),
+    });
+    await expect(checkFreshReleaseInput(stack.processes)).rejects.toThrow(
+      `has blueprintHash ${"88".repeat(32)}, but the blueprint this stack built`,
+    );
+  });
+
+  it("resumes a run stopped between completing the provenance and signing with the same provenance bytes", async () => {
+    const stack = await publicStack("crash-before-signing", null);
+    // The step completed the provenance, then the run stopped before it signed.
+    await completePublicReleaseInput(stack.processes);
+    const path = completedProvenancePath(stack.processes.config);
+    const before = await readFile(path, "utf8");
+    expect(await exists(stack.releaseDirectory)).toBe(false);
+    // The operator's file is rewritten with the same fields in another order.
+    const { evidence, ...rest } = stack.provenance;
+    await stack.writeProvenance({ evidence, ...rest });
+    await expect(stack.release.execute(undefined)).resolves.toMatchObject({
+      manifestId: fixture.manifest.manifestId,
+    });
+    expect(await readFile(path, "utf8")).toBe(before);
+    expect(
+      await readFile(
+        join(stack.releaseDirectory, SIGNED_RELEASE_FILES.provenance),
+        "utf8",
+      ),
+    ).toBe(before);
+  });
+
+  /** Signs the stack's deployment out of band, as on a separate signing machine, into its release directory. */
+  async function signOutOfBand(
+    stack: Awaited<ReturnType<typeof publicStack>>,
+    provenance: unknown,
+  ) {
+    const { config } = stack.processes;
+    const input = JSON.parse(
+      await readFile(config.watcher.releaseInput!, "utf8"),
+    ) as { signingKeyFile: string; provenanceFile: string };
+    const provenanceFile = join(config.runDirectory, "out-of-band.json");
+    await mkdir(config.runDirectory, { recursive: true });
+    await writeFile(provenanceFile, JSON.stringify(provenance));
+    const releaseInput = join(config.runDirectory, "out-of-band-input.json");
+    await writeFile(
+      releaseInput,
+      JSON.stringify({
+        signingKeyFile: input.signingKeyFile,
+        provenanceFile,
+        parameterRegistryFile: stackRegistryPath(config),
+        programCommitments: {},
+        fundingProfiles: [],
+      }),
+    );
+    await signDeploymentRelease({
+      releaseInput,
+      deploymentInfo: stackPaths(stack.processes).manifest,
+      blueprint: stackBlueprintPath(config),
+      output: stack.releaseDirectory,
+      fundingPaymentKeyHash: proverFundingKeyHash(stack.processes),
+    });
+  }
+
+  it("uses a release signed out of band from the operator's provenance with the deployed registry's digest", async () => {
+    const stack = await publicStack("out-of-band", null);
+    // The operator adds the deployed registry's digest to the provenance the stack's release input names.
+    const provenance = {
+      ...stack.provenance,
+      evidence: {
+        ...stack.provenance.evidence,
+        parameterRegistryDigest: computeDeploymentManifestJsonDigest(
+          fixture.retained,
+        ),
+      },
+    };
+    await stack.writeProvenance(provenance);
+    await signOutOfBand(stack, provenance);
+    await expect(stack.release.execute(undefined)).resolves.toMatchObject({
+      manifestId: fixture.manifest.manifestId,
+    });
+    await expect(stack.release.reconcile(undefined)).resolves.toMatchObject({
+      status: "complete",
+    });
+  });
+
+  it("refuses a release signed out of band with another provenance than the stack completes", async () => {
+    const stack = await publicStack("out-of-band-other", null);
+    const digest = computeDeploymentManifestJsonDigest(fixture.retained);
+    // Trusted, for this deployment and its images, but not the operator's provenance.
+    await signOutOfBand(stack, {
+      ...stack.provenance,
+      evidence: {
+        ...stack.provenance.evidence,
+        frozenBuildDigest: "66".repeat(32),
+        parameterRegistryDigest: digest,
+      },
+    });
+    const refusal = `public.releaseDirectory ${stack.releaseDirectory} holds a release this deployment cannot use (its ${SIGNED_RELEASE_FILES.provenance} differs from the provenance this stack completed`;
+    await expect(stack.release.execute(undefined)).rejects.toThrow(refusal);
+    await expect(stack.release.reconcile(undefined)).rejects.toThrow(refusal);
   });
 
   it("completes the provenance with the deployed registry's digest once; a resume reuses it", async () => {
@@ -358,141 +292,5 @@ describe("public-release step", () => {
       "classifies the unused validators differently from public.blueprintClassificationFile",
     );
     expect(await exists(stack.releaseDirectory)).toBe(false);
-  });
-});
-
-/** The Compose model Docker renders from the base node file and the public overlay. */
-async function renderedCompose(roles: string) {
-  const { stdout } = await promisify(execFile)(
-    "docker",
-    [
-      "compose",
-      "--project-directory",
-      nodeRoot,
-      "-f",
-      join(nodeRoot, "docker-compose.yaml"),
-      "-f",
-      roles,
-      "config",
-      "--format",
-      "json",
-      "--no-env-resolution",
-    ],
-    { env: { PATH: process.env.PATH!, HOME: process.env.HOME! } },
-  );
-  return JSON.parse(stdout) as {
-    services: Record<
-      string,
-      {
-        image?: string;
-        ports?: { host_ip?: string; target: number; published: string }[];
-        environment?: Record<string, string>;
-        volumes?: { source: string; target: string; read_only?: boolean }[];
-      }
-    >;
-  };
-}
-
-describe("public node containers", () => {
-  it.each([
-    ["without the ingress, the node API on every interface", null, undefined],
-    [
-      "behind the ingress, the node API on the loopback only",
-      18443,
-      "127.0.0.1",
-    ],
-  ])(
-    "binds host ports to the loopback, %s",
-    async (_, ingressHostPort, apiHost) => {
-      const stack = await publicStack(
-        `ports-${ingressHostPort}`,
-        ingressHostPort,
-      );
-      await preparePublicImages(stack.processes);
-      const model = await renderedCompose(
-        publicRolesPath(stack.processes.config),
-      );
-      const hosts = (service: string) =>
-        Object.fromEntries(
-          model.services[service]!.ports!.map((port) => [
-            port.target,
-            port.host_ip,
-          ]),
-        );
-      expect(hosts("midgard-node")).toEqual({
-        3000: apiHost,
-        9464: "127.0.0.1",
-        39002: "127.0.0.1",
-      });
-      expect(hosts("postgres")).toEqual({ 5432: "127.0.0.1" });
-      expect(model.services["midgard-node"]!.image).toBe(ROLE_IMAGES.node);
-      expect(model.services.postgres!.image).toBe(ROLE_IMAGES.postgres);
-    },
-  );
-
-  it("keeps every secret out of node.env and the containers' environment", async () => {
-    const stack = await publicStack("secrets", null);
-    const { processes } = stack;
-    const secrets = [
-      ...PUBLIC_NODE_SECRET_NAMES.map((name) => processes.env[name]!),
-      processes.env[processes.config.da.producerTransportEnv]!,
-      ...Object.entries(processes.env)
-        .filter(([name, value]) => name.startsWith("STACK_") && value !== "")
-        .map(([, value]) => value),
-    ];
-    await preparePublicImages(processes);
-    // Postgres reads its password from a private file, not its environment.
-    const password = publicPostgresPasswordPath(processes.config);
-    expect(await readFile(password, "utf8")).toBe(
-      processes.env.POSTGRES_PASSWORD,
-    );
-    expect((await stat(password)).mode & 0o777).toBe(0o600);
-    const model = await renderedCompose(publicRolesPath(processes.config));
-    expect(model.services.postgres!.environment).toMatchObject({
-      POSTGRES_PASSWORD_FILE: "/run/secrets/postgres-password",
-    });
-    expect(model.services.postgres!.environment).not.toHaveProperty(
-      "POSTGRES_PASSWORD",
-    );
-    expect(model.services.postgres!.volumes).toContainEqual(
-      expect.objectContaining({
-        source: password,
-        target: "/run/secrets/postgres-password",
-        read_only: true,
-      }),
-    );
-    // The services step writes node.env before it waits for the committee.
-    await stack.release.execute(undefined);
-    const services = join(processes.config.runDirectory, "services");
-    await mkdir(services, { recursive: true });
-    await writeFile(
-      join(services, "committee-0.json"),
-      JSON.stringify({
-        deployment: { fingerprint: fixture.manifest.manifestId },
-        da_committee: { members: [{ signer_index: 0, peer_id: "peer-0" }] },
-      }),
-    );
-    await writeFile(
-      join(processes.config.runDirectory, "runtime.json"),
-      JSON.stringify({
-        inputDigest: await runtimeInputDigest(processes),
-        compose: join(services, "compose.json"),
-        operationsEndpoint: "http://127.0.0.1:1",
-        committeeServices: ["da-committee-0"],
-      }),
-    );
-    processes.responses["native-owner-pin"] = { sha: "c".repeat(64) };
-    await expect(stack.services.execute(undefined)).rejects.toThrow(
-      "committee readiness",
-    );
-    const nodeEnv = await readFile(join(services, "node.env"), "utf8");
-    const rendered = JSON.stringify(model);
-    for (const secret of secrets) {
-      expect(nodeEnv).not.toContain(secret);
-      expect(rendered).not.toContain(secret);
-    }
-    // The node reads them from its private configuration file instead.
-    const nodeConfig = join(services, "node-config.json");
-    expect((await stat(nodeConfig)).mode & 0o777).toBe(0o600);
   });
 });

@@ -8,6 +8,8 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { loadStackConfig } from "../src/full-stack/config.js";
 import { runStackController } from "../src/full-stack/controller.js";
+import { stackPaths } from "../src/full-stack/deployment.js";
+import { INGRESS_SUBNET } from "../src/full-stack/public-node.js";
 import { SIGNED_RELEASE_FILES } from "../src/sign-deployment-release.js";
 import { removeConfigFixtures } from "./full-stack-config.fixtures.js";
 import {
@@ -318,10 +320,7 @@ describe("preprod-public inputs refused before any build or spend", () => {
     // Naming the registry the deployment will write, before it exists.
     await value.writeReleaseInput({
       ...value.releaseInput,
-      parameterRegistryFile: join(
-        value.config.nodeRoot,
-        "deploymentInfo/contract-deployment-info.json.blueprint-registry.json",
-      ),
+      parameterRegistryFile: `${stackPaths(value).manifest}.blueprint-registry.json`,
     });
     await expect(loadStackConfig(value.path)).resolves.toBeDefined();
     // A complete earlier signing is reopened by the public-release step.
@@ -342,12 +341,12 @@ describe("preprod-public inputs refused before any build or spend", () => {
       "network",
       "create",
       "--subnet",
-      "10.91.7.0/28",
+      INGRESS_SUBNET,
       network,
     ]);
     try {
       await expect(loadStackConfig(value.path)).rejects.toThrow(
-        `Docker network ${network} already uses 10.91.7.0/28, which overlaps the public ingress subnet`,
+        `Docker network ${network} already uses ${INGRESS_SUBNET}, which overlaps the public ingress subnet`,
       );
     } finally {
       execFileSync("docker", ["network", "rm", network]);

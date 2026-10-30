@@ -23,6 +23,7 @@ import { nativeLedgerPaths } from "./native-ledger.js";
 import { publicRolesPath, type StackProcesses } from "./process.js";
 import { INGRESS_SUBNET, publicOriginHost } from "./public-node.js";
 import {
+  completedProvenancePath,
   completePublicReleaseInput,
   proverFundingKeyHash,
   readReleaseInput,
@@ -211,11 +212,28 @@ async function verifyPublicRelease(processes: StackProcesses) {
   return { manifestId };
 }
 
-/** Reopens an existing public release; never signs over one. */
+/**
+ * Reopens an existing public release; never signs over one. A release signed
+ * out of band, or by an earlier run, must carry exactly the provenance this
+ * stack completes for the deployment.
+ */
 async function reopenPublicRelease(processes: StackProcesses) {
   const directory = processes.config.public!.releaseDirectory;
   try {
-    return await verifyPublicRelease(processes);
+    const opened = await verifyPublicRelease(processes);
+    const completed = await readJsonIfPresent(
+      completedProvenancePath(processes.config),
+    );
+    if (
+      canonicalJson(
+        await readJsonIfPresent(releaseFile(processes, "provenance")),
+        "release provenance",
+      ) !== canonicalJson(completed, "completed provenance")
+    )
+      throw new Error(
+        `its ${SIGNED_RELEASE_FILES.provenance} differs from the provenance this stack completed, ${completedProvenancePath(processes.config)}`,
+      );
+    return opened;
   } catch (error) {
     throw new Error(
       `public.releaseDirectory ${directory} holds a release this deployment cannot use (${(error as Error).message}); move it aside so the stack signs a new one`,
@@ -234,15 +252,17 @@ export function publicReleaseStep(processes: StackProcesses): StackStep {
   const directory = processes.config.public!.releaseDirectory;
   return {
     id: "public-release",
-    reconcile: async () =>
-      (await lstat(directory).catch(() => undefined)) === undefined
-        ? { status: "retry" }
-        : { status: "complete", data: await reopenPublicRelease(processes) },
+    reconcile: async () => {
+      if ((await lstat(directory).catch(() => undefined)) === undefined)
+        return { status: "retry" };
+      await completePublicReleaseInput(processes);
+      return { status: "complete", data: await reopenPublicRelease(processes) };
+    },
     execute: async () => {
-      if ((await lstat(directory).catch(() => undefined)) !== undefined)
-        return reopenPublicRelease(processes);
       // The operator's provenance, completed with this deployment's registry.
       const releaseInput = await completePublicReleaseInput(processes);
+      if ((await lstat(directory).catch(() => undefined)) !== undefined)
+        return reopenPublicRelease(processes);
       // The release's classification comes from its registry; the
       // reference-script deployment already used the operator's.
       const { deploymentParameterRegistry } =

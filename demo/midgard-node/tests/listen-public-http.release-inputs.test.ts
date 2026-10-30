@@ -1,4 +1,10 @@
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -6,6 +12,7 @@ import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deploym
 import { describe, expect, it } from "vitest";
 
 import {
+  authenticatePublicHttpRelease,
   PUBLIC_RELEASE_JSON_MAX_BYTES,
   PublicHttpConfigError,
   readMountedHttpFile,
@@ -118,17 +125,55 @@ describe("mounted public release inputs", () => {
         throw new Error("the mounted file was accepted");
       };
       expect(refusal(() => readMountedHttpFile(path, true))).toBe(
-        "mounted secret files require private permissions and bounded nonempty content",
+        "mounted secret file grants group or other access; make it mode 0600",
+      );
+      chmodSync(path, 0o640);
+      expect(refusal(() => readMountedHttpFile(path, true))).toBe(
+        "mounted secret file grants group or other access; make it mode 0600",
       );
       chmodSync(path, 0o600);
       expect(readMountedHttpFile(path, true).toString("utf8")).toBe(contents);
-      expect(refusal(() => readMountedHttpFile(path, true, 4))).toBe(
-        "mounted secret files require private permissions and bounded nonempty content",
-      );
+      const bounds =
+        "mounted file must be a nonempty regular file within its size limit";
+      expect(refusal(() => readMountedHttpFile(path, true, 4))).toBe(bounds);
+      const empty = join(directory, "empty");
+      writeFileSync(empty, "", { mode: 0o600 });
+      expect(refusal(() => readMountedHttpFile(empty, true))).toBe(bounds);
+      const folder = join(directory, "folder");
+      mkdirSync(folder, { mode: 0o700 });
+      expect(refusal(() => readMountedHttpFile(folder, false))).toBe(bounds);
       expect(
         refusal(() => readMountedHttpFile(join(directory, "absent"), true)),
       ).toBe(
         "mounted file is missing, unreadable or invalid (contents redacted)",
+      );
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+  it("names why a mounted release file is refused instead of calling it invalid JSON", () => {
+    const directory = mkdtempSync(join(tmpdir(), "midgard-mounted-release-"));
+    const reason = (env: NodeJS.ProcessEnv) => {
+      try {
+        authenticatePublicHttpRelease(env);
+      } catch (error) {
+        expect(error).toBeInstanceOf(PublicHttpConfigError);
+        return (error as PublicHttpConfigError).reason;
+      }
+      throw new Error("the mounted release was accepted");
+    };
+    try {
+      const authority = join(directory, "deployment-authority.json");
+      expect(reason({ MIDGARD_PUBLIC_RELEASE_AUTHORITY_FILE: authority })).toBe(
+        "mounted file is missing, unreadable or invalid (contents redacted)",
+      );
+      writeFileSync(authority, "", { mode: 0o644 });
+      expect(reason({ MIDGARD_PUBLIC_RELEASE_AUTHORITY_FILE: authority })).toBe(
+        "mounted file must be a nonempty regular file within its size limit",
+      );
+      writeFileSync(authority, "{not json", { mode: 0o644 });
+      expect(reason({ MIDGARD_PUBLIC_RELEASE_AUTHORITY_FILE: authority })).toBe(
+        "mounted public release JSON is invalid (contents redacted)",
       );
     } finally {
       rmSync(directory, { recursive: true, force: true });

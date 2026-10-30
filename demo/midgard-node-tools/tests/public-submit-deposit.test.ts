@@ -51,7 +51,7 @@ it("takes the deposit wallet from a mounted seed file and refuses one other user
   const output = await submitDeposit("--wallet-seed-phrase-file", seedFile);
   expect(process.exitCode).toBe(1);
   expect(output).toContain(
-    'submit-deposit: {"error_code":"E_PUBLIC_HTTP_CONFIG","reason":"mounted secret files require private permissions and bounded nonempty content"}',
+    'submit-deposit: {"error_code":"E_PUBLIC_HTTP_CONFIG","reason":"mounted secret file grants group or other access; make it mode 0600"}',
   );
 });
 
