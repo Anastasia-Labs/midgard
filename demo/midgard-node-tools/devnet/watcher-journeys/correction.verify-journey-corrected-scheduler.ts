@@ -17,6 +17,8 @@ import {
 } from "midgard-watcher";
 import { expect } from "vitest";
 
+import type { JourneyWatcherEvidence } from "./watcher-evidence-reader.js";
+
 export const transactionOutputs = (transaction: CML.Transaction) => {
   const txHash = CML.hash_transaction(transaction.body());
   const outputs = transaction.body().outputs();
@@ -229,18 +231,27 @@ export const readJourneyWorkflowRows = (
   }
 };
 
+/**
+ * Where a watcher's workflow rows are read: the journey watcher's store on
+ * this host, or an attached stack watcher's evidence reader.
+ */
+export type JourneyWorkflowStore =
+  | string
+  | Pick<JourneyWatcherEvidence, "readWorkflowRows">;
+
 export const readJourneyWorkflowEntries = async ({
-  watcherStorePath,
+  watcherStore,
   category,
   headerHash,
 }: {
-  watcherStorePath: string;
+  watcherStore: JourneyWorkflowStore;
   category: SDK.FraudProofCatalogueCategoryName;
   headerHash: string;
 }): Promise<readonly FraudProofWorkflowJournalEntry[]> =>
-  readJourneyWorkflowRows(watcherStorePath, category, headerHash).get(
-    headerHash,
-  ) ?? [];
+  (typeof watcherStore === "string"
+    ? readJourneyWorkflowRows(watcherStore, category, headerHash)
+    : await watcherStore.readWorkflowRows(category, headerHash)
+  ).get(headerHash) ?? [];
 
 /**
  * How long a workflow may keep journaling `stalled` before the attempt fails.

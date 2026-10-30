@@ -51,14 +51,23 @@ for (const fixture of fixtures) {
                 operator2: source!.operator2,
               }),
             ));
-      if (activeSession.mode === "attached")
-        throw new Error(
-          "The journey runner does not drive an attached stack watcher yet",
-        );
-      await runAutonomousWatcherJourney(runDirectory!, fixture, {
-        session: activeSession,
-        waitForAnchors: fixture === fixtures.at(-1),
-      });
+      const last = fixture === fixtures.at(-1);
+      // The stack's producer-path staging is not wired here yet: the runner
+      // refuses an attached session without it.
+      await runAutonomousWatcherJourney(
+        activeSession.mode === "devnet"
+          ? runDirectory!
+          : activeSession.context.runDirectory,
+        fixture,
+        {
+          session: activeSession,
+          waitForAnchors: last,
+        },
+      );
+      // Operator-2's node stays held through every family's fault phase; the
+      // completed run starts it again and proves it live.
+      if (activeSession.mode === "attached" && last)
+        await activeSession.operator2.resume();
     },
     timeoutMs,
   );

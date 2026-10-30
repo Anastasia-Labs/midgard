@@ -22,31 +22,38 @@ import {
   journeyAnchoredEvidence,
   journeyWorkflowProgressCount,
   journeyWorkflowUpdates,
-  readJourneyWorkflowEntries,
   verifyJourneyComputationThreadAbsent,
   verifyJourneyCorrection,
   verifyJourneyWorkflowTransactions,
 } from "./correction.js";
 
-// The workflow rows the readers see, set per test.
-vi.mock(
-  "./correction.verify-journey-corrected-scheduler.js",
-  async (importOriginal) => {
-    const original =
-      await importOriginal<
-        typeof import("./correction.verify-journey-corrected-scheduler.js")
-      >();
-    return {
-      ...original,
-      readJourneyWorkflowEntries: vi.fn(original.readJourneyWorkflowEntries),
-    };
-  },
-);
-/** The workflow-row reader, its calls cleared. */
+/**
+ * A watcher store whose workflow rows each test sets, read through the same
+ * port an attached watcher's evidence reader serves; counts its reads.
+ */
 const workflowLoad = () => {
-  const load = vi.mocked(readJourneyWorkflowEntries);
-  load.mockClear();
-  return load;
+  let answer: () => readonly FraudProofWorkflowJournalEntry[] = () => [];
+  let reads = 0;
+  return {
+    store: {
+      readWorkflowRows: async (
+        _category: SDK.FraudProofCatalogueCategoryName,
+        headerHash?: string,
+      ) => {
+        reads += 1;
+        return new Map([[headerHash!, answer()]]);
+      },
+    },
+    serve: (records: readonly FraudProofWorkflowJournalEntry[]) => {
+      answer = () => records;
+    },
+    refuse: (error: Error) => {
+      answer = () => {
+        throw error;
+      };
+    },
+    reads: () => reads,
+  };
 };
 
 const computationThreadFixture = () => {
@@ -288,10 +295,10 @@ const pollCorrectionProgress = async (
       context: {
         deployment: {},
         provider: {},
-        accounts: {},
       } as Input["context"],
-      native: {} as Input["native"],
-      watcherStorePath: join(directory, "watcher.sqlite"),
+      transactions: {} as Input["transactions"],
+      watcherStore: load.store,
+      proverAddress: "addr_test1unused",
       directory,
       category: identity.category,
       headerHash: identity.target.headerHash,
@@ -308,16 +315,15 @@ const pollCorrectionProgress = async (
         expect(timeoutMs).toBe(4_560_000);
         for (const observation of observations) {
           now.mockReturnValue(observation.at);
-          load.mockResolvedValue(observation.records);
+          load.serve(observation.records);
           expect(await action()).toBeUndefined();
         }
         throw hardTimeout;
       },
     });
   } finally {
-    const observationsRead = load.mock.calls.length;
+    const observationsRead = load.reads();
     now.mockRestore();
-    load.mockRestore();
     await rm(directory, { recursive: true, force: true });
     expect(observationsRead).toBe(observations.length);
   }
@@ -643,17 +649,18 @@ const pendingStampFixture = async () => {
     join(familyDirectory, "pending-evidence-stamp.json"),
     request,
   );
+  const load = workflowLoad();
   return {
     request,
     stampPath: join(familyDirectory, "finalized-evidence-stamp.json"),
     input: {
       ...request,
       journeysDirectory: directory,
-      watcherStorePath: join(directory, "watcher.sqlite"),
+      watcherStore: load.store,
       nativeEvidencePath: join(directory, "native-chain.ndjson"),
       authenticate: vi.fn().mockResolvedValue(false),
     },
-    load: workflowLoad(),
+    load,
     cleanup: () => rm(directory, { recursive: true, force: true }),
   };
 };
@@ -662,13 +669,13 @@ it("resumes pending stamps across family boundaries and accepts a reauthenticate
   const { request, stampPath, input, load, cleanup } =
     await pendingStampFixture();
   try {
-    load.mockResolvedValue([]);
+    load.serve([]);
     expect(await finalizePendingJourneyEvidence(input)).toBe(1);
     const replacement = {
       ...terminal,
       observedAt: { ...terminal.observedAt, slot: "9999" },
     };
-    load.mockResolvedValue([completedEntry(replacement)]);
+    load.serve([completedEntry(replacement)]);
     expect(await finalizePendingJourneyEvidence(input)).toBe(1);
     // A resumed batch has its own complete raw capture; pending stamps may
     // use it, while a completed stamp keeps its original evidence path.
@@ -692,13 +699,10 @@ it("resumes pending stamps across family boundaries and accepts a reauthenticate
       "session-3",
       "native-chain.ndjson",
     );
-    load.mockRejectedValue(
-      new Error("already stamped journals must not be read"),
-    );
+    load.refuse(new Error("already stamped journals must not be read"));
     expect(await finalizePendingJourneyEvidence(input)).toBe(0);
     expect(await readJourneyArtifact(stampPath)).toEqual(stamp);
   } finally {
-    load.mockRestore();
     await cleanup();
   }
 });
@@ -713,7 +717,7 @@ it.each([true, false])(
       observedAt: { ...terminal.observedAt, confirmationDepth: 1 },
     };
     const records = [...baseline, includedEntry(shallow)];
-    load.mockResolvedValue(records);
+    load.serve(records);
     input.authenticate.mockResolvedValue(authenticated);
     try {
       expect(await finalizePendingJourneyEvidence(input)).toBe(
@@ -738,7 +742,6 @@ it.each([true, false])(
         ),
       ).toEqual(records);
     } finally {
-      load.mockRestore();
       await cleanup();
     }
   },
@@ -746,7 +749,7 @@ it.each([true, false])(
 
 it("refuses a completed terminal below the bound release depth", async () => {
   const { stampPath, input, load, cleanup } = await pendingStampFixture();
-  load.mockResolvedValue([
+  load.serve([
     completedEntry({
       ...terminal,
       observedAt: { ...terminal.observedAt, confirmationDepth: 1 },
@@ -757,7 +760,6 @@ it("refuses a completed terminal below the bound release depth", async () => {
     await expect(finalizePendingJourneyEvidence(input)).rejects.toThrow();
     expect(existsSync(stampPath)).toBe(false);
   } finally {
-    load.mockRestore();
     await cleanup();
   }
 });

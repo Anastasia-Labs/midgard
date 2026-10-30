@@ -27,6 +27,7 @@ export {
   readJourneyCadence,
   readJourneyExecutionTiming,
   readJourneyTiming,
+  readStackJourneyTiming,
   readTransitionTraceJourneyExecutionTiming,
   readTransitionTraceJourneyTiming,
   transitionTraceJourneyExecutionTiming,

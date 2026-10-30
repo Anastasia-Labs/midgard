@@ -27,6 +27,7 @@ export {
 export {
   JOURNEY_WORKFLOW_STALL_ALLOWANCE_MS,
   journeyWorkflowProgressCount,
+  type JourneyWorkflowStore,
   journeyWorkflowUpdates,
   readJourneyWorkflowEntries,
   readJourneyWorkflowRows,

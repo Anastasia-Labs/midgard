@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { isAbsolute, join } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 
 import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 
@@ -13,17 +13,12 @@ import {
   type ReadJourneyTimingOptions,
 } from "./journey-timing.journey-timing-for-plan.js";
 
-/** Safe at Vitest module load: reads public configuration only, without providers or keys. */
-export const readJourneyCadence = async (
-  runDirectory: string,
-  options: ReadJourneyTimingOptions = {},
-): Promise<JourneyCadence> => {
-  if (!isAbsolute(runDirectory))
-    throw new Error("Journey run directory must be absolute");
-  const [genesisBytes, manifestBytes] = await Promise.all([
-    readFile(join(runDirectory, "genesis/shelley-genesis.json"), "utf8"),
-    readFile(join(runDirectory, "deploymentInfo/manifest.json"), "utf8"),
-  ]);
+/** A journey's cadence: its network's Shelley genesis and its finalized manifest. */
+const journeyCadence = (
+  genesisBytes: string,
+  manifestBytes: string,
+  options: ReadJourneyTimingOptions,
+): JourneyCadence => {
   const genesis = object(JSON.parse(genesisBytes), "Shelley genesis");
   const manifest = verifyFinalizedDeploymentManifest(JSON.parse(manifestBytes));
   const confirmationDepth = manifest.l1Finality.confirmationDepth;
@@ -50,6 +45,46 @@ export const readJourneyCadence = async (
     actionDepth: options.actionDepth,
     fixtureStagingAllowanceMs: options.fixtureStagingAllowanceMs,
   };
+};
+
+/** Safe at Vitest module load: reads public configuration only, without providers or keys. */
+export const readJourneyCadence = async (
+  runDirectory: string,
+  options: ReadJourneyTimingOptions = {},
+): Promise<JourneyCadence> => {
+  if (!isAbsolute(runDirectory))
+    throw new Error("Journey run directory must be absolute");
+  const [genesisBytes, manifestBytes] = await Promise.all([
+    readFile(join(runDirectory, "genesis/shelley-genesis.json"), "utf8"),
+    readFile(join(runDirectory, "deploymentInfo/manifest.json"), "utf8"),
+  ]);
+  return journeyCadence(genesisBytes, manifestBytes, options);
+};
+
+/**
+ * An attached stack's timing: the Shelley genesis its node configuration
+ * declares and the stack's deployment manifest.
+ */
+export const readStackJourneyTiming = async (
+  stack: Readonly<{ nodeConfigPath: string; manifestPath: string }>,
+  category: string,
+  options: ReadJourneyTimingOptions = {},
+) => {
+  const nodeConfig = object(
+    JSON.parse(await readFile(stack.nodeConfigPath, "utf8")),
+    "Node config",
+  );
+  const declared = nodeConfig.ShelleyGenesisFile;
+  if (typeof declared !== "string" || declared.length === 0)
+    throw new Error("Node config does not declare ShelleyGenesisFile");
+  const [genesisBytes, manifestBytes] = await Promise.all([
+    readFile(resolve(dirname(stack.nodeConfigPath), declared), "utf8"),
+    readFile(stack.manifestPath, "utf8"),
+  ]);
+  return journeyTimingForCategory(
+    category,
+    journeyCadence(genesisBytes, manifestBytes, options),
+  );
 };
 
 /** The audited plan for transitionTrace; the finite generic plan for every other family. */

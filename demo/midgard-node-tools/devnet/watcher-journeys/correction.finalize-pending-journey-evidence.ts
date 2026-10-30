@@ -10,7 +10,10 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { expect } from "vitest";
 
 import { readJourneyArtifact, writeJourneyArtifact } from "./artifacts.js";
-import { readJourneyWorkflowEntries } from "./correction.verify-journey-corrected-scheduler.js";
+import {
+  type JourneyWorkflowStore,
+  readJourneyWorkflowEntries,
+} from "./correction.verify-journey-corrected-scheduler.js";
 
 export type JourneyAnchoredTerminal = {
   readonly kind: "completed" | "terminal_included";
@@ -66,7 +69,7 @@ export interface JourneyFinalizedEvidenceStamp
  */
 export const finalizePendingJourneyEvidence = async ({
   journeysDirectory,
-  watcherStorePath,
+  watcherStore,
   deploymentFingerprint,
   releaseFinalityPolicyDigest,
   finalityDepth,
@@ -74,8 +77,8 @@ export const finalizePendingJourneyEvidence = async ({
   authenticate,
 }: {
   journeysDirectory: string;
-  /** The watcher store the workflow rows live in. */
-  watcherStorePath: string;
+  /** Where the watcher's workflow rows are read. */
+  watcherStore: JourneyWorkflowStore;
   deploymentFingerprint: string;
   releaseFinalityPolicyDigest: string;
   finalityDepth: number;
@@ -105,7 +108,7 @@ export const finalizePendingJourneyEvidence = async ({
     );
     expect(request.finalityDepth).toBe(finalityDepth);
     const records = await readJourneyWorkflowEntries({
-      watcherStorePath,
+      watcherStore,
       category: request.category,
       headerHash: request.headerHash,
     });

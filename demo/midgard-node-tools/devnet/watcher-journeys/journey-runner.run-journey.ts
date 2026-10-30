@@ -1,47 +1,47 @@
-import { existsSync } from "node:fs";
-import { appendFile, copyFile, mkdir } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as pause } from "node:timers/promises";
 
 import { journalJsonDigest } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import { toUnit } from "@lucid-evolution/lucid";
-import {
-  readWatcherFaultDecisionEvidence,
-  WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
-} from "midgard-watcher";
 import { expect } from "vitest";
 
-import { readJourneyArtifact, writeJourneyArtifact } from "./artifacts.js";
+import { writeJourneyArtifact } from "./artifacts.js";
 import {
   finalizePendingJourneyEvidence,
   readJourneyWorkflowEntries,
   verifyJourneyCorrection,
 } from "./correction.js";
+import type { JourneySuccessorPort } from "./honest-successor.js";
+import {
+  attachedJourneyMode,
+  type AttachedJourneyStaging,
+} from "./journey-runner.attached-mode.js";
+import { devnetJourneyMode } from "./journey-runner.devnet-mode.js";
+import type { JourneyExecution } from "./journey-runner.journey-execution.js";
 import type {
-  JourneyFixtureStage,
-  JourneySuccessor,
-  JourneySuccessorCheckpoint,
-} from "./fixture.js";
-import {
-  type JourneyExecution,
-  WATCHER_LAUNCH_TIMEOUT_MS,
-} from "./journey-runner.journey-execution.js";
-import {
-  captureJourneyWorkflowBaseline,
-  type JourneySession,
+  AttachedJourneySession,
+  JourneySession,
 } from "./journey-session.js";
-import { readJourneyTiming } from "./journey-timing.js";
 import { JOURNEY_ACTION_DEPTH } from "./live-context.js";
-import { verifyJourneyPublicDa } from "./public-da-preflight.js";
 import { measureJourneyStage } from "./stage-timing.js";
 import { createJourneyVerifiedHeaders } from "./verified-headers.js";
+
+const requireStaging = (staging: AttachedJourneyStaging | undefined) => {
+  if (staging === undefined)
+    throw new Error(
+      "An attached stack journey needs its stack staging: operator-2's producer-path DA",
+    );
+  return staging;
+};
 
 /** One shared service lifecycle for a family's acceptance journey. */
 export const runJourney = async (
   runDirectory: string,
   execution: JourneyExecution,
-  session: JourneySession,
+  session: JourneySession | AttachedJourneySession,
+  staging?: AttachedJourneyStaging,
 ) => {
   const { context } = session;
   if (context.runDirectory !== runDirectory)
@@ -111,15 +111,16 @@ export const runJourney = async (
         await pause(1000);
       }
     });
+  const mode =
+    session.mode === "devnet"
+      ? devnetJourneyMode(session)
+      : attachedJourneyMode(session, requireStaging(staging), directory);
+  const polls = { stage, poll, pollWhileReplaying };
+  let successorPort: JourneySuccessorPort | undefined;
   try {
-    const { authority, releaseFinality, watcherConfig, native, retain } =
-      session;
-    const reusedWatcher = session.watcherStarted();
+    const { releaseFinality } = session;
     const baselineStartedAt = new Date().toISOString();
-    const baseline = await captureJourneyWorkflowBaseline(
-      watcherConfig.storage.path,
-      category,
-    );
+    const baseline = await mode.captureWorkflowBaseline(category);
     await writeJourneyArtifact(join(directory, "workflow-baseline.json"), {
       startedAt: baselineStartedAt,
       finishedAt: new Date().toISOString(),
@@ -131,44 +132,21 @@ export const runJourney = async (
         journalDigest: journalJsonDigest(entries),
       })),
     });
-    const timing = await readJourneyTiming(context.runDirectory, category, {
+    const timing = await mode.readTiming(category, {
       authenticatedConfirmationDepth: releaseFinality.policy.confirmationDepth,
       actionDepth: JOURNEY_ACTION_DEPTH,
     });
     await writeJourneyArtifact(join(directory, "timing-plan.json"), timing);
     console.info("Live watcher confirmation budget", timing);
-    const fixtureStage: JourneyFixtureStage = {
-      context,
-      directory,
-      retain,
-      ledgerAt: session.ledgerAt,
-      readConfirmedTransaction: native.transaction,
-      onHealthyPredecessor: async () => {
-        // Binding and launch are awaited; the process then catches up while
-        // the fixture prepares its fault. Baseline capture already completed.
-        await session.ensureWatcher();
-      },
-      readSignedCommitRecovery: session.readSignedCommitRecovery,
-      onStage: (name) => {
-        activeStage = name;
-        console.info(`Live fixture: ${name}`);
-      },
-    };
-    const headPath = join(context.runDirectory, "work/journeys/head.json");
-    if (!session.watcherStarted() && existsSync(headPath)) {
-      const head = await readJourneyArtifact<{
-        deploymentFingerprint: string;
-      }>(headPath);
-      if (head.deploymentFingerprint !== deployment.manifest.manifestId)
-        throw new Error(
-          "Watcher session readiness head belongs to a different deployment",
-        );
-      // Startup binds all runners; actual classification still observes the live queue.
-      await session.ensureWatcher();
-    }
     const { fixture } = execution;
     const staged = await stage("invalid commitment and DA attestations", () =>
-      fixture.stage(fixtureStage),
+      mode.stageFixture(fixture, {
+        directory,
+        onStage: (name) => {
+          activeStage = name;
+          console.info(`Live fixture: ${name}`);
+        },
+      }),
     );
     // A watcher already running from an earlier family can correct the fault
     // before its DA apply lands. That authenticated correction completes
@@ -183,99 +161,29 @@ export const runJourney = async (
         `Live fixture: fault ${staged.current.headerHash} corrected by ${staged.target.removalTxHash} before DA apply; continuing without restart`,
       );
     await stage("production public DA preflight", () =>
-      verifyJourneyPublicDa({
+      mode.verifyPublicDa({
         directory,
-        watcherConfig,
-        deploymentIdentity: authority.deploymentAuthority.deploymentIdentity,
         predecessor: staged.predecessor,
         current: staged.current,
       }),
     );
-    const running = await session.ensureWatcher();
-    const { config, requireLive, operations, watcherProgress } = running;
-    diagnostics = running.diagnostics;
+    successorPort = mode.successor({ directory, staged, polls });
+    await successorPort.afterFaultLanded();
+    const running = await mode.startWatcher({
+      directory,
+      polls,
+      onWatcher: (watcher) => {
+        diagnostics = watcher.diagnostics;
+      },
+    });
+    const { requireLive, operations, watcherProgress } = running;
     const verifiedHeaders = createJourneyVerifiedHeaders(running, directory);
     const workflowBaseline = baseline.get(staged.current.headerHash) ?? [];
-    await writeJourneyArtifact(join(directory, "session.json"), {
-      sessionDirectory: session.directory,
-      watcherUse: reusedWatcher ? "reused" : "started",
-      configPath: running.configPath,
-      bindingPreflightPath: join(
-        session.directory,
-        "workflow-binding-preflight.json",
-      ),
-      nativeEvidencePath: native.nativeEvidencePath,
-      process: running.observe(),
-    });
-    // Keep the process config the watcher was launched with: the parsed config
-    // carries derived fields (each DA peer's peerId) that the parser refuses.
-    await copyFile(running.configPath, join(directory, "watcher-process.json"));
-    let nextStartupReport = 0;
-    await pollWhileReplaying(
-      reusedWatcher ? "shared watcher availability" : "normal watcher launcher",
-      async () => {
-        requireLive();
-        let operationsError: string | undefined;
-        const status = await operations("/v1/status").catch((cause) => {
-          operationsError =
-            cause instanceof Error ? cause.message : String(cause);
-          return undefined;
-        });
-        if (status !== undefined || Date.now() >= nextStartupReport) {
-          const observation = {
-            observedAt: new Date().toISOString(),
-            process: running.observe(),
-            operations:
-              status === undefined
-                ? { reachable: false, error: operationsError }
-                : { reachable: true, status },
-          };
-          await appendFile(
-            join(directory, "startup-observations.ndjson"),
-            `${JSON.stringify(observation)}\n`,
-          );
-          console.info("Live watcher startup observation", {
-            pid: observation.process.pid,
-            processState: observation.process.state,
-            startup: observation.process.startup,
-            operations: observation.operations,
-          });
-          nextStartupReport = Date.now() + 15_000;
-        }
-        // While startup runs, `/v1/status` answers with a `startup:<stage>`
-        // reason and every other operations route answers 503 `starting`.
-        const reasons =
-          (status as { readinessReasons?: readonly string[] } | undefined)
-            ?.readinessReasons ?? [];
-        if (reasons.includes("startup_failed"))
-          throw new Error(
-            `Watcher startup failed and holds: ${JSON.stringify(status)}`,
-          );
-        return reasons.some((reason) => reason.startsWith("startup:"))
-          ? undefined
-          : status;
-      },
-      // A watcher resuming after a long L1 outage catches up on every block it
-      // missed, so the launcher is budgeted by its progress.
-      watcherProgress,
-      WATCHER_LAUNCH_TIMEOUT_MS,
-    );
-    // The watcher holds the journal key; its rows are read as evidence.
-    const readDecisions = async () =>
-      existsSync(
-        join(config.workflowJournalDirectory, "watcher-journals.sqlite"),
-      )
-        ? readWatcherFaultDecisionEvidence({
-            directory: config.workflowJournalDirectory,
-            deploymentFingerprint: deployment.manifest.manifestId,
-            launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
-          }).map((decision) => ({ decision }))
-        : [];
     await poll(
       `automatic ${fixture.category} decision`,
       async () => {
         requireLive();
-        const records = await readDecisions();
+        const records = await mode.readDecisions();
         const decision = records.find(
           ({ decision }) => decision.headerHash === staged.current.headerHash,
         )?.decision;
@@ -297,8 +205,9 @@ export const runJourney = async (
       progressAllowanceMs: timing.transactionAllowanceMs,
       reconciliationAllowanceMs: timing.allowances.finalizedEvidenceStampMs,
       context,
-      native,
-      watcherStorePath: watcherConfig.storage.path,
+      transactions: mode.transactions,
+      watcherStore: mode.watcherStore,
+      proverAddress: mode.proverAddress,
       directory,
       category: fixture.category,
       headerHash: staged.current.headerHash,
@@ -321,24 +230,7 @@ export const runJourney = async (
         contracts.stateQueue.policyId,
         SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + hash,
       );
-    const successorPath = join(directory, "successor.json");
-    const successorProgressPath = join(directory, "successor-progress.json");
-    const successor = existsSync(successorPath)
-      ? await readJourneyArtifact<JourneySuccessor>(successorPath)
-      : await stage("honest successor commitment", async () =>
-          staged.commitHonestSuccessor({
-            beforeCommit: session.retainPayload,
-            resume: existsSync(successorProgressPath)
-              ? await readJourneyArtifact<JourneySuccessorCheckpoint>(
-                  successorProgressPath,
-                )
-              : undefined,
-            onCheckpoint: (checkpoint) =>
-              writeJourneyArtifact(successorProgressPath, checkpoint),
-          }),
-        );
-    await writeJourneyArtifact(successorPath, successor);
-    await retain(successor, successor.commitTxHash);
+    const successor = await successorPort.commit();
     await pollWhileReplaying(
       "healthy processing after correction",
       async () => {
@@ -378,7 +270,7 @@ export const runJourney = async (
     );
     const observedTerminal = (
       await readJourneyWorkflowEntries({
-        watcherStorePath: watcherConfig.storage.path,
+        watcherStore: mode.watcherStore,
         category: fixture.category,
         headerHash: staged.current.headerHash,
       })
@@ -418,26 +310,26 @@ export const runJourney = async (
       deploymentFingerprint: deployment.manifest.manifestId,
       completion,
       successor: successor.headerHash,
-      diagnostics: await diagnostics(),
-      nativeEvidencePath: native.nativeEvidencePath,
+      diagnostics: await running.diagnostics(),
+      nativeEvidencePath: mode.transactions.nativeEvidencePath,
     });
     const finalizeEvidence = () =>
       finalizePendingJourneyEvidence({
         journeysDirectory: join(context.runDirectory, "work/journeys"),
-        watcherStorePath: watcherConfig.storage.path,
+        watcherStore: mode.watcherStore,
         deploymentFingerprint: deployment.manifest.manifestId,
         releaseFinalityPolicyDigest: releaseFinality.policyDigest,
         finalityDepth: releaseFinality.policy.confirmationDepth,
-        nativeEvidencePath: native.nativeEvidencePath,
+        nativeEvidencePath: mode.transactions.nativeEvidencePath,
         authenticate: async (request, terminal) => {
           const transactions = await Promise.all(
             [
               terminal.proofToken.createdByTxHash,
               terminal.correction.removalTxHash,
               request.successorTxHash,
-            ].map((txHash) => native.transaction(txHash)),
+            ].map((txHash) => mode.transactions.transaction(txHash)),
           );
-          const observedBlockNo = native.observedBlockNo();
+          const observedBlockNo = mode.transactions.observedBlockNo();
           return (
             observedBlockNo !== undefined &&
             transactions.every(
@@ -473,6 +365,7 @@ export const runJourney = async (
     });
     throw cause;
   } finally {
+    await successorPort?.close();
     console.info(
       `Journey ${execution.kind} evidence retained at ${directory}; succeeded=${succeeded}`,
     );

@@ -1,9 +1,8 @@
 import { join } from "node:path";
 
-import {
-  type FraudProofWorkflowJournalEntry,
-  type FraudProofWorkflowTerminal,
-  resolveProverSigner,
+import type {
+  FraudProofWorkflowJournalEntry,
+  FraudProofWorkflowTerminal,
 } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -24,20 +23,32 @@ import {
   JOURNEY_WORKFLOW_STALL_ALLOWANCE_MS,
   journeyIntentRecovery,
   journeyWorkflowProgressCount,
+  type JourneyWorkflowStore,
   journeyWorkflowUpdates,
   readJourneyWorkflowEntries,
   transactionOutputs,
   verifyJourneyCorrectedScheduler,
   verifyJourneyCorrectedTail,
 } from "./correction.verify-journey-corrected-scheduler.js";
-import { journeyNetwork } from "./journey-network.js";
 import type { loadJourneyContext } from "./live-context.js";
-import type { startJourneyNativeRecorder } from "./native-recorder.js";
 
 type JourneyContext = Awaited<ReturnType<typeof loadJourneyContext>>;
 
+/**
+ * What the correction checks read of a deployment: a devnet journey's own
+ * context, or an attached stack's.
+ */
+type JourneyCorrectionContext = Readonly<{
+  deployment: Pick<
+    JourneyContext["deployment"],
+    "manifest" | "contracts" | "operatorLucid"
+  >;
+  provider: Pick<JourneyContext["provider"], "getUtxosWithUnit">;
+  kupoUrl: string;
+}>;
+
 /** Where the journey reads the exact bytes of a confirmed transaction. */
-type JourneyTransactions = {
+export type JourneyTransactions = {
   transaction(txHash: string): Promise<{ readonly cbor: string }>;
 };
 
@@ -114,8 +125,8 @@ export const verifyJourneyProverReward = async ({
 /** Shared acceptance assertions for every installed automatic workflow. */
 export const verifyJourneyCorrection = async ({
   context,
-  native,
-  watcherStorePath,
+  transactions,
+  watcherStore,
   directory,
   category,
   headerHash,
@@ -132,10 +143,11 @@ export const verifyJourneyCorrection = async ({
   poll,
   stage,
 }: {
-  context: JourneyContext;
-  native: Awaited<ReturnType<typeof startJourneyNativeRecorder>>;
-  /** The watcher store the workflow rows live in. */
-  watcherStorePath: string;
+  context: JourneyCorrectionContext;
+  /** Where the confirmed bytes of the workflow's transactions are read. */
+  transactions: JourneyTransactions;
+  /** Where the watcher's workflow rows are read. */
+  watcherStore: JourneyWorkflowStore;
   directory: string;
   category: SDK.FraudProofCatalogueCategoryName;
   headerHash: string;
@@ -159,10 +171,11 @@ export const verifyJourneyCorrection = async ({
   stallAllowanceMs?: number;
   operatorVkey: string;
   /**
-   * The watcher's prover wallet, which the reward must pay; the journey knows
-   * its address, never its key. Absent, the prover the journey launched.
+   * The watcher's prover wallet, which the reward must pay: on a devnet the
+   * prover the journey launched, on a stack the watcher's configured prover,
+   * whose address the journey knows and whose key it never holds.
    */
-  proverAddress?: string;
+  proverAddress: string;
   requireLive(): void;
   poll<T>(
     name: string,
@@ -171,7 +184,7 @@ export const verifyJourneyCorrection = async ({
   ): Promise<T>;
   stage<T>(name: string, action: () => Promise<T>): Promise<T>;
 }) => {
-  const { deployment, provider, accounts } = context;
+  const { deployment, provider } = context;
   let reported = workflowBaseline.length - 1;
   let reportedStall: string | undefined;
   let progressCount = journeyWorkflowProgressCount(workflowBaseline);
@@ -182,7 +195,7 @@ export const verifyJourneyCorrection = async ({
     async () => {
       requireLive();
       const records = await readJourneyWorkflowEntries({
-        watcherStorePath,
+        watcherStore,
         category,
         headerHash,
       });
@@ -234,7 +247,7 @@ export const verifyJourneyCorrection = async ({
       )
         return undefined;
       await verifyJourneyWorkflowTransactions(records, (txHash) =>
-        native.transaction(txHash),
+        transactions.transaction(txHash),
       );
       expect(terminal.terminal).toMatchObject({
         category,
@@ -263,18 +276,12 @@ export const verifyJourneyCorrection = async ({
     );
   await stage("independent corrected-state observations", async () => {
     const readOutput = (outRef: string | null) =>
-      readJourneyOutput(native, outRef);
-    const prover =
-      proverAddress ??
-      resolveProverSigner({
-        network: journeyNetwork().network,
-        walletSeedPhrase: accounts.publisher.seedPhrase,
-      }).address;
+      readJourneyOutput(transactions, outRef);
     await verifyJourneyProverReward({
       economics: deployment.manifest.economics,
       completion,
-      proverAddress: prover,
-      transactions: native,
+      proverAddress,
+      transactions,
     });
     await verifyJourneyComputationThreadAbsent({
       kupoUrl: context.kupoUrl,
@@ -306,7 +313,8 @@ export const verifyJourneyCorrection = async ({
     );
     expect(removedOutput?.assets[headerUnit(headerHash)]).toBe(1n);
     const removal = CML.Transaction.from_cbor_hex(
-      (await native.transaction(completion.correction.removalTxHash)).cbor,
+      (await transactions.transaction(completion.correction.removalTxHash))
+        .cbor,
     );
     expect(removal.is_valid()).toBe(true);
     const removalInputs = removal.body().inputs();
@@ -372,7 +380,7 @@ export const verifyJourneyCorrection = async ({
     expect(proofs).toHaveLength(1);
     expect(proofs[0]!.assets[expectedProofUnit]).toBe(1n);
     expect(Data.from(proofs[0]!.datum!, SDK.FraudProofTokenDatum)).toEqual({
-      fraud_prover: paymentCredentialOf(prover).hash,
+      fraud_prover: paymentCredentialOf(proverAddress).hash,
     });
     expect(`${proofs[0]!.txHash}#${proofs[0]!.outputIndex}`).toBe(
       completion.proofToken.outRef,

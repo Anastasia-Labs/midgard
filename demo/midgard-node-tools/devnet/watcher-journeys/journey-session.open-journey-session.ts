@@ -186,13 +186,17 @@ export const openJourneySession = async (runDirectory: string) => {
       await native.transaction(txHash);
       await retainedDa.retain(block);
     };
-    await stage("independent actor funding", async () => {
-      const fundingPath = join(runtimeDirectory, "actor-funding.txt");
-      if (existsSync(fundingPath)) return;
-      const prover = resolveProverSigner({
+    // The prover the journey launches its watcher with: the address its
+    // funding pays and its correction's reward must pay.
+    const proverAddress = () =>
+      resolveProverSigner({
         network: journeyNetwork().network,
         walletSeedPhrase: accounts.publisher.seedPhrase,
       }).address;
+    await stage("independent actor funding", async () => {
+      const fundingPath = join(runtimeDirectory, "actor-funding.txt");
+      if (existsSync(fundingPath)) return;
+      const prover = proverAddress();
       const availability = resolveProverSigner({
         network: journeyNetwork().network,
         walletSeedPhrase: accounts.availability.seedPhrase,
@@ -440,6 +444,7 @@ export const openJourneySession = async (runDirectory: string) => {
       native,
       retain,
       retainPayload: retainedDa.retain,
+      proverAddress,
       workflowJournalDirectory: join(runtimeDirectory, "workflows"),
       ensureWatcher,
       watcherStarted: () => started !== undefined,
