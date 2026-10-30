@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import { PUBLIC_NODE_SECRET_NAMES } from "midgard-node/commands/listen-public-http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import type { StackConfig } from "../src/full-stack/config.js";
 import { publicRolesPath } from "../src/full-stack/process.js";
 import {
   preparePublicImages,
@@ -29,18 +30,23 @@ beforeAll(async () => {
 }, 300_000);
 afterAll(removePublicReleaseFixture);
 
-/** The Compose model Docker renders from the base node file and the public overlay. */
-async function renderedCompose(roles: string) {
+/**
+ * The Compose model Docker renders from the base node file and the public
+ * overlay, in the stack's node directory with its env file, as the stack runs it.
+ */
+async function renderedCompose(config: StackConfig) {
   const { stdout } = await promisify(execFile)(
     "docker",
     [
       "compose",
       "--project-directory",
-      nodeRoot,
+      config.nodeRoot,
+      "--env-file",
+      config.envFile,
       "-f",
       join(nodeRoot, "docker-compose.yaml"),
       "-f",
-      roles,
+      publicRolesPath(config),
       "config",
       "--format",
       "json",
@@ -77,9 +83,7 @@ describe("public node containers", () => {
         ingressHostPort,
       );
       await preparePublicImages(stack.processes);
-      const model = await renderedCompose(
-        publicRolesPath(stack.processes.config),
-      );
+      const model = await renderedCompose(stack.processes.config);
       const hosts = (service: string) =>
         Object.fromEntries(
           model.services[service]!.ports!.map((port) => [
@@ -115,7 +119,7 @@ describe("public node containers", () => {
       processes.env.POSTGRES_PASSWORD,
     );
     expect((await stat(password)).mode & 0o777).toBe(0o600);
-    const model = await renderedCompose(publicRolesPath(processes.config));
+    const model = await renderedCompose(processes.config);
     expect(model.services.postgres!.environment).toMatchObject({
       POSTGRES_PASSWORD_FILE: "/run/secrets/postgres-password",
     });

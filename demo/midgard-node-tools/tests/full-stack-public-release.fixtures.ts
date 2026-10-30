@@ -84,6 +84,8 @@ export async function publicStack(
     sample.timeoutMs = 1;
   });
   config.nodeRoot = join(checkout, "demo/midgard-node");
+  // The stack reads the node directory's own .env, as the existing Compose stack does.
+  config.envFile = join(config.nodeRoot, ".env");
   config.runDirectory = join(checkout, "run");
   const file = (path: string) => join(checkout, "private", path);
   await mkdir(join(checkout, "private"), { recursive: true });
@@ -179,6 +181,13 @@ export async function publicStack(
   // Phase 1 moves the node's secrets from its private file into the stack environment.
   for (const secret of PUBLIC_NODE_SECRET_NAMES)
     env[secret] ??= randomBytes(24).toString("base64url");
+  await writeFile(
+    config.envFile,
+    Object.entries(env)
+      .map(([key, value]) => `${key}=${value}\n`)
+      .join(""),
+    { mode: 0o600 },
+  );
   const processes = new RecordingProcesses(config, env);
   const [release, configuration, , services] = runtimeSteps(processes);
   return {
