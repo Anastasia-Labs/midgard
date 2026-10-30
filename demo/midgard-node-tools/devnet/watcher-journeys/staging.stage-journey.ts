@@ -250,11 +250,32 @@ export async function stageJourney(
     resume = undefined;
   }
 
+  const readHeaderConsumptions = (unit: string) =>
+    readKupoUnitConsumptions(context.kupoUrl, unit);
+  const blockActor = (lucid: LucidEvolution) =>
+    createPublishedWatcherBlockActor({
+      deployment,
+      lucid,
+      ...(mode.kind === "devnet"
+        ? { daSignerConfig: mode.daSignerConfig }
+        : // Operator-2 shares the scheduler with our node; its commits fit
+          // in the shift that covers the block interval staged below.
+          { sharedScheduler: { coverMs: 60_000 } }),
+      readConfirmedTransaction,
+      readHeaderConsumptions,
+      onStage,
+    });
+  // On an attached stack the drill signs as operator-2 in operator-2's own
+  // shift, where our node cannot commit, so the tail it reads stays the tail.
+  const stackActor =
+    mode.kind === "stack" ? await blockActor(deployment.operatorLucid) : null;
+
   let predecessor: JourneySuccessor;
   if (resume !== undefined) predecessor = resume.predecessor;
-  else if (mode.kind === "stack")
+  else if (mode.kind === "stack") {
+    await stackActor!.onboardOperator();
     predecessor = await mode.da.readAttestedTail();
-  else if (existsSync(headPath)) {
+  } else if (existsSync(headPath)) {
     const head = await readJourneyArtifact<{
       deploymentFingerprint: string;
       block: JourneySuccessor;
@@ -297,7 +318,9 @@ export async function stageJourney(
     await deployment.publisherLucid.wallet().address(),
   ).hash;
   const maliciousKey =
-    resume?.current.header.operatorVkey ?? predecessor.header.operatorVkey;
+    stackActor?.operatorVkey ??
+    resume?.current.header.operatorVkey ??
+    predecessor.header.operatorVkey;
   if (maliciousKey !== operatorKey && maliciousKey !== publisherKey)
     throw new Error(
       "The healthy predecessor operator has no run-owned signing wallet",
@@ -310,16 +333,7 @@ export async function stageJourney(
     maliciousKey === operatorKey
       ? deployment.publisherLucid
       : deployment.operatorLucid;
-  const readHeaderConsumptions = (unit: string) =>
-    readKupoUnitConsumptions(context.kupoUrl, unit);
-  const actor = await createPublishedWatcherBlockActor({
-    deployment,
-    lucid: maliciousLucid,
-    ...(mode.kind === "devnet" ? { daSignerConfig: mode.daSignerConfig } : {}),
-    readConfirmedTransaction,
-    readHeaderConsumptions,
-    onStage,
-  });
+  const actor = stackActor ?? (await blockActor(maliciousLucid));
   const commitHistoryBlock: JourneyFaultPreparationInput["commitHistoryBlock"] =
     async (name, build) => {
       build = journeyBlockBuilder(build);
@@ -666,14 +680,7 @@ export async function stageJourney(
         successorPredecessor,
         ledgerAt,
       );
-      const successorActor = await createPublishedWatcherBlockActor({
-        deployment,
-        lucid: successorLucid,
-        daSignerConfig: mode.daSignerConfig,
-        readConfirmedTransaction,
-        readHeaderConsumptions,
-        onStage,
-      });
+      const successorActor = await blockActor(successorLucid);
       await successorActor.onboardOperator();
       const buildSuccessor = journeyBlockBuilder(async () => {
         const endTime = BigInt(chain.now() + 59_999);

@@ -626,8 +626,8 @@
   },
   {
     "file": "midgard-node-tools/devnet/watcher-journeys/staging.stage-journey.ts",
-    "max": 776,
-    "reason": "stageJourney is the dominant indivisible declaration (725 lines); it stages both an owned devnet and an attached stack, whose DA paths share its checkpoint and cleanup ordering. Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 783,
+    "reason": "stageJourney is the dominant indivisible declaration (732 lines); it stages both an owned devnet and an attached stack, whose DA paths share its checkpoint and cleanup ordering. Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-node-tools/scripts/verify-phase4-journal-kill-recovery-summary.mjs",
@@ -1271,8 +1271,8 @@
   },
   {
     "file": "midgard-watcher/tests/support/published-block-actor.create-published-watcher-block-actor.ts",
-    "max": 859,
-    "reason": "createPublishedWatcherBlockActor is the dominant indivisible declaration (806 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 874,
+    "reason": "createPublishedWatcherBlockActor is the dominant indivisible declaration (816 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-watcher/tests/support/published-deposit-trace.stage-published-deposit-trace.ts",

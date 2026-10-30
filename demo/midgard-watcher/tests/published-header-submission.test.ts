@@ -78,12 +78,31 @@ const fixture = async () => {
       typeof SDK.incompleteEmulatorCommitBlockHeaderTxProgram
     >,
   );
+  const activeUnit = toUnit(
+    policy,
+    SDK.ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX + operator,
+  );
+  // The operator's active node as its activation publishes it.
+  const activeNode: UTxO = {
+    ...anchor,
+    assets: { ...anchor.assets, [activeUnit]: 1n },
+    datum: SDK.encodeLinkedListNodeView({
+      key: { Key: { key: operator } },
+      next: "Empty",
+      data: Data.castTo(
+        { bond_unlock_time: null, inactivity_strikes: 0n },
+        SDK.ActiveOperatorDatum,
+      ),
+    }),
+  };
   const utxosAtWithUnit = vi.fn(async (_address: string, unit: string) => [
     unit === toUnit(policy, SDK.CORRECTION_LOCK_ASSET_NAME)
       ? { ...anchor, datum: Data.to("Idle", SDK.CorrectionLockDatum) }
       : unit === toUnit(policy, SDK.SCHEDULER_ASSET_NAME)
         ? { ...anchor, datum: Data.to("NoActiveOperators", SDK.SchedulerDatum) }
-        : anchor,
+        : unit === activeUnit
+          ? activeNode
+          : anchor,
   ]);
   // The chain's clock, in step with the actor's polling.
   let now = 100_000;

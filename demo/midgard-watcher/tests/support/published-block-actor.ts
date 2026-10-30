@@ -11,6 +11,7 @@ import "midgard-node/transactions/register-active-operator/activation";
 import "./published-da-attestation-receipt.js";
 import "./published-da-target-consumption.js";
 import "./published-block-actor.is-unanswered-submission.js";
+import "./published-block-actor.operator-shift.js";
 import "./published-block-actor.create-published-watcher-block-actor.js";
 export { createPublishedWatcherBlockActor } from "./published-block-actor.create-published-watcher-block-actor.js";
 export {

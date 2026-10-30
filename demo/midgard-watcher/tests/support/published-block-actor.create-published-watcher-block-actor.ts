@@ -16,7 +16,6 @@ import {
   type DaLocalSignerConfig,
   daLocalSigners,
 } from "midgard-node/da/local-signers";
-import { IntentJournalWithoutFollower } from "midgard-node/services/intent-journal";
 import { availabilityParametersFromManifest } from "midgard-node/services/midgard-contracts";
 import { daAttestationInitOutputLovelace } from "midgard-node/transactions/da-attestation";
 import {
@@ -41,6 +40,12 @@ import {
   type PublishedWatcherBlock,
   requireDaSignerConfig,
 } from "./published-block-actor.is-unanswered-submission.js";
+import {
+  awaitSharedSchedulerShift,
+  continuedActiveOperatorDatum,
+  operatorLifecycleStep,
+  publisherOperatorFunding,
+} from "./published-block-actor.operator-shift.js";
 import { verifyPublishedDaAttestationReceipt } from "./published-da-attestation-receipt.js";
 import {
   type PublishedDaTargetCorrection,
@@ -57,6 +62,7 @@ export const createPublishedWatcherBlockActor = async ({
   daSignerConfig,
   readConfirmedTransaction,
   readHeaderConsumptions,
+  sharedScheduler,
   onStage = () => {},
 }: {
   deployment: PublishedWatcherActorDeployment;
@@ -68,6 +74,12 @@ export const createPublishedWatcherBlockActor = async ({
   readHeaderConsumptions?: (
     unit: string,
   ) => Promise<PublishedHeaderConsumption[]>;
+  /**
+   * An operator sharing the scheduler with others, as on an attached stack:
+   * onboarding waits for its shift to cover the next `coverMs` and refreshes
+   * the scheduler into it, and a bond shortfall is funded by the publisher.
+   */
+  sharedScheduler?: { readonly coverMs: number };
   onStage?: (name: string) => void;
 }) => {
   const { contracts, chain, references } = deployment;
@@ -160,14 +172,18 @@ export const createPublishedWatcherBlockActor = async ({
     ).length === 1;
   const onboardOperator = async () => {
     onStage("operator registration");
-    await Effect.runPromise(
+    const fund =
+      sharedScheduler &&
+      publisherOperatorFunding({ publisher, operator: address, onStage });
+    await operatorLifecycleStep(
       registerOperatorProgram(
         lucid,
         contracts,
         bond,
         publisher,
         publicationAddress,
-      ).pipe(Effect.provide(IntentJournalWithoutFollower)),
+      ),
+      fund,
     );
     const activeBeforeActivation = await lucid.utxosAtWithUnit(
       contracts.activeOperators.spendingScriptAddress,
@@ -216,14 +232,15 @@ export const createPublishedWatcherBlockActor = async ({
       }
     }
     onStage("operator activation");
-    await Effect.runPromise(
+    await operatorLifecycleStep(
       activateOperatorProgram(
         lucid,
         contracts,
         bond,
         publisher,
         publicationAddress,
-      ).pipe(Effect.provide(IntentJournalWithoutFollower)),
+      ),
+      fund,
     );
     active = await one(
       contracts.activeOperators.spendingScriptAddress,
@@ -237,6 +254,12 @@ export const createPublishedWatcherBlockActor = async ({
       schedulerUnit,
     );
     const schedulerDatum = Data.from(scheduler.datum!, SDK.SchedulerDatum);
+    if (schedulerDatum !== "NoActiveOperators" && sharedScheduler !== undefined)
+      return awaitSharedSchedulerShift({
+        ...{ lucid, contracts, chain, operatorVkey, schedulerUnit, onStage },
+        coverMs: sharedScheduler.coverMs,
+        schedulerSpendingScriptRef: reference("schedulerSpend"),
+      });
     if (schedulerDatum !== "NoActiveOperators") {
       if (schedulerDatum.ActiveOperator.operator !== operatorVkey)
         throw new Error(
@@ -361,19 +384,11 @@ export const createPublishedWatcherBlockActor = async ({
       Data.from(lock.datum, SDK.CorrectionLockDatum) !== "Idle"
     )
       throw new Error("Cannot commit while correction lock is held");
-    const continuedDatum = SDK.encodeLinkedListNodeView({
-      key: { Key: { key: operatorVkey } },
-      next: "Empty",
-      data: Data.castTo(
-        {
-          bond_unlock_time:
-            block.header.endTime +
-            BigInt(MIDGARD_CONSENSUS_PROFILE.limits.blockMaturityMs),
-          inactivity_strikes: 0n,
-        },
-        SDK.ActiveOperatorDatum,
-      ),
-    });
+    const continuedDatum = await continuedActiveOperatorDatum(
+      activeInput,
+      block.header.endTime +
+        BigInt(MIDGARD_CONSENSUS_PROFILE.limits.blockMaturityMs),
+    );
     const builder = await Effect.runPromise(
       SDK.incompleteEmulatorCommitBlockHeaderTxProgram(
         lucid,
