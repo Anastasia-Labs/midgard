@@ -33,4 +33,7 @@ export {
   verifyJourneyCorrectedScheduler,
   verifyJourneyCorrectedTail,
 } from "./correction.verify-journey-corrected-scheduler.js";
-export { verifyJourneyCorrection } from "./correction.verify-journey-correction.js";
+export {
+  verifyJourneyCorrection,
+  verifyJourneyProverReward,
+} from "./correction.verify-journey-correction.js";

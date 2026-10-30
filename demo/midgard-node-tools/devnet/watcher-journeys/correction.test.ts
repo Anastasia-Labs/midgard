@@ -3,6 +3,7 @@ import {
   CML,
   credentialToAddress,
   Data,
+  paymentCredentialOf,
   toUnit,
   type UTxO,
   utxoToCore,
@@ -12,6 +13,7 @@ import { expect, it } from "vitest";
 import {
   verifyJourneyCorrectedScheduler,
   verifyJourneyCorrectedTail,
+  verifyJourneyProverReward,
 } from "./correction.js";
 
 const headerHash = "a1".repeat(28);
@@ -287,5 +289,115 @@ it("refuses a substituted reference output even if its survivor datum matches", 
         txHash: "ff".repeat(32),
       }),
     }),
+  ).rejects.toThrow();
+});
+
+const proverRewardFixture = (proverAddress: string) => {
+  const economics = {
+    requiredBondLovelace: 9_000_000n,
+    slashingPenaltyLovelace: 5_000_000n,
+    fraudProverRewardLovelace: 4_000_000n,
+  };
+  const transaction = (
+    inputs: readonly string[],
+    outputs: readonly { address: string; lovelace: bigint }[],
+    fee: bigint,
+  ) => {
+    const nativeInputs = CML.TransactionInputList.new();
+    for (const outRef of inputs) {
+      const [txHash, index] = outRef.split("#");
+      nativeInputs.add(
+        CML.TransactionInput.new(
+          CML.TransactionHash.from_hex(txHash!),
+          BigInt(index!),
+        ),
+      );
+    }
+    const nativeOutputs = CML.TransactionOutputList.new();
+    for (const { address, lovelace } of outputs)
+      nativeOutputs.add(
+        CML.TransactionOutput.new(
+          CML.Address.from_bech32(address),
+          CML.Value.from_coin(lovelace),
+        ),
+      );
+    const tx = CML.Transaction.new(
+      CML.TransactionBody.new(nativeInputs, nativeOutputs, fee),
+      CML.TransactionWitnessSet.new(),
+      true,
+    );
+    return { txHash: CML.hash_transaction(tx.body()).to_hex(), tx };
+  };
+  const operator = credentialToAddress("Preprod", {
+    type: "Key",
+    hash: "e5".repeat(28),
+  });
+  const bond = transaction(
+    [`${"0a".repeat(32)}#0`],
+    [{ address: activeAddress, lovelace: economics.requiredBondLovelace }],
+    200_000n,
+  );
+  const bondOutRef = `${bond.txHash}#0`;
+  const slash = transaction(
+    [bondOutRef, `${"0b".repeat(32)}#1`],
+    [
+      { address: proverAddress, lovelace: economics.fraudProverRewardLovelace },
+      { address: operator, lovelace: 2_000_000n },
+    ],
+    economics.slashingPenaltyLovelace,
+  );
+  const byHash = new Map(
+    [bond, slash].map(({ txHash, tx }) => [txHash, tx.to_cbor_hex()]),
+  );
+  return {
+    economics,
+    completion: {
+      economics: {
+        operatorCredential: "e5".repeat(28),
+        proverCredential: paymentCredentialOf(proverAddress).hash,
+        operatorBondInputOutRef: bondOutRef,
+        operatorBondInputLovelace: economics.requiredBondLovelace.toString(),
+        slashedLovelace: economics.slashingPenaltyLovelace.toString(),
+        proverRewardOutputOutRef: `${slash.txHash}#0`,
+        proverRewardLovelace: economics.fraudProverRewardLovelace.toString(),
+        removalFeeLovelace: "300000",
+        duplicateRewardAbsent: true as const,
+      },
+    },
+    transactions: {
+      transaction: async (txHash: string) => {
+        const cbor = byHash.get(txHash);
+        if (cbor === undefined) throw new Error(`Unrecorded ${txHash}`);
+        return { cbor };
+      },
+    },
+  };
+};
+
+// A stack's watcher proves with its own wallet, which the journey never
+// derives; only the address it is told is evidence of who was paid.
+it("verifies the reward paid to the named stack prover", async () => {
+  const stackProver = credentialToAddress("Preprod", {
+    type: "Key",
+    hash: "f6".repeat(28),
+  });
+  const fixture = proverRewardFixture(stackProver);
+  await expect(
+    verifyJourneyProverReward({ ...fixture, proverAddress: stackProver }),
+  ).resolves.toBeUndefined();
+});
+
+it("refuses a reward paid to anyone but the named prover", async () => {
+  const stackProver = credentialToAddress("Preprod", {
+    type: "Key",
+    hash: "f6".repeat(28),
+  });
+  const elsewhere = credentialToAddress("Preprod", {
+    type: "Key",
+    hash: "07".repeat(28),
+  });
+  const fixture = proverRewardFixture(elsewhere);
+  await expect(
+    verifyJourneyProverReward({ ...fixture, proverAddress: stackProver }),
   ).rejects.toThrow();
 });

@@ -2,6 +2,7 @@ import { join } from "node:path";
 
 import {
   type FraudProofWorkflowJournalEntry,
+  type FraudProofWorkflowTerminal,
   resolveProverSigner,
 } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -33,6 +34,83 @@ import { journeyNetwork } from "./journey-network.js";
 import type { loadJourneyContext } from "./live-context.js";
 import type { startJourneyNativeRecorder } from "./native-recorder.js";
 
+type JourneyContext = Awaited<ReturnType<typeof loadJourneyContext>>;
+
+/** Where the journey reads the exact bytes of a confirmed transaction. */
+type JourneyTransactions = {
+  transaction(txHash: string): Promise<{ readonly cbor: string }>;
+};
+
+/** One output of a valid confirmed transaction, by `txHash#index`. */
+const readJourneyOutput = async (
+  transactions: JourneyTransactions,
+  outRef: string | null,
+) => {
+  if (outRef === null)
+    throw new Error("Expected an actual economic output reference");
+  const [txHash, index] = outRef.split("#");
+  const observed = await transactions.transaction(txHash!);
+  const tx = CML.Transaction.from_cbor_hex(observed.cbor);
+  expect(tx.is_valid()).toBe(true);
+  const output = tx.body().outputs().get(Number(index));
+  return { tx, output };
+};
+
+/**
+ * The conviction's exact economics: slashing consumed the operator's whole
+ * bond, burned the penalty as the fee, and paid the reward to `proverAddress`.
+ */
+export const verifyJourneyProverReward = async ({
+  economics,
+  completion,
+  proverAddress,
+  transactions,
+}: {
+  /** The deployment manifest's conviction economics. */
+  economics: Readonly<
+    Record<
+      | "requiredBondLovelace"
+      | "fraudProverRewardLovelace"
+      | "slashingPenaltyLovelace",
+      number | bigint
+    >
+  >;
+  completion: Pick<FraudProofWorkflowTerminal, "economics">;
+  proverAddress: string;
+  transactions: JourneyTransactions;
+}) => {
+  const bond = await readJourneyOutput(
+    transactions,
+    completion.economics.operatorBondInputOutRef,
+  );
+  const reward = await readJourneyOutput(
+    transactions,
+    completion.economics.proverRewardOutputOutRef,
+  );
+  expect(bond.output.amount().coin()).toBe(
+    BigInt(economics.requiredBondLovelace),
+  );
+  expect(reward.output.amount().coin()).toBe(
+    BigInt(economics.fraudProverRewardLovelace),
+  );
+  expect(reward.tx.body().fee()).toBe(
+    BigInt(economics.slashingPenaltyLovelace),
+  );
+  expect(reward.output.address().to_bech32()).toBe(proverAddress);
+  const inputs = reward.tx.body().inputs();
+  expect(
+    Array.from({ length: inputs.len() }, (_, index) => {
+      const value = inputs.get(index);
+      return `${value.transaction_id().to_hex()}#${value.index()}`;
+    }),
+  ).toContain(completion.economics.operatorBondInputOutRef);
+  expect(completion.economics).toMatchObject({
+    operatorBondInputLovelace: economics.requiredBondLovelace.toString(),
+    slashedLovelace: economics.slashingPenaltyLovelace.toString(),
+    proverRewardLovelace: economics.fraudProverRewardLovelace.toString(),
+  });
+};
+
 /** Shared acceptance assertions for every installed automatic workflow. */
 export const verifyJourneyCorrection = async ({
   context,
@@ -49,11 +127,12 @@ export const verifyJourneyCorrection = async ({
   reconciliationAllowanceMs,
   stallAllowanceMs = JOURNEY_WORKFLOW_STALL_ALLOWANCE_MS,
   operatorVkey,
+  proverAddress,
   requireLive,
   poll,
   stage,
 }: {
-  context: Awaited<ReturnType<typeof loadJourneyContext>>;
+  context: JourneyContext;
   native: Awaited<ReturnType<typeof startJourneyNativeRecorder>>;
   /** The watcher store the workflow rows live in. */
   watcherStorePath: string;
@@ -79,6 +158,11 @@ export const verifyJourneyCorrection = async ({
   reconciliationAllowanceMs?: number;
   stallAllowanceMs?: number;
   operatorVkey: string;
+  /**
+   * The watcher's prover wallet, which the reward must pay; the journey knows
+   * its address, never its key. Absent, the prover the journey launched.
+   */
+  proverAddress?: string;
   requireLive(): void;
   poll<T>(
     name: string,
@@ -178,46 +262,19 @@ export const verifyJourneyCorrection = async ({
       SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + hash,
     );
   await stage("independent corrected-state observations", async () => {
-    const economics = deployment.manifest.economics;
-    const readOutput = async (outRef: string | null) => {
-      if (outRef === null)
-        throw new Error("Expected an actual economic output reference");
-      const [txHash, index] = outRef.split("#");
-      const observed = await native.transaction(txHash!);
-      const tx = CML.Transaction.from_cbor_hex(observed.cbor);
-      expect(tx.is_valid()).toBe(true);
-      const output = tx.body().outputs().get(Number(index));
-      return { tx, output };
-    };
-    const bond = await readOutput(completion.economics.operatorBondInputOutRef);
-    const reward = await readOutput(
-      completion.economics.proverRewardOutputOutRef,
-    );
-    expect(bond.output.amount().coin()).toBe(
-      BigInt(economics.requiredBondLovelace),
-    );
-    expect(reward.output.amount().coin()).toBe(
-      BigInt(economics.fraudProverRewardLovelace),
-    );
-    expect(reward.tx.body().fee()).toBe(
-      BigInt(economics.slashingPenaltyLovelace),
-    );
-    const proverAddress = resolveProverSigner({
-      network: journeyNetwork().network,
-      walletSeedPhrase: accounts.publisher.seedPhrase,
-    }).address;
-    expect(reward.output.address().to_bech32()).toBe(proverAddress);
-    const inputs = reward.tx.body().inputs();
-    expect(
-      Array.from({ length: inputs.len() }, (_, index) => {
-        const value = inputs.get(index);
-        return `${value.transaction_id().to_hex()}#${value.index()}`;
-      }),
-    ).toContain(completion.economics.operatorBondInputOutRef);
-    expect(completion.economics).toMatchObject({
-      operatorBondInputLovelace: economics.requiredBondLovelace.toString(),
-      slashedLovelace: economics.slashingPenaltyLovelace.toString(),
-      proverRewardLovelace: economics.fraudProverRewardLovelace.toString(),
+    const readOutput = (outRef: string | null) =>
+      readJourneyOutput(native, outRef);
+    const prover =
+      proverAddress ??
+      resolveProverSigner({
+        network: journeyNetwork().network,
+        walletSeedPhrase: accounts.publisher.seedPhrase,
+      }).address;
+    await verifyJourneyProverReward({
+      economics: deployment.manifest.economics,
+      completion,
+      proverAddress: prover,
+      transactions: native,
     });
     await verifyJourneyComputationThreadAbsent({
       kupoUrl: context.kupoUrl,
@@ -315,7 +372,7 @@ export const verifyJourneyCorrection = async ({
     expect(proofs).toHaveLength(1);
     expect(proofs[0]!.assets[expectedProofUnit]).toBe(1n);
     expect(Data.from(proofs[0]!.datum!, SDK.FraudProofTokenDatum)).toEqual({
-      fraud_prover: paymentCredentialOf(proverAddress).hash,
+      fraud_prover: paymentCredentialOf(prover).hash,
     });
     expect(`${proofs[0]!.txHash}#${proofs[0]!.outputIndex}`).toBe(
       completion.proofToken.outRef,
