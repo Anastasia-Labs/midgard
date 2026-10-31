@@ -1,0 +1,6 @@
+interface:
+  display_name: "Technical Writing"
+  short_description: "Layered technical-writing standard: Di\u00e1taxis structure, Google d"
+  default_prompt: "Use $technical-writing for the requested Midgard task."
+policy:
+  allow_implicit_invocation: false

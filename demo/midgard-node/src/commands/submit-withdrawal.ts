@@ -1,31 +1,45 @@
 import { decodeMidgardAddressText } from "@al-ft/midgard-core/codec";
+import {
+  plutusConstrFieldCbor,
+  replacePlutusConstrFieldCbor,
+} from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Effect } from "effect";
+import { Data } from "@lucid-evolution/lucid";
+import { Effect, Option } from "effect";
 
+import * as HistoryJournal from "../database/eventHistorySubmissions.js";
 import {
-  defaultMidgardNodeEndpoint,
-  deriveWalletInfo,
-  fetchNodeUtxosByOutRefs,
-  lucidUtxoFromNodeUtxo,
-  parseNodeEndpoint,
-  resolveWalletSeedPhrase,
-} from "@/commands/command-utils.js";
-import {
-  parseCardanoDatum,
-  parseWithdrawalTxOutRefLabel,
-} from "@/commands/withdrawal-utils.js";
-import { Lucid, MidgardContracts, NodeConfig } from "@/services/index.js";
+  Database,
+  Lucid,
+  MidgardContracts,
+  NodeConfig,
+} from "../services/index.js";
+import { decodeHistorySubmissionRequest } from "../transactions/event-history-submission.js";
 import {
   fetchReferenceScriptUtxosProgram,
   referenceScriptByName,
   referenceScriptTargetsByCommand,
-} from "@/transactions/reference-scripts.js";
-import { assetsToValue } from "@/transactions/reserve-payout.js";
-import * as SubmitWithdrawalTx from "@/transactions/submit-withdrawal.js";
-import { signWithdrawalBody } from "@/withdrawal-signature.js";
+} from "../transactions/reference-scripts.js";
+import { assetsToValue } from "../transactions/reserve-payout.js";
+import * as SubmitWithdrawalTx from "../transactions/submit-withdrawal.js";
+import {
+  defaultMidgardNodeEndpoint,
+  deriveWalletInfo,
+  fetchNodeTxStatus,
+  fetchNodeUtxosByOutRefs,
+  lucidUtxoFromNodeUtxo,
+  parseNodeEndpoint,
+  resolveWalletSeedPhrase,
+} from "./command-utils.js";
+import {
+  parseCardanoDatumCbor,
+  parseWithdrawalTxOutRefLabel,
+} from "./withdrawal-utils.js";
 
 export type SubmitWithdrawalCliConfig = {
+  readonly submissionId: string;
   readonly walletSeedPhrase?: string;
+  readonly walletSeedPhraseFile?: string;
   readonly walletSeedPhraseEnv: string;
   readonly l2OutRef: string;
   readonly l1Address: string;
@@ -37,6 +51,7 @@ export type SubmitWithdrawalCliConfig = {
 };
 
 export type SubmitWithdrawalCliResult = {
+  readonly submissionId: string;
   readonly txHash: string;
   readonly withdrawalEventId: string;
   readonly withdrawalAssetName: string;
@@ -78,6 +93,19 @@ const selectedUtxoPaymentKeyHash = (address: string): string => {
   return paymentCredential.hash.toString("hex");
 };
 
+/**
+ * A withdrawal is classified against the committed ledger, so an output whose
+ * producing L2 transaction has not committed yet would be classified
+ * nonexistent. Deposit and genesis outputs have no producing L2 transaction
+ * and resolve as `not_found`.
+ */
+const requireCommittedProducer = (txHash: string, status: string): void => {
+  if (status === "committed" || status === "not_found") return;
+  throw new Error(
+    `Producing L2 tx ${txHash} is ${status}, not committed; wait for the producing tx to commit before withdrawing its output.`,
+  );
+};
+
 export const withdrawalEventIdFromBuildMetadata = (
   metadata: SubmitWithdrawalTx.WithdrawalBuildMetadata,
 ): string => metadata.withdrawalEventIdCbor;
@@ -91,7 +119,7 @@ export const submitWithdrawalCommandProgram = ({
 }): Effect.Effect<
   SubmitWithdrawalCliResult,
   Error,
-  NodeConfig | Lucid | MidgardContracts
+  NodeConfig | Lucid | MidgardContracts | Database
 > =>
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfig;
@@ -107,33 +135,90 @@ export const submitWithdrawalCommandProgram = ({
     );
     const resolvedSeed = resolveWalletSeedPhrase({
       walletSeedPhrase: config.walletSeedPhrase,
+      walletSeedPhraseFile: config.walletSeedPhraseFile,
       walletSeedPhraseEnv: config.walletSeedPhraseEnv,
     });
     const wallet = deriveWalletInfo(resolvedSeed, nodeConfig.NETWORK);
     assertWalletAddress?.(wallet.address);
 
-    const matched = yield* Effect.tryPromise({
-      try: () => fetchNodeUtxosByOutRefs(nodeEndpoint, [config.l2OutRef]),
-      catch: (cause) =>
-        new Error(`Failed to fetch selected L2 UTxO: ${String(cause)}`),
+    const saved = yield* HistoryJournal.retrieve(config.submissionId);
+    const selectedState = yield* Effect.gen(function* () {
+      if (Option.isSome(saved)) {
+        if (
+          saved.value.kind !== "Withdrawal" ||
+          saved.value.wallet_address !== wallet.address ||
+          saved.value.policy_id !== contracts.withdrawal.policyId
+        )
+          return yield* Effect.fail(
+            new Error(
+              "Submission ID belongs to a different kind, wallet or deployment",
+            ),
+          );
+        const request = yield* Effect.try({
+          try: () => decodeHistorySubmissionRequest(saved.value.request),
+          catch: (cause) =>
+            new Error(`Invalid saved withdrawal request: ${String(cause)}`),
+        });
+        const payload = Data.from(request.payloadCbor, SDK.EventHistoryPayload);
+        if (!("WithdrawalPayload" in payload))
+          return yield* Effect.fail(
+            new Error("Saved request is not a withdrawal"),
+          );
+        const previous = payload.WithdrawalPayload.event.info.body;
+        if (
+          previous.l2_outref.transactionId !== parsedOutRef.txHash ||
+          previous.l2_outref.outputIndex !== BigInt(parsedOutRef.outputIndex)
+        )
+          return yield* Effect.fail(
+            new Error("Submission ID belongs to a different L2 output"),
+          );
+        return {
+          owner: previous.l2_owner,
+          assets: SDK.valueToAssets(previous.l2_value),
+          valueCbor: plutusConstrFieldCbor(request.payloadCbor, [0, 1, 0, 2]),
+        };
+      }
+      const matched = yield* Effect.tryPromise({
+        try: () => fetchNodeUtxosByOutRefs(nodeEndpoint, [config.l2OutRef]),
+        catch: (cause) =>
+          new Error(`Failed to fetch selected L2 UTxO: ${String(cause)}`),
+      });
+      if (matched.length !== 1) {
+        return yield* Effect.fail(
+          new Error(
+            `Expected exactly one spendable L2 UTxO for ${config.l2OutRef}, found ${matched.length.toString()}.`,
+          ),
+        );
+      }
+      const selected = matched[0]!;
+      if (
+        selected.txHash !== parsedOutRef.txHash ||
+        selected.outputIndex !== parsedOutRef.outputIndex
+      ) {
+        return yield* Effect.fail(
+          new Error("Node returned a UTxO that does not match --l2-out-ref."),
+        );
+      }
+      const producerStatus = yield* Effect.tryPromise({
+        try: () => fetchNodeTxStatus(nodeEndpoint, parsedOutRef.txHash),
+        catch: (cause) =>
+          new Error(
+            `Failed to fetch the producing L2 tx status: ${String(cause)}`,
+          ),
+      });
+      yield* Effect.try({
+        try: () =>
+          requireCommittedProducer(parsedOutRef.txHash, producerStatus),
+        catch: (cause) =>
+          cause instanceof Error ? cause : new Error(String(cause)),
+      });
+      return {
+        owner: selectedUtxoPaymentKeyHash(selected.address),
+        assets: selected.assets,
+        valueCbor: Data.to(assetsToValue({ ...selected.assets }), SDK.Value),
+      };
     });
-    if (matched.length !== 1) {
-      return yield* Effect.fail(
-        new Error(
-          `Expected exactly one spendable L2 UTxO for ${config.l2OutRef}, found ${matched.length.toString()}.`,
-        ),
-      );
-    }
-    const selected = matched[0]!;
-    if (
-      selected.txHash !== parsedOutRef.txHash ||
-      selected.outputIndex !== parsedOutRef.outputIndex
-    ) {
-      return yield* Effect.fail(
-        new Error("Node returned a UTxO that does not match --l2-out-ref."),
-      );
-    }
-    const selectedOwner = selectedUtxoPaymentKeyHash(selected.address);
+    const selectedOwner = selectedState.owner;
     if (selectedOwner !== wallet.paymentKeyHash) {
       return yield* Effect.fail(
         new Error(
@@ -149,10 +234,19 @@ export const submitWithdrawalCommandProgram = ({
     const body: SDK.WithdrawalBody = {
       l2_outref: parsedOutRef.outputReference,
       l2_owner: wallet.paymentKeyHash,
-      l2_value: assetsToValue({ ...selected.assets }),
+      l2_value: assetsToValue({ ...selectedState.assets }),
       l1_address: l1Address,
-      l1_datum: parseCardanoDatum(config.l1Datum, "--l1-datum"),
+      l1_datum: "NoDatum",
     };
+    const bodyCbor = replacePlutusConstrFieldCbor(
+      replacePlutusConstrFieldCbor(
+        Data.to(body, SDK.WithdrawalBody),
+        [2],
+        selectedState.valueCbor,
+      ),
+      [4],
+      parseCardanoDatumCbor(config.l1Datum, "--l1-datum"),
+    );
     const withdrawalReferenceScripts = yield* fetchReferenceScriptUtxosProgram(
       lucidService.api,
       lucidService.referenceScriptsAddress,
@@ -174,26 +268,31 @@ export const submitWithdrawalCommandProgram = ({
       lucidService.api,
       contracts,
       {
-        body,
-        signature: signWithdrawalBody(wallet.privateKey, body),
+        bodyCbor,
+        signature: SDK.signWithdrawalBodyCbor(wallet.privateKey, bodyCbor),
         refundAddress,
-        refundDatum: parseCardanoDatum(config.refundDatum, "--refund-datum"),
+        refundDatumCbor: parseCardanoDatumCbor(
+          config.refundDatum,
+          "--refund-datum",
+        ),
         lovelace: parseOptionalPositiveLovelace(config.orderLovelace),
         referenceScripts: withdrawalReferenceScripts,
       },
+      config.submissionId,
     );
     const withdrawalAssetName = submitted.metadata.withdrawalAuthUnit.slice(
       contracts.withdrawal.policyId.length,
     );
 
     return {
+      submissionId: config.submissionId,
       txHash: submitted.txHash,
       withdrawalEventId: withdrawalEventIdFromBuildMetadata(submitted.metadata),
       withdrawalAssetName,
       withdrawalAuthUnit: submitted.metadata.withdrawalAuthUnit,
       l2OutRef: config.l2OutRef,
       l2Owner: wallet.paymentKeyHash,
-      l2Value: { ...selected.assets },
+      l2Value: { ...selectedState.assets },
       l1Address: config.l1Address,
       refundAddress: config.refundAddress ?? config.l1Address,
       walletSeedSource: wallet.seedSource,
@@ -206,5 +305,6 @@ export const submitWithdrawalCommandProgram = ({
 
 export const __submitWithdrawalTest = {
   lucidUtxoFromNodeUtxo,
+  requireCommittedProducer,
   selectedUtxoPaymentKeyHash,
 };

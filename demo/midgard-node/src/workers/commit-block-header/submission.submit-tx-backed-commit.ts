@@ -1,0 +1,529 @@
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import * as SDK from "@al-ft/midgard-sdk";
+import { fromHex } from "@lucid-evolution/lucid";
+import { Effect, Option } from "effect";
+
+import {
+  PendingBlockFinalizationsDB,
+  ProcessedMempoolDB,
+} from "../../database/index.js";
+import { DatabaseError } from "../../database/utils/common.js";
+import { Columns as TxColumns } from "../../database/utils/tx.js";
+import { reachCommitCrashCheckpoint } from "../../e2e/commit-crash-checkpoint.js";
+import { emptyRootHexProgram } from "../../mpf/index.js";
+import { configuredCommitAnchorClock } from "../../services/history-commit-window.js";
+import { Database } from "../../services/index.js";
+import { TxSignError, TxSubmitError } from "../../transactions/utils.js";
+import type { WorkerOutput } from "../utils/commit-block-header.js";
+import {
+  failedSubmissionProgram,
+  recoverSubmittedTxHashByHeaderProgram,
+  skippedSubmissionProgram,
+} from "../utils/commit-submission.js";
+import { buildUnsignedCommitTx } from "./build-unsigned-tx.js";
+import { attributeDaFrameRefusal } from "./commit-da-oversize-eviction.js";
+import {
+  resolveDepositsRoot,
+  resolveForcedTransactionsRoot,
+  resolveWithdrawalsRoot,
+} from "./event-roots.js";
+import {
+  assertLiveTailCommitBase,
+  assertPendingJournalCompleteness,
+  buildPendingJournalMetadata,
+  resolveLiveTailCommitBase,
+  resolvePendingJournalLedgerState,
+  revalidateStateQueueLease,
+} from "./pending-journal.js";
+import { stateQueueOutRef } from "./state-queue.js";
+import {
+  assertCommitInputsWithinBlockEndTime,
+  assertPreSubmitDaPayloadSize,
+} from "./submission.assert-pre-submit-da-payload-size.js";
+import {
+  assertCommitUserEventSourceCompleteness,
+  isStaleCommitBaseError,
+  journalUtxoEntries,
+  submitErrorReferencesOutRef,
+} from "./submission.commit-event-sources.js";
+import {
+  awaitNextCommitWindow,
+  retainedIntentFailure,
+  submitWithDurableIntent,
+} from "./submission.submit-with-durable-intent.js";
+import type { SubmitTxBackedCommitInput } from "./submission.tx-backed-input.js";
+import { makeEventCommitments } from "./transition-commitments.js";
+
+export const submitTxBackedCommit = ({
+  contracts,
+  consensusProfile,
+  deploymentMarker,
+  latestBlock,
+  endTime,
+  blockTimeMs,
+  includedDepositEntries,
+  includedDepositEventIds,
+  includedForcedTransactionEntries,
+  includedForcedTransactionEventIds,
+  includedWithdrawalEntries,
+  includedWithdrawalEventIds,
+  utxoRoot,
+  txRoot,
+  transitionTraceRoot,
+  eventToStepRoot,
+  validationTracesRoot,
+  transitionTraceMembers,
+  eventToStepMembers,
+  validationTraceMembers,
+  transitionStepCount,
+  validationTraceCount,
+  ledgerDelta,
+  selectedBaseUtxosRoot,
+  implicitGenesisEntries,
+  transactionsMpf,
+  processedMempoolTxs,
+  mempoolTxHashes,
+  mempoolTxSourceTable,
+  workerInput,
+  commitAnchor,
+  sizeOfProcessedTxs,
+  blockEndTimeCapMs,
+  afterDaFrameAccepted,
+  nativeMpfReplay,
+}: SubmitTxBackedCommitInput) =>
+  Effect.gen(function* () {
+    const emptyRoot = yield* emptyRootHexProgram;
+    const [optDepositsRoot, optForcedTransactionsRoot, optWithdrawalsRoot] =
+      yield* Effect.all(
+        [
+          resolveDepositsRoot(includedDepositEntries),
+          resolveForcedTransactionsRoot(
+            includedForcedTransactionEntries,
+            consensusProfile,
+          ),
+          resolveWithdrawalsRoot(includedWithdrawalEntries),
+        ],
+        { concurrency: "unbounded" },
+      );
+    const depositsRoot = Option.isSome(optDepositsRoot)
+      ? optDepositsRoot.value
+      : SDK.EMPTY_MERKLE_TREE_ROOT;
+    const withdrawalsRoot = Option.isSome(optWithdrawalsRoot)
+      ? optWithdrawalsRoot.value
+      : SDK.EMPTY_MERKLE_TREE_ROOT;
+    const forcedTransactionsRoot = Option.isSome(optForcedTransactionsRoot)
+      ? optForcedTransactionsRoot.value
+      : SDK.EMPTY_MERKLE_TREE_ROOT;
+    const currentBlockMempoolTxsCount = processedMempoolTxs.length;
+    if (currentBlockMempoolTxsCount <= 0) {
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: PendingBlockFinalizationsDB.tableName,
+          message:
+            "Refusing to submit a tx-backed commit with an empty pending tx journal",
+          cause: `tx_root=${txRoot},deposits=${includedDepositEventIds.length},withdrawals=${includedWithdrawalEventIds.length}`,
+        }),
+      );
+    }
+    yield* assertPendingJournalCompleteness({
+      txRoot,
+      emptyTxRoot: emptyRoot,
+      txMemberCount: currentBlockMempoolTxsCount,
+      depositsRoot,
+      depositMemberCount: includedDepositEventIds.length,
+      forcedTransactionsRoot,
+      forcedTransactionMemberCount: includedForcedTransactionEventIds.length,
+      withdrawalsRoot,
+      withdrawalMemberCount: includedWithdrawalEventIds.length,
+      transitionTraceRoot,
+      transitionTraceMemberCount: transitionTraceMembers.length,
+      eventToStepRoot,
+      eventToStepMemberCount: eventToStepMembers.length,
+      validationTracesRoot,
+      validationTraceMemberCount: validationTraceMembers.length,
+      expectedValidationTraceCount: validationTraceCount,
+    });
+    const transitionCommitments = yield* makeEventCommitments(
+      {
+        withdrawalsRoot,
+        forcedTransactionsRoot,
+        transactionsRoot: txRoot,
+        depositsRoot,
+        transitionTraceRoot,
+        eventToStepRoot,
+      },
+      {
+        withdrawalCount: BigInt(includedWithdrawalEventIds.length),
+        forcedTransactionCount: BigInt(
+          includedForcedTransactionEventIds.length,
+        ),
+        l2TransactionCount: BigInt(currentBlockMempoolTxsCount),
+        depositCount: BigInt(includedDepositEventIds.length),
+        transitionStepCount: BigInt(transitionStepCount),
+      },
+    );
+    const submittedAwaitingConfirmationOutput = (
+      submittedTxHash: string,
+      txSize: number,
+      blockEndTimeMs: number,
+      submittedHeaderHash: string,
+    ) =>
+      Effect.succeed({
+        type: "SubmittedAwaitingConfirmationOutput",
+        submittedTxHash,
+        txSize,
+        mempoolTxsCount:
+          currentBlockMempoolTxsCount + workerInput.data.mempoolTxsCountSoFar,
+        sizeOfBlocksTxs:
+          sizeOfProcessedTxs + workerInput.data.sizeOfProcessedTxsSoFar,
+        blockEndTimeMs,
+        submittedHeaderHash,
+        submittedUtxosRoot: utxoRoot,
+      } satisfies WorkerOutput);
+    const selectedPayloadAlreadyDeferred =
+      mempoolTxSourceTable === ProcessedMempoolDB.tableName;
+    const newlyDeferredTxsCount = selectedPayloadAlreadyDeferred
+      ? 0
+      : currentBlockMempoolTxsCount;
+    const newlyDeferredTxsSize = selectedPayloadAlreadyDeferred
+      ? 0
+      : sizeOfProcessedTxs;
+    const preserveTxPayloadForRetryAfterSubmitFailure = (
+      error: TxSubmitError,
+    ): Effect.Effect<WorkerOutput, never, Database> =>
+      Effect.gen(function* () {
+        if (selectedPayloadAlreadyDeferred) {
+          yield* Effect.logWarning(
+            "🔹 Commit submission failed while the selected tx payload was already in ProcessedMempoolDB; preserving durable retry rows without another transfer.",
+          );
+          return yield* failedSubmissionProgram(
+            transactionsMpf,
+            newlyDeferredTxsCount,
+            newlyDeferredTxsSize,
+            error,
+          );
+        }
+
+        const transferResult = yield* Effect.either(
+          skippedSubmissionProgram(processedMempoolTxs, mempoolTxHashes),
+        );
+        if (transferResult._tag === "Left") {
+          const detail = formatUnknownError(transferResult.left);
+          yield* Effect.logError(
+            `🔹 Commit submission failed and deferred transfer failed: submit=${formatUnknownError(
+              error,
+            )}; transfer=${detail}`,
+          );
+          return {
+            type: "FailureOutput",
+            error: `Commit submission failed and deferred transfer failed: submit=${formatUnknownError(
+              error,
+            )}; transfer=${detail}`,
+          } satisfies WorkerOutput;
+        }
+
+        return yield* failedSubmissionProgram(
+          transactionsMpf,
+          newlyDeferredTxsCount,
+          newlyDeferredTxsSize,
+          error,
+        );
+      });
+
+    yield* Effect.logInfo(`🔹 Deposits root is: ${depositsRoot}`);
+    yield* Effect.logInfo(
+      `🔹 Forced transactions root is: ${forcedTransactionsRoot}`,
+    );
+    yield* Effect.logInfo(`🔹 Withdrawals root is: ${withdrawalsRoot}`);
+
+    const submitCommitAttempt = () =>
+      revalidateStateQueueLease(workerInput).pipe(
+        Effect.zipRight(
+          PendingBlockFinalizationsDB.assertNoUnreconciledSignedSubmission,
+        ),
+        Effect.andThen(
+          resolveLiveTailCommitBase(contracts, latestBlock, consensusProfile),
+        ),
+        Effect.flatMap((commitBaseTail) =>
+          buildUnsignedCommitTx(
+            contracts,
+            commitBaseTail,
+            utxoRoot,
+            txRoot,
+            depositsRoot,
+            withdrawalsRoot,
+            transitionCommitments,
+            consensusProfile,
+            endTime,
+            blockEndTimeCapMs,
+            blockTimeMs,
+          ).pipe(
+            Effect.flatMap((buildResult) => {
+              if ("dueWork" in buildResult) {
+                const output: WorkerOutput = {
+                  type: "RegisteredDueWorkOutput",
+                  dueWork: buildResult.dueWork,
+                };
+                return Effect.succeed(output);
+              }
+              const {
+                preparedTxHash,
+                newHeaderHash,
+                newHeader,
+                newHeaderCbor,
+                blockEndTimeMs,
+                blockTimeMs,
+                signAndSubmitProgram,
+                txSize,
+              } = buildResult;
+              return Effect.gen(function* () {
+                const headerHashBuffer = Buffer.from(fromHex(newHeaderHash));
+                yield* assertPreSubmitDaPayloadSize({
+                  headerHash: newHeaderHash,
+                  header: newHeader,
+                  includedDepositEntries,
+                  includedForcedTransactionEntries,
+                  includedWithdrawalEntries,
+                  processedMempoolTxs,
+                  transitionTraceMembers,
+                  eventToStepMembers,
+                  validationTraceMembers,
+                }).pipe(
+                  Effect.catchTag("DatabaseError", (error) =>
+                    attributeDaFrameRefusal(error, {
+                      processedMempoolTxs,
+                      includedDepositEntries,
+                      includedForcedTransactionEntries,
+                      includedWithdrawalEntries,
+                    }),
+                  ),
+                );
+                yield* afterDaFrameAccepted ?? Effect.void;
+                yield* assertCommitInputsWithinBlockEndTime({
+                  blockEndTimeMs,
+                  processedMempoolTxs,
+                  includedDepositEntries,
+                  includedForcedTransactionEntries,
+                  includedWithdrawalEntries,
+                });
+                const metadata = yield* buildPendingJournalMetadata({
+                  latestBlock: commitBaseTail,
+                  workerInput,
+                  blockEndTimeMs,
+                  expectedRoots: {
+                    utxosRoot: utxoRoot,
+                    forcedTransactionsRoot,
+                    transactionsRoot: txRoot,
+                    depositsRoot,
+                    withdrawalsRoot,
+                    transitionTraceRoot:
+                      transitionCommitments.transitionTraceRoot,
+                    eventToStepRoot: transitionCommitments.eventToStepRoot,
+                    validationTracesRoot,
+                  },
+                  expectedCounts: {
+                    withdrawalCount: transitionCommitments.withdrawalCount,
+                    forcedTransactionCount:
+                      transitionCommitments.forcedTransactionCount,
+                    l2TransactionCount:
+                      transitionCommitments.l2TransactionCount,
+                    depositCount: transitionCommitments.depositCount,
+                    totalEventCount: transitionCommitments.totalEventCount,
+                    transitionStepCount:
+                      transitionCommitments.transitionStepCount,
+                    validationTraceCount: BigInt(validationTraceCount),
+                  },
+                  consensusProfile,
+                  deploymentMarker,
+                });
+                const journalLedgerState =
+                  yield* resolvePendingJournalLedgerState({
+                    recordedBaseUtxosRoot: metadata.baseRoots.utxosRoot,
+                    selectedBaseUtxosRoot,
+                    expectedFinalUtxosRoot: utxoRoot,
+                    implicitGenesisEntries,
+                    transitionDelta: ledgerDelta,
+                  });
+                const beforeJournalInsert =
+                  assertCommitUserEventSourceCompleteness({
+                    blockEndTimeMs,
+                    commitAnchor,
+                    ...(yield* configuredCommitAnchorClock),
+                    includedDepositEntries,
+                    includedForcedTransactionEntries,
+                    includedWithdrawalEntries,
+                  });
+                const prepared =
+                  yield* PendingBlockFinalizationsDB.preparePendingSubmission(
+                    {
+                      headerHash: headerHashBuffer,
+                      preparedTxHash: Buffer.from(preparedTxHash, "hex"),
+                      headerCbor: newHeaderCbor,
+                      metadata,
+                      blockEndTime: new Date(blockEndTimeMs),
+                      blockTime: new Date(blockTimeMs),
+                      depositEventIds: includedDepositEventIds,
+                      depositEntries: includedDepositEntries,
+                      forcedTransactionEventIds:
+                        includedForcedTransactionEventIds,
+                      forcedTransactionEntries:
+                        includedForcedTransactionEntries,
+                      withdrawalEventIds: includedWithdrawalEventIds,
+                      withdrawalEntries: includedWithdrawalEntries,
+                      mempoolTxIds: processedMempoolTxs.map(
+                        (entry) => entry[TxColumns.TX_ID],
+                      ),
+                      mempoolTxs: processedMempoolTxs,
+                      mempoolTxSourceTable,
+                      transitionTraceMembers,
+                      eventToStepMembers,
+                      validationTraceMembers,
+                      ledgerDelta: {
+                        spent: journalLedgerState.ledgerDelta.spent,
+                        produced: journalUtxoEntries(
+                          journalLedgerState.ledgerDelta.produced,
+                        ),
+                      },
+                      nativeMpfReplay,
+                    },
+                    { beforeJournalInsert },
+                  );
+                if (prepared.kind === "held")
+                  return yield* awaitNextCommitWindow(prepared.heldHeaderHash);
+                yield* reachCommitCrashCheckpoint(
+                  "journal_prepared_before_submit",
+                );
+                return yield* Effect.matchEffect(
+                  revalidateStateQueueLease(workerInput).pipe(
+                    Effect.andThen(
+                      assertLiveTailCommitBase(contracts, commitBaseTail),
+                    ),
+                    Effect.andThen(
+                      submitWithDurableIntent(
+                        headerHashBuffer,
+                        signAndSubmitProgram,
+                      ),
+                    ),
+                  ),
+                  {
+                    onFailure: (error) =>
+                      Effect.gen(function* () {
+                        const retained = yield* retainedIntentFailure(
+                          headerHashBuffer,
+                          error,
+                        );
+                        if (retained !== undefined) return retained;
+                        if (error instanceof TxSignError) {
+                          return yield* Effect.gen(function* () {
+                            yield* PendingBlockFinalizationsDB.markAbandoned(
+                              headerHashBuffer,
+                            ).pipe(Effect.catchAll(() => Effect.void));
+                            const detail = formatUnknownError(error);
+                            yield* Effect.logError(
+                              `🔹 Commit signing failed: ${detail}`,
+                            );
+                            return {
+                              type: "FailureOutput",
+                              error: `Commit signing failed: ${detail}`,
+                            } satisfies WorkerOutput;
+                          });
+                        }
+
+                        return yield* Effect.gen(function* () {
+                          if (
+                            error instanceof TxSubmitError &&
+                            submitErrorReferencesOutRef(
+                              error,
+                              stateQueueOutRef(commitBaseTail),
+                            )
+                          ) {
+                            yield* PendingBlockFinalizationsDB.markAbandoned(
+                              headerHashBuffer,
+                            ).pipe(Effect.catchAll(() => Effect.void));
+                            yield* Effect.logWarning(
+                              `🔹 Tx-backed commit submission hit stale state-queue tail ${stateQueueOutRef(
+                                commitBaseTail,
+                              )}; preserving tx payload for rebuild against the refreshed live tail.`,
+                            );
+                            return yield* preserveTxPayloadForRetryAfterSubmitFailure(
+                              error,
+                            );
+                          }
+
+                          if (!(error instanceof TxSubmitError)) {
+                            yield* PendingBlockFinalizationsDB.markAbandoned(
+                              headerHashBuffer,
+                            ).pipe(Effect.catchAll(() => Effect.void));
+                            if (isStaleCommitBaseError(error)) {
+                              yield* Effect.logWarning(
+                                `🔹 Tx-backed commit base ${stateQueueOutRef(
+                                  commitBaseTail,
+                                )} became stale before submission; rolling back local roots for a rebuild on the next worker tick.`,
+                              );
+                              return {
+                                type: "NothingToCommitOutput",
+                              } satisfies WorkerOutput;
+                            }
+                            const detail = formatUnknownError(error);
+                            yield* Effect.logError(
+                              `🔹 Commit aborted before submission: ${detail}`,
+                            );
+                            return {
+                              type: "FailureOutput",
+                              error: `Commit aborted before submission: ${detail}`,
+                            } satisfies WorkerOutput;
+                          }
+
+                          const recoveredTxHash =
+                            yield* recoverSubmittedTxHashByHeaderProgram(
+                              contracts.stateQueue,
+                              newHeaderHash,
+                            );
+                          if (Option.isSome(recoveredTxHash)) {
+                            return yield* PendingBlockFinalizationsDB.markSubmitted(
+                              headerHashBuffer,
+                              Buffer.from(fromHex(recoveredTxHash.value)),
+                            ).pipe(
+                              Effect.andThen(
+                                submittedAwaitingConfirmationOutput(
+                                  recoveredTxHash.value,
+                                  txSize,
+                                  blockEndTimeMs,
+                                  newHeaderHash,
+                                ),
+                              ),
+                            );
+                          }
+
+                          yield* PendingBlockFinalizationsDB.markAbandoned(
+                            headerHashBuffer,
+                          ).pipe(Effect.catchAll(() => Effect.void));
+                          return yield* preserveTxPayloadForRetryAfterSubmitFailure(
+                            error,
+                          );
+                        });
+                      }),
+                    onSuccess: (txHash) =>
+                      PendingBlockFinalizationsDB.markSubmitted(
+                        headerHashBuffer,
+                        Buffer.from(fromHex(txHash)),
+                      ).pipe(
+                        Effect.andThen(
+                          submittedAwaitingConfirmationOutput(
+                            txHash,
+                            txSize,
+                            blockEndTimeMs,
+                            newHeaderHash,
+                          ),
+                        ),
+                      ),
+                  },
+                );
+              });
+            }),
+          ),
+        ),
+      );
+
+    return yield* submitCommitAttempt();
+  });

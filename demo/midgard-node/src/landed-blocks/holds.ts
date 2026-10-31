@@ -1,0 +1,251 @@
+/**
+ * The `/readyz` reasons landed-block processing holds (plan §7.3, N3). Each
+ * keeps the process up, and the reason clears once the condition does. A
+ * wait (on DA peers, the follower, the rebase, this node's own commit path)
+ * and a local fault of a foreign block's import (within the follower
+ * runner's bound) are retried on the driver's backoff; a verdict on the
+ * view (an invalid block, a base or journal mismatch), a failure that is
+ * not transient, and a missing schema are `notRetried`: the next follower
+ * change re-reads them.
+ */
+import {
+  type DriverHold,
+  fatal,
+  isFatalHold,
+  isRetriedHold,
+  isTransientFailureHold,
+  localFault,
+  localFaultSubject,
+  notRetried,
+  transientFailure,
+} from "../l1-events/driver.js";
+import {
+  MPF_CLOSURE_MISSING,
+  NATIVE_MPF_RESTORE_INDEX_CAP_EXCEEDED,
+  NATIVE_MPF_RESTORE_READ_TRANSIENT,
+} from "../services/liveness-halt.js";
+
+/** A landed block does not replay to its header, or does not link to its parent. Never adopted. */
+export const LANDED_BLOCK_INVALID = "landed_block_invalid";
+/**
+ * This node's own landed block disagrees with its journal: the journal
+ * names another base or root, or its delta on the parent's ledger does not
+ * reach the header's root. A local fault (the block is this node's, and
+ * its header binds the root), never attributed to the block; processing
+ * stops at it until the journal is repaired.
+ */
+export const LANDED_BLOCK_OWN_JOURNAL_MISMATCH =
+  "landed_block_own_journal_mismatch";
+/**
+ * This node's block landed after its journal was abandoned: blocks after it
+ * wait until the rebase revived it and its local finalization ran (both
+ * without operator action).
+ */
+export const LANDED_BLOCK_OWN_REVIVAL_PENDING =
+  "landed_block_own_revival_pending";
+/** A foreign block's DA payload is not available yet, or it ends past what the view can know. */
+export const LANDED_BLOCK_AWAITING_DA = "landed_block_awaiting_da";
+/**
+ * A foreign block's retained DA payload no longer verified (its digest,
+ * identity or decoding), so the row was deleted and the payload is being
+ * fetched again; clears once a refetch is served.
+ */
+export const LANDED_BLOCK_DA_REFETCH_PENDING =
+  "landed_block_da_refetch_pending";
+/**
+ * A foreign block names an event the follower does not know at all at the
+ * view, and the facts there do not cover the range the event's admission
+ * could fall in: the follower's origin is after the slot the block's events
+ * are admitted after (`T(B)`) and the protocol-init fact is unreadable, the
+ * prune passed `T(B)` (a spent order, or the follower's refusal of one, may
+ * be gone), the follower's cursor or its refusals are unreadable, the
+ * block's start maps to no slot, or the store changed generation since the
+ * view. Absence there does not prove the
+ * block wrong, and a gap local to this node is never blamed on the block, so
+ * it is not `landed_block_invalid`; it is a local fault on the block,
+ * retried within the runner's bound, after which the node exits (a follower
+ * store reset or resync restores the facts). Where the facts cover the range, an absent
+ * event is the block's fault: `invalid`, as is an event the view knows whose
+ * inclusion time is outside the block's window.
+ */
+export const LANDED_BLOCK_EVENT_UNKNOWN = "landed_block_event_unknown";
+/**
+ * The follower store's origin is too late for the blocks after the landed
+ * frontier: a foreign block names an event the view does not know, and the
+ * origin is after the slot the block's events are admitted after (`T(B)`),
+ * the block's node output was seeded at the origin, or the follower refused
+ * a deposit or withdrawal the block names because the retention output its
+ * payload is read from is not in its facts: a retention output the
+ * follower's facts do not hold, created before its origin (the detail names
+ * the referenced outputs absent from the facts). The facts cannot judge the
+ * block, and a later origin never covers it: never the block's fault. A
+ * store whose origin is before the `prepareHubOracleNonce` block holds the
+ * protocol-init spend, so no event is admitted before its origin and no
+ * node output predates it. Fatal: not retried, and the node exits non-zero
+ * at once.
+ * Reset the follower store to an origin early enough (before the block that
+ * created a named output, where the detail names one), or resync the node.
+ */
+export const LANDED_BLOCK_ORIGIN_AFTER_FRONTIER =
+  "landed_block_origin_after_frontier";
+/**
+ * A forced order admitted in a foreign block's window cannot be read back
+ * from the facts at the view: its output is absent, not authentic, or has no
+ * datum there. The landed frontier's prune floor keeps the orders and
+ * outputs the window of every block after the frontier can admit, so this
+ * arises only from a store pruned while the floor did not apply or from
+ * inconsistent facts, never from the block. It is a local fault on the
+ * block, retried within the runner's bound, after which the node exits (a
+ * follower store reset or resync restores the facts).
+ */
+export const LANDED_BLOCK_FORCED_ORDER_PENDING =
+  "landed_block_forced_order_pending";
+/**
+ * Importing a foreign block failed for a reason it cannot pin on the block:
+ * a local computation (an MPF root) or a replay failure it cannot classify.
+ * Never attributed to the block: retried on the driver's backoff, with the
+ * `landed_block_local_fault` alarm, and bounded as `LANDED_BLOCK_LOCAL_FAULT`
+ * is.
+ */
+export const LANDED_BLOCK_REPLAY_INCOMPLETE = "landed_block_replay_incomplete";
+/**
+ * Importing a foreign block failed in this node's own computation, where
+ * the block's input cannot make it fail (a runtime fault of a library the
+ * replay runs, hashing, the payload roots). Never attributed to the block:
+ * retried on the driver's backoff, with the `landed_block_local_fault`
+ * alarm, and bounded as `LANDED_BLOCK_VERIFIER_UNAVAILABLE` is: the same
+ * count of runs with no progress past the faulted block, then the same
+ * non-zero exit (`l1-follower.coalesced-runner.ts`).
+ */
+export const LANDED_BLOCK_LOCAL_FAULT = "landed_block_local_fault";
+/**
+ * The event replay of a foreign block failed locally (a `ReplayLocalFault`
+ * marked `held`), which the block's input can reach. Never attributed to the
+ * block and never bounded by an exit: the block is held and its import
+ * retried on a backoff of 1 s doubling to 60 s (`replay-held.ts`), with the
+ * `landed_block_local_fault` alarm on every failed attempt, while the node
+ * keeps running.
+ */
+export const LANDED_BLOCK_REPLAY_HELD = "landed_block_replay_held";
+/**
+ * A `LANDED_BLOCK_REPLAY_HELD` block whose replay failed
+ * `LOCAL_FAULT_RUN_LIMIT` times in a row, whatever the message: still held and retried on the 60 s
+ * backoff, named so an operator sees it does not clear by itself.
+ */
+export const LANDED_BLOCK_REPLAY_STUCK = "landed_block_replay_stuck";
+/**
+ * This node's Ed25519 verifier could not answer while it replayed a foreign
+ * block (libsodium failed to initialise, or raised). A local fault, never
+ * attributed to the block: retried on the driver's backoff, and after a
+ * fixed number of runs with no progress past the faulted block (processing
+ * committing it) the node exits non-zero for its supervisor to restart it
+ * (`l1-follower.coalesced-runner.ts`).
+ */
+export const LANDED_BLOCK_VERIFIER_UNAVAILABLE =
+  "landed_block_verifier_unavailable";
+/** Replaying or recording a landed block failed for a reason it could not classify. */
+export const LANDED_BLOCK_REPLAY_FAILED = "landed_block_replay_failed";
+/**
+ * The follower write gate refused a write by its named reason (a driver
+ * recompute pending, a view no longer on the chain), or the follower moved
+ * off the run's view ("view moved"); the next run retries.
+ */
+export const LANDED_BLOCKS_WAITING = "landed_blocks_waiting";
+/**
+ * The merged queue root is on no lineage `confirmed_ledger` can reach: not
+ * forward from the frontier through the queue history, nor back through the
+ * retained folds (N5). On an honest chain it cannot occur once the frontier
+ * was set at genesis or on a fold this node made: every rollback a merge can
+ * suffer is above the prune boundary, where its fold is retained.
+ */
+export const CONFIRMED_LEDGER_BEHIND = "confirmed_ledger_behind";
+/**
+ * A fold's base is not what the block names: the frontier is not its parent
+ * (header and root), or `confirmed_ledger` lacks what it spends or holds
+ * what it produces. Refused, nothing written.
+ */
+export const CONFIRMED_LEDGER_BASE_MISMATCH = "confirmed_ledger_base_mismatch";
+/** The merged root passed this node's own block, whose journal is not locally applied yet. */
+export const CONFIRMED_LEDGER_OWN_BLOCK_PENDING =
+  "confirmed_ledger_own_block_pending";
+/** The working ledger and native MPF wait for the rebase onto the processed blocks. */
+export const LANDED_BLOCK_REBASE_PENDING = "landed_block_rebase_pending";
+/** The rebase failed; the follower-change driver retries it on its backoff. */
+export const LANDED_BLOCK_REBASE_FAILED = "landed_block_rebase_failed";
+/**
+ * The follower's admission tables (`l1_event_keys`,
+ * `node_l1_forced_order_fields`) are missing from the node database, so the
+ * own-journal disposition cannot tell whether a journal's event left the
+ * chain: the rebase is held until the schema is installed (`migrate`).
+ */
+export const LANDED_BLOCK_FOLLOWER_SCHEMA_MISSING =
+  "landed_block_follower_schema_missing";
+/** The liveness source a failed rebase raises its reason under. */
+export const LANDED_BLOCK_REBASE_SOURCE = "landed_block_rebase";
+
+const PRIORITY = [
+  LANDED_BLOCK_ORIGIN_AFTER_FRONTIER,
+  LANDED_BLOCK_INVALID,
+  LANDED_BLOCK_OWN_JOURNAL_MISMATCH,
+  LANDED_BLOCK_FOLLOWER_SCHEMA_MISSING,
+  LANDED_BLOCK_VERIFIER_UNAVAILABLE,
+  LANDED_BLOCK_EVENT_UNKNOWN,
+  LANDED_BLOCK_FORCED_ORDER_PENDING,
+  LANDED_BLOCK_DA_REFETCH_PENDING,
+  LANDED_BLOCK_AWAITING_DA,
+  MPF_CLOSURE_MISSING,
+  NATIVE_MPF_RESTORE_INDEX_CAP_EXCEEDED,
+  NATIVE_MPF_RESTORE_READ_TRANSIENT,
+  LANDED_BLOCK_REBASE_FAILED,
+  LANDED_BLOCK_LOCAL_FAULT,
+  LANDED_BLOCK_REPLAY_STUCK,
+  LANDED_BLOCK_REPLAY_HELD,
+  LANDED_BLOCK_REPLAY_INCOMPLETE,
+  LANDED_BLOCK_REPLAY_FAILED,
+  CONFIRMED_LEDGER_BASE_MISMATCH,
+  LANDED_BLOCKS_WAITING,
+  CONFIRMED_LEDGER_BEHIND,
+  LANDED_BLOCK_OWN_REVIVAL_PENDING,
+  CONFIRMED_LEDGER_OWN_BLOCK_PENDING,
+  LANDED_BLOCK_REBASE_PENDING,
+] as const;
+
+/** Each reason's detail is cut to this many characters; reason names never are. */
+const DETAIL_LIMIT = 500;
+
+const cut = (detail: string) =>
+  detail.length > DETAIL_LIMIT ? `${detail.slice(0, DETAIL_LIMIT)}…` : detail;
+
+/**
+ * The first hold by priority, with every other hold named in its detail.
+ * Only each reason's own detail is truncated, so every reason stays named.
+ * The combined hold is retried on the driver's backoff when any hold in it
+ * is, and is `notRetried` when none is; it is a `transientFailure` when any
+ * hold in it is, a `localFault` on the first local fault's subject when any
+ * hold in it is one, and `fatal` (so `notRetried`) when any hold in it is.
+ */
+export const combineHolds = (
+  holds: readonly DriverHold[],
+): DriverHold | undefined => {
+  const ordered = [...holds].sort(
+    (left, right) =>
+      PRIORITY.indexOf(left.reason as (typeof PRIORITY)[number]) -
+      PRIORITY.indexOf(right.reason as (typeof PRIORITY)[number]),
+  );
+  const [first, ...rest] = ordered;
+  if (first === undefined) return undefined;
+  const combined: DriverHold = {
+    reason: first.reason,
+    detail: [
+      cut(first.detail),
+      ...rest.map((hold) => `also ${hold.reason}: ${cut(hold.detail)}`),
+    ].join("; "),
+  };
+  if (holds.some(isTransientFailureHold)) transientFailure(combined);
+  const subject = ordered
+    .map(localFaultSubject)
+    .find((faulted) => faulted !== undefined);
+  if (subject !== undefined) localFault(combined, subject);
+  if (holds.some(isFatalHold)) return fatal(combined);
+  return holds.some(isRetriedHold) ? combined : notRetried(combined);
+};

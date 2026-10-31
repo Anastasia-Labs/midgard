@@ -1,0 +1,19 @@
+use midgard/computation_thread as ct
+use midgard/ledger_state
+use midgard/transition_trace
+
+pub type Args {
+  input_index: Int,
+  output_index: Int,
+  header: ledger_state.HeaderV1,
+  membership: transition_trace.ForcedLeafMembershipV1<
+    ledger_state.TxOrderId,
+    ledger_state.ForcedInclusionTxV1,
+  >,
+}
+
+pub type Datum =
+  ct.StepDatum<Int>
+
+pub type SpendRedeemer =
+  ct.StepRedeemer<Args>

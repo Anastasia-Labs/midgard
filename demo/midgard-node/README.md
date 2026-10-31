@@ -2,9 +2,16 @@
 
 Server application with GET and POST endpoints for interacting with Midgard.
 
+Local credentials belong in a private `config.yaml`; start with
+[config.example.yaml](config.example.yaml). The CLI reads it from the working
+directory, or from `MIDGARD_CONFIG_FILE`. Explicit environment settings win over
+YAML, and YAML wins over `.env`. Node tools use the same loader. See
+[component configuration](../../docs/agents/component-configuration.md) for
+wallet roles, isolation controls, container setup and the remaining missing keys.
+
 ## What This Package Does
 
-`midgard-node` is the demo off-chain runtime that ties the protocol together.
+`midgard-node` is the off-chain node runtime that ties the protocol together.
 It is responsible for:
 
 - serving the HTTP API used by wallets, tests, and local tooling,
@@ -38,10 +45,11 @@ It is responsible for:
   ledger entries, immutable transactions, address history, and rejection logs.
 - `LEDGER_MPF_DB_PATH` and `TRANSACTIONS_MPF_DB_PATH` point at the LevelDB
   directories used to persist MPF-backed state roots across restarts.
-- `pnpm build` regenerates `src/generated/midgard-sdk-types.d.ts` by syncing
-  the built SDK declarations before bundling the node.
+- `pnpm build` bundles the node entry point and worker entry points with tsup;
+  workspace imports resolve through package exports.
 - `ADMIN_API_KEY` gates the admin-only HTTP surface; keep it set in any shared
-  or remotely reachable environment.
+  or remotely reachable environment. Left empty, every admin route answers
+  `403 Admin endpoints are disabled`; a wrong `x-midgard-admin-key` answers `401`.
 - Accepted `mempool` and `mempool_ledger` rows, spent-input deletion, consumed
   deposit tracking, and the durable admission terminal update commit atomically.
   `mempool_tx_deltas` and produced-side `address_history` rows are auxiliary
@@ -52,12 +60,55 @@ It is responsible for:
   mempool/immutable transaction CBOR. The writer never drops live-process rows:
   queue overflow falls back to an inline write, and graceful shutdown drains the
   queue.
+- The retention sweeper runs every `WAIT_BETWEEN_RETENTION_SWEEPS` ms. The
+  default is a quarter of the profile's DA attestation timeout, capped at 15
+  minutes: 900000 on the public profiles and 150000 on the testing profiles.
+  `da_payloads` pruning always runs, whatever `RETENTION_DAYS` says. A payload is
+  deleted once its block end time is past the challengeability horizon (10.5
+  days) or its header was removed from the state queue under this deployment.
+  The payload of the L1 confirmed head and the payload of every header live in
+  the L1 state queue are never deleted. Housekeeping follows a window derived
+  from the verified deployment manifest's `da.transportProfile.retentionDays`
+  (120 days on `preprod-public`; 15 days on a profile that sets none) when
+  `RETENTION_DAYS` is unset. An explicit `RETENTION_DAYS`
+  shorter than that window refuses startup, a longer one is honoured, and `0`
+  keeps the housekeeping tables forever. The window never reaches inside the
+  DA challengeability horizon. It prunes `tx_rejections`, `address_history`
+  (except entries of a transaction still in the mempool or processed
+  mempool), ended `state_queue_mutation_leases` that no retained journal
+  names, and locally applied `pending_block_finalizations` journals whose confirmed
+  merge completed locally. A journal is kept while its header is the L1
+  confirmed head, live in the L1 state queue (in the caller's view or in the
+  follower's facts), or held for finality (a landed tx merged or removed it
+  and that tx is not final yet, or it is the newest merge that is final), and
+  while one of its deposit or withdrawal members is an admission the L1
+  follower no longer holds (an orphan, which ledger repair reads). The newest
+  finalized journal is always kept. Unfinished and abandoned journals retain
+  their bases, same-base siblings and descendants. The journal prune runs
+  under a follower write permit. It takes no permit while the follower-change
+  driver recomputes or has applied no view, holds the permit for a bounded
+  time, and skips to the next sweep when refused.
+  `deposits_utxos` and `withdrawal_utxos` are retained because settlement proofs
+  recompute the whole header's root, including completed siblings of unpaid
+  events. Local consumed/finalized status and a completed settlement job do not
+  prove L1 payout finality: confirmed settlement receipts currently retain no
+  block identity or depth. Bounded event retirement requires durable canonical
+  terminal receipts beyond the manifest recovery depth and whole-header proof
+  material retirement after every event exit and recovery obligation completes.
+- Each sweep reads the state queue from L1 first. If that read fails, the
+  sweeper logs `retention_pass_skipped` and deletes no DA payload. Once the last
+  successful read is older than `L1_VIEW_FATAL_MS`, the sweeper stops sweeping
+  and raises `retention_l1_view_stale` on `/readyz`; it keeps reading L1 and
+  clears the reason on the first good view. The process stays up. The default is the DA attestation timeout, four default sweep intervals: one
+  hour on the public profiles and ten minutes on the testing profiles. The value
+  must be at least three sweep intervals and at most the retention margin (4.5
+  days).
 
 ## Transaction Preparation Checks
 
 Before using live preprod e2e as a debugging loop for builder, wallet,
 validity-window, worker, DA, or post-submit recovery changes, run the focused
-feedback ladder in [TX_PREP_FEEDBACK_LADDER.md](./docs/TX_PREP_FEEDBACK_LADDER.md).
+checks in the [e2e acceptance skill](../../.agents/skills/midgard-e2e-acceptance/SKILL.md).
 The package-level shortcuts are:
 
 ```sh
@@ -73,82 +124,73 @@ emulator regression before rerunning the full live flow.
 
 ## How to Run
 
+The canonical stack is `docker-compose.yaml` plus the `docker-compose.kupmios.yaml`
+overlay: PostgreSQL, the node, a one-shot schema migration, and an in-stack
+Cardano L1 (cardano-node bootstrapped from a certified Mithril snapshot, Ogmios,
+Kupo). The base file alone starts no L1, and the node reads L1 only through the
+overlay's cardano-node (its socket and config; note 5 below), so every command
+below uses both files. Ogmios and Kupo stay in the overlay for the node-tools
+devnet harness and the fault-proofs prover CLI; the node reads neither.
+
+The stack is compose project `midgard-node` with fixed host ports. To run a
+second one from a linked git worktree, replace `docker compose` with
+`scripts/operator-compose.sh`, which gives that worktree its own project name,
+container names and host ports (`scripts/operator-compose.sh --print-env` lists
+them) and changes nothing in the main checkout.
+
+Bringing up a node is three phases: build, one-time protocol bring-up, run.
+`listen` refuses to start until the bring-up artifacts exist.
+
 ### With Docker
 
-Using Docker, you can run Midgard node on `localhost:3000` (or another port)
-quite easily.
+0. If you don't have Docker yet or want to update, follow this [GUIDE](https://docs.docker.com/engine/install/). After installation, do not forget to execute also the [POST-INSTALLATION STEPS](https://docs.docker.com/engine/install/linux-postinstall/#manage-docker-as-a-non-root-user) to avoid using sudo with Docker. Compose v2 is required.
 
-0. If you don't have Docker yet or want to update, follow this [GUIDE](https://docs.docker.com/engine/install/). After installation, do not forget to execute also the [POST-INSTALLATION STEPS](https://docs.docker.com/engine/install/linux-postinstall/#manage-docker-as-a-non-root-user) to avoid using sudo with Docker.
-
-1. Run Docker daemon if it's not running already:
+1. Build the on-chain blueprint. `onchain/aiken/plutus.json` is gitignored and
+   the image build copies it, so a fresh clone fails at `docker compose build`
+   without this step:
 
    ```sh
-   sudo dockerd
+   cd onchain/aiken && aiken build --env testnet && cd ../..
    ```
 
-2. Pack the `midgard-sdk` tarball (see [here](../midgard-sdk/README.md)).
-
-3. Prepare your `.env` file. You can use `.env.example` as your starting point:
+2. Use the Node.js version in `demo/.nvmrc` and the pnpm version pinned in
+   `demo/package.json` (`packageManager`). Install and build the workspace from
+   `demo/`:
 
    ```sh
-   cd ../midgard-node
+   cd demo
+   pnpm install --frozen-lockfile
+   pnpm run build
+   cd midgard-node
+   ```
+
+   Resolve dependency or lockfile drift through the workspace package manifests
+   and pnpm. Do not manually replace integrity hashes in the lockfile.
+
+3. Prepare your `.env` from `.env.example`:
+
+   ```sh
    cp .env.example .env
    ```
 
-   1. Demo-node acceptance supports `L1_PROVIDER=Kupmios` only. Use local Kupo
-      and Ogmios endpoints, and run
-      `node dist/index.js l1-provider-preflight --json` before long-running
-      deployment steps.
-   2. If local Kupo or Ogmios is unhealthy, fix the local
-      `docker-compose.kupmios.yaml` stack instead of switching to a remote L1
-      provider.
+   The "Required settings" block at the top of `.env.example` lists every key
+   that has no default. Config load fails, for every command including
+   `db:migrate`, until each of them has a value; the error names the variable.
+   Three distinct wallets are required (operator, merge, reference-script).
 
-4. Install all the dependencies:
+   `.env` values override the image pins in the compose files. Keep the
+   `*_IMAGE_TAG` / `CARDANO_NODE_IMAGE_DIGEST` lines in step with
+   `docker-compose.kupmios.yaml` when you bump one.
 
-   ```sh
-   pnpm install --frozen-lockfile
-   ```
-
-   1. If the install fails with an incorrect SHA, that most likely means
-      `midgard-sdk` was updated recently, but `pnpm-lock.yaml` still expects the
-      old hash. Update the SHA value inside the `pnpm-lock.yaml` file with the
-      new one.
-   2. Rerun `pnpm install --frozen-lockfile`. Now it should install correctly.
-
-5. Build the midgard-node:
+4. Start the L1 and PostgreSQL first and wait until they are healthy:
 
    ```sh
-   pnpm build
+   docker compose -f docker-compose.yaml -f docker-compose.kupmios.yaml \
+     up -d postgres cardano-node cardano-config-export
+   docker compose -f docker-compose.yaml -f docker-compose.kupmios.yaml ps
    ```
 
-6. Run the application stack:
-
-   ```sh
-   docker compose up -d
-
-   # or this for development:
-   docker compose -f docker-compose.dev.yaml up -d
-   ```
-
-   `docker compose up` starts PostgreSQL, runs the one-shot
-   `midgard-node-migrate` service with `node ./dist/index.js db:migrate`, and
-   starts `midgard-node` only after the migration service exits successfully.
-   On an empty Postgres volume this creates the Midgard schema before the node
-   begins listening. If migration fails, the node is not started; inspect the
-   migration logs with:
-
-   ```sh
-   docker compose logs midgard-node-migrate
-   ```
-
-7. To run against an in-stack local `Kupmios` provider backed by a Mithril
-   bootstrap, start with the compose override:
-
-   ```sh
-   docker compose -f docker-compose.yaml -f docker-compose.kupmios.yaml up -d
-   ```
-
-   Notes:
+   Notes on the L1 stack:
 
    1. The first run restores a Mithril-certified Cardano DB snapshot into
       `./cardano/db` only when that directory is empty. Existing data is never
@@ -159,20 +201,94 @@ quite easily.
       before the local Cardano stack is allowed to start.
    3. Changing networks requires explicit cleanup of `./cardano/db` and
       `./cardano/kupo` before restarting the stack.
-   4. The local stack restores an official Kupo SQLite snapshot into
-      `./cardano/kupo` when that directory is empty, then continues syncing
-      with `--match * --since origin --prune-utxo`. That preserves a full
-      wildcard current-UTxO index without forcing every fresh checkout to
-      start from an empty Kupo database.
-   5. Kupo is considered healthy only once its `/health` endpoint returns
-      `200`, not while it is still returning `202 Accepted` during replay. That
-      keeps `midgard-node` from starting against a stale wildcard index.
-   6. The local stack intentionally runs standalone `cardano-node` and Ogmios
+   4. The local stack intentionally runs standalone `cardano-node` and Ogmios
       containers instead of the combined `cardano-node-ogmios` image, because
       the certified Mithril snapshot can move ahead of that combined image's
       bundled Cardano node version.
+   5. `midgard-node` reads the in-stack node directly for its L1 follower: the
+      overlay mounts `./cardano/ipc` and `./cardano/config` and sets
+      `L1_NODE_SOCKET_PATH`, `L1_NODE_CONFIG_PATH` and
+      `L1_NODE_TRANSPORT_BINARY_PATH` (the `midgard-l1-node-transport`
+      binary baked into the image). The one-shot `cardano-config-export`
+      service copies the cardano-node image's config and genesis files for
+      `NETWORK` into `./cardano/config` before the node starts. The follower
+      starts at the deployment manifest's recorded `l1Origin` (step 6). Only
+      a manifest without one needs `L1_ORIGIN` in `.env`; until it is set
+      the node runs but `/readyz` reports `l1_follower_unconfigured`.
 
-Midgard node should be running on port `PORT` (from your `.env`).
+   Confirm the route the node will use before spending anything:
+
+   ```sh
+   node dist/index.js l1-provider-preflight --json
+   ```
+
+   If the preflight fails, fix the local cardano-node (its socket, config and
+   sync). Remote L1 providers are not supported for demo-node acceptance.
+
+5. Install the schema:
+
+   ```sh
+   docker compose -f docker-compose.yaml -f docker-compose.kupmios.yaml \
+     run --rm midgard-node-migrate
+   ```
+
+   `docker compose up` also runs this as the one-shot `midgard-node-migrate`
+   service and starts `midgard-node` only after it exits successfully. If it
+   fails, inspect `docker compose logs midgard-node-migrate`.
+
+6. One-time protocol bring-up. Run these from `demo/midgard-node` against the
+   healthy L1, inside the `midgard-node` container: it has `.env`, the
+   overlay's `L1_NODE_*` settings, the in-stack node's socket and config, the
+   `midgard-l1-node-transport` binary, and `deploymentInfo/` mounted, which
+   `prepare-hub-oracle-one-shot-nonce` and `init` read the local node's chain
+   through. Each verb runs a wallet funding preflight and refuses locally
+   before it spends anything. Full detail is in
+   [Export Contract Deployment Info](#export-contract-deployment-info) and the
+   docs-site page `docs-site/content/docs/operators/node/initialization-deployment.mdx`.
+
+   ```sh
+   midgard() {
+     docker compose -f docker-compose.yaml -f docker-compose.kupmios.yaml \
+       run --rm midgard-node node dist/index.js "$@"
+   }
+   midgard prepare-hub-oracle-one-shot-nonce
+   #   -> copy HUB_ORACLE_ONE_SHOT_TX_HASH / _OUTPUT_INDEX into .env; the
+   #      printed L1_ORIGIN is recorded in the run state and the finalized
+   #      manifest, so .env needs no L1_ORIGIN
+   midgard deploy-reference-script-node-runtime
+   midgard init \
+     --contract-deployment-info-output deploymentInfo/contract-deployment-info.json
+   midgard da-libp2p-generate-manifest --target producer \
+     --out deploymentInfo/da-libp2p-producer-manifest.json ...
+   #   -> the --out path must equal MIDGARD_DEPLOYMENT_MANIFEST_PATH in .env
+   midgard register-operator
+   midgard activate-operator
+   ```
+
+   `listen` fails closed without `deploymentInfo/contract-deployment-info.json`
+   and the DA producer manifest. `deploymentInfo/` is gitignored and mounted
+   into the container, so the files written here are the ones the node reads.
+   Run `midgard deployment-status` to reconcile an existing identity before
+   repeating any of these.
+
+   `init` also creates the pooled DA committee bond and funds it with the pool
+   floor plus one DA bond from the `init` wallet: 505 ADA on the testing
+   profiles and 100,005 ADA on the public ones, on top of the other init costs.
+   See [DA bond pool commands](docs/da-bond-commands.md).
+
+7. Run the full stack:
+
+   ```sh
+   docker compose -f docker-compose.yaml -f docker-compose.kupmios.yaml up -d
+   ```
+
+   `docker-compose.dev.yaml` is a standalone no-monitoring variant of the base
+   file; combine it with the same overlay when you want an in-stack L1 without
+   Grafana, Loki, Tempo, and Prometheus.
+
+The node is up when `curl -s localhost:3000/readyz` reports ready. The compose
+port mapping and healthcheck are fixed at 3000; `PORT` only changes the port
+the process binds inside the container.
 
 You can view logs of `midgard-node` with `docker`:
 
@@ -185,8 +301,8 @@ If you made any changes to `midgard-node` and had an image running, restart it
 without deleting durable state:
 
 ```sh
-docker compose stop midgard-node
-docker compose up -d --build
+docker compose -f docker-compose.yaml -f docker-compose.kupmios.yaml stop midgard-node
+docker compose -f docker-compose.yaml -f docker-compose.kupmios.yaml up -d --build
 ```
 
 Only wipe Docker volumes or local MPF/PostgreSQL state as part of a full clean
@@ -203,40 +319,37 @@ POSTGRES_USER=postgres
 POSTGRES_PASSWORD=postgres
 POSTGRES_DB=midgard
 POSTGRES_HOST=localhost
-LEDGER_MPF_DB_PATH=midgard-ledger-mpf-db
-TRANSACTIONS_MPF_DB_PATH=midgard-transactions-mpf-db
+LEDGER_MPF_DB_PATH=db/midgard-ledger-mpf-db
+TRANSACTIONS_MPF_DB_PATH=db/midgard-transactions-mpf-db
 ```
 
 With a properly setup database, the following set of commands should start the
 most up to date `midgard-node`:
 
 ```sh
-# Optional
+# Optional: Node, pnpm, PostgreSQL and the Cardano services (docs/toolchain.md)
 nix develop
 
-# Bundle the SDK
-cd ../midgard-sdk
-pnpm install
-pnpm repack
-
-# Go back to `midgard-node` and force reinstallation of the SDK (faster than
-# `pnpm install --force`)
-cd ../midgard-node
-rm -rf node_modules
-pnpm install
+# Build the blueprint once (gitignored): cd onchain/aiken && aiken build --env testnet
+# From demo/midgard-node, install the pinned workspace dependencies.
+pnpm install --frozen-lockfile
+pnpm build
+node dist/index.js db:migrate
+# One-time protocol bring-up: see step 6 of "With Docker".
 pnpm listen
 ```
 
 ## Key Entry Points
 
 - `pnpm listen`: build and start the HTTP server plus background fibers.
-- `node dist/index.js prepare-hub-oracle-one-shot-nonce`: create a fresh marked
-  operator-wallet UTxO and print the `HUB_ORACLE_ONE_SHOT_*` values needed for a
-  clean protocol deployment.
+- `node dist/index.js prepare-hub-oracle-one-shot-nonce`: record the
+  deployment's L1 origin from the local node, then create a fresh marked
+  operator-wallet UTxO and print `L1_ORIGIN` and the `HUB_ORACLE_ONE_SHOT_*`
+  values needed for a clean protocol deployment.
 - `node dist/index.js deploy-reference-script-node-runtime`: generate the
   reference-script auth timelock policy, publish the node-runtime reference
   scripts with role tokens, and write the deployment-info manifest.
-- `pnpm init`: initialize hub-oracle, state-queue, operator roots, and
+- `pnpm run init`: initialize hub-oracle, state-queue, operator roots, and
   scheduler state.
 - `node dist/index.js export-contract-deployment-info --out <path>`: write a
   JSON manifest describing the currently configured validator bundle,
@@ -246,19 +359,14 @@ pnpm listen
   Midgard deposit contract for a target L2 address. Submitted deposits are
   journaled before confirmation wait so timeouts can be reconciled by tx hash.
 - `pnpm submit:l2-transfer`: build and submit a Midgard-native user transfer.
-- `node dist/index.js project-deposits-once`: fetch L1 deposit events once and
-  project newly visible deposits into the local Midgard ledger view.
-- `node dist/index.js create-l2-wallet`: create persisted local stress-wallet
-  seed records plus env/argument helper files for parallel fanout benchmarks.
-- `node dist/index.js stress-wallets:prepare`: fund, project, and verify
-  persisted stress wallets before parallel fanout benchmarks.
-- `node dist/index.js stress-wallets:fanout`: create resumable funding edges
-  for a large prepared wallet set.
-- `node dist/index.js stress-corpus-generate` and `stress-corpus-verify`:
-  create and stream-verify the signed NDJSON transaction corpus used by
-  repeatable benchmarks.
 - `pnpm audit:blocks-immutable`: inspect immutable block state and related
   persistence.
+- The one-command e2e stack, service supervisor, run finalizer, stress-wallet
+  tooling, corpus generator/verifier, bounded L2 stress harness, and the Phase
+  4 local-devnet acceptance gate are `midgard-node-tools` commands
+  (`../midgard-node-tools/dist/index.js`); see
+  [`../midgard-node-tools/README.md`](../midgard-node-tools/README.md). None
+  of them ship in this operator binary.
 - `pnpm stress:valid`: run the high-throughput valid-transaction submitter.
 
 ### Confirmation polling default
@@ -269,9 +377,11 @@ before a periodic full state-queue scan, so the shorter detection interval does
 not turn every poll into an O(queue length) provider request. Operators can set
 the variable back to `10000` as an operational rollback.
 
-`SPECULATIVE_COMMIT_BUILD` remains disabled by default until the Phase 3 MPF
-growth gate authorizes `MPF_ENGINE=overlay` as the default. Enabling speculation
-explicitly while using the legacy MPF engine fails configuration validation.
+The ledger MPF is always the Architecture G native owner, and the node
+refuses to start unless `MPF_NATIVE_OWNER_BINARY_PATH`,
+`MPF_NATIVE_OWNER_BINARY_SHA256` (lowercase 64-hex) and
+`MPF_NATIVE_OWNER_SIDECAR_PATH` are all set; see
+[Architecture G is the only MPF engine](../../docs/midgard/decisions/architecture-g-sole-mpf-engine.md).
 
 - `pnpm bench:l2:scenario:<name>`: run a named benchmark scenario and write a
   scenario artifact under `benchmark-results/<git-sha>/`.
@@ -288,18 +398,50 @@ default and return `schemaVersion: "midgard-e2e-reconciliation-v1"` plus
 ```sh
 node dist/index.js reconcile phas-registered --json [--repair]
 node dist/index.js reconcile reference-scripts-complete --scope node-runtime --json [--repair]
-node dist/index.js reconcile deposit-projected --cardano-tx-hash <hash> --json [--repair]
+node dist/index.js reconcile deposit-projected --cardano-tx-hash <hash> --json
 node dist/index.js reconcile tx-committed --tx-hash <l2-tx-id> --json
-node dist/index.js reconcile da-attested --header-hash <hash> --watcher-url <url> --contract-deployment-info deploymentInfo/contract-deployment-info.json --json [--repair]
+node dist/index.js reconcile da-attested --header-hash <hash> --committee-url <url> --contract-deployment-info deploymentInfo/contract-deployment-info.json --json [--repair]
 node dist/index.js reconcile block-committed --header-hash <hash> --json
 node dist/index.js reconcile merge-complete --header-hash <hash> --json [--repair]
+node dist/index.js reconcile retention-check --json [--alert-threshold-ms <ms>]
 ```
+
+`deposit-projected` is read-only. The running node's follower-change driver
+projects every due deposit; a standalone CLI process runs no driver, so there
+is no projection repair. Use `reconcile-deposit-submission` (below) to
+settle an unconfirmed deposit submission.
+
+`retention-check` counts the retained DA payloads (`checked`) and those still
+inside the challengeability horizon (`stillChallengeable`). Its deadline alert
+is opt-in: only with `--alert-threshold-ms` does it list, under `alerts`, each
+still-challengeable payload with at most that many milliseconds left (its
+remaining time and headroom), and exit 1 when it lists any. A listed payload is
+not at risk: every merged payload ages into the threshold on its normal way to
+pruning, so with blocks merging more often than the threshold some payload is
+always listed. Treat the output as information about upcoming pruning, not as a
+health gate. The threshold must be below the merged-payload window (block
+maturity / 2, the challengeability horizon minus block maturity), since a
+header merges no earlier than block maturity after its end time; a larger one
+would list every merged payload from the moment it merges. Without it `alerts`
+is empty and the check never fails on a deadline, since pruning never removes
+still-challengeable evidence.
 
 For deposit confirmation timeouts, use:
 
 ```sh
 node dist/index.js reconcile-deposit-submission --tx-hash <cardano-tx-hash> --json
 ```
+
+`merge-complete` is `satisfied` only when the header has left the state queue
+and its confirmed-merge local finalization job completed. Its `--repair` merges
+only the oldest queued block, and only under the running node's follower
+write permit. When the permit cannot be taken (a standalone CLI process runs
+no follower-change driver; a node's driver may be recomputing) nothing runs: it
+reports `blocked` with `merge_producer_permit` evidence and points at the
+node's admin `GET /merge`, which answers `503` in the same situation. A merge
+that landed without its local finalization (a restart, a hold timeout or a
+follower recompute during the confirmation wait) needs no repair: every merge
+attempt first finalizes each merge L1 confirmed that the database has not.
 
 If a reconciler reports `ambiguous`, do not blindly repeat the original
 state-changing step. Inspect the emitted evidence and next action first.
@@ -310,8 +452,8 @@ The main listener exposes a small operator-facing API. Common routes include:
 
 - `/deposit/build` for building unsigned L1 deposit transactions from a
   caller-supplied wallet view,
-- `/submit` for submitting raw Midgard canonical transaction CBOR with
-  `Content-Type: application/cbor`,
+- `/submit` for submitting the canonical V1 proof-submission envelope with
+  `Content-Type: application/vnd.midgard.v1+cbor`,
 - `/utxo` for querying one spendable Midgard mempool-ledger UTxO by raw
   TxOutRef CBOR hex,
 - `/utxos` for querying spendable Midgard mempool-ledger UTxOs either by
@@ -324,6 +466,86 @@ The listener also exposes admin/operator routes for initialization, state
 inspection, and operational control. See
 [`src/commands/listen-router.ts`](./src/commands/listen-router.ts) for the
 authoritative route graph.
+
+## Automatic L1 settlement
+
+`listen` starts and supervises settlement in its own worker thread. After a
+Deposit is committed and its settlement proof is available, the worker moves it
+into reserve. Valid finalized Withdrawals progress through payout initialization,
+reserve funding (as many inputs as needed), and payment to the recorded L1
+address and datum. History retirement protection and manifest confirmation depth
+still apply. Invalid withdrawals retain their existing refund flow.
+
+Run `db:migrate` when upgrading, and configure `L1_SETTLEMENT_SEED_PHRASE` with a
+funded wallet distinct from the commitment, merge and reference-script wallets.
+Keep both fee funds and a separate ADA-only collateral UTxO in it. Treat it as
+node-owned: do not use it in another process or manually spend its inputs.
+The phase 4 devnet funds this role along with the other wallets. No additional
+service or periodic operator command is required.
+
+The worker builds one transaction at a time, uses a two-connection database pool,
+and polls every five seconds. Event finalization enqueues work transactionally;
+idle polling uses indexes rather than scanning completed event history. UPLC
+execution and L1 confirmation waits stay outside L2 admission, commitment and
+merge workers. This isolates the main event loop and wallet inputs; the worker
+still consumes CPU, database and provider capacity on the same host.
+
+Signed bytes and fee inputs are persisted before submission. An attempt's L1
+outcome is the intent journal's derived status, never stored before it is final:
+landed at the confirmation depth lets its job take the next phase, a rollback
+below that depth reverts it, and the follower's prune step stores `final` once it
+landed more than k blocks deep. No other body is journaled while an attempt reads
+short of the confirmation depth. Rebuilding requires expiry and synchronized
+chain/indexer evidence; ambiguous submissions stay journaled. Attempts not yet
+final hold the history evidence they need.
+
+`/readyz` includes `settlement` health separately from L2 readiness. The
+`settlement_jobs` table retains retry deadlines and last errors, and
+`settlement_attempts` retains each signed attempt and whether it is final or
+expired. Fund the fee wallet
+when depleted; resolve an unhealthy provider or an ambiguous journal against the
+canonical chain rather than deleting journal rows. Previously completed manual
+settlements without a node receipt require reconciliation; missing UTxOs alone
+are never treated as proof of payment.
+
+## Operator Lifecycle
+
+The node exposes the operator lifecycle as CLI verbs: `register-operator`,
+`activate-operator`, `deregister-operator`, `retire-operator`,
+`force-retire-operator`, `recover-operator-bond`, `slash-duplicate-operator`,
+`strike-inactive-operator`, and `operator-status`, plus the admin-gated
+`GET /operator/status` route. Every verb runs a wallet funding preflight and
+refuses locally, in one line, before it spends anything. A watchdog fiber,
+enabled by `OPERATOR_WATCHDOG_ENABLED` (default `true`) with
+`OPERATOR_WATCHDOG_PATIENCE_MS` (default `120000`), strikes missed shifts
+automatically. See the operator lifecycle page in the docs site
+(`docs-site/content/docs/operators/node/operator-lifecycle.mdx`) for the
+vocabulary table, recovery paths, and the status report.
+
+## Validation-Trace Defense
+
+The node defends the blocks it accepted against validation-trace dispute
+cases, from the operator wallet and its defense pocket. Keep the operator
+wallet at least about 185 ADA above its normal commit float. See the
+[validation-trace defense runbook](docs/validation-trace-defense.md) for the
+funding, the pocket, the commit pause and every named state with its
+`/readyz` effect.
+
+Keep at least 4 GB of memory free for the node process above its ordinary
+working set. A defense rebuilds the accepted transaction's trace in a worker
+thread: at the deepest trace that admission allows (391,441 steps, 2026-10-22)
+the build takes about 8 s and peaks at about 1.9 GB, the same on every rebuild
+and after a restart. The 4 GB covers that peak plus about 2 GB of headroom.
+
+## DA Bond Pool and Availability Challenges
+
+One pooled DA bond backs every attestation of the DA committee. The `da-bond`
+command group reads the pool, tops it up (anyone may) and runs the owner
+quorum's two-step withdrawal through an offline multi-signer flow; see
+[DA bond pool commands](docs/da-bond-commands.md). The `availability-challenge`
+command group opens, answers, settles, closes and times out availability
+challenges from an isolated actor wallet; see
+[availability challenge commands](docs/availability-challenge-commands.md).
 
 ## Testing
 
@@ -340,15 +562,27 @@ cd midgard-node
 pnpm test
 ```
 
+The suite needs a Postgres server it can create sharded databases on
+(`POSTGRES_HOST`/`POSTGRES_PORT`/`POSTGRES_USER`/`POSTGRES_PASSWORD`, default
+`127.0.0.1:5433`, `postgres`/`postgres`). `scripts/start-test-postgres.sh` at
+the repository root starts one with the settings the tests assert
+(`synchronous_commit=on`), reusing any server already listening on the port.
+`pnpm test` builds the workspace packages' `dist/` first because the
+crash-probe tests spawn plain `node` child processes that load those packages
+from `dist/`.
+
 ## Submit A Midgard L2 Transfer
 
 Build and submit a key-signed Midgard-native transfer directly against the
-running node.
+running node. Give each transfer its own `--submission-id`, and reuse that ID
+to retry an interrupted transfer.
 
 ```sh
 cd midgard-node
 pnpm build
+export TRANSFER_SUBMISSION_ID="transfer-$(node -p 'crypto.randomUUID()')"
 node dist/index.js submit-l2-transfer \
+  --submission-id "$TRANSFER_SUBMISSION_ID" \
   --l2-address <destination-l2-address> \
   --lovelace 5000000
 ```
@@ -356,14 +590,17 @@ node dist/index.js submit-l2-transfer \
 Useful options:
 
 ```sh
+# Each example is a separate transfer: export a new TRANSFER_SUBMISSION_ID first.
 # Override the default USER_WALLET seed source.
 node dist/index.js submit-l2-transfer \
+  --submission-id "$TRANSFER_SUBMISSION_ID" \
   --l2-address <destination-l2-address> \
   --lovelace 5000000 \
   --wallet-seed-phrase-env USER_WALLET
 
 # Provide the seed phrase directly and send additional assets.
 node dist/index.js submit-l2-transfer \
+  --submission-id "$TRANSFER_SUBMISSION_ID" \
   --l2-address <destination-l2-address> \
   --lovelace 5000000 \
   --wallet-seed-phrase "<seed phrase>" \
@@ -381,6 +618,23 @@ Notes:
   deposit and L2 transfer flows.
 - The command queries `/utxos`, builds a balanced Midgard-native transaction
   with explicit change, and submits it to `/submit`.
+- With `--submission-id`, the signed transaction is written to a local journal
+  before it is submitted. If the command fails or is killed, rerun it with the
+  same ID and the same arguments: it never selects inputs or signs again. When
+  the node already knows the journaled transaction (any `/tx-status` other than
+  `not_found`) the rerun prints the saved result with that status; otherwise it
+  resubmits the exact journaled bytes. A failure that leaves the outcome
+  unknown (connection refused or reset, timeout, 5xx) says to rerun with the
+  same ID. Reusing an ID with a different signer, destination or value is
+  refused; a new transfer needs a new ID. The result also carries
+  `submissionId` and `signedTxCbor`.
+- The journal lives in `--submission-journal-dir`, else
+  `$MIDGARD_L2_TRANSFER_JOURNAL_DIR`, else `~/.midgard/l2-transfer-submissions`.
+  A rerun must see the same directory, so keep it on durable storage (not an
+  ephemeral container filesystem).
+- Without `--submission-id` every run builds, signs and submits a new
+  transfer. Rerunning after an ambiguous failure can then pay twice when the
+  wallet has other UTxOs.
 
 ## Build An Unsigned L1 Deposit
 
@@ -437,7 +691,74 @@ node dist/index.js prepare-hub-oracle-one-shot-nonce
 
 Copy the printed `HUB_ORACLE_ONE_SHOT_TX_HASH` and
 `HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX` into the deployment environment before
-publishing reference scripts or running `init`.
+publishing reference scripts or running `init`. Run it, and `init`, where the
+`L1_NODE_*` settings and the transport binary exist: in the compose stack,
+inside the `midgard-node` container (step 6 of the quick start).
+
+Before it signs a fresh nonce, the command reads the local node's tip
+(`L1_NODE_SOCKET_PATH`, `L1_NODE_CONFIG_PATH`, `L1_NODE_TRANSPORT_BINARY_PATH`)
+and waits until the profile's `confirmationDepth` blocks extend it; a tip that
+leaves the chain first is read again. The wait is bounded at ten times the
+expected time for those blocks, `confirmationDepth × slot_length_ms /
+active_slot_coeff × 10` from the profile (2,000 s at depth 10, 6,000 s at
+depth 30). A node that does not extend its tip within the bound fails the
+command with nothing signed; check that the local node is synced, then run it
+again. It records that point with the signed
+transaction in the run state and prints it as `L1_ORIGIN`. A resumed nonce
+keeps the recorded point; `--fresh-redeploy` reads a new one. Without a local
+node configured the command refuses before it signs anything.
+
+The finalized deployment manifest records that point as `l1Origin`, once
+finalization has proved it on the local node's chain and before the block
+holding `HUB_ORACLE_ONE_SHOT_TX_HASH`. Finalization (`init`,
+`reconcile deployment-manifest`, `export-contract-deployment-info`) reads it
+from the run state `--run-state` names (default `MIDGARD_RUN_STATE_PATH` or
+`deploymentInfo/midgard-run-state.json`) and refuses a run state for another
+hub-oracle nonce. A run state that records no origin cannot be finalized:
+start a new deployment with `prepare-hub-oracle-one-shot-nonce
+--fresh-redeploy`. The node's L1 follower starts at the manifest's
+`l1Origin`. `L1_ORIGIN=<slot>.<block hash>` overrides it; it is strict (a decimal slot
+without leading zeros, a dot, then the 64-character lowercase hex block hash)
+and is not part of the profile or manifest. An override after the recorded
+`l1Origin` leaves the follower unready (`origin_after_protocol_init`), since
+its store may lack outputs created between the two points; an earlier one is
+accepted. For a manifest without `l1Origin`, `L1_ORIGIN` is the origin: print
+the point before the nonce's block with `find-origin` in the `midgard-node`
+container (see the [follower README](../midgard-l1-follower/README.md#origin);
+network magic 1 preprod, 2 preview, 764824073 mainnet) and set the printed
+`l1Origin`:
+
+```sh
+docker compose -f docker-compose.yaml -f docker-compose.kupmios.yaml \
+  run --rm --no-deps midgard-node \
+  node node_modules/@al-ft/midgard-l1-follower/dist/cli.js find-origin \
+  --tx <HUB_ORACLE_ONE_SHOT_TX_HASH> --network-magic 1 \
+  --socket /ipc/node.socket --sidecar /usr/local/bin/midgard-l1-node-transport
+```
+
+The node's L1 follower runs only with an origin (`L1_ORIGIN` or the
+manifest's `l1Origin`), the hub-oracle one-shot and the local node
+(`L1_NODE_SOCKET_PATH`, `L1_NODE_CONFIG_PATH`,
+`L1_NODE_TRANSPORT_BINARY_PATH`). Without any of them the node reports
+`l1_follower_unconfigured` and ingests no deposits or withdrawals. The devnet
+and full-stack builders in `midgard-node-tools` take `L1_ORIGIN` from the
+deployment run state's recorded origin, prove it on their own local node
+precedes the nonce tx's block (`find-origin --recorded`), record it with the
+run, and refuse to write a node environment that leaves the follower
+unconfigured. A run state without a recorded origin is refused. For the full
+stack on preprod, an `L1_ORIGIN` in the stack env file must equal the recorded
+origin.
+
+Upgrading a node to a release that adds protocol validators to its follower's
+tracked set (the release that tracks the validation-trace dispute's holders is
+one) resets the follower's store at the first start and replays it from the
+origin (see [the tracked-set record](../midgard-l1-follower/README.md#the-tracked-set-record)).
+Until the replay is back at the tip the node is unready with
+`tracked_set_changed` and performs no duties: it commits no blocks and submits
+nothing. It needs no operator step, and a restart during the replay resumes it.
+The replay takes longer the longer the chain since the origin, so schedule the
+upgrade for a quiet period, with no forced transaction near its inclusion
+deadline.
 
 ```sh
 node dist/index.js deploy-reference-script-node-runtime
@@ -450,9 +771,27 @@ node dist/index.js reference-script-wallet-status --json
 ```
 
 The status separates explorer-like total ADA from plain ADA-only ADA that can be
-used for deployment funding. If stale script-ref or token-bearing ADA is present,
-use `node dist/index.js sweep-reference-script-wallet` as a dry run and execute
-it only after confirming the referenced scripts are retired.
+used for deployment funding. If a retired deployment's reference scripts are
+still present, reclaim them with
+`node dist/index.js sweep-reference-script-wallet --retired-auth-policy <policy-id>`.
+Without `--execute` it only prints the batch plan. The sweep spends only UTxOs
+that carry a reference script and a token of that retired policy, and it refuses
+the live auth policy and any script the live deployment uses. It burns the
+retired tokens while their policy is still satisfiable (pass
+`--retired-auth-policy-script`), and otherwise moves them to min-ADA quarantine
+outputs. Execute it with `--execute --i-am-retiring-reference-scripts`; batches
+are confirmed one at a time, and a rerun resumes from chain.
+
+If the operator wallet holds UTxOs that carry a reference script, free them with
+`node dist/index.js strip-operator-wallet-script-refs`. Without `--execute` it
+only prints the batch plan. It spends those UTxOs back to the operator address
+in outputs without a reference script, keeping their ADA and tokens; only the
+fee leaves the wallet. It refuses to run against the reference-script wallet,
+and it never spends the deployment's initialization nonce, as a strip input or
+for the fee. Batches are confirmed one at a time. The command runs without an L1
+follower, so nothing is journaled: a rerun re-reads the operator wallet from the
+provider and plans what is left, and a batch still in flight conflicts with its
+rebuild on the same inputs, so only one of them lands.
 
 ```sh
 cd midgard-node
@@ -465,8 +804,12 @@ Each entry has the shape:
 
 ```json
 {
-  "schemaVersion": "midgard-deployment-manifest-v2",
+  "schemaVersion": "midgard-deployment-manifest-v1",
   "manifestId": "...",
+  "consensusProfile": {
+    "profileId": "midgard-consensus-v1",
+    "protocolVersion": 1
+  },
   "network": "Preprod",
   "referenceScriptDeployAddress": "addr_test...",
   "hubOracleOneShot": {
@@ -488,7 +831,7 @@ Each entry has the shape:
       "state-queue minting": "StateQueueMint"
     },
     "postTimelockAudit": {
-      "required": true,
+      "required": false,
       "rule": "..."
     }
   },
@@ -513,22 +856,29 @@ which defaults to the separate reference-script wallet address
 production, set `L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS` to the intended
 non-spendable reference-script address and deploy fresh reference scripts.
 
-Reference-script deployment creates a timelock native minting policy and mints
-one role token into each published reference-script UTxO. The default window is
+Reference-script deployment creates a native minting policy requiring the
+selected publisher's signature and an expiry bound, and mints one role token
+into each published reference-script UTxO. The publisher wallet is independent
+of the reference-script output address. The default minting window is
 four hours (`REFERENCE_SCRIPT_AUTH_TIMELOCK_MS=14400000`), and publication fails
 before submitting a batch when less than
 `REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS` remains. The policy metadata is written
-to `referenceScriptAuthPolicy` in the manifest. After the timelock expires, the
-deployment must be audited before production use: for every token name listed in
+to `referenceScriptAuthPolicy` in the manifest. Once publication is confirmed,
+the deployment is audited immediately: for every token name listed in
 `referenceScriptAuthPolicy.tokenNames`, exactly one token under
-`referenceScriptAuthPolicy.policyId` must exist.
+`referenceScriptAuthPolicy.policyId` must exist. The publisher remains trusted
+not to issue additional role tokens while its minting window is open; protect
+that key accordingly. Readiness does not wait for the expiry. Historical
+time-only policies still require an audit after canonical expiry, because they
+do not require a publisher signature. Manifest verification derives the authority
+kind from the native policy bytes rather than trusting the audit flag alone.
 
-`deployment-status` reports both the v2 manifest verification result and live
+`deployment-status` reports both the V1 manifest verification result and live
 protocol deployment status. If a present manifest disagrees with configured
 network, one-shot outref, or reference-script deploy address, startup refuses to
 attach until config is corrected or a fresh redeploy is explicit.
 
-`init` now always writes the manifest. By default it goes to the repository root
+`init` now always writes the manifest. By default it goes to the node working directory
 at `deploymentInfo/contract-deployment-info.json`. If you want to override that
 path, pass:
 
@@ -539,58 +889,10 @@ node dist/index.js init \
 
 ## Parallel Fanout Stress Wallets
 
-Parallel fanout stress uses independent L2 wallets so concurrent workers do not
-race on the same wallet UTxO. Generate a larger pool once, source the generated
-env file, then prepare the subset needed for a run:
-
-```sh
-cd midgard-node
-pnpm build
-
-node dist/index.js create-l2-wallet \
-  --count 128 \
-  --out-dir .stress-wallets
-
-. .stress-wallets/stress-wallets.env
-
-node dist/index.js stress-wallets:prepare \
-  --count 64 \
-  --lovelace-per-wallet 12000000 \
-  --out-dir .stress-wallets
-```
-
-`stress-wallets:prepare` reads existing wallet JSON files, creates missing files
-only when `--create-missing` is passed, submits one deposit for each wallet that
-does not already have sufficient spendable L2 funding, runs deposit projection,
-and verifies each wallet through the node's `/utxos?address=...` endpoint. The
-wallet directory contains private seed phrases and is gitignored.
-
-After preparation, pass the generated argument file to the stress runner. Use 16
-as the first serious concurrency target, then 32 and 64:
-
-```sh
-STRESS_WALLET_ARGS="$(tr '\n' ' ' < .stress-wallets/stress-wallets.args)"
-
-node dist/index.js e2e-stress-l2-throughput \
-  --mode parallel-fanout \
-  --count 256 \
-  --concurrency 16 \
-  $STRESS_WALLET_ARGS
-
-node dist/index.js e2e-stress-l2-throughput \
-  --mode parallel-fanout \
-  --count 512 \
-  --concurrency 32 \
-  --unsafe-allow-large-stress \
-  $STRESS_WALLET_ARGS
-
-node dist/index.js e2e-stress-l2-throughput \
-  --mode parallel-fanout \
-  --count 1024 \
-  --concurrency 64 \
-  --unsafe-allow-large-stress \
-  $STRESS_WALLET_ARGS
-```
+Stress-wallet creation, funding, fan-out, and the bounded
+`e2e-stress-l2-throughput` harness moved to `midgard-node-tools`; see
+[`../midgard-node-tools/README.md`](../midgard-node-tools/README.md). They
+drive this node from the outside and are not part of its binary.
 
 ## Valid Throughput Stress Test
 
@@ -601,20 +903,22 @@ accepted, committed, and merge rates from client and Prometheus evidence. The
 `e2e-stress-l2-throughput` CLI separately collects SQL-grounded stage metrics
 for functional/e2e stress runs.
 
-Generate the corpus from already prepared stress-wallet snapshots, then verify
+Generate the corpus from already prepared stress-wallet snapshots with the
+tooling CLI (built with `pnpm --dir ../midgard-node-tools build`), then verify
 it before use:
 
 ```sh
 cd demo/midgard-node
+TOOLS_CLI=../midgard-node-tools/dist/index.js
 
-node dist/index.js stress-corpus-generate \
+node "$TOOLS_CLI" stress-corpus-generate \
   --target-rate-tps 2500 \
   --duration-ms 300000 \
   --wallets-dir .stress-wallets \
   --out-dir corpus/accept-2500 \
   --yes
 
-node dist/index.js stress-corpus-verify \
+node "$TOOLS_CLI" stress-corpus-verify \
   --corpus-path corpus/accept-2500/corpus.ndjson \
   --rebuild-wallets-dir .stress-wallets
 ```
@@ -647,7 +951,10 @@ The benchmark env also requires no-op calibration by default: start
 server, or explicitly disable the requirement for a non-gating diagnostic run.
 
 For an isolated Compose run, layer `docker-compose.benchmark.yaml` over the
-normal stack and set deployment-specific values in `.env.benchmark`. The
+normal stack and set deployment-specific values in `.env.benchmark` (optional;
+start from `scripts/stress.benchmark.env`). The overlay runs the node without
+`--with-monitoring`, so nothing is exported to a tempo host unless you also add
+`--profile observability`. The
 optional cohosted load generator is behind the `load-generator-cohosted`
 profile; a separate load-generator host is the preferred topology.
 
@@ -667,8 +974,8 @@ Additional run matrix:
 
 Notes:
 
-- Corpus mode reads canonical transaction bytes from NDJSON and submits raw
-  CBOR to `/submit` with `Content-Type: application/cbor`.
+- Corpus mode reads canonical transaction bytes from NDJSON and submits a
+  canonical proof-submission envelope to `/submit` with `Content-Type: application/vnd.midgard.v1+cbor`.
 - The legacy no-corpus mode still reads test wallets and `/utxos`; do not use
   that mode for repeatable acceptance or regression evidence.
 - It uses pooled Undici HTTP clients and supports `STRESS_MODE=closed`,
@@ -729,30 +1036,23 @@ ACTIVITY_METRICS_ENDPOINT=http://127.0.0.1:9464/metrics
 
 ## DA Payload Hardening and Rollout
 
-DA payload storage and transport accept two durable formats: schema 2 is the
-historical raw canonical `DaPayloadV2` CBOR; schema 3 is a canonical envelope
-containing the exact inner schema-2 bytes, their decoded length and SHA-256,
-and either identity or zstd content.
+DA payload storage and transport accept one durable format:
+`DaPayloadEnvelope`. It contains exact `DaPayload` bytes, their decoded
+length and SHA-256, and an explicit `identity` or `zstd` content encoding.
+Raw payload storage, an `off` mode, and format inference are rejected.
 
 Both the stored/transmitted envelope and its declared and actual decoded
 content are capped by the pinned DA protocol limit. Zstd decoding uses
 `maxOutputLength`, then verifies exact length and inner SHA-256 before the
 existing strict payload validator runs. Midgard node and committee runtimes
-therefore require Node.js 22.15 or newer.
-
-Roll out decoder-first: deploy the schema-3 decoder to every producer,
-committee member, watcher, and proof reader; leave
-`MIDGARD_DA_PAYLOAD_ENVELOPE=off`; canary `identity`; then enable `zstd` only
-after committee capability is confirmed. The immediate producer rollback is
-`MIDGARD_DA_PAYLOAD_ENVELOPE=off`. Decoders remain schema-2/schema-3 capable so
-already stored envelopes stay readable.
+therefore require the Node.js version floor declared in `demo/package.json` (currently 22.16).
 
 Retained-payload and fault-proof consumers preserve the stored artifact as the
 hash identity. They carry `payloadSchemaVersion` from retained metadata, verify
 the stored-byte SHA-256, and then use the pinned-bound envelope unwrap before
-strictly decoding the inner `DaPayloadV2`. Fault-proof callers should use
-`reconstructRetainedDaPayloadV2` when starting from a retained libp2p result;
-the package's decoder-first guard rejects new direct stored-byte V2 decoders.
+strictly decoding the inner `DaPayload`. Fault-proof callers should use
+`fetchRetainedDaPayloadByHeaderHash` followed by `reconstructDaPayload`;
+unsupported or malformed envelope and payload versions fail closed.
 
 Publication returns once the manifest threshold accepts. Slow peers continue
 as detached, bounded stragglers. The `da_payload_publications` durable outbox
@@ -776,5 +1076,4 @@ acceptance threshold deliberately have no environment override.
 
 - [Root repository guide](../../README.md)
 - [Midgard SDK guide](../midgard-sdk/README.md)
-- [Preprod deposit and send-tx runbook](./docs/PREPROD_DEPOSIT_AND_SEND_TX.md)
 - [Technical specification guide](../../technical-spec/README.md)

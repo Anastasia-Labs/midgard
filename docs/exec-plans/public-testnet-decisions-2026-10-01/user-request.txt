@@ -1,0 +1,74 @@
+A1. I want us to do (a) 
+Give the node a bounded payload-by-header client (reuse the watcher's `WatcherPublicDaClientV1`), with bounded retry and a self-clearing give-up. You can decide whether (b) is still worth keeping if we have (a) or whether (a) solves the problem entirely and thus make (b) just extra in which case get rid of (b).
+
+A2. I don't have enough context to make an informed decision here. What are the tradeoffs? what is the current problem? Does it crash the node? Does the proposed fix address that and make it so it doesn't crash?
+
+A3. What prunes `foreign_tip_reconciliations`, at what horizon?
+How much space do foreign_tip_reconcilitations take up (ballpark estimate)? What does foreign_tip_reconcilitations  even store, what is it, what purpose does it serve?  I think we should proceed with your recommendation here.
+
+### A4. One general retention ruling instead of four patches
+I agree with the proposed recommendation here. 
+I do still have a question, what does this mean:
+This one ruling also covers the trusted-head record floor and the
+replay-transcript archive's 100,000-row / 64 GiB ceilings.
+
+### A5. Availability-journal halt — journal-wide, or per-intent?  **(BLOCKING)**
+I don't have enough information here to make an informed decision. What are the implications of doing your recommendation here? How does a refusal even occur in the first place / what is a contradicted intent and how can it come to exist? Give me the full context here so I can make an informed decision.
+
+### A6. DA payload size cliff — confirm the scope
+Why does it need to carry the entire UTxO set? Shouldn't it just carry the transactions themselves and then consumers of it can independently derive the UTxO set from applying those txs to their own UTxO set? Do some research on how other L2s approach this, do they pass around ledger state in the DA payload or just txs? Give me a recommendation on how we should approach this after performing that research. 
+
+### A7. Watcher refuses to boot after a legitimate protocol-parameter update
+Fix this. I'm not even sure that we need to refuse the funding operations that depend on the changed parameters, I think that it should be able to just rebuild and retry those transactions if a protocol parameters update occurred that invalidated the ones they built. 
+
+### A8. Access policy on payload-submit
+With an understanding of what midgard is and what we are trying to achieve, research the problem and design a proposed approach the best policy for Midgard for this. 
+
+### A9. Bind `/healthz` + `/readyz` before the router?
+Sure bind it first.
+
+### A10. Auto re-register, spending a 900 ADA bond?
+An operator node should not automatically reregister if it has been removed from the active operators set. The only way it could have been removed is if it committed fault or it failed to meet it's activity requirements while it was scheduled too many times. The node should report unready, and then shutdown.
+
+## Part B — the seven still deferred from the earlier waves
+B1. Sure raise it.
+B2. Not sure we would want to automatically top up the bond. The only way the bond should go down below the required threshold is if fault proof happened. The only time this should be automatic is if this is during setup, ie. bond has never been funded yet. 
+B3. I don't understand the question here, I need you to give me the relevant context in plain english without jargon so I can make an informed decision here.
+B4. I dont have the required context to make this decision, explain the full picture here so I understand and can make an informed decision also give your recommendation.
+B5. What do you recommend here? 
+B6. Explain what the proposed upstream change is, what problem does it fix? Give me the full picture so I can make informed decision. 
+B7. again I don't have enough context to make an informed decision here, what do you recommend, what is the problem with the current approach and what does the recommendation address?
+
+D1. Do your research, think about the possible solutions and their tradeoffs, is there anyway we could solve this at a deeper level / try to find the best solution with the best tradeoff, and then give me your recommended solutions.
+
+D2. When could the supervisor throw / crash? I would imagine that just having the OS restart it would not actually solve the problem. We should be restarting for problems that are temporary / can be resolved programmatically via standard methods employed by other blockchains / L2s / protocols and not trying to like automate fixing of stuff that a human would normally be expected to intervene in, not just restarting to death loop. The best approach here is to just make supervisor reliable and hardened so it doesn't crash when it shouldn't. 
+
+### D3. B4 (terminal quarantine → RECOVERING) now has a measured price — please rule it
+Gather the required context to decide the best approach for this. Think about tradeoffs, alternative approaches etc, and propose the approach that you judge as the best. 
+
+### D4. Three provider-identity questions from the slot/provider lane
+Gather the required context to decide the best approach for this. Think about tradeoffs, alternative approaches etc, and propose the approach that you judge as the best. 
+
+### D5. Where should the DA payload warning threshold sit?
+Gather the required context to decide the best approach for this. Think about tradeoffs, alternative approaches etc, and propose the approach that you judge as the best. 
+
+### E1. Multi-operator interim throughput 
+We want to support multi-operator in the public testnet launch so gather the required context and decide the best approach to supporting that with maximal throughput. 
+
+### E2. A protocol gap, not a code bug: an honest descendant can have no safe move
+Gather the required context to decide the best approach for this. Think about tradeoffs, alternative approaches etc, and propose the approach that you judge as the best. 
+
+### E3. Catch-up after *correct* pruning
+Gather the required context to decide the best approach for this, do your research on how other blockchains / L2s approach this. Think about tradeoffs, alternative approaches etc, and propose the approach that you judge as the best to make Midgard competitive with Optimism / other leading competitors.
+
+### E4. A pre-existing soundness hole, for your awareness
+File this as an issue on github under a fault proof program.
+
+### F3 (new finding, needs a decision only on priority) — a user can halt block production permanently by filling the mempool
+Gather the required context to decide the best approach for this, do your research on how other blockchains / L2s approach this. Think about tradeoffs, alternative approaches etc, and propose the approach that you judge as the best to make Midgard competitive with Optimism / other leading competitors.
+
+
+
+Answer all my questions in plain english without jargon. Each of the individual items above which aren't simply me prescribing a decision or accepting your recommendation, should be assigned to their own subagent who should produce their recommendation in a document. 
+
+At the end, you should compile all the recommendations into a report for me, explaining each one thoroughly and their tradeoffs / implications along with justifications for why this is the best approach if you agree that it is or concerns about why it may not be. 

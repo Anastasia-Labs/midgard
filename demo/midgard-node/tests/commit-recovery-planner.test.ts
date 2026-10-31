@@ -5,7 +5,7 @@ import {
   shouldAttemptLocalFinalizationRecovery,
   shouldDeferCommitSubmission,
   shouldSkipIdleCommitBehindUnmergedTail,
-} from "@/workers/utils/commit-block-planner.js";
+} from "../src/workers/utils/commit-block-planner.js";
 
 describe("commit recovery planner", () => {
   it("attempts recovery only when pending + confirmed block available", () => {

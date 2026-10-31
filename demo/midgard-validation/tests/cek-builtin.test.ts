@@ -1,0 +1,9 @@
+import "@al-ft/midgard-core";
+import "vitest";
+import "../src/cek-builtin.js";
+import "../src/cek-constant.js";
+import "./cek-builtin.v1-arm-exclusivity.js";
+import "./cek-builtin.v1-bls-point-validity.js";
+import "./cek-builtin.v1-builtin-runtime-type-failures.js";
+import "./cek-builtin.v1-direct-builtin-execution.js";
+import "./cek-builtin.v1-scalar-mul-bound.js";

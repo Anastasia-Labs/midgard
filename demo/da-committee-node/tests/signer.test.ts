@@ -1,15 +1,36 @@
+import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
+import {
+  availabilityResponseGeometry,
+  buildDaAvailabilityCommitment,
+  daAvailabilityAttestationMessage,
+} from "@al-ft/midgard-sdk";
 import { CML, walletFromSeed } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import {
-  daAttestationMessage,
   loadDaSigner,
   signDaAttestation,
   validateDaSignerMembership,
   verifyDaSignatureWitness,
 } from "../src/signer.js";
 import { bytesToHex } from "../src/utils/hex.js";
+
+// The ledger's Ed25519 check is libsodium's, which initialises
+// asynchronously; production entry points await it, and so does this file.
+beforeAll(() => ledgerEd25519SignatureReady());
+
+const availabilityCommitment = (headerHash: string) =>
+  buildDaAvailabilityCommitment({
+    deploymentIdentity: "11".repeat(28),
+    headerHash,
+    payload: Uint8Array.from([1, 2, 3, 4]),
+    responseGeometry: availabilityResponseGeometry({
+      chunkByteLength: 4095,
+      trancheByteLength: 4 * 1024 * 1024,
+      maxTrancheCount: 16,
+    }),
+  });
 
 describe("DA signer", () => {
   it("validates committee membership and produces a stable witness vector", async () => {
@@ -28,18 +49,19 @@ describe("DA signer", () => {
       signerIndex: 0,
     });
     const headerHash = "ab".repeat(28);
+    const commitment = availabilityCommitment(headerHash);
     const witness = signDaAttestation({
       signer,
       signerIndex: validation.signerIndex,
-      headerHash,
+      availabilityCommitment: commitment,
     });
     expect(witness).toBe(
-      "00bc603b32eaff4cf125a120de253d11ff77f8d1c3c4166956afe8be3a1231b496a42a653d7c8b90f2585a809a9dfaff3aba0c03ae5a3f78ca72f8cb63c3623908",
+      "00577a709e42cd9b826188027531a3d6f238e1d840869dc71dbf84d6fd35ecedbd70883e6a731886216633dd85e8364e4c4044cb38af76f9b41ab5718f92517000",
     );
     expect(
       verifyDaSignatureWitness({
         publicKeyHex: signer.publicKeyHex,
-        headerHash,
+        availabilityCommitment: commitment,
         witnessHex: witness,
       }),
     ).toBe(true);
@@ -65,21 +87,24 @@ describe("DA signer", () => {
   it("loads the Midgard demo Cardano payment key from a seed phrase", async () => {
     const seedPhrase =
       "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
-    const wallet = walletFromSeed(seedPhrase, { network: "Preview" });
+    const wallet = walletFromSeed(seedPhrase, { network: "Preprod" });
     const cardanoPrivateKey = CML.PrivateKey.from_bech32(wallet.paymentKey);
     const signer = await loadDaSigner(`cardano-seed:${seedPhrase}`);
     const headerHash = "cd".repeat(28);
+    const commitment = availabilityCommitment(headerHash);
     const witness = signDaAttestation({
       signer,
       signerIndex: 0,
-      headerHash,
+      availabilityCommitment: commitment,
     });
 
     expect(signer.publicKeyHex).toBe(
       Buffer.from(cardanoPrivateKey.to_public().to_raw_bytes()).toString("hex"),
     );
     expect(witness.slice(2)).toBe(
-      cardanoPrivateKey.sign(daAttestationMessage(headerHash)).to_hex(),
+      cardanoPrivateKey
+        .sign(Buffer.from(daAvailabilityAttestationMessage(commitment)))
+        .to_hex(),
     );
   });
 });

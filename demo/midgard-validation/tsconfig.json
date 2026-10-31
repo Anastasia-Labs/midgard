@@ -4,10 +4,12 @@
     "allowUnusedLabels": false,
     "declaration": true,
     "forceConsistentCasingInFileNames": true,
-    "lib": ["es2020", "dom"],
+    "lib": ["es2022", "dom"],
     "esModuleInterop": true,
     "module": "NodeNext",
     "moduleResolution": "nodenext",
+    "customConditions": ["midgard-source"],
+    "resolveJsonModule": true,
     "noEmitOnError": true,
     "noFallthroughCasesInSwitch": true,
     "noImplicitReturns": true,
@@ -21,6 +23,6 @@
     "outDir": "dist",
     "baseUrl": "."
   },
-  "include": ["src", "tests"],
+  "include": ["src", "tests", "bench"],
   "exclude": ["node_modules", "dist"]
 }

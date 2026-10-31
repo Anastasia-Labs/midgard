@@ -8,11 +8,13 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { createSlotAwareDueWorkRegistry } from "@/fibers/slot-aware-due-work.js";
-import { NoInlineSubmitDefer } from "@/transactions/utils.js";
+import { createSlotAwareDueWorkRegistry } from "../src/fibers/slot-aware-due-work.js";
+import { NoInlineSubmitDefer } from "../src/transactions/utils.js";
+import { resolveLatestFeasibleCommitEndTime } from "../src/workers/utils/commit-end-time.js";
 import {
   captureSchedulerSlotSnapshot,
   filterLocallyConsumedUtxos,
+  latestSchedulerShiftHeaderEndTime,
   type NodeUtxoWithDatum,
   requireExistingSchedulerWitnessUtxo,
   resolveRefreshedSchedulerStartTime,
@@ -27,7 +29,7 @@ import {
   schedulerRefreshStartTimeModeForSpendingScriptHash,
   schedulerSlotSnapshotFromSubmitSlot,
   schedulerStateCoversCommitTarget,
-} from "@/workers/utils/scheduler-refresh.js";
+} from "../src/workers/utils/scheduler-refresh.js";
 
 const mkUtxo = (txHash: string, outputIndex: number): UTxO =>
   ({
@@ -184,7 +186,7 @@ describe("scheduler refresh witness selection", () => {
     expect(
       filterLocallyConsumedUtxos(
         [stale, fresh],
-        [`${stale.txHash}#${stale.outputIndex}`],
+        new Set([`${stale.txHash}#${stale.outputIndex}`]),
       ),
     ).toEqual([fresh]);
   });
@@ -211,7 +213,7 @@ describe("scheduler refresh witness selection", () => {
     };
 
     const snapshot = schedulerSlotSnapshotFromSubmitSlot(lucid as never, {
-      source: "local_ogmios_tip",
+      source: "l1_node_tip",
       currentSlot: 12,
       observedAtMs: 1_779_149_999_000,
       slotLengthMs: 1_000,
@@ -267,6 +269,34 @@ describe("scheduler refresh witness selection", () => {
 
     expect(window.validFrom).toBe(96_000n);
     expect(window.validFrom).toBeGreaterThanOrEqual(95_500n);
+    expect(window.validTo - window.validFrom).toBe(8n * 60n * 1000n);
+  });
+
+  it("puts a refresh lower bound at or after a mid-slot shift boundary on slots longer than one second", () => {
+    // 20 s slots starting at 500 ms: boundaries at 80_500, 100_500, ...
+    const twentySecondSlots = {
+      slotToUnixTime: (slot: number) => 500 + slot * 20_000,
+      unixTimeToSlot: (unixTime: number) =>
+        Math.floor((unixTime - 500) / 20_000),
+    };
+    const shiftBoundary = 95_500;
+    const window = resolveSchedulerRefreshValidityWindow(
+      twentySecondSlots as never,
+      schedulerStartForShiftBoundary(shiftBoundary),
+      {
+        currentSlot: 5,
+        currentSlotStartMs: 100_500,
+        observedAtMs: 101_000,
+      },
+    );
+    // Lucid floors validFrom to its slot; the presented lower bound must not
+    // precede the shift end (scheduler.ak: inclusive_lower_bound >= end).
+    const presentedLowerBound = twentySecondSlots.slotToUnixTime(
+      twentySecondSlots.unixTimeToSlot(Number(window.validFrom)),
+    );
+    expect(window.validFrom).toBe(100_500n);
+    expect(BigInt(presentedLowerBound)).toBe(window.validFrom);
+    expect(presentedLowerBound).toBeGreaterThanOrEqual(shiftBoundary);
     expect(window.validTo - window.validFrom).toBe(8n * 60n * 1000n);
   });
 
@@ -354,6 +384,42 @@ describe("scheduler refresh witness selection", () => {
     ).toBe(false);
   });
 
+  it("caps the scheduler window at the latest header end whose validTo the shift still covers", () => {
+    const operatorKeyHash = "aa";
+    // AppointFirst writes start_time = validTo - 1, so a live shift start is
+    // one millisecond before a slot boundary, and so is its shift end.
+    const currentSchedulerState = {
+      operator: operatorKeyHash,
+      startTime: 1_000_999n,
+    };
+    const covers = (validTo: bigint) =>
+      schedulerStateCoversCommitTarget({
+        currentSchedulerState,
+        operatorKeyHash,
+        targetStartTime: validTo,
+      });
+    const latestHeaderEnd = latestSchedulerShiftHeaderEndTime(
+      currentSchedulerState,
+    );
+    // The header end is the inclusive upper bound; its validTo is one past it.
+    expect(covers(latestHeaderEnd + 1n)).toBe(true);
+    expect(covers(latestHeaderEnd + 2n)).toBe(false);
+
+    // The planner's consumer takes the window end as an inclusive cap and
+    // picks the latest slot-aligned validTo at or below cap + 1. That validTo
+    // must stay inside the shift the covers check accepts.
+    const fit = resolveLatestFeasibleCommitEndTime({
+      lucid: customSlotLucid as never,
+      latestEndTime: Number(currentSchedulerState.startTime),
+      nowMs: Number(currentSchedulerState.startTime),
+      minimumFutureBufferMs: 0,
+      maximumEndTimeMs: Number(latestHeaderEnd),
+    });
+    expect(fit.status).toBe("fits");
+    expect(covers(BigInt(fit.resolvedEndTime))).toBe(true);
+    expect(covers(BigInt(fit.resolvedEndTime) + 1_000n)).toBe(false);
+  });
+
   it("rejects end-of-shift refresh starts before the previous shift end", () => {
     const previousStart = 1_000_000n;
     const previousShiftEnd = previousStart + SDK.SHIFT_DURATION_MS;
@@ -376,7 +442,7 @@ describe("scheduler refresh witness selection", () => {
     const emulator = new Emulator([operator]);
     const lucid = await Lucid(emulator, "Custom");
     lucid.selectWallet.fromSeed(operator.seedPhrase);
-    await emulator.awaitSlot(60);
+    emulator.awaitSlot(60);
 
     const snapshot = captureSchedulerSlotSnapshot(lucid);
     const targetCommitEndTime = BigInt(
@@ -401,6 +467,62 @@ describe("scheduler refresh witness selection", () => {
     );
   });
 
+  it("puts first-appointment validTo on the slot boundary the ledger presents for a mid-slot commit target", async () => {
+    const operator = generateEmulatorAccount({ lovelace: 50_000_000n });
+    const emulator = new Emulator([operator]);
+    const lucid = await Lucid(emulator, "Custom");
+    lucid.selectWallet.fromSeed(operator.seedPhrase);
+    emulator.awaitSlot(60);
+
+    const snapshot = captureSchedulerSlotSnapshot(lucid);
+    // The live commit target is `Date.now() + buffer`, which falls mid-slot.
+    const targetCommitEndTime = BigInt(
+      snapshot.currentSlotStartMs + 7 * 60 * 1000 + 327,
+    );
+
+    const window = resolveSchedulerFirstAppointmentValidityWindow(
+      lucid,
+      targetCommitEndTime,
+      snapshot,
+    );
+    const ledgerUpperBoundExclusive = BigInt(
+      lucid.slotToUnixTime(lucid.unixTimeToSlot(Number(window.validTo))),
+    );
+    const startTime = resolveRefreshedSchedulerStartTime({
+      selection: {
+        kind: "AppointFirst",
+        activeNode: mkNode("22".repeat(32), 0, {
+          key: { Key: { key: "bb" } },
+          next: "Empty",
+          data: "00" as SDK.LinkedListNodeView["data"],
+        }),
+        registeredWitnessNode: mkNode("33".repeat(32), 0, {
+          key: "Empty",
+          next: "Empty",
+          data: "00" as SDK.LinkedListNodeView["data"],
+        }),
+      },
+      currentSchedulerState: undefined,
+      validFrom: window.validFrom,
+      validTo: window.validTo,
+    });
+
+    expect(window.validTo).toBe(ledgerUpperBoundExclusive);
+    expect(window.validTo).toBe(targetCommitEndTime - 327n);
+    // AppointFirstOperator requires start_time == inclusive upper bound.
+    expect(startTime).toBe(ledgerUpperBoundExclusive - 1n);
+    expect(
+      schedulerStateCoversCommitTarget({
+        currentSchedulerState: {
+          operator: "bb",
+          startTime,
+        },
+        operatorKeyHash: "bb",
+        targetStartTime: targetCommitEndTime,
+      }),
+    ).toBe(true);
+  });
+
   it("keeps scheduler refresh confirmation wait tolerant of live preprod confirmation latency", () => {
     expect(SCHEDULER_SUBMISSION_CONFIRMATION_TIMEOUT_MS).toBe(5 * 60_000);
     expect(SCHEDULER_SUBMISSION_CONFIRMATION_TIMEOUT_MS).toBeLessThan(
@@ -421,7 +543,7 @@ describe("scheduler refresh witness selection", () => {
         deltaSlots: 10,
         waitMs: 10_000,
         slotLengthMs: 1_000,
-        slotSource: "local_ogmios_tip",
+        slotSource: "l1_node_tip",
         invalidBeforeSlot: 28,
         invalidHereafterSlot: 40,
         reason: "wait_ms=10000,max_inline_wait_ms=5000",
@@ -441,7 +563,7 @@ describe("scheduler refresh witness selection", () => {
         dueSlot: 30,
         dueAtMs: 11_000,
         waitMs: 10_000,
-        slotSource: "local_ogmios_tip",
+        slotSource: "l1_node_tip",
         dependencyKey: "scheduler=tx#0,current_operator=aa",
         invalidationKey: "scheduler=tx#0,current_operator=aa",
       },
@@ -469,7 +591,7 @@ describe("scheduler refresh witness selection", () => {
       schedulerRefreshDueWorkFromNoInlineSubmitDefer({
         defer,
         localSubmitSlot: {
-          source: "local_ogmios_tip",
+          source: "l1_node_tip",
           currentSlot: 12,
           observedAtMs: 1_000,
           slotLengthMs: 1_000,
@@ -487,7 +609,7 @@ describe("scheduler refresh witness selection", () => {
         dueSlot: 17,
         dueAtMs: 6_000,
         waitMs: 5_000,
-        slotSource: "local_ogmios_tip",
+        slotSource: "l1_node_tip",
         dependencyKey: "scheduler=tx#0,current_operator=aa",
         invalidationKey: "scheduler=tx#0,current_operator=aa",
       },
@@ -520,7 +642,7 @@ describe("scheduler refresh witness selection", () => {
     const dueWork = schedulerRefreshDueWorkFromNoInlineSubmitDefer({
       defer,
       localSubmitSlot: {
-        source: "local_ogmios_tip",
+        source: "l1_node_tip",
         currentSlot: 12,
         observedAtMs: 1_000,
         slotLengthMs: 1_000,
@@ -558,7 +680,7 @@ describe("scheduler refresh witness selection", () => {
     expect(
       schedulerRefreshRequiredOutsideMutationWorkerDueWork({
         submitTimingSnapshot: {
-          source: "local_ogmios_tip",
+          source: "l1_node_tip",
           currentSlot: 30,
           observedAtMs: 7_000,
           slotLengthMs: 1_000,
@@ -578,7 +700,7 @@ describe("scheduler refresh witness selection", () => {
         dueSlot: 31,
         dueAtMs: 8_000,
         waitMs: 1_000,
-        slotSource: "local_ogmios_tip",
+        slotSource: "l1_node_tip",
         dependencyKey: "scheduler=tx#0,current_operator=aa",
         invalidationKey: "scheduler=tx#0,current_operator=aa",
       },

@@ -1,38 +1,236 @@
-import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 
-import path from "path";
+import { durationShards } from "@al-ft/midgard-test-support/duration-shards";
+import {
+  blueprintStampGlobalSetup,
+  interactiveEmulatorBlueprint,
+  interactiveEmulatorPlugin,
+  interactiveEmulatorSetup,
+  isolatedForksPool,
+  midgardSourceEnvironments,
+  rawSqlLoaderPlugin,
+  runSharedFixturesGlobalSetup,
+  workspaceBundleProjects,
+} from "@al-ft/midgard-test-support/vitest";
 import { configDefaults, defineConfig } from "vitest/config";
 
+import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
+
+/**
+ * Files that talk to Postgres.
+ *
+ * Invariant: a database-touching file must not run concurrently with another
+ * database-touching file on the same database — several of these clear whole
+ * tables, so a neighbour's rows would vanish mid-assertion. The suite holds the
+ * invariant by sharding rather than by serializing: `tests/test-env.ts` pins
+ * each worker to `midgard_test_w${VITEST_POOL_ID}` and a fork-pool worker only
+ * ever runs one file at a time, so no two files share a database. Keep this
+ * inventory current — it is the list `tests/global-setup.ts` provisions shards
+ * for, and the reason the shard scheme exists.
+ *
+ *   tests/admission-writer.test.ts
+ *   tests/da-publication-reconciler-e2e.test.ts        (opt-in)
+ *   tests/event-history-submission-backstop-emulator.test.ts
+ *   tests/event-history-submission-emulator.test.ts
+ *   tests/event-history-submission-concurrency-emulator.test.ts
+ *   tests/event-history-submission-journal.test.ts
+ *   tests/event-history-submission-publication-expiry-emulator.test.ts
+ *   tests/event-history-submission-reservations.test.ts
+ *   tests/event-history-submission-revival-emulator.test.ts
+ *   tests/event-history-submission-same-id-emulator.test.ts
+ *   tests/event-history-submission-takeover-emulator.test.ts
+ *   tests/settlement-journal.test.ts
+ *   tests/settlement-ownership-handoff.test.ts
+ *   tests/settlement-tick-reporting.test.ts
+ *   tests/native-mpf-local-finalization.test.ts
+ *   tests/signed-intent-response-loss-emulator.test.ts
+ *   tests/signed-intent-restart-emulator.test.ts
+ *   tests/signed-intent-continuation-emulator.test.ts
+ *   tests/commit-replacement-state-queue-emulator.test.ts
+ *   tests/orphan-funded-transfer-repair-emulator.test.ts
+ *   tests/working-ledger-rebuild-order.test.ts
+ *   tests/node-instance-lock.test.ts
+ *   tests/commit-planning-notice.test.ts
+ *   tests/follower-driver-recompute.test.ts
+ *   tests/database.test.ts
+ *   tests/listen-http-read-database.test.ts
+ *   tests/da-bond-pool-bootstrap-emulator.test.ts
+ *   tests/deposit-flow-emulator-commit-selection.test.ts
+ *   tests/deposit-flow-emulator-confirmation-journal.test.ts
+ *   tests/deposit-flow-emulator-input-resolution.test.ts
+ *   tests/deposit-flow-emulator-merge-payout.test.ts
+ *   tests/deposit-flow-emulator-submission.test.ts
+ *   tests/merge-landed-finalization.test.ts
+ *   tests/merge-landed-finalization-emulator.test.ts
+ *   tests/merge-maturity-preflight.test.ts
+ *   tests/migration-locking.test.ts
+ *   tests/migration-runner.test.ts
+ *   tests/pipeline-status-route.test.ts
+ *   tests/retention-enforcement.test.ts
+ *   tests/correction-admission-rollback-emulator.test.ts
+ *   tests/state-queue-node-floor-challenge-emulator.test.ts
+ *   tests/state-reconciliation-emulator.test.ts
+ *   tests/tx-admissions-claim-load.test.ts
+ *   tests/tx-admissions-monotone-timestamps.test.ts
+ *   tests/block-commitment-signed-intent-skip.test.ts
+ *   tests/commit-held-header-journal.test.ts
+ *   tests/history-retention-prune.test.ts
+ *   tests/retention-sweeper.history-permit.test.ts
+ *   tests/readiness-honest-degradation-route.test.ts
+ *   tests/readiness-follower-write-gate-route.test.ts
+ *   tests/state-queue-mutation-lease-settle-retry.test.ts
+ *   tests/forced-order-carriage.test.ts
+ *   tests/forced-order-carriage-emulator.test.ts
+ *   tests/l1-state-queue-liveness.test.ts
+ *   tests/l1-state-queue-fiber-tick-spy.test.ts
+ *   tests/history-commit-anchor-emulator.test.ts
+ *   tests/intent-journal-commit-gate-emulator.test.ts
+ *   tests/operator-watchdog-emulator.test.ts
+ *   tests/availability-challenge-operation.test.ts
+ *   tests/availability-challenge-responder-lifecycle.test.ts
+ *   tests/builder-wallet-view.genesis-deposit-emulator.test.ts
+ *   tests/builder-wallet-view.operator-exit-emulator.test.ts
+ *   tests/builder-wallet-view.registration-emulator.test.ts
+ *   tests/builder-wallet-view.reserve-payout-emulator.test.ts
+ *   tests/cek-material-publication-emulator.test.ts
+ *   tests/da-bond-pool-lifecycle.test.ts
+ *   tests/mpf-audit-merge-permit-emulator.test.ts
+ *   tests/native-mpf-startup-emulator.test.ts
+ *   tests/operator-commands-emulator.test.ts
+ *   tests/operator-watchdog-citation-emulator.test.ts
+ *   tests/operator-watchdog-force-retire-emulator.test.ts
+ *   tests/operator-watchdog-manifest-gate-idle.test.ts
+ *   tests/operator-watchdog-slow-tick-emulator.test.ts
+ *   tests/operator-watchdog-strike-retry-emulator.test.ts
+ *   tests/published-initialization-recovery.test.ts
+ *   tests/reference-publication-chain.test.ts
+ *   tests/reference-publication-submit-seam.test.ts
+ *   tests/reference-publication.test.ts
+ *   tests/reference-script-sweep-emulator.test.ts
+ *   tests/reserve-payout-economic-acceptance-emulator.test.ts
+ *   tests/reserve-payout-reference-resolution-emulator.test.ts
+ *   tests/script-reward-registration.test.ts
+ *   tests/validation-trace-defense-survey-emulator.test.ts
+ *   tests/defense-pocket-emulator.test.ts
+ *   tests/validation-trace-defense-fiber-emulator.test.ts
+ *   tests/validation-trace-defense-funding-emulator.test.ts
+ *   tests/validation-trace-defense-race-emulator.test.ts
+ *   tests/validation-trace-defense-restart-emulator.test.ts
+ *   tests/validation-trace-defense-replacement-emulator.test.ts
+ *   tests/validation-trace-defense-readiness.test.ts
+ *   tests/block-commitment-validation-trace-defense-skip.test.ts
+ *   tests/node-deployment-startup-emulator.test.ts
+ */
+
+/**
+ * The files the interactive-emulator project runs on the 72 h emulator
+ * profile: every suite that exercises the execution dispute (00000006), which
+ * the 900 s testing profiles exclude because their maturity cannot hold it.
+ */
+const interactiveTests = [
+  "./tests/validation-trace-defense-end-to-end-emulator.test.ts",
+  "./tests/validation-trace-defense-fiber-emulator.test.ts",
+  "./tests/validation-trace-defense-funding-emulator.test.ts",
+  "./tests/validation-trace-defense-max-shape-emulator.test.ts",
+  "./tests/validation-trace-defense-race-emulator.test.ts",
+  "./tests/validation-trace-defense-references-emulator.test.ts",
+  "./tests/validation-trace-defense-replacement-emulator.test.ts",
+  "./tests/validation-trace-defense-restart-emulator.test.ts",
+  "./tests/validation-trace-defense-survey-emulator.test.ts",
+];
+
+// A committed `bail` makes the suite's cost and its result set unreproducible:
+// with `bail: 3` a run with three early failures silently skips most of the
+// files, so a green-looking summary and a red one describe different suites. It
+// is opt-in per run instead — `MIDGARD_NODE_TEST_BAIL=3 pnpm test`.
+const bail = parsePositiveInteger(process.env.MIDGARD_NODE_TEST_BAIL);
+
 export default defineConfig({
-  plugins: [
-    {
-      name: "raw-sql-loader",
-      load(id) {
-        if (!id.endsWith(".sql")) {
-          return null;
-        }
-        return `export default ${JSON.stringify(fs.readFileSync(id, "utf8"))};`;
-      },
-    },
-  ],
+  plugins: [rawSqlLoaderPlugin()],
   test: {
-    pool: "forks",
-    fileParallelism: false,
-    reporters: [["default", { summary: false }]],
-    include: ["./tests/**/*.test.{js,mjs,cjs,ts,mts,cts,jsx,tsx}"],
-    exclude: [
-      ...configDefaults.exclude,
-      "./tests/phase4-pipelined-process-summary-verifier.test.mjs",
+    // The one-process-per-file requirement is stated once in
+    // `isolatedForksPool`. This suite's own choice is the scheduling cap: only
+    // ~15 of the ~155 files touch Postgres and each of those is pinned to its
+    // worker's own database shard, so file parallelism is safe. A 2-core
+    // runner sets `MIDGARD_NODE_TEST_FORKS=1` rather than forcing every
+    // machine down to one file at a time.
+    ...isolatedForksPool({ maxForks: testMaxForks() }),
+    // Creates and migrates one database per worker shard before any file runs,
+    // after refusing a stale onchain/aiken/plutus.json, and gives the run its
+    // shared fixture directory.
+    globalSetup: [
+      blueprintStampGlobalSetup,
+      runSharedFixturesGlobalSetup,
+      "./tests/global-setup.ts",
+    ],
+    // Packs Node CI's `--shard=i/3` by the CI seconds each file took and starts
+    // the longest files first: a few database and emulator files run two to
+    // three minutes each while most files take seconds, so a giant that starts
+    // last sets a fork's wall time by itself.
+    // The table is keyed by package-relative path, so a file weighs the same in
+    // `midgard-node` and `midgard-node:source`. Each CI shard is its own job
+    // with its own Postgres service, so the per-worker database scheme above
+    // holds inside every shard unchanged. The table refreshes itself from CI;
+    // see `@al-ft/midgard-test-support/duration-shards`.
+    ...durationShards({
+      tablePath: fileURLToPath(
+        new URL("./tests/support/ci-file-durations.json", import.meta.url),
+      ),
+      reporters: [["default", { summary: false }]],
+    }),
+    // Workspace packages load from a per-run source bundle; files that need
+    // them module-by-module run in the `midgard-node:source` project. The
+    // projects inherit everything else here.
+    projects: [
+      ...workspaceBundleProjects(
+        {
+          extends: true,
+          test: {
+            name: "midgard-node",
+            // Vitest 3's filter resolution does not reliably match the
+            // eight-way extension brace used here previously, so keep the
+            // overwhelmingly common TypeScript lane explicit. Otherwise a
+            // focused `*.test.ts` invocation can report "No test files found"
+            // and never exercise a release gate.
+            include: [
+              "./tests/**/*.test.ts",
+              "./tests/**/*.test.{js,mjs,cjs,mts,cts,jsx,tsx}",
+            ],
+            // The explicit public framing config requires retained genuine release inputs.
+            exclude: [
+              ...configDefaults.exclude,
+              "./tests/public-http-release-framing.acceptance.test.ts",
+              ...interactiveTests,
+            ],
+          },
+        },
+        { packageDirectory: fileURLToPath(new URL(".", import.meta.url)) },
+      ),
+      // Not bundled: its plugin rewrites a midgard-core module.
+      {
+        extends: true,
+        plugins: [interactiveEmulatorPlugin()],
+        test: {
+          name: "interactive-emulator",
+          include: interactiveTests,
+          globalSetup: [interactiveEmulatorSetup],
+          env: {
+            // The suite's env defaults name the testing profile; this project
+            // compiles the emulator profile instead.
+            MIDGARD_DEPLOYMENT_PROFILE: "preprod-emulator-testing",
+            MIDGARD_REAL_BLUEPRINT_PATH: interactiveEmulatorBlueprint,
+          },
+        },
+      },
     ],
     testTimeout: 420_000,
-    bail: 3,
+    // Suites drop their test databases in `afterAll`; each `DROP DATABASE …
+    // WITH (FORCE)` can outlast the 10 s hook default on a loaded CI runner.
+    hookTimeout: 120_000,
+    ...(bail === undefined ? {} : { bail }),
     environment: "node",
   },
-  resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
-    },
-  },
+  environments: midgardSourceEnvironments(),
   esbuild: {
     target: "es2020",
   },

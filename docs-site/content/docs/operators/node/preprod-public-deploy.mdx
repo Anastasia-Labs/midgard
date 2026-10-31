@@ -1,0 +1,316 @@
+---
+title: "Preprod-Public Deployment"
+description: "Deploy and run the preprod-public profile end to end with e2e-stack: inputs, the command sequence, release signing, and the funding each wallet needs."
+---
+
+A preprod-public deployment uses the same one-command flow as the
+[end-to-end testing flow](/docs/operators/node/e2e-testing-flow): `e2e-stack`
+in `midgard-node-tools`. The deployment profile in the node `.env` selects the
+mode. With `MIDGARD_DEPLOYMENT_PROFILE=preprod-public`, the stack builds the
+`preprod-public` contracts, runs the node from the digest-pinned release image
+over HTTPS, and starts the node only after it has signed the release for the
+deployment it just made. With `preprod-testing`, the stack runs exactly as
+before.
+
+The `preprod-rehearsal` profile takes the same public route as
+`preprod-public`, against its own compiled operator allow-list: build it and
+set `MIDGARD_DEPLOYMENT_PROFILE=preprod-rehearsal` wherever this page says
+`preprod-public`.
+
+<Callout type="warn" title="Spends real Preprod funds">
+  A fresh run publishes the reference scripts, initializes the deployment and
+  bonds the operator on Preprod. Run `--check` first. It starts nothing and
+  spends nothing.
+</Callout>
+
+## Inputs
+
+<Steps>
+  <Step>
+    **A preprod-public build** of the checkout. The stack runs the profile the
+    tools were compiled for and refuses a `.env` that names another, so build
+    it first:
+
+    ```bash
+    node demo/scripts/deployment-profiles.mjs generate preprod-public && pnpm --dir demo/midgard-node-tools run build
+    ```
+
+  </Step>
+  <Step>
+    **Toolchain**: the same as the [end-to-end testing
+    flow](/docs/operators/node/e2e-testing-flow#prerequisites), plus access to
+    pull the release images.
+  </Step>
+  <Step>
+    **Node `.env`**: `NETWORK=Preprod`,
+    `MIDGARD_DEPLOYMENT_PROFILE=preprod-public`, `RUN_GENESIS_ON_STARTUP=false`,
+    the exact `MIN_FEE_A`/`MIN_FEE_B`, `MIDGARD_POSTGRES_HOST_PORT`,
+    `VALIDATION_WORKER_POOL_SIZE` (at least 2), the DA settings, and the
+    `STACK_*` secrets named by the stack configuration. It also holds the
+    release identity: `MIDGARD_PUBLIC_API_ORIGIN`,
+    `MIDGARD_PUBLIC_RELEASE_REVISION` (40-hex commit) and the digest-pinned
+    `MIDGARD_PUBLIC_NODE_IMAGE`, `MIDGARD_PUBLIC_POSTGRES_IMAGE` and
+    `MIDGARD_PUBLIC_INGRESS_IMAGE`. The `.env` must not hold the node secrets,
+    `L1_USER_SEED_PHRASE`, or any setting the stack derives
+    (`MIDGARD_CONFIG_FILE`, the `MIDGARD_PUBLIC_*_FILE` paths,
+    `MIDGARD_PUBLIC_MANIFEST_ID`, `MIDGARD_DEPLOYMENT_PARAMETER_REGISTRY_FILE`,
+    `MIDGARD_BLUEPRINT_CLASSIFICATION_FILE`, `HTTP_TRUSTED_PROXY_PEERS`).
+  </Step>
+  <Step>
+    **Stack configuration**: copy
+    `demo/midgard-node-tools/config/preprod-public-stack.example.json`. Its
+    `endpoint` is the node's `https://` loopback address. Its `public` section
+    names the public inputs, described below. Its `watcher.releaseInput` names
+    the release input, described in [Signing the release](#signing-the-release).
+  </Step>
+  <Step>
+    **Watcher**: the process template
+    `demo/midgard-watcher/watcher-process.example.json` and the
+    `watcher-compose.env` secret file names, as in
+    `demo/midgard-node-tools/docs/PREPROD_STACK.md`. See [Watcher process
+    configuration](#watcher-process-configuration).
+  </Step>
+</Steps>
+
+### The `public` section
+
+| Field                         | What it holds                                                                                                                                                                                                                                                                                                       |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `nodeConfigFile`              | Private file (mode 0600, owned by you, YAML or JSON) holding exactly the six node secrets: `L1_OPERATOR_SEED_PHRASE`, `L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX`, `L1_REFERENCE_SCRIPT_SEED_PHRASE`, `L1_SETTLEMENT_SEED_PHRASE`, `ADMIN_API_KEY`, `POSTGRES_PASSWORD`. Any other key is refused; put it in the `.env`. |
+| `tlsCertFile`                 | Certificate for the host of `MIDGARD_PUBLIC_API_ORIGIN`.                                                                                                                                                                                                                                                            |
+| `tlsKeyFile`                  | Its private key, mode 0600, owned by you.                                                                                                                                                                                                                                                                           |
+| `tlsCaFile`                   | The CA that issued the certificate. The stack and its health checks reach the node on loopback with this CA, checking the origin's host name.                                                                                                                                                                       |
+| `trustRootsFile`              | JSON list of one to sixteen external Ed25519 release trust roots. It must list the public key of the release input's signing key.                                                                                                                                                                                   |
+| `blueprintClassificationFile` | `blueprint-classification.json`: the classification of the blueprint's unused validators, which the reference-script deployment uses. The signed release must classify them the same way.                                                                                                                           |
+| `releaseDirectory`            | Where the stack writes the signed public release. Its parent must exist; the directory itself must not, or must hold a complete release signed before.                                                                                                                                                              |
+| `ingressHostPort`             | Host port of the optional TLS ingress, or `null` to run without it.                                                                                                                                                                                                                                                 |
+
+Keep `nodeConfigFile`, `tlsKeyFile` and `releaseDirectory` outside the
+checkout, or under `demo/midgard-node/logs/`, so they never enter a Docker
+build context. `releaseDirectory` must differ from the watcher's
+`releaseDirectory`.
+
+## Command sequence
+
+From the repository root:
+
+```bash
+pnpm --dir demo/midgard-node-tools run e2e-stack --config /absolute/path/stack.json --check
+pnpm --dir demo/midgard-node-tools run e2e-stack --config /absolute/path/stack.json
+```
+
+The run takes these steps, in order. Each completed step is saved; a rerun
+confirms it against Cardano and the saved records and never repeats it.
+
+| Step                    | What it does                                                                                                                                                                                      |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `prerequisites`         | Builds the `preprod-public` contracts and the runtimes, pulls the release images, and pins them for the node, migration and Postgres services.                                                    |
+| `providers`             | Starts the Cardano node, restored from a certified Mithril snapshot (see [Running the L1 Backend](/docs/getting-started/l1-backend)), plus Kupo and Postgres, and exports the node configuration. |
+| `storage`, `wallets`    | Checks fresh local storage and each wallet's budget.                                                                                                                                              |
+| `nonce`, `origin`       | Records and submits the hub-oracle one-shot nonce and fixes the L1 origin.                                                                                                                        |
+| `references`            | Publishes the reference scripts.                                                                                                                                                                  |
+| `initialize`            | Migrates the database and initializes the deployment, writing the finalized manifest.                                                                                                             |
+| `operator`              | Registers and activates the operator.                                                                                                                                                             |
+| `public-release`        | public stacks only: signs the public release for this deployment into `releaseDirectory` (see below). A rerun verifies the signed release and never signs again.                                  |
+| `runtime-configuration` | Generates the node, DA committee, retained DA and watcher services, binding the signed release files.                                                                                             |
+| `storage-identity`      | Checks the local storage belongs to this deployment.                                                                                                                                              |
+| `services`              | Starts the node, DA committee, retained DA and watcher, and waits until each is ready.                                                                                                            |
+| `cycle-N-*`             | The acceptance journey: deposit, transfer and withdrawal per cycle, with payout.                                                                                                                  |
+
+### Refusals before any spend
+
+`--check`, and every full run before any build, checks every public input. It
+refuses, naming the input, when one of these is wrong:
+
+- the checkout is compiled for another profile than the `.env` names (the
+  refusal prints the build command above);
+- the `public` section, or the `https://` endpoint, is missing;
+- a node secret, a stack-derived setting or `L1_USER_SEED_PHRASE` is in the `.env`;
+- the node configuration file or TLS key is missing, a link, readable by
+  others, or owned by another user;
+- the admin key or Postgres password is weak;
+- the release revision is not exact, or an image is not digest-pinned;
+- the certificate does not cover the origin, or the CA does not verify it;
+- the trust roots or the blueprint classification are missing or malformed,
+  or the trust roots do not list the release signing key;
+- the release input names no `provenanceFile`, or names a
+  `parameterRegistryFile` other than the stack's registry path; the
+  provenance is malformed (for example a compiler fork repository that is
+  not an `https://` URL), or its source revision, profile name or digest, or
+  node, Postgres or ingress image differs from the `.env` and the compiled
+  profile;
+- `releaseDirectory` has no parent directory, or exists but does not hold a
+  complete signed release;
+- `demo/midgard-node/db` belongs to another user (the refusal prints the
+  `chown` command);
+- `VALIDATION_WORKER_POOL_SIZE` is below 2, or HTTP rate limits are disabled;
+- the ingress port collides with a node or DA port, or a Docker network
+  already uses the ingress subnet `10.91.7.0/28`; or
+- the operator or merge wallet is not on the compiled operator allow-list.
+
+### Signing the release
+
+The release signs the manifest this deployment finalizes, so it cannot exist
+before `initialize`. The stack signs it itself in the `public-release` step,
+with the same code as the `sign-deployment-release` command, into
+`releaseDirectory`, and then opens the written release as the node does. The
+release input that `watcher.releaseInput` names holds:
+
+- `signingKeyFile`: the Ed25519 release signing key, whose public key
+  `trustRootsFile` lists;
+- `provenanceFile`: the release provenance you supply up front: the source
+  revision, profile name and digest, blueprint hash, Aiken source hash,
+  compiler fork, the three images of the `.env`, and the rebuild and frozen
+  build evidence digests. Leave out `evidence.parameterRegistryDigest`: the
+  registry does not exist before `initialize`, and the stack writes its
+  digest. A supplied digest must equal the deployed registry's;
+- `programCommitments` and `fundingProfiles`, as for the watcher release; and
+- optionally `parameterRegistryFile`, which may only name the registry the
+  deployment writes,
+  `demo/midgard-node/deploymentInfo/contract-deployment-info.json.blueprint-registry.json`.
+
+Phase 1 checks every provenance field it can before the run builds or spends
+anything; the prerequisites check its blueprint hash against the blueprint
+they build. Once the deployment has written its parameter registry, the
+`public-release` step completes the provenance with that registry's digest
+and writes it once, as `release-provenance.json` in the run directory, with
+`release-input.json` beside it: your release input, naming the completed
+provenance and the deployment's registry. Both the public release and the
+watcher release are signed from this completed input. A resume reuses the
+completed provenance and stops if your provenance no longer completes to the
+same file.
+
+The step refuses, before signing anything, when the registry classifies the
+unused validators differently from `blueprintClassificationFile`. When
+`releaseDirectory` already holds a release that does not match this
+deployment, it stops and names the folder; move the folder aside and rerun.
+
+To sign the public release out of band instead, for example on a separate
+signing machine:
+
+1. Keep `signingKeyFile` on the stack host. Phase 1 reads it and checks its
+   public key against `trustRootsFile`, and the stack signs the watcher
+   release with it.
+2. Run the stack until it prints `operator: confirmed`, then stop it. The
+   deployment and its parameter registry now exist; a rerun resumes after
+   the confirmed steps.
+3. Compute the registry's digest from the repository root:
+
+   ```bash
+   cd demo/midgard-node-tools && node --input-type=module -e '
+   import { readFileSync } from "node:fs";
+   import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
+   console.log(computeDeploymentManifestJsonDigest(JSON.parse(readFileSync(process.argv[1], "utf8"))));
+   ' /absolute/path/to/midgard/demo/midgard-node/deploymentInfo/contract-deployment-info.json.blueprint-registry.json
+   ```
+
+4. Add it as `evidence.parameterRegistryDigest` to the provenance file that
+   your release input's `provenanceFile` names. The stack keeps a supplied
+   digest that matches the registry.
+5. On the signing machine, sign with that provenance, the registry, the
+   deployment's `contract-deployment-info.json` and the built blueprint, and
+   copy the output to `releaseDirectory`:
+
+   ```bash
+   node demo/midgard-node-tools/dist/index.js sign-deployment-release \
+     --release-input /absolute/signing-release-input.json \
+     --deployment-info /absolute/contract-deployment-info.json \
+     --blueprint /absolute/plutus.json \
+     --output /absolute/public-release \
+     --funding-payment-key-hash <prover funding wallet payment key hash>
+   ```
+
+   That release input names the signing machine's key, whose public key
+   `trustRootsFile` must list, the provenance with the digest, and the
+   registry as `parameterRegistryFile`.
+
+6. Rerun the stack. The `public-release` step verifies the placed release as
+   it verifies its own, and refuses it unless its `release-provenance.json`
+   equals the provenance the stack completed.
+
+### Optional ingress
+
+With `ingressHostPort` set, the stack adds the TLS ingress from the release
+ingress image, rendered by `demo/midgard-node/scripts/public-ingress.mjs`. It
+publishes the node at that host port and the node trusts its forwarded client
+addresses. The ingress network uses the fixed subnet `10.91.7.0/28`.
+
+### Host ports and the Postgres password
+
+The node API listens on every host interface only without the ingress; with
+it, the API binds to `127.0.0.1` and the ingress is the public port. The
+metrics port, the DA port (the stack's own committee dials the node there)
+and Postgres always bind to `127.0.0.1`. The Postgres container reads its
+password from a mode 0600 file in the run directory
+(`POSTGRES_PASSWORD_FILE`), never from its environment.
+
+## Watcher process configuration
+
+The process file is strict JSON and takes no comments. The stack keeps the
+template's fields and replaces three: the L1 genesis identity, the L1 origin
+and the DA peer (the run's public retained DA).
+
+| Field                                                                                               | Meaning                                                                                                      |
+| --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `watcherConfig.mode`, `targetNetwork`                                                               | `acceptance` and `Preprod`.                                                                                  |
+| `watcherConfig.l1.source`                                                                           | `local_node`: the watcher follows the node socket and configuration mounted at `/ipc` and `/cardano-config`. |
+| `watcherConfig.l1.finality.depth`                                                                   | Must equal the profile's `l1_finality.confirmation_depth` (30).                                              |
+| `watcherConfig.l1.requestTimeoutMs`, `maxConcurrency`                                               | L1 read limits.                                                                                              |
+| `watcherConfig.da`                                                                                  | DA read limits; the stack sets the peer.                                                                     |
+| `watcherConfig.storage`                                                                             | SQLite store and the rollback key file (`/run/secrets/rollback_key`).                                        |
+| `watcherConfig.proverWallet.keySource`                                                              | The prover seed file (`/run/secrets/prover_key`).                                                            |
+| `watcherConfig.deadlines`                                                                           | DA fetch and publish, proof construction and submission deadlines.                                           |
+| `watcherRuntimeConfigPath`, `deploymentAuthorityPath`, `ruleBundlePath`, `fundingProfileBundlePath` | Signed watcher release files, from the stack's watcher `releaseDirectory`.                                   |
+| `l1NodeTransportBinaryPath`                                                                         | The image's L1 transport binary.                                                                             |
+| `operationsEndpoint`                                                                                | Loopback operations API, with an explicit port.                                                              |
+| `workflowJournalDirectory`                                                                          | Durable workflow journals.                                                                                   |
+| `availability`                                                                                      | The availability challenger's seed file, journal and least funding before opening a challenge.               |
+| `faultProofInfrastructure`                                                                          | Deployment manifest, blueprint and contract deployment info.                                                 |
+
+## Funding per wallet
+
+Figures come from `config/deployments/preprod-public.yaml` (profile keys) or
+the node's DA availability settings, which the manifest binds. Every wallet
+also needs fees and a plain output of at least 5 ADA for collateral.
+
+| Wallet                                                     | Needs                                                                                                                                                                                                  | From                                                                                                                                                                                            |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Operator (`L1_OPERATOR_SEED_PHRASE`, on the allow-list)    | 200,005 ADA, plus the init outputs' min-ADA and fees. The public stack example sets its `minimumLovelace` to 200,010 ADA.                                                                              | Init funds the DA bond pool with `da_bond.da_bond_pool_floor_lovelace` (5 ADA) + `da_bond.da_bond_lovelace` (100,000 ADA); the operator bond is `economics.requiredBondLovelace` (100,000 ADA). |
+| A second operator, from the other allow-listed wallet      | 100,000 ADA, if registered.                                                                                                                                                                            | `economics.requiredBondLovelace`                                                                                                                                                                |
+| Merge (`L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX`), settlement | Fees only.                                                                                                                                                                                             | Working capital.                                                                                                                                                                                |
+| Reference publisher (`L1_REFERENCE_SCRIPT_SEED_PHRASE`)    | The sum, over the published scripts, of (160 + output bytes) × 4,310 lovelace, plus fees. Depends on the built script sizes.                                                                           | `limits.coins_per_utxo_byte`                                                                                                                                                                    |
+| Prover (watcher)                                           | Per validation-trace dispute: a 10,000 ADA bond, a 5 ADA collateral floor and a 2 ADA proof output, plus fees. The public stack example sets its `minimumLovelace` to 10,010 ADA.                      | `MIDGARD_DA_AVAILABILITY_CHALLENGER_BOND_LOVELACE`, `economics.proverCollateralFloorLovelace`, `limits.fraud_proof_output_lovelace`                                                             |
+| Availability challenger (watcher)                          | Per challenge: a 10,000 ADA bond, a 27 ADA challenge record, up to 1.2 ADA of timeout fee and a 5 ADA collateral output, plus fees. The public stack example sets its `minimumLovelace` to 10,040 ADA. | `MIDGARD_DA_AVAILABILITY_CHALLENGER_BOND_LOVELACE`, `da_bond.challenge_record_lovelace`, `MIDGARD_DA_AVAILABILITY_MAX_TIMEOUT_FEE_LOVELACE`                                                     |
+| DA submitter                                               | Attestation fees and collateral.                                                                                                                                                                       | `DA_L1_MIN_PLAIN_ADA_LOVELACE`, `DA_L1_MIN_COLLATERAL_LOVELACE`                                                                                                                                 |
+| Any wallet topping up the DA bond pool                     | At least 1,000 ADA per top-up. A slash removes 25,000 ADA from the pool.                                                                                                                               | `da_bond.da_bond_min_top_up_lovelace`, `da_bond.da_slash_penalty_lovelace`                                                                                                                      |
+| Journey user (`STACK_USER_SEED`)                           | Every deposit plus 10 ADA for fees: `journey.depositLovelace` × `journey.cycles` + 10 ADA; the stack refuses a smaller `minimumLovelace`. Each deposit also checks 5 ADA of fee headroom.              | Stack `journey` settings                                                                                                                                                                        |
+| Journey recipient (`STACK_RECIPIENT_SEED`)                 | Per cycle, the withdrawal order's locked ADA and its fee; the order's ADA returns with the payout. The example sets 100 ADA.                                                                           | The withdrawal order quote                                                                                                                                                                      |
+
+The prover and availability bonds are needed only to act on a dispute; the
+acceptance journey opens none.
+
+## Owner inputs
+
+Before a run, the owner supplies, by name:
+
+- **Release identity**: `MIDGARD_PUBLIC_API_ORIGIN`,
+  `MIDGARD_PUBLIC_RELEASE_REVISION`, `MIDGARD_PUBLIC_NODE_IMAGE`,
+  `MIDGARD_PUBLIC_POSTGRES_IMAGE`, `MIDGARD_PUBLIC_INGRESS_IMAGE`.
+- **Public files**: `tlsCertFile`, `tlsKeyFile`, `tlsCaFile`,
+  `trustRootsFile` and `blueprintClassificationFile`.
+- **Release input**: the release signing key (listed in `trustRootsFile`)
+  and the release provenance; the stack signs the release itself.
+- **Secrets** in `nodeConfigFile`: `L1_OPERATOR_SEED_PHRASE` and
+  `L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX` (on the operator allow-list),
+  `L1_REFERENCE_SCRIPT_SEED_PHRASE`, `L1_SETTLEMENT_SEED_PHRASE`,
+  `ADMIN_API_KEY`, `POSTGRES_PASSWORD`.
+- **Deployment values**: `MIN_FEE_A`, `MIN_FEE_B`, `DA_COMMITTEE_HEX` and
+  `DA_OWNERS_HEX` when used, and the `MIDGARD_DA_AVAILABILITY_*` and
+  `MIDGARD_EVENT_HISTORY_*` settings.
+- **Funding**: the wallets in the table above.
+
+## Related
+
+- [End-to-End Testing Flow](/docs/operators/node/e2e-testing-flow)
+- [Running the L1 Backend](/docs/getting-started/l1-backend)
+- [Initialization &amp; Deployment](/docs/operators/node/initialization-deployment)

@@ -1,164 +1,70 @@
-import fs from "node:fs";
-import path from "node:path";
+import "node:fs";
+import "node:path";
+import "@al-ft/midgard-core/codec";
+import "@al-ft/midgard-validation";
+import "@al-ft/midgard-validation/midgard-redeemers";
+import "@al-ft/midgard-validation/script-context";
+import "@al-ft/midgard-validation/script-source";
+import "@lucid-evolution/lucid";
+import "vitest";
+import "./midgard-output-helpers.js";
+import "./midgard-local-script-eval.make-midgard-context-probe-redeemer-cbor-hex.js";
 
 import {
   decodeMidgardAddressBytes,
   decodeMidgardTxOutput,
+  encodeCbor,
+  encodeMidgardFieldPreimageForField,
   encodeMidgardNativeScript,
   encodeMidgardVersionedScript,
   hashMidgardVersionedScript,
   ScriptLanguageTags,
 } from "@al-ft/midgard-core/codec";
-import { plutusDataToCborHex, txOutRefData } from "@al-ft/midgard-validation";
-import type { MidgardLedgerRedeemer } from "@al-ft/midgard-validation/ledger-tx/types";
-import { evaluateScriptWithHarmonic } from "@al-ft/midgard-validation/local-script-eval";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   decodeMidgardRedeemers,
   MidgardRedeemerTag,
   midgardScriptPurposeData,
-  redeemerDataFromCborHex,
 } from "@al-ft/midgard-validation/midgard-redeemers";
 import {
-  buildMidgardV1ScriptContext,
+  buildMidgardScriptContext,
   buildPlutusV3ScriptContext,
 } from "@al-ft/midgard-validation/script-context";
 import { decodeScriptSource } from "@al-ft/midgard-validation/script-source";
 import { CML, Constr, Data } from "@lucid-evolution/lucid";
-import { encode } from "cborg";
 import { describe, expect, it } from "vitest";
 
 import {
-  hashMidgardV1Script,
+  evaluateScriptStructurally,
+  ledgerRedeemer,
+  lucidContext,
+  makeMidgardContextProbeRedeemerCborHex,
+  makeOutRefHex,
+  makeScriptContextOutput,
+  MIDGARD_ALWAYS_FAIL_SCRIPT_HEX,
+  MIDGARD_CONTEXT_PROBE_SCRIPT_HEX,
+  MIDGARD_RECEIVE_GUARD_SCRIPT_HEX,
+  MIDGARD_SPEND_GUARD_SCRIPT_HEX,
+  MIDGARD_SPEND_OUT_REF_GUARD_SCRIPT_HEX,
+  txOutRefDataCborHex,
+} from "./midgard-local-script-eval.make-midgard-context-probe-redeemer-cbor-hex.js";
+import {
+  hashMidgardScript,
   hashPlutusV3Script,
   makeMidgardTxOutput,
+  makeOutRefCbor,
   protectOutputAddressBytes,
 } from "./midgard-output-helpers.js";
-
-type BlueprintValidator = {
-  readonly title: string;
-  readonly compiledCode: string;
-};
-
-const alwaysSucceedsBlueprintPath = path.resolve(
-  __dirname,
-  "../blueprints/always-succeeds/plutus.json",
-);
-const alwaysSucceedsBlueprint = JSON.parse(
-  fs.readFileSync(alwaysSucceedsBlueprintPath, "utf8"),
-) as {
-  readonly validators: readonly BlueprintValidator[];
-};
-
-const loadAlwaysSucceedsCompiledCode = (title: string): string => {
-  const compiledCode = alwaysSucceedsBlueprint.validators.find(
-    (validator) => validator.title === title,
-  )?.compiledCode;
-  if (compiledCode === undefined) {
-    throw new Error(`missing always-succeeds blueprint entry: ${title}`);
-  }
-  return compiledCode;
-};
-
-const MIDGARD_V1_SPEND_GUARD_SCRIPT_HEX = loadAlwaysSucceedsCompiledCode(
-  "midgard.midgard_v1_spend_guard.else",
-);
-const MIDGARD_V1_SPEND_OUT_REF_GUARD_SCRIPT_HEX =
-  loadAlwaysSucceedsCompiledCode("midgard.midgard_v1_spend_out_ref_guard.else");
-const MIDGARD_V1_RECEIVE_GUARD_SCRIPT_HEX = loadAlwaysSucceedsCompiledCode(
-  "midgard.midgard_v1_receive_guard.else",
-);
-const MIDGARD_V1_ALWAYS_FAIL_SCRIPT_HEX = loadAlwaysSucceedsCompiledCode(
-  "midgard.midgard_v1_always_fail.else",
-);
-const MIDGARD_V1_CONTEXT_PROBE_SCRIPT_HEX = loadAlwaysSucceedsCompiledCode(
-  "midgard.midgard_v1_context_probe.else",
-);
-
-const txOutRefDataCborHex = (outRefHex: string): string =>
-  plutusDataToCborHex(txOutRefData(outRefHex));
-
-const ledgerRedeemer = <
-  T extends Omit<MidgardLedgerRedeemer, "data"> & {
-    readonly dataCborHex: string;
-  },
->(
-  redeemer: T,
-): T & MidgardLedgerRedeemer => ({
-  ...redeemer,
-  data: redeemerDataFromCborHex(redeemer.dataCborHex),
-});
-
-const makeOutRefHex = (txHashByte: number, outputIndex: bigint): string =>
-  Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(
-        Buffer.alloc(32, txHashByte).toString("hex"),
-      ),
-      outputIndex,
-    ).to_cbor_bytes(),
-  ).toString("hex");
-
-const makeScriptContextOutput = (
-  scriptHash: string,
-): ReturnType<typeof makeMidgardTxOutput> =>
-  makeMidgardTxOutput(
-    CML.EnterpriseAddress.new(
-      0,
-      CML.Credential.new_script(CML.ScriptHash.from_hex(scriptHash)),
-    ).to_address(),
-    CML.Value.from_coin(2_000_000n),
-  );
-
-const makeMidgardV1ContextProbeRedeemerCborHex = (opts: {
-  readonly expectedSpendScriptHash: string;
-  readonly expectedOwnRef: string;
-  readonly expectedFirstInput: string;
-  readonly expectedSecondInput: string;
-  readonly expectedFirstReference: string;
-  readonly expectedSecondReference: string;
-  readonly expectedFirstOutputScriptHash: string;
-  readonly expectedSecondOutputScriptHash: string;
-  readonly expectedSigner: string;
-  readonly expectedObserver: string;
-  readonly expectedPolicy: string;
-  readonly expectedAssetName: string;
-  readonly expectedMintQuantity: bigint;
-  readonly expectedMintRedeemer: unknown;
-  readonly expectedObserveRedeemer: unknown;
-  readonly expectedReceiveScriptHash: string;
-  readonly expectedReceiveRedeemer: unknown;
-}): string =>
-  plutusDataToCborHex(
-    new Constr(0, [
-      opts.expectedSpendScriptHash,
-      txOutRefData(opts.expectedOwnRef),
-      txOutRefData(opts.expectedFirstInput),
-      txOutRefData(opts.expectedSecondInput),
-      txOutRefData(opts.expectedFirstReference),
-      txOutRefData(opts.expectedSecondReference),
-      opts.expectedFirstOutputScriptHash,
-      opts.expectedSecondOutputScriptHash,
-      opts.expectedSigner,
-      opts.expectedObserver,
-      opts.expectedPolicy,
-      opts.expectedAssetName,
-      opts.expectedMintQuantity,
-      opts.expectedMintRedeemer,
-      opts.expectedObserveRedeemer,
-      opts.expectedReceiveScriptHash,
-      opts.expectedReceiveRedeemer,
-    ]),
-  );
 
 describe("Midgard local script evaluation primitives", () => {
   it("uses distinct script hash domains for PlutusV3 and MidgardV1", () => {
     const scriptBytes = Buffer.from("0102030405", "hex");
 
     expect(hashPlutusV3Script(scriptBytes)).not.toBe(
-      hashMidgardV1Script(scriptBytes),
+      hashMidgardScript(scriptBytes),
     );
-    expect(hashMidgardV1Script(scriptBytes)).not.toBe(
-      hashMidgardV1Script(Buffer.concat([scriptBytes, Buffer.from([0x06])])),
+    expect(hashMidgardScript(scriptBytes)).not.toBe(
+      hashMidgardScript(Buffer.concat([scriptBytes, Buffer.from([0x06])])),
     );
     expect(ScriptLanguageTags.MidgardV1).toBe(0x80);
   });
@@ -182,7 +88,7 @@ describe("Midgard local script evaluation primitives", () => {
     );
     expect(plutusSource.scriptHash).toBe(hashPlutusV3Script(scriptBytes));
     expect(midgardSource.version).toBe("MidgardV1");
-    expect(midgardSource.scriptHash).toBe(hashMidgardV1Script(scriptBytes));
+    expect(midgardSource.scriptHash).toBe(hashMidgardScript(scriptBytes));
   });
 
   it("recovers native script identity from explicit versioned native script bytes", () => {
@@ -210,8 +116,21 @@ describe("Midgard local script evaluation primitives", () => {
   });
 
   it("decodes the Midgard receiving redeemer tag and purpose constructor", () => {
+    // §5.1/§5.3: field 8 is the enveloped list of `enc_8` items, built here
+    // through the production encoder rather than hand-spelled — the retired
+    // counted scheme concatenated bare four-element arrays, which §5.1 refuses.
     const redeemers = decodeMidgardRedeemers(
-      Buffer.from(encode([[6n, 0n, 42n, [0n, 0n]]])),
+      encodeMidgardFieldPreimageForField({
+        fieldIndex: 8,
+        items: [
+          {
+            purpose: "Receive",
+            index: 0n,
+            redeemerCbor: Buffer.from(encodeCbor(42n)),
+            executionUnits: { memory: 0n, steps: 0n },
+          },
+        ],
+      }),
     );
     expect(redeemers).toHaveLength(1);
     expect(redeemers[0].tag).toBe(MidgardRedeemerTag.Receiving);
@@ -269,7 +188,7 @@ describe("Midgard local script evaluation primitives", () => {
       CML.Credential.new_pub_key(keyHash),
     ).to_address();
     const output = Buffer.from(
-      encode(
+      encodeCbor(
         new Map<bigint, unknown>([
           [0n, Buffer.from(address.to_raw_bytes())],
           [1n, [2_000_000n, new Map<Uint8Array, unknown>()]],
@@ -340,13 +259,13 @@ describe("Midgard local script evaluation primitives", () => {
     expect(() =>
       decodeMidgardTxOutput(
         Buffer.from(
-          encode(new Map<bigint, unknown>([[1n, [2_000_000n, new Map()]]])),
+          encodeCbor(new Map<bigint, unknown>([[1n, [2_000_000n, new Map()]]])),
         ),
       ),
     ).toThrow("missing address key 0");
     expect(() =>
       decodeMidgardTxOutput(
-        Buffer.from(encode(new Map([[0n, Buffer.alloc(0)]]))),
+        Buffer.from(encodeCbor(new Map([[0n, Buffer.alloc(0)]]))),
       ),
     ).toThrow(
       "Midgard address must be a base or enterprise Shelley payment address",
@@ -365,20 +284,23 @@ describe("Midgard local script evaluation primitives", () => {
       dataCborHex: Data.to(new Constr(0, [])),
       exUnits: { memory: 0n, steps: 0n },
     });
-    const context = buildMidgardV1ScriptContext(
-      {
-        txId: Buffer.alloc(32, 0),
-        inputs: [],
-        referenceInputs: [],
-        outputs: [],
-        fee: 1n,
-        observers: [scriptHash],
-        signatories: [],
-        mint: new Map([[scriptHash, new Map([["", -2n]])]]),
-        redeemers: [{ purpose, redeemer }],
-      },
-      purpose,
-      redeemer,
+    const context = lucidContext(
+      buildMidgardScriptContext(
+        {
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+          txId: Buffer.alloc(32, 0),
+          inputs: [],
+          referenceInputs: [],
+          outputs: [],
+          fee: 1n,
+          observers: [scriptHash],
+          signatories: [],
+          mint: new Map([[scriptHash, new Map([["", -2n]])]]),
+          redeemers: [{ purpose, redeemer }],
+        },
+        purpose,
+        redeemer,
+      ),
     );
 
     expect(context.index).toBe(0);
@@ -417,8 +339,9 @@ describe("Midgard local script evaluation primitives", () => {
       dataCborHex: Data.to(new Constr(0, [])),
       exUnits: { memory: 0n, steps: 0n },
     });
-    const midgardContext = buildMidgardV1ScriptContext(
+    const midgardContext = buildMidgardScriptContext(
       {
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         txId: Buffer.alloc(32, 0),
         inputs: [],
         referenceInputs: [],
@@ -445,6 +368,7 @@ describe("Midgard local script evaluation primitives", () => {
     });
     const plutusContext = buildPlutusV3ScriptContext(
       {
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         txId: Buffer.alloc(32, 0),
         inputs: [],
         referenceInputs: [],
@@ -459,7 +383,9 @@ describe("Midgard local script evaluation primitives", () => {
       mintRedeemer,
     );
 
-    const [midgardTxInfo] = midgardContext.fields as [Constr<unknown>];
+    const [midgardTxInfo] = lucidContext(midgardContext).fields as [
+      Constr<unknown>,
+    ];
     const midgardOutputs = midgardTxInfo.fields[2] as Constr<unknown>[];
     const midgardOutputAddress = midgardOutputs[0]!
       .fields[0] as Constr<unknown>;
@@ -469,7 +395,9 @@ describe("Midgard local script evaluation primitives", () => {
       new Constr(0, [keyHash.to_hex()]),
     );
 
-    const [plutusTxInfo] = plutusContext.fields as [Constr<unknown>];
+    const [plutusTxInfo] = lucidContext(plutusContext).fields as [
+      Constr<unknown>,
+    ];
     const plutusOutputs = plutusTxInfo.fields[2] as Constr<unknown>[];
     const plutusOutputAddress = plutusOutputs[0]!.fields[0] as Constr<unknown>;
 
@@ -480,13 +408,9 @@ describe("Midgard local script evaluation primitives", () => {
   });
 
   it("evaluates the MidgardV1 spend guard against a Midgard-shaped context", () => {
-    const scriptBytes = Buffer.from(MIDGARD_V1_SPEND_GUARD_SCRIPT_HEX, "hex");
-    const scriptHash = hashMidgardV1Script(scriptBytes);
-    const input = CML.TransactionInput.new(
-      CML.TransactionHash.from_hex("31".repeat(32)),
-      2n,
-    );
-    const outRefHex = Buffer.from(input.to_cbor_bytes()).toString("hex");
+    const scriptBytes = Buffer.from(MIDGARD_SPEND_GUARD_SCRIPT_HEX, "hex");
+    const scriptHash = hashMidgardScript(scriptBytes);
+    const outRefHex = makeOutRefCbor("31".repeat(32), 2).toString("hex");
     const output = makeMidgardTxOutput(
       CML.EnterpriseAddress.new(
         0,
@@ -504,8 +428,9 @@ describe("Midgard local script evaluation primitives", () => {
       dataCborHex: Data.to(42n),
       exUnits: { memory: 0n, steps: 0n },
     });
-    const context = buildMidgardV1ScriptContext(
+    const context = buildMidgardScriptContext(
       {
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         txId: Buffer.alloc(32, 0x31),
         inputs: [{ outRefHex, output }],
         referenceInputs: [],
@@ -520,19 +445,15 @@ describe("Midgard local script evaluation primitives", () => {
       redeemer,
     );
 
-    expect(evaluateScriptWithHarmonic(scriptBytes, context)).toMatchObject({
+    expect(evaluateScriptStructurally(scriptBytes, context)).toMatchObject({
       kind: "accepted",
     });
   });
 
   it("rejects the MidgardV1 spend guard when the redeemer is wrong", () => {
-    const scriptBytes = Buffer.from(MIDGARD_V1_SPEND_GUARD_SCRIPT_HEX, "hex");
-    const scriptHash = hashMidgardV1Script(scriptBytes);
-    const input = CML.TransactionInput.new(
-      CML.TransactionHash.from_hex("32".repeat(32)),
-      0n,
-    );
-    const outRefHex = Buffer.from(input.to_cbor_bytes()).toString("hex");
+    const scriptBytes = Buffer.from(MIDGARD_SPEND_GUARD_SCRIPT_HEX, "hex");
+    const scriptHash = hashMidgardScript(scriptBytes);
+    const outRefHex = makeOutRefCbor("32".repeat(32), 0).toString("hex");
     const output = makeMidgardTxOutput(
       CML.EnterpriseAddress.new(
         0,
@@ -550,8 +471,9 @@ describe("Midgard local script evaluation primitives", () => {
       dataCborHex: Data.to(41n),
       exUnits: { memory: 0n, steps: 0n },
     });
-    const context = buildMidgardV1ScriptContext(
+    const context = buildMidgardScriptContext(
       {
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         txId: Buffer.alloc(32, 0x32),
         inputs: [{ outRefHex, output }],
         referenceInputs: [],
@@ -566,29 +488,19 @@ describe("Midgard local script evaluation primitives", () => {
       redeemer,
     );
 
-    expect(evaluateScriptWithHarmonic(scriptBytes, context).kind).toBe(
+    expect(evaluateScriptStructurally(scriptBytes, context).kind).toBe(
       "script_invalid",
     );
   });
 
   it("evaluates the MidgardV1 out-ref-bound spend guard", () => {
     const scriptBytes = Buffer.from(
-      MIDGARD_V1_SPEND_OUT_REF_GUARD_SCRIPT_HEX,
+      MIDGARD_SPEND_OUT_REF_GUARD_SCRIPT_HEX,
       "hex",
     );
-    const scriptHash = hashMidgardV1Script(scriptBytes);
-    const input = CML.TransactionInput.new(
-      CML.TransactionHash.from_hex("34".repeat(32)),
-      1n,
-    );
-    const outRefHex = Buffer.from(input.to_cbor_bytes()).toString("hex");
-    const otherInput = CML.TransactionInput.new(
-      CML.TransactionHash.from_hex("35".repeat(32)),
-      0n,
-    );
-    const otherOutRefHex = Buffer.from(otherInput.to_cbor_bytes()).toString(
-      "hex",
-    );
+    const scriptHash = hashMidgardScript(scriptBytes);
+    const outRefHex = makeOutRefCbor("34".repeat(32), 1).toString("hex");
+    const otherOutRefHex = makeOutRefCbor("35".repeat(32), 0).toString("hex");
     const output = makeMidgardTxOutput(
       CML.EnterpriseAddress.new(
         0,
@@ -611,6 +523,7 @@ describe("Midgard local script evaluation primitives", () => {
       dataCborHex: txOutRefDataCborHex(otherOutRefHex),
     });
     const contextView = {
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       txId: Buffer.alloc(32, 0x34),
       inputs: [{ outRefHex, output }],
       referenceInputs: [],
@@ -623,15 +536,15 @@ describe("Midgard local script evaluation primitives", () => {
     };
 
     expect(
-      evaluateScriptWithHarmonic(
+      evaluateScriptStructurally(
         scriptBytes,
-        buildMidgardV1ScriptContext(contextView, purpose, validRedeemer),
+        buildMidgardScriptContext(contextView, purpose, validRedeemer),
       ),
     ).toMatchObject({ kind: "accepted" });
     expect(
-      evaluateScriptWithHarmonic(
+      evaluateScriptStructurally(
         scriptBytes,
-        buildMidgardV1ScriptContext(
+        buildMidgardScriptContext(
           {
             ...contextView,
             redeemers: [{ purpose, redeemer: invalidRedeemer }],
@@ -644,13 +557,13 @@ describe("Midgard local script evaluation primitives", () => {
   });
 
   it("evaluates the MidgardV1 context probe against Midgard-specific fields", () => {
-    const scriptBytes = Buffer.from(MIDGARD_V1_CONTEXT_PROBE_SCRIPT_HEX, "hex");
-    const probeHash = hashMidgardV1Script(scriptBytes);
-    const receiveHash = hashMidgardV1Script(
-      Buffer.from(MIDGARD_V1_RECEIVE_GUARD_SCRIPT_HEX, "hex"),
+    const scriptBytes = Buffer.from(MIDGARD_CONTEXT_PROBE_SCRIPT_HEX, "hex");
+    const probeHash = hashMidgardScript(scriptBytes);
+    const receiveHash = hashMidgardScript(
+      Buffer.from(MIDGARD_RECEIVE_GUARD_SCRIPT_HEX, "hex"),
     );
-    const secondOutputHash = hashMidgardV1Script(
-      Buffer.from(MIDGARD_V1_SPEND_GUARD_SCRIPT_HEX, "hex"),
+    const secondOutputHash = hashMidgardScript(
+      Buffer.from(MIDGARD_SPEND_GUARD_SCRIPT_HEX, "hex"),
     );
     const signer = "11".repeat(28);
     const observer = "22".repeat(28);
@@ -683,7 +596,7 @@ describe("Midgard local script evaluation primitives", () => {
     const probeRedeemer = ledgerRedeemer({
       tag: MidgardRedeemerTag.Spend,
       index: 0n,
-      dataCborHex: makeMidgardV1ContextProbeRedeemerCborHex({
+      dataCborHex: makeMidgardContextProbeRedeemerCborHex({
         expectedSpendScriptHash: probeHash,
         expectedOwnRef: firstInput,
         expectedFirstInput: firstInput,
@@ -724,6 +637,7 @@ describe("Midgard local script evaluation primitives", () => {
     });
     const keyHash = CML.Ed25519KeyHash.from_hex(signer);
     const contextView = {
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       txId: Buffer.alloc(32, 0x36),
       inputs: [
         { outRefHex: firstInput, output: makeScriptContextOutput(probeHash) },
@@ -765,15 +679,15 @@ describe("Midgard local script evaluation primitives", () => {
     };
 
     expect(
-      evaluateScriptWithHarmonic(
+      evaluateScriptStructurally(
         scriptBytes,
-        buildMidgardV1ScriptContext(contextView, spendPurpose, probeRedeemer),
+        buildMidgardScriptContext(contextView, spendPurpose, probeRedeemer),
       ),
     ).toMatchObject({ kind: "accepted" });
     expect(
-      evaluateScriptWithHarmonic(
+      evaluateScriptStructurally(
         scriptBytes,
-        buildMidgardV1ScriptContext(
+        buildMidgardScriptContext(
           { ...contextView, signatories: [] },
           spendPurpose,
           probeRedeemer,
@@ -783,8 +697,8 @@ describe("Midgard local script evaluation primitives", () => {
   });
 
   it("evaluates the MidgardV1 receive guard against a Midgard-shaped context", () => {
-    const scriptBytes = Buffer.from(MIDGARD_V1_RECEIVE_GUARD_SCRIPT_HEX, "hex");
-    const scriptHash = hashMidgardV1Script(scriptBytes);
+    const scriptBytes = Buffer.from(MIDGARD_RECEIVE_GUARD_SCRIPT_HEX, "hex");
+    const scriptHash = hashMidgardScript(scriptBytes);
     const output = makeMidgardTxOutput(
       CML.EnterpriseAddress.new(
         0,
@@ -799,8 +713,9 @@ describe("Midgard local script evaluation primitives", () => {
       dataCborHex: Data.to(99n),
       exUnits: { memory: 0n, steps: 0n },
     });
-    const context = buildMidgardV1ScriptContext(
+    const context = buildMidgardScriptContext(
       {
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         txId: Buffer.alloc(32, 0x33),
         inputs: [],
         referenceInputs: [],
@@ -815,14 +730,14 @@ describe("Midgard local script evaluation primitives", () => {
       redeemer,
     );
 
-    expect(evaluateScriptWithHarmonic(scriptBytes, context)).toMatchObject({
+    expect(evaluateScriptStructurally(scriptBytes, context)).toMatchObject({
       kind: "accepted",
     });
   });
 
-  it("runs the MidgardV1 always-fail fixture through Harmonic", () => {
-    const scriptBytes = Buffer.from(MIDGARD_V1_ALWAYS_FAIL_SCRIPT_HEX, "hex");
-    const scriptHash = hashMidgardV1Script(scriptBytes);
+  it("runs the MidgardV1 always-fail fixture through the structural executor", () => {
+    const scriptBytes = Buffer.from(MIDGARD_ALWAYS_FAIL_SCRIPT_HEX, "hex");
+    const scriptHash = hashMidgardScript(scriptBytes);
     const purpose = { kind: "receive" as const, scriptHash };
     const redeemer = ledgerRedeemer({
       tag: MidgardRedeemerTag.Receiving,
@@ -830,8 +745,9 @@ describe("Midgard local script evaluation primitives", () => {
       dataCborHex: Data.to(99n),
       exUnits: { memory: 0n, steps: 0n },
     });
-    const context = buildMidgardV1ScriptContext(
+    const context = buildMidgardScriptContext(
       {
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         txId: Buffer.alloc(32, 0x34),
         inputs: [],
         referenceInputs: [],
@@ -846,7 +762,7 @@ describe("Midgard local script evaluation primitives", () => {
       redeemer,
     );
 
-    expect(evaluateScriptWithHarmonic(scriptBytes, context).kind).toBe(
+    expect(evaluateScriptStructurally(scriptBytes, context).kind).toBe(
       "script_invalid",
     );
   });
@@ -854,11 +770,7 @@ describe("Midgard local script evaluation primitives", () => {
   it("builds PlutusV3 spending ScriptInfo with inline datum and empty txInfo data", () => {
     const scriptHash = "cd".repeat(28);
     const datum = CML.PlutusData.new_integer(CML.BigInteger.from_str("7"));
-    const input = CML.TransactionInput.new(
-      CML.TransactionHash.from_hex("12".repeat(32)),
-      3n,
-    );
-    const outRefHex = Buffer.from(input.to_cbor_bytes()).toString("hex");
+    const outRefHex = makeOutRefCbor("12".repeat(32), 3).toString("hex");
     const output = makeMidgardTxOutput(
       CML.EnterpriseAddress.new(
         0,
@@ -877,6 +789,7 @@ describe("Midgard local script evaluation primitives", () => {
 
     const context = buildPlutusV3ScriptContext(
       {
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         txId: Buffer.alloc(32, 0),
         inputs: [{ outRefHex, output }],
         referenceInputs: [],
@@ -891,11 +804,8 @@ describe("Midgard local script evaluation primitives", () => {
       redeemer,
     );
 
-    const [txInfo, _redeemerData, scriptInfo] = context.fields as [
-      Constr<unknown>,
-      unknown,
-      Constr<unknown>,
-    ];
+    const [txInfo, _redeemerData, scriptInfo] = lucidContext(context)
+      .fields as [Constr<unknown>, unknown, Constr<unknown>];
     const inputs = txInfo.fields[0] as Constr<unknown>[];
     const inputTxOut = inputs[0]!.fields[1] as Constr<unknown>;
     const inputAddress = inputTxOut.fields[0] as Constr<unknown>;
@@ -910,11 +820,7 @@ describe("Midgard local script evaluation primitives", () => {
   it("preserves base-address stake credentials in script context TxOut addresses", () => {
     const paymentScriptHash = "cd".repeat(28);
     const stakeKeyHash = "ab".repeat(28);
-    const input = CML.TransactionInput.new(
-      CML.TransactionHash.from_hex("34".repeat(32)),
-      1n,
-    );
-    const outRefHex = Buffer.from(input.to_cbor_bytes()).toString("hex");
+    const outRefHex = makeOutRefCbor("34".repeat(32), 1).toString("hex");
     const output = makeMidgardTxOutput(
       CML.BaseAddress.new(
         0,
@@ -937,6 +843,7 @@ describe("Midgard local script evaluation primitives", () => {
 
     const context = buildPlutusV3ScriptContext(
       {
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         txId: Buffer.alloc(32, 0),
         inputs: [{ outRefHex, output }],
         referenceInputs: [],
@@ -951,7 +858,7 @@ describe("Midgard local script evaluation primitives", () => {
       redeemer,
     );
 
-    const [txInfo] = context.fields as [
+    const [txInfo] = lucidContext(context).fields as [
       Constr<unknown>,
       unknown,
       Constr<unknown>,

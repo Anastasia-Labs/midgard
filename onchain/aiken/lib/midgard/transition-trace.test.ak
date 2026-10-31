@@ -1,6 +1,8 @@
 use aiken/cbor
+use aiken/crypto
 use aiken/merkle_patricia_forestry.{Leaf, Proof}
 use env
+use midgard/ledger_state
 use midgard/transition_trace
 
 const single_raw_root =
@@ -20,11 +22,65 @@ const raw_non_membership_proof: Proof =
     },
   ]
 
+fn sample_transition_step_v1(
+  schema_version: Int,
+) -> ledger_state.TransitionStepV1 {
+  ledger_state.TransitionStep {
+    schema_version,
+    step_index: 2,
+    event_key: ledger_state.L2TransactionEventKey {
+      tx_id: #"3333333333333333333333333333333333333333333333333333333333333333",
+    },
+    phase: ledger_state.L2Transaction,
+    pre_utxos_root: #"4444444444444444444444444444444444444444444444444444444444444444",
+    post_utxos_root: #"5555555555555555555555555555555555555555555555555555555555555555",
+  }
+}
+
+test l06_transition_step_v1_aiken_cbor_and_hash_vector_is_exact() {
+  let step = sample_transition_step_v1(
+    ledger_state.transition_step_schema_version_v1,
+  )
+  let encoded = cbor.serialise(step)
+  and {
+    encoded == #"d8799f0102d87b9f58203333333333333333333333333333333333333333333333333333333333333333ffd87b805820444444444444444444444444444444444444444444444444444444444444444458205555555555555555555555555555555555555555555555555555555555555555ff",
+    crypto.blake2b_256(encoded) == #"c7931b31b050e3d59769ee6df1556585c608f1af0c74decc08026ecafbc234c4",
+    ledger_state.transition_step_v1_is_valid(step),
+  }
+}
+
+test l06_transition_step_v1_rejects_adjacent_schema_versions() {
+  and {
+    !ledger_state.transition_step_v1_is_valid(sample_transition_step_v1(0)),
+    !ledger_state.transition_step_v1_is_valid(sample_transition_step_v1(2)),
+  }
+}
+
 test accepts_typescript_raw_membership_fixture() {
   transition_trace.verify_root_membership_raw(
     single_raw_root,
     1,
     #"01",
+    #"aa",
+    empty_proof,
+  )
+}
+
+test raw_membership_refuses_a_wrong_value() {
+  !transition_trace.verify_root_membership_raw(
+    single_raw_root,
+    1,
+    #"01",
+    #"ab",
+    empty_proof,
+  )
+}
+
+test raw_membership_refuses_a_wrong_key() {
+  !transition_trace.verify_root_membership_raw(
+    single_raw_root,
+    1,
+    #"02",
     #"aa",
     empty_proof,
   )
@@ -49,22 +105,20 @@ test accepts_empty_midgard_root_non_membership_fixture() {
 }
 
 test accepts_typed_membership_witness_fixture() {
-  let counted_root =
-    transition_trace.commit_counted_root(
-      transition_trace.DepositsRootDomain,
-      single_typed_root,
-      1,
-    )
-  let witness =
-    transition_trace.RootMembershipProof {
-      domain: transition_trace.DepositsRootDomain,
-      root: counted_root,
-      phas_root: single_typed_root,
-      count: 1,
-      key: 0,
-      value: #"aa",
-      proof: empty_proof,
-    }
+  let counted_root = transition_trace.commit_counted_root(
+    transition_trace.DepositsRootDomain,
+    single_typed_root,
+    1,
+  )
+  let witness = transition_trace.RootMembershipProof {
+    domain: transition_trace.DepositsRootDomain,
+    root: counted_root,
+    phas_root: single_typed_root,
+    count: 1,
+    key: 0,
+    value: #"aa",
+    proof: empty_proof,
+  }
 
   transition_trace.verify_root_membership_with_bytes(
     witness,

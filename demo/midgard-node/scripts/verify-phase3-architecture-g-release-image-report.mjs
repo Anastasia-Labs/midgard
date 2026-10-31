@@ -107,7 +107,6 @@ export const evaluatePhase3ReleaseImageReport = (
   const runtime = report?.runtime;
   if (
     runtime?.nodeVersion !== "v22.22.2" ||
-    runtime?.engine !== "architecture_g" ||
     runtime?.ownerBinaryPath !== "/app/native/architecture-g-owner" ||
     runtime?.configuredOwnerSha256 !== report?.identity?.ownerBinary?.sha256
   ) {

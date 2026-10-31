@@ -4,6 +4,8 @@ import test from "node:test";
 
 import {
   createCanonicalCorpusPrefixSelector,
+  projectStressWalletFundingRecord,
+  stressWalletFileNameFromId,
   validateCanonicalCorpusVerificationEvidence,
 } from "./mpf-architecture-g-corpus.mjs";
 
@@ -164,9 +166,29 @@ test("verification evidence binds corpus, index, counts, and rebuild sample", ()
       },
     },
   };
-  assert.equal(
+  const projected = validateCanonicalCorpusVerificationEvidence({
+    artifact: evidence,
+    corpusSha256: "11".repeat(32),
+    indexSha256: "22".repeat(32),
+    rowCount: 50,
+    chainCount: 5,
+  });
+  assert.deepEqual(projected, evidence.verified);
+  assert.notEqual(projected, evidence.verified);
+  assert.deepEqual(
     validateCanonicalCorpusVerificationEvidence({
-      artifact: evidence,
+      artifact: {
+        ...evidence,
+        ignoredRootField: true,
+        verified: {
+          ...evidence.verified,
+          ignoredVerifiedField: true,
+          rebuildSample: {
+            ...evidence.verified.rebuildSample,
+            ignoredSampleField: true,
+          },
+        },
+      },
       corpusSha256: "11".repeat(32),
       indexSha256: "22".repeat(32),
       rowCount: 50,
@@ -238,4 +260,63 @@ test("verification evidence binds corpus, index, counts, and rebuild sample", ()
       }),
     );
   }
+});
+
+test("projects only canonical wallet funding semantics", () => {
+  const source = {
+    schemaVersion: "midgard-stress-wallet-v1",
+    walletId: "stress-wallet-0001",
+    ignoredRootField: true,
+    latestFunding: {
+      ignoredFundingField: true,
+      fundingUtxos: [
+        {
+          outref: `${"ab".repeat(32)}#0`,
+          outputCbor: "00",
+          ignoredEntryField: true,
+        },
+      ],
+    },
+  };
+  assert.deepEqual(projectStressWalletFundingRecord(source), {
+    walletId: "stress-wallet-0001",
+    fundingUtxos: [{ outref: `${"ab".repeat(32)}#0`, outputCbor: "00" }],
+  });
+  for (const value of [
+    { ...source, schemaVersion: "midgard-stress-wallet-v2" },
+    { ...source, walletId: "stress-wallet-\0" },
+    {
+      ...source,
+      latestFunding: {
+        ...source.latestFunding,
+        fundingUtxos: [
+          {
+            outref: `${"ab".repeat(32)}#0`,
+            outputCbor: "AA",
+          },
+        ],
+      },
+    },
+    {
+      ...source,
+      latestFunding: {
+        ...source.latestFunding,
+        fundingUtxos: [
+          { outref: `${"ab".repeat(32)}#0`, outputCbor: "00" },
+          { outref: `${"ab".repeat(32)}#0`, outputCbor: "01" },
+        ],
+      },
+    },
+  ]) {
+    assert.throws(() => projectStressWalletFundingRecord(value));
+  }
+  assert.equal(
+    stressWalletFileNameFromId("stress-wallet-0001"),
+    "wallet-0001.json",
+  );
+  assert.equal(
+    stressWalletFileNameFromId("stress-wallet-10000"),
+    "wallet-10000.json",
+  );
+  assert.throws(() => stressWalletFileNameFromId("../wallet-0001"));
 });

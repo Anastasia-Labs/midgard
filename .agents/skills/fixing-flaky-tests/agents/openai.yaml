@@ -1,0 +1,4 @@
+interface:
+  display_name: "Fixing Flaky Tests"
+  short_description: "Measure a flake's rate, fix the cause, prove it with a sized rerun."
+  default_prompt: "Use $fixing-flaky-tests to measure this intermittent failure, find its cause without masking it, and validate the fix with N = max(3k, 20) reruns."

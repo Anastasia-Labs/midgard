@@ -1,0 +1,81 @@
+/** Authenticated deployment identities of the terminal semantic yields. */
+export const TRANSITION_TRACE_YIELD_REFERENCES = {
+  forcedTiming: {
+    entry: "fraudProofTransitionTraceForcedTimingWithdraw",
+    role: "V1 fraud-proof transition-trace final-6 forced timing yield",
+  },
+  l1Event: {
+    entry: "fraudProofTransitionTraceL1EventWithdraw",
+    role: "V1 fraud-proof transition-trace final-6 L1 event yield",
+  },
+  l2Open: {
+    entry: "fraudProofTransitionTraceAcceptedTransactionL2OpenWithdraw",
+    role: "V1 fraud-proof transition-trace final-4 L2 open yield",
+  },
+  l2Delete: {
+    entry: "fraudProofTransitionTraceAcceptedTransactionL2DeleteWithdraw",
+    role: "V1 fraud-proof transition-trace final-4 L2 delete yield",
+  },
+  l2Outputs: {
+    entry: "fraudProofTransitionTraceAcceptedTransactionL2OutputsWithdraw",
+    role: "V1 fraud-proof transition-trace final-4 L2 outputs yield",
+  },
+  l2OutputStep: {
+    entry: "fraudProofTransitionTraceAcceptedTransactionL2OutputStepWithdraw",
+    role: "V1 fraud-proof transition-trace final-4 L2 output step yield",
+  },
+  l2OutputDescriptor: {
+    entry:
+      "fraudProofTransitionTraceAcceptedTransactionL2OutputDescriptorWithdraw",
+    role: "V1 fraud-proof transition-trace final-4 L2 output descriptor yield",
+  },
+  l2OutputSummary: {
+    entry:
+      "fraudProofTransitionTraceAcceptedTransactionL2OutputSummaryWithdraw",
+    role: "V1 fraud-proof transition-trace final-4 L2 output summary yield",
+  },
+  l2Summaries: {
+    entry: "fraudProofTransitionTraceAcceptedTransactionL2SummariesWithdraw",
+    role: "V1 fraud-proof transition-trace final-4 L2 summaries yield",
+  },
+  l2Replay: {
+    entry: "fraudProofTransitionTraceAcceptedTransactionL2ReplayWithdraw",
+    role: "V1 fraud-proof transition-trace final-4 L2 replay yield",
+  },
+  depositProjection: {
+    entry: "fraudProofTransitionTraceDepositProjectionWithdraw",
+    role: "V1 fraud-proof transition-trace final-5 projection yield",
+  },
+  depositSummaries: {
+    entry: "fraudProofTransitionTraceDepositSummariesWithdraw",
+    role: "V1 fraud-proof transition-trace final-5 summaries yield",
+  },
+  l2Assembly: {
+    entry: "fraudProofTransitionTraceAcceptedTransactionL2AssemblyWithdraw",
+    role: "V1 fraud-proof transition-trace final-4 L2 assembly yield",
+  },
+  l2Scan: {
+    entry: "fraudProofTransitionTraceAcceptedTransactionL2ScanWithdraw",
+    role: "V1 fraud-proof transition-trace final-4 L2 scan yield",
+  },
+  l2Value: {
+    entry: "fraudProofTransitionTraceAcceptedTransactionL2ValueWithdraw",
+    role: "V1 fraud-proof transition-trace final-4 L2 value yield",
+  },
+  depositAssembly: {
+    entry: "fraudProofTransitionTraceDepositAssemblyWithdraw",
+    role: "V1 fraud-proof transition-trace final-5 assembly yield",
+  },
+  depositScan: {
+    entry: "fraudProofTransitionTraceDepositScanWithdraw",
+    role: "V1 fraud-proof transition-trace final-5 scan yield",
+  },
+  depositValue: {
+    entry: "fraudProofTransitionTraceDepositValueWithdraw",
+    role: "V1 fraud-proof transition-trace final-5 value yield",
+  },
+  depositReplay: {
+    entry: "fraudProofTransitionTraceDepositReplayWithdraw",
+    role: "V1 fraud-proof transition-trace final-5 replay yield",
+  },
+} as const;

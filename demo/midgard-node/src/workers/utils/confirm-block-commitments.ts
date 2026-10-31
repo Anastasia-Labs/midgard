@@ -1,7 +1,9 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import { type LucidEvolution, TxHash } from "@lucid-evolution/lucid";
+import type { SqlClient } from "@effect/sql";
+import { TxHash } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
+import { landedStateQueueUTxOs } from "../../services/landed-state-queue.js";
 import {
   SerializedStateQueueUTxO,
   serializeStateQueueUTxO,
@@ -10,7 +12,10 @@ import {
 export type PendingBlockConfirmation = {
   expectedHeaderHash: string;
   submittedTxHash: "" | TxHash;
+  intendedTxHash?: TxHash | null;
   blockEndTimeMs: number;
+  /** The signed commit validity upper bound, independent of coverage end. */
+  blockTimeMs: number;
   updatedAtMs: number;
 };
 
@@ -59,7 +64,11 @@ export type SerializedCanonicalCommittedHeader = {
 
 export const pendingBlockHasSubmittedTx = (
   pendingBlock: PendingBlockConfirmation,
-): boolean => pendingBlock.submittedTxHash.length > 0;
+): boolean => pendingBlockLookupTxHash(pendingBlock).length > 0;
+
+export const pendingBlockLookupTxHash = (
+  pendingBlock: PendingBlockConfirmation,
+): string => pendingBlock.intendedTxHash ?? pendingBlock.submittedTxHash;
 
 export const TARGETED_MISS_FULL_SCAN_INTERVAL_MS = 20_000;
 
@@ -87,7 +96,7 @@ export const shouldDeferUnsubmittedPendingBlockRecovery = ({
   readonly pendingBlock: PendingBlockConfirmation;
   readonly nowMs: number;
   readonly recoveryGraceMs: number;
-}): boolean => nowMs <= pendingBlock.blockEndTimeMs + recoveryGraceMs;
+}): boolean => nowMs <= pendingBlock.blockTimeMs + recoveryGraceMs;
 
 export type UnsubmittedPendingBlockRecoveryDecision =
   | "recover_canonical"
@@ -108,6 +117,9 @@ export const decideUnsubmittedPendingBlockRecovery = ({
   if (canonicalMatchFound) {
     return "recover_canonical";
   }
+  // A signed intent is resolved only by the landed-block rebase's journal
+  // disposition (S6's derived status and the landed chain); defer to it.
+  if (pendingBlock.intendedTxHash != null) return "defer";
   return shouldDeferUnsubmittedPendingBlockRecovery({
     pendingBlock,
     nowMs,
@@ -117,26 +129,14 @@ export const decideUnsubmittedPendingBlockRecovery = ({
     : "recover_stale";
 };
 
-export const fetchLatestCommittedStateQueueBlock = (
-  lucid: LucidEvolution,
-  stateQueueAuthValidator: SDK.AuthenticatedValidator,
-): Effect.Effect<SDK.StateQueueUTxO, SDK.StateQueueError | SDK.LucidError> =>
-  SDK.fetchLatestCommittedBlockProgram(lucid, {
-    stateQueueAddress: stateQueueAuthValidator.spendingScriptAddress,
-    stateQueuePolicyId: stateQueueAuthValidator.policyId,
-  });
-
+/** The healthy landed queue, root first (P1, never L1). */
 export const fetchSortedCommittedStateQueueBlocks = (
-  lucid: LucidEvolution,
   stateQueueAuthValidator: SDK.AuthenticatedValidator,
 ): Effect.Effect<
   readonly SDK.StateQueueUTxO[],
-  SDK.LucidError | SDK.LinkedListError
-> =>
-  SDK.fetchSortedStateQueueUTxOsProgram(lucid, {
-    stateQueueAddress: stateQueueAuthValidator.spendingScriptAddress,
-    stateQueuePolicyId: stateQueueAuthValidator.policyId,
-  });
+  SDK.StateQueueError,
+  SqlClient.SqlClient
+> => landedStateQueueUTxOs(stateQueueAuthValidator, "block confirmation");
 
 export const latestCommittedStateQueueBlockFromSorted = (
   blocks: readonly SDK.StateQueueUTxO[],

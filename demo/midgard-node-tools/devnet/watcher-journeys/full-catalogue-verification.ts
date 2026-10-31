@@ -1,0 +1,291 @@
+import {
+  computeMidgardNativeTxId,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  deriveMidgardNativeTxProofSourceFromCanonicalCbor,
+} from "@al-ft/midgard-core";
+import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
+import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
+import {
+  authenticatedStateQueueObservationDigest,
+  classifyHeader,
+  completeCanonicalReplayPredecessorLedger,
+  computeFraudProofReleaseFinalityPolicyDigest,
+  createCatalogueCompleteCanonicalReplay,
+  createHeaderClassifier,
+  FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
+  FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
+  FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
+  type FraudProofRawL1SnapshotAuthority,
+  headerDecisionCanonicalEvidence,
+  headerDecisionReplayContext,
+  type LedgerAt,
+  type RetainedDaPayloadSource,
+} from "@al-ft/midgard-fault-proofs";
+import { authenticatedHeaderObservation } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
+import { captureRetainedPlutusIdentityOrigins } from "@al-ft/midgard-fault-proofs/test-support/retained-reason-classifier";
+import {
+  requireTransitionTraceL1Events,
+  unsafeCreateTransitionTraceEventAuthorityFromRawForTest,
+} from "@al-ft/midgard-fault-proofs/test-support/transition-trace-l1-events";
+import * as SDK from "@al-ft/midgard-sdk";
+import {
+  credentialToAddress,
+  Data,
+  getAddressDetails,
+  type LucidEvolution,
+} from "@lucid-evolution/lucid";
+
+import type { VerifiableJourneyBlock } from "./fixture-verification.js";
+
+/**
+ * Exercise the unmodified installed selector against real retained transaction
+ * material. Only local raw transport/finality is synthetic. This helper is for
+ * transaction-only blocks: it never substitutes fabricated L1 event provenance
+ * for a deposit, withdrawal or forced order in the challenged block.
+ */
+export const classifyFullCatalogueTransactionFixture = async (input: {
+  block: VerifiableJourneyBlock;
+  predecessor: VerifiableJourneyBlock;
+  ledgerAt: LedgerAt;
+  history: readonly VerifiableJourneyBlock[];
+  /** Only the synthetic empty-event hub seed uses this valid control transaction. */
+  originTransaction?: Parameters<
+    typeof captureRetainedPlutusIdentityOrigins
+  >[0]["transaction"];
+  forced?: Pick<
+    Parameters<typeof captureRetainedPlutusIdentityOrigins>[0],
+    "transaction" | "orderKey"
+  >;
+}) => {
+  const envelope = await unwrapDaPayload(
+    Buffer.from(input.block.payloadEnvelopeCbor),
+    { maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes },
+  );
+  const payload = SDK.decodeDaPayload(Buffer.from(envelope.innerBytes));
+  const body = payload.block_body;
+  if (
+    body.deposits.length + body.withdrawals.length > 0 ||
+    (body.forced_transactions.length > 0 && input.forced === undefined)
+  )
+    throw new Error(
+      "Full local transaction verifier requires exact raw event authority for event-bearing blocks",
+    );
+  const first = body.transaction_preimages[0];
+  if (
+    first === undefined &&
+    input.forced === undefined &&
+    input.originTransaction === undefined
+  )
+    throw new Error(
+      "Full local transaction verifier requires a retained transaction",
+    );
+  const canonicalCbor =
+    input.forced?.transaction.canonicalCbor ??
+    input.originTransaction?.canonicalCbor ??
+    Buffer.from(first![1], "hex");
+  const nativeTx = decodeMidgardNativeTxFullFromCanonicalCbor(canonicalCbor);
+  const txId = computeMidgardNativeTxId(nativeTx).toString("hex");
+  const proof =
+    deriveMidgardNativeTxProofSourceFromCanonicalCbor(canonicalCbor);
+  const source: SDK.L2TransactionSource = {
+    tx_id: txId,
+    source: {
+      compact_cbor: proof.compactCbor.toString("hex"),
+      witness_set_compact_cbor: proof.witnessSetCompactCbor.toString("hex"),
+      field_preimage_lengths_cbor:
+        proof.fieldPreimageLengthsCbor.toString("hex"),
+    },
+  };
+  const seedHandle = await captureRetainedPlutusIdentityOrigins(
+    {
+      block: {
+        ...input.block,
+        payloadEnvelopeCbor: Buffer.from(input.block.payloadEnvelopeCbor),
+      },
+      transaction: {
+        txId,
+        canonicalCbor,
+        compactCbor: Buffer.from(proof.compactCbor),
+        source,
+        sourceValueBytes: Buffer.from(
+          Data.to(source, SDK.L2TransactionSource),
+          "hex",
+        ),
+      },
+      orderKey: input.forced?.orderKey ?? {
+        transactionId: txId,
+        outputIndex: 0n,
+      },
+    },
+    {
+      omitEvent: input.forced === undefined,
+      inclusionTime: input.block.header.endTime - 1n,
+    },
+  );
+  const seed = requireTransitionTraceL1Events(seedHandle).snapshot;
+  const hub = seed.scopes.find((scope) => scope.role === "hub_oracle");
+  if (hub === undefined) throw new Error("Local raw authority has no hub");
+  const hubOraclePolicyId = getAddressDetails(hub.address).paymentCredential!
+    .hash;
+  const raw: FraudProofRawL1SnapshotAuthority = {
+    authorityVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
+    capture: async (request) => ({
+      ...seed,
+      deploymentIdentityDigest: request.deploymentIdentityDigest,
+      blueprintHash: request.blueprintHash,
+      finalityPolicyDigest: request.finalityPolicyDigest,
+      headerHash: request.headerHash,
+      scopes: request.scopes.map((scope) => ({
+        ...scope,
+        utxos:
+          seed.scopes.find((existing) => existing.address === scope.address)
+            ?.utxos ?? [],
+      })),
+      historyUnits: request.historyUnits,
+      history: request.historyUnits.map((unit) => {
+        const value = seed.history.find((existing) => existing.unit === unit);
+        if (value === undefined)
+          throw new Error(
+            "Local raw authority has no coverage for requested event unit",
+          );
+        return value;
+      }),
+    }),
+  };
+  const deploymentFingerprint = "d1".repeat(32);
+  const policy = {
+    confirmationDepth: DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
+    automaticRecoveryMaxDepth: 2160,
+    deepRollbackPolicy: "automated_rewind_replay_incident-v1",
+  } as const;
+  const releaseFinality = {
+    schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
+    deploymentIdentityDigest: deploymentFingerprint,
+    blueprintHash: "e1".repeat(32),
+    policyDigest: computeFraudProofReleaseFinalityPolicyDigest(policy),
+    policy,
+  };
+  // Explicit synthetic parameters for this transaction-only raw fixture.
+  // Neither address is a deployed history authority.
+  const historyParameters = {
+    inlineLimitBytes: 512n,
+    maxPayloadBytes: 5000n,
+    maxPayloadNodes: 512n,
+    retentionAddresses: {
+      deposit: credentialToAddress("Preprod", {
+        type: "Script",
+        hash: "70".repeat(28),
+      }),
+      withdrawal: credentialToAddress("Preprod", {
+        type: "Script",
+        hash: "71".repeat(28),
+      }),
+    },
+  };
+  // As in the established catalogue-retained classifier unit test, these are
+  // only the fields consumed by raw authority admission; no deployment claim.
+  const bindingFields = {
+    deploymentFingerprint,
+    blueprintHash: releaseFinality.blueprintHash,
+    network: "Preprod" as const,
+    releaseFinality,
+    resolvedContracts: {
+      hubOraclePolicyId,
+      contracts: { transitionTrace: { history: historyParameters } },
+    },
+    definition: { headerHash: input.block.headerHash },
+  };
+  const transitionTraceEventAuthority =
+    unsafeCreateTransitionTraceEventAuthorityFromRawForTest({
+      binding: bindingFields as Parameters<
+        typeof unsafeCreateTransitionTraceEventAuthorityFromRawForTest
+      >[0]["binding"],
+      authority: raw,
+    });
+  const lucid = {
+    utxosAt: async () => {
+      throw new Error("Transaction-only fixture cannot read event history");
+    },
+  } as unknown as LucidEvolution;
+  const replayer = createCatalogueCompleteCanonicalReplay({
+    lucid,
+    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+    network: "Preprod",
+    hubOraclePolicyId,
+    minimumConfirmationDepth: policy.confirmationDepth,
+    owner: "b1".repeat(28),
+    history: {
+      deposit: {
+        ...historyParameters,
+        retentionAddress: historyParameters.retentionAddresses.deposit,
+      },
+      withdrawal: {
+        ...historyParameters,
+        retentionAddress: historyParameters.retentionAddresses.withdrawal,
+      },
+    },
+  });
+  const classifier = await createHeaderClassifier({
+    deploymentFingerprint,
+    replayer,
+    releaseFinalityAuthority: {
+      authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
+      verifyForWorkflow: async () => releaseFinality,
+    },
+    transitionTraceEventAuthority,
+  });
+  const sources: RetainedDaPayloadSource[] = [
+    {
+      sourceId: "retained-local",
+      fetchPayloadByHeaderHash: async (headerHash) => {
+        const retained = [
+          input.block,
+          input.predecessor,
+          ...input.history,
+        ].find((block) => block.headerHash === headerHash);
+        if (retained === undefined)
+          throw new Error(`Missing actual retained ancestor ${headerHash}`);
+        return {
+          ok: true,
+          sourceId: "retained-local",
+          sourcePeerId: "local-test",
+          attempts: [],
+          payloadEnvelopeCbor: Buffer.from(retained.payloadEnvelopeCbor),
+          provenance: {
+            trustClass: "public_or_permissionless_da",
+            sourceId: "retained-local/local-test",
+            grade: "security",
+          },
+        };
+      },
+    },
+  ];
+  const observation = authenticatedHeaderObservation(input.block);
+  const decision = await classifyHeader({
+    classifier,
+    observation,
+    predecessorLedgerAt: input.ledgerAt,
+    sources,
+    authenticatedObservationDigest:
+      await authenticatedStateQueueObservationDigest({
+        observation,
+        minimumConfirmationDepth: policy.confirmationDepth,
+      }),
+  });
+  const evidence = await headerDecisionCanonicalEvidence(decision);
+  return {
+    decision,
+    evidence,
+    /** The classifier-admitted predecessor the decision was proved against. */
+    predecessor:
+      evidence === undefined
+        ? undefined
+        : completeCanonicalReplayPredecessorLedger({
+            evidence,
+            context: headerDecisionReplayContext(decision),
+          }),
+    verification: "full-installed-local-classification" as const,
+  };
+};

@@ -5,19 +5,22 @@ description: "The small Haskell scripts/constants utility library under offchain
 
 The [`offchain/`](https://github.com/Anastasia-Labs/midgard/tree/main/offchain)
 directory is a small Haskell/Cabal project (`midgard-offchain.cabal`) that provides
-script and constant utilities:
+historical script and constant utilities, including:
 
 - `src/Midgard/Scripts.hs`
 - `src/Midgard/ScriptUtils.hs`
 - `src/Midgard/Constants.hs`
 
-It acts as a Haskell-side helper layer for script serialization and shared
-constants, with a corresponding `tests/` suite.
+It includes script serialization helpers and a corresponding `tests/` suite.
+Its `Constants.hs` still uses a dummy always-successful hub policy and historical
+zero-bond economics, so these constants and parameter applications are not the
+current deployment authority. Use the TypeScript SDK and finalized manifests
+for active protocol deployments.
 
 <Callout type="warn" title="Not the main off-chain runtime">
-The production off-chain stack for Midgard is the **TypeScript** monorepo under
-[`demo/`](/docs/sdk), `lucid-midgard`, `midgard-core`, `midgard-sdk`, the
-[operator node](/docs/operators/node/overview), and the
-[DA committee node](/docs/watchers/da-committee-node). The Haskell `offchain/`
-project is a supporting utilities library, not the operator runtime.
+  The production off-chain stack for Midgard is the **TypeScript** monorepo
+  under [`demo/`](/docs/sdk), `lucid-midgard`, `midgard-core`, `midgard-sdk`,
+  the [operator node](/docs/operators/node/overview), and the [DA committee
+  node](/docs/watchers/da-committee-node). The Haskell `offchain/` project is a
+  supporting utilities library, not the operator runtime.
 </Callout>

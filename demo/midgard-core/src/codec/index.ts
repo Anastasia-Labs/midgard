@@ -2,9 +2,24 @@ export * from "./address.js";
 export * from "./cbor.js";
 export * from "./datum.js";
 export * from "./errors.js";
+export * from "./forced.js";
 export * from "./hash.js";
 export * from "./native.js";
+export { validateCanonicalPlutusDataCbor } from "./native-redeemer.js";
 export * from "./native-script.js";
+export * from "./native-tx-carriage.js";
+export * from "./native-tx-field-access.js";
+export * from "./native-tx-field-item-decoders.js";
+export {
+  locateMidgardFieldItemFault,
+  locateMidgardTransactionFieldItemFault,
+  MidgardFieldItemError,
+  type MidgardFieldItemFault,
+  midgardFieldItemWidthIsLegal,
+  midgardFixedFieldItemIsLegal,
+} from "./native-tx-field-item-legality.js";
+export * from "./native-tx-field-items.js";
+export * from "./native-tx-field-order.js";
 export * from "./output.js";
 export * from "./script-language-views.js";
 export * from "./value.js";

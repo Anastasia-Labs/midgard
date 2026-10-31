@@ -6,9 +6,8 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { MigrationRunner, TxAdmissionsDB } from "@/database/index.js";
-
-import { provideDatabaseLayers } from "./utils.js";
+import { MigrationRunner, TxAdmissionsDB } from "../src/database/index.js";
+import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 describe("durable admission monotone timestamps", () => {
   it("survives a database clock observation behind the admitted row", async () => {
@@ -20,7 +19,7 @@ describe("durable admission monotone timestamps", () => {
             appVersion: "tx-admissions-monotone-timestamps-test",
             actor: "tx-admissions-monotone-timestamps-test",
           });
-          yield* sql`TRUNCATE TABLE tx_rejections, tx_admission_payloads, tx_admissions RESTART IDENTITY CASCADE`;
+          yield* resetApplicationTables;
 
           const txCanonicalCbor = Buffer.from("phase1-monotone-timestamp");
           const txId = createHash("sha256").update(txCanonicalCbor).digest();
@@ -125,6 +124,23 @@ describe("durable admission monotone timestamps", () => {
           expect(idempotentSubmit.entry.terminal_at?.getTime()).toBe(
             terminalAt,
           );
+          const [microbatchSubmit] = yield* TxAdmissionsDB.admitReservedBatch([
+            {
+              txId,
+              txCanonicalCbor,
+              submitSource: "native",
+            },
+          ]);
+          expect(microbatchSubmit).toMatchObject({
+            _tag: "Success",
+            result: {
+              kind: "duplicate",
+              entry: {
+                status: TxAdmissionsDB.Status.Rejected,
+                request_count: 4n,
+              },
+            },
+          });
           const rejectionCounts = yield* sql<{
             readonly count: bigint | number | string;
           }>`SELECT COUNT(*) AS count FROM tx_rejections`;

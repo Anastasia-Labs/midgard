@@ -1,0 +1,6 @@
+# Dedicated public reader: copy into its own directory as config.yaml or use
+# MIDGARD_CONFIG_FILE. This service needs a network identity, not a wallet.
+{}
+# DA_PUBLIC_RETAINED_DA_PRIVATE_KEY_SOURCE: "seed:32-byte-hex-transport-seed"
+# Supply matching deployment, peer and read-only database settings too.
+# Remove {} when uncommenting settings. Do not paste real keys into this example.

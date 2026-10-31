@@ -1,6 +1,15 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import { toUnit } from "@lucid-evolution/lucid";
+import type { SqlClient } from "@effect/sql";
+import { type LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
+
+import { l1NowUnixTimeMs } from "../../l1-heads.js";
+import {
+  landedStateQueueTail,
+  landedStateQueueUTxOs,
+  requireLandedStateQueue,
+  stateQueueContractOf,
+} from "../../services/landed-state-queue.js";
 
 // The sibling SDK is built in its own TypeScript program, so its exported
 // `Effect` values can carry a distinct branded generator identity during DTS
@@ -37,8 +46,15 @@ export const updateLatestBlocksDatumAndGetTheNewHeaderLocal = (
   withdrawalsRoot: string,
   transitionCommitments: SDK.HeaderTransitionCommitments,
   endTime: bigint,
+  validationContext: Pick<
+    SDK.Header,
+    "blockSlot" | "expectedNetworkId" | "minFeeA" | "minFeeB"
+  >,
 ): Effect.Effect<
-  { readonly nodeDatum: SDK.LinkedListNodeView; readonly header: SDK.Header },
+  {
+    readonly nodeDatum: SDK.LinkedListNodeView;
+    readonly header: SDK.Header;
+  },
   | SDK.DataCoercionError
   | SDK.HeaderTransitionCommitmentsError
   | SDK.LucidError
@@ -54,6 +70,7 @@ export const updateLatestBlocksDatumAndGetTheNewHeaderLocal = (
       withdrawalsRoot,
       transitionCommitments,
       endTime,
+      validationContext,
     ),
   );
 
@@ -88,82 +105,238 @@ export const stateQueueBaseHeaderHash = (
     return yield* hashBlockHeaderLocal(header);
   });
 
+/** The landed queue's tail: the latest committed block (P1). */
 export const fetchLatestCommittedBlockLocal = (
-  lucid: Parameters<typeof SDK.fetchLatestCommittedBlockProgram>[0],
   fetchConfig: SDK.StateQueueFetchConfig,
-): Effect.Effect<SDK.StateQueueUTxO, SDK.StateQueueError | SDK.LucidError> =>
-  localizeSdkEffect(SDK.fetchLatestCommittedBlockProgram(lucid, fetchConfig));
+): Effect.Effect<
+  SDK.StateQueueUTxO,
+  SDK.StateQueueError,
+  SqlClient.SqlClient
+> =>
+  landedStateQueueTail(
+    stateQueueContractOf(fetchConfig),
+    "the latest committed block",
+  );
+
+export type CommitAppendFenceReferences = {
+  readonly confirmedStateRefInput?: SDK.StateQueueUTxO["utxo"];
+  readonly headStateQueueNodeRefInput?: SDK.StateQueueUTxO["utxo"];
+};
 
 /**
- * Revalidates a known state-queue tail through its unique NFT instead of
- * scanning every UTxO at the state-queue address. Appending or merging can
- * recreate the same logical node at a new out-ref, so a replacement is still
- * decoded and checked as a tail rather than being rejected solely by out-ref.
+ * The block times of every unattested node after the root, failing instead
+ * when any of them is past its DA attestation deadline. Appending to an
+ * expired unattested suffix only creates more work for permissionless
+ * correction, so the commit pauses until correction removes it. Every pending
+ * node counts, including tails hidden behind an attested queue head. Both the
+ * append-fence cap and the build's fence references go through this one check,
+ * so a commit refuses an expired suffix with the same error wherever it first
+ * meets it. "Now" is the L1 `slotNow` (plan §3.6), never the wall clock: a
+ * clock that runs fast must not pause commits early. While no L1 tip has been
+ * read the commit pauses the same way, and the next tick retries.
  */
-export const fetchExpectedStateQueueTailLocal = (
-  lucid: Parameters<typeof SDK.fetchLatestCommittedBlockProgram>[0],
+const unexpiredUnattestedSuffixBlockTimes = (
+  lucid: LucidEvolution,
+  ordered: readonly SDK.StateQueueUTxO[],
+): Effect.Effect<readonly number[], SDK.StateQueueError> =>
+  Effect.gen(function* () {
+    const nowMs = BigInt(
+      yield* l1NowUnixTimeMs(lucid).pipe(
+        Effect.mapError(
+          (cause) =>
+            new SDK.StateQueueError({
+              message: "Commit paused until the L1 slot is known",
+              cause,
+            }),
+        ),
+      ),
+    );
+    const unattestedBlockTimesMs: number[] = [];
+    for (const entry of ordered.slice(1)) {
+      const node = yield* localizeSdkEffect<
+        SDK.StateQueueNode,
+        SDK.DataCoercionError
+      >(SDK.getStateQueueNodeFromStateQueueDatum(entry.datum)).pipe(
+        Effect.mapError(
+          (cause) =>
+            new SDK.StateQueueError({
+              message: "Failed to inspect pending DA attestation before commit",
+              cause,
+            }),
+        ),
+      );
+      if (node.da_attestation !== SDK.NO_DA_ATTESTATION) {
+        continue;
+      }
+      if (nowMs >= node.block_time + SDK.DA_ATTESTATION_TIMEOUT_MS) {
+        return yield* Effect.fail(
+          new SDK.StateQueueError({
+            message:
+              "Commit paused until expired unattested suffix is corrected",
+            cause: `expired_out_ref=${stateQueueOutRef(entry)}`,
+          }),
+        );
+      }
+      unattestedBlockTimesMs.push(Number(node.block_time));
+    }
+    return unattestedBlockTimesMs;
+  });
+
+/**
+ * Q61's append fence as a cap on the new block's block_time, the append's
+ * inclusive upper bound: it must fall strictly before the DA attestation
+ * deadline (block_time + timeout) of every unattested node still in the queue,
+ * not only the head's: an append landing after a pending tail's deadline
+ * takes the tail that timeout correction is about to remove. Only the head's
+ * fence is enforced on chain; the rest is this node's own build policy. An
+ * on-chain node already past its deadline leaves nothing to cap: the fence
+ * fails with the build's expired-suffix refusal instead.
+ */
+export const resolveCommitAppendFenceEndTimeCapLocal = (
+  lucid: LucidEvolution,
+  fetchConfig: SDK.StateQueueFetchConfig,
+): Effect.Effect<
+  number | undefined,
+  SDK.StateQueueError,
+  SqlClient.SqlClient
+> =>
+  Effect.gen(function* () {
+    const ordered = yield* landedStateQueueUTxOs(
+      stateQueueContractOf(fetchConfig),
+      "the commit append fence",
+    );
+    const unattestedBlockTimesMs = yield* unexpiredUnattestedSuffixBlockTimes(
+      lucid,
+      ordered,
+    );
+    return unattestedBlockTimesMs.length === 0
+      ? undefined
+      : Math.min(...unattestedBlockTimesMs) +
+          Number(SDK.DA_ATTESTATION_TIMEOUT_MS) -
+          1;
+  });
+
+/**
+ * Resolves the exact singleton root/current-head reference inputs required by
+ * Q61's append fence. The landed queue is read again immediately before the
+ * transaction is built; if the expected tail changed, this attempt aborts and
+ * the caller rebuilds from canonical state instead of journaling a stale
+ * append.
+ */
+export const resolveCommitAppendFenceReferencesLocal = (
+  lucid: LucidEvolution,
   fetchConfig: SDK.StateQueueFetchConfig,
   expectedTail: SDK.StateQueueUTxO,
-): Effect.Effect<SDK.StateQueueUTxO, SDK.StateQueueError | SDK.LucidError> =>
+): Effect.Effect<
+  CommitAppendFenceReferences,
+  SDK.StateQueueError,
+  SqlClient.SqlClient
+> =>
   Effect.gen(function* () {
-    const expectedUnit = toUnit(
-      fetchConfig.stateQueuePolicyId,
-      expectedTail.assetName,
+    const ordered = yield* landedStateQueueUTxOs(
+      stateQueueContractOf(fetchConfig),
+      "the commit append fence",
     );
-    const candidates = yield* Effect.tryPromise({
-      try: () =>
-        lucid.utxosAtWithUnit(fetchConfig.stateQueueAddress, expectedUnit),
-      catch: (cause) =>
-        new SDK.LucidError({
-          message: `Failed to fetch expected state-queue tail unit at: ${fetchConfig.stateQueueAddress}`,
-          cause,
+    yield* unexpiredUnattestedSuffixBlockTimes(lucid, ordered);
+    const canonicalTail = ordered.at(-1);
+    if (canonicalTail === undefined) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message: "Canonical state queue is empty",
+          cause: "missing confirmed-state root",
         }),
-    });
-    if (candidates.length === 0) {
+      );
+    }
+    if (stateQueueOutRef(canonicalTail) !== stateQueueOutRef(expectedTail)) {
       return yield* Effect.fail(
         new SDK.StateQueueError({
           message:
             "Commit base is stale; aborting block build before creating a pending journal",
-          cause: `expected_unit=${expectedUnit},matches=0`,
+          cause: `expected_tail=${stateQueueOutRef(expectedTail)},canonical_tail=${stateQueueOutRef(canonicalTail)}`,
         }),
       );
     }
-    if (candidates.length !== 1) {
-      return yield* Effect.fail(
-        new SDK.StateQueueError({
-          message: "Expected state-queue tail unit is not unique",
-          cause: `unit=${expectedUnit},matches=${candidates.length.toString()}`,
-        }),
-      );
+    if (ordered.length === 1) {
+      if (canonicalTail.datum.key !== "Empty") {
+        return yield* Effect.fail(
+          new SDK.StateQueueError({
+            message: "Canonical state queue is missing its root",
+            cause: `tail=${stateQueueOutRef(canonicalTail)}`,
+          }),
+        );
+      }
+      return {};
     }
 
-    const candidate = candidates[0];
+    const root = ordered[0];
+    const head = ordered[1];
     if (
-      candidate.txHash === expectedTail.utxo.txHash &&
-      candidate.outputIndex === expectedTail.utxo.outputIndex
+      root === undefined ||
+      head === undefined ||
+      root.datum.key !== "Empty" ||
+      canonicalTail.datum.key === "Empty"
+    ) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message: "Canonical state-queue topology is malformed",
+          cause: `nodes=${ordered.length.toString()}`,
+        }),
+      );
+    }
+    return {
+      confirmedStateRefInput: root.utxo,
+      ...(stateQueueOutRef(head) === stateQueueOutRef(canonicalTail)
+        ? {}
+        : { headStateQueueNodeRefInput: head.utxo }),
+    };
+  });
+
+/**
+ * Revalidates a known state-queue tail against the landed queue. Appending
+ * or merging can recreate the same logical node at a new out-ref, so a
+ * replacement under the same NFT is still accepted while it is the tail.
+ */
+export const fetchExpectedStateQueueTailLocal = (
+  fetchConfig: SDK.StateQueueFetchConfig,
+  expectedTail: SDK.StateQueueUTxO,
+): Effect.Effect<
+  SDK.StateQueueUTxO,
+  SDK.StateQueueError,
+  SqlClient.SqlClient
+> =>
+  Effect.gen(function* () {
+    const queue = yield* requireLandedStateQueue(
+      stateQueueContractOf(fetchConfig),
+      "the commit base revalidation",
+    );
+    const element = [
+      ...(queue.root === null ? [] : [queue.root]),
+      ...queue.nodes,
+    ].find(({ element }) => element.assetName === expectedTail.assetName);
+    if (element === undefined) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message:
+            "Commit base is stale; aborting block build before creating a pending journal",
+          cause: `expected_asset_name=${expectedTail.assetName},matches=0`,
+        }),
+      );
+    }
+    const candidate = element.element;
+    if (
+      candidate.utxo.txHash === expectedTail.utxo.txHash &&
+      candidate.utxo.outputIndex === expectedTail.utxo.outputIndex
     ) {
       return expectedTail;
     }
-
-    const replacement = yield* localizeSdkEffect<SDK.StateQueueUTxO, unknown>(
-      SDK.utxoToStateQueueUTxO(candidate, fetchConfig.stateQueuePolicyId),
-    ).pipe(
-      Effect.mapError(
-        (cause) =>
-          new SDK.StateQueueError({
-            message: "Failed to authenticate replacement state-queue tail",
-            cause,
-          }),
-      ),
-    );
-    if (replacement.datum.next !== "Empty") {
+    if (candidate.datum.next !== "Empty") {
       return yield* Effect.fail(
         new SDK.StateQueueError({
           message:
             "Commit base is stale; aborting block build before creating a pending journal",
-          cause: `unit=${expectedUnit},outref=${stateQueueOutRef(replacement)}`,
+          cause: `asset_name=${expectedTail.assetName},outref=${stateQueueOutRef(candidate)}`,
         }),
       );
     }
-    return replacement;
+    return candidate;
   });

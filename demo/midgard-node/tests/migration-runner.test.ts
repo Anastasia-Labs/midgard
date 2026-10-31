@@ -1,11 +1,28 @@
+import "./utils.js";
+import "./migration-runner.public-read-indexes.js";
+import "./migration-runner.flat-scripts.js";
+import "./migration-runner.snapshot.js";
+
+import { createHash } from "node:crypto";
+
+import { SqlClient } from "@effect/sql";
+import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { MIGRATIONS } from "@/database/migrations/index.js";
 import {
+  MIGRATION_MANIFEST_HASH,
+  MIGRATIONS,
+} from "../src/database/migrations/index.js";
+import {
+  type AppliedMigrationRow,
   MigrationError,
   migrationExecutionMs,
   splitSqlStatements,
-} from "@/database/migrations/runner.js";
+  validateAppliedMigrationLedger,
+} from "../src/database/migrations/runner.js";
+import * as MigrationRunner from "../src/database/migrations/runner.js";
+import { BatchSql } from "../src/services/database.js";
+import { provideDatabaseLayers } from "./utils.js";
 
 describe("migrationExecutionMs", () => {
   it("never returns a negative duration", () => {
@@ -27,7 +44,6 @@ describe("splitSqlStatements", () => {
       /* block comment with a semicolon; */
       SELECT 2;
     `);
-
     expect(statements).toEqual([
       "SELECT 'state; restore', 'escaped '' ; still string'",
       'SELECT "semi;colon"',
@@ -52,57 +68,166 @@ describe("splitSqlStatements", () => {
     expect(statements[1]).toBe("SELECT 1");
   });
 
-  it("exposes one fresh-install baseline with no historical migrations", () => {
-    expect(MIGRATIONS).toHaveLength(1);
-    expect(MIGRATIONS[0]).toMatchObject({
-      version: 1,
-      name: "initial_schema",
-      transactional: true,
+  it("keeps v1 as the single fresh-install baseline with ordered transactional successors", () => {
+    expect(
+      MIGRATIONS.map(({ version, name, transactional }) => [
+        version,
+        name,
+        transactional,
+      ]),
+    ).toEqual([
+      [1, "initial_schema", true],
+      [2, "automatic_settlement", true],
+      [3, "operator_membership", true],
+      [4, "retained_script_material", true],
+      [5, "foreign_event_census", true],
+      [6, "foreign_native_adoption", true],
+      [7, "drop_foreign_tip_reconciliations", true],
+      [8, "follower_admission_identity", true],
+      [9, "landed_blocks", true],
+      [10, "intent_refusal_holds", true],
+      [11, "locally_applied_block_status", true],
+      [12, "receipt_settlements", true],
+      [13, "mempool_inclusion_marks", true],
+      [14, "confirmed_ledger_merges", true],
+      [15, "settlement_status_derived", true],
+      [16, "receipt_rejections", true],
+      [17, "drop_settlement_hold_slot", true],
+      [18, "landed_blocks_own_removed", true],
+      [19, "tx_rejection_causes", true],
+      [20, "drop_queue_terminal_observer", true],
+      [21, "follower_write_gate", true],
+      [22, "drop_event_history_control_plane", true],
+      [23, "commit_anchor", true],
+      [24, "drop_validation_trace_witnesses", true],
+      [25, "block_time", true],
+      [26, "drop_utxo_payload_aggregate", true],
+      [27, "public_http_read_indexes", true],
+      [28, "import_checks", true],
+      [29, "drop_cek_program_material", true],
+      [30, "import_check_retries", true],
+    ]);
+  });
+
+  it("splits the real baseline into statements that re-split identically", () => {
+    // Idempotence on the 1600-line production dump is a property, not a pin:
+    // a splitter that swallowed a dollar-quoted body, merged two statements,
+    // or emitted a fragment would re-split into a different list. The dump is
+    // the only input in the tree that exercises every lexer state at once.
+    const statements = splitSqlStatements(MIGRATIONS[0]!.sql);
+    expect(statements.length).toBeGreaterThan(100);
+    expect(statements.every((statement) => statement.trim().length > 0)).toBe(
+      true,
+    );
+    expect(splitSqlStatements(statements.join(";\n") + ";")).toEqual(
+      statements,
+    );
+  });
+
+  it("accepts the exact ledger of every migration", () => {
+    expect(() =>
+      validateAppliedMigrationLedger(
+        MIGRATIONS.map((migration) => appliedMigrationRow(migration)),
+        "exact",
+      ),
+    ).not.toThrow();
+  });
+
+  it("lets a baseline-only ledger stamped by the baseline-era manifest migrate forward but not serve", () => {
+    const baselineOnly = [
+      {
+        ...appliedMigrationRow(),
+        manifest_hash_sha256: manifestHashThrough(1),
+      },
+    ];
+    expect(() =>
+      validateAppliedMigrationLedger(baselineOnly, "allowBehind"),
+    ).not.toThrow();
+    expect(() => validateAppliedMigrationLedger(baselineOnly, "exact")).toThrow(
+      expect.objectContaining({ code: "schema_version_behind" }),
+    );
+  });
+
+  it("accepts each row stamped by the manifest it was applied under, and no older one", () => {
+    const [first, second] = MIGRATIONS;
+    const stamped = (
+      migration: (typeof MIGRATIONS)[number],
+      through: number,
+    ): AppliedMigrationRow => ({
+      ...appliedMigrationRow(migration),
+      manifest_hash_sha256: manifestHashThrough(through),
     });
-    expect(splitSqlStatements(MIGRATIONS[0]!.sql).length).toBeGreaterThan(100);
-  });
-
-  it("keeps Architecture G replay fields all-or-none and length bound", () => {
-    const sql = MIGRATIONS[0]!.sql;
-    expect(sql).toContain(
-      "pending_block_finalizations_mpf_replay_all_or_none_check",
-    );
-    expect(sql).toContain("mpf_owner_schema = 1");
-    expect(sql).toContain("octet_length(mpf_owner_binary_sha256) = 32");
-    expect(sql).toContain("octet_length(mpf_replay_event_log) >= 92");
-    expect(sql).toMatch(
-      /octet_length\(mpf_replay_event_roots\) = \(?mpf_replay_event_count \* 32\)?/,
-    );
-  });
-
-  it("keeps active lease point lookups separate from expiry recovery", () => {
-    const sql = MIGRATIONS[0]!.sql;
-    expect(sql).toContain("idx_tx_admissions_active_lease");
-    expect(sql).toContain("(lease_owner, tx_id)");
-    expect(sql).toMatch(/WHERE \(status = 'validating'::/i);
-    expect(sql).toContain("idx_tx_admissions_lease");
-  });
-
-  it("makes only the rebuildable transaction-delta cache unlogged", () => {
-    const sql = MIGRATIONS[0]!.sql;
-    expect(sql).toMatch(/CREATE UNLOGGED TABLE public\.mempool_tx_deltas/i);
-    expect(sql).not.toMatch(/CREATE UNLOGGED TABLE public\.tx_admissions/i);
-    expect(sql).not.toMatch(
-      /CREATE UNLOGGED TABLE public\.tx_admission_payloads/i,
+    expect(() =>
+      validateAppliedMigrationLedger(
+        MIGRATIONS.map((migration) => stamped(migration, migration.version)),
+        "exact",
+      ),
+    ).not.toThrow();
+    expect(() =>
+      validateAppliedMigrationLedger(
+        [stamped(first!, 1), stamped(second!, 1)],
+        "allowBehind",
+      ),
+    ).toThrow(
+      expect.objectContaining({ code: "schema_manifest_hash_mismatch" }),
     );
   });
 
-  it("defines final inline payload constraints without transitional DML", () => {
-    const sql = MIGRATIONS[0]!.sql;
-    expect(sql).toMatch(
-      /CREATE TABLE public\.mempool \([\s\S]+?tx bytea NOT NULL,/i,
+  it("rejects adjacent, renamed, checksum-drifted, and manifest-drifted ledgers", () => {
+    const exact = appliedMigrationRow();
+    const cases: readonly [
+      AppliedMigrationRow,
+      (
+        | "schema_version_behind"
+        | "schema_name_mismatch"
+        | "schema_checksum_mismatch"
+        | "schema_manifest_hash_mismatch"
+      ),
+    ][] = [
+      [
+        {
+          ...exact,
+          name: "historical_initial_schema",
+        },
+        "schema_name_mismatch",
+      ],
+      [
+        {
+          ...exact,
+          checksum_sha256: "00".repeat(32),
+        },
+        "schema_checksum_mismatch",
+      ],
+      [
+        {
+          ...exact,
+          manifest_hash_sha256: "11".repeat(32),
+        },
+        "schema_manifest_hash_mismatch",
+      ],
+    ];
+    expect(() => validateAppliedMigrationLedger([], "exact")).toThrow(
+      expect.objectContaining({ code: "schema_version_behind" }),
     );
-    expect(sql).toMatch(
-      /CREATE TABLE public\.tx_admission_payloads \([\s\S]+?tx_canonical_cbor bytea NOT NULL,/i,
-    );
-    expect(sql).not.toContain("idx_tx_admission_payloads_tx_id_hash");
-    expect(sql).not.toMatch(/UPDATE mempool AS membership/i);
-    expect(sql).not.toMatch(/DROP INDEX/i);
+    for (const [rows, code] of cases.map(
+      ([row, code]) =>
+        [
+          [
+            row,
+            ...MIGRATIONS.slice(1).map((migration) => ({
+              ...appliedMigrationRow(),
+              version: migration.version,
+              name: migration.name,
+              checksum_sha256: migration.checksumSha256,
+            })),
+          ] as const,
+          code,
+        ] as const,
+    )) {
+      expect(() => validateAppliedMigrationLedger(rows, "exact")).toThrow(
+        expect.objectContaining({ code }),
+      );
+    }
   });
 
   it("fails closed on unterminated quoted SQL", () => {
@@ -110,4 +235,257 @@ describe("splitSqlStatements", () => {
       MigrationError,
     );
   });
+});
+
+/** Recomputed here, not imported, so the test pins the stamping format. */
+const manifestHashThrough = (version: number): string =>
+  createHash("sha256")
+    .update(
+      MIGRATIONS.filter((migration) => migration.version <= version)
+        .map((m) => `${m.version}:${m.name}:${m.checksumSha256}`)
+        .join("\n"),
+    )
+    .digest("hex");
+
+const appliedMigrationRow = (
+  migration: (typeof MIGRATIONS)[number] = MIGRATIONS[0]!,
+): AppliedMigrationRow => ({
+  version: migration.version,
+  name: migration.name,
+  checksum_sha256: migration.checksumSha256,
+  manifest_hash_sha256: MIGRATION_MANIFEST_HASH,
+  applied_at: new Date("2026-07-27T00:00:00.000Z"),
+  app_version: "test",
+  execution_ms: 1,
+  applied_by: "test",
+});
+
+/**
+ * The applied schema, not the dump text, is the oracle here.
+ *
+ * These assertions read `pg_catalog` after the baseline has actually been
+ * executed, so Postgres has parsed and re-rendered every CHECK expression.
+ * Reformatting `0001_initial_schema.sql` — whitespace, column order, a pg_dump
+ * re-emit — cannot move them; deleting a constraint or switching a durable
+ * table to UNLOGGED does.
+ */
+describe("applied fresh-install schema", () => {
+  /** Reviewed contract: only the rebuildable delta cache may lose its WAL. */
+  const UNLOGGED_TABLES = ["mempool_tx_deltas"] as const;
+
+  /**
+   * Reviewed contract: each replay/deployment discriminator the node relies on
+   * when reloading a journal must be enforced by the database, not only by the
+   * writer. The fragments are matched against Postgres's own normalized
+   * rendering of the constraint.
+   */
+  const REQUIRED_CHECKS: readonly {
+    readonly table: string;
+    readonly constraint: string;
+    readonly fragments: readonly string[];
+  }[] = [
+    {
+      table: "pending_block_finalizations",
+      constraint: "pending_block_finalizations_format_version_check",
+      fragments: ["format_version = 1"],
+    },
+    {
+      table: "pending_block_finalizations",
+      constraint: "pending_block_finalizations_replay_kind_check",
+      fragments: ["ledger_delta_v1", "ledger_delta_native_mpf_v1"],
+    },
+    {
+      table: "pending_block_finalizations",
+      constraint: "pending_block_finalizations_mpf_replay_all_or_none_check",
+      fragments: [
+        "mpf_owner_schema = 1",
+        "octet_length(mpf_owner_binary_sha256) = 32",
+        "octet_length(mpf_replay_event_log) >= 92",
+        "octet_length(mpf_replay_event_roots) = (mpf_replay_event_count * 32)",
+        "encode(mpf_replay_base_root, 'hex'::text) = base_utxos_root",
+        "encode(mpf_replay_candidate_root, 'hex'::text) = expected_utxos_root",
+      ],
+    },
+    {
+      table: "pending_block_finalizations",
+      constraint: "pending_block_finalizations_deployment_marker_schema_check",
+      fragments: ["'midgard-deployment-marker-v1'"],
+    },
+    {
+      table: "pending_block_finalizations",
+      constraint: "pending_block_finalizations_deployment_manifest_id_check",
+      fragments: ["'^[0-9a-f]{64}$'"],
+    },
+  ];
+
+  it("enforces the replay, deployment and durability contracts in the database", async () => {
+    await Effect.runPromise(
+      provideDatabaseLayers(
+        Effect.gen(function* () {
+          const sql = yield* BatchSql;
+          yield* sql.unsafe("DROP SCHEMA public CASCADE; CREATE SCHEMA public");
+          const status = yield* MigrationRunner.migrate({
+            appVersion: "migration-runner-test",
+            actor: "schema-contract",
+          }).pipe(Effect.provideService(SqlClient.SqlClient, sql));
+          expect(status.manifestHash).toBe(MIGRATION_MANIFEST_HASH);
+
+          const unlogged = yield* sql<{
+            readonly relname: string;
+          }>`SELECT relname
+               FROM pg_class
+               WHERE relnamespace = 'public'::regnamespace
+                 AND relkind = 'r'
+                 AND relpersistence = 'u'
+               ORDER BY relname`;
+          expect(unlogged.map((row) => row.relname)).toEqual([
+            ...UNLOGGED_TABLES,
+          ]);
+
+          // Version 7 drops the speculative foreign-tip table (#752), version
+          // 22 every event_history_ table but the submission journal's.
+          const dropped = yield* sql<{
+            readonly relname: string;
+          }>`SELECT relname
+               FROM pg_class
+               WHERE relnamespace = 'public'::regnamespace
+                 AND (relname = 'foreign_tip_reconciliations'
+                   OR (relkind = 'r' AND relname LIKE 'event\\_history\\_%'))
+               ORDER BY relname`;
+          expect(dropped.map((row) => row.relname)).toEqual([
+            "event_history_submission_inputs",
+            "event_history_submissions",
+          ]);
+
+          // Version 9 drops the census and foreign-adoption tables (N3) and
+          // adds the landed-block processing tables, with no working-ledger
+          // basis table (nothing reads one).
+          const landed = yield* sql<{
+            readonly relname: string;
+          }>`SELECT relname
+               FROM pg_class
+               WHERE relnamespace = 'public'::regnamespace
+                 AND relkind = 'r'
+                 AND relname IN ('foreign_native_adoptions',
+                   'foreign_verified_segments', 'foreign_confirmed_frontier',
+                   'event_history_census_frontier',
+                   'event_history_census_blocks', 'node_landed_blocks',
+                   'node_working_ledger_basis',
+                   'node_confirmed_ledger_frontier')
+               ORDER BY relname`;
+          expect(landed.map((row) => row.relname)).toEqual([
+            "node_confirmed_ledger_frontier",
+            "node_landed_blocks",
+          ]);
+
+          const constraints = yield* sql<{
+            readonly relname: string;
+            readonly conname: string;
+            readonly definition: string;
+          }>`SELECT c.relname,
+                    con.conname,
+                    pg_get_constraintdef(con.oid) AS definition
+               FROM pg_constraint AS con
+               JOIN pg_class AS c ON c.oid = con.conrelid
+               WHERE c.relnamespace = 'public'::regnamespace
+                 AND con.contype = 'c'`;
+          const definitionByKey = new Map(
+            constraints.map((row) => [
+              `${row.relname}.${row.conname}`,
+              row.definition,
+            ]),
+          );
+
+          const missing = REQUIRED_CHECKS.filter(
+            (required) =>
+              !definitionByKey.has(`${required.table}.${required.constraint}`),
+          ).map((required) => `${required.table}.${required.constraint}`);
+          expect(missing).toEqual([]);
+
+          const unsatisfied = REQUIRED_CHECKS.flatMap((required) => {
+            const definition =
+              definitionByKey.get(`${required.table}.${required.constraint}`) ??
+              "";
+            return required.fragments
+              .filter((fragment) => !definition.includes(fragment))
+              .map(
+                (fragment) =>
+                  `${required.table}.${required.constraint}: ${fragment}`,
+              );
+          });
+          expect(unsatisfied).toEqual([]);
+        }),
+      ),
+    );
+  });
+});
+
+describe("upgrading a database migrated by an earlier release", () => {
+  // Version 1 is the baseline-only release; version 3 is the last migration
+  // a release shipped before retained script material, the foreign event
+  // census and foreign native adoption (4-6) were added.
+  it.each([1, 3])(
+    "migrates a database a release installed through v%i and serves it",
+    async (through) => {
+      const applied = MIGRATIONS.filter(
+        (migration) => migration.version <= through,
+      );
+      expect(applied.at(-1)?.version).toBe(through);
+      const releaseManifest = manifestHashThrough(through);
+      await Effect.runPromise(
+        provideDatabaseLayers(
+          Effect.gen(function* () {
+            const sql = yield* BatchSql;
+            yield* sql.unsafe(
+              "DROP SCHEMA public CASCADE; CREATE SCHEMA public",
+            );
+            const withSql = <A, E>(
+              effect: Effect.Effect<A, E, SqlClient.SqlClient>,
+            ) => effect.pipe(Effect.provideService(SqlClient.SqlClient, sql));
+            // The state that release left: its ledger tables, its schema, and
+            // one row per migration stamped with its own manifest.
+            yield* withSql(MigrationRunner.getStatus);
+            yield* sql.withTransaction(
+              Effect.gen(function* () {
+                for (const migration of applied) {
+                  for (const statement of splitSqlStatements(migration.sql)) {
+                    yield* sql.unsafe(statement);
+                  }
+                  yield* sql`INSERT INTO schema_migrations
+                    (version, name, checksum_sha256, manifest_hash_sha256,
+                     app_version, execution_ms, applied_by)
+                    VALUES (${migration.version}, ${migration.name},
+                            ${migration.checksumSha256}, ${releaseManifest},
+                            'earlier-release', 1, 'earlier-release')`;
+                }
+              }),
+            );
+
+            const status = yield* withSql(
+              MigrationRunner.migrate({
+                appVersion: "migration-runner-test",
+                actor: "upgrade",
+              }),
+            );
+            expect(status.actualVersion).toBe(MIGRATIONS.at(-1)!.version);
+            yield* withSql(MigrationRunner.assertCompatible);
+            const rows = yield* sql<{
+              readonly version: number;
+              readonly manifest_hash_sha256: string;
+            }>`SELECT version, manifest_hash_sha256
+                 FROM schema_migrations ORDER BY version`;
+            expect(rows).toEqual(
+              MIGRATIONS.map((migration) => ({
+                version: migration.version,
+                manifest_hash_sha256:
+                  migration.version <= through
+                    ? releaseManifest
+                    : MIGRATION_MANIFEST_HASH,
+              })),
+            );
+          }),
+        ),
+      );
+    },
+  );
 });

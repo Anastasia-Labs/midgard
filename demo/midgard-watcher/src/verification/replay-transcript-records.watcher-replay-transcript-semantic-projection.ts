@@ -1,0 +1,77 @@
+import { type WatcherReplayTranscriptRecords } from "./replay-transcript-records.parse-authority.js";
+
+/** Explicit equality surface: source freshness stays with its own capture. */
+export const watcherReplayTranscriptSemanticProjection = (
+  records: WatcherReplayTranscriptRecords,
+): unknown => {
+  const { transcript: t, blockReplay: w25 } = records;
+  return {
+    schemaVersion: t.schemaVersion,
+    deploymentFingerprint: t.deploymentFingerprint,
+    headerHash: t.headerHash,
+    headerCborHex: records.headerCborHex,
+    inclusionPoint: {
+      transactionHash: t.inclusionPoint.transactionHash,
+      blockHash: t.inclusionPoint.blockHash,
+      blockNo: t.inclusionPoint.blockNo,
+      slot: t.inclusionPoint.slot,
+      chainPointId: t.inclusionPoint.chainPointId,
+    },
+    coordinate: t.coordinate,
+    payloadEnvelopeCborHex: t.payloadEnvelopeCborHex,
+    payloadEnvelopeSha256: t.payloadEnvelopeSha256,
+    payloadSha256: t.payloadSha256,
+    priorState: t.priorState,
+    ruleBundleCborHex: t.ruleBundleCborHex,
+    ruleBundleCommitment: t.ruleBundleCommitment,
+    reconstruction: records.reconstruction,
+    phaseA: records.phaseA,
+    blockReplay: {
+      schemaVersion: w25.schemaVersion,
+      action: w25.action,
+      reasonCodes: w25.reasonCodes,
+      verifiedRequires: w25.verifiedRequires,
+      rejectionSelection: w25.rejectionSelection,
+      consensusProfileId: w25.consensusProfileId,
+      headerHash: w25.headerHash,
+      payloadEnvelopeSha256: w25.payloadEnvelopeSha256,
+      payloadSha256: w25.payloadSha256,
+      reconstructionDigest: w25.reconstructionDigest,
+      phaseAResultDigest: w25.phaseAResultDigest,
+      ruleBundleCommitment: w25.ruleBundleCommitment,
+      sourceManifestDigest: w25.sourceManifestDigest,
+      effectManifestDigest: w25.effectManifestDigest,
+      priorStateRoot: w25.priorStateRoot,
+      expectedPriorStateRoot: w25.expectedPriorStateRoot,
+      postStateRoot: w25.postStateRoot,
+      expectedPostStateRoot: w25.expectedPostStateRoot,
+      transactionCount: w25.transactionCount,
+      acceptedCount: w25.acceptedCount,
+      acceptedTxIds: w25.acceptedTxIds,
+      intermediateRoots: w25.intermediateRoots,
+      transactionRoots: w25.transactionRoots,
+      eventRoots: w25.eventRoots,
+      forcedValidationFacts: w25.forcedValidationFacts,
+      stageMismatches: w25.stageMismatches,
+      rejections: w25.rejections,
+      selectedRejection: w25.selectedRejection,
+      downstreamPrerequisite: {
+        schemaVersion: w25.downstreamPrerequisite.schemaVersion,
+        requiredVerifier: w25.downstreamPrerequisite.requiredVerifier,
+        w29Eligibility: w25.downstreamPrerequisite.w29Eligibility,
+      },
+    },
+    events: records.events.map((event) => ({
+      phase: event.phase,
+      eventKey: event.eventKey,
+      // The whole event is semantic: every field is a fact the follower read.
+      event: event.event,
+      network: event.network,
+      committedClaim: event.committedClaim,
+      canonicalNativeTxCborHex: event.canonicalNativeTxCborHex,
+      transitionEffect: event.transitionEffect,
+      deploymentManifestId: event.origin.deploymentManifestId,
+      throughHeader: event.origin.throughHeader,
+    })),
+  };
+};

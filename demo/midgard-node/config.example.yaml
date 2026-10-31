@@ -1,0 +1,12 @@
+# Copy to config.yaml (git-ignored), chmod 600, then supply existing wallet seeds.
+# Values are strings; quote numeric and boolean settings too.
+# Explicit process environment > config.yaml > .env.
+# node-tools also uses this file when launched from the node directory.
+{}
+# L1_OPERATOR_SEED_PHRASE: "operator mnemonic"
+# L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: "merge wallet mnemonic"
+# L1_REFERENCE_SCRIPT_SEED_PHRASE: "reference publisher mnemonic"
+# USER_SEED_PHRASE: "user deposit and withdrawal mnemonic"
+# Runtime genesis is empty on every network. Fund L2 wallets through deposits.
+# DA_LIBP2P_PRIVATE_KEY_SOURCE: "seed:32-byte-hex-transport-seed"
+# Remove {} when uncommenting settings. Do not paste real seeds into this example.

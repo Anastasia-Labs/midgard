@@ -16,16 +16,22 @@ import {
   type PrepareHubOracleNonceOptions,
   prepareHubOracleOneShotNonceProgram,
   reconcileHubOracleOneShotNonceAttemptProgram,
-} from "@/commands/prepare-hub-oracle-nonce.js";
-import { Lucid as LucidService } from "@/services/lucid.js";
-import { TxConfirmError } from "@/transactions/utils.js";
+} from "../src/commands/prepare-hub-oracle-nonce.js";
+import { unjournaledSubmission } from "../src/services/intent-journal.js";
+import { Lucid as LucidService } from "../src/services/lucid.js";
+import { TxConfirmError } from "../src/transactions/utils.js";
+import {
+  SETTLED_ORIGIN,
+  settledOriginSource,
+} from "./helpers/hub-oracle-nonce-origin.js";
+import { runWithoutFollower } from "./helpers/intent-journal.js";
 
 const signSubmitTransactionMock = vi.hoisted(() => vi.fn());
 const awaitSubmittedTransactionConfirmationMock = vi.hoisted(() => vi.fn());
 
-vi.mock("@/transactions/utils.js", async (importOriginal) => {
+vi.mock("../src/transactions/utils.js", async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import("@/transactions/utils.js")>();
+    await importOriginal<typeof import("../src/transactions/utils.js")>();
   return {
     ...actual,
     signSubmitTransaction: signSubmitTransactionMock,
@@ -122,10 +128,11 @@ const runPrepare = (
   lucidService: unknown,
   options: PrepareHubOracleNonceOptions = {},
 ): Promise<PreparedHubOracleNonce> =>
-  Effect.runPromise(
-    prepareHubOracleOneShotNonceProgram(amountLovelace, options).pipe(
-      Effect.provideService(LucidService, lucidService as never),
-    ),
+  runWithoutFollower(
+    prepareHubOracleOneShotNonceProgram(amountLovelace, {
+      l1Origin: settledOriginSource(),
+      ...options,
+    }).pipe(Effect.provideService(LucidService, lucidService as never)),
   );
 
 const runReconcile = (
@@ -208,6 +215,7 @@ describe("prepare hub-oracle one-shot nonce command boundary", () => {
     expect(signSubmitTransactionMock).toHaveBeenCalledWith(
       (lucidService as { readonly api: LucidEvolution }).api,
       record.unsignedTx,
+      unjournaledSubmission("no_follower", "hub_oracle_nonce:prepare"),
     );
     expect(awaitSubmittedTransactionConfirmationMock).toHaveBeenCalledWith(
       (lucidService as { readonly api: LucidEvolution }).api,
@@ -227,6 +235,7 @@ describe("prepare hub-oracle one-shot nonce command boundary", () => {
       lovelace: amountLovelace.toString(10),
       inlineDatum: record.payments[0]!.datum.value,
       confirmationStatus: "confirmed",
+      l1Origin: SETTLED_ORIGIN,
     });
 
     const markerHex = markerFromInlineDatum(result.inlineDatum);

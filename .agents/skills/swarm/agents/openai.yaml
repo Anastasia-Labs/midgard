@@ -1,0 +1,6 @@
+interface:
+  display_name: "Swarm"
+  short_description: "Partition a task into independent coverage slices or comparison "
+  default_prompt: "Use $swarm for the requested Midgard task."
+policy:
+  allow_implicit_invocation: false

@@ -8,34 +8,41 @@ valid withdrawal on L1. These operator commands drive the flow that the
 [`reserve` and `payout` validators](/docs/onchain/consensus-validators) enforce on-chain.
 
 Reserve payout matters when a user has submitted a withdrawal order, the order has been
-classified valid, and the funds must now leave the L2 reserve. It is the last step of a
-withdrawal, and the only one that moves real value on L1.
+classified valid, and its event has settled. Funds move from the L1 reserve
+through a payout accumulator to the user. Initialization and funding are also
+L1 transactions; conclusion is the final transfer to the payout target.
 
 <Callout type="error" title="A concluded payout cannot be reversed">
-`conclude-payout` settles on L1. There is no undo. Confirm the withdrawal order, the
-payout's target, and the reserve balance before concluding. Per
-[Project Status](/docs/getting-started/status), node-level invalid-withdrawal refund
-submission and public operator runbooks remain blockers, so treat these flows as
-operator-supervised rather than routine.
+  `conclude-payout` settles on L1. There is no undo. Confirm the withdrawal
+  order, the payout's target, and the reserve balance before concluding. Per
+  [Project Status](/docs/getting-started/status), node-level invalid-withdrawal
+  refund submission and public operator runbooks remain blockers, so treat these
+  flows as operator-supervised rather than routine.
 </Callout>
 
 ## Commands
 
-Run them in order. Each one requires the previous to have been confirmed on L1.
+Run the mutation commands in order, waiting for their L1 confirmation. Inspect
+status between steps; reserve funding may require multiple contributing UTxOs.
+The initializer requires a valid withdrawal settlement proof, and conclusion
+requires the accumulator to cover the target value.
 
-| Command | Effect |
-| --- | --- |
-| `reserve-utxos` | Reads the reserve UTxOs. Read-only, safe to run at any time. |
-| `initialize-payout` | Creates the payout UTxO for a classified-valid withdrawal. Nothing has moved yet. |
-| `add-reserve-funds-to-payout` | Spends reserve funds into the payout. Value leaves the reserve here. |
-| `conclude-payout` | Settles the payout on L1 and completes the withdrawal. Irreversible. |
-| `payout-status` | Reports where a payout is in the sequence above. Read-only. |
+| Command                       | Effect                                                                                                                            |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `reserve-utxos`               | Reads the reserve UTxOs. Read-only, safe to run at any time.                                                                      |
+| `initialize-payout`           | Consumes the settled valid withdrawal order and moves its value into a payout accumulator; reserve funding may still be required. |
+| `add-reserve-funds-to-payout` | Spends reserve funds into the payout. Value leaves the reserve here.                                                              |
+| `conclude-payout`             | Settles the payout on L1 and completes the withdrawal. Irreversible.                                                              |
+| `payout-status`               | Reports where a payout is in the sequence above. Read-only.                                                                       |
 
-<Mermaid chart={`flowchart LR
-  R["reserve"] --> I["initialize-payout"]
+<Mermaid
+  chart={`flowchart LR
+  W0["settled valid withdrawal"] --> I["initialize-payout"]
   I --> A["add-reserve-funds-to-payout"]
+  R["L1 reserve"] --> A
   A --> C["conclude-payout"]
-  C --> W["withdrawal settled"]`} />
+  C --> W["withdrawal settled"]`}
+/>
 
 ## Related
 

@@ -3,7 +3,7 @@ title: "Server HTTP API"
 description: "The HTTP routes exposed by the Midgard node: unauthenticated routes for submission and queries, and admin-gated routes for initialization and operational control."
 ---
 
-The `listen` command starts the node's HTTP server together with all background
+The `listen` command starts the node's HTTP server together with its configured background
 fibers. Every route below is registered in `src/commands/listen-router.ts`.
 
 ## Starting the listener
@@ -24,61 +24,80 @@ served on `PROM_METRICS_PORT` at `/metrics`.
 
 Routes fall into two classes. Public routes need no credentials. Admin routes are
 gated by `ADMIN_API_KEY` and require the key in the `x-midgard-admin-key` request
-header; a missing or wrong key is denied before the handler runs.
+header; a missing or wrong key is denied before the handler runs. Admin
+mutations also need a signed session; see [Admin routes](#admin-routes).
 
-"Public" here means unauthenticated, not safe to expose to the open internet. TLS,
-rate limiting, and ingress hardening are
-[readiness blockers](/docs/getting-started/status), not solved problems.
+"Public" here means unauthenticated. The `preprod-public`, `preprod-rehearsal`
+and `mainnet` profiles serve only TLS 1.3 and refuse to start without a certificate for
+`MIDGARD_PUBLIC_API_ORIGIN`; development and testing profiles serve plain HTTP
+for local use. Remaining public-deployment work is listed under
+[readiness blockers](/docs/getting-started/status). Every route is rate limited;
+see [Request rate limits](#request-rate-limits).
 
 <Callout type="warn" title="Always set ADMIN_API_KEY on shared nodes">
-`ADMIN_API_KEY` gates the admin-only HTTP surface (init, commit, merge, state
-queue inspection, mutation-lease coordination, and log routes). Keep it set in
-any shared or remotely reachable environment.
+  `ADMIN_API_KEY` gates the admin-only HTTP surface (init, commit, merge, state
+  queue inspection, operator status, and log routes). Keep it set in any shared
+  or remotely reachable environment.
 </Callout>
 
 ## Public routes
 
 ### Health and readiness
 
-| Method | Route | Purpose |
-| --- | --- | --- |
-| `GET` | `/healthz` | Liveness only: confirms the server is running. |
-| `GET` | `/readyz` | Readiness: worker heartbeats, admission backlog/age, unfinished mutation jobs, unresolved block submissions, DB connectivity, provider reachability, and mutation-lease state. Returns `503` until ready. |
-| `GET` | `/protocol-info` | Stable public facts external transaction builders need (includes the current slot). |
+| Method | Route              | Purpose                                                                                                                                                                                                   |
+| ------ | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`  | `/healthz`         | Liveness only: confirms the server is running.                                                                                                                                                            |
+| `GET`  | `/readyz`          | Readiness: worker heartbeats, admission backlog/age, unfinished mutation jobs, unresolved block submissions, DB connectivity, provider reachability, and mutation-lease state. Returns `503` until ready. |
+| `GET`  | `/pipeline-status` | Admission, mempool and validation pipeline counts and age diagnostics.                                                                                                                                    |
+| `GET`  | `/protocol-info`   | Stable public facts external transaction builders need (includes the current slot).                                                                                                                       |
 
 ### Transaction submission and status
 
-| Method | Route | Purpose |
-| --- | --- | --- |
-| `POST` | `/submit` | Validate, normalize, and enqueue a submitted L2 transaction. Body must be raw Midgard canonical transaction CBOR with `Content-Type: application/cbor`. |
-| `GET` | `/tx-status` | Resolve the node's canonical status for a transaction (`?tx_hash=...`). |
-| `GET` | `/tx` | Return the CBOR for a known tx hash from mempool or immutable storage (`?tx_hash=...`). |
-| `GET` | `/txs` | Return the address-history tx payloads for an address (`?address=...`). |
+| Method | Route          | Purpose                                                                                                                                                                                                                                   |
+| ------ | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST` | `/submit`      | Validate, normalize, and enqueue a submitted L2 transaction. Body must be a canonical V1 proof submission envelope (version and canonical transaction bytes) with `Content-Type: application/vnd.midgard.v1+cbor`.                        |
+| `POST` | `/tx/evaluate` | Return the ex-units each Plutus redeemer of a draft transaction spends under Phase B cost accounting, against the node's current ledger state. Same body as `/submit`; the draft's declared ex-units, fee and signatures are not checked. |
+| `GET`  | `/tx-status`   | Resolve the node's canonical status for a transaction (`?tx_hash=...`).                                                                                                                                                                   |
+| `POST` | `/tx-status`   | Batch status lookup with JSON `{ "txHashes": ["..."] }`, containing 1–100 transaction hashes.                                                                                                                                             |
+| `GET`  | `/tx`          | Return the CBOR for a known tx hash from mempool or immutable storage (`?tx_hash=...`).                                                                                                                                                   |
+| `GET`  | `/txs`         | Return the address-history tx payloads for an address (`?address=...`).                                                                                                                                                                   |
 
 `POST /submit` responses are explicit: `202` for a newly admitted transaction,
-`200` for a duplicate, `415` when the content type is not `application/cbor`,
-`400` for an invalid or non-normalizable payload, `409` on a tx-id byte
-conflict, and `503` when the durable admission backlog is full.
+`200` for a duplicate, `415` for the wrong media type, `413` for a body that
+exceeds or fails its bounded read, `400` for malformed content, and `409` for a
+transaction-identity conflict. Capacity or admission-writer unavailability
+returns `503`; other operational failures can return `500`. HTTP admission
+is distinct from successful ledger validation or settlement.
+
+A `503` from `/submit` carries `Retry-After: 5`.
+
+`POST /tx/evaluate` answers `200` with
+`{ "redeemers": [{ "tag", "index", "memory", "steps" }] }` (integers as decimal
+strings except `tag`), or `422` with `E_TX_EVALUATION_FAILED` and a detail
+when a script fails, an input is missing, or a script exceeds the
+per-transaction cap. Scripts run on the validation worker pool; at most half
+the pool's workers serve evaluations at once, and a request beyond that, or
+one the pool fails, gets `503` with `Retry-After: 5`.
 
 ### UTxO and ledger queries
 
-| Method | Route | Purpose |
-| --- | --- | --- |
-| `GET` | `/utxos` | Spendable mempool-ledger UTxOs for an address (`?address=...`). |
-| `GET` | `/utxo` | One spendable mempool-ledger UTxO by raw TxOutRef CBOR hex (`?txOutRef=...`). |
+| Method | Route               | Purpose                                                                                             |
+| ------ | ------------------- | --------------------------------------------------------------------------------------------------- |
+| `GET`  | `/utxos`            | Spendable mempool-ledger UTxOs for an address (`?address=...`).                                     |
+| `GET`  | `/utxo`             | One spendable mempool-ledger UTxO by raw TxOutRef CBOR hex (`?txOutRef=...`).                       |
 | `POST` | `/utxos?by-outrefs` | Spendable UTxOs for a requested list of `txHash#outputIndex` references, supplied in the JSON body. |
-| `GET` | `/block` | Tx hashes referenced by a committed block header (`?header_hash=...`). |
-| `GET` | `/deposit-status` | One serialized deposit row by event id or L1 tx hash. |
+| `GET`  | `/block`            | Tx hashes referenced by a committed block header (`?header_hash=...`).                              |
+| `GET`  | `/deposit-status`   | One serialized deposit row by event id or L1 tx hash.                                               |
 
 ### Building an unsigned deposit
 
-| Method | Route | Purpose |
-| --- | --- | --- |
+| Method | Route            | Purpose                                                                                                           |
+| ------ | ---------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `POST` | `/deposit/build` | Build an unsigned L1 deposit transaction from a caller-supplied wallet view and return CBOR for external signing. |
 
 The caller supplies the funding address plus the exact wallet UTxOs that may be
-spent; the node holds no signing key and returns `unsignedTxCbor` for the caller
-to sign externally.
+spent; this route needs no depositor signing key and returns `unsignedTxCbor`
+for external signing. The node still has separately configured operator keys.
 
 ```sh
 curl -X POST http://127.0.0.1:3000/deposit/build \
@@ -101,28 +120,100 @@ curl -X POST http://127.0.0.1:3000/deposit/build \
 Optional body fields include `l2Datum` (even-length hex inline datum; Midgard L2
 outputs support only absent or inline datums, never datum-hash outputs),
 `additionalAssets` (an array of `{ unit, amount }`), and per-UTxO
-`datumHash` / `datum` / `scriptRef` hex fields preserved in the external wallet
-view.
+`datumHash` / `datum` hex fields in the external wallet view. Funding-input
+`scriptRef` is rejected. The supplied funding UTxOs must be unique and belong
+to `fundingAddress`; the request accepts at most 128 funding inputs.
+
+## Request rate limits
+
+Every route passes a token-bucket limiter before the node reads the body, queries
+the database or evaluates scripts. Each client has one bucket per route class,
+and each public class also has one global bucket shared by all clients. A
+request over either bucket gets `429` with `Retry-After` set to the whole seconds
+until every refusing bucket has a token again, and this body:
+
+```json
+{ "error": "Request rate exceeded", "error_code": "E_HTTP_RATE_LIMITED" }
+```
+
+| Class      | Routes                                   | Per client (burst, refill) | Global (burst, refill) |
+| ---------- | ---------------------------------------- | -------------------------- | ---------------------- |
+| `health`   | `GET /healthz`, `GET /readyz`            | 20, 5/s                    | none                   |
+| `admin`    | every admin route                        | 30, 10/s                   | none                   |
+| `read`     | the other `GET` routes and `POST /utxos` | 30, 10/s                   | 200, 100/s             |
+| `batch`    | `POST /tx-status`                        | 4, 1/s                     | 16, 4/s                |
+| `write`    | `POST /submit`, `POST /deposit/build`    | 4, 1/s                     | 16, 4/s                |
+| `evaluate` | `POST /tx/evaluate`                      | 2, 0.2/s                   | 8, 1/s                 |
+
+Health and admin routes have no global bucket and keep their clients in a table
+of their own. They also have their own concurrency budget, and `/readyz` and the
+admin database reads use a database connection of their own. Neither a
+flood of public requests nor slow public requests holding every public slot
+can refuse them.
+
+A client is its TCP peer address; IPv6 addresses share one bucket per /64. The
+node reads `X-Midgard-Client-IP` only when the TCP peer is listed in
+`HTTP_TRUSTED_PROXY_PEERS`, the private IPv4 addresses of a reverse proxy that
+overwrites that header. It never reads `X-Forwarded-For`.
+
+Each client table holds at most 8,192 entries. When the public table is full,
+entries idle for 60 seconds are evicted; a new client that still finds no room
+gets `429` with `Retry-After: 5` and the error `Peer quota capacity is full`.
+The global rates keep it from filling: the node refuses to start when the sum of
+`globalBurst + 60 × globalPerSecond` over the public classes exceeds 8,192. The
+health and admin table, and the public table while rate limits are disabled,
+evict the least recently used entry instead and never refuse a new client.
+
+Public requests are capped at 64 in flight plus a bound on in-flight body
+bytes; health and admin requests at 8 in flight; each client at 4 in flight per
+table. Overflow answers `503` with `Retry-After: 5` and
+`E_HTTP_INGRESS_CAPACITY`.
+
+| Variable                                                                                             | Default         | Meaning                                                                                         |
+| ---------------------------------------------------------------------------------------------------- | --------------- | ----------------------------------------------------------------------------------------------- |
+| `HTTP_RATE_LIMIT_ENABLED`                                                                            | `true`          | `false` turns rate refusals off for testing; nodes on the public profiles above refuse to start |
+| `HTTP_RATE_LIMIT_HEALTH`, `HTTP_RATE_LIMIT_ADMIN`                                                    | the table above | `peerBurst,peerPerSecond`                                                                       |
+| `HTTP_RATE_LIMIT_READ`, `HTTP_RATE_LIMIT_BATCH`, `HTTP_RATE_LIMIT_WRITE`, `HTTP_RATE_LIMIT_EVALUATE` | the table above | `peerBurst,peerPerSecond,globalBurst,globalPerSecond`                                           |
+| `HTTP_TRUSTED_PROXY_PEERS`                                                                           | empty           | up to 8 private IPv4 proxy addresses allowed to set `X-Midgard-Client-IP`                       |
+
+Bursts are positive integers and refills positive numbers per second. The public
+ingress proxy applies its own per-IP and global limits in front of these; its
+health, readiness and admin routes use a per-IP zone of their own and no global
+zone. A CDN or load balancer in front of that proxy makes every client behind it
+look like the CDN's addresses, so they share those buckets; rate limit at the
+CDN as well, or keep the proxy as the first hop.
 
 ## Admin routes
 
 All routes below require the `x-midgard-admin-key` header matching
-`ADMIN_API_KEY`.
+`ADMIN_API_KEY`. The `POST` routes are mutations: they take an empty body and no
+query, are refused over `GET`, and also carry a signed session:
 
-| Method | Route | Purpose |
-| --- | --- | --- |
-| `GET` | `/init` | Initialize protocol state when startup policy and on-chain topology allow it. Refuses over invalid existing topology. |
-| `GET` | `/commit` | Trigger a manual block commitment. |
-| `GET` | `/merge` | Trigger a manual merge of the oldest queued block into confirmed state. |
-| `GET` | `/stateQueue` | Log and return the current ordered state-queue headers plus merge-readiness. |
-| `GET` | `/stateQueueMutationLease` | Inspect the state-queue mutation lease (`?recent_limit=...`). |
-| `POST` | `/stateQueueMutationLease` | Coordinate external state-queue mutators (`inspect`, `acquire`, `renew`, `release`, `fail`) for flows such as manual fault-proof removal. |
-| `GET` | `/logBlocksDB` | Log a compact summary of block-link rows. |
-| `GET` | `/logGlobals` | Log the current process-global coordination state. |
+- `X-Midgard-Admin-Session`: the value returned by `GET /admin/session`;
+- `X-Midgard-Admin-Timestamp`: current Unix milliseconds, thirteen digits;
+- `X-Midgard-Admin-Nonce`: thirty-two random bytes as lowercase hex;
+- `X-Midgard-Admin-Signature`: lowercase hex HMAC-SHA256 under the admin key over
+  `JSON.stringify(["POST", exactTarget, session, timestamp, nonce])`.
+
+A signature is accepted within thirty seconds of its timestamp, and each nonce
+once; a replay returns `409` and a bad signature `401`. A restart changes the
+session.
+
+| Method | Route              | Purpose                                                                                                                                                                               |
+| ------ | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST` | `/init`            | Initialize protocol state when startup policy and on-chain topology allow it. Refuses over invalid existing topology.                                                                 |
+| `POST` | `/commit`          | Trigger a manual block commitment.                                                                                                                                                    |
+| `POST` | `/merge`           | Trigger a manual merge of the oldest queued block into confirmed state.                                                                                                               |
+| `GET`  | `/stateQueue`      | Log and return the current ordered state-queue headers plus merge-readiness.                                                                                                          |
+| `POST` | `/logBlocksDB`     | Log a compact summary of block-link rows.                                                                                                                                             |
+| `POST` | `/logGlobals`      | Log the current process-global coordination state.                                                                                                                                    |
+| `GET`  | `/operator/status` | Return the node operator's directory status (`?operatorKeyHash=` for another key); same JSON as `operator-status`. See [Operator Lifecycle](/docs/operators/node/operator-lifecycle). |
+| `GET`  | `/admin/session`   | Return the current admin session id and its signature validity window, for signing mutations. Not cacheable.                                                                          |
 
 <Callout type="info" title="The mutation lease is a safety interlock">
-The state-queue mutation lease is a mutual-exclusion token. External mutators (for
-example a manual fault-proof removal) must `acquire` the lease, do their work, then
-`release` it. A busy lease returns `409`. The node's readiness check treats a stale
-active lease as a reason to stay not-ready.
+  The state-queue mutation lease is an internal mutual-exclusion token: the
+  node's commitment and merge workers take it before mutating the state queue,
+  so they never race each other. It has no HTTP route; `/readyz` and
+  `/pipeline-status` report it under `stateQueueMutationLease`, and readiness
+  treats a stale active lease as a reason to stay not-ready.
 </Callout>

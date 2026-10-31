@@ -1,0 +1,4 @@
+interface:
+  display_name: "Debugging CI Failures"
+  short_description: "Find what Midgard CI ran, what it hid, and why it failed"
+  default_prompt: "Use the Midgard debugging-ci-failures workflow."

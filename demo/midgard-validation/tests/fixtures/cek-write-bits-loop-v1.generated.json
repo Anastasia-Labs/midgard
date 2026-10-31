@@ -1,0 +1,2285 @@
+{
+  "generator": "demo/midgard-validation/scripts/generate-cek-write-bits-loop-v1-goldens.mjs",
+  "aikenModule": "onchain/aiken/validators/fraud-proofs/validation-trace/cek-core-staged-write-bits-loop-golden.test.ak",
+  "steps": [
+    {
+      "name": "nine_of_one_byte",
+      "inputBytes": 1,
+      "indices": 9,
+      "failure": false,
+      "plans": [
+        {
+          "plan": "limit_1",
+          "hops": 9,
+          "rows": [
+            {
+              "name": "nine_of_one_byte_limit_1_hop_0",
+              "from": 0,
+              "end": 1,
+              "shape": {
+                "failure": false,
+                "first": true,
+                "last": false,
+                "items": 1,
+                "itemBytes": 1,
+                "inputBytes": 1
+              },
+              "model": {
+                "memory": 781979,
+                "cpu": 318958540
+              }
+            },
+            {
+              "name": "nine_of_one_byte_limit_1_hop_1",
+              "from": 1,
+              "end": 2,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 1,
+                "itemBytes": 1,
+                "inputBytes": 1
+              },
+              "model": {
+                "memory": 689033,
+                "cpu": 273502421
+              }
+            },
+            {
+              "name": "nine_of_one_byte_limit_1_hop_4",
+              "from": 4,
+              "end": 5,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 1,
+                "itemBytes": 1,
+                "inputBytes": 1
+              },
+              "model": {
+                "memory": 689033,
+                "cpu": 273502421
+              }
+            },
+            {
+              "name": "nine_of_one_byte_limit_1_hop_7",
+              "from": 7,
+              "end": 8,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 1,
+                "itemBytes": 1,
+                "inputBytes": 1
+              },
+              "model": {
+                "memory": 689033,
+                "cpu": 273502421
+              }
+            },
+            {
+              "name": "nine_of_one_byte_limit_1_hop_8",
+              "from": 8,
+              "end": 9,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": true,
+                "items": 1,
+                "itemBytes": 1,
+                "inputBytes": 1
+              },
+              "model": {
+                "memory": 807616,
+                "cpu": 323348207
+              }
+            }
+          ]
+        },
+        {
+          "plan": "limit_8",
+          "hops": 2,
+          "rows": [
+            {
+              "name": "nine_of_one_byte_limit_8_hop_0",
+              "from": 0,
+              "end": 8,
+              "shape": {
+                "failure": false,
+                "first": true,
+                "last": false,
+                "items": 8,
+                "itemBytes": 8,
+                "inputBytes": 1
+              },
+              "model": {
+                "memory": 1626298,
+                "cpu": 720604393
+              }
+            },
+            {
+              "name": "nine_of_one_byte_limit_8_hop_1",
+              "from": 8,
+              "end": 9,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": true,
+                "items": 1,
+                "itemBytes": 1,
+                "inputBytes": 1
+              },
+              "model": {
+                "memory": 807616,
+                "cpu": 323348207
+              }
+            }
+          ]
+        },
+        {
+          "plan": "limit_32",
+          "hops": 1,
+          "rows": [
+            {
+              "name": "nine_of_one_byte_limit_32_hop_0",
+              "from": 0,
+              "end": 9,
+              "shape": {
+                "failure": false,
+                "first": true,
+                "last": true,
+                "items": 9,
+                "itemBytes": 9,
+                "inputBytes": 1
+              },
+              "model": {
+                "memory": 1865498,
+                "cpu": 827828158
+              }
+            }
+          ]
+        },
+        {
+          "plan": "budget",
+          "hops": 1,
+          "rows": [
+            {
+              "name": "nine_of_one_byte_budget_hop_0",
+              "from": 0,
+              "end": 9,
+              "shape": {
+                "failure": false,
+                "first": true,
+                "last": true,
+                "items": 9,
+                "itemBytes": 9,
+                "inputBytes": 1
+              },
+              "model": {
+                "memory": 1865498,
+                "cpu": 827828158
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "sixty_five_of_64_bytes",
+      "inputBytes": 64,
+      "indices": 65,
+      "failure": false,
+      "plans": [
+        {
+          "plan": "limit_1",
+          "hops": 65,
+          "rows": [
+            {
+              "name": "sixty_five_of_64_bytes_limit_1_hop_0",
+              "from": 0,
+              "end": 1,
+              "shape": {
+                "failure": false,
+                "first": true,
+                "last": false,
+                "items": 1,
+                "itemBytes": 1,
+                "inputBytes": 64
+              },
+              "model": {
+                "memory": 784940,
+                "cpu": 319765318
+              }
+            },
+            {
+              "name": "sixty_five_of_64_bytes_limit_1_hop_1",
+              "from": 1,
+              "end": 2,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 1,
+                "itemBytes": 2,
+                "inputBytes": 64
+              },
+              "model": {
+                "memory": 691991,
+                "cpu": 274210780
+              }
+            },
+            {
+              "name": "sixty_five_of_64_bytes_limit_1_hop_32",
+              "from": 32,
+              "end": 33,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 1,
+                "itemBytes": 2,
+                "inputBytes": 64
+              },
+              "model": {
+                "memory": 691991,
+                "cpu": 274210780
+              }
+            },
+            {
+              "name": "sixty_five_of_64_bytes_limit_1_hop_63",
+              "from": 63,
+              "end": 64,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 1,
+                "itemBytes": 3,
+                "inputBytes": 64
+              },
+              "model": {
+                "memory": 692555,
+                "cpu": 274325553
+              }
+            },
+            {
+              "name": "sixty_five_of_64_bytes_limit_1_hop_64",
+              "from": 64,
+              "end": 65,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": true,
+                "items": 1,
+                "itemBytes": 3,
+                "inputBytes": 64
+              },
+              "model": {
+                "memory": 811705,
+                "cpu": 324177891
+              }
+            }
+          ]
+        },
+        {
+          "plan": "limit_8",
+          "hops": 9,
+          "rows": [
+            {
+              "name": "sixty_five_of_64_bytes_limit_8_hop_0",
+              "from": 0,
+              "end": 8,
+              "shape": {
+                "failure": false,
+                "first": true,
+                "last": false,
+                "items": 8,
+                "itemBytes": 16,
+                "inputBytes": 64
+              },
+              "model": {
+                "memory": 1633771,
+                "cpu": 722329355
+              }
+            },
+            {
+              "name": "sixty_five_of_64_bytes_limit_8_hop_1",
+              "from": 8,
+              "end": 16,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 8,
+                "itemBytes": 21,
+                "inputBytes": 64
+              },
+              "model": {
+                "memory": 1543078,
+                "cpu": 677233909
+              }
+            },
+            {
+              "name": "sixty_five_of_64_bytes_limit_8_hop_4",
+              "from": 32,
+              "end": 40,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 8,
+                "itemBytes": 21,
+                "inputBytes": 64
+              },
+              "model": {
+                "memory": 1543078,
+                "cpu": 677233909
+              }
+            },
+            {
+              "name": "sixty_five_of_64_bytes_limit_8_hop_7",
+              "from": 56,
+              "end": 64,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 8,
+                "itemBytes": 17,
+                "inputBytes": 64
+              },
+              "model": {
+                "memory": 1540822,
+                "cpu": 676774817
+              }
+            },
+            {
+              "name": "sixty_five_of_64_bytes_limit_8_hop_8",
+              "from": 64,
+              "end": 65,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": true,
+                "items": 1,
+                "itemBytes": 3,
+                "inputBytes": 64
+              },
+              "model": {
+                "memory": 811705,
+                "cpu": 324177891
+              }
+            }
+          ]
+        },
+        {
+          "plan": "limit_32",
+          "hops": 3,
+          "rows": [
+            {
+              "name": "sixty_five_of_64_bytes_limit_32_hop_0",
+              "from": 0,
+              "end": 32,
+              "shape": {
+                "failure": false,
+                "first": true,
+                "last": false,
+                "items": 32,
+                "itemBytes": 75,
+                "inputBytes": 64
+              },
+              "model": {
+                "memory": 4548319,
+                "cpu": 2103417906
+              }
+            },
+            {
+              "name": "sixty_five_of_64_bytes_limit_32_hop_1",
+              "from": 32,
+              "end": 64,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 32,
+                "itemBytes": 78,
+                "inputBytes": 64
+              },
+              "model": {
+                "memory": 4456498,
+                "cpu": 2058092914
+              }
+            },
+            {
+              "name": "sixty_five_of_64_bytes_limit_32_hop_2",
+              "from": 64,
+              "end": 65,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": true,
+                "items": 1,
+                "itemBytes": 3,
+                "inputBytes": 64
+              },
+              "model": {
+                "memory": 811705,
+                "cpu": 324177891
+              }
+            }
+          ]
+        },
+        {
+          "plan": "budget",
+          "hops": 1,
+          "rows": [
+            {
+              "name": "sixty_five_of_64_bytes_budget_hop_0",
+              "from": 0,
+              "end": 65,
+              "shape": {
+                "failure": false,
+                "first": true,
+                "last": true,
+                "items": 65,
+                "itemBytes": 156,
+                "inputBytes": 64
+              },
+              "model": {
+                "memory": 8674902,
+                "cpu": 4052252655
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "clear_200_of_512_bytes",
+      "inputBytes": 512,
+      "indices": 200,
+      "failure": false,
+      "plans": [
+        {
+          "plan": "limit_1",
+          "hops": 200,
+          "rows": [
+            {
+              "name": "clear_200_of_512_bytes_limit_1_hop_0",
+              "from": 0,
+              "end": 1,
+              "shape": {
+                "failure": false,
+                "first": true,
+                "last": false,
+                "items": 1,
+                "itemBytes": 1,
+                "inputBytes": 512
+              },
+              "model": {
+                "memory": 805996,
+                "cpu": 325502406
+              }
+            },
+            {
+              "name": "clear_200_of_512_bytes_limit_1_hop_1",
+              "from": 1,
+              "end": 2,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 1,
+                "itemBytes": 2,
+                "inputBytes": 512
+              },
+              "model": {
+                "memory": 709015,
+                "cpu": 278431836
+              }
+            },
+            {
+              "name": "clear_200_of_512_bytes_limit_1_hop_100",
+              "from": 100,
+              "end": 101,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 1,
+                "itemBytes": 3,
+                "inputBytes": 512
+              },
+              "model": {
+                "memory": 709579,
+                "cpu": 278546609
+              }
+            },
+            {
+              "name": "clear_200_of_512_bytes_limit_1_hop_198",
+              "from": 198,
+              "end": 199,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 1,
+                "itemBytes": 3,
+                "inputBytes": 512
+              },
+              "model": {
+                "memory": 709579,
+                "cpu": 278546609
+              }
+            },
+            {
+              "name": "clear_200_of_512_bytes_limit_1_hop_199",
+              "from": 199,
+              "end": 200,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": true,
+                "items": 1,
+                "itemBytes": 3,
+                "inputBytes": 512
+              },
+              "model": {
+                "memory": 832761,
+                "cpu": 328445539
+              }
+            }
+          ]
+        },
+        {
+          "plan": "limit_8",
+          "hops": 25,
+          "rows": [
+            {
+              "name": "clear_200_of_512_bytes_limit_8_hop_0",
+              "from": 0,
+              "end": 8,
+              "shape": {
+                "failure": false,
+                "first": true,
+                "last": false,
+                "items": 8,
+                "itemBytes": 16,
+                "inputBytes": 512
+              },
+              "model": {
+                "memory": 1654827,
+                "cpu": 728066443
+              }
+            },
+            {
+              "name": "clear_200_of_512_bytes_limit_8_hop_1",
+              "from": 8,
+              "end": 16,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 8,
+                "itemBytes": 24,
+                "inputBytes": 512
+              },
+              "model": {
+                "memory": 1561794,
+                "cpu": 681799284
+              }
+            },
+            {
+              "name": "clear_200_of_512_bytes_limit_8_hop_12",
+              "from": 96,
+              "end": 104,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 8,
+                "itemBytes": 24,
+                "inputBytes": 512
+              },
+              "model": {
+                "memory": 1561794,
+                "cpu": 681799284
+              }
+            },
+            {
+              "name": "clear_200_of_512_bytes_limit_8_hop_23",
+              "from": 184,
+              "end": 192,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 8,
+                "itemBytes": 24,
+                "inputBytes": 512
+              },
+              "model": {
+                "memory": 1561794,
+                "cpu": 681799284
+              }
+            },
+            {
+              "name": "clear_200_of_512_bytes_limit_8_hop_24",
+              "from": 192,
+              "end": 200,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": true,
+                "items": 8,
+                "itemBytes": 24,
+                "inputBytes": 512
+              },
+              "model": {
+                "memory": 1684976,
+                "cpu": 731698214
+              }
+            }
+          ]
+        },
+        {
+          "plan": "limit_32",
+          "hops": 7,
+          "rows": [
+            {
+              "name": "clear_200_of_512_bytes_limit_32_hop_0",
+              "from": 0,
+              "end": 32,
+              "shape": {
+                "failure": false,
+                "first": true,
+                "last": false,
+                "items": 32,
+                "itemBytes": 88,
+                "inputBytes": 512
+              },
+              "model": {
+                "memory": 4576707,
+                "cpu": 2110647043
+              }
+            },
+            {
+              "name": "clear_200_of_512_bytes_limit_32_hop_1",
+              "from": 32,
+              "end": 64,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 32,
+                "itemBytes": 96,
+                "inputBytes": 512
+              },
+              "model": {
+                "memory": 4483674,
+                "cpu": 2064379884
+              }
+            },
+            {
+              "name": "clear_200_of_512_bytes_limit_32_hop_3",
+              "from": 96,
+              "end": 128,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 32,
+                "itemBytes": 88,
+                "inputBytes": 512
+              },
+              "model": {
+                "memory": 4479162,
+                "cpu": 2063461700
+              }
+            },
+            {
+              "name": "clear_200_of_512_bytes_limit_32_hop_5",
+              "from": 160,
+              "end": 192,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 32,
+                "itemBytes": 96,
+                "inputBytes": 512
+              },
+              "model": {
+                "memory": 4483674,
+                "cpu": 2064379884
+              }
+            },
+            {
+              "name": "clear_200_of_512_bytes_limit_32_hop_6",
+              "from": 192,
+              "end": 200,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": true,
+                "items": 8,
+                "itemBytes": 24,
+                "inputBytes": 512
+              },
+              "model": {
+                "memory": 1684976,
+                "cpu": 731698214
+              }
+            }
+          ]
+        },
+        {
+          "plan": "budget",
+          "hops": 3,
+          "rows": [
+            {
+              "name": "clear_200_of_512_bytes_budget_hop_0",
+              "from": 0,
+              "end": 67,
+              "shape": {
+                "failure": false,
+                "first": true,
+                "last": false,
+                "items": 67,
+                "itemBytes": 193,
+                "inputBytes": 512
+              },
+              "model": {
+                "memory": 8837782,
+                "cpu": 4126910418
+              }
+            },
+            {
+              "name": "clear_200_of_512_bytes_budget_hop_1",
+              "from": 67,
+              "end": 135,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 68,
+                "itemBytes": 196,
+                "inputBytes": 512
+              },
+              "model": {
+                "memory": 8861982,
+                "cpu": 4137332600
+              }
+            },
+            {
+              "name": "clear_200_of_512_bytes_budget_hop_2",
+              "from": 135,
+              "end": 200,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": true,
+                "items": 65,
+                "itemBytes": 195,
+                "inputBytes": 512
+              },
+              "model": {
+                "memory": 8624441,
+                "cpu": 4015327139
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "top_300_of_4096_bytes",
+      "inputBytes": 4096,
+      "indices": 300,
+      "failure": false,
+      "plans": [
+        {
+          "plan": "limit_1",
+          "hops": 300,
+          "rows": [
+            {
+              "name": "top_300_of_4096_bytes_limit_1_hop_0",
+              "from": 0,
+              "end": 1,
+              "shape": {
+                "failure": false,
+                "first": true,
+                "last": false,
+                "items": 1,
+                "itemBytes": 3,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 975572,
+                "cpu": 371628656
+              }
+            },
+            {
+              "name": "top_300_of_4096_bytes_limit_1_hop_1",
+              "from": 1,
+              "end": 2,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 1,
+                "itemBytes": 3,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 845771,
+                "cpu": 312315057
+              }
+            },
+            {
+              "name": "top_300_of_4096_bytes_limit_1_hop_150",
+              "from": 150,
+              "end": 151,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 1,
+                "itemBytes": 3,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 845771,
+                "cpu": 312315057
+              }
+            },
+            {
+              "name": "top_300_of_4096_bytes_limit_1_hop_298",
+              "from": 298,
+              "end": 299,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 1,
+                "itemBytes": 3,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 845771,
+                "cpu": 312315057
+              }
+            },
+            {
+              "name": "top_300_of_4096_bytes_limit_1_hop_299",
+              "from": 299,
+              "end": 300,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": true,
+                "items": 1,
+                "itemBytes": 3,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 1001209,
+                "cpu": 362586723
+              }
+            }
+          ]
+        },
+        {
+          "plan": "limit_8",
+          "hops": 38,
+          "rows": [
+            {
+              "name": "top_300_of_4096_bytes_limit_8_hop_0",
+              "from": 0,
+              "end": 8,
+              "shape": {
+                "failure": false,
+                "first": true,
+                "last": false,
+                "items": 8,
+                "itemBytes": 24,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 1827787,
+                "cpu": 774881331
+              }
+            },
+            {
+              "name": "top_300_of_4096_bytes_limit_8_hop_1",
+              "from": 8,
+              "end": 16,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 8,
+                "itemBytes": 24,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 1697986,
+                "cpu": 715567732
+              }
+            },
+            {
+              "name": "top_300_of_4096_bytes_limit_8_hop_19",
+              "from": 152,
+              "end": 160,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 8,
+                "itemBytes": 24,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 1697986,
+                "cpu": 715567732
+              }
+            },
+            {
+              "name": "top_300_of_4096_bytes_limit_8_hop_36",
+              "from": 288,
+              "end": 296,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 8,
+                "itemBytes": 24,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 1697986,
+                "cpu": 715567732
+              }
+            },
+            {
+              "name": "top_300_of_4096_bytes_limit_8_hop_37",
+              "from": 296,
+              "end": 300,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": true,
+                "items": 4,
+                "itemBytes": 12,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 1366444,
+                "cpu": 535409298
+              }
+            }
+          ]
+        },
+        {
+          "plan": "limit_32",
+          "hops": 10,
+          "rows": [
+            {
+              "name": "top_300_of_4096_bytes_limit_32_hop_0",
+              "from": 0,
+              "end": 32,
+              "shape": {
+                "failure": false,
+                "first": true,
+                "last": false,
+                "items": 32,
+                "itemBytes": 96,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 4749667,
+                "cpu": 2157461931
+              }
+            },
+            {
+              "name": "top_300_of_4096_bytes_limit_32_hop_1",
+              "from": 32,
+              "end": 64,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 32,
+                "itemBytes": 96,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 4619866,
+                "cpu": 2098148332
+              }
+            },
+            {
+              "name": "top_300_of_4096_bytes_limit_32_hop_5",
+              "from": 160,
+              "end": 192,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 32,
+                "itemBytes": 96,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 4619866,
+                "cpu": 2098148332
+              }
+            },
+            {
+              "name": "top_300_of_4096_bytes_limit_32_hop_8",
+              "from": 256,
+              "end": 288,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 32,
+                "itemBytes": 96,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 4619866,
+                "cpu": 2098148332
+              }
+            },
+            {
+              "name": "top_300_of_4096_bytes_limit_32_hop_9",
+              "from": 288,
+              "end": 300,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": true,
+                "items": 12,
+                "itemBytes": 36,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 2340404,
+                "cpu": 996269498
+              }
+            }
+          ]
+        },
+        {
+          "plan": "budget",
+          "hops": 5,
+          "rows": [
+            {
+              "name": "top_300_of_4096_bytes_budget_hop_0",
+              "from": 0,
+              "end": 65,
+              "shape": {
+                "failure": false,
+                "first": true,
+                "last": false,
+                "items": 65,
+                "itemBytes": 195,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 8767252,
+                "cpu": 4058510256
+              }
+            },
+            {
+              "name": "top_300_of_4096_bytes_budget_hop_1",
+              "from": 65,
+              "end": 131,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 66,
+                "itemBytes": 198,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 8759196,
+                "cpu": 4056804182
+              }
+            },
+            {
+              "name": "top_300_of_4096_bytes_budget_hop_2",
+              "from": 131,
+              "end": 197,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 66,
+                "itemBytes": 198,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 8759196,
+                "cpu": 4056804182
+              }
+            },
+            {
+              "name": "top_300_of_4096_bytes_budget_hop_3",
+              "from": 197,
+              "end": 263,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 66,
+                "itemBytes": 198,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 8759196,
+                "cpu": 4056804182
+              }
+            },
+            {
+              "name": "top_300_of_4096_bytes_budget_hop_4",
+              "from": 263,
+              "end": 300,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": true,
+                "items": 37,
+                "itemBytes": 111,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 5384029,
+                "cpu": 2436457623
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "spread_400_of_4096_bytes",
+      "inputBytes": 4096,
+      "indices": 400,
+      "failure": false,
+      "plans": [
+        {
+          "plan": "limit_1",
+          "hops": 400,
+          "rows": [
+            {
+              "name": "spread_400_of_4096_bytes_limit_1_hop_0",
+              "from": 0,
+              "end": 1,
+              "shape": {
+                "failure": false,
+                "first": true,
+                "last": false,
+                "items": 1,
+                "itemBytes": 1,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 974444,
+                "cpu": 371399110
+              }
+            },
+            {
+              "name": "spread_400_of_4096_bytes_limit_1_hop_1",
+              "from": 1,
+              "end": 2,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 1,
+                "itemBytes": 2,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 845207,
+                "cpu": 312200284
+              }
+            },
+            {
+              "name": "spread_400_of_4096_bytes_limit_1_hop_200",
+              "from": 200,
+              "end": 201,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 1,
+                "itemBytes": 3,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 845771,
+                "cpu": 312315057
+              }
+            },
+            {
+              "name": "spread_400_of_4096_bytes_limit_1_hop_398",
+              "from": 398,
+              "end": 399,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 1,
+                "itemBytes": 3,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 845771,
+                "cpu": 312315057
+              }
+            },
+            {
+              "name": "spread_400_of_4096_bytes_limit_1_hop_399",
+              "from": 399,
+              "end": 400,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": true,
+                "items": 1,
+                "itemBytes": 3,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 1001209,
+                "cpu": 362586723
+              }
+            }
+          ]
+        },
+        {
+          "plan": "limit_8",
+          "hops": 50,
+          "rows": [
+            {
+              "name": "spread_400_of_4096_bytes_limit_8_hop_0",
+              "from": 0,
+              "end": 8,
+              "shape": {
+                "failure": false,
+                "first": true,
+                "last": false,
+                "items": 8,
+                "itemBytes": 16,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 1823275,
+                "cpu": 773963147
+              }
+            },
+            {
+              "name": "spread_400_of_4096_bytes_limit_8_hop_1",
+              "from": 8,
+              "end": 16,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 8,
+                "itemBytes": 24,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 1697986,
+                "cpu": 715567732
+              }
+            },
+            {
+              "name": "spread_400_of_4096_bytes_limit_8_hop_25",
+              "from": 200,
+              "end": 208,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 8,
+                "itemBytes": 24,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 1697986,
+                "cpu": 715567732
+              }
+            },
+            {
+              "name": "spread_400_of_4096_bytes_limit_8_hop_48",
+              "from": 384,
+              "end": 392,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 8,
+                "itemBytes": 24,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 1697986,
+                "cpu": 715567732
+              }
+            },
+            {
+              "name": "spread_400_of_4096_bytes_limit_8_hop_49",
+              "from": 392,
+              "end": 400,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": true,
+                "items": 8,
+                "itemBytes": 24,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 1853424,
+                "cpu": 765839398
+              }
+            }
+          ]
+        },
+        {
+          "plan": "limit_32",
+          "hops": 13,
+          "rows": [
+            {
+              "name": "spread_400_of_4096_bytes_limit_32_hop_0",
+              "from": 0,
+              "end": 32,
+              "shape": {
+                "failure": false,
+                "first": true,
+                "last": false,
+                "items": 32,
+                "itemBytes": 88,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 4745155,
+                "cpu": 2156543747
+              }
+            },
+            {
+              "name": "spread_400_of_4096_bytes_limit_32_hop_1",
+              "from": 32,
+              "end": 64,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 32,
+                "itemBytes": 96,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 4619866,
+                "cpu": 2098148332
+              }
+            },
+            {
+              "name": "spread_400_of_4096_bytes_limit_32_hop_6",
+              "from": 192,
+              "end": 224,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 32,
+                "itemBytes": 96,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 4619866,
+                "cpu": 2098148332
+              }
+            },
+            {
+              "name": "spread_400_of_4096_bytes_limit_32_hop_11",
+              "from": 352,
+              "end": 384,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 32,
+                "itemBytes": 96,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 4619866,
+                "cpu": 2098148332
+              }
+            },
+            {
+              "name": "spread_400_of_4096_bytes_limit_32_hop_12",
+              "from": 384,
+              "end": 400,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": true,
+                "items": 16,
+                "itemBytes": 48,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 2827384,
+                "cpu": 1226699598
+              }
+            }
+          ]
+        },
+        {
+          "plan": "budget",
+          "hops": 7,
+          "rows": [
+            {
+              "name": "spread_400_of_4096_bytes_budget_hop_0",
+              "from": 0,
+              "end": 65,
+              "shape": {
+                "failure": false,
+                "first": true,
+                "last": false,
+                "items": 65,
+                "itemBytes": 187,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 8762740,
+                "cpu": 4057592072
+              }
+            },
+            {
+              "name": "spread_400_of_4096_bytes_budget_hop_1",
+              "from": 65,
+              "end": 131,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 66,
+                "itemBytes": 198,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 8759196,
+                "cpu": 4056804182
+              }
+            },
+            {
+              "name": "spread_400_of_4096_bytes_budget_hop_3",
+              "from": 197,
+              "end": 263,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 66,
+                "itemBytes": 198,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 8759196,
+                "cpu": 4056804182
+              }
+            },
+            {
+              "name": "spread_400_of_4096_bytes_budget_hop_5",
+              "from": 329,
+              "end": 395,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": false,
+                "items": 66,
+                "itemBytes": 198,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 8759196,
+                "cpu": 4056804182
+              }
+            },
+            {
+              "name": "spread_400_of_4096_bytes_budget_hop_6",
+              "from": 395,
+              "end": 400,
+              "shape": {
+                "failure": false,
+                "first": false,
+                "last": true,
+                "items": 5,
+                "itemBytes": 15,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 1488189,
+                "cpu": 593016823
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "fail_past_64_bytes",
+      "inputBytes": 64,
+      "indices": 100,
+      "failure": true,
+      "plans": [
+        {
+          "plan": "limit_1",
+          "hops": 71,
+          "rows": [
+            {
+              "name": "fail_past_64_bytes_limit_1_hop_0",
+              "from": 0,
+              "end": 1,
+              "shape": {
+                "failure": true,
+                "first": true,
+                "last": false,
+                "items": 1,
+                "itemBytes": 1,
+                "inputBytes": 64
+              },
+              "model": {
+                "memory": 687584,
+                "cpu": 279859775
+              }
+            },
+            {
+              "name": "fail_past_64_bytes_limit_1_hop_1",
+              "from": 1,
+              "end": 2,
+              "shape": {
+                "failure": true,
+                "first": false,
+                "last": false,
+                "items": 1,
+                "itemBytes": 2,
+                "inputBytes": 64
+              },
+              "model": {
+                "memory": 508078,
+                "cpu": 207253610
+              }
+            },
+            {
+              "name": "fail_past_64_bytes_limit_1_hop_35",
+              "from": 35,
+              "end": 36,
+              "shape": {
+                "failure": true,
+                "first": false,
+                "last": false,
+                "items": 1,
+                "itemBytes": 3,
+                "inputBytes": 64
+              },
+              "model": {
+                "memory": 508078,
+                "cpu": 207253610
+              }
+            },
+            {
+              "name": "fail_past_64_bytes_limit_1_hop_69",
+              "from": 69,
+              "end": 70,
+              "shape": {
+                "failure": true,
+                "first": false,
+                "last": false,
+                "items": 1,
+                "itemBytes": 3,
+                "inputBytes": 64
+              },
+              "model": {
+                "memory": 508078,
+                "cpu": 207253610
+              }
+            },
+            {
+              "name": "fail_past_64_bytes_limit_1_hop_70",
+              "from": 70,
+              "end": 71,
+              "shape": {
+                "failure": true,
+                "first": false,
+                "last": true,
+                "items": 1,
+                "itemBytes": 3,
+                "inputBytes": 64
+              },
+              "model": {
+                "memory": 508398,
+                "cpu": 209668741
+              }
+            }
+          ]
+        },
+        {
+          "plan": "limit_8",
+          "hops": 9,
+          "rows": [
+            {
+              "name": "fail_past_64_bytes_limit_8_hop_0",
+              "from": 0,
+              "end": 8,
+              "shape": {
+                "failure": true,
+                "first": true,
+                "last": false,
+                "items": 8,
+                "itemBytes": 16,
+                "inputBytes": 64
+              },
+              "model": {
+                "memory": 1564635,
+                "cpu": 688019919
+              }
+            },
+            {
+              "name": "fail_past_64_bytes_limit_8_hop_1",
+              "from": 8,
+              "end": 16,
+              "shape": {
+                "failure": true,
+                "first": false,
+                "last": false,
+                "items": 8,
+                "itemBytes": 21,
+                "inputBytes": 64
+              },
+              "model": {
+                "memory": 1385129,
+                "cpu": 615413754
+              }
+            },
+            {
+              "name": "fail_past_64_bytes_limit_8_hop_4",
+              "from": 32,
+              "end": 40,
+              "shape": {
+                "failure": true,
+                "first": false,
+                "last": false,
+                "items": 8,
+                "itemBytes": 21,
+                "inputBytes": 64
+              },
+              "model": {
+                "memory": 1385129,
+                "cpu": 615413754
+              }
+            },
+            {
+              "name": "fail_past_64_bytes_limit_8_hop_7",
+              "from": 56,
+              "end": 64,
+              "shape": {
+                "failure": true,
+                "first": false,
+                "last": false,
+                "items": 8,
+                "itemBytes": 17,
+                "inputBytes": 64
+              },
+              "model": {
+                "memory": 1385129,
+                "cpu": 615413754
+              }
+            },
+            {
+              "name": "fail_past_64_bytes_limit_8_hop_8",
+              "from": 64,
+              "end": 71,
+              "shape": {
+                "failure": true,
+                "first": false,
+                "last": true,
+                "items": 7,
+                "itemBytes": 21,
+                "inputBytes": 64
+              },
+              "model": {
+                "memory": 1260156,
+                "cpu": 559520293
+              }
+            }
+          ]
+        },
+        {
+          "plan": "limit_32",
+          "hops": 3,
+          "rows": [
+            {
+              "name": "fail_past_64_bytes_limit_32_hop_0",
+              "from": 0,
+              "end": 32,
+              "shape": {
+                "failure": true,
+                "first": true,
+                "last": false,
+                "items": 32,
+                "itemBytes": 75,
+                "inputBytes": 64
+              },
+              "model": {
+                "memory": 4571667,
+                "cpu": 2087426127
+              }
+            },
+            {
+              "name": "fail_past_64_bytes_limit_32_hop_1",
+              "from": 32,
+              "end": 64,
+              "shape": {
+                "failure": true,
+                "first": false,
+                "last": false,
+                "items": 32,
+                "itemBytes": 78,
+                "inputBytes": 64
+              },
+              "model": {
+                "memory": 4392161,
+                "cpu": 2014819962
+              }
+            },
+            {
+              "name": "fail_past_64_bytes_limit_32_hop_2",
+              "from": 64,
+              "end": 71,
+              "shape": {
+                "failure": true,
+                "first": false,
+                "last": true,
+                "items": 7,
+                "itemBytes": 21,
+                "inputBytes": 64
+              },
+              "model": {
+                "memory": 1260156,
+                "cpu": 559520293
+              }
+            }
+          ]
+        },
+        {
+          "plan": "budget",
+          "hops": 2,
+          "rows": [
+            {
+              "name": "fail_past_64_bytes_budget_hop_0",
+              "from": 0,
+              "end": 66,
+              "shape": {
+                "failure": true,
+                "first": true,
+                "last": false,
+                "items": 66,
+                "itemBytes": 159,
+                "inputBytes": 64
+              },
+              "model": {
+                "memory": 8831629,
+                "cpu": 4069918255
+              }
+            },
+            {
+              "name": "fail_past_64_bytes_budget_hop_1",
+              "from": 66,
+              "end": 71,
+              "shape": {
+                "failure": true,
+                "first": false,
+                "last": true,
+                "items": 5,
+                "itemBytes": 15,
+                "inputBytes": 64
+              },
+              "model": {
+                "memory": 1009570,
+                "cpu": 442903109
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "fail_negative_first",
+      "inputBytes": 1,
+      "indices": 9,
+      "failure": true,
+      "plans": [
+        {
+          "plan": "limit_1",
+          "hops": 1,
+          "rows": [
+            {
+              "name": "fail_negative_first_limit_1_hop_0",
+              "from": 0,
+              "end": 1,
+              "shape": {
+                "failure": true,
+                "first": true,
+                "last": true,
+                "items": 1,
+                "itemBytes": 1,
+                "inputBytes": 1
+              },
+              "model": {
+                "memory": 684880,
+                "cpu": 281674012
+              }
+            }
+          ]
+        },
+        {
+          "plan": "limit_8",
+          "hops": 1,
+          "rows": [
+            {
+              "name": "fail_negative_first_limit_8_hop_0",
+              "from": 0,
+              "end": 1,
+              "shape": {
+                "failure": true,
+                "first": true,
+                "last": true,
+                "items": 1,
+                "itemBytes": 1,
+                "inputBytes": 1
+              },
+              "model": {
+                "memory": 684880,
+                "cpu": 281674012
+              }
+            }
+          ]
+        },
+        {
+          "plan": "limit_32",
+          "hops": 1,
+          "rows": [
+            {
+              "name": "fail_negative_first_limit_32_hop_0",
+              "from": 0,
+              "end": 1,
+              "shape": {
+                "failure": true,
+                "first": true,
+                "last": true,
+                "items": 1,
+                "itemBytes": 1,
+                "inputBytes": 1
+              },
+              "model": {
+                "memory": 684880,
+                "cpu": 281674012
+              }
+            }
+          ]
+        },
+        {
+          "plan": "budget",
+          "hops": 1,
+          "rows": [
+            {
+              "name": "fail_negative_first_budget_hop_0",
+              "from": 0,
+              "end": 1,
+              "shape": {
+                "failure": true,
+                "first": true,
+                "last": true,
+                "items": 1,
+                "itemBytes": 1,
+                "inputBytes": 1
+              },
+              "model": {
+                "memory": 684880,
+                "cpu": 281674012
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "fail_past_4096_bytes",
+      "inputBytes": 4096,
+      "indices": 300,
+      "failure": true,
+      "plans": [
+        {
+          "plan": "limit_1",
+          "hops": 251,
+          "rows": [
+            {
+              "name": "fail_past_4096_bytes_limit_1_hop_0",
+              "from": 0,
+              "end": 1,
+              "shape": {
+                "failure": true,
+                "first": true,
+                "last": false,
+                "items": 1,
+                "itemBytes": 1,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 860960,
+                "cpu": 315426047
+              }
+            },
+            {
+              "name": "fail_past_4096_bytes_limit_1_hop_1",
+              "from": 1,
+              "end": 2,
+              "shape": {
+                "failure": true,
+                "first": false,
+                "last": false,
+                "items": 1,
+                "itemBytes": 2,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 629038,
+                "cpu": 226070954
+              }
+            },
+            {
+              "name": "fail_past_4096_bytes_limit_1_hop_125",
+              "from": 125,
+              "end": 126,
+              "shape": {
+                "failure": true,
+                "first": false,
+                "last": false,
+                "items": 1,
+                "itemBytes": 3,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 629038,
+                "cpu": 226070954
+              }
+            },
+            {
+              "name": "fail_past_4096_bytes_limit_1_hop_249",
+              "from": 249,
+              "end": 250,
+              "shape": {
+                "failure": true,
+                "first": false,
+                "last": false,
+                "items": 1,
+                "itemBytes": 3,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 629038,
+                "cpu": 226070954
+              }
+            },
+            {
+              "name": "fail_past_4096_bytes_limit_1_hop_250",
+              "from": 250,
+              "end": 251,
+              "shape": {
+                "failure": true,
+                "first": false,
+                "last": true,
+                "items": 1,
+                "itemBytes": 3,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 649518,
+                "cpu": 231377029
+              }
+            }
+          ]
+        },
+        {
+          "plan": "limit_8",
+          "hops": 32,
+          "rows": [
+            {
+              "name": "fail_past_4096_bytes_limit_8_hop_0",
+              "from": 0,
+              "end": 8,
+              "shape": {
+                "failure": true,
+                "first": true,
+                "last": false,
+                "items": 8,
+                "itemBytes": 16,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 1738011,
+                "cpu": 723586191
+              }
+            },
+            {
+              "name": "fail_past_4096_bytes_limit_8_hop_1",
+              "from": 8,
+              "end": 16,
+              "shape": {
+                "failure": true,
+                "first": false,
+                "last": false,
+                "items": 8,
+                "itemBytes": 24,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 1506089,
+                "cpu": 634231098
+              }
+            },
+            {
+              "name": "fail_past_4096_bytes_limit_8_hop_16",
+              "from": 128,
+              "end": 136,
+              "shape": {
+                "failure": true,
+                "first": false,
+                "last": false,
+                "items": 8,
+                "itemBytes": 24,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 1506089,
+                "cpu": 634231098
+              }
+            },
+            {
+              "name": "fail_past_4096_bytes_limit_8_hop_30",
+              "from": 240,
+              "end": 248,
+              "shape": {
+                "failure": true,
+                "first": false,
+                "last": false,
+                "items": 8,
+                "itemBytes": 24,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 1506089,
+                "cpu": 634231098
+              }
+            },
+            {
+              "name": "fail_past_4096_bytes_limit_8_hop_31",
+              "from": 248,
+              "end": 251,
+              "shape": {
+                "failure": true,
+                "first": false,
+                "last": true,
+                "items": 3,
+                "itemBytes": 9,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 900104,
+                "cpu": 347994213
+              }
+            }
+          ]
+        },
+        {
+          "plan": "limit_32",
+          "hops": 8,
+          "rows": [
+            {
+              "name": "fail_past_4096_bytes_limit_32_hop_0",
+              "from": 0,
+              "end": 32,
+              "shape": {
+                "failure": true,
+                "first": true,
+                "last": false,
+                "items": 32,
+                "itemBytes": 88,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 4745043,
+                "cpu": 2122992399
+              }
+            },
+            {
+              "name": "fail_past_4096_bytes_limit_32_hop_1",
+              "from": 32,
+              "end": 64,
+              "shape": {
+                "failure": true,
+                "first": false,
+                "last": false,
+                "items": 32,
+                "itemBytes": 96,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 4513121,
+                "cpu": 2033637306
+              }
+            },
+            {
+              "name": "fail_past_4096_bytes_limit_32_hop_4",
+              "from": 128,
+              "end": 160,
+              "shape": {
+                "failure": true,
+                "first": false,
+                "last": false,
+                "items": 32,
+                "itemBytes": 96,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 4513121,
+                "cpu": 2033637306
+              }
+            },
+            {
+              "name": "fail_past_4096_bytes_limit_32_hop_6",
+              "from": 192,
+              "end": 224,
+              "shape": {
+                "failure": true,
+                "first": false,
+                "last": false,
+                "items": 32,
+                "itemBytes": 96,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 4513121,
+                "cpu": 2033637306
+              }
+            },
+            {
+              "name": "fail_past_4096_bytes_limit_32_hop_7",
+              "from": 224,
+              "end": 251,
+              "shape": {
+                "failure": true,
+                "first": false,
+                "last": true,
+                "items": 27,
+                "itemBytes": 81,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 3907136,
+                "cpu": 1747400421
+              }
+            }
+          ]
+        },
+        {
+          "plan": "budget",
+          "hops": 4,
+          "rows": [
+            {
+              "name": "fail_past_4096_bytes_budget_hop_0",
+              "from": 0,
+              "end": 65,
+              "shape": {
+                "failure": true,
+                "first": true,
+                "last": false,
+                "items": 65,
+                "itemBytes": 187,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 8879712,
+                "cpu": 4047175935
+              }
+            },
+            {
+              "name": "fail_past_4096_bytes_budget_hop_1",
+              "from": 65,
+              "end": 131,
+              "shape": {
+                "failure": true,
+                "first": false,
+                "last": false,
+                "items": 66,
+                "itemBytes": 198,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 8773083,
+                "cpu": 4016129434
+              }
+            },
+            {
+              "name": "fail_past_4096_bytes_budget_hop_2",
+              "from": 131,
+              "end": 197,
+              "shape": {
+                "failure": true,
+                "first": false,
+                "last": false,
+                "items": 66,
+                "itemBytes": 198,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 8773083,
+                "cpu": 4016129434
+              }
+            },
+            {
+              "name": "fail_past_4096_bytes_budget_hop_3",
+              "from": 197,
+              "end": 251,
+              "shape": {
+                "failure": true,
+                "first": false,
+                "last": true,
+                "items": 54,
+                "itemBytes": 162,
+                "inputBytes": 4096
+              },
+              "model": {
+                "memory": 7290047,
+                "cpu": 3321732405
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

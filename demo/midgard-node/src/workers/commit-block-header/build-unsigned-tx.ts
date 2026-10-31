@@ -1,43 +1,87 @@
 import * as SDK from "@al-ft/midgard-sdk";
+import type { SqlClient } from "@effect/sql";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import type { OperatorWalletView } from "@/operator-wallet-view.js";
-import { Lucid } from "@/services/index.js";
+import {
+  HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
+  historyCommitTimingBudget,
+} from "../../services/history-commit-window.js";
+import {
+  type ContractDeploymentIdentityValue,
+  Lucid,
+  NodeConfig,
+} from "../../services/index.js";
+import {
+  IntentJournal,
+  journaledIntent,
+} from "../../services/intent-journal.js";
 import {
   handleSignSubmitNoConfirmation,
+  type NoInlineSubmitDefer,
   type NoInlineSubmitRecoveryOptions,
   type TxSignError,
   TxSubmitError,
-} from "@/transactions/utils.js";
+} from "../../transactions/utils.js";
 import {
-  COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+  COMMIT_MINIMUM_FUTURE_BUFFER_MS,
   type CommitTimingBudget,
   commitTimingBudget,
   formatCommitTimingBudget,
   makeSubmitSlotAnchoredClock,
   resolveAlignedCommitEndTime,
-} from "@/workers/utils/commit-end-time.js";
+  resolveCommitValidityInterval,
+} from "../utils/commit-end-time.js";
 import {
   type CommitTimingDueWork,
   fetchRealStateQueueWitnessContext,
   type RealStateQueueWitnessContext,
-} from "@/workers/utils/scheduler-refresh.js";
-
+} from "../utils/scheduler-refresh.js";
 import {
   getLatestBlockDatumEndTime,
   hashBlockHeaderLocal,
+  resolveCommitAppendFenceReferencesLocal,
   updateLatestBlocksDatumAndGetTheNewHeaderLocal,
 } from "./state-queue.js";
 
-const STATE_QUEUE_HEADER_NODE_LOVELACE = 5_000_000n;
 const COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS = 4;
 
+/** Whether a no-inline defer left anything to resubmit: the pre-submit check
+ * defers before the signed intent is persisted, so nothing was sent; the
+ * provider-slot and early-validity defers follow the persist and a provider
+ * refusal of the bytes as not yet valid; the follower's intent stage (S6)
+ * resubmits the journaled bytes unchanged on each new tip until they land or
+ * are dead. */
+export const commitSubmitDeferMessage = (defer: NoInlineSubmitDefer) =>
+  `Commit block submit deferred in no-inline mode (${defer.kind}, current slot ${defer.currentSlot.toString()}, target slot ${defer.targetSlot.toString()}, due slot ${defer.dueSlot.toString()}): ${
+    defer.kind === "pre_submit_validity"
+      ? "before its signed intent was persisted; nothing was sent"
+      : "the provider refused its persisted signed intent as not yet valid; the signed intent is retained for rebroadcast of its exact bytes"
+  }`;
+
+/** The commit's deferred submit as an error that carries the due slot. */
+export const commitSubmitDeferError = (
+  defer: NoInlineSubmitDefer,
+  headerHash: string,
+) =>
+  new TxSubmitError({
+    message: commitSubmitDeferMessage(defer),
+    txHash: headerHash,
+    dueSlot: defer.dueSlot,
+    cause: defer,
+  });
+
 export type BuiltCommitTx = {
+  readonly preparedTxHash: string;
   readonly newHeaderHash: string;
   readonly newHeader: SDK.Header;
   readonly newHeaderCbor: Buffer;
+  /** The header's covered window end. */
   readonly blockEndTimeMs: number;
+  /** The node's `block_time`: the commit's inclusive validity upper bound. */
+  readonly blockTimeMs: number;
+  readonly txValidFromMs: number;
+  readonly txValidToMs: number;
   readonly signAndSubmitProgram: Effect.Effect<
     string,
     TxSignError | TxSubmitError
@@ -59,9 +103,10 @@ export const buildUnsignedCommitTx = (
   depositsRoot: string,
   withdrawalsRoot: string,
   transitionCommitments: SDK.HeaderTransitionCommitments,
+  _consensusProfile: ContractDeploymentIdentityValue["consensusProfile"],
   endDate: Date,
-  initialOperatorWalletView?: OperatorWalletView,
   maximumEndTimeMs?: number,
+  fixedBlockTimeMs?: number,
 ): Effect.Effect<
   CommitBuildResult,
   | SDK.StateQueueError
@@ -69,12 +114,25 @@ export const buildUnsignedCommitTx = (
   | SDK.HeaderTransitionCommitmentsError
   | SDK.HashingError
   | SDK.LucidError
+  | SDK.LinkedListError
   | TxSignError
   | TxSubmitError,
-  Lucid
+  Lucid | NodeConfig | SqlClient.SqlClient | IntentJournal
 > =>
   Effect.gen(function* () {
+    const journal = yield* IntentJournal;
+    // S5: the plan opens before this build's first L1 read. The caller's
+    // read of `latestBlock` precedes it; that tail is the commit's input, so
+    // the commit lands only on a chain that holds it.
+    const plan = yield* journal.openPlan;
+    // The selected fixed clock crosses the worker boundary; an ambient
+    // follower service does not determine this attempt's timing policy.
+    const ownedWindow = fixedBlockTimeMs !== undefined;
+    const checkTimingBudget = ownedWindow
+      ? historyCommitTimingBudget
+      : commitTimingBudget;
     const lucid = yield* Lucid;
+    const nodeConfig = yield* NodeConfig;
     const submitSlotSnapshot = lucid.submitSlotSnapshot;
     const initialSubmitSlotSnapshot = yield* submitSlotSnapshot().pipe(
       Effect.mapError(
@@ -92,36 +150,75 @@ export const buildUnsignedCommitTx = (
     const latestEndTime = Number(
       (yield* getLatestBlockDatumEndTime(latestBlock.datum)).getTime(),
     );
+    const candidateEndTimeMs = endDate.getTime();
+    if (
+      !Number.isSafeInteger(candidateEndTimeMs) ||
+      candidateEndTimeMs <= latestEndTime
+    ) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message:
+            "Refusing to build a block with a non-monotonic semantic end-time",
+          cause: `candidate_end_time_ms=${String(candidateEndTimeMs)},latest_end_time_ms=${latestEndTime.toString()}`,
+        }),
+      );
+    }
+
+    if (
+      fixedBlockTimeMs !== undefined &&
+      (!Number.isSafeInteger(fixedBlockTimeMs) ||
+        candidateEndTimeMs > fixedBlockTimeMs ||
+        (transitionCommitments.l2TransactionCount > 0n &&
+          candidateEndTimeMs !== fixedBlockTimeMs))
+    )
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message:
+            "Selected coverage or normal transactions disagree with the fixed commit clock",
+          cause: {
+            candidateEndTimeMs,
+            fixedBlockTimeMs,
+            l2TransactionCount: transitionCommitments.l2TransactionCount,
+          },
+        }),
+      );
 
     // The worker's Lucid service starts without a selected wallet. Select the
     // operator wallet before any scheduler refresh or witness lookup that
     // depends on wallet address or spendable operator inputs.
     yield* lucid.switchToOperatorsMainWallet;
-    let commitWindowResolutionNow = anchoredNowMs();
-    const resolveCommitWindow = () =>
+    let commitValidityResolutionNow = anchoredNowMs();
+    const resolveCommitValidityWindow = () =>
       resolveAlignedCommitEndTime({
         lucid: lucid.api,
         latestEndTime,
-        candidateEndTime: endDate.getTime(),
-        nowMs: commitWindowResolutionNow,
-        minimumFutureBufferMs: COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+        candidateEndTime: fixedBlockTimeMs ?? candidateEndTimeMs,
+        nowMs: commitValidityResolutionNow,
+        minimumFutureBufferMs: ownedWindow
+          ? HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS
+          : COMMIT_MINIMUM_FUTURE_BUFFER_MS,
       });
-    const enforceCommitWindowCap = (
-      commitWindow: ReturnType<typeof resolveCommitWindow>,
+    const fixedHistoryEnd = fixedBlockTimeMs;
+    const finalEndTimeCap =
+      fixedHistoryEnd === undefined
+        ? maximumEndTimeMs
+        : Math.min(fixedHistoryEnd, maximumEndTimeMs ?? fixedHistoryEnd);
+    const enforceCommitValidityCap = (
+      commitValidityWindow: ReturnType<typeof resolveCommitValidityWindow>,
       stage: string,
     ) =>
-      maximumEndTimeMs !== undefined &&
-      commitWindow.resolvedEndTime > maximumEndTimeMs
+      finalEndTimeCap !== undefined &&
+      commitValidityWindow.resolvedEndTime - 1 > finalEndTimeCap
         ? Effect.fail(
             new SDK.StateQueueError({
               message:
-                "Resolved commit end-time exceeds the selected scheduler window cap",
-              cause: `stage=${stage},resolved_end_time_ms=${commitWindow.resolvedEndTime.toString()},maximum_end_time_ms=${maximumEndTimeMs.toString()},aligned_candidate_end_time_ms=${commitWindow.alignedCandidateEndTime.toString()},minimum_monotonic_end_time_ms=${commitWindow.minimumMonotonicEndTime.toString()},minimum_current_time_end_time_ms=${commitWindow.minimumCurrentTimeEndTime.toString()}`,
+                "Resolved commit transaction validity exceeds the selected scheduler window cap",
+              cause: `stage=${stage},resolved_valid_to_ms=${commitValidityWindow.resolvedEndTime.toString()},resolved_header_end_time_ms=${(commitValidityWindow.resolvedEndTime - 1).toString()},maximum_end_time_ms=${finalEndTimeCap.toString()},candidate_end_time_ms=${candidateEndTimeMs.toString()},aligned_candidate_valid_to_ms=${commitValidityWindow.alignedCandidateEndTime.toString()},minimum_monotonic_valid_to_ms=${commitValidityWindow.minimumMonotonicEndTime.toString()},minimum_current_time_valid_to_ms=${commitValidityWindow.minimumCurrentTimeEndTime.toString()}`,
             }),
           )
         : Effect.void;
-    let commitWindow = resolveCommitWindow();
-    yield* enforceCommitWindowCap(commitWindow, "initial_resolution");
+    let commitValidityWindow = resolveCommitValidityWindow();
+    yield* enforceCommitValidityCap(commitValidityWindow, "initial_resolution");
     let witnessContext: RealStateQueueWitnessContext | undefined;
     let lastFailedBudget: CommitTimingBudget | undefined;
     for (
@@ -129,33 +226,35 @@ export const buildUnsignedCommitTx = (
       stabilizationAttempts <= COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS;
       stabilizationAttempts += 1
     ) {
-      const preWitnessBudget = commitTimingBudget({
+      const preWitnessBudget = checkTimingBudget({
         checkpoint: "pre_witness",
-        resolvedEndTimeMs: commitWindow.resolvedEndTime,
+        resolvedEndTimeMs: commitValidityWindow.resolvedEndTime,
         nowMs: anchoredNowMs(),
       });
       if (!preWitnessBudget.satisfied) {
         lastFailedBudget = preWitnessBudget;
-        commitWindowResolutionNow = anchoredNowMs();
-        const refreshedCommitWindow = resolveCommitWindow();
+        commitValidityResolutionNow = anchoredNowMs();
+        const refreshedCommitValidityWindow = resolveCommitValidityWindow();
         yield* Effect.logWarning(
-          `Commit timing budget too low before witness assembly; rebuilding with refreshed window (${formatCommitTimingBudget(preWitnessBudget)},next=${refreshedCommitWindow.resolvedEndTime},attempt=${stabilizationAttempts}/${COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS}).`,
+          `Commit timing budget too low before witness assembly; rebuilding with refreshed transaction validity (${formatCommitTimingBudget(preWitnessBudget)},candidate_end=${candidateEndTimeMs},next_valid_to=${refreshedCommitValidityWindow.resolvedEndTime},attempt=${stabilizationAttempts}/${COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS}).`,
         );
-        yield* enforceCommitWindowCap(
-          refreshedCommitWindow,
+        yield* enforceCommitValidityCap(
+          refreshedCommitValidityWindow,
           "pre_witness_refresh",
         );
-        commitWindow = refreshedCommitWindow;
+        commitValidityWindow = refreshedCommitValidityWindow;
         continue;
       }
 
-      const witnessEndTime = commitWindow.resolvedEndTime;
-      yield* enforceCommitWindowCap(commitWindow, "before_witness_lookup");
+      const witnessEndTime = commitValidityWindow.resolvedEndTime;
+      yield* enforceCommitValidityCap(
+        commitValidityWindow,
+        "before_witness_lookup",
+      );
       const witnessResult = yield* fetchRealStateQueueWitnessContext(
         lucid.api,
         contracts,
         witnessEndTime,
-        witnessContext?.operatorWalletView ?? initialOperatorWalletView,
         lucid.referenceScriptsAddress,
         submitSlotSnapshot,
         false,
@@ -163,38 +262,62 @@ export const buildUnsignedCommitTx = (
       if (isCommitTimingDueWork(witnessResult)) {
         return witnessResult;
       }
-      witnessContext = witnessResult;
-      const preBuildBudget = commitTimingBudget({
+      const appendFenceReferences =
+        yield* resolveCommitAppendFenceReferencesLocal(
+          lucid.api,
+          {
+            stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
+            stateQueuePolicyId: contracts.stateQueue.policyId,
+          },
+          latestBlock,
+        );
+      witnessContext = { ...witnessResult, ...appendFenceReferences };
+      const preBuildBudget = checkTimingBudget({
         checkpoint: "pre_build",
         resolvedEndTimeMs: witnessEndTime,
         nowMs: anchoredNowMs(),
       });
       if (!preBuildBudget.satisfied) {
         lastFailedBudget = preBuildBudget;
-        commitWindowResolutionNow = anchoredNowMs();
-        const refreshedCommitWindow = resolveCommitWindow();
+        commitValidityResolutionNow = anchoredNowMs();
+        const refreshedCommitValidityWindow = resolveCommitValidityWindow();
         yield* Effect.logWarning(
-          `Commit timing budget too low after witness assembly; rebuilding with refreshed window (${formatCommitTimingBudget(preBuildBudget)},previous=${commitWindow.resolvedEndTime},next=${refreshedCommitWindow.resolvedEndTime},attempt=${stabilizationAttempts}/${COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS}).`,
+          `Commit timing budget too low after witness assembly; rebuilding with refreshed transaction validity (${formatCommitTimingBudget(preBuildBudget)},candidate_end=${candidateEndTimeMs},previous_valid_to=${commitValidityWindow.resolvedEndTime},next_valid_to=${refreshedCommitValidityWindow.resolvedEndTime},attempt=${stabilizationAttempts}/${COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS}).`,
         );
-        yield* enforceCommitWindowCap(
-          refreshedCommitWindow,
+        yield* enforceCommitValidityCap(
+          refreshedCommitValidityWindow,
           "pre_build_refresh",
         );
-        commitWindow = refreshedCommitWindow;
+        commitValidityWindow = refreshedCommitValidityWindow;
         continue;
       }
 
       const {
         alignedCandidateEndTime,
         minimumMonotonicEndTime,
-        resolvedEndTime: alignedEndTime,
-      } = commitWindow;
-      if (alignedEndTime !== alignedCandidateEndTime) {
+        resolvedEndTime: txValidToMs,
+      } = commitValidityWindow;
+      // The block time is the commit's inclusive validity upper bound; the
+      // header names it as its slot, and every validity verdict in the block
+      // is taken at that slot.
+      const { validFromMs: txValidFromMs, inclusiveUpperBoundMs: blockTimeMs } =
+        resolveCommitValidityInterval({
+          lucid: lucid.api,
+          submitSlotSnapshot: initialSubmitSlotSnapshot,
+          validToMs: txValidToMs,
+        });
+      // The selected event window is fixed independently of transaction validity.
+      const blockEndTimeMs =
+        fixedBlockTimeMs === undefined ? blockTimeMs : candidateEndTimeMs;
+      if (txValidToMs !== alignedCandidateEndTime) {
         yield* Effect.logWarning(
-          `Adjusted commit end-time to maintain monotonic header timing (candidate=${alignedCandidateEndTime}, minimum=${minimumMonotonicEndTime}, selected=${alignedEndTime}, latestEnd=${latestEndTime}).`,
+          `Adjusted commit transaction validity and bound the committed header to its inclusive upper bound (candidate_end=${candidateEndTimeMs},header_end=${blockEndTimeMs},candidate_valid_to=${alignedCandidateEndTime},minimum=${minimumMonotonicEndTime},selected_valid_from=${txValidFromMs},selected_valid_to=${txValidToMs},latest_block_end=${latestEndTime}).`,
         );
       }
-      yield* enforceCommitWindowCap(commitWindow, "before_header_build");
+      yield* enforceCommitValidityCap(
+        commitValidityWindow,
+        "before_header_build",
+      );
       yield* Effect.logInfo("🔹 Finding updated block datum and new header...");
       const { nodeDatum: updatedNodeDatum, header: newHeader } =
         yield* updateLatestBlocksDatumAndGetTheNewHeaderLocal(
@@ -205,7 +328,13 @@ export const buildUnsignedCommitTx = (
           depositsRoot,
           withdrawalsRoot,
           transitionCommitments,
-          BigInt(alignedEndTime),
+          BigInt(blockEndTimeMs),
+          {
+            blockSlot: BigInt(lucid.api.unixTimeToSlot(blockTimeMs)),
+            expectedNetworkId: nodeConfig.NETWORK === "Mainnet" ? 1n : 0n,
+            minFeeA: nodeConfig.MIN_FEE_A,
+            minFeeB: nodeConfig.MIN_FEE_B,
+          },
         );
 
       const newHeaderHash = yield* hashBlockHeaderLocal(newHeader);
@@ -215,45 +344,45 @@ export const buildUnsignedCommitTx = (
       );
       yield* Effect.logInfo("🔹 Building block commitment transaction...");
 
-      const { tx: txBuilder } =
-        yield* SDK.buildProductionCommitBlockHeaderTxProgram({
-          lucid: lucid.api,
-          contracts,
-          latestBlock,
-          updatedNodeDatum,
-          newHeader,
-          validTo: alignedEndTime,
-          witness: witnessContext,
-          headerNodeLovelace: STATE_QUEUE_HEADER_NODE_LOVELACE,
-        });
+      const { tx: txBuilder } = yield* SDK.buildCommitBlockHeaderTxProgram({
+        lucid: lucid.api,
+        contracts,
+        latestBlock,
+        updatedNodeDatum,
+        newHeader,
+        validFrom: txValidFromMs,
+        validTo: txValidToMs,
+        witness: witnessContext,
+        headerNodeLovelace: SDK.STATE_QUEUE_NODE_MIN_LOVELACE,
+      });
 
       const txSize = txBuilder.toCBOR().length / 2;
       yield* Effect.logInfo(
         `🔹 Transaction built successfully. Size: ${txSize}`,
       );
 
-      const preSubmitBudget = commitTimingBudget({
+      const preSubmitBudget = checkTimingBudget({
         checkpoint: "pre_submit",
-        resolvedEndTimeMs: alignedEndTime,
+        resolvedEndTimeMs: txValidToMs,
         nowMs: anchoredNowMs(),
       });
       if (!preSubmitBudget.satisfied) {
         lastFailedBudget = preSubmitBudget;
-        commitWindowResolutionNow = anchoredNowMs();
-        const refreshedCommitWindow = resolveCommitWindow();
+        commitValidityResolutionNow = anchoredNowMs();
+        const refreshedCommitValidityWindow = resolveCommitValidityWindow();
         yield* Effect.logWarning(
-          `Commit timing budget too low before submission; rebuilding before pending journal preparation (${formatCommitTimingBudget(preSubmitBudget)},previous=${commitWindow.resolvedEndTime},next=${refreshedCommitWindow.resolvedEndTime},attempt=${stabilizationAttempts}/${COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS}).`,
+          `Commit timing budget too low before submission; rebuilding transaction validity before pending journal preparation (${formatCommitTimingBudget(preSubmitBudget)},candidate_end=${candidateEndTimeMs},previous_valid_to=${commitValidityWindow.resolvedEndTime},next_valid_to=${refreshedCommitValidityWindow.resolvedEndTime},attempt=${stabilizationAttempts}/${COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS}).`,
         );
-        yield* enforceCommitWindowCap(
-          refreshedCommitWindow,
+        yield* enforceCommitValidityCap(
+          refreshedCommitValidityWindow,
           "pre_submit_refresh",
         );
-        commitWindow = refreshedCommitWindow;
+        commitValidityWindow = refreshedCommitValidityWindow;
         continue;
       }
 
-      yield* enforceCommitWindowCap(
-        commitWindow,
+      yield* enforceCommitValidityCap(
+        commitValidityWindow,
         "before_pending_journal_preparation",
       );
 
@@ -268,10 +397,19 @@ export const buildUnsignedCommitTx = (
           dependencyKey: `commit-block:${newHeaderHash}`,
           invalidationKey: `commit-block:${newHeaderHash}`,
         },
+        // The signed intent is journaled: the own-journal disposition releases
+        // it once its base output is spent, and block confirmation records a landing.
+        unknownInputsFailFast: true,
       };
       const signAndSubmitProgram = handleSignSubmitNoConfirmation(
         lucid.api,
         txBuilder,
+        journaledIntent(
+          "commit",
+          `commit:tail=${latestBlock.utxo.txHash}#${latestBlock.utxo.outputIndex.toString()}`,
+          plan,
+          Buffer.from(newHeaderHash, "hex"),
+        ),
         submitRecoveryOptions,
       )
         .pipe(
@@ -279,25 +417,27 @@ export const buildUnsignedCommitTx = (
             result.status === "submitted"
               ? Effect.succeed(result.txHash)
               : Effect.fail(
-                  new TxSubmitError({
-                    message:
-                      "Commit block submit deferred in no-inline mode before submission",
-                    txHash: newHeaderHash,
-                    cause: result.defer,
-                  }),
+                  commitSubmitDeferError(result.defer, newHeaderHash),
                 ),
           ),
         )
-        .pipe(Effect.withSpan("handleSignSubmit-commit-block"));
+        .pipe(
+          Effect.provideService(IntentJournal, journal),
+          Effect.withSpan("handleSignSubmit-commit-block"),
+        );
 
       return {
+        preparedTxHash: txBuilder.toHash(),
         newHeaderHash,
         newHeader,
         newHeaderCbor: Buffer.from(
           LucidData.to(newHeader as never, SDK.Header as never),
           "hex",
         ),
-        blockEndTimeMs: alignedEndTime,
+        blockEndTimeMs,
+        blockTimeMs,
+        txValidFromMs,
+        txValidToMs,
         signAndSubmitProgram,
         txSize,
       };
@@ -307,7 +447,7 @@ export const buildUnsignedCommitTx = (
       new SDK.StateQueueError({
         message:
           "Failed to stabilize the commit timing budget before building the block commitment transaction",
-        cause: `attempts=${COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS},last_failed_checkpoint=${lastFailedBudget?.checkpoint ?? "none"},last_selected_end_time=${commitWindow.resolvedEndTime},last_budget=${lastFailedBudget === undefined ? "none" : formatCommitTimingBudget(lastFailedBudget)},witness_context=${witnessContext === undefined ? "missing" : "present"},clock_anchor_observed_at_ms=${initialSubmitSlotSnapshot.observedAtMs},clock_now_ms=${anchoredNowMs()}`,
+        cause: `attempts=${COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS},candidate_end_time_ms=${candidateEndTimeMs.toString()},last_failed_checkpoint=${lastFailedBudget?.checkpoint ?? "none"},last_selected_valid_to_ms=${commitValidityWindow.resolvedEndTime},last_budget=${lastFailedBudget === undefined ? "none" : formatCommitTimingBudget(lastFailedBudget)},witness_context=${witnessContext === undefined ? "missing" : "present"},clock_anchor_observed_at_ms=${initialSubmitSlotSnapshot.observedAtMs},clock_now_ms=${anchoredNowMs()}`,
       }),
     );
   });

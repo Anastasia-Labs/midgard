@@ -1,0 +1,6 @@
+interface:
+  display_name: "Tdd"
+  short_description: "Use only when the user explicitly asks for TDD, a failing test, "
+  default_prompt: "Use $tdd for the requested Midgard task."
+policy:
+  allow_implicit_invocation: false

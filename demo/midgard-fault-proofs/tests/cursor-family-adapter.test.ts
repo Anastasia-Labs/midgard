@@ -1,0 +1,12 @@
+import "vitest";
+import "../src/transition-trace/workflow-spec.js";
+import "../src/workflow/action-changed.js";
+import "../src/workflow/cursor-family-adapter.js";
+import "../src/workflow/cursor-family-spec.js";
+import "../src/workflow/cursor-family-state.js";
+import "../src/workflow/family-l1-observation.js";
+import "../src/workflow/journal.js";
+import "../src/workflow/transaction-boundary.js";
+import "./cursor-family-adapter.terminal.js";
+import "./cursor-family-adapter.production-cursor-family-adapter-v1.js";
+import "./cursor-family-adapter.transition-terminal-queue-mutation-lease.js";

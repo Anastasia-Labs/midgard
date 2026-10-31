@@ -5,6 +5,7 @@ import {
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core/codec";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -18,7 +19,6 @@ import {
   type MidgardProtocolInfo,
   type MidgardProvider,
   type MidgardUtxo,
-  outputAddressProtected,
   type OutRef,
   outRefToCbor,
   SigningError,
@@ -31,9 +31,14 @@ const protocolInfo = (
   network: "Preview",
   midgardNativeTxVersion: 1,
   currentSlot: 0n,
+  consensusProfile: MIDGARD_CONSENSUS_PROFILE,
   supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
+  codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   protocolFeeParameters: { minFeeA: 0n, minFeeB: 0n },
-  submissionLimits: { maxSubmitTxCborBytes: 32768 },
+  submissionLimits: {
+    maxSubmitTxCborBytes:
+      MIDGARD_CONSENSUS_PROFILE.limits.maxTxCanonicalCborBytes,
+  },
   validation: {
     strictnessProfile: "phase1_midgard",
     localValidationIsAuthoritative: false,
@@ -135,6 +140,45 @@ describe("fromTx, compose, and local chaining", () => {
     expect(() => midgard.fromTx(cardanoBody.to_cbor_bytes())).toThrow(
       BuilderInvariantError,
     );
+  });
+
+  it("preserves exact stored Flat script bytes across CompleteTx and raw imports", async () => {
+    const midgard = await LucidMidgard.new(makeProvider(), {
+      network: "Preview",
+      networkId: 0,
+    });
+    const input = makeUtxo(makeOutRef(0x12), address, {
+      lovelace: 2_000_000n,
+    });
+    const storedScript = Buffer.from("46010100200101", "hex");
+    const completed = await midgard
+      .newTx()
+      .collectFrom([input])
+      .pay.ToAddress(
+        address,
+        { lovelace: 2_000_000n },
+        {
+          scriptRef: {
+            type: "MidgardV1",
+            script: storedScript.toString("hex"),
+          },
+        },
+      )
+      .complete({
+        fee: 0n,
+      });
+
+    const importedComplete = midgard.fromTx(completed);
+    const importedRaw = midgard.fromTx(completed.txHex, {
+      resolvedSpendInputs: [input],
+    });
+    for (const imported of [importedComplete, importedRaw]) {
+      expect(imported.txHex).toBe(completed.txHex);
+      expect(imported.producedOutput(0).output.scriptRef).toEqual({
+        type: "MidgardV1",
+        script: storedScript.toString("hex"),
+      });
+    }
   });
 
   it("fails closed for signed imports without resolved spend pre-state", async () => {
@@ -341,7 +385,7 @@ describe("fromTx, compose, and local chaining", () => {
 
     const [newWalletUtxos, derivedOutputs, completed] = await midgard
       .newTx()
-      .pay.ToProtectedAddress(otherAddress, { lovelace: 2_000_000n })
+      .pay.ToAddress(otherAddress, { lovelace: 2_000_000n })
       .chain({ fee: 0n });
     const outputBytes = decodeMidgardNativeByteListPreimage(
       completed.tx.body.outputsPreimageCbor,
@@ -353,9 +397,7 @@ describe("fromTx, compose, and local chaining", () => {
         Buffer.from(utxo.cbor!.output!).toString("hex"),
       ),
     ).toEqual(outputBytes.map((bytes) => bytes.toString("hex")));
-    expect(outputAddressProtected(derivedOutputs[0]!.output.address)).toBe(
-      true,
-    );
+    expect(derivedOutputs[0]!.output.address).toBe(otherAddress);
     expect(
       Buffer.from(completed.producedOutput(0).cbor!.outRef!).toString("hex"),
     ).toBe(

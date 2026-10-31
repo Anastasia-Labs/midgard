@@ -1,4 +1,4 @@
-import { hexToBytes, normalizeHex } from "../utils/hex.js";
+import { hexToBytes } from "../utils/hex.js";
 
 export type ParsedSignatureWitness = {
   readonly signerIndex: number;
@@ -68,12 +68,6 @@ export const countSetBits = (bitmapHex: string): number => {
   }
   return count;
 };
-
-export const normalizeBitmap = (bitmapHex: string): string =>
-  normalizeHex(bitmapHex, {
-    fieldName: "attested signer bitmap",
-    byteLength: 32,
-  });
 
 const assertSignerIndex = (signerIndex: number): void => {
   if (

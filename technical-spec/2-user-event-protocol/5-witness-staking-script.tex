@@ -11,7 +11,7 @@ There are 3 logical endpoints this script needs to support:
 \begin{enumerate}
     \item Validating registration for an authentic user event.
     \item Validating unregistration for the conclusion of a previously registered user event.
-    \item Allowing an isolated registration that is immediately followed by an unregistration in the same transaction.\footnote{This is possible because Cardano ledger allows custom ordering of publish redeemers (TODO?).}
+    \item Allowing an isolated registration that is immediately followed by an unregistration in the same transaction.\footnote{The witness uses the ordered certificate list; a certificate index is not a redeemer-list index.}
       Essentially proving the unregistered state of the staking script, without changing its state.
 \end{enumerate}
 
@@ -31,20 +31,17 @@ Let \code{event\_id} be this identifier, which is the Blake2b256 hash of an L1 n
                   \item Unregistration is allowed if a user event NFT with asset name of \code{event\_id} is burnt.
               \end{itemize}
       \end{enumerate}
-  \item[Register to Prove Not Registered.] Redeemer for proving the unregistered state of the witness script instance.
-    Conditions:
-      \begin{enumerate}
-          \item Let \code{redeemer\_index} be the positional index of the current redeemer (\code{RegisterCredential} certificate) within the \code{redeemers} field of the transaction.
-          \item The redeemer pair that comes after \code{redeemer\_index} must be of the same credential under an \code{UnregisterCredential} certificate.
-          \item Redeemer data of this following redeemer must be a \code{UnregisterToProveNotRegistered}, such that the index it carries is equal to \code{redeemer\_index}.
-      \end{enumerate}
-  \item[Unregister to Prove Not Registered.] Redeemer to follow \code{RegisterToProveNotRegistered}.
-    Conditions:
-      \begin{enumerate}
-          \item Let \code{redeemer\_index} be the positional index of the \code{RegisterToProveNotRegistered} redeemer (\code{RegisterCredential} certificate) within the \code{redeemers} field of the transaction.
-          \item Current certificate must be an \code{UnregisterCredential}, and its underlying credential must be equal to the one retrieved using \code{redeemer\_index}.
-          \item Redeemer data at \code{redeemer\_index} must be a \code{RegisterToProveNotRegistered}, such that the index it carries is equal to \code{redeemer\_index}.
-      \end{enumerate}
+  \item[Register to Prove Not Registered.] The current redeemer carries \code{registration\_certificate\_index}.
+    The certificate at this index must be the executing registration certificate.
+    The immediately following certificate must unregister the same credential.
+  \item[Unregister to Prove Not Registered.] The executing certificate must unregister a credential.
+    The certificate at \code{registration\_certificate\_index} must register that same credential.
 \end{description}
+
+\paragraph{Conformance boundary.}
+The current validator reads \code{transaction.certificates}; it does not enforce the former draft's additional reciprocal redeemer-data checks.
+If those stronger checks are retained as a protocol requirement, they remain an implementation-conformance obligation rather than a current guarantee.
+An unregistered credential proves absence of a live event witness at that ledger point, not that the event never existed: normal settlement also deregisters witnesses.
+Fabricated-event proofs must bind their other live/confirmed-history evidence accordingly.
 
 \end{document}

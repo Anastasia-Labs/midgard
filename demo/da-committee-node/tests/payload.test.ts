@@ -1,378 +1,411 @@
-import {
-  EMPTY_CBOR_LIST,
-  EMPTY_NULL_ROOT,
-  encodeMidgardNativeTxCanonical,
-  materializeMidgardNativeTxFromCanonical,
-  MIDGARD_NATIVE_NETWORK_ID_NONE,
-  MIDGARD_NATIVE_TX_VERSION,
-  MIDGARD_POSIX_TIME_NONE,
-} from "@al-ft/midgard-core/codec";
-import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
-import { DA_TRANSPORT_LIMITS_V1 } from "@al-ft/midgard-core/da-transport";
+import "@al-ft/midgard-core/cek-proof";
+import "@al-ft/midgard-core/cek-semantic";
+import "@al-ft/midgard-core/codec";
+import "@al-ft/midgard-core/da-payload-envelope";
+import "@al-ft/midgard-sdk";
+import "@lucid-evolution/lucid";
+import "vitest";
+import "../src/da/payload.js";
+import "./helpers.js";
+import "./payload.payload-with-script-witnesses.js";
+
+import { encodeCbor } from "@al-ft/midgard-core/codec";
+import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
   computeDaPayloadRoots,
-  DaPayloadValidationError,
-  decodeDaPayloadV2Strict,
+  decodeDaPayloadStrict,
   verifyDaPayloadAgainstHeader,
 } from "../src/da/payload.js";
-import { hashBlockHeader } from "../src/l1/state-queue-scanner.js";
-import { JsonFileWatcherStore } from "../src/store.js";
+import { headerHashOf } from "../src/l1/follower/queue-derivation.js";
 import {
-  IDENTITY_TX_PROJECTOR,
   makePayloadFixture,
-  tempDir,
+  withBuiltValidationTracePair,
+  withHeaderFields,
 } from "./helpers.js";
+import { payloadWithScriptWitnesses } from "./payload.payload-with-script-witnesses.js";
 
-describe("DA payload verification", () => {
-  it("does not misclassify canonical raw DaPayloadV2 when schema is omitted", async () => {
-    const { payloadCbor } = await makePayloadFixture();
-    const unwrapped = await unwrapDaPayload(payloadCbor, {
-      maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
-    });
-    expect(unwrapped.schemaVersion).toBe(2);
-    expect(unwrapped.innerBytes).toEqual(payloadCbor);
-  });
-
-  it("strictly decodes and verifies roots against the L1 header", async () => {
-    const { payloadCbor, header, headerHash } = await makePayloadFixture();
-    const stages: string[] = [];
-    let now = 0;
-    const timing = {
-      monotonicNow: () => {
-        now += 1;
-        return now;
+describe("canonical V1 DA payload verification", () => {
+  it("attests a block of script transactions whose retained-witness section is empty", async () => {
+    const unhashed = await payloadWithScriptWitnesses([
+      {
+        language: "PlutusV3",
+        scriptBytes: encodeCbor(Buffer.from("010100200101", "hex")),
       },
-      onStageTiming: (stage: string, durationMs: number) => {
-        expect(durationMs).toBe(1);
-        stages.push(stage);
+    ]);
+    expect(unhashed.block_body.validation_trace_witnesses).toEqual([]);
+    const roots = await computeDaPayloadRoots(unhashed);
+    const header = {
+      ...unhashed.block_body.header,
+      ...roots,
+      validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      validationTraceCount: 0n,
+    };
+    const headerHash = headerHashOf(header);
+    const payload: SDK.DaPayload = {
+      ...unhashed,
+      block_body: {
+        ...unhashed.block_body,
+        header,
+        header_hash: headerHash,
       },
     };
-    const decoded = decodeDaPayloadV2Strict(payloadCbor, timing);
-    expect(decoded.block_body.header_hash).toBe(headerHash);
-    expect(decoded.block_body.forced_transactions).toHaveLength(1);
     const verified = await verifyDaPayloadAgainstHeader(
-      payloadCbor,
+      await wrapDaPayload(SDK.encodeDaPayload(payload), { mode: "identity" }),
       headerHash,
       header,
       {
-        stateQueueOutRef: "tx#0",
-        transactionProjector: IDENTITY_TX_PROJECTOR,
-        timing,
+        payloadSchemaVersion: 1,
+        stateQueueOutRef: "state-queue#0",
       },
     );
     expect(verified.validation.rootsMatch).toBe(true);
-    expect(verified.roots.utxosRoot).toBe(header.utxosRoot);
-    expect(verified.roots.transitionTraceRoot).toBe(header.transitionTraceRoot);
-    expect(verified.roots.forcedTransactionsRoot).toBe(
-      header.forcedTransactionsRoot,
+    expect(verified.counts.validationTraceCount).toBe(
+      BigInt(payload.block_body.transactions.length),
     );
-    expect(verified.counts.totalEventCount).toBe(header.totalEventCount);
-    expect(stages).toEqual([
-      "inner_decode",
-      "payload_structure_validation",
-      "stored_hash",
-      "inner_decode",
-      "payload_structure_validation",
-      "semantic_validation",
-    ]);
   });
 
-  it("strictly rejects non-minimal inner payload CBOR without re-encoding", async () => {
-    const { payloadCbor } = await makePayloadFixture();
-    const nonMinimalVersion = Buffer.concat([
-      payloadCbor.subarray(0, 3),
-      Buffer.from([0x18, 0x02]),
-      payloadCbor.subarray(4),
-    ]);
+  it("names the decoder's cause when a descriptor is not canonical Plutus Data", async () => {
+    const fixture = await makePayloadFixture();
+    expect(() =>
+      decodeDaPayloadStrict(
+        SDK.encodeDaPayload({
+          ...fixture.payload,
+          block_body: {
+            ...fixture.payload.block_body,
+            // The core codec's plain CBOR array is not the committed leaf.
+            validation_traces: fixture.payload.block_body.validation_traces.map(
+              ([key, value], index) => [
+                key,
+                index === 0 ? "8801015820" : value,
+              ],
+            ),
+          },
+        }),
+      ),
+    ).toThrow(/failed to decode validation_traces\[0\]\.value: .+/u);
+  });
 
-    try {
-      decodeDaPayloadV2Strict(nonMinimalVersion);
-      throw new Error("expected strict decode to reject");
-    } catch (error) {
-      expect(error).toBeInstanceOf(DaPayloadValidationError);
-      expect((error as DaPayloadValidationError).code).toBe("non_canonical");
+  it("decodes the canonical inner payload and derives every committed root", async () => {
+    const fixture = await makePayloadFixture();
+
+    expect(decodeDaPayloadStrict(fixture.innerPayloadCbor)).toEqual(
+      fixture.payload,
+    );
+    await expect(computeDaPayloadRoots(fixture.payload)).resolves.toMatchObject(
+      {
+        utxosRoot: fixture.header.utxosRoot,
+        transactionsRoot: fixture.header.transactionsRoot,
+        transitionTraceRoot: fixture.header.transitionTraceRoot,
+        eventToStepRoot: fixture.header.eventToStepRoot,
+      },
+    );
+  });
+
+  it("verifies mandatory envelope, header binding, roots, counts, and trace coverage", async () => {
+    const fixture = await makePayloadFixture();
+
+    const verified = await verifyDaPayloadAgainstHeader(
+      fixture.payloadCbor,
+      fixture.headerHash,
+      fixture.header,
+      {
+        payloadSchemaVersion: 1,
+        stateQueueOutRef: "state-queue#0",
+      },
+    );
+
+    expect(Object.keys(verified).sort()).toEqual([
+      "counts",
+      "innerPayloadCbor",
+      "payload",
+      "payloadSha256",
+      "roots",
+      "storedPayloadCbor",
+      "validation",
+    ]);
+    expect(verified).toMatchObject({
+      payload: fixture.payload,
+      storedPayloadCbor: fixture.payloadCbor,
+      innerPayloadCbor: fixture.innerPayloadCbor,
+      payloadSha256: expect.stringMatching(/^[0-9a-f]{64}$/u),
+      roots: {
+        utxosRoot: fixture.header.utxosRoot,
+        withdrawalsRoot: fixture.header.withdrawalsRoot,
+        forcedTransactionsRoot: fixture.header.forcedTransactionsRoot,
+        transactionsRoot: fixture.header.transactionsRoot,
+        depositsRoot: fixture.header.depositsRoot,
+        transitionTraceRoot: fixture.header.transitionTraceRoot,
+        eventToStepRoot: fixture.header.eventToStepRoot,
+        validationTracesRoot: (await computeDaPayloadRoots(fixture.payload))
+          .validationTracesRoot,
+      },
+      counts: {
+        withdrawalCount: 0n,
+        forcedTransactionCount: 0n,
+        l2TransactionCount: 3n,
+        depositCount: 0n,
+        totalEventCount: 3n,
+        transitionStepCount: 3n,
+        validationTraceCount: 3n,
+      },
+      validation: {
+        payloadVersion: 1,
+        rootsMatch: true,
+        headerHash: fixture.headerHash,
+      },
+    });
+    expect(verified.payloadSha256).toBe(
+      SDK.daPayloadHashHex(fixture.payloadCbor),
+    );
+  });
+
+  it("attests an honest payload with transactions under a header that pins the validation-trace pair to the empty tree", async () => {
+    const fixture = await makePayloadFixture();
+    expect(fixture.header.l2TransactionCount).toBe(3n);
+    expect(fixture.header.validationTracesRoot).toBe(
+      SDK.EMPTY_MERKLE_TREE_ROOT,
+    );
+    expect(fixture.header.validationTraceCount).toBe(0n);
+    const verified = await verifyDaPayloadAgainstHeader(
+      fixture.payloadCbor,
+      fixture.headerHash,
+      fixture.header,
+      { payloadSchemaVersion: 1, stateQueueOutRef: "state-queue#0" },
+    );
+    expect(verified.validation.rootsMatch).toBe(true);
+    // The verified roots and counts are the body's: the built pair.
+    expect(verified.roots.validationTracesRoot).not.toBe(
+      SDK.EMPTY_MERKLE_TREE_ROOT,
+    );
+    expect(verified.counts.validationTraceCount).toBe(3n);
+  });
+
+  it.each([
+    [
+      "root",
+      { validationTracesRoot: true, validationTraceCount: false },
+      "root_mismatch",
+      /: validation_traces_root$/u,
+    ],
+    [
+      "count",
+      { validationTracesRoot: false, validationTraceCount: true },
+      "count_mismatch",
+      /: validation_trace_count$/u,
+    ],
+    [
+      "pair",
+      { validationTracesRoot: true, validationTraceCount: true },
+      "root_mismatch",
+      /: validation_traces_root$/u,
+    ],
+  ] as const)(
+    "refuses a header that commits the built validation-trace %s",
+    async (_, carried, code, message) => {
+      const fixture = await withBuiltValidationTracePair(
+        await makePayloadFixture(),
+        carried,
+      );
+      await expect(
+        verifyDaPayloadAgainstHeader(
+          fixture.payloadCbor,
+          fixture.headerHash,
+          fixture.header,
+          { payloadSchemaVersion: 1, stateQueueOutRef: "state-queue#0" },
+        ),
+      ).rejects.toMatchObject({
+        code,
+        message: expect.stringMatching(message),
+      });
+    },
+  );
+
+  it.each([
+    ["l2_transaction_count", "l2TransactionCount"],
+    ["transition_step_count", "transitionStepCount"],
+  ] as const)(
+    "still refuses a pinned header whose %s differs from the payload",
+    async (field, key) => {
+      const honest = await makePayloadFixture();
+      expect(honest.header.validationTraceCount).toBe(0n);
+      const fixture = await withHeaderFields(honest, {
+        [key]: honest.header[key] + 1n,
+      });
+      await expect(
+        verifyDaPayloadAgainstHeader(
+          fixture.payloadCbor,
+          fixture.headerHash,
+          fixture.header,
+          { payloadSchemaVersion: 1, stateQueueOutRef: "state-queue#0" },
+        ),
+      ).rejects.toMatchObject({
+        code: "count_mismatch",
+        message: expect.stringMatching(new RegExp(`: ${field}$`, "u")),
+      });
+    },
+  );
+
+  it("fails closed when the mandatory DA envelope is unavailable", async () => {
+    const fixture = await makePayloadFixture();
+
+    await expect(
+      verifyDaPayloadAgainstHeader(
+        fixture.innerPayloadCbor,
+        fixture.headerHash,
+        fixture.header,
+        {
+          payloadSchemaVersion: 1,
+          stateQueueOutRef: "state-queue#0",
+        },
+      ),
+    ).rejects.toMatchObject({
+      code: "malformed_da",
+    });
+  });
+
+  it("rejects adjacent runtime payload schema versions before verification", async () => {
+    const fixture = await makePayloadFixture();
+
+    for (const payloadSchemaVersion of [0, 2]) {
+      await expect(
+        verifyDaPayloadAgainstHeader(
+          fixture.payloadCbor,
+          fixture.headerHash,
+          fixture.header,
+          {
+            payloadSchemaVersion: payloadSchemaVersion as 1,
+            stateQueueOutRef: "state-queue#0",
+          },
+        ),
+      ).rejects.toMatchObject({
+        code: "wrong_version",
+      });
     }
   });
 
-  it("keeps strict validation semantics when the optional timing clock throws", async () => {
-    const { payloadCbor } = await makePayloadFixture();
-    expect(() =>
-      decodeDaPayloadV2Strict(payloadCbor, {
-        monotonicNow: () => {
-          throw new Error("clock unavailable");
+  it("rejects transaction preimage coverage gaps before attestation", () => {
+    return makePayloadFixture().then((fixture) => {
+      const malformed = SDK.encodeDaPayload({
+        ...fixture.payload,
+        block_body: {
+          ...fixture.payload.block_body,
+          transaction_preimages:
+            fixture.payload.block_body.transaction_preimages.slice(1),
         },
-        onStageTiming: () => {
-          throw new Error("sink unavailable");
-        },
-      }),
-    ).not.toThrow();
+      });
+
+      expect(() => decodeDaPayloadStrict(malformed)).toThrow(
+        /exactly one canonical transaction preimage/u,
+      );
+    });
   });
 
-  it("verifies transaction roots with the production Midgard-native projector", async () => {
-    const nativeTx = materializeMidgardNativeTxFromCanonical({
-      version: MIDGARD_NATIVE_TX_VERSION,
-      validity: "TxIsValid",
-      body: {
-        spendInputsPreimageCbor: EMPTY_CBOR_LIST,
-        referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
-        outputsPreimageCbor: EMPTY_CBOR_LIST,
-        fee: 0n,
-        validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
-        validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,
-        requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
-        requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
-        mintPreimageCbor: EMPTY_CBOR_LIST,
-        scriptIntegrityHash: EMPTY_NULL_ROOT,
-        auxiliaryDataHash: EMPTY_NULL_ROOT,
-        networkId: MIDGARD_NATIVE_NETWORK_ID_NONE,
-      },
-      witnessSet: {
-        addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-        scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-        redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-      },
-    });
-    const txCbor = encodeMidgardNativeTxCanonical(nativeTx);
-    const base = await makePayloadFixture();
-    const payloadWithoutHash: SDK.DaPayloadV2 = {
-      ...base.payload,
-      block_body: {
-        ...base.payload.block_body,
-        header_hash: "00".repeat(28),
-        transactions: base.payload.block_body.transactions.map(([key]) => [
-          key,
-          txCbor.toString("hex"),
-        ]),
-      },
-    };
-    const roots = await computeDaPayloadRoots(payloadWithoutHash);
+  it("rejects well-formed payload members whose derived roots differ from the header", async () => {
+    const fixture = await makePayloadFixture();
+    // A header (and payload) that commits a transactions root other than
+    // the one the payload's transactions derive.
     const header = {
-      ...base.header,
-      utxosRoot: roots.utxosRoot,
-      forcedTransactionsRoot: roots.forcedTransactionsRoot,
-      transactionsRoot: roots.transactionsRoot,
-      depositsRoot: roots.depositsRoot,
-      withdrawalsRoot: roots.withdrawalsRoot,
-      transitionTraceRoot: roots.transitionTraceRoot,
-      eventToStepRoot: roots.eventToStepRoot,
+      ...fixture.header,
+      transactionsRoot: "ab".repeat(32),
     };
-    const headerHash = hashBlockHeader(header);
-    const payload = {
-      ...payloadWithoutHash,
+    const headerHash = headerHashOf(header);
+    const inner = SDK.encodeDaPayload({
+      ...fixture.payload,
       block_body: {
-        ...payloadWithoutHash.block_body,
+        ...fixture.payload.block_body,
         header_hash: headerHash,
         header,
       },
-    };
-
-    await expect(
-      verifyDaPayloadAgainstHeader(
-        SDK.encodeDaPayloadV2(payload),
-        headerHash,
-        header,
-        { stateQueueOutRef: "tx#0" },
-      ),
-    ).resolves.toMatchObject({
-      validation: {
-        headerHash,
-        rootsMatch: true,
-      },
     });
-  });
+    const stored = await wrapDaPayload(inner, { mode: "identity" });
 
-  it("rejects wrong versions, duplicate keys, unsorted keys, and root mismatches", async () => {
-    const { payload, header, headerHash } = await makePayloadFixture();
-    expect(() =>
-      decodeDaPayloadV2Strict(
-        SDK.encodeDaPayloadV2({ ...payload, version: 1n }),
-      ),
-    ).toThrow(/version/);
-    expect(() =>
-      decodeDaPayloadV2Strict(
-        SDK.encodeDaPayloadV2({
-          ...payload,
-          block_body: {
-            ...payload.block_body,
-            deposits: [
-              ["30", "aa"],
-              ["30", "bb"],
-            ],
-          },
-        }),
-      ),
-    ).toThrow(/duplicate/);
-    expect(() =>
-      decodeDaPayloadV2Strict(
-        SDK.encodeDaPayloadV2({
-          ...payload,
-          block_body: {
-            ...payload.block_body,
-            withdrawals: [
-              ["ff", "aa"],
-              ["01", "bb"],
-            ],
-          },
-        }),
-      ),
-    ).toThrow(/sorted/);
-    const [depositKey] = payload.block_body.deposits[0]!;
-    const mismatchedPayload: SDK.DaPayloadV2 = {
-      ...payload,
-      block_body: {
-        ...payload.block_body,
-        deposits: [[depositKey, "ff"]],
-      },
-    };
     await expect(
-      verifyDaPayloadAgainstHeader(
-        SDK.encodeDaPayloadV2(mismatchedPayload),
-        headerHash,
-        header,
-        {
-          stateQueueOutRef: "tx#0",
-          transactionProjector: IDENTITY_TX_PROJECTOR,
-        },
-      ),
-    ).rejects.toMatchObject({ code: "root_mismatch" });
-  });
-
-  it("rejects missing trace and event-to-step members", async () => {
-    const { payload } = await makePayloadFixture();
-    expect(() =>
-      decodeDaPayloadV2Strict(
-        SDK.encodeDaPayloadV2({
-          ...payload,
-          block_body: {
-            ...payload.block_body,
-            transition_trace: payload.block_body.transition_trace.slice(1),
-          },
-        }),
-      ),
-    ).toThrow(/counts/);
-    expect(() =>
-      decodeDaPayloadV2Strict(
-        SDK.encodeDaPayloadV2({
-          ...payload,
-          block_body: {
-            ...payload.block_body,
-            event_to_step: payload.block_body.event_to_step.slice(1),
-          },
-        }),
-      ),
-    ).toThrow(/event_to_step/);
-  });
-
-  it("rejects header payload divergence before attestation", async () => {
-    const { payload, headerHash, header } = await makePayloadFixture();
-    const divergent = {
-      ...payload,
-      block_body: {
-        ...payload.block_body,
-        header: {
-          ...payload.block_body.header,
-          depositsRoot: "ff".repeat(32),
-        },
-      },
-    };
-    await expect(
-      verifyDaPayloadAgainstHeader(
-        SDK.encodeDaPayloadV2(divergent),
-        headerHash,
-        header,
-        {
-          stateQueueOutRef: "tx#0",
-          transactionProjector: IDENTITY_TX_PROJECTOR,
-        },
-      ),
-    ).rejects.toMatchObject({ code: "header_hash_mismatch" });
-  });
-
-  it("rejects malformed transaction values with the default projector", async () => {
-    const { payloadCbor, header, headerHash } = await makePayloadFixture();
-    await expect(
-      verifyDaPayloadAgainstHeader(payloadCbor, headerHash, header, {
-        stateQueueOutRef: "tx#0",
+      verifyDaPayloadAgainstHeader(stored, headerHash, header, {
+        payloadSchemaVersion: 1,
+        stateQueueOutRef: "state-queue#0",
       }),
-    ).rejects.toBeInstanceOf(DaPayloadValidationError);
+    ).rejects.toMatchObject({
+      code: "root_mismatch",
+      message: expect.stringMatching(/: transactions_root$/u),
+    });
   });
 
-  it("detects conflicting payload bytes durably", async () => {
-    const dir = await tempDir();
-    const store = await JsonFileWatcherStore.open(dir);
-    const first = await store.saveDaPayload({
-      deploymentFingerprint: "dep",
-      headerHash: "01".repeat(28),
-      payloadCborHex: "aa",
-      payloadSha256: "11".repeat(32),
-      sourcePeerId: "a",
-      fetchedAt: new Date().toISOString(),
-      validationStatus: "fetched",
+  it("takes the post-state root from the header: the payload carries no UTxO set", async () => {
+    // A block deep in the chain: its parent payload is nowhere, and its
+    // pre- and post-state roots are not the empty set's.
+    const fixture = await makePayloadFixture(3, {
+      prevHeaderHash: "11".repeat(28),
+      prevUtxosRoot: "cd".repeat(32),
+      utxosRoot: "ef".repeat(32),
     });
-    const second = await store.saveDaPayload({
-      ...first,
-      payloadCborHex: "bb",
-      payloadSha256: "22".repeat(32),
-    });
-    expect(second.validationStatus).toBe("conflicted");
-    expect(second.conflictStatus).toBe("conflicting_bytes");
-  });
-
-  it("does not let missing DA status erase stored payload bytes", async () => {
-    const dir = await tempDir();
-    const store = await JsonFileWatcherStore.open(dir);
-    const stored = await store.saveDaPayload({
-      deploymentFingerprint: "dep",
-      headerHash: "01".repeat(28),
-      payloadCborHex: "aa",
-      payloadSha256: "11".repeat(32),
-      sourcePeerId: "libp2p:payload-submit",
-      fetchedAt: "2026-06-13T00:00:01.000Z",
-      validationStatus: "fetched",
-    });
-    const missing = await store.saveDaPayload({
-      deploymentFingerprint: "dep",
-      headerHash: stored.headerHash,
-      payloadCborHex: "",
-      payloadSha256: "",
-      sourcePeerId: "",
-      fetchedAt: "2026-06-13T00:00:02.000Z",
-      validationStatus: "missing_da",
-      validationError: "producer:transport_error",
-    });
-
-    expect(missing).toEqual(stored);
-    await expect(store.getDaPayload(stored.headerHash)).resolves.toEqual(
-      stored,
+    const verified = await verifyDaPayloadAgainstHeader(
+      fixture.payloadCbor,
+      fixture.headerHash,
+      fixture.header,
+      { payloadSchemaVersion: 1, stateQueueOutRef: "state-queue#0" },
     );
+    expect(verified.roots.utxosRoot).toBe("ef".repeat(32));
+    expect(verified.validation.rootsMatch).toBe(true);
   });
 
-  it("does not downgrade verified payload bytes to fetched", async () => {
-    const dir = await tempDir();
-    const store = await JsonFileWatcherStore.open(dir);
-    const verified = await store.saveDaPayload({
-      deploymentFingerprint: "dep",
-      headerHash: "01".repeat(28),
-      payloadCborHex: "aa",
-      payloadSha256: "11".repeat(32),
-      sourcePeerId: "libp2p:payload-submit",
-      fetchedAt: "2026-06-13T00:00:01.000Z",
-      verifiedAt: "2026-06-13T00:00:02.000Z",
-      validationStatus: "verified",
-      payloadFetchStatus: "available",
+  it("rejects duplicate transaction keys before committee attestation", async () => {
+    const fixture = await makePayloadFixture();
+    const firstTransaction = fixture.payload.block_body.transactions[0];
+    expect(firstTransaction).toBeDefined();
+    if (firstTransaction === undefined) {
+      throw new Error("canonical fixture must contain a transaction");
+    }
+    const inner = SDK.encodeDaPayload({
+      ...fixture.payload,
+      block_body: {
+        ...fixture.payload.block_body,
+        transactions: [
+          firstTransaction,
+          firstTransaction,
+          ...fixture.payload.block_body.transactions.slice(1),
+        ],
+      },
     });
+    const stored = await wrapDaPayload(inner, { mode: "identity" });
 
-    const fetched = await store.saveDaPayload({
-      ...verified,
-      validationStatus: "fetched",
+    await expect(
+      verifyDaPayloadAgainstHeader(stored, fixture.headerHash, fixture.header, {
+        payloadSchemaVersion: 1,
+        stateQueueOutRef: "state-queue#0",
+      }),
+    ).rejects.toMatchObject({
+      code: "duplicate_key",
     });
+  });
 
-    expect(fetched).toEqual(verified);
-    await expect(store.getDaPayload(verified.headerHash)).resolves.toEqual(
-      verified,
-    );
+  it("rejects missing transition and validation trace evidence", () => {
+    return makePayloadFixture().then((fixture) => {
+      const missingTransition = SDK.encodeDaPayload({
+        ...fixture.payload,
+        block_body: {
+          ...fixture.payload.block_body,
+          transition_trace:
+            fixture.payload.block_body.transition_trace.slice(1),
+        },
+      });
+      const missingValidation = SDK.encodeDaPayload({
+        ...fixture.payload,
+        block_body: {
+          ...fixture.payload.block_body,
+          validation_traces:
+            fixture.payload.block_body.validation_traces.slice(1),
+        },
+      });
+
+      expect(() => decodeDaPayloadStrict(missingTransition)).toThrow(
+        /payload counts do not match payload member arrays/u,
+      );
+      expect(() => decodeDaPayloadStrict(missingValidation)).toThrow(
+        /validation_traces member count/u,
+      );
+    });
   });
 });

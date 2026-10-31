@@ -3,17 +3,19 @@ import {
   createPublicKey,
   type KeyObject,
   sign,
-  verify,
 } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
+import { verifyLedgerEd25519Signature } from "@al-ft/midgard-core";
+import {
+  daAvailabilityAttestationMessage,
+  type DaAvailabilityCommitment,
+} from "@al-ft/midgard-sdk";
 import { CML, walletFromSeed } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 
 import type { DaParamsConfig } from "./config.js";
 import { bytesToHex, hexToBytes, normalizeHex } from "./utils/hex.js";
-
-export const DA_ATTESTATION_MESSAGE_PREFIX = "MidgardDAAttestationV1";
 
 export type DaSigner = {
   readonly publicKeyHex: string;
@@ -106,20 +108,14 @@ export const validateDaCommittee = ({
   };
 };
 
-export const daAttestationMessage = (headerHash: string): Buffer =>
-  Buffer.concat([
-    Buffer.from(DA_ATTESTATION_MESSAGE_PREFIX, "utf8"),
-    hexToBytes(headerHash, "header hash", 28),
-  ]);
-
 export const signDaAttestation = ({
   signer,
   signerIndex,
-  headerHash,
+  availabilityCommitment,
 }: {
   readonly signer: DaSigner;
   readonly signerIndex: number;
-  readonly headerHash: string;
+  readonly availabilityCommitment: DaAvailabilityCommitment;
 }): string => {
   if (
     !Number.isSafeInteger(signerIndex) ||
@@ -128,61 +124,37 @@ export const signDaAttestation = ({
   ) {
     throw new Error("signer index must fit in one byte");
   }
-  const signature = signer.sign(daAttestationMessage(headerHash));
+  const signature = signer.sign(
+    Buffer.from(daAvailabilityAttestationMessage(availabilityCommitment)),
+  );
   if (signature.length !== 64) {
     throw new Error("Ed25519 signature was not 64 bytes");
   }
   return Buffer.concat([Buffer.from([signerIndex]), signature]).toString("hex");
 };
 
+/**
+ * Whether a DA attestation witness (signer index byte, then the signature)
+ * verifies under the committee key, answered exactly as the on-chain
+ * attestation check answers it: `verify_ed25519_signature` over the
+ * attestation message, the key and the 64 bytes after the index
+ * (onchain/aiken/validators/da-attestation.ak). Before libsodium has
+ * initialised, or on a libsodium failure, this raises rather than answering.
+ */
 export const verifyDaSignatureWitness = ({
   publicKeyHex,
-  headerHash,
+  availabilityCommitment,
   witnessHex,
 }: {
   readonly publicKeyHex: string;
-  readonly headerHash: string;
+  readonly availabilityCommitment: DaAvailabilityCommitment;
   readonly witnessHex: string;
 }): boolean => {
   const witness = hexToBytes(witnessHex, "signature witness", 65);
-  const publicKey = createPublicKey({
-    key: Buffer.concat([
-      ED25519_SPKI_PUBLIC_PREFIX,
-      hexToBytes(publicKeyHex, "public key", 32),
-    ]),
-    format: "der",
-    type: "spki",
-  });
-  return verify(
-    null,
-    daAttestationMessage(headerHash),
-    publicKey,
+  return verifyLedgerEd25519Signature(
+    hexToBytes(publicKeyHex, "public key", 32),
+    Buffer.from(daAvailabilityAttestationMessage(availabilityCommitment)),
     witness.subarray(1),
-  );
-};
-
-export const verifyEd25519Signature = ({
-  publicKeyHex,
-  message,
-  signatureHex,
-}: {
-  readonly publicKeyHex: string;
-  readonly message: Buffer;
-  readonly signatureHex: string;
-}): boolean => {
-  const publicKey = createPublicKey({
-    key: Buffer.concat([
-      ED25519_SPKI_PUBLIC_PREFIX,
-      hexToBytes(publicKeyHex, "public key", 32),
-    ]),
-    format: "der",
-    type: "spki",
-  });
-  return verify(
-    null,
-    message,
-    publicKey,
-    hexToBytes(signatureHex, "Ed25519 signature", 64),
   );
 };
 

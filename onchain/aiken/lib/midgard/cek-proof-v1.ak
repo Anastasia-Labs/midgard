@@ -1,0 +1,559 @@
+use aiken/cbor
+use aiken/crypto.{blake2b_256}
+use aiken/primitive/bytearray
+use midgard/cek_data_v1
+use midgard/fraud_proofs/native_tx/codec.{
+  encode_definite_array_header, encode_definite_bytes, slice_len,
+}
+
+const term_node_domain = #"4d69646761726443656b5465726d4e6f64655631"
+
+const value_node_domain = #"4d69646761726443656b56616c75654e6f64655631"
+
+const sequence_node_domain = #"4d69646761726443656b53657175656e63654e6f64655631"
+
+const environment_node_domain =
+  #"4d69646761726443656b456e7669726f6e6d656e744e6f64655631"
+
+const continuation_node_domain =
+  #"4d69646761726443656b436f6e74696e756174696f6e4e6f64655631"
+
+const blob_chunk_domain = #"4d69646761726443656b426c6f624368756e6b5631"
+
+const blob_branch_domain = #"4d69646761726443656b426c6f624272616e63685631"
+
+const machine_state_domain = #"4d69646761726443656b4d616368696e6553746174655631"
+
+const bls_expression_node_domain =
+  #"4d69646761726443656b426c7345787072657373696f6e5631"
+
+pub const max_blob_chunk_bytes = 4095
+
+pub const max_bounded_blob_bytes = 9215
+
+/// Cardano's PV 11 builtin indices: 0-100.
+pub const max_builtin_tag = 100
+
+/// Cardano's PV 11 bound on a constr's field count (`mbConstr`).
+pub const max_constr_fields = 1024
+
+pub const empty_sequence_root_v1 =
+  sequence_node_domain
+    |> bytearray.concat(#"8100")
+    |> blake2b_256
+
+pub const empty_environment_root_v1 =
+  environment_node_domain
+    |> bytearray.concat(#"8100")
+    |> blake2b_256
+
+pub const empty_continuation_root_v1 =
+  continuation_node_domain
+    |> bytearray.concat(#"8100")
+    |> blake2b_256
+
+// Shared so that a script hashing more than one continuation kind carries
+// the domain tag once.
+fn hash_continuation_node_v1(body: ByteArray) -> ByteArray {
+  continuation_node_domain
+    |> bytearray.concat(body)
+    |> blake2b_256
+}
+
+fn expect_hash(hash: ByteArray) -> ByteArray {
+  expect bytearray.length(hash) == 32
+  hash
+}
+
+fn expect_uint32(value: Int) -> Int {
+  expect value >= 0
+  expect value <= 4294967295
+  value
+}
+
+fn expect_uint64(value: Int) -> Int {
+  expect value >= 0
+  expect value <= 18446744073709551615
+  value
+}
+
+fn hash_term_preimage(preimage: ByteArray) -> ByteArray {
+  term_node_domain
+    |> bytearray.concat(preimage)
+    |> blake2b_256
+}
+
+/// `index` is Cardano's flat de Bruijn index, a `Word64`; index 0 is never
+/// bound.
+pub fn hash_variable_term_v1(index: Int) -> ByteArray {
+  hash_term_preimage(
+    #"82"
+      |> bytearray.concat(cbor.serialise(0))
+      |> bytearray.concat(cbor.serialise(expect_uint64(index))),
+  )
+}
+
+pub fn hash_delay_term_v1(body: ByteArray) -> ByteArray {
+  hash_term_preimage(
+    #"82"
+      |> bytearray.concat(cbor.serialise(1))
+      |> bytearray.concat(encode_definite_bytes(expect_hash(body))),
+  )
+}
+
+pub fn hash_lambda_term_v1(body: ByteArray) -> ByteArray {
+  hash_term_preimage(
+    #"82"
+      |> bytearray.concat(cbor.serialise(2))
+      |> bytearray.concat(encode_definite_bytes(expect_hash(body))),
+  )
+}
+
+pub fn hash_application_term_v1(
+  function: ByteArray,
+  argument: ByteArray,
+) -> ByteArray {
+  hash_term_preimage(
+    #"83"
+      |> bytearray.concat(cbor.serialise(3))
+      |> bytearray.concat(encode_definite_bytes(expect_hash(function)))
+      |> bytearray.concat(encode_definite_bytes(expect_hash(argument))),
+  )
+}
+
+pub fn hash_constant_term_v1(value: ByteArray) -> ByteArray {
+  hash_term_preimage(
+    #"82"
+      |> bytearray.concat(cbor.serialise(4))
+      |> bytearray.concat(encode_definite_bytes(expect_hash(value))),
+  )
+}
+
+/// Runtime-only constant term for the validation-machine-authenticated script
+/// context. Canonical source programs never admit tag 10.
+pub fn hash_context_constant_term_v1(value: ByteArray) -> ByteArray {
+  hash_term_preimage(
+    #"82"
+      |> bytearray.concat(cbor.serialise(10))
+      |> bytearray.concat(encode_definite_bytes(expect_hash(value))),
+  )
+}
+
+pub fn hash_force_term_v1(term: ByteArray) -> ByteArray {
+  hash_term_preimage(
+    #"82"
+      |> bytearray.concat(cbor.serialise(5))
+      |> bytearray.concat(encode_definite_bytes(expect_hash(term))),
+  )
+}
+
+pub fn hash_error_term_v1() -> ByteArray {
+  hash_term_preimage(
+    #"81"
+      |> bytearray.concat(cbor.serialise(6)),
+  )
+}
+
+pub fn hash_builtin_term_v1(tag: Int) -> ByteArray {
+  expect tag >= 0
+  expect tag <= max_builtin_tag
+  hash_term_preimage(
+    #"82"
+      |> bytearray.concat(cbor.serialise(7))
+      |> bytearray.concat(cbor.serialise(tag)),
+  )
+}
+
+pub fn hash_constr_term_v1(
+  tag: Int,
+  terms_count: Int,
+  terms_root: ByteArray,
+) -> ByteArray {
+  hash_term_preimage(
+    #"84"
+      |> bytearray.concat(cbor.serialise(8))
+      |> bytearray.concat(cbor.serialise(expect_uint64(tag)))
+      |> bytearray.concat(cbor.serialise(expect_uint32(terms_count)))
+      |> bytearray.concat(encode_definite_bytes(expect_hash(terms_root))),
+  )
+}
+
+pub fn hash_case_term_v1(
+  scrutinee: ByteArray,
+  branches_count: Int,
+  branches_root: ByteArray,
+) -> ByteArray {
+  hash_term_preimage(
+    #"84"
+      |> bytearray.concat(cbor.serialise(9))
+      |> bytearray.concat(encode_definite_bytes(expect_hash(scrutinee)))
+      |> bytearray.concat(cbor.serialise(expect_uint32(branches_count)))
+      |> bytearray.concat(encode_definite_bytes(expect_hash(branches_root))),
+  )
+}
+
+fn hash_value_preimage(preimage: ByteArray) -> ByteArray {
+  value_node_domain
+    |> bytearray.concat(preimage)
+    |> blake2b_256
+}
+
+pub fn hash_constant_value_v1(
+  type_root: ByteArray,
+  payload_root: ByteArray,
+  payload_length: Int,
+  semantic_root: ByteArray,
+  memory: Int,
+) -> ByteArray {
+  hash_value_preimage(
+    #"86"
+      |> bytearray.concat(cbor.serialise(0))
+      |> bytearray.concat(encode_definite_bytes(expect_hash(type_root)))
+      |> bytearray.concat(encode_definite_bytes(expect_hash(payload_root)))
+      |> bytearray.concat(cbor.serialise(expect_uint64(payload_length)))
+      |> bytearray.concat(encode_definite_bytes(expect_hash(semantic_root)))
+      |> bytearray.concat(cbor.serialise(expect_uint64(memory))),
+  )
+}
+
+pub fn hash_lambda_value_v1(
+  body: ByteArray,
+  environment: ByteArray,
+) -> ByteArray {
+  hash_value_preimage(
+    #"83"
+      |> bytearray.concat(cbor.serialise(1))
+      |> bytearray.concat(encode_definite_bytes(expect_hash(body)))
+      |> bytearray.concat(encode_definite_bytes(expect_hash(environment))),
+  )
+}
+
+pub fn hash_delay_value_v1(body: ByteArray, environment: ByteArray) -> ByteArray {
+  hash_value_preimage(
+    #"83"
+      |> bytearray.concat(cbor.serialise(2))
+      |> bytearray.concat(encode_definite_bytes(expect_hash(body)))
+      |> bytearray.concat(encode_definite_bytes(expect_hash(environment))),
+  )
+}
+
+pub fn hash_constr_value_v1(
+  tag: Int,
+  values_count: Int,
+  values_root: ByteArray,
+) -> ByteArray {
+  hash_value_preimage(
+    #"84"
+      |> bytearray.concat(cbor.serialise(3))
+      |> bytearray.concat(cbor.serialise(expect_uint64(tag)))
+      |> bytearray.concat(cbor.serialise(expect_uint32(values_count)))
+      |> bytearray.concat(encode_definite_bytes(expect_hash(values_root))),
+  )
+}
+
+pub fn hash_builtin_value_v1(
+  tag: Int,
+  forces_remaining: Int,
+  arguments_count: Int,
+  arguments_root: ByteArray,
+) -> ByteArray {
+  expect tag >= 0
+  expect tag <= max_builtin_tag
+  hash_value_preimage(
+    #"85"
+      |> bytearray.concat(cbor.serialise(4))
+      |> bytearray.concat(cbor.serialise(tag))
+      |> bytearray.concat(cbor.serialise(expect_uint32(forces_remaining)))
+      |> bytearray.concat(cbor.serialise(expect_uint32(arguments_count)))
+      |> bytearray.concat(encode_definite_bytes(expect_hash(arguments_root))),
+  )
+}
+
+pub fn hash_bls_miller_loop_value_v1(expression_root: ByteArray) -> ByteArray {
+  hash_value_preimage(
+    #"82"
+      |> bytearray.concat(cbor.serialise(5))
+      |> bytearray.concat(encode_definite_bytes(expect_hash(expression_root))),
+  )
+}
+
+pub fn hash_bls_miller_loop_expression_v1(
+  g1_value: ByteArray,
+  g2_value: ByteArray,
+) -> ByteArray {
+  bls_expression_node_domain
+    |> bytearray.concat(#"83")
+    |> bytearray.concat(cbor.serialise(0))
+    |> bytearray.concat(encode_definite_bytes(expect_hash(g1_value)))
+    |> bytearray.concat(encode_definite_bytes(expect_hash(g2_value)))
+    |> blake2b_256
+}
+
+pub fn hash_bls_multiply_expression_v1(
+  left: ByteArray,
+  right: ByteArray,
+) -> ByteArray {
+  bls_expression_node_domain
+    |> bytearray.concat(#"83")
+    |> bytearray.concat(cbor.serialise(1))
+    |> bytearray.concat(encode_definite_bytes(expect_hash(left)))
+    |> bytearray.concat(encode_definite_bytes(expect_hash(right)))
+    |> blake2b_256
+}
+
+pub fn hash_sequence_node_v1(
+  head: ByteArray,
+  tail: ByteArray,
+  length: Int,
+) -> ByteArray {
+  expect length > 0
+  sequence_node_domain
+    |> bytearray.concat(
+        #"84"
+          |> bytearray.concat(cbor.serialise(1))
+          |> bytearray.concat(encode_definite_bytes(expect_hash(head)))
+          |> bytearray.concat(encode_definite_bytes(expect_hash(tail)))
+          |> bytearray.concat(cbor.serialise(expect_uint32(length))),
+      )
+    |> blake2b_256
+}
+
+pub fn hash_environment_node_v1(
+  value: ByteArray,
+  tail: ByteArray,
+  length: Int,
+) -> ByteArray {
+  expect length > 0
+  environment_node_domain
+    |> bytearray.concat(
+        #"84"
+          |> bytearray.concat(cbor.serialise(1))
+          |> bytearray.concat(encode_definite_bytes(expect_hash(value)))
+          |> bytearray.concat(encode_definite_bytes(expect_hash(tail)))
+          |> bytearray.concat(cbor.serialise(expect_uint32(length))),
+      )
+    |> blake2b_256
+}
+
+pub fn hash_force_continuation_v1(tail: ByteArray) -> ByteArray {
+  continuation_node_domain
+    |> bytearray.concat(
+        #"83"
+          |> bytearray.concat(cbor.serialise(1))
+          |> bytearray.concat(cbor.serialise(0))
+          |> bytearray.concat(encode_definite_bytes(expect_hash(tail))),
+      )
+    |> blake2b_256
+}
+
+pub fn hash_apply_argument_continuation_v1(
+  argument: ByteArray,
+  environment: ByteArray,
+  tail: ByteArray,
+) -> ByteArray {
+  continuation_node_domain
+    |> bytearray.concat(
+        #"85"
+          |> bytearray.concat(cbor.serialise(1))
+          |> bytearray.concat(cbor.serialise(1))
+          |> bytearray.concat(encode_definite_bytes(expect_hash(argument)))
+          |> bytearray.concat(encode_definite_bytes(expect_hash(environment)))
+          |> bytearray.concat(encode_definite_bytes(expect_hash(tail))),
+      )
+    |> blake2b_256
+}
+
+pub fn hash_apply_function_continuation_v1(
+  function_value: ByteArray,
+  tail: ByteArray,
+) -> ByteArray {
+  continuation_node_domain
+    |> bytearray.concat(
+        #"84"
+          |> bytearray.concat(cbor.serialise(1))
+          |> bytearray.concat(cbor.serialise(2))
+          |> bytearray.concat(
+              encode_definite_bytes(expect_hash(function_value)),
+            )
+          |> bytearray.concat(encode_definite_bytes(expect_hash(tail))),
+      )
+    |> blake2b_256
+}
+
+pub fn hash_constr_continuation_v1(
+  tag: Int,
+  remaining_terms_count: Int,
+  remaining_terms_root: ByteArray,
+  values_count: Int,
+  values_root: ByteArray,
+  environment: ByteArray,
+  tail: ByteArray,
+) -> ByteArray {
+  continuation_node_domain
+    |> bytearray.concat(
+        encode_definite_array_header(9)
+          |> bytearray.concat(cbor.serialise(1))
+          |> bytearray.concat(cbor.serialise(3))
+          |> bytearray.concat(cbor.serialise(expect_uint64(tag)))
+          |> bytearray.concat(
+              cbor.serialise(expect_uint32(remaining_terms_count)),
+            )
+          |> bytearray.concat(
+              encode_definite_bytes(expect_hash(remaining_terms_root)),
+            )
+          |> bytearray.concat(cbor.serialise(expect_uint32(values_count)))
+          |> bytearray.concat(encode_definite_bytes(expect_hash(values_root)))
+          |> bytearray.concat(encode_definite_bytes(expect_hash(environment)))
+          |> bytearray.concat(encode_definite_bytes(expect_hash(tail))),
+      )
+    |> blake2b_256
+}
+
+pub fn hash_case_continuation_v1(
+  branches_count: Int,
+  branches_root: ByteArray,
+  environment: ByteArray,
+  tail: ByteArray,
+) -> ByteArray {
+  hash_continuation_node_v1(
+    #"86"
+      |> bytearray.concat(cbor.serialise(1))
+      |> bytearray.concat(cbor.serialise(4))
+      |> bytearray.concat(cbor.serialise(expect_uint32(branches_count)))
+      |> bytearray.concat(encode_definite_bytes(expect_hash(branches_root)))
+      |> bytearray.concat(encode_definite_bytes(expect_hash(environment)))
+      |> bytearray.concat(encode_definite_bytes(expect_hash(tail))),
+  )
+}
+
+pub fn hash_apply_value_continuation_v1(
+  value: ByteArray,
+  tail: ByteArray,
+) -> ByteArray {
+  continuation_node_domain
+    |> bytearray.concat(
+        #"84"
+          |> bytearray.concat(cbor.serialise(1))
+          |> bytearray.concat(cbor.serialise(5))
+          |> bytearray.concat(encode_definite_bytes(expect_hash(value)))
+          |> bytearray.concat(encode_definite_bytes(expect_hash(tail))),
+      )
+    |> blake2b_256
+}
+
+pub fn hash_case_select_continuation_v1(
+  environment: ByteArray,
+  tail: ByteArray,
+  values_count: Int,
+) -> ByteArray {
+  hash_continuation_node_v1(
+    #"85"
+      |> bytearray.concat(cbor.serialise(1))
+      |> bytearray.concat(cbor.serialise(6))
+      |> bytearray.concat(encode_definite_bytes(expect_hash(environment)))
+      |> bytearray.concat(encode_definite_bytes(expect_hash(tail)))
+      |> bytearray.concat(cbor.serialise(expect_uint32(values_count))),
+  )
+}
+
+pub fn hash_case_apply_continuation_v1(
+  environment: ByteArray,
+  built_continuation: ByteArray,
+) -> ByteArray {
+  continuation_node_domain
+    |> bytearray.concat(
+        #"84"
+          |> bytearray.concat(cbor.serialise(1))
+          |> bytearray.concat(cbor.serialise(7))
+          |> bytearray.concat(encode_definite_bytes(expect_hash(environment)))
+          |> bytearray.concat(
+              encode_definite_bytes(expect_hash(built_continuation)),
+            ),
+      )
+    |> blake2b_256
+}
+
+// The data module's chunk hash, so a script reaching both carries it once.
+pub fn hash_blob_chunk_v1(chunk: ByteArray) -> ByteArray {
+  cek_data_v1.hash_blob_chunk_v1(chunk)
+}
+
+pub fn hash_blob_branch_v1(
+  left: ByteArray,
+  right: ByteArray,
+  byte_length: Int,
+) -> ByteArray {
+  blob_branch_domain
+    |> bytearray.concat(
+        #"83"
+          |> bytearray.concat(encode_definite_bytes(expect_hash(left)))
+          |> bytearray.concat(encode_definite_bytes(expect_hash(right)))
+          |> bytearray.concat(cbor.serialise(expect_uint64(byte_length))),
+      )
+    |> blake2b_256
+}
+
+pub fn bounded_blob_root_v1(bytes: ByteArray) -> ByteArray {
+  let length = bytearray.length(bytes)
+  expect length <= max_bounded_blob_bytes
+  if length <= max_blob_chunk_bytes {
+    hash_blob_chunk_v1(bytes)
+  } else {
+    let first = slice_len(bytes, 0, max_blob_chunk_bytes)
+    let remaining = length - max_blob_chunk_bytes
+    let second_length = if remaining <= max_blob_chunk_bytes {
+      remaining
+    } else {
+      max_blob_chunk_bytes
+    }
+    let second = slice_len(bytes, max_blob_chunk_bytes, second_length)
+    let left = hash_blob_branch_v1(
+      hash_blob_chunk_v1(first),
+      hash_blob_chunk_v1(second),
+      max_blob_chunk_bytes + second_length,
+    )
+    if remaining <= max_blob_chunk_bytes {
+      left
+    } else {
+      let third_length = remaining - second_length
+      let third = slice_len(
+        bytes,
+        max_blob_chunk_bytes + second_length,
+        third_length,
+      )
+      hash_blob_branch_v1(left, hash_blob_chunk_v1(third), length)
+    }
+  }
+}
+
+pub fn hash_machine_state_v1(
+  mode: Int,
+  execution_index: Int,
+  focus_root: ByteArray,
+  environment_root: ByteArray,
+  continuation_root: ByteArray,
+  auxiliary: Int,
+  cpu: Int,
+  memory: Int,
+) -> ByteArray {
+  expect mode >= 0
+  expect mode <= 8
+  machine_state_domain
+    |> bytearray.concat(
+        encode_definite_array_header(9)
+          |> bytearray.concat(cbor.serialise(1))
+          |> bytearray.concat(cbor.serialise(mode))
+          |> bytearray.concat(cbor.serialise(expect_uint32(execution_index)))
+          |> bytearray.concat(encode_definite_bytes(expect_hash(focus_root)))
+          |> bytearray.concat(
+              encode_definite_bytes(expect_hash(environment_root)),
+            )
+          |> bytearray.concat(
+              encode_definite_bytes(expect_hash(continuation_root)),
+            )
+          |> bytearray.concat(cbor.serialise(expect_uint64(auxiliary)))
+          |> bytearray.concat(cbor.serialise(expect_uint64(cpu)))
+          |> bytearray.concat(cbor.serialise(expect_uint64(memory))),
+      )
+    |> blake2b_256
+}

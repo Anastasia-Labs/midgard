@@ -62,16 +62,16 @@ const identity = () => ({
   deployment: {
     path: "/evidence/deployment.json",
     sha256: hash("6"),
-    schemaVersion: "midgard-deployment-manifest-v2",
+    schemaVersion: "midgard-deployment-manifest-v1",
     manifestId: hash("8"),
   },
   phase1: {
     path: "/evidence/phase1.json",
     sha256: hash("9"),
-    schemaVersion: "midgard-phase1-live-corpus-binding-v2",
+    schemaVersion: "midgard-phase1-live-corpus-binding-v1",
     deploymentManifestId: hash("8"),
     nodeImageId: `sha256:${hash("7")}`,
-    nodeContainerId: "container-id",
+    nodeContainerId: hash("a"),
     corpus: {
       path: "/evidence/corpus.ndjson",
       indexPath: "/evidence/corpus.index.ndjson",
@@ -165,7 +165,6 @@ const releaseReport = () => {
     },
     runtime: {
       nodeVersion: "v22.22.2",
-      engine: "architecture_g",
       ownerBinaryPath: "/app/native/architecture-g-owner",
       configuredOwnerSha256: hash("b"),
       dockerMemoryLimitBytes: 8 * 1024 ** 3,
@@ -186,7 +185,7 @@ const stepEvidence = (id) => {
         runMode: "fresh",
         engine: "architecture_g",
         localUplc: true,
-        provider: "Kupmios",
+        provider: "l1_node",
         cleanDeployment: true,
         readiness: { httpStatus: 200, ready: true, reasons: [] },
       };
@@ -271,7 +270,7 @@ const stepEvidence = (id) => {
         ownerEpochAfter: "02".repeat(16),
         authoritativeMarkerAfter: tx("f"),
         replayedCandidateRoot: tx("f"),
-        journalStatus: "finalized",
+        journalStatus: "locally_applied",
         l2Status: "committed",
         auditDivergence: 0,
         recoveryLogMarker:
@@ -404,6 +403,27 @@ describe("Phase 3 clean live E2E report verifier", () => {
       checkArtifacts: false,
     });
     assert.equal(result.passed, true, result.reasons.join("\n"));
+  });
+
+  it("rejects non-V1, missing, unknown, nested-unknown, and noncanonical shapes", () => {
+    const cases = [
+      (value) => (value.schemaVersion = "legacy-v2"),
+      (value) => delete value.verdict,
+      (value) => (value.compatibilityMode = true),
+      (value) => (value.identity.source.legacyDigest = hash("0")),
+      (value) => (value.steps[0].result.evidence.readiness.legacyReason = null),
+      (value) => (value.completedAtMs = 200.5),
+      (value) => (value.steps[1].result.evidence.txHash = hash("A")),
+      (value) => (value.steps = {}),
+    ];
+    for (const mutate of cases) {
+      const value = liveReport();
+      mutate(value);
+      assert.equal(
+        evaluatePhase3LiveE2EReport(value, { checkArtifacts: false }).passed,
+        false,
+      );
+    }
   });
 
   it("rejects skips, failed DA, manual merge, weak DB evidence, and replay drift", () => {

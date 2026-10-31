@@ -1,0 +1,77 @@
+import type { WatcherInstalledWorkflowCategory } from "./fault-proof-application.js";
+
+/**
+ * A proof objective whose recorded fault decision is missing from the
+ * decision journal, or differs from the one its work names, or a funding
+ * reservation no workflow drives again. A missing decision happens when the
+ * journal database was moved aside, or when a fault was detected again under
+ * a new decision digest. The watcher holds such work, reports it on
+ * readiness, and keeps running: a held objective clears once its header
+ * leaves the finalized queue (its proof or another landed, or it merged); a
+ * held reservation clears once its signed attempts are retired past release
+ * finality and it is released.
+ */
+export type WatcherDecisionHold =
+  | Readonly<{
+      kind: "objective";
+      category: WatcherInstalledWorkflowCategory;
+      headerHash: string;
+      /** The decision the objective's workflow names, when it names one. */
+      decisionDigest: string | null;
+      detail: string;
+      /**
+       * Set when the hold is not a missing decision: the reason readiness
+       * names instead of `journal_decision_missing`. The clearing rule is the
+       * same (the header leaves the finalized queue).
+       */
+      readiness?: WatcherObjectiveHoldReadiness;
+    }>
+  | Readonly<{
+      kind: "reservation";
+      reservationId: string;
+      decisionDigest: string;
+      detail: string;
+      /**
+       * No workflow will drive the reservation's signed attempts again, and
+       * they are not retired past release finality yet. The watcher reads
+       * them from their own bytes and releases the reservation once they
+       * are; its detail names it.
+       */
+      readiness: "prover_funding_orphaned_reservation";
+    }>;
+
+/**
+ * - `fault_proof_start_deadline_passed`: the objective's latest safe start,
+ *   fixed by its header, passed before it signed any attempt, so it can
+ *   never start. Its detail is `<category>/<headerHash>`.
+ * - `fault_proof_objective_unreadable`: startup could not read the
+ *   objective's workflow rows (a corrupt row, a foreign execution, a storage
+ *   error). Its detail is `<category>/<headerHash>: <failure>`. Once its
+ *   header leaves the finalized queue its journal rows are forgotten: with
+ *   its workflow rows when the row was marked final; otherwise those are read
+ *   again and left in place if a refusal still keeps them from being read.
+ */
+export type WatcherObjectiveHoldReadiness =
+  | "fault_proof_start_deadline_passed"
+  | "fault_proof_objective_unreadable";
+
+/** The readiness reason a hold names. */
+export const watcherDecisionHoldReason = (
+  hold: WatcherDecisionHold,
+):
+  | WatcherObjectiveHoldReadiness
+  | "prover_funding_orphaned_reservation"
+  | "journal_decision_missing" => hold.readiness ?? "journal_decision_missing";
+
+/** Work whose recorded decision is missing: held, never a process failure. */
+export class WatcherProofDecisionMissingError extends Error {
+  constructor(readonly hold: WatcherDecisionHold) {
+    super(hold.detail);
+    this.name = "WatcherProofDecisionMissingError";
+  }
+}
+
+export const isWatcherProofDecisionMissingError = (
+  error: unknown,
+): error is WatcherProofDecisionMissingError =>
+  error instanceof WatcherProofDecisionMissingError;

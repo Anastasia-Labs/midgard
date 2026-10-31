@@ -5,6 +5,8 @@
 \section{Midgard hub oracle}
 \label{h:midgard-hub-oracle}
 
+\paragraph{Implementation conformance.} The initialization conditions below are the intended atomic deployment contract. The current hub mint policy itself checks an exact pair of asset names (the hub NFT and correction-lock token), equal quantities, and consumption of its nonce for minting; it also has a paired burn branch. It does not itself inspect the hub output datum/address or require every list and scheduler initialization. Those stronger conditions require the deployment transaction and participating policies to establish them and must not be attributed to the hub policy alone.
+
 This oracle keeps track of minting policy IDs and spending validator addresses for the lists used in the operator directory, state queue, and fraud proof set of the Midgard protocol.
 It consists of a single utxo holding the hub oracle NFT and a datum of the following type:
 \begin{equation*}

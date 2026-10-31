@@ -1,0 +1,146 @@
+name: Midgard demo workspace setup
+description: >-
+  pnpm and Node from the demo workspace pins and a frozen install; optionally
+  the pinned Aiken fork and the testnet blueprint an earlier job of the same
+  run built, and an ordered list of workspace packages to build first. Run
+  actions/checkout before this action.
+
+inputs:
+  aiken:
+    description: >-
+      "true" makes the aiken demo/flake.lock pins available to scripts/aiken
+      (nix, with the build restored from the cache the `aiken-fork` job
+      saved).
+    default: "false"
+  blueprint:
+    description: >-
+      "true" restores onchain/aiken/plutus.json and its build record
+      plutus.json.deployment.json from the run's `testnet-blueprint` artifact.
+      Implies "aiken", since blueprint freshness checks may ask the compiler.
+    default: "false"
+  interactive-blueprint:
+    description: >-
+      "true" restores the interactive- and curated-emulator blueprints and
+      their build records from the run's `test-blueprint-interactive-emulator`
+      and `test-blueprint-curated-emulator` artifacts and sets
+      MIDGARD_REQUIRE_PREBUILT_BLUEPRINTS=1, so the suites' setup fails on a
+      stale copy instead of rebuilding it. Implies "aiken".
+    default: "false"
+  preprod-public-blueprint:
+    description: >-
+      "true" restores the preprod-public test blueprint and its build record
+      from the run's `test-blueprint-preprod-public` artifact under the same
+      MIDGARD_REQUIRE_PREBUILT_BLUEPRINTS=1. Implies "aiken".
+    default: "false"
+  traced-blueprints:
+    description: >-
+      "true" restores both verbose-traced blueprints the traced-refusal step
+      reads, with their build records, from the run's
+      `test-blueprint-traced-*` artifacts, under the same
+      MIDGARD_REQUIRE_PREBUILT_BLUEPRINTS=1. Implies "aiken".
+    default: "false"
+  install-filter:
+    description: Optional `pnpm install --filter` selector (default installs every package).
+    default: ""
+  prebuild:
+    description: >-
+      Space-separated demo package directories to `pnpm run build`, in order,
+      before the job's own steps (their dist is what dependants import).
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+      with:
+        package_json_file: demo/package.json
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      with:
+        node-version-file: demo/.nvmrc
+        cache: pnpm
+        cache-dependency-path: demo/pnpm-lock.yaml
+    # Node keeps the V8 code it compiles for each loaded module here, so the
+    # job's later processes (one per test file, plus pnpm, tsc and the
+    # builds) skip recompiling the same dependencies and workspace bundles.
+    # Each entry is checked against a hash of its module's source and
+    # discarded on a mismatch, so an edited module is always recompiled. It
+    # lives only for the job; within one run it is already warm after the
+    # first fork.
+    - name: Share one compile cache across the job's Node processes
+      shell: bash
+      run: echo "NODE_COMPILE_CACHE=$RUNNER_TEMP/node-compile-cache" >> "$GITHUB_ENV"
+    - name: Install dependencies
+      shell: bash
+      env:
+        INSTALL_FILTER: ${{ inputs.install-filter }}
+      run: |
+        set -euo pipefail
+        if [ -n "$INSTALL_FILTER" ]; then
+          pnpm --dir demo install --frozen-lockfile --filter "$INSTALL_FILTER"
+        else
+          pnpm --dir demo install --frozen-lockfile
+        fi
+    # The contrib recipes launch pnpm through corepack, which downloads the
+    # pinned pnpm on first use; the action above installs pnpm on its own, so
+    # that download would otherwise land inside a recipe's bounded version
+    # check. Fetch it here, once, with no bound.
+    - name: Fetch corepack's pinned pnpm
+      shell: bash
+      run: cd demo && corepack pnpm --version
+    - name: Pinned Aiken
+      if: inputs.aiken == 'true' || inputs.blueprint == 'true' || inputs.interactive-blueprint == 'true' || inputs.preprod-public-blueprint == 'true' || inputs.traced-blueprints == 'true'
+      uses: ./.github/actions/aiken
+    - name: Download the testnet blueprint and its build record
+      if: inputs.blueprint == 'true'
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      with:
+        name: testnet-blueprint
+        path: onchain/aiken
+    - name: Download the interactive-emulator blueprint and its build record
+      if: inputs.interactive-blueprint == 'true'
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      with:
+        name: test-blueprint-interactive-emulator
+        path: onchain/aiken/build/interactive-emulator
+    - name: Download the curated-emulator blueprint and its build record
+      if: inputs.interactive-blueprint == 'true'
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      with:
+        name: test-blueprint-curated-emulator
+        path: onchain/aiken/build/curated-emulator
+    - name: Download the preprod-public blueprint and its build record
+      if: inputs.preprod-public-blueprint == 'true'
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      with:
+        name: test-blueprint-preprod-public
+        path: onchain/aiken/build/preprod-public
+    - name: Download the traced preprod-testing blueprint and its build record
+      if: inputs.traced-blueprints == 'true'
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      with:
+        name: test-blueprint-traced-preprod-testing
+        path: onchain/aiken/build/traced-refusals/preprod-testing
+    - name: Download the traced preprod-emulator-testing blueprint and its build record
+      if: inputs.traced-blueprints == 'true'
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      with:
+        name: test-blueprint-traced-preprod-emulator-testing
+        path: onchain/aiken/build/traced-refusals/preprod-emulator-testing
+    # The suites never rebuild what an earlier job built: a restored copy that
+    # does not match the checkout fails them.
+    - name: Forbid rebuilding the restored test blueprints
+      if: inputs.interactive-blueprint == 'true' || inputs.preprod-public-blueprint == 'true' || inputs.traced-blueprints == 'true'
+      shell: bash
+      run: echo "MIDGARD_REQUIRE_PREBUILT_BLUEPRINTS=1" >> "$GITHUB_ENV"
+    - name: Build prerequisite workspace packages
+      if: inputs.prebuild != ''
+      shell: bash
+      env:
+        PREBUILD: ${{ inputs.prebuild }}
+      run: |
+        set -euo pipefail
+        for package in $PREBUILD; do
+          echo "::group::build $package"
+          pnpm --dir "demo/$package" run build
+          echo "::endgroup::"
+        done

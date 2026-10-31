@@ -1,0 +1,124 @@
+use aiken/collection/list
+use aiken/crypto.{ScriptHash}
+use cardano/assets.{PolicyId}
+use cardano/transaction.{OutputReference, Transaction}
+use midgard/computation_thread as ct
+use midgard/fraud_proofs/common.{ProverOnly, cancel, continue_validation_trace}
+use midgard/validation_case_thread_v1.{ThreadDatum}
+use midgard/validation_dispute_v1
+use midgard/validation_resolution_v1
+use midgard/validation_thread_expiry_v1
+use midgard/validation_trace_v1
+
+pub type Datum =
+  ThreadDatum
+
+pub type BoundaryActionV1 {
+  PrepareResolution {
+    input_index: Int,
+    output_index: Int,
+    resolver_index: Int,
+    evidence: validation_resolution_v1.ValidationBoundaryEvidenceV1,
+  }
+  AwardTerminalPadding {
+    input_index: Int,
+    output_index: Int,
+    terminal_state: validation_trace_v1.ValidationMachineStateV1,
+  }
+}
+
+pub type SpendRedeemer =
+  ct.StepRedeemer<BoundaryActionV1>
+
+validator main(
+  one_step_resolver_script_hashes: List<ScriptHash>,
+  award_validator_script_hash: ScriptHash,
+  computation_thread_token_policy_id: PolicyId,
+  thread_expiry_script_hash: ScriptHash,
+) {
+  spend(
+    datum: Option<Datum>,
+    redeemer: SpendRedeemer,
+    own_out_ref: OutputReference,
+    tx: Transaction,
+  ) {
+    validation_thread_expiry_v1.holder_releases_to_expiry(
+      computation_thread_token_policy_id,
+      thread_expiry_script_hash,
+      own_out_ref,
+      tx,
+    ) || when redeemer is {
+      ct.Cancel { input_index, computation_thread_mint_redeemer_index } ->
+        cancel(
+          computation_thread_token_policy_id,
+          datum,
+          input_index,
+          own_out_ref,
+          computation_thread_mint_redeemer_index,
+          tx,
+        )
+      ct.Continue(action) -> {
+        expect Some(step_datum) = datum
+        continue_validation_trace(
+          computation_thread_token_policy_id,
+          step_datum,
+          when action is {
+            PrepareResolution { input_index, .. } -> input_index
+            AwardTerminalPadding { input_index, .. } -> input_index
+          },
+          when action is {
+            PrepareResolution { output_index, .. } -> output_index
+            AwardTerminalPadding { output_index, .. } -> output_index
+          },
+          own_out_ref,
+          tx,
+          ProverOnly,
+          fn(
+            _input_script_hash,
+            _computation_thread_token_asset_name,
+            _fraud_prover,
+            input_state,
+            output_script_hash,
+            output_state,
+          ) {
+            expect Some(state) = input_state
+            when action is {
+              PrepareResolution { resolver_index, evidence, .. } -> {
+                expect Some(expected_resolver_script_hash) = list.at(
+                  one_step_resolver_script_hashes,
+                  resolver_index,
+                )
+                let expected_resolution_state: Data = validation_resolution_v1.prepare(
+                  state,
+                  evidence.pre_state,
+                )
+                and {
+                  resolver_index == validation_resolution_v1.resolver_index(
+                    evidence.pre_state.phase,
+                  ),
+                  output_script_hash == expected_resolver_script_hash,
+                  output_state == expected_resolution_state,
+                }
+              }
+              AwardTerminalPadding { terminal_state, .. } -> {
+                let expected_state: Data = validation_resolution_v1.winning_resolution()
+                and {
+                  validation_resolution_v1.terminal_fixed_point_winner(
+                    state,
+                    terminal_state,
+                  ) == validation_dispute_v1.ChallengerWins,
+                  output_script_hash == award_validator_script_hash,
+                  output_state == expected_state,
+                }
+              }
+            }
+          },
+        )
+      }
+    }
+  }
+
+  else(_) {
+    fail
+  }
+}

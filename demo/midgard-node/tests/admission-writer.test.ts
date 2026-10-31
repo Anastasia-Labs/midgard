@@ -6,22 +6,21 @@ import { SqlClient } from "@effect/sql";
 import { Cause, Deferred, Effect, Exit, Fiber, Ref, Scope } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { MigrationRunner, TxAdmissionsDB } from "@/database/index.js";
+import { MigrationRunner, TxAdmissionsDB } from "../src/database/index.js";
 import {
   admissionFailureDefinitelyDidNotInsert,
   commitAdmissionBacklogSlot,
   releaseAdmissionBacklogSlot,
   reserveAdmissionBacklogSlot,
-} from "@/fibers/admission-backlog-gauge.js";
+} from "../src/fibers/admission-backlog-gauge.js";
 import {
   AdmissionWriter,
   admissionWriterShardForTxId,
   AdmissionWriterShutdownError,
   makeAdmissionWriterWithOptions,
-} from "@/services/admission-writer.js";
-import { Globals } from "@/services/globals.js";
-
-import { provideDatabaseLayers } from "./utils.js";
+} from "../src/services/admission-writer.js";
+import { Globals } from "../src/services/globals.js";
+import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 const request = (
   label: string,
@@ -53,12 +52,11 @@ const waitUntil = <E, R>(
 const withCleanAdmissions = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   provideDatabaseLayers(
     Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
       yield* MigrationRunner.migrate({
         appVersion: "admission-writer-test",
         actor: "admission-writer-test",
       });
-      yield* sql`TRUNCATE TABLE tx_rejections, tx_admission_payloads, tx_admissions RESTART IDENTITY CASCADE`;
+      yield* resetApplicationTables;
       return yield* effect;
     }),
   );

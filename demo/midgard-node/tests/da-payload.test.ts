@@ -1,377 +1,108 @@
-import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
-import { DA_TRANSPORT_LIMITS_V1 } from "@al-ft/midgard-core/da-transport";
+import "node:crypto";
+import "@al-ft/midgard-core/consensus-profile";
+import "@al-ft/midgard-core/da-payload-envelope";
+import "@al-ft/midgard-core/da-transport";
+import "@al-ft/midgard-core/deployment-manifest-identity";
+import "@al-ft/midgard-sdk";
+import "@lucid-evolution/lucid";
+import "effect";
+import "vitest";
+import "../src/database/index.js";
+import "../src/database/utils/common.js";
+import "../src/mpf/index.js";
+import "../src/workers/commit-block-header/da-payload.js";
+import "../src/workers/commit-block-header/da-payload-backfill.js";
+import "../src/workers/commit-block-header/transition-roots.js";
+import "./midgard-output-helpers.js";
+import "./utils.js";
+import "./da-payload.record.js";
+import "./da-payload.build-journal-fixture.js";
+
+import { createHash } from "node:crypto";
+
+import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
+import {
+  DaPayloadContentEncoding,
+  decodeDaPayloadEnvelope,
+  unwrapDaPayload,
+} from "@al-ft/midgard-core/da-payload-envelope";
+import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { DaPayloadsDB, PendingBlockFinalizationsDB } from "@/database/index.js";
-import { buildDaPayloadInsert } from "@/workers/commit-block-header/da-payload.js";
-import { backfillMissingDaPayloadsFromFinalizedJournals } from "@/workers/commit-block-header/da-payload-backfill.js";
-import { buildAuthenticatedRootFromEncodedEntries } from "@/workers/commit-block-header/transition-roots.js";
-import { keyValuePhasRoot } from "@/workers/utils/mpf.js";
+import {
+  DaPayloadsDB,
+  PendingBlockFinalizationsDB,
+} from "../src/database/index.js";
+import { buildDaPayloadInsert } from "../src/workers/commit-block-header/da-payload.js";
+import { backfillMissingDaPayloadsFromFinalizedJournals } from "../src/workers/commit-block-header/da-payload-backfill.js";
+import { buildJournalFixture } from "./da-payload.build-journal-fixture.js";
+import {
+  countsFromLengths,
+  fixture,
+  headerFor,
+  ledgerEntries,
+  member,
+  record,
+  retainedPairs,
+  sourceRoot,
+  type TestRoots,
+} from "./da-payload.record.js";
 
-import { deterministicFixtureBytes } from "./utils.js";
-
-const fixture = (label: string, length: number): Buffer =>
-  deterministicFixtureBytes(`da-payload:${label}`, length);
-
-const root = (entries: readonly [Buffer, Buffer][]) =>
-  keyValuePhasRoot(
-    entries.map(([key]) => key),
-    entries.map(([, value]) => value),
-  );
-
-const sourceRoot = (
-  domain: SDK.RootDomain,
-  entries: readonly [Buffer, Buffer][],
-) =>
-  buildAuthenticatedRootFromEncodedEntries(
-    domain,
-    entries.map(([key, value]) => ({ key, value })),
-  ).pipe(Effect.map((built) => built.root));
-
-type TestRoots = {
-  readonly utxosRoot: string;
-  readonly withdrawalsRoot: string;
-  readonly forcedTransactionsRoot: string;
-  readonly transactionsRoot: string;
-  readonly depositsRoot: string;
-  readonly transitionTraceRoot: string;
-  readonly eventToStepRoot: string;
-};
-
-type TestCounts = {
-  readonly withdrawalCount: bigint;
-  readonly forcedTransactionCount: bigint;
-  readonly l2TransactionCount: bigint;
-  readonly depositCount: bigint;
-  readonly totalEventCount: bigint;
-  readonly transitionStepCount: bigint;
-};
-
-const countsFromLengths = ({
-  withdrawals = 0,
-  forcedTransactions = 0,
-  transactions = 0,
-  deposits = 0,
-}: {
-  readonly withdrawals?: number;
-  readonly forcedTransactions?: number;
-  readonly transactions?: number;
-  readonly deposits?: number;
-}): TestCounts => {
-  const total = BigInt(
-    withdrawals + forcedTransactions + transactions + deposits,
-  );
-  return {
-    withdrawalCount: BigInt(withdrawals),
-    forcedTransactionCount: BigInt(forcedTransactions),
-    l2TransactionCount: BigInt(transactions),
-    depositCount: BigInt(deposits),
-    totalEventCount: total,
-    transitionStepCount: total,
-  };
-};
-
-const headerFor = (roots: TestRoots, counts: TestCounts): SDK.Header => ({
-  prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-  utxosRoot: roots.utxosRoot,
-  withdrawalsRoot: roots.withdrawalsRoot,
-  forcedTransactionsRoot: roots.forcedTransactionsRoot,
-  transactionsRoot: roots.transactionsRoot,
-  depositsRoot: roots.depositsRoot,
-  transitionTraceRoot: roots.transitionTraceRoot,
-  eventToStepRoot: roots.eventToStepRoot,
-  withdrawalCount: counts.withdrawalCount,
-  forcedTransactionCount: counts.forcedTransactionCount,
-  l2TransactionCount: counts.l2TransactionCount,
-  depositCount: counts.depositCount,
-  totalEventCount: counts.totalEventCount,
-  transitionStepCount: counts.transitionStepCount,
-  startTime: 1n,
-  endTime: 2n,
-  prevHeaderHash: "11".repeat(28),
-  operatorVkey: "22".repeat(28),
-  protocolVersion: 1n,
-});
-
-const headerCbor = (header: SDK.Header): Buffer =>
-  Buffer.from(LucidData.to(header as never, SDK.Header as never), "hex");
-
-const retainedPairs = (
-  label: string,
-  count: number,
-): readonly [Buffer, Buffer][] =>
-  Array.from({ length: count }, (_, index) => [
-    fixture(`${label}-key-${index}`, 4),
-    fixture(`${label}-value-${index}`, 16),
-  ]);
-
-const member = (
-  headerHash: Buffer,
-  key: Buffer,
-  value: Buffer,
-  ordinal: number,
-): PendingBlockFinalizationsDB.MemberRecord => ({
-  [PendingBlockFinalizationsDB.MemberColumns.HEADER_HASH]: headerHash,
-  [PendingBlockFinalizationsDB.MemberColumns.MEMBER_ID]: key,
-  [PendingBlockFinalizationsDB.MemberColumns.ORDINAL]: ordinal,
-  [PendingBlockFinalizationsDB.MemberColumns.PAYLOAD_CBOR]: value,
-  [PendingBlockFinalizationsDB.MemberColumns.PAYLOAD_SHA256]: fixture(
-    `member-sha-${ordinal}`,
-    32,
-  ),
-  [PendingBlockFinalizationsDB.MemberColumns.SOURCE_TABLE]: "test_source",
-  [PendingBlockFinalizationsDB.MemberColumns.SOURCE_ID]: key,
-  [PendingBlockFinalizationsDB.MemberColumns.SOURCE_TIMESTAMP]: new Date(
-    "2026-06-12T00:00:00.000Z",
-  ),
-});
-
-const utxoMember = (
-  headerHash: Buffer,
-  key: Buffer,
-  value: Buffer,
-  ordinal: number,
-): PendingBlockFinalizationsDB.UtxoRecord => ({
-  [PendingBlockFinalizationsDB.UtxoColumns.HEADER_HASH]: headerHash,
-  [PendingBlockFinalizationsDB.UtxoColumns.OUTREF]: key,
-  [PendingBlockFinalizationsDB.UtxoColumns.ORDINAL]: ordinal,
-  [PendingBlockFinalizationsDB.UtxoColumns.OUTPUT]: value,
-});
-
-const record = ({
-  headerHash,
-  utxoMembers = [],
-  depositMembers,
-  forcedTransactionMembers = [],
-  withdrawalMembers,
-  txMembers = [],
-  transitionTraceMembers,
-  eventToStepMembers,
-  roots,
-  counts,
-  header,
-}: {
-  readonly headerHash: Buffer;
-  readonly utxoMembers?: readonly PendingBlockFinalizationsDB.UtxoRecord[];
-  readonly depositMembers: readonly PendingBlockFinalizationsDB.MemberRecord[];
-  readonly forcedTransactionMembers?: readonly PendingBlockFinalizationsDB.MemberRecord[];
-  readonly withdrawalMembers: readonly PendingBlockFinalizationsDB.MemberRecord[];
-  readonly txMembers?: readonly PendingBlockFinalizationsDB.MemberRecord[];
-  readonly transitionTraceMembers: readonly PendingBlockFinalizationsDB.MemberRecord[];
-  readonly eventToStepMembers: readonly PendingBlockFinalizationsDB.MemberRecord[];
-  readonly roots: {
-    readonly utxosRoot: string;
-    readonly forcedTransactionsRoot: string;
-    readonly transactionsRoot: string;
-    readonly depositsRoot: string;
-    readonly withdrawalsRoot: string;
-    readonly transitionTraceRoot: string;
-    readonly eventToStepRoot: string;
-  };
-  readonly counts: TestCounts;
-  readonly header: SDK.Header;
-}): PendingBlockFinalizationsDB.Record => {
-  const blockStart = new Date("2026-06-12T00:00:00.000Z");
-  const blockEnd = new Date("2026-06-12T00:00:10.000Z");
-  return {
-    [PendingBlockFinalizationsDB.Columns.HEADER_HASH]: headerHash,
-    [PendingBlockFinalizationsDB.Columns.HEADER_CBOR]: headerCbor(header),
-    [PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH]: null,
-    [PendingBlockFinalizationsDB.Columns.STATE_QUEUE_LEASE_TOKEN]: "lease",
-    [PendingBlockFinalizationsDB.Columns.BASE_SNAPSHOT_ID]: "snapshot",
-    [PendingBlockFinalizationsDB.Columns.BASE_TAIL_OUT_REF]: "base#0",
-    [PendingBlockFinalizationsDB.Columns.BASE_TAIL_HEADER_HASH]: fixture(
-      "base-header",
-      28,
-    ),
-    [PendingBlockFinalizationsDB.Columns.BASE_TAIL_DATUM_CBOR]: "d87980",
-    [PendingBlockFinalizationsDB.Columns.BASE_UTXOS_ROOT]:
-      SDK.EMPTY_MERKLE_TREE_ROOT,
-    [PendingBlockFinalizationsDB.Columns.BASE_FORCED_TRANSACTIONS_ROOT]:
-      SDK.EMPTY_MERKLE_TREE_ROOT,
-    [PendingBlockFinalizationsDB.Columns.BASE_TRANSACTIONS_ROOT]:
-      SDK.EMPTY_MERKLE_TREE_ROOT,
-    [PendingBlockFinalizationsDB.Columns.BASE_DEPOSITS_ROOT]:
-      SDK.EMPTY_MERKLE_TREE_ROOT,
-    [PendingBlockFinalizationsDB.Columns.BASE_WITHDRAWALS_ROOT]:
-      SDK.EMPTY_MERKLE_TREE_ROOT,
-    [PendingBlockFinalizationsDB.Columns.BLOCK_START_TIME]: blockStart,
-    [PendingBlockFinalizationsDB.Columns.BLOCK_END_TIME]: blockEnd,
-    [PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT]: roots.utxosRoot,
-    [PendingBlockFinalizationsDB.Columns.EXPECTED_FORCED_TRANSACTIONS_ROOT]:
-      roots.forcedTransactionsRoot,
-    [PendingBlockFinalizationsDB.Columns.EXPECTED_TRANSACTIONS_ROOT]:
-      roots.transactionsRoot,
-    [PendingBlockFinalizationsDB.Columns.EXPECTED_DEPOSITS_ROOT]:
-      roots.depositsRoot,
-    [PendingBlockFinalizationsDB.Columns.EXPECTED_WITHDRAWALS_ROOT]:
-      roots.withdrawalsRoot,
-    [PendingBlockFinalizationsDB.Columns.EXPECTED_TRANSITION_TRACE_ROOT]:
-      roots.transitionTraceRoot,
-    [PendingBlockFinalizationsDB.Columns.EXPECTED_EVENT_TO_STEP_ROOT]:
-      roots.eventToStepRoot,
-    [PendingBlockFinalizationsDB.Columns.EXPECTED_WITHDRAWAL_COUNT]:
-      counts.withdrawalCount,
-    [PendingBlockFinalizationsDB.Columns.EXPECTED_FORCED_TRANSACTION_COUNT]:
-      counts.forcedTransactionCount,
-    [PendingBlockFinalizationsDB.Columns.EXPECTED_L2_TRANSACTION_COUNT]:
-      counts.l2TransactionCount,
-    [PendingBlockFinalizationsDB.Columns.EXPECTED_DEPOSIT_COUNT]:
-      counts.depositCount,
-    [PendingBlockFinalizationsDB.Columns.EXPECTED_TOTAL_EVENT_COUNT]:
-      counts.totalEventCount,
-    [PendingBlockFinalizationsDB.Columns.EXPECTED_TRANSITION_STEP_COUNT]:
-      counts.transitionStepCount,
-    [PendingBlockFinalizationsDB.Columns.STATUS]:
-      PendingBlockFinalizationsDB.Status.ObservedWaitingStability,
-    [PendingBlockFinalizationsDB.Columns.OBSERVED_CONFIRMED_AT_MS]: 1n,
-    [PendingBlockFinalizationsDB.Columns.CREATED_AT]: blockStart,
-    [PendingBlockFinalizationsDB.Columns.UPDATED_AT]: blockStart,
-    depositEventIds: depositMembers.map(
-      (entry) => entry[PendingBlockFinalizationsDB.MemberColumns.MEMBER_ID],
-    ),
-    withdrawalEventIds: withdrawalMembers.map(
-      (entry) => entry[PendingBlockFinalizationsDB.MemberColumns.MEMBER_ID],
-    ),
-    forcedTransactionEventIds: forcedTransactionMembers.map(
-      (entry) => entry[PendingBlockFinalizationsDB.MemberColumns.MEMBER_ID],
-    ),
-    mempoolTxIds: txMembers.map(
-      (entry) => entry[PendingBlockFinalizationsDB.MemberColumns.MEMBER_ID],
-    ),
-    depositMembers,
-    forcedTransactionMembers,
-    withdrawalMembers,
-    txMembers,
-    transitionTraceMembers,
-    eventToStepMembers,
-    utxoMembers,
-  };
-};
-
-type JournalFixtureOptions = {
-  readonly utxoEntries?: readonly [Buffer, Buffer][];
-  readonly depositEntries?: readonly [Buffer, Buffer][];
-  readonly forcedTransactionEntries?: readonly [Buffer, Buffer][];
-  readonly withdrawalEntries?: readonly [Buffer, Buffer][];
-  readonly txEntries?: readonly [Buffer, Buffer][];
-  readonly transitionTraceEntries?: readonly [Buffer, Buffer][];
-  readonly eventToStepEntries?: readonly [Buffer, Buffer][];
-  readonly rootOverrides?: Partial<TestRoots>;
-  readonly recordRootOverrides?: Partial<TestRoots>;
-  readonly includeUtxoMembers?: boolean;
-};
-
-const sourceRootOrEmpty = (
-  domain: SDK.RootDomain,
-  entries: readonly [Buffer, Buffer][],
-) =>
-  entries.length === 0
-    ? Effect.succeed(SDK.EMPTY_MERKLE_TREE_ROOT)
-    : sourceRoot(domain, entries);
-
-const buildJournalFixture = async ({
-  utxoEntries = [],
-  depositEntries = [],
-  forcedTransactionEntries = [],
-  withdrawalEntries = [],
-  txEntries = [],
-  transitionTraceEntries = [],
-  eventToStepEntries = [],
-  rootOverrides = {},
-  recordRootOverrides = {},
-  includeUtxoMembers = true,
-}: JournalFixtureOptions): Promise<{
-  readonly roots: TestRoots;
-  readonly header: SDK.Header;
-  readonly headerHash: Buffer;
-  readonly pending: PendingBlockFinalizationsDB.Record;
-}> => {
-  const counts = countsFromLengths({
-    withdrawals: withdrawalEntries.length,
-    forcedTransactions: forcedTransactionEntries.length,
-    transactions: txEntries.length,
-    deposits: depositEntries.length,
-  });
-  const roots: TestRoots = {
-    ...(await Effect.runPromise(
-      Effect.all({
-        utxosRoot:
-          utxoEntries.length === 0
-            ? Effect.succeed(SDK.EMPTY_MERKLE_TREE_ROOT)
-            : root(utxoEntries),
-        forcedTransactionsRoot: sourceRootOrEmpty(
-          SDK.ROOT_DOMAINS.forcedTransactions,
-          forcedTransactionEntries,
-        ),
-        transactionsRoot: sourceRootOrEmpty(
-          SDK.ROOT_DOMAINS.transactions,
-          txEntries,
-        ),
-        depositsRoot: sourceRootOrEmpty(
-          SDK.ROOT_DOMAINS.deposits,
-          depositEntries,
-        ),
-        withdrawalsRoot: sourceRootOrEmpty(
-          SDK.ROOT_DOMAINS.withdrawals,
-          withdrawalEntries,
-        ),
-        transitionTraceRoot: sourceRootOrEmpty(
-          SDK.ROOT_DOMAINS.transitionTrace,
-          transitionTraceEntries,
-        ),
-        eventToStepRoot: sourceRootOrEmpty(
-          SDK.ROOT_DOMAINS.eventToStep,
-          eventToStepEntries,
-        ),
-      }),
-    )),
-    ...rootOverrides,
-  };
-  const header = headerFor(roots, counts);
-  const headerHash = Buffer.from(
-    await Effect.runPromise(SDK.hashBlockHeader(header)),
-    "hex",
-  );
-  const memberRecords = (entries: readonly [Buffer, Buffer][]) =>
-    entries.map(([key, value], index) => member(headerHash, key, value, index));
-
-  return {
-    roots,
-    header,
-    headerHash,
-    pending: record({
+describe("DaPayloadV1 builder", () => {
+  it("builds canonical V1 journals with distinct preimage sidecars", async () => {
+    const counts = countsFromLengths({});
+    const roots: TestRoots = {
+      utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      forcedTransactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      transactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      depositsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      transitionTraceRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      eventToStepRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    };
+    const header = headerFor(roots, counts);
+    const headerHash = Buffer.from(
+      await Effect.runPromise(SDK.hashBlockHeader(header)),
+      "hex",
+    );
+    const pending = record({
       headerHash,
-      utxoMembers: includeUtxoMembers
-        ? utxoEntries.map(([key, value], index) =>
-            utxoMember(headerHash, key, value, index),
-          )
-        : [],
-      depositMembers: memberRecords(depositEntries),
-      forcedTransactionMembers: memberRecords(forcedTransactionEntries),
-      withdrawalMembers: memberRecords(withdrawalEntries),
-      txMembers: memberRecords(txEntries),
-      transitionTraceMembers: memberRecords(transitionTraceEntries),
-      eventToStepMembers: memberRecords(eventToStepEntries),
-      roots: {
-        ...roots,
-        ...recordRootOverrides,
-      },
+      depositMembers: [],
+      withdrawalMembers: [],
+      transitionTraceMembers: [],
+      eventToStepMembers: [],
+      roots,
       counts,
       header,
-    }),
-  };
-};
+      consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
+    });
 
-describe("DaPayloadV2 builder", () => {
+    const insert = await Effect.runPromise(
+      buildDaPayloadInsert({
+        record: pending,
+        envelope: { mode: "identity", zstdLevel: 3 },
+      }),
+    );
+    const unwrapped = await unwrapDaPayload(insert.payload_cbor, {
+      maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+    });
+    expect(decodeDaPayloadEnvelope(insert.payload_cbor).contentEncoding).toBe(
+      DaPayloadContentEncoding.identity,
+    );
+    const payload = SDK.decodeDaPayload(unwrapped.innerBytes);
+
+    expect(insert.version).toBe(1);
+    expect(payload.version).toBe(SDK.DA_PAYLOAD_VERSION);
+    expect(payload.block_body.transaction_preimages).toEqual([]);
+    expect(payload.block_body.forced_transaction_preimages).toEqual([]);
+    expect(payload.block_body.header).toEqual(header);
+  });
+
   it("builds a canonical payload whose roots, counts, and header match the journal", async () => {
-    const utxoEntries: readonly [Buffer, Buffer][] = [
-      [fixture("utxo-b", 34), fixture("utxo-value-b", 41)],
-      [fixture("utxo-a", 34), fixture("utxo-value-a", 39)],
-    ];
+    const utxoEntries = ledgerEntries("utxo", 3);
     const depositEntries: readonly [Buffer, Buffer][] = [
       [fixture("deposit", 34), fixture("deposit-info", 48)],
     ];
@@ -389,17 +120,16 @@ describe("DaPayloadV2 builder", () => {
     });
 
     const insert = await Effect.runPromise(
-      buildDaPayloadInsert({
-        record: pending,
-      }),
+      buildDaPayloadInsert({ record: pending }),
     );
-    const payload = SDK.decodeDaPayloadV2(insert.payload_cbor);
+    const identityUnwrapped = await unwrapDaPayload(insert.payload_cbor, {
+      maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+    });
+    const payload = SDK.decodeDaPayload(identityUnwrapped.innerBytes);
 
     expect(payload.block_body.header_hash).toBe(headerHash.toString("hex"));
     expect(payload.block_body.header).toEqual(header);
-    expect(payload.block_body.utxos.map(([key]) => key)).toEqual(
-      [...payload.block_body.utxos.map(([key]) => key)].sort(),
-    );
+    expect(Object.keys(payload.block_body)).not.toContain("utxos");
     expect(insert.utxos_root).toBe(roots.utxosRoot);
     expect(insert.forced_transactions_root).toBe(roots.forcedTransactionsRoot);
     expect(insert.transactions_root).toBe(roots.transactionsRoot);
@@ -410,8 +140,10 @@ describe("DaPayloadV2 builder", () => {
     expect(insert.deposit_count).toBe(1n);
     expect(insert.withdrawal_count).toBe(1n);
     expect(insert.total_event_count).toBe(2n);
+    // Independent oracle: node:crypto over the stored envelope bytes, not the
+    // SDK helper the builder itself used to fill the column.
     expect(insert.payload_sha256.toString("hex")).toBe(
-      SDK.daPayloadHashHex(insert.payload_cbor),
+      createHash("sha256").update(insert.payload_cbor).digest("hex"),
     );
 
     const zstdInsert = await Effect.runPromise(
@@ -421,21 +153,56 @@ describe("DaPayloadV2 builder", () => {
       }),
     );
     const unwrapped = await unwrapDaPayload(zstdInsert.payload_cbor, {
-      maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
-      schemaVersion: zstdInsert.version,
+      maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
     });
-    expect(zstdInsert.version).toBe(3);
-    expect(unwrapped.innerBytes).toEqual(insert.payload_cbor);
+    expect(
+      decodeDaPayloadEnvelope(zstdInsert.payload_cbor).contentEncoding,
+    ).toBe(DaPayloadContentEncoding.zstd);
+    expect(zstdInsert.version).toBe(1);
+    expect(unwrapped.innerBytes).toEqual(identityUnwrapped.innerBytes);
+    // The digest binds the ENVELOPE bytes, so the compressed row must carry a
+    // different digest from the identity row over the same inner payload.
     expect(zstdInsert.payload_sha256.toString("hex")).toBe(
-      SDK.daPayloadHashHex(zstdInsert.payload_cbor),
+      createHash("sha256").update(zstdInsert.payload_cbor).digest("hex"),
     );
+    expect(zstdInsert.payload_sha256).not.toEqual(insert.payload_sha256);
+  });
+
+  it("builds payloads whose size does not depend on the ledger size", async () => {
+    const events = {
+      depositEntries: [
+        [fixture("size-deposit", 34), fixture("size-deposit-info", 48)],
+      ] as readonly [Buffer, Buffer][],
+      transitionTraceEntries: retainedPairs("size-trace", 1),
+      eventToStepEntries: retainedPairs("size-event-to-step", 1),
+    };
+    const innerBytesOver = async (ledgerSize: number) => {
+      const { pending } = await buildJournalFixture({
+        utxoEntries: ledgerEntries(`size-ledger-${ledgerSize}`, ledgerSize),
+        ...events,
+      });
+      const insert = await Effect.runPromise(
+        buildDaPayloadInsert({
+          record: pending,
+          envelope: { mode: "identity", zstdLevel: 3 },
+        }),
+      );
+      return (
+        await unwrapDaPayload(insert.payload_cbor, {
+          maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+        })
+      ).innerBytes;
+    };
+    const small = await innerBytesOver(10);
+    const large = await innerBytesOver(10_000);
+    // Only the header's post-state root and the header hash differ.
+    expect(large.length).toBe(small.length);
+    const differing = [...small].filter((byte, index) => large[index] !== byte);
+    expect(differing.length).toBeLessThanOrEqual(64);
   });
 
   it("backfills a missing DA payload from complete journal payload members", async () => {
-    const utxoEntries: readonly [Buffer, Buffer][] = [
-      [fixture("backfill-utxo-b", 34), fixture("backfill-utxo-value-b", 41)],
-      [fixture("backfill-utxo-a", 34), fixture("backfill-utxo-value-a", 39)],
-    ];
+    const utxoEntries = ledgerEntries("backfill-utxo", 2);
     const depositEntries: readonly [Buffer, Buffer][] = [
       [fixture("backfill-deposit", 34), fixture("backfill-deposit-info", 48)],
     ];
@@ -467,24 +234,26 @@ describe("DaPayloadV2 builder", () => {
       skipped: [],
     });
     expect(inserts).toHaveLength(1);
+    const backfilled = await unwrapDaPayload(inserts[0]!.payload_cbor, {
+      maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+    });
     expect(
-      SDK.decodeDaPayloadV2(inserts[0]!.payload_cbor).block_body.header_hash,
+      SDK.decodeDaPayload(backfilled.innerBytes).block_body.header_hash,
     ).toBe(headerHash.toString("hex"));
   });
 
-  it("skips backfill when the journal is missing committed UTxO members", async () => {
-    const { pending, headerHash } = await buildJournalFixture({
-      rootOverrides: {
-        utxosRoot: "00".repeat(32),
-      },
-      includeUtxoMembers: false,
-    });
+  it("skips backfill when the journal is missing a declared payload member", async () => {
+    const { pending, headerHash } = await buildJournalFixture({});
+    const incomplete = {
+      ...pending,
+      [PendingBlockFinalizationsDB.Columns.EXPECTED_DEPOSIT_COUNT]: 1n,
+    };
     const inserts: DaPayloadsDB.InsertInput[] = [];
 
     const summary = await Effect.runPromise(
       backfillMissingDaPayloadsFromFinalizedJournals({
         deps: {
-          retrieveMissingRecords: () => Effect.succeed([pending]),
+          retrieveMissingRecords: () => Effect.succeed([incomplete]),
           upsertAvailable: (input) =>
             Effect.sync(() => {
               inserts.push(input);
@@ -543,10 +312,82 @@ describe("DaPayloadV2 builder", () => {
     });
   });
 
-  it("rejects a payload whose recomputed roots do not match the journal", async () => {
-    const utxoEntries: readonly [Buffer, Buffer][] = [
-      [fixture("bad-utxo", 34), fixture("bad-utxo-value", 41)],
+  it("persists a journal that carries validation traces under a header that pins the pair to the empty tree", async () => {
+    const depositEntries: readonly [Buffer, Buffer][] = [
+      [fixture("traced-deposit", 34), fixture("traced-deposit-info", 48)],
     ];
+    const validationTraceEntries = retainedPairs("traced-validation", 1);
+    const { pending, header, headerHash } = await buildJournalFixture({
+      utxoEntries: ledgerEntries("traced-utxo", 1),
+      depositEntries,
+      transitionTraceEntries: retainedPairs("traced-trace", 1),
+      eventToStepEntries: retainedPairs("traced-event-to-step", 1),
+    });
+    expect(header.validationTracesRoot).toBe(SDK.EMPTY_MERKLE_TREE_ROOT);
+    expect(header.validationTraceCount).toBe(0n);
+    const journal: PendingBlockFinalizationsDB.Record = {
+      ...pending,
+      [PendingBlockFinalizationsDB.Columns.EXPECTED_VALIDATION_TRACES_ROOT]:
+        await Effect.runPromise(
+          sourceRoot(SDK.ROOT_DOMAINS.validationTraces, validationTraceEntries),
+        ),
+      [PendingBlockFinalizationsDB.Columns.EXPECTED_VALIDATION_TRACE_COUNT]: 1n,
+      validationTraceMembers: validationTraceEntries.map(
+        ([key, value], index) => member(headerHash, key, value, index),
+      ),
+    };
+
+    const insert = await Effect.runPromise(
+      buildDaPayloadInsert({ record: journal }),
+    );
+    const payload = SDK.decodeDaPayload(
+      (
+        await unwrapDaPayload(insert.payload_cbor, {
+          maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+        })
+      ).innerBytes,
+    );
+    expect(payload.block_body.header).toEqual(header);
+    expect(payload.block_body.validation_traces).toHaveLength(1);
+  });
+
+  it("refuses to persist a journal whose header commits its built validation-trace pair", async () => {
+    const validationTraceEntries = retainedPairs("committed-validation", 1);
+    const builtRoot = await Effect.runPromise(
+      sourceRoot(SDK.ROOT_DOMAINS.validationTraces, validationTraceEntries),
+    );
+    const { pending, header, headerHash } = await buildJournalFixture({
+      utxoEntries: ledgerEntries("committed-utxo", 1),
+      depositEntries: [
+        [fixture("committed-deposit", 34), fixture("committed-info", 48)],
+      ],
+      transitionTraceEntries: retainedPairs("committed-trace", 1),
+      eventToStepEntries: retainedPairs("committed-event-to-step", 1),
+      rootOverrides: { validationTracesRoot: builtRoot },
+      countOverrides: { validationTraceCount: 1n },
+    });
+    expect(header.validationTracesRoot).toBe(builtRoot);
+    expect(header.validationTraceCount).toBe(1n);
+    const journal: PendingBlockFinalizationsDB.Record = {
+      ...pending,
+      validationTraceMembers: validationTraceEntries.map(
+        ([key, value], index) => member(headerHash, key, value, index),
+      ),
+    };
+
+    const result = await Effect.runPromise(
+      Effect.either(buildDaPayloadInsert({ record: journal })),
+    );
+
+    expect(result._tag).toBe("Left");
+    if (result._tag === "Left")
+      expect(String(result.left.cause)).toMatch(
+        /mismatches=header_validation_traces_root,header_validation_trace_count$/,
+      );
+  });
+
+  it("rejects a payload whose recomputed roots do not match the journal", async () => {
+    const utxoEntries = ledgerEntries("bad-utxo", 1);
     const depositEntries: readonly [Buffer, Buffer][] = [
       [fixture("bad-deposit", 34), fixture("bad-deposit-info", 48)],
     ];
@@ -563,11 +404,7 @@ describe("DaPayloadV2 builder", () => {
     });
 
     const result = await Effect.runPromise(
-      Effect.either(
-        buildDaPayloadInsert({
-          record: pending,
-        }),
-      ),
+      Effect.either(buildDaPayloadInsert({ record: pending })),
     );
 
     expect(result._tag).toBe("Left");

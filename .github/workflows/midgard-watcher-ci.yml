@@ -1,0 +1,103 @@
+name: Midgard Watcher CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+    paths:
+      - "scripts/contrib.mjs"
+      - "scripts/contrib/**"
+      - "scripts/pnpm.mjs"
+      - "scripts/bin/**"
+      - "demo/midgard-watcher/**"
+      - "demo/l1-node-transport/**"
+      - "demo/midgard-l1-follower/**"
+      - "demo/midgard-fault-proofs/**"
+      - "demo/midgard-sdk/**"
+      - "demo/midgard-core/**"
+      - "demo/midgard-validation/**"
+      - "demo/lucid-midgard/**"
+      - "demo/scripts/package-tasks.mjs"
+      - "demo/scripts/lib/vendored-imports.mjs"
+      - "demo/patches/**"
+      - "demo/.dockerignore"
+      - "demo/package.json"
+      - "demo/pnpm-lock.yaml"
+      - "demo/pnpm-workspace.yaml"
+      - "demo/.nvmrc"
+      - ".github/workflows/midgard-watcher-ci.yml"
+  pull_request:
+    paths:
+      - "scripts/contrib.mjs"
+      - "scripts/contrib/**"
+      - "scripts/pnpm.mjs"
+      - "scripts/bin/**"
+      - "demo/midgard-watcher/**"
+      - "demo/l1-node-transport/**"
+      - "demo/midgard-l1-follower/**"
+      - "demo/midgard-fault-proofs/**"
+      - "demo/midgard-sdk/**"
+      - "demo/midgard-core/**"
+      - "demo/midgard-validation/**"
+      - "demo/lucid-midgard/**"
+      - "demo/scripts/package-tasks.mjs"
+      - "demo/scripts/lib/vendored-imports.mjs"
+      - "demo/patches/**"
+      - "demo/.dockerignore"
+      - "demo/package.json"
+      - "demo/pnpm-lock.yaml"
+      - "demo/pnpm-workspace.yaml"
+      - "demo/.nvmrc"
+      - ".github/workflows/midgard-watcher-ci.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  watcher:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: "1.26.5"
+          cache-dependency-path: demo/l1-node-transport/native/go.sum
+      - name: Assert and test the pinned node transport sidecar
+        working-directory: demo/l1-node-transport/native
+        run: |
+          set -euo pipefail
+          test "$(go version | awk '{print $3}')" = "go1.26.5"
+          go mod verify
+          go vet ./...
+          go test ./...
+          CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -buildid=" -o /tmp/midgard-l1-node-transport .
+          test -x /tmp/midgard-l1-node-transport
+      # The watcher's TypeScript build, typecheck, format check and test suite
+      # run in midgard-node-ci.yml (its lint in that workflow's workspace lint
+      # job), which triggers on a superset of these paths and builds the Aiken
+      # blueprint those tests read. This job covers what that one does not:
+      # the node transport sidecar, the compose stack and the production image.
+      # The operator launch surface: the compose file must render from
+      # `.env.example` alone, like the node stacks in midgard-node-ci.yml.
+      - name: Render the watcher compose stack from .env.example
+        working-directory: demo/midgard-watcher
+        run: |
+          set -euo pipefail
+          docker compose --env-file .env.example -f compose.yaml config --quiet
+          # The watcher service runs the locally built image; any pulled image
+          # must carry a tag other than latest.
+          images="$(docker compose --env-file .env.example -f compose.yaml config --images)"
+          if grep -vE '^midgard-watcher:' <<<"$images" | grep -E ':latest$|^[^:@]+$'; then
+            echo "unpinned image in compose.yaml" >&2
+            exit 1
+          fi
+      - name: Build watcher production image
+        working-directory: demo
+        run: |
+          docker build --file midgard-watcher/Dockerfile --tag midgard-watcher:ci .
+          docker run --rm midgard-watcher:ci --help >/dev/null
