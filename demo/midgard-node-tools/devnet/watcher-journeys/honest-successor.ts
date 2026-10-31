@@ -1,7 +1,5 @@
 import { existsSync } from "node:fs";
-import { appendFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { setTimeout as pause } from "node:timers/promises";
 
 import {
   computeMidgardNativeTxId,
@@ -24,11 +22,10 @@ import type {
 } from "./fixture.js";
 import {
   assertNoHonestHeaderOnFault,
-  classifyNodeFaultHold,
   LANDED_BLOCK_INVALID,
-  type NodeFaultHold,
   readIndexedStateQueueHeader,
 } from "./honest-successor.observables.js";
+import { createNodeHoldWatch, type NodeHoldWatch } from "./node-hold-watch.js";
 
 /**
  * How a family's honest successor comes about once the fault is on L1.
@@ -84,20 +81,13 @@ export const devnetSuccessorPort = (
   close: async () => {},
 });
 
+/** The drill's transfer to our node, saved for the fault it was sent for. */
 type TransferIntent = Readonly<{
+  faultHeaderHash: string;
   txId: string;
   signedTxCbor: string;
   fee: string;
 }>;
-
-/** One `/readyz` hold observation, as `node-hold-observations.ndjson` keeps it. */
-type HoldObservation = Readonly<{
-  observedAt: string;
-  hold?: NodeFaultHold;
-  unreachable?: string;
-}>;
-
-const HOLD_OBSERVATIONS = "node-hold-observations.ndjson";
 
 /**
  * The stack successor: our own node builds it. After the fault lands the
@@ -135,29 +125,26 @@ export const stackSuccessorPort = (
     ): Promise<T>;
     /** How long our node may take to commit the transfer after the removal. */
     commitTimeoutMs: number;
+    /**
+     * Our node's hold watch, started by staging at the fault's commit; one
+     * started when the fault landed otherwise.
+     */
+    holdWatch?: NodeHoldWatch;
     holdPollIntervalMs?: number;
     fetchImpl?: typeof fetch;
   }>,
 ): JourneySuccessorPort => {
   const fetchImpl = input.fetchImpl ?? fetch;
+  const faultHeaderHash = input.fault.headerHash;
   const intentPath = join(input.directory, "successor-transfer.json");
-  const observationsPath = join(input.directory, HOLD_OBSERVATIONS);
-  const readyz = async (): Promise<HoldObservation> => {
-    const observedAt = new Date().toISOString();
-    let body: unknown;
-    try {
-      const response = await fetchImpl(`${input.nodeEndpoint}/readyz`, {
-        signal: AbortSignal.timeout(10_000),
-      });
-      body = await response.json();
-    } catch (cause) {
-      return { observedAt, unreachable: String(cause) };
-    }
-    return {
-      observedAt,
-      hold: classifyNodeFaultHold(body, input.fault.headerHash),
-    };
-  };
+  const holdWatch =
+    input.holdWatch ??
+    createNodeHoldWatch({
+      directory: input.directory,
+      nodeEndpoint: input.nodeEndpoint,
+      pollIntervalMs: input.holdPollIntervalMs,
+      fetchImpl,
+    });
   const txStatus = async (txId: string) => {
     const response = await fetchImpl(
       `${input.nodeEndpoint}/tx-status?tx_hash=${txId}`,
@@ -174,9 +161,12 @@ export const stackSuccessorPort = (
       );
     return status;
   };
+  // A transfer saved for another fault, staged by an earlier attempt, is not
+  // this fault's work.
   const savedIntent = async (): Promise<TransferIntent | undefined> => {
     if (!existsSync(intentPath)) return undefined;
     const intent = await readJourneyArtifact<TransferIntent>(intentPath);
+    if (intent.faultHeaderHash !== faultHeaderHash) return undefined;
     const decoded = decodeMidgardNativeTxFullFromCanonicalCbor(
       Buffer.from(intent.signedTxCbor, "hex"),
     );
@@ -188,43 +178,6 @@ export const stackSuccessorPort = (
         "Saved successor transfer differs from its exact transaction identity or fee",
       );
     return intent;
-  };
-  const monitor = new AbortController();
-  let monitoring: Promise<void> | undefined;
-  let monitorFailure: Error | undefined;
-  // Appends each change of our node's hold; a hold on another block, or a
-  // failure to record, stops the watch and fails the successor step.
-  const watchHold = async () => {
-    let last: string | undefined;
-    try {
-      while (!monitor.signal.aborted) {
-        const observation = await readyz();
-        const summary = JSON.stringify({
-          state: observation.hold?.state,
-          binding: observation.hold?.binding,
-          unreachable: observation.unreachable !== undefined,
-        });
-        if (summary !== last) {
-          last = summary;
-          await appendFile(
-            observationsPath,
-            `${JSON.stringify(observation)}\n`,
-          );
-        }
-        await pause(input.holdPollIntervalMs ?? 5000, undefined, {
-          signal: monitor.signal,
-        }).catch(() => undefined);
-      }
-    } catch (cause) {
-      monitorFailure =
-        cause instanceof Error
-          ? cause
-          : new Error(`Our node's hold watch failed: ${JSON.stringify(cause)}`);
-    }
-  };
-  const stopMonitor = async () => {
-    monitor.abort();
-    await monitoring;
   };
   return {
     afterFaultLanded: async () => {
@@ -246,6 +199,7 @@ export const stackSuccessorPort = (
           minFeeB: header.minFeeB,
         });
         intent = {
+          faultHeaderHash,
           txId: built.txIdHex,
           signedTxCbor: built.txHex,
           fee: built.fee.toString(),
@@ -255,11 +209,11 @@ export const stackSuccessorPort = (
       }
       if ((await txStatus(intent.txId)).status === "not_found")
         await input.ledger.submitTransfer(intent.signedTxCbor, intent.txId);
-      monitoring ??= watchHold();
+      holdWatch.start(faultHeaderHash);
     },
     commit: async () => {
-      await stopMonitor();
-      if (monitorFailure !== undefined) throw monitorFailure;
+      const failure = await holdWatch.stop();
+      if (failure !== undefined) throw failure;
       const successorPath = join(input.directory, SUCCESSOR);
       if (existsSync(successorPath))
         return await readJourneyArtifact<JourneySuccessor>(successorPath);
@@ -267,12 +221,7 @@ export const stackSuccessorPort = (
       if (intent === undefined)
         throw new Error("The drill's successor transfer was never submitted");
       // Observable 1: the hold was on the fault while it was the tail.
-      const observations = existsSync(observationsPath)
-        ? (await readFile(observationsPath, "utf8"))
-            .split("\n")
-            .filter((line) => line !== "")
-            .map((line) => JSON.parse(line) as HoldObservation)
-        : [];
+      const observations = await holdWatch.observations(faultHeaderHash);
       if (!observations.some(({ hold }) => hold?.state === "held"))
         throw new Error(
           `Our node never reported ${LANDED_BLOCK_INVALID} for the fault ${input.fault.headerHash} while it was the tail; the refusal was not observed`,
@@ -349,7 +298,7 @@ export const stackSuccessorPort = (
         fetchImpl,
       );
       // Observable 3: the hold cleared once our node built past the fault.
-      const after = await readyz();
+      const after = await holdWatch.read(faultHeaderHash);
       if (after.hold === undefined || after.hold.state !== "not_held")
         throw new Error(
           `Our node still holds the fault after its successor: ${JSON.stringify(after)}`,
@@ -373,6 +322,8 @@ export const stackSuccessorPort = (
       await writeJourneyArtifact(successorPath, successor);
       return successor;
     },
-    close: stopMonitor,
+    close: async () => {
+      await holdWatch.stop();
+    },
   };
 };

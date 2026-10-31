@@ -13,10 +13,6 @@ import {
   PublishedTransactionExpiredError,
   PublishedTransactionSubmissionError,
 } from "midgard-watcher/tests/support/published-block-actor";
-import {
-  type PublishedDepositTraceCheckpoint,
-  stagePublishedDepositTrace,
-} from "midgard-watcher/tests/support/published-deposit-trace";
 
 import { readJourneyArtifact, writeJourneyArtifact } from "./artifacts.js";
 import type {
@@ -26,17 +22,8 @@ import type {
   StagedJourney,
 } from "./fixture.js";
 import { journeyBlockBuilder } from "./journey-ledger.js";
-import { journeyDaSignerConfig } from "./journey-network.js";
 import { readKupoUnitConsumptions } from "./kupo-consumption.js";
-import { JOURNEY_ACTION_DEPTH } from "./live-context.js";
 import { reconcileSignedCommit } from "./signed-commit-reconciliation.js";
-import {
-  isStackJourneyContext,
-  stackDaExpectation,
-  type StackDaOutcome,
-} from "./stack-da-publication.js";
-import { stackJourneyDa } from "./stack-journey-da.js";
-import { fundStackLedgerOwner } from "./stack-ledger-owner.js";
 import {
   classifyStagedCheckpoint,
   supersededCheckpointArchivePath,
@@ -48,6 +35,7 @@ import {
   type JourneyFaultPreparationInput,
   type StagingCheckpoint,
 } from "./staging.decode-journey-retained-block.js";
+import { journeyDaPath } from "./staging.journey-da-path.js";
 import { buildJourneyTransactionControl } from "./transaction-cases.js";
 
 export async function stageJourney(
@@ -59,6 +47,7 @@ export async function stageJourney(
     readConfirmedTransaction,
     onHealthyPredecessor,
     readSignedCommitRecovery,
+    onFaultCommitted,
     onStage,
   }: JourneyFixtureStage,
   task: FaultPreparation,
@@ -74,19 +63,13 @@ export async function stageJourney(
   // as operator-2's node would, and its faults spend the outputs of the
   // drill's own L2 ledger owner. A devnet journey signs as its committee and
   // spends its operator's outputs.
-  const mode = isStackJourneyContext(context)
-    ? {
-        kind: "stack" as const,
-        da: stackJourneyDa(context, { readConfirmedTransaction, onStage }),
-        context,
-        ledgerOwnerSeedPhrase: context.accounts.ledgerOwner.seedPhrase,
-      }
-    : {
-        kind: "devnet" as const,
-        deployment: context.deployment,
-        daSignerConfig: journeyDaSignerConfig(context.accounts),
-        ledgerOwnerSeedPhrase: context.accounts.operator.seedPhrase,
-      };
+  const daPath = journeyDaPath({
+    context,
+    directory,
+    retain,
+    readConfirmedTransaction,
+    onStage,
+  });
   const headerUnit = (hash: string) =>
     toUnit(
       contracts.stateQueue.policyId,
@@ -262,11 +245,7 @@ export async function stageJourney(
     createPublishedWatcherBlockActor({
       deployment,
       lucid,
-      ...(mode.kind === "devnet"
-        ? { daSignerConfig: mode.daSignerConfig }
-        : // Operator-2 shares the scheduler with our node; its commits fit
-          // in the shift that covers the block interval staged below.
-          { sharedScheduler: { coverMs: 60_000 } }),
+      ...daPath.actorOptions,
       readConfirmedTransaction,
       readHeaderConsumptions,
       onStage,
@@ -274,51 +253,11 @@ export async function stageJourney(
   // On an attached stack the drill signs as operator-2 in operator-2's own
   // shift, where our node cannot commit, so the tail it reads stays the tail.
   const stackActor =
-    mode.kind === "stack" ? await blockActor(deployment.operatorLucid) : null;
+    daPath.kind === "stack" ? await blockActor(deployment.operatorLucid) : null;
 
-  let predecessor: JourneySuccessor;
-  if (resume !== undefined) predecessor = resume.predecessor;
-  else if (mode.kind === "stack") {
-    const { da } = mode;
-    await fundStackLedgerOwner(mode.context, {
-      readAttestedTail: async () => decodeRetained(await da.readAttestedTail()),
-      onStage,
-    });
-    await stackActor!.onboardOperator();
-    predecessor = await mode.da.readAttestedTail();
-  } else if (existsSync(headPath)) {
-    const head = await readJourneyArtifact<{
-      deploymentFingerprint: string;
-      block: JourneySuccessor;
-    }>(headPath);
-    if (head.deploymentFingerprint !== fingerprint)
-      throw new Error("Journey head belongs to a different deployment");
-    predecessor = head.block;
-    // Preparation can already have appended journaled history before a stop.
-    // Its checkpoint restores that tail; every new commit verifies the live
-    // tail immediately before constructing its inputs below.
-  } else {
-    const initialPath = join(directory, "honest-deposit.json");
-    const initial = await stagePublishedDepositTrace(mode.deployment, {
-      daSignerConfig: mode.daSignerConfig,
-      honest: true,
-      onStage,
-      resume: existsSync(initialPath)
-        ? await readJourneyArtifact<PublishedDepositTraceCheckpoint>(
-            initialPath,
-          )
-        : undefined,
-      onCheckpoint: (checkpoint) =>
-        writeJourneyArtifact(initialPath, checkpoint),
-      timeoutCorrectionJournalPath: join(directory, "timeout-correction.json"),
-      // The watcher observes the queue at its action depth, so the abandoned
-      // header removal only has to be that deep before the watcher starts.
-      finalityDepth: JOURNEY_ACTION_DEPTH,
-    });
-    await retain(initial.predecessor, initial.commits[0]!);
-    await retain(initial.current, initial.commits[1]!);
-    predecessor = { ...initial.current, commitTxHash: initial.commits[1]! };
-  }
+  let predecessor: JourneySuccessor =
+    resume?.predecessor ??
+    (await daPath.resolvePredecessor({ stackActor, decodeRetained }));
   await retain(predecessor, predecessor.commitTxHash);
   await onHealthyPredecessor?.(predecessor.headerHash);
   let retainedPredecessor = await decodeRetained(predecessor);
@@ -374,7 +313,7 @@ export async function stageJourney(
           deploymentFingerprint: fingerprint,
           block: await build({
             predecessor: retainedPredecessor,
-            ledgerOwnerSeedPhrase: mode.ledgerOwnerSeedPhrase,
+            ledgerOwnerSeedPhrase: daPath.ledgerOwnerSeedPhrase,
             operatorVkey: maliciousKey,
             endTime,
             blockSlot: BigInt(maliciousLucid.unixTimeToSlot(Number(endTime))),
@@ -408,7 +347,7 @@ export async function stageJourney(
               const endTime = BigInt(chain.now() + 59_999);
               history.block = await build({
                 predecessor: retainedPredecessor,
-                ledgerOwnerSeedPhrase: mode.ledgerOwnerSeedPhrase,
+                ledgerOwnerSeedPhrase: daPath.ledgerOwnerSeedPhrase,
                 operatorVkey: maliciousKey,
                 endTime,
                 blockSlot: BigInt(
@@ -442,7 +381,7 @@ export async function stageJourney(
               const endTime = BigInt(chain.now() + 59_999);
               history.block = await build({
                 predecessor: retainedPredecessor,
-                ledgerOwnerSeedPhrase: mode.ledgerOwnerSeedPhrase,
+                ledgerOwnerSeedPhrase: daPath.ledgerOwnerSeedPhrase,
                 operatorVkey: maliciousKey,
                 endTime,
                 blockSlot: BigInt(
@@ -456,18 +395,10 @@ export async function stageJourney(
         await writeJourneyArtifact(historyPath, history);
       }
       await retain(history.block, history.commitTxHash);
-      const historyAttested =
-        mode.kind === "stack"
-          ? await mode.da.publish(history.block, "attestation", [
-              historyPath,
-              checkpointPath,
-            ])
-          : await actor.attest({
-              ...history.block,
-              payloadEnvelopeCbor: Buffer.from(
-                history.block.payloadEnvelopeCbor,
-              ),
-            });
+      const historyAttested = await daPath.attestHistory(actor, history.block, [
+        historyPath,
+        checkpointPath,
+      ]);
       if (historyAttested.kind !== "attested")
         throw new Error(
           `History block ${history.block.headerHash} was corrected by ${historyAttested.removalTxHash} before its DA attestation applied`,
@@ -499,7 +430,7 @@ export async function stageJourney(
     readSignedCommitRecovery,
     onStage,
     predecessor: retainedPredecessor,
-    ledgerOwnerSeedPhrase: mode.ledgerOwnerSeedPhrase,
+    ledgerOwnerSeedPhrase: daPath.ledgerOwnerSeedPhrase,
     commitHistoryBlock,
   };
   const prepared = await task.prepare(preparationInput);
@@ -514,7 +445,7 @@ export async function stageJourney(
     const faultEndTime = BigInt(chain.now() + 59_999);
     return prepared.buildFault({
       predecessor: retainedPredecessor,
-      ledgerOwnerSeedPhrase: mode.ledgerOwnerSeedPhrase,
+      ledgerOwnerSeedPhrase: daPath.ledgerOwnerSeedPhrase,
       operatorVkey: maliciousKey,
       endTime: faultEndTime,
       blockSlot: BigInt(maliciousLucid.unixTimeToSlot(Number(faultEndTime))),
@@ -596,6 +527,7 @@ export async function stageJourney(
     await writeJourneyArtifact(checkpointPath, checkpoint);
   }
   await retain(current, checkpoint.commitTxHash);
+  await onFaultCommitted?.(current);
   // The running watcher races this attestation: its fraud proof can consume
   // the target between any two lookups, including after DA transactions were
   // submitted. The actor finishes through the authenticated correction of the
@@ -603,43 +535,26 @@ export async function stageJourney(
   // transaction it signed is persisted before submission so a resumed run
   // reconciles the same set rather than rebonding or forgetting it.
   // A saved correction is provenance, not authority after a possible rollback.
-  const target: StackDaOutcome =
-    mode.kind === "stack"
-      ? await mode.da.publish(current, stackDaExpectation(task.category), [
-          checkpointPath,
-        ])
-      : await actor.attest(
-          {
-            ...current,
-            payloadEnvelopeCbor: Buffer.from(current.payloadEnvelopeCbor),
-          },
-          {
-            submitted: checkpoint.daTransactions ?? [],
-            reconcileSubmitted: async (record) => ({
-              kind:
-                (await reconcileCommit(
-                  maliciousLucid,
-                  `DA ${record.step}`,
-                  record,
-                )) === undefined
-                  ? "retired"
-                  : "included",
-            }),
-            onSubmitted: async (record) => {
-              checkpoint.daTransactions = [
-                ...(checkpoint.daTransactions ?? []),
-                record,
-              ];
-              await writeJourneyArtifact(checkpointPath, checkpoint);
-            },
-          },
-        );
+  const target = await daPath.settleFault({
+    actor,
+    block: current,
+    category: task.category,
+    checkpoint,
+    checkpointPath,
+    reconcileSubmitted: async (record) => ({
+      kind:
+        (await reconcileCommit(maliciousLucid, `DA ${record.step}`, record)) ===
+        undefined
+          ? "retired"
+          : "included",
+    }),
+  });
   if (target.kind !== "attested") {
     checkpoint.target = target;
     await writeJourneyArtifact(checkpointPath, checkpoint);
     onStage(
-      target.kind === "agedOut"
-        ? `fault ${current.headerHash} refused by the DA committee and removed unattested by ${target.removalTxHash}`
+      target.kind === "refused"
+        ? `fault ${current.headerHash} refused by the DA committee: ${Object.keys(target.delivery.peers).length.toString()} peer(s) took it, none attested by its deadline`
         : `fault ${current.headerHash} corrected by ${target.removalTxHash} before DA apply; ${target.submittedDaTransactions.length.toString()} submitted DA transaction(s) reconciled`,
     );
   } else if (checkpoint.target !== undefined) {
@@ -652,7 +567,7 @@ export async function stageJourney(
     current,
     target,
     async commitHonestSuccessor({ beforeCommit }) {
-      if (mode.kind === "stack")
+      if (daPath.kind === "stack")
         throw new Error(
           "On an attached stack its own node commits the honest successor",
         );
@@ -697,7 +612,7 @@ export async function stageJourney(
         const endTime = BigInt(chain.now() + 59_999);
         const successorInput: JourneyFaultBuildInput = {
           predecessor: successorRetainedPredecessor,
-          ledgerOwnerSeedPhrase: mode.ledgerOwnerSeedPhrase,
+          ledgerOwnerSeedPhrase: daPath.ledgerOwnerSeedPhrase,
           operatorVkey: successorActor.operatorVkey,
           endTime,
           blockSlot: BigInt(successorLucid.unixTimeToSlot(Number(endTime))),

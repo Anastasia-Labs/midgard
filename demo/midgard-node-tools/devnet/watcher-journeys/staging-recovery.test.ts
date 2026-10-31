@@ -5,7 +5,6 @@ import { join } from "node:path";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
-  Data,
   Emulator,
   generateEmulatorAccount,
   Lucid,
@@ -35,6 +34,7 @@ import {
   type JourneyFaultPreparationInput,
 } from "./staging.js";
 import { buildRecoveryStageBlocks } from "./staging-recovery.funded-block.test-support.js";
+import { stateQueueOutputs } from "./staging-recovery.queue-output.test-support.js";
 import { signedAttempt } from "./staging-recovery.signed-attempt.test-support.js";
 
 const actorFactory = vi.hoisted(() => vi.fn());
@@ -77,30 +77,10 @@ const openStage = async (funded = false) => {
   });
   const policyId = "ab".repeat(28);
   const commitTxHash = "22".repeat(32);
-  const unit = (headerHash: string) =>
-    toUnit(policyId, SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + headerHash);
-  const queueOutput = (
-    block: JourneyBlock,
-    daAttestation: SDK.StateQueueNode["da_attestation"],
-    txHash = commitTxHash,
-  ): UTxO => ({
-    txHash,
-    outputIndex: 0,
+  const { unit, queueOutput } = stateQueueOutputs({
+    policyId,
     address: account.address,
-    assets: { lovelace: 5_000_000n, [unit(block.headerHash)]: 1n },
-    datum: SDK.encodeLinkedListNodeView({
-      key: { Key: { key: block.headerHash } },
-      next: "Empty",
-      data: Data.castTo(
-        {
-          proven_fraud: null,
-          header: block.header,
-          block_time: block.header.endTime,
-          da_attestation: daAttestation,
-        },
-        SDK.StateQueueNode,
-      ),
-    }),
+    commitTxHash,
   });
   const attested = { Attested: { commitment_hash: "cd".repeat(32) } };
   const removalTxHash = "55".repeat(32);
@@ -263,6 +243,8 @@ const openStage = async (funded = false) => {
     | "pending"
     | "unreadable" = "expired";
   const recoveryReads = vi.fn();
+  // What staging had done each time it reported the fault committed.
+  const faultCommits: string[][] = [];
   const stageInput = (
     onHealthyPredecessor?: JourneyFixtureStage["onHealthyPredecessor"],
   ): JourneyFixtureStage => ({
@@ -271,6 +253,10 @@ const openStage = async (funded = false) => {
     directory,
     retain,
     onHealthyPredecessor,
+    onFaultCommitted: (fault) => {
+      if (fault.headerHash === current.headerHash)
+        faultCommits.push([...actions]);
+    },
     onStage,
     readSignedCommitRecovery: async (attempt) => {
       recoveryReads(attempt);
@@ -316,6 +302,7 @@ const openStage = async (funded = false) => {
     pinWallet: vi.spyOn(lucid, "overrideUTxOs"),
     pinSuccessorWallet: vi.spyOn(publisherLucid, "overrideUTxOs"),
     actions,
+    faultCommits,
     emulator,
     onStage,
     setRecoveryStatus: (status: typeof recoveryStatus) => {
@@ -472,6 +459,13 @@ it("onboards an unsigned uncommitted target before committing and attesting it",
     ...fixture.checkpoint,
     daTransactions: [fixture.initRecord],
   });
+  // Our node's hold watch starts at the fault's commit, before its DA, and
+  // again on resume.
+  await fixture.stage();
+  expect(fixture.faultCommits).toEqual([
+    ["onboard", "commit"],
+    ["onboard", "commit", "da-init", "da-apply"],
+  ]);
 });
 
 it.each([true, false])(

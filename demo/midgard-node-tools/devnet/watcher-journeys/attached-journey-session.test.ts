@@ -156,7 +156,7 @@ describe("attached journey session", () => {
       [
         {
           composeProject: "midgard-node-op2",
-          endpoint: "http://127.0.0.1:3000/",
+          endpoint: `${stack.context.stackConfig.endpoint}/`,
         },
         /endpoint is this stack's own node endpoint/u,
       ],

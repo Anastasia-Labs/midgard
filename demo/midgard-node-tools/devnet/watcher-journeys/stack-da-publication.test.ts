@@ -1,8 +1,3 @@
-import { existsSync } from "node:fs";
-import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
 import {
   type DaPayloadSubmitStatus,
   decodeDaPayloadSubmitRequestCbor,
@@ -11,39 +6,33 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import type { DaProducerTransport } from "midgard-node/da/libp2p-producer";
 import {
-  manifestFixture,
   parseManifestFixture,
   PEER_A,
   PEER_B,
 } from "midgard-node/tests/da-payload-libp2p-producer.manifest-fixture";
 import {
-  fraudProofPolicyId,
   header,
   headerHash,
-  nodeOutput,
-  scenario,
-  stateQueueAddress,
-  stateQueuePolicyId,
-  transaction,
 } from "midgard-watcher/tests/published-da-target-consumption.scenario";
-import { NativeTransactionNotIncludedError } from "midgard-watcher/tests/support/published-da-target-consumption";
 import { describe, expect, it } from "vitest";
 
 import type { JourneyBlock } from "./fixture.js";
+import { stackDaProducerPublisher } from "./stack-da-producer.js";
 import {
-  classifyStackDaRemoval,
+  awaitStackDaAgedOut,
   publishStackDaPayload,
-  readStackDaProducerManifest,
   type StackDaAgedOut,
+  type StackDaDelivery,
   type StackDaExpectation,
   StackDaPayloadAgedOutError,
-  stackDaProducerPublisher,
+  StackDaRefusalNotObserved,
   type StackDaTarget,
 } from "./stack-da-publication.js";
-import { archiveAgedOutCheckpoints } from "./stack-journey-da.js";
 
 const TIMEOUT_MS = SDK.DA_ATTESTATION_TIMEOUT_MS;
 const BLOCK_TIME = 1_000_000n;
+const DEADLINE = Number(BLOCK_TIME + TIMEOUT_MS);
+const THRESHOLD = parseManifestFixture().threshold;
 
 const block: JourneyBlock = {
   header,
@@ -108,12 +97,16 @@ const stack = (
   removal: () => Promise<StackDaAgedOut> = async () => {
     throw new Error("no removal expected");
   },
+  options: { startAt?: number; savedDelivery?: StackDaDelivery } = {},
 ) => {
-  let clock = Number(BLOCK_TIME);
+  let clock = options.startAt ?? Number(BLOCK_TIME);
   let poll = 0;
   const stages: string[] = [];
+  const saved: StackDaDelivery[] = [];
   return {
     stages,
+    saved,
+    now: () => clock,
     ports: (publish: ReturnType<typeof committee>["publish"]) => ({
       readTarget: async () =>
         typeof states === "function"
@@ -126,6 +119,13 @@ const stack = (
         clock += 60_000;
       },
       attestationTimeoutMs: TIMEOUT_MS,
+      committeeThreshold: THRESHOLD,
+      delivery: {
+        saved: options.savedDelivery,
+        save: async (delivery: StackDaDelivery) => {
+          saved.push(delivery);
+        },
+      },
       onStage: (name: string) => stages.push(name),
     }),
   };
@@ -148,9 +148,10 @@ const publishAs = (
   answers: readonly Record<string, CommitteeAnswer>[],
   states: Parameters<typeof stack>[0],
   removal?: () => Promise<StackDaAgedOut>,
+  options?: Parameters<typeof stack>[2],
 ) => {
   const reached = committee(answers);
-  const l1 = stack(states, removal);
+  const l1 = stack(states, removal, options);
   return {
     reached,
     l1,
@@ -197,7 +198,33 @@ describe("producer-path DA publication on an attached stack", () => {
     ).toHaveLength(2);
   });
 
-  it("asserts the refusal of a payload the committee must refuse, and the block's removal at its timeout", async () => {
+  it("observes the refusal of a payload the committee accepts at submit and never attests, once its attestation deadline passes", async () => {
+    // The honest committee's handler takes canonicalDecodability and
+    // l2TxMistag payloads at submit and withholds its signature.
+    const { reached, l1, outcome } = publishAs(
+      "refusal",
+      [{}],
+      () => unattested,
+    );
+    await expect(outcome).resolves.toEqual({
+      kind: "refused",
+      headerHash,
+      attestationDeadlineMs: DEADLINE,
+      delivery: {
+        threshold: THRESHOLD,
+        peers: { [PEER_A]: "accepted", [PEER_B]: "accepted" },
+      },
+    });
+    expect(reached.rounds()).toBe(1);
+    expect(l1.now()).toBeGreaterThanOrEqual(DEADLINE);
+    expect(l1.now()).toBeLessThan(DEADLINE + 60_000);
+    expect(l1.saved.at(-1)?.peers).toEqual({
+      [PEER_A]: "accepted",
+      [PEER_B]: "accepted",
+    });
+  });
+
+  it("observes the refusal of a payload the committee rejects at submit, before the block ages out", async () => {
     const refused = {
       status: "rejected",
       reasonCode: "malformed_transaction",
@@ -205,14 +232,77 @@ describe("producer-path DA publication on an attached stack", () => {
     const { reached, l1, outcome } = publishAs(
       "refusal",
       [{ [PEER_A]: refused, [PEER_B]: refused }],
-      [unattested, unattested, { kind: "absent" }],
-      async () => agedOut,
+      () => unattested,
     );
-    await expect(outcome).resolves.toEqual(agedOut);
+    await expect(outcome).resolves.toMatchObject({
+      kind: "refused",
+      delivery: {
+        peers: {
+          [PEER_A]: expect.stringContaining("malformed_transaction"),
+          [PEER_B]: expect.stringContaining("malformed_transaction"),
+        },
+      },
+    });
     expect(reached.rounds()).toBe(1);
     expect(
       l1.stages.some((stage) => stage.includes("malformed_transaction")),
     ).toBe(true);
+  });
+
+  it("refuses to call it a refusal when no committee peer could be reached before the deadline", async () => {
+    const { reached, outcome } = publishAs(
+      "refusal",
+      [{ [PEER_A]: "unreachable", [PEER_B]: "unreachable" }],
+      (now) => (now < DEADLINE + 5 * 60_000 ? unattested : { kind: "absent" }),
+      async () => agedOut,
+    );
+    await expect(outcome).rejects.toThrow(StackDaRefusalNotObserved);
+    await expect(outcome).rejects.toThrow(/committee unreachable/u);
+    expect(reached.rounds()).toBe(Number(TIMEOUT_MS / 60_000n));
+  });
+
+  it("refuses to call it a refusal when fewer than the threshold of peers took the payload", async () => {
+    const { outcome } = publishAs(
+      "refusal",
+      [{ [PEER_B]: "unreachable" }],
+      () => unattested,
+    );
+    await expect(outcome).rejects.toThrow(StackDaRefusalNotObserved);
+    await expect(outcome).rejects.toThrow(/committee never received payload/u);
+  });
+
+  it("refuses a refused block that aged out before enough peers took its payload", async () => {
+    await expect(
+      publishAs(
+        "refusal",
+        [{ [PEER_A]: "unreachable", [PEER_B]: "unreachable" }],
+        [{ kind: "absent" }],
+        async () => agedOut,
+      ).outcome,
+    ).rejects.toThrow(/committee unreachable/u);
+  });
+
+  it("counts a delivery saved before a restart, and keeps the removal it finds", async () => {
+    const savedDelivery = {
+      threshold: THRESHOLD,
+      peers: { [PEER_A]: "accepted", [PEER_B]: "duplicate" },
+    };
+    const { reached, outcome } = publishAs(
+      "refusal",
+      [{ [PEER_A]: "unreachable", [PEER_B]: "unreachable" }],
+      [{ kind: "absent" }],
+      async () => agedOut,
+      { startAt: DEADLINE + 120_000, savedDelivery },
+    );
+    await expect(outcome).resolves.toEqual({
+      kind: "refused",
+      headerHash,
+      // The removed node's block time is the header's end time.
+      attestationDeadlineMs: Number(header.endTime + TIMEOUT_MS),
+      delivery: savedDelivery,
+      removal: agedOut,
+    });
+    expect(reached.rounds()).toBe(0);
   });
 
   it("fails a refusal drill whose payload the committee attests", async () => {
@@ -268,7 +358,7 @@ describe("producer-path DA publication on an attached stack", () => {
     const bound = Number(BLOCK_TIME + 2n * TIMEOUT_MS);
     await expect(
       publishAs(
-        "refusal",
+        "attestation",
         [{}],
         (now) => (now <= bound + 60_000 ? unattested : { kind: "absent" }),
         async () => agedOut,
@@ -277,165 +367,44 @@ describe("producer-path DA publication on an attached stack", () => {
   });
 });
 
-/** A commit that created the unattested node and a removal that burned it. */
-const removalScenario = (removal: { validFromSlot?: bigint }) => {
-  const creating = transaction({ outputs: [nodeOutput()] });
-  const removing = transaction({
-    inputs: [{ txHash: creating.txHash, outputIndex: 0 }],
-    burn: -1n,
-    ...removal,
-  });
-  const chain = new Map([
-    [creating.txHash, creating.tx.to_cbor_hex()],
-    [removing.txHash, removing.tx.to_cbor_hex()],
-  ]);
-  return {
-    removalTxHash: removing.txHash,
-    input: {
-      headerHash,
-      stateQueueAddress,
-      stateQueuePolicyId,
-      fraudProofPolicyId,
-      consumptions: [
-        {
-          txHash: creating.txHash,
-          outputIndex: 0,
-          spentByTxHash: removing.txHash,
-          spentAtSlot: 50,
-        },
-      ],
-      readConfirmedTransaction: async (txHash: string) => {
-        const cbor = chain.get(txHash);
-        if (cbor === undefined)
-          throw new NativeTransactionNotIncludedError(txHash);
-        return { cbor };
-      },
-      // One-second slots from time zero.
-      slotToUnixTime: (slot: number) => slot * 1_000,
-      attestationTimeoutMs: TIMEOUT_MS,
-    },
-  };
-};
-
-describe("an attached stack's removal of a published block", () => {
-  // The node's block time is its header's end time.
-  const timeoutSlot = (header.endTime + TIMEOUT_MS + 999n) / 1_000n;
-
-  it("is the block ageing out when it removed the unattested node no earlier than its attestation timeout", async () => {
-    const { input, removalTxHash } = removalScenario({
-      validFromSlot: timeoutSlot,
-    });
-    await expect(classifyStackDaRemoval(input)).resolves.toEqual({
-      kind: "agedOut",
-      headerHash,
-      removalTxHash,
-      removedStateQueueOutRef: `${input.consumptions[0]!.txHash}#0`,
-    });
-  });
-
-  it.each([
-    ["before the timeout", { validFromSlot: timeoutSlot - 1n }],
-    ["with no validity lower bound", {}],
-  ])("refuses a removal without a fraud proof %s", async (_, removal) => {
-    await expect(
-      classifyStackDaRemoval(removalScenario(removal).input),
-    ).rejects.toThrow(
-      /neither its fraud correction nor its attestation timeout/u,
-    );
-  });
-
-  it("is the fault's correction when the removal references its fraud proof", async () => {
-    const { input, removal, proof } = scenario();
-    await expect(
-      classifyStackDaRemoval({
-        ...input,
-        slotToUnixTime: (slot: number) => slot * 1_000,
-        attestationTimeoutMs: TIMEOUT_MS,
-      }),
-    ).resolves.toMatchObject({
-      kind: "corrected",
-      removalTxHash: removal.txHash,
-      fraudProofOutRef: `${proof.txHash}#0`,
-    });
-  });
-});
-
-describe("the drill's producer identity", () => {
-  const OPERATOR_KEY = `seed:${"00".repeat(31)}02`;
-  const OUR_KEY = `seed:${"00".repeat(31)}01`;
-  const withManifest = async (
-    test: (manifestPath: string) => Promise<void>,
+describe("a refused block's removal on an attached stack", () => {
+  const follow = (
+    states: Parameters<typeof stack>[0],
+    removal: () => Promise<StackDaAgedOut>,
   ) => {
-    const directory = await mkdtemp(join(tmpdir(), "stack-da-producer-"));
-    try {
-      const manifestPath = join(directory, "producer-host.json");
-      await writeFile(manifestPath, JSON.stringify(manifestFixture()));
-      await test(manifestPath);
-    } finally {
-      await rm(directory, { recursive: true, force: true });
-    }
+    const l1 = stack(states, removal, { startAt: DEADLINE });
+    return awaitStackDaAgedOut(
+      headerHash,
+      DEADLINE,
+      l1.ports(async () => {
+        throw new Error("a removal wait publishes nothing");
+      }),
+    );
   };
 
-  it("publishes to the stack's committee peers as operator-2", async () => {
-    await withManifest(async (manifestPath) => {
-      const manifest = await readStackDaProducerManifest({
-        manifestPath,
-        operatorKey: { name: "OPERATOR2_KEY", source: OPERATOR_KEY },
-        honestProducerKey: { name: "OUR_KEY", source: OUR_KEY },
-      });
-      expect(manifest.localPrivateKeySource).toBe(OPERATOR_KEY);
-      expect(manifest.committeePeers.map(({ peerId }) => peerId)).toEqual([
-        PEER_A,
-        PEER_B,
-      ]);
-    });
+  it("is its authenticated timeout removal", async () => {
+    await expect(
+      follow([unattested, unattested, { kind: "absent" }], async () => agedOut),
+    ).resolves.toEqual(agedOut);
   });
 
-  it("refuses our node's own producer identity, and a malformed key, by name only", async () => {
-    await withManifest(async (manifestPath) => {
-      await expect(
-        readStackDaProducerManifest({
-          manifestPath,
-          operatorKey: { name: "OPERATOR2_KEY", source: OUR_KEY },
-          honestProducerKey: { name: "OUR_KEY", source: OUR_KEY },
-        }),
-      ).rejects.toThrow(
-        /OPERATOR2_KEY is our node's own DA producer identity/u,
-      );
-      const malformed = "seed:not-a-secret-value";
-      const refusal = readStackDaProducerManifest({
-        manifestPath,
-        operatorKey: { name: "OPERATOR2_KEY", source: malformed },
-        honestProducerKey: { name: "OUR_KEY", source: OUR_KEY },
-      });
-      await expect(refusal).rejects.toThrow(
-        "OPERATOR2_KEY is not a libp2p private key source",
-      );
-      await expect(refusal).rejects.not.toThrow(/not-a-secret-value/u);
-    });
+  it("fails when the committee attests it after all", async () => {
+    await expect(
+      follow([unattested, attested], async () => agedOut),
+    ).rejects.toThrow(/attested header .* must refuse/u);
+  });
+
+  it("fails when it outlives its deadline by another attestation timeout", async () => {
+    await expect(
+      follow(
+        (now) =>
+          now <= DEADLINE + Number(TIMEOUT_MS) + 60_000
+            ? unattested
+            : { kind: "absent" },
+        async () => agedOut,
+      ),
+    ).rejects.toThrow(/was not removed within an attestation timeout/u);
   });
 });
 
-it("keeps an aged-out block's checkpoints aside instead of discarding them", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "stack-da-aged-out-"));
-  try {
-    const staged = join(directory, "staged.json");
-    const history = join(directory, "history-deposit.json");
-    await writeFile(staged, '{"staged":true}');
-    await writeFile(history, '{"history":true}');
-    const stages: string[] = [];
-    archiveAgedOutCheckpoints(
-      [history, staged, join(directory, "never-written.json")],
-      new Date("2026-10-29T12:00:00.000Z"),
-      (name) => stages.push(name),
-    );
-    expect(existsSync(staged) || existsSync(history)).toBe(false);
-    expect((await readdir(join(directory, "archive"))).sort()).toEqual([
-      "history-deposit-aged-out-2026-10-29T12-00-00-000Z.json",
-      "staged-aged-out-2026-10-29T12-00-00-000Z.json",
-    ]);
-    expect(stages).toHaveLength(2);
-  } finally {
-    await rm(directory, { recursive: true, force: true });
-  }
-});
+/** A commit that created the unattested node and a removal that burned it. */

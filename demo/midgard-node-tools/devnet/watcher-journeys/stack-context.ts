@@ -52,7 +52,7 @@ import { journeyWorkflowChain } from "./live-context.js";
 import {
   readStackDaProducerManifest,
   stackDaProducerManifestPath,
-} from "./stack-da-publication.js";
+} from "./stack-da-producer.js";
 import { readStackShelleyGenesisText } from "./stack-genesis.js";
 
 /**

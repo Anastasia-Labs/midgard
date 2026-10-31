@@ -12,6 +12,7 @@ import type {
   JourneyTiming,
   ReadJourneyTimingOptions,
 } from "./journey-timing.journey-timing-for-plan.js";
+import type { StackDaRefused } from "./stack-da-publication.js";
 import type { JourneyChainTransactions } from "./stack-transactions.js";
 
 /** The runner's bounded waits, shared by both modes. */
@@ -84,4 +85,16 @@ export type JourneyRunMode = Readonly<{
       polls: JourneyRunPolls;
     }>,
   ): JourneySuccessorPort;
+  /**
+   * Ends a fault the committee refused: our node held it awaiting its DA,
+   * and it aged out unattested. Only an attached stack's own committee
+   * refuses a payload; a devnet journey signs as its committee.
+   */
+  refusal?(
+    input: Readonly<{
+      fault: JourneyBlock;
+      refused: StackDaRefused;
+      polls: JourneyRunPolls;
+    }>,
+  ): Promise<unknown>;
 }>;

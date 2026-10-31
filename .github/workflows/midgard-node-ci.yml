@@ -1296,6 +1296,7 @@ jobs:
             watcher-journeys/signed-commit-reconciliation.test.ts \
             watcher-journeys/signed-transaction-recovery.test.ts \
             watcher-journeys/stack-context.test.ts \
+            watcher-journeys/stack-da-producer.test.ts \
             watcher-journeys/stack-da-publication.test.ts \
             watcher-journeys/stack-ledger-owner.test.ts \
             watcher-journeys/stack-replayed-ledger.test.ts \

@@ -32,6 +32,7 @@ import {
   policyId,
   serve,
 } from "./honest-successor.test-support.js";
+import { createNodeHoldWatch } from "./node-hold-watch.js";
 
 const directories: string[] = [];
 afterAll(() =>
@@ -92,8 +93,12 @@ const stackDrill = async () => {
     },
   };
   const envelopes = new Map<string, Buffer>();
-  const port = () =>
+  /** Our node's hold watch, as the drill starts it at the fault's commit. */
+  const holdWatch = () =>
+    createNodeHoldWatch({ directory, nodeEndpoint, pollIntervalMs: 5 });
+  const port = (watch?: ReturnType<typeof holdWatch>) =>
     stackSuccessorPort({
+      ...(watch === undefined ? {} : { holdWatch: watch }),
       directory,
       nodeEndpoint,
       ledger,
@@ -181,6 +186,7 @@ const stackDrill = async () => {
     indexed,
     sent,
     port,
+    holdWatch,
     commits,
     observedHold,
   };
@@ -221,6 +227,70 @@ describe("stack successor", () => {
     await resumed.afterFaultLanded();
     expect(drill.sent).toHaveLength(1);
     expect((await resumed.commit()).headerHash).toBe(ours.headerHash);
+  });
+
+  it("sees our node's hold from the fault's commit, though the watcher corrected the fault before staging ended", async () => {
+    const drill = await stackDrill();
+    const watch = drill.holdWatch();
+    watch.start(drill.fault.headerHash);
+    drill.node.readyz = faultHold(drill.fault.headerHash);
+    await drill.observedHold();
+    // Corrected before the runner gives our node work: the hold is gone.
+    drill.node.readyz = { ready: true, reasons: [] };
+    const port = drill.port(watch);
+    await port.afterFaultLanded();
+    const ours = await headerOn(
+      drill.predecessor.headerHash,
+      honestOperator,
+      3n,
+    );
+    await drill.commits(ours, [drill.sent[0]!.txId]);
+    await expect(port.commit()).resolves.toMatchObject({
+      headerHash: ours.headerHash,
+    });
+  });
+
+  it("ignores hold observations and a saved transfer of another fault", async () => {
+    const drill = await stackDrill();
+    const other = await headerOn(drill.predecessor.headerHash, operator2, 9n);
+    const observedAt = new Date().toISOString();
+    await writeFile(
+      join(drill.directory, "node-hold-observations.ndjson"),
+      [
+        {
+          faultHeaderHash: other.headerHash,
+          observedAt,
+          hold: { state: "held", binding: "header", reasons: [] },
+        },
+        {
+          observedAt,
+          hold: { state: "held", binding: "reason_only", reasons: [] },
+        },
+      ]
+        .map((entry) => JSON.stringify(entry))
+        .join("\n") + "\n",
+    );
+    const first = drill.port();
+    await first.afterFaultLanded();
+    await first.close();
+    const path = join(drill.directory, "successor-transfer.json");
+    const saved = JSON.parse(await readFile(path, "utf8")) as Record<
+      string,
+      unknown
+    >;
+    expect(saved["faultHeaderHash"]).toBe(drill.fault.headerHash);
+    // A transfer saved for another fault is not this fault's.
+    await writeFile(
+      path,
+      JSON.stringify({ ...saved, faultHeaderHash: other.headerHash }),
+    );
+    const port = drill.port();
+    await port.afterFaultLanded();
+    expect(drill.sent).toHaveLength(2);
+    await pause(30);
+    await expect(port.commit()).rejects.toThrow(
+      /never reported landed_block_invalid/u,
+    );
   });
 
   it("fails when our node never held the fault", async () => {

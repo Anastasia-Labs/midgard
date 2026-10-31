@@ -17,7 +17,10 @@ import type {
   JourneyFixtureStage,
   JourneySuccessor,
 } from "./fixture.js";
-import type { StackDaAgedOut } from "./stack-da-publication.js";
+import type {
+  StackDaDelivery,
+  StackDaRefused,
+} from "./stack-da-publication.js";
 
 export type JourneyRetainedBlock = JourneyBlock & {
   payload: SDK.DaPayload;
@@ -60,9 +63,11 @@ export type StagingCheckpoint = {
   daTransactions?: PublishedDaTransactionRecord[];
   /**
    * The fault's authenticated correction when it consumed the target before
-   * DA apply, or on an attached stack its removal after the committee refused it.
+   * DA apply, or on an attached stack the committee's observed refusal.
    */
-  target?: PublishedDaTargetCorrection | StackDaAgedOut;
+  target?: PublishedDaTargetCorrection | StackDaRefused;
+  /** On an attached stack, the committee peers that took the fault's payload. */
+  daDelivery?: StackDaDelivery;
 };
 
 export const decodeJourneyRetainedBlock = async (

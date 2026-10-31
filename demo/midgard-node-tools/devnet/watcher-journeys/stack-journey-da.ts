@@ -19,12 +19,15 @@ import {
   STACK_PUBLIC_DA_TRAIL_MS,
 } from "./public-da-preflight.js";
 import type { StackJourneyContext } from "./stack-context.js";
+import { stackDaProducerPublisher } from "./stack-da-producer.js";
 import {
+  awaitStackDaAgedOut,
   classifyStackDaRemoval,
   publishStackDaPayload,
+  type StackDaDelivery,
   type StackDaExpectation,
   StackDaPayloadAgedOutError,
-  stackDaProducerPublisher,
+  StackDaRefusalNotObserved,
   type StackDaTarget,
 } from "./stack-da-publication.js";
 
@@ -122,33 +125,54 @@ export const stackJourneyDa = (
       attestationTimeoutMs: SDK.DA_ATTESTATION_TIMEOUT_MS,
     });
   };
+  const followPorts = (headerHash: string) => ({
+    readTarget: () => readTarget(headerHash),
+    readRemoval: () => readRemoval(headerHash),
+    now: () => chain.now(),
+    pause,
+    attestationTimeoutMs: SDK.DA_ATTESTATION_TIMEOUT_MS,
+  });
   return {
     /**
      * Publish a committed block's payload and follow it to its outcome. A
-     * block that ages out where it had to be attested can never be extended:
-     * its checkpoints are archived so the next run stages afresh.
+     * block that ages out where it had to be attested, or whose refusal was
+     * not observed by its attestation deadline, can never be staged again:
+     * its checkpoints are archived so the next run stages afresh. `delivery`
+     * keeps the committee peers that took the payload across a restart.
      */
     publish: async (
       block: JourneyBlock,
       expectation: StackDaExpectation,
       checkpointPaths: readonly string[],
+      delivery?: {
+        saved?: StackDaDelivery;
+        save(delivery: StackDaDelivery): Promise<void>;
+      },
     ) => {
       try {
         return await publishStackDaPayload(block, expectation, {
-          readTarget: () => readTarget(block.headerHash),
+          ...followPorts(block.headerHash),
           publish,
-          readRemoval: () => readRemoval(block.headerHash),
-          now: () => chain.now(),
-          pause,
-          attestationTimeoutMs: SDK.DA_ATTESTATION_TIMEOUT_MS,
+          committeeThreshold: context.daProducer.manifest.threshold,
+          ...(delivery === undefined ? {} : { delivery }),
           onStage: input.onStage,
         });
       } catch (error) {
-        if (error instanceof StackDaPayloadAgedOutError)
+        if (
+          error instanceof StackDaPayloadAgedOutError ||
+          error instanceof StackDaRefusalNotObserved
+        )
           archiveAgedOutCheckpoints(checkpointPaths, new Date(), input.onStage);
         throw error;
       }
     },
+    /** A refused block's authenticated timeout removal, within its bound. */
+    awaitAgedOut: (headerHash: string, attestationDeadlineMs: number) =>
+      awaitStackDaAgedOut(
+        headerHash,
+        attestationDeadlineMs,
+        followPorts(headerHash),
+      ),
     /**
      * The stack's current queue tail once the committee has attested it,
      * with the payload public DA serves for it. A tail that ages out instead

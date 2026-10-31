@@ -35,7 +35,8 @@ export type StagedJourney = {
    * the fault before DA apply; that authenticated correction is a complete
    * staging outcome, and the journey continues to observe it rather than
    * failing on the missing target. On an attached stack a fault whose payload
-   * the committee refuses ends aged out instead: removed unattested.
+   * the committee refuses ends refused instead: unattested past its
+   * attestation deadline.
    */
   target: StackDaOutcome;
   commitHonestSuccessor(options: {
@@ -57,6 +58,11 @@ export type JourneyFixtureStage = {
   onHealthyPredecessor?(headerHash: string): Promise<void>;
   readSignedCommitRecovery: SignedCommitReconciliationPorts["readRecovery"];
   readConfirmedTransaction?(txHash: string): Promise<{ cbor: string }>;
+  /**
+   * The fault's commit is on L1, before its DA publication; again on every
+   * resumed staging. An attached stack starts watching our node's hold here.
+   */
+  onFaultCommitted?(fault: JourneyBlock): Promise<void> | void;
   onStage(name: string): void;
 };
 

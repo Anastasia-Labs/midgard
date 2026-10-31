@@ -148,6 +148,28 @@ export const runJourney = async (
       console.info(
         `Live fixture: fault ${staged.current.headerHash} corrected by ${staged.target.removalTxHash} before DA apply; continuing without restart`,
       );
+    // A refused fault is never attested, so no watcher can prove it and no
+    // successor builds on it: the journey ends at its age-out.
+    const { target } = staged;
+    if (target.kind === "refused") {
+      if (mode.refusal === undefined)
+        throw new Error(
+          `Fault ${staged.current.headerHash} was refused by a DA committee this journey does not run`,
+        );
+      const refusal = await stage("committee refusal and age-out", () =>
+        mode.refusal!({ fault: staged.current, refused: target, polls }),
+      );
+      succeeded = true;
+      await writeJourneyArtifact(join(directory, "result.json"), {
+        status: "passed",
+        executionPolicy: "committee-refusal",
+        category: fixture.category,
+        deploymentFingerprint: deployment.manifest.manifestId,
+        headerHash: staged.current.headerHash,
+        refusal,
+      });
+      return;
+    }
     await stage("production public DA preflight", () =>
       mode.verifyPublicDa({
         directory,

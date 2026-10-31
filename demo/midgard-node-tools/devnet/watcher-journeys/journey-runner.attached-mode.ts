@@ -1,15 +1,18 @@
 import { nodeLedger } from "../../src/full-stack/journey.js";
 import { stackSuccessorPort } from "./honest-successor.js";
+import { LANDED_BLOCK_AWAITING_DA } from "./honest-successor.observables.js";
 import { journeyNetwork } from "./journey-network.js";
 import type { JourneyRunMode } from "./journey-runner.journey-mode.js";
 import type { AttachedJourneySession } from "./journey-session.js";
 import { readStackJourneyTiming } from "./journey-timing.js";
+import { createNodeHoldWatch } from "./node-hold-watch.js";
 import {
   fetchJourneyPublicDaPayload,
   readStackJourneyWatcherConfig,
   STACK_PUBLIC_DA_TRAIL_MS,
   verifyStackJourneyPublicDa,
 } from "./public-da-preflight.js";
+import { stackJourneyDa } from "./stack-journey-da.js";
 import {
   stackJourneyTransactions,
   stackSignedCommitRecovery,
@@ -34,6 +37,11 @@ export const attachedJourneyMode = (
     directory,
   });
   const deploymentIdentity = context.release.deploymentIdentity;
+  // Our node's hold on the fault, watched from the fault's commit.
+  const holdWatch = createNodeHoldWatch({
+    directory,
+    nodeEndpoint: context.stackConfig.endpoint,
+  });
   let watcherConfig:
     | ReturnType<typeof readStackJourneyWatcherConfig>
     | undefined;
@@ -65,24 +73,32 @@ export const attachedJourneyMode = (
     stageFixture: async (fixture, { directory, onStage }) => {
       // The drill signs as operator-2 from here on; its node stays stopped.
       await operator2.hold();
-      return await fixture.stage({
-        context,
-        directory,
-        ledgerAt: session.ledgerAt,
-        // The stack's committee retains payloads; the journey only proves
-        // each commit is on the stack's chain.
-        retain: async (_block, commitTxHash) => {
-          await transactions.transaction(commitTxHash);
-        },
-        readConfirmedTransaction: transactions.transaction,
-        readSignedCommitRecovery: async (attempt) =>
-          stackSignedCommitRecovery({
-            kupoUrl: context.kupoUrl,
-            ogmiosUrl: context.ogmiosUrl,
-            timeoutMs: (await readWatcherConfig()).l1.requestTimeoutMs,
-          })(attempt),
-        onStage,
-      });
+      try {
+        return await fixture.stage({
+          context,
+          directory,
+          ledgerAt: session.ledgerAt,
+          // The stack's committee retains payloads; the journey only proves
+          // each commit is on the stack's chain.
+          retain: async (_block, commitTxHash) => {
+            await transactions.transaction(commitTxHash);
+          },
+          readConfirmedTransaction: transactions.transaction,
+          readSignedCommitRecovery: async (attempt) =>
+            stackSignedCommitRecovery({
+              kupoUrl: context.kupoUrl,
+              ogmiosUrl: context.ogmiosUrl,
+              timeoutMs: (await readWatcherConfig()).l1.requestTimeoutMs,
+            })(attempt),
+          onFaultCommitted: (fault) => {
+            holdWatch.start(fault.headerHash);
+          },
+          onStage,
+        });
+      } catch (cause) {
+        await holdWatch.stop();
+        throw cause;
+      }
     },
     verifyPublicDa: async ({ directory, predecessor, current }) =>
       verifyStackJourneyPublicDa({
@@ -115,9 +131,38 @@ export const attachedJourneyMode = (
         predecessor: staged.predecessor,
         fault: staged.current,
         fetchPayloadEnvelope,
+        holdWatch,
         poll: polls.poll,
         // The stack journey's own wait for our node to commit a transfer.
         commitTimeoutMs: context.stackConfig.timeoutMs,
       }),
+    refusal: async ({ fault, refused, polls }) => {
+      const removal =
+        refused.removal ??
+        (await polls.stage("refused fault aged out", () =>
+          stackJourneyDa(context, {
+            readConfirmedTransaction: transactions.transaction,
+            onStage: (name) => console.info(`Live fixture: ${name}`),
+          }).awaitAgedOut(fault.headerHash, refused.attestationDeadlineMs),
+        ));
+      const failure = await holdWatch.stop();
+      if (failure !== undefined) throw failure;
+      const observations = await holdWatch.observations(fault.headerHash);
+      const awaiting = observations.find(
+        ({ hold }) => hold?.state === "awaiting_da",
+      );
+      if (awaiting === undefined)
+        throw new Error(
+          `Our node never reported ${LANDED_BLOCK_AWAITING_DA} for the refused fault ${fault.headerHash} (${observations.length.toString()} hold observation(s))`,
+        );
+      return {
+        delivery: refused.delivery,
+        attestationDeadlineMs: refused.attestationDeadlineMs,
+        removal,
+        awaitingDaObservedAt: awaiting.observedAt,
+        holdBinding: awaiting.hold?.binding,
+        holdObservations: observations.length,
+      };
+    },
   };
 };

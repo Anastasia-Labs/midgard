@@ -1,18 +1,9 @@
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
-
-import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
-import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 import {
-  createDaLibp2pProducerTransport,
   DaPayloadPublicationError,
-  type DaProducerPublicationManifest,
+  type DaProducerPeerResult,
   type DaProducerPublicationReport,
-  type DaProducerTransport,
-  parseDaProducerPublicationManifest,
-  publishDaPayloadInsert,
 } from "midgard-node/da/libp2p-producer";
 import type { DaPayloadsDB } from "midgard-node/database/index";
 import type { PublishedDaAttestationOutcome } from "midgard-watcher/tests/support/published-block-actor";
@@ -29,6 +20,7 @@ import type {
   JourneyFixtureStage,
 } from "./fixture.js";
 import type { StackJourneyContext } from "./stack-context.js";
+import { stackDaPayloadInsert } from "./stack-da-producer.js";
 
 /**
  * The families whose fault payload the honest committee refuses before it
@@ -59,8 +51,52 @@ export type StackDaAgedOut = {
   readonly removedStateQueueOutRef: string;
 };
 
+/**
+ * Which committee peers took a payload, and how: `accepted`, `duplicate`, or
+ * `rejected: <reason>`. A peer that took it either way had the bytes.
+ */
+export type StackDaDelivery = {
+  readonly threshold: number;
+  readonly peers: Readonly<Record<string, string>>;
+};
+
+/**
+ * A refused block: at least the committee threshold of peers took its
+ * payload, and no attestation appeared by its attestation deadline. The
+ * block stays on the queue until its timeout removal, which `removal` holds
+ * once it was already seen.
+ */
+export type StackDaRefused = {
+  readonly kind: "refused";
+  readonly headerHash: string;
+  readonly attestationDeadlineMs: number;
+  readonly delivery: StackDaDelivery;
+  readonly removal?: StackDaAgedOut;
+};
+
 /** How a stack block's producer-path DA ended. */
-export type StackDaOutcome = PublishedDaAttestationOutcome | StackDaAgedOut;
+export type StackDaOutcome = PublishedDaAttestationOutcome | StackDaRefused;
+
+/**
+ * A block the committee must refuse passed its attestation deadline
+ * unattested, but fewer than the committee threshold of peers ever took its
+ * payload: what went unattested was never delivered, so it proves nothing
+ * about the committee's refusal.
+ */
+export class StackDaRefusalNotObserved extends Error {
+  constructor(
+    readonly headerHash: string,
+    readonly reason:
+      | "committee unreachable"
+      | "committee never received payload",
+    readonly delivery: StackDaDelivery,
+  ) {
+    super(
+      `The committee's refusal of header ${headerHash} was not observed: ${reason} (${Object.keys(delivery.peers).length.toString()} of a threshold of ${delivery.threshold.toString()} peer(s) took its payload before its attestation deadline)`,
+    );
+    this.name = "StackDaRefusalNotObserved";
+  }
+}
 
 /**
  * A block the committee was expected to attest aged out instead. Nothing it
@@ -74,98 +110,6 @@ export class StackDaPayloadAgedOutError extends Error {
     this.name = "StackDaPayloadAgedOutError";
   }
 }
-
-/** The producer's publication row for a block, exactly as a node stores it. */
-export const stackDaPayloadInsert = (
-  block: JourneyBlock,
-): DaPayloadsDB.InsertInput => {
-  const { header } = block;
-  const payload = Buffer.from(block.payloadEnvelopeCbor);
-  return {
-    header_hash: Buffer.from(block.headerHash, "hex"),
-    consensus_profile_id: MIDGARD_CONSENSUS_PROFILE.profileId,
-    version: 1,
-    payload_cbor: payload,
-    payload_sha256: Buffer.from(SDK.daPayloadHashHex(payload), "hex"),
-    utxos_root: header.utxosRoot,
-    forced_transactions_root: header.forcedTransactionsRoot,
-    transactions_root: header.transactionsRoot,
-    deposits_root: header.depositsRoot,
-    withdrawals_root: header.withdrawalsRoot,
-    transition_trace_root: header.transitionTraceRoot,
-    event_to_step_root: header.eventToStepRoot,
-    validation_traces_root: header.validationTracesRoot,
-    withdrawal_count: header.withdrawalCount,
-    forced_transaction_count: header.forcedTransactionCount,
-    l2_transaction_count: header.l2TransactionCount,
-    deposit_count: header.depositCount,
-    total_event_count: header.totalEventCount,
-    transition_step_count: header.transitionStepCount,
-    validation_trace_count: header.validationTraceCount,
-    block_start_time: new Date(Number(header.startTime)),
-    block_end_time: new Date(Number(header.endTime)),
-    // A header commit's validity ends at its end time, which binds block_time.
-    block_time: new Date(Number(header.endTime)),
-  };
-};
-
-/**
- * The drill's producer publication manifest: the stack's own host producer
- * manifest (the committee peers, threshold and limits) with operator-2's
- * libp2p key in place of our node's. Refuses our node's own peer id, whose
- * second live connection would endanger our node's DA publishing. Keys are
- * named by their variables only; their values are secrets.
- */
-export const readStackDaProducerManifest = async (input: {
-  manifestPath: string;
-  operatorKey: { name: string; source: string };
-  honestProducerKey: { name: string; source: string };
-}): Promise<DaProducerPublicationManifest> => {
-  const peerIdOf = async ({
-    name,
-    source,
-  }: {
-    name: string;
-    source: string;
-  }) => {
-    try {
-      return (await loadDaLibp2pIdentity(source)).peerId;
-    } catch {
-      throw new Error(`${name} is not a libp2p private key source`);
-    }
-  };
-  if (
-    (await peerIdOf(input.operatorKey)) ===
-    (await peerIdOf(input.honestProducerKey))
-  )
-    throw new Error(
-      `${input.operatorKey.name} is our node's own DA producer identity (${input.honestProducerKey.name}); use operator-2's`,
-    );
-  return parseDaProducerPublicationManifest(
-    JSON.parse(await readFile(input.manifestPath, "utf8")),
-    { DA_LIBP2P_PRIVATE_KEY_SOURCE: input.operatorKey.source },
-  );
-};
-
-/** One publication through a fresh dial-only producer transport. */
-export const stackDaProducerPublisher =
-  (
-    manifest: DaProducerPublicationManifest,
-    openTransport: (
-      manifest: DaProducerPublicationManifest,
-    ) => Promise<DaProducerTransport> = (value) =>
-      createDaLibp2pProducerTransport(value, { mode: "dial-only" }),
-  ) =>
-  async (
-    insert: DaPayloadsDB.InsertInput,
-  ): Promise<DaProducerPublicationReport> => {
-    const transport = await openTransport(manifest);
-    try {
-      return await publishDaPayloadInsert({ insert, manifest, transport });
-    } finally {
-      await transport.close?.();
-    }
-  };
 
 /** A header's state queue node as L1 holds it now. */
 export type StackDaTarget =
@@ -230,27 +174,46 @@ export type StackDaPublicationPorts = {
   now(): number;
   pause(): Promise<void>;
   readonly attestationTimeoutMs: bigint;
+  /** How many committee peers must take a payload. */
+  readonly committeeThreshold: number;
+  /** The delivery saved by an earlier attempt, and where to save it. */
+  readonly delivery?: {
+    readonly saved?: StackDaDelivery;
+    save(delivery: StackDaDelivery): Promise<void>;
+  };
   onStage(name: string): void;
 };
 
-const settle = (
+/** An outcome where the committee had to attest. */
+const settleAttestation = (
+  outcome: PublishedDaAttestationOutcome | StackDaAgedOut,
+): PublishedDaAttestationOutcome => {
+  if (outcome.kind === "agedOut") throw new StackDaPayloadAgedOutError(outcome);
+  return outcome;
+};
+
+/** The committee attested a block whose payload it must refuse. */
+const refusedAttested = (headerHash: string): never => {
+  throw new Error(
+    `The DA committee attested header ${headerHash}, whose payload it must refuse`,
+  );
+};
+
+/** Refuses a removal other than ageing out, where the committee had to refuse. */
+const requireAgedOut = (
   headerHash: string,
-  expectation: StackDaExpectation,
-  outcome: StackDaOutcome,
-): StackDaOutcome => {
-  if (expectation === "attestation") {
-    if (outcome.kind === "agedOut")
-      throw new StackDaPayloadAgedOutError(outcome);
-    return outcome;
-  }
+  outcome: PublishedDaTargetCorrection | StackDaAgedOut,
+): StackDaAgedOut => {
   if (outcome.kind !== "agedOut")
     throw new Error(
-      outcome.kind === "attested"
-        ? `The DA committee attested header ${headerHash}, whose payload it must refuse`
-        : `Header ${headerHash}, whose payload the DA committee must refuse, was fraud-corrected by ${outcome.removalTxHash} instead of ageing out`,
+      `Header ${headerHash}, whose payload the DA committee must refuse, was fraud-corrected by ${outcome.removalTxHash} instead of ageing out`,
     );
   return outcome;
 };
+
+/** Statuses of a peer that took the payload's bytes. */
+const tookDelivery = (status: DaProducerPeerResult["status"]) =>
+  status === "accepted" || status === "duplicate" || status === "rejected";
 
 /**
  * What a failed publication settled: every peer refused the payload, or
@@ -288,11 +251,20 @@ const publicationFailure = (
 
 /**
  * Publish a committed block's payload through the producer path, as its
- * operator's node would, and follow the stack's own committee: attested when
- * the coordinator applies the attestation, or removed. A publication below
- * threshold is retried while the block can still be attested. Peers that
- * reject the payload outright or hold a conflicting one are a hard failure
- * unless the refusal is the expectation.
+ * operator's node would, and follow the stack's own committee.
+ *
+ * Attestation: attested when the coordinator applies the attestation. A
+ * publication below threshold is retried while the block can still be
+ * attested; peers that reject the payload outright are a hard failure, and a
+ * block that ages out instead is `StackDaPayloadAgedOutError`.
+ *
+ * Refusal: publication is retried until at least the committee threshold of
+ * peers took the payload (accepted or rejected it). The refusal is observed
+ * once the block's attestation deadline passes with the block unattested,
+ * before it ages out; with fewer peers reached by then it is
+ * `StackDaRefusalNotObserved`. The committee attesting it fails the drill.
+ *
+ * A peer holding a conflicting payload for the header is a hard failure.
  */
 export const publishStackDaPayload = async (
   block: JourneyBlock,
@@ -300,44 +272,138 @@ export const publishStackDaPayload = async (
   ports: StackDaPublicationPorts,
 ): Promise<StackDaOutcome> => {
   const { headerHash } = block;
+  const delivered = new Map<string, string>(
+    Object.entries(ports.delivery?.saved?.peers ?? {}),
+  );
+  const delivery = (): StackDaDelivery => ({
+    threshold: ports.committeeThreshold,
+    peers: Object.fromEntries(delivered),
+  });
+  const reachedQuorum = () => delivered.size >= ports.committeeThreshold;
+  const record = async (results: readonly DaProducerPeerResult[]) => {
+    let changed = false;
+    for (const { peerId, status, error } of results)
+      if (tookDelivery(status) && !delivered.has(peerId)) {
+        delivered.set(
+          peerId,
+          status === "rejected" ? `rejected: ${error ?? "unknown"}` : status,
+        );
+        changed = true;
+      }
+    if (changed) await ports.delivery?.save(delivery());
+  };
+  const notObserved = () =>
+    new StackDaRefusalNotObserved(
+      headerHash,
+      delivered.size === 0
+        ? "committee unreachable"
+        : "committee never received payload",
+      delivery(),
+    );
+  const removed = async (
+    attestationDeadlineMs?: number,
+  ): Promise<StackDaOutcome> => {
+    const removal = await ports.readRemoval();
+    if (expectation === "attestation") return settleAttestation(removal);
+    const agedOut = requireAgedOut(headerHash, removal);
+    if (!reachedQuorum()) throw notObserved();
+    return {
+      kind: "refused",
+      headerHash,
+      // A header commit binds the node's block time to the header's end time.
+      attestationDeadlineMs:
+        attestationDeadlineMs ??
+        Number(block.header.endTime + ports.attestationTimeoutMs),
+      delivery: delivery(),
+      removal: agedOut,
+    };
+  };
   let target = await ports.readTarget();
-  if (target.kind === "absent")
-    return settle(headerHash, expectation, await ports.readRemoval());
+  if (target.kind === "absent") return removed();
   if (target.kind === "attested")
-    return settle(headerHash, expectation, target);
+    return expectation === "attestation" ? target : refusedAttested(headerHash);
   const timedOutAt = Number(target.blockTime + ports.attestationTimeoutMs);
   const insert = stackDaPayloadInsert(block);
-  let delivered = false;
+  let published = false;
   for (;;) {
-    if (!delivered && ports.now() < timedOutAt) {
+    const publishing =
+      expectation === "attestation" ? !published : !reachedQuorum();
+    if (publishing && ports.now() < timedOutAt) {
       try {
         const report = await ports.publish(insert);
-        delivered = true;
+        published = true;
+        await record(report.peerResults);
         ports.onStage(
-          `DA payload ${headerHash} accepted by ${report.acceptedPeers.toString()} committee peer(s); awaiting the committee's attestation`,
+          `DA payload ${headerHash} accepted by ${report.acceptedPeers.toString()} committee peer(s); awaiting the committee's ${expectation === "attestation" ? "attestation" : "attestation deadline"}`,
         );
       } catch (error) {
         const failure = publicationFailure(headerHash, error);
-        if (failure.kind === "unsettled")
+        if (error instanceof DaPayloadPublicationError)
+          await record(error.report.peerResults);
+        if (expectation === "attestation") {
+          if (failure.kind === "refused")
+            throw new Error(
+              `The DA committee rejected payload ${headerHash}: ${failure.reasons.join(", ")}`,
+            );
           ports.onStage(`DA payload ${headerHash} ${failure.detail}; retrying`);
-        else if (expectation === "attestation")
-          throw new Error(
-            `The DA committee rejected payload ${headerHash}: ${failure.reasons.join(", ")}`,
-          );
-        else {
-          delivered = true;
+        } else
           ports.onStage(
-            `DA committee rejected payload ${headerHash} (${failure.reasons.join(", ")}); awaiting its timeout removal`,
+            failure.kind === "refused"
+              ? `DA committee rejected payload ${headerHash} (${failure.reasons.join(", ")}); awaiting its attestation deadline`
+              : reachedQuorum()
+                ? `DA payload ${headerHash} taken by ${delivered.size.toString()} committee peer(s) (${[...delivered.values()].join(", ")}); awaiting its attestation deadline`
+                : `DA payload ${headerHash} ${failure.detail}; retrying`,
           );
-        }
       }
     }
     target = await ports.readTarget();
     if (target.kind === "attested")
-      return settle(headerHash, expectation, target);
-    if (target.kind === "absent")
-      return settle(headerHash, expectation, await ports.readRemoval());
+      return expectation === "attestation"
+        ? target
+        : refusedAttested(headerHash);
+    if (target.kind === "absent") return removed(timedOutAt);
+    if (expectation === "refusal" && ports.now() >= timedOutAt) {
+      if (!reachedQuorum()) throw notObserved();
+      ports.onStage(
+        `DA committee refused payload ${headerHash}: ${delivered.size.toString()} peer(s) took it and none attested by its deadline`,
+      );
+      return {
+        kind: "refused",
+        headerHash,
+        attestationDeadlineMs: timedOutAt,
+        delivery: delivery(),
+      };
+    }
     if (ports.now() > timedOutAt + Number(ports.attestationTimeoutMs))
+      throw new Error(
+        `Unattested header ${headerHash} was not removed within an attestation timeout after it aged out`,
+      );
+    await ports.pause();
+  }
+};
+
+/**
+ * Follow a refused block, unattested past its attestation deadline, to its
+ * authenticated timeout removal within one more attestation timeout. Its
+ * attestation or fraud correction fails the drill.
+ */
+export const awaitStackDaAgedOut = async (
+  headerHash: string,
+  attestationDeadlineMs: number,
+  ports: Pick<
+    StackDaPublicationPorts,
+    "readTarget" | "readRemoval" | "now" | "pause" | "attestationTimeoutMs"
+  >,
+): Promise<StackDaAgedOut> => {
+  for (;;) {
+    const target = await ports.readTarget();
+    if (target.kind === "attested") return refusedAttested(headerHash);
+    if (target.kind === "absent")
+      return requireAgedOut(headerHash, await ports.readRemoval());
+    if (
+      ports.now() >
+      attestationDeadlineMs + Number(ports.attestationTimeoutMs)
+    )
       throw new Error(
         `Unattested header ${headerHash} was not removed within an attestation timeout after it aged out`,
       );
@@ -350,7 +416,3 @@ export const isStackJourneyContext = (
   context: JourneyFixtureStage["context"],
 ): context is StackJourneyContext =>
   "mode" in context && context.mode === "stack";
-
-/** The producer manifest the stack writes for a node publishing from the host. */
-export const stackDaProducerManifestPath = (stackRunDirectory: string) =>
-  join(stackRunDirectory, "services/producer-host.json");

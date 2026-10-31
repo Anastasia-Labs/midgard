@@ -95,7 +95,10 @@ export const runningStackWatcher = async (status: Record<string, unknown>) => {
       watcherConfig: { storage: { path: storePath } },
     }),
   );
-  const served = { status };
+  const served: { status: Record<string, unknown>; nodeReadyz: unknown } = {
+    status,
+    nodeReadyz: { ready: true, reasons: [] },
+  };
   const requests: string[] = [];
   const server = createServer((request, response) => {
     requests.push(request.url ?? "");
@@ -111,6 +114,18 @@ export const runningStackWatcher = async (status: Record<string, unknown>) => {
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   servers.push(server);
   const operationsEndpoint = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  // Our node's /readyz, as `served.nodeReadyz` answers it.
+  const nodeRequests: string[] = [];
+  const node = createServer((request, response) => {
+    nodeRequests.push(request.url ?? "");
+    response.statusCode = request.url === "/readyz" ? 200 : 404;
+    response.end(
+      JSON.stringify(request.url === "/readyz" ? served.nodeReadyz : {}),
+    );
+  });
+  await new Promise<void>((resolve) => node.listen(0, "127.0.0.1", resolve));
+  servers.push(node);
+  const nodeEndpoint = `http://127.0.0.1:${(node.address() as AddressInfo).port}`;
   const runDirectory = join(root, "run/fault-journeys/drill-1");
   // The stack node's configuration, its genesis, and the deployment manifest.
   const nodeConfigPath = join(root, "node/config.json");
@@ -144,7 +159,7 @@ export const runningStackWatcher = async (status: Record<string, unknown>) => {
       manifest: { manifestId: fingerprint },
       blueprintPath: join(root, "plutus.json"),
     },
-    stackConfig: { endpoint: "http://127.0.0.1:3000" },
+    stackConfig: { endpoint: nodeEndpoint },
     watcher: {
       composeProject: "midgard-node-drill",
       processConfigPath,
@@ -159,6 +174,7 @@ export const runningStackWatcher = async (status: Record<string, unknown>) => {
     context,
     served,
     requests,
+    nodeRequests,
     operator2,
     exec: watcherContainer(processConfigPath),
     /** How the journey opens a session on this stack, with operator-2's node. */
