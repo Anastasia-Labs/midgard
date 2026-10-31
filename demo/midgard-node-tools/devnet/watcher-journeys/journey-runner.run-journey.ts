@@ -99,13 +99,13 @@ export const runJourney = async (
         await pause(1000);
       }
     });
-  const mode =
-    session.mode === "devnet"
-      ? devnetJourneyMode(session)
-      : attachedJourneyMode(session, directory);
   const polls = { stage, poll, pollWhileReplaying };
   let successorPort: JourneySuccessorPort | undefined;
   try {
+    const mode =
+      session.mode === "devnet"
+        ? devnetJourneyMode(session)
+        : attachedJourneyMode(session, directory);
     const { releaseFinality } = session;
     const baselineStartedAt = new Date().toISOString();
     const baseline = await mode.captureWorkflowBaseline(category);

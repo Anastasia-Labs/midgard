@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { isAbsolute, join } from "node:path";
 
 import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 
@@ -12,6 +12,7 @@ import {
   object,
   type ReadJourneyTimingOptions,
 } from "./journey-timing.journey-timing-for-plan.js";
+import { readStackShelleyGenesisText } from "./stack-genesis.js";
 
 /** A journey's cadence: its network's Shelley genesis and its finalized manifest. */
 const journeyCadence = (
@@ -70,15 +71,8 @@ export const readStackJourneyTiming = async (
   category: string,
   options: ReadJourneyTimingOptions = {},
 ) => {
-  const nodeConfig = object(
-    JSON.parse(await readFile(stack.nodeConfigPath, "utf8")),
-    "Node config",
-  );
-  const declared = nodeConfig.ShelleyGenesisFile;
-  if (typeof declared !== "string" || declared.length === 0)
-    throw new Error("Node config does not declare ShelleyGenesisFile");
   const [genesisBytes, manifestBytes] = await Promise.all([
-    readFile(resolve(dirname(stack.nodeConfigPath), declared), "utf8"),
+    readStackShelleyGenesisText(stack.nodeConfigPath),
     readFile(stack.manifestPath, "utf8"),
   ]);
   return journeyTimingForCategory(

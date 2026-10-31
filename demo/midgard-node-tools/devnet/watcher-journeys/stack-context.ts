@@ -1,13 +1,6 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile } from "node:fs/promises";
-import {
-  basename,
-  dirname,
-  isAbsolute,
-  join,
-  normalize,
-  resolve,
-} from "node:path";
+import { basename, join, resolve } from "node:path";
 
 import {
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
@@ -60,6 +53,7 @@ import {
   readStackDaProducerManifest,
   stackDaProducerManifestPath,
 } from "./stack-da-publication.js";
+import { readStackShelleyGenesisText } from "./stack-genesis.js";
 
 /**
  * The stack's node `.env` names of the drill's own keys. Their values are
@@ -329,20 +323,7 @@ const stackSlotConfig = async (
   nodeConfigPath: string,
 ) => {
   if (network !== "Custom") return { ...SLOT_CONFIG_NETWORK[network] };
-  const nodeConfig = JSON.parse(await readFile(nodeConfigPath, "utf8"));
-  const declared = nodeConfig.ShelleyGenesisFile;
-  if (typeof declared !== "string" || declared.length === 0)
-    throw new Error("Node config does not declare ShelleyGenesisFile");
-  const genesis = JSON.parse(
-    await readFile(
-      normalize(
-        isAbsolute(declared)
-          ? declared
-          : resolve(dirname(nodeConfigPath), declared),
-      ),
-      "utf8",
-    ),
-  );
+  const genesis = JSON.parse(await readStackShelleyGenesisText(nodeConfigPath));
   return {
     zeroTime: Date.parse(genesis.systemStart),
     zeroSlot: 0,
