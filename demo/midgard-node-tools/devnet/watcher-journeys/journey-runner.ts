@@ -22,5 +22,4 @@ import "./journey-runner.devnet-mode.js";
 import "./journey-runner.attached-mode.js";
 import "./journey-runner.run-journey.js";
 import "./journey-runner.run-autonomous-watcher-journey.js";
-export type { AttachedJourneyStaging } from "./journey-runner.attached-mode.js";
 export { runAutonomousWatcherJourney } from "./journey-runner.run-autonomous-watcher-journey.js";

@@ -1,39 +1,19 @@
 import { nodeLedger } from "../../src/full-stack/journey.js";
-import type { JourneyBlock, JourneyFixture, StagedJourney } from "./fixture.js";
 import { stackSuccessorPort } from "./honest-successor.js";
 import { journeyNetwork } from "./journey-network.js";
 import type { JourneyRunMode } from "./journey-runner.journey-mode.js";
 import type { AttachedJourneySession } from "./journey-session.js";
 import { readStackJourneyTiming } from "./journey-timing.js";
 import {
-  type JourneyChainTransactions,
+  fetchJourneyPublicDaPayload,
+  readStackJourneyWatcherConfig,
+  STACK_PUBLIC_DA_TRAIL_MS,
+  verifyStackJourneyPublicDa,
+} from "./public-da-preflight.js";
+import {
   stackJourneyTransactions,
+  stackSignedCommitRecovery,
 } from "./stack-transactions.js";
-
-/**
- * How an attached stack journey stages a family and reads its public DA:
- * operator-2's blocks published through the stack's own committee.
- */
-export type AttachedJourneyStaging = Readonly<{
-  stage(
-    fixture: JourneyFixture,
-    input: Readonly<{
-      directory: string;
-      readConfirmedTransaction: JourneyChainTransactions["transaction"];
-      onStage(name: string): void;
-    }>,
-  ): Promise<StagedJourney>;
-  /** Proves the staged blocks' payloads are publicly retrievable. */
-  verifyPublicDa(
-    input: Readonly<{
-      directory: string;
-      predecessor: JourneyBlock;
-      current: JourneyBlock;
-    }>,
-  ): Promise<unknown>;
-  /** The public DA copy of a header's payload envelope, verified against it. */
-  fetchPayloadEnvelope(headerHash: string): Promise<Uint8Array>;
-}>;
 
 /**
  * An attached stack journey: the stack's own watcher, read through its
@@ -45,7 +25,6 @@ export type AttachedJourneyStaging = Readonly<{
  */
 export const attachedJourneyMode = (
   session: AttachedJourneySession,
-  staging: AttachedJourneyStaging,
   directory: string,
 ): JourneyRunMode => {
   const { context, watcher, evidence, operator2 } = session;
@@ -54,6 +33,24 @@ export const attachedJourneyMode = (
     ogmiosUrl: context.ogmiosUrl,
     directory,
   });
+  const deploymentIdentity = context.release.deploymentIdentity;
+  let watcherConfig:
+    | ReturnType<typeof readStackJourneyWatcherConfig>
+    | undefined;
+  // The stack watcher's own DA peers and request bounds, read once.
+  const readWatcherConfig = () =>
+    (watcherConfig ??= readStackJourneyWatcherConfig(
+      context.watcher.processConfigPath,
+    ));
+  const fetchPayloadEnvelope = async (headerHash: string) =>
+    (
+      await fetchJourneyPublicDaPayload({
+        watcherConfig: await readWatcherConfig(),
+        deploymentIdentity,
+        headerHash,
+        availability: { waitMs: STACK_PUBLIC_DA_TRAIL_MS },
+      })
+    ).payloadEnvelopeCbor;
   return {
     captureWorkflowBaseline: session.captureWorkflowBaseline,
     readTiming: (category, options) =>
@@ -68,13 +65,33 @@ export const attachedJourneyMode = (
     stageFixture: async (fixture, { directory, onStage }) => {
       // The drill signs as operator-2 from here on; its node stays stopped.
       await operator2.hold();
-      return await staging.stage(fixture, {
+      return await fixture.stage({
+        context,
         directory,
+        ledgerAt: session.ledgerAt,
+        // The stack's committee retains payloads; the journey only proves
+        // each commit is on the stack's chain.
+        retain: async (_block, commitTxHash) => {
+          await transactions.transaction(commitTxHash);
+        },
         readConfirmedTransaction: transactions.transaction,
+        readSignedCommitRecovery: async (attempt) =>
+          stackSignedCommitRecovery({
+            kupoUrl: context.kupoUrl,
+            ogmiosUrl: context.ogmiosUrl,
+            timeoutMs: (await readWatcherConfig()).l1.requestTimeoutMs,
+          })(attempt),
         onStage,
       });
     },
-    verifyPublicDa: staging.verifyPublicDa,
+    verifyPublicDa: async ({ directory, predecessor, current }) =>
+      verifyStackJourneyPublicDa({
+        directory,
+        watcherConfig: await readWatcherConfig(),
+        deploymentIdentity,
+        predecessor,
+        current,
+      }),
     startWatcher: ({ onWatcher }) => {
       onWatcher(watcher);
       return Promise.resolve(watcher);
@@ -97,7 +114,7 @@ export const attachedJourneyMode = (
         transferLovelace: BigInt(context.stackConfig.journey.transferLovelace),
         predecessor: staged.predecessor,
         fault: staged.current,
-        fetchPayloadEnvelope: staging.fetchPayloadEnvelope,
+        fetchPayloadEnvelope,
         poll: polls.poll,
         // The stack journey's own wait for our node to commit a transfer.
         commitTimeoutMs: context.stackConfig.timeoutMs,

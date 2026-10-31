@@ -14,10 +14,7 @@ import {
   verifyJourneyCorrection,
 } from "./correction.js";
 import type { JourneySuccessorPort } from "./honest-successor.js";
-import {
-  attachedJourneyMode,
-  type AttachedJourneyStaging,
-} from "./journey-runner.attached-mode.js";
+import { attachedJourneyMode } from "./journey-runner.attached-mode.js";
 import { devnetJourneyMode } from "./journey-runner.devnet-mode.js";
 import type { JourneyExecution } from "./journey-runner.journey-execution.js";
 import type {
@@ -28,20 +25,11 @@ import { JOURNEY_ACTION_DEPTH } from "./live-context.js";
 import { measureJourneyStage } from "./stage-timing.js";
 import { createJourneyVerifiedHeaders } from "./verified-headers.js";
 
-const requireStaging = (staging: AttachedJourneyStaging | undefined) => {
-  if (staging === undefined)
-    throw new Error(
-      "An attached stack journey needs its stack staging: operator-2's producer-path DA",
-    );
-  return staging;
-};
-
 /** One shared service lifecycle for a family's acceptance journey. */
 export const runJourney = async (
   runDirectory: string,
   execution: JourneyExecution,
   session: JourneySession | AttachedJourneySession,
-  staging?: AttachedJourneyStaging,
 ) => {
   const { context } = session;
   if (context.runDirectory !== runDirectory)
@@ -114,7 +102,7 @@ export const runJourney = async (
   const mode =
     session.mode === "devnet"
       ? devnetJourneyMode(session)
-      : attachedJourneyMode(session, requireStaging(staging), directory);
+      : attachedJourneyMode(session, directory);
   const polls = { stage, poll, pollWhileReplaying };
   let successorPort: JourneySuccessorPort | undefined;
   try {

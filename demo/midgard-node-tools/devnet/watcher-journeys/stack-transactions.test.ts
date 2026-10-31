@@ -12,7 +12,11 @@ import {
 } from "@al-ft/midgard-test-support/l1-recordings";
 import { afterAll, describe, expect, it } from "vitest";
 
-import { stackJourneyTransactions } from "./stack-transactions.js";
+import {
+  readKupoTransactionInclusion,
+  stackJourneyTransactions,
+  stackSignedCommitRecovery,
+} from "./stack-transactions.js";
 
 // Real preprod Kupo v2.11.0 and Ogmios v7.0.0 answers, served through the
 // reader's own fetch and WebSocket.
@@ -137,5 +141,39 @@ describe("stack transaction reads", () => {
     await expect((await readerOf(recording)).transaction(id)).rejects.toThrow(
       /indexes no output/u,
     );
+  });
+
+  it("settles a signed commit the stack's Kupo indexed as included, and reports how far Kupo had indexed", async () => {
+    const recording = loadL1Recording(REMOVAL);
+    const { id } = recording.transaction!;
+    const fetchImpl = recordedFetch(recording) as typeof fetch;
+    const recover = stackSignedCommitRecovery({
+      kupoUrl: "http://kupo.recorded",
+      ogmiosUrl: "ws://ogmios.unreachable",
+      timeoutMs: 1_000,
+      fetchImpl,
+    });
+    const signedCbor = recordedTransaction(recording).cbor as string;
+    await expect(recover({ txHash: id, signedCbor })).resolves.toMatchObject({
+      transactionHash: id,
+      signedTransactionCborHex: signedCbor,
+      status: "included",
+    });
+    const outputs = recording.exchanges.find(
+      (exchange) =>
+        exchange.surface === "kupo" &&
+        exchange.request.path === `/matches/*@${id}?resolve_hashes`,
+    )!;
+    const checkpoint = Number(
+      (outputs.response as { headers: Record<string, string> }).headers[
+        "x-most-recent-checkpoint"
+      ],
+    );
+    Object.assign(outputs, {
+      response: { ...outputs.response, body: [], bodyText: undefined },
+    });
+    await expect(
+      readKupoTransactionInclusion("http://kupo.recorded", id, fetchImpl),
+    ).resolves.toEqual({ included: false, indexedThroughSlot: checkpoint });
   });
 });

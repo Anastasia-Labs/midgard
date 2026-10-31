@@ -11,10 +11,8 @@ import {
   seedWorkflowStarted,
   STACK_GENESIS,
 } from "./attached-journey-session.test-support.js";
-import {
-  type AttachedJourneyStaging,
-  runAutonomousWatcherJourney,
-} from "./journey-runner.js";
+import type { JourneyFixtureStage } from "./fixture.js";
+import { runAutonomousWatcherJourney } from "./journey-runner.js";
 import { openAttachedJourneySession } from "./journey-session.js";
 
 afterAll(removeStackDirectories);
@@ -22,13 +20,6 @@ afterEach(closeStackWatchers);
 
 const readJson = async (path: string) =>
   JSON.parse(await readFile(path, "utf8")) as Record<string, unknown>;
-
-/** Stack staging that records what the journey had done when it was asked. */
-const recordingStaging = (onStage: () => Promise<void>) => ({
-  stage: () => onStage().then(() => Promise.reject(new Error("staged"))),
-  verifyPublicDa: () => Promise.reject(new Error("not reached")),
-  fetchPayloadEnvelope: () => Promise.reject(new Error("not reached")),
-});
 
 describe("journey runner on an attached stack", () => {
   it("reads the stack watcher's journals and the stack's genesis, holds operator-2, and launches nothing", async () => {
@@ -41,26 +32,36 @@ describe("journey runner on an attached stack", () => {
     );
     const directory = join(stack.runDirectory, "work/journeys/doubleSpend");
     let seen: Record<string, unknown> | undefined;
-    const staging = recordingStaging(async () => {
+    // The family's own staging, as every family stages: the runner hands it
+    // the stack's context, the session's replayed ledger and the stack's
+    // confirmed transactions.
+    const stage = async (input: JourneyFixtureStage) => {
       seen = {
         operator2: [...stack.operator2.calls],
+        context: input.context,
+        directory: input.directory,
+        ledgerAt: input.ledgerAt,
+        readsConfirmedTransactions:
+          typeof input.readConfirmedTransaction === "function",
         baseline: await readJson(join(directory, "workflow-baseline.json")),
         timing: await readJson(join(directory, "timing-plan.json")),
       };
-    }) satisfies AttachedJourneyStaging;
+      throw new Error("staged");
+    };
     await expect(
       runAutonomousWatcherJourney(
         stack.runDirectory,
-        {
-          category: "doubleSpend",
-          stage: () => Promise.reject(new Error("devnet staging")),
-        },
-        { session, staging },
+        { category: "doubleSpend", stage },
+        { session },
       ),
     ).rejects.toThrow("staged");
     expect(seen).toMatchObject({
       // Operator-2's node stopped before the drill signed anything as it.
       operator2: ["stop"],
+      context: stack.context,
+      directory,
+      ledgerAt: session.ledgerAt,
+      readsConfirmedTransactions: true,
       baseline: {
         category: "doubleSpend",
         prefixes: [{ headerHash, entryCount: 1 }],
@@ -81,24 +82,5 @@ describe("journey runner on an attached stack", () => {
     expect(stack.operator2.calls).toEqual(["stop", "start"]);
     // Only the stack watcher's own operations endpoint was asked anything.
     expect(new Set(stack.requests)).toEqual(new Set(["/v1/status"]));
-  });
-
-  it("refuses an attached session without its stack staging", async () => {
-    const stack = await runningStackWatcher(liveStatus());
-    const session = await openAttachedJourneySession(
-      stack.context,
-      stack.options(),
-    );
-    await expect(
-      runAutonomousWatcherJourney(
-        stack.runDirectory,
-        {
-          category: "doubleSpend",
-          stage: () => Promise.reject(new Error("devnet staging")),
-        },
-        { session },
-      ),
-    ).rejects.toThrow(/needs its stack staging/u);
-    expect(stack.operator2.calls).toEqual([]);
   });
 });

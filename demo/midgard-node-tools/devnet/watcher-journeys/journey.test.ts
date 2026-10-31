@@ -52,8 +52,6 @@ for (const fixture of fixtures) {
               }),
             ));
       const last = fixture === fixtures.at(-1);
-      // The stack's producer-path staging is not wired here yet: the runner
-      // refuses an attached session without it.
       await runAutonomousWatcherJourney(
         activeSession.mode === "devnet"
           ? runDirectory!

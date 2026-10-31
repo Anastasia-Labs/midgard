@@ -36,53 +36,14 @@ export async function verifyPublicDa(
       throw new Error("Saved public DA bytes changed");
     return saved;
   }
-  const result = await fetchPublicDaPayload({
-    processConfigPath: join(
-      processes.config.watcher.configDirectory,
-      "watcher-process.json",
-    ),
-    deploymentIdentity: authority.deploymentIdentity,
-    headerHash,
-  });
-  await writeTextFileAtomic(`${path}.cbor`, result.payloadEnvelopeCbor, {
-    mode: 0o600,
-  });
-  const receipt = {
-    headerHash,
-    peerId: result.sourcePeerId,
-    sha256: createHash("sha256")
-      .update(result.payloadEnvelopeCbor)
-      .digest("hex"),
-    bytes: result.payloadEnvelopeCbor.length,
-    deploymentId: authority.deploymentIdentity.manifestId,
-  };
-  await writeDurableJson(`${path}.json`, receipt);
-  return receipt;
-}
-
-/**
- * The first copy of `headerHash`'s payload envelope the stack watcher's
- * public DA sources serve that verifies against the header.
- */
-export async function fetchPublicDaPayload({
-  processConfigPath,
-  deploymentIdentity,
-  headerHash,
-}: {
-  processConfigPath: string;
-  deploymentIdentity: Parameters<
-    typeof createWatcherRetainedDaRuntime
-  >[0]["deploymentIdentity"];
-  headerHash: string;
-}) {
-  if (!/^[0-9a-f]{56}$/.test(headerHash))
-    throw new Error("Invalid committed header hash");
   const processConfig = parseWatcherProcessConfig(
-    await readJsonIfPresent(processConfigPath),
+    await readJsonIfPresent(
+      join(processes.config.watcher.configDirectory, "watcher-process.json"),
+    ),
   );
   const runtime = await createWatcherRetainedDaRuntime({
     watcherConfig: processConfig.watcherConfig,
-    deploymentIdentity,
+    deploymentIdentity: authority.deploymentIdentity,
   });
   try {
     const source = runtime.sources[0];
@@ -92,10 +53,20 @@ export async function fetchPublicDaPayload({
     });
     if (!result.ok)
       throw new Error(`Public DA retrieval failed for ${headerHash}`);
-    return {
-      payloadEnvelopeCbor: result.payloadEnvelopeCbor,
-      sourcePeerId: result.sourcePeerId,
+    await writeTextFileAtomic(`${path}.cbor`, result.payloadEnvelopeCbor, {
+      mode: 0o600,
+    });
+    const receipt = {
+      headerHash,
+      peerId: result.sourcePeerId,
+      sha256: createHash("sha256")
+        .update(result.payloadEnvelopeCbor)
+        .digest("hex"),
+      bytes: result.payloadEnvelopeCbor.length,
+      deploymentId: authority.deploymentIdentity.manifestId,
     };
+    await writeDurableJson(`${path}.json`, receipt);
+    return receipt;
   } finally {
     await runtime.close();
   }

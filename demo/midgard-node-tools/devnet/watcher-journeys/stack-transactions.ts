@@ -10,6 +10,12 @@ import {
   type WebSocketFactory,
 } from "midgard-node/l1-external/kupmios-history";
 
+import type { SignedCommitAttempt } from "./signed-commit-reconciliation.js";
+import {
+  readSignedTransactionRecovery,
+  type SignedTransactionRecovery,
+} from "./signed-transaction-recovery.js";
+
 /** A confirmed transaction's exact bytes and the block that carries it. */
 export type JourneyConfirmedTransaction = Readonly<{
   cbor: string;
@@ -158,3 +164,68 @@ export const stackJourneyTransactions = (
     },
   });
 };
+
+/**
+ * Whether the stack's Kupo indexed an output of `txHash`, and the slot it
+ * had indexed through when it answered (its most recent checkpoint).
+ */
+export const readKupoTransactionInclusion = async (
+  kupoUrl: string,
+  txHash: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<Readonly<{ included: boolean; indexedThroughSlot: number }>> => {
+  if (!TX_HASH.test(txHash))
+    throw new Error(`Malformed transaction hash ${txHash}`);
+  const path = `/matches/*@${txHash}?resolve_hashes`;
+  const response = await fetchImpl(
+    `${normalizeKupoHttpUrl(kupoUrl).replace(/\/+$/u, "")}${path}`,
+    { signal: AbortSignal.timeout(30_000) },
+  );
+  if (!response.ok)
+    throw new Error(`Kupo ${path} failed with ${response.status.toString()}`);
+  const matches = (await response.json()) as unknown;
+  const indexedThroughSlot = Number(
+    response.headers.get("X-Most-Recent-Checkpoint"),
+  );
+  if (!Array.isArray(matches) || !Number.isSafeInteger(indexedThroughSlot))
+    throw new Error(`Kupo ${path} answered without its matches or checkpoint`);
+  return { included: matches.length > 0, indexedThroughSlot };
+};
+
+/**
+ * Recovery of a signed commit on an attached stack: the stack's Ogmios
+ * ledger settles expiry and spent inputs, and the stack's Kupo, read first,
+ * settles inclusion. A transaction Kupo has not indexed counts as excluded
+ * only through the slot Kupo had indexed when it answered.
+ */
+export const stackSignedCommitRecovery =
+  (
+    input: Readonly<{
+      kupoUrl: string;
+      ogmiosUrl: string;
+      timeoutMs: number;
+      fetchImpl?: typeof fetch;
+    }>,
+  ) =>
+  async (attempt: SignedCommitAttempt): Promise<SignedTransactionRecovery> => {
+    const kupo = await readKupoTransactionInclusion(
+      input.kupoUrl,
+      attempt.txHash,
+      input.fetchImpl,
+    );
+    if (kupo.included)
+      return {
+        transactionHash: attempt.txHash,
+        signedTransactionCborHex: attempt.signedCbor,
+        status: "included",
+        reason: "the stack's Kupo indexed an output of it",
+      };
+    return await readSignedTransactionRecovery({
+      ogmiosUrl: input.ogmiosUrl,
+      timeoutMs: input.timeoutMs,
+      transactionHash: attempt.txHash,
+      signedTransactionCborHex: attempt.signedCbor,
+      includedThrough: (_txHash, slot) =>
+        kupo.indexedThroughSlot >= slot ? false : undefined,
+    });
+  };

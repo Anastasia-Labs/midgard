@@ -1,5 +1,4 @@
 import type { JourneyFixture } from "./fixture.js";
-import type { AttachedJourneyStaging } from "./journey-runner.attached-mode.js";
 import { runJourney } from "./journey-runner.run-journey.js";
 import {
   type AttachedJourneySession,
@@ -14,8 +13,6 @@ export const runAutonomousWatcherJourney = async (
   options: {
     waitForAnchors?: boolean;
     session?: JourneySession | AttachedJourneySession;
-    /** An attached stack session's staging; see `attachedJourneyMode`. */
-    staging?: AttachedJourneyStaging;
   } = {},
 ) => {
   const session = options.session ?? (await openJourneySession(runDirectory));
@@ -28,7 +25,6 @@ export const runAutonomousWatcherJourney = async (
         waitForAnchors: options.waitForAnchors ?? true,
       },
       session,
-      options.staging,
     );
   } catch (cause) {
     await session.close();

@@ -30,6 +30,12 @@ export type JourneyPublicDaAvailability = Readonly<{
   pause?: () => Promise<void>;
 }>;
 
+/**
+ * How long an attached stack's public retained copy of an attested payload
+ * may trail its L1 apply.
+ */
+export const STACK_PUBLIC_DA_TRAIL_MS = 120_000;
+
 /** Asks until an answer serves the payload or the availability wait ends. */
 const fetchUntilServed = async <Answer extends { readonly ok: boolean }>(
   fetch: () => Promise<Answer>,
@@ -193,6 +199,81 @@ export const verifyJourneyPublicDa = async (input: {
       }
     } finally {
       await runtime.close();
+    }
+    return await record("passed");
+  } catch (cause) {
+    await record("failed", cause);
+    throw cause;
+  }
+};
+
+/**
+ * An attached stack's public DA preflight: the stack watcher's own peers
+ * serve the staged blocks' exact payloads, each fetched as the stack journey
+ * fetches public DA (every peer, waiting while the retained copy trails its
+ * apply).
+ */
+export const verifyStackJourneyPublicDa = async (input: {
+  directory: string;
+  watcherConfig: WatcherConfig;
+  deploymentIdentity: VerifiedWatcherDeploymentIdentity;
+  predecessor: Pick<JourneyBlock, "headerHash" | "payloadEnvelopeCbor">;
+  current: Pick<JourneyBlock, "headerHash" | "payloadEnvelopeCbor">;
+  availability?: JourneyPublicDaAvailability;
+  openRuntime?: OpenJourneyPublicDaRuntime;
+}) => {
+  const startedAt = new Date().toISOString();
+  const receipts: {
+    headerHash: string;
+    sourcePeerId: string;
+    bytes: number;
+    payloadEnvelopeSha256: string;
+  }[] = [];
+  const record = async (outcome: "passed" | "failed", error?: unknown) => {
+    const evidence = {
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      deploymentFingerprint: input.deploymentIdentity.manifestId,
+      peers: input.watcherConfig.da.peers,
+      outcome,
+      receipts,
+      ...(error === undefined
+        ? {}
+        : { error: error instanceof Error ? error.message : inspect(error) }),
+    };
+    await writeJourneyArtifact(
+      join(input.directory, "public-da-preflight.json"),
+      evidence,
+    );
+    return evidence;
+  };
+  try {
+    for (const block of [input.predecessor, input.current]) {
+      const served = await fetchJourneyPublicDaPayload({
+        watcherConfig: input.watcherConfig,
+        deploymentIdentity: input.deploymentIdentity,
+        headerHash: block.headerHash,
+        availability: input.availability ?? {
+          waitMs: STACK_PUBLIC_DA_TRAIL_MS,
+        },
+        ...(input.openRuntime === undefined
+          ? {}
+          : { openRuntime: input.openRuntime }),
+      });
+      if (
+        !served.payloadEnvelopeCbor.equals(
+          Buffer.from(block.payloadEnvelopeCbor),
+        )
+      )
+        throw new Error(`Public DA changed staged payload ${block.headerHash}`);
+      receipts.push({
+        headerHash: block.headerHash,
+        sourcePeerId: served.sourcePeerId,
+        bytes: served.payloadEnvelopeCbor.length,
+        payloadEnvelopeSha256: createHash("sha256")
+          .update(served.payloadEnvelopeCbor)
+          .digest("hex"),
+      });
     }
     return await record("passed");
   } catch (cause) {

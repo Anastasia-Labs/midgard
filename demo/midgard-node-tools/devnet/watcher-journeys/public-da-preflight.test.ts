@@ -14,6 +14,7 @@ import {
   fetchJourneyPublicDaPayload,
   type OpenJourneyPublicDaRuntime,
   verifyJourneyPublicDa,
+  verifyStackJourneyPublicDa,
 } from "./public-da-preflight.js";
 
 const mocked = vi.hoisted(() => ({
@@ -269,3 +270,55 @@ it.each([
     expect(da.closed()).toBe(1);
   },
 );
+
+it("proves an attached stack's public DA serves both staged payloads exactly, waiting while it trails", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "journey-da-preflight-"));
+  try {
+    const peers = ["12D3KooWFirstPeerWithoutTheCopy", peerId];
+    const da = servingAfter(["missing", "served"], peers);
+    const evidence = await verifyStackJourneyPublicDa({
+      directory,
+      watcherConfig,
+      deploymentIdentity,
+      predecessor,
+      current,
+      availability: da.availability,
+      openRuntime: da.openRuntime,
+    });
+    expect(evidence).toMatchObject({
+      outcome: "passed",
+      deploymentFingerprint: deploymentIdentity.manifestId,
+      receipts: [
+        { headerHash: predecessor.headerHash, sourcePeerId: peerId, bytes: 3 },
+        { headerHash: current.headerHash, sourcePeerId: peerId, bytes: 3 },
+      ],
+    });
+    expect(
+      await readJourneyArtifact(join(directory, "public-da-preflight.json")),
+    ).toEqual(evidence);
+
+    const changed = servingAfter(["served"]);
+    await expect(
+      verifyStackJourneyPublicDa({
+        directory,
+        watcherConfig,
+        deploymentIdentity,
+        predecessor,
+        current: {
+          ...current,
+          payloadEnvelopeCbor: Buffer.from("8201", "hex"),
+        },
+        availability: changed.availability,
+        openRuntime: changed.openRuntime,
+      }),
+    ).rejects.toThrow(`Public DA changed staged payload ${current.headerHash}`);
+    expect(
+      await readJourneyArtifact(join(directory, "public-da-preflight.json")),
+    ).toMatchObject({
+      outcome: "failed",
+      receipts: [{ headerHash: predecessor.headerHash }],
+    });
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});

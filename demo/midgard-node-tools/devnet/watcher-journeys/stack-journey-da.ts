@@ -16,6 +16,7 @@ import { readKupoUnitConsumptions } from "./kupo-consumption.js";
 import {
   fetchJourneyPublicDaPayload,
   readStackJourneyWatcherConfig,
+  STACK_PUBLIC_DA_TRAIL_MS,
 } from "./public-da-preflight.js";
 import type { StackJourneyContext } from "./stack-context.js";
 import {
@@ -56,8 +57,6 @@ export const archiveAgedOutCheckpoints = (
 
 /** Polls L1 and DA no faster than this while the committee works. */
 const STACK_DA_POLL_MS = 10_000;
-/** How long the public retained copy of an attested payload may trail its apply. */
-const STACK_PUBLIC_DA_TRAIL_MS = 120_000;
 
 /**
  * A stack journey's producer-path DA: its blocks' payloads published as
