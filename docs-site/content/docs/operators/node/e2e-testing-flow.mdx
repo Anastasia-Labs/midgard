@@ -170,6 +170,26 @@ ports, with a configuration copied from
    and [Operator Lifecycle](/docs/operators/node/operator-lifecycle) give each
    command's output and refusals.
 
+### Fault drill inputs
+
+The fault drill runs against the main stack, the one whose node and watcher
+it tests. It pauses operator-2's instance and signs and publishes as
+operator-2, so it reads these names from the main stack's node `.env`:
+
+- `STACK_OPERATOR2_SEED`: operator-2's wallet.
+- `STACK_DRILL_LEDGER_OWNER_SEED`: owns the L2 outputs the fault transactions
+  spend.
+- `STACK_DRILL_FUNDING_SEED`: pays the drill's L1 fees and operator-2's
+  re-onboarding bonds.
+- `STACK_OPERATOR2_DA_TRANSPORT`: operator-2's DA producer transport
+  identity, the one the committee admits for operator-2's node. You supply it
+  from operator-2's instance: copy the value of the variable that instance's
+  configuration names in `da.producerTransportEnv` into the main stack's
+  `.env` under this name. Operator-2's instance keeps its own copy.
+
+All four values are secrets. The drill refuses to start when one is missing
+and names the variable, never its value.
+
 ## Related
 
 - [Preprod-Public Deployment](/docs/operators/node/preprod-public-deploy) for the public profile.
