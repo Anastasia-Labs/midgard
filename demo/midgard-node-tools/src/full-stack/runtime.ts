@@ -2,10 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { writeTextFileAtomic } from "midgard-node/files/atomic-write";
-
 import { assertNodeFollowerEnvironment } from "../l1-origin.js";
-import { composeYaml, override } from "./compose-yaml.js";
 import {
   generateDaServices,
   stackDaReaderGrantSql,
@@ -14,6 +11,7 @@ import {
 import { stackPaths } from "./deployment.js";
 import { readJsonIfPresent, writeDurableJson } from "./journal.js";
 import { containerNativeLedger } from "./native-ledger.js";
+import { pinNativeOwner, preflightProducerTransport } from "./node-start.js";
 import { getJson, poll, type StackProcesses } from "./process.js";
 import {
   publicNodeEnvironment,
@@ -77,7 +75,7 @@ export async function runtimeInputDigest(processes: StackProcesses) {
   }
   return hash.digest("hex");
 }
-const servicesDirectory = (processes: StackProcesses) =>
+export const servicesDirectory = (processes: StackProcesses) =>
   join(processes.config.runDirectory, "services");
 /** Host node commands use the generated producer manifest, also after a resume skips generation. */
 export function restoreRuntimeEnvironment(processes: StackProcesses) {
@@ -106,7 +104,10 @@ async function committeeExpectation(processes: StackProcesses) {
  * Compose file's own env_file. It refuses an environment that leaves the
  * node's L1 follower unconfigured.
  */
-function nodeEnvironment(processes: StackProcesses, ownerSha256: string) {
+export function nodeEnvironment(
+  processes: StackProcesses,
+  ownerSha256: string,
+) {
   const { config, env } = processes;
   const nodeEnv = {
     ...Object.fromEntries(
@@ -338,36 +339,12 @@ export function runtimeSteps(processes: StackProcesses): StackStep[] {
         // The pin below runs the node container, which mounts this file.
         if (isPublic)
           await writePublicNodeConfig(processes, servicesDirectory(processes));
-        // Pin the actual owner in the built image, never copy a hash from another checkout.
-        // The pin runs before node.env exists, and Compose appends env_file
-        // lists across files, so the base file's .env, with every role's
-        // secrets, would reach it: its own overlay drops every env_file.
-        const pinOverlay = join(servicesDirectory(processes), "owner-pin.yaml");
-        await writeTextFileAtomic(
-          pinOverlay,
-          `${composeYaml({
-            services: { "midgard-node": { env_file: override([]) } },
-          })}\n`,
-          { mode: 0o644 },
-        );
-        const pin = (await processes.compose(
-          "native-owner-pin",
-          [
-            "run",
-            "--rm",
-            "--no-deps",
-            "--entrypoint",
-            "node",
-            "midgard-node",
-            "-e",
-            "console.log(JSON.stringify({sha:require('node:fs').readFileSync('/app/native/architecture-g-owner.sha256','utf8').trim()}))",
-          ],
+        const ownerSha256 = await pinNativeOwner(
+          processes,
+          servicesDirectory(processes),
           runtime.compose,
-          pinOverlay,
-        )) as { sha: string };
-        if (!/^[0-9a-f]{64}$/.test(pin.sha))
-          throw new Error("Invalid native owner image pin");
-        const nodeEnv = nodeEnvironment(processes, pin.sha);
+        );
+        const nodeEnv = nodeEnvironment(processes, ownerSha256);
         await writePrivateEnv(
           join(servicesDirectory(processes), "node.env"),
           isPublic ? await publicNodeEnvironment(processes, nodeEnv) : nodeEnv,
@@ -442,41 +419,10 @@ export function runtimeSteps(processes: StackProcesses): StackStep[] {
           ["up", "-d", "public-retained-da"],
           runtime.compose,
         );
-        // Bind only before the producer container first starts. Docker holds its
-        // port even while the node restarts or is not ready yet, so ask Compose.
-        // `ps --format json` prints one object per container, and nothing when none match.
-        const alreadyRunning =
-          (await processes.compose(
-            "producer-container-state",
-            [
-              "ps",
-              "--format",
-              "json",
-              "--status",
-              "running",
-              "--status",
-              "restarting",
-              "midgard-node",
-            ],
-            runtime.compose,
-          )) !== null;
-        const hostManifest = join(
-          processes.config.runDirectory,
-          "services/producer-host.json",
-        );
-        await processes.node(
-          "producer-da-preflight",
-          [
-            "da-libp2p-preflight",
-            "--mode",
-            alreadyRunning ? "dial-only" : "bind-listen",
-            "--json",
-          ],
-          {
-            MIDGARD_DEPLOYMENT_MANIFEST_PATH: hostManifest,
-            DA_LIBP2P_PRIVATE_KEY_SOURCE:
-              processes.env[processes.config.da.producerTransportEnv]!,
-          },
+        await preflightProducerTransport(
+          processes,
+          servicesDirectory(processes),
+          runtime.compose,
         );
         await processes.compose(
           "runtime-start",

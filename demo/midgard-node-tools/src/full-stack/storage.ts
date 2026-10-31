@@ -116,9 +116,12 @@ export async function assertPreservedStorage(processes: StackProcesses) {
         steps?: { initProtocol?: { status?: string; txHash?: string } };
       }
     | undefined;
+  // A second instance's attach step, like initialize, put the manifest there
+  // over storage that was fresh before it.
   if (
     manifest?.steps?.initProtocol?.status === "complete" &&
-    !journal.steps.initialize
+    !journal.steps.initialize &&
+    !journal.steps.attach
   ) {
     const initTxHash = manifest.steps.initProtocol.txHash;
     const observed = (await sql(processes, ATTACHMENT_QUERY)) as {

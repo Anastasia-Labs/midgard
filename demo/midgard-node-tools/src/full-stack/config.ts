@@ -59,6 +59,8 @@ export type StackConfig = {
   };
   /** A production profile's public node inputs; absent for preprod-testing. */
   public?: PublicStackInputs;
+  /** The running stack a second instance attaches to (attached-config.ts). */
+  attachedTo?: StackConfig;
 };
 
 function record(value: unknown, label: string): Record<string, unknown> {

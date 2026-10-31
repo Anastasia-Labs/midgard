@@ -23,11 +23,12 @@ export function assertComposeVersion(report: unknown) {
     );
 }
 
-export async function prepareStackPrerequisites(processes: StackProcesses) {
-  // loadStackConfig ran every offline check; these need the fresh builds.
-  const watcherEnv = parse(
-    await readFile(processes.config.watcher.composeEnvFile),
-  );
+/**
+ * Builds what the stack's host commands and images run: the contracts, the
+ * packages, the node transport and the native owner. Points host commands at
+ * the stack's Cardano node.
+ */
+export async function buildStackPrograms(processes: StackProcesses) {
   const workspace = resolve(processes.config.nodeRoot, "..");
   assertComposeVersion(
     await processes.command(
@@ -96,6 +97,15 @@ export async function prepareStackPrerequisites(processes: StackProcesses) {
     .update(await readFile(owner))
     .digest("hex");
   configureHostNativeLedger(processes);
+  return profile;
+}
+
+export async function prepareStackPrerequisites(processes: StackProcesses) {
+  // loadStackConfig ran every offline check; these need the fresh builds.
+  const watcherEnv = parse(
+    await readFile(processes.config.watcher.composeEnvFile),
+  );
+  const profile = await buildStackPrograms(processes);
   // Every Compose command of a preprod-public stack names its role images.
   if (processes.config.public !== undefined) {
     const { preparePublicImages } = await import("./public-runtime.js");
@@ -134,5 +144,12 @@ export async function prepareStackPrerequisites(processes: StackProcesses) {
       throw new Error(`Watcher ${role} secret differs from its funded wallet`);
   }
   await checkFreshReleaseInput(processes);
+  return { profile, inputsChecked: true };
+}
+
+/** A second instance builds its own node and reads the stack's Cardano node. */
+export async function prepareAttachedPrerequisites(processes: StackProcesses) {
+  const profile = await buildStackPrograms(processes);
+  await processes.compose("base-compose-check", ["config", "--quiet"]);
   return { profile, inputsChecked: true };
 }

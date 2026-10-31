@@ -212,6 +212,29 @@ directory. To get one without deleting existing volumes, run from a separate
 linked worktree: the Compose wrapper gives it its own project, volumes, host
 ports and node directory.
 
+A second operator's node attaches to a running `preprod-testing` stack; it
+does not attach to a public stack. The stack's committee accepts payloads only
+from the producers it admits: list each further producer in the stack
+configuration's `da.admittedProducers`, by the multiaddr it listens on, ending
+in its peer id (never its key). Copy
+`config/preprod-testing-twin-operator2.example.json` into a second linked
+worktree built for `preprod-testing`. It names the stack configuration it
+attaches to (`attachTo`), its own node directory, `.env`, run directory and
+endpoint, the four node wallets by the stack's variable names (operator, merge,
+reference, settlement; the merge wallet is treated exactly as the first
+operator's is), and `producerTransportEnv`, the `STACK_` variable in its `.env`
+holding its persistent DA transport identity. `--check` on that configuration
+refuses, naming the address to add, a producer the stack does not admit: add
+that address to the stack's `da.admittedProducers` and rerun the stack, which
+regenerates its committee's configuration. It also refuses the stack's node or
+run directory, any of the stack's node, metrics, DA or Postgres host ports, the
+stack's Compose project, wallets other than the four node wallets, and a public
+stack. A run starts only its own Postgres and node: it skips the nonce,
+reference scripts and initialization, copies the stack's deployment and L1
+origin once the stack has initialized, registers and activates its operator,
+and runs the node on the stack's Cardano node socket, publishing to the stack's
+committee. It never runs wallet journeys. Rerun the same command to resume or confirm it.
+
 The generated node environment explicitly sets `MIN_QUEUE_LENGTH_FOR_MERGING=1`
 for these small Preprod journeys. This uses the existing automatic merge worker
 and leaves the operator's general configuration unchanged. Each cycle waits for automatic deposit absorption, transfers value to the

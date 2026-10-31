@@ -169,11 +169,11 @@ program
 program
   .command("e2e-stack")
   .description(
-    "Set up or resume the persistent local-provider Preprod stack and verify wallet journeys",
+    "Set up or resume the persistent local-provider Preprod stack and verify wallet journeys, or attach another operator's node to a running preprod-testing stack",
   )
   .requiredOption(
     "--config <file>",
-    "Absolute path of the stack configuration JSON",
+    "Absolute path of the stack configuration JSON, or of a second instance's configuration (with attachTo)",
   )
   .option(
     "--setup-only",

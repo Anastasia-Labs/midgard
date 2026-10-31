@@ -1,6 +1,7 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 
+import { isAttachedStackConfig } from "./attached-config.js";
 import { loadStackConfig } from "./config.js";
 import {
   assertHoldsControllerLock,
@@ -20,7 +21,16 @@ export async function runStackController(options: {
   // A package script runs from the package directory, so a relative path would not be the caller's.
   if (!isAbsolute(options.config))
     throw new Error("--config must be an absolute path");
-  const { config, env, intentDigest } = await loadStackConfig(options.config);
+  // A second instance attaches to a running stack as another operator's node.
+  const attached = isAttachedStackConfig(
+    JSON.parse(await readFile(options.config, "utf8")),
+  )
+    ? await (
+        await import("./attached-config.js")
+      ).loadAttachedStackConfig(options.config)
+    : undefined;
+  const { config, env, intentDigest } =
+    attached ?? (await loadStackConfig(options.config));
   if (options.check) {
     console.log(
       JSON.stringify({
@@ -28,8 +38,15 @@ export async function runStackController(options: {
         profile: env.MIDGARD_DEPLOYMENT_PROFILE,
         nodeRoot: config.nodeRoot,
         runDirectory: config.runDirectory,
-        cycles: config.journey.cycles,
-        setupOnly: options.setupOnly === true,
+        ...(attached === undefined
+          ? {
+              cycles: config.journey.cycles,
+              setupOnly: options.setupOnly === true,
+            }
+          : {
+              attachedTo: config.attachedTo!.runDirectory,
+              admittedProducer: attached.admittedProducer,
+            }),
       }),
     );
     return;
@@ -58,17 +75,30 @@ export async function runStackController(options: {
     const { publicOriginHost } = await import("./public-node.js");
     trustNodeTls(config.public.tlsCaFile, publicOriginHost(env));
   }
-  const { prepareStackPrerequisites } = await import("./prerequisites.js");
+  const { prepareStackPrerequisites, prepareAttachedPrerequisites } =
+    await import("./prerequisites.js");
   console.log("prerequisites: running");
-  const prerequisites = await prepareStackPrerequisites(processes);
+  const prerequisites = await (
+    attached === undefined
+      ? prepareStackPrerequisites
+      : prepareAttachedPrerequisites
+  )(processes);
   await writeDurableJson(
     join(config.runDirectory, "prerequisites.json"),
     prerequisites,
   );
   console.log("prerequisites: confirmed");
-  const { deploymentSteps } = await import("./deployment.js");
-  const { runtimeSteps } = await import("./runtime.js");
-  const { journeySteps } = await import("./journey.js");
+  const setupOnly = options.setupOnly === true || attached !== undefined;
+  const steps =
+    attached === undefined
+      ? [
+          ...(await import("./deployment.js")).deploymentSteps(processes),
+          ...(await import("./runtime.js")).runtimeSteps(processes),
+          ...(setupOnly
+            ? []
+            : (await import("./journey.js")).journeySteps(processes)),
+        ]
+      : (await import("./attached.js")).attachedSteps(processes);
   const journal = await runStackWorkflow(
     {
       directory: config.runDirectory,
@@ -77,28 +107,24 @@ export async function runStackController(options: {
       onJournalAccepted: () => writeDurableJson(bindingPath, binding),
       onProgress: (id, status) => console.log(`${id}: ${status}`),
     },
-    [
-      ...deploymentSteps(processes),
-      ...runtimeSteps(processes),
-      ...(options.setupOnly ? [] : journeySteps(processes)),
-    ],
+    steps,
   );
   const summary = {
     schemaVersion: "midgard-full-stack-summary-v1",
     runId: journal.runId,
-    result: options.setupOnly ? "setup-complete" : "wallet-journey-complete",
+    result: setupOnly ? "setup-complete" : "wallet-journey-complete",
     network: "Preprod",
     confirmedSteps: Object.entries(journal.steps)
       .filter(([, record]) => record.status === "complete")
       .map(([id]) => id),
     journal: join(config.runDirectory, "stack-journal.json"),
     services: "docker-compose",
-    cycles: options.setupOnly ? 0 : config.journey.cycles,
+    cycles: setupOnly ? 0 : config.journey.cycles,
   };
   await writeDurableJson(
     join(
       config.runDirectory,
-      options.setupOnly ? "setup-summary.json" : "journey-summary.json",
+      setupOnly ? "setup-summary.json" : "journey-summary.json",
     ),
     summary,
   );

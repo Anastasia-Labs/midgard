@@ -49,13 +49,16 @@ function assertStackSecretNames(config: StackConfig) {
 }
 
 /** Generated secret files must stay out of every Docker build context. */
-function assertPrivateDirectories(config: StackConfig) {
+export function assertPrivateDirectories(
+  config: StackConfig,
+  directories: Record<string, string> = {
+    runDirectory: config.runDirectory,
+    releaseDirectory: config.watcher.releaseDirectory,
+  },
+) {
   const context = resolve(config.nodeRoot, "..");
   const ignored = join(config.nodeRoot, "logs");
-  for (const [label, path] of [
-    ["runDirectory", config.runDirectory],
-    ["releaseDirectory", config.watcher.releaseDirectory],
-  ] as const)
+  for (const [label, path] of Object.entries(directories))
     if (inside(path, context) && !inside(path, ignored))
       throw new Error(
         `${label} is inside the Docker build context ${context}; use a directory under ${ignored} or outside the checkout`,
@@ -63,7 +66,7 @@ function assertPrivateDirectories(config: StackConfig) {
 }
 
 /** Host tools read these, so the node environment must never set them. */
-function assertHostEnvironmentUntouched(env: Record<string, string>) {
+export function assertHostEnvironmentUntouched(env: Record<string, string>) {
   for (const key of Object.keys(env))
     if (
       ["PATH", "HOME", "NODE_OPTIONS", "BASH_ENV", "ENV"].includes(key) ||
@@ -75,7 +78,10 @@ function assertHostEnvironmentUntouched(env: Record<string, string>) {
       );
 }
 
-function assertHostPorts(config: StackConfig, env: Record<string, string>) {
+export function assertHostPorts(
+  config: StackConfig,
+  env: Record<string, string>,
+) {
   const postgres = env.MIDGARD_POSTGRES_HOST_PORT ?? "";
   if (!/^[1-9][0-9]*$/.test(postgres) || ["5433", "55433"].includes(postgres))
     throw new Error(

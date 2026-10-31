@@ -27,6 +27,20 @@ export function committeeIsReady(
   );
 }
 
+/** The node is ready, with no reasons, and its settlement is healthy. */
+export function nodeIsReady(value: unknown) {
+  const node = value as
+    | { ready?: boolean; reasons?: unknown[]; settlement?: { state?: string } }
+    | undefined;
+  if (node?.settlement?.state === "error")
+    throw new Error("Automatic settlement is unhealthy");
+  return (
+    node?.ready === true &&
+    node.reasons?.length === 0 &&
+    ["running", "waiting"].includes(node.settlement?.state ?? "")
+  );
+}
+
 /** Functional readiness requires each service's published readiness fields. */
 export function stackIsReady(input: {
   node: unknown;
@@ -35,9 +49,6 @@ export function stackIsReady(input: {
   manifestId: string;
   committeePeerIds: readonly string[];
 }) {
-  const node = input.node as
-    | { ready?: boolean; reasons?: unknown[]; settlement?: { state?: string } }
-    | undefined;
   const watcher = input.watcher as
     | {
         liveness?: string;
@@ -47,12 +58,8 @@ export function stackIsReady(input: {
         launchScope?: { complete?: boolean };
       }
     | undefined;
-  if (node?.settlement?.state === "error")
-    throw new Error("Automatic settlement is unhealthy");
   return (
-    node?.ready === true &&
-    node.reasons?.length === 0 &&
-    ["running", "waiting"].includes(node.settlement?.state ?? "") &&
+    nodeIsReady(input.node) &&
     watcher?.liveness === "live" &&
     watcher.readiness === "ready" &&
     watcher.readinessReasons?.length === 0 &&

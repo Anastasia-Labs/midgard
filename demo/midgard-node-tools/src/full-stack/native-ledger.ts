@@ -5,9 +5,11 @@ import type { L1NodeConnection } from "../l1-origin.js";
 import type { StackProcesses } from "./process.js";
 
 export function nativeLedgerPaths(processes: StackProcesses) {
+  // A second instance reads the Cardano node of the stack it attaches to.
+  const ledger = processes.config.attachedTo ?? processes.config;
   return {
-    directory: join(processes.config.watcher.configDirectory, "cardano"),
-    socketDirectory: join(processes.config.nodeRoot, "cardano/ipc"),
+    directory: join(ledger.watcher.configDirectory, "cardano"),
+    socketDirectory: join(ledger.nodeRoot, "cardano/ipc"),
     binary: resolve(
       processes.config.nodeRoot,
       "../l1-node-transport/dist/native/midgard-l1-node-transport",
