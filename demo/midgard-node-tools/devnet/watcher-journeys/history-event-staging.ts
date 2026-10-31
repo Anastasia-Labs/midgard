@@ -1,10 +1,6 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
-import {
-  decodeMidgardTxOutput,
-  encodeMidgardTxOutput,
-} from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
@@ -21,24 +17,9 @@ import type { publishWorkflowDeploymentOnChain } from "midgard-node/tests/helper
 import { buildPastProtectedPredecessor } from "midgard-watcher/tests/support/history-predecessor-hold";
 
 import { readJourneyArtifact, writeJourneyArtifact } from "./artifacts.js";
-import {
-  ownedHistoryLedgerEntries,
-  retainHistoryTransactions,
-  signHistoryTransaction,
-} from "./history-cases.js";
-import {
-  buildJourneyFabricatedDeposit,
-  buildJourneyWithdrawalEvent,
-  buildJourneyWithdrawnTransaction,
-  journeyWithdrawalBody,
-  type StagedHistoryEvent,
-} from "./history-events.js";
+import type { StagedHistoryEvent } from "./history-events.js";
 import { journeyNetwork } from "./journey-network.js";
-import {
-  createPreparedJourneyFixture,
-  decodeJourneyRetainedBlock,
-  type JourneyFaultPreparationInput,
-} from "./staging.js";
+import type { JourneyFaultPreparationInput } from "./staging.js";
 
 export type EventMetadata = {
   address: string;
@@ -374,124 +355,4 @@ export const publishJourneyDeposit = (input: JourneyFaultPreparationInput) =>
       deployment: input.context.deployment,
       ownerKey: ownerKey(input),
     }),
-  );
-
-export const fabricatedDepositJourneyFixture = createPreparedJourneyFixture(
-  "fabricatedDeposit",
-  async (input) => {
-    const deposit = await publishJourneyDeposit(input);
-    return {
-      buildFault: (timed) =>
-        buildJourneyFabricatedDeposit({ ...timed, deposit }),
-      buildSuccessor: (timed) =>
-        buildJourneyFabricatedDeposit({ ...timed, deposit, honest: true }),
-    };
-  },
-);
-
-export const createWithdrawalJourneyFixture = (
-  category: "fabricatedWithdrawal" | "withdrawalMistag" | "doubleWithdraw",
-) =>
-  createPreparedJourneyFixture(category, async (input) => {
-    const body = journeyWithdrawalBody({
-      predecessor: input.predecessor,
-      owner: ownerKey(input).to_public().hash().to_hex(),
-    });
-    const withdrawals = [await publishJourneyWithdrawal(input, body, 0)];
-    if (category === "doubleWithdraw")
-      withdrawals.push(await publishJourneyWithdrawal(input, body, 1));
-    return {
-      buildFault: (timed) =>
-        buildJourneyWithdrawalEvent({ ...timed, category, withdrawals }),
-      buildSuccessor: (timed) =>
-        buildJourneyWithdrawalEvent({
-          ...timed,
-          category,
-          withdrawals,
-          honest: true,
-        }),
-    };
-  });
-
-export const createWithdrawnInputJourneyFixture = (
-  category: "withdrawnInput" | "withdrawnReferenceInput",
-) =>
-  createPreparedJourneyFixture(
-    category,
-    async (input) => {
-      const split = await input.commitHistoryBlock(
-        "withdrawal-ledger",
-        async (timed) => {
-          const selected = ownedHistoryLedgerEntries(
-            timed.predecessor,
-            ownerKey(input).to_public().hash().to_hex(),
-          )[0];
-          const entry =
-            selected === undefined
-              ? undefined
-              : [
-                  selected.outRef.toString("hex"),
-                  selected.output.toString("hex"),
-                ];
-          if (entry === undefined)
-            throw new Error(
-              "Withdrawn-input history requires a deposited output",
-            );
-          const output = decodeMidgardTxOutput(Buffer.from(entry[1], "hex"));
-          const half = output.value.lovelace / 2n;
-          const transaction = signHistoryTransaction(
-            {
-              spendInputs: [Buffer.from(entry[0], "hex")],
-              outputs: [
-                encodeMidgardTxOutput({
-                  ...output,
-                  value: { ...output.value, lovelace: half },
-                }),
-                encodeMidgardTxOutput({
-                  ...output,
-                  value: {
-                    lovelace: output.value.lovelace - half,
-                    assets: new Map(),
-                  },
-                }),
-              ],
-              fee: 0n,
-              networkId: timed.predecessor.header.expectedNetworkId,
-            },
-            ownerKey(input),
-          );
-          const block = await retainHistoryTransactions({
-            ...timed,
-            transactions: [transaction],
-          });
-          if (block.replays[0]?.trace.verdict !== "accepted")
-            throw new Error("Withdrawal prerequisite split is not valid");
-          return block;
-        },
-      );
-      const predecessor = await decodeJourneyRetainedBlock(
-        split,
-        input.ledgerAt,
-      );
-      const preparation = { ...input, predecessor };
-      const body = journeyWithdrawalBody({
-        predecessor,
-        owner: ownerKey(input).to_public().hash().to_hex(),
-      });
-      const withdrawal = await publishJourneyWithdrawal(preparation, body, 0);
-      return {
-        predecessor: split,
-        buildFault: (timed) =>
-          buildJourneyWithdrawnTransaction({ ...timed, category, withdrawal }),
-        buildSuccessor: (timed) =>
-          buildJourneyWithdrawnTransaction({
-            ...timed,
-            category,
-            withdrawal,
-            honest: true,
-          }),
-      };
-    },
-    // The split of the ledger owner's output it withdraws.
-    { historyBlocks: 1 },
   );
