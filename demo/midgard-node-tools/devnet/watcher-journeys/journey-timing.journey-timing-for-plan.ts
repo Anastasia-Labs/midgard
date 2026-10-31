@@ -2,7 +2,10 @@ import {
   buildMidgardLedgerOutputScanTrace,
   buildMidgardLedgerOutputValueTrace,
 } from "@al-ft/midgard-core";
-import { REGISTRATION_DURATION_MS } from "@al-ft/midgard-sdk";
+import {
+  REGISTRATION_DURATION_MS,
+  USER_EVENT_TX_TTL_MS,
+} from "@al-ft/midgard-sdk";
 
 /** Only the single lovelace-only deposit used by transitionTrace is audited here. */
 export const TRANSITION_TRACE_JOURNEY_PLAN = Object.freeze({
@@ -280,19 +283,61 @@ export type JourneyTiming = ReturnType<typeof journeyTimingForPlan>;
  * commit and the stack coordinator's attestation of it, an init and then an
  * apply. Each is one dependent transaction at the journey's action depth.
  * The fault's own attestation falls outside the shift, but it is counted as
- * a block like the others.
+ * a block like the others. For each user event the staging publishes, it
+ * also holds the event transaction's validity and the event wait after it,
+ * until the fault may include the event and before our node would.
  */
 export const stackStagingShiftWorkMs = (
   timing: Pick<JourneyTiming, "transactionAllowanceMs">,
   blocks: number,
+  events: Readonly<{ count: number; eventWaitMs: number }> = {
+    count: 0,
+    eventWaitMs: 0,
+  },
 ) => {
   if (!Number.isSafeInteger(blocks) || blocks < 1)
     throw new Error(
       `Stack staging commits at least one whole block, not ${blocks.toString()} blocks`,
     );
+  if (!Number.isSafeInteger(events.count) || events.count < 0)
+    throw new Error(
+      `Stack staging publishes a whole number of user events, not ${events.count.toString()}`,
+    );
   const commitMs = timing.transactionAllowanceMs;
   const attestationMs = 2 * timing.transactionAllowanceMs;
-  return blocks * (attestationMs + commitMs);
+  return (
+    blocks * (attestationMs + commitMs) +
+    events.count * (USER_EVENT_TX_TTL_MS + events.eventWaitMs)
+  );
+};
+
+/**
+ * Operator-2's shift work for one family's staging under the deployment
+ * profile's event wait. Refuses, naming the family, before any L1 work when
+ * no shift of the profile holds it: our node would commit in between and the
+ * fault's commit would be rejected.
+ */
+export const stackStagingShiftCover = (
+  input: Readonly<{
+    category: string;
+    timing: Pick<JourneyTiming, "transactionAllowanceMs">;
+    historyBlocks: number;
+    userEvents: number;
+    /** The deployment profile's timing. */
+    profile: Readonly<{ event_wait_ms: number; operator_shift_ms: number }>;
+  }>,
+) => {
+  const { profile } = input;
+  const coverMs = stackStagingShiftWorkMs(
+    input.timing,
+    1 + input.historyBlocks,
+    { count: input.userEvents, eventWaitMs: profile.event_wait_ms },
+  );
+  if (coverMs > profile.operator_shift_ms)
+    throw new Error(
+      `${input.category} staging holds operator-2's shift for ${coverMs.toString()} ms (${(1 + input.historyBlocks).toString()} blocks, ${input.userEvents.toString()} user events with a ${profile.event_wait_ms.toString()} ms event wait each), longer than this profile's ${profile.operator_shift_ms.toString()} ms shift; the drill cannot stage it on this stack`,
+    );
+  return coverMs;
 };
 
 export const transitionTraceJourneyTiming = (cadence: JourneyCadence) =>

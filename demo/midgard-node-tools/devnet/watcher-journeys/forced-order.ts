@@ -182,21 +182,25 @@ export const createForcedTransactionJourneyFixture = (
     ): ReturnType<JourneyPreparedFault["buildFault"]>;
   },
 ) =>
-  createPreparedJourneyFixture(category, async (input) => {
-    const material = prepareMaterial(input);
-    const orderKey = await publishJourneyForcedOrder(
-      input,
-      encodeMidgardForcedTxCanonical(
-        submittedForcedTransactionFromNative(
-          decodeMidgardNativeTxFullFromCanonicalCbor(
-            material.transaction.canonicalCbor,
+  createPreparedJourneyFixture(
+    category,
+    async (input) => {
+      const material = prepareMaterial(input);
+      const orderKey = await publishJourneyForcedOrder(
+        input,
+        encodeMidgardForcedTxCanonical(
+          submittedForcedTransactionFromNative(
+            decodeMidgardNativeTxFullFromCanonicalCbor(
+              material.transaction.canonicalCbor,
+            ),
           ),
         ),
-      ),
-    );
-    return {
-      buildFault: (timed) => builders.buildFault({ ...timed, orderKey }),
-      buildSuccessor: (timed) =>
-        builders.buildSuccessor({ ...timed, orderKey }),
-    };
-  });
+      );
+      return {
+        buildFault: (timed) => builders.buildFault({ ...timed, orderKey }),
+        buildSuccessor: (timed) =>
+          builders.buildSuccessor({ ...timed, orderKey }),
+      };
+    },
+    { userEvents: 1 },
+  );

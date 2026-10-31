@@ -27,7 +27,12 @@ export class UserEventBuildError extends EffectData.TaggedError(
   "UserEventBuildError",
 )<GenericErrorFields> {}
 
-const USER_EVENT_TX_TTL_MS = 60_000;
+/**
+ * How long after its build a user event transaction stays valid: its upper
+ * validity bound, and so its inclusion time less the event wait, lies within
+ * a slot past this.
+ */
+export const USER_EVENT_TX_TTL_MS = 60_000;
 
 const eventInclusionTimeInBounds = (
   inclusionTime: bigint,

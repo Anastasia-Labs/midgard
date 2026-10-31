@@ -2,7 +2,11 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { REGISTRATION_DURATION_MS } from "@al-ft/midgard-sdk";
+import { DEPLOYMENT_PROFILES } from "@al-ft/midgard-core/deployment-profile";
+import {
+  REGISTRATION_DURATION_MS,
+  USER_EVENT_TX_TTL_MS,
+} from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -13,6 +17,7 @@ import {
   readTransitionTraceJourneyExecutionTiming,
   readTransitionTraceJourneyTiming,
   requireHealthyReplayFitsDeadline,
+  stackStagingShiftCover,
   stackStagingShiftWorkMs,
   TRANSITION_TRACE_JOURNEY_PLAN,
   transitionTraceJourneyExecutionTiming,
@@ -368,5 +373,68 @@ describe("an attached stack's staging work in operator-2's shift", () => {
       expect(() => stackStagingShiftWorkMs(inclusion, blocks)).toThrow(
         /blocks/u,
       );
+  });
+
+  it("holds each user event's validity and its event wait, until the fault may include it", () => {
+    const eventWaitMs =
+      DEPLOYMENT_PROFILES["preprod-testing"].timing.event_wait_ms;
+    expect(
+      stackStagingShiftWorkMs(inclusion, 2, { count: 2, eventWaitMs }),
+    ).toBe(
+      stackStagingShiftWorkMs(inclusion, 2) +
+        2 * (USER_EVENT_TX_TTL_MS + eventWaitMs),
+    );
+    for (const count of [-1, 0.5])
+      expect(() =>
+        stackStagingShiftWorkMs(inclusion, 1, { count, eventWaitMs }),
+      ).toThrow(/user events/u);
+  });
+
+  it.each(["preprod-testing", "preprod-rehearsal"] as const)(
+    "fits a family awaiting one user event, as fabricatedDeposit does, in one of %s's shifts",
+    (name) => {
+      const profile = DEPLOYMENT_PROFILES[name].timing;
+      const cover = stackStagingShiftCover({
+        category: "fabricatedDeposit",
+        timing: inclusion,
+        historyBlocks: 0,
+        userEvents: 1,
+        profile,
+      });
+      expect(cover).toBe(
+        stackStagingShiftWorkMs(inclusion, 1, {
+          count: 1,
+          eventWaitMs: profile.event_wait_ms,
+        }),
+      );
+      expect(cover).toBeLessThanOrEqual(profile.operator_shift_ms);
+    },
+  );
+
+  it("refuses, by family, staging that no shift of the profile holds", () => {
+    const work = {
+      category: "doubleWithdraw",
+      timing: inclusion,
+      historyBlocks: 0,
+      userEvents: 2,
+    } as const;
+    const eventWaitMs =
+      DEPLOYMENT_PROFILES["preprod-rehearsal"].timing.event_wait_ms;
+    const coverMs = stackStagingShiftWorkMs(inclusion, 1, {
+      count: 2,
+      eventWaitMs,
+    });
+    expect(
+      stackStagingShiftCover({
+        ...work,
+        profile: { event_wait_ms: eventWaitMs, operator_shift_ms: coverMs },
+      }),
+    ).toBe(coverMs);
+    expect(() =>
+      stackStagingShiftCover({
+        ...work,
+        profile: { event_wait_ms: eventWaitMs, operator_shift_ms: coverMs - 1 },
+      }),
+    ).toThrow(/doubleWithdraw staging holds operator-2's shift/u);
   });
 });

@@ -28,7 +28,7 @@ export const createPreparedJourneyFixture = (
   prepare: (
     input: JourneyFaultPreparationInput,
   ) => Promise<JourneyPreparedFault>,
-  options: Pick<FaultPreparation, "historyBlocks"> = {},
+  options: Pick<FaultPreparation, "historyBlocks" | "userEvents"> = {},
 ): JourneyFixture => ({
   category,
   stage: (input) => stageJourney(input, { ...options, category, prepare }),

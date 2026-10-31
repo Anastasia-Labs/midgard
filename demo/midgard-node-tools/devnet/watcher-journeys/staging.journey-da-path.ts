@@ -27,7 +27,7 @@ import type {
 import { journeyDaSignerConfig } from "./journey-network.js";
 import {
   readStackJourneyTiming,
-  stackStagingShiftWorkMs,
+  stackStagingShiftCover,
 } from "./journey-timing.js";
 import { JOURNEY_ACTION_DEPTH } from "./live-context.js";
 import {
@@ -109,7 +109,7 @@ export const journeyDaPath = async (
     JourneyFixtureStage,
     "context" | "directory" | "retain" | "readConfirmedTransaction" | "onStage"
   >,
-  task: Pick<FaultPreparation, "category" | "historyBlocks">,
+  task: Pick<FaultPreparation, "category" | "historyBlocks" | "userEvents">,
 ): Promise<JourneyDaPath> => {
   const { context, directory, retain, onStage } = stage;
   const fingerprint = context.deployment.manifest.manifestId;
@@ -158,7 +158,16 @@ export const journeyDaPath = async (
       // our node, which cannot commit in it, leaves the tail as read.
       actorOptions: {
         sharedScheduler: sharedShiftWork(
-          stackStagingShiftWorkMs(timing, 1 + (task.historyBlocks ?? 0)),
+          stackStagingShiftCover({
+            category: task.category,
+            timing,
+            historyBlocks: task.historyBlocks ?? 0,
+            userEvents: task.userEvents ?? 0,
+            profile: {
+              event_wait_ms: SDK.EVENT_WAIT_DURATION_MS,
+              operator_shift_ms: Number(SDK.SHIFT_DURATION_MS),
+            },
+          }),
         ),
       },
       resolvePredecessor: async ({ stackActor, decodeRetained }) => {

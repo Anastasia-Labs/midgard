@@ -21,6 +21,7 @@ export {
   selectWalletNonceInputProgram,
   slotToUnixTimeForLucid,
   slotToUnixTimeForLucidOrEmulatorFallback,
+  USER_EVENT_TX_TTL_MS,
   USER_EVENT_WITNESS_SCRIPT_POSTFIX,
   USER_EVENT_WITNESS_SCRIPT_PREFIX,
   userEventAuthenticateMintRedeemer,

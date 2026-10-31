@@ -101,4 +101,10 @@ export type FaultPreparation = {
    * default). An attached stack sizes operator-2's shift work by it.
    */
   historyBlocks?: number;
+  /**
+   * How many user events (deposits, withdrawals, tx orders) `prepare`
+   * publishes and awaits the inclusion of (none by default). An attached
+   * stack holds operator-2's shift through each one's event wait.
+   */
+  userEvents?: number;
 };

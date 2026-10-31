@@ -17,6 +17,7 @@ export {
   type JourneyTimingPlan,
   type ReadJourneyTimingOptions,
   requireHealthyReplayFitsDeadline,
+  stackStagingShiftCover,
   stackStagingShiftWorkMs,
   TRANSITION_TRACE_JOURNEY_PLAN,
   transitionTraceJourneyTiming,

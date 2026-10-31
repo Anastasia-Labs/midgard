@@ -29,6 +29,7 @@ export {
   resolveEventInclusionTime,
   resolveUserEventValidTo,
   slotToUnixTimeForLucid,
+  USER_EVENT_TX_TTL_MS,
   USER_EVENT_WITNESS_SCRIPT_PREFIX,
   UserEventBuildError,
   userEventCborFieldsFromInlineDatum,

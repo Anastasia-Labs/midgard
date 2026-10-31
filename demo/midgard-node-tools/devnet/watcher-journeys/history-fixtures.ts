@@ -42,31 +42,36 @@ export const fabricatedDepositJourneyFixture = createPreparedJourneyFixture(
         buildJourneyFabricatedDeposit({ ...timed, deposit, honest: true }),
     };
   },
+  { userEvents: 1 },
 );
 
 export const createWithdrawalJourneyFixture = (
   category: "fabricatedWithdrawal" | "withdrawalMistag" | "doubleWithdraw",
 ) =>
-  createPreparedJourneyFixture(category, async (input) => {
-    const body = journeyWithdrawalBody({
-      predecessor: input.predecessor,
-      owner: ownerKey(input).to_public().hash().to_hex(),
-    });
-    const withdrawals = [await publishJourneyWithdrawal(input, body, 0)];
-    if (category === "doubleWithdraw")
-      withdrawals.push(await publishJourneyWithdrawal(input, body, 1));
-    return {
-      buildFault: (timed) =>
-        buildJourneyWithdrawalEvent({ ...timed, category, withdrawals }),
-      buildSuccessor: (timed) =>
-        buildJourneyWithdrawalEvent({
-          ...timed,
-          category,
-          withdrawals,
-          honest: true,
-        }),
-    };
-  });
+  createPreparedJourneyFixture(
+    category,
+    async (input) => {
+      const body = journeyWithdrawalBody({
+        predecessor: input.predecessor,
+        owner: ownerKey(input).to_public().hash().to_hex(),
+      });
+      const withdrawals = [await publishJourneyWithdrawal(input, body, 0)];
+      if (category === "doubleWithdraw")
+        withdrawals.push(await publishJourneyWithdrawal(input, body, 1));
+      return {
+        buildFault: (timed) =>
+          buildJourneyWithdrawalEvent({ ...timed, category, withdrawals }),
+        buildSuccessor: (timed) =>
+          buildJourneyWithdrawalEvent({
+            ...timed,
+            category,
+            withdrawals,
+            honest: true,
+          }),
+      };
+    },
+    { userEvents: category === "doubleWithdraw" ? 2 : 1 },
+  );
 
 export const createWithdrawnInputJourneyFixture = (
   category: "withdrawnInput" | "withdrawnReferenceInput",
@@ -147,8 +152,8 @@ export const createWithdrawnInputJourneyFixture = (
           }),
       };
     },
-    // The split of the ledger owner's output it withdraws.
-    { historyBlocks: 1 },
+    // The split of the ledger owner's output it withdraws, then the withdrawal.
+    { historyBlocks: 1, userEvents: 1 },
   );
 
 /** Locally verified candidates; the catalogue admits them after full-scope checks. */
