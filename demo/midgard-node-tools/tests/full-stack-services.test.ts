@@ -10,6 +10,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 import { entropyToMnemonic } from "bip39";
 import { loadCommitteeConfig } from "da-committee-node/config";
 import { parse } from "dotenv";
@@ -216,5 +217,70 @@ it("generates committee configurations accepted by the real loader: the run's L1
     );
   } finally {
     await rm(directory, { recursive: true, force: true });
+  }
+});
+
+it("admits a second operator's producer to every committee member by its address and peer id", async () => {
+  // Operator-2's node listens on its own host DA port; only its peer id is shared.
+  const { peerId } = await loadDaLibp2pIdentity(`seed:${"0b".repeat(32)}`);
+  const operator2 = `/ip4/127.0.0.1/tcp/39012/p2p/${peerId}`;
+  const { directory, config } = await stackFixture((sample) => {
+    sample.da.admittedProducers = [operator2];
+  });
+  const env = {
+    ...stackEnvironment(config),
+    DA_THRESHOLD: "2",
+    L1_ORIGIN: `100.${"ab".repeat(32)}`,
+  };
+  const committee = await configureStackCommittee(config, env);
+  const fixture = await writeFinalizedDeploymentInfo((raw) => {
+    const da = raw.da as {
+      committeeVkeys: string[];
+      committeeSignersHash: string;
+      threshold: number;
+    };
+    da.committeeVkeys = committee.map((member) => member.daVkey);
+    da.committeeSignersHash = computeDeploymentManifestDaCommitteeSignersHash(
+      da.committeeVkeys,
+    );
+    da.threshold = 2;
+  });
+  await mkdir(join(directory, "deploymentInfo"));
+  const manifest = join(
+    directory,
+    "deploymentInfo/contract-deployment-info.json",
+  );
+  await copyFile(fixture.path, manifest);
+  const generated = await generateDaServices(new StackProcesses(config, env));
+  const producers = await Promise.all(
+    ["producer.json", "producer-host.json"].map(
+      async (name) =>
+        JSON.parse(await readFile(join(generated.directory, name), "utf8")) as {
+          da_transport: { announce_multiaddrs: string[] };
+          runtime_topology: { producer_peer_id: string };
+        },
+    ),
+  );
+  // The stack's producers publish as their own peer, never operator-2's.
+  for (const producer of producers)
+    expect(producer.runtime_topology.producer_peer_id).not.toBe(peerId);
+  for (const member of committee) {
+    const loaded = await loadCommitteeConfig({
+      ...parse(
+        await readFile(
+          join(generated.directory, `committee-${member.signerIndex}.env`),
+        ),
+      ),
+      MIDGARD_DEPLOYMENT_MANIFEST_PATH: join(
+        generated.directory,
+        `committee-${member.signerIndex}.json`,
+      ),
+      MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH: manifest,
+    });
+    // The stack's own producer, as the committee reaches it, then operator-2's.
+    expect(loaded.daTransport.bootstrapMultiaddrs).toEqual([
+      producers[1]!.da_transport.announce_multiaddrs[0],
+      operator2,
+    ]);
   }
 });

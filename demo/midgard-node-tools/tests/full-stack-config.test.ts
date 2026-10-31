@@ -1,6 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 import { entropyToMnemonic } from "bip39";
 import { parse } from "dotenv";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -197,6 +198,25 @@ describe("configuration refused before any build or spend", () => {
           env[config.da.members[0]!.transportEnv]!;
       },
       "distinct persistent identities",
+    ],
+    [
+      "an admitted producer without a peer id",
+      ({ config }) => {
+        config.da.admittedProducers = ["/ip4/127.0.0.1/tcp/39012"];
+      },
+      "must end in exactly one /p2p/<peer id>",
+    ],
+    [
+      "an admitted producer that is the stack's own producer",
+      async ({ config, env }) => {
+        const { peerId } = await loadDaLibp2pIdentity(
+          env[config.da.producerTransportEnv]!,
+        );
+        config.da.admittedProducers = [
+          `/ip4/127.0.0.1/tcp/39012/p2p/${peerId}`,
+        ];
+      },
+      "repeats a peer the deployment already names",
     ],
     [
       "a preset committee that differs from the members",

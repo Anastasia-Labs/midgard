@@ -38,6 +38,12 @@ export type StackConfig = {
     submitterSeedEnv: string;
     databasePasswordEnv: string;
     readerPasswordEnv: string;
+    /**
+     * Further producers the committee admits, such as a second operator's
+     * node: each by the public multiaddr it listens on, ending in
+     * `/p2p/<peer id>`, never by its key.
+     */
+    admittedProducers?: string[];
   };
   watcher: {
     processTemplate: string;
@@ -168,19 +174,33 @@ export function parseStackConfig(value: unknown): StackConfig {
   }))
     if (wallets[role]!.seedEnv !== seedEnv)
       throw new Error(`Wallet ${role} must use ${seedEnv}`);
+  const daFields = [
+    "ports",
+    "members",
+    "producerTransportEnv",
+    "retainedTransportEnv",
+    "submitterSeedEnv",
+    "databasePasswordEnv",
+    "readerPasswordEnv",
+  ];
   const da = exact(
     input.da,
-    [
-      "ports",
-      "members",
-      "producerTransportEnv",
-      "retainedTransportEnv",
-      "submitterSeedEnv",
-      "databasePasswordEnv",
-      "readerPasswordEnv",
-    ],
+    Object.prototype.hasOwnProperty.call(
+      record(input.da, "DA configuration"),
+      "admittedProducers",
+    )
+      ? [...daFields, "admittedProducers"]
+      : daFields,
     "DA configuration",
   );
+  let admittedProducers: string[] | undefined;
+  if (da.admittedProducers !== undefined) {
+    if (!Array.isArray(da.admittedProducers))
+      throw new Error("DA admittedProducers must be a list");
+    admittedProducers = da.admittedProducers.map((value: unknown) =>
+      text(value, "DA admitted producer"),
+    );
+  }
   if (
     !Array.isArray(da.members) ||
     da.members.length === 0 ||
@@ -266,6 +286,7 @@ export function parseStackConfig(value: unknown): StackConfig {
       submitterSeedEnv: envName(da.submitterSeedEnv),
       databasePasswordEnv: envName(da.databasePasswordEnv),
       readerPasswordEnv: envName(da.readerPasswordEnv),
+      ...(admittedProducers === undefined ? {} : { admittedProducers }),
     },
     watcher: watcher as StackConfig["watcher"],
     journey: {

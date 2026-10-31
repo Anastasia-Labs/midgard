@@ -181,6 +181,7 @@ export async function generateDaServices(processes: StackProcesses) {
         target: "committee",
         profile: "host",
         localSignerIndex: member.signerIndex,
+        admittedProducerMultiaddrs: config.da.admittedProducers ?? [],
         producerPort: Number(env.MIDGARD_NODE_DA_HOST_PORT ?? 39002),
       }),
     );

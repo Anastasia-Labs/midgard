@@ -6,6 +6,7 @@ import { basename, join, relative, resolve } from "node:path";
 import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 import { validateMnemonic } from "bip39";
 import { parse } from "dotenv";
+import { parseAdmittedProducerMultiaddrs } from "midgard-node/da/admitted-producers";
 
 import { configureStackCommittee } from "./committee.js";
 import type { StackConfig } from "./config.js";
@@ -152,6 +153,11 @@ export async function checkStackEnvironment(
     throw new Error(
       "DA producer, retained service and members need distinct persistent identities",
     );
+  // The committee admits further producers by address and peer id only.
+  parseAdmittedProducerMultiaddrs(
+    config.da.admittedProducers ?? [],
+    peers.map((peer) => peer.peerId),
+  );
 }
 
 /**

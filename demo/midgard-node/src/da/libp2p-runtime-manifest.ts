@@ -11,6 +11,7 @@ import { multiaddr } from "@multiformats/multiaddr";
 
 import { readFinalizedDeploymentIdentity } from "../commands/contract-deployment-info.js";
 import { writeJsonFileAtomic } from "../files/atomic-write.js";
+import { admittedProducers } from "./admitted-producers.js";
 
 export const DA_LIBP2P_RUNTIME_PROFILES = [
   "host",
@@ -57,6 +58,8 @@ export type DaLibp2pRuntimeManifestOptions = {
   readonly committeePublicHost?: string;
   readonly publicRetainedDaPort?: number;
   readonly publicRetainedDaPublicHost?: string;
+  /** Further producers a committee target admits (see admitted-producers). */
+  readonly admittedProducerMultiaddrs?: readonly string[];
 };
 
 const DEFAULT_PRODUCER_PORT = 39002;
@@ -159,12 +162,21 @@ export const generateDaLibp2pRuntimeManifest = async (
           localEndpoint.port,
           localMember!.peerId,
         );
+  const admitted = admittedProducers(
+    options.target,
+    options.admittedProducerMultiaddrs,
+    [
+      producerIdentity.peerId,
+      publicRetainedDaIdentity.peerId,
+      ...members.map((member) => member.peerId),
+    ],
+  );
   const bootstrapMultiaddrs =
     options.target === "producer"
       ? memberMultiaddrs.filter(
           (_addr, index) => members[index]!.peerId !== producerIdentity.peerId,
         )
-      : [producerAddr];
+      : [producerAddr, ...admitted];
   const publicRetainedDaHost =
     options.profile === "public"
       ? (options.publicRetainedDaPublicHost ?? options.committeePublicHost!)
