@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
-import { rm } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, rename, rm } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
 import * as SDK from "@al-ft/midgard-sdk";
@@ -11,15 +11,33 @@ import { readJourneyArtifact, writeJourneyArtifact } from "./artifacts.js";
 import { ownedHistoryLedgerEntries } from "./history-cases.js";
 import type { JourneyLedgerPredecessor } from "./journey-ledger.js";
 import type { StackJourneyContext } from "./stack-context.js";
+import { readKupoTransactionInclusion } from "./stack-transactions.js";
+
+/** A deposit to the drill's L2 ledger owner, recorded before it is submitted. */
+export type StackLedgerOwnerDeposit = Readonly<{
+  txHash: string;
+  /** When the stack's node is due to absorb it (POSIX ms). */
+  inclusionTime: number;
+  /** The end of its validity interval (POSIX ms): it cannot land after. */
+  validTo: number;
+}>;
+
+/** Where a recorded deposit stands on the stack's chain. */
+export type StackLedgerOwnerDepositStatus = "landed" | "expired" | "pending";
 
 /** What funding the drill's L2 ledger owner reads and does. */
 export type StackLedgerOwnerFundingPorts = {
   /** Whether the stack's attested queue tail holds an output of the owner's. */
   ownerHoldsOutput(): Promise<boolean>;
-  /** The inclusion time of a deposit to the owner made by an earlier run. */
-  readPendingDeposit(): Promise<number | undefined>;
-  /** Deposit to the owner's L2 address, recording it before it is awaited. */
-  deposit(): Promise<number>;
+  /** A deposit to the owner recorded by an earlier run, or by this one. */
+  readPendingDeposit(): Promise<StackLedgerOwnerDeposit | undefined>;
+  depositStatus(
+    deposit: StackLedgerOwnerDeposit,
+  ): Promise<StackLedgerOwnerDepositStatus>;
+  /** Set aside a recorded deposit that can no longer land. */
+  archivePendingDeposit(): Promise<void>;
+  /** Deposit to the owner's L2 address, recording it before submitting it. */
+  deposit(): Promise<StackLedgerOwnerDeposit>;
   /** Forget a recorded deposit once the owner holds an output. */
   clearPendingDeposit(): Promise<void>;
   now(): number;
@@ -32,16 +50,41 @@ export type StackLedgerOwnerFundingPorts = {
 /**
  * Fund the drill's L2 ledger owner on an attached stack: while the stack's
  * attested tail holds no output of the owner's, the drill deposits to the
- * owner's L2 address once and waits for the stack's own node to absorb the
- * deposit and its committee to attest that block. A deposit an earlier run
- * made is awaited rather than repeated, and forgotten once absorbed.
+ * owner's L2 address, waits for the deposit to land on L1, then waits for the
+ * stack's own node to absorb it and its committee to attest that block. A
+ * deposit an earlier run recorded is awaited while it can still land, set
+ * aside and replaced once its validity passed without it landing, and
+ * forgotten once absorbed. A deposit this run made that expires unlanded
+ * fails the run, keeping its record for the next.
  */
 export const awaitStackLedgerOwnerFunded = async (
   ports: StackLedgerOwnerFundingPorts,
 ): Promise<void> => {
   if (await ports.ownerHoldsOutput()) return ports.clearPendingDeposit();
-  const inclusionTime =
-    (await ports.readPendingDeposit()) ?? (await ports.deposit());
+  let pending = await ports.readPendingDeposit();
+  let ours = false;
+  for (;;) {
+    if (pending === undefined) {
+      pending = await ports.deposit();
+      ours = true;
+    }
+    const status = await ports.depositStatus(pending);
+    if (status === "landed") break;
+    if (status === "expired") {
+      if (ours)
+        throw new Error(
+          `The ledger owner's deposit ${pending.txHash} expired without landing (valid to ${pending.validTo.toString()})`,
+        );
+      await ports.archivePendingDeposit();
+      pending = undefined;
+      continue;
+    }
+    ports.onStage(
+      `awaiting the ledger owner's deposit ${pending.txHash} on L1, valid to ${pending.validTo.toString()}`,
+    );
+    await ports.pause();
+  }
+  const { inclusionTime } = pending;
   const deadline = inclusionTime + ports.absorbWithinMs;
   for (;;) {
     ports.onStage(
@@ -55,6 +98,34 @@ export const awaitStackLedgerOwnerFunded = async (
       );
   }
 };
+
+/**
+ * A recorded deposit's standing on the stack's chain: landed once the
+ * stack's Kupo indexed an output of it, expired once Kupo indexed the slot
+ * its validity ends at without it (no later block can include it), and
+ * pending otherwise.
+ */
+export const stackLedgerOwnerDepositStatus =
+  (
+    input: Readonly<{
+      kupoUrl: string;
+      unixTimeToSlot(posixMs: number): number;
+      fetchImpl?: typeof fetch;
+    }>,
+  ) =>
+  async (
+    deposit: StackLedgerOwnerDeposit,
+  ): Promise<StackLedgerOwnerDepositStatus> => {
+    const kupo = await readKupoTransactionInclusion(
+      input.kupoUrl,
+      deposit.txHash,
+      input.fetchImpl,
+    );
+    if (kupo.included) return "landed";
+    return kupo.indexedThroughSlot >= input.unixTimeToSlot(deposit.validTo)
+      ? "expired"
+      : "pending";
+  };
 
 /** Polls the stack's tail no faster than this while the deposit is pending. */
 const LEDGER_OWNER_POLL_MS = 30_000;
@@ -85,15 +156,36 @@ export const fundStackLedgerOwner = (
       0,
     readPendingDeposit: async () => {
       if (!existsSync(pendingPath)) return undefined;
-      const pending = await readJourneyArtifact<{
-        deploymentFingerprint: string;
-        inclusionTime: number;
-      }>(pendingPath);
+      const pending = await readJourneyArtifact<
+        Partial<StackLedgerOwnerDeposit> & { deploymentFingerprint?: string }
+      >(pendingPath);
       if (pending.deploymentFingerprint !== fingerprint)
         throw new Error(
           "The ledger owner's pending deposit belongs to a different deployment",
         );
-      return pending.inclusionTime;
+      const { txHash, inclusionTime, validTo } = pending;
+      if (
+        typeof txHash !== "string" ||
+        !Number.isSafeInteger(inclusionTime) ||
+        !Number.isSafeInteger(validTo)
+      )
+        throw new Error(
+          `The ledger owner's pending deposit ${pendingPath} has no transaction hash, inclusion time or validity end`,
+        );
+      return { txHash, inclusionTime: inclusionTime!, validTo: validTo! };
+    },
+    depositStatus: stackLedgerOwnerDepositStatus({
+      kupoUrl: context.kupoUrl,
+      unixTimeToSlot: (posixMs) => publisherLucid.unixTimeToSlot(posixMs),
+    }),
+    archivePendingDeposit: async () => {
+      const archived = join(
+        dirname(pendingPath),
+        "archive",
+        `ledger-owner-deposit.${Date.now().toString()}.json`,
+      );
+      await mkdir(dirname(archived), { recursive: true });
+      await rename(pendingPath, archived);
     },
     clearPendingDeposit: () => rm(pendingPath, { force: true }),
     deposit: async () => {
@@ -118,12 +210,17 @@ export const fundStackLedgerOwner = (
       );
       input.onStage("ledger owner deposit");
       const signed = await deposit.tx.sign.withWallet().complete();
+      const pending: StackLedgerOwnerDeposit = {
+        txHash: signed.toHash(),
+        inclusionTime: deposit.metadata.inclusionTime,
+        validTo: deposit.metadata.validTo,
+      };
       await writeJourneyArtifact(pendingPath, {
         deploymentFingerprint: fingerprint,
-        inclusionTime: deposit.metadata.inclusionTime,
+        ...pending,
       });
-      await publisherLucid.awaitTx(await signed.submit(), 500);
-      return deposit.metadata.inclusionTime;
+      await signed.submit();
+      return pending;
     },
     now: () => chain.now(),
     pause: () => delay(LEDGER_OWNER_POLL_MS),
