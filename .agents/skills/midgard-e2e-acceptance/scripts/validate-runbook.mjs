@@ -328,13 +328,23 @@ for (const [, ...cells] of stepRows) {
 
 // DA order: the committee is ready before the producer preflight, and the node
 // starts only after it. The runbook states that order; the source must keep it.
+// The preflight itself (shared with a second instance) lives in node-start.ts.
 const runtimeSource = stackSources["runtime.ts"] ?? "";
 const order = [
   '"committee-start"',
   '"committee readiness"',
-  '"producer-da-preflight"',
+  "await preflightProducerTransport(",
   '"runtime-start"',
 ].map((marker) => [marker, runtimeSource.indexOf(marker)]);
+if (
+  !/export async function preflightProducerTransport\([\s\S]*?"producer-da-preflight"/.test(
+    stackSources["node-start.ts"] ?? "",
+  )
+) {
+  fail(
+    "node-start.ts no longer runs producer-da-preflight in preflightProducerTransport; update the runbook",
+  );
+}
 if (
   order.some(([, at]) => at < 0) ||
   !order.every(([, at], index) => index === 0 || order[index - 1][1] < at)
