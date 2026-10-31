@@ -1,0 +1,93 @@
+{
+  "nodeRoot": "/absolute/path/to/midgard-rehearsal/demo/midgard-node",
+  "envFile": "/absolute/path/to/midgard-rehearsal/demo/midgard-node/.env",
+  "runDirectory": "/absolute/path/to/midgard-rehearsal/demo/midgard-node/logs/preprod-rehearsal-stack",
+  "endpoint": "https://127.0.0.1:3000",
+  "timeoutMs": 691200000,
+  "wallets": {
+    "operator": {
+      "seedEnv": "L1_OPERATOR_SEED_PHRASE",
+      "minimumLovelace": "1410000000"
+    },
+    "merge": {
+      "seedEnv": "L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX",
+      "minimumLovelace": "1000000000"
+    },
+    "reference": {
+      "seedEnv": "L1_REFERENCE_SCRIPT_SEED_PHRASE",
+      "minimumLovelace": "5000000000"
+    },
+    "settlement": {
+      "seedEnv": "L1_SETTLEMENT_SEED_PHRASE",
+      "minimumLovelace": "1000000000"
+    },
+    "user": {
+      "seedEnv": "STACK_USER_SEED",
+      "minimumLovelace": "100000000"
+    },
+    "recipient": {
+      "seedEnv": "STACK_RECIPIENT_SEED",
+      "minimumLovelace": "100000000"
+    },
+    "daSubmitter": {
+      "seedEnv": "STACK_DA_SUBMITTER_SEED",
+      "minimumLovelace": "1000000000"
+    },
+    "prover": {
+      "seedEnv": "STACK_PROVER_SEED",
+      "minimumLovelace": "2510000000"
+    },
+    "availability": {
+      "seedEnv": "STACK_AVAILABILITY_SEED",
+      "minimumLovelace": "2540000000"
+    }
+  },
+  "da": {
+    "ports": {
+      "database": 15433,
+      "committeeApiBase": 8787,
+      "committeeTransportBase": 39101,
+      "retainedTransport": 39200
+    },
+    "members": [
+      {
+        "seedEnv": "STACK_DA_SIGNER_0_SEED",
+        "transportEnv": "STACK_DA_MEMBER_0_TRANSPORT"
+      },
+      {
+        "seedEnv": "STACK_DA_SIGNER_1_SEED",
+        "transportEnv": "STACK_DA_MEMBER_1_TRANSPORT"
+      }
+    ],
+    "producerTransportEnv": "STACK_DA_PRODUCER_TRANSPORT",
+    "retainedTransportEnv": "STACK_DA_RETAINED_TRANSPORT",
+    "submitterSeedEnv": "STACK_DA_SUBMITTER_SEED",
+    "databasePasswordEnv": "STACK_DA_WRITER_PASSWORD",
+    "readerPasswordEnv": "STACK_DA_READER_PASSWORD",
+    "admittedProducers": [
+      "/ip4/127.0.0.1/tcp/<operator-2 MIDGARD_NODE_DA_HOST_PORT>/p2p/<operator-2 DA peer id>"
+    ]
+  },
+  "watcher": {
+    "processTemplate": "/absolute/path/to/midgard-rehearsal/demo/midgard-watcher/watcher-process.example.json",
+    "releaseDirectory": "/absolute/path/to/midgard-rehearsal/demo/midgard-node/logs/preprod-rehearsal-stack/release",
+    "releaseInput": "/absolute/path/to/private-rehearsal/watcher-release-input.json",
+    "configDirectory": "/absolute/path/to/midgard-rehearsal/demo/midgard-node/logs/preprod-rehearsal-stack/watcher-config",
+    "composeEnvFile": "/absolute/path/to/private-rehearsal/watcher-compose.env"
+  },
+  "journey": {
+    "depositLovelace": "20000000",
+    "transferLovelace": "10000000",
+    "cycles": 1
+  },
+  "public": {
+    "nodeConfigFile": "/absolute/path/to/private-rehearsal/node-secrets.yaml",
+    "tlsCertFile": "/absolute/path/to/private-rehearsal/tls/node-cert.pem",
+    "tlsKeyFile": "/absolute/path/to/private-rehearsal/tls/node-key.pem",
+    "tlsCaFile": "/absolute/path/to/private-rehearsal/tls/ca.pem",
+    "trustRootsFile": "/absolute/path/to/private-rehearsal/release-trust-roots.json",
+    "blueprintClassificationFile": "/absolute/path/to/private-rehearsal/blueprint-classification.json",
+    "releaseDirectory": "/absolute/path/to/private-rehearsal/public-release",
+    "ingressHostPort": null
+  }
+}

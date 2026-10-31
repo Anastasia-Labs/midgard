@@ -98,10 +98,12 @@ const PUBLIC_SECRETS = [
  * A stack for the compiled production profile whose public inputs are all
  * present and well formed. The project puts its operator and merge wallets on
  * the compiled allow-list, the last check, so loading passes only when every
- * earlier input did.
+ * earlier input did. `example` is the stack example it starts from.
  */
-export async function publicFixture() {
-  const value = await fixture("preprod-public-stack.example.json");
+export async function publicFixture(
+  example = "preprod-public-stack.example.json",
+) {
+  const value = await fixture(example);
   const { config, directory, env } = value;
   // Private inputs live outside the Docker build context, as the stack requires.
   const root = join(directory, "logs/public");
