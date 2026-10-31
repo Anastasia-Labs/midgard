@@ -123,4 +123,34 @@ describe("a replayed ledger opened on its first read", () => {
     await expect(ledger.ledgerAt("aa")).rejects.toThrow(/closed/u);
     expect(events).toEqual([]);
   });
+
+  it("opens again after a failed open, and closes quietly when nothing opened", async () => {
+    const events: string[] = [];
+    let attempts = 0;
+    const ledger = lazyReplayedLedger(async () => {
+      attempts += 1;
+      events.push(`open ${attempts.toString()}`);
+      if (attempts === 1) throw new Error("follower not reachable");
+      return {
+        ledgerAt: async () => [],
+        close: async () => {
+          events.push("close");
+        },
+      };
+    });
+    await expect(ledger.ledgerAt("aa")).rejects.toThrow(
+      "follower not reachable",
+    );
+    await ledger.ledgerAt("bb");
+    await ledger.close();
+    expect(events).toEqual(["open 1", "open 2", "close"]);
+
+    const never = lazyReplayedLedger(() =>
+      Promise.reject(new Error("follower not reachable")),
+    );
+    await expect(never.ledgerAt("aa")).rejects.toThrow(
+      "follower not reachable",
+    );
+    await expect(never.close()).resolves.toBeUndefined();
+  });
 });

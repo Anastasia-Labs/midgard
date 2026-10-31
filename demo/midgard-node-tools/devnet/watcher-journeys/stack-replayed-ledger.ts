@@ -34,21 +34,30 @@ export const stackJourneyReplayWatcherConfig = (
 
 /**
  * A replayed ledger opened on its first read, so a session that stages
- * nothing opens no follower; closing closes it once opened.
+ * nothing opens no follower; closing closes it once opened. A failed open
+ * is not kept: the next read opens again, and close has nothing to close.
  */
 export const lazyReplayedLedger = (
   open: () => Promise<ReplayedLedger>,
 ): ReplayedLedger => {
   let opened: Promise<ReplayedLedger> | undefined;
   let closed = false;
+  const opening = () => {
+    const attempt = open();
+    attempt.catch(() => {
+      if (opened === attempt) opened = undefined;
+    });
+    return attempt;
+  };
   return {
     ledgerAt: async (headerHash) => {
       if (closed) throw new Error("Journey replay host is closed");
-      return (await (opened ??= open())).ledgerAt(headerHash);
+      return (await (opened ??= opening())).ledgerAt(headerHash);
     },
     close: async () => {
       closed = true;
-      if (opened !== undefined) await (await opened).close();
+      const ledger = await opened?.catch(() => undefined);
+      await ledger?.close();
     },
   };
 };
