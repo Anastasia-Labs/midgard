@@ -1,11 +1,16 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
+import * as SDK from "@al-ft/midgard-sdk";
+import { toUnit } from "@lucid-evolution/lucid";
 import type {
   createPublishedWatcherBlockActor,
   PublishedDaAttestationOutcome,
 } from "midgard-watcher/tests/support/published-block-actor";
-import { sharedShiftWork } from "midgard-watcher/tests/support/published-block-actor.operator-shift";
+import {
+  operatorShiftAppointment,
+  sharedShiftWork,
+} from "midgard-watcher/tests/support/published-block-actor.operator-shift";
 import type { PublishedDaTransactionRecord } from "midgard-watcher/tests/support/published-da-target-consumption";
 import {
   type PublishedDepositTraceCheckpoint,
@@ -31,6 +36,7 @@ import {
   type StackDaOutcome,
 } from "./stack-da-publication.js";
 import { stackJourneyDa } from "./stack-journey-da.js";
+import { stackLateShiftFaultCommit } from "./stack-late-shift.js";
 import { fundStackLedgerOwner } from "./stack-ledger-owner.js";
 import type {
   FaultPreparation,
@@ -65,6 +71,8 @@ export type JourneyDaPath = Readonly<{
       decodeRetained(block: JourneyBlock): Promise<JourneyRetainedBlock>;
     }>,
   ): Promise<JourneySuccessor>;
+  /** Before each attempt to commit the fault: on a stack, its late-shift wait. */
+  beforeFaultCommit(actor: JourneyBlockActor): Promise<void>;
   /** A history block's DA, which the committee must attest. */
   attestHistory(
     actor: JourneyBlockActor,
@@ -118,6 +126,30 @@ export const journeyDaPath = async (
       task.category,
       { actionDepth: JOURNEY_ACTION_DEPTH },
     );
+    const { contracts, chain } = context.deployment;
+    // Refuses here, before any L1 work, when the lead is required and unset.
+    const lateShift = stackLateShiftFaultCommit({
+      category: task.category,
+      leadMs: context.lateShiftLeadMs,
+      readAppointment: async () => {
+        const schedulers = await context.provider.getUtxosWithUnit(
+          contracts.scheduler.spendingScriptAddress,
+          toUnit(contracts.scheduler.policyId, SDK.SCHEDULER_ASSET_NAME),
+        );
+        if (schedulers.length !== 1)
+          throw new Error("Expected one published scheduler");
+        return operatorShiftAppointment(schedulers[0]!);
+      },
+      shiftDurationMs: Number(SDK.SHIFT_DURATION_MS),
+      commitAllowanceMs: timing.transactionAllowanceMs,
+      now: () => chain.now(),
+      awaitLedgerTime: async (timeMs) => {
+        await chain.awaitLedgerTime(timeMs);
+      },
+      record: (commit) =>
+        writeJourneyArtifact(join(directory, "late-shift.json"), commit),
+      onStage,
+    });
     return {
       kind: "stack",
       ledgerOwnerSeedPhrase: context.accounts.ledgerOwner.seedPhrase,
@@ -138,6 +170,7 @@ export const journeyDaPath = async (
         await stackActor!.onboardOperator();
         return da.readAttestedTail();
       },
+      beforeFaultCommit: (actor) => lateShift(actor.operatorVkey),
       attestHistory: async (_actor, block, checkpointPaths) => {
         const outcome = await da.publish(block, "attestation", checkpointPaths);
         if (outcome.kind === "refused")
@@ -163,6 +196,7 @@ export const journeyDaPath = async (
     kind: "devnet",
     ledgerOwnerSeedPhrase: accounts.operator.seedPhrase,
     actorOptions: { daSignerConfig },
+    beforeFaultCommit: () => Promise.resolve(),
     resolvePredecessor: async () => {
       if (existsSync(headPath)) {
         const head = await readJourneyArtifact<{

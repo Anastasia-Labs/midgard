@@ -492,6 +492,7 @@ export async function stageJourney(
       // or already published fault whose operator may have since been slashed.
       await actor.onboardOperator();
       for (;;) {
+        await daPath.beforeFaultCommit(actor);
         const anchor = await assertTail(predecessor);
         // A fault staged by an earlier attempt may have outlived its commit
         // interval before anything referenced it; its header end time bounds

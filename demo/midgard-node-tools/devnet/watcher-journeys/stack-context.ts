@@ -54,6 +54,7 @@ import {
   stackDaProducerManifestPath,
 } from "./stack-da-producer.js";
 import { readStackShelleyGenesisText } from "./stack-genesis.js";
+import { readStackLateShiftLeadMs } from "./stack-late-shift.js";
 
 /**
  * The stack's node `.env` names of the drill's own keys. Their values are
@@ -451,6 +452,8 @@ export const openStackJourneyContext = async (
     accounts,
     /** Operator-2's DA producer publication to the stack's committee. */
     daProducer: Object.freeze({ manifest: daProducerManifest }),
+    /** How long before operator-2's shift ends an attested fault commits. */
+    lateShiftLeadMs: readStackLateShiftLeadMs(env),
     deployment: {
       manifest,
       contracts,

@@ -1298,6 +1298,7 @@ jobs:
             watcher-journeys/stack-context.test.ts \
             watcher-journeys/stack-da-producer.test.ts \
             watcher-journeys/stack-da-publication.test.ts \
+            watcher-journeys/stack-late-shift.test.ts \
             watcher-journeys/stack-ledger-owner.test.ts \
             watcher-journeys/stack-replayed-ledger.test.ts \
             watcher-journeys/stack-transactions.test.ts \
