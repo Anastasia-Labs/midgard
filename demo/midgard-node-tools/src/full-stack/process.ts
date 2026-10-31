@@ -159,7 +159,7 @@ export class StackProcesses {
       ),
     );
   }
-  compose(id: string, args: readonly string[], extraFile?: string) {
+  compose(id: string, args: readonly string[], ...extraFiles: string[]) {
     return this.command(id, "bash", [
       "scripts/operator-compose.sh",
       "--env-file",
@@ -172,7 +172,7 @@ export class StackProcesses {
       ...(this.config.public === undefined
         ? []
         : ["-f", publicRolesPath(this.config)]),
-      ...(extraFile ? ["-f", extraFile] : []),
+      ...extraFiles.flatMap((file) => ["-f", file]),
       ...args,
     ]);
   }

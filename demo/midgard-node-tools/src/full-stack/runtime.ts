@@ -2,7 +2,10 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { writeTextFileAtomic } from "midgard-node/files/atomic-write";
+
 import { assertNodeFollowerEnvironment } from "../l1-origin.js";
+import { composeYaml, override } from "./compose-yaml.js";
 import {
   generateDaServices,
   stackDaReaderGrantSql,
@@ -127,6 +130,24 @@ function nodeEnvironment(processes: StackProcesses, ownerSha256: string) {
   assertNodeFollowerEnvironment(nodeEnv);
   return nodeEnv;
 }
+/**
+ * The testing node's Compose services in the generated services file: the
+ * locally built node and its migration, reading node.env, with the producer
+ * manifest and the in-stack Cardano node's socket and configuration.
+ */
+export function stackNodeServices(
+  processes: StackProcesses,
+  input: { envFile: unknown; producer: string },
+) {
+  const { volumes } = containerNativeLedger(processes);
+  return {
+    "midgard-node": {
+      env_file: input.envFile,
+      volumes: [`${input.producer}:/app/stack/producer.json:ro`, ...volumes],
+    },
+    "midgard-node-migrate": { env_file: input.envFile, volumes },
+  };
+}
 /** One read of every service's readiness; undefined while any is not ready. */
 async function runtimeReadinessReader(processes: StackProcesses) {
   const runtime = await readRuntimeConfiguration(processes);
@@ -216,7 +237,6 @@ export function runtimeSteps(processes: StackProcesses): StackStep[] {
           member.public_retained_da.announce_multiaddrs[0]!,
         );
         const nodeEnvPath = join(da.directory, "node.env");
-        const nativeLedger = containerNativeLedger(processes);
         // The services step writes node.env once, with the owner pin of the image it built.
         const nodeEnvFile = [{ path: nodeEnvPath, required: false }];
         const compose = join(da.directory, "compose.json");
@@ -233,19 +253,11 @@ export function runtimeSteps(processes: StackProcesses): StackStep[] {
           services: {
             ...da.services,
             ...watcher.services,
-            ...(publicNode?.services ?? {
-              "midgard-node": {
-                env_file: nodeEnvFile,
-                volumes: [
-                  `${da.producer}:/app/stack/producer.json:ro`,
-                  ...nativeLedger.volumes,
-                ],
-              },
-              "midgard-node-migrate": {
-                env_file: nodeEnvFile,
-                volumes: nativeLedger.volumes,
-              },
-            }),
+            ...(publicNode?.services ??
+              stackNodeServices(processes, {
+                envFile: nodeEnvFile,
+                producer: da.producer,
+              })),
           },
           volumes: {
             "da-postgres-data": {},
@@ -327,6 +339,17 @@ export function runtimeSteps(processes: StackProcesses): StackStep[] {
         if (isPublic)
           await writePublicNodeConfig(processes, servicesDirectory(processes));
         // Pin the actual owner in the built image, never copy a hash from another checkout.
+        // The pin runs before node.env exists, and Compose appends env_file
+        // lists across files, so the base file's .env, with every role's
+        // secrets, would reach it: its own overlay drops every env_file.
+        const pinOverlay = join(servicesDirectory(processes), "owner-pin.yaml");
+        await writeTextFileAtomic(
+          pinOverlay,
+          `${composeYaml({
+            services: { "midgard-node": { env_file: override([]) } },
+          })}\n`,
+          { mode: 0o644 },
+        );
         const pin = (await processes.compose(
           "native-owner-pin",
           [
@@ -340,6 +363,7 @@ export function runtimeSteps(processes: StackProcesses): StackStep[] {
             "console.log(JSON.stringify({sha:require('node:fs').readFileSync('/app/native/architecture-g-owner.sha256','utf8').trim()}))",
           ],
           runtime.compose,
+          pinOverlay,
         )) as { sha: string };
         if (!/^[0-9a-f]{64}$/.test(pin.sha))
           throw new Error("Invalid native owner image pin");

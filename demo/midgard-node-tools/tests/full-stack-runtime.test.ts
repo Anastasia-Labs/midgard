@@ -1,22 +1,73 @@
+import { execFile } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 
 import { parse } from "dotenv";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { assertComposeVersion } from "../src/full-stack/prerequisites.js";
 import { committeeIsReady } from "../src/full-stack/readiness.js";
-import { runtimeInputDigest, runtimeSteps } from "../src/full-stack/runtime.js";
+import {
+  runtimeInputDigest,
+  runtimeSteps,
+  stackNodeServices,
+} from "../src/full-stack/runtime.js";
 import { NodeFollowerUnconfiguredError } from "../src/l1-origin.js";
 import {
+  type RecordedCall,
   RecordingProcesses,
   removeStackFixtures,
   stackEnvironment,
   stackFixture,
 } from "./full-stack-fixtures.js";
 import { nodeFollowerPlan } from "./node-follower-plan.js";
+
+/** The checkout's node directory, which holds the base Compose files. */
+const nodeRoot = fileURLToPath(new URL("../../midgard-node/", import.meta.url));
+
+/**
+ * The environment Docker gives one service for a recorded Compose call: the
+ * files the call passes (relative ones from the checkout's node directory),
+ * rendered in the stack's node directory with its env file, each env_file
+ * resolved.
+ */
+async function composeEnvironment(
+  call: RecordedCall,
+  projectDirectory: string,
+  service: string,
+) {
+  const files = call.args.flatMap((arg, index) =>
+    arg === "-f" ? [call.args[index + 1]!] : [],
+  );
+  const envFile = call.args[call.args.indexOf("--env-file") + 1]!;
+  const { stdout } = await promisify(execFile)(
+    "docker",
+    [
+      "compose",
+      "--project-directory",
+      projectDirectory,
+      "--env-file",
+      envFile,
+      ...files.flatMap((file) => [
+        "-f",
+        isAbsolute(file) ? file : join(nodeRoot, file),
+      ]),
+      "config",
+      "--format",
+      "json",
+    ],
+    { env: { PATH: process.env.PATH!, HOME: process.env.HOME! } },
+  );
+  return (
+    JSON.parse(stdout) as {
+      services: Record<string, { environment?: Record<string, string> }>;
+    }
+  ).services[service]!.environment!;
+}
 
 const manifestId = "a".repeat(64);
 const committeeReady = (signerIndex: number) => ({
@@ -225,6 +276,64 @@ describe("runtime services step", () => {
     );
     expect(pin).toBeGreaterThan(-1);
     expect(database).toBeGreaterThan(pin);
+  });
+  it("runs the owner pin, before node.env exists, without the stack's .env, and the node with node.env", async () => {
+    const { directory, processes, services, state } = await stack();
+    const { config } = processes;
+    // The operator's .env holds every role's secrets, as a fresh stack's does.
+    await writeFile(
+      config.envFile,
+      Object.entries(processes.env)
+        .map(([name, value]) => `${name}=${JSON.stringify(value)}\n`)
+        .join(""),
+    );
+    /** The names of the stack's secrets whose values an environment holds. */
+    const secretsIn = (environment: Record<string, string>) =>
+      Object.entries(processes.env)
+        .filter(
+          ([name, value]) =>
+            name.startsWith("STACK_") &&
+            value !== "" &&
+            JSON.stringify(environment).includes(value),
+        )
+        .map(([name]) => name);
+    // The node's part of the services file the configuration step generates.
+    const servicesDirectory = join(directory, "run/services");
+    await writeFile(
+      join(servicesDirectory, "compose.json"),
+      JSON.stringify({
+        services: stackNodeServices(processes, {
+          envFile: [
+            { path: join(servicesDirectory, "node.env"), required: false },
+          ],
+          producer: join(servicesDirectory, "producer.json"),
+        }),
+      }),
+    );
+    // Rendered when the pin runs: node.env does not exist yet.
+    processes.responses["native-owner-pin"] = async (call: RecordedCall) => {
+      expect(
+        secretsIn(await composeEnvironment(call, directory, "midgard-node")),
+      ).toEqual([]);
+      return { sha: "c".repeat(64) };
+    };
+    let started: Record<string, string> = {};
+    processes.responses["runtime-start"] = async (call: RecordedCall) => {
+      started = await composeEnvironment(call, directory, "midgard-node");
+      state.nodeStarted = true;
+    };
+    await services.execute(undefined);
+    // The running node reads node.env: pinned, with other roles' secrets blanked.
+    const nodeEnv = parse(await readFile(join(servicesDirectory, "node.env")));
+    expect(Object.keys(started)).toEqual(
+      expect.arrayContaining(Object.keys(nodeEnv)),
+    );
+    expect(started.MPF_NATIVE_OWNER_BINARY_SHA256).toBe("c".repeat(64));
+    // Of the stack's secrets, only the node's own DA identity.
+    expect(secretsIn(started)).toEqual([config.da.producerTransportEnv]);
+    expect(started.DA_LIBP2P_PRIVATE_KEY_SOURCE).toBe(
+      processes.env[config.da.producerTransportEnv],
+    );
   });
   it("writes a node.env whose L1 follower runs from the deployment's origin", async () => {
     const { directory, services } = await stack();
