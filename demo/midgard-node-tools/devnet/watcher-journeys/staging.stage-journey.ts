@@ -63,13 +63,10 @@ export async function stageJourney(
   // as operator-2's node would, and its faults spend the outputs of the
   // drill's own L2 ledger owner. A devnet journey signs as its committee and
   // spends its operator's outputs.
-  const daPath = journeyDaPath({
-    context,
-    directory,
-    retain,
-    readConfirmedTransaction,
-    onStage,
-  });
+  const daPath = await journeyDaPath(
+    { context, directory, retain, readConfirmedTransaction, onStage },
+    task,
+  );
   const headerUnit = (hash: string) =>
     toUnit(
       contracts.stateQueue.policyId,
@@ -284,11 +281,21 @@ export async function stageJourney(
       ? deployment.publisherLucid
       : deployment.operatorLucid;
   const actor = stackActor ?? (await blockActor(maliciousLucid));
+  const historyNames = new Set<string>();
   const commitHistoryBlock: JourneyFaultPreparationInput["commitHistoryBlock"] =
     async (name, build) => {
       build = journeyBlockBuilder(build);
       if (!/^[a-z][a-z0-9-]*$/u.test(name))
         throw new Error("Invalid history checkpoint name");
+      historyNames.add(name);
+      // Operator-2's shift work on a stack counts the declared history.
+      if (
+        daPath.kind === "stack" &&
+        historyNames.size > (task.historyBlocks ?? 0)
+      )
+        throw new Error(
+          `${task.category} commits more history blocks than the ${(task.historyBlocks ?? 0).toString()} it declares`,
+        );
       const historyPath = join(directory, `history-${name}.json`);
       let history: {
         deploymentFingerprint: string;

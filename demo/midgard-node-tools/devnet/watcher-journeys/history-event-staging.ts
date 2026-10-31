@@ -416,74 +416,82 @@ export const createWithdrawalJourneyFixture = (
 export const createWithdrawnInputJourneyFixture = (
   category: "withdrawnInput" | "withdrawnReferenceInput",
 ) =>
-  createPreparedJourneyFixture(category, async (input) => {
-    const split = await input.commitHistoryBlock(
-      "withdrawal-ledger",
-      async (timed) => {
-        const selected = ownedHistoryLedgerEntries(
-          timed.predecessor,
-          ownerKey(input).to_public().hash().to_hex(),
-        )[0];
-        const entry =
-          selected === undefined
-            ? undefined
-            : [
-                selected.outRef.toString("hex"),
-                selected.output.toString("hex"),
-              ];
-        if (entry === undefined)
-          throw new Error(
-            "Withdrawn-input history requires a deposited output",
+  createPreparedJourneyFixture(
+    category,
+    async (input) => {
+      const split = await input.commitHistoryBlock(
+        "withdrawal-ledger",
+        async (timed) => {
+          const selected = ownedHistoryLedgerEntries(
+            timed.predecessor,
+            ownerKey(input).to_public().hash().to_hex(),
+          )[0];
+          const entry =
+            selected === undefined
+              ? undefined
+              : [
+                  selected.outRef.toString("hex"),
+                  selected.output.toString("hex"),
+                ];
+          if (entry === undefined)
+            throw new Error(
+              "Withdrawn-input history requires a deposited output",
+            );
+          const output = decodeMidgardTxOutput(Buffer.from(entry[1], "hex"));
+          const half = output.value.lovelace / 2n;
+          const transaction = signHistoryTransaction(
+            {
+              spendInputs: [Buffer.from(entry[0], "hex")],
+              outputs: [
+                encodeMidgardTxOutput({
+                  ...output,
+                  value: { ...output.value, lovelace: half },
+                }),
+                encodeMidgardTxOutput({
+                  ...output,
+                  value: {
+                    lovelace: output.value.lovelace - half,
+                    assets: new Map(),
+                  },
+                }),
+              ],
+              fee: 0n,
+              networkId: timed.predecessor.header.expectedNetworkId,
+            },
+            ownerKey(input),
           );
-        const output = decodeMidgardTxOutput(Buffer.from(entry[1], "hex"));
-        const half = output.value.lovelace / 2n;
-        const transaction = signHistoryTransaction(
-          {
-            spendInputs: [Buffer.from(entry[0], "hex")],
-            outputs: [
-              encodeMidgardTxOutput({
-                ...output,
-                value: { ...output.value, lovelace: half },
-              }),
-              encodeMidgardTxOutput({
-                ...output,
-                value: {
-                  lovelace: output.value.lovelace - half,
-                  assets: new Map(),
-                },
-              }),
-            ],
-            fee: 0n,
-            networkId: timed.predecessor.header.expectedNetworkId,
-          },
-          ownerKey(input),
-        );
-        const block = await retainHistoryTransactions({
-          ...timed,
-          transactions: [transaction],
-        });
-        if (block.replays[0]?.trace.verdict !== "accepted")
-          throw new Error("Withdrawal prerequisite split is not valid");
-        return block;
-      },
-    );
-    const predecessor = await decodeJourneyRetainedBlock(split, input.ledgerAt);
-    const preparation = { ...input, predecessor };
-    const body = journeyWithdrawalBody({
-      predecessor,
-      owner: ownerKey(input).to_public().hash().to_hex(),
-    });
-    const withdrawal = await publishJourneyWithdrawal(preparation, body, 0);
-    return {
-      predecessor: split,
-      buildFault: (timed) =>
-        buildJourneyWithdrawnTransaction({ ...timed, category, withdrawal }),
-      buildSuccessor: (timed) =>
-        buildJourneyWithdrawnTransaction({
-          ...timed,
-          category,
-          withdrawal,
-          honest: true,
-        }),
-    };
-  });
+          const block = await retainHistoryTransactions({
+            ...timed,
+            transactions: [transaction],
+          });
+          if (block.replays[0]?.trace.verdict !== "accepted")
+            throw new Error("Withdrawal prerequisite split is not valid");
+          return block;
+        },
+      );
+      const predecessor = await decodeJourneyRetainedBlock(
+        split,
+        input.ledgerAt,
+      );
+      const preparation = { ...input, predecessor };
+      const body = journeyWithdrawalBody({
+        predecessor,
+        owner: ownerKey(input).to_public().hash().to_hex(),
+      });
+      const withdrawal = await publishJourneyWithdrawal(preparation, body, 0);
+      return {
+        predecessor: split,
+        buildFault: (timed) =>
+          buildJourneyWithdrawnTransaction({ ...timed, category, withdrawal }),
+        buildSuccessor: (timed) =>
+          buildJourneyWithdrawnTransaction({
+            ...timed,
+            category,
+            withdrawal,
+            honest: true,
+          }),
+      };
+    },
+    // The split of the ledger owner's output it withdraws.
+    { historyBlocks: 1 },
+  );

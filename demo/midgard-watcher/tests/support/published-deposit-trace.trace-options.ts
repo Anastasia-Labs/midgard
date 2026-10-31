@@ -2,6 +2,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import type { DaLocalSignerConfig } from "midgard-node/da/local-signers";
 
 import type { PublishedWatcherBlock } from "./published-block-actor.js";
+import { sharedShiftWork } from "./published-block-actor.operator-shift.js";
 import {
   DEPOSIT_BLOCK_INTERVAL_MS,
   type PublishedDepositTraceCheckpoint,
@@ -18,10 +19,14 @@ export type PublishedDepositTraceAttachedStack = Readonly<{
  * The ledger time an attached stack's trace commits within, from its base
  * read: the deposit's admission range and event wait, then its block.
  */
-export const ATTACHED_TRACE_SPAN_MS =
+const ATTACHED_TRACE_SPAN_MS =
   Number(SDK.MAX_EVENT_VALIDITY_RANGE_LENGTH_MS) +
   SDK.EVENT_WAIT_DURATION_MS +
   DEPOSIT_BLOCK_INTERVAL_MS;
+
+/** An attached trace's work in operator-2's shift, from its base read. */
+export const attachedTraceShiftWork = () =>
+  sharedShiftWork(ATTACHED_TRACE_SPAN_MS);
 
 export type PublishedDepositTraceOptions = {
   /** The journey's own committee signers; absent on an attached stack. */

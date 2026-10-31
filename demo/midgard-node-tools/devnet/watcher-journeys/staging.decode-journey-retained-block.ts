@@ -96,4 +96,9 @@ export type FaultPreparation = {
   /** The family staged; on an attached stack it decides the committee's expected answer. */
   category: JourneyCategory;
   prepare(input: JourneyFaultPreparationInput): Promise<JourneyPreparedFault>;
+  /**
+   * How many history blocks `prepare` commits before the fault (none by
+   * default). An attached stack sizes operator-2's shift work by it.
+   */
+  historyBlocks?: number;
 };

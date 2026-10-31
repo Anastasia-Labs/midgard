@@ -274,6 +274,27 @@ export const journeyTimingForPlan = (
 
 export type JourneyTiming = ReturnType<typeof journeyTimingForPlan>;
 
+/**
+ * How long an attached stack's staging holds operator-2's shift, from the
+ * stack tail it reads to its fault's commit: for each block it commits, the
+ * commit and the stack coordinator's attestation of it, an init and then an
+ * apply. Each is one dependent transaction at the journey's action depth.
+ * The fault's own attestation falls outside the shift, but it is counted as
+ * a block like the others.
+ */
+export const stackStagingShiftWorkMs = (
+  timing: Pick<JourneyTiming, "transactionAllowanceMs">,
+  blocks: number,
+) => {
+  if (!Number.isSafeInteger(blocks) || blocks < 1)
+    throw new Error(
+      `Stack staging commits at least one whole block, not ${blocks.toString()} blocks`,
+    );
+  const commitMs = timing.transactionAllowanceMs;
+  const attestationMs = 2 * timing.transactionAllowanceMs;
+  return blocks * (attestationMs + commitMs);
+};
+
 export const transitionTraceJourneyTiming = (cadence: JourneyCadence) =>
   journeyTimingForPlan(TRANSITION_TRACE_JOURNEY_PLAN, cadence);
 

@@ -116,6 +116,44 @@ export const awaitOperatorShift = async (
   }
 };
 
+/**
+ * The work an operator sharing the scheduler does in one shift: `coverMs` of
+ * ledger time from the shift it first takes. Its first onboarding asks the
+ * shift to cover the whole of it; each later onboarding within it asks only
+ * what remains, so work that onboards before every commit stays in the shift
+ * it started in. Once its time has passed, the next onboarding asks the whole
+ * of it again.
+ */
+export const sharedShiftWork = (coverMs: number) => {
+  if (!Number.isSafeInteger(coverMs) || coverMs <= 0)
+    throw new Error(
+      `Shared shift work must be a positive whole number of milliseconds, not ${coverMs.toString()}`,
+    );
+  let endsAt: number | undefined;
+  return Object.freeze({
+    coverMs,
+    /** The cover an onboarding at `nowMs` asks of the shift. */
+    coverFrom: (nowMs: number) =>
+      endsAt !== undefined && nowMs < endsAt ? endsAt - nowMs : coverMs,
+    /** The operator holds its shift at `nowMs`. */
+    taken: (nowMs: number) => {
+      if (endsAt === undefined || nowMs >= endsAt) endsAt = nowMs + coverMs;
+    },
+  });
+};
+
+export type SharedShiftWork = ReturnType<typeof sharedShiftWork>;
+
+/** One onboarding of `work`: the shift wait for what remains of it. */
+export const awaitSharedShiftWork = async (
+  operator: string,
+  work: SharedShiftWork,
+  ports: OperatorShiftPorts,
+): Promise<void> => {
+  await awaitOperatorShift(operator, work.coverFrom(ports.now()), ports);
+  work.taken(ports.now());
+};
+
 /** The scheduler's appointment as its datum holds it. */
 export const operatorShiftAppointment = (
   scheduler: UTxO,
@@ -185,11 +223,11 @@ export const awaitSharedSchedulerShift = async (input: {
   operatorVkey: string;
   schedulerUnit: string;
   schedulerSpendingScriptRef: UTxO;
-  coverMs: number;
+  work: SharedShiftWork;
   onStage(name: string): void;
 }): Promise<void> => {
   const { lucid, contracts, chain } = input;
-  return awaitOperatorShift(input.operatorVkey, input.coverMs, {
+  return awaitSharedShiftWork(input.operatorVkey, input.work, {
     readAppointment: async () => {
       const schedulers = await lucid.utxosAtWithUnit(
         contracts.scheduler.spendingScriptAddress,

@@ -5,6 +5,7 @@ import type {
   createPublishedWatcherBlockActor,
   PublishedDaAttestationOutcome,
 } from "midgard-watcher/tests/support/published-block-actor";
+import { sharedShiftWork } from "midgard-watcher/tests/support/published-block-actor.operator-shift";
 import type { PublishedDaTransactionRecord } from "midgard-watcher/tests/support/published-da-target-consumption";
 import {
   type PublishedDepositTraceCheckpoint,
@@ -19,6 +20,10 @@ import type {
   JourneySuccessor,
 } from "./fixture.js";
 import { journeyDaSignerConfig } from "./journey-network.js";
+import {
+  readStackJourneyTiming,
+  stackStagingShiftWorkMs,
+} from "./journey-timing.js";
 import { JOURNEY_ACTION_DEPTH } from "./live-context.js";
 import {
   isStackJourneyContext,
@@ -28,6 +33,7 @@ import {
 import { stackJourneyDa } from "./stack-journey-da.js";
 import { fundStackLedgerOwner } from "./stack-ledger-owner.js";
 import type {
+  FaultPreparation,
   JourneyRetainedBlock,
   StagingCheckpoint,
 } from "./staging.decode-journey-retained-block.js";
@@ -90,12 +96,13 @@ const attestedBy = (actor: JourneyBlockActor, block: JourneyBlock) =>
     payloadEnvelopeCbor: Buffer.from(block.payloadEnvelopeCbor),
   });
 
-export const journeyDaPath = (
+export const journeyDaPath = async (
   stage: Pick<
     JourneyFixtureStage,
     "context" | "directory" | "retain" | "readConfirmedTransaction" | "onStage"
   >,
-): JourneyDaPath => {
+  task: Pick<FaultPreparation, "category" | "historyBlocks">,
+): Promise<JourneyDaPath> => {
   const { context, directory, retain, onStage } = stage;
   const fingerprint = context.deployment.manifest.manifestId;
   if (isStackJourneyContext(context)) {
@@ -103,12 +110,25 @@ export const journeyDaPath = (
       readConfirmedTransaction: stage.readConfirmedTransaction,
       onStage,
     });
+    const timing = await readStackJourneyTiming(
+      {
+        nodeConfigPath: context.layout.node.nodeConfigPath,
+        manifestPath: context.layout.manifestPath,
+      },
+      task.category,
+      { actionDepth: JOURNEY_ACTION_DEPTH },
+    );
     return {
       kind: "stack",
       ledgerOwnerSeedPhrase: context.accounts.ledgerOwner.seedPhrase,
-      // Operator-2 shares the scheduler with our node; its commits fit in
-      // the shift that covers the block interval staged.
-      actorOptions: { sharedScheduler: { coverMs: 60_000 } },
+      // Operator-2 shares the scheduler with our node. From the tail it reads
+      // to the fault's commit, one shift of operator-2's holds the staging:
+      // our node, which cannot commit in it, leaves the tail as read.
+      actorOptions: {
+        sharedScheduler: sharedShiftWork(
+          stackStagingShiftWorkMs(timing, 1 + (task.historyBlocks ?? 0)),
+        ),
+      },
       resolvePredecessor: async ({ stackActor, decodeRetained }) => {
         await fundStackLedgerOwner(context, {
           readAttestedTail: async () =>

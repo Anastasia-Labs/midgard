@@ -47,7 +47,7 @@ import {
 import { publishedDepositTraceQueue } from "./published-deposit-trace.queue-tail.js";
 import {
   assertPublishedDepositTraceDaPath,
-  ATTACHED_TRACE_SPAN_MS,
+  attachedTraceShiftWork,
   type PublishedDepositTraceOptions,
 } from "./published-deposit-trace.trace-options.js";
 
@@ -129,7 +129,7 @@ export const stagePublishedDepositTrace = async (
     lucid,
     ...(attachedStack === undefined
       ? { daSignerConfig }
-      : { sharedScheduler: { coverMs: ATTACHED_TRACE_SPAN_MS } }),
+      : { sharedScheduler: attachedTraceShiftWork() }),
     onStage,
   });
   const onboardOperator = () => actor.onboardOperator();

@@ -13,6 +13,7 @@ import {
   readTransitionTraceJourneyExecutionTiming,
   readTransitionTraceJourneyTiming,
   requireHealthyReplayFitsDeadline,
+  stackStagingShiftWorkMs,
   TRANSITION_TRACE_JOURNEY_PLAN,
   transitionTraceJourneyExecutionTiming,
   transitionTraceJourneyTiming,
@@ -352,3 +353,20 @@ it.skipIf(actualTimingRun === undefined)(
   },
   15_000,
 );
+
+describe("an attached stack's staging work in operator-2's shift", () => {
+  const inclusion = genericJourneyTiming({ ...preprod, actionDepth: 1 });
+
+  it("covers each block's commit and its attestation's init and apply, one dependent transaction each", () => {
+    const oneBlock = stackStagingShiftWorkMs(inclusion, 1);
+    expect(oneBlock).toBe(3 * inclusion.transactionAllowanceMs);
+    expect(stackStagingShiftWorkMs(inclusion, 2)).toBe(2 * oneBlock);
+  });
+
+  it("refuses staging that commits no block", () => {
+    for (const blocks of [0, -1, 1.5])
+      expect(() => stackStagingShiftWorkMs(inclusion, blocks)).toThrow(
+        /blocks/u,
+      );
+  });
+});

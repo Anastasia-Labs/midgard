@@ -6,9 +6,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   awaitOperatorShift,
+  awaitSharedShiftWork,
   continuedActiveOperatorDatum,
   operatorLifecycleStep,
   type OperatorShiftAppointment,
+  sharedShiftWork,
 } from "./support/published-block-actor.operator-shift.js";
 
 const SHIFT_MS = 3_600_000n;
@@ -41,35 +43,41 @@ const scheduler = (
   const refreshes: bigint[] = [];
   let reads = 0;
   const stages: string[] = [];
+  const ports: Parameters<typeof awaitOperatorShift>[2] = {
+    readAppointment: async () => {
+      // An operator that reads without end never waits for its shift.
+      if (++reads > 200) throw new Error("read the scheduler without end");
+      return current;
+    },
+    refresh: async (target) => {
+      refreshes.push(target);
+      const answer = refresh(target, clock);
+      if ("notDueForMs" in answer) return answer;
+      if (answer.appointment !== undefined) current = answer.appointment;
+      if ("fails" in answer) throw answer.fails;
+      return { kind: "aligned" };
+    },
+    now: () => clock,
+    awaitLedgerTime: async (timeMs) => {
+      clock = Math.max(clock, timeMs);
+    },
+    shiftDurationMs: SHIFT_MS,
+    onStage: (name) => stages.push(name),
+  };
   return {
     refreshes,
     stages,
     now: () => clock,
+    /** The operator's own work moves the ledger clock on. */
+    work: (ms: number) => {
+      clock += ms;
+    },
     appoint: (next: OperatorShiftAppointment) => {
       current = next;
     },
-    wait: () =>
-      awaitOperatorShift(OPERATOR_2, COVER_MS, {
-        readAppointment: async () => {
-          // An operator that reads without end never waits for its shift.
-          if (++reads > 200) throw new Error("read the scheduler without end");
-          return current;
-        },
-        refresh: async (target) => {
-          refreshes.push(target);
-          const answer = refresh(target, clock);
-          if ("notDueForMs" in answer) return answer;
-          if (answer.appointment !== undefined) current = answer.appointment;
-          if ("fails" in answer) throw answer.fails;
-          return { kind: "aligned" };
-        },
-        now: () => clock,
-        awaitLedgerTime: async (timeMs) => {
-          clock = Math.max(clock, timeMs);
-        },
-        shiftDurationMs: SHIFT_MS,
-        onStage: (name) => stages.push(name),
-      }),
+    wait: () => awaitOperatorShift(OPERATOR_2, COVER_MS, ports),
+    waitFor: (work: ReturnType<typeof sharedShiftWork>) =>
+      awaitSharedShiftWork(OPERATOR_2, work, ports),
   };
 };
 
@@ -189,6 +197,48 @@ describe("an operator sharing the scheduler", () => {
     expect(l1.now()).toBeLessThanOrEqual(
       10_600_000 + 2 * Number(SHIFT_MS) + 600_000,
     );
+  });
+});
+
+describe("an operator's work across one shared shift", () => {
+  const SHIFT_START = 10_000_000;
+  const WORK_MS = 2_000_000;
+
+  it("asks only what remains of its work at each later onboarding, so it stays in the shift it started in", async () => {
+    const l1 = scheduler(
+      { operator: OPERATOR_2, startTime: BigInt(SHIFT_START) },
+      SHIFT_START,
+    );
+    const work = sharedShiftWork(WORK_MS);
+    await l1.waitFor(work);
+    const started = l1.now();
+    // The first block's commit and attestation; the whole work no longer
+    // fits what is left of the shift, but what remains of it does.
+    l1.work(WORK_MS - 200_000);
+    expect(l1.now() + WORK_MS).toBeGreaterThan(SHIFT_START + Number(SHIFT_MS));
+    await l1.waitFor(work);
+    expect(l1.refreshes).toEqual([]);
+    expect(l1.now()).toBe(started + WORK_MS - 200_000);
+  });
+
+  it("asks the whole of its work again once its time has passed", async () => {
+    const l1 = scheduler(
+      { operator: OPERATOR_2, startTime: BigInt(SHIFT_START) },
+      SHIFT_START,
+    );
+    const work = sharedShiftWork(WORK_MS);
+    await l1.waitFor(work);
+    l1.work(WORK_MS + 1);
+    await l1.waitFor(work);
+    // Operator-2's shift cannot cover it any more: it waits the shift out
+    // and refreshes into a new one.
+    expect(l1.refreshes).toHaveLength(1);
+    expect(l1.now()).toBeGreaterThan(SHIFT_START + Number(SHIFT_MS));
+  });
+
+  it("refuses work that is not a positive whole number of milliseconds", () => {
+    for (const ms of [0, -1, 1.5, Number.NaN])
+      expect(() => sharedShiftWork(ms)).toThrow(/shift work/u);
   });
 });
 

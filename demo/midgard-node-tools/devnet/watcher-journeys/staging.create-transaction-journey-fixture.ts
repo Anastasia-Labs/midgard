@@ -4,6 +4,7 @@ import type {
   JourneyFixture,
 } from "./fixture.js";
 import {
+  type FaultPreparation,
   type JourneyFaultBuildInput,
   type JourneyFaultPreparationInput,
   type JourneyPreparedFault,
@@ -27,7 +28,8 @@ export const createPreparedJourneyFixture = (
   prepare: (
     input: JourneyFaultPreparationInput,
   ) => Promise<JourneyPreparedFault>,
+  options: Pick<FaultPreparation, "historyBlocks"> = {},
 ): JourneyFixture => ({
   category,
-  stage: (input) => stageJourney(input, { category, prepare }),
+  stage: (input) => stageJourney(input, { ...options, category, prepare }),
 });

@@ -76,10 +76,10 @@ export const createPublishedWatcherBlockActor = async ({
   ) => Promise<PublishedHeaderConsumption[]>;
   /**
    * An operator sharing the scheduler with others, as on an attached stack:
-   * onboarding waits for its shift to cover the next `coverMs` and refreshes
-   * the scheduler into it, and a bond shortfall is funded by the publisher.
+   * onboarding waits for a shift that covers what remains of its work and
+   * refreshes the scheduler into it; the publisher funds a bond shortfall.
    */
-  sharedScheduler?: { readonly coverMs: number };
+  sharedScheduler?: Parameters<typeof awaitSharedSchedulerShift>[0]["work"];
   onStage?: (name: string) => void;
 }) => {
   const { contracts, chain, references } = deployment;
@@ -257,7 +257,7 @@ export const createPublishedWatcherBlockActor = async ({
     if (schedulerDatum !== "NoActiveOperators" && sharedScheduler !== undefined)
       return awaitSharedSchedulerShift({
         ...{ lucid, contracts, chain, operatorVkey, schedulerUnit, onStage },
-        coverMs: sharedScheduler.coverMs,
+        work: sharedScheduler,
         schedulerSpendingScriptRef: reference("schedulerSpend"),
       });
     if (schedulerDatum !== "NoActiveOperators") {
