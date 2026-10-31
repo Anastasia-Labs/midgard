@@ -178,16 +178,20 @@ export async function publicStack(
     HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: "0",
     L1_ORIGIN: `7.${"cd".repeat(32)}`,
   };
-  // Phase 1 moves the node's secrets from its private file into the stack environment.
-  for (const secret of PUBLIC_NODE_SECRET_NAMES)
-    env[secret] ??= randomBytes(24).toString("base64url");
+  // The stack refuses the node's secrets in its .env (checkPublicInputs).
+  const secretNames: readonly string[] = PUBLIC_NODE_SECRET_NAMES;
   await writeFile(
     config.envFile,
     Object.entries(env)
+      .filter(([key]) => !secretNames.includes(key))
       .map(([key, value]) => `${key}=${value}\n`)
       .join(""),
     { mode: 0o600 },
   );
+  // Phase 1 moves them from the private node configuration into the stack's
+  // in-memory environment only.
+  for (const secret of PUBLIC_NODE_SECRET_NAMES)
+    env[secret] ??= randomBytes(24).toString("base64url");
   const processes = new RecordingProcesses(config, env);
   const [release, configuration, , services] = runtimeSteps(processes);
   return {

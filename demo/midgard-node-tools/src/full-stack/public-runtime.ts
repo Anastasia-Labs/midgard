@@ -75,7 +75,10 @@ export const publicPostgresPasswordPath = (config: StackConfig) =>
  * The public stack's Compose overlay on the base files: the release's
  * digest-pinned role images, the node and its migration as the host user,
  * host ports bound to loopback, and Postgres reading its password from a
- * private file rather than its environment. The node API stays on every
+ * private file rather than its environment. The node and its migration drop
+ * the base files' env_file: Compose appends env_file lists across files, and
+ * the stack's .env holds other roles' secrets, so they read only the node.env
+ * the services file adds (publicNodeServices). The node API stays on every
  * interface only without the TLS ingress, which otherwise is its public port;
  * the DA port serves the stack's own committee, which dials the loopback.
  */
@@ -89,6 +92,7 @@ export async function writePublicRoles(processes: StackProcesses) {
     user: hostUser(),
     cap_drop: ["ALL"],
     security_opt: ["no-new-privileges:true"],
+    env_file: override([]),
   };
   const password = publicPostgresPasswordPath(config);
   await writeTextFileAtomic(password, env.POSTGRES_PASSWORD!, { mode: 0o600 });
