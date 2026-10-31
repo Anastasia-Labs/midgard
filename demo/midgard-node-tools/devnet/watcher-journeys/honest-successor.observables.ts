@@ -1,5 +1,5 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import type { UTxO } from "@lucid-evolution/lucid";
+import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 /**
@@ -9,6 +9,8 @@ import { Effect } from "effect";
 export const LANDED_BLOCK_INVALID = "landed_block_invalid";
 /** Our node is still waiting for a foreign block's DA payload. */
 export const LANDED_BLOCK_AWAITING_DA = "landed_block_awaiting_da";
+/** Our node's commit fiber has commit work but no block to build it on. */
+export const COMMIT_BASE_PENDING = "commit_base_pending";
 
 const HEADER_HASH = /^[0-9a-f]{56}$/u;
 /** How landed-block processing names the block an invalid hold is on. */
@@ -86,6 +88,8 @@ export type IndexedStateQueueHeader = Readonly<{
   txHash: string;
   outputIndex: number;
   createdAtSlot: number;
+  /** When it was spent (merged or removed), if it was. */
+  spentAtSlot?: number;
 }>;
 
 type KupoMatch = Readonly<{
@@ -96,6 +100,7 @@ type KupoMatch = Readonly<{
   datum?: string | null;
   datum_type?: string | null;
   created_at: { slot_no: number };
+  spent_at?: { slot_no: number } | null;
 }>;
 
 const readKupoMatches = async (
@@ -164,6 +169,7 @@ const headerOfMatch = async (
     txHash: match.transaction_id,
     outputIndex: match.output_index,
     createdAtSlot: match.created_at.slot_no,
+    ...(match.spent_at == null ? {} : { spentAtSlot: match.spent_at.slot_no }),
   };
 };
 
@@ -238,6 +244,76 @@ export const assertNoHonestHeaderOnFault = async (
       );
   }
   return { faultCommittedAtSlot: fault.createdAtSlot, headersRead };
+};
+
+/** One shift of our operator's that the scheduler held on L1. */
+export type OperatorShiftOnFault = Readonly<{
+  txHash: string;
+  startTime: number;
+  endTime: number;
+}>;
+
+/**
+ * Our operator's shifts, as L1's scheduler appointed them, that overlap the
+ * window in which the fault was the queue's tail: from its commit to its
+ * removal (its state-queue output spent), or to `untilSlot` while it is
+ * unspent. The fault's commit landed in operator-2's shift, so an
+ * appointment of ours that overlaps the window was made after it.
+ */
+export const readOperatorShiftsOnFault = async (
+  input: Readonly<{
+    kupoUrl: string;
+    stateQueuePolicyId: string;
+    schedulerPolicyId: string;
+    faultHeaderHash: string;
+    operatorKeyHash: string;
+    shiftDurationMs: number;
+    slotToUnixTime(slot: number): number;
+    untilSlot: number;
+  }>,
+  fetchImpl: typeof fetch = fetch,
+): Promise<{
+  fromMs: number;
+  toMs: number;
+  ourShifts: OperatorShiftOnFault[];
+}> => {
+  const [fault] = await readIndexedStateQueueHeader(
+    {
+      kupoUrl: input.kupoUrl,
+      policyId: input.stateQueuePolicyId,
+      headerHash: input.faultHeaderHash,
+    },
+    fetchImpl,
+  );
+  if (fault === undefined)
+    throw new Error(
+      `Kupo indexes no state-queue output of the fault ${input.faultHeaderHash}`,
+    );
+  const fromMs = input.slotToUnixTime(fault.createdAtSlot);
+  const toMs = input.slotToUnixTime(fault.spentAtSlot ?? input.untilSlot);
+  const appointments = await readKupoMatches(
+    input.kupoUrl,
+    `/matches/${input.schedulerPolicyId}.${SDK.SCHEDULER_ASSET_NAME}?resolve_hashes&created_after=${Math.max(fault.createdAtSlot - 1, 0).toString()}`,
+    fetchImpl,
+  );
+  const ourShifts: OperatorShiftOnFault[] = [];
+  for (const match of appointments) {
+    if (match.datum_type !== "inline" || typeof match.datum !== "string")
+      throw new Error(
+        `Scheduler output ${match.transaction_id}#${match.output_index.toString()} has no inline datum in Kupo`,
+      );
+    const datum = Data.from(match.datum, SDK.SchedulerDatum);
+    if (
+      datum === "NoActiveOperators" ||
+      datum.ActiveOperator.operator !== input.operatorKeyHash
+    )
+      continue;
+    const startTime = Number(datum.ActiveOperator.start_time);
+    const endTime = startTime + input.shiftDurationMs;
+    if (startTime < toMs && endTime > fromMs)
+      ourShifts.push({ txHash: match.transaction_id, startTime, endTime });
+  }
+  return { fromMs, toMs, ourShifts };
 };
 
 /**

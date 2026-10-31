@@ -62,16 +62,62 @@ export const headerOn = async (
   };
 };
 
-export type IndexedOutput = Readonly<{ block: JourneyBlock; slot: number }>;
+export const schedulerPolicyId = "d4".repeat(28);
 
-/** The stack's Kupo, unpruned: every state-queue output, spent ones too. */
-export const kupo = (outputs: () => readonly IndexedOutput[]) =>
+/** A state-queue output, created at `slot` and spent at `spentAt`. */
+export type IndexedOutput = Readonly<{
+  block: JourneyBlock;
+  slot: number;
+  spentAt?: number;
+}>;
+
+/** A scheduler output appointing `operator` from `startTime`, made at `slot`. */
+export type IndexedAppointment = Readonly<{
+  operator: string;
+  startTime: number;
+  slot: number;
+}>;
+
+const schedulerMatches = (appointments: readonly IndexedAppointment[]) =>
+  appointments.map(({ operator, startTime, slot }, index) => ({
+    transaction_id: (index + 1).toString(16).padStart(64, "e"),
+    output_index: 0,
+    address: "addr_test1wscheduler",
+    value: {
+      coins: 2_000_000,
+      assets: { [`${schedulerPolicyId}.${SDK.SCHEDULER_ASSET_NAME}`]: 1 },
+    },
+    datum_type: "inline",
+    datum: Data.to(
+      { ActiveOperator: { operator, start_time: BigInt(startTime) } },
+      SDK.SchedulerDatum,
+    ),
+    created_at: { slot_no: slot },
+    spent_at: null,
+  }));
+
+/**
+ * The stack's Kupo, unpruned: every state-queue output, spent ones too, and
+ * every scheduler appointment.
+ */
+export const kupo = (
+  outputs: () => readonly IndexedOutput[],
+  appointments: () => readonly IndexedAppointment[] = () => [],
+) =>
   serve((url) => {
     const pattern = decodeURIComponent(url.pathname.slice("/matches/".length));
     const [policy, name] = pattern.split(".");
     if (!url.searchParams.has("resolve_hashes"))
       return { status: 400, body: { hint: "datums unresolved" } };
     const after = url.searchParams.get("created_after");
+    if (policy === schedulerPolicyId)
+      return {
+        body: schedulerMatches(appointments()).filter(
+          (match) =>
+            name === SDK.SCHEDULER_ASSET_NAME &&
+            (after === null || match.created_at.slot_no > Number(after)),
+        ),
+      };
     const root = {
       transaction_id: "00".repeat(32),
       output_index: 0,
@@ -84,7 +130,7 @@ export const kupo = (outputs: () => readonly IndexedOutput[]) =>
     };
     const matches = [
       ...(name === "*" ? [root] : []),
-      ...outputs().map(({ block, slot }, index) => {
+      ...outputs().map(({ block, slot, spentAt }, index) => {
         const assetName = `${SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX}${block.headerHash}`;
         const node: SDK.StateQueueNode = {
           header: block.header,
@@ -110,7 +156,7 @@ export const kupo = (outputs: () => readonly IndexedOutput[]) =>
             SDK.LinkedListDatum,
           ),
           created_at: { slot_no: slot },
-          spent_at: null,
+          spent_at: spentAt === undefined ? null : { slot_no: spentAt },
           assetName,
         };
       }),

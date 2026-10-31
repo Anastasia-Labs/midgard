@@ -22,8 +22,10 @@ import type {
 } from "./fixture.js";
 import {
   assertNoHonestHeaderOnFault,
+  COMMIT_BASE_PENDING,
   LANDED_BLOCK_INVALID,
   readIndexedStateQueueHeader,
+  readOperatorShiftsOnFault,
 } from "./honest-successor.observables.js";
 import { createNodeHoldWatch, type NodeHoldWatch } from "./node-hold-watch.js";
 
@@ -99,6 +101,9 @@ type TransferIntent = Readonly<{
  * 2. no header of our operator on L1 names the fault as its parent;
  * 3. the hold cleared, and our node's next header links to the fault's
  *    predecessor and carries the transfer.
+ * The refusal is tested only if our node could have built on the fault: it
+ * had a shift while the fault was the tail, or reported `commit_base_pending`
+ * then. Neither fails the family.
  */
 export const stackSuccessorPort = (
   input: Readonly<{
@@ -131,6 +136,9 @@ export const stackSuccessorPort = (
      */
     holdWatch?: NodeHoldWatch;
     holdPollIntervalMs?: number;
+    schedulerPolicyId: string;
+    shiftDurationMs: number;
+    slotToUnixTime(slot: number): number;
     fetchImpl?: typeof fetch;
   }>,
 ): JourneySuccessorPort => {
@@ -303,6 +311,33 @@ export const stackSuccessorPort = (
         throw new Error(
           `Our node still holds the fault after its successor: ${JSON.stringify(after)}`,
         );
+      // Our node could have built on the fault: its shift, or its pending
+      // commit, overlapped the window in which the fault was the tail.
+      const faultTail = {
+        ...(await readOperatorShiftsOnFault(
+          {
+            kupoUrl: input.kupoUrl,
+            stateQueuePolicyId: input.stateQueuePolicyId,
+            schedulerPolicyId: input.schedulerPolicyId,
+            faultHeaderHash,
+            operatorKeyHash: input.honestOperatorKeyHash,
+            shiftDurationMs: input.shiftDurationMs,
+            slotToUnixTime: input.slotToUnixTime,
+            untilSlot: onL1!.createdAtSlot,
+          },
+          fetchImpl,
+        )),
+        commitBasePendingAt: observations.find(({ hold }) =>
+          hold?.reasons.includes(COMMIT_BASE_PENDING),
+        )?.observedAt,
+      };
+      if (
+        faultTail.ourShifts.length === 0 &&
+        faultTail.commitBasePendingAt === undefined
+      )
+        throw new Error(
+          `Our node had no shift while the fault ${faultHeaderHash} was the tail (${faultTail.fromMs.toString()}..${faultTail.toMs.toString()} ms) and never reported ${COMMIT_BASE_PENDING}: its refusal to build on the fault went untested`,
+        );
       const successor: JourneySuccessor = {
         header,
         headerHash: committed,
@@ -315,6 +350,7 @@ export const stackSuccessorPort = (
         holdBinding: observations.find(({ hold }) => hold?.state === "held")
           ?.hold?.binding,
         linkage,
+        faultTail,
         transfer: intent.txId,
         successor: committed,
         commitTxHash: onL1!.txHash,

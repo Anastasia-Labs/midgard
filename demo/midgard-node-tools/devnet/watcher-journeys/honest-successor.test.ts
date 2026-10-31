@@ -26,10 +26,12 @@ import {
   faultHold,
   headerOn,
   honestOperator,
+  type IndexedAppointment,
   type IndexedOutput,
   kupo,
   operator2,
   policyId,
+  schedulerPolicyId,
   serve,
 } from "./honest-successor.test-support.js";
 import { createNodeHoldWatch } from "./node-hold-watch.js";
@@ -41,6 +43,9 @@ afterAll(() =>
   ),
 );
 afterEach(closeServers);
+
+/** A shift of the scripted scheduler: five slots. */
+const SHIFT_MS = 5_000;
 
 /** Our node and its L1, scripted, around one drill family. */
 const stackDrill = async () => {
@@ -65,7 +70,11 @@ const stackDrill = async () => {
     { block: predecessor, slot: 5 },
     { block: fault, slot: 10 },
   ];
-  const kupoUrl = await kupo(() => indexed);
+  const appointments: IndexedAppointment[] = [];
+  const kupoUrl = await kupo(
+    () => indexed,
+    () => appointments,
+  );
   const sent: { cbor: string; txId: string }[] = [];
   const ledger: JourneyLedger = {
     utxos: (address) => {
@@ -128,6 +137,9 @@ const stackDrill = async () => {
       },
       commitTimeoutMs: 2_000,
       holdPollIntervalMs: 5,
+      schedulerPolicyId,
+      shiftDurationMs: SHIFT_MS,
+      slotToUnixTime: (slot) => slot * 1_000,
     });
   /** Our node commits `block` carrying `transactions`, published and on L1. */
   const commits = async (
@@ -178,6 +190,13 @@ const stackDrill = async () => {
       await pause(5);
     }
   };
+  /** The watcher removed the fault at `slot`. */
+  const removed = (slot: number) => {
+    indexed[1] = { ...indexed[1]!, spentAt: slot };
+  };
+  /** The scheduler appoints `operator` from `slot`, one second a slot. */
+  const appoints = (operator: string, slot: number) =>
+    appointments.push({ operator, startTime: slot * 1_000, slot });
   return {
     directory,
     predecessor,
@@ -189,6 +208,8 @@ const stackDrill = async () => {
     holdWatch,
     commits,
     observedHold,
+    removed,
+    appoints,
   };
 };
 
@@ -201,7 +222,12 @@ describe("stack successor", () => {
     const { txId } = drill.sent[0]!;
     drill.node.readyz = faultHold(drill.fault.headerHash);
     await drill.observedHold();
-    // The watcher removed the fault; our node built on its predecessor.
+    // Our node's shift began while the fault was the tail (committed at
+    // slot 10); then the watcher removed the fault and our node built on its
+    // predecessor.
+    drill.appoints(operator2, 9);
+    drill.appoints(honestOperator, 14);
+    drill.removed(20);
     drill.node.readyz = { ready: true, reasons: [] };
     const ours = await headerOn(
       drill.predecessor.headerHash,
@@ -221,6 +247,11 @@ describe("stack successor", () => {
       holdBinding: "header",
       transfer: txId,
       successor: ours.headerHash,
+      faultTail: {
+        fromMs: 10_000,
+        toMs: 20_000,
+        ourShifts: [{ startTime: 14_000, endTime: 19_000 }],
+      },
     });
     // A resumed run reads the proven successor back.
     const resumed = drill.port();
@@ -235,7 +266,10 @@ describe("stack successor", () => {
     watch.start(drill.fault.headerHash);
     drill.node.readyz = faultHold(drill.fault.headerHash);
     await drill.observedHold();
-    // Corrected before the runner gives our node work: the hold is gone.
+    // Corrected before the runner gives our node work, in our node's shift:
+    // the hold is gone.
+    drill.appoints(honestOperator, 11);
+    drill.removed(12);
     drill.node.readyz = { ready: true, reasons: [] };
     const port = drill.port(watch);
     await port.afterFaultLanded();
@@ -290,6 +324,57 @@ describe("stack successor", () => {
     await pause(30);
     await expect(port.commit()).rejects.toThrow(
       /never reported landed_block_invalid/u,
+    );
+  });
+
+  it("takes our node's commit_base_pending while the fault was the tail for its shift", async () => {
+    const drill = await stackDrill();
+    const port = drill.port();
+    await port.afterFaultLanded();
+    const hold = faultHold(drill.fault.headerHash);
+    drill.node.readyz = {
+      ...hold,
+      reasons: [...hold.reasons, "commit_base_pending"],
+    };
+    await drill.observedHold();
+    drill.removed(20);
+    drill.node.readyz = { ready: true, reasons: [] };
+    const ours = await headerOn(
+      drill.predecessor.headerHash,
+      honestOperator,
+      3n,
+    );
+    await drill.commits(ours, [drill.sent[0]!.txId]);
+    await port.commit();
+    expect(
+      JSON.parse(await readFile(join(drill.directory, "refusal.json"), "utf8")),
+    ).toMatchObject({ faultTail: { ourShifts: [] } });
+    expect(
+      JSON.parse(await readFile(join(drill.directory, "refusal.json"), "utf8"))
+        .faultTail.commitBasePendingAt,
+    ).toEqual(expect.any(String));
+  });
+
+  it("fails when our node had no shift while the fault was the tail and never reported commit_base_pending", async () => {
+    const drill = await stackDrill();
+    const port = drill.port();
+    await port.afterFaultLanded();
+    drill.node.readyz = faultHold(drill.fault.headerHash);
+    await drill.observedHold();
+    // Operator-2 held the shift until the watcher removed the fault; our
+    // node's next shift came after it, and one before the fault ended in
+    // time.
+    drill.appoints(honestOperator, 1);
+    drill.appoints(operator2, 9);
+    drill.removed(13);
+    drill.appoints(honestOperator, 14);
+    drill.node.readyz = { ready: true, reasons: [] };
+    await drill.commits(
+      await headerOn(drill.predecessor.headerHash, honestOperator, 3n),
+      [drill.sent[0]!.txId],
+    );
+    await expect(port.commit()).rejects.toThrow(
+      /had no shift while the fault .* was the tail/u,
     );
   });
 

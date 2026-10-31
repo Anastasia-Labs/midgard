@@ -1,3 +1,5 @@
+import * as SDK from "@al-ft/midgard-sdk";
+
 import { nodeLedger } from "../../src/full-stack/journey.js";
 import { stackSuccessorPort } from "./honest-successor.js";
 import { LANDED_BLOCK_AWAITING_DA } from "./honest-successor.observables.js";
@@ -135,6 +137,10 @@ export const attachedJourneyMode = (
         poll: polls.poll,
         // The stack journey's own wait for our node to commit a transfer.
         commitTimeoutMs: context.stackConfig.timeoutMs,
+        schedulerPolicyId: context.deployment.contracts.scheduler.policyId,
+        shiftDurationMs: Number(SDK.SHIFT_DURATION_MS),
+        slotToUnixTime: (slot) =>
+          context.deployment.publisherLucid.slotToUnixTime(slot),
       }),
     refusal: async ({ fault, refused, polls }) => {
       const removal =
