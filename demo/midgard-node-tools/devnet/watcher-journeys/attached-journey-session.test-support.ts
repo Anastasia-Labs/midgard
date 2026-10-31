@@ -87,8 +87,19 @@ export const STACK_GENESIS = Object.freeze({
   activeSlotsCoeff: 0.5,
 });
 
-/** A running stack watcher: its operations endpoint and its mounted state. */
-export const runningStackWatcher = async (status: Record<string, unknown>) => {
+/** The stack configuration's prover funding minimum, in lovelace. */
+export const PROVER_MINIMUM_LOVELACE = 3_000_000_000n;
+
+/**
+ * A running stack watcher: its operations endpoint and its mounted state.
+ * Its prover holds `proverLovelace`, by default the configured minimum.
+ */
+export const runningStackWatcher = async (
+  status: Record<string, unknown>,
+  {
+    proverLovelace = PROVER_MINIMUM_LOVELACE,
+  }: { proverLovelace?: bigint } = {},
+) => {
   const root = await mkdtemp(join(tmpdir(), "attached-session-"));
   directories.push(root);
   const storePath = join(root, "watcher.sqlite");
@@ -150,7 +161,9 @@ export const runningStackWatcher = async (status: Record<string, unknown>) => {
   );
   // Operator-2's wallet, which the drill signs with.
   const operator2Account = generateEmulatorAccount({ lovelace: 50_000_000n });
-  const emulator = new Emulator([operator2Account]);
+  // The stack watcher's prover, which the stack funds and the drill never does.
+  const prover = generateEmulatorAccount({ lovelace: proverLovelace });
+  const emulator = new Emulator([operator2Account, prover]);
   const operatorLucid = await Lucid(emulator, "Custom");
   operatorLucid.selectWallet.fromSeed(operator2Account.seedPhrase);
   // The parts of a stack context an attached session reads.
@@ -160,8 +173,9 @@ export const runningStackWatcher = async (status: Record<string, unknown>) => {
     layout: {
       manifestPath,
       node: { nodeConfigPath },
-      proverAddress: "addr_test1stackprover",
+      proverAddress: prover.address,
     },
+    provider: emulator,
     kupoUrl: "http://127.0.0.1:1442",
     ogmiosUrl: "ws://127.0.0.1:1337",
     release: { deploymentIdentity },
@@ -170,7 +184,15 @@ export const runningStackWatcher = async (status: Record<string, unknown>) => {
       blueprintPath: join(root, "plutus.json"),
       operatorLucid,
     },
-    stackConfig: { endpoint: nodeEndpoint },
+    stackConfig: {
+      endpoint: nodeEndpoint,
+      wallets: {
+        prover: {
+          seedEnv: "STACK_PROVER_SEED",
+          minimumLovelace: PROVER_MINIMUM_LOVELACE.toString(),
+        },
+      },
+    },
     watcher: {
       composeProject: "midgard-node-drill",
       processConfigPath,
@@ -183,6 +205,7 @@ export const runningStackWatcher = async (status: Record<string, unknown>) => {
     storePath,
     runDirectory,
     context,
+    proverAddress: prover.address,
     served,
     requests,
     nodeRequests,

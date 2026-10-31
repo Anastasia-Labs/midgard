@@ -57,6 +57,24 @@ export const assertAttachedWatcherStatus = (
 };
 
 /**
+ * Refuses a drill whose stack prover holds less than the stack
+ * configuration's `wallets.prover.minimumLovelace`: the stack watcher's
+ * proofs spend from it, and the drill never funds it.
+ */
+const assertStackProverFunded = async (context: StackJourneyContext) => {
+  const address = context.layout.proverAddress;
+  const minimum = BigInt(context.stackConfig.wallets.prover!.minimumLovelace);
+  const balance = (await context.provider.getUtxos(address)).reduce(
+    (total, utxo) => total + (utxo.assets.lovelace ?? 0n),
+    0n,
+  );
+  if (balance < minimum)
+    throw new Error(
+      `The stack watcher's prover ${address} holds ${balance.toString()} lovelace, ${(minimum - balance).toString()} lovelace short of the stack configuration's wallets.prover.minimumLovelace (${minimum.toString()}); fund it before the drill`,
+    );
+};
+
+/**
  * A journey session attached to a running e2e-stack's own watcher. It starts
  * no retained DA, no watcher configuration or process, no native recorder
  * and no prover funding. It holds operator-2's node while the drill signs as
@@ -64,7 +82,8 @@ export const assertAttachedWatcherStatus = (
  * from the stack watcher's `/v1/status`; decision and workflow evidence from
  * its journals, read inside its container (`exec`, by default
  * `docker compose exec`). Staging reads ledgers from the stack's own replay,
- * opened on its first read.
+ * opened on its first read. It refuses a prover below the stack's funding
+ * minimum before the drill starts.
  */
 export const openAttachedJourneySession = async (
   context: StackJourneyContext,
@@ -143,6 +162,9 @@ export const openAttachedJourneySession = async (
     await stage("attached watcher status", assertHealthy);
     // The first read proves the evidence comes from this stack's watcher.
     await stage("attached watcher evidence", () => evidence.readDecisions());
+    await stage("attached watcher prover funding", () =>
+      assertStackProverFunded(context),
+    );
     const watcher = Object.freeze({
       requireLive,
       operations,

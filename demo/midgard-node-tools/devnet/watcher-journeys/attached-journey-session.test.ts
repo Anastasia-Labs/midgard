@@ -9,6 +9,7 @@ import {
   deploymentIdentity,
   fingerprint,
   liveStatus,
+  PROVER_MINIMUM_LOVELACE,
   removeStackDirectories,
   runningStackWatcher,
   seedWorkflowStarted,
@@ -108,6 +109,23 @@ describe("attached journey session", () => {
     await expect(
       openAttachedJourneySession(stack.context, stack.options()),
     ).rejects.toThrow();
+  });
+
+  it("refuses at drill start a prover below the stack's configured minimum, by address and shortfall", async () => {
+    const shortfall = 1_500_000n;
+    const stack = await runningStackWatcher(liveStatus(), {
+      proverLovelace: PROVER_MINIMUM_LOVELACE - shortfall,
+    });
+    const refusal = await openAttachedJourneySession(
+      stack.context,
+      stack.options(),
+    ).then(
+      () => undefined,
+      (error: unknown) => String(error),
+    );
+    expect(refusal).toContain(stack.proverAddress);
+    expect(refusal).toContain(`${shortfall.toString()} lovelace short`);
+    expect(stack.operator2.calls).toEqual([]);
   });
 
   it("refuses evidence that does not come from this stack's watcher", async () => {
