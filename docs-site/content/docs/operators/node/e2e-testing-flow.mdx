@@ -190,6 +190,23 @@ operator-2, so it reads these names from the main stack's node `.env`:
 All four values are secrets. The drill refuses to start when one is missing
 and names the variable, never its value.
 
+The drill also reads one value that is not a secret:
+
+- `STACK_LATE_SHIFT_LEAD_MS`: how many milliseconds before the end of
+  operator-2's shift the drill commits a fault the DA committee attests. The
+  fault then stays the tail while our node's shift starts. Families the
+  committee refuses do not use it. It has no default. Staging a family the
+  committee attests refuses when it is unset, and any value that is not a
+  positive whole number is refused. Measure it on a live run: each family's
+  `fault-tail.json` records `measured.faultCommitToConvictionMs` and
+  `measured.faultCommitToOurNextShiftMs`, and each fault commit's window
+  is recorded in `late-shift.json`.
+
+The drill does not fund the stack watcher's prover. It refuses to start when
+the prover holds less than the stack configuration's
+`wallets.prover.minimumLovelace`, and names the prover address and the
+shortfall.
+
 ## Related
 
 - [Preprod-Public Deployment](/docs/operators/node/preprod-public-deploy) for the public profile.
