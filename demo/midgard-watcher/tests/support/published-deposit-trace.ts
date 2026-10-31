@@ -16,7 +16,5 @@ export {
   type PublishedSuccessorCheckpoint,
   SUCCESSOR_HEADER_INTERVAL_MS,
 } from "./published-deposit-trace.published-deposit-trace-checkpoint.js";
-export {
-  type PublishedDepositTraceAttachedStack,
-  stagePublishedDepositTrace,
-} from "./published-deposit-trace.stage-published-deposit-trace.js";
+export { stagePublishedDepositTrace } from "./published-deposit-trace.stage-published-deposit-trace.js";
+export type { PublishedDepositTraceAttachedStack } from "./published-deposit-trace.trace-options.js";

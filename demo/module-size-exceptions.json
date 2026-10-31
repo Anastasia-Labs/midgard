@@ -1276,8 +1276,8 @@
   },
   {
     "file": "midgard-watcher/tests/support/published-deposit-trace.stage-published-deposit-trace.ts",
-    "max": 849,
-    "reason": "stagePublishedDepositTrace is the dominant indivisible declaration (781 lines); it stages for the journey's own committee or an attached stack's, whose attestation, onboarding order and honest successor share its checkpoint and cleanup ordering. Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 813,
+    "reason": "stagePublishedDepositTrace is the dominant indivisible declaration (759 lines); it stages for the journey's own committee or an attached stack's, whose attestation, onboarding order and honest successor share its checkpoint and cleanup ordering, while its options, attached-stack span and DA-path guards live in published-deposit-trace.trace-options.ts. Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-watcher/tests/support/user-event-origin-fixture.create-synthetic-user-event-origin-fixture.ts",
