@@ -276,6 +276,15 @@ export const readOperatorShiftsOnFault = async (
   fromMs: number;
   toMs: number;
   ourShifts: OperatorShiftOnFault[];
+  /**
+   * From the fault's commit to its removal and to the start of our
+   * operator's first shift after it; null when L1 has neither yet. The
+   * late-shift lead is measured from these.
+   */
+  measured: Readonly<{
+    faultCommitToConvictionMs: number | null;
+    faultCommitToOurNextShiftMs: number | null;
+  }>;
 }> => {
   const [fault] = await readIndexedStateQueueHeader(
     {
@@ -297,6 +306,7 @@ export const readOperatorShiftsOnFault = async (
     fetchImpl,
   );
   const ourShifts: OperatorShiftOnFault[] = [];
+  let ourNextShiftMs: number | undefined;
   for (const match of appointments) {
     if (match.datum_type !== "inline" || typeof match.datum !== "string")
       throw new Error(
@@ -312,8 +322,20 @@ export const readOperatorShiftsOnFault = async (
     const endTime = startTime + input.shiftDurationMs;
     if (startTime < toMs && endTime > fromMs)
       ourShifts.push({ txHash: match.transaction_id, startTime, endTime });
+    if (startTime >= fromMs && startTime < (ourNextShiftMs ?? Infinity))
+      ourNextShiftMs = startTime;
   }
-  return { fromMs, toMs, ourShifts };
+  return {
+    fromMs,
+    toMs,
+    ourShifts,
+    measured: {
+      faultCommitToConvictionMs:
+        fault.spentAtSlot === undefined ? null : toMs - fromMs,
+      faultCommitToOurNextShiftMs:
+        ourNextShiftMs === undefined ? null : ourNextShiftMs - fromMs,
+    },
+  };
 };
 
 /**

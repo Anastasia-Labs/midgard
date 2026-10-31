@@ -61,6 +61,11 @@ describe("stack successor", () => {
         fromMs: 10_000,
         toMs: 20_000,
         ourShifts: [{ startTime: 14_000, endTime: 19_000 }],
+        // What the first live run measures the late-shift lead from.
+        measured: {
+          faultCommitToConvictionMs: 10_000,
+          faultCommitToOurNextShiftMs: 4_000,
+        },
       },
     });
     // A resumed run reads the proven successor back.
@@ -186,6 +191,19 @@ describe("stack successor", () => {
     await expect(port.commit()).rejects.toThrow(
       /had no shift while the fault .* was the tail/u,
     );
+    // The family's evidence keeps the timing the check failed on.
+    expect(
+      JSON.parse(
+        await readFile(join(drill.directory, "fault-tail.json"), "utf8"),
+      ),
+    ).toMatchObject({
+      fault: drill.fault.headerHash,
+      ourShifts: [],
+      measured: {
+        faultCommitToConvictionMs: 3_000,
+        faultCommitToOurNextShiftMs: 4_000,
+      },
+    });
   });
 
   it("fails when our node never held the fault", async () => {

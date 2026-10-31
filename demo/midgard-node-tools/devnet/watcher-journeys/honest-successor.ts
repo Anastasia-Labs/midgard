@@ -331,6 +331,12 @@ export const stackSuccessorPort = (
           hold?.reasons.includes(COMMIT_BASE_PENDING),
         )?.observedAt,
       };
+      // Kept even when the check below fails: the first live runs measure
+      // the late-shift lead from it.
+      await writeJourneyArtifact(join(input.directory, "fault-tail.json"), {
+        fault: faultHeaderHash,
+        ...faultTail,
+      });
       if (
         faultTail.ourShifts.length === 0 &&
         faultTail.commitBasePendingAt === undefined
