@@ -11,6 +11,7 @@ import { readJourneyOperations } from "./operations.js";
 import {
   composeOperatorNodeControl,
   createOperatorPause,
+  guardOperatorSignatures,
   type OperatorNodeControl,
 } from "./operator-pause.js";
 import type { StackJourneyContext } from "./stack-context.js";
@@ -94,6 +95,9 @@ export const openAttachedJourneySession = async (
     const operator2 = createOperatorPause(
       options.operator2Control ?? composeOperatorNodeControl(options.operator2),
     );
+    // The drill's wallet is operator-2's: each signature proves its node
+    // stopped first.
+    guardOperatorSignatures(context.deployment.operatorLucid, operator2);
     // A run that ends with operator-2 still held starts it again; only a
     // completed run proves its liveness (`operator2.resume`).
     onClose(operator2.release);

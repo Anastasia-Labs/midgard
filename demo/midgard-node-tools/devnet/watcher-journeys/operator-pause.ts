@@ -1,6 +1,8 @@
 import { execFile } from "node:child_process";
 import { setTimeout as pause } from "node:timers/promises";
 
+import type { LucidEvolution } from "@lucid-evolution/lucid";
+
 import {
   isJourneyOperationsConnectionRefused,
   JOURNEY_RESTART_TIMEOUT_MS,
@@ -318,3 +320,29 @@ export const createOperatorPause = (
 };
 
 export type OperatorPause = ReturnType<typeof createOperatorPause>;
+
+/**
+ * Makes every signature of `lucid`'s wallet, operator-2's, first prove its
+ * node stopped (`assertStopped`): a signature while the drill does not hold
+ * the node stopped, or while it runs, is refused before any key is used.
+ */
+export const guardOperatorSignatures = (
+  lucid: LucidEvolution,
+  hold: Pick<OperatorPause, "assertStopped">,
+) => {
+  const wallet = lucid.wallet();
+  const { signTx, signTxs, signMessage } = wallet;
+  wallet.signTx = async (tx) => {
+    await hold.assertStopped();
+    return signTx.call(wallet, tx);
+  };
+  if (signTxs !== undefined)
+    wallet.signTxs = async (txs) => {
+      await hold.assertStopped();
+      return signTxs.call(wallet, txs);
+    };
+  wallet.signMessage = async (address, payload) => {
+    await hold.assertStopped();
+    return signMessage.call(wallet, address, payload);
+  };
+};

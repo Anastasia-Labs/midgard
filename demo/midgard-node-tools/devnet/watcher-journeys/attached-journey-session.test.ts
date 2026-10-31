@@ -143,6 +143,30 @@ describe("attached journey session", () => {
     expect(stack.operator2.calls).toEqual(["stop", "start"]);
   });
 
+  it("proves operator-2's node stopped before every signature of operator-2's wallet", async () => {
+    const stack = await runningStackWatcher(liveStatus());
+    const session = await openAttachedJourneySession(
+      stack.context,
+      stack.options(),
+    );
+    await expect(stack.signAsOperator2()).rejects.toThrow(
+      "Operator-2's node is not held stopped by this drill; refusing to sign as operator-2",
+    );
+    await session.operator2.hold();
+    await stack.signAsOperator2();
+    // Started behind the drill's back: the next signature is refused.
+    await stack.operator2.control.start();
+    await expect(stack.signAsOperator2()).rejects.toThrow(
+      "is still running; refusing to sign as operator-2",
+    );
+    await stack.operator2.control.stop();
+    await stack.signAsOperator2();
+    await session.close();
+    await expect(stack.signAsOperator2()).rejects.toThrow(
+      "refusing to sign as operator-2",
+    );
+  });
+
   it("refuses to pause this stack's own node as operator-2", async () => {
     const stack = await runningStackWatcher(liveStatus());
     for (const [operator2, refusal] of [

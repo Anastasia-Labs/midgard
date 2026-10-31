@@ -11,6 +11,11 @@ import {
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
 } from "@al-ft/midgard-fault-proofs";
+import {
+  Emulator,
+  generateEmulatorAccount,
+  Lucid,
+} from "@lucid-evolution/lucid";
 import { makeWatcherDeploymentAuthorityFixture } from "midgard-watcher/tests/support/deployment-authority-fixture";
 import { openWatcherWorkflowStoreForTest } from "midgard-watcher/tests/support/watcher-workflow-store";
 import { expect } from "vitest";
@@ -143,6 +148,11 @@ export const runningStackWatcher = async (status: Record<string, unknown>) => {
     manifestPath,
     JSON.stringify(authorityFixture.signedIdentity.manifest),
   );
+  // Operator-2's wallet, which the drill signs with.
+  const operator2Account = generateEmulatorAccount({ lovelace: 50_000_000n });
+  const emulator = new Emulator([operator2Account]);
+  const operatorLucid = await Lucid(emulator, "Custom");
+  operatorLucid.selectWallet.fromSeed(operator2Account.seedPhrase);
   // The parts of a stack context an attached session reads.
   const context = {
     mode: "stack",
@@ -158,6 +168,7 @@ export const runningStackWatcher = async (status: Record<string, unknown>) => {
     deployment: {
       manifest: { manifestId: fingerprint },
       blueprintPath: join(root, "plutus.json"),
+      operatorLucid,
     },
     stackConfig: { endpoint: nodeEndpoint },
     watcher: {
@@ -175,6 +186,16 @@ export const runningStackWatcher = async (status: Record<string, unknown>) => {
     served,
     requests,
     nodeRequests,
+    /** A transaction operator-2's wallet signs, paying itself. */
+    signAsOperator2: async () =>
+      (
+        await operatorLucid
+          .newTx()
+          .pay.ToAddress(operator2Account.address, { lovelace: 2_000_000n })
+          .complete()
+      ).sign
+        .withWallet()
+        .complete(),
     operator2,
     exec: watcherContainer(processConfigPath),
     /** How the journey opens a session on this stack, with operator-2's node. */
