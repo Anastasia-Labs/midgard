@@ -49,8 +49,11 @@ const scriptedNode = ({
 }: {
   /** What still runs after `stop`: a Compose service, or a stray listener. */
   stopLeaves?: "nothing" | "service" | "listener";
-  /** `/readyz` answers after `start`, in order; the last one repeats. */
-  catchUp?: readonly OperatorNodeReadiness[];
+  /**
+   * `/readyz` answers after `start`, in order; the last one repeats. An
+   * error is a read that fails other than by a refused connection.
+   */
+  catchUp?: readonly (OperatorNodeReadiness | Error)[];
 }) => {
   const calls: string[] = [];
   let state: "running" | "stopped" = "running";
@@ -82,7 +85,9 @@ const scriptedNode = ({
         );
       const answer = catchUp[Math.min(answered, catchUp.length - 1)] ?? ready();
       answered += 1;
-      return Promise.resolve(answer);
+      return answer instanceof Error
+        ? Promise.reject(answer)
+        : Promise.resolve(answer);
     },
   };
   return { control, calls, state: () => state };
@@ -97,6 +102,25 @@ const holding = (...reasons: string[]): OperatorNodeReadiness => ({
   reachable: true,
   httpStatus: 503,
   body: { ready: false, reasons },
+});
+/** A node whose operator the drill's convictions left out of the active set. */
+const outOfSet = (
+  follower: "caught_up" | "catching_up",
+  ...reasons: string[]
+): OperatorNodeReadiness => ({
+  reachable: true,
+  httpStatus: 503,
+  body: {
+    ready: false,
+    reasons:
+      follower === "caught_up"
+        ? reasons
+        : [...reasons, "l1_follower_catching_up"],
+    l1Follower: { atTip: follower === "caught_up" },
+  },
+});
+const reset = Object.assign(new Error("socket hang up"), {
+  code: "ECONNRESET",
 });
 
 describe("operator-2 pause", () => {
@@ -168,6 +192,73 @@ describe("operator-2 pause", () => {
     await expect(pause.assertStopped()).rejects.toThrow(/not held stopped/u);
     await expect(pause.hold()).rejects.toThrow(/already resumed/u);
     expect(node.calls).toEqual(["stop", "start"]);
+  });
+
+  it("resumes a node whose operator the convictions removed, once it caught up with no hold", async () => {
+    const node = scriptedNode({
+      catchUp: [
+        outOfSet("catching_up", "operator_removed"),
+        outOfSet("caught_up", "operator_removed", "landed_block_invalid"),
+        outOfSet("caught_up", "operator_removed"),
+      ],
+    });
+    const pause = createOperatorPause(node.control, {
+      resumeTimeoutMs: 5000,
+      pollIntervalMs: 1,
+    });
+    await pause.hold();
+    await expect(pause.resume()).resolves.toMatchObject({
+      terminal: "operator_removed",
+      observedReasons: [
+        ["operator_removed", "l1_follower_catching_up"],
+        ["operator_removed", "landed_block_invalid"],
+        ["operator_removed"],
+      ],
+    });
+  });
+
+  it("resumes a node re-registered but not yet active, once it caught up", async () => {
+    const node = scriptedNode({
+      catchUp: [outOfSet("caught_up", "operator_not_yet_active")],
+    });
+    const pause = createOperatorPause(node.control, {
+      resumeTimeoutMs: 5000,
+      pollIntervalMs: 1,
+    });
+    await pause.hold();
+    await expect(pause.resume()).resolves.toMatchObject({
+      terminal: "awaiting_activation",
+    });
+  });
+
+  it("never takes a removed node that still holds the fault, or has not caught up, for resumed", async () => {
+    for (const answer of [
+      outOfSet("caught_up", "operator_removed", "landed_block_invalid"),
+      outOfSet("catching_up", "operator_removed"),
+    ]) {
+      const node = scriptedNode({ catchUp: [answer] });
+      const pause = createOperatorPause(node.control, {
+        resumeTimeoutMs: 50,
+        pollIntervalMs: 5,
+      });
+      await pause.hold();
+      await expect(pause.resume()).rejects.toThrow(/not ready within 50 ms/u);
+    }
+  });
+
+  it("keeps waiting through a reset or aborted /readyz read while the node restarts", async () => {
+    const node = scriptedNode({
+      catchUp: [reset, new DOMException("timed out", "TimeoutError"), ready()],
+    });
+    const pause = createOperatorPause(node.control, {
+      resumeTimeoutMs: 5000,
+      pollIntervalMs: 1,
+    });
+    await pause.hold();
+    await expect(pause.resume()).resolves.toMatchObject({
+      terminal: "ready",
+      observedReasons: [[]],
+    });
   });
 
   it("never starts a node this drill did not stop", async () => {

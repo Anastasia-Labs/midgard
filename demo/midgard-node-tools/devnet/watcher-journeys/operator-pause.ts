@@ -125,20 +125,69 @@ export type OperatorStoppedEvidence = Readonly<{
   readyz: "connection_refused";
 }>;
 
-/** Proof that operator-2's node came back ready after the drill. */
+/**
+ * How a resumed operator-2 node ended: ready, or live but out of the active
+ * set because the drill's convictions slashed its operator
+ * (`operator_removed`) or it is registered again and not yet active
+ * (`operator_not_yet_active`).
+ */
+export type OperatorResumedTerminal =
+  | "ready"
+  | "operator_removed"
+  | "awaiting_activation";
+
+/** Proof that operator-2's node came back after the drill. */
 export type OperatorResumedEvidence = Readonly<{
   node: string;
   startedAt: string;
   readyAt: string;
+  terminal: OperatorResumedTerminal;
   /** Every distinct set of `/readyz` reasons seen while it caught up. */
   observedReasons: readonly (readonly string[])[];
 }>;
+
+/** Our node's own replay hold on a landed block it refuses. */
+const LANDED_BLOCK_INVALID = "landed_block_invalid";
 
 const readinessReasons = (body: unknown): readonly string[] | undefined => {
   const reasons = (body as { reasons?: unknown } | null | undefined)?.reasons;
   return Array.isArray(reasons) &&
     reasons.every((reason) => typeof reason === "string")
     ? reasons
+    : undefined;
+};
+
+/**
+ * Whether a resumed node's `/readyz` is a terminal state for the drill: ready
+ * with no reason, or out of the active set (removed, or awaiting activation)
+ * with its L1 follower at the node's tip and no replay hold on any block.
+ * Removal holds the node's duties for good, so it never reports ready.
+ */
+export const resumedOperatorTerminal = (
+  readiness: Extract<OperatorNodeReadiness, { reachable: true }>,
+  reasons: readonly string[],
+): OperatorResumedTerminal | undefined => {
+  const body = readiness.body as {
+    ready?: unknown;
+    l1Follower?: { atTip?: unknown } | null;
+  };
+  if (
+    readiness.httpStatus === 200 &&
+    body.ready === true &&
+    reasons.length === 0
+  )
+    return "ready";
+  const membership = reasons.includes("operator_removed")
+    ? "operator_removed"
+    : reasons.includes("operator_not_yet_active")
+      ? "awaiting_activation"
+      : undefined;
+  return membership !== undefined &&
+    !reasons.includes(LANDED_BLOCK_INVALID) &&
+    !reasons.includes(OWN_JOURNAL_MISMATCH) &&
+    !reasons.includes("l1_follower_catching_up") &&
+    body.l1Follower?.atTip === true
+    ? membership
     : undefined;
 };
 
@@ -172,7 +221,8 @@ export const proveOperatorNodeStopped = async (
  * node (stop only: its containers, volumes and journal stay) and proves it
  * stopped; `assertStopped` proves it again, before every signature made with
  * its key; `resume` starts it only if this hold stopped it, then waits until
- * its `/readyz` is ready, refusing a node that took a drill block for its own.
+ * its `/readyz` reaches a terminal state (`resumedOperatorTerminal`),
+ * refusing a node that took a drill block for its own.
  */
 export const createOperatorPause = (
   control: OperatorNodeControl,
@@ -210,7 +260,11 @@ export const createOperatorPause = (
       const observedReasons: string[][] = [];
       const deadline = performance.now() + resumeTimeoutMs;
       for (;;) {
-        const readiness = await control.readReadiness();
+        // A node restarting resets or times out reads before it serves;
+        // inside this wait any transport failure is "not yet".
+        const readiness = await control
+          .readReadiness()
+          .catch((): OperatorNodeReadiness => ({ reachable: false }));
         if (readiness.reachable) {
           const reasons = readinessReasons(readiness.body);
           if (reasons === undefined)
@@ -227,15 +281,13 @@ export const createOperatorPause = (
             throw new Error(
               `Resumed operator-2 node ${control.name} holds ${OWN_JOURNAL_MISMATCH}: it did not replay the drill's blocks as foreign`,
             );
-          if (
-            readiness.httpStatus === 200 &&
-            (readiness.body as { ready?: unknown }).ready === true &&
-            reasons.length === 0
-          )
+          const terminal = resumedOperatorTerminal(readiness, reasons);
+          if (terminal !== undefined)
             return Object.freeze({
               node: control.name,
               startedAt,
               readyAt: new Date().toISOString(),
+              terminal,
               observedReasons: Object.freeze(observedReasons),
             });
         }
