@@ -13,7 +13,7 @@ import {
 import {
   journeyLedgerOwnerKey,
   publishJourneyDeposit,
-  publishJourneyWithdrawal,
+  publishJourneyWithdrawals,
 } from "./history-event-staging.js";
 import {
   buildJourneyFabricatedDeposit,
@@ -55,9 +55,13 @@ export const createWithdrawalJourneyFixture = (
         predecessor: input.predecessor,
         owner: ownerKey(input).to_public().hash().to_hex(),
       });
-      const withdrawals = [await publishJourneyWithdrawal(input, body, 0)];
-      if (category === "doubleWithdraw")
-        withdrawals.push(await publishJourneyWithdrawal(input, body, 1));
+      // doubleWithdraw publishes both withdrawals before one shared event
+      // wait, so its staging fits one of operator-2's shifts.
+      const withdrawals = await publishJourneyWithdrawals(
+        input,
+        body,
+        category === "doubleWithdraw" ? 2 : 1,
+      );
       return {
         buildFault: (timed) =>
           buildJourneyWithdrawalEvent({ ...timed, category, withdrawals }),
@@ -138,7 +142,11 @@ export const createWithdrawnInputJourneyFixture = (
         predecessor,
         owner: ownerKey(input).to_public().hash().to_hex(),
       });
-      const withdrawal = await publishJourneyWithdrawal(preparation, body, 0);
+      const [withdrawal] = await publishJourneyWithdrawals(
+        preparation,
+        body,
+        1,
+      );
       return {
         predecessor: split,
         buildFault: (timed) =>

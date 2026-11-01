@@ -103,8 +103,10 @@ export type FaultPreparation = {
   historyBlocks?: number;
   /**
    * How many user events (deposits, withdrawals, tx orders) `prepare`
-   * publishes and awaits the inclusion of (none by default). An attached
-   * stack holds operator-2's shift through each one's event wait.
+   * publishes and awaits the inclusion of (none by default). It publishes
+   * them one after another and then awaits their inclusion once. An attached
+   * stack holds operator-2's shift through each one's publication and that
+   * one event wait.
    */
   userEvents?: number;
 };

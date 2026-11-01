@@ -17,7 +17,10 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { buildPastProtectedPredecessor } from "midgard-watcher/tests/support/history-predecessor-hold";
+import {
+  buildPastProtectedPredecessor,
+  protectedPredecessorHoldMs,
+} from "midgard-watcher/tests/support/history-predecessor-hold";
 import { expect, it } from "vitest";
 
 import {
@@ -467,6 +470,9 @@ it("holds an event build until its lower bound clears a protected predecessor, b
   expect(built).toBe("built");
   // protectedUntil + the builders' 60 s validFrom backoff + one slot - now.
   expect(slept).toEqual([91_000]);
+  // A predecessor protected for 2 s after its validity ends holds the build
+  // no longer than its protection hold after that end.
+  expect(now - (1_030_000 - 2_000)).toBe(protectedPredecessorHoldMs(2_000));
   await expect(
     buildPastProtectedPredecessor(() => refusal(BigInt(now)), clock),
   ).rejects.toThrow(/Failed to build authenticated event history/);

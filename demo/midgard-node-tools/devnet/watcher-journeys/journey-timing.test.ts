@@ -9,6 +9,7 @@ import {
 } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
+import { DEPLOYMENT_PARAMETERS } from "../../src/devnet-stack/node-env.js";
 import {
   GENERIC_JOURNEY_PLAN,
   genericJourneyTiming,
@@ -361,6 +362,10 @@ it.skipIf(actualTimingRun === undefined)(
 
 describe("an attached stack's staging work in operator-2's shift", () => {
   const inclusion = genericJourneyTiming({ ...preprod, actionDepth: 1 });
+  /** The event-history protection the stack deploys with. */
+  const stackProtectionMs = Number(
+    DEPLOYMENT_PARAMETERS.MIDGARD_EVENT_HISTORY_PROTECTION_DURATION_MS,
+  );
 
   it("covers each block's commit and its attestation's init and apply, one dependent transaction each", () => {
     const oneBlock = stackStagingShiftWorkMs(inclusion, 1);
@@ -375,19 +380,66 @@ describe("an attached stack's staging work in operator-2's shift", () => {
       );
   });
 
-  it("holds each user event's validity and its event wait, until the fault may include it", () => {
+  it("holds each user event's validity, then one event wait shared by all of them", () => {
     const eventWaitMs =
       DEPLOYMENT_PROFILES["preprod-testing"].timing.event_wait_ms;
-    expect(
-      stackStagingShiftWorkMs(inclusion, 2, { count: 2, eventWaitMs }),
-    ).toBe(
-      stackStagingShiftWorkMs(inclusion, 2) +
-        2 * (USER_EVENT_TX_TTL_MS + eventWaitMs),
+    type Events = Readonly<{ eventWaitMs: number; protectionMs: number }>;
+    const eventsWork = (count: number, events: Events) =>
+      stackStagingShiftWorkMs(inclusion, 2, { count, ...events }) -
+      stackStagingShiftWorkMs(inclusion, 2);
+    const events: Events = { eventWaitMs, protectionMs: stackProtectionMs };
+    expect(eventsWork(1, events)).toBe(USER_EVENT_TX_TTL_MS + eventWaitMs);
+    // A later event adds its own validity and its wait for the event before
+    // it to leave its history protection, never a second event wait.
+    const later = (input: Events) =>
+      eventsWork(2, input) - eventsWork(1, input);
+    expect(later(events)).toBeGreaterThan(USER_EVENT_TX_TTL_MS);
+    expect(later({ ...events, eventWaitMs: 2 * eventWaitMs })).toBe(
+      later(events),
     );
+    expect(eventsWork(3, events) - eventsWork(2, events)).toBe(later(events));
+    expect(
+      later({ ...events, protectionMs: stackProtectionMs + 1_000 }) -
+        later(events),
+    ).toBe(1_000);
     for (const count of [-1, 0.5])
       expect(() =>
-        stackStagingShiftWorkMs(inclusion, 1, { count, eventWaitMs }),
+        stackStagingShiftWorkMs(inclusion, 1, { count, ...events }),
       ).toThrow(/user events/u);
+  });
+
+  it("fits doubleWithdraw's two withdrawals in one preprod-rehearsal shift", () => {
+    const profile = DEPLOYMENT_PROFILES["preprod-rehearsal"].timing;
+    const timing = journeyTimingForCategory("doubleWithdraw", {
+      ...preprod,
+      actionDepth: 1,
+    });
+    const cover = stackStagingShiftCover({
+      category: "doubleWithdraw",
+      timing,
+      historyBlocks: 0,
+      userEvents: 2,
+      eventHistoryProtectionMs: stackProtectionMs,
+      profile,
+    });
+    expect(cover).toBeLessThanOrEqual(profile.operator_shift_ms);
+  });
+
+  it("still refuses, on the preprod-rehearsal shift, staging whose work exceeds it", () => {
+    const profile = DEPLOYMENT_PROFILES["preprod-rehearsal"].timing;
+    const historyBlocks = Math.ceil(
+      profile.operator_shift_ms / stackStagingShiftWorkMs(inclusion, 1),
+    );
+    expect(() =>
+      stackStagingShiftCover({
+        category: "doubleWithdraw",
+        timing: inclusion,
+        historyBlocks,
+        userEvents: 2,
+        eventHistoryProtectionMs: stackProtectionMs,
+        profile,
+      }),
+    ).toThrow(/doubleWithdraw staging holds operator-2's shift/u);
   });
 
   it.each(["preprod-testing", "preprod-rehearsal"] as const)(
@@ -399,12 +451,14 @@ describe("an attached stack's staging work in operator-2's shift", () => {
         timing: inclusion,
         historyBlocks: 0,
         userEvents: 1,
+        eventHistoryProtectionMs: stackProtectionMs,
         profile,
       });
       expect(cover).toBe(
         stackStagingShiftWorkMs(inclusion, 1, {
           count: 1,
           eventWaitMs: profile.event_wait_ms,
+          protectionMs: stackProtectionMs,
         }),
       );
       expect(cover).toBeLessThanOrEqual(profile.operator_shift_ms);
@@ -417,12 +471,14 @@ describe("an attached stack's staging work in operator-2's shift", () => {
       timing: inclusion,
       historyBlocks: 0,
       userEvents: 2,
+      eventHistoryProtectionMs: stackProtectionMs,
     } as const;
     const eventWaitMs =
       DEPLOYMENT_PROFILES["preprod-rehearsal"].timing.event_wait_ms;
     const coverMs = stackStagingShiftWorkMs(inclusion, 1, {
       count: 2,
       eventWaitMs,
+      protectionMs: stackProtectionMs,
     });
     expect(
       stackStagingShiftCover({

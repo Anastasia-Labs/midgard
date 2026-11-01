@@ -19,7 +19,7 @@ import { type Layout, type RunEnv, servicePorts } from "./layout.js";
  * Event-history bounds and protection are the values the devnet journeys run
  * with; availability-challenge values are the operator example's.
  */
-const DEPLOYMENT_PARAMETERS = {
+export const DEPLOYMENT_PARAMETERS = {
   MIDGARD_EVENT_HISTORY_INLINE_LIMIT_BYTES: "512",
   MIDGARD_EVENT_HISTORY_MAX_PAYLOAD_BYTES: "5000",
   MIDGARD_EVENT_HISTORY_MAX_PAYLOAD_NODES: "512",

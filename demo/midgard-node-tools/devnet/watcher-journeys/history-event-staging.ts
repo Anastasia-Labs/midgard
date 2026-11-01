@@ -104,14 +104,15 @@ const assertRecordedHistoryFacts = (
 };
 
 /**
- * Submit one recorded SDK-built event. Restart reconciles its canonical output
- * and resubmits only the original bytes. Unknown outcomes never allocate a new
- * nonce. The common runner serializes this with all other wallet spending.
+ * Submit one recorded SDK-built event and await its confirmation. Restart
+ * reconciles its canonical output and resubmits only the original bytes.
+ * Unknown outcomes never allocate a new nonce. The common runner serializes
+ * this with all other wallet spending.
  */
-const publishEvent = async (
+const confirmEvent = async (
   input: JourneyFaultPreparationInput,
   request: JourneyEventPublicationRequest,
-): Promise<StagedHistoryEvent> => {
+): Promise<HistoryEventCheckpoint> => {
   const { context, directory, onStage } = input;
   const { deployment, provider } = context;
   const lucid = deployment.operatorLucid;
@@ -202,23 +203,46 @@ const publishEvent = async (
   checkpoint.outcome = "confirmed";
   checkpoint.event = event;
   await writeJourneyArtifact(path, checkpoint);
-  onStage(`${request.name} inclusion interval`);
-  await deployment.chain.awaitLedgerTime(checkpoint.metadata.inclusionTime);
-  if (
-    BigInt(checkpoint.metadata.inclusionTime) <=
-    input.predecessor.header.endTime
-  )
-    throw new Error("Event is not after the retained predecessor");
-  const staged = await readJourneyHistoryEvent(
-    lucid,
-    deployment.contracts,
-    checkpoint.metadata.unit,
+  return checkpoint;
+};
+
+/**
+ * Publish the events one after another, then wait once, until the latest of
+ * their inclusion times, and read each back as the history records it.
+ */
+const publishEvents = async (
+  input: JourneyFaultPreparationInput,
+  requests: readonly JourneyEventPublicationRequest[],
+): Promise<StagedHistoryEvent[]> => {
+  const { deployment } = input.context;
+  const confirmed: HistoryEventCheckpoint[] = [];
+  for (const request of requests)
+    confirmed.push(await confirmEvent(input, request));
+  input.onStage(
+    `${requests.map(({ name }) => name).join(", ")} inclusion interval`,
   );
-  assertRecordedHistoryFacts(
-    staged,
-    checkpoint.signedCbor,
-    checkpoint.metadata.unit,
+  await deployment.chain.awaitLedgerTime(
+    Math.max(...confirmed.map(({ metadata }) => metadata.inclusionTime)),
   );
+  const staged: StagedHistoryEvent[] = [];
+  for (const checkpoint of confirmed) {
+    if (
+      BigInt(checkpoint.metadata.inclusionTime) <=
+      input.predecessor.header.endTime
+    )
+      throw new Error("Event is not after the retained predecessor");
+    const event = await readJourneyHistoryEvent(
+      deployment.operatorLucid,
+      deployment.contracts,
+      checkpoint.metadata.unit,
+    );
+    assertRecordedHistoryFacts(
+      event,
+      checkpoint.signedCbor,
+      checkpoint.metadata.unit,
+    );
+    staged.push(event);
+  }
   return staged;
 };
 
@@ -290,19 +314,22 @@ export const journeyWithdrawalEventRequest = (input: {
   };
 };
 
-export const publishJourneyWithdrawal = (
+/** `count` withdrawals of one body, published together under one event wait. */
+export const publishJourneyWithdrawals = (
   input: JourneyFaultPreparationInput,
   body: SDK.WithdrawalBody,
-  ordinal: number,
+  count: number,
 ) =>
-  publishEvent(
+  publishEvents(
     input,
-    journeyWithdrawalEventRequest({
-      deployment: input.context.deployment,
-      ownerKey: ownerKey(input),
-      body,
-      ordinal,
-    }),
+    Array.from({ length: count }, (_, ordinal) =>
+      journeyWithdrawalEventRequest({
+        deployment: input.context.deployment,
+        ownerKey: ownerKey(input),
+        body,
+        ordinal,
+      }),
+    ),
   );
 
 /** The exact ordinary deposit the SDK publishes for this owner credential. */
@@ -348,11 +375,14 @@ export const journeyDepositEventRequest = (input: {
   };
 };
 
-export const publishJourneyDeposit = (input: JourneyFaultPreparationInput) =>
-  publishEvent(
-    input,
+export const publishJourneyDeposit = async (
+  input: JourneyFaultPreparationInput,
+) => {
+  const [deposit] = await publishEvents(input, [
     journeyDepositEventRequest({
       deployment: input.context.deployment,
       ownerKey: ownerKey(input),
     }),
-  );
+  ]);
+  return deposit!;
+};

@@ -127,6 +127,16 @@ export const journeyDaPath = async (
       { actionDepth: JOURNEY_ACTION_DEPTH },
     );
     const { contracts, chain } = context.deployment;
+    const history = SDK.requireEventHistoryContracts(contracts);
+    const eventHistoryProtectionMs = Number(
+      [history.deposit, history.withdrawal].reduce(
+        (longest, { recipe }) =>
+          recipe.protectionDurationMs > longest
+            ? recipe.protectionDurationMs
+            : longest,
+        0n,
+      ),
+    );
     // Refuses here, before any L1 work, when the lead is required and unset.
     const lateShift = stackLateShiftFaultCommit({
       category: task.category,
@@ -163,6 +173,7 @@ export const journeyDaPath = async (
             timing,
             historyBlocks: task.historyBlocks ?? 0,
             userEvents: task.userEvents ?? 0,
+            eventHistoryProtectionMs,
             profile: {
               event_wait_ms: SDK.EVENT_WAIT_DURATION_MS,
               operator_shift_ms: Number(SDK.SHIFT_DURATION_MS),

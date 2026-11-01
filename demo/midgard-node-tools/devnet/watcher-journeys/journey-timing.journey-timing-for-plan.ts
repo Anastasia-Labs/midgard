@@ -6,6 +6,7 @@ import {
   REGISTRATION_DURATION_MS,
   USER_EVENT_TX_TTL_MS,
 } from "@al-ft/midgard-sdk";
+import { protectedPredecessorHoldMs } from "midgard-watcher/tests/support/history-predecessor-hold";
 
 /** Only the single lovelace-only deposit used by transitionTrace is audited here. */
 export const TRANSITION_TRACE_JOURNEY_PLAN = Object.freeze({
@@ -283,16 +284,24 @@ export type JourneyTiming = ReturnType<typeof journeyTimingForPlan>;
  * commit and the stack coordinator's attestation of it, an init and then an
  * apply. Each is one dependent transaction at the journey's action depth.
  * The fault's own attestation falls outside the shift, but it is counted as
- * a block like the others. For each user event the staging publishes, it
- * also holds the event transaction's validity and the event wait after it,
- * until the fault may include the event and before our node would.
+ * a block like the others. The staging publishes its user events one after
+ * another, then waits once, until the fault may include the last of them and
+ * before our node would. It holds each event transaction's validity; each
+ * later event's build may first hold until the event before it leaves its
+ * history protection; and then the one event wait.
  */
 export const stackStagingShiftWorkMs = (
   timing: Pick<JourneyTiming, "transactionAllowanceMs">,
   blocks: number,
-  events: Readonly<{ count: number; eventWaitMs: number }> = {
+  events: Readonly<{
+    count: number;
+    eventWaitMs: number;
+    /** The deployment's event-history protection duration. */
+    protectionMs: number;
+  }> = {
     count: 0,
     eventWaitMs: 0,
+    protectionMs: 0,
   },
 ) => {
   if (!Number.isSafeInteger(blocks) || blocks < 1)
@@ -305,10 +314,13 @@ export const stackStagingShiftWorkMs = (
     );
   const commitMs = timing.transactionAllowanceMs;
   const attestationMs = 2 * timing.transactionAllowanceMs;
-  return (
-    blocks * (attestationMs + commitMs) +
-    events.count * (USER_EVENT_TX_TTL_MS + events.eventWaitMs)
-  );
+  const eventsMs =
+    events.count === 0
+      ? 0
+      : events.count * USER_EVENT_TX_TTL_MS +
+        (events.count - 1) * protectedPredecessorHoldMs(events.protectionMs) +
+        events.eventWaitMs;
+  return blocks * (attestationMs + commitMs) + eventsMs;
 };
 
 /**
@@ -323,6 +335,8 @@ export const stackStagingShiftCover = (
     timing: Pick<JourneyTiming, "transactionAllowanceMs">;
     historyBlocks: number;
     userEvents: number;
+    /** The deployment's event-history protection duration. */
+    eventHistoryProtectionMs: number;
     /** The deployment profile's timing. */
     profile: Readonly<{ event_wait_ms: number; operator_shift_ms: number }>;
   }>,
@@ -331,11 +345,15 @@ export const stackStagingShiftCover = (
   const coverMs = stackStagingShiftWorkMs(
     input.timing,
     1 + input.historyBlocks,
-    { count: input.userEvents, eventWaitMs: profile.event_wait_ms },
+    {
+      count: input.userEvents,
+      eventWaitMs: profile.event_wait_ms,
+      protectionMs: input.eventHistoryProtectionMs,
+    },
   );
   if (coverMs > profile.operator_shift_ms)
     throw new Error(
-      `${input.category} staging holds operator-2's shift for ${coverMs.toString()} ms (${(1 + input.historyBlocks).toString()} blocks, ${input.userEvents.toString()} user events with a ${profile.event_wait_ms.toString()} ms event wait each), longer than this profile's ${profile.operator_shift_ms.toString()} ms shift; the drill cannot stage it on this stack`,
+      `${input.category} staging holds operator-2's shift for ${coverMs.toString()} ms (${(1 + input.historyBlocks).toString()} blocks, ${input.userEvents.toString()} user events and one ${profile.event_wait_ms.toString()} ms event wait), longer than this profile's ${profile.operator_shift_ms.toString()} ms shift; the drill cannot stage it on this stack`,
     );
   return coverMs;
 };

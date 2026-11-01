@@ -287,6 +287,11 @@ The drill also reads one value that is not a secret:
   `measured.faultCommitToOurNextShiftMs`, and each fault commit's window is
   recorded in `late-shift.json`.
 
+The drill refuses, before any L1 work, a family whose staging does not fit
+in one of operator-2's shifts; a family with several user events, such as
+`doubleWithdraw`, publishes them all and then waits once for their
+inclusion, so it fits the rehearsal profile's one-hour shift.
+
 The drill does not fund the stack watcher's prover. It refuses to start when
 the prover holds less than the stack configuration's
 `wallets.prover.minimumLovelace`, and names the prover address and the

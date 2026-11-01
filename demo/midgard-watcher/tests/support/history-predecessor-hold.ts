@@ -64,6 +64,20 @@ export const buildPastProtectedPredecessor = async <T>(
   }
 };
 
+/**
+ * The longest `buildPastProtectedPredecessor` holds an event's build after
+ * its history predecessor's validity ends: the predecessor stays protected
+ * for `protectionMs`, then the build waits out its lower bound's backoff and
+ * one slot of slack.
+ */
+export const protectedPredecessorHoldMs = (protectionMs: number) => {
+  if (!Number.isSafeInteger(protectionMs) || protectionMs < 0)
+    throw new Error(
+      `History protection is a whole number of milliseconds, not ${protectionMs.toString()}`,
+    );
+  return protectionMs + VALID_FROM_BACKOFF_MS + SLOT_SLACK_MS;
+};
+
 /** The hold's clock on a chain's ledger time, for emulator and live chains. */
 export const ledgerClock = (
   chain: Readonly<{
