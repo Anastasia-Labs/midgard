@@ -26,10 +26,10 @@ let
     };
 
   cardanoNodeAssets = {
-    x86_64-linux = { asset = "linux-amd64"; sha256 = "c159246f75d7dce5b6df0e19ffbef4240ed42a40d670a4036292247ed0dd5590"; };
-    aarch64-linux = { asset = "linux-arm64"; sha256 = "6caa62da4888fb9312786c92b723c9f42e1d1c964dd75d5707f7ab410430edde"; };
-    x86_64-darwin = { asset = "macos-amd64"; sha256 = "7847ada94937232ee66345cf5b0542f176dbc9b56ccb1f5584c95ff75feecbee"; };
-    aarch64-darwin = { asset = "macos-arm64"; sha256 = "7f09476fb94dc31963f9000521f629d399db8e3ea599a4ea9d46924135f313b5"; };
+    x86_64-linux = { asset = "linux-amd64"; sha256 = "530fb99986fbdccc46f9ee0dd86cabb1393b015feac9173cb731d89fa748365f"; };
+    aarch64-linux = { asset = "linux-arm64"; sha256 = "3b638c87448bf08d3680f9116ca92e876579b865c0540f8f33b5c586a02ebf8a"; };
+    x86_64-darwin = { asset = "macos-amd64"; sha256 = "f8cc4181a16ffab896e3b981819fbd8865e9b0838e4eef09a48542090332403b"; };
+    aarch64-darwin = { asset = "macos-arm64"; sha256 = "8c3162031d63838709a5d59117130ddf8059b3456a367ea374b054cf2161a960"; };
   };
   # Ogmios, Kupo and Mithril publish no Intel macOS build.
   ogmiosAssets = {
