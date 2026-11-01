@@ -939,6 +939,72 @@ test refuses_b_data_with_a_second_data_node() fail {
   )
 }
 
+// ## bData at the direct carriage bound
+//
+// A byte string of 8,933 bytes has a payload CBOR of 9,215 bytes, the direct
+// carriage bound (`cek_constant_v1.max_direct_payload_bytes`), and is carried
+// inline; one of 8,934 bytes is one byte past it and is carried by its leaf
+// alone. The rows pin 9,215 as a literal, so a change to the bound turns them
+// red rather than moving with it.
+
+/// `length` bytes and the length of their payload CBOR.
+fn near_the_bound(length: Int) -> Pair<ByteArray, Int> {
+  let bytes = pattern(length, 4)
+  Pair(bytes, builtin.length_of_bytearray(cbor.serialise(bytes)))
+}
+
+/// bData of the inline byte string `bytes`, claiming the Data value over the
+/// leaf of `claimed`.
+fn b_data_of_inline_bytes(bytes: ByteArray, claimed: ByteArray) -> Bool {
+  verifies(
+    41,
+    [inline_constant(bytes_type_cbor, builtin.b_data(bytes))],
+    data_of(bytes_node([claimed])),
+    leaf(bytes_node([bytes])),
+  )
+}
+
+/// bData of the byte string `bytes` carried by its leaf, claiming the Data
+/// value over the leaf of `claimed`.
+fn b_data_of_leaf_bytes(bytes: ByteArray, claimed: ByteArray) -> Bool {
+  verifies(
+    41,
+    [semantic_bytes(bytes, False)],
+    data_of(bytes_node([claimed])),
+    leaf(bytes_node([bytes])),
+  )
+}
+
+test accepts_b_data_of_an_inline_string_at_the_bound() {
+  let Pair(bytes, payload_cbor_length) = near_the_bound(8933)
+  expect payload_cbor_length == 9215
+  b_data_of_inline_bytes(bytes, bytes)
+}
+
+test refuses_a_b_data_result_of_other_bytes_at_the_bound() fail {
+  let Pair(bytes, payload_cbor_length) = near_the_bound(8933)
+  expect payload_cbor_length == 9215
+  b_data_of_inline_bytes(bytes, flip_last_byte(bytes))
+}
+
+test accepts_b_data_of_a_leaf_string_one_byte_past_the_bound() {
+  let Pair(bytes, payload_cbor_length) = near_the_bound(8934)
+  expect payload_cbor_length == 9216
+  b_data_of_leaf_bytes(bytes, bytes)
+}
+
+test refuses_a_b_data_result_of_other_bytes_one_byte_past_the_bound() fail {
+  let Pair(bytes, payload_cbor_length) = near_the_bound(8934)
+  expect payload_cbor_length == 9216
+  b_data_of_leaf_bytes(bytes, flip_last_byte(bytes))
+}
+
+test refuses_b_data_of_an_inline_string_one_byte_past_the_bound() fail {
+  let Pair(bytes, payload_cbor_length) = near_the_bound(8934)
+  expect payload_cbor_length == 9216
+  b_data_of_inline_bytes(bytes, bytes)
+}
+
 // ## Round trips and the staged steps
 
 test i_data_then_un_i_data_returns_the_same_value() {
@@ -1035,15 +1101,20 @@ test refuses_a_wrong_sum_after_un_i_data() fail {
 // The staged step accepts exactly one result per builtin and operands, so the
 // leaf it accepts is the leaf the arm commits. bData relabels that leaf as a
 // Data value, and equalsData over it and the direct constant of the same bytes
-// returns True.
+// returns True and not False; over it and the direct constant of other bytes
+// of the same length, it returns False and not True.
 
-/// equalsData over `left` and `right` returning True, through the Data
+/// equalsData over `left` and `right` returning `verdict`, through the Data
 /// semantics step.
-fn equals_data_returns_true(left: ValueWitnessV1, right: ValueWitnessV1) -> Bool {
+fn equals_data_returns(
+  left: ValueWitnessV1,
+  right: ValueWitnessV1,
+  verdict: Bool,
+) -> Bool {
   let step = scalar_step(
     47,
     [left, right],
-    boolean_value(True),
+    boolean_value(verdict),
     SemanticBuiltinWitnessV1 {
       data_nodes: [],
       list_nodes: [],
@@ -1062,23 +1133,28 @@ fn equals_data_returns_true(left: ValueWitnessV1, right: ValueWitnessV1) -> Bool
 }
 
 /// bData of the byte-string `result` over the leaf of `bytes`, then equalsData
-/// over that Data value and the direct constant of `bytes`.
-fn equal_as_data_to_a_direct_constant(
+/// over that Data value and the direct constant of `other`, returning
+/// `verdict`.
+fn compared_as_data_to_a_direct_constant(
   result: ValueWitnessV1,
   bytes: ByteArray,
+  other: ByteArray,
+  verdict: Bool,
 ) -> Bool {
   let node = bytes_node([bytes])
   and {
     verifies(41, [result], data_of(node), leaf(node)),
-    equals_data_returns_true(
+    equals_data_returns(
       data_of(node),
-      inline_constant(data_type_cbor, builtin.b_data(bytes)),
+      inline_constant(data_type_cbor, builtin.b_data(other)),
+      verdict,
     ),
   }
 }
 
-/// A result of two pieces: a staged operand and an inline one.
-test a_staged_append_result_is_equal_as_data_to_a_direct_constant() {
+/// The staged appendByteString step, a result of two pieces (a staged operand
+/// and an inline one), then `compare` over its result and the joined bytes.
+fn after_a_staged_append(compare: fn(ValueWitnessV1, ByteArray) -> Bool) -> Bool {
   let left = pattern(4000, 1)
   let right = pattern(100, 2)
   let joined = builtin.append_bytearray(left, right)
@@ -1095,12 +1171,13 @@ test a_staged_append_result_is_equal_as_data_to_a_direct_constant() {
         staging.reference_inputs,
       ),
     ),
-    equal_as_data_to_a_direct_constant(result, joined),
+    compare(result, joined),
   }
 }
 
-/// A result of one piece.
-test a_staged_slice_result_is_equal_as_data_to_a_direct_constant() {
+/// The staged sliceByteString step, a result of one piece, then `compare`
+/// over its result and the slice.
+fn after_a_staged_slice(compare: fn(ValueWitnessV1, ByteArray) -> Bool) -> Bool {
   let bytes = pattern(9216, 8)
   let slice = builtin.slice_bytearray(100, 4096, bytes)
   let staging = stage([bytes])
@@ -1123,12 +1200,15 @@ test a_staged_slice_result_is_equal_as_data_to_a_direct_constant() {
         staging.reference_inputs,
       ),
     ),
-    equal_as_data_to_a_direct_constant(result, slice),
+    compare(result, slice),
   }
 }
 
-/// encodeUtf8 keeps its operand's leaf.
-test a_staged_encode_utf8_result_is_equal_as_data_to_a_direct_constant() {
+/// The staged encodeUtf8 step, which keeps its operand's leaf, then `compare`
+/// over its result and the string's bytes.
+fn after_a_staged_encode_utf8(
+  compare: fn(ValueWitnessV1, ByteArray) -> Bool,
+) -> Bool {
   let string = text(4100)
   let result = semantic_bytes(string, False)
   and {
@@ -1145,8 +1225,78 @@ test a_staged_encode_utf8_result_is_equal_as_data_to_a_direct_constant() {
         [],
       ),
     ),
-    equal_as_data_to_a_direct_constant(result, string),
+    compare(result, string),
   }
+}
+
+/// Against the direct constant of the same bytes, claiming `verdict`.
+fn against_the_same_bytes(
+  verdict: Bool,
+) -> fn(ValueWitnessV1, ByteArray) -> Bool {
+  fn(result, bytes) {
+    compared_as_data_to_a_direct_constant(result, bytes, bytes, verdict)
+  }
+}
+
+/// Against the direct constant of the bytes with the last one changed,
+/// claiming `verdict`.
+fn against_other_bytes(verdict: Bool) -> fn(ValueWitnessV1, ByteArray) -> Bool {
+  fn(result, bytes) {
+    compared_as_data_to_a_direct_constant(
+      result,
+      bytes,
+      flip_last_byte(bytes),
+      verdict,
+    )
+  }
+}
+
+test a_staged_append_result_is_equal_as_data_to_a_direct_constant() {
+  after_a_staged_append(against_the_same_bytes(True))
+}
+
+test refuses_a_staged_append_result_claimed_unequal_to_its_direct_constant() fail {
+  after_a_staged_append(against_the_same_bytes(False))
+}
+
+test a_staged_append_result_is_unequal_as_data_to_other_bytes() {
+  after_a_staged_append(against_other_bytes(False))
+}
+
+test refuses_a_staged_append_result_claimed_equal_to_other_bytes() fail {
+  after_a_staged_append(against_other_bytes(True))
+}
+
+test a_staged_slice_result_is_equal_as_data_to_a_direct_constant() {
+  after_a_staged_slice(against_the_same_bytes(True))
+}
+
+test refuses_a_staged_slice_result_claimed_unequal_to_its_direct_constant() fail {
+  after_a_staged_slice(against_the_same_bytes(False))
+}
+
+test a_staged_slice_result_is_unequal_as_data_to_other_bytes() {
+  after_a_staged_slice(against_other_bytes(False))
+}
+
+test refuses_a_staged_slice_result_claimed_equal_to_other_bytes() fail {
+  after_a_staged_slice(against_other_bytes(True))
+}
+
+test a_staged_encode_utf8_result_is_equal_as_data_to_a_direct_constant() {
+  after_a_staged_encode_utf8(against_the_same_bytes(True))
+}
+
+test refuses_a_staged_encode_utf8_result_claimed_unequal_to_its_direct_constant() fail {
+  after_a_staged_encode_utf8(against_the_same_bytes(False))
+}
+
+test a_staged_encode_utf8_result_is_unequal_as_data_to_other_bytes() {
+  after_a_staged_encode_utf8(against_other_bytes(False))
+}
+
+test refuses_a_staged_encode_utf8_result_claimed_equal_to_other_bytes() fail {
+  after_a_staged_encode_utf8(against_other_bytes(True))
 }
 
 // ## An I leaf over a non-canonical spelling never reaches the step

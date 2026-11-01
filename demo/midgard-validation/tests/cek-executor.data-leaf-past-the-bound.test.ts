@@ -109,6 +109,20 @@ const CASES: readonly Case[] = [
     term: (salt) => apply(builtin("bData"), bytesConstant(pattern(64, salt))),
     pastTheBound: false,
   },
+  {
+    name: "bData of an 8,933-byte string, its payload CBOR 9,215 bytes",
+    tag: 41n,
+    term: (salt) =>
+      apply(builtin("bData"), bytesConstant(pattern(8_933, salt))),
+    pastTheBound: false,
+  },
+  {
+    name: "bData of an 8,934-byte string, its payload CBOR 9,216 bytes",
+    tag: 41n,
+    term: (salt) =>
+      apply(builtin("bData"), bytesConstant(pattern(8_934, salt))),
+    pastTheBound: true,
+  },
 ];
 
 type Step = ReturnType<typeof semanticStep>;
@@ -250,3 +264,28 @@ describe.each(CASES)("CEK $name", ({ tag, term, pastTheBound }) => {
     ).toBe(false);
   });
 });
+
+/**
+ * bData at the direct payload bound: a byte string whose payload CBOR is
+ * 9,215 bytes is carried inline, and one whose payload CBOR is 9,216 bytes is
+ * carried by its leaf alone.
+ */
+describe.each([
+  { length: 8_933, payloadCborLength: 9_215n, inline: true },
+  { length: 8_934, payloadCborLength: 9_216n, inline: false },
+])(
+  "CEK bData of a string of $length bytes",
+  ({ length, payloadCborLength, inline }) => {
+    it(`carries its argument ${inline ? "inline" : "by its leaf"}`, () => {
+      const step = semanticStep(
+        apply(builtin("bData"), bytesConstant(pattern(length))),
+      );
+      if (step.witness.kind !== "executeBuiltinSemantic")
+        throw new Error("expected the Data scalar step");
+      expect(leafPayload(step).cborLength).toBe(payloadCborLength);
+      const [argument] = step.witness.arguments;
+      expect(argument?.kind).toBe(inline ? "constant" : "semanticConstant");
+      expect(step.allVerify).toBe(true);
+    });
+  },
+);

@@ -18,13 +18,17 @@
  * required again, and its exact signed bytes are sent again. A thread move
  * of ours goes first, save once the header has rolled back: the workflow,
  * then reconciliation-only, takes no move, and its spend backs go on, save
- * for the outputs a thread of ours past the PrepareSelected move holds. Once
- * our workflow is done (completed, in conflict, or resolved by another
- * record) no thread needs any output: each is spent back before its ending
- * is taken, and the ending waits until each spend back is final at release
- * depth, and while an output the provider does not show may still be live.
- * A spend back that does not build is the run's alarm, and is tried again
- * every run. */
+ * for the outputs a thread of ours at the PrepareSelected move's holder or
+ * past it holds, as above. That hold lasts until the dispute ends for the
+ * thread: it leaves its holders (a cancel, a timeout or an award) or the
+ * case closes, whoever sends it. Once the case's expiry has passed with
+ * such a thread standing, a run that would only wait reports the outputs it
+ * holds under a named alarm instead. Once our workflow is
+ * done (completed, in conflict, or resolved by another record) no thread
+ * needs any output: each is spent back before its ending is taken, and the
+ * ending waits until each spend back is final at release depth, and while
+ * an output the provider does not show may still be live. A spend back that
+ * does not build is the run's alarm, and is tried again every run. */
 import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import { MidgardCekStagingPins } from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
@@ -53,6 +57,11 @@ import type { ValidationTraceDisputeDeployment } from "./transactions.js";
 /** Why our workflow's ending waits on its staging outputs. */
 export const VALIDATION_TRACE_STAGING_OUTSTANDING =
   "validation-trace-staging-outstanding" as const;
+
+/** The alarm of staging outputs a thread of ours holds under
+ * reconciliation-only authority once its case's expiry has passed. */
+export const VALIDATION_TRACE_STAGING_HELD_PAST_EXPIRY =
+  "validation-trace-staging-held-past-expiry" as const;
 
 /** The spend back of the staging output `outRef`. */
 export const validationTraceReclaimAction = (outRef: string) =>
@@ -96,6 +105,13 @@ type Thread = {
   readonly stagedFor: JournaledStaging[];
 };
 
+/** A thread of ours holding staging outputs, and where it stands. */
+type Holding = Readonly<{
+  unit: string;
+  holder: ValidationTraceOneStepHolder | "unknown";
+  outRefs: readonly string[];
+}>;
+
 const unitOf = (assets: Readonly<Record<string, bigint>>) =>
   Object.entries(assets).find(
     ([asset, quantity]) => asset !== "lovelace" && quantity === 1n,
@@ -106,6 +122,8 @@ export const validationTraceStagingSweep = ({
   deployment,
   signedRecovery,
   recent,
+  now,
+  caseExpiresAtMs,
   live,
   usable,
   select,
@@ -116,6 +134,12 @@ export const validationTraceStagingSweep = ({
   /** Whether a confirmation recorded at `confirmedAt` is still inside the
    * provider's grace. */
   readonly recent: (confirmedAt: string) => boolean;
+  /** The runner's clock, which the case's expiry is read against. */
+  readonly now: () => number;
+  /** The expiry of our workflow's case, while the case is live. */
+  readonly caseExpiresAtMs: (
+    context: FraudProofWorkflowAdapterContext,
+  ) => Promise<number | undefined>;
   /** The output `staging` left, while it is live as staged. */
   readonly live: (staging: JournaledStaging) => Promise<UTxO | undefined>;
   /** The staging output a PrepareSelected move would read for the run
@@ -201,6 +225,33 @@ export const validationTraceStagingSweep = ({
     return lagging ? "unknown" : undefined;
   };
 
+  /** The alarm of the outputs `holdings` keep, those of `kept` that are
+   * live, once the case's expiry `end` has passed; none before it. */
+  const heldPastExpiry = (
+    holdings: readonly Holding[],
+    kept: ReadonlyMap<string, UTxO>,
+    end: number,
+  ): string | undefined => {
+    if (now() <= end) return undefined;
+    const held = holdings.flatMap(({ unit, holder, outRefs }) => {
+      const outputs = outRefs.flatMap((outRef) => {
+        const utxo = kept.get(outRef);
+        return utxo === undefined ? [] : [{ outRef, utxo }];
+      });
+      if (outputs.length === 0) return [];
+      const lovelace = outputs.reduce(
+        (sum, { utxo }) => sum + (utxo.assets.lovelace ?? 0n),
+        0n,
+      );
+      return [
+        `thread ${unit} at the ${holder} holder holds staging outputs ${outputs.map(({ outRef }) => outRef).join(", ")} of ours, ${lovelace.toString()} lovelace at our staging address`,
+      ];
+    });
+    return held.length === 0
+      ? undefined
+      : `${VALIDATION_TRACE_STAGING_HELD_PAST_EXPIRY}: ${held.join("; ")}, past its case's expiry at ${end.toString()}; under reconciliation-only authority each is spent back once the thread leaves its holder or the case closes, whoever sends it`;
+  };
+
   /** The staging outputs a thread of ours still needs, and their pins. */
   const heldBy = async (
     known: ValidationTraceStagingJournal,
@@ -208,11 +259,13 @@ export const validationTraceStagingSweep = ({
   ) => {
     const held = new Set<string>();
     const pins = new MidgardCekStagingPins();
+    const holdings: Holding[] = [];
     const hold = (unit: string, outRefs: Iterable<string>) => {
       const refs = [...outRefs];
-      if (refs.length === 0) return;
+      if (refs.length === 0) return refs;
       for (const outRef of refs) held.add(outRef);
       pins.pin(unit, refs.map(stagedOutRef));
+      return refs;
     };
     for (const [unit, thread] of threadsOf(known)) {
       if (thread.reads.size === 0 && thread.stagedFor.length === 0) continue;
@@ -228,24 +281,28 @@ export const validationTraceStagingSweep = ({
       }
       const at = await placeOf(unit, thread, lagging);
       if (at === undefined || at === "award") continue;
+      const outRefs: string[] = [];
       if (at === "prepare") {
-        hold(unit, thread.reads);
+        outRefs.push(...hold(unit, thread.reads));
         for (const datumCbor of new Set(
           thread.stagedFor.map((staging) => staging.datumCbor),
         )) {
           const found = await usable(known, datumCbor);
-          if (found !== undefined) hold(unit, [found.staging.outRef]);
+          if (found !== undefined)
+            outRefs.push(...hold(unit, [found.staging.outRef]));
         }
-        continue;
-      }
-      hold(
-        unit,
-        thread.reads.size > 0
-          ? thread.reads
-          : thread.stagedFor.map(({ outRef }) => outRef),
-      );
+      } else
+        outRefs.push(
+          ...hold(
+            unit,
+            thread.reads.size > 0
+              ? thread.reads
+              : thread.stagedFor.map(({ outRef }) => outRef),
+          ),
+        );
+      if (outRefs.length > 0) holdings.push({ unit, holder: at, outRefs });
     }
-    return { held, pins };
+    return { held, pins, holdings };
   };
 
   /** The spend back to take instead of `current`, our workflow's next step
@@ -282,11 +339,18 @@ export const validationTraceStagingSweep = ({
     // those very outputs, so none can be staged again should the header come
     // back; at the prepare holder it keeps the usable ones so the thread can
     // go on without a fresh staging. The hold ends once the thread leaves its
-    // holders (a cancel, a timeout, an award or the case's close), and the
-    // spend back follows.
-    const { held, pins } = done
-      ? { held: new Set<string>(), pins: new MidgardCekStagingPins() }
+    // holders (a cancel, a timeout or an award) or the case closes, whoever
+    // sends it, and the spend back follows. Once the case's expiry has
+    // passed, a run that would only wait reports what is held under a named
+    // alarm instead; it sends nothing it would not have.
+    const { held, pins, holdings } = done
+      ? {
+          held: new Set<string>(),
+          pins: new MidgardCekStagingPins(),
+          holdings: [],
+        }
       : await heldBy(known, lagging);
+    const kept = new Map<string, UTxO>();
     const outstanding: string[] = [];
     for (const staging of known.stagings) {
       const reclaim = known.reclaims.get(staging.outRef);
@@ -319,7 +383,10 @@ export const validationTraceStagingSweep = ({
           );
         continue;
       }
-      if (held.has(staging.outRef)) continue;
+      if (held.has(staging.outRef)) {
+        kept.set(staging.outRef, utxo);
+        continue;
+      }
       const action = validationTraceReclaimAction(staging.outRef);
       if (unbuilt(action.actionId)) {
         outstanding.push(
@@ -330,11 +397,22 @@ export const validationTraceStagingSweep = ({
       select(action.actionId, { utxo, pins });
       return { kind: "action_required", action };
     }
-    return done && outstanding.length > 0
-      ? {
-          kind: "pending",
-          reason: `${VALIDATION_TRACE_STAGING_OUTSTANDING}: ${outstanding.join("; ")}`,
-        }
-      : undefined;
+    if (done)
+      return outstanding.length > 0
+        ? {
+            kind: "pending",
+            reason: `${VALIDATION_TRACE_STAGING_OUTSTANDING}: ${outstanding.join("; ")}`,
+          }
+        : undefined;
+    if (
+      context.reconciliationOnly !== true ||
+      ending?.kind !== "pending" ||
+      kept.size === 0
+    )
+      return undefined;
+    const end = await caseExpiresAtMs(context);
+    const alarm =
+      end === undefined ? undefined : heldPastExpiry(holdings, kept, end);
+    return alarm === undefined ? undefined : { kind: "pending", reason: alarm };
   };
 };

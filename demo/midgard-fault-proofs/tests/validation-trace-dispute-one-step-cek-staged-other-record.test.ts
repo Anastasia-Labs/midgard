@@ -10,14 +10,18 @@
  *
  * With both threads closed and each staging output still live, another
  * prover removes the block against its own record, and no thread of ours
- * stands. Our run spends each staging output back to our wallet, one
- * transaction each, and ends resolved by that record only once each spend
- * back is final at release depth. */
+ * stands. While the provider does not show one staging output and a
+ * confirmation of ours is inside the provider's grace, our run holds its
+ * resolution, run after run, on that output. Once the provider shows it, our
+ * run spends each staging output back to our wallet, one transaction each,
+ * and ends resolved by that record only once each spend back is final at
+ * release depth. */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { VALIDATION_TRACE_STAGING_OUTSTANDING } from "../src/validation-trace-dispute/one-step-staging-sweep.js";
 import { VALIDATION_TRACE_ONE_STEP_REQUIRED } from "../src/validation-trace-dispute/threads.js";
 import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.js";
+import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import { emulatorSignedTransactionRecovery } from "./support/emulator-signed-recovery.js";
 import { threadPlace } from "./support/validation-trace-dispute-one-step-play.js";
 import {
@@ -25,6 +29,10 @@ import {
   RELEASE_DEPTH,
   stagedOtherRecord,
 } from "./support/validation-trace-dispute-one-step-staged-other-record.js";
+import {
+  hideFromProvider,
+  onLedger,
+} from "./support/validation-trace-dispute-one-step-staging-ledger.js";
 import { makeRunner } from "./support/validation-trace-dispute-runner.js";
 
 const other = stagedOtherRecord();
@@ -32,6 +40,13 @@ const { drive } = other;
 
 const DIFFERS =
   "validation-trace staged step's staging differs from the evidence its thread committed";
+
+/** The staging outputs, each still live once both threads closed. */
+let stagings: readonly string[];
+/** The record their removal was made against. */
+let theirRecord: string;
+/** Ends the provider's blind spot. */
+let hidden: (() => void) | undefined;
 
 /** Where both threads stand. */
 const places = async () => {
@@ -75,7 +90,10 @@ const beforeStaging = async () => {
 describe("validation-trace dispute runner: a staged step's staging, once another prover removes the block against its own record", () => {
   beforeAll(other.setUp, 1_800_000);
 
-  afterAll(other.tearDown);
+  afterAll(() => {
+    hidden?.();
+    other.tearDown();
+  });
 
   it("holds each run on the one-step alarm, naming the staging that differs from the commitment, while no staging the threads committed is found", async () => {
     await drive.play(async () => !(await places()).includes("prepare"), 40);
@@ -99,9 +117,34 @@ describe("validation-trace dispute runner: a staged step's staging, once another
     expect(scene.l1.signedCbors.size).toBe(sent);
   }, 1_200_000);
 
+  it("holds the resolution by their record, run after run, while a staging output the provider does not show may still be live inside the provider's grace", async () => {
+    stagings = await other.playToClose();
+    theirRecord = await other.removeByTheirs();
+    const { scene } = drive.dispute();
+    const unseen = stagings.at(-1)!;
+    hidden = hideFromProvider(scene.h.proverLucid, unseen);
+    const held = `${VALIDATION_TRACE_STAGING_OUTSTANDING}: ${unseen} is not yet visible to the provider`;
+    const history: string[] = [];
+    const ours = async () => {
+      const result = await drive.dispute().runner.runOnce(scene.failing);
+      history.push(other.describeRun(result));
+      expect(result.kind, history.join("\n")).not.toBe(
+        "resolved_by_another_record",
+      );
+      return "reason" in result ? result.reason : result.kind;
+    };
+    while ((await ours()) !== held)
+      expect(history.length, history.join("\n")).toBeLessThan(20);
+    // Each output the provider shows is spent back meanwhile.
+    for (const outRef of stagings)
+      if (outRef !== unseen) await other.expectSpentBack(outRef);
+    for (let run = 0; run < 3; run += 1) expect(await ours()).toBe(held);
+    expect(onLedger(scene, parseOwnOutRef(unseen))).toBe(true);
+  }, 1_800_000);
+
   it("spends each staging output back to our wallet and ends resolved by their record only once each spend back is final at release depth", async () => {
-    const stagings = await other.playToClose();
-    const theirRecord = await other.removeByTheirs();
+    hidden?.();
+    hidden = undefined;
     const runs: OurRun[] = [];
     const resolved = await other.runToResolution(stagings, runs);
     expect(resolved.resolution.referencedProofTokenOutRef).toBe(theirRecord);

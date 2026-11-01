@@ -101,6 +101,8 @@ export const validationTraceStaging = ({
   signedRecovery,
   materialOf,
   recent,
+  now,
+  caseExpiresAtMs,
   confirmationDepth = DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
 }: {
   readonly lucid: LucidEvolution;
@@ -113,6 +115,12 @@ export const validationTraceStaging = ({
   /** Whether a confirmation recorded at `confirmedAt` is still inside the
    * provider's grace, when the provider may not show what it produced. */
   readonly recent: (confirmedAt: string) => boolean;
+  /** The runner's clock, which a case's expiry is read against. */
+  readonly now: () => number;
+  /** The expiry of our workflow's case, while the case is live. */
+  readonly caseExpiresAtMs: (
+    context: FraudProofWorkflowAdapterContext,
+  ) => Promise<number | undefined>;
   readonly confirmationDepth?: number;
 }) => {
   const address = midgardCekStagingAddress(
@@ -350,6 +358,8 @@ export const validationTraceStaging = ({
     deployment,
     signedRecovery,
     recent,
+    now,
+    caseExpiresAtMs,
     live,
     usable,
     select: (actionId, reclaim) => reclaims.set(actionId, reclaim),

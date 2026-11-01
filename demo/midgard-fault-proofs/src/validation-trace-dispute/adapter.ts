@@ -91,7 +91,10 @@ import {
 
 const CATEGORY = "validationTraceDispute" as const;
 
-import { VALIDATION_TRACE_DEFENDER_WON } from "./threads.js";
+import {
+  VALIDATION_TRACE_DEFENDER_WON,
+  validationTraceCaseExpiryMs,
+} from "./threads.js";
 
 export {
   VALIDATION_TRACE_CASE_CONTESTED,
@@ -172,15 +175,25 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
   });
   const recent = (confirmedAt: string): boolean =>
     now() - Date.parse(confirmedAt) < VALIDATION_TRACE_PROVIDER_GRACE_MS;
+  const { recordAt, ourCase, isContested } = validationTraceCaseReads(own);
   const staging = validationTraceStaging({
     ...own,
     signedRecovery,
     materialOf,
     recent,
+    now,
+    caseExpiresAtMs: async (context) => {
+      const found = await ourCase(
+        validationTraceArtifactOf(context),
+        confirmedValidationTraceStages(context.entries),
+      );
+      return found === undefined
+        ? undefined
+        : validationTraceCaseExpiryMs(found.caseDatum);
+    },
   });
   const read = (outRefs: readonly string[]) =>
     readOwnOutputs((refs) => lucid.utxosByOutRef([...refs]), outRefs);
-  const { recordAt, ourCase, isContested } = validationTraceCaseReads(own);
 
   const observe = async (
     context: FraudProofWorkflowAdapterContext,
