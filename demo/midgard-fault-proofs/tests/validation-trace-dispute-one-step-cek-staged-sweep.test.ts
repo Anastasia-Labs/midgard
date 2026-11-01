@@ -7,11 +7,14 @@
  *
  * A staging output the provider does not show yet is waited on while its
  * confirmation is inside the provider's grace, and its run is staged again
- * only past it. The output no move read is spent back while a thread is held
- * mid-chain, and each output our moves read is kept while another party's
- * move holds that thread at the settle. The case's completion waits while a
- * staging output the provider does not show may still be live, and until its
- * spend back is final at release depth. */
+ * only past it. A runner over our journal as it stood before that second
+ * staging finds, of that run, only the output no move read: each run holds
+ * on the one-step alarm, naming the staging that differs from the
+ * commitment, and builds no move from it. The output no move read is spent
+ * back while a thread is held mid-chain, and each output our moves read is
+ * kept while another party's move holds that thread at the settle. The
+ * case's completion waits while a staging output the provider does not show
+ * may still be live, and until its spend back is final at release depth. */
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML, coreToTxOutput, Data } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -25,7 +28,9 @@ import {
   type ValidationTraceOneStepHolder,
   validationTraceOneStepHolder,
 } from "../src/validation-trace-dispute/one-step-holders.js";
+import { VALIDATION_TRACE_STAGING_RECLAIM } from "../src/validation-trace-dispute/one-step-staging-journal.js";
 import { VALIDATION_TRACE_STAGING_OUTSTANDING } from "../src/validation-trace-dispute/one-step-staging-sweep.js";
+import { VALIDATION_TRACE_ONE_STEP_REQUIRED } from "../src/validation-trace-dispute/threads.js";
 import { validationTraceDefenseDeadlineMs } from "../src/validation-trace-dispute/waiting.js";
 import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.js";
 import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
@@ -60,6 +65,11 @@ const RELEASE_DEPTH = 4;
  * smallest, an arm's, is about 1,600 bytes) and a spend back of one staging
  * output (about 230 bytes) does. */
 const NO_THREAD_MOVE = 1_000;
+
+/** The one-step alarm's cause when a thread's staging is not the one its
+ * evidence names. */
+const DIFFERS =
+  "validation-trace staged step's staging differs from the evidence its thread committed";
 
 const drive = stagedDrive({ releaseDepth: RELEASE_DEPTH, withRemoval: true });
 
@@ -179,6 +189,66 @@ describe("validation-trace dispute runner: spending back a staged step's staging
     expect([...at].sort()).toStrictEqual(["core", undefined]);
     const { a, b } = drive.dispute();
     rest = at[0] === "core" ? a : b;
+  }, 1_200_000);
+
+  it("holds each run on the one-step alarm, naming the staging that differs from the commitment, while the one staging found for a run is not the one the threads committed", async () => {
+    hidden?.();
+    hidden = undefined;
+    const { scene, deployment, runner } = drive.dispute();
+    const stagings = drive.stagings();
+    const { datumCbor } = stagings.find(({ outRef }) => outRef === unseen)!;
+    const again = stagings.find(
+      (staging) => staging.outRef !== unseen && staging.datumCbor === datumCbor,
+    )!;
+    // A runner of ours over our journal as it stood before that run was
+    // staged again: of that run it finds only the output no move read, live.
+    // That journal shows no move of ours reading a staging, so the test
+    // holds its spend backs, as a wait.
+    const [first] = drive.entries();
+    const entries = await runner.journal.load(first!.workflowId);
+    const cut = entries.findIndex(
+      ({ event }) => "actionId" in event && event.actionId === again.actionId,
+    );
+    expect(cut).toBeGreaterThan(0);
+    const journal = new MemoryFraudProofWorkflowJournalStore();
+    for (const entry of entries.slice(0, cut))
+      await journal.append(entry, entry.sequence);
+    const ours = makeRunner(scene, {
+      deployment,
+      journal,
+      signedRecovery: emulatorSignedTransactionRecovery(
+        scene.h.emulator,
+        RELEASE_DEPTH,
+      ),
+      wrap: (adapter) => ({
+        ...adapter,
+        observe: async (context) => {
+          const observed = await adapter.observe(context);
+          return observed.kind === "action_required" &&
+            observed.action.input.schemaVersion ===
+              VALIDATION_TRACE_STAGING_RECLAIM
+            ? { kind: "pending", reason: "spend backs held by the test" }
+            : observed;
+        },
+      }),
+    });
+    expect(ledgerHas(unseen)).toBe(true);
+    const at = await places();
+    const sent = scene.l1.signedCbors.size;
+    for (let run = 0; run < 3; run += 1) {
+      const result = await ours.runOnce(scene.failing);
+      const reason = "reason" in result ? result.reason : result.kind;
+      expect(result.kind, reason).toBe("pending");
+      expect(reason).toMatch(
+        new RegExp(`^${VALIDATION_TRACE_ONE_STEP_REQUIRED}: `),
+      );
+      expect(reason).toContain(DIFFERS);
+    }
+    // No thread moved, and nothing was staged, spent back or sent.
+    expect(await places()).toStrictEqual(at);
+    expect(scene.l1.signedCbors.size).toBe(sent);
+    for (const label of [unseen, ...read])
+      expect(ledgerHas(label), label).toBe(true);
   }, 1_200_000);
 
   it("spends the staging output no move read back to our wallet while a thread is held mid-chain, keeping each output its moves read", async () => {
