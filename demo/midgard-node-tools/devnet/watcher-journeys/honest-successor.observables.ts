@@ -2,6 +2,8 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { JOURNEY_HEADER_END_AHEAD_MS } from "./fixture.js";
+
 /**
  * Our node's replay hold on a landed block that does not replay to its
  * header or does not link to its parent (`landed-blocks/holds.ts`).
@@ -349,12 +351,20 @@ export const readOperatorShiftsOnFault = async (
 };
 
 /**
+ * The shortest late-shift lead: a commit's allowance plus the time the
+ * fault's header runs past its build, so that both end inside operator-2's
+ * shift.
+ */
+export const lateShiftMinimumLeadMs = (commitAllowanceMs: number) =>
+  commitAllowanceMs + JOURNEY_HEADER_END_AHEAD_MS + 1;
+
+/**
  * When the drill commits the fault in operator-2's shift: late enough that
  * our node's next shift starts while the fault is still the queue's tail,
- * and early enough that the commit lands inside operator-2's shift. `leadMs`
- * is how long before the shift's end the commit starts; it is measured on
- * the devnet rehearsal and never guessed here. `commitAllowanceMs` is how
- * long a commit takes to land.
+ * and early enough that the commit and the fault's header end inside
+ * operator-2's shift. `leadMs` is how long before the shift's end the commit
+ * starts; it is measured on the devnet rehearsal and never guessed here.
+ * `commitAllowanceMs` is how long a commit takes to land.
  */
 export const planLateShiftFaultCommit = (
   input: Readonly<{
@@ -372,9 +382,10 @@ export const planLateShiftFaultCommit = (
   ] as const)
     if (!Number.isFinite(value) || value < 0)
       throw new Error(`Late-shift ${name} must be finite and not negative`);
-  if (leadMs <= commitAllowanceMs)
+  const minimumLeadMs = lateShiftMinimumLeadMs(commitAllowanceMs);
+  if (leadMs < minimumLeadMs)
     throw new Error(
-      "Late-shift lead must exceed the commit allowance, or the commit cannot land in operator-2's shift",
+      `Late-shift lead must be at least ${minimumLeadMs.toString()} ms, a commit's allowance plus the time the fault's header runs past its build, or the fault cannot end in operator-2's shift`,
     );
   const notBeforeMs = Math.max(shift.startMs, shift.endMs - leadMs);
   const notAfterMs = shift.endMs - commitAllowanceMs;

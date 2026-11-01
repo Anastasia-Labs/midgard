@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import { JOURNEY_FIXTURE_OWNERS } from "./catalogue.js";
-import type { JourneyCategory } from "./fixture.js";
+import {
+  JOURNEY_HEADER_END_AHEAD_MS,
+  type JourneyCategory,
+} from "./fixture.js";
 import { STACK_DA_REFUSED_CATEGORIES } from "./stack-da-publication.js";
 import {
   readStackLateShiftLeadMs,
@@ -15,7 +18,13 @@ const convicted = categories.find(
 )!;
 const refused = [...STACK_DA_REFUSED_CATEGORIES][0]!;
 const operator2 = "a2".repeat(28);
-const SHIFT_MS = 10_000;
+const SHIFT_MS = 100_000;
+const COMMIT_ALLOWANCE_MS = 1_000;
+/**
+ * The shortest lead: a commit's allowance plus the time the fault's header
+ * runs past its build, so that both end inside operator-2's shift.
+ */
+const LEAD_MS = COMMIT_ALLOWANCE_MS + JOURNEY_HEADER_END_AHEAD_MS + 1;
 
 /** A ledger clock and scheduler, scripted; waits move the clock. */
 const scripted = (
@@ -31,7 +40,7 @@ const scripted = (
   const ports = {
     readAppointment: () => Promise.resolve(input.appointment),
     shiftDurationMs: SHIFT_MS,
-    commitAllowanceMs: 1_000,
+    commitAllowanceMs: COMMIT_ALLOWANCE_MS,
     now: () => now,
     awaitLedgerTime: (timeMs: number) => {
       waits.push(timeMs);
@@ -101,45 +110,48 @@ describe("the fault's commit late in operator-2's shift", () => {
     });
     await stackLateShiftFaultCommit({
       category: convicted,
-      leadMs: 4_000,
+      leadMs: LEAD_MS,
       ...drill.ports,
     })(operator2);
-    expect(drill.now()).toBe(26_000);
+    const endMs = 20_000 + SHIFT_MS;
+    expect(drill.now()).toBe(endMs - LEAD_MS);
     expect(drill.records).toEqual([
       {
-        leadMs: 4_000,
-        commitAllowanceMs: 1_000,
-        shift: { startMs: 20_000, endMs: 30_000 },
-        notBeforeMs: 26_000,
-        notAfterMs: 29_000,
-        commitStartMs: 26_000,
+        leadMs: LEAD_MS,
+        commitAllowanceMs: COMMIT_ALLOWANCE_MS,
+        shift: { startMs: 20_000, endMs },
+        notBeforeMs: endMs - LEAD_MS,
+        notAfterMs: endMs - COMMIT_ALLOWANCE_MS,
+        commitStartMs: endMs - LEAD_MS,
       },
     ]);
   });
 
   it("commits at once inside the window", async () => {
     const drill = scripted({
-      nowMs: 27_500,
+      nowMs: 20_000 + SHIFT_MS - LEAD_MS + 500,
       appointment: { operator: operator2, startTime: 20_000n },
     });
     await stackLateShiftFaultCommit({
       category: convicted,
-      leadMs: 4_000,
+      leadMs: LEAD_MS,
       ...drill.ports,
     })(operator2);
     expect(drill.waits).toEqual([]);
-    expect(drill.records).toMatchObject([{ commitStartMs: 27_500 }]);
+    expect(drill.records).toMatchObject([
+      { commitStartMs: 20_000 + SHIFT_MS - LEAD_MS + 500 },
+    ]);
   });
 
   it("refuses past the window, where the commit could not land in operator-2's shift", async () => {
     const drill = scripted({
-      nowMs: 29_500,
+      nowMs: 20_000 + SHIFT_MS - COMMIT_ALLOWANCE_MS + 500,
       appointment: { operator: operator2, startTime: 20_000n },
     });
     await expect(
       stackLateShiftFaultCommit({
         category: convicted,
-        leadMs: 4_000,
+        leadMs: LEAD_MS,
         ...drill.ports,
       })(operator2),
     ).rejects.toThrow(/missed its late-shift window/u);
@@ -155,24 +167,20 @@ describe("the fault's commit late in operator-2's shift", () => {
       await expect(
         stackLateShiftFaultCommit({
           category: convicted,
-          leadMs: 4_000,
+          leadMs: LEAD_MS,
           ...drill.ports,
         })(operator2),
       ).rejects.toThrow(/does not appoint operator-2/u);
     }
   });
 
-  it("refuses a lead no longer than a commit takes", async () => {
-    const drill = scripted({
-      nowMs: 21_000,
-      appointment: { operator: operator2, startTime: 20_000n },
-    });
-    await expect(
-      stackLateShiftFaultCommit({
-        category: convicted,
-        leadMs: 1_000,
-        ...drill.ports,
-      })(operator2),
-    ).rejects.toThrow(/lead must exceed the commit allowance/u);
+  it("refuses up front a lead shorter than a commit's allowance plus its fault header's end", () => {
+    const { ports } = scripted({ nowMs: 21_000, appointment: undefined });
+    for (const leadMs of [COMMIT_ALLOWANCE_MS, LEAD_MS - 1])
+      expect(() =>
+        stackLateShiftFaultCommit({ category: convicted, leadMs, ...ports }),
+      ).toThrow(
+        `${STACK_LATE_SHIFT_LEAD_ENV} must be at least ${LEAD_MS.toString()} ms`,
+      );
   });
 });

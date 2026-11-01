@@ -1,6 +1,7 @@
 import { publicReadinessPresentation } from "midgard-node/commands/listen-readiness-public-presentation";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { JOURNEY_HEADER_END_AHEAD_MS } from "./fixture.js";
 import {
   assertNoHonestHeaderOnFault,
   classifyNodeFaultHold,
@@ -117,38 +118,47 @@ describe("no header of ours on the fault", () => {
 });
 
 describe("late-shift fault commit", () => {
+  // A commit's allowance plus the time the fault's header runs past its
+  // build: the shortest lead.
+  const lead = 1_000 + JOURNEY_HEADER_END_AHEAD_MS + 1;
   it("commits in the last lead of operator-2's shift, before it ends", () => {
     expect(
       planLateShiftFaultCommit({
-        shift: { startMs: 1_000, endMs: 10_000 },
-        leadMs: 3_000,
+        shift: { startMs: 1_000, endMs: 100_000 },
+        leadMs: lead,
         commitAllowanceMs: 1_000,
       }),
-    ).toEqual({ notBeforeMs: 7_000, notAfterMs: 9_000 });
+    ).toEqual({ notBeforeMs: 100_000 - lead, notAfterMs: 99_000 });
     // A shift shorter than the lead starts the window at the shift.
     expect(
       planLateShiftFaultCommit({
-        shift: { startMs: 8_000, endMs: 10_000 },
-        leadMs: 3_000,
+        shift: { startMs: 80_000, endMs: 100_000 },
+        leadMs: lead,
         commitAllowanceMs: 1_000,
       }),
-    ).toEqual({ notBeforeMs: 8_000, notAfterMs: 9_000 });
+    ).toEqual({ notBeforeMs: 80_000, notAfterMs: 99_000 });
   });
 
   it("refuses a window the commit cannot land in", () => {
     for (const input of [
       {
-        shift: { startMs: 0, endMs: 10_000 },
+        shift: { startMs: 0, endMs: 100_000 },
         leadMs: 1_000,
         commitAllowanceMs: 1_000,
       },
+      // The fault's header would end after operator-2's shift.
       {
-        shift: { startMs: 9_500, endMs: 10_000 },
-        leadMs: 3_000,
+        shift: { startMs: 0, endMs: 100_000 },
+        leadMs: lead - 1,
         commitAllowanceMs: 1_000,
       },
       {
-        shift: { startMs: 0, endMs: 10_000 },
+        shift: { startMs: 99_500, endMs: 100_000 },
+        leadMs: lead,
+        commitAllowanceMs: 1_000,
+      },
+      {
+        shift: { startMs: 0, endMs: 100_000 },
         leadMs: Number.NaN,
         commitAllowanceMs: 1_000,
       },

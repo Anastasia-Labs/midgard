@@ -15,11 +15,12 @@ import {
 } from "midgard-watcher/tests/support/published-block-actor";
 
 import { readJourneyArtifact, writeJourneyArtifact } from "./artifacts.js";
-import type {
-  JourneyBlock,
-  JourneyFixtureStage,
-  JourneySuccessor,
-  StagedJourney,
+import {
+  JOURNEY_HEADER_END_AHEAD_MS,
+  type JourneyBlock,
+  type JourneyFixtureStage,
+  type JourneySuccessor,
+  type StagedJourney,
 } from "./fixture.js";
 import { journeyBlockBuilder } from "./journey-ledger.js";
 import { readKupoUnitConsumptions } from "./kupo-consumption.js";
@@ -315,7 +316,7 @@ export async function stageJourney(
             "Cannot add missing history after the fault was checkpointed",
           );
         await actor.onboardOperator();
-        const endTime = BigInt(chain.now() + 59_999);
+        const endTime = BigInt(chain.now() + JOURNEY_HEADER_END_AHEAD_MS);
         history = {
           deploymentFingerprint: fingerprint,
           block: await build({
@@ -351,7 +352,7 @@ export async function stageJourney(
             // commit's validity, so an elapsed one cannot be committed.
             if (history.block.header.endTime <= BigInt(chain.now())) {
               onStage(`staged ${name} interval elapsed unminted; rebuilding`);
-              const endTime = BigInt(chain.now() + 59_999);
+              const endTime = BigInt(chain.now() + JOURNEY_HEADER_END_AHEAD_MS);
               history.block = await build({
                 predecessor: retainedPredecessor,
                 ledgerOwnerSeedPhrase: daPath.ledgerOwnerSeedPhrase,
@@ -385,7 +386,7 @@ export async function stageJourney(
               if (history.commitTxHash !== undefined) break;
               // Canonical expiry/invalidation authorizes fresh construction;
               // reconcileCommit refreshed the wallet before this retry.
-              const endTime = BigInt(chain.now() + 59_999);
+              const endTime = BigInt(chain.now() + JOURNEY_HEADER_END_AHEAD_MS);
               history.block = await build({
                 predecessor: retainedPredecessor,
                 ledgerOwnerSeedPhrase: daPath.ledgerOwnerSeedPhrase,
@@ -449,7 +450,7 @@ export async function stageJourney(
   }
 
   const buildFault = journeyBlockBuilder(async () => {
-    const faultEndTime = BigInt(chain.now() + 59_999);
+    const faultEndTime = BigInt(chain.now() + JOURNEY_HEADER_END_AHEAD_MS);
     return prepared.buildFault({
       predecessor: retainedPredecessor,
       ledgerOwnerSeedPhrase: daPath.ledgerOwnerSeedPhrase,
@@ -617,7 +618,7 @@ export async function stageJourney(
       const successorActor = await blockActor(successorLucid);
       await successorActor.onboardOperator();
       const buildSuccessor = journeyBlockBuilder(async () => {
-        const endTime = BigInt(chain.now() + 59_999);
+        const endTime = BigInt(chain.now() + JOURNEY_HEADER_END_AHEAD_MS);
         const successorInput: JourneyFaultBuildInput = {
           predecessor: successorRetainedPredecessor,
           ledgerOwnerSeedPhrase: daPath.ledgerOwnerSeedPhrase,

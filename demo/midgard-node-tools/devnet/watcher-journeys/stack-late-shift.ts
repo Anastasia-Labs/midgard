@@ -1,7 +1,10 @@
 import type { OperatorShiftAppointment } from "midgard-watcher/tests/support/published-block-actor.operator-shift";
 
 import type { JourneyCategory } from "./fixture.js";
-import { planLateShiftFaultCommit } from "./honest-successor.observables.js";
+import {
+  lateShiftMinimumLeadMs,
+  planLateShiftFaultCommit,
+} from "./honest-successor.observables.js";
 import { stackDaExpectation } from "./stack-da-publication.js";
 
 /**
@@ -41,8 +44,9 @@ export type StackLateShiftCommit = Readonly<{
  * reads operator-2's shift from the scheduler, waits until the lead before
  * its end, and refuses once a commit could no longer land in it. A family
  * the committee refuses is never convicted, so it commits as soon as it may.
- * Constructing it for an attested family without a lead refuses, naming
- * `STACK_LATE_SHIFT_LEAD_MS`.
+ * Constructing it for an attested family without a lead, or with one
+ * shorter than a commit's allowance plus the time the fault's header runs
+ * past its build, refuses, naming `STACK_LATE_SHIFT_LEAD_MS`.
  */
 export const stackLateShiftFaultCommit = (
   input: Readonly<{
@@ -65,6 +69,11 @@ export const stackLateShiftFaultCommit = (
   if (leadMs === undefined)
     throw new Error(
       `Set ${STACK_LATE_SHIFT_LEAD_ENV} in the stack node environment: the ${input.category} drill commits its fault that long before operator-2's shift ends, so that our node's shift starts while the fault is the tail. Measure it on a live run (fault-tail.json); it has no default`,
+    );
+  const minimumLeadMs = lateShiftMinimumLeadMs(commitAllowanceMs);
+  if (leadMs < minimumLeadMs)
+    throw new Error(
+      `${STACK_LATE_SHIFT_LEAD_ENV} must be at least ${minimumLeadMs.toString()} ms: a commit's allowance (${commitAllowanceMs.toString()} ms) plus the time the fault's header runs past its build (${(minimumLeadMs - commitAllowanceMs).toString()} ms), or the fault cannot end in operator-2's shift; it is ${leadMs.toString()} ms`,
     );
   return async (operator) => {
     const appointment = await input.readAppointment();

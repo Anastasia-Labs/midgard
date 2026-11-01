@@ -7,6 +7,12 @@ import type { SignedCommitReconciliationPorts } from "./signed-commit-reconcilia
 import type { StackJourneyContext } from "./stack-context.js";
 import type { StackDaOutcome } from "./stack-da-publication.js";
 
+/**
+ * How far past ledger time a staged block's header ends, set when the block
+ * is built. Its end time bounds the validity of the block's commit.
+ */
+export const JOURNEY_HEADER_END_AHEAD_MS = 59_999;
+
 /** A category with an installed off-chain workflow. */
 export type JourneyCategory = InstalledFraudProofCategory;
 

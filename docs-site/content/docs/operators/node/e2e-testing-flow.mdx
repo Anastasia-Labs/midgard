@@ -197,10 +197,14 @@ The drill also reads one value that is not a secret:
   fault then stays the tail while our node's shift starts. Families the
   committee refuses do not use it. It has no default. Staging a family the
   committee attests refuses when it is unset, and any value that is not a
-  positive whole number is refused. Measure it on a live run: each family's
-  `fault-tail.json` records `measured.faultCommitToConvictionMs` and
-  `measured.faultCommitToOurNextShiftMs`, and each fault commit's window
-  is recorded in `late-shift.json`.
+  positive whole number is refused. It must also be at least the commit
+  allowance plus 60,000 ms, because the fault's header ends up to a minute
+  after it is built and must end inside operator-2's shift. A shorter lead
+  is refused before any L1 work, and the error names the bound. Measure it
+  on a live run: each family's `fault-tail.json` records
+  `measured.faultCommitToConvictionMs` and
+  `measured.faultCommitToOurNextShiftMs`, and each fault commit's window is
+  recorded in `late-shift.json`.
 
 The drill does not fund the stack watcher's prover. It refuses to start when
 the prover holds less than the stack configuration's
