@@ -561,6 +561,7 @@
     "tests/validation-trace-dispute-funded-one-step-decode-records.test.ts": 12.5,
     "tests/validation-trace-dispute-funded-one-step-restarts.test.ts": 13.6,
     "tests/validation-trace-dispute-funded-one-step-selection.test.ts": 14.6,
+    "tests/validation-trace-dispute-funded-one-step-staging-held-prepare.test.ts": 14.1,
     "tests/validation-trace-dispute-funded-one-step-staging-held.test.ts": 17.9,
     "tests/validation-trace-dispute-funded-one-step-staging-in-flight.test.ts": 20,
     "tests/validation-trace-dispute-funded-one-step-staging-reconciliation.test.ts": 20.7,
