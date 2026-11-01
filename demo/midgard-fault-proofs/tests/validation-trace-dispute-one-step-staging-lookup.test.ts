@@ -214,6 +214,8 @@ const lookupOver = ({
     } as unknown as FraudProofSignedTransactionRecovery,
     materialOf: () => undefined,
     recent: () => false,
+    now: Date.now,
+    caseExpiresAtMs: async () => undefined,
   });
   return staging.lookup({
     entries: [

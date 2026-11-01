@@ -8,47 +8,39 @@
  * final only `RELEASE_DEPTH` blocks under the tip.
  *
  * While the thread stands past the PrepareSelected move, each staging
- * output stays where it is. Once the case's duration has passed and its
- * defender closes it, each comes back to our wallet, one transaction each,
- * and the case's ending is taken only once each spend back is final at
- * release depth. */
-import { CML, coreToTxOutput } from "@lucid-evolution/lucid";
+ * output stays where it is, and once the case's expiry has passed each run
+ * reports them under a named alarm and signs nothing. Once its defender
+ * closes the case, each comes back to our wallet, one transaction each, and
+ * the case's ending is taken only once each spend back is final at release
+ * depth (support/validation-trace-dispute-funded-one-step-staging-held.ts). */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { VALIDATION_TRACE_STAGING_OUTSTANDING } from "../src/validation-trace-dispute/one-step-staging-sweep.js";
-import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import { topUpProver } from "./support/installed-prover-wallet.js";
-import { landWith } from "./support/validation-trace-dispute-defender-moves.js";
-import { defenderWonCaseClose } from "./support/validation-trace-dispute-defender-won-close.js";
 import {
   fundedStagingScene,
   runs,
 } from "./support/validation-trace-dispute-funded-one-step-staging.js";
+import {
+  describeRun,
+  expectHeldPastExpiry,
+  expectSpentBackOnClose,
+  RELEASE_DEPTH,
+} from "./support/validation-trace-dispute-funded-one-step-staging-held.js";
 import { outRefOf } from "./support/validation-trace-dispute-funded-one-step-turns.js";
 import {
   ADA,
   TIMEOUT,
 } from "./support/validation-trace-dispute-funded-verify-source.js";
-import {
-  awaitLastSlotAtOrBefore,
-  liveCase,
-} from "./support/validation-trace-dispute-one-step-case.js";
-import { landedSpenderOf } from "./support/validation-trace-dispute-one-step-staged-drive.js";
 
-/** How many blocks under the tip a transaction is final, once the header
- * has rolled back. */
-const RELEASE_DEPTH = 4;
 let releaseDepth = 0;
 
-const { at, turns, place, playTo, open, stagedOutputs } = fundedStagingScene({
+const held = fundedStagingScene({
   releaseDepth: () => releaseDepth,
 });
+const { at, turns, place, playTo, open, stagedOutputs } = held;
 /** The staging outputs, as the ledger held them once the thread moved past
  * the PrepareSelected move. */
 let staged: string[] = [];
-
-const describeRun = (result: FraudProofWorkflowRunResult) =>
-  "reason" in result ? `${result.kind}: ${result.reason}` : result.kind;
 
 const live = async () => (await stagedOutputs()).map(outRefOf).sort();
 
@@ -78,64 +70,17 @@ describe("validation-trace dispute staging outputs under reconciliation-only fun
   );
 
   it(
-    "spends each back to our wallet once the case's duration has passed and its defender closed it, and takes the ending only once each spend back is final at release depth",
+    "reports each staging output it holds under a named alarm, run after run, once the case's expiry has passed, signing nothing",
     async () => {
-      const { scene } = at;
-      awaitLastSlotAtOrBefore(scene, at.caseExpiresAtMs + 20_000);
-      const { lucid } = at.side.defender;
-      await landWith(
-        lucid,
-        await defenderWonCaseClose({
-          scene,
-          lucid,
-          caseUtxo: await liveCase({ scene, caseUnit: at.caseUnit }),
-          bond: at.bond,
-        }),
-      );
-      const history: FraudProofWorkflowRunResult[] = [];
-      let observedAt = 0;
-      for (let turn = 0; turn < 30; turn += 1) {
-        observedAt = scene.h.emulator.blockHeight;
-        const result = await turns().runOnce();
-        history.push(result);
-        if (result.kind !== "pending") break;
-      }
-      const ending = history.at(-1)!;
-      expect(ending.kind, history.map(describeRun).join("\n")).toBe("stalled");
-      expect("reason" in ending && ending.reason).toContain(
-        "validation-trace case is closed without this workflow's close",
-      );
-      expect(
-        history.some(
-          (result) =>
-            result.kind === "pending" &&
-            result.reason.startsWith(VALIDATION_TRACE_STAGING_OUTSTANDING),
-        ),
-      ).toBe(true);
-      expect(await live()).toStrictEqual([]);
-      for (const outRef of staged) {
-        const reclaim = await landedSpenderOf(
-          scene.l1.signedCbors,
-          scene.h.emulator,
-          outRef,
-        );
-        expect(reclaim, outRef).toBeDefined();
-        const body = CML.Transaction.from_cbor_hex(
-          scene.l1.signedCbors.get(reclaim!)!,
-        ).body();
-        expect(body.inputs().len()).toBe(1);
-        expect(body.outputs().len()).toBe(1);
-        expect(coreToTxOutput(body.outputs().get(0)).address).toBe(
-          scene.h.proverSigner.address,
-        );
-        const status = await scene.h.emulator.getTransactionStatus(reclaim!);
-        expect(status.status).toBe("confirmed");
-        if (status.status !== "confirmed") return;
-        expect(
-          observedAt - status.confirmation.blockHeight!,
-          outRef,
-        ).toBeGreaterThanOrEqual(RELEASE_DEPTH);
-      }
+      await expectHeldPastExpiry(held, staged, "core");
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "spends each back to our wallet once its defender closed the case, and takes the ending only once each spend back is final at release depth",
+    async () => {
+      await expectSpentBackOnClose(held, staged);
     },
     TIMEOUT,
   );
