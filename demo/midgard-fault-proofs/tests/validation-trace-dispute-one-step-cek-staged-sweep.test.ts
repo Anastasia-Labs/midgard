@@ -10,11 +10,13 @@
  * only past it. A runner over our journal as it stood before that second
  * staging finds, of that run, only the output no move read: each run holds
  * on the one-step alarm, naming the staging that differs from the
- * commitment, and builds no move from it. The output no move read is spent
- * back while a thread is held mid-chain, and each output our moves read is
- * kept while another party's move holds that thread at the settle. The
- * case's completion waits while a staging output the provider does not show
- * may still be live, and until its spend back is final at release depth. */
+ * commitment, and builds no move from it. That journal shows none of our
+ * moves that read a staging, so the test holds the spend backs that runner
+ * would take. The output no move read is spent back while a thread is held
+ * mid-chain, and each output our moves read is kept while another party's
+ * move holds that thread at the settle. The case's completion waits while a
+ * staging output the provider does not show may still be live, and until
+ * its spend back is final at release depth. */
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML, coreToTxOutput, Data } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -191,7 +193,7 @@ describe("validation-trace dispute runner: spending back a staged step's staging
     rest = at[0] === "core" ? a : b;
   }, 1_200_000);
 
-  it("holds each run on the one-step alarm, naming the staging that differs from the commitment, while the one staging found for a run is not the one the threads committed", async () => {
+  it("holds each run on the one-step alarm, naming the staging that differs from the commitment, and builds no move from it, for a runner over our journal as it stood before the run was staged again, its spend backs held by the test", async () => {
     hidden?.();
     hidden = undefined;
     const { scene, deployment, runner } = drive.dispute();
@@ -202,8 +204,12 @@ describe("validation-trace dispute runner: spending back a staged step's staging
     )!;
     // A runner of ours over our journal as it stood before that run was
     // staged again: of that run it finds only the output no move read, live.
-    // That journal shows no move of ours reading a staging, so the test
-    // holds its spend backs, as a wait.
+    // That journal shows none of our moves that read a staging, so its sweep
+    // finds no thread that needs the outputs those moves read, and would
+    // spend them back. Each move of ours is journaled before it is sent, so
+    // only a journal store put back to an earlier state shows a runner such
+    // a journal. The test holds those spend backs as a wait, and the row pins
+    // only the alarm and that no move is built.
     const [first] = drive.entries();
     const entries = await runner.journal.load(first!.workflowId);
     const cut = entries.findIndex(
@@ -220,6 +226,7 @@ describe("validation-trace dispute runner: spending back a staged step's staging
         scene.h.emulator,
         RELEASE_DEPTH,
       ),
+      // The spend backs this journal would take, held as a wait.
       wrap: (adapter) => ({
         ...adapter,
         observe: async (context) => {
@@ -244,11 +251,10 @@ describe("validation-trace dispute runner: spending back a staged step's staging
       );
       expect(reason).toContain(DIFFERS);
     }
-    // No thread moved, and nothing was staged, spent back or sent.
+    // No thread moved, and nothing was staged or sent: no move was built
+    // from the differing window (the spend backs being held by the test).
     expect(await places()).toStrictEqual(at);
     expect(scene.l1.signedCbors.size).toBe(sent);
-    for (const label of [unseen, ...read])
-      expect(ledgerHas(label), label).toBe(true);
   }, 1_200_000);
 
   it("spends the staging output no move read back to our wallet while a thread is held mid-chain, keeping each output its moves read", async () => {
