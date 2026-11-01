@@ -99,6 +99,33 @@ export class StackDaRefusalNotObserved extends Error {
 }
 
 /**
+ * Committee reject codes about how the payload was delivered rather than
+ * what it holds: another deployment, another payload schema, or a payload
+ * over the committee's size bound. A refusal on one of them says nothing
+ * about the committee's judgement of the family's fault.
+ */
+const DELIVERY_REJECT_CODES: ReadonlySet<string> = new Set([
+  "deployment_fingerprint_mismatch",
+  "payload_schema_version_mismatch",
+  "payload_too_large",
+]);
+
+/** A committee peer rejected a refusal drill's payload for its delivery. */
+export class StackDaDeliveryRejected extends Error {
+  constructor(
+    readonly headerHash: string,
+    readonly peerId: string,
+    readonly reasonCode: string,
+    readonly delivery: StackDaDelivery,
+  ) {
+    super(
+      `DA committee peer ${peerId} rejected the payload of header ${headerHash} with ${reasonCode}, a fault of the drill's delivery rather than of the payload, so the refusal proves nothing`,
+    );
+    this.name = "StackDaDeliveryRejected";
+  }
+}
+
+/**
  * A block the committee was expected to attest aged out instead. Nothing it
  * committed can be attested any more, so its staging must start again.
  */
@@ -262,7 +289,10 @@ const publicationFailure = (
  * peers took the payload (accepted or rejected it). The refusal is observed
  * once the block's attestation deadline passes with the block unattested,
  * before it ages out; with fewer peers reached by then it is
- * `StackDaRefusalNotObserved`. The committee attesting it fails the drill.
+ * `StackDaRefusalNotObserved`. The committee attesting it fails the drill,
+ * and so does a peer rejecting it for its delivery
+ * (`StackDaDeliveryRejected`). Each peer's reject code is kept in the
+ * delivery.
  *
  * A peer holding a conflicting payload for the header is a hard failure.
  */
@@ -291,6 +321,17 @@ export const publishStackDaPayload = async (
         changed = true;
       }
     if (changed) await ports.delivery?.save(delivery());
+    if (expectation === "refusal")
+      for (const [peerId, taken] of delivered) {
+        const reasonCode = taken.replace(/^rejected: /u, "");
+        if (taken !== reasonCode && DELIVERY_REJECT_CODES.has(reasonCode))
+          throw new StackDaDeliveryRejected(
+            headerHash,
+            peerId,
+            reasonCode,
+            delivery(),
+          );
+      }
   };
   const notObserved = () =>
     new StackDaRefusalNotObserved(

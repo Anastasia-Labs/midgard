@@ -23,6 +23,7 @@ import {
   publishStackDaPayload,
   type StackDaAgedOut,
   type StackDaDelivery,
+  StackDaDeliveryRejected,
   type StackDaExpectation,
   StackDaPayloadAgedOutError,
   StackDaRefusalNotObserved,
@@ -248,6 +249,36 @@ describe("producer-path DA publication on an attached stack", () => {
       l1.stages.some((stage) => stage.includes("malformed_transaction")),
     ).toBe(true);
   });
+
+  it.each([
+    "deployment_fingerprint_mismatch",
+    "payload_schema_version_mismatch",
+    "payload_too_large",
+  ])(
+    "fails a refusal drill a peer rejects for how it was delivered (%s), keeping every peer's code",
+    async (reasonCode) => {
+      const { l1, outcome } = publishAs(
+        "refusal",
+        [
+          {
+            [PEER_A]: { status: "rejected", reasonCode },
+            [PEER_B]: {
+              status: "rejected",
+              reasonCode: "malformed_transaction",
+            },
+          },
+        ],
+        () => unattested,
+      );
+      await expect(outcome).rejects.toThrow(StackDaDeliveryRejected);
+      await expect(outcome).rejects.toThrow(`${PEER_A} rejected`);
+      await expect(outcome).rejects.toThrow(reasonCode);
+      expect(l1.saved.at(-1)?.peers).toEqual({
+        [PEER_A]: `rejected: ${reasonCode}`,
+        [PEER_B]: "rejected: malformed_transaction",
+      });
+    },
+  );
 
   it("refuses to call it a refusal when no committee peer could be reached before the deadline", async () => {
     const { reached, outcome } = publishAs(
