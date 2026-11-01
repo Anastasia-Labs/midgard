@@ -120,23 +120,26 @@ describe("no header of ours on the fault", () => {
 describe("late-shift fault commit", () => {
   // A commit's allowance plus the time the fault's header runs past its
   // build: the shortest lead.
-  const lead = 1_000 + JOURNEY_HEADER_END_AHEAD_MS + 1;
-  it("commits in the last lead of operator-2's shift, before it ends", () => {
+  const minimumLead = 1_000 + JOURNEY_HEADER_END_AHEAD_MS + 1;
+  const lead = minimumLead + 4_000;
+  // The last start whose fault's header still ends inside the shift.
+  const notAfterMs = 100_000 - minimumLead + 1;
+  it("commits in the last lead of operator-2's shift, while the fault's header still ends in it", () => {
     expect(
       planLateShiftFaultCommit({
         shift: { startMs: 1_000, endMs: 100_000 },
         leadMs: lead,
         commitAllowanceMs: 1_000,
       }),
-    ).toEqual({ notBeforeMs: 100_000 - lead, notAfterMs: 99_000 });
+    ).toEqual({ notBeforeMs: 100_000 - lead, notAfterMs });
     // A shift shorter than the lead starts the window at the shift.
     expect(
       planLateShiftFaultCommit({
-        shift: { startMs: 80_000, endMs: 100_000 },
+        shift: { startMs: notAfterMs - 2_000, endMs: 100_000 },
         leadMs: lead,
         commitAllowanceMs: 1_000,
       }),
-    ).toEqual({ notBeforeMs: 80_000, notAfterMs: 99_000 });
+    ).toEqual({ notBeforeMs: notAfterMs - 2_000, notAfterMs });
   });
 
   it("refuses a window the commit cannot land in", () => {
@@ -149,11 +152,12 @@ describe("late-shift fault commit", () => {
       // The fault's header would end after operator-2's shift.
       {
         shift: { startMs: 0, endMs: 100_000 },
-        leadMs: lead - 1,
+        leadMs: minimumLead - 1,
         commitAllowanceMs: 1_000,
       },
+      // Operator-2's shift starts after the fault's header could end in it.
       {
-        shift: { startMs: 99_500, endMs: 100_000 },
+        shift: { startMs: notAfterMs + 500, endMs: 100_000 },
         leadMs: lead,
         commitAllowanceMs: 1_000,
       },

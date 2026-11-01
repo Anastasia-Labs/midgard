@@ -42,8 +42,9 @@ export type StackLateShiftCommit = Readonly<{
 /**
  * Before each commit of an attested family's fault on an attached stack:
  * reads operator-2's shift from the scheduler, waits until the lead before
- * its end, and refuses once a commit could no longer land in it. A family
- * the committee refuses is never convicted, so it commits as soon as it may.
+ * its end, and refuses once a commit and its fault header could no longer
+ * end in it. A family the committee refuses is never convicted, so it
+ * commits as soon as it may.
  * Constructing it for an attested family without a lead, or with one
  * shorter than a commit's allowance plus the time the fault's header runs
  * past its build, refuses, naming `STACK_LATE_SHIFT_LEAD_MS`.
@@ -97,7 +98,7 @@ export const stackLateShiftFaultCommit = (
     const commitStartMs = input.now();
     if (commitStartMs > window.notAfterMs)
       throw new Error(
-        `The fault's commit missed its late-shift window: ledger time ${commitStartMs.toString()} is past ${window.notAfterMs.toString()}, a commit allowance before operator-2's shift ends at ${shift.endMs.toString()}`,
+        `The fault's commit missed its late-shift window: ledger time ${commitStartMs.toString()} is past ${window.notAfterMs.toString()}, the last start whose commit and fault header both end before operator-2's shift ends at ${shift.endMs.toString()}`,
       );
     await input.record({
       leadMs,

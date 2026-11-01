@@ -24,7 +24,9 @@ const COMMIT_ALLOWANCE_MS = 1_000;
  * The shortest lead: a commit's allowance plus the time the fault's header
  * runs past its build, so that both end inside operator-2's shift.
  */
-const LEAD_MS = COMMIT_ALLOWANCE_MS + JOURNEY_HEADER_END_AHEAD_MS + 1;
+const MINIMUM_LEAD_MS = COMMIT_ALLOWANCE_MS + JOURNEY_HEADER_END_AHEAD_MS + 1;
+/** The drill's lead: four seconds of window past the shortest. */
+const LEAD_MS = MINIMUM_LEAD_MS + 4_000;
 
 /** A ledger clock and scheduler, scripted; waits move the clock. */
 const scripted = (
@@ -121,7 +123,7 @@ describe("the fault's commit late in operator-2's shift", () => {
         commitAllowanceMs: COMMIT_ALLOWANCE_MS,
         shift: { startMs: 20_000, endMs },
         notBeforeMs: endMs - LEAD_MS,
-        notAfterMs: endMs - COMMIT_ALLOWANCE_MS,
+        notAfterMs: endMs - MINIMUM_LEAD_MS + 1,
         commitStartMs: endMs - LEAD_MS,
       },
     ]);
@@ -141,6 +143,21 @@ describe("the fault's commit late in operator-2's shift", () => {
     expect(drill.records).toMatchObject([
       { commitStartMs: 20_000 + SHIFT_MS - LEAD_MS + 500 },
     ]);
+  });
+
+  it("refuses a commit at a commit allowance before the shift's end, where the fault's header would end past it", async () => {
+    const drill = scripted({
+      nowMs: 20_000 + SHIFT_MS - COMMIT_ALLOWANCE_MS,
+      appointment: { operator: operator2, startTime: 20_000n },
+    });
+    await expect(
+      stackLateShiftFaultCommit({
+        category: convicted,
+        leadMs: LEAD_MS,
+        ...drill.ports,
+      })(operator2),
+    ).rejects.toThrow(/missed its late-shift window/u);
+    expect(drill.records).toEqual([]);
   });
 
   it("refuses past the window, where the commit could not land in operator-2's shift", async () => {
@@ -176,11 +193,11 @@ describe("the fault's commit late in operator-2's shift", () => {
 
   it("refuses up front a lead shorter than a commit's allowance plus its fault header's end", () => {
     const { ports } = scripted({ nowMs: 21_000, appointment: undefined });
-    for (const leadMs of [COMMIT_ALLOWANCE_MS, LEAD_MS - 1])
+    for (const leadMs of [COMMIT_ALLOWANCE_MS, MINIMUM_LEAD_MS - 1])
       expect(() =>
         stackLateShiftFaultCommit({ category: convicted, leadMs, ...ports }),
       ).toThrow(
-        `${STACK_LATE_SHIFT_LEAD_ENV} must be at least ${LEAD_MS.toString()} ms`,
+        `${STACK_LATE_SHIFT_LEAD_ENV} must be at least ${MINIMUM_LEAD_MS.toString()} ms`,
       );
   });
 });

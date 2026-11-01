@@ -362,9 +362,10 @@ export const lateShiftMinimumLeadMs = (commitAllowanceMs: number) =>
  * When the drill commits the fault in operator-2's shift: late enough that
  * our node's next shift starts while the fault is still the queue's tail,
  * and early enough that the commit and the fault's header end inside
- * operator-2's shift. `leadMs` is how long before the shift's end the commit
- * starts; it is measured on the devnet rehearsal and never guessed here.
- * `commitAllowanceMs` is how long a commit takes to land.
+ * operator-2's shift, so no later than the shortest lead before its end, a
+ * retried commit included. `leadMs` is how long before the shift's end the
+ * commit starts; it is measured on the devnet rehearsal and never guessed
+ * here. `commitAllowanceMs` is how long a commit takes to land.
  */
 export const planLateShiftFaultCommit = (
   input: Readonly<{
@@ -388,7 +389,7 @@ export const planLateShiftFaultCommit = (
       `Late-shift lead must be at least ${minimumLeadMs.toString()} ms, a commit's allowance plus the time the fault's header runs past its build, or the fault cannot end in operator-2's shift`,
     );
   const notBeforeMs = Math.max(shift.startMs, shift.endMs - leadMs);
-  const notAfterMs = shift.endMs - commitAllowanceMs;
+  const notAfterMs = shift.endMs - minimumLeadMs + 1;
   if (notAfterMs <= notBeforeMs)
     throw new Error(
       "Operator-2's shift is too short for a late fault commit; wait for its next shift",
