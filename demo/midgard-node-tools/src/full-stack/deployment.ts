@@ -1,3 +1,5 @@
+import { constants } from "node:fs";
+import { access, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
 import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
@@ -105,6 +107,21 @@ export async function checkWallets(processes: StackProcesses) {
   return addresses;
 }
 
+/**
+ * The Mithril bootstrap restores the chain into this directory as an unprivileged
+ * user. Docker creates a missing bind-mount directory as root, so the stack
+ * creates it first as the host user.
+ */
+async function prepareCardanoDatabase(processes: StackProcesses) {
+  const db = join(processes.config.nodeRoot, "cardano/db");
+  await mkdir(db, { recursive: true, mode: 0o700 });
+  await access(db, constants.W_OK).catch(() => {
+    throw new Error(
+      `${db} must be writable by the host user, which restores the Cardano database`,
+    );
+  });
+}
+
 export function deploymentSteps(processes: StackProcesses): StackStep[] {
   const paths = stackPaths(processes);
   return [
@@ -121,6 +138,7 @@ export function deploymentSteps(processes: StackProcesses): StackStep[] {
         return { status: "retry" };
       },
       execute: async () => {
+        await prepareCardanoDatabase(processes);
         await processes.compose("providers-start", [
           "up",
           "-d",

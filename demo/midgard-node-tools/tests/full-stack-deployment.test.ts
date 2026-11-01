@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { access, chmod, constants, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
@@ -269,5 +269,39 @@ describe("host database commands", () => {
       "migrate",
       "initialize-submit",
     ]);
+  });
+});
+
+describe("Cardano providers", () => {
+  it("create the Cardano database directory as the host user before Docker could create it as root", async () => {
+    const value = await deployment({ nonceRecorded: false });
+    const db = join(value.config.nodeRoot, "cardano/db");
+    let writableAtStart = false;
+    value.processes.responses["providers-start"] = async () => {
+      writableAtStart = await access(db, constants.W_OK).then(
+        () => true,
+        () => false,
+      );
+      return null;
+    };
+    await value.steps.providers!.execute(undefined);
+    expect(writableAtStart).toBe(true);
+  });
+
+  it("refuse a Cardano database directory the host user cannot write", async () => {
+    const value = await deployment({ nonceRecorded: false });
+    const db = join(value.config.nodeRoot, "cardano/db");
+    await mkdir(db, { recursive: true });
+    await chmod(db, 0o500);
+    try {
+      await expect(value.steps.providers!.execute(undefined)).rejects.toThrow(
+        "must be writable by the host user",
+      );
+      expect(value.processes.calls.map((call) => call.id)).not.toContain(
+        "providers-start",
+      );
+    } finally {
+      await chmod(db, 0o700);
+    }
   });
 });
