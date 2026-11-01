@@ -131,12 +131,20 @@ describe("a public stack's second-instance workflow", () => {
     expect(await snapshot(inputs.releaseDirectory)).toEqual(release);
   });
   it("refuses to start before the stack signed its public release, creating nothing in its place", async () => {
-    const { fixture, run } = await attachedPublicRun();
+    const { fixture, processes, run } = await attachedPublicRun();
     const release = fixture.primary.config.public!.releaseDirectory;
     await rm(release, { recursive: true });
     await expect(run()).rejects.toThrow(
       `The stack this instance attaches to has not signed its public release in ${release} yet`,
     );
     await expect(readdir(release)).rejects.toThrow("ENOENT");
+    // Docker never saw operator-2's services: no Compose call names a file
+    // of its services directory.
+    const services = join(fixture.attached.runDirectory as string, "services");
+    expect(
+      processes.calls
+        .filter((call) => call.args.some((arg) => arg.startsWith(services)))
+        .map((call) => call.id),
+    ).toEqual([]);
   });
 });
