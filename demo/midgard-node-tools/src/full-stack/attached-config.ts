@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 
 import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
+import { paymentCredentialOf } from "@lucid-evolution/lucid";
 import { validateMnemonic } from "bip39";
 import { parse } from "dotenv";
 
@@ -237,7 +238,20 @@ export async function loadAttachedStackConfig(path: string) {
   for (const seedEnv of Object.values(NODE_WALLETS))
     if (!validateMnemonic(env[seedEnv] ?? ""))
       throw new Error(`Invalid wallet mnemonic in ${seedEnv}`);
-  deriveStackWallets(config, env);
+  const own = deriveStackWallets(config, env);
+  // Operator-2 is another operator: none of its wallets may spend from or
+  // sign as any wallet of the stack it attaches to.
+  const primaryCredentials = Object.entries(
+    deriveStackWallets(primary, primaryEnv),
+  ).map(([role, address]) => [role, paymentCredentialOf(address).hash]);
+  for (const [role, address] of Object.entries(own)) {
+    const credential = paymentCredentialOf(address).hash;
+    const shared = primaryCredentials.find(([, hash]) => hash === credential);
+    if (shared !== undefined)
+      throw new Error(
+        `Operator-2's ${role} wallet shares a payment key with the stack's ${shared[0]} wallet`,
+      );
+  }
   const transport = env[config.da.producerTransportEnv] ?? "";
   if (transport === "" || transport.startsWith("file:"))
     throw new Error(

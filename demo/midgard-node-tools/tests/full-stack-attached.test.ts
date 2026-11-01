@@ -56,6 +56,25 @@ describe("second-instance configuration", () => {
       "A second instance needs its own Compose project",
     );
   });
+  it.each([
+    ["operator", "operator"],
+    ["merge", "user"],
+    ["settlement", "prover"],
+  ])(
+    "refuses an operator-2 %s wallet that is the stack's %s wallet",
+    async (role, primaryRole) => {
+      const fixture = await attachedFixture();
+      const seedEnv = NODE_WALLETS[role as keyof typeof NODE_WALLETS];
+      fixture.env[seedEnv] =
+        fixture.primary.env[
+          fixture.primary.config.wallets[primaryRole]!.seedEnv
+        ]!;
+      await fixture.writeEnv();
+      await expect(loadAttachedStackConfig(fixture.path)).rejects.toThrow(
+        `Operator-2's ${role} wallet shares a payment key with the stack's ${primaryRole} wallet`,
+      );
+    },
+  );
   it("reads the operator-2 example as a second instance of the fast-timer twin", async () => {
     const example = async (name: string) =>
       JSON.parse(
