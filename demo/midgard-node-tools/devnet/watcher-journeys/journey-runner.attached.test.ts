@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { setTimeout as pause } from "node:timers/promises";
 
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
@@ -193,5 +194,65 @@ describe("journey runner on an attached stack", () => {
       });
       expect(existsSync(join(directory, "result.json"))).toBe(false);
     });
+
+    it("stops watching our node's hold when a step after the fault's commit fails", async () => {
+      const failing = [
+        {
+          // The stack watcher's configuration names no public DA to verify.
+          category: "doubleSpend",
+          target: { kind: "attested", txHash: "cd".repeat(32) },
+          failedStage: "production public DA preflight",
+        },
+        {
+          // No removal was observed, and this stack has no chain to await one on.
+          category: "canonicalDecodability",
+          target: { ...refused, removal: undefined },
+          failedStage: "refused fault aged out",
+        },
+      ] as const;
+      const runs = [];
+      for (const { category, target, failedStage } of failing) {
+        const stack = await runningStackWatcher(liveStatus());
+        stack.served.nodeReadyz = awaitingDa;
+        const session = await openAttachedJourneySession(
+          stack.context,
+          stack.options(),
+        );
+        const stage = async (
+          input: JourneyFixtureStage,
+        ): Promise<StagedJourney> => {
+          await input.onFaultCommitted?.(fault);
+          return {
+            predecessor: fault,
+            current: fault,
+            target,
+            commitHonestSuccessor: () =>
+              Promise.reject(new Error("the run fails before its successor")),
+          };
+        };
+        try {
+          await expect(
+            runAutonomousWatcherJourney(
+              stack.runDirectory,
+              { category, stage },
+              { session },
+            ),
+          ).rejects.toThrow();
+        } finally {
+          await session.close();
+        }
+        expect(
+          await readJson(
+            join(stack.runDirectory, `work/journeys/${category}/failure.json`),
+          ),
+        ).toMatchObject({ activeStage: failedStage });
+        expect(stack.nodeRequests).toContain("/readyz");
+        runs.push({ stack, reads: stack.nodeRequests.length });
+      }
+      // A watch still running reads /readyz again within its 5 s interval.
+      await pause(6_000);
+      for (const { stack, reads } of runs)
+        expect(stack.nodeRequests).toHaveLength(reads);
+    }, 30_000);
   });
 });

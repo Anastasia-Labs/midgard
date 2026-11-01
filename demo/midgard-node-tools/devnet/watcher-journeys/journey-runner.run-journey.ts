@@ -101,11 +101,13 @@ export const runJourney = async (
     });
   const polls = { stage, poll, pollWhileReplaying };
   let successorPort: JourneySuccessorPort | undefined;
+  let closeMode: (() => Promise<void>) | undefined;
   try {
     const mode =
       session.mode === "devnet"
         ? devnetJourneyMode(session)
         : attachedJourneyMode(session, directory);
+    closeMode = mode.close;
     const { releaseFinality } = session;
     const baselineStartedAt = new Date().toISOString();
     const baseline = await mode.captureWorkflowBaseline(category);
@@ -376,6 +378,7 @@ export const runJourney = async (
     throw cause;
   } finally {
     await successorPort?.close();
+    await closeMode?.();
     console.info(
       `Journey ${execution.kind} evidence retained at ${directory}; succeeded=${succeeded}`,
     );

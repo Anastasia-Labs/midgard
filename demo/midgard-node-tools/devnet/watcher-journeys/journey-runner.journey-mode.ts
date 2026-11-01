@@ -97,4 +97,6 @@ export type JourneyRunMode = Readonly<{
       polls: JourneyRunPolls;
     }>,
   ): Promise<unknown>;
+  /** Stops what the mode still runs for the family, whatever ended its run. */
+  close?(): Promise<void>;
 }>;

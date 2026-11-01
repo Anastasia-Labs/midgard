@@ -170,5 +170,10 @@ export const attachedJourneyMode = (
         holdObservations: observations.length,
       };
     },
+    // A run that fails between the fault's commit and its successor or
+    // refusal would otherwise leave the watch polling our node.
+    close: async () => {
+      await holdWatch.stop();
+    },
   };
 };
