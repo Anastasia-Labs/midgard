@@ -299,10 +299,11 @@ describe("runtime services step", () => {
         .map(([name]) => name);
     // The node's part of the services file the configuration step generates.
     const servicesDirectory = join(directory, "run/services");
+    await writeFile(join(servicesDirectory, "producer.json"), "{}");
     await writeFile(
       join(servicesDirectory, "compose.json"),
       JSON.stringify({
-        services: stackNodeServices(processes, {
+        services: await stackNodeServices(processes, {
           envFile: [
             { path: join(servicesDirectory, "node.env"), required: false },
           ],

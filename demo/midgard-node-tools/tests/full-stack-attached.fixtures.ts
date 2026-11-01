@@ -224,6 +224,40 @@ async function renderCompose(call: RecordedCall, projectDirectory: string) {
   };
 }
 
+/** Compose's configuration hash of one service for a recorded Compose call: `up -d` recreates its container exactly when this changes. */
+export async function composeServiceHash(
+  call: RecordedCall,
+  projectDirectory: string,
+  service: string,
+) {
+  const files = call.args.flatMap((arg, index) =>
+    arg === "-f" ? [call.args[index + 1]!] : [],
+  );
+  const envFile = call.args[call.args.indexOf("--env-file") + 1]!;
+  const { stdout } = await promisify(execFile)(
+    "docker",
+    [
+      "compose",
+      "--project-directory",
+      projectDirectory,
+      "--env-file",
+      envFile,
+      ...files.flatMap((file) => [
+        "-f",
+        isAbsolute(file) ? file : join(checkoutNodeRoot, file),
+      ]),
+      "config",
+      "--hash",
+      service,
+    ],
+    { env: { PATH: process.env.PATH!, HOME: process.env.HOME! } },
+  );
+  const [name, hash] = stdout.trim().split(/\s+/u);
+  if (name !== service || hash === undefined)
+    throw new Error(`Unexpected compose hash output ${stdout}`);
+  return hash;
+}
+
 /** The stack's Postgres as operator-2's controller reads it. */
 function fakePostgres() {
   let identity: { run_id: string; manifest_id: string } | null = null;

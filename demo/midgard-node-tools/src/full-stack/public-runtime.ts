@@ -16,7 +16,7 @@ import {
   signDeploymentRelease,
   SIGNED_RELEASE_FILES,
 } from "../sign-deployment-release.js";
-import { composeYaml, override } from "./compose-yaml.js";
+import { composeYaml, mountedFilesLabels, override } from "./compose-yaml.js";
 import type { StackConfig } from "./config.js";
 import { stackPaths } from "./deployment.js";
 import { readJsonIfPresent } from "./journal.js";
@@ -377,6 +377,7 @@ export async function publicNodeServices(
   const services: Record<string, unknown> = {
     "midgard-node": {
       env_file: input.envFile,
+      labels: await mountedFilesLabels([input.producer]),
       volumes: [`${input.producer}:/app/stack/producer.json:ro`, ...volumes],
       healthcheck: {
         test: [

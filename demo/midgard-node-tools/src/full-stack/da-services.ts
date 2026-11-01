@@ -11,6 +11,7 @@ import { writeTextFileAtomic } from "midgard-node/files/atomic-write";
 
 import { L1OriginUndeterminedError } from "../l1-origin.js";
 import { configureStackCommittee } from "./committee.js";
+import { mountedFilesLabels } from "./compose-yaml.js";
 import { stackPaths } from "./deployment.js";
 import { readJsonIfPresent } from "./journal.js";
 import { containerChainSync, shareWithContainers } from "./native-ledger.js";
@@ -219,6 +220,7 @@ export async function generateDaServices(processes: StackProcesses) {
       network_mode: "host",
       restart: "unless-stopped",
       env_file: [envFile],
+      labels: await mountedFilesLabels([memberManifest, manifestPath]),
       volumes: [
         mount(memberManifest, "/config/committee.json"),
         mount(manifestPath, "/config/manifest.json"),
@@ -251,6 +253,10 @@ export async function generateDaServices(processes: StackProcesses) {
     network_mode: "host",
     restart: "unless-stopped",
     env_file: [publicEnv],
+    labels: await mountedFilesLabels([
+      join(directory, "committee-0.json"),
+      manifestPath,
+    ]),
     volumes: [
       mount(join(directory, "committee-0.json"), "/config/committee.json"),
       mount(manifestPath, "/config/manifest.json"),

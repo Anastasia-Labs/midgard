@@ -278,7 +278,7 @@ function attachedConfigurationStep(processes: StackProcesses): StackStep {
       }
       // Only the node, its migration and its Postgres: never the stack's
       // Cardano node, which this node reads through its socket.
-      const node = stackNodeServices(processes, {
+      const node = await stackNodeServices(processes, {
         envFile: [{ path: join(directory, "node.env"), required: false }],
         producer: join(directory, "producer.json"),
       });

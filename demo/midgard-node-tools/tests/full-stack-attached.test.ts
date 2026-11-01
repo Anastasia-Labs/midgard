@@ -10,9 +10,12 @@ import {
   parseAttachedStackConfig,
 } from "../src/full-stack/attached-config.js";
 import { parseStackConfig } from "../src/full-stack/config.js";
+import { generateDaServices } from "../src/full-stack/da-services.js";
+import { StackProcesses } from "../src/full-stack/process.js";
 import {
   attachedFixture,
   attachedRun,
+  composeServiceHash,
   NODE_WALLETS,
   OPERATOR2_TRANSPORT,
   removeAttachedFixtures,
@@ -240,6 +243,30 @@ describe("second-instance workflow", () => {
     const ids = processes.calls.map((call) => call.id);
     expect(ids).not.toContain("runtime-start");
     expect(ids).not.toContain("operator-register-or-resume");
+  });
+  it("recreates operator-2's node when the stack's producer manifest changes", async () => {
+    const { fixture, processes, run } = await attachedRun();
+    await run();
+    const hash = () =>
+      composeServiceHash(
+        processes.calls.find((call) => call.id === "runtime-start")!,
+        fixture.operator2,
+        "midgard-node",
+      );
+    const before = await hash();
+    // The stack moves its committee's transport ports and regenerates its
+    // producer manifests; operator-2's node environment stays the same.
+    fixture.primary.config.da.ports.committeeTransportBase += 100;
+    await generateDaServices(
+      new StackProcesses(fixture.primary.config, {
+        ...fixture.primary.env,
+        L1_ORIGIN: formatL1Origin(fixture.origin),
+      }),
+    );
+    processes.calls.length = 0;
+    await run();
+    expect(processes.calls.map((call) => call.id)).toContain("runtime-start");
+    expect(await hash()).not.toBe(before);
   });
   it("resumes a run stopped after attaching, before its node first ran", async () => {
     const { processes, run } = await attachedRun();

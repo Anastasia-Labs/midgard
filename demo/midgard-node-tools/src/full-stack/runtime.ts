@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { assertNodeFollowerEnvironment } from "../l1-origin.js";
+import { mountedFilesLabels } from "./compose-yaml.js";
 import {
   generateDaServices,
   stackDaReaderGrantSql,
@@ -136,7 +137,7 @@ export function nodeEnvironment(
  * locally built node and its migration, reading node.env, with the producer
  * manifest and the in-stack Cardano node's socket and configuration.
  */
-export function stackNodeServices(
+export async function stackNodeServices(
   processes: StackProcesses,
   input: { envFile: unknown; producer: string },
 ) {
@@ -144,6 +145,7 @@ export function stackNodeServices(
   return {
     "midgard-node": {
       env_file: input.envFile,
+      labels: await mountedFilesLabels([input.producer]),
       volumes: [`${input.producer}:/app/stack/producer.json:ro`, ...volumes],
     },
     "midgard-node-migrate": { env_file: input.envFile, volumes },
@@ -255,10 +257,10 @@ export function runtimeSteps(processes: StackProcesses): StackStep[] {
             ...da.services,
             ...watcher.services,
             ...(publicNode?.services ??
-              stackNodeServices(processes, {
+              (await stackNodeServices(processes, {
                 envFile: nodeEnvFile,
                 producer: da.producer,
-              })),
+              }))),
           },
           volumes: {
             "da-postgres-data": {},

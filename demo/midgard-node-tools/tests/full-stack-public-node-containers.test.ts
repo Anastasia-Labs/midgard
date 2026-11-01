@@ -139,6 +139,7 @@ describe("public node containers", () => {
     // with the node.env the services step writes.
     const services = join(config.runDirectory, "services");
     await mkdir(services, { recursive: true });
+    await writeFile(join(services, "producer.json"), "{}");
     const compose = join(services, "compose.json");
     const node = await publicNodeServices(processes, {
       servicesDirectory: services,

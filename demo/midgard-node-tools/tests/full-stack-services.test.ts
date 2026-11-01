@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import {
   copyFile,
   mkdir,
@@ -9,6 +10,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 
 import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 import { entropyToMnemonic } from "bip39";
@@ -220,12 +222,11 @@ it("generates committee configurations accepted by the real loader: the run's L1
   }
 });
 
-it("admits a second operator's producer to every committee member by its address and peer id", async () => {
-  // Operator-2's node listens on its own host DA port; only its peer id is shared.
-  const { peerId } = await loadDaLibp2pIdentity(`seed:${"0b".repeat(32)}`);
-  const operator2 = `/ip4/127.0.0.1/tcp/39012/p2p/${peerId}`;
+/** A stack whose deployment is initialized for its committee, before its DA services are generated. */
+async function committeeStack(admittedProducers?: string[]) {
   const { directory, config } = await stackFixture((sample) => {
-    sample.da.admittedProducers = [operator2];
+    if (admittedProducers !== undefined)
+      sample.da.admittedProducers = admittedProducers;
   });
   const env = {
     ...stackEnvironment(config),
@@ -251,7 +252,21 @@ it("admits a second operator's producer to every committee member by its address
     "deploymentInfo/contract-deployment-info.json",
   );
   await copyFile(fixture.path, manifest);
-  const generated = await generateDaServices(new StackProcesses(config, env));
+  return {
+    directory,
+    config,
+    committee,
+    manifest,
+    generate: () => generateDaServices(new StackProcesses(config, env)),
+  };
+}
+
+it("admits a second operator's producer to every committee member by its address and peer id", async () => {
+  // Operator-2's node listens on its own host DA port; only its peer id is shared.
+  const { peerId } = await loadDaLibp2pIdentity(`seed:${"0b".repeat(32)}`);
+  const operator2 = `/ip4/127.0.0.1/tcp/39012/p2p/${peerId}`;
+  const { committee, manifest, generate } = await committeeStack([operator2]);
+  const generated = await generate();
   const producers = await Promise.all(
     ["producer.json", "producer-host.json"].map(
       async (name) =>
@@ -283,4 +298,57 @@ it("admits a second operator's producer to every committee member by its address
       operator2,
     ]);
   }
+});
+
+it("recreates the committee and retained-DA containers when their manifest changes", async () => {
+  const { peerId } = await loadDaLibp2pIdentity(`seed:${"0b".repeat(32)}`);
+  const stack = await committeeStack();
+  // Compose's own configuration hash: `up -d` recreates a container exactly
+  // when its service's hash changes.
+  const hashes = async () => {
+    const generated = await stack.generate();
+    const compose = join(generated.directory, "compose-hash-probe.json");
+    await writeFile(
+      compose,
+      JSON.stringify({
+        services: generated.services,
+        volumes: { "da-postgres-data": {}, ...generated.volumes },
+      }),
+    );
+    const { stdout } = await promisify(execFile)(
+      "docker",
+      [
+        "compose",
+        "--project-name",
+        "midgard-hash-probe",
+        "--project-directory",
+        stack.directory,
+        "-f",
+        compose,
+        "config",
+        "--hash",
+        "*",
+      ],
+      { env: { PATH: process.env.PATH!, HOME: process.env.HOME! } },
+    );
+    return Object.fromEntries(
+      stdout
+        .trim()
+        .split("\n")
+        .map((line) => line.trim().split(/\s+/u) as [string, string]),
+    );
+  };
+  const before = await hashes();
+  // A later run admits operator-2: only the mounted committee manifests change.
+  stack.config.da.admittedProducers = [
+    `/ip4/127.0.0.1/tcp/39012/p2p/${peerId}`,
+  ];
+  const after = await hashes();
+  for (const member of stack.committee)
+    expect(after[`da-committee-${member.signerIndex}`]).not.toBe(
+      before[`da-committee-${member.signerIndex}`],
+    );
+  expect(after["public-retained-da"]).not.toBe(before["public-retained-da"]);
+  // A service whose inputs did not change keeps its container.
+  expect(after["da-postgres"]).toBe(before["da-postgres"]);
 });
