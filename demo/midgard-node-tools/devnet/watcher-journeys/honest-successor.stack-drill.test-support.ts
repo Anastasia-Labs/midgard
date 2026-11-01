@@ -39,8 +39,15 @@ export const drillDirectories: string[] = [];
 /** A shift of the scripted scheduler: five slots. */
 const SHIFT_MS = 5_000;
 
-/** Our node and its L1, scripted, around one drill family. */
-export const stackDrill = async () => {
+/**
+ * Our node and its L1, scripted, around one drill family. Slots are seconds
+ * of wall-clock time, which our node's hold observations are stamped with:
+ * the drill starts at `startSlot`, by default the fault's commit slot.
+ */
+export const stackDrill = async (options: { startSlot?: number } = {}) => {
+  const epochMs = Date.now() - (options.startSlot ?? 10) * 1_000;
+  /** The time of `slot`. */
+  const at = (slot: number) => epochMs + slot * 1_000;
   const directory = await mkdtemp(join(tmpdir(), "honest-successor-"));
   drillDirectories.push(directory);
   const seedPhrase = generateSeedPhrase();
@@ -131,7 +138,7 @@ export const stackDrill = async () => {
       holdPollIntervalMs: 5,
       schedulerPolicyId,
       shiftDurationMs: SHIFT_MS,
-      slotToUnixTime: (slot) => slot * 1_000,
+      slotToUnixTime: at,
     });
   /** Our node commits `block` carrying `transactions`, published and on L1. */
   const commits = async (
@@ -188,8 +195,9 @@ export const stackDrill = async () => {
   };
   /** The scheduler appoints `operator` from `slot`, one second a slot. */
   const appoints = (operator: string, slot: number) =>
-    appointments.push({ operator, startTime: slot * 1_000, slot });
+    appointments.push({ operator, startTime: at(slot), slot });
   return {
+    at,
     directory,
     predecessor,
     fault,

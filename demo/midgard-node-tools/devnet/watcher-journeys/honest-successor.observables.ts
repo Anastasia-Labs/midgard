@@ -255,10 +255,13 @@ export type OperatorShiftOnFault = Readonly<{
 
 /**
  * Our operator's shifts, as L1's scheduler appointed them, that overlap the
- * window in which the fault was the queue's tail: from its commit to its
- * removal (its state-queue output spent), or to `untilSlot` while it is
- * unspent. The fault's commit landed in operator-2's shift, so an
- * appointment of ours that overlaps the window was made after it.
+ * window in which our node knew the fault invalid while it was the queue's
+ * tail: from our node's first `landed_block_invalid` report on it
+ * (`heldFromMs`) to its removal (its state-queue output spent), or to
+ * `untilSlot` while it is unspent. A shift that ended before our node held
+ * the fault proves nothing about its refusal to build on it. The fault's
+ * commit landed in operator-2's shift, so an appointment of ours that
+ * overlaps the window was made after it.
  */
 export const readOperatorShiftsOnFault = async (
   input: Readonly<{
@@ -270,9 +273,11 @@ export const readOperatorShiftsOnFault = async (
     shiftDurationMs: number;
     slotToUnixTime(slot: number): number;
     untilSlot: number;
+    heldFromMs: number;
   }>,
   fetchImpl: typeof fetch = fetch,
 ): Promise<{
+  faultCommittedMs: number;
   fromMs: number;
   toMs: number;
   ourShifts: OperatorShiftOnFault[];
@@ -298,7 +303,8 @@ export const readOperatorShiftsOnFault = async (
     throw new Error(
       `Kupo indexes no state-queue output of the fault ${input.faultHeaderHash}`,
     );
-  const fromMs = input.slotToUnixTime(fault.createdAtSlot);
+  const faultCommittedMs = input.slotToUnixTime(fault.createdAtSlot);
+  const fromMs = Math.max(faultCommittedMs, input.heldFromMs);
   const toMs = input.slotToUnixTime(fault.spentAtSlot ?? input.untilSlot);
   const appointments = await readKupoMatches(
     input.kupoUrl,
@@ -322,18 +328,22 @@ export const readOperatorShiftsOnFault = async (
     const endTime = startTime + input.shiftDurationMs;
     if (startTime < toMs && endTime > fromMs)
       ourShifts.push({ txHash: match.transaction_id, startTime, endTime });
-    if (startTime >= fromMs && startTime < (ourNextShiftMs ?? Infinity))
+    if (
+      startTime >= faultCommittedMs &&
+      startTime < (ourNextShiftMs ?? Infinity)
+    )
       ourNextShiftMs = startTime;
   }
   return {
+    faultCommittedMs,
     fromMs,
     toMs,
     ourShifts,
     measured: {
       faultCommitToConvictionMs:
-        fault.spentAtSlot === undefined ? null : toMs - fromMs,
+        fault.spentAtSlot === undefined ? null : toMs - faultCommittedMs,
       faultCommitToOurNextShiftMs:
-        ourNextShiftMs === undefined ? null : ourNextShiftMs - fromMs,
+        ourNextShiftMs === undefined ? null : ourNextShiftMs - faultCommittedMs,
     },
   };
 };

@@ -58,9 +58,9 @@ describe("stack successor", () => {
       transfer: txId,
       successor: ours.headerHash,
       faultTail: {
-        fromMs: 10_000,
-        toMs: 20_000,
-        ourShifts: [{ startTime: 14_000, endTime: 19_000 }],
+        faultCommittedMs: drill.at(10),
+        toMs: drill.at(20),
+        ourShifts: [{ startTime: drill.at(14), endTime: drill.at(19) }],
         // What the first live run measures the late-shift lead from.
         measured: {
           faultCommitToConvictionMs: 10_000,
@@ -210,6 +210,33 @@ describe("stack successor", () => {
         faultCommitToOurNextShiftMs: 4_000,
       },
     });
+  });
+
+  it("takes no shift of ours that ended before our node first held the fault", async () => {
+    // Our node first reports the fault invalid at slot 20.
+    const drill = await stackDrill({ startSlot: 20 });
+    const port = drill.port();
+    await port.afterFaultLanded();
+    drill.node.readyz = faultHold(drill.fault.headerHash);
+    await drill.observedHold();
+    // Our shift began after the fault's commit (slot 10) and ended before
+    // our node held it: no evidence it refused to build on the fault.
+    drill.appoints(honestOperator, 11);
+    drill.appoints(operator2, 16);
+    drill.removed(25);
+    drill.node.readyz = { ready: true, reasons: [] };
+    await drill.commits(
+      await headerOn(drill.predecessor.headerHash, honestOperator, 3n),
+      [drill.sent[0]!.txId],
+    );
+    await expect(port.commit()).rejects.toThrow(
+      /had no shift while the fault .* was the tail/u,
+    );
+    const tail = JSON.parse(
+      await readFile(join(drill.directory, "fault-tail.json"), "utf8"),
+    ) as { fromMs: number; ourShifts: unknown[] };
+    expect(tail.ourShifts).toEqual([]);
+    expect(tail.fromMs).toBeGreaterThanOrEqual(drill.at(20));
   });
 
   it("fails when our node never held the fault", async () => {

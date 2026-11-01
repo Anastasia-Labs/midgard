@@ -230,7 +230,8 @@ export const stackSuccessorPort = (
         throw new Error("The drill's successor transfer was never submitted");
       // Observable 1: the hold was on the fault while it was the tail.
       const observations = await holdWatch.observations(faultHeaderHash);
-      if (!observations.some(({ hold }) => hold?.state === "held"))
+      const firstHeld = observations.find(({ hold }) => hold?.state === "held");
+      if (firstHeld === undefined)
         throw new Error(
           `Our node never reported ${LANDED_BLOCK_INVALID} for the fault ${input.fault.headerHash} while it was the tail; the refusal was not observed`,
         );
@@ -312,7 +313,7 @@ export const stackSuccessorPort = (
           `Our node still holds the fault after its successor: ${JSON.stringify(after)}`,
         );
       // Our node could have built on the fault: its shift, or its pending
-      // commit, overlapped the window in which the fault was the tail.
+      // commit, overlapped the window in which it held the fault as the tail.
       const faultTail = {
         ...(await readOperatorShiftsOnFault(
           {
@@ -324,6 +325,7 @@ export const stackSuccessorPort = (
             shiftDurationMs: input.shiftDurationMs,
             slotToUnixTime: input.slotToUnixTime,
             untilSlot: onL1!.createdAtSlot,
+            heldFromMs: Date.parse(firstHeld.observedAt),
           },
           fetchImpl,
         )),
