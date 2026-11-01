@@ -164,20 +164,20 @@ Figures come from `config/deployments/preprod-rehearsal.yaml` and the node's
 DA availability settings. Every wallet also needs fees and a plain output of
 at least 5 ADA for collateral.
 
-| Wallet                                 | Needs                                                                                              | Example `minimumLovelace`    |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------- | ---------------------------- |
-| Operator-1                             | 1,405 ADA: the 5 ADA pool floor, the 500 ADA DA bond and the 900 ADA operator bond                 | 1,410 ADA                    |
-| Operator-2                             | The 900 ADA operator bond                                                                          | 910 ADA, in its own config   |
-| Operator-1 merge                       | Fees only                                                                                          | 1,000 ADA                    |
-| Operator-2 merge                       | Fees only                                                                                          | 1,000 ADA, in its own config |
-| Settlement, each operator              | Fees only                                                                                          | 1,000 ADA each               |
-| Reference publisher                    | The published scripts' min-ADA, about 5,000 ADA                                                    | 5,000 ADA                    |
-| Operator-2 reference                   | Fees and collateral only: it publishes no scripts                                                  | 10 ADA, in its own config    |
-| Prover (watcher)                       | Per dispute: the 2,500 ADA bond, a 5 ADA collateral floor and a 2 ADA proof output                 | 2,510 ADA                    |
-| Availability challenger (watcher)      | Per challenge: the 2,500 ADA bond, a 27 ADA record, up to 1.2 ADA timeout fee and 5 ADA collateral | 2,540 ADA                    |
-| DA submitter                           | Attestation fees and collateral                                                                    | 1,000 ADA                    |
-| Journey user, recipient                | One 20 ADA deposit plus 10 ADA of fees; the withdrawal order's ADA and fee                         | 100 ADA each                 |
-| Any wallet topping up the DA bond pool | At least 5 ADA per top-up; a slash removes 100 ADA from the pool                                   | -                            |
+| Wallet                                 | Needs                                                                                                                                                                                                          | Example `minimumLovelace`    |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| Operator-1                             | 1,405 ADA: the 5 ADA pool floor, the 500 ADA DA bond and the 900 ADA operator bond                                                                                                                             | 1,410 ADA                    |
+| Operator-2                             | The 900 ADA operator bond                                                                                                                                                                                      | 910 ADA, in its own config   |
+| Operator-1 merge                       | Fees only                                                                                                                                                                                                      | 1,000 ADA                    |
+| Operator-2 merge                       | Fees only                                                                                                                                                                                                      | 1,000 ADA, in its own config |
+| Settlement, each operator              | Fees only                                                                                                                                                                                                      | 1,000 ADA each               |
+| Reference publisher                    | The published scripts' min-ADA, about 5,000 ADA                                                                                                                                                                | 5,000 ADA                    |
+| Operator-2 reference                   | Fees and collateral only: it publishes no scripts                                                                                                                                                              | 10 ADA, in its own config    |
+| Prover (watcher)                       | Per dispute: the 2,500 ADA bond, a 5 ADA collateral floor and a 2 ADA proof output, plus wallet-paid dispute-step fees: 34 steps × the 8,884,976 lovelace maximum transaction fee × 2 operators, about 604 ADA | 3,115 ADA                    |
+| Availability challenger (watcher)      | Per challenge: the 2,500 ADA bond, a 27 ADA record, up to 1.2 ADA timeout fee and 5 ADA collateral                                                                                                             | 2,540 ADA                    |
+| DA submitter                           | Attestation fees and collateral                                                                                                                                                                                | 1,000 ADA                    |
+| Journey user, recipient                | One 20 ADA deposit plus 10 ADA of fees; the withdrawal order's ADA and fee                                                                                                                                     | 100 ADA each                 |
+| Any wallet topping up the DA bond pool | At least 5 ADA per top-up; a slash removes 100 ADA from the pool                                                                                                                                               | -                            |
 
 ## Fast-timer twin
 

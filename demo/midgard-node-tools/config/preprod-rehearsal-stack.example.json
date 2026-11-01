@@ -35,7 +35,7 @@
     },
     "prover": {
       "seedEnv": "STACK_PROVER_SEED",
-      "minimumLovelace": "2510000000"
+      "minimumLovelace": "3115000000"
     },
     "availability": {
       "seedEnv": "STACK_AVAILABILITY_SEED",
