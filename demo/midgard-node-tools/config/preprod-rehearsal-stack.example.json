@@ -3,7 +3,7 @@
   "envFile": "/absolute/path/to/midgard-rehearsal/demo/midgard-node/.env",
   "runDirectory": "/absolute/path/to/midgard-rehearsal/demo/midgard-node/logs/preprod-rehearsal-stack",
   "endpoint": "https://127.0.0.1:3000",
-  "timeoutMs": 691200000,
+  "timeoutMs": 14400000,
   "wallets": {
     "operator": {
       "seedEnv": "L1_OPERATOR_SEED_PHRASE",

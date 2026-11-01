@@ -129,6 +129,13 @@ with the address operator-2's node listens on and its peer id, or `--check`
 refuses it. The second-instance mode that runs operator-2's node attaches only
 to a `preprod-testing` stack, such as the fast-timer twin below.
 
+The example's `timeoutMs` (4 hours) bounds each wait of one run, not the 7-day
+block maturity before the withdrawal pays out. When a run stops with
+`exact canonical withdrawal payout did not complete within 14400000ms; saved
+state was preserved`, run `e2e-stack` again with the same configuration: the
+withdrawal step finds its saved receipt and waits for the same payout again,
+until it lands.
+
 Figures come from `config/deployments/preprod-rehearsal.yaml` and the node's
 DA availability settings. Every wallet also needs fees and a plain output of
 at least 5 ADA for collateral.
