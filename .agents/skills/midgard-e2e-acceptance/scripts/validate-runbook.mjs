@@ -4,9 +4,11 @@
 // and the node commands they call, the stack's stop messages, and the
 // release-readiness gates the runbook says the stack does not produce.
 //
-// Usage: node validate-runbook.mjs [--skill-dir <dir>]
+// Usage: node validate-runbook.mjs [--skill-dir <dir>] [--full-stack-dir <dir>]
 // `--skill-dir` validates a copy of the skill against this repository's
 // sources; the tests use it to prove each check fails on a stale document.
+// `--full-stack-dir` reads the stack's sources from a copy of
+// demo/midgard-node-tools/src/full-stack, to prove a source check fails.
 import { spawnSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -24,7 +26,11 @@ const skillDir =
     : resolve(scriptDir, "..");
 
 const tools = join(repoRoot, "demo/midgard-node-tools");
-const fullStack = join(tools, "src/full-stack");
+const fullStackFlag = process.argv.indexOf("--full-stack-dir");
+const fullStack =
+  fullStackFlag >= 0
+    ? resolve(process.argv[fullStackFlag + 1] ?? "")
+    : join(tools, "src/full-stack");
 const paths = {
   skill: join(skillDir, "SKILL.md"),
   live: join(skillDir, "references/live-acceptance.md"),
@@ -336,10 +342,19 @@ const order = [
   "await preflightProducerTransport(",
   '"runtime-start"',
 ].map((marker) => [marker, runtimeSource.indexOf(marker)]);
+// The function body only: from its declaration to its closing brace, the
+// first one at the start of a line.
+const nodeStartSource = stackSources["node-start.ts"] ?? "";
+const preflightStart = nodeStartSource.indexOf(
+  "export async function preflightProducerTransport(",
+);
+const preflightEnd = nodeStartSource.indexOf("\n}\n", preflightStart);
 if (
-  !/export async function preflightProducerTransport\([\s\S]*?"producer-da-preflight"/.test(
-    stackSources["node-start.ts"] ?? "",
-  )
+  preflightStart < 0 ||
+  preflightEnd < 0 ||
+  !nodeStartSource
+    .slice(preflightStart, preflightEnd)
+    .includes('"producer-da-preflight"')
 ) {
   fail(
     "node-start.ts no longer runs producer-da-preflight in preflightProducerTransport; update the runbook",

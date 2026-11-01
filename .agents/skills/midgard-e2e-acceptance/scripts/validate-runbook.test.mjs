@@ -45,6 +45,61 @@ test("the committed runbook matches the sources", () => {
   assert.equal(JSON.parse(result.stdout).status, "ok");
 });
 
+// Validates the committed skill against a copy of the stack's sources with
+// one file edited.
+const validateEditedStack = (file, edit) => {
+  const copy = mkdtempSync(join(tmpdir(), "e2e-runbook-stack-"));
+  try {
+    cpSync(
+      resolve(skillDir, "../../../demo/midgard-node-tools/src/full-stack"),
+      copy,
+      {
+        recursive: true,
+      },
+    );
+    const path = join(copy, file);
+    const before = readFileSync(path, "utf8");
+    const after = edit(before);
+    assert.notEqual(after, before, "the edit must change the source");
+    writeFileSync(path, after);
+    return validate(["--full-stack-dir", copy]);
+  } finally {
+    rmSync(copy, { recursive: true, force: true });
+  }
+};
+
+test("a producer preflight that no longer runs producer-da-preflight fails, even when a later function does", () => {
+  const result = validateEditedStack("node-start.ts", (text) =>
+    text
+      .replace('"producer-da-preflight"', '"producer-da-check"')
+      .concat(
+        '\nexport const laterCheck = (processes: StackProcesses) =>\n  processes.node("producer-da-preflight", []);\n',
+      ),
+  );
+  assert.equal(result.status, 1);
+  assert.match(
+    result.stderr,
+    /node-start\.ts no longer runs producer-da-preflight in preflightProducerTransport/,
+  );
+});
+
+test("the committed runbook matches an unedited copy of the stack's sources", () => {
+  const copy = mkdtempSync(join(tmpdir(), "e2e-runbook-stack-"));
+  try {
+    cpSync(
+      resolve(skillDir, "../../../demo/midgard-node-tools/src/full-stack"),
+      copy,
+      {
+        recursive: true,
+      },
+    );
+    const result = validate(["--full-stack-dir", copy]);
+    assert.equal(result.status, 0, result.stderr);
+  } finally {
+    rmSync(copy, { recursive: true, force: true });
+  }
+});
+
 test("a retired hand-run command fails as stale", () => {
   const result = validateEdited(live, (text) =>
     text.replace(
