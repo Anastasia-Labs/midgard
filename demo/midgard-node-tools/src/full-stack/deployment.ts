@@ -108,18 +108,20 @@ export async function checkWallets(processes: StackProcesses) {
 }
 
 /**
- * The Mithril bootstrap restores the chain into this directory as an unprivileged
- * user. Docker creates a missing bind-mount directory as root, so the stack
- * creates it first as the host user.
+ * The snapshot bootstraps restore the chain and the Kupo index into these
+ * directories as an unprivileged user. Docker creates a missing bind-mount
+ * directory as root, so the stack creates them first as the host user.
  */
-async function prepareCardanoDatabase(processes: StackProcesses) {
-  const db = join(processes.config.nodeRoot, "cardano/db");
-  await mkdir(db, { recursive: true, mode: 0o700 });
-  await access(db, constants.W_OK).catch(() => {
-    throw new Error(
-      `${db} must be writable by the host user, which restores the Cardano database`,
-    );
-  });
+async function prepareCardanoDatabases(processes: StackProcesses) {
+  for (const name of ["cardano/db", "cardano/kupo"]) {
+    const directory = join(processes.config.nodeRoot, name);
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    await access(directory, constants.W_OK).catch(() => {
+      throw new Error(
+        `${directory} must be writable by the host user, which restores its snapshot`,
+      );
+    });
+  }
 }
 
 export function deploymentSteps(processes: StackProcesses): StackStep[] {
@@ -138,7 +140,7 @@ export function deploymentSteps(processes: StackProcesses): StackStep[] {
         return { status: "retry" };
       },
       execute: async () => {
-        await prepareCardanoDatabase(processes);
+        await prepareCardanoDatabases(processes);
         await processes.compose("providers-start", [
           "up",
           "-d",

@@ -273,35 +273,44 @@ describe("host database commands", () => {
 });
 
 describe("Cardano providers", () => {
-  it("create the Cardano database directory as the host user before Docker could create it as root", async () => {
+  it("create the snapshot directories as the host user before Docker could create them as root", async () => {
     const value = await deployment({ nonceRecorded: false });
-    const db = join(value.config.nodeRoot, "cardano/db");
-    let writableAtStart = false;
+    const directories = ["cardano/db", "cardano/kupo"].map((name) =>
+      join(value.config.nodeRoot, name),
+    );
+    let writableAtStart: boolean[] = [];
     value.processes.responses["providers-start"] = async () => {
-      writableAtStart = await access(db, constants.W_OK).then(
-        () => true,
-        () => false,
+      writableAtStart = await Promise.all(
+        directories.map((directory) =>
+          access(directory, constants.W_OK).then(
+            () => true,
+            () => false,
+          ),
+        ),
       );
       return null;
     };
     await value.steps.providers!.execute(undefined);
-    expect(writableAtStart).toBe(true);
+    expect(writableAtStart).toEqual([true, true]);
   });
 
-  it("refuse a Cardano database directory the host user cannot write", async () => {
-    const value = await deployment({ nonceRecorded: false });
-    const db = join(value.config.nodeRoot, "cardano/db");
-    await mkdir(db, { recursive: true });
-    await chmod(db, 0o500);
-    try {
-      await expect(value.steps.providers!.execute(undefined)).rejects.toThrow(
-        "must be writable by the host user",
-      );
-      expect(value.processes.calls.map((call) => call.id)).not.toContain(
-        "providers-start",
-      );
-    } finally {
-      await chmod(db, 0o700);
-    }
-  });
+  it.each(["cardano/db", "cardano/kupo"])(
+    "refuse a %s directory the host user cannot write",
+    async (name) => {
+      const value = await deployment({ nonceRecorded: false });
+      const db = join(value.config.nodeRoot, name);
+      await mkdir(db, { recursive: true });
+      await chmod(db, 0o500);
+      try {
+        await expect(value.steps.providers!.execute(undefined)).rejects.toThrow(
+          "must be writable by the host user",
+        );
+        expect(value.processes.calls.map((call) => call.id)).not.toContain(
+          "providers-start",
+        );
+      } finally {
+        await chmod(db, 0o700);
+      }
+    },
+  );
 });
