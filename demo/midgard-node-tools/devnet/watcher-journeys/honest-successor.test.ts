@@ -136,6 +136,12 @@ describe("stack successor", () => {
     const port = drill.port();
     await port.afterFaultLanded();
     expect(drill.sent).toHaveLength(2);
+    // The second attempt staged its own transfer, bound to this fault.
+    expect(
+      (JSON.parse(await readFile(path, "utf8")) as Record<string, unknown>)[
+        "faultHeaderHash"
+      ],
+    ).toBe(drill.fault.headerHash);
     await pause(30);
     await expect(port.commit()).rejects.toThrow(
       /never reported landed_block_invalid/u,

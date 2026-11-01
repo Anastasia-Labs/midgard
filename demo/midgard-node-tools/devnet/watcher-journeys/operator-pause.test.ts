@@ -232,9 +232,19 @@ describe("operator-2 pause", () => {
   });
 
   it("never takes a removed node that still holds the fault, or has not caught up, for resumed", async () => {
+    const behindTip = (
+      l1Follower: { atTip: boolean } | null,
+    ): OperatorNodeReadiness => ({
+      reachable: true,
+      httpStatus: 503,
+      body: { ready: false, reasons: ["operator_removed"], l1Follower },
+    });
     for (const answer of [
       outOfSet("caught_up", "operator_removed", "landed_block_invalid"),
       outOfSet("catching_up", "operator_removed"),
+      // Only the follower itself says it is behind, or says nothing.
+      behindTip({ atTip: false }),
+      behindTip(null),
     ]) {
       const node = scriptedNode({ catchUp: [answer] });
       const pause = createOperatorPause(node.control, {
