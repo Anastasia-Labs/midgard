@@ -200,7 +200,9 @@ The drill also reads one value that is not a secret:
   positive whole number is refused. It must also be at least the commit
   allowance plus 60,000 ms, because the fault's header ends up to a minute
   after it is built and must end inside operator-2's shift. A shorter lead
-  is refused before any L1 work, and the error names the bound. Measure it
+  is refused before any L1 work, and the error names the bound. The lead
+  beyond that minimum is the window the commit can start in, so a lead at
+  the minimum leaves almost no room. Measure it
   on a live run: each family's `fault-tail.json` records
   `measured.faultCommitToConvictionMs` and
   `measured.faultCommitToOurNextShiftMs`, and each fault commit's window is
