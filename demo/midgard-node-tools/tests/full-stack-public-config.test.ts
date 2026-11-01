@@ -378,4 +378,16 @@ describe("preprod-public inputs refused before any build or spend", () => {
       runStackController({ config: value.path, check: true }),
     ).rejects.toThrow("an exact public release revision is required");
   });
+  it("refuses with --check a retained DA name that does not resolve", async () => {
+    const value = await publicFixture();
+    // A reserved name that never resolves, with or without a network.
+    value.config.public!.retainedDaHost = "retained-da.node.invalid";
+    await writeFile(value.config.envFile, value.envText());
+    await value.writeConfig();
+    await expect(
+      runStackController({ config: value.path, check: true }),
+    ).rejects.toThrow(
+      "public.retainedDaHost retained-da.node.invalid does not resolve to an IPv4 address",
+    );
+  });
 });

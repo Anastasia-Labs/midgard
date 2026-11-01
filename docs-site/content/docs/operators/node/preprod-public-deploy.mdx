@@ -146,7 +146,9 @@ refuses, naming the input, when one of these is wrong:
   `chown` command);
 - `VALIDATION_WORKER_POOL_SIZE` is below 2, or HTTP rate limits are disabled;
 - the ingress port collides with a node or DA port, or a Docker network
-  already uses the ingress subnet `10.91.7.0/28`; or
+  already uses the ingress subnet `10.91.7.0/28`;
+- `retainedDaHost` does not resolve to an IPv4 address (the one check that
+  needs the network); or
 - the operator or merge wallet is not on the compiled operator allow-list.
 
 ### Signing the release

@@ -31,6 +31,11 @@ export async function runStackController(options: {
     : undefined;
   const { config, env, intentDigest } =
     attached ?? (await loadStackConfig(options.config));
+  // The one public input checked over the network, by --check and a full run alike.
+  if (config.public !== undefined)
+    await (
+      await import("./public-inputs.js")
+    ).assertRetainedDaHostResolves(config.public.retainedDaHost);
   if (options.check) {
     console.log(
       JSON.stringify({

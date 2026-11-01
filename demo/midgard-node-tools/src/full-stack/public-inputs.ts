@@ -1,3 +1,4 @@
+import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { isAbsolute, resolve } from "node:path";
 
@@ -83,4 +84,18 @@ export function parsePublicStackInputs(value: unknown): PublicStackInputs {
       `public.retainedDaHost must be the public DNS name the stack's retained DA is announced at, not ${JSON.stringify(host)}`,
     );
   return { ...paths, ingressHostPort: port, retainedDaHost: host };
+}
+
+/**
+ * The watcher dials the retained DA at /dns4/<retainedDaHost>, so a name with
+ * no IPv4 record leaves it unreachable however the stack is configured.
+ */
+export async function assertRetainedDaHostResolves(host: string) {
+  try {
+    await lookup(host, { family: 4 });
+  } catch (error) {
+    throw new Error(
+      `public.retainedDaHost ${host} does not resolve to an IPv4 address (${(error as NodeJS.ErrnoException).code ?? String(error)}); publish its DNS record pointing at this host first`,
+    );
+  }
 }

@@ -181,7 +181,7 @@ program
   )
   .option(
     "--check",
-    "Run the offline configuration checks only: no build, service start or transaction",
+    "Run the configuration checks only, offline except for resolving a public stack's retained DA name: no build, service start or transaction",
   )
   .action(
     async (options: {
