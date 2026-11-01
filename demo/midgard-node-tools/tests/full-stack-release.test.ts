@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
+import { formatL1Origin } from "@al-ft/midgard-core/l1-origin";
 import { makeGenuineDeploymentRegistryForTest } from "midgard-node/tests/helpers/deployment-parameter-registry";
 import { afterAll, beforeAll, expect, it } from "vitest";
 
@@ -12,6 +13,7 @@ import {
   prepareStackRelease,
   proverFundingKeyHash,
 } from "../src/full-stack/release.js";
+import { generateWatcherServices } from "../src/full-stack/watcher-services.js";
 import {
   signDeploymentRelease,
   SIGNED_RELEASE_FILES,
@@ -130,4 +132,68 @@ it("reopens its saved release for the same signer and refuses another", async ()
     "not the configured signing key",
   );
   expect(await readFile(authority, "utf8")).toBe(signed);
+});
+
+it("generates a preprod-testing stack's watcher configuration that dials its retained DA on loopback", async () => {
+  const stack = await finalizedStack("loopback-watcher");
+  const { config } = stack.processes;
+  // The origin step restores the run's L1 origin before this one runs.
+  stack.processes.env.L1_ORIGIN = formatL1Origin({
+    slot: 7,
+    blockHash: "cd".repeat(32),
+  });
+  const keys = {
+    WATCHER_ROLLBACK_KEY_FILE: join(stack.checkout, "rollback.key"),
+    WATCHER_PROVER_KEY_FILE: join(stack.checkout, "prover.key"),
+    WATCHER_AVAILABILITY_KEY_FILE: join(stack.checkout, "availability.key"),
+  };
+  await writeFile(
+    config.watcher.composeEnvFile,
+    Object.entries(keys)
+      .map(([key, value]) => `${key}=${value}\n`)
+      .join(""),
+  );
+  await mkdir(join(config.watcher.configDirectory, "cardano"), {
+    recursive: true,
+  });
+  await writeFile(
+    join(config.watcher.configDirectory, "cardano/shelley-genesis.json"),
+    "{}",
+  );
+  const bind = (source: string, target: string) => ({
+    type: "bind",
+    source,
+    target,
+  });
+  stack.processes.responses["watcher-compose-configuration"] = {
+    services: {
+      watcher: {
+        volumes: [
+          bind("/c/process.json", "/etc/midgard/watcher-process.json"),
+          bind("/c/runtime.json", "/etc/midgard/watcher-runtime.json"),
+          bind("/c/bundles", "/etc/midgard/bundles"),
+          bind("/c/ipc", "/ipc"),
+          bind("/c/cardano", "/cardano-config"),
+          bind(keys.WATCHER_ROLLBACK_KEY_FILE, "/run/secrets/rollback_key"),
+          bind(keys.WATCHER_PROVER_KEY_FILE, "/run/secrets/prover_key"),
+          bind(
+            keys.WATCHER_AVAILABILITY_KEY_FILE,
+            "/run/secrets/availability_key",
+          ),
+        ],
+      },
+    },
+    volumes: { "watcher-state": {} },
+  };
+  const retained =
+    "/ip4/127.0.0.1/tcp/39003/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN";
+  await generateWatcherServices(stack.processes, retained);
+  const runtime = JSON.parse(
+    await readFile(
+      join(config.watcher.configDirectory, "watcher-runtime.json"),
+      "utf8",
+    ),
+  ) as { da: { peers: { multiaddr: string }[]; stackLoopbackPeers?: boolean } };
+  expect(runtime.da.peers.map((peer) => peer.multiaddr)).toEqual([retained]);
+  expect(runtime.da.stackLoopbackPeers).toBe(true);
 });
