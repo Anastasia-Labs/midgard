@@ -942,8 +942,10 @@ test refuses_b_data_with_a_second_data_node() fail {
 // ## bData at the direct carriage bound
 //
 // A byte string of 8,933 bytes has a payload CBOR of 9,215 bytes, the direct
-// carriage bound, and is carried inline; one of 8,934 bytes is one byte past
-// it and is carried by its leaf alone.
+// carriage bound (`cek_constant_v1.max_direct_payload_bytes`), and is carried
+// inline; one of 8,934 bytes is one byte past it and is carried by its leaf
+// alone. The rows pin 9,215 as a literal, so a change to the bound turns them
+// red rather than moving with it.
 
 /// `length` bytes and the length of their payload CBOR.
 fn near_the_bound(length: Int) -> Pair<ByteArray, Int> {
