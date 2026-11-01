@@ -60,6 +60,15 @@ const isPublicHostname = (hostname: string): boolean => {
   );
 };
 
+/**
+ * A hostname a named network's watcher dials a DA peer at: a lowercase,
+ * dotted DNS name (or address) that is not local, private or link-local.
+ */
+export const isPublicDaPeerHostname = (hostname: string): boolean =>
+  /^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?$/u.test(hostname) &&
+  hostname.includes(".") &&
+  isPublicHostname(hostname);
+
 export const DA_MULTIADDR_PATTERN =
   /^\/dns(4|6)\/([a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?)\/tcp\/([1-9][0-9]{0,4})\/p2p\/([1-9A-HJ-NP-Za-km-z]{20,128})$/u;
 
@@ -67,9 +76,10 @@ const parseDaMultiaddr = (
   value: unknown,
   path: string,
   network: WatcherTargetNetwork,
+  stackLoopbackPeers: boolean,
 ): Readonly<{ multiaddr: string; aliasKey: string; peerId: string }> => {
   const multiaddr = exactString(value, path, { maxLength: 512 });
-  if (network === "Custom") {
+  if (network === "Custom" || stackLoopbackPeers) {
     const local =
       /^\/ip4\/([0-9.]+)\/tcp\/([1-9][0-9]{0,4})\/p2p\/([1-9A-HJ-NP-Za-km-z]{20,128})$/u.exec(
         multiaddr,
@@ -78,6 +88,9 @@ const parseDaMultiaddr = (
       const [, address, portText, peerId] = local;
       const port = Number(portText);
       if (isIP(address!) !== 4 || port > 65_535) fail("invalid_endpoint", path);
+      // On a named network only the stack's own loopback peers.
+      if (network !== "Custom" && !address!.startsWith("127."))
+        fail("invalid_endpoint", path);
       return {
         multiaddr,
         peerId: peerId!,
@@ -91,13 +104,7 @@ const parseDaMultiaddr = (
   }
   const [, , hostname = "", portText = "0", peerId = ""] = match;
   const port = Number(portText);
-  if (
-    port < 1 ||
-    port > 65_535 ||
-    hostname !== hostname.toLowerCase() ||
-    !hostname.includes(".") ||
-    !isPublicHostname(hostname)
-  ) {
+  if (port < 1 || port > 65_535 || !isPublicDaPeerHostname(hostname)) {
     fail("invalid_endpoint", path);
   }
   return {
@@ -110,6 +117,7 @@ const parseDaMultiaddr = (
 export const parseDaPeers = (
   value: unknown,
   network: WatcherTargetNetwork,
+  stackLoopbackPeers = false,
 ): readonly WatcherDaPeerConfig[] => {
   const values = boundedArray(
     value,
@@ -130,6 +138,7 @@ export const parseDaPeers = (
         record.multiaddr,
         `${path}.multiaddr`,
         network,
+        stackLoopbackPeers,
       );
       if (identities.has(identity) || endpoints.has(endpoint.aliasKey)) {
         fail("provider_alias", path);

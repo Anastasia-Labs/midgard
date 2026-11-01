@@ -85,6 +85,7 @@
     "trustRootsFile": "/absolute/path/to/private/release-trust-roots.json",
     "blueprintClassificationFile": "/absolute/path/to/private/blueprint-classification.json",
     "releaseDirectory": "/absolute/path/to/private/public-release",
-    "ingressHostPort": null
+    "ingressHostPort": null,
+    "retainedDaHost": "retained-da.node.example.com"
   }
 }

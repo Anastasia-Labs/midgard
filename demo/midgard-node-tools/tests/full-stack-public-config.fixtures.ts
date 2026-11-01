@@ -202,6 +202,7 @@ export async function publicFixture(
     blueprintClassificationFile: file("blueprint-classification.json"),
     releaseDirectory: release,
     ingressHostPort: null,
+    retainedDaHost: "retained-da.node.example.test",
   };
   return {
     ...value,

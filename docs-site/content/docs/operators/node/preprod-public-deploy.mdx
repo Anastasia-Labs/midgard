@@ -84,6 +84,7 @@ set `MIDGARD_DEPLOYMENT_PROFILE=preprod-rehearsal` wherever this page says
 | `blueprintClassificationFile` | `blueprint-classification.json`: the classification of the blueprint's unused validators, which the reference-script deployment uses. The signed release must classify them the same way.                                                                                                                           |
 | `releaseDirectory`            | Where the stack writes the signed public release. Its parent must exist; the directory itself must not, or must hold a complete release signed before.                                                                                                                                                              |
 | `ingressHostPort`             | Host port of the optional TLS ingress, or `null` to run without it.                                                                                                                                                                                                                                                 |
+| `retainedDaHost`              | Required. The public DNS name of the stack's retained DA, announced as `/dns4/<name>/tcp/<da.ports.retainedTransport>`; it must resolve to this host. The retained DA listens on every interface on that port. A local, private or IP address is refused.                                                           |
 
 Keep `nodeConfigFile`, `tlsKeyFile` and `releaseDirectory` outside the
 checkout, or under `demo/midgard-node/logs/`, so they never enter a Docker
@@ -248,7 +249,10 @@ password from a mode 0600 file in the run directory
 
 The process file is strict JSON and takes no comments. The stack keeps the
 template's fields and replaces three: the L1 genesis identity, the L1 origin
-and the DA peer (the run's public retained DA).
+and the DA peer (the run's public retained DA, at `public.retainedDaHost`).
+Only a preprod-testing stack's watcher dials its retained DA on loopback,
+through the generated `da.stackLoopbackPeers` setting; a production build's
+watcher refuses that setting by name.
 
 | Field                                                                                               | Meaning                                                                                                      |
 | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |

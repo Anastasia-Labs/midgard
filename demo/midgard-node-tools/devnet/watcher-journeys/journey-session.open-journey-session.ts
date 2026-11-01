@@ -132,6 +132,7 @@ export const openJourneySession = async (runDirectory: string) => {
         origin,
         finalityDepth: JOURNEY_FINALITY_DEPTH,
         daPeers: [retainedDa.peer],
+        stackLoopbackPeers: false,
         storagePath: join(runtimeDirectory, "watcher.sqlite"),
         rollbackAuthorityKeySource: rollbackKey,
         proverKeySource: proverKey,

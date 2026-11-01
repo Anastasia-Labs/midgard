@@ -179,6 +179,7 @@ export {
   watcherFollowedScripts,
 } from "./l1-follower/deployment-follower.js";
 export {
+  isPublicDaPeerHostname,
   parseWatcherConfig,
   parseWatcherConfigJson,
   parseWatcherStrictJsonValue,

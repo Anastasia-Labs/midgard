@@ -160,6 +160,8 @@ const watcherConfigs = (
     origin: deployment.origin,
     finalityDepth: deployment.confirmationDepth,
     daPeers: [deployment.retainedDaPeer],
+    // A custom devnet already admits its local peers.
+    stackLoopbackPeers: false,
     storagePath: join(layout.watcherData, "watcher.sqlite"),
     rollbackAuthorityKeySource: secrets.rollback,
     proverKeySource: secrets.prover,

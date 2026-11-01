@@ -115,13 +115,18 @@ export const generateDaLibp2pRuntimeManifest = async (
   validatePort(ports.committee, "committee node port");
   validatePort(ports.publicRetainedDa, "public retained DA port");
   const hosts = hostsForProfile(options);
+  // A public name for the retained DA: the public profile's, or one a
+  // single-machine profile names for its retained DA alone.
+  const retainedPublicHost =
+    options.profile === "public"
+      ? (options.publicRetainedDaPublicHost ?? options.committeePublicHost!)
+      : options.publicRetainedDaPublicHost;
   if (options.profile === "public") {
     rejectLocalRuntimeHost(hosts.producer, "producer public host");
     rejectLocalRuntimeHost(hosts.committee, "committee node public host");
-    rejectLocalRuntimeHost(
-      options.publicRetainedDaPublicHost ?? options.committeePublicHost!,
-      "public retained DA host",
-    );
+  }
+  if (retainedPublicHost !== undefined) {
+    rejectLocalRuntimeHost(retainedPublicHost, "public retained DA host");
   }
   if (
     publicRetainedDaIdentity.peerId === producerIdentity.peerId ||
@@ -177,10 +182,7 @@ export const generateDaLibp2pRuntimeManifest = async (
           (_addr, index) => members[index]!.peerId !== producerIdentity.peerId,
         )
       : [producerAddr, ...admitted];
-  const publicRetainedDaHost =
-    options.profile === "public"
-      ? (options.publicRetainedDaPublicHost ?? options.committeePublicHost!)
-      : hosts.committee;
+  const publicRetainedDaHost = retainedPublicHost ?? hosts.committee;
   const publicRetainedDaAddr = multiaddrForHost(
     publicRetainedDaHost,
     ports.publicRetainedDa,
@@ -245,9 +247,12 @@ export const generateDaLibp2pRuntimeManifest = async (
       profile: "public-retained-da-v1",
       access_policy: "any_noise_authenticated_peer",
       peer_id: publicRetainedDaIdentity.peerId,
+      // Announced at a public name, it listens on every interface.
       listen_multiaddrs: [
         listenAddr(
-          listenHostForProfile(options.profile),
+          retainedPublicHost === undefined
+            ? listenHostForProfile(options.profile)
+            : "0.0.0.0",
           ports.publicRetainedDa,
         ),
       ],

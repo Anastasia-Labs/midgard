@@ -289,6 +289,46 @@ describe("DA libp2p runtime manifest profiles", () => {
     ).rejects.toThrow(/public host/);
   });
 
+  it("announces a host-profile committee's retained DA at its public DNS name", async () => {
+    const deploymentInfo = await writeFinalizedDeploymentInfo();
+    const generate = (publicRetainedDaPublicHost: string) =>
+      generateDaLibp2pRuntimeManifest({
+        target: "committee",
+        profile: "host",
+        contractDeploymentInfoPath: deploymentInfo.path,
+        network: "Preprod",
+        producerPrivateKeySource: PRODUCER_KEY,
+        publicRetainedDaPrivateKeySource: PUBLIC_RETAINED_DA_KEY,
+        publicRetainedDaPort: 39103,
+        publicRetainedDaPublicHost,
+        localSignerIndex: 0,
+        threshold: 1,
+        committeeMembers: [
+          {
+            signerIndex: 0,
+            daVkey: DA_VKEY,
+            libp2pPrivateKeySource: COMMITTEE_KEY,
+            roles: ["committee", "retrieval"],
+          },
+        ],
+      });
+    const manifest = await generate("retained-da.example.com");
+    expect(manifest.public_retained_da.announce_multiaddrs).toEqual([
+      `/dns4/retained-da.example.com/tcp/39103/p2p/${manifest.public_retained_da.peer_id}`,
+    ]);
+    // Reachable at that name: it listens on every interface, while the
+    // committee transport stays on loopback.
+    expect(manifest.public_retained_da.listen_multiaddrs).toEqual([
+      "/ip4/0.0.0.0/tcp/39103",
+    ]);
+    expect(manifest.da_transport.listen_multiaddrs).toEqual([
+      "/ip4/127.0.0.1/tcp/39001",
+    ]);
+    await expect(generate("127.0.0.1")).rejects.toThrow(
+      "public retained DA host must not be local-only",
+    );
+  });
+
   it("rejects incomplete contract deployment manifests", async () => {
     const deploymentInfo = await writeFinalizedDeploymentInfo((manifest) => {
       const steps = manifest.steps as Record<string, Record<string, unknown>>;

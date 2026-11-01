@@ -88,6 +88,7 @@
     "trustRootsFile": "/absolute/path/to/private-rehearsal/release-trust-roots.json",
     "blueprintClassificationFile": "/absolute/path/to/private-rehearsal/blueprint-classification.json",
     "releaseDirectory": "/absolute/path/to/private-rehearsal/public-release",
-    "ingressHostPort": null
+    "ingressHostPort": null,
+    "retainedDaHost": "retained-da.rehearsal.example.com"
   }
 }

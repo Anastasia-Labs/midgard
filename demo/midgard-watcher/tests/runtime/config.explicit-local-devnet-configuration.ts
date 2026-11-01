@@ -98,6 +98,45 @@ describe("explicit local devnet configuration", () => {
     ).toThrow();
   });
 
+  it("admits a loopback DA peer on Preprod only through the stack's loopback setting", () => {
+    const input = validConfig();
+    const loopback =
+      "/ip4/127.0.0.1/tcp/4141/p2p/12D3KooWAbcdefghijkmnopqrstuvwxyz12345";
+    input.da.peers[0]!.multiaddr = loopback;
+    rejected(
+      () => parseWatcherConfig(input),
+      "invalid_endpoint",
+      "$.da.peers[0].multiaddr",
+    );
+    const stack = { ...input, da: { ...input.da, stackLoopbackPeers: true } };
+    const config = parseWatcherConfig(stack);
+    expect(config.da.peers[0]!.multiaddr).toBe(loopback);
+    expect(config.da.stackLoopbackPeers).toBe(true);
+    // Loopback only: a private or public IPv4 address is still refused.
+    for (const host of ["10.0.0.7", "192.168.1.4", "8.8.8.8"]) {
+      stack.da.peers = [
+        {
+          identity: "da-peer-a",
+          multiaddr: loopback.replace("127.0.0.1", host),
+        },
+      ];
+      rejected(
+        () => parseWatcherConfig(stack),
+        "invalid_endpoint",
+        "$.da.peers[0].multiaddr",
+      );
+    }
+    rejected(
+      () =>
+        parseWatcherConfig({
+          ...input,
+          da: { ...input.da, stackLoopbackPeers: false },
+        }),
+      "invalid_value",
+      "$.da.stackLoopbackPeers",
+    );
+  });
+
   it("refuses custom metadata on a named network and public magic", () => {
     expect(() =>
       parseWatcherConfig({ ...validConfig(), customNetwork }),

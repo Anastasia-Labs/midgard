@@ -6,6 +6,7 @@ import "./config.parse-providers.js";
 import "./config.parse-l1-source.js";
 import "./config.parse-watcher-config.js";
 import "./config.strict-json-reader.js";
+export { isPublicDaPeerHostname } from "./config.parse-providers.js";
 export { parseWatcherConfig } from "./config.parse-watcher-config.js";
 export {
   parseWatcherConfigJson,

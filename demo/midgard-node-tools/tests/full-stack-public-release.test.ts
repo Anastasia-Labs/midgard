@@ -3,6 +3,8 @@ import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
+import { parseWatcherProcessConfig } from "midgard-watcher";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { stackPaths } from "../src/full-stack/deployment.js";
@@ -16,6 +18,7 @@ import {
   stackBlueprintPath,
   stackRegistryPath,
 } from "../src/full-stack/release.js";
+import { stackWatcherProcessConfig } from "../src/full-stack/watcher-services.js";
 import {
   signDeploymentRelease,
   SIGNED_RELEASE_FILES,
@@ -275,6 +278,116 @@ describe("public-release step", () => {
     await rm(join(stack.releaseDirectory, SIGNED_RELEASE_FILES.provenance));
     await expect(stack.release.reconcile(undefined)).rejects.toThrow(
       `public.releaseDirectory ${stack.releaseDirectory} holds a release this deployment cannot use`,
+    );
+  });
+
+  it("generates a fresh stack's runtime configuration, whose watcher reaches the stack's own retained DA", async () => {
+    const stack = await publicStack("runtime-configuration", null);
+    const { config } = stack.processes;
+    config.watcher.configDirectory = join(config.runDirectory, "watcher");
+    const keys = {
+      WATCHER_ROLLBACK_KEY_FILE: join(config.runDirectory, "rollback.key"),
+      WATCHER_PROVER_KEY_FILE: join(config.runDirectory, "prover.key"),
+      WATCHER_AVAILABILITY_KEY_FILE: join(
+        config.runDirectory,
+        "availability.key",
+      ),
+    };
+    await writeFile(
+      config.watcher.composeEnvFile,
+      Object.entries(keys)
+        .map(([key, value]) => `${key}=${value}\n`)
+        .join(""),
+    );
+    await mkdir(join(config.watcher.configDirectory, "cardano"), {
+      recursive: true,
+    });
+    await writeFile(
+      join(config.watcher.configDirectory, "cardano/shelley-genesis.json"),
+      "{}",
+    );
+    const bind = (source: string, target: string) => ({
+      type: "bind",
+      source,
+      target,
+    });
+    stack.processes.responses["watcher-compose-configuration"] = {
+      services: {
+        watcher: {
+          volumes: [
+            bind("/c/process.json", "/etc/midgard/watcher-process.json"),
+            bind("/c/runtime.json", "/etc/midgard/watcher-runtime.json"),
+            bind("/c/bundles", "/etc/midgard/bundles"),
+            bind("/c/ipc", "/ipc"),
+            bind("/c/cardano", "/cardano-config"),
+            bind(keys.WATCHER_ROLLBACK_KEY_FILE, "/run/secrets/rollback_key"),
+            bind(keys.WATCHER_PROVER_KEY_FILE, "/run/secrets/prover_key"),
+            bind(
+              keys.WATCHER_AVAILABILITY_KEY_FILE,
+              "/run/secrets/availability_key",
+            ),
+          ],
+        },
+      },
+      volumes: { "watcher-state": {} },
+    };
+    await stack.release.execute(undefined);
+    await expect(stack.configuration.execute(undefined)).resolves.toMatchObject(
+      { committeeServices: ["da-committee-0"] },
+    );
+    // The retained DA is announced at the stack's public DNS name, and the
+    // watcher dials exactly that.
+    const port = config.da.ports.retainedTransport;
+    const committee = JSON.parse(
+      await readFile(
+        join(config.runDirectory, "services/committee-0.json"),
+        "utf8",
+      ),
+    ) as {
+      public_retained_da: {
+        listen_multiaddrs: string[];
+        announce_multiaddrs: string[];
+      };
+    };
+    const [announced] = committee.public_retained_da.announce_multiaddrs;
+    expect(announced).toMatch(
+      new RegExp(`^/dns4/retained-da\\.node\\.example\\.test/tcp/${port}/p2p/`),
+    );
+    expect(committee.public_retained_da.listen_multiaddrs).toEqual([
+      `/ip4/0.0.0.0/tcp/${port}`,
+    ]);
+    const runtime = JSON.parse(
+      await readFile(
+        join(config.watcher.configDirectory, "watcher-runtime.json"),
+        "utf8",
+      ),
+    ) as { da: { peers: { multiaddr: string }[] } };
+    expect(runtime.da.peers.map((peer) => peer.multiaddr)).toEqual([announced]);
+    expect(runtime.da).not.toHaveProperty("stackLoopbackPeers");
+  });
+
+  it("refuses the stack's loopback DA setting in a production build, naming it", async () => {
+    const template = JSON.parse(
+      await readFile(
+        new URL(
+          "../../midgard-watcher/watcher-process.example.json",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    );
+    template.watcherConfig.l1.finality.depth =
+      SELECTED_DEPLOYMENT_PROFILE.l1_finality.confirmation_depth;
+    expect(() =>
+      stackWatcherProcessConfig(parseWatcherProcessConfig(template), {
+        genesisIdentitySha256: "11".repeat(32),
+        publicDaMultiaddr:
+          "/ip4/127.0.0.1/tcp/39003/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN",
+        l1Origin: { slot: 4242, blockHash: "ab".repeat(32) },
+        stackLoopbackPeers: true,
+      }),
+    ).toThrow(
+      "Watcher configuration rejected: production_profile_refused at $.da.stackLoopbackPeers",
     );
   });
 

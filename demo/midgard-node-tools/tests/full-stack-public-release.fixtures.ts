@@ -162,6 +162,7 @@ export async function publicStack(
     blueprintClassificationFile: file("blueprint-classification.json"),
     releaseDirectory: file("release"),
     ingressHostPort,
+    retainedDaHost: "retained-da.node.example.test",
   };
   const env: Record<string, string> = {
     ...stackEnvironment(config),

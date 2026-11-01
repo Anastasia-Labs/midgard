@@ -142,6 +142,7 @@ const runFacts = {
   genesisIdentitySha256: "11".repeat(32),
   publicDaMultiaddr:
     "/dns4/retained.example/tcp/443/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN",
+  stackLoopbackPeers: false,
 };
 it("starts the stack watcher at the run's L1 origin, never the template's", () => {
   const template = exampleTemplate();
@@ -153,6 +154,20 @@ it("starts the stack watcher at the run's L1 origin, never the template's", () =
   );
   expect(config.watcherConfig.da.peers.map((peer) => peer.multiaddr)).toEqual([
     runFacts.publicDaMultiaddr,
+  ]);
+});
+it("starts a preprod-testing stack's watcher on the stack's own loopback retained DA", () => {
+  const loopback =
+    "/ip4/127.0.0.1/tcp/39003/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN";
+  const config = stackWatcherProcessConfig(exampleTemplate(), {
+    ...runFacts,
+    publicDaMultiaddr: loopback,
+    l1Origin: { slot: 4242, blockHash: "ab".repeat(32) },
+    stackLoopbackPeers: true,
+  });
+  expect(config.watcherConfig.targetNetwork).toBe("Preprod");
+  expect(config.watcherConfig.da.peers.map((peer) => peer.multiaddr)).toEqual([
+    loopback,
   ]);
 });
 it("refuses to generate the stack watcher's configuration without the run's L1 origin", () => {

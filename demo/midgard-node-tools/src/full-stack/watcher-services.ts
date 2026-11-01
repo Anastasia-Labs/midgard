@@ -66,6 +66,8 @@ export async function generateWatcherServices(
     publicDaMultiaddr,
     // The origin step restored the run's origin before this step runs.
     l1Origin: runL1Origin(processes.env),
+    // A public stack's watcher dials its retained DA's public name.
+    stackLoopbackPeers: processes.config.public === undefined,
   });
   localUrl(processConfig.operationsEndpoint);
   await writeDurableJson(
@@ -88,7 +90,7 @@ type WatcherProcessTemplate = ReturnType<typeof parseWatcherProcessConfig>;
 
 /**
  * The stack watcher's process configuration: the operator template, bound to
- * this run's genesis, public retained-DA peer and L1 origin.
+ * this run's genesis, retained-DA peer and L1 origin.
  */
 export function stackWatcherProcessConfig(
   template: WatcherProcessTemplate,
@@ -96,6 +98,7 @@ export function stackWatcherProcessConfig(
     genesisIdentitySha256: string;
     publicDaMultiaddr: string;
     l1Origin: L1Origin | undefined;
+    stackLoopbackPeers: boolean;
   },
 ) {
   const base = template.watcherConfig;
@@ -116,6 +119,7 @@ export function stackWatcherProcessConfig(
       daPeers: [
         { identity: "public-retained-da", multiaddr: run.publicDaMultiaddr },
       ],
+      stackLoopbackPeers: run.stackLoopbackPeers,
       storagePath: base.storage.path,
       rollbackAuthorityKeySource: base.storage.rollbackAuthorityKeySource,
       proverKeySource: base.proverWallet.keySource,

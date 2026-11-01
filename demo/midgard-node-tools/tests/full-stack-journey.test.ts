@@ -328,6 +328,7 @@ describe("wallet journey resume", () => {
       blueprintClassificationFile: join(root, "classification.json"),
       releaseDirectory: join(root, "release"),
       ingressHostPort: null,
+      retainedDaHost: "retained-da.node.example.test",
     };
     value.processes.env.MIDGARD_PUBLIC_API_ORIGIN = "https://node.example.test";
     await runStackWorkflow(value.context, []);

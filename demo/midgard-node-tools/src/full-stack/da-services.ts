@@ -111,6 +111,11 @@ export async function generateDaServices(processes: StackProcesses) {
     committeeMembers: members,
     threshold,
     publicRetainedDaPort: config.da.ports.retainedTransport,
+    // A public stack announces its retained DA at its public DNS name; a
+    // preprod-testing stack's watcher reaches it on this host.
+    ...(config.public === undefined
+      ? {}
+      : { publicRetainedDaPublicHost: config.public.retainedDaHost }),
   };
   const producer = join(directory, "producer.json");
   await writeDaLibp2pRuntimeManifest(

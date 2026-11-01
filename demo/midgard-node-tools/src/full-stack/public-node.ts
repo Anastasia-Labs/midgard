@@ -25,35 +25,8 @@ import { resolveValidationWorkerPoolSize } from "midgard-node/services/config.no
 
 import { SIGNED_RELEASE_FILES } from "../sign-deployment-release.js";
 import type { StackConfig } from "./config.js";
+import { PUBLIC_INPUT_KEYS } from "./public-inputs.js";
 import { readOperatorProvenance, stackRegistryPath } from "./release.js";
-
-/** A production profile's public node inputs, the stack configuration's `public` section. */
-export type PublicStackInputs = {
-  /** Private file (0600, YAML or JSON) holding exactly the node's six secrets. */
-  nodeConfigFile: string;
-  /** Certificate, private key (0600) and issuing CA for the public origin. */
-  tlsCertFile: string;
-  tlsKeyFile: string;
-  tlsCaFile: string;
-  /** External Ed25519 trust roots that verify the signed release. */
-  trustRootsFile: string;
-  /** The unused-validator classification the reference-script deployment reads. */
-  blueprintClassificationFile: string;
-  /** Where the stack signs the public release; it must not exist before signing. */
-  releaseDirectory: string;
-  /** Host port of the optional TLS ingress; null runs the node without one. */
-  ingressHostPort: number | null;
-};
-
-const PATH_KEYS = [
-  "nodeConfigFile",
-  "tlsCertFile",
-  "tlsKeyFile",
-  "tlsCaFile",
-  "trustRootsFile",
-  "blueprintClassificationFile",
-  "releaseDirectory",
-] as const;
 
 /** Settings the stack derives for the public node; the .env must not set them. */
 const STACK_DERIVED_SETTINGS = [
@@ -69,33 +42,6 @@ const STACK_DERIVED_SETTINGS = [
   "MIDGARD_BLUEPRINT_CLASSIFICATION_FILE",
   "HTTP_TRUSTED_PROXY_PEERS",
 ];
-
-export function parsePublicStackInputs(value: unknown): PublicStackInputs {
-  if (!value || typeof value !== "object" || Array.isArray(value))
-    throw new Error("public must be an object");
-  const input = value as Record<string, unknown>;
-  const keys = [...PATH_KEYS, "ingressHostPort"];
-  if (Object.keys(input).sort().join() !== [...keys].sort().join())
-    throw new Error(`public needs exactly these fields: ${keys.join(", ")}`);
-  const paths = Object.fromEntries(
-    PATH_KEYS.map((key) => {
-      const path = input[key];
-      if (typeof path !== "string" || !isAbsolute(path))
-        throw new Error(`public.${key} must be an absolute path`);
-      return [key, resolve(path)];
-    }),
-  ) as Record<(typeof PATH_KEYS)[number], string>;
-  const port = input.ingressHostPort;
-  if (
-    port !== null &&
-    (typeof port !== "number" ||
-      !Number.isSafeInteger(port) ||
-      port < 1 ||
-      port > 65535)
-  )
-    throw new Error("public.ingressHostPort must be a TCP port or null");
-  return { ...paths, ingressHostPort: port };
-}
 
 /** Prefixes the input a node refusal concerns, so the operator knows what to fix. */
 function refuse<T>(label: string, check: () => T): T {
@@ -365,7 +311,7 @@ export async function checkPublicInputs(
   const inputs = config.public;
   if (inputs === undefined)
     throw new Error(
-      `A ${SELECTED_DEPLOYMENT_PROFILE.name} stack needs the public section: ${[...PATH_KEYS, "ingressHostPort"].join(", ")}`,
+      `A ${SELECTED_DEPLOYMENT_PROFILE.name} stack needs the public section: ${PUBLIC_INPUT_KEYS.join(", ")}`,
     );
   if (new URL(config.endpoint).protocol !== "https:")
     throw new Error(

@@ -73,6 +73,12 @@ export type WatcherConfig = Readonly<{
     peers: readonly WatcherDaPeerConfig[];
     requestTimeoutMs: number;
     maxConcurrency: number;
+    /**
+     * Set only by the full-stack tool for a preprod-testing stack, whose
+     * watcher reaches the stack's own retained DA on this host: admits
+     * loopback IPv4 peers on a named network. A production profile refuses it.
+     */
+    stackLoopbackPeers?: true;
   }>;
   storage: Readonly<{
     driver: "sqlite";
@@ -100,6 +106,7 @@ export type WatcherConfigErrorCode =
   | "missing_required_field"
   | "non_string_key"
   | "out_of_bounds"
+  | "production_profile_refused"
   | "provider_alias"
   | "secret_source_alias"
   | "unsafe_path"

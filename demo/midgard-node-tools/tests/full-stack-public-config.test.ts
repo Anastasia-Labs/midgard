@@ -284,6 +284,22 @@ describe("preprod-public inputs refused before any build or spend", () => {
       "public.ingressHostPort must differ",
     ],
     [
+      "a public stack without the retained DA's public DNS name",
+      ({ config }) => {
+        delete (config.public as Partial<typeof config.public>)!.retainedDaHost;
+      },
+      "public.retainedDaHost is required",
+    ],
+    ...["localhost", "retained-da.local", "127.0.0.1", "203.0.113.9"].map(
+      (host): [string, (value: PublicFixture) => void, string] => [
+        `a retained DA announced at ${host}`,
+        ({ config }) => {
+          config.public!.retainedDaHost = host;
+        },
+        "public.retainedDaHost must be the public DNS name",
+      ],
+    ),
+    [
       // Every input above is present and valid in the fixture, so this last
       // check is reached only when all of them passed.
       "an operator wallet outside the compiled allow-list",

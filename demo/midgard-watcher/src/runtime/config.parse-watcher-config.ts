@@ -1,4 +1,9 @@
 import {
+  isProductionDeploymentProfileName,
+  SELECTED_DEPLOYMENT_PROFILE,
+} from "@al-ft/midgard-core/deployment-profile";
+
+import {
   parseKeySource,
   parseL1Source,
   requireAbsoluteFilePath,
@@ -94,11 +99,25 @@ export const parseWatcherConfig = (value: unknown): WatcherConfig => {
     WATCHER_CONFIG_BOUNDS.requestTimeoutMs,
   );
 
-  const da = exactRecord(root.da, "$.da", [
-    "peers",
-    "requestTimeoutMs",
-    "maxConcurrency",
-  ]);
+  const daFields = ["peers", "requestTimeoutMs", "maxConcurrency"];
+  const da = exactRecord(
+    root.da,
+    "$.da",
+    Object.prototype.hasOwnProperty.call(
+      plainRecord(root.da, "$.da"),
+      "stackLoopbackPeers",
+    )
+      ? [...daFields, "stackLoopbackPeers"]
+      : daFields,
+  );
+  const stackLoopbackPeers = da.stackLoopbackPeers !== undefined;
+  if (stackLoopbackPeers) {
+    if (da.stackLoopbackPeers !== true)
+      fail("invalid_value", "$.da.stackLoopbackPeers");
+    // A production deployment's watcher only ever dials public DA peers.
+    if (isProductionDeploymentProfileName(SELECTED_DEPLOYMENT_PROFILE.name))
+      fail("production_profile_refused", "$.da.stackLoopbackPeers");
+  }
   const daRequestTimeoutMs = boundedInteger(
     da.requestTimeoutMs,
     "$.da.requestTimeoutMs",
@@ -204,13 +223,14 @@ export const parseWatcherConfig = (value: unknown): WatcherConfig => {
       finality: Object.freeze({ depth: finalityDepth }),
     }),
     da: Object.freeze({
-      peers: parseDaPeers(da.peers, targetNetwork),
+      peers: parseDaPeers(da.peers, targetNetwork, stackLoopbackPeers),
       requestTimeoutMs: daRequestTimeoutMs,
       maxConcurrency: boundedInteger(
         da.maxConcurrency,
         "$.da.maxConcurrency",
         WATCHER_CONFIG_BOUNDS.concurrency,
       ),
+      ...(stackLoopbackPeers ? { stackLoopbackPeers: true as const } : {}),
     }),
     storage: Object.freeze({
       driver: "sqlite",

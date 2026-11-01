@@ -122,7 +122,13 @@ copy `config/preprod-public-stack.example.json` instead. Its `endpoint` is
 `https://` and its `public` section names the private node configuration file
 (the six node secrets, mode 0600), the TLS certificate, key and CA for
 `MIDGARD_PUBLIC_API_ORIGIN`, the release trust roots, the blueprint
-classification, the release directory and the optional ingress port. The `.env` then holds the release revision and
+classification, the release directory, the optional ingress port and
+`retainedDaHost`, the public DNS name the stack announces its retained DA at
+(`/dns4`, on `da.ports.retainedTransport`, listening on every interface);
+`--check` refuses it missing, local, private or an IP address. A
+preprod-testing stack instead lets its own watcher dial the retained DA on
+loopback through the generated watcher setting `da.stackLoopbackPeers`, which
+a production build's watcher refuses by name. The `.env` then holds the release revision and
 the digest-pinned images, but none of the node secrets and none of the public
 file paths; the stack derives those. `--check` refuses a missing or wrong
 public input before anything is built or spent. The node runs from

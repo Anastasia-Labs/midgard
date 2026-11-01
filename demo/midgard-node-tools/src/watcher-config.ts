@@ -54,6 +54,11 @@ export type WatcherConfigFacts = Readonly<{
   origin: L1Origin | undefined;
   finalityDepth: number;
   daPeers: readonly Readonly<{ identity: string; multiaddr: string }>[];
+  /**
+   * Only a preprod-testing stack's own watcher: admits its loopback retained
+   * DA on a named network. A production build's watcher refuses it.
+   */
+  stackLoopbackPeers: boolean;
   storagePath: string;
   rollbackAuthorityKeySource: WatcherWalletKeySource;
   proverKeySource: WatcherWalletKeySource;
@@ -97,6 +102,7 @@ export const buildWatcherConfig = (
       })),
       requestTimeoutMs: limits.da.requestTimeoutMs,
       maxConcurrency: limits.da.maxConcurrency,
+      ...(facts.stackLoopbackPeers ? { stackLoopbackPeers: true } : {}),
     },
     storage: {
       driver: "sqlite",

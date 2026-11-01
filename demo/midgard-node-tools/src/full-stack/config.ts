@@ -13,10 +13,10 @@ import { parse } from "dotenv";
 
 import { checkStackEnvironment, stackIntentDigest } from "./preflight.js";
 import {
-  checkPublicInputs,
   parsePublicStackInputs,
   type PublicStackInputs,
-} from "./public-node.js";
+} from "./public-inputs.js";
+import { checkPublicInputs } from "./public-node.js";
 
 export type StackConfig = {
   nodeRoot: string;
