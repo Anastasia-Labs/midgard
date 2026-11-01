@@ -7,7 +7,7 @@
   "wallets": {
     "operator": {
       "seedEnv": "L1_OPERATOR_SEED_PHRASE",
-      "minimumLovelace": "1000000000"
+      "minimumLovelace": "1410000000"
     },
     "merge": {
       "seedEnv": "L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX",
@@ -32,11 +32,11 @@
     },
     "prover": {
       "seedEnv": "STACK_PROVER_SEED",
-      "minimumLovelace": "3000000000"
+      "minimumLovelace": "3115000000"
     },
     "availability": {
       "seedEnv": "STACK_AVAILABILITY_SEED",
-      "minimumLovelace": "1000000000"
+      "minimumLovelace": "2540000000"
     }
   },
   "da": {
