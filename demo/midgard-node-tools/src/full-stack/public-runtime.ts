@@ -379,10 +379,16 @@ export async function publicNodeServices(
     `${ledger.directory}:/cardano-config:ro`,
   ];
   const ingress = inputs.ingressHostPort !== null;
+  // Written here so its digest labels the node: a changed secret or DA
+  // identity recreates the container.
+  await writePublicNodeConfig(processes, input.servicesDirectory);
   const services: Record<string, unknown> = {
     "midgard-node": {
       env_file: input.envFile,
-      labels: await mountedFilesLabels([input.producer]),
+      labels: await mountedFilesLabels([
+        input.producer,
+        publicNodeConfigPath(input.servicesDirectory),
+      ]),
       volumes: [`${input.producer}:/app/stack/producer.json:ro`, ...volumes],
       healthcheck: {
         test: [

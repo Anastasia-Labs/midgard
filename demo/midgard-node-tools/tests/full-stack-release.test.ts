@@ -1,8 +1,10 @@
+import { execFile } from "node:child_process";
 import { generateKeyPairSync } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import { formatL1Origin } from "@al-ft/midgard-core/l1-origin";
@@ -134,8 +136,17 @@ it("reopens its saved release for the same signer and refuses another", async ()
   expect(await readFile(authority, "utf8")).toBe(signed);
 });
 
-it("generates a preprod-testing stack's watcher configuration that dials its retained DA on loopback", async () => {
-  const stack = await finalizedStack("loopback-watcher");
+const RETAINED =
+  "/ip4/127.0.0.1/tcp/39003/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN";
+
+/**
+ * A finalized preprod-testing stack whose watcher services generate as the
+ * runtime-configuration step generates them: its origin restored, its
+ * watcher keys and Cardano genesis on disk, and Compose rendering the
+ * watcher's own compose.yaml.
+ */
+async function watcherStack(name: string) {
+  const stack = await finalizedStack(name);
   const { config } = stack.processes;
   // The origin step restores the run's L1 origin before this one runs.
   stack.processes.env.L1_ORIGIN = formatL1Origin({
@@ -165,9 +176,10 @@ it("generates a preprod-testing stack's watcher configuration that dials its ret
     source,
     target,
   });
-  stack.processes.responses["watcher-compose-configuration"] = {
+  stack.processes.responses["watcher-compose-configuration"] = () => ({
     services: {
       watcher: {
+        image: "midgard-watcher:local",
         volumes: [
           bind("/c/process.json", "/etc/midgard/watcher-process.json"),
           bind("/c/runtime.json", "/etc/midgard/watcher-runtime.json"),
@@ -184,16 +196,64 @@ it("generates a preprod-testing stack's watcher configuration that dials its ret
       },
     },
     volumes: { "watcher-state": {} },
-  };
-  const retained =
-    "/ip4/127.0.0.1/tcp/39003/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN";
-  await generateWatcherServices(stack.processes, retained);
+  });
+  return { ...stack, config };
+}
+
+it("generates a preprod-testing stack's watcher configuration that dials its retained DA on loopback", async () => {
+  const { config, processes } = await watcherStack("loopback-watcher");
+  await generateWatcherServices(processes, RETAINED);
   const runtime = JSON.parse(
     await readFile(
       join(config.watcher.configDirectory, "watcher-runtime.json"),
       "utf8",
     ),
-  ) as { da: { peers: { multiaddr: string }[]; stackLoopbackPeers?: boolean } };
-  expect(runtime.da.peers.map((peer) => peer.multiaddr)).toEqual([retained]);
+  ) as {
+    da: { peers: { multiaddr: string }[]; stackLoopbackPeers?: boolean };
+  };
+  expect(runtime.da.peers.map((peer) => peer.multiaddr)).toEqual([RETAINED]);
   expect(runtime.da.stackLoopbackPeers).toBe(true);
+});
+
+it("recreates the watcher when its generated process or runtime configuration changes", async () => {
+  const { checkout, config, processes } =
+    await watcherStack("watcher-recreate");
+  /** Compose's configuration hash of the generated watcher service: `up -d` recreates its container exactly when this changes. */
+  const hash = async () => {
+    const watcher = await generateWatcherServices(processes, RETAINED);
+    const file = join(checkout, "watcher-compose.json");
+    await writeFile(
+      file,
+      JSON.stringify({ services: watcher.services, volumes: watcher.volumes }),
+    );
+    const { stdout } = await promisify(execFile)(
+      "docker",
+      [
+        "compose",
+        "--project-directory",
+        checkout,
+        "-f",
+        file,
+        "config",
+        "--hash",
+        "watcher",
+      ],
+      {
+        env: {
+          PATH: process.env.PATH!,
+          HOME: process.env.HOME!,
+          COMPOSE_PROJECT_NAME: "midgard-watcher-recreate",
+        },
+      },
+    );
+    return stdout.trim();
+  };
+  const before = await hash();
+  // The same mounts and image, a different generated configuration.
+  const template = JSON.parse(
+    await readFile(config.watcher.processTemplate, "utf8"),
+  ) as { watcherConfig: { deadlines: { proofSubmitMs: number } } };
+  template.watcherConfig.deadlines.proofSubmitMs += 1;
+  await writeFile(config.watcher.processTemplate, JSON.stringify(template));
+  expect(await hash()).not.toBe(before);
 });

@@ -12,6 +12,7 @@ import {
 } from "midgard-watcher";
 
 import { buildWatcherConfig } from "../watcher-config.js";
+import { mountedFilesLabels } from "./compose-yaml.js";
 import { localUrl } from "./config.js";
 import { stackPaths } from "./deployment.js";
 import { readJsonIfPresent, writeDurableJson } from "./journal.js";
@@ -70,19 +71,23 @@ export async function generateWatcherServices(
     stackLoopbackPeers: processes.config.public === undefined,
   });
   localUrl(processConfig.operationsEndpoint);
-  await writeDurableJson(
+  const generated = [
     join(watcher.configDirectory, "watcher-process.json"),
-    processConfig,
-  );
-  await writeDurableJson(
     join(watcher.configDirectory, "watcher-runtime.json"),
-    processConfig.watcherConfig,
-  );
+  ];
+  await writeDurableJson(generated[0]!, processConfig);
+  await writeDurableJson(generated[1]!, processConfig.watcherConfig);
   const source = await renderWatcherCompose(processes, {
     env,
     operationsEndpoint: processConfig.operationsEndpoint,
     l1Directory,
   });
+  // A changed generated configuration recreates the watcher's container.
+  const service = source.services.watcher!;
+  service.labels = {
+    ...service.labels,
+    ...(await mountedFilesLabels(generated)),
+  };
   return { ...source, operationsEndpoint: processConfig.operationsEndpoint };
 }
 
@@ -196,6 +201,7 @@ export async function renderWatcherCompose(
       string,
       {
         image?: string;
+        labels?: Record<string, string>;
         volumes: { source: string; target: string; type: string }[];
       }
     >;
