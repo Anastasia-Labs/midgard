@@ -59,6 +59,14 @@ describe("second-instance configuration", () => {
       "A second instance needs its own Compose project",
     );
   });
+  it("refuses a stack that runs another deployment profile than its own", async () => {
+    const fixture = await attachedFixture();
+    fixture.primary.env.MIDGARD_DEPLOYMENT_PROFILE = "preprod-rehearsal";
+    await writeFile(fixture.primary.config.envFile, fixture.primary.envText());
+    await expect(loadAttachedStackConfig(fixture.path)).rejects.toThrow(
+      "The stack this instance attaches to runs preprod-rehearsal, not preprod-testing",
+    );
+  });
   it.each([
     ["operator", "operator"],
     ["merge", "user"],
