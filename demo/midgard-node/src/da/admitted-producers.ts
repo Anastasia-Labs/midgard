@@ -1,9 +1,12 @@
+import { peerIdFromString } from "@libp2p/peer-id";
 import { multiaddr } from "@multiformats/multiaddr";
 
+const DIALABLE_HOSTS = new Set(["ip4", "ip6", "dns", "dns4", "dns6"]);
+
 /**
- * Further producers a committee admits: canonical multiaddrs, each ending in
- * the one `/p2p/<peer id>` of a distinct peer that is none of the
- * deployment's own identities (`reservedPeerIds`).
+ * Further producers a committee admits: canonical multiaddrs, each a host
+ * (ip4, ip6 or dns), a TCP port and the one `/p2p/<peer id>` of a distinct
+ * peer that is none of the deployment's own identities (`reservedPeerIds`).
  */
 export const parseAdmittedProducerMultiaddrs = (
   values: readonly string[],
@@ -17,8 +20,8 @@ export const parseAdmittedProducerMultiaddrs = (
     } catch {
       throw new Error(`admitted producer ${value} is not a multiaddr`);
     }
-    const peerIds = address
-      .getComponents()
+    const components = address.getComponents();
+    const peerIds = components
       .filter((component) => component.name === "p2p")
       .map((component) => component.value);
     const peerId = peerIds[0];
@@ -29,6 +32,20 @@ export const parseAdmittedProducerMultiaddrs = (
     ) {
       throw new Error(
         `admitted producer ${value} must end in exactly one /p2p/<peer id>`,
+      );
+    }
+    try {
+      peerIdFromString(peerId);
+    } catch {
+      throw new Error(`admitted producer ${value} names no valid peer id`);
+    }
+    if (
+      components.length !== 3 ||
+      !DIALABLE_HOSTS.has(components[0]!.name) ||
+      components[1]!.name !== "tcp"
+    ) {
+      throw new Error(
+        `admitted producer ${value} needs a dialable ip4, ip6 or dns TCP address before its peer id`,
       );
     }
     if (seen.has(peerId)) {

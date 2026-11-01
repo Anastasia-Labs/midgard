@@ -219,6 +219,38 @@ describe("configuration refused before any build or spend", () => {
       "repeats a peer the deployment already names",
     ],
     [
+      "an admitted producer whose peer id is not a peer id",
+      ({ config }) => {
+        config.da.admittedProducers = [
+          "/ip4/127.0.0.1/tcp/39012/p2p/QmNotAPeerIdAtAll",
+        ];
+      },
+      "names no valid peer id",
+    ],
+    [
+      "an admitted producer with only a peer id",
+      async ({ config }) => {
+        const { peerId } = await loadDaLibp2pIdentity(
+          `seed:${"0b".repeat(32)}`,
+        );
+        config.da.admittedProducers = [`/p2p/${peerId}`];
+      },
+      "needs a dialable ip4, ip6 or dns TCP address",
+    ],
+    [
+      "an admitted producer named twice",
+      async ({ config }) => {
+        const { peerId } = await loadDaLibp2pIdentity(
+          `seed:${"0b".repeat(32)}`,
+        );
+        config.da.admittedProducers = [
+          `/ip4/127.0.0.1/tcp/39012/p2p/${peerId}`,
+          `/dns4/operator2.example/tcp/39012/p2p/${peerId}`,
+        ];
+      },
+      "repeats a peer the deployment already names",
+    ],
+    [
       "a preset committee that differs from the members",
       ({ env }) => {
         env.DA_COMMITTEE_HEX = "ab".repeat(32);
