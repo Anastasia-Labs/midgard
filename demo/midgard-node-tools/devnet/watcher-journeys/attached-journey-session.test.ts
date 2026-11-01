@@ -185,6 +185,27 @@ describe("attached journey session", () => {
     );
   });
 
+  it("proves operator-2's node stopped before every publication as operator-2's DA producer", async () => {
+    const stack = await runningStackWatcher(liveStatus());
+    const session = await openAttachedJourneySession(
+      stack.context,
+      stack.options(),
+    );
+    const refused = "refusing to publish as operator-2's DA producer";
+    await expect(stack.publishAsOperator2()).rejects.toThrow(refused);
+    await session.operator2.hold();
+    await expect(stack.publishAsOperator2()).rejects.toThrow(
+      stack.producerTransportOpened,
+    );
+    // Started behind the drill's back: the next publication is refused.
+    await stack.operator2.control.start();
+    await expect(stack.publishAsOperator2()).rejects.toThrow(refused);
+    await stack.operator2.control.stop();
+    await session.close();
+    await expect(stack.publishAsOperator2()).rejects.toThrow(refused);
+    expect(stack.producerTransportOpens()).toBe(1);
+  });
+
   it("refuses to pause this stack's own node as operator-2", async () => {
     const stack = await runningStackWatcher(liveStatus());
     for (const [operator2, refusal] of [

@@ -19,7 +19,6 @@ import {
   STACK_PUBLIC_DA_TRAIL_MS,
 } from "./public-da-preflight.js";
 import type { StackJourneyContext } from "./stack-context.js";
-import { stackDaProducerPublisher } from "./stack-da-producer.js";
 import {
   awaitStackDaAgedOut,
   classifyStackDaRemoval,
@@ -75,7 +74,7 @@ export const stackJourneyDa = (
   const { deployment, provider, kupoUrl } = context;
   const { contracts, chain, operatorLucid: lucid } = deployment;
   const pause = input.pause ?? (() => delay(STACK_DA_POLL_MS));
-  const publish = stackDaProducerPublisher(context.daProducer.manifest);
+  const { publish } = context.daProducer;
   const nodeUnit = (headerHash: string) =>
     toUnit(
       contracts.stateQueue.policyId,

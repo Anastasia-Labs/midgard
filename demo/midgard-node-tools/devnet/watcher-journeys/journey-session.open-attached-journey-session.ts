@@ -114,9 +114,10 @@ export const openAttachedJourneySession = async (
     const operator2 = createOperatorPause(
       options.operator2Control ?? composeOperatorNodeControl(options.operator2),
     );
-    // The drill's wallet is operator-2's: each signature proves its node
-    // stopped first.
+    // The drill's wallet and DA producer key are operator-2's: each
+    // signature and each DA publication proves its node stopped first.
     guardOperatorSignatures(context.deployment.operatorLucid, operator2);
+    context.daProducer.guard(operator2);
     // A run that ends with operator-2 still held starts it again; only a
     // completed run proves its liveness (`operator2.resume`).
     onClose(operator2.release);

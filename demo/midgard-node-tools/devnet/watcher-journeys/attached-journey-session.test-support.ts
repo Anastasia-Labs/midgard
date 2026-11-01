@@ -16,12 +16,15 @@ import {
   generateEmulatorAccount,
   Lucid,
 } from "@lucid-evolution/lucid";
+import type { DaPayloadsDB } from "midgard-node/database/index";
+import { parseManifestFixture } from "midgard-node/tests/da-payload-libp2p-producer.manifest-fixture";
 import { makeWatcherDeploymentAuthorityFixture } from "midgard-watcher/tests/support/deployment-authority-fixture";
 import { openWatcherWorkflowStoreForTest } from "midgard-watcher/tests/support/watcher-workflow-store";
 import { expect } from "vitest";
 
 import type { OperatorNodeControl } from "./operator-pause.js";
 import type { StackJourneyContext } from "./stack-context.js";
+import { stackDaProducer } from "./stack-da-producer.js";
 import {
   WATCHER_CONTAINER_PROCESS_CONFIG_PATH,
   type WatcherEvidenceExec,
@@ -166,6 +169,9 @@ export const runningStackWatcher = async (
   const emulator = new Emulator([operator2Account, prover]);
   const operatorLucid = await Lucid(emulator, "Custom");
   operatorLucid.selectWallet.fromSeed(operator2Account.seedPhrase);
+  // Operator-2's DA producer, whose transport the test never opens.
+  const producerTransportOpened = "operator-2's DA producer transport opened";
+  let producerTransportOpens = 0;
   // The parts of a stack context an attached session reads.
   const context = {
     mode: "stack",
@@ -198,6 +204,10 @@ export const runningStackWatcher = async (
       processConfigPath,
       operationsEndpoint,
     },
+    daProducer: stackDaProducer(parseManifestFixture(), async () => {
+      producerTransportOpens += 1;
+      throw new Error(producerTransportOpened);
+    }),
   } as unknown as StackJourneyContext;
   const operator2 = stoppableOperatorNode();
   return {
@@ -219,6 +229,14 @@ export const runningStackWatcher = async (
       ).sign
         .withWallet()
         .complete(),
+    /**
+     * A publication as operator-2's DA producer. Its transport is never
+     * really opened: opening it throws `producerTransportOpened`.
+     */
+    publishAsOperator2: () =>
+      context.daProducer.publish({} as DaPayloadsDB.InsertInput),
+    producerTransportOpened,
+    producerTransportOpens: () => producerTransportOpens,
     operator2,
     exec: watcherContainer(processConfigPath),
     /** How the journey opens a session on this stack, with operator-2's node. */

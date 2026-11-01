@@ -15,6 +15,7 @@ import {
 import type { DaPayloadsDB } from "midgard-node/database/index";
 
 import type { JourneyBlock } from "./fixture.js";
+import type { OperatorPause } from "./operator-pause.js";
 
 /** The producer's publication row for a block, exactly as a node stores it. */
 export const stackDaPayloadInsert = (
@@ -107,6 +108,45 @@ export const stackDaProducerPublisher =
       await transport.close?.();
     }
   };
+
+/**
+ * Operator-2's DA producer: its publication manifest, and its publications
+ * through fresh dial-only transports. The drill publishes with operator-2's
+ * producer key only while it holds operator-2's node stopped: every
+ * publication first proves it with the hold a session installs (`guard`), and
+ * one without a hold, or whose proof fails, is refused before any transport
+ * opens.
+ */
+export const stackDaProducer = (
+  manifest: DaProducerPublicationManifest,
+  openTransport?: (
+    manifest: DaProducerPublicationManifest,
+  ) => Promise<DaProducerTransport>,
+) => {
+  const publishOnce = stackDaProducerPublisher(manifest, openTransport);
+  let hold: Pick<OperatorPause, "assertStopped"> | undefined;
+  return Object.freeze({
+    manifest,
+    guard: (value: Pick<OperatorPause, "assertStopped">) => {
+      hold = value;
+    },
+    publish: async (insert: DaPayloadsDB.InsertInput) => {
+      try {
+        if (hold === undefined)
+          throw new Error("no session holds operator-2's node");
+        await hold.assertStopped();
+      } catch (cause) {
+        throw new Error(
+          `Operator-2's node is not proven stopped; refusing to publish as operator-2's DA producer: ${cause instanceof Error ? cause.message : String(cause)}`,
+          { cause },
+        );
+      }
+      return await publishOnce(insert);
+    },
+  });
+};
+
+export type StackDaProducer = ReturnType<typeof stackDaProducer>;
 
 /** The producer manifest the stack writes for a node publishing from the host. */
 export const stackDaProducerManifestPath = (stackRunDirectory: string) =>

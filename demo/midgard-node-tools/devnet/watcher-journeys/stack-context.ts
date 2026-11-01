@@ -51,6 +51,7 @@ import {
 import { journeyWorkflowChain } from "./live-context.js";
 import {
   readStackDaProducerManifest,
+  stackDaProducer,
   stackDaProducerManifestPath,
 } from "./stack-da-producer.js";
 import { readStackShelleyGenesisText } from "./stack-genesis.js";
@@ -451,7 +452,7 @@ export const openStackJourneyContext = async (
     provider,
     accounts,
     /** Operator-2's DA producer publication to the stack's committee. */
-    daProducer: Object.freeze({ manifest: daProducerManifest }),
+    daProducer: stackDaProducer(daProducerManifest),
     /** How long before operator-2's shift ends an attested fault commits. */
     lateShiftLeadMs: readStackLateShiftLeadMs(env),
     deployment: {
