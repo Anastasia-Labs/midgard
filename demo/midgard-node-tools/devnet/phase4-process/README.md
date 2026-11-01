@@ -136,7 +136,7 @@ again before forging resumes. A passing age check alone is insufficient: the
 existing canonical identity, checkpoint, registration and post-resume progress
 checks still apply. There is no 72-hour matched-snapshot reuse contract.
 
-Cardano-node 11.1.0, Ogmios v7.0.0, Kupo v2.11.0, and Postgres 15.15 are
+Cardano-node 11.1.3, Ogmios v7.0.0, Kupo v2.11.0, and Postgres 15.15 are
 fixed to official immutable image digests. The node pin includes the genesis
 cost-model override fix. The generated run records the effective image IDs;
 reset refuses any image or artifact drift.

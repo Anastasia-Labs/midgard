@@ -167,7 +167,7 @@ resolved_mithril_ancillary_key_url="${MITHRIL_ANCILLARY_VERIFICATION_KEY_URL:-$d
 # Keep this default identical to the cardano-node service default in
 # docker-compose.kupmios.yaml; the compatibility gate below compares it against
 # the certified snapshot, so a stale fallback here gates the wrong version.
-cardano_node_image_tag="${CARDANO_NODE_IMAGE_TAG:-11.1.0}"
+cardano_node_image_tag="${CARDANO_NODE_IMAGE_TAG:-11.1.3}"
 
 validate_cardano_node_image_tag "$cardano_node_image_tag"
 

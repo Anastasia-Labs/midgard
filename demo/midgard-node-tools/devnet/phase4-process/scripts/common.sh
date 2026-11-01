@@ -12,7 +12,7 @@ node_root=$(CDPATH= cd -- "$tools_root/../midgard-node" && pwd)
 # chain, index, or database is pinned to an official immutable digest.  Keep
 # these values in one place so helper containers and the compose graph cannot
 # silently drift apart.
-PHASE4_CARDANO_NODE_IMAGE="ghcr.io/intersectmbo/cardano-node:11.1.0@sha256:7b36384afd9d78e787c02f9b9a0868ed74b28a04b7d447325a68b1f397ddb43a"
+PHASE4_CARDANO_NODE_IMAGE="ghcr.io/intersectmbo/cardano-node:11.1.3@sha256:b863d5751bf691588995a8e12509057076e207270db65e88bb16bd543aaa9347"
 PHASE4_OGMIOS_IMAGE="cardanosolutions/ogmios:v7.0.0@sha256:8892ef5f77b94f1c95427cf9f2b40e6235a32b27a8b1e378db02289f3991617f"
 PHASE4_KUPO_IMAGE="cardanosolutions/kupo:v2.11.0@sha256:0a8cd8b5e373103e9e0a68b162d82c69a6f76042bb073c31912724034e51ca9e"
 PHASE4_POSTGRES_IMAGE="postgres:15.15-alpine@sha256:d4c38e1c60871a1e8fe5d05b639980ac7827c9e6920a5df663a16f86f398aca6"

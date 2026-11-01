@@ -1155,7 +1155,7 @@ afresh; never reuse a previous chain's database or deployment receipts.
 
 ## Devnet cost models
 
-The watcher devnet pins Cardano node 11.1.0 by image digest. This is a
+The watcher devnet pins Cardano node 11.1.3 by image digest. This is a
 prerelease used only by this isolated acceptance environment. Node 11.0.1
 silently retains the original Plutus V1/V3 cost models when `extraConfig`
 supplies replacements ([ledger issue 5896](https://github.com/IntersectMBO/cardano-ledger/issues/5896));
