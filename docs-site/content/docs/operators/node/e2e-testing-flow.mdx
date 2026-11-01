@@ -211,6 +211,13 @@ the prover holds less than the stack configuration's
 `wallets.prover.minimumLovelace`, and names the prover address and the
 shortfall.
 
+An older drill recorded the ledger owner's pending deposit without its
+transaction hash or validity end. The current drill stops on such a record
+and names its file, `work/journeys/ledger-owner-deposit.json` in the
+journey's run directory. Remove that one file by hand and rerun, an exception
+to [When the run stops](#when-the-run-stops): the drill then makes a new
+deposit. If the old deposit lands as well, the owner simply holds more on L2.
+
 ## Related
 
 - [Preprod-Public Deployment](/docs/operators/node/preprod-public-deploy) for the public profile.
