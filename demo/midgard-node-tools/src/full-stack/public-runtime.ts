@@ -375,7 +375,7 @@ export async function publicNodeServices(
     `${inputs.tlsCaFile}:${CONTAINER.tlsCa}:ro`,
     `${inputs.trustRootsFile}:${CONTAINER.trustRoots}:ro`,
     `${inputs.releaseDirectory}:${CONTAINER.release}:ro`,
-    `${ledger.socketDirectory}:/ipc`,
+    `${ledger.socketDirectory}:/ipc:ro`,
     `${ledger.directory}:/cardano-config:ro`,
   ];
   const ingress = inputs.ingressHostPort !== null;

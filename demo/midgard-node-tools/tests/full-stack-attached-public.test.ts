@@ -117,6 +117,8 @@ describe("a public stack's second-instance workflow", () => {
       inputs.tlsKeyFile,
       inputs.tlsCaFile,
       inputs.trustRootsFile,
+      // The stack's Cardano node socket: the node connects, never writes.
+      join(fixture.primary.directory, "cardano/ipc"),
     ])
       expect(
         node.volumes!.find((volume) => volume.source === source)?.read_only,
