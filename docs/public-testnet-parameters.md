@@ -84,8 +84,10 @@ lovelace); the readable column converts them. "Set at" links the profile line.
 | `protocol_treasury_native_script.scripts[1].keyHash` | `9ac54f4b18dcdbaeb981b9acbb4e79b590315eb508a08b3a50509cb9` | payment key hash  |             | [L94](../config/deployments/preprod-public.yaml#L94)   |
 | `protocol_treasury_native_script.scripts[2].type`    | `sig`                                                      | text              |             | [L95](../config/deployments/preprod-public.yaml#L95)   |
 | `protocol_treasury_native_script.scripts[2].keyHash` | `65a0683b5ca28e4a8fed2b5a443210741faad5ed43802d20fd329a53` | payment key hash  |             | [L96](../config/deployments/preprod-public.yaml#L96)   |
-| `allow_lists.operators[0]`                           | `041388eef29da389e7b9dac19509ef8ac95a398a9909991a4326d424` | payment key hash  |             | [L101](../config/deployments/preprod-public.yaml#L101) |
-| `allow_lists.operators[1]`                           | `4189f341bddd0c74ecb4f5a1ddae8653ee204be022fe530e2f65a6a6` | payment key hash  |             | [L102](../config/deployments/preprod-public.yaml#L102) |
+| `allow_lists.operators[0]`                           | `041388eef29da389e7b9dac19509ef8ac95a398a9909991a4326d424` | payment key hash  |             | [L102](../config/deployments/preprod-public.yaml#L102) |
+| `allow_lists.operators[1]`                           | `089282d30b55fee0d97ad5c24034a6d7afd390a59f7a467379afc5bf` | payment key hash  |             | [L103](../config/deployments/preprod-public.yaml#L103) |
+| `allow_lists.operators[2]`                           | `4189f341bddd0c74ecb4f5a1ddae8653ee204be022fe530e2f65a6a6` | payment key hash  |             | [L104](../config/deployments/preprod-public.yaml#L104) |
+| `allow_lists.operators[3]`                           | `f9e6484e0ef75bb127589916d54920cdeec2ee0f3d43e8d320f5e7f3` | payment key hash  |             | [L105](../config/deployments/preprod-public.yaml#L105) |
 
 <!-- END PUBLIC_TESTNET_PARAMETERS_GENERATED -->
 
@@ -144,9 +146,11 @@ W is `event_wait_ms`, d is `commit_event_depth` and M is `block_maturity_ms`.
 
 ### Operators and shifts
 
-- `operators` (two payment key hashes): the curated P1 operator allow-list.
-  Only these keys may register (owner input I1, 2026-10-13). Fault provers and
-  DA challengers are permissionless (owner, 2026-10-13).
+- `operators` (four payment key hashes): the curated P1 operator allow-list,
+  each operator's wallet and its merge wallet. Only these keys may register
+  or sign as an operator (owner input I1, 2026-10-13; one merge key per
+  operator, owner, 2026-10-31). Fault provers and DA challengers are
+  permissionless (owner, 2026-10-13).
 - `operator_shift_ms` (1 h): the length of one operator's shift, the one-hour
   shift the node schedules.
 - `registration_ms` (30 s): how long after its registration an operator

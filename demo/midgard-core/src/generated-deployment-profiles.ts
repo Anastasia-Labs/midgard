@@ -159,7 +159,9 @@ export const DEPLOYMENT_PROFILES = {
     allow_lists: {
       operators: [
         "041388eef29da389e7b9dac19509ef8ac95a398a9909991a4326d424",
+        "089282d30b55fee0d97ad5c24034a6d7afd390a59f7a467379afc5bf",
         "4189f341bddd0c74ecb4f5a1ddae8653ee204be022fe530e2f65a6a6",
+        "f9e6484e0ef75bb127589916d54920cdeec2ee0f3d43e8d320f5e7f3",
       ],
     },
     excluded_fraud_proof_categories: [],
@@ -239,7 +241,9 @@ export const DEPLOYMENT_PROFILES = {
     allow_lists: {
       operators: [
         "041388eef29da389e7b9dac19509ef8ac95a398a9909991a4326d424",
+        "089282d30b55fee0d97ad5c24034a6d7afd390a59f7a467379afc5bf",
         "4189f341bddd0c74ecb4f5a1ddae8653ee204be022fe530e2f65a6a6",
+        "f9e6484e0ef75bb127589916d54920cdeec2ee0f3d43e8d320f5e7f3",
       ],
     },
     excluded_fraud_proof_categories: [],
@@ -545,9 +549,9 @@ export const DEPLOYMENT_PROFILES = {
 export const DEPLOYMENT_PROFILE_DIGESTS = {
   mainnet: "46c79b131d3b47f1c550bb2ed2df086c4f5e8ffa7751d172ef12d635a8e5ed4b",
   "preprod-public":
-    "e313ff89349b7bd0a4396db26ba852fe8f4261595be08dbaad353b95abc46d0b",
+    "b379c2a712c011f8ba1968a9e63967ea88641146a18e670925f7d5366e710532",
   "preprod-rehearsal":
-    "33b03a4e8f9a48ce21dd45699c4641aebfd976e4586ccf4693e19bc3e30c3346",
+    "91043256c21ff635c1b80dae0805dc1ef9dcc6523f6c993d887b000c41d5fac5",
   "preprod-testing":
     "eb9e2fed4434ee58df122bb07b52e239f22cef0b561ab1e757ef1027e5675316",
   "local-devnet-testing":

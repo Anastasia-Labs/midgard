@@ -101,10 +101,13 @@ protocol_treasury_native_script:
       keyHash: "65a0683b5ca28e4a8fed2b5a443210741faad5ed43802d20fd329a53"
 allow_lists:
   # P1 curated operators (owner input I1): payment key hashes of the Preprod
-  # operator wallets. Fault provers and DA challengers are permissionless.
+  # operator wallets and, one per operator, their merge wallets (owner,
+  # 2026-10-31). Fault provers and DA challengers are permissionless.
   operators:
     - "041388eef29da389e7b9dac19509ef8ac95a398a9909991a4326d424"
+    - "089282d30b55fee0d97ad5c24034a6d7afd390a59f7a467379afc5bf"
     - "4189f341bddd0c74ecb4f5a1ddae8653ee204be022fe530e2f65a6a6"
+    - "f9e6484e0ef75bb127589916d54920cdeec2ee0f3d43e8d320f5e7f3"
 # Every fraud-proof category is in the catalogue: the Plutus execution
 # dispute (validationTraceDispute, 00000006) since launch (owner, 2026-10-21)
 # and the nine trace-relative families, each rebuilt to prove its fault from

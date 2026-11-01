@@ -104,7 +104,9 @@ pub const operator_allow_list: Option<List<ByteArray>> =
   Some(
     [
       #"041388eef29da389e7b9dac19509ef8ac95a398a9909991a4326d424",
+      #"089282d30b55fee0d97ad5c24034a6d7afd390a59f7a467379afc5bf",
       #"4189f341bddd0c74ecb4f5a1ddae8653ee204be022fe530e2f65a6a6",
+      #"f9e6484e0ef75bb127589916d54920cdeec2ee0f3d43e8d320f5e7f3",
     ],
   )
 
