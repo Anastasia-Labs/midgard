@@ -218,8 +218,7 @@ directory. To get one without deleting existing volumes, run from a separate
 linked worktree: the Compose wrapper gives it its own project, volumes, host
 ports and node directory.
 
-A second operator's node attaches to a running `preprod-testing` stack; it
-does not attach to a public stack. The stack's committee accepts payloads only
+A second operator's node attaches to a running stack. The stack's committee accepts payloads only
 from the producers it admits: list each further producer in the stack
 configuration's `da.admittedProducers`, by the multiaddr it listens on, ending
 in its peer id (never its key). Copy
@@ -234,12 +233,32 @@ refuses, naming the address to add, a producer the stack does not admit: add
 that address to the stack's `da.admittedProducers` and rerun the stack, which
 regenerates its committee's configuration. It also refuses the stack's node or
 run directory, any of the stack's node, metrics, DA or Postgres host ports, the
-stack's Compose project, wallets other than the four node wallets, and a public
-stack. A run starts only its own Postgres and node: it skips the nonce,
+stack's Compose project, any of the stack's wallets (by payment key, per
+role), and wallets other than the four node wallets. A run starts only its own
+Postgres and node: it skips the nonce,
 reference scripts and initialization, copies the stack's deployment and L1
 origin once the stack has initialized, registers and activates its operator,
 and runs the node on the stack's Cardano node socket, publishing to the stack's
 committee. It never runs wallet journeys. Rerun the same command to resume or confirm it.
+
+A second instance of a public stack (`preprod-rehearsal` or `preprod-public`)
+runs from a linked worktree built for the stack's profile, with
+`MIDGARD_DEPLOYMENT_PROFILE` naming it and `RUN_GENESIS_ON_STARTUP=false`; copy
+`config/preprod-rehearsal-operator2.example.json`. Its configuration also names
+`nodeConfigFile`, its own private node configuration (mode 0600: its admin API
+key, Postgres password and four node seeds, none of them in its `.env`, which
+also holds none of the settings the stack derives), and an `https://` loopback
+`endpoint`. It shares the stack's release, never builds one: the release
+revision, the public origin and the node, Postgres and ingress images come from
+the stack's `.env`, and its own `.env` may only repeat them; its node runs from
+the stack's node image, serves the stack's TLS certificate and mounts the
+stack's signed release, TLS files and trust roots read-only. Every host port,
+the node API's included, listens on loopback only, and it never starts
+ingress. `--check` refuses an operator or merge wallet not on the compiled
+profile's allow-list, a validation worker pool below 2 or disabled HTTP rate
+limits, and a node directory, run directory or node configuration that would
+lie in the stack's release directory (or hold it). A run refuses to start its
+node before the stack has signed its public release.
 
 The generated node environment explicitly sets `MIN_QUEUE_LENGTH_FOR_MERGING=1`
 for these small Preprod journeys. This uses the existing automatic merge worker

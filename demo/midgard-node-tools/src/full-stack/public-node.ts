@@ -52,7 +52,7 @@ function refuse<T>(label: string, check: () => T): T {
   }
 }
 
-const inside = (path: string, directory: string) => {
+export const inside = (path: string, directory: string) => {
   const offset = relative(directory, path);
   return offset === "" || (!offset.startsWith("..") && offset !== path);
 };
@@ -317,20 +317,7 @@ export async function checkPublicInputs(
     throw new Error(
       `A ${SELECTED_DEPLOYMENT_PROFILE.name} node serves HTTPS; use an https:// loopback endpoint`,
     );
-  for (const name of PUBLIC_NODE_SECRET_NAMES)
-    if (name in env)
-      throw new Error(
-        `Keep ${name} in public.nodeConfigFile, not in ${config.envFile}`,
-      );
-  for (const name of STACK_DERIVED_SETTINGS)
-    if (name in env)
-      throw new Error(
-        `The stack sets ${name} for a ${SELECTED_DEPLOYMENT_PROFILE.name} node; remove it from ${config.envFile}`,
-      );
-  if ("L1_USER_SEED_PHRASE" in env)
-    throw new Error(
-      `A ${SELECTED_DEPLOYMENT_PROFILE.name} operator cannot hold L1_USER_SEED_PHRASE; remove it`,
-    );
+  assertPublicNodeEnvFile(config.envFile, env, "public.nodeConfigFile");
   const context = resolve(config.nodeRoot, "..");
   const ignored = join(config.nodeRoot, "logs");
   for (const key of [
@@ -346,23 +333,12 @@ export async function checkPublicInputs(
     throw new Error(
       "public.releaseDirectory must differ from watcher.releaseDirectory",
     );
-  await assertPrivateFile("public.nodeConfigFile", inputs.nodeConfigFile);
   await assertPrivateFile("public.tlsKeyFile", inputs.tlsKeyFile);
-  const fileEnv = refuse("public.nodeConfigFile", () =>
-    loadPublicMountedConfig(inputs.nodeConfigFile),
-  );
-  const extra = Object.keys(fileEnv).filter(
-    (name) =>
-      !["MIDGARD_CONFIG_FILE", "MIDGARD_DOTENV_MODE"].includes(name) &&
-      !(PUBLIC_NODE_SECRET_NAMES as readonly string[]).includes(name),
-  );
-  if (extra.length > 0)
-    throw new Error(
-      `public.nodeConfigFile holds only ${PUBLIC_NODE_SECRET_NAMES.join(", ")}; move ${extra.join(", ")} to ${config.envFile}`,
-    );
-  for (const name of PUBLIC_NODE_SECRET_NAMES) env[name] = fileEnv[name]!;
-  refuse("public.nodeConfigFile", () =>
-    assertPublicCredentials(env.ADMIN_API_KEY!, env.POSTGRES_PASSWORD!),
+  await loadPublicNodeSecrets(
+    "public.nodeConfigFile",
+    inputs.nodeConfigFile,
+    config.envFile,
+    env,
   );
   refuse(config.envFile, () => assertPublicReleaseIdentity(env));
   const tls = refuse("public TLS inputs", () =>
@@ -406,19 +382,7 @@ export async function checkPublicInputs(
   });
   // The reference-script deployment reads the classification from the host.
   env.MIDGARD_BLUEPRINT_CLASSIFICATION_FILE = classification;
-  const workers = env.VALIDATION_WORKER_POOL_SIZE;
-  if (
-    resolveValidationWorkerPoolSize(
-      workers === undefined ? undefined : Number(workers),
-    ) < 2
-  )
-    throw new Error(
-      `A ${SELECTED_DEPLOYMENT_PROFILE.name} node needs VALIDATION_WORKER_POOL_SIZE of at least 2`,
-    );
-  if (env.HTTP_RATE_LIMIT_ENABLED?.trim().toLowerCase() === "false")
-    throw new Error(
-      `A ${SELECTED_DEPLOYMENT_PROFILE.name} node cannot disable HTTP rate limits`,
-    );
+  assertPublicNodeLimits(env);
   if (inputs.ingressHostPort !== null) {
     const taken = [
       Number(new URL(config.endpoint).port),
@@ -436,7 +400,76 @@ export async function checkPublicInputs(
     await assertIngressSubnetFree(env);
   }
   // Last: the operator and merge wallets must be on the compiled allow-list.
-  refuse("public.nodeConfigFile", () =>
+  assertAllowListedOperatorWallets("public.nodeConfigFile", env);
+}
+
+/** A public node's .env holds none of its secrets and none of the settings the stack derives. */
+export function assertPublicNodeEnvFile(
+  envFile: string,
+  env: Record<string, string>,
+  nodeConfigLabel: string,
+) {
+  for (const name of PUBLIC_NODE_SECRET_NAMES)
+    if (name in env)
+      throw new Error(`Keep ${name} in ${nodeConfigLabel}, not in ${envFile}`);
+  for (const name of STACK_DERIVED_SETTINGS)
+    if (name in env)
+      throw new Error(
+        `The stack sets ${name} for a ${SELECTED_DEPLOYMENT_PROFILE.name} node; remove it from ${envFile}`,
+      );
+  if ("L1_USER_SEED_PHRASE" in env)
+    throw new Error(
+      `A ${SELECTED_DEPLOYMENT_PROFILE.name} operator cannot hold L1_USER_SEED_PHRASE; remove it`,
+    );
+}
+
+/** Moves a public node's secrets from its private node configuration into `env`. */
+export async function loadPublicNodeSecrets(
+  label: string,
+  nodeConfigFile: string,
+  envFile: string,
+  env: Record<string, string>,
+) {
+  await assertPrivateFile(label, nodeConfigFile);
+  const fileEnv = refuse(label, () => loadPublicMountedConfig(nodeConfigFile));
+  const extra = Object.keys(fileEnv).filter(
+    (name) =>
+      !["MIDGARD_CONFIG_FILE", "MIDGARD_DOTENV_MODE"].includes(name) &&
+      !(PUBLIC_NODE_SECRET_NAMES as readonly string[]).includes(name),
+  );
+  if (extra.length > 0)
+    throw new Error(
+      `${label} holds only ${PUBLIC_NODE_SECRET_NAMES.join(", ")}; move ${extra.join(", ")} to ${envFile}`,
+    );
+  for (const name of PUBLIC_NODE_SECRET_NAMES) env[name] = fileEnv[name]!;
+  refuse(label, () =>
+    assertPublicCredentials(env.ADMIN_API_KEY!, env.POSTGRES_PASSWORD!),
+  );
+}
+
+/** The validation capacity and rate limits a public node may not lower. */
+export function assertPublicNodeLimits(env: Record<string, string>) {
+  const workers = env.VALIDATION_WORKER_POOL_SIZE;
+  if (
+    resolveValidationWorkerPoolSize(
+      workers === undefined ? undefined : Number(workers),
+    ) < 2
+  )
+    throw new Error(
+      `A ${SELECTED_DEPLOYMENT_PROFILE.name} node needs VALIDATION_WORKER_POOL_SIZE of at least 2`,
+    );
+  if (env.HTTP_RATE_LIMIT_ENABLED?.trim().toLowerCase() === "false")
+    throw new Error(
+      `A ${SELECTED_DEPLOYMENT_PROFILE.name} node cannot disable HTTP rate limits`,
+    );
+}
+
+/** The node's operator and merge wallets must be on the compiled allow-list. */
+export function assertAllowListedOperatorWallets(
+  label: string,
+  env: Record<string, string>,
+) {
+  refuse(label, () =>
     assertPublicOperatorWallets(
       [env.L1_OPERATOR_SEED_PHRASE!, env.L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX!],
       SELECTED_DEPLOYMENT_PROFILE.network,

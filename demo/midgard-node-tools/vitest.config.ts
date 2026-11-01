@@ -31,26 +31,31 @@ process.env.MIDGARD_TEST_DATABASE_PREFIX ??=
 
 const bail = parsePositiveInteger(process.env.MIDGARD_NODE_TEST_BAIL);
 
-// Sign a public release and open it as public listen does, or run the node
-// command line a public build compiles, so they compile the preprod-public
-// profile against a blueprint built for it.
+// Sign a public release and open it as public listen does, run the node
+// command line a public build compiles, or run operator-2's node on a public
+// stack's deployment, so they compile the preprod-public profile against a
+// blueprint built for it.
 const preprodPublicTests = [
   "./tests/sign-deployment-release.public.test.ts",
   "./tests/full-stack-public-release.test.ts",
   "./tests/full-stack-public-node-containers.test.ts",
   "./tests/public-submit-deposit.test.ts",
+  "./tests/full-stack-attached-public.test.ts",
 ];
 // Load a preprod-public stack configuration, which needs only the compiled
 // profile, with the fixture's wallets on its operator allow-list.
 const preprodPublicStackTests = ["./tests/full-stack-public-config.test.ts"];
-// The same for the preprod-rehearsal profile, which takes the public route.
+// The same for the preprod-rehearsal profile, which takes the public route,
+// and for loading operator-2's node attached to such a stack.
 const preprodRehearsalStackTests = [
   "./tests/full-stack-rehearsal-config.test.ts",
+  "./tests/full-stack-attached-public-config.test.ts",
 ];
 
 /**
  * Adds the stack configuration fixture's operator and merge wallets (seeds
- * from entropy 0 and 1, full-stack-config.fixtures.ts) to one production
+ * from entropy 0 and 1, full-stack-config.fixtures.ts), and operator-2's
+ * (entropy 0x20 and 0x21, full-stack-attached.fixtures.ts), to one production
  * profile's operator allow-list, before the generated module freezes its
  * profiles, so a fixture can pass every public input check.
  */
@@ -69,6 +74,8 @@ const fixtureOperatorsPlugin = (profile: string) => ({
           [
             "0fdc780023d8be7c9ff3a6bdc0d8d3b263bd0cc12448c40948efbf42",
             "fa6407a107929f517bbd7ac465b7654809bc5b0f55c4bc7dac09b5e0",
+            "17e301a987e2e53dc954333ae0c133384326f7bc82513ec59a302352",
+            "6225b6e1bf1958c4cc462302322a9555a90c70f192e2084d121bb8bd",
           ],
         ).slice(1, -1)});\n${anchor}`,
       ),

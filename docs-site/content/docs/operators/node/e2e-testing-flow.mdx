@@ -126,8 +126,32 @@ Build its checkout for `preprod-rehearsal` and copy
 in its `.env` before the first run: the deployment binds it. Its
 `da.admittedProducers` admits operator-2's producer: replace the placeholder
 with the address operator-2's node listens on and its peer id, or `--check`
-refuses it. The second-instance mode that runs operator-2's node attaches only
-to a `preprod-testing` stack, such as the fast-timer twin below.
+refuses it.
+
+Operator-2's node runs as a second instance of the rehearsal stack. From a
+second linked worktree built for `preprod-rehearsal`, copy
+`demo/midgard-node-tools/config/preprod-rehearsal-operator2.example.json`,
+pointing `attachTo` at the rehearsal configuration and `nodeConfigFile` at
+operator-2's own private node configuration (mode 0600): its admin API key,
+Postgres password and four node wallets, under the same names as the
+rehearsal's. Operator-2's operator and merge wallets must be the ones on the
+profile's allow-list. Its `.env` sets `MIDGARD_DEPLOYMENT_PROFILE=preprod-rehearsal`,
+`RUN_GENESIS_ON_STARTUP=false`, its own `MIDGARD_NODE_API_HOST_PORT` (the
+endpoint's port), `MIDGARD_NODE_DA_HOST_PORT` and `MIDGARD_POSTGRES_HOST_PORT`,
+and `STACK_OPERATOR2_DA_TRANSPORT`, a persistent `seed:` transport identity;
+no node secrets. It takes the release revision, public origin and images from
+the rehearsal's `.env`. Run `e2e-stack --check` with this configuration: it
+names the address the rehearsal's committee must admit. Put that address in
+the rehearsal configuration's `da.admittedProducers`, run the rehearsal's
+`e2e-stack` until its release is signed, then run `e2e-stack` with
+operator-2's configuration. It registers and activates operator-2 and runs its
+node from the rehearsal's node image on loopback only, serving the
+rehearsal's TLS certificate, reading its signed release, and starting no
+ingress. For the fault drills, copy operator-2's
+`STACK_OPERATOR2_DA_TRANSPORT` value into the rehearsal's own `.env` under the
+same name, so the drills publish as operator-2's producer.
+`demo/midgard-node-tools/docs/PREPROD_STACK.md` lists what a public stack's
+second instance refuses.
 
 The example's `timeoutMs` (4 hours) bounds each wait of one run, not the 7-day
 block maturity before the withdrawal pays out. When a run stops with
@@ -140,17 +164,20 @@ Figures come from `config/deployments/preprod-rehearsal.yaml` and the node's
 DA availability settings. Every wallet also needs fees and a plain output of
 at least 5 ADA for collateral.
 
-| Wallet                                 | Needs                                                                                              | Example `minimumLovelace`  |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------- | -------------------------- |
-| Operator-1                             | 1,405 ADA: the 5 ADA pool floor, the 500 ADA DA bond and the 900 ADA operator bond                 | 1,410 ADA                  |
-| Operator-2                             | The 900 ADA operator bond                                                                          | 910 ADA, in its own config |
-| Merge, settlement                      | Fees only                                                                                          | 1,000 ADA each             |
-| Reference publisher                    | The published scripts' min-ADA, about 5,000 ADA                                                    | 5,000 ADA                  |
-| Prover (watcher)                       | Per dispute: the 2,500 ADA bond, a 5 ADA collateral floor and a 2 ADA proof output                 | 2,510 ADA                  |
-| Availability challenger (watcher)      | Per challenge: the 2,500 ADA bond, a 27 ADA record, up to 1.2 ADA timeout fee and 5 ADA collateral | 2,540 ADA                  |
-| DA submitter                           | Attestation fees and collateral                                                                    | 1,000 ADA                  |
-| Journey user, recipient                | One 20 ADA deposit plus 10 ADA of fees; the withdrawal order's ADA and fee                         | 100 ADA each               |
-| Any wallet topping up the DA bond pool | At least 5 ADA per top-up; a slash removes 100 ADA from the pool                                   | -                          |
+| Wallet                                 | Needs                                                                                              | Example `minimumLovelace`    |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------- | ---------------------------- |
+| Operator-1                             | 1,405 ADA: the 5 ADA pool floor, the 500 ADA DA bond and the 900 ADA operator bond                 | 1,410 ADA                    |
+| Operator-2                             | The 900 ADA operator bond                                                                          | 910 ADA, in its own config   |
+| Operator-1 merge                       | Fees only                                                                                          | 1,000 ADA                    |
+| Operator-2 merge                       | Fees only                                                                                          | 1,000 ADA, in its own config |
+| Settlement, each operator              | Fees only                                                                                          | 1,000 ADA each               |
+| Reference publisher                    | The published scripts' min-ADA, about 5,000 ADA                                                    | 5,000 ADA                    |
+| Operator-2 reference                   | Fees and collateral only: it publishes no scripts                                                  | 10 ADA, in its own config    |
+| Prover (watcher)                       | Per dispute: the 2,500 ADA bond, a 5 ADA collateral floor and a 2 ADA proof output                 | 2,510 ADA                    |
+| Availability challenger (watcher)      | Per challenge: the 2,500 ADA bond, a 27 ADA record, up to 1.2 ADA timeout fee and 5 ADA collateral | 2,540 ADA                    |
+| DA submitter                           | Attestation fees and collateral                                                                    | 1,000 ADA                    |
+| Journey user, recipient                | One 20 ADA deposit plus 10 ADA of fees; the withdrawal order's ADA and fee                         | 100 ADA each                 |
+| Any wallet topping up the DA bond pool | At least 5 ADA per top-up; a slash removes 100 ADA from the pool                                   | -                            |
 
 ## Fast-timer twin
 

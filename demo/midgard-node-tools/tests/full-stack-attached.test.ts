@@ -93,7 +93,7 @@ describe("second-instance configuration", () => {
     expect(config.attachedTo).toBe(twin);
     expect(config.endpoint).not.toBe(twin.endpoint);
   });
-  it("refuses the stack's own node directory, other wallets, or a public stack", async () => {
+  it("refuses the stack's own node directory, other wallets, or a public stack's instance without its own node configuration", async () => {
     const fixture = await attachedFixture();
     const primary = fixture.primary.config;
     expect(() =>
@@ -123,7 +123,9 @@ describe("second-instance configuration", () => {
         ...primary,
         public: {} as NonNullable<typeof primary.public>,
       }),
-    ).toThrow("A second instance attaches only to a preprod-testing stack");
+    ).toThrow(
+      "A second-instance configuration has exactly the fields attachTo, nodeRoot, envFile, runDirectory, endpoint, timeoutMs, wallets, producerTransportEnv, nodeConfigFile",
+    );
   });
 });
 

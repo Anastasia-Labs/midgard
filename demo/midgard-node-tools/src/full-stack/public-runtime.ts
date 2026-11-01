@@ -63,13 +63,18 @@ export const publicPostgresPasswordPath = (config: StackConfig) =>
  * the base files' env_file: Compose appends env_file lists across files, and
  * the stack's .env holds other roles' secrets, so they read only the node.env
  * the services file adds (publicNodeServices). The node API stays on every
- * interface only without the TLS ingress, which otherwise is its public port;
- * the DA port serves the stack's own committee, which dials the loopback.
+ * interface only without the TLS ingress, which otherwise is its public port,
+ * and never for a second instance; the DA port serves the stack's own
+ * committee, which dials the loopback.
  */
 export async function writePublicRoles(processes: StackProcesses) {
   const { env, config } = processes;
   const loopback = "127.0.0.1:";
-  const api = config.public!.ingressHostPort === null ? "" : loopback;
+  // A second instance (attached-config.ts) has no public port of its own.
+  const api =
+    config.public!.ingressHostPort === null && config.attachedTo === undefined
+      ? ""
+      : loopback;
   const node = {
     image: env.MIDGARD_PUBLIC_NODE_IMAGE!,
     pull_policy: "missing",

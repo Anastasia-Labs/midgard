@@ -147,9 +147,16 @@ export async function prepareStackPrerequisites(processes: StackProcesses) {
   return { profile, inputsChecked: true };
 }
 
-/** A second instance builds its own node and reads the stack's Cardano node. */
+/**
+ * A second instance builds its own node and reads the stack's Cardano node;
+ * on a public stack it pulls the stack's release images instead.
+ */
 export async function prepareAttachedPrerequisites(processes: StackProcesses) {
   const profile = await buildStackPrograms(processes);
+  if (processes.config.public !== undefined) {
+    const { preparePublicImages } = await import("./public-runtime.js");
+    await preparePublicImages(processes);
+  }
   await processes.compose("base-compose-check", ["config", "--quiet"]);
   return { profile, inputsChecked: true };
 }

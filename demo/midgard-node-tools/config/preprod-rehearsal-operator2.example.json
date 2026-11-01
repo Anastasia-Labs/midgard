@@ -1,0 +1,28 @@
+{
+  "attachTo": "/absolute/path/to/private-rehearsal/preprod-rehearsal-stack.json",
+  "nodeRoot": "/absolute/path/to/midgard-rehearsal-operator2/demo/midgard-node",
+  "envFile": "/absolute/path/to/midgard-rehearsal-operator2/demo/midgard-node/.env",
+  "runDirectory": "/absolute/path/to/midgard-rehearsal-operator2/demo/midgard-node/logs/operator2",
+  "endpoint": "https://127.0.0.1:3020",
+  "timeoutMs": 14400000,
+  "wallets": {
+    "operator": {
+      "seedEnv": "L1_OPERATOR_SEED_PHRASE",
+      "minimumLovelace": "910000000"
+    },
+    "merge": {
+      "seedEnv": "L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX",
+      "minimumLovelace": "1000000000"
+    },
+    "reference": {
+      "seedEnv": "L1_REFERENCE_SCRIPT_SEED_PHRASE",
+      "minimumLovelace": "10000000"
+    },
+    "settlement": {
+      "seedEnv": "L1_SETTLEMENT_SEED_PHRASE",
+      "minimumLovelace": "1000000000"
+    }
+  },
+  "producerTransportEnv": "STACK_OPERATOR2_DA_TRANSPORT",
+  "nodeConfigFile": "/absolute/path/to/private-rehearsal-operator2/node-secrets.yaml"
+}

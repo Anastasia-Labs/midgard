@@ -6,11 +6,19 @@ import { isAbsolute, join, resolve } from "node:path";
 import { promisify } from "node:util";
 
 import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
-import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
+import {
+  isProductionDeploymentProfileName,
+  SELECTED_DEPLOYMENT_PROFILE,
+} from "@al-ft/midgard-core/deployment-profile";
 import { paymentCredentialOf } from "@lucid-evolution/lucid";
 import { validateMnemonic } from "bip39";
 import { parse } from "dotenv";
 
+import {
+  assertOutsideStackRelease,
+  checkAttachedPublicInputs,
+  withStackNodeSecrets,
+} from "./attached-public.js";
 import { localUrl, parseStackConfig, type StackConfig } from "./config.js";
 import {
   assertHostEnvironmentUntouched,
@@ -70,13 +78,16 @@ export function parseAttachedStackConfig(
   primary: StackConfig,
 ): StackConfig {
   const input = value as Record<string, unknown>;
-  if (Object.keys(input).sort().join() !== [...FIELDS].sort().join())
+  // A public stack's second instance also names its own node configuration.
+  const isPublic = primary.public !== undefined;
+  const fields = isPublic ? [...FIELDS, "nodeConfigFile"] : FIELDS;
+  if (Object.keys(input).sort().join() !== [...fields].sort().join())
     throw new Error(
-      `A second-instance configuration has exactly the fields ${FIELDS.join(", ")}`,
+      `A second-instance configuration has exactly the fields ${fields.join(", ")}`,
     );
-  if (primary.public !== undefined)
+  if (isPublic && new URL(String(input.endpoint)).protocol !== "https:")
     throw new Error(
-      "A second instance attaches only to a preprod-testing stack, not to a public one",
+      "A public stack's second instance serves HTTPS; use an https:// loopback endpoint",
     );
   const wallets = input.wallets as Record<string, unknown>;
   if (
@@ -124,10 +135,24 @@ export function parseAttachedStackConfig(
     nodeRoot: absolute(input.nodeRoot, "nodeRoot"),
     envFile: absolute(input.envFile, "envFile"),
     runDirectory: absolute(input.runDirectory, "runDirectory"),
-    endpoint: localUrl(String(input.endpoint)),
+    endpoint: localUrl(
+      String(input.endpoint),
+      isPublic ? ["https:"] : undefined,
+    ),
     timeoutMs: input.timeoutMs,
     wallets: nodeWallets,
     da: { ...primary.da, producerTransportEnv },
+    // The stack's release, images and TLS, read-only, and never an ingress:
+    // its node API stays on the loopback.
+    ...(isPublic
+      ? {
+          public: {
+            ...primary.public!,
+            nodeConfigFile: absolute(input.nodeConfigFile, "nodeConfigFile"),
+            ingressHostPort: null,
+          },
+        }
+      : {}),
     attachedTo: primary,
   };
   if (config.envFile !== join(config.nodeRoot, ".env"))
@@ -139,6 +164,7 @@ export function parseAttachedStackConfig(
     throw new Error(
       "A second instance needs its own node directory and run directory",
     );
+  if (isPublic) assertOutsideStackRelease(config);
   return config;
 }
 
@@ -180,10 +206,12 @@ function hostPort(
 }
 
 /**
- * Loads a second instance that attaches to a running preprod-testing stack:
- * its node joins that deployment as another operator, reading the stack's
- * Cardano node, and publishes to the stack's committee, which must admit its
- * producer (`da.admittedProducers` of the stack's configuration).
+ * Loads a second instance that attaches to a running stack: its node joins
+ * that deployment as another operator, reading the stack's Cardano node, and
+ * publishes to the stack's committee, which must admit its producer
+ * (`da.admittedProducers` of the stack's configuration). On a public stack
+ * (preprod-rehearsal or preprod-public) it runs the stack's signed release,
+ * images and TLS, with its API on the loopback only (attached-public.ts).
  */
 export async function loadAttachedStackConfig(path: string) {
   const value = JSON.parse(await readFile(path, "utf8")) as Record<
@@ -197,14 +225,24 @@ export async function loadAttachedStackConfig(path: string) {
   const config = parseAttachedStackConfig(value, primary);
   const env = await composeEnvironment(config);
   const compiled: string = SELECTED_DEPLOYMENT_PROFILE.name;
-  if (
+  if (primary.public === undefined) {
+    if (
+      env.NETWORK !== "Preprod" ||
+      env.MIDGARD_DEPLOYMENT_PROFILE !== "preprod-testing" ||
+      compiled !== "preprod-testing" ||
+      env.RUN_GENESIS_ON_STARTUP !== "false"
+    )
+      throw new Error(
+        "A second instance requires Preprod, MIDGARD_DEPLOYMENT_PROFILE=preprod-testing in a checkout compiled for it, and RUN_GENESIS_ON_STARTUP=false",
+      );
+  } else if (
+    !isProductionDeploymentProfileName(compiled) ||
     env.NETWORK !== "Preprod" ||
-    env.MIDGARD_DEPLOYMENT_PROFILE !== "preprod-testing" ||
-    compiled !== "preprod-testing" ||
+    env.MIDGARD_DEPLOYMENT_PROFILE !== compiled ||
     env.RUN_GENESIS_ON_STARTUP !== "false"
   )
     throw new Error(
-      "A second instance requires Preprod, MIDGARD_DEPLOYMENT_PROFILE=preprod-testing in a checkout compiled for it, and RUN_GENESIS_ON_STARTUP=false",
+      `A second instance of a public stack requires Preprod, MIDGARD_DEPLOYMENT_PROFILE=${compiled} in a checkout compiled for the stack's production profile, and RUN_GENESIS_ON_STARTUP=false`,
     );
   for (const key of ["MIN_FEE_A", "MIN_FEE_B"])
     if (!/^[0-9]+$/.test(env[key] ?? ""))
@@ -219,7 +257,14 @@ export async function loadAttachedStackConfig(path: string) {
     hostPort(config, env, "MIDGARD_NODE_API_HOST_PORT")
   )
     throw new Error("Node endpoint does not match Compose host port");
-  const primaryEnv = await composeEnvironment(primary);
+  const primaryEnv = withStackNodeSecrets(
+    primary,
+    await composeEnvironment(primary),
+  );
+  if (primaryEnv.MIDGARD_DEPLOYMENT_PROFILE !== env.MIDGARD_DEPLOYMENT_PROFILE)
+    throw new Error(
+      `The stack this instance attaches to runs ${primaryEnv.MIDGARD_DEPLOYMENT_PROFILE}, not ${env.MIDGARD_DEPLOYMENT_PROFILE}`,
+    );
   for (const variable of NODE_HOST_PORTS)
     if (
       hostPort(config, env, variable) ===
@@ -235,6 +280,8 @@ export async function loadAttachedStackConfig(path: string) {
     throw new Error(
       "A second instance needs its own Compose project: run it from another checkout",
     );
+  if (primary.public !== undefined)
+    await checkAttachedPublicInputs(config, env, primaryEnv);
   for (const seedEnv of Object.values(NODE_WALLETS))
     if (!validateMnemonic(env[seedEnv] ?? ""))
       throw new Error(`Invalid wallet mnemonic in ${seedEnv}`);

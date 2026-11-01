@@ -10,6 +10,7 @@ import {
 import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { writeTextFileAtomic } from "midgard-node/files/atomic-write";
 
+import { assertStackReleaseSigned } from "./attached-public.js";
 import { composeYaml, override } from "./compose-yaml.js";
 import { writePrivateEnv } from "./da-services.js";
 import {
@@ -22,6 +23,12 @@ import { readJsonIfPresent, writeDurableJson } from "./journal.js";
 import { shareWithContainers } from "./native-ledger.js";
 import { pinNativeOwner, preflightProducerTransport } from "./node-start.js";
 import { getJson, poll, type StackProcesses } from "./process.js";
+import {
+  publicNodeEnvironment,
+  publicNodeServices,
+  publicRuntimeInputs,
+  writePublicNodeConfig,
+} from "./public-runtime.js";
 import { nodeIsReady } from "./readiness.js";
 import {
   nodeEnvironment,
@@ -37,7 +44,9 @@ import type { StackStep } from "./workflow.js";
  * A second instance on a running stack: another operator's node. It joins
  * the stack's deployment instead of deploying (no nonce, origin, reference
  * scripts or initialization), reads the stack's Cardano node, and runs only
- * its node and the node's Postgres, under its own Compose project.
+ * its node and the node's Postgres, under its own Compose project. On a
+ * public stack it runs the stack's signed release and images, never signs or
+ * starts an ingress, and serves its API on the loopback only.
  */
 export function attachedSteps(processes: StackProcesses): StackStep[] {
   const shared = Object.fromEntries(
@@ -168,6 +177,8 @@ function attachStep(processes: StackProcesses): StackStep {
           "The stack this instance attaches to has not initialized its deployment yet",
         );
       verifyFinalizedDeploymentManifest(manifest);
+      if (processes.config.public !== undefined)
+        await assertStackReleaseSigned(processes.config);
       // Its L1 origin first: the manifest is what marks the attachment.
       await writeTextFileAtomic(ownOrigin, origin, { mode: 0o600 });
       await mkdir(join(processes.config.nodeRoot, "deploymentInfo"), {
@@ -220,6 +231,8 @@ async function attachedInputDigest(processes: StackProcesses) {
     processes.config.envFile,
     join(services, "producer.json"),
     join(services, "producer-host.json"),
+    // A public stack's release and TLS, and this node's own configuration.
+    ...publicRuntimeInputs(processes.config),
   ])
     hash.update(`\0${path}\0`).update(
       createHash("sha256")
@@ -277,11 +290,22 @@ function attachedConfigurationStep(processes: StackProcesses): StackStep {
         );
       }
       // Only the node, its migration and its Postgres: never the stack's
-      // Cardano node, which this node reads through its socket.
-      const node = await stackNodeServices(processes, {
+      // Cardano node, which this node reads through its socket. On a public
+      // stack, the stack's release image with its release and TLS read-only,
+      // and no ingress.
+      const input = {
         envFile: [{ path: join(directory, "node.env"), required: false }],
         producer: join(directory, "producer.json"),
-      });
+      };
+      const node: Record<string, object> =
+        config.public === undefined
+          ? await stackNodeServices(processes, input)
+          : ((
+              await publicNodeServices(processes, {
+                ...input,
+                servicesDirectory: directory,
+              })
+            ).services as Record<string, object>);
       const compose = join(directory, "compose.yaml");
       await writeTextFileAtomic(
         compose,
@@ -358,17 +382,25 @@ function attachedServicesStep(processes: StackProcesses): StackStep {
     execute: async () => {
       const runtime = await readAttachedConfiguration(processes);
       const directory = servicesDirectory(processes);
-      await processes.compose(
-        "services-build",
-        ["build", "midgard-node", "midgard-node-migrate"],
-        runtime.compose,
+      const isPublic = processes.config.public !== undefined;
+      // A public stack's node runs the release image the prerequisites pulled.
+      if (isPublic) {
+        await assertStackReleaseSigned(processes.config);
+        // The pin below runs the node container, which mounts this file.
+        await writePublicNodeConfig(processes, directory);
+      } else
+        await processes.compose(
+          "services-build",
+          ["build", "midgard-node", "midgard-node-migrate"],
+          runtime.compose,
+        );
+      const nodeEnv = nodeEnvironment(
+        processes,
+        await pinNativeOwner(processes, directory, runtime.compose),
       );
       await writePrivateEnv(
         join(directory, "node.env"),
-        nodeEnvironment(
-          processes,
-          await pinNativeOwner(processes, directory, runtime.compose),
-        ),
+        isPublic ? await publicNodeEnvironment(processes, nodeEnv) : nodeEnv,
       );
       await preflightProducerTransport(processes, directory, runtime.compose);
       await processes.compose(
