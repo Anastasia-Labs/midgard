@@ -91,8 +91,10 @@ services:
       - ./cardano/db:/data/db
       - ./cardano/ipc:/ipc
       - ./scripts/run-cardano-node.sh:/bootstrap/run-cardano-node.sh:ro
+    # The node creates its socket as root; host tools connect as the host user.
+    # Each check reapplies the mode, so a restarted node is reachable again.
     healthcheck:
-      test: ["CMD-SHELL", "test -S /ipc/node.socket"]
+      test: ["CMD-SHELL", "test -S /ipc/node.socket && chmod 0666 /ipc/node.socket"]
       interval: 15s
       timeout: 5s
       retries: 40
