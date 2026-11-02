@@ -75,6 +75,23 @@ export const resolveExistingReferenceScriptPublication = (
     return undefined;
   });
 
+/**
+ * The plain balance the reference-script wallet holds before it spends
+ * toward `requiredPlainBalance` from `plainFundingCount` plain outputs:
+ * never below the working-capital floor.
+ */
+export const referenceScriptWalletWorkingCapital = (
+  requiredPlainBalance: bigint,
+  preparationFeeAllowance: (plainFundingCount: number) => bigint,
+  plainFundingCount: number,
+): bigint => {
+  const required =
+    requiredPlainBalance + preparationFeeAllowance(plainFundingCount);
+  return required > REFERENCE_SCRIPT_WALLET_WORKING_CAPITAL_LOVELACE
+    ? required
+    : REFERENCE_SCRIPT_WALLET_WORKING_CAPITAL_LOVELACE;
+};
+
 export const ensureReferenceScriptWalletWorkingCapital = (
   fundingLucid: LucidEvolution,
   referenceScriptsLucid: LucidEvolution,
@@ -103,13 +120,12 @@ export const ensureReferenceScriptWalletWorkingCapital = (
     );
     const plainUtxos = filterPlainWalletUtxos(referenceScriptWalletUtxos);
     const currentPlainBalance = sumWalletLovelace(plainUtxos);
-    const workingCapital = (plainFundingCount: number): bigint => {
-      const required =
-        requiredPlainBalance + preparationFeeAllowance(plainFundingCount);
-      return required > REFERENCE_SCRIPT_WALLET_WORKING_CAPITAL_LOVELACE
-        ? required
-        : REFERENCE_SCRIPT_WALLET_WORKING_CAPITAL_LOVELACE;
-    };
+    const workingCapital = (plainFundingCount: number): bigint =>
+      referenceScriptWalletWorkingCapital(
+        requiredPlainBalance,
+        preparationFeeAllowance,
+        plainFundingCount,
+      );
     if (currentPlainBalance >= workingCapital(plainUtxos.length)) {
       return;
     }

@@ -43,6 +43,7 @@ export {
   type CanonicalDaAttestationDecision,
   type CanonicalDaAttestationObservation,
   reconcileDepositProjectedProgram,
+  reconcileReferenceScriptsBeforeAuthPolicy,
   reconcileReferenceScriptsCompleteProgram,
   reconcileTxCommittedProgram,
 } from "./reconcile.reconcile-reference-scripts-complete-program.js";

@@ -1,6 +1,9 @@
 import "./index.registration-6.js";
 
-import { assertReferenceScriptAuthMinimumRemaining } from "@al-ft/midgard-sdk";
+import {
+  assertReferenceScriptAuthMinimumRemaining,
+  type ReferenceScriptAuthPolicy,
+} from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
 import {
@@ -96,21 +99,14 @@ for (const commandName of RegisterActiveOperator.REFERENCE_SCRIPT_COMMAND_NAMES)
             typeof contractDeploymentInfoOutput === "string"
               ? contractDeploymentInfoOutput
               : ContractDeploymentInfo.defaultContractDeploymentInfoOutputPath();
-          const authPolicy =
-            yield* DeploymentRunStateCommand.resolveReferenceScriptAuthPolicyProgram(
-              {
-                options: runOptions,
-                lucid: lucidService.referenceScriptsApi,
-                network: nodeConfig.NETWORK,
-                hubOracleOneShotTxHash: nodeConfig.HUB_ORACLE_ONE_SHOT_TX_HASH,
-                hubOracleOneShotOutputIndex:
-                  nodeConfig.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX,
-                timelockDurationMs:
-                  nodeConfig.REFERENCE_SCRIPT_AUTH_TIMELOCK_MS,
-                manifestOutputPath,
-                persistRunState: planOnly !== true,
-              },
-            );
+          const deployment = {
+            options: runOptions,
+            network: nodeConfig.NETWORK,
+            hubOracleOneShotTxHash: nodeConfig.HUB_ORACLE_ONE_SHOT_TX_HASH,
+            hubOracleOneShotOutputIndex:
+              nodeConfig.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX,
+            manifestOutputPath,
+          };
           const baseContracts = yield* Services.AlwaysSucceedsContract;
           // The scripts take the slot mapping Lucid reads through the L1
           // access, a named network's only when it equals its static one.
@@ -123,8 +119,8 @@ for (const commandName of RegisterActiveOperator.REFERENCE_SCRIPT_COMMAND_NAMES)
             catch: (cause) =>
               cause instanceof Error ? cause : new Error(String(cause)),
           });
-          const contracts =
-            yield* Services.withRealStateQueueAndOperatorContracts(
+          const contractsFor = (authPolicy: ReferenceScriptAuthPolicy) =>
+            Services.withRealStateQueueAndOperatorContracts(
               nodeConfig.NETWORK,
               baseContracts,
               {
@@ -142,6 +138,34 @@ for (const commandName of RegisterActiveOperator.REFERENCE_SCRIPT_COMMAND_NAMES)
                 l1SlotConfig,
               },
             );
+          const { contracts } =
+            planOnly === true
+              ? yield* DeploymentRunStateCommand.resolveReferenceScriptAuthPolicyProgram(
+                  {
+                    ...deployment,
+                    lucid: lucidService.referenceScriptsApi,
+                    timelockDurationMs:
+                      nodeConfig.REFERENCE_SCRIPT_AUTH_TIMELOCK_MS,
+                    persistRunState: false,
+                  },
+                ).pipe(
+                  Effect.flatMap(contractsFor),
+                  Effect.map((contracts) => ({ contracts })),
+                )
+              : yield* DeploymentRunStateCommand.resolvePublishableReferenceScriptAuthPolicyProgram(
+                  {
+                    deployment,
+                    lucid: lucidService.referenceScriptsApi,
+                    referenceScriptsAddress:
+                      lucidService.referenceScriptsAddress,
+                    commandName,
+                    timelockDurationMs:
+                      nodeConfig.REFERENCE_SCRIPT_AUTH_TIMELOCK_MS,
+                    minRemainingMs:
+                      nodeConfig.REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS,
+                    contractsFor,
+                  },
+                );
           yield* Effect.try({
             try: () =>
               assertReferenceScriptAuthMinimumRemaining({

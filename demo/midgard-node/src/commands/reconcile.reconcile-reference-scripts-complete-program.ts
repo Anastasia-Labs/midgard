@@ -12,8 +12,10 @@ import {
   TxRejectionsDB,
 } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
+import { loadDeploymentRunState } from "../e2e/run-state.js";
 import { Database, Lucid, MidgardContracts } from "../services/index.js";
 import type { IntentJournal } from "../services/intent-journal.js";
+import { readConfiguredDeploymentManifest } from "../services/midgard-contracts.load-reference-script-auth-validator.js";
 import {
   ensureNodeRuntimeReferenceScriptsProgram,
   verifyNodeRuntimeReferenceScriptsProgram,
@@ -28,6 +30,38 @@ import {
   result,
 } from "./reconcile.parse-reconciliation-result.js";
 import { resolveTxStatus } from "./tx-status.js";
+
+/**
+ * The node-runtime publication before the deployment records an auth policy.
+ * Publication records its policy before it sends anything, so nothing was
+ * published yet, and no contracts can be derived to look with: it is
+ * reported blocked, not started. `null` once a policy is recorded, in the run
+ * state or a configured deployment manifest.
+ */
+export const reconcileReferenceScriptsBeforeAuthPolicy = async ({
+  runStatePath,
+  address,
+}: {
+  readonly runStatePath: string;
+  readonly address: string;
+}): Promise<ReconciliationResult | null> => {
+  if (readConfiguredDeploymentManifest() !== undefined) return null;
+  const state = await loadDeploymentRunState(runStatePath);
+  if (state?.identity.referenceScriptAuthPolicy !== undefined) return null;
+  return result({
+    milestone: "reference-scripts-complete",
+    target: { scope: "node-runtime", address, authPolicyId: null },
+    status: "blocked",
+    evidence: [
+      evidence("reference_script_auth_policy", {
+        recorded: false,
+        runStatePath,
+      }),
+    ],
+    nextAction:
+      "No reference-script auth policy is recorded yet, so nothing was published; run deploy-reference-script-node-runtime to create one and publish.",
+  });
+};
 
 export const reconcileReferenceScriptsCompleteProgram = ({
   repair,

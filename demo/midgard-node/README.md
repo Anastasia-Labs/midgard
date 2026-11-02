@@ -862,10 +862,16 @@ into each published reference-script UTxO. The publisher wallet is independent
 of the reference-script output address. The default minting window is
 four hours (`REFERENCE_SCRIPT_AUTH_TIMELOCK_MS=14400000`), and publication fails
 before submitting a batch when less than
-`REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS` remains. The policy metadata is written
-to `referenceScriptAuthPolicy` in the manifest. Once publication is confirmed,
-the deployment is audited immediately: for every token name listed in
-`referenceScriptAuthPolicy.tokenNames`, exactly one token under
+`REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS` remains. `deploy-reference-script-node-runtime`
+replaces a recorded policy with too little time left on its own only while
+nothing was published under it, recording why as a fresh redeploy's reason;
+otherwise it refuses, states the ADA republishing every script would lock, and
+leaves the choice to `--fresh-redeploy --fresh-redeploy-reason`. It creates no
+new policy unless the reference-script wallet's plain ADA covers the whole
+publication and the publication's estimated duration fits the policy's window.
+The policy metadata is written to `referenceScriptAuthPolicy` in the manifest.
+Once publication is confirmed, the deployment is audited immediately: for every
+token name listed in `referenceScriptAuthPolicy.tokenNames`, exactly one token under
 `referenceScriptAuthPolicy.policyId` must exist. The publisher remains trusted
 not to issue additional role tokens while its minting window is open; protect
 that key accordingly. Readiness does not wait for the expiry. Historical
