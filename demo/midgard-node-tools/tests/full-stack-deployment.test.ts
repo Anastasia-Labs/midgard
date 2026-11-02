@@ -126,6 +126,51 @@ describe("deployment steps before initialization", () => {
       "deployment-status",
     );
   });
+  it.each([
+    { remainingMinutes: 30, fresh: true },
+    { remainingMinutes: 180, fresh: false },
+  ])(
+    "publishes under a fresh auth policy only once the recorded one has too little time left ($remainingMinutes min)",
+    async ({ remainingMinutes, fresh }) => {
+      const { config, processes, statePath, steps } = await deployment({
+        nonceRecorded: true,
+      });
+      const state = (await loadDeploymentRunState(statePath))!;
+      await writeDeploymentRunStateAtomic(statePath, {
+        ...state,
+        identity: {
+          ...state.identity,
+          referenceScriptAuthPolicyId: "b".repeat(56),
+          referenceScriptAuthPolicy: {
+            policyId: "b".repeat(56),
+            nativeScript: {
+              type: "Native",
+              cborHex: "8200581c" + "d".repeat(56),
+              expiresAtSlot: 1,
+              expiresAtUnixTime: Date.now() + remainingMinutes * 60_000,
+              timelockDurationMs: 4 * 60 * 60_000,
+            },
+          },
+        },
+      });
+      let published = false;
+      processes.responses["nonce-observation"] = { utxos: [nonce] };
+      processes.responses["references-publish"] = () => {
+        published = true;
+        return { mode: "publish" };
+      };
+      processes.responses["references-observation"] = () =>
+        reconciliation(published ? "satisfied" : "blocked");
+      await runStackWorkflow(
+        { directory: config.runDirectory, intentDigest: "c".repeat(64) },
+        [steps.nonce!, steps.references!],
+      );
+      const publish = processes.calls.find(
+        (call) => call.id === "references-publish",
+      )!;
+      expect(publish.args.includes("--fresh-redeploy")).toBe(fresh);
+    },
+  );
   // What the node leaves in its run state at each point of one nonce attempt.
   const stages: Record<
     string,

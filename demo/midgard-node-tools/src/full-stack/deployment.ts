@@ -3,6 +3,7 @@ import { access, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
 import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS } from "@al-ft/midgard-sdk";
 import { walletFromSeed } from "@lucid-evolution/lucid";
 import { parseReconciliationResult } from "midgard-node/commands/reconcile";
 import { loadDeploymentRunState } from "midgard-node/e2e/run-state";
@@ -258,14 +259,35 @@ export function deploymentSteps(processes: StackProcesses): StackStep[] {
         if (result.status === "ambiguous") return { status: "pending" };
         return { status: "retry" };
       },
-      execute: () =>
-        processes.node("references-publish", [
+      execute: async () => {
+        // The node refuses to publish under an auth policy with less than its
+        // minimum time left, and the policy can only age, so a deployment not
+        // yet initialized publishes under a fresh one instead of stopping.
+        const policy = (await loadDeploymentRunState(paths.state))?.identity
+          .referenceScriptAuthPolicy;
+        const minimumRemainingMs = Number(
+          processes.env.REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS ||
+            REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS,
+        );
+        const fresh =
+          policy !== undefined &&
+          policy.nativeScript.expiresAtUnixTime - Date.now() <
+            minimumRemainingMs;
+        return processes.node("references-publish", [
           "deploy-reference-script-node-runtime",
           "--run-state",
           paths.state,
           "--contract-deployment-info-output",
           paths.manifest,
-        ]),
+          ...(fresh
+            ? [
+                "--fresh-redeploy",
+                "--fresh-redeploy-reason",
+                "auth policy expired before its reference scripts were published",
+              ]
+            : []),
+        ]);
+      },
     },
     {
       id: "initialize",
