@@ -9,9 +9,11 @@ import "./reference-publication.publish-reference-scripts.js";
 export { publishReferenceScripts } from "./reference-publication.publish-reference-scripts.js";
 export {
   configureReferencePublication,
+  referencePublicationDurationEstimateMs,
   referencePublicationFundingRequired,
   referencePublicationLaneCount,
   type ReferencePublicationOptions,
   referencePublicationOptions,
   referencePublicationPreparationFeeAllowance,
+  referenceScriptDepositLovelace,
 } from "./reference-publication.reference-publication-funding-required.js";

@@ -16,10 +16,12 @@ import { parseEventId, parseHexBytes } from "./commands/command-utils.js";
 import * as ContractDeploymentInfo from "./commands/contract-deployment-info.js";
 import * as ReconcileCommand from "./commands/reconcile.js";
 import * as MigrationRunner from "./database/migrations/runner.js";
+import { defaultDeploymentRunStatePath } from "./e2e/run-state.js";
 import {
   parseOptionalHeaderHashOption,
   program,
 } from "./index.registration.js";
+import { NodeConfig } from "./services/index.js";
 import { backfillMissingDaPayloadsFromFinalizedJournals } from "./workers/commit-block-header/da-payload-backfill.js";
 
 program
@@ -124,10 +126,28 @@ reconcile
         );
         return;
       }
-      const mainEffect = provideTxServices(
-        ReconcileCommand.reconcileReferenceScriptsCompleteProgram({
-          repair: options.repair === true,
-        }).pipe(tapJson()),
+      // Before an auth policy is recorded no contracts can be derived to
+      // observe with; that state is reported without them.
+      const beforeAuthPolicy = Effect.gen(function* () {
+        const nodeConfig = yield* NodeConfig;
+        return yield* Effect.tryPromise(() =>
+          ReconcileCommand.reconcileReferenceScriptsBeforeAuthPolicy({
+            runStatePath: defaultDeploymentRunStatePath(),
+            address: nodeConfig.L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS,
+          }),
+        );
+      }).pipe(Effect.provide(NodeConfig.layer));
+      const mainEffect = beforeAuthPolicy.pipe(
+        Effect.flatMap((notStarted) =>
+          notStarted !== null
+            ? Effect.succeed(notStarted)
+            : provideTxServices(
+                ReconcileCommand.reconcileReferenceScriptsCompleteProgram({
+                  repair: options.repair === true,
+                }),
+              ),
+        ),
+        tapJson(),
       );
 
       runCliEffect(mainEffect);

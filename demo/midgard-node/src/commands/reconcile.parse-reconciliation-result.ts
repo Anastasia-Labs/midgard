@@ -113,7 +113,11 @@ const parseReconciliationTarget = (
     return {
       scope: "node-runtime",
       address: canonicalString(target.address, `${label}.address`),
-      authPolicyId: lowerHex(target.authPolicyId, `${label}.authPolicyId`, 28),
+      // No auth policy is recorded before publication starts.
+      authPolicyId:
+        target.authPolicyId === null
+          ? null
+          : lowerHex(target.authPolicyId, `${label}.authPolicyId`, 28),
     };
   }
   if (milestone === "deposit-projected") {

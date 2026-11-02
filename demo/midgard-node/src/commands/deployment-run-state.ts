@@ -7,6 +7,7 @@ import "./contract-deployment-info.js";
 import "./deployment-run-state.record-hub-oracle-nonce.js";
 import "./deployment-run-state.assert-deployment-identity-matches.js";
 import "./deployment-run-state.resolve-reference-script-auth-policy-program.js";
+import "./deployment-run-state.resolve-publishable-reference-script-auth-policy-program.js";
 export { loadPendingHubOracleNonceAttempt } from "./deployment-run-state.assert-deployment-identity-matches.js";
 export {
   assertFreshRedeployReason,
@@ -21,4 +22,5 @@ export {
   recordHubOracleNonceTxHashConfirmed,
   resolveDeploymentRunCliOptions,
 } from "./deployment-run-state.record-hub-oracle-nonce.js";
+export { resolvePublishableReferenceScriptAuthPolicyProgram } from "./deployment-run-state.resolve-publishable-reference-script-auth-policy-program.js";
 export { resolveReferenceScriptAuthPolicyProgram } from "./deployment-run-state.resolve-reference-script-auth-policy-program.js";

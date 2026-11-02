@@ -41,6 +41,19 @@ const reconciliation = (status: string) => ({
   nextAction: status === "satisfied" ? null : "Run with --repair",
   repairActions: [],
 });
+/** What the node reports before its publication records an auth policy. */
+const notStarted = {
+  ...reconciliation("blocked"),
+  target: {
+    scope: "node-runtime",
+    address: "addr_test1stack",
+    authPolicyId: null,
+  },
+  evidence: [
+    { kind: "reference_script_auth_policy", detail: { recorded: false } },
+  ],
+  nextAction: "No reference-script auth policy is recorded yet",
+};
 const running = { status: "running" as const, attempts: 1, data: null };
 
 async function deployment(options: { nonceRecorded: boolean }) {
@@ -73,38 +86,13 @@ describe("deployment steps before initialization", () => {
     });
     let published = false;
     processes.responses["nonce-observation"] = { utxos: [nonce] };
-    // As the node does: publishing records the auth policy before it sends
-    // anything, and no observation can load its contracts without it.
-    processes.responses["references-publish"] = async () => {
-      const state = (await loadDeploymentRunState(statePath))!;
-      await writeDeploymentRunStateAtomic(statePath, {
-        ...state,
-        identity: {
-          ...state.identity,
-          referenceScriptAuthPolicyId: "b".repeat(56),
-          referenceScriptAuthPolicy: {
-            policyId: "b".repeat(56),
-            nativeScript: {
-              type: "Native",
-              cborHex: "8200581c" + "d".repeat(56),
-              expiresAtSlot: 1,
-              expiresAtUnixTime: 1,
-              timelockDurationMs: 1,
-            },
-          },
-        },
-      });
+    processes.responses["references-publish"] = () => {
       published = true;
       return { mode: "publish" };
     };
-    processes.responses["references-observation"] = async () => {
-      const state = await loadDeploymentRunState(statePath);
-      if (state?.identity.referenceScriptAuthPolicy === undefined)
-        throw new Error(
-          "Failed to load reference-script auth policy id from deployment run state",
-        );
-      return reconciliation(published ? "satisfied" : "blocked");
-    };
+    // As the node reports before its publication records an auth policy.
+    processes.responses["references-observation"] = () =>
+      published ? reconciliation("satisfied") : notStarted;
     processes.responses["deployment-status"] = {
       manifest: { ok: false },
       protocol: { complete: false, empty: true, hubOracleWitness: null },
@@ -114,6 +102,15 @@ describe("deployment steps before initialization", () => {
       [steps.nonce!, steps.references!],
     );
     expect(journal.steps.references!.status).toBe("complete");
+    expect(
+      processes.calls
+        .map((call) => call.id)
+        .filter((id) => id.startsWith("references-")),
+    ).toEqual([
+      "references-observation",
+      "references-publish",
+      "references-observation",
+    ]);
     expect(await steps.initialize!.reconcile(undefined)).toEqual({
       status: "retry",
     });
@@ -126,51 +123,57 @@ describe("deployment steps before initialization", () => {
       "deployment-status",
     );
   });
-  it.each([
-    { remainingMinutes: 30, fresh: true },
-    { remainingMinutes: 180, fresh: false },
-  ])(
-    "publishes under a fresh auth policy only once the recorded one has too little time left ($remainingMinutes min)",
-    async ({ remainingMinutes, fresh }) => {
-      const { config, processes, statePath, steps } = await deployment({
-        nonceRecorded: true,
-      });
-      const state = (await loadDeploymentRunState(statePath))!;
-      await writeDeploymentRunStateAtomic(statePath, {
-        ...state,
-        identity: {
-          ...state.identity,
-          referenceScriptAuthPolicyId: "b".repeat(56),
-          referenceScriptAuthPolicy: {
-            policyId: "b".repeat(56),
-            nativeScript: {
-              type: "Native",
-              cborHex: "8200581c" + "d".repeat(56),
-              expiresAtSlot: 1,
-              expiresAtUnixTime: Date.now() + remainingMinutes * 60_000,
-              timelockDurationMs: 4 * 60 * 60_000,
-            },
+  it("leaves a stale auth policy to the node and stops on its refusal", async () => {
+    const { config, processes, statePath, steps } = await deployment({
+      nonceRecorded: true,
+    });
+    // A policy recorded by an earlier attempt, now near its expiry.
+    const state = (await loadDeploymentRunState(statePath))!;
+    await writeDeploymentRunStateAtomic(statePath, {
+      ...state,
+      identity: {
+        ...state.identity,
+        referenceScriptAuthPolicyId: "b".repeat(56),
+        referenceScriptAuthPolicy: {
+          policyId: "b".repeat(56),
+          nativeScript: {
+            type: "Native",
+            cborHex: "8200581c" + "d".repeat(56),
+            expiresAtSlot: 1,
+            expiresAtUnixTime: Date.now() + 60 * 60_000,
+            timelockDurationMs: 4 * 60 * 60_000,
           },
         },
-      });
-      let published = false;
-      processes.responses["nonce-observation"] = { utxos: [nonce] };
-      processes.responses["references-publish"] = () => {
-        published = true;
-        return { mode: "publish" };
-      };
-      processes.responses["references-observation"] = () =>
-        reconciliation(published ? "satisfied" : "blocked");
-      await runStackWorkflow(
+      },
+    });
+    const refusal =
+      "Reference-script auth policy has 60 min left; rerun with --fresh-redeploy --fresh-redeploy-reason <reason>.";
+    processes.responses["nonce-observation"] = { utxos: [nonce] };
+    processes.responses["references-observation"] = reconciliation("blocked");
+    processes.responses["references-publish"] = () => {
+      throw new Error(refusal);
+    };
+    await expect(
+      runStackWorkflow(
         { directory: config.runDirectory, intentDigest: "c".repeat(64) },
         [steps.nonce!, steps.references!],
-      );
-      const publish = processes.calls.find(
-        (call) => call.id === "references-publish",
-      )!;
-      expect(publish.args.includes("--fresh-redeploy")).toBe(fresh);
-    },
-  );
+      ),
+    ).rejects.toThrow(refusal);
+    const publishes = processes.calls.filter(
+      (call) => call.id === "references-publish",
+    );
+    // The node entry point, then the command as the node receives it.
+    expect(publishes.map((call) => call.args)).toEqual([
+      [
+        expect.any(String),
+        "deploy-reference-script-node-runtime",
+        "--run-state",
+        join(config.runDirectory, "deployment-run-state.json"),
+        "--contract-deployment-info-output",
+        expect.any(String),
+      ],
+    ]);
+  });
   // What the node leaves in its run state at each point of one nonce attempt.
   const stages: Record<
     string,

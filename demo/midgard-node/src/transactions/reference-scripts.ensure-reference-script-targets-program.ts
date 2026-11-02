@@ -146,6 +146,38 @@ const settleSentWithUnknownOutcome = (
     }
   });
 
+/**
+ * What publishing `missing` takes from the reference-script wallet's plain
+ * balance: the outputs' deposits, fees and buffers, and the fees of first
+ * compacting a given number of plain outputs.
+ */
+export const referencePublicationPlainBalanceRequired = (
+  referenceScriptsLucid: LucidEvolution,
+  referenceScriptsAddress: string,
+  missing: readonly ReferenceScriptTarget[],
+  authPolicy: ReferenceScriptAuthMintingPolicy,
+  mode: ReferencePublicationOptions["mode"],
+): {
+  readonly publication: bigint;
+  readonly preparationFeeAllowance: (plainFundingCount: number) => bigint;
+} => ({
+  publication:
+    referencePublicationFundingRequired(
+      referenceScriptsLucid,
+      referenceScriptsAddress,
+      missing,
+      authPolicy,
+    ) +
+    2n * SDK.SCRIPT_REF_PUBLICATION_FUNDING_BUFFER_LOVELACE +
+    SDK.SCRIPT_REF_OUTPUT_LOVELACE,
+  preparationFeeAllowance: (plainFundingCount) =>
+    referencePublicationPreparationFeeAllowance(
+      referenceScriptsLucid,
+      plainFundingCount,
+      referencePublicationLaneCount(mode),
+    ),
+});
+
 export const ensureReferenceScriptTargetsProgram = (
   referenceScriptsLucid: LucidEvolution,
   scopeName: string,
@@ -210,30 +242,23 @@ export const ensureReferenceScriptTargetsProgram = (
               cause,
             }),
         });
+        const required = referencePublicationPlainBalanceRequired(
+          referenceScriptsLucid,
+          referenceScriptsAddress,
+          missing,
+          authPolicy,
+          (
+            publicationOptions ??
+            referencePublicationOptions(referenceScriptsLucid)
+          ).mode,
+        );
         yield* ensureReferenceScriptWalletWorkingCapital(
           fundingLucid,
           referenceScriptsLucid,
           scopeName,
-          referencePublicationFundingRequired(
-            referenceScriptsLucid,
-            referenceScriptsAddress,
-            missing,
-            authPolicy,
-          ) +
-            2n * SDK.SCRIPT_REF_PUBLICATION_FUNDING_BUFFER_LOVELACE +
-            SDK.SCRIPT_REF_OUTPUT_LOVELACE,
+          required.publication,
           reservedFundingOutRefKeys,
-          (plainFundingCount) =>
-            referencePublicationPreparationFeeAllowance(
-              referenceScriptsLucid,
-              plainFundingCount,
-              referencePublicationLaneCount(
-                (
-                  publicationOptions ??
-                  referencePublicationOptions(referenceScriptsLucid)
-                ).mode,
-              ),
-            ),
+          required.preparationFeeAllowance,
         );
       }
       const journal = yield* IntentJournal;

@@ -23,12 +23,14 @@ export {
   ensureNodeRuntimeReferenceScriptsProgram,
   ensureReferenceScriptTargetsProgram,
   planReferenceScriptCommandProgram,
+  referencePublicationPlainBalanceRequired,
   referenceScriptWalletStatusProgram,
   resolveReferenceScriptTargetsProgram,
 } from "./reference-scripts.ensure-reference-script-targets-program.js";
 export {
   nodeRuntimeReferenceScriptTargets,
   referenceScriptTargetsByCommand,
+  referenceScriptWalletWorkingCapital,
 } from "./reference-scripts.ensure-reference-script-wallet-working-capital.js";
 export {
   acceptsReferenceScriptUtxo,
