@@ -6,6 +6,7 @@ import {
   Emulator,
   generateEmulatorAccount,
   Lucid,
+  type UTxO,
 } from "@lucid-evolution/lucid";
 import { expect, it } from "vitest";
 
@@ -234,21 +235,21 @@ it("waits out lost memory before rediscovering accepted publications on restart"
 
 it("does not reuse stale confirmation evidence after a publication rollback", async () => {
   const f = await publicationFixture(4);
-  const getUtxos = f.provider.getUtxos.bind(f.provider);
   let exposed = false;
   let rolledBack = false;
-  f.provider.getUtxos = async (address) => {
-    const outputs = await getUtxos(address);
-    if (outputs.some((utxo) => utxo.scriptRef)) {
-      if (!exposed) {
-        exposed = true;
-        return outputs;
-      }
-      rolledBack = true;
-      return outputs.filter((utxo) => !utxo.scriptRef);
+  const afterRollback = (outputs: UTxO[]) => {
+    if (!rolledBack && outputs.some((utxo) => utxo.scriptRef)) {
+      rolledBack = exposed;
+      exposed = true;
     }
-    return outputs;
+    return rolledBack ? outputs.filter((utxo) => !utxo.scriptRef) : outputs;
   };
+  const getUtxos = f.provider.getUtxos.bind(f.provider);
+  f.provider.getUtxos = async (address) =>
+    afterRollback(await getUtxos(address));
+  const getUtxosByOutRef = f.provider.getUtxosByOutRef.bind(f.provider);
+  f.provider.getUtxosByOutRef = async (outRefs) =>
+    afterRollback(await getUtxosByOutRef(outRefs));
   f.options.wait = async () => {
     if (rolledBack) throw new Error("canonical rollback remains unresolved");
     f.provider.awaitBlock(1);

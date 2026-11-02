@@ -12,7 +12,11 @@
  *   the view's outputs, so a transaction spending the predicted change of a
  *   live own intent gets its witness. A wallet's own `signTx` would look its
  *   inputs up at the provider, which has not seen that change; it signs
- *   only where no follower runs, where the view is the provider's.
+ *   only where no follower runs, where the view is the provider's. A
+ *   builder that already holds the outputs it spends signs over them
+ *   (`signOverSpentOutputs`) without reading the view again: without a
+ *   follower that read is the provider's address query, which a local node
+ *   answers by scanning its whole UTxO set.
  * - The operator seed's payment key also owns its Enterprise address (the
  *   defense pocket). The operator wallet is selected with its pocket, so
  *   the seam reads that address's view too: a transaction spending only
@@ -213,14 +217,47 @@ export const signOverWalletView = (
     const views = yield* Effect.forEach(signer.addresses, (address) =>
       readWalletView(lucid, address).pipe(Effect.mapError(unavailable)),
     );
-    const needed = new Set(
-      discoverOwnUsedTxKeyHashes(
-        signBuilder.toTransaction(),
-        [...signer.keys.keys()],
-        views.flatMap((view) => view.utxos),
-      ),
+    return signWithOwnKeys(
+      signer,
+      signBuilder,
+      views.flatMap((view) => view.utxos),
     );
-    for (const keyHash of needed)
-      signBuilder.sign.withPrivateKey(signer.keys.get(keyHash) as PrivateKey);
-    return signBuilder;
   });
+
+/**
+ * Adds the selected node wallet's witnesses for the own keys the
+ * transaction needs, found from `spent`: the outputs its inputs and
+ * collaterals spend, which the caller selected from the wallet view or
+ * predicted as the change of its own live transaction. No view is read. A
+ * wallet not selected with `selectNodeWallet` signs as in
+ * `signOverWalletView`.
+ */
+export const signOverSpentOutputs = (
+  lucid: LucidEvolution,
+  signBuilder: TxSignBuilder,
+  spent: readonly UTxO[],
+): Effect.Effect<TxSignBuilder, TxSignError, IntentJournal> =>
+  Effect.suspend(() => {
+    const wallet = lucid.wallet();
+    const signer = wallet === undefined ? undefined : signers.get(wallet);
+    return signer === undefined
+      ? signOverWalletView(lucid, signBuilder)
+      : Effect.succeed(signWithOwnKeys(signer, signBuilder, spent));
+  });
+
+const signWithOwnKeys = (
+  signer: WalletSigner,
+  signBuilder: TxSignBuilder,
+  ownOutputs: readonly UTxO[],
+): TxSignBuilder => {
+  const needed = new Set(
+    discoverOwnUsedTxKeyHashes(
+      signBuilder.toTransaction(),
+      [...signer.keys.keys()],
+      [...ownOutputs],
+    ),
+  );
+  for (const keyHash of needed)
+    signBuilder.sign.withPrivateKey(signer.keys.get(keyHash) as PrivateKey);
+  return signBuilder;
+};

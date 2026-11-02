@@ -5,6 +5,7 @@ import {
   CML,
   coreToTxOutput,
   type LucidEvolution,
+  type OutRef,
   type Script,
   type UTxO,
   validatorToScriptHash,
@@ -29,7 +30,7 @@ import {
   referencePublicationLaneCount,
   type ReferencePublicationOptions,
 } from "./reference-publication.reference-publication-funding-required.js";
-import { signOverWalletView } from "./utils.wallet-view.js";
+import { signOverSpentOutputs } from "./utils.wallet-view.js";
 import { isPlainAdaOnlyUtxo } from "./wallet-hygiene.js";
 
 /** Called only by the existing publication entry point. No records outlive this invocation. */
@@ -109,8 +110,7 @@ export const publishReferenceScripts = async ({
     utxo.scriptRef != null &&
     utxo.scriptRef.type === target.script.type &&
     scriptHash(utxo.scriptRef) === scriptHash(target.script);
-  const readReferences = async (): Promise<ReadonlyMap<string, UTxO>> => {
-    const outputs = await lucid.utxosAt(address);
+  const referencesAmong = (outputs: readonly UTxO[]) => {
     const references = new Map<string, UTxO>();
     for (const output of outputs) {
       for (const unit of Object.keys(output.assets)) {
@@ -125,6 +125,10 @@ export const publishReferenceScripts = async ({
     }
     return references;
   };
+  // A local node scans its whole UTxO set for an address: the roster is read
+  // by address before and after publishing, never per transaction.
+  const readReferences = async (): Promise<ReadonlyMap<string, UTxO>> =>
+    referencesAmong(await lucid.utxosAt(address));
   const missing = (
     roster: readonly SDK.ReferenceScriptTarget[],
     references: ReadonlyMap<string, UTxO>,
@@ -157,6 +161,11 @@ export const publishReferenceScripts = async ({
   );
   while ((await options.synchronize()) < restartBound) await waitForProgress();
   canonical = await readReferences();
+  // Past the restart bound no earlier publication can still land: until the
+  // final address read, references change only here and where this one signs.
+  const known: OutRef[] = [...canonical.values()].map(
+    ({ txHash, outputIndex }) => ({ txHash, outputIndex }),
+  );
   const remaining = missing(targets, canonical);
   SDK.assertReferenceScriptRawBodiesFitL1Envelope(remaining);
   if (remaining.length > 0)
@@ -369,6 +378,9 @@ export const publishReferenceScripts = async ({
   const withinOutstandingByteBudget = () =>
     outstanding().reduce((sum, record) => sum + record.cbor.length / 2, 0) <=
     MAX_OUTSTANDING_BYTES;
+  // Out-ref lookups, not a scan; a rolled-back reference is missing from both.
+  const readKnownReferences = async () =>
+    referencesAmong(await lucid.utxosByOutRef(known));
   const send = sendPublication(journal, lucid, plan);
   const submit = async (record: Publication) => {
     signal?.throwIfAborted();
@@ -388,7 +400,7 @@ export const publishReferenceScripts = async ({
     signal?.throwIfAborted();
     if (needsObservation) {
       const slot = await options.synchronize();
-      canonical = await readReferences();
+      canonical = await readKnownReferences();
       for (const lane of lanes) {
         for (const record of lane.records) {
           const confirmed = record.targets.every((target) => {
@@ -511,7 +523,11 @@ export const publishReferenceScripts = async ({
       // or signed output is never completion evidence.
       await options.synchronize();
       const verified = await readReferences();
-      if (missing(targets, verified).length !== 0) continue;
+      if (missing(targets, verified).length !== 0) {
+        needsObservation = true; // rolled back since the out-ref read
+        await waitForProgress();
+        continue;
+      }
       await Effect.runPromise(
         Effect.logInfo(
           `Reference publication complete: ${JSON.stringify({ ...metrics, mode: options.mode, wallTimeMs: Date.now() - startedAt })}`,
@@ -571,11 +587,11 @@ export const publishReferenceScripts = async ({
             authPolicy,
           }),
         );
-        // Signed over the wallet view: a lane's funding may be the
-        // predicted change of its previous, still live, publication.
+        // Signed over the exact outputs it spends, without a view read: a
+        // confirmed root or its lane's previous live publication's change.
         const signed = await (
           await Effect.runPromise(
-            signOverWalletView(lucid, tx).pipe(
+            signOverSpentOutputs(lucid, tx, lane.funding).pipe(
               Effect.provideService(IntentJournal, journal),
             ),
           )
@@ -656,6 +672,8 @@ export const publishReferenceScripts = async ({
       lane.queue.shift();
       madeProgress();
       lane.records.push(record);
+      for (const outputIndex of record.referenceIndexes.values())
+        known.push({ txHash: record.hash, outputIndex });
       metrics.transactions += 1;
       metrics.signedBytes += record.cbor.length / 2;
       metrics.peakOutstandingCount = Math.max(
