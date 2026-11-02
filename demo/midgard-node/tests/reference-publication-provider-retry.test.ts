@@ -2,8 +2,8 @@
  * A reference-script publication pass interrupted by a transient provider
  * failure resumes in place: it re-reads what landed, crosses the previous
  * validity window and publishes only what is still missing, so every target
- * ends with exactly one authenticated reference. An auth policy too close to
- * expiry is still refused without a retry.
+ * ends with exactly one authenticated reference. An expired auth policy is
+ * still refused without a retry.
  */
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -72,7 +72,7 @@ const fixture = async (count: number) => {
     submitted += 1;
     return submit(cbor);
   };
-  const run = (roster = targets, minAuthPolicyRemainingMs = 1) =>
+  const run = (roster = targets) =>
     runWithoutFollower(
       ensureReferenceScriptTargetsProgram(
         lucid,
@@ -81,7 +81,6 @@ const fixture = async (count: number) => {
         authPolicy,
         lucid,
         undefined,
-        minAuthPolicyRemainingMs,
         new Set(),
         options,
         IMMEDIATE_RETRY,
@@ -115,6 +114,7 @@ const fixture = async (count: number) => {
   return {
     provider,
     lucid,
+    authPolicy,
     targets,
     run,
     referencesPerTarget,
@@ -151,7 +151,7 @@ it("still publishes a genuinely absent target when resuming", async () => {
   expect(await f.referencesPerTarget()).toEqual(f.targets.map(() => 1));
 });
 
-it("refuses an auth policy too close to expiry without retrying", async () => {
+it("refuses an expired auth policy without retrying", async () => {
   const f = await fixture(4);
   let reads = 0;
   const utxosAt = f.lucid.utxosAt.bind(f.lucid);
@@ -159,10 +159,8 @@ it("refuses an auth policy too close to expiry without retrying", async () => {
     reads += 1;
     return utxosAt(...args);
   };
-  // The policy lives four hours; demanding five left can never be met.
-  await expect(f.run(f.targets, 5 * 60 * 60 * 1_000)).rejects.toThrow(
-    /cannot publish missing references/u,
-  );
+  f.provider.awaitSlot(f.authPolicy.expiresAtSlot - f.provider.slot);
+  await expect(f.run()).rejects.toThrow(/cannot publish missing references/u);
   expect(f.submitted()).toBe(0);
   // One discovery read: the refusal was not retried.
   expect(reads).toBe(1);

@@ -26,7 +26,7 @@ UTxO overrides cannot race between lanes. SDK completion keeps local UPLC
 evaluation enabled.
 
 Every SDK publication and lane split expires within five minutes of its build
-slot, and publications also respect the existing auth-policy deadline. Every
+slot, and publications also end before the auth policy's expiry slot. Every
 new invocation with missing references waits through this maximum remaining
 validity, then waits for Kupo to reach the exact canonical Ogmios checkpoint.
 This includes fresh invocations: there is no persisted state that distinguishes

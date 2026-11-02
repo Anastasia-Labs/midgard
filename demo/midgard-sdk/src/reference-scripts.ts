@@ -10,21 +10,21 @@ import "./reference-scripts.create-reference-script-auth-policy.js";
 import "./reference-scripts.resolve-reference-script-publication-layout.js";
 import "./reference-scripts.fetch-reference-script-utxos-program.js";
 export {
-  assertReferenceScriptAuthMinimumRemaining,
+  assertReferenceScriptAuthUnexpired,
   assertReferenceScriptRawBodiesFitL1Envelope,
   type BuiltReferenceScriptPublicationTx,
   createReferenceScriptAuthPolicy,
   REFERENCE_SCRIPT_PUBLICATION_L1_MAX_TX_BYTES,
   REFERENCE_SCRIPT_PUBLICATION_VALIDITY_MS,
-  type ReferenceScriptAuthDeadlineDiagnostic,
-  ReferenceScriptAuthDeadlineError,
+  referenceScriptAuthExpired,
+  type ReferenceScriptAuthExpiredDiagnostic,
+  ReferenceScriptAuthExpiredError,
   type ReferenceScriptAuthMintingPolicy,
   type ReferenceScriptAuthPolicy,
   type ReferenceScriptAuthPolicyDeploymentInfo,
   referenceScriptAuthPolicyDeploymentInfo,
   referenceScriptAuthPolicyFromDeploymentInfo,
   type ReferenceScriptAuthPolicyRef,
-  referenceScriptAuthRemainingMs,
   referenceScriptAuthTokenName,
   referenceScriptAuthTokenNameText,
   type ReferenceScriptAuthTokenTarget,
@@ -44,10 +44,7 @@ export {
   type ReferenceScriptProviderRead,
   resolveReferenceScriptUtxo,
 } from "./reference-scripts.fetch-reference-script-utxos-program.js";
-export {
-  REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS,
-  REFERENCE_SCRIPT_AUTH_TIMELOCK_MS,
-} from "./reference-scripts.reference-script-auth-timelock-ms.js";
+export { REFERENCE_SCRIPT_AUTH_TIMELOCK_MS } from "./reference-scripts.reference-script-auth-timelock-ms.js";
 export { REFERENCE_SCRIPT_AUTH_TOKEN_NAMES } from "./reference-scripts.reference-script-auth-token-names.js";
 export {
   completeReferenceScriptPublicationTxProgram,

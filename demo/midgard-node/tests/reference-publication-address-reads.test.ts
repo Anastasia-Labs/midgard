@@ -42,7 +42,6 @@ it("reads the publication address a fixed number of times, however many transact
       targets,
       authPolicy,
       reserved: new Set(),
-      minAuthPolicyRemainingMs: 1,
       journal: await runWithoutFollower(IntentJournal),
       options: {
         mode: "chained",

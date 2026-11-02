@@ -860,11 +860,13 @@ Reference-script deployment creates a native minting policy requiring the
 selected publisher's signature and an expiry bound, and mints one role token
 into each published reference-script UTxO. The publisher wallet is independent
 of the reference-script output address. The default minting window is
-four hours (`REFERENCE_SCRIPT_AUTH_TIMELOCK_MS=14400000`), and publication fails
-before submitting a batch when less than
-`REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS` remains. `deploy-reference-script-node-runtime`
-replaces a recorded policy with too little time left on its own only while
-nothing was published under it, recording why as a fresh redeploy's reason;
+four hours (`REFERENCE_SCRIPT_AUTH_TIMELOCK_MS=14400000`). Every publication
+transaction's validity ends before the policy's expiry slot, and publication
+stops with an expired-policy error once no transaction can be valid under the
+policy any more. `deploy-reference-script-node-runtime` reuses a recorded
+policy that has not expired, however little time it has left, and replaces an
+expired one on its own only while nothing was published under it, recording
+why as a fresh redeploy's reason;
 otherwise it refuses, states the ADA republishing every script would lock, and
 leaves the choice to `--fresh-redeploy --fresh-redeploy-reason`. It creates no
 new policy unless the reference-script wallet's plain ADA covers the whole

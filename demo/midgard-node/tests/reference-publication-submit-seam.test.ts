@@ -90,7 +90,6 @@ const scenario = async (refusePublication: boolean) => {
       targets,
       authPolicy,
       reserved: new Set(),
-      minAuthPolicyRemainingMs: 1,
       journal,
       options: {
         mode: "serial",

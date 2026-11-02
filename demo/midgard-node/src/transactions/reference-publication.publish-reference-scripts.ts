@@ -41,7 +41,6 @@ export const publishReferenceScripts = async ({
   authPolicy,
   reserved,
   options,
-  minAuthPolicyRemainingMs,
   signal,
   journal,
 }: {
@@ -51,7 +50,6 @@ export const publishReferenceScripts = async ({
   authPolicy: SDK.ReferenceScriptAuthMintingPolicy;
   reserved: ReadonlySet<string>;
   options: ReferencePublicationOptions;
-  minAuthPolicyRemainingMs: number;
   signal?: AbortSignal;
   /** Every publication and funding tx is journaled before its first send. */
   journal: IntentJournalService;
@@ -169,10 +167,9 @@ export const publishReferenceScripts = async ({
   const remaining = missing(targets, canonical);
   SDK.assertReferenceScriptRawBodiesFitL1Envelope(remaining);
   if (remaining.length > 0)
-    SDK.assertReferenceScriptAuthMinimumRemaining({
+    SDK.assertReferenceScriptAuthUnexpired({
+      lucid,
       policy: authPolicy,
-      nowMs: lucid.slotToUnixTime(lucid.currentSlot()),
-      minRemainingMs: minAuthPolicyRemainingMs,
       scopeName: "reference publication",
       targetNames: remaining.map((t) => t.name),
     });
@@ -477,7 +474,6 @@ export const publishReferenceScripts = async ({
                   authPolicy,
                   reserved,
                   options,
-                  minAuthPolicyRemainingMs,
                   signal,
                   journal,
                 });
@@ -568,10 +564,9 @@ export const publishReferenceScripts = async ({
         progressed = true;
         continue;
       }
-      SDK.assertReferenceScriptAuthMinimumRemaining({
+      SDK.assertReferenceScriptAuthUnexpired({
+        lucid,
         policy: authPolicy,
-        nowMs: lucid.slotToUnixTime(lucid.currentSlot()),
-        minRemainingMs: minAuthPolicyRemainingMs,
         scopeName: "reference publication",
         targetNames: needed.map((t) => t.name),
       });

@@ -108,14 +108,14 @@ type RunState = {
   steps?: Record<string, { status?: string }>;
 };
 
-/** The node's REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS default. */
-const AUTH_MIN_REMAINING_MS = 5_400_000;
-
 /**
  * The reference-script auth policy is a time-locked native script. A
- * publication interrupted for longer than its window cannot resume under it;
- * before `init` spends the hub-oracle nonce nothing on chain is bound to that
- * policy yet, so a replacement policy is the recovery, not a new deployment.
+ * publication still unfinished when the policy expires cannot resume under
+ * it; before `init` spends the hub-oracle nonce nothing on chain is bound to
+ * that policy yet, so a replacement policy is the recovery, not a new
+ * deployment. The node treats the policy as expired from the slot before
+ * its expiry; an attempt that starts inside that last slot fails and the
+ * next attempt replaces the policy.
  */
 export const needsFreshAuthPolicy = (
   runState: RunState | undefined,
@@ -124,7 +124,7 @@ export const needsFreshAuthPolicy = (
   const expiresAt =
     runState?.identity?.referenceScriptAuthPolicy?.nativeScript
       ?.expiresAtUnixTime;
-  return expiresAt !== undefined && expiresAt - nowMs < AUTH_MIN_REMAINING_MS;
+  return expiresAt !== undefined && expiresAt <= nowMs;
 };
 
 const nonceUnspent = async (run: RunEnv, oneShot: HubOracleOneShot) => {
@@ -145,8 +145,8 @@ const PUBLICATION_ATTEMPTS = 6;
 /**
  * Publishes the node-runtime reference scripts. The command resumes from its
  * run-state, so a failure (a stalled provider on a loaded host) is retried
- * from where it stopped; each attempt re-decides whether the auth policy
- * window still allows resuming under the recorded policy.
+ * from where it stopped; each attempt re-decides whether the recorded auth
+ * policy has expired.
  */
 const publishReferenceScripts = async (
   context: DeployContext,
@@ -166,7 +166,7 @@ const publishReferenceScripts = async (
         : [];
     if (fresh.length > 0)
       console.log(
-        "deploy: auth policy window spent before init; publishing under a replacement policy",
+        "deploy: auth policy expired before init; publishing under a replacement policy",
       );
     const result = await nodeCli(
       context,

@@ -120,7 +120,6 @@ export type NodeConfigDep = {
   L1_REFERENCE_SCRIPT_ADDRESS: string;
   L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS: string;
   REFERENCE_SCRIPT_AUTH_TIMELOCK_MS: number;
-  REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS: number;
   NETWORK: Network;
   DEPLOYMENT_ECONOMICS_PROFILE: DeploymentManifestEconomicsProfile;
   PORT: number;

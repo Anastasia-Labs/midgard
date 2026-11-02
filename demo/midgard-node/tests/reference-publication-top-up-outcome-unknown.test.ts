@@ -112,7 +112,6 @@ const fixture = async (taken: boolean) => {
         authPolicy,
         fundingLucid,
         undefined,
-        1,
         new Set(),
         options,
         IMMEDIATE_RETRY,

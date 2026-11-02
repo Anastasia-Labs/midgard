@@ -1,7 +1,7 @@
 import "./index.registration-6.js";
 
 import {
-  assertReferenceScriptAuthMinimumRemaining,
+  assertReferenceScriptAuthUnexpired,
   type ReferenceScriptAuthPolicy,
 } from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
@@ -161,18 +161,14 @@ for (const commandName of RegisterActiveOperator.REFERENCE_SCRIPT_COMMAND_NAMES)
                     commandName,
                     timelockDurationMs:
                       nodeConfig.REFERENCE_SCRIPT_AUTH_TIMELOCK_MS,
-                    minRemainingMs:
-                      nodeConfig.REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS,
                     contractsFor,
                   },
                 );
           yield* Effect.try({
             try: () =>
-              assertReferenceScriptAuthMinimumRemaining({
+              assertReferenceScriptAuthUnexpired({
+                lucid: lucidService.referenceScriptsApi,
                 policy: contracts.referenceScriptAuth,
-                nowMs: Date.now(),
-                minRemainingMs:
-                  nodeConfig.REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS,
                 scopeName: `deploy-reference-script-${commandName}`,
                 targetNames: referenceScriptTargetsByCommand(contracts)[
                   commandName
@@ -204,7 +200,6 @@ for (const commandName of RegisterActiveOperator.REFERENCE_SCRIPT_COMMAND_NAMES)
               contracts.referenceScriptAuth,
               lucidService.api,
               lucidService.referenceScriptsAddress,
-              nodeConfig.REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS,
             );
           return { mode: "publish" as const, published };
         }).pipe(

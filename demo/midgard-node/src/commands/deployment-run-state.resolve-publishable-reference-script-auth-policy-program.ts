@@ -32,42 +32,32 @@ import {
   resolveReferenceScriptAuthPolicyProgram,
 } from "./deployment-run-state.resolve-reference-script-auth-policy-program.js";
 
-const minutes = (ms: number): string => `${Math.floor(ms / 60_000)} min`;
-
 const chainNowMs = (lucid: LucidEvolution): number =>
   lucid.slotToUnixTime(lucid.currentSlot());
 
 /**
  * How many reference-script auth tokens of `policy` sit at the publication
- * address once nothing can still mint under it. Publication never sends
- * under a policy with `minRemainingMs` or less left, so every transaction
- * it sent is past its validity once that point plus one validity window
- * has passed; the canonical view is read after it.
+ * address once nothing can still mint under it. No transaction minting
+ * under the policy can be valid at or after its expiry slot, so the
+ * canonical view is read once the chain has reached that slot.
  */
 const publishedUnderPolicy = (
   lucid: LucidEvolution,
   address: string,
   policy: ReferenceScriptAuthPolicy,
-  minRemainingMs: number,
   publication: ReferencePublicationOptions,
 ): Effect.Effect<number, SDK.StateQueueError> =>
   Effect.gen(function* () {
-    const settledAtMs =
-      policy.expiresAtUnixTime -
-      minRemainingMs +
-      SDK.REFERENCE_SCRIPT_PUBLICATION_VALIDITY_MS;
     yield* Effect.tryPromise({
       try: async () => {
-        while (
-          lucid.slotToUnixTime(await publication.synchronize()) < settledAtMs
-        )
+        while ((await publication.synchronize()) < policy.expiresAtSlot)
           await (publication.wait?.() ??
             new Promise((resolve) => setTimeout(resolve, 1_000)));
       },
       catch: (cause) =>
         new SDK.StateQueueError({
           message:
-            "Failed to synchronize past the recorded auth policy's last publication window",
+            "Failed to synchronize past the recorded auth policy's expiry",
           cause,
         }),
     });
@@ -139,8 +129,8 @@ const assertPublicationFitsNewPolicy = ({
 
 /**
  * The auth policy the deployment publishes reference scripts under, and the
- * contracts built over it. A recorded policy with more than
- * `minRemainingMs` left is used as is. One with less is replaced by a new
+ * contracts built over it. A recorded policy that has not expired is used as
+ * is, however little time it has left. An expired one is replaced by a new
  * policy only while nothing was published under it; otherwise the command
  * refuses, since a new policy changes every contract and so means
  * republishing all of them, which only `--fresh-redeploy` chooses. The
@@ -154,7 +144,6 @@ export const resolvePublishableReferenceScriptAuthPolicyProgram = <E>({
   referenceScriptsAddress,
   commandName,
   timelockDurationMs,
-  minRemainingMs,
   contractsFor,
   publication = referencePublicationOptions(lucid),
 }: {
@@ -164,7 +153,6 @@ export const resolvePublishableReferenceScriptAuthPolicyProgram = <E>({
   readonly referenceScriptsAddress: string;
   readonly commandName: ReferenceScriptCommandName;
   readonly timelockDurationMs: number;
-  readonly minRemainingMs: number;
   readonly contractsFor: (
     policy: ReferenceScriptAuthPolicy,
   ) => Effect.Effect<SDK.MidgardValidators, E>;
@@ -180,17 +168,9 @@ export const resolvePublishableReferenceScriptAuthPolicyProgram = <E>({
   Effect.gen(function* () {
     const recorded =
       yield* recordedReferenceScriptAuthPolicyProgram(deployment);
-    const remainingMs =
-      recorded === null
-        ? undefined
-        : SDK.referenceScriptAuthRemainingMs(
-            recorded.policy,
-            chainNowMs(lucid),
-          );
     if (
       recorded !== null &&
-      remainingMs !== undefined &&
-      remainingMs > minRemainingMs
+      !SDK.referenceScriptAuthExpired(lucid, recorded.policy)
     ) {
       const authPolicy = yield* resolveReferenceScriptAuthPolicyProgram({
         ...deployment,
@@ -208,7 +188,6 @@ export const resolvePublishableReferenceScriptAuthPolicyProgram = <E>({
             lucid,
             referenceScriptsAddress,
             recorded.policy,
-            minRemainingMs,
             publication,
           );
       if (published !== 0) {
@@ -228,7 +207,7 @@ export const resolvePublishableReferenceScriptAuthPolicyProgram = <E>({
         );
         return yield* Effect.fail(
           new RunStateError(
-            `Reference-script auth policy ${policyId} has ${minutes(remainingMs ?? 0)} left, at or below the ${minutes(minRemainingMs)} minimum publication needs, and ${
+            `Reference-script auth policy ${policyId} expired, and ${
               published === undefined
                 ? "the deployment manifest records it"
                 : `${published.toString()} reference scripts are already published under it`
@@ -236,7 +215,7 @@ export const resolvePublishableReferenceScriptAuthPolicyProgram = <E>({
           ),
         );
       }
-      reason = `auth policy ${policyId} had ${minutes(remainingMs ?? 0)} left (minimum ${minutes(minRemainingMs)}) and nothing was published under it; replaced automatically`;
+      reason = `auth policy ${policyId} expired and nothing was published under it; replaced automatically`;
     }
     const candidate = yield* Effect.tryPromise({
       try: () =>

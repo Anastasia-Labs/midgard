@@ -1,8 +1,7 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  assertReferenceScriptAuthMinimumRemaining,
-  REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS,
+  assertReferenceScriptAuthUnexpired,
   type ReferenceScriptAuthMintingPolicy,
   type ReferenceScriptAuthPolicyRef,
 } from "@al-ft/midgard-sdk";
@@ -51,9 +50,9 @@ import { TxConfirmError, TxSignError, TxSubmitError } from "./utils.js";
 
 /**
  * How often a publication pass interrupted by a transient provider failure
- * is resumed. Every pass re-reads the published references, re-checks the
- * auth deadline and crosses the previous validity window before it spends,
- * so a resumed pass publishes only what is still missing.
+ * is resumed. Every pass re-reads the published references, re-checks that
+ * the auth policy has not expired and crosses the previous validity window
+ * before it spends, so a resumed pass publishes only what is still missing.
  */
 export const REFERENCE_SCRIPT_PUBLICATION_RETRY: ProviderRetryOptions = {
   maxAttempts: 5,
@@ -78,8 +77,8 @@ const hasCause = (
   return false;
 };
 
-const isAuthDeadlineFailure = (cause: Error): boolean =>
-  cause.name === "ReferenceScriptAuthDeadlineError";
+const isAuthExpiredFailure = (cause: Error): boolean =>
+  cause.name === "ReferenceScriptAuthExpiredError";
 
 // publishReferenceScripts' own refusal after 30 minutes without progress. It
 // names no provider failure, only reads like one ("timed out").
@@ -88,11 +87,11 @@ const isReconciliationTimeout = (cause: Error): boolean =>
 
 /**
  * Resumes a publication pass only after a transient provider failure. An
- * auth policy too close to expiry is never retried: waiting cannot add time.
+ * expired auth policy is never retried: waiting cannot add time.
  * Nor is a reconciliation that already waited out its own progress deadline.
  */
 const isResumablePublicationFailure = (error: unknown): boolean =>
-  !hasCause(error, isAuthDeadlineFailure) &&
+  !hasCause(error, isAuthExpiredFailure) &&
   !hasCause(error, isReconciliationTimeout) &&
   isRetryableProviderError(error);
 
@@ -185,7 +184,6 @@ export const ensureReferenceScriptTargetsProgram = (
   authPolicy: ReferenceScriptAuthMintingPolicy,
   fundingLucid: LucidEvolution,
   configuredReferenceScriptsAddress: string | undefined,
-  minAuthPolicyRemainingMs: number,
   reservedFundingOutRefKeys: ReadonlySet<string>,
   publicationOptions?: ReferencePublicationOptions,
   publicationRetry: ProviderRetryOptions = REFERENCE_SCRIPT_PUBLICATION_RETRY,
@@ -228,10 +226,9 @@ export const ensureReferenceScriptTargetsProgram = (
       if (missing.length > 0) {
         yield* Effect.try({
           try: () =>
-            assertReferenceScriptAuthMinimumRemaining({
+            assertReferenceScriptAuthUnexpired({
+              lucid: referenceScriptsLucid,
               policy: authPolicy,
-              nowMs: Date.now(),
-              minRemainingMs: minAuthPolicyRemainingMs,
               scopeName,
               targetNames: missing.map((t) => t.name),
             }),
@@ -271,7 +268,6 @@ export const ensureReferenceScriptTargetsProgram = (
             targets,
             authPolicy,
             reserved: reservedFundingOutRefKeys,
-            minAuthPolicyRemainingMs,
             signal,
             options:
               publicationOptions ??
@@ -322,7 +318,6 @@ export const deployReferenceScriptCommandProgram = (
   authPolicy: ReferenceScriptAuthMintingPolicy,
   fundingLucid: LucidEvolution = referenceScriptsLucid,
   referenceScriptsAddress?: string,
-  minAuthPolicyRemainingMs: number = REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS,
 ): Effect.Effect<
   readonly ReferenceScriptResolved[],
   | SDK.StateQueueError
@@ -339,7 +334,6 @@ export const deployReferenceScriptCommandProgram = (
     authPolicy,
     fundingLucid,
     referenceScriptsAddress,
-    minAuthPolicyRemainingMs,
     deploymentInitializationNonceOutRefKeys(contracts),
   );
 
@@ -423,7 +417,6 @@ export const ensureNodeRuntimeReferenceScriptsProgram = (
   authPolicy: ReferenceScriptAuthMintingPolicy,
   fundingLucid: LucidEvolution = referenceScriptsLucid,
   referenceScriptsAddress?: string,
-  minAuthPolicyRemainingMs: number = REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS,
 ): Effect.Effect<
   readonly ReferenceScriptResolved[],
   | SDK.StateQueueError
@@ -440,7 +433,6 @@ export const ensureNodeRuntimeReferenceScriptsProgram = (
     authPolicy,
     fundingLucid,
     referenceScriptsAddress,
-    minAuthPolicyRemainingMs,
     deploymentInitializationNonceOutRefKeys(contracts),
   );
 

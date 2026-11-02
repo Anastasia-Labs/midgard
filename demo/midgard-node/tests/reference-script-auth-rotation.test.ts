@@ -1,9 +1,10 @@
 /**
  * The node-runtime deploy resolves its reference-script auth policy before
- * every publication: a recorded policy with too little time left is
- * replaced only while nothing was published under it, otherwise the deploy
- * refuses; and no new policy is recorded unless the reference-script wallet
- * can fund its whole publication and the publication fits its window.
+ * every publication: a recorded policy that has not expired is reused
+ * however little time it has left; an expired one is replaced only while
+ * nothing was published under it, otherwise the deploy refuses; and no new
+ * policy is recorded unless the reference-script wallet can fund its whole
+ * publication.
  */
 import { join } from "node:path";
 
@@ -31,7 +32,6 @@ const makeTempDir = createTrackedTempDirFactory("midgard-auth-rotation-");
 
 const HUB_ORACLE_ONE_SHOT = { txHash: "aa".repeat(32), outputIndex: 0 };
 const TIMELOCK_MS = SDK.REFERENCE_SCRIPT_AUTH_TIMELOCK_MS;
-const MIN_REMAINING_MS = SDK.REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS;
 /** Emulator blocks are 20 one-second slots apart. */
 const BLOCK_MS = 20_000;
 
@@ -86,7 +86,6 @@ const deployment = async (lovelace: bigint): Promise<Deployment> => {
             referenceScriptsAddress: account.address,
             commandName: "node-runtime",
             timelockDurationMs,
-            minRemainingMs: MIN_REMAINING_MS,
             contractsFor,
           }),
         ),
@@ -115,23 +114,38 @@ const failureMessage = (result: Either.Either<unknown, unknown>): string => {
   return Either.isLeft(result) ? String((result.left as Error).message) : "";
 };
 
-/** Lets the emulator chain run until `policy` has 60 min left. */
-const runUntilStale = (
+/** Lets the emulator chain run until `policy` has at most `leftMs` left. */
+const runUntilLeft = (
   emulator: Emulator,
   policy: SDK.ReferenceScriptAuthPolicy,
+  leftMs: number,
 ) => {
-  const target = policy.expiresAtUnixTime - 60 * 60_000;
+  const target = policy.expiresAtUnixTime - leftMs;
   emulator.awaitBlock(Math.ceil((target - emulator.now()) / BLOCK_MS));
 };
 
 describe("node-runtime reference-script auth policy", () => {
-  it("replaces a stale policy nothing was published under and records why", async () => {
+  it("reuses a recorded policy with 10 minutes left", async () => {
+    const { emulator, resolve, recordedPolicyId, policyStepMessage } =
+      await deployment(500_000_000_000n);
+    const first = policyOf(await resolve());
+
+    runUntilLeft(emulator, first, 10 * 60_000);
+    expect(first.expiresAtUnixTime - emulator.now()).toBeGreaterThan(0);
+    const second = policyOf(await resolve());
+
+    expect(second.policyId).toBe(first.policyId);
+    expect(await recordedPolicyId()).toBe(first.policyId);
+    expect(await policyStepMessage()).not.toContain("fresh_redeploy_reason");
+  }, 300_000);
+
+  it("replaces an expired policy nothing was published under and records why", async () => {
     const { emulator, resolve, recordedPolicyId, policyStepMessage } =
       await deployment(500_000_000_000n);
     const first = policyOf(await resolve());
     expect(await recordedPolicyId()).toBe(first.policyId);
 
-    runUntilStale(emulator, first);
+    runUntilLeft(emulator, first, 0);
     const second = policyOf(await resolve());
 
     expect(second.policyId).not.toBe(first.policyId);
@@ -142,10 +156,11 @@ describe("node-runtime reference-script auth policy", () => {
     expect(await policyStepMessage()).toContain(
       `fresh_redeploy_reason=auth policy ${first.policyId}`,
     );
+    expect(await policyStepMessage()).toContain("expired");
     expect(await policyStepMessage()).toContain("nothing was published");
   }, 300_000);
 
-  it("refuses to replace a stale policy something was published under", async () => {
+  it("refuses to replace an expired policy something was published under", async () => {
     const { emulator, lucid, resolve, recordedPolicyId } =
       await deployment(500_000_000_000n);
     const policy = policyOf(await resolve());
@@ -163,14 +178,14 @@ describe("node-runtime reference-script auth policy", () => {
         policy,
         lucid,
         undefined,
-        MIN_REMAINING_MS,
         new Set(),
       ),
     );
 
-    runUntilStale(emulator, policy);
+    runUntilLeft(emulator, policy, 0);
     const message = failureMessage(await resolve());
 
+    expect(message).toContain(`auth policy ${policy.policyId} expired`);
     expect(message).toContain(
       "1 reference scripts are already published under it",
     );

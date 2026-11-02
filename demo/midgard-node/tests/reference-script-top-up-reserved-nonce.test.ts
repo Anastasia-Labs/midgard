@@ -43,7 +43,6 @@ const entryPoints: readonly (readonly [string, EntryPoint])[] = [
         authPolicy,
         operator,
         undefined,
-        1,
       ),
   ],
   [
@@ -56,7 +55,6 @@ const entryPoints: readonly (readonly [string, EntryPoint])[] = [
         authPolicy,
         operator,
         undefined,
-        1,
       ),
   ],
 ];

@@ -283,7 +283,6 @@ it.skipIf(runDirectory === undefined)(
         authPolicy,
         lucid,
         undefined,
-        SDK.REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS,
         new Set(),
         { mode, synchronize },
       ),

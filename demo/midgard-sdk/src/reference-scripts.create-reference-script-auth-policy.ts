@@ -34,13 +34,13 @@ export type ReferenceScriptAuthMintingPolicy = MintingValidator & {
   readonly expiresAtUnixTime?: number;
 };
 
-export type ReferenceScriptAuthDeadlineDiagnostic = {
+export type ReferenceScriptAuthExpiredDiagnostic = {
+  readonly policyId: string;
   readonly scopeName: string;
   readonly targetNames: readonly string[];
-  readonly nowMs: number;
-  readonly expiresAtUnixTime?: number;
-  readonly remainingMs?: number;
-  readonly minRemainingMs: number;
+  readonly currentSlot: number;
+  /** Absent for a policy without an expiry, which publication refuses. */
+  readonly lastValidSlot?: number;
 };
 
 export type ReferenceScriptAuthPolicyDeploymentInfo = {
@@ -213,68 +213,63 @@ export const referenceScriptAuthPolicyFromDeploymentInfo = (
   timelockDurationMs: deploymentInfo.nativeScript.timelockDurationMs,
 });
 
-export const referenceScriptAuthRemainingMs = (
+/**
+ * The slot from which no transaction minting under `policy` can be valid:
+ * publication clamps every transaction's upper bound to the slot before the
+ * policy's expiry slot, and a transaction is valid only before its upper
+ * bound. Undefined for a policy without an expiry.
+ */
+export const referenceScriptAuthLastValidSlot = (
+  lucid: LucidEvolution,
   policy: ReferenceScriptAuthMintingPolicy,
-  nowMs: number,
 ): number | undefined =>
   policy.expiresAtUnixTime === undefined
     ? undefined
-    : policy.expiresAtUnixTime - nowMs;
+    : lucid.unixTimeToSlot(policy.expiresAtUnixTime) - 1;
 
-export class ReferenceScriptAuthDeadlineError extends Error {
-  readonly diagnostic: ReferenceScriptAuthDeadlineDiagnostic;
+/** Whether no transaction can mint under `policy` any more. */
+export const referenceScriptAuthExpired = (
+  lucid: LucidEvolution,
+  policy: ReferenceScriptAuthMintingPolicy,
+): boolean => {
+  const lastValidSlot = referenceScriptAuthLastValidSlot(lucid, policy);
+  return lastValidSlot === undefined || lucid.currentSlot() >= lastValidSlot;
+};
 
-  constructor(diagnostic: ReferenceScriptAuthDeadlineDiagnostic) {
-    const remaining =
-      diagnostic.remainingMs === undefined
-        ? "missing"
-        : diagnostic.remainingMs.toString();
+export class ReferenceScriptAuthExpiredError extends Error {
+  readonly diagnostic: ReferenceScriptAuthExpiredDiagnostic;
+
+  constructor(diagnostic: ReferenceScriptAuthExpiredDiagnostic) {
     super(
-      [
-        `Reference-script auth policy is not safe to use for ${diagnostic.scopeName}`,
-        `now_ms=${diagnostic.nowMs.toString()}`,
-        `expires_at_unix_time=${
-          diagnostic.expiresAtUnixTime === undefined
-            ? "missing"
-            : diagnostic.expiresAtUnixTime.toString()
-        }`,
-        `remaining_ms=${remaining}`,
-        `min_remaining_ms=${diagnostic.minRemainingMs.toString()}`,
-        `targets=${diagnostic.targetNames.join(",")}`,
-      ].join("; "),
+      diagnostic.lastValidSlot === undefined
+        ? `Reference-script auth policy ${diagnostic.policyId} has no expiry, so ${diagnostic.scopeName} cannot publish under it (targets: ${diagnostic.targetNames.join(", ")})`
+        : `Reference-script auth policy ${diagnostic.policyId} expired at slot ${diagnostic.lastValidSlot.toString()} (now slot ${diagnostic.currentSlot.toString()}), so ${diagnostic.scopeName} can no longer publish under it (targets: ${diagnostic.targetNames.join(", ")})`,
     );
-    this.name = "ReferenceScriptAuthDeadlineError";
+    this.name = "ReferenceScriptAuthExpiredError";
     this.diagnostic = diagnostic;
   }
 }
 
-export const assertReferenceScriptAuthMinimumRemaining = ({
+/** Refuses once no transaction can mint under `policy` any more. */
+export const assertReferenceScriptAuthUnexpired = ({
+  lucid,
   policy,
-  nowMs,
-  minRemainingMs,
   scopeName,
   targetNames,
 }: {
+  readonly lucid: LucidEvolution;
   readonly policy: ReferenceScriptAuthMintingPolicy;
-  readonly nowMs: number;
-  readonly minRemainingMs: number;
   readonly scopeName: string;
   readonly targetNames: readonly string[];
 }): void => {
-  if (!Number.isSafeInteger(minRemainingMs) || minRemainingMs <= 0) {
-    throw new Error(
-      "REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS must be a positive safe integer",
-    );
-  }
-  const remainingMs = referenceScriptAuthRemainingMs(policy, nowMs);
-  if (remainingMs === undefined || remainingMs <= minRemainingMs) {
-    throw new ReferenceScriptAuthDeadlineError({
+  if (referenceScriptAuthExpired(lucid, policy)) {
+    const lastValidSlot = referenceScriptAuthLastValidSlot(lucid, policy);
+    throw new ReferenceScriptAuthExpiredError({
+      policyId: policy.policyId,
       scopeName,
       targetNames,
-      nowMs,
-      expiresAtUnixTime: policy.expiresAtUnixTime,
-      remainingMs,
-      minRemainingMs,
+      currentSlot: lucid.currentSlot(),
+      ...(lastValidSlot === undefined ? {} : { lastValidSlot }),
     });
   }
 };

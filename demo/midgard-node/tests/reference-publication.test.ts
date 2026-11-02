@@ -40,7 +40,6 @@ it("refuses completion when confirmed reference outputs disappear from the canon
         authPolicy,
         lucid,
         undefined,
-        1,
         new Set(),
         {
           mode: "serial",
@@ -90,7 +89,6 @@ it("chains by default from exact accepted parent change before any reference is 
       authPolicy,
       lucid,
       undefined,
-      SDK.REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS,
       new Set(),
     ),
   );
@@ -132,7 +130,6 @@ const publicationFixture = async (count = 28, fundingOutputs = 1) => {
         authPolicy,
         lucid,
         undefined,
-        1,
         new Set(),
         options,
       ),
@@ -276,7 +273,6 @@ it("keeps serial execution at one unconfirmed publication", async () => {
       f.authPolicy,
       f.lucid,
       undefined,
-      1,
       new Set(),
       {
         ...f.options,
@@ -363,7 +359,6 @@ it("bounds signed bytes independently of lane depth without changing the packing
       f.authPolicy,
       f.lucid,
       undefined,
-      1,
       new Set(),
       f.options,
     ),
@@ -505,7 +500,6 @@ it.each([200, 1000])(
         authPolicy,
         lucid,
         undefined,
-        SDK.REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS,
         new Set(),
       ),
     );
@@ -605,7 +599,6 @@ it("funds the consolidation fees of a wallet holding exactly the lane requiremen
       authPolicy,
       fundingLucid,
       undefined,
-      1,
       new Set(),
       {
         mode: "chained",

@@ -123,11 +123,11 @@ describe("deployment steps before initialization", () => {
       "deployment-status",
     );
   });
-  it("leaves a stale auth policy to the node and stops on its refusal", async () => {
+  it("leaves an expired auth policy to the node and stops on its refusal", async () => {
     const { config, processes, statePath, steps } = await deployment({
       nonceRecorded: true,
     });
-    // A policy recorded by an earlier attempt, now near its expiry.
+    // A policy recorded by an earlier attempt, now expired.
     const state = (await loadDeploymentRunState(statePath))!;
     await writeDeploymentRunStateAtomic(statePath, {
       ...state,
@@ -140,14 +140,14 @@ describe("deployment steps before initialization", () => {
             type: "Native",
             cborHex: "8200581c" + "d".repeat(56),
             expiresAtSlot: 1,
-            expiresAtUnixTime: Date.now() + 60 * 60_000,
+            expiresAtUnixTime: Date.now() - 60 * 60_000,
             timelockDurationMs: 4 * 60 * 60_000,
           },
         },
       },
     });
     const refusal =
-      "Reference-script auth policy has 60 min left; rerun with --fresh-redeploy --fresh-redeploy-reason <reason>.";
+      "Reference-script auth policy expired, and 1 reference scripts are already published under it; rerun with --fresh-redeploy --fresh-redeploy-reason <reason>.";
     processes.responses["nonce-observation"] = { utxos: [nonce] };
     processes.responses["references-observation"] = reconciliation("blocked");
     processes.responses["references-publish"] = () => {

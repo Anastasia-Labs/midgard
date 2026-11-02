@@ -5,10 +5,7 @@ import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile"
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { requireSelectedDeploymentProfile } from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk";
-import {
-  REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS,
-  REFERENCE_SCRIPT_AUTH_TIMELOCK_MS,
-} from "@al-ft/midgard-sdk";
+import { REFERENCE_SCRIPT_AUTH_TIMELOCK_MS } from "@al-ft/midgard-sdk";
 import { Config, Context, Data, Effect, Layer, Option } from "effect";
 
 import { readDaHardeningConfig } from "../da/hardening-config.js";
@@ -136,24 +133,6 @@ const makeConfig = Effect.gen(function* () {
       if (!Number.isSafeInteger(value) || value <= 0) {
         throw new Error(
           "REFERENCE_SCRIPT_AUTH_TIMELOCK_MS must be a positive safe integer",
-        );
-      }
-      return value;
-    }),
-  );
-  const referenceScriptAuthMinRemainingMs = yield* Config.integer(
-    "REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS",
-  ).pipe(
-    Config.withDefault(REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS),
-    Config.mapAttempt((value) => {
-      if (!Number.isSafeInteger(value) || value <= 0) {
-        throw new Error(
-          "REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS must be a positive safe integer",
-        );
-      }
-      if (value >= referenceScriptAuthTimelockMs) {
-        throw new Error(
-          "REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS must be lower than REFERENCE_SCRIPT_AUTH_TIMELOCK_MS",
         );
       }
       return value;
@@ -878,7 +857,6 @@ const makeConfig = Effect.gen(function* () {
     L1_REFERENCE_SCRIPT_ADDRESS: referenceScriptAddress,
     L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS: referenceScriptDeployAddress,
     REFERENCE_SCRIPT_AUTH_TIMELOCK_MS: referenceScriptAuthTimelockMs,
-    REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS: referenceScriptAuthMinRemainingMs,
     NETWORK: network,
     DEPLOYMENT_ECONOMICS_PROFILE: deploymentEconomicsProfile,
     PORT: port,

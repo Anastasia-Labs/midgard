@@ -15,6 +15,7 @@ import { LucidError } from "./common.js";
 import {
   type BuiltReferenceScriptPublicationTx,
   REFERENCE_SCRIPT_PUBLICATION_VALIDITY_MS,
+  referenceScriptAuthLastValidSlot,
   type ReferenceScriptAuthPolicyRef,
   referenceScriptAuthUnit,
   type ReferenceScriptPublicationLayout,
@@ -162,16 +163,12 @@ export const incompleteReferenceScriptPublicationTxProgram = ({
         lucid.slotToUnixTime(lucid.currentSlot()) +
         REFERENCE_SCRIPT_PUBLICATION_VALIDITY_MS;
       tx = tx.validTo(publicationDeadline);
-      if (authPolicy.expiresAtUnixTime !== undefined) {
+      const lastValidSlot = referenceScriptAuthLastValidSlot(lucid, authPolicy);
+      if (lastValidSlot !== undefined) {
         // Bound by the native authority's slot, including a non-aligned planned
         // lifetime. Subtracting one millisecond can remain in its expiry slot.
         tx = tx.validTo(
-          Math.min(
-            publicationDeadline,
-            lucid.slotToUnixTime(
-              lucid.unixTimeToSlot(authPolicy.expiresAtUnixTime) - 1,
-            ),
-          ),
+          Math.min(publicationDeadline, lucid.slotToUnixTime(lastValidSlot)),
         );
       }
       tx = tx.pay.ToAddressWithData(walletAddress, undefined, {

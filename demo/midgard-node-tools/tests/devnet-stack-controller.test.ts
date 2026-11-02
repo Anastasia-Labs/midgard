@@ -136,12 +136,13 @@ describe("needsFreshAuthPolicy", () => {
     },
   });
 
-  it("keeps a policy with more than the publication minimum left", () => {
+  it("keeps a policy that has not expired, however little time is left", () => {
     expect(needsFreshAuthPolicy(at(10_000_000), 0)).toBe(false);
+    expect(needsFreshAuthPolicy(at(600_000), 0)).toBe(false);
   });
 
-  it("replaces a policy inside the publication minimum or already expired", () => {
-    expect(needsFreshAuthPolicy(at(5_000_000), 0)).toBe(true);
+  it("replaces a policy that has expired", () => {
+    expect(needsFreshAuthPolicy(at(2_000), 2_000)).toBe(true);
     expect(needsFreshAuthPolicy(at(1_000), 2_000)).toBe(true);
   });
 
