@@ -825,7 +825,7 @@ Each entry has the shape:
       "cborHex": "...",
       "expiresAtSlot": 0,
       "expiresAtUnixTime": 0,
-      "timelockDurationMs": 14400000
+      "timelockDurationMs": 86400000
     },
     "tokenNames": {
       "state-queue minting": "StateQueueMint"
@@ -860,7 +860,7 @@ Reference-script deployment creates a native minting policy requiring the
 selected publisher's signature and an expiry bound, and mints one role token
 into each published reference-script UTxO. The publisher wallet is independent
 of the reference-script output address. The default minting window is
-four hours (`REFERENCE_SCRIPT_AUTH_TIMELOCK_MS=14400000`). Every publication
+24 hours (`REFERENCE_SCRIPT_AUTH_TIMELOCK_MS=86400000`). Every publication
 transaction's validity ends before the policy's expiry slot, and publication
 stops with an expired-policy error once no transaction can be valid under the
 policy any more. `deploy-reference-script-node-runtime` reuses a recorded
