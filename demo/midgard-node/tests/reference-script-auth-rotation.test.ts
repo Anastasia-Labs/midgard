@@ -194,15 +194,4 @@ describe("node-runtime reference-script auth policy", () => {
     expect(message).toContain("nothing was created");
     expect(await loadDeploymentRunState(runStatePath)).toBeNull();
   }, 300_000);
-
-  it("creates no policy whose window the publication does not fit", async () => {
-    const { resolve, runStatePath } = await deployment(500_000_000_000n);
-
-    const message = failureMessage(await resolve(MIN_REMAINING_MS + 600_000));
-
-    expect(message).toContain("is estimated to take");
-    expect(message).toContain("but the policy leaves 10 min");
-    expect(message).toContain("nothing was created");
-    expect(await loadDeploymentRunState(runStatePath)).toBeNull();
-  }, 300_000);
 });

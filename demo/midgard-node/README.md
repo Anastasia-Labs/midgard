@@ -868,7 +868,7 @@ nothing was published under it, recording why as a fresh redeploy's reason;
 otherwise it refuses, states the ADA republishing every script would lock, and
 leaves the choice to `--fresh-redeploy --fresh-redeploy-reason`. It creates no
 new policy unless the reference-script wallet's plain ADA covers the whole
-publication and the publication's estimated duration fits the policy's window.
+publication.
 The policy metadata is written to `referenceScriptAuthPolicy` in the manifest.
 Once publication is confirmed, the deployment is audited immediately: for every
 token name listed in `referenceScriptAuthPolicy.tokenNames`, exactly one token under

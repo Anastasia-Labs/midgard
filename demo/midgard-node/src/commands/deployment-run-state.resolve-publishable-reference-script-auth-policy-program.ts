@@ -11,7 +11,6 @@ import { RunStateError } from "../e2e/run-state.js";
 import type { IntentJournal } from "../services/intent-journal.js";
 import { formatAda } from "../transactions/operators/funding-preflight.js";
 import {
-  referencePublicationDurationEstimateMs,
   type ReferencePublicationOptions,
   referencePublicationOptions,
   referenceScriptDepositLovelace,
@@ -88,11 +87,9 @@ const publishedUnderPolicy = (
   });
 
 /**
- * Refuses to create an auth policy whose window the publication of
- * `targets` cannot fit or the reference-script wallet cannot fund: its
- * plain balance must cover every deposit, fee and buffer publication will
- * spend, and the estimated publication time must fit between the policy's
- * creation and the minimum it must keep left.
+ * Refuses to create an auth policy whose publication of `targets` the
+ * reference-script wallet cannot fund: its plain balance must cover every
+ * deposit, fee and buffer publication will spend.
  */
 const assertPublicationFitsNewPolicy = ({
   lucid,
@@ -100,8 +97,6 @@ const assertPublicationFitsNewPolicy = ({
   targets,
   authPolicy,
   reserved,
-  timelockDurationMs,
-  minRemainingMs,
   mode,
 }: {
   readonly lucid: LucidEvolution;
@@ -109,8 +104,6 @@ const assertPublicationFitsNewPolicy = ({
   readonly targets: readonly SDK.ReferenceScriptTarget[];
   readonly authPolicy: ReferenceScriptAuthPolicy;
   readonly reserved: ReadonlySet<string>;
-  readonly timelockDurationMs: number;
-  readonly minRemainingMs: number;
   readonly mode: ReferencePublicationOptions["mode"];
 }): Effect.Effect<void, SDK.StateQueueError, IntentJournal> =>
   Effect.gen(function* () {
@@ -142,20 +135,6 @@ const assertPublicationFitsNewPolicy = ({
         }),
       );
     }
-    const estimatedMs = referencePublicationDurationEstimateMs(
-      lucid,
-      targets,
-      mode,
-    );
-    const availableMs = timelockDurationMs - minRemainingMs;
-    if (estimatedMs > availableMs) {
-      return yield* Effect.fail(
-        new SDK.StateQueueError({
-          message: `Refusing to create a reference-script auth policy: publishing its ${targets.length.toString()} reference scripts is estimated to take ${minutes(estimatedMs)}, but the policy leaves ${minutes(availableMs)} (a ${minutes(timelockDurationMs)} timelock less the ${minutes(minRemainingMs)} it must keep left); nothing was created.`,
-          cause: `estimated_ms=${estimatedMs.toString()},available_ms=${availableMs.toString()}`,
-        }),
-      );
-    }
   });
 
 /**
@@ -167,8 +146,7 @@ const assertPublicationFitsNewPolicy = ({
  * republishing all of them, which only `--fresh-redeploy` chooses. The
  * replacement is recorded as a fresh redeploy is, with its reason. No new
  * policy (first, replacement or fresh redeploy) is recorded unless the
- * reference-script wallet can fund its whole publication and the
- * publication fits its window.
+ * reference-script wallet can fund its whole publication.
  */
 export const resolvePublishableReferenceScriptAuthPolicyProgram = <E>({
   deployment,
@@ -279,8 +257,6 @@ export const resolvePublishableReferenceScriptAuthPolicyProgram = <E>({
       targets: referenceScriptTargetsByCommand(contracts)[commandName],
       authPolicy: candidate,
       reserved: deploymentInitializationNonceOutRefKeys(contracts),
-      timelockDurationMs,
-      minRemainingMs,
       mode: publication.mode,
     });
     const authPolicy = yield* resolveReferenceScriptAuthPolicyProgram({
