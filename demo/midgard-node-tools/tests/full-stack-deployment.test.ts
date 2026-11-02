@@ -73,12 +73,38 @@ describe("deployment steps before initialization", () => {
     });
     let published = false;
     processes.responses["nonce-observation"] = { utxos: [nonce] };
-    processes.responses["references-publish"] = () => {
+    // As the node does: publishing records the auth policy before it sends
+    // anything, and no observation can load its contracts without it.
+    processes.responses["references-publish"] = async () => {
+      const state = (await loadDeploymentRunState(statePath))!;
+      await writeDeploymentRunStateAtomic(statePath, {
+        ...state,
+        identity: {
+          ...state.identity,
+          referenceScriptAuthPolicyId: "b".repeat(56),
+          referenceScriptAuthPolicy: {
+            policyId: "b".repeat(56),
+            nativeScript: {
+              type: "Native",
+              cborHex: "8200581c" + "d".repeat(56),
+              expiresAtSlot: 1,
+              expiresAtUnixTime: 1,
+              timelockDurationMs: 1,
+            },
+          },
+        },
+      });
       published = true;
       return { mode: "publish" };
     };
-    processes.responses["references-observation"] = () =>
-      reconciliation(published ? "satisfied" : "blocked");
+    processes.responses["references-observation"] = async () => {
+      const state = await loadDeploymentRunState(statePath);
+      if (state?.identity.referenceScriptAuthPolicy === undefined)
+        throw new Error(
+          "Failed to load reference-script auth policy id from deployment run state",
+        );
+      return reconciliation(published ? "satisfied" : "blocked");
+    };
     processes.responses["deployment-status"] = {
       manifest: { ok: false },
       protocol: { complete: false, empty: true, hubOracleWitness: null },

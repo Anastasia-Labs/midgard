@@ -237,6 +237,11 @@ export function deploymentSteps(processes: StackProcesses): StackStep[] {
     {
       id: "references",
       reconcile: async () => {
+        // Publishing records its auth policy before it sends anything, and the
+        // node cannot observe the scripts without it: none was published yet.
+        const state = await loadDeploymentRunState(paths.state);
+        if (state?.identity.referenceScriptAuthPolicy === undefined)
+          return { status: "retry" };
         await restoreDeploymentEnvironment(processes);
         const result = parseReconciliationResult(
           await processes.node("references-observation", [
