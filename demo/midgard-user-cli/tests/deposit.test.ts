@@ -8,7 +8,10 @@ import { createServer, type Server } from "node:http";
 import { type AddressInfo } from "node:net";
 import { join } from "node:path";
 
-import { outputReferenceToPlutusDataCbor } from "@al-ft/midgard-sdk";
+import {
+  eventHistoryProtectionWaitBoundMs,
+  outputReferenceToPlutusDataCbor,
+} from "@al-ft/midgard-sdk";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
@@ -179,10 +182,15 @@ describe("midgard-user deposit", () => {
     "exits 75 at its deadline with the admission in flight, and a rerun lands that same transaction",
     async () => {
       const root = tempDirectory("pending");
-      // Let the list predecessor an earlier test admitted leave its
-      // protection, so this run builds and broadcasts at once.
+      // Whichever earlier deposit becomes this one's list predecessor (the
+      // scene's accounts are random), wait out the longest protection it can
+      // still hold, so this run builds and broadcasts at once.
       harness.scene.emulator.awaitSlot(
-        Number(harness.scene.protectionDurationMs / 1000n) + 120,
+        Math.ceil(
+          eventHistoryProtectionWaitBoundMs({
+            protectionDurationMs: harness.scene.protectionDurationMs,
+          }) / 1000,
+        ),
       );
       // A clock that moves while the chain does not: the admission stays in
       // the mempool past the deadline.
