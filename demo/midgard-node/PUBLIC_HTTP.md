@@ -53,8 +53,8 @@ in quotas. Direct requests use their actual TCP peer.
 Public reads are `GET /healthz`, `/readyz`, `/pipeline-status`, `/protocol-info`,
 `/tx`, `/tx-status`, `/deposit-status`, `/txs`, `/utxo`, `/utxos`, `/block`.
 Readonly batches are `POST /tx-status` and `POST /utxos`.
-`POST /deposit/build`, `/submit` and `/tx/evaluate` have their declared bounded
-request envelopes. Other CLI operations have no HTTP dispatcher.
+`POST /submit` and `/tx/evaluate` have their declared bounded request
+envelopes. Other CLI operations have no HTTP dispatcher.
 
 Protected reads are `GET /stateQueue`, `/operator/status` and `/admin/session`.
 They require `X-Midgard-Admin-Key`; the session response is not cacheable.

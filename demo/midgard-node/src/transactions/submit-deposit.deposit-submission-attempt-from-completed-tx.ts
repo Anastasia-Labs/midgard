@@ -9,10 +9,7 @@ import {
   coreToTxOutput,
   Data as LucidData,
   datumToHash,
-  type LucidEvolution,
   type Network,
-  type TxSignBuilder,
-  type UTxO,
 } from "@lucid-evolution/lucid";
 import { Data as EffectData, Effect } from "effect";
 
@@ -22,15 +19,6 @@ export type SubmitDepositReferenceScripts = SDK.SubmitDepositReferenceScripts;
 
 export type SubmitDepositConfig = SDK.SubmitDepositConfig;
 
-export type BuildDepositRequest = SubmitDepositConfig & {
-  readonly fundingAddress: string;
-  readonly fundingUtxos: readonly UTxO[];
-};
-
-export type BuiltUnsignedDepositTx = {
-  readonly unsignedTxCbor: string;
-};
-
 export type DepositBuildMetadata = SDK.DepositBuildMetadata;
 
 export class SubmitDepositError extends EffectData.TaggedError(
@@ -39,46 +27,6 @@ export class SubmitDepositError extends EffectData.TaggedError(
   message: string;
   cause: unknown;
 }> {}
-
-export const MAX_DEPOSIT_BUILD_FUNDING_UTXOS = 128;
-
-export const MAX_DEPOSIT_BUILD_UTXO_ASSET_ENTRIES = 64;
-
-export const MAX_DEPOSIT_BUILD_ADDITIONAL_ASSETS = 64;
-
-export const buildUnsignedDepositTxWithMetadataProgram = (
-  lucid: LucidEvolution,
-  contracts: SDK.MidgardValidators,
-  config: SubmitDepositConfig,
-): Effect.Effect<
-  {
-    readonly tx: TxSignBuilder;
-    readonly metadata: DepositBuildMetadata;
-  },
-  | SDK.HubOracleError
-  | SDK.LucidError
-  | SDK.Bech32DeserializationError
-  | SDK.HashingError
-  | SubmitDepositError
-> =>
-  SDK.buildUnsignedDepositTxWithMetadataProgram(lucid, contracts, config).pipe(
-    Effect.catchTags({
-      UserEventBuildError: (error) =>
-        Effect.fail(
-          new SubmitDepositError({
-            message: error.message,
-            cause: error.cause,
-          }),
-        ),
-      InvalidUtxoError: (error) =>
-        Effect.fail(
-          new SubmitDepositError({
-            message: error.message,
-            cause: error,
-          }),
-        ),
-    }),
-  );
 
 const sortedAssetEntries = (assets: Assets): [string, string][] =>
   Object.entries(assets)

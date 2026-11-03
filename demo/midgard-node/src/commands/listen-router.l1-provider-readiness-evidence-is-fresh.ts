@@ -23,8 +23,6 @@ export const COMMIT_ENDPOINT: string = "commit";
 
 export const SUBMIT_ENDPOINT: string = "submit";
 
-export const DEPOSIT_BUILD_ENDPOINT: string = "deposit/build";
-
 /**
  * How `/readyz` answered the L1 provider question: from fresh cached
  * evidence, from the cache because another request's direct preflight is in

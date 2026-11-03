@@ -62,7 +62,6 @@ import {
   ADDRESS_HISTORY_ENDPOINT,
   BLOCK_ENDPOINT,
   COMMIT_ENDPOINT,
-  DEPOSIT_BUILD_ENDPOINT,
   INIT_ENDPOINT,
   MERGE_ENDPOINT,
   SUBMIT_ENDPOINT,
@@ -73,8 +72,7 @@ import {
 import {
   getLogGlobalsHandler,
   getOperatorStatusHandler,
-  postDepositBuildHandler,
-} from "./listen-router.post-deposit-build-handler.js";
+} from "./listen-router.operator-status-handlers.js";
 import { postSubmitHandler } from "./listen-router.post-submit-handler.js";
 import {
   postTxEvaluateHandler,
@@ -224,10 +222,6 @@ export const buildListenRouter = (
       HttpRouter.post(
         `/${UTXOS_ENDPOINT}`,
         withHttpReadSql(postUtxosByTxOutRefsHandler),
-      ),
-      HttpRouter.post(
-        `/${DEPOSIT_BUILD_ENDPOINT}`,
-        withHttpReadSql(postDepositBuildHandler, 10_000),
       ),
       HttpRouter.post(
         `/${SUBMIT_ENDPOINT}`,

@@ -4,7 +4,6 @@ import {
   Data as LucidData,
   datumToHash,
   getAddressDetails,
-  Lucid as makeLucid,
   type LucidEvolution,
 } from "@lucid-evolution/lucid";
 import { Option } from "effect";
@@ -24,9 +23,6 @@ import {
   submitDurableEventHistoryProgram,
 } from "./event-history-submission.js";
 import {
-  type BuildDepositRequest,
-  buildUnsignedDepositTxWithMetadataProgram,
-  type BuiltUnsignedDepositTx,
   type DepositBuildMetadata,
   depositSubmissionAttemptFromCompletedTx,
   type DepositSubmissionReconciliationResult,
@@ -120,59 +116,6 @@ export const reconcileDepositSubmissionAttemptProgram = (
       nextSafeAction:
         "Do not resubmit yet; reconcile the original transaction receipt and current event history.",
     } as const;
-  });
-
-export const buildUnsignedDepositTxFromFundingContextProgram = (
-  lucid: LucidEvolution,
-  contracts: SDK.MidgardValidators,
-  request: BuildDepositRequest,
-): Effect.Effect<
-  BuiltUnsignedDepositTx,
-  | SDK.HubOracleError
-  | SDK.LucidError
-  | SDK.Bech32DeserializationError
-  | SDK.HashingError
-  | SubmitDepositError
-> =>
-  Effect.gen(function* () {
-    const network = lucid.config().network;
-    if (network === undefined) {
-      return yield* Effect.fail(
-        new SubmitDepositError({
-          message:
-            "Cardano network not found while preparing deposit transaction",
-          cause: "Lucid network configuration is undefined",
-        }),
-      );
-    }
-
-    const externalLucid = yield* Effect.tryPromise({
-      try: () => {
-        const { provider, slotConfig } = lucid.config();
-        return makeLucid(
-          provider,
-          network,
-          slotConfig === undefined ? undefined : { slotConfig },
-        );
-      },
-      catch: (cause) =>
-        new SDK.LucidError({
-          message: "Failed to initialize external-wallet deposit builder",
-          cause,
-        }),
-    });
-    yield* Effect.sync(() =>
-      externalLucid.selectWallet.fromAddress(request.fundingAddress, [
-        ...request.fundingUtxos,
-      ]),
-    );
-
-    const { tx } = yield* buildUnsignedDepositTxWithMetadataProgram(
-      externalLucid,
-      contracts,
-      request,
-    );
-    return { unsignedTxCbor: tx.toCBOR() };
   });
 
 /** Exact semantic datum bytes remain part of the durable pre-nonce intent. */
@@ -283,15 +226,6 @@ export const submitDepositWithMetadataProgram = (
       confirmationStatus: "confirmed" as const,
     };
   });
-
-type UnknownRecord = Record<string, unknown>;
-
-export const asObject = (value: unknown, field: string): UnknownRecord => {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(`${field} must be an object.`);
-  }
-  return value as UnknownRecord;
-};
 
 export const parseRequiredString = (value: unknown, field: string): string => {
   if (typeof value !== "string") {

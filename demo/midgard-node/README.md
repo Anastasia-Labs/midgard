@@ -450,8 +450,6 @@ state-changing step. Inspect the emitted evidence and next action first.
 
 The main listener exposes a small operator-facing API. Common routes include:
 
-- `/deposit/build` for building unsigned L1 deposit transactions from a
-  caller-supplied wallet view,
 - `/submit` for submitting the canonical V1 proof-submission envelope with
   `Content-Type: application/vnd.midgard.v1+cbor`,
 - `/utxo` for querying one spendable Midgard mempool-ledger UTxO by raw
@@ -635,47 +633,6 @@ Notes:
 - Without `--submission-id` every run builds, signs and submits a new
   transfer. Rerunning after an ambiguous failure can then pay twice when the
   wallet has other UTxOs.
-
-## Build An Unsigned L1 Deposit
-
-Build a Cardano deposit transaction without giving the node any signing key.
-The caller provides the funding address plus the exact wallet UTxOs that may be
-spent, and the node returns unsigned transaction CBOR for the caller to sign
-externally.
-
-```sh
-curl -X POST http://127.0.0.1:3000/deposit/build \
-  -H 'content-type: application/json' \
-  -d '{
-    "l2Address": "addr_test1...",
-    "lovelace": "12000000",
-    "fundingAddress": "addr_test1...",
-    "fundingUtxos": [
-      {
-        "txHash": "11...11",
-        "outputIndex": 0,
-        "address": "addr_test1...",
-        "assets": {
-          "lovelace": "30000000"
-        }
-      }
-    ]
-  }'
-```
-
-Optional fields:
-
-- `l2Datum`: even-length hex inline datum for the projected Midgard UTxO.
-  Midgard L2 outputs support only absent datums or inline datums; datum-hash
-  outputs are rejected.
-- `additionalAssets`: array of `{ unit, amount }` entries to deposit alongside
-  lovelace.
-- `fundingUtxos[].datumHash`, `fundingUtxos[].datum`, `fundingUtxos[].scriptRef`:
-  optional hex fields preserved in the external wallet view when present.
-
-The response includes:
-
-- `unsignedTxCbor`: unsigned Cardano transaction CBOR hex.
 
 ## Export Contract Deployment Info
 

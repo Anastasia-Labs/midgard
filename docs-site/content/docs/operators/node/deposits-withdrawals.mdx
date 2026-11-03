@@ -82,20 +82,13 @@ see [background fibers](/docs/operators/node/background-fibers). The
 
 Maturity: <StatePill state="demo" />
 
-The node exposes deposit construction and status over HTTP. Withdrawal submission
+The node exposes deposit status over HTTP. Withdrawal submission
 and status are CLI and background operations, not HTTP routes. See the
 [CLI Reference](/docs/operators/node/cli-reference). Full route graph:
 [Server HTTP API](/docs/operators/node/server-http-api).
 
 <EndpointTable
   rows={[
-    {
-      method: "POST",
-      path: "/deposit/build",
-      auth: "public",
-      description:
-        "Build an unsigned L1 deposit transaction from a caller-supplied wallet view; returns CBOR for external signing.",
-    },
     {
       method: "GET",
       path: "/deposit-status",

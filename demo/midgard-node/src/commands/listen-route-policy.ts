@@ -13,7 +13,6 @@ export const HTTP_ROUTE_ACTIONS = [
   ["GET", "/utxos", "public"],
   ["POST", "/utxos", "public"],
   ["GET", "/block", "public"],
-  ["POST", "/deposit/build", "public"],
   ["POST", "/submit", "public"],
   ["POST", "/tx/evaluate", "public"],
   ["POST", "/init", "admin"],

@@ -16,10 +16,13 @@ import {
   eventTrackedSet,
   type ProjectedEvent,
 } from "@al-ft/midgard-l1-follower/events";
+import { HttpServerResponse } from "@effect/platform";
+import { ParsedSearchParams } from "@effect/platform/HttpServerRequest";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
+import { getDepositStatusHandler } from "../src/commands/listen-router.post-tx-status-batch-handler.js";
 import {
   followerIngestedView,
   type FollowerIngestionOutcome,
@@ -116,6 +119,56 @@ const projectedEvents = async () => {
   };
 };
 
+/**
+ * An inline deposit and an external one (its payload published by a tx of
+ * its own first) admitted on a simulated chain, as the follower's projection
+ * reads them, with the tx hashes the chain gave them.
+ */
+const inlineAndExternalDeposits = async () => {
+  const store = await storeOpener("sqlite", databases)(
+    [eventProjection(EVENTS_CONFIG)],
+    4,
+  );
+  opened.push(store);
+  const d = new ChainDriver(store, eventTrackedSet(EVENTS_CONFIG));
+  await d.init();
+  const inline = eventOrder("deposit", nonceRef());
+  const external = eventOrder("deposit", nonceRef(), { external: true });
+  const [publicationTxHash] = await d.forward([
+    { inputs: [nonceRef()], outputs: [external.retained!], nonce: 1 },
+  ]);
+  const [inlineAdmissionTxHash, externalAdmissionTxHash] = await d.forward([
+    admissionTx(inline, 2),
+    admissionTx(external, 3, { txHash: publicationTxHash!, index: 0 }),
+  ]);
+  const result = await eventsAt(store, listOf("deposit"), d.tip.point);
+  if (result.kind !== "ok") throw new Error(JSON.stringify(result));
+  const byKey = (key: string) => result.value.find((e) => e.key === key)!;
+  return {
+    inline: byKey(inline.key),
+    external: byKey(external.key),
+    inlineAdmissionTxHash: inlineAdmissionTxHash!,
+    externalAdmissionTxHash: externalAdmissionTxHash!,
+    publicationTxHash: publicationTxHash!,
+  };
+};
+
+/** `GET /deposit-status?cardanoTxHash=<hash>`, answered by the node's handler. */
+const depositStatusByTxHash = (cardanoTxHash: Buffer) =>
+  Effect.gen(function* () {
+    const response = yield* getDepositStatusHandler.pipe(
+      Effect.provideService(ParsedSearchParams, {
+        cardanoTxHash: cardanoTxHash.toString("hex"),
+      }),
+    );
+    const web = HttpServerResponse.toWeb(response);
+    const body = (yield* Effect.promise(() => web.json())) as Record<
+      string,
+      unknown
+    >;
+    return { status: web.status, body };
+  });
+
 /** The driver's sink under the follower write gate's fixture capability. */
 const ingest = (plan: IngestionPlan, cutoffMs = 0) =>
   withFollowerWrite(
@@ -209,6 +262,59 @@ describe("follower event ingestion (Postgres)", () => {
     );
     expect(result.once.withdrawals).toHaveLength(1);
     expect(result.once.withdrawals[0]).toMatchObject(identityOf(withdrawal));
+  });
+
+  it("answers /deposit-status by the admission tx hash for an inline and an external deposit from the follower's row alone", async () => {
+    const deposits = await inlineAndExternalDeposits();
+    const { inline, external } = deposits;
+    // The node first sees the external deposit after its Order moved; its
+    // admission did not.
+    const relocated: ProjectedEvent = {
+      ...external,
+      location: { txHash: Buffer.alloc(32, 0x77), index: 2 },
+    };
+    const result = await run(
+      Effect.gen(function* () {
+        yield* resetApplicationTables;
+        applied(
+          yield* ingest(
+            yield* writeFollowerView(VIEW_SLOT, [inline, relocated]),
+          ),
+        );
+        const sql = yield* SqlClient.SqlClient;
+        const attempts = yield* sql<{
+          count: string;
+        }>`SELECT count(*) AS count FROM deposit_submission_attempts`;
+        return {
+          attempts: Number(attempts[0]!.count),
+          inline: yield* depositStatusByTxHash(deposits.inlineAdmissionTxHash),
+          external: yield* depositStatusByTxHash(
+            deposits.externalAdmissionTxHash,
+          ),
+          publication: yield* depositStatusByTxHash(deposits.publicationTxHash),
+          moved: yield* depositStatusByTxHash(relocated.location.txHash),
+        };
+      }),
+    );
+    expect(result.attempts).toBe(0);
+    expect(result.inline).toMatchObject({
+      status: 200,
+      body: {
+        eventId: inline.idCbor,
+        cardanoTxHash: deposits.inlineAdmissionTxHash.toString("hex"),
+      },
+    });
+    expect(result.external).toMatchObject({
+      status: 200,
+      body: {
+        eventId: external.idCbor,
+        cardanoTxHash: deposits.externalAdmissionTxHash.toString("hex"),
+      },
+    });
+    // One canonical hash per deposit: neither the payload's publication tx
+    // nor the tx that moved the Order names it.
+    expect(result.publication.status).toBe(404);
+    expect(result.moved.status).toBe(404);
   });
 
   it("moves only a withdrawal's location for a known admission", async () => {

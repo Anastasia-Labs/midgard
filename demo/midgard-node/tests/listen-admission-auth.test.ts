@@ -51,7 +51,7 @@ describe("listen admin auth helpers", () => {
     ]) {
       expect(isAdminRoutePath(path), path).toBe(true);
     }
-    for (const path of ["/tx", "/deposit/build", "/submit"]) {
+    for (const path of ["/tx", "/submit"]) {
       expect(isAdminRoutePath(path), path).toBe(false);
     }
     expect(ADMIN_ROUTE_PATHS.size).toBeGreaterThan(0);
