@@ -457,6 +457,10 @@ export const startCommitteeL1Follower = async (
     lucid: parts.lucid,
     stop: async () => {
       abort.abort();
+      // The node connection before the loop: a wallet seed read in flight
+      // (no request deadline) holds the store's writer lane, and a loop
+      // parked behind it returns only once the read ends.
+      await parts.transport.close().catch(() => undefined);
       await running.catch(() => undefined);
       seeder?.close();
       await parts.close();

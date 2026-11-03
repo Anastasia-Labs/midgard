@@ -439,14 +439,15 @@ export const openWatcherFollowerRuntime = (
     close: () => {
       closing ??= (async () => {
         abort.abort();
+        // The node connection before the loop: a wallet seed read in flight
+        // (no request deadline) holds the store's writer lane, and a loop
+        // parked behind it returns only once the read ends.
+        await transport.close().catch(() => undefined);
         await done.catch(() => undefined);
         await txInputs.close();
         unsubscribeRewind();
         seeder.close();
         listeners.clear();
-        // The transport first: a wallet seed in flight holds the store's
-        // writer lane on a read with no deadline, and ends with the sidecar.
-        await transport.close().catch(() => undefined);
         await store.close().catch(() => undefined);
       })();
       return closing;
