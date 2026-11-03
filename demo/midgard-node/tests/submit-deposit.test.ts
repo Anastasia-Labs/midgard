@@ -9,10 +9,7 @@ import {
   parseAdditionalAssetSpecs,
   parseLovelaceAmount,
 } from "../src/asset-specs.js";
-import {
-  parseBuildDepositRequest,
-  parseSubmitDepositConfig,
-} from "../src/transactions/submit-deposit.js";
+import { parseSubmitDepositConfig } from "../src/transactions/submit-deposit.js";
 
 const VALID_L2_ADDRESS =
   "addr_test1qrtuk9vwzuyj2ly4fp2e0fdc36xzk7j2n34jeygl9n38yce7qqpmjursw62tm3acwl6z2kw38cxau355ukc9cxqyhk0sjy7d2s";
@@ -92,76 +89,5 @@ describe("submit deposit parsing", () => {
         [`${"11".repeat(28)}${"22".repeat(2)}`]: 7n,
       },
     });
-  });
-
-  it("parses a valid public deposit-build request", () => {
-    expect(
-      parseBuildDepositRequest({
-        l2Address: VALID_L2_ADDRESS,
-        l2Datum: "deadbeef",
-        lovelace: "12345678",
-        fundingAddress: VALID_L2_ADDRESS,
-        fundingUtxos: [
-          {
-            txHash: "11".repeat(32),
-            outputIndex: 0,
-            address: VALID_L2_ADDRESS,
-            assets: {
-              lovelace: "30000000",
-              [`${"aa".repeat(28)}${"bb".repeat(2)}`]: "3",
-            },
-          },
-        ],
-        additionalAssets: [
-          {
-            unit: `${"11".repeat(28)}${"22".repeat(2)}`,
-            amount: "7",
-          },
-        ],
-      }),
-    ).toEqual({
-      l2Address: VALID_L2_ADDRESS,
-      l2Datum: "deadbeef",
-      lovelace: 12_345_678n,
-      additionalAssets: {
-        [`${"11".repeat(28)}${"22".repeat(2)}`]: 7n,
-      },
-      fundingAddress: VALID_L2_ADDRESS,
-      fundingUtxos: [
-        {
-          txHash: "11".repeat(32),
-          outputIndex: 0,
-          address: VALID_L2_ADDRESS,
-          assets: {
-            lovelace: 30_000_000n,
-            [`${"aa".repeat(28)}${"bb".repeat(2)}`]: 3n,
-          },
-          datumHash: undefined,
-          datum: undefined,
-          scriptRef: undefined,
-        },
-      ],
-    });
-  });
-
-  it("rejects deposit-build funding UTxOs that do not match fundingAddress", () => {
-    expect(() =>
-      parseBuildDepositRequest({
-        l2Address: VALID_L2_ADDRESS,
-        lovelace: "12345678",
-        fundingAddress: VALID_L2_ADDRESS,
-        fundingUtxos: [
-          {
-            txHash: "11".repeat(32),
-            outputIndex: 0,
-            address:
-              "addr_test1qzvn6zx9fdv4x65jwqapr4ugavjuu4dd3dycvmfs8ky5xejzm7zfvw9sm2etf065jnnxf0ssz20knfppfux2qde9j9fqwqs986",
-            assets: {
-              lovelace: "30000000",
-            },
-          },
-        ],
-      }),
-    ).toThrow("fundingUtxos[0].address must match fundingAddress.");
   });
 });

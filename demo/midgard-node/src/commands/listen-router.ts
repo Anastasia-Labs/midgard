@@ -46,7 +46,6 @@ import "./listen-router.get-readiness-handler.js";
 import "./listen-router.get-pipeline-status-handler.js";
 import "./listen-router.get-state-queue-handler.js";
 import "./listen-router.operator-status-handlers.js";
-import "./listen-router.post-deposit-build-handler.js";
 import "./listen-router.post-submit-handler.js";
 import "./listen-router.build-listen-router.js";
 export {

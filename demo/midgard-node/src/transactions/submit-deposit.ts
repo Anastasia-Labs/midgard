@@ -17,11 +17,7 @@ import "./event-history-submission.js";
 import "./submit-deposit.deposit-submission-attempt-from-completed-tx.js";
 import "./submit-deposit.reconcile-deposit-submission-attempt-program.js";
 import "./submit-deposit.parse-funding-utxos.js";
-import "./submit-deposit.parse-build-deposit-request.js";
 export {
-  type BuildDepositRequest,
-  buildUnsignedDepositTxWithMetadataProgram,
-  type BuiltUnsignedDepositTx,
   type DepositBuildMetadata,
   depositSubmissionAttemptFromCompletedTx,
   type DepositSubmissionReconciliationResult,
@@ -30,10 +26,8 @@ export {
   SubmitDepositError,
   type SubmitDepositReferenceScripts,
 } from "./submit-deposit.deposit-submission-attempt-from-completed-tx.js";
-export { parseBuildDepositRequest } from "./submit-deposit.parse-build-deposit-request.js";
 export { parseSubmitDepositConfig } from "./submit-deposit.parse-funding-utxos.js";
 export {
-  buildUnsignedDepositTxFromFundingContextProgram,
   depositSubmissionIntentHash,
   reconcileDepositSubmissionAttemptProgram,
   submitDepositWithMetadataProgram,

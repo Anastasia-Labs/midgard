@@ -1,21 +1,15 @@
 import "./helpers/follower-emulator-installed.js";
 
-import { coreToTxOutput } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
 import {
   advanceEmulatorPastLatestBlockEndTime,
-  advanceHistoryAdmissionClock,
-  buildUnsignedDepositTxFromFundingContextProgram,
-  CML,
   configureEmulatorDaRuntimeManifest,
   DA_TRANSPORT_LIMITS,
   DaPayloadsDB,
-  Data,
   Database,
   DepositsDB,
   Effect,
-  ensureSeparateCollateralUtxo,
   expectedAuthenticatedEventRoot,
   fetchLatestCommittedBlock,
   fetchSchedulerDatum,
@@ -49,109 +43,6 @@ import {
 } from "./deposit-flow-emulator-shared.js";
 
 describe("deposit flow emulator", { concurrent: false }, () => {
-  it("builds an unsigned deposit tx from explicit external wallet context that the user wallet can sign and submit", async () => {
-    const fixture = await makeFixture();
-    await initializeProtocol(fixture);
-
-    await ensureSeparateCollateralUtxo(fixture.depositorLucid);
-    await advanceHistoryAdmissionClock(fixture, "deposit");
-    const fundingAddress = await fixture.depositorLucid.wallet().address();
-    const depositAddress = fixture.contracts.deposit.spendingScriptAddress;
-    const fundingUtxos = await fixture.depositorLucid.wallet().getUtxos();
-    const config = {
-      l2Address: fundingAddress,
-      l2Datum: null,
-      lovelace: 12_000_000n,
-      structuralLovelace: 2_000_000n,
-      additionalAssets: {},
-    } as const;
-
-    const built = await Effect.runPromise(
-      buildUnsignedDepositTxFromFundingContextProgram(
-        fixture.depositorLucid,
-        fixture.contracts,
-        {
-          ...config,
-          fundingAddress,
-          fundingUtxos,
-          referenceScripts: fixture.referenceScripts.deposit,
-        },
-      ),
-    );
-    const builtTx = CML.Transaction.from_cbor_hex(built.unsignedTxCbor);
-    const deployment = SDK.eventHistoryDeploymentFromContracts(
-      SDK.requireEventHistoryContracts(fixture.contracts).deposit,
-    );
-    const outputs = builtTx.body().outputs();
-    const orders = SDK.authenticateHistoryNodes(
-      Array.from({ length: outputs.len() }, (_, outputIndex) => ({
-        ...coreToTxOutput(outputs.get(outputIndex)),
-        txHash: CML.hash_transaction(builtTx.body()).to_hex(),
-        outputIndex,
-      })).filter((output) => output.address === depositAddress),
-      deployment,
-    ).filter(
-      ({ node }) => node.payload !== "RootContent" && "Order" in node.payload,
-    );
-    expect(orders).toHaveLength(1);
-    const builtOrder = orders[0]!;
-    const depositAuthUnit = deployment.policyId + builtOrder.key;
-    const signed = await Effect.runPromise(
-      fixture.depositorLucid
-        .fromTx(built.unsignedTxCbor)
-        .sign.withWallet()
-        .completeProgram(),
-    );
-    const txHash = await signed.submit();
-    await fixture.depositorLucid.awaitTx(txHash);
-    const depositUtxos = await fixture.depositorLucid.utxosAt(depositAddress);
-    const deposited = depositUtxos.find(
-      (utxo) => (utxo.assets[depositAuthUnit] ?? 0n) === 1n,
-    );
-
-    expect(built.unsignedTxCbor).toMatch(/^[0-9a-f]+$/);
-    expect(txHash).toEqual(signed.toHash());
-    expect(deposited).toBeDefined();
-    expect(deposited!.address).toEqual(depositAddress);
-    expect(
-      SDK.eventHistoryOriginalAssets(
-        builtOrder.node,
-        deposited!.assets,
-        deployment.policyId,
-      ),
-    ).toEqual({ lovelace: config.lovelace });
-    expect(deposited!.assets[depositAuthUnit]).toEqual(1n);
-
-    const depositedDatum = Data.from(
-      deposited!.datum ?? "",
-      SDK.EventHistoryNode,
-    );
-    expect(depositedDatum).toEqual(builtOrder.node);
-    if (
-      depositedDatum.payload === "RootContent" ||
-      !("Order" in depositedDatum.payload)
-    )
-      throw new Error(
-        "Published deposit must be an authenticated history Order",
-      );
-    expect(depositedDatum.payload.Order.facts.structural_lovelace).toBe(
-      config.structuralLovelace,
-    );
-    expect(deposited!.assets.lovelace).toBe(
-      config.lovelace + depositedDatum.payload.Order.facts.structural_lovelace,
-    );
-    const read = await Effect.runPromise(
-      SDK.fetchDepositUTxOsProgram(fixture.depositorLucid, deployment),
-    );
-    expect(read).toHaveLength(1);
-    expect(read[0]!.facts).toEqual(depositedDatum.payload.Order.facts);
-    expect(read[0]!.originalAssets).toEqual({ lovelace: config.lovelace });
-    expect(read[0]!.event.info.l2_address).toEqual(
-      await Effect.runPromise(SDK.addressDataFromBech32(fundingAddress)),
-    );
-    expect(read[0]!.event.info.l2_datum).toBeNull();
-  });
-
   // 900s leaves headroom for the full real-contract workflow. Protocol
   // bring-up publishes the 153-target reference-script roster in 39 planned
   // batches (with size-driven splits where required).

@@ -1,7 +1,7 @@
 import { outRefToCbor } from "@al-ft/lucid-midgard";
 import * as SDK from "@al-ft/midgard-sdk";
 import { TxSubmitError, UTxO, utxoToCore } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import { Data, Effect } from "effect";
 
 import * as MempoolLedgerDB from "./database/mempoolLedger.js";
 import { DatabaseError } from "./database/utils/common.js";
@@ -20,15 +20,18 @@ import {
   openPlan,
 } from "./services/intent-journal.js";
 import {
-  buildUnsignedDepositTxWithMetadataProgram,
-  SubmitDepositError,
-} from "./transactions/submit-deposit.js";
-import {
   handleSignSubmit,
   TxConfirmError,
   TxSignError,
 } from "./transactions/utils.js";
 import { readSelectedWalletViewInputs } from "./transactions/utils.wallet-view.js";
+
+export class GenesisDepositError extends Data.TaggedError(
+  "GenesisDepositError",
+)<{
+  message: string;
+  cause: unknown;
+}> {}
 
 /**
  * Seeds the local mempool ledger with configured genesis UTxOs on non-mainnet
@@ -95,7 +98,7 @@ export const submitGenesisDeposits: Effect.Effect<
   | SDK.HashingError
   | SDK.HubOracleError
   | SDK.Bech32DeserializationError
-  | SubmitDepositError
+  | GenesisDepositError
   | TxSubmitError
   | TxConfirmError
   | TxSignError,
@@ -123,14 +126,14 @@ export const submitGenesisDeposits: Effect.Effect<
   ).pipe(
     Effect.mapError(
       (cause) =>
-        new SubmitDepositError({
+        new GenesisDepositError({
           message: `Failed to read the wallet view to fund the genesis deposit: ${cause.message}`,
           cause,
         }),
     ),
   );
   // Hard-coded 10 ADA deposit.
-  const { tx, metadata } = yield* buildUnsignedDepositTxWithMetadataProgram(
+  const { tx, metadata } = yield* SDK.buildUnsignedDepositTxWithMetadataProgram(
     lucid.api,
     contracts,
     {
@@ -140,6 +143,23 @@ export const submitGenesisDeposits: Effect.Effect<
       additionalAssets: {},
       walletInputs,
     },
+  ).pipe(
+    Effect.catchTags({
+      UserEventBuildError: (error) =>
+        Effect.fail(
+          new GenesisDepositError({
+            message: error.message,
+            cause: error.cause,
+          }),
+        ),
+      InvalidUtxoError: (error) =>
+        Effect.fail(
+          new GenesisDepositError({
+            message: error.message,
+            cause: error,
+          }),
+        ),
+    }),
   );
   yield* handleSignSubmit(
     lucid.api,

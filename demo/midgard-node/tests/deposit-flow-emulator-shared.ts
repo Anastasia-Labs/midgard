@@ -194,7 +194,6 @@ import { assetsToValue } from "../src/transactions/reserve-payout.js";
 import { ensureEventHistoryRewardAccountsRegisteredProgram } from "../src/transactions/script-reward-registration.js";
 import { materializeConfirmedLedgerSnapshot } from "../src/transactions/state-queue/confirmed-ledger-snapshot.js";
 import { mergeMaturityWindow } from "../src/transactions/state-queue/merge-readiness.js";
-import { buildUnsignedDepositTxFromFundingContextProgram } from "../src/transactions/submit-deposit.js";
 import { commitExplicitBlockHeaderProgram } from "../src/workers/commit-block-header.js";
 import { LANDED_COMMIT_BASE_PENDING } from "../src/workers/commit-block-header.resolve-commit-base-ledger-entries.js";
 import {
@@ -1728,7 +1727,6 @@ export {
   BlocksDB,
   buildBlockConfirmationAction,
   buildTransferTx,
-  buildUnsignedDepositTxFromFundingContextProgram,
   canonicalSlotConfigForLucid,
   CML,
   COMMIT_MINIMUM_FUTURE_BUFFER_MS,

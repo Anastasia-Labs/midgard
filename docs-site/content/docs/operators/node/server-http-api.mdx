@@ -89,41 +89,6 @@ one the pool fails, gets `503` with `Retry-After: 5`.
 | `GET`  | `/block`            | Tx hashes referenced by a committed block header (`?header_hash=...`).                              |
 | `GET`  | `/deposit-status`   | One serialized deposit row by event id or L1 tx hash.                                               |
 
-### Building an unsigned deposit
-
-| Method | Route            | Purpose                                                                                                           |
-| ------ | ---------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `POST` | `/deposit/build` | Build an unsigned L1 deposit transaction from a caller-supplied wallet view and return CBOR for external signing. |
-
-The caller supplies the funding address plus the exact wallet UTxOs that may be
-spent; this route needs no depositor signing key and returns `unsignedTxCbor`
-for external signing. The node still has separately configured operator keys.
-
-```sh
-curl -X POST http://127.0.0.1:3000/deposit/build \
-  -H 'content-type: application/json' \
-  -d '{
-    "l2Address": "addr_test1...",
-    "lovelace": "12000000",
-    "fundingAddress": "addr_test1...",
-    "fundingUtxos": [
-      {
-        "txHash": "11...11",
-        "outputIndex": 0,
-        "address": "addr_test1...",
-        "assets": { "lovelace": "30000000" }
-      }
-    ]
-  }'
-```
-
-Optional body fields include `l2Datum` (even-length hex inline datum; Midgard L2
-outputs support only absent or inline datums, never datum-hash outputs),
-`additionalAssets` (an array of `{ unit, amount }`), and per-UTxO
-`datumHash` / `datum` hex fields in the external wallet view. Funding-input
-`scriptRef` is rejected. The supplied funding UTxOs must be unique and belong
-to `fundingAddress`; the request accepts at most 128 funding inputs.
-
 ## Request rate limits
 
 Every route passes a token-bucket limiter before the node reads the body, queries
@@ -142,7 +107,7 @@ until every refusing bucket has a token again, and this body:
 | `admin`    | every admin route                        | 30, 10/s                   | none                   |
 | `read`     | the other `GET` routes and `POST /utxos` | 30, 10/s                   | 200, 100/s             |
 | `batch`    | `POST /tx-status`                        | 4, 1/s                     | 16, 4/s                |
-| `write`    | `POST /submit`, `POST /deposit/build`    | 4, 1/s                     | 16, 4/s                |
+| `write`    | `POST /submit`                           | 4, 1/s                     | 16, 4/s                |
 | `evaluate` | `POST /tx/evaluate`                      | 2, 0.2/s                   | 8, 1/s                 |
 
 Health and admin routes have no global bucket and keep their clients in a table

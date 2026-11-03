@@ -167,7 +167,7 @@ describe("node HTTP startup boundary", () => {
         ready: false,
         reasons: ["startup_incomplete"],
       });
-      for (const route of ["/submit", "/deposit/build", "/commit", "/init"]) {
+      for (const route of ["/submit", "/commit", "/init"]) {
         const response = await fetch(`${base}${route}`, { method: "POST" });
         expect(response.status, route).toBe(503);
         await response.arrayBuffer();

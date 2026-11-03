@@ -95,7 +95,6 @@
     "tests/deployable-scripts.test.ts": 10,
     "tests/deployment-manifest.test.ts": 4.9,
     "tests/deployment-run-state.test.ts": 6.3,
-    "tests/deposit-build-provider-retry.test.ts": 11.6,
     "tests/deposit-flow-emulator-commit-selection.test.ts": 49,
     "tests/deposit-flow-emulator-confirmation-journal.test.ts": 42.7,
     "tests/deposit-flow-emulator-fixture-isolation.test.ts": 5.1,
