@@ -148,6 +148,7 @@ describe("the decision driver's retirement gate", () => {
           advanced.push(observation);
           return [];
         },
+        checkpointPrecedesInit: async () => false,
       },
       retryDelayMs: 10,
     };

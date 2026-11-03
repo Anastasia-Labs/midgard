@@ -31,6 +31,7 @@ import {
 } from "../l1-follower/deployment-follower.js";
 import { type WatcherFollowerRuntime } from "../l1-follower/follower-runtime.js";
 import { createWatcherQueueHeaderSource } from "../l1-follower/observation.js";
+import { watcherReplayCheckpointPrecedesInit } from "../l1-follower/replay-source.js";
 import { type WatcherUserEvents } from "../l1-follower/user-events.js";
 import {
   bindWatcherRetainedDaOperations,
@@ -384,6 +385,11 @@ export const startWatcherRuntime = async (
             faultProofApplication.advanceReplayedLedger({
               runtimeConfigPath: input.config.watcherRuntimeConfigPath,
               observation,
+            }),
+          checkpointPrecedesInit: (depth) =>
+            watcherReplayCheckpointPrecedesInit(store, {
+              hubOracleOneShotOutRef: authority.hubOracleOneShotOutRef,
+              depth,
             }),
         },
         retirement: {

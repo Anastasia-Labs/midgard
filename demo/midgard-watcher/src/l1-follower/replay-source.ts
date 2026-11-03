@@ -4,7 +4,11 @@ import {
   FraudProofL1CheckpointChangedError,
   FraudProofL1UnavailableError,
 } from "@al-ft/midgard-fault-proofs";
-import { encodeOutRef, type FactStore } from "@al-ft/midgard-l1-follower";
+import {
+  type FactStore,
+  protocolInitIn,
+  type SqlTx,
+} from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
@@ -31,6 +35,69 @@ import type {
   WatcherUserEventScripts,
 } from "./user-events.js";
 import { WatcherUserEventUnavailable } from "./user-events.js";
+
+type OneShot = ReturnType<typeof parseHubOracleOneShot>;
+
+/**
+ * Whether the deployment's protocol init came strictly after `slot`: the
+ * stored spend of its hub-oracle one-shot is later, and that spend created
+ * the deployment's root. The root and the CorrectionLock are minted only
+ * with the hub-oracle token, which only the tx spending the one-shot mints;
+ * an outref is spent once, so no queue exists at or before `slot`.
+ */
+const initFollows = async (
+  tx: SqlTx,
+  oneShot: OneShot,
+  slot: number,
+): Promise<boolean> => {
+  const init = await protocolInitIn(tx, oneShot);
+  return (
+    init !== null &&
+    init.slot > slot &&
+    (
+      await tx.query(
+        `SELECT 1 FROM ${WATCHER_QUEUE_OUTPUTS_TABLE} WHERE kind = 'root' AND tx_hash = ? AND from_slot = ? LIMIT 1`,
+        [init.txHash, init.slot],
+      )
+    ).length === 1
+  );
+};
+
+/**
+ * Whether the replay checkpoint `depth` blocks below the follower's tip lies
+ * at or below the follower's origin while the deployment's protocol init
+ * followed that origin. The follower then holds no observation at that
+ * point, but the queue there is empty, not missing: every ledger replays
+ * from genesis. Anything else is not told apart.
+ */
+export const watcherReplayCheckpointPrecedesInit = (
+  store: FactStore,
+  input: Readonly<{ hubOracleOneShotOutRef: string; depth: number }>,
+): Promise<boolean> => {
+  const oneShot = parseHubOracleOneShot(input.hubOracleOneShotOutRef);
+  return store.transaction("read", async (tx) => {
+    const cursor = (
+      await tx.query(
+        "SELECT height, origin_slot, origin_hash FROM l1_follower_cursor",
+      )
+    )[0];
+    if (cursor === undefined) return false;
+    const origin = (
+      await tx.query(
+        "SELECT height FROM l1_blocks WHERE slot = ? AND hash = ?",
+        [
+          Number(cursor.origin_slot),
+          Buffer.from(cursor.origin_hash as Uint8Array),
+        ],
+      )
+    )[0];
+    return (
+      origin !== undefined &&
+      Number(cursor.height) - input.depth + 1 <= Number(origin.height) &&
+      (await initFollows(tx, oneShot, Number(cursor.origin_slot)))
+    );
+  });
+};
 
 export type WatcherFollowerReplaySource = Readonly<{
   epoch(): number;
@@ -71,8 +138,8 @@ export const createWatcherFollowerReplaySource = (
     input.minimumCheckpointDepth < 2
   )
     throw new Error("replay checkpoint needs an explicit stable L1 depth");
-  const oneShot = encodeOutRef(
-    parseHubOracleOneShot(input.observationAuthority.hubOracleOneShotOutRef),
+  const oneShot = parseHubOracleOneShot(
+    input.observationAuthority.hubOracleOneShotOutRef,
   );
   let generation = 0;
   let closed = false;
@@ -194,37 +261,17 @@ export const createWatcherFollowerReplaySource = (
           `SELECT tx_hash, output_index, datum_cbor FROM ${WATCHER_QUEUE_OUTPUTS_TABLE} WHERE kind = 'root' AND from_slot <= ? AND (to_slot IS NULL OR to_slot > ?)`,
           [Number(point.slot), Number(point.slot)],
         );
-        // Before the protocol init the queue is empty, not missing. The root
-        // and the CorrectionLock are minted only with the hub-oracle token,
-        // which only the tx spending the one-shot mints; an outref is spent
-        // once, so a point that one-shot outlived holds no queue at all.
-        // Only that case is told apart: the stored init spend is strictly
-        // after the point, it created the deployment's root, and the
+        // Before the protocol init the queue is empty, not missing. Only
+        // that case is told apart: the init followed the point, and the
         // observation admitted an empty queue and no CorrectionLock there.
         // Anything else stays pending below.
         if (
           roots.length === 0 &&
           observation.finalizedQueue.length === 0 &&
-          observation.finalizedCorrectionLock === null
-        ) {
-          const init = (
-            await tx.query(
-              "SELECT tx_hash, slot FROM l1_protocol_init WHERE one_shot = ?",
-              [oneShot],
-            )
-          )[0];
-          if (
-            init !== undefined &&
-            Number(init.slot) > Number(point.slot) &&
-            (
-              await tx.query(
-                `SELECT 1 FROM ${WATCHER_QUEUE_OUTPUTS_TABLE} WHERE kind = 'root' AND tx_hash = ? AND from_slot = ? LIMIT 1`,
-                [Buffer.from(init.tx_hash as Uint8Array), Number(init.slot)],
-              )
-            ).length === 1
-          )
-            return null;
-        }
+          observation.finalizedCorrectionLock === null &&
+          (await initFollows(tx, oneShot, Number(point.slot)))
+        )
+          return null;
         const root = roots[0];
         if (roots.length !== 1 || root === undefined)
           throw new FraudProofL1UnavailableError(

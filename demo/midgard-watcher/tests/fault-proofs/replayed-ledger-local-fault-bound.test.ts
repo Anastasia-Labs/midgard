@@ -254,6 +254,7 @@ describe("the replayed ledger's local-fault hold", () => {
         replayedLedger: {
           depth: RELEASE_DEPTH,
           advance: (current) => s.keeper.advance(current, s.sources),
+          checkpointPrecedesInit: async () => false,
         },
         retryDelayMs: 10,
         log: (line) => logged.push(line),

@@ -327,6 +327,7 @@ export {
   type PointRefusal,
   type PointStatus,
   pointStatusIn,
+  protocolInitIn,
   type Spender,
   tipIn,
   txByHashIn,
