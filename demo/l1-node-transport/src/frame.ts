@@ -12,7 +12,7 @@ import {
  *   u32 big-endian header length | u32 big-endian payload length |
  *   header: one CBOR map with text keys | payload: raw bytes
  */
-export const FRAME_PROTOCOL_VERSION = 1;
+export const FRAME_PROTOCOL_VERSION = 2;
 export const MAX_HEADER_BYTES = 64 * 1024;
 export const MAX_PAYLOAD_BYTES = 64 * 1024 * 1024;
 const LENGTHS = 8;

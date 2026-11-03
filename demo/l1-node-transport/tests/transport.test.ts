@@ -35,10 +35,10 @@ describe("sidecar handshake", () => {
       execFileSync(sidecarBinary, ["--protocol-version"], {
         encoding: "utf8",
       }).trim(),
-    ).toBe("1");
+    ).toBe("2");
   });
 
-  it("refuses an unsupported version with a fatal frame and exit 64", async () => {
+  it("refuses an unsupported version, the previous one included, with a fatal frame and exit 64", async () => {
     const child = spawn(sidecarBinary, [], { stdio: ["pipe", "pipe", "pipe"] });
     const reader = new FrameReader();
     const frames: Frame[] = [];
@@ -52,7 +52,9 @@ describe("sidecar handshake", () => {
     child.stdin.write(
       encodeFrame({
         type: "hello",
-        version: 2,
+        // Version 1 predates no-deadline queries: an old client is refused
+        // at hello, not at its first such query.
+        version: 1,
         socketPath: "/nonexistent",
         networkMagic: MAGIC,
       }),

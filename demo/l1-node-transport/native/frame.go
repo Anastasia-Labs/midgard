@@ -19,7 +19,7 @@ import (
 // The header is small control data. The payload carries raw node bytes
 // (blocks, transactions, ledger answers) and is never re-encoded.
 const (
-	protocolVersion  = 1
+	protocolVersion  = 2
 	maxHeaderBytes   = 64 * 1024
 	maxPayloadBytes  = 64 * 1024 * 1024
 	frameLengthBytes = 8

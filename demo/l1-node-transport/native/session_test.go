@@ -152,7 +152,7 @@ func (h *harness) hello() {
 
 func (h *harness) helloWithDeadline(deadlineMs uint64) {
 	h.t.Helper()
-	h.sendRaw(map[string]any{"type": "hello", "version": 1, "socketPath": h.socket, "networkMagic": testMagic, "requestDeadlineMs": deadlineMs}, nil)
+	h.sendRaw(map[string]any{"type": "hello", "version": protocolVersion, "socketPath": h.socket, "networkMagic": testMagic, "requestDeadlineMs": deadlineMs}, nil)
 	h.expect("hello_ok")
 }
 
@@ -215,7 +215,9 @@ func extend(t *testing.T, node *mocknode.Node, count int, branch uint64) []mockn
 func TestHelloRefusesUnsupportedVersionAndMalformedFirstFrame(t *testing.T) {
 	node, socket := startNode(t)
 	h := startSidecar(t, node, socket)
-	h.sendRaw(map[string]any{"type": "hello", "version": 2, "socketPath": socket, "networkMagic": testMagic}, nil)
+	// Version 1 is the frame protocol before no-deadline queries: an old
+	// client is refused at hello.
+	h.sendRaw(map[string]any{"type": "hello", "version": 1, "socketPath": socket, "networkMagic": testMagic}, nil)
 	if f := h.expect("fatal"); f.header["code"] != "version_unsupported" {
 		t.Fatalf("got %v", f.header)
 	}
@@ -232,7 +234,7 @@ func TestHelloRefusesUnsupportedVersionAndMalformedFirstFrame(t *testing.T) {
 	h2.status <- <-h2.status
 
 	h3 := startSidecar(t, node, socket)
-	h3.sendRaw(map[string]any{"type": "hello", "version": 1, "socketPath": socket, "networkMagic": testMagic, "requestDeadlineMs": testDeadlineMs, "extra": 1}, nil)
+	h3.sendRaw(map[string]any{"type": "hello", "version": protocolVersion, "socketPath": socket, "networkMagic": testMagic, "requestDeadlineMs": testDeadlineMs, "extra": 1}, nil)
 	if f := h3.expect("fatal"); f.header["code"] != "malformed_frame" {
 		t.Fatalf("unknown hello key admitted: %v", f.header)
 	}
@@ -240,7 +242,7 @@ func TestHelloRefusesUnsupportedVersionAndMalformedFirstFrame(t *testing.T) {
 
 	for _, deadline := range []any{nil, 0} {
 		h4 := startSidecar(t, node, socket)
-		hello := map[string]any{"type": "hello", "version": 1, "socketPath": socket, "networkMagic": testMagic}
+		hello := map[string]any{"type": "hello", "version": protocolVersion, "socketPath": socket, "networkMagic": testMagic}
 		if deadline != nil {
 			hello["requestDeadlineMs"] = deadline
 		}
@@ -255,7 +257,7 @@ func TestHelloRefusesUnsupportedVersionAndMalformedFirstFrame(t *testing.T) {
 func TestHelloReportsUnreachableNode(t *testing.T) {
 	socket := filepath.Join(t.TempDir(), "absent.socket")
 	h := startSidecar(t, nil, socket)
-	h.sendRaw(map[string]any{"type": "hello", "version": 1, "socketPath": socket, "networkMagic": testMagic, "requestDeadlineMs": testDeadlineMs}, nil)
+	h.sendRaw(map[string]any{"type": "hello", "version": protocolVersion, "socketPath": socket, "networkMagic": testMagic, "requestDeadlineMs": testDeadlineMs}, nil)
 	if f := h.expect("fatal"); f.header["code"] != "node_unreachable" {
 		t.Fatalf("got %v", f.header)
 	}
@@ -275,7 +277,7 @@ func TestHelloReportsARefusedHandshake(t *testing.T) {
 	}
 	t.Cleanup(node.Close)
 	h := startSidecar(t, node, socket)
-	h.sendRaw(map[string]any{"type": "hello", "version": 1, "socketPath": socket, "networkMagic": testMagic, "requestDeadlineMs": testDeadlineMs}, nil)
+	h.sendRaw(map[string]any{"type": "hello", "version": protocolVersion, "socketPath": socket, "networkMagic": testMagic, "requestDeadlineMs": testDeadlineMs}, nil)
 	if f := h.expect("fatal"); f.header["code"] != "node_handshake_failed" {
 		t.Fatalf("got %v", f.header)
 	}
@@ -304,7 +306,7 @@ func TestHelloReportsAConnectionDroppedDuringTheHandshake(t *testing.T) {
 		}
 	}()
 	h := startSidecar(t, nil, socket)
-	h.sendRaw(map[string]any{"type": "hello", "version": 1, "socketPath": socket, "networkMagic": testMagic, "requestDeadlineMs": testDeadlineMs}, nil)
+	h.sendRaw(map[string]any{"type": "hello", "version": protocolVersion, "socketPath": socket, "networkMagic": testMagic, "requestDeadlineMs": testDeadlineMs}, nil)
 	if f := h.expect("fatal"); f.header["code"] != "node_connection_lost" {
 		t.Fatalf("got %v", f.header)
 	}

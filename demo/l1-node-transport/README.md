@@ -141,23 +141,25 @@ u32 big-endian headerLength | u32 big-endian payloadLength | header | payload
 The first client frame must be `hello`:
 
 ```
-{type: "hello", version: 1, socketPath: text, networkMagic: uint, requestDeadlineMs: uint}
+{type: "hello", version: 2, socketPath: text, networkMagic: uint, requestDeadlineMs: uint}
 ```
 
 `requestDeadlineMs` (1..86,400,000) bounds each ledger-state request and
 submission (see "Request deadline").
 
 The sidecar dials the node and runs the N2C handshake. On success it
-answers `{type: "hello_ok", version: 1, nodeToClientVersion: uint}`. A
+answers `{type: "hello_ok", version: 2, nodeToClientVersion: uint}`. A
 handshake the node refuses ends the session with `fatal
 node_handshake_failed`; a connection the node drops during the handshake
 ends it with `fatal node_connection_lost`. Both exit with status 69.
 
 `midgard-l1-node-transport --protocol-version` prints the frame protocol
-version (`1`) and exits.
+version (`2`) and exits.
 
 A version mismatch ends the session with `fatal version_unsupported` and
-exit status 64.
+exit status 64, so a client and a sidecar of different versions fail at
+startup. Version 2 added `noDeadline` on `lsq_query`; a version 1 sidecar
+would refuse such a query only when it is first sent.
 
 ### Client to sidecar
 
