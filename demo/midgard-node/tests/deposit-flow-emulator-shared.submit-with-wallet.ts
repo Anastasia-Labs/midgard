@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
@@ -7,16 +5,15 @@ import {
   type TxSignBuilder,
   type UTxO,
 } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
 import { vi } from "vitest";
 
-import { submitDepositWithMetadataProgram } from "../src/transactions/submit-deposit.js";
 import { outRefLabel } from "../src/tx-context.js";
 import {
   describeProviderOutRefStates,
   type EmulatorFixture,
   isEmulatorProvider,
   isProviderVisibleUnspent,
-  runNodeDatabaseEffect,
 } from "./deposit-flow-emulator-shared.make-fixture.js";
 import { collectSortedInputOutRefs } from "./helpers/tx-inspection.js";
 
@@ -258,6 +255,53 @@ export const advanceHistoryAdmissionClock = async (
   vi.setSystemTime(new Date(fixture.emulator.now()));
 };
 
+/**
+ * The user's own submission run against the emulator: a fresh in-memory
+ * attempt store, the depositor's wallet as the address-indexed view, and a
+ * clock whose sleeps advance the emulator instead of wall time. Date is set
+ * to the emulator's clock afterwards, as the node programs read it.
+ */
+export const runUserSubmissionOnEmulator = async (
+  fixture: EmulatorFixture,
+  run: (
+    view: SDK.UserL1View,
+    options: SDK.UserSubmissionOptions,
+  ) => Effect.Effect<
+    SDK.UserSubmissionOutcome,
+    SDK.UserSubmissionError | SDK.UserSubmissionPending
+  >,
+): Promise<SDK.UserSubmissionOutcome> => {
+  await ensureSeparateCollateralUtxo(fixture.depositorLucid);
+  const attempts: SDK.UserSubmissionAttempt[] = [];
+  const store: SDK.UserSubmissionStore = {
+    latest: async () => attempts.at(-1),
+    append: async (attempt) => {
+      if (attempts.some((recorded) => recorded.attempt === attempt.attempt))
+        return "lost";
+      attempts.push(attempt);
+      return "created";
+    },
+  };
+  const outcome = await Effect.runPromise(
+    run(
+      {
+        lucid: fixture.depositorLucid,
+        indexedSlot: async () => fixture.emulator.slot,
+      },
+      {
+        store,
+        deadlineMs: fixture.emulator.now() + 3_600_000,
+        now: () => fixture.emulator.now(),
+        sleep: async (ms) => {
+          fixture.emulator.awaitSlot(Math.max(1, Math.ceil(ms / 1000)));
+        },
+      },
+    ),
+  );
+  vi.setSystemTime(new Date(fixture.emulator.now()));
+  return outcome;
+};
+
 export const submitDepositWithDiagnostics = async (
   fixture: EmulatorFixture,
   config: {
@@ -267,17 +311,15 @@ export const submitDepositWithDiagnostics = async (
     readonly additionalAssets: Readonly<Record<string, bigint>>;
   },
 ): Promise<string> => {
-  await ensureSeparateCollateralUtxo(fixture.depositorLucid);
-  await advanceHistoryAdmissionClock(fixture, "deposit");
-  const result = await runNodeDatabaseEffect(
-    submitDepositWithMetadataProgram(
-      fixture.depositorLucid,
+  const outcome = await runUserSubmissionOnEmulator(fixture, (view, options) =>
+    SDK.submitDepositProgram(
+      view,
       fixture.contracts,
       { ...config, referenceScripts: fixture.referenceScripts.deposit },
-      `emulator-deposit-${randomUUID()}`,
+      options,
     ),
   );
-  return result.txHash;
+  return outcome.admissionTxHash;
 };
 
 export const advanceEmulatorPastUnixTime = async (

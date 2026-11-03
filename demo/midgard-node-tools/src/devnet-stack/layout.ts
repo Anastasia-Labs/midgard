@@ -32,6 +32,7 @@ export const makeLayout = (runDir: string) => {
     watcherRoot: join(demo, "midgard-watcher"),
     transportRoot: join(demo, "l1-node-transport"),
     toolsRoot: join(demo, "midgard-node-tools"),
+    userCliRoot: join(demo, "midgard-user-cli"),
     phase4Root,
     phase4Scripts: join(phase4Root, "scripts"),
     composeFile: join(phase4Root, "compose.yaml"),

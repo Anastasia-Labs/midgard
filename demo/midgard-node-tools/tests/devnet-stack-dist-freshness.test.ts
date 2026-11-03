@@ -115,6 +115,7 @@ describe("runtimeDistTargets", () => {
       "midgard-l1-follower",
       "midgard-validation",
       "lucid-midgard",
+      "midgard-user-cli",
     ]);
     expect(targets[0]!.sources).toEqual([
       join(layout.toolsRoot, "src"),

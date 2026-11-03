@@ -61,6 +61,8 @@ export async function buildStackPrograms(processes: StackProcesses) {
     "@al-ft/midgard-l1-follower",
     "midgard-node",
     "midgard-watcher",
+    // The user's own deposit and withdrawal tool the journey runs.
+    "@al-ft/midgard-user-cli",
   ])
     await processes.command(
       `build-${name.replaceAll("/", "-")}`,

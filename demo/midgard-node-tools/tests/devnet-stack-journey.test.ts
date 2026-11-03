@@ -26,26 +26,45 @@ import {
 
 afterEach(removeFakeContexts);
 
+/** What `midgard-user deposit --json` prints once the deposit is confirmed. */
+const deposited = (admissionTxHash: string, eventId: string) => ({
+  kind: "Deposit",
+  submissionId: "run1-A1",
+  eventId,
+  admissionTxHash,
+  slot: 7,
+  attempts: 1,
+});
+
 describe("journey submissions", () => {
-  it("retries a failed deposit under the same submission id and parameters", async () => {
+  it("retries a failed or pending deposit under the same submission id and parameters", async () => {
     const cli = scriptedCli(
       () => exited(1, "Ogmios: connection refused"),
-      () => exited(1),
-      () => exited(0, { txHash: "d1", metadata: { depositEventId: "e1" } }),
+      // midgard-user's "pending; rerun with the same --submission-id".
+      () => exited(75),
+      () => exited(0, deposited("d1", "e1")),
     );
     const { journey, logs } = makeJourney(fakeContext(), {
       runCli: cli.runCli,
     });
+    const unit = `${"ab".repeat(28)}cafe`;
     const record = await journey.deposit("A1", "userA", {
       lovelace: 5_000_000n,
+      [unit]: 7n,
     });
     expect(record).toEqual({
       user: "userA",
-      value: { lovelace: "5000000" },
+      value: { lovelace: "5000000", [unit]: "7" },
       txHash: "d1",
       eventId: "e1",
     });
     expect(cli.calls).toHaveLength(3);
+    // The user's own tool deposits, never the node.
+    expect(cli.calls[0]!.tool).toBe("user");
+    expect(cli.calls[0]!.args[0]).toBe("deposit");
+    expect(argAfter(cli.calls[0]!, "--asset")).toBe(
+      `${"ab".repeat(28)}.cafe:7`,
+    );
     for (const call of cli.calls) {
       expect(call.submissionId).toBe("run1-A1");
       expect(argAfter(call, "--submission-id")).toBe("run1-A1");
@@ -91,9 +110,7 @@ describe("journey submissions", () => {
     await flush();
     expect(first.calls).toHaveLength(1);
 
-    const second = scriptedCli(() =>
-      exited(0, { txHash: "d1", metadata: { depositEventId: "e1" } }),
-    );
+    const second = scriptedCli(() => exited(0, deposited("d1", "e1")));
     const { journey } = makeJourney(context, { runCli: second.runCli });
     const record = await journey.deposit("A1", "userA", {
       lovelace: 7_000_000n,
@@ -102,6 +119,20 @@ describe("journey submissions", () => {
     expect(second.calls[0]!.args).toEqual(first.calls[0]!.args);
     expect(second.calls[0]!.submissionId).toBe("run1-A1");
     expect(journey.deposits()).toEqual([record]);
+  });
+
+  it("stops at once when midgard-user's record names a different request", async () => {
+    const cli = scriptedCli(() =>
+      exited(
+        1,
+        'midgard-user: --submission-id "run1-A1" already names a different request.',
+      ),
+    );
+    const { journey } = makeJourney(fakeContext(), { runCli: cli.runCli });
+    await expect(
+      journey.deposit("A1", "userA", { lovelace: 1n }),
+    ).rejects.toBeInstanceOf(FatalJourneyError);
+    expect(cli.calls).toHaveLength(1);
   });
 
   it("refuses to resume an intent with different parameters", async () => {
@@ -187,9 +218,12 @@ describe("journey submissions", () => {
 
     const second = scriptedCli(() =>
       exited(0, {
-        txHash: "w1",
-        withdrawalEventId: "we1",
-        l2Value: { lovelace: "9000000" },
+        kind: "Withdrawal",
+        submissionId: "run1-W1",
+        eventId: "we1",
+        admissionTxHash: "w1",
+        slot: 9,
+        attempts: 1,
       }),
     );
     const { journey } = makeJourney(context, { runCli: second.runCli });
@@ -197,9 +231,20 @@ describe("journey submissions", () => {
       throw new Error("the journaled choice must be reused");
     });
     expect(second.calls[0]!.args).toEqual(first.calls[1]!.args);
+    expect(second.calls[0]!.tool).toBe("user");
+    expect(second.calls[0]!.args[0]).toBe("withdraw");
     expect(argAfter(second.calls[0]!, "--l2-out-ref")).toBe("aa#0");
     expect(argAfter(second.calls[0]!, "--submission-id")).toBe("run1-W1");
-    expect(record.l2OutRef).toBe("aa#0");
+    expect(argAfter(second.calls[0]!, "--node-endpoint")).toBe(
+      "http://127.0.0.1:3000",
+    );
+    // The payout must pay exactly the chosen output's value.
+    expect(record).toMatchObject({
+      l2OutRef: "aa#0",
+      txHash: "w1",
+      withdrawalEventId: "we1",
+      l2Value: { lovelace: "9000000" },
+    });
 
     // A later withdrawal never picks an output an earlier one claimed.
     const third = scriptedCli(() => exited(0, utxos), crash);

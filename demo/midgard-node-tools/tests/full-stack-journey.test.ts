@@ -336,14 +336,15 @@ describe("wallet journey resume", () => {
     value.processes.responses["cycle-0-deposit-funds"] = {
       totals: { lovelace: "1000000000" },
     };
-    value.processes.responses["storage-identity"] = { id: "7" };
-    value.processes.responses["host-database-identity"] = "7";
     const seen: { file: string; mode: number; seed: string }[] = [];
     let fail = true;
     value.processes.responses["cycle-0-deposit-submit"] = async (
       call: RecordedCall,
     ) => {
       expect(call.args).not.toContain("--wallet-seed-phrase-env");
+      expect(Object.values(call.overrides)).not.toContain(
+        value.processes.env[value.config.wallets.user!.seedEnv],
+      );
       const file =
         call.args[call.args.indexOf("--wallet-seed-phrase-file") + 1]!;
       seen.push({
@@ -386,27 +387,52 @@ describe("wallet journey resume", () => {
     value.processes.responses["cycle-0-deposit-funds"] = {
       totals: { lovelace: "1000000000" },
     };
-    value.processes.responses["storage-identity"] = { id: "7" };
-    value.processes.responses["host-database-identity"] = "8";
-    await expect(deposit.execute(undefined)).rejects.toThrow(
-      "does not reach this stack's Postgres",
-    );
-    value.processes.responses["host-database-identity"] = "7";
     // A resend reuses the saved intent instead of re-checking spent funds.
     await deposit.execute(undefined);
     await deposit.execute(undefined);
-    const submit = [
-      "storage-identity",
-      "host-database-identity",
-      "cycle-0-deposit-submit",
-    ];
     expect(value.processes.calls.map((call) => call.id)).toEqual([
       "cycle-0-deposit-funds",
       "cycle-0-deposit-funds",
-      "storage-identity",
-      "host-database-identity",
-      ...submit,
-      ...submit,
+      "cycle-0-deposit-submit",
+      "cycle-0-deposit-submit",
     ]);
+  });
+  it("deposits and withdraws with the user's own tool, never the node's database", async () => {
+    const value = await journey();
+    await runStackWorkflow(value.context, []);
+    value.processes.responses["cycle-0-deposit-funds"] = {
+      totals: { lovelace: "1000000000" },
+    };
+    await value.byId("cycle-0-deposit").execute(undefined);
+    const submit = value.processes.calls.at(-1)!;
+    expect(submit.id).toBe("cycle-0-deposit-submit");
+    expect(submit.args.slice(0, 2)).toEqual(["dist/cli.js", "deposit"]);
+    expect(submit.args).toContain("--json");
+    // The host toolchain only: no node configuration, no Postgres.
+    expect(submit.scope).toBe("host");
+    const seedEnv = value.config.wallets.user!.seedEnv;
+    expect(submit.args).toContain(seedEnv);
+    expect(submit.overrides).toMatchObject({
+      L1_ACCESS: "kupmios",
+      L1_KUPO_URL: "http://127.0.0.1:1442",
+      L1_OGMIOS_URL: "http://127.0.0.1:1337",
+      [seedEnv]: value.processes.env[seedEnv],
+      MIDGARD_DEPLOYMENT_MANIFEST: join(
+        value.config.nodeRoot,
+        "deploymentInfo/contract-deployment-info.json",
+      ),
+      MIDGARD_USER_RECORD_DIR: join(
+        value.config.runDirectory,
+        "user-submissions",
+      ),
+    });
+    expect(submit.overrides).not.toHaveProperty("POSTGRES_PORT");
+    expect(
+      value.processes.calls
+        .map((call) => call.id)
+        .filter((id) =>
+          ["storage-identity", "host-database-identity"].includes(id),
+        ),
+    ).toEqual([]);
   });
 });

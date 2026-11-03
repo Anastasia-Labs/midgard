@@ -84,7 +84,7 @@ describe("e2e run summary", () => {
     const summary = updateE2ERunSummary(
       base,
       {
-        steps: [step({ id: "submit-deposit", status: "success" })],
+        steps: [step({ id: "deposit", status: "success" })],
         transactions: [
           {
             label: "l2-transfer-a",
@@ -127,8 +127,8 @@ describe("e2e run summary", () => {
       createE2ERunSummary({ runId: "e2e-run-retried", mode: "fresh" }),
       {
         steps: [
-          step({ id: "submit-deposit", status: "failed" }),
-          step({ id: "submit-deposit", status: "success" }),
+          step({ id: "deposit", status: "failed" }),
+          step({ id: "deposit", status: "success" }),
         ],
         http: [
           {
@@ -153,7 +153,7 @@ describe("e2e run summary", () => {
             label: "stack_attempt_quality",
             status: "failed",
             source: "e2e-stack",
-            details: { failed: "submit-deposit:failed" },
+            details: { failed: "deposit:failed" },
           },
         ],
         transactions: [
@@ -172,7 +172,7 @@ describe("e2e run summary", () => {
     expect(summary.verdict).toBe("success");
     expect(summary.stepRetrySummary).toContainEqual(
       expect.objectContaining({
-        stepId: "submit-deposit",
+        stepId: "deposit",
         attempts: 2,
         failedAttempts: 1,
         latestStatus: "success",
@@ -186,12 +186,12 @@ describe("e2e run summary", () => {
       {
         steps: [
           step({
-            id: "submit-deposit",
+            id: "deposit",
             status: "timeout",
             txHashes: ["bb".repeat(32)],
             txObservations: [
               submittedObservation({
-                stepId: "submit-deposit",
+                stepId: "deposit",
                 txHash: "bb".repeat(32),
               }),
             ],

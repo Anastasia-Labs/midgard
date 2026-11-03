@@ -24,7 +24,6 @@ import "midgard-node/e2e/env";
 import "midgard-node/runtime-env";
 import "midgard-node/services/index";
 import "midgard-node/transactions/reference-scripts";
-import "midgard-node/transactions/submit-deposit";
 import "../package.json" with { type: "json" };
 import "./commands/e2e-finalize-summary.js";
 import "./commands/e2e-journal-kill-recovery-acceptance.js";

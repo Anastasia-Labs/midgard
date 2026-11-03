@@ -15,7 +15,7 @@ import {
 import { readJsonIfPresent } from "./journal.js";
 import { exportLocalCardanoConfig } from "./native-ledger.js";
 import { originStep, restoreL1Origin } from "./origin.js";
-import { StackProcesses } from "./process.js";
+import { stackManifestPath, StackProcesses } from "./process.js";
 import {
   assertHostDatabaseIsStackDatabase,
   assertPreservedStorage,
@@ -25,10 +25,7 @@ import type { StackStep } from "./workflow.js";
 
 export function stackPaths(processes: Pick<StackProcesses, "config">) {
   return {
-    manifest: join(
-      processes.config.nodeRoot,
-      "deploymentInfo/contract-deployment-info.json",
-    ),
+    manifest: stackManifestPath(processes.config),
     state: join(processes.config.runDirectory, "deployment-run-state.json"),
   };
 }

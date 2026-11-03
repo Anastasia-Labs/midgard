@@ -1,14 +1,10 @@
 import "./helpers/follower-emulator-installed.js";
 import "node:crypto";
 import "node:fs/promises";
-import "node:http";
 import "node:path";
 import "@al-ft/midgard-validation";
-import "@effect/platform";
 import "vitest";
-import "../src/commands/listen-router.js";
 import "../src/commands/state-reconciliation.js";
-import "../src/commands/submit-withdrawal.js";
 import "../src/database/index.js";
 import "../src/fibers/tx-queue-processor.js";
 import "../src/mpf/index.js";
@@ -29,7 +25,6 @@ import {
   admitAndAcceptL2Tx,
   admitL2Tx,
   expectReconciled,
-  submitWithdrawalRefusal,
 } from "./deposit-flow-emulator-merge-payout.admit-l2-tx.js";
 import {
   absorbConfirmedDepositToReserveProgram,
@@ -637,23 +632,6 @@ describe("deposit flow emulator", { concurrent: false }, () => {
     const l2RecipientAddress = await fixture.referenceScriptsLucid
       .wallet()
       .address();
-    const depositorKeyHash = paymentCredentialOf(l2Address)?.hash;
-    const recipientKeyHash = paymentCredentialOf(l2RecipientAddress)?.hash;
-    // `submit-withdrawal` refuses an output whose producing L2 tx has not
-    // committed. A projected deposit output has no producing L2 tx, so the
-    // command passes that check and stops at the signer check instead.
-    expect(
-      await submitWithdrawalRefusal(
-        { fixture, lucidService, globals },
-        {
-          l2OutRef: `${l2TransferSource.txHash}#${l2TransferSource.outputIndex.toString()}`,
-          walletSeedPhrase: fixture.referenceScriptsAccount.seedPhrase,
-          l1Address: l2Address,
-        },
-      ),
-    ).toBe(
-      `Selected L2 UTxO is owned by ${depositorKeyHash}, not withdrawal signer ${recipientKeyHash}.`,
-    );
     const builtL2Transfer = await buildTransferTx({
       senderAddress: l2Address,
       destinationAddress: l2RecipientAddress,
@@ -820,49 +798,6 @@ describe("deposit flow emulator", { concurrent: false }, () => {
         .includes(builtL2Transfer.txId.toString("hex")),
     );
     expect(committedRecipientEntries).toHaveLength(1);
-    const [committedRecipientUtxo, pendingRecipientUtxo] = [
-      committedRecipientEntries[0]!,
-      recipientEntries.find(
-        (entry) => !committedRecipientEntries.includes(entry),
-      )!,
-    ].map((entry) =>
-      decodeNodeUtxo({
-        outref: entry[MempoolLedgerDB.Columns.OUTREF].toString("hex"),
-        outputCbor: entry[MempoolLedgerDB.Columns.OUTPUT].toString("hex"),
-      }),
-    );
-    // The recipient cannot withdraw the output of the still-pending spend:
-    // the withdrawal would be classified against a ledger without it. The
-    // command refuses before it builds any L1 transaction.
-    const acceptedTransactionsBeforeRefusal = acceptedTransactions.length;
-    expect(
-      await submitWithdrawalRefusal(
-        { fixture, lucidService, globals },
-        {
-          l2OutRef: `${pendingRecipientUtxo!.txHash}#${pendingRecipientUtxo!.outputIndex.toString()}`,
-          walletSeedPhrase: fixture.referenceScriptsAccount.seedPhrase,
-          l1Address: l2RecipientAddress,
-        },
-      ),
-    ).toBe(
-      `Producing L2 tx ${withdrawalTargetSpend.txId.toString("hex")} is accepted, not committed; wait for the producing tx to commit before withdrawing its output.`,
-    );
-    expect(acceptedTransactions).toHaveLength(
-      acceptedTransactionsBeforeRefusal,
-    );
-    // Its committed output passes that check and stops at the signer check.
-    expect(
-      await submitWithdrawalRefusal(
-        { fixture, lucidService, globals },
-        {
-          l2OutRef: `${committedRecipientUtxo!.txHash}#${committedRecipientUtxo!.outputIndex.toString()}`,
-          walletSeedPhrase: fixture.depositorAccount.seedPhrase,
-          l1Address: l2Address,
-        },
-      ),
-    ).toBe(
-      `Selected L2 UTxO is owned by ${recipientKeyHash}, not withdrawal signer ${depositorKeyHash}.`,
-    );
     const recipientPrivateKey = CML.PrivateKey.from_bech32(
       walletFromSeed(fixture.referenceScriptsAccount.seedPhrase, {
         network: "Custom",

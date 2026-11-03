@@ -31,15 +31,13 @@ process.env.MIDGARD_TEST_DATABASE_PREFIX ??=
 
 const bail = parsePositiveInteger(process.env.MIDGARD_NODE_TEST_BAIL);
 
-// Sign a public release and open it as public listen does, run the node
-// command line a public build compiles, or run operator-2's node on a public
-// stack's deployment, so they compile the preprod-public profile against a
-// blueprint built for it.
+// Sign a public release and open it as public listen does, or run operator-2's
+// node on a public stack's deployment, so they compile the preprod-public
+// profile against a blueprint built for it.
 const preprodPublicTests = [
   "./tests/sign-deployment-release.public.test.ts",
   "./tests/full-stack-public-release.test.ts",
   "./tests/full-stack-public-node-containers.test.ts",
-  "./tests/public-submit-deposit.test.ts",
   "./tests/full-stack-attached-public.test.ts",
 ];
 // Load a preprod-public stack configuration, which needs only the compiled

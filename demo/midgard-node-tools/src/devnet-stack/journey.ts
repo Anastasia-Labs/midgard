@@ -38,11 +38,12 @@ export {
 
 /**
  * Drives user activity through the supported user interfaces only: the
- * node's `submit-deposit`, `submit-l2-transfer`, `submit-withdrawal` and read
- * commands, and its public HTTP API. Every submission journals its intent (a
- * stable submission id and its parameters) before the first CLI call and its
- * result after; a failed or interrupted submission is retried under the same
- * id, which the CLI resumes instead of building a second transaction.
+ * user's own `midgard-user deposit` and `withdraw`, the node's
+ * `submit-l2-transfer` and read commands, and its public HTTP API. Every
+ * submission journals its intent (a stable submission id and its
+ * parameters) before the first CLI call and its result after; a failed or
+ * interrupted submission is retried under the same id, which the tool
+ * resumes instead of building a second transaction.
  */
 export class Journey extends JourneyUserSubmissions {
   // Withdrawals ---------------------------------------------------------------
@@ -87,30 +88,34 @@ export class Journey extends JourneyUserSubmissions {
           .withPrefix<WithdrawalRecord | WithdrawalIntent>("withdrawal:")
           .map((record) => record.l2OutRef),
       );
-      const l2OutRef = choose(
-        (await this.l2Utxos(user)).filter((utxo) => !claimed.has(utxo.outRef)),
+      const available = (await this.l2Utxos(user)).filter(
+        (utxo) => !claimed.has(utxo.outRef),
       );
-      if (l2OutRef === undefined)
+      const l2OutRef = choose(available);
+      const selected = available.find((utxo) => utxo.outRef === l2OutRef);
+      if (selected === undefined)
         throw new FatalJourneyError(
           `withdrawal ${id}: ${user} has no suitable L2 UTxO`,
         );
       intent = {
         submissionId: this.submissionId(id),
         user,
-        l2OutRef,
+        l2OutRef: selected.outRef,
         l1Address: this.payoutAddress(user, payoutIndex),
+        l2Value: jsonValue(selected.value),
       };
       // Fixed before submission, so a resumed run withdraws the same output
       // to the same address under the same submission id.
       this.journal.set(key, intent);
     } else this.requireSameIntent(`withdrawal ${id}`, intent, { user });
     const submissionId = intent.submissionId ?? this.submissionId(id);
+    const l2Value = intent.l2Value ?? (await this.l2Value(user, intent));
     const { result, transcript } = await this.submit(
       `withdrawal ${id}`,
       submissionId,
       user,
       [
-        "submit-withdrawal",
+        "withdraw",
         "--submission-id",
         submissionId,
         "--wallet-seed-phrase-env",
@@ -119,28 +124,49 @@ export class Journey extends JourneyUserSubmissions {
         intent.l2OutRef,
         "--l1-address",
         intent.l1Address,
-        "--endpoint",
+        "--node-endpoint",
         this.nodeUrl,
+        "--json",
       ],
       `withdrawal-${id}`,
+      "user",
     );
     const record: WithdrawalRecord = {
       user,
       l2OutRef: intent.l2OutRef,
       l1Address: intent.l1Address,
-      txHash: requireText(result.txHash, `withdrawal ${id} txHash`, transcript),
-      withdrawalEventId: requireText(
-        result.withdrawalEventId,
-        `withdrawal ${id} withdrawalEventId`,
+      txHash: requireText(
+        result.admissionTxHash,
+        `withdrawal ${id} admissionTxHash`,
         transcript,
       ),
-      l2Value: jsonValue(toValue(result.l2Value)),
+      withdrawalEventId: requireText(
+        result.eventId,
+        `withdrawal ${id} eventId`,
+        transcript,
+      ),
+      l2Value,
     };
     this.journal.set(key, record);
     this.log(
       `withdrawal ${id} submitted ${record.txHash} for ${record.l2OutRef}`,
     );
     return record;
+  }
+
+  /**
+   * The value of an intent's output journaled before intents recorded it.
+   * The output stays in the ledger view until its withdrawal is projected.
+   */
+  private async l2Value(user: UserRole, intent: WithdrawalIntent) {
+    const selected = (await this.l2Utxos(user)).find(
+      (utxo) => utxo.outRef === intent.l2OutRef,
+    );
+    if (selected === undefined)
+      throw new FatalJourneyError(
+        `withdrawal of ${intent.l2OutRef} was journaled without its value and the output is gone from the L2 ledger view`,
+      );
+    return jsonValue(selected.value);
   }
 
   withdrawals() {

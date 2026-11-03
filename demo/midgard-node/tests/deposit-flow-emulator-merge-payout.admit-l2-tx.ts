@@ -1,19 +1,12 @@
-import { createServer } from "node:http";
-import type { AddressInfo } from "node:net";
-
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import { HttpServerRequest, HttpServerResponse } from "@effect/platform";
 import { expect } from "vitest";
 
-import { buildListenRouter } from "../src/commands/listen-router.js";
 import {
   type ReconciliationReport,
   STATE_RECONCILIATION_CHECK_IDS,
   stateReconciliationProgram,
 } from "../src/commands/state-reconciliation.js";
-import { submitWithdrawalCommandProgram } from "../src/commands/submit-withdrawal.js";
 import { decideAdmissionBatch } from "../src/fibers/tx-queue-processor.js";
-import { HttpReadSql } from "../src/services/database.js";
 import { FollowerWriteFixture } from "../src/services/follower-write-gate.js";
 import {
   Database,
@@ -66,82 +59,6 @@ export const expectReconciled = async (
   }
   expect(report.ok, described).toBe(true);
   return report;
-};
-
-/**
- * Runs `submit-withdrawal` against the node's own HTTP router, served from
- * this database on an ephemeral node:http port, and returns its refusal.
- */
-export const submitWithdrawalRefusal = async (
-  harness: Parameters<typeof runNodeCommandProgram>[1],
-  {
-    l2OutRef,
-    walletSeedPhrase,
-    l1Address,
-  }: {
-    readonly l2OutRef: string;
-    readonly walletSeedPhrase: string;
-    readonly l1Address: string;
-  },
-): Promise<string> => {
-  const server = createServer((request, response) => {
-    void (async () => {
-      const chunks: Buffer[] = [];
-      for await (const chunk of request) chunks.push(chunk as Buffer);
-      const routed = await runNodeCommandProgram(
-        buildListenRouter().pipe(
-          // The listen router serves public reads from its own pool; here the
-          // fixture database's client stands in for it.
-          Effect.provideServiceEffect(HttpReadSql, SqlClient.SqlClient),
-          Effect.provideService(
-            HttpServerRequest.HttpServerRequest,
-            HttpServerRequest.fromWeb(
-              new Request(`http://midgard.test${request.url ?? "/"}`, {
-                method: request.method,
-                headers: {
-                  "content-type":
-                    request.headers["content-type"] ?? "application/json",
-                },
-                ...(chunks.length === 0
-                  ? {}
-                  : { body: new Uint8Array(Buffer.concat(chunks)) }),
-              }),
-            ).modify({ remoteAddress: "127.0.0.1" }),
-          ),
-        ),
-        harness,
-      );
-      const web = HttpServerResponse.toWeb(routed);
-      response.writeHead(web.status, {
-        "content-type": web.headers.get("content-type") ?? "application/json",
-      });
-      response.end(Buffer.from(await web.arrayBuffer()));
-    })().catch((cause: unknown) => {
-      response.writeHead(500);
-      response.end(String(cause));
-    });
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  try {
-    const refusal = await runNodeCommandProgram(
-      Effect.flip(
-        submitWithdrawalCommandProgram({
-          config: {
-            submissionId: randomUUID(),
-            walletSeedPhrase,
-            walletSeedPhraseEnv: "UNUSED_WALLET_SEED_PHRASE",
-            l2OutRef,
-            l1Address,
-            endpoint: `http://127.0.0.1:${(server.address() as AddressInfo).port.toString()}`,
-          },
-        }),
-      ),
-      harness,
-    );
-    return refusal.message;
-  } finally {
-    await new Promise((resolve) => server.close(resolve));
-  }
 };
 
 /**

@@ -91,16 +91,16 @@ describe("e2e step runner", () => {
     );
 
     const summary = await runCommandStep({
-      id: "submit-deposit",
+      id: "deposit",
       command: process.execPath,
       args: [script],
       cwd: dir,
-      rawLogPath: join(dir, "logs", "submit-deposit.log"),
+      rawLogPath: join(dir, "logs", "deposit.log"),
     });
 
     expect(summary).toMatchObject({
       schemaVersion: E2E_STEP_SCHEMA_VERSION,
-      id: "submit-deposit",
+      id: "deposit",
       status: "success",
       exitCode: 0,
       signal: null,
@@ -113,7 +113,7 @@ describe("e2e step runner", () => {
           status: "submitted",
           source: "parsedJson",
           field: "$.txHash",
-          stepId: "submit-deposit",
+          stepId: "deposit",
         },
       ],
       parsedJson: {
@@ -140,12 +140,12 @@ describe("e2e step runner", () => {
       [
         "console.log('prelude { not json }');",
         `process.stdout.write(${JSON.stringify(`${formatJson(result)}\n`)});`,
-        `console.log('submit-deposit completed: txHash=${result.txHash}');`,
+        `console.log('deposit completed: txHash=${result.txHash}');`,
       ].join("\n"),
     );
 
     const summary = await runCommandStep({
-      id: "submit-deposit",
+      id: "deposit",
       command: process.execPath,
       args: [script],
       cwd: dir,
@@ -163,7 +163,7 @@ describe("e2e step runner", () => {
       status: "submitted",
       source: "parsedJson",
       field: "$.txHash",
-      stepId: "submit-deposit",
+      stepId: "deposit",
     });
   });
 

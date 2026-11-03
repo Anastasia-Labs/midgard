@@ -43,6 +43,7 @@ import {
 } from "./journey-values.js";
 import { servicePorts } from "./layout.js";
 import { type HubOracleOneShot, nodeEnvironment } from "./node-env.js";
+import { userEnvironment } from "./user-env.js";
 
 export {
   DEFAULT_DEADLINES,
@@ -52,9 +53,9 @@ export {
 };
 
 /**
- * The journey's plumbing: the node CLI with retries under a stable
- * submission id, HTTP reads that treat an unavailable dependency as "not
- * yet", deadline-bounded polling and journaled phases.
+ * The journey's plumbing: the node CLI and `midgard-user` with retries under a
+ * stable submission id, HTTP reads that treat an unavailable dependency as
+ * "not yet", deadline-bounded polling and journaled phases.
  */
 export class JourneyRuntime {
   readonly journal: Journal;
@@ -94,7 +95,7 @@ export class JourneyRuntime {
     this.cliTimeoutMs = options.cliTimeoutMs ?? 600_000;
     this.httpTimeoutMs = options.httpTimeoutMs ?? 30_000;
     this.resubmitAfterMs = options.resubmitAfterMs ?? 120_000;
-    this.runCli = options.runCli ?? ((request) => this.nodeCli(request));
+    this.runCli = options.runCli ?? ((request) => this.builtCli(request));
   }
 
   log(message: string) {
@@ -149,8 +150,8 @@ export class JourneyRuntime {
       );
   }
 
-  /** The production runner: the node CLI with the run's command environment. */
-  private async nodeCli(request: CliRequest): Promise<ExecResult> {
+  /** The production runner: the node CLI or `midgard-user`, each with its env. */
+  private async builtCli(request: CliRequest): Promise<ExecResult> {
     if (request.submissionId !== undefined)
       await awaitEarlierAttempts(
         this.runKey,
@@ -159,14 +160,19 @@ export class JourneyRuntime {
         (message) => this.log(message),
         this.wait,
       );
-    return execLogged(process.execPath, ["dist/index.js", ...request.args], {
-      cwd: this.context.layout.nodeRoot,
+    const user = request.tool === "user";
+    const { layout } = this.context;
+    const entry = user ? "dist/cli.js" : "dist/index.js";
+    return execLogged(process.execPath, [entry, ...request.args], {
+      cwd: user ? layout.userCliRoot : layout.nodeRoot,
       env: {
-        ...nodeEnvironment({
-          ...this.context,
-          oneShot: this.oneShot,
-          role: "command",
-        }),
+        ...(user
+          ? userEnvironment(this.context, this.runKey)
+          : nodeEnvironment({
+              ...this.context,
+              oneShot: this.oneShot,
+              role: "command",
+            })),
         ...(request.user === undefined
           ? {}
           : { USER_SEED_PHRASE: this.context.identities.seeds[request.user] }),
@@ -193,10 +199,12 @@ export class JourneyRuntime {
     args: readonly string[],
     label: string,
     submissionId?: string,
+    tool: "node" | "user" = "node",
   ): Promise<{ result: Json; transcript: string }> {
     let run: ExecResult;
     try {
       run = await this.runCli({
+        tool,
         user,
         args,
         label,
@@ -237,9 +245,9 @@ export class JourneyRuntime {
 
   /**
    * Runs a submission until it succeeds, always under `submissionId` with the
-   * same arguments, with capped backoff until the submit deadline. A failure
-   * no retry can repair ends it at once (see `attempt`); insufficient funds,
-   * no free nonce and an unavailable node stay retryable.
+   * same arguments (which resume the same request), with capped backoff until
+   * the submit deadline. A failure no retry can repair ends it at once (see
+   * `attempt`); a pending `midgard-user` run (exit 75) stays retryable.
    */
   protected async submit(
     what: string,
@@ -247,12 +255,13 @@ export class JourneyRuntime {
     user: UserRole,
     args: readonly string[],
     label: string,
+    tool: "node" | "user" = "node",
   ) {
     const deadline = Date.now() + this.deadlines.submitMs;
     let backoff = this.retryInitialMs;
     for (let attempt = 1; ; attempt += 1) {
       try {
-        return await this.attempt(user, args, label, submissionId);
+        return await this.attempt(user, args, label, submissionId, tool);
       } catch (error) {
         if (!(error instanceof CliFailure)) throw error;
         const remaining = deadline - Date.now();

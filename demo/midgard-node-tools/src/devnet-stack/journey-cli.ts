@@ -25,8 +25,9 @@ export class CliFailure extends Error {
 /**
  * Why a failed CLI run cannot succeed when retried with the same arguments,
  * or undefined when it may: a Commander usage error (the arguments are
- * wrong, or `dist` predates an option the journey passes), or the transfer
- * journal refusing a submission id journaled with another intent.
+ * wrong, or `dist` predates an option the journey passes), or a record
+ * refusing a submission id recorded with another intent: the transfer
+ * journal's, or `midgard-user`'s for a deposit or withdrawal.
  */
 export const definitiveCliFailure = (output: string): string | undefined => {
   const usage =
@@ -34,12 +35,17 @@ export const definitiveCliFailure = (output: string): string | undefined => {
       output,
     );
   if (usage !== null) return usage[0];
-  return /Submission ID \S+ belongs to a different transfer[^\n]*/u.exec(
+  return /Submission ID \S+ belongs to a different transfer[^\n]*|--submission-id \S+ already names a different request[^\n]*/u.exec(
     output,
   )?.[0];
 };
 
 export type CliRequest = {
+  /**
+   * The program: the node CLI (`dist/index.js`, the default) or the user's
+   * own `midgard-user` tool, which deposits and withdraws.
+   */
+  readonly tool?: "node" | "user";
   readonly user: UserRole | undefined;
   readonly args: readonly string[];
   readonly label: string;
@@ -48,7 +54,7 @@ export type CliRequest = {
   readonly submissionId?: string;
 };
 
-/** Runs one node CLI command to completion (production: `dist/index.js`). */
+/** Runs one CLI command to completion (production: the built `dist`). */
 export type CliRunner = (request: CliRequest) => Promise<ExecResult>;
 
 /** Marks a submission's CLI process so a later journey process can find it. */

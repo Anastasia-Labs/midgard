@@ -132,9 +132,7 @@ export async function honestRun(): Promise<HonestRun> {
   const assets = { lovelace: String(TRANSFER) };
   const records: Record<string, unknown> = {
     "cycle-0-deposit-intent.json": { balance: String(USER_FUNDS - DEPOSIT) },
-    "cycle-0-deposit.json": {
-      metadata: { depositEventId: DEPOSIT_EVENT },
-    },
+    "cycle-0-deposit.json": { kind: "Deposit", eventId: DEPOSIT_EVENT },
     "cycle-0-deposit-balance.json": {
       before: String(USER_FUNDS - DEPOSIT),
       after: String(USER_FUNDS),
@@ -160,7 +158,10 @@ export async function honestRun(): Promise<HonestRun> {
       recipientBalanceBefore: String(TRANSFER),
       assets,
     },
-    "cycle-0-withdrawal.json": { withdrawalEventId: WITHDRAWAL_EVENT },
+    "cycle-0-withdrawal.json": {
+      kind: "Withdrawal",
+      eventId: WITHDRAWAL_EVENT,
+    },
     "cycle-0-withdrawal-balance.json": {
       before: String(TRANSFER),
       after: "0",

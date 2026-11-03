@@ -1,3 +1,4 @@
+export { type DepositOptions, runDeposit } from "./deposit.js";
 export { defaultUserCliDeps, type UserCliDeps } from "./deps.js";
 export {
   type L1Access,

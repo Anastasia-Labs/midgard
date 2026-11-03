@@ -473,6 +473,7 @@ Golden channel native-compact (@al-ft/lucid-midgard).
   - `demo/midgard-test-support/src/**`
   - `demo/l1-node-transport/src/**`
   - `demo/midgard-l1-follower/src/**`
+  - `demo/midgard-user-cli/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 - Mode: warns only (no workflow runs this channel, so a red check does not block)
 
@@ -698,6 +699,7 @@ Golden channel withdrawal-mistag-agreement (@al-ft/midgard-fault-proofs).
   - `demo/midgard-test-support/src/**`
   - `demo/l1-node-transport/src/**`
   - `demo/midgard-l1-follower/src/**`
+  - `demo/midgard-user-cli/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
 ### `golden:ordered-collection-boundary-aiken`
@@ -736,6 +738,7 @@ Golden channel ordered-collection-boundary-aiken (@al-ft/midgard-validation).
   - `demo/midgard-test-support/src/**`
   - `demo/l1-node-transport/src/**`
   - `demo/midgard-l1-follower/src/**`
+  - `demo/midgard-user-cli/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
 ### `golden:validation-auxiliary-witness-v1`
@@ -761,6 +764,7 @@ Golden channel validation-auxiliary-witness-v1 (@al-ft/midgard-validation).
   - `demo/midgard-test-support/src/**`
   - `demo/l1-node-transport/src/**`
   - `demo/midgard-l1-follower/src/**`
+  - `demo/midgard-user-cli/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
 ### `golden:nested-boundary-aiken`
@@ -790,6 +794,7 @@ Golden channel nested-boundary-aiken (@al-ft/midgard-validation).
   - `demo/midgard-test-support/src/**`
   - `demo/l1-node-transport/src/**`
   - `demo/midgard-l1-follower/src/**`
+  - `demo/midgard-user-cli/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
 ### `golden:cek-core-step-v1`
@@ -866,6 +871,7 @@ Golden channel cek-core-step-v1 (@al-ft/midgard-validation).
   - `demo/midgard-test-support/src/**`
   - `demo/l1-node-transport/src/**`
   - `demo/midgard-l1-follower/src/**`
+  - `demo/midgard-user-cli/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
 ### `golden:cek-staged-arm-v1`
@@ -895,6 +901,7 @@ Golden channel cek-staged-arm-v1 (@al-ft/midgard-validation).
   - `demo/midgard-test-support/src/**`
   - `demo/l1-node-transport/src/**`
   - `demo/midgard-l1-follower/src/**`
+  - `demo/midgard-user-cli/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
 ### `golden:cek-serialise-loop-v1`
@@ -920,6 +927,7 @@ Golden channel cek-serialise-loop-v1 (@al-ft/midgard-validation).
   - `demo/midgard-test-support/src/**`
   - `demo/l1-node-transport/src/**`
   - `demo/midgard-l1-follower/src/**`
+  - `demo/midgard-user-cli/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
 ### `golden:cek-write-bits-loop-v1`
@@ -945,6 +953,7 @@ Golden channel cek-write-bits-loop-v1 (@al-ft/midgard-validation).
   - `demo/midgard-test-support/src/**`
   - `demo/l1-node-transport/src/**`
   - `demo/midgard-l1-follower/src/**`
+  - `demo/midgard-user-cli/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
 ### `golden:plutus-data-cbor-decoding-v1`
@@ -970,6 +979,7 @@ Golden channel plutus-data-cbor-decoding-v1 (@al-ft/midgard-validation).
   - `demo/midgard-test-support/src/**`
   - `demo/l1-node-transport/src/**`
   - `demo/midgard-l1-follower/src/**`
+  - `demo/midgard-user-cli/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
 ### `golden:script-decode-step-v1`
@@ -997,6 +1007,7 @@ Golden channel script-decode-step-v1 (@al-ft/midgard-validation).
   - `demo/midgard-test-support/src/**`
   - `demo/l1-node-transport/src/**`
   - `demo/midgard-l1-follower/src/**`
+  - `demo/midgard-user-cli/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
 ### `golden:script-decode-haskell-v1`
@@ -1024,6 +1035,7 @@ Golden channel script-decode-haskell-v1 (@al-ft/midgard-validation).
   - `demo/midgard-test-support/src/**`
   - `demo/l1-node-transport/src/**`
   - `demo/midgard-l1-follower/src/**`
+  - `demo/midgard-user-cli/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 - Mode: warns only (no workflow runs this channel, so a red check does not block)
 
@@ -1050,6 +1062,7 @@ Golden channel ledger-output-proof-replay (@al-ft/midgard-validation).
   - `demo/midgard-test-support/src/**`
   - `demo/l1-node-transport/src/**`
   - `demo/midgard-l1-follower/src/**`
+  - `demo/midgard-user-cli/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
 ### `golden:cek-program-large-integer`
@@ -1073,6 +1086,7 @@ Golden channel cek-program-large-integer (@al-ft/midgard-validation).
   - `demo/midgard-test-support/src/**`
   - `demo/l1-node-transport/src/**`
   - `demo/midgard-l1-follower/src/**`
+  - `demo/midgard-user-cli/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 - Mode: warns only (no workflow runs this channel, so a red check does not block)
 
@@ -1097,6 +1111,7 @@ Golden channel cek-cost-v1-aiken (@al-ft/midgard-validation).
   - `demo/midgard-test-support/src/**`
   - `demo/l1-node-transport/src/**`
   - `demo/midgard-l1-follower/src/**`
+  - `demo/midgard-user-cli/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
 ### `golden:cek-builtin-cardano-v1`
@@ -1126,6 +1141,7 @@ Golden channel cek-builtin-cardano-v1 (@al-ft/midgard-validation).
   - `demo/midgard-test-support/src/**`
   - `demo/l1-node-transport/src/**`
   - `demo/midgard-l1-follower/src/**`
+  - `demo/midgard-user-cli/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
 ### `golden:cek-builtin-step-evidence`
@@ -1151,6 +1167,7 @@ Golden channel cek-builtin-step-evidence (@al-ft/midgard-validation).
   - `demo/midgard-test-support/src/**`
   - `demo/l1-node-transport/src/**`
   - `demo/midgard-l1-follower/src/**`
+  - `demo/midgard-user-cli/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
 ### `golden:known-builtin-failure-conformance`
@@ -1179,6 +1196,7 @@ Golden channel known-builtin-failure-conformance (@al-ft/midgard-validation).
   - `demo/midgard-test-support/src/**`
   - `demo/l1-node-transport/src/**`
   - `demo/midgard-l1-follower/src/**`
+  - `demo/midgard-user-cli/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
 ### `golden:transition-trace-abi`
@@ -1205,6 +1223,7 @@ Golden channel transition-trace-abi (midgard-node).
   - `demo/midgard-test-support/src/**`
   - `demo/l1-node-transport/src/**`
   - `demo/midgard-l1-follower/src/**`
+  - `demo/midgard-user-cli/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
 ### `golden:transaction-root-v1`
@@ -1233,6 +1252,7 @@ Golden channel transaction-root-v1 (midgard-node).
   - `demo/midgard-test-support/src/**`
   - `demo/l1-node-transport/src/**`
   - `demo/midgard-l1-follower/src/**`
+  - `demo/midgard-user-cli/src/**`
 - Needs: `node-modules`, `aiken`
 - Mode: warns only (no workflow runs this channel, so a red check does not block)
 
@@ -1403,6 +1423,7 @@ Transaction differential with the pinned aiken reference leg.
   - `demo/midgard-test-support/src/**`
   - `demo/l1-node-transport/src/**`
   - `demo/midgard-l1-follower/src/**`
+  - `demo/midgard-user-cli/src/**`
   - `demo/midgard-validation/tests/fuzz/**`
   - `demo/midgard-validation/vitest.config.ts`
   - `onchain/aiken/lib/**`

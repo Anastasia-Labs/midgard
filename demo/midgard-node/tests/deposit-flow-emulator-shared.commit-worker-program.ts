@@ -1,10 +1,7 @@
-import { randomUUID } from "node:crypto";
-
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 import { vi } from "vitest";
 
-import { withdrawalEventIdFromBuildMetadata } from "../src/commands/submit-withdrawal.js";
 import { type SlotAwareDueWork } from "../src/fibers/slot-aware-due-work.js";
 import type { NodeConfigDep } from "../src/services/config.js";
 import {
@@ -17,21 +14,14 @@ import {
   NodeConfig,
 } from "../src/services/index.js";
 import { type MempoolLedgerCacheService } from "../src/services/mempool-ledger-cache.js";
-import { submitWithdrawalProgram } from "../src/transactions/submit-withdrawal.js";
 import { runCommitBlockHeaderWorkerProgram } from "../src/workers/commit-block-header.js";
 import {
   type WorkerInput as CommitWorkerInput,
   type WorkerOutput as CommitWorkerOutput,
 } from "../src/workers/utils/commit-block-header.js";
 import { fetchRealStateQueueWitnessContext } from "../src/workers/utils/scheduler-refresh.js";
-import {
-  type EmulatorFixture,
-  runNodeDatabaseEffect,
-} from "./deposit-flow-emulator-shared.make-fixture.js";
-import {
-  advanceHistoryAdmissionClock,
-  ensureSeparateCollateralUtxo,
-} from "./deposit-flow-emulator-shared.submit-with-wallet.js";
+import { type EmulatorFixture } from "./deposit-flow-emulator-shared.make-fixture.js";
+import { runUserSubmissionOnEmulator } from "./deposit-flow-emulator-shared.submit-with-wallet.js";
 import { deriveEmulatorSubmitSlotSnapshot } from "./helpers/emulator-submit-slot-snapshot.js";
 import { runWithoutFollower } from "./helpers/intent-journal.js";
 
@@ -47,19 +37,17 @@ export const submitWithdrawalWithDiagnostics = async (
   readonly txHash: string;
   readonly withdrawalEventId: string;
 }> => {
-  await ensureSeparateCollateralUtxo(fixture.depositorLucid);
-  await advanceHistoryAdmissionClock(fixture, "withdrawal");
-  const result = await runNodeDatabaseEffect(
-    submitWithdrawalProgram(
-      fixture.depositorLucid,
+  const outcome = await runUserSubmissionOnEmulator(fixture, (view, options) =>
+    SDK.submitWithdrawalProgram(
+      view,
       fixture.contracts,
       { ...config, referenceScripts: fixture.referenceScripts.withdrawal },
-      `emulator-withdrawal-${randomUUID()}`,
+      options,
     ),
   );
   return {
-    txHash: result.txHash,
-    withdrawalEventId: withdrawalEventIdFromBuildMetadata(result.metadata),
+    txHash: outcome.admissionTxHash,
+    withdrawalEventId: outcome.eventId,
   };
 };
 

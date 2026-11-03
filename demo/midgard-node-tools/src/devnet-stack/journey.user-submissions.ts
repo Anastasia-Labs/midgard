@@ -5,7 +5,6 @@ import { describeError, FatalJourneyError } from "./journey-cli.js";
 import { JourneyRuntime } from "./journey-runtime.js";
 import {
   type DepositRecord,
-  type Json,
   jsonValue,
   toValue,
   type TransferRecord,
@@ -35,12 +34,17 @@ type TransferIntent = {
   readonly excludeOutRefs?: readonly string[];
 };
 
-/** `submissionId` and `user` are absent on intents journaled before they were recorded. */
+/**
+ * `submissionId`, `user` and `l2Value` are absent on intents journaled
+ * before they were recorded.
+ */
 export type WithdrawalIntent = {
   readonly submissionId?: string;
   readonly user?: UserRole;
   readonly l2OutRef: string;
   readonly l1Address: string;
+  /** The selected output's value: what the payout must pay exactly. */
+  readonly l2Value?: Record<string, string>;
 };
 
 export const requireText = (
@@ -88,7 +92,7 @@ export class JourneyUserSubmissions extends JourneyRuntime {
       intent.submissionId,
       intent.user,
       [
-        "submit-deposit",
+        "deposit",
         "--submission-id",
         intent.submissionId,
         "--wallet-seed-phrase-env",
@@ -97,19 +101,21 @@ export class JourneyUserSubmissions extends JourneyRuntime {
         this.address(intent.user),
         "--lovelace",
         (amount.lovelace ?? 0n).toString(),
-        ...this.assetSpecs(amount),
+        ...this.assetSpecs(amount).flatMap((spec) => ["--asset", spec]),
+        "--json",
       ],
       `deposit-${id}`,
+      "user",
     );
     const record: DepositRecord = {
       user: intent.user,
       value: intent.value,
-      txHash: requireText(result.txHash, `deposit ${id} txHash`, transcript),
-      eventId: requireText(
-        (result.metadata as Json | undefined)?.depositEventId,
-        `deposit ${id} metadata.depositEventId`,
+      txHash: requireText(
+        result.admissionTxHash,
+        `deposit ${id} admissionTxHash`,
         transcript,
       ),
+      eventId: requireText(result.eventId, `deposit ${id} eventId`, transcript),
     };
     this.journal.set(key, record);
     this.log(`deposit ${id} submitted ${record.txHash}`);

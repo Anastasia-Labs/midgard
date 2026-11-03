@@ -105,6 +105,7 @@ export const runtimeDistTargets = (layout: Layout): DistTarget[] => {
     pkg("midgard-l1-follower", "dist/index.js"),
     pkg("midgard-validation", "dist/index.js"),
     pkg("lucid-midgard", "dist/index.js"),
+    pkg("midgard-user-cli", "dist/cli.js"),
   ];
 };
 

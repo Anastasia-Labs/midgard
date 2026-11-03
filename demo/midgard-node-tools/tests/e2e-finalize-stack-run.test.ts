@@ -289,7 +289,7 @@ describe("e2e-finalize-summary stack-run reader", () => {
       "Deposit receipt lacks its exact event identity",
       (run) =>
         run.edit("cycle-0-deposit.json", (receipt) => {
-          receipt.metadata.depositEventId = "DE";
+          receipt.eventId = "DE";
         }),
     ],
     [
@@ -369,7 +369,7 @@ describe("e2e-finalize-summary stack-run reader", () => {
       "Noncanonical event ID",
       (run) =>
         run.edit("cycle-0-withdrawal.json", (receipt) => {
-          receipt.withdrawalEventId = "EE";
+          receipt.eventId = "EE";
         }),
     ],
     [

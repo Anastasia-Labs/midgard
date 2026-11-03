@@ -32,8 +32,6 @@ import {
 import type { ContractDeploymentIdentityValue } from "../src/services/midgard-contracts.js";
 import { type AtomicProtocolInitReferenceScripts } from "../src/transactions/initialization.js";
 import { deployReferenceScriptCommandProgram } from "../src/transactions/register-active-operator.js";
-import { type SubmitDepositReferenceScripts } from "../src/transactions/submit-deposit.js";
-import { type SubmitWithdrawalReferenceScripts } from "../src/transactions/submit-withdrawal.js";
 import {
   type EmulatorState,
   emulatorState,
@@ -74,8 +72,8 @@ export const EMULATOR_DEPLOYMENT_IDENTITY = ContractDeploymentIdentity.make({
 
 export type DepositFlowReferenceScripts = {
   readonly init: AtomicProtocolInitReferenceScripts;
-  readonly deposit: SubmitDepositReferenceScripts;
-  readonly withdrawal: SubmitWithdrawalReferenceScripts;
+  readonly deposit: SDK.SubmitDepositReferenceScripts;
+  readonly withdrawal: SDK.SubmitWithdrawalReferenceScripts;
 };
 
 export type EmulatorFixture = {

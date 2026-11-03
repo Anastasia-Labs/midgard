@@ -577,6 +577,9 @@ importers:
       '@al-ft/midgard-sdk':
         specifier: workspace:*
         version: link:../midgard-sdk
+      '@al-ft/midgard-user-cli':
+        specifier: workspace:*
+        version: link:../midgard-user-cli
       '@al-ft/midgard-validation':
         specifier: workspace:*
         version: link:../midgard-validation

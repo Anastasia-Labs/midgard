@@ -134,9 +134,7 @@ async function checkDeposit(
 ) {
   const directory = expectation.runDirectory;
   const receipt = await record(directory, `${prefix}-deposit.json`);
-  const eventId = isFields(receipt.metadata)
-    ? receipt.metadata.depositEventId
-    : undefined;
+  const eventId = receipt.eventId;
   if (typeof eventId !== "string" || !/^[0-9a-f]+$/.test(eventId))
     throw new Error("Deposit receipt lacks its exact event identity");
   const data = completeData(journal, `${prefix}-deposit`);
@@ -256,7 +254,7 @@ async function checkWithdrawal(
   if (withdrawn.lovelace !== expectation.transferLovelace)
     throw new Error("Recipient did not receive the exact transfer");
   const receipt = await record(directory, `${prefix}-withdrawal.json`);
-  const eventId = receipt.withdrawalEventId;
+  const eventId = receipt.eventId;
   if (typeof eventId !== "string" || !/^[0-9a-f]+$/.test(eventId))
     throw new Error("Noncanonical event ID");
   const payout = completeData(journal, `${prefix}-withdrawal`);

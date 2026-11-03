@@ -186,9 +186,9 @@ export async function establishStorageIdentity(processes: StackProcesses) {
 }
 
 /**
- * Host commands (db:migrate, submit-deposit, submit-withdrawal) reach Postgres
- * through the host port; the storage checks run inside the compose service.
- * Both must be the same cluster.
+ * Host commands (db:migrate) reach Postgres through the host port; the
+ * storage checks run inside the compose service. Both must be the same
+ * cluster.
  */
 export async function assertHostDatabaseIsStackDatabase(
   processes: StackProcesses,

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type { L1Origin } from "@al-ft/midgard-core/l1-origin";
 
 import { runCommandStep } from "../e2e/runner.js";
+import { l1KupmiosEnvironment } from "../environment.js";
 import { deriveL1Origin } from "../l1-origin.js";
 import type { StackConfig } from "./config.js";
 import { writeDurableJson } from "./journal.js";
@@ -30,6 +31,10 @@ const HOST_KEYS = [
   "RUSTUP_HOME",
 ];
 
+/** The deployment manifest the stack's node, tools and users read. */
+export const stackManifestPath = (config: StackConfig) =>
+  join(config.nodeRoot, "deploymentInfo/contract-deployment-info.json");
+
 /** The role images every Compose command of a preprod-public stack runs. */
 export const publicRolesPath = (config: StackConfig) =>
   join(config.runDirectory, "public-roles.yaml");
@@ -43,6 +48,12 @@ export class StackProcesses {
   ) {
     this.configuredL1Origin = env.L1_ORIGIN || undefined;
   }
+  /**
+   * Runs one command to completion and returns the JSON it printed last.
+   * `locked` commands (every node, build and Compose command) take the
+   * per-command lock, so two harness processes never interleave them; the
+   * user's own `midgard-user` keeps its own record and runs without it.
+   */
   async command(
     id: string,
     command: string,
@@ -50,6 +61,7 @@ export class StackProcesses {
     overrides: Record<string, string> = {},
     cwd = this.config.nodeRoot,
     scope: CommandScope = "stack",
+    locked = true,
   ) {
     const attempt = `${id}-${randomUUID()}`;
     const directory = join(this.config.runDirectory, "attempts");
@@ -69,15 +81,17 @@ export class StackProcesses {
     );
     const summary = await runCommandStep({
       id,
-      command: "flock",
-      args: [
-        "--nonblock",
-        "--conflict-exit-code",
-        String(COMMAND_LOCK_CONFLICT_EXIT_CODE),
-        lock,
-        command,
-        ...args,
-      ],
+      command: locked ? "flock" : command,
+      args: locked
+        ? [
+            "--nonblock",
+            "--conflict-exit-code",
+            String(COMMAND_LOCK_CONFLICT_EXIT_CODE),
+            lock,
+            command,
+            ...args,
+          ]
+        : args,
       cwd,
       envInheritance: "none",
       env: {
@@ -90,7 +104,7 @@ export class StackProcesses {
       timeoutMs: this.config.timeoutMs,
     });
     await writeDurableJson(join(directory, `${attempt}.json`), summary);
-    if (summary.exitCode === COMMAND_LOCK_CONFLICT_EXIT_CODE)
+    if (locked && summary.exitCode === COMMAND_LOCK_CONFLICT_EXIT_CODE)
       throw new CommandNotStartedError(
         `${id} did not start: another stack command holds ${lock}`,
       );
@@ -112,18 +126,51 @@ export class StackProcesses {
         this.config.runDirectory,
         "deployment-run-state.json",
       ),
-      // Node commands reach a preprod-public node over HTTPS on loopback.
-      ...(this.config.public === undefined
-        ? {}
-        : {
-            NODE_OPTIONS: `--import=${new URL("./node-tls-preload.js", import.meta.url).href}`,
-            [NODE_TLS_CA_ENV]: this.config.public.tlsCaFile,
-            [NODE_TLS_SERVERNAME_ENV]: new URL(
-              this.env.MIDGARD_PUBLIC_API_ORIGIN!,
-            ).hostname,
-          }),
+      ...this.publicNodeTls(),
       ...overrides,
     });
+  }
+  /**
+   * The user's own `midgard-user`, as a user runs it: the host toolchain,
+   * the deployment manifest, its own records in the run directory and the
+   * stack's Kupo and Ogmios at the host ports Compose publishes them on
+   * (Kupo matches every address and never prunes spent outputs). It never
+   * sees the node's environment or database; `overrides` carries the seed.
+   */
+  user(id: string, args: readonly string[], overrides: Record<string, string>) {
+    const l1 = l1KupmiosEnvironment(this.env);
+    return this.command(
+      id,
+      process.execPath,
+      ["dist/cli.js", ...args, "--json"],
+      {
+        MIDGARD_DEPLOYMENT_MANIFEST: stackManifestPath(this.config),
+        L1_ACCESS: "kupmios",
+        L1_KUPO_URL: l1.kupoUrl,
+        L1_OGMIOS_URL: l1.ogmiosUrl,
+        MIDGARD_USER_RECORD_DIR: join(
+          this.config.runDirectory,
+          "user-submissions",
+        ),
+        ...this.publicNodeTls(),
+        ...overrides,
+      },
+      join(this.config.nodeRoot, "../midgard-user-cli"),
+      "host",
+      false,
+    );
+  }
+  /** Host commands reach a preprod-public node over HTTPS on loopback. */
+  private publicNodeTls(): Record<string, string> {
+    return this.config.public === undefined
+      ? {}
+      : {
+          NODE_OPTIONS: `--import=${new URL("./node-tls-preload.js", import.meta.url).href}`,
+          [NODE_TLS_CA_ENV]: this.config.public.tlsCaFile,
+          [NODE_TLS_SERVERNAME_ENV]: new URL(
+            this.env.MIDGARD_PUBLIC_API_ORIGIN!,
+          ).hostname,
+        };
   }
   /** The recorded origin T, proven to precede the hub-oracle nonce tx's block. */
   deriveL1Origin(nonceTxHash: string, recorded: L1Origin) {
