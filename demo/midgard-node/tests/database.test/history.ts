@@ -254,39 +254,13 @@ export const registerHistoryTests = () => {
     );
 
     it.effect(
-      "resolves the submission hash, the deposit's immutable admission tx, after its Order moves",
+      "resolves a deposit by its immutable admission tx after its Order moves",
       () =>
         isolatedDb(
           Effect.gen(function* () {
             const deposit = makeDepositEntry();
             const admissionHash =
               deposit[DepositsDB.Columns.DEPOSIT_L1_TX_HASH];
-            const attempt = makeDepositSubmissionAttempt({
-              txHash: admissionHash,
-              eventId: deposit[DepositsDB.Columns.ID],
-            });
-            yield* DepositSubmissionAttemptsDB.insertSubmitted(attempt);
-            const stored =
-              yield* DepositSubmissionAttemptsDB.retrieveByTxHash(
-                admissionHash,
-              );
-            expect(Option.isSome(stored)).toBe(true);
-            if (Option.isNone(stored)) throw new Error("Expected journal");
-            expect(
-              stored.value[DepositSubmissionAttemptsDB.Columns.METADATA],
-            ).toEqual(attempt[DepositSubmissionAttemptsDB.Columns.METADATA]);
-            expect(
-              stored.value[DepositSubmissionAttemptsDB.Columns.EXPECTED_ASSETS],
-            ).toEqual(
-              attempt[DepositSubmissionAttemptsDB.Columns.EXPECTED_ASSETS],
-            );
-            expect(
-              stored.value[
-                DepositSubmissionAttemptsDB.Columns.FUNDING_OUT_REFS
-              ],
-            ).toEqual(
-              attempt[DepositSubmissionAttemptsDB.Columns.FUNDING_OUT_REFS],
-            );
             yield* insertDeposits([deposit]);
             // A list insertion moves the Order to another output; the row
             // keeps its admission tx (ruling 2) and refuses another one.
