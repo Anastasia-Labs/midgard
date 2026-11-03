@@ -1,9 +1,15 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, extname, join } from "node:path";
 
-// A retained entry file and its sibling facets form one implementation for
-// guards that inspect source text. Keep those guards covering moved code.
+// Source guards read either a retained entry and its sibling facets or an
+// explicit implementation directory, including its nested source modules.
 export const sourceFacetPaths = (file) => {
+  if (statSync(file).isDirectory()) {
+    return readdirSync(file, { recursive: true })
+      .filter((entry) => /\.(ts|tsx|mjs|js)$/u.test(entry))
+      .sort()
+      .map((entry) => join(file, entry));
+  }
   const extension = extname(file);
   if (![".ts", ".tsx", ".mjs", ".js"].includes(extension)) return [file];
   const stem = basename(file, extension).replace(/\.(test|spec|bench)$/u, "");

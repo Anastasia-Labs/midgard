@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -36,4 +36,20 @@ test("a missing retained entrypoint remains an error", () => {
   assert.throws(() =>
     readSourceFacets(join(tmpdir(), "absent-midgard-entry.ts")),
   );
+});
+
+test("directory source guards include nested modules and exclude non-source files", (t) => {
+  const root = mkdtempSync(join(tmpdir(), "midgard-source-directory-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  mkdirSync(join(root, "handlers"));
+  const route = join(root, "router.ts");
+  const handler = join(root, "handlers", "transaction.ts");
+  writeFileSync(route, 'const route = "healthz";');
+  writeFileSync(handler, 'const forbidden = "/da/payload";');
+  writeFileSync(join(root, "README.md"), "non-source");
+  assert.deepEqual(sourceFacetPaths(root), [handler, route]);
+  const source = readSourceFacets(root);
+  assert.match(source, /healthz/u);
+  assert.match(source, /da\/payload/u);
+  assert.doesNotMatch(source, /non-source/u);
 });
