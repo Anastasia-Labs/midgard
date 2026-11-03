@@ -79,11 +79,7 @@ export async function checkWallets(processes: StackProcesses) {
     (await loadDeploymentRunState(paths.state)) === null;
   for (const [role, wallet] of Object.entries(processes.config.wallets)) {
     const address = addresses[role]!;
-    const result = (await processes.node(`wallet-${role}`, [
-      "l1-utxos",
-      "--address",
-      address,
-    ])) as {
+    const result = (await processes.walletUtxos(`wallet-${role}`, address)) as {
       totals: { lovelace: string };
       utxos: {
         assets: Record<string, string>;
@@ -220,11 +216,10 @@ export function deploymentSteps(processes: StackProcesses): StackStep[] {
           processes.env[processes.config.wallets.operator!.seedEnv]!,
           { network: "Preprod" },
         ).address;
-        const live = (await processes.node("nonce-observation", [
-          "l1-utxos",
-          "--address",
+        const live = (await processes.walletUtxos(
+          "nonce-observation",
           address,
-        ])) as { utxos: { txHash: string; outputIndex: number }[] };
+        )) as { utxos: { txHash: string; outputIndex: number }[] };
         if (
           live.utxos.some(
             (utxo) =>

@@ -404,6 +404,14 @@ describe("wallet journey resume", () => {
       totals: { lovelace: "1000000000" },
     };
     await value.byId("cycle-0-deposit").execute(undefined);
+    const funds = value.processes.calls.find(
+      (call) => call.id === "cycle-0-deposit-funds",
+    )!;
+    expect(funds.overrides).toMatchObject({
+      L1_ACCESS: "kupmios",
+      L1_KUPO_URL: "http://127.0.0.1:1442",
+      L1_OGMIOS_URL: "http://127.0.0.1:1337",
+    });
     const submit = value.processes.calls.at(-1)!;
     expect(submit.id).toBe("cycle-0-deposit-submit");
     expect(submit.args.slice(0, 2)).toEqual(["dist/cli.js", "deposit"]);

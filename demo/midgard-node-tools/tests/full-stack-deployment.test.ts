@@ -119,6 +119,12 @@ describe("deployment steps before initialization", () => {
       "references-publish",
       "references-observation",
     ]);
+    // The operator wallet's nonce is looked up through Kupo, not by an
+    // address scan of the local node's ledger.
+    expect(
+      processes.calls.find((call) => call.id === "nonce-observation")!
+        .overrides,
+    ).toMatchObject({ L1_ACCESS: "kupmios" });
     expect(await steps.initialize!.reconcile(undefined)).toEqual({
       status: "retry",
     });
@@ -340,6 +346,23 @@ describe("wallet funding", () => {
     await expect(checkWallets(processes)).rejects.toThrow(
       "below its configured funding budget",
     );
+  });
+  it("reads every wallet through the stack's Kupo, never the local node's ledger", async () => {
+    const { processes } = await deployment({ nonceRecorded: true });
+    fundEach(processes, 6_000_000n);
+    await checkWallets(processes);
+    const reads = processes.calls.filter((call) =>
+      call.id.startsWith("wallet-"),
+    );
+    expect(reads.map((call) => call.id)).toEqual(
+      Object.keys(processes.config.wallets).map((role) => `wallet-${role}`),
+    );
+    for (const read of reads)
+      expect(read.overrides).toMatchObject({
+        L1_ACCESS: "kupmios",
+        L1_KUPO_URL: "http://127.0.0.1:1442",
+        L1_OGMIOS_URL: "http://127.0.0.1:1337",
+      });
   });
   it("needs only working capital once the deployment has started spending", async () => {
     const { processes } = await deployment({ nonceRecorded: true });

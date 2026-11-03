@@ -131,6 +131,19 @@ export class StackProcesses {
     });
   }
   /**
+   * A wallet's L1 outputs, read the way the wallet's owner reads them:
+   * through the stack's Kupo and Ogmios. The local node's ledger answers an
+   * address query only by scanning the whole UTxO set, which does not fit a
+   * command's deadline on preprod.
+   */
+  walletUtxos(id: string, address: string) {
+    return this.node(
+      id,
+      ["l1-utxos", "--address", address],
+      this.kupmiosAccess(),
+    );
+  }
+  /**
    * The user's own `midgard-user`, as a user runs it: the host toolchain,
    * the deployment manifest, its own records in the run directory and the
    * stack's Kupo and Ogmios at the host ports Compose publishes them on
@@ -138,16 +151,13 @@ export class StackProcesses {
    * sees the node's environment or database; `overrides` carries the seed.
    */
   user(id: string, args: readonly string[], overrides: Record<string, string>) {
-    const l1 = l1KupmiosEnvironment(this.env);
     return this.command(
       id,
       process.execPath,
       ["dist/cli.js", ...args, "--json"],
       {
         MIDGARD_DEPLOYMENT_MANIFEST: stackManifestPath(this.config),
-        L1_ACCESS: "kupmios",
-        L1_KUPO_URL: l1.kupoUrl,
-        L1_OGMIOS_URL: l1.ogmiosUrl,
+        ...this.kupmiosAccess(),
         MIDGARD_USER_RECORD_DIR: join(
           this.config.runDirectory,
           "user-submissions",
@@ -159,6 +169,15 @@ export class StackProcesses {
       "host",
       false,
     );
+  }
+  /** The stack's Kupo and Ogmios at the host ports Compose publishes them on. */
+  private kupmiosAccess(): Record<string, string> {
+    const l1 = l1KupmiosEnvironment(this.env);
+    return {
+      L1_ACCESS: "kupmios",
+      L1_KUPO_URL: l1.kupoUrl,
+      L1_OGMIOS_URL: l1.ogmiosUrl,
+    };
   }
   /** Host commands reach a preprod-public node over HTTPS on loopback. */
   private publicNodeTls(): Record<string, string> {

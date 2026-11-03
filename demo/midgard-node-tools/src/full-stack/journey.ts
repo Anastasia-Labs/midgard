@@ -163,11 +163,10 @@ export function journeySteps(
       execute: async () => {
         if ((await readJsonIfPresent(file("deposit-intent"))) === undefined) {
           // A resend after a lost response reuses the intent; only a first send checks funds.
-          const funds = (await processes.node(`${prefix}-deposit-funds`, [
-            "l1-utxos",
-            "--address",
+          const funds = (await processes.walletUtxos(
+            `${prefix}-deposit-funds`,
             user.address,
-          ])) as { totals: { lovelace: string } };
+          )) as { totals: { lovelace: string } };
           assertDepositFunding(
             BigInt(funds.totals.lovelace),
             BigInt(config.journey.depositLovelace),
