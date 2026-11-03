@@ -353,6 +353,41 @@ describe.each(["sqlite", "postgres"] as const)(
       stage.close();
     });
 
+    it("names a seed read in flight as a hold while the read runs", async () => {
+      const s = await openScenario(dialect);
+      let reading!: () => void;
+      const readStarted = new Promise<void>((resolve) => {
+        reading = resolve;
+      });
+      let fail = (_: Error): void => undefined;
+      s.transport.withLedgerState = () => {
+        reading();
+        return new Promise<never>((_, reject) => {
+          fail = reject;
+        });
+      };
+      const stage = s.stage([QUEUE_ADDRESS]);
+      const pass = stage.run();
+      try {
+        await readStarted;
+        expect(stage.holds()).toEqual([
+          {
+            reason: WALLET_SEED_PENDING,
+            detail: expect.stringContaining(
+              "in_flight: seed read in flight at slot",
+            ),
+          },
+        ]);
+      } finally {
+        fail(new Error("the node connection closed"));
+      }
+      const holds = await pass;
+      expect(holds.map((hold) => hold.reason)).toEqual([WALLET_SEED_PENDING]);
+      expect(holds[0]!.detail).toContain("ledger_unavailable");
+      expect(stage.holds()).toEqual(holds);
+      stage.close();
+    });
+
     it("names an owed wallet seed and a failed pass as holds", async () => {
       const s = await openScenario(dialect);
       const stage = s.stage([QUEUE_ADDRESS]);

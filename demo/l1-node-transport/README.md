@@ -80,7 +80,12 @@ The client has these behaviours:
   `TransportRequestError(node_timeout)`. The sidecar and its streams stay
   up (see "Request deadline"). A call that still exceeds
   `requestTimeoutMs` rejects with `TransportTimeoutError` and kills the
-  sidecar, which is then restarted.
+  sidecar, which is then restarted. A query sent with
+  `{ deadline: "none" }` (`LedgerStateSession.query`'s second argument) is
+  bounded by neither: it waits for the node's answer, the node connection's
+  end or the sidecar's exit. It is for a read that is long by nature and
+  runs once, the wallet seed's `utxo_by_address` scan; every other request
+  keeps both bounds.
 - **Chain-sync streams.** A stream survives sidecar restarts. It reopens
   from its last delivered point (see "Resume") unless it was opened with
   `resume: false`. It reopens after a stream failure only when the failure
@@ -136,23 +141,25 @@ u32 big-endian headerLength | u32 big-endian payloadLength | header | payload
 The first client frame must be `hello`:
 
 ```
-{type: "hello", version: 1, socketPath: text, networkMagic: uint, requestDeadlineMs: uint}
+{type: "hello", version: 2, socketPath: text, networkMagic: uint, requestDeadlineMs: uint}
 ```
 
 `requestDeadlineMs` (1..86,400,000) bounds each ledger-state request and
 submission (see "Request deadline").
 
 The sidecar dials the node and runs the N2C handshake. On success it
-answers `{type: "hello_ok", version: 1, nodeToClientVersion: uint}`. A
+answers `{type: "hello_ok", version: 2, nodeToClientVersion: uint}`. A
 handshake the node refuses ends the session with `fatal
 node_handshake_failed`; a connection the node drops during the handshake
 ends it with `fatal node_connection_lost`. Both exit with status 69.
 
 `midgard-l1-node-transport --protocol-version` prints the frame protocol
-version (`1`) and exits.
+version (`2`) and exits.
 
 A version mismatch ends the session with `fatal version_unsupported` and
-exit status 64.
+exit status 64, so a client and a sidecar of different versions fail at
+startup. Version 2 added `noDeadline` on `lsq_query`; a version 1 sidecar
+would refuse such a query only when it is first sent.
 
 ### Client to sidecar
 
@@ -164,7 +171,7 @@ exit status 64.
 | `cs_close`       | `id, stream`                                                        | `ok` (no frame of that stream follows it)                        |
 | `lsq_acquire`    | `id, point?` (absent: the volatile tip)                             | `ok` or `error`                                                  |
 | `lsq_release`    | `id`                                                                | `ok`                                                             |
-| `lsq_query`      | `id, query, addresses? / txIns? / credentials?`                     | `lsq_result` (+ raw answer) or `error`                           |
+| `lsq_query`      | `id, query, addresses? / txIns? / credentials?, noDeadline?`        | `lsq_result` (+ raw answer) or `error`                           |
 | `submit`         | `id, era?` + payload: the raw transaction                           | `submit_accepted` or `submit_rejected` (+ raw reason) or `error` |
 | `monitor_has_tx` | `id, txId (32 bytes)`                                               | `monitor_has_tx_result {has}`                                    |
 | `monitor_sizes`  | `id`                                                                | `monitor_sizes_result {capacity, size, txCount}`                 |
@@ -292,6 +299,10 @@ of its frame, so time spent queued counts.
   `error node_timeout` without being sent.
 - **Submissions.** A submission answered `node_timeout` has an unknown
   outcome: the node may still accept it.
+- **No deadline.** An `lsq_query` with `noDeadline: true` has none: it is
+  answered when the node answers it, or `error` when the node connection
+  ends. A late reply still owed to an earlier request is taken first, with
+  no bound either. The acquisition and release around it keep theirs.
 
 LocalTxMonitor has its own fixed 30 s bound, and missing it is
 `fatal node_unresponsive`.

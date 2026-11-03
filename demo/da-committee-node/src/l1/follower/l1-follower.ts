@@ -156,8 +156,6 @@ export type CommitteeL1SourceParts = Readonly<{
 export const committeeL1Source = (
   parts: CommitteeL1SourceParts,
 ): CommitteeL1Source => {
-  /** The last seed attempt's pending reason, while a seed is owed. */
-  let seedDetail = "own wallets not seeded yet";
   const followerReadiness = (): readonly CommitteeL1Readiness[] => {
     const status = parts.status();
     return status === null
@@ -184,14 +182,20 @@ export const committeeL1Source = (
       followerReadiness().length > 0
     )
       return;
-    const seeded = await parts.seeder.step();
-    if (seeded.kind === "pending")
-      seedDetail = `${seeded.reason}: ${seeded.detail}`;
+    await parts.seeder.step();
   };
-  const seedPending = (): CommitteeL1Readiness[] =>
-    parts.seeder === undefined || parts.seeder.ready()
+  /** Read live: a seed in flight shows as `in_flight` while it runs. */
+  const seedPending = (): CommitteeL1Readiness[] => {
+    const seed = parts.seeder?.status();
+    return seed === undefined || seed.kind === "ready"
       ? []
-      : [{ reason: WALLET_SEED_PENDING, detail: seedDetail }];
+      : [
+          {
+            reason: WALLET_SEED_PENDING,
+            detail: `${seed.reason}: ${seed.detail}`,
+          },
+        ];
+  };
   return {
     parameters: parts.parameters,
     readiness: () => [...followerReadiness(), ...seedPending()],
@@ -337,8 +341,10 @@ const openFollowerParts = async (
         evaluator: createScalusEvaluator(),
       }),
     close: async () => {
-      await store.close().catch(() => undefined);
+      // The transport first: a wallet seed in flight holds the store's
+      // writer lane on a read with no deadline, and ends with the sidecar.
       await transport.close().catch(() => undefined);
+      await store.close().catch(() => undefined);
     },
   };
 };
@@ -403,6 +409,7 @@ export const startCommitteeL1Follower = async (
   retention.bind("records", records);
   let status: FollowStatus | null = null;
   const abort = new AbortController();
+  let slotConfig: SlotTime | undefined;
   const running = followChain({
     store: pruneAfterPins(store, retention),
     transport: parts.transport,
@@ -411,8 +418,17 @@ export const startCommitteeL1Follower = async (
     log: (line) => log(`L1 follower: ${line}`),
     // `l1_node_behind` at the follower's default bound: the tick holds
     // while it is set, and it clears when the node catches up.
+    // Answered at once when the slot configuration is known; until then a
+    // promise, and the check reports the lag unknown without waiting on it
+    // (the read queues behind any ledger read, a wallet seed's included).
     nodeBehind: {
-      slotTime: async (slot) => slotTimeMs(slot, await parts.slotTime()),
+      slotTime: (slot) =>
+        slotConfig === undefined
+          ? parts.slotTime().then((config) => {
+              slotConfig = config;
+              return slotTimeMs(slot, config);
+            })
+          : slotTimeMs(slot, slotConfig),
     },
     onStatus: (next) => {
       status = next;
@@ -441,6 +457,10 @@ export const startCommitteeL1Follower = async (
     lucid: parts.lucid,
     stop: async () => {
       abort.abort();
+      // The node connection before the loop: a wallet seed read in flight
+      // (no request deadline) holds the store's writer lane, and a loop
+      // parked behind it returns only once the read ends.
+      await parts.transport.close().catch(() => undefined);
       await running.catch(() => undefined);
       seeder?.close();
       await parts.close();

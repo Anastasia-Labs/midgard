@@ -85,6 +85,73 @@ describe("followChain: a node behind wall-clock time", () => {
     }
   });
 
+  it("never waits on a slot time still being read: the lag is unknown and not ready, then judged when it lands", async () => {
+    const store = openStore();
+    try {
+      const s = script(behind(short));
+      // The slot configuration is read from the node, queued behind a
+      // ledger read that has not answered.
+      let land!: (ms: number) => void;
+      const slotConfig = new Promise<number>((resolve) => {
+        land = resolve;
+      });
+      let landed = false;
+      const { statuses } = await follow({
+        store,
+        script: s,
+        nodeBehind: {
+          slotTime: (slot) =>
+            landed ? slotTime(slot) : slotConfig.then(() => slotTime(slot)),
+          now: () => tipMs + 299_000,
+        },
+        until: (status) => {
+          if (!landed && appliedAll(s)(status) && behindReason(status)) {
+            landed = true;
+            land(0);
+            return false;
+          }
+          return landed && status.nodeBehind === null;
+        },
+      });
+      // Every event was applied while the slot time was outstanding.
+      const unknown = statuses.filter(behindReason).at(-1)!;
+      expect(unknown.events).toBe(short.length);
+      expect(unknown.nodeBehind).toEqual({
+        tipSlot,
+        lagMs: null,
+        boundMs: 300_000,
+      });
+      expect(behindReason(unknown)?.detail).toBe(
+        `node tip slot ${tipSlot}: lag behind wall-clock time unknown, waiting on the node for the slot configuration (bound 300 s)`,
+      );
+      // Judged once the slot time landed: within the bound.
+      expect(behindReason(statuses.at(-1)!)).toBeUndefined();
+    } finally {
+      await store.close();
+    }
+  });
+
+  it("lets the last judged result stand when the slot time read fails", async () => {
+    const store = openStore();
+    try {
+      const s = script(behind(short));
+      const { statuses, log } = await follow({
+        store,
+        script: s,
+        nodeBehind: {
+          slotTime: () => Promise.reject(new Error("era history unreadable")),
+          now: () => tipMs + 301_000,
+        },
+        until: (status) => appliedAll(s)(status) && status.nodeBehind === null,
+      });
+      expect(statuses.at(-1)!.events).toBe(short.length);
+      expect(behindReason(statuses.at(-1)!)).toBeUndefined();
+      expect(log).toContain("node-behind check failed: era history unreadable");
+    } finally {
+      await store.close();
+    }
+  });
+
   it("stays ready within the bound and without the option", async () => {
     for (const nodeBehind of [
       { slotTime, now: () => tipMs + 300_000 },

@@ -64,12 +64,15 @@ export {
 export {
   closeSharedL1NodeTransports,
   L1NodeTransport,
+  sharedL1NodeTransport,
+} from "./transport.js";
+export {
   type L1NodeTransportOptions,
   type LedgerStateSession,
   type MempoolSizes,
-  sharedL1NodeTransport,
+  type QueryOptions,
   type SubmitResult,
   TransportTimeoutError,
   TransportUnavailableError,
-} from "./transport.js";
+} from "./transport-api.js";
 export { TransportFailedError } from "./transport-failed.js";

@@ -56,7 +56,6 @@ import { type RewindsSince, rewindsSinceIn } from "./rewinds-since.js";
 import { StoreIntegrityError } from "./rows.js";
 import {
   initializeIn,
-  insertSeedOutputsIn,
   loadLiveOutRefs,
   type SeedCursorMoved,
   type SeedOutput,
@@ -73,6 +72,13 @@ import {
   withTrackedAddresses,
 } from "./tracked-set-record.js";
 import { currentViewIn, viewValidIn } from "./view.js";
+import {
+  createSeedWrites,
+  deleteUntrackedWalletSeedsIn,
+  type WalletSeedRead,
+  type WalletSeedReadFailed,
+  type WalletSeedWrite,
+} from "./wallet-seeds.js";
 import {
   bumpWriterEpochIn,
   HELD_ELSEWHERE,
@@ -163,6 +169,17 @@ export type FactStore = Readonly<{
     at: Point,
     outputs: readonly SeedOutput[],
   ): Promise<SeedResult | SeedCursorMoved | StoreError | StoreLocked | null>;
+  /**
+   * Seeds the wallets among `addresses` with no stored seed point (§5.3
+   * step 4) in the writer lane: `read` at the cursor, then their seed rows
+   * and seed points in one write (`wallet-seeds.ts`). Null before `initialize`.
+   */
+  seedWallets(
+    addresses: readonly Buffer[],
+    read: WalletSeedRead,
+  ): Promise<
+    WalletSeedWrite | WalletSeedReadFailed | StoreError | StoreLocked | null
+  >;
   /**
    * Own wallets only (`withTrackedAddresses`): a protocol item added here
    * skips the start's record check and its reset, so its facts stay incomplete.
@@ -354,6 +371,21 @@ export const createFactStore = (
   const checkInvariants = (): Promise<InvariantReport> =>
     read((tx) => runInvariantChecks(tx, dialect, registry, "full"));
 
+  const seedWrites = createSeedWrites({
+    dialect,
+    lane: (task) => lane.run(task),
+    refusal: () =>
+      broken !== null
+        ? { kind: "error", error: new Error(broken.detail) }
+        : writeRefusal(),
+    read,
+    write: fencedWrite,
+    live,
+    markLiveStale: () => {
+      liveStale = true;
+    },
+  });
+
   const store: FactStore = {
     dialect,
     registry,
@@ -382,6 +414,10 @@ export const createFactStore = (
         );
         // To every listener the reset is a rewind to the origin.
         if (check.kind === "reset") notify(check.rewound);
+        // A wallet this start does not track loses its seed point.
+        await backend.transaction("write", (tx) =>
+          deleteUntrackedWalletSeedsIn(tx, tracked),
+        );
         epoch = await backend.transaction("write", bumpWriterEpochIn);
         const report = await checkInvariants();
         if (!report.ok)
@@ -479,46 +515,8 @@ export const createFactStore = (
         notify(result);
         return result;
       }),
-    insertSeedOutputs: (at, outputs) =>
-      lane.run(async () => {
-        if (broken !== null)
-          return { kind: "error", error: new Error(broken.detail) } as const;
-        const refusal = writeRefusal();
-        if (refusal !== null) return refusal;
-        try {
-          const result = await fencedWrite((tx) =>
-            insertSeedOutputsIn(tx, dialect, at, outputs),
-          );
-          if (result?.kind === "store_locked") return result;
-          if (result?.kind === "seeded")
-            for (const outRef of result.inserted) live.add(outRefKey(outRef));
-          return result;
-        } catch (error) {
-          // A failure during COMMIT leaves its outcome unknown: the rows may
-          // be in, and a retry would skip them. Take the live ones from the
-          // store; if it cannot answer, refuse writes until a start reloads.
-          try {
-            const found = await read(async (tx) => {
-              const rows: OutRef[] = [];
-              for (const { outRef } of outputs)
-                if (
-                  (
-                    await tx.query(
-                      "SELECT 1 AS one FROM l1_outputs WHERE tx_hash = ? AND output_index = ? AND spent_slot IS NULL",
-                      [outRef.txHash, outRef.index],
-                    )
-                  ).length > 0
-                )
-                  rows.push(outRef);
-              return rows;
-            });
-            for (const outRef of found) live.add(outRefKey(outRef));
-          } catch {
-            liveStale = true;
-          }
-          return { kind: "error", error: asError(error) } as const;
-        }
-      }),
+    insertSeedOutputs: seedWrites.insertSeedOutputs,
+    seedWallets: seedWrites.seedWallets,
     setTrackedSet: (next) => {
       tracked = next;
     },

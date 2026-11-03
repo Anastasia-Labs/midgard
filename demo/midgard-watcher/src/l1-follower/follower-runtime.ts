@@ -10,7 +10,6 @@ import {
   projectionStoreOptions,
   type PruneFloor,
   WALLET_SEED_PENDING,
-  type WalletSeedStatus,
 } from "@al-ft/midgard-l1-follower";
 import {
   eventProjection,
@@ -247,14 +246,24 @@ export const openWatcherFollowerRuntime = (
   });
   const provider = new L1FollowerProvider({ store, transport });
   // The node's slot configuration, read once it answers (`l1_node_behind`).
-  let slotConfig: ReturnType<L1FollowerProvider["slotConfig"]> | undefined;
-  const slotTime = async (slot: number): Promise<number> => {
-    slotConfig ??= provider.slotConfig().catch((error: unknown) => {
-      slotConfig = undefined;
-      throw error;
-    });
-    const { zeroTime, zeroSlot, slotLength } = await slotConfig;
-    return zeroTime + (slot - zeroSlot) * slotLength;
+  // Once read, the slot time is answered at once; until then it is a
+  // promise, and the check reports the lag unknown without waiting on it
+  // (the read queues behind any ledger read, a wallet seed's included).
+  type SlotConfig = Awaited<ReturnType<L1FollowerProvider["slotConfig"]>>;
+  let slotConfig: SlotConfig | undefined;
+  let readingSlotConfig: Promise<SlotConfig> | undefined;
+  const slotTime = (slot: number): number | Promise<number> => {
+    const at = ({ zeroTime, zeroSlot, slotLength }: SlotConfig): number =>
+      zeroTime + (slot - zeroSlot) * slotLength;
+    if (slotConfig !== undefined) return at(slotConfig);
+    readingSlotConfig ??= provider.slotConfig().then(
+      (config) => (slotConfig = config),
+      (error: unknown) => {
+        readingSlotConfig = undefined;
+        throw error;
+      },
+    );
+    return readingSlotConfig.then(at);
   };
   const proofRetention = createWatcherProofRetention(store, {
     unitHistoryPolicies,
@@ -275,43 +284,13 @@ export const openWatcherFollowerRuntime = (
   const listeners = new Set<(status: FollowStatus) => void>();
   const abort = new AbortController();
   let latest: FollowStatus | null = null;
-  let seed: WalletSeedStatus = {
-    kind: "pending",
-    reason: "not_initialized",
-    detail: "the follower has not applied a block yet",
-    wallets,
-  };
-  let seeding: Promise<void> | null = null;
-  let seedAgain = false;
-
-  /** Seeds the owed wallet at the cursor; one step at a time, coalesced. */
+  /**
+   * Seeds the owed wallets at the cursor. The seed runs in the store's
+   * writer lane, between blocks; a call while one runs joins it, and it
+   * never rejects.
+   */
   const stepSeed = (): void => {
-    if (seeding !== null) {
-      seedAgain = true;
-      return;
-    }
-    if (seeder.ready()) {
-      seed = { kind: "ready" };
-      return;
-    }
-    seeding = (async () => {
-      try {
-        seed = await seeder.step();
-      } catch (error) {
-        seed = {
-          kind: "pending",
-          reason: "ledger_unavailable",
-          detail: error instanceof Error ? error.message : String(error),
-          wallets: seeder.owed(),
-        };
-      } finally {
-        seeding = null;
-      }
-      if (seedAgain && !abort.signal.aborted) {
-        seedAgain = false;
-        stepSeed();
-      }
-    })();
+    if (!seeder.ready()) void seeder.step();
   };
   // A rewind below the seed point owes the seed again (the seeder hears it).
   const unsubscribeRewind = store.onGeneration(() => {
@@ -389,7 +368,8 @@ export const openWatcherFollowerRuntime = (
     else
       for (const entry of latest.readiness)
         reasons.push({ reason: entry.reason, detail: entry.detail });
-    if (seed.kind === "pending" && !seeder.ready())
+    const seed = seeder.status();
+    if (seed.kind === "pending")
       reasons.push({
         reason: WALLET_SEED_PENDING,
         detail: `${seed.reason}: ${seed.detail}`,
@@ -459,14 +439,16 @@ export const openWatcherFollowerRuntime = (
     close: () => {
       closing ??= (async () => {
         abort.abort();
+        // The node connection before the loop: a wallet seed read in flight
+        // (no request deadline) holds the store's writer lane, and a loop
+        // parked behind it returns only once the read ends.
+        await transport.close().catch(() => undefined);
         await done.catch(() => undefined);
-        await seeding?.catch(() => undefined);
         await txInputs.close();
         unsubscribeRewind();
         seeder.close();
         listeners.clear();
         await store.close().catch(() => undefined);
-        await transport.close().catch(() => undefined);
       })();
       return closing;
     },

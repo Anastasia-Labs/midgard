@@ -151,12 +151,14 @@ export type FollowStatus = Readonly<{
   tip: Readonly<{ slot: number; height: number }> | null;
   /**
    * Set while that tip's slot time is more than `boundMs` behind wall-clock
-   * time (`FOLLOWER_NODE_BEHIND`); null otherwise, before the first tip, and
-   * when the role passed no `nodeBehind` option.
+   * time (`FOLLOWER_NODE_BEHIND`), or while the lag is unknown because the
+   * slot time is still being read (`lagMs: null`, also not ready); null
+   * otherwise, before the first tip, and when the role passed no
+   * `nodeBehind` option.
    */
   nodeBehind: Readonly<{
     tipSlot: number;
-    lagMs: number;
+    lagMs: number | null;
     boundMs: number;
   }> | null;
   /** The cursor equals that tip; false while `node` is set. */
@@ -222,7 +224,11 @@ export type FollowChainOptions = Readonly<{
 export type NodeBehindOptions = Readonly<{
   /**
    * POSIX ms at the start of `slot`, from the network's slot configuration.
-   * A failure skips that check (the last result stands) and is logged.
+   * Answer with a number once the configuration is known: a promise means it
+   * is still being read from the node, and the check is never awaited on it;
+   * the lag is unknown (not ready) until the promise lands. A throw or a
+   * rejection skips that check (the last judged result stands) and is
+   * logged; the next check reads again.
    */
   slotTime: (slot: number) => number | Promise<number>;
   /** The largest lag that is not behind (default `DEFAULT_NODE_BEHIND_MS`). */
@@ -273,11 +279,17 @@ export const readinessOf = (
       detail: `${status.node.reason}: ${status.node.detail}`,
     });
   // An unavailable node's tip is not known; that reason covers it.
-  if (status.node === null && status.nodeBehind !== null)
+  if (status.node === null && status.nodeBehind !== null) {
+    const { tipSlot, lagMs, boundMs } = status.nodeBehind;
+    const bound = `(bound ${Math.round(boundMs / 1000)} s)`;
     reasons.push({
       reason: FOLLOWER_NODE_BEHIND,
-      detail: `node tip slot ${status.nodeBehind.tipSlot} is ${Math.round(status.nodeBehind.lagMs / 1000)} s behind wall-clock time (bound ${Math.round(status.nodeBehind.boundMs / 1000)} s)`,
+      detail:
+        lagMs === null
+          ? `node tip slot ${tipSlot}: lag behind wall-clock time unknown, waiting on the node for the slot configuration ${bound}`
+          : `node tip slot ${tipSlot} is ${Math.round(lagMs / 1000)} s behind wall-clock time ${bound}`,
     });
+  }
   if (status.stuck?.at === "migration")
     reasons.push({
       reason: FOLLOWER_MIGRATION_FAILED,

@@ -18,62 +18,18 @@ import {
 } from "./sidecar.js";
 import { type ChainSyncOptions, ChainSyncStream } from "./stream.js";
 import {
+  type L1NodeTransportOptions,
+  type LedgerStateSession,
+  type MempoolSizes,
+  type QueryOptions,
+  type SubmitResult,
+  TransportTimeoutError,
+  TransportUnavailableError,
+} from "./transport-api.js";
+import {
   TransportFailedError,
   transportFailureOf,
 } from "./transport-failed.js";
-
-export type L1NodeTransportOptions = Readonly<{
-  /** The compiled `midgard-l1-node-transport` binary. */
-  binaryPath: string;
-  /** The node's local (node-to-client) socket. */
-  socketPath: string;
-  networkMagic: number;
-  /**
-   * Bound on one request's answer; a sidecar that misses it is restarted.
-   * The sidecar itself refuses a ledger-state query or a submission the node
-   * has not answered within half this bound (`node_timeout`), so a slow node
-   * answer never costs the sidecar and its streams.
-   */
-  requestTimeoutMs?: number;
-  /** Bound on waiting for a ready sidecar before a request is refused. */
-  readyTimeoutMs?: number;
-  helloTimeoutMs?: number;
-  /** First and last restart delay; the delay doubles between them. */
-  restartDelayMs?: Readonly<{ initial: number; max: number }>;
-  onDiagnostic?: (line: string) => void;
-  onReadiness?: (readiness: TransportReadiness) => void;
-}>;
-
-/** The transport is not ready; the reason is transient and retried. */
-export class TransportUnavailableError extends Error {
-  override readonly name = "TransportUnavailableError";
-  constructor(
-    readonly reason: TransportUnreadyReason,
-    readonly detail: string,
-  ) {
-    super(`L1 node transport unavailable: ${reason}: ${detail}`);
-  }
-}
-
-/** A request missed its bound; the sidecar was restarted. */
-export class TransportTimeoutError extends Error {
-  override readonly name = "TransportTimeoutError";
-}
-
-export type SubmitResult =
-  | Readonly<{ accepted: true }>
-  | Readonly<{ accepted: false; rejection: Uint8Array }>;
-
-export type MempoolSizes = Readonly<{
-  capacity: bigint;
-  size: bigint;
-  txCount: bigint;
-}>;
-
-/** A ledger state acquired for a sequence of consistent queries. */
-export type LedgerStateSession = Readonly<{
-  query: (query: LedgerQuery) => Promise<Uint8Array>;
-}>;
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 120_000;
 const DEFAULT_HELLO_TIMEOUT_MS = 30_000;
@@ -324,15 +280,22 @@ export class L1NodeTransport {
     }
   }
 
-  /** One request with a bound; a wedged sidecar is killed and restarted. */
+  /**
+   * One request with a bound; a wedged sidecar is killed and restarted. A
+   * request sent with no deadline (`QueryOptions`) waits for its answer or
+   * for the sidecar to exit.
+   */
   async #call(
     sidecar: SidecarProcess,
     header: Parameters<SidecarProcess["request"]>[0],
     payload?: Uint8Array,
+    options?: QueryOptions,
   ): Promise<Frame> {
     this.#activityDelta(1);
     let timer: NodeJS.Timeout | undefined;
     try {
+      if (options?.deadline === "none")
+        return await sidecar.request(header, payload);
       return await Promise.race([
         sidecar.request(header, payload),
         new Promise<never>((_, reject) => {
@@ -373,8 +336,15 @@ export class L1NodeTransport {
       });
       try {
         return await use({
-          query: async (query) => {
-            const answer = await this.#call(sidecar, encodeQuery(0, query));
+          query: async (query, options) => {
+            const answer = await this.#call(
+              sidecar,
+              options?.deadline === "none"
+                ? { ...encodeQuery(0, query), noDeadline: true }
+                : encodeQuery(0, query),
+              undefined,
+              options,
+            );
             return answer.payload;
           },
         });

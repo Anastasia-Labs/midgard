@@ -2,25 +2,17 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import {
-  type ChainPoint,
-  type LedgerQuery,
-  TransportRequestError,
-} from "@al-ft/l1-node-transport";
 import { afterAll, describe, expect, it } from "vitest";
 
 import {
   type BlockSummary,
   createWalletSeeder,
-  type FactStore,
   seedWallets,
-  type WalletLedger,
 } from "../src/index.js";
-import { encodeUtxoAnswer, type SimUtxo } from "../src/testing/index.js";
+import type { SimUtxo } from "../src/testing/index.js";
 import { testDatabases } from "./support/postgres.js";
 import {
   chain,
-  fill,
   ORIGIN,
   point,
   started,
@@ -30,6 +22,14 @@ import {
   TX2,
   UNTRACKED,
 } from "./support/small-chain.js";
+import {
+  atCursor,
+  fakeLedger,
+  key,
+  preOrigin,
+  seedRows,
+  WALLET_B,
+} from "./support/wallet-seed-ledger.js";
 
 const databases = testDatabases();
 const scratch = mkdtempSync(join(tmpdir(), "l1-follower-wallet-seed-"));
@@ -38,87 +38,6 @@ afterAll(async () => {
   await databases.dropAll();
   rmSync(scratch, { recursive: true, force: true });
 });
-
-/** A second own wallet (enterprise key address) the store does not track yet. */
-const WALLET_B = Buffer.concat([Buffer.of(0x60), fill(0x44, 28)]);
-
-const preOrigin = (byte: number, address: Buffer, index = 0): SimUtxo => ({
-  outRef: { txHash: fill(byte), index },
-  output: { address, lovelace: BigInt(byte) * 1_000_000n },
-});
-
-const key = (utxo: SimUtxo): string =>
-  `${utxo.outRef.txHash.toString("hex")}#${utxo.outRef.index}`;
-
-/**
- * A node's ledger for the seed: the UTxO set it answers `utxo_by_address`
- * from, acquirable only at the points `acquirable` admits (the volatile
- * window). Records every acquisition and query.
- */
-const fakeLedger = (
-  input: Readonly<{
-    utxos: () => readonly SimUtxo[];
-    acquirable: (at: ChainPoint | "tip") => boolean;
-    duringQuery?: () => Promise<void>;
-    tamper?: (utxos: SimUtxo[]) => SimUtxo[];
-  }>,
-): WalletLedger & { queries: string[][]; acquired: string[] } => {
-  const queries: string[][] = [];
-  const acquired: string[] = [];
-  return {
-    queries,
-    acquired,
-    withLedgerState: async (at, use) => {
-      if (!input.acquirable(at))
-        throw new TransportRequestError(
-          "acquire_point_too_old",
-          "the point is not in the volatile window",
-        );
-      acquired.push(
-        at === "tip" ? "tip" : at.kind === "point" ? `${at.slot}` : "origin",
-      );
-      return await use({
-        query: async (query: LedgerQuery) => {
-          if (query.query !== "utxo_by_address")
-            throw new Error(`unexpected query ${query.query}`);
-          const wanted = query.addresses.map((a) =>
-            Buffer.from(a).toString("hex"),
-          );
-          queries.push(wanted);
-          await input.duringQuery?.();
-          const matching = input
-            .utxos()
-            .filter((u) => wanted.includes(u.output.address.toString("hex")));
-          return encodeUtxoAnswer(input.tamper?.(matching) ?? matching);
-        },
-      });
-    },
-  };
-};
-
-const atCursor =
-  (store: FactStore) =>
-  async (): Promise<(at: ChainPoint | "tip") => boolean> => {
-    const cursor = await store.cursor();
-    return (at) =>
-      at !== "tip" &&
-      at.kind === "point" &&
-      cursor !== null &&
-      at.slot === BigInt(cursor.point.slot) &&
-      at.hash === cursor.point.hash.toString("hex");
-  };
-
-const seedRows = async (store: FactStore) =>
-  await store.transaction("read", async (tx) =>
-    (
-      await tx.query(
-        "SELECT tx_hash, output_index, seed_slot, created_slot FROM l1_outputs WHERE created_slot IS NULL ORDER BY tx_hash, output_index",
-      )
-    ).map(
-      (row) =>
-        `${Buffer.from(row.tx_hash as Uint8Array).toString("hex")}#${Number(row.output_index)}@${Number(row.seed_slot)}`,
-    ),
-  );
 
 describe.each(storeAdapters(databases, scratch))(
   "LSQ wallet seed ($name)",
@@ -192,11 +111,12 @@ describe.each(storeAdapters(databases, scratch))(
       }
     });
 
-    it("rereads at the new cursor when a block lands between the read and the write", async () => {
+    it("a slow seed read while a block arrives succeeds on its first read, and the block's spend of a seeded output lands after it", async () => {
       const { store } = await started(adapter, 4, 2);
       try {
-        // A pre-origin wallet UTxO that b3's failed tx consumes as collateral
-        // would be missed by a seed written after b3; here a1 is spent in b3.
+        // b3's failed tx consumes the pre-origin wallet UTxO a1 as
+        // collateral: a seed written after b3 without seeing that spend
+        // would leave a1 live.
         const a1 = preOrigin(0xd1, TRACKED);
         const b3 = chain()[2] as BlockSummary;
         const spendA1: BlockSummary = {
@@ -208,32 +128,32 @@ describe.each(storeAdapters(databases, scratch))(
             },
           ],
         };
-        let spent = false;
-        let landed = false;
+        let landing: Promise<unknown> | undefined;
         const ledger = fakeLedger({
-          utxos: () => (spent ? [] : [a1]),
+          utxos: () => [a1],
           acquirable: () => true,
           duringQuery: async () => {
-            if (landed) return;
-            landed = true;
-            expect(await store.applyBlock(spendA1)).toMatchObject({
-              kind: "applied",
-            });
-            spent = true;
+            if (landing !== undefined) return;
+            // The read is held until the block has been delivered to the
+            // store, then answered: the block waits behind the seed.
+            landing = store.applyBlock(spendA1);
           },
         });
         const result = await seedWallets(store, ledger, [TRACKED]);
         expect(result).toMatchObject({
           kind: "seeded",
-          at: point(spendA1),
-          inserted: [],
+          at: point(chain()[1]),
         });
-        expect(ledger.acquired).toEqual([
-          String(point(chain()[1]).slot),
-          String(point(spendA1).slot),
-        ]);
-        expect(await store.output(a1.outRef)).toBeNull();
+        expect(ledger.queries).toHaveLength(1);
+        // The scan is sent with no request deadline.
+        expect(ledger.deadlines).toEqual(["none"]);
+        expect(await landing).toMatchObject({ kind: "applied" });
+        expect(await store.output(a1.outRef)).toMatchObject({
+          seedSlot: point(chain()[1]).slot,
+          spent: { slot: point(spendA1).slot },
+        });
         expect(store.isTrackedLive(a1.outRef)).toBe(false);
+        expect((await store.checkInvariants()).ok).toBe(true);
       } finally {
         await store.close();
       }
@@ -280,7 +200,7 @@ describe.each(storeAdapters(databases, scratch))(
       }
     });
 
-    it("adding a wallet tracks it and re-seeds that wallet only, idempotently", async () => {
+    it("adding a wallet tracks it and seeds that wallet only, once", async () => {
       const { store } = await started(adapter, 4, 2);
       const a1 = preOrigin(0xd1, TRACKED);
       const b1 = preOrigin(0xe1, WALLET_B);
@@ -313,11 +233,12 @@ describe.each(storeAdapters(databases, scratch))(
           `${key(b2)}@${slot}`,
         ]);
 
-        // Adding it again re-seeds it alone and writes nothing new.
+        // Adding it again: its stored seed point still covers it, so the
+        // step settles it with no read and writes nothing new.
         seeder.addWallets([WALLET_B]);
+        expect(seeder.owed()).toEqual([WALLET_B]);
         expect(await seeder.step()).toEqual({ kind: "ready" });
-        expect(ledger.queries.at(-1)).toEqual([WALLET_B.toString("hex")]);
-        expect(ledger.queries).toHaveLength(3);
+        expect(ledger.queries).toHaveLength(2);
         expect(await seedRows(store)).toHaveLength(3);
         expect((await store.checkInvariants()).ok).toBe(true);
       } finally {
@@ -355,6 +276,154 @@ describe.each(storeAdapters(databases, scratch))(
         });
         expect(seeder.ready()).toBe(true);
         expect(await seedRows(store)).toEqual([`${key(a1)}@${b2}`]);
+        expect((await store.checkInvariants()).ok).toBe(true);
+      } finally {
+        seeder.close();
+        await store.close();
+      }
+    });
+
+    it("a restarted seeder over a seeded store issues no utxo_by_address query", async () => {
+      const opened = await started(adapter, 4, 2);
+      const a1 = preOrigin(0xd1, TRACKED);
+      const ledger = fakeLedger({ utxos: () => [a1], acquirable: () => true });
+      const first = createWalletSeeder({
+        store: opened.store,
+        ledger,
+        wallets: [TRACKED],
+      });
+      expect(await first.step()).toEqual({ kind: "ready" });
+      first.close();
+      await opened.store.close();
+      expect(ledger.queries).toEqual([[TRACKED.toString("hex")]]);
+      const store = opened.reopen();
+      expect(await store.start()).toMatchObject({ kind: "ready" });
+      const again = createWalletSeeder({ store, ledger, wallets: [TRACKED] });
+      try {
+        expect(await again.step()).toEqual({ kind: "ready" });
+        expect(again.ready()).toBe(true);
+        expect(ledger.queries).toHaveLength(1);
+        expect(await seedRows(store)).toEqual([
+          `${key(a1)}@${point(chain()[1]).slot}`,
+        ]);
+      } finally {
+        again.close();
+        await store.close();
+      }
+    });
+
+    it("owes the seed again for a wallet a restart did not track, so an output paid to it meanwhile is seeded", async () => {
+      const opened = await started(adapter, 4, 2);
+      const b1 = preOrigin(0xe1, WALLET_B);
+      // Paid to WALLET_B while no start tracked it: no block row holds it.
+      const paidUntracked = preOrigin(0xe2, WALLET_B);
+      const utxos: SimUtxo[] = [b1];
+      const ledger = fakeLedger({ utxos: () => utxos, acquirable: () => true });
+      const first = createWalletSeeder({
+        store: opened.store,
+        ledger,
+        wallets: [TRACKED],
+      });
+      first.addWallets([WALLET_B]);
+      expect(await first.step()).toEqual({ kind: "ready" });
+      first.close();
+      await opened.store.close();
+      // A start whose own wallets leave WALLET_B out.
+      const untracked = opened.reopen();
+      expect(await untracked.start()).toMatchObject({ kind: "ready" });
+      await untracked.close();
+      utxos.push(paidUntracked);
+      const store = opened.reopen();
+      expect(await store.start()).toMatchObject({ kind: "ready" });
+      const again = createWalletSeeder({ store, ledger, wallets: [TRACKED] });
+      try {
+        again.addWallets([WALLET_B]);
+        expect(await again.step()).toEqual({ kind: "ready" });
+        expect(ledger.queries.at(-1)).toEqual([WALLET_B.toString("hex")]);
+        expect(store.isTrackedLive(paidUntracked.outRef)).toBe(true);
+        expect((await store.checkInvariants()).ok).toBe(true);
+      } finally {
+        again.close();
+        await store.close();
+      }
+    });
+
+    it("records a wallet with no outputs as seeded and does not query it again after a restart", async () => {
+      const opened = await started(adapter, 4, 2, { wallets: [WALLET_B] });
+      const ledger = fakeLedger({ utxos: () => [], acquirable: () => true });
+      const first = createWalletSeeder({
+        store: opened.store,
+        ledger,
+        wallets: [WALLET_B],
+      });
+      expect(await first.step()).toEqual({ kind: "ready" });
+      first.close();
+      await opened.store.close();
+      expect(ledger.queries).toEqual([[WALLET_B.toString("hex")]]);
+      const store = opened.reopen();
+      expect(await store.start()).toMatchObject({ kind: "ready" });
+      const again = createWalletSeeder({ store, ledger, wallets: [WALLET_B] });
+      try {
+        expect(await again.step()).toEqual({ kind: "ready" });
+        expect(ledger.queries).toHaveLength(1);
+        expect(await seedRows(store)).toEqual([]);
+      } finally {
+        again.close();
+        await store.close();
+      }
+    });
+
+    it("owes the seed after a restart only when a committed rewind went below its point", async () => {
+      // Seeded at b1; the store then follows to b3.
+      const opened = await started(adapter, 4, 1);
+      const a1 = preOrigin(0xd1, TRACKED);
+      const ledger = fakeLedger({ utxos: () => [a1], acquirable: () => true });
+      const b1 = point(chain()[0]).slot;
+      let store = opened.store;
+      const restarted = async () => {
+        await store.close();
+        store = opened.reopen();
+        expect(await store.start()).toMatchObject({ kind: "ready" });
+        return createWalletSeeder({ store, ledger, wallets: [TRACKED] });
+      };
+      let seeder = createWalletSeeder({ store, ledger, wallets: [TRACKED] });
+      try {
+        expect(await seeder.step()).toEqual({ kind: "ready" });
+        for (const block of chain().slice(1))
+          expect(await store.applyBlock(block)).toMatchObject({
+            kind: "applied",
+          });
+        // A rewind to b2 lies above the seed point (b1): still seeded.
+        expect(await store.rewind(point(chain()[1]))).toMatchObject({
+          kind: "rewound",
+        });
+        expect(seeder.ready()).toBe(true);
+        seeder.close();
+        seeder = await restarted();
+        expect(await seeder.step()).toEqual({ kind: "ready" });
+        expect(ledger.queries).toHaveLength(1);
+        // A rewind to the seed point itself keeps it too.
+        expect(await store.rewind(point(chain()[0]))).toMatchObject({
+          kind: "rewound",
+        });
+        seeder.close();
+        seeder = await restarted();
+        expect(await seeder.step()).toEqual({ kind: "ready" });
+        expect(ledger.queries).toHaveLength(1);
+        expect(await seedRows(store)).toEqual([`${key(a1)}@${b1}`]);
+        // A rewind to the origin lies below it: owed again, after a restart too.
+        expect(await store.rewind(ORIGIN.point)).toMatchObject({
+          kind: "rewound",
+        });
+        expect(seeder.ready()).toBe(false);
+        seeder.close();
+        seeder = await restarted();
+        expect(seeder.ready()).toBe(false);
+        expect(await seeder.step()).toEqual({ kind: "ready" });
+        expect(ledger.queries).toHaveLength(2);
+        expect(await seedRows(store)).toEqual([
+          `${key(a1)}@${ORIGIN.point.slot}`,
+        ]);
         expect((await store.checkInvariants()).ok).toBe(true);
       } finally {
         seeder.close();

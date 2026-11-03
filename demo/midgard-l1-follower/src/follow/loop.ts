@@ -301,7 +301,7 @@ export const followChain = async (
       tip.kind === "point"
         ? { slot: Number(tip.slot), height: Number(event.tip.blockNo) }
         : null;
-    const nodeBehind = await behind.at(nodeTip);
+    const nodeBehind = behind.at(nodeTip);
     await publish({
       state: "following",
       waiting: null,

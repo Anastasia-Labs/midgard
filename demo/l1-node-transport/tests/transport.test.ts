@@ -1,76 +1,33 @@
 import { execFileSync, spawn } from "node:child_process";
 import { createServer } from "node:net";
 
-import { afterEach, describe, expect, inject, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
-  type ChainSyncEvent,
-  type ChainSyncStream,
   decodeCbor,
   encodeFrame,
   type Frame,
   FrameReader,
-  L1NodeTransport,
   ORIGIN,
   queryRewardAccount,
   TransportFailedError,
   type TransportReadiness,
 } from "../src/index.js";
 import { headerHash, hex, MockNode, within } from "./mock-node.js";
+import {
+  expectContiguous,
+  MAGIC,
+  mockNode,
+  mockNodeBinary,
+  owned,
+  sidecarBinary,
+  take,
+  transportFor,
+} from "./transport-support.js";
 
-const sidecarBinary = inject("sidecarBinary");
-const mockNodeBinary = inject("mockNodeBinary");
-const MAGIC = 42;
-
-const owned: Array<{ close(): Promise<void> }> = [];
 afterEach(async () => {
   for (const resource of owned.splice(0).reverse()) await resource.close();
 });
-
-const mockNode = async (): Promise<MockNode> => {
-  const node = await MockNode.start(mockNodeBinary, MAGIC);
-  owned.push(node);
-  return node;
-};
-
-const transportFor = (
-  socketPath: string,
-  onReadiness?: (readiness: TransportReadiness) => void,
-  requestTimeoutMs = 20_000,
-  networkMagic = MAGIC,
-): L1NodeTransport => {
-  const transport = new L1NodeTransport({
-    binaryPath: sidecarBinary,
-    socketPath,
-    networkMagic,
-    requestTimeoutMs,
-    restartDelayMs: { initial: 50, max: 200 },
-    ...(onReadiness === undefined ? {} : { onReadiness }),
-  });
-  owned.push(transport);
-  return transport;
-};
-
-const take = async (
-  stream: ChainSyncStream,
-  count: number,
-): Promise<ChainSyncEvent[]> => {
-  const events: ChainSyncEvent[] = [];
-  while (events.length < count) {
-    const event = await within(stream.next(), 15_000);
-    if (event === "timeout" || event === undefined)
-      throw new Error(`stream stalled after ${events.length} events`);
-    events.push(event);
-  }
-  return events;
-};
-
-/** Each event's seq follows the last, with no gap and no repeat. */
-const expectContiguous = (events: ChainSyncEvent[], from: bigint): void => {
-  events.forEach((event, index) =>
-    expect(event.seq).toBe(from + BigInt(index)),
-  );
-};
 
 describe("sidecar handshake", () => {
   it("reports its frame protocol version", () => {
@@ -78,10 +35,10 @@ describe("sidecar handshake", () => {
       execFileSync(sidecarBinary, ["--protocol-version"], {
         encoding: "utf8",
       }).trim(),
-    ).toBe("1");
+    ).toBe("2");
   });
 
-  it("refuses an unsupported version with a fatal frame and exit 64", async () => {
+  it("refuses an unsupported version, the previous one included, with a fatal frame and exit 64", async () => {
     const child = spawn(sidecarBinary, [], { stdio: ["pipe", "pipe", "pipe"] });
     const reader = new FrameReader();
     const frames: Frame[] = [];
@@ -95,7 +52,9 @@ describe("sidecar handshake", () => {
     child.stdin.write(
       encodeFrame({
         type: "hello",
-        version: 2,
+        // Version 1 predates no-deadline queries: an old client is refused
+        // at hello, not at its first such query.
+        version: 1,
         socketPath: "/nonexistent",
         networkMagic: MAGIC,
       }),
@@ -462,6 +421,37 @@ describe("local state query, submit and monitor", () => {
       decodeCbor(await transport.query({ query: "chain_block_no" })),
     ).toEqual([1, 4]);
     expect(reasons).toEqual([]);
+  });
+
+  it("answers a query sent with no deadline however long the node takes, and still bounds every other request", async () => {
+    const node = await mockNode();
+    await node.extend(2);
+    const reasons: string[] = [];
+    // The sidecar's own bound is 500 ms and the client's 1,000 ms; the node
+    // takes 1,200 ms per query, and utxo_by_address is two (era, then UTxO).
+    const transport = transportFor(
+      node.socketPath,
+      (readiness) => {
+        if (!readiness.ready) reasons.push(readiness.reason);
+      },
+      1_000,
+    );
+    await node.command({ op: "queryDelay", ms: 1_200 });
+    const address = Uint8Array.from(Buffer.alloc(29, 0x61));
+    const query = { query: "utxo_by_address", addresses: [address] } as const;
+    const answer = await transport.withLedgerState("tip", (state) =>
+      state.query(query, { deadline: "none" }),
+    );
+    // The mock node echoes a Shelley query's body: [6, addresses].
+    expect(decodeCbor(answer)).toEqual([6, [address]]);
+    expect(reasons).toEqual([]);
+    // The same query under the request deadline is still refused.
+    await expect(
+      transport.withLedgerState("tip", (state) => state.query(query)),
+    ).rejects.toMatchObject({
+      name: "TransportRequestError",
+      code: "node_timeout",
+    });
   });
 
   it("returns submit rejections as raw bytes and tracks the mempool", async () => {

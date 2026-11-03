@@ -71,6 +71,11 @@ const aboveCursorChecks = (registry: TemporalRegistry): Check[] => [
     sql: `SELECT tx_hash, output_index FROM l1_outputs WHERE seed_slot > ${CURSOR_SLOT}`,
   },
   {
+    invariant: "INV6",
+    check: "wallet seed point above cursor",
+    sql: `SELECT address FROM l1_wallet_seeds WHERE seed_slot > ${CURSOR_SLOT}`,
+  },
+  {
     invariant: "INV5",
     check: "event key above cursor",
     sql: `SELECT kind, key FROM l1_event_keys WHERE first_canonical_slot > ${CURSOR_SLOT}`,

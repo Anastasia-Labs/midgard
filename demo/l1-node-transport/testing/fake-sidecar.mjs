@@ -20,7 +20,7 @@ export const LEDGER_HANDLER = fileURLToPath(
   new URL("./ledger-handler.mjs", import.meta.url),
 );
 
-const FRAME_PROTOCOL_VERSION = 1;
+const FRAME_PROTOCOL_VERSION = 2;
 
 // ------------------------------------------------------------- points
 
