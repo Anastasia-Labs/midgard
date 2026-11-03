@@ -4,8 +4,9 @@
  * surfaces can reuse the same validation rules without importing heavier
  * transaction-builder modules.
  */
-import { normalizeHex as normalizeCoreHex } from "@al-ft/midgard-core/hex";
 import { type Assets } from "@lucid-evolution/lucid";
+
+import { normalizeHex as normalizeCoreHex } from "./hex.js";
 
 const LOVELACE_INTEGER_PATTERN = /^(?:0|[1-9]\d*)$/;
 

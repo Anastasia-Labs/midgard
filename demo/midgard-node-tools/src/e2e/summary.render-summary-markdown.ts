@@ -1,7 +1,7 @@
 import {
   writeJsonFileAtomic,
   writeTextFileAtomic,
-} from "midgard-node/files/atomic-write";
+} from "@al-ft/midgard-core/atomic-write";
 
 import {
   buildFinalFunctionalGates,

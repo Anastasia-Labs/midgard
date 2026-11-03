@@ -10,7 +10,7 @@ import "@al-ft/midgard-core/plutus-data-cbor";
 import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
 import "effect";
-import "../asset-specs.js";
+import "@al-ft/midgard-core/asset-specs";
 import "../database/index.js";
 import "../services/index.js";
 import "./event-history-submission.js";

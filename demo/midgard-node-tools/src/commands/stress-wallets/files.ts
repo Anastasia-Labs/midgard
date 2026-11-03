@@ -2,11 +2,11 @@ import { createHash, randomBytes } from "node:crypto";
 import { access, lstat, mkdir, open, readFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
-import { formatJson } from "midgard-node/commands/command-utils";
 import {
   writeTextFileAtomic,
   writeTextFileAtomicNoReplace,
-} from "midgard-node/files/atomic-write";
+} from "@al-ft/midgard-core/atomic-write";
+import { formatJson } from "midgard-node/commands/command-utils";
 
 export const fileExists = async (path: string): Promise<boolean> =>
   access(path).then(

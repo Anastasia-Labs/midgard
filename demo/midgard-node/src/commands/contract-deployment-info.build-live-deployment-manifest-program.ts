@@ -1,3 +1,4 @@
+import { writeJsonFileAtomic } from "@al-ft/midgard-core/atomic-write";
 import {
   type DeploymentManifest,
   makeDeploymentMarker,
@@ -13,7 +14,6 @@ import {
   mutateDeploymentRunState,
   sha256File,
 } from "../e2e/run-state.js";
-import { writeJsonFileAtomic } from "../files/atomic-write.js";
 import { Lucid, MidgardContracts, NodeConfig } from "../services/index.js";
 import { fetchProtocolDeploymentStatus } from "../transactions/initialization.js";
 import { queryScriptRewardRegistrationProgram } from "../transactions/script-reward-registration.js";

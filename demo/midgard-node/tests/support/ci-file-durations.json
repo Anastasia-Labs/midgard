@@ -8,8 +8,6 @@
     "tests/admission-writer-collector.test.ts": 3,
     "tests/admission-writer-pipeline.test.ts": 3.2,
     "tests/admission-writer.test.ts": 5.7,
-    "tests/atomic-write-order.test.ts": 0,
-    "tests/atomic-write.test.ts": 0.1,
     "tests/attestation-timeout-correction-step.test.ts": 3.2,
     "tests/attestation-timeout-suffix.test.ts": 2.1,
     "tests/availability-challenge-command.test.ts": 10,

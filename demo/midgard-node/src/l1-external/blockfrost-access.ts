@@ -12,6 +12,7 @@
  *
  * Named networks only: a Custom network has no public slot mapping here.
  */
+import { blockfrostTipPointOf } from "@al-ft/midgard-core/l1-provider-tip";
 import * as LE from "@lucid-evolution/lucid";
 
 import {
@@ -46,22 +47,6 @@ export type BlockfrostAccess = L1Access<BlockfrostAccessAdapter>;
 
 const DEFAULT_BEHIND_MAX_MS = 600_000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
-
-/** The latest block's point from a `/blocks/latest` answer. */
-export const blockfrostTipPointOf = (payload: unknown): L1ViewPoint => {
-  const block = payload as { slot?: unknown; hash?: unknown };
-  if (
-    typeof block?.slot !== "number" ||
-    !Number.isSafeInteger(block.slot) ||
-    block.slot < 0 ||
-    typeof block.hash !== "string" ||
-    !/^[0-9a-f]{64}$/u.test(block.hash)
-  )
-    throw new Error(
-      `Blockfrost /blocks/latest is not a block with a slot and hash: ${JSON.stringify(payload)}`,
-    );
-  return { slot: block.slot, id: block.hash };
-};
 
 /** Opens the Blockfrost adapter; reads nothing until a read asks. */
 export const openBlockfrostAccess = (

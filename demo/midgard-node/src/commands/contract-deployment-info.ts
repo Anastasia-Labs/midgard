@@ -24,7 +24,7 @@ import "../deployable-scripts.js";
 import "../deployment-manifest.js";
 import "../e2e/run-state.js";
 import "../environment.js";
-import "../files/atomic-write.js";
+import "@al-ft/midgard-core/atomic-write";
 import "@al-ft/midgard-core/ogmios-slot";
 import "../services/index.js";
 import "../transactions/initialization.js";

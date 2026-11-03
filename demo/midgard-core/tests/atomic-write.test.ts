@@ -8,7 +8,7 @@ import {
   writeJsonFileAtomic,
   writeTextFileAtomic,
   writeTextFileAtomicNoReplace,
-} from "../src/files/atomic-write.js";
+} from "../src/atomic-write.js";
 
 describe("durable atomic writes", () => {
   it("publishes immutable evidence atomically without replacing a racing writer", async () => {

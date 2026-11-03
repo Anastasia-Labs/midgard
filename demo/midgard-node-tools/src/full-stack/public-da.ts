@@ -2,8 +2,8 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { writeTextFileAtomic } from "@al-ft/midgard-core/atomic-write";
 import { retainedDaPayloadHeaderVerifier } from "@al-ft/midgard-fault-proofs";
-import { writeTextFileAtomic } from "midgard-node/files/atomic-write";
 import {
   createWatcherRetainedDaRuntime,
   parseWatcherProcessConfig,

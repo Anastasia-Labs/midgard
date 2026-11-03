@@ -1,13 +1,13 @@
 import { chmod, mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
+import { writeTextFileAtomic } from "@al-ft/midgard-core/atomic-write";
 import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { formatL1Origin } from "@al-ft/midgard-core/l1-origin";
 import {
   generateDaLibp2pRuntimeManifest,
   writeDaLibp2pRuntimeManifest,
 } from "midgard-node/da/libp2p-runtime-manifest";
-import { writeTextFileAtomic } from "midgard-node/files/atomic-write";
 
 import { L1OriginUndeterminedError } from "../l1-origin.js";
 import { configureStackCommittee } from "./committee.js";

@@ -3,13 +3,13 @@ import { access, lstat, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { writeTextFileAtomic } from "@al-ft/midgard-core/atomic-write";
 import { canonicalJson } from "@al-ft/midgard-core/canonical-json";
 import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   authenticatePublicHttpRelease,
   PUBLIC_NODE_SECRET_NAMES,
 } from "midgard-node/commands/listen-public-http";
-import { writeTextFileAtomic } from "midgard-node/files/atomic-write";
 
 import {
   classificationOf,

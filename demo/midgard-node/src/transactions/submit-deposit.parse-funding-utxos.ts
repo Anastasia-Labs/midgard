@@ -1,3 +1,7 @@
+import {
+  parseAdditionalAssetSpecs,
+  parseLovelaceAmount,
+} from "@al-ft/midgard-core/asset-specs";
 import { normalizeHex as normalizeCoreHex } from "@al-ft/midgard-core/hex";
 import {
   type Assets,
@@ -5,10 +9,6 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import {
-  parseAdditionalAssetSpecs,
-  parseLovelaceAmount,
-} from "../asset-specs.js";
 import {
   MAX_DEPOSIT_BUILD_ADDITIONAL_ASSETS,
   MAX_DEPOSIT_BUILD_FUNDING_UTXOS,

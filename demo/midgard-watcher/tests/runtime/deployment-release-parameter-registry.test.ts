@@ -4,13 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  writeTextFileAtomic,
+  writeTextFileAtomicNoReplace,
+} from "@al-ft/midgard-core/atomic-write";
+import {
   computeDeploymentManifestJsonDigest,
   verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
-import {
-  writeTextFileAtomic,
-  writeTextFileAtomicNoReplace,
-} from "midgard-node/files/atomic-write";
 import { makeGenuineDeploymentRegistryForTest } from "midgard-node/tests/helpers/deployment-parameter-registry";
 import { beforeAll, expect, it } from "vitest";
 

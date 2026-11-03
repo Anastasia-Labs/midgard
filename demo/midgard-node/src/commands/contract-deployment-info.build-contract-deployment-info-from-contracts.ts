@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 
+import { writeJsonFileAtomic } from "@al-ft/midgard-core/atomic-write";
 import { type DeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 import { type ReferenceScriptAuthPolicyDeploymentInfo } from "@al-ft/midgard-sdk";
@@ -10,7 +11,6 @@ import {
   defaultDeploymentRunStatePath,
   loadDeploymentRunState,
 } from "../e2e/run-state.js";
-import { writeJsonFileAtomic } from "../files/atomic-write.js";
 import { Lucid, MidgardContracts } from "../services/index.js";
 import {
   buildFraudProofCatalogueDeploymentInfo,

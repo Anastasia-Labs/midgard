@@ -53,10 +53,10 @@ vi.mock("node:fs/promises", async (importOriginal) => {
   };
 });
 
-let writeTextFileAtomic: typeof import("../src/files/atomic-write.js").writeTextFileAtomic;
+let writeTextFileAtomic: typeof import("../src/atomic-write.js").writeTextFileAtomic;
 
 beforeAll(async () => {
-  ({ writeTextFileAtomic } = await import("../src/files/atomic-write.js"));
+  ({ writeTextFileAtomic } = await import("../src/atomic-write.js"));
 });
 
 /**

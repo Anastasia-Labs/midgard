@@ -52,6 +52,24 @@
       "import": "./dist/canonical-json.js",
       "require": "./dist/canonical-json.cjs"
     },
+    "./atomic-write": {
+      "midgard-source": "./src/atomic-write.ts",
+      "types": "./dist/atomic-write.d.ts",
+      "import": "./dist/atomic-write.js",
+      "require": "./dist/atomic-write.cjs"
+    },
+    "./l1-provider-tip": {
+      "midgard-source": "./src/l1-provider-tip.ts",
+      "types": "./dist/l1-provider-tip.d.ts",
+      "import": "./dist/l1-provider-tip.js",
+      "require": "./dist/l1-provider-tip.cjs"
+    },
+    "./asset-specs": {
+      "midgard-source": "./src/asset-specs.ts",
+      "types": "./dist/asset-specs.d.ts",
+      "import": "./dist/asset-specs.js",
+      "require": "./dist/asset-specs.cjs"
+    },
     "./hex": {
       "midgard-source": "./src/hex.ts",
       "types": "./dist/hex.d.ts",
@@ -414,6 +432,36 @@
         "require": {
           "types": "./dist/canonical-json.d.cts",
           "default": "./dist/canonical-json.cjs"
+        }
+      },
+      "./atomic-write": {
+        "import": {
+          "types": "./dist/atomic-write.d.ts",
+          "default": "./dist/atomic-write.js"
+        },
+        "require": {
+          "types": "./dist/atomic-write.d.cts",
+          "default": "./dist/atomic-write.cjs"
+        }
+      },
+      "./l1-provider-tip": {
+        "import": {
+          "types": "./dist/l1-provider-tip.d.ts",
+          "default": "./dist/l1-provider-tip.js"
+        },
+        "require": {
+          "types": "./dist/l1-provider-tip.d.cts",
+          "default": "./dist/l1-provider-tip.cjs"
+        }
+      },
+      "./asset-specs": {
+        "import": {
+          "types": "./dist/asset-specs.d.ts",
+          "default": "./dist/asset-specs.js"
+        },
+        "require": {
+          "types": "./dist/asset-specs.d.cts",
+          "default": "./dist/asset-specs.cjs"
         }
       },
       "./hex": {
@@ -1034,6 +1082,9 @@
             "src/validation-merkle.ts",
             "src/error-format.ts",
             "src/canonical-json.ts",
+            "src/atomic-write.ts",
+            "src/l1-provider-tip.ts",
+            "src/asset-specs.ts",
             "src/hex.ts",
             "src/lucid-data.ts",
             "src/narrowing.ts",

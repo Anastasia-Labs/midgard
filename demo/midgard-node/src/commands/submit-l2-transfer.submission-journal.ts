@@ -15,6 +15,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { normalizeAssets } from "@al-ft/midgard-core/assets";
+import { writeTextFileAtomicNoReplace } from "@al-ft/midgard-core/atomic-write";
 import {
   computeMidgardNativeTxId,
   decodeMidgardNativeTxFullFromCanonicalCbor,
@@ -22,7 +23,6 @@ import {
 import { type Assets } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
-import { writeTextFileAtomicNoReplace } from "../files/atomic-write.js";
 import {
   ContractDeploymentIdentity,
   NodeConfig as NodeConfigService,

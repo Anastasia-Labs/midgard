@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import {
   writeTextFileAtomic,
   writeTextFileAtomicNoReplace,
-} from "midgard-node/files/atomic-write";
+} from "@al-ft/midgard-core/atomic-write";
 
 export type StepRecord = {
   status: "running" | "complete";

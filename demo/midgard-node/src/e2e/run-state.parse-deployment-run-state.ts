@@ -3,12 +3,12 @@ import { existsSync } from "node:fs";
 import { type FileHandle, mkdir, open, readFile, rm } from "node:fs/promises";
 import { dirname, resolve as resolvePath } from "node:path";
 
+import { writeJsonFileAtomic } from "@al-ft/midgard-core/atomic-write";
 import {
   type DeploymentMarker,
   parseDeploymentMarker,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 
-import { writeJsonFileAtomic } from "../files/atomic-write.js";
 import {
   assertIsoString,
   assertLowerHex,

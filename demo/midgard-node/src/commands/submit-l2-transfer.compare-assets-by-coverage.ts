@@ -1,3 +1,7 @@
+import {
+  parseAdditionalAssetSpecs,
+  parseLovelaceAmount,
+} from "@al-ft/midgard-core/asset-specs";
 import { isZeroAssets, normalizeAssets } from "@al-ft/midgard-core/assets";
 import {
   decodeMidgardAddressBytes,
@@ -8,10 +12,6 @@ import { outRefLabel, parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import { type Assets } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import {
-  parseAdditionalAssetSpecs,
-  parseLovelaceAmount,
-} from "../asset-specs.js";
 import { compareOutRefs } from "../tx-context.js";
 import {
   defaultMidgardNodeEndpoint,

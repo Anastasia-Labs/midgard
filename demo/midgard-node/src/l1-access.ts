@@ -17,6 +17,7 @@
  * An emulator client keeps answering with its own chain slot.
  */
 import type { TransportReadiness } from "@al-ft/l1-node-transport";
+import type { L1ViewPoint } from "@al-ft/midgard-core/l1-provider-tip";
 import type { SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import {
   createSlotClock,
@@ -32,8 +33,7 @@ export class L1SlotUnknownError extends Data.TaggedError("L1SlotUnknownError")<{
   readonly cause?: unknown;
 }> {}
 
-/** A point an adapter's reads are answered at. */
-export type L1ViewPoint = Readonly<{ slot: number; id: string }>;
+export type { L1ViewPoint } from "@al-ft/midgard-core/l1-provider-tip";
 
 /** Which adapter an access is: the follower one is for roles only. */
 export type L1AccessKind = "follower" | "node" | "kupmios" | "blockfrost";

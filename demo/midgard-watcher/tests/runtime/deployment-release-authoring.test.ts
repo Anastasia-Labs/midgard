@@ -5,7 +5,7 @@ import { join } from "node:path";
 import {
   writeTextFileAtomic,
   writeTextFileAtomicNoReplace,
-} from "midgard-node/files/atomic-write";
+} from "@al-ft/midgard-core/atomic-write";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {

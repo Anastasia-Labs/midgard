@@ -1,6 +1,6 @@
 import { join } from "node:path";
 
-import { writeTextFileAtomic } from "midgard-node/files/atomic-write";
+import { writeTextFileAtomic } from "@al-ft/midgard-core/atomic-write";
 
 import { composeYaml, override } from "./compose-yaml.js";
 import type { StackProcesses } from "./process.js";

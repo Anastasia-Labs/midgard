@@ -2,13 +2,13 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { writeTextFileAtomic } from "@al-ft/midgard-core/atomic-write";
 import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 import {
   type DaLibp2pRuntimeManifest,
   parseDaLibp2pRuntimeManifest,
 } from "@al-ft/midgard-core/da-transport";
 import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { writeTextFileAtomic } from "midgard-node/files/atomic-write";
 
 import { assertStackReleaseSigned } from "./attached-public.js";
 import { composeYaml, override } from "./compose-yaml.js";

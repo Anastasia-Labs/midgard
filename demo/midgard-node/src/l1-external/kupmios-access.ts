@@ -12,6 +12,11 @@
  *   chain at least that far.
  * - Submit slot: the local Ogmios submit-slot snapshot.
  */
+import {
+  kupoCheckpointSlotOf,
+  L1ExternalBehindError,
+  ogmiosTipPointOf,
+} from "@al-ft/midgard-core/l1-provider-tip";
 import { normalizeOgmiosHttpUrl } from "@al-ft/midgard-core/ogmios-slot";
 import {
   queryLocalOgmiosShelleyGenesisSlotConfig,
@@ -52,45 +57,9 @@ export type KupmiosAccessAdapter = L1AccessAdapter &
 
 export type KupmiosAccess = L1Access<KupmiosAccessAdapter>;
 
-/** The external provider has not reached the point a read needs yet: retry. */
-export class L1ExternalBehindError extends Error {
-  override readonly name = "L1ExternalBehindError";
-  readonly retryable = true;
-}
-
 const DEFAULT_SYNC_TIMEOUT_MS = 60_000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
 const SYNC_POLL_MS = 500;
-
-const exactSlot = (value: unknown, what: string): number => {
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0)
-    throw new Error(`${what} is not a slot: ${JSON.stringify(value)}`);
-  return value;
-};
-
-/** The Ogmios tip from a `queryNetwork/tip` answer. */
-export const ogmiosTipPointOf = (payload: unknown): L1ViewPoint => {
-  const answer = payload as { result?: unknown; error?: unknown };
-  if (answer?.error !== undefined)
-    throw new Error(
-      `Ogmios queryNetwork/tip failed: ${JSON.stringify(answer.error)}`,
-    );
-  const result = answer?.result as { slot?: unknown; id?: unknown } | string;
-  if (result === "origin" || typeof result !== "object" || result === null)
-    throw new L1ExternalBehindError("Ogmios reports the chain at its origin");
-  if (typeof result.id !== "string" || !/^[0-9a-f]{64}$/u.test(result.id))
-    throw new Error("Ogmios queryNetwork/tip has no 32-byte block id");
-  return { slot: exactSlot(result.slot, "the Ogmios tip"), id: result.id };
-};
-
-/** Kupo's most recent checkpoint slot, from its JSON `/health`. */
-export const kupoCheckpointSlotOf = (payload: unknown): number | null => {
-  const checkpoint = (payload as { most_recent_checkpoint?: unknown })
-    ?.most_recent_checkpoint;
-  return checkpoint === null || checkpoint === undefined
-    ? null
-    : exactSlot(checkpoint, "Kupo's most recent checkpoint");
-};
 
 /** Opens the Kupmios adapter; reads nothing until a read asks. */
 export const openKupmiosAccess = (input: KupmiosAccessInput): KupmiosAccess => {

@@ -9,12 +9,12 @@ import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { paymentCredentialOf } from "@lucid-evolution/lucid";
 import {
   writeTextFileAtomic,
   writeTextFileAtomicNoReplace,
-} from "midgard-node/files/atomic-write";
+} from "@al-ft/midgard-core/atomic-write";
+import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { paymentCredentialOf } from "@lucid-evolution/lucid";
 import type { publishWorkflowDeploymentOnChain } from "midgard-node/tests/helpers/published-workflow-deployment";
 
 import type { WatcherWorkflowFundingProfileBody } from "../../src/funding/workflow-funding-profile-overlay.js";

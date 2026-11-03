@@ -11,7 +11,7 @@ import "@al-ft/midgard-core/cek-proof";
 import "@al-ft/midgard-core/codec";
 import "@lucid-evolution/lucid";
 import "effect";
-import "../asset-specs.js";
+import "@al-ft/midgard-core/asset-specs";
 import "../services/index.js";
 import "../sleep.js";
 import "../tx-context.js";

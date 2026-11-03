@@ -1,3 +1,4 @@
+import { writeJsonFileAtomic } from "@al-ft/midgard-core/atomic-write";
 import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 import {
   DA_LIBP2P_RUNTIME_MANIFEST_IDENTITY_SOURCE,
@@ -10,7 +11,6 @@ import {
 import { multiaddr } from "@multiformats/multiaddr";
 
 import { readFinalizedDeploymentIdentity } from "../commands/contract-deployment-info.js";
-import { writeJsonFileAtomic } from "../files/atomic-write.js";
 import { admittedProducers } from "./admitted-producers.js";
 
 export const DA_LIBP2P_RUNTIME_PROFILES = [

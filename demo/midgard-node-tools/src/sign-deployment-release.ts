@@ -1,13 +1,13 @@
 import { mkdir, readdir, readFile, rm } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 
+import { writeTextFileAtomicNoReplace } from "@al-ft/midgard-core/atomic-write";
 import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   type DeploymentReleaseProvenance,
   verifySignedDeploymentRelease,
 } from "@al-ft/midgard-core/deployment-release";
 import { authenticatePublicHttpRelease } from "midgard-node/commands/listen-public-http";
-import { writeTextFileAtomicNoReplace } from "midgard-node/files/atomic-write";
 import { authorWatcherDeploymentRelease } from "midgard-watcher";
 
 import { readReleaseInput } from "./full-stack/release.js";

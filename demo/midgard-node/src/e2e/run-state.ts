@@ -4,7 +4,7 @@ import "node:fs/promises";
 import "node:path";
 import "@al-ft/midgard-core/deployment-manifest-identity";
 import "../artifact-schema.js";
-import "../files/atomic-write.js";
+import "@al-ft/midgard-core/atomic-write";
 import "./run-state.deployment-run-identity.js";
 import "./run-state.parse-deployment-run-identity.js";
 import "./run-state.parse-deployment-run-state.js";

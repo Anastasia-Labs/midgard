@@ -2,6 +2,10 @@ import { createHash, createPrivateKey } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 
+import {
+  writeTextFileAtomic,
+  writeTextFileAtomicNoReplace,
+} from "@al-ft/midgard-core/atomic-write";
 import { canonicalJson } from "@al-ft/midgard-core/canonical-json";
 import {
   computeDeploymentManifestJsonDigest,
@@ -9,10 +13,6 @@ import {
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { parseDeploymentReleaseProvenance } from "@al-ft/midgard-core/deployment-release";
 import { paymentCredentialOf, walletFromSeed } from "@lucid-evolution/lucid";
-import {
-  writeTextFileAtomic,
-  writeTextFileAtomicNoReplace,
-} from "midgard-node/files/atomic-write";
 import {
   authorWatcherDeploymentRelease,
   createWatcherWorkflowFundingProfileBundle,

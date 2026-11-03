@@ -1,6 +1,6 @@
 import "node:util";
 import "midgard-node/artifact-schema";
-import "midgard-node/files/atomic-write";
+import "@al-ft/midgard-core/atomic-write";
 import "./runner.js";
 import "./summary.parse-step-retry-summary.js";
 import "./summary.build-final-functional-gates.js";

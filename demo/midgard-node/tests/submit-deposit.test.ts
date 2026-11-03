@@ -1,14 +1,14 @@
 import {
+  parseAdditionalAssetSpec,
+  parseAdditionalAssetSpecs,
+  parseLovelaceAmount,
+} from "@al-ft/midgard-core/asset-specs";
+import {
   getProtocolParameters,
   resolveEventInclusionTime,
 } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import {
-  parseAdditionalAssetSpec,
-  parseAdditionalAssetSpecs,
-  parseLovelaceAmount,
-} from "../src/asset-specs.js";
 import {
   parseBuildDepositRequest,
   parseSubmitDepositConfig,
