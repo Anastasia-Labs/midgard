@@ -19,11 +19,8 @@ import ".././midgard-output-helpers.js";
 import ".././utils.js";
 import "./fixtures.submit-tx.js";
 import "./fixtures.make-history-withdrawal-entry.js";
-import "./fixtures.make-deposit-submission-attempt.js";
-export {
-  makeDepositEntry,
-  makeDepositSubmissionAttempt,
-} from "./fixtures.make-deposit-submission-attempt.js";
+import "./fixtures.make-deposit-entry.js";
+export { makeDepositEntry } from "./fixtures.make-deposit-entry.js";
 export {
   address1,
   address2,

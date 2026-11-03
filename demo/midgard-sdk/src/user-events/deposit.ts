@@ -160,7 +160,7 @@ export type DepositBuildMetadata = {
 
 /** Prepare the stable nonce, complete payload and funding before any signature.
  * For External plans, publish with buildEventHistoryPublication and confirm its
- * exact output before unsigned admission, or pass this request to submitEventHistory. */
+ * exact output before unsigned admission, or submit with submitDepositProgram. */
 export const prepareDepositSubmissionProgram = (
   lucid: LucidEvolution,
   contracts: UserHistoryContracts,

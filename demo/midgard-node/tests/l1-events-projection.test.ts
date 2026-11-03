@@ -392,10 +392,11 @@ describe.each(["sqlite", "postgres"] as const)(
           outputIndex: event.location.index,
         },
       });
+      const { location: _location, ...depositBase } = base(projectedDeposit);
       const oldDeposit = await Effect.runPromise(
         depositDataToEntry(
           {
-            ...base(projectedDeposit),
+            ...depositBase,
             originalAssets: SDK.valueToAssets(
               Data.from(projectedDeposit.originalAssetsCbor, SDK.Value),
             ),
@@ -421,7 +422,7 @@ describe.each(["sqlite", "postgres"] as const)(
         idCbor: oldDeposit.event_id.toString("hex"),
         infoCbor: oldDeposit.event_info.toString("hex"),
         inclusionTimeMs: oldDeposit.inclusion_time.getTime(),
-        l1TxHash: oldDeposit.deposit_l1_tx_hash.toString("hex"),
+        l1TxHash: projectedDeposit.admission.outRef.txHash.toString("hex"),
         ledgerTxId: Buffer.from(oldDeposit.ledger_tx_id).toString("hex"),
         ledgerOutput: Buffer.from(oldDeposit.ledger_output).toString("hex"),
         ledgerAddress: oldDeposit.ledger_address,

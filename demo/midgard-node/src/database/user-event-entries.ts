@@ -1,8 +1,10 @@
 /**
- * Converts the authenticated bytes of an L1 deposit or withdrawal event, with
- * its location, into the node's SQL row (`deposits_utxos`,
- * `withdrawal_utxos`). It does not require an unspent order, and grants no
- * selection or L2 authority.
+ * Converts the authenticated bytes of an L1 deposit or withdrawal event into
+ * the node's SQL row (`deposits_utxos`, `withdrawal_utxos`). It does not
+ * require an unspent order, and grants no selection or L2 authority. A deposit
+ * row's L1 tx hash is its admission tx, which the follower records; an Order
+ * read here may have moved since, so the deposit conversion leaves that column
+ * out rather than fill it with the Order's location.
  */
 import {
   decodeMidgardTxOutput,
@@ -24,16 +26,21 @@ type EventEntryData = Readonly<{
   idCbor: Buffer;
   infoCbor: Buffer;
   inclusionTime: Date;
-  location: OutRefLike;
 }>;
 type DepositEntryData = EventEntryData & Readonly<{ originalAssets: Assets }>;
 type WithdrawalEntryData = EventEntryData &
-  Readonly<{ assetName: string; payloadCbor: string }>;
+  Readonly<{ location: OutRefLike; assetName: string; payloadCbor: string }>;
+
+/** A deposit row without its admission tx hash, which an Order does not carry. */
+export type DepositOrderEntry = Omit<
+  DepositsDB.Entry,
+  DepositsDB.Columns.DEPOSIT_L1_TX_HASH
+>;
 
 export const depositDataToEntry = (
   deposit: DepositEntryData,
   network: Network,
-): Effect.Effect<DepositsDB.Entry, SDK.LucidError> =>
+): Effect.Effect<DepositOrderEntry, SDK.LucidError> =>
   Effect.try({
     try: () => {
       const info = Data.from(deposit.infoCbor.toString("hex"), SDK.DepositInfo);
@@ -68,10 +75,6 @@ export const depositDataToEntry = (
         [UserEventsUtils.Columns.ID]: deposit.idCbor,
         [UserEventsUtils.Columns.INFO]: deposit.infoCbor,
         [UserEventsUtils.Columns.INCLUSION_TIME]: deposit.inclusionTime,
-        [DepositsDB.Columns.DEPOSIT_L1_TX_HASH]: Buffer.from(
-          deposit.location.txHash,
-          "hex",
-        ),
         [DepositsDB.Columns.LEDGER_TX_ID]: computeHash32(deposit.idCbor),
         [DepositsDB.Columns.LEDGER_OUTPUT]: Buffer.from(output),
         [DepositsDB.Columns.LEDGER_ADDRESS]: l2Address,

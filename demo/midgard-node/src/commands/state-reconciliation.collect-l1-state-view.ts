@@ -128,9 +128,7 @@ export const collectL1StateView: Effect.Effect<
     ...SDK.eventHistoryDeploymentFromContracts(eventHistory.deposit),
   });
   const deposits = yield* Effect.forEach(depositUtxos, (utxo) =>
-    Effect.either(
-      depositDataToEntry({ ...utxo, location: utxo.utxo }, nodeConfig.NETWORK),
-    ).pipe(
+    Effect.either(depositDataToEntry(utxo, nodeConfig.NETWORK)).pipe(
       Effect.map(
         (result): L1EventOrder<DepositPayload> => ({
           outRef: outRefOf(utxo.utxo),

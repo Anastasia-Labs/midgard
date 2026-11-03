@@ -13,7 +13,6 @@ import {
   AddressHistoryDB,
   BlocksDB,
   ConfirmedLedgerDB,
-  DepositSubmissionAttemptsDB,
   ImmutableDB,
   LedgerUtils,
   MempoolDB,
@@ -38,12 +37,10 @@ import {
   blockHeader1,
   blockHeader2,
   databaseFixtureBytes,
-  databaseOutputReferenceId,
   databaseTxHash,
   isolatedDb,
   ledgerEntry1,
   ledgerEntry2,
-  makeDepositSubmissionAttempt,
   makeValidNativeImmutableEntry,
   removeTimestampFromLedgerEntry,
   removeTimestampFromTxEntry,
@@ -1250,141 +1247,6 @@ export const registerLedgerTests = () => {
           ).toStrictEqual([thisWalletAddress]);
         }),
       ),
-    );
-  });
-
-  describe("DepositSubmissionAttemptsDB", () => {
-    it.effect(
-      "stores submitted attempts idempotently and rejects tx hash payload drift",
-      (_) =>
-        isolatedDb(
-          Effect.gen(function* () {
-            const attempt = makeDepositSubmissionAttempt();
-            const first =
-              yield* DepositSubmissionAttemptsDB.insertSubmitted(attempt);
-            const second =
-              yield* DepositSubmissionAttemptsDB.insertSubmitted(attempt);
-
-            expect(
-              first[DepositSubmissionAttemptsDB.Columns.TX_HASH].equals(
-                second[DepositSubmissionAttemptsDB.Columns.TX_HASH],
-              ),
-            ).toEqual(true);
-            expect(
-              first[DepositSubmissionAttemptsDB.Columns.CONFIRMATION_STATUS],
-            ).toEqual(
-              DepositSubmissionAttemptsDB.Status.SubmittedConfirmationUnknown,
-            );
-
-            const conflict = yield* Effect.either(
-              DepositSubmissionAttemptsDB.insertSubmitted({
-                ...attempt,
-                [DepositSubmissionAttemptsDB.Columns.EXPECTED_LOVELACE]: "2",
-              }),
-            );
-            expect(conflict._tag).toEqual("Left");
-          }),
-        ),
-    );
-
-    it.effect("stores bigint metadata as stable JSON strings", (_) =>
-      isolatedDb(
-        Effect.gen(function* () {
-          const attempt = makeDepositSubmissionAttempt();
-          const metadata =
-            attempt[DepositSubmissionAttemptsDB.Columns.METADATA];
-          const bigintAttempt: DepositSubmissionAttemptsDB.InsertSubmittedInput =
-            {
-              ...attempt,
-              [DepositSubmissionAttemptsDB.Columns.METADATA]: {
-                ...metadata,
-                nonceInput: {
-                  ...metadata.nonceInput,
-                  outputIndex: 1n as unknown as number,
-                },
-                validTo: 1_800_000_000_000n as unknown as number,
-                inclusionTime: 1_800_000_060_000n as unknown as number,
-              },
-            };
-
-          const first =
-            yield* DepositSubmissionAttemptsDB.insertSubmitted(bigintAttempt);
-          const second =
-            yield* DepositSubmissionAttemptsDB.insertSubmitted(bigintAttempt);
-          const rawStoredMetadata = first[
-            DepositSubmissionAttemptsDB.Columns.METADATA
-          ] as unknown;
-          const storedMetadata = (
-            typeof rawStoredMetadata === "string"
-              ? JSON.parse(rawStoredMetadata)
-              : rawStoredMetadata
-          ) as {
-            readonly nonceInput: { readonly outputIndex: string };
-            readonly validTo: string;
-            readonly inclusionTime: string;
-          };
-
-          expect(
-            first[DepositSubmissionAttemptsDB.Columns.TX_HASH].equals(
-              second[DepositSubmissionAttemptsDB.Columns.TX_HASH],
-            ),
-          ).toEqual(true);
-          expect(storedMetadata.nonceInput.outputIndex).toEqual("1");
-          expect(storedMetadata.validTo).toEqual("1800000000000");
-          expect(storedMetadata.inclusionTime).toEqual("1800000060000");
-        }),
-      ),
-    );
-
-    it.effect(
-      "tracks confirmation, reconciliation, ambiguity, and open attempts",
-      (_) =>
-        isolatedDb(
-          Effect.gen(function* () {
-            const confirmed = makeDepositSubmissionAttempt({
-              txHash: databaseTxHash("deposit-submission.confirmed"),
-              eventId: databaseOutputReferenceId(
-                "deposit-submission.confirmed",
-              ),
-            });
-            const reconciled = makeDepositSubmissionAttempt({
-              txHash: databaseTxHash("deposit-submission.reconciled"),
-              eventId: databaseOutputReferenceId(
-                "deposit-submission.reconciled",
-              ),
-            });
-            const ambiguous = makeDepositSubmissionAttempt({
-              txHash: databaseTxHash("deposit-submission.ambiguous"),
-              eventId: databaseOutputReferenceId(
-                "deposit-submission.ambiguous",
-              ),
-            });
-
-            yield* DepositSubmissionAttemptsDB.insertSubmitted(confirmed);
-            yield* DepositSubmissionAttemptsDB.insertSubmitted(reconciled);
-            yield* DepositSubmissionAttemptsDB.insertSubmitted(ambiguous);
-
-            yield* DepositSubmissionAttemptsDB.markConfirmed(
-              confirmed[DepositSubmissionAttemptsDB.Columns.TX_HASH],
-            );
-            yield* DepositSubmissionAttemptsDB.markReconciled(
-              reconciled[DepositSubmissionAttemptsDB.Columns.TX_HASH],
-            );
-            yield* DepositSubmissionAttemptsDB.markAmbiguous(
-              ambiguous[DepositSubmissionAttemptsDB.Columns.TX_HASH],
-              "confirmation timed out",
-            );
-
-            const open =
-              yield* DepositSubmissionAttemptsDB.retrieveOpenAttempts();
-            expect(open).toHaveLength(1);
-            expect(
-              open[0]?.[
-                DepositSubmissionAttemptsDB.Columns.CONFIRMATION_STATUS
-              ],
-            ).toEqual(DepositSubmissionAttemptsDB.Status.Ambiguous);
-          }),
-        ),
     );
   });
 

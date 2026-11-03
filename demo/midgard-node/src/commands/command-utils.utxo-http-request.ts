@@ -69,39 +69,3 @@ export const readUtxoPage = async (
 };
 export const paceUtxoPage = () =>
   new Promise<void>((resolve) => setTimeout(resolve, 120));
-
-/** Sequential splitting keeps at most 100 initial chunks plus seven split levels. */
-export async function* readUtxoBatchPages(
-  url: string,
-  outRefs: readonly string[],
-  deadline: number,
-) {
-  const pending: (readonly string[])[] = [];
-  for (let offset = 0; offset < outRefs.length; offset += 100)
-    pending.push(outRefs.slice(offset, offset + 100));
-  pending.reverse();
-  let first = true;
-  while (pending.length > 0) {
-    const batch = pending.pop()!;
-    if (!first) await paceUtxoPage();
-    first = false;
-    try {
-      const page = await readUtxoPage(
-        url,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(batch),
-        },
-        deadline,
-        10_000,
-      );
-      yield { page, requestedCount: batch.length };
-    } catch (error) {
-      if (!(error instanceof UtxoReadDataLimitError) || batch.length === 1)
-        throw error;
-      const middle = Math.floor(batch.length / 2);
-      pending.push(batch.slice(middle), batch.slice(0, middle));
-    }
-  }
-}

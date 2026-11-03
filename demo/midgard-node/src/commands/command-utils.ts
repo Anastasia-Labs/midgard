@@ -16,7 +16,6 @@ import {
   Data as LucidData,
   getAddressDetails,
   type Network,
-  type UTxO,
   valueToAssets,
   walletFromSeed,
 } from "@lucid-evolution/lucid";
@@ -24,7 +23,6 @@ import {
 import type { OutRefLike } from "../tx-context.js";
 import {
   paceUtxoPage,
-  readUtxoBatchPages,
   readUtxoPage,
 } from "./command-utils.utxo-http-request.js";
 import {
@@ -425,34 +423,3 @@ export const fetchNodeUtxosByAddress = async (
   }
   throw new Error("Midgard node UTxO query exceeds the page limit");
 };
-
-export const fetchNodeUtxosByOutRefs = async (
-  nodeEndpoint: string,
-  outRefs: readonly string[],
-): Promise<readonly NodeUtxo[]> => {
-  if (outRefs.length > 10_000 || new Set(outRefs).size !== outRefs.length)
-    throw new Error(
-      "Midgard node UTxO references exceed the limit or contain duplicates",
-    );
-  const all: NodeUtxo[] = [];
-  const deadline = Date.now() + 60_000;
-  for await (const { page, requestedCount } of readUtxoBatchPages(
-    `${nodeEndpoint}/utxos?by-outrefs`,
-    outRefs,
-    deadline,
-  )) {
-    const entries = parseNodeUtxoResponse(page).map(decodeNodeUtxo);
-    if (entries.length > requestedCount)
-      throw new Error("Midgard node UTxO page exceeds the row limit");
-    all.push(...entries);
-  }
-  return all;
-};
-
-export const lucidUtxoFromNodeUtxo = (utxo: NodeUtxo): UTxO => ({
-  txHash: utxo.txHash,
-  outputIndex: utxo.outputIndex,
-  address: utxo.address,
-  assets: { ...utxo.assets },
-  ...(utxo.datum === undefined ? {} : { datum: utxo.datum }),
-});

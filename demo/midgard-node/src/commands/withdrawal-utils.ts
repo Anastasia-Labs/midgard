@@ -7,26 +7,7 @@ import {
   type Network,
 } from "@lucid-evolution/lucid";
 
-import { parseHexBytes, parseTxOutRefLabel } from "./command-utils.js";
-
-export const parseWithdrawalTxOutRefLabel = (
-  value: unknown,
-  fieldName = "txOutRef",
-): {
-  readonly txHash: string;
-  readonly outputIndex: number;
-  readonly cbor: Buffer;
-  readonly outputReference: SDK.OutputReference;
-} => {
-  const parsed = parseTxOutRefLabel(value, fieldName);
-  return {
-    ...parsed,
-    outputReference: {
-      transactionId: parsed.txHash,
-      outputIndex: BigInt(parsed.outputIndex),
-    },
-  };
-};
+import { parseHexBytes } from "./command-utils.js";
 
 export const parseCardanoDatumCbor = (
   value: string | undefined,

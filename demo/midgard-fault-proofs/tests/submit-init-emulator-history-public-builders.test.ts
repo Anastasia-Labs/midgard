@@ -346,67 +346,65 @@ it.each(["Deposit", "Withdrawal"] as const)(
     const withdrawal = historyPairPayloads(h)[1]!;
     if (!("WithdrawalPayload" in withdrawal))
       throw new Error("Expected withdrawal");
-    const prepared =
+    const attempts: SDK.UserSubmissionAttempt[] = [];
+    const view: SDK.UserL1View = {
+      lucid: h.lucid,
+      indexedSlot: async () => h.emulator.slot,
+    };
+    const options: SDK.UserSubmissionOptions = {
+      store: {
+        latest: async () => attempts.at(-1),
+        append: async (attempt) => {
+          if (attempts.some((recorded) => recorded.attempt === attempt.attempt))
+            return "lost";
+          attempts.push(attempt);
+          return "created";
+        },
+      },
+      deadlineMs: h.emulator.now() + 600_000,
+      now: () => h.emulator.now(),
+      sleep: async (ms) => {
+        h.emulator.awaitSlot(Math.max(1, Math.ceil(ms / 1000)));
+      },
+    };
+    const nonce = h.eventNonces[kind === "Deposit" ? 0 : 1]!;
+    const outcome = await Effect.runPromise(
       kind === "Deposit"
-        ? await Effect.runPromise(
-            SDK.prepareDepositSubmissionProgram(h.lucid, contracts, {
+        ? SDK.submitDepositProgram(
+            view,
+            contracts,
+            {
               l2Address: h.wallet.address,
               l2Datum: Data.to("ab".repeat(600)),
               lovelace: 20_000_000n,
               additionalAssets: {},
-              nonceInput: h.eventNonces[0]!,
+              nonceInput: nonce,
               referenceScripts: { depositMinting: h.scripts[0]! },
-            }),
+            },
+            options,
           )
-        : await Effect.runPromise(
-            SDK.prepareWithdrawalSubmissionProgram(h.lucid, contracts, {
+        : SDK.submitWithdrawalProgram(
+            view,
+            contracts,
+            {
               body: withdrawal.WithdrawalPayload.event.info.body,
               signature: withdrawal.WithdrawalPayload.event.info.signature,
               refundAddress: withdrawal.WithdrawalPayload.refund_address,
               refundDatum: { InlineDatum: { data: "ab".repeat(600) } },
-              nonceInput: h.eventNonces[1]!,
+              nonceInput: nonce,
               referenceScripts: { withdrawalMinting: h.scripts[1]! },
-            }),
-          );
-    let saved: SDK.EventHistorySubmissionCheckpoint | undefined;
-    const phases: string[] = [];
-    const result = await SDK.submitEventHistory({
-      context: prepared.context,
-      request: prepared.request,
-      driver: {
-        save: async (checkpoint) => {
-          saved = checkpoint;
-        },
-        submit: async (tx, attempt) => {
-          expect(saved?.pending).toEqual(attempt);
-          const hash = await h.submit(`${kind}-prepared-${attempt.phase}`, tx);
-          expect(hash).toBe(attempt.txHash);
-          phases.push(attempt.phase);
-          return { kind: "Confirmed" };
-        },
-        reconcile: async () => {
-          throw new Error("Unexpected pending transaction");
-        },
-        funding: h.funding,
-        now: () => h.emulator.now(),
-        waitUntil: async (time) => {
-          h.emulator.awaitSlot(
-            Math.max(1, Math.ceil((time - h.emulator.now()) / 1000)),
-          );
-        },
-      },
-      maxAttempts: 5,
-      deadlineMs: h.emulator.now() + 600_000,
-      validityDurationMs: 120_000,
-      outputVisibilityAttempts: 3,
-      retryDelayMs: 1000,
-    });
-    expect(phases).toEqual(["Publication", "Admission"]);
-    expect(result.pending).toBeUndefined();
-    expect(await h.lucid.utxosByOutRef([prepared.request.nonce])).toHaveLength(
-      0,
+            },
+            options,
+          ),
     );
-    expect(await h.lucid.utxosByOutRef([result.admission])).toHaveLength(1);
+    expect(attempts.map((attempt) => attempt.phase)).toEqual([
+      "Publication",
+      "Admission",
+    ]);
+    expect(outcome.publicationTxHash).toBe(attempts[0]!.txHash);
+    expect(outcome.admissionTxHash).toBe(attempts[1]!.txHash);
+    expect(outcome.eventId).toBe(SDK.outputReferenceToPlutusDataCbor(nonce));
+    expect(await h.lucid.utxosByOutRef([nonce])).toHaveLength(0);
   },
   180_000,
 );

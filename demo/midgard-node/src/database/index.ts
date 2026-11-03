@@ -6,8 +6,6 @@ export * as DaPayloadAnnouncementsDB from "./daPayloadAnnouncements.js";
 export * as DaPayloadPublicationsDB from "./daPayloadPublications.js";
 export * as DaPayloadsDB from "./daPayloads.js";
 export * as DepositsDB from "./deposits.js";
-export * as DepositSubmissionAttemptsDB from "./depositSubmissionAttempts.js";
-export * as EventHistorySubmissionsDB from "./eventHistorySubmissions.js";
 export * as ForcedTransactionsDB from "./forcedTransactions.js";
 export * as ImmutableDB from "./immutable.js";
 export * as InitDB from "./init.js";

@@ -34,7 +34,6 @@ import {
   eventHistoryMinimumNodeLovelace,
   eventHistoryMinimumOutputLovelace,
 } from "../src/user-events/history-funding.js";
-import { eventHistorySubmissionRequestHash } from "../src/user-events/history-submit.js";
 import { type UserHistoryContracts } from "../src/user-events/history-user.js";
 import { prepareWithdrawalSubmissionProgram } from "../src/user-events/withdrawal.js";
 
@@ -273,20 +272,6 @@ describe("raw admission assembly (mocked completion; no ledger acceptance claim)
         coinSelection: false,
         presetWalletInputs: [nonce],
       });
-      const changed = await prepareDeposit("a2010b020a");
-      expect(
-        eventHistorySubmissionRequestHash(
-          policy,
-          prepared.request,
-          context.recipe,
-        ),
-      ).not.toBe(
-        eventHistorySubmissionRequestHash(
-          policy,
-          changed.request,
-          context.recipe,
-        ),
-      );
     },
   );
 
@@ -387,13 +372,6 @@ describe("raw admission assembly (mocked completion; no ledger acceptance claim)
     expect(eventHistoryMinimumNodeLovelace(assets, orderCbor)).toBeGreaterThan(
       eventHistoryMinimumNodeLovelace(assets, order),
     );
-    expect(() =>
-      eventHistorySubmissionRequestHash(
-        policy,
-        { ...prepared.request, payload: prepared.plan.payload } as never,
-        context.recipe,
-      ),
-    ).toThrow("exactly one encoding source");
     expect(
       Data.from(prepared.plan.payloadCbor, EventHistoryPayload),
     ).toHaveProperty("WithdrawalPayload");

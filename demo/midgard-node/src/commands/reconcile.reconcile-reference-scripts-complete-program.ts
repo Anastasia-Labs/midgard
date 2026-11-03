@@ -251,7 +251,7 @@ export const reconcileDepositProjectedProgram = ({
       safeToRetryOriginalStep: false,
       evidence: depositEvidence,
       nextAction:
-        "No matching deposit row is visible. Do not resubmit until the Cardano tx hash has been reconciled (reconcile-deposit-submission) or proven absent.",
+        "No matching deposit row is visible. Do not resubmit until the admission tx hash has been checked with `midgard-user status` or proven absent.",
     });
   });
 

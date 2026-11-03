@@ -26,7 +26,7 @@ const encodedOrder = (value: Value) =>
   );
 
 describe("withdrawal l2_value byte order", () => {
-  it("as submit-withdrawal writes it, from assets in any order", () => {
+  it("as midgard-user withdraw writes it, from assets in any order", () => {
     const value = assetsToValue({
       [`${Q}01`]: 1n,
       [`${P}ff`]: 1n,

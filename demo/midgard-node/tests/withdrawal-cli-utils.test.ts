@@ -3,11 +3,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
-import {
-  encodeMidgardAddressText,
-  midgardAddressFromText,
-  protectMidgardAddress,
-} from "@al-ft/midgard-core/codec";
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML, Data, walletFromSeed } from "@lucid-evolution/lucid";
@@ -19,13 +14,8 @@ import {
   resolveWalletSeedPhrase,
 } from "../src/commands/command-utils.js";
 import {
-  __submitWithdrawalTest,
-  withdrawalEventIdFromBuildMetadata,
-} from "../src/commands/submit-withdrawal.js";
-import {
   parseCardanoDatum,
   parseCardanoDatumCbor,
-  parseWithdrawalTxOutRefLabel,
 } from "../src/commands/withdrawal-utils.js";
 import { assetsToValue } from "../src/transactions/reserve-payout.js";
 
@@ -115,78 +105,11 @@ describe("withdrawal signature utilities", () => {
 });
 
 describe("withdrawal CLI parsers", () => {
-  it("extracts selected protected L2 UTxO owners with the Midgard address codec", () => {
-    const protectedAddress = encodeMidgardAddressText(
-      protectMidgardAddress(midgardAddressFromText(wallet.address)),
+  it("parses event ids in canonical OutputReference CBOR form", () => {
+    const eventId = Data.to(
+      { transactionId: "aa".repeat(32), outputIndex: 2n },
+      SDK.OutputReference,
     );
-
-    expect(
-      __submitWithdrawalTest.selectedUtxoPaymentKeyHash(protectedAddress),
-    ).toEqual(keyHash);
-  });
-
-  it("rejects selected L2 UTxOs owned by script credentials", () => {
-    const scriptAddress = CML.EnterpriseAddress.new(
-      0,
-      CML.Credential.new_script(CML.ScriptHash.from_hex("22".repeat(28))),
-    )
-      .to_address()
-      .to_bech32();
-
-    expect(() =>
-      __submitWithdrawalTest.selectedUtxoPaymentKeyHash(scriptAddress),
-    ).toThrow("Selected L2 UTxO must be owned by a key credential.");
-  });
-
-  it.each(["committed", "not_found"])(
-    "withdraws an output whose producing L2 tx is %s",
-    (status) => {
-      expect(() =>
-        __submitWithdrawalTest.requireCommittedProducer(
-          "aa".repeat(32),
-          status,
-        ),
-      ).not.toThrow();
-    },
-  );
-
-  it.each([
-    "accepted",
-    "pending_commit",
-    "awaiting_local_recovery",
-    "validating",
-    "queued",
-    "rejected",
-  ])(
-    "refuses an output whose producing L2 tx is %s until it commits",
-    (status) => {
-      expect(() =>
-        __submitWithdrawalTest.requireCommittedProducer(
-          "aa".repeat(32),
-          status,
-        ),
-      ).toThrow(
-        `Producing L2 tx ${"aa".repeat(32)} is ${status}, not committed; wait for the producing tx to commit`,
-      );
-    },
-  );
-
-  it("rejects malformed selected L2 UTxO addresses", () => {
-    expect(() =>
-      __submitWithdrawalTest.selectedUtxoPaymentKeyHash("not-an-address"),
-    ).toThrow();
-  });
-
-  it("parses tx out refs and event ids in canonical OutputReference CBOR form", () => {
-    const parsed = parseWithdrawalTxOutRefLabel(
-      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#2",
-    );
-    expect(parsed.outputReference).toEqual({
-      transactionId:
-        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      outputIndex: 2n,
-    });
-    const eventId = Data.to(parsed.outputReference, SDK.OutputReference);
     expect(parseEventId(eventId).toString("hex")).toEqual(eventId);
   });
 
@@ -207,7 +130,7 @@ describe("withdrawal CLI parsers", () => {
       SDK.OutputReference,
     );
     expect(
-      withdrawalEventIdFromBuildMetadata({
+      SDK.withdrawalEventIdFromBuildMetadata({
         withdrawalAddress:
           "addr_test1vqz4js6k2c6un3h8y8sh2nmkg7u9s8w7up0psd4w6zv6r9usknpxf",
         withdrawalEventIdCbor: expectedEventId,

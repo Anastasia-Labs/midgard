@@ -21,7 +21,7 @@ export enum Columns {
   ID = UserEvents.Columns.ID,
   INFO = UserEvents.Columns.INFO,
   INCLUSION_TIME = UserEvents.Columns.INCLUSION_TIME,
-  // Latest authenticated history location; admission identity is the stable ID.
+  // The admission tx; the Order may move later, so this is never its location.
   DEPOSIT_L1_TX_HASH = "deposit_l1_tx_hash",
   LEDGER_TX_ID = "ledger_tx_id",
   LEDGER_OUTPUT = "ledger_output",

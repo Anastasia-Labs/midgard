@@ -3,28 +3,9 @@ import {
   parseAdditionalAssetSpecs,
   parseLovelaceAmount,
 } from "@al-ft/midgard-core/asset-specs";
-import {
-  getProtocolParameters,
-  resolveEventInclusionTime,
-} from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import { parseSubmitDepositConfig } from "../src/transactions/submit-deposit.js";
-
-const VALID_L2_ADDRESS =
-  "addr_test1qrtuk9vwzuyj2ly4fp2e0fdc36xzk7j2n34jeygl9n38yce7qqpmjursw62tm3acwl6z2kw38cxau355ukc9cxqyhk0sjy7d2s";
-
-describe("submit deposit parsing", () => {
-  it("keeps the offchain event wait duration aligned with the onchain environment", () => {
-    expect(getProtocolParameters("Preprod").event_wait_duration).toEqual(
-      300_000,
-    );
-    expect(() => getProtocolParameters("Mainnet")).toThrow(
-      /compiled deployment profile/u,
-    );
-    expect(resolveEventInclusionTime(1_000, "Preprod")).toEqual(300_999);
-  });
-
+describe("asset and lovelace specs", () => {
   it("parses lovelace amounts", () => {
     expect(
       parseLovelaceAmount(
@@ -71,23 +52,5 @@ describe("submit deposit parsing", () => {
     expect(() =>
       parseAdditionalAssetSpecs([duplicateUnitSpec, duplicateUnitSpec]),
     ).toThrow("Duplicate additional asset");
-  });
-
-  it("parses full submit-deposit command config", () => {
-    expect(
-      parseSubmitDepositConfig({
-        l2Address: VALID_L2_ADDRESS,
-        l2Datum: "deadbeef",
-        lovelace: "12345678",
-        assetSpecs: [`${"11".repeat(28)}.${"22".repeat(2)}:7`],
-      }),
-    ).toEqual({
-      l2Address: VALID_L2_ADDRESS,
-      l2Datum: "deadbeef",
-      lovelace: 12_345_678n,
-      additionalAssets: {
-        [`${"11".repeat(28)}${"22".repeat(2)}`]: 7n,
-      },
-    });
   });
 });

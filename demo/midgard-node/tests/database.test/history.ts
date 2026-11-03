@@ -1,16 +1,5 @@
-import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
-import * as SDK from "@al-ft/midgard-sdk";
 import { it } from "@effect/vitest";
-import {
-  Data as LucidData,
-  datumToHash,
-  Emulator,
-  generateEmulatorAccount,
-  Lucid as makeLucid,
-  type LucidEvolution,
-  type UTxO,
-} from "@lucid-evolution/lucid";
-import { Effect, Option } from "effect";
+import { Effect } from "effect";
 import { describe, expect } from "vitest";
 
 import {
@@ -19,15 +8,10 @@ import {
 } from "../../src/commands/deposit-status.js";
 import {
   DepositsDB,
-  DepositSubmissionAttemptsDB,
   MempoolLedgerDB,
   WithdrawalsDB,
 } from "../../src/database/index.js";
 import { resolveIncludedDepositEntriesForWindow } from "../../src/mpf/index.js";
-import { Lucid } from "../../src/services/lucid.js";
-import { MidgardContracts } from "../../src/services/midgard-contracts.js";
-import { reconcileDepositSubmissionAttemptProgram } from "../../src/transactions/submit-deposit.js";
-import { loadRealMidgardContractsForTest } from ".././helpers/real-midgard-contracts.js";
 import { insertDeposits, insertWithdrawals } from "../helpers/event-rows.js";
 import {
   databaseFixtureBytes,
@@ -35,7 +19,6 @@ import {
   databaseTxHash,
   isolatedDb,
   makeDepositEntry,
-  makeDepositSubmissionAttempt,
   makeHistoryWithdrawalEntry,
 } from "./fixtures.js";
 
@@ -47,211 +30,6 @@ export const registerHistoryTests = () => {
       l1_event_key: null,
       l1_origin_outref: null,
     });
-
-    it.effect(
-      "settles a submission attempt by authenticated history intent without writing the deposit row",
-      () =>
-        isolatedDb(
-          Effect.gen(function* () {
-            const contracts = yield* Effect.promise(() =>
-              loadRealMidgardContractsForTest({
-                txHash: "01".repeat(32),
-                outputIndex: 0,
-              }),
-            );
-            const deployment = SDK.eventHistoryDeploymentFromContracts(
-              SDK.requireEventHistoryContracts(contracts).deposit,
-            );
-            const wallet = generateEmulatorAccount({ lovelace: 100_000_000n });
-            const baseLucid = yield* Effect.promise(() =>
-              makeLucid(new Emulator([wallet]), "Preprod"),
-            );
-            const eventId = { transactionId: "12".repeat(32), outputIndex: 0n };
-            const idCbor = Buffer.from(
-              LucidData.to(eventId, SDK.OutputReference),
-              "hex",
-            );
-            const key = datumToHash(idCbor.toString("hex"));
-            const node: SDK.EventHistoryNode = {
-              position: { Key: [key] },
-              next: null,
-              protected_until: 0n,
-              payload: {
-                Order: {
-                  facts: {
-                    event_id: eventId,
-                    inclusion_time: 1000n,
-                    structural_lovelace: 2_000_000n,
-                    structural_refund_key: "aa".repeat(28),
-                    location: {
-                      Inline: {
-                        payload: {
-                          DepositPayload: {
-                            event: {
-                              id: eventId,
-                              info: {
-                                l2_address: yield* SDK.addressDataFromBech32(
-                                  wallet.address,
-                                ),
-                                l2_network_id: 0n,
-                                l2_datum: null,
-                              },
-                            },
-                          },
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            };
-            const root: UTxO = {
-              txHash: "13".repeat(32),
-              outputIndex: 0,
-              address: deployment.address,
-              assets: { lovelace: 3_000_000n, [deployment.policyId]: 1n },
-              datum: LucidData.to(
-                {
-                  position: "Root",
-                  next: key,
-                  protected_until: 0n,
-                  payload: "RootContent",
-                },
-                SDK.EventHistoryNode,
-              ),
-            };
-            const order: UTxO = {
-              txHash: "14".repeat(32),
-              outputIndex: 0,
-              address: deployment.address,
-              assets: { lovelace: 7_000_000n, [deployment.policyId + key]: 1n },
-              datum: LucidData.to(node, SDK.EventHistoryNode),
-            };
-            // Reader/DB integration fixture; applied-policy acceptance and real
-            // pointer transactions are covered by the public-builder emulator suite.
-            let visible = [root, order];
-            let unavailable = false;
-            const api: LucidEvolution = {
-              ...baseLucid,
-              utxosAt: async (address) => {
-                if (unavailable)
-                  throw new Error("history provider unavailable");
-                return address === deployment.address ? visible : [];
-              },
-            };
-            const service = Lucid.make({
-              api,
-              referenceScriptsApi: baseLucid,
-              operatorMainAddress: wallet.address,
-              operatorMergeAddress: wallet.address,
-              referenceScriptsWalletAddress: wallet.address,
-              referenceScriptsAddress: wallet.address,
-              submitSlotSnapshot: () =>
-                Effect.die("not used by read-only reconciliation"),
-              switchToOperatorsMainWallet: Effect.void,
-              switchToOperatorsMergingWallet: Effect.void,
-              switchToReferenceScriptWallet: Effect.void,
-            });
-            const admissionHash = databaseTxHash(
-              "history-intent-original-admission",
-            );
-            const attempt = makeDepositSubmissionAttempt({
-              txHash: admissionHash,
-              eventId: idCbor,
-            });
-            yield* DepositSubmissionAttemptsDB.insertSubmitted({
-              ...attempt,
-              [DepositSubmissionAttemptsDB.Columns.EXPECTED_L2_ADDRESS]:
-                wallet.address,
-              [DepositSubmissionAttemptsDB.Columns.EXPECTED_LOVELACE]:
-                "5000000",
-              [DepositSubmissionAttemptsDB.Columns.EXPECTED_ASSETS]: {
-                lovelace: "5000000",
-              },
-              [DepositSubmissionAttemptsDB.Columns.METADATA]: {
-                ...attempt[DepositSubmissionAttemptsDB.Columns.METADATA],
-                depositAddress: deployment.address,
-                depositAssetName: key,
-                depositAuthUnit: deployment.policyId + key,
-                inclusionTime: 1000,
-                structuralLovelace: "2000000",
-              },
-            });
-            const reconcile = reconcileDepositSubmissionAttemptProgram(
-              admissionHash.toString("hex"),
-            ).pipe(
-              Effect.provideService(Lucid, service),
-              Effect.provideService(
-                MidgardContracts,
-                MidgardContracts.make({
-                  ...contracts,
-                  consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-                }),
-              ),
-            );
-            // The intent check settles the attempt only: the deposit row is
-            // the L1 follower-change driver's to write (N1).
-            const noDepositRow = Effect.map(
-              DepositsDB.retrieveByEventId(idCbor),
-              Option.isNone,
-            );
-            expect((yield* reconcile).status).toBe("reconciled_after_timeout");
-            expect(yield* noDepositRow).toBe(true);
-            const continued = {
-              ...order,
-              txHash: "15".repeat(32),
-              outputIndex: 2,
-            };
-            visible = [root, continued];
-            expect((yield* reconcile).status).toBe("reconciled_after_timeout");
-            expect(yield* noDepositRow).toBe(true);
-            visible = [
-              {
-                ...root,
-                datum: LucidData.to(
-                  {
-                    position: "Root",
-                    next: null,
-                    protected_until: 0n,
-                    payload: "RootContent",
-                  },
-                  SDK.EventHistoryNode,
-                ),
-              },
-            ];
-            expect((yield* reconcile).status).toBe("ambiguous");
-            if (node.payload === "RootContent" || !("Order" in node.payload))
-              throw new Error("Expected Order fixture");
-            visible = [
-              root,
-              {
-                ...continued,
-                datum: LucidData.to(
-                  {
-                    ...node,
-                    payload: {
-                      Order: {
-                        facts: {
-                          ...node.payload.Order.facts,
-                          inclusion_time: 2000n,
-                        },
-                      },
-                    },
-                  },
-                  SDK.EventHistoryNode,
-                ),
-              },
-            ];
-            expect((yield* reconcile).status).toBe("ambiguous");
-            expect(yield* noDepositRow).toBe(true);
-            unavailable = true;
-            const failure = yield* Effect.either(reconcile);
-            expect(failure._tag).toBe("Left");
-            if (failure._tag === "Left")
-              expect(failure.left).toBeInstanceOf(SDK.LucidError);
-          }),
-        ),
-    );
 
     it.effect(
       "resolves a deposit by its immutable admission tx after its Order moves",

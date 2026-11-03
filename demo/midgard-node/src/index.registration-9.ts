@@ -1,19 +1,9 @@
-import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
-import { normalizeHex } from "@al-ft/midgard-core/hex";
-import { Effect } from "effect";
-
 import {
-  assertUserCliWalletIsOperationallyIsolated,
   failCli,
   provideDatabaseTxServices,
   runCliEffect,
   tapJson,
 } from "./commands/cli-runtime.js";
-import {
-  type ResolvedWalletSeedPhrase,
-  resolveWalletSeedPhrase,
-} from "./commands/command-utils.js";
-import { isPublicDeploymentProfile } from "./commands/listen-public-http.js";
 import {
   parseMerkleRootOption,
   parseOptionalEndTimeMs,
@@ -21,15 +11,8 @@ import {
   program,
 } from "./index.registration.js";
 import { runOperatorCommand } from "./index.registration-8.js";
-import * as Services from "./services/index.js";
 import * as DaAttestation from "./transactions/da-attestation.js";
 import * as OperatorCommands from "./transactions/operators/commands.js";
-import {
-  fetchReferenceScriptUtxosProgram,
-  referenceScriptByName,
-  referenceScriptTargetsByCommand,
-} from "./transactions/reference-scripts.js";
-import * as SubmitDeposit from "./transactions/submit-deposit.js";
 import { commitExplicitBlockHeaderProgram } from "./workers/commit-block-header.js";
 
 program
@@ -159,164 +142,3 @@ program
 
     runCliEffect(mainEffect);
   });
-
-const submitDepositCommand = program
-  .command("submit-deposit")
-  .description(
-    "Submit an L1 deposit to the Midgard deposit contract using the selected signer wallet",
-  )
-  .requiredOption(
-    "--submission-id <id>",
-    "Stable request ID; reuse this ID to resume an interrupted submission",
-  )
-  .requiredOption(
-    "--l2-address <address>",
-    "Destination L2 address that will receive the deposited value",
-  )
-  .requiredOption(
-    "--lovelace <amount>",
-    "Amount to deposit, expressed as a positive integer number of lovelace",
-  )
-  .option("--l2-datum <hex>", "Optional L2 inline datum bytes as hex")
-  .option(
-    "--wallet-seed-phrase-env <envVar>",
-    "Environment variable containing the seed phrase for the wallet that should sign the deposit transaction",
-    "L1_OPERATOR_SEED_PHRASE",
-  );
-// A public profile signs only with a seed from a private mounted file.
-if (isPublicDeploymentProfile(SELECTED_DEPLOYMENT_PROFILE.name))
-  submitDepositCommand.option(
-    "--wallet-seed-phrase-file <path>",
-    "Private mounted BIP-39 file for the deposit signer",
-  );
-submitDepositCommand
-  .argument(
-    "[assetSpecs...]",
-    "Optional additional assets in policyId.assetName:amount form (hex policy/asset name, integer amount)",
-  )
-  .action(
-    async (
-      assetSpecs: string[],
-      options: {
-        readonly submissionId: string;
-        readonly l2Address: string;
-        readonly l2Datum?: string;
-        readonly lovelace: string;
-        readonly walletSeedPhraseEnv: string;
-        readonly walletSeedPhraseFile?: string;
-      },
-    ) => {
-      let depositConfig: SubmitDeposit.SubmitDepositConfig;
-      let resolvedWalletSeedPhrase: ResolvedWalletSeedPhrase;
-      try {
-        const {
-          l2Address,
-          l2Datum,
-          lovelace,
-          walletSeedPhraseEnv,
-          walletSeedPhraseFile,
-        } = options;
-        depositConfig = SubmitDeposit.parseSubmitDepositConfig({
-          l2Address,
-          l2Datum,
-          lovelace,
-          assetSpecs,
-        });
-        resolvedWalletSeedPhrase = resolveWalletSeedPhrase({
-          walletSeedPhraseEnv,
-          walletSeedPhraseFile,
-        });
-      } catch (error) {
-        failCli("submit-deposit", error);
-        return;
-      }
-
-      const mainEffect = provideDatabaseTxServices(
-        Effect.gen(function* () {
-          const lucidService = yield* Services.Lucid;
-          const contracts = yield* Services.MidgardContracts;
-          yield* Effect.sync(() =>
-            lucidService.api.selectWallet.fromSeed(
-              resolvedWalletSeedPhrase.seedPhrase,
-            ),
-          );
-          const walletAddress = yield* Effect.tryPromise({
-            try: () => lucidService.api.wallet().address(),
-            catch: (cause) =>
-              Promise.reject(
-                new Error(
-                  `Failed to resolve submit-deposit wallet address: ${String(cause)}`,
-                ),
-              ),
-          });
-          yield* Effect.sync(() =>
-            assertUserCliWalletIsOperationallyIsolated({
-              commandName: "submit-deposit",
-              walletAddress,
-              operatorMainAddress: lucidService.operatorMainAddress,
-              operatorMergeAddress: lucidService.operatorMergeAddress,
-              referenceScriptsAddress:
-                lucidService.referenceScriptsWalletAddress,
-            }),
-          );
-          const depositReferenceScripts =
-            yield* fetchReferenceScriptUtxosProgram(
-              lucidService.api,
-              lucidService.referenceScriptsAddress,
-              referenceScriptTargetsByCommand(contracts).deposit,
-              contracts.referenceScriptAuth,
-            ).pipe(
-              Effect.map((resolved) => ({
-                depositMinting: referenceScriptByName(
-                  resolved,
-                  "deposit minting",
-                ),
-              })),
-            );
-          return yield* SubmitDeposit.submitDepositWithMetadataProgram(
-            lucidService.api,
-            contracts,
-            { ...depositConfig, referenceScripts: depositReferenceScripts },
-            options.submissionId,
-          );
-        }).pipe(
-          tapJson(),
-          Effect.tap((result) =>
-            Effect.logInfo(`submit-deposit completed: txHash=${result.txHash}`),
-          ),
-        ),
-      );
-
-      runCliEffect(mainEffect);
-    },
-  );
-
-program
-  .command("reconcile-deposit-submission")
-  .description(
-    "Reconcile a previously submitted deposit transaction before retrying after a confirmation timeout",
-  )
-  .requiredOption("--tx-hash <hex>", "32-byte Cardano transaction hash")
-  .option("--json", "Print machine-readable JSON output", true)
-  .action(
-    async (options: { readonly txHash: string; readonly json?: boolean }) => {
-      let txHash: string;
-      try {
-        txHash = normalizeHex(options.txHash, {
-          byteLength: 32,
-          trim: false,
-        });
-      } catch (error) {
-        failCli("reconcile-deposit-submission: invalid --tx-hash", error);
-        return;
-      }
-
-      const mainEffect = provideDatabaseTxServices(
-        SubmitDeposit.reconcileDepositSubmissionAttemptProgram(txHash).pipe(
-          tapJson(),
-        ),
-      );
-
-      runCliEffect(mainEffect);
-    },
-  );

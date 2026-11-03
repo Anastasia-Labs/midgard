@@ -13,7 +13,6 @@ export * from "./history-payload.js";
 export * from "./history-proof.js";
 export * from "./history-query.js";
 export * from "./history-reclaim.js";
-export * from "./history-submit.js";
 export type {
   UserHistoryBuildOptions,
   UserHistoryContracts,

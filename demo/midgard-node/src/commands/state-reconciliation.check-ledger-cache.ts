@@ -264,7 +264,9 @@ export const policyTokens = (utxo: UTxO, policyId: string) =>
       quantity: quantity.toString(),
     }));
 
-export const depositPayloadOf = (entry: DepositsDB.Entry): DepositPayload => ({
+export const depositPayloadOf = (
+  entry: Omit<DepositsDB.Entry, DepositsDB.Columns.DEPOSIT_L1_TX_HASH>,
+): DepositPayload => ({
   eventId: toHex(entry[DepositsDB.Columns.ID]),
   info: toHex(entry[DepositsDB.Columns.INFO]),
   inclusionTimeMs: new Date(entry[DepositsDB.Columns.INCLUSION_TIME]).getTime(),

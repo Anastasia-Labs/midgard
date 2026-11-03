@@ -3,9 +3,6 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { credentialToAddress, Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { depositSubmissionIntentHash } from "../src/transactions/submit-deposit.js";
-import { withdrawalSubmissionIntentHash } from "../src/transactions/submit-withdrawal.js";
-
 const owner = "11".repeat(28);
 const address = {
   paymentCredential: { PublicKeyCredential: [owner] as [string] },
@@ -15,7 +12,7 @@ const raw = "a302c2410101d86682008002c2420001";
 const normalized = "a3020101d879800201";
 const reordered = "a301d8798002010201";
 
-describe("durable raw event intents", () => {
+describe("user submission intent hash", () => {
   it("keeps deposit duplicate pairs and order in the pre-nonce identity", () => {
     const config = {
       l2Address: credentialToAddress("Custom", { type: "Key", hash: owner }),
@@ -23,14 +20,17 @@ describe("durable raw event intents", () => {
       lovelace: 5_000_000n,
       additionalAssets: {},
     };
-    const hash = depositSubmissionIntentHash(config);
+    const hash = SDK.userSubmissionIntentHash("Deposit", config);
     expect(
-      depositSubmissionIntentHash({ ...config, l2Datum: normalized }),
+      SDK.userSubmissionIntentHash("Deposit", {
+        ...config,
+        l2Datum: normalized,
+      }),
     ).toBe(hash);
     for (const l2Datum of [null, reordered, Data.to(Data.from(raw))])
-      expect(depositSubmissionIntentHash({ ...config, l2Datum })).not.toBe(
-        hash,
-      );
+      expect(
+        SDK.userSubmissionIntentHash("Deposit", { ...config, l2Datum }),
+      ).not.toBe(hash);
   });
 
   it("binds raw withdrawal body and refund independently", () => {
@@ -53,22 +53,22 @@ describe("durable raw event intents", () => {
       refundAddress: address,
       refundDatumCbor,
     };
-    const hash = withdrawalSubmissionIntentHash(config);
+    const hash = SDK.userSubmissionIntentHash("Withdrawal", config);
     expect(
-      withdrawalSubmissionIntentHash({
+      SDK.userSubmissionIntentHash("Withdrawal", {
         ...config,
         bodyCbor: replacePlutusConstrFieldCbor(bodyCbor, [4, 0], normalized),
         refundDatumCbor: `d87b9f${normalized}ff`,
       }),
     ).toBe(hash);
     expect(
-      withdrawalSubmissionIntentHash({
+      SDK.userSubmissionIntentHash("Withdrawal", {
         ...config,
         bodyCbor: replacePlutusConstrFieldCbor(bodyCbor, [4, 0], reordered),
       }),
     ).not.toBe(hash);
     expect(
-      withdrawalSubmissionIntentHash({
+      SDK.userSubmissionIntentHash("Withdrawal", {
         ...config,
         refundDatumCbor: `d87b9f${reordered}ff`,
       }),

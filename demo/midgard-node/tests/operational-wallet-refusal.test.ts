@@ -96,7 +96,7 @@ describe("commands refuse the node's operational wallet as payer", () => {
   it("user CLI commands: a distinct wallet passes, one sharing an operational key refuses", () => {
     const isolated = (walletAddress: string) => () =>
       assertUserCliWalletIsOperationallyIsolated({
-        commandName: "submit-deposit",
+        commandName: "submit-l2-transfer",
         walletAddress,
         operatorMainAddress: walletFromSeed(main, { network }).address,
         operatorMergeAddress: walletFromSeed(merge, { network }).address,

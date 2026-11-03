@@ -33,7 +33,7 @@ import {
   markApplied,
   retrieveRows,
 } from "../src/landed-blocks/store.js";
-import { makeDepositEntry } from "./database.test/fixtures.make-deposit-submission-attempt.js";
+import { makeDepositEntry } from "./database.test/fixtures.make-deposit-entry.js";
 import { insertDeposits } from "./helpers/event-rows.js";
 import { admitPending } from "./helpers/landed-blocks-sim.mempool.js";
 import { simDigest } from "./helpers/landed-blocks-sim.universe.js";

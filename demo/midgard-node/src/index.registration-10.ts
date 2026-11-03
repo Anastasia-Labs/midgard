@@ -27,7 +27,6 @@ import * as EventSettlementProofCommand from "./commands/event-settlement-proof.
 import { isPublicDeploymentProfile } from "./commands/listen-public-http.js";
 import * as ReservePayoutCommand from "./commands/reserve-payout.js";
 import * as SubmitL2Transfer from "./commands/submit-l2-transfer.js";
-import * as SubmitWithdrawalCommand from "./commands/submit-withdrawal.js";
 import * as UtxosCommand from "./commands/utxos.js";
 import { program } from "./index.registration.js";
 import * as Services from "./services/index.js";
@@ -171,92 +170,6 @@ program
       runCliEffect(mainEffect);
     },
   );
-
-program
-  .command("submit-withdrawal")
-  .description(
-    "Submit an authenticated L1 withdrawal order for a selected Midgard L2 UTxO",
-  )
-  .requiredOption(
-    "--submission-id <id>",
-    "Stable request ID; reuse this ID to resume an interrupted submission",
-  )
-  .requiredOption(
-    "--l2-out-ref <txHash#outputIndex>",
-    "Midgard L2 UTxO to withdraw, in txHash#outputIndex form",
-  )
-  .requiredOption(
-    "--l1-address <address>",
-    "Cardano L1 address that should receive the payout",
-  )
-  .option(
-    isPublicDeploymentProfile(SELECTED_DEPLOYMENT_PROFILE.name)
-      ? "--wallet-seed-phrase-file <path>"
-      : "--wallet-seed-phrase <seedPhrase>",
-    isPublicDeploymentProfile(SELECTED_DEPLOYMENT_PROFILE.name)
-      ? "Private mounted BIP-39 file for the withdrawal signer"
-      : "Seed phrase for an explicit testing profile",
-  )
-  .option(
-    "--wallet-seed-phrase-env <envVar>",
-    "Environment variable containing the withdrawal signer seed phrase",
-    "USER_WALLET",
-  )
-  .option(
-    "--l1-datum <hex>",
-    "Optional inline payout datum as Plutus data CBOR",
-  )
-  .option(
-    "--refund-address <address>",
-    "Optional refund address for invalid withdrawals; defaults to --l1-address",
-  )
-  .option(
-    "--refund-datum <hex>",
-    "Optional invalid-withdrawal refund datum as Plutus data CBOR",
-  )
-  .option(
-    "--order-lovelace <amount>",
-    "Optional lovelace held by the withdrawal order UTxO",
-  )
-  .option(
-    "--endpoint <url>",
-    "Midgard node HTTP endpoint used for L2 UTxO lookup",
-  )
-  .action(async (_args, options) => {
-    const opts = options.opts();
-    const mainEffect = pipe(
-      Effect.gen(function* () {
-        const lucidService = yield* Services.Lucid;
-        return yield* SubmitWithdrawalCommand.submitWithdrawalCommandProgram({
-          config: {
-            submissionId: opts.submissionId,
-            walletSeedPhrase: opts.walletSeedPhrase,
-            walletSeedPhraseFile: opts.walletSeedPhraseFile,
-            walletSeedPhraseEnv: opts.walletSeedPhraseEnv,
-            l2OutRef: opts.l2OutRef,
-            l1Address: opts.l1Address,
-            l1Datum: opts.l1Datum,
-            refundAddress: opts.refundAddress,
-            refundDatum: opts.refundDatum,
-            orderLovelace: opts.orderLovelace,
-            endpoint: opts.endpoint,
-          },
-          assertWalletAddress: (walletAddress) =>
-            assertUserCliWalletIsOperationallyIsolated({
-              commandName: "submit-withdrawal",
-              walletAddress,
-              operatorMainAddress: lucidService.operatorMainAddress,
-              operatorMergeAddress: lucidService.operatorMergeAddress,
-              referenceScriptsAddress:
-                lucidService.referenceScriptsWalletAddress,
-            }),
-        });
-      }).pipe(tapJson()),
-      provideDatabaseTxServices,
-    );
-
-    runCliEffect(mainEffect);
-  });
 
 program
   .command("utxos")

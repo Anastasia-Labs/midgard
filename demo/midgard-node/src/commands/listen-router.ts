@@ -27,7 +27,6 @@ import "../transactions/initialization.js";
 import "../transactions/operators/commands.js";
 import "../transactions/reference-scripts.js";
 import "../transactions/state-queue/merge-readiness.js";
-import "../transactions/submit-deposit.js";
 import "./command-utils.js";
 import "./deposit-status.js";
 import "./l1-provider-preflight.js";

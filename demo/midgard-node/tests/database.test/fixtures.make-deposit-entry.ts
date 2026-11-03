@@ -1,7 +1,4 @@
-import {
-  DepositsDB,
-  DepositSubmissionAttemptsDB,
-} from "../../src/database/index.js";
+import { DepositsDB } from "../../src/database/index.js";
 import {
   address1,
   databaseOutputReferenceId,
@@ -45,40 +42,3 @@ export const makeDepositEntry = (
       overrides[DepositsDB.Columns.STATUS] ?? DepositsDB.Status.Awaiting,
   };
 };
-
-export const makeDepositSubmissionAttempt = ({
-  txHash = databaseTxHash("deposit-submission.default"),
-  eventId = databaseOutputReferenceId("deposit-submission.default"),
-}: {
-  readonly txHash?: Buffer;
-  readonly eventId?: Buffer;
-} = {}): DepositSubmissionAttemptsDB.InsertSubmittedInput => ({
-  [DepositSubmissionAttemptsDB.Columns.TX_HASH]: txHash,
-  [DepositSubmissionAttemptsDB.Columns.DEPOSIT_EVENT_ID]: eventId,
-  [DepositSubmissionAttemptsDB.Columns.EXPECTED_DEPOSIT_OUT_REF]:
-    `${txHash.toString("hex")}#0`,
-  [DepositSubmissionAttemptsDB.Columns.EXPECTED_L2_ADDRESS]: address1,
-  [DepositSubmissionAttemptsDB.Columns.EXPECTED_LOVELACE]: "1000000",
-  [DepositSubmissionAttemptsDB.Columns.EXPECTED_ASSETS]: {
-    lovelace: "1000000",
-  },
-  [DepositSubmissionAttemptsDB.Columns.METADATA]: {
-    depositAddress: address1,
-    depositEventId: eventId.toString("hex"),
-    depositAssetName: "00".repeat(32),
-    depositAuthUnit: `${"11".repeat(28)}${"00".repeat(32)}`,
-    nonceInput: {
-      txHash: databaseTxHash("deposit-submission.nonce").toString("hex"),
-      outputIndex: 0,
-    },
-    validTo: 1_800_000_000_000,
-    inclusionTime: 1_800_000_060_000,
-    structuralLovelace: "0",
-    orderOutputIndex: 0,
-    l2DatumCbor: null,
-    transactionCbor: "84a3008001800200a0f5f6",
-  },
-  [DepositSubmissionAttemptsDB.Columns.FUNDING_OUT_REFS]: [
-    `${databaseTxHash("deposit-submission.funding").toString("hex")}#0`,
-  ],
-});

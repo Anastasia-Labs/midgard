@@ -176,7 +176,7 @@ const makeUtxo = (assets: Record<string, bigint>): UTxO =>
   }) as UTxO;
 
 describe("submit-init signer resolution", () => {
-  it("uses USER_WALLET as the default seed phrase source like submit-withdrawal", () => {
+  it("uses USER_WALLET as the default seed phrase source", () => {
     const signer = resolveProverSigner(
       { network: "Preprod" },
       { USER_WALLET: seedPhrase },
