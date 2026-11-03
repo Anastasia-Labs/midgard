@@ -409,6 +409,7 @@ export const startCommitteeL1Follower = async (
   retention.bind("records", records);
   let status: FollowStatus | null = null;
   const abort = new AbortController();
+  let slotConfig: SlotTime | undefined;
   const running = followChain({
     store: pruneAfterPins(store, retention),
     transport: parts.transport,
@@ -417,8 +418,17 @@ export const startCommitteeL1Follower = async (
     log: (line) => log(`L1 follower: ${line}`),
     // `l1_node_behind` at the follower's default bound: the tick holds
     // while it is set, and it clears when the node catches up.
+    // Answered at once when the slot configuration is known; until then a
+    // promise, and the check reports the lag unknown without waiting on it
+    // (the read queues behind any ledger read, a wallet seed's included).
     nodeBehind: {
-      slotTime: async (slot) => slotTimeMs(slot, await parts.slotTime()),
+      slotTime: (slot) =>
+        slotConfig === undefined
+          ? parts.slotTime().then((config) => {
+              slotConfig = config;
+              return slotTimeMs(slot, config);
+            })
+          : slotTimeMs(slot, slotConfig),
     },
     onStatus: (next) => {
       status = next;

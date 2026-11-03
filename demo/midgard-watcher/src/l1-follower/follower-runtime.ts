@@ -246,14 +246,24 @@ export const openWatcherFollowerRuntime = (
   });
   const provider = new L1FollowerProvider({ store, transport });
   // The node's slot configuration, read once it answers (`l1_node_behind`).
-  let slotConfig: ReturnType<L1FollowerProvider["slotConfig"]> | undefined;
-  const slotTime = async (slot: number): Promise<number> => {
-    slotConfig ??= provider.slotConfig().catch((error: unknown) => {
-      slotConfig = undefined;
-      throw error;
-    });
-    const { zeroTime, zeroSlot, slotLength } = await slotConfig;
-    return zeroTime + (slot - zeroSlot) * slotLength;
+  // Once read, the slot time is answered at once; until then it is a
+  // promise, and the check reports the lag unknown without waiting on it
+  // (the read queues behind any ledger read, a wallet seed's included).
+  type SlotConfig = Awaited<ReturnType<L1FollowerProvider["slotConfig"]>>;
+  let slotConfig: SlotConfig | undefined;
+  let readingSlotConfig: Promise<SlotConfig> | undefined;
+  const slotTime = (slot: number): number | Promise<number> => {
+    const at = ({ zeroTime, zeroSlot, slotLength }: SlotConfig): number =>
+      zeroTime + (slot - zeroSlot) * slotLength;
+    if (slotConfig !== undefined) return at(slotConfig);
+    readingSlotConfig ??= provider.slotConfig().then(
+      (config) => (slotConfig = config),
+      (error: unknown) => {
+        readingSlotConfig = undefined;
+        throw error;
+      },
+    );
+    return readingSlotConfig.then(at);
   };
   const proofRetention = createWatcherProofRetention(store, {
     unitHistoryPolicies,
