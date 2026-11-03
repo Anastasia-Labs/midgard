@@ -4,7 +4,7 @@ import {
   FraudProofL1CheckpointChangedError,
   FraudProofL1UnavailableError,
 } from "@al-ft/midgard-fault-proofs";
-import type { FactStore } from "@al-ft/midgard-l1-follower";
+import { encodeOutRef, type FactStore } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
@@ -13,11 +13,13 @@ import {
   type WatcherAuthenticatedStateQueueObservation,
   type WatcherStateQueueHeaderObservation,
 } from "../indexers/authenticated-state-queue-observation.js";
+import type { WatcherDeploymentProtocolScriptAuthority } from "../runtime/deployment-identity.js";
 import {
   readWatcherUserEventAuthority,
   type WatcherUserEvent,
   type WatcherUserEventKind,
 } from "../verification/user-event.js";
+import { parseHubOracleOneShot } from "./follower-runtime.js";
 import type { WatcherObservationAuthority } from "./observation.js";
 import { replayEventIds } from "./replay-events.js";
 import { watcherReplayMaterial } from "./replay-material.js";
@@ -32,9 +34,16 @@ import { WatcherUserEventUnavailable } from "./user-events.js";
 
 export type WatcherFollowerReplaySource = Readonly<{
   epoch(): number;
+  /**
+   * The ConfirmedState at the observation's point, or `null` when that point
+   * precedes the deployment's protocol init: the queue is empty there, and
+   * every ledger replays from genesis.
+   */
   confirmed(
     observation: WatcherAuthenticatedStateQueueObservation,
-  ): Promise<Readonly<{ state: SDK.ConfirmedState; current(): boolean }>>;
+  ): Promise<
+    Readonly<{ state: SDK.ConfirmedState | null; current(): boolean }>
+  >;
   materialFor(payload: SDK.DaPayload): Promise<BlockReplayMaterial>;
   /** The availability status the block's latest state-queue node carries. */
   availabilityStatus(
@@ -53,7 +62,8 @@ export const createWatcherFollowerReplaySource = (
     scripts: WatcherUserEventScripts;
     retention: WatcherReplayRetention;
     minimumCheckpointDepth: number;
-    observationAuthority: WatcherObservationAuthority;
+    observationAuthority: WatcherObservationAuthority &
+      Pick<WatcherDeploymentProtocolScriptAuthority, "hubOracleOneShotOutRef">;
   }>,
 ): WatcherFollowerReplaySource => {
   if (
@@ -61,6 +71,9 @@ export const createWatcherFollowerReplaySource = (
     input.minimumCheckpointDepth < 2
   )
     throw new Error("replay checkpoint needs an explicit stable L1 depth");
+  const oneShot = encodeOutRef(
+    parseHubOracleOneShot(input.observationAuthority.hubOracleOneShotOutRef),
+  );
   let generation = 0;
   let closed = false;
   const unsubscribe = input.store.onGeneration(({ rewound }) => {
@@ -181,6 +194,37 @@ export const createWatcherFollowerReplaySource = (
           `SELECT tx_hash, output_index, datum_cbor FROM ${WATCHER_QUEUE_OUTPUTS_TABLE} WHERE kind = 'root' AND from_slot <= ? AND (to_slot IS NULL OR to_slot > ?)`,
           [Number(point.slot), Number(point.slot)],
         );
+        // Before the protocol init the queue is empty, not missing. The root
+        // and the CorrectionLock are minted only with the hub-oracle token,
+        // which only the tx spending the one-shot mints; an outref is spent
+        // once, so a point that one-shot outlived holds no queue at all.
+        // Only that case is told apart: the stored init spend is strictly
+        // after the point, it created the deployment's root, and the
+        // observation admitted an empty queue and no CorrectionLock there.
+        // Anything else stays pending below.
+        if (
+          roots.length === 0 &&
+          observation.finalizedQueue.length === 0 &&
+          observation.finalizedCorrectionLock === null
+        ) {
+          const init = (
+            await tx.query(
+              "SELECT tx_hash, slot FROM l1_protocol_init WHERE one_shot = ?",
+              [oneShot],
+            )
+          )[0];
+          if (
+            init !== undefined &&
+            Number(init.slot) > Number(point.slot) &&
+            (
+              await tx.query(
+                `SELECT 1 FROM ${WATCHER_QUEUE_OUTPUTS_TABLE} WHERE kind = 'root' AND tx_hash = ? AND from_slot = ? LIMIT 1`,
+                [Buffer.from(init.tx_hash as Uint8Array), Number(init.slot)],
+              )
+            ).length === 1
+          )
+            return null;
+        }
         const root = roots[0];
         if (roots.length !== 1 || root === undefined)
           throw new FraudProofL1UnavailableError(

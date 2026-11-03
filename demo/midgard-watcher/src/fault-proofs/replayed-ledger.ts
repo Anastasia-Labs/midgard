@@ -146,6 +146,16 @@ export const createWatcherReplayedLedger = (
       let head: Readonly<{ headerHash: string; utxosRoot: string }> | undefined;
       try {
         const confirmed = await input.follower.confirmed(observation);
+        if (confirmed.state === null) {
+          // The checkpoint point precedes the deployment's protocol init:
+          // there is no head to check, and every ledger replays from
+          // genesis. Admission history stays retained from the origin.
+          if (!confirmed.current())
+            throw new FraudProofL1CheckpointChangedError(
+              "replay checkpoint changed while it was read",
+            );
+          return [];
+        }
         head = {
           headerHash: confirmed.state.headerHash,
           utxosRoot: confirmed.state.utxoRoot,
