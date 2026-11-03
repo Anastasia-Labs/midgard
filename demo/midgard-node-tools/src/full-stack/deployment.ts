@@ -62,6 +62,16 @@ export async function deploymentStatus(processes: StackProcesses) {
     throw new Error("Invalid deployment status response");
   return report;
 }
+/**
+ * The committee's own submitter-wallet floor (`minSpendableUtxoCount` and
+ * `DA_L1_SUBMITTER_MIN_PLAIN_ADA_LOVELACE` in da-committee-node), which this
+ * CLI does not load at run time.
+ */
+export const DA_SUBMITTER_WALLET_FLOOR = {
+  outputs: 2,
+  lovelace: 80_000_000n,
+} as const;
+
 export async function checkWallets(processes: StackProcesses) {
   const addresses = deriveStackWallets(processes.config, processes.env);
   const paths = stackPaths(processes);
@@ -90,19 +100,30 @@ export async function checkWallets(processes: StackProcesses) {
       (fresh ? BigInt(wallet.minimumLovelace) : 5_000_000n)
     )
       throw new Error(`Wallet ${role} is below its configured funding budget`);
-    if (
-      !result.utxos.some(
-        (utxo) =>
-          utxo.inlineDatum === null &&
-          utxo.dataHash === null &&
-          utxo.referenceScriptHash === null &&
-          Object.keys(utxo.assets).length === 1 &&
-          BigInt(utxo.assets.lovelace ?? 0) >= 5_000_000n,
-      )
-    )
+    const plain = result.utxos.filter(
+      (utxo) =>
+        utxo.inlineDatum === null &&
+        utxo.dataHash === null &&
+        utxo.referenceScriptHash === null &&
+        Object.keys(utxo.assets).length === 1,
+    );
+    if (!plain.some((utxo) => BigInt(utxo.assets.lovelace ?? 0) >= 5_000_000n))
       throw new Error(
         `Wallet ${role} needs a plain ADA output for collateral/fees`,
       );
+    // The committee checks its submitter wallet only once it starts, after
+    // deployment has spent; refuse here what it would refuse there.
+    if (role === "daSubmitter") {
+      const { outputs, lovelace } = DA_SUBMITTER_WALLET_FLOOR;
+      const held = plain.reduce(
+        (total, utxo) => total + BigInt(utxo.assets.lovelace ?? 0),
+        0n,
+      );
+      if (plain.length < outputs || held < lovelace)
+        throw new Error(
+          `Wallet daSubmitter needs at least ${outputs} plain ADA outputs holding ${lovelace} lovelace, as its committee checks at start`,
+        );
+    }
   }
   return addresses;
 }

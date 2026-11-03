@@ -53,6 +53,8 @@ your contract publication costs and measured funding requirements. The prover
 and availability addresses use the existing watcher Enterprise address
 derivation; the other wallet roles use the node's normal seed addresses. Each
 wallet also needs a plain ADA output of at least 5 ADA for fees/collateral.
+The DA submitter wallet needs at least 2 plain ADA outputs holding 80 ADA
+together, the floor its committee checks when it starts.
 The configured budgets apply only before the node records the signed hub-oracle
 nonce, its first write to the deployment run state. A resumed or attached deployment, before or after initialization, requires only
 that working capital: 5 ADA per wallet plus that plain output. The user budget

@@ -2,6 +2,10 @@ import { access, chmod, constants, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
+  DA_L1_SUBMITTER_MIN_PLAIN_ADA_LOVELACE,
+  DEFAULT_L1_SUBMITTER_PREFLIGHT,
+} from "da-committee-node/config";
+import {
   createDeploymentRunState,
   type DeploymentRunState,
   loadDeploymentRunState,
@@ -10,7 +14,11 @@ import {
 } from "midgard-node/e2e/run-state";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { checkWallets, deploymentSteps } from "../src/full-stack/deployment.js";
+import {
+  checkWallets,
+  DA_SUBMITTER_WALLET_FLOOR,
+  deploymentSteps,
+} from "../src/full-stack/deployment.js";
 import { readJsonIfPresent } from "../src/full-stack/journal.js";
 import { CommandNotStartedError } from "../src/full-stack/process.js";
 import {
@@ -282,16 +290,48 @@ describe("deployment steps before initialization", () => {
 });
 
 describe("wallet funding", () => {
-  const funded = (lovelace: bigint) => ({
+  const funded = (lovelace: bigint, outputs = 1) => ({
     totals: { lovelace: String(lovelace) },
-    utxos: [
-      {
-        assets: { lovelace: String(lovelace) },
-        inlineDatum: null,
-        referenceScriptHash: null,
-        dataHash: null,
-      },
-    ],
+    utxos: Array.from({ length: outputs }, () => ({
+      assets: { lovelace: String(lovelace / BigInt(outputs)) },
+      inlineDatum: null,
+      referenceScriptHash: null,
+      dataHash: null,
+    })),
+  });
+  // What the committee's own wallet check needs: 80 ADA over two outputs.
+  const fundEach = (
+    processes: {
+      config: { wallets: object };
+      responses: Record<string, unknown>;
+    },
+    lovelace: bigint,
+  ) => {
+    for (const role of Object.keys(processes.config.wallets))
+      processes.responses[`wallet-${role}`] =
+        role === "daSubmitter" ? funded(80_000_000n, 2) : funded(lovelace);
+  };
+  it("holds the DA submitter wallet to the committee's own floor", () => {
+    expect(DA_SUBMITTER_WALLET_FLOOR).toEqual({
+      outputs: DEFAULT_L1_SUBMITTER_PREFLIGHT.minSpendableUtxoCount,
+      lovelace: DA_L1_SUBMITTER_MIN_PLAIN_ADA_LOVELACE,
+    });
+  });
+  it("refuses a DA submitter wallet its committee would refuse after deployment", async () => {
+    const { processes } = await deployment({ nonceRecorded: false });
+    for (const [role, wallet] of Object.entries(processes.config.wallets))
+      processes.responses[`wallet-${role}`] = funded(
+        BigInt(wallet.minimumLovelace),
+      );
+    await expect(checkWallets(processes)).rejects.toThrow(
+      "Wallet daSubmitter needs at least 2 plain ADA outputs",
+    );
+    const resumed = await deployment({ nonceRecorded: true });
+    fundEach(resumed.processes, 6_000_000n);
+    resumed.processes.responses["wallet-daSubmitter"] = funded(20_000_000n, 2);
+    await expect(checkWallets(resumed.processes)).rejects.toThrow(
+      "Wallet daSubmitter needs at least 2 plain ADA outputs holding 80000000 lovelace",
+    );
   });
   it("requires each configured budget before anything was spent", async () => {
     const { processes } = await deployment({ nonceRecorded: false });
@@ -303,8 +343,7 @@ describe("wallet funding", () => {
   });
   it("needs only working capital once the deployment has started spending", async () => {
     const { processes } = await deployment({ nonceRecorded: true });
-    for (const role of Object.keys(processes.config.wallets))
-      processes.responses[`wallet-${role}`] = funded(6_000_000n);
+    fundEach(processes, 6_000_000n);
     await expect(checkWallets(processes)).resolves.toHaveProperty("user");
   });
   it("treats a signed nonce as spending, since it may already have landed", async () => {
@@ -317,8 +356,7 @@ describe("wallet funding", () => {
         "submitted",
       ),
     );
-    for (const role of Object.keys(processes.config.wallets))
-      processes.responses[`wallet-${role}`] = funded(6_000_000n);
+    fundEach(processes, 6_000_000n);
     await expect(checkWallets(processes)).resolves.toHaveProperty("user");
   });
 });
