@@ -29,6 +29,7 @@ function assertStackSecretNames(config: StackConfig) {
     config.wallets.recipient!.seedEnv,
     config.wallets.prover!.seedEnv,
     config.wallets.availability!.seedEnv,
+    config.wallets.daResponder!.seedEnv,
     config.da.submitterSeedEnv,
     config.da.producerTransportEnv,
     config.da.retainedTransportEnv,

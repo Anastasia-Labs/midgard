@@ -166,6 +166,7 @@ export function parseStackConfig(value: unknown): StackConfig {
     "daSubmitter",
     "prover",
     "availability",
+    "daResponder",
   ])
     if (!wallets[role]) throw new Error(`Missing ${role} wallet budget`);
   for (const [role, seedEnv] of Object.entries({

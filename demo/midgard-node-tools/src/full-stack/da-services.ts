@@ -209,8 +209,15 @@ export async function generateDaServices(processes: StackProcesses) {
       DA_SIGNER_KEY_SOURCE: `cardano-seed:${env[member.seedEnv]}`,
       DA_THRESHOLD: String(threshold),
       DA_L1_SUBMISSION_ENABLED: String(member.signerIndex === 0),
+      // The submitting member also answers availability challenges, from a
+      // wallet of its own; its journal lives on the state volume.
       ...(member.signerIndex === 0
-        ? { L1_SUBMITTER_KEY_SOURCE: `seed:${env[config.da.submitterSeedEnv]}` }
+        ? {
+            L1_SUBMITTER_KEY_SOURCE: `seed:${env[config.da.submitterSeedEnv]}`,
+            DA_AVAILABILITY_SUBMITTER_KEY_SOURCE: `seed:${env[config.wallets.daResponder!.seedEnv]}`,
+            DA_AVAILABILITY_JOURNAL_PATH:
+              "/var/lib/midgard-da/availability-journal.jsonl",
+          }
         : {}),
       DA_COMMITTEE_DATABASE_URL: `postgresql://midgard_da_writer:${encodeURIComponent(writerPassword)}@127.0.0.1:${config.da.ports.database}/midgard_da_${member.signerIndex}`,
       DA_COMMITTEE_API_HOST: "127.0.0.1",

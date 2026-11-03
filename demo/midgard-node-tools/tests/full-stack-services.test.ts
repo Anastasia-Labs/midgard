@@ -104,6 +104,9 @@ it("generates committee configurations accepted by the real loader: the run's L1
     env[config.da.producerTransportEnv] = `seed:${"01".repeat(32)}`;
     env[config.da.retainedTransportEnv] = `seed:${"02".repeat(32)}`;
     env[config.da.submitterSeedEnv] = entropyToMnemonic("03".repeat(16));
+    env[config.wallets.daResponder!.seedEnv] = entropyToMnemonic(
+      "04".repeat(16),
+    );
     env[config.da.databasePasswordEnv] = "writer-test-password";
     env[config.da.readerPasswordEnv] = "reader-test-password";
     const committee = await configureStackCommittee(config, env);
@@ -205,6 +208,22 @@ it("generates committee configurations accepted by the real loader: the run's L1
         `cardano-seed:${env[member.seedEnv]}`,
       );
       expect(loaded.l1SubmissionEnabled).toBe(member.signerIndex === 0);
+      // The submitting member answers availability challenges from its own
+      // wallet, journaling to the state volume that survives a restart.
+      if (member.signerIndex === 0) {
+        expect(loaded.availabilitySubmitterKeySource).toBe(
+          `seed:${env[config.wallets.daResponder!.seedEnv]}`,
+        );
+        expect(loaded.availabilitySubmitterKeySource).not.toBe(
+          loaded.l1SubmitterKeySource,
+        );
+        expect(loaded.availabilityJournalPath).toMatch(
+          /^\/var\/lib\/midgard-da\//u,
+        );
+      } else {
+        expect(loaded.availabilitySubmitterKeySource).toBeUndefined();
+        expect(loaded.availabilityJournalPath).toBeUndefined();
+      }
       expect(generated.volumes).toHaveProperty(
         `da-committee-${member.signerIndex}-state`,
       );

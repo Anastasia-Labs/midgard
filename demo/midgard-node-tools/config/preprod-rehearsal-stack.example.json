@@ -40,6 +40,10 @@
     "availability": {
       "seedEnv": "STACK_AVAILABILITY_SEED",
       "minimumLovelace": "2540000000"
+    },
+    "daResponder": {
+      "seedEnv": "STACK_DA_RESPONDER_SEED",
+      "minimumLovelace": "50000000"
     }
   },
   "da": {
