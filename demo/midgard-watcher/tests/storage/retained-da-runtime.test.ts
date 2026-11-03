@@ -29,10 +29,7 @@ import {
   type WatcherOperationsSink,
 } from "../../src/runtime/operations-observability.js";
 import { type WatcherPublicDaRequest } from "../../src/storage/public-da-client.js";
-import {
-  encodeWatcherPublicDaFrame,
-  WatcherPublicDaLibp2pTransport,
-} from "../../src/storage/public-da-libp2p-transport.js";
+import { WatcherPublicDaLibp2pTransport } from "../../src/storage/public-da-libp2p-transport.js";
 import {
   bindWatcherRetainedDaOperations,
   createWatcherRetainedDaRuntime,
@@ -44,6 +41,7 @@ import {
 } from "../../src/storage/retained-da-runtime.js";
 import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
 import {
+  libp2pTransportFixture,
   PEER_ID,
   rawConfig,
   transportFactory,
@@ -282,42 +280,14 @@ describe("explicit Custom DA transport", () => {
       },
     });
   };
-  const transportFixture = (response = Buffer.from([0xf6])) => {
-    let authenticatedPeer = peerId;
-    const abort = vi.fn();
-    const dialProtocol = vi.fn(async () => ({
-      send: () => true,
-      close: async () => undefined,
-      abort,
-      async *[Symbol.asyncIterator]() {
-        yield encodeWatcherPublicDaFrame(response);
-      },
-    }));
-    const transport = new WatcherPublicDaLibp2pTransport({
-      libp2pFactory: async () => ({
-        start: async () => undefined,
-        stop: async () => undefined,
-        dialProtocol,
-        getConnections: () => [
-          { remotePeer: { toString: () => authenticatedPeer } },
-        ],
-      }),
-    });
-    return {
-      transport,
-      dialProtocol,
-      abort,
-      changeRemotePeer: () => {
-        authenticatedPeer = PEER_ID;
-      },
-    };
-  };
+  const transportFixture = (response?: Buffer) =>
+    libp2pTransportFixture(peerId, response);
 
   it("requires exact admitted Custom config, identity, address and protocol before dialing ip4", async () => {
     const identity = makeWatcherDeploymentAuthorityFixture({
       network: "Custom",
     }).result;
-    const customNetwork = {
+    const admission = {
       watcherConfig: config(),
       deploymentIdentity: identity,
     };
@@ -330,7 +300,7 @@ describe("explicit Custom DA transport", () => {
       requestCbor: Buffer.from([0xa0]),
       timeoutMs: 1000,
       signal: new AbortController().signal,
-      customNetwork,
+      admission,
     };
     const f = transportFixture();
     await f.transport.start();
@@ -340,7 +310,7 @@ describe("explicit Custom DA transport", () => {
       );
       expect(f.dialProtocol).toHaveBeenCalledTimes(1);
       for (const rejected of [
-        { ...request, customNetwork: undefined },
+        { ...request, admission: undefined },
         { ...request, peerIdentity: "unconfigured-peer" },
         { ...request, multiaddr: address.replace("4141", "4142") },
         {
@@ -349,22 +319,22 @@ describe("explicit Custom DA transport", () => {
         },
         {
           ...request,
-          customNetwork: {
-            ...customNetwork,
+          admission: {
+            ...admission,
             deploymentIdentity: deploymentIdentity(),
           },
         },
         {
           ...request,
-          customNetwork: {
-            ...customNetwork,
+          admission: {
+            ...admission,
             deploymentIdentity: { ...identity },
           },
         },
         {
           ...request,
-          customNetwork: {
-            ...customNetwork,
+          admission: {
+            ...admission,
             watcherConfig: parseWatcherConfig(rawConfig()),
           },
         },

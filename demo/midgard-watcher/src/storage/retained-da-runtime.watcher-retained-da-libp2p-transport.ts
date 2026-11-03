@@ -94,7 +94,9 @@ class WatcherRetainedDaLibp2pTransport implements RetainedDaLibp2pTransport {
     private readonly transport: WatcherPublicDaLibp2pTransport,
     private readonly configuredTimeoutMs: number,
     private readonly operationsSink: WatcherOperationsSink | undefined,
-    private readonly customNetwork: WatcherPublicDaRequest["customNetwork"],
+    private readonly admission: NonNullable<
+      WatcherPublicDaRequest["admission"]
+    >,
     private readonly lifetime: AbortSignal,
     private readonly acquireRequest: (
       signal: AbortSignal,
@@ -151,11 +153,7 @@ class WatcherRetainedDaLibp2pTransport implements RetainedDaLibp2pTransport {
         requestCbor: args.payload,
         timeoutMs,
         signal,
-        ...(this.customNetwork === undefined
-          ? {}
-          : {
-              customNetwork: this.customNetwork,
-            }),
+        admission: this.admission,
       });
       signal.throwIfAborted();
       const completedAtMs = Date.now().toString();
@@ -242,9 +240,10 @@ export class WatcherRetainedDaSourceWithL1Fallback extends DaLibp2pRetainedDaSou
 /**
  * Compiled public-DA authority for production fault-proof workflows.
  *
- * The watcher config parser admits direct public DNS TCP peers, plus explicit
- * Custom-chain ip4 peers. The signed deployment identity supplies the
- * protocol namespace. One source is created per peer so the shared evidence
+ * The watcher config parser admits direct public DNS TCP peers, plus ip4
+ * peers on a Custom chain and a local-only stack's own loopback peers; the
+ * transport dials an ip4 peer only against this admitted config. The signed
+ * deployment identity supplies the protocol namespace. One source is created per peer so the shared evidence
  * layer can preserve independent attempts instead of silently treating an
  * operator-private endpoint or local file as public evidence.
  */
@@ -295,12 +294,10 @@ export const createRuntimeFromAdmittedConfig = async (
       transport,
       config.da.requestTimeoutMs,
       operationsSinkByDeploymentIdentity.get(options.deploymentIdentity),
-      config.targetNetwork === "Custom"
-        ? Object.freeze({
-            watcherConfig: config,
-            deploymentIdentity: options.deploymentIdentity,
-          })
-        : undefined,
+      Object.freeze({
+        watcherConfig: config,
+        deploymentIdentity: options.deploymentIdentity,
+      }),
       signal,
       shared?.acquireRequest ?? ((signal) => permits.acquire(signal)),
     );

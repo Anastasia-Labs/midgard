@@ -52,7 +52,9 @@ export async function verifyPublicDa(
       verifyPayload: retainedDaPayloadHeaderVerifier(headerHash),
     });
     if (!result.ok)
-      throw new Error(`Public DA retrieval failed for ${headerHash}`);
+      throw new Error(
+        `Public DA retrieval failed for ${headerHash}: ${JSON.stringify(result.attempts)}`,
+      );
     await writeTextFileAtomic(`${path}.cbor`, result.payloadEnvelopeCbor, {
       mode: 0o600,
     });

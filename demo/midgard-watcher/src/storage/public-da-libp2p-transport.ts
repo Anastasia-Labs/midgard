@@ -307,14 +307,15 @@ const parseExpectedPeer = (
   const address = multiaddr(request.multiaddr);
   const components = address.getComponents();
   const names = components.map((component) => component.name);
-  let customIp4 = false;
-  if (names[0] === "ip4" && request.customNetwork !== undefined) {
-    const { deploymentIdentity } = request.customNetwork;
+  // An ip4 peer is dialed only when the admitted config lists it exactly.
+  // The config parser alone decides which ip4 peers a config may hold.
+  let admittedIp4 = false;
+  if (names[0] === "ip4" && request.admission !== undefined) {
+    const { deploymentIdentity } = request.admission;
     assertVerifiedWatcherDeploymentIdentity(deploymentIdentity);
-    const config = parseWatcherConfig(request.customNetwork.watcherConfig);
-    customIp4 =
-      config.targetNetwork === "Custom" &&
-      deploymentIdentity.network === "Custom" &&
+    const config = parseWatcherConfig(request.admission.watcherConfig);
+    admittedIp4 =
+      config.targetNetwork === deploymentIdentity.network &&
       request.protocolId ===
         daRequestResponseProtocolId(
           deploymentIdentity.manifestId,
@@ -329,7 +330,7 @@ const parseExpectedPeer = (
   }
   if (
     names.length !== 3 ||
-    (names[0] !== "dns4" && names[0] !== "dns6" && !customIp4) ||
+    (names[0] !== "dns4" && names[0] !== "dns6" && !admittedIp4) ||
     names[1] !== "tcp" ||
     names[2] !== "p2p"
   ) {

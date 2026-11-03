@@ -13,8 +13,11 @@ export type WatcherPublicDaRequest = Readonly<{
   requestCbor: Buffer;
   timeoutMs: number;
   signal: AbortSignal;
-  /** Explicit Custom config and its existing verified identity; never a boolean bypass. */
-  customNetwork?: Readonly<{
+  /**
+   * The admitted watcher config and its verified identity: the only
+   * authority for dialing an ip4 peer, never a boolean bypass.
+   */
+  admission?: Readonly<{
     watcherConfig: WatcherConfig;
     deploymentIdentity: VerifiedWatcherDeploymentIdentity;
   }>;
