@@ -20,10 +20,20 @@ import {
 export const outRefLabel = (outRef: OutRef) =>
   `${outRef.txHash.toString("hex")}#${outRef.index.toString()}`;
 
+/** Replay retention whose admission clock starts at `zeroSlot`. */
+export const replayRetention = (zeroSlot = 0) =>
+  createWatcherReplayRetention({
+    slotConfig: { zeroTime: 0, zeroSlot, slotLength: 1000 },
+    eventWaitMs: 1n,
+    maximumAdmissionRangeMs: 1n,
+    maximumProtectionWaitMs: 0n,
+  });
+
 /** The follower's replay port over `store`, for its queue reads only. */
 export const replaySource = (
   store: ReturnType<typeof openStore>,
   minimumCheckpointDepth = RELEASE_DEPTH,
+  retention = replayRetention(),
 ) =>
   createWatcherFollowerReplaySource({
     store,
@@ -54,12 +64,7 @@ export const replaySource = (
       ...AUTHORITY,
       hubOracleOneShotOutRef: outRefLabel(SIM_HUB_ORACLE_ONE_SHOT),
     },
-    retention: createWatcherReplayRetention({
-      slotConfig: { zeroTime: 0, zeroSlot: 0, slotLength: 1000 },
-      eventWaitMs: 1n,
-      maximumAdmissionRangeMs: 1n,
-      maximumProtectionWaitMs: 0n,
-    }),
+    retention,
   });
 
 export const GENESIS = SDK.makeGenesisConfirmedState(1000n);

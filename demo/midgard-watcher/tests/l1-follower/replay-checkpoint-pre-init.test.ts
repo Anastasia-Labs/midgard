@@ -35,6 +35,7 @@ import {
   GENESIS,
   genesisInitTx,
   outRefLabel,
+  replayRetention,
   replaySource,
 } from "../support/replay-source-fixture.js";
 
@@ -65,7 +66,10 @@ const followed = async () => {
   };
   const directory = await mkdtemp(join(tmpdir(), "watcher-preinit-"));
   directories.push(directory);
-  const source = replaySource(store, CHECKPOINT_DEPTH);
+  // Genesis's checked ledger releases admissions up to one slot past the
+  // origin, so a release is visible as a prune floor above the origin.
+  const retention = replayRetention(SIM_ORIGIN.point.slot + 2);
+  const source = replaySource(store, CHECKPOINT_DEPTH, retention);
   let stored: LedgerCheckpoint | undefined;
   // A chain event landing once, right after the keeper's next root read.
   let afterRead: (() => Promise<void>) | undefined;
@@ -144,6 +148,11 @@ const followed = async () => {
     checkpointObservation,
     /** The ledger checkpoint the keeper persisted, if any. */
     persisted: () => stored,
+    /** The slot the replay retention lets the follower prune up to. */
+    pruneFloor: () =>
+      store.transaction("read", (tx) =>
+        retention.floor.floor({ tx, dialect: store.dialect }),
+      ),
     precedesInit,
     afterNextRead: (landing: () => Promise<void>) => {
       afterRead = landing;
@@ -328,11 +337,36 @@ describe("a replay checkpoint deeper than the follower's origin", () => {
         await f.empty(1);
       }
       expect(f.persisted()).toBeUndefined();
+      expect(await f.pruneFloor()).toBe(SIM_ORIGIN.point.slot);
       // The init block is now the checkpoint point, above the origin.
       expect(await f.precedesInit(CHECKPOINT_DEPTH)).toBe(false);
       const deep = await f.source.confirmed(await f.checkpointObservation());
       expect(deep.state).toEqual(GENESIS);
       expect(await f.readiness()).toEqual([]);
+      // The checked genesis ledger is persisted, and admissions are released.
+      expect(f.persisted()).toMatchObject({ headerHash: GENESIS.headerHash });
+      expect(await f.pruneFloor()).toBe(SIM_ORIGIN.point.slot + 1);
+    } finally {
+      await f.close();
+    }
+  });
+
+  it("stays pending once a rewind removes the init while the chain is short", async () => {
+    const f = await followed();
+    try {
+      await f.empty(1);
+      const target = f.chain.tip.point;
+      await f.forward(genesisInitTx());
+      await f.empty(1);
+      expect(await f.readiness()).toEqual([]);
+      expect((await f.store.rewind(target)).kind).toBe("rewound");
+      expect(await f.precedesInit(CHECKPOINT_DEPTH)).toBe(false);
+      expect(await f.readiness()).toEqual([
+        {
+          reason: "replayed_ledger_stable_observation_pending",
+          detail: `l1_follower_short_chain: the follower holds fewer than ${CHECKPOINT_DEPTH.toString()} blocks after its origin`,
+        },
+      ]);
     } finally {
       await f.close();
     }
