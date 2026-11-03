@@ -136,16 +136,6 @@ export type WatcherFollowerRuntimeInput = Readonly<{
   unsafeTransportForTest?: L1NodeTransport;
 }>;
 
-/** The `hubOracleOneShot` outref of the manifest (`txHash#index`). */
-export const parseHubOracleOneShot = (
-  outRef: string,
-): OriginConfig["hubOracleOneShot"] => {
-  const match = /^([0-9a-f]{64})#(0|[1-9][0-9]*)$/u.exec(outRef);
-  if (match === null)
-    throw new Error(`hubOracleOneShot outref is malformed: ${outRef}`);
-  return { txHash: Buffer.from(match[1]!, "hex"), index: Number(match[2]) };
-};
-
 /**
  * How deep below the cursor the store keeps every fact, in blocks: the
  * watcher's recovery reads (the release-final boundary) sit

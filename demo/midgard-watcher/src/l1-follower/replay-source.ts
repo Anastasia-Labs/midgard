@@ -23,7 +23,7 @@ import {
   type WatcherUserEvent,
   type WatcherUserEventKind,
 } from "../verification/user-event.js";
-import { parseHubOracleOneShot } from "./follower-runtime.js";
+import { parseHubOracleOneShot } from "./hub-oracle-one-shot.js";
 import type { WatcherObservationAuthority } from "./observation.js";
 import { replayEventIds } from "./replay-events.js";
 import { watcherReplayMaterial } from "./replay-material.js";

@@ -14,11 +14,11 @@ import {
 import { createSignedTransactionRecovery } from "./fault-proof-l1-source.signed.js";
 import {
   openWatcherFollowerRuntime,
-  parseHubOracleOneShot,
   type WatcherFollowerRuntime,
   type WatcherFollowerRuntimeInput,
   watcherRetainedDepth,
 } from "./follower-runtime.js";
+import { parseHubOracleOneShot } from "./hub-oracle-one-shot.js";
 
 export type WatcherDeploymentFollower = WatcherFollowerRuntime &
   Readonly<{
