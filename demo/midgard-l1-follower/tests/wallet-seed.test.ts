@@ -39,9 +39,6 @@ afterAll(async () => {
   rmSync(scratch, { recursive: true, force: true });
 });
 
-const sleep = (ms: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, ms));
-
 describe.each(storeAdapters(databases, scratch))(
   "LSQ wallet seed ($name)",
   (adapter) => {
@@ -137,10 +134,9 @@ describe.each(storeAdapters(databases, scratch))(
           acquirable: () => true,
           duringQuery: async () => {
             if (landing !== undefined) return;
-            // The block arrives while the node is still scanning; the scan
-            // outlasts the block's write.
+            // The read is held until the block has been delivered to the
+            // store, then answered: the block waits behind the seed.
             landing = store.applyBlock(spendA1);
-            await Promise.race([landing, sleep(300)]);
           },
         });
         const result = await seedWallets(store, ledger, [TRACKED]);
