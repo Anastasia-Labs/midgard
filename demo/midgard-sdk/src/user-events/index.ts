@@ -3,6 +3,7 @@ export * from "./deposit.js";
 export * from "./history.js";
 export * from "./history-build.js";
 export * from "./history-capture.js";
+export * from "./history-contracts-from-manifest.js";
 export * from "./history-data.js";
 export * from "./history-deployment.js";
 export type { EventHistoryFetchConfig } from "./history-events.js";
@@ -37,5 +38,6 @@ export {
   UserEventWitnessPublishRedeemer,
   userEventWitnessScriptHash,
 } from "./internals.js";
+export * from "./submit-user-event.js";
 export * from "./tx-order.js";
 export * from "./withdrawal.js";

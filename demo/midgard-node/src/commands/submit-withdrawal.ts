@@ -106,9 +106,8 @@ const requireCommittedProducer = (txHash: string, status: string): void => {
   );
 };
 
-export const withdrawalEventIdFromBuildMetadata = (
-  metadata: SubmitWithdrawalTx.WithdrawalBuildMetadata,
-): string => metadata.withdrawalEventIdCbor;
+export const withdrawalEventIdFromBuildMetadata =
+  SDK.withdrawalEventIdFromBuildMetadata;
 
 export const submitWithdrawalCommandProgram = ({
   config,

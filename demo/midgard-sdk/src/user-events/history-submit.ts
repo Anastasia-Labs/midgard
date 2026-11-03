@@ -23,6 +23,7 @@ import {
   type EventHistorySubmissionRequest,
   eventHistorySubmissionRequestHash,
 } from "./history-submit-request.js";
+import { ADMISSION_LOWER_BOUND_BACKOFF_MS } from "./submit-user-event-types.js";
 
 export {
   type EventHistorySubmissionRequest,
@@ -117,20 +118,6 @@ export type EventHistorySubmissionDriver = {
   readonly now: () => number;
   readonly waitUntil: (unixTimeMs: number) => Promise<void>;
 };
-
-/** Admission lower bounds trail the local clock by this backoff, so a
- * protected predecessor is retried this long after its protection ends. */
-const ADMISSION_LOWER_BOUND_BACKOFF_MS = 60_000;
-
-/** Longest predecessor-protection wait one admission attempt can meet. Any
- * list mutation may use the maximum validity range, and its nodes stay
- * protected for the recipe duration after that upper bound. A submission
- * deadline must add this to its own publication and confirmation budget. */
-export const eventHistoryProtectionWaitBoundMs = (
-  recipe: Pick<EventHistoryBuildContext["recipe"], "protectionDurationMs">,
-): number =>
-  Number(MAX_VALIDITY_RANGE_LENGTH_MS + recipe.protectionDurationMs) +
-  ADMISSION_LOWER_BOUND_BACKOFF_MS;
 
 /** Both event kinds use the same publication/admission state machine. It never
  * changes the nonce, original funds, payload or reclaim authorization on retry.

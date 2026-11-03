@@ -400,14 +400,3 @@ export const readConfiguredDeploymentManifest = () => {
   }
   return readRuntimeDeploymentManifestFile(path.resolve(configuredPath), true);
 };
-
-export const requireManifestString = (
-  value: unknown,
-  field: string,
-  sourcePath: string,
-): string => {
-  if (typeof value === "string" && value.length > 0) {
-    return value;
-  }
-  throw new Error(`Deployment manifest at "${sourcePath}" is missing ${field}`);
-};

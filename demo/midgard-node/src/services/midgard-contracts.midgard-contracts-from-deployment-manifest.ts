@@ -5,38 +5,29 @@ import {
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  credentialToAddress,
-  Network,
-  scriptHashToCredential,
-} from "@lucid-evolution/lucid";
-
-import {
   authenticatedValidatorFromManifest,
   mintingValidatorFromManifest,
+  requireManifestString,
   spendingValidatorFromManifest,
+  userHistoryValidatorsFromManifest,
   withdrawalValidatorFromManifest,
-} from "./midgard-contracts.assert-deployment-manifest-matches-config.js";
+} from "@al-ft/midgard-sdk";
+import { Network } from "@lucid-evolution/lucid";
+
 import {
   faultProofFamilyScriptsFromManifest,
   linearFaultProofChainFromManifest,
 } from "./midgard-contracts.linear-fault-proof-chain-from-manifest.js";
-import { requireManifestString } from "./midgard-contracts.load-reference-script-auth-validator.js";
 import { scriptDecodeFromManifest } from "./midgard-contracts.script-decode-from-manifest.js";
-import {
-  eventHistoryContractsFromManifest,
-  validationTraceDisputeFromManifest,
-} from "./midgard-contracts.validation-trace-dispute-from-manifest.js";
+import { validationTraceDisputeFromManifest } from "./midgard-contracts.validation-trace-dispute-from-manifest.js";
 
 export const midgardContractsFromDeploymentManifest = (
   network: Network,
   manifest: DeploymentManifest,
   sourcePath: string,
 ): SDK.MidgardValidators => {
-  const eventHistory = eventHistoryContractsFromManifest(
-    network,
-    manifest,
-    sourcePath,
-  );
+  const { hubOracle, eventHistory, deposit, withdrawal } =
+    userHistoryValidatorsFromManifest(network, manifest, sourcePath);
   const referenceScriptAuth = mintingValidatorFromManifest(
     manifest,
     sourcePath,
@@ -52,24 +43,6 @@ export const midgardContractsFromDeploymentManifest = (
       `Deployment manifest at "${sourcePath}" reference-script auth policy mismatch: contracts.referenceScriptAuthMint=${referenceScriptAuth.policyId}, referenceScriptAuthPolicy.policyId=${referenceScriptAuthPolicyId}`,
     );
   }
-  const hubOracleMint = mintingValidatorFromManifest(
-    manifest,
-    sourcePath,
-    "hubOracleMint",
-  );
-  // The canonical Aiken tree ships only the one-shot hub-oracle mint policy;
-  // its witness lives at that policy's script credential, so the one script
-  // that can govern the address is the mint script itself.
-  const hubOracle: SDK.AuthenticatedValidator = {
-    spendingScriptCBOR: hubOracleMint.mintingScriptCBOR,
-    spendingScript: hubOracleMint.mintingScript,
-    spendingScriptHash: hubOracleMint.policyId,
-    spendingScriptAddress: credentialToAddress(
-      network,
-      scriptHashToCredential(hubOracleMint.policyId),
-    ),
-    ...hubOracleMint,
-  };
   const txOrder = authenticatedValidatorFromManifest(
     network,
     manifest,
@@ -582,8 +555,8 @@ export const midgardContractsFromDeploymentManifest = (
       "pexcludesWithdraw",
     ),
     eventHistory,
-    deposit: eventHistory.deposit.list,
-    withdrawal: eventHistory.withdrawal.list,
+    deposit,
+    withdrawal,
     txOrder,
     fieldPreimageCertificate,
     scriptDecode,

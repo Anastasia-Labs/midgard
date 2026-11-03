@@ -39,8 +39,8 @@ type ManifestContract = {
 
 /**
  * The reserve address, derived from the deployment manifest the way the node
- * derives its reserve contract (midgard-node
- * services/midgard-contracts.assert-deployment-manifest-matches-config.ts,
+ * derives its reserve contract (midgard-sdk
+ * src/deployment-manifest-validators.ts,
  * spendingValidatorFromManifest): the script's own hash must match the one the
  * manifest records, and the address is that script's enterprise address.
  */
