@@ -194,6 +194,20 @@ export async function poll<T>(
   );
 }
 
+/**
+ * A /readyz body, ready (200) or not (503): an unready service still says
+ * why. Anything else, or no answer, is undefined.
+ */
+export async function getReadiness(url: string): Promise<unknown | undefined> {
+  try {
+    const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+    if (response.status !== 200 && response.status !== 503) return undefined;
+    return await response.json();
+  } catch {
+    return undefined;
+  }
+}
+
 export async function getJson(url: string): Promise<unknown | undefined> {
   try {
     const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });

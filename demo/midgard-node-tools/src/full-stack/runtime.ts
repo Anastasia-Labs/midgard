@@ -13,7 +13,7 @@ import { stackPaths } from "./deployment.js";
 import { readJsonIfPresent, writeDurableJson } from "./journal.js";
 import { containerNativeLedger } from "./native-ledger.js";
 import { pinNativeOwner, preflightProducerTransport } from "./node-start.js";
-import { getJson, poll, type StackProcesses } from "./process.js";
+import { getJson, getReadiness, poll, type StackProcesses } from "./process.js";
 import {
   publicNodeEnvironment,
   publicNodeServices,
@@ -21,7 +21,11 @@ import {
   publicRuntimeInputs,
   writePublicNodeConfig,
 } from "./public-runtime.js";
-import { committeeIsReady, stackIsReady } from "./readiness.js";
+import {
+  committeeIsReady,
+  committeeStopReason,
+  stackIsReady,
+} from "./readiness.js";
 import { storageIdentityStep } from "./storage.js";
 import { generateWatcherServices } from "./watcher-services.js";
 import type { StackStep } from "./workflow.js";
@@ -356,20 +360,9 @@ export function runtimeSteps(processes: StackProcesses): StackStep[] {
           ["up", "-d", "--wait", "da-postgres"],
           runtime.compose,
         );
-        for (const service of runtime.committeeServices.slice(0, 1))
-          await processes.compose(
-            `${service}-wallet-preflight`,
-            [
-              "run",
-              "--rm",
-              "--no-deps",
-              service,
-              "dist/index.js",
-              "l1-wallet-preflight",
-              "--json",
-            ],
-            runtime.compose,
-          );
+        // The committee checks its own submitter wallet once its L1 follower
+        // has created its store and seeded the wallet; nothing reads those
+        // facts before it runs.
         await processes.compose(
           "committee-start",
           ["up", "-d", ...runtime.committeeServices],
@@ -382,11 +375,18 @@ export function runtimeSteps(processes: StackProcesses): StackStep[] {
           async () => {
             const ready = await Promise.all(
               runtime.committeeServices.map((_, index) =>
-                getJson(
+                getReadiness(
                   `http://127.0.0.1:${processes.config.da.ports.committeeApiBase + index}/readyz`,
                 ),
               ),
             );
+            ready.forEach((value, index) => {
+              const reason = committeeStopReason(value);
+              if (reason !== undefined)
+                throw new Error(
+                  `${runtime.committeeServices[index]} cannot become ready by waiting: ${reason}, then run e2e-stack again`,
+                );
+            });
             return ready.every((value, index) =>
               committeeIsReady(value, index, expected),
             )

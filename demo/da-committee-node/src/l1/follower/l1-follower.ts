@@ -447,33 +447,3 @@ export const startCommitteeL1Follower = async (
     },
   };
 };
-
-/** A read-only Lucid client on the committee follower's facts, for a CLI. */
-export type CommitteeL1Reader = Readonly<{
-  lucid(): Promise<LucidEvolution>;
-  close(): Promise<void>;
-}>;
-
-/**
- * Opens the committee follower's facts for reading from another process:
- * no loop runs and no write is possible (the writer lease is never held).
- * The facts are as current as the running committee's follower made them;
- * the own wallets' outputs are there once that follower seeded them.
- * Throws when the follower is not configured.
- */
-export const openCommitteeL1Reader = async (
-  config: LoadedCommitteeConfig,
-  log: (line: string) => void,
-): Promise<CommitteeL1Reader> => {
-  const plan = committeeL1FollowerPlan(config);
-  if (plan.kind === "unconfigured")
-    throw new Error(`L1 follower is not configured: ${plan.reason}`);
-  const parts = await openFollowerParts(
-    config,
-    plan,
-    depthParameters(config),
-    async () => null,
-    log,
-  );
-  return { lucid: parts.lucid, close: parts.close };
-};

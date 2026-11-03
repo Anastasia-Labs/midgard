@@ -27,6 +27,33 @@ export function committeeIsReady(
   );
 }
 
+/**
+ * Why a committee cannot become ready by waiting, or undefined. Its startup
+ * failed and holds (`committee_startup_failed`), which only a restart clears;
+ * or its L1 submitter wallet check failed, which a top-up clears once the
+ * committee rechecks it.
+ */
+export function committeeStopReason(value: unknown) {
+  const committee = value as
+    | {
+        ready?: boolean;
+        reasons?: unknown;
+        detail?: string;
+        peer?: { l1SubmitterPreflight?: { status?: string; detail?: unknown } };
+      }
+    | undefined;
+  if (committee?.ready !== false) return undefined;
+  if (
+    Array.isArray(committee.reasons) &&
+    committee.reasons.includes("committee_startup_failed")
+  )
+    return `its startup failed and holds: ${committee.detail ?? "committee_startup_failed"}. Fix the cause and restart it`;
+  const wallet = committee.peer?.l1SubmitterPreflight;
+  if (wallet?.status === "failed")
+    return `its L1 submitter wallet check failed: ${JSON.stringify(wallet.detail)}. Top up the wallet; the committee rechecks it`;
+  return undefined;
+}
+
 /** The node is ready, with no reasons, and its settlement is healthy. */
 export function nodeIsReady(value: unknown) {
   const node = value as

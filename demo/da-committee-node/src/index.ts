@@ -13,10 +13,8 @@ import { DaPeerRegistry } from "./da/libp2p/index.js";
 import {
   committeeL1InterventionReason,
   type CommitteeL1Readiness,
-  openCommitteeL1Reader,
 } from "./l1/follower/l1-follower.js";
 import { untilCommitteeL1SourceReady } from "./l1/follower/source-wait.js";
-import { l1SubmitterPreflightResultToJson } from "./l1/submitter.js";
 import { createL1SubmitterPreflightMonitor } from "./l1-submitter-preflight-monitor.js";
 import {
   type CommitteeNodeLocalSetup,
@@ -45,10 +43,6 @@ type StoreLockRefusal =
 
 const main = async (): Promise<void> => {
   loadRuntimeConfig();
-  if (process.argv[2] === "l1-wallet-preflight") {
-    await runL1WalletPreflightCommand(process.argv.slice(3));
-    return;
-  }
   if (process.argv.includes("--help")) {
     printHelp();
     return;
@@ -374,37 +368,6 @@ const loadLocalSetup = async (
   };
 };
 
-const runL1WalletPreflightCommand = async (
-  args: readonly string[],
-): Promise<void> => {
-  if (args.includes("--help")) {
-    printL1WalletPreflightHelp();
-    return;
-  }
-  const unknownArgs = args.filter((arg) => arg !== "--json");
-  if (unknownArgs.length > 0) {
-    throw new Error(
-      `unknown l1-wallet-preflight arguments: ${unknownArgs.join(", ")}`,
-    );
-  }
-  const config = await loadCommitteeConfig();
-  const reader = await openCommitteeL1Reader(config, (line) =>
-    process.stderr.write(`${line}\n`),
-  );
-  let result: Awaited<ReturnType<typeof l1SubmitterWalletPreflightFromConfig>>;
-  try {
-    result = await l1SubmitterWalletPreflightFromConfig(config, reader.lucid);
-  } finally {
-    await reader.close();
-  }
-  process.stdout.write(
-    `${JSON.stringify(l1SubmitterPreflightResultToJson(result), null, 2)}\n`,
-  );
-  if (result.status === "failed") {
-    process.exitCode = 1;
-  }
-};
-
 /** A one-shot run cannot wait on an operator: it fails on such a reason. */
 const throwOnL1Intervention = (
   reasons: readonly CommitteeL1Readiness[],
@@ -419,7 +382,6 @@ const printHelp = (): void => {
 
 Usage:
   da-committee-node --once                       once the L1 follower caught up, tick once: verify signable unattested headers, sign
-  da-committee-node l1-wallet-preflight --json   print L1 submitter wallet readiness
   da-committee-node                              run API and polling loop
 
 Required configuration follows demo/da-committee-node/docs/da-committee-node-architecture.md in the repository.
@@ -430,16 +392,6 @@ CARDANO_LOCAL_NODE_CONFIG_PATH and CARDANO_L1_NODE_TRANSPORT_BINARY_PATH) and
 the deployment's hubOracleOneShot. Until all are set it stays unready with
 l1_follower_unconfigured. The availability responder reads and submits
 through the same follower; no chain index (Kupo, Ogmios) is configured.
-`);
-};
-
-const printL1WalletPreflightHelp = (): void => {
-  process.stdout.write(`da-committee-node l1-wallet-preflight --json
-
-Prints DA L1 submitter wallet readiness as JSON using the normal environment
-configuration. Reads the wallet from the committee's L1 follower facts, as
-current as the running committee made them. Exits non-zero when readiness
-fails.
 `);
 };
 

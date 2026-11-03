@@ -1,7 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { createServer, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
+import { readFile, writeFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -13,17 +11,16 @@ import { assertComposeVersion } from "../src/full-stack/prerequisites.js";
 import { committeeIsReady } from "../src/full-stack/readiness.js";
 import {
   runtimeInputDigest,
-  runtimeSteps,
   stackNodeServices,
 } from "../src/full-stack/runtime.js";
 import { NodeFollowerUnconfiguredError } from "../src/l1-origin.js";
+import type { RecordedCall } from "./full-stack-fixtures.js";
 import {
-  type RecordedCall,
-  RecordingProcesses,
-  removeStackFixtures,
-  stackEnvironment,
-  stackFixture,
-} from "./full-stack-fixtures.js";
+  closeRuntimeStacks,
+  committeeReady,
+  manifestId,
+  stack,
+} from "./full-stack-runtime.fixtures.js";
 import { nodeFollowerPlan } from "./node-follower-plan.js";
 
 /** The checkout's node directory, which holds the base Compose files. */
@@ -69,15 +66,7 @@ async function composeEnvironment(
   ).services[service]!.environment!;
 }
 
-const manifestId = "a".repeat(64);
-const committeeReady = (signerIndex: number) => ({
-  ready: true,
-  deployment: {
-    configuredFingerprint: manifestId,
-    storeMatchesConfigured: true,
-  },
-  peer: { signerIndex, localPeerId: `peer-${signerIndex}` },
-});
+afterEach(closeRuntimeStacks);
 
 describe("committee readiness", () => {
   const expected = { manifestId, peerIds: ["peer-0", "peer-1"] };
@@ -106,102 +95,56 @@ describe("committee readiness", () => {
   });
 });
 
-const listen = async (server: Server) => {
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  return (server.address() as AddressInfo).port;
-};
-const servers: Server[] = [];
-afterEach(async () => {
-  await Promise.all(
-    servers
-      .splice(0)
-      .map((server) => new Promise((resolve) => server.close(resolve))),
-  );
-  await removeStackFixtures();
-});
-
-const DEPLOYED_FOLLOWER_INPUTS = {
-  HUB_ORACLE_ONE_SHOT_TX_HASH: "ab".repeat(32),
-  HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: "0",
-  L1_ORIGIN: `7.${"cd".repeat(32)}`,
-};
-
-/** A generated run with one committee member and live HTTP services on loopback. */
-async function stack() {
-  const state = { nodeStarted: false };
-  const committee = createServer((_, response) =>
-    response.end(JSON.stringify(committeeReady(0))),
-  );
-  const services = createServer((request, response) => {
-    const body: Record<string, unknown> = {
-      "/readyz": state.nodeStarted
-        ? { ready: true, reasons: [], settlement: { state: "waiting" } }
-        : undefined,
-      "/v1/status": {
-        liveness: "live",
-        readiness: "ready",
-        readinessReasons: [],
-        deploymentFingerprint: manifestId,
-        launchScope: { complete: true },
+describe("runtime services step", () => {
+  it("starts the committee on a fresh DA database and waits for it to report ready", async () => {
+    const { processes, services } = await stack();
+    await expect(services.execute(undefined)).resolves.toMatchObject({
+      committees: [committeeReady(0)],
+    });
+    expect(processes.calls.map((call) => call.id)).toContain("runtime-start");
+  });
+  it("stops at once on a committee whose startup failed and holds, naming its reason", async () => {
+    const { processes, services, state } = await stack();
+    const detail =
+      "committee_startup_failed: a failure no retry is known to repair: store schema mismatch";
+    state.committee = {
+      status: 503,
+      body: { ready: false, reasons: ["committee_startup_failed"], detail },
+    };
+    await expect(services.execute(undefined)).rejects.toThrow(
+      `da-committee-0 cannot become ready by waiting: its startup failed and holds: ${detail}`,
+    );
+    expect(processes.calls.map((call) => call.id)).not.toContain(
+      "runtime-start",
+    );
+  }, 30_000);
+  it("stops at once on a committee whose submitter wallet is short, naming what is missing", async () => {
+    const { processes, services, state } = await stack();
+    const short = { ...committeeReady(0), ready: false };
+    state.committee = {
+      status: 503,
+      body: {
+        ...short,
+        reasons: ["L1 submitter preflight failed"],
+        peer: {
+          ...short.peer,
+          l1SubmitterPreflight: {
+            status: "failed",
+            detail: {
+              address: "addr_test1short",
+              missingPlainLovelace: "5000000",
+            },
+          },
+        },
       },
     };
-    const value = body[request.url ?? ""];
-    response.statusCode = value === undefined ? 503 : 200;
-    response.end(JSON.stringify(value ?? { ready: false }));
-  });
-  servers.push(committee, services);
-  const committeePort = await listen(committee);
-  const servicesUrl = `http://127.0.0.1:${await listen(services)}`;
-  const { directory, config } = await stackFixture((sample) => {
-    Object.assign(sample, { endpoint: servicesUrl, timeoutMs: 1 });
-    sample.da.members = sample.da.members.slice(0, 1);
-  });
-  config.da.ports.committeeApiBase = committeePort;
-  const env = stackEnvironment(config);
-  const processes = new RecordingProcesses(config, env);
-  // What the deployment steps restore before the services step runs.
-  Object.assign(processes.env, DEPLOYED_FOLLOWER_INPUTS);
-  processes.responses["runtime-start"] = () => {
-    state.nodeStarted = true;
-  };
-  processes.responses["native-owner-pin"] = { sha: "c".repeat(64) };
-  await mkdir(join(directory, "run/services"), { recursive: true });
-  await mkdir(join(directory, "deploymentInfo"));
-  await writeFile(
-    join(directory, "deploymentInfo/contract-deployment-info.json"),
-    JSON.stringify({ manifestId }),
-  );
-  await writeFile(
-    join(directory, "run/services/committee-0.json"),
-    JSON.stringify({
-      deployment: { fingerprint: manifestId },
-      da_committee: { members: [{ signer_index: 0, peer_id: "peer-0" }] },
-    }),
-  );
-  await writeFile(
-    join(directory, "watcher.env"),
-    `WATCHER_ROLLBACK_KEY_FILE=${join(directory, "rollback-key")}\n`,
-  );
-  await writeFile(
-    join(directory, "run/runtime.json"),
-    JSON.stringify({
-      inputDigest: await runtimeInputDigest(processes),
-      compose: join(directory, "run/services/compose.json"),
-      operationsEndpoint: servicesUrl,
-      committeeServices: ["da-committee-0"],
-    }),
-  );
-  const [configuration, , services_] = runtimeSteps(processes);
-  return {
-    directory,
-    processes,
-    state,
-    configuration: configuration!,
-    services: services_!,
-  };
-}
-
-describe("runtime services step", () => {
+    await expect(services.execute(undefined)).rejects.toThrow(
+      /da-committee-0 cannot become ready by waiting: its L1 submitter wallet check failed: .*addr_test1short.*"missingPlainLovelace":"5000000"/u,
+    );
+    expect(processes.calls.map((call) => call.id)).not.toContain(
+      "runtime-start",
+    );
+  }, 30_000);
   it("dials the producer's live listener whenever its container is up, even before it is ready", async () => {
     const { processes, services } = await stack();
     processes.responses["producer-container-state"] = {
