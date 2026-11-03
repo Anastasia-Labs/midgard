@@ -73,8 +73,8 @@ import {
 import {
   getLogGlobalsHandler,
   getOperatorStatusHandler,
-  postDepositBuildHandler,
-} from "./listen-router.post-deposit-build-handler.js";
+} from "./listen-router.operator-status-handlers.js";
+import { postDepositBuildHandler } from "./listen-router.post-deposit-build-handler.js";
 import { postSubmitHandler } from "./listen-router.post-submit-handler.js";
 import {
   postTxEvaluateHandler,
