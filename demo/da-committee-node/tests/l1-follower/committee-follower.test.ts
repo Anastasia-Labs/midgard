@@ -37,25 +37,24 @@ const status = (fields: Partial<FollowStatus>): FollowStatus =>
 const fakeSeeder = (
   ...answers: WalletSeedStatus[]
 ): WalletSeeder & { steps: number; seeded: boolean } => {
+  let last: WalletSeedStatus = {
+    kind: "pending",
+    reason: "not_initialized",
+    detail: "own wallets not seeded yet",
+    wallets: [],
+  };
   const seeder = {
     steps: 0,
     seeded: false,
     owed: () => [],
     ready: () => seeder.seeded,
-    status: (): WalletSeedStatus =>
-      seeder.seeded
-        ? { kind: "ready" }
-        : {
-            kind: "pending",
-            reason: "not_initialized",
-            detail: "",
-            wallets: [],
-          },
+    status: (): WalletSeedStatus => last,
     addWallets: () => undefined,
     step: async () => {
       const answer = answers[Math.min(seeder.steps, answers.length - 1)]!;
       seeder.steps += 1;
       if (answer.kind === "ready") seeder.seeded = true;
+      last = answer;
       return answer;
     },
     close: () => undefined,
@@ -142,7 +141,7 @@ describe("the committee's L1 source over the follower", () => {
     try {
       expect(l1.readiness()).toContainEqual({
         reason: WALLET_SEED_PENDING,
-        detail: "own wallets not seeded yet",
+        detail: "not_initialized: own wallets not seeded yet",
       });
       // The follower is not ready: the seed waits for it.
       await expect(
@@ -171,6 +170,27 @@ describe("the committee's L1 source over the follower", () => {
       expect(ready.l1.readiness()).toEqual([]);
     } finally {
       await ready.store.close();
+    }
+  });
+
+  it("reports a seed read in flight while it runs, not the previous answer", async () => {
+    const inFlight: WalletSeedStatus = {
+      kind: "pending",
+      reason: "in_flight",
+      detail: "seed read in flight at slot 77",
+      wallets: [],
+    };
+    const seeder = { ...fakeSeeder({ kind: "ready" }), status: () => inFlight };
+    const { l1, store } = await source(() => status({}), seeder);
+    try {
+      expect(l1.readiness()).toEqual([
+        {
+          reason: WALLET_SEED_PENDING,
+          detail: "in_flight: seed read in flight at slot 77",
+        },
+      ]);
+    } finally {
+      await store.close();
     }
   });
 

@@ -97,6 +97,7 @@ export const nodeIntentTrackedSet = (input: {
 export type NodeIntentStage = Readonly<{
   /** Seeds owed wallets, then one S6 pass; returns the holds it leaves. */
   run(): Promise<readonly DriverHold[]>;
+  /** The last pass's holds, with the seed's read live (`in_flight` while a seed runs). */
   holds(): readonly DriverHold[];
   /** The last pass's report, for status. */
   lastReport(): ReconcileReport | null;
@@ -258,19 +259,25 @@ export const createNodeIntentStage = (input: {
     },
   });
   const rejections = createResubmitRejections();
-  let holds: readonly DriverHold[] = [];
+  /** The last pass's holds, except the seed's. */
+  let passHolds: readonly DriverHold[] = [];
   let last: ReconcileReport | null = null;
+  /** Read live: a seed in flight shows as `in_flight` while it runs. */
+  const seedHolds = (): DriverHold[] => {
+    const seed = seeder.status();
+    return seed.kind === "ready"
+      ? []
+      : [
+          {
+            reason: WALLET_SEED_PENDING,
+            detail: `${seed.reason}: ${seed.detail}`,
+          },
+        ];
+  };
   const run = async (): Promise<readonly DriverHold[]> => {
     const left: DriverHold[] = [];
-    if (!seeder.ready()) {
-      // Runs in the store's writer lane, between blocks; it never rejects.
-      const seeded = await seeder.step();
-      if (seeded.kind === "pending")
-        left.push({
-          reason: WALLET_SEED_PENDING,
-          detail: `${seeded.reason}: ${seeded.detail}`,
-        });
-    }
+    // Runs in the store's writer lane, between blocks; it never rejects.
+    if (!seeder.ready()) await seeder.step();
     try {
       waits.clear();
       if ((await store.trackedSetRecord())?.replaying === true)
@@ -292,12 +299,12 @@ export const createNodeIntentStage = (input: {
       left.push(failureHold(INTENT_RECONCILE_FAILED, message(error), error));
     }
     left.push(...rejections.holds());
-    holds = left;
-    return left;
+    passHolds = left;
+    return [...seedHolds(), ...left];
   };
   return {
     run,
-    holds: () => holds,
+    holds: () => [...seedHolds(), ...passHolds],
     lastReport: () => last,
     close: () => seeder.close(),
   };

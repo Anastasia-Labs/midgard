@@ -36,7 +36,12 @@ export type WalletSeedPendingReason =
    * Another process holds the writer lease, or this one lost it. Transient:
    * the role starts its store again, as for any `store_locked`.
    */
-  | "store_locked";
+  | "store_locked"
+  /**
+   * A seed is running: waiting for the store's writer lane, or reading the
+   * ledger at `inFlight.at`. The read has no request deadline.
+   */
+  | "in_flight";
 
 export type WalletSeeded = Readonly<{
   kind: "seeded";
@@ -136,12 +141,15 @@ export const seedWallets = async (
   store: FactStore,
   ledger: WalletLedger,
   addresses: readonly Buffer[],
+  /** `onRead` runs once the writer lane is held, as the ledger read at `at` starts. */
+  hooks: Readonly<{ onRead?: (at: Point) => void }> = {},
 ): Promise<WalletSeedResult> => {
   const read: { at?: Point } = {};
   let written: Awaited<ReturnType<FactStore["seedWallets"]>>;
   try {
     written = await store.seedWallets(addresses, (at, wallets) => {
       read.at = at;
+      hooks.onRead?.(at);
       return readWalletUtxos(ledger, at, wallets);
     });
   } catch (error) {
@@ -183,6 +191,12 @@ export const seedWallets = async (
 
 export { withTrackedAddresses };
 
+/** A running seed: since when, and the point its ledger read is at (null while it waits for the writer lane). */
+export type WalletSeedInFlight = Readonly<{
+  at: Point | null;
+  sinceMs: number;
+}>;
+
 export type WalletSeedStatus =
   | Readonly<{ kind: "ready" }>
   | Readonly<{
@@ -190,6 +204,8 @@ export type WalletSeedStatus =
       reason: WalletSeedPendingReason;
       detail: string;
       wallets: readonly Buffer[];
+      /** Set while a seed runs (`reason` is then `in_flight`). */
+      inFlight?: WalletSeedInFlight;
     }>;
 
 /**
@@ -205,7 +221,7 @@ export type WalletSeeder = Readonly<{
   /** Wallets whose seed is owed; the role reports `wallet_seed_pending` (transient) while any is. */
   owed(): readonly Buffer[];
   ready(): boolean;
-  /** `ready`, or why a seed is owed (the last step's pending reason). */
+  /** `ready`, `in_flight` while a seed runs, or why a seed is owed (the last step's pending reason). */
   status(): WalletSeedStatus;
   /**
    * Adds wallets to the store's tracked set, then owes their seed (and only
@@ -260,10 +276,25 @@ export const createWalletSeeder = (
   );
   let closed = false;
   let running: Promise<WalletSeedStatus> | null = null;
-  const status = (): WalletSeedStatus =>
-    owedHex().length === 0
-      ? { kind: "ready" }
-      : { ...lastPending, wallets: owed() };
+  let inFlight: { at: Point | null; sinceMs: number } | null = null;
+  const inFlightDetail = ({ at, sinceMs }: WalletSeedInFlight): string => {
+    const since = new Date(sinceMs).toISOString();
+    return at === null
+      ? `seed waiting for the store's writer lane since ${since}`
+      : `seed read in flight at slot ${at.slot} (block ${at.hash.toString("hex")}) since ${since}`;
+  };
+  const status = (): WalletSeedStatus => {
+    if (owedHex().length === 0) return { kind: "ready" };
+    if (inFlight === null) return { ...lastPending, wallets: owed() };
+    const current = { ...inFlight };
+    return {
+      kind: "pending",
+      reason: "in_flight",
+      detail: inFlightDetail(current),
+      wallets: owed(),
+      inFlight: current,
+    };
+  };
   /** Settles the requested wallets still owed at their seed points. */
   const settle = (result: WalletSeeded, rewinds: readonly Rewound[]): void => {
     for (const [hex, point] of result.seeds) {
@@ -286,10 +317,20 @@ export const createWalletSeeder = (
       const rewinds: Rewound[] = [];
       heard = rewinds;
       let result: WalletSeedResult;
+      const flight: { at: Point | null; sinceMs: number } = {
+        at: null,
+        sinceMs: Date.now(),
+      };
+      inFlight = flight;
       try {
-        result = await seedWallets(store, ledger, owed());
+        result = await seedWallets(store, ledger, owed(), {
+          onRead: (at) => {
+            flight.at = at;
+          },
+        });
       } finally {
         heard = null;
+        inFlight = null;
       }
       if (result.kind === "pending") {
         lastPending = result;

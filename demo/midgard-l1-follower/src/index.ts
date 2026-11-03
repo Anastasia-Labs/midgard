@@ -71,6 +71,7 @@ export {
   type WalletLedger,
   type WalletSeeded,
   type WalletSeeder,
+  type WalletSeedInFlight,
   type WalletSeedPending,
   type WalletSeedPendingReason,
   type WalletSeedResult,

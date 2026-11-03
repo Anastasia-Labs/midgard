@@ -156,8 +156,6 @@ export type CommitteeL1SourceParts = Readonly<{
 export const committeeL1Source = (
   parts: CommitteeL1SourceParts,
 ): CommitteeL1Source => {
-  /** The last seed attempt's pending reason, while a seed is owed. */
-  let seedDetail = "own wallets not seeded yet";
   const followerReadiness = (): readonly CommitteeL1Readiness[] => {
     const status = parts.status();
     return status === null
@@ -184,14 +182,20 @@ export const committeeL1Source = (
       followerReadiness().length > 0
     )
       return;
-    const seeded = await parts.seeder.step();
-    if (seeded.kind === "pending")
-      seedDetail = `${seeded.reason}: ${seeded.detail}`;
+    await parts.seeder.step();
   };
-  const seedPending = (): CommitteeL1Readiness[] =>
-    parts.seeder === undefined || parts.seeder.ready()
+  /** Read live: a seed in flight shows as `in_flight` while it runs. */
+  const seedPending = (): CommitteeL1Readiness[] => {
+    const seed = parts.seeder?.status();
+    return seed === undefined || seed.kind === "ready"
       ? []
-      : [{ reason: WALLET_SEED_PENDING, detail: seedDetail }];
+      : [
+          {
+            reason: WALLET_SEED_PENDING,
+            detail: `${seed.reason}: ${seed.detail}`,
+          },
+        ];
+  };
   return {
     parameters: parts.parameters,
     readiness: () => [...followerReadiness(), ...seedPending()],

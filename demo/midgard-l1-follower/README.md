@@ -531,7 +531,11 @@ store reset, the wallet is owed again and is read at a later cursor: the
 fresh answer holds a pre-origin UTxO the rollback made live again and drops
 an output whose creating tx the fork orphaned. Bootstrap and added wallets take the
 same path, with no wait. `wallet_seed_pending` is transient: the role keeps
-running and raises no intervention. Every wallet starts owed until the
+running and raises no intervention. While a step runs, `status()` reports
+`in_flight` with `inFlight` (`at`: the cursor point the ledger read is at,
+null while the seed waits for the writer lane; `sinceMs`), so a seed read
+in flight shows apart from one never started (`not_initialized`) or the
+last attempt's failure. Every wallet starts owed until the
 first `step()` finds its stored seed point, so a restart reads nothing from
 the ledger for a wallet seeded before.
 
