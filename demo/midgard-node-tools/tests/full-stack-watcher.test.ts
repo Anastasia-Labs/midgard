@@ -136,7 +136,7 @@ const exampleTemplate = () => {
   );
   template.watcherConfig.l1.finality.depth =
     DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth;
-  return parseWatcherProcessConfig(template);
+  return template;
 };
 const runFacts = {
   genesisIdentitySha256: "11".repeat(32),
@@ -147,7 +147,10 @@ const runFacts = {
 it("starts the stack watcher at the run's L1 origin, never the template's", () => {
   const template = exampleTemplate();
   const l1Origin = { slot: 4242, blockHash: "ab".repeat(32) };
-  const config = stackWatcherProcessConfig(template, { ...runFacts, l1Origin });
+  const { config } = stackWatcherProcessConfig(template, {
+    ...runFacts,
+    l1Origin,
+  });
   expect(config.watcherConfig.l1.origin).toEqual(l1Origin);
   expect(config.watcherConfig.l1.source.chainSync.genesisIdentitySha256).toBe(
     runFacts.genesisIdentitySha256,
@@ -156,10 +159,20 @@ it("starts the stack watcher at the run's L1 origin, never the template's", () =
     runFacts.publicDaMultiaddr,
   ]);
 });
+it("writes a watcher configuration the watcher itself accepts", () => {
+  const { input } = stackWatcherProcessConfig(exampleTemplate(), {
+    ...runFacts,
+    l1Origin: { slot: 4242, blockHash: "ab".repeat(32) },
+  });
+  const written = JSON.parse(JSON.stringify(input));
+  expect(parseWatcherProcessConfig(written).watcherConfig.da.peers).toEqual([
+    expect.objectContaining({ multiaddr: runFacts.publicDaMultiaddr }),
+  ]);
+});
 it("starts a preprod-testing stack's watcher on the stack's own loopback retained DA", () => {
   const loopback =
     "/ip4/127.0.0.1/tcp/39003/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN";
-  const config = stackWatcherProcessConfig(exampleTemplate(), {
+  const { config } = stackWatcherProcessConfig(exampleTemplate(), {
     ...runFacts,
     publicDaMultiaddr: loopback,
     l1Origin: { slot: 4242, blockHash: "ab".repeat(32) },

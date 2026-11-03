@@ -35,10 +35,11 @@ export async function generateWatcherServices(
     throw new Error(
       "Generated watcher configuration must live inside the run directory",
     );
-  const template = parseWatcherProcessConfig(
-    await readJsonIfPresent(watcher.processTemplate),
-  );
-  if (template.watcherConfig.l1.source.sourceMode !== "local_node")
+  const templateInput = await readJsonIfPresent(watcher.processTemplate);
+  if (
+    parseWatcherProcessConfig(templateInput).watcherConfig.l1.source
+      .sourceMode !== "local_node"
+  )
     throw new Error("Require local-node watcher chain sync");
   const release = await prepareStackRelease(processes);
   const manifest = verifyFinalizedDeploymentManifest(
@@ -62,21 +63,24 @@ export async function generateWatcherServices(
   const genesisIdentitySha256 = createHash("sha256")
     .update(genesis)
     .digest("hex");
-  const processConfig = stackWatcherProcessConfig(template, {
-    genesisIdentitySha256,
-    publicDaMultiaddr,
-    // The origin step restored the run's origin before this step runs.
-    l1Origin: runL1Origin(processes.env),
-    // A public stack's watcher dials its retained DA's public name.
-    stackLoopbackPeers: processes.config.public === undefined,
-  });
+  const { input, config: processConfig } = stackWatcherProcessConfig(
+    templateInput,
+    {
+      genesisIdentitySha256,
+      publicDaMultiaddr,
+      // The origin step restored the run's origin before this step runs.
+      l1Origin: runL1Origin(processes.env),
+      // A public stack's watcher dials its retained DA's public name.
+      stackLoopbackPeers: processes.config.public === undefined,
+    },
+  );
   localUrl(processConfig.operationsEndpoint);
   const generated = [
     join(watcher.configDirectory, "watcher-process.json"),
     join(watcher.configDirectory, "watcher-runtime.json"),
   ];
-  await writeDurableJson(generated[0]!, processConfig);
-  await writeDurableJson(generated[1]!, processConfig.watcherConfig);
+  await writeDurableJson(generated[0]!, input);
+  await writeDurableJson(generated[1]!, input.watcherConfig);
   const source = await renderWatcherCompose(processes, {
     env,
     operationsEndpoint: processConfig.operationsEndpoint,
@@ -91,14 +95,15 @@ export async function generateWatcherServices(
   return { ...source, operationsEndpoint: processConfig.operationsEndpoint };
 }
 
-type WatcherProcessTemplate = ReturnType<typeof parseWatcherProcessConfig>;
-
 /**
- * The stack watcher's process configuration: the operator template, bound to
- * this run's genesis, retained-DA peer and L1 origin.
+ * The stack watcher's process configuration: the operator template (as read
+ * from its file), bound to this run's genesis, retained-DA peer and L1
+ * origin. `input` is what to write, and `config` is the watcher's own parse
+ * of it. The parse adds derived fields (a peer's id) that the watcher refuses
+ * when it reads them back, so only `input` is ever written.
  */
 export function stackWatcherProcessConfig(
-  template: WatcherProcessTemplate,
+  templateInput: unknown,
   run: {
     genesisIdentitySha256: string;
     publicDaMultiaddr: string;
@@ -106,7 +111,7 @@ export function stackWatcherProcessConfig(
     stackLoopbackPeers: boolean;
   },
 ) {
-  const base = template.watcherConfig;
+  const base = parseWatcherProcessConfig(templateInput).watcherConfig;
   const { input } = buildWatcherConfig(
     { WATCHER_CONFIG_SCHEMA_VERSION, parseWatcherConfig },
     {
@@ -131,7 +136,14 @@ export function stackWatcherProcessConfig(
       limits: base,
     },
   );
-  return parseWatcherProcessConfig({ ...template, watcherConfig: input });
+  const processInput = {
+    ...(templateInput as Record<string, unknown>),
+    watcherConfig: input,
+  };
+  return {
+    input: processInput,
+    config: parseWatcherProcessConfig(processInput),
+  };
 }
 
 const SECRET_MOUNTS = {

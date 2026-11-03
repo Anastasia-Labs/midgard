@@ -4,7 +4,6 @@ import { join } from "node:path";
 
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
-import { parseWatcherProcessConfig } from "midgard-watcher";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { stackPaths } from "../src/full-stack/deployment.js";
@@ -379,7 +378,7 @@ describe("public-release step", () => {
     template.watcherConfig.l1.finality.depth =
       SELECTED_DEPLOYMENT_PROFILE.l1_finality.confirmation_depth;
     expect(() =>
-      stackWatcherProcessConfig(parseWatcherProcessConfig(template), {
+      stackWatcherProcessConfig(template, {
         genesisIdentitySha256: "11".repeat(32),
         publicDaMultiaddr:
           "/ip4/127.0.0.1/tcp/39003/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN",
