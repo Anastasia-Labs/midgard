@@ -94,6 +94,7 @@ const scenarios = {
         "installed-boundaries",
         "da-committee-node",
         "midgard-l1-follower",
+        "midgard-user-cli",
         "l1-fork-simulator",
         "midgard-node-typecheck",
         "midgard-node",

@@ -55,6 +55,7 @@ COPY midgard-node/package.json ./midgard-node/package.json
 COPY midgard-node-tools/package.json ./midgard-node-tools/package.json
 COPY midgard-sdk/package.json ./midgard-sdk/package.json
 COPY midgard-test-support/package.json ./midgard-test-support/package.json
+COPY midgard-user-cli/package.json ./midgard-user-cli/package.json
 COPY midgard-validation/package.json ./midgard-validation/package.json
 COPY midgard-watcher/package.json ./midgard-watcher/package.json
 # END GENERATED manifests

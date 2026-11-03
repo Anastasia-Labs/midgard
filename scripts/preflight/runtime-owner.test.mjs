@@ -229,7 +229,7 @@ test("installed boundaries cover all built packages and retain local ownership i
       .filter((pkg) => pkg.scripts.build)
       .map(({ name }) => name),
   );
-  assert.equal(selected.length, 11);
+  assert.equal(selected.length, 12);
   assert.equal(registry.runtimeWorkflow.boundaryLane, true);
   assert.ok(document().jobs.gate.needs.includes("installed-boundaries"));
   const plan = planPreflight(

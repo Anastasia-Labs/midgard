@@ -167,6 +167,7 @@ export default tseslint.config(
       "midgard-core/**/*.ts",
       "midgard-validation/**/*.ts",
       "midgard-l1-follower/**/*.ts",
+      "midgard-user-cli/**/*.ts",
     ],
     rules: {
       "@typescript-eslint/no-unsafe-argument": "error",
@@ -295,6 +296,39 @@ export default tseslint.config(
               ],
               message:
                 "The watcher verifies the operator independently: its runtime must not import the operator's node, its tooling, or the DA committee service. Model the boundary it needs (an HTTP/libp2p client, a config field) instead.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // Import boundary of the user CLI, reported as lint. midgard-user submits
+    // a user's own events through the user's own indexer and wallet; linking
+    // the operator's node, its tooling or the DA committee service would make
+    // a user depend on operator code and its ledger state.
+    files: ["midgard-user-cli/src/**/*.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            workspacePackageBoundary,
+            harmonicLabsPackages,
+            {
+              group: [
+                "midgard-node",
+                "midgard-node/*",
+                "midgard-node-tools",
+                "midgard-node-tools/*",
+                "da-committee-node",
+                "da-committee-node/*",
+                "**/midgard-node/**",
+                "**/midgard-node-tools/**",
+                "**/da-committee-node/**",
+              ],
+              message:
+                "midgard-user runs on the user's own wallet and indexer: it must not import the operator's node, its tooling, or the DA committee service. Move what it needs into @al-ft/midgard-core or @al-ft/midgard-sdk.",
             },
           ],
         },

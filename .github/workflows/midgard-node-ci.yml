@@ -1093,6 +1093,22 @@ jobs:
         if: ${{ !cancelled() }}
         run: pnpm --dir demo/midgard-l1-follower test
 
+  # The user's own submission CLI. Its emulator suites read the blueprint the
+  # `blueprint` job built.
+  midgard-user-cli:
+    name: midgard-user-cli
+    needs: [aiken-fork, blueprint]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/demo-setup
+        with:
+          blueprint: "true"
+          prebuild: lucid-midgard midgard-core midgard-sdk
+      - name: Build, typecheck, and test the Midgard user CLI
+        run: pnpm --dir demo/midgard-user-cli run build && pnpm --dir demo/midgard-user-cli run typecheck && pnpm --dir demo/midgard-user-cli test
+
   # The L1 fork simulator: seeded fork scenarios through the follower's
   # sequential writer, on SQLite and Postgres and once through the node
   # transport's frame client. After every operation the store and every
@@ -1371,6 +1387,7 @@ jobs:
       - installed-boundaries
       - da-committee-node
       - midgard-l1-follower
+      - midgard-user-cli
       - l1-fork-simulator
       - midgard-node-typecheck
       - midgard-node

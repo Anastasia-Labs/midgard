@@ -442,6 +442,7 @@ Installed production packages resolve public Node exports and CLI help.
   - `demo/midgard-test-support/**`
   - `demo/l1-node-transport/**`
   - `demo/midgard-l1-follower/**`
+  - `demo/midgard-user-cli/**`
   - `.github/workflows/midgard-node-ci.yml`
 - Needs: `node-modules`
 - Mode: Node CI owns the ordinary PR matrix; --full-local runs it locally

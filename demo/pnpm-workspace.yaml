@@ -11,6 +11,7 @@ packages:
   - midgard-test-support
   - l1-node-transport
   - midgard-l1-follower
+  - midgard-user-cli
 patchedDependencies:
   blake2b@2.1.4: patches/blake2b@2.1.4.patch
   postgres@3.4.9: patches/postgres@3.4.9.patch

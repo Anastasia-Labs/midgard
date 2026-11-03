@@ -10,6 +10,10 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./test-support/user-history": {
+      "midgard-source": "./tests/support/user-history.ts",
+      "types": "./tests/support/user-history.ts"
     }
   },
   "publishConfig": {
