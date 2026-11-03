@@ -281,12 +281,7 @@ describe("follower event ingestion (Postgres)", () => {
             yield* writeFollowerView(VIEW_SLOT, [inline, relocated]),
           ),
         );
-        const sql = yield* SqlClient.SqlClient;
-        const attempts = yield* sql<{
-          count: string;
-        }>`SELECT count(*) AS count FROM deposit_submission_attempts`;
         return {
-          attempts: Number(attempts[0]!.count),
           inline: yield* depositStatusByTxHash(deposits.inlineAdmissionTxHash),
           external: yield* depositStatusByTxHash(
             deposits.externalAdmissionTxHash,
@@ -296,7 +291,6 @@ describe("follower event ingestion (Postgres)", () => {
         };
       }),
     );
-    expect(result.attempts).toBe(0);
     expect(result.inline).toMatchObject({
       status: 200,
       body: {

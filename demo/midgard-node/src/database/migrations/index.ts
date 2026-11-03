@@ -29,6 +29,7 @@ import publicHttpReadIndexesSql from "./sql/0027_public_http_read_indexes.sql";
 import importChecksSql from "./sql/0028_import_checks.sql";
 import dropCekProgramMaterialSql from "./sql/0029_drop_cek_program_material.sql";
 import importCheckRetriesSql from "./sql/0030_import_check_retries.sql";
+import dropUserSubmissionRecordsSql from "./sql/0031_drop_user_submission_records.sql";
 
 export type Migration = {
   readonly version: number;
@@ -249,6 +250,13 @@ export const MIGRATIONS: readonly Migration[] = [
     sql: importCheckRetriesSql,
     transactional: true,
   },
+  {
+    version: 31,
+    name: "drop_user_submission_records",
+    checksumSha256: sha256Hex(dropUserSubmissionRecordsSql),
+    sql: dropUserSubmissionRecordsSql,
+    transactional: true,
+  },
 ] as const;
 
 export const EXPECTED_SCHEMA_VERSION =
@@ -314,9 +322,6 @@ export const APPLICATION_TABLE_NAMES = [
   "da_payloads",
   "da_payload_publications",
   "da_payload_announcements",
-  "deposit_submission_attempts",
-  "event_history_submissions",
-  "event_history_submission_inputs",
   "follower_event_ingestion",
   "node_landed_blocks",
   "node_confirmed_ledger_frontier",
@@ -374,8 +379,6 @@ export const APPLICATION_INDEX_NAMES = [
   "idx_da_payloads_created_at",
   "idx_da_payload_publications_retry",
   "idx_da_payload_announcements_retry",
-  "idx_deposit_submission_attempts_deposit_event_id",
-  "idx_deposit_submission_attempts_status_submitted_at",
   "idx_deposits_utxos_l1_admission",
   "idx_withdrawal_utxos_l1_admission",
   "idx_withdrawal_utxos_l1_admission_tx",

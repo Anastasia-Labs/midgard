@@ -106,6 +106,7 @@ describe("splitSqlStatements", () => {
       [28, "import_checks", true],
       [29, "drop_cek_program_material", true],
       [30, "import_check_retries", true],
+      [31, "drop_user_submission_records", true],
     ]);
   });
 
@@ -343,19 +344,20 @@ describe("applied fresh-install schema", () => {
           ]);
 
           // Version 7 drops the speculative foreign-tip table (#752), version
-          // 22 every event_history_ table but the submission journal's.
+          // 22 every event_history_ table but the submission journal's, and
+          // version 31 that journal and the deposit submission attempts: user
+          // submissions are recorded by the user's own tool, not the node.
           const dropped = yield* sql<{
             readonly relname: string;
           }>`SELECT relname
                FROM pg_class
                WHERE relnamespace = 'public'::regnamespace
                  AND (relname = 'foreign_tip_reconciliations'
+                   OR relname LIKE 'deposit\\_submission\\_%'
+                   OR relname LIKE 'idx\\_deposit\\_submission\\_%'
                    OR (relkind = 'r' AND relname LIKE 'event\\_history\\_%'))
                ORDER BY relname`;
-          expect(dropped.map((row) => row.relname)).toEqual([
-            "event_history_submission_inputs",
-            "event_history_submissions",
-          ]);
+          expect(dropped.map((row) => row.relname)).toEqual([]);
 
           // Version 9 drops the census and foreign-adoption tables (N3) and
           // adds the landed-block processing tables, with no working-ledger
