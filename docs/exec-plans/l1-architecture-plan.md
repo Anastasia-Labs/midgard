@@ -731,11 +731,15 @@ There are no ledger snapshots and no Kupo index.
    - Call `GetUTxOByAddress(own wallets)` and insert, as seed rows
      (`created_slot NULL, seed_slot = P`), the outrefs not already stored as
      an output row.
-   - The write is refused (`cursor_moved`) unless the cursor is still P; the
-     seed then reads again at the new cursor.
+   - The read and the write run as one task in the store's writer lane, so
+     the cursor is still P when the rows land; blocks wait for the seed. The
+     read has no per-request deadline (a full UTxO-set scan on the node).
+   - Each wallet's seed point is stored (`l1_wallet_seeds`), a wallet with no
+     outputs included, so a restart reads nothing for a wallet seeded before.
    - A seed is a fact observed at P. A rewind to T < P deletes the seed rows
-     with `seed_slot > T` in the rewind's transaction, and the wallet is owed
-     a seed again. Every wallet takes this one path; none waits for k.
+     and seed points with `seed_slot > T` in the rewind's transaction, and the
+     wallet is owed a seed again. Every wallet takes this one path; none waits
+     for k.
    - Repeat the seed whenever a wallet is added. Until a wallet's seed lands,
      the role reports the transient reason `wallet_seed_pending`.
 5. **Rollback below O, or below the oldest retained block.** This cannot

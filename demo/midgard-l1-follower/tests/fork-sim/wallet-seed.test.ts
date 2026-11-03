@@ -94,6 +94,10 @@ const seedOnce: ForkWalletSeed["seeder"] = ({ store, ledger, wallets }) => {
   const seeder: WalletSeeder = {
     owed: () => (done ? [] : wallets),
     ready: () => done,
+    status: () =>
+      done
+        ? { kind: "ready" }
+        : { kind: "pending", reason: "not_initialized", detail: "", wallets },
     addWallets: () => undefined,
     step: async () => {
       if (done) return { kind: "ready" };
@@ -259,6 +263,7 @@ describe("LSQ wallet seed red checks (SQLite)", () => {
         seeder: () => ({
           owed: () => [],
           ready: () => true,
+          status: () => ({ kind: "ready" }),
           addWallets: () => undefined,
           step: async () => Promise.resolve({ kind: "ready" }),
           close: () => undefined,

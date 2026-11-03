@@ -300,6 +300,34 @@ const SQLITE_0002 = `
 ALTER TABLE l1_follower_tracked_set ADD COLUMN replay_height INTEGER;
 `;
 
+/**
+ * The point each own wallet was seeded at (§5.3 step 4): the wallet seeder
+ * reads a wallet's UTxOs from the node's ledger once, and a restart does not
+ * read it again while its row stands. The row is written with the wallet's
+ * seed rows, in the same transaction, so a wallet with no UTxOs is recorded
+ * too. Like a seed row it is a fact observed at its seed point: a rewind
+ * below that point deletes it, and so does a reset. A start whose tracked set
+ * lacks the address deletes it too: blocks applied while a wallet is not
+ * tracked hold none of its outputs, so its seed no longer covers them.
+ */
+const POSTGRES_0003 = `
+-- class: A; retention: one row per seeded own wallet; deleted by a rewind below seed_slot, a reset, or a start that does not track the address
+CREATE TABLE l1_wallet_seeds (
+  address   bytea  PRIMARY KEY,
+  seed_slot bigint NOT NULL,
+  seed_hash bytea  NOT NULL
+);
+`;
+
+const SQLITE_0003 = `
+-- class: A; retention: one row per seeded own wallet; deleted by a rewind below seed_slot, a reset, or a start that does not track the address
+CREATE TABLE l1_wallet_seeds (
+  address   BLOB    PRIMARY KEY,
+  seed_slot INTEGER NOT NULL,
+  seed_hash BLOB    NOT NULL
+);
+`;
+
 export const followerMigrations = (dialect: DialectName): MigrationSet => ({
   namespace: FOLLOWER_MIGRATION_NAMESPACE,
   migrations: [
@@ -310,6 +338,10 @@ export const followerMigrations = (dialect: DialectName): MigrationSet => ({
     {
       id: "0002_tracked_set_replay_height",
       sql: dialect === "postgres" ? POSTGRES_0002 : SQLITE_0002,
+    },
+    {
+      id: "0003_wallet_seeds",
+      sql: dialect === "postgres" ? POSTGRES_0003 : SQLITE_0003,
     },
   ],
 });

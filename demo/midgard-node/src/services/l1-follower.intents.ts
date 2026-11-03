@@ -263,23 +263,13 @@ export const createNodeIntentStage = (input: {
   const run = async (): Promise<readonly DriverHold[]> => {
     const left: DriverHold[] = [];
     if (!seeder.ready()) {
-      let failure: { error: unknown } | undefined;
-      const seeded = await seeder.step().catch((error: unknown) => {
-        failure = { error };
-        return {
-          kind: "pending",
-          reason: "error",
-          detail: message(error),
-        } as const;
-      });
-      if (seeded.kind === "pending") {
-        const detail = `${seeded.reason}: ${seeded.detail}`;
-        left.push(
-          failure === undefined
-            ? { reason: WALLET_SEED_PENDING, detail }
-            : failureHold(WALLET_SEED_PENDING, detail, failure.error),
-        );
-      }
+      // Runs in the store's writer lane, between blocks; it never rejects.
+      const seeded = await seeder.step();
+      if (seeded.kind === "pending")
+        left.push({
+          reason: WALLET_SEED_PENDING,
+          detail: `${seeded.reason}: ${seeded.detail}`,
+        });
     }
     try {
       waits.clear();

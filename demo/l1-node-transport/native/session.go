@@ -232,6 +232,9 @@ func (s *session) dispatch(f frame) error {
 			return err
 		}
 		deadline := time.Now().Add(s.requestDeadline)
+		if h.NoDeadline {
+			deadline = noDeadline
+		}
 		s.enqueue(queueLSQ, h.ID, func() {
 			result, err := s.lsq.run(h, deadline)
 			if err != nil {

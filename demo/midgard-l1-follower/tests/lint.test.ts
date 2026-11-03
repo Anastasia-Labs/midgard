@@ -49,6 +49,7 @@ describe("schema lint (class and retention)", () => {
       "l1_scripts",
       "l1_tx_mint_policies",
       "l1_txs",
+      "l1_wallet_seeds",
     ]);
     expect(
       declared.find((table) => table.table === "l1_scripts")?.tableClass,

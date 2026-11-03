@@ -352,4 +352,9 @@ export {
   type TrackedSetReplayEnd,
 } from "./store/tracked-set-record.js";
 export { currentViewIn, viewValidIn } from "./store/view.js";
+export type {
+  WalletSeedRead,
+  WalletSeedReadFailed,
+  WalletSeedWrite,
+} from "./store/wallet-seeds.js";
 export type * from "./types.js";

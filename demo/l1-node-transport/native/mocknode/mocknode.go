@@ -155,6 +155,7 @@ type Node struct {
 	hasTxEra []uint64
 	first    FirstReply
 	slow     time.Duration
+	slowQ    time.Duration
 	conns    map[*ouroboros.Connection]struct{}
 	// drops counts DropConnections calls, so a connection still in its
 	// handshake when the drop came is closed as soon as it registers.
@@ -295,6 +296,22 @@ func (n *Node) SetLedgerDelay(d time.Duration) {
 func (n *Node) ledgerDelay() {
 	n.mu.Lock()
 	d := n.slow
+	n.mu.Unlock()
+	time.Sleep(d)
+}
+
+// SetQueryDelay delays every LocalStateQuery query answer (not an
+// acquisition or a release) by d, as a node scanning its whole UTxO set for
+// one query does.
+func (n *Node) SetQueryDelay(d time.Duration) {
+	n.mu.Lock()
+	n.slowQ = d
+	n.mu.Unlock()
+}
+
+func (n *Node) queryDelay() {
+	n.mu.Lock()
+	d := n.slowQ
 	n.mu.Unlock()
 	time.Sleep(d)
 }
@@ -524,6 +541,7 @@ func (n *Node) serve(socket net.Conn) {
 			localstatequery.WithQueryFunc(func(_ localstatequery.CallbackContext, query localstatequery.QueryWrapper) (any, error) {
 				answer, err := n.answer(query.Cbor())
 				n.ledgerDelay()
+				n.queryDelay()
 				return answer, err
 			}),
 			localstatequery.WithReleaseFunc(func(localstatequery.CallbackContext) error { return nil }),

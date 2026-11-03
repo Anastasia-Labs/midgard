@@ -165,6 +165,10 @@ export const rewindIn = async (
         ),
       ),
     );
+  // The wallet's seed point goes with its seed rows: the wallet is owed again.
+  await tx.query("DELETE FROM l1_wallet_seeds WHERE seed_slot > ?", [
+    targetSlot,
+  ]);
   const gone = new Set(
     deleted.map((outRef) => `${outRef.txHash.toString("hex")}#${outRef.index}`),
   );

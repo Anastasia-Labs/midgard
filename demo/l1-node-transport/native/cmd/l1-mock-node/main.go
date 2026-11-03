@@ -97,6 +97,8 @@ func main() {
 			node.DropConnections()
 		case "ledgerDelay":
 			node.SetLedgerDelay(time.Duration(c.Ms) * time.Millisecond)
+		case "queryDelay":
+			node.SetQueryDelay(time.Duration(c.Ms) * time.Millisecond)
 		case "clearMempool":
 			node.ClearMempool()
 		case "stats":

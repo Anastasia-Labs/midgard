@@ -197,8 +197,10 @@ const followL1 = <R>(
       ({ transport, store, abort }) =>
         Effect.promise(async () => {
           abort.abort();
-          await store.close().catch(() => undefined);
+          // The transport first: a wallet seed in flight holds the store's
+          // writer lane on a read with no deadline, and ends with the sidecar.
           await transport.close().catch(() => undefined);
+          await store.close().catch(() => undefined);
         }),
     ).pipe(Effect.either);
     if (opened._tag === "Left")

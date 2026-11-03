@@ -21,6 +21,7 @@ import {
   type L1NodeTransportOptions,
   type LedgerStateSession,
   type MempoolSizes,
+  type QueryOptions,
   type SubmitResult,
   TransportTimeoutError,
   TransportUnavailableError,
@@ -279,15 +280,22 @@ export class L1NodeTransport {
     }
   }
 
-  /** One request with a bound; a wedged sidecar is killed and restarted. */
+  /**
+   * One request with a bound; a wedged sidecar is killed and restarted. A
+   * request sent with no deadline (`QueryOptions`) waits for its answer or
+   * for the sidecar to exit.
+   */
   async #call(
     sidecar: SidecarProcess,
     header: Parameters<SidecarProcess["request"]>[0],
     payload?: Uint8Array,
+    options?: QueryOptions,
   ): Promise<Frame> {
     this.#activityDelta(1);
     let timer: NodeJS.Timeout | undefined;
     try {
+      if (options?.deadline === "none")
+        return await sidecar.request(header, payload);
       return await Promise.race([
         sidecar.request(header, payload),
         new Promise<never>((_, reject) => {
@@ -328,8 +336,15 @@ export class L1NodeTransport {
       });
       try {
         return await use({
-          query: async (query) => {
-            const answer = await this.#call(sidecar, encodeQuery(0, query));
+          query: async (query, options) => {
+            const answer = await this.#call(
+              sidecar,
+              options?.deadline === "none"
+                ? { ...encodeQuery(0, query), noDeadline: true }
+                : encodeQuery(0, query),
+              undefined,
+              options,
+            );
             return answer.payload;
           },
         });

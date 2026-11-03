@@ -52,7 +52,17 @@ export type MempoolSizes = Readonly<{
   txCount: bigint;
 }>;
 
+/**
+ * Per-request options. `deadline: "none"` takes the request out of the
+ * request deadline on both sides: neither the client nor the sidecar abandons
+ * it, however long the node takes to answer. It is for a read that is
+ * unbounded by nature and runs once (the wallet seed's `utxo_by_address`,
+ * a full scan of the node's UTxO set); every other request keeps its bound.
+ * The request still ends when the node connection or the sidecar does.
+ */
+export type QueryOptions = Readonly<{ deadline?: "none" }>;
+
 /** A ledger state acquired for a sequence of consistent queries. */
 export type LedgerStateSession = Readonly<{
-  query: (query: LedgerQuery) => Promise<Uint8Array>;
+  query: (query: LedgerQuery, options?: QueryOptions) => Promise<Uint8Array>;
 }>;

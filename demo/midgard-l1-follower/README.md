@@ -333,6 +333,7 @@ and every write below can also return `StoreLocked` (the lease was lost).
 | `applyBlock(block)`                                   | `BlockApplied { cursor, qualified, created, spent } \| ApplyRejection { reason: "not_initialized" \| "not_on_cursor" } \| Intervention \| StoreError`                                     |
 | `rewind(target: Point)`                               | `Rewound { generation, from, to, depth, cursor, unspent, deleted } \| RewindNoop \| Intervention \| StoreError`                                                                           |
 | `insertSeedOutputs(at: Point, outputs: SeedOutput[])` | `SeedResult { cursor, inserted, skipped } \| SeedCursorMoved \| StoreError \| StoreLocked \| null` (null: not initialized; `cursor_moved`: `at` is no longer the cursor, nothing written) |
+| `seedWallets(addresses, read: WalletSeedRead)`        | `WalletSeedWrite { cursor, seeds, read, inserted, skipped } \| WalletSeedReadFailed \| StoreError \| StoreLocked \| null` (the wallet seed below, in the writer lane)                     |
 | `prune(budget = 5000)`                                | `PruneResult { deleted, done, prunedThroughSlot, floorLags } \| StoreError`                                                                                                               |
 | `checkInvariants()`                                   | `InvariantReport { ok, violations }` (full INV1–INV6)                                                                                                                                     |
 | `cursor()`                                            | `Cursor \| null`                                                                                                                                                                          |
@@ -482,7 +483,7 @@ compiler, so they are kept out of the runtime entry point.
 ### Wallet seed (§5.3 step 4)
 
 ```ts
-seedWallets(store, ledger: WalletLedger, addresses: Buffer[], attempts = 3): Promise<WalletSeedResult>
+seedWallets(store, ledger: WalletLedger, addresses: Buffer[]): Promise<WalletSeedResult>
 createWalletSeeder({ store, ledger, wallets }): WalletSeeder
 // WalletLedger = Pick<L1NodeTransport, "withLedgerState">
 ```
@@ -492,37 +493,47 @@ The role passes its own wallets to the store as `FactStoreOptions.wallets`
 
 Own wallets can hold UTxOs the follower never stored: created before the
 origin, or paid to a wallet after the origin while it was not tracked (also
-by a stored tx whose output to it got no row). `seedWallets` acquires LSQ at
-the store's cursor P, reads `utxo_by_address` for the wallets and writes
-every outref the store holds no row for as a seed row (`created_slot NULL`,
-`seed_slot = P`). The write is
-refused unless the cursor is still P (a block or rewind in between could
-hold a spend the seed would miss); the read is then repeated at the new
-cursor. LSQ acquires only volatile points, so the seed succeeds once the
-cursor is within k of the node's tip. It never throws: a `pending` result
-names the transient reason (`not_initialized`, `cursor_not_acquirable`,
-`cursor_moved`, `ledger_unavailable`, `ledger_answer_invalid`,
+by a stored tx whose output to it got no row). `seedWallets` seeds each
+wallet once: one with a stored seed point (`l1_wallet_seeds`, class A) is
+not read again, across restarts too. For the others it acquires LSQ at the
+store's cursor P, reads `utxo_by_address` for them and writes every outref
+the store holds no row for as a seed row (`created_slot NULL`,
+`seed_slot = P`), and records each wallet as seeded at P, one with no
+outputs included. The read and the write run as one task in the store's
+writer lane (`FactStore.seedWallets`), so no block, rewind or prune lands
+between them: blocks wait for the seed. The read is a scan of the node's
+whole UTxO set (tens of seconds on a public network), so its query is sent
+with no request deadline (`{ deadline: "none" }`, see the transport's
+"Request deadline"); it ends with the node's answer or the node
+connection. LSQ acquires only volatile points, so the seed succeeds once
+the cursor is within k of the node's tip. It never throws: a `pending`
+result names the transient reason (`not_initialized`,
+`cursor_not_acquirable`, `ledger_unavailable`, `ledger_answer_invalid`,
 `store_error`, `store_locked`).
 
 A seed row is a fact observed at P. A rewind to a target T deletes, in the
 same transaction, every seed row with `seed_slot > T` (and un-spends the
 rest like any row); rows seeded at or below T observed a state that is still
-canonical and stay. INV6: no seed row lies above the cursor, and no stored
-creator contradicts a seed row (created after the seed point, or not
-creating that index).
+canonical and stay. The wallet seed points above T go with them. A store
+start deletes the seed point of every wallet it does not track: blocks
+applied without it hold none of its outputs. INV6: no seed row and no seed
+point lies above the cursor, and no stored creator contradicts a seed row
+(created after the seed point, or not creating that index).
 
 `createWalletSeeder` owes the seed of each wallet and settles it with
 `step()`. The role reports `/readyz` unready with `wallet_seed_pending`
-(`WALLET_SEED_PENDING`) while `ready()` is false and calls `step()` after
-follower steps. `addWallets(addresses)` adds the wallets to the store's
-tracked set and owes their seed, and only theirs. After a committed rewind
-below a wallet's seed point (which deleted its seed rows from that point)
-the wallet is owed again and is read at a later cursor: the fresh answer
-holds a pre-origin UTxO the rollback made live again and drops an output
-whose creating tx the fork orphaned. Bootstrap and added wallets take the
+(`WALLET_SEED_PENDING`, detail from `status()`) while `ready()` is false
+and calls `step()` after follower steps; a call while a step runs joins
+it. `addWallets(addresses)` adds the wallets to the store's tracked set and
+owes their seed, and only theirs. After a committed rewind below a
+wallet's seed point (which deleted its seed rows and seed point) or a
+store reset, the wallet is owed again and is read at a later cursor: the
+fresh answer holds a pre-origin UTxO the rollback made live again and drops
+an output whose creating tx the fork orphaned. Bootstrap and added wallets take the
 same path, with no wait. `wallet_seed_pending` is transient: the role keeps
-running and raises no intervention. Every wallet starts owed, so a restart
-re-seeds; that writes nothing the store already holds.
+running and raises no intervention. Every wallet starts owed until the
+first `step()` finds its stored seed point, so a restart reads nothing from
+the ledger for a wallet seeded before.
 
 The role wiring composes it with the origin start: start the store,
 initialize at the origin and follow chain-sync; create the seeder once the

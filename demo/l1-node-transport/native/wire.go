@@ -149,6 +149,9 @@ type lsqQueryHeader struct {
 	Addresses   [][]byte         `cbor:"addresses,omitempty"`
 	TxIns       []wireTxIn       `cbor:"txIns,omitempty"`
 	Credentials []wireCredential `cbor:"credentials,omitempty"`
+	// NoDeadline takes the query out of the request deadline: it waits for
+	// the node's answer or the connection's end (the wallet seed's scan).
+	NoDeadline bool `cbor:"noDeadline,omitempty"`
 }
 
 type submitHeader struct {

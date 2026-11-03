@@ -42,6 +42,15 @@ const fakeSeeder = (
     seeded: false,
     owed: () => [],
     ready: () => seeder.seeded,
+    status: (): WalletSeedStatus =>
+      seeder.seeded
+        ? { kind: "ready" }
+        : {
+            kind: "pending",
+            reason: "not_initialized",
+            detail: "",
+            wallets: [],
+          },
     addWallets: () => undefined,
     step: async () => {
       const answer = answers[Math.min(seeder.steps, answers.length - 1)]!;

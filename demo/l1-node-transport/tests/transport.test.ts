@@ -421,6 +421,37 @@ describe("local state query, submit and monitor", () => {
     expect(reasons).toEqual([]);
   });
 
+  it("answers a query sent with no deadline however long the node takes, and still bounds every other request", async () => {
+    const node = await mockNode();
+    await node.extend(2);
+    const reasons: string[] = [];
+    // The sidecar's own bound is 500 ms and the client's 1,000 ms; the node
+    // takes 1,200 ms per query, and utxo_by_address is two (era, then UTxO).
+    const transport = transportFor(
+      node.socketPath,
+      (readiness) => {
+        if (!readiness.ready) reasons.push(readiness.reason);
+      },
+      1_000,
+    );
+    await node.command({ op: "queryDelay", ms: 1_200 });
+    const address = Uint8Array.from(Buffer.alloc(29, 0x61));
+    const query = { query: "utxo_by_address", addresses: [address] } as const;
+    const answer = await transport.withLedgerState("tip", (state) =>
+      state.query(query, { deadline: "none" }),
+    );
+    // The mock node echoes a Shelley query's body: [6, addresses].
+    expect(decodeCbor(answer)).toEqual([6, [address]]);
+    expect(reasons).toEqual([]);
+    // The same query under the request deadline is still refused.
+    await expect(
+      transport.withLedgerState("tip", (state) => state.query(query)),
+    ).rejects.toMatchObject({
+      name: "TransportRequestError",
+      code: "node_timeout",
+    });
+  });
+
   it("returns submit rejections as raw bytes and tracks the mempool", async () => {
     const node = await mockNode();
     await node.extend(1);

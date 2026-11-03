@@ -337,8 +337,10 @@ const openFollowerParts = async (
         evaluator: createScalusEvaluator(),
       }),
     close: async () => {
-      await store.close().catch(() => undefined);
+      // The transport first: a wallet seed in flight holds the store's
+      // writer lane on a read with no deadline, and ends with the sidecar.
       await transport.close().catch(() => undefined);
+      await store.close().catch(() => undefined);
     },
   };
 };

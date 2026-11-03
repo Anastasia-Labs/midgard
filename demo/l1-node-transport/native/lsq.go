@@ -49,16 +49,29 @@ func errNodeTimeout(what string) *requestError {
 	return refuse("node_timeout", "%s within the request deadline", what)
 }
 
+// noDeadline is the deadline of a request sent with none (the header's
+// noDeadline): it waits for the node's answer or the connection's end.
+var noDeadline time.Time
+
+// deadlineTimer fires at deadline; for noDeadline it never fires.
+func deadlineTimer(deadline time.Time) (<-chan time.Time, func()) {
+	if deadline.IsZero() {
+		return nil, func() {}
+	}
+	timer := time.NewTimer(time.Until(deadline))
+	return timer.C, func() { timer.Stop() }
+}
+
 // await waits for the reply to the message just sent.
 func (c *boundedClient) await(deadline time.Time) (protocol.Message, error) {
-	timer := time.NewTimer(time.Until(deadline))
-	defer timer.Stop()
+	expired, stop := deadlineTimer(deadline)
+	defer stop()
 	select {
 	case msg := <-c.raw.messages:
 		return msg, nil
 	case <-c.node.dead:
 		return nil, c.node.deathCause()
-	case <-timer.C:
+	case <-expired:
 		c.owed = true
 		return nil, errNodeTimeout("the node did not answer")
 	}
@@ -68,19 +81,19 @@ func (c *boundedClient) await(deadline time.Time) (protocol.Message, error) {
 // late, and refuses a request whose deadline passed while it was queued.
 func (c *boundedClient) begin(deadline time.Time, late func(protocol.Message)) error {
 	if c.owed {
-		timer := time.NewTimer(time.Until(deadline))
-		defer timer.Stop()
+		expired, stop := deadlineTimer(deadline)
+		defer stop()
 		select {
 		case msg := <-c.raw.messages:
 			c.owed = false
 			late(msg)
 		case <-c.node.dead:
 			return c.node.deathCause()
-		case <-timer.C:
+		case <-expired:
 			return errNodeTimeout("the node did not answer an earlier request")
 		}
 	}
-	if !time.Now().Before(deadline) {
+	if !deadline.IsZero() && !time.Now().Before(deadline) {
 		return errNodeTimeout("the request waited behind earlier requests and was not sent")
 	}
 	return nil

@@ -10,7 +10,6 @@ import {
   projectionStoreOptions,
   type PruneFloor,
   WALLET_SEED_PENDING,
-  type WalletSeedStatus,
 } from "@al-ft/midgard-l1-follower";
 import {
   eventProjection,
@@ -275,43 +274,13 @@ export const openWatcherFollowerRuntime = (
   const listeners = new Set<(status: FollowStatus) => void>();
   const abort = new AbortController();
   let latest: FollowStatus | null = null;
-  let seed: WalletSeedStatus = {
-    kind: "pending",
-    reason: "not_initialized",
-    detail: "the follower has not applied a block yet",
-    wallets,
-  };
-  let seeding: Promise<void> | null = null;
-  let seedAgain = false;
-
-  /** Seeds the owed wallet at the cursor; one step at a time, coalesced. */
+  /**
+   * Seeds the owed wallets at the cursor. The seed runs in the store's
+   * writer lane, between blocks; a call while one runs joins it, and it
+   * never rejects.
+   */
   const stepSeed = (): void => {
-    if (seeding !== null) {
-      seedAgain = true;
-      return;
-    }
-    if (seeder.ready()) {
-      seed = { kind: "ready" };
-      return;
-    }
-    seeding = (async () => {
-      try {
-        seed = await seeder.step();
-      } catch (error) {
-        seed = {
-          kind: "pending",
-          reason: "ledger_unavailable",
-          detail: error instanceof Error ? error.message : String(error),
-          wallets: seeder.owed(),
-        };
-      } finally {
-        seeding = null;
-      }
-      if (seedAgain && !abort.signal.aborted) {
-        seedAgain = false;
-        stepSeed();
-      }
-    })();
+    if (!seeder.ready()) void seeder.step();
   };
   // A rewind below the seed point owes the seed again (the seeder hears it).
   const unsubscribeRewind = store.onGeneration(() => {
@@ -389,7 +358,8 @@ export const openWatcherFollowerRuntime = (
     else
       for (const entry of latest.readiness)
         reasons.push({ reason: entry.reason, detail: entry.detail });
-    if (seed.kind === "pending" && !seeder.ready())
+    const seed = seeder.status();
+    if (seed.kind === "pending")
       reasons.push({
         reason: WALLET_SEED_PENDING,
         detail: `${seed.reason}: ${seed.detail}`,
@@ -460,13 +430,14 @@ export const openWatcherFollowerRuntime = (
       closing ??= (async () => {
         abort.abort();
         await done.catch(() => undefined);
-        await seeding?.catch(() => undefined);
         await txInputs.close();
         unsubscribeRewind();
         seeder.close();
         listeners.clear();
-        await store.close().catch(() => undefined);
+        // The transport first: a wallet seed in flight holds the store's
+        // writer lane on a read with no deadline, and ends with the sidecar.
         await transport.close().catch(() => undefined);
+        await store.close().catch(() => undefined);
       })();
       return closing;
     },
