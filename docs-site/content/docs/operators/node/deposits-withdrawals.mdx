@@ -24,9 +24,10 @@ flowchart LR
 
 <ActorCard actor="user" name="Depositor">
   Locks funds at the L1 deposit validator and later redeems them via a
-  withdrawal order. The HTTP deposit builder needs no depositor signing key: it
-  returns an unsigned transaction for external signing. The CLI submission
-  command instead uses the user wallet selected explicitly for that command.
+  withdrawal order, both with the user's own `midgard-user` tool. It signs with
+  the user's wallet and reads L1 only through the user's own indexer (a Kupo
+  covering the wallet and the deposit and withdrawal list addresses, without
+  `--prune-utxo`, or Blockfrost); no operator node signs or builds them.
 </ActorCard>
 
 <ActorCard actor="operator">
@@ -45,10 +46,10 @@ flowchart LR
 
 | Command                               | Effect                                                                                                                  |
 | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `submit-deposit`                      | Builds and submits the L1 deposit transaction. Funds move to the deposit validator.                                     |
+| `midgard-user deposit`                | The user's own tool: builds, records and submits the L1 deposit transaction. Funds move to the deposit validator.       |
+| `midgard-user status`                 | The user's own tool, read-only: reports a recorded deposit or withdrawal's transactions and their L1 status by tx hash. |
 | `reconcile deposit-projected`         | Read-only: inspects visibility and projection. The running node projects due deposits; there is no CLI repair.          |
 | `absorb-confirmed-deposit-to-reserve` | Moves a settled deposit's funds into the L1 protocol reserve using its settlement proof.                                |
-| `reconcile-deposit-submission`        | Checks a persisted deposit submission against provider evidence before retry; unresolved observations remain ambiguous. |
 
 Submission, due-time projection, confirmed-header assignment and settlement are
 separate milestones. Inspect inclusion time and the projected header when a
@@ -63,10 +64,10 @@ so a transaction cannot spend that block's newly introduced deposit.
   order and reserve balance before submitting a payout.
 </RiskCallout>
 
-| Command             | Effect                                                                                  |
-| ------------------- | --------------------------------------------------------------------------------------- |
-| `submit-withdrawal` | Builds and submits the L1 withdrawal order. Starts the withdrawal, does not pay it out. |
-| `withdrawal-status` | Reports the order's classification and payout progress. Read-only.                      |
+| Command                 | Effect                                                                                                                |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `midgard-user withdraw` | The user's own tool: builds, records and submits the L1 withdrawal order. Starts the withdrawal, does not pay it out. |
+| `withdrawal-status`     | Reports the order's classification and payout progress. Read-only.                                                    |
 
 A withdrawal order is classified before it is paid. An order can be found invalid, for
 example `NonExistentWithdrawalUtxo` or `IncorrectWithdrawalOwner`. Payment happens

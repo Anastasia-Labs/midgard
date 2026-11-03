@@ -8,8 +8,9 @@
 #     up -d cardano-node cardano-config-export
 #
 # No role reads Ogmios or Kupo. They stay for the node-tools devnet harness
-# and its stop-kupo/stop-ogmios drills, and the fault-proofs prover CLI
-# (--ogmios-url, --kupo-url). Kupo follows Ogmios's ChainSync.
+# and its stop-kupo/stop-ogmios drills, the fault-proofs prover CLI
+# (--ogmios-url, --kupo-url) and a user's `midgard-user` deposits and
+# withdrawals (L1_KUPO_URL, L1_OGMIOS_URL). Kupo follows Ogmios's ChainSync.
 #
 # Image pins: every image below is pinned by tag AND digest, with one default
 # per image shared by every service that names it. Change the tag and digest

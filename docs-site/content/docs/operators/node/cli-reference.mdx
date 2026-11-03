@@ -8,7 +8,7 @@ owns wallet generation, stress workloads and E2E orchestration. From either
 package directory, `node dist/index.js --help` lists that binary's commands.
 Build the relevant package first. Use a command's `--help` for required options.
 
-The 67 commands explicitly registered in the operator entry point are joined by
+The 64 commands explicitly registered in the operator entry point are joined by
 generated reference-script publication commands. The groups below distinguish
 operator commands, nested reconciliation commands, and separate tooling.
 
@@ -36,8 +36,7 @@ and [Server HTTP API](/docs/operators/node/server-http-api).
 ## Operator database, user events and settlement
 
 - `db:migrate` · `db:status` · `db:verify` · `db:checksum` · `db:backfill-da-payloads`
-- `submit-l2-transfer` · `submit-deposit` · `submit-withdrawal` · `withdrawal-status`
-- `reconcile-deposit-submission`
+- `submit-l2-transfer` · `withdrawal-status`
 - `resolve-event-settlement-proof` · `absorb-confirmed-deposit-to-reserve`
 - `initialize-payout` · `add-reserve-funds-to-payout` · `conclude-payout`
 - `payout-status` · `reserve-utxos`
@@ -112,3 +111,12 @@ Run these through `midgard-node-tools`:
 
 See [Benchmarks & Stress Testing](/docs/operators/node/benchmarks) and
 [End-to-End Testing Flow](/docs/operators/node/e2e-testing-flow).
+
+## User deposits and withdrawals
+
+Users submit their own deposits and withdrawals with the separate `midgard-user`
+binary (`demo/midgard-user-cli`): `midgard-user deposit`, `midgard-user
+withdraw` and the read-only `midgard-user status`. It signs with the user's
+wallet, reads L1 only through the user's own indexer and resumes an
+interrupted submission by its `--submission-id`. See
+[Deposits &amp; Withdrawals](/docs/operators/node/deposits-withdrawals).

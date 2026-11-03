@@ -66,9 +66,10 @@ intent without repeating the check.
 The Compose wrapper derives operator host ports in linked worktrees. Configure
 the node endpoint and local provider URLs to match those ports (`scripts/operator-compose.sh
 --print-env --env-file .env`). DA ports are explicit and must not collide with
-another stack. Host operational commands (`db:migrate`, `submit-deposit`,
-`submit-withdrawal`) use loopback Postgres at `MIDGARD_POSTGRES_HOST_PORT`;
-containers use `postgres:5432`. Set `MIDGARD_POSTGRES_HOST_PORT` explicitly in
+another stack. Host database commands such as `db:migrate` use loopback
+Postgres at `MIDGARD_POSTGRES_HOST_PORT`; containers use `postgres:5432`. The
+journey's deposits and withdrawals use no database: it runs the user's own
+`midgard-user` tool against the stack's Kupo and Ogmios. Set `MIDGARD_POSTGRES_HOST_PORT` explicitly in
 the `.env`; 5433 and 55433 are refused because they belong to test databases.
 Before each host database command, setup compares the Postgres cluster
 identity seen inside Compose with the one reached at `127.0.0.1` on that port

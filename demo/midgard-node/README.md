@@ -355,9 +355,10 @@ pnpm listen
   JSON manifest describing the currently configured validator bundle,
   generated reference-script auth policy, and any published reference-script
   UTxOs visible at the configured reference-script deploy address.
-- `node dist/index.js submit-deposit`: build and submit an L1 deposit into the
-  Midgard deposit contract for a target L2 address. Submitted deposits are
-  journaled before confirmation wait so timeouts can be reconciled by tx hash.
+- User deposits and withdrawals are not node commands. Users submit them with
+  their own `midgard-user` tool (`../midgard-user-cli`), which records what it
+  signs and resumes by `--submission-id`; see
+  [`../midgard-user-cli/README.md`](../midgard-user-cli/README.md).
 - `pnpm submit:l2-transfer`: build and submit a Midgard-native user transfer.
 - `pnpm audit:blocks-immutable`: inspect immutable block state and related
   persistence.
@@ -408,8 +409,9 @@ node dist/index.js reconcile retention-check --json [--alert-threshold-ms <ms>]
 
 `deposit-projected` is read-only. The running node's follower-change driver
 projects every due deposit; a standalone CLI process runs no driver, so there
-is no projection repair. Use `reconcile-deposit-submission` (below) to
-settle an unconfirmed deposit submission.
+is no projection repair. An unconfirmed deposit is the user's to settle:
+`midgard-user status` (or a rerun of the same `midgard-user deposit` command)
+follows its recorded transaction by tx hash.
 
 `retention-check` counts the retained DA payloads (`checked`) and those still
 inside the challengeability horizon (`stillChallengeable`). Its deadline alert
@@ -425,12 +427,6 @@ header merges no earlier than block maturity after its end time; a larger one
 would list every merged payload from the moment it merges. Without it `alerts`
 is empty and the check never fails on a deadline, since pruning never removes
 still-challengeable evidence.
-
-For deposit confirmation timeouts, use:
-
-```sh
-node dist/index.js reconcile-deposit-submission --tx-hash <cardano-tx-hash> --json
-```
 
 `merge-complete` is `satisfied` only when the header has left the state queue
 and its confirmed-merge local finalization job completed. Its `--repair` merges

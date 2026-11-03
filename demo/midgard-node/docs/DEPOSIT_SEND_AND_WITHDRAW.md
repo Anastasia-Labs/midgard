@@ -48,6 +48,21 @@ Use user wallets that are distinct from the operator-main, operator-merge, and
 reference-script wallets. The withdrawal signer must control the selected L2
 UTxO being withdrawn.
 
+Deposits and withdrawals are submitted with the user's own `midgard-user` tool
+(`demo/midgard-user-cli`), not with the node. It reads L1 only through the
+user's own indexer and records each signed transaction before broadcasting it;
+see [its README](../../midgard-user-cli/README.md). It needs:
+
+- `MIDGARD_DEPLOYMENT_MANIFEST`: the deployment manifest the node serves, for
+  example `deploymentInfo/contract-deployment-info.json`;
+- `L1_ACCESS=kupmios` with `L1_KUPO_URL` and `L1_OGMIOS_URL`, or
+  `L1_ACCESS=blockfrost` with `L1_BLOCKFROST_URL` and
+  `L1_BLOCKFROST_PROJECT_ID`;
+- a Kupo that indexes the user wallet's address and the deployment's deposit
+  and withdrawal list addresses: run it with `--match "*"` or with patterns
+  covering those addresses, and without `--prune-utxo`. The tool checks the
+  patterns before signing and refuses by name when one is missing.
+
 The shell snippets assume `jq` is installed.
 
 ## 1. Build And Start The Node
@@ -58,6 +73,7 @@ Run the node from `demo/midgard-node` and keep it running:
 cd demo/midgard-node
 pnpm install
 pnpm build
+pnpm --dir ../midgard-user-cli build
 pnpm db:migrate
 pnpm listen
 ```
@@ -70,6 +86,12 @@ cd demo/midgard-node
 export MIDGARD_NODE_URL="${MIDGARD_NODE_URL:-http://127.0.0.1:${PORT:-3000}}"
 export USER_SEED_PHRASE="user deposit seed phrase here"
 export DEST_WALLET="destination withdrawal seed phrase here"
+
+export MIDGARD_DEPLOYMENT_MANIFEST="$PWD/deploymentInfo/contract-deployment-info.json"
+export L1_ACCESS=kupmios
+export L1_KUPO_URL="http://127.0.0.1:1442"
+export L1_OGMIOS_URL="http://127.0.0.1:1337"
+midgard_user() { node ../midgard-user-cli/dist/cli.js "$@"; }
 
 export USER_L2_ADDRESS="$(node --input-type=module -e 'import { walletFromSeed } from "@lucid-evolution/lucid"; console.log(walletFromSeed(process.env.USER_SEED_PHRASE, { network: "Preprod" }).address)')"
 export DEST_L2_ADDRESS="$(node --input-type=module -e 'import { walletFromSeed } from "@lucid-evolution/lucid"; console.log(walletFromSeed(process.env.DEST_WALLET, { network: "Preprod" }).address)')"
@@ -107,12 +129,15 @@ node dist/index.js deployment-status | jq .
 
 ## 2. Submit The Deposit
 
-Reuse the same `DEPOSIT_SUBMISSION_ID` if you retry an interrupted
-submission; a new deposit needs a new ID.
+If the command exits 75 (pending) or is interrupted, rerun it with the same
+`DEPOSIT_SUBMISSION_ID` and arguments: the rerun follows the recorded
+transaction and never signs a second one while the first may still land. A new
+deposit needs a new ID. `midgard_user status --submission-id
+"$DEPOSIT_SUBMISSION_ID" --kind deposit` reads the record without submitting.
 
 ```sh
 export DEPOSIT_SUBMISSION_ID="deposit-$(node -p 'crypto.randomUUID()')"
-DEPOSIT_JSON="$(node dist/index.js submit-deposit \
+DEPOSIT_JSON="$(midgard_user deposit --json \
   --submission-id "$DEPOSIT_SUBMISSION_ID" \
   --wallet-seed-phrase-env USER_SEED_PHRASE \
   --l2-address "$USER_L2_ADDRESS" \
@@ -120,23 +145,23 @@ DEPOSIT_JSON="$(node dist/index.js submit-deposit \
 
 printf '%s\n' "$DEPOSIT_JSON" | jq .
 
-export DEPOSIT_TX_HASH="$(printf '%s\n' "$DEPOSIT_JSON" | jq -r '.txHash')"
-export DEPOSIT_EVENT_ID="$(printf '%s\n' "$DEPOSIT_JSON" | jq -r '.metadata.depositEventId // empty')"
+export DEPOSIT_TX_HASH="$(printf '%s\n' "$DEPOSIT_JSON" | jq -r '.admissionTxHash')"
+export DEPOSIT_EVENT_ID="$(printf '%s\n' "$DEPOSIT_JSON" | jq -r '.eventId // empty')"
 test -n "$DEPOSIT_EVENT_ID"
 ```
 
 Expected fields:
 
-- `txHash`
-- `metadata.depositEventId`
-- `metadata.depositAssetName`
-- `metadata.depositAuthUnit`
-- `metadata.inclusionTime`
+- `admissionTxHash`: the L1 transaction that admitted the deposit;
+- `eventId`: the deposit's event id;
+- `publicationTxHash`: present only when the deposit's data was published in
+  a transaction of its own first;
+- `slot` and `attempts`.
 
 The running node ingests, projects, commits, and merges the deposit. It is due
-at `metadata.inclusionTime`, the transaction's validity upper bound plus the
-profile's `event_wait_ms` (300 s on the testing profiles). Wait for `consumed`,
-in this fresh flow before spending its output:
+at its inclusion time, the admission transaction's validity upper bound plus
+the profile's `event_wait_ms` (300 s on the testing profiles). Wait for
+`consumed`, in this fresh flow before spending its output:
 
 ```sh
 DEPOSIT_STATUS_JSON=""
@@ -252,7 +277,13 @@ export WITHDRAW_L2_OUT_REF="$(printf '%s\n' "$DEST_UTXOS_JSON" \
 
 test -n "$WITHDRAW_L2_OUT_REF"
 printf 'WITHDRAW_L2_OUT_REF=%s\n' "$WITHDRAW_L2_OUT_REF"
+
+export WITHDRAW_L2_VALUE="$(printf '%s\n' "$DEST_UTXOS_JSON" \
+  | jq -c --arg ref "$WITHDRAW_L2_OUT_REF" \
+    '.utxos[] | select("\(.txHash)#\(.outputIndex)" == $ref) | .assets')"
 ```
+
+`WITHDRAW_L2_VALUE` is the value the payout must pay exactly.
 
 ## 7. Submit The Withdrawal Order
 
@@ -263,41 +294,32 @@ check can distinguish a new payout from an older output with the same value:
 PAYOUT_BEFORE_JSON="$(node dist/index.js l1-utxos --address "$DEST_L1_ADDRESS")"
 ```
 
-Reuse the same `WITHDRAWAL_SUBMISSION_ID` if you retry an interrupted
-submission; a new withdrawal needs a new ID.
+Reuse the same `WITHDRAWAL_SUBMISSION_ID` and arguments if you retry an
+interrupted or pending (exit 75) submission; a new withdrawal needs a new ID.
 
 ```sh
 export WITHDRAWAL_SUBMISSION_ID="withdrawal-$(node -p 'crypto.randomUUID()')"
-WITHDRAWAL_JSON="$(node dist/index.js submit-withdrawal \
+WITHDRAWAL_JSON="$(midgard_user withdraw --json \
   --submission-id "$WITHDRAWAL_SUBMISSION_ID" \
   --wallet-seed-phrase-env DEST_WALLET \
-  --endpoint "$MIDGARD_NODE_URL" \
+  --node-endpoint "$MIDGARD_NODE_URL" \
   --l2-out-ref "$WITHDRAW_L2_OUT_REF" \
   --l1-address "$DEST_L1_ADDRESS")"
 
 printf '%s\n' "$WITHDRAWAL_JSON" | jq .
 
-export WITHDRAWAL_TX_HASH="$(printf '%s\n' "$WITHDRAWAL_JSON" | jq -r '.txHash')"
-export WITHDRAWAL_EVENT_ID="$(printf '%s\n' "$WITHDRAWAL_JSON" | jq -r '.withdrawalEventId')"
+export WITHDRAWAL_TX_HASH="$(printf '%s\n' "$WITHDRAWAL_JSON" | jq -r '.admissionTxHash')"
+export WITHDRAWAL_EVENT_ID="$(printf '%s\n' "$WITHDRAWAL_JSON" | jq -r '.eventId')"
 ```
 
-`withdrawalEventId` is the canonical OutputReference CBOR for the L1 nonce
-input spent by the withdrawal order transaction. Use this value for withdrawal
-status, settlement proof resolution, and payout lifecycle commands.
+`eventId` is the canonical OutputReference CBOR for the L1 nonce input spent
+by the withdrawal order transaction. Use this value for withdrawal status,
+settlement proof resolution, and payout lifecycle commands.
 
-Expected fields:
-
-- `txHash`
-- `withdrawalEventId`
-- `withdrawalAssetName`
-- `l2OutRef`
-- `l2Owner`
-- `l2Value`
-- `l1Address`
-- `refundAddress`
-- `nonceInput`
-- `validTo`
-- `inclusionTime`
+On its first run the tool asks the node that the out-ref is unspent, that the
+transaction producing it is committed and that it belongs to the signing
+wallet, then records its value; a rerun uses the record and does not ask the
+node again.
 
 ## 8. Wait For The Automatic Withdrawal Merge
 
@@ -371,20 +393,20 @@ printf '%s\n' "$PAYOUT_AFTER_JSON" | jq .
 
 PAYOUT_BEFORE_JSON="$PAYOUT_BEFORE_JSON" \
 PAYOUT_AFTER_JSON="$PAYOUT_AFTER_JSON" \
-WITHDRAWAL_JSON="$WITHDRAWAL_JSON" node --input-type=module <<'JS'
+WITHDRAW_L2_VALUE="$WITHDRAW_L2_VALUE" node --input-type=module <<'JS'
 const before = JSON.parse(process.env.PAYOUT_BEFORE_JSON);
 const after = JSON.parse(process.env.PAYOUT_AFTER_JSON);
-const withdrawal = JSON.parse(process.env.WITHDRAWAL_JSON);
+const l2Value = JSON.parse(process.env.WITHDRAW_L2_VALUE);
 const outRef = (u) => `${u.txHash}#${u.outputIndex}`;
 const old = new Set(before.utxos.map(outRef));
 const assets = (value) => JSON.stringify(Object.entries(value)
   .map(([unit, quantity]) => [unit, BigInt(quantity).toString()])
   .filter(([, quantity]) => quantity !== "0")
   .sort(([a], [b]) => a.localeCompare(b)));
-const target = assets(withdrawal.l2Value);
+const target = assets(l2Value);
 const matching = after.utxos.filter((u) => !old.has(outRef(u)) && assets(u.assets) === target);
 if (matching.length === 0) throw new Error("No new output pays the exact withdrawal value");
-console.log(JSON.stringify({ payoutOutRefs: matching.map(outRef), targetAssets: withdrawal.l2Value }));
+console.log(JSON.stringify({ payoutOutRefs: matching.map(outRef), targetAssets: l2Value }));
 JS
 ```
 
@@ -427,11 +449,17 @@ reasons, for example `l1_follower_catching_up` or
 `l1_follower_view_unapplied`. Only the running node ingests
 L1 events; there is no one-shot ingestion command.
 
-### `submit-withdrawal` Rejects The L2 Out-Ref
+### `midgard-user withdraw` Refuses The L2 Out-Ref
 
-The selected out-ref is missing from the node's `/utxos?by-outrefs` view, is
-stale, or is not controlled by the withdrawal signer derived from
-`DEST_WALLET`.
+The selected out-ref is spent or missing from the node's view, the transaction
+that produced it is not committed yet, or it is not controlled by the
+withdrawal signer derived from `DEST_WALLET`. The refusal names which.
+
+### `midgard-user` Refuses The Indexer
+
+Kupo does not index the wallet's address or the deployment's deposit or
+withdrawal list address. Add the missing pattern (or run Kupo with
+`--match "*"`), keep `--prune-utxo` off, and rerun with the same submission ID.
 
 ### Withdrawal Status Is Invalid
 
