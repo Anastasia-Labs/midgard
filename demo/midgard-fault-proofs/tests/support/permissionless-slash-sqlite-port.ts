@@ -17,7 +17,7 @@ import {
   type WorkflowFundingReservationPort,
   type WorkflowFundingReservationSnapshot,
 } from "../../src/workflow/funding-reservation-permit.js";
-import type { bindCanonicalFixtureHeader } from "./submit-init-emulator-fixtures.deployment-context.js";
+import { type bindCanonicalFixtureHeader } from "./submit-init/deployment.js";
 
 // Every operation delegates to the current connection of the same real store.
 export const createPermissionlessSlashSqlitePort = async ({

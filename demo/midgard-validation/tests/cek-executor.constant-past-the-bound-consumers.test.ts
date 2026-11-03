@@ -7,7 +7,7 @@ import type { MidgardCekExecutionStep } from "../src/cek-executor.build-midgard-
 import { verifyMidgardCekCoreStep } from "../src/cek-machine.js";
 import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
 import { stageMidgardCekStagedBuiltinMaterial } from "../src/cek-staged-builtin.material.js";
-import { evaluateMidgardCekScript } from "../src/phase-b.evaluate-cek-script.js";
+import { evaluateMidgardCekScript } from "../src/phase-b/cek-evaluation.js";
 import { UPLCConst } from "../src/uplc-constant.js";
 import { DataB, DataI, DataList, DataMap, DataPair } from "../src/uplc-data.js";
 import { ErrorUPLC, UPLCProgram, type UPLCTerm } from "../src/uplc-term.js";

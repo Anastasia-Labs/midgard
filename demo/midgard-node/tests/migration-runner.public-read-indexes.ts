@@ -9,7 +9,7 @@ import {
 } from "../src/database/migrations/index.js";
 import * as MigrationRunner from "../src/database/migrations/runner.js";
 import { BatchSql } from "../src/services/database.js";
-import { makeHistoryWithdrawalEntry } from "./database.test/fixtures.make-history-withdrawal-entry.js";
+import { makeHistoryWithdrawalEntry } from "./database.test/fixtures.events.js";
 import { insertWithdrawals } from "./helpers/event-rows.js";
 import { testDatabaseName } from "./test-env.js";
 import {

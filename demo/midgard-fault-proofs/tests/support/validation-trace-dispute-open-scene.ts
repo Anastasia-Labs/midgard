@@ -40,7 +40,7 @@ import {
 } from "../helpers/plutus-execution-block-fixture.js";
 import { recordCrossBlockRawEmulator } from "./cross-block-raw-emulator.js";
 import { awaitHeaderCommitWindow } from "./emulator/family-history.js";
-import { submitSuccessorBlockTx } from "./submit-init-emulator-fixtures.submit-successor-block-tx.js";
+import { submitSuccessorBlockTx } from "./submit-init/successor.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   type FaultProofEmulatorHarness,

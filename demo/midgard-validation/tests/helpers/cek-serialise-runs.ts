@@ -8,7 +8,7 @@ import { blake2b } from "@noble/hashes/blake2.js";
 import type { MidgardCekExecutionStep } from "../../src/cek-executor.build-midgard-cek-execution-graph.js";
 import { encodeMidgardCekCardanoFlatProgram } from "../../src/cek-program.cardano-flat.js";
 import type { MidgardCekSerialiseWitness } from "../../src/cek-serialise.js";
-import { evaluateMidgardCekScript } from "../../src/phase-b.evaluate-cek-script.js";
+import { evaluateMidgardCekScript } from "../../src/phase-b/cek-evaluation.js";
 import type { MidgardUplcEvalProgram } from "../../src/plutus-script-evaluator.js";
 import { UPLCConst } from "../../src/uplc-constant.js";
 import {

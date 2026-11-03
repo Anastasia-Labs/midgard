@@ -6,7 +6,7 @@ import * as UPLC from "@lucid-evolution/uplc";
 import { describe, expect, it } from "vitest";
 
 import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
-import { evaluateMidgardCekScript } from "../src/phase-b.evaluate-cek-script.js";
+import { evaluateMidgardCekScript } from "../src/phase-b/cek-evaluation.js";
 import type { MidgardUplcEvalProgram } from "../src/plutus-script-evaluator.js";
 import { UPLCConst } from "../src/uplc-constant.js";
 import { type Builtin, UPLCProgram, type UPLCTerm } from "../src/uplc-term.js";

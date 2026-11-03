@@ -65,7 +65,7 @@ export const WATCHER_BLOCK_REPLAY_STAGE_BY_CONSENSUS_PHASE = Object.freeze({
 /**
  * The two canonical detail prefixes Phase B uses when the failing input is a
  * *reference* input rather than a spend input (`resolveCandidateInputs`,
- * phase-b.resolve-reference-inputs.ts). That resolver walks spend and
+ * phase-b/input-resolution.ts). That resolver walks spend and
  * reference inputs as one merged schedule, and its missing-input and
  * undecodable-output rejections carry `consensusPhase: "resolveInputs"` for
  * either kind, so the phase alone cannot separate the spends stage from the
@@ -112,7 +112,7 @@ export const WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES = Object.freeze(
  * (:915, :925, :1097, :1106), `E_MIN_ADA` (the output-descriptor scan),
  * `E_VALUE_NOT_PRESERVED` (:1061, :1160),
  * `E_PLUTUS_SCRIPT_INVALID` (:629, :717, :729), `E_ASSET_COUNT` (the
- * ValueAndMint walk, phase-b.check-value-and-mint.ts).
+ * ValueAndMint walk, phase-b/value-and-mint.ts).
  */
 export const WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES = Object.freeze([
   RejectCodes.InvalidOutput,

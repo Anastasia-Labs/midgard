@@ -8,7 +8,7 @@ import {
   encodeMidgardCekCardanoFlatProgram,
 } from "../src/cek-program.cardano-flat.js";
 import { stageMidgardCekStagedBuiltinMaterial } from "../src/cek-staged-builtin.material.js";
-import { evaluateMidgardCekScript } from "../src/phase-b.evaluate-cek-script.js";
+import { evaluateMidgardCekScript } from "../src/phase-b/cek-evaluation.js";
 import { UPLCConst } from "../src/uplc-constant.js";
 import { DataB, DataI } from "../src/uplc-data.js";
 import {

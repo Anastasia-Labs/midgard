@@ -85,7 +85,7 @@ test("the follower's readiness type and imported constants yield reasons", () =>
     {
       [HANDLER]: [
         'import { SEED_PENDING, type Other } from "@al-ft/midgard-l1-follower";',
-        'import { LOCAL_HOLD } from "../services/holds.js";',
+        'import { LOCAL_HOLD } from "../../services/holds.js";',
         'import { DEFAULT_MS } from "@al-ft/midgard-l1-follower/heads";',
       ].join("\n"),
       "services/holds.ts": 'export const LOCAL_HOLD = "local_hold_named";\n',
@@ -247,7 +247,7 @@ const runChecker = (root) =>
 // handler nor a module with a hold marker.
 const buildHold = {
   [HANDLER]: [
-    'import { buildHoldReadiness } from "../services/build-holds.js";',
+    'import { buildHoldReadiness } from "../../services/build-holds.js";',
     "const holds = buildHoldReadiness(alarms);",
     "reasons.push(...holds.reasons);",
   ].join("\n"),
@@ -290,7 +290,7 @@ test("a build-hold reason with operator text and a presentation entry passes", (
 test("a reason reached through a re-export and a for-of loop is found", () => {
   const modules = {
     [HANDLER]: [
-      'import { derivedReasons } from "../services/index.js";',
+      'import { derivedReasons } from "../../services/index.js";',
       "for (const reason of derivedReasons(now)) reasons.push(reason);",
     ].join("\n"),
     "services/index.ts": 'export * from "./plane.js";\n',

@@ -57,7 +57,7 @@ import {
   assertPermissionlessSlashRemovedHeader,
   createPermissionlessSlashSqlitePort,
 } from "./permissionless-slash-sqlite-port.js";
-import type { bindCanonicalFixtureHeader } from "./submit-init-emulator-fixtures.deployment-context.js";
+import { type bindCanonicalFixtureHeader } from "./submit-init/deployment.js";
 
 type Evidence = Awaited<ReturnType<typeof bindCanonicalFixtureHeader>>;
 type Boundary = LocallyEvaluatedTransaction;

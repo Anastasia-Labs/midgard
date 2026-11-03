@@ -11,7 +11,7 @@ import {
   planFaultProofFieldOpening,
 } from "../../src/field-opening.js";
 import { parseSubmitStep01TxInclusion } from "./legacy-submit-emulator.js";
-import { type stageDoubleSpendStep04 } from "./submit-init-emulator-fixtures.stage-double-spend-step04.js";
+import { type stageDoubleSpendStep04 } from "./submit-init/double-spend-staging.js";
 
 type StagedDoubleSpend = Awaited<ReturnType<typeof stageDoubleSpendStep04>>;
 

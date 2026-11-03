@@ -510,7 +510,7 @@
       "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
       "sites": [".sort(([left], [right]) => left.localeCompare(right))"]
     },
-    "midgard-validation/tests/helpers/ordered-collection-boundary.build-signed-cardano-mint-native-policies-candidate.ts": {
+    "midgard-validation/tests/helpers/ordered-collection/mint-candidates.ts": {
       "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
       "sites": [
         "left.policyHashHex.localeCompare(right.policyHashHex),",

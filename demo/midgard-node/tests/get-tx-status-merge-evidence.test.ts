@@ -34,8 +34,10 @@ vi.mock("../src/database/index.js", async (importOriginal) => {
   };
 });
 
-import { getTxStatusHandler } from "../src/commands/listen-router.get-tx-status-handler.js";
-import { postTxStatusBatchHandler } from "../src/commands/listen-router.post-tx-status-batch-handler.js";
+import {
+  getTxStatusHandler,
+  postTxStatusBatchHandler,
+} from "../src/commands/http/transaction-status.js";
 import { Globals } from "../src/services/globals.js";
 import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.js";
 import { canonicalManifest } from "./deployment-manifest.canonical-identity.js";

@@ -11,7 +11,7 @@ import {
   parseSpendInputCbors,
   parseSubmitStep01TxInclusion,
 } from "./support/legacy-submit-emulator.js";
-import { stageDoubleSpendStep04 } from "./support/submit-init-emulator-fixtures.stage-double-spend-step04.js";
+import { stageDoubleSpendStep04 } from "./support/submit-init/double-spend-staging.js";
 import { network } from "./support/submit-init-emulator-shared.js";
 
 describe("double-spend proof against an honest block", () => {

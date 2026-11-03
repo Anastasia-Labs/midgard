@@ -22,7 +22,7 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
-import { getDepositStatusHandler } from "../src/commands/listen-router.post-tx-status-batch-handler.js";
+import { getDepositStatusHandler } from "../src/commands/http/deposits.js";
 import {
   followerIngestedView,
   type FollowerIngestionOutcome,

@@ -35,7 +35,7 @@ import {
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import type { ReferenceScriptPublishingContracts } from "./support/emulator/reference-script-publisher.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
-import { buildProvedDoubleSpendFixture } from "./support/submit-init-emulator-fixtures.build-proved-double-spend-fixture.js";
+import { buildProvedDoubleSpendFixture } from "./support/submit-init/double-spend.js";
 
 const records: unknown[] = [];
 const OTHER_HEADER = "ee".repeat(28);

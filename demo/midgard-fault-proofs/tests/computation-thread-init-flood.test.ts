@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { submitLinearFaultCancel } from "../src/linear-fault-cancel.js";
 import { parseOutRef } from "../src/runtime.js";
 import { submitInit } from "../src/submit-init.js";
-import { stageDoubleSpendStep04 } from "./support/submit-init-emulator-fixtures.stage-double-spend-step04.js";
+import { stageDoubleSpendStep04 } from "./support/submit-init/double-spend-staging.js";
 import { network } from "./support/submit-init-emulator-shared.js";
 
 const THREADS_PER_ROUND = 8;

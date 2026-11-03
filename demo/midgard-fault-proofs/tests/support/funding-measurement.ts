@@ -6,9 +6,9 @@ import { makeGenuineDeploymentRegistryForTest } from "midgard-node/tests/helpers
 
 import { submitResolvedInit } from "../../src/submit-init.js";
 import { captureLocallyEvaluatedTransaction } from "../../src/workflow/transaction-boundary.js";
-import { commitInitializedProvedFixtureHeader } from "./submit-init-emulator-fixtures.commit-initialized-proved-fixture-header.js";
-import { buildProvedFixtureDeploymentContext } from "./submit-init-emulator-fixtures.deployment-context.js";
-import { EMULATOR_HEADER_CLOCK_HEADROOM_MS } from "./submit-init-emulator-fixtures.instrument-lucid-for-removal.js";
+import { commitInitializedProvedFixtureHeader } from "./submit-init/commit-header.js";
+import { buildProvedFixtureDeploymentContext } from "./submit-init/deployment.js";
+import { EMULATOR_HEADER_CLOCK_HEADROOM_MS } from "./submit-init/successor.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   realBlueprintPath,

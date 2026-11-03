@@ -62,7 +62,7 @@ export const PRESENTATION_BRANCH = 'key === "reasons"';
 
 /** The modules that answer `/readyz`: serving, and while the node starts. */
 export const READINESS_ASSEMBLERS = [
-  "commands/listen-router.get-readiness-handler.ts",
+  "commands/http/readiness.ts",
   "commands/listen.startup-http.ts",
 ];
 

@@ -11,22 +11,22 @@ import { Effect, Option } from "effect";
 
 import { NodeConfig } from "../services/config.js";
 import type { NodeConfigDep } from "../services/config.node-config-dep.js";
-import { HTTP_RESPONSE_MAX_BYTES } from "../services/http-resource-limits.js";
-export { HTTP_RESPONSE_MAX_BYTES } from "../services/http-resource-limits.js";
 import {
   DEFAULT_HTTP_RATE_LIMITS,
   type HttpRateClass,
   type HttpRateLimitPolicy,
 } from "../services/http-rate-limits.js";
+import { HTTP_RESPONSE_MAX_BYTES } from "../services/http-resource-limits.js";
+import { HTTP_ROUTE_ACTIONS } from "./http/routes.js";
 import {
   createHttpRateLimiter,
   httpRateKey,
 } from "./listen-http-rate-limit.js";
-import { HTTP_ROUTE_ACTIONS } from "./listen-route-policy.js";
+export { HTTP_RESPONSE_MAX_BYTES } from "../services/http-resource-limits.js";
+export { HTTP_PEER_MAX_ENTRIES } from "./listen-http-rate-limit.js";
 
 export const HTTP_JSON_BODY_MAX_BYTES = 65_536;
 export const HTTP_QUERY_MAX_BYTES = 2_048;
-export { HTTP_PEER_MAX_ENTRIES } from "./listen-http-rate-limit.js";
 const RETRY_AFTER = { "retry-after": "5", connection: "close" };
 
 /** Socket identity only. Forwarded headers cannot mint additional quotas. */

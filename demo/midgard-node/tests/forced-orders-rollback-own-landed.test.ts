@@ -19,7 +19,7 @@ import { SqlClient } from "@effect/sql";
 import { Effect, Logger } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { ownLandedForcedOrphanDetail } from "../src/commands/listen-router.get-readiness-handler.inputs.js";
+import { ownLandedForcedOrphanDetail } from "../src/commands/http/readiness-inputs.js";
 import { countOrphansAwaitingRecovery } from "../src/database/follower-orphan-repair.js";
 import { ForcedTransactionsDB } from "../src/database/index.js";
 import { refuseCommitForOrphanedOwnBlockEvent } from "../src/fibers/block-commitment.own-block-event-orphaned.js";

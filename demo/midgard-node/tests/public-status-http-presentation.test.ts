@@ -25,8 +25,8 @@ vi.mock("@al-ft/midgard-core/deployment-profile", async (importOriginal) => {
   };
 });
 
+import { getPipelineStatusHandler } from "../src/commands/http/pipeline-status.js";
 import { withHttpReadSql } from "../src/commands/listen-http-read.js";
-import { getPipelineStatusHandler } from "../src/commands/listen-router.get-pipeline-status-handler.js";
 import {
   COMMIT_ANCHOR_SOURCE,
   COMMIT_ANCHOR_UNAVAILABLE,

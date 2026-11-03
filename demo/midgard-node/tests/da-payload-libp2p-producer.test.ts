@@ -1,13 +1,13 @@
-import "node:fs/promises";
-import "node:net";
-import "node:os";
-import "node:path";
-import "node:url";
 import "@al-ft/midgard-core/consensus-profile";
 import "@al-ft/midgard-core/da-libp2p-identity";
 import "@al-ft/midgard-core/da-stream-codec";
 import "@al-ft/midgard-core/da-transport";
 import "@al-ft/midgard-sdk";
+import "node:fs/promises";
+import "node:net";
+import "node:os";
+import "node:path";
+import "node:url";
 import "vitest";
 import "../src/da/libp2p-producer.js";
 import "../src/database/index.js";
@@ -837,7 +837,7 @@ describe("DA payload libp2p producer publication", () => {
 
   it("keeps DA payload bytes out of the production HTTP router", async () => {
     const routerPath = fileURLToPath(
-      new URL("../src/commands/listen-router.ts", import.meta.url),
+      new URL("../src/commands/http/", import.meta.url),
     );
     const routerSource = readSourceFacets(routerPath);
 

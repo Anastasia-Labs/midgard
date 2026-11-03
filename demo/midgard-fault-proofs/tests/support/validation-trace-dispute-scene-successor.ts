@@ -5,7 +5,7 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { toUnit, type UTxO } from "@lucid-evolution/lucid";
 
-import { submitSuccessorBlockTx } from "./submit-init-emulator-fixtures.submit-successor-block-tx.js";
+import { submitSuccessorBlockTx } from "./submit-init/successor.js";
 import type { Scene } from "./validation-trace-dispute-open-scene.js";
 
 /** A committed block: its header and hash. */

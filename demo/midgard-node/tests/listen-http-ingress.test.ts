@@ -12,6 +12,7 @@ import { NodeHttpServer } from "@effect/platform-node";
 import { Effect, Option } from "effect";
 import { describe, expect, it } from "vitest";
 
+import { HTTP_ROUTE_ACTIONS } from "../src/commands/http/routes.js";
 import {
   claimAdminMutation,
   getAdminSessionHandler,
@@ -26,7 +27,6 @@ import {
   withHttpIngress,
 } from "../src/commands/listen-http-ingress.js";
 import { encodeReadPage } from "../src/commands/listen-read-page.js";
-import { HTTP_ROUTE_ACTIONS } from "../src/commands/listen-route-policy.js";
 import { stateQueueHeaderPage } from "../src/commands/listen-state-queue-page.js";
 import { NodeConfig } from "../src/services/config.js";
 

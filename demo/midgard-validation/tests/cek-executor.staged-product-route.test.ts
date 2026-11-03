@@ -12,7 +12,7 @@ import {
   type MidgardCekStagedOperandSource,
   stageMidgardCekStagedBuiltinMaterial,
 } from "../src/cek-staged-builtin.material.js";
-import { evaluateMidgardCekScript } from "../src/phase-b.evaluate-cek-script.js";
+import { evaluateMidgardCekScript } from "../src/phase-b/cek-evaluation.js";
 import { UPLCConst } from "../src/uplc-constant.js";
 import { type Builtin, UPLCProgram, type UPLCTerm } from "../src/uplc-term.js";
 import {

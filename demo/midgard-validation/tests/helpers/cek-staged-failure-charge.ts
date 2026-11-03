@@ -11,7 +11,7 @@ import { errorSuccessor } from "../../src/cek-machine.midgard-cek-builtin-argume
 import { MidgardCekErrorCodes } from "../../src/cek-machine.midgard-cek-core-step-witness.js";
 import { verifyMidgardCekCoreStep } from "../../src/cek-machine.verify-builtin.js";
 import { encodeMidgardCekCardanoFlatProgram } from "../../src/cek-program.cardano-flat.js";
-import { evaluateMidgardCekScript } from "../../src/phase-b.evaluate-cek-script.js";
+import { evaluateMidgardCekScript } from "../../src/phase-b/cek-evaluation.js";
 import type { MidgardUplcEvalProgram } from "../../src/plutus-script-evaluator.js";
 import { UPLCConst } from "../../src/uplc-constant.js";
 import { DataB } from "../../src/uplc-data.js";

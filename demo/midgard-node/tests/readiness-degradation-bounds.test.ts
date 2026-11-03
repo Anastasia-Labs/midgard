@@ -6,7 +6,7 @@ import {
   READINESS_L1_PROVIDER_UNHEALTHY_AFTER_MS,
   readinessDatabaseError,
   readinessL1ProviderUnhealthyAfterMs,
-} from "../src/commands/listen-router.get-readiness-handler.inputs.js";
+} from "../src/commands/http/readiness-inputs.js";
 
 const NOW = 10_000_000;
 const BOUND = READINESS_L1_PROVIDER_UNHEALTHY_AFTER_MS;

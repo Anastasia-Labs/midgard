@@ -5,7 +5,7 @@
  * headers. */
 export { VALIDATION_TRACE_CASE_OPEN } from "../../src/validation-trace-dispute/adapter.js";
 export { validationTraceFraudProofUnit } from "../../src/validation-trace-dispute/close.js";
-export { expectStateQueueHeaderOrder } from "./submit-init-emulator-fixtures.expect-state-queue-header-order.js";
+export { expectStateQueueHeaderOrder } from "./submit-init/queue-assertions.js";
 export {
   makeRunner,
   type Runner,

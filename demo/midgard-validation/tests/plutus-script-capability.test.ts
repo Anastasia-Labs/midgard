@@ -5,7 +5,7 @@ import {
 import { Effect, Either } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { runScriptExecution } from "../src/phase-b.script-run.js";
+import { runScriptExecution } from "../src/phase-b/cek-evaluation.js";
 import { MidgardUplcCapabilityError } from "../src/plutus-script-evaluator.capability-error.js";
 import {
   evaluateStoredMidgardPlutusScript,

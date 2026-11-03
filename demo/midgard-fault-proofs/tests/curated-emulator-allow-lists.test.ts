@@ -23,13 +23,13 @@ import {
   curatedKeyHash,
 } from "./support/curated-emulator.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
-import { buildProvedDoubleSpendFixture } from "./support/submit-init-emulator-fixtures.build-proved-double-spend-fixture.js";
-import { buildProvedFixtureDeploymentContext } from "./support/submit-init-emulator-fixtures.deployment-context.js";
-import { EMULATOR_HEADER_CLOCK_HEADROOM_MS } from "./support/submit-init-emulator-fixtures.instrument-lucid-for-removal.js";
+import { buildProvedFixtureDeploymentContext } from "./support/submit-init/deployment.js";
+import { buildProvedDoubleSpendFixture } from "./support/submit-init/double-spend.js";
 import {
   expectRemovedFraudProofState,
   submitRemovalForFixture,
-} from "./support/submit-init-emulator-fixtures.setup-fraudulent-block.js";
+} from "./support/submit-init/removal.js";
+import { EMULATOR_HEADER_CLOCK_HEADROOM_MS } from "./support/submit-init/successor.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   emulatorAccountFromSeed,

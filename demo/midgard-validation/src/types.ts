@@ -12,7 +12,7 @@ import type {
 import type { LedgerEntry } from "./ledger.js";
 import type { MidgardForcedTxOutputFault } from "./ledger-tx/codec.locate-forced-tx-item-fault.js";
 import type { MidgardLedgerTx } from "./ledger-tx/types.js";
-import type { MidgardCekVerdictRequest } from "./phase-b.evaluate-cek-script.js";
+import { type MidgardCekVerdictRequest } from "./phase-b/cek-evaluation.js";
 import type { RejectSubject } from "./reject-subject.js";
 import type { ScriptDecodePhase2Class } from "./script-decode.step-types.js";
 

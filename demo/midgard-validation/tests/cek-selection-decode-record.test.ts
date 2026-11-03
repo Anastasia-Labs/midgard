@@ -2,7 +2,7 @@ import { encodeCbor } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
 import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
-import { evaluateMidgardCekScript } from "../src/phase-b.evaluate-cek-script.js";
+import { evaluateMidgardCekScript } from "../src/phase-b/cek-evaluation.js";
 import { MidgardUplcCapabilityError } from "../src/plutus-script-evaluator.capability-error.js";
 import { UPLCConst } from "../src/uplc-constant.js";
 import { Lambda, UPLCProgram, UPLCVar } from "../src/uplc-term.js";

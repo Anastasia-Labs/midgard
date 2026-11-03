@@ -19,7 +19,7 @@ import {
   buildMidgardCanonicalCekProgram,
   buildMidgardCanonicalScriptArtifact,
 } from "../src/cek-program.js";
-import { evaluateMidgardCekScript } from "../src/phase-b.evaluate-cek-script.js";
+import { evaluateMidgardCekScript } from "../src/phase-b/cek-evaluation.js";
 import { scriptDecodeRecordOfScript } from "../src/script-decode.step-walk.js";
 import { UPLCConst } from "../src/uplc-constant.js";
 import {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { readinessDatabaseError } from "../src/commands/http/readiness-inputs.js";
 import { publicReadinessPresentation } from "../src/commands/listen-readiness-public-presentation.js";
-import { readinessDatabaseError } from "../src/commands/listen-router.get-readiness-handler.inputs.js";
 import { evaluateReadiness } from "../src/commands/readiness.js";
 
 describe("public readiness database diagnostics", () => {

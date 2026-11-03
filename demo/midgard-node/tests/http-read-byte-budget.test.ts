@@ -11,9 +11,9 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
+import { getTxHandler } from "../src/commands/http/transaction-status.js";
 import { withHttpReadSql } from "../src/commands/listen-http-read.js";
 import { encodeReadPage } from "../src/commands/listen-read-page.js";
-import { getTxHandler } from "../src/commands/listen-router.get-tx-handler.js";
 import {
   PublicHttpReadLimitError,
   requirePublicReadPayload,

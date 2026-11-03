@@ -7,7 +7,7 @@ import * as UPLC from "@lucid-evolution/uplc";
 
 import { MIDGARD_PLUTUS_PROTOCOL_MAJOR_VERSION } from "./cek-builtin.pinned-evaluator.js";
 import { storedFlatProgramBytes } from "./cek-program.unwrap-canonical-cbor-byte-string.js";
-import type { MidgardCekScriptRun } from "./phase-b.evaluate-cek-script.js";
+import { type MidgardCekScriptRun } from "./phase-b/cek-evaluation.js";
 import { MidgardUplcCapabilityError } from "./plutus-script-evaluator.capability-error.js";
 import type {
   ScriptDecodePhase2Class,
