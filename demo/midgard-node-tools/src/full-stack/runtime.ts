@@ -307,20 +307,28 @@ export function runtimeSteps(processes: StackProcesses): StackStep[] {
           record?.status === "complete" ||
           (record?.status === "running" && record.data !== null)
         ) {
-          // One snapshot confirms a running stack without rebuilding it; a
-          // stopped or unready one is started again, and only execute waits.
-          // Services started from other generated configuration are started
-          // again too, so Compose recreates what changed and node.env is rewritten.
+          // One snapshot confirms a running stack this run built without
+          // restarting it; a stopped or unready one is started again, and only
+          // execute waits. Services built by an earlier run or started from
+          // other generated configuration are started again too, so Compose
+          // recreates what changed and node.env is rewritten.
           try {
             const { inputDigest } = await readRuntimeConfiguration(processes);
+            const saved = record.data as {
+              inputDigest?: unknown;
+              buildId?: unknown;
+            };
             if (
-              (record.data as { inputDigest?: unknown }).inputDigest !==
-              inputDigest
+              saved.inputDigest !== inputDigest ||
+              saved.buildId !== processes.buildId
             )
               return { status: "retry" };
             const snapshot = await (await runtimeReadinessReader(processes))();
             if (snapshot !== undefined)
-              return { status: "complete", data: { inputDigest, ...snapshot } };
+              return {
+                status: "complete",
+                data: { inputDigest, buildId: processes.buildId, ...snapshot },
+              };
           } catch {
             // Missing or unreadable expectations restart the services too.
           }
@@ -439,6 +447,7 @@ export function runtimeSteps(processes: StackProcesses): StackStep[] {
         );
         return {
           inputDigest: runtime.inputDigest,
+          buildId: processes.buildId,
           ...(await confirmRuntimeReadiness(processes)),
         };
       },

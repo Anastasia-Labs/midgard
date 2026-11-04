@@ -365,13 +365,23 @@ function attachedServicesStep(processes: StackProcesses): StackStep {
       ) {
         try {
           const { inputDigest } = await readAttachedConfiguration(processes);
-          if (
-            (record.data as { inputDigest?: unknown }).inputDigest ===
-            inputDigest
-          ) {
+          const saved = record.data as {
+            inputDigest?: unknown;
+            buildId?: unknown;
+          };
+          // A locally built node is confirmed only by the run that built it;
+          // a public node runs the release image its inputs pin.
+          const buildId =
+            processes.config.public === undefined
+              ? processes.buildId
+              : undefined;
+          if (saved.inputDigest === inputDigest && saved.buildId === buildId) {
             const node = await readNode(processes);
             if (node !== undefined)
-              return { status: "complete", data: { inputDigest, node } };
+              return {
+                status: "complete",
+                data: { inputDigest, buildId, node },
+              };
           }
         } catch {
           // Missing or unreadable expectations start the node again.
@@ -410,6 +420,7 @@ function attachedServicesStep(processes: StackProcesses): StackStep {
       );
       return {
         inputDigest: runtime.inputDigest,
+        ...(isPublic ? {} : { buildId: processes.buildId }),
         node: await poll("node readiness", processes.config.timeoutMs, () =>
           readNode(processes),
         ),

@@ -42,6 +42,13 @@ export const publicRolesPath = (config: StackConfig) =>
 export class StackProcesses {
   /** The operator's own `L1_ORIGIN` from the stack env file, before any restore. */
   readonly configuredL1Origin: string | undefined;
+  /**
+   * Names the images this harness run builds. Only the run that built them
+   * confirms them; a later run builds again, so changed source reaches the
+   * containers (the build is cached when nothing changed, and Compose
+   * recreates only the containers whose image changed).
+   */
+  readonly buildId = randomUUID();
   constructor(
     readonly config: StackConfig,
     readonly env: Record<string, string>,

@@ -19,6 +19,7 @@ import {
   NODE_WALLETS,
   OPERATOR2_TRANSPORT,
   removeAttachedFixtures,
+  runAttached,
 } from "./full-stack-attached.fixtures.js";
 import { nodeFollowerPlan } from "./node-follower-plan.js";
 
@@ -253,6 +254,20 @@ describe("second-instance workflow", () => {
     const ids = processes.calls.map((call) => call.id);
     expect(ids).not.toContain("runtime-start");
     expect(ids).not.toContain("operator-register-or-resume");
+  });
+  it("builds an attached node again on a later harness run, so changed source reaches it", async () => {
+    const { fixture, processes, run } = await attachedRun();
+    await run();
+    const later = await runAttached(
+      fixture,
+      await loadAttachedStackConfig(fixture.path),
+    );
+    // The same chain and databases, seen by a new harness process.
+    Object.assign(later.processes.responses, processes.responses);
+    await later.run();
+    const ids = later.processes.calls.map((call) => call.id);
+    expect(ids).toContain("services-build");
+    expect(ids).toContain("runtime-start");
   });
   it("recreates operator-2's node when the stack's producer manifest changes", async () => {
     const { fixture, processes, run } = await attachedRun();

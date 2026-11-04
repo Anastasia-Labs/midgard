@@ -307,16 +307,30 @@ describe("runtime services step", () => {
       "runtime-start",
     );
   });
-  it("confirms a completed run without rebuilding or restarting it", async () => {
+  it("confirms the running services this run built without restarting them", async () => {
     const { processes, services, state } = await stack();
     state.nodeStarted = true;
     const inputDigest = await runtimeInputDigest(processes);
     const result = await services.reconcile({
       status: "complete",
       attempts: 1,
-      data: { inputDigest },
+      data: { inputDigest, buildId: processes.buildId },
     });
     expect(result).toMatchObject({ status: "complete", data: { inputDigest } });
+    expect(processes.calls).toEqual([]);
+  });
+  it("builds services an earlier run built again, so changed source reaches their containers", async () => {
+    const { processes, services, state } = await stack();
+    state.nodeStarted = true;
+    const earlier = await stack();
+    const inputDigest = await runtimeInputDigest(processes);
+    expect(
+      await services.reconcile({
+        status: "complete",
+        attempts: 1,
+        data: { inputDigest, buildId: earlier.processes.buildId },
+      }),
+    ).toEqual({ status: "retry" });
     expect(processes.calls).toEqual([]);
   });
   it("starts services again after their generated configuration changed", async () => {
@@ -356,7 +370,10 @@ describe("runtime services step", () => {
   });
   it("restarts an unready completed run from one snapshot, without waiting out the timeout", async () => {
     const { processes, services } = await stack();
-    const data = { inputDigest: await runtimeInputDigest(processes) };
+    const data = {
+      inputDigest: await runtimeInputDigest(processes),
+      buildId: processes.buildId,
+    };
     processes.config.timeoutMs = 600_000;
     vi.useFakeTimers({ toFake: ["setTimeout", "Date"] });
     try {
