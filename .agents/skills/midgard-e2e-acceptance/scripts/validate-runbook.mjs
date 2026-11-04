@@ -311,11 +311,12 @@ for (const id of documentedStepIds) {
   if (!sourceStepIds.has(id))
     fail(`documented stack step does not exist: ${id}`);
 }
-// Node commands the step table says the stack runs are ones it does run.
+// Node commands the step table says the stack runs are ones it does run,
+// past a leading `--l1 <access>`.
 const stackNodeCommands = new Set(
   [
     ...stackSource.matchAll(
-      /\.node\(\s*(?:"[^"]*"|`[^`]*`)\s*,\s*\[\s*"([a-z0-9:-]+)"/g,
+      /\.node\(\s*(?:"[^"]*"|`[^`]*`)\s*,\s*\[\s*(?:"--l1"\s*,\s*"[a-z]+"\s*,\s*)?"([a-z0-9:-]+)"/g,
     ),
   ].map((match) => match[1]),
 );
