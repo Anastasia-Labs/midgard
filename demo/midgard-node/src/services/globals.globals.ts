@@ -35,6 +35,7 @@ import {
   type L1FollowerState,
 } from "./l1-follower.readiness.js";
 import type { NativeMpfOwnerService } from "./mpf-native-owner/index.js";
+import type { SettlementHealth } from "./settlement.js";
 import type {
   TransientBudgetExhaustedError,
   TransientExhaustion,
@@ -159,9 +160,7 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
     // Architecture G is the only component allowed to hold the ledger Level
     // lock. Workers receive opaque MessagePorts and never see this service or
     // its Level path directly.
-    const SETTLEMENT_HEALTH = yield* Ref.make<
-      import("./settlement.js").SettlementHealth
-    >({
+    const SETTLEMENT_HEALTH = yield* Ref.make<SettlementHealth>({
       observedAt: now,
       state: "starting",
       detail: "settlement worker starting",

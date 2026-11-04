@@ -13,6 +13,7 @@ import {
 import { encodeStoredNode } from "../src/services/mpf-native-owner/service.encode-stored-node.js";
 import { parsePromotionRecords } from "../src/services/mpf-native-owner/service.parse-promotion-records.js";
 import { computeLeafHash } from "../src/workers/utils/mpf/phas.key-value-phas-non-membership-proof.js";
+import { prepareEventFlatDigest } from "../src/workers/utils/mpf-event-flat-digest.js";
 
 /**
  * The `midgard-node` half of the `mpf-node-encoding-v1` channel: the PHAS leaf
@@ -120,7 +121,10 @@ describe("MPF node encoding V1 goldens (midgard-node)", () => {
     }
   });
 
-  it("hashes a stored native-owner leaf as the library does at every cursor", () => {
+  it("hashes a stored native-owner leaf as the library does at every cursor", async () => {
+    // The stored-node hash runs on the WebAssembly BLAKE2b, which loads
+    // asynchronously; the owner service awaits it before its first use too.
+    await prepareEventFlatDigest();
     for (const { prefix, leafHash } of golden.suffixes.rows) {
       const records = parsePromotionRecords(
         encodeStoredNode(leafHash, {

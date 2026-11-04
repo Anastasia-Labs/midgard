@@ -121,7 +121,17 @@ const MOCK_PATTERN =
 const MODULE_RESET_PATTERN = /vi\s*\.\s*(?:resetModules|isolateModules)\s*\(/u;
 // A dynamic `import()` whose specifier is not a string literal (a URL or path
 // computed at run time). esbuild leaves it in the bundle as a native import.
+// Tested against the file's code lines only (`codeLines`): prose such as "a
+// block's import (within ...)" in a doc comment is not an import.
 const COMPUTED_IMPORT_PATTERN = /(?:^|[^\w.$])import\s*\((?!\s*["'])/u;
+/** The file without its comment lines: a line opening with `//`, `/*` or the
+ * `*` of a block comment's continuation. No statement starts that way, and a
+ * trailing comment stays (it can only add a false match, never hide one). */
+const codeLines = (text) =>
+  text
+    .split("\n")
+    .filter((line) => !/^\s*(?:\/\/|\/\*|\*)/u.test(line))
+    .join("\n");
 const NAMESPACE_PATTERNS = [
   /import\s+\*\s+as\s+([\w$]+)\s+from\s*["']([^"']+)["']/gu,
   /(?:const|let|var)\s+([\w$]+)\s*=\s*await\s+import\s*\(\s*["']([^"']+)["']\s*\)/gu,
@@ -156,7 +166,7 @@ export const scan = (file) => {
       mocks: [...text.matchAll(MOCK_PATTERN)].map((match) => match[1]),
       resetsModules: MODULE_RESET_PATTERN.test(text),
       readsImportMetaEnv: /\bimport\.meta\.env\b/u.test(text),
-      importsComputedSpecifier: COMPUTED_IMPORT_PATTERN.test(text),
+      importsComputedSpecifier: COMPUTED_IMPORT_PATTERN.test(codeLines(text)),
       spiedNamespaces: spiedNamespaces(text),
     };
     scanCache.set(file, scanned);
