@@ -151,7 +151,7 @@ something else started.
    into the same file, so a crash loop overwrites the first failure within
    minutes. `[review]`
 3. Read the first fatal line, not the last. The node logs startup refusals as
-   `Startup protocol initialization failed: …` with the mismatch list;
+   `Startup protocol check failed: …` with the mismatch list;
    `Database schema is not compatible: …` means run `db:migrate`; a manifest
    refusal says `cannot be used as contract source`. A failed startup step
    logs `node_startup_failed stage=… step=… reason=…; <outcome>`: the node

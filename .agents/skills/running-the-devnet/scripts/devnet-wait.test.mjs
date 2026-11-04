@@ -131,7 +131,7 @@ test("crashed: a fatal line appended to --log is exit 1 with the tail", async ()
     () =>
       appendFileSync(
         log,
-        "starting\nStartup protocol initialization failed: manifest mismatch\n",
+        "starting\nStartup protocol check failed: manifest mismatch\n",
       ),
     200,
   );
@@ -146,7 +146,7 @@ test("a fatal line already in the log before the wait is not a new crash", async
   const log = join(scratch, "old-crash.log");
   writeFileSync(
     log,
-    "Startup protocol initialization failed: manifest mismatch\n",
+    "Startup protocol check failed: manifest mismatch\n",
   );
   const { code, output } = await run(["--url", url, "--log", log]);
   assert.equal(code, 0, output);

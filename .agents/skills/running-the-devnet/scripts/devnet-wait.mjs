@@ -34,7 +34,7 @@ export const DEFAULT_FATAL_PATTERNS = Object.freeze([
   // demo/midgard-node/src/commands/listen-startup.ensure-protocol-initialized-on-startup.ts:
   // every startup deployment/initialization refusal is logged with this
   // prefix, then dies.
-  "Startup protocol initialization failed:",
+  "Startup protocol check failed:",
   // demo/midgard-node/src/database/init.ts: `listen` refuses a schema that is
   // not exactly the version this binary supports.
   "Database schema is not compatible:",
