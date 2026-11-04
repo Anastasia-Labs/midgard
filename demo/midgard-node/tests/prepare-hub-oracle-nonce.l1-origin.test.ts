@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { L1Origin } from "@al-ft/midgard-core/l1-origin";
-import { CML, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
+import type { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
@@ -28,6 +28,7 @@ import { Lucid as LucidService } from "../src/services/lucid.js";
 import { BeforeSignedTransactionSubmission } from "../src/transactions/utils.js";
 import { settledOriginSource } from "./helpers/hub-oracle-nonce-origin.js";
 import { runWithoutFollower } from "./helpers/intent-journal.js";
+import { signedNonceTx } from "./helpers/signed-hub-oracle-nonce-tx.js";
 
 const signSubmitTransactionMock = vi.hoisted(() => vi.fn());
 vi.mock("../src/transactions/utils.js", async (importOriginal) => ({
@@ -37,34 +38,8 @@ vi.mock("../src/transactions/utils.js", async (importOriginal) => ({
 }));
 
 const ADDRESS = "addr_test1operatornonce";
-const INPUT = { txHash: "11".repeat(32), outputIndex: 3 };
 const TIP: L1Origin = { slot: 9_000, blockHash: "a1".repeat(32) };
 const LATER_TIP: L1Origin = { slot: 9_020, blockHash: "b2".repeat(32) };
-
-/** A signed nonce transaction whose bytes a resume can resubmit. */
-const signedNonceTx = () => {
-  const inputs = CML.TransactionInputList.new();
-  inputs.add(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(INPUT.txHash),
-      BigInt(INPUT.outputIndex),
-    ),
-  );
-  const body = CML.TransactionBody.new(
-    inputs,
-    CML.TransactionOutputList.new(),
-    200_000n,
-  );
-  return {
-    txHash: CML.hash_transaction(body).to_hex(),
-    signedTxCbor: CML.Transaction.new(
-      body,
-      CML.TransactionWitnessSet.new(),
-      true,
-    ).to_cbor_hex(),
-  };
-};
-
 const runStateFile = async () => {
   const directory = await mkdtemp(join(tmpdir(), "midgard-nonce-origin-"));
   onTestFinished(() => rm(directory, { recursive: true, force: true }));
@@ -96,42 +71,46 @@ const scriptedObserver = (
 };
 
 /**
- * The node's submission: runs the write-ahead, journals what run state holds
- * at that moment, then fails as a broadcast the node refused would.
+ * The node's submission of the nonce `unsigned` pays: runs the write-ahead,
+ * journals what run state holds at that moment, then fails as a broadcast
+ * the node refused would.
  */
-const failingSubmission = (
-  journal: string[],
-  runStatePath: string,
-  signed = signedNonceTx(),
-) =>
-  signSubmitTransactionMock.mockImplementation(() =>
-    Effect.gen(function* () {
-      const intent = yield* Effect.serviceOption(
-        BeforeSignedTransactionSubmission,
-      );
-      if (Option.isSome(intent))
-        yield* intent.value.persist({ ...signed, journal: Effect.void });
-      const state = yield* Effect.promise(() =>
-        loadDeploymentRunState(runStatePath),
-      );
-      journal.push(
-        `submit with recorded origin ${state?.identity.l1Origin?.slot.toString() ?? "none"}`,
-      );
-      return yield* Effect.fail(new Error("submission refused"));
-    }),
+const failingSubmission = (journal: string[], runStatePath: string) =>
+  signSubmitTransactionMock.mockImplementation(
+    (_lucid, unsigned: { readonly datum: string }) =>
+      Effect.gen(function* () {
+        const signed = signedNonceTx(unsigned.datum);
+        const intent = yield* Effect.serviceOption(
+          BeforeSignedTransactionSubmission,
+        );
+        if (Option.isSome(intent))
+          yield* intent.value.persist({ ...signed, journal: Effect.void });
+        const state = yield* Effect.promise(() =>
+          loadDeploymentRunState(runStatePath),
+        );
+        journal.push(
+          `submit with recorded origin ${state?.identity.l1Origin?.slot.toString() ?? "none"}`,
+        );
+        return yield* Effect.fail(new Error("submission refused"));
+      }),
   );
 
 const operator = () => {
   const journal: string[] = [];
+  let datum = "";
   const tx = {
-    pay: { ToAddressWithData: () => tx },
-    complete: async () => ({}),
+    pay: {
+      ToAddressWithData: (_address: string, paid: { value: string }) => {
+        datum = paid.value;
+        return tx;
+      },
+    },
+    complete: async () => ({ datum }),
   };
   const service = {
     api: {
       newTx: () => tx,
       wallet: () => ({ address: async () => ADDRESS }),
-      utxosAt: async () => [],
     } as unknown as LucidEvolution,
     switchToOperatorsMainWallet: Effect.sync(() => {
       journal.push("wallet");
@@ -157,7 +136,6 @@ const prepare = (
         },
         "Preprod",
       ),
-      outputLookupTimeoutMs: 0,
       ...options,
     }).pipe(Effect.provideService(LucidService, service as never)),
   );
@@ -191,9 +169,8 @@ describe("the L1 origin the nonce command records", () => {
 
   it("D-b: a resume keeps the recorded origin, never reading the node again", async () => {
     const runStatePath = await runStateFile();
-    const signed = signedNonceTx();
     const first = operator();
-    failingSubmission(first.journal, runStatePath, signed);
+    failingSubmission(first.journal, runStatePath);
     await expect(
       prepare(first.service, runStatePath, {
         l1Origin: settledOriginSource(TIP),
@@ -202,6 +179,7 @@ describe("the L1 origin the nonce command records", () => {
 
     const options = { runStatePath, freshRedeploy: false };
     const pending = await loadPendingHubOracleNonceAttempt({ options });
+    const signed = signedNonceTx(pending!.inlineDatum);
     expect(pending).toMatchObject({ txHash: signed.txHash, l1Origin: TIP });
     const lucid = {
       config: () => ({ provider: { submitTx: async (cbor: string) => cbor } }),
@@ -210,21 +188,11 @@ describe("the L1 origin the nonce command records", () => {
         txHash: hash,
         confirmation: { txHash: hash },
       }),
-      utxosByOutRef: async () => [] as UTxO[],
+      utxosByOutRef: async () => [signed.nonce],
       awaitTxConfirmation: async (hash: string) => ({ txHash: hash }),
-      utxosAt: async () => [
-        {
-          txHash: signed.txHash,
-          outputIndex: 0,
-          assets: { lovelace: 5_000_000n },
-          datum: pending!.inlineDatum,
-        },
-      ],
     };
     const result = await Effect.runPromise(
-      reconcileHubOracleOneShotNonceAttemptProgram(pending!, {
-        outputLookupTimeoutMs: 0,
-      }).pipe(
+      reconcileHubOracleOneShotNonceAttemptProgram(pending!).pipe(
         Effect.provideService(LucidService, {
           api: lucid as unknown as LucidEvolution,
           switchToOperatorsMainWallet: Effect.void,

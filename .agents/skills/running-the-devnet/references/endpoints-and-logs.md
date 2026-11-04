@@ -181,31 +181,20 @@ deadline:
   is retried or written; the node stays up, unready. Point the node at a
   fresh database for this deployment (or back at the recorded deployment's
   manifest); never edit the record.
-- `protocol_deployment_status_unavailable`: the protocol deployment status
-  read failed on the L1 provider. Check the L1 node and the follower.
 - `reward_account_status_unavailable`: the availability-challenge reward
   account reads failed on the L1 provider. Check the L1 node.
 - `deployment_manifest_mismatch`, `deployment_manifest_unverifiable`,
   `deployment_manifest_missing` (each a `failedReason`): the configured
   deployment manifest does not match the deployment, cannot be read or
-  verified, or is not configured though the deployment is complete. Fix the
-  manifest path or the deployment configuration.
+  verified, or is not configured. The node never deploys: run the deployment
+  commands (nonce, reference scripts, init) first, then fix the manifest path
+  or the deployment configuration.
 - `l1_slot_config_mismatch` (a `failedReason`): the L1 node's slot mapping
   differs from the one the deployment's scripts were built with (the
   manifest's `l1SlotConfig`, or the named network's Shelley constants).
   Point the node at the deployment's network, or deploy for this one.
 - `availability_reward_account_unregistered` (a `failedReason`): an
   availability-challenge reward account is not registered. Register it.
-- `runtime_reference_scripts_failed` (a `failedReason`): the node-runtime
-  reference-script preflight failed. Publish the reference scripts it
-  names.
-- `runtime_reference_scripts_input_conflict`: the node-runtime
-  reference-script preflight lost an input to a transaction still in flight
-  (typically the previous process's, after a restart). It is built again once
-  that transaction lands; no action unless it outlives the budget.
-- `protocol_initialization_failed`: the startup's protocol initialization
-  (its transaction, the reference scripts after it, or the deployment-info
-  write) failed; startup ends with it as `failedReason`. Read the log.
 - `da_provider_assertions_unavailable`: the DA provider assertions read
   failed on the L1 provider. Check the L1 node.
 - `da_capability_quorum_pending`: too few DA committee peers answered

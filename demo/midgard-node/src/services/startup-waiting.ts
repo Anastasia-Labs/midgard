@@ -59,11 +59,6 @@ export const SCHEMA_MIGRATION_IN_PROGRESS = "schema_migration_in_progress";
  * unversioned, a ledger or shape mismatch): `database/init.ts`. */
 export const DATABASE_SCHEMA_INCOMPATIBLE = "database_schema_incompatible";
 
-/** The protocol deployment status read failed with a retryable provider
- * error (`listen-startup.ensure-protocol-initialized-on-startup.ts`). */
-export const PROTOCOL_DEPLOYMENT_STATUS_UNAVAILABLE =
-  "protocol_deployment_status_unavailable";
-
 /** The availability-challenge reward-account reads failed with a retryable
  * provider error (`listen-startup.ensure-protocol-initialized-on-startup.ts`). */
 export const REWARD_ACCOUNT_STATUS_UNAVAILABLE =
@@ -80,26 +75,12 @@ export const DEPLOYMENT_MANIFEST_UNVERIFIABLE =
  * the one the deployment's scripts were built with. */
 export const L1_SLOT_CONFIG_MISMATCH = "l1_slot_config_mismatch";
 
-/** The deployment is complete but no deployment manifest is configured. */
+/** No deployment manifest is configured: the node never deploys. */
 export const DEPLOYMENT_MANIFEST_MISSING = "deployment_manifest_missing";
 
 /** An availability-challenge reward account is not registered. */
 export const AVAILABILITY_REWARD_ACCOUNT_UNREGISTERED =
   "availability_reward_account_unregistered";
-
-/** The node-runtime reference-script preflight failed. */
-export const RUNTIME_REFERENCE_SCRIPTS_FAILED =
-  "runtime_reference_scripts_failed";
-
-/** The node-runtime reference-script preflight's submission lost an input to
- * another transaction (a previous process's, still in flight after a
- * restart); the preflight is built again from a fresh wallet read. */
-export const RUNTIME_REFERENCE_SCRIPTS_INPUT_CONFLICT =
-  "runtime_reference_scripts_input_conflict";
-
-/** The startup's protocol initialization (its transaction, the reference
- * scripts after it, or the deployment-info write) failed. */
-export const PROTOCOL_INITIALIZATION_FAILED = "protocol_initialization_failed";
 
 /** The DA provider assertions read failed with a retryable provider error
  * (`listen.run-node.ts`). */

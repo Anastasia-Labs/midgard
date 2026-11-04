@@ -120,6 +120,8 @@ export type OpenToolL1AccessInput = Readonly<{
   nativeLedger?: NativeLedgerSettings;
   /** The ledger-tip staleness bound for node-ledger submit slots (ms). */
   nodeBehindMaxMs?: number;
+  /** The command's own wallets, the only addresses `--l1 node` reads. */
+  ownWallets?: readonly Buffer[];
 }>;
 
 /** Opens the tool adapter `env` selects; the caller closes it. */
@@ -143,6 +145,9 @@ export const openToolL1Access = async (
         nodeBehindMaxMs:
           input.nodeBehindMaxMs ??
           positiveInteger(env, "L1_NODE_BEHIND_MAX_MS", DEFAULT_NODE_BEHIND_MS),
+        ...(input.ownWallets === undefined
+          ? {}
+          : { ownWallets: input.ownWallets }),
       });
     }
     case "kupmios": {

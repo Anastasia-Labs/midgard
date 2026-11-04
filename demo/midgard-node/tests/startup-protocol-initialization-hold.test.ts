@@ -1,27 +1,46 @@
 /**
  * The startup protocol check (`ensureProtocolInitializedOnStartup`) never
- * runs itself again: only its provider reads wait out a transient failure,
- * each under its budget (`STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS`). An
- * unregistered availability-challenge reward account is a verdict and fails
- * the startup at once under `availability_reward_account_unregistered`; a
- * reward-account read that stays unavailable past the budget fails it under
- * `reward_account_status_unavailable`. A Lucid slot mapping other than the
- * deployment's fails it at once under `l1_slot_config_mismatch`, before any
- * read. A bootstrap's node-runtime reference-script preflight whose
- * submission lost an input to a transaction in flight (a previous process's,
- * after a restart) is built again under
- * `runtime_reference_scripts_input_conflict` and the startup completes, or,
- * past the same budget, fails under that reason; any
- * other preflight failure fails it at once under
- * `runtime_reference_scripts_failed`. The deployment's reads and the
- * preflight are stubbed; the check's own logic runs.
+ * deploys: with the deployment's finalized manifest it only checks the
+ * availability-challenge reward accounts, by keyed reward-account queries,
+ * reading no address and submitting nothing; without the manifest it fails
+ * under `deployment_manifest_missing`, reading nothing. A Lucid slot mapping
+ * other than the deployment's fails it at once under
+ * `l1_slot_config_mismatch`. An unregistered reward account is a verdict and
+ * fails it at once; a reward-account read that stays unavailable is waited
+ * out under `STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS`. The node's ledger
+ * is a double that records every query and submission.
  */
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import {
+  CborMap,
+  encodeCbor,
+  type LedgerQuery,
+} from "@al-ft/l1-node-transport";
+import { fakeL1NodeTransport } from "@al-ft/l1-node-transport/testing";
+import type { DeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   type L1SlotConfig,
   NAMED_NETWORK_L1_SLOT_CONFIGS,
 } from "@al-ft/midgard-core/l1-slot-config";
+import { LedgerProvider } from "@al-ft/midgard-l1-follower/provider";
+import type * as SDK from "@al-ft/midgard-sdk";
+import {
+  Lucid as makeLucid,
+  PROTOCOL_PARAMETERS_DEFAULT,
+} from "@lucid-evolution/lucid";
 import { Effect, Exit } from "effect";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 import { ensureProtocolInitializedOnStartup } from "../src/commands/listen-startup.js";
 import {
@@ -30,180 +49,182 @@ import {
   MidgardContracts,
   NodeConfig,
 } from "../src/services/index.js";
-import { IntentJournalWithoutFollower } from "../src/services/intent-journal.js";
 import {
   AVAILABILITY_REWARD_ACCOUNT_UNREGISTERED,
+  DEPLOYMENT_MANIFEST_MISSING,
   findStartupStepFailure,
   L1_SLOT_CONFIG_MISMATCH,
   REWARD_ACCOUNT_STATUS_UNAVAILABLE,
-  RUNTIME_REFERENCE_SCRIPTS_FAILED,
-  RUNTIME_REFERENCE_SCRIPTS_INPUT_CONFLICT,
   StartupWaitingReporter,
 } from "../src/services/startup-waiting.js";
-
-const stub = vi.hoisted(() => ({
-  statusReads: 0,
-  registrationChecks: 0,
-  /** How many registration reads fail, and with what. */
-  failures: 0,
-  failure: "unregistered" as "unregistered" | "unreachable",
-  preflightRuns: 0,
-  /** How many bootstrap preflights fail, and with what. */
-  preflightFailures: 0,
-  preflightFailure: "input_spent" as "input_spent" | "other",
-}));
-
-vi.mock("../src/commands/contract-deployment-info.js", async (original) => {
-  const { Effect: E } = await import("effect");
-  return {
-    ...(await original<
-      typeof import("../src/commands/contract-deployment-info.js")
-    >()),
-    verifyConfiguredDeploymentManifestIfPresentProgram: E.succeed({
-      ok: true,
-      manifestId: "manifest",
-      path: "contract-deployment-info.json",
-      mismatches: [],
-      recommendation: "attach",
-    }),
-  };
-});
-vi.mock("../src/transactions/initialization.js", async (original) => {
-  const { Effect: E } = await import("effect");
-  return {
-    ...(await original<
-      typeof import("../src/transactions/initialization.js")
-    >()),
-    fetchProtocolDeploymentStatus: () =>
-      E.sync(() => {
-        stub.statusReads += 1;
-        return { status: "complete", nonce: "spent", hubOracleWitness: null };
-      }),
-  };
-});
-vi.mock(
-  "../src/transactions/availability-challenge-registration.js",
-  async (original) => {
-    const { Effect: E } = await import("effect");
-    const { StateQueueError } = await import("@al-ft/midgard-sdk");
-    const actual =
-      await original<
-        typeof import("../src/transactions/availability-challenge-registration.js")
-      >();
-    return {
-      ...actual,
-      assertAvailabilityChallengeRewardAccountsRegisteredProgram: () =>
-        E.suspend<
-          void,
-          | InstanceType<typeof StateQueueError>
-          | InstanceType<
-              typeof actual.AvailabilityRewardAccountUnregisteredError
-            >,
-          never
-        >(() => {
-          stub.registrationChecks += 1;
-          if (stub.registrationChecks > stub.failures) return E.void;
-          return stub.failure === "unregistered"
-            ? E.fail(
-                new actual.AvailabilityRewardAccountUnregisteredError({
-                  message:
-                    "Availability challenge open reward account is not registered",
-                  cause: "test",
-                }),
-              )
-            : E.fail(
-                new StateQueueError({
-                  message:
-                    "Failed to read the availability challenge reward accounts",
-                  cause: Object.assign(new Error("connect ECONNREFUSED"), {
-                    code: "ECONNREFUSED",
-                  }),
-                }),
-              );
-        }),
-    };
-  },
-);
-vi.mock("../src/transactions/reference-scripts.js", async (original) => {
-  const { Effect: E } = await import("effect");
-  const { TxSubmitError } = await import(
-    "../src/transactions/utils.await-required-output-visibility.js"
-  );
-  return {
-    ...(await original<
-      typeof import("../src/transactions/reference-scripts.js")
-    >()),
-    verifyNodeRuntimeReferenceScriptsProgram: () => E.succeed([]),
-    ensureNodeRuntimeReferenceScriptsProgram: () =>
-      E.suspend(() => {
-        stub.preflightRuns += 1;
-        if (stub.preflightRuns > stub.preflightFailures) return E.succeed([]);
-        // The submission's refusal as the submit seam surfaces it: the
-        // ledger's spent-input answer (here the Lucid emulator's text) as
-        // the cause of the submit error.
-        return E.fail(
-          new TxSubmitError({
-            message: "Failed to submit the reference-script wallet top-up",
-            txHash: "ab".repeat(32),
-            cause:
-              stub.preflightFailure === "input_spent"
-                ? new Error(
-                    `Could not read UTxO: ${"cd".repeat(32)}#0\nIt does not exist or was already spent.`,
-                  )
-                : new Error("Reference-script auth policy expires too soon"),
-          }),
-        );
-      }),
-  };
-});
+import { makeFinalizedDeploymentManifestFixture } from "./helpers/finalized-deployment-manifest.js";
+import { lucidServiceStub } from "./helpers/lucid-service-stub.js";
+import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
 const MAX_ATTEMPTS = 4;
-
 const PREPROD = NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod;
+const NONCE = { txHash: "ab".repeat(32), outputIndex: 0 };
+const REWARD_QUERIES = [
+  "stake_deleg_deposits",
+  "filtered_delegations_and_rewards",
+];
 
-/** Runs the check with every startup report recorded. */
+let contracts: SDK.MidgardValidators;
+let manifest: DeploymentManifest;
+let manifestDirectory: string;
+
+beforeAll(async () => {
+  contracts = await loadRealMidgardContractsForTest(NONCE);
+  manifest = await makeFinalizedDeploymentManifestFixture({
+    contracts,
+    nonce: NONCE,
+  });
+  manifestDirectory = await mkdtemp(join(tmpdir(), "midgard-startup-"));
+  await writeFile(
+    join(manifestDirectory, "contract-deployment-info.json"),
+    JSON.stringify(manifest),
+  );
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
+afterAll(async () => {
+  await rm(manifestDirectory, { recursive: true, force: true });
+});
+
+/**
+ * The node's ledger: it answers the tip and the reward-account queries
+ * (every account registered or none, the first `unreachableReads` reads
+ * refused as a dropped connection) and refuses everything else. `queries`
+ * lists every query it was asked; `submitted` counts submissions.
+ */
+const ledgerDouble = (rewards: {
+  readonly registered: boolean;
+  readonly unreachableReads?: number;
+}) => {
+  const queries: string[] = [];
+  let submitted = 0;
+  let rewardReads = 0;
+  const key = ({ type, hash }: { type: "Key" | "Script"; hash: string }) => [
+    type === "Key" ? 0n : 1n,
+    Buffer.from(hash, "hex"),
+  ];
+  const answer = async (query: LedgerQuery): Promise<Uint8Array> => {
+    queries.push(query.query);
+    switch (query.query) {
+      case "chain_point":
+        return encodeCbor([1n, Buffer.alloc(32)]);
+      case "chain_block_no":
+        return encodeCbor([1n, 1n]);
+      case "stake_deleg_deposits":
+        rewardReads += 1;
+        if (rewardReads <= (rewards.unreachableReads ?? 0))
+          throw Object.assign(new Error("connect ECONNREFUSED"), {
+            code: "ECONNREFUSED",
+          });
+        return encodeCbor(
+          new CborMap(
+            rewards.registered
+              ? query.credentials.map((credential) => [
+                  key(credential),
+                  2_000_000n,
+                ])
+              : [],
+          ),
+        );
+      case "filtered_delegations_and_rewards":
+        return encodeCbor([
+          new CborMap([]),
+          new CborMap(
+            rewards.registered
+              ? query.credentials.map((credential) => [key(credential), 0n])
+              : [],
+          ),
+        ]);
+      case "system_start":
+      case "current_era":
+      case "era_history":
+      case "protocol_params":
+      case "utxo_by_address":
+      case "utxo_by_txin":
+        throw new Error(`the ledger double refuses ${query.query}`);
+    }
+  };
+  const transport = fakeL1NodeTransport({
+    query: answer,
+    withLedgerState: async (_at, use) => await use({ query: answer }),
+    submit: async () => {
+      submitted += 1;
+      return {
+        accepted: false as const,
+        rejection: Buffer.from("the ledger double refuses submissions"),
+      };
+    },
+  });
+  return {
+    transport,
+    queries,
+    submitted: () => submitted,
+  };
+};
+
+/** Runs the check over `node`, with every startup report recorded. */
 const runCheck = async (
-  slots: {
-    /** The mapping the node's Lucid reads from the ledger. */
-    readonly lucid?: L1SlotConfig;
-    /** The manifest's mapping; absent selects a derived bundle built with
-     * Preprod's. */
-    readonly manifest?: L1SlotConfig;
-    /** Whether the node bootstraps (`RUN_GENESIS_ON_STARTUP`), which runs
-     * the reference-script preflight rather than its verification. */
-    readonly bootstrap?: boolean;
-  } = { lucid: PREPROD, manifest: PREPROD },
+  node: ReturnType<typeof ledgerDouble>,
+  options: {
+    /** Whether the deployment's manifest is at the configured path. */
+    readonly manifest?: boolean;
+    /** The mapping the node's Lucid holds; absent is Preprod's. */
+    readonly lucidSlots?: L1SlotConfig;
+  } = {},
 ) => {
+  vi.stubEnv(
+    "MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH",
+    join(
+      manifestDirectory,
+      options.manifest === false
+        ? "absent.json"
+        : "contract-deployment-info.json",
+    ),
+  );
+  const provider = new LedgerProvider({
+    transport: node.transport,
+    pinPointMs: 0,
+  });
+  const lucid =
+    options.lucidSlots === undefined
+      ? await makeLucid(provider, "Preprod", {
+          presetProtocolParameters: PROTOCOL_PARAMETERS_DEFAULT,
+        })
+      : await makeLucid(provider, "Custom", {
+          slotConfig: options.lucidSlots,
+          presetProtocolParameters: PROTOCOL_PARAMETERS_DEFAULT,
+        });
   const reported: [string, readonly string[]][] = [];
   const exit = await Effect.runPromiseExit(
     ensureProtocolInitializedOnStartup.pipe(
-      Effect.provide(IntentJournalWithoutFollower),
       Effect.provideService(NodeConfig, {
         NETWORK: "Preprod",
-        HUB_ORACLE_ONE_SHOT_TX_HASH: "ef".repeat(32),
-        HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: 0,
-        RUN_GENESIS_ON_STARTUP: slots.bootstrap ?? false,
+        L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS:
+          manifest.referenceScriptDeployAddress,
+        HUB_ORACLE_ONE_SHOT_TX_HASH: NONCE.txHash,
+        HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: NONCE.outputIndex,
+        DEPLOYMENT_ECONOMICS_PROFILE: manifest.economics.profile,
+        // A bootstrapping node: it still never deploys.
+        RUN_GENESIS_ON_STARTUP: true,
         STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS: MAX_ATTEMPTS,
         STARTUP_PROTOCOL_STATUS_QUERY_RETRY_DELAY_MS: 0,
       } as unknown as NodeConfig["Type"]),
-      Effect.provideService(Lucid, {
-        api: { config: () => ({ slotConfig: slots.lucid ?? PREPROD }) },
-        referenceScriptsApi: {},
-        referenceScriptsAddress: "addr_test",
-        switchToOperatorsMainWallet: Effect.void,
-      } as unknown as Lucid),
-      Effect.provideService(
-        ContractDeploymentIdentity,
-        (slots.manifest === undefined
-          ? { kind: "derived", l1SlotConfig: PREPROD }
-          : {
-              kind: "manifest",
-              manifest: { l1SlotConfig: slots.manifest },
-            }) as unknown as ContractDeploymentIdentity,
-      ),
+      Effect.provideService(Lucid, lucidServiceStub({ api: lucid })),
+      Effect.provideService(ContractDeploymentIdentity, {
+        kind: "manifest",
+        manifest,
+      } as unknown as ContractDeploymentIdentity),
       Effect.provideService(
         MidgardContracts,
-        {} as unknown as MidgardContracts,
+        contracts as unknown as MidgardContracts,
       ),
       Effect.locally(StartupWaitingReporter, (key, reasons) =>
         Effect.sync(() => {
@@ -221,69 +242,66 @@ const runCheck = async (
   };
 };
 
-beforeEach(() => {
-  stub.statusReads = 0;
-  stub.registrationChecks = 0;
-  stub.preflightRuns = 0;
-  stub.preflightFailures = 0;
-});
-
 describe("the startup protocol check", () => {
-  it("fails the startup at once under l1_slot_config_mismatch when Lucid's slot mapping differs from the manifest's, reading nothing", async () => {
-    stub.failures = 0;
-    const { exit, reported, failure } = await runCheck({
-      lucid: { ...PREPROD, zeroTime: PREPROD.zeroTime + 1_000 },
-      manifest: PREPROD,
+  it("with the deployment's manifest, reads only the reward accounts by key and submits nothing", async () => {
+    const node = ledgerDouble({ registered: true });
+    const { exit } = await runCheck(node);
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(new Set(node.queries)).toEqual(
+      new Set(["chain_point", "chain_block_no", ...REWARD_QUERIES]),
+    );
+    expect(node.submitted()).toBe(0);
+  });
+
+  it("without a manifest, fails under deployment_manifest_missing, reading and submitting nothing", async () => {
+    const node = ledgerDouble({ registered: true });
+    const { failure } = await runCheck(node, { manifest: false });
+    expect(failure).toMatchObject({
+      step: "protocol_initialization",
+      reason: DEPLOYMENT_MANIFEST_MISSING,
+      exhausted: false,
     });
-    expect(Exit.isFailure(exit)).toBe(true);
+    expect(node.queries).toEqual([]);
+    expect(node.submitted()).toBe(0);
+  });
+
+  it("fails at once under l1_slot_config_mismatch when Lucid's slot mapping differs from the manifest's, reading nothing", async () => {
+    const node = ledgerDouble({ registered: true });
+    const { failure, reported } = await runCheck(node, {
+      lucidSlots: { ...PREPROD, zeroTime: PREPROD.zeroTime + 1_000 },
+    });
     expect(failure).toMatchObject({
       step: "protocol_initialization",
       reason: L1_SLOT_CONFIG_MISMATCH,
       exhausted: false,
     });
     expect(failure?.message).toMatch(/l1_slot_config_mismatch: runtime/u);
-    expect(stub.statusReads).toBe(0);
-    expect(stub.registrationChecks).toBe(0);
+    expect(node.queries).toEqual([]);
     expect(reported).toEqual([]);
   });
 
-  it("checks the deployment when Lucid's slot mapping is the manifest's or, for a derived bundle, the one it was built with", async () => {
-    stub.failures = 0;
-    expect(Exit.isSuccess((await runCheck()).exit)).toBe(true);
-    expect(Exit.isSuccess((await runCheck({ lucid: PREPROD })).exit)).toBe(
-      true,
-    );
-    const derivedMismatch = await runCheck({
-      lucid: NAMED_NETWORK_L1_SLOT_CONFIGS.Preview,
-    });
-    expect(derivedMismatch.failure).toMatchObject({
-      reason: L1_SLOT_CONFIG_MISMATCH,
-    });
-  });
-
-  it("fails the startup at once on an unregistered reward account, without checking again", async () => {
-    stub.failure = "unregistered";
-    stub.failures = 2;
-    const { exit, reported, failure } = await runCheck();
-    expect(Exit.isFailure(exit)).toBe(true);
+  it("fails at once on an unregistered reward account, reading it once", async () => {
+    const node = ledgerDouble({ registered: false });
+    const { failure, reported } = await runCheck(node);
     expect(failure).toMatchObject({
       step: "availability_reward_accounts",
       reason: AVAILABILITY_REWARD_ACCOUNT_UNREGISTERED,
       exhausted: false,
       attempts: 1,
     });
-    expect(stub.registrationChecks).toBe(1);
-    expect(stub.statusReads).toBe(1);
+    expect(
+      node.queries.filter((query) => query === "stake_deleg_deposits"),
+    ).toHaveLength(1);
     expect(reported).toEqual([]);
   });
 
-  it("waits out an unreachable reward-account read within its budget, reading the status once", async () => {
-    stub.failure = "unreachable";
-    stub.failures = MAX_ATTEMPTS - 1;
-    const { exit, reported } = await runCheck();
+  it("waits out an unreachable reward-account read within its budget", async () => {
+    const node = ledgerDouble({
+      registered: true,
+      unreachableReads: MAX_ATTEMPTS - 1,
+    });
+    const { exit, reported } = await runCheck(node);
     expect(Exit.isSuccess(exit)).toBe(true);
-    expect(stub.registrationChecks).toBe(MAX_ATTEMPTS);
-    expect(stub.statusReads).toBe(1);
     expect(reported).toEqual([
       ...Array.from({ length: MAX_ATTEMPTS - 1 }, () => [
         "availability_reward_accounts",
@@ -291,72 +309,20 @@ describe("the startup protocol check", () => {
       ]),
       ["availability_reward_accounts", []],
     ]);
+    expect(node.submitted()).toBe(0);
   });
 
-  it("fails the startup under reward_account_status_unavailable once the read outlives its budget", async () => {
-    stub.failure = "unreachable";
-    stub.failures = Number.MAX_SAFE_INTEGER;
-    const { failure } = await runCheck();
+  it("fails under reward_account_status_unavailable once the read outlives its budget", async () => {
+    const node = ledgerDouble({
+      registered: true,
+      unreachableReads: Number.MAX_SAFE_INTEGER,
+    });
+    const { failure } = await runCheck(node);
     expect(failure).toMatchObject({
       step: "availability_reward_accounts",
       reason: REWARD_ACCOUNT_STATUS_UNAVAILABLE,
       exhausted: true,
       attempts: MAX_ATTEMPTS,
     });
-    expect(stub.registrationChecks).toBe(MAX_ATTEMPTS);
-    expect(stub.statusReads).toBe(1);
-  });
-
-  it("builds the bootstrap's reference-script preflight again after it lost an input to a transaction in flight, and completes", async () => {
-    stub.failures = 0;
-    stub.preflightFailure = "input_spent";
-    stub.preflightFailures = 2;
-    const { exit, reported } = await runCheck({
-      lucid: PREPROD,
-      manifest: PREPROD,
-      bootstrap: true,
-    });
-    expect(Exit.isSuccess(exit)).toBe(true);
-    expect(stub.preflightRuns).toBe(3);
-    expect(stub.statusReads).toBe(1);
-    expect(reported).toEqual([
-      ["runtime_reference_scripts", [RUNTIME_REFERENCE_SCRIPTS_INPUT_CONFLICT]],
-      ["runtime_reference_scripts", [RUNTIME_REFERENCE_SCRIPTS_INPUT_CONFLICT]],
-      ["runtime_reference_scripts", []],
-    ]);
-  });
-
-  it("fails the startup under runtime_reference_scripts_input_conflict once the lost-input preflight outlives its budget", async () => {
-    stub.failures = 0;
-    stub.preflightFailure = "input_spent";
-    stub.preflightFailures = MAX_ATTEMPTS + 1;
-    const { failure } = await runCheck({
-      lucid: PREPROD,
-      manifest: PREPROD,
-      bootstrap: true,
-    });
-    expect(failure).toMatchObject({
-      step: "runtime_reference_scripts",
-      reason: RUNTIME_REFERENCE_SCRIPTS_INPUT_CONFLICT,
-      exhausted: true,
-      attempts: MAX_ATTEMPTS,
-    });
-    expect(stub.preflightRuns).toBe(MAX_ATTEMPTS);
-  });
-
-  it("fails the startup at once on any other reference-script preflight failure", async () => {
-    stub.failures = 0;
-    stub.preflightFailure = "other";
-    stub.preflightFailures = 1;
-    const { failure } = await runCheck({
-      lucid: PREPROD,
-      manifest: PREPROD,
-      bootstrap: true,
-    });
-    expect(failure).toMatchObject({
-      reason: RUNTIME_REFERENCE_SCRIPTS_FAILED,
-      exhausted: false,
-    });
-    expect(stub.preflightRuns).toBe(1);
   });
 });

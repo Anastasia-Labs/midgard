@@ -82,10 +82,11 @@ const bootstrapUntilReferenceScripts = async (
       join(runDir, "config/config.json"),
       JSON.stringify({ ShelleyGenesisFile: "/genesis/shelley-genesis.json" }),
     );
-    // An earlier run's origin, which this run must not keep.
+    // An earlier run's origin, which this run must not keep, and an L1
+    // access naming Kupo, which deployment must not use.
     writeFileSync(
       join(runDir, "secrets/node.env"),
-      `L1_ORIGIN=9.${"00".repeat(32)}\n`,
+      `L1_ORIGIN=9.${"00".repeat(32)}\nL1_ACCESS=kupmios\n`,
     );
     writeFileSync(
       join(runDir, "secrets/wallets.env"),
@@ -124,10 +125,14 @@ const bootstrapUntilReferenceScripts = async (
         'case "$1" in',
         "  dist/index.js)",
         `    echo "operator $2" >>"${calls}"`,
+        // The L1 access the command selects: --l1, else L1_ACCESS.
+        '    l1=$L1_ACCESS; for a; do [ "$prev" = --l1 ] && l1=$a; prev=$a; done; prev=',
+        `    local_node="on $l1 local node $L1_NODE_SOCKET_PATH $L1_NODE_CONFIG_PATH $L1_NODE_TRANSPORT_BINARY_PATH"`,
         '    case "$2" in',
-        `      prepare-hub-oracle-one-shot-nonce) echo "nonce local node $L1_NODE_SOCKET_PATH $L1_NODE_CONFIG_PATH $L1_NODE_TRANSPORT_BINARY_PATH" >>"${calls}"; echo '{"txHash":"${NONCE_TX_HASH}","outputIndex":0}' ;;`,
+        `      prepare-hub-oracle-one-shot-nonce) echo "nonce $local_node" >>"${calls}"; echo '{"txHash":"${NONCE_TX_HASH}","outputIndex":0}' ;;`,
+        `      deploy-reference-script-node-runtime) echo "references $local_node" >>"${calls}" ;;`,
         `      register-phas-membership-reward-account) for a; do [ "$prev" = --registration-transaction-body-output ] && echo body >"$a"; prev=$a; done ;;`,
-        `      init) echo "init run state $MIDGARD_RUN_STATE_PATH local node $L1_NODE_SOCKET_PATH $L1_NODE_CONFIG_PATH $L1_NODE_TRANSPORT_BINARY_PATH" >>"${calls}" ;;`,
+        `      init) echo "init run state $MIDGARD_RUN_STATE_PATH $local_node" >>"${calls}" ;;`,
         "    esac",
         '    case "$2" in',
         `      ${stop}) exit ${String(STOPPED_AFTER_ORIGIN)} ;;`,
@@ -191,13 +196,11 @@ test("protocol bootstrap derives L1_ORIGIN from the nonce and writes the followe
         result.calls.indexOf("operator prepare-hub-oracle-one-shot-nonce"),
       result.calls,
     );
-    // The nonce command reads its L1 origin from the run's own node.
-    assert.ok(
-      result.calls.includes(
-        `nonce local node ${runDir}/cardano/ipc/node.socket ${runDir}/config/host-config.json ${runDir}/bin/midgard-l1-node-transport\n`,
-      ),
-      result.calls,
-    );
+    // The nonce command reads its L1 origin from the run's own node, and
+    // the deploy commands read and submit through that node alone.
+    const localNode = `on node local node ${runDir}/cardano/ipc/node.socket ${runDir}/config/host-config.json ${runDir}/bin/midgard-l1-node-transport\n`;
+    for (const deploy of ["nonce", "references"])
+      assert.ok(result.calls.includes(`${deploy} ${localNode}`), result.calls);
     for (const line of [
       `L1_ORIGIN=${L1_ORIGIN}`,
       `L1_NODE_SOCKET_PATH=${runDir}/cardano/ipc/node.socket`,
@@ -235,7 +238,7 @@ test("protocol bootstrap finalizes the manifest with the run state and the local
     const { runDir } = result;
     assert.ok(
       result.calls.includes(
-        `init run state ${runDir}/deploymentInfo/deployment-run-state.json local node ${runDir}/cardano/ipc/node.socket ${runDir}/config/host-config.json ${runDir}/bin/midgard-l1-node-transport\n`,
+        `init run state ${runDir}/deploymentInfo/deployment-run-state.json on node local node ${runDir}/cardano/ipc/node.socket ${runDir}/config/host-config.json ${runDir}/bin/midgard-l1-node-transport\n`,
       ),
       result.calls,
     );

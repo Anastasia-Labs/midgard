@@ -13,47 +13,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { formatL1Origin, type L1Origin } from "@al-ft/midgard-core/l1-origin";
-import { CML } from "@lucid-evolution/lucid";
 import { Effect, type Exit, Option } from "effect";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 
 const seen = vi.hoisted(() => ({
   lucid: undefined as unknown,
   originReads: 0,
-  /** The nonce output's datum the chain holds after the broadcast. */
-  datum: undefined as string | undefined,
+  /** The nonce datum the operator's wallet last paid. */
+  datum: "",
   run: undefined as Promise<Exit.Exit<unknown, unknown>> | undefined,
 }));
 
 const TIP: L1Origin = { slot: 9_000, blockHash: "a1".repeat(32) };
 const LATER_TIP: L1Origin = { slot: 9_020, blockHash: "b2".repeat(32) };
 const ADDRESS = "addr_test1operatornonce";
-const INPUT = { txHash: "11".repeat(32), outputIndex: 3 };
-
-/** A signed nonce transaction whose bytes a resume can resubmit. */
-const signedNonceTx = () => {
-  const inputs = CML.TransactionInputList.new();
-  inputs.add(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(INPUT.txHash),
-      BigInt(INPUT.outputIndex),
-    ),
-  );
-  const body = CML.TransactionBody.new(
-    inputs,
-    CML.TransactionOutputList.new(),
-    200_000n,
-  );
-  return {
-    txHash: CML.hash_transaction(body).to_hex(),
-    signedTxCbor: CML.Transaction.new(
-      body,
-      CML.TransactionWitnessSet.new(),
-      true,
-    ).to_cbor_hex(),
-  };
-};
-const SIGNED = signedNonceTx();
 
 vi.mock("../src/runtime-env.js", () => ({ loadRuntimeDotenv: () => {} }));
 // The broadcast persists the signed bytes ahead of it, as the node's does,
@@ -69,7 +42,10 @@ vi.mock("../src/transactions/utils.js", async (importOriginal) => {
           original.BeforeSignedTransactionSubmission,
         );
         if (Option.isSome(intent))
-          yield* intent.value.persist({ ...SIGNED, journal: Effect.void });
+          yield* intent.value.persist({
+            ...signedNonceTx(seen.datum),
+            journal: Effect.void,
+          });
         return yield* Effect.fail(new Error("submission refused"));
       }),
     awaitSubmittedTransactionConfirmation: () => Effect.succeed("confirmed"),
@@ -130,11 +106,17 @@ vi.mock("../src/commands/cli-runtime.js", async (importOriginal) => {
 import "../src/index.registration-6.js";
 
 import { program } from "../src/index.registration.js";
+import { signedNonceTx } from "./helpers/signed-hub-oracle-nonce-tx.js";
 
 /** The operator's wallet; after the broadcast, the chain holds the nonce. */
 const wallet = (broadcast: boolean) => {
   const tx = {
-    pay: { ToAddressWithData: () => tx },
+    pay: {
+      ToAddressWithData: (_address: string, paid: { value: string }) => {
+        seen.datum = paid.value;
+        return tx;
+      },
+    },
     complete: async () => ({}),
   };
   return {
@@ -147,19 +129,9 @@ const wallet = (broadcast: boolean) => {
         txHash: hash,
         confirmation: { txHash: hash },
       }),
-      utxosByOutRef: async () => [],
+      utxosByOutRef: async () =>
+        broadcast ? [signedNonceTx(seen.datum).nonce] : [],
       awaitTxConfirmation: async (hash: string) => ({ txHash: hash }),
-      utxosAt: async () =>
-        broadcast
-          ? [
-              {
-                txHash: SIGNED.txHash,
-                outputIndex: 0,
-                assets: { lovelace: 5_000_000n },
-                datum: seen.datum,
-              },
-            ]
-          : [],
     },
     switchToOperatorsMainWallet: Effect.void,
   };
@@ -206,14 +178,14 @@ describe("prepare-hub-oracle-one-shot-nonce resumed after a failed broadcast", (
     const pending = await loadPendingHubOracleNonceAttempt({
       options: { runStatePath: runState[1]!, freshRedeploy: false },
     });
-    expect(pending).toMatchObject({ txHash: SIGNED.txHash, l1Origin: TIP });
-    seen.datum = pending!.inlineDatum;
+    const signed = signedNonceTx(pending!.inlineDatum);
+    expect(pending).toMatchObject({ txHash: signed.txHash, l1Origin: TIP });
 
     seen.lucid = wallet(true);
     const resumed = await command(runState);
     expect(resumed.exit._tag).toBe("Success");
     const lines = resumed.printed.split("\n");
-    expect(lines).toContain(`HUB_ORACLE_ONE_SHOT_TX_HASH=${SIGNED.txHash}`);
+    expect(lines).toContain(`HUB_ORACLE_ONE_SHOT_TX_HASH=${signed.txHash}`);
     expect(lines).toContain(`L1_ORIGIN=${formatL1Origin(TIP)}`);
     expect(seen.originReads).toBe(1);
   });

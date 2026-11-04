@@ -25,8 +25,8 @@ identity that every operator and watcher must agree on. This page covers that fl
 - A reachable [L1 backend](/docs/getting-started/l1-backend) and a funded operator
   wallet.
 - Applied database migrations (`db:migrate`).
-- `RUN_GENESIS_ON_STARTUP=false`, so protocol initialization is explicit rather than
-  implicit at startup.
+- `RUN_GENESIS_ON_STARTUP=false`. It gates only the L2 genesis: a node never
+  deploys or initializes the protocol at startup.
 
 ## The flow
 

@@ -433,6 +433,9 @@ it("recovers the original confirmed wallet inputs when a rollback removes the fu
 
 it("rejects a canonical authenticated role with the wrong script before publishing a duplicate", async () => {
   const f = await publicationFixture(4);
+  // The roles are canonical; the address read the next run starts from
+  // shows them holding the wrong script.
+  await f.run();
   const getUtxos = f.provider.getUtxos.bind(f.provider);
   f.provider.getUtxos = async (address) =>
     (await getUtxos(address)).map((utxo) =>

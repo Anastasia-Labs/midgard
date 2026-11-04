@@ -6,7 +6,7 @@ import {
   L1SubmitRejectedError,
   L1TxStatusUnknownError,
 } from "@al-ft/midgard-l1-follower/provider";
-import { CML, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
+import type { LucidEvolution, OutRef, UTxO } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
@@ -25,6 +25,10 @@ import { Lucid as LucidService } from "../src/services/lucid.js";
 import { BeforeSignedTransactionSubmission } from "../src/transactions/utils.js";
 import { settledOriginSource } from "./helpers/hub-oracle-nonce-origin.js";
 import { runWithoutFollower } from "./helpers/intent-journal.js";
+import {
+  NONCE_TX_INPUT,
+  signedNonceTx,
+} from "./helpers/signed-hub-oracle-nonce-tx.js";
 
 const signSubmitTransactionMock = vi.hoisted(() => vi.fn());
 vi.mock("../src/transactions/utils.js", async (importOriginal) => ({
@@ -34,43 +38,25 @@ vi.mock("../src/transactions/utils.js", async (importOriginal) => ({
 }));
 
 const ADDRESS = "addr_test1operatornonce";
-const INPUT = { txHash: "11".repeat(32), outputIndex: 3 };
+const INPUT = NONCE_TX_INPUT;
 
-const signedNonceTx = () => {
-  const inputs = CML.TransactionInputList.new();
-  inputs.add(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(INPUT.txHash),
-      BigInt(INPUT.outputIndex),
-    ),
-  );
-  const body = CML.TransactionBody.new(
-    inputs,
-    CML.TransactionOutputList.new(),
-    200_000n,
-  );
-  return {
-    txHash: CML.hash_transaction(body).to_hex(),
-    signedTxCbor: CML.Transaction.new(
-      body,
-      CML.TransactionWitnessSet.new(),
-      true,
-    ).to_cbor_hex(),
-  };
-};
-
-/** Chain view: each status read pops the next status; inputs are live or not. */
+/**
+ * Chain view: each status read pops the next status; inputs are live or not;
+ * the nonce of `landed` reads back by outref.
+ */
 const fakeLucid = ({
   statuses,
   inputsLive,
-  inlineDatum = "d87980",
-  txHash = "",
+  landed,
 }: {
   readonly statuses: string[];
   readonly inputsLive: boolean;
-  readonly inlineDatum?: string;
-  readonly txHash?: string;
+  readonly landed?: UTxO;
 }) => {
+  const live = [
+    ...(inputsLive ? [INPUT as UTxO] : []),
+    ...(landed ? [landed] : []),
+  ];
   const submitTx = vi.fn(async (cbor: string) => cbor);
   const lucid = {
     config: () => ({ provider: { submitTx } }),
@@ -80,16 +66,15 @@ const fakeLucid = ({
       if (status === "unknown") throw new L1TxStatusUnknownError(hash);
       return { status, txHash: hash, confirmation: { txHash: hash } };
     }),
-    utxosByOutRef: vi.fn(async () => (inputsLive ? [INPUT as UTxO] : [])),
+    utxosByOutRef: vi.fn(async (refs: OutRef[]) =>
+      live.filter((utxo) =>
+        refs.some(
+          (ref) =>
+            ref.txHash === utxo.txHash && ref.outputIndex === utxo.outputIndex,
+        ),
+      ),
+    ),
     awaitTxConfirmation: vi.fn(async (hash: string) => ({ txHash: hash })),
-    utxosAt: vi.fn(async () => [
-      {
-        txHash,
-        outputIndex: 0,
-        assets: { lovelace: 5_000_000n },
-        datum: inlineDatum,
-      },
-    ]),
   };
   const service = {
     api: lucid as unknown as LucidEvolution,
@@ -102,10 +87,13 @@ const reconcileProgram = (
   service: unknown,
   signed: { txHash: string; signedTxCbor: string },
 ) =>
-  reconcileHubOracleOneShotNonceAttemptProgram(
-    { ...signed, address: ADDRESS, lovelace: "5000000", inlineDatum: "d87980" },
-    { outputLookupTimeoutMs: 0 },
-  ).pipe(Effect.provideService(LucidService, service as never));
+  reconcileHubOracleOneShotNonceAttemptProgram({
+    txHash: signed.txHash,
+    signedTxCbor: signed.signedTxCbor,
+    address: ADDRESS,
+    lovelace: "5000000",
+    inlineDatum: "d87980",
+  }).pipe(Effect.provideService(LucidService, service as never));
 const reconcile = (...args: Parameters<typeof reconcileProgram>) =>
   Effect.runPromise(reconcileProgram(...args));
 
@@ -139,7 +127,6 @@ describe("hub-oracle nonce signed before submission", () => {
         newTx: () => tx,
         wallet: () => ({ address: async () => ADDRESS }),
         awaitTxConfirmation: async (hash: string) => ({ txHash: hash }),
-        utxosAt: async () => [],
       } as unknown as LucidEvolution,
       switchToOperatorsMainWallet: Effect.void,
     };
@@ -147,7 +134,6 @@ describe("hub-oracle nonce signed before submission", () => {
       runWithoutFollower(
         prepareHubOracleOneShotNonceProgram(5_000_000n, {
           l1Origin: settledOriginSource(),
-          outputLookupTimeoutMs: 0,
           beforeSubmission: (attempt) => {
             order.push(`record ${attempt.txHash} ${attempt.signedTxCbor}`);
             return beforeSubmission();
@@ -155,9 +141,7 @@ describe("hub-oracle nonce signed before submission", () => {
         }).pipe(Effect.provideService(LucidService, service as never)),
       );
 
-    await expect(run(() => Effect.void)).rejects.toThrow(
-      "Expected exactly one marked nonce output",
-    );
+    await expect(run(() => Effect.void)).rejects.toThrow("has no nonce output");
     expect(order).toEqual(["record aa 84a0", "submit"]);
     order.length = 0;
     await expect(
@@ -194,7 +178,6 @@ describe("hub-oracle nonce signed before submission", () => {
       api: {
         newTx: () => tx,
         wallet: () => ({ address: async () => ADDRESS }),
-        utxosAt: async () => [],
       } as unknown as LucidEvolution,
       switchToOperatorsMainWallet: Effect.void,
     };
@@ -206,10 +189,9 @@ describe("hub-oracle nonce signed before submission", () => {
             "Preprod",
           ),
           l1Origin: settledOriginSource(),
-          outputLookupTimeoutMs: 0,
         }).pipe(Effect.provideService(LucidService, service as never)),
       ),
-    ).rejects.toThrow("Expected exactly one marked nonce output");
+    ).rejects.toThrow("has no nonce output");
     expect(seenAtSubmit).toEqual([
       expect.objectContaining({
         status: "submitted",
@@ -226,7 +208,7 @@ describe("hub-oracle nonce signed before submission", () => {
     const chain = fakeLucid({
       statuses: ["confirmed"],
       inputsLive: false,
-      txHash: signed.txHash,
+      landed: signed.nonce,
     });
     await expect(reconcile(chain.service, signed)).resolves.toMatchObject({
       outRef: `${signed.txHash}#0`,
@@ -239,7 +221,7 @@ describe("hub-oracle nonce signed before submission", () => {
     const chain = fakeLucid({
       statuses: ["not_found"],
       inputsLive: true,
-      txHash: signed.txHash,
+      landed: signed.nonce,
     });
     chain.submitTx.mockRejectedValueOnce(new Error("already in mempool"));
     await expect(reconcile(chain.service, signed)).resolves.toMatchObject({
@@ -321,7 +303,7 @@ describe("hub-oracle nonce signed before submission", () => {
       const chain = fakeLucid({
         statuses: ["not_found"],
         inputsLive: true,
-        txHash: signed.txHash,
+        landed: signed.nonce,
       });
       chain.submitTx.mockRejectedValueOnce(refusal);
       await expect(reconcile(chain.service, signed)).resolves.toMatchObject({
@@ -335,7 +317,7 @@ describe("hub-oracle nonce signed before submission", () => {
     const chain = fakeLucid({
       statuses: ["not_found"],
       inputsLive: true,
-      txHash: signed.txHash,
+      landed: signed.nonce,
     });
     chain.submitTx.mockRejectedValueOnce(
       ogmiosError(3117, "Unknown output references", {
@@ -404,7 +386,7 @@ describe("hub-oracle nonce signed before submission", () => {
     const chain = fakeLucid({
       statuses: ["unknown"],
       inputsLive: true,
-      txHash: signed.txHash,
+      landed: signed.nonce,
     });
     await expect(reconcile(chain.service, signed)).resolves.toMatchObject({
       outRef: `${signed.txHash}#0`,
@@ -417,7 +399,7 @@ describe("hub-oracle nonce signed before submission", () => {
     const chain = fakeLucid({
       statuses: ["pending", "confirmed"],
       inputsLive: false,
-      txHash: signed.txHash,
+      landed: signed.nonce,
     });
     await expect(reconcile(chain.service, signed)).resolves.toMatchObject({
       outRef: `${signed.txHash}#0`,

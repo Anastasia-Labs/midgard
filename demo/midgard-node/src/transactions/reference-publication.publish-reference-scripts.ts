@@ -123,8 +123,7 @@ export const publishReferenceScripts = async ({
     }
     return references;
   };
-  // A local node scans its whole UTxO set for an address: the roster is read
-  // by address before and after publishing, never per transaction.
+  // The roster is read by address once, then by outref (readKnownReferences).
   const readReferences = async (): Promise<ReadonlyMap<string, UTxO>> =>
     referencesAmong(await lucid.utxosAt(address));
   const missing = (
@@ -158,12 +157,18 @@ export const publishReferenceScripts = async ({
     ),
   );
   while ((await options.synchronize()) < restartBound) await waitForProgress();
+  // Own addresses were read once, before the wait: an earlier publication
+  // that landed during it spent outputs that read still holds.
+  const own = [...new Set([address, walletAddress])];
+  const held = (await Promise.all(own.map((at) => lucid.utxosAt(at)))).flat();
+  if ((await lucid.utxosByOutRef(held)).length !== held.length)
+    throw new Error(
+      "An earlier reference publication landed after this command read its wallet; run the command again",
+    );
   canonical = await readReferences();
-  // Past the restart bound no earlier publication can still land: until the
-  // final address read, references change only here and where this one signs.
-  const known: OutRef[] = [...canonical.values()].map(
-    ({ txHash, outputIndex }) => ({ txHash, outputIndex }),
-  );
+  // Past the restart bound no earlier publication can still land: references
+  // change only here and where this one signs.
+  const known: OutRef[] = [...canonical.values()];
   const remaining = missing(targets, canonical);
   SDK.assertReferenceScriptRawBodiesFitL1Envelope(remaining);
   if (remaining.length > 0)
@@ -515,10 +520,10 @@ export const publishReferenceScripts = async ({
       missing(targets, canonical).length === 0 &&
       outstanding().length === 0
     ) {
-      // Re-read the entire roster after synchronization. A cached confirmation
-      // or signed output is never completion evidence.
+      // Re-read the entire roster by outref after synchronization. A cached
+      // confirmation or signed output is never completion evidence.
       await options.synchronize();
-      const verified = await readReferences();
+      const verified = await readKnownReferences();
       if (missing(targets, verified).length !== 0) {
         needsObservation = true; // rolled back since the out-ref read
         await waitForProgress();

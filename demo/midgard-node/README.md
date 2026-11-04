@@ -239,9 +239,11 @@ Bringing up a node is three phases: build, one-time protocol bring-up, run.
 6. One-time protocol bring-up. Run these from `demo/midgard-node` against the
    healthy L1, inside the `midgard-node` container: it has `.env`, the
    overlay's `L1_NODE_*` settings, the in-stack node's socket and config, the
-   `midgard-l1-node-transport` binary, and `deploymentInfo/` mounted, which
-   `prepare-hub-oracle-one-shot-nonce` and `init` read the local node's chain
-   through. Each verb runs a wallet funding preflight and refuses locally
+   `midgard-l1-node-transport` binary, and `deploymentInfo/` mounted. The three
+   deployment commands (`prepare-hub-oracle-one-shot-nonce`,
+   `deploy-reference-script-node-runtime` and `init`) read the local node
+   alone: each reads its own wallets once and its deployment outputs by
+   outref. Each verb runs a wallet funding preflight and refuses locally
    before it spends anything. Full detail is in
    [Export Contract Deployment Info](#export-contract-deployment-info) and the
    docs-site page `docs-site/content/docs/operators/node/initialization-deployment.mdx`.
@@ -644,8 +646,9 @@ node dist/index.js prepare-hub-oracle-one-shot-nonce
 
 Copy the printed `HUB_ORACLE_ONE_SHOT_TX_HASH` and
 `HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX` into the deployment environment before
-publishing reference scripts or running `init`. Run it, and `init`, where the
-`L1_NODE_*` settings and the transport binary exist: in the compose stack,
+publishing reference scripts or running `init`. Run it, the reference-script
+publication and `init` where the `L1_NODE_*` settings and the transport binary
+exist: in the compose stack,
 inside the `midgard-node` container (step 6 of the quick start).
 
 Before it signs a fresh nonce, the command reads the local node's tip

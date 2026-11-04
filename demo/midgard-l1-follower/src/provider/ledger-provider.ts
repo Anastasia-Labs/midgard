@@ -56,6 +56,7 @@ import {
   toOutRef,
   transactionId,
 } from "./ledger-answers.js";
+import { OwnWallets, type OwnWalletsOptions } from "./own-wallets.js";
 import { holdsPolicy, holdsUnit, splitUnit, utxoSubject } from "./utxo.js";
 
 export { lucidUtxo, outRefKey, toOutRef } from "./ledger-answers.js";
@@ -73,6 +74,7 @@ export type LedgerProviderOptions = Readonly<{
   pinPointMs?: number;
   /** A monotonic clock for the pin window (default `performance.now`). */
   monotonicNowMs?: () => number;
+  ownWallets?: OwnWalletsOptions;
 }>;
 
 /** The node's ledger tip: its chain point and block number, read together. */
@@ -101,11 +103,10 @@ type Pin = Readonly<{ point: BlockPoint; untilMs: number }>;
 
 /**
  * A Lucid provider over the local node's ledger alone (option E's NodeLedger
- * adapter): UTxOs by address and by outref over local state query, protocol
- * parameters, slot configuration and reward accounts from the ledger,
- * submission through LocalTxSubmission, mempool presence through
- * LocalTxMonitor. It needs no store and no follower, and never reads Kupo,
- * Ogmios or a remote provider.
+ * adapter): own-wallet and by-outref UTxOs, protocol parameters, slot
+ * configuration and reward accounts from the ledger, submission through
+ * LocalTxSubmission, mempool presence through LocalTxMonitor. It needs no
+ * store and no follower, and never reads Kupo, Ogmios or a remote provider.
  *
  * One build step reads at one acquired point: the first UTxO read acquires
  * the node's tip and later reads reuse that point for `pinPointMs`. A
@@ -123,9 +124,8 @@ type Pin = Readonly<{ point: BlockPoint; untilMs: number }>;
  *
  * Confirmation is the tx's outputs in the ledger (`getTransactionStatus`).
  *
- * Scope: local state query cannot find outputs by payment credential or
- * unit and holds no datum preimages; those reads refuse with
- * {@link L1LedgerScopeError}.
+ * Scope: only `ownWallets` are read by address; any other address, credential,
+ * unit or datum preimage refuses with {@link L1LedgerScopeError}, unqueried.
  */
 export class LedgerProvider implements Provider {
   protected readonly transport: L1NodeTransport;
@@ -134,9 +134,11 @@ export class LedgerProvider implements Provider {
   readonly #now: () => number;
   #pin: Pin | undefined;
   readonly #outputCounts = new Map<string, number>();
+  readonly #ownWallets: OwnWallets | undefined;
 
   constructor(options: LedgerProviderOptions) {
     this.transport = options.transport;
+    this.#ownWallets = options.ownWallets && new OwnWallets(options.ownWallets);
     this.awaitTxTimeoutMs =
       options.awaitTxTimeoutMs ?? DEFAULT_AWAIT_TX_TIMEOUT_MS;
     this.#pinPointMs = options.pinPointMs ?? DEFAULT_LEDGER_PIN_POINT_MS;
@@ -377,6 +379,7 @@ export class LedgerProvider implements Provider {
     if (!result.accepted)
       throw new L1SubmitRejectedError(txHash, result.rejection);
     this.#rememberOutputs(txHash, outputCount(bytes));
+    this.#ownWallets?.submitted(txHash, bytes);
     this.clearPin();
     return txHash;
   }
@@ -386,21 +389,19 @@ export class LedgerProvider implements Provider {
     return Promise.reject(new L1LocalEvaluationOnlyError());
   }
 
-  /** The outputs at an address; a payment credential is out of scope. */
+  /** The outputs at one of the own wallets; any other subject is out of scope. */
   protected async outputsOf(
     addressOrCredential: Address | Credential,
     query: string,
   ): Promise<readonly Readonly<{ outRef: OutRef; output: OutputSummary }>[]> {
     const subject = utxoSubject(addressOrCredential);
-    if (subject.by === "payment_credential")
+    const own = this.#ownWallets;
+    if (subject.by !== "address" || !own?.owns(subject.address))
       throw new L1LedgerScopeError(
         query,
-        `local state query cannot enumerate payment credential ${subject.hash.toString("hex")}; read an address`,
+        "it reads only the command's own wallets and outputs by outref; read protocol state from a running node, or pass --l1 kupmios|blockfrost",
       );
-    return await this.ledgerUtxos(
-      [{ query: "utxo_by_address", addresses: [subject.address] }],
-      "build",
-    );
+    return await own.outputsAt(subject.address, (read) => this.node(read));
   }
 
   /** The ledger's outputs at `outRefs`, batched within one acquired state. */

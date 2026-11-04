@@ -91,7 +91,7 @@ nonce_output="$MIDGARD_PHASE4_RUN_DIR/work/hub-oracle-nonce.json"
 # before it signs, so it gets the local node settings; node.env gets them only
 # once the origin is derived below.
 L1_NODE_SOCKET_PATH="$cardano_socket" L1_NODE_CONFIG_PATH="$host_config" L1_NODE_TRANSPORT_BINARY_PATH="$transport_binary" \
-  node dist/index.js prepare-hub-oracle-one-shot-nonce --run-state "$run_state" --fresh-redeploy --fresh-redeploy-reason "isolated Phase 4 process devnet $MIDGARD_PHASE4_RUN_ID" --json >"$nonce_output"
+  node dist/index.js prepare-hub-oracle-one-shot-nonce --l1 node --run-state "$run_state" --fresh-redeploy --fresh-redeploy-reason "isolated Phase 4 process devnet $MIDGARD_PHASE4_RUN_ID" --json >"$nonce_output"
 # The CLI keeps human-readable progress logs on stdout even with --json. Keep
 # the complete transcript for evidence, but parse only the final JSON object.
 nonce_json="$MIDGARD_PHASE4_RUN_DIR/work/hub-oracle-nonce.parsed.json"
@@ -117,7 +117,9 @@ upsert_private_env L1_NODE_SOCKET_PATH "$cardano_socket" "$node_env"
 upsert_private_env L1_NODE_CONFIG_PATH "$host_config" "$node_env"
 upsert_private_env L1_NODE_TRANSPORT_BINARY_PATH "$transport_binary" "$node_env"
 upsert_private_env L1_ORIGIN "$l1_origin" "$node_env"
-node dist/index.js deploy-reference-script-node-runtime --run-state "$run_state" --contract-deployment-info-output "$manifest"
+# Deployment reads and submits through the run's own node alone.
+export L1_NODE_SOCKET_PATH="$cardano_socket" L1_NODE_CONFIG_PATH="$host_config" L1_NODE_TRANSPORT_BINARY_PATH="$transport_binary"
+node dist/index.js deploy-reference-script-node-runtime --l1 node --run-state "$run_state" --contract-deployment-info-output "$manifest"
 export MIDGARD_DEPLOYMENT_MANIFEST_PATH="$manifest"
 export MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH="$manifest"
 phas_output="$MIDGARD_PHASE4_RUN_DIR/work/phas-registration.raw.log"
@@ -177,7 +179,6 @@ upsert_private_env MIDGARD_PHASE4_PHAS_REGISTRATION_TX_HASH "$phas_registration_
 node dist/index.js reconcile reference-scripts-complete --scope node-runtime --json
 # Finalizing the manifest proves the L1 origin the nonce command recorded in
 # this run's state on the run's own node.
-MIDGARD_RUN_STATE_PATH="$run_state" L1_NODE_SOCKET_PATH="$cardano_socket" L1_NODE_CONFIG_PATH="$host_config" L1_NODE_TRANSPORT_BINARY_PATH="$transport_binary" \
-  node dist/index.js init --contract-deployment-info-output "$manifest"
+MIDGARD_RUN_STATE_PATH="$run_state" node dist/index.js init --l1 node --contract-deployment-info-output "$manifest"
 node dist/index.js register-active-operator
 [ -s "$manifest" ] || die "protocol bootstrap did not create deployment manifest"

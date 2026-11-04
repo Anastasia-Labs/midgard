@@ -8,6 +8,7 @@
 import { Layer } from "effect";
 
 import type { NodeConfigDep } from "../services/config.node-config-dep.js";
+import { nodeSeededAddresses } from "../services/intent-journal.tracked-set.js";
 import {
   L1Adapter,
   L1ChainParameters,
@@ -25,6 +26,7 @@ const openTool = (config: NodeConfigDep) =>
         ? {}
         : { nativeLedger: config.L1_NATIVE_LEDGER }),
       nodeBehindMaxMs: config.L1_NODE_BEHIND_MAX_MS,
+      ownWallets: nodeSeededAddresses(config),
     }),
   );
 

@@ -137,9 +137,9 @@ serving traffic. This is where correctness is enforced:
     migrations.
   </Step>
   <Step>
-    Verify the configured deployment manifest and protocol deployment status;
-    auto-initialize only an empty deployment when startup policy allows it
-    (never over partial or externally provisioned state).
+    Verify the finalized deployment manifest the deployment commands wrote,
+    refusing to start without it, and the availability-challenge reward
+    accounts. The node never deploys or initializes the protocol.
   </Step>
   <Step>
     Seed the latest local block boundary from the state-queue tip and reconcile

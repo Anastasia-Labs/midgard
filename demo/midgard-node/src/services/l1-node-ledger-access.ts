@@ -1,8 +1,9 @@
 /**
  * The node-ledger adapter of the L1-access port (`l1-access.ts`; option E),
  * the tools' default when a local node is configured: a `LedgerProvider`
- * over the local node's transport alone. UTxOs by address and outref over
- * local state query at one acquired point per build step, protocol
+ * over the local node's transport alone. UTxOs by outref over local state
+ * query at one acquired point per build step, the command's own wallets
+ * from one read on a connection of their own (`ownWallets`), protocol
  * parameters and era history from the ledger, submission through
  * LocalTxSubmission, confirmation from the tx's outputs in the ledger. It
  * opens no store, so it needs no follower schema and never takes a role's
@@ -16,7 +17,7 @@
  *   (`ledgerSubmitSlotSnapshot`).
  */
 import {
-  type L1NodeTransport,
+  L1NodeTransport,
   sharedL1NodeTransport,
   type TransportReadiness,
 } from "@al-ft/l1-node-transport";
@@ -25,6 +26,7 @@ import {
   fromTransportError,
   type LedgerPointStatus,
   LedgerProvider,
+  type LedgerProviderOptions,
   type LedgerTip,
 } from "@al-ft/midgard-l1-follower/provider";
 import type { SlotConfig } from "@lucid-evolution/lucid";
@@ -72,6 +74,8 @@ export type OpenNodeLedgerAccessInput = Readonly<{
   pinPointMs?: number;
   /** How long `awaitTx` waits for a tx's outputs (ms). */
   awaitTxTimeoutMs?: number;
+  /** The command's own wallets, the only addresses it reads. */
+  ownWallets?: readonly Buffer[];
   nowMs?: () => number;
 }>;
 
@@ -83,11 +87,18 @@ const viewOf = (point: Readonly<{ slot: number; hash: string }>) => ({
 /** The node-ledger adapter over `transport`; the port is opened over it. */
 export const nodeLedgerAccessOver = (
   transport: L1NodeTransport,
-  input: Omit<OpenNodeLedgerAccessInput, "nativeLedger" | "network"> &
-    Readonly<{ endpoint: string }>,
+  input: Omit<
+    OpenNodeLedgerAccessInput,
+    "nativeLedger" | "network" | "ownWallets"
+  > &
+    Readonly<{
+      endpoint: string;
+      ownWallets?: LedgerProviderOptions["ownWallets"];
+    }>,
 ): NodeLedgerAccess => {
   const provider = new LedgerProvider({
     transport,
+    ...(input.ownWallets === undefined ? {} : { ownWallets: input.ownWallets }),
     ...(input.pinPointMs === undefined ? {} : { pinPointMs: input.pinPointMs }),
     ...(input.awaitTxTimeoutMs === undefined
       ? {}
@@ -150,17 +161,29 @@ export const openNodeLedgerAccess = async (
     input.nativeLedger,
     input.network,
   );
-  const transport = sharedL1NodeTransport({
+  const { ownWallets, ...rest } = input;
+  const node = {
     binaryPath: input.nativeLedger.binaryPath,
     socketPath: input.nativeLedger.socketPath,
     networkMagic,
+  };
+  const transport = sharedL1NodeTransport({
+    ...node,
     ...(input.requestTimeoutMs === undefined
       ? {}
       : { requestTimeoutMs: input.requestTimeoutMs }),
   });
   return nodeLedgerAccessOver(transport, {
-    ...input,
+    ...rest,
     endpoint: input.nativeLedger.socketPath,
+    ...(ownWallets === undefined
+      ? {}
+      : {
+          ownWallets: {
+            addresses: ownWallets,
+            ledger: () => new L1NodeTransport(node),
+          },
+        }),
   });
 };
 

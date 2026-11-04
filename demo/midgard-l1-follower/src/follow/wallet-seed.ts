@@ -84,42 +84,47 @@ const NOT_ACQUIRABLE = new Set([
 class AnswerInvalid extends Error {}
 
 /**
- * `GetUTxOByAddress` at `at`. The node answers it with a scan of its whole
- * UTxO set (tens of seconds on a public network), so it is sent with no
- * request deadline: it ends with the node's answer or the node connection.
+ * `GetUTxOByAddress` at `at`: the one ledger read of whole wallets (this
+ * seed, and a deployment command's own wallets). The node answers it with a
+ * scan of its whole UTxO set (tens of seconds on a public network), so it is
+ * sent with no request deadline: it ends with the node's answer or the node
+ * connection.
  */
-const readWalletUtxos = async (
+export const readWalletUtxos = async (
   ledger: WalletLedger,
-  at: Point,
+  at: Point | "tip",
   addresses: readonly Buffer[],
 ): Promise<LedgerUtxo[]> =>
-  await ledger.withLedgerState(transportPoint(at), async (state) => {
-    const wanted = new Set(addresses.map((a) => a.toString("hex")));
-    const utxos: LedgerUtxo[] = [];
-    for (let i = 0; i < addresses.length; i += ADDRESSES_PER_QUERY) {
-      const answer = await state.query(
-        {
-          query: "utxo_by_address",
-          addresses: addresses.slice(i, i + ADDRESSES_PER_QUERY),
-        },
-        { deadline: "none" },
-      );
-      let decoded: LedgerUtxo[];
-      try {
-        decoded = decodeLedgerUtxos(answer);
-      } catch (error) {
-        throw new AnswerInvalid(`undecodable UTxO answer: ${message(error)}`);
+  await ledger.withLedgerState(
+    at === "tip" ? at : transportPoint(at),
+    async (state) => {
+      const wanted = new Set(addresses.map((a) => a.toString("hex")));
+      const utxos: LedgerUtxo[] = [];
+      for (let i = 0; i < addresses.length; i += ADDRESSES_PER_QUERY) {
+        const answer = await state.query(
+          {
+            query: "utxo_by_address",
+            addresses: addresses.slice(i, i + ADDRESSES_PER_QUERY),
+          },
+          { deadline: "none" },
+        );
+        let decoded: LedgerUtxo[];
+        try {
+          decoded = decodeLedgerUtxos(answer);
+        } catch (error) {
+          throw new AnswerInvalid(`undecodable UTxO answer: ${message(error)}`);
+        }
+        for (const utxo of decoded) {
+          if (!wanted.has(utxo.output.address.toString("hex")))
+            throw new AnswerInvalid(
+              `the answer holds ${utxo.outRef.txHash.toString("hex")}#${utxo.outRef.index} at an address that was not asked for`,
+            );
+          utxos.push(utxo);
+        }
       }
-      for (const utxo of decoded) {
-        if (!wanted.has(utxo.output.address.toString("hex")))
-          throw new AnswerInvalid(
-            `the answer holds ${utxo.outRef.txHash.toString("hex")}#${utxo.outRef.index} at an address that was not asked for`,
-          );
-        utxos.push(utxo);
-      }
-    }
-    return utxos;
-  });
+      return utxos;
+    },
+  );
 
 /**
  * The LSQ wallet seed (plan §5.3 step 4), once per wallet. A wallet whose

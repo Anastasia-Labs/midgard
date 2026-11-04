@@ -1,7 +1,5 @@
-import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import { isSpentInputSubmitRejection } from "@al-ft/midgard-core/ogmios-json-rpc-error";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Duration, Effect } from "effect";
+import { Effect } from "effect";
 
 import { isRetryableProviderError } from "../provider-retry.js";
 import {
@@ -18,12 +16,8 @@ import {
   DEPLOYMENT_MANIFEST_MISSING,
   DEPLOYMENT_MANIFEST_UNVERIFIABLE,
   L1_SLOT_CONFIG_MISMATCH,
-  PROTOCOL_DEPLOYMENT_STATUS_UNAVAILABLE,
-  PROTOCOL_INITIALIZATION_FAILED,
   retryStartupStep,
   REWARD_ACCOUNT_STATUS_UNAVAILABLE,
-  RUNTIME_REFERENCE_SCRIPTS_FAILED,
-  RUNTIME_REFERENCE_SCRIPTS_INPUT_CONFLICT,
   startupStepFailed,
   StartupStepFailedError,
 } from "../services/startup-waiting.js";
@@ -31,98 +25,11 @@ import {
   assertAvailabilityChallengeRewardAccountsRegisteredProgram,
   AvailabilityRewardAccountUnregisteredError,
 } from "../transactions/availability-challenge-registration.js";
-import * as Initialization from "../transactions/initialization.js";
-import {
-  ensureNodeRuntimeReferenceScriptsProgram,
-  verifyNodeRuntimeReferenceScriptsProgram,
-} from "../transactions/reference-scripts.js";
 import * as ContractDeploymentInfo from "./contract-deployment-info.js";
-import { shouldRunGenesisOnStartup } from "./startup-policy.js";
-
-const STARTUP_BACKGROUND_PROVIDER_TIMEOUT = Duration.seconds(90);
-
-const verifyNodeRuntimeReferenceScriptsInBackground = Effect.gen(function* () {
-  yield* ensureNodeRuntimeReferenceScriptsOnStartup(false);
-}).pipe(
-  Effect.timeoutFail({
-    duration: STARTUP_BACKGROUND_PROVIDER_TIMEOUT,
-    onTimeout: () =>
-      new Error(
-        "startup node-runtime reference-script background verification exceeded its bounded provider window",
-      ),
-  }),
-  Effect.catchAll((error) =>
-    Effect.logWarning(
-      `Startup node-runtime reference-script background verification did not complete after bounded provider retries; startup continues with the configured deployment manifest. cause=${formatUnknownError(error)}`,
-    ),
-  ),
-  Effect.forkDaemon,
-  Effect.asVoid,
-);
-
-const writeStartupContractDeploymentInfoAfterFreshInit = (initTxHash: string) =>
-  Effect.gen(function* () {
-    const outputPath =
-      ContractDeploymentInfo.defaultContractDeploymentInfoOutputPath();
-    const manifestPath =
-      yield* ContractDeploymentInfo.writeLiveContractDeploymentInfoProgram(
-        outputPath,
-        {
-          hubOracleOneShotStatus: "consumed_by_init",
-          steps: {
-            initProtocol: {
-              status: "complete",
-              txHash: initTxHash,
-            },
-          },
-        },
-      );
-    yield* Effect.logInfo(
-      `Startup contract deployment info written after fresh initialization: ${manifestPath}`,
-    );
-  }).pipe(
-    Effect.timeoutFail({
-      duration: STARTUP_BACKGROUND_PROVIDER_TIMEOUT,
-      onTimeout: () =>
-        new Error(
-          "startup contract deployment info write exceeded its bounded provider window",
-        ),
-    }),
-  );
-
-/**
- * Fetches the protocol deployment status, waiting out a retryable provider
- * failure (`isRetryableProviderError`) every `retryDelayMs` for at most
- * `maxAttempts` reads under `protocol_deployment_status_unavailable`. Any
- * other failure, or the last read's, fails the step
- * (`StartupStepFailedError`).
- */
-export const fetchProtocolDeploymentStatusWithStartupRetry = (
-  fetchStatus: () => Effect.Effect<
-    Initialization.ProtocolDeploymentStatus,
-    SDK.LucidError
-  >,
-  options: { readonly maxAttempts: number; readonly retryDelayMs: number },
-): Effect.Effect<
-  Initialization.ProtocolDeploymentStatus,
-  StartupStepFailedError
-> => {
-  const retryDelayMs = Math.max(0, Math.floor(options.retryDelayMs));
-  return retryStartupStep(Effect.suspend(fetchStatus), {
-    key: "protocol_deployment_status",
-    reason: PROTOCOL_DEPLOYMENT_STATUS_UNAVAILABLE,
-    // The read's own typed retryability decides (a Kupo 503 retries, a
-    // Kupo 400 does not), whatever text the SDK wrapper around it carries.
-    retryable: isRetryableProviderError,
-    budget: { maxAttempts: options.maxAttempts },
-    initialMs: retryDelayMs,
-    maxMs: retryDelayMs,
-  });
-};
 
 /**
  * The availability-challenge reward accounts' registration, its reads
- * waiting out a retryable provider failure under the deployment-status
+ * waiting out a retryable provider failure under the startup status-query
  * budget. An unregistered account is a verdict, not a read failure, and
  * fails the step at once.
  */
@@ -164,84 +71,17 @@ const asProtocolStartupStep =
   ): Effect.Effect<A, StartupStepFailedError, R> =>
     Effect.catchAll(effect, (cause) => failProtocolStartup(reason, cause));
 
-const ensureNodeRuntimeReferenceScriptsOnStartup = (shouldBootstrap: boolean) =>
-  Effect.gen(function* () {
-    const lucid = yield* Lucid;
-    const contracts = yield* MidgardContracts;
-    if (shouldBootstrap) {
-      yield* lucid.switchToOperatorsMainWallet;
-      const publications = yield* ensureNodeRuntimeReferenceScriptsProgram(
-        lucid.referenceScriptsApi,
-        contracts,
-        contracts.referenceScriptAuth,
-        lucid.api,
-        lucid.referenceScriptsAddress,
-      );
-      yield* Effect.logInfo(
-        `Startup node-runtime reference-script preflight completed: count=${publications.length.toString()},address=${lucid.referenceScriptsAddress}`,
-      );
-      return publications;
-    }
-    const publications = yield* verifyNodeRuntimeReferenceScriptsProgram(
-      lucid.api,
-      lucid.referenceScriptsAddress,
-      contracts,
-      contracts.referenceScriptAuth,
-    );
-    yield* Effect.logInfo(
-      `Startup node-runtime reference-script verification completed: count=${publications.length.toString()},address=${lucid.referenceScriptsAddress}`,
-    );
-    return publications;
-  });
-
 /**
- * The bootstrap's node-runtime reference-script preflight. Protocol
- * initialization runs before the follower, so its wallet reads are the
- * provider's: after a restart they can still offer an input a previous
- * process's transaction, in flight, spends, and the preflight's submission
- * then loses that input. That clears once the other transaction lands, so it
- * is waited out under `runtime_reference_scripts_input_conflict` within the
- * deployment-status budget, each attempt built from a fresh read. Any other
- * failure fails the step at once under `runtime_reference_scripts_failed`.
- */
-const ensureNodeRuntimeReferenceScriptsWithStartupRetry = <E, R>(
-  preflight: Effect.Effect<unknown, E, R>,
-  options: { readonly maxAttempts: number; readonly retryDelayMs: number },
-): Effect.Effect<void, StartupStepFailedError, R> => {
-  const retryDelayMs = Math.max(0, Math.floor(options.retryDelayMs));
-  return retryStartupStep(Effect.asVoid(preflight), {
-    key: "runtime_reference_scripts",
-    reason: (error) =>
-      isSpentInputSubmitRejection(error)
-        ? RUNTIME_REFERENCE_SCRIPTS_INPUT_CONFLICT
-        : RUNTIME_REFERENCE_SCRIPTS_FAILED,
-    retryable: isSpentInputSubmitRejection,
-    budget: { maxAttempts: options.maxAttempts },
-    initialMs: retryDelayMs,
-    maxMs: retryDelayMs,
-  });
-};
-
-/**
- * Verifies the protocol deployment at startup and, where configured,
- * initializes an empty one. Only the provider reads (the deployment status,
- * the reward accounts) wait out a transient failure, each under its budget.
- * A slot mapping other than the deployment's (`l1_slot_config_mismatch`),
- * a deployment or manifest verdict, an unregistered reward account, a
- * failed reference-script preflight and a failed initialization each fail
- * the startup with its named reason (`StartupStepFailedError`): none of
- * them clears by checking again, and the process's restart runs the whole
- * check again from the deployment status, so an initialization a failed run
- * submitted is seen as present, not submitted twice. The one exception is a
- * reference-script preflight that lost an input to a transaction in flight,
- * which is built again (`ensureNodeRuntimeReferenceScriptsWithStartupRetry`).
+ * Verifies the protocol deployment the node attaches to. The node never
+ * deploys: the deployment commands do, and leave the finalized deployment
+ * manifest this check requires. A slot mapping other than the deployment's
+ * (`l1_slot_config_mismatch`), a missing, unreadable or mismatched manifest
+ * and an unregistered reward account each fail the startup with its named
+ * reason (`StartupStepFailedError`); only the reward-account reads wait out a
+ * transient provider failure, under their budget.
  */
 export const ensureProtocolInitializedOnStartup = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
-  const providerRetry = {
-    maxAttempts: nodeConfig.STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS,
-    retryDelayMs: nodeConfig.STARTUP_PROTOCOL_STATUS_QUERY_RETRY_DELAY_MS,
-  };
   // Phase-B and the validation trace build script contexts from the Lucid
   // slot mapping; the deployed txInfo validator builds them from its own.
   const identity = yield* ContractDeploymentIdentity;
@@ -256,7 +96,18 @@ export const ensureProtocolInitializedOnStartup = Effect.gen(function* () {
     yield* ContractDeploymentInfo.verifyConfiguredDeploymentManifestIfPresentProgram.pipe(
       asProtocolStartupStep(DEPLOYMENT_MANIFEST_UNVERIFIABLE),
     );
-  if (manifestReport !== null && !manifestReport.ok) {
+  if (manifestReport === null) {
+    return yield* failProtocolStartup(
+      DEPLOYMENT_MANIFEST_MISSING,
+      new SDK.StateQueueError({
+        message:
+          "Startup deployment manifest verification failed; refusing to attach without a finalized contract deployment manifest (the node never deploys: run the deployment commands first)",
+        cause:
+          "manifest_id=unknown,path=unknown,recommendation=fresh_redeploy_required,mismatches=[contract deployment manifest file not found]",
+      }),
+    );
+  }
+  if (!manifestReport.ok) {
     return yield* failProtocolStartup(
       DEPLOYMENT_MANIFEST_MISMATCH,
       new SDK.StateQueueError({
@@ -266,78 +117,19 @@ export const ensureProtocolInitializedOnStartup = Effect.gen(function* () {
       }),
     );
   }
-  const shouldBootstrap = shouldRunGenesisOnStartup({
-    network: nodeConfig.NETWORK,
-    runGenesisOnStartup: nodeConfig.RUN_GENESIS_ON_STARTUP,
-  });
-  const contracts = yield* MidgardContracts;
-  const keys = yield* Initialization.configuredProtocolDeploymentKeys().pipe(
-    asProtocolStartupStep(PROTOCOL_DEPLOYMENT_STATUS_UNAVAILABLE),
+  yield* assertRewardAccountsRegisteredWithStartupRetry(
+    assertAvailabilityChallengeRewardAccountsRegisteredProgram(
+      lucid.api,
+      yield* MidgardContracts,
+    ),
+    {
+      maxAttempts: nodeConfig.STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS,
+      retryDelayMs: nodeConfig.STARTUP_PROTOCOL_STATUS_QUERY_RETRY_DELAY_MS,
+    },
   );
-  const deploymentStatus = yield* fetchProtocolDeploymentStatusWithStartupRetry(
-    () =>
-      Initialization.fetchProtocolDeploymentStatus(
-        Initialization.contractsDeploymentReader(lucid, contracts),
-        keys,
-      ),
-    providerRetry,
-  );
-  const details = `status=${deploymentStatus.status},nonce=${deploymentStatus.nonce}`;
-
-  if (deploymentStatus.status === "complete") {
-    if (manifestReport === null) {
-      return yield* failProtocolStartup(
-        DEPLOYMENT_MANIFEST_MISSING,
-        new SDK.StateQueueError({
-          message:
-            "Startup deployment manifest verification failed; refusing to attach without a finalized contract deployment manifest",
-          cause:
-            "manifest_id=unknown,path=unknown,recommendation=fresh_redeploy_required,mismatches=[contract deployment manifest file not found]",
-        }),
-      );
-    }
-    yield* assertRewardAccountsRegisteredWithStartupRetry(
-      assertAvailabilityChallengeRewardAccountsRegisteredProgram(
-        lucid.api,
-        contracts,
-      ),
-      providerRetry,
-    );
-    yield* Effect.logInfo(
-      `Startup initialization check: protocol deployment already present (${details}).`,
-    );
-    if (shouldBootstrap) {
-      yield* ensureNodeRuntimeReferenceScriptsWithStartupRetry(
-        ensureNodeRuntimeReferenceScriptsOnStartup(true),
-        providerRetry,
-      );
-    } else {
-      yield* verifyNodeRuntimeReferenceScriptsInBackground;
-    }
-    yield* Effect.logInfo(
-      `Startup contract deployment manifest verified: manifest_id=${manifestReport.manifestId ?? "unknown"},path=${manifestReport.path ?? "unknown"}`,
-    );
-    return;
-  }
-
-  if (!shouldBootstrap) {
-    yield* Effect.logInfo(
-      "Skipping protocol initialization on startup (disabled or mainnet).",
-    );
-    return;
-  }
-
   yield* Effect.logInfo(
-    `No visible protocol deployment for configured contracts (${details}). Running protocol initialization...`,
+    `Startup contract deployment manifest verified: manifest_id=${manifestReport.manifestId ?? "unknown"},path=${manifestReport.path ?? "unknown"}`,
   );
-  yield* Effect.gen(function* () {
-    const initTxHash = yield* Initialization.program();
-    yield* Effect.logInfo(
-      `Startup protocol initialization submitted successfully: ${initTxHash}`,
-    );
-    yield* ensureNodeRuntimeReferenceScriptsOnStartup(false);
-    yield* writeStartupContractDeploymentInfoAfterFreshInit(initTxHash);
-  }).pipe(asProtocolStartupStep(PROTOCOL_INITIALIZATION_FAILED));
 }).pipe(
   Effect.tapError((error) =>
     Effect.logError(`Startup protocol check failed: ${error.message}`),

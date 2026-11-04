@@ -85,9 +85,9 @@ rebuild of the TypeScript workspace (deployments README).
   with the blueprint on disk. With a manifest as the contract source, the node
   keeps running the scripts the manifest recorded; a changed validator is not
   under test until you redeploy. With derived contracts, a changed validator
-  gives new script hashes with nothing deployed at them; with
-  `RUN_GENESIS_ON_STARTUP=false` startup logs "Skipping protocol initialization
-  on startup" and carries on (`listen-startup.ts`). `[review]`
+  gives new script hashes with nothing deployed at them, and no finalized
+  manifest: startup fails under `deployment_manifest_missing`, since the node
+  never deploys (`listen-startup.ts`). `[review]`
 - The watcher-journeys record states the same rule from experience: a source
   change "cannot change the validators already deployed", and the remaining
   families needed "a fresh deployment with the new applied scripts"

@@ -222,6 +222,8 @@ export function deploymentSteps(processes: StackProcesses): StackStep[] {
       },
       execute: async () => {
         await processes.node("nonce-create-or-resume", [
+          "--l1",
+          "node",
           "prepare-hub-oracle-one-shot-nonce",
           "--run-state",
           paths.state,
@@ -254,6 +256,8 @@ export function deploymentSteps(processes: StackProcesses): StackStep[] {
       },
       execute: () =>
         processes.node("references-publish", [
+          "--l1",
+          "node",
           "deploy-reference-script-node-runtime",
           "--run-state",
           paths.state,
@@ -289,6 +293,8 @@ export function deploymentSteps(processes: StackProcesses): StackStep[] {
         await assertHostDatabaseIsStackDatabase(processes);
         await processes.node("migrate", ["db:migrate"]);
         return processes.node("initialize-submit", [
+          "--l1",
+          "node",
           "init",
           "--contract-deployment-info-output",
           paths.manifest,

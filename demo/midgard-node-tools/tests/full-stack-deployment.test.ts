@@ -182,6 +182,8 @@ describe("deployment steps before initialization", () => {
     expect(publishes.map((call) => call.args)).toEqual([
       [
         expect.any(String),
+        "--l1",
+        "node",
         "deploy-reference-script-node-runtime",
         "--run-state",
         join(config.runDirectory, "deployment-run-state.json"),

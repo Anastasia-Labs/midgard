@@ -39,7 +39,6 @@ import {
 } from "../services/index.js";
 import {
   IntentJournal,
-  IntentJournalWithoutFollower,
   makeIntentJournal,
 } from "../services/intent-journal.js";
 import { startL1Follower } from "../services/l1-follower.js";
@@ -172,18 +171,11 @@ export const runNode = (
             logStartupFailure("Startup database initialization failed"),
           ),
         ),
-      // Protocol initialization runs before the follower starts: nothing
-      // would reconcile its intents, so it submits unjournaled and awaits
-      // each confirmation itself.
+      // The node never deploys: the deployment's manifest must exist, and
+      // nothing here submits.
       initializeProtocol: startup
         .setStage("protocol_initialization")
-        .pipe(
-          Effect.zipRight(
-            ensureProtocolInitializedOnStartup.pipe(
-              Effect.provide(IntentJournalWithoutFollower),
-            ),
-          ),
-        ),
+        .pipe(Effect.zipRight(ensureProtocolInitializedOnStartup)),
       providerAssertions: (preflight) =>
         startup.setStage("provider_assertions").pipe(
           Effect.zipRight(

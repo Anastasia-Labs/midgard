@@ -15,6 +15,7 @@ import { fakeL1NodeTransport } from "@al-ft/l1-node-transport/testing";
 import {
   credentialToAddress,
   generateSeedPhrase,
+  getAddressDetails,
   Lucid,
   SLOT_CONFIG_NETWORK,
   walletFromSeed,
@@ -37,6 +38,9 @@ const otherAddress = credentialToAddress("Custom", {
   type: "Key",
   hash: "ab".repeat(28),
 });
+
+const addressBytes = (address: string): Buffer =>
+  Buffer.from(getAddressDetails(address).address.hex, "hex");
 
 const head = (major: number, length: number): Buffer => {
   if (length < 24) return Buffer.from([(major << 5) | length]);
@@ -76,6 +80,10 @@ class StubNode {
   readonly submitted: Buffer[] = [];
   /** Every acquired state: `tip`, or `slot:hash`. */
   readonly acquired: string[] = [];
+  /** Every ledger query: the connection it came on, its kind and deadline. */
+  readonly queries: string[] = [];
+  /** The connections closed, by name. */
+  readonly closed: string[] = [];
 
   extend(utxos: readonly BuiltOutput[]): Snapshot {
     const blockNo = this.chain.length + 1;
@@ -137,7 +145,7 @@ class StubNode {
     }
   }
 
-  transport(): L1NodeTransport {
+  transport(name = "main"): L1NodeTransport {
     const withLedgerState = async <T>(
       at: ChainPoint | "tip",
       use: (session: LedgerStateSession) => Promise<T>,
@@ -161,12 +169,22 @@ class StubNode {
         this.acquired.push(key);
       }
       const state = snapshot;
-      return await use({ query: async (query) => this.answer(state, query) });
+      return await use({
+        query: async (query, options) => {
+          this.queries.push(
+            `${name}:${query.query}:${options?.deadline ?? "bounded"}`,
+          );
+          return this.answer(state, query);
+        },
+      });
     };
     return fakeL1NodeTransport({
       withLedgerState,
       query: (query: LedgerQuery) =>
         withLedgerState("tip", (session) => session.query(query)),
+      close: async () => {
+        this.closed.push(name);
+      },
       submit: async (tx: Uint8Array) => {
         this.submitted.push(Buffer.from(tx));
         return { accepted: true };
@@ -209,27 +227,23 @@ describe("LedgerProvider (the node's ledger, no store)", () => {
       pinPointMs: 1_000,
       monotonicNowMs: () => now,
     });
-    expect(refs(await provider.getUtxos(keyAddress))).toEqual(["0101#0"]);
+    const both = [
+      { txHash: fill(1).toString("hex"), outputIndex: 0 },
+      { txHash: fill(2).toString("hex"), outputIndex: 0 },
+    ];
+    expect(refs(await provider.getUtxosByOutRef(both))).toEqual(["0101#0"]);
     // The chain moves within the step: the step keeps its point.
     node.extend([output(fill(1), 0), output(fill(2), 0)]);
     now = 999;
-    expect(refs(await provider.getUtxos(keyAddress))).toEqual(["0101#0"]);
-    expect(
-      refs(
-        await provider.getUtxosByOutRef([
-          { txHash: fill(2).toString("hex"), outputIndex: 0 },
-        ]),
-      ),
-    ).toEqual([]);
+    expect(refs(await provider.getUtxosByOutRef(both))).toEqual(["0101#0"]);
     // Past the window the next read starts a new step at the tip.
     now = 1_000;
-    expect(refs(await provider.getUtxos(keyAddress))).toEqual([
+    expect(refs(await provider.getUtxosByOutRef(both))).toEqual([
       "0101#0",
       "0202#0",
     ]);
     expect(node.acquired).toEqual([
       "tip",
-      `10:${fill(1).toString("hex")}`,
       `10:${fill(1).toString("hex")}`,
       `10:${fill(1).toString("hex")}`,
       "tip",
@@ -249,7 +263,13 @@ describe("LedgerProvider (the node's ledger, no store)", () => {
     node.chain.length = 0;
     node.extend([output(fill(3), 0)]);
     node.chain[0] = { ...node.chain[0]!, hash: fill(9).toString("hex") };
-    expect(refs(await provider.getUtxos(keyAddress))).toEqual(["0303#0"]);
+    expect(
+      refs(
+        await provider.getUtxosByOutRef([
+          { txHash: fill(3).toString("hex"), outputIndex: 0 },
+        ]),
+      ),
+    ).toEqual(["0303#0"]);
   });
 
   it("answers outrefs in request order and omits the absent ones", async () => {
@@ -268,21 +288,36 @@ describe("LedgerProvider (the node's ledger, no store)", () => {
     ).toEqual(["0202#1", "0101#0"]);
   });
 
-  it("refuses the reads local state query cannot answer, naming them", async () => {
+  it("refuses every read but its own wallets', outrefs and keyed state, sending no query", async () => {
     const node = new StubNode();
-    node.extend([]);
-    const provider = new LedgerProvider({ transport: node.transport() });
-    await expect(
-      provider.getUtxos({ type: "Key", hash: KEY }),
-    ).rejects.toBeInstanceOf(L1LedgerScopeError);
-    await expect(
-      provider.getUtxoByUnit(`${"cc".repeat(28)}0a`),
-    ).rejects.toThrow(
+    node.extend([output(fill(1), 0), output(fill(2), 0, otherAddress)]);
+    const provider = new LedgerProvider({
+      transport: node.transport(),
+      ownWallets: {
+        addresses: [addressBytes(keyAddress)],
+        ledger: () => node.transport("wallet"),
+      },
+    });
+    const unit = `${"cc".repeat(28)}0a`;
+    for (const read of [
+      () => provider.getUtxos(otherAddress),
+      () => provider.getUtxosWithUnit(otherAddress, unit),
+      () => provider.getUtxosWithPolicy(otherAddress, "cc".repeat(28)),
+      () => provider.getUtxos({ type: "Key", hash: KEY }),
+    ]) {
+      const refused = await read().catch((error: unknown) => error);
+      expect(refused).toBeInstanceOf(L1LedgerScopeError);
+      expect((refused as Error).message).toContain(
+        "read protocol state from a running node, or pass --l1 kupmios|blockfrost",
+      );
+    }
+    await expect(provider.getUtxoByUnit(unit)).rejects.toThrow(
       "getUtxoByUnit cannot be answered from the node's ledger",
     );
     await expect(provider.getDatum("dd".repeat(32))).rejects.toThrow(
       "getDatum cannot be answered from the node's ledger",
     );
+    expect(node.queries).toEqual([]);
   });
 
   it("confirms a submitted tx once any of its outputs is in the ledger", async () => {
@@ -414,7 +449,7 @@ describe("LedgerProvider (the node's ledger, no store)", () => {
     expect(await provider.pointStatus(first)).toBe("immutable");
   });
 
-  it("builds, signs and submits a Lucid transaction with no store or follower", async () => {
+  it("reads its own wallets once, on their own connection with no deadline, and advances them by its submissions", async () => {
     const seed = generateSeedPhrase();
     const wallet = walletFromSeed(seed, { network: "Custom" });
     const node = new StubNode();
@@ -423,12 +458,20 @@ describe("LedgerProvider (the node's ledger, no store)", () => {
         { txHash: fill(4), index: 0 },
         { address: wallet.address, assets: { lovelace: 50_000_000n } },
       ),
+      output(fill(5), 0),
     ]);
-    const provider = new LedgerProvider({ transport: node.transport() });
+    const provider = new LedgerProvider({
+      transport: node.transport(),
+      ownWallets: {
+        addresses: [addressBytes(wallet.address), addressBytes(keyAddress)],
+        ledger: () => node.transport("wallet"),
+      },
+    });
     const lucid = await Lucid(provider, "Custom", {
       slotConfig: { ...SLOT_CONFIG_NETWORK.Preview },
     });
     lucid.selectWallet.fromSeed(seed);
+    expect(refs(await provider.getUtxos(keyAddress))).toEqual(["0505#0"]);
     const signed = await (
       await lucid
         .newTx()
@@ -440,5 +483,13 @@ describe("LedgerProvider (the node's ledger, no store)", () => {
     const txHash = await signed.submit();
     expect(txHash).toBe(signed.toHash());
     expect(node.submitted).toHaveLength(1);
+    // The spent input left the view and the change joined it, unconfirmed.
+    const view = await lucid.wallet().getUtxos();
+    expect(view.map((utxo) => utxo.txHash)).toEqual([txHash]);
+    expect(refs(await provider.getUtxos(keyAddress))).toEqual(["0505#0"]);
+    expect(
+      node.queries.filter((query) => query.includes("utxo_by_address")),
+    ).toEqual(["wallet:utxo_by_address:none"]);
+    expect(node.closed).toEqual(["wallet"]);
   });
 });
