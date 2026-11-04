@@ -22,10 +22,10 @@ import { TOOL_L1_ACCESS_KINDS } from "../l1-access.js";
 import type { BlockfrostAccess } from "../l1-external/blockfrost-access.js";
 import type { KupmiosAccess } from "../l1-external/kupmios-access.js";
 import {
+  NODE_L1_ACCESS_UNCONFIGURED,
   type NodeLedgerAccess,
   openNodeLedgerAccess,
 } from "../services/l1-node-ledger-access.js";
-import { NODE_L1_ACCESS_UNCONFIGURED } from "../services/l1-provider.js";
 import {
   type NativeLedgerSettings,
   nativeLedgerSettingsFromEnv,

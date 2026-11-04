@@ -14,8 +14,7 @@ import {
 } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { L1Access } from "../src/l1-access.js";
-import { L1Adapter } from "../src/services/l1-adapter.js";
+import { L1ChainParameters } from "../src/services/l1-adapter.js";
 import { deploymentL1SlotConfig } from "../src/services/midgard-contracts.load-reference-script-auth-validator.js";
 import {
   ContractDeploymentIdentity,
@@ -98,8 +97,7 @@ vi.mock(
 /** A port whose `slotConfig` answers with `read`; counts opens, reads, closes. */
 const fakePort = (read: () => Promise<SlotConfig>) => {
   const counts = { opened: 0, reads: 0, closed: 0 };
-  const layer = Layer.succeed(L1Adapter, {
-    role: "follower",
+  const layer = Layer.succeed(L1ChainParameters, {
     open: () =>
       Effect.acquireRelease(
         Effect.sync(() => {
@@ -109,7 +107,7 @@ const fakePort = (read: () => Promise<SlotConfig>) => {
               counts.reads += 1;
               return read();
             },
-          } as unknown as L1Access;
+          };
         }),
         () =>
           Effect.sync(() => {
@@ -120,12 +118,12 @@ const fakePort = (read: () => Promise<SlotConfig>) => {
   return { layer, counts };
 };
 
-const identityOver = (port: Layer.Layer<L1Adapter>) =>
+const identityOver = (port: Layer.Layer<L1ChainParameters>) =>
   ContractDeploymentIdentity.pipe(
     Effect.provide(MidgardContractServices.pipe(Layer.provide(port))),
   );
 
-const start = (selected: string, port: Layer.Layer<L1Adapter>) => {
+const start = (selected: string, port: Layer.Layer<L1ChainParameters>) => {
   network.value = selected;
   return Effect.runPromiseExit(identityOver(port));
 };

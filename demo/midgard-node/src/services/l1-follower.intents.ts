@@ -8,7 +8,8 @@
  *
  * - The tracked set covers the journal's invariant (§8.2): the node's own
  *   wallets, the reference-script addresses, and the protocol validators'
- *   payment credentials, with the hub-oracle policy for the protocol-init tx.
+ *   payment credentials, with the hub-oracle policy for the protocol-init tx
+ *   (`nodeIndexSpec`, `l1-follower.index-spec.ts`).
  * - Family predicates (§8.4) are reads over projections
  *   (`l1-follower.intent-predicates.ts`), passed in as `wanted`.
  * - A failed pass, or an intent whose mempool read, predicate or submission
@@ -35,7 +36,6 @@ import {
   FOLLOWER_TRACKED_SET_CHANGED,
   type IntentState,
   type ReconcileReport,
-  type TrackedSet,
   WALLET_SEED_PENDING,
 } from "@al-ft/midgard-l1-follower";
 
@@ -79,20 +79,6 @@ export class IntentPredicateWait extends Error {
     this.name = "IntentPredicateWait";
   }
 }
-
-/**
- * The node follower's protocol tracked set (§8.2's invariant plus protocol
- * init). The seeded wallets are not in it: they go to the store as
- * `FactStoreOptions.wallets`, tracked by address but never recorded.
- */
-export const nodeIntentTrackedSet = (input: {
-  readonly protocolPaymentCredentials: readonly string[];
-  readonly hubOraclePolicyId: string;
-}): TrackedSet => ({
-  addresses: new Set(),
-  paymentCredentials: new Set(input.protocolPaymentCredentials),
-  policies: new Set([input.hubOraclePolicyId]),
-});
 
 export type NodeIntentStage = Readonly<{
   /** Seeds owed wallets, then one S6 pass; returns the holds it leaves. */

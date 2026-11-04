@@ -8,11 +8,9 @@ import {
   Database,
   type DatabaseInitializationError,
 } from "../services/database.js";
-import { FollowerLucidLive, Lucid } from "../services/lucid.js";
-import {
-  FollowerMidgardContractServices,
-  MidgardContracts,
-} from "../services/midgard-contracts.js";
+import { FollowerLucidAndContracts } from "../services/l1-adapter.follower.js";
+import { Lucid } from "../services/lucid.js";
+import { MidgardContracts } from "../services/midgard-contracts.js";
 import { serializeStateQueueUTxO } from "./utils/commit-block-header.js";
 import {
   decideUnsubmittedPendingBlockRecovery,
@@ -134,8 +132,7 @@ const provideConfirmationWorkerServices = <A, E>(
   pipe(
     effect,
     Effect.provide(Database.workerLayer),
-    Effect.provide(FollowerMidgardContractServices),
-    Effect.provide(FollowerLucidLive),
+    Effect.provide(FollowerLucidAndContracts),
     Effect.provide(NodeConfig.layer),
   );
 

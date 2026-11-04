@@ -3,91 +3,96 @@
  * `reconcile local-finalization` replays the commit worker program in the
  * CLI process, and passes it `environmentCommitLucidFactory`, the Lucid the
  * command's layers provide. Under `L1_ACCESS=node` that is the node-ledger
- * tool adapter, and the follower store is never opened. The role factory
- * over the follower adapter is the negative control: it does reach the
- * follower opener, so the spy can see an open. The commit worker's role
- * factory builds its Lucid in the worker run's scope, so the access stays
- * open until the run ends.
+ * tool adapter over the local node. The role Lucid over the same node is the
+ * control: it is the follower adapter, so the access kind tells them apart.
+ * The commit worker's role factory builds its Lucid in the worker run's
+ * scope, so the access stays open until the run ends.
  */
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import * as LE from "@lucid-evolution/lucid";
 import { Effect, Layer } from "effect";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 import { ToolL1AdapterLive } from "../src/commands/l1-tool-adapter.js";
 import { l1AccessOf, openL1Access } from "../src/l1-access.js";
 import { l1SlotNow } from "../src/l1-heads.js";
 import { NodeConfig } from "../src/services/config.js";
 import type { NodeConfigDep } from "../src/services/config.node-config-dep.js";
-import {
-  FollowerL1AdapterLive,
-  L1Adapter,
-} from "../src/services/l1-adapter.js";
+import { FollowerL1AdapterLive } from "../src/services/l1-adapter.follower.js";
+import { L1Adapter } from "../src/services/l1-adapter.js";
 import { Lucid } from "../src/services/lucid.js";
+import {
+  ContractDeploymentIdentity,
+  MidgardContracts,
+} from "../src/services/midgard-contracts.js";
 import { environmentCommitLucidFactory } from "../src/workers/commit-block-header.js";
 import { scopedCommitLucidFactory } from "../src/workers/commit-block-header.pending-user-event-counts-up-to.js";
-
-const opened = vi.hoisted(() => ({
-  follower: 0,
-  nodeLedger: [] as string[],
-}));
-
-vi.mock("../src/services/l1-provider.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../src/services/l1-provider.js")>()),
-  openNodeL1AccessFromConfig: async () => {
-    opened.follower += 1;
-    throw new Error("the follower store was opened");
-  },
-}));
-
-vi.mock("../src/services/l1-node-ledger-access.js", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("../src/services/l1-node-ledger-access.js")
-    >();
-  const { openL1Access } = await import("../src/l1-access.js");
-  const Lucid = await import("@lucid-evolution/lucid");
-  return {
-    ...actual,
-    openNodeLedgerAccess: async (input: {
-      nativeLedger: { socketPath: string };
-    }) => {
-      opened.nodeLedger.push(input.nativeLedger.socketPath);
-      const point = { slot: 0, id: "00".repeat(32) };
-      return openL1Access({
-        kind: "node",
-        provider: new Lucid.Emulator([]),
-        endpoint: input.nativeLedger.socketPath,
-        slotConfig: async () => Lucid.SLOT_CONFIG_NETWORK.Preview,
-        tipSlot: async () => 0,
-        viewPoint: async () => point,
-        synchronizedViewPoint: async () => point,
-        submitSlotSnapshot: async () => {
-          throw new Error("no submit slot in this test");
-        },
-        close: async () => undefined,
-      });
-    },
-  };
-});
+import {
+  type FakeLocalNode,
+  fakeLocalNode,
+} from "./helpers/fake-local-node.js";
+import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
 const seeds = [0, 1, 2].map(() => LE.generateSeedPhrase());
 const address = (seed: string) =>
   LE.walletFromSeed(seed, { network: "Custom" }).address;
 
-const config = {
-  NETWORK: "Custom",
-  L1_NATIVE_LEDGER: {
-    socketPath: "/ipc/node.socket",
-    nodeConfigPath: "/ipc/config.json",
-    binaryPath: "/bin/l1-node-transport",
-  },
-  L1_NODE_BEHIND_MAX_MS: 60_000,
-  L1_OPERATOR_SEED_PHRASE: seeds[0],
-  L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: seeds[1],
-  L1_REFERENCE_SCRIPT_SEED_PHRASE: seeds[2],
-  L1_REFERENCE_SCRIPT_ADDRESS: address(seeds[2]!),
-  L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS: address(seeds[2]!),
-} as unknown as NodeConfigDep;
+let node: FakeLocalNode;
+let config: NodeConfigDep;
+let contracts: Layer.Layer<MidgardContracts | ContractDeploymentIdentity>;
+
+beforeAll(async () => {
+  node = await fakeLocalNode();
+  await node.answer("answer");
+  config = {
+    NETWORK: "Custom",
+    L1_NATIVE_LEDGER: node.nativeLedger,
+    L1_NODE_BEHIND_MAX_MS: 60_000,
+    L1_OPERATOR_SEED_PHRASE: seeds[0],
+    L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: seeds[1],
+    L1_REFERENCE_SCRIPT_SEED_PHRASE: seeds[2],
+    L1_REFERENCE_SCRIPT_ADDRESS: address(seeds[2]!),
+    L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS: address(seeds[2]!),
+    // The follower store is opened lazily; nothing here reads it.
+    POSTGRES_HOST: "127.0.0.1",
+    POSTGRES_PORT: 1,
+    POSTGRES_USER: "unused",
+    POSTGRES_PASSWORD: "unused",
+    POSTGRES_DB: "unused",
+  } as unknown as NodeConfigDep;
+  const deployed = await loadRealMidgardContractsForTest({
+    txHash: "11".repeat(32),
+    outputIndex: 0,
+  });
+  contracts = Layer.mergeAll(
+    Layer.succeed(
+      MidgardContracts,
+      MidgardContracts.make({
+        ...deployed,
+        consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+      }),
+    ),
+    Layer.succeed(
+      ContractDeploymentIdentity,
+      ContractDeploymentIdentity.make({
+        kind: "derived",
+        consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+      }),
+    ),
+  );
+});
+
+afterAll(async () => {
+  await node.remove();
+});
 
 /** A role adapter whose access counts its closes. */
 const closingAdapter = (closes: { count: number }) =>
@@ -120,7 +125,7 @@ const closingAdapter = (closes: { count: number }) =>
       ),
   });
 
-const lucidOver = (adapter: typeof ToolL1AdapterLive) =>
+const lucidOver = (adapter: Layer.Layer<L1Adapter>) =>
   Lucid.DefaultWithoutDependencies.pipe(
     Layer.provide(adapter),
     Layer.provide(Layer.succeed(NodeConfig, config)),
@@ -129,11 +134,9 @@ const lucidOver = (adapter: typeof ToolL1AdapterLive) =>
 describe("a command's commit Lucid", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
-    opened.follower = 0;
-    opened.nodeLedger = [];
   });
 
-  it("is the command's tool Lucid under L1_ACCESS=node, and opens no follower store", async () => {
+  it("is the command's tool Lucid under L1_ACCESS=node, over the local node's ledger", async () => {
     vi.stubEnv("L1_ACCESS", "node");
     const { commit, service } = await Effect.runPromise(
       Effect.gen(function* () {
@@ -143,13 +146,11 @@ describe("a command's commit Lucid", () => {
     );
     expect(commit).toBe(service);
     expect(l1AccessOf(commit.api)?.kind).toBe("node");
-    expect(opened.nodeLedger).toEqual(["/ipc/node.socket"]);
-    expect(opened.follower).toBe(0);
+    expect(l1AccessOf(commit.api)?.endpoint).toBe(node.nativeLedger.socketPath);
   });
 
-  it("the role adapter does open the follower store (the spy's control)", async () => {
+  it("the role Lucid over the same node is the follower adapter (the kind's control)", async () => {
     for (const key of [
-      "L1_ACCESS",
       "L1_PROVIDER",
       "L1_KUPO_URL",
       "L1_OGMIOS_URL",
@@ -157,16 +158,16 @@ describe("a command's commit Lucid", () => {
       "L1_BLOCKFROST_PROJECT_ID",
     ])
       vi.stubEnv(key, "");
-    const failure = await Effect.runPromise(
-      Lucid.pipe(
-        Effect.provide(lucidOver(FollowerL1AdapterLive)),
+    vi.stubEnv("L1_ACCESS", "follower");
+    const kind = await Effect.runPromise(
+      Effect.map(Lucid, (lucid) => l1AccessOf(lucid.api)?.kind).pipe(
+        Effect.provide(
+          lucidOver(FollowerL1AdapterLive.pipe(Layer.provide(contracts))),
+        ),
         Effect.scoped,
-        Effect.flip,
       ),
     );
-    expect(failure.message).toMatch(/the follower store was opened/);
-    expect(opened.follower).toBe(1);
-    expect(opened.nodeLedger).toEqual([]);
+    expect(kind).toBe("follower");
   });
 
   it("the commit worker's factory keeps the follower access open for the run", async () => {

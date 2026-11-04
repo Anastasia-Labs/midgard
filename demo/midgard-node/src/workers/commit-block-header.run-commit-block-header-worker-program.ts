@@ -21,7 +21,7 @@ import {
   NodeConfig,
 } from "../services/index.js";
 import type { IntentJournal } from "../services/intent-journal.js";
-import { FollowerL1AdapterLive } from "../services/l1-adapter.js";
+import { FollowerL1ChainParametersLive } from "../services/l1-adapter.js";
 import {
   type NotifyCommitWorkerParent,
   shouldPreserveCommitMpfRoots,
@@ -261,17 +261,19 @@ if (parentPort !== null) {
   const notifyParent: NotifyCommitWorkerParent = (message) =>
     Effect.sync(() => workerParentPort.postMessage(message));
 
-  const program = Effect.scoped(
-    Effect.flatMap(followerCommitLucidFactory, (commitLucidFactory) =>
-      provideCommitBlockWorkerServices(
+  // The follower Lucid's index is built from the worker's contracts, so
+  // they resolve first (their slot mapping a keyed ledger read).
+  const program = provideCommitBlockWorkerServices(
+    Effect.scoped(
+      Effect.flatMap(followerCommitLucidFactory, (commitLucidFactory) =>
         runCommitBlockHeaderWorkerProgram(
           inputData,
           notifyParent,
           commitLucidFactory,
         ),
-        FollowerL1AdapterLive,
       ),
     ),
+    FollowerL1ChainParametersLive,
   );
 
   void Effect.runPromise(captureCommitWorkerFailure(program)).then((output) => {

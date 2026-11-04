@@ -32,7 +32,6 @@ import {
   INTENT_RECONCILE_FAILED,
   INTENT_RECONCILE_TRANSIENT,
   INTENT_RESUBMIT_REJECTED,
-  nodeIntentTrackedSet,
 } from "../src/services/l1-follower.intents.js";
 import { testDatabases } from "./helpers/l1-events-store.js";
 import {
@@ -404,18 +403,3 @@ describe.each(["sqlite", "postgres"] as const)(
     });
   },
 );
-
-describe("the node intent tracked set", () => {
-  it("is the protocol payment credentials and the hub-oracle policy, without the seeded wallets", () => {
-    expect(
-      nodeIntentTrackedSet({
-        protocolPaymentCredentials: ["ab".repeat(28)],
-        hubOraclePolicyId: "cd".repeat(28),
-      }),
-    ).toEqual({
-      addresses: new Set(),
-      paymentCredentials: new Set(["ab".repeat(28)]),
-      policies: new Set(["cd".repeat(28)]),
-    });
-  });
-});

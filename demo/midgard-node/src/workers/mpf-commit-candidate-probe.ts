@@ -8,7 +8,7 @@ import { inspect } from "node:util";
 import { SqlClient } from "@effect/sql";
 import { Effect, Metric } from "effect";
 
-import { ToolL1AdapterLive } from "../commands/l1-tool-adapter.js";
+import { ToolL1ChainParametersLive } from "../commands/l1-tool-adapter.js";
 import { fullScanCounter as confirmedLedgerFullScanCounter } from "../database/confirmedLedger.js";
 import {
   CommitBuildCalibrationDB,
@@ -336,7 +336,7 @@ void (async () => {
     const measured = await Effect.runPromise(
       // A probe, not a role: a derived bundle reads its slot mapping
       // through the tool access.
-      provideCommitBlockWorkerServices(program, ToolL1AdapterLive),
+      provideCommitBlockWorkerServices(program, ToolL1ChainParametersLive),
     );
     const after = await owner.diagnostics();
     if (

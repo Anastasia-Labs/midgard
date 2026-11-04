@@ -11,7 +11,6 @@ import {
   ContractDeploymentIdentity,
   Database,
   DatabaseInitializationError,
-  FollowerLucidLive,
   Lucid,
   MidgardContracts,
   MidgardContractServices,
@@ -21,7 +20,8 @@ import {
   type IntentJournal,
   IntentJournalLive,
 } from "../services/intent-journal.js";
-import type { L1Adapter } from "../services/l1-adapter.js";
+import { FollowerLucidLive } from "../services/l1-adapter.follower.js";
+import type { L1ChainParameters } from "../services/l1-adapter.js";
 
 export const EXPLICIT_COMMIT_CONFIRMATION_TIMEOUT_MS = 120_000;
 
@@ -37,28 +37,29 @@ export class CommitWorkerInvariantError extends Data.TaggedError(
   readonly message: string;
 }> {}
 
+type CommitBlockWorkerServices =
+  | MidgardContracts
+  | ContractDeploymentIdentity
+  | Database
+  | NodeConfig
+  | IntentJournal;
+
 /**
- * The commit program's services. `adapter` is the L1 access a derived
- * contract bundle reads its slot mapping through: the follower in the
- * worker thread `listen` starts, a tool access in a probe or command.
+ * The commit program's services. `chainParameters` is what a derived
+ * contract bundle reads its slot mapping through: the local node's ledger
+ * in the worker thread `listen` starts, a tool access in a probe or command.
  */
 export const provideCommitBlockWorkerServices = <A, E>(
-  effect: Effect.Effect<
-    A,
-    E,
-    | MidgardContracts
-    | ContractDeploymentIdentity
-    | Database
-    | NodeConfig
-    | IntentJournal
-  >,
-  adapter: Layer.Layer<L1Adapter>,
+  effect: Effect.Effect<A, E, CommitBlockWorkerServices>,
+  chainParameters: Layer.Layer<L1ChainParameters>,
 ): Effect.Effect<A, E | ConfigError | DatabaseInitializationError, never> =>
   pipe(
     effect,
     // The worker journals in the node database; the node's S6 reconciles.
     Effect.provide(IntentJournalLive),
-    Effect.provide(MidgardContractServices.pipe(Layer.provide(adapter))),
+    Effect.provide(
+      MidgardContractServices.pipe(Layer.provide(chainParameters)),
+    ),
     Effect.provide(Database.workerLayer),
     Effect.provide(NodeConfig.layer),
   );
@@ -72,29 +73,31 @@ export const provideCommitBlockWorkerServices = <A, E>(
 export type CommitLucidFactory = () => Effect.Effect<Lucid, ConfigError>;
 
 /**
- * A factory that builds `layer`'s Lucid in the caller's scope. The Lucid's
- * L1 access (its store pool and node transport) stays open until that scope
- * closes; a Lucid provided and returned out of its own scope would read
- * through a closed access, so its L1 slot would never be known.
+ * A factory that builds `layer`'s Lucid in the caller's scope, over the
+ * caller's services `layer` requires. The Lucid's L1 access (its store pool
+ * and node transport) stays open until that scope closes; a Lucid provided
+ * and returned out of its own scope would read through a closed access, so
+ * its L1 slot would never be known.
  */
-export const scopedCommitLucidFactory = (
-  layer: Layer.Layer<Lucid, ConfigError>,
-): Effect.Effect<CommitLucidFactory, never, Scope.Scope> =>
+export const scopedCommitLucidFactory = <R>(
+  layer: Layer.Layer<Lucid, ConfigError, R>,
+): Effect.Effect<CommitLucidFactory, never, Scope.Scope | R> =>
   Effect.map(
-    Effect.scope,
-    (scope): CommitLucidFactory =>
+    Effect.all([Effect.scope, Effect.context<R>()]),
+    ([scope, context]): CommitLucidFactory =>
       () =>
-        Effect.map(Layer.buildWithScope(layer, scope), (context) =>
-          Context.get(context, Lucid),
+        Effect.map(
+          Effect.provide(Layer.buildWithScope(layer, scope), context),
+          (built) => Context.get(built, Lucid),
         ),
   );
 
-/** The role factory: the commit worker thread's follower Lucid, open for
- * the worker run's scope. */
+/** The role factory: the commit worker thread's follower Lucid over its
+ * contracts, open for the worker run's scope. */
 export const followerCommitLucidFactory: Effect.Effect<
   CommitLucidFactory,
   never,
-  Scope.Scope
+  Scope.Scope | MidgardContracts | ContractDeploymentIdentity
 > = scopedCommitLucidFactory(FollowerLucidLive);
 
 /** A command's factory: the Lucid service its layers already provide (the

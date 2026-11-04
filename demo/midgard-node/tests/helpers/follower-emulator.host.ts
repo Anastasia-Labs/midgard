@@ -5,13 +5,13 @@
  * the chain is applied once, by the store's own writer (`applyBlock`), with
  * the node's projections once a deployment is bound (`bindNodeFollower`):
  * their derivations write the node's follower tables exactly as the node's
- * follower does. The provider (`NodeL1Provider`), the driver
+ * follower does. The provider (`L1FollowerProvider`), the driver
  * (`planCurrentView`) and every other reader read this store.
  *
  * - Origin: the chain's origin (genesis, or a ledger restored without a
  *   chain) with the tracked outputs it holds seeded; its key-credential
  *   addresses are the own wallets.
- * - Tracked set: the node's (`nodeIntentTrackedSet` and its projections'),
+ * - Tracked set: the node's (`nodeProtocolIndex`),
  *   and the script credentials and policies the origin holds. Every payment
  *   credential an output pays to (a key one outside the origin's wallets)
  *   and every policy a transaction mints under is tracked from the block
@@ -52,13 +52,11 @@ import {
   type Network,
 } from "@lucid-evolution/lucid";
 
-import { protocolPaymentCredentials } from "../../src/services/intent-journal.tracked-set.js";
-import { nodeIntentTrackedSet } from "../../src/services/l1-follower.intents.js";
+import { nodeProtocolIndex } from "../../src/services/l1-follower.index-spec.js";
 import {
   type L1FollowerPlan,
   l1FollowerPlan,
 } from "../../src/services/l1-follower.plan.js";
-import { nodeFollowerProjections } from "../../src/services/l1-follower.projections.js";
 import { nodeDatabaseConnectionString } from "../../src/services/l1-provider.js";
 import { applyMidgardNodeTestEnv } from "../test-env.js";
 import {
@@ -98,22 +96,18 @@ const connectionString = (): string => {
 };
 
 /**
- * The node's follower over `emulator`'s chain for `contracts`: the plan the
- * node makes from its configuration (`l1FollowerPlan`; the local node
- * settings and the hub oracle's one-shot are placeholders the store never
- * reads) and its projections. Returns the plan.
+ * The plan the node makes from its configuration for `contracts`
+ * (`l1FollowerPlan`); the local node settings and the hub oracle's one-shot
+ * are placeholders the store never reads.
  */
-export const bindNodeFollower = (
-  emulator: Emulator,
+export const emulatorFollowerPlan = (
   input: Readonly<{
     contracts: SDK.MidgardValidators;
     network: Network;
-    securityParameter?: number;
+    origin: Readonly<{ slot: number; hash: string }>;
+    securityParameter: number;
   }>,
 ): NodeFollowerPlan => {
-  const securityParameter =
-    input.securityParameter ?? DEFAULT_SECURITY_PARAMETER;
-  const chain = followedChainOf(emulator);
   const plan = l1FollowerPlan({
     config: {
       L1_NATIVE_LEDGER: {
@@ -121,7 +115,7 @@ export const bindNodeFollower = (
         nodeConfigPath: "/dev/null",
         binaryPath: "/dev/null",
       },
-      L1_ORIGIN: { slot: chain.origin.slot, blockHash: chain.origin.hash },
+      L1_ORIGIN: { slot: input.origin.slot, blockHash: input.origin.hash },
       HUB_ORACLE_ONE_SHOT_TX_HASH: PLACEHOLDER_HASH,
       HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: 0,
       L1_TX_CONTENT_SOURCES: [],
@@ -134,23 +128,35 @@ export const bindNodeFollower = (
     },
     contracts: input.contracts,
     manifest: undefined,
-    securityParameter,
+    securityParameter: input.securityParameter,
   });
   if (plan.kind !== "run")
     throw new Error(`the node's follower does not run: ${plan.detail}`);
-  // The host never prunes, so the landed frontier's prune floor never runs.
-  const neverPrunes = () => {
-    throw new Error("the emulator follower host never prunes");
-  };
-  const { projections } = nodeFollowerProjections(
-    plan,
-    () => Promise.reject(new Error("the emulator follower host never prunes")),
-    neverPrunes,
-  );
-  const trackedSet = nodeIntentTrackedSet({
-    protocolPaymentCredentials: protocolPaymentCredentials(input.contracts),
-    hubOraclePolicyId: plan.hubOraclePolicyId,
+  return plan;
+};
+
+/**
+ * The node's follower over `emulator`'s chain for `contracts`: the node's
+ * plan (`emulatorFollowerPlan`) and its index's projections. Returns the plan.
+ */
+export const bindNodeFollower = (
+  emulator: Emulator,
+  input: Readonly<{
+    contracts: SDK.MidgardValidators;
+    network: Network;
+    securityParameter?: number;
+  }>,
+): NodeFollowerPlan => {
+  const securityParameter =
+    input.securityParameter ?? DEFAULT_SECURITY_PARAMETER;
+  const plan = emulatorFollowerPlan({
+    contracts: input.contracts,
+    network: input.network,
+    origin: followedChainOf(emulator).origin,
+    securityParameter,
   });
+  // The host never prunes, so the projections' runtime is never bound.
+  const { trackedSet, projections } = nodeProtocolIndex(input.contracts, plan);
   bindings.set(emulator, {
     key: [
       input.network,
@@ -160,7 +166,7 @@ export const bindNodeFollower = (
       ...[...trackedSet.paymentCredentials].sort(),
     ].join(":"),
     plan,
-    projections,
+    projections: projections.projections,
     trackedSet,
   });
   return plan;
@@ -171,7 +177,6 @@ type Open = {
   readonly originHash: string;
   readonly binding: Binding | undefined;
   readonly store: FactStore;
-  readonly wallets: readonly Buffer[];
   /** The key payment credentials of the origin's wallets, as hex. */
   readonly walletCredentials: ReadonlySet<string>;
   /** The hashes of the applied blocks, by height - 1. */
@@ -297,7 +302,6 @@ const reopen = async (
       originHash: chain.origin.hash,
       binding,
       store,
-      wallets: origin.wallets,
       walletCredentials: origin.walletCredentials,
       applied: [],
       replaying: started.replaying,
@@ -461,9 +465,6 @@ export const onFollowerHostCheck = (check: StoreCheck): (() => void) => {
     if (storeCheck === check) storeCheck = undefined;
   };
 };
-
-/** The own wallets of the store's current origin. */
-export const followerHostWallets = (): readonly Buffer[] => open?.wallets ?? [];
 
 /** The plan `emulator` was bound with (`bindNodeFollower`). */
 export const boundNodeFollower = (

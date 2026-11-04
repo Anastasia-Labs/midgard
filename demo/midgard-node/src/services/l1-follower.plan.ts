@@ -25,29 +25,89 @@ import {
 } from "../l1-state-queue/index.js";
 import type { NodeConfigDep } from "./config.js";
 
+/**
+ * The plan fields that do not depend on the origin or the local node: what
+ * the node's L1 index is built from (`nodeIndexSpec`).
+ */
+export type NodeIndexPlan = Readonly<{
+  /** k: the manifest's automaticRecoveryMaxDepth. */
+  securityParameter: number;
+  projection: EventProjectionConfig;
+  /** N10: the forced orders the follower projects and the node ingests. */
+  forcedOrders: ForcedOrderConfig;
+  /** The landed state queue (P1). */
+  stateQueue: StateQueueProjectionConfig;
+  /** N6: the operator lists, the scheduler and the hub oracle. */
+  operatorSet: OperatorSetConfig;
+  hubOraclePolicyId: string;
+}>;
+
 /** How the node's follower runs, or the missing piece that stops it. */
 export type L1FollowerPlan =
   | Readonly<{ kind: "unconfigured"; detail: string }>
-  | Readonly<{
-      kind: "run";
-      connectionString: string;
-      socketPath: string;
-      binaryPath: string;
-      nodeConfigPath: string;
-      origin: OriginConfig;
-      /** k: the manifest's automaticRecoveryMaxDepth. */
-      securityParameter: number;
-      projection: EventProjectionConfig;
-      /** N10: the forced orders the follower projects and the node ingests. */
-      forcedOrders: ForcedOrderConfig;
-      /** The landed state queue (P1). */
-      stateQueue: StateQueueProjectionConfig;
-      /** N6: the operator lists, the scheduler and the hub oracle. */
-      operatorSet: OperatorSetConfig;
-      hubOraclePolicyId: string;
-      /** §12.3 step 4: by-id L1 tx sources, hash-checked. */
-      contentSources: readonly string[];
-    }>;
+  | (NodeIndexPlan &
+      Readonly<{
+        kind: "run";
+        connectionString: string;
+        socketPath: string;
+        binaryPath: string;
+        nodeConfigPath: string;
+        origin: OriginConfig;
+        /** §12.3 step 4: by-id L1 tx sources, hash-checked. */
+        contentSources: readonly string[];
+      }>);
+
+type PlanContracts = Parameters<typeof SDK.requireEventHistoryContracts>[0] &
+  Parameters<typeof forcedOrderConfigFromContracts>[0] &
+  Parameters<typeof operatorSetConfig>[0] &
+  Readonly<{
+    stateQueue: Readonly<{ spendingScriptAddress: string; policyId: string }>;
+  }>;
+
+/**
+ * The index's plan from the deployment alone, or the missing piece that
+ * stops it: no origin, one-shot or local node is read.
+ */
+export const nodeIndexPlan = (input: {
+  readonly network: NodeConfigDep["NETWORK"];
+  readonly contracts: PlanContracts;
+  readonly securityParameter: number;
+}):
+  | Readonly<{ kind: "index"; plan: NodeIndexPlan }>
+  | Readonly<{ kind: "unconfigured"; detail: string }> => {
+  let projection: EventProjectionConfig;
+  try {
+    projection = eventProjectionConfigFromContracts(
+      SDK.requireEventHistoryContracts(input.contracts),
+      input.network === "Mainnet" ? 1 : 0,
+    );
+  } catch (error) {
+    return {
+      kind: "unconfigured",
+      detail: `the deployment's event lists are missing: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+  let forcedOrders: ForcedOrderConfig;
+  try {
+    forcedOrders = forcedOrderConfigFromContracts(input.contracts);
+  } catch (error) {
+    return {
+      kind: "unconfigured",
+      detail: `the deployment's tx-order contracts are unreadable: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+  return {
+    kind: "index",
+    plan: {
+      securityParameter: input.securityParameter,
+      projection,
+      forcedOrders,
+      stateQueue: stateQueueProjectionConfig(input.contracts.stateQueue),
+      operatorSet: operatorSetConfig(input.contracts),
+      hubOraclePolicyId: input.contracts.hubOracle.policyId.toLowerCase(),
+    },
+  };
+};
 
 const HEX_32 = /^[0-9a-f]{64}$/u;
 
@@ -77,12 +137,7 @@ export const l1FollowerPlan = (input: {
     | "POSTGRES_PASSWORD"
     | "POSTGRES_DB"
   >;
-  readonly contracts: Parameters<typeof SDK.requireEventHistoryContracts>[0] &
-    Parameters<typeof forcedOrderConfigFromContracts>[0] &
-    Parameters<typeof operatorSetConfig>[0] &
-    Readonly<{
-      stateQueue: Readonly<{ spendingScriptAddress: string; policyId: string }>;
-    }>;
+  readonly contracts: PlanContracts;
   /** The node's verified deployment manifest; undefined without one. */
   readonly manifest: Pick<DeploymentManifest, "l1Origin"> | undefined;
   readonly securityParameter: number;
@@ -112,29 +167,17 @@ export const l1FollowerPlan = (input: {
     return missing(
       "HUB_ORACLE_ONE_SHOT_TX_HASH and HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX are not set",
     );
-  let projection: EventProjectionConfig;
-  try {
-    projection = eventProjectionConfigFromContracts(
-      SDK.requireEventHistoryContracts(input.contracts),
-      config.NETWORK === "Mainnet" ? 1 : 0,
-    );
-  } catch (error) {
-    return missing(
-      `the deployment's event lists are missing: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
-  let forcedOrders: ForcedOrderConfig;
-  try {
-    forcedOrders = forcedOrderConfigFromContracts(input.contracts);
-  } catch (error) {
-    return missing(
-      `the deployment's tx-order contracts are unreadable: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
+  const index = nodeIndexPlan({
+    network: config.NETWORK,
+    contracts: input.contracts,
+    securityParameter: input.securityParameter,
+  });
+  if (index.kind === "unconfigured") return index;
   const user = encodeURIComponent(config.POSTGRES_USER);
   const password = encodeURIComponent(config.POSTGRES_PASSWORD);
   const database = encodeURIComponent(config.POSTGRES_DB);
   return {
+    ...index.plan,
     kind: "run",
     connectionString: `postgres://${user}:${password}@${config.POSTGRES_HOST}:${config.POSTGRES_PORT.toString()}/${database}`,
     socketPath: config.L1_NATIVE_LEDGER.socketPath,
@@ -150,12 +193,6 @@ export const l1FollowerPlan = (input: {
         ? {}
         : { recordedOrigin: point(recordedOrigin) }),
     },
-    securityParameter: input.securityParameter,
-    projection,
-    forcedOrders,
-    stateQueue: stateQueueProjectionConfig(input.contracts.stateQueue),
-    operatorSet: operatorSetConfig(input.contracts),
-    hubOraclePolicyId: input.contracts.hubOracle.policyId.toLowerCase(),
     contentSources: config.L1_TX_CONTENT_SOURCES,
   };
 };

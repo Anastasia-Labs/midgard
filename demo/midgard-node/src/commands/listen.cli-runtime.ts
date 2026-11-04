@@ -7,13 +7,15 @@ import {
   type IntentJournal,
   IntentJournalWithoutFollower,
 } from "../services/intent-journal.js";
+import { FollowerLucidAndContracts } from "../services/l1-adapter.follower.js";
 import { runNode } from "./listen.run-node.js";
 import { withStartupHttpServer } from "./listen.startup-http.js";
 import { publicHttpTransport } from "./listen-public-http.js";
 
 /**
- * The node's runtime services, its Lucid service over its follower
- * (`FollowerLucidLive`): a role reads L1 only through its follower, so this
+ * The node's runtime services, its Lucid service over its follower and its
+ * contracts beneath it (`FollowerLucidAndContracts`): a role reads L1 only
+ * through its follower and the local node's ledger, so this
  * module never loads the command layer's tool access (`cli-runtime.ts`).
  * `runNode` provides its own intent journal.
  */
@@ -47,8 +49,7 @@ const provideListenRuntimeServices = <A, E>(
     Effect.provide(Services.HttpReadSqlLive),
     Effect.provide(Services.NodeConfig.layer),
     Effect.provide(Services.Database.layer),
-    Effect.provide(Services.FollowerMidgardContractServices),
-    Effect.provide(Services.FollowerLucidLive),
+    Effect.provide(FollowerLucidAndContracts),
     Effect.provide(Services.Globals.Default),
   );
 

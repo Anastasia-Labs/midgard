@@ -1,7 +1,7 @@
 /**
  * The node's L1 provider on the lucid-evolution emulator: every provider call
- * Lucid makes on an `Emulator` goes through a `NodeL1Provider` (the node's
- * `L1FollowerProvider`) over the process's one follower host
+ * Lucid makes on an `Emulator` goes through the node's `L1FollowerProvider`
+ * over the process's one follower host
  * (`follower-emulator.host.ts`: the node's Postgres follower store following
  * the emulator's chain), and a node transport double over the emulator's
  * ledger.
@@ -32,13 +32,12 @@
  * the host until `restore`. No emulator internals other than the ledger, the
  * transaction history and the reward-account chain are read.
  */
-import { type FactStore, mergeTrackedSets } from "@al-ft/midgard-l1-follower";
+import type { FactStore } from "@al-ft/midgard-l1-follower";
+import { L1FollowerProvider } from "@al-ft/midgard-l1-follower/provider";
 import { Emulator } from "@lucid-evolution/lucid";
 
-import { NodeL1Provider } from "../../src/services/l1-provider.js";
 import { followedChainOf, followedPoint } from "./follower-emulator.chain.js";
 import {
-  followerHostWallets,
   onFollowerHostCheck,
   releaseFollowerHost,
   syncFollowerHost,
@@ -81,7 +80,7 @@ type Served = {
   readonly submitted: string[];
   /** Confirmed transactions found in the store at this emulator's chain. */
   readonly stored: Set<string>;
-  provider?: Readonly<{ store: FactStore; provider: NodeL1Provider }>;
+  provider?: Readonly<{ store: FactStore; provider: L1FollowerProvider }>;
 };
 
 /** The emulator's provider methods the follower takes over. */
@@ -129,7 +128,9 @@ export const installFollowerEmulator = (): FollowerEmulatorInstallation => {
     return entry;
   };
   /** The provider over the store at `emulator`'s chain. */
-  const providerOf = async (emulator: Emulator): Promise<NodeL1Provider> => {
+  const providerOf = async (
+    emulator: Emulator,
+  ): Promise<L1FollowerProvider> => {
     const entry = servedOf(emulator);
     entry.providerCalls += 1;
     const store = await syncFollowerHost(emulator);
@@ -144,17 +145,13 @@ export const installFollowerEmulator = (): FollowerEmulatorInstallation => {
         if (!entry.submitted.includes(hash)) entry.submitted.push(hash);
       },
     });
-    const provider = new NodeL1Provider({
+    // The host's store already tracks the node's index and wallets, as the
+    // node's reader does from its open, and every item its blocks showed.
+    const provider = new L1FollowerProvider({
       store,
       transport,
-      wallets: followerHostWallets(),
       awaitTxTimeoutMs: AWAIT_TX_TIMEOUT_MS,
     });
-    // The provider adopts the recorded set and the wallets; the items the
-    // host tracks from the blocks that first showed them stay tracked.
-    const widened = store.trackedSet();
-    await provider.refreshTrackedSet();
-    store.setTrackedSet(mergeTrackedSets(store.trackedSet(), widened));
     entry.provider = { store, provider };
     return provider;
   };

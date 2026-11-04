@@ -5,8 +5,7 @@ import { Effect, Layer } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { MIN_DA_PAYLOAD_RETENTION_DAYS } from "../src/database/retention-policy.js";
-import type { L1Access } from "../src/l1-access.js";
-import { L1Adapter } from "../src/services/l1-adapter.js";
+import { L1ChainParameters } from "../src/services/l1-adapter.js";
 import {
   ContractDeploymentIdentity,
   MidgardContractServices,
@@ -45,12 +44,11 @@ vi.mock(
 
 // The derived bundle reads its slot mapping through the L1 port: the test
 // network's static one.
-const preprodPort = Layer.succeed(L1Adapter, {
-  role: "tool",
+const preprodPort = Layer.succeed(L1ChainParameters, {
   open: () =>
     Effect.succeed({
       slotConfig: async () => ({ ...NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod }),
-    } as unknown as L1Access),
+    }),
 });
 
 const start = (days: number | undefined) => {

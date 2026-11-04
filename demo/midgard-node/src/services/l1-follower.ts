@@ -89,15 +89,16 @@ import { withDriverView } from "./follower-write-gate.driver.js";
 import { Globals } from "./globals.globals.js";
 import { IntentJournal } from "./intent-journal.js";
 import {
-  nodeSeededAddresses,
-  protocolPaymentCredentials,
-} from "./intent-journal.tracked-set.js";
-import {
   coalescedRunner,
   localFaultProgress,
 } from "./l1-follower.coalesced-runner.js";
 import { driverSink } from "./l1-follower.driver-sink.js";
 import { failureHold } from "./l1-follower.failure-hold.js";
+import {
+  nodeFollowerStoreOptions,
+  nodeIndexSpec,
+  nodeSecurityParameter,
+} from "./l1-follower.index-spec.js";
 import { nodeFamilyPredicate } from "./l1-follower.intent-predicates.js";
 import { createNodeIntentStage } from "./l1-follower.intents.js";
 import {
@@ -107,7 +108,6 @@ import {
 } from "./l1-follower.network-magic.js";
 import { followerOperatorSet } from "./l1-follower.operator-set.js";
 import { type L1FollowerPlan, l1FollowerPlan } from "./l1-follower.plan.js";
-import { nodeFollowerProjections } from "./l1-follower.projections.js";
 import {
   followerCaughtUp,
   type L1FollowerHandle,
@@ -116,7 +116,6 @@ import {
   startingStatus,
 } from "./l1-follower.readiness.js";
 import { makeDriverRecompute } from "./l1-follower.recompute.js";
-import { nodeFollowerStoreOptions } from "./l1-follower.store-options.js";
 import { followerTick } from "./l1-follower.tick.js";
 import { publishL1HeadChange } from "./l1-head-trigger.js";
 import { Lucid } from "./lucid.js";
@@ -147,7 +146,7 @@ const followL1 = <R>(
     if (plan.contentSources.length === 0)
       yield* Effect.logWarning(`L1 follower: ${NO_CONTENT_SOURCE}`);
     const journal = yield* IntentJournal;
-    const seededAddresses = nodeSeededAddresses(config);
+    const index = nodeIndexSpec(config, contracts, plan);
     const runtime = yield* Effect.runtime<never>();
     const log = (line: string) =>
       Runtime.runFork(runtime)(Effect.logInfo(`L1 follower: ${line}`));
@@ -155,11 +154,11 @@ const followL1 = <R>(
       Database | NodeConfig | Globals | Lucid | ContractDeploymentIdentity
     >();
     const lucid = (yield* Lucid).api;
-    const projections = nodeFollowerProjections(
-      plan,
-      Runtime.runPromise(dbRuntime),
-      (ms) => unixTimeToSlotForConfig(ms, canonicalSlotConfigForLucid(lucid)),
-    );
+    index.projections.bindRuntime({
+      run: Runtime.runPromise(dbRuntime),
+      slotOf: (ms) =>
+        unixTimeToSlotForConfig(ms, canonicalSlotConfigForLucid(lucid)),
+    });
     const opened = yield* Effect.acquireRelease(
       Effect.try(() => {
         const transport = new L1NodeTransport({
@@ -171,15 +170,7 @@ const followL1 = <R>(
         let store: FactStore;
         try {
           store = openPostgresFactStore({
-            ...nodeFollowerStoreOptions({
-              projections: projections.projections,
-              securityParameter: plan.securityParameter,
-              commitEventDepth: config.COMMIT_EVENT_DEPTH,
-              protocolPaymentCredentials: protocolPaymentCredentials(contracts),
-              hubOraclePolicyId: plan.hubOraclePolicyId,
-            }),
-            // Seeded (§5.3 step 4), never in the tracked-set record.
-            wallets: seededAddresses,
+            ...nodeFollowerStoreOptions(index, config.COMMIT_EVENT_DEPTH),
             connection: {
               connectionString: plan.connectionString,
               maxConnections: 4,
@@ -221,7 +212,7 @@ const followL1 = <R>(
         plan.forcedOrders,
       ),
     });
-    projections.bindActivity(operatorSet.activity);
+    index.projections.bindActivity(operatorSet.activity);
     let confirmedLedger: ConfirmedLedgerPosition | null = null;
     let status: FollowStatus = startingStatus;
     const planCurrent = () => planCurrentView(store, plan.projection);
@@ -315,7 +306,7 @@ const followL1 = <R>(
       store,
       transport,
       securityParameter: plan.securityParameter,
-      seededAddresses,
+      seededAddresses: index.wallets,
       wanted: nodeFamilyPredicate({
         store,
         stateQueue: plan.stateQueue,
@@ -437,13 +428,11 @@ export const startL1Follower = <R = never>(
     const contracts = yield* MidgardContracts;
     const identity = yield* ContractDeploymentIdentity;
     const globals = yield* Globals;
-    const finality =
-      identity.manifest?.l1Finality ?? DEPLOYMENT_MANIFEST_L1_FINALITY;
     const plan = l1FollowerPlan({
       config,
       contracts,
       manifest: identity.manifest,
-      securityParameter: finality.automaticRecoveryMaxDepth,
+      securityParameter: nodeSecurityParameter(identity),
     });
     if (plan.kind === "unconfigured")
       return yield* recordUnconfigured(globals, plan.detail);

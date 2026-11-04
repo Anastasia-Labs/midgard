@@ -8,10 +8,10 @@
  *   submission (`helpers/emulator-chain-capture.ts`).
  * - Every journaled intent a flow hands to the journal of a process with no
  *   follower is kept (`withoutFollowerJournal`, `helpers/intent-journal.ts`).
- * - `replayJournaledOnFollower` opens a follower store with the node's
- *   projections and its production tracked set (own wallets and
- *   reference-script addresses seeded at the origin, protocol payment
- *   credentials, the hub oracle policy), applies the emulator's blocks as
+ * - `replayJournaledOnFollower` opens a follower store over the node's
+ *   index (`nodeIndexSpec`: its projections, its recorded tracked set, and
+ *   its own wallets and reference-script addresses seeded at the origin),
+ *   applies the emulator's blocks as
  *   the follower's block decoder reads them, and records each landed
  *   intent through the production journal at the block before the one it
  *   landed in: the latest tip the flow could have recorded it at, with
@@ -30,30 +30,18 @@
 import {
   decodeTransaction,
   type FactStore,
-  intentJournalProjection,
   openPostgresFactStore,
   type OutputSummary,
   type OutRef,
-  projectionStoreOptions,
 } from "@al-ft/midgard-l1-follower";
-import { eventProjectionConfigFromContracts } from "@al-ft/midgard-l1-follower/events";
-import { eventProjection } from "@al-ft/midgard-l1-follower/events";
 import { encodeUtxoAnswer } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { PgClient } from "@effect/sql-pg";
 import type { Emulator } from "@lucid-evolution/lucid";
 import { Effect, Either, ManagedRuntime, Redacted } from "effect";
 
 import * as MigrationRunner from "../../src/database/migrations/runner.js";
-import { forcedOrderConfigFromContracts } from "../../src/forced-orders/config.js";
-import { forcedOrderProjection } from "../../src/forced-orders/index.js";
-import { operatorSetConfig } from "../../src/l1-operator-set/config.js";
-import { operatorSetProjection } from "../../src/l1-operator-set/index.js";
-import {
-  stateQueueProjection,
-  stateQueueProjectionConfig,
-} from "../../src/l1-state-queue/index.js";
 import type { NodeConfigDep } from "../../src/services/config.js";
 import { Database } from "../../src/services/database.js";
 import {
@@ -63,15 +51,16 @@ import {
 } from "../../src/services/intent-journal.js";
 import {
   nodeOwnWallets,
-  nodeSeededAddresses,
-  protocolPaymentCredentials,
+  type nodeSeededAddresses,
 } from "../../src/services/intent-journal.tracked-set.js";
-import { nodeFamilyPredicate } from "../../src/services/l1-follower.intent-predicates.js";
 import {
-  createNodeIntentStage,
-  nodeIntentTrackedSet,
-} from "../../src/services/l1-follower.intents.js";
+  nodeFollowerStoreOptions,
+  nodeIndexSpec,
+} from "../../src/services/l1-follower.index-spec.js";
+import { nodeFamilyPredicate } from "../../src/services/l1-follower.intent-predicates.js";
+import { createNodeIntentStage } from "../../src/services/l1-follower.intents.js";
 import { capturedChainOf, GENESIS_HASH } from "./emulator-chain-capture.js";
+import { emulatorFollowerPlan } from "./follower-emulator.host.js";
 import {
   drainJournaledWithoutFollower,
   RECORD_ONLY,
@@ -218,32 +207,17 @@ export const replayJournaledOnFollower = async (input: {
 
   const databases = testDatabases();
   const connectionString = await databases.create();
-  const network = config.NETWORK === "Mainnet" ? 1 : 0;
-  const seeded = nodeSeededAddresses(config);
+  const plan = emulatorFollowerPlan({
+    contracts,
+    network: config.NETWORK,
+    origin: { slot: 0, hash: "00".repeat(32) },
+    securityParameter: k,
+  });
+  // The node's index: its projections' runtime is never bound (no prune).
+  const index = nodeIndexSpec(config, contracts, plan);
+  const seeded = index.wallets;
   const store: FactStore = openPostgresFactStore({
-    ...projectionStoreOptions(
-      [
-        eventProjection(
-          eventProjectionConfigFromContracts(
-            SDK.requireEventHistoryContracts(contracts),
-            network,
-          ),
-        ),
-        stateQueueProjection(stateQueueProjectionConfig(contracts.stateQueue)),
-        operatorSetProjection(operatorSetConfig(contracts)),
-        forcedOrderProjection(forcedOrderConfigFromContracts(contracts)),
-        intentJournalProjection,
-      ],
-      {
-        securityParameter: k,
-        trackedSet: nodeIntentTrackedSet({
-          protocolPaymentCredentials: protocolPaymentCredentials(contracts),
-          hubOraclePolicyId: contracts.hubOracle.policyId.toLowerCase(),
-        }),
-      },
-      "postgres",
-    ),
-    wallets: seeded,
+    ...nodeFollowerStoreOptions(index, config.COMMIT_EVENT_DEPTH),
     connection: { connectionString },
   });
   const runtime = ManagedRuntime.make(
@@ -300,9 +274,9 @@ export const replayJournaledOnFollower = async (input: {
     const verdicts = new Map<string, boolean | string>();
     const predicate = nodeFamilyPredicate({
       store,
-      stateQueue: stateQueueProjectionConfig(contracts.stateQueue),
+      stateQueue: plan.stateQueue,
       operatorSet: {
-        config: operatorSetConfig(contracts),
+        config: plan.operatorSet,
         ownKey: input.operatorKeyHash,
       },
       slotToPosixMs: input.slotToPosixMs,

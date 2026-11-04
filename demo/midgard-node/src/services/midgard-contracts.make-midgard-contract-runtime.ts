@@ -22,8 +22,8 @@ import { ConfigError, NodeConfig } from "./config.js";
 import type { NodeConfigDep } from "./config.node-config-dep.js";
 import {
   asStartupConfigError,
-  FollowerL1AdapterLive,
-  L1Adapter,
+  FollowerL1ChainParametersLive,
+  L1ChainParameters,
 } from "./l1-adapter.js";
 import { assertDeploymentManifestMatchesConfig } from "./midgard-contracts.assert-deployment-manifest-matches-config.js";
 import { type HubOracleOneShotOutRef } from "./midgard-contracts.build-real-hub-oracle-validator.js";
@@ -47,8 +47,9 @@ import {
 const DERIVED_L1_SLOT_MAPPING_STEP = "derived_l1_slot_mapping";
 
 /**
- * A derived bundle's slot mapping, read through the process's L1 port: the
- * `L1Adapter` the process provides is opened for this one read and closed.
+ * A derived bundle's slot mapping, a keyed chain-parameter read: the
+ * `L1ChainParameters` the process provides is opened for this one read and
+ * closed (a role's is a node-ledger query with no store).
  * A transient L1 read failure is waited out under `l1_slot_mapping_pending`
  * for at most the L1 node budget (`resolveLucidSlotMapping`); past it the
  * step fails as exhausted, so `listen` exits non-zero and its supervisor's
@@ -59,10 +60,10 @@ const DERIVED_L1_SLOT_MAPPING_STEP = "derived_l1_slot_mapping";
  */
 const readDerivedL1SlotConfig = (
   nodeConfig: NodeConfigDep,
-): Effect.Effect<L1SlotConfig, ConfigError, L1Adapter> =>
+): Effect.Effect<L1SlotConfig, ConfigError, L1ChainParameters> =>
   Effect.scoped(
     Effect.gen(function* () {
-      const access = yield* (yield* L1Adapter).open(nodeConfig);
+      const access = yield* (yield* L1ChainParameters).open(nodeConfig);
       const ledger = yield* resolveLucidSlotMapping({
         read: access.slotConfig,
       }).pipe(
@@ -96,7 +97,7 @@ const readDerivedL1SlotConfig = (
  * The effect fails fast if the one-shot hub-oracle parameters are missing so a
  * node cannot boot into an ambiguous real-contract configuration. A finalized
  * manifest carries its slot mapping and never opens L1; a derived bundle
- * reads it through the L1 port (`readDerivedL1SlotConfig`), the one failure
+ * reads it as a keyed chain parameter (`readDerivedL1SlotConfig`), the one failure
  * this service reports as a `ConfigError` rather than a defect.
  */
 const makeMidgardContractRuntime = Effect.gen(function* () {
@@ -290,8 +291,9 @@ export class ContractDeploymentIdentity extends Effect.Service<ContractDeploymen
 
 /**
  * Shared layer so contract bytes and their deployment identity resolve once.
- * It requires an `L1Adapter`, which a derived bundle reads its slot mapping
- * through: a role provides `FollowerMidgardContractServices`, a command
+ * It requires `L1ChainParameters`, which a derived bundle reads its slot
+ * mapping through (never the node's index, which is built from these
+ * contracts): a role provides `FollowerMidgardContractServices`, a command
  * `ToolMidgardContractServices` (`../commands/l1-tool-adapter.ts`).
  */
 export const MidgardContractServices = Layer.merge(
@@ -299,7 +301,8 @@ export const MidgardContractServices = Layer.merge(
   ContractDeploymentIdentity.Default,
 );
 
-/** The contract services of a role process: over the follower adapter. */
+/** The contract services of a role process: a derived bundle's slot
+ * mapping read from the local node's ledger. */
 export const FollowerMidgardContractServices = MidgardContractServices.pipe(
-  Layer.provide(FollowerL1AdapterLive),
+  Layer.provide(FollowerL1ChainParametersLive),
 );

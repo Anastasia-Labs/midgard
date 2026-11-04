@@ -13,8 +13,7 @@ import {
   buildDeploymentManifest,
 } from "../src/commands/contract-deployment-info.js";
 import { publishedDeployableScripts } from "../src/deployable-scripts.js";
-import type { L1Access } from "../src/l1-access.js";
-import { L1Adapter } from "../src/services/l1-adapter.js";
+import { L1ChainParameters } from "../src/services/l1-adapter.js";
 import {
   ContractDeploymentIdentity,
   MidgardContracts,
@@ -30,12 +29,11 @@ import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contract
 
 // A finalized manifest never opens L1; the port is only here because the
 // service layer requires one.
-const preprodPort = Layer.succeed(L1Adapter, {
-  role: "tool",
+const preprodPort = Layer.succeed(L1ChainParameters, {
   open: () =>
     Effect.succeed({
       slotConfig: async () => ({ ...NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod }),
-    } as unknown as L1Access),
+    }),
 });
 
 const directories: string[] = [];

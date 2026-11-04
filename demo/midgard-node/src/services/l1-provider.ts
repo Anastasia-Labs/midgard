@@ -10,11 +10,10 @@
  * - The store is opened as a reader: it is never started, so it takes no
  *   writer lease and runs no migration. The follower in the main thread is
  *   its only writer.
- * - The protocol tracked set is the follower's recorded one
- *   (`trackedSetRecord`), read until the follower has recorded it; the own
- *   wallets (`nodeSeededAddresses`) are tracked from the start, so a wallet
- *   read before the follower's first cursor is the transient
- *   `follower:not_initialized`, never a ledger answer.
+ * - It tracks the node's index (`nodeIndexSpec`) from the open: the
+ *   protocol set the follower records and the own wallets. A read of
+ *   either before the follower's first cursor is the transient
+ *   `follower:not_initialized`, never a ledger scan.
  * - The submit-slot snapshot reads the ledger tip over local state query and
  *   takes `currentSlot` from wall time on the ledger's slot configuration. A
  *   ledger tip further behind wall time than `L1_NODE_BEHIND_MAX_MS` is the
@@ -30,7 +29,6 @@ import {
 import {
   type FactStore,
   openPostgresFactStore,
-  withTrackedAddresses,
 } from "@al-ft/midgard-l1-follower";
 import type { NativeLedgerNetwork } from "@al-ft/midgard-l1-follower/native-reward-account";
 import {
@@ -38,15 +36,7 @@ import {
   L1FollowerProvider,
   L1ProviderTransientError,
 } from "@al-ft/midgard-l1-follower/provider";
-import type {
-  Address,
-  Credential,
-  OutRef,
-  PolicyId,
-  SlotConfig,
-  Unit,
-  UTxO,
-} from "@lucid-evolution/lucid";
+import type { SlotConfig } from "@lucid-evolution/lucid";
 
 import {
   type L1Access,
@@ -55,7 +45,7 @@ import {
   openL1Access,
 } from "../l1-access.js";
 import { type NodeConfigDep } from "./config.node-config-dep.js";
-import { nodeSeededAddresses } from "./intent-journal.tracked-set.js";
+import type { NodeIndexSpec } from "./l1-follower.index-spec.js";
 import {
   L1LedgerBehindError,
   ledgerSubmitSlotSnapshot,
@@ -110,95 +100,11 @@ export {
   wallSlotAt,
 } from "./l1-ledger-tip.js";
 
-const EMPTY_TRACKED_SET = {
-  addresses: new Set<string>(),
-  paymentCredentials: new Set<string>(),
-  policies: new Set<string>(),
-};
-
-/**
- * The follower provider with the node's tracked set: the follower's recorded
- * protocol set plus the node's own wallets, read before each UTxO query
- * until the follower has recorded it.
- */
-export class NodeL1Provider extends L1FollowerProvider {
-  readonly #store: FactStore;
-  readonly #wallets: readonly Buffer[];
-  #recorded = false;
-
-  constructor(
-    options: ConstructorParameters<typeof L1FollowerProvider>[0] &
-      Readonly<{ wallets: readonly Buffer[] }>,
-  ) {
-    super(options);
-    this.#store = options.store;
-    this.#wallets = options.wallets;
-  }
-
-  /** Adopts the follower's recorded protocol set once it exists. */
-  async refreshTrackedSet(): Promise<void> {
-    if (this.#recorded) return;
-    let record;
-    try {
-      record = await this.#store.trackedSetRecord();
-    } catch {
-      // No follower tables yet: wallets stay tracked, the read that follows
-      // names the store or follower fault.
-      return;
-    }
-    if (record === null) return;
-    this.#store.setTrackedSet(
-      withTrackedAddresses(
-        {
-          addresses: new Set(record.trackedSet.addresses),
-          paymentCredentials: new Set(record.trackedSet.paymentCredentials),
-          policies: new Set(record.trackedSet.policies),
-        },
-        this.#wallets,
-      ),
-    );
-    this.#recorded = true;
-  }
-
-  override async getUtxos(
-    addressOrCredential: Address | Credential,
-  ): Promise<UTxO[]> {
-    await this.refreshTrackedSet();
-    return super.getUtxos(addressOrCredential);
-  }
-
-  override async getUtxosWithUnit(
-    addressOrCredential: Address | Credential,
-    unit: Unit,
-  ): Promise<UTxO[]> {
-    await this.refreshTrackedSet();
-    return super.getUtxosWithUnit(addressOrCredential, unit);
-  }
-
-  override async getUtxosWithPolicy(
-    addressOrCredential: Address | Credential,
-    policyId: PolicyId,
-  ): Promise<UTxO[]> {
-    await this.refreshTrackedSet();
-    return super.getUtxosWithPolicy(addressOrCredential, policyId);
-  }
-
-  override async getUtxoByUnit(unit: Unit): Promise<UTxO> {
-    await this.refreshTrackedSet();
-    return super.getUtxoByUnit(unit);
-  }
-
-  override async getUtxosByOutRef(outRefs: Array<OutRef>): Promise<UTxO[]> {
-    await this.refreshTrackedSet();
-    return super.getUtxosByOutRef(outRefs);
-  }
-}
-
 /** The follower adapter (roles only): the store and transport around it. */
 export type NodeL1AccessAdapter = L1AccessAdapter &
   Readonly<{
     kind: "follower";
-    provider: NodeL1Provider;
+    provider: L1FollowerProvider;
     store: FactStore;
     transport: L1NodeTransport;
     /** The local node's ledger tip, read now. */
@@ -246,17 +152,25 @@ export const nodeDatabaseConnectionString = (
     config.POSTGRES_DB,
   )}`;
 
-export type OpenNodeL1AccessInput = Readonly<{
-  nativeLedger: NativeLedgerSettings;
-  network: NativeLedgerNetwork;
+/** What the node's L1 access is opened with, over any transport. */
+export type NodeL1AccessOverInput = Readonly<{
+  /** The node's index (`nodeIndexSpec`): its tracked set and own wallets. */
+  index: Pick<NodeIndexSpec, "trackedSet" | "wallets">;
   connectionString: string;
-  wallets: readonly Buffer[];
+  /** The local node's socket path, named in reports. */
+  endpoint: string;
   /** The ledger-tip staleness bound for submit-slot snapshots (ms). */
   nodeBehindMaxMs: number;
-  /** Bound on one transport request (ms); the transport's default when absent. */
-  requestTimeoutMs?: number;
   nowMs?: () => number;
 }>;
+
+export type OpenNodeL1AccessInput = Omit<NodeL1AccessOverInput, "endpoint"> &
+  Readonly<{
+    nativeLedger: NativeLedgerSettings;
+    network: NativeLedgerNetwork;
+    /** Bound on one transport request (ms); the transport's default when absent. */
+    requestTimeoutMs?: number;
+  }>;
 
 /**
  * Opens the node's L1 access. Reads only the node's config files (for the
@@ -278,22 +192,31 @@ export const openNodeL1Access = async (
       ? {}
       : { requestTimeoutMs: input.requestTimeoutMs }),
   });
+  return nodeL1AccessOver(transport, {
+    ...input,
+    endpoint: input.nativeLedger.socketPath,
+  });
+};
+
+/** The node's L1 access over `transport`; opening it reads nothing. */
+export const nodeL1AccessOver = (
+  transport: L1NodeTransport,
+  input: NodeL1AccessOverInput,
+): NodeL1Access => {
   const store = openPostgresFactStore({
-    // Never started: the follower in the main thread records the protocol
-    // set; this reader adopts it (`NodeL1Provider.refreshTrackedSet`).
+    // Never started: the follower in the main thread is its only writer. Its
+    // set is the one that follower records (`nodeIndexSpec`), so a protocol
+    // read before the follower's first cursor is `follower:not_initialized`,
+    // never a ledger scan.
     securityParameter: 1,
-    trackedSet: EMPTY_TRACKED_SET,
-    wallets: input.wallets,
+    trackedSet: input.index.trackedSet,
+    wallets: input.index.wallets,
     connection: {
       connectionString: input.connectionString,
       maxConnections: 2,
     },
   });
-  const provider = new NodeL1Provider({
-    store,
-    transport,
-    wallets: input.wallets,
-  });
+  const provider = new L1FollowerProvider({ store, transport });
   const nowMs = input.nowMs ?? Date.now;
   let slotConfig: Promise<SlotConfig> | undefined;
   const readSlotConfig = (): Promise<SlotConfig> => {
@@ -328,7 +251,7 @@ export const openNodeL1Access = async (
     store,
     transport,
     ledgerTip,
-    endpoint: input.nativeLedger.socketPath,
+    endpoint: input.endpoint,
     slotConfig: readSlotConfig,
     // The clock's tip is the follower's covered tip (N1), the same tip
     // `depth()` counts from.
@@ -381,14 +304,12 @@ export type NodeL1AccessConfig = Pick<
   | "POSTGRES_USER"
   | "POSTGRES_PASSWORD"
   | "POSTGRES_DB"
-> &
-  Parameters<typeof nodeSeededAddresses>[0];
+>;
 
-export { NODE_L1_ACCESS_UNCONFIGURED };
-
-/** Opens the node's L1 access from its configuration. */
+/** Opens the node's L1 access from its configuration over its `index`. */
 export const openNodeL1AccessFromConfig = async (
   config: NodeL1AccessConfig,
+  index: NodeL1AccessOverInput["index"],
 ): Promise<NodeL1Access> => {
   if (config.L1_NATIVE_LEDGER === undefined)
     throw new Error(NODE_L1_ACCESS_UNCONFIGURED);
@@ -396,7 +317,7 @@ export const openNodeL1AccessFromConfig = async (
     nativeLedger: config.L1_NATIVE_LEDGER,
     network: config.NETWORK,
     connectionString: nodeDatabaseConnectionString(config),
-    wallets: nodeSeededAddresses(config),
+    index,
     nodeBehindMaxMs: config.L1_NODE_BEHIND_MAX_MS,
   });
 };

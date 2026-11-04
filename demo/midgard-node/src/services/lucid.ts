@@ -1,7 +1,7 @@
 import type { TransportReadiness } from "@al-ft/l1-node-transport";
 import { type SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import * as LE from "@lucid-evolution/lucid";
-import { Effect, Layer, type Scope } from "effect";
+import { Effect, type Scope } from "effect";
 
 import {
   resolveLucidSlotMapping,
@@ -11,11 +11,7 @@ import { isRetryableProviderError } from "../provider-retry.js";
 import { configureReferencePublication } from "../transactions/reference-publication.js";
 import { selectNodeWallet } from "../transactions/utils.wallet-view.js";
 import { ConfigError, NodeConfig } from "./config.js";
-import {
-  asStartupConfigError,
-  FollowerL1AdapterLive,
-  L1Adapter,
-} from "./l1-adapter.js";
+import { asStartupConfigError, L1Adapter } from "./l1-adapter.js";
 import {
   LUCID_INITIALIZATION_PENDING,
   retryStartupStep,
@@ -218,14 +214,10 @@ const makeLucid: Effect.Effect<
 /**
  * Service exposing the fully-initialized Lucid clients and wallet-switching
  * helpers used by the node. It requires an `L1Adapter`: a role provides
- * `FollowerL1AdapterLive`, a command `ToolL1AdapterLive`.
+ * `FollowerL1AdapterLive` (`./l1-adapter.follower.ts`), a command
+ * `ToolL1AdapterLive`.
  */
 export class Lucid extends Effect.Service<Lucid>()("Lucid", {
   scoped: makeLucid,
   dependencies: [NodeConfig.layer],
 }) {}
-
-/** The Lucid service of a role process: over the follower adapter. */
-export const FollowerLucidLive = Lucid.Default.pipe(
-  Layer.provide(FollowerL1AdapterLive),
-);

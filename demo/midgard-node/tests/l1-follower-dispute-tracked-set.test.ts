@@ -24,7 +24,7 @@ import {
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 import { protocolPaymentCredentials } from "../src/services/intent-journal.tracked-set.js";
-import { nodeFollowerStoreOptions } from "../src/services/l1-follower.store-options.js";
+import { nodeFollowerStoreOptions } from "../src/services/l1-follower.index-spec.js";
 import { testDatabases } from "./helpers/l1-events-store.js";
 
 const databases = testDatabases();
@@ -88,13 +88,23 @@ const openStore = (
   credentials: readonly string[],
 ) => {
   const store = openPostgresFactStore({
-    ...nodeFollowerStoreOptions({
-      projections: [],
-      securityParameter: 6,
-      commitEventDepth: 0,
-      protocolPaymentCredentials: credentials,
-      hubOraclePolicyId: "cc".repeat(28),
-    }),
+    ...nodeFollowerStoreOptions(
+      {
+        trackedSet: {
+          addresses: new Set(),
+          paymentCredentials: new Set(credentials),
+          policies: new Set(["cc".repeat(28)]),
+        },
+        projections: {
+          projections: [],
+          bindActivity: () => undefined,
+          bindRuntime: () => undefined,
+        },
+        securityParameter: 6,
+        wallets: [],
+      },
+      0,
+    ),
     connection: { connectionString },
   });
   opened.push(store);

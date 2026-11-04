@@ -27,11 +27,9 @@ import {
   IntentJournalLive,
   journaledIntent,
 } from "./intent-journal.js";
-import { FollowerLucidLive, Lucid } from "./lucid.js";
-import {
-  ContractDeploymentIdentity,
-  FollowerMidgardContractServices,
-} from "./midgard-contracts.js";
+import { FollowerLucidAndContracts } from "./l1-adapter.follower.js";
+import { Lucid } from "./lucid.js";
+import { ContractDeploymentIdentity } from "./midgard-contracts.js";
 import {
   inspectSettlementAttempt,
   reconcileAttempt,
@@ -408,8 +406,7 @@ export const settlementProgram = (
   });
 
 export const settlementWorkerLayer = Layer.mergeAll(
-  FollowerMidgardContractServices,
-  FollowerLucidLive,
+  FollowerLucidAndContracts,
   IntentJournalLive,
 ).pipe(
   Layer.provideMerge(Database.workerLayer),
