@@ -39,6 +39,7 @@ import {
   AVAILABILITY_DEFAULT_POOL_LOVELACE,
   createAvailabilityFixture,
 } from "./helpers/availability-challenge-emulator.js";
+import { stateOf } from "./helpers/follower-emulator.ledger.js";
 
 describe("pooled DA bond lifecycle on the real validators", () => {
   it(
@@ -381,8 +382,13 @@ describe("pooled DA bond lifecycle on the real validators", () => {
       expect(excess.reason).toBe("amount_exceeds_backing");
 
       // Honest control: the whole backing, at the first lower bound >=
-      // unlock_at, to a chosen address.
-      expect(await f.lucid.utxosAt(destination)).toEqual([]);
+      // unlock_at, to a chosen address the ledger has never paid (read from
+      // the ledger: the node's index does not track it).
+      expect(
+        Object.values(stateOf(f.emulator).ledger).filter(
+          ({ utxo }) => utxo.address === destination,
+        ),
+      ).toEqual([]);
       const done = await f.completePoolWithdraw(backing, {
         destination,
         validFrom: unlockAt + 1n,

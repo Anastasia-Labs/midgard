@@ -10,7 +10,7 @@
  *
  * - Origin: the chain's origin (genesis, or a ledger restored without a
  *   chain) with the tracked outputs it holds seeded; its key-credential
- *   addresses are the own wallets.
+ *   addresses are own wallets, as are the node's own (`bindNodeFollower`).
  * - Tracked set: the node's (`nodeProtocolIndex`),
  *   and the script credentials and policies the origin holds. Every payment
  *   credential an output pays to (a key one outside the origin's wallets)
@@ -52,7 +52,10 @@ import {
   type Network,
 } from "@lucid-evolution/lucid";
 
-import { nodeProtocolIndex } from "../../src/services/l1-follower.index-spec.js";
+import {
+  nodeIndexSpec,
+  nodeProtocolIndex,
+} from "../../src/services/l1-follower.index-spec.js";
 import {
   type L1FollowerPlan,
   l1FollowerPlan,
@@ -79,6 +82,8 @@ type Binding = Readonly<{
   plan: NodeFollowerPlan;
   projections: readonly FollowerProjection[];
   trackedSet: TrackedSet;
+  /** The node's own wallets (`nodeIndexSpec`), tracked and seeded. */
+  wallets: readonly Buffer[];
 }>;
 
 const bindings = new WeakMap<Emulator, Binding>();
@@ -137,7 +142,8 @@ export const emulatorFollowerPlan = (
 
 /**
  * The node's follower over `emulator`'s chain for `contracts`: the node's
- * plan (`emulatorFollowerPlan`) and its index's projections. Returns the plan.
+ * plan (`emulatorFollowerPlan`), its index's projections and, with `node`,
+ * its own wallets (`nodeIndexSpec`). Returns the plan.
  */
 export const bindNodeFollower = (
   emulator: Emulator,
@@ -145,6 +151,7 @@ export const bindNodeFollower = (
     contracts: SDK.MidgardValidators;
     network: Network;
     securityParameter?: number;
+    node?: Parameters<typeof nodeIndexSpec>[0];
   }>,
 ): NodeFollowerPlan => {
   const securityParameter =
@@ -157,6 +164,9 @@ export const bindNodeFollower = (
   });
   // The host never prunes, so the projections' runtime is never bound.
   const { trackedSet, projections } = nodeProtocolIndex(input.contracts, plan);
+  const wallets = input.node
+    ? nodeIndexSpec(input.node, input.contracts, plan).wallets
+    : [];
   bindings.set(emulator, {
     key: [
       input.network,
@@ -164,10 +174,12 @@ export const bindNodeFollower = (
       plan.hubOraclePolicyId,
       plan.stateQueue.policyId,
       ...[...trackedSet.paymentCredentials].sort(),
+      ...wallets.map((wallet) => wallet.toString("hex")).sort(),
     ].join(":"),
     plan,
     projections: projections.projections,
     trackedSet,
+    wallets,
   });
   return plan;
 };
@@ -196,8 +208,8 @@ const serialized = <A>(work: () => Promise<A>): Promise<A> => {
   return next;
 };
 
-const originItems = (chain: FollowedChain) => {
-  const wallets = new Map<string, Buffer>();
+const originItems = (chain: FollowedChain, ownWallets: readonly Buffer[]) => {
+  const wallets = new Map(ownWallets.map((w) => [w.toString("hex"), w]));
   const walletCredentials = new Set<string>();
   const credentials = new Set<string>();
   const policies = new Set<string>();
@@ -264,7 +276,7 @@ const reopen = async (
   const connection = { connectionString: connectionString() };
   await resetStore(connection);
   written = true;
-  const origin = originItems(chain);
+  const origin = originItems(chain, binding?.wallets ?? []);
   const trackedSet = mergeTrackedSets(
     origin.trackedSet,
     ...(binding === undefined ? [] : [binding.trackedSet]),

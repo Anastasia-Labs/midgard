@@ -15,6 +15,7 @@ import {
 import { Effect } from "effect";
 
 import { __reservePayoutTest } from "../src/transactions/reserve-payout.js";
+import { bindNodeFollower } from "./helpers/follower-emulator.host.js";
 import {
   makeSeededScriptAccount,
   registerZeroRewardScript,
@@ -351,6 +352,8 @@ export const makeReserveLifecycleBuilderFixture = async ({
     ],
     EMULATOR_PROTOCOL_PARAMETERS,
   );
+  // The node's follower over this deployment.
+  bindNodeFollower(emulator, { contracts, network: "Custom" });
   registerZeroRewardScript(emulator, depositRetirementScript);
   registerZeroRewardScript(emulator, withdrawalRetirementScript);
   registerZeroRewardScript(emulator, history.deposit.list.withdrawalScript);

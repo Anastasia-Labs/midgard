@@ -27,6 +27,7 @@ import {
   restoreCapture,
   snapshotCapture,
 } from "./emulator-chain-capture.js";
+import { bindNodeFollower } from "./follower-emulator.host.js";
 import { runWithoutFollower } from "./intent-journal.js";
 import { loadRealMidgardContractsForTest } from "./real-midgard-contracts.js";
 
@@ -281,6 +282,11 @@ export const initOperatorInactivityFixture = async (
   }
   const snapshot = await pending;
   const emulator = cloneEmulator(snapshot.emulatorState);
+  // The node's follower over this deployment.
+  bindNodeFollower(emulator, {
+    contracts: snapshot.contracts,
+    network: "Custom",
+  });
   const lucid = await Lucid(emulator, "Custom");
   const referenceScriptsLucid = await Lucid(emulator, "Custom");
   const primary = snapshot.operators[0];

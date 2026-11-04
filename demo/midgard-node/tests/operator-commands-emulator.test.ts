@@ -30,6 +30,7 @@ import {
   planTakeoverProgram,
   submitInactivityStrikeProgram,
 } from "../src/transactions/operators/takeover.js";
+import { bindNodeFollower } from "./helpers/follower-emulator.host.js";
 import {
   drainJournaledWithoutFollower,
   runWithoutFollower,
@@ -256,8 +257,22 @@ describe("voluntary retirement and bond recovery", () => {
   it("refuses to build when the submitting wallet cannot fund the fee", async () => {
     const fixture = await initOperatorInactivityFixture(1);
     const operator = fixture.operators[0]!;
+    const emptySeed = generateSeedPhrase();
+    // The empty wallet is the node's own, so the node's index tracks it.
+    bindNodeFollower(fixture.emulator, {
+      contracts: fixture.contracts,
+      network: "Custom",
+      node: {
+        NETWORK: "Custom",
+        L1_OPERATOR_SEED_PHRASE: emptySeed,
+        L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: "",
+        L1_REFERENCE_SCRIPT_SEED_PHRASE: fixture.referenceScriptsSeedPhrase,
+        L1_REFERENCE_SCRIPT_ADDRESS: fixture.referenceScriptsAddress,
+        L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS: "",
+      },
+    });
     const emptyWallet = await Lucid(fixture.emulator, "Custom");
-    emptyWallet.selectWallet.fromSeed(generateSeedPhrase());
+    emptyWallet.selectWallet.fromSeed(emptySeed);
     const refusal = await expectRefusal(
       withoutFollowerJournal(
         retireOperatorProgram(

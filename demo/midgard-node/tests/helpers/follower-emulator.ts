@@ -13,8 +13,8 @@
  *   emulator's chain (`follower-emulator.chain.ts`: one block per change of
  *   its block height, of the exact bytes of the transactions it confirmed),
  *   so reads, datum lookups and transaction status come from the follower's
- *   facts. An address outside the tracked set is read from the ledger over
- *   the transport, as the node reads one.
+ *   facts. An address outside the tracked set is refused, as the node
+ *   refuses one.
  * - Mempool: like the ledger, the follower offers an output a pending
  *   transaction spends until the spend confirms; the emulator's own reads
  *   hide it. A node build funds from its wallet view, which holds the

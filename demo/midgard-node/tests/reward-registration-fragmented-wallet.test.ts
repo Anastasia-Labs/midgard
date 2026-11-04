@@ -24,28 +24,44 @@ import { ensureAvailabilityChallengeRewardAccountsRegisteredProgram } from "../s
 import { ensureRuntimeRewardAccountsRegisteredProgram } from "../src/transactions/script-reward-registration.js";
 import { RewardRegistrationUnfunded } from "../src/transactions/utils.reward-registration-funding.js";
 import { causeTrail } from "./helpers/builder-wallet-view.js";
+import { bindNodeFollower } from "./helpers/follower-emulator.host.js";
 import { runWithoutFollower } from "./helpers/intent-journal.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
 const COIN = 1_500_000n;
 const MAX_TX_SIZE = 16_384;
 
-/** A wallet of `coins` outputs of 1.5 ADA each, with the real contracts. */
+/**
+ * A wallet of `coins` outputs of 1.5 ADA each, with the real contracts: the
+ * node's own wallet, which its index tracks.
+ */
 const smallCoinWallet = async (coins: number) => {
   const wallet = generateEmulatorAccount({ lovelace: COIN });
   const emulator = new Emulator(
     Array.from({ length: coins }, () => ({ ...wallet })),
     { ...PROTOCOL_PARAMETERS_DEFAULT, maxTxSize: MAX_TX_SIZE },
   );
+  const contracts = await loadRealMidgardContractsForTest({
+    txHash: "00".repeat(32),
+    outputIndex: 0,
+  });
+  bindNodeFollower(emulator, {
+    contracts,
+    network: "Preprod",
+    node: {
+      NETWORK: "Preprod",
+      L1_OPERATOR_SEED_PHRASE: wallet.seedPhrase,
+      L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: "",
+      L1_REFERENCE_SCRIPT_SEED_PHRASE: "",
+      L1_REFERENCE_SCRIPT_ADDRESS: "",
+      L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS: "",
+    },
+  });
   const lucid = await Lucid(emulator, "Preprod");
   lucid.selectWallet.fromSeed(wallet.seedPhrase);
   const funding = await lucid.wallet().getUtxos();
   expect(funding).toHaveLength(coins);
   expect(funding.every((utxo) => utxo.assets.lovelace === COIN)).toBe(true);
-  const contracts = await loadRealMidgardContractsForTest({
-    txHash: "00".repeat(32),
-    outputIndex: 0,
-  });
   const submitted: string[] = [];
   const submit = emulator.submitTx.bind(emulator);
   emulator.submitTx = async (cbor) => {
