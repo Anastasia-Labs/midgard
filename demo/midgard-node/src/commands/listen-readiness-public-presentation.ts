@@ -182,6 +182,7 @@ const observedReasons: ReadonlySet<string> = new Set([
   "l1_follower_view_stale",
   "l1_follower_view_unapplied",
   "l1_follower_waiting",
+  "l1_index_unconfigured",
   "l1_node_behind",
   "l1_node_config_pending",
   "l1_node_unavailable",

@@ -143,6 +143,11 @@ deadline:
   node is configured for the follower (`L1_NODE_SOCKET_PATH`,
   `L1_NODE_CONFIG_PATH`, `L1_NODE_TRANSPORT_BINARY_PATH`). Configure it
   and restart the node.
+- `l1_index_unconfigured` (a `failedReason`, step `l1_access`): the
+  node's L1 index (the protocol addresses and own wallets it follows)
+  cannot be built from its deployment and configuration; the log names the
+  missing part. Check the deployment manifest and the node keys, then
+  restart the node.
 - `ledger_signature_verifier_unavailable`: the Ed25519 signature verifier,
   in the node or in a validation worker, has not initialised yet or failed
   to. It is tried 3 times, 1 s apart; past that the node exits non-zero
