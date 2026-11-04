@@ -378,8 +378,8 @@ describe("Cardano initialization recovery", () => {
   const initialized: InitializationObservation = {
     manifest: { ok: false },
     protocol: {
-      complete: true,
-      empty: false,
+      status: "complete",
+      nonce: "spent",
       hubOracleWitness: {
         txHash: "e".repeat(64),
         outputIndex: 0,
@@ -394,18 +394,17 @@ describe("Cardano initialization recovery", () => {
       initHash: "e".repeat(64),
       reconstruct: true,
     }));
-  it("retries an empty protocol after any earlier attempt and refuses partial state", () => {
-    // The one-shot nonce lets at most one initialization land.
-    const empty = {
+  it("retries an empty protocol, waits on a submitted one and refuses a finalized one that vanished", () => {
+    const empty: InitializationObservation = {
       ...initialized,
-      protocol: { ...initialized.protocol, complete: false, empty: true },
+      protocol: { status: "empty", nonce: "live", hubOracleWitness: null },
     };
     expect(initializationRecovery(empty, undefined)).toEqual({
       status: "retry",
     });
     expect(
       initializationRecovery(
-        { ...empty, protocol: { ...empty.protocol, empty: false } },
+        { ...empty, protocol: { ...empty.protocol, status: "submitted" } },
         undefined,
       ),
     ).toEqual({ status: "pending" });

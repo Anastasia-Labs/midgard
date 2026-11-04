@@ -2,13 +2,13 @@ import * as SDK from "@al-ft/midgard-sdk";
 import {
   LucidEvolution,
   type Network,
-  toUnit,
   type TxBuilder,
   type TxSignBuilder,
   UTxO,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { type InitProtocolAttempt } from "../e2e/run-state.js";
 import { slotToUnixTimeForLucidOrEmulatorFallback } from "../lucid-time.js";
 import {
   type IntentJournal,
@@ -30,73 +30,6 @@ import {
   readSelectedWalletView,
   readSelectedWalletViewInputs,
 } from "./utils.wallet-view.js";
-
-/**
- * Returns whether the canonical DA params UTxO is already present on-chain.
- */
-export const isDaParamsInitialized = (
-  lucid: LucidEvolution,
-  daParamsGovernor: SDK.AuthenticatedValidator,
-): Effect.Effect<boolean, SDK.LucidError> =>
-  Effect.tryPromise({
-    try: async () => {
-      const daParamsUtxos = await lucid.utxosAtWithUnit(
-        daParamsGovernor.spendingScriptAddress,
-        SDK.daParamsUnit(daParamsGovernor),
-      );
-      return daParamsUtxos.length > 0;
-    },
-    catch: (cause) =>
-      new SDK.LucidError({
-        message: "Failed to query DA params initialization state",
-        cause,
-      }),
-  });
-
-/**
- * Returns whether the state-queue root NFT is already present at the queue
- * address: one exact-unit lookup, never a scan of the address.
- */
-export const isStateQueueInitialized = (
-  lucid: LucidEvolution,
-  stateQueue: SDK.AuthenticatedValidator,
-): Effect.Effect<boolean, SDK.LucidError> =>
-  Effect.tryPromise({
-    try: async () =>
-      (
-        await lucid.utxosAtWithUnit(
-          stateQueue.spendingScriptAddress,
-          toUnit(stateQueue.policyId, SDK.STATE_QUEUE_ROOT_ASSET_NAME),
-        )
-      ).length > 0,
-    catch: (cause) =>
-      new SDK.LucidError({
-        message: "Failed to query state-queue initialization state",
-        cause,
-      }),
-  });
-
-/**
- * Returns whether the DA bond pool NFT is already present at the pool address.
- */
-export const isDaBondPoolInitialized = (
-  lucid: LucidEvolution,
-  daBondPool: SDK.AuthenticatedValidator,
-): Effect.Effect<boolean, SDK.LucidError> =>
-  Effect.tryPromise({
-    try: async () =>
-      (
-        await lucid.utxosAtWithUnit(
-          daBondPool.spendingScriptAddress,
-          SDK.daBondPoolUnit(daBondPool.policyId),
-        )
-      ).length > 0,
-    catch: (cause) =>
-      new SDK.LucidError({
-        message: "Failed to query DA bond pool initialization state",
-        cause,
-      }),
-  });
 
 /**
  * Resolves the configured one-shot hub-oracle nonce UTxO from the operator
@@ -152,7 +85,9 @@ export const fetchConfiguredNonceUtxo = (
  * (`list_insert:protocol_init:<nonce outref>`): S6 resends it while no live
  * output carries the state-queue policy, under `plan`, opened before the
  * initialization's first L1 read (S5). Before the follower starts (and in a
- * CLI process) it goes out unjournaled (`no_follower`).
+ * CLI process) it goes out unjournaled (`no_follower`). `recordSubmission`
+ * receives the transaction's hash and validity bound before anything is
+ * sent.
  */
 export const completeAndSubmit = (
   lucid: LucidEvolution,
@@ -160,6 +95,9 @@ export const completeAndSubmit = (
   failureMessage: string,
   nonce: Pick<UTxO, "txHash" | "outputIndex">,
   plan: IntentPlan,
+  recordSubmission: (
+    attempt: InitProtocolAttempt,
+  ) => Effect.Effect<void, SDK.LucidError>,
 ): Effect.Effect<
   string,
   SDK.LucidError | TxConfirmError | TxSignError | TxSubmitError,
@@ -186,6 +124,19 @@ export const completeAndSubmit = (
           message: `${failureMessage}: ${String(cause)}`,
           cause,
         }),
+    });
+    const ttl = unsignedTx.toTransaction().body().ttl();
+    if (ttl === undefined) {
+      return yield* Effect.fail(
+        new SDK.LucidError({
+          message: `${failureMessage}: the transaction has no validity upper bound`,
+          cause: unsignedTx.toHash(),
+        }),
+      );
+    }
+    yield* recordSubmission({
+      txHash: unsignedTx.toHash(),
+      invalidHereafterSlot: Number(ttl),
     });
     return yield* handleSignSubmit(
       lucid,
@@ -257,60 +208,3 @@ export const resolveDeploymentValidityBounds = (
     validTo: upperBound,
   };
 };
-
-export const makePartialProtocolDeploymentError = (
-  status: ProtocolDeploymentStatus,
-): SDK.LucidError =>
-  new SDK.LucidError({
-    message:
-      "Real protocol deployment is partial and cannot be completed in-place",
-    cause: `missing_components=[${status.missingComponents.join(",")}]; the canonical Init validators require one atomic bootstrap transaction that mints the hub-oracle NFT and protocol root NFTs together; use a fresh one-shot hub-oracle nonce/deployment`,
-  });
-
-export type ProtocolDeploymentStatus = {
-  readonly hubOracleWitness: UTxO | null;
-  readonly correctionLockWitness: SDK.CorrectionLockUTxO | null;
-  /** The state-queue root NFT is live (its queue's health is P1's, not init's). */
-  readonly stateQueueInitialized: boolean;
-  readonly depositHistoryInitialized: boolean;
-  readonly withdrawalHistoryInitialized: boolean;
-  readonly daParamsInitialized: boolean;
-  readonly daBondPoolInitialized: boolean;
-  readonly schedulerInitialized: boolean;
-  readonly registeredOperatorsInitialized: boolean;
-  readonly activeOperatorsInitialized: boolean;
-  readonly retiredOperatorsInitialized: boolean;
-  readonly fraudProofCatalogueInitialized: boolean;
-  readonly phasMembershipRewardAddress: string;
-  readonly phasMembershipScriptHash: string;
-  readonly complete: boolean;
-  readonly empty: boolean;
-  readonly missingComponents: readonly string[];
-};
-
-export const fetchHistoryRootState = (
-  lucid: LucidEvolution,
-  contracts: SDK.EventHistoryContracts,
-) =>
-  Effect.tryPromise({
-    try: async () => {
-      const nodes = SDK.authenticateHistoryNodes(
-        await lucid.utxosAt(contracts.list.spendingScriptAddress),
-        {
-          policyId: contracts.list.policyId,
-          address: contracts.list.spendingScriptAddress,
-          retentionAddress: contracts.retention.spendingScriptAddress,
-          inlineLimitBytes: contracts.recipe.inlineLimitBytes,
-        },
-      );
-      return {
-        initialized: nodes.some(({ key }) => key === null),
-        empty: nodes.length === 0,
-      };
-    },
-    catch: (cause) =>
-      new SDK.LucidError({
-        message: "Failed to authenticate history deployment roots",
-        cause,
-      }),
-  });

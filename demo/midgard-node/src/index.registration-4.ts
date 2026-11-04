@@ -4,6 +4,7 @@ import { Effect } from "effect";
 import {
   failCli,
   provideDatabaseTxServices,
+  provideLucidOnlyServices,
   provideNodeRuntimeServices,
   provideTxServices,
   runCliEffect,
@@ -134,7 +135,9 @@ program
     const { contractDeploymentInfoOutput, runState } = options.opts();
     const mainEffect = provideTxServices(
       Effect.gen(function* () {
-        const txHash = yield* Initialization.program;
+        const txHash = yield* Initialization.program(
+          typeof runState === "string" ? runState : undefined,
+        );
         const manifestOutputPath =
           typeof contractDeploymentInfoOutput === "string"
             ? contractDeploymentInfoOutput
@@ -173,16 +176,24 @@ program
   .command("deployment-status")
   .description("Print live protocol deployment status for configured contracts")
   .action(async () => {
-    const mainEffect = provideTxServices(
+    // The contracts are not loaded: a live nonce needs none, and a spent
+    // one needs only the hub-oracle policy it parameterizes.
+    const mainEffect = provideLucidOnlyServices(
       Effect.gen(function* () {
         const manifestVerification = yield* Effect.either(
           ContractDeploymentInfo.verifyConfiguredDeploymentManifestIfPresentProgram,
         );
         const lucidService = yield* Services.Lucid;
-        const contracts = yield* Services.MidgardContracts;
+        const keys = yield* Initialization.configuredProtocolDeploymentKeys();
         const status = yield* Initialization.fetchProtocolDeploymentStatus(
-          lucidService.api,
-          contracts,
+          {
+            lucid: lucidService.api,
+            viewSlot: lucidService.viewSlot(),
+            hubOraclePolicyId: Initialization.hubOraclePolicyOfNonce(
+              keys.nonce,
+            ),
+          },
+          keys,
         );
         process.stdout.write(
           `${formatJson({

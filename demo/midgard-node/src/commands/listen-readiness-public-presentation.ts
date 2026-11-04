@@ -237,7 +237,6 @@ const observedReasons: ReadonlySet<string> = new Set([
   "over_cap",
   "plan_expired",
   "planning_started",
-  "protocol_deployment_partial",
   "protocol_deployment_status_unavailable",
   "protocol_initialization_failed",
   "queue_unavailable",

@@ -19,7 +19,13 @@ export {
   type DeploymentStepStatus,
   RunStateError,
 } from "./run-state.deployment-run-identity.js";
-export { mutateDeploymentRunState } from "./run-state.mutate-deployment-run-state.js";
+export {
+  INIT_PROTOCOL_STEP,
+  type InitProtocolAttempt,
+  mutateDeploymentRunState,
+  recordedInitProtocolAttempts,
+  recordInitProtocolSubmission,
+} from "./run-state.mutate-deployment-run-state.js";
 export {
   parseDeploymentRunEvent,
   parseDeploymentRunIdentity,

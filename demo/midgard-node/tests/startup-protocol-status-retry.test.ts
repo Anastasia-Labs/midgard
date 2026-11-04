@@ -12,18 +12,10 @@ import {
 import type { ProtocolDeploymentStatus } from "../src/transactions/initialization.js";
 
 const completeStatus = {
+  status: "complete",
+  nonce: "spent",
   hubOracleWitness: null,
-  stateQueueInitialized: true,
-  schedulerInitialized: true,
-  registeredOperatorsInitialized: true,
-  activeOperatorsInitialized: true,
-  retiredOperatorsInitialized: true,
-  fraudProofCatalogueInitialized: true,
-  phasMembershipRewardAddress: "stake_test1uphas",
-  phasMembershipScriptHash: "00".repeat(28),
-  complete: true,
-  empty: false,
-  missingComponents: [],
+  expiredInitTxHashes: [],
 } as unknown as ProtocolDeploymentStatus;
 
 describe("fetchProtocolDeploymentStatusWithStartupRetry", () => {

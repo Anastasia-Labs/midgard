@@ -71,6 +71,11 @@ const makeLucid: Effect.Effect<
     referenceScriptsWalletAddress: string;
     referenceScriptsAddress: string;
     submitSlotSnapshot: () => Effect.Effect<SubmitSlotSnapshot, Error>;
+    /**
+     * The slot of the point reads answer at now; a read made after it
+     * answers at that point or a later one.
+     */
+    viewSlot: () => Effect.Effect<number, Error>;
     // Optional so hand-built test services need not supply them.
     readSubmitSlotSnapshotOnce?: () => Effect.Effect<SubmitSlotSnapshot, Error>;
     /** The local node transport's readiness, for `/readyz`. */
@@ -193,6 +198,11 @@ const makeLucid: Effect.Effect<
     // Submit time re-reads briefly on a transient stale tip, then refuses.
     submitSlotSnapshot: () =>
       retryTransientSubmitSlotSnapshot(readSubmitSlotSnapshotOnce),
+    viewSlot: () =>
+      Effect.tryPromise({
+        try: async () => (await access.viewPoint()).slot,
+        catch: asError,
+      }),
     // One read under the same bound, for probes that schedule their own
     // retries (the readiness refresher).
     readSubmitSlotSnapshotOnce,

@@ -3,7 +3,6 @@ import { access, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
 import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { walletFromSeed } from "@lucid-evolution/lucid";
 import { parseReconciliationResult } from "midgard-node/commands/reconcile";
 import { loadDeploymentRunState } from "midgard-node/e2e/run-state";
 
@@ -53,8 +52,8 @@ export async function deploymentStatus(processes: StackProcesses) {
   ])) as InitializationObservation;
   if (
     !report?.protocol ||
-    typeof report.protocol.complete !== "boolean" ||
-    typeof report.protocol.empty !== "boolean"
+    !["empty", "submitted", "complete"].includes(report.protocol.status) ||
+    !["live", "spent"].includes(report.protocol.nonce)
   )
     throw new Error("Invalid deployment status response");
   return report;
@@ -202,7 +201,8 @@ export function deploymentSteps(processes: StackProcesses): StackStep[] {
               throw new Error(
                 "Existing deployment identity/state does not match; preserve its data",
               );
-            if (!status.protocol.complete) throw new Error(PENDING_REINCLUSION);
+            if (status.protocol.status !== "complete")
+              throw new Error(PENDING_REINCLUSION);
             return { status: "complete", data: { attached: true } };
           }
         }
@@ -212,25 +212,11 @@ export function deploymentSteps(processes: StackProcesses): StackStep[] {
         // fresh nonce once any run state exists.
         if (state?.steps.hubOracleNonce?.status !== "complete")
           return { status: "retry" };
-        const address = walletFromSeed(
-          processes.env[processes.config.wallets.operator!.seedEnv]!,
-          { network: "Preprod" },
-        ).address;
-        const live = (await processes.walletUtxos(
-          "nonce-observation",
-          address,
-        )) as { utxos: { txHash: string; outputIndex: number }[] };
-        if (
-          live.utxos.some(
-            (utxo) =>
-              utxo.txHash === state.identity.hubOracleOneShot?.txHash &&
-              utxo.outputIndex === state.identity.hubOracleOneShot.outputIndex,
-          )
-        )
-          return { status: "complete", data: state.identity.hubOracleOneShot };
-        // It may have been consumed by initialization before its checkpoint was written.
+        // The node reads the nonce by its outref; initialization spends it,
+        // so a spent nonce is complete only once initialization landed.
         const status = await deploymentStatus(processes);
-        return status.protocol.complete
+        return status.protocol.nonce === "live" ||
+          status.protocol.status === "complete"
           ? { status: "complete", data: state.identity.hubOracleOneShot }
           : { status: "pending" };
       },

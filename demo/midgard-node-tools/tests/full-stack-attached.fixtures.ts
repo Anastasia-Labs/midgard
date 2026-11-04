@@ -451,7 +451,7 @@ export async function runAttached(
     ),
     "deployment-status": {
       manifest: { ok: true },
-      protocol: { complete: true, empty: false },
+      protocol: { status: "complete", nonce: "spent", hubOracleWitness: null },
     },
     "operator-observation": () => operator,
     "operator-register-or-resume": () => {

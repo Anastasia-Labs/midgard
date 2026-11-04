@@ -133,7 +133,14 @@ const initializedNode = async () => {
   await lucid.awaitTx(
     await runWithoutFollower(
       Effect.flatMap(openPlan, (plan) =>
-        completeAndSubmit(lucid, initTx, "protocol init", nonce, plan),
+        completeAndSubmit(
+          lucid,
+          initTx,
+          "protocol init",
+          nonce,
+          plan,
+          () => Effect.void,
+        ),
       ),
     ),
   );

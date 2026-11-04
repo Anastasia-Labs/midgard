@@ -1,12 +1,5 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import {
-  credentialToAddress,
-  LucidEvolution,
-  type Network,
-  scriptHashToCredential,
-  toUnit,
-  UTxO,
-} from "@lucid-evolution/lucid";
+import { LucidEvolution, type Network } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
@@ -16,7 +9,6 @@ import {
   VERIFICATION_KEY_HEX_LENGTH,
 } from "../da/local-signers.js";
 import type { IntentJournal } from "../services/intent-journal.js";
-import { outRefLabel } from "../tx-context.js";
 import {
   type AtomicProtocolInitReferenceScripts,
   atomicProtocolInitReferenceScriptsFromPublications,
@@ -196,129 +188,3 @@ export const ensureAtomicProtocolInitReferenceScriptsProgram = (
     fundingLucid,
     referenceScriptsAddress,
   ).pipe(Effect.map(atomicProtocolInitReferenceScriptsFromPublications));
-
-/**
- * Fetches the hub-oracle witness UTxO if it exists.
- */
-export const fetchHubOracleWitness = (
-  lucid: LucidEvolution,
-  contracts: SDK.MidgardValidators,
-): Effect.Effect<UTxO | null, SDK.LucidError> =>
-  Effect.gen(function* () {
-    const network = lucid.config().network;
-    if (network === undefined) {
-      return yield* Effect.fail(
-        new SDK.LucidError({
-          message: "Failed to resolve network for hub-oracle witness lookup",
-          cause: "lucid.config().network is undefined",
-        }),
-      );
-    }
-    const hubOracleAddress = credentialToAddress(
-      network,
-      scriptHashToCredential(contracts.hubOracle.policyId),
-    );
-    const hubOracleUnit = toUnit(
-      contracts.hubOracle.policyId,
-      SDK.HUB_ORACLE_ASSET_NAME,
-    );
-    const utxos = yield* Effect.tryPromise({
-      try: () => lucid.utxosAtWithUnit(hubOracleAddress, hubOracleUnit),
-      catch: (cause) =>
-        new SDK.LucidError({
-          message: "Failed to fetch hub-oracle witness UTxO(s)",
-          cause,
-        }),
-    });
-    if (utxos.length > 1) {
-      return yield* Effect.fail(
-        new SDK.LucidError({
-          message: "Expected at most one hub-oracle witness UTxO",
-          cause: utxos.map((utxo) => outRefLabel(utxo)).join(","),
-        }),
-      );
-    }
-    return utxos[0] ?? null;
-  });
-
-/** Fetches and authenticates the deployment correction-lock singleton. */
-export const fetchCorrectionLockWitness = (
-  lucid: LucidEvolution,
-  contracts: SDK.MidgardValidators,
-): Effect.Effect<SDK.CorrectionLockUTxO | null, SDK.LucidError> =>
-  Effect.gen(function* () {
-    const utxos = yield* Effect.tryPromise({
-      try: () =>
-        lucid.utxosAtWithUnit(
-          contracts.correctionLock.spendingScriptAddress,
-          SDK.correctionLockUnit(contracts.hubOracle.policyId),
-        ),
-      catch: (cause) =>
-        new SDK.LucidError({
-          message: "Failed to fetch correction-lock witness UTxO(s)",
-          cause,
-        }),
-    });
-    const authentic = yield* SDK.utxosToCorrectionLockUTxOs(
-      utxos,
-      contracts.hubOracle.policyId,
-    );
-    if (authentic.length > 1) {
-      return yield* Effect.fail(
-        new SDK.LucidError({
-          message: "Expected at most one authentic correction-lock UTxO",
-          cause: authentic.map(({ utxo }) => outRefLabel(utxo)).join(","),
-        }),
-      );
-    }
-    return authentic[0] ?? null;
-  });
-
-/**
- * Returns whether a node-set validator already has at least one initialized
- * on-chain UTxO.
- */
-export const isNodeSetInitialized = (
-  lucid: LucidEvolution,
-  validator: SDK.AuthenticatedValidator,
-): Effect.Effect<boolean, SDK.LucidError> =>
-  SDK.utxosAtByNFTPolicyId(
-    lucid,
-    validator.spendingScriptAddress,
-    validator.policyId,
-  ).pipe(
-    Effect.map((utxos) => utxos.length > 0),
-    Effect.mapError(
-      (cause) =>
-        new SDK.LucidError({
-          message: `Failed to query node-set initialization for policy=${validator.policyId}`,
-          cause,
-        }),
-    ),
-  );
-
-/**
- * Returns whether the scheduler witness UTxO is already present on-chain.
- */
-export const isSchedulerInitialized = (
-  lucid: LucidEvolution,
-  scheduler: SDK.AuthenticatedValidator,
-): Effect.Effect<boolean, SDK.LucidError> =>
-  Effect.tryPromise({
-    try: async () => {
-      const schedulerUnit = toUnit(
-        scheduler.policyId,
-        SDK.SCHEDULER_ASSET_NAME,
-      );
-      const schedulerUtxos = await lucid.utxosAtWithUnit(
-        scheduler.spendingScriptAddress,
-        schedulerUnit,
-      );
-      return schedulerUtxos.length > 0;
-    },
-    catch: (cause) =>
-      new SDK.LucidError({
-        message: "Failed to query scheduler initialization state",
-        cause,
-      }),
-  });

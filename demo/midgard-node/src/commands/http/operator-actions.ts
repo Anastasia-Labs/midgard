@@ -54,7 +54,7 @@ export const getInitHandler = Effect.gen(function* () {
     });
   }
 
-  const txHash = yield* Initialization.program;
+  const txHash = yield* Initialization.program();
   yield* Genesis.program;
   yield* Effect.logInfo(
     `GET /${INIT_ENDPOINT} - Initialization successful: ${txHash}`,

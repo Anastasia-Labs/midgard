@@ -74,6 +74,7 @@ type Initialized = Awaited<ReturnType<typeof initEmulatorLucid>> & {
   readonly contracts: SDK.MidgardValidators;
   readonly submitted: readonly string[];
   readonly referenceScriptsAddress: string;
+  readonly initTxHash: string;
 };
 
 /** A genuine Init in a fresh emulator, recording every accepted tx. */
@@ -111,6 +112,7 @@ const initialize = async (): Promise<Initialized> => {
     contracts,
     submitted,
     referenceScriptsAddress: await referenceScriptsLucid.wallet().address(),
+    initTxHash: signed.toHash(),
   };
 };
 
@@ -124,9 +126,22 @@ describe("initialization emulator: script decode", () => {
   it("initializes and publishes every family reference script, the BLS budget step under the publication target", async () => {
     const { lucid, contracts, submitted, referenceScriptsAddress } = init;
     const status = await Effect.runPromise(
-      fetchProtocolDeploymentStatus(lucid, contracts),
+      fetchProtocolDeploymentStatus(
+        {
+          lucid,
+          viewSlot: Effect.sync(() => lucid.currentSlot()),
+          hubOraclePolicyId: Effect.succeed(contracts.hubOracle.policyId),
+        },
+        {
+          nonce: {
+            txHash: init.nonceUtxo.txHash,
+            outputIndex: init.nonceUtxo.outputIndex,
+          },
+          initAttempts: [{ txHash: init.initTxHash }],
+        },
+      ),
     );
-    expect(status.complete).toBe(true);
+    expect(status.status).toBe("complete");
 
     const published = await Effect.runPromise(
       verifyNodeRuntimeReferenceScriptsProgram(

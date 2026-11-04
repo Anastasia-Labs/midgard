@@ -189,8 +189,6 @@ deadline:
   differs from the one the deployment's scripts were built with (the
   manifest's `l1SlotConfig`, or the named network's Shelley constants).
   Point the node at the deployment's network, or deploy for this one.
-- `protocol_deployment_partial` (a `failedReason`): some, not all, of the
-  protocol deployment is on chain. Finish the deployment.
 - `availability_reward_account_unregistered` (a `failedReason`): an
   availability-challenge reward account is not registered. Register it.
 - `runtime_reference_scripts_failed` (a `failedReason`): the node-runtime

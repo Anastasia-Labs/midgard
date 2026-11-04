@@ -77,7 +77,7 @@ vi.mock("../src/transactions/initialization.js", async (original) => {
     fetchProtocolDeploymentStatus: () =>
       E.sync(() => {
         stub.statusReads += 1;
-        return { complete: true, empty: false, stateQueueInitialized: true };
+        return { status: "complete", nonce: "spent", hubOracleWitness: null };
       }),
   };
 });
@@ -180,6 +180,8 @@ const runCheck = async (
       Effect.provide(IntentJournalWithoutFollower),
       Effect.provideService(NodeConfig, {
         NETWORK: "Preprod",
+        HUB_ORACLE_ONE_SHOT_TX_HASH: "ef".repeat(32),
+        HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: 0,
         RUN_GENESIS_ON_STARTUP: slots.bootstrap ?? false,
         STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS: MAX_ATTEMPTS,
         STARTUP_PROTOCOL_STATUS_QUERY_RETRY_DELAY_MS: 0,

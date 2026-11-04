@@ -55,11 +55,11 @@ vi.mock("../src/transactions/initialization.js", async (importOriginal) => {
     >();
   return {
     ...original,
-    program: Effect.succeed(INIT_TX),
+    program: () => Effect.succeed(INIT_TX),
     fetchProtocolDeploymentStatus: () =>
       Effect.succeed({
-        complete: true,
-        missingComponents: [],
+        status: "complete",
+        nonce: "spent",
         hubOracleWitness: { txHash: INIT_TX, outputIndex: 0 },
       }),
   };

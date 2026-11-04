@@ -35,6 +35,7 @@ import {
   holdFollowerWriteGate,
   openFollowerWriteGateAt,
 } from "./helpers/follower-write-gate.js";
+import { lucidServiceStub } from "./helpers/lucid-service-stub.js";
 import { resetApplicationTables } from "./utils.js";
 
 const landedStateQueueSnapshotMock = vi.hoisted(() => vi.fn());
@@ -260,15 +261,10 @@ const mergeActionProgram = (
     expectedHeaderHash,
   }: MergeRunOptions = {},
 ) => {
-  const lucidService = LucidService.make({
+  const lucidService = lucidServiceStub({
     api: {
       unixTimeToSlot: (unixTime: number) => Math.floor(unixTime / 1_000),
     } as never,
-    referenceScriptsApi: {} as never,
-    operatorMainAddress: "",
-    operatorMergeAddress: "",
-    referenceScriptsWalletAddress: "",
-    referenceScriptsAddress: "addr_test1referencescripts",
     submitSlotSnapshot: () =>
       Effect.succeed({
         source: "test",
@@ -276,11 +272,9 @@ const mergeActionProgram = (
         observedAtMs: 0,
         slotLengthMs: 1_000,
       }),
-    switchToOperatorsMainWallet: Effect.void,
     switchToOperatorsMergingWallet: Effect.sync(() => {
       switchToOperatorsMergingWalletMock();
     }),
-    switchToReferenceScriptWallet: Effect.void,
   });
 
   const program = Effect.gen(function* () {

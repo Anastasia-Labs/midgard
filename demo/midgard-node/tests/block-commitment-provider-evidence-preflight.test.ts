@@ -8,6 +8,7 @@ import { Globals, NodeConfig } from "../src/services/index.js";
 import type { StateQueueSnapshot } from "../src/services/landed-state-queue.js";
 import { Lucid as LucidService } from "../src/services/lucid.js";
 import { MidgardContracts } from "../src/services/midgard-contracts.js";
+import { lucidServiceStub } from "./helpers/lucid-service-stub.js";
 
 const mempoolState = vi.hoisted(() => ({ txCount: 1n }));
 const landedStateQueueSnapshotMock = vi.hoisted(() => vi.fn());
@@ -147,19 +148,10 @@ const fakeConfig = {
 };
 
 const switchToOperatorsMainWalletMock = vi.fn();
-const fakeLucid = LucidService.make({
-  api: {} as never,
-  referenceScriptsApi: {} as never,
-  operatorMainAddress: "",
-  operatorMergeAddress: "",
-  referenceScriptsWalletAddress: "",
-  referenceScriptsAddress: "addr_test1referencescripts",
-  submitSlotSnapshot: () => Effect.die("unexpected submit-slot lookup"),
+const fakeLucid = lucidServiceStub({
   switchToOperatorsMainWallet: Effect.sync(() => {
     switchToOperatorsMainWalletMock();
   }),
-  switchToOperatorsMergingWallet: Effect.void,
-  switchToReferenceScriptWallet: Effect.void,
 });
 
 const fakeContracts = {

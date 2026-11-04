@@ -58,7 +58,7 @@ export const EMPTY_FRAUD_PROOF_CATALOGUE_ROOT = "00".repeat(32);
  * passes it as `DA_COSIGNER_SEED_PHRASE`. It only ever signs attestation
  * messages, so it never needs emulator funds.
  */
-const TEST_DA_COSIGNER_SEED_PHRASE =
+export const TEST_DA_COSIGNER_SEED_PHRASE =
   "second salad helmet humble left noise inform person swamp surround twice animal fitness sing laundry saddle stove guess cabin rural kidney reject oil fee";
 
 /**

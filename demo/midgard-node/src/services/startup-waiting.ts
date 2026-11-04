@@ -83,9 +83,6 @@ export const L1_SLOT_CONFIG_MISMATCH = "l1_slot_config_mismatch";
 /** The deployment is complete but no deployment manifest is configured. */
 export const DEPLOYMENT_MANIFEST_MISSING = "deployment_manifest_missing";
 
-/** Some, not all, of the protocol deployment is on chain. */
-export const PROTOCOL_DEPLOYMENT_PARTIAL = "protocol_deployment_partial";
-
 /** An availability-challenge reward account is not registered. */
 export const AVAILABILITY_REWARD_ACCOUNT_UNREGISTERED =
   "availability_reward_account_unregistered";

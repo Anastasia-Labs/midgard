@@ -150,7 +150,7 @@ function attachStep(processes: StackProcesses): StackStep {
         );
       await restoreAttachedEnvironment(processes);
       const status = await deploymentStatus(processes);
-      if (!status.manifest.ok || !status.protocol.complete)
+      if (!status.manifest.ok || status.protocol.status !== "complete")
         throw new Error(
           "The stack's deployment does not verify against this instance's environment; preserve its data",
         );

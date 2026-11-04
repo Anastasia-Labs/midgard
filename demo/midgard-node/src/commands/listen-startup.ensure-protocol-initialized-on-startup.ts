@@ -18,7 +18,6 @@ import {
   DEPLOYMENT_MANIFEST_MISSING,
   DEPLOYMENT_MANIFEST_UNVERIFIABLE,
   L1_SLOT_CONFIG_MISMATCH,
-  PROTOCOL_DEPLOYMENT_PARTIAL,
   PROTOCOL_DEPLOYMENT_STATUS_UNAVAILABLE,
   PROTOCOL_INITIALIZATION_FAILED,
   retryStartupStep,
@@ -272,15 +271,20 @@ export const ensureProtocolInitializedOnStartup = Effect.gen(function* () {
     runGenesisOnStartup: nodeConfig.RUN_GENESIS_ON_STARTUP,
   });
   const contracts = yield* MidgardContracts;
+  const keys = yield* Initialization.configuredProtocolDeploymentKeys().pipe(
+    asProtocolStartupStep(PROTOCOL_DEPLOYMENT_STATUS_UNAVAILABLE),
+  );
   const deploymentStatus = yield* fetchProtocolDeploymentStatusWithStartupRetry(
-    () => Initialization.fetchProtocolDeploymentStatus(lucid.api, contracts),
+    () =>
+      Initialization.fetchProtocolDeploymentStatus(
+        Initialization.contractsDeploymentReader(lucid, contracts),
+        keys,
+      ),
     providerRetry,
   );
-  // The queue's health is the landed queue's (P1): once the follower runs,
-  // an unhealthy queue fails `/readyz` with its reason and stops proposals.
-  const details = `initialized=${String(deploymentStatus.stateQueueInitialized)}`;
+  const details = `status=${deploymentStatus.status},nonce=${deploymentStatus.nonce}`;
 
-  if (deploymentStatus.complete) {
+  if (deploymentStatus.status === "complete") {
     if (manifestReport === null) {
       return yield* failProtocolStartup(
         DEPLOYMENT_MANIFEST_MISSING,
@@ -300,7 +304,7 @@ export const ensureProtocolInitializedOnStartup = Effect.gen(function* () {
       providerRetry,
     );
     yield* Effect.logInfo(
-      `Startup initialization check: protocol deployment already present (state_queue=${details}).`,
+      `Startup initialization check: protocol deployment already present (${details}).`,
     );
     if (shouldBootstrap) {
       yield* ensureNodeRuntimeReferenceScriptsWithStartupRetry(
@@ -316,17 +320,6 @@ export const ensureProtocolInitializedOnStartup = Effect.gen(function* () {
     return;
   }
 
-  if (!deploymentStatus.empty) {
-    return yield* failProtocolStartup(
-      PROTOCOL_DEPLOYMENT_PARTIAL,
-      new SDK.StateQueueError({
-        message:
-          "Startup initialization check found a partial deployment; refusing to auto-initialize over externally provisioned state",
-        cause: `state_queue=${details}; missing=[${deploymentStatus.missingComponents.join(",")}]; hub_oracle_present=${deploymentStatus.hubOracleWitness !== null}; scheduler_initialized=${deploymentStatus.schedulerInitialized}; registered_initialized=${deploymentStatus.registeredOperatorsInitialized}; active_initialized=${deploymentStatus.activeOperatorsInitialized}; retired_initialized=${deploymentStatus.retiredOperatorsInitialized}; phas_reward_address=${deploymentStatus.phasMembershipRewardAddress}`,
-      }),
-    );
-  }
-
   if (!shouldBootstrap) {
     yield* Effect.logInfo(
       "Skipping protocol initialization on startup (disabled or mainnet).",
@@ -335,10 +328,10 @@ export const ensureProtocolInitializedOnStartup = Effect.gen(function* () {
   }
 
   yield* Effect.logInfo(
-    "No existing protocol deployment found for configured contracts. Running protocol initialization...",
+    `No visible protocol deployment for configured contracts (${details}). Running protocol initialization...`,
   );
   yield* Effect.gen(function* () {
-    const initTxHash = yield* Initialization.program;
+    const initTxHash = yield* Initialization.program();
     yield* Effect.logInfo(
       `Startup protocol initialization submitted successfully: ${initTxHash}`,
     );

@@ -4,7 +4,7 @@ export type InitializationObservation = {
   manifest: { ok: boolean };
   protocol: Pick<
     ProtocolDeploymentStatus,
-    "complete" | "empty" | "hubOracleWitness"
+    "status" | "nonce" | "hubOracleWitness"
   >;
 };
 /** A finalized initialization that the tip no longer shows was rolled back; it can still re-enter the chain. */
@@ -16,7 +16,7 @@ export function initializationRecovery(
     | { steps?: { initProtocol?: { txHash?: string; status?: string } } }
     | undefined,
 ) {
-  if (status.protocol.complete) {
+  if (status.protocol.status === "complete") {
     if (
       manifest?.steps?.initProtocol?.status === "complete" &&
       !status.manifest.ok
@@ -44,9 +44,12 @@ export function initializationRecovery(
   }
   if (manifest?.steps?.initProtocol?.status === "complete")
     throw new Error(PENDING_REINCLUSION);
-  // Empty is always safe to retry: init spends the one-shot nonce, so an
-  // attempt still in flight conflicts with the retry and only one can land.
+  // Empty is always safe to retry: no attempt was recorded. A recorded
+  // attempt that is not yet visible waits for Cardano.
   return {
-    status: status.protocol.empty ? ("retry" as const) : ("pending" as const),
+    status:
+      status.protocol.status === "empty"
+        ? ("retry" as const)
+        : ("pending" as const),
   };
 }

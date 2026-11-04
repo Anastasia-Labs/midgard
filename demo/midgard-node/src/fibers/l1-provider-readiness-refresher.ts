@@ -1,4 +1,6 @@
 import { type SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
+import type * as SDK from "@al-ft/midgard-sdk";
+import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { Cause, Effect, Either, Option, Ref, Schedule } from "effect";
 
 import {
@@ -15,7 +17,10 @@ import {
   NodeConfig,
   withL1ControlPlaneWaitTimeout,
 } from "../services/index.js";
-import { fetchHubOracleWitness } from "../transactions/initialization.js";
+import {
+  configuredInitTxHash,
+  fetchHubOracleWitness,
+} from "../transactions/initialization.js";
 
 /**
  * How often the exact HubOracle + local-ledger readiness probe runs. Exact
@@ -159,6 +164,29 @@ export const runL1ProviderReadinessRefresher = <E, R>({
   ).pipe(Effect.asVoid);
 
 /**
+ * The readiness HubOracle read: the hub-oracle output of the initialization
+ * the configured deployment manifest records. The output never moves, so once
+ * a read finds it, later reads re-read just its outref.
+ */
+export const hubOracleReadinessProbe = (
+  lucid: LucidEvolution,
+  contracts: SDK.MidgardValidators,
+): Effect.Effect<Effect.Effect<UTxO, SDK.LucidError>> =>
+  Effect.map(Ref.make<UTxO | null>(null), (found) =>
+    Effect.gen(function* () {
+      const known = yield* Ref.get(found);
+      const witness = yield* fetchHubOracleWitness(
+        lucid,
+        contracts,
+        known?.txHash ?? (yield* configuredInitTxHash),
+        known?.outputIndex,
+      );
+      yield* Ref.set(found, witness);
+      return witness;
+    }),
+  );
+
+/**
  * The only producer of exact L1 provider evidence. `/readyz` reads it and,
  * between refreshes, extends it with raw-provider probes that never touch the
  * shared Lucid instance. The probe holds the control plane no longer than the
@@ -180,11 +208,12 @@ export const l1ProviderReadinessRefresherFiber = (
       nodeConfig.L1_PROVIDER_PREFLIGHT_TIMEOUT_MS,
       READINESS_L1_PROVIDER_PROBE_TIMEOUT_MS,
     );
+    const hubOracleProbe = yield* hubOracleReadinessProbe(lucid.api, contracts);
     yield* Effect.logInfo("L1 provider readiness refresher fiber started.");
     yield* runL1ProviderReadinessRefresher({
       globals,
       probe: runCombinedL1ReadinessProbe(
-        fetchHubOracleWitness(lucid.api, contracts),
+        hubOracleProbe,
         (lucid.readSubmitSlotSnapshotOnce ?? lucid.submitSlotSnapshot)(),
       ),
       maxHoldMs: probeTimeoutMs,

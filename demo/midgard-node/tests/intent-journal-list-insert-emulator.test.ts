@@ -128,7 +128,14 @@ describe("the node's list inserts on a follower of the real flow's chain", () =>
     );
     const initHash = await runWithoutFollower(
       Effect.flatMap(openPlan, (plan) =>
-        completeAndSubmit(lucid, initTx, "protocol init", nonce, plan),
+        completeAndSubmit(
+          lucid,
+          initTx,
+          "protocol init",
+          nonce,
+          plan,
+          () => Effect.void,
+        ),
       ),
     );
     expect(await lucid.awaitTx(initHash)).toBe(true);

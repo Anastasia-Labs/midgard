@@ -109,8 +109,9 @@ node dist/index.js deployment-status | jq .
 
 Expected deployment fields:
 
-- `complete` is `true`
-- `missingComponents` is empty
+- `protocol.status` is `complete`
+- `protocol.nonce` is `spent`
+- `manifest.ok` is `true`
 
 Fresh `init` registers the canonical PHAS membership reward account in the
 atomic initialization transaction. `deployment-status` intentionally does not
@@ -422,10 +423,10 @@ fresh acceptance evidence.
 ### Reserve Or Payout Fails With `WithdrawalsNotInRewardsCERTS`
 
 The PHAS membership withdrawal reward account is not registered on the live
-network. Check the canonical address:
+network. Confirm the deployment itself is complete first:
 
 ```sh
-node dist/index.js deployment-status | jq '.phasMembershipRewardAddress, .missingComponents'
+node dist/index.js deployment-status | jq '.protocol.status, .protocol.nonce'
 ```
 
 For an existing otherwise-complete deployment, use the explicit registration

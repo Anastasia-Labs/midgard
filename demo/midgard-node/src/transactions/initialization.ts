@@ -20,6 +20,7 @@ import "./utils.js";
 import "./initialization.atomic-protocol-init-reference-scripts-from-publications.js";
 import "./initialization.derive-operator-da-params.js";
 import "./initialization.fetch-configured-nonce-utxo.js";
+import "./initialization.fetch-hub-oracle-witness.js";
 import "./initialization.fetch-protocol-deployment-status.js";
 export {
   type AtomicProtocolInitReferenceScripts,
@@ -32,20 +33,23 @@ export {
 export {
   deriveOperatorDaParams,
   ensureAtomicProtocolInitReferenceScriptsProgram,
-  fetchCorrectionLockWitness,
-  fetchHubOracleWitness,
-  isNodeSetInitialized,
-  isSchedulerInitialized,
 } from "./initialization.derive-operator-da-params.js";
 export {
   completeAndSubmit,
   fetchConfiguredNonceUtxo,
-  isDaBondPoolInitialized,
-  isDaParamsInitialized,
-  type ProtocolDeploymentStatus,
 } from "./initialization.fetch-configured-nonce-utxo.js";
 export {
+  configuredInitTxHash,
+  fetchHubOracleWitness,
+} from "./initialization.fetch-hub-oracle-witness.js";
+export {
   buildAtomicProtocolInitTxProgram,
+  configuredProtocolDeploymentKeys,
+  contractsDeploymentReader,
   fetchProtocolDeploymentStatus,
+  hubOraclePolicyOfNonce,
   program,
+  type ProtocolDeploymentKeys,
+  type ProtocolDeploymentReader,
+  type ProtocolDeploymentStatus,
 } from "./initialization.fetch-protocol-deployment-status.js";

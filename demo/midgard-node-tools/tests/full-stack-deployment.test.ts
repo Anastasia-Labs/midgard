@@ -63,6 +63,12 @@ const notStarted = {
   nextAction: "No reference-script auth policy is recorded yet",
 };
 const running = { status: "running" as const, attempts: 1, data: null };
+// What the node reports before initialization.
+const liveNonce = {
+  status: "empty",
+  nonce: "live",
+  hubOracleWitness: null,
+} as const;
 
 async function deployment(options: { nonceRecorded: boolean }) {
   const { config } = await stackFixture();
@@ -93,7 +99,6 @@ describe("deployment steps before initialization", () => {
       nonceRecorded: true,
     });
     let published = false;
-    processes.responses["nonce-observation"] = { utxos: [nonce] };
     processes.responses["references-publish"] = () => {
       published = true;
       return { mode: "publish" };
@@ -103,7 +108,7 @@ describe("deployment steps before initialization", () => {
       published ? reconciliation("satisfied") : notStarted;
     processes.responses["deployment-status"] = {
       manifest: { ok: false },
-      protocol: { complete: false, empty: true, hubOracleWitness: null },
+      protocol: liveNonce,
     };
     const journal = await runStackWorkflow(
       { directory: config.runDirectory, intentDigest: "c".repeat(64) },
@@ -119,12 +124,6 @@ describe("deployment steps before initialization", () => {
       "references-publish",
       "references-observation",
     ]);
-    // The operator wallet's nonce is looked up through Kupo, not by an
-    // address scan of the local node's ledger.
-    expect(
-      processes.calls.find((call) => call.id === "nonce-observation")!
-        .overrides,
-    ).toMatchObject({ L1_ACCESS: "kupmios" });
     expect(await steps.initialize!.reconcile(undefined)).toEqual({
       status: "retry",
     });
@@ -162,7 +161,10 @@ describe("deployment steps before initialization", () => {
     });
     const refusal =
       "Reference-script auth policy expired, and 1 reference scripts are already published under it; rerun with --fresh-redeploy --fresh-redeploy-reason <reason>.";
-    processes.responses["nonce-observation"] = { utxos: [nonce] };
+    processes.responses["deployment-status"] = {
+      manifest: { ok: false },
+      protocol: liveNonce,
+    };
     processes.responses["references-observation"] = reconciliation("blocked");
     processes.responses["references-publish"] = () => {
       throw new Error(refusal);
@@ -226,7 +228,10 @@ describe("deployment steps before initialization", () => {
       });
       if (stage !== "never started")
         await writeDeploymentRunStateAtomic(statePath, write(state));
-      processes.responses["nonce-observation"] = { utxos: [nonce] };
+      processes.responses["deployment-status"] = {
+        manifest: { ok: false },
+        protocol: liveNonce,
+      };
       // The node resumes whatever its run state holds and records the landed nonce.
       processes.responses["nonce-create-or-resume"] = async () =>
         writeDeploymentRunStateAtomic(
@@ -254,6 +259,39 @@ describe("deployment steps before initialization", () => {
       for (const run of runs)
         expect(run.args).not.toContain("--fresh-redeploy");
     });
+  it("observes a recorded nonce through the deployment status, never a wallet read", async () => {
+    const { processes, steps } = await deployment({ nonceRecorded: true });
+    const witness = {
+      txHash: "e".repeat(64),
+      outputIndex: 1,
+      address: "addr_test1",
+      assets: { lovelace: "2000000" },
+    };
+    for (const protocol of [
+      { status: "empty", nonce: "live", hubOracleWitness: null },
+      // Initialization spends the nonce; its landing completes this step.
+      { status: "complete", nonce: "spent", hubOracleWitness: witness },
+    ]) {
+      processes.responses["deployment-status"] = {
+        manifest: { ok: false },
+        protocol,
+      };
+      expect(await steps.nonce!.reconcile(running)).toEqual({
+        status: "complete",
+        data: nonce,
+      });
+    }
+    // The node refuses a spent nonce no recorded initialization explains.
+    processes.responses["deployment-status"] = () => {
+      throw new Error(`Hub-oracle nonce ${nonce.txHash}#0 is spent`);
+    };
+    await expect(steps.nonce!.reconcile(running)).rejects.toThrow(
+      "nonce " + nonce.txHash,
+    );
+    expect(
+      processes.calls.filter((call) => call.args.includes("l1-utxos")),
+    ).toEqual([]);
+  });
   it("restores the prior record when the nonce command never started", async () => {
     const { config, processes, steps } = await deployment({
       nonceRecorded: false,

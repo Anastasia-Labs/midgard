@@ -31,13 +31,8 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import { loadPhasMembershipWithdrawalScript } from "../src/phas-membership.js";
 import { loadRealBlueprintSha256 } from "../src/services/midgard-contracts.js";
-import {
-  fetchHubOracleWitness,
-  fetchProtocolDeploymentStatus,
-  isSchedulerInitialized,
-} from "../src/transactions/initialization.js";
+import { fetchProtocolDeploymentStatus } from "../src/transactions/initialization.js";
 import { verifyNodeRuntimeReferenceScriptsProgram } from "../src/transactions/reference-scripts.js";
 import {
   activateOperatorProgram,
@@ -325,12 +320,6 @@ describe("initialization emulator", () => {
     const txHash = await signed.submit();
     await lucid.awaitTx(txHash);
 
-    const hubOracleWitness = await Effect.runPromise(
-      fetchHubOracleWitness(lucid, contracts),
-    );
-    const schedulerInitialized = await Effect.runPromise(
-      isSchedulerInitialized(lucid, contracts.scheduler),
-    );
     const schedulerUtxos = await lucid.utxosAtWithUnit(
       contracts.scheduler.spendingScriptAddress,
       toUnit(contracts.scheduler.policyId, SDK.SCHEDULER_ASSET_NAME),
@@ -340,7 +329,20 @@ describe("initialization emulator", () => {
       SDK.SchedulerDatum,
     );
     const status = await Effect.runPromise(
-      fetchProtocolDeploymentStatus(lucid, contracts),
+      fetchProtocolDeploymentStatus(
+        {
+          lucid,
+          viewSlot: Effect.sync(() => lucid.currentSlot()),
+          hubOraclePolicyId: Effect.succeed(contracts.hubOracle.policyId),
+        },
+        {
+          nonce: {
+            txHash: nonceUtxo.txHash,
+            outputIndex: nonceUtxo.outputIndex,
+          },
+          initAttempts: [{ txHash }],
+        },
+      ),
     );
     const runtimeReferenceScripts = await Effect.runPromise(
       verifyNodeRuntimeReferenceScriptsProgram(
@@ -355,8 +357,7 @@ describe("initialization emulator", () => {
     );
 
     expect(txHash).toHaveLength(64);
-    expect(hubOracleWitness).not.toBeNull();
-    expect(schedulerInitialized).toBe(true);
+    expect(schedulerUtxos).toHaveLength(1);
     expect(schedulerDatum).toEqual("NoActiveOperators");
     // The init leaves the pool Bonded with one full bond of backing above the
     // floor, before any attestation exists.
@@ -390,19 +391,8 @@ describe("initialization emulator", () => {
     expect(Data.from(caseConfigUtxos[0]!.datum!, SDK.CaseConfig)).toEqual(
       SDK.validationCaseConfigFromContracts(caseChain),
     );
-    expect(status.daBondPoolInitialized).toBe(true);
-    expect(status.complete).toBe(true);
-    expect(status.depositHistoryInitialized).toBe(true);
-    expect(status.withdrawalHistoryInitialized).toBe(true);
-    expect({
-      rewardAddress: status.phasMembershipRewardAddress,
-      scriptHash: status.phasMembershipScriptHash,
-    }).toEqual(
-      SDK.phasMembershipIdentity(
-        "Preprod",
-        loadPhasMembershipWithdrawalScript(),
-      ),
-    );
+    expect(status).toMatchObject({ status: "complete", nonce: "spent" });
+    expect(status.hubOracleWitness?.txHash).toBe(txHash);
     for (const [action, validator] of Object.entries(
       contracts.availabilityChallenge.yields,
     )) {
@@ -417,7 +407,7 @@ describe("initialization emulator", () => {
         true,
       );
     }
-    for (const [name, history] of Object.entries(
+    for (const history of Object.values(
       SDK.requireEventHistoryContracts(contracts),
     )) {
       for (const { withdrawalScript } of [history.list, history.retirement]) {
@@ -428,24 +418,6 @@ describe("initialization emulator", () => {
             )
           ).registered,
         ).toBe(true);
-      }
-      const originalUtxosAt = lucid.utxosAt.bind(lucid);
-      const hiddenRoot = vi
-        .spyOn(lucid, "utxosAt")
-        .mockImplementation(async (address) =>
-          address === history.list.spendingScriptAddress
-            ? []
-            : originalUtxosAt(address),
-        );
-      try {
-        const incomplete = await Effect.runPromise(
-          fetchProtocolDeploymentStatus(lucid, contracts),
-        );
-        expect(incomplete.complete).toBe(false);
-        expect(incomplete.empty).toBe(false);
-        expect(incomplete.missingComponents).toContain(`${name}-history`);
-      } finally {
-        hiddenRoot.mockRestore();
       }
     }
     expect(runtimeReferenceScriptNames).toContain("state-queue spending");
@@ -481,75 +453,6 @@ describe("initialization emulator", () => {
         ),
       );
     }
-  });
-
-  it("reports already initialized when the atomic protocol root set exists", async () => {
-    const {
-      lucid,
-      referenceScriptsLucid,
-      nonceUtxo,
-      operatorSeedPhrase,
-      referenceScriptAuth,
-    } = await initEmulatorLucid();
-    const contracts = await loadContracts(
-      {
-        txHash: nonceUtxo.txHash,
-        outputIndex: nonceUtxo.outputIndex,
-      },
-      referenceScriptAuth,
-    );
-
-    const initTx = await buildAtomicInitializationTx(
-      lucid,
-      referenceScriptsLucid,
-      contracts,
-      nonceUtxo,
-      operatorSeedPhrase,
-    );
-    const signed = await (await initTx.complete({ localUPLCEval: true })).sign
-      .withWallet()
-      .complete();
-    const txHash = await signed.submit();
-    await lucid.awaitTx(txHash);
-
-    const status = await Effect.runPromise(
-      fetchProtocolDeploymentStatus(lucid, contracts),
-    );
-    expect(status.complete).toBe(true);
-    expect(status.missingComponents).toEqual([]);
-  });
-
-  it("detects partial real deployment as non-empty and incomplete", async () => {
-    const { lucid, nonceUtxo } = await initEmulatorLucid();
-    const contracts = await loadContracts({
-      txHash: nonceUtxo.txHash,
-      outputIndex: nonceUtxo.outputIndex,
-    });
-
-    const hubOracleTx = await Effect.runPromise(
-      SDK.incompleteHubOracleInitTxProgram(lucid, {
-        hubOracleMintValidator: contracts.hubOracle,
-        validators: contracts,
-        oneShotNonceUTxO: nonceUtxo,
-      }),
-    );
-    const signed = await (
-      await hubOracleTx.complete({ localUPLCEval: true })
-    ).sign
-      .withWallet()
-      .complete();
-    const txHash = await signed.submit();
-    await lucid.awaitTx(txHash);
-
-    const status = await Effect.runPromise(
-      fetchProtocolDeploymentStatus(lucid, contracts),
-    );
-    expect(status.empty).toBe(false);
-    expect(status.complete).toBe(false);
-    expect(status.missingComponents).toContain("scheduler");
-    expect(status.missingComponents).toContain("state-queue");
-    expect(status.daBondPoolInitialized).toBe(false);
-    expect(status.missingComponents).toContain("da-bond-pool");
   });
 
   it("initializes state_queue when all real protocol roots are minted atomically", async () => {

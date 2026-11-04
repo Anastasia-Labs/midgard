@@ -87,6 +87,7 @@ export const makeLucidRuntimeService = async ({
           observedAtMs: emulator.now(),
         }),
       ),
+    viewSlot: () => Effect.sync(() => emulator.slot),
   };
 };
 

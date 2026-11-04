@@ -15,7 +15,10 @@ import {
   sha256File,
 } from "../e2e/run-state.js";
 import { Lucid, MidgardContracts, NodeConfig } from "../services/index.js";
-import { fetchProtocolDeploymentStatus } from "../transactions/initialization.js";
+import {
+  contractsDeploymentReader,
+  fetchProtocolDeploymentStatus,
+} from "../transactions/initialization.js";
 import { queryScriptRewardRegistrationProgram } from "../transactions/script-reward-registration.js";
 import {
   formatDeploymentManifestVerificationReport,
@@ -279,10 +282,17 @@ export const reconcileInitializedDeploymentManifestProgram = ({
   Effect.gen(function* () {
     const lucidService = yield* Lucid;
     const contracts = yield* MidgardContracts;
+    const nodeConfig = yield* NodeConfig;
     const normalizedInitTxHash = initTxHash.toLowerCase();
     const deploymentStatus = yield* fetchProtocolDeploymentStatus(
-      lucidService.api,
-      contracts,
+      contractsDeploymentReader(lucidService, contracts),
+      {
+        nonce: {
+          txHash: nodeConfig.HUB_ORACLE_ONE_SHOT_TX_HASH,
+          outputIndex: nodeConfig.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX,
+        },
+        initAttempts: [{ txHash: normalizedInitTxHash }],
+      },
     ).pipe(
       Effect.mapError(
         (cause) =>
@@ -291,28 +301,11 @@ export const reconcileInitializedDeploymentManifestProgram = ({
           }),
       ),
     );
-    if (!deploymentStatus.complete) {
-      return yield* Effect.fail(
-        new Error(
-          `Cannot reconcile deployment manifest for an incomplete protocol deployment: missing_components=[${deploymentStatus.missingComponents.join(
-            ",",
-          )}]`,
-        ),
-      );
-    }
     const hubOracleWitness = deploymentStatus.hubOracleWitness;
     if (hubOracleWitness === null) {
       return yield* Effect.fail(
         new Error(
-          "Cannot reconcile deployment manifest without hub-oracle witness",
-        ),
-      );
-    }
-    const liveInitTxHash = hubOracleWitness.txHash.toLowerCase();
-    if (liveInitTxHash !== normalizedInitTxHash) {
-      return yield* Effect.fail(
-        new Error(
-          `Init transaction mismatch: live hub-oracle witness was created by ${liveInitTxHash}, expected ${normalizedInitTxHash}`,
+          `Cannot reconcile deployment manifest: initialization ${normalizedInitTxHash} is not visible (status=${deploymentStatus.status}, nonce=${deploymentStatus.nonce})`,
         ),
       );
     }

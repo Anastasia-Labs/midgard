@@ -80,6 +80,7 @@ export const makeFinalizedDeploymentManifestFixture = async (
     readonly blueprintHash?: string;
     readonly nonce?: { readonly txHash: string; readonly outputIndex: number };
     readonly deployAddress?: string;
+    readonly initProtocol?: DeploymentManifest["steps"]["initProtocol"];
   } = {},
 ): Promise<DeploymentManifest> => {
   const nonce = options.nonce ?? { txHash: "ab".repeat(32), outputIndex: 0 };
@@ -141,7 +142,7 @@ export const makeFinalizedDeploymentManifestFixture = async (
         hubOracleOneShotOutputIndex: nonce.outputIndex,
         hubOracleOneShotStatus: "consumed_by_init",
         steps: {
-          initProtocol: { status: "complete" },
+          initProtocol: options.initProtocol ?? { status: "complete" },
           availabilityRegistration: { status: "complete" },
         },
       },

@@ -1,7 +1,11 @@
 import "./utils.js";
 
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { Duration, Effect, Fiber, Ref, Schedule } from "effect";
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { runNodeFiberSet } from "../src/commands/listen.node-fibers.js";
 import { NodeConfig } from "../src/services/config.js";
@@ -9,6 +13,7 @@ import { Globals } from "../src/services/globals.js";
 import { L1LedgerBehindError } from "../src/services/l1-provider.js";
 import { Lucid } from "../src/services/lucid.js";
 import { MidgardContracts } from "../src/services/midgard-contracts.js";
+import { makeFinalizedDeploymentManifestFixture } from "./helpers/finalized-deployment-manifest.js";
 
 // Records each production probe call, so the test sees exactly what the
 // refresher runNode starts reads and with which arguments.
@@ -22,9 +27,16 @@ vi.mock("../src/transactions/initialization.js", async (importOriginal) => ({
   ...(await importOriginal<
     typeof import("../src/transactions/initialization.js")
   >()),
-  fetchHubOracleWitness: (lucid: unknown, contracts: unknown) =>
+  fetchHubOracleWitness: (
+    lucid: unknown,
+    contracts: unknown,
+    initTxHash: unknown,
+  ) =>
     Effect.suspend(() => {
-      probes.calls.push({ probe: "hub_oracle", args: { lucid, contracts } });
+      probes.calls.push({
+        probe: "hub_oracle",
+        args: { lucid, contracts, initTxHash },
+      });
       return probes.hubOracleHangs ? Effect.never : Effect.succeed(null);
     }),
 }));
@@ -47,6 +59,28 @@ const readSubmitSlotSnapshotOnce = () =>
   });
 const lucidApi = { name: "lucid-api" };
 const contracts = { name: "contracts" };
+/** The initialization the configured deployment manifest records. */
+const initTxHash = "cd".repeat(32);
+let manifestDirectory: string;
+
+beforeAll(async () => {
+  manifestDirectory = await mkdtemp(join(tmpdir(), "midgard-refresher-"));
+  const manifestPath = join(manifestDirectory, "contract-deployment-info.json");
+  await writeFile(
+    manifestPath,
+    JSON.stringify(
+      await makeFinalizedDeploymentManifestFixture({
+        initProtocol: { status: "complete", txHash: initTxHash },
+      }),
+    ),
+  );
+  vi.stubEnv("MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH", manifestPath);
+});
+
+afterAll(async () => {
+  vi.unstubAllEnvs();
+  await rm(manifestDirectory, { recursive: true, force: true });
+});
 
 // Every interval the fiber set schedules on, plus what the refresher reads.
 const nodeConfigWith = (preflightTimeoutMs: number) =>
@@ -137,7 +171,10 @@ describe("L1 provider readiness refresher wiring in runNode", () => {
       const evidence = await firstRefreshOfNodeFiberSet(preflightTimeoutMs);
 
       expect(probes.calls).toEqual([
-        { probe: "hub_oracle", args: { lucid: lucidApi, contracts } },
+        {
+          probe: "hub_oracle",
+          args: { lucid: lucidApi, contracts, initTxHash },
+        },
         { probe: "ledger_slot", args: undefined },
       ]);
       expect(evidence).toMatchObject({
