@@ -100,11 +100,10 @@ test("cancellation joins a grandchild which ignores SIGTERM", async (t) => {
     "waited for SIGKILL escalation after the child's handler was ready",
   );
   // A killed orphan can be a zombie until PID 1 reaps it; it can no longer
-  // execute or write. Observe state rather than claiming pid absence.
-  if (processIdentity(pid)) {
-    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
-    assert.equal(stat.slice(stat.lastIndexOf(")") + 2).split(" ")[0], "Z");
-  }
+  // execute or write. Observe state rather than claiming pid absence, from
+  // one /proc read: PID 1 may reap it at any moment.
+  const orphan = processIdentity(pid);
+  if (orphan) assert.equal(orphan.state, "Z");
 });
 
 test("a monotonic deadline fails a stalled child", async (t) => {
