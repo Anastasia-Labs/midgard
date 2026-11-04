@@ -273,7 +273,6 @@
     "tests/startup-http-server.test.ts": 7.9,
     "tests/startup-http.test.ts": 1.6,
     "tests/startup-policy.test.ts": 0,
-    "tests/startup-protocol-status-retry.test.ts": 2.5,
     "tests/state-queue-mutation-lease-settle-retry.test.ts": 11.1,
     "tests/state-queue-node-floor-challenge-emulator.test.ts": 33.2,
     "tests/state-reconciliation-emulator.test.ts": 34.1,

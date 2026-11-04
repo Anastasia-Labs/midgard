@@ -67,7 +67,7 @@ export const GATES = {
       "midgard-node",
       [
         "tests/provider-retry.test.ts",
-        "tests/startup-protocol-status-retry.test.ts",
+        "tests/startup-protocol-initialization-hold.test.ts",
       ],
     ],
     [
